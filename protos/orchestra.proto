@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+message RegisterWorkerRequest {
+  string address = 1;
+}
+
+message RegisterWorkerReply {
+  uint64 workerid = 1;
+}
+
+message Value {
+  uint64 ref = 1; // for pass by reference
+  bytes data = 2; // for pass by value
+}
+
+message RemoteCallRequest {
+  string name = 1;
+  repeated Value arg = 2;
+}
+
+message RemoteCallReply {
+  uint64 result = 1;
+}
+
+message PullObjectRequest {
+  uint64 ref = 1;
+}
+
+service Orchestra {
+  rpc RegisterWorker(RegisterWorkerRequest) returns (RegisterWorkerReply);
+  // rpc RegisterFunction
+  rpc RemoteCall(RemoteCallRequest) returns (RemoteCallReply);
+  // rpc PushObject
+  // rpc PullObject(PullObjectRequest)
+  // rpc DeliverRequest
+}
