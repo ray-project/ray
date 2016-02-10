@@ -1,6 +1,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <mutex>
 
 #include <grpc++/grpc++.h>
 
@@ -10,18 +11,54 @@ using grpc::Server;
 using grpc::ServerBuilder;
 using grpc::ServerContext;
 using grpc::Status;
-// using helloworld::HelloRequest;
-// using helloworld::HelloReply;
-// using helloworld::Greeter;
+
+typedef size_t ObjRef;
+typedef size_t WorkerId;
+typedef std::vector<std::vector<WorkerId> > ObjTable;
+
+class OrchestraScheduler {
+
+};
+
+class OrchestraServer {
+  ObjTable objtable;
+  std::mutex mutex;
+public:
+  ObjRef register_new_object() {
+    mutex.lock();
+    ObjRef result = objtable.size();
+    // std::cout << "size " << result << std::endl;
+    objtable.push_back(std::vector<WorkerId>());
+    mutex.unlock();
+    return result;
+  }
+  void register_object(ObjRef objref, WorkerId workerid) {
+    mutex.lock();
+    objtable[objref].push_back(workerid);
+    mutex.unlock();
+  }
+};
 
 // Logic and data behind the server's behavior.
 class OrchestraServiceImpl final : public Orchestra::Service {
+  ObjTable objtable;
+  std::unique_ptr<OrchestraServer> server;
+public:
+  OrchestraServiceImpl() : server(new OrchestraServer()) {
+  }
   Status RemoteCall(ServerContext* context, const RemoteCallRequest* request,
                   RemoteCallReply* reply) override {
-    std::cout << "called" << std::endl;
+    // std::cout << "called" << std::endl;
+    ObjRef objref = server->register_new_object();
+    reply->set_result(objref);
     // std::string prefix("Hello ");
     // reply->set_message(prefix + request->name());
     return Status::OK;
+  }
+  Status RegisterWorker(ServerContext* context, const RegisterWorkerRequest* request,
+    RegisterWorkerReply* reply) override {
+      std::cout << "register worker" << std::endl;
+      return Status::OK;
   }
 };
 

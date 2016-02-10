@@ -1,5 +1,7 @@
 syntax = "proto3";
 
+import "types.proto";
+
 message RegisterWorkerRequest {
   string address = 1;
 }
@@ -8,14 +10,9 @@ message RegisterWorkerReply {
   uint64 workerid = 1;
 }
 
-message Value {
-  uint64 ref = 1; // for pass by reference
-  bytes data = 2; // for pass by value
-}
-
 message RemoteCallRequest {
   string name = 1;
-  repeated Value arg = 2;
+  Values arg = 2;
 }
 
 message RemoteCallReply {
@@ -32,5 +29,18 @@ service Orchestra {
   rpc RemoteCall(RemoteCallRequest) returns (RemoteCallReply);
   // rpc PushObject
   // rpc PullObject(PullObjectRequest)
-  // rpc DeliverRequest
+}
+
+message InvokeCallRequest {
+
+}
+
+message InvokeCallReply {
+
+}
+
+service Worker {
+  rpc InvokeCall(InvokeCallRequest) returns (InvokeCallReply);
+  // rpc PushObj(PushObjRequest) returns (PushObjReply);
+  // rpc RequestTransfer(RequestTransferRequest) returns (RequestTransferReply);
 }

@@ -4,7 +4,7 @@ LIB_PATH = lib/orchlib
 
 CXX = g++
 CPPFLAGS += -I/usr/local/include -pthread
-CXXFLAGS += -std=c++11 -fPIC -I$(SRC_PATH)
+CXXFLAGS += -std=c++11 -fPIC -I$(SRC_PATH) -O3
 LDFLAGS += -L/usr/local/lib -lgrpc++_unsecure -lgrpc -lprotobuf -lpthread -ldl
 PROTOC = protoc
 GRPC_CPP_PLUGIN = grpc_cpp_plugin
@@ -12,12 +12,12 @@ GRPC_CPP_PLUGIN_PATH ?= `which $(GRPC_CPP_PLUGIN)`
 
 vpath %.proto $(PROTOS_PATH)
 
-all: system-check $(LIB_PATH)/liborchlib.so $(SRC_PATH)/server
+all: system-check $(LIB_PATH)/liborchlib.so $(SRC_PATH)/server lib/orchpy/orchpy/liborchlib.so
 
-$(LIB_PATH)/liborchlib.so: $(SRC_PATH)/orchestra.pb.o $(SRC_PATH)/orchestra.grpc.pb.o $(LIB_PATH)/orchlib.o
+$(LIB_PATH)/liborchlib.so: $(SRC_PATH)/types.pb.o $(SRC_PATH)/orchestra.pb.o $(SRC_PATH)/types.grpc.pb.o $(SRC_PATH)/orchestra.grpc.pb.o $(LIB_PATH)/orchlib.o
 	$(CXX) $^ $(LDFLAGS) -shared -o $@
 
-$(SRC_PATH)/server: $(SRC_PATH)/orchestra.pb.o $(SRC_PATH)/orchestra.grpc.pb.o $(SRC_PATH)/server.o
+$(SRC_PATH)/server: $(SRC_PATH)/orchestra.pb.o $(SRC_PATH)/types.pb.o $(SRC_PATH)/types.grpc.pb.o $(SRC_PATH)/orchestra.grpc.pb.o $(SRC_PATH)/server.o
 	$(CXX) $^ $(LDFLAGS) -o $@
 
 .PRECIOUS: ./src/%.grpc.pb.cc
@@ -27,6 +27,9 @@ $(SRC_PATH)/%.grpc.pb.cc: %.proto
 .PRECIOUS: ./src/%.pb.cc
 $(SRC_PATH)/%.pb.cc: %.proto
 	$(PROTOC) -I $(PROTOS_PATH) --cpp_out=./src $<
+
+lib/orchpy/orchpy/liborchlib.so:
+	cp -f lib/orchlib/liborchlib.so lib/orchpy/orchpy/liborchlib.so
 
 clean:
 	rm -f $(SRC_PATH)/*.o $(LIB_PATH)/*.o $(SRC_PATH)/*.pb.cc $(SRC_PATH)/*.pb.h $(LIB_PATH)/orchlib.so $(SRC_PATH)/server
