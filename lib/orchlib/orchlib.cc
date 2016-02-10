@@ -66,7 +66,7 @@ void start_server() {
 }
 
 void* orch_create_context(const char* server_addr) {
-  Client* client = new Client(grpc::CreateChannel("localhost:50052", grpc::InsecureChannelCredentials()));
+  Client* client = new Client(grpc::CreateChannel(server_addr, grpc::InsecureChannelCredentials()));
   client->RegisterWorker();
   return client;
 }
