@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+message Int {
+  int64 data = 1;
+}
+
+message String {
+  string data = 1;
+}
+
+message Double {
+	double data = 1;
+}
+
+message PyObj {
+  string type = 1;
+  bytes data = 2;
+}
+
+message Obj {
+  String string_data = 1;
+  Int int_data = 2;
+  Double double_data = 3;
+  PyObj pyobj_data = 4;
+}
+
+message List {
+  repeated Obj elems = 1;
+}
+
+message Value {
+  uint64 ref = 1; // for pass by reference
+  Obj obj = 2; // for pass by value
+}
+
+message Values {
+  repeated Value value = 1;
+}
+
+enum DataType {
+  INT32 = 0;
+  INT64 = 1;
+  FLOAT32 = 2;
+  FLOAT64 = 3;
+}
+
+message Array {
+  repeated uint64 shape = 1;
+  DataType dtype = 2;
+  bytes data = 3;
+}
