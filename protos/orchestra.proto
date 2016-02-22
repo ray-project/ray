@@ -2,33 +2,122 @@ syntax = "proto3";
 
 import "types.proto";
 
+message AckReply {
+  string errormsg = 1;
+}
+
 message RegisterWorkerRequest {
-  string address = 1;
+  string worker_address = 1;
+  string objstore_address = 2;
 }
 
 message RegisterWorkerReply {
   uint64 workerid = 1;
 }
 
+message RegisterObjStoreRequest {
+  string address = 1;
+}
+
+message RegisterObjStoreReply {
+  uint64 objstoreid = 1;
+}
+
+message RegisterFunctionRequest {
+  uint64 workerid = 1;
+  string fnname = 2;
+  uint64 num_return_vals = 3;
+}
+
 message RemoteCallRequest {
-  string name = 1;
-  Values arg = 2;
+  Call call = 1;
 }
 
 message RemoteCallReply {
-  uint64 result = 1;
+  repeated uint64 result = 1;
 }
 
-message PullObjectRequest {
-  uint64 ref = 1;
+message PullObjRequest {
+  uint64 objref = 1;
 }
 
-service Orchestra {
+message PushObjRequest {
+  uint64 workerid = 1;
+}
+
+message PushObjReply {
+  uint64 objref = 1;
+}
+
+message ChangeCountRequest {
+  uint64 objref = 1;
+}
+
+message GetDebugInfoRequest {
+
+}
+
+message FnTableEntry {
+  uint64 workerid = 1;
+  uint64 num_return_vals = 2;
+}
+
+message GetDebugInfoReply {
+  map<string, FnTableEntry> function_table = 1;
+}
+
+service SchedulerServer {
   rpc RegisterWorker(RegisterWorkerRequest) returns (RegisterWorkerReply);
-  // rpc RegisterFunction
+  rpc RegisterObjStore(RegisterObjStoreRequest) returns (RegisterObjStoreReply);
+  rpc RegisterFunction(RegisterFunctionRequest) returns (AckReply);
   rpc RemoteCall(RemoteCallRequest) returns (RemoteCallReply);
-  // rpc PushObject
-  // rpc PullObject(PullObjectRequest)
+  rpc IncrementCount(ChangeCountRequest) returns (AckReply);
+  rpc DecrementCount(ChangeCountRequest) returns (AckReply);
+  rpc PushObj(PushObjRequest) returns (PushObjReply);
+  rpc PullObj(PullObjRequest) returns (AckReply);
+  rpc GetDebugInfo(GetDebugInfoRequest) returns (GetDebugInfoReply);
+}
+
+message DeliverObjRequest {
+  string objstore_address = 1; // objstore to deliver the object to
+  uint64 objref = 2; // reference of object that gets delivered
+}
+
+message RegisterObjRequest {
+  uint64 objref = 1; // reference of object that gets registered
+}
+
+message RegisterObjReply {
+  uint64 handle = 1; // handle to memory segment where object is stored
+}
+
+message ObjChunk {
+  uint64 objref = 1;
+  uint64 totalsize = 2;
+  bytes data = 3;
+}
+
+message GetObjRequest {
+  uint64 objref = 1;
+}
+
+message GetObjReply {
+  string bucket = 1;
+  uint64 handle = 2;
+  uint64 size = 3;
+}
+
+message DebugInfoRequest {}
+
+message DebugInfoReply {
+  repeated uint64 objref = 1;
+}
+
+service ObjStore {
+  rpc DeliverObj(DeliverObjRequest) returns (AckReply);
+  rpc StreamObj(stream ObjChunk) returns (AckReply);
+  rpc GetObj(GetObjRequest) returns (GetObjReply);
+  rpc DebugInfo(DebugInfoRequest) returns (DebugInfoReply);
 }
 
 message InvokeCallRequest {
@@ -39,8 +128,6 @@ message InvokeCallReply {
 
 }
 
-service Worker {
+service WorkerServer {
   rpc InvokeCall(InvokeCallRequest) returns (InvokeCallReply);
-  // rpc PushObj(PushObjRequest) returns (PushObjReply);
-  // rpc RequestTransfer(RequestTransferRequest) returns (RequestTransferReply);
 }

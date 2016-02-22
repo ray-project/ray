@@ -8,8 +8,10 @@ setup(
   version = "0.1.dev0",
   ext_modules = cythonize([
     Extension("orchpy/worker",
+      include_dirs = ["../../src"],
       sources = ["orchpy/worker.pyx"],
-      extra_link_args=["-Iorchpy -lorchlib"]),
+      extra_link_args=["-Iorchpy -lorchlib"],
+      language = "c++"),
     Extension("orchpy/unison",
       include_dirs = ["../../src/"],
       sources = ["orchpy/unison.pyx"],
@@ -19,7 +21,7 @@ setup(
   use_2to3=True,
   packages=find_packages(),
   package_data = {
-    'orchpy': ['liborchlib.so']
+    'orchpy': ['liborchlib.so', 'scheduler_server', 'objstore']
   },
   zip_safe=False
 )

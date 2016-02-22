@@ -1,7 +1,14 @@
-from libc.stdint cimport uint64_t, int64_t
+# Will be rewritten in C++ for easier deployment once the API is stabilized
+
+from libc.stdint cimport uint64_t, int64_t, uintptr_t
 from libcpp cimport bool
 from libcpp.string cimport string
 import numpy as np
+
+try:
+  import cPickle as pickle
+except:
+  import pickle
 
 cdef extern from "types.pb.h":
   ctypedef enum DataType:
@@ -23,10 +30,11 @@ cdef extern from "types.pb.h":
     Value* add_value()
     Value* mutable_value(int index)
 
+
   cdef cppclass String:
-      String()
-      void set_data(const char* val)
-      string* mutable_data()
+    String()
+    void set_data(const char* val)
+    string* mutable_data()
 
   cdef cppclass Int:
     Int()
@@ -38,28 +46,48 @@ cdef extern from "types.pb.h":
     void set_data(double val)
     double data()
 
+  cdef cppclass PyObj:
+    PyObj()
+    void set_data(const char* val, size_t len)
+    string* mutable_data()
+
   cdef cppclass Obj:
     Obj()
     String* mutable_string_data()
     Int* mutable_int_data()
     Double* mutable_double_data()
+    PyObj* mutable_pyobj_data()
     bool has_string_data()
     bool has_int_data()
     bool has_double_data()
+    bool ParseFromString(const string& data)
 
-cdef class PyValues:
+cdef class PyValues: # TODO: unify with the below
   cdef Values *thisptr
   def __cinit__(self):
     self.thisptr = new Values()
   def __dealloc__(self):
     del self.thisptr
+  def get_value(self):
+    return <uintptr_t>self.thisptr
 
-cdef class PyValue:
+cdef class PyValue: # TODO: unify with the below
   cdef Value *thisptr
   def __cinit__(self):
     self.thisptr = new Value()
   def __dealloc__(self):
     del self.thisptr
+  def get_value(self):
+    return <uintptr_t>self.thisptr
+
+cdef class ObjWrapper: # TODO: unify with the above
+  cdef Obj *thisptr
+  def __cinit__(self):
+    self.thisptr = new Obj()
+  # def __dealloc__(self):
+  #   del self.thisptr
+  def get_value(self):
+    return <uintptr_t>self.thisptr
 
 cdef class ObjRef:
   cdef size_t _id
@@ -80,31 +108,69 @@ cdef class ObjRef:
   cpdef get_id(self):
     return self._id
 
-cpdef serialize_args(args):
-  cdef Values* vals
-  cdef Value* val
-  cdef Obj* obj
+cpdef serialize_into(val, objptr):
+  cdef uintptr_t ptr = <uintptr_t>objptr
+  cdef Obj* obj = <Obj*>ptr
   cdef String* string_data
   cdef Int* int_data
   cdef Double* double_data
-  result = PyValues()
-  vals = result.thisptr
+  if type(val) == str:
+    string_data = obj[0].mutable_string_data()
+    string_data[0].set_data(val)
+  elif type(val) == int or type(val) == long:
+    int_data = obj[0].mutable_int_data()
+    int_data[0].set_data(val)
+  elif type(val) == float:
+    double_data = obj[0].mutable_double_data()
+    double_data[0].set_data(val)
+  else:
+    data = pickle.dumps(val, pickle.HIGHEST_PROTOCOL)
+    pyobj_data = obj[0].mutable_pyobj_data()
+    pyobj_data[0].set_data(data, len(data))
+
+cpdef serialize(val):
+  result = ObjWrapper()
+  serialize_into(val, result.get_value())
+  return result
+
+cpdef serialize_args_into(args, valsptr):
+  cdef uintptr_t ptr = <uintptr_t>valsptr
+  cdef Values* vals = <Values*>ptr
+  cdef Value* val
+  cdef Obj* obj
   for arg in args:
     val = vals[0].add_value()
     if type(arg) == ObjRef:
       val[0].set_ref(arg.get_id())
     else:
       obj = val[0].mutable_obj()
-      if type(arg) == str:
-        string_data = obj[0].mutable_string_data()
-        string_data[0].set_data(arg)
-      elif type(arg) == int or type(arg) == long:
-        int_data = obj[0].mutable_int_data()
-        int_data[0].set_data(arg)
-      elif type(arg) == float:
-        double_data = obj[0].mutable_double_data()
-        double_data[0].set_data(arg)
+      serialize_into(arg, <uintptr_t>obj)
+
+cpdef serialize_args(args):
+  result = PyValues()
+  serialize_args_into(args, result.get_value())
   return result
+
+cdef deserialize_from(Obj* obj):
+  if obj[0].has_string_data():
+    return obj[0].mutable_string_data()[0].mutable_data()[0]
+  elif obj[0].has_int_data():
+    return obj[0].mutable_int_data()[0].data()
+  elif obj[0].has_double_data():
+    return obj[0].mutable_double_data()[0].data()
+  else:
+    data = obj[0].mutable_pyobj_data()[0].mutable_data()[0]
+    return pickle.loads(data)
+
+cpdef deserialize_from_string(str):
+  cdef string s = str
+  cdef Obj* obj = new Obj() # TODO: memory leak
+  obj[0].ParseFromString(s)
+  return deserialize_from(obj)
+
+# cpdef deserialize(str):
+#     cdef string s = string(str)
+#     return deserialize_from(obj.get_value())
 
 cpdef deserialize_args(PyValues args):
   cdef Values* vals = args.thisptr
@@ -123,6 +189,9 @@ cpdef deserialize_args(PyValues args):
         result.append(obj[0].mutable_int_data()[0].data())
       elif obj[0].has_double_data():
         result.append(obj[0].mutable_double_data()[0].data())
+      else:
+        data = obj[0].mutable_pyobj_data()[0].mutable_data()[0]
+        result.append(pickle.loads(data))
   return result
 
 cdef int numpy_dtype_to_proto(dtype):
