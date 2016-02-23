@@ -7,6 +7,7 @@ find_package(Protobuf REQUIRED)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
 include_directories("${CMAKE_SOURCE_DIR}/include")
+include_directories("/usr/local/include")
 
 set(PROTO_PATH "${CMAKE_SOURCE_DIR}/protos")
 
@@ -63,7 +64,10 @@ set(GENERATED_PROTOBUF_FILES ${ORCHESTRA_PB_H_FILE} ${ORCHESTRA_PB_CPP_FILE}
     ${TYPES_GRPC_PB_H_FILE} ${TYPES_GRPC_PB_CPP_FILE})
 
 include_directories(${GENERATED_PROTOBUF_PATH})
-link_libraries(grpc++_unsecure grpc pthread rt ${PROTOBUF_LIBRARY})
+link_libraries(grpc++_unsecure grpc pthread ${PROTOBUF_LIBRARY})
+if (UNIX AND NOT APPLE)
+   link_libraries(rt)
+endif()
 
 add_executable(objstore src/objstore.cc ${GENERATED_PROTOBUF_FILES})
 add_executable(scheduler_server src/scheduler_server.cc ${GENERATED_PROTOBUF_FILES})
