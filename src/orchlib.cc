@@ -25,5 +25,5 @@ slice orch_get_serialized_obj(Worker* worker, ObjRef objref) {
 }
 
 void orch_register_function(Worker* worker, const char* name, size_t num_return_vals) {
-  // worker->register_function(std::string(name), num_return_vals);
+  worker->register_function(std::string(name), num_return_vals);
 }

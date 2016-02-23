@@ -24,16 +24,15 @@ cdef extern from "Python.h":
     int PyByteArray_Resize(object self, Py_ssize_t size) except -1
     char* PyByteArray_AS_STRING(object bytearray)
 
-cdef extern from "types.pb.h":
+# cdef extern from "../../../build/generated/orchestra.pb.h":
+#   cdef cppclass RemoteCallRequest:
+#     RemoteCallRequest()
+#     void set_name(const char* value)
+#     Call* mutable_call()
+
+cdef extern from "../../../build/generated/types.pb.h":
   cdef cppclass Values
 
-cdef extern from "orchestra.pb.h":
-  cdef cppclass RemoteCallRequest:
-    RemoteCallRequest()
-    void set_name(const char* value)
-    Values* mutable_arg()
-
-cdef extern from "types.pb.h":
   ctypedef enum DataType:
     INT32
     INT64
@@ -140,13 +139,13 @@ cdef class Worker:
   def connect(self, server_addr, worker_addr, objstore_addr):
     self.context = orch_create_context(server_addr, worker_addr, objstore_addr)
 
-#   cpdef call(self, name, args):
-#     cdef RemoteCallRequest* result = new RemoteCallRequest()
-#     result[0].set_name(name)
-#     unison.serialize_args_into(args, <uintptr_t>result[0].mutable_arg())
-#     for i in range(10):
-#       orch_remote_call(self.context, result)
-#     # return <uintptr_t>result
+#  cpdef call(self, name, args):
+#    cdef RemoteCallRequest* result = new RemoteCallRequest()
+#    result[0].set_name(name)
+#    unison.serialize_args_into(args, <uintptr_t>result[0].mutable_arg())
+#    for i in range(10):
+#      orch_remote_call(self.context, result)
+#   # return <uintptr_t>result
 
   cpdef do_call(self, ptr):
     return orch_remote_call(self.context, <void*>ptr)

@@ -2,6 +2,7 @@
 #define ORCHESTRA_SCHEDULER_H
 
 #include <deque>
+#include <memory>
 
 #include <grpc++/grpc++.h>
 
@@ -51,11 +52,11 @@ public:
   // returns number of return values of task
   size_t add_task(const Call& task) {
     fntable_lock_.lock();
-    size_t num_return_vals = 2; // fn_table_[task.name()].num_return_vals();
+    size_t num_return_vals = fntable_[task.name()].num_return_vals();
     fntable_lock_.unlock();
-    // std::unique_ptr<Call> task_ptr(new Call(task)); // TODO: perform copy outside
+    std::unique_ptr<Call> task_ptr(new Call(task)); // TODO: perform copy outside
     tasks_lock_.lock();
-    // tasks_.push_back(task_ptr);
+    tasks_.emplace_back(std::move(task_ptr));
     tasks_lock_.unlock();
     return num_return_vals;
   }
@@ -131,15 +132,21 @@ public:
     info.add_worker(workerid);
     fntable_lock_.unlock();
   }
-  /*
-  void debug_info(DebugInfoReply* debug_info) {
+  void debug_info(GetDebugInfoReply* debug_info) {
     fntable_lock_.lock();
     for (const auto& entry : fntable_) {
-      debug_info->
+      auto function_table = debug_info->mutable_function_table();
+      (*function_table)[entry.first].set_num_return_vals(entry.second.num_return_vals());
+      // TODO: set workerid
     }
-    fntable_lock_.lock();
+    fntable_lock_.unlock();
+    tasks_lock_.lock();
+    for (const auto& entry : tasks_) {
+      Call* call = debug_info->add_task();
+      call->CopyFrom(*entry);
+    }
+    tasks_lock_.unlock();
   }
-  */
 };
 
 #endif

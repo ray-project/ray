@@ -63,7 +63,8 @@ message FnTableEntry {
 }
 
 message GetDebugInfoReply {
-  map<string, FnTableEntry> function_table = 1;
+  repeated Call task = 1;
+  map<string, FnTableEntry> function_table = 2;
 }
 
 service SchedulerServer {

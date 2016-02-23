@@ -80,6 +80,14 @@ class SchedulerTest(unittest.TestCase):
     w = worker.Worker()
     w.connect("127.0.0.1:22221", "127.0.0.1:40002", "127.0.0.1:22222")
     w.register_function("hello_world", 2)
+    reply = scheduler_stub.GetDebugInfo(orchestra_pb2.GetDebugInfoRequest(), TIMEOUT_SECONDS)
+    self.assertEqual(reply.function_table.items()[0][0], u'hello_world')
+
+  def testCall(self):
+    scheduler_channel = implementations.insecure_channel('localhost', 22221)
+    scheduler_stub = orchestra_pb2.beta_create_SchedulerServer_stub(scheduler_channel)
+    w = worker.Worker()
+    w.connect("127.0.0.1:22221", "127.0.0.1:40003", "127.0.0.1:22222")
 
 
 """

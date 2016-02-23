@@ -121,6 +121,8 @@ class Worker {
   void register_function(const std::string& name, size_t num_return_vals) {
     ClientContext context;
     RegisterFunctionRequest request;
+    request.set_fnname(name);
+    request.set_num_return_vals(num_return_vals);
     AckReply reply;
     scheduler_stub_->RegisterFunction(&context, request, &reply);
   }

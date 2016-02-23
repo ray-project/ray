@@ -38,6 +38,7 @@ public:
     return Status::OK;
   }
   Status GetDebugInfo(ServerContext* context, const GetDebugInfoRequest* request, GetDebugInfoReply* reply) override {
+    scheduler_->debug_info(reply);
     return Status::OK;
   }
 };

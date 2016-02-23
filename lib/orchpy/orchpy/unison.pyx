@@ -10,7 +10,7 @@ try:
 except:
   import pickle
 
-cdef extern from "types.pb.h":
+cdef extern from "../../../build/generated/types.pb.h":
   ctypedef enum DataType:
     INT32
     INT64
