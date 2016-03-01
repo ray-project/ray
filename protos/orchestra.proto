@@ -54,16 +54,17 @@ message ChangeCountRequest {
 }
 
 message GetDebugInfoRequest {
-
+  bool do_scheduling = 1;
 }
 
 message FnTableEntry {
-  uint64 workerid = 1;
+  repeated uint64 workerid = 1;
   uint64 num_return_vals = 2;
 }
 
 message GetDebugInfoReply {
   repeated Call task = 1;
+  repeated uint64 avail_worker = 3;
   map<string, FnTableEntry> function_table = 2;
 }
 
@@ -122,7 +123,7 @@ service ObjStore {
 }
 
 message InvokeCallRequest {
-
+  Call call = 1;
 }
 
 message InvokeCallReply {

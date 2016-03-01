@@ -70,7 +70,7 @@ if (UNIX AND NOT APPLE)
 endif()
 
 add_executable(objstore src/objstore.cc ${GENERATED_PROTOBUF_FILES})
-add_executable(scheduler_server src/scheduler_server.cc ${GENERATED_PROTOBUF_FILES})
-add_library(orchlib SHARED src/orchlib.cc ${GENERATED_PROTOBUF_FILES})
+add_executable(scheduler_server src/scheduler_server.cc src/scheduler.cc ${GENERATED_PROTOBUF_FILES})
+add_library(orchlib SHARED src/orchlib.cc src/worker.cc ${GENERATED_PROTOBUF_FILES})
 
 install(TARGETS objstore scheduler_server orchlib DESTINATION ${CMAKE_SOURCE_DIR}/lib/orchpy/orchpy)

@@ -12,7 +12,7 @@ Status SchedulerServerServiceImpl::RemoteCall(ServerContext* context, const Remo
 Status SchedulerServerServiceImpl::PushObj(ServerContext* context, const PushObjRequest* request, PushObjReply* reply) {
   ObjRef objref = scheduler_->register_new_object();
   ObjStoreId objstoreid = scheduler_->get_store(request->workerid());
-  scheduler_->add_objstore_to_obj(objref, objstoreid);
+  scheduler_->add_location(objref, objstoreid);
   reply->set_objref(objref);
   return Status::OK;
 }

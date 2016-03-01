@@ -27,6 +27,9 @@ public:
   ObjRef worker(size_t i) const {
     return workers_[i];
   }
+  const std::vector<WorkerId>& workers() const {
+    return workers_;
+  }
 };
 
 typedef std::vector<std::vector<ObjStoreId> > ObjTable;

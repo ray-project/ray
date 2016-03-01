@@ -5,6 +5,11 @@ from libc.stdint cimport uint64_t, int64_t, uintptr_t
 from libcpp cimport bool
 from libcpp.string cimport string
 
+try:
+  import cPickle as pickle
+except:
+  import pickle
+
 cdef struct Slice:
   char* ptr
   size_t size
@@ -13,7 +18,7 @@ cdef extern void* orch_create_context(const char* server_addr, const char* worke
 cdef extern void orch_register_function(void* worker, const char* name, size_t num_return_vals)
 cdef extern size_t orch_remote_call(void* context, void* request);
 cdef extern size_t orch_push(void* context, void* value);
-cdef extern void orch_main_loop(void* context);
+cdef extern void* orch_main_loop(void* context);
 cdef extern Slice orch_get_serialized_obj(void* context, size_t objref);
 
 cdef extern from "Python.h":
@@ -24,14 +29,20 @@ cdef extern from "Python.h":
     int PyByteArray_Resize(object self, Py_ssize_t size) except -1
     char* PyByteArray_AS_STRING(object bytearray)
 
-# cdef extern from "../../../build/generated/orchestra.pb.h":
-#   cdef cppclass RemoteCallRequest:
-#     RemoteCallRequest()
-#     void set_name(const char* value)
-#     Call* mutable_call()
+cdef extern from "../../../build/generated/orchestra.pb.h":
+  cdef cppclass RemoteCallRequest:
+    RemoteCallRequest()
+    Call* mutable_call()
+    int arg_size() const;
 
 cdef extern from "../../../build/generated/types.pb.h":
   cdef cppclass Values
+
+  cdef cppclass Call:
+    Value* add_arg();
+    void set_name(const char* value)
+    Value* mutable_arg(int index);
+    int arg_size() const;
 
   ctypedef enum DataType:
     INT32
@@ -101,6 +112,30 @@ cdef serialize_into(val, Obj* obj):
   #   pyobj_data = obj[0].mutable_pyobj_data()
   #   pyobj_data[0].set_data(data, len(data))
 
+"""
+cpdef deserialize_call(PyValues args):
+  cdef Values* vals = args.thisptr
+  cdef Value* val
+  cdef Obj* obj
+  result = []
+  for i in range(vals[0].value_size()):
+    val = vals[0].mutable_value(i)
+    if not val.has_obj():
+      result.append(ObjRef(val.ref(), None)) # TODO: fix this
+    else:
+      obj = val[0].mutable_obj()
+      if obj[0].has_string_data():
+        result.append(obj[0].mutable_string_data()[0].mutable_data()[0])
+      elif obj[0].has_int_data():
+        result.append(obj[0].mutable_int_data()[0].data())
+      elif obj[0].has_double_data():
+        result.append(obj[0].mutable_double_data()[0].data())
+      else:
+        data = obj[0].mutable_pyobj_data()[0].mutable_data()[0]
+        result.append(pickle.loads(data))
+  return result
+"""
+
 cdef class ObjWrapper: # TODO: unify with the above
   cdef Obj *thisptr
   def __cinit__(self):
@@ -130,6 +165,51 @@ cpdef serialize_into_2(val, objptr):
   #   pyobj_data = obj[0].mutable_pyobj_data()
   #   pyobj_data[0].set_data(data, len(data))
 
+cdef serialize_args_into_call(args, Call* call):
+  cdef Value* val
+  cdef Obj* obj
+  for arg in args:
+    val = call.add_arg()
+    if type(arg) == unison.ObjRef:
+      val[0].set_ref(arg.get_id())
+    else:
+      obj = val[0].mutable_obj()
+      objptr = <uintptr_t>obj
+      unison.serialize_into(arg, objptr)
+
+cdef deserialize_obj(Obj* obj):
+  if obj[0].has_string_data():
+    return obj[0].mutable_string_data()[0].mutable_data()[0]
+  elif obj[0].has_int_data():
+    return obj[0].mutable_int_data()[0].data()
+  elif obj[0].has_double_data():
+    return obj[0].mutable_double_data()[0].data()
+  else:
+    data = obj[0].mutable_pyobj_data()[0].mutable_data()[0]
+    return pickle.loads(data)
+
+# todo: unify with the above, at the moment this is copied
+cdef deserialize_args_from_call(Call* call):
+  cdef Value* val
+  cdef Obj* obj
+  result = []
+  for i in range(call[0].arg_size()):
+    val = call[0].mutable_arg(i)
+    if not val.has_obj():
+      result.append(unison.ObjRef(val.ref(), None)) # TODO: fix this
+    else:
+      obj = val[0].mutable_obj()
+      if obj[0].has_string_data():
+        result.append(obj[0].mutable_string_data()[0].mutable_data()[0])
+      elif obj[0].has_int_data():
+        result.append(obj[0].mutable_int_data()[0].data())
+      elif obj[0].has_double_data():
+        result.append(obj[0].mutable_double_data()[0].data())
+      else:
+        data = obj[0].mutable_pyobj_data()[0].mutable_data()[0]
+        result.append(pickle.loads(data))
+  return result
+
 cdef class Worker:
   cdef void* context
 
@@ -139,13 +219,13 @@ cdef class Worker:
   def connect(self, server_addr, worker_addr, objstore_addr):
     self.context = orch_create_context(server_addr, worker_addr, objstore_addr)
 
-#  cpdef call(self, name, args):
-#    cdef RemoteCallRequest* result = new RemoteCallRequest()
-#    result[0].set_name(name)
-#    unison.serialize_args_into(args, <uintptr_t>result[0].mutable_arg())
-#    for i in range(10):
-#      orch_remote_call(self.context, result)
-#   # return <uintptr_t>result
+  cpdef call(self, name, args):
+    cdef RemoteCallRequest* result = new RemoteCallRequest()
+    cdef Call* call = result[0].mutable_call()
+    call.set_name(name)
+    serialize_args_into_call(args, call)
+    orch_remote_call(self.context, result)
+   # return <uintptr_t>result
 
   cpdef do_call(self, ptr):
     return orch_remote_call(self.context, <void*>ptr)
@@ -170,16 +250,62 @@ cdef class Worker:
     data = PyBytes_FromStringAndSize(slice.ptr, slice.size)
     return data
 
+  cpdef do_pull(self, objref):
+    cdef Slice slice = orch_get_serialized_obj(self.context, objref)
+
   cpdef pull(self, objref):
     cdef Slice slice = orch_get_serialized_obj(self.context, objref)
+    data = PyBytes_FromStringAndSize(slice.ptr, slice.size)
+    return unison.deserialize_from_string(data)
 
   cpdef register_function(self, func_name, num_args):
     orch_register_function(self.context, func_name, num_args)
 
   cpdef main_loop(self):
-    orch_main_loop(self.context)
+    result = []
+    cdef Call* call = <Call*>orch_main_loop(self.context)
+    cdef int size = call[0].arg_size()
+    cdef Obj* obj
+    print "hello from python"
+    print "size", size
+    return deserialize_args_from_call(call)
 
 global_worker = Worker()
+
+def distributed(types, return_type, worker=global_worker):
+    def distributed_decorator(func):
+        # deserialize arguments, execute function and serialize result
+        def func_executor(args):
+            arguments = []
+            protoargs = unison.deserialize_call(args, types)
+            for (i, proto) in enumerate(protoargs):
+              if type(proto) == unison.ObjRef:
+                if i < len(types) - 1:
+                  arguments.append(worker.get_object(proto, types[i]))
+                elif i == len(types) - 1 and types[-1] is not None:
+                  arguments.append(global_worker.get_object(proto, types[i]))
+                elif types[-1] is None:
+                  arguments.append(worker.get_object(proto, types[-2]))
+                else:
+                  raise Exception("Passed in " + str(len(args)) + " arguments to function " + func.__name__ + ", which takes only " + str(len(types)) + " arguments.")
+              else:
+                arguments.append(proto)
+            buf = bytearray()
+            result = func(*arguments)
+            if unison.unison_type(result) != return_type:
+              raise Exception("Return type of " + func.func_name + " does not match the return type specified in the @distributed decorator, was expecting " + str(return_type) + " but received " + str(unison.unison_type(result)))
+            unison.serialize(buf, result)
+            return memoryview(buf).tobytes()
+        # for remotely executing the function
+        def func_call(*args, typecheck=False):
+          return worker.call(func_call.func_name, func_call.module_name, args)
+        func_call.func_name = func.__name__.encode() # why do we call encode()?
+        func_call.module_name = func.__module__.encode() # why do we call encode()?
+        func_call.is_distributed = True
+        func_call.executor = func_executor
+        func_call.types = types
+        return func_call
+    return distributed_decorator
 
 def pull(objref, worker=global_worker):
   return 1

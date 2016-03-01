@@ -33,14 +33,9 @@ message Value {
   Obj obj = 2; // for pass by value
 }
 
-// Deprecated
-message Values {
-  repeated Value value = 1;
-}
-
 message Call {
   string name = 1;
-  repeated Value args = 2;
+  repeated Value arg = 2;
   repeated uint64 result = 3;
 }
 

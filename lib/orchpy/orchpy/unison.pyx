@@ -11,6 +11,14 @@ except:
   import pickle
 
 cdef extern from "../../../build/generated/types.pb.h":
+
+  cdef cppclass Call:
+    Value* add_arg();
+    void set_name(const char* value)
+    Value* mutable_arg(int index);
+    int arg_size() const;
+
+cdef extern from "../../../build/generated/types.pb.h":
   ctypedef enum DataType:
     INT32
     INT64
@@ -89,6 +97,15 @@ cdef class ObjWrapper: # TODO: unify with the above
   def get_value(self):
     return <uintptr_t>self.thisptr
 
+cdef class PythonCall:
+  cdef Call* thisptr
+  def __cinit__(self):
+    self.thisptr = new Call()
+  def __dealloc__(self):
+    del self.thisptr
+  def get_value(self):
+    return <uintptr_t>self.thisptr
+
 cdef class ObjRef:
   cdef size_t _id
   cdef object type
@@ -136,6 +153,10 @@ cpdef serialize(val):
 cpdef serialize_args_into(args, valsptr):
   cdef uintptr_t ptr = <uintptr_t>valsptr
   cdef Values* vals = <Values*>ptr
+  serialize_args_into_vals(args, vals)
+
+# this code is a mess right now, will be improved in the C++ version
+cdef serialize_args_into_vals(args, Values* vals):
   cdef Value* val
   cdef Obj* obj
   for arg in args:
@@ -193,6 +214,33 @@ cpdef deserialize_args(PyValues args):
         data = obj[0].mutable_pyobj_data()[0].mutable_data()[0]
         result.append(pickle.loads(data))
   return result
+
+# todo: unify with the above, at the moment this is copied
+cdef deserialize_args_from_call(Call* call):
+  cdef Value* val
+  cdef Obj* obj
+  result = []
+  for i in range(call[0].arg_size()):
+    val = call[0].mutable_arg(i)
+    if not val.has_obj():
+      result.append(ObjRef(val.ref(), None)) # TODO: fix this
+    else:
+      obj = val[0].mutable_obj()
+      if obj[0].has_string_data():
+        result.append(obj[0].mutable_string_data()[0].mutable_data()[0])
+      elif obj[0].has_int_data():
+        result.append(obj[0].mutable_int_data()[0].data())
+      elif obj[0].has_double_data():
+        result.append(obj[0].mutable_double_data()[0].data())
+      else:
+        data = obj[0].mutable_pyobj_data()[0].mutable_data()[0]
+        result.append(pickle.loads(data))
+  return result
+
+cpdef deserialize_call(PythonCall pycall):
+  cdef Call* call = pycall.thisptr
+  return deserialize_args_from_call(call)
+
 
 cdef int numpy_dtype_to_proto(dtype):
   if dtype == np.dtype('int32'):

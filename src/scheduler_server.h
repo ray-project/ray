@@ -22,9 +22,11 @@ public:
   }
   Status RegisterWorker(ServerContext* context, const RegisterWorkerRequest* request, RegisterWorkerReply* reply) override {
     WorkerId workerid = scheduler_->register_worker(request->worker_address(), request->objstore_address());
+    std::cout << "registered worker with workerid" << workerid << std::endl;
     reply->set_workerid(workerid);
     return Status::OK;
   }
+  /*
   Status RegisterObjStore(ServerContext* context, const RegisterObjStoreRequest* request, RegisterObjStoreReply* reply) override {
     try {
       reply->set_objstoreid(scheduler_->register_objstore(request->address()));
@@ -33,12 +35,14 @@ public:
     }
     return Status::OK;
   }
+  */
   Status RegisterFunction(ServerContext* context, const RegisterFunctionRequest* request, AckReply* reply) override {
+    std::cout << "RegisterFunction: workerid is" << request->workerid() << std::endl;
     scheduler_->register_function(request->fnname(), request->workerid(), request->num_return_vals());
     return Status::OK;
   }
   Status GetDebugInfo(ServerContext* context, const GetDebugInfoRequest* request, GetDebugInfoReply* reply) override {
-    scheduler_->debug_info(reply);
+    scheduler_->debug_info(*request, reply);
     return Status::OK;
   }
 };
