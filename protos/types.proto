@@ -36,7 +36,7 @@ message Value {
 message Call {
   string name = 1;
   repeated Value arg = 2;
-  repeated uint64 result = 3;
+  repeated uint64 result = 3; // object references for result
 }
 
 enum DataType {

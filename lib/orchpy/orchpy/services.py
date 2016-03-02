@@ -24,7 +24,7 @@ def cleanup():
 atexit.register(cleanup)
 
 def start_scheduler(scheduler_address):
-  p = subprocess.Popen([os.path.join(_services_path, "scheduler_server"), str(scheduler_address)])
+  p = subprocess.Popen([os.path.join(_services_path, "scheduler"), str(scheduler_address)])
   all_processes.append(p)
 
 def start_objstore(objstore_address):

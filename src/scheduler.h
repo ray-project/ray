@@ -1,6 +1,7 @@
 #ifndef ORCHESTRA_SCHEDULER_H
 #define ORCHESTRA_SCHEDULER_H
 
+
 #include <deque>
 #include <memory>
 #include <algorithm>
@@ -24,7 +25,7 @@ using grpc::Channel;
 
 struct WorkerHandle {
   std::shared_ptr<Channel> channel;
-  std::unique_ptr<WorkerServer::Stub> worker_stub;
+  std::unique_ptr<WorkerService::Stub> worker_stub;
   ObjStoreId objstoreid;
 };
 
@@ -34,10 +35,15 @@ struct ObjStoreHandle {
   std::string address;
 };
 
-class Scheduler {
+class SchedulerService : public Scheduler::Service {
 public:
-  // returns number of return values of task
-  size_t add_task(const Call& task);
+  Status RemoteCall(ServerContext* context, const RemoteCallRequest* request, RemoteCallReply* reply) override;
+  Status PushObj(ServerContext* context, const PushObjRequest* request, PushObjReply* reply) override;
+  Status PullObj(ServerContext* context, const PullObjRequest* request, AckReply* reply) override;
+  Status RegisterWorker(ServerContext* context, const RegisterWorkerRequest* request, RegisterWorkerReply* reply) override;
+  Status RegisterFunction(ServerContext* context, const RegisterFunctionRequest* request, AckReply* reply) override;
+  Status GetDebugInfo(ServerContext* context, const GetDebugInfoRequest* request, GetDebugInfoReply* reply) override;
+
   // assign a task to a worker
   void schedule();
   // execute a task on a worker and ship required object references

@@ -68,7 +68,7 @@ message GetDebugInfoReply {
   map<string, FnTableEntry> function_table = 2;
 }
 
-service SchedulerServer {
+service Scheduler {
   rpc RegisterWorker(RegisterWorkerRequest) returns (RegisterWorkerReply);
   rpc RegisterObjStore(RegisterObjStoreRequest) returns (RegisterObjStoreReply);
   rpc RegisterFunction(RegisterFunctionRequest) returns (AckReply);
@@ -130,6 +130,6 @@ message InvokeCallReply {
 
 }
 
-service WorkerServer {
+service WorkerService {
   rpc InvokeCall(InvokeCallRequest) returns (InvokeCallReply);
 }

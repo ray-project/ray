@@ -12,8 +12,12 @@ size_t orch_remote_call(Worker* worker, RemoteCallRequest* request) {
   return worker->remote_call(request);
 }
 
-Call* orch_main_loop(Worker* worker) {
-  return worker->main_loop();
+void orch_start_worker_service(Worker* worker) {
+  worker->start_worker_service();
+}
+
+Call* orch_wait_for_next_task(Worker* worker) {
+  return worker->receive_next_task();
 }
 
 size_t orch_push(Worker* worker, Obj* obj) {

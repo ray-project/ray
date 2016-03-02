@@ -13,6 +13,7 @@ from grpc.beta import implementations
 import orchestra_pb2
 import types_pb2
 
+"""
 class UnisonTest(unittest.TestCase):
 
   def testSerialize(self):
@@ -35,6 +36,7 @@ class UnisonTest(unittest.TestCase):
     res = unison.serialize_args(a)
     b = unison.deserialize_args(res)
     self.assertEqual(a, b)
+"""
 
 TIMEOUT_SECONDS = 5
 
@@ -44,7 +46,7 @@ def produce_data(num_chunks):
 
 def connect_to_scheduler(host, port):
   channel = implementations.insecure_channel(host, port)
-  return orchestra_pb2.beta_create_SchedulerServer_stub(channel)
+  return orchestra_pb2.beta_create_Scheduler_stub(channel)
 
 def connect_to_objstore(host, port):
   channel = implementations.insecure_channel(host, port)
@@ -72,7 +74,7 @@ class ObjStoreTest(unittest.TestCase):
 
     for i in range(1, 100):
         l = i * 100 * "h"
-        objref = worker1.do_push(l)
+        objref = worker1.push(l)
         response = objstore1_stub.DeliverObj(orchestra_pb2.DeliverObjRequest(objref=objref, objstore_address="0.0.0.0:22223"), TIMEOUT_SECONDS)
         s = worker2.get_serialized(objref)
         result = worker.unison.deserialize_from_string(s)
@@ -100,8 +102,8 @@ class SchedulerTest(unittest.TestCase):
 
     time.sleep(0.2)
 
-    w.register_function("hello_world", 2)
-    w2.register_function("hello_world", 2)
+    w.register_function("hello_world", None, 2)
+    w2.register_function("hello_world", None, 2)
 
     time.sleep(0.1)
 

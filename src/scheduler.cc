@@ -1,17 +1,54 @@
 #include "scheduler.h"
 
-size_t Scheduler::add_task(const Call& task) {
+Status SchedulerService::RemoteCall(ServerContext* context, const RemoteCallRequest* request, RemoteCallReply* reply) {
+  std::unique_ptr<Call> task(new Call(request->call())); // need to copy, because request is const
   fntable_lock_.lock();
-  size_t num_return_vals = fntable_[task.name()].num_return_vals();
+  size_t num_return_vals = fntable_[task->name()].num_return_vals();
   fntable_lock_.unlock();
-  std::unique_ptr<Call> task_ptr(new Call(task));
+
+  for (size_t i = 0; i < num_return_vals; ++i) {
+    ObjRef result = register_new_object();
+    reply->add_result(result);
+    task->add_result(result);
+  }
+
   tasks_lock_.lock();
-  tasks_.emplace_back(std::move(task_ptr));
+  tasks_.emplace_back(std::move(task));
   tasks_lock_.unlock();
-  return num_return_vals;
+  return Status::OK;
 }
 
-void Scheduler::schedule() {
+Status SchedulerService::PushObj(ServerContext* context, const PushObjRequest* request, PushObjReply* reply) {
+  ObjRef objref = register_new_object();
+  ObjStoreId objstoreid = get_store(request->workerid());
+  add_location(objref, objstoreid);
+  reply->set_objref(objref);
+  return Status::OK;
+}
+
+Status SchedulerService::PullObj(ServerContext* context, const PullObjRequest* request, AckReply* reply) {
+  return Status::OK;
+}
+
+Status SchedulerService::RegisterWorker(ServerContext* context, const RegisterWorkerRequest* request, RegisterWorkerReply* reply) {
+  WorkerId workerid = register_worker(request->worker_address(), request->objstore_address());
+  std::cout << "registered worker with workerid" << workerid << std::endl;
+  reply->set_workerid(workerid);
+  return Status::OK;
+}
+
+Status SchedulerService::RegisterFunction(ServerContext* context, const RegisterFunctionRequest* request, AckReply* reply) {
+  std::cout << "RegisterFunction: workerid is" << request->workerid() << std::endl;
+  register_function(request->fnname(), request->workerid(), request->num_return_vals());
+  return Status::OK;
+}
+
+Status SchedulerService::GetDebugInfo(ServerContext* context, const GetDebugInfoRequest* request, GetDebugInfoReply* reply) {
+  debug_info(*request, reply);
+  return Status::OK;
+}
+
+void SchedulerService::schedule() {
   // TODO: work out a better strategy here
   WorkerId workerid = 0;
   {
@@ -34,7 +71,7 @@ void Scheduler::schedule() {
   }
 }
 
-void Scheduler::submit_task(std::unique_ptr<Call> call, WorkerId workerid) {
+void SchedulerService::submit_task(std::unique_ptr<Call> call, WorkerId workerid) {
   ClientContext context;
   InvokeCallRequest request;
   InvokeCallReply reply;
@@ -59,7 +96,7 @@ void Scheduler::submit_task(std::unique_ptr<Call> call, WorkerId workerid) {
   Status status = workers_[workerid].worker_stub->InvokeCall(&context, request, &reply);
 }
 
-bool Scheduler::can_run(const Call& task) {
+bool SchedulerService::can_run(const Call& task) {
   std::lock_guard<std::mutex> lock(objtable_lock_);
   for (int i = 0; i < task.arg_size(); ++i) {
     if (!task.arg(i).has_obj()) {
@@ -71,7 +108,7 @@ bool Scheduler::can_run(const Call& task) {
   return true;
 }
 
-WorkerId Scheduler::register_worker(const std::string& worker_address, const std::string& objstore_address) {
+WorkerId SchedulerService::register_worker(const std::string& worker_address, const std::string& objstore_address) {
   ObjStoreId objstoreid = std::numeric_limits<size_t>::max();
   objstores_lock_.lock();
   for (size_t i = 0; i < objstores_.size(); ++i) {
@@ -97,7 +134,7 @@ WorkerId Scheduler::register_worker(const std::string& worker_address, const std
   auto channel = grpc::CreateChannel(worker_address, grpc::InsecureChannelCredentials());
   workers_[workerid].channel = channel;
   workers_[workerid].objstoreid = objstoreid;
-  workers_[workerid].worker_stub = WorkerServer::NewStub(channel);
+  workers_[workerid].worker_stub = WorkerService::NewStub(channel);
   workers_lock_.unlock();
   avail_workers_lock_.lock();
   avail_workers_.push_back(workerid);
@@ -105,7 +142,7 @@ WorkerId Scheduler::register_worker(const std::string& worker_address, const std
   return workerid;
 }
 
-ObjRef Scheduler::register_new_object() {
+ObjRef SchedulerService::register_new_object() {
   objtable_lock_.lock();
   ObjRef result = objtable_.size();
   objtable_.push_back(std::vector<ObjStoreId>());
@@ -113,7 +150,7 @@ ObjRef Scheduler::register_new_object() {
   return result;
 }
 
-void Scheduler::add_location(ObjRef objref, ObjStoreId objstoreid) {
+void SchedulerService::add_location(ObjRef objref, ObjStoreId objstoreid) {
   objtable_lock_.lock();
   // do a binary search
   auto pos = std::lower_bound(objtable_[objref].begin(), objtable_[objref].end(), objstoreid);
@@ -123,14 +160,14 @@ void Scheduler::add_location(ObjRef objref, ObjStoreId objstoreid) {
   objtable_lock_.unlock();
 }
 
-ObjStoreId Scheduler::get_store(WorkerId workerid) {
+ObjStoreId SchedulerService::get_store(WorkerId workerid) {
   workers_lock_.lock();
   ObjStoreId result = workers_[workerid].objstoreid;
   workers_lock_.unlock();
   return result;
 }
 
-void Scheduler::register_function(const std::string& name, WorkerId workerid, size_t num_return_vals) {
+void SchedulerService::register_function(const std::string& name, WorkerId workerid, size_t num_return_vals) {
   fntable_lock_.lock();
   FnInfo& info = fntable_[name];
   info.set_num_return_vals(num_return_vals);
@@ -138,7 +175,7 @@ void Scheduler::register_function(const std::string& name, WorkerId workerid, si
   fntable_lock_.unlock();
 }
 
-void Scheduler::debug_info(const GetDebugInfoRequest& request, GetDebugInfoReply* reply) {
+void SchedulerService::debug_info(const GetDebugInfoRequest& request, GetDebugInfoReply* reply) {
   if (request.do_scheduling()) {
     schedule();
   }
@@ -162,4 +199,20 @@ void Scheduler::debug_info(const GetDebugInfoRequest& request, GetDebugInfoReply
     reply->add_avail_worker(entry);
   }
   avail_workers_lock_.unlock();
+}
+
+void start_scheduler_service(const char* server_address) {
+  SchedulerService service;
+  ServerBuilder builder;
+  builder.AddListeningPort(std::string(server_address), grpc::InsecureServerCredentials());
+  builder.RegisterService(&service);
+  std::unique_ptr<Server> server(builder.BuildAndStart());
+  server->Wait();
+}
+
+int main(int argc, char** argv) {
+  if (argc != 2)
+    return 1;
+  start_scheduler_service(argv[1]);
+  return 0;
 }

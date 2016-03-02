@@ -26,7 +26,7 @@ setup(
   packages=find_packages(),
   package_data = {
     'orchpy': ['liborchlib.dylib' if MACOSX else 'liborchlib.so',
-               'scheduler_server',
+               'scheduler',
                'objstore']
   },
   zip_safe=False

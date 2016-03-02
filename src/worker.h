@@ -27,7 +27,7 @@ using grpc::Channel;
 using grpc::ClientContext;
 using grpc::ClientWriter;
 
-class WorkerServiceImpl final : public WorkerServer::Service {
+class WorkerServiceImpl final : public WorkerService::Service {
 public:
   WorkerServiceImpl(const std::string& worker_address)
     : worker_address_(worker_address) {}
@@ -37,15 +37,11 @@ private:
   Call call_; // copy of the current call
 };
 
-void start_worker_server(const char* worker_addr);
-
-Call* receive(const char* worker_addr);
-
 class Worker {
  public:
   Worker(const std::string& worker_address, std::shared_ptr<Channel> scheduler_channel, std::shared_ptr<Channel> objstore_channel)
       : worker_address_(worker_address),
-        scheduler_stub_(SchedulerServer::NewStub(scheduler_channel)),
+        scheduler_stub_(Scheduler::NewStub(scheduler_channel)),
         objstore_stub_(ObjStore::NewStub(objstore_channel))
     {}
 
@@ -59,12 +55,15 @@ class Worker {
   slice get_serialized_obj(ObjRef objref);
   // register function with scheduler
   void register_function(const std::string& name, size_t num_return_vals);
-  // start the main loop
-  Call* main_loop();
+  // start the worker server which accepts tasks from the scheduler and stores
+  // it in the message queue, which is read by the Python interpreter
+  void start_worker_service();
+  // wait for next task from the RPC system
+  Call* receive_next_task();
 
  private:
   const size_t CHUNK_SIZE = 8 * 1024;
-  std::unique_ptr<SchedulerServer::Stub> scheduler_stub_;
+  std::unique_ptr<Scheduler::Stub> scheduler_stub_;
   std::unique_ptr<ObjStore::Stub> objstore_stub_;
   std::thread worker_server_thread_;
   std::thread other_thread_;

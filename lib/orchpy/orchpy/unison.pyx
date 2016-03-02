@@ -32,13 +32,6 @@ cdef extern from "../../../build/generated/types.pb.h":
     bool has_obj()
     Obj* mutable_obj()
 
-  cdef cppclass Values:
-    Values()
-    int value_size()
-    Value* add_value()
-    Value* mutable_value(int index)
-
-
   cdef cppclass String:
     String()
     void set_data(const char* val)
@@ -69,15 +62,6 @@ cdef extern from "../../../build/generated/types.pb.h":
     bool has_int_data()
     bool has_double_data()
     bool ParseFromString(const string& data)
-
-cdef class PyValues: # TODO: unify with the below
-  cdef Values *thisptr
-  def __cinit__(self):
-    self.thisptr = new Values()
-  def __dealloc__(self):
-    del self.thisptr
-  def get_value(self):
-    return <uintptr_t>self.thisptr
 
 cdef class PyValue: # TODO: unify with the below
   cdef Value *thisptr
@@ -150,28 +134,6 @@ cpdef serialize(val):
   serialize_into(val, result.get_value())
   return result
 
-cpdef serialize_args_into(args, valsptr):
-  cdef uintptr_t ptr = <uintptr_t>valsptr
-  cdef Values* vals = <Values*>ptr
-  serialize_args_into_vals(args, vals)
-
-# this code is a mess right now, will be improved in the C++ version
-cdef serialize_args_into_vals(args, Values* vals):
-  cdef Value* val
-  cdef Obj* obj
-  for arg in args:
-    val = vals[0].add_value()
-    if type(arg) == ObjRef:
-      val[0].set_ref(arg.get_id())
-    else:
-      obj = val[0].mutable_obj()
-      serialize_into(arg, <uintptr_t>obj)
-
-cpdef serialize_args(args):
-  result = PyValues()
-  serialize_args_into(args, result.get_value())
-  return result
-
 cdef deserialize_from(Obj* obj):
   if obj[0].has_string_data():
     return obj[0].mutable_string_data()[0].mutable_data()[0]
@@ -192,28 +154,6 @@ cpdef deserialize_from_string(str):
 # cpdef deserialize(str):
 #     cdef string s = string(str)
 #     return deserialize_from(obj.get_value())
-
-cpdef deserialize_args(PyValues args):
-  cdef Values* vals = args.thisptr
-  cdef Value* val
-  cdef Obj* obj
-  result = []
-  for i in range(vals[0].value_size()):
-    val = vals[0].mutable_value(i)
-    if not val.has_obj():
-      result.append(ObjRef(val.ref(), None)) # TODO: fix this
-    else:
-      obj = val[0].mutable_obj()
-      if obj[0].has_string_data():
-        result.append(obj[0].mutable_string_data()[0].mutable_data()[0])
-      elif obj[0].has_int_data():
-        result.append(obj[0].mutable_int_data()[0].data())
-      elif obj[0].has_double_data():
-        result.append(obj[0].mutable_double_data()[0].data())
-      else:
-        data = obj[0].mutable_pyobj_data()[0].mutable_data()[0]
-        result.append(pickle.loads(data))
-  return result
 
 # todo: unify with the above, at the moment this is copied
 cdef deserialize_args_from_call(Call* call):

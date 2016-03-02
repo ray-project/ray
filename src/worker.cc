@@ -92,29 +92,26 @@ void Worker::register_function(const std::string& name, size_t num_return_vals) 
   scheduler_stub_->RegisterFunction(&context, request, &reply);
 }
 
-void start_worker_server(const char* server_address) {
-  WorkerServiceImpl service(server_address);
-  ServerBuilder builder;
-  builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
-  builder.RegisterService(&service);
-  std::unique_ptr<Server> server(builder.BuildAndStart());
-  std::cout << "Server listening on " << server_address << std::endl;
-  server->Wait();
-}
-
 // Communication between the WorkerServer and the Worker happens via a message
 // queue. This is because the Python interpreter needs to be single threaded
 // (in our case running in the main thread), whereas the WorkerService will
 // run in a separate thread and potentially utilize multiple threads.
-Call* Worker::main_loop() {
-  // start the worker server
-  worker_server_thread_ = std::thread(start_worker_server, worker_address_.c_str());
-  // process the next call
-  return receive(worker_address_.c_str());
+void Worker::start_worker_service() {
+  const char* server_address = worker_address_.c_str();
+  worker_server_thread_ = std::thread([server_address]() {
+    WorkerServiceImpl service(server_address);
+    ServerBuilder builder;
+    builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
+    builder.RegisterService(&service);
+    std::unique_ptr<Server> server(builder.BuildAndStart());
+    std::cout << "WorkerServer listening on " << server_address << std::endl;
+    server->Wait();
+  });
 }
 
-Call* receive(const char* message_queue_name) {
-	try {
+Call* Worker::receive_next_task() {
+  const char* message_queue_name = worker_address_.c_str();
+  try {
     message_queue::remove(message_queue_name);
     message_queue mq(create_only, message_queue_name, 1, sizeof(Call*));
     unsigned int priority;
