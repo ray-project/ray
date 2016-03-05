@@ -31,3 +31,7 @@ setup(
   },
   zip_safe=False
 )
+
+extension_mod = Extension("symphony", ["orchpy/symphony.cpp"], include_dirs=["../../build/generated/"])
+
+setup(name = "symphony", ext_modules=[extension_mod])

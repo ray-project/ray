@@ -21,6 +21,7 @@ size_t orch_remote_call(Worker* worker, RemoteCallRequest* request);
 size_t orch_push(Worker* worker, Obj* value);
 Call* orch_wait_for_next_task(Worker* worker);
 slice orch_get_serialized_obj(Worker* worker, size_t objref);
+void orch_put_obj(Worker* worker, size_t objref, const Obj* obj);
 void orch_register_function(Worker* worker, const char* name, size_t num_return_vals);
 
 }

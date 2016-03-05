@@ -37,7 +37,7 @@ void Worker::register_worker(const std::string& worker_address, const std::strin
   return;
 }
 
-ObjRef Worker::push_obj(Obj* obj) {
+ObjRef Worker::push_obj(const Obj* obj) {
   // first get objref for the new object
   PushObjRequest push_request;
   PushObjReply push_reply;
@@ -45,6 +45,24 @@ ObjRef Worker::push_obj(Obj* obj) {
   Status push_status = scheduler_stub_->PushObj(&push_context, push_request, &push_reply);
   ObjRef objref = push_reply.objref();
   // then stream the object to the object store
+  put_obj(objref, obj);
+  return objref;
+}
+
+slice Worker::get_serialized_obj(ObjRef objref) {
+  ClientContext context;
+  GetObjRequest request;
+  request.set_objref(objref);
+  GetObjReply reply;
+  objstore_stub_->GetObj(&context, request, &reply);
+  segment_ = managed_shared_memory(open_only, reply.bucket().c_str());
+  slice slice;
+  slice.data = static_cast<char*>(segment_.get_address_from_handle(reply.handle()));
+  slice.len = reply.size();
+  return slice;
+}
+
+void Worker::put_obj(ObjRef objref, const Obj* obj) {
   ObjChunk chunk;
   std::string data;
   obj->SerializeToString(&data);
@@ -66,20 +84,7 @@ ObjRef Worker::push_obj(Obj* obj) {
   }
   writer->WritesDone();
   Status status = writer->Finish();
-  return objref;
-}
-
-slice Worker::get_serialized_obj(ObjRef objref) {
-  ClientContext context;
-  GetObjRequest request;
-  request.set_objref(objref);
-  GetObjReply reply;
-  objstore_stub_->GetObj(&context, request, &reply);
-  segment_ = managed_shared_memory(open_only, reply.bucket().c_str());
-  slice slice;
-  slice.data = static_cast<char*>(segment_.get_address_from_handle(reply.handle()));
-  slice.len = reply.size();
-  return slice;
+  // TODO: error handling
 }
 
 void Worker::register_function(const std::string& name, size_t num_return_vals) {

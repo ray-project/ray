@@ -15,6 +15,8 @@ Status SchedulerService::RemoteCall(ServerContext* context, const RemoteCallRequ
   tasks_lock_.lock();
   tasks_.emplace_back(std::move(task));
   tasks_lock_.unlock();
+
+  schedule();
   return Status::OK;
 }
 
@@ -23,6 +25,7 @@ Status SchedulerService::PushObj(ServerContext* context, const PushObjRequest* r
   ObjStoreId objstoreid = get_store(request->workerid());
   add_location(objref, objstoreid);
   reply->set_objref(objref);
+  schedule();
   return Status::OK;
 }
 
@@ -34,12 +37,14 @@ Status SchedulerService::RegisterWorker(ServerContext* context, const RegisterWo
   WorkerId workerid = register_worker(request->worker_address(), request->objstore_address());
   std::cout << "registered worker with workerid" << workerid << std::endl;
   reply->set_workerid(workerid);
+  schedule();
   return Status::OK;
 }
 
 Status SchedulerService::RegisterFunction(ServerContext* context, const RegisterFunctionRequest* request, AckReply* reply) {
   std::cout << "RegisterFunction: workerid is" << request->workerid() << std::endl;
   register_function(request->fnname(), request->workerid(), request->num_return_vals());
+  schedule();
   return Status::OK;
 }
 
@@ -49,24 +54,23 @@ Status SchedulerService::GetDebugInfo(ServerContext* context, const GetDebugInfo
 }
 
 void SchedulerService::schedule() {
-  // TODO: work out a better strategy here
-  WorkerId workerid = 0;
-  {
-    std::lock_guard<std::mutex> lock(avail_workers_lock_);
-    if (avail_workers_.size() == 0)
-      return;
-    workerid = avail_workers_.back();
-    std::cout << "got available worker" << workerid << std::endl;
-    avail_workers_.pop_back();
-  }
-  // TODO: think about locking here
-  for (auto it = tasks_.begin(); it != tasks_.end(); ++it) {
-    const Call& task = *(*it);
-    auto& workers = fntable_[task.name()].workers();
-    if (std::binary_search(workers.begin(), workers.end(), workerid) && can_run(task)) {
-      submit_task(std::move(*it), workerid);
-      tasks_.erase(it);
-      return;
+  // TODO: don't recheck if nothing changed
+  std::lock_guard<std::mutex> avail_workers_lock(avail_workers_lock_);
+  std::lock_guard<std::mutex> fntable_lock(fntable_lock_);
+  std::lock_guard<std::mutex> tasks_lock(tasks_lock_);
+  for (int i = 0; i < avail_workers_.size(); ++i) {
+    WorkerId workerid = avail_workers_[i];
+    for (auto it = tasks_.begin(); it != tasks_.end(); ++it) {
+      const Call& task = *(*it);
+      auto& workers = fntable_[task.name()].workers();
+      if (std::binary_search(workers.begin(), workers.end(), workerid) && can_run(task)) {
+        submit_task(std::move(*it), workerid);
+        tasks_.erase(it);
+        std::swap(avail_workers_[i], avail_workers_[avail_workers_.size() - 1]);
+        avail_workers_.pop_back();
+        i -= 1;
+        break;
+      }
     }
   }
 }
@@ -83,7 +87,7 @@ void SchedulerService::submit_task(std::unique_ptr<Call> call, WorkerId workerid
       auto &objstores = objtable_[call->arg(i).ref()];
       std::lock_guard<std::mutex> workers_lock(workers_lock_);
       if (!std::binary_search(objstores.begin(), objstores.end(), workers_[workerid].objstoreid)) {
-        std::cout << "have to send" << std::endl;
+        std::cout << "lost object store, need to do recovery" << std::endl;
         std::exit(1);
       }
       // if (objstoreid != workers_[workerid].objstoreid) {
@@ -100,7 +104,8 @@ bool SchedulerService::can_run(const Call& task) {
   std::lock_guard<std::mutex> lock(objtable_lock_);
   for (int i = 0; i < task.arg_size(); ++i) {
     if (!task.arg(i).has_obj()) {
-      if (objtable_[task.arg(i).ref()].size() == 0) {
+      ObjRef objref = task.arg(i).ref();
+      if (objref >= objtable_.size() || objtable_[objref].size() == 0) {
         return false;
       }
     }

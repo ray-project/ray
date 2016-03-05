@@ -21,6 +21,7 @@ cdef extern void orch_register_function(void* worker, const char* name, size_t n
 cdef extern size_t orch_remote_call(void* worker, void* request)
 cdef extern size_t orch_push(void* worker, void* value)
 cdef extern Slice orch_get_serialized_obj(void* worker, size_t objref)
+cdef extern void orch_put_obj(void* worker, size_t objref, void* obj)
 
 cdef extern from "Python.h":
     Py_ssize_t PyByteArray_GET_SIZE(object array)
@@ -44,6 +45,7 @@ cdef extern from "../../../build/generated/types.pb.h":
     void set_name(const char* value)
     const string& name()
     Value* mutable_arg(int index);
+    size_t result(int index);
     int arg_size() const;
 
   ctypedef enum DataType:
@@ -239,59 +241,80 @@ cdef class Worker:
 
   cpdef push(self, val):
     result = unison.serialize(val)
-    o = ObjWrapper()
     ptr = <uintptr_t>result.get_value()
-    serialize_into_2(0, ptr)
-    return orch_push(self.context, <void*>ptr)
+    return unison.ObjRef(orch_push(self.context, <void*>ptr), None)
 
   cpdef get_serialized(self, objref):
     cdef Slice slice = orch_get_serialized_obj(self.context, objref)
     data = PyBytes_FromStringAndSize(slice.ptr, slice.size)
     return data
 
+  cpdef put_obj(self, objref, obj):
+    result = unison.serialize(obj)
+    p = <uintptr_t>result.get_value()
+    cdef void* ptr = <void*>p
+    print "before put"
+    orch_put_obj(self.context, objref, <void*>ptr)
+    print "after put"
+
   cpdef do_pull(self, objref):
     cdef Slice slice = orch_get_serialized_obj(self.context, objref)
 
   cpdef pull(self, objref):
-    cdef Slice slice = orch_get_serialized_obj(self.context, objref)
+    print "before get_serialized_obj, getting", objref.get_id()
+    cdef Slice slice = orch_get_serialized_obj(self.context, <size_t>objref.get_id())
+    print "after get_serialized_ob"
     data = PyBytes_FromStringAndSize(slice.ptr, slice.size)
+    print "after get data"
     return unison.deserialize_from_string(data)
 
   cpdef register_function(self, func_name, function, num_args):
     orch_register_function(self.context, func_name, num_args)
     self.functions[func_name] = function
 
-  cpdef main_loop(self):
+  cpdef wait_for_next_task(self):
     result = []
     cdef Call* call = <Call*>orch_wait_for_next_task(self.context)
     cdef int size = call[0].arg_size()
     cdef Obj* obj
     print "hello from python"
     print "size", size
-    return call[0].name(), deserialize_args_from_call(call)
+    args = deserialize_args_from_call(call)
+    print "done deserializing"
+    return call[0].name(), args, call[0].result(0) # TODO: make this return multiple values
 
   cpdef invoke_function(self, name, args):
     return self.functions[name].executor(args)
+
+  cpdef main_loop(self):
+    while True:
+      name, args, returnref = self.wait_for_next_task()
+      print "got returnref", returnref
+      self.functions[name].executor(returnref, args)
+      # self.invoke_function(name, args)
+
 
 global_worker = Worker()
 
 def distributed(types, return_type, worker=global_worker):
     def distributed_decorator(func):
         # deserialize arguments, execute function and serialize result
-        def func_executor(args):
+        def func_executor(returnref, args):
             arguments = []
             for (i, arg) in enumerate(args):
+              print "pulling argument", i
               if type(arg) == unison.ObjRef:
                 if i < len(types) - 1:
-                  arguments.append(worker.get_object(arg, types[i]))
+                  arguments.append(worker.pull(arg))
                 elif i == len(types) - 1 and types[-1] is not None:
-                  arguments.append(global_worker.get_object(arg, types[i]))
+                  arguments.append(global_worker.pull(arg))
                 elif types[-1] is None:
-                  arguments.append(worker.get_object(arg, types[-2]))
+                  arguments.append(worker.pull(arg))
                 else:
                   raise Exception("Passed in " + str(len(args)) + " arguments to function " + func.__name__ + ", which takes only " + str(len(types)) + " arguments.")
               else:
                 arguments.append(arg)
+            print "done pulling argument", i
             # TODO
             # buf = bytearray()
             print "called with arguments", arguments
@@ -300,7 +323,11 @@ def distributed(types, return_type, worker=global_worker):
             #   raise Exception("Return type of " + func.func_name + " does not match the return type specified in the @distributed decorator, was expecting " + str(return_type) + " but received " + str(unison.unison_type(result)))
             # unison.serialize(buf, result)
             # return memoryview(buf).tobytes()
-            return result
+            # return result
+            # obj = ObjWrapper()
+            # serialize_into_2(result, obj.get_value())
+            # print "put was sucessful? seems like so"
+            worker.put_obj(returnref, result)
         # for remotely executing the function
         def func_call(*args, typecheck=False):
           return worker.call(func_call.func_name, func_call.module_name, args)
@@ -311,6 +338,3 @@ def distributed(types, return_type, worker=global_worker):
         func_call.types = types
         return func_call
     return distributed_decorator
-
-def pull(objref, worker=global_worker):
-  return 1
