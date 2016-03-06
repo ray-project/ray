@@ -46,6 +46,7 @@ cdef extern from "../../../build/generated/types.pb.h":
     const string& name()
     Value* mutable_arg(int index);
     size_t result(int index);
+    int result_size();
     int arg_size() const;
 
   ctypedef enum DataType:
@@ -281,16 +282,19 @@ cdef class Worker:
     print "size", size
     args = deserialize_args_from_call(call)
     print "done deserializing"
-    return call[0].name(), args, call[0].result(0) # TODO: make this return multiple values
+    returnrefs = []
+    for i in range(call[0].result_size()):
+      returnrefs.append(call[0].result(i))
+    return call[0].name(), args, returnrefs
 
   cpdef invoke_function(self, name, args):
     return self.functions[name].executor(args)
 
   cpdef main_loop(self):
     while True:
-      name, args, returnref = self.wait_for_next_task()
-      print "got returnref", returnref
-      self.functions[name].executor(returnref, args)
+      name, args, returnrefs = self.wait_for_next_task()
+      print "got returnref", returnrefs
+      self.functions[name].executor(args, returnrefs)
       # self.invoke_function(name, args)
 
 
@@ -299,7 +303,7 @@ global_worker = Worker()
 def distributed(types, return_type, worker=global_worker):
     def distributed_decorator(func):
         # deserialize arguments, execute function and serialize result
-        def func_executor(returnref, args):
+        def func_executor(args, returnrefs):
             arguments = []
             for (i, arg) in enumerate(args):
               print "pulling argument", i
@@ -314,7 +318,7 @@ def distributed(types, return_type, worker=global_worker):
                   raise Exception("Passed in " + str(len(args)) + " arguments to function " + func.__name__ + ", which takes only " + str(len(types)) + " arguments.")
               else:
                 arguments.append(arg)
-            print "done pulling argument", i
+            # print "done pulling argument", i
             # TODO
             # buf = bytearray()
             print "called with arguments", arguments
@@ -327,7 +331,8 @@ def distributed(types, return_type, worker=global_worker):
             # obj = ObjWrapper()
             # serialize_into_2(result, obj.get_value())
             # print "put was sucessful? seems like so"
-            worker.put_obj(returnref, result)
+            for i in range(len(returnrefs)):
+              worker.put_obj(returnrefs[i], result[i])
         # for remotely executing the function
         def func_call(*args, typecheck=False):
           return worker.call(func_call.func_name, func_call.module_name, args)
