@@ -9,16 +9,23 @@ all_processes = []
 
 def cleanup():
   global all_processes
-  timeout_sec = 5
-  for p in all_processes:
-    p_sec = 0
-    for second in range(timeout_sec):
-      if p.poll() == None:
-        time.sleep(0.1)
-        p_sec += 1
-        if p_sec >= timeout_sec:
-          p.kill() # supported from python 2.6
-          print "helper processes shut down!"
+  for p, port in all_processes:
+    if p.poll() is not None: # process has already terminated
+      print "Process at port " + str(port) + " has already terminated."
+      continue
+    print "Attempting to kill process at port " + str(port) + "."
+    p.kill()
+    time.sleep(0.05) # is this necessary?
+    if p.poll() is not None:
+      print "Successfully killed process at port " + str(port) + "."
+      continue
+    print "Kill attempt failed, attempting to terminate process at port " + str(port) + "."
+    p.terminate()
+    time.sleep(0.05) # is this necessary?
+    if p.poll is not None:
+      print "Successfully terminated process at port " + str(port) + "."
+      continue
+    print "Termination attempt failed, giving up."
   all_processes = []
 
 atexit.register(cleanup)
@@ -26,13 +33,13 @@ atexit.register(cleanup)
 def start_scheduler(host, port):
   scheduler_address = host + ":" + str(port)
   p = subprocess.Popen([os.path.join(_services_path, "scheduler"), str(scheduler_address)])
-  all_processes.append(p)
+  all_processes.append((p, port))
 
 def start_objstore(host, port):
   objstore_address = host + ":" + str(port)
   p = subprocess.Popen([os.path.join(_services_path, "objstore"), str(objstore_address)])
-  all_processes.append(p)
+  all_processes.append((p, port))
 
 def start_worker(test_path, host, scheduler_port, worker_port, objstore_port):
-  p = subprocess.Popen(["python", os.path.join(test_path, "testrecv.py"), host, str(scheduler_port), str(worker_port), str(objstore_port)])
-  all_processes.append(p)
+  p = subprocess.Popen(["python", test_path, host, str(scheduler_port), str(worker_port), str(objstore_port)])
+  all_processes.append((p, worker_port))

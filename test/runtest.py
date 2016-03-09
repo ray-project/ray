@@ -16,10 +16,6 @@ import types_pb2
 IP_ADDRESS = "127.0.0.1"
 TIMEOUT_SECONDS = 5
 
-def produce_data(num_chunks):
-  for _ in range(num_chunks):
-    yield orchestra_pb2.ObjChunk(objref=1, totalsize=1000, data=b"hello world")
-
 def connect_to_scheduler(host, port):
   channel = implementations.insecure_channel(host, port)
   return orchestra_pb2.beta_create_Scheduler_stub(channel)
@@ -76,14 +72,18 @@ class ObjStoreTest(unittest.TestCase):
     worker2 = worker.Worker()
     worker2.connect(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, worker2_port), address(IP_ADDRESS, objstore2_port))
 
-    for i in range(1, 100):
-        l = i * 100 * "h"
-        objref = worker1.push(l)
-        response = objstore1_stub.DeliverObj(orchestra_pb2.DeliverObjRequest(objref=objref.get_id(), objstore_address=address(IP_ADDRESS, objstore2_port)), TIMEOUT_SECONDS)
-        s = worker2.get_serialized(objref.get_id())
-        result = worker.unison.deserialize_from_string(s)
-        # result = worker1.pull(objref)
-        self.assertEqual(len(result), 100 * i)
+    # pushing and pulling an object shouldn't change it
+    for data in ["h", "h" * 10000, 0, 0.0]:
+      objref = worker1.push(data)
+      result = worker1.pull(objref)
+      self.assertEqual(result, data)
+
+    # pushing an object, shipping it to another worker, and pulling it shouldn't change it
+    for data in ["h", "h" * 10000, 0, 0.0]:
+      objref = worker1.push(data)
+      response = objstore1_stub.DeliverObj(orchestra_pb2.DeliverObjRequest(objref=objref.get_id(), objstore_address=address(IP_ADDRESS, objstore2_port)), TIMEOUT_SECONDS)
+      result = worker2.pull(objref)
+      self.assertEqual(result, data)
 
     services.cleanup()
 
@@ -94,7 +94,6 @@ class SchedulerTest(unittest.TestCase):
     objstore_port = new_objstore_port()
     worker1_port = new_worker_port()
     worker2_port = new_worker_port()
-    worker3_port = new_worker_port()
 
     services.start_scheduler(IP_ADDRESS, scheduler_port)
     services.start_objstore(IP_ADDRESS, objstore_port)
@@ -109,16 +108,12 @@ class SchedulerTest(unittest.TestCase):
     worker1 = worker.Worker()
     worker1.connect(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, worker1_port), address(IP_ADDRESS, objstore_port))
     worker1.start_worker_service()
-    worker2 = worker.Worker()
-    worker2.connect(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, worker2_port), address(IP_ADDRESS, objstore_port))
-    worker2.start_worker_service()
+
+    test_dir = os.path.dirname(os.path.abspath(__file__))
+    test_path = os.path.join(test_dir, "testrecv.py")
+    services.start_worker(test_path, IP_ADDRESS, scheduler_port, worker2_port, objstore_port)
 
     time.sleep(0.2)
-
-    worker1.register_function("hello_world", None, 2)
-    worker2.register_function("hello_world", None, 2)
-
-    time.sleep(0.1)
 
     worker1.call("hello_world", ["hi"])
 
@@ -126,20 +121,7 @@ class SchedulerTest(unittest.TestCase):
 
     reply = scheduler_stub.GetDebugInfo(orchestra_pb2.GetDebugInfoRequest(), TIMEOUT_SECONDS)
 
-    # self.assertEqual(reply.task[0].name, u'hello_world') # doesn't currently work, because scheduler is now invoked on every interaction
-
-    test_path = os.path.dirname(os.path.abspath(__file__))
-    services.start_worker(test_path, IP_ADDRESS, scheduler_port, worker3_port, objstore_port)
-
-    time.sleep(0.2)
-
-    worker1.call("hello_world", ["hi"])
-    worker1.call("hello_world", ["hi"])
-    worker1.call("hello_world", ["hi"])
-
-    scheduler_stub.PushObj(orchestra_pb2.PushObjRequest(workerid=0), TIMEOUT_SECONDS)
-
-    # self.assertEqual(p.wait(), 0, "argument was not received by the test program") # todo: reactivate
+    services.cleanup()
 
 if __name__ == '__main__':
     unittest.main()
