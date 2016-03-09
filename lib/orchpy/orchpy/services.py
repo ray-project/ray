@@ -18,15 +18,21 @@ def cleanup():
         p_sec += 1
         if p_sec >= timeout_sec:
           p.kill() # supported from python 2.6
-          print 'helper processes shut down!'
+          print "helper processes shut down!"
   all_processes = []
 
 atexit.register(cleanup)
 
-def start_scheduler(scheduler_address):
+def start_scheduler(host, port):
+  scheduler_address = host + ":" + str(port)
   p = subprocess.Popen([os.path.join(_services_path, "scheduler"), str(scheduler_address)])
   all_processes.append(p)
 
-def start_objstore(objstore_address):
+def start_objstore(host, port):
+  objstore_address = host + ":" + str(port)
   p = subprocess.Popen([os.path.join(_services_path, "objstore"), str(objstore_address)])
+  all_processes.append(p)
+
+def start_worker(test_path, host, scheduler_port, worker_port, objstore_port):
+  p = subprocess.Popen(["python", os.path.join(test_path, "testrecv.py"), host, str(scheduler_port), str(worker_port), str(objstore_port)])
   all_processes.append(p)
