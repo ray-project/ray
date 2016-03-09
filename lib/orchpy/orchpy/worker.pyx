@@ -269,8 +269,8 @@ cdef class Worker:
     print "after get data"
     return unison.deserialize_from_string(data)
 
-  cpdef register_function(self, func_name, function, num_args):
-    orch_register_function(self.context, func_name, num_args)
+  cpdef register_function(self, func_name, function, num_return_vals):
+    orch_register_function(self.context, func_name, num_return_vals)
     self.functions[func_name] = function
 
   cpdef wait_for_next_task(self):
@@ -314,7 +314,7 @@ def distributed(types, return_types, worker=global_worker):
                 if i < len(types) - 1:
                   arguments.append(worker.pull(arg))
                 elif i == len(types) - 1 and types[-1] is not None:
-                  arguments.append(global_worker.pull(arg))
+                  arguments.append(worker.pull(arg))
                 elif types[-1] is None:
                   arguments.append(worker.pull(arg))
                 else:
