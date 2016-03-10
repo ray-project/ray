@@ -19,11 +19,11 @@ Status WorkerServiceImpl::InvokeCall(ServerContext* context, const InvokeCallReq
   return Status::OK;
 }
 
-size_t Worker::remote_call(RemoteCallRequest* request) {
+RemoteCallReply Worker::remote_call(RemoteCallRequest* request) {
   RemoteCallReply reply;
   ClientContext context;
   Status status = scheduler_stub_->RemoteCall(&context, *request, &reply);
-  // TODO: Return results: return reply.result(0);
+  return reply;
 }
 
 void Worker::register_worker(const std::string& worker_address, const std::string& objstore_address) {

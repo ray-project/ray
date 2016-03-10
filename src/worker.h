@@ -19,8 +19,6 @@ using grpc::ServerContext;
 using grpc::Status;
 
 #include "orchestra.grpc.pb.h"
-#include "orchlib.h"
-
 #include "orchestra/orchestra.h"
 
 using grpc::Channel;
@@ -46,7 +44,7 @@ class Worker {
     {}
 
   // submit a remote call to the scheduler
-  size_t remote_call(RemoteCallRequest* request);
+  RemoteCallReply remote_call(RemoteCallRequest* request);
   // send request to the scheduler to register this worker
   void register_worker(const std::string& worker_address, const std::string& objstore_address);
   // push object to local object store, register it with the server and return object reference

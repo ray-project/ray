@@ -21,11 +21,13 @@ message Obj {
   String string_data = 1;
   Int int_data = 2;
   Double double_data = 3;
-  PyObj pyobj_data = 4;
+  List list_data = 4;
+  Array array_data = 5;
+  PyObj pyobj_data = 6;
 }
 
 message List {
-  repeated Obj elems = 1;
+  repeated Obj elem = 1;
 }
 
 message Value {
@@ -48,6 +50,6 @@ enum DataType {
 
 message Array {
   repeated uint64 shape = 1;
-  DataType dtype = 2;
-  bytes data = 3;
+  DataType dtype = 3;
+  repeated double double_data = 2;
 }

@@ -13,8 +13,6 @@ using namespace boost::interprocess;
 #include "orchestra.grpc.pb.h"
 #include "types.pb.h"
 
-#include "orchlib.h"
-
 using grpc::Server;
 using grpc::ServerBuilder;
 using grpc::ServerReader;

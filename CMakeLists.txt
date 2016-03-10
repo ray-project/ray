@@ -3,11 +3,14 @@ cmake_minimum_required(VERSION 2.8)
 project(orchestra)
 
 find_package(Protobuf REQUIRED)
+find_package(PythonLibs REQUIRED)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
 include_directories("${CMAKE_SOURCE_DIR}/include")
 include_directories("/usr/local/include")
+include_directories("${PYTHON_INCLUDE_DIRS}")
+include_directories("/home/pcmoritz/anaconda/pkgs/numpy-1.9.2-py27_0/lib/python2.7/site-packages/numpy/core/include/")
 
 set(PROTO_PATH "${CMAKE_SOURCE_DIR}/protos")
 
@@ -71,6 +74,6 @@ endif()
 
 add_executable(objstore src/objstore.cc ${GENERATED_PROTOBUF_FILES})
 add_executable(scheduler src/scheduler.cc ${GENERATED_PROTOBUF_FILES})
-add_library(orchlib SHARED src/orchlib.cc src/worker.cc ${GENERATED_PROTOBUF_FILES})
+add_library(orchpylib SHARED src/orchpylib.cc src/worker.cc ${GENERATED_PROTOBUF_FILES})
 
-install(TARGETS objstore scheduler orchlib DESTINATION ${CMAKE_SOURCE_DIR}/lib/orchpy/orchpy)
+install(TARGETS objstore scheduler orchpylib DESTINATION ${CMAKE_SOURCE_DIR}/lib/orchpy/orchpy)

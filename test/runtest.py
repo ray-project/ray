@@ -45,6 +45,21 @@ def new_objstore_port():
   objstore_port_counter += 1
   return 20000 + objstore_port_counter
 
+class SerializationTest(unittest.TestCase):
+
+  def roundTripTest(self, data):
+    serialized = orchpy.lib.serialize_object(data)
+    result = orchpy.lib.deserialize_object(serialized)
+    self.assertEqual(data, result)
+
+  def testSerialize(self):
+    data = [1, "hello", 3.0]
+    self.roundTripTest(data)
+
+    a = np.zeros((100, 100))
+    res = orchpy.lib.serialize_object(a)
+    b = orchpy.lib.deserialize_object(res)
+    self.assertTrue((a == b).all())
 
 class ObjStoreTest(unittest.TestCase):
 

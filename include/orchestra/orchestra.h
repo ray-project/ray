@@ -41,10 +41,9 @@ public:
   objstore_not_registered_error(const std::string& msg) : std::runtime_error(msg) {}
 };
 
-
-// struct slice {
-//   char* data;
-//   size_t len;
-// };
+struct slice {
+  char* data;
+  size_t len;
+};
 
 #endif
