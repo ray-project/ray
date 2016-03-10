@@ -9,42 +9,39 @@ all_processes = []
 
 def cleanup():
   global all_processes
-  for p, port in all_processes:
+  for p, address in all_processes:
     if p.poll() is not None: # process has already terminated
-      print "Process at port " + str(port) + " has already terminated."
+      print "Process at address " + address + " has already terminated."
       continue
-    print "Attempting to kill process at port " + str(port) + "."
+    print "Attempting to kill process at address " + address + "."
     p.kill()
     time.sleep(0.05) # is this necessary?
     if p.poll() is not None:
-      print "Successfully killed process at port " + str(port) + "."
+      print "Successfully killed process at address " + address + "."
       continue
-    print "Kill attempt failed, attempting to terminate process at port " + str(port) + "."
+    print "Kill attempt failed, attempting to terminate process at address " + address + "."
     p.terminate()
     time.sleep(0.05) # is this necessary?
     if p.poll is not None:
-      print "Successfully terminated process at port " + str(port) + "."
+      print "Successfully terminated process at address " + address + "."
       continue
     print "Termination attempt failed, giving up."
   all_processes = []
 
 atexit.register(cleanup)
 
-def start_scheduler(host, port):
-  scheduler_address = host + ":" + str(port)
-  p = subprocess.Popen([os.path.join(_services_path, "scheduler"), str(scheduler_address)])
-  all_processes.append((p, port))
+def start_scheduler(scheduler_address):
+  p = subprocess.Popen([os.path.join(_services_path, "scheduler"), scheduler_address])
+  all_processes.append((p, scheduler_address))
 
-def start_objstore(host, port):
-  objstore_address = host + ":" + str(port)
-  p = subprocess.Popen([os.path.join(_services_path, "objstore"), str(objstore_address)])
-  all_processes.append((p, port))
+def start_objstore(objstore_address):
+  p = subprocess.Popen([os.path.join(_services_path, "objstore"), objstore_address])
+  all_processes.append((p, objstore_address))
 
-def start_worker(test_path, host, scheduler_port, worker_port, objstore_port):
+def start_worker(test_path, scheduler_address, objstore_address, worker_address):
   p = subprocess.Popen(["python",
                         test_path,
-                        "--ip_address=" + host,
-                        "--scheduler_port=" + str(scheduler_port),
-                        "--objstore_port=" + str(objstore_port),
-                        "--worker_port=" + str(worker_port)])
-  all_processes.append((p, worker_port))
+                        "--scheduler-address=" + scheduler_address,
+                        "--objstore-address=" + objstore_address,
+                        "--worker-address=" + worker_address])
+  all_processes.append((p, worker_address))
