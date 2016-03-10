@@ -1,5 +1,5 @@
 import unittest
-import orchpy.unison as unison
+import orchpy
 import orchpy.services as services
 import orchpy.worker as worker
 import numpy as np
@@ -82,22 +82,22 @@ class ObjStoreTest(unittest.TestCase):
     objstore2_stub = connect_to_objstore(IP_ADDRESS, objstore2_port)
 
     worker1 = worker.Worker()
-    worker1.connect(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, worker1_port), address(IP_ADDRESS, objstore1_port))
+    worker.connect(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore1_port), address(IP_ADDRESS, worker1_port), worker1)
 
     worker2 = worker.Worker()
-    worker2.connect(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, worker2_port), address(IP_ADDRESS, objstore2_port))
+    worker.connect(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore2_port), address(IP_ADDRESS, worker2_port), worker2)
 
     # pushing and pulling an object shouldn't change it
     for data in ["h", "h" * 10000, 0, 0.0]:
-      objref = worker1.push(data)
-      result = worker1.pull(objref)
+      objref = worker.push(data, worker1)
+      result = worker.pull(objref, worker1)
       self.assertEqual(result, data)
 
     # pushing an object, shipping it to another worker, and pulling it shouldn't change it
     for data in ["h", "h" * 10000, 0, 0.0]:
-      objref = worker1.push(data)
-      response = objstore1_stub.DeliverObj(orchestra_pb2.DeliverObjRequest(objref=objref.get_id(), objstore_address=address(IP_ADDRESS, objstore2_port)), TIMEOUT_SECONDS)
-      result = worker2.pull(objref)
+      objref = worker.push(data, worker1)
+      response = objstore1_stub.DeliverObj(orchestra_pb2.DeliverObjRequest(objref=objref.val, objstore_address=address(IP_ADDRESS, objstore2_port)), TIMEOUT_SECONDS)
+      result = worker.pull(objref, worker2)
       self.assertEqual(result, data)
 
     services.cleanup()
@@ -121,8 +121,7 @@ class SchedulerTest(unittest.TestCase):
     time.sleep(0.2)
 
     worker1 = worker.Worker()
-    worker1.connect(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, worker1_port), address(IP_ADDRESS, objstore_port))
-    worker1.start_worker_service()
+    worker.connect(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port), address(IP_ADDRESS, worker1_port), worker1)
 
     test_dir = os.path.dirname(os.path.abspath(__file__))
     test_path = os.path.join(test_dir, "testrecv.py")
@@ -130,7 +129,7 @@ class SchedulerTest(unittest.TestCase):
 
     time.sleep(0.2)
 
-    worker1.call("hello_world", ["hi"])
+    worker1.remote_call("print_string", ["hi"])
 
     time.sleep(0.1)
 

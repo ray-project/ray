@@ -1,3 +1,5 @@
+#include <random>
+
 #include "scheduler.h"
 
 Status SchedulerService::RemoteCall(ServerContext* context, const RemoteCallRequest* request, RemoteCallReply* reply) {
@@ -30,6 +32,24 @@ Status SchedulerService::PushObj(ServerContext* context, const PushObjRequest* r
 }
 
 Status SchedulerService::PullObj(ServerContext* context, const PullObjRequest* request, AckReply* reply) {
+  std::lock_guard<std::mutex> objtable_lock(objtable_lock_);
+  ObjRef objref = request->objref();
+  if (objref >= objtable_.size() || objtable_[objref].size() == 0) {
+    std::cout << "internal error: no object with objref exists" << std::endl;
+    std::exit(1);
+  }
+  std::mt19937 rng;
+  std::uniform_int_distribution<int> uni(0, objtable_[objref].size()-1);
+  ObjStoreId objstoreid = uni(rng);
+  std::lock_guard<std::mutex> objstore_lock(objstores_lock_);
+
+  DeliverObjRequest deliver_request;
+  ObjStoreId id = get_store(request->workerid());
+  deliver_request.set_objstore_address(objstores_[id].address);
+  deliver_request.set_objref(objref);
+  AckReply deliver_reply;
+  ClientContext deliver_context;
+  objstores_[objstoreid].objstore_stub->DeliverObj(&deliver_context, deliver_request, &deliver_reply);
   return Status::OK;
 }
 
@@ -117,8 +137,8 @@ WorkerId SchedulerService::register_worker(const std::string& worker_address, co
   ObjStoreId objstoreid = std::numeric_limits<size_t>::max();
   objstores_lock_.lock();
   for (size_t i = 0; i < objstores_.size(); ++i) {
-    std::cout << "adress: " << objstores_[i].address << std::endl;
-    std::cout << "my adress: " << objstore_address << std::endl;
+    std::cout << "address: " << objstores_[i].address << std::endl;
+    std::cout << "my address: " << objstore_address << std::endl;
     if (objstores_[i].address == objstore_address) {
       objstoreid = i;
     }

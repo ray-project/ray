@@ -2,15 +2,19 @@ cmake_minimum_required(VERSION 2.8)
 
 project(orchestra)
 
+list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake/Modules)
+
 find_package(Protobuf REQUIRED)
+find_package(PythonInterp REQUIRED)
 find_package(PythonLibs REQUIRED)
+find_package(NumPy REQUIRED)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
 include_directories("${CMAKE_SOURCE_DIR}/include")
 include_directories("/usr/local/include")
 include_directories("${PYTHON_INCLUDE_DIRS}")
-include_directories("/home/pcmoritz/anaconda/pkgs/numpy-1.9.2-py27_0/lib/python2.7/site-packages/numpy/core/include/")
+include_directories("${NUMPY_INCLUDE_DIR}")
 
 set(PROTO_PATH "${CMAKE_SOURCE_DIR}/protos")
 

@@ -48,11 +48,13 @@ class Worker {
   // send request to the scheduler to register this worker
   void register_worker(const std::string& worker_address, const std::string& objstore_address);
   // push object to local object store, register it with the server and return object reference
-  ObjRef push_obj(const Obj* obj);
-  // retrieve serialized object from local object store
-  slice get_serialized_obj(ObjRef objref);
+  ObjRef push_object(const Obj* obj);
+  // pull object from a potentially remote object store
+  slice pull_object(ObjRef objref);
   // stores an object to the local object store
-  void put_obj(ObjRef objref, const Obj* obj);
+  void put_object(ObjRef objref, const Obj* obj);
+  // retrieve serialized object from local object store
+  slice get_object(ObjRef objref);
   // register function with scheduler
   void register_function(const std::string& name, size_t num_return_vals);
   // start the worker server which accepts tasks from the scheduler and stores

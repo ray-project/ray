@@ -38,7 +38,8 @@ message RemoteCallReply {
 }
 
 message PullObjRequest {
-  uint64 objref = 1;
+  uint64 workerid = 1;
+  uint64 objref = 2;
 }
 
 message PushObjRequest {

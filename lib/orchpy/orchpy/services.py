@@ -41,5 +41,10 @@ def start_objstore(host, port):
   all_processes.append((p, port))
 
 def start_worker(test_path, host, scheduler_port, worker_port, objstore_port):
-  p = subprocess.Popen(["python", test_path, host, str(scheduler_port), str(worker_port), str(objstore_port)])
+  p = subprocess.Popen(["python",
+                        test_path,
+                        "--ip_address=" + host,
+                        "--scheduler_port=" + str(scheduler_port),
+                        "--objstore_port=" + str(objstore_port),
+                        "--worker_port=" + str(worker_port)])
   all_processes.append((p, worker_port))

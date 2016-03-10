@@ -10,13 +10,20 @@
 #include "types.pb.h"
 #include "worker.h"
 
+extern "C" {
+  // Error handling
+
+  static PyObject *OrchPyError;
+}
+
 // extracts a pointer from a python C API capsule
 template<typename T>
 T* get_pointer_or_fail(PyObject* capsule, const char* name) {
   if (PyCapsule_IsValid(capsule, name)) {
-    T* result = static_cast<T*>(PyCapsule_GetPointer(capsule, name));
+    return static_cast<T*>(PyCapsule_GetPointer(capsule, name));
   } else {
-    std::cout << "not a valid capsule" << std::endl;
+    PyErr_SetString(OrchPyError, "not a vaid capsule");
+    return NULL;
   }
 }
 
@@ -97,14 +104,11 @@ static PyTypeObject PyObjRefType = {
 
 // create PyObjRef from C++ (could be made more efficient if neccessary)
 PyObject* make_pyobjref(ObjRef objref) {
-  PyObject* result = PyObjRef_new(&PyObjRefType, NULL, NULL);
-  PyObjRef_init((PyObjRef*) result, Py_BuildValue("i", objref), NULL);
+  PyObject* arglist = Py_BuildValue("(i)", objref);
+  PyObject* result = PyObject_CallObject((PyObject*) &PyObjRefType, arglist);
+  Py_DECREF(arglist);
   return result;
 }
-
-// Error handling
-
-static PyObject *OrchPyError;
 
 // Serialization
 
@@ -123,8 +127,9 @@ int serialize(PyObject* val, Obj* obj) {
     List* data = obj->mutable_list_data();
     for (size_t i = 0, size = PyList_Size(val); i < size; ++i) {
       Obj* elem = data->add_elem();
-      if (serialize(PyList_GetItem(val, i), elem) != 0)
+      if (serialize(PyList_GetItem(val, i), elem) != 0) {
         return -1;
+      }
     }
   } else if (PyString_Check(val)) {
     char* buffer;
@@ -189,17 +194,26 @@ PyObject* deserialize(const Obj& obj) {
 
 PyObject* serialize_object(PyObject* self, PyObject* args) {
   Obj* obj = new Obj(); // TODO: to be freed in capsul destructor
-  PyObject* val = PyTuple_GetItem(args, 0);
-  if (serialize(val, obj) != 0) {
+  PyObject* pyval;
+  if (!PyArg_ParseTuple(args, "O", &pyval)) {
+    return NULL;
+  }
+  if (serialize(pyval, obj) != 0) {
     PyErr_SetString(OrchPyError, "serialization: type not know"); // TODO: put a more expressive error message here
     return NULL;
   }
-  return PyCapsule_New(static_cast<void*>(obj), NULL, NULL);
+  return PyCapsule_New(static_cast<void*>(obj), "obj", NULL);
 }
 
 PyObject* deserialize_object(PyObject* self, PyObject* args) {
-  PyObject* capsule = PyTuple_GetItem(args, 0);
-  Obj* obj = get_pointer_or_fail<Obj>(capsule, NULL);
+  PyObject* capsule;
+  if (!PyArg_ParseTuple(args, "O", &capsule)) {
+    return NULL;
+  }
+  Obj* obj = get_pointer_or_fail<Obj>(capsule, "obj");
+  if (!obj) {
+    return NULL;
+  }
   return deserialize(*obj);
 }
 
@@ -218,7 +232,8 @@ PyObject* serialize_call(PyObject* self, PyObject* args) {
       serialize(PyList_GetItem(arguments, i), arg);
     }
   } else {
-    std::cout << "second argument is not a list" << std::endl;
+    PyErr_SetString(OrchPyError, "serialize_call: second argument needs to be a list");
+    return NULL;
   }
   return PyCapsule_New(static_cast<void*>(call), "call", NULL);
 }
@@ -226,6 +241,9 @@ PyObject* serialize_call(PyObject* self, PyObject* args) {
 PyObject* deserialize_call(PyObject* self, PyObject* args) {
   PyObject* capsule = PyTuple_GetItem(args, 0);
   Call* call = get_pointer_or_fail<Call>(capsule, "call");
+  if (!call) {
+    return NULL;
+  }
   PyObject* string = PyString_FromStringAndSize(call->name().c_str(), call->name().size());
   int argsize = call->arg_size();
   PyObject* arglist = PyList_New(argsize);
@@ -264,6 +282,9 @@ PyObject* create_worker(PyObject* self, PyObject* args) {
 PyObject* wait_for_next_task(PyObject* self, PyObject* args) {
   PyObject* capsule = PyTuple_GetItem(args, 0);
   Worker* worker = get_pointer_or_fail<Worker>(capsule, "worker");
+  if (!worker) {
+    return NULL;
+  }
   Call* call = worker->receive_next_task();
   return PyCapsule_New(static_cast<void*>(call), "call", NULL); // TODO: how is destruction going to be handled here?
 }
@@ -275,7 +296,13 @@ PyObject* remote_call(PyObject* self, PyObject* args) {
     return NULL;
   }
   Worker* worker = get_pointer_or_fail<Worker>(worker_capsule, "worker");
+  if (!worker) {
+    return NULL;
+  }
   Call* call = get_pointer_or_fail<Call>(call_capsule, "call");
+  if (!call) {
+    return NULL;
+  }
   RemoteCallRequest request;
   request.set_allocated_call(call);
   RemoteCallReply reply = worker->remote_call(&request);
@@ -296,18 +323,100 @@ PyObject* register_function(PyObject* self, PyObject* args) {
     return NULL;
   }
   Worker* worker = get_pointer_or_fail<Worker>(worker_capsule, "worker");
+  if (!worker) {
+    return NULL;
+  }
   worker->register_function(std::string(function_name), num_return_vals);
-  return worker_capsule;
+  Py_RETURN_NONE;
 }
 
-PyObject* pull_object(PyObject* self, PyObject* args) {
+// TODO: test this
+PyObject* push_object(PyObject* self, PyObject* args) {
   PyObject* worker_capsule;
-  PyObject* objref;
-  if (!PyArg_ParseTuple(args, "OO", &worker_capsule, &objref)) {
+  PyObject* obj_capsule;
+  if (!PyArg_ParseTuple(args, "OO", &worker_capsule, &obj_capsule)) {
     return NULL;
   }
   Worker* worker = get_pointer_or_fail<Worker>(worker_capsule, "worker");
-  return worker_capsule;
+  if (!worker) {
+    return NULL;
+  }
+  Obj* obj = get_pointer_or_fail<Obj>(obj_capsule, "obj");
+  if (!obj) {
+    return NULL;
+  }
+  ObjRef objref = worker->push_object(obj);
+  return make_pyobjref(objref);
+}
+
+// TODO: test this
+PyObject* put_object(PyObject* self, PyObject* args) {
+  PyObject* worker_capsule;
+  PyObject* pyobjref;
+  PyObject* obj_capsule;
+  if (!PyArg_ParseTuple(args, "OOO", &worker_capsule, &pyobjref, &obj_capsule)) {
+    return NULL;
+  }
+  Worker* worker = get_pointer_or_fail<Worker>(worker_capsule, "worker");
+  if (!worker) {
+    return NULL;
+  }
+  Obj* obj = get_pointer_or_fail<Obj>(obj_capsule, "obj");
+  if (!obj) {
+    return NULL;
+  }
+  ObjRef objref = ((PyObjRef*) pyobjref)->val;
+  worker->put_object(objref, obj);
+  Py_RETURN_NONE;
+}
+
+PyObject* get_object(PyObject* self, PyObject* args) {
+  PyObject* worker_capsule;
+  PyObject* pyobjref;
+  if (!PyArg_ParseTuple(args, "OO", &worker_capsule, &pyobjref)) {
+    return NULL;
+  }
+  Worker* worker = get_pointer_or_fail<Worker>(worker_capsule, "worker");
+  if (!worker) {
+    return NULL;
+  }
+  ObjRef objref = ((PyObjRef*) pyobjref)->val;
+  slice s = worker->get_object(objref);
+  Obj* obj = new Obj(); // TODO: Make sure this will get deleted
+  obj->ParseFromString(std::string(s.data, s.len));
+  return PyCapsule_New(static_cast<void*>(obj), "obj", NULL);
+}
+
+// TODO: implement this
+PyObject* pull_object(PyObject* self, PyObject* args) {
+  PyObject* worker_capsule;
+  PyObject* pyobjref;
+  if (!PyArg_ParseTuple(args, "OO", &worker_capsule, &pyobjref)) {
+    return NULL;
+  }
+  Worker* worker = get_pointer_or_fail<Worker>(worker_capsule, "worker");
+  if (!worker) {
+    return NULL;
+  }
+  ObjRef objref = ((PyObjRef*) pyobjref)->val;
+  slice s = worker->get_object(objref);
+  Obj* obj = new Obj(); // TODO: Make sure this will get deleted
+  obj->ParseFromString(std::string(s.data, s.len));
+  return PyCapsule_New(static_cast<void*>(obj), "obj", NULL);
+}
+
+// TODO: test this
+PyObject* start_worker_service(PyObject* self, PyObject* args) {
+  PyObject* worker_capsule;
+  if (!PyArg_ParseTuple(args, "O", &worker_capsule)) {
+    return NULL;
+  }
+  Worker* worker = get_pointer_or_fail<Worker>(worker_capsule, "worker");
+  if (!worker) {
+    return NULL;
+  }
+  worker->start_worker_service();
+  Py_RETURN_NONE;
 }
 
 static PyMethodDef SymphonyMethods[] = {
@@ -317,7 +426,13 @@ static PyMethodDef SymphonyMethods[] = {
  { "deserialize_call", deserialize_call, METH_VARARGS, "deserialize a call from protocol buffers" },
  { "create_worker", create_worker, METH_VARARGS, "connect to the scheduler and the object store" },
  { "register_function", register_function, METH_VARARGS, "register a function with the scheduler" },
+ { "put_object", put_object, METH_VARARGS, "put a protocol buffer object (given as a capsule) on the local object store" },
+ { "get_object", get_object, METH_VARARGS, "get protocol buffer object from the local object store" },
+ { "push_object", push_object, METH_VARARGS, "push a protocol buffer object (given as a capsule) to the object store" },
+ { "pull_object" , pull_object, METH_VARARGS, "pull object with a given object id from the object store" },
+ { "wait_for_next_task", wait_for_next_task, METH_VARARGS, "get next task from scheduler (blocking)" },
  { "remote_call", remote_call, METH_VARARGS, "call a remote function" },
+ { "start_worker_service", start_worker_service, METH_VARARGS, "start the worker service" },
  { NULL, NULL, 0, NULL }
 };
 
