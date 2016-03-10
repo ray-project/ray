@@ -71,9 +71,9 @@ class ObjStoreTest(unittest.TestCase):
     worker1_port = new_worker_port()
     worker2_port = new_worker_port()
 
-    services.start_scheduler(IP_ADDRESS, scheduler_port)
-    services.start_objstore(IP_ADDRESS, objstore1_port)
-    services.start_objstore(IP_ADDRESS, objstore2_port)
+    services.start_scheduler(address(IP_ADDRESS, scheduler_port))
+    services.start_objstore(address(IP_ADDRESS, objstore1_port))
+    services.start_objstore(address(IP_ADDRESS, objstore2_port))
 
     time.sleep(0.2)
 
@@ -110,8 +110,8 @@ class SchedulerTest(unittest.TestCase):
     worker1_port = new_worker_port()
     worker2_port = new_worker_port()
 
-    services.start_scheduler(IP_ADDRESS, scheduler_port)
-    services.start_objstore(IP_ADDRESS, objstore_port)
+    services.start_scheduler(address(IP_ADDRESS, scheduler_port))
+    services.start_objstore(address(IP_ADDRESS, objstore_port))
 
     time.sleep(0.2)
 
@@ -125,15 +125,62 @@ class SchedulerTest(unittest.TestCase):
 
     test_dir = os.path.dirname(os.path.abspath(__file__))
     test_path = os.path.join(test_dir, "testrecv.py")
-    services.start_worker(test_path, IP_ADDRESS, scheduler_port, worker2_port, objstore_port)
+    services.start_worker(test_path, address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port), address(IP_ADDRESS, worker2_port))
 
     time.sleep(0.2)
 
-    worker1.remote_call("print_string", ["hi"])
+    value_before = "test_string"
+    objref = worker1.remote_call("__main__.print_string", [value_before])
+
+    time.sleep(0.2)
+
+    # value_after = worker.pull(objref, worker1)
+    # self.assertEqual(value_before, value_after)
 
     time.sleep(0.1)
 
     reply = scheduler_stub.GetDebugInfo(orchestra_pb2.GetDebugInfoRequest(), TIMEOUT_SECONDS)
+
+    services.cleanup()
+
+class WorkerTest(unittest.TestCase):
+
+  def testPushPull(self):
+    scheduler_port = new_scheduler_port()
+    objstore_port = new_objstore_port()
+    worker1_port = new_worker_port()
+
+    services.start_scheduler(address(IP_ADDRESS, scheduler_port))
+    services.start_objstore(address(IP_ADDRESS, objstore_port))
+
+    time.sleep(0.2)
+
+    worker1 = worker.Worker()
+    worker.connect(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port), address(IP_ADDRESS, worker1_port), worker1)
+
+    for i in range(100):
+      value_before = i * 10 ** 6
+      objref = worker.push(value_before, worker1)
+      value_after = worker.pull(objref, worker1)
+      self.assertEqual(value_before, value_after)
+
+    for i in range(100):
+      value_before = i * 10 ** 6 * 1.0
+      objref = worker.push(value_before, worker1)
+      value_after = worker.pull(objref, worker1)
+      self.assertEqual(value_before, value_after)
+
+    for i in range(100):
+      value_before = "h" * i
+      objref = worker.push(value_before, worker1)
+      value_after = worker.pull(objref, worker1)
+      self.assertEqual(value_before, value_after)
+
+    for i in range(100):
+      value_before = [1] * i
+      objref = worker.push(value_before, worker1)
+      value_after = worker.pull(objref, worker1)
+      self.assertEqual(value_before, value_after)
 
     services.cleanup()
 

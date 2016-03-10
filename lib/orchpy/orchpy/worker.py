@@ -83,24 +83,24 @@ def distributed(arg_types, return_types, worker=global_worker):
 def get_arguments_for_execution(function, args, worker=global_worker):
   arguments = []
   # check the number of args
-  if len(args) != len(function.types) and function.types[-1] is not None:
-    raise Exception("Function {} expects {} arguments, but received {}.".format(function.__name__, len(function.types), len(args)))
-  elif len(args) < len(function.types) - 1 and function.types[-1] is None:
-    raise Exception("Function {} expects at least {} arguments, but received {}.".format(function.__name__, len(function.types) - 1, len(args)))
+  if len(args) != len(function.arg_types) and function.arg_types[-1] is not None:
+    raise Exception("Function {} expects {} arguments, but received {}.".format(function.__name__, len(function.arg_types), len(args)))
+  elif len(args) < len(function.arg_types) - 1 and function.arg_types[-1] is None:
+    raise Exception("Function {} expects at least {} arguments, but received {}.".format(function.__name__, len(function.arg_types) - 1, len(args)))
 
   for (i, arg) in enumerate(args):
     print "Pulling argument {} for function {}.".format(i, function.__name__)
-    if i < len(function.types) - 1:
-      expected_type = function.types[i]
-    elif i == len(function.types) - 1 and function.types[-1] is not None:
-      expected_type = function.types[-1]
-    elif function.types[-1] is None and len(function.types > 1):
-      expected_type = function.types[-2]
+    if i < len(function.arg_types) - 1:
+      expected_type = function.arg_types[i]
+    elif i == len(function.arg_types) - 1 and function.arg_types[-1] is not None:
+      expected_type = function.arg_types[-1]
+    elif function.arg_types[-1] is None and len(function.arg_types > 1):
+      expected_type = function.arg_types[-2]
     else:
       assert False, "This code should be unreachable."
 
-    argument = worker.get_object(arg) if type(arg) == orchpy.ObjRef else arg
-    if type(arg) == orchpy.ObjRef:
+    argument = worker.get_object(arg) if type(arg) == orchpy.lib.ObjRef else arg
+    if type(arg) == orchpy.lib.ObjRef:
       # get the object from the local object store
       # TODO(rkn): Do we know that it is already there? Maybe we should call pull(arg, worker).
       argument = worker.get_object(arg)
