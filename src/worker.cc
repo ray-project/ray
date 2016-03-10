@@ -19,11 +19,11 @@ Status WorkerServiceImpl::InvokeCall(ServerContext* context, const InvokeCallReq
   return Status::OK;
 }
 
-size_t Worker::remote_call(RemoteCallRequest* request) {
+RemoteCallReply Worker::remote_call(RemoteCallRequest* request) {
   RemoteCallReply reply;
   ClientContext context;
   Status status = scheduler_stub_->RemoteCall(&context, *request, &reply);
-  // TODO: Return results: return reply.result(0);
+  return reply;
 }
 
 void Worker::register_worker(const std::string& worker_address, const std::string& objstore_address) {
@@ -37,7 +37,17 @@ void Worker::register_worker(const std::string& worker_address, const std::strin
   return;
 }
 
-ObjRef Worker::push_obj(const Obj* obj) {
+slice Worker::pull_object(ObjRef objref) {
+  PullObjRequest request;
+  request.set_workerid(workerid_);
+  request.set_objref(objref);
+  AckReply reply;
+  ClientContext context;
+  Status status = scheduler_stub_->PullObj(&context, request, &reply);
+  return get_object(objref);
+}
+
+ObjRef Worker::push_object(const Obj* obj) {
   // first get objref for the new object
   PushObjRequest push_request;
   PushObjReply push_reply;
@@ -45,11 +55,11 @@ ObjRef Worker::push_obj(const Obj* obj) {
   Status push_status = scheduler_stub_->PushObj(&push_context, push_request, &push_reply);
   ObjRef objref = push_reply.objref();
   // then stream the object to the object store
-  put_obj(objref, obj);
+  put_object(objref, obj);
   return objref;
 }
 
-slice Worker::get_serialized_obj(ObjRef objref) {
+slice Worker::get_object(ObjRef objref) {
   ClientContext context;
   GetObjRequest request;
   request.set_objref(objref);
@@ -62,7 +72,8 @@ slice Worker::get_serialized_obj(ObjRef objref) {
   return slice;
 }
 
-void Worker::put_obj(ObjRef objref, const Obj* obj) {
+// TODO: Do this with shared memory
+void Worker::put_object(ObjRef objref, const Obj* obj) {
   ObjChunk chunk;
   std::string data;
   obj->SerializeToString(&data);
