@@ -1,12 +1,11 @@
 # include "worker.h"
 
 Status WorkerServiceImpl::InvokeCall(ServerContext* context, const InvokeCallRequest* request, InvokeCallReply* reply) {
-  call_ = request->call();
-  std::cout << "invoke call request" << std::endl;
+  call_ = request->call(); // Copy call
+  ORCH_LOG(ORCH_INFO, "invoked task " << request->call().name());
   try {
     Call* callptr = &call_;
     message_queue mq(open_only, worker_address_.c_str());
-    std::cout << "before send: num args" << call_.arg_size() << std::endl;
     mq.send(&callptr, sizeof(Call*), 0);
   }
   catch(interprocess_exception &ex){
@@ -15,7 +14,6 @@ Status WorkerServiceImpl::InvokeCall(ServerContext* context, const InvokeCallReq
     // TODO: return Status;
   }
   message_queue::remove(worker_address_.c_str());
-  std::cout << "notified server" << std::endl;
   return Status::OK;
 }
 
@@ -85,17 +83,16 @@ void Worker::put_object(ObjRef objref, const Obj* obj) {
   const char* head = data.c_str();
   for (size_t i = 0; i < data.length(); i += CHUNK_SIZE) {
     chunk.set_objref(objref);
-    std::cout << "chunk totalsize" << std::endl;
     chunk.set_totalsize(totalsize);
     chunk.set_data(head + i, std::min(CHUNK_SIZE, data.length() - i));
     if (!writer->Write(chunk)) {
-      std::cout << "write failed" << std::endl;
-      // TODO: Better error handling: throw std::runtime_error("write failed");
+      ORCH_LOG(ORCH_FATAL, "write failed during put_object");
+      // TODO(pcm): better error handling
     }
   }
   writer->WritesDone();
   Status status = writer->Finish();
-  // TODO: error handling
+  // TODO(pcm): error handling
 }
 
 void Worker::register_function(const std::string& name, size_t num_return_vals) {
@@ -120,7 +117,7 @@ void Worker::start_worker_service() {
     builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
     builder.RegisterService(&service);
     std::unique_ptr<Server> server(builder.BuildAndStart());
-    std::cout << "WorkerServer listening on " << server_address << std::endl;
+    ORCH_LOG(ORCH_INFO, "worker server listening on " << server_address);
     server->Wait();
   });
 }
@@ -135,8 +132,6 @@ Call* Worker::receive_next_task() {
     Call* call;
     while (true) {
       mq.receive(&call, sizeof(Call*), recvd_size, priority);
-      std::cout << "got call" << call << std::endl;
-      std::cout << "after send: num args" << call->arg_size() << std::endl;
       return call;
     }
   }

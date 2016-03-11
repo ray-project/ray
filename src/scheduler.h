@@ -40,10 +40,15 @@ public:
   Status RemoteCall(ServerContext* context, const RemoteCallRequest* request, RemoteCallReply* reply) override;
   Status PushObj(ServerContext* context, const PushObjRequest* request, PushObjReply* reply) override;
   Status PullObj(ServerContext* context, const PullObjRequest* request, AckReply* reply) override;
+  Status RegisterObjStore(ServerContext* context, const RegisterObjStoreRequest* request, RegisterObjStoreReply* reply) override;
   Status RegisterWorker(ServerContext* context, const RegisterWorkerRequest* request, RegisterWorkerReply* reply) override;
   Status RegisterFunction(ServerContext* context, const RegisterFunctionRequest* request, AckReply* reply) override;
+  Status ObjReady(ServerContext* context, const ObjReadyRequest* request, AckReply* reply) override;
+  Status WorkerReady(ServerContext* context, const WorkerReadyRequest* request, AckReply* reply) override;
   Status GetDebugInfo(ServerContext* context, const GetDebugInfoRequest* request, GetDebugInfoReply* reply) override;
 
+  // ask an object store to send object to another objectstore
+  void deliver_object(ObjRef objref, ObjStoreId from, ObjStoreId to);
   // assign a task to a worker
   void schedule();
   // execute a task on a worker and ship required object references
@@ -63,6 +68,9 @@ public:
   // get debugging information for the scheduler
   void debug_info(const GetDebugInfoRequest& request, GetDebugInfoReply* reply);
 private:
+  // pick an objectstore that holds a given object (needs protection by objtable_lock_)
+  ObjStoreId pick_objstore(ObjRef objref);
+
   // Vector of all workers registered in the system. Their index in this vector
   // is the workerid.
   std::vector<WorkerHandle> workers_;

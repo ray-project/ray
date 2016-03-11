@@ -72,8 +72,11 @@ class ObjStoreTest(unittest.TestCase):
     worker2_port = new_worker_port()
 
     services.start_scheduler(address(IP_ADDRESS, scheduler_port))
-    services.start_objstore(address(IP_ADDRESS, objstore1_port))
-    services.start_objstore(address(IP_ADDRESS, objstore2_port))
+
+    time.sleep(0.1)
+
+    services.start_objstore(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore1_port))
+    services.start_objstore(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore2_port))
 
     time.sleep(0.2)
 
@@ -111,7 +114,10 @@ class SchedulerTest(unittest.TestCase):
     worker2_port = new_worker_port()
 
     services.start_scheduler(address(IP_ADDRESS, scheduler_port))
-    services.start_objstore(address(IP_ADDRESS, objstore_port))
+
+    time.sleep(0.1)
+
+    services.start_objstore(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port))
 
     time.sleep(0.2)
 
@@ -151,7 +157,10 @@ class WorkerTest(unittest.TestCase):
     worker1_port = new_worker_port()
 
     services.start_scheduler(address(IP_ADDRESS, scheduler_port))
-    services.start_objstore(address(IP_ADDRESS, objstore_port))
+
+    time.sleep(0.1)
+
+    services.start_objstore(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port))
 
     time.sleep(0.2)
 
@@ -183,6 +192,7 @@ class WorkerTest(unittest.TestCase):
       self.assertEqual(value_before, value_after)
 
     services.cleanup()
+
 
 if __name__ == '__main__':
     unittest.main()

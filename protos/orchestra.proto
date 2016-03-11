@@ -50,6 +50,15 @@ message PushObjReply {
   uint64 objref = 1;
 }
 
+message ObjReadyRequest {
+  uint64 objref = 1;
+  uint64 objstoreid = 2;
+}
+
+message WorkerReadyRequest {
+  uint64 workerid = 1;
+}
+
 message ChangeCountRequest {
   uint64 objref = 1;
 }
@@ -70,14 +79,27 @@ message GetDebugInfoReply {
 }
 
 service Scheduler {
+  // Register a new worker with the scheduler
   rpc RegisterWorker(RegisterWorkerRequest) returns (RegisterWorkerReply);
+  // Register an object store with the scheduler
   rpc RegisterObjStore(RegisterObjStoreRequest) returns (RegisterObjStoreReply);
+  // Tell the scheduler that a worker can execute a certain function
   rpc RegisterFunction(RegisterFunctionRequest) returns (AckReply);
+  // Asks the scheduler to execute a task, immediately returns an object reference to the result
   rpc RemoteCall(RemoteCallRequest) returns (RemoteCallReply);
+  // increment the count of the object reference
   rpc IncrementCount(ChangeCountRequest) returns (AckReply);
+  // decrement the count of the object reference
   rpc DecrementCount(ChangeCountRequest) returns (AckReply);
+  // request an object reference for an object that will be pushed to an object store
   rpc PushObj(PushObjRequest) returns (PushObjReply);
+  // request delivery of an object
   rpc PullObj(PullObjRequest) returns (AckReply);
+  // used by an object store to tell the scheduler that an object is ready
+  rpc ObjReady(ObjReadyRequest) returns (AckReply);
+  // used by the worker to report back and ask for more work
+  rpc WorkerReady(WorkerReadyRequest) returns (AckReply);
+  // get debugging information from the scheduler
   rpc GetDebugInfo(GetDebugInfoRequest) returns (GetDebugInfoReply);
 }
 
@@ -117,7 +139,9 @@ message DebugInfoReply {
 }
 
 service ObjStore {
+  // Request to deliver the data that comes with an object reference to another object store
   rpc DeliverObj(DeliverObjRequest) returns (AckReply);
+  // Accept incoming data from another object store
   rpc StreamObj(stream ObjChunk) returns (AckReply);
   rpc GetObj(GetObjRequest) returns (GetObjReply);
   rpc DebugInfo(DebugInfoRequest) returns (DebugInfoReply);

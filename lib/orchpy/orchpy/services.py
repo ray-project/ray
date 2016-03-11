@@ -34,8 +34,8 @@ def start_scheduler(scheduler_address):
   p = subprocess.Popen([os.path.join(_services_path, "scheduler"), scheduler_address])
   all_processes.append((p, scheduler_address))
 
-def start_objstore(objstore_address):
-  p = subprocess.Popen([os.path.join(_services_path, "objstore"), objstore_address])
+def start_objstore(scheduler_address, objstore_address):
+  p = subprocess.Popen([os.path.join(_services_path, "objstore"), scheduler_address, objstore_address])
   all_processes.append((p, objstore_address))
 
 def start_worker(test_path, scheduler_address, objstore_address, worker_address):

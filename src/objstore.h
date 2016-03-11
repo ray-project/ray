@@ -35,22 +35,14 @@ struct shared_object {
   slice ptr;
 };
 
-class ObjStoreServer final : public ObjStore::Service {
+class ObjStoreService final : public ObjStore::Service {
 public:
-  ObjStoreServer() {}
-
-  ~ObjStoreServer() {
-    for (const auto& segment_name : memory_names_) {
-      shared_memory_object::remove(segment_name.c_str());
-    }
-  }
+  ObjStoreService(const std::string& objstore_address, std::shared_ptr<Channel> scheduler_channel);
+  ~ObjStoreService();
 
   Status DeliverObj(ServerContext* context, const DeliverObjRequest* request, AckReply* reply) override;
-
   Status DebugInfo(ServerContext* context, const DebugInfoRequest* request, DebugInfoReply* reply) override;
-
   Status GetObj(ServerContext* context, const GetObjRequest* request, GetObjReply* reply) override;
-
   Status StreamObj(ServerContext* context, ServerReader<ObjChunk>* reader, AckReply* reply) override;
 private:
   void allocate_memory(ObjRef objref, size_t size);
@@ -62,6 +54,9 @@ private:
   std::mutex memory_lock_;
   size_t page_size = mapped_region::get_page_size();
   std::unordered_map<std::string, std::unique_ptr<ObjStore::Stub>> objstores_;
+  std::mutex objstores_lock_;
+  std::unique_ptr<Scheduler::Stub> scheduler_stub_;
+  ObjStoreId objstoreid_; // id of this objectstore in the scheduler object store table
 };
 
 #endif
