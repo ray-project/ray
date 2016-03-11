@@ -1,4 +1,6 @@
 #include <random>
+#include <thread>
+#include <chrono>
 
 #include "scheduler.h"
 
@@ -25,7 +27,6 @@ Status SchedulerService::RemoteCall(ServerContext* context, const RemoteCallRequ
 Status SchedulerService::PushObj(ServerContext* context, const PushObjRequest* request, PushObjReply* reply) {
   ObjRef objref = register_new_object();
   ObjStoreId objstoreid = get_store(request->workerid());
-  add_location(objref, objstoreid);
   reply->set_objref(objref);
   schedule();
   return Status::OK;
@@ -35,35 +36,53 @@ Status SchedulerService::PullObj(ServerContext* context, const PullObjRequest* r
   std::lock_guard<std::mutex> objtable_lock(objtable_lock_);
   ObjRef objref = request->objref();
   if (objref >= objtable_.size() || objtable_[objref].size() == 0) {
-    std::cout << "internal error: no object with objref exists" << std::endl;
-    std::exit(1);
+    ORCH_LOG(ORCH_FATAL, "internal error: no object with objref " << objref << " exists");
   }
-  std::mt19937 rng;
-  std::uniform_int_distribution<int> uni(0, objtable_[objref].size()-1);
-  ObjStoreId objstoreid = uni(rng);
-  std::lock_guard<std::mutex> objstore_lock(objstores_lock_);
+  ObjStoreId objstoreid = pick_objstore(objref);
+  deliver_object(objref, objstoreid, get_store(request->workerid()));
+  return Status::OK;
+}
 
-  DeliverObjRequest deliver_request;
-  ObjStoreId id = get_store(request->workerid());
-  deliver_request.set_objstore_address(objstores_[id].address);
-  deliver_request.set_objref(objref);
-  AckReply deliver_reply;
-  ClientContext deliver_context;
-  objstores_[objstoreid].objstore_stub->DeliverObj(&deliver_context, deliver_request, &deliver_reply);
+Status SchedulerService::RegisterObjStore(ServerContext* context, const RegisterObjStoreRequest* request, RegisterObjStoreReply* reply) {
+  std::lock_guard<std::mutex> lock();
+  ObjStoreId objstoreid = objstores_.size();
+  auto channel = grpc::CreateChannel(request->address(), grpc::InsecureChannelCredentials());
+  objstores_.push_back(ObjStoreHandle());
+  objstores_[objstoreid].address = request->address();
+  objstores_[objstoreid].channel = channel;
+  objstores_[objstoreid].objstore_stub = ObjStore::NewStub(channel);
+  reply->set_objstoreid(objstoreid);
   return Status::OK;
 }
 
 Status SchedulerService::RegisterWorker(ServerContext* context, const RegisterWorkerRequest* request, RegisterWorkerReply* reply) {
   WorkerId workerid = register_worker(request->worker_address(), request->objstore_address());
-  std::cout << "registered worker with workerid" << workerid << std::endl;
+  ORCH_LOG(ORCH_INFO, "registered worker with workerid " << workerid);
   reply->set_workerid(workerid);
   schedule();
   return Status::OK;
 }
 
 Status SchedulerService::RegisterFunction(ServerContext* context, const RegisterFunctionRequest* request, AckReply* reply) {
-  std::cout << "RegisterFunction: workerid is" << request->workerid() << std::endl;
+  ORCH_LOG(ORCH_INFO, "register function " << request->fnname() <<  " from workerid " << request->workerid());
   register_function(request->fnname(), request->workerid(), request->num_return_vals());
+  schedule();
+  return Status::OK;
+}
+
+Status SchedulerService::ObjReady(ServerContext* context, const ObjReadyRequest* request, AckReply* reply) {
+  ORCH_LOG(ORCH_VERBOSE, "object " << request->objref() << " ready on store " << request->objstoreid());
+  add_location(request->objref(), request->objstoreid());
+  schedule();
+  return Status::OK;
+}
+
+Status SchedulerService::WorkerReady(ServerContext* context, const WorkerReadyRequest* request, AckReply* reply) {
+  ORCH_LOG(ORCH_INFO, "worker " << request->workerid() << " reported back");
+  {
+    std::lock_guard<std::mutex> lock(avail_workers_lock_);
+    avail_workers_.push_back(request->workerid());
+  }
   schedule();
   return Status::OK;
 }
@@ -71,6 +90,16 @@ Status SchedulerService::RegisterFunction(ServerContext* context, const Register
 Status SchedulerService::GetDebugInfo(ServerContext* context, const GetDebugInfoRequest* request, GetDebugInfoReply* reply) {
   debug_info(*request, reply);
   return Status::OK;
+}
+
+void SchedulerService::deliver_object(ObjRef objref, ObjStoreId from, ObjStoreId to) {
+  ClientContext context;
+  AckReply reply;
+  DeliverObjRequest request;
+  request.set_objref(objref);
+  std::lock_guard<std::mutex> lock(objstores_lock_);
+  request.set_objstore_address(objstores_[to].address);
+  objstores_[from].objstore_stub->DeliverObj(&context, request, &reply);
 }
 
 void SchedulerService::schedule() {
@@ -99,21 +128,17 @@ void SchedulerService::submit_task(std::unique_ptr<Call> call, WorkerId workerid
   ClientContext context;
   InvokeCallRequest request;
   InvokeCallReply reply;
-  std::cout << "sending arguments now" << std::endl;
+  ORCH_LOG(ORCH_INFO, "starting to send arguments");
   for (size_t i = 0; i < call->arg_size(); ++i) {
     if (!call->arg(i).has_obj()) {
-      std::cout << "need to send object ref" << call->arg(i).ref() << std::endl;
+      ObjRef objref = call->arg(i).ref();
+      ORCH_LOG(ORCH_INFO, "call contains object ref " << objref);
       std::lock_guard<std::mutex> objtable_lock(objtable_lock_);
       auto &objstores = objtable_[call->arg(i).ref()];
       std::lock_guard<std::mutex> workers_lock(workers_lock_);
       if (!std::binary_search(objstores.begin(), objstores.end(), workers_[workerid].objstoreid)) {
-        std::cout << "lost object store, need to do recovery" << std::endl;
-        std::exit(1);
+        deliver_object(objref, pick_objstore(objref), workers_[workerid].objstoreid);
       }
-      // if (objstoreid != workers_[workerid].objstoreid) {
-      //  std::lock_guard<std::mutex> objstores_lock(objstores_lock_);
-      //  objstores_.
-      // }
     }
   }
   request.set_allocated_call(call.release()); // protobuf object takes ownership
@@ -134,25 +159,22 @@ bool SchedulerService::can_run(const Call& task) {
 }
 
 WorkerId SchedulerService::register_worker(const std::string& worker_address, const std::string& objstore_address) {
+  ORCH_LOG(ORCH_INFO, "registering worker " << worker_address << " connected to object store " << objstore_address);
   ObjStoreId objstoreid = std::numeric_limits<size_t>::max();
-  objstores_lock_.lock();
-  for (size_t i = 0; i < objstores_.size(); ++i) {
-    std::cout << "address: " << objstores_[i].address << std::endl;
-    std::cout << "my address: " << objstore_address << std::endl;
-    if (objstores_[i].address == objstore_address) {
-      objstoreid = i;
+  for (int num_attempts = 0; num_attempts < 5; ++num_attempts) {
+    std::lock_guard<std::mutex> lock(objstores_lock_);
+    for (size_t i = 0; i < objstores_.size(); ++i) {
+      if (objstores_[i].address == objstore_address) {
+        objstoreid = i;
+      }
+    }
+    if (objstoreid == std::numeric_limits<size_t>::max()) {
+      std::this_thread::sleep_for (std::chrono::milliseconds(100));
     }
   }
   if (objstoreid == std::numeric_limits<size_t>::max()) {
-    // register objstore
-    objstoreid = objstores_.size();
-    auto channel = grpc::CreateChannel(objstore_address, grpc::InsecureChannelCredentials());
-    objstores_.push_back(ObjStoreHandle());
-    objstores_[objstoreid].address = objstore_address;
-    objstores_[objstoreid].channel = channel;
-    objstores_[objstoreid].objstore_stub = ObjStore::NewStub(channel);
+    ORCH_LOG(ORCH_FATAL, "object store with address " << objstore_address << " not yet registered");
   }
-  objstores_lock_.unlock();
   workers_lock_.lock();
   WorkerId workerid = workers_.size();
   workers_.push_back(WorkerHandle());
@@ -168,36 +190,32 @@ WorkerId SchedulerService::register_worker(const std::string& worker_address, co
 }
 
 ObjRef SchedulerService::register_new_object() {
-  objtable_lock_.lock();
+  std::lock_guard<std::mutex> lock(objtable_lock_);
   ObjRef result = objtable_.size();
   objtable_.push_back(std::vector<ObjStoreId>());
-  objtable_lock_.unlock();
   return result;
 }
 
 void SchedulerService::add_location(ObjRef objref, ObjStoreId objstoreid) {
-  objtable_lock_.lock();
+  std::lock_guard<std::mutex> objtable_lock(objtable_lock_);
   // do a binary search
   auto pos = std::lower_bound(objtable_[objref].begin(), objtable_[objref].end(), objstoreid);
   if (pos == objtable_[objref].end() || objstoreid < *pos) {
     objtable_[objref].insert(pos, objstoreid);
   }
-  objtable_lock_.unlock();
 }
 
 ObjStoreId SchedulerService::get_store(WorkerId workerid) {
-  workers_lock_.lock();
+  std::lock_guard<std::mutex> lock(workers_lock_);
   ObjStoreId result = workers_[workerid].objstoreid;
-  workers_lock_.unlock();
   return result;
 }
 
 void SchedulerService::register_function(const std::string& name, WorkerId workerid, size_t num_return_vals) {
-  fntable_lock_.lock();
+  std::lock_guard<std::mutex> lock(fntable_lock_);
   FnInfo& info = fntable_[name];
   info.set_num_return_vals(num_return_vals);
   info.add_worker(workerid);
-  fntable_lock_.unlock();
 }
 
 void SchedulerService::debug_info(const GetDebugInfoRequest& request, GetDebugInfoReply* reply) {
@@ -224,6 +242,12 @@ void SchedulerService::debug_info(const GetDebugInfoRequest& request, GetDebugIn
     reply->add_avail_worker(entry);
   }
   avail_workers_lock_.unlock();
+}
+
+ObjStoreId SchedulerService::pick_objstore(ObjRef objref) {
+  std::mt19937 rng;
+  std::uniform_int_distribution<int> uni(0, objtable_[objref].size()-1);
+  return uni(rng);
 }
 
 void start_scheduler_service(const char* server_address) {

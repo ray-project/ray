@@ -35,6 +35,21 @@ public:
 typedef std::vector<std::vector<ObjStoreId> > ObjTable;
 typedef std::unordered_map<std::string, FnInfo> FnTable;
 
+#define ORCH_VERBOSE -1
+#define ORCH_INFO 0
+#define ORCH_DEBUG 1
+#define ORCH_FATAL 2
+
+#define ORCH_LOG(LEVEL, MESSAGE) \
+  if (LEVEL == ORCH_VERBOSE) { \
+    \
+  } else if (LEVEL == ORCH_FATAL) { \
+    std::cerr << "fatal error occured: " << MESSAGE << std::endl; \
+    std::exit(1); \
+  } else { \
+    std::cout << MESSAGE << std::endl; \
+  }
+
 class objstore_not_registered_error : public std::runtime_error
 {
 public:
