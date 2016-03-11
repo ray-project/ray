@@ -57,7 +57,7 @@ def main_loop(worker=global_worker):
     arguments = get_arguments_for_execution(worker.functions[func_name], args, worker) # get args from objstore
     outputs = worker.functions[func_name].executor(arguments) # execute the function
     store_outputs_in_objstore(return_objrefs, outputs, worker) # store output in local object store
-    # TODO(rkn): notify the scheduler that the task has completed, orchpy.lib.notify_task_completed(worker.handle)
+    orchpy.lib.notify_task_completed(worker.handle) # notify the scheduler that the task has completed
 
 def distributed(arg_types, return_types, worker=global_worker):
   def distributed_decorator(func):

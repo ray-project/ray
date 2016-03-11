@@ -62,6 +62,8 @@ class Worker {
   void start_worker_service();
   // wait for next task from the RPC system
   Call* receive_next_task();
+  // tell the scheduler that we are done with the current task and request the next one
+  void notify_task_completed();
 
  private:
   const size_t CHUNK_SIZE = 8 * 1024;

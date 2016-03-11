@@ -63,7 +63,7 @@ message ChangeCountRequest {
   uint64 objref = 1;
 }
 
-message GetDebugInfoRequest {
+message SchedulerDebugInfoRequest {
   bool do_scheduling = 1;
 }
 
@@ -72,7 +72,7 @@ message FnTableEntry {
   uint64 num_return_vals = 2;
 }
 
-message GetDebugInfoReply {
+message SchedulerDebugInfoReply {
   repeated Call task = 1;
   repeated uint64 avail_worker = 3;
   map<string, FnTableEntry> function_table = 2;
@@ -100,7 +100,7 @@ service Scheduler {
   // used by the worker to report back and ask for more work
   rpc WorkerReady(WorkerReadyRequest) returns (AckReply);
   // get debugging information from the scheduler
-  rpc GetDebugInfo(GetDebugInfoRequest) returns (GetDebugInfoReply);
+  rpc SchedulerDebugInfo(SchedulerDebugInfoRequest) returns (SchedulerDebugInfoReply);
 }
 
 message DeliverObjRequest {
@@ -132,9 +132,9 @@ message GetObjReply {
   uint64 size = 3;
 }
 
-message DebugInfoRequest {}
+message ObjStoreDebugInfoRequest {}
 
-message DebugInfoReply {
+message ObjStoreDebugInfoReply {
   repeated uint64 objref = 1;
 }
 
@@ -144,7 +144,7 @@ service ObjStore {
   // Accept incoming data from another object store
   rpc StreamObj(stream ObjChunk) returns (AckReply);
   rpc GetObj(GetObjRequest) returns (GetObjReply);
-  rpc DebugInfo(DebugInfoRequest) returns (DebugInfoReply);
+  rpc ObjStoreDebugInfo(ObjStoreDebugInfoRequest) returns (ObjStoreDebugInfoReply);
 }
 
 message InvokeCallRequest {

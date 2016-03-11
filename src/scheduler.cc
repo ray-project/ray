@@ -87,7 +87,7 @@ Status SchedulerService::WorkerReady(ServerContext* context, const WorkerReadyRe
   return Status::OK;
 }
 
-Status SchedulerService::GetDebugInfo(ServerContext* context, const GetDebugInfoRequest* request, GetDebugInfoReply* reply) {
+Status SchedulerService::SchedulerDebugInfo(ServerContext* context, const SchedulerDebugInfoRequest* request, SchedulerDebugInfoReply* reply) {
   debug_info(*request, reply);
   return Status::OK;
 }
@@ -218,7 +218,7 @@ void SchedulerService::register_function(const std::string& name, WorkerId worke
   info.add_worker(workerid);
 }
 
-void SchedulerService::debug_info(const GetDebugInfoRequest& request, GetDebugInfoReply* reply) {
+void SchedulerService::debug_info(const SchedulerDebugInfoRequest& request, SchedulerDebugInfoReply* reply) {
   if (request.do_scheduling()) {
     schedule();
   }

@@ -72,7 +72,7 @@ Status ObjStoreService::DeliverObj(ServerContext* context, const DeliverObjReque
   return status;
 }
 
-Status ObjStoreService::DebugInfo(ServerContext* context, const DebugInfoRequest* request, DebugInfoReply* reply) {
+Status ObjStoreService::ObjStoreDebugInfo(ServerContext* context, const ObjStoreDebugInfoRequest* request, ObjStoreDebugInfoReply* reply) {
   std::lock_guard<std::mutex> memory_lock(memory_lock_);
   for (const auto& entry : memory_) {
     reply->add_objref(entry.first);

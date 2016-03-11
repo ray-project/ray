@@ -41,7 +41,7 @@ public:
   ~ObjStoreService();
 
   Status DeliverObj(ServerContext* context, const DeliverObjRequest* request, AckReply* reply) override;
-  Status DebugInfo(ServerContext* context, const DebugInfoRequest* request, DebugInfoReply* reply) override;
+  Status ObjStoreDebugInfo(ServerContext* context, const ObjStoreDebugInfoRequest* request, ObjStoreDebugInfoReply* reply) override;
   Status GetObj(ServerContext* context, const GetObjRequest* request, GetObjReply* reply) override;
   Status StreamObj(ServerContext* context, ServerReader<ObjChunk>* reader, AckReply* reply) override;
 private:

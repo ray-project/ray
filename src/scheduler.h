@@ -45,7 +45,7 @@ public:
   Status RegisterFunction(ServerContext* context, const RegisterFunctionRequest* request, AckReply* reply) override;
   Status ObjReady(ServerContext* context, const ObjReadyRequest* request, AckReply* reply) override;
   Status WorkerReady(ServerContext* context, const WorkerReadyRequest* request, AckReply* reply) override;
-  Status GetDebugInfo(ServerContext* context, const GetDebugInfoRequest* request, GetDebugInfoReply* reply) override;
+  Status SchedulerDebugInfo(ServerContext* context, const SchedulerDebugInfoRequest* request, SchedulerDebugInfoReply* reply) override;
 
   // ask an object store to send object to another objectstore
   void deliver_object(ObjRef objref, ObjStoreId from, ObjStoreId to);
@@ -66,7 +66,7 @@ public:
   // register a function with the scheduler
   void register_function(const std::string& name, WorkerId workerid, size_t num_return_vals);
   // get debugging information for the scheduler
-  void debug_info(const GetDebugInfoRequest& request, GetDebugInfoReply* reply);
+  void debug_info(const SchedulerDebugInfoRequest& request, SchedulerDebugInfoReply* reply);
 private:
   // pick an objectstore that holds a given object (needs protection by objtable_lock_)
   ObjStoreId pick_objstore(ObjRef objref);
