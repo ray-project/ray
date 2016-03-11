@@ -61,6 +61,30 @@ class SerializationTest(unittest.TestCase):
     b = orchpy.lib.deserialize_object(res)
     self.assertTrue((a == b).all())
 
+class OrchPyLibTest(unittest.TestCase):
+
+    def testOrchPyLib(self):
+      scheduler_port = new_scheduler_port()
+      objstore_port = new_objstore_port()
+      worker_port = new_worker_port()
+
+      services.start_scheduler(address(IP_ADDRESS, scheduler_port))
+
+      time.sleep(0.1)
+
+      services.start_objstore(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port))
+
+      time.sleep(0.2)
+
+      w = worker.Worker()
+
+      worker.connect(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port), address(IP_ADDRESS, worker_port), w)
+
+      w.put_object(orchpy.lib.ObjRef(0), 'hello world')
+      result = w.get_object(orchpy.lib.ObjRef(0))
+
+      self.assertEqual(result, 'hello world')
+
 class ObjStoreTest(unittest.TestCase):
 
   """Test setting up object stores, transfering data between them and retrieving data to a client"""
@@ -140,12 +164,12 @@ class SchedulerTest(unittest.TestCase):
 
     time.sleep(0.2)
 
-    # value_after = worker.pull(objref, worker1)
-    # self.assertEqual(value_before, value_after)
+    value_after = worker.pull(objref[0], worker1)
+    self.assertEqual(value_before, value_after)
 
     time.sleep(0.1)
 
-    reply = scheduler_stub.GetDebugInfo(orchestra_pb2.GetDebugInfoRequest(), TIMEOUT_SECONDS)
+    reply = scheduler_stub.SchedulerDebugInfo(orchestra_pb2.SchedulerDebugInfoRequest(), TIMEOUT_SECONDS)
 
     services.cleanup()
 

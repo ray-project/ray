@@ -11,23 +11,6 @@
 #include "worker.h"
 
 extern "C" {
-  // Error handling
-
-  static PyObject *OrchPyError;
-}
-
-// extracts a pointer from a python C API capsule
-template<typename T>
-T* get_pointer_or_fail(PyObject* capsule, const char* name) {
-  if (PyCapsule_IsValid(capsule, name)) {
-    return static_cast<T*>(PyCapsule_GetPointer(capsule, name));
-  } else {
-    PyErr_SetString(OrchPyError, "not a vaid capsule");
-    return NULL;
-  }
-}
-
-extern "C" {
 
 // Object references
 
@@ -108,6 +91,50 @@ PyObject* make_pyobjref(ObjRef objref) {
   PyObject* result = PyObject_CallObject((PyObject*) &PyObjRefType, arglist);
   Py_DECREF(arglist);
   return result;
+}
+
+// Error handling
+
+static PyObject *OrchPyError;
+
+int PyObjectToCall(PyObject* object, Call **call) {
+  if (PyCapsule_IsValid(object, "call")) {
+    *call = static_cast<Call*>(PyCapsule_GetPointer(object, "call"));
+    return 1;
+  } else {
+    PyErr_SetString(PyExc_TypeError, "must be a 'call' capsule");
+    return 0;
+  }
+}
+
+int PyObjectToObj(PyObject* object, Obj **obj) {
+  if (PyCapsule_IsValid(object, "obj")) {
+    *obj = static_cast<Obj*>(PyCapsule_GetPointer(object, "obj"));
+    return 1;
+  } else {
+    PyErr_SetString(PyExc_TypeError, "must be a 'obj' capsule");
+    return 0;
+  }
+}
+
+int PyObjectToWorker(PyObject* object, Worker **worker) {
+  if (PyCapsule_IsValid(object, "worker")) {
+    *worker = static_cast<Worker*>(PyCapsule_GetPointer(object, "worker"));
+    return 1;
+  } else {
+    PyErr_SetString(PyExc_TypeError, "must be a 'worker' capsule");
+    return 0;
+  }
+}
+
+int PyObjectToObjRef(PyObject* object, ObjRef *objref) {
+  if (PyObject_IsInstance(object, (PyObject*)&PyObjRefType)) {
+    *objref = ((PyObjRef*) object)->val;
+    return 1;
+  } else {
+    PyErr_SetString(PyExc_TypeError, "must be a 'worker' capsule");
+    return 0;
+  }
 }
 
 // Serialization
@@ -206,12 +233,8 @@ PyObject* serialize_object(PyObject* self, PyObject* args) {
 }
 
 PyObject* deserialize_object(PyObject* self, PyObject* args) {
-  PyObject* capsule;
-  if (!PyArg_ParseTuple(args, "O", &capsule)) {
-    return NULL;
-  }
-  Obj* obj = get_pointer_or_fail<Obj>(capsule, "obj");
-  if (!obj) {
+  Obj* obj;
+  if (!PyArg_ParseTuple(args, "O&", &PyObjectToObj, &obj)) {
     return NULL;
   }
   return deserialize(*obj);
@@ -239,9 +262,8 @@ PyObject* serialize_call(PyObject* self, PyObject* args) {
 }
 
 PyObject* deserialize_call(PyObject* self, PyObject* args) {
-  PyObject* capsule = PyTuple_GetItem(args, 0);
-  Call* call = get_pointer_or_fail<Call>(capsule, "call");
-  if (!call) {
+  Call* call;
+  if (!PyArg_ParseTuple(args, "O&", &PyObjectToCall, &call)) {
     return NULL;
   }
   PyObject* string = PyString_FromStringAndSize(call->name().c_str(), call->name().size());
@@ -250,7 +272,7 @@ PyObject* deserialize_call(PyObject* self, PyObject* args) {
   for (int i = 0; i < argsize; ++i) {
     const Value& val = call->arg(i);
     if (!val.has_obj()) {
-      // TODO: Deserialize object reference here
+      PyList_SetItem(arglist, i, make_pyobjref(val.ref()));
     } else {
       PyList_SetItem(arglist, i, deserialize(val.obj()));
     }
@@ -280,9 +302,8 @@ PyObject* create_worker(PyObject* self, PyObject* args) {
 }
 
 PyObject* wait_for_next_task(PyObject* self, PyObject* args) {
-  PyObject* capsule = PyTuple_GetItem(args, 0);
-  Worker* worker = get_pointer_or_fail<Worker>(capsule, "worker");
-  if (!worker) {
+  Worker* worker;
+  if (!PyArg_ParseTuple(args, "O&", &PyObjectToWorker, &worker)) {
     return NULL;
   }
   Call* call = worker->receive_next_task();
@@ -290,17 +311,9 @@ PyObject* wait_for_next_task(PyObject* self, PyObject* args) {
 }
 
 PyObject* remote_call(PyObject* self, PyObject* args) {
-  PyObject* worker_capsule;
-  PyObject* call_capsule;
-  if (!PyArg_ParseTuple(args, "OO", &worker_capsule, &call_capsule)) {
-    return NULL;
-  }
-  Worker* worker = get_pointer_or_fail<Worker>(worker_capsule, "worker");
-  if (!worker) {
-    return NULL;
-  }
-  Call* call = get_pointer_or_fail<Call>(call_capsule, "call");
-  if (!call) {
+  Worker* worker;
+  Call* call;
+  if (!PyArg_ParseTuple(args, "O&O&", &PyObjectToWorker, &worker, &PyObjectToCall, &call)) {
     return NULL;
   }
   RemoteCallRequest request;
@@ -315,111 +328,81 @@ PyObject* remote_call(PyObject* self, PyObject* args) {
   return list;
 }
 
-PyObject* register_function(PyObject* self, PyObject* args) {
-  PyObject* worker_capsule;
-  const char* function_name;
-  int num_return_vals;
-  if (!PyArg_ParseTuple(args, "Osi", &worker_capsule, &function_name, &num_return_vals)) {
+PyObject* notify_task_completed(PyObject* self, PyObject* args) {
+  Worker* worker;
+  if (!PyArg_ParseTuple(args, "O&", &PyObjectToWorker, &worker)) {
     return NULL;
   }
-  Worker* worker = get_pointer_or_fail<Worker>(worker_capsule, "worker");
-  if (!worker) {
+  worker->notify_task_completed();
+  Py_RETURN_NONE;
+}
+
+PyObject* register_function(PyObject* self, PyObject* args) {
+  Worker* worker;
+  const char* function_name;
+  int num_return_vals;
+  if (!PyArg_ParseTuple(args, "O&si", &PyObjectToWorker, &worker, &function_name, &num_return_vals)) {
     return NULL;
   }
   worker->register_function(std::string(function_name), num_return_vals);
   Py_RETURN_NONE;
 }
 
-// TODO: test this
 PyObject* push_object(PyObject* self, PyObject* args) {
-  PyObject* worker_capsule;
-  PyObject* obj_capsule;
-  if (!PyArg_ParseTuple(args, "OO", &worker_capsule, &obj_capsule)) {
-    return NULL;
-  }
-  Worker* worker = get_pointer_or_fail<Worker>(worker_capsule, "worker");
-  if (!worker) {
-    return NULL;
-  }
-  Obj* obj = get_pointer_or_fail<Obj>(obj_capsule, "obj");
-  if (!obj) {
+  Worker* worker;
+  Obj* obj;
+  if (!PyArg_ParseTuple(args, "O&O&", &PyObjectToWorker, &worker, &PyObjectToObj, &obj)) {
     return NULL;
   }
   ObjRef objref = worker->push_object(obj);
   return make_pyobjref(objref);
 }
 
-// TODO: test this
 PyObject* put_object(PyObject* self, PyObject* args) {
-  PyObject* worker_capsule;
-  PyObject* pyobjref;
-  PyObject* obj_capsule;
-  if (!PyArg_ParseTuple(args, "OOO", &worker_capsule, &pyobjref, &obj_capsule)) {
+  Worker* worker;
+  ObjRef objref;
+  Obj* obj;
+  if (!PyArg_ParseTuple(args, "O&O&O&", &PyObjectToWorker, &worker, &PyObjectToObjRef, &objref, &PyObjectToObj, &obj)) {
     return NULL;
   }
-  Worker* worker = get_pointer_or_fail<Worker>(worker_capsule, "worker");
-  if (!worker) {
-    return NULL;
-  }
-  Obj* obj = get_pointer_or_fail<Obj>(obj_capsule, "obj");
-  if (!obj) {
-    return NULL;
-  }
-  ObjRef objref = ((PyObjRef*) pyobjref)->val;
   worker->put_object(objref, obj);
   Py_RETURN_NONE;
 }
 
 PyObject* get_object(PyObject* self, PyObject* args) {
-  PyObject* worker_capsule;
-  PyObject* pyobjref;
-  if (!PyArg_ParseTuple(args, "OO", &worker_capsule, &pyobjref)) {
+  Worker* worker;
+  ObjRef objref;
+  if (!PyArg_ParseTuple(args, "O&O&", &PyObjectToWorker, &worker, &PyObjectToObjRef, &objref)) {
     return NULL;
   }
-  Worker* worker = get_pointer_or_fail<Worker>(worker_capsule, "worker");
-  if (!worker) {
-    return NULL;
-  }
-  ObjRef objref = ((PyObjRef*) pyobjref)->val;
   slice s = worker->get_object(objref);
   Obj* obj = new Obj(); // TODO: Make sure this will get deleted
   obj->ParseFromString(std::string(s.data, s.len));
   return PyCapsule_New(static_cast<void*>(obj), "obj", NULL);
 }
 
-// TODO: implement this
 PyObject* pull_object(PyObject* self, PyObject* args) {
-  PyObject* worker_capsule;
-  PyObject* pyobjref;
-  if (!PyArg_ParseTuple(args, "OO", &worker_capsule, &pyobjref)) {
+  Worker* worker;
+  ObjRef objref;
+  if (!PyArg_ParseTuple(args, "O&O&", &PyObjectToWorker, &worker, &PyObjectToObjRef, &objref)) {
     return NULL;
   }
-  Worker* worker = get_pointer_or_fail<Worker>(worker_capsule, "worker");
-  if (!worker) {
-    return NULL;
-  }
-  ObjRef objref = ((PyObjRef*) pyobjref)->val;
   slice s = worker->get_object(objref);
   Obj* obj = new Obj(); // TODO: Make sure this will get deleted
   obj->ParseFromString(std::string(s.data, s.len));
   return PyCapsule_New(static_cast<void*>(obj), "obj", NULL);
 }
 
-// TODO: test this
 PyObject* start_worker_service(PyObject* self, PyObject* args) {
-  PyObject* worker_capsule;
-  if (!PyArg_ParseTuple(args, "O", &worker_capsule)) {
-    return NULL;
-  }
-  Worker* worker = get_pointer_or_fail<Worker>(worker_capsule, "worker");
-  if (!worker) {
+  Worker* worker;
+  if (!PyArg_ParseTuple(args, "O&", &PyObjectToWorker, &worker)) {
     return NULL;
   }
   worker->start_worker_service();
   Py_RETURN_NONE;
 }
 
-static PyMethodDef SymphonyMethods[] = {
+static PyMethodDef OrchPyLibMethods[] = {
  { "serialize_object", serialize_object, METH_VARARGS, "serialize an object to protocol buffers" },
  { "deserialize_object", deserialize_object, METH_VARARGS, "deserialize an object from protocol buffers" },
  { "serialize_call", serialize_call, METH_VARARGS, "serialize a call to protocol buffers" },
@@ -432,6 +415,7 @@ static PyMethodDef SymphonyMethods[] = {
  { "pull_object" , pull_object, METH_VARARGS, "pull object with a given object id from the object store" },
  { "wait_for_next_task", wait_for_next_task, METH_VARARGS, "get next task from scheduler (blocking)" },
  { "remote_call", remote_call, METH_VARARGS, "call a remote function" },
+ { "notify_task_completed", notify_task_completed, METH_VARARGS, "notify the scheduler that a task has been completed" },
  { "start_worker_service", start_worker_service, METH_VARARGS, "start the worker service" },
  { NULL, NULL, 0, NULL }
 };
@@ -442,7 +426,7 @@ PyMODINIT_FUNC initliborchpylib(void) {
   if (PyType_Ready(&PyObjRefType) < 0) {
     return;
   }
-  m = Py_InitModule3("liborchpylib", SymphonyMethods, "Python C Extension for Orchestra");
+  m = Py_InitModule3("liborchpylib", OrchPyLibMethods, "Python C Extension for Orchestra");
   Py_INCREF(&PyObjRefType);
   PyModule_AddObject(m, "ObjRef", (PyObject *)&PyObjRefType);
   OrchPyError = PyErr_NewException("orchpy.error", NULL, NULL);
