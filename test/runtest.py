@@ -7,6 +7,8 @@ import time
 import subprocess32 as subprocess
 import os
 
+import arrays.single as single
+
 from google.protobuf.text_format import *
 
 from grpc.beta import implementations
@@ -84,6 +86,8 @@ class OrchPyLibTest(unittest.TestCase):
       result = w.get_object(orchpy.lib.ObjRef(0))
 
       self.assertEqual(result, 'hello world')
+
+      services.cleanup()
 
 class ObjStoreTest(unittest.TestCase):
 
@@ -216,7 +220,6 @@ class WorkerTest(unittest.TestCase):
       self.assertEqual(value_before, value_after)
 
     services.cleanup()
-
 
 if __name__ == '__main__':
     unittest.main()
