@@ -6,7 +6,7 @@ from Cython.Build import cythonize
 
 # because of relative paths, this must be run from inside orch/lib/orchpy/
 
-MACOSX = (sys.platform in ['darwin'])
+MACOSX = (sys.platform in ["darwin"])
 
 setup(
   name = "orchestra",
@@ -14,9 +14,9 @@ setup(
   use_2to3=True,
   packages=find_packages(),
   package_data = {
-    'orchpy': ['liborchpylib.dylib' if MACOSX else 'liborchpylib.so',
-               'scheduler',
-               'objstore']
+    "orchpy": ["liborchpylib.dylib" if MACOSX else "liborchpylib.so",
+               "scheduler",
+               "objstore"]
   },
   zip_safe=False
 )

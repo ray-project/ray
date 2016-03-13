@@ -1,3 +1,4 @@
+from types import ModuleType
 import typing
 
 import orchpy
@@ -28,10 +29,21 @@ class Worker(object):
   def remote_call(self, func_name, args):
     """Tell the scheduler to schedule the execution of the function with name `func_name` with arguments `args`. Retrieve object references for the outputs of the function from the scheduler and immediately return them."""
     call_capsule = orchpy.lib.serialize_call(func_name, args)
-    return orchpy.lib.remote_call(self.handle, call_capsule)
+    objrefs = orchpy.lib.remote_call(self.handle, call_capsule)
+    return objrefs
 
 # We make `global_worker` a global variable so that there is one worker per worker process.
 global_worker = Worker()
+
+def register_module(module, recursive=False, worker=global_worker):
+  print "registering functions in module {}.".format(module.__name__)
+  for name in dir(module):
+    val = getattr(module, name)
+    if hasattr(val, "is_distributed") and val.is_distributed:
+      print "registering {}.".format(val.func_name)
+      worker.register_function(val)
+    # elif recursive and isinstance(val, ModuleType):
+    #   register_module(val, recursive, worker)
 
 def connect(scheduler_addr, objstore_addr, worker_addr, worker=global_worker):
   if worker.connected:
@@ -70,23 +82,53 @@ def distributed(arg_types, return_types, worker=global_worker):
       return result
     def func_call(*args):
       """This is what gets run immediately when a worker calls a distributed function."""
-      # TODO(rkn): check types
-      return worker.remote_call(func_call.func_name, list(args))
+      check_arguments(func_call, list(args)) # throws an exception if args are invalid
+      objrefs = worker.remote_call(func_call.func_name, list(args))
+      return objrefs[0] if len(objrefs) == 1 else objrefs
     func_call.func_name = "{}.{}".format(func.__module__, func.__name__)
     func_call.executor = func_executor
     func_call.arg_types = arg_types
     func_call.return_types = return_types
+    func_call.is_distributed = True
     return func_call
   return distributed_decorator
 
 # helper method, this should not be called by the user
-def get_arguments_for_execution(function, args, worker=global_worker):
-  arguments = []
+def check_arguments(function, args):
   # check the number of args
   if len(args) != len(function.arg_types) and function.arg_types[-1] is not None:
     raise Exception("Function {} expects {} arguments, but received {}.".format(function.__name__, len(function.arg_types), len(args)))
   elif len(args) < len(function.arg_types) - 1 and function.arg_types[-1] is None:
     raise Exception("Function {} expects at least {} arguments, but received {}.".format(function.__name__, len(function.arg_types) - 1, len(args)))
+
+  for (i, arg) in enumerate(args):
+    if i < len(function.arg_types) - 1:
+      expected_type = function.arg_types[i]
+    elif i == len(function.arg_types) - 1 and function.arg_types[-1] is not None:
+      expected_type = function.arg_types[-1]
+    elif function.arg_types[-1] is None and len(function.arg_types > 1):
+      expected_type = function.arg_types[-2]
+    else:
+      assert False, "This code should be unreachable."
+
+    if type(arg) == orchpy.lib.ObjRef:
+      # TODO(rkn): When we have type information in the ObjRef, do type checking here.
+      pass
+    else:
+      if not isinstance(arg, expected_type): # TODO(rkn): This check doesn't really work, e.g., isinstance([1,2,3], typing.List[str]) == True
+        raise Exception("Argument {} for function {} has type {} but an argument of type {} was expected.".format(i, function.__name__, type(arg), expected_type))
+
+# helper method, this should not be called by the user
+def get_arguments_for_execution(function, args, worker=global_worker):
+  # TODO(rkn): Eventually, all of the type checking can be put in `check_arguments` above so that the error will happen immediately when calling a remote function.
+  arguments = []
+  """
+  # check the number of args
+  if len(args) != len(function.arg_types) and function.arg_types[-1] is not None:
+    raise Exception("Function {} expects {} arguments, but received {}.".format(function.__name__, len(function.arg_types), len(args)))
+  elif len(args) < len(function.arg_types) - 1 and function.arg_types[-1] is None:
+    raise Exception("Function {} expects at least {} arguments, but received {}.".format(function.__name__, len(function.arg_types) - 1, len(args)))
+  """
 
   for (i, arg) in enumerate(args):
     print "Pulling argument {} for function {}.".format(i, function.__name__)
@@ -108,8 +150,8 @@ def get_arguments_for_execution(function, args, worker=global_worker):
       # pass the argument by value
       argument = arg
 
-    if expected_type != type(argument):
-      raise Exception("Argument {} for function {} has type {} but an argument of type {} was expected.".format(i, function.__name__, type(argument), arg_type))
+    if not isinstance(argument, expected_type):
+      raise Exception("Argument {} for function {} has type {} but an argument of type {} was expected.".format(i, function.__name__, type(argument), expected_type))
     arguments.append(argument)
   return arguments
 
