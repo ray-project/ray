@@ -251,8 +251,14 @@ PyObject* serialize_call(PyObject* self, PyObject* args) {
   call->set_name(name, len);
   if (PyList_Check(arguments)) {
     for (size_t i = 0, size = PyList_Size(arguments); i < size; ++i) {
-      Obj* arg = call->add_arg()->mutable_obj();
-      serialize(PyList_GetItem(arguments, i), arg);
+      PyObject* element = PyList_GetItem(arguments, i);
+      if (PyObject_IsInstance(element, (PyObject*)&PyObjRefType)) {
+        ObjRef objref = ((PyObjRef*) element)->val;
+        call->add_arg()->set_ref(objref);
+      } else {
+        Obj* arg = call->add_arg()->mutable_obj();
+        serialize(PyList_GetItem(arguments, i), arg);
+      }
     }
   } else {
     PyErr_SetString(OrchPyError, "serialize_call: second argument needs to be a list");
