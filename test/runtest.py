@@ -83,7 +83,6 @@ class SerializationTest(unittest.TestCase):
     result = orchpy.lib.deserialize_object(capsule)
     self.assertTrue((a == result).all())
 
-"""
 class OrchPyLibTest(unittest.TestCase):
 
     def testOrchPyLib(self):
@@ -109,7 +108,6 @@ class OrchPyLibTest(unittest.TestCase):
       self.assertEqual(result, 'hello world')
 
       services.cleanup()
-"""
 
 class ObjStoreTest(unittest.TestCase):
 
