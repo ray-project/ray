@@ -41,15 +41,12 @@ message Call {
   repeated uint64 result = 3; // object references for result
 }
 
-enum DataType {
-  INT32 = 0;
-  INT64 = 1;
-  FLOAT32 = 2;
-  FLOAT64 = 3;
-}
-
 message Array {
   repeated uint64 shape = 1;
-  DataType dtype = 3;
-  repeated double double_data = 2;
+  sint64 dtype = 2;
+  repeated double double_data = 3;
+  repeated float float_data = 4;
+  repeated sint64 int_data = 5;
+  repeated uint64 uint_data = 6;
+  repeated uint64 objref_data = 7;
 }

@@ -79,6 +79,13 @@ Status ObjStoreService::ObjStoreDebugInfo(ServerContext* context, const ObjStore
   for (const auto& entry : memory_) {
     reply->add_objref(entry.first);
   }
+  for (int i = 0; i < request->objref_size(); ++i) {
+    ObjRef objref = request->objref(i);
+    Obj* obj = new Obj();
+    std::string data(memory_[objref].ptr.data, memory_[objref].ptr.len); // copies, but for debugging should be ok
+    obj->ParseFromString(data);
+    reply->mutable_obj()->AddAllocated(obj);
+  }
   return Status::OK;
 }
 
