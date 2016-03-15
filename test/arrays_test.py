@@ -73,30 +73,24 @@ class ArraysSingleTest(unittest.TestCase):
 
     # test eye
     ref = single.eye(3)
-    time.sleep(0.2)
     val = orchpy.pull(ref)
     self.assertTrue(np.alltrue(val == np.eye(3)))
 
     # test zeros
     ref = single.zeros([3, 4, 5])
-    time.sleep(0.2)
     val = orchpy.pull(ref)
     self.assertTrue(np.alltrue(val == np.zeros([3, 4, 5])))
 
     # test qr - pass by value
     val_a = np.random.normal(size=[10, 13])
-    time.sleep(0.2)
     ref_q, ref_r = single.linalg.qr(val_a)
-    time.sleep(0.2)
     val_q = orchpy.pull(ref_q)
     val_r = orchpy.pull(ref_r)
     self.assertTrue(np.allclose(np.dot(val_q, val_r), val_a))
 
     # test qr - pass by objref
     a = single.random.normal([10, 13])
-    time.sleep(0.2) # TODO(rkn): fails without this sleep
     ref_q, ref_r = single.linalg.qr(a)
-    time.sleep(0.2)
     val_a = orchpy.pull(a)
     val_q = orchpy.pull(ref_q)
     val_r = orchpy.pull(ref_r)

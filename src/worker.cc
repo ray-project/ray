@@ -1,6 +1,9 @@
 # include "worker.h"
 
 Status WorkerServiceImpl::InvokeCall(ServerContext* context, const InvokeCallRequest* request, InvokeCallReply* reply) {
+  // TODO(rkn): This method opens a message_queue, which may consume a
+  // filehandle. This should be changed to only open a queue once in the
+  // constructor.
   call_ = request->call(); // Copy call
   ORCH_LOG(ORCH_INFO, "invoked task " << request->call().name());
   try {
@@ -13,8 +16,22 @@ Status WorkerServiceImpl::InvokeCall(ServerContext* context, const InvokeCallReq
     std::cout << ex.what() << std::endl;
     // TODO: return Status;
   }
-  message_queue::remove(worker_address_.c_str());
   return Status::OK;
+}
+
+Worker::Worker(const std::string& worker_address, std::shared_ptr<Channel> scheduler_channel, std::shared_ptr<Channel> objstore_channel)
+    : worker_address_(worker_address),
+      scheduler_stub_(Scheduler::NewStub(scheduler_channel)),
+      objstore_stub_(ObjStore::NewStub(objstore_channel)) {
+  try {
+    // This creates the receive message queue.
+    const char* message_queue_name = worker_address_.c_str();
+    message_queue::remove(message_queue_name);
+    receive_queue_ = std::unique_ptr<message_queue>(new message_queue(create_only, message_queue_name, 1, sizeof(Call*)));
+  }
+  catch(interprocess_exception &ex) {
+    std::cout << ex.what() << std::endl;
+  }
 }
 
 RemoteCallReply Worker::remote_call(RemoteCallRequest* request) {
@@ -108,18 +125,15 @@ void Worker::register_function(const std::string& name, size_t num_return_vals) 
 Call* Worker::receive_next_task() {
   const char* message_queue_name = worker_address_.c_str();
   try {
-    message_queue::remove(message_queue_name);
-    message_queue mq(create_only, message_queue_name, 1, sizeof(Call*));
     unsigned int priority;
     message_queue::size_type recvd_size;
     Call* call;
     while (true) {
-      mq.receive(&call, sizeof(Call*), recvd_size, priority);
+      receive_queue_->receive(&call, sizeof(Call*), recvd_size, priority);
       return call;
     }
   }
   catch(interprocess_exception &ex){
-  	message_queue::remove(message_queue_name);
     std::cout << ex.what() << std::endl;
   }
 }

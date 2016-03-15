@@ -131,7 +131,6 @@ def get_arguments_for_execution(function, args, worker=global_worker):
   """
 
   for (i, arg) in enumerate(args):
-    print "Pulling argument {} for function {}.".format(i, function.__name__)
     if i < len(function.arg_types) - 1:
       expected_type = function.arg_types[i]
     elif i == len(function.arg_types) - 1 and function.arg_types[-1] is not None:
@@ -141,10 +140,9 @@ def get_arguments_for_execution(function, args, worker=global_worker):
     else:
       assert False, "This code should be unreachable."
 
-    argument = worker.get_object(arg) if type(arg) == orchpy.lib.ObjRef else arg
     if type(arg) == orchpy.lib.ObjRef:
       # get the object from the local object store
-      # TODO(rkn): Do we know that it is already there? Maybe we should call pull(arg, worker).
+      print "Getting argument {} for function {}.".format(i, function.__name__)
       argument = worker.get_object(arg)
     else:
       # pass the argument by value
