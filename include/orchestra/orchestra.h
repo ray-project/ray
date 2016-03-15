@@ -10,7 +10,7 @@ typedef size_t ObjStoreId;
 
 class FnInfo {
   size_t num_return_vals_;
-  std::vector<WorkerId> workers_;
+  std::vector<WorkerId> workers_; // `workers_` is a sorted vector
 public:
   void set_num_return_vals(size_t num) {
     num_return_vals_ = num;
@@ -19,13 +19,11 @@ public:
     return num_return_vals_;
   }
   void add_worker(WorkerId workerid) {
-    workers_.push_back(workerid);
+    // insert `workerid` into `workers_` so that `workers_` stays sorted
+    workers_.insert(std::lower_bound(workers_.begin(), workers_.end(), workerid), workerid);
   }
   size_t num_workers() const {
     return workers_.size();
-  }
-  ObjRef worker(size_t i) const {
-    return workers_[i];
   }
   const std::vector<WorkerId>& workers() const {
     return workers_;

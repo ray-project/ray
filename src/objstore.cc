@@ -1,4 +1,6 @@
 #include "objstore.h"
+#include <thread>
+#include <chrono>
 
 const size_t ObjStoreClient::CHUNK_SIZE = 8 * 1024;
 
@@ -84,13 +86,21 @@ Status ObjStoreService::GetObj(ServerContext* context, const GetObjRequest* requ
   // TODO(pcm): There is one remaining case where this can fail, i.e. if an object is
   // to be delivered from another store but hasn't yet arrived
   ObjRef objref = request->objref();
-  memory_lock_.lock();
+  while (true) {
+    // if the object has not been sent to the objstore, this has the potential to lead to an infinite loop
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    ORCH_LOG(ORCH_DEBUG, "looping in objstore " << objstoreid_ << " waiting for objref " << objref);
+    std::lock_guard<std::mutex> memory_lock(memory_lock_);
+    if (memory_.find(objref) != memory_.end()) {
+      break;
+    }
+  }
+  std::lock_guard<std::mutex> memory_lock(memory_lock_);
   shared_object& object = memory_[objref];
   reply->set_bucket(object.name);
   auto handle = object.memory->get_handle_from_address(object.ptr.data);
   reply->set_handle(handle);
   reply->set_size(object.ptr.len);
-  memory_lock_.unlock();
   return Status::OK;
 }
 

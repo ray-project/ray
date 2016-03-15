@@ -89,8 +89,11 @@ private:
   FnTable fntable_;
   std::mutex fntable_lock_;
   // List of pending tasks.
-  std::deque<std::unique_ptr<Call> > tasks_;
-  std::mutex tasks_lock_;
+  std::deque<std::unique_ptr<Call> > task_queue_;
+  std::mutex task_queue_lock_;
+  // List of pending pull calls.
+  std::vector<std::pair<WorkerId, ObjRef> > pull_queue_;
+  std::mutex pull_queue_lock_;
 };
 
 #endif

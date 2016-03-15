@@ -393,7 +393,7 @@ PyObject* pull_object(PyObject* self, PyObject* args) {
   if (!PyArg_ParseTuple(args, "O&O&", &PyObjectToWorker, &worker, &PyObjectToObjRef, &objref)) {
     return NULL;
   }
-  slice s = worker->get_object(objref);
+  slice s = worker->pull_object(objref);
   Obj* obj = new Obj(); // TODO: Make sure this will get deleted
   obj->ParseFromString(std::string(s.data, s.len));
   return PyCapsule_New(static_cast<void*>(obj), "obj", NULL);

@@ -37,11 +37,7 @@ private:
 
 class Worker {
  public:
-  Worker(const std::string& worker_address, std::shared_ptr<Channel> scheduler_channel, std::shared_ptr<Channel> objstore_channel)
-      : worker_address_(worker_address),
-        scheduler_stub_(Scheduler::NewStub(scheduler_channel)),
-        objstore_stub_(ObjStore::NewStub(objstore_channel))
-    {}
+  Worker(const std::string& worker_address, std::shared_ptr<Channel> scheduler_channel, std::shared_ptr<Channel> objstore_channel);
 
   // submit a remote call to the scheduler
   RemoteCallReply remote_call(RemoteCallRequest* request);
@@ -71,6 +67,7 @@ class Worker {
   std::unique_ptr<ObjStore::Stub> objstore_stub_;
   std::thread worker_server_thread_;
   std::thread other_thread_;
+  std::unique_ptr<message_queue> receive_queue_;
   managed_shared_memory segment_;
   WorkerId workerid_;
   std::string worker_address_;
