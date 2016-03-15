@@ -38,6 +38,18 @@ static int PyObjRef_init(PyObjRef *self, PyObject *args, PyObject *kwds) {
   return 0;
 };
 
+static int PyObjRef_compare(PyObject* a, PyObject* b) {
+  PyObjRef* A = (PyObjRef*) a;
+  PyObjRef* B = (PyObjRef*) b;
+  if (A->val < B->val) {
+    return -1;
+  }
+  if (A->val > B->val) {
+    return 1;
+  }
+  return 0;
+}
+
 static PyMemberDef PyObjRef_members[] = {
   {"val", T_INT, offsetof(PyObjRef, val), 0, "object reference"},
   {NULL}
@@ -53,7 +65,7 @@ static PyTypeObject PyObjRefType = {
   0,                         /* tp_print */
   0,                         /* tp_getattr */
   0,                         /* tp_setattr */
-  0,                         /* tp_compare */
+  PyObjRef_compare,          /* tp_compare */
   0,                         /* tp_repr */
   0,                         /* tp_as_number */
   0,                         /* tp_as_sequence */
@@ -132,7 +144,7 @@ int PyObjectToObjRef(PyObject* object, ObjRef *objref) {
     *objref = ((PyObjRef*) object)->val;
     return 1;
   } else {
-    PyErr_SetString(PyExc_TypeError, "must be a 'worker' capsule");
+    PyErr_SetString(PyExc_TypeError, "must be an object reference");
     return 0;
   }
 }
@@ -141,6 +153,7 @@ int PyObjectToObjRef(PyObject* object, ObjRef *objref) {
 
 // serialize will serialize the python object val into the protocol buffer
 // object obj, returns 0 if successful and something else if not
+// FIXME(pcm): This currently only works for contiguous arrays
 int serialize(PyObject* val, Obj* obj) {
   if (PyInt_Check(val)) {
     Int* data = obj->mutable_int_data();
@@ -164,19 +177,66 @@ int serialize(PyObject* val, Obj* obj) {
     PyString_AsStringAndSize(val, &buffer, &length); // creates pointer to internal buffer
     obj->mutable_string_data()->set_data(buffer, length);
   } else if (PyArray_Check(val)) {
-    PyArrayObject* array = PyArray_GETCONTIGUOUS((PyArrayObject*)val);
+    PyArrayObject* array = PyArray_GETCONTIGUOUS((PyArrayObject*) val);
     Array* data = obj->mutable_array_data();
     npy_intp size = PyArray_SIZE(array);
     for (int i = 0; i < PyArray_NDIM(array); ++i) {
       data->add_shape(PyArray_DIM(array, i));
     }
-    if (PyArray_ISFLOAT(array)) {
-      double* buffer = (double*) PyArray_DATA(array);
-      for (npy_intp i = 0; i < size; ++i) {
-        data->add_double_data(buffer[i]);
-      }
+    int typ = PyArray_TYPE(array);
+    data->set_dtype(typ);
+    switch (typ) {
+      case NPY_FLOAT: {
+          npy_float* buffer = (npy_float*) PyArray_DATA(array);
+          for (npy_intp i = 0; i < size; ++i) {
+            data->add_float_data(buffer[i]);
+          }
+        }
+        break;
+      case NPY_DOUBLE: {
+          npy_double* buffer = (npy_double*) PyArray_DATA(array);
+          for (npy_intp i = 0; i < size; ++i) {
+            data->add_double_data(buffer[i]);
+          }
+        }
+        break;
+      case NPY_INT8: {
+          npy_int8* buffer = (npy_int8*) PyArray_DATA(array);
+          for (npy_intp i = 0; i < size; ++i) {
+            data->add_int_data(buffer[i]);
+          }
+        }
+        break;
+      case NPY_UINT8: {
+          npy_uint8* buffer = (npy_uint8*) PyArray_DATA(array);
+          for (npy_intp i = 0; i < size; ++i) {
+            data->add_uint_data(buffer[i]);
+          }
+        }
+        break;
+      case NPY_OBJECT: { // FIXME(pcm): Support arbitrary python objects, not only objrefs
+          PyArrayIterObject* iter = (PyArrayIterObject*) PyArray_IterNew((PyObject*)array);
+          while (PyArray_ITER_NOTDONE(iter)) {
+            PyObject** item = (PyObject**) PyArray_ITER_DATA(iter);
+            ObjRef objref;
+            if (PyObject_IsInstance(*item, (PyObject*) &PyObjRefType)) {
+              objref = ((PyObjRef*) (*item))->val;
+            } else {
+              PyErr_SetString(PyExc_TypeError, "must be an object reference"); // TODO: improve error message
+              return -1;
+            }
+            data->add_objref_data(objref);
+            PyArray_ITER_NEXT(iter);
+          }
+          Py_XDECREF(iter);
+        }
+        break;
+      default:
+        PyErr_SetString(OrchPyError, "serialization: numpy datatype not know");
+        return -1;
     }
   } else {
+    PyErr_SetString(OrchPyError, "serialization: type not know");
     return -1;
   }
   return 0;
@@ -201,21 +261,65 @@ PyObject* deserialize(const Obj& obj) {
     return PyString_FromStringAndSize(buffer, length);
   } else if (obj.has_array_data()) {
     const Array& array = obj.array_data();
-    if (array.double_data_size() > 0) { // TODO: this is not quite right
+    std::vector<npy_intp> dims;
+    for (int i = 0; i < array.shape_size(); ++i) {
+      dims.push_back(array.shape(i));
+    }
+    PyArrayObject* pyarray = (PyArrayObject*) PyArray_SimpleNew(array.shape_size(), &dims[0], array.dtype());
+    if (array.double_data_size() > 0) { // TODO: handle empty array
       npy_intp size = array.double_data_size();
-      std::vector<npy_intp> dims;
-      for (int i = 0; i < array.shape_size(); ++i) {
-        dims.push_back(array.shape(i));
-      }
-      PyArrayObject* pyarray = (PyArrayObject*)PyArray_SimpleNew(array.shape_size(), &dims[0], NPY_DOUBLE);
-      double* buffer = (double*) PyArray_DATA(pyarray);
+      npy_double* buffer = (npy_double*) PyArray_DATA(pyarray);
       for (npy_intp i = 0; i < size; ++i) {
         buffer[i] = array.double_data(i);
       }
-      return (PyObject*)pyarray;
+    } else if (array.float_data_size() > 0) {
+      npy_intp size = array.float_data_size();
+      npy_float* buffer = (npy_float*) PyArray_DATA(pyarray);
+      for (npy_intp i = 0; i < size; ++i) {
+        buffer[i] = array.float_data(i);
+      }
+    } else if (array.int_data_size() > 0) {
+      npy_intp size = array.int_data_size();
+      switch (array.dtype()) {
+        case NPY_INT8: {
+            npy_int8* buffer = (npy_int8*) PyArray_DATA(pyarray);
+            for (npy_intp i = 0; i < size; ++i) {
+              buffer[i] = array.int_data(i);
+            }
+          }
+          break;
+        default:
+          PyErr_SetString(OrchPyError, "deserialization: internal error (array type not implemented)");
+          return NULL;
+      }
+    } else if (array.uint_data_size() > 0) {
+      npy_intp size = array.uint_data_size();
+      switch (array.dtype()) {
+        case NPY_UINT8: {
+            npy_uint8* buffer = (npy_uint8*) PyArray_DATA(pyarray);
+            for (npy_intp i = 0; i < size; ++i) {
+              buffer[i] = array.uint_data(i);
+            }
+          }
+          break;
+        default:
+          PyErr_SetString(OrchPyError, "deserialization: internal error (array type not implemented)");
+          return NULL;
+      }
+    } else if (array.objref_data_size() > 0) {
+      npy_intp size = array.objref_data_size();
+      PyObject** buffer = (PyObject**) PyArray_DATA(pyarray);
+      for (npy_intp i = 0; i < size; ++i) {
+        buffer[i] = make_pyobjref(array.objref_data(i));
+      }
+    } else {
+      PyErr_SetString(OrchPyError, "deserialization: internal error (array type not implemented)");
+      return NULL;
     }
+    return (PyObject*) pyarray;
   } else {
-    std::cout << "don't have object" << std::endl;
+    PyErr_SetString(OrchPyError, "deserialization: internal error (type not implemented)");
+    return NULL;
   }
 }
 
@@ -226,7 +330,6 @@ PyObject* serialize_object(PyObject* self, PyObject* args) {
     return NULL;
   }
   if (serialize(pyval, obj) != 0) {
-    PyErr_SetString(OrchPyError, "serialization: type not know"); // TODO: put a more expressive error message here
     return NULL;
   }
   return PyCapsule_New(static_cast<void*>(obj), "obj", NULL);

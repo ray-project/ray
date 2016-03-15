@@ -2,7 +2,6 @@ import sys
 
 from setuptools import setup, Extension, find_packages
 import setuptools
-from Cython.Build import cythonize
 
 # because of relative paths, this must be run from inside orch/lib/orchpy/
 

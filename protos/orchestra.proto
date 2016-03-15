@@ -132,10 +132,13 @@ message GetObjReply {
   uint64 size = 3;
 }
 
-message ObjStoreDebugInfoRequest {}
+message ObjStoreDebugInfoRequest {
+  repeated uint64 objref = 1; // get protocol buffer objects corresponding to objref
+}
 
 message ObjStoreDebugInfoReply {
-  repeated uint64 objref = 1;
+  repeated uint64 objref = 1; // list of object references in the store
+  repeated Obj obj = 2; // protocol buffer objects that were requested
 }
 
 service ObjStore {

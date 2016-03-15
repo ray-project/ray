@@ -54,15 +54,36 @@ class SerializationTest(unittest.TestCase):
     result = orchpy.lib.deserialize_object(serialized)
     self.assertEqual(data, result)
 
+  def numpyTypeTest(self, typ):
+    a = np.random.randint(0, 10, size=(100, 100)).astype(typ)
+    b = orchpy.lib.serialize_object(a)
+    c = orchpy.lib.deserialize_object(b)
+    self.assertTrue((a == c).all())
+
   def testSerialize(self):
-    data = [1, "hello", 3.0]
-    self.roundTripTest(data)
+    self.roundTripTest([1, "hello", 3.0])
+    self.roundTripTest(42)
+    self.roundTripTest("hello world")
+    self.roundTripTest(42.0)
 
     a = np.zeros((100, 100))
     res = orchpy.lib.serialize_object(a)
     b = orchpy.lib.deserialize_object(res)
     self.assertTrue((a == b).all())
 
+    self.numpyTypeTest('int8')
+    self.numpyTypeTest('uint8')
+    # self.numpyTypeTest('int16') # TODO(pcm): implement this
+    # self.numpyTypeTest('int32') # TODO(pcm): implement this
+    self.numpyTypeTest('float32')
+    self.numpyTypeTest('float64')
+
+    a = np.array([[orchpy.lib.ObjRef(0), orchpy.lib.ObjRef(1)], [orchpy.lib.ObjRef(41), orchpy.lib.ObjRef(42)]])
+    capsule = orchpy.lib.serialize_object(a)
+    result = orchpy.lib.deserialize_object(capsule)
+    self.assertTrue((a == result).all())
+
+"""
 class OrchPyLibTest(unittest.TestCase):
 
     def testOrchPyLib(self):
@@ -88,10 +109,11 @@ class OrchPyLibTest(unittest.TestCase):
       self.assertEqual(result, 'hello world')
 
       services.cleanup()
+"""
 
 class ObjStoreTest(unittest.TestCase):
 
-  """Test setting up object stores, transfering data between them and retrieving data to a client"""
+  # Test setting up object stores, transfering data between them and retrieving data to a client
   def testObjStore(self):
     scheduler_port = new_scheduler_port()
     objstore1_port = new_objstore_port()
