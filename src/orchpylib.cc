@@ -163,6 +163,14 @@ int serialize(PyObject* val, Obj* obj) {
     Double* data = obj->mutable_double_data();
     double d = PyFloat_AsDouble(val);
     data->set_data(d);
+  } else if (PyTuple_Check(val)) {
+    Tuple* data = obj->mutable_tuple_data();
+    for (size_t i = 0, size = PyTuple_Size(val); i < size; ++i) {
+      Obj* elem = data->add_elem();
+      if (serialize(PyTuple_GetItem(val, i), elem) != 0) {
+        return -1;
+      }
+    }
   } else if (PyList_Check(val)) {
     List* data = obj->mutable_list_data();
     for (size_t i = 0, size = PyList_Size(val); i < size; ++i) {
@@ -247,6 +255,14 @@ PyObject* deserialize(const Obj& obj) {
     return PyInt_FromLong(obj.int_data().data());
   } else if (obj.has_double_data()) {
     return PyFloat_FromDouble(obj.double_data().data());
+  } else if (obj.has_tuple_data()) {
+    const Tuple& data = obj.tuple_data();
+    size_t size = data.elem_size();
+    PyObject* tuple = PyTuple_New(size);
+    for (size_t i = 0; i < size; ++i) {
+      PyTuple_SetItem(tuple, i, deserialize(data.elem(i)));
+    }
+    return tuple;
   } else if (obj.has_list_data()) {
     const List& data = obj.list_data();
     size_t size = data.elem_size();

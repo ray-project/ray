@@ -21,12 +21,17 @@ message Obj {
   String string_data = 1;
   Int int_data = 2;
   Double double_data = 3;
+  Tuple tuple_data = 7;
   List list_data = 4;
   Array array_data = 5;
   PyObj pyobj_data = 6;
 }
 
 message List {
+  repeated Obj elem = 1;
+}
+
+message Tuple {
   repeated Obj elem = 1;
 }
 
