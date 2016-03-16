@@ -65,6 +65,7 @@ class SerializationTest(unittest.TestCase):
     self.roundTripTest(42)
     self.roundTripTest("hello world")
     self.roundTripTest(42.0)
+    self.roundTripTest((1.0, "hi"))
 
     a = np.zeros((100, 100))
     res = orchpy.lib.serialize_object(a)
