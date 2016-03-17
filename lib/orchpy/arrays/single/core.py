@@ -6,6 +6,10 @@ import orchpy as op
 def zeros(shape):
   return np.zeros(shape)
 
+@op.distributed([List[int]], [np.ndarray])
+def ones(shape):
+  return np.ones(shape)
+
 @op.distributed([int], [np.ndarray])
 def eye(dim):
   return np.eye(dim)
