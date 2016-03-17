@@ -1,5 +1,6 @@
 import unittest
 import orchpy
+import orchpy.serialization as serialization
 import orchpy.services as services
 import orchpy.worker as worker
 import numpy as np
@@ -50,14 +51,14 @@ def new_objstore_port():
 class SerializationTest(unittest.TestCase):
 
   def roundTripTest(self, data):
-    serialized = orchpy.lib.serialize_object(data)
-    result = orchpy.lib.deserialize_object(serialized)
+    serialized = serialization.serialize(data)
+    result = serialization.deserialize(serialized)
     self.assertEqual(data, result)
 
   def numpyTypeTest(self, typ):
     a = np.random.randint(0, 10, size=(100, 100)).astype(typ)
-    b = orchpy.lib.serialize_object(a)
-    c = orchpy.lib.deserialize_object(b)
+    b = serialization.serialize(a)
+    c = serialization.deserialize(b)
     self.assertTrue((a == c).all())
 
   def testSerialize(self):
@@ -68,8 +69,8 @@ class SerializationTest(unittest.TestCase):
     self.roundTripTest((1.0, "hi"))
 
     a = np.zeros((100, 100))
-    res = orchpy.lib.serialize_object(a)
-    b = orchpy.lib.deserialize_object(res)
+    res = serialization.serialize(a)
+    b = serialization.deserialize(res)
     self.assertTrue((a == b).all())
 
     self.numpyTypeTest('int8')
@@ -80,8 +81,8 @@ class SerializationTest(unittest.TestCase):
     self.numpyTypeTest('float64')
 
     a = np.array([[orchpy.lib.ObjRef(0), orchpy.lib.ObjRef(1)], [orchpy.lib.ObjRef(41), orchpy.lib.ObjRef(42)]])
-    capsule = orchpy.lib.serialize_object(a)
-    result = orchpy.lib.deserialize_object(capsule)
+    capsule = serialization.serialize(a)
+    result = serialization.deserialize(capsule)
     self.assertTrue((a == result).all())
 
 class OrchPyLibTest(unittest.TestCase):
@@ -101,7 +102,7 @@ class OrchPyLibTest(unittest.TestCase):
 
       w = worker.Worker()
 
-      worker.connect(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port), address(IP_ADDRESS, worker_port), w)
+      orchpy.connect(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port), address(IP_ADDRESS, worker_port), w)
 
       w.put_object(orchpy.lib.ObjRef(0), 'hello world')
       result = w.get_object(orchpy.lib.ObjRef(0))
@@ -134,22 +135,22 @@ class ObjStoreTest(unittest.TestCase):
     objstore2_stub = connect_to_objstore(IP_ADDRESS, objstore2_port)
 
     worker1 = worker.Worker()
-    worker.connect(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore1_port), address(IP_ADDRESS, worker1_port), worker1)
+    orchpy.connect(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore1_port), address(IP_ADDRESS, worker1_port), worker1)
 
     worker2 = worker.Worker()
-    worker.connect(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore2_port), address(IP_ADDRESS, worker2_port), worker2)
+    orchpy.connect(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore2_port), address(IP_ADDRESS, worker2_port), worker2)
 
     # pushing and pulling an object shouldn't change it
     for data in ["h", "h" * 10000, 0, 0.0]:
-      objref = worker.push(data, worker1)
-      result = worker.pull(objref, worker1)
+      objref = orchpy.push(data, worker1)
+      result = orchpy.pull(objref, worker1)
       self.assertEqual(result, data)
 
     # pushing an object, shipping it to another worker, and pulling it shouldn't change it
     for data in ["h", "h" * 10000, 0, 0.0]:
-      objref = worker.push(data, worker1)
+      objref = orchpy.push(data, worker1)
       response = objstore1_stub.DeliverObj(orchestra_pb2.DeliverObjRequest(objref=objref.val, objstore_address=address(IP_ADDRESS, objstore2_port)), TIMEOUT_SECONDS)
-      result = worker.pull(objref, worker2)
+      result = orchpy.pull(objref, worker2)
       self.assertEqual(result, data)
 
     services.cleanup()
@@ -176,7 +177,7 @@ class SchedulerTest(unittest.TestCase):
     time.sleep(0.2)
 
     worker1 = worker.Worker()
-    worker.connect(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port), address(IP_ADDRESS, worker1_port), worker1)
+    orchpy.connect(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port), address(IP_ADDRESS, worker1_port), worker1)
 
     test_dir = os.path.dirname(os.path.abspath(__file__))
     test_path = os.path.join(test_dir, "testrecv.py")
@@ -189,7 +190,7 @@ class SchedulerTest(unittest.TestCase):
 
     time.sleep(0.2)
 
-    value_after = worker.pull(objref[0], worker1)
+    value_after = orchpy.pull(objref[0], worker1)
     self.assertEqual(value_before, value_after)
 
     time.sleep(0.1)
@@ -214,30 +215,30 @@ class WorkerTest(unittest.TestCase):
     time.sleep(0.2)
 
     worker1 = worker.Worker()
-    worker.connect(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port), address(IP_ADDRESS, worker1_port), worker1)
+    orchpy.connect(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port), address(IP_ADDRESS, worker1_port), worker1)
 
     for i in range(100):
       value_before = i * 10 ** 6
-      objref = worker.push(value_before, worker1)
-      value_after = worker.pull(objref, worker1)
+      objref = orchpy.push(value_before, worker1)
+      value_after = orchpy.pull(objref, worker1)
       self.assertEqual(value_before, value_after)
 
     for i in range(100):
       value_before = i * 10 ** 6 * 1.0
-      objref = worker.push(value_before, worker1)
-      value_after = worker.pull(objref, worker1)
+      objref = orchpy.push(value_before, worker1)
+      value_after = orchpy.pull(objref, worker1)
       self.assertEqual(value_before, value_after)
 
     for i in range(100):
       value_before = "h" * i
-      objref = worker.push(value_before, worker1)
-      value_after = worker.pull(objref, worker1)
+      objref = orchpy.push(value_before, worker1)
+      value_after = orchpy.pull(objref, worker1)
       self.assertEqual(value_before, value_after)
 
     for i in range(100):
       value_before = [1] * i
-      objref = worker.push(value_before, worker1)
-      value_after = worker.pull(objref, worker1)
+      objref = orchpy.push(value_before, worker1)
+      value_after = orchpy.pull(objref, worker1)
       self.assertEqual(value_before, value_after)
 
     services.cleanup()

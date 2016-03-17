@@ -2,6 +2,7 @@ from types import ModuleType
 import typing
 
 import orchpy
+import serialization
 
 class Worker(object):
   """The methods in this class are considered unexposed to the user. The functions outside of this class are considered exposed."""
@@ -13,13 +14,13 @@ class Worker(object):
 
   def put_object(self, objref, value):
     """Put `value` in the local object store with objref `objref`. This assumes that the value for `objref` has not yet been placed in the local object store."""
-    object_capsule = orchpy.lib.serialize_object(value)
+    object_capsule = serialization.serialize(value)
     orchpy.lib.put_object(self.handle, objref, object_capsule)
 
   def get_object(self, objref):
     """Return the value from the local object store for objref `objref`. This will block until the value for `objref` has been written to the local object store."""
     object_capsule = orchpy.lib.get_object(self.handle, objref)
-    return orchpy.lib.deserialize_object(object_capsule)
+    return serialization.deserialize(object_capsule)
 
   def register_function(self, function):
     """Notify the scheduler that this worker can execute the function with name `func_name`. Store the function `function` locally."""
@@ -47,16 +48,16 @@ def register_module(module, recursive=False, worker=global_worker):
 
 def connect(scheduler_addr, objstore_addr, worker_addr, worker=global_worker):
   if worker.connected:
-    raise Exception("Worker called connect, but worker is already connected")
+    del worker.handle # TODO(rkn): Make sure this actually deallocates (need a destructor for the capsule)
   worker.handle = orchpy.lib.create_worker(scheduler_addr, objstore_addr, worker_addr)
   worker.connected = True
 
 def pull(objref, worker=global_worker):
   object_capsule = orchpy.lib.pull_object(worker.handle, objref)
-  return orchpy.lib.deserialize_object(object_capsule)
+  return serialization.deserialize(object_capsule)
 
 def push(value, worker=global_worker):
-  object_capsule = orchpy.lib.serialize_object(value)
+  object_capsule = serialization.serialize(value)
   return orchpy.lib.push_object(worker.handle, object_capsule)
 
 def main_loop(worker=global_worker):

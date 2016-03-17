@@ -1,13 +1,14 @@
 import unittest
 import orchpy
+import orchpy.serialization as serialization
 import orchpy.services as services
-import orchpy.worker as worker
 import numpy as np
 import time
 import subprocess32 as subprocess
 import os
 
 import arrays.single as single
+import arrays.dist as dist
 
 from google.protobuf.text_format import *
 
@@ -63,7 +64,7 @@ class ArraysSingleTest(unittest.TestCase):
 
     time.sleep(0.2)
 
-    worker.connect(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port), address(IP_ADDRESS, worker1_port))
+    orchpy.connect(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port), address(IP_ADDRESS, worker1_port))
 
     test_dir = os.path.dirname(os.path.abspath(__file__))
     test_path = os.path.join(test_dir, "testrecv.py")
@@ -95,6 +96,47 @@ class ArraysSingleTest(unittest.TestCase):
     val_q = orchpy.pull(ref_q)
     val_r = orchpy.pull(ref_r)
     self.assertTrue(np.allclose(np.dot(val_q, val_r), val_a))
+
+    services.cleanup()
+
+class ArraysDistTest(unittest.TestCase):
+
+  def testMethods(self):
+    x = dist.DistArray()
+    x.construct([2, 3, 4], float, np.array([[[orchpy.lib.ObjRef(0)]]]))
+    capsule = serialization.serialize(x)
+    y = serialization.deserialize(capsule)
+    self.assertEqual(x.shape, y.shape)
+    self.assertEqual(x.dtype, y.dtype)
+    self.assertEqual(x.objrefs[0, 0, 0].val, y.objrefs[0, 0, 0].val)
+
+  def testAssemble(self):
+    scheduler_port = new_scheduler_port()
+    objstore_port = new_objstore_port()
+    worker1_port = new_worker_port()
+    worker2_port = new_worker_port()
+
+    services.start_scheduler(address(IP_ADDRESS, scheduler_port))
+
+    time.sleep(0.1)
+
+    services.start_objstore(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port))
+
+    time.sleep(0.2)
+
+    orchpy.connect(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port), address(IP_ADDRESS, worker1_port))
+
+    test_dir = os.path.dirname(os.path.abspath(__file__))
+    test_path = os.path.join(test_dir, "testrecv.py")
+    services.start_worker(test_path, address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port), address(IP_ADDRESS, worker2_port))
+
+    time.sleep(0.2)
+
+    a = single.ones([dist.BLOCK_SIZE, dist.BLOCK_SIZE])
+    b = single.zeros([dist.BLOCK_SIZE, dist.BLOCK_SIZE])
+    x = dist.DistArray()
+    x.construct([2 * dist.BLOCK_SIZE, dist.BLOCK_SIZE], float, np.array([[a], [b]]))
+    self.assertTrue(np.alltrue(x.assemble() == np.vstack([np.ones([dist.BLOCK_SIZE, dist.BLOCK_SIZE]), np.zeros([dist.BLOCK_SIZE, dist.BLOCK_SIZE])])))
 
     services.cleanup()
 
