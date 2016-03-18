@@ -20,6 +20,7 @@ using grpc::Status;
 
 #include "orchestra.grpc.pb.h"
 #include "orchestra/orchestra.h"
+#include "ipc.h"
 
 using grpc::Channel;
 using grpc::ClientContext;
@@ -66,11 +67,13 @@ class Worker {
   std::unique_ptr<Scheduler::Stub> scheduler_stub_;
   std::unique_ptr<ObjStore::Stub> objstore_stub_;
   std::thread worker_server_thread_;
-  std::thread other_thread_;
   std::unique_ptr<message_queue> receive_queue_;
   managed_shared_memory segment_;
   WorkerId workerid_;
   std::string worker_address_;
+  MessageQueue<ObjRequest> request_obj_queue_;
+  MessageQueue<ObjHandle> receive_obj_queue_;
+  MemorySegmentPool segmentpool_;
 };
 
 #endif

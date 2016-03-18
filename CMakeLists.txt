@@ -76,8 +76,8 @@ if (UNIX AND NOT APPLE)
    link_libraries(rt)
 endif()
 
-add_executable(objstore src/objstore.cc ${GENERATED_PROTOBUF_FILES})
+add_executable(objstore src/objstore.cc src/ipc.cc ${GENERATED_PROTOBUF_FILES})
 add_executable(scheduler src/scheduler.cc ${GENERATED_PROTOBUF_FILES})
-add_library(orchpylib SHARED src/orchpylib.cc src/worker.cc ${GENERATED_PROTOBUF_FILES})
+add_library(orchpylib SHARED src/orchpylib.cc src/worker.cc src/ipc.cc ${GENERATED_PROTOBUF_FILES})
 
 install(TARGETS objstore scheduler orchpylib DESTINATION ${CMAKE_SOURCE_DIR}/lib/orchpy/orchpy)
