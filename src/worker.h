@@ -6,11 +6,6 @@
 #include <string>
 #include <thread>
 
-#include <boost/interprocess/managed_shared_memory.hpp>
-#include <boost/interprocess/ipc/message_queue.hpp>
-
-using namespace boost::interprocess;
-
 #include <grpc++/grpc++.h>
 
 using grpc::Server;
@@ -29,11 +24,14 @@ using grpc::ClientWriter;
 class WorkerServiceImpl final : public WorkerService::Service {
 public:
   WorkerServiceImpl(const std::string& worker_address)
-    : worker_address_(worker_address) {}
+    : worker_address_(worker_address) {
+    send_queue_.connect(worker_address_, false);
+  }
   Status InvokeCall(ServerContext* context, const InvokeCallRequest* request, InvokeCallReply* reply) override;
 private:
   std::string worker_address_;
   Call call_; // copy of the current call
+  MessageQueue<Call*> send_queue_;
 };
 
 class Worker {
@@ -67,7 +65,7 @@ class Worker {
   std::unique_ptr<Scheduler::Stub> scheduler_stub_;
   std::unique_ptr<ObjStore::Stub> objstore_stub_;
   std::thread worker_server_thread_;
-  std::unique_ptr<message_queue> receive_queue_;
+  MessageQueue<Call*> receive_queue_;
   managed_shared_memory segment_;
   WorkerId workerid_;
   std::string worker_address_;
