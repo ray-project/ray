@@ -1,5 +1,4 @@
 #include "objstore.h"
-#include <thread>
 #include <chrono>
 
 const size_t ObjStoreClient::CHUNK_SIZE = 8 * 1024;
@@ -24,36 +23,14 @@ Status ObjStoreClient::upload_data_to(slice data, ObjRef objref, ObjStore::Stub&
 }
 
 ObjStoreService::ObjStoreService(const std::string& objstore_address, std::shared_ptr<Channel> scheduler_channel)
-  : scheduler_stub_(Scheduler::NewStub(scheduler_channel)) {
+  : scheduler_stub_(Scheduler::NewStub(scheduler_channel)), segmentpool_(true), objstore_address_(objstore_address) {
+  recv_queue_.connect(std::string("queue:") + objstore_address + std::string(":obj"), true);
   ClientContext context;
   RegisterObjStoreRequest request;
   request.set_address(objstore_address);
   RegisterObjStoreReply reply;
   scheduler_stub_->RegisterObjStore(&context, request, &reply);
   objstoreid_ = reply.objstoreid();
-}
-
-ObjStoreService::~ObjStoreService() {
-  for (const auto& segment_name : memory_names_) {
-    shared_memory_object::remove(segment_name.c_str());
-  }
-}
-
-// this method needs to be protected by a memory_lock_
-void ObjStoreService::allocate_memory(ObjRef objref, size_t size) {
-  std::ostringstream stream;
-  stream << "obj-" << memory_names_.size();
-  std::string name = stream.str();
-  // Make sure that the name is not taken yet
-  shared_memory_object::remove(name.c_str());
-  memory_names_.push_back(name);
-  // Make room for boost::interprocess metadata
-  size_t new_size = (size / page_size + 2) * page_size;
-  shared_object& object = memory_[objref];
-  object.name = name;
-  object.memory = std::make_shared<managed_shared_memory>(create_only, name.c_str(), new_size);
-  object.ptr.data = static_cast<char*>(memory_[objref].memory->allocate(size));
-  object.ptr.len = size;
 }
 
 // this method needs to be protected by a objstores_lock_
@@ -66,6 +43,7 @@ ObjStore::Stub& ObjStoreService::get_objstore_stub(const std::string& objstore_a
   return *objstores_[objstore_address];
 }
 
+/*
 Status ObjStoreService::DeliverObj(ServerContext* context, const DeliverObjRequest* request, AckReply* reply) {
   std::lock_guard<std::mutex> objstores_lock(objstores_lock_);
   ObjStore::Stub& stub = get_objstore_stub(request->objstore_address());
@@ -73,12 +51,16 @@ Status ObjStoreService::DeliverObj(ServerContext* context, const DeliverObjReque
   Status status = ObjStoreClient::upload_data_to(memory_[objref].ptr, objref, stub);
   return status;
 }
+*/
 
 Status ObjStoreService::ObjStoreDebugInfo(ServerContext* context, const ObjStoreDebugInfoRequest* request, ObjStoreDebugInfoReply* reply) {
   std::lock_guard<std::mutex> memory_lock(memory_lock_);
-  for (const auto& entry : memory_) {
-    reply->add_objref(entry.first);
+  for (size_t i = 0; i < memory_.size(); ++i) {
+    if (memory_[i].second) { // is the object available?
+      reply->add_objref(i);
+    }
   }
+  /*
   for (int i = 0; i < request->objref_size(); ++i) {
     ObjRef objref = request->objref(i);
     Obj* obj = new Obj();
@@ -86,31 +68,11 @@ Status ObjStoreService::ObjStoreDebugInfo(ServerContext* context, const ObjStore
     obj->ParseFromString(data);
     reply->mutable_obj()->AddAllocated(obj);
   }
+  */
   return Status::OK;
 }
 
-Status ObjStoreService::GetObj(ServerContext* context, const GetObjRequest* request, GetObjReply* reply) {
-  // TODO(pcm): There is one remaining case where this can fail, i.e. if an object is
-  // to be delivered from another store but hasn't yet arrived
-  ObjRef objref = request->objref();
-  while (true) {
-    // if the object has not been sent to the objstore, this has the potential to lead to an infinite loop
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    ORCH_LOG(ORCH_DEBUG, "looping in objstore " << objstoreid_ << " waiting for objref " << objref);
-    std::lock_guard<std::mutex> memory_lock(memory_lock_);
-    if (memory_.find(objref) != memory_.end()) {
-      break;
-    }
-  }
-  std::lock_guard<std::mutex> memory_lock(memory_lock_);
-  shared_object& object = memory_[objref];
-  reply->set_bucket(object.name);
-  auto handle = object.memory->get_handle_from_address(object.ptr.data);
-  reply->set_handle(handle);
-  reply->set_size(object.ptr.len);
-  return Status::OK;
-}
-
+/*
 Status ObjStoreService::StreamObj(ServerContext* context, ServerReader<ObjChunk>* reader, AckReply* reply) {
   ORCH_LOG(ORCH_VERBOSE, "begin to stream data to object store " << objstoreid_);
   memory_lock_.lock();
@@ -148,12 +110,85 @@ Status ObjStoreService::StreamObj(ServerContext* context, ServerReader<ObjChunk>
 
   return Status::OK;
 }
+*/
+
+void ObjStoreService::process_requests() {
+  ObjRequest request;
+  while (true) {
+    recv_queue_.receive(&request);
+    if (request.workerid >= send_queues_.size()) {
+      send_queues_.resize(request.workerid + 1);
+    }
+    if (!send_queues_[request.workerid].connected()) {
+      std::string queue_name = std::string("queue:") + objstore_address_ + std::string(":worker:") + std::to_string(request.workerid) + std::string(":obj");
+      send_queues_[request.workerid].connect(queue_name, false);
+    }
+    if (request.objref >= memory_.size()) {
+      memory_.resize(request.objref + 1);
+      memory_[request.objref].second = false;
+    }
+    switch (request.type) {
+      case ObjRequestType::ALLOC: {
+          ObjHandle reply = segmentpool_.allocate(request.size);
+          send_queues_[request.workerid].send(&reply);
+          if (request.objref >= memory_.size()) {
+            memory_.resize(request.objref + 1);
+          }
+          memory_[request.objref].first = reply;
+          memory_[request.objref].second = false;
+        }
+        break;
+      case ObjRequestType::GET: {
+          std::pair<ObjHandle, bool>& item = memory_[request.objref];
+          if (item.second) {
+            send_queues_[request.workerid].send(&item.first);
+          } else {
+            std::lock_guard<std::mutex> lock(pull_queue_lock_);
+            pull_queue_.push_back(std::make_pair(request.workerid, request.objref));
+          }
+        }
+        break;
+      case ObjRequestType::DONE: {
+        std::pair<ObjHandle, bool>& item = memory_[request.objref];
+        item.second = true;
+        std::lock_guard<std::mutex> pull_queue_lock(pull_queue_lock_);
+        for (size_t i = 0; i < pull_queue_.size(); ++i) {
+          if (pull_queue_[i].second == request.objref) {
+            ObjHandle& elem = memory_[request.objref].first;
+            send_queues_[pull_queue_[i].first].send(&item.first);
+            // Remove the pull task from the queue
+            std::swap(pull_queue_[i], pull_queue_[pull_queue_.size() - 1]);
+            pull_queue_.pop_back();
+            i -= 1;
+          }
+        }
+        // Tell the scheduler that the object arrived
+        // TODO(pcm): put this in a separate thread so we don't have to pay the latency here
+        ClientContext objready_context;
+        ObjReadyRequest objready_request;
+        objready_request.set_objref(request.objref);
+        objready_request.set_objstoreid(objstoreid_);
+        AckReply objready_reply;
+        scheduler_stub_->ObjReady(&objready_context, objready_request, &objready_reply);
+      }
+      break;
+    }
+  }
+}
+
+void ObjStoreService::start_objstore_service() {
+  communicator_thread_ = std::thread([this]() {
+    ORCH_LOG(ORCH_INFO, "started object store communicator server");
+    process_requests();
+  });
+}
 
 void start_objstore(const char* scheduler_addr, const char* objstore_addr) {
   auto scheduler_channel = grpc::CreateChannel(scheduler_addr, grpc::InsecureChannelCredentials());
   ORCH_LOG(ORCH_INFO, "object store " << objstore_addr << " connected to scheduler " << scheduler_addr);
   std::string objstore_address(objstore_addr);
   ObjStoreService service(objstore_address, scheduler_channel);
+  service.start_objstore_service();
   ServerBuilder builder;
   builder.AddListeningPort(std::string(objstore_addr), grpc::InsecureServerCredentials());
   builder.RegisterService(&service);

@@ -146,7 +146,7 @@ service ObjStore {
   rpc DeliverObj(DeliverObjRequest) returns (AckReply);
   // Accept incoming data from another object store
   rpc StreamObj(stream ObjChunk) returns (AckReply);
-  rpc GetObj(GetObjRequest) returns (GetObjReply);
+  // Get debug info from the object store
   rpc ObjStoreDebugInfo(ObjStoreDebugInfoRequest) returns (ObjStoreDebugInfoReply);
 }
 

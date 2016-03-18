@@ -49,6 +49,9 @@ void Worker::register_worker(const std::string& worker_address, const std::strin
   ClientContext context;
   Status status = scheduler_stub_->RegisterWorker(&context, request, &reply);
   workerid_ = reply.workerid();
+  request_obj_queue_.connect(std::string("queue:") + objstore_address + std::string(":obj"), false);
+  std::string queue_name = std::string("queue:") + objstore_address + std::string(":worker:") + std::to_string(workerid_) + std::string(":obj");
+  receive_obj_queue_.connect(queue_name, true);
   return;
 }
 
@@ -75,41 +78,35 @@ ObjRef Worker::push_object(const Obj* obj) {
 }
 
 slice Worker::get_object(ObjRef objref) {
-  ClientContext context;
-  GetObjRequest request;
-  request.set_objref(objref);
-  GetObjReply reply;
-  objstore_stub_->GetObj(&context, request, &reply);
-  segment_ = managed_shared_memory(open_only, reply.bucket().c_str());
+  ObjRequest request;
+  request.workerid = workerid_;
+  request.type = ObjRequestType::GET;
+  request.objref = objref;
+  request_obj_queue_.send(&request);
+  ObjHandle result;
+  receive_obj_queue_.receive(&result);
   slice slice;
-  slice.data = static_cast<char*>(segment_.get_address_from_handle(reply.handle()));
-  slice.len = reply.size();
+  slice.data = segmentpool_.get_address(result);
+  slice.len = result.size();
   return slice;
 }
 
-// TODO: Do this with shared memory
+// TODO(pcm): More error handling
 void Worker::put_object(ObjRef objref, const Obj* obj) {
-  ObjChunk chunk;
   std::string data;
-  obj->SerializeToString(&data);
-  size_t totalsize = data.size();
-  ClientContext context;
-  AckReply reply;
-  std::unique_ptr<ClientWriter<ObjChunk> > writer(
-    objstore_stub_->StreamObj(&context, &reply));
-  const char* head = data.c_str();
-  for (size_t i = 0; i < data.length(); i += CHUNK_SIZE) {
-    chunk.set_objref(objref);
-    chunk.set_totalsize(totalsize);
-    chunk.set_data(head + i, std::min(CHUNK_SIZE, data.length() - i));
-    if (!writer->Write(chunk)) {
-      ORCH_LOG(ORCH_FATAL, "write failed during put_object");
-      // TODO(pcm): better error handling
-    }
-  }
-  writer->WritesDone();
-  Status status = writer->Finish();
-  // TODO(pcm): error handling
+  obj->SerializeToString(&data); // TODO(pcm): get rid of this serialization
+  ObjRequest request;
+  request.workerid = workerid_;
+  request.type = ObjRequestType::ALLOC;
+  request.objref = objref;
+  request.size = data.size();
+  request_obj_queue_.send(&request);
+  ObjHandle result;
+  receive_obj_queue_.receive(&result);
+  char* target = segmentpool_.get_address(result);
+  std::memcpy(target, &data[0], data.size());
+  request.type = ObjRequestType::DONE;
+  request_obj_queue_.send(&request);
 }
 
 void Worker::register_function(const std::string& name, size_t num_return_vals) {
@@ -128,13 +125,11 @@ Call* Worker::receive_next_task() {
     unsigned int priority;
     message_queue::size_type recvd_size;
     Call* call;
-    while (true) {
-      receive_queue_->receive(&call, sizeof(Call*), recvd_size, priority);
-      return call;
-    }
+    receive_queue_->receive(&call, sizeof(Call*), recvd_size, priority);
+    return call;
   }
   catch(interprocess_exception &ex){
-    std::cout << ex.what() << std::endl;
+    ORCH_LOG(ORCH_FATAL, ex.what());
   }
 }
 
