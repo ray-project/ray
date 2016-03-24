@@ -73,12 +73,12 @@ class ArraysSingleTest(unittest.TestCase):
     time.sleep(0.2)
 
     # test eye
-    ref = single.eye(3)
+    ref = single.eye(3, "float")
     val = orchpy.pull(ref)
     self.assertTrue(np.alltrue(val == np.eye(3)))
 
     # test zeros
-    ref = single.zeros([3, 4, 5])
+    ref = single.zeros([3, 4, 5], "float")
     val = orchpy.pull(ref)
     self.assertTrue(np.alltrue(val == np.zeros([3, 4, 5])))
 
@@ -101,13 +101,12 @@ class ArraysSingleTest(unittest.TestCase):
 
 class ArraysDistTest(unittest.TestCase):
 
-  def testMethods(self):
+  def testSerialization(self):
     x = dist.DistArray()
-    x.construct([2, 3, 4], float, np.array([[[orchpy.lib.ObjRef(0)]]]))
+    x.construct([2, 3, 4], np.array([[[orchpy.lib.ObjRef(0)]]]))
     capsule = serialization.serialize(x)
     y = serialization.deserialize(capsule)
     self.assertEqual(x.shape, y.shape)
-    self.assertEqual(x.dtype, y.dtype)
     self.assertEqual(x.objrefs[0, 0, 0].val, y.objrefs[0, 0, 0].val)
 
   def testAssemble(self):
@@ -132,11 +131,65 @@ class ArraysDistTest(unittest.TestCase):
 
     time.sleep(0.2)
 
-    a = single.ones([dist.BLOCK_SIZE, dist.BLOCK_SIZE])
-    b = single.zeros([dist.BLOCK_SIZE, dist.BLOCK_SIZE])
+    a = single.ones([dist.BLOCK_SIZE, dist.BLOCK_SIZE], "float")
+    b = single.zeros([dist.BLOCK_SIZE, dist.BLOCK_SIZE], "float")
     x = dist.DistArray()
-    x.construct([2 * dist.BLOCK_SIZE, dist.BLOCK_SIZE], float, np.array([[a], [b]]))
+    x.construct([2 * dist.BLOCK_SIZE, dist.BLOCK_SIZE], np.array([[a], [b]]))
     self.assertTrue(np.alltrue(x.assemble() == np.vstack([np.ones([dist.BLOCK_SIZE, dist.BLOCK_SIZE]), np.zeros([dist.BLOCK_SIZE, dist.BLOCK_SIZE])])))
+
+    services.cleanup()
+
+  def testMethods(self):
+    scheduler_port = new_scheduler_port()
+    objstore_port = new_objstore_port()
+    worker1_port = new_worker_port()
+    worker2_port = new_worker_port()
+    worker3_port = new_worker_port()
+    worker4_port = new_worker_port()
+
+    services.start_scheduler(address(IP_ADDRESS, scheduler_port))
+
+    time.sleep(0.1)
+
+    services.start_objstore(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port))
+
+    time.sleep(0.2)
+
+    orchpy.connect(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port), address(IP_ADDRESS, worker1_port))
+
+    test_dir = os.path.dirname(os.path.abspath(__file__))
+    test_path = os.path.join(test_dir, "testrecv.py")
+    services.start_worker(test_path, address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port), address(IP_ADDRESS, worker2_port))
+    services.start_worker(test_path, address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port), address(IP_ADDRESS, worker3_port))
+    services.start_worker(test_path, address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port), address(IP_ADDRESS, worker4_port))
+
+    time.sleep(0.2)
+
+    x = dist.zeros([9, 25, 51], "float")
+    self.assertTrue(np.alltrue(orchpy.pull(dist.assemble(x)) == np.zeros([9, 25, 51])))
+
+    x = dist.ones([11, 25, 49], "float")
+    self.assertTrue(np.alltrue(orchpy.pull(dist.assemble(x)) == np.ones([11, 25, 49])))
+
+    x = dist.random.normal([11, 25, 49])
+    y = dist.copy(x)
+    self.assertTrue(np.alltrue(orchpy.pull(dist.assemble(x)) == orchpy.pull(dist.assemble(y))))
+
+    x = dist.eye(25, "float")
+    self.assertTrue(np.alltrue(orchpy.pull(dist.assemble(x)) == np.eye(25)))
+
+    x = dist.random.normal([25, 49])
+    y = dist.triu(x)
+    self.assertTrue(np.alltrue(orchpy.pull(dist.assemble(y)) == np.triu(orchpy.pull(dist.assemble(x)))))
+
+    x = dist.random.normal([25, 49])
+    y = dist.tril(x)
+    self.assertTrue(np.alltrue(orchpy.pull(dist.assemble(y)) == np.tril(orchpy.pull(dist.assemble(x)))))
+
+    x = dist.random.normal([25, 49])
+    y = dist.random.normal([49, 18])
+    z = dist.dot(x, y)
+    self.assertTrue(np.allclose(orchpy.pull(dist.assemble(z)), np.dot(orchpy.pull(dist.assemble(x)), orchpy.pull(dist.assemble(y)))))
 
     services.cleanup()
 

@@ -1,1 +1,2 @@
-from core import DistArray, BLOCK_SIZE
+import random
+from core import *

@@ -2,7 +2,7 @@ import sys
 import argparse
 
 import arrays.single as single
-# import arrays.dist as dist
+import arrays.dist as dist
 
 import orchpy
 import orchpy.services as services
@@ -31,7 +31,9 @@ if __name__ == '__main__':
   orchpy.register_module(single)
   orchpy.register_module(single.random)
   orchpy.register_module(single.linalg)
-  # orchpy.register_module(dist)
+  orchpy.register_module(dist)
+  orchpy.register_module(dist.random)
+  # orchpy.register_module(dist.linalg)
   orchpy.register_module(sys.modules[__name__])
 
   worker.main_loop()
