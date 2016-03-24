@@ -39,9 +39,12 @@ ObjHandle MemorySegmentPool::allocate(size_t size) {
 // the process that will use the address
 char* MemorySegmentPool::get_address(ObjHandle pointer) {
   if (pointer.segmentid() >= segments_.size()) {
-    open_segment(pointer.segmentid());
+    for (int i = segments_.size(); i <= pointer.segmentid(); ++i) {
+      open_segment(i);
+    }
   }
-  return static_cast<char*>(segments_[pointer.segmentid()]->get_address_from_handle(pointer.ipcpointer()));
+  managed_shared_memory* segment = segments_[pointer.segmentid()].get();
+  return static_cast<char*>(segment->get_address_from_handle(pointer.ipcpointer()));
 }
 
 MemorySegmentPool::~MemorySegmentPool() {
