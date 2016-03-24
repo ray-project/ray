@@ -7,6 +7,12 @@
 Status SchedulerService::RemoteCall(ServerContext* context, const RemoteCallRequest* request, RemoteCallReply* reply) {
   std::unique_ptr<Call> task(new Call(request->call())); // need to copy, because request is const
   fntable_lock_.lock();
+
+  if (fntable_.find(task->name()) == fntable_.end()) {
+    // TODO(rkn): In the future, this should probably not be fatal.
+    ORCH_LOG(ORCH_FATAL, "The function " << task->name() << " has not been registered by any worker.");
+  }
+
   size_t num_return_vals = fntable_[task->name()].num_return_vals();
   fntable_lock_.unlock();
 

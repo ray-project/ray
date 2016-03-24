@@ -5,7 +5,7 @@ import orchpy.services as services
 import orchpy.worker as worker
 
 import arrays.single as single
-# import arrays.dist as dist
+import arrays.dist as dist
 
 from grpc.beta import implementations
 import orchestra_pb2

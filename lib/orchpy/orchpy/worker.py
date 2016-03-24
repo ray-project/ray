@@ -78,8 +78,8 @@ def distributed(arg_types, return_types, worker=global_worker):
       """This is what gets executed remotely on a worker after a distributed function is scheduled by the scheduler."""
       print "Calling function {} with arguments {}".format(func.__name__, arguments)
       result = func(*arguments)
-      if len(return_types) != 1 and len(result) != len(return_types):
-        raise Exception("The @distributed decorator for function {} has {} return values with types {}, but {} returned {} values.".format(func.__name__, len(return_types), return_types, func.__name__, len(result)))
+      check_return_values(func_call, result) # throws an exception if result is invalid
+      print "Finished executing function {} with arguments {}".format(func.__name__, arguments)
       return result
     def func_call(*args):
       """This is what gets run immediately when a worker calls a distributed function."""
@@ -95,6 +95,18 @@ def distributed(arg_types, return_types, worker=global_worker):
   return distributed_decorator
 
 # helper method, this should not be called by the user
+def check_return_values(function, result):
+  if len(function.return_types) == 1:
+    if not isinstance(result, function.return_types[0]):
+      raise Exception("The @distributed decorator for function {} expects one return value with type {}, but {} returned a {}.".format(function.__name__, function.return_types[0], function.__name__, type(result)))
+  else:
+    if len(result) != len(function.return_types):
+      raise Exception("The @distributed decorator for function {} has {} return values with types {}, but {} returned {} values.".format(function.__name__, len(function.return_types), function.return_types, function.__name__, len(result)))
+    for i in range(len(result)):
+      if not isinstance(result[i], function.return_types[i]):
+        raise Exception("The {}th return value for function {} has type {}, but the @distributed decorator expected a return value of type {}.".format(i, function.__name__, type(result[i]), function.return_types[i]))
+
+# helper method, this should not be called by the user
 def check_arguments(function, args):
   # check the number of args
   if len(args) != len(function.arg_types) and function.arg_types[-1] is not None:
@@ -107,7 +119,7 @@ def check_arguments(function, args):
       expected_type = function.arg_types[i]
     elif i == len(function.arg_types) - 1 and function.arg_types[-1] is not None:
       expected_type = function.arg_types[-1]
-    elif function.arg_types[-1] is None and len(function.arg_types > 1):
+    elif function.arg_types[-1] is None and len(function.arg_types) > 1:
       expected_type = function.arg_types[-2]
     else:
       assert False, "This code should be unreachable."
@@ -136,7 +148,7 @@ def get_arguments_for_execution(function, args, worker=global_worker):
       expected_type = function.arg_types[i]
     elif i == len(function.arg_types) - 1 and function.arg_types[-1] is not None:
       expected_type = function.arg_types[-1]
-    elif function.arg_types[-1] is None and len(function.arg_types > 1):
+    elif function.arg_types[-1] is None and len(function.arg_types) > 1:
       expected_type = function.arg_types[-2]
     else:
       assert False, "This code should be unreachable."
@@ -145,6 +157,7 @@ def get_arguments_for_execution(function, args, worker=global_worker):
       # get the object from the local object store
       print "Getting argument {} for function {}.".format(i, function.__name__)
       argument = worker.get_object(arg)
+      print "Successfully retrieved argument {} for function {}.".format(i, function.__name__)
     else:
       # pass the argument by value
       argument = arg

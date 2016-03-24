@@ -2,17 +2,21 @@ from typing import List
 import numpy as np
 import orchpy as op
 
-@op.distributed([List[int]], [np.ndarray])
-def zeros(shape):
-  return np.zeros(shape)
+@op.distributed([List[int], str], [np.ndarray])
+def zeros(shape, dtype_name):
+  return np.zeros(shape, dtype=np.dtype(dtype_name))
 
-@op.distributed([List[int]], [np.ndarray])
-def ones(shape):
-  return np.ones(shape)
+@op.distributed([np.ndarray], [np.ndarray])
+def zeros_like(x):
+  return np.zeros_like(x)
 
-@op.distributed([int], [np.ndarray])
-def eye(dim):
-  return np.eye(dim)
+@op.distributed([List[int], str], [np.ndarray])
+def ones(shape, dtype_name):
+  return np.ones(shape, dtype=np.dtype(dtype_name))
+
+@op.distributed([int, str], [np.ndarray])
+def eye(dim, dtype_name):
+  return np.eye(dim, dtype=np.dtype(dtype_name))
 
 @op.distributed([np.ndarray, np.ndarray], [np.ndarray])
 def dot(a, b):
