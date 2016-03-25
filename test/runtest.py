@@ -68,6 +68,9 @@ class SerializationTest(unittest.TestCase):
     self.roundTripTest(42.0)
     self.roundTripTest((1.0, "hi"))
 
+    self.roundTripTest({"hello" : "world", 1: 42, 1.0: 45})
+    self.roundTripTest({})
+
     a = np.zeros((100, 100))
     res = serialization.serialize(a)
     b = serialization.deserialize(res)

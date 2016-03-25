@@ -179,6 +179,21 @@ int serialize(PyObject* val, Obj* obj) {
         return -1;
       }
     }
+  } else if (PyDict_Check(val)) {
+    PyObject *pykey, *pyvalue;
+    Py_ssize_t pos = 0;
+    Dict* data = obj->mutable_dict_data();
+    while (PyDict_Next(val, &pos, &pykey, &pyvalue)) {
+      DictEntry* elem = data->add_elem();
+      Obj* key = elem->mutable_key();
+      if (serialize(pykey, key) != 0) {
+        return -1;
+      }
+      Obj* value = elem->mutable_value();
+      if (serialize(pyvalue, value) != 0) {
+        return -1;
+      }
+    }
   } else if (PyString_Check(val)) {
     char* buffer;
     Py_ssize_t length;
@@ -271,6 +286,14 @@ PyObject* deserialize(const Obj& obj) {
       PyList_SetItem(list, i, deserialize(data.elem(i)));
     }
     return list;
+  } else if (obj.has_dict_data()) {
+    const Dict& data = obj.dict_data();
+    PyObject* dict = PyDict_New();
+    size_t size = data.elem_size();
+    for (size_t i = 0; i < size; ++i) {
+      PyDict_SetItem(dict, deserialize(data.elem(i).key()), deserialize(data.elem(i).value()));
+    }
+    return dict;
   } else if (obj.has_string_data()) {
     const char* buffer = obj.string_data().data().data();
     Py_ssize_t length = obj.string_data().data().size();
