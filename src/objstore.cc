@@ -27,7 +27,7 @@ ObjStoreService::ObjStoreService(const std::string& objstore_address, std::share
   recv_queue_.connect(std::string("queue:") + objstore_address + std::string(":obj"), true);
   ClientContext context;
   RegisterObjStoreRequest request;
-  request.set_address(objstore_address);
+  request.set_objstore_address(objstore_address);
   RegisterObjStoreReply reply;
   scheduler_stub_->RegisterObjStore(&context, request, &reply);
   objstoreid_ = reply.objstoreid();
