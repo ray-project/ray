@@ -59,9 +59,9 @@ Status SchedulerService::PullObj(ServerContext* context, const PullObjRequest* r
 Status SchedulerService::RegisterObjStore(ServerContext* context, const RegisterObjStoreRequest* request, RegisterObjStoreReply* reply) {
   std::lock_guard<std::mutex> objstore_lock(objstores_lock_);
   ObjStoreId objstoreid = objstores_.size();
-  auto channel = grpc::CreateChannel(request->address(), grpc::InsecureChannelCredentials());
+  auto channel = grpc::CreateChannel(request->objstore_address(), grpc::InsecureChannelCredentials());
   objstores_.push_back(ObjStoreHandle());
-  objstores_[objstoreid].address = request->address();
+  objstores_[objstoreid].address = request->objstore_address();
   objstores_[objstoreid].channel = channel;
   objstores_[objstoreid].objstore_stub = ObjStore::NewStub(channel);
   reply->set_objstoreid(objstoreid);
@@ -263,9 +263,6 @@ void SchedulerService::register_function(const std::string& name, WorkerId worke
 }
 
 void SchedulerService::debug_info(const SchedulerDebugInfoRequest& request, SchedulerDebugInfoReply* reply) {
-  if (request.do_scheduling()) {
-    schedule();
-  }
   fntable_lock_.lock();
   auto function_table = reply->mutable_function_table();
   for (const auto& entry : fntable_) {
