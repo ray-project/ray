@@ -29,7 +29,7 @@ class Worker(object):
 
   def remote_call(self, func_name, args):
     """Tell the scheduler to schedule the execution of the function with name `func_name` with arguments `args`. Retrieve object references for the outputs of the function from the scheduler and immediately return them."""
-    call_capsule = orchpy.lib.serialize_call(func_name, args)
+    call_capsule = serialization.serialize_call(func_name, args)
     objrefs = orchpy.lib.remote_call(self.handle, call_capsule)
     return objrefs
 
@@ -66,7 +66,7 @@ def main_loop(worker=global_worker):
   orchpy.lib.start_worker_service(worker.handle)
   while True:
     call = orchpy.lib.wait_for_next_task(worker.handle)
-    func_name, args, return_objrefs = orchpy.lib.deserialize_call(call)
+    func_name, args, return_objrefs = serialization.deserialize_call(call)
     arguments = get_arguments_for_execution(worker.functions[func_name], args, worker) # get args from objstore
     outputs = worker.functions[func_name].executor(arguments) # execute the function
     store_outputs_in_objstore(return_objrefs, outputs, worker) # store output in local object store
