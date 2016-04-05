@@ -32,7 +32,7 @@ service Scheduler {
   // Request an object reference for an object that will be pushed to an object store
   rpc PushObj(PushObjRequest) returns (PushObjReply);
   // Request delivery of an object from an object store that holds the object to the local object store
-  rpc PullObj(PullObjRequest) returns (AckReply);
+  rpc PullObj(PullObjRequest) returns (AckReply); // TODO(pcm): rename to RequestObj and change documentation
   // Used by an object store to tell the scheduler that an object is ready (i.e. has been finalized and can be shared)
   rpc ObjReady(ObjReadyRequest) returns (AckReply);
   // Used by the worker to report back and ask for more work

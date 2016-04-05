@@ -4,11 +4,15 @@
 
 #include <Python.h>
 #include <structmember.h>
+#define PY_ARRAY_UNIQUE_SYMBOL ORCHESTRA_ARRAY_API
 #include <numpy/arrayobject.h>
+#include <arrow/api.h>
 #include <iostream>
 
 #include "types.pb.h"
 #include "worker.h"
+
+#include "serialize.h"
 
 extern "C" {
 
@@ -230,8 +234,22 @@ int serialize(PyObject* val, Obj* obj) {
           }
         }
         break;
+      case NPY_INT64: {
+          npy_int64* buffer = (npy_int64*) PyArray_DATA(array);
+          for (npy_intp i = 0; i < size; ++i) {
+            data->add_int_data(buffer[i]);
+          }
+        }
+        break;
       case NPY_UINT8: {
           npy_uint8* buffer = (npy_uint8*) PyArray_DATA(array);
+          for (npy_intp i = 0; i < size; ++i) {
+            data->add_uint_data(buffer[i]);
+          }
+        }
+        break;
+      case NPY_UINT64: {
+          npy_uint64* buffer = (npy_uint64*) PyArray_DATA(array);
           for (npy_intp i = 0; i < size; ++i) {
             data->add_uint_data(buffer[i]);
           }
@@ -327,6 +345,13 @@ PyObject* deserialize(const Obj& obj) {
             }
           }
           break;
+        case NPY_INT64: {
+            npy_int64* buffer = (npy_int64*) PyArray_DATA(pyarray);
+            for (npy_intp i = 0; i < size; ++i) {
+              buffer[i] = array.int_data(i);
+            }
+          }
+          break;
         default:
           PyErr_SetString(OrchPyError, "deserialization: internal error (array type not implemented)");
           return NULL;
@@ -336,6 +361,13 @@ PyObject* deserialize(const Obj& obj) {
       switch (array.dtype()) {
         case NPY_UINT8: {
             npy_uint8* buffer = (npy_uint8*) PyArray_DATA(pyarray);
+            for (npy_intp i = 0; i < size; ++i) {
+              buffer[i] = array.uint_data(i);
+            }
+          }
+          break;
+        case NPY_UINT64: {
+            npy_uint64* buffer = (npy_uint64*) PyArray_DATA(pyarray);
             for (npy_intp i = 0; i < size; ++i) {
               buffer[i] = array.uint_data(i);
             }
@@ -372,6 +404,43 @@ PyObject* serialize_object(PyObject* self, PyObject* args) {
     return NULL;
   }
   return PyCapsule_New(static_cast<void*>(obj), "obj", NULL);
+}
+
+PyObject* put_arrow(PyObject* self, PyObject* args) {
+  Worker* worker;
+  ObjRef objref;
+  PyObject* value;
+  if (!PyArg_ParseTuple(args, "O&O&O", &PyObjectToWorker, &worker, &PyObjectToObjRef, &objref, &value)) {
+    return NULL;
+  }
+  if (!PyArray_Check(value)) {
+    PyErr_SetString(PyExc_TypeError, "only support arrays at this point");
+    return NULL;
+  }
+  PyArrayObject* array = PyArray_GETCONTIGUOUS((PyArrayObject*) value);
+  worker->put_arrow(objref, array);
+  Py_RETURN_NONE;
+}
+
+PyObject* get_arrow(PyObject* self, PyObject* args) {
+  Worker* worker;
+  ObjRef objref;
+  if (!PyArg_ParseTuple(args, "O&O&", &PyObjectToWorker, &worker, &PyObjectToObjRef, &objref)) {
+    return NULL;
+  }
+  return (PyObject*) worker->get_arrow(objref);
+}
+
+PyObject* is_arrow(PyObject* self, PyObject* args) {
+  Worker* worker;
+  ObjRef objref;
+  if (!PyArg_ParseTuple(args, "O&O&", &PyObjectToWorker, &worker, &PyObjectToObjRef, &objref)) {
+    return NULL;
+  }
+  if (worker->is_arrow(objref))
+    Py_RETURN_TRUE;
+  else
+    Py_RETURN_FALSE;
 }
 
 PyObject* deserialize_object(PyObject* self, PyObject* args) {
@@ -496,13 +565,12 @@ PyObject* register_function(PyObject* self, PyObject* args) {
   Py_RETURN_NONE;
 }
 
-PyObject* push_object(PyObject* self, PyObject* args) {
+PyObject* get_objref(PyObject* self, PyObject* args) {
   Worker* worker;
-  Obj* obj;
-  if (!PyArg_ParseTuple(args, "O&O&", &PyObjectToWorker, &worker, &PyObjectToObj, &obj)) {
+  if (!PyArg_ParseTuple(args, "O&", &PyObjectToWorker, &worker)) {
     return NULL;
   }
-  ObjRef objref = worker->push_object(obj);
+  ObjRef objref = worker->get_objref();
   return make_pyobjref(objref);
 }
 
@@ -525,20 +593,18 @@ PyObject* get_object(PyObject* self, PyObject* args) {
   }
   slice s = worker->get_object(objref);
   Obj* obj = new Obj(); // TODO: Make sure this will get deleted
-  obj->ParseFromString(std::string(s.data, s.len));
+  obj->ParseFromString(std::string(reinterpret_cast<char*>(s.data), s.len));
   return PyCapsule_New(static_cast<void*>(obj), "obj", NULL);
 }
 
-PyObject* pull_object(PyObject* self, PyObject* args) {
+PyObject* request_object(PyObject* self, PyObject* args) {
   Worker* worker;
   ObjRef objref;
   if (!PyArg_ParseTuple(args, "O&O&", &PyObjectToWorker, &worker, &PyObjectToObjRef, &objref)) {
     return NULL;
   }
-  slice s = worker->pull_object(objref);
-  Obj* obj = new Obj(); // TODO: Make sure this will get deleted
-  obj->ParseFromString(std::string(s.data, s.len));
-  return PyCapsule_New(static_cast<void*>(obj), "obj", NULL);
+  worker->request_object(objref);
+  Py_RETURN_NONE;
 }
 
 PyObject* start_worker_service(PyObject* self, PyObject* args) {
@@ -553,14 +619,17 @@ PyObject* start_worker_service(PyObject* self, PyObject* args) {
 static PyMethodDef OrchPyLibMethods[] = {
  { "serialize_object", serialize_object, METH_VARARGS, "serialize an object to protocol buffers" },
  { "deserialize_object", deserialize_object, METH_VARARGS, "deserialize an object from protocol buffers" },
+ { "put_arrow", put_arrow, METH_VARARGS, "put an arrow array on the local object store"},
+ { "get_arrow", get_arrow, METH_VARARGS, "get an arrow array from the local object store"},
+ { "is_arrow", is_arrow, METH_VARARGS, "is the object in the local object store an arrow object?"},
  { "serialize_call", serialize_call, METH_VARARGS, "serialize a call to protocol buffers" },
  { "deserialize_call", deserialize_call, METH_VARARGS, "deserialize a call from protocol buffers" },
  { "create_worker", create_worker, METH_VARARGS, "connect to the scheduler and the object store" },
  { "register_function", register_function, METH_VARARGS, "register a function with the scheduler" },
  { "put_object", put_object, METH_VARARGS, "put a protocol buffer object (given as a capsule) on the local object store" },
  { "get_object", get_object, METH_VARARGS, "get protocol buffer object from the local object store" },
- { "push_object", push_object, METH_VARARGS, "push a protocol buffer object (given as a capsule) to the object store" },
- { "pull_object" , pull_object, METH_VARARGS, "pull object with a given object id from the object store" },
+ { "get_objref", get_objref, METH_VARARGS, "register a new object reference with the scheduler" },
+ { "request_object" , request_object, METH_VARARGS, "request an object to be delivered to the local object store" },
  { "wait_for_next_task", wait_for_next_task, METH_VARARGS, "get next task from scheduler (blocking)" },
  { "remote_call", remote_call, METH_VARARGS, "call a remote function" },
  { "notify_task_completed", notify_task_completed, METH_VARARGS, "notify the scheduler that a task has been completed" },

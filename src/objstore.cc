@@ -9,7 +9,7 @@ Status ObjStoreClient::upload_data_to(slice data, ObjRef objref, ObjStore::Stub&
   ClientContext context;
   AckReply reply;
   std::unique_ptr<ClientWriter<ObjChunk> > writer(stub.StreamObj(&context, &reply));
-  const char* head = data.data;
+  const uint8_t* head = data.data;
   for (size_t i = 0; i < data.len; i += CHUNK_SIZE) {
     chunk.set_objref(objref);
     chunk.set_totalsize(data.len);
@@ -150,6 +150,7 @@ void ObjStoreService::process_requests() {
         break;
       case ObjRequestType::DONE: {
         std::pair<ObjHandle, bool>& item = memory_[request.objref];
+        item.first.set_metadata_offset(request.metadata_offset);
         item.second = true;
         std::lock_guard<std::mutex> pull_queue_lock(pull_queue_lock_);
         for (size_t i = 0; i < pull_queue_.size(); ++i) {

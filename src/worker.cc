@@ -1,4 +1,4 @@
-# include "worker.h"
+#include "worker.h"
 
 Status WorkerServiceImpl::InvokeCall(ServerContext* context, const InvokeCallRequest* request, InvokeCallReply* reply) {
   call_ = request->call(); // Copy call
@@ -36,26 +36,23 @@ void Worker::register_worker(const std::string& worker_address, const std::strin
   return;
 }
 
-slice Worker::pull_object(ObjRef objref) {
+void Worker::request_object(ObjRef objref) {
   PullObjRequest request;
   request.set_workerid(workerid_);
   request.set_objref(objref);
   AckReply reply;
   ClientContext context;
   Status status = scheduler_stub_->PullObj(&context, request, &reply);
-  return get_object(objref);
+  return;
 }
 
-ObjRef Worker::push_object(const Obj* obj) {
+ObjRef Worker::get_objref() {
   // first get objref for the new object
   PushObjRequest push_request;
   PushObjReply push_reply;
   ClientContext push_context;
   Status push_status = scheduler_stub_->PushObj(&push_context, push_request, &push_reply);
-  ObjRef objref = push_reply.objref();
-  // then stream the object to the object store
-  put_object(objref, obj);
-  return objref;
+  return push_reply.objref();
 }
 
 slice Worker::get_object(ObjRef objref) {
@@ -84,10 +81,49 @@ void Worker::put_object(ObjRef objref, const Obj* obj) {
   request_obj_queue_.send(&request);
   ObjHandle result;
   receive_obj_queue_.receive(&result);
-  char* target = segmentpool_.get_address(result);
+  uint8_t* target = segmentpool_.get_address(result);
   std::memcpy(target, &data[0], data.size());
   request.type = ObjRequestType::DONE;
+  request.metadata_offset = 0;
   request_obj_queue_.send(&request);
+}
+
+void Worker::put_arrow(ObjRef objref, PyArrayObject* array) {
+  ObjRequest request;
+  size_t size = arrow_size(array);
+  request.workerid = workerid_;
+  request.type = ObjRequestType::ALLOC;
+  request.objref = objref;
+  request.size = size;
+  request_obj_queue_.send(&request);
+  ObjHandle result;
+  receive_obj_queue_.receive(&result);
+  store_arrow(array, result, &segmentpool_);
+  request.type = ObjRequestType::DONE;
+  request.metadata_offset = result.metadata_offset();
+  request_obj_queue_.send(&request);
+}
+
+PyArrayObject* Worker::get_arrow(ObjRef objref) {
+  ObjRequest request;
+  request.workerid = workerid_;
+  request.type = ObjRequestType::GET;
+  request.objref = objref;
+  request_obj_queue_.send(&request);
+  ObjHandle result;
+  receive_obj_queue_.receive(&result);
+  return (PyArrayObject*)deserialize_array(result, &segmentpool_);
+}
+
+bool Worker::is_arrow(ObjRef objref) {
+  ObjRequest request;
+  request.workerid = workerid_;
+  request.type = ObjRequestType::GET;
+  request.objref = objref;
+  request_obj_queue_.send(&request);
+  ObjHandle result;
+  receive_obj_queue_.receive(&result);
+  return result.metadata_offset() != 0;
 }
 
 void Worker::register_function(const std::string& name, size_t num_return_vals) {

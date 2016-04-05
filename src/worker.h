@@ -16,6 +16,7 @@ using grpc::Status;
 #include "orchestra.grpc.pb.h"
 #include "orchestra/orchestra.h"
 #include "ipc.h"
+#include "serialize.h"
 
 using grpc::Channel;
 using grpc::ClientContext;
@@ -42,14 +43,21 @@ class Worker {
   RemoteCallReply remote_call(RemoteCallRequest* request);
   // send request to the scheduler to register this worker
   void register_worker(const std::string& worker_address, const std::string& objstore_address);
-  // push object to local object store, register it with the server and return object reference
-  ObjRef push_object(const Obj* obj);
-  // pull object from a potentially remote object store
-  slice pull_object(ObjRef objref);
+  // get a new object reference that is registered with the scheduler
+  ObjRef get_objref();
+  // request an object to be delivered to the local object store
+  void request_object(ObjRef objref);
   // stores an object to the local object store
   void put_object(ObjRef objref, const Obj* obj);
   // retrieve serialized object from local object store
   slice get_object(ObjRef objref);
+  // stores an arrow object to the local object store
+  // FIXME(pcm): Once we have structs in arrow, get rid of the memcpy here
+  void put_arrow(ObjRef objref, PyArrayObject* array);
+  // gets an arrow object from the local object store
+  PyArrayObject* get_arrow(ObjRef objref);
+  // determine if the object stored in objref is an arrow object // TODO(pcm): more general mechanism for this?
+  bool is_arrow(ObjRef objref);
   // register function with scheduler
   void register_function(const std::string& name, size_t num_return_vals);
   // start the worker server which accepts tasks from the scheduler and stores
