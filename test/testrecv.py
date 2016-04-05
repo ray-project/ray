@@ -1,5 +1,6 @@
 import sys
 import argparse
+import numpy as np
 
 import arrays.single as single
 import arrays.dist as dist
@@ -12,6 +13,15 @@ parser = argparse.ArgumentParser(description='Parse addresses for the worker to 
 parser.add_argument("--scheduler-address", default="127.0.0.1:10001", type=str, help="the scheduler's address")
 parser.add_argument("--objstore-address", default="127.0.0.1:20001", type=str, help="the objstore's address")
 parser.add_argument("--worker-address", default="127.0.0.1:40001", type=str, help="the worker's address")
+
+@orchpy.distributed([], [np.ndarray])
+def test_alias_f():
+  return np.ones([3, 4, 5])
+
+@orchpy.distributed([], [np.ndarray])
+def test_alias_g():
+  return f()
+
 
 @orchpy.distributed([str], [str])
 def print_string(string):

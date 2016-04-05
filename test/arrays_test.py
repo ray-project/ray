@@ -16,61 +16,12 @@ from grpc.beta import implementations
 import orchestra_pb2
 import types_pb2
 
-IP_ADDRESS = "127.0.0.1"
-TIMEOUT_SECONDS = 5
-
-def connect_to_scheduler(host, port):
-  channel = implementations.insecure_channel(host, port)
-  return orchestra_pb2.beta_create_Scheduler_stub(channel)
-
-def connect_to_objstore(host, port):
-  channel = implementations.insecure_channel(host, port)
-  return orchestra_pb2.beta_create_ObjStore_stub(channel)
-
-def address(host, port):
-  return host + ":" + str(port)
-
-scheduler_port_counter = 0
-def new_scheduler_port():
-  global scheduler_port_counter
-  scheduler_port_counter += 1
-  return 10000 + scheduler_port_counter
-
-worker_port_counter = 0
-def new_worker_port():
-  global worker_port_counter
-  worker_port_counter += 1
-  return 40000 + worker_port_counter
-
-objstore_port_counter = 0
-def new_objstore_port():
-  global objstore_port_counter
-  objstore_port_counter += 1
-  return 20000 + objstore_port_counter
-
 class ArraysSingleTest(unittest.TestCase):
 
   def testMethods(self):
-    scheduler_port = new_scheduler_port()
-    objstore_port = new_objstore_port()
-    worker1_port = new_worker_port()
-    worker2_port = new_worker_port()
-
-    services.start_scheduler(address(IP_ADDRESS, scheduler_port))
-
-    time.sleep(0.1)
-
-    services.start_objstore(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port))
-
-    time.sleep(0.2)
-
-    orchpy.connect(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port), address(IP_ADDRESS, worker1_port))
-
     test_dir = os.path.dirname(os.path.abspath(__file__))
     test_path = os.path.join(test_dir, "testrecv.py")
-    services.start_worker(test_path, address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port), address(IP_ADDRESS, worker2_port))
-
-    time.sleep(0.2)
+    services.start_cluster(num_workers=1, worker_path=test_path)
 
     # test eye
     ref = single.eye(3, "float")
@@ -110,26 +61,9 @@ class ArraysDistTest(unittest.TestCase):
     self.assertEqual(x.objrefs[0, 0, 0].val, y.objrefs[0, 0, 0].val)
 
   def testAssemble(self):
-    scheduler_port = new_scheduler_port()
-    objstore_port = new_objstore_port()
-    worker1_port = new_worker_port()
-    worker2_port = new_worker_port()
-
-    services.start_scheduler(address(IP_ADDRESS, scheduler_port))
-
-    time.sleep(0.1)
-
-    services.start_objstore(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port))
-
-    time.sleep(0.2)
-
-    orchpy.connect(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port), address(IP_ADDRESS, worker1_port))
-
     test_dir = os.path.dirname(os.path.abspath(__file__))
     test_path = os.path.join(test_dir, "testrecv.py")
-    services.start_worker(test_path, address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port), address(IP_ADDRESS, worker2_port))
-
-    time.sleep(0.2)
+    services.start_cluster(num_workers=1, worker_path=test_path)
 
     a = single.ones([dist.BLOCK_SIZE, dist.BLOCK_SIZE], "float")
     b = single.zeros([dist.BLOCK_SIZE, dist.BLOCK_SIZE], "float")
@@ -140,30 +74,9 @@ class ArraysDistTest(unittest.TestCase):
     services.cleanup()
 
   def testMethods(self):
-    scheduler_port = new_scheduler_port()
-    objstore_port = new_objstore_port()
-    worker1_port = new_worker_port()
-    worker2_port = new_worker_port()
-    worker3_port = new_worker_port()
-    worker4_port = new_worker_port()
-
-    services.start_scheduler(address(IP_ADDRESS, scheduler_port))
-
-    time.sleep(0.1)
-
-    services.start_objstore(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port))
-
-    time.sleep(0.2)
-
-    orchpy.connect(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port), address(IP_ADDRESS, worker1_port))
-
     test_dir = os.path.dirname(os.path.abspath(__file__))
     test_path = os.path.join(test_dir, "testrecv.py")
-    services.start_worker(test_path, address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port), address(IP_ADDRESS, worker2_port))
-    services.start_worker(test_path, address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port), address(IP_ADDRESS, worker3_port))
-    services.start_worker(test_path, address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port), address(IP_ADDRESS, worker4_port))
-
-    time.sleep(0.2)
+    services.start_cluster(num_workers=3, worker_path=test_path)
 
     x = dist.zeros([9, 25, 51], "float")
     self.assertTrue(np.alltrue(orchpy.pull(dist.assemble(x)) == np.zeros([9, 25, 51])))
