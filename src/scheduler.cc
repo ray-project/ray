@@ -38,7 +38,7 @@ Status SchedulerService::PushObj(ServerContext* context, const PushObjRequest* r
   return Status::OK;
 }
 
-Status SchedulerService::PullObj(ServerContext* context, const PullObjRequest* request, AckReply* reply) {
+Status SchedulerService::RequestObj(ServerContext* context, const RequestObjRequest* request, AckReply* reply) {
   objtable_lock_.lock();
   size_t size = objtable_.size();
   objtable_lock_.unlock();
@@ -242,6 +242,9 @@ ObjRef SchedulerService::register_new_object() {
 
 void SchedulerService::add_location(ObjRef objref, ObjStoreId objstoreid) {
   std::lock_guard<std::mutex> objtable_lock(objtable_lock_);
+  if (objref >= objtable_.size()) {
+    ORCH_LOG(ORCH_FATAL, "trying to put object on object store that was not registered with the scheduler");
+  }
   // do a binary search
   auto pos = std::lower_bound(objtable_[objref].begin(), objtable_[objref].end(), objstoreid);
   if (pos == objtable_[objref].end() || objstoreid < *pos) {

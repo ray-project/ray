@@ -55,7 +55,7 @@ public:
 };
 
 struct slice {
-  char* data;
+  uint8_t* data;
   size_t len;
 };
 

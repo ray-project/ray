@@ -6,6 +6,9 @@
 #include <boost/interprocess/managed_shared_memory.hpp>
 #include <boost/interprocess/ipc/message_queue.hpp>
 
+#include <arrow/api.h>
+#include <arrow/ipc/memory.h>
+
 #include "orchestra/orchestra.h"
 
 using namespace boost::interprocess;
@@ -91,6 +94,7 @@ struct ObjRequest {
   ObjRequestType type; // do we want to allocate a new object or get a handle?
   ObjRef objref; // object reference of the object to be returned/allocated
   int64_t size; // if allocate, that's the size of the object
+  int64_t metadata_offset; // if sending 'DONE', that's the location of the metadata relative to the beginning of the object
 };
 
 typedef size_t SegmentId; // index into a memory segment table
@@ -101,14 +105,30 @@ typedef managed_shared_memory::handle_t IpcPointer;
 
 class ObjHandle {
 public:
-  ObjHandle(SegmentId segmentid = 0, size_t size = 0, IpcPointer ipcpointer = IpcPointer());
+  ObjHandle(SegmentId segmentid = 0, size_t size = 0, IpcPointer ipcpointer = IpcPointer(), size_t metadata_offset = 0);
   SegmentId segmentid() { return segmentid_; }
   size_t size() { return size_; }
   IpcPointer ipcpointer() { return ipcpointer_; }
+  size_t metadata_offset() { return metadata_offset_; }
+  void set_metadata_offset(size_t metadata_offset) {metadata_offset_ = metadata_offset; }
 private:
-  SegmentId segmentid_;
-  size_t size_;
-  IpcPointer ipcpointer_;
+  SegmentId segmentid_; // which shared memory file the object is stored in
+  IpcPointer ipcpointer_; // pointer to the beginning of the object, exchangeable between processes
+  size_t size_; // total size of the object
+  size_t metadata_offset_; // offset of the metadata that describes this object
+};
+
+class BufferMemorySource: public arrow::ipc::MemorySource {
+public:
+  BufferMemorySource(uint8_t* data, int64_t capacity) : data_(data), capacity_(capacity), size_(0) {}
+  virtual arrow::Status ReadAt(int64_t position, int64_t nbytes, std::shared_ptr<arrow::Buffer>* out);
+  virtual arrow::Status Close();
+  virtual arrow::Status Write(int64_t position, const uint8_t* data, int64_t nbytes);
+  virtual int64_t Size() const;
+ private:
+  uint8_t* data_;
+  int64_t capacity_;
+  int64_t size_;
 };
 
 // Memory segment pool: A collection of shared memory segments
@@ -123,8 +143,8 @@ class MemorySegmentPool {
 public:
   MemorySegmentPool(bool create = false); // can be used in two modes: create mode and open mode (see above)
   ~MemorySegmentPool();
-  ObjHandle allocate(size_t nbytes); // allocate a new shared object, potentially creating a new segment (only run on object store)
-  char* get_address(ObjHandle pointer); // get address of shared object
+  ObjHandle allocate(size_t nbytes); // allocate memory, potentially creating a new segment (only run on object store)
+  uint8_t* get_address(ObjHandle pointer); // get address of shared object
 private:
   void open_segment(SegmentId segmentid, size_t size = 0); // create a segment or map an existing one into memory
   bool create_mode_;

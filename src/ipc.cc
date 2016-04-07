@@ -1,8 +1,30 @@
 #include "ipc.h"
 
-ObjHandle::ObjHandle(SegmentId segmentid, size_t size, IpcPointer ipcpointer)
-  : segmentid_(segmentid), size_(size), ipcpointer_(ipcpointer)
+using namespace arrow;
+
+ObjHandle::ObjHandle(SegmentId segmentid, size_t size, IpcPointer ipcpointer, size_t metadata_offset)
+  : segmentid_(segmentid), size_(size), ipcpointer_(ipcpointer), metadata_offset_(metadata_offset)
 {}
+
+Status BufferMemorySource::Write(int64_t position, const uint8_t* data, int64_t nbytes) {
+  // TODO(pcm): error handling
+  std::memcpy(data_ + position, data, nbytes);
+  return Status::OK();
+}
+
+Status BufferMemorySource::ReadAt(int64_t position, int64_t nbytes, std::shared_ptr<Buffer>* out) {
+  // TODO(pcm): error handling
+  *out = std::make_shared<Buffer>(data_ + position, nbytes);
+  return Status::OK();
+}
+
+Status BufferMemorySource::Close() {
+  return Status::OK();
+}
+
+int64_t BufferMemorySource::Size() const {
+  return size_;
+}
 
 MemorySegmentPool::MemorySegmentPool(bool create) : create_mode_(create) { }
 
@@ -37,14 +59,14 @@ ObjHandle MemorySegmentPool::allocate(size_t size) {
 
 // returns address of the object refered to by the handle, needs to be called on
 // the process that will use the address
-char* MemorySegmentPool::get_address(ObjHandle pointer) {
+uint8_t* MemorySegmentPool::get_address(ObjHandle pointer) {
   if (pointer.segmentid() >= segments_.size()) {
     for (int i = segments_.size(); i <= pointer.segmentid(); ++i) {
       open_segment(i);
     }
   }
   managed_shared_memory* segment = segments_[pointer.segmentid()].get();
-  return static_cast<char*>(segment->get_address_from_handle(pointer.ipcpointer()));
+  return static_cast<uint8_t*>(segment->get_address_from_handle(pointer.ipcpointer()));
 }
 
 MemorySegmentPool::~MemorySegmentPool() {

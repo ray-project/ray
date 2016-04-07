@@ -1,5 +1,6 @@
 from types import ModuleType
 import typing
+import numpy as np
 
 import orchpy
 import serialization
@@ -14,13 +15,19 @@ class Worker(object):
 
   def put_object(self, objref, value):
     """Put `value` in the local object store with objref `objref`. This assumes that the value for `objref` has not yet been placed in the local object store."""
-    object_capsule = serialization.serialize(value)
-    orchpy.lib.put_object(self.handle, objref, object_capsule)
+    if type(value) == np.ndarray:
+      orchpy.lib.put_arrow(self.handle, objref, value)
+    else:
+      object_capsule = serialization.serialize(value)
+      orchpy.lib.put_object(self.handle, objref, object_capsule)
 
   def get_object(self, objref):
     """Return the value from the local object store for objref `objref`. This will block until the value for `objref` has been written to the local object store."""
-    object_capsule = orchpy.lib.get_object(self.handle, objref)
-    return serialization.deserialize(object_capsule)
+    if orchpy.lib.is_arrow(self.handle, objref):
+      return orchpy.lib.get_arrow(self.handle, objref)
+    else:
+      object_capsule = orchpy.lib.get_object(self.handle, objref)
+      return serialization.deserialize(object_capsule)
 
   def register_function(self, function):
     """Notify the scheduler that this worker can execute the function with name `func_name`. Store the function `function` locally."""
@@ -53,12 +60,13 @@ def connect(scheduler_addr, objstore_addr, worker_addr, worker=global_worker):
   worker.connected = True
 
 def pull(objref, worker=global_worker):
-  object_capsule = orchpy.lib.pull_object(worker.handle, objref)
-  return serialization.deserialize(object_capsule)
+  orchpy.lib.request_object(worker.handle, objref)
+  return worker.get_object(objref)
 
 def push(value, worker=global_worker):
-  object_capsule = serialization.serialize(value)
-  return orchpy.lib.push_object(worker.handle, object_capsule)
+  objref = orchpy.lib.get_objref(worker.handle)
+  worker.put_object(objref, value)
+  return objref
 
 def main_loop(worker=global_worker):
   if not worker.connected:

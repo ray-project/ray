@@ -39,7 +39,7 @@ class SchedulerService : public Scheduler::Service {
 public:
   Status RemoteCall(ServerContext* context, const RemoteCallRequest* request, RemoteCallReply* reply) override;
   Status PushObj(ServerContext* context, const PushObjRequest* request, PushObjReply* reply) override;
-  Status PullObj(ServerContext* context, const PullObjRequest* request, AckReply* reply) override;
+  Status RequestObj(ServerContext* context, const RequestObjRequest* request, AckReply* reply) override;
   Status RegisterObjStore(ServerContext* context, const RegisterObjStoreRequest* request, RegisterObjStoreReply* reply) override;
   Status RegisterWorker(ServerContext* context, const RegisterWorkerRequest* request, RegisterWorkerReply* reply) override;
   Status RegisterFunction(ServerContext* context, const RegisterFunctionRequest* request, AckReply* reply) override;
