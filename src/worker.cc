@@ -37,12 +37,12 @@ void Worker::register_worker(const std::string& worker_address, const std::strin
 }
 
 void Worker::request_object(ObjRef objref) {
-  PullObjRequest request;
+  RequestObjRequest request;
   request.set_workerid(workerid_);
   request.set_objref(objref);
   AckReply reply;
   ClientContext context;
-  Status status = scheduler_stub_->PullObj(&context, request, &reply);
+  Status status = scheduler_stub_->RequestObj(&context, request, &reply);
   return;
 }
 

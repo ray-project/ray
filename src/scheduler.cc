@@ -38,7 +38,7 @@ Status SchedulerService::PushObj(ServerContext* context, const PushObjRequest* r
   return Status::OK;
 }
 
-Status SchedulerService::PullObj(ServerContext* context, const PullObjRequest* request, AckReply* reply) {
+Status SchedulerService::RequestObj(ServerContext* context, const RequestObjRequest* request, AckReply* reply) {
   objtable_lock_.lock();
   size_t size = objtable_.size();
   objtable_lock_.unlock();
