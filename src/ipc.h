@@ -84,17 +84,19 @@ private:
 // worker requests an allocation from the object store
 // GET: workerid, objref -> objhandle:
 // worker requests an object from the object store
-// DONE: workerid, objref -> ():
+// WORKER_DONE: workerid, objref -> ():
 // worker tells the object store that an object has been finalized
+// ALIAS_DONE: objref -> ():
+// objstore tells itself that it has finalized something (perhaps an alias)
 
-enum ObjRequestType {ALLOC = 0, GET = 1, DONE = 2};
+enum ObjRequestType {ALLOC = 0, GET = 1, WORKER_DONE = 2, ALIAS_DONE};
 
 struct ObjRequest {
   WorkerId workerid; // worker that sends the request
   ObjRequestType type; // do we want to allocate a new object or get a handle?
   ObjRef objref; // object reference of the object to be returned/allocated
   int64_t size; // if allocate, that's the size of the object
-  int64_t metadata_offset; // if sending 'DONE', that's the location of the metadata relative to the beginning of the object
+  int64_t metadata_offset; // if sending 'WORKER_DONE', that's the location of the metadata relative to the beginning of the object
 };
 
 typedef size_t SegmentId; // index into a memory segment table

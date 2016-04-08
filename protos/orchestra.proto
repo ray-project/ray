@@ -33,6 +33,8 @@ service Scheduler {
   rpc PushObj(PushObjRequest) returns (PushObjReply);
   // Request delivery of an object from an object store that holds the object to the local object store
   rpc RequestObj(RequestObjRequest) returns (AckReply);
+  // Used by the worker to tell the scheduler that two objrefs should refer to the same object
+  rpc AliasObjRefs(AliasObjRefsRequest) returns (AckReply);
   // Used by an object store to tell the scheduler that an object is ready (i.e. has been finalized and can be shared)
   rpc ObjReady(ObjReadyRequest) returns (AckReply);
   // Used by the worker to report back and ask for more work
@@ -88,6 +90,11 @@ message PushObjReply {
   uint64 objref = 1; // Object reference assigned by the scheduler to the object
 }
 
+message AliasObjRefsRequest {
+  uint64 alias_objref = 1; // ObjRef which will be aliased
+  uint64 target_objref = 2; // The target ObjRef
+}
+
 message ObjReadyRequest {
   uint64 objref = 1; // Object reference of the object that has been finalized
   uint64 objstoreid = 2; // ID of the object store the object lives on
@@ -124,6 +131,8 @@ service ObjStore {
   rpc DeliverObj(DeliverObjRequest) returns (AckReply);
   // Accept incoming data from another object store, as a stream of object chunks
   rpc StreamObj(stream ObjChunk) returns (AckReply);
+  // Notify the object store about objref aliasing. This is called by the scheduler
+  rpc NotifyAlias(NotifyAliasRequest) returns (AckReply);
   // Get debug info from the object store
   rpc ObjStoreDebugInfo(ObjStoreDebugInfoRequest) returns (ObjStoreDebugInfoReply);
 }
@@ -145,6 +154,11 @@ message ObjChunk {
   uint64 objref = 1; // Object reference of the object being streamed
   uint64 totalsize = 2; // Total size of the object
   bytes data = 3; // Data for this chunk of the object
+}
+
+message NotifyAliasRequest {
+  uint64 alias_objref = 1; // The objref being aliased
+  uint64 canonical_objref = 2; // The canonical objref that points to the actual object
 }
 
 message GetObjRequest {

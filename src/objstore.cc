@@ -112,57 +112,80 @@ Status ObjStoreService::StreamObj(ServerContext* context, ServerReader<ObjChunk>
 }
 */
 
-void ObjStoreService::process_requests() {
-  ObjRequest request;
-  while (true) {
-    recv_queue_.receive(&request);
-    if (request.workerid >= send_queues_.size()) {
-      send_queues_.resize(request.workerid + 1);
-    }
-    if (!send_queues_[request.workerid].connected()) {
-      std::string queue_name = std::string("queue:") + objstore_address_ + std::string(":worker:") + std::to_string(request.workerid) + std::string(":obj");
-      send_queues_[request.workerid].connect(queue_name, false);
-    }
-    if (request.objref >= memory_.size()) {
-      memory_.resize(request.objref + 1);
-      memory_[request.objref].second = false;
-    }
-    switch (request.type) {
-      case ObjRequestType::ALLOC: {
-          ObjHandle reply = segmentpool_.allocate(request.size);
-          send_queues_[request.workerid].send(&reply);
-          if (request.objref >= memory_.size()) {
-            memory_.resize(request.objref + 1);
-          }
-          memory_[request.objref].first = reply;
-          memory_[request.objref].second = false;
+Status ObjStoreService::NotifyAlias(ServerContext* context, const NotifyAliasRequest* request, AckReply* reply) {
+  // NotifyAlias assumes that the objstore already holds canonical_objref
+  ObjRef alias_objref = request->alias_objref();
+  ObjRef canonical_objref = request->canonical_objref();
+  std::lock_guard<std::mutex> memory_lock(memory_lock_);
+  if (canonical_objref >= memory_.size()) {
+    ORCH_LOG(ORCH_FATAL, "Attempting to alias objref " << alias_objref << " with objref " << canonical_objref << ", but objref " << canonical_objref << " is not in the objstore.")
+  }
+  if (!memory_[canonical_objref].second) {
+    ORCH_LOG(ORCH_FATAL, "Attempting to alias objref " << alias_objref << " with objref " << canonical_objref << ", but objref " << canonical_objref << " is not ready yet in the objstore.")
+  }
+  if (alias_objref >= memory_.size()) {
+    memory_.resize(alias_objref + 1);
+  }
+  memory_[alias_objref].first = memory_[canonical_objref].first;
+  memory_[alias_objref].second = true;
+
+  ObjRequest done_request;
+  done_request.type = ObjRequestType::ALIAS_DONE;
+  done_request.objref = alias_objref;
+  recv_queue_.send(&done_request);
+  return Status::OK;
+}
+
+void ObjStoreService::process_objstore_request(const ObjRequest request) {
+  switch (request.type) {
+    case ObjRequestType::ALIAS_DONE: {
+        process_pulls_for_objref(request.objref);
+      }
+      break;
+    default: {
+        ORCH_LOG(ORCH_FATAL, "Attempting to process request of type " <<  request.type << ". This code should be unreachable.");
+      }
+  }
+}
+
+void ObjStoreService::process_worker_request(const ObjRequest request) {
+  if (request.workerid >= send_queues_.size()) {
+    send_queues_.resize(request.workerid + 1);
+  }
+  if (!send_queues_[request.workerid].connected()) {
+    std::string queue_name = std::string("queue:") + objstore_address_ + std::string(":worker:") + std::to_string(request.workerid) + std::string(":obj");
+    send_queues_[request.workerid].connect(queue_name, false);
+  }
+  if (request.objref >= memory_.size()) {
+    memory_.resize(request.objref + 1);
+    memory_[request.objref].second = false;
+  }
+  switch (request.type) {
+    case ObjRequestType::ALLOC: {
+        ObjHandle reply = segmentpool_.allocate(request.size);
+        send_queues_[request.workerid].send(&reply);
+        if (request.objref >= memory_.size()) {
+          memory_.resize(request.objref + 1);
         }
-        break;
-      case ObjRequestType::GET: {
-          std::pair<ObjHandle, bool>& item = memory_[request.objref];
-          if (item.second) {
-            send_queues_[request.workerid].send(&item.first);
-          } else {
-            std::lock_guard<std::mutex> lock(pull_queue_lock_);
-            pull_queue_.push_back(std::make_pair(request.workerid, request.objref));
-          }
+        memory_[request.objref].first = reply;
+        memory_[request.objref].second = false;
+      }
+      break;
+    case ObjRequestType::GET: {
+        std::pair<ObjHandle, bool>& item = memory_[request.objref];
+        if (item.second) {
+          send_queues_[request.workerid].send(&item.first);
+        } else {
+          std::lock_guard<std::mutex> lock(pull_queue_lock_);
+          pull_queue_.push_back(std::make_pair(request.workerid, request.objref));
         }
-        break;
-      case ObjRequestType::DONE: {
+      }
+      break;
+    case ObjRequestType::WORKER_DONE: {
         std::pair<ObjHandle, bool>& item = memory_[request.objref];
         item.first.set_metadata_offset(request.metadata_offset);
         item.second = true;
-        std::lock_guard<std::mutex> pull_queue_lock(pull_queue_lock_);
-        for (size_t i = 0; i < pull_queue_.size(); ++i) {
-          if (pull_queue_[i].second == request.objref) {
-            ObjHandle& elem = memory_[request.objref].first;
-            send_queues_[pull_queue_[i].first].send(&item.first);
-            // Remove the pull task from the queue
-            std::swap(pull_queue_[i], pull_queue_[pull_queue_.size() - 1]);
-            pull_queue_.pop_back();
-            i -= 1;
-          }
-        }
+        process_pulls_for_objref(request.objref);
         // Tell the scheduler that the object arrived
         // TODO(pcm): put this in a separate thread so we don't have to pay the latency here
         ClientContext objready_context;
@@ -173,6 +196,52 @@ void ObjStoreService::process_requests() {
         scheduler_stub_->ObjReady(&objready_context, objready_request, &objready_reply);
       }
       break;
+    default: {
+        ORCH_LOG(ORCH_FATAL, "Attempting to process request of type " <<  request.type << ". This code should be unreachable.");
+      }
+  }
+}
+
+void ObjStoreService::process_requests() {
+  // TODO(rkn): Should memory_lock_ be used in this method?
+  ObjRequest request;
+  while (true) {
+    recv_queue_.receive(&request);
+    switch (request.type) {
+      case ObjRequestType::ALLOC: {
+          process_worker_request(request);
+        }
+        break;
+      case ObjRequestType::GET: {
+          process_worker_request(request);
+        }
+        break;
+      case ObjRequestType::WORKER_DONE: {
+          process_worker_request(request);
+        }
+        break;
+      case ObjRequestType::ALIAS_DONE: {
+          process_objstore_request(request);
+        }
+        break;
+      default: {
+          ORCH_LOG(ORCH_FATAL, "Attempting to process request of type " <<  request.type << ". This code should be unreachable.");
+        }
+    }
+  }
+}
+
+void ObjStoreService::process_pulls_for_objref(ObjRef objref) {
+  std::pair<ObjHandle, bool>& item = memory_[objref];
+  std::lock_guard<std::mutex> pull_queue_lock(pull_queue_lock_);
+  for (size_t i = 0; i < pull_queue_.size(); ++i) {
+    if (pull_queue_[i].second == objref) {
+      ObjHandle& elem = memory_[objref].first;
+      send_queues_[pull_queue_[i].first].send(&item.first);
+      // Remove the pull task from the queue
+      std::swap(pull_queue_[i], pull_queue_[pull_queue_.size() - 1]);
+      pull_queue_.pop_back();
+      i -= 1;
     }
   }
 }

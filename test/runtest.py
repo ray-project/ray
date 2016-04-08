@@ -140,21 +140,20 @@ class WorkerTest(unittest.TestCase):
 
     services.cleanup()
 
-"""
 class APITest(unittest.TestCase):
 
   def testObjRefAliasing(self):
-    services.start_scheduler(address(IP_ADDRESS, new_scheduler_port()))
-    time.sleep(0.1)
-    services.start_objstore(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, new_objstore_port()))
-    time.sleep(0.2)
-    worker1 = worker.Worker()
-    orchpy.connect(address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port), address(IP_ADDRESS, new_worker_port()), worker1)
+    w = worker.Worker()
     test_dir = os.path.dirname(os.path.abspath(__file__))
     test_path = os.path.join(test_dir, "testrecv.py")
-    services.start_worker(test_path, address(IP_ADDRESS, scheduler_port), address(IP_ADDRESS, objstore_port), address(IP_ADDRESS, new_worker_port()))
-"""
+    services.start_cluster(num_workers=3, worker_path=test_path, driver_worker=w)
 
+    objref = w.remote_call("__main__.test_alias_f", [])
+    self.assertTrue(np.alltrue(orchpy.pull(objref[0], w) == np.ones([3, 4, 5])))
+    objref = w.remote_call("__main__.test_alias_g", [])
+    self.assertTrue(np.alltrue(orchpy.pull(objref[0], w) == np.ones([3, 4, 5])))
+    objref = w.remote_call("__main__.test_alias_h", [])
+    self.assertTrue(np.alltrue(orchpy.pull(objref[0], w) == np.ones([3, 4, 5])))
 
 if __name__ == '__main__':
     unittest.main()

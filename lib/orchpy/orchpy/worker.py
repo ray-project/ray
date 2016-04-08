@@ -22,12 +22,21 @@ class Worker(object):
       orchpy.lib.put_object(self.handle, objref, object_capsule)
 
   def get_object(self, objref):
-    """Return the value from the local object store for objref `objref`. This will block until the value for `objref` has been written to the local object store."""
+    """
+    Return the value from the local object store for objref `objref`. This will
+    block until the value for `objref` has been written to the local object store.
+
+    WARNING: get_object can only be called on a canonical objref.
+    """
     if orchpy.lib.is_arrow(self.handle, objref):
       return orchpy.lib.get_arrow(self.handle, objref)
     else:
       object_capsule = orchpy.lib.get_object(self.handle, objref)
       return serialization.deserialize(object_capsule)
+
+  def alias_objrefs(self, alias_objref, target_objref):
+    """Make `alias_objref` refer to the same object that `target_objref` refers to."""
+    orchpy.lib.alias_objrefs(self.handle, alias_objref, target_objref)
 
   def register_function(self, function):
     """Notify the scheduler that this worker can execute the function with name `func_name`. Store the function `function` locally."""
@@ -105,14 +114,15 @@ def distributed(arg_types, return_types, worker=global_worker):
 # helper method, this should not be called by the user
 def check_return_values(function, result):
   if len(function.return_types) == 1:
-    if not isinstance(result, function.return_types[0]):
-      raise Exception("The @distributed decorator for function {} expects one return value with type {}, but {} returned a {}.".format(function.__name__, function.return_types[0], function.__name__, type(result)))
+    result = (result,)
+    # if not isinstance(result, function.return_types[0]):
+    #   raise Exception("The @distributed decorator for function {} expects one return value with type {}, but {} returned a {}.".format(function.__name__, function.return_types[0], function.__name__, type(result)))
   else:
     if len(result) != len(function.return_types):
       raise Exception("The @distributed decorator for function {} has {} return values with types {}, but {} returned {} values.".format(function.__name__, len(function.return_types), function.return_types, function.__name__, len(result)))
     for i in range(len(result)):
-      if not isinstance(result[i], function.return_types[i]):
-        raise Exception("The {}th return value for function {} has type {}, but the @distributed decorator expected a return value of type {}.".format(i, function.__name__, type(result[i]), function.return_types[i]))
+      if (not isinstance(result[i], function.return_types[i])) and (not isinstance(result[i], orchpy.lib.ObjRef)):
+        raise Exception("The {}th return value for function {} has type {}, but the @distributed decorator expected a return value of type {} or an ObjRef.".format(i, function.__name__, type(result[i]), function.return_types[i]))
 
 # helper method, this should not be called by the user
 def check_arguments(function, args):
@@ -132,7 +142,7 @@ def check_arguments(function, args):
     else:
       assert False, "This code should be unreachable."
 
-    if type(arg) == orchpy.lib.ObjRef:
+    if isinstance(arg, orchpy.lib.ObjRef):
       # TODO(rkn): When we have type information in the ObjRef, do type checking here.
       pass
     else:
@@ -161,7 +171,7 @@ def get_arguments_for_execution(function, args, worker=global_worker):
     else:
       assert False, "This code should be unreachable."
 
-    if type(arg) == orchpy.lib.ObjRef:
+    if isinstance(arg, orchpy.lib.ObjRef):
       # get the object from the local object store
       print "Getting argument {} for function {}.".format(i, function.__name__)
       argument = worker.get_object(arg)
@@ -178,7 +188,13 @@ def get_arguments_for_execution(function, args, worker=global_worker):
 # helper method, this should not be called by the user
 def store_outputs_in_objstore(objrefs, outputs, worker=global_worker):
   if len(objrefs) == 1:
-    worker.put_object(objrefs[0], outputs)
-  else:
-    for i in range(len(objrefs)):
+    outputs = (outputs,)
+
+  for i in range(len(objrefs)):
+    if isinstance(outputs[i], orchpy.lib.ObjRef):
+      # An ObjRef is being returned, so we must alias objrefs[i] so that it refers to the same object that outputs[i] refers to
+      print "Aliasing objrefs {} and {}".format(objrefs[i].val, outputs[i].val)
+      worker.alias_objrefs(objrefs[i], outputs[i])
+      pass
+    else:
       worker.put_object(objrefs[i], outputs[i])

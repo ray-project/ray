@@ -58,6 +58,8 @@ class Worker {
   PyArrayObject* get_arrow(ObjRef objref);
   // determine if the object stored in objref is an arrow object // TODO(pcm): more general mechanism for this?
   bool is_arrow(ObjRef objref);
+  // make `alias_objref` refer to the same object that `target_objref` refers to
+  void alias_objrefs(ObjRef alias_objref, ObjRef target_objref);
   // register function with scheduler
   void register_function(const std::string& name, size_t num_return_vals);
   // start the worker server which accepts tasks from the scheduler and stores

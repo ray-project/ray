@@ -34,12 +34,16 @@ public:
 
   // Status DeliverObj(ServerContext* context, const DeliverObjRequest* request, AckReply* reply) override;
   // Status StreamObj(ServerContext* context, ServerReader<ObjChunk>* reader, AckReply* reply) override;
+  Status NotifyAlias(ServerContext* context, const NotifyAliasRequest* request, AckReply* reply) override;
   Status ObjStoreDebugInfo(ServerContext* context, const ObjStoreDebugInfoRequest* request, ObjStoreDebugInfoReply* reply) override;
   void start_objstore_service();
 private:
   // check if we already connected to the other objstore, if yes, return reference to connection, otherwise connect
   ObjStore::Stub& get_objstore_stub(const std::string& objstore_address);
+  void process_worker_request(const ObjRequest request);
+  void process_objstore_request(const ObjRequest request);
   void process_requests();
+  void process_pulls_for_objref(ObjRef objref);
 
   std::string objstore_address_;
   ObjStoreId objstoreid_; // id of this objectstore in the scheduler object store table

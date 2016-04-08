@@ -586,6 +586,7 @@ PyObject* put_object(PyObject* self, PyObject* args) {
 }
 
 PyObject* get_object(PyObject* self, PyObject* args) {
+  // get_object assumes that objref is a canonical objref
   Worker* worker;
   ObjRef objref;
   if (!PyArg_ParseTuple(args, "O&O&", &PyObjectToWorker, &worker, &PyObjectToObjRef, &objref)) {
@@ -604,6 +605,17 @@ PyObject* request_object(PyObject* self, PyObject* args) {
     return NULL;
   }
   worker->request_object(objref);
+  Py_RETURN_NONE;
+}
+
+PyObject* alias_objrefs(PyObject* self, PyObject* args) {
+  Worker* worker;
+  ObjRef alias_objref;
+  ObjRef target_objref;
+  if (!PyArg_ParseTuple(args, "O&O&O&", &PyObjectToWorker, &worker, &PyObjectToObjRef, &alias_objref, &PyObjectToObjRef, &target_objref)) {
+    return NULL;
+  }
+  worker->alias_objrefs(alias_objref, target_objref);
   Py_RETURN_NONE;
 }
 
@@ -630,6 +642,7 @@ static PyMethodDef OrchPyLibMethods[] = {
  { "get_object", get_object, METH_VARARGS, "get protocol buffer object from the local object store" },
  { "get_objref", get_objref, METH_VARARGS, "register a new object reference with the scheduler" },
  { "request_object" , request_object, METH_VARARGS, "request an object to be delivered to the local object store" },
+ { "alias_objrefs", alias_objrefs, METH_VARARGS, "make two objrefs refer to the same object" },
  { "wait_for_next_task", wait_for_next_task, METH_VARARGS, "get next task from scheduler (blocking)" },
  { "remote_call", remote_call, METH_VARARGS, "call a remote function" },
  { "notify_task_completed", notify_task_completed, METH_VARARGS, "notify the scheduler that a task has been completed" },

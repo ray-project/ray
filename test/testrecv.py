@@ -20,8 +20,11 @@ def test_alias_f():
 
 @orchpy.distributed([], [np.ndarray])
 def test_alias_g():
-  return f()
+  return test_alias_f()
 
+@orchpy.distributed([], [np.ndarray])
+def test_alias_h():
+  return test_alias_g()
 
 @orchpy.distributed([str], [str])
 def print_string(string):
