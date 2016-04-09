@@ -78,6 +78,11 @@ private:
   ObjStoreId pick_objstore(ObjRef objref);
   // checks if objref is a canonical objref
   bool is_canonical(ObjRef objref);
+
+  void perform_pulls();
+  void schedule_tasks();
+  void perform_notify_aliases();
+
   // checks if aliasing for objref has been completed
   bool has_canonical_objref(ObjRef objref);
   // get the canonical objref for an objref

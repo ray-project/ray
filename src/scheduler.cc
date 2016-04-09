@@ -153,86 +153,10 @@ void SchedulerService::deliver_object(ObjRef objref, ObjStoreId from, ObjStoreId
 }
 
 void SchedulerService::schedule() {
-  // TODO: don't recheck if nothing changed
-  // This method consists of three kinds of tasks, which are queued in pull_queue_,
-  // task_queue_, and alias_notification_queue_. They should probably be separated
-  // into three methods, which are all called from this method
-
-  // See what we can do in pull_queue_
-  {
-    std::lock_guard<std::mutex> objtable_lock(objtable_lock_);
-    std::lock_guard<std::mutex> pull_queue_lock(pull_queue_lock_);
-    // Complete all pull tasks that can be completed.
-    for (int i = 0; i < pull_queue_.size(); ++i) {
-      const std::pair<WorkerId, ObjRef>& pull = pull_queue_[i];
-      ObjRef objref = pull.second;
-      WorkerId workerid = pull.first;
-      if (!has_canonical_objref(objref)) {
-        ORCH_LOG(ORCH_DEBUG, "objref " << objref << " does not have a canonical_objref, so continuing");
-        continue;
-      }
-      ObjRef canonical_objref = get_canonical_objref(objref);
-      ORCH_LOG(ORCH_DEBUG, "attempting to pull objref " << pull.second << " with canonical objref " << canonical_objref);
-      if (objtable_[canonical_objref].size() > 0) {
-        if (!std::binary_search(objtable_[canonical_objref].begin(), objtable_[canonical_objref].end(), get_store(workerid))) {
-          // The worker's local object store does not already contain objref, so ship
-          // it there from an object store that does have it.
-          ObjStoreId objstoreid = pick_objstore(canonical_objref);
-          deliver_object(canonical_objref, objstoreid, get_store(workerid));
-        }
-        {
-          // Notify the relevant objstore about potential aliasing when it's ready
-          std::lock_guard<std::mutex> alias_notification_queue_lock(alias_notification_queue_lock_);
-          alias_notification_queue_.push_back(std::make_pair(get_store(workerid), std::make_pair(objref, canonical_objref)));
-        }
-        // Remove the pull task from the queue
-        std::swap(pull_queue_[i], pull_queue_[pull_queue_.size() - 1]);
-        pull_queue_.pop_back();
-        i -= 1;
-      }
-    }
-  }
-  // See what we can do in task_queue_
-  {
-    std::lock_guard<std::mutex> fntable_lock(fntable_lock_);
-    std::lock_guard<std::mutex> avail_workers_lock(avail_workers_lock_);
-    std::lock_guard<std::mutex> task_queue_lock(task_queue_lock_);
-    for (int i = 0; i < avail_workers_.size(); ++i) {
-      // Submit all tasks whose arguments are ready.
-      WorkerId workerid = avail_workers_[i];
-      for (auto it = task_queue_.begin(); it != task_queue_.end(); ++it) {
-        // The use of erase(it) below invalidates the iterator, but we
-        // immediately break out of the inner loop, so the iterator is not used
-        // after the erase
-        const Call& task = *(*it);
-        auto& workers = fntable_[task.name()].workers();
-        if (std::binary_search(workers.begin(), workers.end(), workerid) && can_run(task)) {
-          submit_task(std::move(*it), workerid);
-          task_queue_.erase(it);
-          std::swap(avail_workers_[i], avail_workers_[avail_workers_.size() - 1]);
-          avail_workers_.pop_back();
-          i -= 1;
-          break;
-        }
-      }
-    }
-  }
-  // See what we can do in alias_notification_queue_
-  {
-    std::lock_guard<std::mutex> alias_notification_queue_lock(alias_notification_queue_lock_);
-    for (int i = 0; i < alias_notification_queue_.size(); ++i) {
-      const std::pair<WorkerId, std::pair<ObjRef, ObjRef> > alias_notification = alias_notification_queue_[i];
-      ObjStoreId objstoreid = alias_notification.first;
-      ObjRef alias_objref = alias_notification.second.first;
-      ObjRef canonical_objref = alias_notification.second.second;
-      if (attempt_notify_alias(objstoreid, alias_objref, canonical_objref)) { // this locks both the objstore_ and objtable_
-        // the attempt to notify the objstore of the objref aliasing succeeded, so remove the notification task from the queue
-        std::swap(alias_notification_queue_[i], alias_notification_queue_[alias_notification_queue_.size() - 1]);
-        alias_notification_queue_.pop_back();
-        i -= 1;
-      }
-    }
-  }
+  // TODO(rkn): Do this more intelligently.
+  perform_pulls(); // See what we can do in pull_queue_
+  schedule_tasks(); // See what we can do in task_queue_
+  perform_notify_aliases(); // See what we can do in alias_notification_queue_
 }
 
 void SchedulerService::submit_task(std::unique_ptr<Call> call, WorkerId workerid) {
@@ -406,6 +330,81 @@ bool SchedulerService::is_canonical(ObjRef objref) {
     ORCH_LOG(ORCH_FATAL, "Attempting to call is_canonical on an objref for which aliasing is not complete or the object is not ready, target_objrefs_[objref] == UNITIALIZED_ALIAS for objref " << objref << ".");
   }
   return objref == target_objrefs_[objref];
+}
+
+void SchedulerService::perform_pulls() {
+  std::lock_guard<std::mutex> objtable_lock(objtable_lock_);
+  std::lock_guard<std::mutex> pull_queue_lock(pull_queue_lock_);
+  // Complete all pull tasks that can be completed.
+  for (int i = 0; i < pull_queue_.size(); ++i) {
+    const std::pair<WorkerId, ObjRef>& pull = pull_queue_[i];
+    ObjRef objref = pull.second;
+    WorkerId workerid = pull.first;
+    if (!has_canonical_objref(objref)) {
+      ORCH_LOG(ORCH_DEBUG, "objref " << objref << " does not have a canonical_objref, so continuing");
+      continue;
+    }
+    ObjRef canonical_objref = get_canonical_objref(objref);
+    ORCH_LOG(ORCH_DEBUG, "attempting to pull objref " << pull.second << " with canonical objref " << canonical_objref);
+    if (objtable_[canonical_objref].size() > 0) {
+      if (!std::binary_search(objtable_[canonical_objref].begin(), objtable_[canonical_objref].end(), get_store(workerid))) {
+        // The worker's local object store does not already contain objref, so ship
+        // it there from an object store that does have it.
+        ObjStoreId objstoreid = pick_objstore(canonical_objref);
+        deliver_object(canonical_objref, objstoreid, get_store(workerid));
+      }
+      {
+        // Notify the relevant objstore about potential aliasing when it's ready
+        std::lock_guard<std::mutex> alias_notification_queue_lock(alias_notification_queue_lock_);
+        alias_notification_queue_.push_back(std::make_pair(get_store(workerid), std::make_pair(objref, canonical_objref)));
+      }
+      // Remove the pull task from the queue
+      std::swap(pull_queue_[i], pull_queue_[pull_queue_.size() - 1]);
+      pull_queue_.pop_back();
+      i -= 1;
+    }
+  }
+}
+
+void SchedulerService::schedule_tasks() {
+  std::lock_guard<std::mutex> fntable_lock(fntable_lock_);
+  std::lock_guard<std::mutex> avail_workers_lock(avail_workers_lock_);
+  std::lock_guard<std::mutex> task_queue_lock(task_queue_lock_);
+  for (int i = 0; i < avail_workers_.size(); ++i) {
+    // Submit all tasks whose arguments are ready.
+    WorkerId workerid = avail_workers_[i];
+    for (auto it = task_queue_.begin(); it != task_queue_.end(); ++it) {
+      // The use of erase(it) below invalidates the iterator, but we
+      // immediately break out of the inner loop, so the iterator is not used
+      // after the erase
+      const Call& task = *(*it);
+      auto& workers = fntable_[task.name()].workers();
+      if (std::binary_search(workers.begin(), workers.end(), workerid) && can_run(task)) {
+        submit_task(std::move(*it), workerid);
+        task_queue_.erase(it);
+        std::swap(avail_workers_[i], avail_workers_[avail_workers_.size() - 1]);
+        avail_workers_.pop_back();
+        i -= 1;
+        break;
+      }
+    }
+  }
+}
+
+void SchedulerService::perform_notify_aliases() {
+  std::lock_guard<std::mutex> alias_notification_queue_lock(alias_notification_queue_lock_);
+  for (int i = 0; i < alias_notification_queue_.size(); ++i) {
+    const std::pair<WorkerId, std::pair<ObjRef, ObjRef> > alias_notification = alias_notification_queue_[i];
+    ObjStoreId objstoreid = alias_notification.first;
+    ObjRef alias_objref = alias_notification.second.first;
+    ObjRef canonical_objref = alias_notification.second.second;
+    if (attempt_notify_alias(objstoreid, alias_objref, canonical_objref)) { // this locks both the objstore_ and objtable_
+      // the attempt to notify the objstore of the objref aliasing succeeded, so remove the notification task from the queue
+      std::swap(alias_notification_queue_[i], alias_notification_queue_[alias_notification_queue_.size() - 1]);
+      alias_notification_queue_.pop_back();
+      i -= 1;
+    }
+  }
 }
 
 bool SchedulerService::has_canonical_objref(ObjRef objref) {
