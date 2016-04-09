@@ -4,6 +4,22 @@ Orchestra is a distributed execution framework with a Python-like programming mo
 
 ## Setup
 
+**Install Arrow**
+
+1. `git clone https://github.com/apache/arrow.git`
+2. `cd ~/arrow`
+3. `git checkout 2d8627cd81f83783b0ceb01d137a46b581ecba26`
+4. `cd ~/arrow/cpp`
+5. `bash setup_build_env.sh`
+6. `cd ~/arrow/cpp/thirdparty/flatbuffers-1.3.0`
+7. `export FLATBUFFERS_HOME=~/arrow/cpp/thirdparty/installed` (or equivalent)
+8. `cd ~/arrow/cpp/build`
+9. `cmake ..`
+10. `make`
+11. `sudo make install`
+12. add `export LD_LIBRARY_PATH=LD_LIBRARY_PATH:/usr/local/lib` to your `~/.bashrc`
+13. `source ~/.bashrc`
+
 **Install GRPC**
 
 1. Follow the instructions [here](https://github.com/grpc/grpc/blob/master/INSTALL), though some of the instructions are outdated.
