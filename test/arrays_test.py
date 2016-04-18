@@ -2,6 +2,7 @@ import unittest
 import orchpy
 import orchpy.serialization as serialization
 import orchpy.services as services
+import orchpy.worker as worker
 import numpy as np
 import time
 import subprocess32 as subprocess
@@ -53,12 +54,17 @@ class ArraysSingleTest(unittest.TestCase):
 class ArraysDistTest(unittest.TestCase):
 
   def testSerialization(self):
+    w = worker.Worker()
+    services.start_cluster(driver_worker=w)
+
     x = dist.DistArray()
-    x.construct([2, 3, 4], np.array([[[orchpy.lib.ObjRef(0)]]]))
-    capsule = serialization.serialize(x)
-    y = serialization.deserialize(capsule)
+    x.construct([2, 3, 4], np.array([[[orchpy.push(0, w)]]]))
+    capsule, _ = serialization.serialize(w.handle, x) # TODO(rkn): THIS REQUIRES A WORKER_HANDLE
+    y = serialization.deserialize(w.handle, capsule) # TODO(rkn): THIS REQUIRES A WORKER_HANDLE
     self.assertEqual(x.shape, y.shape)
     self.assertEqual(x.objrefs[0, 0, 0].val, y.objrefs[0, 0, 0].val)
+
+    services.cleanup()
 
   def testAssemble(self):
     test_dir = os.path.dirname(os.path.abspath(__file__))
@@ -76,33 +82,46 @@ class ArraysDistTest(unittest.TestCase):
   def testMethods(self):
     test_dir = os.path.dirname(os.path.abspath(__file__))
     test_path = os.path.join(test_dir, "testrecv.py")
-    services.start_cluster(num_workers=3, worker_path=test_path)
+    services.start_cluster(num_workers=4, worker_path=test_path)
 
     x = dist.zeros([9, 25, 51], "float")
-    self.assertTrue(np.alltrue(orchpy.pull(dist.assemble(x)) == np.zeros([9, 25, 51])))
+    y = dist.assemble(x)
+    self.assertTrue(np.alltrue(orchpy.pull(y) == np.zeros([9, 25, 51])))
 
     x = dist.ones([11, 25, 49], "float")
-    self.assertTrue(np.alltrue(orchpy.pull(dist.assemble(x)) == np.ones([11, 25, 49])))
+    y = dist.assemble(x)
+    self.assertTrue(np.alltrue(orchpy.pull(y) == np.ones([11, 25, 49])))
 
     x = dist.random.normal([11, 25, 49])
     y = dist.copy(x)
-    self.assertTrue(np.alltrue(orchpy.pull(dist.assemble(x)) == orchpy.pull(dist.assemble(y))))
+    z = dist.assemble(x)
+    w = dist.assemble(y)
+    self.assertTrue(np.alltrue(orchpy.pull(z) == orchpy.pull(w)))
 
     x = dist.eye(25, "float")
-    self.assertTrue(np.alltrue(orchpy.pull(dist.assemble(x)) == np.eye(25)))
+    y = dist.assemble(x)
+    self.assertTrue(np.alltrue(orchpy.pull(y) == np.eye(25)))
 
     x = dist.random.normal([25, 49])
     y = dist.triu(x)
-    self.assertTrue(np.alltrue(orchpy.pull(dist.assemble(y)) == np.triu(orchpy.pull(dist.assemble(x)))))
+    z = dist.assemble(y)
+    w = dist.assemble(x)
+    self.assertTrue(np.alltrue(orchpy.pull(z) == np.triu(orchpy.pull(w))))
 
     x = dist.random.normal([25, 49])
     y = dist.tril(x)
-    self.assertTrue(np.alltrue(orchpy.pull(dist.assemble(y)) == np.tril(orchpy.pull(dist.assemble(x)))))
+    z = dist.assemble(y)
+    w = dist.assemble(x)
+    self.assertTrue(np.alltrue(orchpy.pull(z) == np.tril(orchpy.pull(w))))
 
     x = dist.random.normal([25, 49])
     y = dist.random.normal([49, 18])
     z = dist.dot(x, y)
-    self.assertTrue(np.allclose(orchpy.pull(dist.assemble(z)), np.dot(orchpy.pull(dist.assemble(x)), orchpy.pull(dist.assemble(y)))))
+    w = dist.assemble(z)
+    u = dist.assemble(x)
+    v = dist.assemble(y)
+    np.allclose(orchpy.pull(w), np.dot(orchpy.pull(u), orchpy.pull(v)))
+    self.assertTrue(np.allclose(orchpy.pull(w), np.dot(orchpy.pull(u), orchpy.pull(v))))
 
     services.cleanup()
 

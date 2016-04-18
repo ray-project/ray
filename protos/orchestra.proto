@@ -37,10 +37,16 @@ service Scheduler {
   rpc AliasObjRefs(AliasObjRefsRequest) returns (AckReply);
   // Used by an object store to tell the scheduler that an object is ready (i.e. has been finalized and can be shared)
   rpc ObjReady(ObjReadyRequest) returns (AckReply);
+  // Increments the reference count of a particular object reference
+  rpc IncrementRefCount(IncrementRefCountRequest) returns (AckReply);
+  // Decrements the reference count of a particular object reference
+  rpc DecrementRefCount(DecrementRefCountRequest) returns (AckReply);
+  // Used by the worker to notify the scheduler about which objrefs a particular object contains
+  rpc AddContainedObjRefs(AddContainedObjRefsRequest) returns (AckReply);
   // Used by the worker to report back and ask for more work
   rpc WorkerReady(WorkerReadyRequest) returns (AckReply);
-  // Get debugging information from the scheduler
-  rpc SchedulerDebugInfo(SchedulerDebugInfoRequest) returns (SchedulerDebugInfoReply);
+  // Get information about the scheduler state
+  rpc SchedulerInfo(SchedulerInfoRequest) returns (SchedulerInfoReply);
 }
 
 message AckReply {
@@ -100,6 +106,19 @@ message ObjReadyRequest {
   uint64 objstoreid = 2; // ID of the object store the object lives on
 }
 
+message IncrementRefCountRequest {
+  repeated uint64 objref = 1; // Object references whose reference count should be incremented. Duplicates will be incremented multiple times.
+}
+
+message AddContainedObjRefsRequest {
+  uint64 objref = 1; // The objref of the object in question
+  repeated uint64 contained_objref = 2; // Object references contained in the object
+}
+
+message DecrementRefCountRequest {
+  repeated uint64 objref = 1; // Object references whose reference count should be decremented. Duplicates will be decremented multiple times.
+}
+
 message WorkerReadyRequest {
   uint64 workerid = 1; // ID of the worker which is ready
 }
@@ -108,9 +127,9 @@ message ChangeCountRequest {
   uint64 objref = 1; // Object reference of the object whose reference count is increased or decreased
 }
 
-// The following messages are used for debugging purposes:
+// The following messages are used to get information about the scheduler state
 
-message SchedulerDebugInfoRequest {
+message SchedulerInfoRequest {
 }
 
 message FnTableEntry {
@@ -118,10 +137,12 @@ message FnTableEntry {
   uint64 num_return_vals = 2; // Number of return values of the function
 }
 
-message SchedulerDebugInfoReply {
+message SchedulerInfoReply {
   repeated Call task = 1; // Tasks on the task queue
   repeated uint64 avail_worker = 3; // List of workers waiting to get a task assigned
   map<string, FnTableEntry> function_table = 2; // Table of all available remote function
+  repeated uint64 target_objref = 4; // The target_objrefs_ data structure
+  repeated uint64 reference_count = 5; // The reference_counts_ data structure
 }
 
 // Object stores
@@ -133,8 +154,10 @@ service ObjStore {
   rpc StreamObj(stream ObjChunk) returns (AckReply);
   // Notify the object store about objref aliasing. This is called by the scheduler
   rpc NotifyAlias(NotifyAliasRequest) returns (AckReply);
-  // Get debug info from the object store
-  rpc ObjStoreDebugInfo(ObjStoreDebugInfoRequest) returns (ObjStoreDebugInfoReply);
+  // Tell the object store to deallocate an object held by the object store. This is called by the scheduler.
+  rpc DeallocateObject(DeallocateObjectRequest) returns (AckReply);
+  // Get info about the object store state
+  rpc ObjStoreInfo(ObjStoreInfoRequest) returns (ObjStoreInfoReply);
 }
 
 message DeliverObjRequest {
@@ -161,6 +184,10 @@ message NotifyAliasRequest {
   uint64 canonical_objref = 2; // The canonical objref that points to the actual object
 }
 
+message DeallocateObjectRequest {
+  uint64 canonical_objref = 1; // The canonical objref of the object to deallocate
+}
+
 message GetObjRequest {
   uint64 objref = 1; // Object reference of the object being requested by the worker
 }
@@ -171,13 +198,13 @@ message GetObjReply {
   uint64 size = 3; // Total size of the object in bytes
 }
 
-// These messages are for debugging purposes:
+// These messages are for getting information about the object store state
 
-message ObjStoreDebugInfoRequest {
+message ObjStoreInfoRequest {
   repeated uint64 objref = 1; // Object references we want to retrieve from the store for inspection
 }
 
-message ObjStoreDebugInfoReply {
+message ObjStoreInfoReply {
   repeated uint64 objref = 1; // List of object references in the store
   repeated Obj obj = 2; // Protocol buffer objects that were requested
 }

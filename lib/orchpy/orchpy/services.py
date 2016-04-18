@@ -9,6 +9,7 @@ import orchpy.worker as worker
 _services_path = os.path.dirname(os.path.abspath(__file__))
 
 all_processes = []
+driver = None
 
 IP_ADDRESS = "127.0.0.1"
 TIMEOUT_SECONDS = 5
@@ -55,7 +56,14 @@ def cleanup():
     print "Termination attempt failed, giving up."
   all_processes = []
 
-atexit.register(cleanup)
+  global driver
+  if driver is not None:
+    orchpy.disconnect(driver)
+  else:
+    orchpy.disconnect()
+  driver = None
+
+# atexit.register(cleanup)
 
 def start_scheduler(scheduler_address):
   p = subprocess.Popen([os.path.join(_services_path, "scheduler"), scheduler_address])
@@ -74,6 +82,7 @@ def start_worker(test_path, scheduler_address, objstore_address, worker_address)
   all_processes.append((p, worker_address))
 
 def start_cluster(driver_worker=None, num_workers=0, worker_path=None):
+  global driver
   if num_workers > 0 and worker_path is None:
     raise Exception("Attempting to start a cluster with some workers, but `worker_path` is None.")
   scheduler_address = address(IP_ADDRESS, new_scheduler_port())
@@ -84,6 +93,7 @@ def start_cluster(driver_worker=None, num_workers=0, worker_path=None):
   time.sleep(0.2)
   if driver_worker is not None:
     orchpy.connect(scheduler_address, objstore_address, address(IP_ADDRESS, new_worker_port()), driver_worker)
+    driver = driver_worker
   else:
     orchpy.connect(scheduler_address, objstore_address, address(IP_ADDRESS, new_worker_port()))
   for _ in range(num_workers):

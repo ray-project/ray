@@ -53,10 +53,10 @@ Status ObjStoreService::DeliverObj(ServerContext* context, const DeliverObjReque
 }
 */
 
-Status ObjStoreService::ObjStoreDebugInfo(ServerContext* context, const ObjStoreDebugInfoRequest* request, ObjStoreDebugInfoReply* reply) {
+Status ObjStoreService::ObjStoreInfo(ServerContext* context, const ObjStoreInfoRequest* request, ObjStoreInfoReply* reply) {
   std::lock_guard<std::mutex> memory_lock(memory_lock_);
   for (size_t i = 0; i < memory_.size(); ++i) {
-    if (memory_[i].second) { // is the object available?
+    if (memory_[i].second == MemoryStatusType::READY) { // is the object available?
       reply->add_objref(i);
     }
   }
@@ -116,18 +116,25 @@ Status ObjStoreService::NotifyAlias(ServerContext* context, const NotifyAliasReq
   // NotifyAlias assumes that the objstore already holds canonical_objref
   ObjRef alias_objref = request->alias_objref();
   ObjRef canonical_objref = request->canonical_objref();
+  ORCH_LOG(ORCH_DEBUG, "Aliasing objref " << alias_objref << " with objref " << canonical_objref);
   std::lock_guard<std::mutex> memory_lock(memory_lock_);
   if (canonical_objref >= memory_.size()) {
     ORCH_LOG(ORCH_FATAL, "Attempting to alias objref " << alias_objref << " with objref " << canonical_objref << ", but objref " << canonical_objref << " is not in the objstore.")
   }
-  if (!memory_[canonical_objref].second) {
+  if (memory_[canonical_objref].second == MemoryStatusType::NOT_READY) {
     ORCH_LOG(ORCH_FATAL, "Attempting to alias objref " << alias_objref << " with objref " << canonical_objref << ", but objref " << canonical_objref << " is not ready yet in the objstore.")
   }
+  if (memory_[canonical_objref].second == MemoryStatusType::NOT_PRESENT) {
+    ORCH_LOG(ORCH_FATAL, "Attempting to alias objref " << alias_objref << " with objref " << canonical_objref << ", but objref " << canonical_objref << " is not present in the objstore.")
+  }
+  if (memory_[canonical_objref].second == MemoryStatusType::DEALLOCATED) {
+    ORCH_LOG(ORCH_FATAL, "Attempting to alias objref " << alias_objref << " with objref " << canonical_objref << ", but objref " << canonical_objref << " has already been deallocated.")
+  }
   if (alias_objref >= memory_.size()) {
-    memory_.resize(alias_objref + 1);
+    memory_.resize(alias_objref + 1, std::make_pair(ObjHandle(), MemoryStatusType::NOT_PRESENT));
   }
   memory_[alias_objref].first = memory_[canonical_objref].first;
-  memory_[alias_objref].second = true;
+  memory_[alias_objref].second = MemoryStatusType::READY;
 
   ObjRequest done_request;
   done_request.type = ObjRequestType::ALIAS_DONE;
@@ -136,6 +143,31 @@ Status ObjStoreService::NotifyAlias(ServerContext* context, const NotifyAliasReq
   return Status::OK;
 }
 
+Status ObjStoreService::DeallocateObject(ServerContext* context, const DeallocateObjectRequest* request, AckReply* reply) {
+  ObjRef canonical_objref = request->canonical_objref();
+  ORCH_LOG(ORCH_DEBUG, "Deallocating canonical_objref " << canonical_objref);
+  std::lock_guard<std::mutex> memory_lock(memory_lock_);
+  if (memory_[canonical_objref].second != MemoryStatusType::READY) {
+    ORCH_LOG(ORCH_FATAL, "Attempting to deallocate canonical_objref " << canonical_objref << ", but memory_[canonical_objref].second = " << memory_[canonical_objref].second);
+  }
+  if (canonical_objref >= memory_.size()) {
+    ORCH_LOG(ORCH_FATAL, "Attempting to deallocate canonical_objref " << canonical_objref << ", but it is not in the objstore.");
+  }
+  segmentpool_.deallocate(memory_[canonical_objref].first);
+  memory_[canonical_objref].second = MemoryStatusType::DEALLOCATED;
+  return Status::OK;
+}
+
+// This table describes how the memory status changes in response to requests.
+//
+// MemoryStatus | ObjRequest  | New MemoryStatus | action performed
+// -------------+-------------+------------------+----------------------------
+// NOT_PRESENT  | ALLOC       | NOT_READY        | allocate object
+// NOT_READY    | WORKER_DONE | READY            | send ObjReady to scheduler
+// NOT_READY    | GET         | NOT_READY        | add to pull queue
+// READY        | GET         | READY            | return handle
+// READY        | DEALLOC     | DEALLOCATED      | deallocate
+// -------------+-------------+------------------+----------------------------
 void ObjStoreService::process_objstore_request(const ObjRequest request) {
   switch (request.type) {
     case ObjRequestType::ALIAS_DONE: {
@@ -156,35 +188,49 @@ void ObjStoreService::process_worker_request(const ObjRequest request) {
     std::string queue_name = std::string("queue:") + objstore_address_ + std::string(":worker:") + std::to_string(request.workerid) + std::string(":obj");
     send_queues_[request.workerid].connect(queue_name, false);
   }
-  if (request.objref >= memory_.size()) {
-    memory_.resize(request.objref + 1);
-    memory_[request.objref].second = false;
+  {
+    std::lock_guard<std::mutex> memory_lock(memory_lock_);
+    if (request.objref >= memory_.size()) {
+      memory_.resize(request.objref + 1, std::make_pair(ObjHandle(), MemoryStatusType::NOT_PRESENT));
+    }
   }
   switch (request.type) {
     case ObjRequestType::ALLOC: {
+        // TODO(rkn): Does segmentpool_ need a lock around it?
         ObjHandle reply = segmentpool_.allocate(request.size);
         send_queues_[request.workerid].send(&reply);
-        if (request.objref >= memory_.size()) {
-          memory_.resize(request.objref + 1);
+        std::lock_guard<std::mutex> memory_lock(memory_lock_);
+        if (memory_[request.objref].second != MemoryStatusType::NOT_PRESENT) {
+          ORCH_LOG(ORCH_FATAL, "Attempting to allocate space for objref " << request.objref << ", but memory_[objref].second != MemoryStatusType::NOT_PRESENT, it equals " << memory_[request.objref].second);
         }
         memory_[request.objref].first = reply;
-        memory_[request.objref].second = false;
+        memory_[request.objref].second = MemoryStatusType::NOT_READY;
       }
       break;
     case ObjRequestType::GET: {
-        std::pair<ObjHandle, bool>& item = memory_[request.objref];
-        if (item.second) {
+        std::lock_guard<std::mutex> memory_lock(memory_lock_);
+        std::pair<ObjHandle, MemoryStatusType>& item = memory_[request.objref];
+        if (item.second == MemoryStatusType::READY) {
+          ORCH_LOG(ORCH_DEBUG, "Responding to GET request: returning objref " << request.objref);
           send_queues_[request.workerid].send(&item.first);
-        } else {
+        } else if (item.second == MemoryStatusType::NOT_READY || item.second == MemoryStatusType::NOT_PRESENT) {
           std::lock_guard<std::mutex> lock(pull_queue_lock_);
           pull_queue_.push_back(std::make_pair(request.workerid, request.objref));
+        } else {
+          ORCH_LOG(ORCH_FATAL, "A worker requested objref " << request.objref << ", but memory_[objref].second = " << memory_[request.objref].second);
         }
       }
       break;
     case ObjRequestType::WORKER_DONE: {
-        std::pair<ObjHandle, bool>& item = memory_[request.objref];
-        item.first.set_metadata_offset(request.metadata_offset);
-        item.second = true;
+        {
+          std::lock_guard<std::mutex> memory_lock(memory_lock_);
+          std::pair<ObjHandle, MemoryStatusType>& item = memory_[request.objref];
+          if (item.second != MemoryStatusType::NOT_READY) {
+            ORCH_LOG(ORCH_FATAL, "A worker notified the object store that objref " << request.objref << " has been written to the object store, but memory_[objref].second != NOT_READY.");
+          }
+          item.first.set_metadata_offset(request.metadata_offset);
+          item.second = MemoryStatusType::READY;
+        }
         process_pulls_for_objref(request.objref);
         // Tell the scheduler that the object arrived
         // TODO(pcm): put this in a separate thread so we don't have to pay the latency here
@@ -232,7 +278,7 @@ void ObjStoreService::process_requests() {
 }
 
 void ObjStoreService::process_pulls_for_objref(ObjRef objref) {
-  std::pair<ObjHandle, bool>& item = memory_[objref];
+  std::pair<ObjHandle, MemoryStatusType>& item = memory_[objref];
   std::lock_guard<std::mutex> pull_queue_lock(pull_queue_lock_);
   for (size_t i = 0; i < pull_queue_.size(); ++i) {
     if (pull_queue_[i].second == objref) {

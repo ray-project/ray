@@ -28,6 +28,8 @@ public:
   static Status upload_data_to(slice data, ObjRef objref, ObjStore::Stub& stub);
 };
 
+enum MemoryStatusType {READY = 0, NOT_READY = 1, DEALLOCATED = 2, NOT_PRESENT = 3};
+
 class ObjStoreService final : public ObjStore::Service {
 public:
   ObjStoreService(const std::string& objstore_address, std::shared_ptr<Channel> scheduler_channel);
@@ -35,7 +37,8 @@ public:
   // Status DeliverObj(ServerContext* context, const DeliverObjRequest* request, AckReply* reply) override;
   // Status StreamObj(ServerContext* context, ServerReader<ObjChunk>* reader, AckReply* reply) override;
   Status NotifyAlias(ServerContext* context, const NotifyAliasRequest* request, AckReply* reply) override;
-  Status ObjStoreDebugInfo(ServerContext* context, const ObjStoreDebugInfoRequest* request, ObjStoreDebugInfoReply* reply) override;
+  Status DeallocateObject(ServerContext* context, const DeallocateObjectRequest* request, AckReply* reply) override;
+  Status ObjStoreInfo(ServerContext* context, const ObjStoreInfoRequest* request, ObjStoreInfoReply* reply) override;
   void start_objstore_service();
 private:
   // check if we already connected to the other objstore, if yes, return reference to connection, otherwise connect
@@ -48,7 +51,7 @@ private:
   std::string objstore_address_;
   ObjStoreId objstoreid_; // id of this objectstore in the scheduler object store table
   MemorySegmentPool segmentpool_;
-  std::vector<std::pair<ObjHandle, bool> > memory_; // object reference -> (memory address, memory finalized?)
+  std::vector<std::pair<ObjHandle, MemoryStatusType> > memory_; // object reference -> (memory address, memory status)
   std::mutex memory_lock_;
   std::unordered_map<std::string, std::unique_ptr<ObjStore::Stub>> objstores_;
   std::mutex objstores_lock_;

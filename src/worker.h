@@ -48,7 +48,7 @@ class Worker {
   // request an object to be delivered to the local object store
   void request_object(ObjRef objref);
   // stores an object to the local object store
-  void put_object(ObjRef objref, const Obj* obj);
+  void put_object(ObjRef objref, const Obj* obj, std::vector<ObjRef> &contained_objrefs);
   // retrieve serialized object from local object store
   slice get_object(ObjRef objref);
   // stores an arrow object to the local object store
@@ -60,6 +60,10 @@ class Worker {
   bool is_arrow(ObjRef objref);
   // make `alias_objref` refer to the same object that `target_objref` refers to
   void alias_objrefs(ObjRef alias_objref, ObjRef target_objref);
+  // increment the reference count for objref
+  void increment_reference_count(std::vector<ObjRef> &objref);
+  // decrement the reference count for objref
+  void decrement_reference_count(std::vector<ObjRef> &objref);
   // register function with scheduler
   void register_function(const std::string& name, size_t num_return_vals);
   // start the worker server which accepts tasks from the scheduler and stores
@@ -69,8 +73,15 @@ class Worker {
   Call* receive_next_task();
   // tell the scheduler that we are done with the current task and request the next one
   void notify_task_completed();
+  // disconnect the worker
+  void disconnect();
+  // return connected_
+  bool connected();
+  // get info about scheduler state
+  void scheduler_info(ClientContext &context, SchedulerInfoRequest &request, SchedulerInfoReply &reply);
 
  private:
+  bool connected_;
   const size_t CHUNK_SIZE = 8 * 1024;
   std::unique_ptr<Scheduler::Stub> scheduler_stub_;
   std::unique_ptr<ObjStore::Stub> objstore_stub_;

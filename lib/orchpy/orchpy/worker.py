@@ -10,7 +10,6 @@ class Worker(object):
 
   def __init__(self):
     self.functions = {}
-    self.connected = False
     self.handle = None
 
   def put_object(self, objref, value):
@@ -18,8 +17,8 @@ class Worker(object):
     if type(value) == np.ndarray:
       orchpy.lib.put_arrow(self.handle, objref, value)
     else:
-      object_capsule = serialization.serialize(value)
-      orchpy.lib.put_object(self.handle, objref, object_capsule)
+      object_capsule, contained_objrefs = serialization.serialize(self.handle, value) # contained_objrefs is a list of the objrefs contained in object_capsule
+      orchpy.lib.put_object(self.handle, objref, object_capsule, contained_objrefs)
 
   def get_object(self, objref):
     """
@@ -32,7 +31,7 @@ class Worker(object):
       return orchpy.lib.get_arrow(self.handle, objref)
     else:
       object_capsule = orchpy.lib.get_object(self.handle, objref)
-      return serialization.deserialize(object_capsule)
+      return serialization.deserialize(self.handle, object_capsule)
 
   def alias_objrefs(self, alias_objref, target_objref):
     """Make `alias_objref` refer to the same object that `target_objref` refers to."""
@@ -45,12 +44,15 @@ class Worker(object):
 
   def remote_call(self, func_name, args):
     """Tell the scheduler to schedule the execution of the function with name `func_name` with arguments `args`. Retrieve object references for the outputs of the function from the scheduler and immediately return them."""
-    call_capsule = serialization.serialize_call(func_name, args)
+    call_capsule = serialization.serialize_call(self.handle, func_name, args)
     objrefs = orchpy.lib.remote_call(self.handle, call_capsule)
     return objrefs
 
 # We make `global_worker` a global variable so that there is one worker per worker process.
 global_worker = Worker()
+
+def scheduler_info(worker=global_worker):
+  return orchpy.lib.scheduler_info(worker.handle);
 
 def register_module(module, recursive=False, worker=global_worker):
   print "registering functions in module {}.".format(module.__name__)
@@ -63,10 +65,12 @@ def register_module(module, recursive=False, worker=global_worker):
     #   register_module(val, recursive, worker)
 
 def connect(scheduler_addr, objstore_addr, worker_addr, worker=global_worker):
-  if worker.connected:
-    del worker.handle # TODO(rkn): Make sure this actually deallocates (need a destructor for the capsule)
+  if hasattr(worker, "handle"):
+    del worker.handle
   worker.handle = orchpy.lib.create_worker(scheduler_addr, objstore_addr, worker_addr)
-  worker.connected = True
+
+def disconnect(worker=global_worker):
+  orchpy.lib.disconnect(worker.handle)
 
 def pull(objref, worker=global_worker):
   orchpy.lib.request_object(worker.handle, objref)
@@ -78,16 +82,18 @@ def push(value, worker=global_worker):
   return objref
 
 def main_loop(worker=global_worker):
-  if not worker.connected:
+  if not orchpy.lib.connected(worker.handle):
     raise Exception("Worker is attempting to enter main_loop but has not been connected yet.")
   orchpy.lib.start_worker_service(worker.handle)
-  while True:
-    call = orchpy.lib.wait_for_next_task(worker.handle)
-    func_name, args, return_objrefs = serialization.deserialize_call(call)
+  def process_call(call): # wrapping these calls in a function should cause the local variables to go out of scope more quickly, which is useful for inspecting reference counts
+    func_name, args, return_objrefs = serialization.deserialize_call(worker.handle, call)
     arguments = get_arguments_for_execution(worker.functions[func_name], args, worker) # get args from objstore
     outputs = worker.functions[func_name].executor(arguments) # execute the function
     store_outputs_in_objstore(return_objrefs, outputs, worker) # store output in local object store
     orchpy.lib.notify_task_completed(worker.handle) # notify the scheduler that the task has completed
+  while True:
+    call = orchpy.lib.wait_for_next_task(worker.handle)
+    process_call(call)
 
 def distributed(arg_types, return_types, worker=global_worker):
   def distributed_decorator(func):

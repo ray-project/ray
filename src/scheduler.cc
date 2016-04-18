@@ -9,7 +9,7 @@ Status SchedulerService::RemoteCall(ServerContext* context, const RemoteCallRequ
   fntable_lock_.lock();
 
   if (fntable_.find(task->name()) == fntable_.end()) {
-    // TODO(rkn): In the future, this should probably not be fatal.
+    // TODO(rkn): In the future, this should probably not be fatal. Instead, propagate the error back to the worker.
     ORCH_LOG(ORCH_FATAL, "The function " << task->name() << " has not been registered by any worker.");
   }
 
@@ -51,7 +51,6 @@ Status SchedulerService::RequestObj(ServerContext* context, const RequestObjRequ
   pull_queue_lock_.lock();
   pull_queue_.push_back(std::make_pair(request->workerid(), objref));
   pull_queue_lock_.unlock();
-
   schedule();
   return Status::OK;
 }
@@ -59,26 +58,30 @@ Status SchedulerService::RequestObj(ServerContext* context, const RequestObjRequ
 Status SchedulerService::AliasObjRefs(ServerContext* context, const AliasObjRefsRequest* request, AckReply* reply) {
   ObjRef alias_objref = request->alias_objref();
   ObjRef target_objref = request->target_objref();
-
+  ORCH_LOG(ORCH_DEBUG, "Aliasing objref " << alias_objref << " with objref " << target_objref);
+  if (alias_objref == target_objref) {
+    ORCH_LOG(ORCH_FATAL, "internal error: attempting to alias objref " << alias_objref << " with itself.");
+  }
   objtable_lock_.lock();
   size_t size = objtable_.size();
   objtable_lock_.unlock();
-
   if (alias_objref >= size) {
     ORCH_LOG(ORCH_FATAL, "internal error: no object with objref " << alias_objref << " exists");
   }
   if (target_objref >= size) {
     ORCH_LOG(ORCH_FATAL, "internal error: no object with objref " << target_objref << " exists");
   }
-
   {
-    std::lock_guard<std::mutex> objstore_lock(target_objrefs_lock_);
+    std::lock_guard<std::mutex> target_objrefs_lock(target_objrefs_lock_);
     if (target_objrefs_[alias_objref] != UNITIALIZED_ALIAS) {
       ORCH_LOG(ORCH_FATAL, "internal error: attempting to alias objref " << alias_objref << " with objref " << target_objref << ", but objref " << alias_objref << " has already been aliased with objref " << target_objrefs_[alias_objref]);
     }
     target_objrefs_[alias_objref] = target_objref;
   }
-
+  {
+    std::lock_guard<std::mutex> reverse_target_objrefs_lock(reverse_target_objrefs_lock_);
+    reverse_target_objrefs_[target_objref].push_back(alias_objref);
+  }
   schedule();
   return Status::OK;
 }
@@ -112,7 +115,7 @@ Status SchedulerService::RegisterFunction(ServerContext* context, const Register
 
 Status SchedulerService::ObjReady(ServerContext* context, const ObjReadyRequest* request, AckReply* reply) {
   ObjRef objref = request->objref();
-  ORCH_LOG(ORCH_VERBOSE, "object " << objref << " ready on store " << request->objstoreid());
+  ORCH_LOG(ORCH_DEBUG, "object " << objref << " ready on store " << request->objstoreid());
   add_canonical_objref(objref);
   add_location(objref, request->objstoreid());
   schedule();
@@ -129,8 +132,52 @@ Status SchedulerService::WorkerReady(ServerContext* context, const WorkerReadyRe
   return Status::OK;
 }
 
-Status SchedulerService::SchedulerDebugInfo(ServerContext* context, const SchedulerDebugInfoRequest* request, SchedulerDebugInfoReply* reply) {
-  debug_info(*request, reply);
+Status SchedulerService::IncrementRefCount(ServerContext* context, const IncrementRefCountRequest* request, AckReply* reply) {
+  int num_objrefs = request->objref_size();
+  if (num_objrefs == 0) {
+    ORCH_LOG(ORCH_FATAL, "Scheduler received IncrementRefCountRequest with 0 objrefs.");
+  }
+  std::vector<ObjRef> objrefs;
+  for (int i = 0; i < num_objrefs; ++i) {
+    objrefs.push_back(request->objref(i));
+  }
+  std::lock_guard<std::mutex> reference_counts_lock(reference_counts_lock_); // we grab this lock because increment_ref_count assumes it has been acquired
+  increment_ref_count(objrefs);
+  return Status::OK;
+}
+
+Status SchedulerService::DecrementRefCount(ServerContext* context, const DecrementRefCountRequest* request, AckReply* reply) {
+  int num_objrefs = request->objref_size();
+  if (num_objrefs == 0) {
+    ORCH_LOG(ORCH_FATAL, "Scheduler received DecrementRefCountRequest with 0 objrefs.");
+  }
+  std::vector<ObjRef> objrefs;
+  for (int i = 0; i < num_objrefs; ++i) {
+    objrefs.push_back(request->objref(i));
+  }
+  std::lock_guard<std::mutex> reference_counts_lock(reference_counts_lock_); // we grab this lock, because decrement_ref_count assumes it has been acquired
+  decrement_ref_count(objrefs);
+  return Status::OK;
+}
+
+Status SchedulerService::AddContainedObjRefs(ServerContext* context, const AddContainedObjRefsRequest* request, AckReply* reply) {
+  ObjRef objref = request->objref();
+  // if (!is_canonical(objref)) {
+    // TODO(rkn): Perhaps we don't need this check. It won't work because the objstore may not have called ObjReady yet.
+    // ORCH_LOG(ORCH_FATAL, "Attempting to add contained objrefs for non-canonical objref " << objref);
+  // }
+  std::lock_guard<std::mutex> contained_objrefs_lock(contained_objrefs_lock_);
+  if (contained_objrefs_[objref].size() != 0) {
+    ORCH_LOG(ORCH_FATAL, "Attempting to add contained objrefs for objref " << objref << ", but contained_objrefs_[objref].size() != 0.");
+  }
+  for (int i = 0; i < request->contained_objref_size(); ++i) {
+    contained_objrefs_[objref].push_back(request->contained_objref(i));
+  }
+  return Status::OK;
+}
+
+Status SchedulerService::SchedulerInfo(ServerContext* context, const SchedulerInfoRequest* request, SchedulerInfoReply* reply) {
+  get_info(*request, reply);
   return Status::OK;
 }
 
@@ -239,15 +286,34 @@ WorkerId SchedulerService::register_worker(const std::string& worker_address, co
 
 ObjRef SchedulerService::register_new_object() {
   // If we don't simultaneously lock objtable_ and target_objrefs_, we will probably get errors.
+  // TODO(rkn): increment/decrement_reference_count also acquire reference_counts_lock_ and target_objrefs_lock_ (through has_canonical_objref()), which caused deadlock in the past
+  std::lock_guard<std::mutex> reference_counts_lock(reference_counts_lock_);
+  std::lock_guard<std::mutex> contained_objrefs_lock(contained_objrefs_lock_);
   std::lock_guard<std::mutex> objtable_lock(objtable_lock_);
   std::lock_guard<std::mutex> target_objrefs_lock(target_objrefs_lock_);
+  std::lock_guard<std::mutex> reverse_target_objrefs_lock(reverse_target_objrefs_lock_);
   ObjRef objtable_size = objtable_.size();
   ObjRef target_objrefs_size = target_objrefs_.size();
+  ObjRef reverse_target_objrefs_size = reverse_target_objrefs_.size();
+  ObjRef reference_counts_size = reference_counts_.size();
+  ObjRef contained_objrefs_size = contained_objrefs_.size();
   if (objtable_size != target_objrefs_size) {
     ORCH_LOG(ORCH_FATAL, "objtable_ and target_objrefs_ should have the same size, but objtable_.size() = " << objtable_size << " and target_objrefs_.size() = " << target_objrefs_size);
   }
+  if (objtable_size != reverse_target_objrefs_size) {
+    ORCH_LOG(ORCH_FATAL, "objtable_ and reverse_target_objrefs_ should have the same size, but objtable_.size() = " << objtable_size << " and reverse_target_objrefs_.size() = " << reverse_target_objrefs_size);
+  }
+  if (objtable_size != reference_counts_size) {
+    ORCH_LOG(ORCH_FATAL, "objtable_ and reference_counts_ should have the same size, but objtable_.size() = " << objtable_size << " and reference_counts_.size() = " << reference_counts_size);
+  }
+  if (objtable_size != contained_objrefs_size) {
+    ORCH_LOG(ORCH_FATAL, "objtable_ and contained_objrefs_ should have the same size, but objtable_.size() = " << objtable_size << " and contained_objrefs_.size() = " << contained_objrefs_size);
+  }
   objtable_.push_back(std::vector<ObjStoreId>());
   target_objrefs_.push_back(UNITIALIZED_ALIAS);
+  reverse_target_objrefs_.push_back(std::vector<ObjRef>());
+  reference_counts_.push_back(0);
+  contained_objrefs_.push_back(std::vector<ObjRef>());
   return objtable_size;
 }
 
@@ -272,7 +338,7 @@ void SchedulerService::add_canonical_objref(ObjRef objref) {
   if (objref >= target_objrefs_.size()) {
     ORCH_LOG(ORCH_FATAL, "internal error: attempting to insert objref " << objref << " in target_objrefs_, but target_objrefs_.size() is " << target_objrefs_.size());
   }
-  if (target_objrefs_[objref] != UNITIALIZED_ALIAS) {
+  if (target_objrefs_[objref] != UNITIALIZED_ALIAS && target_objrefs_[objref] != objref) {
     ORCH_LOG(ORCH_FATAL, "internal error: attempting to declare objref " << objref << " as a canonical objref, but target_objrefs_[objref] is already aliased with objref " << target_objrefs_[objref]);
   }
   target_objrefs_[objref] = objref;
@@ -291,8 +357,25 @@ void SchedulerService::register_function(const std::string& name, WorkerId worke
   info.add_worker(workerid);
 }
 
-void SchedulerService::debug_info(const SchedulerDebugInfoRequest& request, SchedulerDebugInfoReply* reply) {
-  fntable_lock_.lock();
+void SchedulerService::get_info(const SchedulerInfoRequest& request, SchedulerInfoReply* reply) {
+  // TODO(rkn): Also grab the objstores_lock_
+  // alias_notification_queue_lock_ may need to come before objtable_lock_
+  std::lock_guard<std::mutex> reference_counts_lock(reference_counts_lock_);
+  std::lock_guard<std::mutex> contained_objrefs_lock(contained_objrefs_lock_);
+  std::lock_guard<std::mutex> objtable_lock(objtable_lock_);
+  std::lock_guard<std::mutex> pull_queue_lock(pull_queue_lock_);
+  std::lock_guard<std::mutex> target_objrefs_lock(target_objrefs_lock_);
+  std::lock_guard<std::mutex> reverse_target_objrefs_lock(reverse_target_objrefs_lock_);
+  std::lock_guard<std::mutex> fntable_lock(fntable_lock_);
+  std::lock_guard<std::mutex> avail_workers_lock(avail_workers_lock_);
+  std::lock_guard<std::mutex> task_queue_lock(task_queue_lock_);
+  std::lock_guard<std::mutex> alias_notification_queue_lock(alias_notification_queue_lock_);
+  for (int i = 0; i < reference_counts_.size(); ++i) {
+    reply->add_reference_count(reference_counts_[i]);
+  }
+  for (int i = 0; i < target_objrefs_.size(); ++i) {
+    reply->add_target_objref(target_objrefs_[i]);
+  }
   auto function_table = reply->mutable_function_table();
   for (const auto& entry : fntable_) {
     (*function_table)[entry.first].set_num_return_vals(entry.second.num_return_vals());
@@ -300,18 +383,14 @@ void SchedulerService::debug_info(const SchedulerDebugInfoRequest& request, Sche
       (*function_table)[entry.first].add_workerid(worker);
     }
   }
-  fntable_lock_.unlock();
-  task_queue_lock_.lock();
   for (const auto& entry : task_queue_) {
     Call* call = reply->add_task();
     call->CopyFrom(*entry);
   }
-  task_queue_lock_.unlock();
-  avail_workers_lock_.lock();
   for (const WorkerId& entry : avail_workers_) {
     reply->add_avail_worker(entry);
   }
-  avail_workers_lock_.unlock();
+
 }
 
 ObjStoreId SchedulerService::pick_objstore(ObjRef canonical_objref) {
@@ -333,7 +412,6 @@ bool SchedulerService::is_canonical(ObjRef objref) {
 }
 
 void SchedulerService::perform_pulls() {
-  std::lock_guard<std::mutex> objtable_lock(objtable_lock_);
   std::lock_guard<std::mutex> pull_queue_lock(pull_queue_lock_);
   // Complete all pull tasks that can be completed.
   for (int i = 0; i < pull_queue_.size(); ++i) {
@@ -346,12 +424,20 @@ void SchedulerService::perform_pulls() {
     }
     ObjRef canonical_objref = get_canonical_objref(objref);
     ORCH_LOG(ORCH_DEBUG, "attempting to pull objref " << pull.second << " with canonical objref " << canonical_objref);
-    if (objtable_[canonical_objref].size() > 0) {
-      if (!std::binary_search(objtable_[canonical_objref].begin(), objtable_[canonical_objref].end(), get_store(workerid))) {
-        // The worker's local object store does not already contain objref, so ship
-        // it there from an object store that does have it.
-        ObjStoreId objstoreid = pick_objstore(canonical_objref);
-        deliver_object(canonical_objref, objstoreid, get_store(workerid));
+
+    objtable_lock_.lock();
+    int num_stores = objtable_[canonical_objref].size();
+    objtable_lock_.unlock();
+
+    if (num_stores > 0) {
+      {
+        std::lock_guard<std::mutex> objtable_lock(objtable_lock_);
+        if (!std::binary_search(objtable_[canonical_objref].begin(), objtable_[canonical_objref].end(), get_store(workerid))) {
+          // The worker's local object store does not already contain objref, so ship
+          // it there from an object store that does have it.
+          ObjStoreId objstoreid = pick_objstore(canonical_objref);
+          deliver_object(canonical_objref, objstoreid, get_store(workerid));
+        }
       }
       {
         // Notify the relevant objstore about potential aliasing when it's ready
@@ -465,6 +551,96 @@ bool SchedulerService::attempt_notify_alias(ObjStoreId objstoreid, ObjRef alias_
   objstores_[objstoreid].objstore_stub->NotifyAlias(&context, request, &reply);
   objstores_lock_.unlock();
   return true;
+}
+
+void SchedulerService::deallocate_object(ObjRef canonical_objref) {
+  // deallocate_object should only be called from decrement_ref_count (note that
+  // deallocate_object also recursively calls decrement_ref_count). Both of
+  // these methods require reference_counts_lock_ to have been acquired, and
+  // so the lock must before outside of these methods (it is acquired in
+  // DecrementRefCount).
+  ORCH_LOG(ORCH_DEBUG, "Deallocating canonical_objref " << canonical_objref << ".");
+  ClientContext context;
+  AckReply reply;
+  DeallocateObjectRequest request;
+  request.set_canonical_objref(canonical_objref);
+  {
+    std::lock_guard<std::mutex> objtable_lock(objtable_lock_);
+    auto &objstores = objtable_[canonical_objref];
+    std::lock_guard<std::mutex> objstores_lock(objstores_lock_); // TODO(rkn): Should this be inside the for loop instead?
+    for (int i = 0; i < objstores.size(); ++i) {
+      ObjStoreId objstoreid = objstores[i];
+      objstores_[objstoreid].objstore_stub->DeallocateObject(&context, request, &reply);
+    }
+  }
+  decrement_ref_count(contained_objrefs_[canonical_objref]);
+}
+
+void SchedulerService::increment_ref_count(std::vector<ObjRef> &objrefs) {
+  // increment_ref_count assumes that reference_counts_lock_ has been acquired already
+  for (int i = 0; i < objrefs.size(); ++i) {
+    ObjRef objref = objrefs[i];
+    if (reference_counts_[objref] == DEALLOCATED) {
+      ORCH_LOG(ORCH_FATAL, "Attempting to increment the reference count for objref " << objref << ", but this object appears to have been deallocated already.");
+    }
+    reference_counts_[objref] += 1;
+    ORCH_LOG(ORCH_DEBUG, "Incremented ref count for objref " << objref <<". New reference count is " << reference_counts_[objref]);
+  }
+}
+
+void SchedulerService::decrement_ref_count(std::vector<ObjRef> &objrefs) {
+  // decrement_ref_count assumes that reference_counts_lock_ has been acquired already
+  for (int i = 0; i < objrefs.size(); ++i) {
+    ObjRef objref = objrefs[i];
+    if (reference_counts_[objref] == DEALLOCATED) {
+      ORCH_LOG(ORCH_FATAL, "Attempting to decrement the reference count for objref " << objref << ", but this object appears to have been deallocated already.");
+    }
+    if (reference_counts_[objref] == 0) {
+      ORCH_LOG(ORCH_FATAL, "Attempting to decrement the reference count for objref " << objref << ", but the reference count for this object is already 0.");
+    }
+    reference_counts_[objref] -= 1;
+    ORCH_LOG(ORCH_DEBUG, "Decremented ref count for objref " << objref << ". New reference count is " << reference_counts_[objref]);
+    // See if we can deallocate the object
+    std::vector<ObjRef> equivalent_objrefs;
+    get_equivalent_objrefs(objref, equivalent_objrefs);
+    bool can_deallocate = true;
+    for (int j = 0; j < equivalent_objrefs.size(); ++j) {
+      if (reference_counts_[equivalent_objrefs[j]] != 0) {
+        can_deallocate = false;
+        break;
+      }
+    }
+    if (can_deallocate) {
+      ObjRef canonical_objref = equivalent_objrefs[0];
+      if (!is_canonical(canonical_objref)) {
+        ORCH_LOG(ORCH_FATAL, "canonical_objref is not canonical.");
+      }
+      deallocate_object(canonical_objref);
+      for (int j = 0; j < equivalent_objrefs.size(); ++j) {
+        reference_counts_[equivalent_objrefs[j]] = DEALLOCATED;
+      }
+    }
+  }
+  ORCH_LOG(ORCH_DEBUG, "Exiting decrement_ref_count");
+}
+
+void SchedulerService::upstream_objrefs(ObjRef objref, std::vector<ObjRef> &objrefs) {
+  // upstream_objrefs assumes that the lock reverse_target_objrefs_lock_ has been acquired
+  objrefs.push_back(objref);
+  for (int i = 0; i < reverse_target_objrefs_[objref].size(); ++i) {
+    upstream_objrefs(reverse_target_objrefs_[objref][i], objrefs);
+  }
+}
+
+void SchedulerService::get_equivalent_objrefs(ObjRef objref, std::vector<ObjRef> &equivalent_objrefs) {
+  std::lock_guard<std::mutex> target_objrefs_lock(target_objrefs_lock_);
+  ObjRef downstream_objref = objref;
+  while (target_objrefs_[downstream_objref] != downstream_objref && target_objrefs_[downstream_objref] != UNITIALIZED_ALIAS) {
+    ORCH_LOG(ORCH_DEBUG, "Looping in get_equivalent_objrefs");
+    downstream_objref = target_objrefs_[downstream_objref];
+  }
+  std::lock_guard<std::mutex> reverse_target_objrefs_lock(reverse_target_objrefs_lock_);
+  upstream_objrefs(downstream_objref, equivalent_objrefs);
 }
 
 void start_scheduler_service(const char* server_address) {

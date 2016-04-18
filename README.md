@@ -2,6 +2,13 @@
 
 Orchestra is a distributed execution framework with a Python-like programming model.
 
+## Design Decisions
+
+For a description of our design decisions, see
+
+- [Reference Counting](doc/reference-counting.md)
+- [Aliasing](doc/aliasing.md)
+
 ## Setup
 
 **Install Arrow**

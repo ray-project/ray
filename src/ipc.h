@@ -89,7 +89,7 @@ private:
 // ALIAS_DONE: objref -> ():
 // objstore tells itself that it has finalized something (perhaps an alias)
 
-enum ObjRequestType {ALLOC = 0, GET = 1, WORKER_DONE = 2, ALIAS_DONE};
+enum ObjRequestType {ALLOC = 0, GET = 1, WORKER_DONE = 2, ALIAS_DONE = 3};
 
 struct ObjRequest {
   WorkerId workerid; // worker that sends the request
@@ -141,18 +141,21 @@ public:
 // the segments, which have been created by the object store, are just mapped
 // into memory
 
+enum SegmentStatusType {UNOPENED = 0, OPENED = 1, CLOSED = 2};
+
 class MemorySegmentPool {
 public:
   MemorySegmentPool(bool create = false); // can be used in two modes: create mode and open mode (see above)
   ~MemorySegmentPool();
   ObjHandle allocate(size_t nbytes); // allocate memory, potentially creating a new segment (only run on object store)
+  void deallocate(ObjHandle pointer); // deallocate object, potentially deallocating a new segment (only run on object store)
   uint8_t* get_address(ObjHandle pointer); // get address of shared object
 private:
   void open_segment(SegmentId segmentid, size_t size = 0); // create a segment or map an existing one into memory
-  bool create_mode_;
+  void close_segment(SegmentId segmentid); // close a segment
+  bool create_mode_; // true in the object stores, false on the workers
   size_t page_size_ = mapped_region::get_page_size();
-  std::vector<std::string> segment_names_;
-  std::vector<std::unique_ptr<managed_shared_memory> > segments_;
+  std::vector<std::pair<std::unique_ptr<managed_shared_memory>, SegmentStatusType> > segments_;
 };
 
 #endif

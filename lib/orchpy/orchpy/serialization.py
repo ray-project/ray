@@ -20,19 +20,20 @@ def from_primitive(primitive_obj):
     obj.deserialize(primitive_obj[1])
   return obj
 
-def serialize(obj):
+def serialize(worker_capsule, obj):
   primitive_obj = to_primitive(obj)
-  return orchpy.lib.serialize_object(primitive_obj)
+  obj_capsule, contained_objrefs = orchpy.lib.serialize_object(worker_capsule, primitive_obj) # contained_objrefs is a list of the objrefs contained in obj
+  return obj_capsule, contained_objrefs
 
-def deserialize(capsule):
-  primitive_obj = orchpy.lib.deserialize_object(capsule)
+def deserialize(worker_capsule, capsule):
+  primitive_obj = orchpy.lib.deserialize_object(worker_capsule, capsule)
   return from_primitive(primitive_obj)
 
-def serialize_call(func_name, args):
+def serialize_call(worker_capsule, func_name, args):
   primitive_args = [(arg if isinstance(arg, orchpy.lib.ObjRef) else to_primitive(arg)) for arg in args]
-  return orchpy.lib.serialize_call(func_name, primitive_args)
+  return orchpy.lib.serialize_call(worker_capsule, func_name, primitive_args)
 
-def deserialize_call(call):
-  func_name, primitive_args, return_objrefs = orchpy.lib.deserialize_call(call)
+def deserialize_call(worker_capsule, call):
+  func_name, primitive_args, return_objrefs = orchpy.lib.deserialize_call(worker_capsule, call)
   args = [(arg if isinstance(arg, orchpy.lib.ObjRef) else from_primitive(arg)) for arg in primitive_args]
   return func_name, args, return_objrefs

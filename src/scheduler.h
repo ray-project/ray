@@ -24,7 +24,10 @@ using grpc::ClientContext;
 
 using grpc::Channel;
 
+typedef size_t RefCount;
+
 const ObjRef UNITIALIZED_ALIAS = std::numeric_limits<ObjRef>::max();
+const RefCount DEALLOCATED = std::numeric_limits<RefCount>::max();
 
 struct WorkerHandle {
   std::shared_ptr<Channel> channel;
@@ -49,7 +52,10 @@ public:
   Status RegisterFunction(ServerContext* context, const RegisterFunctionRequest* request, AckReply* reply) override;
   Status ObjReady(ServerContext* context, const ObjReadyRequest* request, AckReply* reply) override;
   Status WorkerReady(ServerContext* context, const WorkerReadyRequest* request, AckReply* reply) override;
-  Status SchedulerDebugInfo(ServerContext* context, const SchedulerDebugInfoRequest* request, SchedulerDebugInfoReply* reply) override;
+  Status IncrementRefCount(ServerContext* context, const IncrementRefCountRequest* request, AckReply* reply) override;
+  Status DecrementRefCount(ServerContext* context, const DecrementRefCountRequest* request, AckReply* reply) override;
+  Status AddContainedObjRefs(ServerContext* context, const AddContainedObjRefsRequest* request, AckReply* reply) override;
+  Status SchedulerInfo(ServerContext* context, const SchedulerInfoRequest* request, SchedulerInfoReply* reply) override;
 
   // ask an object store to send object to another objectstore
   void deliver_object(ObjRef objref, ObjStoreId from, ObjStoreId to);
@@ -71,8 +77,8 @@ public:
   ObjStoreId get_store(WorkerId workerid);
   // register a function with the scheduler
   void register_function(const std::string& name, WorkerId workerid, size_t num_return_vals);
-  // get debugging information for the scheduler
-  void debug_info(const SchedulerDebugInfoRequest& request, SchedulerDebugInfoReply* reply);
+  // get information about the scheduler state
+  void get_info(const SchedulerInfoRequest& request, SchedulerInfoReply* reply);
 private:
   // pick an objectstore that holds a given object (needs protection by objtable_lock_)
   ObjStoreId pick_objstore(ObjRef objref);
@@ -89,6 +95,16 @@ private:
   ObjRef get_canonical_objref(ObjRef objref);
   // attempt to notify the objstore about potential objref aliasing, returns true if successful, if false then retry later
   bool attempt_notify_alias(ObjStoreId objstoreid, ObjRef alias_objref, ObjRef canonical_objref);
+  // tell all of the objstores holding canonical_objref to deallocate it
+  void deallocate_object(ObjRef canonical_objref);
+  // increment the ref counts for the object references in objrefs
+  void increment_ref_count(std::vector<ObjRef> &objrefs);
+  // decrement the ref counts for the object references in objrefs
+  void decrement_ref_count(std::vector<ObjRef> &objrefs);
+  // Find all of the object references which are upstream of objref (including objref itself). That is, you can get from everything in objrefs to objref by repeatedly indexing in target_objrefs_.
+  void upstream_objrefs(ObjRef objref, std::vector<ObjRef> &objrefs);
+  // Find all of the object references that refer to the same object as objref (as best as we can determine at the moment). The information may be incomplete because not all of the aliases may be known.
+  void get_equivalent_objrefs(ObjRef objref, std::vector<ObjRef> &equivalent_objrefs);
 
   // Vector of all workers registered in the system. Their index in this vector
   // is the workerid.
@@ -101,7 +117,6 @@ private:
   // vector is the objstoreid.
   std::vector<ObjStoreHandle> objstores_;
   grpc::mutex objstores_lock_;
-
   // Mapping from an aliased objref to the objref it is aliased with. If an
   // objref is a canonical objref (meaning it is not aliased), then
   // target_objrefs_[objref] == objref. For each objref, target_objrefs_[objref]
@@ -109,7 +124,9 @@ private:
   // when it is known.
   std::vector<ObjRef> target_objrefs_;
   std::mutex target_objrefs_lock_;
-
+  // This data structure maps an objref to all of the objrefs that alias it (there could be multiple such objrefs).
+  std::vector<std::vector<ObjRef> > reverse_target_objrefs_;
+  std::mutex reverse_target_objrefs_lock_;
   // Mapping from canonical objref to list of object stores where the object is stored. Non-canonical (aliased) objrefs should not be used to index objtable_.
   ObjTable objtable_;
   std::mutex objtable_lock_;
@@ -125,6 +142,13 @@ private:
   // List of pending alias notifications. Each element consists of (objstoreid, (alias_objref, canonical_objref)).
   std::vector<std::pair<ObjStoreId, std::pair<ObjRef, ObjRef> > > alias_notification_queue_;
   std::mutex alias_notification_queue_lock_;
+  // Reference counts. Currently, reference_counts_[objref] is the number of existing references
+  // held to objref. This is done for all objrefs, not just canonical_objrefs. This data structure completely ignores aliasing.
+  std::vector<RefCount> reference_counts_;
+  std::mutex reference_counts_lock_;
+  // contained_objrefs_[objref] is a vector of all of the objrefs contained inside the object referred to by objref
+  std::vector<std::vector<ObjRef> > contained_objrefs_;
+  std::mutex contained_objrefs_lock_;
 };
 
 #endif
