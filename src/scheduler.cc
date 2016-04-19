@@ -16,11 +16,14 @@ Status SchedulerService::RemoteCall(ServerContext* context, const RemoteCallRequ
   size_t num_return_vals = fntable_[task->name()].num_return_vals();
   fntable_lock_.unlock();
 
+  std::vector<ObjRef> result_objrefs;
   for (size_t i = 0; i < num_return_vals; ++i) {
     ObjRef result = register_new_object();
     reply->add_result(result);
     task->add_result(result);
+    result_objrefs.push_back(result);
   }
+  increment_ref_count(result_objrefs); // The corresponding decrement will happen in deserialize_call in orchpylib.
 
   task_queue_lock_.lock();
   task_queue_.emplace_back(std::move(task));

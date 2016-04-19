@@ -564,10 +564,13 @@ PyObject* deserialize_call(PyObject* self, PyObject* args) {
     worker->decrement_reference_count(objrefs);
   }
   int resultsize = call->result_size();
+  std::vector<ObjRef> result_objrefs;
   PyObject* resultlist = PyList_New(resultsize);
   for (int i = 0; i < resultsize; ++i) {
     PyList_SetItem(resultlist, i, make_pyobjref(worker_capsule, call->result(i)));
+    result_objrefs.push_back(call->result(i));
   }
+  worker->decrement_reference_count(result_objrefs); // The corresponding increment is done in RemoteCall in the scheduler.
   PyObject* t = PyTuple_New(3); // We set the items of the tuple using PyTuple_SetItem, because that transfers ownership to the tuple.
   PyTuple_SetItem(t, 0, string);
   PyTuple_SetItem(t, 1, arglist);
