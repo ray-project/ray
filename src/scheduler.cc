@@ -23,7 +23,10 @@ Status SchedulerService::RemoteCall(ServerContext* context, const RemoteCallRequ
     task->add_result(result);
     result_objrefs.push_back(result);
   }
-  increment_ref_count(result_objrefs); // The corresponding decrement will happen in deserialize_call in orchpylib.
+  {
+    std::lock_guard<std::mutex> reference_counts_lock(reference_counts_lock_); // we grab this lock because increment_ref_count assumes it has been acquired
+    increment_ref_count(result_objrefs); // The corresponding decrement will happen in deserialize_call in orchpylib.
+  }
 
   task_queue_lock_.lock();
   task_queue_.emplace_back(std::move(task));
