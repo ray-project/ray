@@ -1,2 +1,2 @@
-import random
+import random, linalg
 from core import *

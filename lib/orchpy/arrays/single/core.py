@@ -2,6 +2,8 @@ from typing import List
 import numpy as np
 import orchpy as op
 
+__all__ = ["zeros", "zeros_like", "ones", "eye", "dot", "vstack", "hstack", "subarray", "copy", "tril", "triu", "diag", "transpose", "add", "subtract", "eye2", "sum", "shape"]
+
 @op.distributed([List[int], str], [np.ndarray])
 def zeros(shape, dtype_name):
   return np.zeros(shape, dtype=np.dtype(dtype_name))
@@ -17,6 +19,11 @@ def ones(shape, dtype_name):
 @op.distributed([int, str], [np.ndarray])
 def eye(dim, dtype_name):
   return np.eye(dim, dtype=np.dtype(dtype_name))
+
+# TODO(rkn): This should be part of eye
+@op.distributed([int, int, str], [np.ndarray])
+def eye2(dim1, dim2, dtype_name):
+  return np.eye(dim1, dim2, dtype=np.dtype(dtype_name))
 
 @op.distributed([np.ndarray, np.ndarray], [np.ndarray])
 def dot(a, b):
@@ -49,3 +56,27 @@ def tril(a):
 @op.distributed([np.ndarray], [np.ndarray])
 def triu(a):
   return np.triu(a)
+
+@op.distributed([np.ndarray], [np.ndarray])
+def diag(a):
+  return np.diag(a)
+
+@op.distributed([np.ndarray], [np.ndarray])
+def transpose(a):
+  return np.transpose(a)
+
+@op.distributed([np.ndarray, np.ndarray], [np.ndarray])
+def add(x1, x2):
+  return np.add(x1, x2)
+
+@op.distributed([np.ndarray, np.ndarray], [np.ndarray])
+def subtract(x1, x2):
+  return np.subtract(x1, x2)
+
+@op.distributed([int, np.ndarray, None], [np.ndarray])
+def sum(axis, *xs):
+  return np.sum(xs, axis=axis)
+
+@op.distributed([np.ndarray], [tuple])
+def shape(a):
+  return np.shape(a)
