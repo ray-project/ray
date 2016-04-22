@@ -59,6 +59,7 @@ message RegisterWorkerRequest {
 
 message RegisterWorkerReply {
   uint64 workerid = 1; // Worker ID assigned by the scheduler
+  uint64 objstoreid = 2; // The Object store ID of the worker's local object store
 }
 
 message RegisterObjStoreRequest {

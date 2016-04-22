@@ -50,7 +50,7 @@ private:
 
   std::string objstore_address_;
   ObjStoreId objstoreid_; // id of this objectstore in the scheduler object store table
-  MemorySegmentPool segmentpool_;
+  std::shared_ptr<MemorySegmentPool> segmentpool_;
   std::vector<std::pair<ObjHandle, MemoryStatusType> > memory_; // object reference -> (memory address, memory status)
   std::mutex memory_lock_;
   std::unordered_map<std::string, std::unique_ptr<ObjStore::Stub>> objstores_;

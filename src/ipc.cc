@@ -26,7 +26,7 @@ int64_t BufferMemorySource::Size() const {
   return size_;
 }
 
-MemorySegmentPool::MemorySegmentPool(bool create) : create_mode_(create) { }
+MemorySegmentPool::MemorySegmentPool(ObjStoreId objstoreid, bool create) : objstoreid_(objstoreid), create_mode_(create) { }
 
 // creates a memory segment if it is not already there; if the pool is in create mode,
 // space is allocated, if it is in open mode, the shared memory is mapped into the process
@@ -49,7 +49,7 @@ void MemorySegmentPool::open_segment(SegmentId segmentid, size_t size) {
   if (segments_[segmentid].second == SegmentStatusType::CLOSED) {
     ORCH_LOG(ORCH_FATAL, "Attempting to open segmentid " << segmentid << ", but segments_[segmentid].second == SegmentStatusType::CLOSED.");
   }
-  std::string segment_name = std::string("segment:") + std::to_string(segmentid);
+  std::string segment_name = get_segment_name(segmentid);
   if (create_mode_) {
     assert(size > 0);
     shared_memory_object::remove(segment_name.c_str()); // remove segment if it has not been properly removed from last run
@@ -62,7 +62,7 @@ void MemorySegmentPool::open_segment(SegmentId segmentid, size_t size) {
 
 void MemorySegmentPool::close_segment(SegmentId segmentid) {
   ORCH_LOG(ORCH_DEBUG, "CLOSING segmentid " << segmentid);
-  std::string segment_name = std::string("segment:") + std::to_string(segmentid);
+  std::string segment_name = get_segment_name(segmentid);
   shared_memory_object::remove(segment_name.c_str());
   segments_[segmentid].first.reset();
   segments_[segmentid].second = SegmentStatusType::CLOSED;
@@ -95,9 +95,14 @@ uint8_t* MemorySegmentPool::get_address(ObjHandle pointer) {
   return static_cast<uint8_t*>(segment->get_address_from_handle(pointer.ipcpointer()));
 }
 
+// returns the name of the segment
+std::string MemorySegmentPool::get_segment_name(SegmentId segmentid) {
+  return std::string("objstore:") + std::to_string(objstoreid_) + std::string(":segment:") + std::to_string(segmentid);
+}
+
 MemorySegmentPool::~MemorySegmentPool() {
   for (size_t segmentid = 0; segmentid < segments_.size(); ++segmentid) {
-    std::string segment_name = std::string("segment:") + std::to_string(segmentid);
+    std::string segment_name = get_segment_name(segmentid);
     segments_[segmentid].first.reset();
     shared_memory_object::remove(segment_name.c_str());
   }

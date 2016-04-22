@@ -2,6 +2,7 @@
 #define ORCHESTRA_IPC_H
 
 #include <iostream>
+#include <limits>
 
 #include <boost/interprocess/managed_shared_memory.hpp>
 #include <boost/interprocess/ipc/message_queue.hpp>
@@ -145,15 +146,17 @@ enum SegmentStatusType {UNOPENED = 0, OPENED = 1, CLOSED = 2};
 
 class MemorySegmentPool {
 public:
-  MemorySegmentPool(bool create = false); // can be used in two modes: create mode and open mode (see above)
+  MemorySegmentPool(ObjStoreId objstoreid, bool create); // can be used in two modes: create mode and open mode (see above)
   ~MemorySegmentPool();
   ObjHandle allocate(size_t nbytes); // allocate memory, potentially creating a new segment (only run on object store)
   void deallocate(ObjHandle pointer); // deallocate object, potentially deallocating a new segment (only run on object store)
   uint8_t* get_address(ObjHandle pointer); // get address of shared object
+  std::string get_segment_name(SegmentId segmentid); // get the name of a segment
 private:
   void open_segment(SegmentId segmentid, size_t size = 0); // create a segment or map an existing one into memory
   void close_segment(SegmentId segmentid); // close a segment
   bool create_mode_; // true in the object stores, false on the workers
+  ObjStoreId objstoreid_; // the identity of the associated object store
   size_t page_size_ = mapped_region::get_page_size();
   std::vector<std::pair<std::unique_ptr<managed_shared_memory>, SegmentStatusType> > segments_;
 };

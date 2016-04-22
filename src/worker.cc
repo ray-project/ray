@@ -34,6 +34,8 @@ void Worker::register_worker(const std::string& worker_address, const std::strin
   ClientContext context;
   Status status = scheduler_stub_->RegisterWorker(&context, request, &reply);
   workerid_ = reply.workerid();
+  objstoreid_ = reply.objstoreid();
+  segmentpool_ = std::make_shared<MemorySegmentPool>(objstoreid_, false);
   request_obj_queue_.connect(std::string("queue:") + objstore_address + std::string(":obj"), false);
   std::string queue_name = std::string("queue:") + objstore_address + std::string(":worker:") + std::to_string(workerid_) + std::string(":obj");
   receive_obj_queue_.connect(queue_name, true);
@@ -78,7 +80,7 @@ slice Worker::get_object(ObjRef objref) {
   ObjHandle result;
   receive_obj_queue_.receive(&result);
   slice slice;
-  slice.data = segmentpool_.get_address(result);
+  slice.data = segmentpool_->get_address(result);
   slice.len = result.size();
   return slice;
 }
@@ -106,7 +108,7 @@ void Worker::put_object(ObjRef objref, const Obj* obj, std::vector<ObjRef> &cont
   }
   ObjHandle result;
   receive_obj_queue_.receive(&result);
-  uint8_t* target = segmentpool_.get_address(result);
+  uint8_t* target = segmentpool_->get_address(result);
   std::memcpy(target, &data[0], data.size());
   request.type = ObjRequestType::WORKER_DONE;
   request.metadata_offset = 0;
@@ -136,7 +138,7 @@ void Worker::put_arrow(ObjRef objref, PyArrayObject* array) {
   request_obj_queue_.send(&request);
   ObjHandle result;
   receive_obj_queue_.receive(&result);
-  store_arrow(array, result, &segmentpool_);
+  store_arrow(array, result, segmentpool_.get());
   request.type = ObjRequestType::WORKER_DONE;
   request.metadata_offset = result.metadata_offset();
   request_obj_queue_.send(&request);
@@ -153,7 +155,7 @@ PyArrayObject* Worker::get_arrow(ObjRef objref) {
   request_obj_queue_.send(&request);
   ObjHandle result;
   receive_obj_queue_.receive(&result);
-  return (PyArrayObject*)deserialize_array(result, &segmentpool_);
+  return (PyArrayObject*)deserialize_array(result, segmentpool_.get());
 }
 
 bool Worker::is_arrow(ObjRef objref) {

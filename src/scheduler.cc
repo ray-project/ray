@@ -106,9 +106,12 @@ Status SchedulerService::RegisterObjStore(ServerContext* context, const Register
 }
 
 Status SchedulerService::RegisterWorker(ServerContext* context, const RegisterWorkerRequest* request, RegisterWorkerReply* reply) {
-  WorkerId workerid = register_worker(request->worker_address(), request->objstore_address());
+  std::pair<WorkerId, ObjStoreId> info = register_worker(request->worker_address(), request->objstore_address());
+  WorkerId workerid = info.first;
+  ObjStoreId objstoreid = info.second;
   ORCH_LOG(ORCH_INFO, "registered worker with workerid " << workerid);
   reply->set_workerid(workerid);
+  reply->set_objstoreid(objstoreid);
   schedule();
   return Status::OK;
 }
@@ -260,7 +263,7 @@ bool SchedulerService::can_run(const Call& task) {
   return true;
 }
 
-WorkerId SchedulerService::register_worker(const std::string& worker_address, const std::string& objstore_address) {
+std::pair<WorkerId, ObjStoreId> SchedulerService::register_worker(const std::string& worker_address, const std::string& objstore_address) {
   ORCH_LOG(ORCH_INFO, "registering worker " << worker_address << " connected to object store " << objstore_address);
   ObjStoreId objstoreid = std::numeric_limits<size_t>::max();
   for (int num_attempts = 0; num_attempts < 5; ++num_attempts) {
@@ -288,7 +291,7 @@ WorkerId SchedulerService::register_worker(const std::string& worker_address, co
   avail_workers_lock_.lock();
   avail_workers_.push_back(workerid);
   avail_workers_lock_.unlock();
-  return workerid;
+  return std::make_pair(workerid, objstoreid);
 }
 
 ObjRef SchedulerService::register_new_object() {

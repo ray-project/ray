@@ -23,7 +23,7 @@ Status ObjStoreClient::upload_data_to(slice data, ObjRef objref, ObjStore::Stub&
 }
 
 ObjStoreService::ObjStoreService(const std::string& objstore_address, std::shared_ptr<Channel> scheduler_channel)
-  : scheduler_stub_(Scheduler::NewStub(scheduler_channel)), segmentpool_(true), objstore_address_(objstore_address) {
+  : scheduler_stub_(Scheduler::NewStub(scheduler_channel)), objstore_address_(objstore_address) {
   recv_queue_.connect(std::string("queue:") + objstore_address + std::string(":obj"), true);
   ClientContext context;
   RegisterObjStoreRequest request;
@@ -31,6 +31,7 @@ ObjStoreService::ObjStoreService(const std::string& objstore_address, std::share
   RegisterObjStoreReply reply;
   scheduler_stub_->RegisterObjStore(&context, request, &reply);
   objstoreid_ = reply.objstoreid();
+  segmentpool_ = std::make_shared<MemorySegmentPool>(objstoreid_, true);
 }
 
 // this method needs to be protected by a objstores_lock_
@@ -153,7 +154,7 @@ Status ObjStoreService::DeallocateObject(ServerContext* context, const Deallocat
   if (canonical_objref >= memory_.size()) {
     ORCH_LOG(ORCH_FATAL, "Attempting to deallocate canonical_objref " << canonical_objref << ", but it is not in the objstore.");
   }
-  segmentpool_.deallocate(memory_[canonical_objref].first);
+  segmentpool_->deallocate(memory_[canonical_objref].first);
   memory_[canonical_objref].second = MemoryStatusType::DEALLOCATED;
   return Status::OK;
 }
@@ -197,7 +198,7 @@ void ObjStoreService::process_worker_request(const ObjRequest request) {
   switch (request.type) {
     case ObjRequestType::ALLOC: {
         // TODO(rkn): Does segmentpool_ need a lock around it?
-        ObjHandle reply = segmentpool_.allocate(request.size);
+        ObjHandle reply = segmentpool_->allocate(request.size);
         send_queues_[request.workerid].send(&reply);
         std::lock_guard<std::mutex> memory_lock(memory_lock_);
         if (memory_[request.objref].second != MemoryStatusType::NOT_PRESENT) {

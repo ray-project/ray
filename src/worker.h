@@ -89,10 +89,11 @@ class Worker {
   MessageQueue<Call*> receive_queue_;
   managed_shared_memory segment_;
   WorkerId workerid_;
+  ObjStoreId objstoreid_;
   std::string worker_address_;
   MessageQueue<ObjRequest> request_obj_queue_;
   MessageQueue<ObjHandle> receive_obj_queue_;
-  MemorySegmentPool segmentpool_;
+  std::shared_ptr<MemorySegmentPool> segmentpool_;
 };
 
 #endif
