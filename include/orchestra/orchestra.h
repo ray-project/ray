@@ -37,6 +37,8 @@ typedef std::unordered_map<std::string, FnInfo> FnTable;
 #define ORCH_INFO 0
 #define ORCH_DEBUG 1
 #define ORCH_FATAL 2
+#define ORCH_REFCOUNT ORCH_VERBOSE
+#define ORCH_ALIAS ORCH_VERBOSE
 
 #define ORCH_LOG(LEVEL, MESSAGE) \
   if (LEVEL == ORCH_VERBOSE) { \
@@ -44,6 +46,8 @@ typedef std::unordered_map<std::string, FnInfo> FnTable;
   } else if (LEVEL == ORCH_FATAL) { \
     std::cerr << "fatal error occured: " << MESSAGE << std::endl; \
     std::exit(1); \
+  } else if (LEVEL == ORCH_DEBUG) { \
+    \
   } else { \
     std::cout << MESSAGE << std::endl; \
   }

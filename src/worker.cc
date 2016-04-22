@@ -100,10 +100,7 @@ void Worker::put_object(ObjRef objref, const Obj* obj, std::vector<ObjRef> &cont
   request.size = data.size();
   request_obj_queue_.send(&request);
   if (contained_objrefs.size() > 0) {
-    ORCH_LOG(ORCH_DEBUG, "In put_object, calling increment_reference_count for objrefs:");
-    for (int i = 0; i < contained_objrefs.size(); ++i){
-       ORCH_LOG(ORCH_DEBUG, "----" << contained_objrefs[i]);
-    }
+    ORCH_LOG(ORCH_REFCOUNT, "In put_object, calling increment_reference_count for contained objrefs");
     increment_reference_count(contained_objrefs); // Notify the scheduler that some object references are serialized in the objstore.
   }
   ObjHandle result;
@@ -192,7 +189,7 @@ void Worker::increment_reference_count(std::vector<ObjRef> &objrefs) {
   ClientContext context;
   IncrementRefCountRequest request;
   for (int i = 0; i < objrefs.size(); ++i) {
-    ORCH_LOG(ORCH_DEBUG, "Incrementing reference count for objref " << objrefs[i]);
+    ORCH_LOG(ORCH_REFCOUNT, "Incrementing reference count for objref " << objrefs[i]);
     request.add_objref(objrefs[i]);
   }
   AckReply reply;
@@ -207,7 +204,7 @@ void Worker::decrement_reference_count(std::vector<ObjRef> &objrefs) {
   ClientContext context;
   DecrementRefCountRequest request;
   for (int i = 0; i < objrefs.size(); ++i) {
-    ORCH_LOG(ORCH_DEBUG, "Decrementing reference count for objref " << objrefs[i]);
+    ORCH_LOG(ORCH_REFCOUNT, "Decrementing reference count for objref " << objrefs[i]);
     request.add_objref(objrefs[i]);
   }
   AckReply reply;

@@ -47,7 +47,7 @@ static int PyObjRef_init(PyObjRef *self, PyObject *args, PyObject *kwds) {
   }
   std::vector<ObjRef> objrefs;
   objrefs.push_back(self->val);
-  ORCH_LOG(ORCH_DEBUG, "In PyObjRef_init, calling increment_reference_count for objref " << objrefs[0]);
+  ORCH_LOG(ORCH_REFCOUNT, "In PyObjRef_init, calling increment_reference_count for objref " << objrefs[0]);
   self->worker->increment_reference_count(objrefs);
   return 0;
 };
@@ -530,10 +530,7 @@ PyObject* serialize_call(PyObject* self, PyObject* args) {
   Worker* worker;
   PyObjectToWorker(worker_capsule, &worker);
   if (objrefs.size() > 0) {
-    ORCH_LOG(ORCH_DEBUG, "In serialize_call, calling increment_reference_count for objrefs:");
-    for (int i = 0; i < objrefs.size(); ++i) {
-      ORCH_LOG(ORCH_DEBUG, "----" << objrefs[i]);
-    }
+    ORCH_LOG(ORCH_REFCOUNT, "In serialize_call, calling increment_reference_count for contained objrefs");
     worker->increment_reference_count(objrefs);
   }
   return PyCapsule_New(static_cast<void*>(call), "call", &CallCapsule_Destructor);

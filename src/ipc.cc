@@ -31,7 +31,7 @@ MemorySegmentPool::MemorySegmentPool(ObjStoreId objstoreid, bool create) : objst
 // creates a memory segment if it is not already there; if the pool is in create mode,
 // space is allocated, if it is in open mode, the shared memory is mapped into the process
 void MemorySegmentPool::open_segment(SegmentId segmentid, size_t size) {
-  ORCH_LOG(ORCH_DEBUG, "OPENING segmentid " << segmentid);
+  ORCH_LOG(ORCH_DEBUG, "opening segmentid " << segmentid);
   if (segmentid != segments_.size() && create_mode_) {
     ORCH_LOG(ORCH_FATAL, "Attempting to open segmentid " << segmentid << " on the object store, but segments_.size() = " << segments_.size());
   }
@@ -61,7 +61,7 @@ void MemorySegmentPool::open_segment(SegmentId segmentid, size_t size) {
 }
 
 void MemorySegmentPool::close_segment(SegmentId segmentid) {
-  ORCH_LOG(ORCH_DEBUG, "CLOSING segmentid " << segmentid);
+  ORCH_LOG(ORCH_DEBUG, "closing segmentid " << segmentid);
   std::string segment_name = get_segment_name(segmentid);
   shared_memory_object::remove(segment_name.c_str());
   segments_[segmentid].first.reset();
