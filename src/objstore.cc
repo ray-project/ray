@@ -146,7 +146,7 @@ Status ObjStoreService::NotifyAlias(ServerContext* context, const NotifyAliasReq
 
 Status ObjStoreService::DeallocateObject(ServerContext* context, const DeallocateObjectRequest* request, AckReply* reply) {
   ObjRef canonical_objref = request->canonical_objref();
-  ORCH_LOG(ORCH_DEBUG, "Deallocating canonical_objref " << canonical_objref);
+  ORCH_LOG(ORCH_REFCOUNT, "Deallocating canonical_objref " << canonical_objref);
   std::lock_guard<std::mutex> memory_lock(memory_lock_);
   if (memory_[canonical_objref].second != MemoryStatusType::READY) {
     ORCH_LOG(ORCH_FATAL, "Attempting to deallocate canonical_objref " << canonical_objref << ", but memory_[canonical_objref].second = " << memory_[canonical_objref].second);

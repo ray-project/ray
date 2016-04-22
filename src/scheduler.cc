@@ -65,7 +65,7 @@ Status SchedulerService::RequestObj(ServerContext* context, const RequestObjRequ
 Status SchedulerService::AliasObjRefs(ServerContext* context, const AliasObjRefsRequest* request, AckReply* reply) {
   ObjRef alias_objref = request->alias_objref();
   ObjRef target_objref = request->target_objref();
-  ORCH_LOG(ORCH_DEBUG, "Aliasing objref " << alias_objref << " with objref " << target_objref);
+  ORCH_LOG(ORCH_ALIAS, "Aliasing objref " << alias_objref << " with objref " << target_objref);
   if (alias_objref == target_objref) {
     ORCH_LOG(ORCH_FATAL, "internal error: attempting to alias objref " << alias_objref << " with itself.");
   }
@@ -233,7 +233,7 @@ void SchedulerService::submit_task(std::unique_ptr<Call> call, WorkerId workerid
       }
       attempt_notify_alias(get_store(workerid), objref, canonical_objref);
 
-      ORCH_LOG(ORCH_INFO, "call contains object ref " << canonical_objref);
+      ORCH_LOG(ORCH_DEBUG, "call contains object ref " << canonical_objref);
       std::lock_guard<std::mutex> objtable_lock(objtable_lock_);
       auto &objstores = objtable_[canonical_objref];
       std::lock_guard<std::mutex> workers_lock(workers_lock_);
@@ -429,7 +429,7 @@ void SchedulerService::perform_pulls() {
     ObjRef objref = pull.second;
     WorkerId workerid = pull.first;
     if (!has_canonical_objref(objref)) {
-      ORCH_LOG(ORCH_DEBUG, "objref " << objref << " does not have a canonical_objref, so continuing");
+      ORCH_LOG(ORCH_ALIAS, "objref " << objref << " does not have a canonical_objref, so continuing");
       continue;
     }
     ObjRef canonical_objref = get_canonical_objref(objref);
@@ -535,7 +535,7 @@ ObjRef SchedulerService::get_canonical_objref(ObjRef objref) {
       return objref_temp;
     }
     objref_temp = target_objrefs_[objref_temp];
-    ORCH_LOG(ORCH_DEBUG, "Looping in get_canonical_objref.");
+    ORCH_LOG(ORCH_ALIAS, "Looping in get_canonical_objref.");
   }
 }
 
@@ -569,7 +569,7 @@ void SchedulerService::deallocate_object(ObjRef canonical_objref) {
   // these methods require reference_counts_lock_ to have been acquired, and
   // so the lock must before outside of these methods (it is acquired in
   // DecrementRefCount).
-  ORCH_LOG(ORCH_DEBUG, "Deallocating canonical_objref " << canonical_objref << ".");
+  ORCH_LOG(ORCH_REFCOUNT, "Deallocating canonical_objref " << canonical_objref << ".");
   ClientContext context;
   AckReply reply;
   DeallocateObjectRequest request;
@@ -594,7 +594,7 @@ void SchedulerService::increment_ref_count(std::vector<ObjRef> &objrefs) {
       ORCH_LOG(ORCH_FATAL, "Attempting to increment the reference count for objref " << objref << ", but this object appears to have been deallocated already.");
     }
     reference_counts_[objref] += 1;
-    ORCH_LOG(ORCH_DEBUG, "Incremented ref count for objref " << objref <<". New reference count is " << reference_counts_[objref]);
+    ORCH_LOG(ORCH_REFCOUNT, "Incremented ref count for objref " << objref <<". New reference count is " << reference_counts_[objref]);
   }
 }
 
@@ -609,7 +609,7 @@ void SchedulerService::decrement_ref_count(std::vector<ObjRef> &objrefs) {
       ORCH_LOG(ORCH_FATAL, "Attempting to decrement the reference count for objref " << objref << ", but the reference count for this object is already 0.");
     }
     reference_counts_[objref] -= 1;
-    ORCH_LOG(ORCH_DEBUG, "Decremented ref count for objref " << objref << ". New reference count is " << reference_counts_[objref]);
+    ORCH_LOG(ORCH_REFCOUNT, "Decremented ref count for objref " << objref << ". New reference count is " << reference_counts_[objref]);
     // See if we can deallocate the object
     std::vector<ObjRef> equivalent_objrefs;
     get_equivalent_objrefs(objref, equivalent_objrefs);
@@ -631,7 +631,6 @@ void SchedulerService::decrement_ref_count(std::vector<ObjRef> &objrefs) {
       }
     }
   }
-  ORCH_LOG(ORCH_DEBUG, "Exiting decrement_ref_count");
 }
 
 void SchedulerService::upstream_objrefs(ObjRef objref, std::vector<ObjRef> &objrefs) {
@@ -646,7 +645,7 @@ void SchedulerService::get_equivalent_objrefs(ObjRef objref, std::vector<ObjRef>
   std::lock_guard<std::mutex> target_objrefs_lock(target_objrefs_lock_);
   ObjRef downstream_objref = objref;
   while (target_objrefs_[downstream_objref] != downstream_objref && target_objrefs_[downstream_objref] != UNITIALIZED_ALIAS) {
-    ORCH_LOG(ORCH_DEBUG, "Looping in get_equivalent_objrefs");
+    ORCH_LOG(ORCH_ALIAS, "Looping in get_equivalent_objrefs");
     downstream_objref = target_objrefs_[downstream_objref];
   }
   std::lock_guard<std::mutex> reverse_target_objrefs_lock(reverse_target_objrefs_lock_);
