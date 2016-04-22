@@ -25,7 +25,8 @@ Status SchedulerService::RemoteCall(ServerContext* context, const RemoteCallRequ
   }
   {
     std::lock_guard<std::mutex> reference_counts_lock(reference_counts_lock_); // we grab this lock because increment_ref_count assumes it has been acquired
-    increment_ref_count(result_objrefs); // The corresponding decrement will happen in deserialize_call in orchpylib.
+    increment_ref_count(result_objrefs); // We increment once so the objrefs don't go out of scope before we reply to the worker that called RemoteCall. The corresponding decrement will happen in remote_call in orchpylib.
+    increment_ref_count(result_objrefs); // We increment once so the objrefs don't go out of scope before the task is scheduled on the worker. The corresponding decrement will happen in deserialize_call in orchpylib.
   }
 
   task_queue_lock_.lock();

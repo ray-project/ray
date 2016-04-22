@@ -637,9 +637,12 @@ PyObject* remote_call(PyObject* self, PyObject* args) {
   request.release_call(); // TODO: Make sure that call is not moved, otherwise capsule pointer needs to be updated
   int size = reply.result_size();
   PyObject* list = PyList_New(size);
+  std::vector<ObjRef> result_objrefs;
   for (int i = 0; i < size; ++i) {
     PyList_SetItem(list, i, make_pyobjref(worker_capsule, reply.result(i)));
+    result_objrefs.push_back(reply.result(i));
   }
+  worker->decrement_reference_count(result_objrefs); // The corresponding increment is done in RemoteCall in the scheduler.
   return list;
 }
 
