@@ -31,8 +31,7 @@ class SerializationTest(unittest.TestCase):
     self.assertTrue((a == c).all())
 
   def testSerialize(self):
-    w = worker.Worker()
-    services.start_cluster(driver_worker=w)
+    [w] = services.start_cluster(return_drivers=True)
 
     self.roundTripTest(w, [1, "hello", 3.0])
     self.roundTripTest(w, 42)
@@ -70,13 +69,12 @@ class ObjStoreTest(unittest.TestCase):
 
   # Test setting up object stores, transfering data between them and retrieving data to a client
   def testObjStore(self):
-    w = worker.Worker()
-    services.start_cluster(driver_worker=w)
+    [w1, w2] = services.start_cluster(return_drivers=True, num_objstores=2, num_workers_per_objstore=0)
 
     # pushing and pulling an object shouldn't change it
     for data in ["h", "h" * 10000, 0, 0.0]:
-      objref = orchpy.push(data, w)
-      result = orchpy.pull(objref, w)
+      objref = orchpy.push(data, w1)
+      result = orchpy.pull(objref, w1)
       self.assertEqual(result, data)
 
     # pushing an object, shipping it to another worker, and pulling it shouldn't change it
@@ -93,8 +91,7 @@ class SchedulerTest(unittest.TestCase):
   def testCall(self):
     test_dir = os.path.dirname(os.path.abspath(__file__))
     test_path = os.path.join(test_dir, "testrecv.py")
-    w = worker.Worker()
-    services.start_cluster(driver_worker=w, num_workers=1, worker_path=test_path)
+    [w] = services.start_cluster(return_drivers=True, num_workers_per_objstore=1, worker_path=test_path)
 
     value_before = "test_string"
     objref = w.remote_call("test_functions.print_string", [value_before])
@@ -111,8 +108,7 @@ class SchedulerTest(unittest.TestCase):
 class WorkerTest(unittest.TestCase):
 
   def testPushPull(self):
-    w = worker.Worker()
-    services.start_cluster(driver_worker=w)
+    [w] = services.start_cluster(return_drivers=True)
 
     for i in range(100):
       value_before = i * 10 ** 6
@@ -143,10 +139,9 @@ class WorkerTest(unittest.TestCase):
 class APITest(unittest.TestCase):
 
   def testObjRefAliasing(self):
-    w = worker.Worker()
     test_dir = os.path.dirname(os.path.abspath(__file__))
     test_path = os.path.join(test_dir, "testrecv.py")
-    services.start_cluster(num_workers=3, worker_path=test_path, driver_worker=w)
+    [w] = services.start_cluster(return_drivers=True, num_workers_per_objstore=3, worker_path=test_path)
 
     objref = w.remote_call("test_functions.test_alias_f", [])
     self.assertTrue(np.alltrue(orchpy.pull(objref[0], w) == np.ones([3, 4, 5])))
@@ -162,7 +157,7 @@ class ReferenceCountingTest(unittest.TestCase):
   def testDeallocation(self):
     test_dir = os.path.dirname(os.path.abspath(__file__))
     test_path = os.path.join(test_dir, "testrecv.py")
-    services.start_cluster(num_workers=3, worker_path=test_path)
+    services.start_cluster(return_drivers=False, num_workers_per_objstore=3, worker_path=test_path)
 
     x = test_functions.test_alias_f()
     orchpy.pull(x)

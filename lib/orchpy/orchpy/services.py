@@ -9,7 +9,7 @@ import orchpy.worker as worker
 _services_path = os.path.dirname(os.path.abspath(__file__))
 
 all_processes = []
-driver = None
+drivers = []
 
 IP_ADDRESS = "127.0.0.1"
 TIMEOUT_SECONDS = 5
@@ -56,12 +56,12 @@ def cleanup():
     print "Termination attempt failed, giving up."
   all_processes = []
 
-  global driver
-  if driver is not None:
+  global drivers
+  for driver in drivers:
     orchpy.disconnect(driver)
-  else:
+  if len(drivers) == 0:
     orchpy.disconnect()
-  driver = None
+  drivers = []
 
 # atexit.register(cleanup)
 
@@ -81,21 +81,35 @@ def start_worker(test_path, scheduler_address, objstore_address, worker_address)
                         "--worker-address=" + worker_address])
   all_processes.append((p, worker_address))
 
-def start_cluster(driver_worker=None, num_workers=0, worker_path=None):
-  global driver
-  if num_workers > 0 and worker_path is None:
-    raise Exception("Attempting to start a cluster with some workers, but `worker_path` is None.")
+def start_cluster(return_drivers=False, num_objstores=1, num_workers_per_objstore=0, worker_path=None):
+  global drivers
+  if num_workers_per_objstore > 0 and worker_path is None:
+    raise Exception("Attempting to start a cluster with {} workers per object store, but `worker_path` is None.".format(num_workers_per_objstore))
+  if num_workers_per_objstore > 0 and num_objstores < 1:
+    raise Exception("Attempting to start a cluster with {} workers per object store, but `num_objstores` is {}.".format(num_objstores))
   scheduler_address = address(IP_ADDRESS, new_scheduler_port())
-  objstore_address = address(IP_ADDRESS, new_objstore_port())
   start_scheduler(scheduler_address)
   time.sleep(0.1)
-  start_objstore(scheduler_address, objstore_address)
-  time.sleep(0.2)
-  if driver_worker is not None:
-    orchpy.connect(scheduler_address, objstore_address, address(IP_ADDRESS, new_worker_port()), driver_worker)
-    driver = driver_worker
+  objstore_addresses = []
+  # create objstores
+  for i in range(num_objstores):
+    objstore_address = address(IP_ADDRESS, new_objstore_port())
+    objstore_addresses.append(objstore_address)
+    start_objstore(scheduler_address, objstore_address)
+    time.sleep(0.2)
+    for _ in range(num_workers_per_objstore):
+      start_worker(worker_path, scheduler_address, objstore_address, address(IP_ADDRESS, new_worker_port()))
+    time.sleep(0.3)
+  # create drivers
+  if return_drivers:
+    driver_workers = []
+    for i in range(num_objstores):
+      driver_worker = worker.Worker()
+      orchpy.connect(scheduler_address, objstore_address, address(IP_ADDRESS, new_worker_port()), driver_worker)
+      driver_workers.append(driver_worker)
+      drivers.append(driver_worker)
+    time.sleep(0.5)
+    return driver_workers
   else:
-    orchpy.connect(scheduler_address, objstore_address, address(IP_ADDRESS, new_worker_port()))
-  for _ in range(num_workers):
-    start_worker(worker_path, scheduler_address, objstore_address, address(IP_ADDRESS, new_worker_port()))
-  time.sleep(0.5)
+    orchpy.connect(scheduler_address, objstore_addresses[0], address(IP_ADDRESS, new_worker_port()))
+    time.sleep(0.5)
