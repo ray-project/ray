@@ -78,11 +78,40 @@ class ObjStoreTest(unittest.TestCase):
       self.assertEqual(result, data)
 
     # pushing an object, shipping it to another worker, and pulling it shouldn't change it
-    # for data in ["h", "h" * 10000, 0, 0.0]:
-    #   objref = worker.push(data, worker1)
-    #   response = objstore1_stub.DeliverObj(orchestra_pb2.DeliverObjRequest(objref=objref.val, objstore_address=address(IP_ADDRESS, objstore2_port)), TIMEOUT_SECONDS)
-    #   result = worker.pull(objref, worker2)
-    #   self.assertEqual(result, data)
+    for data in ["h", "h" * 10000, 0, 0.0, [1, 2, 3, "a", (1, 2)], ("a", ("b", 3))]:
+      objref = worker.push(data, w1)
+      result = worker.pull(objref, w2)
+      self.assertEqual(result, data)
+
+    # pushing an array, shipping it to another worker, and pulling it shouldn't change it
+    for data in [np.zeros([10, 20]), np.random.normal(size=[45, 25])]:
+      objref = worker.push(data, w1)
+      result = worker.pull(objref, w2)
+      self.assertTrue(np.alltrue(result == data))
+
+    """
+    # pulling multiple times shouldn't matter
+    for data in [np.zeros([10, 20]), np.random.normal(size=[45, 25]), np.zeros([10, 20], dtype=np.dtype("float64")), np.zeros([10, 20], dtype=np.dtype("float32")), np.zeros([10, 20], dtype=np.dtype("int64")), np.zeros([10, 20], dtype=np.dtype("int32"))]:
+      objref = worker.push(data, w1)
+      result = worker.pull(objref, w2)
+      result = worker.pull(objref, w2)
+      result = worker.pull(objref, w2)
+      self.assertTrue(np.alltrue(result == data))
+    """
+
+    # shipping a numpy array inside something else should be fine
+    data = ("a", np.random.normal(size=[10, 10]))
+    objref = worker.push(data, w1)
+    result = worker.pull(objref, w2)
+    self.assertTrue(data[0] == result[0])
+    self.assertTrue(np.alltrue(data[1] == result[1]))
+
+    # shipping a numpy array inside something else should be fine
+    data = ["a", np.random.normal(size=[10, 10])]
+    objref = worker.push(data, w1)
+    result = worker.pull(objref, w2)
+    self.assertTrue(data[0] == result[0])
+    self.assertTrue(np.alltrue(data[1] == result[1]))
 
     services.cleanup()
 

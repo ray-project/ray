@@ -191,8 +191,14 @@ Status SchedulerService::SchedulerInfo(ServerContext* context, const SchedulerIn
   return Status::OK;
 }
 
+// TODO(rkn): This could execute multiple times with the same arguments before
+// the delivery finishes, but we only want it to happen once. Currently, the
+// redundancy is handled by the object store, which will only execute the
+// delivery once. However, we may want to handle it in the scheduler in the
+// future.
+//
+// deliver_object assumes that the aliasing for objref has already been completed. That is, has_canonical_objref(objref) == true
 void SchedulerService::deliver_object(ObjRef objref, ObjStoreId from, ObjStoreId to) {
-  // deliver_object assumes that the aliasing for objref has already been completed. That is, has_canonical_objref(objref) == true
   if (from == to) {
     ORCH_LOG(ORCH_FATAL, "attempting to deliver objref " << objref << " from objstore " << from << " to itself.");
   }
@@ -201,12 +207,12 @@ void SchedulerService::deliver_object(ObjRef objref, ObjStoreId from, ObjStoreId
   }
   ClientContext context;
   AckReply reply;
-  DeliverObjRequest request;
+  StartDeliveryRequest request;
   ObjRef canonical_objref = get_canonical_objref(objref);
   request.set_objref(canonical_objref);
   std::lock_guard<std::mutex> lock(objstores_lock_);
-  request.set_objstore_address(objstores_[to].address);
-  objstores_[from].objstore_stub->DeliverObj(&context, request, &reply);
+  request.set_objstore_address(objstores_[from].address);
+  objstores_[to].objstore_stub->StartDelivery(&context, request, &reply);
 }
 
 void SchedulerService::schedule() {
@@ -403,14 +409,16 @@ void SchedulerService::get_info(const SchedulerInfoRequest& request, SchedulerIn
 
 }
 
+// pick_objstore assumes that objtable_lock_ has been acquired
+// pick_objstore must be called with a canonical_objref
 ObjStoreId SchedulerService::pick_objstore(ObjRef canonical_objref) {
-  // pick_objstore must be called with a canonical_objref
   std::mt19937 rng;
   if (!is_canonical(canonical_objref)) {
     ORCH_LOG(ORCH_FATAL, "Attempting to call pick_objstore with a non-canonical objref, (objref " << canonical_objref << ")");
   }
   std::uniform_int_distribution<int> uni(0, objtable_[canonical_objref].size() - 1);
-  return uni(rng);
+  ObjStoreId objstoreid = objtable_[canonical_objref][uni(rng)];
+  return objstoreid;
 }
 
 bool SchedulerService::is_canonical(ObjRef objref) {
@@ -433,7 +441,7 @@ void SchedulerService::perform_pulls() {
       continue;
     }
     ObjRef canonical_objref = get_canonical_objref(objref);
-    ORCH_LOG(ORCH_DEBUG, "attempting to pull objref " << pull.second << " with canonical objref " << canonical_objref);
+    ORCH_LOG(ORCH_DEBUG, "attempting to pull objref " << pull.second << " with canonical objref " << canonical_objref << " to objstore " << get_store(workerid));
 
     objtable_lock_.lock();
     int num_stores = objtable_[canonical_objref].size();
@@ -570,16 +578,17 @@ void SchedulerService::deallocate_object(ObjRef canonical_objref) {
   // so the lock must before outside of these methods (it is acquired in
   // DecrementRefCount).
   ORCH_LOG(ORCH_REFCOUNT, "Deallocating canonical_objref " << canonical_objref << ".");
-  ClientContext context;
-  AckReply reply;
-  DeallocateObjectRequest request;
-  request.set_canonical_objref(canonical_objref);
   {
     std::lock_guard<std::mutex> objtable_lock(objtable_lock_);
     auto &objstores = objtable_[canonical_objref];
     std::lock_guard<std::mutex> objstores_lock(objstores_lock_); // TODO(rkn): Should this be inside the for loop instead?
     for (int i = 0; i < objstores.size(); ++i) {
+      ClientContext context;
+      AckReply reply;
+      DeallocateObjectRequest request;
+      request.set_canonical_objref(canonical_objref);
       ObjStoreId objstoreid = objstores[i];
+      ORCH_LOG(ORCH_REFCOUNT, "Attempting to deallocate canonical_objref " << canonical_objref << " from objstore " << objstoreid);
       objstores_[objstoreid].objstore_stub->DeallocateObject(&context, request, &reply);
     }
   }

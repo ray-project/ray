@@ -156,7 +156,7 @@ std::shared_ptr<arrow::Array> read_flat_array(BufferMemorySource* source, int64_
   std::shared_ptr<ipc::RowBatchReader> reader;
   Status s = ipc::RowBatchReader::Open(source, metadata_offset, &reader);
   if (!s.ok()) {
-    ORCH_LOG(ORCH_FATAL, s.ToString());
+    ORCH_LOG(ORCH_FATAL, "Error in read_flat_array: " << s.ToString());
   }
   auto field = std::make_shared<arrow::Field>("data", npy_traits<NpyType>::primitive_type);
   std::shared_ptr<arrow::Schema> schema(new arrow::Schema({field}));

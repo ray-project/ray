@@ -14,11 +14,11 @@ class Worker(object):
 
   def put_object(self, objref, value):
     """Put `value` in the local object store with objref `objref`. This assumes that the value for `objref` has not yet been placed in the local object store."""
-    if type(value) == np.ndarray:
-      orchpy.lib.put_arrow(self.handle, objref, value)
-    else:
-      object_capsule, contained_objrefs = serialization.serialize(self.handle, value) # contained_objrefs is a list of the objrefs contained in object_capsule
-      orchpy.lib.put_object(self.handle, objref, object_capsule, contained_objrefs)
+    # if type(value) == np.ndarray:
+    #   orchpy.lib.put_arrow(self.handle, objref, value)
+    # else:
+    object_capsule, contained_objrefs = serialization.serialize(self.handle, value) # contained_objrefs is a list of the objrefs contained in object_capsule
+    orchpy.lib.put_object(self.handle, objref, object_capsule, contained_objrefs)
 
   def get_object(self, objref):
     """
@@ -27,11 +27,11 @@ class Worker(object):
 
     WARNING: get_object can only be called on a canonical objref.
     """
-    if orchpy.lib.is_arrow(self.handle, objref):
-      return orchpy.lib.get_arrow(self.handle, objref)
-    else:
-      object_capsule = orchpy.lib.get_object(self.handle, objref)
-      return serialization.deserialize(self.handle, object_capsule)
+    # if orchpy.lib.is_arrow(self.handle, objref):
+    #   return orchpy.lib.get_arrow(self.handle, objref)
+    # else:
+    object_capsule = orchpy.lib.get_object(self.handle, objref)
+    return serialization.deserialize(self.handle, object_capsule)
 
   def alias_objrefs(self, alias_objref, target_objref):
     """Make `alias_objref` refer to the same object that `target_objref` refers to."""
