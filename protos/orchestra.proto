@@ -149,10 +149,10 @@ message SchedulerInfoReply {
 // Object stores
 
 service ObjStore {
-  // Request to deliver an object to another object store (called by the scheduler)
-  rpc DeliverObj(DeliverObjRequest) returns (AckReply);
+  // Tell the object store to begin pulling an object from another object store (called by the scheduler)
+  rpc StartDelivery(StartDeliveryRequest) returns (AckReply);
   // Accept incoming data from another object store, as a stream of object chunks
-  rpc StreamObj(stream ObjChunk) returns (AckReply);
+  rpc StreamObjTo(StreamObjToRequest) returns (stream ObjChunk);
   // Notify the object store about objref aliasing. This is called by the scheduler
   rpc NotifyAlias(NotifyAliasRequest) returns (AckReply);
   // Tell the object store to deallocate an object held by the object store. This is called by the scheduler.
@@ -161,8 +161,8 @@ service ObjStore {
   rpc ObjStoreInfo(ObjStoreInfoRequest) returns (ObjStoreInfoReply);
 }
 
-message DeliverObjRequest {
-  string objstore_address = 1; // Object store to deliver the object to
+message StartDeliveryRequest {
+  string objstore_address = 1; // Object store to pull the object from
   uint64 objref = 2; // Reference of object that gets delivered
 }
 
@@ -174,9 +174,13 @@ message RegisterObjReply {
   uint64 handle = 1; // Handle to memory segment where object is stored
 }
 
-message ObjChunk {
+message StreamObjToRequest {
   uint64 objref = 1; // Object reference of the object being streamed
-  uint64 totalsize = 2; // Total size of the object
+}
+
+message ObjChunk {
+  uint64 total_size = 1; // Total size of the object
+  uint64 metadata_offset = 2; // Offset of the arrow metadata
   bytes data = 3; // Data for this chunk of the object
 }
 
@@ -191,12 +195,6 @@ message DeallocateObjectRequest {
 
 message GetObjRequest {
   uint64 objref = 1; // Object reference of the object being requested by the worker
-}
-
-message GetObjReply {
-  string bucket = 1; // Name of the shared memory segment where the object is stored
-  uint64 handle = 2; // Shared memory pointer to the object
-  uint64 size = 3; // Total size of the object in bytes
 }
 
 // These messages are for getting information about the object store state

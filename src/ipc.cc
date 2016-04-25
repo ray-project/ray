@@ -31,9 +31,9 @@ MemorySegmentPool::MemorySegmentPool(ObjStoreId objstoreid, bool create) : objst
 // creates a memory segment if it is not already there; if the pool is in create mode,
 // space is allocated, if it is in open mode, the shared memory is mapped into the process
 void MemorySegmentPool::open_segment(SegmentId segmentid, size_t size) {
-  ORCH_LOG(ORCH_DEBUG, "opening segmentid " << segmentid);
+  ORCH_LOG(ORCH_DEBUG, "Opening segmentid " << segmentid << " on object store " << objstoreid_ << " with create_mode_ = " << create_mode_);
   if (segmentid != segments_.size() && create_mode_) {
-    ORCH_LOG(ORCH_FATAL, "Attempting to open segmentid " << segmentid << " on the object store, but segments_.size() = " << segments_.size());
+    ORCH_LOG(ORCH_FATAL, "Object store " << objstoreid_ << " is attempting to open segmentid " << segmentid << " on the object store, but segments_.size() = " << segments_.size());
   }
   if (segmentid >= segments_.size()) { // resize and initialize segments_
     int current_size = segments_.size();
@@ -90,7 +90,12 @@ void MemorySegmentPool::deallocate(ObjHandle pointer) {
 // returns address of the object refered to by the handle, needs to be called on
 // the process that will use the address
 uint8_t* MemorySegmentPool::get_address(ObjHandle pointer) {
-  open_segment(pointer.segmentid());
+  if (create_mode_ && segments_[pointer.segmentid()].second != SegmentStatusType::OPENED) {
+    ORCH_LOG(ORCH_FATAL, "Object store " << objstoreid_ << " is attempting to call get_address on segmentid " << pointer.segmentid() << ", which has not been opened yet.");
+  }
+  if (!create_mode_) {
+    open_segment(pointer.segmentid());
+  }
   managed_shared_memory* segment = segments_[pointer.segmentid()].first.get();
   return static_cast<uint8_t*>(segment->get_address_from_handle(pointer.ipcpointer()));
 }
