@@ -4,15 +4,13 @@
 
 #include <Python.h>
 #include <structmember.h>
-#define PY_ARRAY_UNIQUE_SYMBOL ORCHESTRA_ARRAY_API
+#define PY_ARRAY_UNIQUE_SYMBOL NUMBUF_ARRAY_API
 #include <numpy/arrayobject.h>
 #include <arrow/api.h>
 #include <iostream>
 
 #include "types.pb.h"
 #include "worker.h"
-
-#include "serialize.h"
 
 extern "C" {
 
@@ -459,12 +457,7 @@ PyObject* put_arrow(PyObject* self, PyObject* args) {
   if (!PyArg_ParseTuple(args, "O&O&O", &PyObjectToWorker, &worker, &PyObjectToObjRef, &objref, &value)) {
     return NULL;
   }
-  if (!PyArray_Check(value)) {
-    PyErr_SetString(PyExc_TypeError, "only support arrays at this point");
-    return NULL;
-  }
-  PyArrayObject* array = PyArray_GETCONTIGUOUS((PyArrayObject*) value);
-  worker->put_arrow(objref, array);
+  worker->put_arrow(objref, value);
   Py_RETURN_NONE;
 }
 

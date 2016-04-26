@@ -39,10 +39,28 @@ For a description of our design decisions, see
 8. `cd ..`
 9. `python setup.py install`
 
+**Install Numbuf**
+
+1. `git clone git@github.com:amplab/numbuf.git`
+2. `cd numbuf/cpp/`
+3. `mkdir build`
+4. `cd build`
+5. `cmake ..`
+6. `sudo make install`
+7. `cd ../..`
+8. `cd python/`
+9. `mkdir build`
+10. `cd build`
+11. `cmake ..`
+12. `sudo make install`
+13. `cd ..`
+14. `sudo python setup.py install`
+
+
 **Install Orchestra**
 
-1. `git clone git@github.com:amplab/orch.git`
-2. `cd orch`
+1. `git clone git@github.com:amplab/photon.git`
+2. `cd photon`
 3. `mkdir build`
 4. `cd build`
 5. `cmake ..`
