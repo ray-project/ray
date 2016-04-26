@@ -1,5 +1,11 @@
 #include "worker.h"
 
+#include <pynumbuf/serialize.h>
+
+extern "C" {
+  static PyObject *OrchPyError;
+}
+
 Status WorkerServiceImpl::InvokeCall(ServerContext* context, const InvokeCallRequest* request, InvokeCallReply* reply) {
   call_ = request->call(); // Copy call
   ORCH_LOG(ORCH_INFO, "invoked task " << request->call().name());
@@ -122,12 +128,25 @@ void Worker::put_object(ObjRef objref, const Obj* obj, std::vector<ObjRef> &cont
   scheduler_stub_->AddContainedObjRefs(&context, contained_objrefs_request, &reply);
 }
 
-void Worker::put_arrow(ObjRef objref, PyArrayObject* array) {
+#define CHECK_ARROW_STATUS(s, msg)                              \
+  do {                                                          \
+    arrow::Status _s = (s);                                     \
+    if (!_s.ok()) {                                             \
+      std::string _errmsg = std::string(msg) + _s.ToString();   \
+      PyErr_SetString(OrchPyError, _errmsg.c_str());            \
+      return NULL;                                              \
+    }                                                           \
+  } while (0);
+
+PyObject* Worker::put_arrow(ObjRef objref, PyObject* value) {
   if (!connected_) {
     ORCH_LOG(ORCH_FATAL, "Attempting to perform put_arrow, but connected_ = " << connected_ << ".");
   }
   ObjRequest request;
-  size_t size = arrow_size(array);
+  pynumbuf::PythonObjectWriter writer;
+  int64_t size;
+  CHECK_ARROW_STATUS(writer.AssemblePayload(value), "error during AssemblePayload: ");
+  CHECK_ARROW_STATUS(writer.GetTotalSize(&size), "error during GetTotalSize: ");
   request.workerid = workerid_;
   request.type = ObjRequestType::ALLOC;
   request.objref = objref;
@@ -135,13 +154,17 @@ void Worker::put_arrow(ObjRef objref, PyArrayObject* array) {
   request_obj_queue_.send(&request);
   ObjHandle result;
   receive_obj_queue_.receive(&result);
-  store_arrow(array, result, segmentpool_.get());
+  int64_t metadata_offset;
+  uint8_t* address = segmentpool_->get_address(result);
+  auto source = std::make_shared<BufferMemorySource>(address, size);
+  CHECK_ARROW_STATUS(writer.Write(source.get(), &metadata_offset), "error during Write: ");
   request.type = ObjRequestType::WORKER_DONE;
-  request.metadata_offset = result.metadata_offset();
+  request.metadata_offset = metadata_offset;
   request_obj_queue_.send(&request);
+  Py_RETURN_NONE;
 }
 
-PyArrayObject* Worker::get_arrow(ObjRef objref) {
+PyObject* Worker::get_arrow(ObjRef objref) {
   if (!connected_) {
     ORCH_LOG(ORCH_FATAL, "Attempting to perform get_arrow, but connected_ = " << connected_ << ".");
   }
@@ -152,7 +175,11 @@ PyArrayObject* Worker::get_arrow(ObjRef objref) {
   request_obj_queue_.send(&request);
   ObjHandle result;
   receive_obj_queue_.receive(&result);
-  return (PyArrayObject*)deserialize_array(result, segmentpool_.get());
+  uint8_t* address = segmentpool_->get_address(result);
+  auto source = std::make_shared<BufferMemorySource>(address, result.size());
+  PyObject* value;
+  CHECK_ARROW_STATUS(pynumbuf::ReadPythonObjectFrom(source.get(), result.metadata_offset(), &value), "error during ReadPythonObjectFrom: ");
+  return value;
 }
 
 bool Worker::is_arrow(ObjRef objref) {
