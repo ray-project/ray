@@ -1,5 +1,7 @@
 #include "objstore.h"
+
 #include <chrono>
+#include "utils.h"
 
 const size_t ObjStoreService::CHUNK_SIZE = 8 * 1024;
 
@@ -262,14 +264,17 @@ void ObjStoreService::process_requests() {
     recv_queue_.receive(&request);
     switch (request.type) {
       case ObjRequestType::ALLOC: {
+          ORCH_LOG(ORCH_VERBOSE, "Request (worker " << request.workerid << " to objstore " << objstoreid_ << "): Allocate object with objref " << request.objref << " and size " << request.size);
           process_worker_request(request);
         }
         break;
       case ObjRequestType::GET: {
+          ORCH_LOG(ORCH_VERBOSE, "Request (worker " << request.workerid << " to objstore " << objstoreid_ << "): Get object with objref " << request.objref);
           process_worker_request(request);
         }
         break;
       case ObjRequestType::WORKER_DONE: {
+          ORCH_LOG(ORCH_VERBOSE, "Request (worker " << request.workerid << " to objstore " << objstoreid_ << "): Finalize object with objref " << request.objref);
           process_worker_request(request);
         }
         break;
@@ -304,6 +309,7 @@ ObjHandle ObjStoreService::alloc(ObjRef objref, size_t size) {
   ObjHandle handle = segmentpool_->allocate(size);
   segmentpool_lock_.unlock();
   std::lock_guard<std::mutex> memory_lock(memory_lock_);
+  ORCH_LOG(ORCH_VERBOSE, "Allocating space for objref " << objref << " on object store " << objstoreid_);
   if (memory_[objref].second != MemoryStatusType::NOT_PRESENT && memory_[objref].second != MemoryStatusType::PRE_ALLOCED) {
     ORCH_LOG(ORCH_FATAL, "Attempting to allocate space for objref " << objref << ", but memory_[objref].second = " << memory_[objref].second);
   }
@@ -346,8 +352,11 @@ void start_objstore(const char* scheduler_addr, const char* objstore_addr) {
   std::string objstore_address(objstore_addr);
   ObjStoreService service(objstore_address, scheduler_channel);
   service.start_objstore_service();
+  std::string::iterator split_point = split_ip_address(objstore_address);
+  std::string port;
+  port.assign(split_point, objstore_address.end());
   ServerBuilder builder;
-  builder.AddListeningPort(std::string(objstore_addr), grpc::InsecureServerCredentials());
+  builder.AddListeningPort(std::string("0.0.0.0:") + port, grpc::InsecureServerCredentials());
   builder.RegisterService(&service);
   std::unique_ptr<Server> server(builder.BuildAndStart());
 
@@ -356,6 +365,7 @@ void start_objstore(const char* scheduler_addr, const char* objstore_addr) {
 
 int main(int argc, char** argv) {
   if (argc != 3) {
+    ORCH_LOG(ORCH_FATAL, "object store: expected two arguments (scheduler ip address and object store ip address)");
     return 1;
   }
 

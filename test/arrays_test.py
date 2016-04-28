@@ -22,7 +22,7 @@ class ArraysSingleTest(unittest.TestCase):
   def testMethods(self):
     test_dir = os.path.dirname(os.path.abspath(__file__))
     test_path = os.path.join(test_dir, "testrecv.py")
-    services.start_cluster(return_drivers=False, num_workers_per_objstore=1, worker_path=test_path)
+    services.start_singlenode_cluster(return_drivers=False, num_workers_per_objstore=1, worker_path=test_path)
 
     # test eye
     ref = single.eye(3, "float")
@@ -54,7 +54,7 @@ class ArraysSingleTest(unittest.TestCase):
 class ArraysDistTest(unittest.TestCase):
 
   def testSerialization(self):
-    [w] = services.start_cluster(return_drivers=True)
+    [w] = services.start_singlenode_cluster(return_drivers=True)
 
     x = dist.DistArray()
     x.construct([2, 3, 4], np.array([[[orchpy.push(0, w)]]]))
@@ -68,7 +68,7 @@ class ArraysDistTest(unittest.TestCase):
   def testAssemble(self):
     test_dir = os.path.dirname(os.path.abspath(__file__))
     test_path = os.path.join(test_dir, "testrecv.py")
-    services.start_cluster(return_drivers=False, num_workers_per_objstore=1, worker_path=test_path)
+    services.start_singlenode_cluster(return_drivers=False, num_workers_per_objstore=1, worker_path=test_path)
 
     a = single.ones([dist.BLOCK_SIZE, dist.BLOCK_SIZE], "float")
     b = single.zeros([dist.BLOCK_SIZE, dist.BLOCK_SIZE], "float")
@@ -81,7 +81,7 @@ class ArraysDistTest(unittest.TestCase):
   def testMethods(self):
     test_dir = os.path.dirname(os.path.abspath(__file__))
     test_path = os.path.join(test_dir, "testrecv.py")
-    services.start_cluster(return_drivers=False, num_objstores=2, num_workers_per_objstore=8, worker_path=test_path)
+    services.start_singlenode_cluster(return_drivers=False, num_objstores=2, num_workers_per_objstore=8, worker_path=test_path)
 
     x = dist.zeros([9, 25, 51], "float")
     y = dist.assemble(x)

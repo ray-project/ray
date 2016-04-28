@@ -1,8 +1,10 @@
+#include "scheduler.h"
+
 #include <random>
 #include <thread>
 #include <chrono>
 
-#include "scheduler.h"
+#include "utils.h"
 
 Status SchedulerService::RemoteCall(ServerContext* context, const RemoteCallRequest* request, RemoteCallReply* reply) {
   std::unique_ptr<Call> task(new Call(request->call())); // need to copy, because request is const
@@ -661,18 +663,24 @@ void SchedulerService::get_equivalent_objrefs(ObjRef objref, std::vector<ObjRef>
   upstream_objrefs(downstream_objref, equivalent_objrefs);
 }
 
-void start_scheduler_service(const char* server_address) {
+void start_scheduler_service(const char* service_addr) {
+  std::string service_address(service_addr);
+  std::string::iterator split_point = split_ip_address(service_address);
+  std::string port;
+  port.assign(split_point, service_address.end());
   SchedulerService service;
   ServerBuilder builder;
-  builder.AddListeningPort(std::string(server_address), grpc::InsecureServerCredentials());
+  builder.AddListeningPort(std::string("0.0.0.0:") + port, grpc::InsecureServerCredentials());
   builder.RegisterService(&service);
   std::unique_ptr<Server> server(builder.BuildAndStart());
   server->Wait();
 }
 
 int main(int argc, char** argv) {
-  if (argc != 2)
+  if (argc != 2) {
+    ORCH_LOG(ORCH_FATAL, "scheduler: expected one argument (scheduler ip address)");
     return 1;
+  }
   start_scheduler_service(argv[1]);
   return 0;
 }
