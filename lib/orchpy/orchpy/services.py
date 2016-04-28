@@ -81,7 +81,26 @@ def start_worker(test_path, scheduler_address, objstore_address, worker_address)
                         "--worker-address=" + worker_address])
   all_processes.append((p, worker_address))
 
-def start_cluster(return_drivers=False, num_objstores=1, num_workers_per_objstore=0, worker_path=None):
+def start_node(scheduler_address, node_ip_address, num_workers, worker_path=None):
+  """
+  Start an object store and associated workers that will be part of a larger cluster.
+    Assumes the scheduler has already been started.
+
+  :param scheduler_address: ip address and port of the scheduler (which may run on a different node)
+  :param node_ip_address: ip address (without port) of the node this function is run on
+  :param num_workers: the number of workers to be started on this node
+  :worker_path: path of the source code that will be run on the worker
+  """
+  objstore_address = address(node_ip_address, new_objstore_port())
+  start_objstore(scheduler_address, objstore_address)
+  time.sleep(0.2)
+  for _ in range(num_workers):
+    start_worker(worker_path, scheduler_address, objstore_address, address(node_ip_address, new_worker_port()))
+  time.sleep(0.3)
+  orchpy.connect(scheduler_address, objstore_address, address(node_ip_address, new_worker_port()))
+  time.sleep(0.5)
+
+def start_singlenode_cluster(return_drivers=False, num_objstores=1, num_workers_per_objstore=0, worker_path=None):
   global drivers
   if num_workers_per_objstore > 0 and worker_path is None:
     raise Exception("Attempting to start a cluster with {} workers per object store, but `worker_path` is None.".format(num_workers_per_objstore))

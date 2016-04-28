@@ -1,5 +1,7 @@
 #include "worker.h"
 
+#include "utils.h"
+
 #include <pynumbuf/serialize.h>
 
 extern "C" {
@@ -289,14 +291,18 @@ void Worker::scheduler_info(ClientContext &context, SchedulerInfoRequest &reques
 // (in our case running in the main thread), whereas the WorkerService will
 // run in a separate thread and potentially utilize multiple threads.
 void Worker::start_worker_service() {
-  const char* server_address = worker_address_.c_str();
-  worker_server_thread_ = std::thread([server_address]() {
-    WorkerServiceImpl service(server_address);
+  const char* service_addr = worker_address_.c_str();
+  worker_server_thread_ = std::thread([service_addr]() {
+    std::string service_address(service_addr);
+    std::string::iterator split_point = split_ip_address(service_address);
+    std::string port;
+    port.assign(split_point, service_address.end());
+    WorkerServiceImpl service(service_address);
     ServerBuilder builder;
-    builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
+    builder.AddListeningPort(std::string("0.0.0.0:") + port, grpc::InsecureServerCredentials());
     builder.RegisterService(&service);
     std::unique_ptr<Server> server(builder.BuildAndStart());
-    ORCH_LOG(ORCH_INFO, "worker server listening on " << server_address);
+    ORCH_LOG(ORCH_INFO, "worker server listening on " << service_address);
     server->Wait();
   });
 }
