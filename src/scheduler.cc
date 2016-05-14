@@ -593,6 +593,7 @@ void SchedulerService::deallocate_object(ObjRef canonical_objref) {
       ORCH_LOG(ORCH_REFCOUNT, "Attempting to deallocate canonical_objref " << canonical_objref << " from objstore " << objstoreid);
       objstores_[objstoreid].objstore_stub->DeallocateObject(&context, request, &reply);
     }
+    objtable_[canonical_objref].clear();
   }
   decrement_ref_count(contained_objrefs_[canonical_objref]);
 }
