@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 2.8)
 
 project(orchestra)
 
+set(THIRDPARTY_DIR "${CMAKE_SOURCE_DIR}/thirdparty")
+
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake/Modules)
 
 find_package(Protobuf REQUIRED)
@@ -71,7 +73,7 @@ set(GENERATED_PROTOBUF_FILES ${ORCHESTRA_PB_H_FILE} ${ORCHESTRA_PB_CPP_FILE}
     ${TYPES_GRPC_PB_H_FILE} ${TYPES_GRPC_PB_CPP_FILE})
 
 include_directories(${GENERATED_PROTOBUF_PATH})
-link_libraries(grpc++_unsecure grpc pthread ${PROTOBUF_LIBRARY})
+link_libraries(grpc++_unsecure grpc pthread protobuf)
 if (UNIX AND NOT APPLE)
    link_libraries(rt)
 endif()

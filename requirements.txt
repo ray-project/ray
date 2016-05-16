@@ -1,0 +1,4 @@
+six >= 1.10
+typing
+subprocess32
+grpcio
