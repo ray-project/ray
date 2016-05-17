@@ -8,6 +8,7 @@ For a description of our design decisions, see
 
 - [Reference Counting](doc/reference-counting.md)
 - [Aliasing](doc/aliasing.md)
+- [Scheduler](doc/scheduler.md)
 
 ## Setup
 
