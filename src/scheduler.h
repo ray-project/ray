@@ -41,8 +41,15 @@ struct ObjStoreHandle {
   std::string address;
 };
 
+enum SchedulingAlgorithmType {
+  SCHEDULING_ALGORITHM_NAIVE = 0,
+  SCHEDULING_ALGORITHM_LOCALITY_AWARE = 1
+};
+
 class SchedulerService : public Scheduler::Service {
 public:
+  SchedulerService(SchedulingAlgorithmType scheduling_algorithm);
+
   Status RemoteCall(ServerContext* context, const RemoteCallRequest* request, RemoteCallReply* reply) override;
   Status PushObj(ServerContext* context, const PushObjRequest* request, PushObjReply* reply) override;
   Status RequestObj(ServerContext* context, const RequestObjRequest* request, AckReply* reply) override;
@@ -86,7 +93,10 @@ private:
   bool is_canonical(ObjRef objref);
 
   void perform_pulls();
-  void schedule_tasks();
+  // schedule tasks using the naive algorithm
+  void schedule_tasks_naively();
+  // schedule tasks using a scheduling algorithm that takes into account data locality
+  void schedule_tasks_location_aware();
   void perform_notify_aliases();
 
   // checks if aliasing for objref has been completed
@@ -149,6 +159,8 @@ private:
   // contained_objrefs_[objref] is a vector of all of the objrefs contained inside the object referred to by objref
   std::vector<std::vector<ObjRef> > contained_objrefs_;
   std::mutex contained_objrefs_lock_;
+  // the scheduling algorithm that will be used
+  SchedulingAlgorithmType scheduling_algorithm_;
 };
 
 #endif

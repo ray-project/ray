@@ -6,6 +6,8 @@
 
 #include "utils.h"
 
+SchedulerService::SchedulerService(SchedulingAlgorithmType scheduling_algorithm) : scheduling_algorithm_(scheduling_algorithm) {}
+
 Status SchedulerService::RemoteCall(ServerContext* context, const RemoteCallRequest* request, RemoteCallReply* reply) {
   std::unique_ptr<Call> task(new Call(request->call())); // need to copy, because request is const
   fntable_lock_.lock();
@@ -220,7 +222,13 @@ void SchedulerService::deliver_object(ObjRef objref, ObjStoreId from, ObjStoreId
 void SchedulerService::schedule() {
   // TODO(rkn): Do this more intelligently.
   perform_pulls(); // See what we can do in pull_queue_
-  schedule_tasks(); // See what we can do in task_queue_
+  if (scheduling_algorithm_ == SCHEDULING_ALGORITHM_NAIVE) {
+    schedule_tasks_naively(); // See what we can do in task_queue_
+  } else if (scheduling_algorithm_ == SCHEDULING_ALGORITHM_LOCALITY_AWARE) {
+    schedule_tasks_location_aware(); // See what we can do in task_queue_
+  } else {
+    ORCH_LOG(ORCH_FATAL, "scheduling algorithm not known");
+  }
   perform_notify_aliases(); // See what we can do in alias_notification_queue_
 }
 
@@ -472,7 +480,7 @@ void SchedulerService::perform_pulls() {
   }
 }
 
-void SchedulerService::schedule_tasks() {
+void SchedulerService::schedule_tasks_naively() {
   std::lock_guard<std::mutex> fntable_lock(fntable_lock_);
   std::lock_guard<std::mutex> avail_workers_lock(avail_workers_lock_);
   std::lock_guard<std::mutex> task_queue_lock(task_queue_lock_);
@@ -493,6 +501,52 @@ void SchedulerService::schedule_tasks() {
         i -= 1;
         break;
       }
+    }
+  }
+}
+
+void SchedulerService::schedule_tasks_location_aware() {
+  std::lock_guard<std::mutex> fntable_lock(fntable_lock_);
+  std::lock_guard<std::mutex> avail_workers_lock(avail_workers_lock_);
+  std::lock_guard<std::mutex> task_queue_lock(task_queue_lock_);
+  for (int i = 0; i < avail_workers_.size(); ++i) {
+    // Submit all tasks whose arguments are ready.
+    WorkerId workerid = avail_workers_[i];
+    ObjStoreId objstoreid = workers_[workerid].objstoreid;
+    auto bestit = task_queue_.end(); // keep track of the task that fits the worker best so far
+    size_t min_num_shipped_objects = std::numeric_limits<size_t>::max(); // number of objects that need to be transfered for this worker
+    for (auto it = task_queue_.begin(); it != task_queue_.end(); ++it) {
+      const Call& task = *(*it);
+      auto& workers = fntable_[task.name()].workers();
+      if (std::binary_search(workers.begin(), workers.end(), workerid) && can_run(task)) {
+        // determine how many objects would need to be shipped
+        size_t num_shipped_objects = 0;
+        for (int j = 0; j < task.arg_size(); ++j) {
+          if (!task.arg(j).has_obj()) {
+            ObjRef objref = task.arg(j).ref();
+            if (!has_canonical_objref(objref)) {
+              ORCH_LOG(ORCH_FATAL, "no canonical object ref found even though task is ready; that should not be possible!");
+            }
+            ObjRef canonical_objref = get_canonical_objref(objref);
+            // check if the object is already in the local object store
+            if (!std::binary_search(objtable_[canonical_objref].begin(), objtable_[canonical_objref].end(), objstoreid)) {
+              num_shipped_objects += 1;
+            }
+          }
+        }
+        if (num_shipped_objects < min_num_shipped_objects) {
+          min_num_shipped_objects = num_shipped_objects;
+          bestit = it;
+        }
+      }
+    }
+    // if we found a suitable task
+    if (bestit != task_queue_.end()) {
+      submit_task(std::move(*bestit), workerid);
+      task_queue_.erase(bestit);
+      std::swap(avail_workers_[i], avail_workers_[avail_workers_.size() - 1]);
+      avail_workers_.pop_back();
+      i -= 1;
     }
   }
 }
@@ -663,12 +717,12 @@ void SchedulerService::get_equivalent_objrefs(ObjRef objref, std::vector<ObjRef>
   upstream_objrefs(downstream_objref, equivalent_objrefs);
 }
 
-void start_scheduler_service(const char* service_addr) {
+void start_scheduler_service(const char* service_addr, SchedulingAlgorithmType scheduling_algorithm) {
   std::string service_address(service_addr);
   std::string::iterator split_point = split_ip_address(service_address);
   std::string port;
   port.assign(split_point, service_address.end());
-  SchedulerService service;
+  SchedulerService service(scheduling_algorithm);
   ServerBuilder builder;
   builder.AddListeningPort(std::string("0.0.0.0:") + port, grpc::InsecureServerCredentials());
   builder.RegisterService(&service);
@@ -676,11 +730,33 @@ void start_scheduler_service(const char* service_addr) {
   server->Wait();
 }
 
+char* get_cmd_option(char** begin, char** end, const std::string& option) {
+  char** it = std::find(begin, end, option);
+  if (it != end && ++it != end) {
+    return *it;
+  }
+  return 0;
+}
+
 int main(int argc, char** argv) {
-  if (argc != 2) {
-    ORCH_LOG(ORCH_FATAL, "scheduler: expected one argument (scheduler ip address)");
+  SchedulingAlgorithmType scheduling_algorithm = SCHEDULING_ALGORITHM_LOCALITY_AWARE;
+  if (argc < 2) {
+    ORCH_LOG(ORCH_FATAL, "scheduler: expected at least one argument (scheduler ip address)");
     return 1;
   }
-  start_scheduler_service(argv[1]);
+  if (argc > 2) {
+    char* scheduling_algorithm_name = get_cmd_option(argv, argv + argc, "--scheduler-algorithm");
+    if (scheduling_algorithm_name) {
+      if(std::string(scheduling_algorithm_name) == "naive") {
+        std::cout << "using 'naive' scheduler" << std::endl;
+        scheduling_algorithm = SCHEDULING_ALGORITHM_NAIVE;
+      }
+      if(std::string(scheduling_algorithm_name) == "locality_aware") {
+        std::cout << "using 'locality aware' scheduler" << std::endl;
+        scheduling_algorithm = SCHEDULING_ALGORITHM_LOCALITY_AWARE;
+      }
+    }
+  }
+  start_scheduler_service(argv[1], scheduling_algorithm);
   return 0;
 }
