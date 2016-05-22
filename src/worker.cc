@@ -215,14 +215,16 @@ void Worker::increment_reference_count(std::vector<ObjRef> &objrefs) {
     ORCH_LOG(ORCH_DEBUG, "Attempting to increment_reference_count for objrefs, but connected_ = " << connected_ << " so returning instead.");
     return;
   }
-  ClientContext context;
-  IncrementRefCountRequest request;
-  for (int i = 0; i < objrefs.size(); ++i) {
-    ORCH_LOG(ORCH_REFCOUNT, "Incrementing reference count for objref " << objrefs[i]);
-    request.add_objref(objrefs[i]);
+  if (objrefs.size() > 0) {
+    ClientContext context;
+    IncrementRefCountRequest request;
+    for (int i = 0; i < objrefs.size(); ++i) {
+      ORCH_LOG(ORCH_REFCOUNT, "Incrementing reference count for objref " << objrefs[i]);
+      request.add_objref(objrefs[i]);
+    }
+    AckReply reply;
+    scheduler_stub_->IncrementRefCount(&context, request, &reply);
   }
-  AckReply reply;
-  scheduler_stub_->IncrementRefCount(&context, request, &reply);
 }
 
 void Worker::decrement_reference_count(std::vector<ObjRef> &objrefs) {
@@ -230,14 +232,16 @@ void Worker::decrement_reference_count(std::vector<ObjRef> &objrefs) {
     ORCH_LOG(ORCH_DEBUG, "Attempting to decrement_reference_count, but connected_ = " << connected_ << " so returning instead.");
     return;
   }
-  ClientContext context;
-  DecrementRefCountRequest request;
-  for (int i = 0; i < objrefs.size(); ++i) {
-    ORCH_LOG(ORCH_REFCOUNT, "Decrementing reference count for objref " << objrefs[i]);
-    request.add_objref(objrefs[i]);
+  if (objrefs.size() > 0) {
+    ClientContext context;
+    DecrementRefCountRequest request;
+    for (int i = 0; i < objrefs.size(); ++i) {
+      ORCH_LOG(ORCH_REFCOUNT, "Decrementing reference count for objref " << objrefs[i]);
+      request.add_objref(objrefs[i]);
+    }
+    AckReply reply;
+    scheduler_stub_->DecrementRefCount(&context, request, &reply);
   }
-  AckReply reply;
-  scheduler_stub_->DecrementRefCount(&context, request, &reply);
 }
 
 void Worker::register_function(const std::string& name, size_t num_return_vals) {

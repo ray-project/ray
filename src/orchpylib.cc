@@ -550,9 +550,7 @@ PyObject* deserialize_call(PyObject* self, PyObject* args) {
   }
   Worker* worker;
   PyObjectToWorker(worker_capsule, &worker);
-  if (objrefs.size() > 0) {
-    worker->decrement_reference_count(objrefs);
-  }
+  worker->decrement_reference_count(objrefs);
   int resultsize = call->result_size();
   std::vector<ObjRef> result_objrefs;
   PyObject* resultlist = PyList_New(resultsize);

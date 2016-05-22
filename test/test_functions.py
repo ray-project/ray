@@ -29,4 +29,12 @@ def test_alias_g():
 def test_alias_h():
   return test_alias_g()
 
-# Test reference counting
+# Test timing
+
+@orchpy.distributed([], [])
+def empty_function():
+  return ()
+
+@orchpy.distributed([], [int])
+def trivial_function():
+  return 1
