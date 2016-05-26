@@ -1,7 +1,7 @@
 #ifndef ORCHESTRA_UTILS_H
 #define ORCHESTRA_UTILS_H
 
-std::string::iterator split_ip_address(std::string& ip_address) {
+inline std::string::iterator split_ip_address(std::string& ip_address) {
   if (ip_address[0] == '[') { // IPv6
     auto split_end = std::find(ip_address.begin() + 1, ip_address.end(), ']');
     if(split_end != ip_address.end()) {
