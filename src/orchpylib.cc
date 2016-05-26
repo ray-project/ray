@@ -123,12 +123,12 @@ static PyObject *OrchPyError;
 
 // Pass arguments from Python to C++
 
-int PyObjectToCall(PyObject* object, Call **call) {
-  if (PyCapsule_IsValid(object, "call")) {
-    *call = static_cast<Call*>(PyCapsule_GetPointer(object, "call"));
+int PyObjectToTask(PyObject* object, Task **task) {
+  if (PyCapsule_IsValid(object, "task")) {
+    *task = static_cast<Task*>(PyCapsule_GetPointer(object, "task"));
     return 1;
   } else {
-    PyErr_SetString(PyExc_TypeError, "must be a 'call' capsule");
+    PyErr_SetString(PyExc_TypeError, "must be a 'task' capsule");
     return 0;
   }
 }
@@ -175,8 +175,8 @@ void WorkerCapsule_Destructor(PyObject* capsule) {
   delete obj;
 }
 
-void CallCapsule_Destructor(PyObject* capsule) {
-  Call* obj = static_cast<Call*>(PyCapsule_GetPointer(capsule, "call"));
+void TaskCapsule_Destructor(PyObject* capsule) {
+  Task* obj = static_cast<Task*>(PyCapsule_GetPointer(capsule, "task"));
   delete obj;
 }
 
@@ -488,59 +488,59 @@ PyObject* deserialize_object(PyObject* self, PyObject* args) {
   if (!PyArg_ParseTuple(args, "OO&", &worker_capsule, &PyObjectToObj, &obj)) {
     return NULL;
   }
-  std::vector<ObjRef> objrefs; // This is a vector of all the objrefs that are serialized in this call, including objrefs that are contained in Python objects that are passed by value.
+  std::vector<ObjRef> objrefs; // This is a vector of all the objrefs that are serialized in this task, including objrefs that are contained in Python objects that are passed by value.
   return deserialize(worker_capsule, *obj, objrefs);
   // TODO(rkn): Should we do anything with objrefs?
 }
 
-PyObject* serialize_call(PyObject* self, PyObject* args) {
+PyObject* serialize_task(PyObject* self, PyObject* args) {
   PyObject* worker_capsule;
-  Call* call = new Call(); // TODO: to be freed in capsul destructor
+  Task* task = new Task(); // TODO: to be freed in capsule destructor
   char* name;
   int len;
   PyObject* arguments;
   if (!PyArg_ParseTuple(args, "Os#O", &worker_capsule, &name, &len, &arguments)) {
     return NULL;
   }
-  call->set_name(name, len);
-  std::vector<ObjRef> objrefs; // This is a vector of all the objrefs that are serialized in this call, including objrefs that are contained in Python objects that are passed by value.
+  task->set_name(name, len);
+  std::vector<ObjRef> objrefs; // This is a vector of all the objrefs that are serialized in this task, including objrefs that are contained in Python objects that are passed by value.
   if (PyList_Check(arguments)) {
     for (size_t i = 0, size = PyList_Size(arguments); i < size; ++i) {
       PyObject* element = PyList_GetItem(arguments, i);
       if (PyObject_IsInstance(element, (PyObject*)&PyObjRefType)) {
         ObjRef objref = ((PyObjRef*) element)->val;
-        call->add_arg()->set_ref(objref);
+        task->add_arg()->set_ref(objref);
         objrefs.push_back(objref);
       } else {
-        Obj* arg = call->add_arg()->mutable_obj();
+        Obj* arg = task->add_arg()->mutable_obj();
         serialize(worker_capsule, PyList_GetItem(arguments, i), arg, objrefs);
       }
     }
   } else {
-    PyErr_SetString(OrchPyError, "serialize_call: second argument needs to be a list");
+    PyErr_SetString(OrchPyError, "serialize_task: second argument needs to be a list");
     return NULL;
   }
   Worker* worker;
   PyObjectToWorker(worker_capsule, &worker);
   if (objrefs.size() > 0) {
-    ORCH_LOG(ORCH_REFCOUNT, "In serialize_call, calling increment_reference_count for contained objrefs");
+    ORCH_LOG(ORCH_REFCOUNT, "In serialize_task, calling increment_reference_count for contained objrefs");
     worker->increment_reference_count(objrefs);
   }
-  return PyCapsule_New(static_cast<void*>(call), "call", &CallCapsule_Destructor);
+  return PyCapsule_New(static_cast<void*>(task), "task", &TaskCapsule_Destructor);
 }
 
-PyObject* deserialize_call(PyObject* self, PyObject* args) {
+PyObject* deserialize_task(PyObject* self, PyObject* args) {
   PyObject* worker_capsule;
-  Call* call;
-  if (!PyArg_ParseTuple(args, "OO&", &worker_capsule, &PyObjectToCall, &call)) {
+  Task* task;
+  if (!PyArg_ParseTuple(args, "OO&", &worker_capsule, &PyObjectToTask, &task)) {
     return NULL;
   }
-  std::vector<ObjRef> objrefs; // This is a vector of all the objrefs that were serialized in this call, including objrefs that are contained in Python objects that are passed by value.
-  PyObject* string = PyString_FromStringAndSize(call->name().c_str(), call->name().size());
-  int argsize = call->arg_size();
+  std::vector<ObjRef> objrefs; // This is a vector of all the objrefs that were serialized in this task, including objrefs that are contained in Python objects that are passed by value.
+  PyObject* string = PyString_FromStringAndSize(task->name().c_str(), task->name().size());
+  int argsize = task->arg_size();
   PyObject* arglist = PyList_New(argsize);
   for (int i = 0; i < argsize; ++i) {
-    const Value& val = call->arg(i);
+    const Value& val = task->arg(i);
     if (!val.has_obj()) {
       PyList_SetItem(arglist, i, make_pyobjref(worker_capsule, val.ref()));
       objrefs.push_back(val.ref());
@@ -551,14 +551,14 @@ PyObject* deserialize_call(PyObject* self, PyObject* args) {
   Worker* worker;
   PyObjectToWorker(worker_capsule, &worker);
   worker->decrement_reference_count(objrefs);
-  int resultsize = call->result_size();
+  int resultsize = task->result_size();
   std::vector<ObjRef> result_objrefs;
   PyObject* resultlist = PyList_New(resultsize);
   for (int i = 0; i < resultsize; ++i) {
-    PyList_SetItem(resultlist, i, make_pyobjref(worker_capsule, call->result(i)));
-    result_objrefs.push_back(call->result(i));
+    PyList_SetItem(resultlist, i, make_pyobjref(worker_capsule, task->result(i)));
+    result_objrefs.push_back(task->result(i));
   }
-  worker->decrement_reference_count(result_objrefs); // The corresponding increment is done in RemoteCall in the scheduler.
+  worker->decrement_reference_count(result_objrefs); // The corresponding increment is done in SubmitTask in the scheduler.
   PyObject* t = PyTuple_New(3); // We set the items of the tuple using PyTuple_SetItem, because that transfers ownership to the tuple.
   PyTuple_SetItem(t, 0, string);
   PyTuple_SetItem(t, 1, arglist);
@@ -607,22 +607,22 @@ PyObject* wait_for_next_task(PyObject* self, PyObject* args) {
   if (!PyArg_ParseTuple(args, "O&", &PyObjectToWorker, &worker)) {
     return NULL;
   }
-  Call* call = worker->receive_next_task();
-  return PyCapsule_New(static_cast<void*>(call), "call", NULL); // This call is owned by the C++ worker class, so we do not deallocate it.
+  Task* task = worker->receive_next_task();
+  return PyCapsule_New(static_cast<void*>(task), "task", NULL); // This task is owned by the C++ worker class, so we do not deallocate it.
 }
 
-PyObject* remote_call(PyObject* self, PyObject* args) {
+PyObject* submit_task(PyObject* self, PyObject* args) {
   PyObject* worker_capsule;
-  Call* call;
-  if (!PyArg_ParseTuple(args, "OO&", &worker_capsule, &PyObjectToCall, &call)) {
+  Task* task;
+  if (!PyArg_ParseTuple(args, "OO&", &worker_capsule, &PyObjectToTask, &task)) {
     return NULL;
   }
   Worker* worker;
   PyObjectToWorker(worker_capsule, &worker);
-  RemoteCallRequest request;
-  request.set_allocated_call(call);
-  RemoteCallReply reply = worker->remote_call(&request);
-  request.release_call(); // TODO: Make sure that call is not moved, otherwise capsule pointer needs to be updated
+  SubmitTaskRequest request;
+  request.set_allocated_task(task);
+  SubmitTaskReply reply = worker->submit_task(&request);
+  request.release_task(); // TODO: Make sure that task is not moved, otherwise capsule pointer needs to be updated
   int size = reply.result_size();
   PyObject* list = PyList_New(size);
   std::vector<ObjRef> result_objrefs;
@@ -630,7 +630,7 @@ PyObject* remote_call(PyObject* self, PyObject* args) {
     PyList_SetItem(list, i, make_pyobjref(worker_capsule, reply.result(i)));
     result_objrefs.push_back(reply.result(i));
   }
-  worker->decrement_reference_count(result_objrefs); // The corresponding increment is done in RemoteCall in the scheduler.
+  worker->decrement_reference_count(result_objrefs); // The corresponding increment is done in SubmitTask in the scheduler.
   return list;
 }
 
@@ -761,8 +761,8 @@ static PyMethodDef OrchPyLibMethods[] = {
  { "put_arrow", put_arrow, METH_VARARGS, "put an arrow array on the local object store"},
  { "get_arrow", get_arrow, METH_VARARGS, "get an arrow array from the local object store"},
  { "is_arrow", is_arrow, METH_VARARGS, "is the object in the local object store an arrow object?"},
- { "serialize_call", serialize_call, METH_VARARGS, "serialize a call to protocol buffers" },
- { "deserialize_call", deserialize_call, METH_VARARGS, "deserialize a call from protocol buffers" },
+ { "serialize_task", serialize_task, METH_VARARGS, "serialize a task to protocol buffers" },
+ { "deserialize_task", deserialize_task, METH_VARARGS, "deserialize a task from protocol buffers" },
  { "create_worker", create_worker, METH_VARARGS, "connect to the scheduler and the object store" },
  { "disconnect", disconnect, METH_VARARGS, "disconnect the worker from the scheduler and the object store" },
  { "connected", connected, METH_VARARGS, "check if the worker is connected to the scheduler and the object store" },
@@ -773,7 +773,7 @@ static PyMethodDef OrchPyLibMethods[] = {
  { "request_object" , request_object, METH_VARARGS, "request an object to be delivered to the local object store" },
  { "alias_objrefs", alias_objrefs, METH_VARARGS, "make two objrefs refer to the same object" },
  { "wait_for_next_task", wait_for_next_task, METH_VARARGS, "get next task from scheduler (blocking)" },
- { "remote_call", remote_call, METH_VARARGS, "call a remote function" },
+ { "submit_task", submit_task, METH_VARARGS, "call a remote function" },
  { "notify_task_completed", notify_task_completed, METH_VARARGS, "notify the scheduler that a task has been completed" },
  { "start_worker_service", start_worker_service, METH_VARARGS, "start the worker service" },
  { "scheduler_info", scheduler_info, METH_VARARGS, "get info about scheduler state" },

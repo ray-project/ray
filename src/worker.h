@@ -29,19 +29,19 @@ public:
     : worker_address_(worker_address) {
     send_queue_.connect(worker_address_, false);
   }
-  Status InvokeCall(ServerContext* context, const InvokeCallRequest* request, InvokeCallReply* reply) override;
+  Status ExecuteTask(ServerContext* context, const ExecuteTaskRequest* request, ExecuteTaskReply* reply) override;
 private:
   std::string worker_address_;
-  Call call_; // copy of the current call
-  MessageQueue<Call*> send_queue_;
+  Task task_; // copy of the current task
+  MessageQueue<Task*> send_queue_;
 };
 
 class Worker {
  public:
   Worker(const std::string& worker_address, std::shared_ptr<Channel> scheduler_channel, std::shared_ptr<Channel> objstore_channel);
 
-  // submit a remote call to the scheduler
-  RemoteCallReply remote_call(RemoteCallRequest* request);
+  // submit a remote task to the scheduler
+  SubmitTaskReply submit_task(SubmitTaskRequest* request);
   // send request to the scheduler to register this worker
   void register_worker(const std::string& worker_address, const std::string& objstore_address);
   // get a new object reference that is registered with the scheduler
@@ -70,7 +70,7 @@ class Worker {
   // it in the message queue, which is read by the Python interpreter
   void start_worker_service();
   // wait for next task from the RPC system
-  Call* receive_next_task();
+  Task* receive_next_task();
   // tell the scheduler that we are done with the current task and request the next one
   void notify_task_completed();
   // disconnect the worker
@@ -86,7 +86,7 @@ class Worker {
   std::unique_ptr<Scheduler::Stub> scheduler_stub_;
   std::unique_ptr<ObjStore::Stub> objstore_stub_;
   std::thread worker_server_thread_;
-  MessageQueue<Call*> receive_queue_;
+  MessageQueue<Task*> receive_queue_;
   managed_shared_memory segment_;
   WorkerId workerid_;
   ObjStoreId objstoreid_;

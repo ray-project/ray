@@ -117,13 +117,13 @@ class ObjStoreTest(unittest.TestCase):
 
 class SchedulerTest(unittest.TestCase):
 
-  def testCall(self):
+  def testRemoteTask(self):
     test_dir = os.path.dirname(os.path.abspath(__file__))
     test_path = os.path.join(test_dir, "testrecv.py")
     [w] = services.start_singlenode_cluster(return_drivers=True, num_workers_per_objstore=1, worker_path=test_path)
 
     value_before = "test_string"
-    objref = w.remote_call("test_functions.print_string", [value_before])
+    objref = w.submit_task("test_functions.print_string", [value_before])
 
     time.sleep(0.2)
 
@@ -172,11 +172,11 @@ class APITest(unittest.TestCase):
     test_path = os.path.join(test_dir, "testrecv.py")
     [w] = services.start_singlenode_cluster(return_drivers=True, num_workers_per_objstore=3, worker_path=test_path)
 
-    objref = w.remote_call("test_functions.test_alias_f", [])
+    objref = w.submit_task("test_functions.test_alias_f", [])
     self.assertTrue(np.alltrue(orchpy.pull(objref[0], w) == np.ones([3, 4, 5])))
-    objref = w.remote_call("test_functions.test_alias_g", [])
+    objref = w.submit_task("test_functions.test_alias_g", [])
     self.assertTrue(np.alltrue(orchpy.pull(objref[0], w) == np.ones([3, 4, 5])))
-    objref = w.remote_call("test_functions.test_alias_h", [])
+    objref = w.submit_task("test_functions.test_alias_h", [])
     self.assertTrue(np.alltrue(orchpy.pull(objref[0], w) == np.ones([3, 4, 5])))
 
     services.cleanup()

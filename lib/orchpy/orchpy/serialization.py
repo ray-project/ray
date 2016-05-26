@@ -29,11 +29,11 @@ def deserialize(worker_capsule, capsule):
   primitive_obj = orchpy.lib.deserialize_object(worker_capsule, capsule)
   return from_primitive(primitive_obj)
 
-def serialize_call(worker_capsule, func_name, args):
+def serialize_task(worker_capsule, func_name, args):
   primitive_args = [(arg if isinstance(arg, orchpy.lib.ObjRef) else to_primitive(arg)) for arg in args]
-  return orchpy.lib.serialize_call(worker_capsule, func_name, primitive_args)
+  return orchpy.lib.serialize_task(worker_capsule, func_name, primitive_args)
 
-def deserialize_call(worker_capsule, call):
-  func_name, primitive_args, return_objrefs = orchpy.lib.deserialize_call(worker_capsule, call)
+def deserialize_task(worker_capsule, task):
+  func_name, primitive_args, return_objrefs = orchpy.lib.deserialize_task(worker_capsule, task)
   args = [(arg if isinstance(arg, orchpy.lib.ObjRef) else from_primitive(arg)) for arg in primitive_args]
   return func_name, args, return_objrefs

@@ -8,8 +8,8 @@
 
 SchedulerService::SchedulerService(SchedulingAlgorithmType scheduling_algorithm) : scheduling_algorithm_(scheduling_algorithm) {}
 
-Status SchedulerService::RemoteCall(ServerContext* context, const RemoteCallRequest* request, RemoteCallReply* reply) {
-  std::unique_ptr<Call> task(new Call(request->call())); // need to copy, because request is const
+Status SchedulerService::SubmitTask(ServerContext* context, const SubmitTaskRequest* request, SubmitTaskReply* reply) {
+  std::unique_ptr<Task> task(new Task(request->task())); // need to copy, because request is const
   fntable_lock_.lock();
 
   if (fntable_.find(task->name()) == fntable_.end()) {
@@ -29,8 +29,8 @@ Status SchedulerService::RemoteCall(ServerContext* context, const RemoteCallRequ
   }
   {
     std::lock_guard<std::mutex> reference_counts_lock(reference_counts_lock_); // we grab this lock because increment_ref_count assumes it has been acquired
-    increment_ref_count(result_objrefs); // We increment once so the objrefs don't go out of scope before we reply to the worker that called RemoteCall. The corresponding decrement will happen in remote_call in orchpylib.
-    increment_ref_count(result_objrefs); // We increment once so the objrefs don't go out of scope before the task is scheduled on the worker. The corresponding decrement will happen in deserialize_call in orchpylib.
+    increment_ref_count(result_objrefs); // We increment once so the objrefs don't go out of scope before we reply to the worker that called SubmitTask. The corresponding decrement will happen in submit_task in orchpylib.
+    increment_ref_count(result_objrefs); // We increment once so the objrefs don't go out of scope before the task is scheduled on the worker. The corresponding decrement will happen in deserialize_task in orchpylib.
   }
 
   task_queue_lock_.lock();
@@ -232,15 +232,15 @@ void SchedulerService::schedule() {
   perform_notify_aliases(); // See what we can do in alias_notification_queue_
 }
 
-void SchedulerService::submit_task(std::unique_ptr<Call> call, WorkerId workerid) {
+void SchedulerService::assign_task(std::unique_ptr<Task> task, WorkerId workerid) {
   // submit task assumes that the canonical objrefs for its arguments are all ready, that is has_canonical_objref() is true for all of the call's arguments
   ClientContext context;
-  InvokeCallRequest request;
-  InvokeCallReply reply;
+  ExecuteTaskRequest request;
+  ExecuteTaskReply reply;
   ORCH_LOG(ORCH_INFO, "starting to send arguments");
-  for (size_t i = 0; i < call->arg_size(); ++i) {
-    if (!call->arg(i).has_obj()) {
-      ObjRef objref = call->arg(i).ref();
+  for (size_t i = 0; i < task->arg_size(); ++i) {
+    if (!task->arg(i).has_obj()) {
+      ObjRef objref = task->arg(i).ref();
       ObjRef canonical_objref = get_canonical_objref(objref);
       {
         // Notify the relevant objstore about potential aliasing when it's ready
@@ -249,7 +249,7 @@ void SchedulerService::submit_task(std::unique_ptr<Call> call, WorkerId workerid
       }
       attempt_notify_alias(get_store(workerid), objref, canonical_objref);
 
-      ORCH_LOG(ORCH_DEBUG, "call contains object ref " << canonical_objref);
+      ORCH_LOG(ORCH_DEBUG, "task contains object ref " << canonical_objref);
       std::lock_guard<std::mutex> objtable_lock(objtable_lock_);
       auto &objstores = objtable_[canonical_objref];
       std::lock_guard<std::mutex> workers_lock(workers_lock_);
@@ -258,11 +258,11 @@ void SchedulerService::submit_task(std::unique_ptr<Call> call, WorkerId workerid
       }
     }
   }
-  request.set_allocated_call(call.release()); // protobuf object takes ownership
-  Status status = workers_[workerid].worker_stub->InvokeCall(&context, request, &reply);
+  request.set_allocated_task(task.release()); // protobuf object takes ownership
+  Status status = workers_[workerid].worker_stub->ExecuteTask(&context, request, &reply);
 }
 
-bool SchedulerService::can_run(const Call& task) {
+bool SchedulerService::can_run(const Task& task) {
   std::lock_guard<std::mutex> lock(objtable_lock_);
   for (int i = 0; i < task.arg_size(); ++i) {
     if (!task.arg(i).has_obj()) {
@@ -410,8 +410,8 @@ void SchedulerService::get_info(const SchedulerInfoRequest& request, SchedulerIn
     }
   }
   for (const auto& entry : task_queue_) {
-    Call* call = reply->add_task();
-    call->CopyFrom(*entry);
+    Task* task = reply->add_task();
+    task->CopyFrom(*entry);
   }
   for (const WorkerId& entry : avail_workers_) {
     reply->add_avail_worker(entry);
@@ -491,10 +491,10 @@ void SchedulerService::schedule_tasks_naively() {
       // The use of erase(it) below invalidates the iterator, but we
       // immediately break out of the inner loop, so the iterator is not used
       // after the erase
-      const Call& task = *(*it);
+      const Task& task = *(*it);
       auto& workers = fntable_[task.name()].workers();
       if (std::binary_search(workers.begin(), workers.end(), workerid) && can_run(task)) {
-        submit_task(std::move(*it), workerid);
+        assign_task(std::move(*it), workerid);
         task_queue_.erase(it);
         std::swap(avail_workers_[i], avail_workers_[avail_workers_.size() - 1]);
         avail_workers_.pop_back();
@@ -516,7 +516,7 @@ void SchedulerService::schedule_tasks_location_aware() {
     auto bestit = task_queue_.end(); // keep track of the task that fits the worker best so far
     size_t min_num_shipped_objects = std::numeric_limits<size_t>::max(); // number of objects that need to be transfered for this worker
     for (auto it = task_queue_.begin(); it != task_queue_.end(); ++it) {
-      const Call& task = *(*it);
+      const Task& task = *(*it);
       auto& workers = fntable_[task.name()].workers();
       if (std::binary_search(workers.begin(), workers.end(), workerid) && can_run(task)) {
         // determine how many objects would need to be shipped
@@ -542,7 +542,7 @@ void SchedulerService::schedule_tasks_location_aware() {
     }
     // if we found a suitable task
     if (bestit != task_queue_.end()) {
-      submit_task(std::move(*bestit), workerid);
+      assign_task(std::move(*bestit), workerid);
       task_queue_.erase(bestit);
       std::swap(avail_workers_[i], avail_workers_[avail_workers_.size() - 1]);
       avail_workers_.pop_back();

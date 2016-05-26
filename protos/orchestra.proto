@@ -24,7 +24,7 @@ service Scheduler {
   // Tell the scheduler that a worker can execute a certain function
   rpc RegisterFunction(RegisterFunctionRequest) returns (AckReply);
   // Asks the scheduler to execute a task, immediately returns an object reference to the result
-  rpc RemoteCall(RemoteCallRequest) returns (RemoteCallReply);
+  rpc SubmitTask(SubmitTaskRequest) returns (SubmitTaskReply);
   // Increment the count of the object reference
   rpc IncrementCount(ChangeCountRequest) returns (AckReply);
   // Decrement the count of the object reference
@@ -76,11 +76,11 @@ message RegisterFunctionRequest {
   uint64 num_return_vals = 3; // Number of return values of the function
 }
 
-message RemoteCallRequest {
-  Call call = 1; // Contains name of the function to be executed and arguments
+message SubmitTaskRequest {
+  Task task = 1; // Contains name of the function to be executed and arguments
 }
 
-message RemoteCallReply {
+message SubmitTaskReply {
   repeated uint64 result = 1; // Object references of the function return values
 }
 
@@ -139,7 +139,7 @@ message FnTableEntry {
 }
 
 message SchedulerInfoReply {
-  repeated Call task = 1; // Tasks on the task queue
+  repeated Task task = 1; // Tasks on the task queue
   repeated uint64 avail_worker = 3; // List of workers waiting to get a task assigned
   map<string, FnTableEntry> function_table = 2; // Table of all available remote function
   repeated uint64 target_objref = 4; // The target_objrefs_ data structure
@@ -211,13 +211,13 @@ message ObjStoreInfoReply {
 // Workers
 
 service WorkerService {
-  rpc InvokeCall(InvokeCallRequest) returns (InvokeCallReply); // Scheduler calls a function from the worker
+  rpc ExecuteTask(ExecuteTaskRequest) returns (ExecuteTaskReply); // Scheduler calls a function from the worker
 }
 
-message InvokeCallRequest {
-  Call call = 1; // Contains name of the function to be executed and arguments
+message ExecuteTaskRequest {
+  Task task = 1; // Contains name of the function to be executed and arguments
 }
 
-message InvokeCallReply {
+message ExecuteTaskReply {
 
 }

@@ -8,11 +8,11 @@ extern "C" {
   static PyObject *OrchPyError;
 }
 
-Status WorkerServiceImpl::InvokeCall(ServerContext* context, const InvokeCallRequest* request, InvokeCallReply* reply) {
-  call_ = request->call(); // Copy call
-  ORCH_LOG(ORCH_INFO, "invoked task " << request->call().name());
-  Call* callptr = &call_;
-  send_queue_.send(&callptr);
+Status WorkerServiceImpl::ExecuteTask(ServerContext* context, const ExecuteTaskRequest* request, ExecuteTaskReply* reply) {
+  task_ = request->task(); // Copy task
+  ORCH_LOG(ORCH_INFO, "invoked task " << request->task().name());
+  Task* taskptr = &task_;
+  send_queue_.send(&taskptr);
   return Status::OK;
 }
 
@@ -24,13 +24,13 @@ Worker::Worker(const std::string& worker_address, std::shared_ptr<Channel> sched
   connected_ = true;
 }
 
-RemoteCallReply Worker::remote_call(RemoteCallRequest* request) {
+SubmitTaskReply Worker::submit_task(SubmitTaskRequest* request) {
   if (!connected_) {
-    ORCH_LOG(ORCH_FATAL, "Attempting to perform remote_call, but connected_ = " << connected_ << ".");
+    ORCH_LOG(ORCH_FATAL, "Attempting to perform submit_task, but connected_ = " << connected_ << ".");
   }
-  RemoteCallReply reply;
+  SubmitTaskReply reply;
   ClientContext context;
-  Status status = scheduler_stub_->RemoteCall(&context, *request, &reply);
+  Status status = scheduler_stub_->SubmitTask(&context, *request, &reply);
   return reply;
 }
 
@@ -257,10 +257,10 @@ void Worker::register_function(const std::string& name, size_t num_return_vals) 
   scheduler_stub_->RegisterFunction(&context, request, &reply);
 }
 
-Call* Worker::receive_next_task() {
-  Call* call;
-  receive_queue_.receive(&call);
-  return call;
+Task* Worker::receive_next_task() {
+  Task* task;
+  receive_queue_.receive(&task);
+  return task;
 }
 
 void Worker::notify_task_completed() {

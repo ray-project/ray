@@ -47,8 +47,8 @@ will notify the scheduler that those object references are in the object store.
 Then when the scheduler deallocates the object, we call `DecrementRefCount` for
 the object references that it holds internally (the scheduler keeps track of
 these internal object references in the `contained_objrefs_` data structure).
-3. To handle the third case, we increment in the `serialize_call` method and
-decrement in the `deserialize_call` method.
+3. To handle the third case, we increment in the `serialize_task` method and
+decrement in the `deserialize_task` method.
 
 ## How to Handle Aliasing
 Reference counting interacts with aliasing. Since multiple object references

@@ -14,7 +14,7 @@ class MicroBenchmarkTest(unittest.TestCase):
     test_path = os.path.join(test_dir, "testrecv.py")
     services.start_singlenode_cluster(return_drivers=False, num_workers_per_objstore=3, worker_path=test_path)
 
-    # measure the time required to submit a remote call to the scheduler
+    # measure the time required to submit a remote task to the scheduler
     elapsed_times = []
     for _ in range(1000):
       start_time = time.time()
@@ -30,7 +30,7 @@ class MicroBenchmarkTest(unittest.TestCase):
     print "    worst:           {}".format(elapsed_times[999])
     self.assertTrue(average_elapsed_time < 0.00038)
 
-    # measure the time required to submit a remote call to the scheduler (where the remote call returns one value)
+    # measure the time required to submit a remote task to the scheduler (where the remote task returns one value)
     elapsed_times = []
     for _ in range(1000):
       start_time = time.time()
@@ -46,7 +46,7 @@ class MicroBenchmarkTest(unittest.TestCase):
     print "    worst:           {}".format(elapsed_times[999])
     self.assertTrue(average_elapsed_time < 0.001)
 
-    # measure the time required to submit a remote call to the scheduler and pull the result
+    # measure the time required to submit a remote task to the scheduler and pull the result
     elapsed_times = []
     for _ in range(1000):
       start_time = time.time()

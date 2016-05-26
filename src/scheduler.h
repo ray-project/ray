@@ -50,7 +50,7 @@ class SchedulerService : public Scheduler::Service {
 public:
   SchedulerService(SchedulingAlgorithmType scheduling_algorithm);
 
-  Status RemoteCall(ServerContext* context, const RemoteCallRequest* request, RemoteCallReply* reply) override;
+  Status SubmitTask(ServerContext* context, const SubmitTaskRequest* request, SubmitTaskReply* reply) override;
   Status PushObj(ServerContext* context, const PushObjRequest* request, PushObjReply* reply) override;
   Status RequestObj(ServerContext* context, const RequestObjRequest* request, AckReply* reply) override;
   Status AliasObjRefs(ServerContext* context, const AliasObjRefsRequest* request, AckReply* reply) override;
@@ -69,9 +69,9 @@ public:
   // assign a task to a worker
   void schedule();
   // execute a task on a worker and ship required object references
-  void submit_task(std::unique_ptr<Call> call, WorkerId workerid);
+  void assign_task(std::unique_ptr<Task> task, WorkerId workerid);
   // checks if the dependencies of the task are met
-  bool can_run(const Call& task);
+  bool can_run(const Task& task);
   // register a worker and its object store (if it has not been registered yet)
   std::pair<WorkerId, ObjStoreId> register_worker(const std::string& worker_address, const std::string& objstore_address);
   // register a new object with the scheduler and return its object reference
@@ -144,7 +144,7 @@ private:
   FnTable fntable_;
   std::mutex fntable_lock_;
   // List of pending tasks.
-  std::deque<std::unique_ptr<Call> > task_queue_;
+  std::deque<std::unique_ptr<Task> > task_queue_;
   std::mutex task_queue_lock_;
   // List of pending pull calls.
   std::vector<std::pair<WorkerId, ObjRef> > pull_queue_;
