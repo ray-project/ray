@@ -80,7 +80,7 @@ endif()
 
 add_executable(objstore src/objstore.cc src/ipc.cc ${GENERATED_PROTOBUF_FILES})
 target_link_libraries(objstore arrow numbuf pynumbuf)
-add_executable(scheduler src/scheduler.cc ${GENERATED_PROTOBUF_FILES})
+add_executable(scheduler src/scheduler.cc src/computation_graph.cc ${GENERATED_PROTOBUF_FILES})
 add_library(orchpylib SHARED src/orchpylib.cc src/worker.cc src/ipc.cc ${GENERATED_PROTOBUF_FILES})
 target_link_libraries(orchpylib arrow numbuf pynumbuf)
 

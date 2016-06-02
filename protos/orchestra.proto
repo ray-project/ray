@@ -139,7 +139,7 @@ message FnTableEntry {
 }
 
 message SchedulerInfoReply {
-  repeated Task task = 1; // Tasks on the task queue
+  repeated uint64 operationid = 1; // OperationIds of the tasks on the task queue
   repeated uint64 avail_worker = 3; // List of workers waiting to get a task assigned
   map<string, FnTableEntry> function_table = 2; // Table of all available remote function
   repeated uint64 target_objref = 4; // The target_objrefs_ data structure

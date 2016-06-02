@@ -33,8 +33,16 @@ Status SchedulerService::SubmitTask(ServerContext* context, const SubmitTaskRequ
     increment_ref_count(result_objrefs); // We increment once so the objrefs don't go out of scope before the task is scheduled on the worker. The corresponding decrement will happen in deserialize_task in orchpylib.
   }
 
+  auto operation = std::unique_ptr<Operation>(new Operation());
+  operation->set_allocated_task(task.release());
+  OperationId creator_operationid = ROOT_OPERATION; // TODO(rkn): Later, this should be the ID of the task that spawned this current task.
+  operation->set_creator_operationid(creator_operationid);
+  computation_graph_lock_.lock();
+  OperationId operationid = computation_graph_.add_operation(std::move(operation));
+  computation_graph_lock_.unlock();
+
   task_queue_lock_.lock();
-  task_queue_.emplace_back(std::move(task));
+  task_queue_.push_back(operationid);
   task_queue_lock_.unlock();
 
   schedule();
@@ -232,15 +240,17 @@ void SchedulerService::schedule() {
   perform_notify_aliases(); // See what we can do in alias_notification_queue_
 }
 
-void SchedulerService::assign_task(std::unique_ptr<Task> task, WorkerId workerid) {
-  // submit task assumes that the canonical objrefs for its arguments are all ready, that is has_canonical_objref() is true for all of the call's arguments
+// assign_task assumes that computation_graph_lock_ has been acquired.
+// assign_task assumes that the canonical objrefs for its arguments are all ready, that is has_canonical_objref() is true for all of the call's arguments
+void SchedulerService::assign_task(OperationId operationid, WorkerId workerid) {
+  const Task& task = computation_graph_.get_task(operationid);
   ClientContext context;
   ExecuteTaskRequest request;
   ExecuteTaskReply reply;
   ORCH_LOG(ORCH_INFO, "starting to send arguments");
-  for (size_t i = 0; i < task->arg_size(); ++i) {
-    if (!task->arg(i).has_obj()) {
-      ObjRef objref = task->arg(i).ref();
+  for (size_t i = 0; i < task.arg_size(); ++i) {
+    if (!task.arg(i).has_obj()) {
+      ObjRef objref = task.arg(i).ref();
       ObjRef canonical_objref = get_canonical_objref(objref);
       {
         // Notify the relevant objstore about potential aliasing when it's ready
@@ -258,7 +268,7 @@ void SchedulerService::assign_task(std::unique_ptr<Task> task, WorkerId workerid
       }
     }
   }
-  request.set_allocated_task(task.release()); // protobuf object takes ownership
+  request.mutable_task()->CopyFrom(task); // TODO(rkn): Is ownership handled properly here?
   Status status = workers_[workerid].worker_stub->ExecuteTask(&context, request, &reply);
 }
 
@@ -410,8 +420,7 @@ void SchedulerService::get_info(const SchedulerInfoRequest& request, SchedulerIn
     }
   }
   for (const auto& entry : task_queue_) {
-    Task* task = reply->add_task();
-    task->CopyFrom(*entry);
+    reply->add_operationid(entry);
   }
   for (const WorkerId& entry : avail_workers_) {
     reply->add_avail_worker(entry);
@@ -481,6 +490,7 @@ void SchedulerService::perform_pulls() {
 }
 
 void SchedulerService::schedule_tasks_naively() {
+  std::lock_guard<std::mutex> computation_graph_lock(computation_graph_lock_);
   std::lock_guard<std::mutex> fntable_lock(fntable_lock_);
   std::lock_guard<std::mutex> avail_workers_lock(avail_workers_lock_);
   std::lock_guard<std::mutex> task_queue_lock(task_queue_lock_);
@@ -491,10 +501,11 @@ void SchedulerService::schedule_tasks_naively() {
       // The use of erase(it) below invalidates the iterator, but we
       // immediately break out of the inner loop, so the iterator is not used
       // after the erase
-      const Task& task = *(*it);
+      const OperationId operationid = *it;
+      const Task& task = computation_graph_.get_task(operationid);
       auto& workers = fntable_[task.name()].workers();
       if (std::binary_search(workers.begin(), workers.end(), workerid) && can_run(task)) {
-        assign_task(std::move(*it), workerid);
+        assign_task(operationid, workerid);
         task_queue_.erase(it);
         std::swap(avail_workers_[i], avail_workers_[avail_workers_.size() - 1]);
         avail_workers_.pop_back();
@@ -506,6 +517,7 @@ void SchedulerService::schedule_tasks_naively() {
 }
 
 void SchedulerService::schedule_tasks_location_aware() {
+  std::lock_guard<std::mutex> computation_graph_lock(computation_graph_lock_);
   std::lock_guard<std::mutex> fntable_lock(fntable_lock_);
   std::lock_guard<std::mutex> avail_workers_lock(avail_workers_lock_);
   std::lock_guard<std::mutex> task_queue_lock(task_queue_lock_);
@@ -516,7 +528,8 @@ void SchedulerService::schedule_tasks_location_aware() {
     auto bestit = task_queue_.end(); // keep track of the task that fits the worker best so far
     size_t min_num_shipped_objects = std::numeric_limits<size_t>::max(); // number of objects that need to be transfered for this worker
     for (auto it = task_queue_.begin(); it != task_queue_.end(); ++it) {
-      const Task& task = *(*it);
+      OperationId operationid = *it;
+      const Task& task = computation_graph_.get_task(operationid);
       auto& workers = fntable_[task.name()].workers();
       if (std::binary_search(workers.begin(), workers.end(), workerid) && can_run(task)) {
         // determine how many objects would need to be shipped
@@ -542,7 +555,7 @@ void SchedulerService::schedule_tasks_location_aware() {
     }
     // if we found a suitable task
     if (bestit != task_queue_.end()) {
-      assign_task(std::move(*bestit), workerid);
+      assign_task(*bestit, workerid);
       task_queue_.erase(bestit);
       std::swap(avail_workers_[i], avail_workers_[avail_workers_.size() - 1]);
       avail_workers_.pop_back();

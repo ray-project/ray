@@ -7,6 +7,7 @@
 typedef size_t ObjRef;
 typedef size_t WorkerId;
 typedef size_t ObjStoreId;
+typedef size_t OperationId;
 
 class FnInfo {
   size_t num_return_vals_;

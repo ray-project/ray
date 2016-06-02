@@ -14,6 +14,8 @@
 #include "orchestra.grpc.pb.h"
 #include "types.pb.h"
 
+#include "computation_graph.h"
+
 using grpc::Server;
 using grpc::ServerBuilder;
 using grpc::ServerReader;
@@ -69,7 +71,7 @@ public:
   // assign a task to a worker
   void schedule();
   // execute a task on a worker and ship required object references
-  void assign_task(std::unique_ptr<Task> task, WorkerId workerid);
+  void assign_task(OperationId operationid, WorkerId workerid);
   // checks if the dependencies of the task are met
   bool can_run(const Task& task);
   // register a worker and its object store (if it has not been registered yet)
@@ -116,6 +118,10 @@ private:
   // Find all of the object references that refer to the same object as objref (as best as we can determine at the moment). The information may be incomplete because not all of the aliases may be known.
   void get_equivalent_objrefs(ObjRef objref, std::vector<ObjRef> &equivalent_objrefs);
 
+  // The computation graph tracks the operations that have been submitted to the
+  // scheduler and is mostly used for fault tolerance.
+  ComputationGraph computation_graph_;
+  std::mutex computation_graph_lock_;
   // Vector of all workers registered in the system. Their index in this vector
   // is the workerid.
   std::vector<WorkerHandle> workers_;
@@ -144,7 +150,7 @@ private:
   FnTable fntable_;
   std::mutex fntable_lock_;
   // List of pending tasks.
-  std::deque<std::unique_ptr<Task> > task_queue_;
+  std::deque<OperationId> task_queue_;
   std::mutex task_queue_lock_;
   // List of pending pull calls.
   std::vector<std::pair<WorkerId, ObjRef> > pull_queue_;
