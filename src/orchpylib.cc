@@ -195,6 +195,13 @@ int serialize(PyObject* worker_capsule, PyObject* val, Obj* obj, std::vector<Obj
     Double* data = obj->mutable_double_data();
     double d = PyFloat_AsDouble(val);
     data->set_data(d);
+  } else if (PyBool_Check(val)) {
+    Bool* data = obj->mutable_bool_data();
+    if (val == Py_False) {
+      data->set_data(false);
+    } else {
+      data->set_data(true);
+    }
   } else if (PyTuple_Check(val)) {
     Tuple* data = obj->mutable_tuple_data();
     for (size_t i = 0, size = PyTuple_Size(val); i < size; ++i) {
@@ -321,6 +328,12 @@ PyObject* deserialize(PyObject* worker_capsule, const Obj& obj, std::vector<ObjR
     return PyInt_FromLong(obj.int_data().data());
   } else if (obj.has_double_data()) {
     return PyFloat_FromDouble(obj.double_data().data());
+  } else if (obj.has_bool_data()) {
+    if (obj.bool_data().data()) {
+      Py_RETURN_TRUE;
+    } else {
+      Py_RETURN_FALSE;
+    }
   } else if (obj.has_tuple_data()) {
     const Tuple& data = obj.tuple_data();
     size_t size = data.elem_size();
