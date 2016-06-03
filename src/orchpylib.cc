@@ -187,7 +187,15 @@ void TaskCapsule_Destructor(PyObject* capsule) {
 // FIXME(pcm): This currently only works for contiguous arrays
 // This method will push all of the object references contained in `obj` to the `objrefs` vector.
 int serialize(PyObject* worker_capsule, PyObject* val, Obj* obj, std::vector<ObjRef> &objrefs) {
-  if (PyInt_Check(val)) {
+  if (PyBool_Check(val)) {
+    // The bool case must precede the int case because PyInt_Check passes for bools
+    Bool* data = obj->mutable_bool_data();
+    if (val == Py_False) {
+      data->set_data(false);
+    } else {
+      data->set_data(true);
+    }
+  } else if (PyInt_Check(val)) {
     Int* data = obj->mutable_int_data();
     long d = PyInt_AsLong(val);
     data->set_data(d);
@@ -195,13 +203,6 @@ int serialize(PyObject* worker_capsule, PyObject* val, Obj* obj, std::vector<Obj
     Double* data = obj->mutable_double_data();
     double d = PyFloat_AsDouble(val);
     data->set_data(d);
-  } else if (PyBool_Check(val)) {
-    Bool* data = obj->mutable_bool_data();
-    if (val == Py_False) {
-      data->set_data(false);
-    } else {
-      data->set_data(true);
-    }
   } else if (PyTuple_Check(val)) {
     Tuple* data = obj->mutable_tuple_data();
     for (size_t i = 0, size = PyTuple_Size(val); i < size; ++i) {
