@@ -9,11 +9,15 @@ message String {
 }
 
 message Double {
-	double data = 1;
+  double data = 1;
 }
 
 // Empty used to represent a None object
 message Empty {
+}
+
+message Bool {
+  bool data = 1;
 }
 
 message PyObj {
@@ -25,6 +29,7 @@ message Obj {
   String string_data = 1;
   Int int_data = 2;
   Double double_data = 3;
+  Bool bool_data = 10;
   Tuple tuple_data = 7;
   List list_data = 4;
   Dict dict_data = 8;
