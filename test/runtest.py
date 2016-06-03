@@ -38,6 +38,9 @@ class SerializationTest(unittest.TestCase):
     self.roundTripTest(w, "hello world")
     self.roundTripTest(w, 42.0)
     self.roundTripTest(w, (1.0, "hi"))
+    self.roundTripTest(w, None)
+    self.roundTripTest(w, (None, None))
+    self.roundTripTest(w, ("hello", None))
 
     self.roundTripTest(w, {"hello" : "world", 1: 42, 1.0: 45})
     self.roundTripTest(w, {})

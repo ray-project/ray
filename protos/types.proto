@@ -12,6 +12,10 @@ message Double {
 	double data = 1;
 }
 
+// Empty used to represent a None object
+message Empty {
+}
+
 message PyObj {
   bytes data = 1;
 }
@@ -25,6 +29,7 @@ message Obj {
   List list_data = 4;
   Dict dict_data = 8;
   Array array_data = 5;
+  Empty empty_data = 9;
   PyObj pyobj_data = 6;
 }
 
