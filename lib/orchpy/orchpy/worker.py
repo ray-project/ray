@@ -1,5 +1,6 @@
 from types import ModuleType
 import typing
+import funcsigs
 import numpy as np
 import pynumbuf
 
@@ -105,16 +106,19 @@ def distributed(arg_types, return_types, worker=global_worker):
       check_return_values(func_call, result) # throws an exception if result is invalid
       print "Finished executing function {}".format(func.__name__)
       return result
-    def func_call(*args):
+    def func_call(*args, **kwargs):
       """This is what gets run immediately when a worker calls a distributed function."""
-      check_arguments(func_call, list(args)) # throws an exception if args are invalid
-      objrefs = worker.submit_task(func_call.func_name, list(args))
+      args = list(args)
+      args.extend([kwargs[keyword] if kwargs.has_key(keyword) else default for keyword, default in func_call.keyword_defaults[len(args):]]) # fill in the remaining arguments
+      check_arguments(func_call, args) # throws an exception if args are invalid
+      objrefs = worker.submit_task(func_call.func_name, args)
       return objrefs[0] if len(objrefs) == 1 else objrefs
     func_call.func_name = "{}.{}".format(func.__module__, func.__name__)
     func_call.executor = func_executor
     func_call.arg_types = arg_types
     func_call.return_types = return_types
     func_call.is_distributed = True
+    func_call.keyword_defaults = [(k, v.default) for k, v in funcsigs.signature(func).parameters.iteritems()]
     return func_call
   return distributed_decorator
 
