@@ -231,6 +231,8 @@ int serialize(PyObject* worker_capsule, PyObject* val, Obj* obj, std::vector<Obj
     Py_ssize_t length;
     PyString_AsStringAndSize(val, &buffer, &length); // creates pointer to internal buffer
     obj->mutable_string_data()->set_data(buffer, length);
+  } else if (val == Py_None) {
+    obj->mutable_empty_data(); // allocate an Empty object, this is a None
   } else if (PyArray_Check(val)) {
     PyArrayObject* array = PyArray_GETCONTIGUOUS((PyArrayObject*) val);
     Array* data = obj->mutable_array_data();
@@ -347,6 +349,8 @@ PyObject* deserialize(PyObject* worker_capsule, const Obj& obj, std::vector<ObjR
     const char* buffer = obj.string_data().data().data();
     Py_ssize_t length = obj.string_data().data().size();
     return PyString_FromStringAndSize(buffer, length);
+  } else if (obj.has_empty_data()) {
+    Py_RETURN_NONE;
   } else if (obj.has_array_data()) {
     const Array& array = obj.array_data();
     std::vector<npy_intp> dims;
