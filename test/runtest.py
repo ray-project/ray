@@ -181,6 +181,43 @@ class APITest(unittest.TestCase):
 
     services.cleanup()
 
+  def testKeywordArgs(self):
+    test_dir = os.path.dirname(os.path.abspath(__file__))
+    test_path = os.path.join(test_dir, "testrecv.py")
+    services.start_singlenode_cluster(return_drivers=False, num_workers_per_objstore=3, worker_path=test_path)
+    x = test_functions.keyword_fct1(1)
+    self.assertEqual(orchpy.pull(x), "1 hello")
+    x = test_functions.keyword_fct1(1, "hi")
+    self.assertEqual(orchpy.pull(x), "1 hi")
+    x = test_functions.keyword_fct1(1, b="world")
+    self.assertEqual(orchpy.pull(x), "1 world")
+
+    x = test_functions.keyword_fct2(a="w", b="hi")
+    self.assertEqual(orchpy.pull(x), "w hi")
+    x = test_functions.keyword_fct2(b="hi", a="w")
+    self.assertEqual(orchpy.pull(x), "w hi")
+    x = test_functions.keyword_fct2(a="w")
+    self.assertEqual(orchpy.pull(x), "w world")
+    x = test_functions.keyword_fct2(b="hi")
+    self.assertEqual(orchpy.pull(x), "hello hi")
+    x = test_functions.keyword_fct2("w")
+    self.assertEqual(orchpy.pull(x), "w world")
+    x = test_functions.keyword_fct2("w", "hi")
+    self.assertEqual(orchpy.pull(x), "w hi")
+
+    x = test_functions.keyword_fct3(0, 1, c="w", d="hi")
+    self.assertEqual(orchpy.pull(x), "0 1 w hi")
+    x = test_functions.keyword_fct3(0, 1, d="hi", c="w")
+    self.assertEqual(orchpy.pull(x), "0 1 w hi")
+    x = test_functions.keyword_fct3(0, 1, c="w")
+    self.assertEqual(orchpy.pull(x), "0 1 w world")
+    x = test_functions.keyword_fct3(0, 1, d="hi")
+    self.assertEqual(orchpy.pull(x), "0 1 hello hi")
+    x = test_functions.keyword_fct3(0, 1)
+    self.assertEqual(orchpy.pull(x), "0 1 hello world")
+
+    services.cleanup()
+
 class ReferenceCountingTest(unittest.TestCase):
 
   def testDeallocation(self):

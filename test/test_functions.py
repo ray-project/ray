@@ -38,3 +38,17 @@ def empty_function():
 @orchpy.distributed([], [int])
 def trivial_function():
   return 1
+
+# Test keyword arguments
+
+@orchpy.distributed([int, str], [str])
+def keyword_fct1(a, b="hello"):
+  return "{} {}".format(a, b)
+
+@orchpy.distributed([str, str], [str])
+def keyword_fct2(a="hello", b="world"):
+  return "{} {}".format(a, b)
+
+@orchpy.distributed([int, int, str, str], [str])
+def keyword_fct3(a, b, c="hello", d="world"):
+  return "{} {} {} {}".format(a, b, c, d)
