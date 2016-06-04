@@ -2,28 +2,25 @@ from typing import List
 import numpy as np
 import orchpy as op
 
-__all__ = ["zeros", "zeros_like", "ones", "eye", "dot", "vstack", "hstack", "subarray", "copy", "tril", "triu", "diag", "transpose", "add", "subtract", "eye2", "sum", "shape"]
+__all__ = ["zeros", "zeros_like", "ones", "eye", "dot", "vstack", "hstack", "subarray", "copy", "tril", "triu", "diag", "transpose", "add", "subtract", "sum", "shape"]
 
-@op.distributed([List[int], str], [np.ndarray])
-def zeros(shape, dtype_name):
-  return np.zeros(shape, dtype=np.dtype(dtype_name))
+@op.distributed([List[int], str, str], [np.ndarray])
+def zeros(shape, dtype_name="float", order="C"):
+  return np.zeros(shape, dtype=np.dtype(dtype_name), order=order)
 
-@op.distributed([np.ndarray], [np.ndarray])
-def zeros_like(x):
-  return np.zeros_like(x)
+@op.distributed([np.ndarray, str, str, bool], [np.ndarray])
+def zeros_like(a, dtype_name="None", order="K", subok=True):
+  dtype_val = None if dtype_name == "None" else np.dtype(dtype_name)
+  return np.zeros_like(a, dtype=dtype_val, order=order, subok=subok)
 
-@op.distributed([List[int], str], [np.ndarray])
-def ones(shape, dtype_name):
-  return np.ones(shape, dtype=np.dtype(dtype_name))
+@op.distributed([List[int], str, str], [np.ndarray])
+def ones(shape, dtype_name="float", order="C"):
+  return np.ones(shape, dtype=np.dtype(dtype_name), order=order)
 
-@op.distributed([int, str], [np.ndarray])
-def eye(dim, dtype_name):
-  return np.eye(dim, dtype=np.dtype(dtype_name))
-
-# TODO(rkn): This should be part of eye
-@op.distributed([int, int, str], [np.ndarray])
-def eye2(dim1, dim2, dtype_name):
-  return np.eye(dim1, dim2, dtype=np.dtype(dtype_name))
+@op.distributed([int, int, int, str], [np.ndarray])
+def eye(N, M=-1, k=0, dtype_name="float"):
+  M = N if M == -1 else M
+  return np.eye(N, M=M, k=k, dtype=np.dtype(dtype_name))
 
 @op.distributed([np.ndarray, np.ndarray], [np.ndarray])
 def dot(a, b):
@@ -45,25 +42,26 @@ def hstack(*xs):
 def subarray(a, lower_indices, upper_indices): # TODO(rkn): be consistent about using "index" versus "indices"
   return a[[slice(l, u) for (l, u) in zip(lower_indices, upper_indices)]]
 
-@op.distributed([np.ndarray], [np.ndarray])
-def copy(a):
-  return np.copy(a)
+@op.distributed([np.ndarray, str], [np.ndarray])
+def copy(a, order="K"):
+  return np.copy(a, order=order)
 
-@op.distributed([np.ndarray], [np.ndarray])
-def tril(a):
-  return np.tril(a)
+@op.distributed([np.ndarray, int], [np.ndarray])
+def tril(m, k=0):
+  return np.tril(m, k=k)
 
-@op.distributed([np.ndarray], [np.ndarray])
-def triu(a):
-  return np.triu(a)
+@op.distributed([np.ndarray, int], [np.ndarray])
+def triu(m, k=0):
+  return np.triu(m, k=k)
 
-@op.distributed([np.ndarray], [np.ndarray])
-def diag(a):
-  return np.diag(a)
+@op.distributed([np.ndarray, int], [np.ndarray])
+def diag(v, k=0):
+  return np.diag(v, k=k)
 
-@op.distributed([np.ndarray], [np.ndarray])
-def transpose(a):
-  return np.transpose(a)
+@op.distributed([np.ndarray, List[int]], [np.ndarray])
+def transpose(a, axes=[]):
+  axes = None if axes == [] else axes
+  return np.transpose(a, axes=axes)
 
 @op.distributed([np.ndarray, np.ndarray], [np.ndarray])
 def add(x1, x2):

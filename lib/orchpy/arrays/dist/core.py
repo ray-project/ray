@@ -4,7 +4,7 @@ import arrays.single as single
 import orchpy as op
 
 __all__ = ["BLOCK_SIZE", "DistArray", "assemble", "zeros", "ones", "copy",
-           "eye", "triu", "tril", "blockwise_dot", "dot", "transpose", "add", "subtract", "eye2", "numpy_to_dist", "subblocks"]
+           "eye", "triu", "tril", "blockwise_dot", "dot", "transpose", "add", "subtract", "numpy_to_dist", "subblocks"]
 
 BLOCK_SIZE = 10
 
@@ -84,17 +84,17 @@ def numpy_to_dist(a):
   return result
 
 @op.distributed([List[int], str], [DistArray])
-def zeros(shape, dtype_name):
+def zeros(shape, dtype_name="float"):
   result = DistArray(shape)
   for index in np.ndindex(*result.num_blocks):
-    result.objrefs[index] = single.zeros(DistArray.compute_block_shape(index, shape), dtype_name)
+    result.objrefs[index] = single.zeros(DistArray.compute_block_shape(index, shape), dtype_name=dtype_name)
   return result
 
 @op.distributed([List[int], str], [DistArray])
-def ones(shape, dtype_name):
+def ones(shape, dtype_name="float"):
   result = DistArray(shape)
   for index in np.ndindex(*result.num_blocks):
-    result.objrefs[index] = single.ones(DistArray.compute_block_shape(index, shape), dtype_name)
+    result.objrefs[index] = single.ones(DistArray.compute_block_shape(index, shape), dtype_name=dtype_name)
   return result
 
 @op.distributed([DistArray], [DistArray])
@@ -104,28 +104,17 @@ def copy(a):
     result.objrefs[index] = a.objrefs[index] # We don't need to actually copy the objects because cluster-level objects are assumed to be immutable.
   return result
 
-@op.distributed([int, str], [DistArray])
-def eye(dim, dtype_name):
-  shape = [dim, dim]
-  result = DistArray(shape)
-  for (i, j) in np.ndindex(*result.num_blocks):
-    if i == j:
-      result.objrefs[i, j] = single.eye(DistArray.compute_block_shape([i, j], shape)[0], dtype_name)
-    else:
-      result.objrefs[i, j] = single.zeros(DistArray.compute_block_shape([i, j], shape), dtype_name)
-  return result
-
-# TODO(rkn): Support optional arguments so that we can make this part of eye.
 @op.distributed([int, int, str], [DistArray])
-def eye2(dim1, dim2, dtype_name):
+def eye(dim1, dim2=-1, dtype_name="float"):
+  dim2 = dim1 if dim2 == -1 else dim2
   shape = [dim1, dim2]
   result = DistArray(shape)
   for (i, j) in np.ndindex(*result.num_blocks):
     block_shape = DistArray.compute_block_shape([i, j], shape)
     if i == j:
-      result.objrefs[i, j] = single.eye2(block_shape[0], block_shape[1], dtype_name)
+      result.objrefs[i, j] = single.eye(block_shape[0], block_shape[1], dtype_name=dtype_name)
     else:
-      result.objrefs[i, j] = single.zeros(block_shape, dtype_name)
+      result.objrefs[i, j] = single.zeros(block_shape, dtype_name=dtype_name)
   return result
 
 @op.distributed([DistArray], [DistArray])

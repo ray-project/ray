@@ -165,7 +165,7 @@ def qr(a):
     if a.shape[0] > a.shape[1]:
       # in this case, R needs to be square
       R_shape = op.pull(single.shape(R))
-      eye_temp = single.eye2(R_shape[1], R_shape[0], result_dtype)
+      eye_temp = single.eye(R_shape[1], R_shape[0], dtype_name=result_dtype)
       r_res.objrefs[i, i] = single.dot(eye_temp, R)
     else:
       r_res.objrefs[i, i] = R
@@ -184,7 +184,7 @@ def qr(a):
       r_res.objrefs[i, c] = a_work.objrefs[i, c]
 
   # construct q_res from Ys and Ts
-  q = eye2(m, k, result_dtype)
+  q = eye(m, k, dtype_name=result_dtype)
   for i in range(len(Ts))[::-1]:
     y_col_block = subblocks(y_res, [], [i])
     q = subtract(q, dot(y_col_block, dot(Ts[i], dot(transpose(y_col_block), q))))

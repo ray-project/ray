@@ -25,12 +25,12 @@ class ArraysSingleTest(unittest.TestCase):
     services.start_singlenode_cluster(return_drivers=False, num_workers_per_objstore=1, worker_path=test_path)
 
     # test eye
-    ref = single.eye(3, "float")
+    ref = single.eye(3)
     val = orchpy.pull(ref)
     self.assertTrue(np.alltrue(val == np.eye(3)))
 
     # test zeros
-    ref = single.zeros([3, 4, 5], "float")
+    ref = single.zeros([3, 4, 5])
     val = orchpy.pull(ref)
     self.assertTrue(np.alltrue(val == np.zeros([3, 4, 5])))
 
@@ -70,8 +70,8 @@ class ArraysDistTest(unittest.TestCase):
     test_path = os.path.join(test_dir, "testrecv.py")
     services.start_singlenode_cluster(return_drivers=False, num_workers_per_objstore=1, worker_path=test_path)
 
-    a = single.ones([dist.BLOCK_SIZE, dist.BLOCK_SIZE], "float")
-    b = single.zeros([dist.BLOCK_SIZE, dist.BLOCK_SIZE], "float")
+    a = single.ones([dist.BLOCK_SIZE, dist.BLOCK_SIZE])
+    b = single.zeros([dist.BLOCK_SIZE, dist.BLOCK_SIZE])
     x = dist.DistArray()
     x.construct([2 * dist.BLOCK_SIZE, dist.BLOCK_SIZE], np.array([[a], [b]]))
     self.assertTrue(np.alltrue(x.assemble() == np.vstack([np.ones([dist.BLOCK_SIZE, dist.BLOCK_SIZE]), np.zeros([dist.BLOCK_SIZE, dist.BLOCK_SIZE])])))
@@ -87,7 +87,7 @@ class ArraysDistTest(unittest.TestCase):
     y = dist.assemble(x)
     self.assertTrue(np.alltrue(orchpy.pull(y) == np.zeros([9, 25, 51])))
 
-    x = dist.ones([11, 25, 49], "float")
+    x = dist.ones([11, 25, 49], dtype_name="float")
     y = dist.assemble(x)
     self.assertTrue(np.alltrue(orchpy.pull(y) == np.ones([11, 25, 49])))
 
@@ -97,7 +97,7 @@ class ArraysDistTest(unittest.TestCase):
     w = dist.assemble(y)
     self.assertTrue(np.alltrue(orchpy.pull(z) == orchpy.pull(w)))
 
-    x = dist.eye(25, "float")
+    x = dist.eye(25, dtype_name="float")
     y = dist.assemble(x)
     self.assertTrue(np.alltrue(orchpy.pull(y) == np.eye(25)))
 
