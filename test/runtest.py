@@ -191,7 +191,8 @@ class APITest(unittest.TestCase):
   def testKeywordArgs(self):
     test_dir = os.path.dirname(os.path.abspath(__file__))
     test_path = os.path.join(test_dir, "testrecv.py")
-    services.start_singlenode_cluster(return_drivers=False, num_workers_per_objstore=3, worker_path=test_path)
+    services.start_singlenode_cluster(return_drivers=False, num_workers_per_objstore=1, worker_path=test_path)
+
     x = test_functions.keyword_fct1(1)
     self.assertEqual(halo.pull(x), "1 hello")
     x = test_functions.keyword_fct1(1, "hi")
@@ -222,6 +223,21 @@ class APITest(unittest.TestCase):
     self.assertEqual(halo.pull(x), "0 1 hello hi")
     x = test_functions.keyword_fct3(0, 1)
     self.assertEqual(halo.pull(x), "0 1 hello world")
+
+    services.cleanup()
+
+  def testVariableNumberOfArgs(self):
+    test_dir = os.path.dirname(os.path.abspath(__file__))
+    test_path = os.path.join(test_dir, "testrecv.py")
+    services.start_singlenode_cluster(return_drivers=False, num_workers_per_objstore=1, worker_path=test_path)
+
+    x = test_functions.varargs_fct1(0, 1, 2)
+    self.assertEqual(halo.pull(x), "0 1 2")
+    x = test_functions.varargs_fct2(0, 1, 2)
+    self.assertEqual(halo.pull(x), "1 2")
+
+    self.assertTrue(test_functions.kwargs_exception_thrown)
+    self.assertTrue(test_functions.varargs_and_kwargs_exception_thrown)
 
     services.cleanup()
 

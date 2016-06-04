@@ -145,7 +145,7 @@ def tril(a):
       result.objrefs[i, j] = single.zeros_like(a.objrefs[i, j])
   return result
 
-@halo.remote([np.ndarray, None], [np.ndarray])
+@halo.remote([np.ndarray], [np.ndarray])
 def blockwise_dot(*matrices):
   n = len(matrices)
   if n % 2 != 0:
@@ -171,8 +171,7 @@ def dot(a, b):
     result.objrefs[i, j] = blockwise_dot(*args)
   return result
 
-# This is not in numpy, should we expose this?
-@halo.remote([DistArray, List[int], None], [DistArray])
+@halo.remote([DistArray, List[int]], [DistArray])
 def subblocks(a, *ranges):
   """
   This function produces a distributed array from a subset of the blocks in the `a`. The result and `a` will have the same number of dimensions.For example,

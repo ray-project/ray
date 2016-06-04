@@ -118,9 +118,25 @@ def remote(arg_types, return_types, worker=global_worker):
     func_call.arg_types = arg_types
     func_call.return_types = return_types
     func_call.is_remote = True
-    func_call.keyword_defaults = [(k, v.default) for k, v in funcsigs.signature(func).parameters.iteritems()]
+    func_call.sig_params = [(k, v) for k, v in funcsigs.signature(func).parameters.iteritems()]
+    func_call.keyword_defaults = [(k, v.default) for k, v in func_call.sig_params]
+    func_call.has_vararg_param = any([v.kind == v.VAR_POSITIONAL for k, v in func_call.sig_params])
+    func_call.has_kwargs_param = any([v.kind == v.VAR_KEYWORD for k, v in func_call.sig_params])
+    check_signature_supported(func_call)
     return func_call
   return remote_decorator
+
+# helper method, this should not be called by the user
+# we currently do not support the functionality that we test for in this method,
+# but in the future we could
+def check_signature_supported(function):
+  # check if the user specified kwargs
+  if function.has_kwargs_param:
+    raise "Function {} has a **kwargs argument, which is currently not supported.".format(function.__name__)
+  # check if the user specified a variable number of arguments and any keyword arguments
+  if function.has_vararg_param and any([d != funcsigs._empty for k, d in function.keyword_defaults]):
+    raise "Function {} has a *args argument as well as a keyword argument, which is currently not supported.".format(function.__name__)
+
 
 # helper method, this should not be called by the user
 def check_return_values(function, result):
@@ -138,18 +154,16 @@ def check_return_values(function, result):
 # helper method, this should not be called by the user
 def check_arguments(function, args):
   # check the number of args
-  if len(args) != len(function.arg_types) and function.arg_types[-1] is not None:
+  if len(args) != len(function.arg_types) and not function.has_vararg_param:
     raise Exception("Function {} expects {} arguments, but received {}.".format(function.__name__, len(function.arg_types), len(args)))
-  elif len(args) < len(function.arg_types) - 1 and function.arg_types[-1] is None:
+  elif len(args) < len(function.arg_types) - 1 and function.has_vararg_param:
     raise Exception("Function {} expects at least {} arguments, but received {}.".format(function.__name__, len(function.arg_types) - 1, len(args)))
 
   for (i, arg) in enumerate(args):
-    if i < len(function.arg_types) - 1:
+    if i <= len(function.arg_types) - 1:
       expected_type = function.arg_types[i]
-    elif i == len(function.arg_types) - 1 and function.arg_types[-1] is not None:
+    elif function.has_vararg_param:
       expected_type = function.arg_types[-1]
-    elif function.arg_types[-1] is None and len(function.arg_types) > 1:
-      expected_type = function.arg_types[-2]
     else:
       assert False, "This code should be unreachable."
 
@@ -173,12 +187,10 @@ def get_arguments_for_execution(function, args, worker=global_worker):
   """
 
   for (i, arg) in enumerate(args):
-    if i < len(function.arg_types) - 1:
+    if i <= len(function.arg_types) - 1:
       expected_type = function.arg_types[i]
-    elif i == len(function.arg_types) - 1 and function.arg_types[-1] is not None:
+    elif function.has_vararg_param and len(function.arg_types) >= 1:
       expected_type = function.arg_types[-1]
-    elif function.arg_types[-1] is None and len(function.arg_types) > 1:
-      expected_type = function.arg_types[-2]
     else:
       assert False, "This code should be unreachable."
 

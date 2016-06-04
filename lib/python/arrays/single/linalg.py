@@ -83,6 +83,6 @@ def cond(x):
 def matrix_rank(M):
   return np.linalg.matrix_rank(M)
 
-@halo.remote([np.ndarray, None], [np.ndarray])
-def multi_dot(a):
+@halo.remote([np.ndarray], [np.ndarray])
+def multi_dot(*a):
   raise NotImplementedError
