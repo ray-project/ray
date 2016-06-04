@@ -1,5 +1,5 @@
-#ifndef ORCHESTRA_SCHEDULER_H
-#define ORCHESTRA_SCHEDULER_H
+#ifndef HALO_SCHEDULER_H
+#define HALO_SCHEDULER_H
 
 
 #include <deque>
@@ -10,8 +10,8 @@
 
 #include <grpc++/grpc++.h>
 
-#include "orchestra/orchestra.h"
-#include "orchestra.grpc.pb.h"
+#include "halo/halo.h"
+#include "halo.grpc.pb.h"
 #include "types.pb.h"
 
 #include "computation_graph.h"

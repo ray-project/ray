@@ -1,16 +1,16 @@
 import argparse
 import numpy as np
 
-import orchpy
-import orchpy.services as services
-import orchpy.worker as worker
+import halo
+import halo.services as services
+import halo.worker as worker
 
 import test_functions
 import arrays.single as single
 import arrays.dist as dist
 
 from grpc.beta import implementations
-import orchestra_pb2
+import halo_pb2
 import types_pb2
 
 TIMEOUT_SECONDS = 5

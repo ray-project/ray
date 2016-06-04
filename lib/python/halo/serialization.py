@@ -1,6 +1,6 @@
 import importlib
 
-import orchpy
+import halo
 
 def to_primitive(obj):
   if hasattr(obj, "serialize"):
@@ -22,18 +22,18 @@ def from_primitive(primitive_obj):
 
 def serialize(worker_capsule, obj):
   primitive_obj = to_primitive(obj)
-  obj_capsule, contained_objrefs = orchpy.lib.serialize_object(worker_capsule, primitive_obj) # contained_objrefs is a list of the objrefs contained in obj
+  obj_capsule, contained_objrefs = halo.lib.serialize_object(worker_capsule, primitive_obj) # contained_objrefs is a list of the objrefs contained in obj
   return obj_capsule, contained_objrefs
 
 def deserialize(worker_capsule, capsule):
-  primitive_obj = orchpy.lib.deserialize_object(worker_capsule, capsule)
+  primitive_obj = halo.lib.deserialize_object(worker_capsule, capsule)
   return from_primitive(primitive_obj)
 
 def serialize_task(worker_capsule, func_name, args):
-  primitive_args = [(arg if isinstance(arg, orchpy.lib.ObjRef) else to_primitive(arg)) for arg in args]
-  return orchpy.lib.serialize_task(worker_capsule, func_name, primitive_args)
+  primitive_args = [(arg if isinstance(arg, halo.lib.ObjRef) else to_primitive(arg)) for arg in args]
+  return halo.lib.serialize_task(worker_capsule, func_name, primitive_args)
 
 def deserialize_task(worker_capsule, task):
-  func_name, primitive_args, return_objrefs = orchpy.lib.deserialize_task(worker_capsule, task)
-  args = [(arg if isinstance(arg, orchpy.lib.ObjRef) else from_primitive(arg)) for arg in primitive_args]
+  func_name, primitive_args, return_objrefs = halo.lib.deserialize_task(worker_capsule, task)
+  args = [(arg if isinstance(arg, halo.lib.ObjRef) else from_primitive(arg)) for arg in primitive_args]
   return func_name, args, return_objrefs

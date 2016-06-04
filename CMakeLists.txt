@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 2.8)
 
-project(orchestra)
+project(halo)
 
 set(THIRDPARTY_DIR "${CMAKE_SOURCE_DIR}/thirdparty")
 
@@ -20,15 +20,15 @@ include_directories("${NUMPY_INCLUDE_DIR}")
 
 set(PROTO_PATH "${CMAKE_SOURCE_DIR}/protos")
 
-set(ORCHESTRA_PROTO "${PROTO_PATH}/orchestra.proto")
+set(HALO_PROTO "${PROTO_PATH}/halo.proto")
 set(TYPES_PROTO "${PROTO_PATH}/types.proto")
 set(GENERATED_PROTOBUF_PATH "${CMAKE_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY ${GENERATED_PROTOBUF_PATH})
 
-set(ORCHESTRA_PB_CPP_FILE "${GENERATED_PROTOBUF_PATH}/orchestra.pb.cc")
-set(ORCHESTRA_PB_H_FILE "${GENERATED_PROTOBUF_PATH}/orchestra.pb.h")
-set(ORCHESTRA_GRPC_PB_CPP_FILE "${GENERATED_PROTOBUF_PATH}/orchestra.grpc.pb.cc")
-set(ORCHESTRA_GRPC_PB_H_FILE "${GENERATED_PROTOBUF_PATH}/orchestra.grpc.pb.h")
+set(HALO_PB_CPP_FILE "${GENERATED_PROTOBUF_PATH}/halo.pb.cc")
+set(HALO_PB_H_FILE "${GENERATED_PROTOBUF_PATH}/halo.pb.h")
+set(HALO_GRPC_PB_CPP_FILE "${GENERATED_PROTOBUF_PATH}/halo.grpc.pb.cc")
+set(HALO_GRPC_PB_H_FILE "${GENERATED_PROTOBUF_PATH}/halo.grpc.pb.h")
 
 set(TYPES_PB_CPP_FILE "${GENERATED_PROTOBUF_PATH}/types.pb.cc")
 set(TYPES_PB_H_FILE "${GENERATED_PROTOBUF_PATH}/types.pb.h")
@@ -36,19 +36,19 @@ set(TYPES_GRPC_PB_CPP_FILE "${GENERATED_PROTOBUF_PATH}/types.grpc.pb.cc")
 set(TYPES_GRPC_PB_H_FILE "${GENERATED_PROTOBUF_PATH}/types.grpc.pb.h")
 
 add_custom_command(
-    OUTPUT "${ORCHESTRA_PB_H_FILE}"
-           "${ORCHESTRA_PB_CPP_FILE}"
-           "${ORCHESTRA_GRPC_PB_H_FILE}"
-           "${ORCHESTRA_GRPC_PB_CPP_FILE}"
+    OUTPUT "${HALO_PB_H_FILE}"
+           "${HALO_PB_CPP_FILE}"
+           "${HALO_GRPC_PB_H_FILE}"
+           "${HALO_GRPC_PB_CPP_FILE}"
     COMMAND ${PROTOBUF_PROTOC_EXECUTABLE}
     ARGS "--proto_path=${PROTO_PATH}"
          "--cpp_out=${GENERATED_PROTOBUF_PATH}"
-         "${ORCHESTRA_PROTO}"
+         "${HALO_PROTO}"
     COMMAND ${PROTOBUF_PROTOC_EXECUTABLE}
     ARGS "--proto_path=${PROTO_PATH}"
          "--grpc_out=${GENERATED_PROTOBUF_PATH}"
          "--plugin=protoc-gen-grpc=/usr/local/bin/grpc_cpp_plugin"
-         "${ORCHESTRA_PROTO}"
+         "${HALO_PROTO}"
     )
 
 add_custom_command(
@@ -67,8 +67,8 @@ add_custom_command(
          "${TYPES_PROTO}"
     )
 
-set(GENERATED_PROTOBUF_FILES ${ORCHESTRA_PB_H_FILE} ${ORCHESTRA_PB_CPP_FILE}
-    ${ORCHESTRA_GRPC_PB_H_FILE} ${ORCHESTRA_GRPC_PB_CPP_FILE}
+set(GENERATED_PROTOBUF_FILES ${HALO_PB_H_FILE} ${HALO_PB_CPP_FILE}
+    ${HALO_GRPC_PB_H_FILE} ${HALO_GRPC_PB_CPP_FILE}
     ${TYPES_PB_H_FILE} ${TYPES_PB_CPP_FILE}
     ${TYPES_GRPC_PB_H_FILE} ${TYPES_GRPC_PB_CPP_FILE})
 
@@ -81,7 +81,7 @@ endif()
 add_executable(objstore src/objstore.cc src/ipc.cc ${GENERATED_PROTOBUF_FILES})
 target_link_libraries(objstore arrow numbuf pynumbuf)
 add_executable(scheduler src/scheduler.cc src/computation_graph.cc ${GENERATED_PROTOBUF_FILES})
-add_library(orchpylib SHARED src/orchpylib.cc src/worker.cc src/ipc.cc ${GENERATED_PROTOBUF_FILES})
-target_link_libraries(orchpylib arrow numbuf pynumbuf)
+add_library(halolib SHARED src/halolib.cc src/worker.cc src/ipc.cc ${GENERATED_PROTOBUF_FILES})
+target_link_libraries(halolib arrow numbuf pynumbuf)
 
-install(TARGETS objstore scheduler orchpylib DESTINATION ${CMAKE_SOURCE_DIR}/lib/orchpy/orchpy)
+install(TARGETS objstore scheduler halolib DESTINATION ${CMAKE_SOURCE_DIR}/lib/python/halo)

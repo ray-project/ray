@@ -1,6 +1,6 @@
 # Scheduler
 
-The scheduling strategies currently implemented in Photon are fairly basic and
+The scheduling strategies currently implemented in Halo are fairly basic and
 all use a central scheduler.
 
 * The naive scheduler assigns tasks to workers just taking into account

@@ -1,11 +1,11 @@
-#ifndef ORCHESTRA_COMPUTATIONGRAPH_H
-#define ORCHESTRA_COMPUTATIONGRAPH_H
+#ifndef HALO_COMPUTATIONGRAPH_H
+#define HALO_COMPUTATIONGRAPH_H
 
 #include <iostream>
 #include <limits>
 
-#include "orchestra/orchestra.h"
-#include "orchestra.grpc.pb.h"
+#include "halo/halo.h"
+#include "halo.grpc.pb.h"
 #include "types.pb.h"
 
 // used to represent the root operation (that is, the driver code)

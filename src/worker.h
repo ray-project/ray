@@ -1,5 +1,5 @@
-#ifndef ORCHESTRA_WORKER_H
-#define ORCHESTRA_WORKER_H
+#ifndef HALO_WORKER_H
+#define HALO_WORKER_H
 
 #include <iostream>
 #include <memory>
@@ -15,8 +15,8 @@ using grpc::ServerBuilder;
 using grpc::ServerContext;
 using grpc::Status;
 
-#include "orchestra.grpc.pb.h"
-#include "orchestra/orchestra.h"
+#include "halo.grpc.pb.h"
+#include "halo/halo.h"
 #include "ipc.h"
 
 using grpc::Channel;

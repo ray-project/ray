@@ -1,5 +1,5 @@
-#ifndef ORCHESTRA_INCLUDE_ORCHESTRA_H
-#define ORCHESTRA_INCLUDE_ORCHESTRA_H
+#ifndef HALO_INCLUDE_HALO_H
+#define HALO_INCLUDE_HALO_H
 
 #include <vector>
 #include <unordered_map>
@@ -34,20 +34,20 @@ public:
 typedef std::vector<std::vector<ObjStoreId> > ObjTable;
 typedef std::unordered_map<std::string, FnInfo> FnTable;
 
-#define ORCH_VERBOSE -1
-#define ORCH_INFO 0
-#define ORCH_DEBUG 1
-#define ORCH_FATAL 2
-#define ORCH_REFCOUNT ORCH_VERBOSE
-#define ORCH_ALIAS ORCH_VERBOSE
+#define HALO_VERBOSE -1
+#define HALO_INFO 0
+#define HALO_DEBUG 1
+#define HALO_FATAL 2
+#define HALO_REFCOUNT HALO_VERBOSE
+#define HALO_ALIAS HALO_VERBOSE
 
-#define ORCH_LOG(LEVEL, MESSAGE) \
-  if (LEVEL == ORCH_VERBOSE) { \
+#define HALO_LOG(LEVEL, MESSAGE) \
+  if (LEVEL == HALO_VERBOSE) { \
     \
-  } else if (LEVEL == ORCH_FATAL) { \
+  } else if (LEVEL == HALO_FATAL) { \
     std::cerr << "fatal error occured: " << MESSAGE << std::endl; \
     std::exit(1); \
-  } else if (LEVEL == ORCH_DEBUG) { \
+  } else if (LEVEL == HALO_DEBUG) { \
     \
   } else { \
     std::cout << MESSAGE << std::endl; \

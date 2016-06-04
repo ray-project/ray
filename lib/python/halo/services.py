@@ -3,8 +3,8 @@ import os
 import atexit
 import time
 
-import orchpy
-import orchpy.worker as worker
+import halo
+import halo.worker as worker
 
 _services_path = os.path.dirname(os.path.abspath(__file__))
 
@@ -58,9 +58,9 @@ def cleanup():
 
   global drivers
   for driver in drivers:
-    orchpy.disconnect(driver)
+    halo.disconnect(driver)
   if len(drivers) == 0:
-    orchpy.disconnect()
+    halo.disconnect()
   drivers = []
 
 # atexit.register(cleanup)
@@ -97,7 +97,7 @@ def start_node(scheduler_address, node_ip_address, num_workers, worker_path=None
   for _ in range(num_workers):
     start_worker(worker_path, scheduler_address, objstore_address, address(node_ip_address, new_worker_port()))
   time.sleep(0.3)
-  orchpy.connect(scheduler_address, objstore_address, address(node_ip_address, new_worker_port()))
+  halo.connect(scheduler_address, objstore_address, address(node_ip_address, new_worker_port()))
   time.sleep(0.5)
 
 def start_singlenode_cluster(return_drivers=False, num_objstores=1, num_workers_per_objstore=0, worker_path=None):
@@ -124,11 +124,11 @@ def start_singlenode_cluster(return_drivers=False, num_objstores=1, num_workers_
     driver_workers = []
     for i in range(num_objstores):
       driver_worker = worker.Worker()
-      orchpy.connect(scheduler_address, objstore_address, address(IP_ADDRESS, new_worker_port()), driver_worker)
+      halo.connect(scheduler_address, objstore_address, address(IP_ADDRESS, new_worker_port()), driver_worker)
       driver_workers.append(driver_worker)
       drivers.append(driver_worker)
     time.sleep(0.5)
     return driver_workers
   else:
-    orchpy.connect(scheduler_address, objstore_addresses[0], address(IP_ADDRESS, new_worker_port()))
+    halo.connect(scheduler_address, objstore_addresses[0], address(IP_ADDRESS, new_worker_port()))
     time.sleep(0.5)

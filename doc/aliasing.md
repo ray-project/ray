@@ -1,6 +1,6 @@
 # Aliasing
 
-An important feature of Photon is that a remote call sent to the scheduler
+An important feature of Halo is that a remote call sent to the scheduler
 immediately returns object references to the outputs of the task, and the actual
 outputs of the task are only associated with the relevant object references
 after the task has been executed and the outputs have been computed. This allows
@@ -10,15 +10,15 @@ However, to provide a more flexible API, we allow tasks to not only return
 values, but to also return object references to values. As an examples, consider
 the following code.
 ```python
-@op.distributed([], [np.ndarray])
+@halo.distributed([], [np.ndarray])
 def f()
   return np.zeros(5)
 
-@op.distributed([], [np.ndarray])
+@halo.distributed([], [np.ndarray])
 def g()
   return f()
 
-@op.distributed([], [np.ndarray])
+@halo.distributed([], [np.ndarray])
 def h()
   return g()
 ```

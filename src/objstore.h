@@ -1,5 +1,5 @@
-#ifndef ORCHESTRA_OBJSTORE_H
-#define ORCHESTRA_OBJSTORE_H
+#ifndef HALO_OBJSTORE_H
+#define HALO_OBJSTORE_H
 
 #include <unordered_map>
 #include <memory>
@@ -7,8 +7,8 @@
 #include <iostream>
 #include <grpc++/grpc++.h>
 
-#include "orchestra/orchestra.h"
-#include "orchestra.grpc.pb.h"
+#include "halo/halo.h"
+#include "halo.grpc.pb.h"
 #include "types.pb.h"
 #include "ipc.h"
 

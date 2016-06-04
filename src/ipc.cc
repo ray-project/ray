@@ -31,9 +31,9 @@ MemorySegmentPool::MemorySegmentPool(ObjStoreId objstoreid, bool create) : objst
 // creates a memory segment if it is not already there; if the pool is in create mode,
 // space is allocated, if it is in open mode, the shared memory is mapped into the process
 void MemorySegmentPool::open_segment(SegmentId segmentid, size_t size) {
-  ORCH_LOG(ORCH_DEBUG, "Opening segmentid " << segmentid << " on object store " << objstoreid_ << " with create_mode_ = " << create_mode_);
+  HALO_LOG(HALO_DEBUG, "Opening segmentid " << segmentid << " on object store " << objstoreid_ << " with create_mode_ = " << create_mode_);
   if (segmentid != segments_.size() && create_mode_) {
-    ORCH_LOG(ORCH_FATAL, "Object store " << objstoreid_ << " is attempting to open segmentid " << segmentid << " on the object store, but segments_.size() = " << segments_.size());
+    HALO_LOG(HALO_FATAL, "Object store " << objstoreid_ << " is attempting to open segmentid " << segmentid << " on the object store, but segments_.size() = " << segments_.size());
   }
   if (segmentid >= segments_.size()) { // resize and initialize segments_
     int current_size = segments_.size();
@@ -47,7 +47,7 @@ void MemorySegmentPool::open_segment(SegmentId segmentid, size_t size) {
     return;
   }
   if (segments_[segmentid].second == SegmentStatusType::CLOSED) {
-    ORCH_LOG(ORCH_FATAL, "Attempting to open segmentid " << segmentid << ", but segments_[segmentid].second == SegmentStatusType::CLOSED.");
+    HALO_LOG(HALO_FATAL, "Attempting to open segmentid " << segmentid << ", but segments_[segmentid].second == SegmentStatusType::CLOSED.");
   }
   std::string segment_name = get_segment_name(segmentid);
   if (create_mode_) {
@@ -61,7 +61,7 @@ void MemorySegmentPool::open_segment(SegmentId segmentid, size_t size) {
 }
 
 void MemorySegmentPool::close_segment(SegmentId segmentid) {
-  ORCH_LOG(ORCH_DEBUG, "closing segmentid " << segmentid);
+  HALO_LOG(HALO_DEBUG, "closing segmentid " << segmentid);
   std::string segment_name = get_segment_name(segmentid);
   shared_memory_object::remove(segment_name.c_str());
   segments_[segmentid].first.reset();
@@ -70,7 +70,7 @@ void MemorySegmentPool::close_segment(SegmentId segmentid) {
 
 ObjHandle MemorySegmentPool::allocate(size_t size) {
   if (!create_mode_) { // allocate is called only by the object store
-    ORCH_LOG(ORCH_FATAL, "Attempting to call allocate, but create_mode_ is false");
+    HALO_LOG(HALO_FATAL, "Attempting to call allocate, but create_mode_ is false");
   }
   // TODO(pcm): at the moment, this always creates a new segment, this will be changed
   SegmentId segmentid = segments_.size();
@@ -91,7 +91,7 @@ void MemorySegmentPool::deallocate(ObjHandle pointer) {
 // the process that will use the address
 uint8_t* MemorySegmentPool::get_address(ObjHandle pointer) {
   if (create_mode_ && segments_[pointer.segmentid()].second != SegmentStatusType::OPENED) {
-    ORCH_LOG(ORCH_FATAL, "Object store " << objstoreid_ << " is attempting to call get_address on segmentid " << pointer.segmentid() << ", which has not been opened yet.");
+    HALO_LOG(HALO_FATAL, "Object store " << objstoreid_ << " is attempting to call get_address on segmentid " << pointer.segmentid() << ", which has not been opened yet.");
   }
   if (!create_mode_) {
     open_segment(pointer.segmentid());

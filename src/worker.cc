@@ -5,12 +5,12 @@
 #include <pynumbuf/serialize.h>
 
 extern "C" {
-  static PyObject *OrchPyError;
+  static PyObject *HaloError;
 }
 
 Status WorkerServiceImpl::ExecuteTask(ServerContext* context, const ExecuteTaskRequest* request, ExecuteTaskReply* reply) {
   task_ = request->task(); // Copy task
-  ORCH_LOG(ORCH_INFO, "invoked task " << request->task().name());
+  HALO_LOG(HALO_INFO, "invoked task " << request->task().name());
   Task* taskptr = &task_;
   send_queue_.send(&taskptr);
   return Status::OK;
@@ -26,7 +26,7 @@ Worker::Worker(const std::string& worker_address, std::shared_ptr<Channel> sched
 
 SubmitTaskReply Worker::submit_task(SubmitTaskRequest* request) {
   if (!connected_) {
-    ORCH_LOG(ORCH_FATAL, "Attempting to perform submit_task, but connected_ = " << connected_ << ".");
+    HALO_LOG(HALO_FATAL, "Attempting to perform submit_task, but connected_ = " << connected_ << ".");
   }
   SubmitTaskReply reply;
   ClientContext context;
@@ -52,7 +52,7 @@ void Worker::register_worker(const std::string& worker_address, const std::strin
 
 void Worker::request_object(ObjRef objref) {
   if (!connected_) {
-    ORCH_LOG(ORCH_FATAL, "Attempting to perform request_object, but connected_ = " << connected_ << ".");
+    HALO_LOG(HALO_FATAL, "Attempting to perform request_object, but connected_ = " << connected_ << ".");
   }
   RequestObjRequest request;
   request.set_workerid(workerid_);
@@ -66,7 +66,7 @@ void Worker::request_object(ObjRef objref) {
 ObjRef Worker::get_objref() {
   // first get objref for the new object
   if (!connected_) {
-    ORCH_LOG(ORCH_FATAL, "Attempting to perform get_objref, but connected_ = " << connected_ << ".");
+    HALO_LOG(HALO_FATAL, "Attempting to perform get_objref, but connected_ = " << connected_ << ".");
   }
   PushObjRequest push_request;
   PushObjReply push_reply;
@@ -78,7 +78,7 @@ ObjRef Worker::get_objref() {
 slice Worker::get_object(ObjRef objref) {
   // get_object assumes that objref is a canonical objref
   if (!connected_) {
-    ORCH_LOG(ORCH_FATAL, "Attempting to perform get_object, but connected_ = " << connected_ << ".");
+    HALO_LOG(HALO_FATAL, "Attempting to perform get_object, but connected_ = " << connected_ << ".");
   }
   ObjRequest request;
   request.workerid = workerid_;
@@ -97,7 +97,7 @@ slice Worker::get_object(ObjRef objref) {
 // contained_objrefs is a vector of all the objrefs contained in obj
 void Worker::put_object(ObjRef objref, const Obj* obj, std::vector<ObjRef> &contained_objrefs) {
   if (!connected_) {
-    ORCH_LOG(ORCH_FATAL, "Attempting to perform put_object, but connected_ = " << connected_ << ".");
+    HALO_LOG(HALO_FATAL, "Attempting to perform put_object, but connected_ = " << connected_ << ".");
   }
   std::string data;
   obj->SerializeToString(&data); // TODO(pcm): get rid of this serialization
@@ -108,7 +108,7 @@ void Worker::put_object(ObjRef objref, const Obj* obj, std::vector<ObjRef> &cont
   request.size = data.size();
   request_obj_queue_.send(&request);
   if (contained_objrefs.size() > 0) {
-    ORCH_LOG(ORCH_REFCOUNT, "In put_object, calling increment_reference_count for contained objrefs");
+    HALO_LOG(HALO_REFCOUNT, "In put_object, calling increment_reference_count for contained objrefs");
     increment_reference_count(contained_objrefs); // Notify the scheduler that some object references are serialized in the objstore.
   }
   ObjHandle result;
@@ -135,14 +135,14 @@ void Worker::put_object(ObjRef objref, const Obj* obj, std::vector<ObjRef> &cont
     arrow::Status _s = (s);                                     \
     if (!_s.ok()) {                                             \
       std::string _errmsg = std::string(msg) + _s.ToString();   \
-      PyErr_SetString(OrchPyError, _errmsg.c_str());            \
+      PyErr_SetString(HaloError, _errmsg.c_str());            \
       return NULL;                                              \
     }                                                           \
   } while (0);
 
 PyObject* Worker::put_arrow(ObjRef objref, PyObject* value) {
   if (!connected_) {
-    ORCH_LOG(ORCH_FATAL, "Attempting to perform put_arrow, but connected_ = " << connected_ << ".");
+    HALO_LOG(HALO_FATAL, "Attempting to perform put_arrow, but connected_ = " << connected_ << ".");
   }
   ObjRequest request;
   pynumbuf::PythonObjectWriter writer;
@@ -168,7 +168,7 @@ PyObject* Worker::put_arrow(ObjRef objref, PyObject* value) {
 
 PyObject* Worker::get_arrow(ObjRef objref) {
   if (!connected_) {
-    ORCH_LOG(ORCH_FATAL, "Attempting to perform get_arrow, but connected_ = " << connected_ << ".");
+    HALO_LOG(HALO_FATAL, "Attempting to perform get_arrow, but connected_ = " << connected_ << ".");
   }
   ObjRequest request;
   request.workerid = workerid_;
@@ -186,7 +186,7 @@ PyObject* Worker::get_arrow(ObjRef objref) {
 
 bool Worker::is_arrow(ObjRef objref) {
   if (!connected_) {
-    ORCH_LOG(ORCH_FATAL, "Attempting to perform is_arrow, but connected_ = " << connected_ << ".");
+    HALO_LOG(HALO_FATAL, "Attempting to perform is_arrow, but connected_ = " << connected_ << ".");
   }
   ObjRequest request;
   request.workerid = workerid_;
@@ -200,7 +200,7 @@ bool Worker::is_arrow(ObjRef objref) {
 
 void Worker::alias_objrefs(ObjRef alias_objref, ObjRef target_objref) {
   if (!connected_) {
-    ORCH_LOG(ORCH_FATAL, "Attempting to perform alias_objrefs, but connected_ = " << connected_ << ".");
+    HALO_LOG(HALO_FATAL, "Attempting to perform alias_objrefs, but connected_ = " << connected_ << ".");
   }
   ClientContext context;
   AliasObjRefsRequest request;
@@ -212,14 +212,14 @@ void Worker::alias_objrefs(ObjRef alias_objref, ObjRef target_objref) {
 
 void Worker::increment_reference_count(std::vector<ObjRef> &objrefs) {
   if (!connected_) {
-    ORCH_LOG(ORCH_DEBUG, "Attempting to increment_reference_count for objrefs, but connected_ = " << connected_ << " so returning instead.");
+    HALO_LOG(HALO_DEBUG, "Attempting to increment_reference_count for objrefs, but connected_ = " << connected_ << " so returning instead.");
     return;
   }
   if (objrefs.size() > 0) {
     ClientContext context;
     IncrementRefCountRequest request;
     for (int i = 0; i < objrefs.size(); ++i) {
-      ORCH_LOG(ORCH_REFCOUNT, "Incrementing reference count for objref " << objrefs[i]);
+      HALO_LOG(HALO_REFCOUNT, "Incrementing reference count for objref " << objrefs[i]);
       request.add_objref(objrefs[i]);
     }
     AckReply reply;
@@ -229,14 +229,14 @@ void Worker::increment_reference_count(std::vector<ObjRef> &objrefs) {
 
 void Worker::decrement_reference_count(std::vector<ObjRef> &objrefs) {
   if (!connected_) {
-    ORCH_LOG(ORCH_DEBUG, "Attempting to decrement_reference_count, but connected_ = " << connected_ << " so returning instead.");
+    HALO_LOG(HALO_DEBUG, "Attempting to decrement_reference_count, but connected_ = " << connected_ << " so returning instead.");
     return;
   }
   if (objrefs.size() > 0) {
     ClientContext context;
     DecrementRefCountRequest request;
     for (int i = 0; i < objrefs.size(); ++i) {
-      ORCH_LOG(ORCH_REFCOUNT, "Decrementing reference count for objref " << objrefs[i]);
+      HALO_LOG(HALO_REFCOUNT, "Decrementing reference count for objref " << objrefs[i]);
       request.add_objref(objrefs[i]);
     }
     AckReply reply;
@@ -246,7 +246,7 @@ void Worker::decrement_reference_count(std::vector<ObjRef> &objrefs) {
 
 void Worker::register_function(const std::string& name, size_t num_return_vals) {
   if (!connected_) {
-    ORCH_LOG(ORCH_FATAL, "Attempting to perform register_function, but connected_ = " << connected_ << ".");
+    HALO_LOG(HALO_FATAL, "Attempting to perform register_function, but connected_ = " << connected_ << ".");
   }
   ClientContext context;
   RegisterFunctionRequest request;
@@ -265,7 +265,7 @@ Task* Worker::receive_next_task() {
 
 void Worker::notify_task_completed() {
   if (!connected_) {
-    ORCH_LOG(ORCH_FATAL, "Attempting to perform notify_task_completed, but connected_ = " << connected_ << ".");
+    HALO_LOG(HALO_FATAL, "Attempting to perform notify_task_completed, but connected_ = " << connected_ << ".");
   }
   ClientContext context;
   WorkerReadyRequest request;
@@ -285,7 +285,7 @@ bool Worker::connected() {
 // TODO(rkn): Should we be using pointers or references? And should they be const?
 void Worker::scheduler_info(ClientContext &context, SchedulerInfoRequest &request, SchedulerInfoReply &reply) {
   if (!connected_) {
-    ORCH_LOG(ORCH_FATAL, "Attempting to get scheduler info, but connected_ = " << connected_ << ".");
+    HALO_LOG(HALO_FATAL, "Attempting to get scheduler info, but connected_ = " << connected_ << ".");
   }
   scheduler_stub_->SchedulerInfo(&context, request, &reply);
 }
@@ -306,7 +306,7 @@ void Worker::start_worker_service() {
     builder.AddListeningPort(std::string("0.0.0.0:") + port, grpc::InsecureServerCredentials());
     builder.RegisterService(&service);
     std::unique_ptr<Server> server(builder.BuildAndStart());
-    ORCH_LOG(ORCH_INFO, "worker server listening on " << service_address);
+    HALO_LOG(HALO_INFO, "worker server listening on " << service_address);
     server->Wait();
   });
 }

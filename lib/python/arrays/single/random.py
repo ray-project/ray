@@ -1,7 +1,7 @@
 from typing import List
 import numpy as np
-import orchpy as op
+import halo
 
-@op.distributed([List[int]], [np.ndarray])
+@halo.distributed([List[int]], [np.ndarray])
 def normal(shape):
   return np.random.normal(size=shape)

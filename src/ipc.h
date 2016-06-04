@@ -1,5 +1,5 @@
-#ifndef ORCHESTRA_IPC_H
-#define ORCHESTRA_IPC_H
+#ifndef HALO_IPC_H
+#define HALO_IPC_H
 
 #include <iostream>
 #include <limits>
@@ -10,7 +10,7 @@
 #include <arrow/api.h>
 #include <arrow/ipc/memory.h>
 
-#include "orchestra/orchestra.h"
+#include "halo/halo.h"
 
 using namespace boost::interprocess;
 
@@ -42,7 +42,7 @@ public:
         queue_ = std::unique_ptr<message_queue>(new message_queue(open_only, name.c_str()));
       }
     } catch(interprocess_exception &ex) {
-      ORCH_LOG(ORCH_FATAL, "boost::interprocess exception: " << ex.what());
+      HALO_LOG(HALO_FATAL, "boost::interprocess exception: " << ex.what());
     }
     return true;
   };
@@ -55,7 +55,7 @@ public:
     try {
       queue_->send(object, sizeof(T), 0);
     } catch(interprocess_exception &ex) {
-      ORCH_LOG(ORCH_FATAL, "boost::interprocess exception: " << ex.what());
+      HALO_LOG(HALO_FATAL, "boost::interprocess exception: " << ex.what());
     }
     return true;
   };
@@ -66,7 +66,7 @@ public:
     try {
       queue_->receive(object, sizeof(T), recvd_size, priority);
     } catch(interprocess_exception &ex) {
-      ORCH_LOG(ORCH_FATAL, "boost::interprocess exception: " << ex.what());
+      HALO_LOG(HALO_FATAL, "boost::interprocess exception: " << ex.what());
     }
     return true;
   }

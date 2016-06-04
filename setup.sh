@@ -12,5 +12,5 @@ mkdir -p ../../../build
 cd ../../../build
 cmake ..
 sudo make install
-cd ../lib/orchpy
+cd ../lib/python
 sudo python setup.py install

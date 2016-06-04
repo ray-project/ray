@@ -8,7 +8,7 @@ const size_t ObjStoreService::CHUNK_SIZE = 8 * 1024;
 // this method needs to be protected by a objstore_lock_
 // TODO(rkn): Make sure that we do not in fact need the objstore_lock_. We want multiple deliveries to be able to happen simultaneously.
 void ObjStoreService::pull_data_from(ObjRef objref, ObjStore::Stub& stub) {
-  ORCH_LOG(ORCH_DEBUG, "Objstore " << objstoreid_ << " is beginning to pull objref " << objref);
+  HALO_LOG(HALO_DEBUG, "Objstore " << objstoreid_ << " is beginning to pull objref " << objref);
   ObjChunk chunk;
   ClientContext context;
   StreamObjToRequest stream_request;
@@ -27,7 +27,7 @@ void ObjStoreService::pull_data_from(ObjRef objref, ObjStore::Stub& stub) {
   segmentpool_lock_.unlock();
   do {
     if (num_bytes + chunk.data().size() > total_size) {
-      ORCH_LOG(ORCH_FATAL, "The reader attempted to stream too many bytes.");
+      HALO_LOG(HALO_FATAL, "The reader attempted to stream too many bytes.");
     }
     std::memcpy(data, chunk.data().c_str(), chunk.data().size());
     data += chunk.data().size();
@@ -37,10 +37,10 @@ void ObjStoreService::pull_data_from(ObjRef objref, ObjStore::Stub& stub) {
 
   // finalize object
   if (num_bytes != total_size) {
-    ORCH_LOG(ORCH_FATAL, "Streamed objref " << objref << ", but num_bytes != total_size");
+    HALO_LOG(HALO_FATAL, "Streamed objref " << objref << ", but num_bytes != total_size");
   }
   object_ready(objref, chunk.metadata_offset());
-  ORCH_LOG(ORCH_DEBUG, "finished streaming data, objref was " << objref << " and size was " << num_bytes);
+  HALO_LOG(HALO_DEBUG, "finished streaming data, objref was " << objref << " and size was " << num_bytes);
 }
 
 ObjStoreService::ObjStoreService(const std::string& objstore_address, std::shared_ptr<Channel> scheduler_channel)
@@ -79,10 +79,10 @@ Status ObjStoreService::StartDelivery(ServerContext* context, const StartDeliver
     if (memory_[objref].second == MemoryStatusType::NOT_PRESENT) {
     }
     else if (memory_[objref].second == MemoryStatusType::DEALLOCATED) {
-      ORCH_LOG(ORCH_FATAL, "Objstore " << objstoreid_ << " is attempting to get objref " << objref << ", but memory_[objref] == DEALLOCATED.");
+      HALO_LOG(HALO_FATAL, "Objstore " << objstoreid_ << " is attempting to get objref " << objref << ", but memory_[objref] == DEALLOCATED.");
     }
     else {
-      ORCH_LOG(ORCH_DEBUG, "Objstore " << objstoreid_ << " already has objref " << objref << " or it is already being shipped, so no need to pull it again.");
+      HALO_LOG(HALO_DEBUG, "Objstore " << objstoreid_ << " already has objref " << objref << " or it is already being shipped, so no need to pull it again.");
       return Status::OK;
     }
     memory_[objref].second = MemoryStatusType::PRE_ALLOCED;
@@ -115,15 +115,15 @@ Status ObjStoreService::ObjStoreInfo(ServerContext* context, const ObjStoreInfoR
 }
 
 Status ObjStoreService::StreamObjTo(ServerContext* context, const StreamObjToRequest* request, ServerWriter<ObjChunk>* writer) {
-  ORCH_LOG(ORCH_DEBUG, "begin to stream data from object store " << objstoreid_);
+  HALO_LOG(HALO_DEBUG, "begin to stream data from object store " << objstoreid_);
   ObjChunk chunk;
   ObjRef objref = request->objref();
   memory_lock_.lock();
   if (objref >= memory_.size()) {
-    ORCH_LOG(ORCH_FATAL, "Objstore " << objstoreid_ << " is attempting to use objref " << objref << " in StreamObjTo, but this objref is not present in the object store.");
+    HALO_LOG(HALO_FATAL, "Objstore " << objstoreid_ << " is attempting to use objref " << objref << " in StreamObjTo, but this objref is not present in the object store.");
   }
   if (memory_[objref].second != MemoryStatusType::READY) {
-    ORCH_LOG(ORCH_FATAL, "Objstore " << objstoreid_ << " is attempting to stream objref " << objref << ", but memory_[objref].second != MemoryStatusType::READY.");
+    HALO_LOG(HALO_FATAL, "Objstore " << objstoreid_ << " is attempting to stream objref " << objref << ", but memory_[objref].second != MemoryStatusType::READY.");
   }
   ObjHandle handle = memory_[objref].first;
   memory_lock_.unlock(); // TODO(rkn): Make sure we don't still need to hold on to this lock.
@@ -136,7 +136,7 @@ Status ObjStoreService::StreamObjTo(ServerContext* context, const StreamObjToReq
     chunk.set_total_size(size);
     chunk.set_data(head + i, std::min(CHUNK_SIZE, size - i));
     if (!writer->Write(chunk)) {
-      ORCH_LOG(ORCH_FATAL, "stream connection prematurely closed")
+      HALO_LOG(HALO_FATAL, "stream connection prematurely closed")
     }
   }
   return Status::OK;
@@ -146,20 +146,20 @@ Status ObjStoreService::NotifyAlias(ServerContext* context, const NotifyAliasReq
   // NotifyAlias assumes that the objstore already holds canonical_objref
   ObjRef alias_objref = request->alias_objref();
   ObjRef canonical_objref = request->canonical_objref();
-  ORCH_LOG(ORCH_DEBUG, "Aliasing objref " << alias_objref << " with objref " << canonical_objref);
+  HALO_LOG(HALO_DEBUG, "Aliasing objref " << alias_objref << " with objref " << canonical_objref);
   {
     std::lock_guard<std::mutex> memory_lock(memory_lock_);
     if (canonical_objref >= memory_.size()) {
-      ORCH_LOG(ORCH_FATAL, "Attempting to alias objref " << alias_objref << " with objref " << canonical_objref << ", but objref " << canonical_objref << " is not in the objstore.")
+      HALO_LOG(HALO_FATAL, "Attempting to alias objref " << alias_objref << " with objref " << canonical_objref << ", but objref " << canonical_objref << " is not in the objstore.")
     }
     if (memory_[canonical_objref].second == MemoryStatusType::NOT_READY) {
-      ORCH_LOG(ORCH_FATAL, "Attempting to alias objref " << alias_objref << " with objref " << canonical_objref << ", but objref " << canonical_objref << " is not ready yet in the objstore.")
+      HALO_LOG(HALO_FATAL, "Attempting to alias objref " << alias_objref << " with objref " << canonical_objref << ", but objref " << canonical_objref << " is not ready yet in the objstore.")
     }
     if (memory_[canonical_objref].second == MemoryStatusType::NOT_PRESENT) {
-      ORCH_LOG(ORCH_FATAL, "Attempting to alias objref " << alias_objref << " with objref " << canonical_objref << ", but objref " << canonical_objref << " is not present in the objstore.")
+      HALO_LOG(HALO_FATAL, "Attempting to alias objref " << alias_objref << " with objref " << canonical_objref << ", but objref " << canonical_objref << " is not present in the objstore.")
     }
     if (memory_[canonical_objref].second == MemoryStatusType::DEALLOCATED) {
-      ORCH_LOG(ORCH_FATAL, "Attempting to alias objref " << alias_objref << " with objref " << canonical_objref << ", but objref " << canonical_objref << " has already been deallocated.")
+      HALO_LOG(HALO_FATAL, "Attempting to alias objref " << alias_objref << " with objref " << canonical_objref << ", but objref " << canonical_objref << " has already been deallocated.")
     }
     if (alias_objref >= memory_.size()) {
       memory_.resize(alias_objref + 1, std::make_pair(ObjHandle(), MemoryStatusType::NOT_PRESENT));
@@ -176,13 +176,13 @@ Status ObjStoreService::NotifyAlias(ServerContext* context, const NotifyAliasReq
 
 Status ObjStoreService::DeallocateObject(ServerContext* context, const DeallocateObjectRequest* request, AckReply* reply) {
   ObjRef canonical_objref = request->canonical_objref();
-  ORCH_LOG(ORCH_REFCOUNT, "Deallocating canonical_objref " << canonical_objref);
+  HALO_LOG(HALO_REFCOUNT, "Deallocating canonical_objref " << canonical_objref);
   std::lock_guard<std::mutex> memory_lock(memory_lock_);
   if (memory_[canonical_objref].second != MemoryStatusType::READY) {
-    ORCH_LOG(ORCH_FATAL, "Attempting to deallocate canonical_objref " << canonical_objref << ", but memory_[canonical_objref].second = " << memory_[canonical_objref].second);
+    HALO_LOG(HALO_FATAL, "Attempting to deallocate canonical_objref " << canonical_objref << ", but memory_[canonical_objref].second = " << memory_[canonical_objref].second);
   }
   if (canonical_objref >= memory_.size()) {
-    ORCH_LOG(ORCH_FATAL, "Attempting to deallocate canonical_objref " << canonical_objref << ", but it is not in the objstore.");
+    HALO_LOG(HALO_FATAL, "Attempting to deallocate canonical_objref " << canonical_objref << ", but it is not in the objstore.");
   }
   segmentpool_lock_.lock();
   segmentpool_->deallocate(memory_[canonical_objref].first);
@@ -208,7 +208,7 @@ void ObjStoreService::process_objstore_request(const ObjRequest request) {
       }
       break;
     default: {
-        ORCH_LOG(ORCH_FATAL, "Attempting to process request of type " <<  request.type << ". This code should be unreachable.");
+        HALO_LOG(HALO_FATAL, "Attempting to process request of type " <<  request.type << ". This code should be unreachable.");
       }
   }
 }
@@ -237,13 +237,13 @@ void ObjStoreService::process_worker_request(const ObjRequest request) {
         std::lock_guard<std::mutex> memory_lock(memory_lock_);
         std::pair<ObjHandle, MemoryStatusType>& item = memory_[request.objref];
         if (item.second == MemoryStatusType::READY) {
-          ORCH_LOG(ORCH_DEBUG, "Responding to GET request: returning objref " << request.objref);
+          HALO_LOG(HALO_DEBUG, "Responding to GET request: returning objref " << request.objref);
           send_queues_[request.workerid].send(&item.first);
         } else if (item.second == MemoryStatusType::NOT_READY || item.second == MemoryStatusType::NOT_PRESENT || item.second == MemoryStatusType::PRE_ALLOCED) {
           std::lock_guard<std::mutex> lock(pull_queue_lock_);
           pull_queue_.push_back(std::make_pair(request.workerid, request.objref));
         } else {
-          ORCH_LOG(ORCH_FATAL, "A worker requested objref " << request.objref << ", but memory_[objref].second = " << memory_[request.objref].second);
+          HALO_LOG(HALO_FATAL, "A worker requested objref " << request.objref << ", but memory_[objref].second = " << memory_[request.objref].second);
         }
       }
       break;
@@ -252,7 +252,7 @@ void ObjStoreService::process_worker_request(const ObjRequest request) {
       }
       break;
     default: {
-        ORCH_LOG(ORCH_FATAL, "Attempting to process request of type " <<  request.type << ". This code should be unreachable.");
+        HALO_LOG(HALO_FATAL, "Attempting to process request of type " <<  request.type << ". This code should be unreachable.");
       }
   }
 }
@@ -264,17 +264,17 @@ void ObjStoreService::process_requests() {
     recv_queue_.receive(&request);
     switch (request.type) {
       case ObjRequestType::ALLOC: {
-          ORCH_LOG(ORCH_VERBOSE, "Request (worker " << request.workerid << " to objstore " << objstoreid_ << "): Allocate object with objref " << request.objref << " and size " << request.size);
+          HALO_LOG(HALO_VERBOSE, "Request (worker " << request.workerid << " to objstore " << objstoreid_ << "): Allocate object with objref " << request.objref << " and size " << request.size);
           process_worker_request(request);
         }
         break;
       case ObjRequestType::GET: {
-          ORCH_LOG(ORCH_VERBOSE, "Request (worker " << request.workerid << " to objstore " << objstoreid_ << "): Get object with objref " << request.objref);
+          HALO_LOG(HALO_VERBOSE, "Request (worker " << request.workerid << " to objstore " << objstoreid_ << "): Get object with objref " << request.objref);
           process_worker_request(request);
         }
         break;
       case ObjRequestType::WORKER_DONE: {
-          ORCH_LOG(ORCH_VERBOSE, "Request (worker " << request.workerid << " to objstore " << objstoreid_ << "): Finalize object with objref " << request.objref);
+          HALO_LOG(HALO_VERBOSE, "Request (worker " << request.workerid << " to objstore " << objstoreid_ << "): Finalize object with objref " << request.objref);
           process_worker_request(request);
         }
         break;
@@ -283,7 +283,7 @@ void ObjStoreService::process_requests() {
         }
         break;
       default: {
-          ORCH_LOG(ORCH_FATAL, "Attempting to process request of type " <<  request.type << ". This code should be unreachable.");
+          HALO_LOG(HALO_FATAL, "Attempting to process request of type " <<  request.type << ". This code should be unreachable.");
         }
     }
   }
@@ -309,9 +309,9 @@ ObjHandle ObjStoreService::alloc(ObjRef objref, size_t size) {
   ObjHandle handle = segmentpool_->allocate(size);
   segmentpool_lock_.unlock();
   std::lock_guard<std::mutex> memory_lock(memory_lock_);
-  ORCH_LOG(ORCH_VERBOSE, "Allocating space for objref " << objref << " on object store " << objstoreid_);
+  HALO_LOG(HALO_VERBOSE, "Allocating space for objref " << objref << " on object store " << objstoreid_);
   if (memory_[objref].second != MemoryStatusType::NOT_PRESENT && memory_[objref].second != MemoryStatusType::PRE_ALLOCED) {
-    ORCH_LOG(ORCH_FATAL, "Attempting to allocate space for objref " << objref << ", but memory_[objref].second = " << memory_[objref].second);
+    HALO_LOG(HALO_FATAL, "Attempting to allocate space for objref " << objref << ", but memory_[objref].second = " << memory_[objref].second);
   }
   memory_[objref].first = handle;
   memory_[objref].second = MemoryStatusType::NOT_READY;
@@ -323,7 +323,7 @@ void ObjStoreService::object_ready(ObjRef objref, size_t metadata_offset) {
     std::lock_guard<std::mutex> memory_lock(memory_lock_);
     std::pair<ObjHandle, MemoryStatusType>& item = memory_[objref];
     if (item.second != MemoryStatusType::NOT_READY) {
-      ORCH_LOG(ORCH_FATAL, "A worker notified the object store that objref " << objref << " has been written to the object store, but memory_[objref].second != NOT_READY.");
+      HALO_LOG(HALO_FATAL, "A worker notified the object store that objref " << objref << " has been written to the object store, but memory_[objref].second != NOT_READY.");
     }
     item.first.set_metadata_offset(metadata_offset);
     item.second = MemoryStatusType::READY;
@@ -341,14 +341,14 @@ void ObjStoreService::object_ready(ObjRef objref, size_t metadata_offset) {
 
 void ObjStoreService::start_objstore_service() {
   communicator_thread_ = std::thread([this]() {
-    ORCH_LOG(ORCH_INFO, "started object store communicator server");
+    HALO_LOG(HALO_INFO, "started object store communicator server");
     process_requests();
   });
 }
 
 void start_objstore(const char* scheduler_addr, const char* objstore_addr) {
   auto scheduler_channel = grpc::CreateChannel(scheduler_addr, grpc::InsecureChannelCredentials());
-  ORCH_LOG(ORCH_INFO, "object store " << objstore_addr << " connected to scheduler " << scheduler_addr);
+  HALO_LOG(HALO_INFO, "object store " << objstore_addr << " connected to scheduler " << scheduler_addr);
   std::string objstore_address(objstore_addr);
   ObjStoreService service(objstore_address, scheduler_channel);
   service.start_objstore_service();
@@ -365,7 +365,7 @@ void start_objstore(const char* scheduler_addr, const char* objstore_addr) {
 
 int main(int argc, char** argv) {
   if (argc != 3) {
-    ORCH_LOG(ORCH_FATAL, "object store: expected two arguments (scheduler ip address and object store ip address)");
+    HALO_LOG(HALO_FATAL, "object store: expected two arguments (scheduler ip address and object store ip address)");
     return 1;
   }
 
