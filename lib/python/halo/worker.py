@@ -60,7 +60,7 @@ def register_module(module, recursive=False, worker=global_worker):
   print "registering functions in module {}.".format(module.__name__)
   for name in dir(module):
     val = getattr(module, name)
-    if hasattr(val, "is_distributed") and val.is_distributed:
+    if hasattr(val, "is_remote") and val.is_remote:
       print "registering {}.".format(val.func_name)
       worker.register_function(val)
     # elif recursive and isinstance(val, ModuleType):
@@ -97,17 +97,17 @@ def main_loop(worker=global_worker):
     task = halo.lib.wait_for_next_task(worker.handle)
     process_task(task)
 
-def distributed(arg_types, return_types, worker=global_worker):
-  def distributed_decorator(func):
+def remote(arg_types, return_types, worker=global_worker):
+  def remote_decorator(func):
     def func_executor(arguments):
-      """This is what gets executed remotely on a worker after a distributed function is scheduled by the scheduler."""
+      """This is what gets executed remotely on a worker after a remote function is scheduled by the scheduler."""
       print "Calling function {}".format(func.__name__)
       result = func(*arguments)
       check_return_values(func_call, result) # throws an exception if result is invalid
       print "Finished executing function {}".format(func.__name__)
       return result
     def func_call(*args, **kwargs):
-      """This is what gets run immediately when a worker calls a distributed function."""
+      """This is what gets run immediately when a worker calls a remote function."""
       args = list(args)
       args.extend([kwargs[keyword] if kwargs.has_key(keyword) else default for keyword, default in func_call.keyword_defaults[len(args):]]) # fill in the remaining arguments
       check_arguments(func_call, args) # throws an exception if args are invalid
@@ -117,23 +117,23 @@ def distributed(arg_types, return_types, worker=global_worker):
     func_call.executor = func_executor
     func_call.arg_types = arg_types
     func_call.return_types = return_types
-    func_call.is_distributed = True
+    func_call.is_remote = True
     func_call.keyword_defaults = [(k, v.default) for k, v in funcsigs.signature(func).parameters.iteritems()]
     return func_call
-  return distributed_decorator
+  return remote_decorator
 
 # helper method, this should not be called by the user
 def check_return_values(function, result):
   if len(function.return_types) == 1:
     result = (result,)
     # if not isinstance(result, function.return_types[0]):
-    #   raise Exception("The @distributed decorator for function {} expects one return value with type {}, but {} returned a {}.".format(function.__name__, function.return_types[0], function.__name__, type(result)))
+    #   raise Exception("The @remote decorator for function {} expects one return value with type {}, but {} returned a {}.".format(function.__name__, function.return_types[0], function.__name__, type(result)))
   else:
     if len(result) != len(function.return_types):
-      raise Exception("The @distributed decorator for function {} has {} return values with types {}, but {} returned {} values.".format(function.__name__, len(function.return_types), function.return_types, function.__name__, len(result)))
+      raise Exception("The @remote decorator for function {} has {} return values with types {}, but {} returned {} values.".format(function.__name__, len(function.return_types), function.return_types, function.__name__, len(result)))
     for i in range(len(result)):
       if (not isinstance(result[i], function.return_types[i])) and (not isinstance(result[i], halo.lib.ObjRef)):
-        raise Exception("The {}th return value for function {} has type {}, but the @distributed decorator expected a return value of type {} or an ObjRef.".format(i, function.__name__, type(result[i]), function.return_types[i]))
+        raise Exception("The {}th return value for function {} has type {}, but the @remote decorator expected a return value of type {} or an ObjRef.".format(i, function.__name__, type(result[i]), function.return_types[i]))
 
 # helper method, this should not be called by the user
 def check_arguments(function, args):

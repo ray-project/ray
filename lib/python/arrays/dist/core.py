@@ -69,12 +69,12 @@ class DistArray(object):
     a = self.assemble()
     return a[sliced]
 
-@halo.distributed([DistArray], [np.ndarray])
+@halo.remote([DistArray], [np.ndarray])
 def assemble(a):
   return a.assemble()
 
 # TODO(rkn): what should we call this method
-@halo.distributed([np.ndarray], [DistArray])
+@halo.remote([np.ndarray], [DistArray])
 def numpy_to_dist(a):
   result = DistArray(a.shape)
   for index in np.ndindex(*result.num_blocks):
@@ -83,28 +83,28 @@ def numpy_to_dist(a):
     result.objrefs[index] = halo.push(a[[slice(l, u) for (l, u) in zip(lower, upper)]])
   return result
 
-@halo.distributed([List[int], str], [DistArray])
+@halo.remote([List[int], str], [DistArray])
 def zeros(shape, dtype_name="float"):
   result = DistArray(shape)
   for index in np.ndindex(*result.num_blocks):
     result.objrefs[index] = single.zeros(DistArray.compute_block_shape(index, shape), dtype_name=dtype_name)
   return result
 
-@halo.distributed([List[int], str], [DistArray])
+@halo.remote([List[int], str], [DistArray])
 def ones(shape, dtype_name="float"):
   result = DistArray(shape)
   for index in np.ndindex(*result.num_blocks):
     result.objrefs[index] = single.ones(DistArray.compute_block_shape(index, shape), dtype_name=dtype_name)
   return result
 
-@halo.distributed([DistArray], [DistArray])
+@halo.remote([DistArray], [DistArray])
 def copy(a):
   result = DistArray(a.shape)
   for index in np.ndindex(*result.num_blocks):
     result.objrefs[index] = a.objrefs[index] # We don't need to actually copy the objects because cluster-level objects are assumed to be immutable.
   return result
 
-@halo.distributed([int, int, str], [DistArray])
+@halo.remote([int, int, str], [DistArray])
 def eye(dim1, dim2=-1, dtype_name="float"):
   dim2 = dim1 if dim2 == -1 else dim2
   shape = [dim1, dim2]
@@ -117,7 +117,7 @@ def eye(dim1, dim2=-1, dtype_name="float"):
       result.objrefs[i, j] = single.zeros(block_shape, dtype_name=dtype_name)
   return result
 
-@halo.distributed([DistArray], [DistArray])
+@halo.remote([DistArray], [DistArray])
 def triu(a):
   if a.ndim != 2:
     raise Exception("Input must have 2 dimensions, but a.ndim is " + str(a.ndim))
@@ -131,7 +131,7 @@ def triu(a):
       result.objrefs[i, j] = single.zeros_like(a.objrefs[i, j])
   return result
 
-@halo.distributed([DistArray], [DistArray])
+@halo.remote([DistArray], [DistArray])
 def tril(a):
   if a.ndim != 2:
     raise Exception("Input must have 2 dimensions, but a.ndim is " + str(a.ndim))
@@ -145,7 +145,7 @@ def tril(a):
       result.objrefs[i, j] = single.zeros_like(a.objrefs[i, j])
   return result
 
-@halo.distributed([np.ndarray, None], [np.ndarray])
+@halo.remote([np.ndarray, None], [np.ndarray])
 def blockwise_dot(*matrices):
   n = len(matrices)
   if n % 2 != 0:
@@ -156,7 +156,7 @@ def blockwise_dot(*matrices):
     result += np.dot(matrices[i], matrices[n / 2 + i])
   return result
 
-@halo.distributed([DistArray, DistArray], [DistArray])
+@halo.remote([DistArray, DistArray], [DistArray])
 def dot(a, b):
   if a.ndim != 2:
     raise Exception("dot expects its arguments to be 2-dimensional, but a.ndim = {}.".format(a.ndim))
@@ -172,7 +172,7 @@ def dot(a, b):
   return result
 
 # This is not in numpy, should we expose this?
-@halo.distributed([DistArray, List[int], None], [DistArray])
+@halo.remote([DistArray, List[int], None], [DistArray])
 def subblocks(a, *ranges):
   """
   This function produces a distributed array from a subset of the blocks in the `a`. The result and `a` will have the same number of dimensions.For example,
@@ -203,7 +203,7 @@ def subblocks(a, *ranges):
     result.objrefs[index] = a.objrefs[tuple([ranges[i][index[i]] for i in range(a.ndim)])]
   return result
 
-@halo.distributed([DistArray], [DistArray])
+@halo.remote([DistArray], [DistArray])
 def transpose(a):
   if a.ndim != 2:
     raise Exception("transpose expects its argument to be 2-dimensional, but a.ndim = {}, a.shape = {}.".format(a.ndim, a.shape))
@@ -214,7 +214,7 @@ def transpose(a):
   return result
 
 # TODO(rkn): support broadcasting?
-@halo.distributed([DistArray, DistArray], [DistArray])
+@halo.remote([DistArray, DistArray], [DistArray])
 def add(x1, x2):
   if x1.shape != x2.shape:
     raise Exception("add expects arguments `x1` and `x2` to have the same shape, but x1.shape = {}, and x2.shape = {}.".format(x1.shape, x2.shape))
@@ -224,7 +224,7 @@ def add(x1, x2):
   return result
 
 # TODO(rkn): support broadcasting?
-@halo.distributed([DistArray, DistArray], [DistArray])
+@halo.remote([DistArray, DistArray], [DistArray])
 def subtract(x1, x2):
   if x1.shape != x2.shape:
     raise Exception("subtract expects arguments `x1` and `x2` to have the same shape, but x1.shape = {}, and x2.shape = {}.".format(x1.shape, x2.shape))

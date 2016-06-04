@@ -10,15 +10,15 @@ However, to provide a more flexible API, we allow tasks to not only return
 values, but to also return object references to values. As an examples, consider
 the following code.
 ```python
-@halo.distributed([], [np.ndarray])
+@halo.remote([], [np.ndarray])
 def f()
   return np.zeros(5)
 
-@halo.distributed([], [np.ndarray])
+@halo.remote([], [np.ndarray])
 def g()
   return f()
 
-@halo.distributed([], [np.ndarray])
+@halo.remote([], [np.ndarray])
 def h()
   return g()
 ```

@@ -6,7 +6,7 @@ import halo
 
 from core import *
 
-@halo.distributed([List[int]], [DistArray])
+@halo.remote([List[int]], [DistArray])
 def normal(shape):
   num_blocks = DistArray.compute_num_blocks(shape)
   objrefs = np.empty(num_blocks, dtype=object)

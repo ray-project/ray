@@ -8,7 +8,7 @@ from core import *
 
 __all__ = ["tsqr", "modified_lu", "tsqr_hr", "qr"]
 
-@halo.distributed([DistArray], [DistArray, np.ndarray])
+@halo.remote([DistArray], [DistArray, np.ndarray])
 def tsqr(a):
   """
   arguments:
@@ -80,7 +80,7 @@ def tsqr(a):
   return q_result, r
 
 # TODO(rkn): This is unoptimized, we really want a block version of this.
-@halo.distributed([DistArray], [DistArray, np.ndarray, np.ndarray])
+@halo.remote([DistArray], [DistArray, np.ndarray, np.ndarray])
 def modified_lu(q):
   """
   Algorithm 5 from http://www.eecs.berkeley.edu/Pubs/TechRpts/2013/EECS-2013-175.pdf
@@ -110,19 +110,19 @@ def modified_lu(q):
   U = np.triu(q_work)[:b, :]
   return numpy_to_dist(halo.push(L)), U, S # TODO(rkn): get rid of push and pull
 
-@halo.distributed([np.ndarray, np.ndarray, np.ndarray, int], [np.ndarray, np.ndarray])
+@halo.remote([np.ndarray, np.ndarray, np.ndarray, int], [np.ndarray, np.ndarray])
 def tsqr_hr_helper1(u, s, y_top_block, b):
   y_top = y_top_block[:b, :b]
   s_full = np.diag(s)
   t = -1 * np.dot(u, np.dot(s_full, np.linalg.inv(y_top).T))
   return t, y_top
 
-@halo.distributed([np.ndarray, np.ndarray], [np.ndarray])
+@halo.remote([np.ndarray, np.ndarray], [np.ndarray])
 def tsqr_hr_helper2(s, r_temp):
   s_full = np.diag(s)
   return np.dot(s_full, r_temp)
 
-@halo.distributed([DistArray], [DistArray, np.ndarray, np.ndarray, np.ndarray])
+@halo.remote([DistArray], [DistArray, np.ndarray, np.ndarray, np.ndarray])
 def tsqr_hr(a):
   """Algorithm 6 from http://www.eecs.berkeley.edu/Pubs/TechRpts/2013/EECS-2013-175.pdf"""
   q, r_temp = tsqr(a)
@@ -132,15 +132,15 @@ def tsqr_hr(a):
   r = tsqr_hr_helper2(s, r_temp)
   return y, t, y_top, r
 
-@halo.distributed([np.ndarray, np.ndarray, np.ndarray, np.ndarray], [np.ndarray])
+@halo.remote([np.ndarray, np.ndarray, np.ndarray, np.ndarray], [np.ndarray])
 def qr_helper1(a_rc, y_ri, t, W_c):
   return a_rc - np.dot(y_ri, np.dot(t.T, W_c))
 
-@halo.distributed([np.ndarray, np.ndarray], [np.ndarray])
+@halo.remote([np.ndarray, np.ndarray], [np.ndarray])
 def qr_helper2(y_ri, a_rc):
   return np.dot(y_ri.T, a_rc)
 
-@halo.distributed([DistArray], [DistArray, DistArray])
+@halo.remote([DistArray], [DistArray, DistArray])
 def qr(a):
   """Algorithm 7 from http://www.eecs.berkeley.edu/Pubs/TechRpts/2013/EECS-2013-175.pdf"""
   m, n = a.shape[0], a.shape[1]
