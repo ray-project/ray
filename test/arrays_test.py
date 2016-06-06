@@ -81,7 +81,7 @@ class ArraysDistTest(unittest.TestCase):
   def testMethods(self):
     test_dir = os.path.dirname(os.path.abspath(__file__))
     test_path = os.path.join(test_dir, "testrecv.py")
-    services.start_singlenode_cluster(return_drivers=False, num_objstores=2, num_workers_per_objstore=8, worker_path=test_path)
+    services.start_singlenode_cluster(return_drivers=False, num_objstores=2, num_workers_per_objstore=5, worker_path=test_path)
 
     x = dist.zeros([9, 25, 51], "float")
     y = dist.assemble(x)
