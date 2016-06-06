@@ -21,7 +21,7 @@ class ArraysSingleTest(unittest.TestCase):
 
   def testMethods(self):
     test_dir = os.path.dirname(os.path.abspath(__file__))
-    test_path = os.path.join(test_dir, "testrecv.py")
+    test_path = os.path.join(test_dir, "test_worker.py")
     services.start_singlenode_cluster(return_drivers=False, num_workers_per_objstore=1, worker_path=test_path)
 
     # test eye
@@ -67,7 +67,7 @@ class ArraysDistTest(unittest.TestCase):
 
   def testAssemble(self):
     test_dir = os.path.dirname(os.path.abspath(__file__))
-    test_path = os.path.join(test_dir, "testrecv.py")
+    test_path = os.path.join(test_dir, "test_worker.py")
     services.start_singlenode_cluster(return_drivers=False, num_workers_per_objstore=1, worker_path=test_path)
 
     a = ra.ones([da.BLOCK_SIZE, da.BLOCK_SIZE])
@@ -80,7 +80,7 @@ class ArraysDistTest(unittest.TestCase):
 
   def testMethods(self):
     test_dir = os.path.dirname(os.path.abspath(__file__))
-    test_path = os.path.join(test_dir, "testrecv.py")
+    test_path = os.path.join(test_dir, "test_worker.py")
     services.start_singlenode_cluster(return_drivers=False, num_objstores=2, num_workers_per_objstore=5, worker_path=test_path)
 
     x = da.zeros([9, 25, 51], "float")
