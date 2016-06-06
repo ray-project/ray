@@ -1,5 +1,5 @@
 sudo apt-get update
-sudo apt-get install git cmake build-essential python-dev python-numpy automake autoconf libtool python-pip libboost-all-dev unzip
+sudo apt-get install -y git cmake build-essential python-dev python-numpy automake autoconf libtool python-pip libboost-all-dev unzip
 sudo pip install --ignore-installed six # getting rid of an old version of six, if it is installed (needed for Ubuntu 14.04)
 sudo pip install -r requirements.txt
 cd thirdparty

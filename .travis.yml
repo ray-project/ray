@@ -1,0 +1,18 @@
+sudo: required
+dist: trusty
+
+language: generic
+
+before_install:
+  - sudo apt-get -y update
+  - sudo apt-get -y install git
+  - sudo add-apt-repository --yes ppa:kalakris/cmake
+
+install:
+  - bash setup.sh
+
+script:
+  - cd test
+  - bash gen-python-code.sh
+  - python runtest.py
+  - python arrays_test.py
