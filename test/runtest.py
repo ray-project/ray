@@ -126,7 +126,7 @@ class SchedulerTest(unittest.TestCase):
 
   def testRemoteTask(self):
     test_dir = os.path.dirname(os.path.abspath(__file__))
-    test_path = os.path.join(test_dir, "testrecv.py")
+    test_path = os.path.join(test_dir, "test_worker.py")
     [w] = services.start_singlenode_cluster(return_drivers=True, num_workers_per_objstore=1, worker_path=test_path)
 
     value_before = "test_string"
@@ -176,7 +176,7 @@ class APITest(unittest.TestCase):
 
   def testObjRefAliasing(self):
     test_dir = os.path.dirname(os.path.abspath(__file__))
-    test_path = os.path.join(test_dir, "testrecv.py")
+    test_path = os.path.join(test_dir, "test_worker.py")
     [w] = services.start_singlenode_cluster(return_drivers=True, num_workers_per_objstore=3, worker_path=test_path)
 
     objref = w.submit_task("test_functions.test_alias_f", [])
@@ -190,7 +190,7 @@ class APITest(unittest.TestCase):
 
   def testKeywordArgs(self):
     test_dir = os.path.dirname(os.path.abspath(__file__))
-    test_path = os.path.join(test_dir, "testrecv.py")
+    test_path = os.path.join(test_dir, "test_worker.py")
     services.start_singlenode_cluster(return_drivers=False, num_workers_per_objstore=1, worker_path=test_path)
 
     x = test_functions.keyword_fct1(1)
@@ -228,7 +228,7 @@ class APITest(unittest.TestCase):
 
   def testVariableNumberOfArgs(self):
     test_dir = os.path.dirname(os.path.abspath(__file__))
-    test_path = os.path.join(test_dir, "testrecv.py")
+    test_path = os.path.join(test_dir, "test_worker.py")
     services.start_singlenode_cluster(return_drivers=False, num_workers_per_objstore=1, worker_path=test_path)
 
     x = test_functions.varargs_fct1(0, 1, 2)
@@ -245,7 +245,7 @@ class ReferenceCountingTest(unittest.TestCase):
 
   def testDeallocation(self):
     test_dir = os.path.dirname(os.path.abspath(__file__))
-    test_path = os.path.join(test_dir, "testrecv.py")
+    test_path = os.path.join(test_dir, "test_worker.py")
     services.start_singlenode_cluster(return_drivers=False, num_workers_per_objstore=3, worker_path=test_path)
 
     x = test_functions.test_alias_f()
