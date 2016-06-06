@@ -6,8 +6,8 @@ import halo.services as services
 import halo.worker as worker
 
 import test_functions
-import arrays.single as single
-import arrays.dist as dist
+import halo.arrays.remote as ra
+import halo.arrays.distributed as da
 
 from grpc.beta import implementations
 import halo_pb2

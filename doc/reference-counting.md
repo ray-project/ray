@@ -77,14 +77,14 @@ because they must be passed into `AliasObjRefs` at some point).
 The following problem has not yet been resolved. In the following code, the
 result `x` will be garbage.
 ```python
-x = halo.pull(single.zeros([10, 10], "float"))
+x = halo.pull(ra.zeros([10, 10], "float"))
 ```
-When `single.zeros` is called, a worker will create an array of zeros and store
+When `ra.zeros` is called, a worker will create an array of zeros and store
 it in an object store. An object reference to the output is returned. The call
 to `halo.pull` will not copy data from the object store process to the worker
 process, but will instead give the worker process a pointer to shared memory.
 After the `halo.pull` call completes, the object reference returned by
-`single.zeros` will go out of scope, and the object it refers to will be
+`ra.zeros` will go out of scope, and the object it refers to will be
 deallocated from the object store. This will cause the memory that `x` points to
 to be garbage.
 

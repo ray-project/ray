@@ -1,7 +1,7 @@
 from typing import List
 
 import numpy as np
-import arrays.single as single
+import halo.arrays.remote as ra
 import halo
 
 from core import *
@@ -35,14 +35,14 @@ def tsqr(a):
   current_rs = []
   for i in range(num_blocks):
     block = a.objrefs[i, 0]
-    q, r = single.linalg.qr(block)
+    q, r = ra.linalg.qr(block)
     q_tree[i, 0] = q
     current_rs.append(r)
   for j in range(1, K):
     new_rs = []
     for i in range(int(np.ceil(1.0 * len(current_rs) / 2))):
-      stacked_rs = single.vstack(*current_rs[(2 * i):(2 * i + 2)])
-      q, r = single.linalg.qr(stacked_rs)
+      stacked_rs = ra.vstack(*current_rs[(2 * i):(2 * i + 2)])
+      q, r = ra.linalg.qr(stacked_rs)
       q_tree[i, j] = q
       new_rs.append(r)
     current_rs = new_rs
@@ -74,7 +74,7 @@ def tsqr(a):
         lower = [a.shape[1], 0]
         upper = [2 * a.shape[1], BLOCK_SIZE]
       ith_index /= 2
-      q_block_current = single.dot(q_block_current, single.subarray(q_tree[ith_index, j], lower, upper))
+      q_block_current = ra.dot(q_block_current, ra.subarray(q_tree[ith_index, j], lower, upper))
     q_result.objrefs[i] = q_block_current
   r = current_rs[0]
   return q_result, r
@@ -164,9 +164,9 @@ def qr(a):
       y_res.objrefs[j, i] = y_val.objrefs[j - i, 0]
     if a.shape[0] > a.shape[1]:
       # in this case, R needs to be square
-      R_shape = halo.pull(single.shape(R))
-      eye_temp = single.eye(R_shape[1], R_shape[0], dtype_name=result_dtype)
-      r_res.objrefs[i, i] = single.dot(eye_temp, R)
+      R_shape = halo.pull(ra.shape(R))
+      eye_temp = ra.eye(R_shape[1], R_shape[0], dtype_name=result_dtype)
+      r_res.objrefs[i, i] = ra.dot(eye_temp, R)
     else:
       r_res.objrefs[i, i] = R
     Ts.append(numpy_to_dist(t))
@@ -176,7 +176,7 @@ def qr(a):
       for r in range(i, a.num_blocks[0]):
         y_ri = y_val.objrefs[r - i, 0]
         W_rcs.append(qr_helper2(y_ri, a_work.objrefs[r, c]))
-      W_c = single.sum(0, *W_rcs)
+      W_c = ra.sum(0, *W_rcs)
       for r in range(i, a.num_blocks[0]):
         y_ri = y_val.objrefs[r - i, 0]
         A_rc = qr_helper1(a_work.objrefs[r, c], y_ri, t, W_c)

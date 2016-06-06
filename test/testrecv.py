@@ -3,8 +3,8 @@ import argparse
 import numpy as np
 
 import test_functions
-import arrays.single as single
-import arrays.dist as dist
+import halo.arrays.remote as ra
+import halo.arrays.distributed as da
 
 import halo
 import halo.services as services
@@ -20,12 +20,12 @@ if __name__ == '__main__':
   worker.connect(args.scheduler_address, args.objstore_address, args.worker_address)
 
   halo.register_module(test_functions)
-  halo.register_module(single)
-  halo.register_module(single.random)
-  halo.register_module(single.linalg)
-  halo.register_module(dist)
-  halo.register_module(dist.random)
-  halo.register_module(dist.linalg)
+  halo.register_module(ra)
+  halo.register_module(ra.random)
+  halo.register_module(ra.linalg)
+  halo.register_module(da)
+  halo.register_module(da.random)
+  halo.register_module(da.linalg)
   halo.register_module(sys.modules[__name__])
 
   worker.main_loop()

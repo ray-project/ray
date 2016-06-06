@@ -14,8 +14,8 @@ import halo_pb2
 import types_pb2
 
 import test_functions
-import arrays.single as single
-import arrays.dist as dist
+import halo.arrays.remote as ra
+import halo.arrays.distributed as da
 
 class SerializationTest(unittest.TestCase):
 
@@ -266,7 +266,7 @@ class ReferenceCountingTest(unittest.TestCase):
     del y
     self.assertTrue(halo.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)] == [-1, -1, -1])
 
-    z = dist.zeros([dist.BLOCK_SIZE, 2 * dist.BLOCK_SIZE], "float")
+    z = da.zeros([da.BLOCK_SIZE, 2 * da.BLOCK_SIZE], "float")
     time.sleep(0.1)
     objref_val = z.val
     self.assertTrue(halo.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)] == [1, 1, 1])
@@ -275,9 +275,9 @@ class ReferenceCountingTest(unittest.TestCase):
     time.sleep(0.1)
     self.assertTrue(halo.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)] == [-1, -1, -1])
 
-    x = single.zeros([10, 10], "float")
-    y = single.zeros([10, 10], "float")
-    z = single.dot(x, y)
+    x = ra.zeros([10, 10], "float")
+    y = ra.zeros([10, 10], "float")
+    z = ra.dot(x, y)
     objref_val = x.val
     time.sleep(0.1)
     self.assertTrue(halo.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)] == [1, 1, 1])
