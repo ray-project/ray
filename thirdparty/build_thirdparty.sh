@@ -16,37 +16,14 @@ else
   exit 1
 fi
 
-echo "installing arrow"
-export FLATBUFFERS_HOME=$TP_DIR/arrow/cpp/thirdparty/installed/
-$TP_DIR/arrow/cpp/thirdparty/download_thirdparty.sh
-$TP_DIR/arrow/cpp/thirdparty/build_thirdparty.sh
+echo "building arrow"
+cd $TP_DIR/arrow/cpp
+source setup_build_env.sh
 mkdir -p $TP_DIR/arrow/cpp/build
 cd $TP_DIR/arrow/cpp/build
-cmake -DCMAKE_BUILD_TYPE=Release ..
+cmake -DLIBARROW_LINKAGE=STATIC -DCMAKE_BUILD_TYPE=Release ..
 make VERBOSE=1 -j$PARALLEL
-sudo make VERBOSE=1 install
 
-echo "installing numbuf"
-mkdir -p $TP_DIR/numbuf/cpp/build
-cd $TP_DIR/numbuf/cpp/build
-cmake -DCMAKE_BUILD_TYPE=Release  ..
-make VERBOSE=1 -j$PARALLEL
-sudo make VERBOSE=1 install
-mkdir -p $TP_DIR/numbuf/python/build
-cd $TP_DIR/numbuf/python/build
-cmake -DCMAKE_BUILD_TYPE=Release ..
-make VERBOSE=1 -j$PARALLEL
-sudo make VERBOSE=1 install
-
-echo "installing GRPC"
-cd $TP_DIR/grpc/third_party/protobuf
-./autogen.sh
-export CXXFLAGS="$CXXFLAGS -fPIC"
-./configure --enable-static=no
-sudo make install
-sudo ldconfig
-cd python
-sudo python setup.py install
+echo "building GRPC"
 cd $TP_DIR/grpc
-make VERBOSE=1 -j$PARALLEL
-sudo make VERBOSE=1 install
+make static HAS_SYSTEM_PROTOBUF=false HAS_SYSTEM_ZLIB=false -j$PARALLEL

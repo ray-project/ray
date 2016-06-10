@@ -8,11 +8,6 @@ import time
 import subprocess32 as subprocess
 import os
 
-from google.protobuf.text_format import *
-
-import halo_pb2
-import types_pb2
-
 import test_functions
 import halo.arrays.remote as ra
 import halo.arrays.distributed as da

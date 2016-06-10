@@ -11,12 +11,6 @@ import os
 import halo.arrays.remote as ra
 import halo.arrays.distributed as da
 
-from google.protobuf.text_format import *
-
-from grpc.beta import implementations
-import halo_pb2
-import types_pb2
-
 class ArraysSingleTest(unittest.TestCase):
 
   def testMethods(self):
