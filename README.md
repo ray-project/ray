@@ -1,6 +1,7 @@
 # Ray
 
-Ray is a distributed execution framework with a Python-like programming model.
+Ray is an experimental distributed execution framework with a Python-like
+programming model. It is under development and not ready for general use.
 
 ## Design Decisions
 
