@@ -1,0 +1,3 @@
+[submodule "thirdparty/grpc"]
+	path = thirdparty/grpc
+	url = https://github.com/grpc/grpc

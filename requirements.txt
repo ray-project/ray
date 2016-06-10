@@ -1,5 +1,3 @@
-six >= 1.10
 typing
 funcsigs
 subprocess32
-grpcio
