@@ -60,10 +60,16 @@ class SerializationTest(unittest.TestCase):
     ref1 = ray.push(0, w)
     ref2 = ray.push(0, w)
     ref3 = ray.push(0, w)
+
     a = np.array([[ref0, ref1], [ref2, ref3]])
     capsule, _ = serialization.serialize(w.handle, a)
     result = serialization.deserialize(w.handle, capsule)
     self.assertTrue((a == result).all())
+
+    self.roundTripTest(w, ref0)
+    self.roundTripTest(w, [ref0, ref1, ref2, ref3])
+    self.roundTripTest(w, {'0': ref0, '1': ref1, '2': ref2, '3': ref3})
+    self.roundTripTest(w, (ref0, 1))
 
     services.cleanup()
 

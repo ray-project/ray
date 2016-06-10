@@ -241,6 +241,11 @@ int serialize(PyObject* worker_capsule, PyObject* val, Obj* obj, std::vector<Obj
     obj->mutable_string_data()->set_data(buffer, length);
   } else if (val == Py_None) {
     obj->mutable_empty_data(); // allocate an Empty object, this is a None
+  } else if (PyObject_IsInstance(val, (PyObject*) &PyObjRefType)) {
+    ObjRef objref = ((PyObjRef*) val)->val;
+    Ref* data = obj->mutable_objref_data();
+    data->set_data(objref);
+    objrefs.push_back(objref);
   } else if (PyArray_Check(val)) {
     PyArrayObject* array = PyArray_GETCONTIGUOUS((PyArrayObject*) val);
     Array* data = obj->mutable_array_data();
@@ -365,6 +370,9 @@ PyObject* deserialize(PyObject* worker_capsule, const Obj& obj, std::vector<ObjR
     return PyString_FromStringAndSize(buffer, length);
   } else if (obj.has_empty_data()) {
     Py_RETURN_NONE;
+  } else if (obj.has_objref_data()) {
+    objrefs.push_back(obj.objref_data().data());
+    return make_pyobjref(worker_capsule, obj.objref_data().data());
   } else if (obj.has_array_data()) {
     const Array& array = obj.array_data();
     std::vector<npy_intp> dims;

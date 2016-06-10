@@ -20,6 +20,10 @@ message Bool {
   bool data = 1;
 }
 
+message Ref {
+  uint64 data = 1;
+}
+
 message PyObj {
   bytes data = 1;
 }
@@ -35,6 +39,7 @@ message Obj {
   Dict dict_data = 8;
   Array array_data = 5;
   Empty empty_data = 9;
+  Ref objref_data = 11;
   PyObj pyobj_data = 6;
 }
 
