@@ -45,7 +45,7 @@ static int PyObjRef_init(PyObjRef *self, PyObject *args, PyObject *kwds) {
   }
   std::vector<ObjRef> objrefs;
   objrefs.push_back(self->val);
-  HALO_LOG(HALO_REFCOUNT, "In PyObjRef_init, calling increment_reference_count for objref " << objrefs[0]);
+  RAY_LOG(RAY_REFCOUNT, "In PyObjRef_init, calling increment_reference_count for objref " << objrefs[0]);
   self->worker->increment_reference_count(objrefs);
   return 0;
 };
@@ -70,7 +70,7 @@ static PyMemberDef PyObjRef_members[] = {
 static PyTypeObject PyObjRefType = {
   PyObject_HEAD_INIT(NULL)
   0,                         /* ob_size */
-  "halo.ObjRef",           /* tp_name */
+  "ray.ObjRef",           /* tp_name */
   sizeof(PyObjRef),          /* tp_basicsize */
   0,                         /* tp_itemsize */
   (destructor)PyObjRef_dealloc,          /* tp_dealloc */
@@ -89,7 +89,7 @@ static PyTypeObject PyObjRefType = {
   0,                         /* tp_setattro */
   0,                         /* tp_as_buffer */
   Py_TPFLAGS_DEFAULT,        /* tp_flags */
-  "Halo objects",            /* tp_doc */
+  "Ray objects",            /* tp_doc */
   0,                         /* tp_traverse */
   0,                         /* tp_clear */
   0,                         /* tp_richcompare */
@@ -119,7 +119,7 @@ PyObject* make_pyobjref(PyObject* worker_capsule, ObjRef objref) {
 
 // Error handling
 
-static PyObject *HaloError;
+static PyObject *RayError;
 
 // Pass arguments from Python to C++
 
@@ -312,12 +312,12 @@ int serialize(PyObject* worker_capsule, PyObject* val, Obj* obj, std::vector<Obj
         }
         break;
       default:
-        PyErr_SetString(HaloError, "serialization: numpy datatype not know");
+        PyErr_SetString(RayError, "serialization: numpy datatype not know");
         return -1;
     }
     Py_DECREF(array); // TODO(rkn): is this right?
   } else {
-    PyErr_SetString(HaloError, "serialization: type not know");
+    PyErr_SetString(RayError, "serialization: type not know");
     return -1;
   }
   return 0;
@@ -402,7 +402,7 @@ PyObject* deserialize(PyObject* worker_capsule, const Obj& obj, std::vector<ObjR
           }
           break;
         default:
-          PyErr_SetString(HaloError, "deserialization: internal error (array type not implemented)");
+          PyErr_SetString(RayError, "deserialization: internal error (array type not implemented)");
           return NULL;
       }
     } else if (array.uint_data_size() > 0) {
@@ -423,7 +423,7 @@ PyObject* deserialize(PyObject* worker_capsule, const Obj& obj, std::vector<ObjR
           }
           break;
         default:
-          PyErr_SetString(HaloError, "deserialization: internal error (array type not implemented)");
+          PyErr_SetString(RayError, "deserialization: internal error (array type not implemented)");
           return NULL;
       }
     } else if (array.objref_data_size() > 0) {
@@ -434,12 +434,12 @@ PyObject* deserialize(PyObject* worker_capsule, const Obj& obj, std::vector<ObjR
         objrefs.push_back(array.objref_data(i));
       }
     } else {
-      PyErr_SetString(HaloError, "deserialization: internal error (array type not implemented)");
+      PyErr_SetString(RayError, "deserialization: internal error (array type not implemented)");
       return NULL;
     }
     return (PyObject*) pyarray;
   } else {
-    PyErr_SetString(HaloError, "deserialization: internal error (type not implemented)");
+    PyErr_SetString(RayError, "deserialization: internal error (type not implemented)");
     return NULL;
   }
 }
@@ -535,13 +535,13 @@ PyObject* serialize_task(PyObject* self, PyObject* args) {
       }
     }
   } else {
-    PyErr_SetString(HaloError, "serialize_task: second argument needs to be a list");
+    PyErr_SetString(RayError, "serialize_task: second argument needs to be a list");
     return NULL;
   }
   Worker* worker;
   PyObjectToWorker(worker_capsule, &worker);
   if (objrefs.size() > 0) {
-    HALO_LOG(HALO_REFCOUNT, "In serialize_task, calling increment_reference_count for contained objrefs");
+    RAY_LOG(RAY_REFCOUNT, "In serialize_task, calling increment_reference_count for contained objrefs");
     worker->increment_reference_count(objrefs);
   }
   return PyCapsule_New(static_cast<void*>(task), "task", &TaskCapsule_Destructor);
@@ -584,7 +584,7 @@ PyObject* deserialize_task(PyObject* self, PyObject* args) {
   return t;
 }
 
-// Halo Python API
+// Ray Python API
 
 PyObject* create_worker(PyObject* self, PyObject* args) {
   const char* scheduler_addr;
@@ -692,7 +692,7 @@ PyObject* put_object(PyObject* self, PyObject* args) {
     return NULL;
   }
   if (!PyList_Check(contained_objrefs)) {
-    HALO_LOG(HALO_FATAL, "The contained_objrefs argument must be a list.")
+    RAY_LOG(RAY_FATAL, "The contained_objrefs argument must be a list.")
   }
   std::vector<ObjRef> vec_contained_objrefs;
   size_t size = PyList_Size(contained_objrefs);
@@ -773,7 +773,7 @@ PyObject* scheduler_info(PyObject* self, PyObject* args) {
   return dict;
 }
 
-static PyMethodDef HaloLibMethods[] = {
+static PyMethodDef RayLibMethods[] = {
  { "serialize_object", serialize_object, METH_VARARGS, "serialize an object to protocol buffers" },
  { "deserialize_object", deserialize_object, METH_VARARGS, "deserialize an object from protocol buffers" },
  { "put_arrow", put_arrow, METH_VARARGS, "put an arrow array on the local object store"},
@@ -798,18 +798,18 @@ static PyMethodDef HaloLibMethods[] = {
  { NULL, NULL, 0, NULL }
 };
 
-PyMODINIT_FUNC initlibhalolib(void) {
+PyMODINIT_FUNC initlibraylib(void) {
   PyObject* m;
   PyObjRefType.tp_new = PyType_GenericNew;
   if (PyType_Ready(&PyObjRefType) < 0) {
     return;
   }
-  m = Py_InitModule3("libhalolib", HaloLibMethods, "Python C Extension for Halo");
+  m = Py_InitModule3("libraylib", RayLibMethods, "Python C Extension for Ray");
   Py_INCREF(&PyObjRefType);
   PyModule_AddObject(m, "ObjRef", (PyObject *)&PyObjRefType);
-  HaloError = PyErr_NewException("halo.error", NULL, NULL);
-  Py_INCREF(HaloError);
-  PyModule_AddObject(m, "error", HaloError);
+  RayError = PyErr_NewException("ray.error", NULL, NULL);
+  Py_INCREF(RayError);
+  PyModule_AddObject(m, "error", RayError);
   import_array();
 }
 

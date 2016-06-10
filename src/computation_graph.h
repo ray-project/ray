@@ -1,11 +1,11 @@
-#ifndef HALO_COMPUTATIONGRAPH_H
-#define HALO_COMPUTATIONGRAPH_H
+#ifndef RAY_COMPUTATIONGRAPH_H
+#define RAY_COMPUTATIONGRAPH_H
 
 #include <iostream>
 #include <limits>
 
-#include "halo/halo.h"
-#include "halo.grpc.pb.h"
+#include "ray/ray.h"
+#include "ray.grpc.pb.h"
 #include "types.pb.h"
 
 // used to represent the root operation (that is, the driver code)

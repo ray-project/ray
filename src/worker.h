@@ -1,5 +1,5 @@
-#ifndef HALO_WORKER_H
-#define HALO_WORKER_H
+#ifndef RAY_WORKER_H
+#define RAY_WORKER_H
 
 #include <iostream>
 #include <memory>
@@ -15,8 +15,8 @@ using grpc::ServerBuilder;
 using grpc::ServerContext;
 using grpc::Status;
 
-#include "halo.grpc.pb.h"
-#include "halo/halo.h"
+#include "ray.grpc.pb.h"
+#include "ray/ray.h"
 #include "ipc.h"
 
 using grpc::Channel;

@@ -4,7 +4,7 @@ import funcsigs
 import numpy as np
 import pynumbuf
 
-import halo
+import ray
 import serialization
 
 class Worker(object):
@@ -17,10 +17,10 @@ class Worker(object):
   def put_object(self, objref, value):
     """Put `value` in the local object store with objref `objref`. This assumes that the value for `objref` has not yet been placed in the local object store."""
     if pynumbuf.serializable(value):
-      halo.lib.put_arrow(self.handle, objref, value)
+      ray.lib.put_arrow(self.handle, objref, value)
     else:
       object_capsule, contained_objrefs = serialization.serialize(self.handle, value) # contained_objrefs is a list of the objrefs contained in object_capsule
-      halo.lib.put_object(self.handle, objref, object_capsule, contained_objrefs)
+      ray.lib.put_object(self.handle, objref, object_capsule, contained_objrefs)
 
   def get_object(self, objref):
     """
@@ -29,32 +29,32 @@ class Worker(object):
 
     WARNING: get_object can only be called on a canonical objref.
     """
-    if halo.lib.is_arrow(self.handle, objref):
-      return halo.lib.get_arrow(self.handle, objref)
+    if ray.lib.is_arrow(self.handle, objref):
+      return ray.lib.get_arrow(self.handle, objref)
     else:
-      object_capsule = halo.lib.get_object(self.handle, objref)
+      object_capsule = ray.lib.get_object(self.handle, objref)
       return serialization.deserialize(self.handle, object_capsule)
 
   def alias_objrefs(self, alias_objref, target_objref):
     """Make `alias_objref` refer to the same object that `target_objref` refers to."""
-    halo.lib.alias_objrefs(self.handle, alias_objref, target_objref)
+    ray.lib.alias_objrefs(self.handle, alias_objref, target_objref)
 
   def register_function(self, function):
     """Notify the scheduler that this worker can execute the function with name `func_name`. Store the function `function` locally."""
-    halo.lib.register_function(self.handle, function.func_name, len(function.return_types))
+    ray.lib.register_function(self.handle, function.func_name, len(function.return_types))
     self.functions[function.func_name] = function
 
   def submit_task(self, func_name, args):
     """Tell the scheduler to schedule the execution of the function with name `func_name` with arguments `args`. Retrieve object references for the outputs of the function from the scheduler and immediately return them."""
     task_capsule = serialization.serialize_task(self.handle, func_name, args)
-    objrefs = halo.lib.submit_task(self.handle, task_capsule)
+    objrefs = ray.lib.submit_task(self.handle, task_capsule)
     return objrefs
 
 # We make `global_worker` a global variable so that there is one worker per worker process.
 global_worker = Worker()
 
 def scheduler_info(worker=global_worker):
-  return halo.lib.scheduler_info(worker.handle);
+  return ray.lib.scheduler_info(worker.handle);
 
 def register_module(module, recursive=False, worker=global_worker):
   print "registering functions in module {}.".format(module.__name__)
@@ -69,32 +69,32 @@ def register_module(module, recursive=False, worker=global_worker):
 def connect(scheduler_addr, objstore_addr, worker_addr, worker=global_worker):
   if hasattr(worker, "handle"):
     del worker.handle
-  worker.handle = halo.lib.create_worker(scheduler_addr, objstore_addr, worker_addr)
+  worker.handle = ray.lib.create_worker(scheduler_addr, objstore_addr, worker_addr)
 
 def disconnect(worker=global_worker):
-  halo.lib.disconnect(worker.handle)
+  ray.lib.disconnect(worker.handle)
 
 def pull(objref, worker=global_worker):
-  halo.lib.request_object(worker.handle, objref)
+  ray.lib.request_object(worker.handle, objref)
   return worker.get_object(objref)
 
 def push(value, worker=global_worker):
-  objref = halo.lib.get_objref(worker.handle)
+  objref = ray.lib.get_objref(worker.handle)
   worker.put_object(objref, value)
   return objref
 
 def main_loop(worker=global_worker):
-  if not halo.lib.connected(worker.handle):
+  if not ray.lib.connected(worker.handle):
     raise Exception("Worker is attempting to enter main_loop but has not been connected yet.")
-  halo.lib.start_worker_service(worker.handle)
+  ray.lib.start_worker_service(worker.handle)
   def process_task(task): # wrapping these lines in a function should cause the local variables to go out of scope more quickly, which is useful for inspecting reference counts
     func_name, args, return_objrefs = serialization.deserialize_task(worker.handle, task)
     arguments = get_arguments_for_execution(worker.functions[func_name], args, worker) # get args from objstore
     outputs = worker.functions[func_name].executor(arguments) # execute the function
     store_outputs_in_objstore(return_objrefs, outputs, worker) # store output in local object store
-    halo.lib.notify_task_completed(worker.handle) # notify the scheduler that the task has completed
+    ray.lib.notify_task_completed(worker.handle) # notify the scheduler that the task has completed
   while True:
-    task = halo.lib.wait_for_next_task(worker.handle)
+    task = ray.lib.wait_for_next_task(worker.handle)
     process_task(task)
 
 def remote(arg_types, return_types, worker=global_worker):
@@ -148,7 +148,7 @@ def check_return_values(function, result):
     if len(result) != len(function.return_types):
       raise Exception("The @remote decorator for function {} has {} return values with types {}, but {} returned {} values.".format(function.__name__, len(function.return_types), function.return_types, function.__name__, len(result)))
     for i in range(len(result)):
-      if (not isinstance(result[i], function.return_types[i])) and (not isinstance(result[i], halo.lib.ObjRef)):
+      if (not isinstance(result[i], function.return_types[i])) and (not isinstance(result[i], ray.lib.ObjRef)):
         raise Exception("The {}th return value for function {} has type {}, but the @remote decorator expected a return value of type {} or an ObjRef.".format(i, function.__name__, type(result[i]), function.return_types[i]))
 
 # helper method, this should not be called by the user
@@ -167,7 +167,7 @@ def check_arguments(function, args):
     else:
       assert False, "This code should be unreachable."
 
-    if isinstance(arg, halo.lib.ObjRef):
+    if isinstance(arg, ray.lib.ObjRef):
       # TODO(rkn): When we have type information in the ObjRef, do type checking here.
       pass
     else:
@@ -194,7 +194,7 @@ def get_arguments_for_execution(function, args, worker=global_worker):
     else:
       assert False, "This code should be unreachable."
 
-    if isinstance(arg, halo.lib.ObjRef):
+    if isinstance(arg, ray.lib.ObjRef):
       # get the object from the local object store
       print "Getting argument {} for function {}.".format(i, function.__name__)
       argument = worker.get_object(arg)
@@ -214,7 +214,7 @@ def store_outputs_in_objstore(objrefs, outputs, worker=global_worker):
     outputs = (outputs,)
 
   for i in range(len(objrefs)):
-    if isinstance(outputs[i], halo.lib.ObjRef):
+    if isinstance(outputs[i], ray.lib.ObjRef):
       # An ObjRef is being returned, so we must alias objrefs[i] so that it refers to the same object that outputs[i] refers to
       print "Aliasing objrefs {} and {}".format(objrefs[i].val, outputs[i].val)
       worker.alias_objrefs(objrefs[i], outputs[i])

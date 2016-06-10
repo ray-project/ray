@@ -1,15 +1,15 @@
 import unittest
-import halo
-import halo.serialization as serialization
-import halo.services as services
-import halo.worker as worker
+import ray
+import ray.serialization as serialization
+import ray.services as services
+import ray.worker as worker
 import numpy as np
 import time
 import subprocess32 as subprocess
 import os
 
-import halo.arrays.remote as ra
-import halo.arrays.distributed as da
+import ray.arrays.remote as ra
+import ray.arrays.distributed as da
 
 class ArraysSingleTest(unittest.TestCase):
 
@@ -20,27 +20,27 @@ class ArraysSingleTest(unittest.TestCase):
 
     # test eye
     ref = ra.eye(3)
-    val = halo.pull(ref)
+    val = ray.pull(ref)
     self.assertTrue(np.alltrue(val == np.eye(3)))
 
     # test zeros
     ref = ra.zeros([3, 4, 5])
-    val = halo.pull(ref)
+    val = ray.pull(ref)
     self.assertTrue(np.alltrue(val == np.zeros([3, 4, 5])))
 
     # test qr - pass by value
     val_a = np.random.normal(size=[10, 13])
     ref_q, ref_r = ra.linalg.qr(val_a)
-    val_q = halo.pull(ref_q)
-    val_r = halo.pull(ref_r)
+    val_q = ray.pull(ref_q)
+    val_r = ray.pull(ref_r)
     self.assertTrue(np.allclose(np.dot(val_q, val_r), val_a))
 
     # test qr - pass by objref
     a = ra.random.normal([10, 13])
     ref_q, ref_r = ra.linalg.qr(a)
-    val_a = halo.pull(a)
-    val_q = halo.pull(ref_q)
-    val_r = halo.pull(ref_r)
+    val_a = ray.pull(a)
+    val_q = ray.pull(ref_q)
+    val_r = ray.pull(ref_r)
     self.assertTrue(np.allclose(np.dot(val_q, val_r), val_a))
 
     services.cleanup()
@@ -51,7 +51,7 @@ class ArraysDistTest(unittest.TestCase):
     [w] = services.start_singlenode_cluster(return_drivers=True)
 
     x = da.DistArray()
-    x.construct([2, 3, 4], np.array([[[halo.push(0, w)]]]))
+    x.construct([2, 3, 4], np.array([[[ray.push(0, w)]]]))
     capsule, _ = serialization.serialize(w.handle, x) # TODO(rkn): THIS REQUIRES A WORKER_HANDLE
     y = serialization.deserialize(w.handle, capsule) # TODO(rkn): THIS REQUIRES A WORKER_HANDLE
     self.assertEqual(x.shape, y.shape)
@@ -79,33 +79,33 @@ class ArraysDistTest(unittest.TestCase):
 
     x = da.zeros([9, 25, 51], "float")
     y = da.assemble(x)
-    self.assertTrue(np.alltrue(halo.pull(y) == np.zeros([9, 25, 51])))
+    self.assertTrue(np.alltrue(ray.pull(y) == np.zeros([9, 25, 51])))
 
     x = da.ones([11, 25, 49], dtype_name="float")
     y = da.assemble(x)
-    self.assertTrue(np.alltrue(halo.pull(y) == np.ones([11, 25, 49])))
+    self.assertTrue(np.alltrue(ray.pull(y) == np.ones([11, 25, 49])))
 
     x = da.random.normal([11, 25, 49])
     y = da.copy(x)
     z = da.assemble(x)
     w = da.assemble(y)
-    self.assertTrue(np.alltrue(halo.pull(z) == halo.pull(w)))
+    self.assertTrue(np.alltrue(ray.pull(z) == ray.pull(w)))
 
     x = da.eye(25, dtype_name="float")
     y = da.assemble(x)
-    self.assertTrue(np.alltrue(halo.pull(y) == np.eye(25)))
+    self.assertTrue(np.alltrue(ray.pull(y) == np.eye(25)))
 
     x = da.random.normal([25, 49])
     y = da.triu(x)
     z = da.assemble(y)
     w = da.assemble(x)
-    self.assertTrue(np.alltrue(halo.pull(z) == np.triu(halo.pull(w))))
+    self.assertTrue(np.alltrue(ray.pull(z) == np.triu(ray.pull(w))))
 
     x = da.random.normal([25, 49])
     y = da.tril(x)
     z = da.assemble(y)
     w = da.assemble(x)
-    self.assertTrue(np.alltrue(halo.pull(z) == np.tril(halo.pull(w))))
+    self.assertTrue(np.alltrue(ray.pull(z) == np.tril(ray.pull(w))))
 
     x = da.random.normal([25, 49])
     y = da.random.normal([49, 18])
@@ -113,8 +113,8 @@ class ArraysDistTest(unittest.TestCase):
     w = da.assemble(z)
     u = da.assemble(x)
     v = da.assemble(y)
-    np.allclose(halo.pull(w), np.dot(halo.pull(u), halo.pull(v)))
-    self.assertTrue(np.allclose(halo.pull(w), np.dot(halo.pull(u), halo.pull(v))))
+    np.allclose(ray.pull(w), np.dot(ray.pull(u), ray.pull(v)))
+    self.assertTrue(np.allclose(ray.pull(w), np.dot(ray.pull(u), ray.pull(v))))
 
     # test add
     x = da.random.normal([23, 42])
@@ -123,7 +123,7 @@ class ArraysDistTest(unittest.TestCase):
     z_full = da.assemble(z)
     x_full = da.assemble(x)
     y_full = da.assemble(y)
-    self.assertTrue(np.allclose(halo.pull(z_full), halo.pull(x_full) + halo.pull(y_full)))
+    self.assertTrue(np.allclose(ray.pull(z_full), ray.pull(x_full) + ray.pull(y_full)))
 
     # test subtract
     x = da.random.normal([33, 40])
@@ -132,14 +132,14 @@ class ArraysDistTest(unittest.TestCase):
     z_full = da.assemble(z)
     x_full = da.assemble(x)
     y_full = da.assemble(y)
-    self.assertTrue(np.allclose(halo.pull(z_full), halo.pull(x_full) - halo.pull(y_full)))
+    self.assertTrue(np.allclose(ray.pull(z_full), ray.pull(x_full) - ray.pull(y_full)))
 
     # test transpose
     x = da.random.normal([234, 432])
     y = da.transpose(x)
     x_full = da.assemble(x)
     y_full = da.assemble(y)
-    self.assertTrue(np.alltrue(halo.pull(x_full).T == halo.pull(y_full)))
+    self.assertTrue(np.alltrue(ray.pull(x_full).T == ray.pull(y_full)))
 
     # test numpy_to_dist
     x = da.random.normal([23, 45])
@@ -148,8 +148,8 @@ class ArraysDistTest(unittest.TestCase):
     w = da.assemble(z)
     x_full = da.assemble(x)
     z_full = da.assemble(z)
-    self.assertTrue(np.alltrue(halo.pull(x_full) == halo.pull(z_full)))
-    self.assertTrue(np.alltrue(halo.pull(y) == halo.pull(w)))
+    self.assertTrue(np.alltrue(ray.pull(x_full) == ray.pull(z_full)))
+    self.assertTrue(np.alltrue(ray.pull(y) == ray.pull(w)))
 
     # test da.tsqr
     for shape in [[123, da.BLOCK_SIZE], [7, da.BLOCK_SIZE], [da.BLOCK_SIZE, da.BLOCK_SIZE], [da.BLOCK_SIZE, 7], [10 * da.BLOCK_SIZE, da.BLOCK_SIZE]]:
@@ -157,10 +157,10 @@ class ArraysDistTest(unittest.TestCase):
       K = min(shape)
       q, r = da.linalg.tsqr(x)
       x_full = da.assemble(x)
-      x_val = halo.pull(x_full)
+      x_val = ray.pull(x_full)
       q_full = da.assemble(q)
-      q_val = halo.pull(q_full)
-      r_val = halo.pull(r)
+      q_val = ray.pull(q_full)
+      r_val = ray.pull(r)
       self.assertTrue(r_val.shape == (K, shape[1]))
       self.assertTrue(np.alltrue(r_val == np.triu(r_val)))
       self.assertTrue(np.allclose(x_val, np.dot(q_val, r_val)))
@@ -174,12 +174,12 @@ class ArraysDistTest(unittest.TestCase):
       m = ra.random.normal([d1, d2])
       q, r = ra.linalg.qr(m)
       l, u, s = da.linalg.modified_lu(da.numpy_to_dist(q))
-      q_val = halo.pull(q)
-      r_val = halo.pull(r)
+      q_val = ray.pull(q)
+      r_val = ray.pull(r)
       l_full = da.assemble(l)
-      l_val = halo.pull(l_full)
-      u_val = halo.pull(u)
-      s_val = halo.pull(s)
+      l_val = ray.pull(l_full)
+      u_val = ray.pull(u)
+      s_val = ray.pull(s)
       s_mat = np.zeros((d1, d2))
       for i in range(len(s_val)):
         s_mat[i, i] = s_val[i]
@@ -196,17 +196,17 @@ class ArraysDistTest(unittest.TestCase):
       a = da.random.normal([d1, d2])
       y, t, y_top, r = da.linalg.tsqr_hr(a)
       a_full = da.assemble(a)
-      a_val = halo.pull(a_full)
+      a_val = ray.pull(a_full)
       y_full = da.assemble(y)
-      y_val = halo.pull(y_full)
-      t_val = halo.pull(t)
-      y_top_val = halo.pull(y_top)
-      r_val = halo.pull(r)
+      y_val = ray.pull(y_full)
+      t_val = ray.pull(t)
+      y_top_val = ray.pull(y_top)
+      r_val = ray.pull(r)
       tall_eye = np.zeros((d1, min(d1, d2)))
       np.fill_diagonal(tall_eye, 1)
       q = tall_eye - np.dot(y_val, np.dot(t_val, y_top_val.T))
       self.assertTrue(np.allclose(np.dot(q.T, q), np.eye(min(d1, d2)))) # check that q.T * q = I
-      self.assertTrue(np.allclose(np.dot(q, r_val), a_val)) # check that a = (I - y * t * y_thalo.T) * r
+      self.assertTrue(np.allclose(np.dot(q, r_val), a_val)) # check that a = (I - y * t * y_top.T) * r
 
     for d1, d2 in [(123, da.BLOCK_SIZE), (7, da.BLOCK_SIZE), (da.BLOCK_SIZE, da.BLOCK_SIZE), (da.BLOCK_SIZE, 7), (10 * da.BLOCK_SIZE, da.BLOCK_SIZE)]:
       test_dist_tsqr_hr(d1, d2)
@@ -219,9 +219,9 @@ class ArraysDistTest(unittest.TestCase):
       a_full = da.assemble(a)
       q_full = da.assemble(q)
       r_full = da.assemble(r)
-      a_val = halo.pull(a_full)
-      q_val = halo.pull(q_full)
-      r_val = halo.pull(r_full)
+      a_val = ray.pull(a_full)
+      q_val = ray.pull(q_full)
+      r_val = ray.pull(r_full)
 
       self.assertTrue(q_val.shape == (d1, K))
       self.assertTrue(r_val.shape == (K, d2))

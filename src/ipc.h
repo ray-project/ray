@@ -1,5 +1,5 @@
-#ifndef HALO_IPC_H
-#define HALO_IPC_H
+#ifndef RAY_IPC_H
+#define RAY_IPC_H
 
 #include <iostream>
 #include <limits>
@@ -10,7 +10,7 @@
 #include <arrow/api.h>
 #include <arrow/ipc/memory.h>
 
-#include "halo/halo.h"
+#include "ray/ray.h"
 
 using namespace boost::interprocess;
 
@@ -42,7 +42,7 @@ public:
         queue_ = std::unique_ptr<message_queue>(new message_queue(open_only, name.c_str()));
       }
     } catch(interprocess_exception &ex) {
-      HALO_LOG(HALO_FATAL, "boost::interprocess exception: " << ex.what());
+      RAY_LOG(RAY_FATAL, "boost::interprocess exception: " << ex.what());
     }
     return true;
   };
@@ -55,7 +55,7 @@ public:
     try {
       queue_->send(object, sizeof(T), 0);
     } catch(interprocess_exception &ex) {
-      HALO_LOG(HALO_FATAL, "boost::interprocess exception: " << ex.what());
+      RAY_LOG(RAY_FATAL, "boost::interprocess exception: " << ex.what());
     }
     return true;
   };
@@ -66,7 +66,7 @@ public:
     try {
       queue_->receive(object, sizeof(T), recvd_size, priority);
     } catch(interprocess_exception &ex) {
-      HALO_LOG(HALO_FATAL, "boost::interprocess exception: " << ex.what());
+      RAY_LOG(RAY_FATAL, "boost::interprocess exception: " << ex.what());
     }
     return true;
   }

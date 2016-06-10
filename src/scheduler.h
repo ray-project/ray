@@ -1,5 +1,5 @@
-#ifndef HALO_SCHEDULER_H
-#define HALO_SCHEDULER_H
+#ifndef RAY_SCHEDULER_H
+#define RAY_SCHEDULER_H
 
 
 #include <deque>
@@ -10,8 +10,8 @@
 
 #include <grpc++/grpc++.h>
 
-#include "halo/halo.h"
-#include "halo.grpc.pb.h"
+#include "ray/ray.h"
+#include "ray.grpc.pb.h"
 #include "types.pb.h"
 
 #include "computation_graph.h"

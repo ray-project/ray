@@ -1,6 +1,6 @@
 import unittest
-import halo
-import halo.services as services
+import ray
+import ray.services as services
 import time
 import os
 import numpy as np
@@ -51,7 +51,7 @@ class MicroBenchmarkTest(unittest.TestCase):
     for _ in range(1000):
       start_time = time.time()
       x = test_functions.trivial_function()
-      halo.pull(x)
+      ray.pull(x)
       end_time = time.time()
       elapsed_times.append(end_time - start_time)
     elapsed_times = np.sort(elapsed_times)
@@ -67,7 +67,7 @@ class MicroBenchmarkTest(unittest.TestCase):
     elapsed_times = []
     for _ in range(1000):
       start_time = time.time()
-      halo.push(1)
+      ray.push(1)
       end_time = time.time()
       elapsed_times.append(end_time - start_time)
     elapsed_times = np.sort(elapsed_times)

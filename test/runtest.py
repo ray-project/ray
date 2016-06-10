@@ -1,16 +1,16 @@
 import unittest
-import halo
-import halo.serialization as serialization
-import halo.services as services
-import halo.worker as worker
+import ray
+import ray.serialization as serialization
+import ray.services as services
+import ray.worker as worker
 import numpy as np
 import time
 import subprocess32 as subprocess
 import os
 
 import test_functions
-import halo.arrays.remote as ra
-import halo.arrays.distributed as da
+import ray.arrays.remote as ra
+import ray.arrays.distributed as da
 
 class SerializationTest(unittest.TestCase):
 
@@ -56,10 +56,10 @@ class SerializationTest(unittest.TestCase):
     self.numpyTypeTest(w, 'float32')
     self.numpyTypeTest(w, 'float64')
 
-    ref0 = halo.push(0, w)
-    ref1 = halo.push(0, w)
-    ref2 = halo.push(0, w)
-    ref3 = halo.push(0, w)
+    ref0 = ray.push(0, w)
+    ref1 = ray.push(0, w)
+    ref2 = ray.push(0, w)
+    ref3 = ray.push(0, w)
     a = np.array([[ref0, ref1], [ref2, ref3]])
     capsule, _ = serialization.serialize(w.handle, a)
     result = serialization.deserialize(w.handle, capsule)
@@ -75,8 +75,8 @@ class ObjStoreTest(unittest.TestCase):
 
     # pushing and pulling an object shouldn't change it
     for data in ["h", "h" * 10000, 0, 0.0]:
-      objref = halo.push(data, w1)
-      result = halo.pull(objref, w1)
+      objref = ray.push(data, w1)
+      result = ray.pull(objref, w1)
       self.assertEqual(result, data)
 
     # pushing an object, shipping it to another worker, and pulling it shouldn't change it
@@ -129,7 +129,7 @@ class SchedulerTest(unittest.TestCase):
 
     time.sleep(0.2)
 
-    value_after = halo.pull(objref[0], w)
+    value_after = ray.pull(objref[0], w)
     self.assertEqual(value_before, value_after)
 
     time.sleep(0.1)
@@ -143,26 +143,26 @@ class WorkerTest(unittest.TestCase):
 
     for i in range(100):
       value_before = i * 10 ** 6
-      objref = halo.push(value_before, w)
-      value_after = halo.pull(objref, w)
+      objref = ray.push(value_before, w)
+      value_after = ray.pull(objref, w)
       self.assertEqual(value_before, value_after)
 
     for i in range(100):
       value_before = i * 10 ** 6 * 1.0
-      objref = halo.push(value_before, w)
-      value_after = halo.pull(objref, w)
+      objref = ray.push(value_before, w)
+      value_after = ray.pull(objref, w)
       self.assertEqual(value_before, value_after)
 
     for i in range(100):
       value_before = "h" * i
-      objref = halo.push(value_before, w)
-      value_after = halo.pull(objref, w)
+      objref = ray.push(value_before, w)
+      value_after = ray.pull(objref, w)
       self.assertEqual(value_before, value_after)
 
     for i in range(100):
       value_before = [1] * i
-      objref = halo.push(value_before, w)
-      value_after = halo.pull(objref, w)
+      objref = ray.push(value_before, w)
+      value_after = ray.pull(objref, w)
       self.assertEqual(value_before, value_after)
 
     services.cleanup()
@@ -175,11 +175,11 @@ class APITest(unittest.TestCase):
     [w] = services.start_singlenode_cluster(return_drivers=True, num_workers_per_objstore=3, worker_path=test_path)
 
     objref = w.submit_task("test_functions.test_alias_f", [])
-    self.assertTrue(np.alltrue(halo.pull(objref[0], w) == np.ones([3, 4, 5])))
+    self.assertTrue(np.alltrue(ray.pull(objref[0], w) == np.ones([3, 4, 5])))
     objref = w.submit_task("test_functions.test_alias_g", [])
-    self.assertTrue(np.alltrue(halo.pull(objref[0], w) == np.ones([3, 4, 5])))
+    self.assertTrue(np.alltrue(ray.pull(objref[0], w) == np.ones([3, 4, 5])))
     objref = w.submit_task("test_functions.test_alias_h", [])
-    self.assertTrue(np.alltrue(halo.pull(objref[0], w) == np.ones([3, 4, 5])))
+    self.assertTrue(np.alltrue(ray.pull(objref[0], w) == np.ones([3, 4, 5])))
 
     services.cleanup()
 
@@ -189,35 +189,35 @@ class APITest(unittest.TestCase):
     services.start_singlenode_cluster(return_drivers=False, num_workers_per_objstore=1, worker_path=test_path)
 
     x = test_functions.keyword_fct1(1)
-    self.assertEqual(halo.pull(x), "1 hello")
+    self.assertEqual(ray.pull(x), "1 hello")
     x = test_functions.keyword_fct1(1, "hi")
-    self.assertEqual(halo.pull(x), "1 hi")
+    self.assertEqual(ray.pull(x), "1 hi")
     x = test_functions.keyword_fct1(1, b="world")
-    self.assertEqual(halo.pull(x), "1 world")
+    self.assertEqual(ray.pull(x), "1 world")
 
     x = test_functions.keyword_fct2(a="w", b="hi")
-    self.assertEqual(halo.pull(x), "w hi")
+    self.assertEqual(ray.pull(x), "w hi")
     x = test_functions.keyword_fct2(b="hi", a="w")
-    self.assertEqual(halo.pull(x), "w hi")
+    self.assertEqual(ray.pull(x), "w hi")
     x = test_functions.keyword_fct2(a="w")
-    self.assertEqual(halo.pull(x), "w world")
+    self.assertEqual(ray.pull(x), "w world")
     x = test_functions.keyword_fct2(b="hi")
-    self.assertEqual(halo.pull(x), "hello hi")
+    self.assertEqual(ray.pull(x), "hello hi")
     x = test_functions.keyword_fct2("w")
-    self.assertEqual(halo.pull(x), "w world")
+    self.assertEqual(ray.pull(x), "w world")
     x = test_functions.keyword_fct2("w", "hi")
-    self.assertEqual(halo.pull(x), "w hi")
+    self.assertEqual(ray.pull(x), "w hi")
 
     x = test_functions.keyword_fct3(0, 1, c="w", d="hi")
-    self.assertEqual(halo.pull(x), "0 1 w hi")
+    self.assertEqual(ray.pull(x), "0 1 w hi")
     x = test_functions.keyword_fct3(0, 1, d="hi", c="w")
-    self.assertEqual(halo.pull(x), "0 1 w hi")
+    self.assertEqual(ray.pull(x), "0 1 w hi")
     x = test_functions.keyword_fct3(0, 1, c="w")
-    self.assertEqual(halo.pull(x), "0 1 w world")
+    self.assertEqual(ray.pull(x), "0 1 w world")
     x = test_functions.keyword_fct3(0, 1, d="hi")
-    self.assertEqual(halo.pull(x), "0 1 hello hi")
+    self.assertEqual(ray.pull(x), "0 1 hello hi")
     x = test_functions.keyword_fct3(0, 1)
-    self.assertEqual(halo.pull(x), "0 1 hello world")
+    self.assertEqual(ray.pull(x), "0 1 hello world")
 
     services.cleanup()
 
@@ -227,9 +227,9 @@ class APITest(unittest.TestCase):
     services.start_singlenode_cluster(return_drivers=False, num_workers_per_objstore=1, worker_path=test_path)
 
     x = test_functions.varargs_fct1(0, 1, 2)
-    self.assertEqual(halo.pull(x), "0 1 2")
+    self.assertEqual(ray.pull(x), "0 1 2")
     x = test_functions.varargs_fct2(0, 1, 2)
-    self.assertEqual(halo.pull(x), "1 2")
+    self.assertEqual(ray.pull(x), "1 2")
 
     self.assertTrue(test_functions.kwargs_exception_thrown)
     self.assertTrue(test_functions.varargs_and_kwargs_exception_thrown)
@@ -244,48 +244,48 @@ class ReferenceCountingTest(unittest.TestCase):
     services.start_singlenode_cluster(return_drivers=False, num_workers_per_objstore=3, worker_path=test_path)
 
     x = test_functions.test_alias_f()
-    halo.pull(x)
+    ray.pull(x)
     time.sleep(0.1)
     objref_val = x.val
-    self.assertTrue(halo.scheduler_info()["reference_counts"][objref_val] == 1)
+    self.assertTrue(ray.scheduler_info()["reference_counts"][objref_val] == 1)
 
     del x
-    self.assertTrue(halo.scheduler_info()["reference_counts"][objref_val] == -1) # -1 indicates deallocated
+    self.assertTrue(ray.scheduler_info()["reference_counts"][objref_val] == -1) # -1 indicates deallocated
 
     y = test_functions.test_alias_h()
-    halo.pull(y)
+    ray.pull(y)
     time.sleep(0.1)
     objref_val = y.val
-    self.assertTrue(halo.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)] == [1, 0, 0])
+    self.assertTrue(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)] == [1, 0, 0])
 
     del y
-    self.assertTrue(halo.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)] == [-1, -1, -1])
+    self.assertTrue(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)] == [-1, -1, -1])
 
     z = da.zeros([da.BLOCK_SIZE, 2 * da.BLOCK_SIZE], "float")
     time.sleep(0.1)
     objref_val = z.val
-    self.assertTrue(halo.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)] == [1, 1, 1])
+    self.assertTrue(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)] == [1, 1, 1])
 
     del z
     time.sleep(0.1)
-    self.assertTrue(halo.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)] == [-1, -1, -1])
+    self.assertTrue(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)] == [-1, -1, -1])
 
     x = ra.zeros([10, 10], "float")
     y = ra.zeros([10, 10], "float")
     z = ra.dot(x, y)
     objref_val = x.val
     time.sleep(0.1)
-    self.assertTrue(halo.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)] == [1, 1, 1])
+    self.assertTrue(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)] == [1, 1, 1])
 
     del x
     time.sleep(0.1)
-    self.assertTrue(halo.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)] == [-1, 1, 1])
+    self.assertTrue(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)] == [-1, 1, 1])
     del y
     time.sleep(0.1)
-    self.assertTrue(halo.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)] == [-1, -1, 1])
+    self.assertTrue(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)] == [-1, -1, 1])
     del z
     time.sleep(0.1)
-    self.assertTrue(halo.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)] == [-1, -1, -1])
+    self.assertTrue(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)] == [-1, -1, -1])
 
     services.cleanup()
 

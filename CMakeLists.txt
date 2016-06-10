@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 2.8)
 
-project(halo)
+project(ray)
 
 set(THIRDPARTY_DIR "${CMAKE_SOURCE_DIR}/thirdparty")
 
@@ -23,15 +23,15 @@ include_directories("${NUMPY_INCLUDE_DIR}")
 
 set(PROTO_PATH "${CMAKE_SOURCE_DIR}/protos")
 
-set(HALO_PROTO "${PROTO_PATH}/halo.proto")
+set(RAY_PROTO "${PROTO_PATH}/ray.proto")
 set(TYPES_PROTO "${PROTO_PATH}/types.proto")
 set(GENERATED_PROTOBUF_PATH "${CMAKE_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY ${GENERATED_PROTOBUF_PATH})
 
-set(HALO_PB_CPP_FILE "${GENERATED_PROTOBUF_PATH}/halo.pb.cc")
-set(HALO_PB_H_FILE "${GENERATED_PROTOBUF_PATH}/halo.pb.h")
-set(HALO_GRPC_PB_CPP_FILE "${GENERATED_PROTOBUF_PATH}/halo.grpc.pb.cc")
-set(HALO_GRPC_PB_H_FILE "${GENERATED_PROTOBUF_PATH}/halo.grpc.pb.h")
+set(RAY_PB_CPP_FILE "${GENERATED_PROTOBUF_PATH}/ray.pb.cc")
+set(RAY_PB_H_FILE "${GENERATED_PROTOBUF_PATH}/ray.pb.h")
+set(RAY_GRPC_PB_CPP_FILE "${GENERATED_PROTOBUF_PATH}/ray.grpc.pb.cc")
+set(RAY_GRPC_PB_H_FILE "${GENERATED_PROTOBUF_PATH}/ray.grpc.pb.h")
 
 set(TYPES_PB_CPP_FILE "${GENERATED_PROTOBUF_PATH}/types.pb.cc")
 set(TYPES_PB_H_FILE "${GENERATED_PROTOBUF_PATH}/types.pb.h")
@@ -39,19 +39,19 @@ set(TYPES_GRPC_PB_CPP_FILE "${GENERATED_PROTOBUF_PATH}/types.grpc.pb.cc")
 set(TYPES_GRPC_PB_H_FILE "${GENERATED_PROTOBUF_PATH}/types.grpc.pb.h")
 
 add_custom_command(
-    OUTPUT "${HALO_PB_H_FILE}"
-           "${HALO_PB_CPP_FILE}"
-           "${HALO_GRPC_PB_H_FILE}"
-           "${HALO_GRPC_PB_CPP_FILE}"
+    OUTPUT "${RAY_PB_H_FILE}"
+           "${RAY_PB_CPP_FILE}"
+           "${RAY_GRPC_PB_H_FILE}"
+           "${RAY_GRPC_PB_CPP_FILE}"
     COMMAND ${CMAKE_SOURCE_DIR}/thirdparty/grpc/bins/opt/protobuf/protoc
     ARGS "--proto_path=${PROTO_PATH}"
          "--cpp_out=${GENERATED_PROTOBUF_PATH}"
-         "${HALO_PROTO}"
+         "${RAY_PROTO}"
     COMMAND ${CMAKE_SOURCE_DIR}/thirdparty/grpc/bins/opt/protobuf/protoc
     ARGS "--proto_path=${PROTO_PATH}"
          "--grpc_out=${GENERATED_PROTOBUF_PATH}"
          "--plugin=protoc-gen-grpc=${CMAKE_SOURCE_DIR}/thirdparty/grpc/bins/opt/grpc_cpp_plugin"
-         "${HALO_PROTO}"
+         "${RAY_PROTO}"
     )
 
 add_custom_command(
@@ -70,8 +70,8 @@ add_custom_command(
          "${TYPES_PROTO}"
     )
 
-set(GENERATED_PROTOBUF_FILES ${HALO_PB_H_FILE} ${HALO_PB_CPP_FILE}
-    ${HALO_GRPC_PB_H_FILE} ${HALO_GRPC_PB_CPP_FILE}
+set(GENERATED_PROTOBUF_FILES ${RAY_PB_H_FILE} ${RAY_PB_CPP_FILE}
+    ${RAY_GRPC_PB_H_FILE} ${RAY_GRPC_PB_CPP_FILE}
     ${TYPES_PB_H_FILE} ${TYPES_PB_CPP_FILE}
     ${TYPES_GRPC_PB_H_FILE} ${TYPES_GRPC_PB_CPP_FILE})
 
@@ -110,7 +110,7 @@ target_link_libraries(pynumbuf ${ARROW_LIB} ${PYTHON_LIBRARIES})
 add_executable(objstore src/objstore.cc src/ipc.cc ${GENERATED_PROTOBUF_FILES})
 target_link_libraries(objstore ${ARROW_LIB} pynumbuf)
 add_executable(scheduler src/scheduler.cc src/computation_graph.cc ${GENERATED_PROTOBUF_FILES})
-add_library(halolib SHARED src/halolib.cc src/worker.cc src/ipc.cc ${GENERATED_PROTOBUF_FILES})
-target_link_libraries(halolib ${ARROW_LIB} pynumbuf)
+add_library(raylib SHARED src/raylib.cc src/worker.cc src/ipc.cc ${GENERATED_PROTOBUF_FILES})
+target_link_libraries(raylib ${ARROW_LIB} pynumbuf)
 
-install(TARGETS objstore scheduler halolib DESTINATION ${CMAKE_SOURCE_DIR}/lib/python/halo)
+install(TARGETS objstore scheduler raylib DESTINATION ${CMAKE_SOURCE_DIR}/lib/python/ray)

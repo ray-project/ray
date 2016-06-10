@@ -1,5 +1,5 @@
-#ifndef HALO_INCLUDE_HALO_H
-#define HALO_INCLUDE_HALO_H
+#ifndef RAY_INCLUDE_RAY_H
+#define RAY_INCLUDE_RAY_H
 
 #include <vector>
 #include <unordered_map>
@@ -34,20 +34,20 @@ public:
 typedef std::vector<std::vector<ObjStoreId> > ObjTable;
 typedef std::unordered_map<std::string, FnInfo> FnTable;
 
-#define HALO_VERBOSE -1
-#define HALO_INFO 0
-#define HALO_DEBUG 1
-#define HALO_FATAL 2
-#define HALO_REFCOUNT HALO_VERBOSE
-#define HALO_ALIAS HALO_VERBOSE
+#define RAY_VERBOSE -1
+#define RAY_INFO 0
+#define RAY_DEBUG 1
+#define RAY_FATAL 2
+#define RAY_REFCOUNT RAY_VERBOSE
+#define RAY_ALIAS RAY_VERBOSE
 
-#define HALO_LOG(LEVEL, MESSAGE) \
-  if (LEVEL == HALO_VERBOSE) { \
+#define RAY_LOG(LEVEL, MESSAGE) \
+  if (LEVEL == RAY_VERBOSE) { \
     \
-  } else if (LEVEL == HALO_FATAL) { \
+  } else if (LEVEL == RAY_FATAL) { \
     std::cerr << "fatal error occured: " << MESSAGE << std::endl; \
     std::exit(1); \
-  } else if (LEVEL == HALO_DEBUG) { \
+  } else if (LEVEL == RAY_DEBUG) { \
     \
   } else { \
     std::cout << MESSAGE << std::endl; \
