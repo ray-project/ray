@@ -16,4 +16,4 @@ For a description of our design decisions, see
 2. sudo apt-get install git
 3. git clone https://github.com/amplab/ray.git
 4. cd ray
-5. bash setup.sh
+5. ./setup.sh
