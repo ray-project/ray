@@ -68,9 +68,9 @@ def add(x1, x2):
 def subtract(x1, x2):
   return np.subtract(x1, x2)
 
-@ray.remote([int, np.ndarray], [np.ndarray])
-def sum(axis, *xs):
-  return np.sum(xs, axis=axis)
+@ray.remote([np.ndarray, int], [np.ndarray])
+def sum(x, axis=-1):
+  return np.sum(x, axis=axis if axis != -1 else None)
 
 @ray.remote([np.ndarray], [tuple])
 def shape(a):

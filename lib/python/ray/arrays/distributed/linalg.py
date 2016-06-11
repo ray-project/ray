@@ -176,7 +176,7 @@ def qr(a):
       for r in range(i, a.num_blocks[0]):
         y_ri = y_val.objrefs[r - i, 0]
         W_rcs.append(qr_helper2(y_ri, a_work.objrefs[r, c]))
-      W_c = ra.sum(0, *W_rcs)
+      W_c = ra.linalg.sum_list(*W_rcs)
       for r in range(i, a.num_blocks[0]):
         y_ri = y_val.objrefs[r - i, 0]
         A_rc = qr_helper1(a_work.objrefs[r, c], y_ri, t, W_c)

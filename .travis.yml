@@ -15,3 +15,4 @@ script:
   - cd test
   - python runtest.py
   - python arrays_test.py
+  - python datasets_test.py
