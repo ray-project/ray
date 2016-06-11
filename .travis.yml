@@ -13,6 +13,5 @@ install:
 
 script:
   - cd test
-  - bash gen-python-code.sh
   - python runtest.py
   - python arrays_test.py
