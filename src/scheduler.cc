@@ -144,11 +144,14 @@ Status SchedulerService::ObjReady(ServerContext* context, const ObjReadyRequest*
   return Status::OK;
 }
 
-Status SchedulerService::WorkerReady(ServerContext* context, const WorkerReadyRequest* request, AckReply* reply) {
+Status SchedulerService::NotifyTaskCompleted(ServerContext* context, const NotifyTaskCompletedRequest* request, AckReply* reply) {
   RAY_LOG(RAY_INFO, "worker " << request->workerid() << " reported back");
   {
     std::lock_guard<std::mutex> lock(avail_workers_lock_);
     avail_workers_.push_back(request->workerid());
+  }
+  if (!request->task_succeeded()) {
+    RAY_LOG(RAY_FATAL, "The task on worker " << request->workerid() << " threw an exception with the following error message: " << request->error_message());
   }
   schedule();
   return Status::OK;

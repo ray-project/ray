@@ -78,3 +78,9 @@ try:
   varargs_and_kwargs_exception_thrown = False
 except:
   varargs_and_kwargs_exception_thrown = True
+
+# test throwing an exception
+
+@ray.remote([], [])
+def throw_exception_fct():
+    raise Exception("Test function intentionally failed.")

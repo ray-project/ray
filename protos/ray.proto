@@ -44,7 +44,7 @@ service Scheduler {
   // Used by the worker to notify the scheduler about which objrefs a particular object contains
   rpc AddContainedObjRefs(AddContainedObjRefsRequest) returns (AckReply);
   // Used by the worker to report back and ask for more work
-  rpc WorkerReady(WorkerReadyRequest) returns (AckReply);
+  rpc NotifyTaskCompleted(NotifyTaskCompletedRequest) returns (AckReply);
   // Get information about the scheduler state
   rpc SchedulerInfo(SchedulerInfoRequest) returns (SchedulerInfoReply);
 }
@@ -120,8 +120,10 @@ message DecrementRefCountRequest {
   repeated uint64 objref = 1; // Object references whose reference count should be decremented. Duplicates will be decremented multiple times.
 }
 
-message WorkerReadyRequest {
-  uint64 workerid = 1; // ID of the worker which is ready
+message NotifyTaskCompletedRequest {
+  uint64 workerid = 1; // ID of the worker which executed the task
+  bool task_succeeded = 2; // True if the task succeeded, false if it threw an exception
+  string error_message = 3; // The contents of the exception, if the task threw an exception
 }
 
 message ChangeCountRequest {

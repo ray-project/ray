@@ -90,9 +90,13 @@ def main_loop(worker=global_worker):
   def process_task(task): # wrapping these lines in a function should cause the local variables to go out of scope more quickly, which is useful for inspecting reference counts
     func_name, args, return_objrefs = serialization.deserialize_task(worker.handle, task)
     arguments = get_arguments_for_execution(worker.functions[func_name], args, worker) # get args from objstore
-    outputs = worker.functions[func_name].executor(arguments) # execute the function
-    store_outputs_in_objstore(return_objrefs, outputs, worker) # store output in local object store
-    ray.lib.notify_task_completed(worker.handle) # notify the scheduler that the task has completed
+    try:
+      outputs = worker.functions[func_name].executor(arguments) # execute the function
+    except Exception as e:
+      ray.lib.notify_task_completed(worker.handle, False, str(e)) # notify the scheduler that the task threw an exception
+    else:
+      store_outputs_in_objstore(return_objrefs, outputs, worker) # store output in local object store
+      ray.lib.notify_task_completed(worker.handle, True, "") # notify the scheduler that the task completed successfully
   while True:
     task = ray.lib.wait_for_next_task(worker.handle)
     process_task(task)

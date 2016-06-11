@@ -263,15 +263,17 @@ Task* Worker::receive_next_task() {
   return task;
 }
 
-void Worker::notify_task_completed() {
+void Worker::notify_task_completed(bool task_succeeded, std::string error_message) {
   if (!connected_) {
     RAY_LOG(RAY_FATAL, "Attempting to perform notify_task_completed, but connected_ = " << connected_ << ".");
   }
   ClientContext context;
-  WorkerReadyRequest request;
+  NotifyTaskCompletedRequest request;
   request.set_workerid(workerid_);
+  request.set_task_succeeded(task_succeeded);
+  request.set_error_message(error_message);
   AckReply reply;
-  scheduler_stub_->WorkerReady(&context, request, &reply);
+  scheduler_stub_->NotifyTaskCompleted(&context, request, &reply);
 }
 
 void Worker::disconnect() {

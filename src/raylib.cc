@@ -662,10 +662,14 @@ PyObject* submit_task(PyObject* self, PyObject* args) {
 
 PyObject* notify_task_completed(PyObject* self, PyObject* args) {
   Worker* worker;
-  if (!PyArg_ParseTuple(args, "O&", &PyObjectToWorker, &worker)) {
+  PyObject* task_succeeded_obj;
+  const char* error_message_ptr;
+  if (!PyArg_ParseTuple(args, "O&Os", &PyObjectToWorker, &worker, &task_succeeded_obj, &error_message_ptr)) {
     return NULL;
   }
-  worker->notify_task_completed();
+  std::string error_message(error_message_ptr);
+  bool task_succeeded = PyObject_IsTrue(task_succeeded_obj);
+  worker->notify_task_completed(task_succeeded, error_message);
   Py_RETURN_NONE;
 }
 

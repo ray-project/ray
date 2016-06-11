@@ -71,8 +71,10 @@ class Worker {
   void start_worker_service();
   // wait for next task from the RPC system
   Task* receive_next_task();
-  // tell the scheduler that we are done with the current task and request the next one
-  void notify_task_completed();
+  // tell the scheduler that we are done with the current task and request the
+  // next one, if task_succeeded is false, this tells the scheduler that the
+  // task threw an exception
+  void notify_task_completed(bool task_succeeded, std::string error_message);
   // disconnect the worker
   void disconnect();
   // return connected_
