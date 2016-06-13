@@ -194,7 +194,7 @@ void Worker::alias_objrefs(ObjRef alias_objref, ObjRef target_objref) {
 
 void Worker::increment_reference_count(std::vector<ObjRef> &objrefs) {
   if (!connected_) {
-    RAY_LOG(RAY_INFO, "Attempting to increment_reference_count for objrefs, but connected_ = " << connected_ << " so returning instead.");
+    RAY_LOG(RAY_DEBUG, "Attempting to increment_reference_count for objrefs, but connected_ = " << connected_ << " so returning instead.");
     return;
   }
   if (objrefs.size() > 0) {
@@ -211,7 +211,7 @@ void Worker::increment_reference_count(std::vector<ObjRef> &objrefs) {
 
 void Worker::decrement_reference_count(std::vector<ObjRef> &objrefs) {
   if (!connected_) {
-    RAY_LOG(RAY_INFO, "Attempting to decrement_reference_count, but connected_ = " << connected_ << " so returning instead.");
+    RAY_LOG(RAY_DEBUG, "Attempting to decrement_reference_count, but connected_ = " << connected_ << " so returning instead.");
     return;
   }
   if (objrefs.size() > 0) {
