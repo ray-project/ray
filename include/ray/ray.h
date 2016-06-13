@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <unordered_map>
+#include "logging.h"
 
 typedef size_t ObjRef;
 typedef size_t WorkerId;
@@ -33,25 +34,6 @@ public:
 
 typedef std::vector<std::vector<ObjStoreId> > ObjTable;
 typedef std::unordered_map<std::string, FnInfo> FnTable;
-
-#define RAY_VERBOSE -1
-#define RAY_INFO 0
-#define RAY_DEBUG 1
-#define RAY_FATAL 2
-#define RAY_REFCOUNT RAY_VERBOSE
-#define RAY_ALIAS RAY_VERBOSE
-
-#define RAY_LOG(LEVEL, MESSAGE) \
-  if (LEVEL == RAY_VERBOSE) { \
-    \
-  } else if (LEVEL == RAY_FATAL) { \
-    std::cerr << "fatal error occured: " << MESSAGE << std::endl; \
-    std::exit(1); \
-  } else if (LEVEL == RAY_DEBUG) { \
-    \
-  } else { \
-    std::cout << MESSAGE << std::endl; \
-  }
 
 class objstore_not_registered_error : public std::runtime_error
 {

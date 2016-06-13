@@ -25,9 +25,7 @@ Worker::Worker(const std::string& worker_address, std::shared_ptr<Channel> sched
 }
 
 SubmitTaskReply Worker::submit_task(SubmitTaskRequest* request) {
-  if (!connected_) {
-    RAY_LOG(RAY_FATAL, "Attempting to perform submit_task, but connected_ = " << connected_ << ".");
-  }
+  RAY_CHECK(connected_, "Attempted to perform submit_task but failed.");
   SubmitTaskReply reply;
   ClientContext context;
   Status status = scheduler_stub_->SubmitTask(&context, *request, &reply);
@@ -51,9 +49,7 @@ void Worker::register_worker(const std::string& worker_address, const std::strin
 }
 
 void Worker::request_object(ObjRef objref) {
-  if (!connected_) {
-    RAY_LOG(RAY_FATAL, "Attempting to perform request_object, but connected_ = " << connected_ << ".");
-  }
+  RAY_CHECK(connected_, "Attempted to perform request_object but failed.");
   RequestObjRequest request;
   request.set_workerid(workerid_);
   request.set_objref(objref);
@@ -65,9 +61,7 @@ void Worker::request_object(ObjRef objref) {
 
 ObjRef Worker::get_objref() {
   // first get objref for the new object
-  if (!connected_) {
-    RAY_LOG(RAY_FATAL, "Attempting to perform get_objref, but connected_ = " << connected_ << ".");
-  }
+  RAY_CHECK(connected_, "Attempted to perform get_objref but failed.");
   PushObjRequest push_request;
   PushObjReply push_reply;
   ClientContext push_context;
@@ -77,9 +71,7 @@ ObjRef Worker::get_objref() {
 
 slice Worker::get_object(ObjRef objref) {
   // get_object assumes that objref is a canonical objref
-  if (!connected_) {
-    RAY_LOG(RAY_FATAL, "Attempting to perform get_object, but connected_ = " << connected_ << ".");
-  }
+  RAY_CHECK(connected_, "Attempted to perform get_object but failed.");
   ObjRequest request;
   request.workerid = workerid_;
   request.type = ObjRequestType::GET;
@@ -96,9 +88,7 @@ slice Worker::get_object(ObjRef objref) {
 // TODO(pcm): More error handling
 // contained_objrefs is a vector of all the objrefs contained in obj
 void Worker::put_object(ObjRef objref, const Obj* obj, std::vector<ObjRef> &contained_objrefs) {
-  if (!connected_) {
-    RAY_LOG(RAY_FATAL, "Attempting to perform put_object, but connected_ = " << connected_ << ".");
-  }
+  RAY_CHECK(connected_, "Attempted to perform put_object but failed.");
   std::string data;
   obj->SerializeToString(&data); // TODO(pcm): get rid of this serialization
   ObjRequest request;
@@ -141,9 +131,7 @@ void Worker::put_object(ObjRef objref, const Obj* obj, std::vector<ObjRef> &cont
   } while (0);
 
 PyObject* Worker::put_arrow(ObjRef objref, PyObject* value) {
-  if (!connected_) {
-    RAY_LOG(RAY_FATAL, "Attempting to perform put_arrow, but connected_ = " << connected_ << ".");
-  }
+  RAY_CHECK(connected_, "Attempted to perform put_arrow but failed.");
   ObjRequest request;
   pynumbuf::PythonObjectWriter writer;
   int64_t size;
@@ -167,9 +155,7 @@ PyObject* Worker::put_arrow(ObjRef objref, PyObject* value) {
 }
 
 PyObject* Worker::get_arrow(ObjRef objref) {
-  if (!connected_) {
-    RAY_LOG(RAY_FATAL, "Attempting to perform get_arrow, but connected_ = " << connected_ << ".");
-  }
+  RAY_CHECK(connected_, "Attempted to perform get_arrow but failed.");
   ObjRequest request;
   request.workerid = workerid_;
   request.type = ObjRequestType::GET;
@@ -185,9 +171,7 @@ PyObject* Worker::get_arrow(ObjRef objref) {
 }
 
 bool Worker::is_arrow(ObjRef objref) {
-  if (!connected_) {
-    RAY_LOG(RAY_FATAL, "Attempting to perform is_arrow, but connected_ = " << connected_ << ".");
-  }
+  RAY_CHECK(connected_, "Attempted to perform is_arrow but failed.");
   ObjRequest request;
   request.workerid = workerid_;
   request.type = ObjRequestType::GET;
@@ -199,9 +183,7 @@ bool Worker::is_arrow(ObjRef objref) {
 }
 
 void Worker::alias_objrefs(ObjRef alias_objref, ObjRef target_objref) {
-  if (!connected_) {
-    RAY_LOG(RAY_FATAL, "Attempting to perform alias_objrefs, but connected_ = " << connected_ << ".");
-  }
+  RAY_CHECK(connected_, "Attempted to perform alias_objrefs but failed.");
   ClientContext context;
   AliasObjRefsRequest request;
   request.set_alias_objref(alias_objref);
@@ -212,7 +194,7 @@ void Worker::alias_objrefs(ObjRef alias_objref, ObjRef target_objref) {
 
 void Worker::increment_reference_count(std::vector<ObjRef> &objrefs) {
   if (!connected_) {
-    RAY_LOG(RAY_DEBUG, "Attempting to increment_reference_count for objrefs, but connected_ = " << connected_ << " so returning instead.");
+    RAY_LOG(RAY_INFO, "Attempting to increment_reference_count for objrefs, but connected_ = " << connected_ << " so returning instead.");
     return;
   }
   if (objrefs.size() > 0) {
@@ -229,7 +211,7 @@ void Worker::increment_reference_count(std::vector<ObjRef> &objrefs) {
 
 void Worker::decrement_reference_count(std::vector<ObjRef> &objrefs) {
   if (!connected_) {
-    RAY_LOG(RAY_DEBUG, "Attempting to decrement_reference_count, but connected_ = " << connected_ << " so returning instead.");
+    RAY_LOG(RAY_INFO, "Attempting to decrement_reference_count, but connected_ = " << connected_ << " so returning instead.");
     return;
   }
   if (objrefs.size() > 0) {
@@ -245,9 +227,7 @@ void Worker::decrement_reference_count(std::vector<ObjRef> &objrefs) {
 }
 
 void Worker::register_function(const std::string& name, size_t num_return_vals) {
-  if (!connected_) {
-    RAY_LOG(RAY_FATAL, "Attempting to perform register_function, but connected_ = " << connected_ << ".");
-  }
+  RAY_CHECK(connected_, "Attempted to perform register_function but failed.");
   ClientContext context;
   RegisterFunctionRequest request;
   request.set_fnname(name);
@@ -264,9 +244,7 @@ Task* Worker::receive_next_task() {
 }
 
 void Worker::notify_task_completed(bool task_succeeded, std::string error_message) {
-  if (!connected_) {
-    RAY_LOG(RAY_FATAL, "Attempting to perform notify_task_completed, but connected_ = " << connected_ << ".");
-  }
+  RAY_CHECK(connected_, "Attempted to perform notify_task_completed but failed.");
   ClientContext context;
   NotifyTaskCompletedRequest request;
   request.set_workerid(workerid_);
@@ -286,9 +264,7 @@ bool Worker::connected() {
 
 // TODO(rkn): Should we be using pointers or references? And should they be const?
 void Worker::scheduler_info(ClientContext &context, SchedulerInfoRequest &request, SchedulerInfoReply &reply) {
-  if (!connected_) {
-    RAY_LOG(RAY_FATAL, "Attempting to get scheduler info, but connected_ = " << connected_ << ".");
-  }
+  RAY_CHECK(connected_, "Attempted to get scheduler info but failed.");
   scheduler_stub_->SchedulerInfo(&context, request, &reply);
 }
 

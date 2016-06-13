@@ -42,7 +42,7 @@ public:
         queue_ = std::unique_ptr<message_queue>(new message_queue(open_only, name.c_str()));
       }
     } catch(interprocess_exception &ex) {
-      RAY_LOG(RAY_FATAL, "boost::interprocess exception: " << ex.what());
+      RAY_CHECK(false, "boost::interprocess exception: " << ex.what());
     }
     return true;
   };
@@ -55,7 +55,7 @@ public:
     try {
       queue_->send(object, sizeof(T), 0);
     } catch(interprocess_exception &ex) {
-      RAY_LOG(RAY_FATAL, "boost::interprocess exception: " << ex.what());
+      RAY_CHECK(false, "boost::interprocess exception: " << ex.what());
     }
     return true;
   };
@@ -66,7 +66,7 @@ public:
     try {
       queue_->receive(object, sizeof(T), recvd_size, priority);
     } catch(interprocess_exception &ex) {
-      RAY_LOG(RAY_FATAL, "boost::interprocess exception: " << ex.what());
+      RAY_CHECK(false, "boost::interprocess exception: " << ex.what());
     }
     return true;
   }
