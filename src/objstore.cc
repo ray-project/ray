@@ -26,9 +26,7 @@ void ObjStoreService::pull_data_from(ObjRef objref, ObjStore::Stub& stub) {
   uint8_t* data = segmentpool_->get_address(handle);
   segmentpool_lock_.unlock();
   do {
-    if (num_bytes + chunk.data().size() > total_size) {
-      RAY_LOG(RAY_FATAL, "The reader attempted to stream too many bytes.");
-    }
+    RAY_CHECK_LE(num_bytes + chunk.data().size(), total_size, "The reader attempted to stream too many bytes.");
     std::memcpy(data, chunk.data().c_str(), chunk.data().size());
     data += chunk.data().size();
     num_bytes += chunk.data().size();
@@ -36,9 +34,7 @@ void ObjStoreService::pull_data_from(ObjRef objref, ObjStore::Stub& stub) {
   Status status = reader->Finish(); // Right now we don't use the status.
 
   // finalize object
-  if (num_bytes != total_size) {
-    RAY_LOG(RAY_FATAL, "Streamed objref " << objref << ", but num_bytes != total_size");
-  }
+  RAY_CHECK_EQ(num_bytes, total_size, "Streamed objref " << objref << ", but num_bytes != total_size");
   object_ready(objref, chunk.metadata_offset());
   RAY_LOG(RAY_DEBUG, "finished streaming data, objref was " << objref << " and size was " << num_bytes);
 }
@@ -78,10 +74,8 @@ Status ObjStoreService::StartDelivery(ServerContext* context, const StartDeliver
     }
     if (memory_[objref].second == MemoryStatusType::NOT_PRESENT) {
     }
-    else if (memory_[objref].second == MemoryStatusType::DEALLOCATED) {
-      RAY_LOG(RAY_FATAL, "Objstore " << objstoreid_ << " is attempting to get objref " << objref << ", but memory_[objref] == DEALLOCATED.");
-    }
     else {
+      RAY_CHECK_NEQ(memory_[objref].second, MemoryStatusType::DEALLOCATED, "Objstore " << objstoreid_ << " is attempting to get objref " << objref << ", but memory_[objref] == DEALLOCATED."); 
       RAY_LOG(RAY_DEBUG, "Objstore " << objstoreid_ << " already has objref " << objref << " or it is already being shipped, so no need to pull it again.");
       return Status::OK;
     }
@@ -119,12 +113,8 @@ Status ObjStoreService::StreamObjTo(ServerContext* context, const StreamObjToReq
   ObjChunk chunk;
   ObjRef objref = request->objref();
   memory_lock_.lock();
-  if (objref >= memory_.size()) {
-    RAY_LOG(RAY_FATAL, "Objstore " << objstoreid_ << " is attempting to use objref " << objref << " in StreamObjTo, but this objref is not present in the object store.");
-  }
-  if (memory_[objref].second != MemoryStatusType::READY) {
-    RAY_LOG(RAY_FATAL, "Objstore " << objstoreid_ << " is attempting to stream objref " << objref << ", but memory_[objref].second != MemoryStatusType::READY.");
-  }
+  RAY_CHECK_LT(objref, memory_.size(), "Objstore " << objstoreid_ << " is attempting to use objref " << objref << " in StreamObjTo, but this objref is not present in the object store.");
+  RAY_CHECK_EQ(memory_[objref].second, MemoryStatusType::READY, "Objstore " << objstoreid_ << " is attempting to stream objref " << objref << ", but memory_[objref].second != MemoryStatusType::READY.");
   ObjHandle handle = memory_[objref].first;
   memory_lock_.unlock(); // TODO(rkn): Make sure we don't still need to hold on to this lock.
   segmentpool_lock_.lock();
@@ -135,9 +125,7 @@ Status ObjStoreService::StreamObjTo(ServerContext* context, const StreamObjToReq
     chunk.set_metadata_offset(handle.metadata_offset());
     chunk.set_total_size(size);
     chunk.set_data(head + i, std::min(CHUNK_SIZE, size - i));
-    if (!writer->Write(chunk)) {
-      RAY_LOG(RAY_FATAL, "stream connection prematurely closed")
-    }
+    RAY_CHECK(writer->Write(chunk), "stream connection prematurely closed")
   }
   return Status::OK;
 }
@@ -149,18 +137,10 @@ Status ObjStoreService::NotifyAlias(ServerContext* context, const NotifyAliasReq
   RAY_LOG(RAY_DEBUG, "Aliasing objref " << alias_objref << " with objref " << canonical_objref);
   {
     std::lock_guard<std::mutex> memory_lock(memory_lock_);
-    if (canonical_objref >= memory_.size()) {
-      RAY_LOG(RAY_FATAL, "Attempting to alias objref " << alias_objref << " with objref " << canonical_objref << ", but objref " << canonical_objref << " is not in the objstore.")
-    }
-    if (memory_[canonical_objref].second == MemoryStatusType::NOT_READY) {
-      RAY_LOG(RAY_FATAL, "Attempting to alias objref " << alias_objref << " with objref " << canonical_objref << ", but objref " << canonical_objref << " is not ready yet in the objstore.")
-    }
-    if (memory_[canonical_objref].second == MemoryStatusType::NOT_PRESENT) {
-      RAY_LOG(RAY_FATAL, "Attempting to alias objref " << alias_objref << " with objref " << canonical_objref << ", but objref " << canonical_objref << " is not present in the objstore.")
-    }
-    if (memory_[canonical_objref].second == MemoryStatusType::DEALLOCATED) {
-      RAY_LOG(RAY_FATAL, "Attempting to alias objref " << alias_objref << " with objref " << canonical_objref << ", but objref " << canonical_objref << " has already been deallocated.")
-    }
+    RAY_CHECK_LT(canonical_objref, memory_.size(), "Attempting to alias objref " << alias_objref << " with objref " << canonical_objref << ", but objref " << canonical_objref << " is not in the objstore.")
+    RAY_CHECK_NEQ(memory_[canonical_objref].second, MemoryStatusType::NOT_READY, "Attempting to alias objref " << alias_objref << " with objref " << canonical_objref << ", but objref " << canonical_objref << " is not ready yet in the objstore.")
+    RAY_CHECK_NEQ(memory_[canonical_objref].second, MemoryStatusType::NOT_PRESENT, "Attempting to alias objref " << alias_objref << " with objref " << canonical_objref << ", but objref " << canonical_objref << " is not present in the objstore.")
+    RAY_CHECK_NEQ(memory_[canonical_objref].second, MemoryStatusType::DEALLOCATED, "Attempting to alias objref " << alias_objref << " with objref " << canonical_objref << ", but objref " << canonical_objref << " has already been deallocated.")
     if (alias_objref >= memory_.size()) {
       memory_.resize(alias_objref + 1, std::make_pair(ObjHandle(), MemoryStatusType::NOT_PRESENT));
     }
@@ -178,12 +158,8 @@ Status ObjStoreService::DeallocateObject(ServerContext* context, const Deallocat
   ObjRef canonical_objref = request->canonical_objref();
   RAY_LOG(RAY_REFCOUNT, "Deallocating canonical_objref " << canonical_objref);
   std::lock_guard<std::mutex> memory_lock(memory_lock_);
-  if (memory_[canonical_objref].second != MemoryStatusType::READY) {
-    RAY_LOG(RAY_FATAL, "Attempting to deallocate canonical_objref " << canonical_objref << ", but memory_[canonical_objref].second = " << memory_[canonical_objref].second);
-  }
-  if (canonical_objref >= memory_.size()) {
-    RAY_LOG(RAY_FATAL, "Attempting to deallocate canonical_objref " << canonical_objref << ", but it is not in the objstore.");
-  }
+  RAY_CHECK_EQ(memory_[canonical_objref].second, MemoryStatusType::READY, "Attempting to deallocate canonical_objref " << canonical_objref << ", but memory_[canonical_objref].second = " << memory_[canonical_objref].second);
+  RAY_CHECK_LT(canonical_objref, memory_.size(), "Attempting to deallocate canonical_objref " << canonical_objref << ", but it is not in the objstore.");
   segmentpool_lock_.lock();
   segmentpool_->deallocate(memory_[canonical_objref].first);
   segmentpool_lock_.unlock();
@@ -208,7 +184,7 @@ void ObjStoreService::process_objstore_request(const ObjRequest request) {
       }
       break;
     default: {
-        RAY_LOG(RAY_FATAL, "Attempting to process request of type " <<  request.type << ". This code should be unreachable.");
+        RAY_CHECK(false, "Attempting to process request of type " <<  request.type << ". This code should be unreachable.");
       }
   }
 }
@@ -243,7 +219,7 @@ void ObjStoreService::process_worker_request(const ObjRequest request) {
           std::lock_guard<std::mutex> lock(pull_queue_lock_);
           pull_queue_.push_back(std::make_pair(request.workerid, request.objref));
         } else {
-          RAY_LOG(RAY_FATAL, "A worker requested objref " << request.objref << ", but memory_[objref].second = " << memory_[request.objref].second);
+          RAY_CHECK(false, "A worker requested objref " << request.objref << ", but memory_[objref].second = " << memory_[request.objref].second);
         }
       }
       break;
@@ -252,7 +228,7 @@ void ObjStoreService::process_worker_request(const ObjRequest request) {
       }
       break;
     default: {
-        RAY_LOG(RAY_FATAL, "Attempting to process request of type " <<  request.type << ". This code should be unreachable.");
+        RAY_CHECK(false, "Attempting to process request of type " <<  request.type << ". This code should be unreachable.");
       }
   }
 }
@@ -283,7 +259,7 @@ void ObjStoreService::process_requests() {
         }
         break;
       default: {
-          RAY_LOG(RAY_FATAL, "Attempting to process request of type " <<  request.type << ". This code should be unreachable.");
+          RAY_CHECK(false, "Attempting to process request of type " <<  request.type << ". This code should be unreachable.");
         }
     }
   }
@@ -310,9 +286,7 @@ ObjHandle ObjStoreService::alloc(ObjRef objref, size_t size) {
   segmentpool_lock_.unlock();
   std::lock_guard<std::mutex> memory_lock(memory_lock_);
   RAY_LOG(RAY_VERBOSE, "Allocating space for objref " << objref << " on object store " << objstoreid_);
-  if (memory_[objref].second != MemoryStatusType::NOT_PRESENT && memory_[objref].second != MemoryStatusType::PRE_ALLOCED) {
-    RAY_LOG(RAY_FATAL, "Attempting to allocate space for objref " << objref << ", but memory_[objref].second = " << memory_[objref].second);
-  }
+  RAY_CHECK(memory_[objref].second == MemoryStatusType::NOT_PRESENT || memory_[objref].second == MemoryStatusType::PRE_ALLOCED, "Attempting to allocate space for objref " << objref << ", but memory_[objref].second = " << memory_[objref].second);
   memory_[objref].first = handle;
   memory_[objref].second = MemoryStatusType::NOT_READY;
   return handle;
@@ -322,9 +296,7 @@ void ObjStoreService::object_ready(ObjRef objref, size_t metadata_offset) {
   {
     std::lock_guard<std::mutex> memory_lock(memory_lock_);
     std::pair<ObjHandle, MemoryStatusType>& item = memory_[objref];
-    if (item.second != MemoryStatusType::NOT_READY) {
-      RAY_LOG(RAY_FATAL, "A worker notified the object store that objref " << objref << " has been written to the object store, but memory_[objref].second != NOT_READY.");
-    }
+    RAY_CHECK_EQ(item.second, MemoryStatusType::NOT_READY, "A worker notified the object store that objref " << objref << " has been written to the object store, but memory_[objref].second != NOT_READY.");
     item.first.set_metadata_offset(metadata_offset);
     item.second = MemoryStatusType::READY;
   }
@@ -364,10 +336,7 @@ void start_objstore(const char* scheduler_addr, const char* objstore_addr) {
 }
 
 int main(int argc, char** argv) {
-  if (argc != 3) {
-    RAY_LOG(RAY_FATAL, "object store: expected two arguments (scheduler ip address and object store ip address)");
-    return 1;
-  }
+  RAY_CHECK_EQ(argc, 3, "object store: expected two arguments (scheduler ip address and object store ip address)");
 
   start_objstore(argv[1], argv[2]);
 

@@ -12,10 +12,8 @@ Status SchedulerService::SubmitTask(ServerContext* context, const SubmitTaskRequ
   std::unique_ptr<Task> task(new Task(request->task())); // need to copy, because request is const
   fntable_lock_.lock();
 
-  if (fntable_.find(task->name()) == fntable_.end()) {
-    // TODO(rkn): In the future, this should probably not be fatal. Instead, propagate the error back to the worker.
-    RAY_LOG(RAY_FATAL, "The function " << task->name() << " has not been registered by any worker.");
-  }
+  // TODO(rkn): In the future, this should probably not be fatal. Instead, propagate the error back to the worker.
+  RAY_CHECK_NEQ(fntable_.find(task->name()), fntable_.end(), "The function " << task->name() << " has not been registered by any worker.");
 
   size_t num_return_vals = fntable_[task->name()].num_return_vals();
   fntable_lock_.unlock();
@@ -63,9 +61,7 @@ Status SchedulerService::RequestObj(ServerContext* context, const RequestObjRequ
   objtable_lock_.unlock();
 
   ObjRef objref = request->objref();
-  if (objref >= size) {
-    RAY_LOG(RAY_FATAL, "internal error: no object with objref " << objref << " exists");
-  }
+  RAY_CHECK_LT(objref, size, "internal error: no object with objref " << objref << " exists");
 
   pull_queue_lock_.lock();
   pull_queue_.push_back(std::make_pair(request->workerid(), objref));
@@ -78,23 +74,15 @@ Status SchedulerService::AliasObjRefs(ServerContext* context, const AliasObjRefs
   ObjRef alias_objref = request->alias_objref();
   ObjRef target_objref = request->target_objref();
   RAY_LOG(RAY_ALIAS, "Aliasing objref " << alias_objref << " with objref " << target_objref);
-  if (alias_objref == target_objref) {
-    RAY_LOG(RAY_FATAL, "internal error: attempting to alias objref " << alias_objref << " with itself.");
-  }
+  RAY_CHECK_NEQ(alias_objref, target_objref, "internal error: attempting to alias objref " << alias_objref << " with itself.");
   objtable_lock_.lock();
   size_t size = objtable_.size();
   objtable_lock_.unlock();
-  if (alias_objref >= size) {
-    RAY_LOG(RAY_FATAL, "internal error: no object with objref " << alias_objref << " exists");
-  }
-  if (target_objref >= size) {
-    RAY_LOG(RAY_FATAL, "internal error: no object with objref " << target_objref << " exists");
-  }
+  RAY_CHECK_LT(alias_objref, size, "internal error: no object with objref " << alias_objref << " exists");
+  RAY_CHECK_LT(target_objref, size, "internal error: no object with objref " << target_objref << " exists");
   {
     std::lock_guard<std::mutex> target_objrefs_lock(target_objrefs_lock_);
-    if (target_objrefs_[alias_objref] != UNITIALIZED_ALIAS) {
-      RAY_LOG(RAY_FATAL, "internal error: attempting to alias objref " << alias_objref << " with objref " << target_objref << ", but objref " << alias_objref << " has already been aliased with objref " << target_objrefs_[alias_objref]);
-    }
+    RAY_CHECK_EQ(target_objrefs_[alias_objref], UNITIALIZED_ALIAS, "internal error: attempting to alias objref " << alias_objref << " with objref " << target_objref << ", but objref " << alias_objref << " has already been aliased with objref " << target_objrefs_[alias_objref]);
     target_objrefs_[alias_objref] = target_objref;
   }
   {
@@ -159,9 +147,7 @@ Status SchedulerService::NotifyTaskCompleted(ServerContext* context, const Notif
 
 Status SchedulerService::IncrementRefCount(ServerContext* context, const IncrementRefCountRequest* request, AckReply* reply) {
   int num_objrefs = request->objref_size();
-  if (num_objrefs == 0) {
-    RAY_LOG(RAY_FATAL, "Scheduler received IncrementRefCountRequest with 0 objrefs.");
-  }
+  RAY_CHECK_NEQ(num_objrefs, 0, "Scheduler received IncrementRefCountRequest with 0 objrefs.");
   std::vector<ObjRef> objrefs;
   for (int i = 0; i < num_objrefs; ++i) {
     objrefs.push_back(request->objref(i));
@@ -173,9 +159,7 @@ Status SchedulerService::IncrementRefCount(ServerContext* context, const Increme
 
 Status SchedulerService::DecrementRefCount(ServerContext* context, const DecrementRefCountRequest* request, AckReply* reply) {
   int num_objrefs = request->objref_size();
-  if (num_objrefs == 0) {
-    RAY_LOG(RAY_FATAL, "Scheduler received DecrementRefCountRequest with 0 objrefs.");
-  }
+  RAY_CHECK_NEQ(num_objrefs, 0, "Scheduler received DecrementRefCountRequest with 0 objrefs.");
   std::vector<ObjRef> objrefs;
   for (int i = 0; i < num_objrefs; ++i) {
     objrefs.push_back(request->objref(i));
@@ -192,9 +176,7 @@ Status SchedulerService::AddContainedObjRefs(ServerContext* context, const AddCo
     // RAY_LOG(RAY_FATAL, "Attempting to add contained objrefs for non-canonical objref " << objref);
   // }
   std::lock_guard<std::mutex> contained_objrefs_lock(contained_objrefs_lock_);
-  if (contained_objrefs_[objref].size() != 0) {
-    RAY_LOG(RAY_FATAL, "Attempting to add contained objrefs for objref " << objref << ", but contained_objrefs_[objref].size() != 0.");
-  }
+  RAY_CHECK_EQ(contained_objrefs_[objref].size(), 0, "Attempting to add contained objrefs for objref " << objref << ", but contained_objrefs_[objref].size() != 0.");
   for (int i = 0; i < request->contained_objref_size(); ++i) {
     contained_objrefs_[objref].push_back(request->contained_objref(i));
   }
@@ -214,12 +196,8 @@ Status SchedulerService::SchedulerInfo(ServerContext* context, const SchedulerIn
 //
 // deliver_object assumes that the aliasing for objref has already been completed. That is, has_canonical_objref(objref) == true
 void SchedulerService::deliver_object(ObjRef objref, ObjStoreId from, ObjStoreId to) {
-  if (from == to) {
-    RAY_LOG(RAY_FATAL, "attempting to deliver objref " << objref << " from objstore " << from << " to itself.");
-  }
-  if (!has_canonical_objref(objref)) {
-    RAY_LOG(RAY_FATAL, "attempting to deliver objref " << objref << ", but this objref does not yet have a canonical objref.");
-  }
+  RAY_CHECK_NEQ(from, to, "attempting to deliver objref " << objref << " from objstore " << from << " to itself.");
+  RAY_CHECK(has_canonical_objref(objref), "attempting to deliver objref " << objref << ", but this objref does not yet have a canonical objref.");
   ClientContext context;
   AckReply reply;
   StartDeliveryRequest request;
@@ -238,7 +216,7 @@ void SchedulerService::schedule() {
   } else if (scheduling_algorithm_ == SCHEDULING_ALGORITHM_LOCALITY_AWARE) {
     schedule_tasks_location_aware(); // See what we can do in task_queue_
   } else {
-    RAY_LOG(RAY_FATAL, "scheduling algorithm not known");
+    RAY_CHECK(false, "scheduling algorithm not known");
   }
   perform_notify_aliases(); // See what we can do in alias_notification_queue_
 }
@@ -306,9 +284,7 @@ std::pair<WorkerId, ObjStoreId> SchedulerService::register_worker(const std::str
       std::this_thread::sleep_for (std::chrono::milliseconds(100));
     }
   }
-  if (objstoreid == std::numeric_limits<size_t>::max()) {
-    RAY_LOG(RAY_FATAL, "object store with address " << objstore_address << " not yet registered");
-  }
+  RAY_CHECK_NEQ(objstoreid, std::numeric_limits<size_t>::max(), "object store with address " << objstore_address << " not yet registered");
   workers_lock_.lock();
   WorkerId workerid = workers_.size();
   workers_.push_back(WorkerHandle());
@@ -336,18 +312,10 @@ ObjRef SchedulerService::register_new_object() {
   ObjRef reverse_target_objrefs_size = reverse_target_objrefs_.size();
   ObjRef reference_counts_size = reference_counts_.size();
   ObjRef contained_objrefs_size = contained_objrefs_.size();
-  if (objtable_size != target_objrefs_size) {
-    RAY_LOG(RAY_FATAL, "objtable_ and target_objrefs_ should have the same size, but objtable_.size() = " << objtable_size << " and target_objrefs_.size() = " << target_objrefs_size);
-  }
-  if (objtable_size != reverse_target_objrefs_size) {
-    RAY_LOG(RAY_FATAL, "objtable_ and reverse_target_objrefs_ should have the same size, but objtable_.size() = " << objtable_size << " and reverse_target_objrefs_.size() = " << reverse_target_objrefs_size);
-  }
-  if (objtable_size != reference_counts_size) {
-    RAY_LOG(RAY_FATAL, "objtable_ and reference_counts_ should have the same size, but objtable_.size() = " << objtable_size << " and reference_counts_.size() = " << reference_counts_size);
-  }
-  if (objtable_size != contained_objrefs_size) {
-    RAY_LOG(RAY_FATAL, "objtable_ and contained_objrefs_ should have the same size, but objtable_.size() = " << objtable_size << " and contained_objrefs_.size() = " << contained_objrefs_size);
-  }
+  RAY_CHECK_EQ(objtable_size, target_objrefs_size, "objtable_ and target_objrefs_ should have the same size, but objtable_.size() = " << objtable_size << " and target_objrefs_.size() = " << target_objrefs_size);
+  RAY_CHECK_EQ(objtable_size, reverse_target_objrefs_size, "objtable_ and reverse_target_objrefs_ should have the same size, but objtable_.size() = " << objtable_size << " and reverse_target_objrefs_.size() = " << reverse_target_objrefs_size);
+  RAY_CHECK_EQ(objtable_size, reference_counts_size, "objtable_ and reference_counts_ should have the same size, but objtable_.size() = " << objtable_size << " and reference_counts_.size() = " << reference_counts_size);
+  RAY_CHECK_EQ(objtable_size, contained_objrefs_size, "objtable_ and contained_objrefs_ should have the same size, but objtable_.size() = " << objtable_size << " and contained_objrefs_.size() = " << contained_objrefs_size);
   objtable_.push_back(std::vector<ObjStoreId>());
   target_objrefs_.push_back(UNITIALIZED_ALIAS);
   reverse_target_objrefs_.push_back(std::vector<ObjRef>());
@@ -358,13 +326,9 @@ ObjRef SchedulerService::register_new_object() {
 
 void SchedulerService::add_location(ObjRef canonical_objref, ObjStoreId objstoreid) {
   // add_location must be called with a canonical objref
-  if (!is_canonical(canonical_objref)) {
-    RAY_LOG(RAY_FATAL, "Attempting to call add_location with a non-canonical objref (objref " << canonical_objref << ")");
-  }
+  RAY_CHECK(is_canonical(canonical_objref), "Attempting to call add_location with a non-canonical objref (objref " << canonical_objref << ")");
   std::lock_guard<std::mutex> objtable_lock(objtable_lock_);
-  if (canonical_objref >= objtable_.size()) {
-    RAY_LOG(RAY_FATAL, "trying to put an object in the object store that was not registered with the scheduler (objref " << canonical_objref << ")");
-  }
+  RAY_CHECK_LT(canonical_objref, objtable_.size(), "trying to put an object in the object store that was not registered with the scheduler (objref " << canonical_objref << ")");
   // do a binary search
   auto pos = std::lower_bound(objtable_[canonical_objref].begin(), objtable_[canonical_objref].end(), objstoreid);
   if (pos == objtable_[canonical_objref].end() || objstoreid < *pos) {
@@ -374,12 +338,8 @@ void SchedulerService::add_location(ObjRef canonical_objref, ObjStoreId objstore
 
 void SchedulerService::add_canonical_objref(ObjRef objref) {
   std::lock_guard<std::mutex> lock(target_objrefs_lock_);
-  if (objref >= target_objrefs_.size()) {
-    RAY_LOG(RAY_FATAL, "internal error: attempting to insert objref " << objref << " in target_objrefs_, but target_objrefs_.size() is " << target_objrefs_.size());
-  }
-  if (target_objrefs_[objref] != UNITIALIZED_ALIAS && target_objrefs_[objref] != objref) {
-    RAY_LOG(RAY_FATAL, "internal error: attempting to declare objref " << objref << " as a canonical objref, but target_objrefs_[objref] is already aliased with objref " << target_objrefs_[objref]);
-  }
+  RAY_CHECK_LT(objref, target_objrefs_.size(), "internal error: attempting to insert objref " << objref << " in target_objrefs_, but target_objrefs_.size() is " << target_objrefs_.size());
+  RAY_CHECK(target_objrefs_[objref] == UNITIALIZED_ALIAS || target_objrefs_[objref] == objref, "internal error: attempting to declare objref " << objref << " as a canonical objref, but target_objrefs_[objref] is already aliased with objref " << target_objrefs_[objref]);
   target_objrefs_[objref] = objref;
 }
 
@@ -435,9 +395,7 @@ void SchedulerService::get_info(const SchedulerInfoRequest& request, SchedulerIn
 // pick_objstore must be called with a canonical_objref
 ObjStoreId SchedulerService::pick_objstore(ObjRef canonical_objref) {
   std::mt19937 rng;
-  if (!is_canonical(canonical_objref)) {
-    RAY_LOG(RAY_FATAL, "Attempting to call pick_objstore with a non-canonical objref, (objref " << canonical_objref << ")");
-  }
+  RAY_CHECK(is_canonical(canonical_objref), "Attempting to call pick_objstore with a non-canonical objref, (objref " << canonical_objref << ")");
   std::uniform_int_distribution<int> uni(0, objtable_[canonical_objref].size() - 1);
   ObjStoreId objstoreid = objtable_[canonical_objref][uni(rng)];
   return objstoreid;
@@ -445,9 +403,7 @@ ObjStoreId SchedulerService::pick_objstore(ObjRef canonical_objref) {
 
 bool SchedulerService::is_canonical(ObjRef objref) {
   std::lock_guard<std::mutex> lock(target_objrefs_lock_);
-  if (target_objrefs_[objref] == UNITIALIZED_ALIAS) {
-    RAY_LOG(RAY_FATAL, "Attempting to call is_canonical on an objref for which aliasing is not complete or the object is not ready, target_objrefs_[objref] == UNITIALIZED_ALIAS for objref " << objref << ".");
-  }
+  RAY_CHECK_NEQ(target_objrefs_[objref], UNITIALIZED_ALIAS, "Attempting to call is_canonical on an objref for which aliasing is not complete or the object is not ready, target_objrefs_[objref] == UNITIALIZED_ALIAS for objref " << objref << ".");
   return objref == target_objrefs_[objref];
 }
 
@@ -540,9 +496,7 @@ void SchedulerService::schedule_tasks_location_aware() {
         for (int j = 0; j < task.arg_size(); ++j) {
           if (!task.arg(j).has_obj()) {
             ObjRef objref = task.arg(j).ref();
-            if (!has_canonical_objref(objref)) {
-              RAY_LOG(RAY_FATAL, "no canonical object ref found even though task is ready; that should not be possible!");
-            }
+            RAY_CHECK(has_canonical_objref(objref), "no canonical object ref found even though task is ready; that should not be possible!");
             ObjRef canonical_objref = get_canonical_objref(objref);
             // check if the object is already in the local object store
             if (!std::binary_search(objtable_[canonical_objref].begin(), objtable_[canonical_objref].end(), objstoreid)) {
@@ -587,9 +541,7 @@ bool SchedulerService::has_canonical_objref(ObjRef objref) {
   std::lock_guard<std::mutex> lock(target_objrefs_lock_);
   ObjRef objref_temp = objref;
   while (true) {
-    if (objref_temp >= target_objrefs_.size()) {
-      RAY_LOG(RAY_FATAL, "Attempting to index target_objrefs_ with objref " << objref_temp << ", but target_objrefs_.size() = " << target_objrefs_.size());
-    }
+    RAY_CHECK_LT(objref_temp, target_objrefs_.size(), "Attempting to index target_objrefs_ with objref " << objref_temp << ", but target_objrefs_.size() = " << target_objrefs_.size());
     if (target_objrefs_[objref_temp] == UNITIALIZED_ALIAS) {
       return false;
     }
@@ -605,12 +557,8 @@ ObjRef SchedulerService::get_canonical_objref(ObjRef objref) {
   std::lock_guard<std::mutex> lock(target_objrefs_lock_);
   ObjRef objref_temp = objref;
   while (true) {
-    if (objref_temp >= target_objrefs_.size()) {
-      RAY_LOG(RAY_FATAL, "Attempting to index target_objrefs_ with objref " << objref_temp << ", but target_objrefs_.size() = " << target_objrefs_.size());
-    }
-    if (target_objrefs_[objref_temp] == UNITIALIZED_ALIAS) {
-      RAY_LOG(RAY_FATAL, "Attempting to get canonical objref for objref " << objref << ", which aliases, objref " << objref_temp << ", but target_objrefs_[objref_temp] == UNITIALIZED_ALIAS for objref_temp = " << objref_temp << ".");
-    }
+    RAY_CHECK_LT(objref_temp, target_objrefs_.size(), "Attempting to index target_objrefs_ with objref " << objref_temp << ", but target_objrefs_.size() = " << target_objrefs_.size());
+    RAY_CHECK_NEQ(target_objrefs_[objref_temp], UNITIALIZED_ALIAS, "Attempting to get canonical objref for objref " << objref << ", which aliases, objref " << objref_temp << ", but target_objrefs_[objref_temp] == UNITIALIZED_ALIAS for objref_temp = " << objref_temp << ".");
     if (target_objrefs_[objref_temp] == objref_temp) {
       return objref_temp;
     }
@@ -672,9 +620,7 @@ void SchedulerService::increment_ref_count(std::vector<ObjRef> &objrefs) {
   // increment_ref_count assumes that reference_counts_lock_ has been acquired already
   for (int i = 0; i < objrefs.size(); ++i) {
     ObjRef objref = objrefs[i];
-    if (reference_counts_[objref] == DEALLOCATED) {
-      RAY_LOG(RAY_FATAL, "Attempting to increment the reference count for objref " << objref << ", but this object appears to have been deallocated already.");
-    }
+    RAY_CHECK_NEQ(reference_counts_[objref], DEALLOCATED, "Attempting to increment the reference count for objref " << objref << ", but this object appears to have been deallocated already.");
     reference_counts_[objref] += 1;
     RAY_LOG(RAY_REFCOUNT, "Incremented ref count for objref " << objref <<". New reference count is " << reference_counts_[objref]);
   }
@@ -684,12 +630,8 @@ void SchedulerService::decrement_ref_count(std::vector<ObjRef> &objrefs) {
   // decrement_ref_count assumes that reference_counts_lock_ has been acquired already
   for (int i = 0; i < objrefs.size(); ++i) {
     ObjRef objref = objrefs[i];
-    if (reference_counts_[objref] == DEALLOCATED) {
-      RAY_LOG(RAY_FATAL, "Attempting to decrement the reference count for objref " << objref << ", but this object appears to have been deallocated already.");
-    }
-    if (reference_counts_[objref] == 0) {
-      RAY_LOG(RAY_FATAL, "Attempting to decrement the reference count for objref " << objref << ", but the reference count for this object is already 0.");
-    }
+    RAY_CHECK_NEQ(reference_counts_[objref], DEALLOCATED, "Attempting to decrement the reference count for objref " << objref << ", but this object appears to have been deallocated already.");
+    RAY_CHECK_NEQ(reference_counts_[objref], 0, "Attempting to decrement the reference count for objref " << objref << ", but the reference count for this object is already 0.");
     reference_counts_[objref] -= 1;
     RAY_LOG(RAY_REFCOUNT, "Decremented ref count for objref " << objref << ". New reference count is " << reference_counts_[objref]);
     // See if we can deallocate the object
@@ -704,9 +646,7 @@ void SchedulerService::decrement_ref_count(std::vector<ObjRef> &objrefs) {
     }
     if (can_deallocate) {
       ObjRef canonical_objref = equivalent_objrefs[0];
-      if (!is_canonical(canonical_objref)) {
-        RAY_LOG(RAY_FATAL, "canonical_objref is not canonical.");
-      }
+      RAY_CHECK(is_canonical(canonical_objref), "canonical_objref is not canonical.");
       deallocate_object(canonical_objref);
       for (int j = 0; j < equivalent_objrefs.size(); ++j) {
         reference_counts_[equivalent_objrefs[j]] = DEALLOCATED;
@@ -757,10 +697,7 @@ char* get_cmd_option(char** begin, char** end, const std::string& option) {
 
 int main(int argc, char** argv) {
   SchedulingAlgorithmType scheduling_algorithm = SCHEDULING_ALGORITHM_LOCALITY_AWARE;
-  if (argc < 2) {
-    RAY_LOG(RAY_FATAL, "scheduler: expected at least one argument (scheduler ip address)");
-    return 1;
-  }
+  RAY_CHECK_GE(argc, 2, "scheduler: expected at least one argument (scheduler ip address)");
   if (argc > 2) {
     char* scheduling_algorithm_name = get_cmd_option(argv, argv + argc, "--scheduler-algorithm");
     if (scheduling_algorithm_name) {

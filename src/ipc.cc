@@ -32,9 +32,7 @@ MemorySegmentPool::MemorySegmentPool(ObjStoreId objstoreid, bool create) : objst
 // space is allocated, if it is in open mode, the shared memory is mapped into the process
 void MemorySegmentPool::open_segment(SegmentId segmentid, size_t size) {
   RAY_LOG(RAY_DEBUG, "Opening segmentid " << segmentid << " on object store " << objstoreid_ << " with create_mode_ = " << create_mode_);
-  if (segmentid != segments_.size() && create_mode_) {
-    RAY_LOG(RAY_FATAL, "Object store " << objstoreid_ << " is attempting to open segmentid " << segmentid << " on the object store, but segments_.size() = " << segments_.size());
-  }
+  RAY_CHECK(segmentid == segments_.size() || !create_mode_, "Object store " << objstoreid_ << " is attempting to open segmentid " << segmentid << " on the object store, but segments_.size() = " << segments_.size());
   if (segmentid >= segments_.size()) { // resize and initialize segments_
     int current_size = segments_.size();
     segments_.resize(segmentid + 1);
@@ -46,9 +44,7 @@ void MemorySegmentPool::open_segment(SegmentId segmentid, size_t size) {
   if (segments_[segmentid].second == SegmentStatusType::OPENED) {
     return;
   }
-  if (segments_[segmentid].second == SegmentStatusType::CLOSED) {
-    RAY_LOG(RAY_FATAL, "Attempting to open segmentid " << segmentid << ", but segments_[segmentid].second == SegmentStatusType::CLOSED.");
-  }
+  RAY_CHECK_NEQ(segments_[segmentid].second, SegmentStatusType::CLOSED, "Attempting to open segmentid " << segmentid << ", but segments_[segmentid].second == SegmentStatusType::CLOSED.");
   std::string segment_name = get_segment_name(segmentid);
   if (create_mode_) {
     assert(size > 0);
@@ -69,9 +65,7 @@ void MemorySegmentPool::close_segment(SegmentId segmentid) {
 }
 
 ObjHandle MemorySegmentPool::allocate(size_t size) {
-  if (!create_mode_) { // allocate is called only by the object store
-    RAY_LOG(RAY_FATAL, "Attempting to call allocate, but create_mode_ is false");
-  }
+  RAY_CHECK(create_mode_, "Attempting to call allocate, but create_mode_ is false");
   // TODO(pcm): at the moment, this always creates a new segment, this will be changed
   SegmentId segmentid = segments_.size();
   open_segment(segmentid, size);
@@ -90,9 +84,7 @@ void MemorySegmentPool::deallocate(ObjHandle pointer) {
 // returns address of the object refered to by the handle, needs to be called on
 // the process that will use the address
 uint8_t* MemorySegmentPool::get_address(ObjHandle pointer) {
-  if (create_mode_ && segments_[pointer.segmentid()].second != SegmentStatusType::OPENED) {
-    RAY_LOG(RAY_FATAL, "Object store " << objstoreid_ << " is attempting to call get_address on segmentid " << pointer.segmentid() << ", which has not been opened yet.");
-  }
+  RAY_CHECK(!create_mode_ || segments_[pointer.segmentid()].second == SegmentStatusType::OPENED, "Object store " << objstoreid_ << " is attempting to call get_address on segmentid " << pointer.segmentid() << ", which has not been opened yet.");
   if (!create_mode_) {
     open_segment(pointer.segmentid());
   }

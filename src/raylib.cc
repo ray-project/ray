@@ -703,9 +703,7 @@ PyObject* put_object(PyObject* self, PyObject* args) {
   if (!PyArg_ParseTuple(args, "O&O&O&O", &PyObjectToWorker, &worker, &PyObjectToObjRef, &objref, &PyObjectToObj, &obj, &contained_objrefs)) {
     return NULL;
   }
-  if (!PyList_Check(contained_objrefs)) {
-    RAY_LOG(RAY_FATAL, "The contained_objrefs argument must be a list.")
-  }
+  RAY_CHECK(PyList_Check(contained_objrefs), "The contained_objrefs argument must be a list.")
   std::vector<ObjRef> vec_contained_objrefs;
   size_t size = PyList_Size(contained_objrefs);
   for (size_t i = 0; i < size; ++i) {

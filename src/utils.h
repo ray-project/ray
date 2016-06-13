@@ -10,14 +10,11 @@ inline std::string::iterator split_ip_address(std::string& ip_address) {
     if(split_end != ip_address.end() && *split_end == ':') {
       return split_end;
     }
-    RAY_LOG(RAY_FATAL, "ip address should contain a port number");
+    RAY_CHECK(false, "ip address should contain a port number");
   } else { // IPv4
     auto split_point = std::find(ip_address.rbegin(), ip_address.rend(), ':').base();
-    if (split_point == ip_address.begin()) {
-      RAY_LOG(RAY_FATAL, "ip address should contain a port number");
-    } else {
-      return split_point;
-    }
+    RAY_CHECK_NEQ(split_point, ip_address.begin(), "ip address should contain a port number");
+    return split_point;
   }
 }
 
