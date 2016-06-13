@@ -82,6 +82,7 @@ message SubmitTaskRequest {
 
 message SubmitTaskReply {
   repeated uint64 result = 1; // Object references of the function return values
+  bool function_registered = 2; // True if the function was registered; false otherwise
 }
 
 message RequestObjRequest {
