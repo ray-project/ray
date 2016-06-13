@@ -1,5 +1,8 @@
 #include "worker.h"
 
+#include <chrono>
+#include <thread>
+
 #include "utils.h"
 
 #include <pynumbuf/serialize.h>
@@ -24,11 +27,19 @@ Worker::Worker(const std::string& worker_address, std::shared_ptr<Channel> sched
   connected_ = true;
 }
 
-SubmitTaskReply Worker::submit_task(SubmitTaskRequest* request) {
+SubmitTaskReply Worker::submit_task(SubmitTaskRequest* request, int max_retries, int retry_wait_milliseconds) {
   RAY_CHECK(connected_, "Attempted to perform submit_task but failed.");
   SubmitTaskReply reply;
-  ClientContext context;
-  Status status = scheduler_stub_->SubmitTask(&context, *request, &reply);
+  Status status;
+  for (int i = 0; i < 1 + max_retries; ++i) {
+    ClientContext context;
+    status = scheduler_stub_->SubmitTask(&context, *request, &reply);
+    if (reply.function_registered()) {
+      break;
+    }
+    RAY_LOG(RAY_INFO, "The function " << request->task().name() << " was not registered, so attempting to resubmit the task.");
+    std::this_thread::sleep_for(std::chrono::milliseconds(retry_wait_milliseconds));
+  }
   return reply;
 }
 

@@ -648,6 +648,10 @@ PyObject* submit_task(PyObject* self, PyObject* args) {
   SubmitTaskRequest request;
   request.set_allocated_task(task);
   SubmitTaskReply reply = worker->submit_task(&request);
+  if (!reply.function_registered()) {
+    PyErr_SetString(RayError, "task: function not registered");
+    return NULL;
+  }
   request.release_task(); // TODO: Make sure that task is not moved, otherwise capsule pointer needs to be updated
   int size = reply.result_size();
   PyObject* list = PyList_New(size);

@@ -40,8 +40,10 @@ class Worker {
  public:
   Worker(const std::string& worker_address, std::shared_ptr<Channel> scheduler_channel, std::shared_ptr<Channel> objstore_channel);
 
-  // submit a remote task to the scheduler
-  SubmitTaskReply submit_task(SubmitTaskRequest* request);
+  // Submit a remote task to the scheduler. If the function in the task is not
+  // registered with the scheduler, we will sleep for retry_wait_milliseconds
+  // and try to resubmit the task to the scheduler up to max_retries more times.
+  SubmitTaskReply submit_task(SubmitTaskRequest* request, int max_retries = 120, int retry_wait_milliseconds = 500);
   // send request to the scheduler to register this worker
   void register_worker(const std::string& worker_address, const std::string& objstore_address);
   // get a new object reference that is registered with the scheduler

@@ -10,40 +10,46 @@ SchedulerService::SchedulerService(SchedulingAlgorithmType scheduling_algorithm)
 
 Status SchedulerService::SubmitTask(ServerContext* context, const SubmitTaskRequest* request, SubmitTaskReply* reply) {
   std::unique_ptr<Task> task(new Task(request->task())); // need to copy, because request is const
-  fntable_lock_.lock();
-
-  // TODO(rkn): In the future, this should probably not be fatal. Instead, propagate the error back to the worker.
-  RAY_CHECK_NEQ(fntable_.find(task->name()), fntable_.end(), "The function " << task->name() << " has not been registered by any worker.");
-
-  size_t num_return_vals = fntable_[task->name()].num_return_vals();
-  fntable_lock_.unlock();
-
-  std::vector<ObjRef> result_objrefs;
-  for (size_t i = 0; i < num_return_vals; ++i) {
-    ObjRef result = register_new_object();
-    reply->add_result(result);
-    task->add_result(result);
-    result_objrefs.push_back(result);
-  }
+  size_t num_return_vals;
   {
-    std::lock_guard<std::mutex> reference_counts_lock(reference_counts_lock_); // we grab this lock because increment_ref_count assumes it has been acquired
-    increment_ref_count(result_objrefs); // We increment once so the objrefs don't go out of scope before we reply to the worker that called SubmitTask. The corresponding decrement will happen in submit_task in raylib.
-    increment_ref_count(result_objrefs); // We increment once so the objrefs don't go out of scope before the task is scheduled on the worker. The corresponding decrement will happen in deserialize_task in raylib.
+    std::lock_guard<std::mutex> fntable_lock(fntable_lock_);
+    FnTable::const_iterator fn = fntable_.find(task->name());
+    if (fn == fntable_.end()) {
+      num_return_vals = 0;
+      reply->set_function_registered(false);
+    } else {
+      num_return_vals = fn->second.num_return_vals();
+      reply->set_function_registered(true);
+    }
   }
+  if (reply->function_registered()) {
+    std::vector<ObjRef> result_objrefs;
+    for (size_t i = 0; i < num_return_vals; ++i) {
+      ObjRef result = register_new_object();
+      reply->add_result(result);
+      task->add_result(result);
+      result_objrefs.push_back(result);
+    }
+    {
+      std::lock_guard<std::mutex> reference_counts_lock(reference_counts_lock_); // we grab this lock because increment_ref_count assumes it has been acquired
+      increment_ref_count(result_objrefs); // We increment once so the objrefs don't go out of scope before we reply to the worker that called SubmitTask. The corresponding decrement will happen in submit_task in raylib.
+      increment_ref_count(result_objrefs); // We increment once so the objrefs don't go out of scope before the task is scheduled on the worker. The corresponding decrement will happen in deserialize_task in raylib.
+    }
 
-  auto operation = std::unique_ptr<Operation>(new Operation());
-  operation->set_allocated_task(task.release());
-  OperationId creator_operationid = ROOT_OPERATION; // TODO(rkn): Later, this should be the ID of the task that spawned this current task.
-  operation->set_creator_operationid(creator_operationid);
-  computation_graph_lock_.lock();
-  OperationId operationid = computation_graph_.add_operation(std::move(operation));
-  computation_graph_lock_.unlock();
+    auto operation = std::unique_ptr<Operation>(new Operation());
+    operation->set_allocated_task(task.release());
+    OperationId creator_operationid = ROOT_OPERATION; // TODO(rkn): Later, this should be the ID of the task that spawned this current task.
+    operation->set_creator_operationid(creator_operationid);
+    computation_graph_lock_.lock();
+    OperationId operationid = computation_graph_.add_operation(std::move(operation));
+    computation_graph_lock_.unlock();
 
-  task_queue_lock_.lock();
-  task_queue_.push_back(operationid);
-  task_queue_lock_.unlock();
+    task_queue_lock_.lock();
+    task_queue_.push_back(operationid);
+    task_queue_lock_.unlock();
 
-  schedule();
+    schedule();
+  }
   return Status::OK;
 }
 
