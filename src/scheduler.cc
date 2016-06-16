@@ -95,11 +95,6 @@ Status SchedulerService::AliasObjRefs(ServerContext* context, const AliasObjRefs
     std::lock_guard<std::mutex> reverse_target_objrefs_lock(reverse_target_objrefs_lock_);
     reverse_target_objrefs_[target_objref].push_back(alias_objref);
   }
-
-  std::vector<ObjRef> objref_vector;
-  objref_vector.push_back(alias_objref);
-  decrement_ref_count(objref_vector); // The corresponding increment is done in register_new_object in the scheduler.
-
   schedule();
   return Status::OK;
 }
@@ -137,21 +132,8 @@ Status SchedulerService::RegisterFunction(ServerContext* context, const Register
 Status SchedulerService::ObjReady(ServerContext* context, const ObjReadyRequest* request, AckReply* reply) {
   ObjRef objref = request->objref();
   RAY_LOG(RAY_DEBUG, "object " << objref << " ready on store " << request->objstoreid());
-  bool first_time_objready_called = false;
-  {
-    std::lock_guard<std::mutex> lock(target_objrefs_lock_);
-    if (target_objrefs_[objref] == UNITIALIZED_ALIAS) {
-      first_time_objready_called = true;
-    }
-  }
   add_canonical_objref(objref);
   add_location(objref, request->objstoreid());
-  // Only decrement the reference count the first time ObjReady is called.
-  if (first_time_objready_called) {
-    std::vector<ObjRef> objref_vector;
-    objref_vector.push_back(objref);
-    decrement_ref_count(objref_vector); // The corresponding increment is done in register_new_object in the scheduler.
-  }
   schedule();
   return Status::OK;
 }
@@ -344,23 +326,11 @@ ObjRef SchedulerService::register_new_object() {
   reverse_target_objrefs_.push_back(std::vector<ObjRef>());
   reference_counts_.push_back(0);
   contained_objrefs_.push_back(std::vector<ObjRef>());
-
-  // We increment once so the objref doesn't go out of scope before the ObjReady
-  // method is called. The corresponding decrement will happen either in
-  // ObjReady in the scheduler or in AliasObjRefs in the scheduler.
-  std::vector<ObjRef> objref_vector;
-  objref_vector.push_back(objtable_size);
-  increment_ref_count(objref_vector);
-
   return objtable_size;
 }
 
 void SchedulerService::add_location(ObjRef canonical_objref, ObjStoreId objstoreid) {
   // add_location must be called with a canonical objref
-  {
-    std::lock_guard<std::mutex> reference_counts_lock(reference_counts_lock_);
-    RAY_CHECK_NEQ(reference_counts_[canonical_objref], DEALLOCATED, "Calling ObjReady with canonical_objref " << canonical_objref << ", but this objref has already been deallocated");
-  }
   RAY_CHECK(is_canonical(canonical_objref), "Attempting to call add_location with a non-canonical objref (objref " << canonical_objref << ")");
   std::lock_guard<std::mutex> objtable_lock(objtable_lock_);
   RAY_CHECK_LT(canonical_objref, objtable_.size(), "trying to put an object in the object store that was not registered with the scheduler (objref " << canonical_objref << ")");

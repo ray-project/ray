@@ -158,11 +158,8 @@ private:
   // List of pending alias notifications. Each element consists of (objstoreid, (alias_objref, canonical_objref)).
   std::vector<std::pair<ObjStoreId, std::pair<ObjRef, ObjRef> > > alias_notification_queue_;
   std::mutex alias_notification_queue_lock_;
-  // Reference counts. Currently, reference_counts_[objref] is the number of
-  // existing references held to objref. This is done for all objrefs, not just
-  // canonical_objrefs. This data structure completely ignores aliasing. If the
-  // object corresponding to objref has been deallocated, then
-  // reference_counts[objref] will equal DEALLOCATED.
+  // Reference counts. Currently, reference_counts_[objref] is the number of existing references
+  // held to objref. This is done for all objrefs, not just canonical_objrefs. This data structure completely ignores aliasing.
   std::vector<RefCount> reference_counts_;
   std::mutex reference_counts_lock_;
   // contained_objrefs_[objref] is a vector of all of the objrefs contained inside the object referred to by objref
