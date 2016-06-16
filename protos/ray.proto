@@ -43,8 +43,8 @@ service Scheduler {
   rpc DecrementRefCount(DecrementRefCountRequest) returns (AckReply);
   // Used by the worker to notify the scheduler about which objrefs a particular object contains
   rpc AddContainedObjRefs(AddContainedObjRefsRequest) returns (AckReply);
-  // Used by the worker to report back and ask for more work
-  rpc NotifyTaskCompleted(NotifyTaskCompletedRequest) returns (AckReply);
+  // Used by the worker to ask for work, this also returns the status of the previous task if there was one
+  rpc ReadyForNewTask(ReadyForNewTaskRequest) returns (AckReply);
   // Get information about the scheduler state
   rpc SchedulerInfo(SchedulerInfoRequest) returns (SchedulerInfoReply);
 }
@@ -121,10 +121,13 @@ message DecrementRefCountRequest {
   repeated uint64 objref = 1; // Object references whose reference count should be decremented. Duplicates will be decremented multiple times.
 }
 
-message NotifyTaskCompletedRequest {
+message ReadyForNewTaskRequest {
   uint64 workerid = 1; // ID of the worker which executed the task
-  bool task_succeeded = 2; // True if the task succeeded, false if it threw an exception
-  string error_message = 3; // The contents of the exception, if the task threw an exception
+  message PreviousTaskInfo {
+    bool task_succeeded = 1; // True if the task succeeded, false if it threw an exception
+    string error_message = 2; // The contents of the exception, if the task threw an exception
+  }
+  PreviousTaskInfo previous_task_info = 2; // Information about the previous task, this is only present if there was a previous task
 }
 
 message ChangeCountRequest {

@@ -257,12 +257,13 @@ Task* Worker::receive_next_task() {
 void Worker::notify_task_completed(bool task_succeeded, std::string error_message) {
   RAY_CHECK(connected_, "Attempted to perform notify_task_completed but failed.");
   ClientContext context;
-  NotifyTaskCompletedRequest request;
+  ReadyForNewTaskRequest request;
   request.set_workerid(workerid_);
-  request.set_task_succeeded(task_succeeded);
-  request.set_error_message(error_message);
+  ReadyForNewTaskRequest::PreviousTaskInfo* previous_task_info = request.mutable_previous_task_info();
+  previous_task_info->set_task_succeeded(task_succeeded);
+  previous_task_info->set_error_message(error_message);
   AckReply reply;
-  scheduler_stub_->NotifyTaskCompleted(&context, request, &reply);
+  scheduler_stub_->ReadyForNewTask(&context, request, &reply);
 }
 
 void Worker::disconnect() {
@@ -285,7 +286,7 @@ void Worker::scheduler_info(ClientContext &context, SchedulerInfoRequest &reques
 // run in a separate thread and potentially utilize multiple threads.
 void Worker::start_worker_service() {
   const char* service_addr = worker_address_.c_str();
-  worker_server_thread_ = std::thread([service_addr]() {
+  worker_server_thread_ = std::thread([this, service_addr]() {
     std::string service_address(service_addr);
     std::string::iterator split_point = split_ip_address(service_address);
     std::string port;
@@ -296,6 +297,13 @@ void Worker::start_worker_service() {
     builder.RegisterService(&service);
     std::unique_ptr<Server> server(builder.BuildAndStart());
     RAY_LOG(RAY_INFO, "worker server listening on " << service_address);
+
+    ClientContext context;
+    ReadyForNewTaskRequest request;
+    request.set_workerid(workerid_);
+    AckReply reply;
+    scheduler_stub_->ReadyForNewTask(&context, request, &reply);
+
     server->Wait();
   });
 }

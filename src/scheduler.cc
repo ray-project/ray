@@ -156,14 +156,16 @@ Status SchedulerService::ObjReady(ServerContext* context, const ObjReadyRequest*
   return Status::OK;
 }
 
-Status SchedulerService::NotifyTaskCompleted(ServerContext* context, const NotifyTaskCompletedRequest* request, AckReply* reply) {
-  RAY_LOG(RAY_INFO, "worker " << request->workerid() << " reported back");
+Status SchedulerService::ReadyForNewTask(ServerContext* context, const ReadyForNewTaskRequest* request, AckReply* reply) {
+  RAY_LOG(RAY_INFO, "worker " << request->workerid() << " is ready for a new task");
   {
     std::lock_guard<std::mutex> lock(avail_workers_lock_);
     avail_workers_.push_back(request->workerid());
   }
-  if (!request->task_succeeded()) {
-    RAY_LOG(RAY_FATAL, "The task on worker " << request->workerid() << " threw an exception with the following error message: " << request->error_message());
+  if (request->has_previous_task_info()) {
+    if (!request->previous_task_info().task_succeeded()) {
+      RAY_LOG(RAY_FATAL, "The task on worker " << request->workerid() << " threw an exception with the following error message: " << request->previous_task_info().error_message());
+    }
   }
   schedule();
   return Status::OK;
@@ -317,9 +319,6 @@ std::pair<WorkerId, ObjStoreId> SchedulerService::register_worker(const std::str
   workers_[workerid].objstoreid = objstoreid;
   workers_[workerid].worker_stub = WorkerService::NewStub(channel);
   workers_lock_.unlock();
-  avail_workers_lock_.lock();
-  avail_workers_.push_back(workerid);
-  avail_workers_lock_.unlock();
   return std::make_pair(workerid, objstoreid);
 }
 
