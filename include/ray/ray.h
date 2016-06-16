@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <unordered_map>
+#include <algorithm>
 #include "logging.h"
 
 typedef size_t ObjRef;
