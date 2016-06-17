@@ -83,6 +83,8 @@ class Worker {
   bool connected();
   // get info about scheduler state
   void scheduler_info(ClientContext &context, SchedulerInfoRequest &request, SchedulerInfoReply &reply);
+  // get task statuses from scheduler
+  void task_info(ClientContext &context, TaskInfoRequest &request, TaskInfoReply &reply);
 
  private:
   bool connected_;

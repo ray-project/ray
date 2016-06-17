@@ -35,6 +35,8 @@ struct WorkerHandle {
   std::shared_ptr<Channel> channel;
   std::unique_ptr<WorkerService::Stub> worker_stub;
   ObjStoreId objstoreid;
+  std::string worker_address;
+  OperationId current_task;
 };
 
 struct ObjStoreHandle {
@@ -65,6 +67,7 @@ public:
   Status DecrementRefCount(ServerContext* context, const DecrementRefCountRequest* request, AckReply* reply) override;
   Status AddContainedObjRefs(ServerContext* context, const AddContainedObjRefsRequest* request, AckReply* reply) override;
   Status SchedulerInfo(ServerContext* context, const SchedulerInfoRequest* request, SchedulerInfoReply* reply) override;
+  Status TaskInfo(ServerContext* context, const TaskInfoRequest* request, TaskInfoReply* reply) override;
 
   // ask an object store to send object to another objectstore
   void deliver_object(ObjRef objref, ObjStoreId from, ObjStoreId to);
@@ -155,6 +158,9 @@ private:
   // List of pending pull calls.
   std::vector<std::pair<WorkerId, ObjRef> > pull_queue_;
   std::mutex pull_queue_lock_;
+  // List of failed workers
+  std::vector<TaskStatus> failed_tasks_;
+  std::mutex failed_tasks_lock_;
   // List of pending alias notifications. Each element consists of (objstoreid, (alias_objref, canonical_objref)).
   std::vector<std::pair<ObjStoreId, std::pair<ObjRef, ObjRef> > > alias_notification_queue_;
   std::mutex alias_notification_queue_lock_;

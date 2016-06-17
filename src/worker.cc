@@ -280,6 +280,11 @@ void Worker::scheduler_info(ClientContext &context, SchedulerInfoRequest &reques
   scheduler_stub_->SchedulerInfo(&context, request, &reply);
 }
 
+void Worker::task_info(ClientContext &context, TaskInfoRequest &request, TaskInfoReply &reply) {
+  RAY_CHECK(connected_, "Attempted to get worker info but failed.");
+  scheduler_stub_->TaskInfo(&context, request, &reply);
+}
+
 // Communication between the WorkerServer and the Worker happens via a message
 // queue. This is because the Python interpreter needs to be single threaded
 // (in our case running in the main thread), whereas the WorkerService will

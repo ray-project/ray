@@ -56,6 +56,10 @@ global_worker = Worker()
 def scheduler_info(worker=global_worker):
   return ray.lib.scheduler_info(worker.handle);
 
+def task_info(worker=global_worker):
+  """Tell the scheduler to return task information. Currently includes a list of all failed tasks since the start of the cluster."""
+  return ray.lib.task_info(worker.handle);
+
 def register_module(module, recursive=False, worker=global_worker):
   print "registering functions in module {}.".format(module.__name__)
   for name in dir(module):

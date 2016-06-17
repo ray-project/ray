@@ -145,9 +145,19 @@ Status SchedulerService::ReadyForNewTask(ServerContext* context, const ReadyForN
     avail_workers_.push_back(request->workerid());
   }
   if (request->has_previous_task_info()) {
-    if (!request->previous_task_info().task_succeeded()) {
-      RAY_LOG(RAY_FATAL, "The task on worker " << request->workerid() << " threw an exception with the following error message: " << request->previous_task_info().error_message());
+    TaskStatus info;
+    {
+      std::lock_guard<std::mutex> workers_lock(workers_lock_);
+      info.set_operationid(workers_[request->workerid()].current_task);
+      info.set_worker_address(workers_[request->workerid()].worker_address);
+      info.set_error_message(request->previous_task_info().error_message());
+      workers_[request->workerid()].current_task = NO_OPERATION; // clear operation ID
     }
+    if (!request->previous_task_info().task_succeeded()) {
+      std::lock_guard<std::mutex> failed_tasks_lock(failed_tasks_lock_);
+      failed_tasks_.push_back(info);
+    }
+    // TODO(rkn): Handle task failure
   }
   schedule();
   return Status::OK;
@@ -193,6 +203,15 @@ Status SchedulerService::AddContainedObjRefs(ServerContext* context, const AddCo
 
 Status SchedulerService::SchedulerInfo(ServerContext* context, const SchedulerInfoRequest* request, SchedulerInfoReply* reply) {
   get_info(*request, reply);
+  return Status::OK;
+}
+
+Status SchedulerService::TaskInfo(ServerContext* context, const TaskInfoRequest* request, TaskInfoReply* reply) {
+  std::lock_guard<std::mutex> failed_tasks_lock(failed_tasks_lock_);
+  for (size_t i = 0; i != failed_tasks_.size(); ++i) {
+    TaskStatus* info = reply->add_failed_task();
+    *info = failed_tasks_[i];
+  }
   return Status::OK;
 }
 
@@ -257,6 +276,7 @@ void SchedulerService::assign_task(OperationId operationid, WorkerId workerid) {
       }
     }
   }
+  workers_[workerid].current_task = operationid;
   request.mutable_task()->CopyFrom(task); // TODO(rkn): Is ownership handled properly here?
   Status status = workers_[workerid].worker_stub->ExecuteTask(&context, request, &reply);
 }
@@ -281,6 +301,7 @@ bool SchedulerService::can_run(const Task& task) {
 std::pair<WorkerId, ObjStoreId> SchedulerService::register_worker(const std::string& worker_address, const std::string& objstore_address) {
   RAY_LOG(RAY_INFO, "registering worker " << worker_address << " connected to object store " << objstore_address);
   ObjStoreId objstoreid = std::numeric_limits<size_t>::max();
+  // TODO: HACK: num_attempts is a hack
   for (int num_attempts = 0; num_attempts < 5; ++num_attempts) {
     std::lock_guard<std::mutex> lock(objstores_lock_);
     for (size_t i = 0; i < objstores_.size(); ++i) {
@@ -300,6 +321,8 @@ std::pair<WorkerId, ObjStoreId> SchedulerService::register_worker(const std::str
   workers_[workerid].channel = channel;
   workers_[workerid].objstoreid = objstoreid;
   workers_[workerid].worker_stub = WorkerService::NewStub(channel);
+  workers_[workerid].worker_address = worker_address;
+  workers_[workerid].current_task = NO_OPERATION;
   workers_lock_.unlock();
   return std::make_pair(workerid, objstoreid);
 }

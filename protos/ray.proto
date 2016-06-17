@@ -47,6 +47,8 @@ service Scheduler {
   rpc ReadyForNewTask(ReadyForNewTaskRequest) returns (AckReply);
   // Get information about the scheduler state
   rpc SchedulerInfo(SchedulerInfoRequest) returns (SchedulerInfoReply);
+  // Get information about tasks
+  rpc TaskInfo(TaskInfoRequest) returns (TaskInfoReply);
 }
 
 message AckReply {
@@ -201,6 +203,20 @@ message DeallocateObjectRequest {
 
 message GetObjRequest {
   uint64 objref = 1; // Object reference of the object being requested by the worker
+}
+
+message TaskInfoRequest {
+}
+
+message TaskInfoReply {
+  repeated TaskStatus failed_task = 1;
+  // TODO(mehrdadn): We'll want to return information from computation_graph since it's important for visualizing tasks that have been completed etc.
+}
+
+message TaskStatus {
+  uint64 operationid = 1;
+  string worker_address = 2;
+  string error_message = 3;
 }
 
 // These messages are for getting information about the object store state

@@ -787,6 +787,31 @@ PyObject* scheduler_info(PyObject* self, PyObject* args) {
   return dict;
 }
 
+PyObject* task_info(PyObject* self, PyObject* args) {
+  Worker* worker;
+  if (!PyArg_ParseTuple(args, "O&", &PyObjectToWorker, &worker)) {
+    return NULL;
+  }
+  ClientContext context;
+  TaskInfoRequest request;
+  TaskInfoReply reply;
+  worker->task_info(context, request, reply);
+
+  PyObject* failed_tasks_list = PyList_New(reply.failed_task_size());
+  for (size_t i = 0; i < reply.failed_task_size(); ++i) {
+    const TaskStatus& info = reply.failed_task(i);
+    PyObject* info_dict = PyDict_New();
+    PyDict_SetItem(info_dict, PyString_FromString("worker_address"), PyString_FromStringAndSize(info.worker_address().data(), info.worker_address().size()));
+    PyDict_SetItem(info_dict, PyString_FromString("operationid"), PyInt_FromLong(info.operationid()));
+    PyDict_SetItem(info_dict, PyString_FromString("error_message"), PyString_FromStringAndSize(info.error_message().data(), info.error_message().size()));
+    PyList_SetItem(failed_tasks_list, i, info_dict);
+  }
+
+  PyObject* dict = PyDict_New();
+  PyDict_SetItem(dict, PyString_FromString("failed_tasks"), failed_tasks_list);
+  return dict;
+}
+
 static PyMethodDef RayLibMethods[] = {
  { "serialize_object", serialize_object, METH_VARARGS, "serialize an object to protocol buffers" },
  { "deserialize_object", deserialize_object, METH_VARARGS, "deserialize an object from protocol buffers" },
@@ -809,6 +834,7 @@ static PyMethodDef RayLibMethods[] = {
  { "notify_task_completed", notify_task_completed, METH_VARARGS, "notify the scheduler that a task has been completed" },
  { "start_worker_service", start_worker_service, METH_VARARGS, "start the worker service" },
  { "scheduler_info", scheduler_info, METH_VARARGS, "get info about scheduler state" },
+ { "task_info", task_info, METH_VARARGS, "get task statuses" },
  { NULL, NULL, 0, NULL }
 };
 
