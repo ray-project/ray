@@ -117,9 +117,9 @@ private:
   // tell all of the objstores holding canonical_objref to deallocate it
   void deallocate_object(ObjRef canonical_objref);
   // increment the ref counts for the object references in objrefs
-  void increment_ref_count(std::vector<ObjRef> &objrefs);
+  void increment_ref_count(const std::vector<ObjRef> &objrefs);
   // decrement the ref counts for the object references in objrefs
-  void decrement_ref_count(std::vector<ObjRef> &objrefs);
+  void decrement_ref_count(const std::vector<ObjRef> &objrefs);
   // Find all of the object references which are upstream of objref (including objref itself). That is, you can get from everything in objrefs to objref by repeatedly indexing in target_objrefs_.
   void upstream_objrefs(ObjRef objref, std::vector<ObjRef> &objrefs);
   // Find all of the object references that refer to the same object as objref (as best as we can determine at the moment). The information may be incomplete because not all of the aliases may be known.
@@ -183,8 +183,11 @@ private:
   // List of pending alias notifications. Each element consists of (objstoreid, (alias_objref, canonical_objref)).
   std::vector<std::pair<ObjStoreId, std::pair<ObjRef, ObjRef> > > alias_notification_queue_;
   std::mutex alias_notification_queue_lock_;
-  // Reference counts. Currently, reference_counts_[objref] is the number of existing references
-  // held to objref. This is done for all objrefs, not just canonical_objrefs. This data structure completely ignores aliasing.
+  // Reference counts. Currently, reference_counts_[objref] is the number of
+  // existing references held to objref. This is done for all objrefs, not just
+  // canonical_objrefs. This data structure completely ignores aliasing. If the
+  // object corresponding to objref has been deallocated, then
+  // reference_counts[objref] will equal DEALLOCATED.
   std::vector<RefCount> reference_counts_;
   std::mutex reference_counts_lock_;
   // contained_objrefs_[objref] is a vector of all of the objrefs contained inside the object referred to by objref

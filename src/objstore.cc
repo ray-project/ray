@@ -75,7 +75,7 @@ Status ObjStoreService::StartDelivery(ServerContext* context, const StartDeliver
     if (memory_[objref].second == MemoryStatusType::NOT_PRESENT) {
     }
     else {
-      RAY_CHECK_NEQ(memory_[objref].second, MemoryStatusType::DEALLOCATED, "Objstore " << objstoreid_ << " is attempting to get objref " << objref << ", but memory_[objref] == DEALLOCATED."); 
+      RAY_CHECK_NEQ(memory_[objref].second, MemoryStatusType::DEALLOCATED, "Objstore " << objstoreid_ << " is attempting to get objref " << objref << ", but memory_[objref] == DEALLOCATED.");
       RAY_LOG(RAY_DEBUG, "Objstore " << objstoreid_ << " already has objref " << objref << " or it is already being shipped, so no need to pull it again.");
       return Status::OK;
     }
