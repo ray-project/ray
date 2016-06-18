@@ -1,3 +1,6 @@
+# The build directory should clearly not be checked in
+/build
+
 # Compiled Object files
 *.slo
 *.lo
@@ -13,6 +16,15 @@
 *.dylib
 *.dll
 
+# Incremental linking files
+*.ilk
+
+# Library export files
+*.exp
+
+# Debug symbols
+*.pdb
+
 # Fortran module files
 *.mod
 
@@ -26,3 +38,8 @@
 *.exe
 *.out
 *.app
+
+# Visual Studio files
+/packages
+*.suo
+*.user
