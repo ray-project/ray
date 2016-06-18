@@ -69,7 +69,11 @@ public:
   Status SchedulerInfo(ServerContext* context, const SchedulerInfoRequest* request, SchedulerInfoReply* reply) override;
   Status TaskInfo(ServerContext* context, const TaskInfoRequest* request, TaskInfoReply* reply) override;
 
-  // ask an object store to send object to another objectstore
+  // This will ask an object store to send an object to another object store if
+  // the object is not already present in that object store and is not already
+  // being transmitted.
+  void deliver_object_if_necessary(ObjRef objref, ObjStoreId from, ObjStoreId to);
+  // ask an object store to send object to another object store
   void deliver_object(ObjRef objref, ObjStoreId from, ObjStoreId to);
   // assign a task to a worker
   void schedule();
@@ -92,7 +96,7 @@ public:
   // get information about the scheduler state
   void get_info(const SchedulerInfoRequest& request, SchedulerInfoReply* reply);
 private:
-  // pick an objectstore that holds a given object (needs protection by objtable_lock_)
+  // pick an objectstore that holds a given object (needs protection by objects_lock_)
   ObjStoreId pick_objstore(ObjRef objref);
   // checks if objref is a canonical objref
   bool is_canonical(ObjRef objref);
@@ -120,6 +124,12 @@ private:
   void upstream_objrefs(ObjRef objref, std::vector<ObjRef> &objrefs);
   // Find all of the object references that refer to the same object as objref (as best as we can determine at the moment). The information may be incomplete because not all of the aliases may be known.
   void get_equivalent_objrefs(ObjRef objref, std::vector<ObjRef> &equivalent_objrefs);
+  // acquires all locks, this should only be used by get_info and for fault tolerance
+  void acquire_all_locks();
+  // release all locks, this should only be used by get_info and for fault tolerance
+  void release_all_locks();
+  // acquire or release all the locks. This is a single method to ensure a single canonical ordering of the locks.
+  void do_on_locks(bool lock);
 
   // The computation graph tracks the operations that have been submitted to the
   // scheduler and is mostly used for fault tolerance.
@@ -148,7 +158,16 @@ private:
   std::mutex reverse_target_objrefs_lock_;
   // Mapping from canonical objref to list of object stores where the object is stored. Non-canonical (aliased) objrefs should not be used to index objtable_.
   ObjTable objtable_;
-  std::mutex objtable_lock_;
+  std::mutex objects_lock_; // This lock protects objtable_ and objects_in_transit_
+  // For each object store objstoreid, objects_in_transit_[objstoreid] is a
+  // vector of the canonical object references that are being streamed to that
+  // object store but are not yet present. Object references are added to this
+  // in deliver_object_if_necessary (to ensure that we do not attempt to deliver
+  // the same object to a given object store twice), and object references are
+  // removed when add_location is called (from ObjReady), and they are moved to
+  // the objtable_. Note that objects_in_transit_ and objtable_ share the same
+  // lock (objects_lock_).
+  std::vector<std::vector<ObjRef> > objects_in_transit_;
   // Hash map from function names to workers where the function is registered.
   FnTable fntable_;
   std::mutex fntable_lock_;
