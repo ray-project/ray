@@ -102,7 +102,6 @@ add_library(pynumbuf STATIC ${CMAKE_SOURCE_DIR}/thirdparty/numbuf/cpp/src/numbuf
                             ${CMAKE_SOURCE_DIR}/thirdparty/numbuf/cpp/src/numbuf/metadata.cc
                             ${CMAKE_SOURCE_DIR}/thirdparty/numbuf/cpp/src/numbuf/dict.cc
                             ${CMAKE_SOURCE_DIR}/thirdparty/numbuf/python/src/pynumbuf/serialize.cc
-                            ${CMAKE_SOURCE_DIR}/thirdparty/numbuf/python/src/pynumbuf/numbuf.cc
                             ${CMAKE_SOURCE_DIR}/thirdparty/numbuf/python/src/pynumbuf/adapters/numpy.cc
                             ${CMAKE_SOURCE_DIR}/thirdparty/numbuf/python/src/pynumbuf/adapters/python.cc)
 target_link_libraries(pynumbuf ${ARROW_LIB} ${PYTHON_LIBRARIES})

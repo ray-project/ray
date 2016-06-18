@@ -13,11 +13,6 @@ if [ ! -d arrow ]; then
   cd ..
 fi
 
-if [ ! -d numbuf ]; then
-  echo "Fetching numbuf"
-  git clone https://github.com/amplab/numbuf.git
-fi
-
 git submodule update --init --recursive
 
 # this seems to be neeccessary for building on Mac OS X

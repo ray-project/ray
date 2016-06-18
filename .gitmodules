@@ -1,3 +1,6 @@
 [submodule "thirdparty/grpc"]
 	path = thirdparty/grpc
 	url = https://github.com/grpc/grpc
+[submodule "thirdparty/numbuf"]
+	path = thirdparty/numbuf
+	url = https://github.com/amplab/numbuf.git
