@@ -106,10 +106,11 @@ add_library(pynumbuf STATIC ${CMAKE_SOURCE_DIR}/thirdparty/numbuf/cpp/src/numbuf
                             ${CMAKE_SOURCE_DIR}/thirdparty/numbuf/python/src/pynumbuf/adapters/python.cc)
 target_link_libraries(pynumbuf ${ARROW_LIB} ${PYTHON_LIBRARIES})
 
-add_executable(objstore src/objstore.cc src/ipc.cc ${GENERATED_PROTOBUF_FILES})
-target_link_libraries(objstore ${ARROW_LIB} pynumbuf)
-add_executable(scheduler src/scheduler.cc src/computation_graph.cc ${GENERATED_PROTOBUF_FILES})
-add_library(raylib SHARED src/raylib.cc src/worker.cc src/ipc.cc ${GENERATED_PROTOBUF_FILES})
-target_link_libraries(raylib ${ARROW_LIB} pynumbuf)
+add_executable(objstore src/objstore.cc src/ipc.cc src/utils.cc ${GENERATED_PROTOBUF_FILES})
+target_link_libraries(objstore ${ARROW_LIB} pynumbuf boost_system boost_filesystem)
+add_executable(scheduler src/scheduler.cc src/computation_graph.cc src/utils.cc ${GENERATED_PROTOBUF_FILES})
+target_link_libraries(scheduler boost_system boost_filesystem)
+add_library(raylib SHARED src/raylib.cc src/worker.cc src/ipc.cc src/utils.cc ${GENERATED_PROTOBUF_FILES})
+target_link_libraries(raylib ${ARROW_LIB} pynumbuf boost_system boost_filesystem)
 
 install(TARGETS objstore scheduler raylib DESTINATION ${CMAKE_SOURCE_DIR}/lib/python/ray)

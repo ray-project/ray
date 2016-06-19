@@ -794,26 +794,30 @@ void start_scheduler_service(const char* service_addr, SchedulingAlgorithmType s
   server->Wait();
 }
 
-char* get_cmd_option(char** begin, char** end, const std::string& option) {
-  char** it = std::find(begin, end, option);
-  if (it != end && ++it != end) {
-    return *it;
-  }
-  return 0;
-}
+RayConfig global_ray_config;
 
 int main(int argc, char** argv) {
   SchedulingAlgorithmType scheduling_algorithm = SCHEDULING_ALGORITHM_LOCALITY_AWARE;
   RAY_CHECK_GE(argc, 2, "scheduler: expected at least one argument (scheduler ip address)");
   if (argc > 2) {
-    char* scheduling_algorithm_name = get_cmd_option(argv, argv + argc, "--scheduler-algorithm");
+    const char* log_file_name = get_cmd_option(argv, argv + argc, "--log-file-name");
+    if (log_file_name) {
+      std::cout << "scheduler: writing to log file " << log_file_name << std::endl;
+      create_log_dir_or_die(log_file_name);
+      global_ray_config.log_to_file = true;
+      global_ray_config.logfile.open(log_file_name);
+    } else {
+      std::cout << "scheduler: writing logs to stdout; you can change this by passing --log-file-name <filename> to ./scheduler" << std::endl;
+      global_ray_config.log_to_file = false;
+    }
+    const char* scheduling_algorithm_name = get_cmd_option(argv, argv + argc, "--scheduler-algorithm");
     if (scheduling_algorithm_name) {
-      if(std::string(scheduling_algorithm_name) == "naive") {
-        std::cout << "using 'naive' scheduler" << std::endl;
+      if (std::string(scheduling_algorithm_name) == "naive") {
+        RAY_LOG(RAY_INFO, "scheduler: using 'naive' scheduler" << std::endl);
         scheduling_algorithm = SCHEDULING_ALGORITHM_NAIVE;
       }
-      if(std::string(scheduling_algorithm_name) == "locality_aware") {
-        std::cout << "using 'locality aware' scheduler" << std::endl;
+      if (std::string(scheduling_algorithm_name) == "locality_aware") {
+        RAY_LOG(RAY_INFO, "scheduler: using 'locality aware' scheduler" << std::endl);
         scheduling_algorithm = SCHEDULING_ALGORITHM_LOCALITY_AWARE;
       }
     }

@@ -198,7 +198,6 @@ def subblocks(a, *ranges):
   shape = [(len(ranges[i]) - 1) * BLOCK_SIZE + last_block_shape[i] for i in range(a.ndim)]
   result = DistArray(shape)
   for index in np.ndindex(*result.num_blocks):
-    print tuple([ranges[i][index[i]] for i in range(a.ndim)])
     result.objrefs[index] = a.objrefs[tuple([ranges[i][index[i]] for i in range(a.ndim)])]
   return result
 
