@@ -11,6 +11,9 @@
 
 #include "types.pb.h"
 #include "worker.h"
+#include "utils.h"
+
+RayConfig global_ray_config;
 
 extern "C" {
 
@@ -812,6 +815,17 @@ PyObject* task_info(PyObject* self, PyObject* args) {
   return dict;
 }
 
+PyObject* set_log_config(PyObject* self, PyObject* args) {
+  const char* log_file_name;
+  if (!PyArg_ParseTuple(args, "s", &log_file_name)) {
+    return NULL;
+  }
+  create_log_dir_or_die(log_file_name);
+  global_ray_config.log_to_file = true;
+  global_ray_config.logfile.open(log_file_name);
+  Py_RETURN_NONE;
+}
+
 static PyMethodDef RayLibMethods[] = {
  { "serialize_object", serialize_object, METH_VARARGS, "serialize an object to protocol buffers" },
  { "deserialize_object", deserialize_object, METH_VARARGS, "deserialize an object from protocol buffers" },
@@ -835,6 +849,7 @@ static PyMethodDef RayLibMethods[] = {
  { "start_worker_service", start_worker_service, METH_VARARGS, "start the worker service" },
  { "scheduler_info", scheduler_info, METH_VARARGS, "get info about scheduler state" },
  { "task_info", task_info, METH_VARARGS, "get task statuses" },
+ { "set_log_config", set_log_config, METH_VARARGS, "set filename for raylib logging" },
  { NULL, NULL, 0, NULL }
 };
 

@@ -335,8 +335,23 @@ void start_objstore(const char* scheduler_addr, const char* objstore_addr) {
   server->Wait();
 }
 
+RayConfig global_ray_config;
+
 int main(int argc, char** argv) {
-  RAY_CHECK_EQ(argc, 3, "object store: expected two arguments (scheduler ip address and object store ip address)");
+  RAY_CHECK_GE(argc, 3, "object store: expected at least two arguments (scheduler ip address and object store ip address)");
+
+  if (argc > 3) {
+    const char* log_file_name = get_cmd_option(argv, argv + argc, "--log-file-name");
+    if (log_file_name) {
+      std::cout << "object store: writing to log file " << log_file_name << std::endl;
+      create_log_dir_or_die(log_file_name);
+      global_ray_config.log_to_file = true;
+      global_ray_config.logfile.open(log_file_name);
+    } else {
+      std::cout << "object store: writing logs to stdout; you can change this by passing --log-file-name <filename> to ./scheduler" << std::endl;
+      global_ray_config.log_to_file = false;
+    }
+  }
 
   start_objstore(argv[1], argv[2]);
 

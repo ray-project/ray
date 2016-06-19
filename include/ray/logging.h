@@ -1,3 +1,14 @@
+#include <string>
+#include <iostream>
+#include <fstream>
+
+struct RayConfig {
+  bool log_to_file = false;
+  std::ofstream logfile;
+};
+
+extern RayConfig global_ray_config;
+
 #define RAY_VERBOSE -1
 #define RAY_INFO 0
 #define RAY_DEBUG 1
@@ -10,11 +21,18 @@
     \
   } else if (LEVEL == RAY_FATAL) { \
     std::cerr << "fatal error occured: " << MESSAGE << std::endl; \
+    if (global_ray_config.log_to_file) { \
+      global_ray_config.logfile << "fatal error occured: " << MESSAGE << std::endl; \
+    } \
     std::exit(1); \
   } else if (LEVEL == RAY_DEBUG) { \
     \
   } else { \
-    std::cout << MESSAGE << std::endl; \
+    if (global_ray_config.log_to_file) { \
+      global_ray_config.logfile << MESSAGE << std::endl; \
+    } else { \
+      std::cout << MESSAGE << std::endl; \
+    } \
   }
 
 #define RAY_CHECK(condition, message) \

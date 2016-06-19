@@ -2,9 +2,11 @@ import subprocess32 as subprocess
 import os
 import atexit
 import time
+import datetime
 
 import ray
 import ray.worker as worker
+from ray.config import LOG_DIRECTORY, LOG_TIMESTAMP
 
 _services_path = os.path.dirname(os.path.abspath(__file__))
 
@@ -66,11 +68,13 @@ def cleanup():
 # atexit.register(cleanup)
 
 def start_scheduler(scheduler_address):
-  p = subprocess.Popen([os.path.join(_services_path, "scheduler"), scheduler_address])
+  scheduler_log_filename = os.path.join(LOG_DIRECTORY, (LOG_TIMESTAMP + "-scheduler.log").format(datetime.datetime.now()))
+  p = subprocess.Popen([os.path.join(_services_path, "scheduler"), scheduler_address, "--log-file-name", scheduler_log_filename])
   all_processes.append((p, scheduler_address))
 
 def start_objstore(scheduler_address, objstore_address):
-  p = subprocess.Popen([os.path.join(_services_path, "objstore"), scheduler_address, objstore_address])
+  objstore_log_filename = os.path.join(LOG_DIRECTORY, (LOG_TIMESTAMP + "-objstore-{}.log").format(datetime.datetime.now(), objstore_address))
+  p = subprocess.Popen([os.path.join(_services_path, "objstore"), scheduler_address, objstore_address, "--log-file-name", objstore_log_filename])
   all_processes.append((p, objstore_address))
 
 def start_worker(test_path, scheduler_address, objstore_address, worker_address):
