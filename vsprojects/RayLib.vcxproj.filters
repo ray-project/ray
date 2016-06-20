@@ -1,0 +1,102 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;hm;inl;inc;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="Header Files\pynumbuf">
+      <UniqueIdentifier>{670b10a8-e1e8-4cba-ab9f-13bcd990ccec}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\pynumbuf">
+      <UniqueIdentifier>{c187b201-02bc-4abc-a53c-f7173bd7520a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\numbuf">
+      <UniqueIdentifier>{d6d2cf0f-350f-4ba4-a009-23342f47a731}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\numbuf">
+      <UniqueIdentifier>{43371834-59c6-46eb-a97b-0a17501d3175}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\numbuf\util">
+      <UniqueIdentifier>{873d1bc4-095c-407b-a6ff-066cb88ca022}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\pynumbuf\adapters">
+      <UniqueIdentifier>{3222a6d7-2377-4be1-8aa1-d856d756047d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\pynumbuf\adapters">
+      <UniqueIdentifier>{052fd44b-f361-47b9-b341-140b050baa85}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\src\raylib.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\worker.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\thirdparty\numbuf\python\src\pynumbuf\serialize.cc">
+      <Filter>Source Files\pynumbuf</Filter>
+    </ClCompile>
+    <ClCompile Include="..\thirdparty\numbuf\cpp\src\numbuf\dict.cc">
+      <Filter>Source Files\numbuf</Filter>
+    </ClCompile>
+    <ClCompile Include="..\thirdparty\numbuf\cpp\src\numbuf\metadata.cc">
+      <Filter>Source Files\numbuf</Filter>
+    </ClCompile>
+    <ClCompile Include="..\thirdparty\numbuf\cpp\src\numbuf\tensor.cc">
+      <Filter>Source Files\numbuf</Filter>
+    </ClCompile>
+    <ClCompile Include="..\thirdparty\numbuf\cpp\src\numbuf\types.cc">
+      <Filter>Source Files\numbuf</Filter>
+    </ClCompile>
+    <ClCompile Include="..\thirdparty\numbuf\python\src\pynumbuf\adapters\numpy.cc">
+      <Filter>Source Files\pynumbuf\adapters</Filter>
+    </ClCompile>
+    <ClCompile Include="..\thirdparty\numbuf\python\src\pynumbuf\adapters\python.cc">
+      <Filter>Source Files\pynumbuf\adapters</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\src\worker.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\thirdparty\numbuf\python\src\pynumbuf\serialize.h">
+      <Filter>Header Files\pynumbuf</Filter>
+    </ClInclude>
+    <ClInclude Include="..\thirdparty\numbuf\cpp\src\numbuf\dict.h">
+      <Filter>Header Files\numbuf</Filter>
+    </ClInclude>
+    <ClInclude Include="..\thirdparty\numbuf\cpp\src\numbuf\metadata.h">
+      <Filter>Header Files\numbuf</Filter>
+    </ClInclude>
+    <ClInclude Include="..\thirdparty\numbuf\cpp\src\numbuf\tensor.h">
+      <Filter>Header Files\numbuf</Filter>
+    </ClInclude>
+    <ClInclude Include="..\thirdparty\numbuf\cpp\src\numbuf\types.h">
+      <Filter>Header Files\numbuf</Filter>
+    </ClInclude>
+    <ClInclude Include="..\thirdparty\numbuf\cpp\src\numbuf\util\buffer.h">
+      <Filter>Header Files\numbuf\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\thirdparty\numbuf\cpp\src\numbuf\util\logging.h">
+      <Filter>Header Files\numbuf\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\thirdparty\numbuf\cpp\src\numbuf\util\utils.h">
+      <Filter>Header Files\numbuf\util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\thirdparty\numbuf\python\src\pynumbuf\adapters\numpy.h">
+      <Filter>Header Files\pynumbuf\adapters</Filter>
+    </ClInclude>
+    <ClInclude Include="..\thirdparty\numbuf\python\src\pynumbuf\adapters\python.h">
+      <Filter>Header Files\pynumbuf\adapters</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>

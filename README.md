@@ -18,11 +18,23 @@ For a description of our design decisions, see
 
 ## Setup
 
+### Linux, Mac, and other Unix-based systems
+
 1. sudo apt-get update
 2. sudo apt-get install git
 3. git clone https://github.com/amplab/ray.git
 4. cd ray
 5. ./setup.sh
+
+### Windows
+
+**Note:** A batch file is provided that clones any missing third-party libraries and applies patches to them.
+Do not attempt to open the solution before the batch file applies the patches; otherwise, if the projects have been modified, the patches may be rejected, and you may be forced to revert your changes before re-running the batch file.
+
+1. Install Microsoft Visual Studio 2015
+2. Install Git
+3. git clone https://github.com/amplab/ray.git
+4. ray\thirdparty\download_thirdparty.bat
 
 ## Installing Ray on a cluster
 
