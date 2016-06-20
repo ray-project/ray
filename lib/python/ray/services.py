@@ -77,9 +77,9 @@ def start_objstore(scheduler_address, objstore_address):
   p = subprocess.Popen([os.path.join(_services_path, "objstore"), scheduler_address, objstore_address, "--log-file-name", objstore_log_filename])
   all_processes.append((p, objstore_address))
 
-def start_worker(test_path, scheduler_address, objstore_address, worker_address):
+def start_worker(worker_path, scheduler_address, objstore_address, worker_address):
   p = subprocess.Popen(["python",
-                        test_path,
+                        worker_path,
                         "--scheduler-address=" + scheduler_address,
                         "--objstore-address=" + objstore_address,
                         "--worker-address=" + worker_address])

@@ -8,11 +8,10 @@ import ray.datasets.imagenet as imagenet
 class ImageNetTest(unittest.TestCase):
 
   def testImageNetLoading(self):
-    test_dir = os.path.dirname(os.path.abspath(__file__))
-    test_path = os.path.join(test_dir, "test_worker.py")
-    services.start_singlenode_cluster(return_drivers=False, num_workers_per_objstore=5, worker_path=test_path)
+    worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
+    services.start_singlenode_cluster(return_drivers=False, num_workers_per_objstore=5, worker_path=worker_path)
 
-    chunk_name = os.path.join(test_dir, "..", "data", "mini.tar")
+    chunk_name = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../data/mini.tar")
     tar = tarfile.open(chunk_name, mode= "r")
     chunk = imagenet.load_chunk(tar, size=(256, 256))
     self.assertEqual(chunk.shape, (2, 256, 256, 3))
