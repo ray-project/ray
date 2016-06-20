@@ -4,13 +4,6 @@ import numpy as np
 
 # Test simple functionality
 
-@ray.remote([str], [str])
-def print_string(string):
-  print "called print_string with", string
-  f = open("asdfasdf.txt", "w")
-  f.write("successfully called print_string with argument {}.".format(string))
-  return string
-
 @ray.remote([int, int], [int, int])
 def handle_int(a, b):
   return a + 1, b + 1

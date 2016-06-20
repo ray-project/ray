@@ -123,24 +123,6 @@ class ObjStoreTest(unittest.TestCase):
 
     services.cleanup()
 
-class SchedulerTest(unittest.TestCase):
-
-  def testRemoteTask(self):
-    worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-    [w] = services.start_singlenode_cluster(return_drivers=True, num_workers_per_objstore=1, worker_path=worker_path)
-
-    value_before = "test_string"
-    objref = w.submit_task("test_functions.print_string", [value_before])
-
-    time.sleep(0.2)
-
-    value_after = ray.pull(objref[0], w)
-    self.assertEqual(value_before, value_after)
-
-    time.sleep(0.1)
-
-    services.cleanup()
-
 class WorkerTest(unittest.TestCase):
 
   def testPushPull(self):
