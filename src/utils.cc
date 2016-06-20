@@ -1,6 +1,10 @@
 #include "utils.h"
 
+#if defined(_CPPLIB_VER) && _CPPLIB_VER >= 650
+#include <experimental/filesystem>
+#else
 #include <boost/filesystem.hpp>
+#endif
 
 #include "ray/ray.h"
 
@@ -30,9 +34,16 @@ const char* get_cmd_option(char** begin, char** end, const std::string& option) 
 }
 
 void create_log_dir_or_die(const char* log_file_name) {
-  boost::filesystem::path log_file_path(log_file_name);
-  boost::system::error_code returned_error;
-  boost::filesystem::create_directories(log_file_path.parent_path(), returned_error);
+#ifdef BOOST_FILESYSTEM_FILESYSTEM_HPP
+  namespace filesystem = boost::filesystem;
+  typedef boost::system::error_code error_code;
+#else
+  namespace filesystem = std::experimental::filesystem;
+  typedef std::error_code error_code;
+#endif
+  filesystem::path log_file_path(log_file_name);
+  error_code returned_error;
+  filesystem::create_directories(log_file_path.parent_path(), returned_error);
   if (returned_error) {
     RAY_CHECK(false, "Failed to create directory for " << log_file_name);
   }
