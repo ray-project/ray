@@ -164,7 +164,7 @@ def check_return_values(function, result):
     if len(result) != len(function.return_types):
       raise Exception("The @remote decorator for function {} has {} return values with types {}, but {} returned {} values.".format(function.__name__, len(function.return_types), function.return_types, function.__name__, len(result)))
     for i in range(len(result)):
-      if (not isinstance(result[i], function.return_types[i])) and (not isinstance(result[i], ray.lib.ObjRef)):
+      if (not issubclass(type(result[i]), function.return_types[i])) and (not isinstance(result[i], ray.lib.ObjRef)):
         raise Exception("The {}th return value for function {} has type {}, but the @remote decorator expected a return value of type {} or an ObjRef.".format(i, function.__name__, type(result[i]), function.return_types[i]))
 
 # helper method, this should not be called by the user
@@ -187,7 +187,7 @@ def check_arguments(function, args):
       # TODO(rkn): When we have type information in the ObjRef, do type checking here.
       pass
     else:
-      if not isinstance(arg, expected_type): # TODO(rkn): This check doesn't really work, e.g., isinstance([1,2,3], typing.List[str]) == True
+      if not issubclass(type(arg), expected_type): # TODO(rkn): This check doesn't really work, e.g., issubclass(type([1, 2, 3]), typing.List[str]) == True
         raise Exception("Argument {} for function {} has type {} but an argument of type {} was expected.".format(i, function.__name__, type(arg), expected_type))
 
 # helper method, this should not be called by the user
@@ -219,7 +219,7 @@ def get_arguments_for_execution(function, args, worker=global_worker):
       # pass the argument by value
       argument = arg
 
-    if not isinstance(argument, expected_type):
+    if not issubclass(type(argument), expected_type):
       raise Exception("Argument {} for function {} has type {} but an argument of type {} was expected.".format(i, function.__name__, type(argument), expected_type))
     arguments.append(argument)
   return arguments

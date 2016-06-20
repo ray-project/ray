@@ -86,7 +86,3 @@ def matrix_rank(M):
 @ray.remote([np.ndarray], [np.ndarray])
 def multi_dot(*a):
   raise NotImplementedError
-
-@ray.remote([np.ndarray], [np.ndarray])
-def sum_list(*xs):
-  return np.sum(xs, axis=0)

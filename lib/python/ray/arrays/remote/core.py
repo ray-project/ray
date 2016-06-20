@@ -1,8 +1,8 @@
-from typing import List
+from typing import List, Any
 import numpy as np
 import ray
 
-__all__ = ["zeros", "zeros_like", "ones", "eye", "dot", "vstack", "hstack", "subarray", "copy", "tril", "triu", "diag", "transpose", "add", "subtract", "sum", "shape"]
+__all__ = ["zeros", "zeros_like", "ones", "eye", "dot", "vstack", "hstack", "subarray", "copy", "tril", "triu", "diag", "transpose", "add", "subtract", "sum", "shape", "sum_list"]
 
 @ray.remote([List[int], str, str], [np.ndarray])
 def zeros(shape, dtype_name="float", order="C"):
@@ -75,3 +75,9 @@ def sum(x, axis=-1):
 @ray.remote([np.ndarray], [tuple])
 def shape(a):
   return np.shape(a)
+
+# We use Any to allow different numerical types as well as numpy arrays.
+# TODO(rkn):this isn't in the numpy API, so be careful about exposing this.
+@ray.remote([Any], [Any])
+def sum_list(*xs):
+  return np.sum(xs, axis=0)
