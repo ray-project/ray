@@ -38,8 +38,10 @@ Status SchedulerService::SubmitTask(ServerContext* context, const SubmitTaskRequ
 
     auto operation = std::unique_ptr<Operation>(new Operation());
     operation->set_allocated_task(task.release());
-    OperationId creator_operationid = ROOT_OPERATION; // TODO(rkn): Later, this should be the ID of the task that spawned this current task.
-    operation->set_creator_operationid(creator_operationid);
+    {
+      std::lock_guard<std::mutex> workers_lock(workers_lock_);
+      operation->set_creator_operationid(workers_[request->workerid()].current_task);
+    }
 
     OperationId operationid;
     {
@@ -160,24 +162,40 @@ Status SchedulerService::ObjReady(ServerContext* context, const ObjReadyRequest*
 
 Status SchedulerService::ReadyForNewTask(ServerContext* context, const ReadyForNewTaskRequest* request, AckReply* reply) {
   RAY_LOG(RAY_INFO, "worker " << request->workerid() << " is ready for a new task");
-  {
-    std::lock_guard<std::mutex> lock(avail_workers_lock_);
-    avail_workers_.push_back(request->workerid());
-  }
   if (request->has_previous_task_info()) {
+    OperationId operationid;
+    {
+      std::lock_guard<std::mutex> workers_lock(workers_lock_);
+      operationid = workers_[request->workerid()].current_task;
+    }
+    std::string task_name;
+    {
+      std::lock_guard<std::mutex> computation_graph_lock(computation_graph_lock_);
+      task_name = computation_graph_.get_task(operationid).name();
+    }
     TaskStatus info;
     {
       std::lock_guard<std::mutex> workers_lock(workers_lock_);
-      info.set_operationid(workers_[request->workerid()].current_task);
+      operationid = workers_[request->workerid()].current_task;
+      info.set_operationid(operationid);
+      info.set_function_name(task_name);
       info.set_worker_address(workers_[request->workerid()].worker_address);
       info.set_error_message(request->previous_task_info().error_message());
       workers_[request->workerid()].current_task = NO_OPERATION; // clear operation ID
     }
     if (!request->previous_task_info().task_succeeded()) {
+      RAY_LOG(RAY_INFO, "Error: Task " << info.operationid() << " executing function " << info.function_name() << " on worker " << request->workerid() << " failed with error message: " << info.error_message());
       std::lock_guard<std::mutex> failed_tasks_lock(failed_tasks_lock_);
       failed_tasks_.push_back(info);
+    } else {
+      std::lock_guard<std::mutex> successful_tasks_lock(successful_tasks_lock_);
+      successful_tasks_.push_back(info.operationid());
     }
     // TODO(rkn): Handle task failure
+  }
+  {
+    std::lock_guard<std::mutex> lock(avail_workers_lock_);
+    avail_workers_.push_back(request->workerid());
   }
   schedule();
   return Status::OK;
@@ -227,11 +245,25 @@ Status SchedulerService::SchedulerInfo(ServerContext* context, const SchedulerIn
 }
 
 Status SchedulerService::TaskInfo(ServerContext* context, const TaskInfoRequest* request, TaskInfoReply* reply) {
+  std::lock_guard<std::mutex> successful_tasks_lock(successful_tasks_lock_);
   std::lock_guard<std::mutex> failed_tasks_lock(failed_tasks_lock_);
-  for (size_t i = 0; i != failed_tasks_.size(); ++i) {
+  std::lock_guard<std::mutex> computation_graph_lock(computation_graph_lock_);
+  std::lock_guard<std::mutex> workers_lock(workers_lock_);
+  for (int i = 0; i < failed_tasks_.size(); ++i) {
     TaskStatus* info = reply->add_failed_task();
     *info = failed_tasks_[i];
   }
+  for (int i = 0; i < workers_.size(); ++i) {
+    OperationId operationid = workers_[i].current_task;
+    if (operationid != NO_OPERATION) {
+      const Task& task = computation_graph_.get_task(operationid);
+      TaskStatus* info = reply->add_running_task();
+      info->set_operationid(operationid);
+      info->set_function_name(task.name());
+      info->set_worker_address(workers_[i].worker_address);
+    }
+  }
+  reply->set_num_succeeded(successful_tasks_.size());
   return Status::OK;
 }
 
@@ -748,6 +780,7 @@ void SchedulerService::get_equivalent_objrefs(ObjRef objref, std::vector<ObjRef>
 // This method defines the order in which locks should be acquired.
 void SchedulerService::do_on_locks(bool lock) {
   std::mutex *mutexes[] = {
+    &successful_tasks_lock_,
     &failed_tasks_lock_,
     &pull_queue_lock_,
     &computation_graph_lock_,

@@ -821,13 +821,26 @@ PyObject* task_info(PyObject* self, PyObject* args) {
     const TaskStatus& info = reply.failed_task(i);
     PyObject* info_dict = PyDict_New();
     set_dict_item_and_transfer_ownership(info_dict, PyString_FromString("worker_address"), PyString_FromStringAndSize(info.worker_address().data(), info.worker_address().size()));
+    set_dict_item_and_transfer_ownership(info_dict, PyString_FromString("function_name"), PyString_FromStringAndSize(info.function_name().data(), info.function_name().size()));
     set_dict_item_and_transfer_ownership(info_dict, PyString_FromString("operationid"), PyInt_FromLong(info.operationid()));
     set_dict_item_and_transfer_ownership(info_dict, PyString_FromString("error_message"), PyString_FromStringAndSize(info.error_message().data(), info.error_message().size()));
     PyList_SetItem(failed_tasks_list, i, info_dict);
   }
 
+  PyObject* running_tasks_list = PyList_New(reply.running_task_size());
+  for (size_t i = 0; i < reply.running_task_size(); ++i) {
+    const TaskStatus& info = reply.running_task(i);
+    PyObject* info_dict = PyDict_New();
+    set_dict_item_and_transfer_ownership(info_dict, PyString_FromString("worker_address"), PyString_FromStringAndSize(info.worker_address().data(), info.worker_address().size()));
+    set_dict_item_and_transfer_ownership(info_dict, PyString_FromString("function_name"), PyString_FromStringAndSize(info.function_name().data(), info.function_name().size()));
+    set_dict_item_and_transfer_ownership(info_dict, PyString_FromString("operationid"), PyInt_FromLong(info.operationid()));
+    PyList_SetItem(running_tasks_list, i, info_dict);
+  }
+
   PyObject* dict = PyDict_New();
   set_dict_item_and_transfer_ownership(dict, PyString_FromString("failed_tasks"), failed_tasks_list);
+  set_dict_item_and_transfer_ownership(dict, PyString_FromString("running_tasks"), running_tasks_list);
+  set_dict_item_and_transfer_ownership(dict, PyString_FromString("number_succeeded"), PyInt_FromLong(reply.num_succeeded()));
   return dict;
 }
 

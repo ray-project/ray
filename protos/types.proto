@@ -85,6 +85,13 @@ message Operation {
   uint64 creator_operationid = 3; // The id of the task that called this task or push.
 }
 
+message TaskStatus {
+  uint64 operationid = 1;
+  string function_name = 2;
+  string worker_address = 3;
+  string error_message = 4;
+}
+
 message Array {
   repeated uint64 shape = 1;
   sint64 dtype = 2;

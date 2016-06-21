@@ -79,7 +79,8 @@ message RegisterFunctionRequest {
 }
 
 message SubmitTaskRequest {
-  Task task = 1; // Contains name of the function to be executed and arguments
+  uint64 workerid = 1; // The ID of the worker submitting the task
+  Task task = 2; // Contains name of the function to be executed and arguments
 }
 
 message SubmitTaskReply {
@@ -210,13 +211,9 @@ message TaskInfoRequest {
 
 message TaskInfoReply {
   repeated TaskStatus failed_task = 1;
+  repeated TaskStatus running_task = 2;
+  uint64 num_succeeded = 3;
   // TODO(mehrdadn): We'll want to return information from computation_graph since it's important for visualizing tasks that have been completed etc.
-}
-
-message TaskStatus {
-  uint64 operationid = 1;
-  string worker_address = 2;
-  string error_message = 3;
 }
 
 // These messages are for getting information about the object store state

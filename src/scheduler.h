@@ -177,9 +177,12 @@ private:
   // List of pending pull calls.
   std::vector<std::pair<WorkerId, ObjRef> > pull_queue_;
   std::mutex pull_queue_lock_;
-  // List of failed workers
+  // List of failed tasks
   std::vector<TaskStatus> failed_tasks_;
   std::mutex failed_tasks_lock_;
+  // List of the IDs of successful tasks
+  std::vector<OperationId> successful_tasks_; // Right now, we only use this information in the TaskInfo call.
+  std::mutex successful_tasks_lock_;
   // List of pending alias notifications. Each element consists of (objstoreid, (alias_objref, canonical_objref)).
   std::vector<std::pair<ObjStoreId, std::pair<ObjRef, ObjRef> > > alias_notification_queue_;
   std::mutex alias_notification_queue_lock_;
