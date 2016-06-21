@@ -93,6 +93,7 @@ slice Worker::get_object(ObjRef objref) {
   slice slice;
   slice.data = segmentpool_->get_address(result);
   slice.len = result.size();
+  slice.segmentid = result.segmentid();
   return slice;
 }
 
@@ -165,7 +166,9 @@ PyObject* Worker::put_arrow(ObjRef objref, PyObject* value) {
   Py_RETURN_NONE;
 }
 
-PyObject* Worker::get_arrow(ObjRef objref) {
+// returns python list containing the value represented by objref and the
+// segmentid in which the object is stored
+PyObject* Worker::get_arrow(ObjRef objref, SegmentId& segmentid) {
   RAY_CHECK(connected_, "Attempted to perform get_arrow but failed.");
   ObjRequest request;
   request.workerid = workerid_;
@@ -176,6 +179,7 @@ PyObject* Worker::get_arrow(ObjRef objref) {
   receive_obj_queue_.receive(&result);
   uint8_t* address = segmentpool_->get_address(result);
   auto source = std::make_shared<BufferMemorySource>(address, result.size());
+  segmentid = result.segmentid();
   PyObject* value;
   CHECK_ARROW_STATUS(pynumbuf::ReadPythonObjectFrom(source.get(), result.metadata_offset(), &value), "error during ReadPythonObjectFrom: ");
   return value;
