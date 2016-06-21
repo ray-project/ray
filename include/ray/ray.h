@@ -10,6 +10,7 @@ typedef size_t ObjRef;
 typedef size_t WorkerId;
 typedef size_t ObjStoreId;
 typedef size_t OperationId;
+typedef size_t SegmentId; // index into a memory segment table
 
 class FnInfo {
   size_t num_return_vals_;
@@ -45,6 +46,7 @@ public:
 struct slice {
   uint8_t* data;
   size_t len;
+  SegmentId segmentid;
 };
 
 #endif

@@ -512,7 +512,12 @@ PyObject* get_arrow(PyObject* self, PyObject* args) {
   if (!PyArg_ParseTuple(args, "O&O&", &PyObjectToWorker, &worker, &PyObjectToObjRef, &objref)) {
     return NULL;
   }
-  return (PyObject*) worker->get_arrow(objref);
+  SegmentId segmentid;
+  PyObject* value = worker->get_arrow(objref, segmentid);
+  PyObject* val_and_segmentid = PyList_New(2);
+  PyList_SetItem(val_and_segmentid, 0, value);
+  PyList_SetItem(val_and_segmentid, 1, PyInt_FromLong(segmentid));
+  return val_and_segmentid;
 }
 
 PyObject* is_arrow(PyObject* self, PyObject* args) {
@@ -748,7 +753,10 @@ PyObject* get_object(PyObject* self, PyObject* args) {
   slice s = worker->get_object(objref);
   Obj* obj = new Obj(); // TODO: Make sure this will get deleted
   obj->ParseFromString(std::string(reinterpret_cast<char*>(s.data), s.len));
-  return PyCapsule_New(static_cast<void*>(obj), "obj", &ObjCapsule_Destructor);
+  PyObject* result = PyList_New(2);
+  PyList_SetItem(result, 0, PyCapsule_New(static_cast<void*>(obj), "obj", &ObjCapsule_Destructor));
+  PyList_SetItem(result, 1, PyInt_FromLong(s.segmentid));
+  return result;
 }
 
 PyObject* request_object(PyObject* self, PyObject* args) {
