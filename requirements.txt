@@ -4,3 +4,4 @@ subprocess32
 boto3
 botocore
 Pillow
+colorama

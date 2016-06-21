@@ -6,6 +6,7 @@ import typing
 import funcsigs
 import numpy as np
 import pynumbuf
+import colorama
 
 import ray
 from ray.config import LOG_DIRECTORY, LOG_TIMESTAMP
@@ -17,6 +18,10 @@ class Worker(object):
   def __init__(self):
     self.functions = {}
     self.handle = None
+
+  def set_print_task_info(self, print_task_info):
+    self.print_task_info = print_task_info
+    colorama.init()
 
   def put_object(self, objref, value):
     """Put `value` in the local object store with objref `objref`. This assumes that the value for `objref` has not yet been placed in the local object store."""
@@ -52,10 +57,27 @@ class Worker(object):
     """Tell the scheduler to schedule the execution of the function with name `func_name` with arguments `args`. Retrieve object references for the outputs of the function from the scheduler and immediately return them."""
     task_capsule = serialization.serialize_task(self.handle, func_name, args)
     objrefs = ray.lib.submit_task(self.handle, task_capsule)
+    if self.print_task_info:
+      print_task_info(ray.lib.task_info(self.handle))
     return objrefs
 
 # We make `global_worker` a global variable so that there is one worker per worker process.
 global_worker = Worker()
+
+# This is a helper method. It should not be called by users.
+def print_task_info(task_data):
+  num_tasks_succeeded = task_data["num_succeeded"]
+  num_tasks_in_progress = len(task_data["running_tasks"])
+  num_tasks_failed = len(task_data["failed_tasks"])
+  info_strings = []
+  if num_tasks_succeeded > 0:
+    info_strings.append("{}{} task{} succeeded{}".format(colorama.Fore.BLUE, num_tasks_succeeded, "s" if num_tasks_succeeded > 1 else "", colorama.Fore.RESET))
+  if num_tasks_in_progress > 0:
+    info_strings.append("{}{} task{} in progress{}".format(colorama.Fore.GREEN, num_tasks_in_progress, "s" if num_tasks_in_progress > 1 else "", colorama.Fore.RESET))
+  if num_tasks_failed > 0:
+    info_strings.append("{}{} task{} failed{}".format(colorama.Fore.RED, num_tasks_failed, "s" if num_tasks_failed > 1 else "", colorama.Fore.RESET))
+  if len(info_strings) > 0:
+    print ", ".join(info_strings)
 
 def scheduler_info(worker=global_worker):
   return ray.lib.scheduler_info(worker.handle);
@@ -74,7 +96,7 @@ def register_module(module, recursive=False, worker=global_worker):
     # elif recursive and isinstance(val, ModuleType):
     #   register_module(val, recursive, worker)
 
-def connect(scheduler_addr, objstore_addr, worker_addr, worker=global_worker):
+def connect(scheduler_addr, objstore_addr, worker_addr, worker=global_worker, print_task_info=False):
   if hasattr(worker, "handle"):
     del worker.handle
   worker.handle = ray.lib.create_worker(scheduler_addr, objstore_addr, worker_addr)
@@ -82,17 +104,22 @@ def connect(scheduler_addr, objstore_addr, worker_addr, worker=global_worker):
   log_basename = os.path.join(LOG_DIRECTORY, (LOG_TIMESTAMP + "-worker-{}").format(datetime.datetime.now(), worker_addr))
   logging.basicConfig(level=logging.DEBUG, format=FORMAT, filename=log_basename + ".log")
   ray.lib.set_log_config(log_basename + "-c++.log")
+  worker.set_print_task_info(print_task_info)
 
 def disconnect(worker=global_worker):
   ray.lib.disconnect(worker.handle)
 
 def pull(objref, worker=global_worker):
   ray.lib.request_object(worker.handle, objref)
+  if worker.print_task_info:
+    print_task_info(ray.lib.task_info(worker.handle))
   return worker.get_object(objref)
 
 def push(value, worker=global_worker):
   objref = ray.lib.get_objref(worker.handle)
   worker.put_object(objref, value)
+  if worker.print_task_info:
+    print_task_info(ray.lib.task_info(worker.handle))
   return objref
 
 def main_loop(worker=global_worker):

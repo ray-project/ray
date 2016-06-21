@@ -840,7 +840,7 @@ PyObject* task_info(PyObject* self, PyObject* args) {
   PyObject* dict = PyDict_New();
   set_dict_item_and_transfer_ownership(dict, PyString_FromString("failed_tasks"), failed_tasks_list);
   set_dict_item_and_transfer_ownership(dict, PyString_FromString("running_tasks"), running_tasks_list);
-  set_dict_item_and_transfer_ownership(dict, PyString_FromString("number_succeeded"), PyInt_FromLong(reply.num_succeeded()));
+  set_dict_item_and_transfer_ownership(dict, PyString_FromString("num_succeeded"), PyInt_FromLong(reply.num_succeeded()));
   return dict;
 }
 
