@@ -22,11 +22,15 @@ For a description of our design decisions, see
 
 ### Linux, Mac, and other Unix-based systems
 
+After running these instruction, add the line `source "$RAY_ROOT/setup-env.sh"` in your `~/.bashrc` file manually, where "$RAY_ROOT" is the path of the directory containing `setup-env.sh`.
+
 1. sudo apt-get update
 2. sudo apt-get install git
 3. git clone https://github.com/amplab/ray.git
 4. cd ray
 5. ./setup.sh
+6. ./build.sh
+7. source setup-env.sh
 
 ### Windows
 

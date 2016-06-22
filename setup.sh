@@ -1,7 +1,9 @@
-#!/bin/bash
+#!/usr/bin/env bash
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
 platform="unknown"
-unamestr=`uname`
+unamestr="$(uname)"
 if [[ "$unamestr" == "Linux" ]]; then
   echo "Platform is linux."
   platform="linux"
@@ -36,15 +38,12 @@ elif [[ $platform == "macosx" ]]; then
   sudo pip install numpy
   sudo pip install -r requirements.txt --ignore-installed six
 fi
-cd thirdparty
-./download_thirdparty.sh
-./build_thirdparty.sh
-cd numbuf
-cd python
-sudo python setup.py install
-mkdir -p ../../../build
-cd ../../../build
-cmake ..
-make install
-cd ../lib/python
-sudo python setup.py install
+pushd "$ROOT_DIR/thirdparty"
+  ./download_thirdparty.sh
+  ./build_thirdparty.sh
+  pushd numbuf
+    pushd python
+      sudo python setup.py install
+    popd
+  popd
+popd

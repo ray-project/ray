@@ -18,9 +18,11 @@ before_install:
   - if [[ $TRAVIS_OS_NAME == 'linux' ]]; then sudo add-apt-repository --yes ppa:kalakris/cmake ; fi
 
 install:
-  - bash setup.sh
+  - ./setup.sh
+  - ./build.sh
 
 script:
+  - source setup-env.sh
   - cd test
   - python runtest.py
   - python arrays_test.py
