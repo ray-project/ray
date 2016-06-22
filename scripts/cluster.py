@@ -24,7 +24,16 @@ def run_command_over_ssh(node_ip_address, username, key_file, command):
 
 def install_ray_multi_node(node_ip_addresses, username, key_file, installation_directory):
   def install_ray_over_ssh(node_ip_address, username, key_file, installation_directory):
-    install_ray_command = "sudo apt-get update; sudo apt-get -y install git; mkdir -p {}; cd {}; git clone https://github.com/amplab/ray; cd ray; ./setup.sh".format(installation_directory, installation_directory)
+    install_ray_command = """
+      sudo apt-get update &&
+      sudo apt-get -y install git &&
+      mkdir -p "{}" &&
+      cd "{}" &&
+      git clone "https://github.com/amplab/ray";
+      cd ray;
+      ./setup.sh;
+      ./build.sh
+    """.format(installation_directory, installation_directory)
     run_command_over_ssh(node_ip_address, username, key_file, install_ray_command)
   threads = []
   for node_ip_address in node_ip_addresses:
@@ -36,17 +45,28 @@ def install_ray_multi_node(node_ip_addresses, username, key_file, installation_d
 
 def start_ray_multi_node(node_ip_addresses, username, key_file, worker_path, installation_directory):
   build_directory = os.path.join(installation_directory, "ray/build")
-  start_scheduler_command = "cd {}; nohup ./scheduler {}:10001 > scheduler.out 2> scheduler.err < /dev/null &".format(build_directory, node_ip_addresses[0])
+  start_scheduler_command = """
+    cd "{}";
+    nohup ./scheduler {}:10001 > scheduler.out 2> scheduler.err < /dev/null &
+  """.format(build_directory, node_ip_addresses[0])
   run_command_over_ssh(node_ip_addresses[0], username, key_file, start_scheduler_command)
 
   for i, node_ip_address in enumerate(node_ip_addresses):
     scripts_directory = os.path.join(installation_directory, "ray/scripts")
-    start_workers_command = "cd {}; python start_workers.py --scheduler-address={}:10001 --node-ip={} --worker-path={} > start_workers.out 2> start_workers.err < /dev/null &".format(scripts_directory, node_ip_addresses[0], node_ip_addresses[i], worker_path)
+    start_workers_command = """
+      cd "{}";
+      source ../setup-env.sh;
+      python start_workers.py --scheduler-address={}:10001 --node-ip={} --worker-path="{}" > start_workers.out 2> start_workers.err < /dev/null &
+    """.format(scripts_directory, node_ip_addresses[0], node_ip_addresses[i], worker_path)
     run_command_over_ssh(node_ip_address, username, key_file, start_workers_command)
 
   print "cluster started; you can start the shell on the head node with:"
+  setup_env_path = os.path.join(args.installation_directory, "ray/setup-env.sh")
   shell_script_path = os.path.join(args.installation_directory, "ray/scripts/shell.py")
-  print "python {} --scheduler-address={}:10001 --objstore-address={}:20001 --worker-address={}:30001".format(shell_script_path, node_ip_addresses[0], node_ip_addresses[0], node_ip_addresses[0])
+  print """
+    source "{}";
+    python "{}" --scheduler-address={}:10001 --objstore-address={}:20001 --worker-address={}:30001
+  """.format(setup_env_path, shell_script_path, node_ip_addresses[0], node_ip_addresses[0], node_ip_addresses[0])
 
 def stop_ray_multi_node(node_ip_addresses, username, key_file):
   kill_cluster_command = "killall scheduler objstore python > /dev/null 2> /dev/null"
@@ -55,7 +75,13 @@ def stop_ray_multi_node(node_ip_addresses, username, key_file):
 
 def update_ray_multi_node(node_ip_addresses, username, key_file, installation_directory):
   ray_directory = os.path.join(installation_directory, "ray")
-  update_cluster_command = "cd {}; git pull; ./rebuild.sh".format(ray_directory)
+  update_cluster_command = """
+    cd "{}" &&
+    git fetch &&
+    git reset --hard "@{{upstream}}" -- &&
+    (make -C "./build" clean || rm -rf "./build") &&
+    ./build.sh
+  """.format(ray_directory)
   for node_ip_address in node_ip_addresses:
     run_command_over_ssh(node_ip_address, username, key_file, update_cluster_command)
 
