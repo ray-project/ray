@@ -72,7 +72,7 @@ class Worker(object):
     elif result == None:
       return None # can't subclass None and don't need to because there is a global None
       # TODO(pcm): close the associated memory segment; if we don't, this leaks memory (but very little, so it is ok for now)
-    # TODO(pcm): Here, we can add the object reference to fix https://github.com/amplab/ray/issues/72
+    result.ray_objref = objref # TODO(pcm): This could be done only for the "pull" case in the future if we want to increase performance
     result.ray_deallocator = RayDealloc(self.handle, segmentid)
     return result
 
