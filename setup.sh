@@ -29,12 +29,13 @@ fi
 if [[ $platform == "linux" ]]; then
   sudo apt-get update
   sudo apt-get install -y git cmake build-essential autoconf curl libtool python-dev python-numpy python-pip libboost-all-dev unzip libjpeg8-dev
+  sudo pip install -r requirements.txt
 elif [[ $platform == "macosx" ]]; then
-  brew install git cmake autoconf libtool boost libjpeg
+  brew install git cmake automake autoconf libtool boost libjpeg
   sudo easy_install pip
   sudo pip install numpy
+  sudo pip install -r requirements.txt --ignore-installed six
 fi
-sudo pip install -r requirements.txt
 cd thirdparty
 ./download_thirdparty.sh
 ./build_thirdparty.sh

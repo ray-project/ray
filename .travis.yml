@@ -1,12 +1,21 @@
 sudo: required
-dist: trusty
 
 language: generic
 
+matrix:
+  include:
+    - os: linux
+      dist: trusty
+    - os: osx
+      osx_image: xcode7
+  allow_failures:
+    - os: osx
+      osx_image: xcode7
+
 before_install:
-  - sudo apt-get -y update
-  - sudo apt-get -y install git
-  - sudo add-apt-repository --yes ppa:kalakris/cmake
+  - if [[ $TRAVIS_OS_NAME == 'linux' ]]; then sudo apt-get -y update ; fi
+  - if [[ $TRAVIS_OS_NAME == 'linux' ]]; then sudo apt-get -y install git ; fi
+  - if [[ $TRAVIS_OS_NAME == 'linux' ]]; then sudo add-apt-repository --yes ppa:kalakris/cmake ; fi
 
 install:
   - bash setup.sh
