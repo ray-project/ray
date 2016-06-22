@@ -18,7 +18,7 @@ parser.add_argument("--username", type=str, required=True, help="User name for l
 parser.add_argument("--installation-directory", type=str, required=True, help="The directory in which to install Ray.")
 
 def run_command_over_ssh(node_ip_address, username, key_file, command):
-  full_command = "ssh -i {} {}@{} '{}'".format(key_file, username, node_ip_address, command)
+  full_command = "ssh -o StrictHostKeyChecking=no -i {} {}@{} '{}'".format(key_file, username, node_ip_address, command)
   subprocess.call([full_command], shell=True)
   print "Finished running command '{}' on {}@{}.".format(command, username, node_ip_address)
 
@@ -48,10 +48,16 @@ def start_ray_multi_node(node_ip_addresses, username, key_file, worker_path, ins
   shell_script_path = os.path.join(args.installation_directory, "ray/scripts/shell.py")
   print "python {} --scheduler-address={}:10001 --objstore-address={}:20001 --worker-address={}:30001".format(shell_script_path, node_ip_addresses[0], node_ip_addresses[0], node_ip_addresses[0])
 
-def stop_ray_multi_node(node_ip_addresses, username, key):
+def stop_ray_multi_node(node_ip_addresses, username, key_file):
+  kill_cluster_command = "killall scheduler objstore python > /dev/null 2> /dev/null"
   for node_ip_address in node_ip_addresses:
-    kill_cluster_command = "killall scheduler objstore python > /dev/null 2> /dev/null"
     run_command_over_ssh(node_ip_address, username, key_file, kill_cluster_command)
+
+def update_ray_multi_node(node_ip_addresses, username, key_file, installation_directory):
+  ray_directory = os.path.join(installation_directory, "ray")
+  update_cluster_command = "cd {}; git pull; ./rebuild.sh".format(ray_directory)
+  for node_ip_address in node_ip_addresses:
+    run_command_over_ssh(node_ip_address, username, key_file, update_cluster_command)
 
 # Returns true if address is a valid IPv4 address and false otherwise.
 def is_valid_ip(ip_address):
@@ -79,5 +85,8 @@ if __name__ == "__main__":
 
   def stop_ray(node_ip_addresses):
     stop_ray_multi_node(node_ip_addresses, username, key_file)
+
+  def update_ray(node_ip_addresses):
+    update_ray_multi_node(node_ip_addresses, username, key_file, installation_directory)
 
   IPython.embed()
