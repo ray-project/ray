@@ -16,6 +16,6 @@ const Task& ComputationGraph::get_task(OperationId operationid) {
   RAY_CHECK_NEQ(operationid, ROOT_OPERATION, "ComputationGraph attempting to get_task with operationid == ROOT_OPERATION");
   RAY_CHECK_NEQ(operationid, NO_OPERATION, "ComputationGraph attempting to get_task with operationid == NO_OPERATION");
   RAY_CHECK_LT(operationid, operations_.size(), "ComputationGraph attempting to get_task with operationid " << operationid << ", but operationid >= operations_.size().");
-  RAY_CHECK(operations_[operationid]->has_task(), "Calling get_task with operationid " << operationid << ", but this corresponds to a push not a task.");
+  RAY_CHECK(operations_[operationid]->has_task(), "Calling get_task with operationid " << operationid << ", but this corresponds to a put not a task.");
   return operations_[operationid]->task();
 }

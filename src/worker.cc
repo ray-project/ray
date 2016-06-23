@@ -73,11 +73,11 @@ void Worker::request_object(ObjRef objref) {
 ObjRef Worker::get_objref() {
   // first get objref for the new object
   RAY_CHECK(connected_, "Attempted to perform get_objref but failed.");
-  PushObjRequest push_request;
-  PushObjReply push_reply;
-  ClientContext push_context;
-  Status push_status = scheduler_stub_->PushObj(&push_context, push_request, &push_reply);
-  return push_reply.objref();
+  PutObjRequest request;
+  PutObjReply reply;
+  ClientContext context;
+  Status status = scheduler_stub_->PutObj(&context, request, &reply);
+  return reply.objref();
 }
 
 slice Worker::get_object(ObjRef objref) {

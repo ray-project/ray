@@ -29,8 +29,8 @@ service Scheduler {
   rpc IncrementCount(ChangeCountRequest) returns (AckReply);
   // Decrement the count of the object reference
   rpc DecrementCount(ChangeCountRequest) returns (AckReply);
-  // Request an object reference for an object that will be pushed to an object store
-  rpc PushObj(PushObjRequest) returns (PushObjReply);
+  // Request an object reference for an object that will be put in an object store
+  rpc PutObj(PutObjRequest) returns (PutObjReply);
   // Request delivery of an object from an object store that holds the object to the local object store
   rpc RequestObj(RequestObjRequest) returns (AckReply);
   // Used by the worker to tell the scheduler that two objrefs should refer to the same object
@@ -93,11 +93,11 @@ message RequestObjRequest {
   uint64 objref = 2; // Object reference of the object being requested
 }
 
-message PushObjRequest {
-  uint64 workerid = 1; // Worker that tries to push an object
+message PutObjRequest {
+  uint64 workerid = 1; // Worker that tries to put an object
 }
 
-message PushObjReply {
+message PutObjReply {
   uint64 objref = 1; // Object reference assigned by the scheduler to the object
 }
 
@@ -158,7 +158,7 @@ message SchedulerInfoReply {
 // Object stores
 
 service ObjStore {
-  // Tell the object store to begin pulling an object from another object store (called by the scheduler)
+  // Tell the object store to begin getting an object from another object store (called by the scheduler)
   rpc StartDelivery(StartDeliveryRequest) returns (AckReply);
   // Accept incoming data from another object store, as a stream of object chunks
   rpc StreamObjTo(StreamObjToRequest) returns (stream ObjChunk);
@@ -171,7 +171,7 @@ service ObjStore {
 }
 
 message StartDeliveryRequest {
-  string objstore_address = 1; // Object store to pull the object from
+  string objstore_address = 1; // Object store to get the object from
   uint64 objref = 2; // Reference of object that gets delivered
 }
 

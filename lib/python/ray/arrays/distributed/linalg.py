@@ -17,10 +17,10 @@ def tsqr(a):
     a.shape == (M, N)
     K == min(M, N)
   return values:
-    q: DistArray, if q_full = ray.context.pull(DistArray, q).assemble(), then
+    q: DistArray, if q_full = ray.get(DistArray, q).assemble(), then
       q_full.shape == (M, K)
       np.allclose(np.dot(q_full.T, q_full), np.eye(K)) == True
-    r: np.ndarray, if r_val = ray.context.pull(np.ndarray, r), then
+    r: np.ndarray, if r_val = ray.get(np.ndarray, r), then
       r_val.shape == (K, N)
       np.allclose(r, np.triu(r)) == True
   """
@@ -108,7 +108,7 @@ def modified_lu(q):
   for i in range(b):
     L[i, i] = 1
   U = np.triu(q_work)[:b, :]
-  return numpy_to_dist(ray.push(L)), U, S # TODO(rkn): get rid of push and pull
+  return numpy_to_dist(ray.put(L)), U, S # TODO(rkn): get rid of put
 
 @ray.remote([np.ndarray, np.ndarray, np.ndarray, int], [np.ndarray, np.ndarray])
 def tsqr_hr_helper1(u, s, y_top_block, b):
@@ -127,7 +127,7 @@ def tsqr_hr(a):
   """Algorithm 6 from http://www.eecs.berkeley.edu/Pubs/TechRpts/2013/EECS-2013-175.pdf"""
   q, r_temp = tsqr(a)
   y, u, s = modified_lu(q)
-  y_blocked = ray.pull(y)
+  y_blocked = ray.get(y)
   t, y_top = tsqr_hr_helper1(u, s, y_blocked.objrefs[0, 0], a.shape[1])
   r = tsqr_hr_helper2(s, r_temp)
   return y, t, y_top, r
@@ -150,21 +150,21 @@ def qr(a):
   a_work = DistArray()
   a_work.construct(a.shape, np.copy(a.objrefs))
 
-  result_dtype = np.linalg.qr(ray.pull(a.objrefs[0, 0]))[0].dtype.name
-  r_res = ray.pull(zeros([k, n], result_dtype)) # TODO(rkn): It would be preferable not to pull this right after creating it.
-  y_res = ray.pull(zeros([m, k], result_dtype)) # TODO(rkn): It would be preferable not to pull this right after creating it.
+  result_dtype = np.linalg.qr(ray.get(a.objrefs[0, 0]))[0].dtype.name
+  r_res = ray.get(zeros([k, n], result_dtype)) # TODO(rkn): It would be preferable not to get this right after creating it.
+  y_res = ray.get(zeros([m, k], result_dtype)) # TODO(rkn): It would be preferable not to get this right after creating it.
   Ts = []
 
   for i in range(min(a.num_blocks[0], a.num_blocks[1])): # this differs from the paper, which says "for i in range(a.num_blocks[1])", but that doesn't seem to make any sense when a.num_blocks[1] > a.num_blocks[0]
     sub_dist_array = subblocks(a_work, range(i, a_work.num_blocks[0]), [i])
     y, t, _, R = tsqr_hr(sub_dist_array)
-    y_val = ray.pull(y)
+    y_val = ray.get(y)
 
     for j in range(i, a.num_blocks[0]):
       y_res.objrefs[j, i] = y_val.objrefs[j - i, 0]
     if a.shape[0] > a.shape[1]:
       # in this case, R needs to be square
-      R_shape = ray.pull(ra.shape(R))
+      R_shape = ray.get(ra.shape(R))
       eye_temp = ra.eye(R_shape[1], R_shape[0], dtype_name=result_dtype)
       r_res.objrefs[i, i] = ra.dot(eye_temp, R)
     else:

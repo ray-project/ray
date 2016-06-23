@@ -72,7 +72,7 @@ class Worker(object):
     elif result == None:
       return None # can't subclass None and don't need to because there is a global None
       # TODO(pcm): close the associated memory segment; if we don't, this leaks memory (but very little, so it is ok for now)
-    result.ray_objref = objref # TODO(pcm): This could be done only for the "pull" case in the future if we want to increase performance
+    result.ray_objref = objref # TODO(pcm): This could be done only for the "get" case in the future if we want to increase performance
     result.ray_deallocator = RayDealloc(self.handle, segmentid)
     return result
 
@@ -141,13 +141,13 @@ def connect(scheduler_addr, objstore_addr, worker_addr, worker=global_worker, pr
 def disconnect(worker=global_worker):
   ray.lib.disconnect(worker.handle)
 
-def pull(objref, worker=global_worker):
+def get(objref, worker=global_worker):
   ray.lib.request_object(worker.handle, objref)
   if worker.print_task_info:
     print_task_info(ray.lib.task_info(worker.handle))
   return worker.get_object(objref)
 
-def push(value, worker=global_worker):
+def put(value, worker=global_worker):
   objref = ray.lib.get_objref(worker.handle)
   worker.put_object(objref, value)
   if worker.print_task_info:

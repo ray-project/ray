@@ -57,7 +57,7 @@ Status SchedulerService::SubmitTask(ServerContext* context, const SubmitTaskRequ
   return Status::OK;
 }
 
-Status SchedulerService::PushObj(ServerContext* context, const PushObjRequest* request, PushObjReply* reply) {
+Status SchedulerService::PutObj(ServerContext* context, const PutObjRequest* request, PutObjReply* reply) {
   ObjRef objref = register_new_object();
   ObjStoreId objstoreid = get_store(request->workerid());
   reply->set_objref(objref);
@@ -74,8 +74,8 @@ Status SchedulerService::RequestObj(ServerContext* context, const RequestObjRequ
   ObjRef objref = request->objref();
   RAY_CHECK_LT(objref, size, "internal error: no object with objref " << objref << " exists");
   {
-    std::lock_guard<std::mutex> pull_queue_lock(pull_queue_lock_);
-    pull_queue_.push_back(std::make_pair(request->workerid(), objref));
+    std::lock_guard<std::mutex> get_queue_lock(get_queue_lock_);
+    get_queue_.push_back(std::make_pair(request->workerid(), objref));
   }
   schedule();
   return Status::OK;
@@ -313,7 +313,7 @@ void SchedulerService::deliver_object(ObjRef canonical_objref, ObjStoreId from, 
 
 void SchedulerService::schedule() {
   // TODO(rkn): Do this more intelligently.
-  perform_pulls(); // See what we can do in pull_queue_
+  perform_gets(); // See what we can do in get_queue_
   if (scheduling_algorithm_ == SCHEDULING_ALGORITHM_NAIVE) {
     schedule_tasks_naively(); // See what we can do in task_queue_
   } else if (scheduling_algorithm_ == SCHEDULING_ALGORITHM_LOCALITY_AWARE) {
@@ -513,20 +513,20 @@ bool SchedulerService::is_canonical(ObjRef objref) {
   return objref == target_objrefs_[objref];
 }
 
-void SchedulerService::perform_pulls() {
-  std::lock_guard<std::mutex> pull_queue_lock(pull_queue_lock_);
-  // Complete all pull tasks that can be completed.
-  for (int i = 0; i < pull_queue_.size(); ++i) {
-    const std::pair<WorkerId, ObjRef>& pull = pull_queue_[i];
-    ObjRef objref = pull.second;
-    WorkerId workerid = pull.first;
+void SchedulerService::perform_gets() {
+  std::lock_guard<std::mutex> get_queue_lock(get_queue_lock_);
+  // Complete all get tasks that can be completed.
+  for (int i = 0; i < get_queue_.size(); ++i) {
+    const std::pair<WorkerId, ObjRef>& get = get_queue_[i];
+    ObjRef objref = get.second;
+    WorkerId workerid = get.first;
     ObjStoreId objstoreid = get_store(workerid);
     if (!has_canonical_objref(objref)) {
       RAY_LOG(RAY_ALIAS, "objref " << objref << " does not have a canonical_objref, so continuing");
       continue;
     }
     ObjRef canonical_objref = get_canonical_objref(objref);
-    RAY_LOG(RAY_DEBUG, "attempting to pull objref " << pull.second << " with canonical objref " << canonical_objref << " to objstore " << get_store(workerid));
+    RAY_LOG(RAY_DEBUG, "attempting to get objref " << get.second << " with canonical objref " << canonical_objref << " to objstore " << get_store(workerid));
     int num_stores;
     {
       std::lock_guard<std::mutex> objects_lock(objects_lock_);
@@ -539,9 +539,9 @@ void SchedulerService::perform_pulls() {
         std::lock_guard<std::mutex> alias_notification_queue_lock(alias_notification_queue_lock_);
         alias_notification_queue_.push_back(std::make_pair(get_store(workerid), std::make_pair(objref, canonical_objref)));
       }
-      // Remove the pull task from the queue
-      std::swap(pull_queue_[i], pull_queue_[pull_queue_.size() - 1]);
-      pull_queue_.pop_back();
+      // Remove the get task from the queue
+      std::swap(get_queue_[i], get_queue_[get_queue_.size() - 1]);
+      get_queue_.pop_back();
       i -= 1;
     }
   }
@@ -782,7 +782,7 @@ void SchedulerService::do_on_locks(bool lock) {
   std::mutex *mutexes[] = {
     &successful_tasks_lock_,
     &failed_tasks_lock_,
-    &pull_queue_lock_,
+    &get_queue_lock_,
     &computation_graph_lock_,
     &fntable_lock_,
     &avail_workers_lock_,

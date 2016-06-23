@@ -19,10 +19,10 @@ public:
   // the new operation. This method takes ownership over operation.
   OperationId add_operation(std::unique_ptr<Operation> operation);
   // Return the task corresponding to a particular OperationId. If operationid
-  // corresponds to a push, then fail.
+  // corresponds to a put, then fail.
   const Task& get_task(OperationId operationid);
 private:
-  // maps an OperationId to the corresponding task or push
+  // maps an OperationId to the corresponding task or put
   std::vector<std::unique_ptr<Operation> > operations_;
   // spawned_operations_[operationid] is a vector of the OperationIds of the
   // operations spawned by the task with OperationId operationid

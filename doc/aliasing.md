@@ -62,9 +62,9 @@ counting and attempt to deallocate an object, we need to be able to determine
 all of the object references that refer to the same object, and this data
 structure comes in handy for that purpose.
 
-## Pulls and Remote Calls
+## Gets and Remote Calls
 
-When a worker calls `pull(ref)`, it first sends a message to the scheduler
+When a worker calls `ray.get(ref)`, it first sends a message to the scheduler
 asking the scheduler to ship the object referred to by `ref` to the worker's
 local object store. Then the worker asks its local object store for the object
 referred to by `ref`. If `ref` is a canonical object reference, then that's all

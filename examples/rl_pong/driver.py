@@ -34,12 +34,12 @@ grad_buffer = {k: np.zeros_like(v) for k, v in model.iteritems()} # update buffe
 rmsprop_cache = {k: np.zeros_like(v) for k, v in model.iteritems()} # rmsprop memory
 
 while True:
-  modelref = ray.push(model)
+  modelref = ray.put(model)
   grads = []
   for i in range(batch_size):
     grads.append(functions.compgrad(modelref))
   for i in range(batch_size):
-    grad = ray.pull(grads[i])
+    grad = ray.get(grads[i])
     for k in model: grad_buffer[k] += grad[0][k] # accumulate grad over batch
     running_reward = grad[1] if running_reward is None else running_reward * 0.99 + grad[1] * 0.01
     print "Batch {}. episode reward total was {}. running mean: {}".format(batch_num, grad[1], running_reward)

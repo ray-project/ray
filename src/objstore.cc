@@ -7,8 +7,8 @@ const size_t ObjStoreService::CHUNK_SIZE = 8 * 1024;
 
 // this method needs to be protected by a objstore_lock_
 // TODO(rkn): Make sure that we do not in fact need the objstore_lock_. We want multiple deliveries to be able to happen simultaneously.
-void ObjStoreService::pull_data_from(ObjRef objref, ObjStore::Stub& stub) {
-  RAY_LOG(RAY_DEBUG, "Objstore " << objstoreid_ << " is beginning to pull objref " << objref);
+void ObjStoreService::get_data_from(ObjRef objref, ObjStore::Stub& stub) {
+  RAY_LOG(RAY_DEBUG, "Objstore " << objstoreid_ << " is beginning to get objref " << objref);
   ObjChunk chunk;
   ClientContext context;
   StreamObjToRequest stream_request;
@@ -76,7 +76,7 @@ Status ObjStoreService::StartDelivery(ServerContext* context, const StartDeliver
     }
     else {
       RAY_CHECK_NEQ(memory_[objref].second, MemoryStatusType::DEALLOCATED, "Objstore " << objstoreid_ << " is attempting to get objref " << objref << ", but memory_[objref] == DEALLOCATED.");
-      RAY_LOG(RAY_DEBUG, "Objstore " << objstoreid_ << " already has objref " << objref << " or it is already being shipped, so no need to pull it again.");
+      RAY_LOG(RAY_DEBUG, "Objstore " << objstoreid_ << " already has objref " << objref << " or it is already being shipped, so no need to get it again.");
       return Status::OK;
     }
     memory_[objref].second = MemoryStatusType::PRE_ALLOCED;
@@ -84,7 +84,7 @@ Status ObjStoreService::StartDelivery(ServerContext* context, const StartDeliver
   delivery_threads_.push_back(std::make_shared<std::thread>([this, address, objref]() {
     std::lock_guard<std::mutex> objstores_lock(objstores_lock_);
     ObjStore::Stub& stub = get_objstore_stub(address);
-    pull_data_from(objref, stub);
+    get_data_from(objref, stub);
   }));
   return Status::OK;
 }
@@ -173,14 +173,14 @@ Status ObjStoreService::DeallocateObject(ServerContext* context, const Deallocat
 // -------------+-------------+------------------+----------------------------
 // NOT_PRESENT  | ALLOC       | NOT_READY        | allocate object
 // NOT_READY    | WORKER_DONE | READY            | send ObjReady to scheduler
-// NOT_READY    | GET         | NOT_READY        | add to pull queue
+// NOT_READY    | GET         | NOT_READY        | add to get queue
 // READY        | GET         | READY            | return handle
 // READY        | DEALLOC     | DEALLOCATED      | deallocate
 // -------------+-------------+------------------+----------------------------
 void ObjStoreService::process_objstore_request(const ObjRequest request) {
   switch (request.type) {
     case ObjRequestType::ALIAS_DONE: {
-        process_pulls_for_objref(request.objref);
+        process_gets_for_objref(request.objref);
       }
       break;
     default: {
@@ -216,8 +216,8 @@ void ObjStoreService::process_worker_request(const ObjRequest request) {
           RAY_LOG(RAY_DEBUG, "Responding to GET request: returning objref " << request.objref);
           send_queues_[request.workerid].send(&item.first);
         } else if (item.second == MemoryStatusType::NOT_READY || item.second == MemoryStatusType::NOT_PRESENT || item.second == MemoryStatusType::PRE_ALLOCED) {
-          std::lock_guard<std::mutex> lock(pull_queue_lock_);
-          pull_queue_.push_back(std::make_pair(request.workerid, request.objref));
+          std::lock_guard<std::mutex> lock(get_queue_lock_);
+          get_queue_.push_back(std::make_pair(request.workerid, request.objref));
         } else {
           RAY_CHECK(false, "A worker requested objref " << request.objref << ", but memory_[objref].second = " << memory_[request.objref].second);
         }
@@ -265,16 +265,16 @@ void ObjStoreService::process_requests() {
   }
 }
 
-void ObjStoreService::process_pulls_for_objref(ObjRef objref) {
+void ObjStoreService::process_gets_for_objref(ObjRef objref) {
   std::pair<ObjHandle, MemoryStatusType>& item = memory_[objref];
-  std::lock_guard<std::mutex> pull_queue_lock(pull_queue_lock_);
-  for (size_t i = 0; i < pull_queue_.size(); ++i) {
-    if (pull_queue_[i].second == objref) {
+  std::lock_guard<std::mutex> get_queue_lock(get_queue_lock_);
+  for (size_t i = 0; i < get_queue_.size(); ++i) {
+    if (get_queue_[i].second == objref) {
       ObjHandle& elem = memory_[objref].first;
-      send_queues_[pull_queue_[i].first].send(&item.first);
-      // Remove the pull task from the queue
-      std::swap(pull_queue_[i], pull_queue_[pull_queue_.size() - 1]);
-      pull_queue_.pop_back();
+      send_queues_[get_queue_[i].first].send(&item.first);
+      // Remove the get task from the queue
+      std::swap(get_queue_[i], get_queue_[get_queue_.size() - 1]);
+      get_queue_.pop_back();
       i -= 1;
     }
   }
@@ -300,7 +300,7 @@ void ObjStoreService::object_ready(ObjRef objref, size_t metadata_offset) {
     item.first.set_metadata_offset(metadata_offset);
     item.second = MemoryStatusType::READY;
   }
-  process_pulls_for_objref(objref);
+  process_gets_for_objref(objref);
   // Tell the scheduler that the object arrived
   // TODO(pcm): put this in a separate thread so we don't have to pay the latency here
   ClientContext objready_context;
