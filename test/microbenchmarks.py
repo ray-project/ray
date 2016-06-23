@@ -45,33 +45,33 @@ class MicroBenchmarkTest(unittest.TestCase):
     print "    worst:           {}".format(elapsed_times[999])
     self.assertTrue(average_elapsed_time < 0.002) # should take 0.001
 
-    # measure the time required to submit a remote task to the scheduler and pull the result
+    # measure the time required to submit a remote task to the scheduler and get the result
     elapsed_times = []
     for _ in range(1000):
       start_time = time.time()
       x = test_functions.trivial_function()
-      ray.pull(x)
+      ray.get(x)
       end_time = time.time()
       elapsed_times.append(end_time - start_time)
     elapsed_times = np.sort(elapsed_times)
     average_elapsed_time = sum(elapsed_times) / 1000
-    print "Time required to submit a trivial function call and pull the result:"
+    print "Time required to submit a trivial function call and get the result:"
     print "    Average: {}".format(average_elapsed_time)
     print "    90th percentile: {}".format(elapsed_times[900])
     print "    99th percentile: {}".format(elapsed_times[990])
     print "    worst:           {}".format(elapsed_times[999])
     self.assertTrue(average_elapsed_time < 0.002) # should take 0.0013
 
-    # measure the time required to do do a push
+    # measure the time required to do do a put
     elapsed_times = []
     for _ in range(1000):
       start_time = time.time()
-      ray.push(1)
+      ray.put(1)
       end_time = time.time()
       elapsed_times.append(end_time - start_time)
     elapsed_times = np.sort(elapsed_times)
     average_elapsed_time = sum(elapsed_times) / 1000
-    print "Time required to push an int:"
+    print "Time required to put an int:"
     print "    Average: {}".format(average_elapsed_time)
     print "    90th percentile: {}".format(elapsed_times[900])
     print "    99th percentile: {}".format(elapsed_times[990])

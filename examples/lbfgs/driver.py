@@ -22,8 +22,8 @@ if __name__ == "__main__":
   worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "worker.py")
   services.start_singlenode_cluster(return_drivers=False, num_workers_per_objstore=16, worker_path=worker_path)
 
-  x_batches = [ray.push(batches[i][0]) for i in range(num_batches)]
-  y_batches = [ray.push(batches[i][1]) for i in range(num_batches)]
+  x_batches = [ray.put(batches[i][0]) for i in range(num_batches)]
+  y_batches = [ray.put(batches[i][1]) for i in range(num_batches)]
 
   # From the perspective of scipy.optimize.fmin_l_bfgs_b, full_loss is simply a
   # function which takes some parameters theta, and computes a loss. Similarly,
@@ -35,14 +35,14 @@ if __name__ == "__main__":
   # from scipy.optimize.fmin_l_bfgs_b, which simply uses it to run the L-BFGS
   # algorithm.
   def full_loss(theta):
-    theta_ref = ray.push(theta)
+    theta_ref = ray.put(theta)
     val_ref = ra.sum_list(*[functions.loss(theta_ref, x_batches[i], y_batches[i]) for i in range(num_batches)])
-    return ray.pull(val_ref)
+    return ray.get(val_ref)
 
   def full_grad(theta):
-    theta_ref = ray.push(theta)
+    theta_ref = ray.put(theta)
     grad_ref = ra.sum_list(*[functions.grad(theta_ref, x_batches[i], y_batches[i]) for i in range(num_batches)])
-    return ray.pull(grad_ref).astype("float64") # This conversion is necessary for use with fmin_l_bfgs_b.
+    return ray.get(grad_ref).astype("float64") # This conversion is necessary for use with fmin_l_bfgs_b.
 
   theta_init = np.zeros(functions.dim)
 

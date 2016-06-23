@@ -55,13 +55,13 @@ class DistArray(object):
 
   def assemble(self):
     """Assemble an array on this node from a distributed array object reference."""
-    first_block = ray.pull(self.objrefs[(0,) * self.ndim])
+    first_block = ray.get(self.objrefs[(0,) * self.ndim])
     dtype = first_block.dtype
     result = np.zeros(self.shape, dtype=dtype)
     for index in np.ndindex(*self.num_blocks):
       lower = DistArray.compute_block_lower(index, self.shape)
       upper = DistArray.compute_block_upper(index, self.shape)
-      result[[slice(l, u) for (l, u) in zip(lower, upper)]] = ray.pull(self.objrefs[index])
+      result[[slice(l, u) for (l, u) in zip(lower, upper)]] = ray.get(self.objrefs[index])
     return result
 
   def __getitem__(self, sliced):
@@ -80,7 +80,7 @@ def numpy_to_dist(a):
   for index in np.ndindex(*result.num_blocks):
     lower = DistArray.compute_block_lower(index, a.shape)
     upper = DistArray.compute_block_upper(index, a.shape)
-    result.objrefs[index] = ray.push(a[[slice(l, u) for (l, u) in zip(lower, upper)]])
+    result.objrefs[index] = ray.put(a[[slice(l, u) for (l, u) in zip(lower, upper)]])
   return result
 
 @ray.remote([List[int], str], [DistArray])

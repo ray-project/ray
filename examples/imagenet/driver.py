@@ -26,7 +26,7 @@ if __name__ == "__main__":
   x = imagenet.load_tarfiles_from_s3(args.s3_bucket, map(str, images), [256, 256]) # TODO(pcm): implement unicode serialization
 
   mean_image = functions.compute_mean_image(x)
-  mean_image = ray.pull(mean_image)
+  mean_image = ray.get(mean_image)
 
   print "The mean image is:"
   print mean_image

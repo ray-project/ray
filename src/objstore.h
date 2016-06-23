@@ -46,13 +46,13 @@ public:
   Status ObjStoreInfo(ServerContext* context, const ObjStoreInfoRequest* request, ObjStoreInfoReply* reply) override;
   void start_objstore_service();
 private:
-  void pull_data_from(ObjRef objref, ObjStore::Stub& stub);
+  void get_data_from(ObjRef objref, ObjStore::Stub& stub);
   // check if we already connected to the other objstore, if yes, return reference to connection, otherwise connect
   ObjStore::Stub& get_objstore_stub(const std::string& objstore_address);
   void process_worker_request(const ObjRequest request);
   void process_objstore_request(const ObjRequest request);
   void process_requests();
-  void process_pulls_for_objref(ObjRef objref);
+  void process_gets_for_objref(ObjRef objref);
   ObjHandle alloc(ObjRef objref, size_t size);
   void object_ready(ObjRef objref, size_t metadata_offset);
 
@@ -66,8 +66,8 @@ private:
   std::unordered_map<std::string, std::unique_ptr<ObjStore::Stub>> objstores_;
   std::mutex objstores_lock_;
   std::unique_ptr<Scheduler::Stub> scheduler_stub_;
-  std::vector<std::pair<WorkerId, ObjRef> > pull_queue_;
-  std::mutex pull_queue_lock_;
+  std::vector<std::pair<WorkerId, ObjRef> > get_queue_;
+  std::mutex get_queue_lock_;
   MessageQueue<ObjRequest> recv_queue_; // This queue is used by workers to send tasks to the object store.
   std::vector<MessageQueue<ObjHandle> > send_queues_; // This maps workerid -> queue. The object store uses these queues to send replies to the relevant workers.
   std::thread communicator_thread_;

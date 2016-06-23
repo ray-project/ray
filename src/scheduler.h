@@ -55,7 +55,7 @@ public:
   SchedulerService(SchedulingAlgorithmType scheduling_algorithm);
 
   Status SubmitTask(ServerContext* context, const SubmitTaskRequest* request, SubmitTaskReply* reply) override;
-  Status PushObj(ServerContext* context, const PushObjRequest* request, PushObjReply* reply) override;
+  Status PutObj(ServerContext* context, const PutObjRequest* request, PutObjReply* reply) override;
   Status RequestObj(ServerContext* context, const RequestObjRequest* request, AckReply* reply) override;
   Status AliasObjRefs(ServerContext* context, const AliasObjRefsRequest* request, AckReply* reply) override;
   Status RegisterObjStore(ServerContext* context, const RegisterObjStoreRequest* request, RegisterObjStoreReply* reply) override;
@@ -101,7 +101,7 @@ private:
   // checks if objref is a canonical objref
   bool is_canonical(ObjRef objref);
 
-  void perform_pulls();
+  void perform_gets();
   // schedule tasks using the naive algorithm
   void schedule_tasks_naively();
   // schedule tasks using a scheduling algorithm that takes into account data locality
@@ -174,9 +174,9 @@ private:
   // List of pending tasks.
   std::deque<OperationId> task_queue_;
   std::mutex task_queue_lock_;
-  // List of pending pull calls.
-  std::vector<std::pair<WorkerId, ObjRef> > pull_queue_;
-  std::mutex pull_queue_lock_;
+  // List of pending get calls.
+  std::vector<std::pair<WorkerId, ObjRef> > get_queue_;
+  std::mutex get_queue_lock_;
   // List of failed tasks
   std::vector<TaskStatus> failed_tasks_;
   std::mutex failed_tasks_lock_;

@@ -77,13 +77,13 @@ because they must be passed into `AliasObjRefs` at some point).
 The following problem has not yet been resolved. In the following code, the
 result `x` will be garbage.
 ```python
-x = ray.pull(ra.zeros([10, 10], "float"))
+x = ray.get(ra.zeros([10, 10], "float"))
 ```
 When `ra.zeros` is called, a worker will create an array of zeros and store
 it in an object store. An object reference to the output is returned. The call
-to `ray.pull` will not copy data from the object store process to the worker
+to `ray.get` will not copy data from the object store process to the worker
 process, but will instead give the worker process a pointer to shared memory.
-After the `ray.pull` call completes, the object reference returned by
+After the `ray.get` call completes, the object reference returned by
 `ra.zeros` will go out of scope, and the object it refers to will be
 deallocated from the object store. This will cause the memory that `x` points to
 to be garbage.
