@@ -156,7 +156,7 @@ Status ObjStoreService::NotifyAlias(ServerContext* context, const NotifyAliasReq
 
 Status ObjStoreService::DeallocateObject(ServerContext* context, const DeallocateObjectRequest* request, AckReply* reply) {
   ObjRef canonical_objref = request->canonical_objref();
-  RAY_LOG(RAY_REFCOUNT, "Deallocating canonical_objref " << canonical_objref);
+  RAY_LOG(RAY_INFO, "Deallocating canonical_objref " << canonical_objref);
   std::lock_guard<std::mutex> memory_lock(memory_lock_);
   RAY_CHECK_EQ(memory_[canonical_objref].second, MemoryStatusType::READY, "Attempting to deallocate canonical_objref " << canonical_objref << ", but memory_[canonical_objref].second = " << memory_[canonical_objref].second);
   RAY_CHECK_LT(canonical_objref, memory_.size(), "Attempting to deallocate canonical_objref " << canonical_objref << ", but it is not in the objstore.");
@@ -294,6 +294,7 @@ ObjHandle ObjStoreService::alloc(ObjRef objref, size_t size) {
 
 void ObjStoreService::object_ready(ObjRef objref, size_t metadata_offset) {
   {
+    RAY_LOG(RAY_INFO, "Objref " << objref << " is ready.");
     std::lock_guard<std::mutex> memory_lock(memory_lock_);
     std::pair<ObjHandle, MemoryStatusType>& item = memory_[objref];
     RAY_CHECK_EQ(item.second, MemoryStatusType::NOT_READY, "A worker notified the object store that objref " << objref << " has been written to the object store, but memory_[objref].second != NOT_READY.");

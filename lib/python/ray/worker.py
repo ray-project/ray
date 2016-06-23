@@ -1,3 +1,4 @@
+import time
 import datetime
 import logging
 import os
@@ -177,9 +178,11 @@ def remote(arg_types, return_types, worker=global_worker):
     def func_executor(arguments):
       """This is what gets executed remotely on a worker after a remote function is scheduled by the scheduler."""
       logging.info("Calling function {}".format(func.__name__))
+      start_time = time.time()
       result = func(*arguments)
+      end_time = time.time()
       check_return_values(func_call, result) # throws an exception if result is invalid
-      logging.info("Finished executing function {}".format(func.__name__))
+      logging.info("Finished executing function {}, it took {} seconds".format(func.__name__, end_time - start_time))
       return result
     def func_call(*args, **kwargs):
       """This is what gets run immediately when a worker calls a remote function."""
