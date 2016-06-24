@@ -16,7 +16,10 @@ RAY_TEST_OBJECTS = [[1, "hello", 3.0], 42, "hello world", 42.0,
                     (1.0, "hi"), None, (None, None), ("hello", None),
                     True, False, (True, False),
                     {True: "hello", False: "world"},
-                    {"hello" : "world", 1: 42, 1.0: 45}, {}]
+                    {"hello" : "world", 1: 42, 1.0: 45}, {},
+                    np.int8(3), np.int32(4), np.int64(5),
+                    np.uint8(3), np.uint32(4), np.uint64(5),
+                    np.float32(1.0), np.float64(1.0)]
 
 class UserDefinedType(object):
   def __init__(self):
@@ -41,6 +44,16 @@ class SerializationTest(unittest.TestCase):
     c = serialization.deserialize(worker.handle, b)
     self.assertTrue((a == c).all())
 
+    a = np.array(0).astype(typ)
+    b, _ = serialization.serialize(worker.handle, a)
+    c = serialization.deserialize(worker.handle, b)
+    self.assertTrue((a == c).all())
+
+    a = np.empty((0,)).astype(typ)
+    b, _ = serialization.serialize(worker.handle, a)
+    c = serialization.deserialize(worker.handle, b)
+    self.assertTrue(a.dtype == c.dtype)
+
   def testSerialize(self):
     [w] = services.start_singlenode_cluster(return_drivers=True)
 
@@ -54,8 +67,10 @@ class SerializationTest(unittest.TestCase):
 
     self.numpyTypeTest(w, 'int8')
     self.numpyTypeTest(w, 'uint8')
-    # self.numpyTypeTest('int16') # TODO(pcm): implement this
-    # self.numpyTypeTest('int32') # TODO(pcm): implement this
+    self.numpyTypeTest(w, 'int16')
+    self.numpyTypeTest(w, 'uint16')
+    self.numpyTypeTest(w, 'int32')
+    self.numpyTypeTest(w, 'uint32')
     self.numpyTypeTest(w, 'float32')
     self.numpyTypeTest(w, 'float64')
 
@@ -311,7 +326,7 @@ class ReferenceCountingTest(unittest.TestCase):
       objref_val = check_get_deallocated(val)
       self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val], -1)
 
-      if not isinstance(val, bool) and val is not None:
+      if not isinstance(val, bool) and not isinstance(val, np.generic) and val is not None:
         x, objref_val = check_get_not_deallocated(val)
         self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val], 1)
 

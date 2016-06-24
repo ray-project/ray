@@ -95,6 +95,7 @@ message TaskStatus {
 message Array {
   repeated uint64 shape = 1;
   sint64 dtype = 2;
+  bool is_scalar = 8;
   repeated double double_data = 3;
   repeated float float_data = 4;
   repeated sint64 int_data = 5;

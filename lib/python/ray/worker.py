@@ -70,6 +70,9 @@ class Worker(object):
       result = serialization.Str(result)
     elif isinstance(result, np.ndarray):
       result = result.view(serialization.NDArray)
+    elif isinstance(result, np.generic):
+      return result
+      # TODO(pcm): close the associated memory segment; if we don't, this leaks memory (but very little, so it is ok for now)
     elif result == None:
       return None # can't subclass None and don't need to because there is a global None
       # TODO(pcm): close the associated memory segment; if we don't, this leaks memory (but very little, so it is ok for now)
