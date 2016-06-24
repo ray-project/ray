@@ -8,9 +8,6 @@ matrix:
       dist: trusty
     - os: osx
       osx_image: xcode7
-  allow_failures:
-    - os: osx
-      osx_image: xcode7
 
 before_install:
   - if [[ $TRAVIS_OS_NAME == 'linux' ]]; then sudo apt-get -y update ; fi
