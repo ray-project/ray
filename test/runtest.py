@@ -330,6 +330,17 @@ class ReferenceCountingTest(unittest.TestCase):
         x, objref_val = check_get_not_deallocated(val)
         self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val], 1)
 
+    # The following currently segfaults: The second "result = " closes the
+    # memory segment as soon as the assignment is done (and the first result
+    # goes out of scope).
+    """
+    data = np.zeros([10, 20])
+    objref = ray.put(data)
+    result = worker.get(objref)
+    result = worker.get(objref)
+    self.assertTrue(np.alltrue(result == data))
+    """
+
     services.cleanup()
 
   @unittest.expectedFailure
