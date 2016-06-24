@@ -104,7 +104,9 @@ def start_node(scheduler_address, node_ip_address, num_workers, worker_path=None
   ray.connect(scheduler_address, objstore_address, address(node_ip_address, new_worker_port()))
   time.sleep(0.5)
 
-def start_singlenode_cluster(return_drivers=False, num_objstores=1, num_workers_per_objstore=0, worker_path=None, print_task_info=False):
+# driver_mode should equal ray.SCRIPT_MODE if this is being run in a script and
+# ray.SHELL_MODE if it is being used interactively in a shell.
+def start_singlenode_cluster(return_drivers=False, num_objstores=1, num_workers_per_objstore=0, worker_path=None, driver_mode=ray.SCRIPT_MODE):
   global drivers
   if num_workers_per_objstore > 0 and worker_path is None:
     raise Exception("Attempting to start a cluster with {} workers per object store, but `worker_path` is None.".format(num_workers_per_objstore))
@@ -134,5 +136,5 @@ def start_singlenode_cluster(return_drivers=False, num_objstores=1, num_workers_
     time.sleep(0.5)
     return driver_workers
   else:
-    ray.connect(scheduler_address, objstore_addresses[0], address(IP_ADDRESS, new_worker_port()), print_task_info=print_task_info)
+    ray.connect(scheduler_address, objstore_addresses[0], address(IP_ADDRESS, new_worker_port()), mode=driver_mode)
     time.sleep(0.5)
