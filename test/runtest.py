@@ -241,7 +241,7 @@ class APITest(unittest.TestCase):
 class TaskStatusTest(unittest.TestCase):
   def testFailedTask(self):
     worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-    services.start_singlenode_cluster(return_drivers=False, num_workers_per_objstore=3, worker_path=worker_path)
+    services.start_singlenode_cluster(return_drivers=False, num_workers_per_objstore=3, worker_path=worker_path, driver_mode=ray.WORKER_MODE)
     test_functions.test_alias_f()
     test_functions.throw_exception_fct()
     test_functions.throw_exception_fct()
