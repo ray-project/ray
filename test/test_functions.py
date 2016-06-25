@@ -75,5 +75,13 @@ except:
 # test throwing an exception
 
 @ray.remote([], [])
-def throw_exception_fct():
-    raise Exception("Test function intentionally failed.")
+def throw_exception_fct1():
+  raise Exception("Test function 1 intentionally failed.")
+
+@ray.remote([], [int])
+def throw_exception_fct2():
+  raise Exception("Test function 2 intentionally failed.")
+
+@ray.remote([float], [int, str, np.ndarray])
+def throw_exception_fct3(x):
+  raise Exception("Test function 3 intentionally failed.")

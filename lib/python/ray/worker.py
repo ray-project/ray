@@ -13,6 +13,18 @@ import ray
 from ray.config import LOG_DIRECTORY, LOG_TIMESTAMP
 import serialization
 
+class RayFailedObject(object):
+  """If a task throws an exception during execution, a RayFailedObject is stored in the object store for each of the tasks outputs."""
+
+  def __init__(self, error_message=None):
+    self.error_message = error_message
+
+  def deserialize(self, primitives):
+    self.error_message = primitives
+
+  def serialize(self):
+    return self.error_message
+
 class RayDealloc(object):
   def __init__(self, handle, segmentid):
     self.handle = handle
@@ -162,7 +174,10 @@ def get(objref, worker=global_worker):
   ray.lib.request_object(worker.handle, objref)
   if worker.mode == ray.SHELL_MODE or worker.mode == ray.SCRIPT_MODE:
     print_task_info(ray.lib.task_info(worker.handle), worker.mode)
-  return worker.get_object(objref)
+  value = worker.get_object(objref)
+  if isinstance(value, RayFailedObject):
+    raise Exception("The task that created this object reference failed with error message: {}".format(value.error_message))
+  return value
 
 def put(value, worker=global_worker):
   objref = ray.lib.get_objref(worker.handle)
@@ -180,7 +195,13 @@ def main_loop(worker=global_worker):
     arguments = get_arguments_for_execution(worker.functions[func_name], args, worker) # get args from objstore
     try:
       outputs = worker.functions[func_name].executor(arguments) # execute the function
+      if len(return_objrefs) == 1:
+        outputs = (outputs,)
     except Exception as e:
+      # Here we are storing RayFailedObjects in the object store to indicate
+      # failure (this is only interpreted by the worker).
+      failure_objects = [RayFailedObject(str(e)) for _ in range(len(return_objrefs))]
+      store_outputs_in_objstore(return_objrefs, failure_objects, worker)
       ray.lib.notify_task_completed(worker.handle, False, str(e)) # notify the scheduler that the task threw an exception
       logging.info("Worker through exception with message: {}, while running function {}.".format(str(e), func_name))
     else:
@@ -308,9 +329,6 @@ def get_arguments_for_execution(function, args, worker=global_worker):
 
 # helper method, this should not be called by the user
 def store_outputs_in_objstore(objrefs, outputs, worker=global_worker):
-  if len(objrefs) == 1:
-    outputs = (outputs,)
-
   for i in range(len(objrefs)):
     if isinstance(outputs[i], ray.lib.ObjRef):
       # An ObjRef is being returned, so we must alias objrefs[i] so that it refers to the same object that outputs[i] refers to
