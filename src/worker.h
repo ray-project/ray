@@ -60,6 +60,8 @@ class Worker {
   PyObject* get_arrow(ObjRef objref, SegmentId& segmentid);
   // determine if the object stored in objref is an arrow object // TODO(pcm): more general mechanism for this?
   bool is_arrow(ObjRef objref);
+  // unmap the segment containing an object from the local address space
+  void unmap_object(ObjRef objref);
   // make `alias_objref` refer to the same object that `target_objref` refers to
   void alias_objrefs(ObjRef alias_objref, ObjRef target_objref);
   // increment the reference count for objref
