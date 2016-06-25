@@ -65,14 +65,14 @@ class SerializationTest(unittest.TestCase):
     b = serialization.deserialize(w.handle, res)
     self.assertTrue((a == b).all())
 
-    self.numpyTypeTest(w, 'int8')
-    self.numpyTypeTest(w, 'uint8')
-    self.numpyTypeTest(w, 'int16')
-    self.numpyTypeTest(w, 'uint16')
-    self.numpyTypeTest(w, 'int32')
-    self.numpyTypeTest(w, 'uint32')
-    self.numpyTypeTest(w, 'float32')
-    self.numpyTypeTest(w, 'float64')
+    self.numpyTypeTest(w, "int8")
+    self.numpyTypeTest(w, "uint8")
+    self.numpyTypeTest(w, "int16")
+    self.numpyTypeTest(w, "uint16")
+    self.numpyTypeTest(w, "int32")
+    self.numpyTypeTest(w, "uint32")
+    self.numpyTypeTest(w, "float32")
+    self.numpyTypeTest(w, "float64")
 
     ref0 = ray.put(0, w)
     ref1 = ray.put(0, w)
@@ -86,7 +86,7 @@ class SerializationTest(unittest.TestCase):
 
     self.roundTripTest(w, ref0)
     self.roundTripTest(w, [ref0, ref1, ref2, ref3])
-    self.roundTripTest(w, {'0': ref0, '1': ref1, '2': ref2, '3': ref3})
+    self.roundTripTest(w, {"0": ref0, "1": ref1, "2": ref2, "3": ref3})
     self.roundTripTest(w, (ref0, 1))
 
     services.cleanup()
@@ -247,14 +247,14 @@ class TaskStatusTest(unittest.TestCase):
     test_functions.throw_exception_fct()
     time.sleep(1)
     result = ray.task_info()
-    self.assertTrue(len(result['failed_tasks']) == 2)
+    self.assertTrue(len(result["failed_tasks"]) == 2)
     task_ids = set()
-    for task in result['failed_tasks']:
-      self.assertTrue(task.has_key('worker_address'))
-      self.assertTrue(task.has_key('operationid'))
-      self.assertEqual(task.get('error_message'), "Test function intentionally failed.")
-      self.assertTrue(task['operationid'] not in task_ids)
-      task_ids.add(task['operationid'])
+    for task in result["failed_tasks"]:
+      self.assertTrue(task.has_key("worker_address"))
+      self.assertTrue(task.has_key("operationid"))
+      self.assertEqual(task.get("error_message"), "Test function intentionally failed.")
+      self.assertTrue(task["operationid"] not in task_ids)
+      task_ids.add(task["operationid"])
 
 def check_get_deallocated(data):
   x = ray.put(data)
@@ -360,5 +360,5 @@ class ReferenceCountingTest(unittest.TestCase):
 
     services.cleanup()
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
