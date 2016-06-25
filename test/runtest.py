@@ -243,8 +243,8 @@ class TaskStatusTest(unittest.TestCase):
     worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
     services.start_singlenode_cluster(return_drivers=False, num_workers_per_objstore=3, worker_path=worker_path, driver_mode=ray.WORKER_MODE)
     test_functions.test_alias_f()
-    test_functions.throw_exception_fct()
-    test_functions.throw_exception_fct()
+    test_functions.throw_exception_fct1()
+    test_functions.throw_exception_fct1()
     time.sleep(1)
     result = ray.task_info()
     self.assertTrue(len(result["failed_tasks"]) == 2)
@@ -252,9 +252,26 @@ class TaskStatusTest(unittest.TestCase):
     for task in result["failed_tasks"]:
       self.assertTrue(task.has_key("worker_address"))
       self.assertTrue(task.has_key("operationid"))
-      self.assertEqual(task.get("error_message"), "Test function intentionally failed.")
+      self.assertEqual(task.get("error_message"), "Test function 1 intentionally failed.")
       self.assertTrue(task["operationid"] not in task_ids)
       task_ids.add(task["operationid"])
+
+    x = test_functions.throw_exception_fct2()
+    try:
+      ray.get(x)
+    except Exception as e:
+      self.assertEqual(str(e), "The task that created this object reference failed with error message: Test function 2 intentionally failed.")
+    else:
+      self.assertTrue(False) # ray.get should throw an exception
+
+    x, y, z = test_functions.throw_exception_fct3(1.0)
+    for ref in [x, y, z]:
+      try:
+        ray.get(ref)
+      except Exception as e:
+        self.assertEqual(str(e), "The task that created this object reference failed with error message: Test function 3 intentionally failed.")
+      else:
+        self.assertTrue(False) # ray.get should throw an exception
 
 def check_get_deallocated(data):
   x = ray.put(data)
