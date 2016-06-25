@@ -41,9 +41,4 @@ fi
 pushd "$ROOT_DIR/thirdparty"
   ./download_thirdparty.sh
   ./build_thirdparty.sh
-  pushd numbuf
-    pushd python
-      sudo python setup.py install
-    popd
-  popd
 popd
