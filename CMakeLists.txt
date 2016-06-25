@@ -113,4 +113,11 @@ target_link_libraries(scheduler boost_system boost_filesystem)
 add_library(raylib SHARED src/raylib.cc src/worker.cc src/ipc.cc src/utils.cc ${GENERATED_PROTOBUF_FILES})
 target_link_libraries(raylib ${ARROW_LIB} pynumbuf boost_system boost_filesystem)
 
+get_filename_component(PYTHON_SHARED_LIBRARY ${PYTHON_LIBRARIES} NAME)
+if(APPLE)
+  add_custom_command(TARGET raylib
+      POST_BUILD COMMAND
+      ${CMAKE_INSTALL_NAME_TOOL} -change ${PYTHON_SHARED_LIBRARY} ${PYTHON_LIBRARIES} libraylib.so)
+endif(APPLE)
+
 install(TARGETS objstore scheduler raylib DESTINATION ${CMAKE_SOURCE_DIR}/lib/python/ray)
