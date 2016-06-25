@@ -207,7 +207,10 @@ def remote(arg_types, return_types, worker=global_worker):
       args.extend([kwargs[keyword] if kwargs.has_key(keyword) else default for keyword, default in func_call.keyword_defaults[len(args):]]) # fill in the remaining arguments
       check_arguments(func_call, args) # throws an exception if args are invalid
       objrefs = worker.submit_task(func_call.func_name, args)
-      return objrefs[0] if len(objrefs) == 1 else objrefs
+      if len(objrefs) == 1:
+        return objrefs[0]
+      elif len(objrefs) > 1:
+        return objrefs
     func_call.func_name = "{}.{}".format(func.__module__, func.__name__)
     func_call.executor = func_executor
     func_call.arg_types = arg_types
