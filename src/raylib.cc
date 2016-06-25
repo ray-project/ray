@@ -460,7 +460,11 @@ PyObject* put_arrow(PyObject* self, PyObject* args) {
   if (!PyArg_ParseTuple(args, "O&O&O", &PyObjectToWorker, &worker, &PyObjectToObjRef, &objref, &value)) {
     return NULL;
   }
-  worker->put_arrow(objref, value);
+  // The following is reqired, because numbuf expects contiguous arrays at the moment.
+  // This is to make sure that we do not have to do reference counting inside numbuf, it is expected to change.
+  PyArrayObject* array = PyArray_GETCONTIGUOUS((PyArrayObject*) value); // TODO(pcm): put that into numbuf
+  worker->put_arrow(objref, (PyObject*) array);
+  Py_XDECREF(array); // GETCONTIGUOUS from above returned a new reference
   Py_RETURN_NONE;
 }
 
@@ -488,6 +492,16 @@ PyObject* is_arrow(PyObject* self, PyObject* args) {
     Py_RETURN_TRUE;
   else
     Py_RETURN_FALSE;
+}
+
+PyObject* unmap_object(PyObject* self, PyObject* args) {
+  Worker* worker;
+  int segmentid;
+  if (!PyArg_ParseTuple(args, "O&i", &PyObjectToWorker, &worker, &segmentid)) {
+    return NULL;
+  }
+  worker->unmap_object(segmentid);
+  Py_RETURN_NONE;
 }
 
 PyObject* deserialize_object(PyObject* self, PyObject* args) {
@@ -827,6 +841,7 @@ static PyMethodDef RayLibMethods[] = {
  { "put_arrow", put_arrow, METH_VARARGS, "put an arrow array on the local object store"},
  { "get_arrow", get_arrow, METH_VARARGS, "get an arrow array from the local object store"},
  { "is_arrow", is_arrow, METH_VARARGS, "is the object in the local object store an arrow object?"},
+ { "unmap_object", unmap_object, METH_VARARGS, "unmap the object from the client's shared memory pool"},
  { "serialize_task", serialize_task, METH_VARARGS, "serialize a task to protocol buffers" },
  { "deserialize_task", deserialize_task, METH_VARARGS, "deserialize a task from protocol buffers" },
  { "create_worker", create_worker, METH_VARARGS, "connect to the scheduler and the object store" },

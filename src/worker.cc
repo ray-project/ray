@@ -117,6 +117,9 @@ void Worker::put_object(ObjRef objref, const Obj* obj, std::vector<ObjRef> &cont
   receive_obj_queue_.receive(&result);
   uint8_t* target = segmentpool_->get_address(result);
   std::memcpy(target, &data[0], data.size());
+  // We immediately unmap here; if the object is going to be accessed again, it will be mapped again;
+  // This is reqired because we do not have a mechanism to unmap the object later.
+  segmentpool_->unmap_segment(result.segmentid());
   request.type = ObjRequestType::WORKER_DONE;
   request.metadata_offset = 0;
   request_obj_queue_.send(&request);
@@ -160,6 +163,9 @@ PyObject* Worker::put_arrow(ObjRef objref, PyObject* value) {
   uint8_t* address = segmentpool_->get_address(result);
   auto source = std::make_shared<BufferMemorySource>(address, size);
   CHECK_ARROW_STATUS(writer.Write(source.get(), &metadata_offset), "error during Write: ");
+  // We immediately unmap here; if the object is going to be accessed again, it will be mapped again;
+  // This is reqired because we do not have a mechanism to unmap the object later.
+  segmentpool_->unmap_segment(result.segmentid());
   request.type = ObjRequestType::WORKER_DONE;
   request.metadata_offset = metadata_offset;
   request_obj_queue_.send(&request);
@@ -195,6 +201,14 @@ bool Worker::is_arrow(ObjRef objref) {
   ObjHandle result;
   receive_obj_queue_.receive(&result);
   return result.metadata_offset() != 0;
+}
+
+void Worker::unmap_object(ObjRef objref) {
+  if (!connected_) {
+    RAY_LOG(RAY_DEBUG, "Attempted to perform unmap_object but failed.");
+    return;
+  }
+  segmentpool_->unmap_segment(objref);
 }
 
 void Worker::alias_objrefs(ObjRef alias_objref, ObjRef target_objref) {

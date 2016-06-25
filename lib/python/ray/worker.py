@@ -19,8 +19,7 @@ class RayDealloc(object):
     self.segmentid = segmentid
 
   def __del__(self):
-    # TODO(pcm): This will be used to free the segment
-    pass
+    ray.lib.unmap_object(self.handle, self.segmentid)
 
 class Worker(object):
   """The methods in this class are considered unexposed to the user. The functions outside of this class are considered exposed."""
@@ -58,8 +57,8 @@ class Worker(object):
     elif isinstance(result, float):
       result = serialization.Float(result)
     elif isinstance(result, bool):
+      ray.lib.unmap_object(self.handle, segmentid) # need to unmap here because result is passed back "by value" and we have no reference to unmap later
       return result # can't subclass bool, and don't need to because there is a global True/False
-      # TODO(pcm): close the associated memory segment; if we don't, this leaks memory (but very little, so it is ok for now)
     elif isinstance(result, list):
       result = serialization.List(result)
     elif isinstance(result, dict):
@@ -74,8 +73,8 @@ class Worker(object):
       return result
       # TODO(pcm): close the associated memory segment; if we don't, this leaks memory (but very little, so it is ok for now)
     elif result == None:
+      ray.lib.unmap_object(self.handle, segmentid) # need to unmap here because result is passed back "by value" and we have no reference to unmap later
       return None # can't subclass None and don't need to because there is a global None
-      # TODO(pcm): close the associated memory segment; if we don't, this leaks memory (but very little, so it is ok for now)
     result.ray_objref = objref # TODO(pcm): This could be done only for the "get" case in the future if we want to increase performance
     result.ray_deallocator = RayDealloc(self.handle, segmentid)
     return result
