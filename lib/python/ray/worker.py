@@ -6,7 +6,6 @@ from types import ModuleType
 import typing
 import funcsigs
 import numpy as np
-import pynumbuf
 import colorama
 
 import ray
@@ -46,7 +45,7 @@ class Worker(object):
 
   def put_object(self, objref, value):
     """Put `value` in the local object store with objref `objref`. This assumes that the value for `objref` has not yet been placed in the local object store."""
-    if pynumbuf.serializable(value):
+    if serialization.is_arrow_serializable(value):
       ray.lib.put_arrow(self.handle, objref, value)
     else:
       object_capsule, contained_objrefs = serialization.serialize(self.handle, value) # contained_objrefs is a list of the objrefs contained in object_capsule
