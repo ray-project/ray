@@ -7,12 +7,14 @@ TP_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 PREFIX=$TP_DIR/installed
 
 # Determine how many parallel jobs to use for make based on the number of cores
-if [[ "$OSTYPE" =~ ^linux ]]; then
-  PARALLEL=$(grep -c processor /proc/cpuinfo)
-elif [[ "$OSTYPE" == "darwin"* ]]; then
+unamestr="$(uname)"
+if [[ "$unamestr" == "Linux" ]]; then
+  PARALLEL=$(nproc)
+elif [[ "$unamestr" == "Darwin" ]]; then
   PARALLEL=$(sysctl -n hw.ncpu)
+  echo "Platform is macosx."
 else
-  echo Unsupported platform $OSTYPE
+  echo "Unrecognized platform."
   exit 1
 fi
 
