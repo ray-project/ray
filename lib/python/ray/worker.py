@@ -7,6 +7,7 @@ import typing
 import funcsigs
 import numpy as np
 import colorama
+import copy
 
 import ray
 from ray.config import LOG_DIRECTORY, LOG_TIMESTAMP
@@ -170,6 +171,8 @@ def disconnect(worker=global_worker):
   ray.lib.disconnect(worker.handle)
 
 def get(objref, worker=global_worker):
+  if worker.mode == ray.PYTHON_MODE:
+    return objref # In ray.PYTHON_MODE, ray.get is the identity operation (the input will actually be a value not an objref)
   ray.lib.request_object(worker.handle, objref)
   if worker.mode == ray.SHELL_MODE or worker.mode == ray.SCRIPT_MODE:
     print_task_info(ray.lib.task_info(worker.handle), worker.mode)
@@ -179,6 +182,8 @@ def get(objref, worker=global_worker):
   return value
 
 def put(value, worker=global_worker):
+  if worker.mode == ray.PYTHON_MODE:
+    return value # In ray.PYTHON_MODE, ray.put is the identity operation
   objref = ray.lib.get_objref(worker.handle)
   worker.put_object(objref, value)
   if worker.mode == ray.SHELL_MODE or worker.mode == ray.SCRIPT_MODE:
@@ -225,6 +230,11 @@ def remote(arg_types, return_types, worker=global_worker):
       """This is what gets run immediately when a worker calls a remote function."""
       args = list(args)
       args.extend([kwargs[keyword] if kwargs.has_key(keyword) else default for keyword, default in func_call.keyword_defaults[len(args):]]) # fill in the remaining arguments
+      if worker.mode == ray.PYTHON_MODE:
+        # In ray.PYTHON_MODE, remote calls simply execute the function. We copy
+        # the arguments to prevent the function call from mutating them and to
+        # match the usual behavior of immutable remote objects.
+        return func(*copy.deepcopy(args))
       check_arguments(func_call, args) # throws an exception if args are invalid
       objrefs = worker.submit_task(func_call.func_name, args)
       if len(objrefs) == 1:
