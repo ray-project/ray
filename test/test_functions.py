@@ -85,3 +85,13 @@ def throw_exception_fct2():
 @ray.remote([float], [int, str, np.ndarray])
 def throw_exception_fct3(x):
   raise Exception("Test function 3 intentionally failed.")
+
+# test Python mode
+@ray.remote([], [np.ndarray])
+def python_mode_f():
+  return np.array([0, 0])
+
+@ray.remote([np.ndarray], [np.ndarray])
+def python_mode_g(x):
+  x[0] = 1
+  return x

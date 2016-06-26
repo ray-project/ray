@@ -4,6 +4,7 @@
 SCRIPT_MODE = 0
 WORKER_MODE = 1
 SHELL_MODE = 2
+PYTHON_MODE = 2
 
 import libraylib as lib
 import serialization
