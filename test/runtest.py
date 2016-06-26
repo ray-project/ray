@@ -377,5 +377,26 @@ class ReferenceCountingTest(unittest.TestCase):
 
     services.cleanup()
 
+class PythonModeTest(unittest.TestCase):
+
+  def testObjRefAliasing(self):
+    services.start_singlenode_cluster(driver_mode=ray.PYTHON_MODE)
+
+    xref = test_functions.test_alias_h()
+    self.assertTrue(np.alltrue(xref == np.ones([3, 4, 5]))) # remote functions should return by value
+    self.assertTrue(np.alltrue(xref == ray.get(xref))) # ray.get should be the identity
+    y = np.random.normal(size=[11, 12])
+    self.assertTrue(np.alltrue(y == ray.put(y))) # ray.put should be the identity
+
+    # make sure objects are immutable, this example is why we need to copy
+    # arguments before passing them into remote functions in python mode
+    aref = test_functions.python_mode_f()
+    self.assertTrue(np.alltrue(aref == np.array([0, 0])))
+    bref = test_functions.python_mode_g(aref)
+    self.assertTrue(np.alltrue(aref == np.array([0, 0]))) # python_mode_g should not mutate aref
+    self.assertTrue(np.alltrue(bref == np.array([1, 0])))
+
+    services.cleanup()
+
 if __name__ == "__main__":
     unittest.main()

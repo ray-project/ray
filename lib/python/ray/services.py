@@ -105,7 +105,8 @@ def start_node(scheduler_address, node_ip_address, num_workers, worker_path=None
   time.sleep(0.5)
 
 # driver_mode should equal ray.SCRIPT_MODE if this is being run in a script and
-# ray.SHELL_MODE if it is being used interactively in a shell.
+# ray.SHELL_MODE if it is being used interactively in a shell. It can also equal
+# ray.PYTHON_MODE to run things in a manner equivalent to serial Python code.
 def start_singlenode_cluster(return_drivers=False, num_objstores=1, num_workers_per_objstore=0, worker_path=None, driver_mode=ray.SCRIPT_MODE):
   global drivers
   if num_workers_per_objstore > 0 and worker_path is None:
