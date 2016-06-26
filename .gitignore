@@ -1,6 +1,13 @@
 # The build directory should clearly not be checked in
 /build
 
+# Python byte code files
+*.pyc
+
+# Emacs temporary files
+*~
+*#
+
 # Compiled Object files
 *.slo
 *.lo
