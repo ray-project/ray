@@ -20,6 +20,8 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\build\generated\graph.grpc.pb.cc" />
+    <ClCompile Include="..\build\generated\graph.pb.cc" />
     <ClCompile Include="..\build\generated\ray.grpc.pb.cc">
       <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">_SCL_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">_SCL_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -64,6 +66,12 @@
     <ClCompile Include="..\src\utils.cc" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\build\generated\graph.grpc.pb.h" />
+    <ClInclude Include="..\build\generated\graph.pb.h" />
+    <ClInclude Include="..\build\generated\ray.grpc.pb.h" />
+    <ClInclude Include="..\build\generated\ray.pb.h" />
+    <ClInclude Include="..\build\generated\types.grpc.pb.h" />
+    <ClInclude Include="..\build\generated\types.pb.h" />
     <ClInclude Include="..\src\ipc.h" />
     <ClInclude Include="..\src\utils.h" />
   </ItemGroup>
@@ -128,6 +136,25 @@ protoc --proto_path="$(SolutionDir)protos" --plugin=protoc-gen-grpc="$(OutDir)gr
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
+    <CustomBuild Include="..\protos\graph.proto">
+      <FileType>Document</FileType>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Path $(OutDir);%PATH%
+protoc --proto_path="$(SolutionDir)protos" --cpp_out="$(ProjectDir)..\build\generated" "%(FullPath)"
+protoc --proto_path="$(SolutionDir)protos" --plugin=protoc-gen-grpc="$(OutDir)grpc_cpp_plugin.exe" --grpc_out="$(ProjectDir)..\build\generated" "%(FullPath)"</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Path $(OutDir);%PATH%
+protoc --proto_path="$(SolutionDir)protos" --cpp_out="$(ProjectDir)..\build\generated" "%(FullPath)"
+protoc --proto_path="$(SolutionDir)protos" --plugin=protoc-gen-grpc="$(OutDir)grpc_cpp_plugin.exe" --grpc_out="$(ProjectDir)..\build\generated" "%(FullPath)"</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Path $(OutDir);%PATH%
+protoc --proto_path="$(SolutionDir)protos" --cpp_out="$(ProjectDir)..\build\generated" "%(FullPath)"
+protoc --proto_path="$(SolutionDir)protos" --plugin=protoc-gen-grpc="$(OutDir)grpc_cpp_plugin.exe" --grpc_out="$(ProjectDir)..\build\generated" "%(FullPath)"</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Path $(OutDir);%PATH%
+protoc --proto_path="$(SolutionDir)protos" --cpp_out="$(ProjectDir)..\build\generated" "%(FullPath)"
+protoc --proto_path="$(SolutionDir)protos" --plugin=protoc-gen-grpc="$(OutDir)grpc_cpp_plugin.exe" --grpc_out="$(ProjectDir)..\build\generated" "%(FullPath)"</Command>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(ProjectDir)..\build\generated\%(Filename).pb.h;$(ProjectDir)..\build\generated\%(Filename).pb.cc;$(ProjectDir)..\build\generated\%(Filename).grpc.pb.h;$(ProjectDir)..\build\generated\%(Filename).grpc.pb.cc;%(Outputs)</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(ProjectDir)..\build\generated\%(Filename).pb.h;$(ProjectDir)..\build\generated\%(Filename).pb.cc;$(ProjectDir)..\build\generated\%(Filename).grpc.pb.h;$(ProjectDir)..\build\generated\%(Filename).grpc.pb.cc;%(Outputs)</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(ProjectDir)..\build\generated\%(Filename).pb.h;$(ProjectDir)..\build\generated\%(Filename).pb.cc;$(ProjectDir)..\build\generated\%(Filename).grpc.pb.h;$(ProjectDir)..\build\generated\%(Filename).grpc.pb.cc;%(Outputs)</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(ProjectDir)..\build\generated\%(Filename).pb.h;$(ProjectDir)..\build\generated\%(Filename).pb.cc;$(ProjectDir)..\build\generated\%(Filename).grpc.pb.h;$(ProjectDir)..\build\generated\%(Filename).grpc.pb.cc;%(Outputs)</Outputs>
+    </CustomBuild>
     <None Include="packages.config" />
   </ItemGroup>
   <PropertyGroup Label="Globals">

@@ -16,6 +16,9 @@
     <Filter Include="Source Files\protobufs">
       <UniqueIdentifier>{1adfc471-34d7-4d59-b8de-ddfe22d5fa30}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\protobufs">
+      <UniqueIdentifier>{2f962c16-c131-41dc-93b4-96fae21d2808}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\src\ipc.cc">
@@ -33,8 +36,14 @@
     <ClCompile Include="..\build\generated\types.grpc.pb.cc">
       <Filter>Source Files\protobufs</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\utils.cc">
+    <ClCompile Include="..\build\generated\graph.grpc.pb.cc">
       <Filter>Source Files\protobufs</Filter>
+    </ClCompile>
+    <ClCompile Include="..\build\generated\graph.pb.cc">
+      <Filter>Source Files\protobufs</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\utils.cc">
+      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -44,10 +53,29 @@
     <ClInclude Include="..\src\utils.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\build\generated\graph.grpc.pb.h">
+      <Filter>Header Files\protobufs</Filter>
+    </ClInclude>
+    <ClInclude Include="..\build\generated\graph.pb.h">
+      <Filter>Header Files\protobufs</Filter>
+    </ClInclude>
+    <ClInclude Include="..\build\generated\ray.grpc.pb.h">
+      <Filter>Header Files\protobufs</Filter>
+    </ClInclude>
+    <ClInclude Include="..\build\generated\ray.pb.h">
+      <Filter>Header Files\protobufs</Filter>
+    </ClInclude>
+    <ClInclude Include="..\build\generated\types.grpc.pb.h">
+      <Filter>Header Files\protobufs</Filter>
+    </ClInclude>
+    <ClInclude Include="..\build\generated\types.pb.h">
+      <Filter>Header Files\protobufs</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="..\protos\ray.proto" />
     <CustomBuild Include="..\protos\types.proto" />
+    <CustomBuild Include="..\protos\graph.proto" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
