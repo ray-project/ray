@@ -33,61 +33,61 @@ class UserDefinedType(object):
 
 class SerializationTest(unittest.TestCase):
 
-  def roundTripTest(self, worker, data):
-    serialized, _ = serialization.serialize(worker.handle, data)
-    result = serialization.deserialize(worker.handle, serialized)
+  def roundTripTest(self, data):
+    serialized, _ = serialization.serialize(ray.worker.global_worker.handle, data)
+    result = serialization.deserialize(ray.worker.global_worker.handle, serialized)
     self.assertEqual(data, result)
 
-  def numpyTypeTest(self, worker, typ):
+  def numpyTypeTest(self, typ):
     a = np.random.randint(0, 10, size=(100, 100)).astype(typ)
-    b, _ = serialization.serialize(worker.handle, a)
-    c = serialization.deserialize(worker.handle, b)
+    b, _ = serialization.serialize(ray.worker.global_worker.handle, a)
+    c = serialization.deserialize(ray.worker.global_worker.handle, b)
     self.assertTrue((a == c).all())
 
     a = np.array(0).astype(typ)
-    b, _ = serialization.serialize(worker.handle, a)
-    c = serialization.deserialize(worker.handle, b)
+    b, _ = serialization.serialize(ray.worker.global_worker.handle, a)
+    c = serialization.deserialize(ray.worker.global_worker.handle, b)
     self.assertTrue((a == c).all())
 
     a = np.empty((0,)).astype(typ)
-    b, _ = serialization.serialize(worker.handle, a)
-    c = serialization.deserialize(worker.handle, b)
+    b, _ = serialization.serialize(ray.worker.global_worker.handle, a)
+    c = serialization.deserialize(ray.worker.global_worker.handle, b)
     self.assertTrue(a.dtype == c.dtype)
 
   def testSerialize(self):
-    [w] = services.start_singlenode_cluster(return_drivers=True)
+    services.start_ray_local()
 
     for val in RAY_TEST_OBJECTS:
-      self.roundTripTest(w, val)
+      self.roundTripTest(val)
 
     a = np.zeros((100, 100))
-    res, _ = serialization.serialize(w.handle, a)
-    b = serialization.deserialize(w.handle, res)
+    res, _ = serialization.serialize(ray.worker.global_worker.handle, a)
+    b = serialization.deserialize(ray.worker.global_worker.handle, res)
     self.assertTrue((a == b).all())
 
-    self.numpyTypeTest(w, "int8")
-    self.numpyTypeTest(w, "uint8")
-    self.numpyTypeTest(w, "int16")
-    self.numpyTypeTest(w, "uint16")
-    self.numpyTypeTest(w, "int32")
-    self.numpyTypeTest(w, "uint32")
-    self.numpyTypeTest(w, "float32")
-    self.numpyTypeTest(w, "float64")
+    self.numpyTypeTest("int8")
+    self.numpyTypeTest("uint8")
+    self.numpyTypeTest("int16")
+    self.numpyTypeTest("uint16")
+    self.numpyTypeTest("int32")
+    self.numpyTypeTest("uint32")
+    self.numpyTypeTest("float32")
+    self.numpyTypeTest("float64")
 
-    ref0 = ray.put(0, w)
-    ref1 = ray.put(0, w)
-    ref2 = ray.put(0, w)
-    ref3 = ray.put(0, w)
+    ref0 = ray.put(0)
+    ref1 = ray.put(0)
+    ref2 = ray.put(0)
+    ref3 = ray.put(0)
 
     a = np.array([[ref0, ref1], [ref2, ref3]])
-    capsule, _ = serialization.serialize(w.handle, a)
-    result = serialization.deserialize(w.handle, capsule)
+    capsule, _ = serialization.serialize(ray.worker.global_worker.handle, a)
+    result = serialization.deserialize(ray.worker.global_worker.handle, capsule)
     self.assertTrue((a == result).all())
 
-    self.roundTripTest(w, ref0)
-    self.roundTripTest(w, [ref0, ref1, ref2, ref3])
-    self.roundTripTest(w, {"0": ref0, "1": ref1, "2": ref2, "3": ref3})
-    self.roundTripTest(w, (ref0, 1))
+    self.roundTripTest(ref0)
+    self.roundTripTest([ref0, ref1, ref2, ref3])
+    self.roundTripTest({"0": ref0, "1": ref1, "2": ref2, "3": ref3})
+    self.roundTripTest((ref0, 1))
 
     services.cleanup()
 
@@ -95,7 +95,7 @@ class ObjStoreTest(unittest.TestCase):
 
   # Test setting up object stores, transfering data between them and retrieving data to a client
   def testObjStore(self):
-    [w1, w2] = services.start_singlenode_cluster(return_drivers=True, num_objstores=2, num_workers_per_objstore=0)
+    [w1, w2] = services.start_services_local(return_drivers=True, num_objstores=2, num_workers_per_objstore=0)
 
     # putting and getting an object shouldn't change it
     for data in ["h", "h" * 10000, 0, 0.0]:
@@ -144,30 +144,30 @@ class ObjStoreTest(unittest.TestCase):
 class WorkerTest(unittest.TestCase):
 
   def testPutGet(self):
-    [w] = services.start_singlenode_cluster(return_drivers=True)
+    services.start_ray_local()
 
     for i in range(100):
       value_before = i * 10 ** 6
-      objref = ray.put(value_before, w)
-      value_after = ray.get(objref, w)
+      objref = ray.put(value_before)
+      value_after = ray.get(objref)
       self.assertEqual(value_before, value_after)
 
     for i in range(100):
       value_before = i * 10 ** 6 * 1.0
-      objref = ray.put(value_before, w)
-      value_after = ray.get(objref, w)
+      objref = ray.put(value_before)
+      value_after = ray.get(objref)
       self.assertEqual(value_before, value_after)
 
     for i in range(100):
       value_before = "h" * i
-      objref = ray.put(value_before, w)
-      value_after = ray.get(objref, w)
+      objref = ray.put(value_before)
+      value_after = ray.get(objref)
       self.assertEqual(value_before, value_after)
 
     for i in range(100):
       value_before = [1] * i
-      objref = ray.put(value_before, w)
-      value_after = ray.get(objref, w)
+      objref = ray.put(value_before)
+      value_after = ray.get(objref)
       self.assertEqual(value_before, value_after)
 
     services.cleanup()
@@ -176,20 +176,20 @@ class APITest(unittest.TestCase):
 
   def testObjRefAliasing(self):
     worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-    [w] = services.start_singlenode_cluster(return_drivers=True, num_workers_per_objstore=3, worker_path=worker_path)
+    services.start_ray_local(num_workers=3, worker_path=worker_path)
 
-    objref = w.submit_task("test_functions.test_alias_f", [])
-    self.assertTrue(np.alltrue(ray.get(objref[0], w) == np.ones([3, 4, 5])))
-    objref = w.submit_task("test_functions.test_alias_g", [])
-    self.assertTrue(np.alltrue(ray.get(objref[0], w) == np.ones([3, 4, 5])))
-    objref = w.submit_task("test_functions.test_alias_h", [])
-    self.assertTrue(np.alltrue(ray.get(objref[0], w) == np.ones([3, 4, 5])))
+    ref = test_functions.test_alias_f()
+    self.assertTrue(np.alltrue(ray.get(ref) == np.ones([3, 4, 5])))
+    ref = test_functions.test_alias_g()
+    self.assertTrue(np.alltrue(ray.get(ref) == np.ones([3, 4, 5])))
+    ref = test_functions.test_alias_h()
+    self.assertTrue(np.alltrue(ray.get(ref) == np.ones([3, 4, 5])))
 
     services.cleanup()
 
   def testKeywordArgs(self):
     worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-    services.start_singlenode_cluster(return_drivers=False, num_workers_per_objstore=1, worker_path=worker_path)
+    services.start_ray_local(num_workers=1, worker_path=worker_path)
 
     x = test_functions.keyword_fct1(1)
     self.assertEqual(ray.get(x), "1 hello")
@@ -226,7 +226,7 @@ class APITest(unittest.TestCase):
 
   def testVariableNumberOfArgs(self):
     worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-    services.start_singlenode_cluster(return_drivers=False, num_workers_per_objstore=1, worker_path=worker_path)
+    services.start_ray_local(num_workers=1, worker_path=worker_path)
 
     x = test_functions.varargs_fct1(0, 1, 2)
     self.assertEqual(ray.get(x), "0 1 2")
@@ -241,7 +241,7 @@ class APITest(unittest.TestCase):
 class TaskStatusTest(unittest.TestCase):
   def testFailedTask(self):
     worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-    services.start_singlenode_cluster(return_drivers=False, num_workers_per_objstore=3, worker_path=worker_path, driver_mode=ray.WORKER_MODE)
+    services.start_ray_local(num_workers=3, worker_path=worker_path, driver_mode=ray.WORKER_MODE)
     test_functions.test_alias_f()
     test_functions.throw_exception_fct1()
     test_functions.throw_exception_fct1()
@@ -287,7 +287,7 @@ class ReferenceCountingTest(unittest.TestCase):
 
   def testDeallocation(self):
     worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-    services.start_singlenode_cluster(return_drivers=False, num_workers_per_objstore=3, worker_path=worker_path)
+    services.start_ray_local(num_workers=3, worker_path=worker_path)
 
     x = test_functions.test_alias_f()
     ray.get(x)
@@ -337,7 +337,7 @@ class ReferenceCountingTest(unittest.TestCase):
 
   def testGet(self):
     worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-    services.start_singlenode_cluster(return_drivers=False, num_workers_per_objstore=3, worker_path=worker_path)
+    services.start_ray_local(num_workers=3, worker_path=worker_path)
 
     for val in RAY_TEST_OBJECTS + [np.zeros((2, 2)), UserDefinedType()]:
       objref_val = check_get_deallocated(val)
@@ -363,7 +363,7 @@ class ReferenceCountingTest(unittest.TestCase):
   @unittest.expectedFailure
   def testGetFailing(self):
     worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-    services.start_singlenode_cluster(return_drivers=False, num_workers_per_objstore=3, worker_path=worker_path)
+    services.start_ray_local(num_workers=3, worker_path=worker_path)
 
     # This is failing, because for bool and None, we cannot track python
     # refcounts and therefore cannot keep the refcount up
@@ -380,7 +380,7 @@ class ReferenceCountingTest(unittest.TestCase):
 class PythonModeTest(unittest.TestCase):
 
   def testObjRefAliasing(self):
-    services.start_singlenode_cluster(driver_mode=ray.PYTHON_MODE)
+    services.start_ray_local(driver_mode=ray.PYTHON_MODE)
 
     xref = test_functions.test_alias_h()
     self.assertTrue(np.alltrue(xref == np.ones([3, 4, 5]))) # remote functions should return by value

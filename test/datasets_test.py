@@ -9,7 +9,7 @@ class ImageNetTest(unittest.TestCase):
 
   def testImageNetLoading(self):
     worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-    services.start_singlenode_cluster(return_drivers=False, num_workers_per_objstore=5, worker_path=worker_path)
+    services.start_ray_local(num_workers=5, worker_path=worker_path)
 
     chunk_name = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../data/mini.tar")
     tar = tarfile.open(chunk_name, mode= "r")

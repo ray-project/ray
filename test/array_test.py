@@ -15,7 +15,7 @@ class RemoteArrayTest(unittest.TestCase):
 
   def testMethods(self):
     worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-    services.start_singlenode_cluster(return_drivers=False, num_workers_per_objstore=1, worker_path=worker_path)
+    services.start_ray_local(num_workers=1, worker_path=worker_path)
 
     # test eye
     ref = ra.eye(3)
@@ -47,12 +47,12 @@ class RemoteArrayTest(unittest.TestCase):
 class DistributedArrayTest(unittest.TestCase):
 
   def testSerialization(self):
-    [w] = services.start_singlenode_cluster(return_drivers=True)
+    services.start_ray_local()
 
     x = da.DistArray()
-    x.construct([2, 3, 4], np.array([[[ray.put(0, w)]]]))
-    capsule, _ = serialization.serialize(w.handle, x) # TODO(rkn): THIS REQUIRES A WORKER_HANDLE
-    y = serialization.deserialize(w.handle, capsule) # TODO(rkn): THIS REQUIRES A WORKER_HANDLE
+    x.construct([2, 3, 4], np.array([[[ray.put(0)]]]))
+    capsule, _ = serialization.serialize(ray.worker.global_worker.handle, x)
+    y = serialization.deserialize(ray.worker.global_worker.handle, capsule)
     self.assertEqual(x.shape, y.shape)
     self.assertEqual(x.objrefs[0, 0, 0].val, y.objrefs[0, 0, 0].val)
 
@@ -60,7 +60,7 @@ class DistributedArrayTest(unittest.TestCase):
 
   def testAssemble(self):
     worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-    services.start_singlenode_cluster(return_drivers=False, num_workers_per_objstore=1, worker_path=worker_path)
+    services.start_ray_local(num_workers=1, worker_path=worker_path)
 
     a = ra.ones([da.BLOCK_SIZE, da.BLOCK_SIZE])
     b = ra.zeros([da.BLOCK_SIZE, da.BLOCK_SIZE])
@@ -72,7 +72,7 @@ class DistributedArrayTest(unittest.TestCase):
 
   def testMethods(self):
     worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-    services.start_singlenode_cluster(return_drivers=False, num_objstores=2, num_workers_per_objstore=5, worker_path=worker_path)
+    services.start_services_local(num_objstores=2, num_workers_per_objstore=5, worker_path=worker_path)
 
     x = da.zeros([9, 25, 51], "float")
     self.assertTrue(np.alltrue(ray.get(da.assemble(x)) == np.zeros([9, 25, 51])))

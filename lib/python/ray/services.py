@@ -107,7 +107,12 @@ def start_node(scheduler_address, node_ip_address, num_workers, worker_path=None
 # driver_mode should equal ray.SCRIPT_MODE if this is being run in a script and
 # ray.SHELL_MODE if it is being used interactively in a shell. It can also equal
 # ray.PYTHON_MODE to run things in a manner equivalent to serial Python code.
-def start_singlenode_cluster(return_drivers=False, num_objstores=1, num_workers_per_objstore=0, worker_path=None, driver_mode=ray.SCRIPT_MODE):
+def start_ray_local(num_workers=0, worker_path=None, driver_mode=ray.SCRIPT_MODE):
+  start_services_local(num_objstores=1, num_workers_per_objstore=num_workers, worker_path=worker_path, driver_mode=driver_mode)
+
+# This is a helper method which is only used in the tests and should not be
+# called by users
+def start_services_local(num_objstores=1, num_workers_per_objstore=0, worker_path=None, driver_mode=ray.SCRIPT_MODE, return_drivers=False):
   global drivers
   if num_workers_per_objstore > 0 and worker_path is None:
     raise Exception("Attempting to start a cluster with {} workers per object store, but `worker_path` is None.".format(num_workers_per_objstore))
