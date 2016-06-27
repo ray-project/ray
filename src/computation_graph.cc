@@ -19,3 +19,9 @@ const Task& ComputationGraph::get_task(OperationId operationid) {
   RAY_CHECK(operations_[operationid]->has_task(), "Calling get_task with operationid " << operationid << ", but this corresponds to a put not a task.");
   return operations_[operationid]->task();
 }
+
+void ComputationGraph::to_protobuf(CompGraph* computation_graph) {
+  for (OperationId id = 0; id < operations_.size(); ++id) {
+    computation_graph->add_operation()->CopyFrom(*operations_[id]);
+  }
+}
