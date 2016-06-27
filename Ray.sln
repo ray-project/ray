@@ -3,9 +3,18 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 VisualStudioVersion = 14.0.25123.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Ray", "vsprojects\Ray.vcxproj", "{C002F9F6-8447-4B95-AA18-FB781F4A7865}"
+	ProjectSection(ProjectDependencies) = postProject
+		{7E51A25F-AC59-488F-906C-C60FAAE706AA} = {7E51A25F-AC59-488F-906C-C60FAAE706AA}
+		{29D16885-7228-4C31-81ED-5F9187C7F2A9} = {29D16885-7228-4C31-81ED-5F9187C7F2A9}
+		{DB653289-E887-4B13-AC08-EE3EAC1F34C9} = {DB653289-E887-4B13-AC08-EE3EAC1F34C9}
+		{C187A093-A0FE-489D-A40A-6E33DE0F9FEB} = {C187A093-A0FE-489D-A40A-6E33DE0F9FEB}
+		{FBADE9E3-6A3F-36D3-D676-C1B808451DD7} = {FBADE9E3-6A3F-36D3-D676-C1B808451DD7}
+		{10E7D8E8-0EEB-46EA-A58D-F9236B5960AD} = {10E7D8E8-0EEB-46EA-A58D-F9236B5960AD}
+	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Scheduler", "vsprojects\Scheduler.vcxproj", "{D4F50B21-7FDE-41CE-87F5-2CF71178EF40}"
 	ProjectSection(ProjectDependencies) = postProject
+		{76BE8E91-0F74-4276-A6A7-B279C6FEA0D2} = {76BE8E91-0F74-4276-A6A7-B279C6FEA0D2}
 		{C002F9F6-8447-4B95-AA18-FB781F4A7865} = {C002F9F6-8447-4B95-AA18-FB781F4A7865}
 	EndProjectSection
 EndProject
@@ -50,6 +59,9 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Arrow", "Arrow", "{C9B26FA8-8665-4806-872F-347ACB231CAD}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "arrow", "thirdparty\arrow\vsprojects\Arrow.vcxproj", "{10E7D8E8-0EEB-46EA-A58D-F9236B5960AD}"
+	ProjectSection(ProjectDependencies) = postProject
+		{5B5857E1-64E2-4CED-A12E-45E1B3880496} = {5B5857E1-64E2-4CED-A12E-45E1B3880496}
+	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "flatc", "thirdparty\arrow\cpp\thirdparty\flatbuffers\build_ide\VS2010\flatc.vcxproj", "{5B5857E1-64E2-4CED-A12E-45E1B3880496}"
 EndProject
@@ -73,6 +85,10 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "grpc_cpp_plugin", "thirdpar
 	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "protoc", "thirdparty\grpc\third_party\protobuf\vsprojects\protoc.vcxproj", "{DB653289-E887-4B13-AC08-EE3EAC1F34C9}"
+	ProjectSection(ProjectDependencies) = postProject
+		{07ABD431-1515-4140-932E-E8C150FF7D1A} = {07ABD431-1515-4140-932E-E8C150FF7D1A}
+		{2B4F3BB4-ADDE-4CB7-B832-C964DE4E0087} = {2B4F3BB4-ADDE-4CB7-B832-C964DE4E0087}
+	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libprotobuf", "thirdparty\grpc\third_party\protobuf\vsprojects\libprotobuf.vcxproj", "{07ABD431-1515-4140-932E-E8C150FF7D1A}"
 EndProject
