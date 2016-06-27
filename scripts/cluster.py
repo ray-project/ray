@@ -65,7 +65,7 @@ def start_ray_multi_node(node_ip_addresses, username, key_file, worker_path, ins
   shell_script_path = os.path.join(args.installation_directory, "ray/scripts/shell.py")
   print """
     source "{}";
-    python "{}" --scheduler-address={}:10001 --objstore-address={}:20001 --worker-address={}:30001
+    python "{}" --scheduler-address={}:10001 --objstore-address={}:20001 --worker-address={}:30001 --attach
   """.format(setup_env_path, shell_script_path, node_ip_addresses[0], node_ip_addresses[0], node_ip_addresses[0])
 
 def stop_ray_multi_node(node_ip_addresses, username, key_file):
