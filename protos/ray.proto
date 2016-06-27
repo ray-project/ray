@@ -12,6 +12,7 @@
 
 syntax = "proto3";
 
+import "graph.proto";
 import "types.proto";
 
 // Scheduler
@@ -153,6 +154,7 @@ message SchedulerInfoReply {
   map<string, FnTableEntry> function_table = 2; // Table of all available remote function
   repeated uint64 target_objref = 4; // The target_objrefs_ data structure
   repeated uint64 reference_count = 5; // The reference_counts_ data structure
+  CompGraph computation_graph = 6; // The computation graph constructed so far
 }
 
 // Object stores

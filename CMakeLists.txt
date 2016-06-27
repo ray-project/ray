@@ -23,10 +23,14 @@ include_directories("${NUMPY_INCLUDE_DIR}")
 
 set(PROTO_PATH "${CMAKE_SOURCE_DIR}/protos")
 
+set(GRAPH_PROTO "${PROTO_PATH}/graph.proto")
 set(RAY_PROTO "${PROTO_PATH}/ray.proto")
 set(TYPES_PROTO "${PROTO_PATH}/types.proto")
 set(GENERATED_PROTOBUF_PATH "${CMAKE_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY ${GENERATED_PROTOBUF_PATH})
+
+set(GRAPH_PB_CPP_FILE "${GENERATED_PROTOBUF_PATH}/graph.pb.cc")
+set(GRAPH_PB_H_FILE "${GENERATED_PROTOBUF_PATH}/graph.pb.h")
 
 set(RAY_PB_CPP_FILE "${GENERATED_PROTOBUF_PATH}/ray.pb.cc")
 set(RAY_PB_H_FILE "${GENERATED_PROTOBUF_PATH}/ray.pb.h")
@@ -35,8 +39,15 @@ set(RAY_GRPC_PB_H_FILE "${GENERATED_PROTOBUF_PATH}/ray.grpc.pb.h")
 
 set(TYPES_PB_CPP_FILE "${GENERATED_PROTOBUF_PATH}/types.pb.cc")
 set(TYPES_PB_H_FILE "${GENERATED_PROTOBUF_PATH}/types.pb.h")
-set(TYPES_GRPC_PB_CPP_FILE "${GENERATED_PROTOBUF_PATH}/types.grpc.pb.cc")
-set(TYPES_GRPC_PB_H_FILE "${GENERATED_PROTOBUF_PATH}/types.grpc.pb.h")
+
+add_custom_command(
+    OUTPUT "${GRAPH_PB_H_FILE}"
+           "${GRAPH_PB_CPP_FILE}"
+    COMMAND ${CMAKE_SOURCE_DIR}/thirdparty/grpc/bins/opt/protobuf/protoc
+    ARGS "--proto_path=${PROTO_PATH}"
+         "--cpp_out=${GENERATED_PROTOBUF_PATH}"
+         "${GRAPH_PROTO}"
+    )
 
 add_custom_command(
     OUTPUT "${RAY_PB_H_FILE}"
@@ -57,23 +68,17 @@ add_custom_command(
 add_custom_command(
     OUTPUT "${TYPES_PB_H_FILE}"
            "${TYPES_PB_CPP_FILE}"
-           "${TYPES_GRPC_PB_H_FILE}"
-           "${TYPES_GRPC_PB_CPP_FILE}"
     COMMAND ${CMAKE_SOURCE_DIR}/thirdparty/grpc/bins/opt/protobuf/protoc
     ARGS "--proto_path=${PROTO_PATH}"
          "--cpp_out=${GENERATED_PROTOBUF_PATH}"
          "${TYPES_PROTO}"
-    COMMAND ${CMAKE_SOURCE_DIR}/thirdparty/grpc/bins/opt/protobuf/protoc
-    ARGS "--proto_path=${PROTO_PATH}"
-         "--grpc_out=${GENERATED_PROTOBUF_PATH}"
-         "--plugin=protoc-gen-grpc=${CMAKE_SOURCE_DIR}/thirdparty/grpc/bins/opt/grpc_cpp_plugin"
-         "${TYPES_PROTO}"
     )
 
-set(GENERATED_PROTOBUF_FILES ${RAY_PB_H_FILE} ${RAY_PB_CPP_FILE}
+set(GENERATED_PROTOBUF_FILES
+    ${GRAPH_PB_H_FILE} ${GRAPH_PB_CPP_FILE}
+    ${RAY_PB_H_FILE} ${RAY_PB_CPP_FILE}
     ${RAY_GRPC_PB_H_FILE} ${RAY_GRPC_PB_CPP_FILE}
-    ${TYPES_PB_H_FILE} ${TYPES_PB_CPP_FILE}
-    ${TYPES_GRPC_PB_H_FILE} ${TYPES_GRPC_PB_CPP_FILE})
+    ${TYPES_PB_H_FILE} ${TYPES_PB_CPP_FILE})
 
 include_directories(${GENERATED_PROTOBUF_PATH})
 

@@ -5,7 +5,8 @@
 #include <limits>
 
 #include "ray/ray.h"
-#include "ray.grpc.pb.h"
+
+#include "graph.pb.h"
 #include "types.pb.h"
 
 // used to represent the root operation (that is, the driver code)
@@ -21,6 +22,8 @@ public:
   // Return the task corresponding to a particular OperationId. If operationid
   // corresponds to a put, then fail.
   const Task& get_task(OperationId operationid);
+  // Serialize the computation graph to ProtoBuf and store it in computation_graph
+  void to_protobuf(CompGraph* computation_graph);
 private:
   // maps an OperationId to the corresponding task or put
   std::vector<std::unique_ptr<Operation> > operations_;

@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+import "types.proto";
+
+message Task {
+  string name = 1; // Name of the function call
+  repeated Value arg = 2; // List of arguments, can be either object references or protobuf descriptions of object passed by value
+  repeated uint64 result = 3; // Object references for result
+}
+
+message Put {
+  uint64 objref = 1; // The objref for the object that was put
+}
+
+// This is used internally by the scheduler. From the scheduler's perspective,
+// the submission of tasks (via SubmitTask) and the submission of puts (via
+// PutObj) look very similar, and so it is useful to be able to handle them
+// together (for example in the computation graph).
+message Operation {
+  Task task = 1;
+  Put put = 2;
+  uint64 creator_operationid = 3; // The id of the task that called this task or put.
+}
+
+message TaskStatus {
+  uint64 operationid = 1;
+  string function_name = 2;
+  string worker_address = 3;
+  string error_message = 4;
+}
+
+message CompGraph {
+  repeated Operation operation = 1;
+}
