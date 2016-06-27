@@ -18,3 +18,7 @@ pushd "$ROOT_DIR/build"
   cmake ..
   make install -j$PARALLEL
 popd
+
+pushd "$ROOT_DIR/scripts/"
+  ./gen-protobuf.sh
+popd

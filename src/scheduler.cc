@@ -494,6 +494,7 @@ void SchedulerService::get_info(const SchedulerInfoRequest& request, SchedulerIn
   for (const WorkerId& entry : avail_workers_) {
     reply->add_avail_worker(entry);
   }
+  computation_graph_.to_protobuf(reply->mutable_computation_graph());
   release_all_locks();
 }
 

@@ -824,6 +824,21 @@ PyObject* task_info(PyObject* self, PyObject* args) {
   return dict;
 }
 
+PyObject* dump_computation_graph(PyObject* self, PyObject* args) {
+  Worker* worker;
+  const char* output_file_name;
+  if (!PyArg_ParseTuple(args, "O&s", &PyObjectToWorker, &worker, &output_file_name)) {
+    return NULL;
+  }
+  ClientContext context;
+  SchedulerInfoRequest request;
+  SchedulerInfoReply reply;
+  worker->scheduler_info(context, request, reply);
+  std::fstream output(output_file_name, std::ios::out | std::ios::trunc | std::ios::binary);
+  RAY_CHECK(reply.computation_graph().SerializeToOstream(&output), "Cannot dump computation graph to file " << output_file_name);
+  Py_RETURN_NONE;
+}
+
 PyObject* set_log_config(PyObject* self, PyObject* args) {
   const char* log_file_name;
   if (!PyArg_ParseTuple(args, "s", &log_file_name)) {
@@ -859,6 +874,7 @@ static PyMethodDef RayLibMethods[] = {
  { "start_worker_service", start_worker_service, METH_VARARGS, "start the worker service" },
  { "scheduler_info", scheduler_info, METH_VARARGS, "get info about scheduler state" },
  { "task_info", task_info, METH_VARARGS, "get task statuses" },
+ { "dump_computation_graph", dump_computation_graph, METH_VARARGS, "dump the current computation graph to a file" },
  { "set_log_config", set_log_config, METH_VARARGS, "set filename for raylib logging" },
  { NULL, NULL, 0, NULL }
 };
