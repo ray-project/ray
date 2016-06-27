@@ -11,7 +11,7 @@ class MicroBenchmarkTest(unittest.TestCase):
 
   def testTiming(self):
     worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-    services.start_singlenode_cluster(return_drivers=False, num_workers_per_objstore=3, worker_path=worker_path)
+    services.start_ray_local(num_workers=3, worker_path=worker_path)
 
     # measure the time required to submit a remote task to the scheduler
     elapsed_times = []

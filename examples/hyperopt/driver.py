@@ -11,7 +11,7 @@ epochs = 100
 
 worker_dir = os.path.dirname(os.path.abspath(__file__))
 worker_path = os.path.join(worker_dir, "worker.py")
-services.start_singlenode_cluster(return_drivers=False, num_objstores=1, num_workers_per_objstore=num_workers, worker_path=worker_path)
+services.start_ray_local(num_workers=num_workers, worker_path=worker_path)
 
 best_params = None
 best_accuracy = 0

@@ -16,7 +16,7 @@ parser.add_argument("--drop-ipython", default=False, type=bool, help="Drop into 
 if __name__ == "__main__":
   args = parser.parse_args()
   worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "worker.py")
-  services.start_singlenode_cluster(return_drivers=False, num_workers_per_objstore=5, worker_path=worker_path)
+  services.start_ray_local(num_workers=5, worker_path=worker_path)
 
   s3 = boto3.resource("s3")
   imagenet_bucket = s3.Bucket(args.s3_bucket)

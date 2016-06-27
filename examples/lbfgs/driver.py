@@ -20,7 +20,7 @@ batches = [mnist.train.next_batch(batch_size) for _ in range(num_batches)]
 
 if __name__ == "__main__":
   worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "worker.py")
-  services.start_singlenode_cluster(return_drivers=False, num_workers_per_objstore=16, worker_path=worker_path)
+  services.start_ray_local(num_workers=16, worker_path=worker_path)
 
   x_batches = [ray.put(batches[i][0]) for i in range(num_batches)]
   y_batches = [ray.put(batches[i][1]) for i in range(num_batches)]
