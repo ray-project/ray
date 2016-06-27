@@ -21,8 +21,7 @@ Status WorkerServiceImpl::ExecuteTask(ServerContext* context, const ExecuteTaskR
 
 Worker::Worker(const std::string& worker_address, std::shared_ptr<Channel> scheduler_channel, std::shared_ptr<Channel> objstore_channel)
     : worker_address_(worker_address),
-      scheduler_stub_(Scheduler::NewStub(scheduler_channel)),
-      objstore_stub_(ObjStore::NewStub(objstore_channel)) {
+      scheduler_stub_(Scheduler::NewStub(scheduler_channel)) {
   receive_queue_.connect(worker_address_, true);
   connected_ = true;
 }

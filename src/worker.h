@@ -92,7 +92,6 @@ class Worker {
   bool connected_;
   const size_t CHUNK_SIZE = 8 * 1024;
   std::unique_ptr<Scheduler::Stub> scheduler_stub_;
-  std::unique_ptr<ObjStore::Stub> objstore_stub_;
   std::thread worker_server_thread_;
   MessageQueue<Task*> receive_queue_;
   managed_shared_memory segment_;
