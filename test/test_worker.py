@@ -3,8 +3,8 @@ import argparse
 import numpy as np
 
 import test_functions
-import ray.arrays.remote as ra
-import ray.arrays.distributed as da
+import ray.array.remote as ra
+import ray.array.distributed as da
 import ray.datasets.imagenet
 
 import ray

@@ -22,5 +22,5 @@ script:
   - source setup-env.sh
   - cd test
   - python runtest.py
-  - python arrays_test.py
+  - python array_test.py
   - python datasets_test.py

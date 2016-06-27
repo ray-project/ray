@@ -1,7 +1,7 @@
 import numpy as np
 from typing import List
 import ray
-import ray.arrays.remote as ra
+import ray.array.remote as ra
 
 @ray.remote([List[ray.ObjRef]], [int])
 def num_images(batches):

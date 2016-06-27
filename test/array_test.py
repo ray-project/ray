@@ -8,10 +8,10 @@ import time
 import subprocess32 as subprocess
 import os
 
-import ray.arrays.remote as ra
-import ray.arrays.distributed as da
+import ray.array.remote as ra
+import ray.array.distributed as da
 
-class ArraysSingleTest(unittest.TestCase):
+class RemoteArrayTest(unittest.TestCase):
 
   def testMethods(self):
     worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
@@ -44,7 +44,7 @@ class ArraysSingleTest(unittest.TestCase):
 
     services.cleanup()
 
-class ArraysDistTest(unittest.TestCase):
+class DistributedArrayTest(unittest.TestCase):
 
   def testSerialization(self):
     [w] = services.start_singlenode_cluster(return_drivers=True)

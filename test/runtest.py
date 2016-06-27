@@ -9,8 +9,8 @@ import subprocess32 as subprocess
 import os
 
 import test_functions
-import ray.arrays.remote as ra
-import ray.arrays.distributed as da
+import ray.array.remote as ra
+import ray.array.distributed as da
 
 RAY_TEST_OBJECTS = [[1, "hello", 3.0], 42, "hello world", 42.0,
                     (1.0, "hi"), None, (None, None), ("hello", None),
