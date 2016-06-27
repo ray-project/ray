@@ -1,6 +1,6 @@
 from typing import List
 import numpy as np
-import ray.arrays.remote as ra
+import ray.array.remote as ra
 import ray
 
 __all__ = ["BLOCK_SIZE", "DistArray", "assemble", "zeros", "ones", "copy",

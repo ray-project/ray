@@ -5,8 +5,8 @@ import ray
 import ray.services as services
 import ray.worker as worker
 
-import ray.arrays.remote as ra
-import ray.arrays.distributed as da
+import ray.array.remote as ra
+import ray.array.distributed as da
 
 parser = argparse.ArgumentParser(description='Parse addresses for the worker to connect to.')
 parser.add_argument("--scheduler-address", default="127.0.0.1:10001", type=str, help="the scheduler's address")

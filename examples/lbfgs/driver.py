@@ -6,8 +6,8 @@ import ray
 import ray.services as services
 import ray.worker as worker
 
-import ray.arrays.remote as ra
-import ray.arrays.distributed as da
+import ray.array.remote as ra
+import ray.array.distributed as da
 
 import functions
 
