@@ -2,8 +2,8 @@ import sys
 import argparse
 import numpy as np
 
-import ray.arrays.remote as ra
-import ray.arrays.distributed as da
+import ray.array.remote as ra
+import ray.array.distributed as da
 
 import ray
 import ray.services as services
