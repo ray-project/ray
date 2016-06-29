@@ -34,6 +34,7 @@ class Synchronized {
   T value_;
 public:
   typedef T element_type;
+  typedef Mutex mutex_type;
   template<class... U>
   Synchronized(U&&... args) : value_(std::forward<T>(args)...) { }
   Synchronized(const Synchronized& other) : value_(*other) { }
@@ -47,6 +48,7 @@ public:
   SynchronizedPtr<const Synchronized> get() const { return *this; }
   element_type* unsafe_get() { return &value_; }
   const element_type* unsafe_get() const { return &value_; }
+  mutex_type& mutex() { return mutex_; }
 };
 
 std::string::iterator split_ip_address(std::string& ip_address);
