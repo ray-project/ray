@@ -30,6 +30,7 @@ SubmitTaskReply Worker::submit_task(SubmitTaskRequest* request, int max_retries,
   RAY_CHECK(connected_, "Attempted to perform submit_task but failed.");
   SubmitTaskReply reply;
   Status status;
+  request->set_workerid(workerid_);
   for (int i = 0; i < 1 + max_retries; ++i) {
     ClientContext context;
     status = scheduler_stub_->SubmitTask(&context, *request, &reply);
@@ -73,6 +74,7 @@ ObjRef Worker::get_objref() {
   // first get objref for the new object
   RAY_CHECK(connected_, "Attempted to perform get_objref but failed.");
   PutObjRequest request;
+  request.set_workerid(workerid_);
   PutObjReply reply;
   ClientContext context;
   Status status = scheduler_stub_->PutObj(&context, request, &reply);
