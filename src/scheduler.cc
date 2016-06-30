@@ -129,7 +129,7 @@ Status SchedulerService::ObjReady(ServerContext* context, const ObjReadyRequest*
     // If this is the first time that ObjReady has been called for this objref,
     // the corresponding increment was done in register_new_object in the
     // scheduler. For all subsequent calls to ObjReady, the corresponding
-    // increment was done in deliver_object_if_necessary in the scheduler.
+    // increment was done in deliver_object_async_if_necessary in the scheduler.
     auto reference_counts = reference_counts_.get(); // we grab this lock because decrement_ref_count assumes it has been acquired
     auto contained_objrefs = contained_objrefs_.get(); // we grab this lock because decrement_ref_count assumes it has been acquired
     decrement_ref_count(std::vector<ObjRef>({objref}));
@@ -222,7 +222,7 @@ Status SchedulerService::TaskInfo(ServerContext* context, const TaskInfoRequest*
     TaskStatus* info = reply->add_failed_task();
     *info = (*failed_tasks)[i];
   }
-  for (int i = 0; i < workers->size(); ++i) {
+  for (size_t i = 0; i < workers->size(); ++i) {
     OperationId operationid = (*workers)[i].current_task;
     if (operationid != NO_OPERATION && operationid != ROOT_OPERATION) {
       const Task& task = computation_graph->get_task(operationid);
@@ -236,7 +236,55 @@ Status SchedulerService::TaskInfo(ServerContext* context, const TaskInfoRequest*
   return Status::OK;
 }
 
-void SchedulerService::deliver_object_if_necessary(ObjRef canonical_objref, ObjStoreId from, ObjStoreId to) {
+Status SchedulerService::KillWorkers(ServerContext* context, const KillWorkersRequest* request, KillWorkersReply* reply) {
+  // TODO: Update reference counts
+  auto failed_tasks = failed_tasks_.get();
+  auto get_queue = get_queue_.get();
+  auto computation_graph = computation_graph_.get();
+  auto fntable = fntable_.get();
+  auto avail_workers = avail_workers_.get();
+  auto task_queue = task_queue_.get();
+  auto workers = workers_.get();
+  size_t busy_workers = 0;
+  std::vector<WorkerHandle*> idle_workers;
+  RAY_LOG(RAY_INFO, "Attempting to kill workers.");
+  for (size_t i = 0; i < workers->size(); ++i) {
+    WorkerHandle* worker = &(*workers)[i];
+    if (worker->worker_stub) {
+      if (worker->current_task == NO_OPERATION) {
+        idle_workers.push_back(worker);
+        RAY_CHECK(std::find(avail_workers->begin(), avail_workers->end(), i) != avail_workers->end(), "Worker with workerid " << i << " is idle, but is not in avail_workers_");
+        RAY_LOG(RAY_INFO, "Worker with workerid " << i << " is idle.");
+      } else if (worker->current_task == ROOT_OPERATION) {
+        // Skip the driver
+        RAY_LOG(RAY_INFO, "Worker with workerid " << i << " is a driver.");
+      } else {
+        ++busy_workers;
+        RAY_LOG(RAY_INFO, "Worker with workerid " << i << " is running a task.");
+      }
+    }
+  }
+  if (task_queue->empty() && busy_workers == 0) {
+    RAY_LOG(RAY_INFO, "Killing " << idle_workers.size() << " idle workers.");
+    for (WorkerHandle* idle_worker : idle_workers) {
+      ClientContext client_context;
+      DieRequest die_request;
+      DieReply die_reply;
+      // TODO: Fault handling... what if a worker refuses to die? We just assume it dies here.
+      idle_worker->worker_stub->Die(&client_context, die_request, &die_reply);
+      idle_worker->worker_stub.reset();
+    }
+    avail_workers->clear();
+    fntable->clear();
+    reply->set_success(true);
+  } else {
+    RAY_LOG(RAY_INFO, "Either the task queue is not empty or there are still busy workers, so we are not killing any workers.");
+    reply->set_success(false);
+  }
+  return Status::OK;
+}
+
+void SchedulerService::deliver_object_async_if_necessary(ObjRef canonical_objref, ObjStoreId from, ObjStoreId to) {
   bool object_present_or_in_transit;
   {
     auto objtable = objtable_.get();
@@ -250,7 +298,7 @@ void SchedulerService::deliver_object_if_necessary(ObjRef canonical_objref, ObjS
     }
   }
   if (!object_present_or_in_transit) {
-    deliver_object(canonical_objref, from, to);
+    deliver_object_async(canonical_objref, from, to);
   }
 }
 
@@ -260,8 +308,8 @@ void SchedulerService::deliver_object_if_necessary(ObjRef canonical_objref, ObjS
 // delivery once. However, we may want to handle it in the scheduler in the
 // future.
 //
-// deliver_object assumes that the aliasing for objref has already been completed. That is, has_canonical_objref(objref) == true
-void SchedulerService::deliver_object(ObjRef canonical_objref, ObjStoreId from, ObjStoreId to) {
+// deliver_object_async assumes that the aliasing for objref has already been completed. That is, has_canonical_objref(objref) == true
+void SchedulerService::deliver_object_async(ObjRef canonical_objref, ObjStoreId from, ObjStoreId to) {
   RAY_CHECK_NEQ(from, to, "attempting to deliver canonical_objref " << canonical_objref << " from objstore " << from << " to itself.");
   RAY_CHECK(is_canonical(canonical_objref), "attempting to deliver objref " << canonical_objref << ", but this objref is not a canonical objref.");
   {
@@ -310,7 +358,7 @@ void SchedulerService::assign_task(OperationId operationid, WorkerId workerid) {
       alias_notification_queue_.get()->push_back(std::make_pair(objstoreid, std::make_pair(objref, canonical_objref)));
       attempt_notify_alias(objstoreid, objref, canonical_objref);
       RAY_LOG(RAY_DEBUG, "task contains object ref " << canonical_objref);
-      deliver_object_if_necessary(canonical_objref, pick_objstore(canonical_objref), objstoreid);
+      deliver_object_async_if_necessary(canonical_objref, pick_objstore(canonical_objref), objstoreid);
     }
   }
   {
@@ -496,12 +544,12 @@ void SchedulerService::perform_gets() {
       continue;
     }
     ObjRef canonical_objref = get_canonical_objref(objref);
-    RAY_LOG(RAY_DEBUG, "attempting to get objref " << get.second << " with canonical objref " << canonical_objref << " to objstore " << get_store(workerid));
+    RAY_LOG(RAY_DEBUG, "attempting to get objref " << get.second << " with canonical objref " << canonical_objref << " to objstore " << objstoreid);
     int num_stores = (*objtable_.get())[canonical_objref].size();
     if (num_stores > 0) {
-      deliver_object_if_necessary(canonical_objref, pick_objstore(canonical_objref), objstoreid);
+      deliver_object_async_if_necessary(canonical_objref, pick_objstore(canonical_objref), objstoreid);
       // Notify the relevant objstore about potential aliasing when it's ready
-      alias_notification_queue_.get()->push_back(std::make_pair(get_store(workerid), std::make_pair(objref, canonical_objref)));
+      alias_notification_queue_.get()->push_back(std::make_pair(objstoreid, std::make_pair(objref, canonical_objref)));
       // Remove the get task from the queue
       std::swap((*get_queue)[i], (*get_queue)[get_queue->size() - 1]);
       get_queue->pop_back();

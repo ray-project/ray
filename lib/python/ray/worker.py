@@ -193,6 +193,12 @@ def put(value, worker=global_worker):
     print_task_info(ray.lib.task_info(worker.handle), worker.mode)
   return objref
 
+def kill_workers(worker=global_worker):
+  success = ray.lib.kill_workers(worker.handle)
+  if not success:
+    print "Could not kill all workers; check that there are no tasks currently running."
+  return success
+
 def main_loop(worker=global_worker):
   if not ray.lib.connected(worker.handle):
     raise Exception("Worker is attempting to enter main_loop but has not been connected yet.")
@@ -216,6 +222,11 @@ def main_loop(worker=global_worker):
       ray.lib.notify_task_completed(worker.handle, True, "") # notify the scheduler that the task completed successfully
   while True:
     task = ray.lib.wait_for_next_task(worker.handle)
+    if task is None:
+      # We use this as a mechanism to allow the scheduler to kill workers. When
+      # the scheduler wants to kill a worker, it gives the worker a null task,
+      # causing the worker program to exit the main loop here.
+      break
     process_task(task)
 
 def remote(arg_types, return_types, worker=global_worker):

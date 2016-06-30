@@ -23,17 +23,20 @@ using grpc::Channel;
 using grpc::ClientContext;
 using grpc::ClientWriter;
 
+struct WorkerMessage {
+  std::unique_ptr<Task>* task;
+};
+static_assert(std::is_pod<WorkerMessage>::value, "WorkerMessage must be memcpy-able");
+
 class WorkerServiceImpl final : public WorkerService::Service {
 public:
-  WorkerServiceImpl(const std::string& worker_address)
-    : worker_address_(worker_address) {
-    send_queue_.connect(worker_address_, false);
-  }
+  WorkerServiceImpl(const std::string& worker_address);
   Status ExecuteTask(ServerContext* context, const ExecuteTaskRequest* request, ExecuteTaskReply* reply) override;
+  Status Die(ServerContext* context, const DieRequest* request, DieReply* reply) override;
 private:
   std::string worker_address_;
-  Task task_; // copy of the current task
-  MessageQueue<Task*> send_queue_;
+  std::unique_ptr<Task> task_; // copy of the current task
+  MessageQueue<WorkerMessage> send_queue_;
 };
 
 class Worker {
@@ -44,6 +47,8 @@ class Worker {
   // registered with the scheduler, we will sleep for retry_wait_milliseconds
   // and try to resubmit the task to the scheduler up to max_retries more times.
   SubmitTaskReply submit_task(SubmitTaskRequest* request, int max_retries = 120, int retry_wait_milliseconds = 500);
+  // Requests the scheduler to kill workers
+  bool kill_workers(ClientContext &context);
   // send request to the scheduler to register this worker
   void register_worker(const std::string& worker_address, const std::string& objstore_address, bool is_driver);
   // get a new object reference that is registered with the scheduler
@@ -73,8 +78,8 @@ class Worker {
   // start the worker server which accepts tasks from the scheduler and stores
   // it in the message queue, which is read by the Python interpreter
   void start_worker_service();
-  // wait for next task from the RPC system
-  Task* receive_next_task();
+  // wait for next task from the RPC system. If null, it means there are no more tasks and the worker should shut down.
+  std::unique_ptr<Task> receive_next_task();
   // tell the scheduler that we are done with the current task and request the
   // next one, if task_succeeded is false, this tells the scheduler that the
   // task threw an exception
@@ -93,8 +98,8 @@ class Worker {
   const size_t CHUNK_SIZE = 8 * 1024;
   std::unique_ptr<Scheduler::Stub> scheduler_stub_;
   std::thread worker_server_thread_;
-  MessageQueue<Task*> receive_queue_;
-  managed_shared_memory segment_;
+  MessageQueue<WorkerMessage> receive_queue_;
+  bip::managed_shared_memory segment_;
   WorkerId workerid_;
   ObjStoreId objstoreid_;
   std::string worker_address_;

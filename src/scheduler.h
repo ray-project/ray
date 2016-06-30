@@ -34,7 +34,7 @@ const RefCount DEALLOCATED = std::numeric_limits<RefCount>::max();
 
 struct WorkerHandle {
   std::shared_ptr<Channel> channel;
-  std::unique_ptr<WorkerService::Stub> worker_stub;
+  std::unique_ptr<WorkerService::Stub> worker_stub; // If null, the worker has died
   ObjStoreId objstoreid;
   std::string worker_address;
   OperationId current_task;
@@ -69,13 +69,14 @@ public:
   Status AddContainedObjRefs(ServerContext* context, const AddContainedObjRefsRequest* request, AckReply* reply) override;
   Status SchedulerInfo(ServerContext* context, const SchedulerInfoRequest* request, SchedulerInfoReply* reply) override;
   Status TaskInfo(ServerContext* context, const TaskInfoRequest* request, TaskInfoReply* reply) override;
+  Status KillWorkers(ServerContext* context, const KillWorkersRequest* request, KillWorkersReply* reply) override;
 
   // This will ask an object store to send an object to another object store if
   // the object is not already present in that object store and is not already
   // being transmitted.
-  void deliver_object_if_necessary(ObjRef objref, ObjStoreId from, ObjStoreId to);
+  void deliver_object_async_if_necessary(ObjRef objref, ObjStoreId from, ObjStoreId to);
   // ask an object store to send object to another object store
-  void deliver_object(ObjRef objref, ObjStoreId from, ObjStoreId to);
+  void deliver_object_async(ObjRef objref, ObjStoreId from, ObjStoreId to);
   // assign a task to a worker
   void schedule();
   // execute a task on a worker and ship required object references
@@ -157,7 +158,7 @@ private:
   // For each object store objstoreid, objects_in_transit_[objstoreid] is a
   // vector of the canonical object references that are being streamed to that
   // object store but are not yet present. Object references are added to this
-  // in deliver_object_if_necessary (to ensure that we do not attempt to deliver
+  // in deliver_object_async_if_necessary (to ensure that we do not attempt to deliver
   // the same object to a given object store twice), and object references are
   // removed when add_location is called (from ObjReady), and they are moved to
   // the objtable_. Note that objects_in_transit_ and objtable_ share the same

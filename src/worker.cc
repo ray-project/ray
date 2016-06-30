@@ -11,11 +11,22 @@ extern "C" {
   static PyObject *RayError;
 }
 
+inline WorkerServiceImpl::WorkerServiceImpl(const std::string& worker_address)
+  : worker_address_(worker_address) {
+  send_queue_.connect(worker_address_, false);
+}
+
 Status WorkerServiceImpl::ExecuteTask(ServerContext* context, const ExecuteTaskRequest* request, ExecuteTaskReply* reply) {
-  task_ = request->task(); // Copy task
+  task_ = std::unique_ptr<Task>(new Task(request->task())); // Copy task
   RAY_LOG(RAY_INFO, "invoked task " << request->task().name());
-  Task* taskptr = &task_;
-  send_queue_.send(&taskptr);
+  WorkerMessage message = { &task_ };
+  send_queue_.send(&message);
+  return Status::OK;
+}
+
+Status WorkerServiceImpl::Die(ServerContext* context, const DieRequest* request, DieReply* reply) {
+  WorkerMessage message = { NULL };
+  send_queue_.send(&message);
   return Status::OK;
 }
 
@@ -41,6 +52,13 @@ SubmitTaskReply Worker::submit_task(SubmitTaskRequest* request, int max_retries,
     std::this_thread::sleep_for(std::chrono::milliseconds(retry_wait_milliseconds));
   }
   return reply;
+}
+
+bool Worker::kill_workers(ClientContext &context) {
+  KillWorkersRequest request;
+  KillWorkersReply reply;
+  Status status = scheduler_stub_->KillWorkers(&context, request, &reply);
+  return reply.success();
 }
 
 void Worker::register_worker(const std::string& worker_address, const std::string& objstore_address, bool is_driver) {
@@ -268,10 +286,10 @@ void Worker::register_function(const std::string& name, size_t num_return_vals) 
   scheduler_stub_->RegisterFunction(&context, request, &reply);
 }
 
-Task* Worker::receive_next_task() {
-  Task* task;
-  receive_queue_.receive(&task);
-  return task;
+std::unique_ptr<Task> Worker::receive_next_task() {
+  WorkerMessage message;
+  receive_queue_.receive(&message);
+  return message.task ? std::move(*message.task) : std::unique_ptr<Task>();
 }
 
 void Worker::notify_task_completed(bool task_succeeded, std::string error_message) {

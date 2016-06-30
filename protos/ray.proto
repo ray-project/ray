@@ -50,6 +50,8 @@ service Scheduler {
   rpc SchedulerInfo(SchedulerInfoRequest) returns (SchedulerInfoReply);
   // Get information about tasks
   rpc TaskInfo(TaskInfoRequest) returns (TaskInfoReply);
+  // Kills the workers
+  rpc KillWorkers(KillWorkersRequest) returns (KillWorkersReply);
 }
 
 message AckReply {
@@ -219,6 +221,13 @@ message TaskInfoReply {
   // TODO(mehrdadn): We'll want to return information from computation_graph since it's important for visualizing tasks that have been completed etc.
 }
 
+message KillWorkersRequest {
+}
+
+message KillWorkersReply {
+  bool success = 1;  // Currently, the only reason to fail is if there are workers still executing tasks
+}
+
 // These messages are for getting information about the object store state
 
 message ObjStoreInfoRequest {
@@ -234,6 +243,7 @@ message ObjStoreInfoReply {
 
 service WorkerService {
   rpc ExecuteTask(ExecuteTaskRequest) returns (ExecuteTaskReply); // Scheduler calls a function from the worker
+  rpc Die(DieRequest) returns (DieReply); // Kills this worker
 }
 
 message ExecuteTaskRequest {
@@ -241,5 +251,10 @@ message ExecuteTaskRequest {
 }
 
 message ExecuteTaskReply {
+}
 
+message DieRequest {
+}
+
+message DieReply {
 }

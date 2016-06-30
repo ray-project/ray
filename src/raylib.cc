@@ -631,8 +631,12 @@ PyObject* wait_for_next_task(PyObject* self, PyObject* args) {
   if (!PyArg_ParseTuple(args, "O&", &PyObjectToWorker, &worker)) {
     return NULL;
   }
-  Task* task = worker->receive_next_task();
-  return PyCapsule_New(static_cast<void*>(task), "task", NULL); // This task is owned by the C++ worker class, so we do not deallocate it.
+  if (std::unique_ptr<Task> task = worker->receive_next_task()) {
+    PyObject* pyobj = PyCapsule_New(task.get(), "task", TaskCapsule_Destructor);
+    task.release(); // Now that the wrapper object was constructed successfully, release ownership
+    return pyobj;
+  }
+  Py_RETURN_NONE;
 }
 
 PyObject* submit_task(PyObject* self, PyObject* args) {
@@ -852,6 +856,19 @@ PyObject* set_log_config(PyObject* self, PyObject* args) {
   Py_RETURN_NONE;
 }
 
+PyObject* kill_workers(PyObject* self, PyObject* args) {
+  Worker* worker;
+  if (!PyArg_ParseTuple(args, "O&", &PyObjectToWorker, &worker)) {
+    return NULL;
+  }
+  ClientContext context;
+  if (worker->kill_workers(context)) {
+    Py_RETURN_TRUE;
+  } else {
+    Py_RETURN_FALSE;
+  }
+}
+
 static PyMethodDef RayLibMethods[] = {
  { "serialize_object", serialize_object, METH_VARARGS, "serialize an object to protocol buffers" },
  { "deserialize_object", deserialize_object, METH_VARARGS, "deserialize an object from protocol buffers" },
@@ -878,6 +895,7 @@ static PyMethodDef RayLibMethods[] = {
  { "task_info", task_info, METH_VARARGS, "get task statuses" },
  { "dump_computation_graph", dump_computation_graph, METH_VARARGS, "dump the current computation graph to a file" },
  { "set_log_config", set_log_config, METH_VARARGS, "set filename for raylib logging" },
+ { "kill_workers", kill_workers, METH_VARARGS, "kills all of the workers" },
  { NULL, NULL, 0, NULL }
 };
 
