@@ -1,5 +1,16 @@
 #include "ipc.h"
 
+#include <stdlib.h>
+
+#if defined(WIN32) || defined(_WIN32)
+#include <Windows.h>
+#else
+#include <sys/types.h>
+#include <sys/stat.h>
+#endif
+
+#include "ray/ray.h"
+
 using namespace arrow;
 
 ObjHandle::ObjHandle(SegmentId segmentid, size_t size, IpcPointer ipcpointer, size_t metadata_offset)
@@ -24,6 +35,101 @@ Status BufferMemorySource::Close() {
 
 int64_t BufferMemorySource::Size() const {
   return size_;
+}
+
+MessageQueue<>::MessageQueue() : handle_(-1) { }
+
+MessageQueue<>::~MessageQueue() { close(); }
+
+MessageQueue<>::MessageQueue(MessageQueue&& other) {
+  handle_ = other.handle_;
+  other.handle_ = -1;
+}
+
+MessageQueue<>& MessageQueue<>::operator=(MessageQueue<>&& other) {
+  close();
+  handle_ = other.handle_;
+  other.handle_ = -1;
+  return *this;
+}
+
+bool MessageQueue<>::connect(const std::string& name, bool create, size_t buffer_size) {
+  std::string name_translated = "ray-{BC200A09-2465-431D-AEC7-2F8530B04535}-" + name;
+#if defined(WIN32) || defined(_WIN32)
+  name_translated.insert(0, "\\\\.\\pipe\\");
+  std::replace(name_translated.begin(), name_translated.end(), '/', '\\');
+  if (create) {
+    handle_ = reinterpret_cast<intptr_t>(CreateNamedPipeA(name_translated.c_str(), (create ? FILE_FLAG_FIRST_PIPE_INSTANCE : 0) | PIPE_ACCESS_DUPLEX, PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS, 1, static_cast<DWORD>(buffer_size), static_cast<DWORD>(buffer_size), INFINITE, NULL));
+  } else {
+    handle_ = reinterpret_cast<intptr_t>(CreateFileA(name_translated.c_str(), GENERIC_ALL, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL));
+  }
+#else
+  name_translated.insert(0, "/tmp/");
+  if (!create || mkfifo(name_translated.c_str(), S_IWUSR | S_IRUSR | S_IRGRP | S_IROTH) == 0 || errno == EEXIST) {
+    handle_ = open(name_translated.c_str(), O_RDWR);
+    if (handle_ == -1) {
+      unlink(name_translated.c_str());
+    }
+  }
+#endif
+  return handle_ != -1;
+}
+
+bool MessageQueue<>::connected() {
+  return handle_ != -1;
+}
+
+void MessageQueue<>::close() {
+  if (connected()) {
+#if defined(WIN32) || defined(_WIN32)
+    CloseHandle(reinterpret_cast<HANDLE>(handle_));
+#else
+    ::close(handle_);
+#endif
+    handle_ = -1;
+  }
+}
+
+bool MessageQueue<>::send(const unsigned char* object, size_t size) {
+  while (size > 0) {
+#if defined(WIN32) || defined(_WIN32)
+    DWORD transmitted;
+    if (!WriteFile(reinterpret_cast<HANDLE>(handle_), object, static_cast<DWORD>(size), &transmitted, NULL)) {
+      RAY_LOG(RAY_INFO, "GetLastError() == " << GetLastError());
+      break;
+    }
+#else
+    ssize_t transmitted = write(handle_, object, size);
+    if (transmitted < 0) {
+      RAY_LOG(RAY_INFO, "errno == " << errno);
+      break;
+    }
+#endif
+    size -= static_cast<size_t>(transmitted);
+    object += static_cast<ptrdiff_t>(transmitted);
+    }
+  return size == 0;
+}
+
+bool MessageQueue<>::receive(unsigned char* object, size_t size) {
+  while (size > 0) {
+#if defined(WIN32) || defined(_WIN32)
+    DWORD transmitted;
+    if (!ReadFile(reinterpret_cast<HANDLE>(handle_), object, static_cast<DWORD>(size), &transmitted, NULL)) {
+      RAY_LOG(RAY_INFO, "GetLastError() == " << GetLastError());
+      break;
+    }
+#else
+    ssize_t transmitted = read(handle_, object, size);
+    if (transmitted < 0) {
+      RAY_LOG(RAY_INFO, "errno == " << errno);
+      break;
+    }
+#endif
+    size -= static_cast<size_t>(transmitted);
+    object += static_cast<ptrdiff_t>(transmitted);
+  }
+  return size == 0;
 }
 
 MemorySegmentPool::MemorySegmentPool(ObjStoreId objstoreid, bool create) : objstoreid_(objstoreid), create_mode_(create) { }

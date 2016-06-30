@@ -5,7 +5,6 @@
 #include <limits>
 
 #include <boost/interprocess/managed_shared_memory.hpp>
-#include <boost/interprocess/ipc/message_queue.hpp>
 
 #include <arrow/api.h>
 #include <arrow/ipc/memory.h>
@@ -18,62 +17,38 @@ namespace bip = boost::interprocess;
 
 // Message Queues: Exchanging objects of type T between processes on a node
 
-template<typename T>
-class MessageQueue {
-public:
-  MessageQueue() {};
+template<typename T = void>
+class MessageQueue;
 
-  ~MessageQueue() {
-    bip::message_queue::remove(name_.c_str());
-  }
-
-  MessageQueue(MessageQueue<T>&& other) noexcept
-    : name_(std::move(other.name_)),
-      queue_(std::move(other.queue_))
-  { }
-
-  bool connect(const std::string& name, bool create) {
-    name_ = name;
-    try {
-      if (create) {
-        bip::message_queue::remove(name.c_str()); // remove queue if it has not been properly removed from last run
-        queue_ = std::unique_ptr<bip::message_queue>(new bip::message_queue(bip::create_only, name.c_str(), 100, sizeof(T)));
-      } else {
-        queue_ = std::unique_ptr<bip::message_queue>(new bip::message_queue(bip::open_only, name.c_str()));
-      }
-    } catch(bip::interprocess_exception &ex) {
-      RAY_CHECK(false, "boost::interprocess exception: " << ex.what());
-    }
-    return true;
-  };
-
-  bool connected() {
-    return queue_ != NULL;
-  }
-
-  bool send(const T* object) {
-    try {
-      queue_->send(object, sizeof(T), 0);
-    } catch(bip::interprocess_exception &ex) {
-      RAY_CHECK(false, "boost::interprocess exception: " << ex.what());
-    }
-    return true;
-  };
-
-  bool receive(T* object) {
-    unsigned int priority;
-    bip::message_queue::size_type recvd_size;
-    try {
-      queue_->receive(object, sizeof(T), recvd_size, priority);
-    } catch(bip::interprocess_exception &ex) {
-      RAY_CHECK(false, "boost::interprocess exception: " << ex.what());
-    }
-    return true;
-  }
+template<>
+class MessageQueue<> {
+protected:
+  bool connect(const std::string& name, bool create, size_t buffer_size);
+  bool connected();
+  void close();
+  ~MessageQueue();
+  MessageQueue();
+  MessageQueue(MessageQueue&& other);
+  MessageQueue& operator=(MessageQueue&& other);
+  bool send(const unsigned char* object, size_t size);;
+  bool receive(unsigned char* object, size_t size);
 
 private:
-  std::string name_;
-  std::unique_ptr<bip::message_queue> queue_;
+#if defined(WIN32) || defined(_WIN32)
+  int handle_;
+#else
+  intptr_t handle_;
+#endif
+};
+
+template<typename T>
+class MessageQueue : public MessageQueue<> {
+public:
+  using MessageQueue<>::connected;
+  using MessageQueue<>::close;
+  bool connect(const std::string& name, bool create) { return MessageQueue<>::connect(name, create, sizeof(T)); }
+  bool send(const T* object) { return MessageQueue<>::send(reinterpret_cast<const unsigned char*>(object), sizeof(*object)); }
+  bool receive(T* object) { return MessageQueue<>::receive(reinterpret_cast<unsigned char*>(object), sizeof(*object)); }
 };
 
 // Object Queues

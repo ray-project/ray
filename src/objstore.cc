@@ -41,7 +41,7 @@ void ObjStoreService::get_data_from(ObjRef objref, ObjStore::Stub& stub) {
 
 ObjStoreService::ObjStoreService(const std::string& objstore_address, std::shared_ptr<Channel> scheduler_channel)
   : scheduler_stub_(Scheduler::NewStub(scheduler_channel)), objstore_address_(objstore_address) {
-  recv_queue_.connect(std::string("queue:") + objstore_address + std::string(":obj"), true);
+  RAY_CHECK(recv_queue_.connect(std::string("queue:") + objstore_address + std::string(":obj"), true), "error connecting recv_queue_");
   ClientContext context;
   RegisterObjStoreRequest request;
   request.set_objstore_address(objstore_address);
@@ -150,7 +150,7 @@ Status ObjStoreService::NotifyAlias(ServerContext* context, const NotifyAliasReq
   ObjRequest done_request;
   done_request.type = ObjRequestType::ALIAS_DONE;
   done_request.objref = alias_objref;
-  recv_queue_.send(&done_request);
+  RAY_CHECK(recv_queue_.send(&done_request), "error sending over IPC");
   return Status::OK;
 }
 
@@ -195,7 +195,7 @@ void ObjStoreService::process_worker_request(const ObjRequest request) {
   }
   if (!send_queues_[request.workerid].connected()) {
     std::string queue_name = std::string("queue:") + objstore_address_ + std::string(":worker:") + std::to_string(request.workerid) + std::string(":obj");
-    send_queues_[request.workerid].connect(queue_name, false);
+    RAY_CHECK(send_queues_[request.workerid].connect(queue_name, false), "error connecting receive_queue_");
   }
   {
     std::lock_guard<std::mutex> memory_lock(memory_lock_);
@@ -206,7 +206,7 @@ void ObjStoreService::process_worker_request(const ObjRequest request) {
   switch (request.type) {
     case ObjRequestType::ALLOC: {
         ObjHandle handle = alloc(request.objref, request.size); // This method acquires memory_lock_
-        send_queues_[request.workerid].send(&handle);
+        RAY_CHECK(send_queues_[request.workerid].send(&handle), "error sending over IPC");
       }
       break;
     case ObjRequestType::GET: {
@@ -214,7 +214,7 @@ void ObjStoreService::process_worker_request(const ObjRequest request) {
         std::pair<ObjHandle, MemoryStatusType>& item = memory_[request.objref];
         if (item.second == MemoryStatusType::READY) {
           RAY_LOG(RAY_DEBUG, "Responding to GET request: returning objref " << request.objref);
-          send_queues_[request.workerid].send(&item.first);
+          RAY_CHECK(send_queues_[request.workerid].send(&item.first), "error sending over IPC");
         } else if (item.second == MemoryStatusType::NOT_READY || item.second == MemoryStatusType::NOT_PRESENT || item.second == MemoryStatusType::PRE_ALLOCED) {
           std::lock_guard<std::mutex> lock(get_queue_lock_);
           get_queue_.push_back(std::make_pair(request.workerid, request.objref));
@@ -237,7 +237,7 @@ void ObjStoreService::process_requests() {
   // TODO(rkn): Should memory_lock_ be used in this method?
   ObjRequest request;
   while (true) {
-    recv_queue_.receive(&request);
+    RAY_CHECK(recv_queue_.receive(&request), "error receiving over IPC");
     switch (request.type) {
       case ObjRequestType::ALLOC: {
           RAY_LOG(RAY_VERBOSE, "Request (worker " << request.workerid << " to objstore " << objstoreid_ << "): Allocate object with objref " << request.objref << " and size " << request.size);
@@ -271,7 +271,7 @@ void ObjStoreService::process_gets_for_objref(ObjRef objref) {
   for (size_t i = 0; i < get_queue_.size(); ++i) {
     if (get_queue_[i].second == objref) {
       ObjHandle& elem = memory_[objref].first;
-      send_queues_[get_queue_[i].first].send(&item.first);
+      RAY_CHECK(send_queues_[get_queue_[i].first].send(&item.first), "error sending over IPC");
       // Remove the get task from the queue
       std::swap(get_queue_[i], get_queue_[get_queue_.size() - 1]);
       get_queue_.pop_back();

@@ -13,27 +13,27 @@ extern "C" {
 
 inline WorkerServiceImpl::WorkerServiceImpl(const std::string& worker_address)
   : worker_address_(worker_address) {
-  send_queue_.connect(worker_address_, false);
+  RAY_CHECK(send_queue_.connect(worker_address_, false), "error connecting send_queue_");
 }
 
 Status WorkerServiceImpl::ExecuteTask(ServerContext* context, const ExecuteTaskRequest* request, ExecuteTaskReply* reply) {
   task_ = std::unique_ptr<Task>(new Task(request->task())); // Copy task
   RAY_LOG(RAY_INFO, "invoked task " << request->task().name());
   WorkerMessage message = { &task_ };
-  send_queue_.send(&message);
+  RAY_CHECK(send_queue_.send(&message), "error sending over IPC");
   return Status::OK;
 }
 
 Status WorkerServiceImpl::Die(ServerContext* context, const DieRequest* request, DieReply* reply) {
   WorkerMessage message = { NULL };
-  send_queue_.send(&message);
+  RAY_CHECK(send_queue_.send(&message), "error sending over IPC");
   return Status::OK;
 }
 
 Worker::Worker(const std::string& worker_address, std::shared_ptr<Channel> scheduler_channel, std::shared_ptr<Channel> objstore_channel)
     : worker_address_(worker_address),
       scheduler_stub_(Scheduler::NewStub(scheduler_channel)) {
-  receive_queue_.connect(worker_address_, true);
+  RAY_CHECK(receive_queue_.connect(worker_address_, true), "error connecting receive_queue_");
   connected_ = true;
 }
 
@@ -72,9 +72,8 @@ void Worker::register_worker(const std::string& worker_address, const std::strin
   workerid_ = reply.workerid();
   objstoreid_ = reply.objstoreid();
   segmentpool_ = std::make_shared<MemorySegmentPool>(objstoreid_, false);
-  request_obj_queue_.connect(std::string("queue:") + objstore_address + std::string(":obj"), false);
-  std::string queue_name = std::string("queue:") + objstore_address + std::string(":worker:") + std::to_string(workerid_) + std::string(":obj");
-  receive_obj_queue_.connect(queue_name, true);
+  RAY_CHECK(request_obj_queue_.connect(std::string("queue:") + objstore_address + std::string(":obj"), false), "error connecting request_obj_queue_");
+  RAY_CHECK(receive_obj_queue_.connect(std::string("queue:") + objstore_address + std::string(":worker:") + std::to_string(workerid_) + std::string(":obj"), true), "error connecting receive_obj_queue_");
   return;
 }
 
@@ -107,9 +106,9 @@ slice Worker::get_object(ObjRef objref) {
   request.workerid = workerid_;
   request.type = ObjRequestType::GET;
   request.objref = objref;
-  request_obj_queue_.send(&request);
+  RAY_CHECK(request_obj_queue_.send(&request), "error sending over IPC");
   ObjHandle result;
-  receive_obj_queue_.receive(&result);
+  RAY_CHECK(receive_obj_queue_.receive(&result), "error receiving over IPC");
   slice slice;
   slice.data = segmentpool_->get_address(result);
   slice.len = result.size();
@@ -128,13 +127,13 @@ void Worker::put_object(ObjRef objref, const Obj* obj, std::vector<ObjRef> &cont
   request.type = ObjRequestType::ALLOC;
   request.objref = objref;
   request.size = data.size();
-  request_obj_queue_.send(&request);
+  RAY_CHECK(request_obj_queue_.send(&request), "error sending over IPC");
   if (contained_objrefs.size() > 0) {
     RAY_LOG(RAY_REFCOUNT, "In put_object, calling increment_reference_count for contained objrefs");
     increment_reference_count(contained_objrefs); // Notify the scheduler that some object references are serialized in the objstore.
   }
   ObjHandle result;
-  receive_obj_queue_.receive(&result);
+  RAY_CHECK(receive_obj_queue_.receive(&result), "error receiving over IPC");
   uint8_t* target = segmentpool_->get_address(result);
   std::memcpy(target, &data[0], data.size());
   // We immediately unmap here; if the object is going to be accessed again, it will be mapped again;
@@ -142,7 +141,7 @@ void Worker::put_object(ObjRef objref, const Obj* obj, std::vector<ObjRef> &cont
   segmentpool_->unmap_segment(result.segmentid());
   request.type = ObjRequestType::WORKER_DONE;
   request.metadata_offset = 0;
-  request_obj_queue_.send(&request);
+  RAY_CHECK(request_obj_queue_.send(&request), "error sending over IPC");
 
   // Notify the scheduler about the objrefs that we are serializing in the objstore.
   AddContainedObjRefsRequest contained_objrefs_request;
@@ -176,9 +175,9 @@ PyObject* Worker::put_arrow(ObjRef objref, PyObject* value) {
   request.type = ObjRequestType::ALLOC;
   request.objref = objref;
   request.size = size;
-  request_obj_queue_.send(&request);
+  RAY_CHECK(request_obj_queue_.send(&request), "error sending over IPC");
   ObjHandle result;
-  receive_obj_queue_.receive(&result);
+  RAY_CHECK(receive_obj_queue_.receive(&result), "error receiving over IPC");
   int64_t metadata_offset;
   uint8_t* address = segmentpool_->get_address(result);
   auto source = std::make_shared<BufferMemorySource>(address, size);
@@ -188,7 +187,7 @@ PyObject* Worker::put_arrow(ObjRef objref, PyObject* value) {
   segmentpool_->unmap_segment(result.segmentid());
   request.type = ObjRequestType::WORKER_DONE;
   request.metadata_offset = metadata_offset;
-  request_obj_queue_.send(&request);
+  RAY_CHECK(request_obj_queue_.send(&request), "error sending over IPC");
   Py_RETURN_NONE;
 }
 
@@ -200,9 +199,9 @@ PyObject* Worker::get_arrow(ObjRef objref, SegmentId& segmentid) {
   request.workerid = workerid_;
   request.type = ObjRequestType::GET;
   request.objref = objref;
-  request_obj_queue_.send(&request);
+  RAY_CHECK(request_obj_queue_.send(&request), "error sending over IPC");
   ObjHandle result;
-  receive_obj_queue_.receive(&result);
+  RAY_CHECK(receive_obj_queue_.receive(&result), "error receiving over IPC");
   uint8_t* address = segmentpool_->get_address(result);
   auto source = std::make_shared<BufferMemorySource>(address, result.size());
   segmentid = result.segmentid();
@@ -219,7 +218,7 @@ bool Worker::is_arrow(ObjRef objref) {
   request.objref = objref;
   request_obj_queue_.send(&request);
   ObjHandle result;
-  receive_obj_queue_.receive(&result);
+  RAY_CHECK(receive_obj_queue_.receive(&result), "error receiving over IPC");
   return result.metadata_offset() != 0;
 }
 
@@ -288,7 +287,7 @@ void Worker::register_function(const std::string& name, size_t num_return_vals) 
 
 std::unique_ptr<Task> Worker::receive_next_task() {
   WorkerMessage message;
-  receive_queue_.receive(&message);
+  RAY_CHECK(receive_queue_.receive(&message), "error receiving over IPC");
   return message.task ? std::move(*message.task) : std::unique_ptr<Task>();
 }
 
