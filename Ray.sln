@@ -2,7 +2,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 14
 VisualStudioVersion = 14.0.25123.0
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Ray", "vsprojects\Ray.vcxproj", "{C002F9F6-8447-4B95-AA18-FB781F4A7865}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ray", "vsprojects\ray.vcxproj", "{C002F9F6-8447-4B95-AA18-FB781F4A7865}"
 	ProjectSection(ProjectDependencies) = postProject
 		{7E51A25F-AC59-488F-906C-C60FAAE706AA} = {7E51A25F-AC59-488F-906C-C60FAAE706AA}
 		{29D16885-7228-4C31-81ED-5F9187C7F2A9} = {29D16885-7228-4C31-81ED-5F9187C7F2A9}
@@ -12,18 +12,18 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Ray", "vsprojects\Ray.vcxpr
 		{10E7D8E8-0EEB-46EA-A58D-F9236B5960AD} = {10E7D8E8-0EEB-46EA-A58D-F9236B5960AD}
 	EndProjectSection
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Scheduler", "vsprojects\Scheduler.vcxproj", "{D4F50B21-7FDE-41CE-87F5-2CF71178EF40}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "scheduler", "vsprojects\scheduler.vcxproj", "{D4F50B21-7FDE-41CE-87F5-2CF71178EF40}"
 	ProjectSection(ProjectDependencies) = postProject
 		{76BE8E91-0F74-4276-A6A7-B279C6FEA0D2} = {76BE8E91-0F74-4276-A6A7-B279C6FEA0D2}
 		{C002F9F6-8447-4B95-AA18-FB781F4A7865} = {C002F9F6-8447-4B95-AA18-FB781F4A7865}
 	EndProjectSection
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ObjStore", "vsprojects\ObjStore.vcxproj", "{DDFCEC30-7024-421A-979A-B1BF69CF464E}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "objstore", "vsprojects\objstore.vcxproj", "{DDFCEC30-7024-421A-979A-B1BF69CF464E}"
 	ProjectSection(ProjectDependencies) = postProject
 		{C002F9F6-8447-4B95-AA18-FB781F4A7865} = {C002F9F6-8447-4B95-AA18-FB781F4A7865}
 	EndProjectSection
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "raylib", "vsprojects\RayLib.vcxproj", "{76BE8E91-0F74-4276-A6A7-B279C6FEA0D2}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "raylib", "vsprojects\raylib.vcxproj", "{76BE8E91-0F74-4276-A6A7-B279C6FEA0D2}"
 	ProjectSection(ProjectDependencies) = postProject
 		{C002F9F6-8447-4B95-AA18-FB781F4A7865} = {C002F9F6-8447-4B95-AA18-FB781F4A7865}
 	EndProjectSection

@@ -8,6 +8,12 @@
     <OutDir>$(SolutionDir)build\$(Platform)\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)build\$(Platform)\$(Configuration)\$(MSBuildProjectName)\</IntDir>
   </PropertyGroup>
+  <PropertyGroup Label="Globals">
+    <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='Debug'" Label="Configuration">
+    <UseDebugLibraries>true</UseDebugLibraries>
+  </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>
       <AdditionalIncludeDirectories>$(PYTHONHOME)\Lib\site-packages\numpy\core\include;$(THIRD_PARTY)python\inc;$(THIRD_PARTY)python\inc\Windows;$(ProjectDir)..\build\generated;$(ProjectDir)..\include;$(THIRD_PARTY)numbuf\cpp\src;$(THIRD_PARTY)numbuf\python\src;$(THIRD_PARTY)grpc\include;$(THIRD_PARTY)grpc\third_party\protobuf\src;$(THIRD_PARTY)arrow\cpp\src;$(BOOST_ROOT);$(BOOST_ROOT)\libs\interprocess\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
