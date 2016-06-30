@@ -17,8 +17,8 @@ parser.add_argument("--scheduler-address", default="127.0.0.1:10001", type=str, 
 parser.add_argument("--objstore-address", default="127.0.0.1:20001", type=str, help="the objstore's address")
 parser.add_argument("--worker-address", default="127.0.0.1:30001", type=str, help="the worker's address")
 parser.add_argument("--attach", action="store_true", help="If true, attach the shell to an already running cluster. If false, start a new cluster.")
-parser.add_argument("--worker-path", help="Path to the worker script")
-parser.add_argument("--num-workers", help="Number of workers to start")
+parser.add_argument("--worker-path", type=str, help="Path to the worker script")
+parser.add_argument("--num-workers", type=int, help="Number of workers to start")
 
 if __name__ == "__main__":
   args = parser.parse_args()
