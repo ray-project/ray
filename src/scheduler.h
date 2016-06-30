@@ -80,7 +80,7 @@ public:
   // assign a task to a worker
   void schedule();
   // execute a task on a worker and ship required object references
-  void assign_task(OperationId operationid, WorkerId workerid);
+  void assign_task(OperationId operationid, WorkerId workerid, const SynchronizedPtr<Synchronized<ComputationGraph> > &computation_graph);
   // checks if the dependencies of the task are met
   bool can_run(const Task& task);
   // register a worker and its object store (if it has not been registered yet)
@@ -102,28 +102,29 @@ private:
   ObjStoreId pick_objstore(ObjRef objref);
   // checks if objref is a canonical objref
   bool is_canonical(ObjRef objref);
-
   void perform_gets();
   // schedule tasks using the naive algorithm
   void schedule_tasks_naively();
   // schedule tasks using a scheduling algorithm that takes into account data locality
   void schedule_tasks_location_aware();
   void perform_notify_aliases();
-
   // checks if aliasing for objref has been completed
   bool has_canonical_objref(ObjRef objref);
   // get the canonical objref for an objref
   ObjRef get_canonical_objref(ObjRef objref);
   // attempt to notify the objstore about potential objref aliasing, returns true if successful, if false then retry later
   bool attempt_notify_alias(ObjStoreId objstoreid, ObjRef alias_objref, ObjRef canonical_objref);
-  // tell all of the objstores holding canonical_objref to deallocate it
-  void deallocate_object(ObjRef canonical_objref);
-  // increment the ref counts for the object references in objrefs
-  void increment_ref_count(const std::vector<ObjRef> &objrefs);
-  // decrement the ref counts for the object references in objrefs
-  void decrement_ref_count(const std::vector<ObjRef> &objrefs);
+  // tell all of the objstores holding canonical_objref to deallocate it, the
+  // data structures are passed into ensure that the appropriate locks are held.
+  void deallocate_object(ObjRef canonical_objref, const SynchronizedPtr<Synchronized<std::vector<RefCount> > > &reference_counts, const SynchronizedPtr<Synchronized<std::vector<std::vector<ObjRef> > > > &contained_objrefs);
+  // increment the ref counts for the object references in objrefs, the data
+  // structures are passed into ensure that the appropriate locks are held.
+  void increment_ref_count(const std::vector<ObjRef> &objrefs, const SynchronizedPtr<Synchronized<std::vector<RefCount> > > &reference_count);
+  // decrement the ref counts for the object references in objrefs, the data
+  // structures are passed into ensure that the appropriate locks are held.
+  void decrement_ref_count(const std::vector<ObjRef> &objrefs, const SynchronizedPtr<Synchronized<std::vector<RefCount> > > &reference_count, const SynchronizedPtr<Synchronized<std::vector<std::vector<ObjRef> > > > &contained_objrefs);
   // Find all of the object references which are upstream of objref (including objref itself). That is, you can get from everything in objrefs to objref by repeatedly indexing in target_objrefs_.
-  void upstream_objrefs(ObjRef objref, std::vector<ObjRef> &objrefs);
+  void upstream_objrefs(ObjRef objref, std::vector<ObjRef> &objrefs, const SynchronizedPtr<Synchronized<std::vector<std::vector<ObjRef> > > > &reverse_target_objrefs);
   // Find all of the object references that refer to the same object as objref (as best as we can determine at the moment). The information may be incomplete because not all of the aliases may be known.
   void get_equivalent_objrefs(ObjRef objref, std::vector<ObjRef> &equivalent_objrefs);
   // acquires all locks, this should only be used by get_info and for fault tolerance
@@ -154,7 +155,6 @@ private:
   Synchronized<std::vector<std::vector<ObjRef> > > reverse_target_objrefs_;
   // Mapping from canonical objref to list of object stores where the object is stored. Non-canonical (aliased) objrefs should not be used to index objtable_.
   Synchronized<ObjTable> objtable_; // This lock protects objtable_ and objects_in_transit_
-
   // For each object store objstoreid, objects_in_transit_[objstoreid] is a
   // vector of the canonical object references that are being streamed to that
   // object store but are not yet present. Object references are added to this

@@ -31,9 +31,9 @@ Status SchedulerService::SubmitTask(ServerContext* context, const SubmitTaskRequ
       result_objrefs.push_back(result);
     }
     {
-      auto reference_counts = reference_counts_.get(); // we grab this lock because increment_ref_count assumes it has been acquired
-      increment_ref_count(result_objrefs); // We increment once so the objrefs don't go out of scope before we reply to the worker that called SubmitTask. The corresponding decrement will happen in submit_task in raylib.
-      increment_ref_count(result_objrefs); // We increment once so the objrefs don't go out of scope before the task is scheduled on the worker. The corresponding decrement will happen in deserialize_task in raylib.
+      auto reference_counts = reference_counts_.get();
+      increment_ref_count(result_objrefs, reference_counts); // We increment once so the objrefs don't go out of scope before we reply to the worker that called SubmitTask. The corresponding decrement will happen in submit_task in raylib.
+      increment_ref_count(result_objrefs, reference_counts); // We increment once so the objrefs don't go out of scope before the task is scheduled on the worker. The corresponding decrement will happen in deserialize_task in raylib.
     }
 
     auto operation = std::unique_ptr<Operation>(new Operation());
@@ -80,9 +80,7 @@ Status SchedulerService::AliasObjRefs(ServerContext* context, const AliasObjRefs
   (*reverse_target_objrefs_.get())[target_objref].push_back(alias_objref);
   {
     // The corresponding increment was done in register_new_object.
-    auto reference_counts = reference_counts_.get(); // we grab this lock because decrement_ref_count assumes it has been acquired
-    auto contained_objrefs = contained_objrefs_.get(); // we grab this lock because decrement_ref_count assumes it has been acquired
-    decrement_ref_count(std::vector<ObjRef>({alias_objref}));
+    decrement_ref_count(std::vector<ObjRef>({alias_objref}), reference_counts_.get(), contained_objrefs_.get());
   }
   schedule();
   return Status::OK;
@@ -129,10 +127,8 @@ Status SchedulerService::ObjReady(ServerContext* context, const ObjReadyRequest*
     // If this is the first time that ObjReady has been called for this objref,
     // the corresponding increment was done in register_new_object in the
     // scheduler. For all subsequent calls to ObjReady, the corresponding
-    // increment was done in deliver_object_async_if_necessary in the scheduler.
-    auto reference_counts = reference_counts_.get(); // we grab this lock because decrement_ref_count assumes it has been acquired
-    auto contained_objrefs = contained_objrefs_.get(); // we grab this lock because decrement_ref_count assumes it has been acquired
-    decrement_ref_count(std::vector<ObjRef>({objref}));
+    // increment was done in deliver_object_if_necessary in the scheduler.
+    decrement_ref_count(std::vector<ObjRef>({objref}), reference_counts_.get(), contained_objrefs_.get());
   }
   schedule();
   return Status::OK;
@@ -176,8 +172,8 @@ Status SchedulerService::IncrementRefCount(ServerContext* context, const Increme
   for (int i = 0; i < num_objrefs; ++i) {
     objrefs.push_back(request->objref(i));
   }
-  auto reference_counts = reference_counts_.get(); // we grab this lock because increment_ref_count assumes it has been acquired
-  increment_ref_count(objrefs);
+  auto reference_counts = reference_counts_.get();
+  increment_ref_count(objrefs, reference_counts);
   return Status::OK;
 }
 
@@ -188,9 +184,7 @@ Status SchedulerService::DecrementRefCount(ServerContext* context, const Decreme
   for (int i = 0; i < num_objrefs; ++i) {
     objrefs.push_back(request->objref(i));
   }
-  auto reference_counts = reference_counts_.get(); // we grab this lock, because decrement_ref_count assumes it has been acquired
-  auto contained_objrefs = contained_objrefs_.get(); // we grab this lock because decrement_ref_count assumes it has been acquired
-  decrement_ref_count(objrefs);
+  decrement_ref_count(objrefs, reference_counts_.get(), contained_objrefs_.get());
   return Status::OK;
 }
 
@@ -317,7 +311,7 @@ void SchedulerService::deliver_object_async(ObjRef canonical_objref, ObjStoreId 
     // method is called. The corresponding decrement will happen in ObjReady in
     // the scheduler.
     auto reference_counts = reference_counts_.get(); // we grab this lock because increment_ref_count assumes it has been acquired
-    increment_ref_count(std::vector<ObjRef>({canonical_objref}));
+    increment_ref_count(std::vector<ObjRef>({canonical_objref}), reference_counts);
   }
   ClientContext context;
   AckReply reply;
@@ -341,11 +335,13 @@ void SchedulerService::schedule() {
   perform_notify_aliases(); // See what we can do in alias_notification_queue_
 }
 
-// assign_task assumes that computation_graph_lock_ has been acquired.
 // assign_task assumes that the canonical objrefs for its arguments are all ready, that is has_canonical_objref() is true for all of the call's arguments
-void SchedulerService::assign_task(OperationId operationid, WorkerId workerid) {
+void SchedulerService::assign_task(OperationId operationid, WorkerId workerid, const SynchronizedPtr<Synchronized<ComputationGraph> > &computation_graph) {
+  // assign_task takes computation_graph as an argument, which is obtained by
+  // computation_graph_.get(), so we know that the data structure has been
+  // locked.
   ObjStoreId objstoreid = get_store(workerid);
-  const Task& task = computation_graph_.unsafe_get()->get_task(operationid);
+  const Task& task = computation_graph->get_task(operationid);
   ClientContext context;
   ExecuteTaskRequest request;
   ExecuteTaskReply reply;
@@ -447,7 +443,7 @@ ObjRef SchedulerService::register_new_object() {
     // We increment once so the objref doesn't go out of scope before the ObjReady
     // method is called. The corresponding decrement will happen either in
     // ObjReady in the scheduler or in AliasObjRefs in the scheduler.
-    increment_ref_count(std::vector<ObjRef>({objtable_size})); // Note that reference_counts_lock_ is acquired above, as assumed by increment_ref_count
+    increment_ref_count(std::vector<ObjRef>({objtable_size}), reference_counts); // Note that reference_counts_lock_ is acquired above, as assumed by increment_ref_count
   }
   return objtable_size;
 }
@@ -574,7 +570,7 @@ void SchedulerService::schedule_tasks_naively() {
       const Task& task = computation_graph->get_task(operationid);
       auto& workers = (*fntable)[task.name()].workers();
       if (std::binary_search(workers.begin(), workers.end(), workerid) && can_run(task)) {
-        assign_task(operationid, workerid);
+        assign_task(operationid, workerid, computation_graph);
         task_queue->erase(it);
         std::swap((*avail_workers)[i], (*avail_workers)[avail_workers->size() - 1]);
         avail_workers->pop_back();
@@ -625,7 +621,7 @@ void SchedulerService::schedule_tasks_location_aware() {
     }
     // if we found a suitable task
     if (bestit != task_queue->end()) {
-      assign_task(*bestit, workerid);
+      assign_task(*bestit, workerid, computation_graph);
       task_queue->erase(bestit);
       std::swap((*avail_workers)[i], (*avail_workers)[avail_workers->size() - 1]);
       avail_workers->pop_back();
@@ -702,14 +698,12 @@ bool SchedulerService::attempt_notify_alias(ObjStoreId objstoreid, ObjRef alias_
   return true;
 }
 
-void SchedulerService::deallocate_object(ObjRef canonical_objref) {
+void SchedulerService::deallocate_object(ObjRef canonical_objref, const SynchronizedPtr<Synchronized<std::vector<RefCount> > > &reference_counts, const SynchronizedPtr<Synchronized<std::vector<std::vector<ObjRef> > > > &contained_objrefs) {
   // deallocate_object should only be called from decrement_ref_count (note that
   // deallocate_object also recursively calls decrement_ref_count). Both of
-  // these methods require reference_counts_lock_ to have been acquired, and
-  // so the lock must before outside of these methods (it is acquired in
-  // DecrementRefCount). Because we use contained_objrefs_ in this method, we
-  // also require contained_objrefs_lock_ to be acquired outside of
-  // decrement_ref_count.
+  // these methods take reference_counts and contained_objrefs as argumens,
+  // which are obtained by reference_counts_.get() and contained_objrefs_.get(),
+  // so we know that those data structures have been locked
   RAY_LOG(RAY_REFCOUNT, "Deallocating canonical_objref " << canonical_objref << ".");
   {
     auto objtable = objtable_.get();
@@ -726,27 +720,28 @@ void SchedulerService::deallocate_object(ObjRef canonical_objref) {
     }
     locations.clear();
   }
-  decrement_ref_count((*contained_objrefs_.unsafe_get())[canonical_objref]);
+  decrement_ref_count((*contained_objrefs)[canonical_objref], reference_counts, contained_objrefs);
 }
 
-void SchedulerService::increment_ref_count(const std::vector<ObjRef> &objrefs) {
-  // increment_ref_count assumes that reference_counts_lock_ has been acquired already
+void SchedulerService::increment_ref_count(const std::vector<ObjRef> &objrefs, const SynchronizedPtr<Synchronized<std::vector<RefCount> > > &reference_counts) {
+  // increment_ref_count takes reference_counts as an argument, which is
+  // obtained by reference_counts_.get(), so we know that the data structure has
+  // been locked
   for (int i = 0; i < objrefs.size(); ++i) {
     ObjRef objref = objrefs[i];
-    auto reference_counts = reference_counts_.unsafe_get();
     RAY_CHECK_NEQ((*reference_counts)[objref], DEALLOCATED, "Attempting to increment the reference count for objref " << objref << ", but this object appears to have been deallocated already.");
     (*reference_counts)[objref] += 1;
     RAY_LOG(RAY_REFCOUNT, "Incremented ref count for objref " << objref <<". New reference count is " << (*reference_counts)[objref]);
   }
 }
 
-void SchedulerService::decrement_ref_count(const std::vector<ObjRef> &objrefs) {
-  // decrement_ref_count assumes that reference_counts_lock_ and
-  // contained_objrefs_lock_ have been acquired already. contained_objrefs_lock_
-  // is needed inside of deallocate_object
+void SchedulerService::decrement_ref_count(const std::vector<ObjRef> &objrefs, const SynchronizedPtr<Synchronized<std::vector<RefCount> > > &reference_counts, const SynchronizedPtr<Synchronized<std::vector<std::vector<ObjRef> > > > &contained_objrefs) {
+  // decrement_ref_count takes reference_counts and contained_objrefs as
+  // arguments, which are obtained by reference_counts_.get() and
+  // contained_objrefs_.get(), so we know that those data structures have been
+  // locked
   for (int i = 0; i < objrefs.size(); ++i) {
     ObjRef objref = objrefs[i];
-    auto reference_counts = reference_counts_.unsafe_get();
     RAY_CHECK_NEQ((*reference_counts)[objref], DEALLOCATED, "Attempting to decrement the reference count for objref " << objref << ", but this object appears to have been deallocated already.");
     RAY_CHECK_NEQ((*reference_counts)[objref], 0, "Attempting to decrement the reference count for objref " << objref << ", but the reference count for this object is already 0.");
     (*reference_counts)[objref] -= 1;
@@ -764,7 +759,7 @@ void SchedulerService::decrement_ref_count(const std::vector<ObjRef> &objrefs) {
     if (can_deallocate) {
       ObjRef canonical_objref = equivalent_objrefs[0];
       RAY_CHECK(is_canonical(canonical_objref), "canonical_objref is not canonical.");
-      deallocate_object(canonical_objref);
+      deallocate_object(canonical_objref, reference_counts, contained_objrefs);
       for (int j = 0; j < equivalent_objrefs.size(); ++j) {
         (*reference_counts)[equivalent_objrefs[j]] = DEALLOCATED;
       }
@@ -772,12 +767,13 @@ void SchedulerService::decrement_ref_count(const std::vector<ObjRef> &objrefs) {
   }
 }
 
-void SchedulerService::upstream_objrefs(ObjRef objref, std::vector<ObjRef> &objrefs) {
-  // upstream_objrefs assumes that the lock reverse_target_objrefs_lock_ has been acquired
+void SchedulerService::upstream_objrefs(ObjRef objref, std::vector<ObjRef> &objrefs, const SynchronizedPtr<Synchronized<std::vector<std::vector<ObjRef> > > > &reverse_target_objrefs) {
+  // upstream_objrefs takes reverse_target_objrefs as an argument, which is
+  // obtained by reverse_target_objrefs_.get(), so we know the data structure
+  // has been locked.
   objrefs.push_back(objref);
-  auto reverse_target_objrefs = reverse_target_objrefs_.unsafe_get();
   for (int i = 0; i < (*reverse_target_objrefs)[objref].size(); ++i) {
-    upstream_objrefs((*reverse_target_objrefs)[objref][i], objrefs);
+    upstream_objrefs((*reverse_target_objrefs)[objref][i], objrefs, reverse_target_objrefs);
   }
 }
 
@@ -788,8 +784,7 @@ void SchedulerService::get_equivalent_objrefs(ObjRef objref, std::vector<ObjRef>
     RAY_LOG(RAY_ALIAS, "Looping in get_equivalent_objrefs");
     downstream_objref = (*target_objrefs)[downstream_objref];
   }
-  auto reverse_target_objrefs = reverse_target_objrefs_.get();
-  upstream_objrefs(downstream_objref, equivalent_objrefs);
+  upstream_objrefs(downstream_objref, equivalent_objrefs, reverse_target_objrefs_.get());
 }
 
 // This method defines the order in which locks should be acquired.
