@@ -83,7 +83,7 @@ public:
   // checks if the dependencies of the task are met
   bool can_run(const Task& task);
   // register a worker and its object store (if it has not been registered yet)
-  std::pair<WorkerId, ObjStoreId> register_worker(const std::string& worker_address, const std::string& objstore_address);
+  std::pair<WorkerId, ObjStoreId> register_worker(const std::string& worker_address, const std::string& objstore_address, bool is_driver);
   // register a new object with the scheduler and return its object reference
   ObjRef register_new_object();
   // register the location of the object reference in the object table

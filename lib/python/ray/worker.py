@@ -160,10 +160,10 @@ def register_module(module, recursive=False, worker=global_worker):
     # elif recursive and isinstance(val, ModuleType):
     #   register_module(val, recursive, worker)
 
-def connect(scheduler_addr, objstore_addr, worker_addr, worker=global_worker, mode=ray.WORKER_MODE):
+def connect(scheduler_addr, objstore_addr, worker_addr, is_driver=False, worker=global_worker, mode=ray.WORKER_MODE):
   if hasattr(worker, "handle"):
     del worker.handle
-  worker.handle = ray.lib.create_worker(scheduler_addr, objstore_addr, worker_addr)
+  worker.handle = ray.lib.create_worker(scheduler_addr, objstore_addr, worker_addr, is_driver)
   FORMAT = "%(asctime)-15s %(message)s"
   log_basename = os.path.join(LOG_DIRECTORY, (LOG_TIMESTAMP + "-worker-{}").format(datetime.datetime.now(), worker_addr))
   logging.basicConfig(level=logging.DEBUG, format=FORMAT, filename=log_basename + ".log")

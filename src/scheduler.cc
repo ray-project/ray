@@ -103,7 +103,7 @@ Status SchedulerService::RegisterObjStore(ServerContext* context, const Register
 }
 
 Status SchedulerService::RegisterWorker(ServerContext* context, const RegisterWorkerRequest* request, RegisterWorkerReply* reply) {
-  std::pair<WorkerId, ObjStoreId> info = register_worker(request->worker_address(), request->objstore_address());
+  std::pair<WorkerId, ObjStoreId> info = register_worker(request->worker_address(), request->objstore_address(), request->is_driver());
   WorkerId workerid = info.first;
   ObjStoreId objstoreid = info.second;
   RAY_LOG(RAY_INFO, "registered worker with workerid " << workerid);
@@ -139,31 +139,32 @@ Status SchedulerService::ObjReady(ServerContext* context, const ObjReadyRequest*
 }
 
 Status SchedulerService::ReadyForNewTask(ServerContext* context, const ReadyForNewTaskRequest* request, AckReply* reply) {
-  RAY_LOG(RAY_INFO, "worker " << request->workerid() << " is ready for a new task");
+  WorkerId workerid = request->workerid();
+  OperationId operationid = (*workers_.get())[workerid].current_task;
+  RAY_LOG(RAY_INFO, "worker " << workerid << " is ready for a new task");
+  RAY_CHECK(operationid != ROOT_OPERATION, "A driver appears to have called ReadyForNewTask.");
   if (request->has_previous_task_info()) {
-    OperationId operationid;
-    operationid = (*workers_.get())[request->workerid()].current_task;
+    RAY_CHECK(operationid != NO_OPERATION, "request->has_previous_task_info() should not be true if operationid == NO_OPERATION.");
     std::string task_name;
     task_name = computation_graph_.get()->get_task(operationid).name();
     TaskStatus info;
     {
       auto workers = workers_.get();
-      operationid = (*workers)[request->workerid()].current_task;
       info.set_operationid(operationid);
       info.set_function_name(task_name);
-      info.set_worker_address((*workers)[request->workerid()].worker_address);
+      info.set_worker_address((*workers)[workerid].worker_address);
       info.set_error_message(request->previous_task_info().error_message());
-      (*workers)[request->workerid()].current_task = NO_OPERATION; // clear operation ID
+      (*workers)[workerid].current_task = NO_OPERATION; // clear operation ID
     }
     if (!request->previous_task_info().task_succeeded()) {
-      RAY_LOG(RAY_INFO, "Error: Task " << info.operationid() << " executing function " << info.function_name() << " on worker " << request->workerid() << " failed with error message: " << info.error_message());
+      RAY_LOG(RAY_INFO, "Error: Task " << info.operationid() << " executing function " << info.function_name() << " on worker " << workerid << " failed with error message: " << info.error_message());
       failed_tasks_.get()->push_back(info);
     } else {
       successful_tasks_.get()->push_back(info.operationid());
     }
     // TODO(rkn): Handle task failure
   }
-  avail_workers_.get()->push_back(request->workerid());
+  avail_workers_.get()->push_back(workerid);
   schedule();
   return Status::OK;
 }
@@ -223,7 +224,7 @@ Status SchedulerService::TaskInfo(ServerContext* context, const TaskInfoRequest*
   }
   for (int i = 0; i < workers->size(); ++i) {
     OperationId operationid = (*workers)[i].current_task;
-    if (operationid != NO_OPERATION) {
+    if (operationid != NO_OPERATION && operationid != ROOT_OPERATION) {
       const Task& task = computation_graph->get_task(operationid);
       TaskStatus* info = reply->add_running_task();
       info->set_operationid(operationid);
@@ -337,7 +338,7 @@ bool SchedulerService::can_run(const Task& task) {
   return true;
 }
 
-std::pair<WorkerId, ObjStoreId> SchedulerService::register_worker(const std::string& worker_address, const std::string& objstore_address) {
+std::pair<WorkerId, ObjStoreId> SchedulerService::register_worker(const std::string& worker_address, const std::string& objstore_address, bool is_driver) {
   RAY_LOG(RAY_INFO, "registering worker " << worker_address << " connected to object store " << objstore_address);
   ObjStoreId objstoreid = std::numeric_limits<size_t>::max();
   // TODO: HACK: num_attempts is a hack
@@ -363,7 +364,11 @@ std::pair<WorkerId, ObjStoreId> SchedulerService::register_worker(const std::str
     (*workers)[workerid].objstoreid = objstoreid;
     (*workers)[workerid].worker_stub = WorkerService::NewStub(channel);
     (*workers)[workerid].worker_address = worker_address;
-    (*workers)[workerid].current_task = NO_OPERATION;
+    if (is_driver) {
+      (*workers)[workerid].current_task = ROOT_OPERATION; // We use this field to identify which workers are drivers.
+    } else {
+      (*workers)[workerid].current_task = NO_OPERATION;
+    }
   }
   return std::make_pair(workerid, objstoreid);
 }

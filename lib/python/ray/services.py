@@ -136,11 +136,11 @@ def start_services_local(num_objstores=1, num_workers_per_objstore=0, worker_pat
     driver_workers = []
     for i in range(num_objstores):
       driver_worker = worker.Worker()
-      ray.connect(scheduler_address, objstore_address, address(IP_ADDRESS, new_worker_port()), driver_worker)
+      ray.connect(scheduler_address, objstore_address, address(IP_ADDRESS, new_worker_port()), is_driver=True, worker=driver_worker)
       driver_workers.append(driver_worker)
       drivers.append(driver_worker)
     time.sleep(0.5)
     return driver_workers
   else:
-    ray.connect(scheduler_address, objstore_addresses[0], address(IP_ADDRESS, new_worker_port()), mode=driver_mode)
+    ray.connect(scheduler_address, objstore_addresses[0], address(IP_ADDRESS, new_worker_port()), is_driver=True, mode=driver_mode)
     time.sleep(0.5)
