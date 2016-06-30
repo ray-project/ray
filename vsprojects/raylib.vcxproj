@@ -44,6 +44,7 @@
   <ItemDefinitionGroup>
     <Link>
       <AdditionalDependencies>python27.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <SubSystem>Console</SubSystem>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
