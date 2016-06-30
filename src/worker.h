@@ -45,7 +45,7 @@ class Worker {
   // and try to resubmit the task to the scheduler up to max_retries more times.
   SubmitTaskReply submit_task(SubmitTaskRequest* request, int max_retries = 120, int retry_wait_milliseconds = 500);
   // send request to the scheduler to register this worker
-  void register_worker(const std::string& worker_address, const std::string& objstore_address);
+  void register_worker(const std::string& worker_address, const std::string& objstore_address, bool is_driver);
   // get a new object reference that is registered with the scheduler
   ObjRef get_objref();
   // request an object to be delivered to the local object store

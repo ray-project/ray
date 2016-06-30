@@ -594,13 +594,15 @@ PyObject* create_worker(PyObject* self, PyObject* args) {
   const char* scheduler_addr;
   const char* objstore_addr;
   const char* worker_addr;
-  if (!PyArg_ParseTuple(args, "sss", &scheduler_addr, &objstore_addr, &worker_addr)) {
+  PyObject* is_driver_obj;
+  if (!PyArg_ParseTuple(args, "sssO", &scheduler_addr, &objstore_addr, &worker_addr, &is_driver_obj)) {
     return NULL;
   }
+  bool is_driver = PyObject_IsTrue(is_driver_obj);
   auto scheduler_channel = grpc::CreateChannel(scheduler_addr, grpc::InsecureChannelCredentials());
   auto objstore_channel = grpc::CreateChannel(objstore_addr, grpc::InsecureChannelCredentials());
   Worker* worker = new Worker(std::string(worker_addr), scheduler_channel, objstore_channel);
-  worker->register_worker(std::string(worker_addr), std::string(objstore_addr));
+  worker->register_worker(std::string(worker_addr), std::string(objstore_addr), is_driver);
   return PyCapsule_New(static_cast<void*>(worker), "worker", &WorkerCapsule_Destructor);
 }
 

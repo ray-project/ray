@@ -43,10 +43,11 @@ SubmitTaskReply Worker::submit_task(SubmitTaskRequest* request, int max_retries,
   return reply;
 }
 
-void Worker::register_worker(const std::string& worker_address, const std::string& objstore_address) {
+void Worker::register_worker(const std::string& worker_address, const std::string& objstore_address, bool is_driver) {
   RegisterWorkerRequest request;
   request.set_worker_address(worker_address);
   request.set_objstore_address(objstore_address);
+  request.set_is_driver(is_driver);
   RegisterWorkerReply reply;
   ClientContext context;
   Status status = scheduler_stub_->RegisterWorker(&context, request, &reply);
