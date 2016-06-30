@@ -48,11 +48,11 @@ void MemorySegmentPool::open_segment(SegmentId segmentid, size_t size) {
   std::string segment_name = get_segment_name(segmentid);
   if (create_mode_) {
     assert(size > 0);
-    shared_memory_object::remove(segment_name.c_str()); // remove segment if it has not been properly removed from last run
+    bip::shared_memory_object::remove(segment_name.c_str()); // remove segment if it has not been properly removed from last run
     size_t new_size = (size / page_size_ + 2) * page_size_; // additional room for boost's bookkeeping
-    segments_[segmentid] = std::make_pair(std::unique_ptr<managed_shared_memory>(new managed_shared_memory(create_only, segment_name.c_str(), new_size)), SegmentStatusType::OPENED);
+    segments_[segmentid] = std::make_pair(std::unique_ptr<bip::managed_shared_memory>(new bip::managed_shared_memory(bip::create_only, segment_name.c_str(), new_size)), SegmentStatusType::OPENED);
   } else {
-    segments_[segmentid] = std::make_pair(std::unique_ptr<managed_shared_memory>(new managed_shared_memory(open_only, segment_name.c_str())), SegmentStatusType::OPENED);
+    segments_[segmentid] = std::make_pair(std::unique_ptr<bip::managed_shared_memory>(new bip::managed_shared_memory(bip::open_only, segment_name.c_str())), SegmentStatusType::OPENED);
   }
 }
 
@@ -64,7 +64,7 @@ void MemorySegmentPool::unmap_segment(SegmentId segmentid) {
 void MemorySegmentPool::close_segment(SegmentId segmentid) {
   RAY_LOG(RAY_DEBUG, "closing segmentid " << segmentid);
   std::string segment_name = get_segment_name(segmentid);
-  shared_memory_object::remove(segment_name.c_str());
+  bip::shared_memory_object::remove(segment_name.c_str());
   segments_[segmentid].first.reset();
   segments_[segmentid].second = SegmentStatusType::CLOSED;
 }
@@ -93,7 +93,7 @@ uint8_t* MemorySegmentPool::get_address(ObjHandle pointer) {
   if (!create_mode_) {
     open_segment(pointer.segmentid());
   }
-  managed_shared_memory* segment = segments_[pointer.segmentid()].first.get();
+  bip::managed_shared_memory* segment = segments_[pointer.segmentid()].first.get();
   return static_cast<uint8_t*>(segment->get_address_from_handle(pointer.ipcpointer()));
 }
 
@@ -106,6 +106,6 @@ MemorySegmentPool::~MemorySegmentPool() {
   for (size_t segmentid = 0; segmentid < segments_.size(); ++segmentid) {
     std::string segment_name = get_segment_name(segmentid);
     segments_[segmentid].first.reset();
-    shared_memory_object::remove(segment_name.c_str());
+    bip::shared_memory_object::remove(segment_name.c_str());
   }
 }
