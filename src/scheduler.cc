@@ -80,7 +80,9 @@ Status SchedulerService::AliasObjRefs(ServerContext* context, const AliasObjRefs
   (*reverse_target_objrefs_.get())[target_objref].push_back(alias_objref);
   {
     // The corresponding increment was done in register_new_object.
-    decrement_ref_count(std::vector<ObjRef>({alias_objref}), reference_counts_.get(), contained_objrefs_.get());
+    auto reference_counts = reference_counts_.get(); // we grab this lock because decrement_ref_count assumes it has been acquired
+    auto contained_objrefs = contained_objrefs_.get(); // we grab this lock because decrement_ref_count assumes it has been acquired
+    decrement_ref_count(std::vector<ObjRef>({alias_objref}), reference_counts, contained_objrefs);
   }
   schedule();
   return Status::OK;
@@ -128,7 +130,9 @@ Status SchedulerService::ObjReady(ServerContext* context, const ObjReadyRequest*
     // the corresponding increment was done in register_new_object in the
     // scheduler. For all subsequent calls to ObjReady, the corresponding
     // increment was done in deliver_object_if_necessary in the scheduler.
-    decrement_ref_count(std::vector<ObjRef>({objref}), reference_counts_.get(), contained_objrefs_.get());
+    auto reference_counts = reference_counts_.get(); // we grab this lock because decrement_ref_count assumes it has been acquired
+    auto contained_objrefs = contained_objrefs_.get(); // we grab this lock because decrement_ref_count assumes it has been acquired
+    decrement_ref_count(std::vector<ObjRef>({objref}), reference_counts, contained_objrefs);
   }
   schedule();
   return Status::OK;
@@ -184,7 +188,9 @@ Status SchedulerService::DecrementRefCount(ServerContext* context, const Decreme
   for (int i = 0; i < num_objrefs; ++i) {
     objrefs.push_back(request->objref(i));
   }
-  decrement_ref_count(objrefs, reference_counts_.get(), contained_objrefs_.get());
+  auto reference_counts = reference_counts_.get(); // we grab this lock, because decrement_ref_count assumes it has been acquired
+  auto contained_objrefs = contained_objrefs_.get(); // we grab this lock because decrement_ref_count assumes it has been acquired
+  decrement_ref_count(objrefs, reference_counts, contained_objrefs);
   return Status::OK;
 }
 
