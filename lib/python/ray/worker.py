@@ -14,6 +14,7 @@ from ray.config import LOG_DIRECTORY, LOG_TIMESTAMP
 import serialization
 import ray.internal.graph_pb2
 import ray.graph
+import services
 
 class RayFailedObject(object):
   """If a task throws an exception during execution, a RayFailedObject is stored in the object store for each of the tasks outputs."""
@@ -196,15 +197,18 @@ def register_module(module, recursive=False, worker=global_worker):
     # elif recursive and isinstance(val, ModuleType):
     #   register_module(val, recursive, worker)
 
-def connect(scheduler_addr, objstore_addr, worker_addr, is_driver=False, worker=global_worker, mode=ray.WORKER_MODE):
+def connect(scheduler_address, objstore_address, worker_address, is_driver=False, worker=global_worker, mode=ray.WORKER_MODE):
   if hasattr(worker, "handle"):
     del worker.handle
-  worker.handle = ray.lib.create_worker(scheduler_addr, objstore_addr, worker_addr, is_driver)
+  worker.scheduler_address = scheduler_address
+  worker.objstore_address = objstore_address
+  worker.worker_address = worker_address
+  worker.handle = ray.lib.create_worker(worker.scheduler_address, worker.objstore_address, worker.worker_address, is_driver)
+  worker.set_mode(mode)
   FORMAT = "%(asctime)-15s %(message)s"
-  log_basename = os.path.join(LOG_DIRECTORY, (LOG_TIMESTAMP + "-worker-{}").format(datetime.datetime.now(), worker_addr))
+  log_basename = os.path.join(LOG_DIRECTORY, (LOG_TIMESTAMP + "-worker-{}").format(datetime.datetime.now(), worker_address))
   logging.basicConfig(level=logging.DEBUG, format=FORMAT, filename=log_basename + ".log")
   ray.lib.set_log_config(log_basename + "-c++.log")
-  worker.set_mode(mode)
 
 def disconnect(worker=global_worker):
   ray.lib.disconnect(worker.handle)
@@ -230,10 +234,26 @@ def put(value, worker=global_worker):
   return objref
 
 def kill_workers(worker=global_worker):
+  """
+  This method kills all of the workers in the cluster. It does not kill drivers.
+  """
   success = ray.lib.kill_workers(worker.handle)
   if not success:
     print "Could not kill all workers; check that there are no tasks currently running."
   return success
+
+def restart_workers_local(num_workers, worker_path, worker=global_worker):
+  """
+  This method kills all of the workers and starts new workers locally on the
+    same node as the driver. This is intended for use in the case where Ray is
+    being used on a single node.
+
+  :param num_workers: the number of workers to be started
+  :param worker_path: path of the source code that will be run on the worker
+  """
+  if not kill_workers(worker):
+    return False
+  services.start_workers(worker.scheduler_address, worker.objstore_address, num_workers, worker_path)
 
 def main_loop(worker=global_worker):
   if not ray.lib.connected(worker.handle):

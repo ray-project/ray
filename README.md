@@ -72,11 +72,16 @@ appropriate values. This assumes that you can connect to each IP address in
     ssh -i key.pem ubuntu@<ip-address>
     ```
 4. The previous command should open a Python interpreter. To install Ray on the
-cluster, run `install_ray(node_addresses)` in the interpreter. The interpreter
-should block until the installation has completed.
+cluster, run `install_ray()` in the interpreter. The interpreter should block
+until the installation has completed.
 5. To check that the installation succeeded, you can ssh to each node, cd into
 the directory `ray/test/`, and run the tests (e.g., `python runtest.py`).
 6. Now that Ray has been installed, you can start the cluster (the scheduler,
-object stores, and workers) with the command `start_ray(node_addresses,
-"/home/ubuntu/ray/test/test_worker.py")`, where the second argument is the path
-on each node in the cluster to the worker code that you would like to use.
+object stores, and workers) with the command
+`start_ray("/home/ubuntu/ray/scripts/default_worker.py")`, where the argument is
+the path on each node in the cluster to the worker code that you would like to
+use. The workers can be restarted with
+`restart_workers("/home/ubuntu/ray/scripts/default_worker.py")`, for example if
+you wish to update the application code running on the workers. The cluster
+processes (the scheduler, the object stores, and the workers) can be stopped
+with `stop_ray()`.

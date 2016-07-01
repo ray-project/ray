@@ -5,7 +5,7 @@ import time
 import datetime
 
 import ray
-import ray.worker as worker
+import worker
 from ray.config import LOG_DIRECTORY, LOG_TIMESTAMP
 
 _services_env = os.environ.copy()
@@ -94,7 +94,7 @@ def start_node(scheduler_address, node_ip_address, num_workers, worker_path=None
   :param scheduler_address: ip address and port of the scheduler (which may run on a different node)
   :param node_ip_address: ip address (without port) of the node this function is run on
   :param num_workers: the number of workers to be started on this node
-  :worker_path: path of the source code that will be run on the worker
+  :param worker_path: path of the source code that will be run on the worker
   """
   objstore_address = address(node_ip_address, new_objstore_port())
   start_objstore(scheduler_address, objstore_address)
@@ -102,8 +102,25 @@ def start_node(scheduler_address, node_ip_address, num_workers, worker_path=None
   for _ in range(num_workers):
     start_worker(worker_path, scheduler_address, objstore_address, address(node_ip_address, new_worker_port()))
   time.sleep(0.3)
-  ray.connect(scheduler_address, objstore_address, address(node_ip_address, new_worker_port()))
+  ray.connect(scheduler_address, objstore_address, address(node_ip_address, new_worker_port()), is_driver=True)
   time.sleep(0.5)
+
+def start_workers(scheduler_address, objstore_address, num_workers, worker_path):
+  """
+  Start a new set of workers on this node. This assumes that the scheduler is
+    already running and that the object store on this node is already running.
+    The intended use case is that a developer wants to update the code running
+    on the worker processes so first kills all of the workers and then runs this
+    method.
+
+    :param scheduler_address: ip address and port of the scheduler (which may run on a different node)
+    :param objstore_address: ip address and port of the object store (which runs on the same node)
+    :param num_workers: the number of workers to be started on this node
+    :param worker_path: path of the source code that will be run on the worker
+  """
+  node_ip_address = objstore_address.split(":")[0]
+  for _ in range(num_workers):
+    start_worker(worker_path, scheduler_address, objstore_address, address(node_ip_address, new_worker_port()))
 
 # driver_mode should equal ray.SCRIPT_MODE if this is being run in a script and
 # ray.SHELL_MODE if it is being used interactively in a shell. It can also equal
