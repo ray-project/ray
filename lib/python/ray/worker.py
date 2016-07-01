@@ -12,6 +12,8 @@ import copy
 import ray
 from ray.config import LOG_DIRECTORY, LOG_TIMESTAMP
 import serialization
+import ray.internal.graph_pb2
+import ray.graph
 
 class RayFailedObject(object):
   """If a task throws an exception during execution, a RayFailedObject is stored in the object store for each of the tasks outputs."""
@@ -143,8 +145,42 @@ def print_task_info(task_data, mode):
 def scheduler_info(worker=global_worker):
   return ray.lib.scheduler_info(worker.handle);
 
-def dump_computation_graph(file_name, worker=global_worker):
-  ray.lib.dump_computation_graph(worker.handle, file_name)
+def visualize_computation_graph(file_path=None, view=False, worker=global_worker):
+  """
+  Write the computation graph to a pdf file.
+
+  Args:
+    file_path: A .pdf file that the rendered computation graph will be written to
+
+    view: If true, the result the python graphviz package will try to open the
+      result in a viewer
+
+  Example:
+    In ray/scripts, call "python shell.py" and paste in the following code.
+
+    x = da.zeros([20, 20])
+    y = da.zeros([20, 20])
+    z = da.dot(x, y)
+
+    ray.visualize_computation_graph("computation_graph.pdf")
+  """
+
+  if file_path is None:
+    file_path = os.path.join(ray.config.LOG_DIRECTORY, (ray.config.LOG_TIMESTAMP + "-computation-graph.pdf").format(datetime.datetime.now()))
+
+  base_path, extension = os.path.splitext(file_path)
+  if extension != ".pdf":
+    raise Exception("File path must be a .pdf file")
+  proto_path = base_path + ".binaryproto"
+
+  ray.lib.dump_computation_graph(worker.handle, proto_path)
+  graph = ray.internal.graph_pb2.CompGraph()
+  graph.ParseFromString(open(proto_path).read())
+  ray.graph.graph_to_graphviz(graph).render(base_path, view=view)
+
+  print "Wrote graph dot description to file {}".format(base_path)
+  print "Wrote graph protocol buffer description to file {}".format(proto_path)
+  print "Wrote computation graph to file {}.pdf".format(base_path)
 
 def task_info(worker=global_worker):
   """Tell the scheduler to return task information. Currently includes a list of all failed tasks since the start of the cluster."""
