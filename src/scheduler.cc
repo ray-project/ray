@@ -49,7 +49,10 @@ Status SchedulerService::SubmitTask(ServerContext* context, const SubmitTaskRequ
 
 Status SchedulerService::PutObj(ServerContext* context, const PutObjRequest* request, PutObjReply* reply) {
   ObjRef objref = register_new_object();
-  ObjStoreId objstoreid = get_store(request->workerid());
+  auto operation = std::unique_ptr<Operation>(new Operation());
+  operation->mutable_put()->set_objref(objref);
+  operation->set_creator_operationid((*workers_.get())[request->workerid()].current_task);
+  computation_graph_.get()->add_operation(std::move(operation));
   reply->set_objref(objref);
   schedule();
   return Status::OK;
@@ -59,6 +62,10 @@ Status SchedulerService::RequestObj(ServerContext* context, const RequestObjRequ
   size_t size = objtable_.get()->size();
   ObjRef objref = request->objref();
   RAY_CHECK_LT(objref, size, "internal error: no object with objref " << objref << " exists");
+  auto operation = std::unique_ptr<Operation>(new Operation());
+  operation->mutable_get()->set_objref(objref);
+  operation->set_creator_operationid((*workers_.get())[request->workerid()].current_task);
+  computation_graph_.get()->add_operation(std::move(operation));
   get_queue_.get()->push_back(std::make_pair(request->workerid(), objref));
   schedule();
   return Status::OK;
