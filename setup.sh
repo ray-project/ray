@@ -30,10 +30,10 @@ fi
 
 if [[ $platform == "linux" ]]; then
   sudo apt-get update
-  sudo apt-get install -y git cmake build-essential autoconf curl libtool python-dev python-numpy python-pip libboost-all-dev unzip libjpeg8-dev
+  sudo apt-get install -y git cmake build-essential autoconf curl libtool python-dev python-numpy python-pip libboost-all-dev unzip libjpeg8-dev graphviz
   sudo pip install -r requirements.txt
 elif [[ $platform == "macosx" ]]; then
-  brew install git cmake automake autoconf libtool boost libjpeg
+  brew install git cmake automake autoconf libtool boost libjpeg graphviz
   sudo easy_install pip
   sudo pip install numpy
   sudo pip install -r requirements.txt --ignore-installed six
