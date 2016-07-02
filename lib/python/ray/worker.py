@@ -214,6 +214,12 @@ def disconnect(worker=global_worker):
   ray.lib.disconnect(worker.handle)
 
 def get(objref, worker=global_worker):
+  """
+  Get a remote object from an object store.
+
+  :param objref: Object reference to the object you want to get
+  :rtype: A Python value
+  """
   if worker.mode == ray.PYTHON_MODE:
     return objref # In ray.PYTHON_MODE, ray.get is the identity operation (the input will actually be a value not an objref)
   ray.lib.request_object(worker.handle, objref)
@@ -225,6 +231,12 @@ def get(objref, worker=global_worker):
   return value
 
 def put(value, worker=global_worker):
+  """
+  Store an object in the object store.
+
+  :param value: The Python object to be stored
+  :rtype: Object reference
+  """
   if worker.mode == ray.PYTHON_MODE:
     return value # In ray.PYTHON_MODE, ray.put is the identity operation
   objref = ray.lib.get_objref(worker.handle)
@@ -286,6 +298,12 @@ def main_loop(worker=global_worker):
     process_task(task)
 
 def remote(arg_types, return_types, worker=global_worker):
+  """
+  This is a decorator to indicate that a Python function is to be executed remotely.
+
+  :param arg_types: List of Python types of the function arguments
+  :param return_types: List of Python types of the return values
+  """
   def remote_decorator(func):
     def func_executor(arguments):
       """This is what gets executed remotely on a worker after a remote function is scheduled by the scheduler."""
