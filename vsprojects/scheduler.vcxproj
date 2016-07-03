@@ -37,6 +37,11 @@
     <Import Project="base.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+  <ItemDefinitionGroup>
+    <Link>
+      <SubSystem>Console</SubSystem>
+    </Link>
+  </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="..\src\computation_graph.h" />
     <ClInclude Include="..\src\scheduler.h" />
