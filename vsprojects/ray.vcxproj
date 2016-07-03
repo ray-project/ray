@@ -38,6 +38,11 @@
     <Import Project="Base.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+  <ItemDefinitionGroup>
+    <Link>
+      <SubSystem>Console</SubSystem>
+    </Link>
+  </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\build\generated\graph.grpc.pb.cc" />
     <ClCompile Include="..\build\generated\graph.pb.cc" />
@@ -75,22 +80,28 @@
       <FileType>Document</FileType>
       <Command>Path $(OutDir);%PATH%
 protoc --proto_path="$(SolutionDir)protos" --cpp_out="$(ProjectDir)..\build\generated" "%(FullPath)"
-protoc --proto_path="$(SolutionDir)protos" --plugin=protoc-gen-grpc="$(OutDir)grpc_cpp_plugin.exe" --grpc_out="$(ProjectDir)..\build\generated" "%(FullPath)"</Command>
-      <Outputs>$(ProjectDir)..\build\generated\%(Filename).pb.h;$(ProjectDir)..\build\generated\%(Filename).pb.cc;$(ProjectDir)..\build\generated\%(Filename).grpc.pb.h;$(ProjectDir)..\build\generated\%(Filename).grpc.pb.cc;%(Outputs)</Outputs>
+protoc --proto_path="$(SolutionDir)protos" --plugin=protoc-gen-grpc="$(OutDir)grpc_cpp_plugin.exe" --grpc_out="$(ProjectDir)..\build\generated" "%(FullPath)"
+protoc --proto_path="$(SolutionDir)protos" --python_out="$(ProjectDir)..\lib\python\ray\internal" "%(FullPath)"
+</Command>
+      <Outputs>$(ProjectDir)..\build\generated\%(Filename).pb.h;$(ProjectDir)..\build\generated\%(Filename).pb.cc;$(ProjectDir)..\build\generated\%(Filename).grpc.pb.h;$(ProjectDir)..\build\generated\%(Filename).grpc.pb.cc;$(ProjectDir)..\lib\python\ray\internal\%(Filename)_pb2.py;%(Outputs)</Outputs>
     </CustomBuild>
     <CustomBuild Include="..\protos\types.proto">
       <FileType>Document</FileType>
       <Command>Path $(OutDir);%PATH%
 protoc --proto_path="$(SolutionDir)protos" --cpp_out="$(ProjectDir)..\build\generated" "%(FullPath)"
-protoc --proto_path="$(SolutionDir)protos" --plugin=protoc-gen-grpc="$(OutDir)grpc_cpp_plugin.exe" --grpc_out="$(ProjectDir)..\build\generated" "%(FullPath)"</Command>
-      <Outputs>$(ProjectDir)..\build\generated\%(Filename).pb.h;$(ProjectDir)..\build\generated\%(Filename).pb.cc;$(ProjectDir)..\build\generated\%(Filename).grpc.pb.h;$(ProjectDir)..\build\generated\%(Filename).grpc.pb.cc;%(Outputs)</Outputs>
+protoc --proto_path="$(SolutionDir)protos" --plugin=protoc-gen-grpc="$(OutDir)grpc_cpp_plugin.exe" --grpc_out="$(ProjectDir)..\build\generated" "%(FullPath)"
+protoc --proto_path="$(SolutionDir)protos" --python_out="$(ProjectDir)..\lib\python\ray\internal" "%(FullPath)"
+</Command>
+      <Outputs>$(ProjectDir)..\build\generated\%(Filename).pb.h;$(ProjectDir)..\build\generated\%(Filename).pb.cc;$(ProjectDir)..\build\generated\%(Filename).grpc.pb.h;$(ProjectDir)..\build\generated\%(Filename).grpc.pb.cc;$(ProjectDir)..\lib\python\ray\internal\%(Filename)_pb2.py;%(Outputs)</Outputs>
     </CustomBuild>
     <CustomBuild Include="..\protos\graph.proto">
       <FileType>Document</FileType>
       <Command>Path $(OutDir);%PATH%
 protoc --proto_path="$(SolutionDir)protos" --cpp_out="$(ProjectDir)..\build\generated" "%(FullPath)"
-protoc --proto_path="$(SolutionDir)protos" --plugin=protoc-gen-grpc="$(OutDir)grpc_cpp_plugin.exe" --grpc_out="$(ProjectDir)..\build\generated" "%(FullPath)"</Command>
-      <Outputs>$(ProjectDir)..\build\generated\%(Filename).pb.h;$(ProjectDir)..\build\generated\%(Filename).pb.cc;$(ProjectDir)..\build\generated\%(Filename).grpc.pb.h;$(ProjectDir)..\build\generated\%(Filename).grpc.pb.cc;%(Outputs)</Outputs>
+protoc --proto_path="$(SolutionDir)protos" --plugin=protoc-gen-grpc="$(OutDir)grpc_cpp_plugin.exe" --grpc_out="$(ProjectDir)..\build\generated" "%(FullPath)"
+protoc --proto_path="$(SolutionDir)protos" --python_out="$(ProjectDir)..\lib\python\ray\internal" "%(FullPath)"
+</Command>
+      <Outputs>$(ProjectDir)..\build\generated\%(Filename).pb.h;$(ProjectDir)..\build\generated\%(Filename).pb.cc;$(ProjectDir)..\build\generated\%(Filename).grpc.pb.h;$(ProjectDir)..\build\generated\%(Filename).grpc.pb.cc;$(ProjectDir)..\lib\python\ray\internal\%(Filename)_pb2.py;%(Outputs)</Outputs>
     </CustomBuild>
     <None Include="packages.config" />
   </ItemGroup>
