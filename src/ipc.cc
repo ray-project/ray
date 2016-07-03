@@ -56,10 +56,10 @@ MessageQueue<>& MessageQueue<>::operator=(MessageQueue<>&& other) {
 bool MessageQueue<>::connect(const std::string& name, bool create, size_t buffer_size) {
   std::string name_translated = "ray-{BC200A09-2465-431D-AEC7-2F8530B04535}-" + name;
 #if defined(WIN32) || defined(_WIN32)
-  name_translated.insert(0, "\\\\.\\pipe\\");
+  name_translated.insert(0, "\\\\.\\mailslot\\");
   std::replace(name_translated.begin(), name_translated.end(), '/', '\\');
   if (create) {
-    handle_ = reinterpret_cast<intptr_t>(CreateNamedPipeA(name_translated.c_str(), (create ? FILE_FLAG_FIRST_PIPE_INSTANCE : 0) | PIPE_ACCESS_DUPLEX, PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS, 1, static_cast<DWORD>(buffer_size), static_cast<DWORD>(buffer_size), INFINITE, NULL));
+    handle_ = reinterpret_cast<intptr_t>(CreateMailslotA(name_translated.c_str(), 0, MAILSLOT_WAIT_FOREVER, NULL));
   } else {
     handle_ = reinterpret_cast<intptr_t>(CreateFileA(name_translated.c_str(), GENERIC_ALL, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL));
   }
@@ -95,7 +95,7 @@ bool MessageQueue<>::send(const unsigned char* object, size_t size) {
 #if defined(WIN32) || defined(_WIN32)
     DWORD transmitted;
     if (!WriteFile(reinterpret_cast<HANDLE>(handle_), object, static_cast<DWORD>(size), &transmitted, NULL)) {
-      RAY_LOG(RAY_INFO, "GetLastError() == " << GetLastError());
+      RAY_LOG(RAY_INFO, "WriteFile(" << reinterpret_cast<void *>(handle_) << ") resulted in GetLastError() == " << GetLastError());
       break;
     }
 #else
@@ -116,7 +116,7 @@ bool MessageQueue<>::receive(unsigned char* object, size_t size) {
 #if defined(WIN32) || defined(_WIN32)
     DWORD transmitted;
     if (!ReadFile(reinterpret_cast<HANDLE>(handle_), object, static_cast<DWORD>(size), &transmitted, NULL)) {
-      RAY_LOG(RAY_INFO, "GetLastError() == " << GetLastError());
+      RAY_LOG(RAY_INFO, "ReadFile(" << reinterpret_cast<void *>(handle_) << ") resulted in GetLastError() == " << GetLastError());
       break;
     }
 #else
@@ -205,7 +205,7 @@ uint8_t* MemorySegmentPool::get_address(ObjHandle pointer) {
 
 // returns the name of the segment
 std::string MemorySegmentPool::get_segment_name(SegmentId segmentid) {
-  return std::string("objstore:") + std::to_string(objstoreid_) + std::string(":segment:") + std::to_string(segmentid);
+  return std::string("ray-{BC200A09-2465-431D-AEC7-2F8530B04535}-objstore-") + std::to_string(objstoreid_) + std::string("-segment-") + std::to_string(segmentid);
 }
 
 MemorySegmentPool::~MemorySegmentPool() {
