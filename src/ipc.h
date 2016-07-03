@@ -4,6 +4,23 @@
 #include <iostream>
 #include <limits>
 
+#if defined(WIN32) || defined(_WIN32)
+namespace boost {
+  namespace interprocess {
+    namespace ipcdetail {
+      template<typename C, bool LazyInit = true, bool Phoenix = false>
+      class windows_intermodule_singleton;
+      struct windows_bootstamp;
+      template<>
+      class windows_intermodule_singleton<windows_bootstamp> {
+      public:
+        static windows_bootstamp get();
+      };
+    }
+  }
+}
+#endif
+
 #include <boost/interprocess/managed_shared_memory.hpp>
 
 #include <arrow/api.h>

@@ -215,3 +215,16 @@ MemorySegmentPool::~MemorySegmentPool() {
     bip::shared_memory_object::remove(segment_name.c_str());
   }
 }
+
+#if defined(WIN32) || defined(_WIN32)
+namespace boost {
+  namespace interprocess {
+    namespace ipcdetail {
+      windows_bootstamp windows_intermodule_singleton<windows_bootstamp>::get() {
+        // HACK: Only do this for Windows as there seems to be no better workaround. Possibly undefined behavior!
+        return reinterpret_cast<windows_bootstamp const &>(std::string("BOOTSTAMP"));
+      }
+    }
+  }
+}
+#endif
