@@ -349,7 +349,7 @@ void SchedulerService::schedule() {
 }
 
 // assign_task assumes that the canonical objrefs for its arguments are all ready, that is has_canonical_objref() is true for all of the call's arguments
-void SchedulerService::assign_task(OperationId operationid, WorkerId workerid, const SynchronizedPtr<Synchronized<ComputationGraph> > &computation_graph) {
+void SchedulerService::assign_task(OperationId operationid, WorkerId workerid, const SynchronizedPtr<ComputationGraph> &computation_graph) {
   // assign_task takes computation_graph as an argument, which is obtained by
   // computation_graph_.get(), so we know that the data structure has been
   // locked.
@@ -711,7 +711,7 @@ bool SchedulerService::attempt_notify_alias(ObjStoreId objstoreid, ObjRef alias_
   return true;
 }
 
-void SchedulerService::deallocate_object(ObjRef canonical_objref, const SynchronizedPtr<Synchronized<std::vector<RefCount> > > &reference_counts, const SynchronizedPtr<Synchronized<std::vector<std::vector<ObjRef> > > > &contained_objrefs) {
+void SchedulerService::deallocate_object(ObjRef canonical_objref, const SynchronizedPtr<std::vector<RefCount> > &reference_counts, const SynchronizedPtr<std::vector<std::vector<ObjRef> > > &contained_objrefs) {
   // deallocate_object should only be called from decrement_ref_count (note that
   // deallocate_object also recursively calls decrement_ref_count). Both of
   // these methods take reference_counts and contained_objrefs as argumens,
@@ -736,7 +736,7 @@ void SchedulerService::deallocate_object(ObjRef canonical_objref, const Synchron
   decrement_ref_count((*contained_objrefs)[canonical_objref], reference_counts, contained_objrefs);
 }
 
-void SchedulerService::increment_ref_count(const std::vector<ObjRef> &objrefs, const SynchronizedPtr<Synchronized<std::vector<RefCount> > > &reference_counts) {
+void SchedulerService::increment_ref_count(const std::vector<ObjRef> &objrefs, const SynchronizedPtr<std::vector<RefCount> > &reference_counts) {
   // increment_ref_count takes reference_counts as an argument, which is
   // obtained by reference_counts_.get(), so we know that the data structure has
   // been locked
@@ -748,7 +748,7 @@ void SchedulerService::increment_ref_count(const std::vector<ObjRef> &objrefs, c
   }
 }
 
-void SchedulerService::decrement_ref_count(const std::vector<ObjRef> &objrefs, const SynchronizedPtr<Synchronized<std::vector<RefCount> > > &reference_counts, const SynchronizedPtr<Synchronized<std::vector<std::vector<ObjRef> > > > &contained_objrefs) {
+void SchedulerService::decrement_ref_count(const std::vector<ObjRef> &objrefs, const SynchronizedPtr<std::vector<RefCount> > &reference_counts, const SynchronizedPtr<std::vector<std::vector<ObjRef> > > &contained_objrefs) {
   // decrement_ref_count takes reference_counts and contained_objrefs as
   // arguments, which are obtained by reference_counts_.get() and
   // contained_objrefs_.get(), so we know that those data structures have been
@@ -780,7 +780,7 @@ void SchedulerService::decrement_ref_count(const std::vector<ObjRef> &objrefs, c
   }
 }
 
-void SchedulerService::upstream_objrefs(ObjRef objref, std::vector<ObjRef> &objrefs, const SynchronizedPtr<Synchronized<std::vector<std::vector<ObjRef> > > > &reverse_target_objrefs) {
+void SchedulerService::upstream_objrefs(ObjRef objref, std::vector<ObjRef> &objrefs, const SynchronizedPtr<std::vector<std::vector<ObjRef> > > &reverse_target_objrefs) {
   // upstream_objrefs takes reverse_target_objrefs as an argument, which is
   // obtained by reverse_target_objrefs_.get(), so we know the data structure
   // has been locked.
