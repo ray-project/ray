@@ -65,8 +65,11 @@ static int PyObjRef_compare(PyObject* a, PyObject* b) {
   return 0;
 }
 
+char RAY_VAL_LITERAL[] = "val";
+char RAY_OBJECT_REFERENCE_LITERAL[] = "object reference";
+
 static PyMemberDef PyObjRef_members[] = {
-  {"val", T_INT, offsetof(PyObjRef, val), 0, "object reference"},
+  {RAY_VAL_LITERAL, T_INT, offsetof(PyObjRef, val), 0, RAY_OBJECT_REFERENCE_LITERAL},
   {NULL}
 };
 
@@ -908,7 +911,8 @@ PyMODINIT_FUNC initlibraylib(void) {
   m = Py_InitModule3("libraylib", RayLibMethods, "Python C Extension for Ray");
   Py_INCREF(&PyObjRefType);
   PyModule_AddObject(m, "ObjRef", (PyObject *)&PyObjRefType);
-  RayError = PyErr_NewException("ray.error", NULL, NULL);
+  char ray_error[] = "ray.error";
+  RayError = PyErr_NewException(ray_error, NULL, NULL);
   Py_INCREF(RayError);
   PyModule_AddObject(m, "error", RayError);
   import_array();
