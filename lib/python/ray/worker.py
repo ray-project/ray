@@ -355,16 +355,28 @@ def check_signature_supported(function):
 
 # helper method, this should not be called by the user
 def check_return_values(function, result):
+  # If the @remote decorator declares that the function has no return values,
+  # then all we do is check that there were in fact no return values.
+  if len(function.return_types) == 0:
+    if result is not None:
+      raise Exception("The @remote decorator for function {} has 0 return values, but {} returned more than 0 values.".format(function.__name__, function.__name__))
+    return
+  # If a function has multiple return values, Python returns a tuple of the
+  # values. If there is a single return value, then Python does not return a
+  # tuple, it simply returns the value. That is why we place result with
+  # (result,) when there is only one return value, so we can treat these two
+  # cases similarly.
   if len(function.return_types) == 1:
     result = (result,)
-    # if not isinstance(result, function.return_types[0]):
-    #   raise Exception("The @remote decorator for function {} expects one return value with type {}, but {} returned a {}.".format(function.__name__, function.return_types[0], function.__name__, type(result)))
-  else:
-    if len(result) != len(function.return_types):
-      raise Exception("The @remote decorator for function {} has {} return values with types {}, but {} returned {} values.".format(function.__name__, len(function.return_types), function.return_types, function.__name__, len(result)))
-    for i in range(len(result)):
-      if (not issubclass(type(result[i]), function.return_types[i])) and (not isinstance(result[i], ray.lib.ObjRef)):
-        raise Exception("The {}th return value for function {} has type {}, but the @remote decorator expected a return value of type {} or an ObjRef.".format(i, function.__name__, type(result[i]), function.return_types[i]))
+  # Below we check that the number of values returned by the function match the
+  # number of return values declared in the @remote decorator.
+  if len(result) != len(function.return_types):
+    raise Exception("The @remote decorator for function {} has {} return values with types {}, but {} returned {} values.".format(function.__name__, len(function.return_types), function.return_types, function.__name__, len(result)))
+  # Here we do some limited type checking to make sure the return values have
+  # the right types.
+  for i in range(len(result)):
+    if (not issubclass(type(result[i]), function.return_types[i])) and (not isinstance(result[i], ray.lib.ObjRef)):
+      raise Exception("The {}th return value for function {} has type {}, but the @remote decorator expected a return value of type {} or an ObjRef.".format(i, function.__name__, type(result[i]), function.return_types[i]))
 
 # helper method, this should not be called by the user
 def check_arguments(function, args):

@@ -238,6 +238,43 @@ class APITest(unittest.TestCase):
 
     services.cleanup()
 
+  def testNoArgs(self):
+    worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
+    services.start_ray_local(num_workers=1, worker_path=worker_path)
+
+    test_functions.no_op()
+    time.sleep(0.2)
+    task_info = ray.task_info()
+    self.assertEqual(len(task_info["failed_tasks"]), 0)
+    self.assertEqual(len(task_info["running_tasks"]), 0)
+    self.assertEqual(task_info["num_succeeded"], 1)
+
+    test_functions.no_op_fail()
+    time.sleep(0.2)
+    task_info = ray.task_info()
+    self.assertEqual(len(task_info["failed_tasks"]), 1)
+    self.assertEqual(len(task_info["running_tasks"]), 0)
+    self.assertEqual(task_info["num_succeeded"], 1)
+    self.assertEqual(task_info["failed_tasks"][0].get("error_message"), "The @remote decorator for function test_functions.no_op_fail has 0 return values, but test_functions.no_op_fail returned more than 0 values.")
+
+    services.cleanup()
+
+  def testTypeChecking(self):
+    worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
+    services.start_ray_local(num_workers=1, worker_path=worker_path, driver_mode=ray.WORKER_MODE)
+
+    # Make sure that these functions throw exceptions because there return
+    # values do not type check.
+    test_functions.test_return1()
+    test_functions.test_return2()
+    time.sleep(0.2)
+    task_info = ray.task_info()
+    self.assertEqual(len(task_info["failed_tasks"]), 2)
+    self.assertEqual(len(task_info["running_tasks"]), 0)
+    self.assertEqual(task_info["num_succeeded"], 0)
+
+    services.cleanup()
+
 class TaskStatusTest(unittest.TestCase):
   def testFailedTask(self):
     worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")

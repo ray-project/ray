@@ -23,3 +23,7 @@ def dot(a, b):
 @ray.remote([], [])
 def throw_exception():
   raise Exception("This function intentionally failed.")
+
+@ray.remote([], [])
+def no_op():
+  pass
