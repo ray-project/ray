@@ -1,0 +1,17 @@
+diff --git a/src/cpp/server/create_default_thread_pool.cc b/src/cpp/server/create_default_thread_pool.cc
+index f3b07ec..ede18cb
+--- a/src/cpp/server/create_default_thread_pool.cc
++++ b/src/cpp/server/create_default_thread_pool.cc
+@@ -40,8 +40,12 @@
+ namespace grpc {
+ 
+ ThreadPoolInterface* CreateDefaultThreadPool() {
++#ifdef NDEBUG
+   int cores = gpr_cpu_num_cores();
+   if (!cores) cores = 4;
++#else
++  int cores = 0;
++#endif
+   return new DynamicThreadPool(cores);
+ }
+ 
