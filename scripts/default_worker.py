@@ -4,6 +4,7 @@ import numpy as np
 
 import ray.array.remote as ra
 import ray.array.distributed as da
+import example_functions
 
 import ray
 import ray.services as services
@@ -24,5 +25,6 @@ if __name__ == "__main__":
   ray.register_module(da)
   ray.register_module(da.random)
   ray.register_module(da.linalg)
+  ray.register_module(example_functions)
 
   worker.main_loop()
