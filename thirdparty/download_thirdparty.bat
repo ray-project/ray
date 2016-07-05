@@ -10,10 +10,11 @@
 		git -C "grpc"                                              submodule update --init "third_party/protobuf"
 		git -C "grpc"                                              submodule update --init "third_party/nanopb"
 		git -C "grpc"                                              submodule update --init "third_party/zlib"
-		git -C "grpc"                                              apply "%~dp0windows-patches/grpc-projects.patch"
-		git -C "grpc/third_party/protobuf"                         apply "%~dp0windows-patches/protobuf-projects.patch"
-		git -C "arrow/cpp/thirdparty/flatbuffers"                  apply "%~dp0windows-patches/flatbuffers-projects.patch"
-		git -C "arrow/cpp/thirdparty/parquet"                      apply "%~dp0windows-patches/parquet-endian.patch"
-		git -C "python"                                            apply "%~dp0windows-patches/python-pyconfig.patch"
+		git -C "grpc"                                              apply "%~dp0patches/grpc-source.patch"
+		git -C "grpc"                                              apply "%~dp0patches/windows/grpc-projects.patch"
+		git -C "grpc/third_party/protobuf"                         apply "%~dp0patches/windows/protobuf-projects.patch"
+		git -C "arrow/cpp/thirdparty/flatbuffers"                  apply "%~dp0patches/windows/flatbuffers-projects.patch"
+		git -C "arrow/cpp/thirdparty/parquet"                      apply "%~dp0patches/windows/parquet-endian.patch"
+		git -C "python"                                            apply "%~dp0patches/windows/python-pyconfig.patch"
 	@PopD
 @EndLocal
