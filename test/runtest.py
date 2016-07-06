@@ -240,7 +240,7 @@ class APITest(unittest.TestCase):
 
   def testNoArgs(self):
     worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-    services.start_ray_local(num_workers=1, worker_path=worker_path)
+    services.start_ray_local(num_workers=1, worker_path=worker_path, driver_mode=ray.WORKER_MODE)
 
     test_functions.no_op()
     time.sleep(0.2)
