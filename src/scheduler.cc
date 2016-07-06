@@ -164,7 +164,7 @@ Status SchedulerService::ReadyForNewTask(ServerContext* context, const ReadyForN
       (*workers)[workerid].current_task = NO_OPERATION; // clear operation ID
     }
     if (!request->previous_task_info().task_succeeded()) {
-      RAY_LOG(RAY_INFO, "Error: Task " << info.operationid() << " executing function " << info.function_name() << " on worker " << workerid << " failed with error message: " << info.error_message());
+      RAY_LOG(RAY_INFO, "Error: Task " << info.operationid() << " executing function " << info.function_name() << " on worker " << workerid << " failed with error message:\n" << info.error_message());
       failed_tasks_.get()->push_back(info);
     } else {
       successful_tasks_.get()->push_back(info.operationid());
