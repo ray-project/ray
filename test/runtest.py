@@ -255,7 +255,7 @@ class APITest(unittest.TestCase):
     self.assertEqual(len(task_info["failed_tasks"]), 1)
     self.assertEqual(len(task_info["running_tasks"]), 0)
     self.assertEqual(task_info["num_succeeded"], 1)
-    self.assertEqual(task_info["failed_tasks"][0].get("error_message"), "The @remote decorator for function test_functions.no_op_fail has 0 return values, but test_functions.no_op_fail returned more than 0 values.")
+    self.assertTrue("The @remote decorator for function test_functions.no_op_fail has 0 return values, but test_functions.no_op_fail returned more than 0 values." in task_info["failed_tasks"][0].get("error_message"))
 
     services.cleanup()
 
