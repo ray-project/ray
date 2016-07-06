@@ -135,7 +135,7 @@ void Worker::put_object(ObjRef objref, const Obj* obj, std::vector<ObjRef> &cont
   ObjHandle result;
   RAY_CHECK(receive_obj_queue_.receive(&result), "error receiving over IPC");
   uint8_t* target = segmentpool_->get_address(result);
-  std::memcpy(target, &data[0], data.size());
+  std::memcpy(target, data.data(), data.size());
   // We immediately unmap here; if the object is going to be accessed again, it will be mapped again;
   // This is reqired because we do not have a mechanism to unmap the object later.
   segmentpool_->unmap_segment(result.segmentid());

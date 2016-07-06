@@ -408,7 +408,7 @@ static PyObject* deserialize(PyObject* worker_capsule, const Obj& obj, std::vect
     for (int i = 0; i < array.shape_size(); ++i) {
       dims.push_back(array.shape(i));
     }
-    PyArrayObject* pyarray = (PyArrayObject*) PyArray_SimpleNew(array.shape_size(), &dims[0], array.dtype());
+    PyArrayObject* pyarray = (PyArrayObject*) PyArray_SimpleNew(array.shape_size(), dims.data(), array.dtype());
     switch (array.dtype()) {
       RAYLIB_DESERIALIZE_NPY(FLOAT, npy_float, float)
       RAYLIB_DESERIALIZE_NPY(DOUBLE, npy_double, double)
