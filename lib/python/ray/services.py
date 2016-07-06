@@ -39,6 +39,13 @@ def new_objstore_port():
   return 20000 + objstore_port_counter
 
 def cleanup():
+  global drivers
+  for driver in drivers:
+    ray.disconnect(driver)
+  if len(drivers) == 0:
+    ray.disconnect()
+  drivers = []
+
   global all_processes
   for p, address in all_processes:
     if p.poll() is not None: # process has already terminated
@@ -58,13 +65,6 @@ def cleanup():
       continue
     print "Termination attempt failed, giving up."
   all_processes = []
-
-  global drivers
-  for driver in drivers:
-    ray.disconnect(driver)
-  if len(drivers) == 0:
-    ray.disconnect()
-  drivers = []
 
 # atexit.register(cleanup)
 
