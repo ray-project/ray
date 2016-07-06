@@ -289,8 +289,8 @@ def main_loop(worker=global_worker):
   ray.lib.start_worker_service(worker.handle)
   def process_task(task): # wrapping these lines in a function should cause the local variables to go out of scope more quickly, which is useful for inspecting reference counts
     func_name, args, return_objrefs = serialization.deserialize_task(worker.handle, task)
-    arguments = get_arguments_for_execution(worker.functions[func_name], args, worker) # get args from objstore
     try:
+      arguments = get_arguments_for_execution(worker.functions[func_name], args, worker) # get args from objstore
       outputs = worker.functions[func_name].executor(arguments) # execute the function
       if len(return_objrefs) == 1:
         outputs = (outputs,)
