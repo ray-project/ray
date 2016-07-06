@@ -12,6 +12,10 @@ def estimate_pi(n):
 def increment(x):
   return x + 1
 
+@ray.remote([int, int], [int])
+def add(a, b):
+  return a + b
+
 @ray.remote([List[int]], [np.ndarray])
 def zeros(shape):
   return np.zeros(shape)
