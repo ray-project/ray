@@ -289,7 +289,7 @@ class TaskStatusTest(unittest.TestCase):
     for task in result["failed_tasks"]:
       self.assertTrue(task.has_key("worker_address"))
       self.assertTrue(task.has_key("operationid"))
-      self.assertEqual(task.get("error_message"), "Test function 1 intentionally failed.")
+      self.assertTrue("Test function 1 intentionally failed." in task.get("error_message"))
       self.assertTrue(task["operationid"] not in task_ids)
       task_ids.add(task["operationid"])
 
@@ -297,7 +297,7 @@ class TaskStatusTest(unittest.TestCase):
     try:
       ray.get(x)
     except Exception as e:
-      self.assertEqual(str(e), "The task that created this object reference failed with error message: Test function 2 intentionally failed.")
+      self.assertTrue("Test function 2 intentionally failed."in str(e))
     else:
       self.assertTrue(False) # ray.get should throw an exception
 
@@ -306,7 +306,7 @@ class TaskStatusTest(unittest.TestCase):
       try:
         ray.get(ref)
       except Exception as e:
-        self.assertEqual(str(e), "The task that created this object reference failed with error message: Test function 3 intentionally failed.")
+        self.assertTrue("Test function 3 intentionally failed."in str(e))
       else:
         self.assertTrue(False) # ray.get should throw an exception
 
