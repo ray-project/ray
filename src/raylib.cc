@@ -22,16 +22,25 @@ static int PyObjectToWorker(PyObject* object, Worker **worker);
 // Object references
 
 typedef struct {
-    PyObject_HEAD
-    ObjRef val;
-    Worker* worker;
+  PyObject_HEAD
+  ObjRef val;
+  // We give the PyObjRef object a reference to the worker capsule object to
+  // make sure that the worker capsule does not go out of scope until all of the
+  // object references have gone out of scope. The reason for this is that the
+  // worker capsule destructor destroys the worker object. If the worker object
+  // has been destroyed, then when the object reference tries to call
+  // worker->decrement_reference_count, we can get a segfault.
+  PyObject* worker_capsule;
 } PyObjRef;
 
 static void PyObjRef_dealloc(PyObjRef *self) {
+  Worker* worker;
+  PyObjectToWorker(self->worker_capsule, &worker);
   std::vector<ObjRef> objrefs;
   objrefs.push_back(self->val);
-  self->worker->decrement_reference_count(objrefs);
+  worker->decrement_reference_count(objrefs);
   self->ob_type->tp_free((PyObject*) self);
+  Py_DECREF(self->worker_capsule); // The corresponding increment happens in PyObjRef_init.
 }
 
 static PyObject* PyObjRef_new(PyTypeObject *type, PyObject *args, PyObject *kwds) {
@@ -43,13 +52,16 @@ static PyObject* PyObjRef_new(PyTypeObject *type, PyObject *args, PyObject *kwds
 }
 
 static int PyObjRef_init(PyObjRef *self, PyObject *args, PyObject *kwds) {
-  if (!PyArg_ParseTuple(args, "iO&", &self->val, &PyObjectToWorker, &self->worker)) {
+  if (!PyArg_ParseTuple(args, "iO", &self->val, &self->worker_capsule)) {
     return -1;
   }
+  Worker* worker;
+  PyObjectToWorker(self->worker_capsule, &worker);
+  Py_INCREF(self->worker_capsule); // The corresponding decrement happens in PyObjRef_dealloc.
   std::vector<ObjRef> objrefs;
   objrefs.push_back(self->val);
   RAY_LOG(RAY_REFCOUNT, "In PyObjRef_init, calling increment_reference_count for objref " << objrefs[0]);
-  self->worker->increment_reference_count(objrefs);
+  worker->increment_reference_count(objrefs);
   return 0;
 };
 
