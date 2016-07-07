@@ -26,7 +26,7 @@ def test_alias_h():
 
 @ray.remote([], [])
 def empty_function():
-  return ()
+  pass
 
 @ray.remote([], [int])
 def trivial_function():
