@@ -50,5 +50,3 @@ if __name__ == "__main__":
   result = scipy.optimize.fmin_l_bfgs_b(full_loss, theta_init, maxiter=10, fprime=full_grad, disp=True)
   end_time = time.time()
   print "Elapsed time = {}".format(end_time - start_time)
-
-  services.cleanup()
