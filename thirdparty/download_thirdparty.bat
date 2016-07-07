@@ -2,7 +2,7 @@
 	@PushD "%~dp0"
 		git                                                        submodule update --init
 		@If Not Exist "grpc\.git"   git                            clone "https://github.com/grpc/grpc"
-		@If Not Exist "arrow\.git"  git                            clone "https://github.com/pcmoritz/arrow.git" --branch windows_support
+		@If Not Exist "arrow\.git"  git                            clone "https://github.com/pcmoritz/arrow.git" --branch windows_with_submodules --recursive
 		@If Not Exist "arrow\cpp\thirdparty\flatbuffers\.git"  git clone "https://github.com/google/flatbuffers.git" "arrow/cpp/thirdparty/flatbuffers"
 		@If Not Exist "arrow\cpp\thirdparty\parquet\.git"      git clone "https://github.com/apache/parquet-cpp.git" "arrow/cpp/thirdparty/parquet"
 		@If Not Exist "numbuf\.git" git                            clone "https://github.com/amplab/numbuf.git" --branch win
