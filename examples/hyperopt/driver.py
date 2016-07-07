@@ -36,4 +36,3 @@ for i in range(samples):
     print "Best parameters are now {}.".format(params)
 
 print "Best parameters over {} samples was {}, with an accuracy of {:.4}%.".format(samples, best_params, 100 * best_accuracy)
-services.cleanup()

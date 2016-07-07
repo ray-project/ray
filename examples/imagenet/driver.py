@@ -34,5 +34,3 @@ if __name__ == "__main__":
   if args.drop_ipython:
     import IPython
     IPython.embed()
-
-  services.cleanup()

@@ -34,6 +34,3 @@ if __name__ == "__main__":
 
   import IPython
   IPython.embed()
-
-  if not args.attach:
-    services.cleanup()
