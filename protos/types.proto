@@ -4,6 +4,10 @@ message Int {
   int64 data = 1;
 }
 
+message Long {
+  int64 data = 1;
+}
+
 message String {
   string data = 1;
 }
@@ -32,6 +36,7 @@ message PyObj {
 message Obj {
   String string_data = 1;
   Int int_data = 2;
+  Long long_data = 12;
   Double double_data = 3;
   Bool bool_data = 10;
   Tuple tuple_data = 7;

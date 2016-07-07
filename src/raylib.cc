@@ -225,6 +225,7 @@ void set_dict_item_and_transfer_ownership(PyObject* dict, PyObject* key, PyObjec
 
 // serialize will serialize the python object val into the protocol buffer
 // object obj, returns 0 if successful and something else if not
+// NOTE: If some primitive types are added here, they may also need to be handled in serialization.py
 // FIXME(pcm): This currently only works for contiguous arrays
 // This method will push all of the object references contained in `obj` to the `objrefs` vector.
 int serialize(PyObject* worker_capsule, PyObject* val, Obj* obj, std::vector<ObjRef> &objrefs) {
@@ -240,6 +241,14 @@ int serialize(PyObject* worker_capsule, PyObject* val, Obj* obj, std::vector<Obj
     Int* data = obj->mutable_int_data();
     long d = PyInt_AsLong(val);
     data->set_data(d);
+  } else if (PyLong_Check(val)) {
+    // TODO(mehrdadn): We do not currently support arbitrary long values.
+    int overflow = 0;
+    Long* data = obj->mutable_long_data();
+    data->set_data(PyLong_AsLongLongAndOverflow(val, &overflow));
+    if (overflow) {
+      PyErr_SetString(RayError, "serialization: long overflow");
+    }
   } else if (PyFloat_Check(val)) {
     Double* data = obj->mutable_double_data();
     double d = PyFloat_AsDouble(val);
@@ -359,6 +368,8 @@ int serialize(PyObject* worker_capsule, PyObject* val, Obj* obj, std::vector<Obj
 static PyObject* deserialize(PyObject* worker_capsule, const Obj& obj, std::vector<ObjRef> &objrefs) {
   if (obj.has_int_data()) {
     return PyInt_FromLong(obj.int_data().data());
+  } else if (obj.has_long_data()) {
+    return PyLong_FromLongLong(obj.long_data().data());
   } else if (obj.has_double_data()) {
     return PyFloat_FromDouble(obj.double_data().data());
   } else if (obj.has_bool_data()) {

@@ -11,6 +11,9 @@ import ray
 class Int(int):
   pass
 
+class Long(long):
+  pass
+
 class Float(float):
   pass
 
