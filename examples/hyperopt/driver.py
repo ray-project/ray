@@ -1,6 +1,5 @@
 import numpy as np
 import ray
-import ray.services as services
 import os
 
 import functions
@@ -11,7 +10,7 @@ epochs = 100
 
 worker_dir = os.path.dirname(os.path.abspath(__file__))
 worker_path = os.path.join(worker_dir, "worker.py")
-services.start_ray_local(num_workers=num_workers, worker_path=worker_path)
+ray.services.start_ray_local(num_workers=num_workers, worker_path=worker_path)
 
 best_params = None
 best_accuracy = 0

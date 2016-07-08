@@ -3,8 +3,6 @@ import argparse
 import numpy as np
 
 import ray
-import ray.services as services
-import ray.worker as worker
 
 import ray.array.remote as ra
 import ray.array.distributed as da
@@ -26,11 +24,11 @@ if __name__ == "__main__":
   if args.attach:
     assert args.worker_path is None, "when attaching, no new worker can be started"
     assert args.num_workers is None, "when attaching, no new worker can be started"
-    worker.connect(args.scheduler_address, args.objstore_address, args.worker_address, is_driver=True, mode=ray.SHELL_MODE)
+    ray.worker.connect(args.scheduler_address, args.objstore_address, args.worker_address, is_driver=True, mode=ray.SHELL_MODE)
   else:
-    services.start_ray_local(num_workers=args.num_workers if not args.num_workers is None else DEFAULT_NUM_WORKERS,
-                             worker_path=args.worker_path if not args.worker_path is None else DEFAULT_WORKER_PATH,
-                             driver_mode=ray.SHELL_MODE)
+    ray.services.start_ray_local(num_workers=args.num_workers if not args.num_workers is None else DEFAULT_NUM_WORKERS,
+                                 worker_path=args.worker_path if not args.worker_path is None else DEFAULT_WORKER_PATH,
+                                 driver_mode=ray.SHELL_MODE)
 
   import IPython
   IPython.embed()

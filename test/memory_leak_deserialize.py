@@ -3,11 +3,9 @@
 import os
 import numpy as np
 import ray
-import ray.worker
-import ray.services as services
 
 worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-services.start_ray_local(num_workers=1, worker_path=worker_path)
+ray.services.start_ray_local(num_workers=1, worker_path=worker_path)
 
 d = {"w": np.zeros(1000000)}
 
