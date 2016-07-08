@@ -213,7 +213,8 @@ def connect(scheduler_address, objstore_address, worker_address, is_driver=False
   ray.lib.set_log_config(config.get_log_file_path("-".join(["worker", worker_address, "c++"]) + ".log"))
 
 def disconnect(worker=global_worker):
-  ray.lib.disconnect(worker.handle)
+  if worker.handle is not None:
+    ray.lib.disconnect(worker.handle)
 
 def get(objref, worker=global_worker):
   """

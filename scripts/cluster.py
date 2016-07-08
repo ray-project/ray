@@ -82,7 +82,7 @@ def _start_ray(node_ip_addresses, username, key_file, num_workers_per_node, work
   start_scheduler_command = """
     cd "{}";
     source ../setup-env.sh;
-    python -c "import ray; ray.services.start_scheduler(\\\"{}:10001\\\")" > start_scheduler.out 2> start_scheduler.err < /dev/null &
+    python -c "import ray; ray.services.start_scheduler(\\\"{}:10001\\\", local=False)" > start_scheduler.out 2> start_scheduler.err < /dev/null &
   """.format(scripts_directory, node_ip_addresses[0])
   run_command_over_ssh(node_ip_addresses[0], username, key_file, start_scheduler_command)
 
