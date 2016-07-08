@@ -1,29 +1,24 @@
 import numpy as np
 import scipy.optimize
 import os
-import time
 import ray
-import ray.services as services
-import ray.worker as worker
-
-import ray.array.remote as ra
-import ray.array.distributed as da
 
 import functions
 
 from tensorflow.examples.tutorials.mnist import input_data
-mnist = input_data.read_data_sets("MNIST_data/", one_hot=True)
-
-batch_size = 100
-num_batches = mnist.train.num_examples / batch_size
-batches = [mnist.train.next_batch(batch_size) for _ in range(num_batches)]
 
 if __name__ == "__main__":
   worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "worker.py")
-  services.start_ray_local(num_workers=16, worker_path=worker_path)
+  ray.services.start_ray_local(num_workers=16, worker_path=worker_path)
 
-  x_batches = [ray.put(batches[i][0]) for i in range(num_batches)]
-  y_batches = [ray.put(batches[i][1]) for i in range(num_batches)]
+  print "Downloading and loading MNIST data..."
+  mnist = input_data.read_data_sets("MNIST_data/", one_hot=True)
+
+  batch_size = 100
+  num_batches = mnist.train.num_examples / batch_size
+  batches = [mnist.train.next_batch(batch_size) for _ in range(num_batches)]
+
+  batch_refs = [(ray.put(xs), ray.put(ys)) for (xs, ys) in batches]
 
   # From the perspective of scipy.optimize.fmin_l_bfgs_b, full_loss is simply a
   # function which takes some parameters theta, and computes a loss. Similarly,
@@ -36,17 +31,13 @@ if __name__ == "__main__":
   # algorithm.
   def full_loss(theta):
     theta_ref = ray.put(theta)
-    val_ref = ra.sum_list(*[functions.loss(theta_ref, x_batches[i], y_batches[i]) for i in range(num_batches)])
-    return ray.get(val_ref)
+    loss_refs = [functions.loss(theta_ref, xs_ref, ys_ref) for (xs_ref, ys_ref) in batch_refs]
+    return sum([ray.get(loss_ref) for loss_ref in loss_refs])
 
   def full_grad(theta):
     theta_ref = ray.put(theta)
-    grad_ref = ra.sum_list(*[functions.grad(theta_ref, x_batches[i], y_batches[i]) for i in range(num_batches)])
-    return ray.get(grad_ref).astype("float64") # This conversion is necessary for use with fmin_l_bfgs_b.
+    grad_refs = [functions.grad(theta_ref, xs_ref, ys_ref) for (xs_ref, ys_ref) in batch_refs]
+    return sum([ray.get(grad_ref) for grad_ref in grad_refs]).astype("float64") # This conversion is necessary for use with fmin_l_bfgs_b.
 
   theta_init = np.zeros(functions.dim)
-
-  start_time = time.time()
   result = scipy.optimize.fmin_l_bfgs_b(full_loss, theta_init, maxiter=10, fprime=full_grad, disp=True)
-  end_time = time.time()
-  print "Elapsed time = {}".format(end_time - start_time)

@@ -1,6 +1,6 @@
-import numpy as np
 import ray
 
+import numpy as np
 import tensorflow as tf
 
 image_dimension = 784
