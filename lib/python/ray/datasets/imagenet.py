@@ -52,7 +52,7 @@ def load_tarfile_from_s3(bucket, s3_key, size=[]):
     output.write(chunk)
     chunk = response["Body"].read(1024 * 8)
   output.seek(0) # go to the beginning of the .tar file
-  tar = tarfile.open(mode= "r", fileobj=output)
+  tar = tarfile.open(mode="r", fileobj=output)
   return load_chunk(tar, size=size if size != [] else None)
 
 @ray.remote([str, List[str], List[int]], [List[ray.ObjRef]])

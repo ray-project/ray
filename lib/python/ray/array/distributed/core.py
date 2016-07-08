@@ -192,7 +192,7 @@ def subblocks(a, *ranges):
     if ranges[i][0] < 0:
       raise Exception("Values in the ranges passed to sub_blocks must be at least 0, but the {}th range is {}.".format(i, ranges[i]))
     if ranges[i][-1] >= a.num_blocks[i]:
-        raise Exception("Values in the ranges passed to sub_blocks must be less than the relevant number of blocks, but the {}th range is {}, and a.num_blocks = {}.".format(i, ranges[i], a.num_blocks))
+      raise Exception("Values in the ranges passed to sub_blocks must be less than the relevant number of blocks, but the {}th range is {}, and a.num_blocks = {}.".format(i, ranges[i], a.num_blocks))
   last_index = [r[-1] for r in ranges]
   last_block_shape = DistArray.compute_block_shape(last_index, a.shape)
   shape = [(len(ranges[i]) - 1) * BLOCK_SIZE + last_block_shape[i] for i in range(a.ndim)]

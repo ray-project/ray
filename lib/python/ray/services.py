@@ -1,8 +1,7 @@
-import subprocess32 as subprocess
 import os
-import atexit
 import time
-import datetime
+import atexit
+import subprocess32 as subprocess
 
 import ray
 import worker
@@ -196,7 +195,7 @@ def start_services_local(num_objstores=1, num_workers_per_objstore=0, worker_pat
   time.sleep(0.1)
   objstore_addresses = []
   # create objstores
-  for i in range(num_objstores):
+  for _ in range(num_objstores):
     objstore_address = address(IP_ADDRESS, new_objstore_port())
     objstore_addresses.append(objstore_address)
     start_objstore(scheduler_address, objstore_address, local=True)
