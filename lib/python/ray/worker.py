@@ -1,14 +1,13 @@
-import time
-import datetime
-import logging
 import os
+import time
+import traceback
+import copy
+import logging
 from types import ModuleType
 import typing
 import funcsigs
 import numpy as np
 import colorama
-import copy
-import traceback
 
 import ray
 import ray.config as config
@@ -147,7 +146,7 @@ def print_task_info(task_data, mode):
       print ", ".join(info_strings)
 
 def scheduler_info(worker=global_worker):
-  return ray.lib.scheduler_info(worker.handle);
+  return ray.lib.scheduler_info(worker.handle)
 
 def visualize_computation_graph(file_path=None, view=False, worker=global_worker):
   """
@@ -188,7 +187,7 @@ def visualize_computation_graph(file_path=None, view=False, worker=global_worker
 
 def task_info(worker=global_worker):
   """Tell the scheduler to return task information. Currently includes a list of all failed tasks since the start of the cluster."""
-  return ray.lib.task_info(worker.handle);
+  return ray.lib.task_info(worker.handle)
 
 def register_module(module, worker=global_worker):
   """
@@ -258,7 +257,7 @@ def kill_workers(worker=global_worker):
   """
   success = ray.lib.kill_workers(worker.handle)
   if not success:
-    print "Could not kill all workers; check that there are no tasks currently running."
+    print "Could not kill all workers. Check that there are no tasks currently running."
   return success
 
 def restart_workers_local(num_workers, worker_path, worker=global_worker):
@@ -301,7 +300,7 @@ def main_loop(worker=global_worker):
       outputs = worker.functions[func_name].executor(arguments) # execute the function
       if len(return_objrefs) == 1:
         outputs = (outputs,)
-    except Exception as e:
+    except Exception:
       exception_message = format_error_message(traceback.format_exc())
       # Here we are storing RayFailedObjects in the object store to indicate
       # failure (this is only interpreted by the worker).
@@ -374,7 +373,7 @@ def check_signature_supported(function):
   if function.has_kwargs_param:
     raise "Function {} has a **kwargs argument, which is currently not supported.".format(function.__name__)
   # check if the user specified a variable number of arguments and any keyword arguments
-  if function.has_vararg_param and any([d != funcsigs._empty for k, d in function.keyword_defaults]):
+  if function.has_vararg_param and any([d != funcsigs._empty for _, d in function.keyword_defaults]):
     raise "Function {} has a *args argument as well as a keyword argument, which is currently not supported.".format(function.__name__)
 
 

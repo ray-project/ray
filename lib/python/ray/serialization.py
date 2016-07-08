@@ -51,7 +51,7 @@ def from_primitive(primitive_obj):
   return obj
 
 def is_arrow_serializable(value):
-  return type(value) == np.ndarray and value.dtype.name in ["int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64", "float32", "float64"]
+  return isinstance(value, np.ndarray) and value.dtype.name in ["int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64", "float32", "float64"]
 
 def serialize(worker_capsule, obj):
   primitive_obj = to_primitive(obj)
