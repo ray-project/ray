@@ -11,7 +11,12 @@ import ray.config as config
 _services_env = os.environ.copy()
 _services_env["PATH"] = os.pathsep.join([os.path.dirname(os.path.abspath(__file__)), _services_env["PATH"]])
 
+# all_processes is a list of the scheduler, object store, and worker processes
+# that have been started by this services module if Ray is being used in local
+# mode.
 all_processes = []
+# drivers is a list of the worker objects corresponding to drivers if
+# start_services_local is run with return_drivers=True.
 drivers = []
 
 IP_ADDRESS = "127.0.0.1"
@@ -79,7 +84,7 @@ def cleanup():
 
 atexit.register(cleanup)
 
-def start_scheduler(scheduler_address, local=True):
+def start_scheduler(scheduler_address, local):
   """
   This method starts a scheduler process.
 
@@ -92,7 +97,7 @@ def start_scheduler(scheduler_address, local=True):
   if local:
     all_processes.append((p, scheduler_address))
 
-def start_objstore(scheduler_address, objstore_address, local=True):
+def start_objstore(scheduler_address, objstore_address, local):
   """
   This method starts an object store process.
 
@@ -106,7 +111,7 @@ def start_objstore(scheduler_address, objstore_address, local=True):
   if local:
     all_processes.append((p, objstore_address))
 
-def start_worker(worker_path, scheduler_address, objstore_address, worker_address, local=True):
+def start_worker(worker_path, scheduler_address, objstore_address, worker_address, local):
   """
   This method starts a worker process.
 
