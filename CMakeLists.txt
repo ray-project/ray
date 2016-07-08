@@ -9,7 +9,34 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake/Modules)
 set(CMAKE_PREFIX_PATH "${CMAKE_SOURCE_DIR}/thirdparty/grpc/bins/opt/" ${CMAKE_PREFIX_PATH})
 
 find_package(PythonInterp REQUIRED)
-find_package(PythonLibs REQUIRED)
+
+if(NOT APPLE)
+    find_package(PythonLibs REQUIRED)
+else(NOT APPLE)
+    execute_process(COMMAND ${PYTHON_EXECUTABLE} -c
+                    "import sys; skip = 2 if sys.platform.startswith('win') else 1; print 'python' + sys.version[0:3:skip]"
+                    OUTPUT_VARIABLE PYTHON_LIBRARY_NAME OUTPUT_STRIP_TRAILING_WHITESPACE)
+    execute_process(COMMAND ${PYTHON_EXECUTABLE} -c
+                    "import sys; print sys.exec_prefix"
+                    OUTPUT_VARIABLE PYTHON_PREFIX OUTPUT_STRIP_TRAILING_WHITESPACE)
+    FIND_LIBRARY(PYTHON_LIBRARIES
+                 NAMES ${PYTHON_LIBRARY_NAME}
+                 HINTS "${PYTHON_PREFIX}"
+                 PATH_SUFFIXES "lib" "libs"
+                 NO_DEFAULT_PATH)
+    execute_process(COMMAND ${PYTHON_EXECUTABLE} -c
+                    "from distutils.sysconfig import *; print get_python_inc()"
+                    OUTPUT_VARIABLE PYTHON_INCLUDE_DIRS OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(PYTHON_LIBRARIES AND PYTHON_INCLUDE_DIRS)
+        SET(PYTHONLIBS_FOUND TRUE)
+        message("-- Found PythonLibs: " ${PYTHON_LIBRARIES})
+        message("-- -- Used custom search path")
+    else(PYTHON_LIBRARIES AND PYTHON_INCLUDE_DIRS)
+        find_package(PythonLibs REQUIRED)
+        message("-- -- Used find_package(PythonLibs)")
+    endif(PYTHON_LIBRARIES AND PYTHON_INCLUDE_DIRS)
+endif(NOT APPLE)
+
 find_package(NumPy REQUIRED)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
