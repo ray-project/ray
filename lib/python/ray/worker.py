@@ -190,15 +190,19 @@ def task_info(worker=global_worker):
   """Tell the scheduler to return task information. Currently includes a list of all failed tasks since the start of the cluster."""
   return ray.lib.task_info(worker.handle);
 
-def register_module(module, recursive=False, worker=global_worker):
+def register_module(module, worker=global_worker):
+  """
+  This registers each remote function in the module with the scheduler, so tasks
+    with those functions can be scheduled on this worker.
+
+  :param module: The module of functions to register.
+  """
   logging.info("registering functions in module {}.".format(module.__name__))
   for name in dir(module):
     val = getattr(module, name)
     if hasattr(val, "is_remote") and val.is_remote:
       logging.info("registering {}.".format(val.func_name))
       worker.register_function(val)
-    # elif recursive and isinstance(val, ModuleType):
-    #   register_module(val, recursive, worker)
 
 def connect(scheduler_address, objstore_address, worker_address, is_driver=False, worker=global_worker, mode=ray.WORKER_MODE):
   if hasattr(worker, "handle"):
