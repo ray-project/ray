@@ -47,3 +47,8 @@ estimate of pi (waiting until the computation has finished if necessary).
 - [Tutorial](tutorial.md)
 - [About the System](about-the-system.md)
 - [Using Ray on a Cluster](using-ray-on-a-cluster.md)
+
+## Example Applications
+
+- [Hyperparameter Optimization](../examples/hyperopt/README.md)
+- [Batch L-BFGS](../examples/lbfgs/README.md)

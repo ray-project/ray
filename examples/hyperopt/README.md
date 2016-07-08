@@ -5,9 +5,10 @@ To run the application, first install this dependency.
 
 - [TensorFlow](https://www.tensorflow.org/)
 
-Then run the following.
+Then from the directory `ray/examples/hyperopt/` run the following.
 
 ```
+source ../../setup-env.sh
 python driver.py
 ```
 
