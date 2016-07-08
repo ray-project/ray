@@ -1,8 +1,5 @@
 import unittest
 import ray
-import ray.serialization as serialization
-import ray.services as services
-import ray.worker as worker
 import numpy as np
 import time
 import subprocess32 as subprocess
@@ -15,7 +12,7 @@ class RemoteArrayTest(unittest.TestCase):
 
   def testMethods(self):
     worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-    services.start_ray_local(num_workers=1, worker_path=worker_path)
+    ray.services.start_ray_local(num_workers=1, worker_path=worker_path)
 
     # test eye
     ref = ra.eye(3)
@@ -42,25 +39,25 @@ class RemoteArrayTest(unittest.TestCase):
     val_r = ray.get(ref_r)
     self.assertTrue(np.allclose(np.dot(val_q, val_r), val_a))
 
-    services.cleanup()
+    ray.services.cleanup()
 
 class DistributedArrayTest(unittest.TestCase):
 
   def testSerialization(self):
-    services.start_ray_local()
+    ray.services.start_ray_local()
 
     x = da.DistArray()
     x.construct([2, 3, 4], np.array([[[ray.put(0)]]]))
-    capsule, _ = serialization.serialize(ray.worker.global_worker.handle, x)
-    y = serialization.deserialize(ray.worker.global_worker.handle, capsule)
+    capsule, _ = ray.serialization.serialize(ray.worker.global_worker.handle, x)
+    y = ray.serialization.deserialize(ray.worker.global_worker.handle, capsule)
     self.assertEqual(x.shape, y.shape)
     self.assertEqual(x.objrefs[0, 0, 0].val, y.objrefs[0, 0, 0].val)
 
-    services.cleanup()
+    ray.services.cleanup()
 
   def testAssemble(self):
     worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-    services.start_ray_local(num_workers=1, worker_path=worker_path)
+    ray.services.start_ray_local(num_workers=1, worker_path=worker_path)
 
     a = ra.ones([da.BLOCK_SIZE, da.BLOCK_SIZE])
     b = ra.zeros([da.BLOCK_SIZE, da.BLOCK_SIZE])
@@ -68,11 +65,11 @@ class DistributedArrayTest(unittest.TestCase):
     x.construct([2 * da.BLOCK_SIZE, da.BLOCK_SIZE], np.array([[a], [b]]))
     self.assertTrue(np.alltrue(x.assemble() == np.vstack([np.ones([da.BLOCK_SIZE, da.BLOCK_SIZE]), np.zeros([da.BLOCK_SIZE, da.BLOCK_SIZE])])))
 
-    services.cleanup()
+    ray.services.cleanup()
 
   def testMethods(self):
     worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-    services.start_services_local(num_objstores=2, num_workers_per_objstore=5, worker_path=worker_path)
+    ray.services.start_services_local(num_objstores=2, num_workers_per_objstore=5, worker_path=worker_path)
 
     x = da.zeros([9, 25, 51], "float")
     self.assertTrue(np.alltrue(ray.get(da.assemble(x)) == np.zeros([9, 25, 51])))
@@ -206,7 +203,7 @@ class DistributedArrayTest(unittest.TestCase):
       d2 = np.random.randint(1, 35)
       test_dist_qr(d1, d2)
 
-    services.cleanup()
+    ray.services.cleanup()
 
 if __name__ == "__main__":
     unittest.main()

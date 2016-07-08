@@ -38,12 +38,12 @@ def train_cnn(params, epochs):
       sess.run(train_step, feed_dict={x: batch[0], y: batch[1], keep_prob: keep})
       if i % 100 == 0: # checks if accuracy is low enough to stop early every set number of epochs
         train_ac = accuracy.eval(feed_dict={x: batch[0], y: batch[1], keep_prob: 1.0})
-        if train_ac < 0.25: # Accuracy threshold is on a application to application basis. 
+        if train_ac < 0.25: # Accuracy threshold is on a application to application basis.
           totalacc = accuracy.eval(feed_dict={x: mnist.validation.images, y: mnist.validation.labels, keep_prob: 1.0})
           return totalacc
     totalacc = accuracy.eval(feed_dict={x: mnist.validation.images, y: mnist.validation.labels, keep_prob: 1.0})
-  return totalacc
-  
+  return totalacc.astype("float64")
+
 def cnn_setup(x, y, keep_prob, lr, stddev):
   first_hidden = 32
   second_hidden = 64

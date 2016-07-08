@@ -5,14 +5,13 @@ import numpy as np
 import cPickle as pickle
 import gym
 import ray
-import ray.services as services
 import os
 
 import functions
 
 worker_dir = os.path.dirname(os.path.abspath(__file__))
 worker_path = os.path.join(worker_dir, "worker.py")
-services.start_ray_local(num_workers=10, worker_path=worker_path)
+ray.services.start_ray_local(num_workers=10, worker_path=worker_path)
 
 # hyperparameters
 H = 200 # number of hidden layer neurons

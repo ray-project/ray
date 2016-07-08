@@ -1,6 +1,5 @@
 import argparse
 import ray
-import ray.worker as worker
 import gym
 
 import functions
@@ -14,4 +13,4 @@ if __name__ == "__main__":
   args = parser.parse_args()
   ray.connect(args.scheduler_address, args.objstore_address, args.worker_address)
   ray.register_module(functions)
-  worker.main_loop()
+  ray.worker.main_loop()

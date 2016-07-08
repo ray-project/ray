@@ -1,6 +1,5 @@
 import unittest
 import ray
-import ray.services as services
 import time
 import os
 import numpy as np
@@ -11,7 +10,7 @@ class MicroBenchmarkTest(unittest.TestCase):
 
   def testTiming(self):
     worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-    services.start_ray_local(num_workers=3, worker_path=worker_path)
+    ray.services.start_ray_local(num_workers=3, worker_path=worker_path)
 
     # measure the time required to submit a remote task to the scheduler
     elapsed_times = []
@@ -78,7 +77,7 @@ class MicroBenchmarkTest(unittest.TestCase):
     print "    worst:           {}".format(elapsed_times[999])
     self.assertTrue(average_elapsed_time < 0.002) # should take 0.00087
 
-    services.cleanup()
+    ray.services.cleanup()
 
 if __name__ == "__main__":
     unittest.main()

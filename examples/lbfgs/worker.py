@@ -1,7 +1,6 @@
 import argparse
 
 import ray
-import ray.worker as worker
 
 import ray.array.remote as ra
 import ray.array.distributed as da
@@ -15,7 +14,7 @@ parser.add_argument("--worker-address", default="127.0.0.1:40001", type=str, hel
 
 if __name__ == "__main__":
   args = parser.parse_args()
-  worker.connect(args.scheduler_address, args.objstore_address, args.worker_address)
+  ray.worker.connect(args.scheduler_address, args.objstore_address, args.worker_address)
 
   ray.register_module(functions)
 
@@ -26,4 +25,4 @@ if __name__ == "__main__":
   ray.register_module(da.random)
   ray.register_module(da.linalg)
 
-  worker.main_loop()
+  ray.worker.main_loop()
