@@ -15,6 +15,7 @@ before_install:
   - if [[ $TRAVIS_OS_NAME == 'linux' ]]; then sudo add-apt-repository --yes ppa:kalakris/cmake ; fi
 
 install:
+  - ./install-dependencies.sh
   - ./setup.sh
   - ./build.sh
 

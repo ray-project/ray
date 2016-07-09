@@ -1,9 +1,0 @@
-typing
-funcsigs
-subprocess32
-protobuf==3.0.0-alpha-2
-boto3
-botocore
-Pillow
-colorama
-graphviz
