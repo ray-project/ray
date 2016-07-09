@@ -51,6 +51,7 @@ def _install_ray(node_ip_addresses, username, key_file, installation_directory):
       cd "{}" &&
       git clone "https://github.com/amplab/ray";
       cd ray;
+      ./install-dependencies.sh;
       ./setup.sh;
       ./build.sh
     """.format(installation_directory, installation_directory)
