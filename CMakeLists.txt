@@ -41,6 +41,9 @@ find_package(NumPy REQUIRED)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
+find_package(Boost)
+include_directories(${Boost_INCLUDE_DIRS}) # This was required to find boost for macports
+
 include_directories("${CMAKE_SOURCE_DIR}/include")
 include_directories("/usr/local/include")
 include_directories("${CMAKE_SOURCE_DIR}/thirdparty/grpc/include/")
@@ -139,11 +142,11 @@ add_library(pynumbuf STATIC ${CMAKE_SOURCE_DIR}/thirdparty/numbuf/cpp/src/numbuf
 target_link_libraries(pynumbuf ${ARROW_LIB} ${PYTHON_LIBRARIES})
 
 add_executable(objstore src/objstore.cc src/ipc.cc src/utils.cc ${GENERATED_PROTOBUF_FILES})
-target_link_libraries(objstore ${ARROW_LIB} pynumbuf boost_system boost_filesystem)
+target_link_libraries(objstore ${ARROW_LIB} pynumbuf)
 add_executable(scheduler src/scheduler.cc src/computation_graph.cc src/utils.cc ${GENERATED_PROTOBUF_FILES})
-target_link_libraries(scheduler boost_system boost_filesystem)
+target_link_libraries(scheduler)
 add_library(raylib SHARED src/raylib.cc src/worker.cc src/ipc.cc src/utils.cc ${GENERATED_PROTOBUF_FILES})
-target_link_libraries(raylib ${ARROW_LIB} pynumbuf boost_system boost_filesystem)
+target_link_libraries(raylib ${ARROW_LIB} pynumbuf)
 
 get_filename_component(PYTHON_SHARED_LIBRARY ${PYTHON_LIBRARIES} NAME)
 if(APPLE)
