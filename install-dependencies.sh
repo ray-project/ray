@@ -31,7 +31,7 @@ if [[ $platform == "linux" ]]; then
   # These commands must be kept in sync with the installation instructions.
   sudo apt-get update
   sudo apt-get install -y git cmake build-essential autoconf curl libtool python-dev python-numpy python-pip libboost-all-dev unzip libjpeg8-dev graphviz
-  sudo pip install ipython typing funcsigs subprocess32 protobuf==3.0.0-alpha-2 boto3 botocore Pillow colorama graphviz
+  sudo pip install ipython typing funcsigs subprocess32 protobuf==3.0.0a2 boto3 botocore Pillow colorama graphviz
 elif [[ $platform == "macosx" ]]; then
   # These commands must be kept in sync with the installation instructions.
   brew install git cmake automake autoconf libtool boost libjpeg graphviz

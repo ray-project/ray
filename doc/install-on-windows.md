@@ -3,6 +3,8 @@
 Ray currently does not run on Windows. However, it can be compiled with the
 following instructions.
 
+We currently do not support Python 3.
+
 **Note:** A batch file is provided that clones any missing third-party libraries
 and applies patches to them. Do not attempt to open the solution before the
 batch file applies the patches; otherwise, if the projects have been modified,
