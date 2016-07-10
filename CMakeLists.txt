@@ -38,18 +38,17 @@ else(NOT APPLE)
 endif(NOT APPLE)
 
 find_package(NumPy REQUIRED)
+find_package(Boost REQUIRED)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
-find_package(Boost)
-include_directories(${Boost_INCLUDE_DIRS}) # This was required to find boost for macports
-
 include_directories("${CMAKE_SOURCE_DIR}/include")
-include_directories("/usr/local/include")
 include_directories("${CMAKE_SOURCE_DIR}/thirdparty/grpc/include/")
 include_directories("${CMAKE_SOURCE_DIR}/thirdparty/grpc/third_party/protobuf/src")
 include_directories("${PYTHON_INCLUDE_DIRS}")
 include_directories("${NUMPY_INCLUDE_DIR}")
+include_directories("/usr/local/include")
+include_directories("${Boost_INCLUDE_DIRS}")
 
 set(PROTO_PATH "${CMAKE_SOURCE_DIR}/protos")
 
