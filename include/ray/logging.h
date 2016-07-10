@@ -16,6 +16,13 @@ extern RayConfig global_ray_config;
 #define RAY_REFCOUNT RAY_VERBOSE
 #define RAY_ALIAS RAY_VERBOSE
 
+#ifdef _MSC_VER
+extern "C" __declspec(dllimport) int __stdcall IsDebuggerPresent();
+#define RAY_BREAK_IF_DEBUGGING() IsDebuggerPresent() && (__debugbreak(), 1)
+#else
+#define RAY_BREAK_IF_DEBUGGING()
+#endif
+
 #define RAY_LOG(LEVEL, MESSAGE) \
   if (LEVEL == RAY_VERBOSE) { \
     \
@@ -24,6 +31,7 @@ extern RayConfig global_ray_config;
     if (global_ray_config.log_to_file) { \
       global_ray_config.logfile << "fatal error occured: " << MESSAGE << std::endl; \
     } \
+    RAY_BREAK_IF_DEBUGGING();  \
     std::exit(1); \
   } else if (LEVEL == RAY_DEBUG) { \
     \
