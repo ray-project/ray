@@ -2,13 +2,6 @@
 
 #include <stdlib.h>
 
-#if defined(WIN32) || defined(_WIN32)
-#include <Windows.h>
-#else
-#include <sys/types.h>
-#include <sys/stat.h>
-#endif
-
 #include "ray/ray.h"
 
 using namespace arrow;
@@ -37,99 +30,72 @@ int64_t BufferMemorySource::Size() const {
   return size_;
 }
 
-MessageQueue<>::MessageQueue() : handle_(-1) { }
+MessageQueue<>::MessageQueue() { }
 
-MessageQueue<>::~MessageQueue() { close(); }
-
-MessageQueue<>::MessageQueue(MessageQueue&& other) {
-  handle_ = other.handle_;
-  other.handle_ = -1;
+MessageQueue<>::~MessageQueue() {
+  if (!name_.empty()) {
+    bip::message_queue::remove(name_.c_str());
+  }
 }
 
-MessageQueue<>& MessageQueue<>::operator=(MessageQueue<>&& other) {
-  close();
-  handle_ = other.handle_;
-  other.handle_ = -1;
+MessageQueue<>::MessageQueue(MessageQueue&& other) {
+  *this = std::move(other);
+}
+
+MessageQueue<>& MessageQueue<>::operator=(MessageQueue&& other) {
+  name_ = std::move(other.name_);
+  queue_ = std::move(other.queue_);
+
+  other.name_.clear();  // It is unclear if this is guaranteed, but we need it to hold for the destructor. See: https://stackoverflow.com/a/17735913
+
   return *this;
 }
 
-bool MessageQueue<>::connect(const std::string& name, bool create, size_t buffer_size) {
-  std::string name_translated = "ray-{BC200A09-2465-431D-AEC7-2F8530B04535}-" + name;
+
+bool MessageQueue<>::connect(const std::string& name, bool create, size_t message_size, size_t message_capacity) {
+  name_ = name;
+  name_.insert(0, "ray-{BC200A09-2465-431D-AEC7-2F8530B04535}-");
 #if defined(WIN32) || defined(_WIN32)
-  name_translated.insert(0, "\\\\.\\mailslot\\");
-  std::replace(name_translated.begin(), name_translated.end(), '/', '\\');
-  if (create) {
-    handle_ = reinterpret_cast<intptr_t>(CreateMailslotA(name_translated.c_str(), 0, MAILSLOT_WAIT_FOREVER, NULL));
-  } else {
-    handle_ = reinterpret_cast<intptr_t>(CreateFileA(name_translated.c_str(), GENERIC_ALL, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL));
-  }
-#else
-  name_translated.insert(0, "/tmp/");
-  if (!create || mkfifo(name_translated.c_str(), S_IWUSR | S_IRUSR | S_IRGRP | S_IROTH) == 0 || errno == EEXIST) {
-    handle_ = open(name_translated.c_str(), O_RDWR);
-    if (handle_ == -1) {
-      unlink(name_translated.c_str());
+  std::replace(name_.begin(), name_.end(), ':', '-');
+#endif
+  try {
+    if (create) {
+      bip::message_queue::remove(name_.c_str()); // remove queue if it has not been properly removed from last run
+      queue_ = std::unique_ptr<bip::message_queue>(new bip::message_queue(bip::create_only, name_.c_str(), message_capacity, message_size));
+    }
+    else {
+      queue_ = std::unique_ptr<bip::message_queue>(new bip::message_queue(bip::open_only, name_.c_str()));
     }
   }
-#endif
-  return handle_ != -1;
+  catch (bip::interprocess_exception &ex) {
+    RAY_CHECK(false, "boost::interprocess exception: " << ex.what());
+  }
+  return true;
 }
-
 bool MessageQueue<>::connected() {
-  return handle_ != -1;
+  return queue_ != NULL;
 }
 
-void MessageQueue<>::close() {
-  if (connected()) {
-#if defined(WIN32) || defined(_WIN32)
-    CloseHandle(reinterpret_cast<HANDLE>(handle_));
-#else
-    ::close(handle_);
-#endif
-    handle_ = -1;
+bool MessageQueue<>::send(const void * object, size_t size) {
+  try {
+    queue_->send(object, size, 0);
   }
-}
-
-bool MessageQueue<>::send(const unsigned char* object, size_t size) {
-  while (size > 0) {
-#if defined(WIN32) || defined(_WIN32)
-    DWORD transmitted;
-    if (!WriteFile(reinterpret_cast<HANDLE>(handle_), object, static_cast<DWORD>(size), &transmitted, NULL)) {
-      RAY_LOG(RAY_INFO, "WriteFile(" << reinterpret_cast<void *>(handle_) << ") resulted in GetLastError() == " << GetLastError());
-      break;
-    }
-#else
-    ssize_t transmitted = write(handle_, object, size);
-    if (transmitted < 0) {
-      RAY_LOG(RAY_INFO, "errno == " << errno);
-      break;
-    }
-#endif
-    size -= static_cast<size_t>(transmitted);
-    object += static_cast<ptrdiff_t>(transmitted);
-    }
-  return size == 0;
-}
-
-bool MessageQueue<>::receive(unsigned char* object, size_t size) {
-  while (size > 0) {
-#if defined(WIN32) || defined(_WIN32)
-    DWORD transmitted;
-    if (!ReadFile(reinterpret_cast<HANDLE>(handle_), object, static_cast<DWORD>(size), &transmitted, NULL)) {
-      RAY_LOG(RAY_INFO, "ReadFile(" << reinterpret_cast<void *>(handle_) << ") resulted in GetLastError() == " << GetLastError());
-      break;
-    }
-#else
-    ssize_t transmitted = read(handle_, object, size);
-    if (transmitted < 0) {
-      RAY_LOG(RAY_INFO, "errno == " << errno);
-      break;
-    }
-#endif
-    size -= static_cast<size_t>(transmitted);
-    object += static_cast<ptrdiff_t>(transmitted);
+  catch (bip::interprocess_exception &ex) {
+    RAY_CHECK(false, "boost::interprocess exception: " << ex.what());
   }
-  return size == 0;
+  return true;
+}
+
+bool MessageQueue<>::receive(void * object, size_t size) {
+  unsigned int priority;
+  bip::message_queue::size_type recvd_size;
+  try {
+    queue_->receive(object, size, recvd_size, priority);
+  }
+  catch (bip::interprocess_exception &ex) {
+    RAY_CHECK(false, "boost::interprocess exception: " << ex.what());
+  }
+  return true;
 }
 
 MemorySegmentPool::MemorySegmentPool(ObjStoreId objstoreid, bool create) : objstoreid_(objstoreid), create_mode_(create) { }

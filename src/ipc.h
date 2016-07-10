@@ -22,6 +22,7 @@ namespace boost {
 #endif
 
 #include <boost/interprocess/managed_shared_memory.hpp>
+#include <boost/interprocess/ipc/message_queue.hpp>
 
 #include <arrow/api.h>
 #include <arrow/ipc/memory.h>
@@ -39,33 +40,27 @@ class MessageQueue;
 
 template<>
 class MessageQueue<> {
-protected:
-  bool connect(const std::string& name, bool create, size_t buffer_size);
-  bool connected();
-  void close();
+public:
   ~MessageQueue();
   MessageQueue();
   MessageQueue(MessageQueue&& other);
   MessageQueue& operator=(MessageQueue&& other);
-  bool send(const unsigned char* object, size_t size);;
-  bool receive(unsigned char* object, size_t size);
-
+  bool connected();
+protected:
+  bool connect(const std::string& name, bool create, size_t message_size, size_t message_capacity);
+  bool send(const void* object, size_t size);;
+  bool receive(void* object, size_t size);
 private:
-#if defined(WIN32) || defined(_WIN32)
-  int handle_;
-#else
-  intptr_t handle_;
-#endif
+  std::string name_;
+  std::unique_ptr<bip::message_queue> queue_;
 };
 
 template<typename T>
 class MessageQueue : public MessageQueue<> {
 public:
-  using MessageQueue<>::connected;
-  using MessageQueue<>::close;
-  bool connect(const std::string& name, bool create) { return MessageQueue<>::connect(name, create, sizeof(T)); }
-  bool send(const T* object) { return MessageQueue<>::send(reinterpret_cast<const unsigned char*>(object), sizeof(*object)); }
-  bool receive(T* object) { return MessageQueue<>::receive(reinterpret_cast<unsigned char*>(object), sizeof(*object)); }
+  bool connect(const std::string& name, bool create, size_t capacity = 100) { return MessageQueue<>::connect(name, create, sizeof(T), capacity); }
+  bool send(const T* object) { return MessageQueue<>::send(object, sizeof(*object)); };
+  bool receive(T* object) { return MessageQueue<>::receive(object, sizeof(*object)); }
 };
 
 // Object Queues
