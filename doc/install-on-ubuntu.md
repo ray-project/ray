@@ -10,23 +10,24 @@ git clone https://github.com/amplab/ray.git
 
 ### Dependencies
 
-First install the dependencies.
+First install the dependencies. We currently do not support Python 3.
 
 ```
 sudo apt-get update
 sudo apt-get install -y git cmake build-essential autoconf curl libtool python-dev python-numpy python-pip libboost-all-dev unzip libjpeg8-dev graphviz
-sudo pip install ipython typing funcsigs subprocess32 protobuf==3.0.0-alpha-2 boto3 botocore Pillow colorama graphviz
+sudo pip install ipython typing funcsigs subprocess32 protobuf==3.0.0a2 boto3 botocore Pillow colorama graphviz
 ```
 
 ### Build
 
-Then run the setup scripts.
+Then run the setup scripts. Note that `./setup.sh` could take about 10 minutes
+to run.
 
 ```
 cd ray
-./setup.sh # This builds all necessary third party libraries (e.g., gRPC and Apache Arrow).
-./build.sh # This builds Ray.
-source setup-env.sh # This adds Ray to your Python path.
+./setup.sh # Build all necessary third party libraries (e.g., gRPC and Apache Arrow).
+./build.sh # Build Ray.
+source setup-env.sh # Add Ray to your Python path.
 ```
 
 For convenience, you may also want to add the line `source

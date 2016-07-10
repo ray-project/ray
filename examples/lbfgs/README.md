@@ -17,7 +17,9 @@ Optimization is at the heart of many machine learning algorithms. Much of
 machine learning involves specifying a loss function and finding the parameters
 that minimize the loss. If we can compute the gradient of the loss function,
 then we can apply a variety of gradient-based optimization algorithms. L-BFGS is
-one such algorithm.
+one such algorithm. It is a quasi-Newton method that uses gradient information
+to approximate the inverse Hessian of the loss function in a computationally
+efficient manner.
 
 ### The serial version
 
