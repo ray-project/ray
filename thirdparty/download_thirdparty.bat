@@ -1,18 +1,23 @@
 @SetLocal
+	@Echo Off
 	@PushD "%~dp0"
-		git                                                        submodule update --init
-		@If Not Exist "grpc\.git"   git                            clone "https://github.com/grpc/grpc"
-		@If Not Exist "arrow\.git"  git                            clone "https://github.com/pcmoritz/arrow.git" --branch windows_with_submodules --recursive
-		@If Not Exist "arrow\cpp\thirdparty\flatbuffers\.git"  git clone "https://github.com/google/flatbuffers.git" "arrow/cpp/thirdparty/flatbuffers"
-		@If Not Exist "numbuf\.git" git                            clone "https://github.com/amplab/numbuf.git" --branch win
-		@If Not Exist "python\.git" git                            clone "https://github.com/austinsc/python.git"
-		git -C "grpc"                                              submodule update --init "third_party/protobuf"
-		git -C "grpc"                                              submodule update --init "third_party/nanopb"
-		git -C "grpc"                                              submodule update --init "third_party/zlib"
-		git -C "grpc"                                              apply --index --3way "%~dp0patches/grpc-source.patch"
-		git -C "grpc"                                              apply --index --3way "%~dp0patches/windows/grpc-projects.patch"
-		git -C "grpc/third_party/protobuf"                         apply --index --3way "%~dp0patches/windows/protobuf-projects.patch"
-		git -C "arrow/cpp/thirdparty/flatbuffers"                  apply --index --3way "%~dp0patches/windows/flatbuffers-projects.patch"
-		git -C "python"                                            apply --index --3way "%~dp0patches/windows/python-pyconfig.patch"
+		If Not Exist "arrow\.git"  git clone  --recursive --branch windows_with_submodules "https://github.com/pcmoritz/arrow.git"
+		If Not Exist "python\.git" git clone                                               "https://github.com/austinsc/python.git"
+		git                                                     submodule update --init
+		git -C "arrow"                                          submodule update --init
+		git -C "grpc"                                           submodule update --init "third_party/protobuf"
+		git -C "grpc"                                           submodule update --init "third_party/nanopb"
+		git -C "grpc"                                           submodule update --init "third_party/zlib"
+		Call :GitApply "grpc"                                   "%CD%/patches/grpc-source.patch"
+		Call :GitApply "grpc"                                   "%CD%/patches/windows/grpc-projects.patch"
+		Call :GitApply "grpc/third_party/protobuf"              "%CD%/patches/windows/protobuf-projects.patch"
+		Call :GitApply "arrow/cpp/thirdparty/flatbuffers"       "%CD%/patches/windows/flatbuffers-projects.patch"
+		Call :GitApply "python"                                 "%CD%/patches/windows/python-pyconfig.patch"
 	@PopD
 @EndLocal
+@GoTo :EOF
+
+:GitApply <ChangeToFolder> <Patch>
+	@REM Check if patch already applied by attempting to apply it in reverse; if not, then force-reapply it
+	git -C "%~1" apply --3way "%~2" -R --check 2> NUL || git -C "%~1" reset --hard && git -C "%~1" apply --3way "%~2"
+@GoTo :EOF
