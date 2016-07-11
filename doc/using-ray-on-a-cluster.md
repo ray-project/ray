@@ -41,7 +41,8 @@ appropriate values. This assumes that you can connect to each IP address
     ```
 4. The previous command should open a Python interpreter. To install Ray on the
 cluster, run `install_ray()` in the interpreter. The interpreter should block
-until the installation has completed.
+until the installation has completed. The standard output from the nodes will
+be redirected to your terminal.
 5. To check that the installation succeeded, you can ssh to each node, cd into
 the directory `ray/test/`, and run the tests (e.g., `python runtest.py`).
 6. Now that Ray has been installed, you can start the cluster (the scheduler,
