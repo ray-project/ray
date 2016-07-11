@@ -8,15 +8,17 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake/Modules)
 
 set(CMAKE_PREFIX_PATH "${CMAKE_SOURCE_DIR}/thirdparty/grpc/bins/opt/" ${CMAKE_PREFIX_PATH})
 
-find_package(PythonInterp REQUIRED)
-
 if(NOT APPLE)
+    find_package(PythonInterp REQUIRED)
     find_package(PythonLibs REQUIRED)
-else(NOT APPLE)
-    execute_process(COMMAND ${PYTHON_EXECUTABLE} -c
-                    "import sys; skip = 2 if sys.platform.startswith('win') else 1; print 'python' + sys.version[0:3:skip]"
+    set(CUSTOM_PYTHON_EXECUTABLE ${PYTHON_EXECUTABLE})
+else()
+    find_program(CUSTOM_PYTHON_EXECUTABLE python)
+    message("-- Found Python program: ${CUSTOM_PYTHON_EXECUTABLE}")
+    execute_process(COMMAND ${CUSTOM_PYTHON_EXECUTABLE} -c
+                    "import sys; print 'python' + sys.version[0:3]"
                     OUTPUT_VARIABLE PYTHON_LIBRARY_NAME OUTPUT_STRIP_TRAILING_WHITESPACE)
-    execute_process(COMMAND ${PYTHON_EXECUTABLE} -c
+    execute_process(COMMAND ${CUSTOM_PYTHON_EXECUTABLE} -c
                     "import sys; print sys.exec_prefix"
                     OUTPUT_VARIABLE PYTHON_PREFIX OUTPUT_STRIP_TRAILING_WHITESPACE)
     FIND_LIBRARY(PYTHON_LIBRARIES
@@ -24,18 +26,18 @@ else(NOT APPLE)
                  HINTS "${PYTHON_PREFIX}"
                  PATH_SUFFIXES "lib" "libs"
                  NO_DEFAULT_PATH)
-    execute_process(COMMAND ${PYTHON_EXECUTABLE} -c
+    execute_process(COMMAND ${CUSTOM_PYTHON_EXECUTABLE} -c
                     "from distutils.sysconfig import *; print get_python_inc()"
                     OUTPUT_VARIABLE PYTHON_INCLUDE_DIRS OUTPUT_STRIP_TRAILING_WHITESPACE)
     if(PYTHON_LIBRARIES AND PYTHON_INCLUDE_DIRS)
         SET(PYTHONLIBS_FOUND TRUE)
         message("-- Found PythonLibs: " ${PYTHON_LIBRARIES})
         message("-- -- Used custom search path")
-    else(PYTHON_LIBRARIES AND PYTHON_INCLUDE_DIRS)
+    else()
         find_package(PythonLibs REQUIRED)
         message("-- -- Used find_package(PythonLibs)")
-    endif(PYTHON_LIBRARIES AND PYTHON_INCLUDE_DIRS)
-endif(NOT APPLE)
+    endif()
+endif()
 
 find_package(NumPy REQUIRED)
 find_package(Boost REQUIRED)
