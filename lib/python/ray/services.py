@@ -145,8 +145,6 @@ def start_node(scheduler_address, node_ip_address, num_workers, worker_path=None
   time.sleep(0.2)
   for _ in range(num_workers):
     start_worker(worker_path, scheduler_address, objstore_address, address(node_ip_address, new_worker_port()), local=False)
-  time.sleep(0.3)
-  ray.connect(scheduler_address, objstore_address, address(node_ip_address, new_worker_port()), is_driver=True)
   time.sleep(0.5)
 
 def start_workers(scheduler_address, objstore_address, num_workers, worker_path):
