@@ -2,7 +2,7 @@ import sys
 import argparse
 import numpy as np
 
-import ray.datasets.imagenet
+import imagenet
 
 import ray
 import ray.array.remote as ra
@@ -19,7 +19,7 @@ if __name__ == "__main__":
   args = parser.parse_args()
   ray.worker.connect(args.scheduler_address, args.objstore_address, args.worker_address)
 
-  ray.register_module(ray.datasets.imagenet)
+  ray.register_module(imagenet)
   ray.register_module(functions)
   ray.register_module(ra)
   ray.register_module(ra.random)

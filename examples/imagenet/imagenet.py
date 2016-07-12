@@ -1,5 +1,5 @@
 import tarfile, io
-from typing import List
+from typing import List, Tuple
 import PIL.Image
 import numpy as np
 import boto3
@@ -21,6 +21,7 @@ def load_chunk(tarfile, size=None):
   """
 
   result = []
+  filenames = []
   for member in tarfile.getmembers():
     filename = member.path
     content = tarfile.extractfile(member)
@@ -30,9 +31,10 @@ def load_chunk(tarfile, size=None):
     if size != None:
       rgbimg = rgbimg.resize(size, PIL.Image.ANTIALIAS)
     result.append(np.array(rgbimg).reshape(1, rgbimg.size[0], rgbimg.size[1], 3))
-  return np.concatenate(result)
+    filenames.append(filename)
+  return np.concatenate(result), filenames
 
-@ray.remote([str, str, List[int]], [np.ndarray])
+@ray.remote([str, str, List[int]], [np.ndarray, List])
 def load_tarfile_from_s3(bucket, s3_key, size=[]):
   """Load an imagenet .tar file.
 
@@ -55,7 +57,7 @@ def load_tarfile_from_s3(bucket, s3_key, size=[]):
   tar = tarfile.open(mode="r", fileobj=output)
   return load_chunk(tar, size=size if size != [] else None)
 
-@ray.remote([str, List[str], List[int]], [List[ray.ObjRef]])
+@ray.remote([str, List[str], List[int]], [List[Tuple[ray.ObjRef, ray.ObjRef]]])
 def load_tarfiles_from_s3(bucket, s3_keys, size=[]):
   """Load a number of imagenet .tar files.
 
