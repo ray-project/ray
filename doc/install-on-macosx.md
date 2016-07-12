@@ -16,10 +16,10 @@ install [Anaconda](https://www.continuum.io/downloads).
 
 ```
 brew update
-brew install git cmake automake autoconf libtool boost libjpeg graphviz
+brew install git cmake automake autoconf libtool boost graphviz
 sudo easy_install pip
 sudo pip install ipython --user
-sudo pip install numpy typing funcsigs subprocess32 protobuf==3.0.0a2 boto3 botocore Pillow colorama graphviz --ignore-installed six
+sudo pip install numpy typing funcsigs subprocess32 protobuf==3.0.0a2 colorama graphviz --ignore-installed six
 ```
 
 ### Build

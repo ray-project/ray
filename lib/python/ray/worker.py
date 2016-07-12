@@ -233,7 +233,7 @@ def get(objref, worker=global_worker):
     print_task_info(ray.lib.task_info(worker.handle), worker.mode)
   value = worker.get_object(objref)
   if isinstance(value, RayFailedObject):
-    raise Exception("The task that created this object reference failed with error message: {}".format(value.error_message))
+    raise Exception("The task that created this object reference failed with error message:\n{}".format(value.error_message))
   return value
 
 def put(value, worker=global_worker):
