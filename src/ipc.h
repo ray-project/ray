@@ -52,6 +52,7 @@ protected:
   bool receive(void* object, size_t size);
 private:
   std::string name_;
+  bool create_;
   std::unique_ptr<bip::message_queue> queue_;
 };
 

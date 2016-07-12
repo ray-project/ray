@@ -30,10 +30,12 @@ int64_t BufferMemorySource::Size() const {
   return size_;
 }
 
-MessageQueue<>::MessageQueue() { }
+MessageQueue<>::MessageQueue() : create_(false) { }
 
 MessageQueue<>::~MessageQueue() {
-  if (!name_.empty()) {
+  if (!name_.empty() && create_) {
+    // Only remove the message queue if we created it.
+    RAY_LOG(RAY_DEBUG, "Removing message queue " << name_.c_str() << ", create = " << create_);
     bip::message_queue::remove(name_.c_str());
   }
 }
@@ -44,8 +46,8 @@ MessageQueue<>::MessageQueue(MessageQueue&& other) {
 
 MessageQueue<>& MessageQueue<>::operator=(MessageQueue&& other) {
   name_ = std::move(other.name_);
+  create_ = other.create_;
   queue_ = std::move(other.queue_);
-
   other.name_.clear();  // It is unclear if this is guaranteed, but we need it to hold for the destructor. See: https://stackoverflow.com/a/17735913
 
   return *this;
@@ -62,6 +64,7 @@ bool MessageQueue<>::connect(const std::string& name, bool create, size_t messag
     if (create) {
       bip::message_queue::remove(name_.c_str()); // remove queue if it has not been properly removed from last run
       queue_ = std::unique_ptr<bip::message_queue>(new bip::message_queue(bip::create_only, name_.c_str(), message_capacity, message_size));
+      create_ = true; // Only set create_ = true on success.
     }
     else {
       queue_ = std::unique_ptr<bip::message_queue>(new bip::message_queue(bip::open_only, name_.c_str()));
