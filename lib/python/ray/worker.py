@@ -17,38 +17,146 @@ import ray.graph
 import services
 
 class RayFailedObject(object):
-  """If a task throws an exception during execution, a RayFailedObject is stored in the object store for each of the tasks outputs."""
+  """An object used internally to represent a task that threw an exception.
+
+  If a task throws an exception during execution, a RayFailedObject is stored in
+  the object store for each of the tasks outputs. When an object is retrieved
+  from the object store, the Python method that retrieved it should check to see
+  if the object is a RayFailedObject and if it is then an exception should be
+  thrown containing the error message.
+
+  Attributes
+    error_message (str): The error message raised by the task that failed.
+  """
 
   def __init__(self, error_message=None):
+    """Initialize a RayFailedObject.
+
+    Args:
+      error_message (str): The error message raised by the task for which a
+        RayFailedObject is being created.
+    """
     self.error_message = error_message
 
   def deserialize(self, primitives):
+    """Create a RayFailedObject from a primitive object.
+
+    This initializes a RayFailedObject from a primitive object created by the
+    serialize method. This method is required in order for Ray to serialize
+    custom Python classes.
+
+    Note:
+      This method should not be called by users.
+
+    Args:
+      primitives (str): The object's error message.
+    """
     self.error_message = primitives
 
   def serialize(self):
+    """Turn a RayFailedObject into a primitive object.
+
+    This method is required in order for Ray to serialize
+    custom Python classes.
+
+    Note:
+      The output of this method should only be used by the deserialize method.
+      This method should not be called by users.
+
+    Args:
+      primitives (str): The object's error message.
+
+    Returns:
+      A primitive representation of a RayFailedObject.
+    """
     return self.error_message
 
 class RayDealloc(object):
+  """An object used internally to properly implement reference counting.
+
+  When we call get_object with a particular object reference, we create a
+  RayDealloc object with the information necessary to properly handle closing
+  the relevant memory segment when the object is no longer needed by the worker.
+  The RayDealloc object is stored as a field in the object returned by
+  get_object so that its destructor is only called when the worker no longer has
+  any references to the object.
+
+  Attributes
+    handle (worker capsule): A Python object wrapping a C++ Worker object.
+    segmentid (int): The id of the segment that contains the object that holds
+      this RayDealloc object.
+  """
+
   def __init__(self, handle, segmentid):
+    """Initialize a RayDealloc object.
+
+    Args:
+      handle (worker capsule): A Python object wrapping a C++ Worker object.
+      segmentid (int): The id of the segment that contains the object that holds
+        this RayDealloc object.
+    """
     self.handle = handle
     self.segmentid = segmentid
 
   def __del__(self):
+    """Deallocate the relevant segment to avoid a memory leak."""
     ray.lib.unmap_object(self.handle, self.segmentid)
 
 class Worker(object):
-  """The methods in this class are considered unexposed to the user. The functions outside of this class are considered exposed."""
+  """A class used to define the control flow of a worker process.
+
+  Note:
+    The methods in this class are considered unexposed to the user. The
+    functions outside of this class are considered exposed.
+
+  Attributes:
+    functions (Dict[str, Callable]): A dictionary mapping the name of a remote
+      function to the remote function itself. This is the set of remote
+      functions that can be executed by this worker.
+    handle (worker capsule): A Python object wrapping a C++ Worker object.
+
+  """
 
   def __init__(self):
+    """Initialize a Worker object."""
     self.functions = {}
     self.handle = None
 
   def set_mode(self, mode):
+    """Set the mode of the worker.
+
+    The mode ray.SCRIPT_MODE should be used if this Worker is a driver that is
+    being run as a Python script. It will print information about task failures.
+
+    The mode ray.SHELL_MODE should be used if this Worker is a driver that is
+    being run interactively in a Python shell. It will print information about
+    task failures and successes.
+
+    The mode ray.WORKER_MODE should be used if this Worker is not a driver. It
+    will not print information about tasks.
+
+    The mode ray.PYTHON_MODE should be used if this Worker is a driver and if
+    you want to run the driver in a manner equivalent to serial Python for
+    debugging purposes. It will not send remote function calls to the scheduler
+    and will insead execute them in a blocking fashion.
+
+    args:
+      mode: One of ray.SCRIPT_MODE, ray.WORKER_MODE, ray.SHELL_MODE, and
+        ray.PYTHON_MODE.
+    """
     self.mode = mode
     colorama.init()
 
   def put_object(self, objref, value):
-    """Put `value` in the local object store with objref `objref`. This assumes that the value for `objref` has not yet been placed in the local object store."""
+    """Put value in the local object store with object reference objref.
+
+    This assumes that the value for objref has not yet been placed in the
+    local object store.
+
+    Args:
+      objref (ray.ObjRef): The object reference of the value to be put.
+      value (serializable object): The value to put in the object store.
+    """
     if serialization.is_arrow_serializable(value):
       ray.lib.put_arrow(self.handle, objref, value)
     else:
@@ -56,11 +164,13 @@ class Worker(object):
       ray.lib.put_object(self.handle, objref, object_capsule, contained_objrefs)
 
   def get_object(self, objref):
-    """
-    Return the value from the local object store for objref `objref`. This will
-    block until the value for `objref` has been written to the local object store.
+    """Get the value in the local object store associated with objref.
 
-    WARNING: get_object can only be called on a canonical objref.
+    Return the value from the local object store for objref. This will block
+    until the value for objref has been written to the local object store.
+
+    Args:
+      objref (ray.ObjRef): The object reference of the value to retrieve.
     """
     if ray.lib.is_arrow(self.handle, objref):
       result, segmentid = ray.lib.get_arrow(self.handle, objref)
@@ -97,27 +207,55 @@ class Worker(object):
     return result
 
   def alias_objrefs(self, alias_objref, target_objref):
-    """Make `alias_objref` refer to the same object that `target_objref` refers to."""
+    """Make two object references refer to the same object."""
     ray.lib.alias_objrefs(self.handle, alias_objref, target_objref)
 
   def register_function(self, function):
-    """Notify the scheduler that this worker can execute the function with name `func_name`. Store the function `function` locally."""
+    """Register a function with the scheduler.
+
+    Notify the scheduler that this worker can execute the function with name
+    func_name. After this call, the scheduler can send tasks for executing
+    the function to this worker.
+
+    Args:
+      function (Callable): The remote function that this worker can execute.
+    """
     ray.lib.register_function(self.handle, function.func_name, len(function.return_types))
     self.functions[function.func_name] = function
 
   def submit_task(self, func_name, args):
-    """Tell the scheduler to schedule the execution of the function with name `func_name` with arguments `args`. Retrieve object references for the outputs of the function from the scheduler and immediately return them."""
+    """Submit a remote task to the scheduler.
+
+    Tell the scheduler to schedule the execution of the function with name
+    func_name with arguments args. Retrieve object references for the outputs of
+    the function from the scheduler and immediately return them.
+
+    Args:
+      func_name (str): The name of the function to be executed.
+      args (List[Any]): The arguments to pass into the function. Arguments can
+        be object references or they can be values. If they are values, they
+        must be serializable objecs.
+    """
     task_capsule = serialization.serialize_task(self.handle, func_name, args)
     objrefs = ray.lib.submit_task(self.handle, task_capsule)
     if self.mode == ray.SHELL_MODE or self.mode == ray.SCRIPT_MODE:
       print_task_info(ray.lib.task_info(self.handle), self.mode)
     return objrefs
 
-# We make `global_worker` a global variable so that there is one worker per worker process.
 global_worker = Worker()
+"""Worker: The global Worker object for this worker process.
 
-# This is a helper method. It should not be called by users.
+We use a global Worker object to ensure that there is a single worker object
+per worker process.
+"""
+
 def print_failed_task(task_status):
+  """Print information about failed tasks.
+
+  Args:
+    task_status (Dict): A dictionary containing the name, operationid, and
+      error message for a failed task.
+  """
   print """
     Error: Task failed
       Function Name: {}
@@ -125,8 +263,14 @@ def print_failed_task(task_status):
       Error Message: \n{}
   """.format(task_status["function_name"], task_status["operationid"], task_status["error_message"])
 
-# This is a helper method. It should not be called by users.
 def print_task_info(task_data, mode):
+  """Print information about tasks.
+
+  Args:
+    task_data (Dict): A dictionary containing information about tasks that have
+      failed, succeeded, or are still running.
+    mode: The mode of the Worker object.
+  """
   num_tasks_succeeded = task_data["num_succeeded"]
   num_tasks_in_progress = len(task_data["running_tasks"])
   num_tasks_failed = len(task_data["failed_tasks"])
@@ -146,26 +290,26 @@ def print_task_info(task_data, mode):
       print ", ".join(info_strings)
 
 def scheduler_info(worker=global_worker):
+  """Return information about the state of the scheduler."""
   return ray.lib.scheduler_info(worker.handle)
 
 def visualize_computation_graph(file_path=None, view=False, worker=global_worker):
-  """
-  Write the computation graph to a pdf file.
+  """Write the computation graph to a pdf file.
 
   Args:
-    file_path: A .pdf file that the rendered computation graph will be written to
+    file_path (str): The name of a pdf file that the rendered computation graph
+      will be written to. If this argument is None, a temporary path will be
+      used.
+    view (bool): If true, the result the python graphviz package will try to
+      open the result in a viewer.
 
-    view: If true, the result the python graphviz package will try to open the
-      result in a viewer
+  Examples:
+    In ray/scripts, call "python shell.py" and try the following code.
 
-  Example:
-    In ray/scripts, call "python shell.py" and paste in the following code.
-
-    x = da.zeros([20, 20])
-    y = da.zeros([20, 20])
-    z = da.dot(x, y)
-
-    ray.visualize_computation_graph("computation_graph.pdf")
+    >>> x = da.zeros([20, 20])
+    >>> y = da.zeros([20, 20])
+    >>> z = da.dot(x, y)
+    >>> ray.visualize_computation_graph(view=True)
   """
 
   if file_path is None:
@@ -186,15 +330,17 @@ def visualize_computation_graph(file_path=None, view=False, worker=global_worker
   print "Wrote computation graph to file {}.pdf".format(base_path)
 
 def task_info(worker=global_worker):
-  """Tell the scheduler to return task information. Currently includes a list of all failed tasks since the start of the cluster."""
+  """Return information about failed tasks."""
   return ray.lib.task_info(worker.handle)
 
 def register_module(module, worker=global_worker):
-  """
-  This registers each remote function in the module with the scheduler, so tasks
-    with those functions can be scheduled on this worker.
+  """Register each remote function in a module with the scheduler.
 
-  :param module: The module of functions to register.
+  This registers each remote function in the module with the scheduler, so tasks
+  with those functions can be scheduled on this worker.
+
+  args:
+    module (module): The module of functions to register.
   """
   logging.info("registering functions in module {}.".format(module.__name__))
   for name in dir(module):
@@ -204,6 +350,17 @@ def register_module(module, worker=global_worker):
       worker.register_function(val)
 
 def connect(scheduler_address, objstore_address, worker_address, is_driver=False, worker=global_worker, mode=ray.WORKER_MODE):
+  """Connect this worker to the scheduler and an object store.
+
+  Args:
+    scheduler_address (str): The ip address and port of the scheduler.
+    objstore_address (str): The ip address and port of the local object store.
+    worker_address (str): The ip address and port of this worker. The port can
+      be chosen arbitrarily.
+    is_driver (bool): True if this worker is a driver and false otherwise.
+    mode: The mode of the worker. One of ray.SCRIPT_MODE, ray.WORKER_MODE,
+      ray.SHELL_MODE, and ray.PYTHON_MODE.
+  """
   if hasattr(worker, "handle"):
     del worker.handle
   worker.scheduler_address = scheduler_address
@@ -216,15 +373,23 @@ def connect(scheduler_address, objstore_address, worker_address, is_driver=False
   ray.lib.set_log_config(config.get_log_file_path("-".join(["worker", worker_address, "c++"]) + ".log"))
 
 def disconnect(worker=global_worker):
+  """Disconnect this worker from the scheduler and object store."""
   if worker.handle is not None:
     ray.lib.disconnect(worker.handle)
 
 def get(objref, worker=global_worker):
-  """
-  Get a remote object from an object store.
+  """Get a remote object from an object store.
 
-  :param objref: Object reference to the object you want to get
-  :rtype: A Python value
+  This method blocks until the object corresponding to objref is available in
+  the local object store. If this object is not in the local object store, it
+  will be shipped from an object store that has it (once the object has been
+  created).
+
+  Args:
+    objref (ray.ObjRef): Object reference to the object to get.
+
+  Returns:
+    A Python object
   """
   if worker.mode == ray.PYTHON_MODE:
     return objref # In ray.PYTHON_MODE, ray.get is the identity operation (the input will actually be a value not an objref)
@@ -237,11 +402,13 @@ def get(objref, worker=global_worker):
   return value
 
 def put(value, worker=global_worker):
-  """
-  Store an object in the object store.
+  """Store an object in the object store.
 
-  :param value: The Python object to be stored
-  :rtype: Object reference
+  Args:
+    value (serializable object): The Python object to be stored.
+
+  Returns:
+    The object reference assigned to this value.
   """
   if worker.mode == ray.PYTHON_MODE:
     return value # In ray.PYTHON_MODE, ray.put is the identity operation
@@ -252,35 +419,52 @@ def put(value, worker=global_worker):
   return objref
 
 def kill_workers(worker=global_worker):
-  """
-  This method kills all of the workers in the cluster. It does not kill drivers.
+  """Kill all of the workers in the cluster. This does not kill drivers.
+
+  Note:
+    Currently, we only support killing workers if all submitted tasks have been
+    run. If some workers are still running tasks or if the scheduler still has
+    tasks in its queue, then this method will not do anything.
+
+  Returns:
+    True if workers were successfully killed. False otherwise.
   """
   success = ray.lib.kill_workers(worker.handle)
   if not success:
-    print "Could not kill all workers. Check that there are no tasks currently running."
+    print "Could not kill all workers. We currently do not support killing workers when tasks are running."
   return success
 
 def restart_workers_local(num_workers, worker_path, worker=global_worker):
-  """
-  This method kills all of the workers and starts new workers locally on the
-    same node as the driver. This is intended for use in the case where Ray is
-    being used on a single node.
+  """Restart workers locally.
 
-  :param num_workers: the number of workers to be started
-  :param worker_path: path of the source code that will be run on the worker
+  This method kills all of the workers and starts new workers locally on the
+  same node as the driver. This is intended for use in the case where Ray is
+  being used on a single node.
+
+  Args:
+    num_workers (int): The number of workers to be started.
+    worker_path (str): The path of the source code that workers will run.
+
+  Returns:
+    True if workers were successfully restarted. False otherwise.
   """
   if not kill_workers(worker):
     return False
   services.start_workers(worker.scheduler_address, worker.objstore_address, num_workers, worker_path)
+  return True
 
 def format_error_message(exception_message):
-  """
-  This method takes an backtrace from an exception and makes it nicer by
-    removing a few uninformative lines and adding some space to indent the
-    remaining lines nicely.
+  """Improve the formatting of an exception thrown by a remote function.
 
-  :param exception_message: a string generated by traceback.format_exc()
-  :rtype: a string
+  This method takes an backtrace from an exception and makes it nicer by
+  removing a few uninformative lines and adding some space to indent the
+  remaining lines nicely.
+
+  Args:
+    exception_message (str): A message generated by traceback.format_exc().
+
+  Returns:
+    A string of the formatted exception message.
   """
   lines = exception_message.split("\n")
   # Remove lines 1, 2, 3, and 4, which are always the same, they just contain
@@ -290,6 +474,21 @@ def format_error_message(exception_message):
   return "\n".join(lines)
 
 def main_loop(worker=global_worker):
+  """The main loop a worker runs to receive and execute tasks.
+
+  This method is an infinite loop. It waits to receive tasks from the scheduler.
+  When it receives a task, it first deserializes the task. Then it retrieves the
+  values for any arguments that were passed in as object references. Then it
+  passes the arguments to the actual function. Then it stores the outputs of the
+  function in the local object store. Then it notifies the scheduler that it
+  completed the task.
+
+  If the process of getting the arguments for execution (which does some type
+  checking) or the process of executing the task fail, then the main loop will
+  catch the exception and store RayFailedObject objects containing the relevant
+  error messages in the object store in place of the actual outputs. These
+  objects are used to propagate the error messages.
+  """
   if not ray.lib.connected(worker.handle):
     raise Exception("Worker is attempting to enter main_loop but has not been connected yet.")
   ray.lib.start_worker_service(worker.handle)
@@ -321,15 +520,15 @@ def main_loop(worker=global_worker):
     process_task(task)
 
 def remote(arg_types, return_types, worker=global_worker):
-  """
-  This is a decorator to indicate that a Python function is to be executed remotely.
+  """This decorator is used to create remote functions.
 
-  :param arg_types: List of Python types of the function arguments
-  :param return_types: List of Python types of the return values
+  Args:
+    arg_types (List[type]): List of Python types of the function arguments.
+    return_types (List[type]): List of Python types of the return values.
   """
   def remote_decorator(func):
     def func_executor(arguments):
-      """This is what gets executed remotely on a worker after a remote function is scheduled by the scheduler."""
+      """This gets run when the remote function is executed."""
       logging.info("Calling function {}".format(func.__name__))
       start_time = time.time()
       result = func(*arguments)
@@ -338,7 +537,7 @@ def remote(arg_types, return_types, worker=global_worker):
       logging.info("Finished executing function {}, it took {} seconds".format(func.__name__, end_time - start_time))
       return result
     def func_call(*args, **kwargs):
-      """This is what gets run immediately when a worker calls a remote function."""
+      """This gets run immediately when a worker calls a remote function."""
       args = list(args)
       args.extend([kwargs[keyword] if kwargs.has_key(keyword) else default for keyword, default in func_call.keyword_defaults[len(args):]]) # fill in the remaining arguments
       if worker.mode == ray.PYTHON_MODE:
@@ -365,10 +564,18 @@ def remote(arg_types, return_types, worker=global_worker):
     return func_call
   return remote_decorator
 
-# helper method, this should not be called by the user
-# we currently do not support the functionality that we test for in this method,
-# but in the future we could
 def check_signature_supported(function):
+  """Check if we support the signature of this function.
+
+  We currently do not allow remote functions to have **kwargs. We also do not
+  support keyword argumens in conjunction with a *args argument.
+
+  Args:
+    function (Callable): The function to check.
+
+  Raises:
+    Exception: An exception is raised if the signature is not supported.
+  """
   # check if the user specified kwargs
   if function.has_kwargs_param:
     raise "Function {} has a **kwargs argument, which is currently not supported.".format(function.__name__)
@@ -377,8 +584,18 @@ def check_signature_supported(function):
     raise "Function {} has a *args argument as well as a keyword argument, which is currently not supported.".format(function.__name__)
 
 
-# helper method, this should not be called by the user
 def check_return_values(function, result):
+  """Check the types and number of return values.
+
+  Args:
+    function (Callable): The remote function whose outputs are being checked.
+    result: The value returned by an invocation of the remote function. The
+    expected types and number are defined in the remote decorator.
+
+  Raises:
+    Exception: An exception is raised if the return values have incorrect types
+      or the function returned the wrong number of return values.
+  """
   # If the @remote decorator declares that the function has no return values,
   # then all we do is check that there were in fact no return values.
   if len(function.return_types) == 0:
@@ -403,6 +620,17 @@ def check_return_values(function, result):
       raise Exception("The {}th return value for function {} has type {}, but the @remote decorator expected a return value of type {} or an ObjRef.".format(i, function.__name__, type(result[i]), function.return_types[i]))
 
 def typecheck_arg(arg, expected_type, i, function):
+  """Check that an argument has the expected type.
+
+  Args:
+    arg: An argument to function.
+    expected_type (type): The expected type of arg.
+    i (int): The position of the argument to the function.
+    function (Callable): The remote function whose argument is being checked.
+
+  Raises:
+    Exception: An exception is raised if arg does not have the expected type.
+  """
   if issubclass(type(arg), expected_type):
     # Passed the type-checck
     # TODO(rkn): This check doesn't really work, e.g., issubclass(type([1, 2, 3]), typing.List[str]) == True
@@ -413,8 +641,19 @@ def typecheck_arg(arg, expected_type, i, function):
   else:
     raise Exception("Argument {} for function {} has type {} but an argument of type {} was expected.".format(i, function.__name__, type(arg), expected_type))
 
-# helper method, this should not be called by the user
 def check_arguments(function, args):
+  """Check that the arguments to the remote function have the right types.
+
+  This is called by the worker that calls the remote function (not the worker
+  that executes the remote function).
+
+  Args:
+    function (Callable): The remote function whose arguments are being checked.
+    args (List): The arguments to the function
+
+  Raises:
+    Exception: An exception is raised the args do not all have the right types.
+  """
   # check the number of args
   if len(args) != len(function.arg_types) and not function.has_vararg_param:
     raise Exception("Function {} expects {} arguments, but received {}.".format(function.__name__, len(function.arg_types), len(args)))
@@ -435,17 +674,33 @@ def check_arguments(function, args):
     else:
       typecheck_arg(arg, expected_type, i, function)
 
-# helper method, this should not be called by the user
 def get_arguments_for_execution(function, args, worker=global_worker):
+  """Retrieve the arguments for the remote function.
+
+  This retrieves the values for the arguments to the remote function that were
+  passed in as object references. Argumens that were passed by value are not
+  changed. This also does some type checking. This is called by the worker that
+  is executing the remote function.
+
+  Args:
+    function (Callable): The remote function whose arguments are being
+      retrieved.
+    args (List): The arguments to the function.
+
+  Returns:
+    The retrieved arguments in addition to the arguments that were passed by
+    value.
+
+  Raises:
+    Exception: An exception is raised the args do not all have the right types.
+  """
   # TODO(rkn): Eventually, all of the type checking can be put in `check_arguments` above so that the error will happen immediately when calling a remote function.
   arguments = []
-  """
-  # check the number of args
-  if len(args) != len(function.arg_types) and function.arg_types[-1] is not None:
-    raise Exception("Function {} expects {} arguments, but received {}.".format(function.__name__, len(function.arg_types), len(args)))
-  elif len(args) < len(function.arg_types) - 1 and function.arg_types[-1] is None:
-    raise Exception("Function {} expects at least {} arguments, but received {}.".format(function.__name__, len(function.arg_types) - 1, len(args)))
-  """
+  # # check the number of args
+  # if len(args) != len(function.arg_types) and function.arg_types[-1] is not None:
+  #   raise Exception("Function {} expects {} arguments, but received {}.".format(function.__name__, len(function.arg_types), len(args)))
+  # elif len(args) < len(function.arg_types) - 1 and function.arg_types[-1] is None:
+  #   raise Exception("Function {} expects at least {} arguments, but received {}.".format(function.__name__, len(function.arg_types) - 1, len(args)))
 
   for (i, arg) in enumerate(args):
     if i <= len(function.arg_types) - 1:
@@ -468,8 +723,26 @@ def get_arguments_for_execution(function, args, worker=global_worker):
     arguments.append(argument)
   return arguments
 
-# helper method, this should not be called by the user
 def store_outputs_in_objstore(objrefs, outputs, worker=global_worker):
+  """Store the outputs of a remote function in the local object store.
+
+  This stores the values that were returned by a remote function in the local
+  object store. If any of the return values are object references, then these
+  object references are aliased with the object references that the scheduler
+  assigned for the return values. This is called by the worker that executes the
+  remote function.
+
+  Note:
+    The arguments objrefs and outputs should have the same length.
+
+  Args:
+    objrefs (List[ray.ObjRef]): The object references that were assigned to the
+      outputs of the remote function call.
+    outputs (Tuple): The value returned by the remote function. If the remote
+      function was supposed to only return one value, then its output was
+      wrapped in a tuple with one element prior to being passed into this
+      function.
+  """
   for i in range(len(objrefs)):
     if isinstance(outputs[i], ray.lib.ObjRef):
       # An ObjRef is being returned, so we must alias objrefs[i] so that it refers to the same object that outputs[i] refers to
