@@ -6,17 +6,11 @@
 Welcome to Ray's documentation!
 ===============================
 
-Contents:
+API:
 
 .. toctree::
    :maxdepth: 2
-   :glob:
 
-   *
-
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+   api
+   cluster-api
+   services-api
