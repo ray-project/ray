@@ -5,7 +5,6 @@ import subprocess32 as subprocess
 
 import ray
 import worker
-import ray.config as config
 
 _services_env = os.environ.copy()
 _services_env["PATH"] = os.pathsep.join([os.path.dirname(os.path.abspath(__file__)), _services_env["PATH"]])
@@ -92,7 +91,7 @@ def start_scheduler(scheduler_address, local):
       process will be killed by serices.cleanup() when the Python process that
       imported services exits.
   """
-  p = subprocess.Popen(["scheduler", scheduler_address, "--log-file-name", config.get_log_file_path("scheduler.log")], env=_services_env)
+  p = subprocess.Popen(["scheduler", scheduler_address, "--log-file-name", ray.config.get_log_file_path("scheduler.log")], env=_services_env)
   if local:
     all_processes.append((p, scheduler_address))
 
@@ -107,7 +106,7 @@ def start_objstore(scheduler_address, objstore_address, local):
       process will be killed by serices.cleanup() when the Python process that
       imported services exits.
   """
-  p = subprocess.Popen(["objstore", scheduler_address, objstore_address, "--log-file-name", config.get_log_file_path("-".join(["objstore", objstore_address]) + ".log")], env=_services_env)
+  p = subprocess.Popen(["objstore", scheduler_address, objstore_address, "--log-file-name", ray.config.get_log_file_path("-".join(["objstore", objstore_address]) + ".log")], env=_services_env)
   if local:
     all_processes.append((p, objstore_address))
 

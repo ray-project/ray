@@ -6,6 +6,7 @@ WORKER_MODE = 1
 SHELL_MODE = 2
 PYTHON_MODE = 3
 
+import config
 import libraylib as lib
 import serialization
 from worker import scheduler_info, visualize_computation_graph, task_info, register_module, connect, disconnect, get, put, remote, kill_workers, restart_workers_local
