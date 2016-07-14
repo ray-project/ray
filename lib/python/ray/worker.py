@@ -10,7 +10,6 @@ import numpy as np
 import colorama
 
 import ray
-import ray.config as config
 import serialization
 import ray.internal.graph_pb2
 import ray.graph
@@ -313,7 +312,7 @@ def visualize_computation_graph(file_path=None, view=False, worker=global_worker
   """
 
   if file_path is None:
-    file_path = config.get_log_file_path("computation-graph.pdf")
+    file_path = ray.config.get_log_file_path("computation-graph.pdf")
 
   base_path, extension = os.path.splitext(file_path)
   if extension != ".pdf":
@@ -369,8 +368,8 @@ def connect(scheduler_address, objstore_address, worker_address, is_driver=False
   worker.handle = ray.lib.create_worker(worker.scheduler_address, worker.objstore_address, worker.worker_address, is_driver)
   worker.set_mode(mode)
   FORMAT = "%(asctime)-15s %(message)s"
-  logging.basicConfig(level=logging.DEBUG, format=FORMAT, filename=config.get_log_file_path("-".join(["worker", worker_address]) + ".log"))
-  ray.lib.set_log_config(config.get_log_file_path("-".join(["worker", worker_address, "c++"]) + ".log"))
+  logging.basicConfig(level=logging.DEBUG, format=FORMAT, filename=ray.config.get_log_file_path("-".join(["worker", worker_address]) + ".log"))
+  ray.lib.set_log_config(ray.config.get_log_file_path("-".join(["worker", worker_address, "c++"]) + ".log"))
 
 def disconnect(worker=global_worker):
   """Disconnect this worker from the scheduler and object store."""
