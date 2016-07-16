@@ -25,13 +25,17 @@ class RayCluster(object):
       directory in which Ray should be installed.
   """
 
-  def __init__(self, node_ip_addresses, username, key_file, installation_directory):
+  def __init__(self, node_ip_addresses, node_private_ip_addresses, username, key_file, installation_directory):
     """Initialize the RayCluster object.
 
     Args:
       node_ip_addresses (List[str]): A list of the ip addresses of the nodes in
         the cluster. The first element is the head node and will host the
         scheduler process.
+      node_private_ip_addresses (List[str]): A list of the ip addresses that the
+        nodes use internally to connect to one another. We include this because
+        on EC2 communication within a security group must be done over private
+        ip addresses.
       username (str): The username used to ssh to nodes in the cluster.
       key_file (str): The path to the key used to ssh to nodes in the cluster.
       installation_directory (str): The path on the nodes in the cluster to the
@@ -43,6 +47,7 @@ class RayCluster(object):
     """
     _check_ip_addresses(node_ip_addresses)
     self.node_ip_addresses = node_ip_addresses
+    self.node_private_ip_addresses = node_private_ip_addresses
     self.username = username
     self.key_file = key_file
     self.installation_directory = installation_directory
@@ -149,7 +154,7 @@ class RayCluster(object):
       cd "{}";
       source ../setup-env.sh;
       python -c "import ray; ray.services.start_scheduler(\\\"{}:10001\\\", local=False)" > start_scheduler.out 2> start_scheduler.err < /dev/null &
-    """.format(scripts_directory, self.node_ip_addresses[0])
+    """.format(scripts_directory, self.node_private_ip_addresses[0])
     self._run_command_over_ssh(self.node_ip_addresses[0], start_scheduler_command)
 
     # Start the workers on each node
@@ -160,7 +165,7 @@ class RayCluster(object):
         cd "{}";
         source ../setup-env.sh;
         python -c "import ray; ray.services.start_node(\\\"{}:10001\\\", \\\"{}\\\", {}, worker_path=\\\"{}\\\")" > start_workers.out 2> start_workers.err < /dev/null &
-      """.format(scripts_directory, self.node_ip_addresses[0], self.node_ip_addresses[i], num_workers_per_node, remote_worker_path)
+      """.format(scripts_directory, self.node_private_ip_addresses[0], self.node_private_ip_addresses[i], num_workers_per_node, remote_worker_path)
       start_workers_commands.append(start_workers_command)
     self._run_command_over_ssh_on_all_nodes_in_parallel(start_workers_commands)
 
@@ -170,7 +175,7 @@ class RayCluster(object):
     print """
       source "{}";
       python "{}" --scheduler-address={}:10001 --objstore-address={}:20001 --worker-address={}:30001 --attach
-    """.format(setup_env_path, shell_script_path, self.node_ip_addresses[0], self.node_ip_addresses[0], self.node_ip_addresses[0])
+    """.format(setup_env_path, shell_script_path, self.node_private_ip_addresses[0], self.node_private_ip_addresses[0], self.node_private_ip_addresses[0])
 
   def restart_workers(self, worker_directory, num_workers_per_node=10):
     """Restart the workers on the cluster.
@@ -191,9 +196,10 @@ class RayCluster(object):
 
     scripts_directory = os.path.join(self.installation_directory, "ray/scripts")
     head_node_ip_address = self.node_ip_addresses[0]
-    scheduler_address = "{}:10001".format(head_node_ip_address) # This needs to be the address of the currently running scheduler, which was presumably created in _start_ray.
-    objstore_address = "{}:20001".format(head_node_ip_address) # This needs to be the address of the currently running object store, which was presumably created in _start_ray.
-    shell_address = "{}:{}".format(head_node_ip_address, np.random.randint(30000, 40000)) # This address must be currently unused. In particular, it cannot be the address of any currently running shell.
+    head_node_private_ip_address = self.node_private_ip_addresses[0]
+    scheduler_address = "{}:10001".format(head_node_private_ip_address) # This needs to be the address of the currently running scheduler, which was presumably created in _start_ray.
+    objstore_address = "{}:20001".format(head_node_private_ip_address) # This needs to be the address of the currently running object store, which was presumably created in _start_ray.
+    shell_address = "{}:{}".format(head_node_private_ip_address, np.random.randint(30000, 40000)) # This address must be currently unused. In particular, it cannot be the address of any currently running shell.
 
     # Kill the current workers by attaching a driver to the scheduler and calling ray.kill_workers()
     # The triple backslashes are used for two rounds of escaping, something like \\\" -> \" -> "
@@ -212,7 +218,7 @@ class RayCluster(object):
         cd "{}";
         source ../setup-env.sh;
         python -c "import ray; ray.services.start_workers(\\\"{}:10001\\\", \\\"{}:20001\\\", {}, worker_path=\\\"{}\\\")" > start_workers.out 2> start_workers.err < /dev/null &
-      """.format(scripts_directory, self.node_ip_addresses[0], self.node_ip_addresses[i], num_workers_per_node, remote_worker_path)
+      """.format(scripts_directory, self.node_private_ip_addresses[0], self.node_private_ip_addresses[i], num_workers_per_node, remote_worker_path)
       start_workers_commands.append(start_workers_command)
     self._run_command_over_ssh_on_all_nodes_in_parallel(start_workers_commands)
 
@@ -325,6 +331,18 @@ if __name__ == "__main__":
   username = args.username
   key_file = args.key_file
   installation_directory = args.installation_directory
-  node_ip_addresses = map(lambda s: str(s.strip()), open(args.nodes).readlines())
-  cluster = RayCluster(node_ip_addresses, username, key_file, installation_directory)
+  node_ip_addresses = []
+  node_private_ip_addresses = []
+  for line in open(args.nodes).readlines():
+    parts = line.split(",")
+    ip_address = str(parts[0].strip())
+    if len(parts) == 1:
+      private_ip_address = ip_address
+    elif len(parts) == 2:
+      private_ip_address = str(parts[1].strip())
+    else:
+      raise Exception("Each line in the nodes file must have either one or two ip addresses.")
+    node_ip_addresses.append(ip_address)
+    node_private_ip_addresses.append(private_ip_address)
+  cluster = RayCluster(node_ip_addresses, node_private_ip_addresses, username, key_file, installation_directory)
   IPython.embed()

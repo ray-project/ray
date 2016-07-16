@@ -6,14 +6,66 @@ Ray can be used in several ways. In addition to running on a single machine, Ray
 is designed to run on a cluster of machines. This document is about how to use
 Ray on a cluster.
 
+### Launching a cluster on EC2
+
+This section describes how to start a cluster on EC2. These instructions are
+copied and adapted from https://github.com/amplab/spark-ec2.
+
+#### Before you start
+
+- Create an Amazon EC2 key pair for yourself. This can be done by logging into
+your Amazon Web Services account through the [AWS
+console](http://aws.amazon.com/console/), clicking Key Pairs on the left
+sidebar, and creating and downloading a key. Make sure that you set the
+permissions for the private key file to `600` (i.e. only you can read and write
+it) so that `ssh` will work.
+- Whenever you want to use the `ec2.py` script, set the environment variables
+`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` to your Amazon EC2 access key ID
+and secret access key. These can be obtained from the [AWS
+homepage](http://aws.amazon.com/) by clicking Account > Security Credentials >
+Access Credentials.
+
+#### Launching a Cluster
+
+- Go into the `ray/scripts` directory.
+- Run `python ec2.py -k <keypair> -i <key-file> -s <num-slaves> launch
+<cluster-name>`, where `<keypair>` is the name of your EC2 key pair (that you
+gave it when you created it), `<key-file>` is the private key file for your key
+pair, `<num-slaves>` is the number of slave nodes to launch (try 1 at first),
+and `<cluster-name>` is the name to give to your cluster.
+
+    For example:
+
+    ```bash
+    export AWS_SECRET_ACCESS_KEY=AaBbCcDdEeFGgHhIiJjKkLlMmNnOoPpQqRrSsTtU
+    export AWS_ACCESS_KEY_ID=ABCDEFG1234567890123
+    python ec2.py --key-pair=awskey --identity-file=awskey.pem --region=us-west-1 launch my-ray-cluster
+    ```
+
+The following options are worth pointing out:
+
+- `--instance-type=<instance-type>` can be used to specify an EC2 instance type
+to use. For now, the script only supports 64-bit instance types, and the default
+type is `m3.large` (which has 2 cores and 7.5 GB RAM).
+- `--region=<ec2-region>` specifies an EC2 region in which to launch instances.
+The default region is `us-east-1`.
+- `--zone=<ec2-zone>` can be used to specify an EC2 availability zone to launch
+instances in. Sometimes, you will get an error because there is not enough
+capacity in one zone, and you should try to launch in another.
+- `--spot-price=<price>` will launch the worker nodes as [Spot
+Instances](http://aws.amazon.com/ec2/spot-instances/), bidding for the given
+maximum price (in dollars).
+
 ### Getting started with Ray on a cluster
 
 These instructions work on EC2, but they may require some modifications to run
 on your own cluster. In particular, on EC2, running `sudo` does not require a
 password, and we currently don't handle the case where a password is needed.
 
-1. Create a file `nodes.txt` of the IP addresses of the nodes in the cluster.
-For example
+1. If you launched a cluster using the `ec2.py` script from the previous
+section, then the file `ray/scripts/nodes.txt` will already have been created.
+Otherwise, create a file `nodes.txt` of the IP addresses of the nodes in the
+cluster. For example
 
         12.34.56.789
         12.34.567.89
