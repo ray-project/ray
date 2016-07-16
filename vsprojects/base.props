@@ -17,7 +17,7 @@
   <ItemDefinitionGroup>
     <ClCompile>
       <AdditionalIncludeDirectories>$(PYTHONHOME)\Lib\site-packages\numpy\core\include;$(THIRD_PARTY)python\inc;$(THIRD_PARTY)python\inc\Windows;$(ProjectDir)..\build\generated;$(ProjectDir)..\include;$(THIRD_PARTY)numbuf\cpp\src;$(THIRD_PARTY)numbuf\python\src;$(THIRD_PARTY)grpc\include;$(THIRD_PARTY)grpc\third_party\protobuf\src;$(THIRD_PARTY)arrow\cpp\src;$(BOOST_ROOT);$(BOOST_ROOT)\libs\interprocess\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>_WIN32_WINNT=0x0600;BOOST_DATE_TIME_NO_LIB=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_WIN32_WINNT=0x0600;BOOST_DATE_TIME_NO_LIB=1;HAVE_ROUND;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <DisableSpecificWarnings>4191;;4100;4371;4514;4571;4619;4668;4710;4820</DisableSpecificWarnings>
       <AdditionalOptions>/FS %(AdditionalOptions)</AdditionalOptions>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
@@ -25,7 +25,7 @@
     </ClCompile>
     <Link>
       <AdditionalLibraryDirectories>$(THIRD_PARTY)python\lib\Windows\$(PlatformTarget);$(SolutionDir)packages\grpc.dependencies.openssl.1.0.204.1\build\native\lib\$(PlatformToolset)\$(Platform)\$(Configuration)\static;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalOptions>/NoDefaultLib:libcmt.lib /NoDefaultLib:libcmtd.lib /NoDefaultLib:libcpmt.lib /NoDefaultLib:libcpmtd.lib /ignore:4099 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/NoDefaultLib:libcmt.lib /NoDefaultLib:libcmtd.lib /NoDefaultLib:libcpmt.lib /NoDefaultLib:libcpmtd.lib /ignore:4099 /ignore:4217 %(AdditionalOptions)</AdditionalOptions>
       <AdditionalDependencies>libeay32.lib;ssleay32.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>

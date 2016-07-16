@@ -44,8 +44,13 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\build\generated\graph.grpc.pb.cc" />
-    <ClCompile Include="..\build\generated\graph.pb.cc" />
+    <ClCompile Include="..\build\generated\graph.grpc.pb.cc">
+      <PreprocessorDefinitions>_SCL_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ExcludedFromBuild>true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\build\generated\graph.pb.cc">
+      <PreprocessorDefinitions>_SCL_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
     <ClCompile Include="..\build\generated\ray.grpc.pb.cc">
       <PreprocessorDefinitions>_SCL_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <DisableSpecificWarnings>4125;4355;4365;4800;;4623;4625;4626;4267;5026;5027;%(DisableSpecificWarnings)</DisableSpecificWarnings>
@@ -57,6 +62,7 @@
     <ClCompile Include="..\build\generated\types.grpc.pb.cc">
       <PreprocessorDefinitions>_SCL_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <DisableSpecificWarnings>4125;4355;4365;4800;;4623;4625;4626;4267;5026;5027;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <ExcludedFromBuild>true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\build\generated\types.pb.cc">
       <PreprocessorDefinitions>_SCL_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -64,6 +70,7 @@
     </ClCompile>
     <ClCompile Include="..\src\ipc.cc" />
     <ClCompile Include="..\src\utils.cc" />
+    <ClCompile Include="zstub.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\build\generated\graph.grpc.pb.h" />
@@ -120,9 +127,6 @@ protoc --proto_path="$(SolutionDir)protos" --python_out="$(ProjectDir)..\lib\pyt
     </ProjectReference>
     <ProjectReference Include="..\thirdparty\grpc\vsprojects\vcxproj\grpc_cpp_plugin\grpc_cpp_plugin.vcxproj">
       <Project>{7e51a25f-ac59-488f-906c-c60faae706aa}</Project>
-    </ProjectReference>
-    <ProjectReference Include="..\thirdparty\grpc\vsprojects\vcxproj\z\z.vcxproj">
-      <Project>{fbade9e3-6a3f-36d3-d676-c1b808451dd7}</Project>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
