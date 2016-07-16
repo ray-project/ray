@@ -45,6 +45,9 @@
     <ClCompile Include="..\src\utils.cc">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="zstub.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\ipc.h">

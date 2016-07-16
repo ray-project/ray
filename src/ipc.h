@@ -5,11 +5,10 @@
 #include <limits>
 
 #if defined(WIN32) || defined(_WIN32)
+#include <boost/interprocess/detail/windows_intermodule_singleton.hpp>
 namespace boost {
   namespace interprocess {
     namespace ipcdetail {
-      template<typename C, bool LazyInit = true, bool Phoenix = false>
-      class windows_intermodule_singleton;
       struct windows_bootstamp;
       template<>
       class windows_intermodule_singleton<windows_bootstamp> {

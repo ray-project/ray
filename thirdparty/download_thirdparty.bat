@@ -7,7 +7,6 @@
 		git -C "arrow"                                          submodule update --init
 		git -C "grpc"                                           submodule update --init "third_party/protobuf"
 		git -C "grpc"                                           submodule update --init "third_party/nanopb"
-		git -C "grpc"                                           submodule update --init "third_party/zlib"
 		Call :GitApply "grpc"                                   "%CD%/patches/grpc-source.patch"
 		Call :GitApply "grpc"                                   "%CD%/patches/windows/grpc-projects.patch"
 		Call :GitApply "grpc/third_party/protobuf"              "%CD%/patches/windows/protobuf-projects.patch"
