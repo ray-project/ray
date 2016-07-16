@@ -1,6 +1,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+// We don't need zlib, and this stub is to allow us to avoid compiling it as a dependency
 int deflate(struct z_stream_s *strm, int flush) { return -2; }
 int deflateEnd(struct z_stream_s *strm) { return -2; }
 int deflateInit_(struct z_stream_s *stream, int level, const char *version, int stream_size) { return -2; }
