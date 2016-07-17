@@ -25,7 +25,7 @@ class RemoteArrayTest(unittest.TestCase):
     self.assertTrue(np.alltrue(val == np.zeros([3, 4, 5])))
 
     # test qr - pass by value
-    val_a = np.random.normal(size=[10, 13])
+    val_a = np.random.normal(size=[10, 11])
     ref_q, ref_r = ra.linalg.qr(val_a)
     val_q = ray.get(ref_q)
     val_r = ray.get(ref_r)
