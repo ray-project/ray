@@ -49,7 +49,7 @@ class SerializationTest(unittest.TestCase):
     a = np.empty((0,)).astype(typ)
     b, _ = ray.serialization.serialize(ray.worker.global_worker.handle, a)
     c = ray.serialization.deserialize(ray.worker.global_worker.handle, b)
-    self.assertTrue(a.dtype == c.dtype)
+    self.assertEqual(a.dtype, c.dtype)
 
   def testSerialize(self):
     ray.services.start_ray_local()
@@ -126,14 +126,14 @@ class ObjStoreTest(unittest.TestCase):
     data = ("a", np.random.normal(size=[10, 10]))
     objref = ray.put(data, w1)
     result = ray.get(objref, w2)
-    self.assertTrue(data[0] == result[0])
+    self.assertEqual(data[0], result[0])
     self.assertTrue(np.alltrue(data[1] == result[1]))
 
     # shipping a numpy array inside something else should be fine
     data = ["a", np.random.normal(size=[10, 10])]
     objref = ray.put(data, w1)
     result = ray.get(objref, w2)
-    self.assertTrue(data[0] == result[0])
+    self.assertEqual(data[0], result[0])
     self.assertTrue(np.alltrue(data[1] == result[1]))
 
     ray.services.cleanup()
@@ -281,7 +281,7 @@ class TaskStatusTest(unittest.TestCase):
     test_functions.throw_exception_fct1()
     time.sleep(1)
     result = ray.task_info()
-    self.assertTrue(len(result["failed_tasks"]) == 2)
+    self.assertEqual(len(result["failed_tasks"]), 2)
     task_ids = set()
     for task in result["failed_tasks"]:
       self.assertTrue(task.has_key("worker_address"))
@@ -327,45 +327,45 @@ class ReferenceCountingTest(unittest.TestCase):
     ray.get(x)
     time.sleep(0.1)
     objref_val = x.val
-    self.assertTrue(ray.scheduler_info()["reference_counts"][objref_val] == 1)
+    self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val], 1)
 
     del x
-    self.assertTrue(ray.scheduler_info()["reference_counts"][objref_val] == -1) # -1 indicates deallocated
+    self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val], -1) # -1 indicates deallocated
 
     y = test_functions.test_alias_h()
     ray.get(y)
     time.sleep(0.1)
     objref_val = y.val
-    self.assertTrue(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)] == [1, 0, 0])
+    self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)], [1, 0, 0])
 
     del y
-    self.assertTrue(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)] == [-1, -1, -1])
+    self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)], [-1, -1, -1])
 
     z = da.zeros([da.BLOCK_SIZE, 2 * da.BLOCK_SIZE], "float")
     time.sleep(0.1)
     objref_val = z.val
-    self.assertTrue(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)] == [1, 1, 1])
+    self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)], [1, 1, 1])
 
     del z
     time.sleep(0.1)
-    self.assertTrue(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)] == [-1, -1, -1])
+    self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)], [-1, -1, -1])
 
     x = ra.zeros([10, 10], "float")
     y = ra.zeros([10, 10], "float")
     z = ra.dot(x, y)
     objref_val = x.val
     time.sleep(0.1)
-    self.assertTrue(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)] == [1, 1, 1])
+    self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)], [1, 1, 1])
 
     del x
     time.sleep(0.1)
-    self.assertTrue(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)] == [-1, 1, 1])
+    self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)], [-1, 1, 1])
     del y
     time.sleep(0.1)
-    self.assertTrue(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)] == [-1, -1, 1])
+    self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)], [-1, -1, 1])
     del z
     time.sleep(0.1)
-    self.assertTrue(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)] == [-1, -1, -1])
+    self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)], [-1, -1, -1])
 
     ray.services.cleanup()
 
