@@ -291,6 +291,20 @@ Status SchedulerService::KillWorkers(ServerContext* context, const KillWorkersRe
   return Status::OK;
 }
 
+Status SchedulerService::ExportFunction(ServerContext* context, const ExportFunctionRequest* request, ExportFunctionReply* reply) {
+  auto workers = workers_.get();
+  for (size_t i = 0; i < workers->size(); ++i) {
+    ClientContext import_context;
+    ImportFunctionRequest import_request;
+    import_request.mutable_function()->set_implementation(request->function().implementation());
+    if ((*workers)[i].current_task != ROOT_OPERATION) {
+      ImportFunctionReply import_reply;
+      (*workers)[i].worker_stub->ImportFunction(&import_context, import_request, &import_reply);
+    }
+  }
+  return Status::OK;
+}
+
 void SchedulerService::deliver_object_async_if_necessary(ObjRef canonical_objref, ObjStoreId from, ObjStoreId to) {
   bool object_present_or_in_transit;
   {

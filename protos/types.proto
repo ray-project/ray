@@ -32,6 +32,11 @@ message PyObj {
   bytes data = 1;
 }
 
+// Used for shipping remote functions to workers
+message Function {
+  bytes implementation = 1;
+}
+
 // Union of possible object types
 message Obj {
   String string_data = 1;

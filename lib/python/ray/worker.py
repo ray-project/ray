@@ -10,6 +10,7 @@ import numpy as np
 import colorama
 
 import ray
+import pickling
 import serialization
 import ray.internal.graph_pb2
 import ray.graph
@@ -120,6 +121,7 @@ class Worker(object):
     """Initialize a Worker object."""
     self.functions = {}
     self.handle = None
+    self.mode = None
 
   def set_mode(self, mode):
     """Set the mode of the worker.
@@ -510,13 +512,26 @@ def main_loop(worker=global_worker):
       store_outputs_in_objstore(return_objrefs, outputs, worker) # store output in local object store
       ray.lib.notify_task_completed(worker.handle, True, "") # notify the scheduler that the task completed successfully
   while True:
-    task = ray.lib.wait_for_next_task(worker.handle)
-    if task is None:
-      # We use this as a mechanism to allow the scheduler to kill workers. When
-      # the scheduler wants to kill a worker, it gives the worker a null task,
-      # causing the worker program to exit the main loop here.
-      break
-    process_task(task)
+    (task, function) = ray.lib.wait_for_next_message(worker.handle)
+    try:
+      # Currently the schedule does not ask the worker to execute a task and
+      # import a function at the same time.
+      assert task is None or function is None
+      if task is None and function is None:
+        # We use this as a mechanism to allow the scheduler to kill workers. When
+        # the scheduler wants to kill a worker, it gives the worker a null task,
+        # causing the worker program to exit the main loop here.
+        break
+      if function is not None:
+        (function, arg_types, return_types) = pickling.loads(function)
+        if function.__module__ is None: function.__module__ = "__main__"
+        worker.register_function(remote(arg_types, return_types, worker)(function))
+      if task is not None:
+        process_task(task)
+    finally:
+      # Allow releasing the variables BEFORE we wait for the next message or exit the block
+      del task
+      del function
 
 def remote(arg_types, return_types, worker=global_worker):
   """This decorator is used to create remote functions.
@@ -526,6 +541,7 @@ def remote(arg_types, return_types, worker=global_worker):
     return_types (List[type]): List of Python types of the return values.
   """
   def remote_decorator(func):
+    to_export = pickling.dumps(func, arg_types, return_types) if worker.mode in [ray.SHELL_MODE, ray.SCRIPT_MODE] else None
     def func_executor(arguments):
       """This gets run when the remote function is executed."""
       logging.info("Calling function {}".format(func.__name__))
@@ -560,6 +576,8 @@ def remote(arg_types, return_types, worker=global_worker):
     func_call.has_vararg_param = any([v.kind == v.VAR_POSITIONAL for k, v in func_call.sig_params])
     func_call.has_kwargs_param = any([v.kind == v.VAR_KEYWORD for k, v in func_call.sig_params])
     check_signature_supported(func_call)
+    if to_export is not None:
+      ray.lib.export_function(worker.handle, to_export)
     return func_call
   return remote_decorator
 

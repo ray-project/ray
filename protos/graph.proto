@@ -3,7 +3,7 @@ syntax = "proto3";
 import "types.proto";
 
 message Task {
-  string name = 1; // Name of the function call
+  string name = 1; // Name of the function call. Must not be empty.
   repeated Value arg = 2; // List of arguments, can be either object references or protobuf descriptions of object passed by value
   repeated uint64 result = 3; // Object references for result
 }

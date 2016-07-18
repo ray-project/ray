@@ -24,19 +24,19 @@ using grpc::ClientContext;
 using grpc::ClientWriter;
 
 struct WorkerMessage {
-  std::unique_ptr<Task>* task;
+  Task task;
+  std::string function;
 };
-static_assert(std::is_pod<WorkerMessage>::value, "WorkerMessage must be memcpy-able");
 
 class WorkerServiceImpl final : public WorkerService::Service {
 public:
   WorkerServiceImpl(const std::string& worker_address);
   Status ExecuteTask(ServerContext* context, const ExecuteTaskRequest* request, ExecuteTaskReply* reply) override;
+  Status ImportFunction(ServerContext* context, const ImportFunctionRequest* request, ImportFunctionReply* reply) override;
   Status Die(ServerContext* context, const DieRequest* request, DieReply* reply) override;
 private:
   std::string worker_address_;
-  std::unique_ptr<Task> task_; // copy of the current task
-  MessageQueue<WorkerMessage> send_queue_;
+  MessageQueue<WorkerMessage*> send_queue_;
 };
 
 class Worker {
@@ -79,7 +79,7 @@ class Worker {
   // it in the message queue, which is read by the Python interpreter
   void start_worker_service();
   // wait for next task from the RPC system. If null, it means there are no more tasks and the worker should shut down.
-  std::unique_ptr<Task> receive_next_task();
+  std::unique_ptr<WorkerMessage> receive_next_message();
   // tell the scheduler that we are done with the current task and request the
   // next one, if task_succeeded is false, this tells the scheduler that the
   // task threw an exception
@@ -92,13 +92,15 @@ class Worker {
   void scheduler_info(ClientContext &context, SchedulerInfoRequest &request, SchedulerInfoReply &reply);
   // get task statuses from scheduler
   void task_info(ClientContext &context, TaskInfoRequest &request, TaskInfoReply &reply);
+  // export function to workers
+  bool export_function(const std::string& function);
 
  private:
   bool connected_;
   const size_t CHUNK_SIZE = 8 * 1024;
   std::unique_ptr<Scheduler::Stub> scheduler_stub_;
   std::thread worker_server_thread_;
-  MessageQueue<WorkerMessage> receive_queue_;
+  MessageQueue<WorkerMessage*> receive_queue_;
   bip::managed_shared_memory segment_;
   WorkerId workerid_;
   ObjStoreId objstoreid_;

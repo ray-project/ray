@@ -17,16 +17,32 @@ inline WorkerServiceImpl::WorkerServiceImpl(const std::string& worker_address)
 }
 
 Status WorkerServiceImpl::ExecuteTask(ServerContext* context, const ExecuteTaskRequest* request, ExecuteTaskReply* reply) {
-  task_ = std::unique_ptr<Task>(new Task(request->task())); // Copy task
   RAY_LOG(RAY_INFO, "invoked task " << request->task().name());
-  WorkerMessage message = { &task_ };
-  RAY_CHECK(send_queue_.send(&message), "error sending over IPC");
+  std::unique_ptr<WorkerMessage> message(new WorkerMessage());
+  message->task = request->task();
+  {
+    WorkerMessage* message_ptr = message.get();
+    RAY_CHECK(send_queue_.send(&message_ptr), "error sending over IPC");
+  }
+  message.release();
+  return Status::OK;
+}
+
+Status WorkerServiceImpl::ImportFunction(ServerContext* context, const ImportFunctionRequest* request, ImportFunctionReply* reply) {
+  std::unique_ptr<WorkerMessage> message(new WorkerMessage());
+  message->function = request->function().implementation();
+  RAY_LOG(RAY_INFO, "importing function");
+  {
+    WorkerMessage* message_ptr = message.get();
+    RAY_CHECK(send_queue_.send(&message_ptr), "error sending over IPC");
+  }
+  message.release();
   return Status::OK;
 }
 
 Status WorkerServiceImpl::Die(ServerContext* context, const DieRequest* request, DieReply* reply) {
-  WorkerMessage message = { NULL };
-  RAY_CHECK(send_queue_.send(&message), "error sending over IPC");
+  WorkerMessage* message_ptr = NULL;
+  RAY_CHECK(send_queue_.send(&message_ptr), "error sending over IPC");
   return Status::OK;
 }
 
@@ -285,10 +301,10 @@ void Worker::register_function(const std::string& name, size_t num_return_vals) 
   scheduler_stub_->RegisterFunction(&context, request, &reply);
 }
 
-std::unique_ptr<Task> Worker::receive_next_task() {
-  WorkerMessage message;
-  RAY_CHECK(receive_queue_.receive(&message), "error receiving over IPC");
-  return message.task ? std::move(*message.task) : std::unique_ptr<Task>();
+std::unique_ptr<WorkerMessage> Worker::receive_next_message() {
+  WorkerMessage* message_ptr;
+  RAY_CHECK(receive_queue_.receive(&message_ptr), "error receiving over IPC");
+  return std::unique_ptr<WorkerMessage>(message_ptr);
 }
 
 void Worker::notify_task_completed(bool task_succeeded, std::string error_message) {
@@ -320,6 +336,16 @@ void Worker::scheduler_info(ClientContext &context, SchedulerInfoRequest &reques
 void Worker::task_info(ClientContext &context, TaskInfoRequest &request, TaskInfoReply &reply) {
   RAY_CHECK(connected_, "Attempted to get worker info but failed.");
   scheduler_stub_->TaskInfo(&context, request, &reply);
+}
+
+bool Worker::export_function(const std::string& function) {
+  RAY_CHECK(connected_, "Attempted to export function but failed.");
+  ClientContext context;
+  ExportFunctionRequest request;
+  request.mutable_function()->set_implementation(function);
+  ExportFunctionReply reply;
+  Status status = scheduler_stub_->ExportFunction(&context, request, &reply);
+  return true;
 }
 
 // Communication between the WorkerServer and the Worker happens via a message

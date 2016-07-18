@@ -52,6 +52,8 @@ service Scheduler {
   rpc TaskInfo(TaskInfoRequest) returns (TaskInfoReply);
   // Kills the workers
   rpc KillWorkers(KillWorkersRequest) returns (KillWorkersReply);
+  // Exports function to the workers
+  rpc ExportFunction(ExportFunctionRequest) returns (ExportFunctionReply);
 }
 
 message AckReply {
@@ -228,6 +230,13 @@ message KillWorkersReply {
   bool success = 1;  // Currently, the only reason to fail is if there are workers still executing tasks
 }
 
+message ExportFunctionRequest {
+  Function function = 1;
+}
+
+message ExportFunctionReply {
+}
+
 // These messages are for getting information about the object store state
 
 message ObjStoreInfoRequest {
@@ -243,6 +252,7 @@ message ObjStoreInfoReply {
 
 service WorkerService {
   rpc ExecuteTask(ExecuteTaskRequest) returns (ExecuteTaskReply); // Scheduler calls a function from the worker
+  rpc ImportFunction(ImportFunctionRequest) returns (ImportFunctionReply); // Scheduler imports a function into the worker
   rpc Die(DieRequest) returns (DieReply); // Kills this worker
 }
 
@@ -251,6 +261,13 @@ message ExecuteTaskRequest {
 }
 
 message ExecuteTaskReply {
+}
+
+message ImportFunctionRequest {
+  Function function = 1;
+}
+
+message ImportFunctionReply {
 }
 
 message DieRequest {
