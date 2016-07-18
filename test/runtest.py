@@ -272,6 +272,41 @@ class APITest(unittest.TestCase):
 
     ray.services.cleanup()
 
+  def testDefiningRemoteFunctions(self):
+    worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
+    ray.services.start_ray_local(num_workers=1, worker_path=worker_path, driver_mode=ray.SCRIPT_MODE)
+
+    # Test that we can define a remote function in the shell.
+    @ray.remote([int], [int])
+    def f(x):
+      return x + 1
+    self.assertEqual(ray.get(f(0)), 1)
+
+    # Test that we can redefine the remote function.
+    @ray.remote([int], [int])
+    def f(x):
+      return x + 10
+    self.assertEqual(ray.get(f(0)), 10)
+
+    # Test that we can close over plain old data.
+    data = [np.zeros([3, 5]), (1, 2, "a"), [0.0, 1.0, 2L], 2L, {"a": np.zeros(3)}]
+    @ray.remote([], [list])
+    def g():
+      return data
+    ray.get(g())
+
+    # Test that we can close over modules.
+    @ray.remote([], [np.ndarray])
+    def h():
+      return np.zeros([3, 5])
+    self.assertTrue(np.alltrue(ray.get(h()) == np.zeros([3, 5])))
+    @ray.remote([], [float])
+    def j():
+      return time.time()
+    ray.get(j())
+
+    ray.services.cleanup()
+
 class TaskStatusTest(unittest.TestCase):
   def testFailedTask(self):
     worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")

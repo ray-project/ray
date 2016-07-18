@@ -67,6 +67,6 @@ def serialize_task(worker_capsule, func_name, args):
   return ray.lib.serialize_task(worker_capsule, func_name, primitive_args)
 
 def deserialize_task(worker_capsule, task):
-  func_name, primitive_args, return_objrefs = ray.lib.deserialize_task(worker_capsule, task)
+  func_name, primitive_args, return_objrefs = task
   args = [(arg if isinstance(arg, ray.lib.ObjRef) else from_primitive(arg)) for arg in primitive_args]
   return func_name, args, return_objrefs

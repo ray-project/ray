@@ -592,12 +592,7 @@ static PyObject* serialize_task(PyObject* self, PyObject* args) {
   return PyCapsule_New(static_cast<void*>(task), "task", &TaskCapsule_Destructor);
 }
 
-static PyObject* deserialize_task(PyObject* self, PyObject* args) {
-  PyObject* worker_capsule;
-  Task* task;
-  if (!PyArg_ParseTuple(args, "OO&", &worker_capsule, &PyObjectToTask, &task)) {
-    return NULL;
-  }
+static PyObject* deserialize_task(PyObject* worker_capsule, Task* task) {
   std::vector<ObjRef> objrefs; // This is a vector of all the objrefs that were serialized in this task, including objrefs that are contained in Python objects that are passed by value.
   PyObject* string = PyString_FromStringAndSize(task->name().c_str(), task->name().size());
   int argsize = task->arg_size();
@@ -667,17 +662,34 @@ static PyObject* connected(PyObject* self, PyObject* args) {
   Py_RETURN_FALSE;
 }
 
-static PyObject* wait_for_next_task(PyObject* self, PyObject* args) {
-  Worker* worker;
-  if (!PyArg_ParseTuple(args, "O&", &PyObjectToWorker, &worker)) {
+static PyObject* wait_for_next_message(PyObject* self, PyObject* args) {
+  PyObject* worker_capsule;
+  if (!PyArg_ParseTuple(args, "O", &worker_capsule)) {
     return NULL;
   }
-  if (std::unique_ptr<Task> task = worker->receive_next_task()) {
-    PyObject* pyobj = PyCapsule_New(task.get(), "task", TaskCapsule_Destructor);
-    task.release(); // Now that the wrapper object was constructed successfully, release ownership
-    return pyobj;
+  Worker* worker;
+  PyObjectToWorker(worker_capsule, &worker);
+  if (std::unique_ptr<WorkerMessage> message = worker->receive_next_message()) {
+    PyObject* t = PyTuple_New(2); // We set the items of the tuple using PyTuple_SetItem, because that transfers ownership to the tuple.
+    PyTuple_SetItem(t, 0, message->task.name().empty() ? Py_None : deserialize_task(worker_capsule, &message->task));
+    PyTuple_SetItem(t, 1, message->function.empty() ? Py_None : PyString_FromStringAndSize(message->function.data(), static_cast<ssize_t>(message->function.size())));
+    return t;
   }
   Py_RETURN_NONE;
+}
+
+static PyObject* export_function(PyObject* self, PyObject* args) {
+  Worker* worker;
+  const char* function;
+  int function_size;
+  if (!PyArg_ParseTuple(args, "O&s#", &PyObjectToWorker, &worker, &function, &function_size)) {
+    return NULL;
+  }
+  if (worker->export_function(std::string(function, static_cast<size_t>(function_size)))) {
+    Py_RETURN_TRUE;
+  } else {
+    Py_RETURN_FALSE;
+  }
 }
 
 static PyObject* submit_task(PyObject* self, PyObject* args) {
@@ -918,7 +930,6 @@ static PyMethodDef RayLibMethods[] = {
  { "is_arrow", is_arrow, METH_VARARGS, "is the object in the local object store an arrow object?"},
  { "unmap_object", unmap_object, METH_VARARGS, "unmap the object from the client's shared memory pool"},
  { "serialize_task", serialize_task, METH_VARARGS, "serialize a task to protocol buffers" },
- { "deserialize_task", deserialize_task, METH_VARARGS, "deserialize a task from protocol buffers" },
  { "create_worker", create_worker, METH_VARARGS, "connect to the scheduler and the object store" },
  { "disconnect", disconnect, METH_VARARGS, "disconnect the worker from the scheduler and the object store" },
  { "connected", connected, METH_VARARGS, "check if the worker is connected to the scheduler and the object store" },
@@ -928,12 +939,13 @@ static PyMethodDef RayLibMethods[] = {
  { "get_objref", get_objref, METH_VARARGS, "register a new object reference with the scheduler" },
  { "request_object" , request_object, METH_VARARGS, "request an object to be delivered to the local object store" },
  { "alias_objrefs", alias_objrefs, METH_VARARGS, "make two objrefs refer to the same object" },
- { "wait_for_next_task", wait_for_next_task, METH_VARARGS, "get next task from scheduler (blocking)" },
+ { "wait_for_next_message", wait_for_next_message, METH_VARARGS, "get next message from scheduler (blocking)" },
  { "submit_task", submit_task, METH_VARARGS, "call a remote function" },
  { "notify_task_completed", notify_task_completed, METH_VARARGS, "notify the scheduler that a task has been completed" },
  { "start_worker_service", start_worker_service, METH_VARARGS, "start the worker service" },
  { "scheduler_info", scheduler_info, METH_VARARGS, "get info about scheduler state" },
  { "task_info", task_info, METH_VARARGS, "get task statuses" },
+ { "export_function", export_function, METH_VARARGS, "export function to workers" },
  { "dump_computation_graph", dump_computation_graph, METH_VARARGS, "dump the current computation graph to a file" },
  { "set_log_config", set_log_config, METH_VARARGS, "set filename for raylib logging" },
  { "kill_workers", kill_workers, METH_VARARGS, "kills all of the workers" },
