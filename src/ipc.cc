@@ -1,7 +1,10 @@
 #include "ipc.h"
 
-#include <stdlib.h>
+#if defined(__unix__) || defined(__linux__)
+#include <sys/statvfs.h>
+#endif
 
+#include <stdlib.h>
 #include "ray/ray.h"
 
 using namespace arrow;
@@ -149,6 +152,7 @@ ObjHandle MemorySegmentPool::allocate(size_t size) {
   // TODO(pcm): at the moment, this always creates a new segment, this will be changed
   SegmentId segmentid = segments_.size();
   open_segment(segmentid, size);
+  objstore_memcheck(size); 
   void* ptr = segments_[segmentid].first->allocate(size);
   auto handle = segments_[segmentid].first->get_handle_from_address(ptr);
   return ObjHandle(segmentid, size, handle);
@@ -178,13 +182,27 @@ std::string MemorySegmentPool::get_segment_name(SegmentId segmentid) {
 }
 
 MemorySegmentPool::~MemorySegmentPool() {
+  destroy_segments();
+}
+
+void MemorySegmentPool::objstore_memcheck(int64_t size) {
+#if defined(__unix__) || defined(__linux__)
+  struct statvfs buffer;
+  statvfs("/dev/shm/", &buffer);
+  if (size + 100 > buffer.f_bsize * buffer.f_bavail) {
+    MemorySegmentPool::destroy_segments();
+    RAY_LOG(RAY_FATAL, "Not enough memory for allocating object in objectstore.");
+  }
+#endif
+}
+
+void MemorySegmentPool::destroy_segments() {
   for (size_t segmentid = 0; segmentid < segments_.size(); ++segmentid) {
     std::string segment_name = get_segment_name(segmentid);
     segments_[segmentid].first.reset();
     bip::shared_memory_object::remove(segment_name.c_str());
   }
 }
-
 #if defined(WIN32) || defined(_WIN32)
 namespace boost {
   namespace interprocess {

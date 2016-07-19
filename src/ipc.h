@@ -140,6 +140,8 @@ public:
   uint8_t* get_address(ObjHandle pointer); // get address of shared object
   std::string get_segment_name(SegmentId segmentid); // get the name of a segment
   void unmap_segment(SegmentId segmentid); // unmap a memory segment from a client (only to be called by clients)
+  void destroy_segments();
+  void objstore_memcheck(int64_t size);
 private:
   void open_segment(SegmentId segmentid, size_t size = 0); // create a segment or map an existing one into memory
   void close_segment(SegmentId segmentid); // close a segment
