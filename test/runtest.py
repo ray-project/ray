@@ -274,7 +274,7 @@ class APITest(unittest.TestCase):
 
   def testDefiningRemoteFunctions(self):
     worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-    ray.services.start_ray_local(num_workers=1, worker_path=worker_path, driver_mode=ray.SCRIPT_MODE)
+    ray.services.start_ray_local(num_workers=2, worker_path=worker_path, driver_mode=ray.SCRIPT_MODE)
 
     # Test that we can define a remote function in the shell.
     @ray.remote([int], [int])
@@ -304,6 +304,20 @@ class APITest(unittest.TestCase):
     def j():
       return time.time()
     ray.get(j())
+
+    # Test that we can define remote functions that call other remote functions.
+    @ray.remote([int], [int])
+    def k(x):
+      return x + 1
+    @ray.remote([int], [int])
+    def l(x):
+      return k(x)
+    @ray.remote([int], [int])
+    def m(x):
+      return ray.get(l(x))
+    self.assertEqual(ray.get(k(1)), 2)
+    self.assertEqual(ray.get(l(1)), 2)
+    self.assertEqual(ray.get(m(1)), 2)
 
     ray.services.cleanup()
 
@@ -448,7 +462,7 @@ class ReferenceCountingTest(unittest.TestCase):
 
 class PythonModeTest(unittest.TestCase):
 
-  def testObjRefAliasing(self):
+  def testPythonMode(self):
     ray.services.start_ray_local(driver_mode=ray.PYTHON_MODE)
 
     xref = test_functions.test_alias_h()
