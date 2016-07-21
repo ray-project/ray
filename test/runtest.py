@@ -507,5 +507,84 @@ class PythonCExtensionTest(unittest.TestCase):
 
     ray.services.cleanup()
 
+class ReusablesTest(unittest.TestCase):
+
+  def testReusables(self):
+    worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
+    ray.services.start_ray_local(num_workers=1, worker_path=worker_path)
+
+    # Test that we can add a variable to the key-value store.
+
+    def foo_initializer():
+      return 1
+    def foo_reinitializer(foo):
+      return foo
+
+    ray.reusables.foo = ray.Reusable(foo_initializer, foo_reinitializer)
+    self.assertEqual(ray.reusables.foo, 1)
+
+    @ray.remote([], [int])
+    def use_foo():
+      return ray.reusables.foo
+    self.assertEqual(ray.get(use_foo()), 1)
+    self.assertEqual(ray.get(use_foo()), 1)
+    self.assertEqual(ray.get(use_foo()), 1)
+
+    # Test that we can add a variable to the key-value store, mutate it, and reset it.
+
+    def bar_initializer():
+      return [1, 2, 3]
+
+    ray.reusables.bar = ray.Reusable(bar_initializer)
+
+    @ray.remote([], [list])
+    def use_bar():
+      ray.reusables.bar.append(4)
+      return ray.reusables.bar
+    self.assertEqual(ray.get(use_bar()), [1, 2, 3, 4])
+    self.assertEqual(ray.get(use_bar()), [1, 2, 3, 4])
+    self.assertEqual(ray.get(use_bar()), [1, 2, 3, 4])
+
+    # Test that we can use the reinitializer.
+
+    def baz_initializer():
+      return np.zeros([4])
+    def baz_reinitializer(baz):
+      for i in range(len(baz)):
+        baz[i] = 0
+      return baz
+
+    ray.reusables.baz = ray.Reusable(baz_initializer, baz_reinitializer)
+
+    @ray.remote([int], [np.ndarray])
+    def use_baz(i):
+      baz = ray.reusables.baz
+      baz[i] = 1
+      return baz
+    self.assertTrue(np.alltrue(ray.get(use_baz(0)) == np.array([1, 0, 0, 0])))
+    self.assertTrue(np.alltrue(ray.get(use_baz(1)) == np.array([0, 1, 0, 0])))
+    self.assertTrue(np.alltrue(ray.get(use_baz(2)) == np.array([0, 0, 1, 0])))
+    self.assertTrue(np.alltrue(ray.get(use_baz(3)) == np.array([0, 0, 0, 1])))
+
+    # Make sure the reinitializer is actually getting called. Note that this is
+    # not the correct usage of a reinitializer because it does not reset qux to
+    # its original state. This is just for testing.
+
+    def qux_initializer():
+      return 0
+    def qux_reinitializer(x):
+      return x + 1
+
+    ray.reusables.qux = ray.Reusable(qux_initializer, qux_reinitializer)
+
+    @ray.remote([], [int])
+    def use_qux():
+      return ray.reusables.qux
+    self.assertEqual(ray.get(use_qux()), 0)
+    self.assertEqual(ray.get(use_qux()), 1)
+    self.assertEqual(ray.get(use_qux()), 2)
+
+    ray.services.cleanup()
+
 if __name__ == "__main__":
     unittest.main()
