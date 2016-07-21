@@ -495,6 +495,50 @@ static PyObject* put_arrow(PyObject* self, PyObject* args) {
   Py_RETURN_NONE;
 }
 
+static PyObject* allocate_buffer(PyObject* self, PyObject* args) {
+  Worker* worker;
+  ObjRef objref;
+  SegmentId segmentid;
+  long size;
+  if (!PyArg_ParseTuple(args, "O&O&l", &PyObjectToWorker, &worker, &PyObjectToObjRef, &objref, &size)) {
+    return NULL;
+  }
+  void* address = reinterpret_cast<void*>(const_cast<char*>(worker->allocate_buffer(objref, size, segmentid)));
+  std::vector<npy_intp> dim({size});
+  PyObject* t = PyTuple_New(2);
+  PyTuple_SetItem(t, 0, PyArray_SimpleNewFromData(1, dim.data(), NPY_BYTE, address));
+  PyTuple_SetItem(t, 1, PyInt_FromLong(segmentid));
+  return t;
+}
+
+static PyObject* finish_buffer(PyObject* self, PyObject* args) {
+  Worker* worker;
+  ObjRef objref;
+  long segmentid;
+  long metadata_offset;
+  if (!PyArg_ParseTuple(args, "O&O&ll", &PyObjectToWorker, &worker, &PyObjectToObjRef, &objref, &segmentid, &metadata_offset)) {
+    return NULL;
+  }
+  return worker->finish_buffer(objref, segmentid, metadata_offset);
+}
+
+static PyObject* get_buffer(PyObject* self, PyObject* args) {
+  Worker* worker;
+  ObjRef objref;
+  int64_t size;
+  SegmentId segmentid;
+  if (!PyArg_ParseTuple(args, "O&O&", &PyObjectToWorker, &worker, &PyObjectToObjRef, &objref)) {
+    return NULL;
+  }
+  void* address = reinterpret_cast<void*>(const_cast<char*>(worker->get_buffer(objref, size, segmentid)));
+  std::vector<npy_intp> dim({size});
+  PyObject* t = PyTuple_New(2);
+  PyTuple_SetItem(t, 0, PyArray_SimpleNewFromData(1, dim.data(), NPY_BYTE, address));
+  PyTuple_SetItem(t, 1, PyInt_FromLong(segmentid));
+  return t;
+}
+
+
 static PyObject* get_arrow(PyObject* self, PyObject* args) {
   Worker* worker;
   ObjRef objref;
@@ -926,6 +970,9 @@ static PyMethodDef RayLibMethods[] = {
  { "serialize_object", serialize_object, METH_VARARGS, "serialize an object to protocol buffers" },
  { "deserialize_object", deserialize_object, METH_VARARGS, "deserialize an object from protocol buffers" },
  { "put_arrow", put_arrow, METH_VARARGS, "put an arrow array on the local object store"},
+ { "allocate_buffer", allocate_buffer, METH_VARARGS, "Allocates and returns buffer for objref."},
+ { "finish_buffer", finish_buffer, METH_VARARGS, "Makes the buffer immutable and closes memory segment of objref."},
+ { "get_buffer", get_buffer, METH_VARARGS, "Gets buffer for objref"},
  { "get_arrow", get_arrow, METH_VARARGS, "get an arrow array from the local object store"},
  { "is_arrow", is_arrow, METH_VARARGS, "is the object in the local object store an arrow object?"},
  { "unmap_object", unmap_object, METH_VARARGS, "unmap the object from the client's shared memory pool"},
