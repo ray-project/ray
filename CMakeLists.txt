@@ -20,7 +20,7 @@ endif()
 set(ARROW_DIR "${CMAKE_SOURCE_DIR}/../arrow/" CACHE STRING
   "Path of the arrow source directory")
 
-set(ARROW_STATIC_LIB "${CMAKE_SOURCE_DIR}/../arrow/cpp/build/debug/libarrow.so" CACHE STRING
+set(ARROW_STATIC_LIB "${CMAKE_SOURCE_DIR}/../arrow/cpp/build/release/libarrow.so" CACHE STRING
   "Path to libarrow.a (needs to be changed if arrow is build in debug mode)")
 
 include_directories("${ARROW_DIR}/cpp/src/")

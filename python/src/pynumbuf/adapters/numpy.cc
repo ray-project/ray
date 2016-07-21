@@ -57,31 +57,47 @@ Status SerializeArray(PyArrayObject* array, SequenceBuilder& builder) {
   for (int i = 0; i < ndim; ++i) {
     dims[i] = PyArray_DIM(array, i);
   }
-  auto data = PyArray_DATA(array);
+  // TODO(pcm): Once we don't use builders any more below and directly share
+  // the memory buffer, we need to be more careful about this and not
+  // decrease the reference count of "contiguous" before the serialization
+  // is finished
+  auto contiguous = PyArray_GETCONTIGUOUS(array);
+  auto data = PyArray_DATA(contiguous);
   switch (dtype) {
     case NPY_UINT8:
-      return builder.Append(dims, reinterpret_cast<uint8_t*>(data));
+      RETURN_NOT_OK(builder.Append(dims, reinterpret_cast<uint8_t*>(data)));
+      break;
     case NPY_INT8:
-      return builder.Append(dims, reinterpret_cast<int8_t*>(data));
+      RETURN_NOT_OK(builder.Append(dims, reinterpret_cast<int8_t*>(data)));
+      break;
     case NPY_UINT16:
-      return builder.Append(dims, reinterpret_cast<uint16_t*>(data));
+      RETURN_NOT_OK(builder.Append(dims, reinterpret_cast<uint16_t*>(data)));
+      break;
     case NPY_INT16:
-      return builder.Append(dims, reinterpret_cast<int16_t*>(data));
+      RETURN_NOT_OK(builder.Append(dims, reinterpret_cast<int16_t*>(data)));
+      break;
     case NPY_UINT32:
-      return builder.Append(dims, reinterpret_cast<uint32_t*>(data));
+      RETURN_NOT_OK(builder.Append(dims, reinterpret_cast<uint32_t*>(data)));
+      break;
     case NPY_INT32:
-      return builder.Append(dims, reinterpret_cast<int32_t*>(data));
+      RETURN_NOT_OK(builder.Append(dims, reinterpret_cast<int32_t*>(data)));
+      break;
     case NPY_UINT64:
-      return builder.Append(dims, reinterpret_cast<uint64_t*>(data));
+      RETURN_NOT_OK(builder.Append(dims, reinterpret_cast<uint64_t*>(data)));
+      break;
     case NPY_INT64:
-      return builder.Append(dims, reinterpret_cast<int64_t*>(data));
+      RETURN_NOT_OK(builder.Append(dims, reinterpret_cast<int64_t*>(data)));
+      break;
     case NPY_FLOAT:
-      return builder.Append(dims, reinterpret_cast<float*>(data));
+      RETURN_NOT_OK(builder.Append(dims, reinterpret_cast<float*>(data)));
+      break;
     case NPY_DOUBLE:
-      return builder.Append(dims, reinterpret_cast<double*>(data));
+      RETURN_NOT_OK(builder.Append(dims, reinterpret_cast<double*>(data)));
+      break;
     default:
       DCHECK(false) << "numpy data type not recognized: " << dtype;
   }
+  Py_XDECREF(contiguous);
   return Status::OK();
 }
 

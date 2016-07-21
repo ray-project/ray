@@ -15,7 +15,7 @@ TEST_OBJECTS = [[1, "hello", 3.0], 42, 43L, "hello world", 42.0, 1L << 62,
 class SerializationTests(unittest.TestCase):
 
   def roundTripTest(self, data):
-    serialized = libnumbuf.serialize_list(data)
+    schema, size, serialized = libnumbuf.serialize_list(data)
     result = libnumbuf.deserialize_list(serialized)
     assert_equal(data, result)
 
@@ -52,12 +52,13 @@ class SerializationTests(unittest.TestCase):
 
   def testBuffer(self):
     for (i, obj) in enumerate(TEST_OBJECTS):
-      x = libnumbuf.serialize_list([1, 2, 3])
-      schema = libnumbuf.get_schema_metadata(x)
-      size = libnumbuf.get_serialized_size(x) + 4096 # INITIAL_METADATA_SIZE in arrow
+      schema, size, batch = libnumbuf.serialize_list([obj])
+      size = size + 4096 # INITIAL_METADATA_SIZE in arrow
       buff = np.zeros(size, dtype="uint8")
-      metadata_offset = libnumbuf.write_to_buffer(x, memoryview(buff))
+      metadata_offset = libnumbuf.write_to_buffer(batch, memoryview(buff))
       array = libnumbuf.read_from_buffer(memoryview(buff), schema, metadata_offset)
+      result = libnumbuf.deserialize_list(array)
+      assert_equal(result[0], obj)
 
 if __name__ == "__main__":
     unittest.main()

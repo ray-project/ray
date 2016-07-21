@@ -96,8 +96,13 @@ Status SerializeSequences(std::vector<PyObject*> sequences, std::shared_ptr<Arra
     PyObject* item;
     PyObject* iterator = PyObject_GetIter(sequence);
     while (item = PyIter_Next(iterator)) {
-      RETURN_NOT_OK(append(item, builder, sublists, subtuples, subdicts));
+      Status s = append(item, builder, sublists, subtuples, subdicts);
       Py_DECREF(item);
+      // if an error occurs, we need to decrement the reference counts before returning
+      if (!s.ok()) {
+        Py_DECREF(iterator);
+        return s;
+      }
     }
     Py_DECREF(iterator);
   }
