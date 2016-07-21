@@ -136,6 +136,14 @@ class ObjStoreTest(unittest.TestCase):
     self.assertEqual(data[0], result[0])
     self.assertTrue(np.alltrue(data[1] == result[1]))
 
+    # Getting a buffer after modifying it before it finishes should return updated buffer
+    objref =  ray.lib.get_objref(w1.handle)
+    buf = ray.libraylib.allocate_buffer(w1.handle, objref, 100)
+    buf[0][0] = 1
+    ray.libraylib.finish_buffer(w1.handle, objref, buf[1], 0)
+    completedbuffer = ray.libraylib.get_buffer(w1.handle, objref)
+    self.assertEqual(completedbuffer[0][0], 1)
+
     ray.services.cleanup()
 
 class WorkerTest(unittest.TestCase):

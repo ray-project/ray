@@ -61,6 +61,12 @@ class Worker {
   slice get_object(ObjRef objref);
   // stores an arrow object to the local object store
   PyObject* put_arrow(ObjRef objref, PyObject* array);
+  // Allocates buffer for objref with size of size
+  const char* allocate_buffer(ObjRef objref, int64_t size, SegmentId& segmentid);
+  // Finishes buffer with segmentid and an offset of metadata_ofset
+  PyObject* finish_buffer(ObjRef objref, SegmentId segmentid, int64_t metadata_offset);
+  // Gets the buffer for objref
+  const char* get_buffer(ObjRef objref, int64_t& size, SegmentId& segmentid);
   // gets an arrow object from the local object store
   PyObject* get_arrow(ObjRef objref, SegmentId& segmentid);
   // determine if the object stored in objref is an arrow object // TODO(pcm): more general mechanism for this?
