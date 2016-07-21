@@ -714,13 +714,21 @@ static PyObject* wait_for_next_message(PyObject* self, PyObject* args) {
   Worker* worker;
   PyObjectToWorker(worker_capsule, &worker);
   if (std::unique_ptr<WorkerMessage> message = worker->receive_next_message()) {
+    PyObject* variable_info;
+    if (!message->reusable_variable.variable_name.empty()) {
+      variable_info = PyTuple_New(3);
+      PyTuple_SetItem(variable_info, 0, PyString_FromStringAndSize(message->reusable_variable.variable_name.data(), static_cast<ssize_t>(message->reusable_variable.variable_name.size())));
+      PyTuple_SetItem(variable_info, 1, PyString_FromStringAndSize(message->reusable_variable.initializer.data(), static_cast<ssize_t>(message->reusable_variable.initializer.size())));
+      PyTuple_SetItem(variable_info, 2, PyString_FromStringAndSize(message->reusable_variable.reinitializer.data(), static_cast<ssize_t>(message->reusable_variable.reinitializer.size())));
+    }
     // The tuple constructed below will take ownership of some None objects.
     // When the tuple goes out of scope, the reference count for None will be
     // decremented. Therefore, we need to increment the reference count for None
     // every time we put a None in the tuple.
-    PyObject* t = PyTuple_New(2); // We set the items of the tuple using PyTuple_SetItem, because that transfers ownership to the tuple.
+    PyObject* t = PyTuple_New(3); // We set the items of the tuple using PyTuple_SetItem, because that transfers ownership to the tuple.
     PyTuple_SetItem(t, 0, message->task.name().empty() ? Py_INCREF(Py_None), Py_None : deserialize_task(worker_capsule, &message->task));
     PyTuple_SetItem(t, 1, message->function.empty() ? Py_INCREF(Py_None), Py_None : PyString_FromStringAndSize(message->function.data(), static_cast<ssize_t>(message->function.size())));
+    PyTuple_SetItem(t, 2, message->reusable_variable.variable_name.empty() ? Py_INCREF(Py_None), Py_None : variable_info);
     return t;
   }
   Py_RETURN_NONE;
@@ -738,6 +746,24 @@ static PyObject* export_function(PyObject* self, PyObject* args) {
   } else {
     Py_RETURN_FALSE;
   }
+}
+
+static PyObject* export_reusable_variable(PyObject* self, PyObject* args) {
+  Worker* worker;
+  const char* name;
+  int name_size;
+  const char* initializer;
+  int initializer_size;
+  const char* reinitializer;
+  int reinitializer_size;
+  if (!PyArg_ParseTuple(args, "O&s#s#s#", &PyObjectToWorker, &worker, &name, &name_size, &initializer, &initializer_size, &reinitializer, &reinitializer_size)) {
+    return NULL;
+  }
+  std::string name_str(name, static_cast<size_t>(name_size));
+  std::string initializer_str(initializer, static_cast<size_t>(initializer_size));
+  std::string reinitializer_str(reinitializer, static_cast<size_t>(reinitializer_size));
+  worker->export_reusable_variable(name_str, initializer_str, reinitializer_str);
+  Py_RETURN_NONE;
 }
 
 static PyObject* submit_task(PyObject* self, PyObject* args) {
@@ -997,6 +1023,7 @@ static PyMethodDef RayLibMethods[] = {
  { "scheduler_info", scheduler_info, METH_VARARGS, "get info about scheduler state" },
  { "task_info", task_info, METH_VARARGS, "get task statuses" },
  { "export_function", export_function, METH_VARARGS, "export function to workers" },
+ { "export_reusable_variable", export_reusable_variable, METH_VARARGS, "export a reusable variable to the workers" },
  { "dump_computation_graph", dump_computation_graph, METH_VARARGS, "dump the current computation graph to a file" },
  { "set_log_config", set_log_config, METH_VARARGS, "set filename for raylib logging" },
  { "kill_workers", kill_workers, METH_VARARGS, "kills all of the workers" },

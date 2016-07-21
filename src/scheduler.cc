@@ -305,6 +305,22 @@ Status SchedulerService::ExportFunction(ServerContext* context, const ExportFunc
   return Status::OK;
 }
 
+Status SchedulerService::ExportReusableVariable(ServerContext* context, const ExportReusableVariableRequest* request, AckReply* reply) {
+  auto workers = workers_.get();
+  for (size_t i = 0; i < workers->size(); ++i) {
+    ClientContext import_context;
+    ImportReusableVariableRequest import_request;
+    import_request.set_name(request->name());
+    import_request.mutable_initializer()->set_implementation(request->initializer().implementation());
+    import_request.mutable_reinitializer()->set_implementation(request->reinitializer().implementation());
+    if ((*workers)[i].current_task != ROOT_OPERATION) {
+      AckReply import_reply;
+      (*workers)[i].worker_stub->ImportReusableVariable(&import_context, import_request, &import_reply);
+    }
+  }
+  return Status::OK;
+}
+
 void SchedulerService::deliver_object_async_if_necessary(ObjRef canonical_objref, ObjStoreId from, ObjStoreId to) {
   bool object_present_or_in_transit;
   {
