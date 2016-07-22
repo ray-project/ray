@@ -4,6 +4,7 @@ import numpy as np
 import time
 import subprocess32 as subprocess
 import os
+import sys
 
 import test_functions
 import ray.array.remote as ra
@@ -486,6 +487,23 @@ class PythonModeTest(unittest.TestCase):
     bref = test_functions.python_mode_g(aref)
     self.assertTrue(np.alltrue(aref == np.array([0, 0]))) # python_mode_g should not mutate aref
     self.assertTrue(np.alltrue(bref == np.array([1, 0])))
+
+    ray.services.cleanup()
+
+class PythonCExtensionTest(unittest.TestCase):
+
+  def testReferenceCountNone(self):
+    worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
+    ray.services.start_ray_local(num_workers=1, worker_path=worker_path)
+
+    # Make sure that we aren't accidentally messing up Python's reference counts.
+    for obj in [None, True, False]:
+      @ray.remote([], [int])
+      def f():
+        return sys.getrefcount(obj)
+      first_count = ray.get(f())
+      second_count = ray.get(f())
+      self.assertEqual(first_count, second_count)
 
     ray.services.cleanup()
 

@@ -714,9 +714,13 @@ static PyObject* wait_for_next_message(PyObject* self, PyObject* args) {
   Worker* worker;
   PyObjectToWorker(worker_capsule, &worker);
   if (std::unique_ptr<WorkerMessage> message = worker->receive_next_message()) {
+    // The tuple constructed below will take ownership of some None objects.
+    // When the tuple goes out of scope, the reference count for None will be
+    // decremented. Therefore, we need to increment the reference count for None
+    // every time we put a None in the tuple.
     PyObject* t = PyTuple_New(2); // We set the items of the tuple using PyTuple_SetItem, because that transfers ownership to the tuple.
-    PyTuple_SetItem(t, 0, message->task.name().empty() ? Py_None : deserialize_task(worker_capsule, &message->task));
-    PyTuple_SetItem(t, 1, message->function.empty() ? Py_None : PyString_FromStringAndSize(message->function.data(), static_cast<ssize_t>(message->function.size())));
+    PyTuple_SetItem(t, 0, message->task.name().empty() ? Py_INCREF(Py_None), Py_None : deserialize_task(worker_capsule, &message->task));
+    PyTuple_SetItem(t, 1, message->function.empty() ? Py_INCREF(Py_None), Py_None : PyString_FromStringAndSize(message->function.data(), static_cast<ssize_t>(message->function.size())));
     return t;
   }
   Py_RETURN_NONE;
