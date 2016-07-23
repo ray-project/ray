@@ -40,6 +40,20 @@ Status WorkerServiceImpl::ImportFunction(ServerContext* context, const ImportFun
   return Status::OK;
 }
 
+Status WorkerServiceImpl::ImportReusableVariable(ServerContext* context, const ImportReusableVariableRequest* request, AckReply* reply) {
+  std::unique_ptr<WorkerMessage> message(new WorkerMessage());
+  message->reusable_variable.variable_name = request->name();
+  message->reusable_variable.initializer = request->initializer().implementation();
+  message->reusable_variable.reinitializer = request->reinitializer().implementation();
+  RAY_LOG(RAY_INFO, "importing reusable variable");
+  {
+    WorkerMessage* message_ptr = message.get();
+    RAY_CHECK(send_queue_.send(&message_ptr), "error sending over IPC");
+  }
+  message.release();
+  return Status::OK;
+}
+
 Status WorkerServiceImpl::Die(ServerContext* context, const DieRequest* request, DieReply* reply) {
   WorkerMessage* message_ptr = NULL;
   RAY_CHECK(send_queue_.send(&message_ptr), "error sending over IPC");
@@ -387,6 +401,17 @@ bool Worker::export_function(const std::string& function) {
   ExportFunctionReply reply;
   Status status = scheduler_stub_->ExportFunction(&context, request, &reply);
   return true;
+}
+
+void Worker::export_reusable_variable(const std::string& name, const std::string& initializer, const std::string& reinitializer) {
+  RAY_CHECK(connected_, "Attempted to export reusable variable but failed.");
+  ClientContext context;
+  ExportReusableVariableRequest request;
+  request.set_name(name);
+  request.mutable_initializer()->set_implementation(initializer);
+  request.mutable_reinitializer()->set_implementation(reinitializer);
+  AckReply reply;
+  Status status = scheduler_stub_->ExportReusableVariable(&context, request, &reply);
 }
 
 // Communication between the WorkerServer and the Worker happens via a message

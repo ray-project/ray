@@ -54,6 +54,8 @@ service Scheduler {
   rpc KillWorkers(KillWorkersRequest) returns (KillWorkersReply);
   // Exports function to the workers
   rpc ExportFunction(ExportFunctionRequest) returns (ExportFunctionReply);
+  // Ship an initializer and reinitializer for a reusable variable to the workers
+  rpc ExportReusableVariable(ExportReusableVariableRequest) returns (AckReply);
 }
 
 message AckReply {
@@ -237,6 +239,12 @@ message ExportFunctionRequest {
 message ExportFunctionReply {
 }
 
+message ExportReusableVariableRequest {
+  string name = 1; // The name of the reusable variable.
+  Function initializer = 2; // A serialized version of the function that initializes the reusable variable.
+  Function reinitializer = 3; // A serialized version of the function that reinitializes the reusable variable.
+}
+
 // These messages are for getting information about the object store state
 
 message ObjStoreInfoRequest {
@@ -253,6 +261,7 @@ message ObjStoreInfoReply {
 service WorkerService {
   rpc ExecuteTask(ExecuteTaskRequest) returns (ExecuteTaskReply); // Scheduler calls a function from the worker
   rpc ImportFunction(ImportFunctionRequest) returns (ImportFunctionReply); // Scheduler imports a function into the worker
+  rpc ImportReusableVariable(ImportReusableVariableRequest) returns (AckReply); // Scheduler imports a reusable variable into the worker
   rpc Die(DieRequest) returns (DieReply); // Kills this worker
 }
 
@@ -268,6 +277,12 @@ message ImportFunctionRequest {
 }
 
 message ImportFunctionReply {
+}
+
+message ImportReusableVariableRequest {
+  string name = 1; // The name of the reusable variable.
+  Function initializer = 2; // A serialized version of the function that initializes the reusable variable.
+  Function reinitializer = 3; // A serialized version of the function that reinitializes the reusable variable.
 }
 
 message DieRequest {
