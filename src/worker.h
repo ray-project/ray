@@ -23,9 +23,16 @@ using grpc::Channel;
 using grpc::ClientContext;
 using grpc::ClientWriter;
 
+struct ReusableVariable {
+  std::string variable_name;
+  std::string initializer;
+  std::string reinitializer;
+};
+
 struct WorkerMessage {
   Task task;
-  std::string function;
+  std::string function; // Used for importing remote functions.
+  ReusableVariable reusable_variable; // Used for importing reusable variables.
 };
 
 class WorkerServiceImpl final : public WorkerService::Service {
@@ -34,6 +41,7 @@ public:
   Status ExecuteTask(ServerContext* context, const ExecuteTaskRequest* request, ExecuteTaskReply* reply) override;
   Status ImportFunction(ServerContext* context, const ImportFunctionRequest* request, ImportFunctionReply* reply) override;
   Status Die(ServerContext* context, const DieRequest* request, DieReply* reply) override;
+  Status ImportReusableVariable(ServerContext* context, const ImportReusableVariableRequest* request, AckReply* reply) override;
 private:
   std::string worker_address_;
   MessageQueue<WorkerMessage*> send_queue_;
@@ -100,6 +108,8 @@ class Worker {
   void task_info(ClientContext &context, TaskInfoRequest &request, TaskInfoReply &reply);
   // export function to workers
   bool export_function(const std::string& function);
+  // export reusable variable to workers
+  void export_reusable_variable(const std::string& name, const std::string& initializer, const std::string& reinitializer);
 
  private:
   bool connected_;
