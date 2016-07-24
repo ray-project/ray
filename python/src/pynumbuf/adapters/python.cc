@@ -61,7 +61,7 @@ Status append(PyObject* elem, SequenceBuilder& builder,
       return Status::NotImplemented("long overflow");
     }
   } else if (PyInt_Check(elem)) {
-    RETURN_NOT_OK(builder.Append(PyInt_AS_LONG(elem)));
+    RETURN_NOT_OK(builder.Append(static_cast<int64_t>(PyInt_AS_LONG(elem))));
   } else if (PyString_Check(elem)) {
     RETURN_NOT_OK(builder.Append(PyString_AS_STRING(elem), PyString_GET_SIZE(elem)));
   } else if (PyList_Check(elem)) {
@@ -95,7 +95,7 @@ Status SerializeSequences(std::vector<PyObject*> sequences, std::shared_ptr<Arra
   for (const auto& sequence : sequences) {
     PyObject* item;
     PyObject* iterator = PyObject_GetIter(sequence);
-    while (item = PyIter_Next(iterator)) {
+    while ((item = PyIter_Next(iterator))) {
       Status s = append(item, builder, sublists, subtuples, subdicts);
       Py_DECREF(item);
       // if an error occurs, we need to decrement the reference counts before returning

@@ -8,6 +8,10 @@ find_package(PythonInterp REQUIRED)
 find_package(PythonLibs REQUIRED)
 find_package(NumPy REQUIRED)
 
+if(APPLE)
+  SET(CMAKE_SHARED_LIBRARY_SUFFIX ".so")
+endif(APPLE)
+
 include_directories("${PYTHON_INCLUDE_DIRS}")
 include_directories("${NUMPY_INCLUDE_DIR}")
 
@@ -20,7 +24,7 @@ endif()
 set(ARROW_DIR "${CMAKE_SOURCE_DIR}/../arrow/" CACHE STRING
   "Path of the arrow source directory")
 
-set(ARROW_STATIC_LIB "${CMAKE_SOURCE_DIR}/../arrow/cpp/build/release/libarrow.so" CACHE STRING
+set(ARROW_STATIC_LIB "${CMAKE_SOURCE_DIR}/../arrow/cpp/build/release/libarrow.a" CACHE STRING
   "Path to libarrow.a (needs to be changed if arrow is build in debug mode)")
 
 include_directories("${ARROW_DIR}/cpp/src/")
