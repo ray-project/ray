@@ -669,8 +669,8 @@ def main_loop(worker=global_worker):
         worker.register_function(remote(arg_types, return_types, worker)(function))
       if reusable_variable is not None:
         name, initializer_str, reinitializer_str = reusable_variable
-        initializer = pickling.deserialize(initializer_str)
-        reinitializer = pickling.deserialize(reinitializer_str)
+        initializer = pickling.loads(initializer_str)
+        reinitializer = pickling.loads(reinitializer_str)
         reusables.__setattr__(name, Reusable(initializer, reinitializer))
       if task is not None:
         process_task(task)
@@ -710,7 +710,7 @@ def _export_reusable_variable(name, reusable, worker=global_worker):
   """
   if _mode(worker) not in [ray.SHELL_MODE, ray.SCRIPT_MODE]:
     raise Exception("_export_reusable_variable can only be called on a driver.")
-  ray.lib.export_reusable_variable(worker.handle, name, pickling.serialize(reusable.initializer), pickling.serialize(reusable.reinitializer))
+  ray.lib.export_reusable_variable(worker.handle, name, pickling.dumps(reusable.initializer), pickling.dumps(reusable.reinitializer))
 
 def remote(arg_types, return_types, worker=global_worker):
   """This decorator is used to create remote functions.
@@ -720,16 +720,6 @@ def remote(arg_types, return_types, worker=global_worker):
     return_types (List[type]): List of Python types of the return values.
   """
   def remote_decorator(func):
-    to_export = pickling.dumps(func, arg_types, return_types) if worker.mode in [ray.SHELL_MODE, ray.SCRIPT_MODE] else None
-    def func_executor(arguments):
-      """This gets run when the remote function is executed."""
-      logging.info("Calling function {}".format(func.__name__))
-      start_time = time.time()
-      result = func(*arguments)
-      end_time = time.time()
-      check_return_values(func_call, result) # throws an exception if result is invalid
-      logging.info("Finished executing function {}, it took {} seconds".format(func.__name__, end_time - start_time))
-      return result
     def func_call(*args, **kwargs):
       """This gets run immediately when a worker calls a remote function."""
       args = list(args)
@@ -745,6 +735,15 @@ def remote(arg_types, return_types, worker=global_worker):
         return objrefs[0]
       elif len(objrefs) > 1:
         return objrefs
+    def func_executor(arguments):
+      """This gets run when the remote function is executed."""
+      logging.info("Calling function {}".format(func.__name__))
+      start_time = time.time()
+      result = func(*arguments)
+      end_time = time.time()
+      check_return_values(func_call, result) # throws an exception if result is invalid
+      logging.info("Finished executing function {}, it took {} seconds".format(func.__name__, end_time - start_time))
+      return result
     func_call.executor = func_executor
     func_call.arg_types = arg_types
     func_call.return_types = return_types
@@ -758,7 +757,21 @@ def remote(arg_types, return_types, worker=global_worker):
     func_call.has_vararg_param = has_vararg_param
     has_kwargs_param = any([v.kind == v.VAR_KEYWORD for k, v in sig_params])
     check_signature_supported(has_kwargs_param, has_vararg_param, keyword_defaults, func_name)
-    if to_export is not None:
+
+    # Everything ready - export the function
+    to_export = None
+    if worker.mode in [ray.SHELL_MODE, ray.SCRIPT_MODE]:
+      func_name_global_valid = func.__name__ in func.__globals__
+      func_name_global_value = func.__globals__.get(func.__name__)
+      # Set the function globally to make it refer to itself
+      func.__globals__[func.__name__] = func_call  # Allow the function to reference itself as a global variable
+      try:
+        to_export = pickling.dumps((func, arg_types, return_types))
+      finally:
+        # Undo our changes
+        if func_name_global_valid: func.__globals__[func.__name__] = func_name_global_value
+        else: del func.__globals__[func.__name__]
+    if to_export:
       ray.lib.export_function(worker.handle, to_export)
     return func_call
   return remote_decorator
