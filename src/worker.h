@@ -67,20 +67,12 @@ class Worker {
   void put_object(ObjRef objref, const Obj* obj, std::vector<ObjRef> &contained_objrefs);
   // retrieve serialized object from local object store
   slice get_object(ObjRef objref);
-#ifndef __APPLE__
-  // stores an arrow object to the local object store
-  PyObject* put_arrow(ObjRef objref, PyObject* array);
-#endif
   // Allocates buffer for objref with size of size
   const char* allocate_buffer(ObjRef objref, int64_t size, SegmentId& segmentid);
   // Finishes buffer with segmentid and an offset of metadata_ofset
   PyObject* finish_buffer(ObjRef objref, SegmentId segmentid, int64_t metadata_offset);
   // Gets the buffer for objref
   const char* get_buffer(ObjRef objref, int64_t& size, SegmentId& segmentid, int64_t& metadata_offset);
-#ifndef __APPLE__
-  // gets an arrow object from the local object store
-  PyObject* get_arrow(ObjRef objref, SegmentId& segmentid);
-#endif
   // determine if the object stored in objref is an arrow object // TODO(pcm): more general mechanism for this?
   bool is_arrow(ObjRef objref);
   // unmap the segment containing an object from the local address space
