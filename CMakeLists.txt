@@ -4,8 +4,37 @@ project(numbuf)
 
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake/Modules)
 
-find_package(PythonInterp REQUIRED)
-find_package(PythonLibs REQUIRED)
+if(NOT APPLE)
+  find_package(PythonInterp REQUIRED)
+  find_package(PythonLibs REQUIRED)
+  set(CUSTOM_PYTHON_EXECUTABLE ${PYTHON_EXECUTABLE})
+else()
+  find_program(CUSTOM_PYTHON_EXECUTABLE python)
+  message("-- Found Python program: ${CUSTOM_PYTHON_EXECUTABLE}")
+  execute_process(COMMAND ${CUSTOM_PYTHON_EXECUTABLE} -c
+                    "import sys; print 'python' + sys.version[0:3]"
+                    OUTPUT_VARIABLE PYTHON_LIBRARY_NAME OUTPUT_STRIP_TRAILING_WHITESPACE)
+    execute_process(COMMAND ${CUSTOM_PYTHON_EXECUTABLE} -c
+                    "import sys; print sys.exec_prefix"
+                    OUTPUT_VARIABLE PYTHON_PREFIX OUTPUT_STRIP_TRAILING_WHITESPACE)
+    FIND_LIBRARY(PYTHON_LIBRARIES
+                 NAMES ${PYTHON_LIBRARY_NAME}
+                 HINTS "${PYTHON_PREFIX}"
+                 PATH_SUFFIXES "lib" "libs"
+                 NO_DEFAULT_PATH)
+    execute_process(COMMAND ${CUSTOM_PYTHON_EXECUTABLE} -c
+                    "from distutils.sysconfig import *; print get_python_inc()"
+                    OUTPUT_VARIABLE PYTHON_INCLUDE_DIRS OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(PYTHON_LIBRARIES AND PYTHON_INCLUDE_DIRS)
+        SET(PYTHONLIBS_FOUND TRUE)
+        message("-- Found PythonLibs: " ${PYTHON_LIBRARIES})
+        message("-- -- Used custom search path")
+    else()
+        find_package(PythonLibs REQUIRED)
+        message("-- -- Used find_package(PythonLibs)")
+    endif()
+endif()
+
 find_package(NumPy REQUIRED)
 
 if(APPLE)
@@ -40,5 +69,11 @@ add_library(numbuf SHARED
   python/src/pynumbuf/numbuf.cc
   python/src/pynumbuf/adapters/numpy.cc
   python/src/pynumbuf/adapters/python.cc)
+
+if(APPLE)
+  add_custom_command(TARGET numbuf
+      POST_BUILD COMMAND
+      ${CMAKE_INSTALL_NAME_TOOL} -change ${PYTHON_SHARED_LIBRARY} ${PYTHON_LIBRARIES} libnumbuf.so)
+endif(APPLE)
 
 target_link_libraries(numbuf ${ARROW_STATIC_LIB} ${PYTHON_LIBRARIES})

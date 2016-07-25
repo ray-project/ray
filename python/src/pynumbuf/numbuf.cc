@@ -16,6 +16,12 @@
 using namespace arrow;
 using namespace numbuf;
 
+std::shared_ptr<RowBatch> make_row_batch(std::shared_ptr<Array> data) {
+  auto field = std::make_shared<Field>("list", data->type());
+  std::shared_ptr<Schema> schema(new Schema({field}));
+  return std::shared_ptr<RowBatch>(new RowBatch(schema, data->length(), {data}));
+}
+
 extern "C" {
 
 static PyObject *NumbufError;
@@ -34,12 +40,6 @@ static void ArrowCapsule_Destructor(PyObject* capsule) {
   delete reinterpret_cast<std::shared_ptr<RowBatch>*>(PyCapsule_GetPointer(capsule, "arrow"));
 }
 
-std::shared_ptr<RowBatch> make_row_batch(std::shared_ptr<Array> data) {
-  auto field = std::make_shared<Field>("list", data->type());
-  std::shared_ptr<Schema> schema(new Schema({field}));
-  return std::shared_ptr<RowBatch>(new RowBatch(schema, data->length(), {data}));
-}
-
 /*! Serializes a Python list into an Arrow array.
 
     \param args
@@ -52,7 +52,7 @@ std::shared_ptr<RowBatch> make_row_batch(std::shared_ptr<Array> data) {
 
       A Python "arrow" capsule containing the RowBatch
 */
-PyObject* serialize_list(PyObject* self, PyObject* args) {
+static PyObject* serialize_list(PyObject* self, PyObject* args) {
   PyObject* value;
   if (!PyArg_ParseTuple(args, "O", &value)) {
     return NULL;
@@ -94,7 +94,7 @@ PyObject* serialize_list(PyObject* self, PyObject* args) {
     \return
       The arrow metadata offset for the arrow metadata
 */
-PyObject* write_to_buffer(PyObject* self, PyObject* args) {
+static PyObject* write_to_buffer(PyObject* self, PyObject* args) {
   std::shared_ptr<RowBatch>* batch;
   PyObject* memoryview;
   if (!PyArg_ParseTuple(args, "O&O", &PyObjectToArrow, &batch, &memoryview)) {
@@ -119,7 +119,7 @@ PyObject* write_to_buffer(PyObject* self, PyObject* args) {
     \return
       A Python "arrow" capsule containing the arrow RowBatch
 */
-PyObject* read_from_buffer(PyObject* self, PyObject* args) {
+static PyObject* read_from_buffer(PyObject* self, PyObject* args) {
   PyObject* memoryview;
   PyObject* metadata;
   int64_t metadata_offset;
@@ -149,7 +149,7 @@ PyObject* read_from_buffer(PyObject* self, PyObject* args) {
 
 /*!
 */
-PyObject* deserialize_list(PyObject* self, PyObject* args) {
+static PyObject* deserialize_list(PyObject* self, PyObject* args) {
   std::shared_ptr<RowBatch>* data;
   if (!PyArg_ParseTuple(args, "O&", &PyObjectToArrow, &data)) {
     return NULL;
