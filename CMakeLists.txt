@@ -70,6 +70,7 @@ add_library(numbuf SHARED
   python/src/pynumbuf/adapters/numpy.cc
   python/src/pynumbuf/adapters/python.cc)
 
+get_filename_component(PYTHON_SHARED_LIBRARY ${PYTHON_LIBRARIES} NAME)
 if(APPLE)
   add_custom_command(TARGET numbuf
       POST_BUILD COMMAND
