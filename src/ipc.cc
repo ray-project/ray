@@ -7,37 +7,9 @@
 #include <stdlib.h>
 #include "ray/ray.h"
 
-#ifndef __APPLE__
-  using namespace arrow;
-#endif
-
 ObjHandle::ObjHandle(SegmentId segmentid, size_t size, IpcPointer ipcpointer, size_t metadata_offset)
   : segmentid_(segmentid), size_(size), ipcpointer_(ipcpointer), metadata_offset_(metadata_offset)
 {}
-
-#ifndef __APPLE__
-
-Status BufferMemorySource::Write(int64_t position, const uint8_t* data, int64_t nbytes) {
-  // TODO(pcm): error handling
-  std::memcpy(data_ + position, data, nbytes);
-  return Status::OK();
-}
-
-Status BufferMemorySource::ReadAt(int64_t position, int64_t nbytes, std::shared_ptr<Buffer>* out) {
-  // TODO(pcm): error handling
-  *out = std::make_shared<Buffer>(data_ + position, nbytes);
-  return Status::OK();
-}
-
-Status BufferMemorySource::Close() {
-  return Status::OK();
-}
-
-int64_t BufferMemorySource::Size() const {
-  return size_;
-}
-
-#endif
 
 MessageQueue<>::MessageQueue() : create_(false) { }
 
@@ -158,7 +130,7 @@ ObjHandle MemorySegmentPool::allocate(size_t size) {
   // TODO(pcm): at the moment, this always creates a new segment, this will be changed
   SegmentId segmentid = segments_.size();
   open_segment(segmentid, size);
-  objstore_memcheck(size); 
+  objstore_memcheck(size);
   void* ptr = segments_[segmentid].first->allocate(size);
   auto handle = segments_[segmentid].first->get_handle_from_address(ptr);
   return ObjHandle(segmentid, size, handle);

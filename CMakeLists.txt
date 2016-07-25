@@ -131,31 +131,10 @@ set(ARROW_LIB ${CMAKE_SOURCE_DIR}/thirdparty/arrow-old/cpp/build/release/libarro
 
 add_definitions(-fPIC)
 
-if(NOT APPLE)
-  include_directories("${CMAKE_SOURCE_DIR}/thirdparty/arrow-old/cpp/src/")
-  include_directories("${CMAKE_SOURCE_DIR}/thirdparty/numbuf-old/cpp/src/")
-  include_directories("${CMAKE_SOURCE_DIR}/thirdparty/numbuf-old/python/src/")
-  add_library(pynumbuf STATIC ${CMAKE_SOURCE_DIR}/thirdparty/numbuf-old/cpp/src/numbuf/tensor.cc
-                              ${CMAKE_SOURCE_DIR}/thirdparty/numbuf-old/cpp/src/numbuf/types.cc
-                              ${CMAKE_SOURCE_DIR}/thirdparty/numbuf-old/cpp/src/numbuf/metadata.cc
-                              ${CMAKE_SOURCE_DIR}/thirdparty/numbuf-old/cpp/src/numbuf/dict.cc
-                              ${CMAKE_SOURCE_DIR}/thirdparty/numbuf-old/python/src/pynumbuf/serialize.cc
-                              ${CMAKE_SOURCE_DIR}/thirdparty/numbuf-old/python/src/pynumbuf/adapters/numpy.cc
-                              ${CMAKE_SOURCE_DIR}/thirdparty/numbuf-old/python/src/pynumbuf/adapters/python.cc)
-  target_link_libraries(pynumbuf ${ARROW_LIB} ${PYTHON_LIBRARIES})
-endif()
-
 add_executable(objstore src/objstore.cc src/ipc.cc src/utils.cc ${GENERATED_PROTOBUF_FILES})
-if(NOT APPLE)
-  target_link_libraries(objstore ${ARROW_LIB} pynumbuf)
-endif()
 add_executable(scheduler src/scheduler.cc src/computation_graph.cc src/utils.cc ${GENERATED_PROTOBUF_FILES})
 add_library(raylib SHARED src/raylib.cc src/worker.cc src/ipc.cc src/utils.cc ${GENERATED_PROTOBUF_FILES})
-if(NOT APPLE)
-  target_link_libraries(raylib ${ARROW_LIB} pynumbuf)
-else()
-  target_link_libraries(raylib ${PYTHON_LIBRARIES})
-endif()
+target_link_libraries(raylib ${PYTHON_LIBRARIES})
 
 get_filename_component(PYTHON_SHARED_LIBRARY ${PYTHON_LIBRARIES} NAME)
 if(APPLE)

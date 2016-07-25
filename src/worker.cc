@@ -5,10 +5,6 @@
 
 #include "utils.h"
 
-#ifndef __APPLE__
-  #include <pynumbuf/serialize.h>
-#endif
-
 extern "C" {
   static PyObject *RayError;
 }
@@ -196,37 +192,6 @@ void Worker::put_object(ObjRef objref, const Obj* obj, std::vector<ObjRef> &cont
     }                                                           \
   } while (0);
 
-#ifndef __APPLE__
-
-PyObject* Worker::put_arrow(ObjRef objref, PyObject* value) {
-  RAY_CHECK(connected_, "Attempted to perform put_arrow but failed.");
-  ObjRequest request;
-  pynumbuf::PythonObjectWriter writer;
-  int64_t size;
-  CHECK_ARROW_STATUS(writer.AssemblePayload(value), "error during AssemblePayload: ");
-  CHECK_ARROW_STATUS(writer.GetTotalSize(&size), "error during GetTotalSize: ");
-  request.workerid = workerid_;
-  request.type = ObjRequestType::ALLOC;
-  request.objref = objref;
-  request.size = size;
-  RAY_CHECK(request_obj_queue_.send(&request), "error sending over IPC");
-  ObjHandle result;
-  RAY_CHECK(receive_obj_queue_.receive(&result), "error receiving over IPC");
-  int64_t metadata_offset;
-  uint8_t* address = segmentpool_->get_address(result);
-  auto source = std::make_shared<BufferMemorySource>(address, size);
-  CHECK_ARROW_STATUS(writer.Write(source.get(), &metadata_offset), "error during Write: ");
-  // We immediately unmap here; if the object is going to be accessed again, it will be mapped again;
-  // This is reqired because we do not have a mechanism to unmap the object later.
-  segmentpool_->unmap_segment(result.segmentid());
-  request.type = ObjRequestType::WORKER_DONE;
-  request.metadata_offset = metadata_offset;
-  RAY_CHECK(request_obj_queue_.send(&request), "error sending over IPC");
-  Py_RETURN_NONE;
-}
-
-#endif
-
 const char* Worker::allocate_buffer(ObjRef objref, int64_t size, SegmentId& segmentid) {
   RAY_CHECK(connected_, "Attempted to perform put_arrow but failed.");
   ObjRequest request;
@@ -268,29 +233,6 @@ const char* Worker::get_buffer(ObjRef objref, int64_t &size, SegmentId& segmenti
   metadata_offset = result.metadata_offset();
   return address;
 }
-
-#ifndef __APPLE__
-
-// returns python list containing the value represented by objref and the
-// segmentid in which the object is stored
-PyObject* Worker::get_arrow(ObjRef objref, SegmentId& segmentid) {
-  RAY_CHECK(connected_, "Attempted to perform get_arrow but failed.");
-  ObjRequest request;
-  request.workerid = workerid_;
-  request.type = ObjRequestType::GET;
-  request.objref = objref;
-  RAY_CHECK(request_obj_queue_.send(&request), "error sending over IPC");
-  ObjHandle result;
-  RAY_CHECK(receive_obj_queue_.receive(&result), "error receiving over IPC");
-  uint8_t* address = segmentpool_->get_address(result);
-  auto source = std::make_shared<BufferMemorySource>(address, result.size());
-  segmentid = result.segmentid();
-  PyObject* value;
-  CHECK_ARROW_STATUS(pynumbuf::ReadPythonObjectFrom(source.get(), result.metadata_offset(), &value), "error during ReadPythonObjectFrom: ");
-  return value;
-}
-
-#endif
 
 bool Worker::is_arrow(ObjRef objref) {
   RAY_CHECK(connected_, "Attempted to perform is_arrow but failed.");

@@ -23,11 +23,6 @@ namespace boost {
 #include <boost/interprocess/managed_shared_memory.hpp>
 #include <boost/interprocess/ipc/message_queue.hpp>
 
-#ifndef __APPLE__
-  #include <arrow/api.h>
-  #include <arrow/ipc/memory.h>
-#endif
-
 #include "ray/ray.h"
 
 namespace bip = boost::interprocess;
@@ -109,23 +104,6 @@ private:
   size_t size_; // total size of the object
   size_t metadata_offset_; // offset of the metadata that describes this object
 };
-
-#ifndef __APPLE__
-
-class BufferMemorySource: public arrow::ipc::MemorySource {
-public:
-  BufferMemorySource(uint8_t* data, int64_t capacity) : data_(data), capacity_(capacity), size_(0) {}
-  virtual arrow::Status ReadAt(int64_t position, int64_t nbytes, std::shared_ptr<arrow::Buffer>* out);
-  virtual arrow::Status Close();
-  virtual arrow::Status Write(int64_t position, const uint8_t* data, int64_t nbytes);
-  virtual int64_t Size() const;
- private:
-  uint8_t* data_;
-  int64_t capacity_;
-  int64_t size_;
-};
-
-#endif
 
 // Memory segment pool: A collection of shared memory segments
 // used in two modes:
