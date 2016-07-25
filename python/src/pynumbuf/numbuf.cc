@@ -40,18 +40,7 @@ static void ArrowCapsule_Destructor(PyObject* capsule) {
   delete reinterpret_cast<std::shared_ptr<RowBatch>*>(PyCapsule_GetPointer(capsule, "arrow"));
 }
 
-/*! Serializes a Python list into an Arrow array.
-
-    \param args
-      The argument must be a Python list
-
-    \returns
-      A bytearray object containing the schema metadata
-
-      The size in bytes the serialized object will occupy in memory
-
-      A Python "arrow" capsule containing the RowBatch
-*/
+/* Documented in doc/numbuf.rst in ray-core */
 static PyObject* serialize_list(PyObject* self, PyObject* args) {
   PyObject* value;
   if (!PyArg_ParseTuple(args, "O", &value)) {
@@ -85,15 +74,7 @@ static PyObject* serialize_list(PyObject* self, PyObject* args) {
   return NULL;
 }
 
-/*! Serialize an arrow::Array into a buffer.
-
-    \param args
-      A Python "arrow" capsule containing the arrow::Array and
-      a python memoryview object the data will be written to
-
-    \return
-      The arrow metadata offset for the arrow metadata
-*/
+/* Documented in doc/numbuf.rst in ray-core */
 static PyObject* write_to_buffer(PyObject* self, PyObject* args) {
   std::shared_ptr<RowBatch>* batch;
   PyObject* memoryview;
@@ -110,15 +91,7 @@ static PyObject* write_to_buffer(PyObject* self, PyObject* args) {
   return PyInt_FromLong(metadata_offset);
 }
 
-/*! Read serialized data from buffer and produce an arrow capsule
-
-    \param args
-      A Python memoryview from which data will be loaded,
-      a Python bytearray containing the metadata and the metadata_offset
-
-    \return
-      A Python "arrow" capsule containing the arrow RowBatch
-*/
+/* Documented in doc/numbuf.rst in ray-core */
 static PyObject* read_from_buffer(PyObject* self, PyObject* args) {
   PyObject* memoryview;
   PyObject* metadata;
@@ -147,8 +120,7 @@ static PyObject* read_from_buffer(PyObject* self, PyObject* args) {
                        "arrow", &ArrowCapsule_Destructor);
 }
 
-/*!
-*/
+/* Documented in doc/numbuf.rst in ray-core */
 static PyObject* deserialize_list(PyObject* self, PyObject* args) {
   std::shared_ptr<RowBatch>* data;
   if (!PyArg_ParseTuple(args, "O&", &PyObjectToArrow, &data)) {
