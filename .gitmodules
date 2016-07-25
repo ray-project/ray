@@ -3,4 +3,7 @@
 	url = https://github.com/grpc/grpc
 [submodule "thirdparty/numbuf"]
 	path = thirdparty/numbuf
-	url = https://github.com/amplab/numbuf.git
+	url = https://github.com/pcmoritz/numbuf.git
+[submodule "thirdparty/numbuf-old"]
+	path = thirdparty/numbuf-old
+	url = https://github.com/amplab/numbuf

@@ -7,11 +7,15 @@
 #include <stdlib.h>
 #include "ray/ray.h"
 
-using namespace arrow;
+#ifndef __APPLE__
+  using namespace arrow;
+#endif
 
 ObjHandle::ObjHandle(SegmentId segmentid, size_t size, IpcPointer ipcpointer, size_t metadata_offset)
   : segmentid_(segmentid), size_(size), ipcpointer_(ipcpointer), metadata_offset_(metadata_offset)
 {}
+
+#ifndef __APPLE__
 
 Status BufferMemorySource::Write(int64_t position, const uint8_t* data, int64_t nbytes) {
   // TODO(pcm): error handling
@@ -32,6 +36,8 @@ Status BufferMemorySource::Close() {
 int64_t BufferMemorySource::Size() const {
   return size_;
 }
+
+#endif
 
 MessageQueue<>::MessageQueue() : create_(false) { }
 

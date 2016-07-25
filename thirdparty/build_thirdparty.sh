@@ -26,6 +26,22 @@ cd $TP_DIR/arrow/cpp/build
 cmake -DLIBARROW_LINKAGE=STATIC -DCMAKE_BUILD_TYPE=Release ..
 make VERBOSE=1 -j$PARALLEL
 
+# TODO(pcm): Remove this
+echo "building arrow (old version)"
+cd $TP_DIR/arrow-old/cpp
+source setup_build_env.sh
+mkdir -p $TP_DIR/arrow-old/cpp/build
+cd $TP_DIR/arrow-old/cpp/build
+cmake -DLIBARROW_LINKAGE=STATIC -DCMAKE_BUILD_TYPE=Release ..
+make VERBOSE=1 -j$PARALLEL
+
+echo "building numbuf"
+cd $TP_DIR/numbuf
+mkdir -p build
+cd $TP_DIR/numbuf/build
+cmake ..
+make VERBOSE=1 -j$PARALLEL
+
 echo "building GRPC"
 cd $TP_DIR/grpc
 make static HAS_SYSTEM_PROTOBUF=false HAS_SYSTEM_ZLIB=false HAS_SYSTEM_OPENSSL_ALPN=false HAS_SYSTEM_OPENSSL_NPN=false -j$PARALLEL
