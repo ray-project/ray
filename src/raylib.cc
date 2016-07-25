@@ -607,13 +607,13 @@ static PyObject* serialize_task(PyObject* self, PyObject* args) {
   return PyCapsule_New(static_cast<void*>(task), "task", &TaskCapsule_Destructor);
 }
 
-static PyObject* deserialize_task(PyObject* worker_capsule, Task* task) {
+static PyObject* deserialize_task(PyObject* worker_capsule, const Task& task) {
   std::vector<ObjRef> objrefs; // This is a vector of all the objrefs that were serialized in this task, including objrefs that are contained in Python objects that are passed by value.
-  PyObject* string = PyString_FromStringAndSize(task->name().c_str(), task->name().size());
-  int argsize = task->arg_size();
+  PyObject* string = PyString_FromStringAndSize(task.name().c_str(), task.name().size());
+  int argsize = task.arg_size();
   PyObject* arglist = PyList_New(argsize);
   for (int i = 0; i < argsize; ++i) {
-    const Value& val = task->arg(i);
+    const Value& val = task.arg(i);
     if (!val.has_obj()) {
       PyList_SetItem(arglist, i, make_pyobjref(worker_capsule, val.ref()));
       objrefs.push_back(val.ref());
@@ -624,12 +624,12 @@ static PyObject* deserialize_task(PyObject* worker_capsule, Task* task) {
   Worker* worker;
   PyObjectToWorker(worker_capsule, &worker);
   worker->decrement_reference_count(objrefs);
-  int resultsize = task->result_size();
+  int resultsize = task.result_size();
   std::vector<ObjRef> result_objrefs;
   PyObject* resultlist = PyList_New(resultsize);
   for (int i = 0; i < resultsize; ++i) {
-    PyList_SetItem(resultlist, i, make_pyobjref(worker_capsule, task->result(i)));
-    result_objrefs.push_back(task->result(i));
+    PyList_SetItem(resultlist, i, make_pyobjref(worker_capsule, task.result(i)));
+    result_objrefs.push_back(task.result(i));
   }
   worker->decrement_reference_count(result_objrefs); // The corresponding increment is done in SubmitTask in the scheduler.
   PyObject* t = PyTuple_New(3); // We set the items of the tuple using PyTuple_SetItem, because that transfers ownership to the tuple.
@@ -685,23 +685,32 @@ static PyObject* wait_for_next_message(PyObject* self, PyObject* args) {
   Worker* worker;
   PyObjectToWorker(worker_capsule, &worker);
   if (std::unique_ptr<WorkerMessage> message = worker->receive_next_message()) {
-    PyObject* variable_info;
-    if (!message->reusable_variable.variable_name.empty()) {
-      variable_info = PyTuple_New(3);
-      PyTuple_SetItem(variable_info, 0, PyString_FromStringAndSize(message->reusable_variable.variable_name.data(), static_cast<ssize_t>(message->reusable_variable.variable_name.size())));
-      PyTuple_SetItem(variable_info, 1, PyString_FromStringAndSize(message->reusable_variable.initializer.data(), static_cast<ssize_t>(message->reusable_variable.initializer.size())));
-      PyTuple_SetItem(variable_info, 2, PyString_FromStringAndSize(message->reusable_variable.reinitializer.data(), static_cast<ssize_t>(message->reusable_variable.reinitializer.size())));
+    bool task_present = !message->task().name().empty();
+    bool function_present = !message->function().implementation().empty();
+    bool reusable_variable_present = !message->reusable_variable().name().empty();
+    RAY_CHECK(task_present + function_present + reusable_variable_present <= 1, "The worker message should contain at most one item.");
+    PyObject* t = PyTuple_New(2);
+    if (task_present) {
+      PyTuple_SetItem(t, 0, PyString_FromString("task"));
+      PyTuple_SetItem(t, 1, deserialize_task(worker_capsule, message->task()));
+    } else if (function_present) {
+      PyTuple_SetItem(t, 0, PyString_FromString("function"));
+      PyTuple_SetItem(t, 1, PyString_FromStringAndSize(message->function().implementation().data(), static_cast<ssize_t>(message->function().implementation().size())));
+    } else if (reusable_variable_present) {
+      PyTuple_SetItem(t, 0, PyString_FromString("reusable_variable"));
+      PyObject* reusable_variable = PyTuple_New(3);
+      PyTuple_SetItem(reusable_variable, 0, PyString_FromStringAndSize(message->reusable_variable().name().data(), static_cast<ssize_t>(message->reusable_variable().name().size())));
+      PyTuple_SetItem(reusable_variable, 1, PyString_FromStringAndSize(message->reusable_variable().initializer().implementation().data(), static_cast<ssize_t>(message->reusable_variable().initializer().implementation().size())));
+      PyTuple_SetItem(reusable_variable, 2, PyString_FromStringAndSize(message->reusable_variable().reinitializer().implementation().data(), static_cast<ssize_t>(message->reusable_variable().reinitializer().implementation().size())));
+      PyTuple_SetItem(t, 1, reusable_variable);
+    } else {
+      PyTuple_SetItem(t, 0, PyString_FromString("die"));
+      Py_INCREF(Py_None);
+      PyTuple_SetItem(t, 1, Py_None);
     }
-    // The tuple constructed below will take ownership of some None objects.
-    // When the tuple goes out of scope, the reference count for None will be
-    // decremented. Therefore, we need to increment the reference count for None
-    // every time we put a None in the tuple.
-    PyObject* t = PyTuple_New(3); // We set the items of the tuple using PyTuple_SetItem, because that transfers ownership to the tuple.
-    PyTuple_SetItem(t, 0, message->task.name().empty() ? Py_INCREF(Py_None), Py_None : deserialize_task(worker_capsule, &message->task));
-    PyTuple_SetItem(t, 1, message->function.empty() ? Py_INCREF(Py_None), Py_None : PyString_FromStringAndSize(message->function.data(), static_cast<ssize_t>(message->function.size())));
-    PyTuple_SetItem(t, 2, message->reusable_variable.variable_name.empty() ? Py_INCREF(Py_None), Py_None : variable_info);
     return t;
   }
+  RAY_CHECK(false, "This code should be unreachable.");
   Py_RETURN_NONE;
 }
 

@@ -37,6 +37,12 @@ message Function {
   bytes implementation = 1;
 }
 
+message ReusableVar {
+  string name = 1; // The name of the reusable variable.
+  Function initializer = 2; // A serialized version of the function that initializes the reusable variable.
+  Function reinitializer = 3; // A serialized version of the function that reinitializes the reusable variable.
+}
+
 // Union of possible object types
 message Obj {
   String string_data = 1;

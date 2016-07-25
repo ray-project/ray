@@ -240,9 +240,7 @@ message ExportFunctionReply {
 }
 
 message ExportReusableVariableRequest {
-  string name = 1; // The name of the reusable variable.
-  Function initializer = 2; // A serialized version of the function that initializes the reusable variable.
-  Function reinitializer = 3; // A serialized version of the function that reinitializes the reusable variable.
+  ReusableVar reusable_variable = 1; // The reusable variable to export.
 }
 
 // These messages are for getting information about the object store state
@@ -280,13 +278,21 @@ message ImportFunctionReply {
 }
 
 message ImportReusableVariableRequest {
-  string name = 1; // The name of the reusable variable.
-  Function initializer = 2; // A serialized version of the function that initializes the reusable variable.
-  Function reinitializer = 3; // A serialized version of the function that reinitializes the reusable variable.
+  ReusableVar reusable_variable = 1; // The reusable variable to export.
 }
 
 message DieRequest {
 }
 
 message DieReply {
+}
+
+// This message is used by the worker service to send messages to the worker
+// that are processed by the worker's main loop.
+message WorkerMessage {
+  oneof worker_item {
+    Task task = 1; // A task for the worker to execute.
+    Function function = 2; // A remote function to import on the worker.
+    ReusableVar reusable_variable = 3; // A reusable variable to import on the worker.
+  }
 }

@@ -150,6 +150,20 @@ Status SchedulerService::ReadyForNewTask(ServerContext* context, const ReadyForN
   OperationId operationid = (*workers_.get())[workerid].current_task;
   RAY_LOG(RAY_INFO, "worker " << workerid << " is ready for a new task");
   RAY_CHECK(operationid != ROOT_OPERATION, "A driver appears to have called ReadyForNewTask.");
+  {
+    // Check if the worker has been initialized yet, and if not, then give it
+    // all of the exported functions and all of the exported reusable variables.
+    auto workers = workers_.get();
+    if (!(*workers)[workerid].initialized) {
+      // This should only happen once.
+      // Import all remote functions on the worker.
+      export_all_functions_to_worker(workerid, workers, exported_functions_.get());
+      // Import all reusable variables on the worker.
+      export_all_reusable_variables_to_worker(workerid, workers, exported_reusable_variables_.get());
+      // Mark the worker as initialized.
+      (*workers)[workerid].initialized = true;
+    }
+  }
   if (request->has_previous_task_info()) {
     RAY_CHECK(operationid != NO_OPERATION, "request->has_previous_task_info() should not be true if operationid == NO_OPERATION.");
     std::string task_name;
@@ -293,13 +307,12 @@ Status SchedulerService::KillWorkers(ServerContext* context, const KillWorkersRe
 
 Status SchedulerService::ExportFunction(ServerContext* context, const ExportFunctionRequest* request, ExportFunctionReply* reply) {
   auto workers = workers_.get();
+  auto exported_functions = exported_functions_.get();
+  // TODO(rkn): Does this do a deep copy?
+  exported_functions->push_back(std::unique_ptr<Function>(new Function(request->function())));
   for (size_t i = 0; i < workers->size(); ++i) {
-    ClientContext import_context;
-    ImportFunctionRequest import_request;
-    import_request.mutable_function()->set_implementation(request->function().implementation());
     if ((*workers)[i].current_task != ROOT_OPERATION) {
-      ImportFunctionReply import_reply;
-      (*workers)[i].worker_stub->ImportFunction(&import_context, import_request, &import_reply);
+      export_function_to_worker(i, exported_functions->size() - 1, workers, exported_functions);
     }
   }
   return Status::OK;
@@ -307,15 +320,12 @@ Status SchedulerService::ExportFunction(ServerContext* context, const ExportFunc
 
 Status SchedulerService::ExportReusableVariable(ServerContext* context, const ExportReusableVariableRequest* request, AckReply* reply) {
   auto workers = workers_.get();
+  auto exported_reusable_variables = exported_reusable_variables_.get();
+  // TODO(rkn): Does this do a deep copy?
+  exported_reusable_variables->push_back(std::unique_ptr<ReusableVar>(new ReusableVar(request->reusable_variable())));
   for (size_t i = 0; i < workers->size(); ++i) {
-    ClientContext import_context;
-    ImportReusableVariableRequest import_request;
-    import_request.set_name(request->name());
-    import_request.mutable_initializer()->set_implementation(request->initializer().implementation());
-    import_request.mutable_reinitializer()->set_implementation(request->reinitializer().implementation());
     if ((*workers)[i].current_task != ROOT_OPERATION) {
-      AckReply import_reply;
-      (*workers)[i].worker_stub->ImportReusableVariable(&import_context, import_request, &import_reply);
+      export_reusable_variable_to_worker(i, exported_reusable_variables->size() - 1, workers, exported_reusable_variables);
     }
   }
   return Status::OK;
@@ -451,6 +461,7 @@ std::pair<WorkerId, ObjStoreId> SchedulerService::register_worker(const std::str
     (*workers)[workerid].objstoreid = objstoreid;
     (*workers)[workerid].worker_stub = WorkerService::NewStub(channel);
     (*workers)[workerid].worker_address = worker_address;
+    (*workers)[workerid].initialized = false;
     if (is_driver) {
       (*workers)[workerid].current_task = ROOT_OPERATION; // We use this field to identify which workers are drivers.
     } else {
@@ -830,6 +841,37 @@ void SchedulerService::get_equivalent_objrefs(ObjRef objref, std::vector<ObjRef>
   upstream_objrefs(downstream_objref, equivalent_objrefs, reverse_target_objrefs_.get());
 }
 
+
+void SchedulerService::export_function_to_worker(WorkerId workerid, int function_index, SynchronizedPtr<std::vector<WorkerHandle> > &workers, const SynchronizedPtr<std::vector<std::unique_ptr<Function> > > &exported_functions) {
+  RAY_LOG(RAY_INFO, "exporting function with index " << function_index << " to worker " << workerid);
+  ClientContext import_context;
+  ImportFunctionRequest import_request;
+  import_request.mutable_function()->CopyFrom(*(*exported_functions)[function_index].get());
+  ImportFunctionReply import_reply;
+  (*workers)[workerid].worker_stub->ImportFunction(&import_context, import_request, &import_reply);
+}
+
+void SchedulerService::export_reusable_variable_to_worker(WorkerId workerid, int reusable_variable_index, SynchronizedPtr<std::vector<WorkerHandle> > &workers, const SynchronizedPtr<std::vector<std::unique_ptr<ReusableVar> > > &exported_reusable_variables) {
+  RAY_LOG(RAY_INFO, "exporting reusable variable with index " << reusable_variable_index << " to worker " << workerid);
+  ClientContext import_context;
+  ImportReusableVariableRequest import_request;
+  import_request.mutable_reusable_variable()->CopyFrom(*(*exported_reusable_variables)[reusable_variable_index].get());
+  AckReply import_reply;
+  (*workers)[workerid].worker_stub->ImportReusableVariable(&import_context, import_request, &import_reply);
+}
+
+void SchedulerService::export_all_functions_to_worker(WorkerId workerid, SynchronizedPtr<std::vector<WorkerHandle> > &workers, const SynchronizedPtr<std::vector<std::unique_ptr<Function> > > &exported_functions) {
+  for (int i = 0; i < exported_functions->size(); ++i) {
+    export_function_to_worker(workerid, i, workers, exported_functions);
+  }
+}
+
+void SchedulerService::export_all_reusable_variables_to_worker(WorkerId workerid, SynchronizedPtr<std::vector<WorkerHandle> > &workers, const SynchronizedPtr<std::vector<std::unique_ptr<ReusableVar> > > &exported_reusable_variables) {
+  for (int i = 0; i < exported_reusable_variables->size(); ++i) {
+    export_reusable_variable_to_worker(workerid, i, workers, exported_reusable_variables);
+  }
+}
+
 // This method defines the order in which locks should be acquired.
 void SchedulerService::do_on_locks(bool lock) {
   std::mutex *mutexes[] = {
@@ -847,7 +889,9 @@ void SchedulerService::do_on_locks(bool lock) {
     &objtable_.mutex(),
     &objstores_.mutex(),
     &target_objrefs_.mutex(),
-    &reverse_target_objrefs_.mutex()
+    &reverse_target_objrefs_.mutex(),
+    &exported_functions_.mutex(),
+    &exported_reusable_variables_.mutex(),
   };
   size_t n = sizeof(mutexes) / sizeof(*mutexes);
   for (size_t i = 0; i != n; ++i) {
