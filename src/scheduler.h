@@ -37,6 +37,10 @@ struct WorkerHandle {
   std::unique_ptr<WorkerService::Stub> worker_stub; // If null, the worker has died
   ObjStoreId objstoreid;
   std::string worker_address;
+  // This field is initialized to false, and it is set to true after all of the
+  // exported functions and exported reusable variables have been shipped to
+  // this worker.
+  bool initialized;
   OperationId current_task;
 };
 
@@ -129,6 +133,20 @@ private:
   void upstream_objrefs(ObjRef objref, std::vector<ObjRef> &objrefs, const SynchronizedPtr<std::vector<std::vector<ObjRef> > > &reverse_target_objrefs);
   // Find all of the object references that refer to the same object as objref (as best as we can determine at the moment). The information may be incomplete because not all of the aliases may be known.
   void get_equivalent_objrefs(ObjRef objref, std::vector<ObjRef> &equivalent_objrefs);
+  // Export a remote function to a worker.
+  void export_function_to_worker(WorkerId workerid, int function_index, SynchronizedPtr<std::vector<WorkerHandle> > &workers, const SynchronizedPtr<std::vector<std::unique_ptr<Function> > > &exported_functions);
+  // Export a reusable variable to a worker
+  void export_reusable_variable_to_worker(WorkerId workerid, int reusable_variable_index, SynchronizedPtr<std::vector<WorkerHandle> > &workers, const SynchronizedPtr<std::vector<std::unique_ptr<ReusableVar> > > &exported_reusable_variables);
+  // Export all reusable variables to a worker. This is used when a new worker
+  // registers and is protected by the workers lock (which is passed in) to
+  // ensure that no other reusable variables are exported to the worker while
+  // this method is being called.
+  void export_all_functions_to_worker(WorkerId workerid, SynchronizedPtr<std::vector<WorkerHandle> > &workers, const SynchronizedPtr<std::vector<std::unique_ptr<Function> > > &exported_functions);
+  // Export all remote functions to a worker. This is used when a new worker
+  // registers and is protected by the workers lock (which is passed in) to
+  // ensure that no other remote functions are exported to the worker while this
+  // method is being called.
+  void export_all_reusable_variables_to_worker(WorkerId workerid, SynchronizedPtr<std::vector<WorkerHandle> > &workers, const SynchronizedPtr<std::vector<std::unique_ptr<ReusableVar> > > &exported_reusable_variables);
   // acquires all locks, this should only be used by get_info and for fault tolerance
   void acquire_all_locks();
   // release all locks, this should only be used by get_info and for fault tolerance
@@ -187,6 +205,10 @@ private:
   Synchronized<std::vector<RefCount> > reference_counts_;
   // contained_objrefs_[objref] is a vector of all of the objrefs contained inside the object referred to by objref
   Synchronized<std::vector<std::vector<ObjRef> > > contained_objrefs_;
+  // All of the remote functions that have been exported to the workers.
+  Synchronized<std::vector<std::unique_ptr<Function> > > exported_functions_;
+  // All of the reusable variables that have been exported to the workers.
+  Synchronized<std::vector<std::unique_ptr<ReusableVar> > > exported_reusable_variables_;
   // the scheduling algorithm that will be used
   SchedulingAlgorithmType scheduling_algorithm_;
 };

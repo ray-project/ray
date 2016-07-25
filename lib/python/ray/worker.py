@@ -686,31 +686,27 @@ def main_loop(worker=global_worker):
       # above so that changes made to their state do not affect other tasks.
       ray.reusables._reinitialize()
   while True:
-    (task, function, reusable_variable) = ray.lib.wait_for_next_message(worker.handle)
+    command, command_args = ray.lib.wait_for_next_message(worker.handle)
     try:
-      # Only one of task, function, and reusable_variable should be not None.
-      assert sum([obj is not None for obj in [task, function, reusable_variable]]) <= 1
-      if task is None and function is None and reusable_variable is None:
-        # We use this as a mechanism to allow the scheduler to kill workers. When
-        # the scheduler wants to kill a worker, it gives the worker a null task,
-        # causing the worker program to exit the main loop here.
+      if command == "die":
+        # We use this as a mechanism to allow the scheduler to kill workers.
         break
-      if function is not None:
-        (function, arg_types, return_types) = pickling.loads(function)
+      elif command == "function":
+        (function, arg_types, return_types) = pickling.loads(command_args)
         if function.__module__ is None: function.__module__ = "__main__"
         worker.register_function(remote(arg_types, return_types, worker)(function))
-      if reusable_variable is not None:
-        name, initializer_str, reinitializer_str = reusable_variable
+      elif command == "reusable_variable":
+        name, initializer_str, reinitializer_str = command_args
         initializer = pickling.loads(initializer_str)
         reinitializer = pickling.loads(reinitializer_str)
         reusables.__setattr__(name, Reusable(initializer, reinitializer))
-      if task is not None:
-        process_task(task)
+      elif command == "task":
+        process_task(command_args)
+      else:
+        assert False, "This code should be unreachable."
     finally:
       # Allow releasing the variables BEFORE we wait for the next message or exit the block
-      del task
-      del function
-      del reusable_variable
+      del command_args
 
 def _submit_task(func_name, args, worker=global_worker):
   """This is a wrapper around worker.submit_task.

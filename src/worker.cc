@@ -17,7 +17,7 @@ inline WorkerServiceImpl::WorkerServiceImpl(const std::string& worker_address)
 Status WorkerServiceImpl::ExecuteTask(ServerContext* context, const ExecuteTaskRequest* request, ExecuteTaskReply* reply) {
   RAY_LOG(RAY_INFO, "invoked task " << request->task().name());
   std::unique_ptr<WorkerMessage> message(new WorkerMessage());
-  message->task = request->task();
+  message->mutable_task()->CopyFrom(request->task());
   {
     WorkerMessage* message_ptr = message.get();
     RAY_CHECK(send_queue_.send(&message_ptr), "error sending over IPC");
@@ -28,7 +28,7 @@ Status WorkerServiceImpl::ExecuteTask(ServerContext* context, const ExecuteTaskR
 
 Status WorkerServiceImpl::ImportFunction(ServerContext* context, const ImportFunctionRequest* request, ImportFunctionReply* reply) {
   std::unique_ptr<WorkerMessage> message(new WorkerMessage());
-  message->function = request->function().implementation();
+  message->mutable_function()->CopyFrom(request->function());
   RAY_LOG(RAY_INFO, "importing function");
   {
     WorkerMessage* message_ptr = message.get();
@@ -40,9 +40,7 @@ Status WorkerServiceImpl::ImportFunction(ServerContext* context, const ImportFun
 
 Status WorkerServiceImpl::ImportReusableVariable(ServerContext* context, const ImportReusableVariableRequest* request, AckReply* reply) {
   std::unique_ptr<WorkerMessage> message(new WorkerMessage());
-  message->reusable_variable.variable_name = request->name();
-  message->reusable_variable.initializer = request->initializer().implementation();
-  message->reusable_variable.reinitializer = request->reinitializer().implementation();
+  message->mutable_reusable_variable()->CopyFrom(request->reusable_variable());
   RAY_LOG(RAY_INFO, "importing reusable variable");
   {
     WorkerMessage* message_ptr = message.get();
@@ -360,9 +358,9 @@ void Worker::export_reusable_variable(const std::string& name, const std::string
   RAY_CHECK(connected_, "Attempted to export reusable variable but failed.");
   ClientContext context;
   ExportReusableVariableRequest request;
-  request.set_name(name);
-  request.mutable_initializer()->set_implementation(initializer);
-  request.mutable_reinitializer()->set_implementation(reinitializer);
+  request.mutable_reusable_variable()->set_name(name);
+  request.mutable_reusable_variable()->mutable_initializer()->set_implementation(initializer);
+  request.mutable_reusable_variable()->mutable_reinitializer()->set_implementation(reinitializer);
   AckReply reply;
   Status status = scheduler_stub_->ExportReusableVariable(&context, request, &reply);
 }

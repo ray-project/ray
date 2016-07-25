@@ -23,18 +23,6 @@ using grpc::Channel;
 using grpc::ClientContext;
 using grpc::ClientWriter;
 
-struct ReusableVariable {
-  std::string variable_name;
-  std::string initializer;
-  std::string reinitializer;
-};
-
-struct WorkerMessage {
-  Task task;
-  std::string function; // Used for importing remote functions.
-  ReusableVariable reusable_variable; // Used for importing reusable variables.
-};
-
 class WorkerServiceImpl final : public WorkerService::Service {
 public:
   WorkerServiceImpl(const std::string& worker_address);
