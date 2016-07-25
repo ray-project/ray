@@ -4,9 +4,11 @@
 
 #include <Python.h>
 #include <structmember.h>
-#define PY_ARRAY_UNIQUE_SYMBOL NUMBUF_ARRAY_API
+#define PY_ARRAY_UNIQUE_SYMBOL RAYLIB_ARRAY_API
 #include <numpy/arrayobject.h>
-#include <arrow/api.h>
+#ifndef __APPLE__
+  #include <arrow/api.h>
+#endif
 #include <iostream>
 
 #include "types.pb.h"
@@ -480,6 +482,7 @@ static PyObject* serialize_object(PyObject* self, PyObject* args) {
   return t;
 }
 
+#ifndef __APPLE__
 static PyObject* put_arrow(PyObject* self, PyObject* args) {
   Worker* worker;
   ObjRef objref;
@@ -494,6 +497,7 @@ static PyObject* put_arrow(PyObject* self, PyObject* args) {
   Py_XDECREF(array); // GETCONTIGUOUS from above returned a new reference
   Py_RETURN_NONE;
 }
+#endif
 
 static PyObject* allocate_buffer(PyObject* self, PyObject* args) {
   Worker* worker;
@@ -527,17 +531,21 @@ static PyObject* get_buffer(PyObject* self, PyObject* args) {
   ObjRef objref;
   int64_t size;
   SegmentId segmentid;
+  int64_t metadata_offset;
   if (!PyArg_ParseTuple(args, "O&O&", &PyObjectToWorker, &worker, &PyObjectToObjRef, &objref)) {
     return NULL;
   }
-  void* address = reinterpret_cast<void*>(const_cast<char*>(worker->get_buffer(objref, size, segmentid)));
+  void* address = reinterpret_cast<void*>(const_cast<char*>(worker->get_buffer(objref, size, segmentid, metadata_offset)));
   std::vector<npy_intp> dim({size});
-  PyObject* t = PyTuple_New(2);
+  PyObject* t = PyTuple_New(3);
   PyTuple_SetItem(t, 0, PyArray_SimpleNewFromData(1, dim.data(), NPY_BYTE, address));
   PyTuple_SetItem(t, 1, PyInt_FromLong(segmentid));
+  PyTuple_SetItem(t, 2, PyInt_FromLong(metadata_offset));
   return t;
 }
 
+
+#ifndef __APPLE__
 
 static PyObject* get_arrow(PyObject* self, PyObject* args) {
   Worker* worker;
@@ -552,6 +560,8 @@ static PyObject* get_arrow(PyObject* self, PyObject* args) {
   PyList_SetItem(val_and_segmentid, 1, PyInt_FromLong(segmentid));
   return val_and_segmentid;
 }
+
+#endif
 
 static PyObject* is_arrow(PyObject* self, PyObject* args) {
   Worker* worker;
@@ -999,11 +1009,15 @@ static PyObject* kill_workers(PyObject* self, PyObject* args) {
 static PyMethodDef RayLibMethods[] = {
  { "serialize_object", serialize_object, METH_VARARGS, "serialize an object to protocol buffers" },
  { "deserialize_object", deserialize_object, METH_VARARGS, "deserialize an object from protocol buffers" },
+#ifndef __APPLE__
  { "put_arrow", put_arrow, METH_VARARGS, "put an arrow array on the local object store"},
+#endif
  { "allocate_buffer", allocate_buffer, METH_VARARGS, "Allocates and returns buffer for objref."},
  { "finish_buffer", finish_buffer, METH_VARARGS, "Makes the buffer immutable and closes memory segment of objref."},
  { "get_buffer", get_buffer, METH_VARARGS, "Gets buffer for objref"},
+#ifndef __APPLE__
  { "get_arrow", get_arrow, METH_VARARGS, "get an arrow array from the local object store"},
+#endif
  { "is_arrow", is_arrow, METH_VARARGS, "is the object in the local object store an arrow object?"},
  { "unmap_object", unmap_object, METH_VARARGS, "unmap the object from the client's shared memory pool"},
  { "serialize_task", serialize_task, METH_VARARGS, "serialize a task to protocol buffers" },
