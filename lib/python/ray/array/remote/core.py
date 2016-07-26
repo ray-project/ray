@@ -4,7 +4,7 @@ import ray
 
 __all__ = ["zeros", "zeros_like", "ones", "eye", "dot", "vstack", "hstack", "subarray", "copy", "tril", "triu", "diag", "transpose", "add", "subtract", "sum", "shape", "sum_list"]
 
-@ray.remote([List[int], str, str], [np.ndarray])
+@ray.remote([List, str, str], [np.ndarray])
 def zeros(shape, dtype_name="float", order="C"):
   return np.zeros(shape, dtype=np.dtype(dtype_name), order=order)
 
@@ -13,7 +13,7 @@ def zeros_like(a, dtype_name="None", order="K", subok=True):
   dtype_val = None if dtype_name == "None" else np.dtype(dtype_name)
   return np.zeros_like(a, dtype=dtype_val, order=order, subok=subok)
 
-@ray.remote([List[int], str, str], [np.ndarray])
+@ray.remote([List, str, str], [np.ndarray])
 def ones(shape, dtype_name="float", order="C"):
   return np.ones(shape, dtype=np.dtype(dtype_name), order=order)
 
@@ -35,7 +35,7 @@ def hstack(*xs):
   return np.hstack(xs)
 
 # TODO(rkn): instead of this, consider implementing slicing
-@ray.remote([np.ndarray, List[int], List[int]], [np.ndarray])
+@ray.remote([np.ndarray, List, List], [np.ndarray])
 def subarray(a, lower_indices, upper_indices): # TODO(rkn): be consistent about using "index" versus "indices"
   return a[[slice(l, u) for (l, u) in zip(lower_indices, upper_indices)]]
 
@@ -55,7 +55,7 @@ def triu(m, k=0):
 def diag(v, k=0):
   return np.diag(v, k=k)
 
-@ray.remote([np.ndarray, List[int]], [np.ndarray])
+@ray.remote([np.ndarray, List], [np.ndarray])
 def transpose(a, axes=[]):
   axes = None if axes == [] else axes
   return np.transpose(a, axes=axes)

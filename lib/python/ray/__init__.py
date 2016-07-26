@@ -5,6 +5,7 @@ SCRIPT_MODE = 0
 WORKER_MODE = 1
 SHELL_MODE = 2
 PYTHON_MODE = 3
+SILENT_MODE = 4 # This is only used during testing.
 
 import ctypes
 # Windows only

@@ -56,8 +56,10 @@ def cleanup():
   global drivers
   for driver in drivers:
     ray.disconnect(driver)
+    driver.set_mode(None)
   if len(drivers) == 0:
     ray.disconnect()
+    ray.worker.global_worker.set_mode(None)
   drivers = []
 
   global all_processes
@@ -191,6 +193,8 @@ def start_ray_local(num_workers=0, worker_path=None, driver_mode=ray.SCRIPT_MODE
       equivalent to serial Python code. It should be ray.WORKER_MODE to surpress
       the printing of error messages.
   """
+  if worker_path is None:
+    worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../../scripts/default_worker.py")
   start_services_local(num_objstores=1, num_workers_per_objstore=num_workers, worker_path=worker_path, driver_mode=driver_mode)
 
 # This is a helper method which is only used in the tests and should not be

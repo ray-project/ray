@@ -113,15 +113,13 @@ class ObjStoreTest(unittest.TestCase):
       result = ray.get(objref, w2)
       self.assertTrue(np.alltrue(result == data))
 
-    """
     # getting multiple times shouldn't matter
-    for data in [np.zeros([10, 20]), np.random.normal(size=[45, 25]), np.zeros([10, 20], dtype=np.dtype("float64")), np.zeros([10, 20], dtype=np.dtype("float32")), np.zeros([10, 20], dtype=np.dtype("int64")), np.zeros([10, 20], dtype=np.dtype("int32"))]:
-      objref = worker.put(data, w1)
-      result = worker.get(objref, w2)
-      result = worker.get(objref, w2)
-      result = worker.get(objref, w2)
-      self.assertTrue(np.alltrue(result == data))
-    """
+    # for data in [np.zeros([10, 20]), np.random.normal(size=[45, 25]), np.zeros([10, 20], dtype=np.dtype("float64")), np.zeros([10, 20], dtype=np.dtype("float32")), np.zeros([10, 20], dtype=np.dtype("int64")), np.zeros([10, 20], dtype=np.dtype("int32"))]:
+    #   objref = worker.put(data, w1)
+    #   result = worker.get(objref, w2)
+    #   result = worker.get(objref, w2)
+    #   result = worker.get(objref, w2)
+    #   self.assertTrue(np.alltrue(result == data))
 
     # shipping a numpy array inside something else should be fine
     data = ("a", np.random.normal(size=[10, 10]))
@@ -181,8 +179,8 @@ class WorkerTest(unittest.TestCase):
 class APITest(unittest.TestCase):
 
   def testObjRefAliasing(self):
-    worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-    ray.services.start_ray_local(num_workers=3, worker_path=worker_path)
+    reload(test_functions)
+    ray.services.start_ray_local(num_workers=3, driver_mode=ray.SILENT_MODE)
 
     ref = test_functions.test_alias_f()
     self.assertTrue(np.alltrue(ray.get(ref) == np.ones([3, 4, 5])))
@@ -194,8 +192,8 @@ class APITest(unittest.TestCase):
     ray.services.cleanup()
 
   def testKeywordArgs(self):
-    worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-    ray.services.start_ray_local(num_workers=1, worker_path=worker_path)
+    reload(test_functions)
+    ray.services.start_ray_local(num_workers=1)
 
     x = test_functions.keyword_fct1(1)
     self.assertEqual(ray.get(x), "1 hello")
@@ -231,8 +229,8 @@ class APITest(unittest.TestCase):
     ray.services.cleanup()
 
   def testVariableNumberOfArgs(self):
-    worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-    ray.services.start_ray_local(num_workers=1, worker_path=worker_path)
+    reload(test_functions)
+    ray.services.start_ray_local(num_workers=1)
 
     x = test_functions.varargs_fct1(0, 1, 2)
     self.assertEqual(ray.get(x), "0 1 2")
@@ -245,8 +243,8 @@ class APITest(unittest.TestCase):
     ray.services.cleanup()
 
   def testNoArgs(self):
-    worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-    ray.services.start_ray_local(num_workers=1, worker_path=worker_path, driver_mode=ray.WORKER_MODE)
+    reload(test_functions)
+    ray.services.start_ray_local(num_workers=1, driver_mode=ray.SILENT_MODE)
 
     test_functions.no_op()
     time.sleep(0.2)
@@ -266,8 +264,8 @@ class APITest(unittest.TestCase):
     ray.services.cleanup()
 
   def testTypeChecking(self):
-    worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-    ray.services.start_ray_local(num_workers=1, worker_path=worker_path, driver_mode=ray.WORKER_MODE)
+    reload(test_functions)
+    ray.services.start_ray_local(num_workers=1, driver_mode=ray.SILENT_MODE)
 
     # Make sure that these functions throw exceptions because there return
     # values do not type check.
@@ -282,8 +280,7 @@ class APITest(unittest.TestCase):
     ray.services.cleanup()
 
   def testDefiningRemoteFunctions(self):
-    worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-    ray.services.start_ray_local(num_workers=2, worker_path=worker_path, driver_mode=ray.SCRIPT_MODE)
+    ray.services.start_ray_local(num_workers=2)
 
     # Test that we can define a remote function in the shell.
     @ray.remote([int], [int])
@@ -330,10 +327,39 @@ class APITest(unittest.TestCase):
 
     ray.services.cleanup()
 
+  def testCachingReusables(self):
+    # Test that we can define reusable variables before the driver is connected.
+    def foo_initializer():
+      return 1
+    def bar_initializer():
+      return []
+    def bar_reinitializer(bar):
+      return []
+    ray.reusables.foo = ray.Reusable(foo_initializer)
+    ray.reusables.bar = ray.Reusable(bar_initializer, bar_reinitializer)
+
+    @ray.remote([], [int])
+    def use_foo():
+      return ray.reusables.foo
+    @ray.remote([], [list])
+    def use_bar():
+      ray.reusables.bar.append(1)
+      return ray.reusables.bar
+
+    ray.services.start_ray_local(num_workers=2)
+
+    self.assertEqual(ray.get(use_foo()), 1)
+    self.assertEqual(ray.get(use_foo()), 1)
+    self.assertEqual(ray.get(use_bar()), [1])
+    self.assertEqual(ray.get(use_bar()), [1])
+
+    ray.services.cleanup()
+
 class TaskStatusTest(unittest.TestCase):
   def testFailedTask(self):
-    worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-    ray.services.start_ray_local(num_workers=3, worker_path=worker_path, driver_mode=ray.WORKER_MODE)
+    reload(test_functions)
+    ray.services.start_ray_local(num_workers=3, driver_mode=ray.SILENT_MODE)
+
     test_functions.test_alias_f()
     test_functions.throw_exception_fct1()
     test_functions.throw_exception_fct1()
@@ -365,6 +391,8 @@ class TaskStatusTest(unittest.TestCase):
       else:
         self.assertTrue(False) # ray.get should throw an exception
 
+    ray.services.cleanup()
+
 def check_get_deallocated(data):
   x = ray.put(data)
   ray.get(x)
@@ -378,8 +406,10 @@ def check_get_not_deallocated(data):
 class ReferenceCountingTest(unittest.TestCase):
 
   def testDeallocation(self):
-    worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-    ray.services.start_ray_local(num_workers=3, worker_path=worker_path)
+    reload(test_functions)
+    for module in [ra.core, ra.random, ra.linalg, da.core, da.random, da.linalg]:
+      reload(module)
+    ray.services.start_ray_local(num_workers=1)
 
     x = test_functions.test_alias_f()
     ray.get(x)
@@ -399,7 +429,7 @@ class ReferenceCountingTest(unittest.TestCase):
     del y
     self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)], [-1, -1, -1])
 
-    z = da.zeros([da.BLOCK_SIZE, 2 * da.BLOCK_SIZE], "float")
+    z = da.zeros([da.BLOCK_SIZE, 2 * da.BLOCK_SIZE])
     time.sleep(0.1)
     objref_val = z.val
     self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)], [1, 1, 1])
@@ -408,8 +438,8 @@ class ReferenceCountingTest(unittest.TestCase):
     time.sleep(0.1)
     self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)], [-1, -1, -1])
 
-    x = ra.zeros([10, 10], "float")
-    y = ra.zeros([10, 10], "float")
+    x = ra.zeros([10, 10])
+    y = ra.zeros([10, 10])
     z = ra.dot(x, y)
     objref_val = x.val
     time.sleep(0.1)
@@ -428,8 +458,7 @@ class ReferenceCountingTest(unittest.TestCase):
     ray.services.cleanup()
 
   def testGet(self):
-    worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-    ray.services.start_ray_local(num_workers=3, worker_path=worker_path)
+    ray.services.start_ray_local(num_workers=3)
 
     for val in RAY_TEST_OBJECTS + [np.zeros((2, 2)), UserDefinedType()]:
       objref_val = check_get_deallocated(val)
@@ -442,36 +471,35 @@ class ReferenceCountingTest(unittest.TestCase):
     # The following currently segfaults: The second "result = " closes the
     # memory segment as soon as the assignment is done (and the first result
     # goes out of scope).
-    """
-    data = np.zeros([10, 20])
-    objref = ray.put(data)
-    result = worker.get(objref)
-    result = worker.get(objref)
-    self.assertTrue(np.alltrue(result == data))
-    """
+    # data = np.zeros([10, 20])
+    # objref = ray.put(data)
+    # result = worker.get(objref)
+    # result = worker.get(objref)
+    # self.assertTrue(np.alltrue(result == data))
 
     ray.services.cleanup()
 
-  @unittest.expectedFailure
-  def testGetFailing(self):
-    worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-    ray.services.start_ray_local(num_workers=3, worker_path=worker_path)
+  # @unittest.expectedFailure
+  # def testGetFailing(self):
+  #   worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
+  #   ray.services.start_ray_local(num_workers=3, worker_path=worker_path)
 
-    # This is failing, because for bool and None, we cannot track python
-    # refcounts and therefore cannot keep the refcount up
-    # (see 5281bd414f6b404f61e1fe25ec5f6651defee206).
-    # The resulting behavior is still correct however because True, False and
-    # None are returned by get "by value" and therefore can be reclaimed from
-    # the object store safely.
-    for val in [True, False, None]:
-      x, objref_val = check_get_not_deallocated(val)
-      self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val], 1)
+  #   # This is failing, because for bool and None, we cannot track python
+  #   # refcounts and therefore cannot keep the refcount up
+  #   # (see 5281bd414f6b404f61e1fe25ec5f6651defee206).
+  #   # The resulting behavior is still correct however because True, False and
+  #   # None are returned by get "by value" and therefore can be reclaimed from
+  #   # the object store safely.
+  # for val in [True, False, None]:
+  #    x, objref_val = check_get_not_deallocated(val)
+  #   self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val], 1)
 
-    ray.services.cleanup()
+  # ray.services.cleanup()
 
 class PythonModeTest(unittest.TestCase):
 
   def testPythonMode(self):
+    reload(test_functions)
     ray.services.start_ray_local(driver_mode=ray.PYTHON_MODE)
 
     xref = test_functions.test_alias_h()
@@ -493,8 +521,7 @@ class PythonModeTest(unittest.TestCase):
 class PythonCExtensionTest(unittest.TestCase):
 
   def testReferenceCountNone(self):
-    worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-    ray.services.start_ray_local(num_workers=1, worker_path=worker_path)
+    ray.services.start_ray_local(num_workers=1)
 
     # Make sure that we aren't accidentally messing up Python's reference counts.
     for obj in [None, True, False]:
@@ -510,8 +537,7 @@ class PythonCExtensionTest(unittest.TestCase):
 class ReusablesTest(unittest.TestCase):
 
   def testReusables(self):
-    worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-    ray.services.start_ray_local(num_workers=1, worker_path=worker_path)
+    ray.services.start_ray_local(num_workers=1)
 
     # Test that we can add a variable to the key-value store.
 

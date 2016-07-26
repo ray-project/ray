@@ -83,14 +83,14 @@ def numpy_to_dist(a):
     result.objrefs[index] = ray.put(a[[slice(l, u) for (l, u) in zip(lower, upper)]])
   return result
 
-@ray.remote([List[int], str], [DistArray])
+@ray.remote([List, str], [DistArray])
 def zeros(shape, dtype_name="float"):
   result = DistArray(shape)
   for index in np.ndindex(*result.num_blocks):
     result.objrefs[index] = ra.zeros(DistArray.compute_block_shape(index, shape), dtype_name=dtype_name)
   return result
 
-@ray.remote([List[int], str], [DistArray])
+@ray.remote([List, str], [DistArray])
 def ones(shape, dtype_name="float"):
   result = DistArray(shape)
   for index in np.ndindex(*result.num_blocks):
@@ -171,7 +171,7 @@ def dot(a, b):
     result.objrefs[i, j] = blockwise_dot(*args)
   return result
 
-@ray.remote([DistArray, List[int]], [DistArray])
+@ray.remote([DistArray, List], [DistArray])
 def subblocks(a, *ranges):
   """
   This function produces a distributed array from a subset of the blocks in the `a`. The result and `a` will have the same number of dimensions.For example,
