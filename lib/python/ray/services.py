@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import atexit
 import subprocess32 as subprocess
@@ -112,7 +113,7 @@ def start_objstore(scheduler_address, objstore_address, local):
   if local:
     all_processes.append((p, objstore_address))
 
-def start_worker(worker_path, scheduler_address, objstore_address, worker_address, local):
+def start_worker(worker_path, scheduler_address, objstore_address, worker_address, local, user_source_directory=None):
   """This method starts a worker process.
 
   Args:
@@ -126,9 +127,17 @@ def start_worker(worker_path, scheduler_address, objstore_address, worker_addres
     local (bool): True if using Ray in local mode. If local is true, then this
       process will be killed by serices.cleanup() when the Python process that
       imported services exits.
+    user_source_directory (str): The directory containing the application code.
+      This directory will be added to the path of each worker. If not provided,
+      the directory of the script currently being run is used.
   """
+  if user_source_directory is None:
+    # This extracts the directory of the script that is currently being run.
+    # This will allow users to import modules contained in this directory.
+    user_source_directory = os.path.dirname(os.path.abspath(os.path.join(os.path.curdir, sys.argv[0])))
   p = subprocess.Popen(["python",
                         worker_path,
+                        "--user-source-directory=" + user_source_directory,
                         "--scheduler-address=" + scheduler_address,
                         "--objstore-address=" + objstore_address,
                         "--worker-address=" + worker_address])
@@ -152,6 +161,8 @@ def start_node(scheduler_address, node_ip_address, num_workers, worker_path=None
   objstore_address = address(node_ip_address, new_objstore_port())
   start_objstore(scheduler_address, objstore_address, local=False)
   time.sleep(0.2)
+  if worker_path is None:
+    worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../../scripts/default_worker.py")
   for _ in range(num_workers):
     start_worker(worker_path, scheduler_address, objstore_address, address(node_ip_address, new_worker_port()), local=False)
   time.sleep(0.5)
