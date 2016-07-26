@@ -4,8 +4,7 @@ import os
 import numpy as np
 import ray
 
-worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-ray.services.start_ray_local(num_workers=1, worker_path=worker_path)
+ray.services.start_ray_local(num_workers=1)
 
 d = {"w": np.zeros(1000000)}
 

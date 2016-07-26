@@ -9,8 +9,8 @@ import test_functions
 class MicroBenchmarkTest(unittest.TestCase):
 
   def testTiming(self):
-    worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-    ray.services.start_ray_local(num_workers=3, worker_path=worker_path)
+    reload(test_functions)
+    ray.services.start_ray_local(num_workers=3)
 
     # measure the time required to submit a remote task to the scheduler
     elapsed_times = []

@@ -6,10 +6,10 @@ from ctypes import c_void_p
 from cloudpickle import pickle, cloudpickle, CloudPickler, load, loads
 
 try:
-	from ctypes import pythonapi
-	pythonapi.PyCell_Set  # Make sure this exists
+  from ctypes import pythonapi
+  pythonapi.PyCell_Set  # Make sure this exists
 except:
-	pythonapi = None
+  pythonapi = None
 
 def dump(obj, file, protocol=2):
   return BetterPickler(file, protocol).dump(obj)
@@ -69,4 +69,4 @@ class BetterPickler(CloudPickler):
     self.write(pickle.REDUCE)
   dispatch = CloudPickler.dispatch.copy()
   dispatch[(lambda _: lambda: _)(0).__closure__[0].__class__] = save_cell
-  dispatch[typing.GenericMeta] = save_type
+  # dispatch[typing.GenericMeta] = save_type

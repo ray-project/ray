@@ -16,7 +16,7 @@ def increment(x):
 def add(a, b):
   return a + b
 
-@ray.remote([List[int]], [np.ndarray])
+@ray.remote([List], [np.ndarray])
 def zeros(shape):
   return np.zeros(shape)
 
