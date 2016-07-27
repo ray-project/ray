@@ -30,8 +30,8 @@ source setup-env.sh # Add Ray to your Python path.
 ```
 
 For convenience, you may also want to add the line `source
-"$RAY_ROOT/setup-env.sh"` to your `~/.bashrc` file manually, where `$RAY_ROOT`
-is the Ray directory (e.g., `/home/ubuntu/ray`).
+"$RAY_ROOT/setup-env.sh"` to the bottom of your `~/.bashrc` file manually, where
+`$RAY_ROOT` is the Ray directory (e.g., `/home/ubuntu/ray`).
 
 ### Test if the installation succeeded
 
