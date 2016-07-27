@@ -1,24 +1,92 @@
-import numpy as np
-import scipy.optimize
 import os
 import ray
 
-import functions
+import numpy as np
+import scipy.optimize
+import tensorflow as tf
 
 from tensorflow.examples.tutorials.mnist import input_data
 
 if __name__ == "__main__":
-  worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "worker.py")
-  ray.services.start_ray_local(num_workers=16, worker_path=worker_path)
+  ray.services.start_ray_local(num_workers=16)
 
-  print "Downloading and loading MNIST data..."
-  mnist = input_data.read_data_sets("MNIST_data/", one_hot=True)
+  # Define the dimensions of the data and of the model.
+  image_dimension = 784
+  label_dimension = 10
+  w_shape = [image_dimension, label_dimension]
+  w_size = np.prod(w_shape)
+  b_shape = [label_dimension]
+  b_size = np.prod(b_shape)
+  dim = w_size + b_size
 
-  batch_size = 100
-  num_batches = mnist.train.num_examples / batch_size
-  batches = [mnist.train.next_batch(batch_size) for _ in range(num_batches)]
+  # Define a function for initializing the network. Note that this code does not
+  # call initialize the network weights. If it did, the weights would be
+  # randomly initialized on each worker and would differ from worker to worker.
+  # We pass the weights into the remote functions loss and grad so that the
+  # weights are the same on each worker.
+  def net_initialization():
+    x = tf.placeholder(tf.float32, [None, image_dimension])
+    w = tf.Variable(tf.zeros(w_shape))
+    b = tf.Variable(tf.zeros(b_shape))
+    y = tf.nn.softmax(tf.matmul(x, w) + b)
+    y_ = tf.placeholder(tf.float32, [None, label_dimension])
+    cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y), reduction_indices=[1]))
+    cross_entropy_grads = tf.gradients(cross_entropy, [w, b])
 
-  batch_refs = [(ray.put(xs), ray.put(ys)) for (xs, ys) in batches]
+    w_new = tf.placeholder(tf.float32, w_shape)
+    b_new = tf.placeholder(tf.float32, b_shape)
+    update_w = w.assign(w_new)
+    update_b = b.assign(b_new)
+
+    sess = tf.Session()
+
+    return sess, update_w, update_b, cross_entropy, cross_entropy_grads, x, y_, w_new, b_new
+
+  # By default, when a reusable variable is used by a remote function, the
+  # initialization code will be rerun at the end of the remote task to ensure
+  # that the state of the variable is not changed by the remote task. However,
+  # the initialization code may be expensive. This case is one example, because
+  # a TensorFlow network is constructed. In this case, we pass in a special
+  # reinitialization function which gets run instead of the original
+  # initialization code. As users, if we pass in custom reinitialization code,
+  # we must ensure that no state is leaked between tasks.
+  def net_reinitialization(net_vars):
+    return net_vars
+
+  # Create a reusable variable for the network.
+  ray.reusables.net_vars = ray.Reusable(net_initialization, net_reinitialization)
+
+  # Load the weights into the network.
+  def load_weights(theta):
+    sess, update_w, update_b, _, _, _, _, w_new, b_new = ray.reusables.net_vars
+    sess.run([update_w, update_b], feed_dict={w_new: theta[:w_size].reshape(w_shape), b_new: theta[w_size:]})
+
+  # Compute the loss on a batch of data.
+  @ray.remote([np.ndarray, np.ndarray, np.ndarray], [float])
+  def loss(theta, xs, ys):
+    sess, _, _, cross_entropy, _, x, y_, _, _ = ray.reusables.net_vars
+    load_weights(theta)
+    return float(sess.run(cross_entropy, feed_dict={x: xs, y_: ys}))
+
+  # Compute the gradient of the loss on a batch of data.
+  @ray.remote([np.ndarray, np.ndarray, np.ndarray], [np.ndarray])
+  def grad(theta, xs, ys):
+    sess, _, _, _, cross_entropy_grads, x, y_, _, _ = ray.reusables.net_vars
+    load_weights(theta)
+    gradients = sess.run(cross_entropy_grads, feed_dict={x: xs, y_: ys})
+    return np.concatenate([g.flatten() for g in gradients])
+
+  # Compute the loss on the entire dataset.
+  def full_loss(theta):
+    theta_ref = ray.put(theta)
+    loss_refs = [loss(theta_ref, xs_ref, ys_ref) for (xs_ref, ys_ref) in batch_refs]
+    return sum([ray.get(loss_ref) for loss_ref in loss_refs])
+
+  # Compute the gradient of the loss on the entire dataset.
+  def full_grad(theta):
+    theta_ref = ray.put(theta)
+    grad_refs = [grad(theta_ref, xs_ref, ys_ref) for (xs_ref, ys_ref) in batch_refs]
+    return sum([ray.get(grad_ref) for grad_ref in grad_refs]).astype("float64") # This conversion is necessary for use with fmin_l_bfgs_b.
 
   # From the perspective of scipy.optimize.fmin_l_bfgs_b, full_loss is simply a
   # function which takes some parameters theta, and computes a loss. Similarly,
@@ -29,15 +97,16 @@ if __name__ == "__main__":
   # potentially distributed over a cluster. However, these details are hidden
   # from scipy.optimize.fmin_l_bfgs_b, which simply uses it to run the L-BFGS
   # algorithm.
-  def full_loss(theta):
-    theta_ref = ray.put(theta)
-    loss_refs = [functions.loss(theta_ref, xs_ref, ys_ref) for (xs_ref, ys_ref) in batch_refs]
-    return sum([ray.get(loss_ref) for loss_ref in loss_refs])
 
-  def full_grad(theta):
-    theta_ref = ray.put(theta)
-    grad_refs = [functions.grad(theta_ref, xs_ref, ys_ref) for (xs_ref, ys_ref) in batch_refs]
-    return sum([ray.get(grad_ref) for grad_ref in grad_refs]).astype("float64") # This conversion is necessary for use with fmin_l_bfgs_b.
+  # Load the mnist data and turn the data into remote objects.
+  print "Downloading the MNIST dataset. This may take a minute."
+  mnist = input_data.read_data_sets("MNIST_data", one_hot=True)
+  batch_size = 100
+  num_batches = mnist.train.num_examples / batch_size
+  batches = [mnist.train.next_batch(batch_size) for _ in range(num_batches)]
+  batch_refs = [(ray.put(xs), ray.put(ys)) for (xs, ys) in batches]
 
-  theta_init = np.zeros(functions.dim)
+  # Initialize the weights for the network to the vector of all zeros.
+  theta_init = 1e-2 * np.random.normal(size=dim)
+  # Use L-BFGS to minimize the loss function.
   result = scipy.optimize.fmin_l_bfgs_b(full_loss, theta_init, maxiter=10, fprime=full_grad, disp=True)
