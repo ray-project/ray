@@ -4,7 +4,7 @@
 #include <mutex>
 #include <string>
 
-template<class T, class Mutex = std::mutex>
+template<class T = void, class Mutex = std::mutex>
 class Synchronized;
 
 template<class T, class Mutex>
@@ -17,6 +17,7 @@ template<class T, class Mutex> struct SynchronizedSource<const volatile T, Mutex
 
 template<class T>
 class SynchronizedPtr : public std::unique_lock<typename SynchronizedSource<T, void>::type> {
+protected:
   typedef std::unique_lock<typename SynchronizedSource<T, void>::type> base_type;
   // Make these private; they don't make much sense externally...
   using base_type::mutex;
@@ -63,20 +64,28 @@ public:
   const element_type* unsafe_get() const { return &value_; }
 };
 
-template<class T, class Mutex>
-class Synchronized : public Synchronized<T, void> {
-  typedef Synchronized<T, void> base_type;
+template<class Mutex>
+class Synchronized<void, Mutex> {
   mutable Mutex mutex_;
 public:
   typedef Mutex mutex_type;
-  template<class... U>
-  Synchronized(U&&... args) : base_type(std::forward<U>(args)...) { }
-  SynchronizedPtr<T> get() { return *this; }
-  SynchronizedPtr<const T> get() const { return *this; }
   void lock() const { return mutex_.lock(); }
   void unlock() const { return mutex_.unlock(); }
   bool try_lock() const { return mutex_.try_lock(); }
-  mutex_type& mutex() { return mutex_; }
+};
+
+template<class T, class Mutex>
+class Synchronized : public Synchronized<T, void>, public Synchronized<void, Mutex> {
+  typedef Synchronized<T, void> base1_type;
+  typedef Synchronized<void, Mutex> base2_type;
+public:
+  template<class... U>
+  Synchronized(U&&... args) : base1_type(std::forward<U>(args)...), base2_type() { }
+  SynchronizedPtr<T> unchecked_get() { return *this; }
+  SynchronizedPtr<const T> unchecked_get() const { return *this; }
+  void lock() const override { return base2_type::lock(); }
+  void unlock() const override { return base2_type::unlock(); }
+  bool try_lock() const override { return base2_type::try_lock(); }
 };
 
 std::string::iterator split_ip_address(std::string& ip_address);
