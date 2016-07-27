@@ -31,7 +31,6 @@ built in methods for loading the data.
 ```python
 from tensorflow.examples.tutorials.mnist import input_data
 mnist = input_data.read_data_sets("MNIST_data/", one_hot=True)
-
 batch_size = 100
 num_batches = mnist.train.num_examples / batch_size
 batches = [mnist.train.next_batch(batch_size) for _ in range(num_batches)]
@@ -70,39 +69,26 @@ functions, along with an initial choice of model parameters, into
 `scipy.optimize.fmin_l_bfgs_b`.
 
 ```python
-theta_init = np.zeros(functions.dim)
+theta_init = 1e-2 * np.random.normal(size=dim)
 result = scipy.optimize.fmin_l_bfgs_b(full_loss, theta_init, fprime=full_grad)
 ```
 
 ### The distributed version
 
-The extent to which this computation can be parallelized depends on the
-specifics of the optimization problem, but for large datasets, the computation
-of the gradient itself is often embarrassingly parallel.
-
-To run this example in Ray, we use three files.
-
-- [driver.py](driver.py) - This is the script that gets run. It launches the
-  remote tasks and retrieves the results. The application can be run with
-  `python driver.py`.
-- [functions.py](functions.py) - This is the file that defines the remote
-  functions (in this case, just `loss` and `grad`).
-- [worker.py](worker.py) - This is the Python code that each worker process
-  runs. It imports the relevant modules and tells the scheduler what functions
-  it knows how to execute. Then it enters a loop that waits to receive tasks
-  from the scheduler.
+In this example, the computation of the gradient itself can be done in parallel
+on a number of workers or machines.
 
 First, let's turn the data into a collection of remote objects.
 
 ```python
-batch_refs = [ray.put(xs), ray.put(ys) for (xs, ys) in batches]
+batch_refs = [(ray.put(xs), ray.put(ys)) for (xs, ys) in batches]
 ```
 
-MNIST easily fits on a single machine, but for larger data sets, we will need to
+We can load the data on the driver and distribute it this way because MNIST
+easily fits on a single machine. However, for larger data sets, we will need to
 use remote functions to distribute the loading of the data.
 
-Now, lets turn `loss` and `grad` into remote functions. In the example
-application, this is done in [functions.py](functions.py).
+Now, lets turn `loss` and `grad` into remote functions.
 
 ```python
 @ray.remote([np.ndarray, np.ndarray, np.ndarray], [float])
@@ -139,14 +125,14 @@ Note that we turn `theta` into a remote object with the line `theta_ref =
 ray.put(theta)` before passing it into the remote functions. If we had written
 
 ```python
-[loss(theta, xs_ref, ys_ref) for ... in batch_refs]
+[loss(theta, xs_ref, ys_ref) for (xs_ref, ys_ref) in batch_refs]
 ```
 
 instead of
 
 ```python
 theta_ref = ray.put(theta)
-[loss(theta_ref, xs_ref, ys_ref) for ... in batch_refs]
+[loss(theta_ref, xs_ref, ys_ref) for (xs_ref, ys_ref) in batch_refs]
 ```
 
 then each task that got sent to the scheduler (one for every element of
@@ -162,6 +148,6 @@ identical to the behavior in the serial version.
 We can now optimize the objective with the same function call as before.
 
 ```python
-theta_init = np.zeros(functions.dim)
+theta_init = 1e-2 * np.random.normal(size=dim)
 result = scipy.optimize.fmin_l_bfgs_b(full_loss, theta_init, fprime=full_grad)
 ```

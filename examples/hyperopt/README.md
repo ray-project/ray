@@ -9,7 +9,7 @@ Then from the directory `ray/examples/hyperopt/` run the following.
 
 ```
 source ../../setup-env.sh
-python driver.py # This will take a minute to first download the MNIST dataset.
+python driver.py
 ```
 
 Machine learning algorithms often have a number of *hyperparameters* whose
