@@ -144,7 +144,7 @@ def start_worker(worker_path, scheduler_address, objstore_address, worker_addres
   if local:
     all_processes.append((p, worker_address))
 
-def start_node(scheduler_address, node_ip_address, num_workers, worker_path=None):
+def start_node(scheduler_address, node_ip_address, num_workers, worker_path=None, user_source_directory=None):
   """Start an object store and associated workers in the cluster setting.
 
   This starts an object store and the associated workers when Ray is being used
@@ -156,7 +156,9 @@ def start_node(scheduler_address, node_ip_address, num_workers, worker_path=None
     node_ip_address (str): ip address (without port) of the node this function
       is run on
     num_workers (int): the number of workers to be started on this node
-    worker_path (str): path of the source code that will be run on the worker
+    worker_path (str): path of the Python worker script that will be run on the worker
+    user_source_directory (str): path to the user's code the workers will import
+      modules from
   """
   objstore_address = address(node_ip_address, new_objstore_port())
   start_objstore(scheduler_address, objstore_address, local=False)
@@ -164,7 +166,7 @@ def start_node(scheduler_address, node_ip_address, num_workers, worker_path=None
   if worker_path is None:
     worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../../scripts/default_worker.py")
   for _ in range(num_workers):
-    start_worker(worker_path, scheduler_address, objstore_address, address(node_ip_address, new_worker_port()), local=False)
+    start_worker(worker_path, scheduler_address, objstore_address, address(node_ip_address, new_worker_port()), user_source_directory=user_source_directory, local=False)
   time.sleep(0.5)
 
 def start_workers(scheduler_address, objstore_address, num_workers, worker_path):
