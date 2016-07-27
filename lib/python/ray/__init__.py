@@ -7,6 +7,9 @@ SHELL_MODE = 2
 PYTHON_MODE = 3
 SILENT_MODE = 4 # This is only used during testing.
 
+# Ray version string
+__version__ = "0.1"
+
 import ctypes
 # Windows only
 if hasattr(ctypes, "windll"):
