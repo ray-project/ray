@@ -130,7 +130,7 @@ class RayCluster(object):
     """.format(self.installation_directory, self.installation_directory)
     self._run_command_over_ssh_on_all_nodes_in_parallel(install_ray_command)
 
-  def start_ray(self, worker_directory, num_workers_per_node=10):
+  def start_ray(self, user_source_directory, num_workers_per_node=10):
     """Start Ray on a cluster.
 
     This method is used to start Ray on a cluster. It will ssh to the head node,
@@ -139,13 +139,13 @@ class RayCluster(object):
     workers.
 
     Args:
-      worker_directory (str): The path to the local directory containing the
-        worker source code. This directory must contain a file worker.py which
-        is the code run by the worker processes.
+      user_source_directory (str): The path to the local directory containing the
+        user's source code. Files and directories in this directory can be used
+        as modules in remote functions.
       num_workers_per_node (int): The number workers to start on each node.
     """
     # First update the worker code on the nodes.
-    remote_worker_path = self._update_worker_code(worker_directory)
+    remote_user_source_directory = self._update_user_code(user_source_directory)
 
     scripts_directory = os.path.join(self.installation_directory, "ray/scripts")
     # Start the scheduler
@@ -164,8 +164,8 @@ class RayCluster(object):
       start_workers_command = """
         cd "{}";
         source ../setup-env.sh;
-        python -c "import ray; ray.services.start_node(\\\"{}:10001\\\", \\\"{}\\\", {}, worker_path=\\\"{}\\\")" > start_workers.out 2> start_workers.err < /dev/null &
-      """.format(scripts_directory, self.node_private_ip_addresses[0], self.node_private_ip_addresses[i], num_workers_per_node, remote_worker_path)
+        python -c "import ray; ray.services.start_node(\\\"{}:10001\\\", \\\"{}\\\", {}, user_source_directory=\\\"{}\\\")" > start_workers.out 2> start_workers.err < /dev/null &
+      """.format(scripts_directory, self.node_private_ip_addresses[0], self.node_private_ip_addresses[i], num_workers_per_node, remote_user_source_directory)
       start_workers_commands.append(start_workers_command)
     self._run_command_over_ssh_on_all_nodes_in_parallel(start_workers_commands)
 
@@ -173,54 +173,10 @@ class RayCluster(object):
     setup_env_path = os.path.join(self.installation_directory, "ray/setup-env.sh")
     shell_script_path = os.path.join(self.installation_directory, "ray/scripts/shell.py")
     print """
+      cd "{}";
       source "{}";
       python "{}" --scheduler-address={}:10001 --objstore-address={}:20001 --worker-address={}:30001 --attach
-    """.format(setup_env_path, shell_script_path, self.node_private_ip_addresses[0], self.node_private_ip_addresses[0], self.node_private_ip_addresses[0])
-
-  def restart_workers(self, worker_directory, num_workers_per_node=10):
-    """Restart the workers on the cluster.
-
-    This method is used for restarting the workers in the cluster, for example,
-    to use new application code. This is done without shutting down the
-    scheduler or the object stores so that work is not thrown away. It also does
-    not shut down any drivers.
-
-    Args:
-      worker_directory (str): The path to the local directory containing the
-        worker source code. This directory must contain a file worker.py which
-        is the code run by the worker processes.
-      num_workers_per_node (int): The number workers to start on each node.
-    """
-    # First update the worker code on the nodes.
-    remote_worker_path = self._update_worker_code(worker_directory)
-
-    scripts_directory = os.path.join(self.installation_directory, "ray/scripts")
-    head_node_ip_address = self.node_ip_addresses[0]
-    head_node_private_ip_address = self.node_private_ip_addresses[0]
-    scheduler_address = "{}:10001".format(head_node_private_ip_address) # This needs to be the address of the currently running scheduler, which was presumably created in _start_ray.
-    objstore_address = "{}:20001".format(head_node_private_ip_address) # This needs to be the address of the currently running object store, which was presumably created in _start_ray.
-    shell_address = "{}:{}".format(head_node_private_ip_address, np.random.randint(30000, 40000)) # This address must be currently unused. In particular, it cannot be the address of any currently running shell.
-
-    # Kill the current workers by attaching a driver to the scheduler and calling ray.kill_workers()
-    # The triple backslashes are used for two rounds of escaping, something like \\\" -> \" -> "
-    kill_workers_command = """
-      cd "{}";
-      source ../setup-env.sh;
-      python -c "import ray; ray.connect(\\\"{}\\\", \\\"{}\\\", \\\"{}\\\", is_driver=True); ray.kill_workers()"
-    """.format(scripts_directory, scheduler_address, objstore_address, shell_address)
-    self._run_command_over_ssh(head_node_ip_address, kill_workers_command)
-
-    # Start new workers on each node
-    # The triple backslashes are used for two rounds of escaping, something like \\\" -> \" -> "
-    start_workers_commands = []
-    for i, node_ip_address in enumerate(self.node_ip_addresses):
-      start_workers_command = """
-        cd "{}";
-        source ../setup-env.sh;
-        python -c "import ray; ray.services.start_workers(\\\"{}:10001\\\", \\\"{}:20001\\\", {}, worker_path=\\\"{}\\\")" > start_workers.out 2> start_workers.err < /dev/null &
-      """.format(scripts_directory, self.node_private_ip_addresses[0], self.node_private_ip_addresses[i], num_workers_per_node, remote_worker_path)
-      start_workers_commands.append(start_workers_command)
-    self._run_command_over_ssh_on_all_nodes_in_parallel(start_workers_commands)
+    """.format(remote_user_source_directory, setup_env_path, shell_script_path, self.node_private_ip_addresses[0], self.node_private_ip_addresses[0], self.node_private_ip_addresses[0])
 
   def stop_ray(self):
     """Kill all of the processes in the Ray cluster.
@@ -249,33 +205,30 @@ class RayCluster(object):
     """.format(ray_directory)
     self._run_command_over_ssh_on_all_nodes_in_parallel(update_cluster_command)
 
-  def _update_worker_code(self, worker_directory):
-    """Update the worker code on each node in the cluster.
+  def _update_user_code(self, user_source_directory):
+    """Update the user's source code on each node in the cluster.
 
-    This method is used to update the worker source code on each node in the
-    cluster. The local worker_directory will be copied under ray_worker_files in
-    the installation_directory. For example, if installation_directory is
-    "/d/e/f" and we call _update_worker_code("~/a/b/c"), then the contents of
-    "~/a/b/c" on the local machine will be copied to "/d/e/f/ray_worker_files/c"
-    on each node in the cluster.
+    This method is used to update the user's source code on each node in the
+    cluster. The local user_source_directory will be copied under ray_source_files in
+    the ray installation directory on the worker node. For example, if the ray
+    installation directory is "/d/e/f" and we call _update_source_code("~/a/b/c"),
+    then the contents of "~/a/b/c" on the local machine will be copied to
+    "/d/e/f/user_source_files/c" on each node in the cluster.
 
     Args:
-      worker_directory (str): The path on the local machine to the directory
-        that contains the worker code. This directory must contain a file
-        worker.py.
+      user_source_directory (str): The path on the local machine to the directory
+        that contains the worker code.
 
     Returns:
       A string with the path to the source code of the worker on the remote
         nodes.
     """
-    worker_directory = os.path.expanduser(worker_directory)
-    if not os.path.isdir(worker_directory):
-      raise Exception("Directory {} does not exist.".format(worker_directory))
-    if not os.path.exists(os.path.join(worker_directory, "worker.py")):
-      raise Exception("Directory {} does not contain a file named worker.py.".format(worker_directory))
-    # If worker_directory is "/a/b/c", then local_directory_name is "c".
-    local_directory_name = os.path.split(os.path.realpath(worker_directory))[1]
-    remote_directory = os.path.join(self.installation_directory, "ray_worker_files", local_directory_name)
+    user_source_directory = os.path.expanduser(user_source_directory)
+    if not os.path.isdir(user_source_directory):
+      raise Exception("Directory {} does not exist.".format(user_source_directory))
+    # If user_source_directory is "/a/b/c", then local_directory_name is "c".
+    local_directory_name = os.path.split(os.path.realpath(user_source_directory))[1]
+    remote_directory = os.path.join(self.installation_directory, "user_source_files", local_directory_name)
     # Remove and recreate the directory on the node.
     recreate_directory_command = """
       rm -r "{}";
@@ -286,13 +239,12 @@ class RayCluster(object):
     def copy_function(node_ip_address):
       copy_command = """
         scp -r -i {} {}/* {}@{}:{}/
-      """.format(self.key_file, worker_directory, self.username, node_ip_address, remote_directory)
+      """.format(self.key_file, user_source_directory, self.username, node_ip_address, remote_directory)
       subprocess.call([copy_command], shell=True)
     inputs = [(node_ip_address,) for node_ip_address in node_ip_addresses]
     self._run_parallel_functions(len(self.node_ip_addresses) * [copy_function], inputs)
-    # Return the path to worker.py on the remote nodes.
-    remote_worker_path = os.path.join(remote_directory, "worker.py")
-    return remote_worker_path
+    # Return the source directory path on the remote nodes
+    return remote_directory
 
 def _is_valid_ip(ip_address):
   """Check if ip_addess is a valid IPv4 address.

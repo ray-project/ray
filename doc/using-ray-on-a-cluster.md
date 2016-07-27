@@ -97,41 +97,31 @@ block until the installation has completed. The standard output from the nodes
 will be redirected to your terminal.
 5. To check that the installation succeeded, you can ssh to each node, cd into
 the directory `ray/test/`, and run the tests (e.g., `python runtest.py`).
-6. Create a directory (for example, `mkdir ~/example_ray_code`) containing the
-worker `worker.py` code along with the code for any modules imported by
-`worker.py`. For example,
+6. Start the cluster (the scheduler, object stores, and workers) with the
+command `cluster.start_ray("~/example_ray_code")`, where the argument is
+the local path to the directory that contains your Python code. This command will
+copy this source code to each node and will start the cluster. Each worker that
+is started will have a local copy of the ~/example_ray_code directory in their
+PYTHONPATH. After completing successfully, this command will print out a command
+that can be run on the head node to attach a shell (the driver) to the cluster.
+For example,
 
     ```
-    cp ray/scripts/default_worker.py ~/example_ray_code/worker.py
-    cp ray/scripts/example_functions.py ~/example_ray_code/
-    ```
-
-7. Start the cluster (the scheduler, object stores, and workers) with the
-command `cluster.start_ray("~/example_ray_code")`, where the second argument is
-the local path to the worker code that you would like to use. This command will
-copy the worker code to each node and will start the cluster. After completing
-successfully, this command will print out a command that can be run on the head
-node to attach a shell (the driver) to the cluster. For example,
-
-    ```
+    cd "$RAY_HOME/../user_source_files/example_ray_code";
     source "$RAY_HOME/setup-env.sh";
     python "$RAY_HOME/scripts/shell.py" --scheduler-address=12.34.56.789:10001 --objstore-address=12.34.56.789:20001 --worker-address=12.34.56.789:30001 --attach
     ```
 
-8. Note that there are several more commands that can be run from within
+7. Note that there are several more commands that can be run from within
 `cluster.py`.
 
     - `cluster.install_ray()` - This pulls the Ray source code on each node,
       builds all of the third party libraries, and builds the project itself.
-    - `cluster.start_ray(worker_directory, num_workers_per_node=10)` - This
+    - `cluster.start_ray(user_source_directory, num_workers_per_node=10)` - This
       starts a scheduler process on the head node, and it starts an object store
       and some workers on each node.
     - `cluster.stop_ray()` - This shuts down the cluster (killing all of the
       processes).
-    - `cluster.restart_workers(worker_directory, num_workers_per_node=10)` -
-      This kills the current workers and starts new workers using the worker
-      code from the given file. Currently, this can only run when there are no
-      tasks currently executing on any of the workers.
     - `cluster.update_ray()` - This pulls the latest Ray source code and builds
       it.
 
