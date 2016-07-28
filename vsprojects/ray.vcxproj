@@ -35,7 +35,7 @@
   </ImportGroup>
   <ImportGroup Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-    <Import Project="Base.props" />
+    <Import Project="$(SolutionDir)vsprojects\base.props" Condition="exists('$(SolutionDir)vsprojects\base.props')" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <ItemDefinitionGroup>
@@ -79,6 +79,8 @@
     <ClInclude Include="..\build\generated\ray.pb.h" />
     <ClInclude Include="..\build\generated\types.grpc.pb.h" />
     <ClInclude Include="..\build\generated\types.pb.h" />
+    <ClInclude Include="..\include\ray\logging.h" />
+    <ClInclude Include="..\include\ray\ray.h" />
     <ClInclude Include="..\src\ipc.h" />
     <ClInclude Include="..\src\utils.h" />
   </ItemGroup>
@@ -113,9 +115,6 @@ protoc --proto_path="$(SolutionDir)protos" --python_out="$(ProjectDir)..\lib\pyt
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\thirdparty\arrow\vsprojects\Arrow.vcxproj">
-      <Project>{10e7d8e8-0eeb-46ea-a58d-f9236b5960ad}</Project>
-    </ProjectReference>
     <ProjectReference Include="..\thirdparty\grpc\third_party\protobuf\vsprojects\libprotobuf.vcxproj">
       <Project>{07abd431-1515-4140-932e-e8c150ff7d1a}</Project>
     </ProjectReference>

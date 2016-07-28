@@ -2,7 +2,7 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ImportGroup Label="PropertySheets" />
   <PropertyGroup Label="UserMacros">
-    <THIRD_PARTY>$(ProjectDir)..\thirdparty\</THIRD_PARTY>
+    <THIRD_PARTY>$(SolutionDir)thirdparty\</THIRD_PARTY>
   </PropertyGroup>
   <PropertyGroup>
     <OutDir>$(SolutionDir)build\$(Platform)\$(Configuration)\</OutDir>
@@ -16,7 +16,7 @@
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>
-      <AdditionalIncludeDirectories>$(PYTHONHOME)\Lib\site-packages\numpy\core\include;$(THIRD_PARTY)python\inc;$(THIRD_PARTY)python\inc\Windows;$(ProjectDir)..\build\generated;$(ProjectDir)..\include;$(THIRD_PARTY)numbuf\cpp\src;$(THIRD_PARTY)numbuf\python\src;$(THIRD_PARTY)grpc\include;$(THIRD_PARTY)grpc\third_party\protobuf\src;$(THIRD_PARTY)arrow\cpp\src;$(BOOST_ROOT);$(BOOST_ROOT)\libs\interprocess\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(PYTHONHOME)\Lib\site-packages\numpy\core\include;$(THIRD_PARTY)python\inc;$(THIRD_PARTY)python\inc\Windows;$(ProjectDir)..\build\generated;$(ProjectDir)..\include;$(THIRD_PARTY)numbuf\cpp\src;$(THIRD_PARTY)numbuf\python\src;$(THIRD_PARTY)grpc\include;$(THIRD_PARTY)grpc\third_party\protobuf\src;$(BOOST_ROOT);$(BOOST_ROOT)\libs\interprocess\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>_SCL_SECURE_NO_WARNINGS;_WIN32_WINNT=0x0600;BOOST_DATE_TIME_NO_LIB=1;HAVE_ROUND;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <DisableSpecificWarnings>4191;;4100;4371;4514;4571;4619;4668;4710;4820</DisableSpecificWarnings>
       <AdditionalOptions>/FS %(AdditionalOptions)</AdditionalOptions>

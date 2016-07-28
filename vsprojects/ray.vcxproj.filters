@@ -74,6 +74,12 @@
     <ClInclude Include="..\build\generated\types.pb.h">
       <Filter>Header Files\protobufs</Filter>
     </ClInclude>
+    <ClInclude Include="..\include\ray\logging.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\ray\ray.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="..\protos\ray.proto" />
