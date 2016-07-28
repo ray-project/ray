@@ -7,3 +7,6 @@
 [submodule "thirdparty/arrow"]
 	path = thirdparty/arrow
 	url = https://github.com/pcmoritz/arrow.git
+[submodule "thirdparty/python"]
+	path = thirdparty/python
+	url = https://github.com/austinsc/python.git
