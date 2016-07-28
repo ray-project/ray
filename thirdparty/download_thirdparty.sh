@@ -5,7 +5,8 @@ set -e
 
 TP_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
-git submodule update --init --recursive
+git submodule update --init --recursive -- "$TP_DIR/arrow"
+git submodule update --init --recursive -- "$TP_DIR/numbuf"
 
 # this seems to be neeccessary for building on Mac OS X
 cd grpc
