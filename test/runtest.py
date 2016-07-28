@@ -137,10 +137,10 @@ class ObjStoreTest(unittest.TestCase):
 
     # Getting a buffer after modifying it before it finishes should return updated buffer
     objref =  ray.lib.get_objref(w1.handle)
-    buf = ray.libraylib.allocate_buffer(w1.handle, objref, 100)
+    buf = ray.lib.allocate_buffer(w1.handle, objref, 100)
     buf[0][0] = 1
-    ray.libraylib.finish_buffer(w1.handle, objref, buf[1], 0)
-    completedbuffer = ray.libraylib.get_buffer(w1.handle, objref)
+    ray.lib.finish_buffer(w1.handle, objref, buf[1], 0)
+    completedbuffer = ray.lib.get_buffer(w1.handle, objref)
     self.assertEqual(completedbuffer[0][0], 1)
 
     ray.services.cleanup()

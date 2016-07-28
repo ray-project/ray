@@ -339,7 +339,7 @@ class Worker(object):
     """
     if ray.lib.is_arrow(self.handle, objref):
       ## this is the new codepath
-      buff, segmentid, metadata_offset = ray.libraylib.get_buffer(self.handle, objref)
+      buff, segmentid, metadata_offset = ray.lib.get_buffer(self.handle, objref)
       metadata_size = np.frombuffer(buff, dtype="int64", count=1)[0]
       metadata = np.frombuffer(buff, dtype="byte", offset=8, count=metadata_size)
       data = np.frombuffer(buff, dtype="byte")[8 + metadata_size:]
