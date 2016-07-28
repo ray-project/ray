@@ -50,6 +50,8 @@
 /packages
 *.suo
 *.user
+*.VC.db
+*.VC.opendb
 
 # Protobuf-generated files
 *_pb2.py
