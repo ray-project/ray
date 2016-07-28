@@ -1,6 +1,7 @@
 [submodule "thirdparty/grpc"]
 	path = thirdparty/grpc
 	url = https://github.com/grpc/grpc
+	ignore = dirty
 [submodule "thirdparty/numbuf"]
 	path = thirdparty/numbuf
 	url = https://github.com/pcmoritz/numbuf.git
@@ -10,3 +11,4 @@
 [submodule "thirdparty/python"]
 	path = thirdparty/python
 	url = https://github.com/austinsc/python.git
+	ignore = dirty
