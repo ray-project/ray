@@ -96,7 +96,7 @@ static PyObject* read_from_buffer(PyObject* self, PyObject* args) {
   PyObject* memoryview;
   PyObject* metadata;
   int64_t metadata_offset;
-  if (!PyArg_ParseTuple(args, "OOl", &memoryview, &metadata, &metadata_offset)) {
+  if (!PyArg_ParseTuple(args, "OOL", &memoryview, &metadata, &metadata_offset)) {
     return NULL;
   }
 
