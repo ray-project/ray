@@ -1,4 +1,4 @@
-## Installation on Windows
+# Installation on Windows
 
 Ray currently does not run on Windows. However, it can be compiled with the
 following instructions.
@@ -16,7 +16,7 @@ re-running the batch file.
 3. `git clone https://github.com/amplab/ray.git`
 4. `ray\thirdparty\download_thirdparty.bat`
 
-### Test if the installation succeeded
+## Test if the installation succeeded
 
 To test if the installation was successful, try running some tests.
 

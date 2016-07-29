@@ -1,4 +1,4 @@
-## Hyperparameter Optimization
+# Hyperparameter Optimization
 
 This document provides a walkthrough of the hyperparameter optimization example.
 To run the application, first install this dependency.
@@ -22,7 +22,7 @@ Choosing these parameters can be challenging, and so a common practice is to
 search over the space of hyperparameters. One approach that works surprisingly
 well is to randomly sample different options.
 
-### The serial version
+## The serial version
 
 Suppose that we want to train a convolutional network, but we aren't sure how to
 choose the following hyperparameters:
@@ -74,7 +74,7 @@ Of course, as there are no dependencies between the different invocations of
 `train_cnn_and_compute_accuracy`, this computation could easily be parallelized
 over multiple cores or multiple machines. Let's do that now.
 
-### The distributed version
+## The distributed version
 
 First, let's turn `train_cnn_and_compute_accuracy` into a remote function in Ray
 by writing it as follows. In this example application, a slightly more
@@ -115,7 +115,7 @@ their values with `ray.get`.
 results = [(params, ray.get(ref)) for (params, ref) in result_refs]
 ```
 
-### Additional notes
+## Additional notes
 
 **Early Stopping:** Sometimes when running an optimization, it is clear early on
 that the hyperparameters being used are bad (for example, the loss function may
