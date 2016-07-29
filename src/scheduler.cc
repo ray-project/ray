@@ -544,7 +544,7 @@ std::pair<WorkerId, ObjStoreId> SchedulerService::register_worker(const std::str
   RAY_LOG(RAY_INFO, "registering worker " << worker_address << " connected to object store " << objstore_address);
   ObjStoreId objstoreid = std::numeric_limits<size_t>::max();
   // TODO: HACK: num_attempts is a hack
-  for (int num_attempts = 0; num_attempts < 5; ++num_attempts) {
+  for (int num_attempts = 0; num_attempts < 30; ++num_attempts) {
     auto objstores = GET(objstores_);
     for (size_t i = 0; i < objstores->size(); ++i) {
       if ((*objstores)[i].address == objstore_address) {

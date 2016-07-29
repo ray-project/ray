@@ -88,13 +88,24 @@ bool Worker::kill_workers(ClientContext &context) {
 }
 
 void Worker::register_worker(const std::string& worker_address, const std::string& objstore_address, bool is_driver) {
+  unsigned int retry_wait_milliseconds = 20;
   RegisterWorkerRequest request;
   request.set_worker_address(worker_address);
   request.set_objstore_address(objstore_address);
   request.set_is_driver(is_driver);
   RegisterWorkerReply reply;
-  ClientContext context;
-  Status status = scheduler_stub_->RegisterWorker(&context, request, &reply);
+  grpc::StatusCode status_code = grpc::UNAVAILABLE;
+  // TODO: HACK: retrying is a hack
+  for (int i = 0; i < 5; ++i) {
+    ClientContext context;
+    status_code = scheduler_stub_->RegisterWorker(&context, request, &reply).error_code();
+    if (status_code != grpc::UNAVAILABLE) {
+      break;
+    }
+    // Note that each pass through the loop may take substantially longer than
+    // retry_wait_milliseconds because grpc may do its own retrying.
+    std::this_thread::sleep_for(std::chrono::milliseconds(retry_wait_milliseconds));
+  }
   workerid_ = reply.workerid();
   objstoreid_ = reply.objstoreid();
   segmentpool_ = std::make_shared<MemorySegmentPool>(objstoreid_, false);
