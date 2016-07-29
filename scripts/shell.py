@@ -6,10 +6,6 @@ import numpy as np
 
 import ray
 
-import ray.array.remote as ra
-import ray.array.distributed as da
-import example_functions
-
 def main(argv):
   DEFAULT_NUM_WORKERS = 1
   DEFAULT_WORKER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "default_worker.py")
