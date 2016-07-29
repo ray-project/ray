@@ -26,7 +26,7 @@ class MicroBenchmarkTest(unittest.TestCase):
     print "    90th percentile: {}".format(elapsed_times[900])
     print "    99th percentile: {}".format(elapsed_times[990])
     print "    worst:           {}".format(elapsed_times[999])
-    self.assertTrue(average_elapsed_time < 0.0007) # should take 0.00038
+    # average_elapsed_time should be about 0.00038
 
     # measure the time required to submit a remote task to the scheduler (where the remote task returns one value)
     elapsed_times = []
@@ -42,7 +42,7 @@ class MicroBenchmarkTest(unittest.TestCase):
     print "    90th percentile: {}".format(elapsed_times[900])
     print "    99th percentile: {}".format(elapsed_times[990])
     print "    worst:           {}".format(elapsed_times[999])
-    self.assertTrue(average_elapsed_time < 0.002) # should take 0.001
+    # average_elapsed_time should be about 0.001
 
     # measure the time required to submit a remote task to the scheduler and get the result
     elapsed_times = []
@@ -59,7 +59,7 @@ class MicroBenchmarkTest(unittest.TestCase):
     print "    90th percentile: {}".format(elapsed_times[900])
     print "    99th percentile: {}".format(elapsed_times[990])
     print "    worst:           {}".format(elapsed_times[999])
-    self.assertTrue(average_elapsed_time < 0.002) # should take 0.0013
+    # average_elapsed_time should be about 0.0013
 
     # measure the time required to do do a put
     elapsed_times = []
@@ -75,7 +75,7 @@ class MicroBenchmarkTest(unittest.TestCase):
     print "    90th percentile: {}".format(elapsed_times[900])
     print "    99th percentile: {}".format(elapsed_times[990])
     print "    worst:           {}".format(elapsed_times[999])
-    self.assertTrue(average_elapsed_time < 0.002) # should take 0.00087
+    # average_elapsed_time should be about 0.00087
 
     ray.services.cleanup()
 
