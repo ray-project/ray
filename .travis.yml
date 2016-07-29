@@ -24,3 +24,4 @@ script:
   - cd test
   - python runtest.py
   - python array_test.py
+  - python microbenchmarks.py
