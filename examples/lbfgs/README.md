@@ -1,4 +1,4 @@
-## Batch L-BFGS
+# Batch L-BFGS
 
 This document provides a walkthrough of the L-BFGS example. To run the
 application, first install these dependencies.
@@ -21,7 +21,7 @@ one such algorithm. It is a quasi-Newton method that uses gradient information
 to approximate the inverse Hessian of the loss function in a computationally
 efficient manner.
 
-### The serial version
+## The serial version
 
 First we load the data in batches. Here, each element in `batches` is a tuple
 whose first component is a batch of `100` images and whose second component is a
@@ -73,7 +73,7 @@ theta_init = 1e-2 * np.random.normal(size=dim)
 result = scipy.optimize.fmin_l_bfgs_b(full_loss, theta_init, fprime=full_grad)
 ```
 
-### The distributed version
+## The distributed version
 
 In this example, the computation of the gradient itself can be done in parallel
 on a number of workers or machines.

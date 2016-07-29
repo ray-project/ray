@@ -1,4 +1,4 @@
-## Using Ray on a cluster
+# Using Ray on a cluster
 
 Running Ray on a cluster is still experimental.
 
@@ -6,12 +6,12 @@ Ray can be used in several ways. In addition to running on a single machine, Ray
 is designed to run on a cluster of machines. This document is about how to use
 Ray on a cluster.
 
-### Launching a cluster on EC2
+## Launching a cluster on EC2
 
 This section describes how to start a cluster on EC2. These instructions are
 copied and adapted from https://github.com/amplab/spark-ec2.
 
-#### Before you start
+### Before you start
 
 - Create an Amazon EC2 key pair for yourself. This can be done by logging into
 your Amazon Web Services account through the [AWS
@@ -25,7 +25,7 @@ and secret access key. These can be obtained from the [AWS
 homepage](http://aws.amazon.com/) by clicking Account > Security Credentials >
 Access Credentials.
 
-#### Launching a Cluster
+### Launching a Cluster
 
 - Go into the `ray/scripts` directory.
 - Run `python ec2.py -k <keypair> -i <key-file> -s <num-slaves> launch
@@ -56,7 +56,7 @@ capacity in one zone, and you should try to launch in another.
 Instances](http://aws.amazon.com/ec2/spot-instances/), bidding for the given
 maximum price (in dollars).
 
-### Getting started with Ray on a cluster
+## Getting started with Ray on a cluster
 
 These instructions work on EC2, but they may require some modifications to run
 on your own cluster. In particular, on EC2, running `sudo` does not require a
@@ -124,8 +124,6 @@ For example,
       processes).
     - `cluster.update_ray()` - This pulls the latest Ray source code and builds
       it.
-
-### Running Ray on a cluster
 
 Once you've started a Ray cluster using the above instructions, to actually use
 Ray, ssh to the head node (the first node listed in the `nodes.txt` file) and
