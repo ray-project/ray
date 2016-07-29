@@ -4,7 +4,7 @@ This document provides a walkthrough of the L-BFGS example. To run the
 application, first install these dependencies.
 
 - SciPy
-- [TensorFlow](https://www.tensorflow.org/).
+- [TensorFlow](https://www.tensorflow.org/)
 
 Then from the directory `ray/examples/lbfgs/` run the following.
 
