@@ -1,6 +1,6 @@
 # Installation on Ubuntu
 
-Ray must currently be built from source.
+Ray must currently be built from source. We have tested Ray on Ubuntu 14.04.
 
 ## Clone the Ray repository
 
