@@ -38,8 +38,8 @@ static void PyObjRef_dealloc(PyObjRef *self) {
   std::vector<ObjRef> objrefs;
   objrefs.push_back(self->val);
   worker->decrement_reference_count(objrefs);
-  self->ob_type->tp_free((PyObject*) self);
   Py_DECREF(self->worker_capsule); // The corresponding increment happens in PyObjRef_init.
+  self->ob_type->tp_free((PyObject*) self);
 }
 
 static PyObject* PyObjRef_new(PyTypeObject *type, PyObject *args, PyObject *kwds) {
