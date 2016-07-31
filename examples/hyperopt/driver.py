@@ -37,7 +37,7 @@ if __name__ == "__main__":
     dropout = np.random.uniform(0, 1)
     stddev = 10 ** np.random.uniform(-5, 5)
     params = {"learning_rate": learning_rate, "batch_size": batch_size, "dropout": dropout, "stddev": stddev}
-    results.append((params, hyperopt.train_cnn_and_compute_accuracy(params, epochs, train_images, train_labels, validation_images, validation_labels)))
+    results.append((params, hyperopt.train_cnn_and_compute_accuracy.remote(params, epochs, train_images, train_labels, validation_images, validation_labels)))
 
   # Fetch the results of the tasks and print the results.
   for i in range(trials):

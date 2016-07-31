@@ -16,11 +16,11 @@ def test_alias_f():
 
 @ray.remote([], [np.ndarray])
 def test_alias_g():
-  return test_alias_f()
+  return test_alias_f.remote()
 
 @ray.remote([], [np.ndarray])
 def test_alias_h():
-  return test_alias_g()
+  return test_alias_g.remote()
 
 # Test timing
 

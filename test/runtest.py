@@ -182,11 +182,11 @@ class APITest(unittest.TestCase):
     reload(test_functions)
     ray.services.start_ray_local(num_workers=3, driver_mode=ray.SILENT_MODE)
 
-    ref = test_functions.test_alias_f()
+    ref = test_functions.test_alias_f.remote()
     self.assertTrue(np.alltrue(ray.get(ref) == np.ones([3, 4, 5])))
-    ref = test_functions.test_alias_g()
+    ref = test_functions.test_alias_g.remote()
     self.assertTrue(np.alltrue(ray.get(ref) == np.ones([3, 4, 5])))
-    ref = test_functions.test_alias_h()
+    ref = test_functions.test_alias_h.remote()
     self.assertTrue(np.alltrue(ray.get(ref) == np.ones([3, 4, 5])))
 
     ray.services.cleanup()
@@ -195,35 +195,35 @@ class APITest(unittest.TestCase):
     reload(test_functions)
     ray.services.start_ray_local(num_workers=1)
 
-    x = test_functions.keyword_fct1(1)
+    x = test_functions.keyword_fct1.remote(1)
     self.assertEqual(ray.get(x), "1 hello")
-    x = test_functions.keyword_fct1(1, "hi")
+    x = test_functions.keyword_fct1.remote(1, "hi")
     self.assertEqual(ray.get(x), "1 hi")
-    x = test_functions.keyword_fct1(1, b="world")
+    x = test_functions.keyword_fct1.remote(1, b="world")
     self.assertEqual(ray.get(x), "1 world")
 
-    x = test_functions.keyword_fct2(a="w", b="hi")
+    x = test_functions.keyword_fct2.remote(a="w", b="hi")
     self.assertEqual(ray.get(x), "w hi")
-    x = test_functions.keyword_fct2(b="hi", a="w")
+    x = test_functions.keyword_fct2.remote(b="hi", a="w")
     self.assertEqual(ray.get(x), "w hi")
-    x = test_functions.keyword_fct2(a="w")
+    x = test_functions.keyword_fct2.remote(a="w")
     self.assertEqual(ray.get(x), "w world")
-    x = test_functions.keyword_fct2(b="hi")
+    x = test_functions.keyword_fct2.remote(b="hi")
     self.assertEqual(ray.get(x), "hello hi")
-    x = test_functions.keyword_fct2("w")
+    x = test_functions.keyword_fct2.remote("w")
     self.assertEqual(ray.get(x), "w world")
-    x = test_functions.keyword_fct2("w", "hi")
+    x = test_functions.keyword_fct2.remote("w", "hi")
     self.assertEqual(ray.get(x), "w hi")
 
-    x = test_functions.keyword_fct3(0, 1, c="w", d="hi")
+    x = test_functions.keyword_fct3.remote(0, 1, c="w", d="hi")
     self.assertEqual(ray.get(x), "0 1 w hi")
-    x = test_functions.keyword_fct3(0, 1, d="hi", c="w")
+    x = test_functions.keyword_fct3.remote(0, 1, d="hi", c="w")
     self.assertEqual(ray.get(x), "0 1 w hi")
-    x = test_functions.keyword_fct3(0, 1, c="w")
+    x = test_functions.keyword_fct3.remote(0, 1, c="w")
     self.assertEqual(ray.get(x), "0 1 w world")
-    x = test_functions.keyword_fct3(0, 1, d="hi")
+    x = test_functions.keyword_fct3.remote(0, 1, d="hi")
     self.assertEqual(ray.get(x), "0 1 hello hi")
-    x = test_functions.keyword_fct3(0, 1)
+    x = test_functions.keyword_fct3.remote(0, 1)
     self.assertEqual(ray.get(x), "0 1 hello world")
 
     ray.services.cleanup()
@@ -232,9 +232,9 @@ class APITest(unittest.TestCase):
     reload(test_functions)
     ray.services.start_ray_local(num_workers=1)
 
-    x = test_functions.varargs_fct1(0, 1, 2)
+    x = test_functions.varargs_fct1.remote(0, 1, 2)
     self.assertEqual(ray.get(x), "0 1 2")
-    x = test_functions.varargs_fct2(0, 1, 2)
+    x = test_functions.varargs_fct2.remote(0, 1, 2)
     self.assertEqual(ray.get(x), "1 2")
 
     self.assertTrue(test_functions.kwargs_exception_thrown)
@@ -246,14 +246,14 @@ class APITest(unittest.TestCase):
     reload(test_functions)
     ray.services.start_ray_local(num_workers=1, driver_mode=ray.SILENT_MODE)
 
-    test_functions.no_op()
+    test_functions.no_op.remote()
     time.sleep(0.2)
     task_info = ray.task_info()
     self.assertEqual(len(task_info["failed_tasks"]), 0)
     self.assertEqual(len(task_info["running_tasks"]), 0)
     self.assertEqual(task_info["num_succeeded"], 1)
 
-    test_functions.no_op_fail()
+    test_functions.no_op_fail.remote()
     time.sleep(0.2)
     task_info = ray.task_info()
     self.assertEqual(len(task_info["failed_tasks"]), 1)
@@ -269,8 +269,8 @@ class APITest(unittest.TestCase):
 
     # Make sure that these functions throw exceptions because there return
     # values do not type check.
-    test_functions.test_return1()
-    test_functions.test_return2()
+    test_functions.test_return1.remote()
+    test_functions.test_return2.remote()
     time.sleep(0.2)
     task_info = ray.task_info()
     self.assertEqual(len(task_info["failed_tasks"]), 2)
@@ -286,30 +286,30 @@ class APITest(unittest.TestCase):
     @ray.remote([int], [int])
     def f(x):
       return x + 1
-    self.assertEqual(ray.get(f(0)), 1)
+    self.assertEqual(ray.get(f.remote(0)), 1)
 
     # Test that we can redefine the remote function.
     @ray.remote([int], [int])
     def f(x):
       return x + 10
-    self.assertEqual(ray.get(f(0)), 10)
+    self.assertEqual(ray.get(f.remote(0)), 10)
 
     # Test that we can close over plain old data.
     data = [np.zeros([3, 5]), (1, 2, "a"), [0.0, 1.0, 2L], 2L, {"a": np.zeros(3)}]
     @ray.remote([], [list])
     def g():
       return data
-    ray.get(g())
+    ray.get(g.remote())
 
     # Test that we can close over modules.
     @ray.remote([], [np.ndarray])
     def h():
       return np.zeros([3, 5])
-    self.assertTrue(np.alltrue(ray.get(h()) == np.zeros([3, 5])))
+    self.assertTrue(np.alltrue(ray.get(h.remote()) == np.zeros([3, 5])))
     @ray.remote([], [float])
     def j():
       return time.time()
-    ray.get(j())
+    ray.get(j.remote())
 
     # Test that we can define remote functions that call other remote functions.
     @ray.remote([int], [int])
@@ -317,13 +317,13 @@ class APITest(unittest.TestCase):
       return x + 1
     @ray.remote([int], [int])
     def l(x):
-      return k(x)
+      return k.remote(x)
     @ray.remote([int], [int])
     def m(x):
-      return ray.get(l(x))
-    self.assertEqual(ray.get(k(1)), 2)
-    self.assertEqual(ray.get(l(1)), 2)
-    self.assertEqual(ray.get(m(1)), 2)
+      return ray.get(l.remote(x))
+    self.assertEqual(ray.get(k.remote(1)), 2)
+    self.assertEqual(ray.get(l.remote(1)), 2)
+    self.assertEqual(ray.get(m.remote(1)), 2)
 
     ray.services.cleanup()
 
@@ -348,10 +348,10 @@ class APITest(unittest.TestCase):
 
     ray.services.start_ray_local(num_workers=2)
 
-    self.assertEqual(ray.get(use_foo()), 1)
-    self.assertEqual(ray.get(use_foo()), 1)
-    self.assertEqual(ray.get(use_bar()), [1])
-    self.assertEqual(ray.get(use_bar()), [1])
+    self.assertEqual(ray.get(use_foo.remote()), 1)
+    self.assertEqual(ray.get(use_foo.remote()), 1)
+    self.assertEqual(ray.get(use_bar.remote()), [1])
+    self.assertEqual(ray.get(use_bar.remote()), [1])
 
     ray.services.cleanup()
 
@@ -360,9 +360,9 @@ class TaskStatusTest(unittest.TestCase):
     reload(test_functions)
     ray.services.start_ray_local(num_workers=3, driver_mode=ray.SILENT_MODE)
 
-    test_functions.test_alias_f()
-    test_functions.throw_exception_fct1()
-    test_functions.throw_exception_fct1()
+    test_functions.test_alias_f.remote()
+    test_functions.throw_exception_fct1.remote()
+    test_functions.throw_exception_fct1.remote()
     time.sleep(1)
     result = ray.task_info()
     self.assertEqual(len(result["failed_tasks"]), 2)
@@ -374,7 +374,7 @@ class TaskStatusTest(unittest.TestCase):
       self.assertTrue(task["operationid"] not in task_ids)
       task_ids.add(task["operationid"])
 
-    x = test_functions.throw_exception_fct2()
+    x = test_functions.throw_exception_fct2.remote()
     try:
       ray.get(x)
     except Exception as e:
@@ -382,7 +382,7 @@ class TaskStatusTest(unittest.TestCase):
     else:
       self.assertTrue(False) # ray.get should throw an exception
 
-    x, y, z = test_functions.throw_exception_fct3(1.0)
+    x, y, z = test_functions.throw_exception_fct3.remote(1.0)
     for ref in [x, y, z]:
       try:
         ray.get(ref)
@@ -411,7 +411,7 @@ class ReferenceCountingTest(unittest.TestCase):
       reload(module)
     ray.services.start_ray_local(num_workers=1)
 
-    x = test_functions.test_alias_f()
+    x = test_functions.test_alias_f.remote()
     ray.get(x)
     time.sleep(0.1)
     objref_val = x.val
@@ -420,7 +420,7 @@ class ReferenceCountingTest(unittest.TestCase):
     del x
     self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val], -1) # -1 indicates deallocated
 
-    y = test_functions.test_alias_h()
+    y = test_functions.test_alias_h.remote()
     ray.get(y)
     time.sleep(0.1)
     objref_val = y.val
@@ -429,7 +429,7 @@ class ReferenceCountingTest(unittest.TestCase):
     del y
     self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)], [-1, -1, -1])
 
-    z = da.zeros([da.BLOCK_SIZE, 2 * da.BLOCK_SIZE])
+    z = da.zeros.remote([da.BLOCK_SIZE, 2 * da.BLOCK_SIZE])
     time.sleep(0.1)
     objref_val = z.val
     self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)], [1, 1, 1])
@@ -438,9 +438,9 @@ class ReferenceCountingTest(unittest.TestCase):
     time.sleep(0.1)
     self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)], [-1, -1, -1])
 
-    x = ra.zeros([10, 10])
-    y = ra.zeros([10, 10])
-    z = ra.dot(x, y)
+    x = ra.zeros.remote([10, 10])
+    y = ra.zeros.remote([10, 10])
+    z = ra.dot.remote(x, y)
     objref_val = x.val
     time.sleep(0.1)
     self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)], [1, 1, 1])
@@ -502,7 +502,7 @@ class PythonModeTest(unittest.TestCase):
     reload(test_functions)
     ray.services.start_ray_local(driver_mode=ray.PYTHON_MODE)
 
-    xref = test_functions.test_alias_h()
+    xref = test_functions.test_alias_h.remote()
     self.assertTrue(np.alltrue(xref == np.ones([3, 4, 5]))) # remote functions should return by value
     self.assertTrue(np.alltrue(xref == ray.get(xref))) # ray.get should be the identity
     y = np.random.normal(size=[11, 12])
@@ -510,9 +510,9 @@ class PythonModeTest(unittest.TestCase):
 
     # make sure objects are immutable, this example is why we need to copy
     # arguments before passing them into remote functions in python mode
-    aref = test_functions.python_mode_f()
+    aref = test_functions.python_mode_f.remote()
     self.assertTrue(np.alltrue(aref == np.array([0, 0])))
-    bref = test_functions.python_mode_g(aref)
+    bref = test_functions.python_mode_g.remote(aref)
     self.assertTrue(np.alltrue(aref == np.array([0, 0]))) # python_mode_g should not mutate aref
     self.assertTrue(np.alltrue(bref == np.array([1, 0])))
 
@@ -528,8 +528,8 @@ class PythonCExtensionTest(unittest.TestCase):
       @ray.remote([], [int])
       def f():
         return sys.getrefcount(obj)
-      first_count = ray.get(f())
-      second_count = ray.get(f())
+      first_count = ray.get(f.remote())
+      second_count = ray.get(f.remote())
       self.assertEqual(first_count, second_count)
 
     ray.services.cleanup()
@@ -552,9 +552,9 @@ class ReusablesTest(unittest.TestCase):
     @ray.remote([], [int])
     def use_foo():
       return ray.reusables.foo
-    self.assertEqual(ray.get(use_foo()), 1)
-    self.assertEqual(ray.get(use_foo()), 1)
-    self.assertEqual(ray.get(use_foo()), 1)
+    self.assertEqual(ray.get(use_foo.remote()), 1)
+    self.assertEqual(ray.get(use_foo.remote()), 1)
+    self.assertEqual(ray.get(use_foo.remote()), 1)
 
     # Test that we can add a variable to the key-value store, mutate it, and reset it.
 
@@ -567,9 +567,9 @@ class ReusablesTest(unittest.TestCase):
     def use_bar():
       ray.reusables.bar.append(4)
       return ray.reusables.bar
-    self.assertEqual(ray.get(use_bar()), [1, 2, 3, 4])
-    self.assertEqual(ray.get(use_bar()), [1, 2, 3, 4])
-    self.assertEqual(ray.get(use_bar()), [1, 2, 3, 4])
+    self.assertEqual(ray.get(use_bar.remote()), [1, 2, 3, 4])
+    self.assertEqual(ray.get(use_bar.remote()), [1, 2, 3, 4])
+    self.assertEqual(ray.get(use_bar.remote()), [1, 2, 3, 4])
 
     # Test that we can use the reinitializer.
 
@@ -587,10 +587,10 @@ class ReusablesTest(unittest.TestCase):
       baz = ray.reusables.baz
       baz[i] = 1
       return baz
-    self.assertTrue(np.alltrue(ray.get(use_baz(0)) == np.array([1, 0, 0, 0])))
-    self.assertTrue(np.alltrue(ray.get(use_baz(1)) == np.array([0, 1, 0, 0])))
-    self.assertTrue(np.alltrue(ray.get(use_baz(2)) == np.array([0, 0, 1, 0])))
-    self.assertTrue(np.alltrue(ray.get(use_baz(3)) == np.array([0, 0, 0, 1])))
+    self.assertTrue(np.alltrue(ray.get(use_baz.remote(0)) == np.array([1, 0, 0, 0])))
+    self.assertTrue(np.alltrue(ray.get(use_baz.remote(1)) == np.array([0, 1, 0, 0])))
+    self.assertTrue(np.alltrue(ray.get(use_baz.remote(2)) == np.array([0, 0, 1, 0])))
+    self.assertTrue(np.alltrue(ray.get(use_baz.remote(3)) == np.array([0, 0, 0, 1])))
 
     # Make sure the reinitializer is actually getting called. Note that this is
     # not the correct usage of a reinitializer because it does not reset qux to
@@ -606,9 +606,9 @@ class ReusablesTest(unittest.TestCase):
     @ray.remote([], [int])
     def use_qux():
       return ray.reusables.qux
-    self.assertEqual(ray.get(use_qux()), 0)
-    self.assertEqual(ray.get(use_qux()), 1)
-    self.assertEqual(ray.get(use_qux()), 2)
+    self.assertEqual(ray.get(use_qux.remote()), 0)
+    self.assertEqual(ray.get(use_qux.remote()), 1)
+    self.assertEqual(ray.get(use_qux.remote()), 2)
 
     ray.services.cleanup()
 

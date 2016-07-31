@@ -72,7 +72,7 @@ of object references, where the first object reference in each pair refers to a
 batch of images and the second refers to the corresponding batch of labels.
 
 ```python
-batches = [load_tarfile_from_s3(bucket, s3_key, size) for s3_key in s3_keys]
+batches = [load_tarfile_from_s3.remote(bucket, s3_key, size) for s3_key in s3_keys]
 ```
 
 By default, this will only fetch objects whose keys have prefix
@@ -104,5 +104,5 @@ gradient_refs = []
 for i in range(num_workers):
   # Choose a random batch and use it to compute the gradient of the loss.
   x_ref, y_ref = batches[np.random.randint(len(batches))]
-  gradient_refs.append(compute_grad(x_ref, y_ref, mean_ref, weights_ref))
+  gradient_refs.append(compute_grad.remote(x_ref, y_ref, mean_ref, weights_ref))
 ```

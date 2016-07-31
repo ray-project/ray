@@ -105,7 +105,7 @@ computation. Instead, it simply submits a number of tasks to the scheduler.
 result_refs = []
 for _ in range(100):
   params = generate_random_params()
-  results.append((params, train_cnn_and_compute_accuracy(params, epochs)))
+  results.append((params, train_cnn_and_compute_accuracy.remote(params, epochs)))
 ```
 
 If we wish to wait until the results have all been retrieved, we can retrieve

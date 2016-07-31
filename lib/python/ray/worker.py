@@ -836,20 +836,24 @@ def remote(arg_types, return_types, worker=global_worker):
       start_time = time.time()
       result = func(*arguments)
       end_time = time.time()
-      check_return_values(func_call, result) # throws an exception if result is invalid
+      check_return_values(func_invoker, result) # throws an exception if result is invalid
       _logger().info("Finished executing function {}, it took {} seconds".format(func.__name__, end_time - start_time))
       return result
-    func_call.executor = func_executor
-    func_call.arg_types = arg_types
-    func_call.return_types = return_types
-    func_call.is_remote = True
+    def func_invoker(*args, **kwargs):
+      """This is returned by the decorator and used to invoke the function."""
+      raise Exception("Remote functions cannot be called directly. Instead of running '{}()', try '{}.remote()'.".format(func_name, func_name))
+    func_invoker.remote = func_call
+    func_invoker.executor = func_executor
+    func_invoker.arg_types = arg_types
+    func_invoker.return_types = return_types
+    func_invoker.is_remote = True
     func_name = "{}.{}".format(func.__module__, func.__name__)
-    func_call.func_name = func_name
-    func_call.func_doc = func.func_doc
+    func_invoker.func_name = func_name
+    func_invoker.func_doc = func.func_doc
     sig_params = [(k, v) for k, v in funcsigs.signature(func).parameters.iteritems()]
     keyword_defaults = [(k, v.default) for k, v in sig_params]
     has_vararg_param = any([v.kind == v.VAR_POSITIONAL for k, v in sig_params])
-    func_call.has_vararg_param = has_vararg_param
+    func_invoker.has_vararg_param = has_vararg_param
     has_kwargs_param = any([v.kind == v.VAR_KEYWORD for k, v in sig_params])
     check_signature_supported(has_kwargs_param, has_vararg_param, keyword_defaults, func_name)
 
@@ -858,7 +862,7 @@ def remote(arg_types, return_types, worker=global_worker):
       func_name_global_valid = func.__name__ in func.__globals__
       func_name_global_value = func.__globals__.get(func.__name__)
       # Set the function globally to make it refer to itself
-      func.__globals__[func.__name__] = func_call  # Allow the function to reference itself as a global variable
+      func.__globals__[func.__name__] = func_invoker  # Allow the function to reference itself as a global variable
       try:
         to_export = pickling.dumps((func, arg_types, return_types, func.__module__))
       finally:
@@ -869,7 +873,7 @@ def remote(arg_types, return_types, worker=global_worker):
       ray.lib.export_function(worker.handle, to_export)
     elif worker.mode is None:
       worker.cached_remote_functions.append(to_export)
-    return func_call
+    return func_invoker
   return remote_decorator
 
 def check_signature_supported(has_kwargs_param, has_vararg_param, keyword_defaults, name):
