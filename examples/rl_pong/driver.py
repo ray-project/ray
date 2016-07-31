@@ -127,7 +127,7 @@ if __name__ == "__main__":
     grads, reward_sums = [], []
     # Launch tasks to compute gradients from multiple rollouts in parallel.
     for i in range(batch_size):
-      grad_ref, reward_sum_ref = compute_gradient(model_ref)
+      grad_ref, reward_sum_ref = compute_gradient.remote(model_ref)
       grads.append(grad_ref)
       reward_sums.append(reward_sum_ref)
     for i in range(batch_size):

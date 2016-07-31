@@ -122,12 +122,12 @@ function is called instead of catching them when the task is actually executed
 ### Remote functions
 
 Whereas in regular Python, calling `add(1, 2)` would return `3`, in Ray, calling
-`add(1, 2)` does not actually execute the task. Instead, it adds a task to the
-computation graph and immediately returns an object reference to the output of
-the computation.
+`add.remote(1, 2)` does not actually execute the task. Instead, it adds a task
+to the computation graph and immediately returns an object reference to the
+output of the computation.
 
 ```python
->>> ref = add(1, 2)
+>>> ref = add.remote(1, 2)
 >>> ray.get(ref)  # prints 3
 ```
 
@@ -141,9 +141,9 @@ When a task is submitted, each argument may be passed in by value or by object
 reference. For example, these lines have the same behavior.
 
 ```python
->>> add(1, 2)
->>> add(1, ray.put(2))
->>> add(ray.put(1), ray.put(2))
+>>> add.remote(1, 2)
+>>> add.remote(1, ray.put(2))
+>>> add.remote(ray.put(1), ray.put(2))
 ```
 
 Remote functions never return actual values, they always return object
@@ -195,7 +195,7 @@ Then we can write
 # Submit ten tasks to the scheduler. This finishes almost immediately.
 result_refs = []
 for i in range(10):
-  result_refs.append(sleep(5))
+  result_refs.append(sleep.remote(5))
 
 # Wait for the results. If we have at least ten workers, this takes 5 seconds.
 [ray.get(ref) for ref in result_refs]  # prints [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -246,9 +246,9 @@ def dot(a, b):
 Then we run
 
 ```python
-aref = zeros([10, 10])
-bref = zeros([10, 10])
-cref = dot(aref, bref)
+aref = zeros.remote([10, 10])
+bref = zeros.remote([10, 10])
+cref = dot.remote(aref, bref)
 ```
 
 The corresponding computation graph looks like this.

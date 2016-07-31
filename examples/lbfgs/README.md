@@ -112,12 +112,12 @@ gradient.
 ```python
 def full_loss(theta):
   theta_ref = ray.put(theta)
-  loss_refs = [loss(theta_ref, xs_ref, ys_ref) for (xs_ref, ys_ref) in batch_refs]
+  loss_refs = [loss.remote(theta_ref, xs_ref, ys_ref) for (xs_ref, ys_ref) in batch_refs]
   return sum([ray.get(loss_ref) for loss_ref in loss_refs])
 
 def full_grad(theta):
   theta_ref = ray.put(theta)
-  grad_refs = [grad(theta_ref, xs_ref, ys_ref) for (xs_ref, ys_ref) in batch_refs]
+  grad_refs = [grad.remote(theta_ref, xs_ref, ys_ref) for (xs_ref, ys_ref) in batch_refs]
   return sum([ray.get(grad_ref) for grad_ref in grad_refs]).astype("float64") # This conversion is necessary for use with fmin_l_bfgs_b.
 ```
 
@@ -125,14 +125,14 @@ Note that we turn `theta` into a remote object with the line `theta_ref =
 ray.put(theta)` before passing it into the remote functions. If we had written
 
 ```python
-[loss(theta, xs_ref, ys_ref) for (xs_ref, ys_ref) in batch_refs]
+[loss.remote(theta, xs_ref, ys_ref) for (xs_ref, ys_ref) in batch_refs]
 ```
 
 instead of
 
 ```python
 theta_ref = ray.put(theta)
-[loss(theta_ref, xs_ref, ys_ref) for (xs_ref, ys_ref) in batch_refs]
+[loss.remote(theta_ref, xs_ref, ys_ref) for (xs_ref, ys_ref) in batch_refs]
 ```
 
 then each task that got sent to the scheduler (one for every element of

@@ -87,14 +87,14 @@ def numpy_to_dist(a):
 def zeros(shape, dtype_name="float"):
   result = DistArray(shape)
   for index in np.ndindex(*result.num_blocks):
-    result.objrefs[index] = ra.zeros(DistArray.compute_block_shape(index, shape), dtype_name=dtype_name)
+    result.objrefs[index] = ra.zeros.remote(DistArray.compute_block_shape(index, shape), dtype_name=dtype_name)
   return result
 
 @ray.remote([List, str], [DistArray])
 def ones(shape, dtype_name="float"):
   result = DistArray(shape)
   for index in np.ndindex(*result.num_blocks):
-    result.objrefs[index] = ra.ones(DistArray.compute_block_shape(index, shape), dtype_name=dtype_name)
+    result.objrefs[index] = ra.ones.remote(DistArray.compute_block_shape(index, shape), dtype_name=dtype_name)
   return result
 
 @ray.remote([DistArray], [DistArray])
@@ -112,9 +112,9 @@ def eye(dim1, dim2=-1, dtype_name="float"):
   for (i, j) in np.ndindex(*result.num_blocks):
     block_shape = DistArray.compute_block_shape([i, j], shape)
     if i == j:
-      result.objrefs[i, j] = ra.eye(block_shape[0], block_shape[1], dtype_name=dtype_name)
+      result.objrefs[i, j] = ra.eye.remote(block_shape[0], block_shape[1], dtype_name=dtype_name)
     else:
-      result.objrefs[i, j] = ra.zeros(block_shape, dtype_name=dtype_name)
+      result.objrefs[i, j] = ra.zeros.remote(block_shape, dtype_name=dtype_name)
   return result
 
 @ray.remote([DistArray], [DistArray])
@@ -124,11 +124,11 @@ def triu(a):
   result = DistArray(a.shape)
   for (i, j) in np.ndindex(*result.num_blocks):
     if i < j:
-      result.objrefs[i, j] = ra.copy(a.objrefs[i, j])
+      result.objrefs[i, j] = ra.copy.remote(a.objrefs[i, j])
     elif i == j:
-      result.objrefs[i, j] = ra.triu(a.objrefs[i, j])
+      result.objrefs[i, j] = ra.triu.remote(a.objrefs[i, j])
     else:
-      result.objrefs[i, j] = ra.zeros_like(a.objrefs[i, j])
+      result.objrefs[i, j] = ra.zeros_like.remote(a.objrefs[i, j])
   return result
 
 @ray.remote([DistArray], [DistArray])
@@ -138,11 +138,11 @@ def tril(a):
   result = DistArray(a.shape)
   for (i, j) in np.ndindex(*result.num_blocks):
     if i > j:
-      result.objrefs[i, j] = ra.copy(a.objrefs[i, j])
+      result.objrefs[i, j] = ra.copy.remote(a.objrefs[i, j])
     elif i == j:
-      result.objrefs[i, j] = ra.tril(a.objrefs[i, j])
+      result.objrefs[i, j] = ra.tril.remote(a.objrefs[i, j])
     else:
-      result.objrefs[i, j] = ra.zeros_like(a.objrefs[i, j])
+      result.objrefs[i, j] = ra.zeros_like.remote(a.objrefs[i, j])
   return result
 
 @ray.remote([np.ndarray], [np.ndarray])
@@ -168,7 +168,7 @@ def dot(a, b):
   result = DistArray(shape)
   for (i, j) in np.ndindex(*result.num_blocks):
     args = list(a.objrefs[i, :]) + list(b.objrefs[:, j])
-    result.objrefs[i, j] = blockwise_dot(*args)
+    result.objrefs[i, j] = blockwise_dot.remote(*args)
   return result
 
 @ray.remote([DistArray, List], [DistArray])
@@ -208,7 +208,7 @@ def transpose(a):
   result = DistArray([a.shape[1], a.shape[0]])
   for i in range(result.num_blocks[0]):
     for j in range(result.num_blocks[1]):
-      result.objrefs[i, j] = ra.transpose(a.objrefs[j, i])
+      result.objrefs[i, j] = ra.transpose.remote(a.objrefs[j, i])
   return result
 
 # TODO(rkn): support broadcasting?
@@ -218,7 +218,7 @@ def add(x1, x2):
     raise Exception("add expects arguments `x1` and `x2` to have the same shape, but x1.shape = {}, and x2.shape = {}.".format(x1.shape, x2.shape))
   result = DistArray(x1.shape)
   for index in np.ndindex(*result.num_blocks):
-    result.objrefs[index] = ra.add(x1.objrefs[index], x2.objrefs[index])
+    result.objrefs[index] = ra.add.remote(x1.objrefs[index], x2.objrefs[index])
   return result
 
 # TODO(rkn): support broadcasting?
@@ -228,5 +228,5 @@ def subtract(x1, x2):
     raise Exception("subtract expects arguments `x1` and `x2` to have the same shape, but x1.shape = {}, and x2.shape = {}.".format(x1.shape, x2.shape))
   result = DistArray(x1.shape)
   for index in np.ndindex(*result.num_blocks):
-    result.objrefs[index] = ra.subtract(x1.objrefs[index], x2.objrefs[index])
+    result.objrefs[index] = ra.subtract.remote(x1.objrefs[index], x2.objrefs[index])
   return result

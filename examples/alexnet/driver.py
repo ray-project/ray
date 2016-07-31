@@ -44,10 +44,10 @@ if __name__ == "__main__":
   imagenet_data = alexnet.load_tarfiles_from_s3(args.s3_bucket, image_tar_files, [256, 256])
 
   # Convert the parsed filenames to integer labels and create batches.
-  batches = [(images, alexnet.filenames_to_labels(filenames, filename_label_dict_ref)) for images, filenames in imagenet_data]
+  batches = [(images, alexnet.filenames_to_labels.remote(filenames, filename_label_dict_ref)) for images, filenames in imagenet_data]
 
   # Compute the mean image.
-  mean_ref = alexnet.compute_mean_image([images for images, labels in batches])
+  mean_ref = alexnet.compute_mean_image.remote([images for images, labels in batches])
 
   # The data does not start out shuffled. Images of the same class all appear
   # together, so we shuffle it ourselves here. Each shuffle pairs up the batches
@@ -71,14 +71,14 @@ if __name__ == "__main__":
 
     # Compute the accuracy on a random training batch.
     x_ref, y_ref = batches[np.random.randint(len(batches))]
-    accuracy = alexnet.compute_accuracy(x_ref, y_ref, weights_ref)
+    accuracy = alexnet.compute_accuracy.remote(x_ref, y_ref, weights_ref)
 
     # Launch tasks in parallel to compute the gradients for some batches.
     gradient_refs = []
     for i in range(num_workers - 1):
       # Choose a random batch and use it to compute the gradient of the loss.
       x_ref, y_ref = batches[np.random.randint(len(batches))]
-      gradient_refs.append(alexnet.compute_grad(x_ref, y_ref, mean_ref, weights_ref))
+      gradient_refs.append(alexnet.compute_grad.remote(x_ref, y_ref, mean_ref, weights_ref))
 
     # Print the accuracy on a random training batch.
     print "Iteration {}: accuracy = {:.3}%".format(iteration, 100 * ray.get(accuracy))

@@ -74,7 +74,7 @@ def load_tarfiles_from_s3(bucket, s3_keys, size=[]):
     np.ndarray: Contains object references to the chunks of the images (see load_chunk).
   """
 
-  return [load_tarfile_from_s3(bucket, s3_key, size) for s3_key in s3_keys]
+  return [load_tarfile_from_s3.remote(bucket, s3_key, size) for s3_key in s3_keys]
 
 def setup_variables(params, placeholders, assigns, kernelshape, biasshape):
   """Creates the variables for each layer and adds the variables and the components needed to feed them to various lists
@@ -239,7 +239,7 @@ def num_images(batches):
   Returns:
     int: The number of images
   """
-  shape_refs = [ra.shape(batch) for batch in batches]
+  shape_refs = [ra.shape.remote(batch) for batch in batches]
   return sum([ray.get(shape_ref)[0] for shape_ref in shape_refs])
 
 @ray.remote([List], [np.ndarray])
@@ -254,9 +254,9 @@ def compute_mean_image(batches):
   """
   if len(batches) == 0:
     raise Exception("No images were passed into `compute_mean_image`.")
-  sum_image_refs = [ra.sum(batch, axis=0) for batch in batches]
+  sum_image_refs = [ra.sum.remote(batch, axis=0) for batch in batches]
   sum_images = [ray.get(ref) for ref in sum_image_refs]
-  n_images = num_images(batches)
+  n_images = num_images.remote(batches)
   return np.sum(sum_images, axis=0).astype("float64") / ray.get(n_images)
 
 @ray.remote([np.ndarray, np.ndarray, np.ndarray, np.ndarray], [np.ndarray, np.ndarray, np.ndarray, np.ndarray])
@@ -303,7 +303,7 @@ def shuffle_pair(first_batch, second_batch):
     Tuple[ObjRef, Objref]: The first batch of shuffled data.
     Tuple[ObjRef, Objref]: Two second bach of shuffled data.
   """
-  images1, labels1, images2, labels2 = shuffle_arrays(first_batch[0], first_batch[1], second_batch[0], second_batch[1])
+  images1, labels1, images2, labels2 = shuffle_arrays.remote(first_batch[0], first_batch[1], second_batch[0], second_batch[1])
   return (images1, labels1), (images2, labels2)
 
 @ray.remote([list, dict], [np.ndarray])
