@@ -55,18 +55,18 @@ def is_arrow_serializable(value):
 
 def serialize(worker_capsule, obj):
   primitive_obj = to_primitive(obj)
-  obj_capsule, contained_objrefs = ray.lib.serialize_object(worker_capsule, primitive_obj) # contained_objrefs is a list of the objrefs contained in obj
-  return obj_capsule, contained_objrefs
+  obj_capsule, contained_objectids = ray.lib.serialize_object(worker_capsule, primitive_obj) # contained_objectids is a list of the objectids contained in obj
+  return obj_capsule, contained_objectids
 
 def deserialize(worker_capsule, capsule):
   primitive_obj = ray.lib.deserialize_object(worker_capsule, capsule)
   return from_primitive(primitive_obj)
 
 def serialize_task(worker_capsule, func_name, args):
-  primitive_args = [(arg if isinstance(arg, ray.lib.ObjRef) else to_primitive(arg)) for arg in args]
+  primitive_args = [(arg if isinstance(arg, ray.ObjectID) else to_primitive(arg)) for arg in args]
   return ray.lib.serialize_task(worker_capsule, func_name, primitive_args)
 
 def deserialize_task(worker_capsule, task):
-  func_name, primitive_args, return_objrefs = task
-  args = [(arg if isinstance(arg, ray.lib.ObjRef) else from_primitive(arg)) for arg in primitive_args]
-  return func_name, args, return_objrefs
+  func_name, primitive_args, return_objectids = task
+  args = [(arg if isinstance(arg, ray.ObjectID) else from_primitive(arg)) for arg in primitive_args]
+  return func_name, args, return_objectids

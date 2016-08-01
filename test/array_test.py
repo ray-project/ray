@@ -16,29 +16,29 @@ class RemoteArrayTest(unittest.TestCase):
     ray.init(start_ray_local=True)
 
     # test eye
-    ref = ra.eye.remote(3)
-    val = ray.get(ref)
+    object_id = ra.eye.remote(3)
+    val = ray.get(object_id)
     self.assertTrue(np.alltrue(val == np.eye(3)))
 
     # test zeros
-    ref = ra.zeros.remote([3, 4, 5])
-    val = ray.get(ref)
+    object_id = ra.zeros.remote([3, 4, 5])
+    val = ray.get(object_id)
     self.assertTrue(np.alltrue(val == np.zeros([3, 4, 5])))
 
     # test qr - pass by value
-    val_a = np.random.normal(size=[10, 11])
-    ref_q, ref_r = ra.linalg.qr.remote(val_a)
-    val_q = ray.get(ref_q)
-    val_r = ray.get(ref_r)
-    self.assertTrue(np.allclose(np.dot(val_q, val_r), val_a))
+    a_val = np.random.normal(size=[10, 11])
+    q_id, r_id = ra.linalg.qr.remote(a_val)
+    q_val = ray.get(q_id)
+    r_val = ray.get(r_id)
+    self.assertTrue(np.allclose(np.dot(q_val, r_val), a_val))
 
-    # test qr - pass by objref
+    # test qr - pass by objectid
     a = ra.random.normal.remote([10, 13])
-    ref_q, ref_r = ra.linalg.qr.remote(a)
-    val_a = ray.get(a)
-    val_q = ray.get(ref_q)
-    val_r = ray.get(ref_r)
-    self.assertTrue(np.allclose(np.dot(val_q, val_r), val_a))
+    q_id, r_id = ra.linalg.qr.remote(a)
+    a_val = ray.get(a)
+    q_val = ray.get(q_id)
+    r_val = ray.get(r_id)
+    self.assertTrue(np.allclose(np.dot(q_val, r_val), a_val))
 
     ray.services.cleanup()
 
@@ -54,7 +54,7 @@ class DistributedArrayTest(unittest.TestCase):
     capsule, _ = ray.serialization.serialize(ray.worker.global_worker.handle, x)
     y = ray.serialization.deserialize(ray.worker.global_worker.handle, capsule)
     self.assertEqual(x.shape, y.shape)
-    self.assertEqual(x.objrefs[0, 0, 0].val, y.objrefs[0, 0, 0].val)
+    self.assertEqual(x.objectids[0, 0, 0].id, y.objectids[0, 0, 0].id)
 
     ray.services.cleanup()
 

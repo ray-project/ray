@@ -24,7 +24,7 @@ message Bool {
   bool data = 1;
 }
 
-message Ref {
+message ObjID {
   uint64 data = 1;
 }
 
@@ -55,7 +55,7 @@ message Obj {
   Dict dict_data = 8;
   Array array_data = 5;
   Empty empty_data = 9;
-  Ref objref_data = 11;
+  ObjID objectid_data = 11;
   PyObj pyobj_data = 6;
 }
 
@@ -77,7 +77,7 @@ message Dict {
 }
 
 message Value {
-  uint64 ref = 1; // For pass by reference
+  uint64 id = 1; // For pass by object ID
   Obj obj = 2; // For pass by value
 }
 
@@ -89,5 +89,5 @@ message Array {
   repeated float float_data = 4;
   repeated sint64 int_data = 5;
   repeated uint64 uint_data = 6;
-  repeated uint64 objref_data = 7;
+  repeated uint64 objectid_data = 7;
 }

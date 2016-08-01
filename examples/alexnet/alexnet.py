@@ -67,11 +67,13 @@ def load_tarfiles_from_s3(bucket, s3_keys, size=[]):
 
   Args:
     bucket (str): Bucket holding the imagenet .tars.
-    s3_keys (List[str]): List of s3 keys from which the .tar files are being loaded.
-    size (List[int]): Resize the image to this size if size != []; len(size) == 2 required.
+    s3_keys (List[str]): List of s3 keys from which the .tar files are being
+      loaded.
+    size (List[int]): Resize the image to this size if size does not equal [].
+      The length of size must be 2.
 
   Returns:
-    np.ndarray: Contains object references to the chunks of the images (see load_chunk).
+    np.ndarray: Contains object IDs to the chunks of the images (see load_chunk).
   """
 
   return [load_tarfile_from_s3.remote(bucket, s3_key, size) for s3_key in s3_keys]
@@ -239,23 +241,23 @@ def num_images(batches):
   Returns:
     int: The number of images
   """
-  shape_refs = [ra.shape.remote(batch) for batch in batches]
-  return sum([ray.get(shape_ref)[0] for shape_ref in shape_refs])
+  shape_ids = [ra.shape.remote(batch) for batch in batches]
+  return sum([ray.get(shape_id)[0] for shape_id in shape_ids])
 
 @ray.remote([List], [np.ndarray])
 def compute_mean_image(batches):
   """Computes the mean image given a list of batches of images.
 
   Args:
-    batches (List[ObjRef]): A list of batches of images.
+    batches (List[ObjectID]): A list of batches of images.
 
   Returns:
     ndarray: The mean image
   """
   if len(batches) == 0:
     raise Exception("No images were passed into `compute_mean_image`.")
-  sum_image_refs = [ra.sum.remote(batch, axis=0) for batch in batches]
-  sum_images = [ray.get(ref) for ref in sum_image_refs]
+  sum_image_ids = [ra.sum.remote(batch, axis=0) for batch in batches]
+  sum_images = [ray.get(sum_image_id) for sum_image_id in sum_image_ids]
   n_images = num_images.remote(batches)
   return np.sum(sum_images, axis=0).astype("float64") / ray.get(n_images)
 
@@ -290,18 +292,16 @@ def shuffle_pair(first_batch, second_batch):
   """Shuffle two batches of data.
 
   Args:
-    first_batch (Tuple[ObjRef. ObjRef]): The first batch to be shuffled. The
-      first component is the object reference of a batch of images, and the
-      second component is the object reference of the corresponding batch of
-      labels.
-    second_batch (Tuple[ObjRef, ObjRef]): The second batch to be shuffled. The
-      first component is the object reference of a batch of images, and the
-      second component is the object reference of the corresponding batch of
-      labels.
+    first_batch (Tuple[ObjectID. ObjectID]): The first batch to be shuffled. The
+      first component is the object ID of a batch of images, and the second
+      component is the object ID of the corresponding batch of labels.
+    second_batch (Tuple[ObjectID, ObjectID]): The second batch to be shuffled.
+      The first component is the object ID of a batch of images, and the second
+      component is the object ID of the corresponding batch of labels.
 
   Returns:
-    Tuple[ObjRef, Objref]: The first batch of shuffled data.
-    Tuple[ObjRef, Objref]: Two second bach of shuffled data.
+    Tuple[ObjectID, ObjectID]: The first batch of shuffled data.
+    Tuple[ObjectID, ObjectID]: Two second bach of shuffled data.
   """
   images1, labels1, images2, labels2 = shuffle_arrays.remote(first_batch[0], first_batch[1], second_batch[0], second_batch[1])
   return (images1, labels1), (images2, labels2)
@@ -361,13 +361,13 @@ def shuffle(batches):
   the data between the two members.
 
   Args:
-    batches (List[Tuple[ObjRef, ObjRef]]): This is a list of tuples, where each
-      tuple consists of two object references. The first component is an object
-      reference for a batch of images, and the second component is an object
-      reference for the corresponding batch of labels.
+    batches (List[Tuple[ObjectID, ObjectID]]): This is a list of tuples, where
+      each tuple consists of two object IDs. The first component is an object ID
+      for a batch of images, and the second component is an object ID for the
+      corresponding batch of labels.
 
   Returns:
-    List[Tuple[ObjRef, ObjRef]]: The shuffled data.
+    List[Tuple[ObjectID, ObjectID]]: The shuffled data.
   """
   # Randomly permute the order of the batches.
   permuted_batches = np.random.permutation(batches)

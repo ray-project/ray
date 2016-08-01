@@ -41,8 +41,8 @@ if __name__ == "__main__":
 
   # Fetch the results of the tasks and print the results.
   for i in range(trials):
-    params, ref = results[i]
-    accuracy = ray.get(ref)
+    params, result_id = results[i]
+    accuracy = ray.get(result_id)
     print """We achieve accuracy {:.3}% with
         learning_rate: {:.2}
         batch_size: {}

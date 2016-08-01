@@ -68,7 +68,7 @@ def load_tarfile_from_s3(bucket, s3_key, size=[]):
 
 To load data in parallel, we simply call this function multiple times with the
 keys of all the objects that we want to retrieve. This returns a list of pairs
-of object references, where the first object reference in each pair refers to a
+of object IDs, where the first object ID in each pair refers to a
 batch of images and the second refers to the corresponding batch of labels.
 
 ```python
@@ -100,9 +100,9 @@ We can parallelize the computation of the gradient over multiple batches by
 calling `compute_grad` multiple times in parallel.
 
 ```python
-gradient_refs = []
+gradient_ids = []
 for i in range(num_workers):
   # Choose a random batch and use it to compute the gradient of the loss.
-  x_ref, y_ref = batches[np.random.randint(len(batches))]
-  gradient_refs.append(compute_grad.remote(x_ref, y_ref, mean_ref, weights_ref))
+  x_id, y_id = batches[np.random.randint(len(batches))]
+  gradient_ids.append(compute_grad.remote(x_id, y_id, mean_id, weights_id))
 ```

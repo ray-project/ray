@@ -9,9 +9,9 @@ from core import *
 @ray.remote([List], [DistArray])
 def normal(shape):
   num_blocks = DistArray.compute_num_blocks(shape)
-  objrefs = np.empty(num_blocks, dtype=object)
+  objectids = np.empty(num_blocks, dtype=object)
   for index in np.ndindex(*num_blocks):
-    objrefs[index] = ra.random.normal.remote(DistArray.compute_block_shape(index, shape))
+    objectids[index] = ra.random.normal.remote(DistArray.compute_block_shape(index, shape))
   result = DistArray()
-  result.construct(shape, objrefs)
+  result.construct(shape, objectids)
   return result

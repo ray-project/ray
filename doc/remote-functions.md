@@ -21,16 +21,16 @@ implementation is run).
 **Invocation:** To invoke a remote function, the user calls the remote function.
 
 ```python
-ref = increment(1)
+x_id = increment(1)
 ```
 
 This line sends a message to the scheduler asking it to schedule the task of
 executing the function `increment` with the argument `1`. It then returns an
-object reference for the eventual output of the task. This takes place almost
+object id for the eventual output of the task. This takes place almost
 instantaneously and does not wait for the actual task to be executed.
 
 When calling a remote function, the return value always consists of one or more
-object references. If you want the actual value, call `ray.get(ref)`, which will
+object ids. If you want the actual value, call `ray.get(x_id)`, which will
 wait for the task to execute and will return the resulting value.
 
 **Execution:** Eventually, the scheduler will schedule the task on a worker. The
@@ -49,7 +49,7 @@ types in the object store. **The serializable types are:**
 
 1. Primitive data types (for example, `1`, `1.0`, `"hello"`, `True`)
 2. Numpy arrays
-3. Object references
+3. Object IDs
 4. Lists, tuples, and dictionaries of other serializable types, but excluding
 custom classes (for example, `[1, 1.0, "hello"]`, `{True: "hi", 1: ["hi"]}`)
 5. Custom classes where the user has provided `serialize` and `desererialize`

@@ -29,7 +29,7 @@ using grpc::Channel;
 
 typedef size_t RefCount;
 
-const ObjRef UNITIALIZED_ALIAS = std::numeric_limits<ObjRef>::max();
+const ObjectID UNITIALIZED_ALIAS = std::numeric_limits<ObjectID>::max();
 const RefCount DEALLOCATED = std::numeric_limits<RefCount>::max();
 
 struct WorkerHandle {
@@ -62,7 +62,7 @@ public:
   Status SubmitTask(ServerContext* context, const SubmitTaskRequest* request, SubmitTaskReply* reply) override;
   Status PutObj(ServerContext* context, const PutObjRequest* request, PutObjReply* reply) override;
   Status RequestObj(ServerContext* context, const RequestObjRequest* request, AckReply* reply) override;
-  Status AliasObjRefs(ServerContext* context, const AliasObjRefsRequest* request, AckReply* reply) override;
+  Status AliasObjectIDs(ServerContext* context, const AliasObjectIDsRequest* request, AckReply* reply) override;
   Status RegisterObjStore(ServerContext* context, const RegisterObjStoreRequest* request, RegisterObjStoreReply* reply) override;
   Status RegisterWorker(ServerContext* context, const RegisterWorkerRequest* request, RegisterWorkerReply* reply) override;
   Status RegisterFunction(ServerContext* context, const RegisterFunctionRequest* request, AckReply* reply) override;
@@ -70,7 +70,7 @@ public:
   Status ReadyForNewTask(ServerContext* context, const ReadyForNewTaskRequest* request, AckReply* reply) override;
   Status IncrementRefCount(ServerContext* context, const IncrementRefCountRequest* request, AckReply* reply) override;
   Status DecrementRefCount(ServerContext* context, const DecrementRefCountRequest* request, AckReply* reply) override;
-  Status AddContainedObjRefs(ServerContext* context, const AddContainedObjRefsRequest* request, AckReply* reply) override;
+  Status AddContainedObjectIDs(ServerContext* context, const AddContainedObjectIDsRequest* request, AckReply* reply) override;
   Status SchedulerInfo(ServerContext* context, const SchedulerInfoRequest* request, SchedulerInfoReply* reply) override;
   Status TaskInfo(ServerContext* context, const TaskInfoRequest* request, TaskInfoReply* reply) override;
   Status KillWorkers(ServerContext* context, const KillWorkersRequest* request, KillWorkersReply* reply) override;
@@ -90,23 +90,23 @@ public:
   // This will ask an object store to send an object to another object store if
   // the object is not already present in that object store and is not already
   // being transmitted.
-  void deliver_object_async_if_necessary(ObjRef objref, ObjStoreId from, ObjStoreId to);
+  void deliver_object_async_if_necessary(ObjectID objectid, ObjStoreId from, ObjStoreId to);
   // ask an object store to send object to another object store
-  void deliver_object_async(ObjRef objref, ObjStoreId from, ObjStoreId to);
+  void deliver_object_async(ObjectID objectid, ObjStoreId from, ObjStoreId to);
   // assign a task to a worker
   void schedule();
-  // execute a task on a worker and ship required object references
+  // execute a task on a worker and ship required object IDs
   void assign_task(OperationId operationid, WorkerId workerid, const MySynchronizedPtr<ComputationGraph> &computation_graph);
   // checks if the dependencies of the task are met
   bool can_run(const Task& task);
   // register a worker and its object store (if it has not been registered yet)
   std::pair<WorkerId, ObjStoreId> register_worker(const std::string& worker_address, const std::string& objstore_address, bool is_driver);
-  // register a new object with the scheduler and return its object reference
-  ObjRef register_new_object();
-  // register the location of the object reference in the object table
-  void add_location(ObjRef objref, ObjStoreId objstoreid);
-  // indicate that objref is a canonical objref
-  void add_canonical_objref(ObjRef objref);
+  // register a new object with the scheduler and return its object ID
+  ObjectID register_new_object();
+  // register the location of the object ID in the object table
+  void add_location(ObjectID objectid, ObjStoreId objstoreid);
+  // indicate that objectid is a canonical objectid
+  void add_canonical_objectid(ObjectID objectid);
   // get object store associated with a workerid
   ObjStoreId get_store(WorkerId workerid);
   // register a function with the scheduler
@@ -115,34 +115,34 @@ public:
   void get_info(const SchedulerInfoRequest& request, SchedulerInfoReply* reply);
 private:
   // pick an objectstore that holds a given object (needs protection by objects_lock_)
-  ObjStoreId pick_objstore(ObjRef objref);
-  // checks if objref is a canonical objref
-  bool is_canonical(ObjRef objref);
+  ObjStoreId pick_objstore(ObjectID objectid);
+  // checks if objectid is a canonical objectid
+  bool is_canonical(ObjectID objectid);
   void perform_gets();
   // schedule tasks using the naive algorithm
   void schedule_tasks_naively();
   // schedule tasks using a scheduling algorithm that takes into account data locality
   void schedule_tasks_location_aware();
   void perform_notify_aliases();
-  // checks if aliasing for objref has been completed
-  bool has_canonical_objref(ObjRef objref);
-  // get the canonical objref for an objref
-  ObjRef get_canonical_objref(ObjRef objref);
-  // attempt to notify the objstore about potential objref aliasing, returns true if successful, if false then retry later
-  bool attempt_notify_alias(ObjStoreId objstoreid, ObjRef alias_objref, ObjRef canonical_objref);
-  // tell all of the objstores holding canonical_objref to deallocate it, the
+  // checks if aliasing for objectid has been completed
+  bool has_canonical_objectid(ObjectID objectid);
+  // get the canonical objectid for an objectid
+  ObjectID get_canonical_objectid(ObjectID objectid);
+  // attempt to notify the objstore about potential objectid aliasing, returns true if successful, if false then retry later
+  bool attempt_notify_alias(ObjStoreId objstoreid, ObjectID alias_objectid, ObjectID canonical_objectid);
+  // tell all of the objstores holding canonical_objectid to deallocate it, the
   // data structures are passed into ensure that the appropriate locks are held.
-  void deallocate_object(ObjRef canonical_objref, const MySynchronizedPtr<std::vector<RefCount> > &reference_counts, const MySynchronizedPtr<std::vector<std::vector<ObjRef> > > &contained_objrefs);
-  // increment the ref counts for the object references in objrefs, the data
+  void deallocate_object(ObjectID canonical_objectid, const MySynchronizedPtr<std::vector<RefCount> > &reference_counts, const MySynchronizedPtr<std::vector<std::vector<ObjectID> > > &contained_objectids);
+  // increment the ref counts for the object IDs in objectids, the data
   // structures are passed into ensure that the appropriate locks are held.
-  void increment_ref_count(const std::vector<ObjRef> &objrefs, const MySynchronizedPtr<std::vector<RefCount> > &reference_count);
-  // decrement the ref counts for the object references in objrefs, the data
+  void increment_ref_count(const std::vector<ObjectID> &objectids, const MySynchronizedPtr<std::vector<RefCount> > &reference_count);
+  // decrement the ref counts for the object IDs in objectids, the data
   // structures are passed into ensure that the appropriate locks are held.
-  void decrement_ref_count(const std::vector<ObjRef> &objrefs, const MySynchronizedPtr<std::vector<RefCount> > &reference_count, const MySynchronizedPtr<std::vector<std::vector<ObjRef> > > &contained_objrefs);
-  // Find all of the object references which are upstream of objref (including objref itself). That is, you can get from everything in objrefs to objref by repeatedly indexing in target_objrefs_.
-  void upstream_objrefs(ObjRef objref, std::vector<ObjRef> &objrefs, const MySynchronizedPtr<std::vector<std::vector<ObjRef> > > &reverse_target_objrefs);
-  // Find all of the object references that refer to the same object as objref (as best as we can determine at the moment). The information may be incomplete because not all of the aliases may be known.
-  void get_equivalent_objrefs(ObjRef objref, std::vector<ObjRef> &equivalent_objrefs);
+  void decrement_ref_count(const std::vector<ObjectID> &objectids, const MySynchronizedPtr<std::vector<RefCount> > &reference_count, const MySynchronizedPtr<std::vector<std::vector<ObjectID> > > &contained_objectids);
+  // Find all of the object IDs which are upstream of objectid (including objectid itself). That is, you can get from everything in objectids to objectid by repeatedly indexing in target_objectids_.
+  void upstream_objectids(ObjectID objectid, std::vector<ObjectID> &objectids, const MySynchronizedPtr<std::vector<std::vector<ObjectID> > > &reverse_target_objectids);
+  // Find all of the object IDs that refer to the same object as objectid (as best as we can determine at the moment). The information may be incomplete because not all of the aliases may be known.
+  void get_equivalent_objectids(ObjectID objectid, std::vector<ObjectID> &equivalent_objectids);
   // Export a remote function to a worker.
   void export_function_to_worker(WorkerId workerid, int function_index, MySynchronizedPtr<std::vector<WorkerHandle> > &workers, const MySynchronizedPtr<std::vector<std::unique_ptr<Function> > > &exported_functions);
   // Export a reusable variable to a worker
@@ -175,7 +175,7 @@ private:
   // List of failed tasks
   Synchronized<std::vector<TaskStatus> > failed_tasks_;
   // List of pending get calls.
-  Synchronized<std::vector<std::pair<WorkerId, ObjRef> > > get_queue_;
+  Synchronized<std::vector<std::pair<WorkerId, ObjectID> > > get_queue_;
   // The computation graph tracks the operations that have been submitted to the
   // scheduler and is mostly used for fault tolerance.
   Synchronized<ComputationGraph> computation_graph_;
@@ -185,42 +185,42 @@ private:
   Synchronized<std::vector<WorkerId> > avail_workers_;
   // List of pending tasks.
   Synchronized<std::deque<OperationId> > task_queue_;
-  // Reference counts. Currently, reference_counts_[objref] is the number of
-  // existing references held to objref. This is done for all objrefs, not just
-  // canonical_objrefs. This data structure completely ignores aliasing. If the
-  // object corresponding to objref has been deallocated, then
-  // reference_counts[objref] will equal DEALLOCATED.
+  // Reference counts. Currently, reference_counts_[objectid] is the number of
+  // existing references held to objectid. This is done for all objectids, not just
+  // canonical_objectids. This data structure completely ignores aliasing. If the
+  // object corresponding to objectid has been deallocated, then
+  // reference_counts[objectid] will equal DEALLOCATED.
   Synchronized<std::vector<RefCount> > reference_counts_;
-  // contained_objrefs_[objref] is a vector of all of the objrefs contained inside the object referred to by objref
-  Synchronized<std::vector<std::vector<ObjRef> > > contained_objrefs_;
+  // contained_objectids_[objectid] is a vector of all of the objectids contained inside the object referred to by objectid
+  Synchronized<std::vector<std::vector<ObjectID> > > contained_objectids_;
   // Vector of all workers registered in the system. Their index in this vector
   // is the workerid.
   Synchronized<std::vector<WorkerHandle> > workers_;
-  // List of pending alias notifications. Each element consists of (objstoreid, (alias_objref, canonical_objref)).
-  Synchronized<std::vector<std::pair<ObjStoreId, std::pair<ObjRef, ObjRef> > > > alias_notification_queue_;
-  // Mapping from canonical objref to list of object stores where the object is stored. Non-canonical (aliased) objrefs should not be used to index objtable_.
+  // List of pending alias notifications. Each element consists of (objstoreid, (alias_objectid, canonical_objectid)).
+  Synchronized<std::vector<std::pair<ObjStoreId, std::pair<ObjectID, ObjectID> > > > alias_notification_queue_;
+  // Mapping from canonical objectid to list of object stores where the object is stored. Non-canonical (aliased) objectids should not be used to index objtable_.
   Synchronized<ObjTable> objtable_; // This lock protects objtable_ and objects_in_transit_
   // Vector of all object stores registered in the system. Their index in this
   // vector is the objstoreid.
   Synchronized<std::vector<ObjStoreHandle> > objstores_;
-  // Mapping from an aliased objref to the objref it is aliased with. If an
-  // objref is a canonical objref (meaning it is not aliased), then
-  // target_objrefs_[objref] == objref. For each objref, target_objrefs_[objref]
+  // Mapping from an aliased objectid to the objectid it is aliased with. If an
+  // objectid is a canonical objectid (meaning it is not aliased), then
+  // target_objectids_[objectid] == objectid. For each objectid, target_objectids_[objectid]
   // is initialized to UNITIALIZED_ALIAS and the correct value is filled later
   // when it is known.
-  Synchronized<std::vector<ObjRef> > target_objrefs_;
-  // This data structure maps an objref to all of the objrefs that alias it (there could be multiple such objrefs).
-  Synchronized<std::vector<std::vector<ObjRef> > > reverse_target_objrefs_;
+  Synchronized<std::vector<ObjectID> > target_objectids_;
+  // This data structure maps an objectid to all of the objectids that alias it (there could be multiple such objectids).
+  Synchronized<std::vector<std::vector<ObjectID> > > reverse_target_objectids_;
   // For each object store objstoreid, objects_in_transit_[objstoreid] is a
-  // vector of the canonical object references that are being streamed to that
-  // object store but are not yet present. Object references are added to this
+  // vector of the canonical object IDs that are being streamed to that
+  // object store but are not yet present. object IDs are added to this
   // in deliver_object_async_if_necessary (to ensure that we do not attempt to deliver
-  // the same object to a given object store twice), and object references are
+  // the same object to a given object store twice), and object IDs are
   // removed when add_location is called (from ObjReady), and they are moved to
   // the objtable_. Note that objects_in_transit_ and objtable_ share the same
   // lock (objects_lock_). // TODO(rkn): Consider making this part of the
   // objtable data structure.
-  std::vector<std::vector<ObjRef> > objects_in_transit_;
+  std::vector<std::vector<ObjectID> > objects_in_transit_;
   // All of the remote functions that have been exported to the workers.
   Synchronized<std::vector<std::unique_ptr<Function> > > exported_functions_;
   // All of the reusable variables that have been exported to the workers.

@@ -47,30 +47,30 @@ class Worker {
   bool kill_workers(ClientContext &context);
   // send request to the scheduler to register this worker
   void register_worker(const std::string& worker_address, const std::string& objstore_address, bool is_driver);
-  // get a new object reference that is registered with the scheduler
-  ObjRef get_objref();
+  // get a new object ID that is registered with the scheduler
+  ObjectID get_objectid();
   // request an object to be delivered to the local object store
-  void request_object(ObjRef objref);
+  void request_object(ObjectID objectid);
   // stores an object to the local object store
-  void put_object(ObjRef objref, const Obj* obj, std::vector<ObjRef> &contained_objrefs);
+  void put_object(ObjectID objectid, const Obj* obj, std::vector<ObjectID> &contained_objectids);
   // retrieve serialized object from local object store
-  slice get_object(ObjRef objref);
-  // Allocates buffer for objref with size of size
-  const char* allocate_buffer(ObjRef objref, int64_t size, SegmentId& segmentid);
+  slice get_object(ObjectID objectid);
+  // Allocates buffer for objectid with size of size
+  const char* allocate_buffer(ObjectID objectid, int64_t size, SegmentId& segmentid);
   // Finishes buffer with segmentid and an offset of metadata_ofset
-  PyObject* finish_buffer(ObjRef objref, SegmentId segmentid, int64_t metadata_offset);
-  // Gets the buffer for objref
-  const char* get_buffer(ObjRef objref, int64_t& size, SegmentId& segmentid, int64_t& metadata_offset);
-  // determine if the object stored in objref is an arrow object // TODO(pcm): more general mechanism for this?
-  bool is_arrow(ObjRef objref);
+  PyObject* finish_buffer(ObjectID objectid, SegmentId segmentid, int64_t metadata_offset);
+  // Gets the buffer for objectid
+  const char* get_buffer(ObjectID objectid, int64_t& size, SegmentId& segmentid, int64_t& metadata_offset);
+  // determine if the object stored in objectid is an arrow object // TODO(pcm): more general mechanism for this?
+  bool is_arrow(ObjectID objectid);
   // unmap the segment containing an object from the local address space
-  void unmap_object(ObjRef objref);
-  // make `alias_objref` refer to the same object that `target_objref` refers to
-  void alias_objrefs(ObjRef alias_objref, ObjRef target_objref);
-  // increment the reference count for objref
-  void increment_reference_count(std::vector<ObjRef> &objref);
-  // decrement the reference count for objref
-  void decrement_reference_count(std::vector<ObjRef> &objref);
+  void unmap_object(ObjectID objectid);
+  // make `alias_objectid` refer to the same object that `target_objectid` refers to
+  void alias_objectids(ObjectID alias_objectid, ObjectID target_objectid);
+  // increment the reference count for objectid
+  void increment_reference_count(std::vector<ObjectID> &objectid);
+  // decrement the reference count for objectid
+  void decrement_reference_count(std::vector<ObjectID> &objectid);
   // register function with scheduler
   void register_function(const std::string& name, size_t num_return_vals);
   // start the worker server which accepts tasks from the scheduler and stores

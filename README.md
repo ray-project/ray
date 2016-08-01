@@ -28,12 +28,12 @@ def estimate_pi(n):
   return 4 * np.mean(x ** 2 + y ** 2 < 1)
 
 # Launch 10 tasks, each of which estimates pi.
-results = []
+result_ids = []
 for _ in range(10):
-  results.append(estimate_pi.remote(100))
+  result_ids.append(estimate_pi.remote(100))
 
 # Fetch the results of the tasks and print their average.
-estimate = np.mean([ray.get(ref) for ref in results])
+estimate = np.mean([ray.get(result_id) for result_id in result_ids])
 print "Pi is approximately {}.".format(estimate)
 ```
 
@@ -41,10 +41,10 @@ Within the for loop, each call to `estimate_pi.remote(100)` sends a message to
 the scheduler asking it to schedule the task of running `estimate_pi` with the
 argument `100`. This call returns right away without waiting for the actual
 estimation of pi to take place. Instead of returning a float, it returns an
-**object reference**, which represents the eventual output of the computation
-(this is a similar to a Future).
+**object ID**, which represents the eventual output of the computation (this is
+a similar to a Future).
 
-The call to `ray.get(ref)` takes an object reference and returns the actual
+The call to `ray.get(result_id)` takes an object ID and returns the actual
 estimate of pi (waiting until the computation has finished if necessary).
 
 ## Next Steps

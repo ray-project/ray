@@ -8,7 +8,7 @@ ray.init(start_ray_local=True, num_workers=1)
 
 d = {"w": np.zeros(1000000)}
 
-obj_capsule, contained_objrefs = ray.lib.serialize_object(ray.worker.global_worker.handle, d)
+obj_capsule, contained_objectids = ray.lib.serialize_object(ray.worker.global_worker.handle, d)
 
 while True:
   ray.lib.deserialize_object(ray.worker.global_worker.handle, obj_capsule)

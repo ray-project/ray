@@ -7,7 +7,7 @@
 // Object store: Typically there is one object store per node which holds the
 //   objects locally stored on that node.
 // Scheduler: The scheduler process keeps track of a mapping from object
-//   references to object stores, orchestrates data transfer between object
+//   IDs to object stores, orchestrates data transfer between object
 //   stores and assigns tasks to workers.
 
 syntax = "proto3";
@@ -24,26 +24,26 @@ service Scheduler {
   rpc RegisterObjStore(RegisterObjStoreRequest) returns (RegisterObjStoreReply);
   // Tell the scheduler that a worker can execute a certain function
   rpc RegisterFunction(RegisterFunctionRequest) returns (AckReply);
-  // Asks the scheduler to execute a task, immediately returns an object reference to the result
+  // Asks the scheduler to execute a task, immediately returns an object ID to the result
   rpc SubmitTask(SubmitTaskRequest) returns (SubmitTaskReply);
-  // Increment the count of the object reference
+  // Increment the count of the object ID
   rpc IncrementCount(ChangeCountRequest) returns (AckReply);
-  // Decrement the count of the object reference
+  // Decrement the count of the object ID
   rpc DecrementCount(ChangeCountRequest) returns (AckReply);
-  // Request an object reference for an object that will be put in an object store
+  // Request an object ID for an object that will be put in an object store
   rpc PutObj(PutObjRequest) returns (PutObjReply);
   // Request delivery of an object from an object store that holds the object to the local object store
   rpc RequestObj(RequestObjRequest) returns (AckReply);
-  // Used by the worker to tell the scheduler that two objrefs should refer to the same object
-  rpc AliasObjRefs(AliasObjRefsRequest) returns (AckReply);
+  // Used by the worker to tell the scheduler that two objectids should refer to the same object
+  rpc AliasObjectIDs(AliasObjectIDsRequest) returns (AckReply);
   // Used by an object store to tell the scheduler that an object is ready (i.e. has been finalized and can be shared)
   rpc ObjReady(ObjReadyRequest) returns (AckReply);
-  // Increments the reference count of a particular object reference
+  // Increments the reference count of a particular object ID
   rpc IncrementRefCount(IncrementRefCountRequest) returns (AckReply);
-  // Decrements the reference count of a particular object reference
+  // Decrements the reference count of a particular object ID
   rpc DecrementRefCount(DecrementRefCountRequest) returns (AckReply);
-  // Used by the worker to notify the scheduler about which objrefs a particular object contains
-  rpc AddContainedObjRefs(AddContainedObjRefsRequest) returns (AckReply);
+  // Used by the worker to notify the scheduler about which objectids a particular object contains
+  rpc AddContainedObjectIDs(AddContainedObjectIDsRequest) returns (AckReply);
   // Used by the worker to ask for work, this also returns the status of the previous task if there was one
   rpc ReadyForNewTask(ReadyForNewTaskRequest) returns (AckReply);
   // Get information about the scheduler state
@@ -92,13 +92,13 @@ message SubmitTaskRequest {
 }
 
 message SubmitTaskReply {
-  repeated uint64 result = 1; // Object references of the function return values
+  repeated uint64 result = 1; // Object IDs of the function return values
   bool function_registered = 2; // True if the function was registered; false otherwise
 }
 
 message RequestObjRequest {
   uint64 workerid = 1; // Worker that tries to request the object
-  uint64 objref = 2; // Object reference of the object being requested
+  uint64 objectid = 2; // Object ID of the object being requested
 }
 
 message PutObjRequest {
@@ -106,30 +106,30 @@ message PutObjRequest {
 }
 
 message PutObjReply {
-  uint64 objref = 1; // Object reference assigned by the scheduler to the object
+  uint64 objectid = 1; // Object ID assigned by the scheduler to the object
 }
 
-message AliasObjRefsRequest {
-  uint64 alias_objref = 1; // ObjRef which will be aliased
-  uint64 target_objref = 2; // The target ObjRef
+message AliasObjectIDsRequest {
+  uint64 alias_objectid = 1; // ObjectID which will be aliased
+  uint64 target_objectid = 2; // The target ObjectID
 }
 
 message ObjReadyRequest {
-  uint64 objref = 1; // Object reference of the object that has been finalized
+  uint64 objectid = 1; // Object ID of the object that has been finalized
   uint64 objstoreid = 2; // ID of the object store the object lives on
 }
 
 message IncrementRefCountRequest {
-  repeated uint64 objref = 1; // Object references whose reference count should be incremented. Duplicates will be incremented multiple times.
+  repeated uint64 objectid = 1; // Object IDs whose reference count should be incremented. Duplicates will be incremented multiple times.
 }
 
-message AddContainedObjRefsRequest {
-  uint64 objref = 1; // The objref of the object in question
-  repeated uint64 contained_objref = 2; // Object references contained in the object
+message AddContainedObjectIDsRequest {
+  uint64 objectid = 1; // The objectid of the object in question
+  repeated uint64 contained_objectid = 2; // Object IDs contained in the object
 }
 
 message DecrementRefCountRequest {
-  repeated uint64 objref = 1; // Object references whose reference count should be decremented. Duplicates will be decremented multiple times.
+  repeated uint64 objectid = 1; // Object IDs whose reference count should be decremented. Duplicates will be decremented multiple times.
 }
 
 message ReadyForNewTaskRequest {
@@ -142,7 +142,7 @@ message ReadyForNewTaskRequest {
 }
 
 message ChangeCountRequest {
-  uint64 objref = 1; // Object reference of the object whose reference count is increased or decreased
+  uint64 objectid = 1; // Object ID of the object whose reference count is increased or decreased
 }
 
 // The following messages are used to get information about the scheduler state
@@ -159,7 +159,7 @@ message SchedulerInfoReply {
   repeated uint64 operationid = 1; // OperationIds of the tasks on the task queue
   repeated uint64 avail_worker = 3; // List of workers waiting to get a task assigned
   map<string, FnTableEntry> function_table = 2; // Table of all available remote function
-  repeated uint64 target_objref = 4; // The target_objrefs_ data structure
+  repeated uint64 target_objectid = 4; // The target_objectids_ data structure
   repeated uint64 reference_count = 5; // The reference_counts_ data structure
   CompGraph computation_graph = 6; // The computation graph constructed so far
 }
@@ -171,7 +171,7 @@ service ObjStore {
   rpc StartDelivery(StartDeliveryRequest) returns (AckReply);
   // Accept incoming data from another object store, as a stream of object chunks
   rpc StreamObjTo(StreamObjToRequest) returns (stream ObjChunk);
-  // Notify the object store about objref aliasing. This is called by the scheduler
+  // Notify the object store about objectid aliasing. This is called by the scheduler
   rpc NotifyAlias(NotifyAliasRequest) returns (AckReply);
   // Tell the object store to deallocate an object held by the object store. This is called by the scheduler.
   rpc DeallocateObject(DeallocateObjectRequest) returns (AckReply);
@@ -181,11 +181,11 @@ service ObjStore {
 
 message StartDeliveryRequest {
   string objstore_address = 1; // Object store to get the object from
-  uint64 objref = 2; // Reference of object that gets delivered
+  uint64 objectid = 2; // ID of object that gets delivered
 }
 
 message RegisterObjRequest {
-  uint64 objref = 1; // Reference of object that gets registered
+  uint64 objectid = 1; // ID of object that gets registered
 }
 
 message RegisterObjReply {
@@ -193,7 +193,7 @@ message RegisterObjReply {
 }
 
 message StreamObjToRequest {
-  uint64 objref = 1; // Object reference of the object being streamed
+  uint64 objectid = 1; // Object ID of the object being streamed
 }
 
 message ObjChunk {
@@ -203,16 +203,16 @@ message ObjChunk {
 }
 
 message NotifyAliasRequest {
-  uint64 alias_objref = 1; // The objref being aliased
-  uint64 canonical_objref = 2; // The canonical objref that points to the actual object
+  uint64 alias_objectid = 1; // The objectid being aliased
+  uint64 canonical_objectid = 2; // The canonical objectid that points to the actual object
 }
 
 message DeallocateObjectRequest {
-  uint64 canonical_objref = 1; // The canonical objref of the object to deallocate
+  uint64 canonical_objectid = 1; // The canonical objectid of the object to deallocate
 }
 
 message GetObjRequest {
-  uint64 objref = 1; // Object reference of the object being requested by the worker
+  uint64 objectid = 1; // Object ID of the object being requested by the worker
 }
 
 message TaskInfoRequest {
@@ -246,11 +246,11 @@ message ExportReusableVariableRequest {
 // These messages are for getting information about the object store state
 
 message ObjStoreInfoRequest {
-  repeated uint64 objref = 1; // Object references we want to retrieve from the store for inspection
+  repeated uint64 objectid = 1; // Object IDs we want to retrieve from the store for inspection
 }
 
 message ObjStoreInfoReply {
-  repeated uint64 objref = 1; // List of object references in the store
+  repeated uint64 objectid = 1; // List of object IDs in the store
   repeated Obj obj = 2; // Protocol buffer objects that were requested
 }
 

@@ -97,50 +97,50 @@ class ObjStoreTest(unittest.TestCase):
 
     # putting and getting an object shouldn't change it
     for data in ["h", "h" * 10000, 0, 0.0]:
-      objref = ray.put(data, w1)
-      result = ray.get(objref, w1)
+      objectid = ray.put(data, w1)
+      result = ray.get(objectid, w1)
       self.assertEqual(result, data)
 
     # putting an object, shipping it to another worker, and getting it shouldn't change it
     for data in ["h", "h" * 10000, 0, 0.0, [1, 2, 3, "a", (1, 2)], ("a", ("b", 3))]:
-      objref = ray.put(data, w1)
-      result = ray.get(objref, w2)
+      objectid = ray.put(data, w1)
+      result = ray.get(objectid, w2)
       self.assertEqual(result, data)
 
     # putting an array, shipping it to another worker, and getting it shouldn't change it
     for data in [np.zeros([10, 20]), np.random.normal(size=[45, 25])]:
-      objref = ray.put(data, w1)
-      result = ray.get(objref, w2)
+      objectid = ray.put(data, w1)
+      result = ray.get(objectid, w2)
       self.assertTrue(np.alltrue(result == data))
 
     # getting multiple times shouldn't matter
     # for data in [np.zeros([10, 20]), np.random.normal(size=[45, 25]), np.zeros([10, 20], dtype=np.dtype("float64")), np.zeros([10, 20], dtype=np.dtype("float32")), np.zeros([10, 20], dtype=np.dtype("int64")), np.zeros([10, 20], dtype=np.dtype("int32"))]:
-    #   objref = worker.put(data, w1)
-    #   result = worker.get(objref, w2)
-    #   result = worker.get(objref, w2)
-    #   result = worker.get(objref, w2)
+    #   objectid = worker.put(data, w1)
+    #   result = worker.get(objectid, w2)
+    #   result = worker.get(objectid, w2)
+    #   result = worker.get(objectid, w2)
     #   self.assertTrue(np.alltrue(result == data))
 
     # shipping a numpy array inside something else should be fine
     data = ("a", np.random.normal(size=[10, 10]))
-    objref = ray.put(data, w1)
-    result = ray.get(objref, w2)
+    objectid = ray.put(data, w1)
+    result = ray.get(objectid, w2)
     self.assertEqual(data[0], result[0])
     self.assertTrue(np.alltrue(data[1] == result[1]))
 
     # shipping a numpy array inside something else should be fine
     data = ["a", np.random.normal(size=[10, 10])]
-    objref = ray.put(data, w1)
-    result = ray.get(objref, w2)
+    objectid = ray.put(data, w1)
+    result = ray.get(objectid, w2)
     self.assertEqual(data[0], result[0])
     self.assertTrue(np.alltrue(data[1] == result[1]))
 
     # Getting a buffer after modifying it before it finishes should return updated buffer
-    objref =  ray.lib.get_objref(w1.handle)
-    buf = ray.lib.allocate_buffer(w1.handle, objref, 100)
+    objectid =  ray.lib.get_objectid(w1.handle)
+    buf = ray.lib.allocate_buffer(w1.handle, objectid, 100)
     buf[0][0] = 1
-    ray.lib.finish_buffer(w1.handle, objref, buf[1], 0)
-    completedbuffer = ray.lib.get_buffer(w1.handle, objref)
+    ray.lib.finish_buffer(w1.handle, objectid, buf[1], 0)
+    completedbuffer = ray.lib.get_buffer(w1.handle, objectid)
     self.assertEqual(completedbuffer[0][0], 1)
 
     ray.services.cleanup()
@@ -152,33 +152,33 @@ class WorkerTest(unittest.TestCase):
 
     for i in range(100):
       value_before = i * 10 ** 6
-      objref = ray.put(value_before)
-      value_after = ray.get(objref)
+      objectid = ray.put(value_before)
+      value_after = ray.get(objectid)
       self.assertEqual(value_before, value_after)
 
     for i in range(100):
       value_before = i * 10 ** 6 * 1.0
-      objref = ray.put(value_before)
-      value_after = ray.get(objref)
+      objectid = ray.put(value_before)
+      value_after = ray.get(objectid)
       self.assertEqual(value_before, value_after)
 
     for i in range(100):
       value_before = "h" * i
-      objref = ray.put(value_before)
-      value_after = ray.get(objref)
+      objectid = ray.put(value_before)
+      value_after = ray.get(objectid)
       self.assertEqual(value_before, value_after)
 
     for i in range(100):
       value_before = [1] * i
-      objref = ray.put(value_before)
-      value_after = ray.get(objref)
+      objectid = ray.put(value_before)
+      value_after = ray.get(objectid)
       self.assertEqual(value_before, value_after)
 
     ray.services.cleanup()
 
 class APITest(unittest.TestCase):
 
-  def testObjRefAliasing(self):
+  def testObjectIDAliasing(self):
     reload(test_functions)
     ray.init(start_ray_local=True, num_workers=3, driver_mode=ray.SILENT_MODE)
 
@@ -396,12 +396,12 @@ class TaskStatusTest(unittest.TestCase):
 def check_get_deallocated(data):
   x = ray.put(data)
   ray.get(x)
-  return x.val
+  return x.id
 
 def check_get_not_deallocated(data):
   x = ray.put(data)
   y = ray.get(x)
-  return y, x.val
+  return y, x.id
 
 class ReferenceCountingTest(unittest.TestCase):
 
@@ -414,46 +414,46 @@ class ReferenceCountingTest(unittest.TestCase):
     x = test_functions.test_alias_f.remote()
     ray.get(x)
     time.sleep(0.1)
-    objref_val = x.val
-    self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val], 1)
+    objectid_val = x.id
+    self.assertEqual(ray.scheduler_info()["reference_counts"][objectid_val], 1)
 
     del x
-    self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val], -1) # -1 indicates deallocated
+    self.assertEqual(ray.scheduler_info()["reference_counts"][objectid_val], -1) # -1 indicates deallocated
 
     y = test_functions.test_alias_h.remote()
     ray.get(y)
     time.sleep(0.1)
-    objref_val = y.val
-    self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)], [1, 0, 0])
+    objectid_val = y.id
+    self.assertEqual(ray.scheduler_info()["reference_counts"][objectid_val:(objectid_val + 3)], [1, 0, 0])
 
     del y
-    self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)], [-1, -1, -1])
+    self.assertEqual(ray.scheduler_info()["reference_counts"][objectid_val:(objectid_val + 3)], [-1, -1, -1])
 
     z = da.zeros.remote([da.BLOCK_SIZE, 2 * da.BLOCK_SIZE])
     time.sleep(0.1)
-    objref_val = z.val
-    self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)], [1, 1, 1])
+    objectid_val = z.id
+    self.assertEqual(ray.scheduler_info()["reference_counts"][objectid_val:(objectid_val + 3)], [1, 1, 1])
 
     del z
     time.sleep(0.1)
-    self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)], [-1, -1, -1])
+    self.assertEqual(ray.scheduler_info()["reference_counts"][objectid_val:(objectid_val + 3)], [-1, -1, -1])
 
     x = ra.zeros.remote([10, 10])
     y = ra.zeros.remote([10, 10])
     z = ra.dot.remote(x, y)
-    objref_val = x.val
+    objectid_val = x.id
     time.sleep(0.1)
-    self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)], [1, 1, 1])
+    self.assertEqual(ray.scheduler_info()["reference_counts"][objectid_val:(objectid_val + 3)], [1, 1, 1])
 
     del x
     time.sleep(0.1)
-    self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)], [-1, 1, 1])
+    self.assertEqual(ray.scheduler_info()["reference_counts"][objectid_val:(objectid_val + 3)], [-1, 1, 1])
     del y
     time.sleep(0.1)
-    self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)], [-1, -1, 1])
+    self.assertEqual(ray.scheduler_info()["reference_counts"][objectid_val:(objectid_val + 3)], [-1, -1, 1])
     del z
     time.sleep(0.1)
-    self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val:(objref_val + 3)], [-1, -1, -1])
+    self.assertEqual(ray.scheduler_info()["reference_counts"][objectid_val:(objectid_val + 3)], [-1, -1, -1])
 
     ray.services.cleanup()
 
@@ -461,20 +461,20 @@ class ReferenceCountingTest(unittest.TestCase):
     ray.init(start_ray_local=True, num_workers=3)
 
     for val in RAY_TEST_OBJECTS + [np.zeros((2, 2)), UserDefinedType()]:
-      objref_val = check_get_deallocated(val)
-      self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val], -1)
+      objectid_val = check_get_deallocated(val)
+      self.assertEqual(ray.scheduler_info()["reference_counts"][objectid_val], -1)
 
       if not isinstance(val, bool) and not isinstance(val, np.generic) and val is not None:
-        x, objref_val = check_get_not_deallocated(val)
-        self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val], 1)
+        x, objectid_val = check_get_not_deallocated(val)
+        self.assertEqual(ray.scheduler_info()["reference_counts"][objectid_val], 1)
 
     # The following currently segfaults: The second "result = " closes the
     # memory segment as soon as the assignment is done (and the first result
     # goes out of scope).
     # data = np.zeros([10, 20])
-    # objref = ray.put(data)
-    # result = worker.get(objref)
-    # result = worker.get(objref)
+    # objectid = ray.put(data)
+    # result = worker.get(objectid)
+    # result = worker.get(objectid)
     # self.assertTrue(np.alltrue(result == data))
 
     ray.services.cleanup()
@@ -490,8 +490,8 @@ class ReferenceCountingTest(unittest.TestCase):
   #   # None are returned by get "by value" and therefore can be reclaimed from
   #   # the object store safely.
   # for val in [True, False, None]:
-  #    x, objref_val = check_get_not_deallocated(val)
-  #   self.assertEqual(ray.scheduler_info()["reference_counts"][objref_val], 1)
+  #    x, objectid_val = check_get_not_deallocated(val)
+  #   self.assertEqual(ray.scheduler_info()["reference_counts"][objectid_val], 1)
 
   # ray.services.cleanup()
 

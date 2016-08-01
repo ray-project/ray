@@ -22,13 +22,13 @@ def graph_to_graphviz(computation_graph):
         dot.edge("op" + str(i), str(res))
     elif op.HasField("put"):
       dot.node("op" + str(i), shape="box", label=str(i) + "\n" + "put")
-      dot.edge("op" + str(i), str(op.put.objref))
+      dot.edge("op" + str(i), str(op.put.objectid))
     elif op.HasField("get"):
       dot.node("op" + str(i), shape="box", label=str(i) + "\n" + "get")
     creator_operationid = op.creator_operationid if op.creator_operationid != 2 ** 64 - 1 else "-root"
     dot.edge("op" + str(creator_operationid), "op" + str(i), style="dotted", constraint="false")
     for arg in op.task.arg:
       if not arg.HasField("obj"):
-        dot.node(str(arg.ref))
-        dot.edge(str(arg.ref), "op" + str(i))
+        dot.node(str(arg.id))
+        dot.edge(str(arg.id), "op" + str(i))
   return dot

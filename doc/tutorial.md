@@ -2,7 +2,7 @@
 
 To use Ray, you need to understand the following:
 
-- How Ray uses object references to represent immutable remote objects.
+- How Ray uses object IDs to represent immutable remote objects.
 - How Ray constructs a computation graph using remote functions.
 
 ## Overview
@@ -42,13 +42,13 @@ killall scheduler objstore python
 ## Immutable remote objects
 
 In Ray, we can create and manipulate objects. We refer to these objects as
-**remote objects**, and we use **object references** to refer to them. Remote
+**remote objects**, and we use **object IDs** to refer to them. Remote
 objects are stored in **object stores**, and there is one object store per node
 in the cluster. In the cluster setting, we may not actually know which machine
 each object lives on.
 
-An **object reference** is essentially a unique ID that can be used to refer to
-a remote object. If you're familiar with Futures, our object references are
+An **object ID** is essentially a unique ID that can be used to refer to
+a remote object. If you're familiar with Futures, our object IDs are
 conceptually similar.
 
 We assume that remote objects are immutable. That is, their values cannot be
@@ -58,11 +58,11 @@ object stores without needing to synchronize the copies.
 ### Put and Get
 
 The commands `ray.get` and `ray.put` can be used to convert between Python
-objects and object references, as shown in the example below.
+objects and object IDs, as shown in the example below.
 
 ```python
 x = [1, 2, 3]
-ray.put(x)  # prints <ray.ObjRef at 0x1031baef0>
+ray.put(x)  # prints <ray.ObjectID at 0x1031baef0>
 ```
 
 The command `ray.put(x)` would be run by a worker process or by the driver
@@ -71,28 +71,28 @@ object and copies it to the local object store (here *local* means *on the same
 node*). Once the object has been stored in the object store, its value cannot be
 changed.
 
-In addition, `ray.put(x)` returns an object reference, which is essentially an
+In addition, `ray.put(x)` returns an object ID, which is essentially an
 ID that can be used to refer to the newly created remote object. If we save the
-object reference in a variable with `ref = ray.put(x)`, then we can pass `ref`
+object ID in a variable with `x_id = ray.put(x)`, then we can pass `x_id`
 into remote functions, and those remote functions will operate on the
 corresponding remote object.
 
-The command `ray.get(ref)` takes an object reference and creates a Python object
+The command `ray.get(x_id)` takes an object ID and creates a Python object
 from the corresponding remote object. For some objects like arrays, we can use
 shared memory and avoid copying the object. For other objects, this currently
 copies the object from the object store into the memory of the worker process.
-If the remote object corresponding to the object reference `ref` does not live
-on the same node as the worker that calls `ray.get(ref)`, then the remote object
+If the remote object corresponding to the object ID `x_id` does not live
+on the same node as the worker that calls `ray.get(x_id)`, then the remote object
 will first be copied from an object store that has it to the object store that
 needs it.
 
 ```python
-ref = ray.put([1, 2, 3])
-ray.get(ref)  # prints [1, 2, 3]
+x_id = ray.put([1, 2, 3])
+ray.get(x_id)  # prints [1, 2, 3]
 ```
 
-If the remote object corresponding to the object reference `ref` has not been
-created yet, *the command `ray.get(ref)` will wait until the remote object has
+If the remote object corresponding to the object ID `x_id` has not been
+created yet, *the command `ray.get(id)` will wait until the remote object has
 been created.*
 
 ## Computation graphs in Ray
@@ -122,23 +122,23 @@ function is called instead of catching them when the task is actually executed
 ### Remote functions
 
 Whereas in regular Python, calling `add(1, 2)` would return `3`, in Ray, calling
-`add.remote(1, 2)` does not actually execute the task. Instead, it adds a task
-to the computation graph and immediately returns an object reference to the
-output of the computation.
+`add.remote(1, 2)` does not actually execute the task. Instead, it adds a task to the
+computation graph and immediately returns an object ID to the output of
+the computation.
 
 ```python
-ref = add.remote(1, 2)
-ray.get(ref)  # prints 3
+x_id = add.remote(1, 2)
+ray.get(x_id)  # prints 3
 ```
 
 There is a sharp distinction between *submitting a task* and *executing the
 task*. When a remote function is called, the task of executing that function is
 submitted to the scheduler, and the scheduler immediately returns object
-references for the outputs of the task. However, the task will not be executed
+ids for the outputs of the task. However, the task will not be executed
 until the scheduler actually schedules the task on a worker.
 
 When a task is submitted, each argument may be passed in by value or by object
-reference. For example, these lines have the same behavior.
+id. For example, these lines have the same behavior.
 
 ```python
 add.remote(1, 2)
@@ -146,12 +146,11 @@ add.remote(1, ray.put(2))
 add.remote(ray.put(1), ray.put(2))
 ```
 
-Remote functions never return actual values, they always return object
-references.
+Remote functions never return actual values, they always return object IDs.
 
 When the remote function is actually executed, it operates on Python objects.
-That is, if the remote function was called with any object references, the
-Python objects corresponding to those object references will be retrieved and
+That is, if the remote function was called with any object IDs, the
+Python objects corresponding to those object IDs will be retrieved and
 passed into the actual execution of the remote function.
 
 ### Blocking computation
@@ -195,12 +194,12 @@ Then we can write
 
 ```python
 # Submit ten tasks to the scheduler. This finishes almost immediately.
-result_refs = []
+result_ids = []
 for i in range(10):
-  result_refs.append(sleep.remote(5))
+  result_ids.append(sleep.remote(5))
 
 # Wait for the results. If we have at least ten workers, this takes 5 seconds.
-[ray.get(ref) for ref in result_refs]  # prints [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[ray.get(id) for id in result_ids]  # prints [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 ```
 
 The for loop simply adds ten tasks to the computation graph, with no
@@ -248,9 +247,9 @@ def dot(a, b):
 Then we run
 
 ```python
-aref = zeros.remote([10, 10])
-bref = zeros.remote([10, 10])
-cref = dot.remote(aref, bref)
+a_id = zeros.remote([10, 10])
+b_id = zeros.remote([10, 10])
+c_id = dot.remote(a_id, b_id)
 ```
 
 The corresponding computation graph looks like this.
