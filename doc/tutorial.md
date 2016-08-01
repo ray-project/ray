@@ -28,7 +28,7 @@ To start Ray, start Python, and run the following commands.
 
 ```python
 import ray
-ray.services.start_ray_local(num_workers=10)
+ray.init(start_ray_local=True, num_workers=10)
 ```
 
 That command starts a scheduler, one object store, and ten workers. Each of

@@ -53,7 +53,7 @@ class SerializationTest(unittest.TestCase):
     self.assertEqual(a.dtype, c.dtype)
 
   def testSerialize(self):
-    ray.services.start_ray_local()
+    ray.init(start_ray_local=True, num_workers=0)
 
     for val in RAY_TEST_OBJECTS:
       self.roundTripTest(val)
@@ -93,7 +93,7 @@ class ObjStoreTest(unittest.TestCase):
 
   # Test setting up object stores, transfering data between them and retrieving data to a client
   def testObjStore(self):
-    [w1, w2] = ray.services.start_services_local(return_drivers=True, num_objstores=2, num_workers_per_objstore=0)
+    [w1, w2] = ray.services.start_ray_local(return_drivers=True, num_objstores=2, num_workers_per_objstore=0)
 
     # putting and getting an object shouldn't change it
     for data in ["h", "h" * 10000, 0, 0.0]:
@@ -148,7 +148,7 @@ class ObjStoreTest(unittest.TestCase):
 class WorkerTest(unittest.TestCase):
 
   def testPutGet(self):
-    ray.services.start_ray_local()
+    ray.init(start_ray_local=True, num_workers=0)
 
     for i in range(100):
       value_before = i * 10 ** 6
@@ -180,7 +180,7 @@ class APITest(unittest.TestCase):
 
   def testObjRefAliasing(self):
     reload(test_functions)
-    ray.services.start_ray_local(num_workers=3, driver_mode=ray.SILENT_MODE)
+    ray.init(start_ray_local=True, num_workers=3, driver_mode=ray.SILENT_MODE)
 
     ref = test_functions.test_alias_f.remote()
     self.assertTrue(np.alltrue(ray.get(ref) == np.ones([3, 4, 5])))
@@ -193,7 +193,7 @@ class APITest(unittest.TestCase):
 
   def testKeywordArgs(self):
     reload(test_functions)
-    ray.services.start_ray_local(num_workers=1)
+    ray.init(start_ray_local=True, num_workers=1)
 
     x = test_functions.keyword_fct1.remote(1)
     self.assertEqual(ray.get(x), "1 hello")
@@ -230,7 +230,7 @@ class APITest(unittest.TestCase):
 
   def testVariableNumberOfArgs(self):
     reload(test_functions)
-    ray.services.start_ray_local(num_workers=1)
+    ray.init(start_ray_local=True, num_workers=1)
 
     x = test_functions.varargs_fct1.remote(0, 1, 2)
     self.assertEqual(ray.get(x), "0 1 2")
@@ -244,7 +244,7 @@ class APITest(unittest.TestCase):
 
   def testNoArgs(self):
     reload(test_functions)
-    ray.services.start_ray_local(num_workers=1, driver_mode=ray.SILENT_MODE)
+    ray.init(start_ray_local=True, num_workers=1, driver_mode=ray.SILENT_MODE)
 
     test_functions.no_op.remote()
     time.sleep(0.2)
@@ -265,7 +265,7 @@ class APITest(unittest.TestCase):
 
   def testTypeChecking(self):
     reload(test_functions)
-    ray.services.start_ray_local(num_workers=1, driver_mode=ray.SILENT_MODE)
+    ray.init(start_ray_local=True, num_workers=1, driver_mode=ray.SILENT_MODE)
 
     # Make sure that these functions throw exceptions because there return
     # values do not type check.
@@ -280,7 +280,7 @@ class APITest(unittest.TestCase):
     ray.services.cleanup()
 
   def testDefiningRemoteFunctions(self):
-    ray.services.start_ray_local(num_workers=2)
+    ray.init(start_ray_local=True, num_workers=2)
 
     # Test that we can define a remote function in the shell.
     @ray.remote([int], [int])
@@ -346,7 +346,7 @@ class APITest(unittest.TestCase):
       ray.reusables.bar.append(1)
       return ray.reusables.bar
 
-    ray.services.start_ray_local(num_workers=2)
+    ray.init(start_ray_local=True, num_workers=2)
 
     self.assertEqual(ray.get(use_foo.remote()), 1)
     self.assertEqual(ray.get(use_foo.remote()), 1)
@@ -358,7 +358,7 @@ class APITest(unittest.TestCase):
 class TaskStatusTest(unittest.TestCase):
   def testFailedTask(self):
     reload(test_functions)
-    ray.services.start_ray_local(num_workers=3, driver_mode=ray.SILENT_MODE)
+    ray.init(start_ray_local=True, num_workers=3, driver_mode=ray.SILENT_MODE)
 
     test_functions.test_alias_f.remote()
     test_functions.throw_exception_fct1.remote()
@@ -409,7 +409,7 @@ class ReferenceCountingTest(unittest.TestCase):
     reload(test_functions)
     for module in [ra.core, ra.random, ra.linalg, da.core, da.random, da.linalg]:
       reload(module)
-    ray.services.start_ray_local(num_workers=1)
+    ray.init(start_ray_local=True, num_workers=1)
 
     x = test_functions.test_alias_f.remote()
     ray.get(x)
@@ -458,7 +458,7 @@ class ReferenceCountingTest(unittest.TestCase):
     ray.services.cleanup()
 
   def testGet(self):
-    ray.services.start_ray_local(num_workers=3)
+    ray.init(start_ray_local=True, num_workers=3)
 
     for val in RAY_TEST_OBJECTS + [np.zeros((2, 2)), UserDefinedType()]:
       objref_val = check_get_deallocated(val)
@@ -481,8 +481,7 @@ class ReferenceCountingTest(unittest.TestCase):
 
   # @unittest.expectedFailure
   # def testGetFailing(self):
-  #   worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_worker.py")
-  #   ray.services.start_ray_local(num_workers=3, worker_path=worker_path)
+  #   ray.init(start_ray_local=True, num_workers=3)
 
   #   # This is failing, because for bool and None, we cannot track python
   #   # refcounts and therefore cannot keep the refcount up
@@ -500,7 +499,7 @@ class PythonModeTest(unittest.TestCase):
 
   def testPythonMode(self):
     reload(test_functions)
-    ray.services.start_ray_local(driver_mode=ray.PYTHON_MODE)
+    ray.init(start_ray_local=True, driver_mode=ray.PYTHON_MODE)
 
     xref = test_functions.test_alias_h.remote()
     self.assertTrue(np.alltrue(xref == np.ones([3, 4, 5]))) # remote functions should return by value
@@ -521,7 +520,7 @@ class PythonModeTest(unittest.TestCase):
 class PythonCExtensionTest(unittest.TestCase):
 
   def testReferenceCountNone(self):
-    ray.services.start_ray_local(num_workers=1)
+    ray.init(start_ray_local=True, num_workers=1)
 
     # Make sure that we aren't accidentally messing up Python's reference counts.
     for obj in [None, True, False]:
@@ -537,7 +536,7 @@ class PythonCExtensionTest(unittest.TestCase):
 class ReusablesTest(unittest.TestCase):
 
   def testReusables(self):
-    ray.services.start_ray_local(num_workers=1)
+    ray.init(start_ray_local=True, num_workers=1)
 
     # Test that we can add a variable to the key-value store.
 

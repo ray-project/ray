@@ -4,7 +4,7 @@ import os
 import numpy as np
 import ray
 
-ray.services.start_ray_local(num_workers=1)
+ray.init(start_ray_local=True, num_workers=1)
 
 d = {"w": np.zeros(1000000)}
 

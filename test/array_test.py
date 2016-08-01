@@ -13,7 +13,7 @@ class RemoteArrayTest(unittest.TestCase):
   def testMethods(self):
     for module in [ra.core, ra.random, ra.linalg, da.core, da.random, da.linalg]:
       reload(module)
-    ray.services.start_ray_local(num_workers=1)
+    ray.init(start_ray_local=True)
 
     # test eye
     ref = ra.eye.remote(3)
@@ -47,7 +47,7 @@ class DistributedArrayTest(unittest.TestCase):
   def testSerialization(self):
     for module in [ra.core, ra.random, ra.linalg, da.core, da.random, da.linalg]:
       reload(module)
-    ray.services.start_ray_local()
+    ray.init(start_ray_local=True, num_workers=0)
 
     x = da.DistArray()
     x.construct([2, 3, 4], np.array([[[ray.put(0)]]]))
@@ -61,7 +61,7 @@ class DistributedArrayTest(unittest.TestCase):
   def testAssemble(self):
     for module in [ra.core, ra.random, ra.linalg, da.core, da.random, da.linalg]:
       reload(module)
-    ray.services.start_ray_local(num_workers=1)
+    ray.init(start_ray_local=True, num_workers=1)
 
     a = ra.ones.remote([da.BLOCK_SIZE, da.BLOCK_SIZE])
     b = ra.zeros.remote([da.BLOCK_SIZE, da.BLOCK_SIZE])
@@ -75,7 +75,7 @@ class DistributedArrayTest(unittest.TestCase):
     for module in [ra.core, ra.random, ra.linalg, da.core, da.random, da.linalg]:
       reload(module)
     worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../scripts/default_worker.py")
-    ray.services.start_services_local(num_objstores=2, num_workers_per_objstore=5, worker_path=worker_path)
+    ray.services.start_ray_local(num_objstores=2, num_workers_per_objstore=5, worker_path=worker_path)
 
     x = da.zeros.remote([9, 25, 51], "float")
     self.assertTrue(np.alltrue(ray.get(da.assemble.remote(x)) == np.zeros([9, 25, 51])))

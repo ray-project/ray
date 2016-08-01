@@ -108,7 +108,7 @@ def compute_gradient(model):
   return policy_backward(eph, epx, epdlogp, model), reward_sum
 
 if __name__ == "__main__":
-  ray.services.start_ray_local(num_workers=10)
+  ray.init(start_ray_local=True, num_workers=10)
 
   # Run the reinforcement learning
   running_reward = None

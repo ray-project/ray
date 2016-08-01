@@ -18,7 +18,7 @@ import ray
 import numpy as np
 
 # Start a scheduler, an object store, and some workers.
-ray.services.start_ray_local(num_workers=10)
+ray.init(start_ray_local=True, num_workers=10)
 
 # Define a remote function for estimating pi.
 @ray.remote([int], [float])
