@@ -68,11 +68,11 @@ class ExampleClass(object):
     # This example assumes that field1 and field2 are serializable types.
     self.field1 = field1
     self.field2 = field2
-
-  def deserialize(self, primitives):
+  
+  @staticmethod
+  def deserialize(primitives):
     (field1, field2) = primitives
-    self.field1 = field1
-    self.field2 = field2
+    return ExampleClass(field1, field2)
 
   def serialize(self):
     return (self.field1, self.field2)
