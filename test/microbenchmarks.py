@@ -10,7 +10,7 @@ class MicroBenchmarkTest(unittest.TestCase):
 
   def testTiming(self):
     reload(test_functions)
-    ray.services.start_ray_local(num_workers=3)
+    ray.init(start_ray_local=True, num_workers=3)
 
     # measure the time required to submit a remote task to the scheduler
     elapsed_times = []

@@ -447,7 +447,7 @@ def check_connected(worker=global_worker):
     Exception: An exception is raised if the worker is not connected.
   """
   if worker.handle is None:
-    raise Exception("This command cannot be called before a Ray cluster has been started. You can start one with 'ray.services.start_ray_local(num_workers=1)'.")
+    raise Exception("This command cannot be called before a Ray cluster has been started. You can start one with 'ray.init(start_ray_local=True, num_workers=1)'.")
 
 def print_failed_task(task_status):
   """Print information about failed tasks.
@@ -505,8 +505,9 @@ def visualize_computation_graph(file_path=None, view=False, worker=global_worker
       open the result in a viewer.
 
   Examples:
-    In ray/scripts, call "python shell.py" and try the following code.
+    Try the following code.
 
+    >>> import ray.array.distributed as da
     >>> x = da.zeros([20, 20])
     >>> y = da.zeros([20, 20])
     >>> z = da.dot(x, y)
@@ -551,6 +552,48 @@ def register_module(module, worker=global_worker):
     if hasattr(val, "is_remote") and val.is_remote:
       _logger().info("registering {}.".format(val.func_name))
       worker.register_function(val)
+
+def init(start_ray_local=False, num_workers=None, scheduler_address=None, objstore_address=None, driver_address=None, driver_mode=ray.SCRIPT_MODE):
+  """Either connect to an existing Ray cluster or start one and connect to it.
+
+  This method handles two cases. Either a Ray cluster already exists and we
+  just attach this driver to it, or we start all of the processes associated
+  with a Ray cluster and attach to the newly started cluster.
+
+  Args:
+    start_ray_local (Optional[bool]): If True then this will start a scheduler
+      an object store, and some workers. If False, this will attach to an
+      existing Ray cluster.
+    num_workers (Optional[int]): The number of workers to start if
+      start_ray_local is True.
+    scheduler_address (Optional[str]): The address of the scheduler to connect
+      to if start_ray_local is False.
+    objstore_address (Optional[str]): The address of the object store to connect
+      to if start_ray_local is False.
+    driver_address (Optional[str]): The address of this driver if
+      start_ray_local is False.
+    driver_mode (Optional[bool]): The mode in which to start the driver. This
+      should be one of ray.SCRIPT_MODE, ray.SHELL_MODE, ray.PYTHON_MODE, and
+      ray.SILENT_MODE.
+
+    raises:
+      Exception: An exception is raised if an inappropriate combination of
+        arguments is passed in.
+  """
+  if start_ray_local:
+    # In this case, we launch a scheduler, a new object store, and some workers,
+    # and we connect to them.
+    if (scheduler_address is not None) or (objstore_address is not None) or (driver_address is not None):
+      raise Exception("If start_ray_local=True, then you cannot pass in a scheduler_address, objstore_address, or worker_address.")
+    if driver_mode not in [ray.SCRIPT_MODE, ray.SHELL_MODE, ray.PYTHON_MODE, ray.SILENT_MODE]:
+      raise Exception("If start_ray_local=True, then driver_mode must be in [ray.SCRIPT_MODE, ray.SHELL_MODE, ray.PYTHON_MODE, ray.SILENT_MODE].")
+    num_workers = 1 if num_workers is None else num_workers
+    ray.services.start_ray_local(num_objstores=1, num_workers_per_objstore=num_workers, worker_path=None, driver_mode=driver_mode)
+  else:
+    # In this case, connect to an existing scheduler and object store.
+    if num_workers is not None:
+      raise Exception("The argument num_workers must not be provided unless start_ray_local=True.")
+    connect(scheduler_address, objstore_address, driver_address, is_driver=True, worker=global_worker, mode=driver_mode)
 
 def connect(scheduler_address, objstore_address, worker_address, is_driver=False, worker=global_worker, mode=ray.WORKER_MODE):
   """Connect this worker to the scheduler and an object store.

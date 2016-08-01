@@ -10,7 +10,7 @@ from tensorflow.examples.tutorials.mnist import input_data
 import hyperopt
 
 if __name__ == "__main__":
-  ray.services.start_ray_local(num_workers=3)
+  ray.init(start_ray_local=True, num_workers=3)
 
   # The number of sets of random hyperparameters to try.
   trials = 2

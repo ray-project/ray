@@ -15,7 +15,7 @@ _services_env["PATH"] = os.pathsep.join([os.path.dirname(os.path.abspath(__file_
 # mode.
 all_processes = []
 # drivers is a list of the worker objects corresponding to drivers if
-# start_services_local is run with return_drivers=True.
+# start_ray_local is run with return_drivers=True.
 drivers = []
 
 IP_ADDRESS = "127.0.0.1"
@@ -189,14 +189,16 @@ def start_workers(scheduler_address, objstore_address, num_workers, worker_path)
   for _ in range(num_workers):
     start_worker(worker_path, scheduler_address, objstore_address, address(node_ip_address, new_worker_port()), local=False)
 
-def start_ray_local(num_workers=0, worker_path=None, driver_mode=ray.SCRIPT_MODE):
+def start_ray_local(num_objstores=1, num_workers_per_objstore=0, worker_path=None, driver_mode=ray.SCRIPT_MODE, return_drivers=False):
   """Start Ray in local mode.
 
   This method starts Ray in local mode (as opposed to cluster mode, which is
   handled by cluster.py).
 
   Args:
-    num_workers (int): The number of workers to start.
+    num_objstores (int): The number of object stores to start.
+    num_workers_per_objstore (int): The number of workers to start per object
+      store.
     worker_path (str): The path of the source code that will be run by the
       worker
     driver_mode: The mode for the driver, this only affects the printing of
@@ -205,17 +207,11 @@ def start_ray_local(num_workers=0, worker_path=None, driver_mode=ray.SCRIPT_MODE
       in the shell. It should be ray.PYTHON_MODE to run things in a manner
       equivalent to serial Python code. It should be ray.WORKER_MODE to surpress
       the printing of error messages.
+    return_drivers (bool): This should only be True in special cases for tests.
   """
+  global drivers
   if worker_path is None:
     worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../../scripts/default_worker.py")
-  start_services_local(num_objstores=1, num_workers_per_objstore=num_workers, worker_path=worker_path, driver_mode=driver_mode)
-
-# This is a helper method which is only used in the tests and should not be
-# called by users
-def start_services_local(num_objstores=1, num_workers_per_objstore=0, worker_path=None, driver_mode=ray.SCRIPT_MODE, return_drivers=False):
-  global drivers
-  if num_workers_per_objstore > 0 and worker_path is None:
-    raise Exception("Attempting to start a cluster with {} workers per object store, but `worker_path` is None.".format(num_workers_per_objstore))
   if num_workers_per_objstore > 0 and num_objstores < 1:
     raise Exception("Attempting to start a cluster with {} workers per object store, but `num_objstores` is {}.".format(num_objstores))
   scheduler_address = address(IP_ADDRESS, new_scheduler_port())

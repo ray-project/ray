@@ -8,7 +8,7 @@ import tensorflow as tf
 from tensorflow.examples.tutorials.mnist import input_data
 
 if __name__ == "__main__":
-  ray.services.start_ray_local(num_workers=16)
+  ray.init(start_ray_local=True, num_workers=16)
 
   # Define the dimensions of the data and of the model.
   image_dimension = 784

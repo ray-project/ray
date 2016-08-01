@@ -169,14 +169,22 @@ class RayCluster(object):
       start_workers_commands.append(start_workers_command)
     self._run_command_over_ssh_on_all_nodes_in_parallel(start_workers_commands)
 
-    print "cluster started; you can start the shell on the head node with:"
     setup_env_path = os.path.join(self.installation_directory, "ray/setup-env.sh")
-    shell_script_path = os.path.join(self.installation_directory, "ray/scripts/shell.py")
     print """
-      cd "{}";
-      source "{}";
-      python "{}" --scheduler-address={}:10001 --objstore-address={}:20001 --worker-address={}:30001 --attach
-    """.format(remote_user_source_directory, setup_env_path, shell_script_path, self.node_private_ip_addresses[0], self.node_private_ip_addresses[0], self.node_private_ip_addresses[0])
+      The cluster has been started. You can attach to the cluster by sshing to the head node with the following command.
+
+          ssh -i {} {}@{}
+
+      Then run the following commands.
+
+          cd {}
+          source {}
+
+      Then within a Python interpreter, run the following commands.
+
+          import ray
+          ray.init(scheduler_address="{}:10001", objstore_address="{}:20001", driver_address="{}:30001")
+    """.format(self.key_file, self.username, self.node_ip_addresses[0], remote_user_source_directory, setup_env_path, self.node_private_ip_addresses[0], self.node_private_ip_addresses[0], self.node_private_ip_addresses[0])
 
   def stop_ray(self):
     """Kill all of the processes in the Ray cluster.
