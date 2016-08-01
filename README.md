@@ -49,7 +49,7 @@ estimate of pi (waiting until the computation has finished if necessary).
 
 ## Next Steps
 
-- Installation on [Ubuntu](doc/install-on-ubuntu.md), [Mac OS X](doc/install-on-macosx.md), [Windows](doc/install-on-windows.md)
+- Installation on [Ubuntu](doc/install-on-ubuntu.md), [Mac OS X](doc/install-on-macosx.md), [Windows](doc/install-on-windows.md), [Docker](doc/install-on-docker.md)
 - [Tutorial](doc/tutorial.md)
 - [About the System](doc/about-the-system.md)
 - [Using Ray on a Cluster](doc/using-ray-on-a-cluster.md)
