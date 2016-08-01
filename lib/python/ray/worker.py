@@ -30,7 +30,7 @@ class RayFailedObject(object):
     error_message (str): The error message raised by the task that failed.
   """
 
-  def __init__(self, error_message=None):
+  def __init__(self, error_message):
     """Initialize a RayFailedObject.
 
     Args:
@@ -39,7 +39,8 @@ class RayFailedObject(object):
     """
     self.error_message = error_message
 
-  def deserialize(self, primitives):
+  @staticmethod
+  def deserialize(primitives):
     """Create a RayFailedObject from a primitive object.
 
     This initializes a RayFailedObject from a primitive object created by the
@@ -52,7 +53,7 @@ class RayFailedObject(object):
     Args:
       primitives (str): The object's error message.
     """
-    self.error_message = primitives
+    return RayFailedObject(primitives)
 
   def serialize(self):
     """Turn a RayFailedObject into a primitive object.

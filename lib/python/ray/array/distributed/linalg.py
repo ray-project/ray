@@ -46,8 +46,6 @@ def tsqr(a):
     current_rs = new_rs
   assert len(current_rs) == 1, "len(current_rs) = " + str(len(current_rs))
 
-  q_result = DistArray()
-
   # handle the special case in which the whole DistArray "a" fits in one block
   # and has fewer rows than columns, this is a bit ugly so think about how to
   # remove it
@@ -56,9 +54,8 @@ def tsqr(a):
   else:
     q_shape = [a.shape[0], a.shape[0]]
   q_num_blocks = DistArray.compute_num_blocks(q_shape)
-  q_result = DistArray()
   q_objectids = np.empty(q_num_blocks, dtype=object)
-  q_result.construct(q_shape, q_objectids)
+  q_result = DistArray(q_shape, q_objectids)
 
   # reconstruct output
   for i in range(num_blocks):
@@ -145,8 +142,7 @@ def qr(a):
   k = min(m, n)
 
   # we will store our scratch work in a_work
-  a_work = DistArray()
-  a_work.construct(a.shape, np.copy(a.objectids))
+  a_work = DistArray(a.shape, np.copy(a.objectids))
 
   result_dtype = np.linalg.qr(ray.get(a.objectids[0, 0]))[0].dtype.name
   r_res = ray.get(zeros.remote([k, n], result_dtype)) # TODO(rkn): It would be preferable not to get this right after creating it.

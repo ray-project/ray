@@ -49,8 +49,7 @@ class DistributedArrayTest(unittest.TestCase):
       reload(module)
     ray.init(start_ray_local=True, num_workers=0)
 
-    x = da.DistArray()
-    x.construct([2, 3, 4], np.array([[[ray.put(0)]]]))
+    x = da.DistArray([2, 3, 4], np.array([[[ray.put(0)]]]))
     capsule, _ = ray.serialization.serialize(ray.worker.global_worker.handle, x)
     y = ray.serialization.deserialize(ray.worker.global_worker.handle, capsule)
     self.assertEqual(x.shape, y.shape)
@@ -65,8 +64,7 @@ class DistributedArrayTest(unittest.TestCase):
 
     a = ra.ones.remote([da.BLOCK_SIZE, da.BLOCK_SIZE])
     b = ra.zeros.remote([da.BLOCK_SIZE, da.BLOCK_SIZE])
-    x = da.DistArray()
-    x.construct([2 * da.BLOCK_SIZE, da.BLOCK_SIZE], np.array([[a], [b]]))
+    x = da.DistArray([2 * da.BLOCK_SIZE, da.BLOCK_SIZE], np.array([[a], [b]]))
     self.assertTrue(np.alltrue(x.assemble() == np.vstack([np.ones([da.BLOCK_SIZE, da.BLOCK_SIZE]), np.zeros([da.BLOCK_SIZE, da.BLOCK_SIZE])])))
 
     ray.services.cleanup()

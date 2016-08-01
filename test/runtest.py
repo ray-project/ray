@@ -23,7 +23,8 @@ class UserDefinedType(object):
   def __init__(self):
     pass
 
-  def deserialize(self, primitives):
+  @staticmethod
+  def deserialize(primitives):
     return "user defined type"
 
   def serialize(self):

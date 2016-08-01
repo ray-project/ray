@@ -46,8 +46,7 @@ def from_primitive(primitive_obj):
     # This code assumes that the type module.__dict__[type_name] knows how to deserialize itself
     type_module, type_name = primitive_obj[0]
     module = importlib.import_module(type_module)
-    obj = module.__dict__[type_name]()
-    obj.deserialize(primitive_obj[1])
+    obj = module.__dict__[type_name].deserialize(primitive_obj[1])
   return obj
 
 def is_arrow_serializable(value):

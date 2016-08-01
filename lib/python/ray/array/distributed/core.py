@@ -9,7 +9,7 @@ __all__ = ["BLOCK_SIZE", "DistArray", "assemble", "zeros", "ones", "copy",
 BLOCK_SIZE = 10
 
 class DistArray(object):
-  def construct(self, shape, objectids=None):
+  def __init__(self, shape, objectids=None):
     self.shape = shape
     self.ndim = len(shape)
     self.num_blocks = [int(np.ceil(1.0 * a / BLOCK_SIZE)) for a in self.shape]
@@ -17,16 +17,13 @@ class DistArray(object):
     if self.num_blocks != list(self.objectids.shape):
       raise Exception("The fields `num_blocks` and `objectids` are inconsistent, `num_blocks` is {} and `objectids` has shape {}".format(self.num_blocks, list(self.objectids.shape)))
 
-  def deserialize(self, primitives):
+  @staticmethod
+  def deserialize(primitives):
     (shape, objectids) = primitives
-    self.construct(shape, objectids)
+    return DistArray(shape, objectids)
 
   def serialize(self):
     return (self.shape, self.objectids)
-
-  def __init__(self, shape=None):
-    if shape is not None:
-      self.construct(shape)
 
   @staticmethod
   def compute_block_lower(index, shape):
