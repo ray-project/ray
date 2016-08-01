@@ -377,7 +377,7 @@ class Worker(object):
     elif isinstance(result, np.generic):
       return result
       # TODO(pcm): close the associated memory segment; if we don't, this leaks memory (but very little, so it is ok for now)
-    elif result == None:
+    elif result is None:
       ray.lib.unmap_object(self.handle, segmentid) # need to unmap here because result is passed back "by value" and we have no reference to unmap later
       return None # can't subclass None and don't need to because there is a global None
     result.ray_objectid = objectid # TODO(pcm): This could be done only for the "get" case in the future if we want to increase performance
