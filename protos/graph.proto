@@ -4,16 +4,16 @@ import "types.proto";
 
 message Task {
   string name = 1; // Name of the function call. Must not be empty.
-  repeated Value arg = 2; // List of arguments, can be either object references or protobuf descriptions of object passed by value
-  repeated uint64 result = 3; // Object references for result
+  repeated Value arg = 2; // List of arguments, can be either object IDs or protobuf descriptions of object passed by value
+  repeated uint64 result = 3; // Object IDs for result
 }
 
 message Put {
-  uint64 objref = 1; // The objref for the object that was put
+  uint64 objectid = 1; // The objectid for the object that was put
 }
 
 message Get {
-  uint64 objref = 1; // The objref for the object that is retrieved
+  uint64 objectid = 1; // The objectid for the object that is retrieved
 }
 
 // This is used internally by the scheduler. From the scheduler's perspective,

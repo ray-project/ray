@@ -123,13 +123,13 @@ if __name__ == "__main__":
   rmsprop_cache = {k: np.zeros_like(v) for k, v in model.iteritems()} # rmsprop memory
 
   while True:
-    model_ref = ray.put(model)
+    model_id = ray.put(model)
     grads, reward_sums = [], []
     # Launch tasks to compute gradients from multiple rollouts in parallel.
     for i in range(batch_size):
-      grad_ref, reward_sum_ref = compute_gradient.remote(model_ref)
-      grads.append(grad_ref)
-      reward_sums.append(reward_sum_ref)
+      grad_id, reward_sum_id = compute_gradient.remote(model_id)
+      grads.append(grad_id)
+      reward_sums.append(reward_sum_id)
     for i in range(batch_size):
       grad = ray.get(grads[i])
       reward_sum = ray.get(reward_sums[i])

@@ -37,17 +37,17 @@ if __name__ == "__main__":
   filename_label_str = label_file["Body"].read().strip().split("\n")
   filename_label_pairs = [line.split(" ") for line in filename_label_str]
   filename_label_dict = dict([(os.path.basename(name), label) for name, label in filename_label_pairs])
-  filename_label_dict_ref = ray.put(filename_label_dict)
+  filename_label_dict_id = ray.put(filename_label_dict)
   print "Labels extracted"
 
   # Download the imagenet dataset.
   imagenet_data = alexnet.load_tarfiles_from_s3(args.s3_bucket, image_tar_files, [256, 256])
 
   # Convert the parsed filenames to integer labels and create batches.
-  batches = [(images, alexnet.filenames_to_labels.remote(filenames, filename_label_dict_ref)) for images, filenames in imagenet_data]
+  batches = [(images, alexnet.filenames_to_labels.remote(filenames, filename_label_dict_id)) for images, filenames in imagenet_data]
 
   # Compute the mean image.
-  mean_ref = alexnet.compute_mean_image.remote([images for images, labels in batches])
+  mean_id = alexnet.compute_mean_image.remote([images for images, labels in batches])
 
   # The data does not start out shuffled. Images of the same class all appear
   # together, so we shuffle it ourselves here. Each shuffle pairs up the batches
@@ -67,24 +67,24 @@ if __name__ == "__main__":
     # Extract weights from the local copy of the network.
     weights = sess.run(parameters)
     # Put weights in the object store.
-    weights_ref = ray.put(weights)
+    weights_id = ray.put(weights)
 
     # Compute the accuracy on a random training batch.
-    x_ref, y_ref = batches[np.random.randint(len(batches))]
-    accuracy = alexnet.compute_accuracy.remote(x_ref, y_ref, weights_ref)
+    x_id, y_id = batches[np.random.randint(len(batches))]
+    accuracy = alexnet.compute_accuracy.remote(x_id, y_id, weights_id)
 
     # Launch tasks in parallel to compute the gradients for some batches.
-    gradient_refs = []
+    gradient_ids = []
     for i in range(num_workers - 1):
       # Choose a random batch and use it to compute the gradient of the loss.
-      x_ref, y_ref = batches[np.random.randint(len(batches))]
-      gradient_refs.append(alexnet.compute_grad.remote(x_ref, y_ref, mean_ref, weights_ref))
+      x_id, y_id = batches[np.random.randint(len(batches))]
+      gradient_ids.append(alexnet.compute_grad.remote(x_id, y_id, mean_id, weights_id))
 
     # Print the accuracy on a random training batch.
     print "Iteration {}: accuracy = {:.3}%".format(iteration, 100 * ray.get(accuracy))
 
     # Fetch the gradients. This blocks until the gradients have been computed.
-    gradient_sets = [ray.get(ref) for ref in gradient_refs]
+    gradient_sets = [ray.get(gradient_id) for gradient_id in gradient_ids]
     # Average the gradients over all of the tasks.
     mean_gradients = [np.mean([gradient_set[i] for gradient_set in gradient_sets], axis=0) for i in range(len(weights))]
     # Use the gradients to update the network.

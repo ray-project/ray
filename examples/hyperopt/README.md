@@ -93,7 +93,7 @@ little bit of type information (the input is a dictionary along with some numpy
 arrays, and the return value is a float).
 
 Now a call to `train_cnn_and_compute_accuracy` does not execute the function. It
-submits the task to the scheduler and returns an object reference for the output
+submits the task to the scheduler and returns an object ID for the output
 of the eventual computation. The scheduler, at its leisure, will schedule the
 task on a worker (which may live on the same machine or on a different machine
 in the cluster).
@@ -102,7 +102,7 @@ Now the for loop runs almost instantaneously because it does not do any actual
 computation. Instead, it simply submits a number of tasks to the scheduler.
 
 ```python
-result_refs = []
+result_ids = []
 for _ in range(100):
   params = generate_random_params()
   results.append((params, train_cnn_and_compute_accuracy.remote(params, epochs)))
@@ -112,7 +112,7 @@ If we wish to wait until the results have all been retrieved, we can retrieve
 their values with `ray.get`.
 
 ```python
-results = [(params, ray.get(ref)) for (params, ref) in result_refs]
+results = [(params, ray.get(result_id)) for (params, result_id) in result_ids]
 ```
 
 ## Additional notes

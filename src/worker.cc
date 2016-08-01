@@ -114,35 +114,35 @@ void Worker::register_worker(const std::string& worker_address, const std::strin
   return;
 }
 
-void Worker::request_object(ObjRef objref) {
+void Worker::request_object(ObjectID objectid) {
   RAY_CHECK(connected_, "Attempted to perform request_object but failed.");
   RequestObjRequest request;
   request.set_workerid(workerid_);
-  request.set_objref(objref);
+  request.set_objectid(objectid);
   AckReply reply;
   ClientContext context;
   Status status = scheduler_stub_->RequestObj(&context, request, &reply);
   return;
 }
 
-ObjRef Worker::get_objref() {
-  // first get objref for the new object
-  RAY_CHECK(connected_, "Attempted to perform get_objref but failed.");
+ObjectID Worker::get_objectid() {
+  // first get objectid for the new object
+  RAY_CHECK(connected_, "Attempted to perform get_objectid but failed.");
   PutObjRequest request;
   request.set_workerid(workerid_);
   PutObjReply reply;
   ClientContext context;
   Status status = scheduler_stub_->PutObj(&context, request, &reply);
-  return reply.objref();
+  return reply.objectid();
 }
 
-slice Worker::get_object(ObjRef objref) {
-  // get_object assumes that objref is a canonical objref
+slice Worker::get_object(ObjectID objectid) {
+  // get_object assumes that objectid is a canonical objectid
   RAY_CHECK(connected_, "Attempted to perform get_object but failed.");
   ObjRequest request;
   request.workerid = workerid_;
   request.type = ObjRequestType::GET;
-  request.objref = objref;
+  request.objectid = objectid;
   RAY_CHECK(request_obj_queue_.send(&request), "error sending over IPC");
   ObjHandle result;
   RAY_CHECK(receive_obj_queue_.receive(&result), "error receiving over IPC");
@@ -154,20 +154,20 @@ slice Worker::get_object(ObjRef objref) {
 }
 
 // TODO(pcm): More error handling
-// contained_objrefs is a vector of all the objrefs contained in obj
-void Worker::put_object(ObjRef objref, const Obj* obj, std::vector<ObjRef> &contained_objrefs) {
+// contained_objectids is a vector of all the objectids contained in obj
+void Worker::put_object(ObjectID objectid, const Obj* obj, std::vector<ObjectID> &contained_objectids) {
   RAY_CHECK(connected_, "Attempted to perform put_object but failed.");
   std::string data;
   obj->SerializeToString(&data); // TODO(pcm): get rid of this serialization
   ObjRequest request;
   request.workerid = workerid_;
   request.type = ObjRequestType::ALLOC;
-  request.objref = objref;
+  request.objectid = objectid;
   request.size = data.size();
   RAY_CHECK(request_obj_queue_.send(&request), "error sending over IPC");
-  if (contained_objrefs.size() > 0) {
-    RAY_LOG(RAY_REFCOUNT, "In put_object, calling increment_reference_count for contained objrefs");
-    increment_reference_count(contained_objrefs); // Notify the scheduler that some object references are serialized in the objstore.
+  if (contained_objectids.size() > 0) {
+    RAY_LOG(RAY_REFCOUNT, "In put_object, calling increment_reference_count for contained objectids");
+    increment_reference_count(contained_objectids); // Notify the scheduler that some object references are serialized in the objstore.
   }
   ObjHandle result;
   RAY_CHECK(receive_obj_queue_.receive(&result), "error receiving over IPC");
@@ -180,15 +180,15 @@ void Worker::put_object(ObjRef objref, const Obj* obj, std::vector<ObjRef> &cont
   request.metadata_offset = 0;
   RAY_CHECK(request_obj_queue_.send(&request), "error sending over IPC");
 
-  // Notify the scheduler about the objrefs that we are serializing in the objstore.
-  AddContainedObjRefsRequest contained_objrefs_request;
-  contained_objrefs_request.set_objref(objref);
-  for (int i = 0; i < contained_objrefs.size(); ++i) {
-    contained_objrefs_request.add_contained_objref(contained_objrefs[i]); // TODO(rkn): The naming here is bad
+  // Notify the scheduler about the objectids that we are serializing in the objstore.
+  AddContainedObjectIDsRequest contained_objectids_request;
+  contained_objectids_request.set_objectid(objectid);
+  for (int i = 0; i < contained_objectids.size(); ++i) {
+    contained_objectids_request.add_contained_objectid(contained_objectids[i]); // TODO(rkn): The naming here is bad
   }
   AckReply reply;
   ClientContext context;
-  scheduler_stub_->AddContainedObjRefs(&context, contained_objrefs_request, &reply);
+  scheduler_stub_->AddContainedObjectIDs(&context, contained_objectids_request, &reply);
 }
 
 #define CHECK_ARROW_STATUS(s, msg)                              \
@@ -201,12 +201,12 @@ void Worker::put_object(ObjRef objref, const Obj* obj, std::vector<ObjRef> &cont
     }                                                           \
   } while (0);
 
-const char* Worker::allocate_buffer(ObjRef objref, int64_t size, SegmentId& segmentid) {
+const char* Worker::allocate_buffer(ObjectID objectid, int64_t size, SegmentId& segmentid) {
   RAY_CHECK(connected_, "Attempted to perform put_arrow but failed.");
   ObjRequest request;
   request.workerid = workerid_;
   request.type = ObjRequestType::ALLOC;
-  request.objref = objref;
+  request.objectid = objectid;
   request.size = size;
   RAY_CHECK(request_obj_queue_.send(&request), "error sending over IPC");
   ObjHandle result;
@@ -216,23 +216,23 @@ const char* Worker::allocate_buffer(ObjRef objref, int64_t size, SegmentId& segm
   return address;
 }
 
-PyObject* Worker::finish_buffer(ObjRef objref, SegmentId segmentid, int64_t metadata_offset) {
+PyObject* Worker::finish_buffer(ObjectID objectid, SegmentId segmentid, int64_t metadata_offset) {
   segmentpool_->unmap_segment(segmentid);
   ObjRequest request;
   request.workerid = workerid_;
-  request.objref = objref;
+  request.objectid = objectid;
   request.type = ObjRequestType::WORKER_DONE;
   request.metadata_offset = metadata_offset;
   RAY_CHECK(request_obj_queue_.send(&request), "error sending over IPC");
   Py_RETURN_NONE;
 }
 
-const char* Worker::get_buffer(ObjRef objref, int64_t &size, SegmentId& segmentid, int64_t& metadata_offset) {
+const char* Worker::get_buffer(ObjectID objectid, int64_t &size, SegmentId& segmentid, int64_t& metadata_offset) {
   RAY_CHECK(connected_, "Attempted to perform get_arrow but failed.");
   ObjRequest request;
   request.workerid = workerid_;
   request.type = ObjRequestType::GET;
-  request.objref = objref;
+  request.objectid = objectid;
   RAY_CHECK(request_obj_queue_.send(&request), "error sending over IPC");
   ObjHandle result;
   RAY_CHECK(receive_obj_queue_.receive(&result), "error receiving over IPC");
@@ -243,64 +243,64 @@ const char* Worker::get_buffer(ObjRef objref, int64_t &size, SegmentId& segmenti
   return address;
 }
 
-bool Worker::is_arrow(ObjRef objref) {
+bool Worker::is_arrow(ObjectID objectid) {
   RAY_CHECK(connected_, "Attempted to perform is_arrow but failed.");
   ObjRequest request;
   request.workerid = workerid_;
   request.type = ObjRequestType::GET;
-  request.objref = objref;
+  request.objectid = objectid;
   request_obj_queue_.send(&request);
   ObjHandle result;
   RAY_CHECK(receive_obj_queue_.receive(&result), "error receiving over IPC");
   return result.metadata_offset() != 0;
 }
 
-void Worker::unmap_object(ObjRef objref) {
+void Worker::unmap_object(ObjectID objectid) {
   if (!connected_) {
     RAY_LOG(RAY_DEBUG, "Attempted to perform unmap_object but failed.");
     return;
   }
-  segmentpool_->unmap_segment(objref);
+  segmentpool_->unmap_segment(objectid);
 }
 
-void Worker::alias_objrefs(ObjRef alias_objref, ObjRef target_objref) {
-  RAY_CHECK(connected_, "Attempted to perform alias_objrefs but failed.");
+void Worker::alias_objectids(ObjectID alias_objectid, ObjectID target_objectid) {
+  RAY_CHECK(connected_, "Attempted to perform alias_objectids but failed.");
   ClientContext context;
-  AliasObjRefsRequest request;
-  request.set_alias_objref(alias_objref);
-  request.set_target_objref(target_objref);
+  AliasObjectIDsRequest request;
+  request.set_alias_objectid(alias_objectid);
+  request.set_target_objectid(target_objectid);
   AckReply reply;
-  scheduler_stub_->AliasObjRefs(&context, request, &reply);
+  scheduler_stub_->AliasObjectIDs(&context, request, &reply);
 }
 
-void Worker::increment_reference_count(std::vector<ObjRef> &objrefs) {
+void Worker::increment_reference_count(std::vector<ObjectID> &objectids) {
   if (!connected_) {
-    RAY_LOG(RAY_DEBUG, "Attempting to increment_reference_count for objrefs, but connected_ = " << connected_ << " so returning instead.");
+    RAY_LOG(RAY_DEBUG, "Attempting to increment_reference_count for objectids, but connected_ = " << connected_ << " so returning instead.");
     return;
   }
-  if (objrefs.size() > 0) {
+  if (objectids.size() > 0) {
     ClientContext context;
     IncrementRefCountRequest request;
-    for (int i = 0; i < objrefs.size(); ++i) {
-      RAY_LOG(RAY_REFCOUNT, "Incrementing reference count for objref " << objrefs[i]);
-      request.add_objref(objrefs[i]);
+    for (int i = 0; i < objectids.size(); ++i) {
+      RAY_LOG(RAY_REFCOUNT, "Incrementing reference count for objectid " << objectids[i]);
+      request.add_objectid(objectids[i]);
     }
     AckReply reply;
     scheduler_stub_->IncrementRefCount(&context, request, &reply);
   }
 }
 
-void Worker::decrement_reference_count(std::vector<ObjRef> &objrefs) {
+void Worker::decrement_reference_count(std::vector<ObjectID> &objectids) {
   if (!connected_) {
     RAY_LOG(RAY_DEBUG, "Attempting to decrement_reference_count, but connected_ = " << connected_ << " so returning instead.");
     return;
   }
-  if (objrefs.size() > 0) {
+  if (objectids.size() > 0) {
     ClientContext context;
     DecrementRefCountRequest request;
-    for (int i = 0; i < objrefs.size(); ++i) {
-      RAY_LOG(RAY_REFCOUNT, "Decrementing reference count for objref " << objrefs[i]);
-      request.add_objref(objrefs[i]);
+    for (int i = 0; i < objectids.size(); ++i) {
+      RAY_LOG(RAY_REFCOUNT, "Decrementing reference count for objectid " << objectids[i]);
+      request.add_objectid(objectids[i]);
     }
     AckReply reply;
     scheduler_stub_->DecrementRefCount(&context, request, &reply);

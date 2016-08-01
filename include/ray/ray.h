@@ -6,7 +6,7 @@
 #include <algorithm>
 #include "logging.h"
 
-typedef size_t ObjRef;
+typedef size_t ObjectID;
 typedef size_t WorkerId;
 typedef size_t ObjStoreId;
 typedef size_t OperationId;

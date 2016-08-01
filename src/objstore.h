@@ -46,27 +46,27 @@ public:
   Status ObjStoreInfo(ServerContext* context, const ObjStoreInfoRequest* request, ObjStoreInfoReply* reply) override;
   void start_objstore_service();
 private:
-  void get_data_from(ObjRef objref, ObjStore::Stub& stub);
+  void get_data_from(ObjectID objectid, ObjStore::Stub& stub);
   // check if we already connected to the other objstore, if yes, return reference to connection, otherwise connect
   ObjStore::Stub& get_objstore_stub(const std::string& objstore_address);
   void process_worker_request(const ObjRequest request);
   void process_objstore_request(const ObjRequest request);
   void process_requests();
-  void process_gets_for_objref(ObjRef objref);
-  ObjHandle alloc(ObjRef objref, size_t size);
-  void object_ready(ObjRef objref, size_t metadata_offset);
+  void process_gets_for_objectid(ObjectID objectid);
+  ObjHandle alloc(ObjectID objectid, size_t size);
+  void object_ready(ObjectID objectid, size_t metadata_offset);
 
   static const size_t CHUNK_SIZE;
   std::string objstore_address_;
   ObjStoreId objstoreid_; // id of this objectstore in the scheduler object store table
   std::shared_ptr<MemorySegmentPool> segmentpool_;
   std::mutex segmentpool_lock_;
-  std::vector<std::pair<ObjHandle, MemoryStatusType> > memory_; // object reference -> (memory address, memory status)
+  std::vector<std::pair<ObjHandle, MemoryStatusType> > memory_; // object ID -> (memory address, memory status)
   std::mutex memory_lock_;
   std::unordered_map<std::string, std::unique_ptr<ObjStore::Stub>> objstores_;
   std::mutex objstores_lock_;
   std::unique_ptr<Scheduler::Stub> scheduler_stub_;
-  std::vector<std::pair<WorkerId, ObjRef> > get_queue_;
+  std::vector<std::pair<WorkerId, ObjectID> > get_queue_;
   std::mutex get_queue_lock_;
   MessageQueue<ObjRequest> recv_queue_; // This queue is used by workers to send tasks to the object store.
   std::vector<MessageQueue<ObjHandle> > send_queues_; // This maps workerid -> queue. The object store uses these queues to send replies to the relevant workers.

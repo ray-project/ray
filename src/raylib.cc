@@ -22,79 +22,79 @@ static int PyObjectToWorker(PyObject* object, Worker **worker);
 
 typedef struct {
   PyObject_HEAD
-  ObjRef val;
-  // We give the PyObjRef object a reference to the worker capsule object to
+  ObjectID id;
+  // We give the PyObjectID object a reference to the worker capsule object to
   // make sure that the worker capsule does not go out of scope until all of the
   // object references have gone out of scope. The reason for this is that the
   // worker capsule destructor destroys the worker object. If the worker object
   // has been destroyed, then when the object reference tries to call
   // worker->decrement_reference_count, we can get a segfault.
   PyObject* worker_capsule;
-} PyObjRef;
+} PyObjectID;
 
-static void PyObjRef_dealloc(PyObjRef *self) {
+static void PyObjectID_dealloc(PyObjectID *self) {
   Worker* worker;
   PyObjectToWorker(self->worker_capsule, &worker);
-  std::vector<ObjRef> objrefs;
-  objrefs.push_back(self->val);
-  worker->decrement_reference_count(objrefs);
-  Py_DECREF(self->worker_capsule); // The corresponding increment happens in PyObjRef_init.
+  std::vector<ObjectID> objectids;
+  objectids.push_back(self->id);
+  worker->decrement_reference_count(objectids);
+  Py_DECREF(self->worker_capsule); // The corresponding increment happens in PyObjectID_init.
   self->ob_type->tp_free((PyObject*) self);
 }
 
-static PyObject* PyObjRef_new(PyTypeObject *type, PyObject *args, PyObject *kwds) {
-  PyObjRef* self = (PyObjRef*) type->tp_alloc(type, 0);
+static PyObject* PyObjectID_new(PyTypeObject *type, PyObject *args, PyObject *kwds) {
+  PyObjectID* self = (PyObjectID*) type->tp_alloc(type, 0);
   if (self != NULL) {
-    self->val = 0;
+    self->id = 0;
   }
   return (PyObject*) self;
 }
 
-static int PyObjRef_init(PyObjRef *self, PyObject *args, PyObject *kwds) {
-  if (!PyArg_ParseTuple(args, "iO", &self->val, &self->worker_capsule)) {
+static int PyObjectID_init(PyObjectID *self, PyObject *args, PyObject *kwds) {
+  if (!PyArg_ParseTuple(args, "iO", &self->id, &self->worker_capsule)) {
     return -1;
   }
   Worker* worker;
   PyObjectToWorker(self->worker_capsule, &worker);
-  Py_INCREF(self->worker_capsule); // The corresponding decrement happens in PyObjRef_dealloc.
-  std::vector<ObjRef> objrefs;
-  objrefs.push_back(self->val);
-  RAY_LOG(RAY_REFCOUNT, "In PyObjRef_init, calling increment_reference_count for objref " << objrefs[0]);
-  worker->increment_reference_count(objrefs);
+  Py_INCREF(self->worker_capsule); // The corresponding decrement happens in PyObjectID_dealloc.
+  std::vector<ObjectID> objectids;
+  objectids.push_back(self->id);
+  RAY_LOG(RAY_REFCOUNT, "In PyObjectID_init, calling increment_reference_count for objectid " << objectids[0]);
+  worker->increment_reference_count(objectids);
   return 0;
 };
 
-static int PyObjRef_compare(PyObject* a, PyObject* b) {
-  PyObjRef* A = (PyObjRef*) a;
-  PyObjRef* B = (PyObjRef*) b;
-  if (A->val < B->val) {
+static int PyObjectID_compare(PyObject* a, PyObject* b) {
+  PyObjectID* A = (PyObjectID*) a;
+  PyObjectID* B = (PyObjectID*) b;
+  if (A->id < B->id) {
     return -1;
   }
-  if (A->val > B->val) {
+  if (A->id > B->id) {
     return 1;
   }
   return 0;
 }
 
-char RAY_VAL_LITERAL[] = "val";
-char RAY_OBJECT_REFERENCE_LITERAL[] = "object reference";
+char RAY_ID_LITERAL[] = "id";
+char RAY_OBJECT_ID_LITERAL[] = "object id";
 
-static PyMemberDef PyObjRef_members[] = {
-  {RAY_VAL_LITERAL, T_INT, offsetof(PyObjRef, val), 0, RAY_OBJECT_REFERENCE_LITERAL},
+static PyMemberDef PyObjectID_members[] = {
+  {RAY_ID_LITERAL, T_INT, offsetof(PyObjectID, id), 0, RAY_OBJECT_ID_LITERAL},
   {NULL}
 };
 
-static PyTypeObject PyObjRefType = {
+static PyTypeObject PyObjectIDType = {
   PyObject_HEAD_INIT(NULL)
   0,                         /* ob_size */
-  "ray.ObjRef",           /* tp_name */
-  sizeof(PyObjRef),          /* tp_basicsize */
+  "ray.ObjectID",            /* tp_name */
+  sizeof(PyObjectID),        /* tp_basicsize */
   0,                         /* tp_itemsize */
-  (destructor)PyObjRef_dealloc,          /* tp_dealloc */
+  (destructor)PyObjectID_dealloc,          /* tp_dealloc */
   0,                         /* tp_print */
   0,                         /* tp_getattr */
   0,                         /* tp_setattr */
-  PyObjRef_compare,          /* tp_compare */
+  PyObjectID_compare,        /* tp_compare */
   0,                         /* tp_repr */
   0,                         /* tp_as_number */
   0,                         /* tp_as_sequence */
@@ -106,7 +106,7 @@ static PyTypeObject PyObjRefType = {
   0,                         /* tp_setattro */
   0,                         /* tp_as_buffer */
   Py_TPFLAGS_DEFAULT,        /* tp_flags */
-  "Ray objects",            /* tp_doc */
+  "Ray objects",             /* tp_doc */
   0,                         /* tp_traverse */
   0,                         /* tp_clear */
   0,                         /* tp_richcompare */
@@ -114,22 +114,22 @@ static PyTypeObject PyObjRefType = {
   0,                         /* tp_iter */
   0,                         /* tp_iternext */
   0,                         /* tp_methods */
-  PyObjRef_members,          /* tp_members */
+  PyObjectID_members,        /* tp_members */
   0,                         /* tp_getset */
   0,                         /* tp_base */
   0,                         /* tp_dict */
   0,                         /* tp_descr_get */
   0,                         /* tp_descr_set */
   0,                         /* tp_dictoffset */
-  (initproc)PyObjRef_init,   /* tp_init */
+  (initproc)PyObjectID_init, /* tp_init */
   0,                         /* tp_alloc */
-  PyObjRef_new,              /* tp_new */
+  PyObjectID_new,            /* tp_new */
 };
 
-// create PyObjRef from C++ (could be made more efficient if neccessary)
-PyObject* make_pyobjref(PyObject* worker_capsule, ObjRef objref) {
-  PyObject* arglist = Py_BuildValue("(iO)", objref, worker_capsule);
-  PyObject* result = PyObject_CallObject((PyObject*) &PyObjRefType, arglist);
+// create PyObjectID from C++ (could be made more efficient if neccessary)
+PyObject* make_pyobjectid(PyObject* worker_capsule, ObjectID objectid) {
+  PyObject* arglist = Py_BuildValue("(iO)", objectid, worker_capsule);
+  PyObject* result = PyObject_CallObject((PyObject*) &PyObjectIDType, arglist);
   Py_DECREF(arglist);
   return result;
 }
@@ -171,9 +171,9 @@ static int PyObjectToWorker(PyObject* object, Worker **worker) {
   }
 }
 
-static int PyObjectToObjRef(PyObject* object, ObjRef *objref) {
-  if (PyObject_IsInstance(object, (PyObject*)&PyObjRefType)) {
-    *objref = ((PyObjRef*) object)->val;
+static int PyObjectToObjectID(PyObject* object, ObjectID *objectid) {
+  if (PyObject_IsInstance(object, (PyObject*)&PyObjectIDType)) {
+    *objectid = ((PyObjectID*) object)->id;
     return 1;
   } else {
     PyErr_SetString(PyExc_TypeError, "must be an object reference");
@@ -227,8 +227,8 @@ void set_dict_item_and_transfer_ownership(PyObject* dict, PyObject* key, PyObjec
 // object obj, returns 0 if successful and something else if not
 // NOTE: If some primitive types are added here, they may also need to be handled in serialization.py
 // FIXME(pcm): This currently only works for contiguous arrays
-// This method will push all of the object references contained in `obj` to the `objrefs` vector.
-int serialize(PyObject* worker_capsule, PyObject* val, Obj* obj, std::vector<ObjRef> &objrefs) {
+// This method will push all of the object references contained in `obj` to the `objectids` vector.
+int serialize(PyObject* worker_capsule, PyObject* val, Obj* obj, std::vector<ObjectID> &objectids) {
   if (PyBool_Check(val)) {
     // The bool case must precede the int case because PyInt_Check passes for bools
     Bool* data = obj->mutable_bool_data();
@@ -257,7 +257,7 @@ int serialize(PyObject* worker_capsule, PyObject* val, Obj* obj, std::vector<Obj
     Tuple* data = obj->mutable_tuple_data();
     for (size_t i = 0, size = PyTuple_Size(val); i < size; ++i) {
       Obj* elem = data->add_elem();
-      if (serialize(worker_capsule, PyTuple_GetItem(val, i), elem, objrefs) != 0) {
+      if (serialize(worker_capsule, PyTuple_GetItem(val, i), elem, objectids) != 0) {
         return -1;
       }
     }
@@ -265,7 +265,7 @@ int serialize(PyObject* worker_capsule, PyObject* val, Obj* obj, std::vector<Obj
     List* data = obj->mutable_list_data();
     for (size_t i = 0, size = PyList_Size(val); i < size; ++i) {
       Obj* elem = data->add_elem();
-      if (serialize(worker_capsule, PyList_GetItem(val, i), elem, objrefs) != 0) {
+      if (serialize(worker_capsule, PyList_GetItem(val, i), elem, objectids) != 0) {
         return -1;
       }
     }
@@ -276,11 +276,11 @@ int serialize(PyObject* worker_capsule, PyObject* val, Obj* obj, std::vector<Obj
     while (PyDict_Next(val, &pos, &pykey, &pyvalue)) {
       DictEntry* elem = data->add_elem();
       Obj* key = elem->mutable_key();
-      if (serialize(worker_capsule, pykey, key, objrefs) != 0) {
+      if (serialize(worker_capsule, pykey, key, objectids) != 0) {
         return -1;
       }
       Obj* value = elem->mutable_value();
-      if (serialize(worker_capsule, pyvalue, value, objrefs) != 0) {
+      if (serialize(worker_capsule, pyvalue, value, objectids) != 0) {
         return -1;
       }
     }
@@ -291,11 +291,11 @@ int serialize(PyObject* worker_capsule, PyObject* val, Obj* obj, std::vector<Obj
     obj->mutable_string_data()->set_data(buffer, length);
   } else if (val == Py_None) {
     obj->mutable_empty_data(); // allocate an Empty object, this is a None
-  } else if (PyObject_IsInstance(val, (PyObject*) &PyObjRefType)) {
-    ObjRef objref = ((PyObjRef*) val)->val;
-    Ref* data = obj->mutable_objref_data();
-    data->set_data(objref);
-    objrefs.push_back(objref);
+  } else if (PyObject_IsInstance(val, (PyObject*) &PyObjectIDType)) {
+    ObjectID objectid = ((PyObjectID*) val)->id;
+    ObjID* data = obj->mutable_objectid_data();
+    data->set_data(objectid);
+    objectids.push_back(objectid);
   } else if (PyArray_Check(val) || PyArray_CheckScalar(val)) { // Python int and float already handled
     Array* data = obj->mutable_array_data();
     PyArrayObject* array; // will be deallocated at the end
@@ -324,19 +324,19 @@ int serialize(PyObject* worker_capsule, PyObject* val, Obj* obj, std::vector<Obj
       RAYLIB_SERIALIZE_NPY(UINT16, npy_uint16, uint)
       RAYLIB_SERIALIZE_NPY(UINT32, npy_uint32, uint)
       RAYLIB_SERIALIZE_NPY(UINT64, npy_uint64, uint)
-      case NPY_OBJECT: { // FIXME(pcm): Support arbitrary python objects, not only objrefs
+      case NPY_OBJECT: { // FIXME(pcm): Support arbitrary python objects, not only objectids
           PyArrayIterObject* iter = (PyArrayIterObject*) PyArray_IterNew((PyObject*)array);
           while (PyArray_ITER_NOTDONE(iter)) {
             PyObject** item = (PyObject**) PyArray_ITER_DATA(iter);
-            ObjRef objref;
-            if (PyObject_IsInstance(*item, (PyObject*) &PyObjRefType)) {
-              objref = ((PyObjRef*) (*item))->val;
+            ObjectID objectid;
+            if (PyObject_IsInstance(*item, (PyObject*) &PyObjectIDType)) {
+              objectid = ((PyObjectID*) (*item))->id;
             } else {
               PyErr_SetString(PyExc_TypeError, "must be an object reference"); // TODO: improve error message
               return -1;
             }
-            data->add_objref_data(objref);
-            objrefs.push_back(objref);
+            data->add_objectid_data(objectid);
+            objectids.push_back(objectid);
             PyArray_ITER_NEXT(iter);
           }
           Py_XDECREF(iter);
@@ -364,8 +364,8 @@ int serialize(PyObject* worker_capsule, PyObject* val, Obj* obj, std::vector<Obj
   } \
   break;
 
-// This method will push all of the object references contained in `obj` to the `objrefs` vector.
-static PyObject* deserialize(PyObject* worker_capsule, const Obj& obj, std::vector<ObjRef> &objrefs) {
+// This method will push all of the object references contained in `obj` to the `objectids` vector.
+static PyObject* deserialize(PyObject* worker_capsule, const Obj& obj, std::vector<ObjectID> &objectids) {
   if (obj.has_int_data()) {
     return PyInt_FromLong(obj.int_data().data());
   } else if (obj.has_long_data()) {
@@ -383,7 +383,7 @@ static PyObject* deserialize(PyObject* worker_capsule, const Obj& obj, std::vect
     size_t size = data.elem_size();
     PyObject* tuple = PyTuple_New(size);
     for (size_t i = 0; i < size; ++i) {
-      PyTuple_SetItem(tuple, i, deserialize(worker_capsule, data.elem(i), objrefs));
+      PyTuple_SetItem(tuple, i, deserialize(worker_capsule, data.elem(i), objectids));
     }
     return tuple;
   } else if (obj.has_list_data()) {
@@ -391,7 +391,7 @@ static PyObject* deserialize(PyObject* worker_capsule, const Obj& obj, std::vect
     size_t size = data.elem_size();
     PyObject* list = PyList_New(size);
     for (size_t i = 0; i < size; ++i) {
-      PyList_SetItem(list, i, deserialize(worker_capsule, data.elem(i), objrefs));
+      PyList_SetItem(list, i, deserialize(worker_capsule, data.elem(i), objectids));
     }
     return list;
   } else if (obj.has_dict_data()) {
@@ -399,8 +399,8 @@ static PyObject* deserialize(PyObject* worker_capsule, const Obj& obj, std::vect
     PyObject* dict = PyDict_New();
     size_t size = data.elem_size();
     for (size_t i = 0; i < size; ++i) {
-      PyObject* pykey = deserialize(worker_capsule, data.elem(i).key(), objrefs);
-      PyObject* pyval = deserialize(worker_capsule, data.elem(i).value(), objrefs);
+      PyObject* pykey = deserialize(worker_capsule, data.elem(i).key(), objectids);
+      PyObject* pyval = deserialize(worker_capsule, data.elem(i).value(), objectids);
       set_dict_item_and_transfer_ownership(dict, pykey, pyval);
     }
     return dict;
@@ -410,9 +410,9 @@ static PyObject* deserialize(PyObject* worker_capsule, const Obj& obj, std::vect
     return PyString_FromStringAndSize(buffer, length);
   } else if (obj.has_empty_data()) {
     Py_RETURN_NONE;
-  } else if (obj.has_objref_data()) {
-    objrefs.push_back(obj.objref_data().data());
-    return make_pyobjref(worker_capsule, obj.objref_data().data());
+  } else if (obj.has_objectid_data()) {
+    objectids.push_back(obj.objectid_data().data());
+    return make_pyobjectid(worker_capsule, obj.objectid_data().data());
   } else if (obj.has_array_data()) {
     const Array& array = obj.array_data();
     std::vector<npy_intp> dims;
@@ -432,11 +432,11 @@ static PyObject* deserialize(PyObject* worker_capsule, const Obj& obj, std::vect
       RAYLIB_DESERIALIZE_NPY(UINT32, npy_uint32, uint)
       RAYLIB_DESERIALIZE_NPY(UINT64, npy_uint64, uint)
       case NPY_OBJECT: {
-          npy_intp size = array.objref_data_size();
+          npy_intp size = array.objectid_data_size();
           PyObject** buffer = (PyObject**) PyArray_DATA(pyarray);
           for (npy_intp i = 0; i < size; ++i) {
-            buffer[i] = make_pyobjref(worker_capsule, array.objref_data(i));
-            objrefs.push_back(array.objref_data(i));
+            buffer[i] = make_pyobjectid(worker_capsule, array.objectid_data(i));
+            objectids.push_back(array.objectid_data(i));
           }
         }
         break;
@@ -463,31 +463,31 @@ static PyObject* serialize_object(PyObject* self, PyObject* args) {
   if (!PyArg_ParseTuple(args, "OO", &worker_capsule, &pyval)) {
     return NULL;
   }
-  std::vector<ObjRef> objrefs;
-  if (serialize(worker_capsule, pyval, obj, objrefs) != 0) {
+  std::vector<ObjectID> objectids;
+  if (serialize(worker_capsule, pyval, obj, objectids) != 0) {
     return NULL;
   }
   Worker* worker;
   PyObjectToWorker(worker_capsule, &worker);
-  PyObject* contained_objrefs = PyList_New(objrefs.size());
-  for (int i = 0; i < objrefs.size(); ++i) {
-    PyList_SetItem(contained_objrefs, i, make_pyobjref(worker_capsule, objrefs[i]));
+  PyObject* contained_objectids = PyList_New(objectids.size());
+  for (int i = 0; i < objectids.size(); ++i) {
+    PyList_SetItem(contained_objectids, i, make_pyobjectid(worker_capsule, objectids[i]));
   }
   PyObject* t = PyTuple_New(2); // We set the items of the tuple using PyTuple_SetItem, because that transfers ownership to the tuple.
   PyTuple_SetItem(t, 0, PyCapsule_New(static_cast<void*>(obj), "obj", &ObjCapsule_Destructor));
-  PyTuple_SetItem(t, 1, contained_objrefs);
+  PyTuple_SetItem(t, 1, contained_objectids);
   return t;
 }
 
 static PyObject* allocate_buffer(PyObject* self, PyObject* args) {
   Worker* worker;
-  ObjRef objref;
+  ObjectID objectid;
   SegmentId segmentid;
   long size;
-  if (!PyArg_ParseTuple(args, "O&O&l", &PyObjectToWorker, &worker, &PyObjectToObjRef, &objref, &size)) {
+  if (!PyArg_ParseTuple(args, "O&O&l", &PyObjectToWorker, &worker, &PyObjectToObjectID, &objectid, &size)) {
     return NULL;
   }
-  void* address = reinterpret_cast<void*>(const_cast<char*>(worker->allocate_buffer(objref, size, segmentid)));
+  void* address = reinterpret_cast<void*>(const_cast<char*>(worker->allocate_buffer(objectid, size, segmentid)));
   std::vector<npy_intp> dim({size});
   PyObject* t = PyTuple_New(2);
   PyTuple_SetItem(t, 0, PyArray_SimpleNewFromData(1, dim.data(), NPY_BYTE, address));
@@ -497,25 +497,25 @@ static PyObject* allocate_buffer(PyObject* self, PyObject* args) {
 
 static PyObject* finish_buffer(PyObject* self, PyObject* args) {
   Worker* worker;
-  ObjRef objref;
+  ObjectID objectid;
   long segmentid;
   long metadata_offset;
-  if (!PyArg_ParseTuple(args, "O&O&ll", &PyObjectToWorker, &worker, &PyObjectToObjRef, &objref, &segmentid, &metadata_offset)) {
+  if (!PyArg_ParseTuple(args, "O&O&ll", &PyObjectToWorker, &worker, &PyObjectToObjectID, &objectid, &segmentid, &metadata_offset)) {
     return NULL;
   }
-  return worker->finish_buffer(objref, segmentid, metadata_offset);
+  return worker->finish_buffer(objectid, segmentid, metadata_offset);
 }
 
 static PyObject* get_buffer(PyObject* self, PyObject* args) {
   Worker* worker;
-  ObjRef objref;
+  ObjectID objectid;
   int64_t size;
   SegmentId segmentid;
   int64_t metadata_offset;
-  if (!PyArg_ParseTuple(args, "O&O&", &PyObjectToWorker, &worker, &PyObjectToObjRef, &objref)) {
+  if (!PyArg_ParseTuple(args, "O&O&", &PyObjectToWorker, &worker, &PyObjectToObjectID, &objectid)) {
     return NULL;
   }
-  void* address = reinterpret_cast<void*>(const_cast<char*>(worker->get_buffer(objref, size, segmentid, metadata_offset)));
+  void* address = reinterpret_cast<void*>(const_cast<char*>(worker->get_buffer(objectid, size, segmentid, metadata_offset)));
   std::vector<npy_intp> dim({static_cast<npy_intp>(size)});
   PyObject* t = PyTuple_New(3);
   PyTuple_SetItem(t, 0, PyArray_SimpleNewFromData(1, dim.data(), NPY_BYTE, address));
@@ -526,11 +526,11 @@ static PyObject* get_buffer(PyObject* self, PyObject* args) {
 
 static PyObject* is_arrow(PyObject* self, PyObject* args) {
   Worker* worker;
-  ObjRef objref;
-  if (!PyArg_ParseTuple(args, "O&O&", &PyObjectToWorker, &worker, &PyObjectToObjRef, &objref)) {
+  ObjectID objectid;
+  if (!PyArg_ParseTuple(args, "O&O&", &PyObjectToWorker, &worker, &PyObjectToObjectID, &objectid)) {
     return NULL;
   }
-  if (worker->is_arrow(objref))
+  if (worker->is_arrow(objectid))
     Py_RETURN_TRUE;
   else
     Py_RETURN_FALSE;
@@ -552,9 +552,9 @@ static PyObject* deserialize_object(PyObject* self, PyObject* args) {
   if (!PyArg_ParseTuple(args, "OO&", &worker_capsule, &PyObjectToObj, &obj)) {
     return NULL;
   }
-  std::vector<ObjRef> objrefs; // This is a vector of all the objrefs that are serialized in this task, including objrefs that are contained in Python objects that are passed by value.
-  return deserialize(worker_capsule, *obj, objrefs);
-  // TODO(rkn): Should we do anything with objrefs?
+  std::vector<ObjectID> objectids; // This is a vector of all the objectids that are serialized in this task, including objectids that are contained in Python objects that are passed by value.
+  return deserialize(worker_capsule, *obj, objectids);
+  // TODO(rkn): Should we do anything with objectids?
 }
 
 static PyObject* serialize_task(PyObject* self, PyObject* args) {
@@ -567,17 +567,17 @@ static PyObject* serialize_task(PyObject* self, PyObject* args) {
     return NULL;
   }
   task->set_name(name, len);
-  std::vector<ObjRef> objrefs; // This is a vector of all the objrefs that are serialized in this task, including objrefs that are contained in Python objects that are passed by value.
+  std::vector<ObjectID> objectids; // This is a vector of all the objectids that are serialized in this task, including objectids that are contained in Python objects that are passed by value.
   if (PyList_Check(arguments)) {
     for (size_t i = 0, size = PyList_Size(arguments); i < size; ++i) {
       PyObject* element = PyList_GetItem(arguments, i);
-      if (PyObject_IsInstance(element, (PyObject*)&PyObjRefType)) {
-        ObjRef objref = ((PyObjRef*) element)->val;
-        task->add_arg()->set_ref(objref);
-        objrefs.push_back(objref);
+      if (PyObject_IsInstance(element, (PyObject*)&PyObjectIDType)) {
+        ObjectID objectid = ((PyObjectID*) element)->id;
+        task->add_arg()->set_id(objectid);
+        objectids.push_back(objectid);
       } else {
         Obj* arg = task->add_arg()->mutable_obj();
-        serialize(worker_capsule, PyList_GetItem(arguments, i), arg, objrefs);
+        serialize(worker_capsule, PyList_GetItem(arguments, i), arg, objectids);
       }
     }
   } else {
@@ -586,9 +586,9 @@ static PyObject* serialize_task(PyObject* self, PyObject* args) {
   }
   Worker* worker;
   PyObjectToWorker(worker_capsule, &worker);
-  if (objrefs.size() > 0) {
-    RAY_LOG(RAY_REFCOUNT, "In serialize_task, calling increment_reference_count for contained objrefs");
-    worker->increment_reference_count(objrefs);
+  if (objectids.size() > 0) {
+    RAY_LOG(RAY_REFCOUNT, "In serialize_task, calling increment_reference_count for contained objectids");
+    worker->increment_reference_count(objectids);
   }
   std::string output;
   task->SerializeToString(&output);
@@ -608,30 +608,30 @@ static PyObject* serialize_task(PyObject* self, PyObject* args) {
 }
 
 static PyObject* deserialize_task(PyObject* worker_capsule, const Task& task) {
-  std::vector<ObjRef> objrefs; // This is a vector of all the objrefs that were serialized in this task, including objrefs that are contained in Python objects that are passed by value.
+  std::vector<ObjectID> objectids; // This is a vector of all the objectids that were serialized in this task, including objectids that are contained in Python objects that are passed by value.
   PyObject* string = PyString_FromStringAndSize(task.name().c_str(), task.name().size());
   int argsize = task.arg_size();
   PyObject* arglist = PyList_New(argsize);
   for (int i = 0; i < argsize; ++i) {
     const Value& val = task.arg(i);
     if (!val.has_obj()) {
-      PyList_SetItem(arglist, i, make_pyobjref(worker_capsule, val.ref()));
-      objrefs.push_back(val.ref());
+      PyList_SetItem(arglist, i, make_pyobjectid(worker_capsule, val.id()));
+      objectids.push_back(val.id());
     } else {
-      PyList_SetItem(arglist, i, deserialize(worker_capsule, val.obj(), objrefs));
+      PyList_SetItem(arglist, i, deserialize(worker_capsule, val.obj(), objectids));
     }
   }
   Worker* worker;
   PyObjectToWorker(worker_capsule, &worker);
-  worker->decrement_reference_count(objrefs);
+  worker->decrement_reference_count(objectids);
   int resultsize = task.result_size();
-  std::vector<ObjRef> result_objrefs;
+  std::vector<ObjectID> result_objectids;
   PyObject* resultlist = PyList_New(resultsize);
   for (int i = 0; i < resultsize; ++i) {
-    PyList_SetItem(resultlist, i, make_pyobjref(worker_capsule, task.result(i)));
-    result_objrefs.push_back(task.result(i));
+    PyList_SetItem(resultlist, i, make_pyobjectid(worker_capsule, task.result(i)));
+    result_objectids.push_back(task.result(i));
   }
-  worker->decrement_reference_count(result_objrefs); // The corresponding increment is done in SubmitTask in the scheduler.
+  worker->decrement_reference_count(result_objectids); // The corresponding increment is done in SubmitTask in the scheduler.
   PyObject* t = PyTuple_New(3); // We set the items of the tuple using PyTuple_SetItem, because that transfers ownership to the tuple.
   PyTuple_SetItem(t, 0, string);
   PyTuple_SetItem(t, 1, arglist);
@@ -764,12 +764,12 @@ static PyObject* submit_task(PyObject* self, PyObject* args) {
   request.release_task(); // TODO: Make sure that task is not moved, otherwise capsule pointer needs to be updated
   int size = reply.result_size();
   PyObject* list = PyList_New(size);
-  std::vector<ObjRef> result_objrefs;
+  std::vector<ObjectID> result_objectids;
   for (int i = 0; i < size; ++i) {
-    PyList_SetItem(list, i, make_pyobjref(worker_capsule, reply.result(i)));
-    result_objrefs.push_back(reply.result(i));
+    PyList_SetItem(list, i, make_pyobjectid(worker_capsule, reply.result(i)));
+    result_objectids.push_back(reply.result(i));
   }
-  worker->decrement_reference_count(result_objrefs); // The corresponding increment is done in SubmitTask in the scheduler.
+  worker->decrement_reference_count(result_objectids); // The corresponding increment is done in SubmitTask in the scheduler.
   return list;
 }
 
@@ -797,45 +797,45 @@ static PyObject* register_function(PyObject* self, PyObject* args) {
   Py_RETURN_NONE;
 }
 
-static PyObject* get_objref(PyObject* self, PyObject* args) {
+static PyObject* get_objectid(PyObject* self, PyObject* args) {
   PyObject* worker_capsule;
   if (!PyArg_ParseTuple(args, "O", &worker_capsule)) {
     return NULL;
   }
   Worker* worker;
   PyObjectToWorker(worker_capsule, &worker);
-  ObjRef objref = worker->get_objref();
-  return make_pyobjref(worker_capsule, objref);
+  ObjectID objectid = worker->get_objectid();
+  return make_pyobjectid(worker_capsule, objectid);
 }
 
 static PyObject* put_object(PyObject* self, PyObject* args) {
   Worker* worker;
-  ObjRef objref;
+  ObjectID objectid;
   Obj* obj;
-  PyObject* contained_objrefs;
-  if (!PyArg_ParseTuple(args, "O&O&O&O", &PyObjectToWorker, &worker, &PyObjectToObjRef, &objref, &PyObjectToObj, &obj, &contained_objrefs)) {
+  PyObject* contained_objectids;
+  if (!PyArg_ParseTuple(args, "O&O&O&O", &PyObjectToWorker, &worker, &PyObjectToObjectID, &objectid, &PyObjectToObj, &obj, &contained_objectids)) {
     return NULL;
   }
-  RAY_CHECK(PyList_Check(contained_objrefs), "The contained_objrefs argument must be a list.")
-  std::vector<ObjRef> vec_contained_objrefs;
-  size_t size = PyList_Size(contained_objrefs);
+  RAY_CHECK(PyList_Check(contained_objectids), "The contained_objectids argument must be a list.")
+  std::vector<ObjectID> vec_contained_objectids;
+  size_t size = PyList_Size(contained_objectids);
   for (size_t i = 0; i < size; ++i) {
-    ObjRef contained_objref;
-    PyObjectToObjRef(PyList_GetItem(contained_objrefs, i), &contained_objref);
-    vec_contained_objrefs.push_back(contained_objref);
+    ObjectID contained_objectid;
+    PyObjectToObjectID(PyList_GetItem(contained_objectids, i), &contained_objectid);
+    vec_contained_objectids.push_back(contained_objectid);
   }
-  worker->put_object(objref, obj, vec_contained_objrefs);
+  worker->put_object(objectid, obj, vec_contained_objectids);
   Py_RETURN_NONE;
 }
 
 static PyObject* get_object(PyObject* self, PyObject* args) {
-  // get_object assumes that objref is a canonical objref
+  // get_object assumes that objectid is a canonical objectid
   Worker* worker;
-  ObjRef objref;
-  if (!PyArg_ParseTuple(args, "O&O&", &PyObjectToWorker, &worker, &PyObjectToObjRef, &objref)) {
+  ObjectID objectid;
+  if (!PyArg_ParseTuple(args, "O&O&", &PyObjectToWorker, &worker, &PyObjectToObjectID, &objectid)) {
     return NULL;
   }
-  slice s = worker->get_object(objref);
+  slice s = worker->get_object(objectid);
   Obj* obj = new Obj(); // TODO: Make sure this will get deleted
   obj->ParseFromString(std::string(reinterpret_cast<char*>(s.data), s.len));
   PyObject* result = PyList_New(2);
@@ -846,22 +846,22 @@ static PyObject* get_object(PyObject* self, PyObject* args) {
 
 static PyObject* request_object(PyObject* self, PyObject* args) {
   Worker* worker;
-  ObjRef objref;
-  if (!PyArg_ParseTuple(args, "O&O&", &PyObjectToWorker, &worker, &PyObjectToObjRef, &objref)) {
+  ObjectID objectid;
+  if (!PyArg_ParseTuple(args, "O&O&", &PyObjectToWorker, &worker, &PyObjectToObjectID, &objectid)) {
     return NULL;
   }
-  worker->request_object(objref);
+  worker->request_object(objectid);
   Py_RETURN_NONE;
 }
 
-static PyObject* alias_objrefs(PyObject* self, PyObject* args) {
+static PyObject* alias_objectids(PyObject* self, PyObject* args) {
   Worker* worker;
-  ObjRef alias_objref;
-  ObjRef target_objref;
-  if (!PyArg_ParseTuple(args, "O&O&O&", &PyObjectToWorker, &worker, &PyObjectToObjRef, &alias_objref, &PyObjectToObjRef, &target_objref)) {
+  ObjectID alias_objectid;
+  ObjectID target_objectid;
+  if (!PyArg_ParseTuple(args, "O&O&O&", &PyObjectToWorker, &worker, &PyObjectToObjectID, &alias_objectid, &PyObjectToObjectID, &target_objectid)) {
     return NULL;
   }
-  worker->alias_objrefs(alias_objref, target_objref);
+  worker->alias_objectids(alias_objectid, target_objectid);
   Py_RETURN_NONE;
 }
 
@@ -884,9 +884,9 @@ static PyObject* scheduler_info(PyObject* self, PyObject* args) {
   SchedulerInfoReply reply;
   worker->scheduler_info(context, request, reply);
 
-  PyObject* target_objref_list = PyList_New(reply.target_objref_size());
-  for (size_t i = 0; i < reply.target_objref_size(); ++i) {
-    PyList_SetItem(target_objref_list, i, PyInt_FromLong(reply.target_objref(i)));
+  PyObject* target_objectid_list = PyList_New(reply.target_objectid_size());
+  for (size_t i = 0; i < reply.target_objectid_size(); ++i) {
+    PyList_SetItem(target_objectid_list, i, PyInt_FromLong(reply.target_objectid(i)));
   }
   PyObject* reference_count_list = PyList_New(reply.reference_count_size());
   for (size_t i = 0; i < reply.reference_count_size(); ++i) {
@@ -894,7 +894,7 @@ static PyObject* scheduler_info(PyObject* self, PyObject* args) {
   }
 
   PyObject* dict = PyDict_New();
-  set_dict_item_and_transfer_ownership(dict, PyString_FromString("target_objrefs"), target_objref_list);
+  set_dict_item_and_transfer_ownership(dict, PyString_FromString("target_objectids"), target_objectid_list);
   set_dict_item_and_transfer_ownership(dict, PyString_FromString("reference_counts"), reference_count_list);
   return dict;
 }
@@ -979,9 +979,9 @@ static PyObject* kill_workers(PyObject* self, PyObject* args) {
 static PyMethodDef RayLibMethods[] = {
  { "serialize_object", serialize_object, METH_VARARGS, "serialize an object to protocol buffers" },
  { "deserialize_object", deserialize_object, METH_VARARGS, "deserialize an object from protocol buffers" },
- { "allocate_buffer", allocate_buffer, METH_VARARGS, "Allocates and returns buffer for objref."},
- { "finish_buffer", finish_buffer, METH_VARARGS, "Makes the buffer immutable and closes memory segment of objref."},
- { "get_buffer", get_buffer, METH_VARARGS, "Gets buffer for objref"},
+ { "allocate_buffer", allocate_buffer, METH_VARARGS, "Allocates and returns buffer for objectid."},
+ { "finish_buffer", finish_buffer, METH_VARARGS, "Makes the buffer immutable and closes memory segment of objectid."},
+ { "get_buffer", get_buffer, METH_VARARGS, "Gets buffer for objectid"},
  { "is_arrow", is_arrow, METH_VARARGS, "is the object in the local object store an arrow object?"},
  { "unmap_object", unmap_object, METH_VARARGS, "unmap the object from the client's shared memory pool"},
  { "serialize_task", serialize_task, METH_VARARGS, "serialize a task to protocol buffers" },
@@ -991,9 +991,9 @@ static PyMethodDef RayLibMethods[] = {
  { "register_function", register_function, METH_VARARGS, "register a function with the scheduler" },
  { "put_object", put_object, METH_VARARGS, "put a protocol buffer object (given as a capsule) on the local object store" },
  { "get_object", get_object, METH_VARARGS, "get protocol buffer object from the local object store" },
- { "get_objref", get_objref, METH_VARARGS, "register a new object reference with the scheduler" },
+ { "get_objectid", get_objectid, METH_VARARGS, "register a new object reference with the scheduler" },
  { "request_object" , request_object, METH_VARARGS, "request an object to be delivered to the local object store" },
- { "alias_objrefs", alias_objrefs, METH_VARARGS, "make two objrefs refer to the same object" },
+ { "alias_objectids", alias_objectids, METH_VARARGS, "make two objectids refer to the same object" },
  { "wait_for_next_message", wait_for_next_message, METH_VARARGS, "get next message from scheduler (blocking)" },
  { "submit_task", submit_task, METH_VARARGS, "call a remote function" },
  { "notify_task_completed", notify_task_completed, METH_VARARGS, "notify the scheduler that a task has been completed" },
@@ -1010,13 +1010,13 @@ static PyMethodDef RayLibMethods[] = {
 
 PyMODINIT_FUNC initlibraylib(void) {
   PyObject* m;
-  PyObjRefType.tp_new = PyType_GenericNew;
-  if (PyType_Ready(&PyObjRefType) < 0) {
+  PyObjectIDType.tp_new = PyType_GenericNew;
+  if (PyType_Ready(&PyObjectIDType) < 0) {
     return;
   }
   m = Py_InitModule3("libraylib", RayLibMethods, "Python C Extension for Ray");
-  Py_INCREF(&PyObjRefType);
-  PyModule_AddObject(m, "ObjRef", (PyObject *)&PyObjRefType);
+  Py_INCREF(&PyObjectIDType);
+  PyModule_AddObject(m, "ObjectID", (PyObject *)&PyObjectIDType);
   char ray_error[] = "ray.error";
   char ray_size_error[] = "ray_size.error";
   RayError = PyErr_NewException(ray_error, NULL, NULL);

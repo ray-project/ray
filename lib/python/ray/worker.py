@@ -75,12 +75,12 @@ class RayFailedObject(object):
 class RayDealloc(object):
   """An object used internally to properly implement reference counting.
 
-  When we call get_object with a particular object reference, we create a
-  RayDealloc object with the information necessary to properly handle closing
-  the relevant memory segment when the object is no longer needed by the worker.
-  The RayDealloc object is stored as a field in the object returned by
-  get_object so that its destructor is only called when the worker no longer has
-  any references to the object.
+  When we call get_object with a particular object ID, we create a RayDealloc
+  object with the information necessary to properly handle closing the relevant
+  memory segment when the object is no longer needed by the worker. The
+  RayDealloc object is stored as a field in the object returned by get_object so
+  that its destructor is only called when the worker no longer has any
+  references to the object.
 
   Attributes
     handle (worker capsule): A Python object wrapping a C++ Worker object.
@@ -293,14 +293,14 @@ class Worker(object):
     self.mode = mode
     colorama.init()
 
-  def put_object(self, objref, value):
-    """Put value in the local object store with object reference objref.
+  def put_object(self, objectid, value):
+    """Put value in the local object store with object id objectid.
 
-    This assumes that the value for objref has not yet been placed in the
+    This assumes that the value for objectid has not yet been placed in the
     local object store.
 
     Args:
-      objref (ray.ObjRef): The object reference of the value to be put.
+      objectid (ray.ObjectID): The object ID of the value to be put.
       value (serializable object): The value to put in the object store.
     """
     try:
@@ -312,7 +312,7 @@ class Worker(object):
       # the len(schema) is for storing the metadata and the 4096 is for storing
       # the metadata in the batch (see INITIAL_METADATA_SIZE in arrow)
       size = size + 8 + len(schema) + 4096
-      buff, segmentid = ray.lib.allocate_buffer(self.handle, objref, size)
+      buff, segmentid = ray.lib.allocate_buffer(self.handle, objectid, size)
       # write the metadata length
       np.frombuffer(buff, dtype="int64", count=1)[0] = len(schema)
       # metadata buffer
@@ -321,25 +321,25 @@ class Worker(object):
       metadata[:] = schema
       data = np.frombuffer(buff, dtype="byte")[8 + len(schema):]
       metadata_offset = libnumbuf.write_to_buffer(serialized, memoryview(data))
-      ray.lib.finish_buffer(self.handle, objref, segmentid, metadata_offset)
+      ray.lib.finish_buffer(self.handle, objectid, segmentid, metadata_offset)
     except:
-      # At the moment, custom object and objects that contain object references take this path
+      # At the moment, custom object and objects that contain object IDs take this path
       # TODO(pcm): Make sure that these are the only objects getting serialized to protobuf
-      object_capsule, contained_objrefs = serialization.serialize(self.handle, value) # contained_objrefs is a list of the objrefs contained in object_capsule
-      ray.lib.put_object(self.handle, objref, object_capsule, contained_objrefs)
+      object_capsule, contained_objectids = serialization.serialize(self.handle, value) # contained_objectids is a list of the objectids contained in object_capsule
+      ray.lib.put_object(self.handle, objectid, object_capsule, contained_objectids)
 
-  def get_object(self, objref):
-    """Get the value in the local object store associated with objref.
+  def get_object(self, objectid):
+    """Get the value in the local object store associated with objectid.
 
-    Return the value from the local object store for objref. This will block
-    until the value for objref has been written to the local object store.
+    Return the value from the local object store for objectid. This will block
+    until the value for objectid has been written to the local object store.
 
     Args:
-      objref (ray.ObjRef): The object reference of the value to retrieve.
+      objectid (ray.ObjectID): The object ID of the value to retrieve.
     """
-    if ray.lib.is_arrow(self.handle, objref):
+    if ray.lib.is_arrow(self.handle, objectid):
       ## this is the new codepath
-      buff, segmentid, metadata_offset = ray.lib.get_buffer(self.handle, objref)
+      buff, segmentid, metadata_offset = ray.lib.get_buffer(self.handle, objectid)
       metadata_size = np.frombuffer(buff, dtype="int64", count=1)[0]
       metadata = np.frombuffer(buff, dtype="byte", offset=8, count=metadata_size)
       data = np.frombuffer(buff, dtype="byte")[8 + metadata_size:]
@@ -349,9 +349,9 @@ class Worker(object):
       assert len(deserialized) == 1
       result = deserialized[0]
       ## this is the old codepath
-      # result, segmentid = ray.lib.get_arrow(self.handle, objref)
+      # result, segmentid = ray.lib.get_arrow(self.handle, objectid)
     else:
-      object_capsule, segmentid = ray.lib.get_object(self.handle, objref)
+      object_capsule, segmentid = ray.lib.get_object(self.handle, objectid)
       result = serialization.deserialize(self.handle, object_capsule)
 
     if isinstance(result, int):
@@ -379,13 +379,13 @@ class Worker(object):
     elif result == None:
       ray.lib.unmap_object(self.handle, segmentid) # need to unmap here because result is passed back "by value" and we have no reference to unmap later
       return None # can't subclass None and don't need to because there is a global None
-    result.ray_objref = objref # TODO(pcm): This could be done only for the "get" case in the future if we want to increase performance
+    result.ray_objectid = objectid # TODO(pcm): This could be done only for the "get" case in the future if we want to increase performance
     result.ray_deallocator = RayDealloc(self.handle, segmentid)
     return result
 
-  def alias_objrefs(self, alias_objref, target_objref):
-    """Make two object references refer to the same object."""
-    ray.lib.alias_objrefs(self.handle, alias_objref, target_objref)
+  def alias_objectids(self, alias_objectid, target_objectid):
+    """Make two object IDs refer to the same object."""
+    ray.lib.alias_objectids(self.handle, alias_objectid, target_objectid)
 
   def register_function(self, function):
     """Register a function with the scheduler.
@@ -405,20 +405,20 @@ class Worker(object):
     """Submit a remote task to the scheduler.
 
     Tell the scheduler to schedule the execution of the function with name
-    func_name with arguments args. Retrieve object references for the outputs of
+    func_name with arguments args. Retrieve object IDs for the outputs of
     the function from the scheduler and immediately return them.
 
     Args:
       func_name (str): The name of the function to be executed.
       args (List[Any]): The arguments to pass into the function. Arguments can
-        be object references or they can be values. If they are values, they
+        be object IDs or they can be values. If they are values, they
         must be serializable objecs.
     """
     task_capsule = serialization.serialize_task(self.handle, func_name, args)
-    objrefs = ray.lib.submit_task(self.handle, task_capsule)
+    objectids = ray.lib.submit_task(self.handle, task_capsule)
     if self.mode in [ray.SHELL_MODE, ray.SCRIPT_MODE]:
       print_task_info(ray.lib.task_info(self.handle), self.mode)
-    return objrefs
+    return objectids
 
 global_worker = Worker()
 """Worker: The global Worker object for this worker process.
@@ -645,29 +645,29 @@ def disconnect(worker=global_worker):
   worker.cached_remote_functions = []
   reusables._cached_reusables = []
 
-def get(objref, worker=global_worker):
+def get(objectid, worker=global_worker):
   """Get a remote object from an object store.
 
-  This method blocks until the object corresponding to objref is available in
+  This method blocks until the object corresponding to objectid is available in
   the local object store. If this object is not in the local object store, it
   will be shipped from an object store that has it (once the object has been
   created).
 
   Args:
-    objref (ray.ObjRef): Object reference to the object to get.
+    objectid (ray.ObjectID): Object ID to the object to get.
 
   Returns:
     A Python object
   """
   check_connected(worker)
   if worker.mode == ray.PYTHON_MODE:
-    return objref # In ray.PYTHON_MODE, ray.get is the identity operation (the input will actually be a value not an objref)
-  ray.lib.request_object(worker.handle, objref)
+    return objectid # In ray.PYTHON_MODE, ray.get is the identity operation (the input will actually be a value not an objectid)
+  ray.lib.request_object(worker.handle, objectid)
   if worker.mode in [ray.SHELL_MODE, ray.SCRIPT_MODE]:
     print_task_info(ray.lib.task_info(worker.handle), worker.mode)
-  value = worker.get_object(objref)
+  value = worker.get_object(objectid)
   if isinstance(value, RayFailedObject):
-    raise Exception("The task that created this object reference failed with error message:\n{}".format(value.error_message))
+    raise Exception("The task that created this object ID failed with error message:\n{}".format(value.error_message))
   return value
 
 def put(value, worker=global_worker):
@@ -677,16 +677,16 @@ def put(value, worker=global_worker):
     value (serializable object): The Python object to be stored.
 
   Returns:
-    The object reference assigned to this value.
+    The object ID assigned to this value.
   """
   check_connected(worker)
   if worker.mode == ray.PYTHON_MODE:
     return value # In ray.PYTHON_MODE, ray.put is the identity operation
-  objref = ray.lib.get_objref(worker.handle)
-  worker.put_object(objref, value)
+  objectid = ray.lib.get_objectid(worker.handle)
+  worker.put_object(objectid, value)
   if worker.mode in [ray.SHELL_MODE, ray.SCRIPT_MODE]:
     print_task_info(ray.lib.task_info(worker.handle), worker.mode)
-  return objref
+  return objectid
 
 def kill_workers(worker=global_worker):
   """Kill all of the workers in the cluster. This does not kill drivers.
@@ -748,7 +748,7 @@ def main_loop(worker=global_worker):
 
   This method is an infinite loop. It waits to receive tasks from the scheduler.
   When it receives a task, it first deserializes the task. Then it retrieves the
-  values for any arguments that were passed in as object references. Then it
+  values for any arguments that were passed in as object IDs. Then it
   passes the arguments to the actual function. Then it stores the outputs of the
   function in the local object store. Then it notifies the scheduler that it
   completed the task.
@@ -763,22 +763,22 @@ def main_loop(worker=global_worker):
     raise Exception("Worker is attempting to enter main_loop but has not been connected yet.")
   ray.lib.start_worker_service(worker.handle)
   def process_task(task): # wrapping these lines in a function should cause the local variables to go out of scope more quickly, which is useful for inspecting reference counts
-    func_name, args, return_objrefs = serialization.deserialize_task(worker.handle, task)
+    func_name, args, return_objectids = serialization.deserialize_task(worker.handle, task)
     try:
       arguments = get_arguments_for_execution(worker.functions[func_name], args, worker) # get args from objstore
       outputs = worker.functions[func_name].executor(arguments) # execute the function
-      if len(return_objrefs) == 1:
+      if len(return_objectids) == 1:
         outputs = (outputs,)
     except Exception:
       exception_message = format_error_message(traceback.format_exc())
       # Here we are storing RayFailedObjects in the object store to indicate
       # failure (this is only interpreted by the worker).
-      failure_objects = [RayFailedObject(exception_message) for _ in range(len(return_objrefs))]
-      store_outputs_in_objstore(return_objrefs, failure_objects, worker)
+      failure_objects = [RayFailedObject(exception_message) for _ in range(len(return_objectids))]
+      store_outputs_in_objstore(return_objectids, failure_objects, worker)
       ray.lib.notify_task_completed(worker.handle, False, exception_message) # notify the scheduler that the task threw an exception
       _logger().info("Worker threw exception with message: \n\n{}\n, while running function {}.".format(exception_message, func_name))
     else:
-      store_outputs_in_objstore(return_objrefs, outputs, worker) # store output in local object store
+      store_outputs_in_objstore(return_objectids, outputs, worker) # store output in local object store
       ray.lib.notify_task_completed(worker.handle, True, "") # notify the scheduler that the task completed successfully
     finally:
       # Reinitialize the values of reusable variables that were used in the task
@@ -868,11 +868,11 @@ def remote(arg_types, return_types, worker=global_worker):
         # match the usual behavior of immutable remote objects.
         return func(*copy.deepcopy(args))
       check_arguments(arg_types, has_vararg_param, func_name, args) # throws an exception if args are invalid
-      objrefs = _submit_task(func_name, args)
-      if len(objrefs) == 1:
-        return objrefs[0]
-      elif len(objrefs) > 1:
-        return objrefs
+      objectids = _submit_task(func_name, args)
+      if len(objectids) == 1:
+        return objectids[0]
+      elif len(objectids) > 1:
+        return objectids
     def func_executor(arguments):
       """This gets run when the remote function is executed."""
       _logger().info("Calling function {}".format(func.__name__))
@@ -977,8 +977,8 @@ def check_return_values(function, result):
   # Here we do some limited type checking to make sure the return values have
   # the right types.
   for i in range(len(result)):
-    if (not issubclass(type(result[i]), function.return_types[i])) and (not isinstance(result[i], ray.lib.ObjRef)):
-      raise Exception("The {}th return value for function {} has type {}, but the @remote decorator expected a return value of type {} or an ObjRef.".format(i, function.__name__, type(result[i]), function.return_types[i]))
+    if (not issubclass(type(result[i]), function.return_types[i])) and (not isinstance(result[i], ray.lib.ObjectID)):
+      raise Exception("The {}th return value for function {} has type {}, but the @remote decorator expected a return value of type {} or an ObjectID.".format(i, function.__name__, type(result[i]), function.return_types[i]))
 
 def typecheck_arg(arg, expected_type, i, name):
   """Check that an argument has the expected type.
@@ -1033,8 +1033,8 @@ def check_arguments(arg_types, has_vararg_param, name, args):
     else:
       assert False, "This code should be unreachable."
 
-    if isinstance(arg, ray.lib.ObjRef):
-      # TODO(rkn): When we have type information in the ObjRef, do type checking here.
+    if isinstance(arg, ray.ObjectID):
+      # TODO(rkn): When we have type information in the ObjectID, do type checking here.
       pass
     else:
       typecheck_arg(arg, expected_type, i, name)
@@ -1043,9 +1043,9 @@ def get_arguments_for_execution(function, args, worker=global_worker):
   """Retrieve the arguments for the remote function.
 
   This retrieves the values for the arguments to the remote function that were
-  passed in as object references. Argumens that were passed by value are not
-  changed. This also does some type checking. This is called by the worker that
-  is executing the remote function.
+  passed in as object IDs. Argumens that were passed by value are not changed.
+  This also does some type checking. This is called by the worker that is
+  executing the remote function.
 
   Args:
     function (Callable): The remote function whose arguments are being
@@ -1075,7 +1075,7 @@ def get_arguments_for_execution(function, args, worker=global_worker):
     else:
       assert False, "This code should be unreachable."
 
-    if isinstance(arg, ray.lib.ObjRef):
+    if isinstance(arg, ray.ObjectID):
       # get the object from the local object store
       _logger().info("Getting argument {} for function {}.".format(i, function.__name__))
       argument = worker.get_object(arg)
@@ -1088,31 +1088,30 @@ def get_arguments_for_execution(function, args, worker=global_worker):
     arguments.append(argument)
   return arguments
 
-def store_outputs_in_objstore(objrefs, outputs, worker=global_worker):
+def store_outputs_in_objstore(objectids, outputs, worker=global_worker):
   """Store the outputs of a remote function in the local object store.
 
   This stores the values that were returned by a remote function in the local
-  object store. If any of the return values are object references, then these
-  object references are aliased with the object references that the scheduler
-  assigned for the return values. This is called by the worker that executes the
-  remote function.
+  object store. If any of the return values are object IDs, then these object
+  IDs are aliased with the object IDs that the scheduler assigned for the return
+  values. This is called by the worker that executes the remote function.
 
   Note:
-    The arguments objrefs and outputs should have the same length.
+    The arguments objectids and outputs should have the same length.
 
   Args:
-    objrefs (List[ray.ObjRef]): The object references that were assigned to the
+    objectids (List[ray.ObjectID]): The object IDs that were assigned to the
       outputs of the remote function call.
     outputs (Tuple): The value returned by the remote function. If the remote
       function was supposed to only return one value, then its output was
       wrapped in a tuple with one element prior to being passed into this
       function.
   """
-  for i in range(len(objrefs)):
-    if isinstance(outputs[i], ray.lib.ObjRef):
-      # An ObjRef is being returned, so we must alias objrefs[i] so that it refers to the same object that outputs[i] refers to
-      _logger().info("Aliasing objrefs {} and {}".format(objrefs[i].val, outputs[i].val))
-      worker.alias_objrefs(objrefs[i], outputs[i])
+  for i in range(len(objectids)):
+    if isinstance(outputs[i], ray.ObjectID):
+      # An ObjectID is being returned, so we must alias objectids[i] so that it refers to the same object that outputs[i] refers to
+      _logger().info("Aliasing objectids {} and {}".format(objectids[i].id, outputs[i].id))
+      worker.alias_objectids(objectids[i], outputs[i])
       pass
     else:
-      worker.put_object(objrefs[i], outputs[i])
+      worker.put_object(objectids[i], outputs[i])

@@ -50,13 +50,13 @@ perform rollouts and compute gradients. If we have at least ten worker
 processes, then these tasks will all be executed in parallel.
 
 ```python
-model_ref = ray.put(model)
+model_id = ray.put(model)
 grads, reward_sums = [], []
 # Launch tasks to compute gradients from multiple rollouts in parallel.
 for i in range(10):
-  grad_ref, reward_sum_ref = compute_gradient.remote(model_ref)
-  grads.append(grad_ref)
-  reward_sums.append(reward_sum_ref)
+  grad_id, reward_sum_id = compute_gradient.remote(model_id)
+  grads.append(grad_id)
+  reward_sums.append(reward_sum_id)
 ```
 
 ### Reusing the Gym environment

@@ -32,7 +32,7 @@ def tsqr(a):
   q_tree = np.empty((num_blocks, K), dtype=object)
   current_rs = []
   for i in range(num_blocks):
-    block = a.objrefs[i, 0]
+    block = a.objectids[i, 0]
     q, r = ra.linalg.qr.remote(block)
     q_tree[i, 0] = q
     current_rs.append(r)
@@ -57,8 +57,8 @@ def tsqr(a):
     q_shape = [a.shape[0], a.shape[0]]
   q_num_blocks = DistArray.compute_num_blocks(q_shape)
   q_result = DistArray()
-  q_objrefs = np.empty(q_num_blocks, dtype=object)
-  q_result.construct(q_shape, q_objrefs)
+  q_objectids = np.empty(q_num_blocks, dtype=object)
+  q_result.construct(q_shape, q_objectids)
 
   # reconstruct output
   for i in range(num_blocks):
@@ -73,7 +73,7 @@ def tsqr(a):
         upper = [2 * a.shape[1], BLOCK_SIZE]
       ith_index /= 2
       q_block_current = ra.dot.remote(q_block_current, ra.subarray.remote(q_tree[ith_index, j], lower, upper))
-    q_result.objrefs[i] = q_block_current
+    q_result.objectids[i] = q_block_current
   r = current_rs[0]
   return q_result, r
 
@@ -126,7 +126,7 @@ def tsqr_hr(a):
   q, r_temp = tsqr.remote(a)
   y, u, s = modified_lu.remote(q)
   y_blocked = ray.get(y)
-  t, y_top = tsqr_hr_helper1.remote(u, s, y_blocked.objrefs[0, 0], a.shape[1])
+  t, y_top = tsqr_hr_helper1.remote(u, s, y_blocked.objectids[0, 0], a.shape[1])
   r = tsqr_hr_helper2.remote(s, r_temp)
   return y, t, y_top, r
 
@@ -146,9 +146,9 @@ def qr(a):
 
   # we will store our scratch work in a_work
   a_work = DistArray()
-  a_work.construct(a.shape, np.copy(a.objrefs))
+  a_work.construct(a.shape, np.copy(a.objectids))
 
-  result_dtype = np.linalg.qr(ray.get(a.objrefs[0, 0]))[0].dtype.name
+  result_dtype = np.linalg.qr(ray.get(a.objectids[0, 0]))[0].dtype.name
   r_res = ray.get(zeros.remote([k, n], result_dtype)) # TODO(rkn): It would be preferable not to get this right after creating it.
   y_res = ray.get(zeros.remote([m, k], result_dtype)) # TODO(rkn): It would be preferable not to get this right after creating it.
   Ts = []
@@ -159,27 +159,27 @@ def qr(a):
     y_val = ray.get(y)
 
     for j in range(i, a.num_blocks[0]):
-      y_res.objrefs[j, i] = y_val.objrefs[j - i, 0]
+      y_res.objectids[j, i] = y_val.objectids[j - i, 0]
     if a.shape[0] > a.shape[1]:
       # in this case, R needs to be square
       R_shape = ray.get(ra.shape.remote(R))
       eye_temp = ra.eye.remote(R_shape[1], R_shape[0], dtype_name=result_dtype)
-      r_res.objrefs[i, i] = ra.dot.remote(eye_temp, R)
+      r_res.objectids[i, i] = ra.dot.remote(eye_temp, R)
     else:
-      r_res.objrefs[i, i] = R
+      r_res.objectids[i, i] = R
     Ts.append(numpy_to_dist.remote(t))
 
     for c in range(i + 1, a.num_blocks[1]):
       W_rcs = []
       for r in range(i, a.num_blocks[0]):
-        y_ri = y_val.objrefs[r - i, 0]
-        W_rcs.append(qr_helper2.remote(y_ri, a_work.objrefs[r, c]))
+        y_ri = y_val.objectids[r - i, 0]
+        W_rcs.append(qr_helper2.remote(y_ri, a_work.objectids[r, c]))
       W_c = ra.sum_list.remote(*W_rcs)
       for r in range(i, a.num_blocks[0]):
-        y_ri = y_val.objrefs[r - i, 0]
-        A_rc = qr_helper1.remote(a_work.objrefs[r, c], y_ri, t, W_c)
-        a_work.objrefs[r, c] = A_rc
-      r_res.objrefs[i, c] = a_work.objrefs[i, c]
+        y_ri = y_val.objectids[r - i, 0]
+        A_rc = qr_helper1.remote(a_work.objectids[r, c], y_ri, t, W_c)
+        a_work.objectids[r, c] = A_rc
+      r_res.objectids[i, c] = a_work.objectids[i, c]
 
   # construct q_res from Ys and Ts
   q = eye.remote(m, k, dtype_name=result_dtype)

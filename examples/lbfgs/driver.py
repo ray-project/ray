@@ -78,24 +78,24 @@ if __name__ == "__main__":
 
   # Compute the loss on the entire dataset.
   def full_loss(theta):
-    theta_ref = ray.put(theta)
-    loss_refs = [loss.remote(theta_ref, xs_ref, ys_ref) for (xs_ref, ys_ref) in batch_refs]
-    return sum([ray.get(loss_ref) for loss_ref in loss_refs])
+    theta_id = ray.put(theta)
+    loss_ids = [loss.remote(theta_id, xs_id, ys_id) for (xs_id, ys_id) in batch_ids]
+    return sum([ray.get(loss_id) for loss_id in loss_ids])
 
   # Compute the gradient of the loss on the entire dataset.
   def full_grad(theta):
-    theta_ref = ray.put(theta)
-    grad_refs = [grad.remote(theta_ref, xs_ref, ys_ref) for (xs_ref, ys_ref) in batch_refs]
-    return sum([ray.get(grad_ref) for grad_ref in grad_refs]).astype("float64") # This conversion is necessary for use with fmin_l_bfgs_b.
+    theta_id = ray.put(theta)
+    grad_ids = [grad.remote(theta_id, xs_id, ys_id) for (xs_id, ys_id) in batch_ids]
+    return sum([ray.get(grad_id) for grad_id in grad_ids]).astype("float64") # This conversion is necessary for use with fmin_l_bfgs_b.
 
   # From the perspective of scipy.optimize.fmin_l_bfgs_b, full_loss is simply a
   # function which takes some parameters theta, and computes a loss. Similarly,
   # full_grad is a function which takes some parameters theta, and computes the
   # gradient of the loss. Internally, these functions use Ray to distribute the
   # computation of the loss and the gradient over the data that is represented
-  # by the remote object references is x_batches and y_batches and which is
-  # potentially distributed over a cluster. However, these details are hidden
-  # from scipy.optimize.fmin_l_bfgs_b, which simply uses it to run the L-BFGS
+  # by the remote object IDs x_batches and y_batches and which is potentially
+  # distributed over a cluster. However, these details are hidden from
+  # scipy.optimize.fmin_l_bfgs_b, which simply uses it to run the L-BFGS
   # algorithm.
 
   # Load the mnist data and turn the data into remote objects.
@@ -104,7 +104,7 @@ if __name__ == "__main__":
   batch_size = 100
   num_batches = mnist.train.num_examples / batch_size
   batches = [mnist.train.next_batch(batch_size) for _ in range(num_batches)]
-  batch_refs = [(ray.put(xs), ray.put(ys)) for (xs, ys) in batches]
+  batch_ids = [(ray.put(xs), ray.put(ys)) for (xs, ys) in batches]
 
   # Initialize the weights for the network to the vector of all zeros.
   theta_init = 1e-2 * np.random.normal(size=dim)
