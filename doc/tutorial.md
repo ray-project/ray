@@ -87,8 +87,8 @@ will first be copied from an object store that has it to the object store that
 needs it.
 
 ```python
->>> ref = ray.put([1, 2, 3])
->>> ray.get(ref)  # prints [1, 2, 3]
+ref = ray.put([1, 2, 3])
+ray.get(ref)  # prints [1, 2, 3]
 ```
 
 If the remote object corresponding to the object reference `ref` has not been
@@ -127,8 +127,8 @@ to the computation graph and immediately returns an object reference to the
 output of the computation.
 
 ```python
->>> ref = add.remote(1, 2)
->>> ray.get(ref)  # prints 3
+ref = add.remote(1, 2)
+ray.get(ref)  # prints 3
 ```
 
 There is a sharp distinction between *submitting a task* and *executing the
@@ -141,9 +141,9 @@ When a task is submitted, each argument may be passed in by value or by object
 reference. For example, these lines have the same behavior.
 
 ```python
->>> add.remote(1, 2)
->>> add.remote(1, ray.put(2))
->>> add.remote(ray.put(1), ray.put(2))
+add.remote(1, 2)
+add.remote(1, ray.put(2))
+add.remote(ray.put(1), ray.put(2))
 ```
 
 Remote functions never return actual values, they always return object
@@ -183,6 +183,8 @@ For example, suppose we define the remote function `sleep` to be a wrapper
 around `time.sleep`.
 
 ```python
+import time
+
 @ray.remote([int], [int])
 def sleep(n):
   time.sleep(n)
