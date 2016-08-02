@@ -1,11 +1,10 @@
 import os
 import sys
 import time
-import atexit
 import subprocess32 as subprocess
 
-import ray
-import worker
+# Ray modules
+import config
 
 _services_env = os.environ.copy()
 _services_env["PATH"] = os.pathsep.join([os.path.dirname(os.path.abspath(__file__)), _services_env["PATH"]])
@@ -14,9 +13,6 @@ _services_env["PATH"] = os.pathsep.join([os.path.dirname(os.path.abspath(__file_
 # that have been started by this services module if Ray is being used in local
 # mode.
 all_processes = []
-# drivers is a list of the worker objects corresponding to drivers if
-# start_ray_local is run with return_drivers=True.
-drivers = []
 
 IP_ADDRESS = "127.0.0.1"
 TIMEOUT_SECONDS = 5
@@ -36,6 +32,12 @@ def new_worker_port():
   worker_port_counter += 1
   return 40000 + worker_port_counter
 
+driver_port_counter = 0
+def new_driver_port():
+  global driver_port_counter
+  driver_port_counter += 1
+  return 30000 + driver_port_counter
+
 objstore_port_counter = 0
 def new_objstore_port():
   global objstore_port_counter
@@ -47,22 +49,9 @@ def cleanup():
 
   This method is used to shutdown processes that were started with
   services.start_ray_local(). It kills all scheduler, object store, and worker
-  processes that were started by this services module. It disconnects driver
-  processes but does not kill them. This will automatically run at the end when
-  a Python process that imports services exits. It is ok to run this twice in a
-  row. Note that we manually call services.cleanup() in the tests because we
-  need to start and stop many clusters in the tests, but in the tests, services
-  is only imported and only exits once.
+  processes that were started by this services module. Driver processes are
+  started and disconnected by worker.py.
   """
-  global drivers
-  for driver in drivers:
-    ray.disconnect(driver)
-    driver.set_mode(None)
-  if len(drivers) == 0:
-    ray.disconnect()
-    ray.worker.global_worker.set_mode(None)
-  drivers = []
-
   global all_processes
   for p, address in all_processes:
     if p.poll() is not None: # process has already terminated
@@ -83,8 +72,6 @@ def cleanup():
     print "Termination attempt failed, giving up."
   all_processes = []
 
-atexit.register(cleanup)
-
 def start_scheduler(scheduler_address, local):
   """This method starts a scheduler process.
 
@@ -94,7 +81,7 @@ def start_scheduler(scheduler_address, local):
       process will be killed by serices.cleanup() when the Python process that
       imported services exits.
   """
-  p = subprocess.Popen(["scheduler", scheduler_address, "--log-file-name", ray.config.get_log_file_path("scheduler.log")], env=_services_env)
+  p = subprocess.Popen(["scheduler", scheduler_address, "--log-file-name", config.get_log_file_path("scheduler.log")], env=_services_env)
   if local:
     all_processes.append((p, scheduler_address))
 
@@ -109,7 +96,7 @@ def start_objstore(scheduler_address, objstore_address, local):
       process will be killed by serices.cleanup() when the Python process that
       imported services exits.
   """
-  p = subprocess.Popen(["objstore", scheduler_address, objstore_address, "--log-file-name", ray.config.get_log_file_path("-".join(["objstore", objstore_address]) + ".log")], env=_services_env)
+  p = subprocess.Popen(["objstore", scheduler_address, objstore_address, "--log-file-name", config.get_log_file_path("-".join(["objstore", objstore_address]) + ".log")], env=_services_env)
   if local:
     all_processes.append((p, objstore_address))
 
@@ -189,54 +176,46 @@ def start_workers(scheduler_address, objstore_address, num_workers, worker_path)
   for _ in range(num_workers):
     start_worker(worker_path, scheduler_address, objstore_address, address(node_ip_address, new_worker_port()), local=False)
 
-def start_ray_local(num_objstores=1, num_workers_per_objstore=0, worker_path=None, driver_mode=ray.SCRIPT_MODE, return_drivers=False):
+def start_ray_local(num_objstores=1, num_workers=0, worker_path=None):
   """Start Ray in local mode.
 
   This method starts Ray in local mode (as opposed to cluster mode, which is
   handled by cluster.py).
 
   Args:
-    num_objstores (int): The number of object stores to start.
-    num_workers_per_objstore (int): The number of workers to start per object
-      store.
+    num_objstores (int): The number of object stores to start. Aside from
+      testing, this should be one.
+    num_workers (int): The number of workers to start.
     worker_path (str): The path of the source code that will be run by the
-      worker
-    driver_mode: The mode for the driver, this only affects the printing of
-      error messages. This should be ray.SCRIPT_MODE if the driver is being run
-      in a script. It should be ray.SHELL_MODE if it is being used interactively
-      in the shell. It should be ray.PYTHON_MODE to run things in a manner
-      equivalent to serial Python code. It should be ray.WORKER_MODE to surpress
-      the printing of error messages.
-    return_drivers (bool): This should only be True in special cases for tests.
+      worker.
+
+  Returns:
+    The address of the scheduler, the addresses of all of the object stores, and
+      the one new driver address for each object store.
   """
-  global drivers
   if worker_path is None:
     worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../../scripts/default_worker.py")
-  if num_workers_per_objstore > 0 and num_objstores < 1:
+  if num_workers > 0 and num_objstores < 1:
     raise Exception("Attempting to start a cluster with {} workers per object store, but `num_objstores` is {}.".format(num_objstores))
   scheduler_address = address(IP_ADDRESS, new_scheduler_port())
   start_scheduler(scheduler_address, local=True)
   time.sleep(0.1)
   objstore_addresses = []
   # create objstores
-  for _ in range(num_objstores):
+  for i in range(num_objstores):
     objstore_address = address(IP_ADDRESS, new_objstore_port())
     objstore_addresses.append(objstore_address)
     start_objstore(scheduler_address, objstore_address, local=True)
     time.sleep(0.2)
-    for _ in range(num_workers_per_objstore):
+    if i < num_objstores - 1:
+      num_workers_to_start = num_workers / num_objstores
+    else:
+      # In case num_workers is not divisible by num_objstores, start the correct
+      # remaining number of workers.
+      num_workers_to_start = num_workers - (num_objstores - 1) * (num_workers / num_objstores)
+    for _ in range(num_workers_to_start):
       start_worker(worker_path, scheduler_address, objstore_address, address(IP_ADDRESS, new_worker_port()), local=True)
     time.sleep(0.3)
-  # create drivers
-  if return_drivers:
-    driver_workers = []
-    for i in range(num_objstores):
-      driver_worker = worker.Worker()
-      ray.connect(scheduler_address, objstore_address, address(IP_ADDRESS, new_worker_port()), is_driver=True, worker=driver_worker)
-      driver_workers.append(driver_worker)
-      drivers.append(driver_worker)
-    time.sleep(0.5)
-    return driver_workers
-  else:
-    ray.connect(scheduler_address, objstore_addresses[0], address(IP_ADDRESS, new_worker_port()), is_driver=True, mode=driver_mode)
-    time.sleep(0.5)
+
+  driver_addresses = [address(IP_ADDRESS, new_driver_port()) for _ in range(num_objstores)]
+  return scheduler_address, objstore_addresses, driver_addresses
