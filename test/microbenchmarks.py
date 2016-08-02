@@ -77,7 +77,7 @@ class MicroBenchmarkTest(unittest.TestCase):
     print "    worst:           {}".format(elapsed_times[999])
     # average_elapsed_time should be about 0.00087
 
-    ray.services.cleanup()
+    ray.worker.cleanup()
 
 if __name__ == "__main__":
     unittest.main()

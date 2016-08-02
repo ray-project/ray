@@ -40,7 +40,7 @@ class RemoteArrayTest(unittest.TestCase):
     r_val = ray.get(r_id)
     self.assertTrue(np.allclose(np.dot(q_val, r_val), a_val))
 
-    ray.services.cleanup()
+    ray.worker.cleanup()
 
 class DistributedArrayTest(unittest.TestCase):
 
@@ -55,7 +55,7 @@ class DistributedArrayTest(unittest.TestCase):
     self.assertEqual(x.shape, y.shape)
     self.assertEqual(x.objectids[0, 0, 0].id, y.objectids[0, 0, 0].id)
 
-    ray.services.cleanup()
+    ray.worker.cleanup()
 
   def testAssemble(self):
     for module in [ra.core, ra.random, ra.linalg, da.core, da.random, da.linalg]:
@@ -67,13 +67,12 @@ class DistributedArrayTest(unittest.TestCase):
     x = da.DistArray([2 * da.BLOCK_SIZE, da.BLOCK_SIZE], np.array([[a], [b]]))
     self.assertTrue(np.alltrue(x.assemble() == np.vstack([np.ones([da.BLOCK_SIZE, da.BLOCK_SIZE]), np.zeros([da.BLOCK_SIZE, da.BLOCK_SIZE])])))
 
-    ray.services.cleanup()
+    ray.worker.cleanup()
 
   def testMethods(self):
     for module in [ra.core, ra.random, ra.linalg, da.core, da.random, da.linalg]:
       reload(module)
-    worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../scripts/default_worker.py")
-    ray.services.start_ray_local(num_objstores=2, num_workers_per_objstore=5, worker_path=worker_path)
+    ray.init(start_ray_local=True, num_objstores=2, num_workers=10)
 
     x = da.zeros.remote([9, 25, 51], "float")
     self.assertTrue(np.alltrue(ray.get(da.assemble.remote(x)) == np.zeros([9, 25, 51])))
@@ -207,7 +206,7 @@ class DistributedArrayTest(unittest.TestCase):
       d2 = np.random.randint(1, 35)
       test_dist_qr(d1, d2)
 
-    ray.services.cleanup()
+    ray.worker.cleanup()
 
 if __name__ == "__main__":
     unittest.main()

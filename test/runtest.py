@@ -88,13 +88,18 @@ class SerializationTest(unittest.TestCase):
     self.roundTripTest({"0": ref0, "1": ref1, "2": ref2, "3": ref3})
     self.roundTripTest((ref0, 1))
 
-    ray.services.cleanup()
+    ray.worker.cleanup()
 
 class ObjStoreTest(unittest.TestCase):
 
   # Test setting up object stores, transfering data between them and retrieving data to a client
   def testObjStore(self):
-    [w1, w2] = ray.services.start_ray_local(return_drivers=True, num_objstores=2, num_workers_per_objstore=0)
+    scheduler_address, objstore_addresses, driver_addresses = ray.services.start_ray_local(num_objstores=2, num_workers=0, worker_path=None)
+    w1 = ray.worker.Worker()
+    w2 = ray.worker.Worker()
+    ray.connect(scheduler_address, objstore_addresses[0], driver_addresses[0], is_driver=True, mode=ray.SCRIPT_MODE, worker=w1)
+    ray.reusables._cached_reusables = [] # This is a hack to make the test run.
+    ray.connect(scheduler_address, objstore_addresses[1], driver_addresses[1], is_driver=True, mode=ray.SCRIPT_MODE, worker=w2)
 
     # putting and getting an object shouldn't change it
     for data in ["h", "h" * 10000, 0, 0.0]:
@@ -114,6 +119,7 @@ class ObjStoreTest(unittest.TestCase):
       result = ray.get(objectid, w2)
       self.assertTrue(np.alltrue(result == data))
 
+    # This test fails. See https://github.com/amplab/ray/issues/159.
     # getting multiple times shouldn't matter
     # for data in [np.zeros([10, 20]), np.random.normal(size=[45, 25]), np.zeros([10, 20], dtype=np.dtype("float64")), np.zeros([10, 20], dtype=np.dtype("float32")), np.zeros([10, 20], dtype=np.dtype("int64")), np.zeros([10, 20], dtype=np.dtype("int32"))]:
     #   objectid = worker.put(data, w1)
@@ -137,14 +143,17 @@ class ObjStoreTest(unittest.TestCase):
     self.assertTrue(np.alltrue(data[1] == result[1]))
 
     # Getting a buffer after modifying it before it finishes should return updated buffer
-    objectid =  ray.lib.get_objectid(w1.handle)
-    buf = ray.lib.allocate_buffer(w1.handle, objectid, 100)
+    objectid = ray.libraylib.get_objectid(w1.handle)
+    buf = ray.libraylib.allocate_buffer(w1.handle, objectid, 100)
     buf[0][0] = 1
-    ray.lib.finish_buffer(w1.handle, objectid, buf[1], 0)
-    completedbuffer = ray.lib.get_buffer(w1.handle, objectid)
+    ray.libraylib.finish_buffer(w1.handle, objectid, buf[1], 0)
+    completedbuffer = ray.libraylib.get_buffer(w1.handle, objectid)
     self.assertEqual(completedbuffer[0][0], 1)
 
-    ray.services.cleanup()
+    # We started multiple drivers manually, so we will disconnect them manually.
+    ray.disconnect(worker=w1)
+    ray.disconnect(worker=w2)
+    ray.worker.cleanup()
 
 class WorkerTest(unittest.TestCase):
 
@@ -175,7 +184,7 @@ class WorkerTest(unittest.TestCase):
       value_after = ray.get(objectid)
       self.assertEqual(value_before, value_after)
 
-    ray.services.cleanup()
+    ray.worker.cleanup()
 
 class APITest(unittest.TestCase):
 
@@ -190,7 +199,7 @@ class APITest(unittest.TestCase):
     ref = test_functions.test_alias_h.remote()
     self.assertTrue(np.alltrue(ray.get(ref) == np.ones([3, 4, 5])))
 
-    ray.services.cleanup()
+    ray.worker.cleanup()
 
   def testKeywordArgs(self):
     reload(test_functions)
@@ -227,7 +236,7 @@ class APITest(unittest.TestCase):
     x = test_functions.keyword_fct3.remote(0, 1)
     self.assertEqual(ray.get(x), "0 1 hello world")
 
-    ray.services.cleanup()
+    ray.worker.cleanup()
 
   def testVariableNumberOfArgs(self):
     reload(test_functions)
@@ -241,7 +250,7 @@ class APITest(unittest.TestCase):
     self.assertTrue(test_functions.kwargs_exception_thrown)
     self.assertTrue(test_functions.varargs_and_kwargs_exception_thrown)
 
-    ray.services.cleanup()
+    ray.worker.cleanup()
 
   def testNoArgs(self):
     reload(test_functions)
@@ -262,7 +271,7 @@ class APITest(unittest.TestCase):
     self.assertEqual(task_info["num_succeeded"], 1)
     self.assertTrue("The @remote decorator for function test_functions.no_op_fail has 0 return values, but test_functions.no_op_fail returned more than 0 values." in task_info["failed_tasks"][0].get("error_message"))
 
-    ray.services.cleanup()
+    ray.worker.cleanup()
 
   def testTypeChecking(self):
     reload(test_functions)
@@ -278,7 +287,7 @@ class APITest(unittest.TestCase):
     self.assertEqual(len(task_info["running_tasks"]), 0)
     self.assertEqual(task_info["num_succeeded"], 0)
 
-    ray.services.cleanup()
+    ray.worker.cleanup()
 
   def testDefiningRemoteFunctions(self):
     ray.init(start_ray_local=True, num_workers=2)
@@ -326,7 +335,7 @@ class APITest(unittest.TestCase):
     self.assertEqual(ray.get(l.remote(1)), 2)
     self.assertEqual(ray.get(m.remote(1)), 2)
 
-    ray.services.cleanup()
+    ray.worker.cleanup()
 
   def testCachingReusables(self):
     # Test that we can define reusable variables before the driver is connected.
@@ -354,7 +363,7 @@ class APITest(unittest.TestCase):
     self.assertEqual(ray.get(use_bar.remote()), [1])
     self.assertEqual(ray.get(use_bar.remote()), [1])
 
-    ray.services.cleanup()
+    ray.worker.cleanup()
 
 class TaskStatusTest(unittest.TestCase):
   def testFailedTask(self):
@@ -392,7 +401,7 @@ class TaskStatusTest(unittest.TestCase):
       else:
         self.assertTrue(False) # ray.get should throw an exception
 
-    ray.services.cleanup()
+    ray.worker.cleanup()
 
 def check_get_deallocated(data):
   x = ray.put(data)
@@ -456,7 +465,7 @@ class ReferenceCountingTest(unittest.TestCase):
     time.sleep(0.1)
     self.assertEqual(ray.scheduler_info()["reference_counts"][objectid_val:(objectid_val + 3)], [-1, -1, -1])
 
-    ray.services.cleanup()
+    ray.worker.cleanup()
 
   def testGet(self):
     ray.init(start_ray_local=True, num_workers=3)
@@ -478,7 +487,7 @@ class ReferenceCountingTest(unittest.TestCase):
     # result = worker.get(objectid)
     # self.assertTrue(np.alltrue(result == data))
 
-    ray.services.cleanup()
+    ray.worker.cleanup()
 
   # @unittest.expectedFailure
   # def testGetFailing(self):
@@ -494,7 +503,7 @@ class ReferenceCountingTest(unittest.TestCase):
   #    x, objectid_val = check_get_not_deallocated(val)
   #   self.assertEqual(ray.scheduler_info()["reference_counts"][objectid_val], 1)
 
-  # ray.services.cleanup()
+  # ray.worker.cleanup()
 
 class PythonModeTest(unittest.TestCase):
 
@@ -516,7 +525,7 @@ class PythonModeTest(unittest.TestCase):
     self.assertTrue(np.alltrue(aref == np.array([0, 0]))) # python_mode_g should not mutate aref
     self.assertTrue(np.alltrue(bref == np.array([1, 0])))
 
-    ray.services.cleanup()
+    ray.worker.cleanup()
 
 class PythonCExtensionTest(unittest.TestCase):
 
@@ -532,7 +541,7 @@ class PythonCExtensionTest(unittest.TestCase):
       second_count = ray.get(f.remote())
       self.assertEqual(first_count, second_count)
 
-    ray.services.cleanup()
+    ray.worker.cleanup()
 
 class ReusablesTest(unittest.TestCase):
 
@@ -610,7 +619,7 @@ class ReusablesTest(unittest.TestCase):
     self.assertEqual(ray.get(use_qux.remote()), 1)
     self.assertEqual(ray.get(use_qux.remote()), 2)
 
-    ray.services.cleanup()
+    ray.worker.cleanup()
 
 if __name__ == "__main__":
     unittest.main()
