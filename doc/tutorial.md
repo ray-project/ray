@@ -92,7 +92,7 @@ ray.get(x_id)  # prints [1, 2, 3]
 ```
 
 If the remote object corresponding to the object ID `x_id` has not been
-created yet, *the command `ray.get(id)` will wait until the remote object has
+created yet, *the command `ray.get(x_id)` will wait until the remote object has
 been created.*
 
 ## Computation graphs in Ray
@@ -123,7 +123,7 @@ function is called instead of catching them when the task is actually executed
 
 Whereas in regular Python, calling `add(1, 2)` would return `3`, in Ray, calling
 `add.remote(1, 2)` does not actually execute the task. Instead, it adds a task to the
-computation graph and immediately returns an object ID to the output of
+computation graph and immediately returns the object ID for the output of
 the computation.
 
 ```python
@@ -134,11 +134,11 @@ ray.get(x_id)  # prints 3
 There is a sharp distinction between *submitting a task* and *executing the
 task*. When a remote function is called, the task of executing that function is
 submitted to the scheduler, and the scheduler immediately returns object
-ids for the outputs of the task. However, the task will not be executed
+IDs for the outputs of the task. However, the task will not be executed
 until the scheduler actually schedules the task on a worker.
 
 When a task is submitted, each argument may be passed in by value or by object
-id. For example, these lines have the same behavior.
+ID. For example, these lines have the same behavior.
 
 ```python
 add.remote(1, 2)
@@ -153,6 +153,16 @@ That is, if the remote function was called with any object IDs, the
 Python objects corresponding to those object IDs will be retrieved and
 passed into the actual execution of the remote function.
 
+Note that a remote function can return multiple object IDs.
+
+```python
+@ray.remote([], [int, float, str])
+def return_multiple():
+  return 0, 0.0, "zero"
+
+a_id, b_id, c_id = return_multiple.remote()
+```
+
 ### Blocking computation
 
 In a regular Python script, the specification of a computation is intimately
@@ -162,17 +172,17 @@ code.
 ```python
 import time
 
-# This takes 50 seconds.
+# This takes 20 seconds.
 for i in range(10):
-  time.sleep(5)
+  time.sleep(2)
 ```
 
 At the core of the above script, there are ten separate tasks, each of which
-sleeps for five seconds (this is a toy example, but you could imagine replacing
+sleeps for two seconds (this is a toy example, but you could imagine replacing
 the call to `sleep` with some computationally intensive task). These tasks do
 not depend on each other, so in principle, they could be executed in parallel.
 However, in the above implementation, they will be executed serially, which will
-take fifty seconds.
+take twenty seconds.
 
 Ray gets around this by representing computation as a graph of tasks, where some
 tasks depend on the outputs of other tasks and where tasks can be executed once
@@ -196,17 +206,17 @@ Then we can write
 # Submit ten tasks to the scheduler. This finishes almost immediately.
 result_ids = []
 for i in range(10):
-  result_ids.append(sleep.remote(5))
+  result_ids.append(sleep.remote(2))
 
-# Wait for the results. If we have at least ten workers, this takes 5 seconds.
-[ray.get(id) for id in result_ids]  # prints [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+# Wait for the results. If we have at least ten workers, this takes 2 seconds.
+[ray.get(result_id) for result_id in result_ids]  # prints [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 ```
 
 The for loop simply adds ten tasks to the computation graph, with no
 dependencies between the tasks. It executes almost instantaneously. Afterwards,
 we use `ray.get` to wait for the tasks to finish. If we have at least ten
 workers, then all ten tasks can be executed in parallel, and so the overall
-script should take five seconds.
+script should take two seconds.
 
 ### Visualizing the Computation Graph
 
@@ -264,3 +274,33 @@ the `dot` task depends on the outputs of the two `zeros` tasks.
 
 This makes it clear that the two `zeros` tasks can execute in parallel but that
 the `dot` task must wait until the two `zeros` tasks have finished.
+
+### Remote Functions Within Remote Functions
+
+So far, we have been calling remote functions only from the driver. But worker
+processes can also call remote functions. To illustrate this, consider the
+following example.
+
+```python
+@ray.remote([int, int], [int])
+def sub_experiment(i, j):
+  # Run the jth sub-experiment for the ith experiment.
+  return i + j
+
+@ray.remote([int], [int])
+def run_experiment(i):
+  sub_results = []
+  # Launch tasks to perform 10 sub-experiments in parallel.
+  for j in range(10):
+    sub_results.append(sub_experiment.remote(i, j))
+  # Return the sum of the results of the sub-experiments.
+  return sum([ray.get(sub_result) for sub_result in sub_results])
+
+results = [run_experiment.remote(i) for i in range(5)]
+[ray.get(result) for result in results]  # prints [45, 55, 65, 75, 85]
+```
+
+When the remote function `run_experiment` is executed on a worker, it calls the
+remote function `sub_experiment` a number of times. This is an example of how
+multiple experiments, each of which takes advantage of parallelism internally,
+can all be run in parallel.
