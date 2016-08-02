@@ -5,6 +5,7 @@ import time
 import subprocess32 as subprocess
 import os
 import sys
+from numpy.testing import assert_equal
 
 import test_functions
 import ray.array.remote as ra
@@ -35,23 +36,12 @@ class SerializationTest(unittest.TestCase):
   def roundTripTest(self, data):
     serialized, _ = ray.serialization.serialize(ray.worker.global_worker.handle, data)
     result = ray.serialization.deserialize(ray.worker.global_worker.handle, serialized)
-    self.assertEqual(data, result)
+    assert_equal(data, result)
 
   def numpyTypeTest(self, typ):
-    a = np.random.randint(0, 10, size=(100, 100)).astype(typ)
-    b, _ = ray.serialization.serialize(ray.worker.global_worker.handle, a)
-    c = ray.serialization.deserialize(ray.worker.global_worker.handle, b)
-    self.assertTrue((a == c).all())
-
-    a = np.array(0).astype(typ)
-    b, _ = ray.serialization.serialize(ray.worker.global_worker.handle, a)
-    c = ray.serialization.deserialize(ray.worker.global_worker.handle, b)
-    self.assertTrue((a == c).all())
-
-    a = np.empty((0,)).astype(typ)
-    b, _ = ray.serialization.serialize(ray.worker.global_worker.handle, a)
-    c = ray.serialization.deserialize(ray.worker.global_worker.handle, b)
-    self.assertEqual(a.dtype, c.dtype)
+    self.roundTripTest(np.random.randint(0, 10, size=(100, 100)).astype(typ))
+    self.roundTripTest(np.array(0).astype(typ))
+    self.roundTripTest(np.empty((0,)).astype(typ))
 
   def testSerialize(self):
     ray.init(start_ray_local=True, num_workers=0)
@@ -59,10 +49,7 @@ class SerializationTest(unittest.TestCase):
     for val in RAY_TEST_OBJECTS:
       self.roundTripTest(val)
 
-    a = np.zeros((100, 100))
-    res, _ = ray.serialization.serialize(ray.worker.global_worker.handle, a)
-    b = ray.serialization.deserialize(ray.worker.global_worker.handle, res)
-    self.assertTrue((a == b).all())
+    self.roundTripTest(np.zeros((100, 100)))
 
     self.numpyTypeTest("int8")
     self.numpyTypeTest("uint8")
@@ -117,7 +104,7 @@ class ObjStoreTest(unittest.TestCase):
     for data in [np.zeros([10, 20]), np.random.normal(size=[45, 25])]:
       objectid = ray.put(data, w1)
       result = ray.get(objectid, w2)
-      self.assertTrue(np.alltrue(result == data))
+      assert_equal(result, data)
 
     # This test fails. See https://github.com/amplab/ray/issues/159.
     # getting multiple times shouldn't matter
@@ -126,21 +113,21 @@ class ObjStoreTest(unittest.TestCase):
     #   result = worker.get(objectid, w2)
     #   result = worker.get(objectid, w2)
     #   result = worker.get(objectid, w2)
-    #   self.assertTrue(np.alltrue(result == data))
+    #   assert_equal(result, data)
 
     # shipping a numpy array inside something else should be fine
     data = ("a", np.random.normal(size=[10, 10]))
     objectid = ray.put(data, w1)
     result = ray.get(objectid, w2)
     self.assertEqual(data[0], result[0])
-    self.assertTrue(np.alltrue(data[1] == result[1]))
+    assert_equal(data[1], result[1])
 
     # shipping a numpy array inside something else should be fine
     data = ["a", np.random.normal(size=[10, 10])]
     objectid = ray.put(data, w1)
     result = ray.get(objectid, w2)
     self.assertEqual(data[0], result[0])
-    self.assertTrue(np.alltrue(data[1] == result[1]))
+    assert_equal(data[1], result[1])
 
     # Getting a buffer after modifying it before it finishes should return updated buffer
     objectid = ray.libraylib.get_objectid(w1.handle)
@@ -193,11 +180,11 @@ class APITest(unittest.TestCase):
     ray.init(start_ray_local=True, num_workers=3, driver_mode=ray.SILENT_MODE)
 
     ref = test_functions.test_alias_f.remote()
-    self.assertTrue(np.alltrue(ray.get(ref) == np.ones([3, 4, 5])))
+    assert_equal(ray.get(ref), np.ones([3, 4, 5]))
     ref = test_functions.test_alias_g.remote()
-    self.assertTrue(np.alltrue(ray.get(ref) == np.ones([3, 4, 5])))
+    assert_equal(ray.get(ref), np.ones([3, 4, 5]))
     ref = test_functions.test_alias_h.remote()
-    self.assertTrue(np.alltrue(ray.get(ref) == np.ones([3, 4, 5])))
+    assert_equal(ray.get(ref), np.ones([3, 4, 5]))
 
     ray.worker.cleanup()
 
@@ -315,7 +302,7 @@ class APITest(unittest.TestCase):
     @ray.remote([], [np.ndarray])
     def h():
       return np.zeros([3, 5])
-    self.assertTrue(np.alltrue(ray.get(h.remote()) == np.zeros([3, 5])))
+    assert_equal(ray.get(h.remote()), np.zeros([3, 5]))
     @ray.remote([], [float])
     def j():
       return time.time()
@@ -485,7 +472,7 @@ class ReferenceCountingTest(unittest.TestCase):
     # objectid = ray.put(data)
     # result = worker.get(objectid)
     # result = worker.get(objectid)
-    # self.assertTrue(np.alltrue(result == data))
+    # assert_equal(result, data)
 
     ray.worker.cleanup()
 
@@ -512,18 +499,18 @@ class PythonModeTest(unittest.TestCase):
     ray.init(start_ray_local=True, driver_mode=ray.PYTHON_MODE)
 
     xref = test_functions.test_alias_h.remote()
-    self.assertTrue(np.alltrue(xref == np.ones([3, 4, 5]))) # remote functions should return by value
-    self.assertTrue(np.alltrue(xref == ray.get(xref))) # ray.get should be the identity
+    assert_equal(xref, np.ones([3, 4, 5])) # remote functions should return by value
+    assert_equal(xref, ray.get(xref)) # ray.get should be the identity
     y = np.random.normal(size=[11, 12])
-    self.assertTrue(np.alltrue(y == ray.put(y))) # ray.put should be the identity
+    assert_equal(y, ray.put(y)) # ray.put should be the identity
 
     # make sure objects are immutable, this example is why we need to copy
     # arguments before passing them into remote functions in python mode
     aref = test_functions.python_mode_f.remote()
-    self.assertTrue(np.alltrue(aref == np.array([0, 0])))
+    assert_equal(aref, np.array([0, 0]))
     bref = test_functions.python_mode_g.remote(aref)
-    self.assertTrue(np.alltrue(aref == np.array([0, 0]))) # python_mode_g should not mutate aref
-    self.assertTrue(np.alltrue(bref == np.array([1, 0])))
+    assert_equal(aref, np.array([0, 0])) # python_mode_g should not mutate aref
+    assert_equal(bref, np.array([1, 0]))
 
     ray.worker.cleanup()
 
@@ -596,10 +583,10 @@ class ReusablesTest(unittest.TestCase):
       baz = ray.reusables.baz
       baz[i] = 1
       return baz
-    self.assertTrue(np.alltrue(ray.get(use_baz.remote(0)) == np.array([1, 0, 0, 0])))
-    self.assertTrue(np.alltrue(ray.get(use_baz.remote(1)) == np.array([0, 1, 0, 0])))
-    self.assertTrue(np.alltrue(ray.get(use_baz.remote(2)) == np.array([0, 0, 1, 0])))
-    self.assertTrue(np.alltrue(ray.get(use_baz.remote(3)) == np.array([0, 0, 0, 1])))
+    assert_equal(ray.get(use_baz.remote(0)), np.array([1, 0, 0, 0]))
+    assert_equal(ray.get(use_baz.remote(1)), np.array([0, 1, 0, 0]))
+    assert_equal(ray.get(use_baz.remote(2)), np.array([0, 0, 1, 0]))
+    assert_equal(ray.get(use_baz.remote(3)), np.array([0, 0, 0, 1]))
 
     # Make sure the reinitializer is actually getting called. Note that this is
     # not the correct usage of a reinitializer because it does not reset qux to
