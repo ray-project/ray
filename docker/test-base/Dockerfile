@@ -1,5 +1,6 @@
-# The deploy Docker image build a self-contained Ray instance suitable
-# for end users.
+# Base image for tests. This differs from the deploy image in that
+# rather than downloading source code from github it instead adds
+# it from a tar file creaetd by test/travis-ci/install.sh
 
 FROM ubuntu:xenial
 RUN apt-get update
@@ -10,11 +11,9 @@ RUN pip install ipython typing funcsigs subprocess32 protobuf==3.0.0a2 colorama 
 RUN adduser --gecos --ingroup ray-user --disabled-login --gecos ray-user
 RUN adduser ray-user sudo
 RUN sed -i "s|%sudo\tALL=(ALL:ALL) ALL|%sudo\tALL=NOPASSWD: ALL|" /etc/sudoers
+ADD ray.tar /home/ray-user/ray
+RUN chown -R ray-user.ray-user /home/ray-user/ray
 USER ray-user
-WORKDIR /home/ray-user
-RUN git clone https://github.com/amplab/ray
 WORKDIR /home/ray-user/ray
 RUN ./setup.sh
 RUN ./build.sh
-RUN echo '\n# Ray environment\nsource /home/ray-user/ray/setup-env.sh' >> /home/ray-user/.bashrc
-ENTRYPOINT bash
