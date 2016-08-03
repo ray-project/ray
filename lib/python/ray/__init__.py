@@ -13,6 +13,6 @@ import config
 import serialization
 from worker import scheduler_info, visualize_computation_graph, task_info, register_module, init, connect, disconnect, get, put, remote, kill_workers, restart_workers_local
 from worker import Reusable, reusables
-from worker import SCRIPT_MODE, WORKER_MODE, SHELL_MODE, PYTHON_MODE, SILENT_MODE
+from worker import SCRIPT_MODE, WORKER_MODE, PYTHON_MODE, SILENT_MODE
 from libraylib import ObjectID
 import internal
