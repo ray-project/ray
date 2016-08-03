@@ -1,3 +1,6 @@
+# The devel Docker image is designed for use with a source checkout
+# mounted from the local host filesystem.
+
 FROM ubuntu:xenial
 RUN apt-get update
 RUN apt-get -y install apt-utils

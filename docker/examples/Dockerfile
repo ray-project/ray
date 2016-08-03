@@ -1,3 +1,6 @@
+# Bulding on top of deploy image, this Dockerfile adds libraries needed
+# for running examples.
+
 FROM amplab/ray:deploy
 
 # Tensorflow

@@ -9,19 +9,13 @@ matrix:
     - os: osx
       osx_image: xcode7
 
-before_install:
-  - if [[ $TRAVIS_OS_NAME == 'linux' ]]; then sudo apt-get -y update ; fi
-  - if [[ $TRAVIS_OS_NAME == 'linux' ]]; then sudo apt-get -y install git ; fi
-  - if [[ $TRAVIS_OS_NAME == 'linux' ]]; then sudo add-apt-repository --yes ppa:kalakris/cmake ; fi
+services:
+  - docker
 
 install:
-  - ./install-dependencies.sh
-  - ./setup.sh
-  - ./build.sh
+  - ./test/travis-ci/install.sh
 
 script:
-  - source setup-env.sh
-  - cd test
-  - python runtest.py
-  - python array_test.py
-  - python microbenchmarks.py
+  - ./test/travis-ci/base_test.sh
+  - ./test/travis-ci/hyperopt_example.sh
+  - ./test/travis-ci/lbfgs_example.sh
