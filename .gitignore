@@ -57,3 +57,6 @@
 *_pb2.py
 *.pb.h
 *.pb.cc
+
+# Ray cluster configuration
+scripts/nodes.txt
