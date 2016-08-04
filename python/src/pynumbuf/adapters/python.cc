@@ -15,10 +15,15 @@ PyObject* get_value(ArrayPtr arr, int32_t index, int32_t type) {
       return PyBool_FromLong(std::static_pointer_cast<BooleanArray>(arr)->Value(index));
     case Type::INT64:
       return PyInt_FromLong(std::static_pointer_cast<Int64Array>(arr)->Value(index));
+    case Type::BINARY: {
+      int32_t nchars;
+      const uint8_t* str = std::static_pointer_cast<BinaryArray>(arr)->GetValue(index, &nchars);
+      return PyString_FromStringAndSize(reinterpret_cast<const char*>(str), nchars);
+    }
     case Type::STRING: {
       int32_t nchars;
       const uint8_t* str = std::static_pointer_cast<StringArray>(arr)->GetValue(index, &nchars);
-      return PyString_FromStringAndSize(reinterpret_cast<const char*>(str), nchars);
+      return PyUnicode_FromStringAndSize(reinterpret_cast<const char*>(str), nchars);
     }
     case Type::FLOAT:
       return PyFloat_FromDouble(std::static_pointer_cast<FloatArray>(arr)->Value(index));
@@ -50,20 +55,34 @@ Status append(PyObject* elem, SequenceBuilder& builder,
               std::vector<PyObject*>& subdicts) {
   // The bool case must precede the int case (PyInt_Check passes for bools)
   if (PyBool_Check(elem)) {
-    RETURN_NOT_OK(builder.Append(elem == Py_True));
+    RETURN_NOT_OK(builder.AppendBool(elem == Py_True));
   } else if (PyFloat_Check(elem)) {
-    RETURN_NOT_OK(builder.Append(PyFloat_AS_DOUBLE(elem)));
+    RETURN_NOT_OK(builder.AppendFloat(PyFloat_AS_DOUBLE(elem)));
   } else if (PyLong_Check(elem)) {
     int overflow = 0;
     int64_t data = PyLong_AsLongLongAndOverflow(elem, &overflow);
-    RETURN_NOT_OK(builder.Append(data));
+    RETURN_NOT_OK(builder.AppendInt64(data));
     if(overflow) {
       return Status::NotImplemented("long overflow");
     }
   } else if (PyInt_Check(elem)) {
-    RETURN_NOT_OK(builder.Append(static_cast<int64_t>(PyInt_AS_LONG(elem))));
+    RETURN_NOT_OK(builder.AppendInt64(static_cast<int64_t>(PyInt_AS_LONG(elem))));
   } else if (PyString_Check(elem)) {
-    RETURN_NOT_OK(builder.Append(PyString_AS_STRING(elem), PyString_GET_SIZE(elem)));
+    auto data = reinterpret_cast<uint8_t*>(PyString_AS_STRING(elem));
+    auto size = PyString_GET_SIZE(elem);
+    RETURN_NOT_OK(builder.AppendBytes(data, size));
+  } else if (PyUnicode_Check(elem)) {
+    Py_ssize_t size;
+    #if PY_MAJOR_VERSION >= 3
+      char* data = PyUnicode_AsUTF8AndSize(elem, &size); // TODO(pcm): Check if this is correct
+    #else
+      PyObject* str = PyUnicode_AsUTF8String(elem);
+      char* data = PyString_AS_STRING(str);
+      size = PyString_GET_SIZE(str);
+    #endif
+    Status s = builder.AppendString(data, size);
+    Py_XDECREF(str);
+    RETURN_NOT_OK(s);
   } else if (PyList_Check(elem)) {
     builder.AppendList(PyList_Size(elem));
     sublists.push_back(elem);
@@ -78,7 +97,7 @@ Status append(PyObject* elem, SequenceBuilder& builder,
   } else if (PyArray_Check(elem)) {
     RETURN_NOT_OK(SerializeArray((PyArrayObject*) elem, builder));
   } else if (elem == Py_None) {
-    RETURN_NOT_OK(builder.Append());
+    RETURN_NOT_OK(builder.AppendNone());
   } else {
     std::stringstream ss;
     ss << "data type of " << PyString_AS_STRING(PyObject_Repr(elem))

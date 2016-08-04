@@ -15,25 +15,28 @@ class SequenceBuilder {
   SequenceBuilder(arrow::MemoryPool* pool = nullptr);
 
   //! Appending a none to the sequence
-  arrow::Status Append();
+  arrow::Status AppendNone();
 
   //! Appending a boolean to the sequence
-  arrow::Status Append(bool data);
+  arrow::Status AppendBool(bool data);
 
   //! Appending an int64_t to the sequence
-  arrow::Status Append(int64_t data);
+  arrow::Status AppendInt64(int64_t data);
 
   //! Appending an uint64_t to the sequence
-  arrow::Status Append(uint64_t data);
+  arrow::Status AppendUInt64(uint64_t data);
+  
+  //! Append a list of bytes to the sequence
+  arrow::Status AppendBytes(const uint8_t* data, int32_t length);
 
   //! Appending a string to the sequence
-  arrow::Status Append(const char* data, int32_t length);
+  arrow::Status AppendString(const char* data, int32_t length);
 
   //! Appending a float to the sequence
-  arrow::Status Append(float data);
+  arrow::Status AppendFloat(float data);
 
   //! Appending a double to the sequence
-  arrow::Status Append(double data);
+  arrow::Status AppendDouble(double data);
 
   /*! Appending a tensor to the sequence
 
@@ -44,16 +47,16 @@ class SequenceBuilder {
         A pointer to the start of the data block. The length of the data block
         will be the product of the dimensions
   */
-  arrow::Status Append(const std::vector<int64_t>& dims, uint8_t* data);
-  arrow::Status Append(const std::vector<int64_t>& dims, int8_t* data);
-  arrow::Status Append(const std::vector<int64_t>& dims, uint16_t* data);
-  arrow::Status Append(const std::vector<int64_t>& dims, int16_t* data);
-  arrow::Status Append(const std::vector<int64_t>& dims, uint32_t* data);
-  arrow::Status Append(const std::vector<int64_t>& dims, int32_t* data);
-  arrow::Status Append(const std::vector<int64_t>& dims, uint64_t* data);
-  arrow::Status Append(const std::vector<int64_t>& dims, int64_t* data);
-  arrow::Status Append(const std::vector<int64_t>& dims, float* data);
-  arrow::Status Append(const std::vector<int64_t>& dims, double* data);
+  arrow::Status AppendTensor(const std::vector<int64_t>& dims, uint8_t* data);
+  arrow::Status AppendTensor(const std::vector<int64_t>& dims, int8_t* data);
+  arrow::Status AppendTensor(const std::vector<int64_t>& dims, uint16_t* data);
+  arrow::Status AppendTensor(const std::vector<int64_t>& dims, int16_t* data);
+  arrow::Status AppendTensor(const std::vector<int64_t>& dims, uint32_t* data);
+  arrow::Status AppendTensor(const std::vector<int64_t>& dims, int32_t* data);
+  arrow::Status AppendTensor(const std::vector<int64_t>& dims, uint64_t* data);
+  arrow::Status AppendTensor(const std::vector<int64_t>& dims, int64_t* data);
+  arrow::Status AppendTensor(const std::vector<int64_t>& dims, float* data);
+  arrow::Status AppendTensor(const std::vector<int64_t>& dims, double* data);
 
   /*! Add a sublist to the sequenc. The data contained in the sublist will be
      specified in the "Finish" method.
@@ -90,6 +93,7 @@ class SequenceBuilder {
   arrow::NullArrayBuilder nones_;
   arrow::BooleanBuilder bools_;
   arrow::Int64Builder ints_;
+  arrow::BinaryBuilder bytes_;
   arrow::StringBuilder strings_;
   arrow::FloatBuilder floats_;
   arrow::DoubleBuilder doubles_;
@@ -112,6 +116,7 @@ class SequenceBuilder {
   int8_t bool_tag = -1;
   int8_t int_tag = -1;
   int8_t string_tag = -1;
+  int8_t bytes_tag = -1;
   int8_t float_tag = -1;
   int8_t double_tag = -1;
 

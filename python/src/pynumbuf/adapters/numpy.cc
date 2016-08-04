@@ -65,34 +65,34 @@ Status SerializeArray(PyArrayObject* array, SequenceBuilder& builder) {
   auto data = PyArray_DATA(contiguous);
   switch (dtype) {
     case NPY_UINT8:
-      RETURN_NOT_OK(builder.Append(dims, reinterpret_cast<uint8_t*>(data)));
+      RETURN_NOT_OK(builder.AppendTensor(dims, reinterpret_cast<uint8_t*>(data)));
       break;
     case NPY_INT8:
-      RETURN_NOT_OK(builder.Append(dims, reinterpret_cast<int8_t*>(data)));
+      RETURN_NOT_OK(builder.AppendTensor(dims, reinterpret_cast<int8_t*>(data)));
       break;
     case NPY_UINT16:
-      RETURN_NOT_OK(builder.Append(dims, reinterpret_cast<uint16_t*>(data)));
+      RETURN_NOT_OK(builder.AppendTensor(dims, reinterpret_cast<uint16_t*>(data)));
       break;
     case NPY_INT16:
-      RETURN_NOT_OK(builder.Append(dims, reinterpret_cast<int16_t*>(data)));
+      RETURN_NOT_OK(builder.AppendTensor(dims, reinterpret_cast<int16_t*>(data)));
       break;
     case NPY_UINT32:
-      RETURN_NOT_OK(builder.Append(dims, reinterpret_cast<uint32_t*>(data)));
+      RETURN_NOT_OK(builder.AppendTensor(dims, reinterpret_cast<uint32_t*>(data)));
       break;
     case NPY_INT32:
-      RETURN_NOT_OK(builder.Append(dims, reinterpret_cast<int32_t*>(data)));
+      RETURN_NOT_OK(builder.AppendTensor(dims, reinterpret_cast<int32_t*>(data)));
       break;
     case NPY_UINT64:
-      RETURN_NOT_OK(builder.Append(dims, reinterpret_cast<uint64_t*>(data)));
+      RETURN_NOT_OK(builder.AppendTensor(dims, reinterpret_cast<uint64_t*>(data)));
       break;
     case NPY_INT64:
-      RETURN_NOT_OK(builder.Append(dims, reinterpret_cast<int64_t*>(data)));
+      RETURN_NOT_OK(builder.AppendTensor(dims, reinterpret_cast<int64_t*>(data)));
       break;
     case NPY_FLOAT:
-      RETURN_NOT_OK(builder.Append(dims, reinterpret_cast<float*>(data)));
+      RETURN_NOT_OK(builder.AppendTensor(dims, reinterpret_cast<float*>(data)));
       break;
     case NPY_DOUBLE:
-      RETURN_NOT_OK(builder.Append(dims, reinterpret_cast<double*>(data)));
+      RETURN_NOT_OK(builder.AppendTensor(dims, reinterpret_cast<double*>(data)));
       break;
     default:
       DCHECK(false) << "numpy data type not recognized: " << dtype;

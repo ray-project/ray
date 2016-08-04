@@ -16,11 +16,11 @@ namespace numbuf {
 
 arrow::Status AppendScalar(PyObject* obj, SequenceBuilder& builder) {
   if (PyArray_IsScalar(obj, Bool)) {
-    return builder.Append(((PyBoolScalarObject *)obj)->obval != 0);
+    return builder.AppendBool(((PyBoolScalarObject *)obj)->obval != 0);
   } else if (PyArray_IsScalar(obj, Float)) {
-    return builder.Append(((PyFloatScalarObject *)obj)->obval);
+    return builder.AppendFloat(((PyFloatScalarObject *)obj)->obval);
   } else if (PyArray_IsScalar(obj, Double)) {
-    return builder.Append(((PyDoubleScalarObject *)obj)->obval);
+    return builder.AppendDouble(((PyDoubleScalarObject *)obj)->obval);
   }
   int64_t value = 0;
   if (PyArray_IsScalar(obj, Byte)) {
@@ -46,7 +46,7 @@ arrow::Status AppendScalar(PyObject* obj, SequenceBuilder& builder) {
   } else {
     DCHECK(false) << "scalar type not recognized";
   }
-  return builder.Append(value);
+  return builder.AppendInt64(value);
 }
 
 } // namespace

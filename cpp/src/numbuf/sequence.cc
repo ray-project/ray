@@ -8,7 +8,9 @@ SequenceBuilder::SequenceBuilder(MemoryPool* pool)
     : pool_(pool), types_(pool), offsets_(pool),
       nones_(pool, std::make_shared<NullType>()),
       bools_(pool, std::make_shared<BooleanType>()),
-      ints_(pool), strings_(pool, std::make_shared<StringType>()),
+      ints_(pool),
+      bytes_(pool, std::make_shared<BinaryType>()),
+      strings_(pool, std::make_shared<StringType>()),
       floats_(pool), doubles_(pool),
       uint8_tensors_(std::make_shared<UInt8Type>(), pool),
       int8_tensors_(std::make_shared<Int8Type>(), pool),
@@ -31,46 +33,51 @@ SequenceBuilder::SequenceBuilder(MemoryPool* pool)
   RETURN_NOT_OK(types_.Append(TAG));           \
   RETURN_NOT_OK(nones_.AppendToBitmap(true));
 
-Status SequenceBuilder::Append() {
+Status SequenceBuilder::AppendNone() {
   RETURN_NOT_OK(offsets_.Append(0));
   RETURN_NOT_OK(types_.Append(0));
   return nones_.AppendToBitmap(false);
 }
 
-Status SequenceBuilder::Append(bool data) {
+Status SequenceBuilder::AppendBool(bool data) {
   UPDATE(bools_.length(), bool_tag);
   return bools_.Append(data);
 }
 
-Status SequenceBuilder::Append(int64_t data) {
+Status SequenceBuilder::AppendInt64(int64_t data) {
   UPDATE(ints_.length(), int_tag);
   return ints_.Append(data);
 }
 
-Status SequenceBuilder::Append(uint64_t data) {
+Status SequenceBuilder::AppendUInt64(uint64_t data) {
   UPDATE(ints_.length(), int_tag);
   return ints_.Append(data);
 }
 
-Status SequenceBuilder::Append(const char* data, int32_t length) {
+Status SequenceBuilder::AppendBytes(const uint8_t* data, int32_t length) {
+  UPDATE(bytes_.length(), bytes_tag);
+  return bytes_.Append(data, length);
+}
+
+Status SequenceBuilder::AppendString(const char* data, int32_t length) {
   UPDATE(strings_.length(), string_tag);
   return strings_.Append(data, length);
 }
 
-Status SequenceBuilder::Append(float data) {
+Status SequenceBuilder::AppendFloat(float data) {
   UPDATE(floats_.length(), float_tag);
   return floats_.Append(data);
 }
 
-Status SequenceBuilder::Append(double data) {
+Status SequenceBuilder::AppendDouble(double data) {
   UPDATE(doubles_.length(), double_tag);
   return doubles_.Append(data);
 }
 
-#define DEF_TENSOR_APPEND(NAME, TYPE, TAG)                                       \
-  Status SequenceBuilder::Append(const std::vector<int64_t>& dims, TYPE* data) { \
-    UPDATE(NAME.length(), TAG);                                                  \
-    return NAME.Append(dims, data);                                              \
+#define DEF_TENSOR_APPEND(NAME, TYPE, TAG)                                             \
+  Status SequenceBuilder::AppendTensor(const std::vector<int64_t>& dims, TYPE* data) { \
+    UPDATE(NAME.length(), TAG);                                                        \
+    return NAME.Append(dims, data);                                                    \
   }
 
 DEF_TENSOR_APPEND(uint8_tensors_, uint8_t, uint8_tensor_tag);
@@ -136,6 +143,7 @@ std::shared_ptr<DenseUnionArray> SequenceBuilder::Finish(
   ADD_ELEMENT(bools_, bool_tag);
   ADD_ELEMENT(ints_, int_tag);
   ADD_ELEMENT(strings_, string_tag);
+  ADD_ELEMENT(bytes_, bytes_tag);
   ADD_ELEMENT(floats_, float_tag);
   ADD_ELEMENT(doubles_, double_tag);
 
