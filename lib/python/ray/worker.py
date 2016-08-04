@@ -658,7 +658,7 @@ def register_module(module, worker=global_worker):
       _logger().info("registering {}.".format(val.func_name))
       worker.register_function(val)
 
-def init(start_ray_local=False, num_workers=None, num_objstores=1, scheduler_address=None, objstore_address=None, driver_address=None, driver_mode=SCRIPT_MODE):
+def init(start_ray_local=False, num_workers=None, num_objstores=None, scheduler_address=None, objstore_address=None, driver_address=None, driver_mode=SCRIPT_MODE):
   """Either connect to an existing Ray cluster or start one and connect to it.
 
   This method handles two cases. Either a Ray cluster already exists and we
@@ -694,6 +694,7 @@ def init(start_ray_local=False, num_workers=None, num_objstores=1, scheduler_add
     if driver_mode not in [SCRIPT_MODE, PYTHON_MODE, SILENT_MODE]:
       raise Exception("If start_ray_local=True, then driver_mode must be in [SCRIPT_MODE, PYTHON_MODE, SILENT_MODE].")
     num_workers = 1 if num_workers is None else num_workers
+    num_objstores = 1 if num_objstores is None else num_objstores
     # Start the scheduler, object store, and some workers. These will be killed
     # by the call to cleanup(), which happens when the Python script exits.
     scheduler_address, objstore_addresses, driver_addresses = services.start_ray_local(num_objstores=num_objstores, num_workers=num_workers, worker_path=None)
