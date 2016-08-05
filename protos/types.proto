@@ -12,6 +12,10 @@ message String {
   string data = 1;
 }
 
+message Unicode {
+  string data = 1;
+}
+
 message Double {
   double data = 1;
 }
@@ -46,6 +50,7 @@ message ReusableVar {
 // Union of possible object types
 message Obj {
   String string_data = 1;
+  Unicode unicode_data = 13;
   Int int_data = 2;
   Long long_data = 12;
   Double double_data = 3;
