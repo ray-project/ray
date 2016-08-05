@@ -155,7 +155,24 @@ to the cluster's head node (as described by the output of the
         ray.init(node_ip_address="98.76.54.321", scheduler_address="98.76.54.321:10001")
     ```
 
-7. Note that there are several more commands that can be run from within
+8. If you would like to run the example applications on the cluster. You will
+need to install a few more Python packages. This can be done, within
+`cluster.py`, by running the following.
+    ```python
+    install_example_dependencies_command = """
+      # Install TensorFlow
+      sudo pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.9.0-cp27-none-linux_x86_64.whl;
+      # Install SciPy
+      sudo apt-get -y install libatlas-base-dev gfortran;
+      sudo pip install scipy;
+      # Install Gym
+      sudo apt-get -y install zlib1g-dev libjpeg-dev xvfb libav-tools xorg-dev python-opengl libsdl2-dev swig wget;
+      sudo pip install gym[atari]
+    """
+    cluster.run_command_over_ssh_on_all_nodes_in_parallel(install_example_dependencies_command)
+    ```
+
+9. Note that there are several more commands that can be run from within
 `cluster.py`.
 
     - `cluster.install_ray()` - This pulls the Ray source code on each node,
@@ -167,3 +184,5 @@ to the cluster's head node (as described by the output of the
       processes).
     - `cluster.update_ray()` - This pulls the latest Ray source code and builds
       it.
+    - `cluster.run_command_over_ssh_on_all_nodes_in_parallel(command)` - This
+      will ssh to each node in the cluster and run a command.
