@@ -132,7 +132,6 @@ source code to it, you can pass in the local path to the directory that contains
 your Python code. For example, `cluster.start_ray("~/example_ray_code")`. This
 will copy your source code to each node on the cluster, placing it in a
 directory on the PYTHONPATH.
-
 The `cluster.start_ray` command will start the Ray scheduler, object stores, and
 workers, and before finishing it will print instructions for connecting to the
 cluster via ssh.
@@ -161,9 +160,9 @@ to the cluster's head node (as described by the output of the
 
     - `cluster.install_ray()` - This pulls the Ray source code on each node,
       builds all of the third party libraries, and builds the project itself.
-    - `cluster.start_ray(user_source_directory, num_workers_per_node=10)` - This
-      starts a scheduler process on the head node, and it starts an object store
-      and some workers on each node.
+    - `cluster.start_ray(user_source_directory=None, num_workers_per_node=10)` -
+      This starts a scheduler process on the head node, and it starts an object
+      store and some workers on each node.
     - `cluster.stop_ray()` - This shuts down the cluster (killing all of the
       processes).
     - `cluster.update_ray()` - This pulls the latest Ray source code and builds
