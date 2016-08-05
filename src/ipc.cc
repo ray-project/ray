@@ -52,7 +52,7 @@ bool MessageQueue<>::connect(const std::string& name, bool create, size_t messag
     }
   }
   catch (bip::interprocess_exception &ex) {
-    RAY_CHECK(false, "boost::interprocess exception: " << ex.what());
+    RAY_CHECK(false, "name = " << name_ << ", create = " << create << ", boost::interprocess exception: " << ex.what());
   }
   return true;
 }

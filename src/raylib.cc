@@ -642,19 +642,24 @@ static PyObject* deserialize_task(PyObject* worker_capsule, const Task& task) {
 // Ray Python API
 
 static PyObject* create_worker(PyObject* self, PyObject* args) {
-  const char* scheduler_addr;
-  const char* objstore_addr;
-  const char* worker_addr;
+  const char* node_ip_address;
+  const char* scheduler_address;
+  // The object store address can be the empty string, in which case the
+  // scheduler will choose the object store address.
+  const char* objstore_address;
   PyObject* is_driver_obj;
-  if (!PyArg_ParseTuple(args, "sssO", &scheduler_addr, &objstore_addr, &worker_addr, &is_driver_obj)) {
+  if (!PyArg_ParseTuple(args, "sssO", &node_ip_address, &scheduler_address, &objstore_address, &is_driver_obj)) {
     return NULL;
   }
   bool is_driver = PyObject_IsTrue(is_driver_obj);
-  auto scheduler_channel = grpc::CreateChannel(scheduler_addr, grpc::InsecureChannelCredentials());
-  auto objstore_channel = grpc::CreateChannel(objstore_addr, grpc::InsecureChannelCredentials());
-  Worker* worker = new Worker(std::string(worker_addr), scheduler_channel, objstore_channel);
-  worker->register_worker(std::string(worker_addr), std::string(objstore_addr), is_driver);
-  return PyCapsule_New(static_cast<void*>(worker), "worker", &WorkerCapsule_Destructor);
+  Worker* worker = new Worker(std::string(scheduler_address));
+  worker->register_worker(std::string(node_ip_address), std::string(objstore_address), is_driver);
+
+  PyObject* t = PyTuple_New(2);
+  PyObject* worker_capsule = PyCapsule_New(static_cast<void*>(worker), "worker", &WorkerCapsule_Destructor);
+  PyTuple_SetItem(t, 0, worker_capsule);
+  PyTuple_SetItem(t, 1, PyString_FromString(worker->get_worker_address()));
+  return t;
 }
 
 static PyObject* disconnect(PyObject* self, PyObject* args) {

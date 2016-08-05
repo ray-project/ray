@@ -81,12 +81,13 @@ class ObjStoreTest(unittest.TestCase):
 
   # Test setting up object stores, transfering data between them and retrieving data to a client
   def testObjStore(self):
-    scheduler_address, objstore_addresses, driver_addresses = ray.services.start_ray_local(num_objstores=2, num_workers=0, worker_path=None)
+    scheduler_address, objstore_addresses = ray.services.start_ray_local(num_objstores=2, num_workers=0, worker_path=None)
     w1 = ray.worker.Worker()
     w2 = ray.worker.Worker()
-    ray.connect(scheduler_address, objstore_addresses[0], driver_addresses[0], is_driver=True, mode=ray.SCRIPT_MODE, worker=w1)
+    node_ip_address = "127.0.0.1"
+    ray.connect(node_ip_address, scheduler_address, objstore_addresses[0], is_driver=True, mode=ray.SCRIPT_MODE, worker=w1)
     ray.reusables._cached_reusables = [] # This is a hack to make the test run.
-    ray.connect(scheduler_address, objstore_addresses[1], driver_addresses[1], is_driver=True, mode=ray.SCRIPT_MODE, worker=w2)
+    ray.connect(node_ip_address, scheduler_address, objstore_addresses[1], is_driver=True, mode=ray.SCRIPT_MODE, worker=w2)
 
     # putting and getting an object shouldn't change it
     for data in ["h", "h" * 10000, 0, 0.0]:

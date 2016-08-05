@@ -37,7 +37,7 @@ private:
 
 class Worker {
  public:
-  Worker(const std::string& worker_address, std::shared_ptr<Channel> scheduler_channel, std::shared_ptr<Channel> objstore_channel);
+  Worker(const std::string& scheduler_address);
 
   // Submit a remote task to the scheduler. If the function in the task is not
   // registered with the scheduler, we will sleep for retry_wait_milliseconds
@@ -46,7 +46,7 @@ class Worker {
   // Requests the scheduler to kill workers
   bool kill_workers(ClientContext &context);
   // send request to the scheduler to register this worker
-  void register_worker(const std::string& worker_address, const std::string& objstore_address, bool is_driver);
+  void register_worker(const std::string& ip_address, const std::string& objstore_address, bool is_driver);
   // get a new object ID that is registered with the scheduler
   ObjectID get_objectid();
   // request an object to be delivered to the local object store
@@ -94,6 +94,8 @@ class Worker {
   bool export_function(const std::string& function);
   // export reusable variable to workers
   void export_reusable_variable(const std::string& name, const std::string& initializer, const std::string& reinitializer);
+  // return the worker address
+  const char* get_worker_address() { return worker_address_.c_str(); }
 
  private:
   bool connected_;
@@ -104,6 +106,8 @@ class Worker {
   bip::managed_shared_memory segment_;
   WorkerId workerid_;
   ObjStoreId objstoreid_;
+  std::string scheduler_address_;
+  std::string objstore_address_;
   std::string worker_address_;
   MessageQueue<ObjRequest> request_obj_queue_;
   MessageQueue<ObjHandle> receive_obj_queue_;

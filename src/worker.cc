@@ -56,11 +56,10 @@ Status WorkerServiceImpl::Die(ServerContext* context, const DieRequest* request,
   return Status::OK;
 }
 
-Worker::Worker(const std::string& worker_address, std::shared_ptr<Channel> scheduler_channel, std::shared_ptr<Channel> objstore_channel)
-    : worker_address_(worker_address),
-      scheduler_stub_(Scheduler::NewStub(scheduler_channel)) {
-  RAY_CHECK(receive_queue_.connect(worker_address_, true), "error connecting receive_queue_");
-  connected_ = true;
+Worker::Worker(const std::string& scheduler_address)
+    : scheduler_address_(scheduler_address) {
+  auto scheduler_channel = grpc::CreateChannel(scheduler_address, grpc::InsecureChannelCredentials());
+  scheduler_stub_ = Scheduler::NewStub(scheduler_channel);
 }
 
 SubmitTaskReply Worker::submit_task(SubmitTaskRequest* request, int max_retries, int retry_wait_milliseconds) {
@@ -87,10 +86,12 @@ bool Worker::kill_workers(ClientContext &context) {
   return reply.success();
 }
 
-void Worker::register_worker(const std::string& worker_address, const std::string& objstore_address, bool is_driver) {
+void Worker::register_worker(const std::string& node_ip_address, const std::string& objstore_address, bool is_driver) {
   unsigned int retry_wait_milliseconds = 20;
   RegisterWorkerRequest request;
-  request.set_worker_address(worker_address);
+  request.set_node_ip_address(node_ip_address);
+  // The object store address can be the empty string, in which case the
+  // scheduler will assign an object store address.
   request.set_objstore_address(objstore_address);
   request.set_is_driver(is_driver);
   RegisterWorkerReply reply;
@@ -108,9 +109,13 @@ void Worker::register_worker(const std::string& worker_address, const std::strin
   }
   workerid_ = reply.workerid();
   objstoreid_ = reply.objstoreid();
+  objstore_address_ = reply.objstore_address();
+  worker_address_ = reply.worker_address();
   segmentpool_ = std::make_shared<MemorySegmentPool>(objstoreid_, false);
-  RAY_CHECK(request_obj_queue_.connect(std::string("queue:") + objstore_address + std::string(":obj"), false), "error connecting request_obj_queue_");
-  RAY_CHECK(receive_obj_queue_.connect(std::string("queue:") + objstore_address + std::string(":worker:") + std::to_string(workerid_) + std::string(":obj"), true), "error connecting receive_obj_queue_");
+  RAY_CHECK(receive_queue_.connect(worker_address_, true), "error connecting receive_queue_");
+  RAY_CHECK(request_obj_queue_.connect(std::string("queue:") + objstore_address_ + std::string(":obj"), false), "error connecting request_obj_queue_");
+  RAY_CHECK(receive_obj_queue_.connect(std::string("queue:") + objstore_address_ + std::string(":worker:") + std::to_string(workerid_) + std::string(":obj"), true), "error connecting receive_obj_queue_");
+  connected_ = true;
   return;
 }
 

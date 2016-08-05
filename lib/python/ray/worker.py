@@ -658,7 +658,7 @@ def register_module(module, worker=global_worker):
       _logger().info("registering {}.".format(val.func_name))
       worker.register_function(val)
 
-def init(start_ray_local=False, num_workers=None, num_objstores=None, scheduler_address=None, objstore_address=None, driver_address=None, driver_mode=SCRIPT_MODE):
+def init(start_ray_local=False, num_workers=None, num_objstores=None, scheduler_address=None, node_ip_address=None, driver_mode=SCRIPT_MODE):
   """Either connect to an existing Ray cluster or start one and connect to it.
 
   This method handles two cases. Either a Ray cluster already exists and we
@@ -675,10 +675,9 @@ def init(start_ray_local=False, num_workers=None, num_objstores=None, scheduler_
       start_ray_local is True.
     scheduler_address (Optional[str]): The address of the scheduler to connect
       to if start_ray_local is False.
-    objstore_address (Optional[str]): The address of the object store to connect
-      to if start_ray_local is False.
-    driver_address (Optional[str]): The address of this driver if
-      start_ray_local is False.
+    node_ip_address (Optional[str]): The address of the node the worker is
+      running on. It is required if start_ray_local is False and it cannot be
+      provided otherwise.
     driver_mode (Optional[bool]): The mode in which to start the driver. This
       should be one of SCRIPT_MODE, PYTHON_MODE, and SILENT_MODE.
 
@@ -689,28 +688,28 @@ def init(start_ray_local=False, num_workers=None, num_objstores=None, scheduler_
   if start_ray_local:
     # In this case, we launch a scheduler, a new object store, and some workers,
     # and we connect to them.
-    if (scheduler_address is not None) or (objstore_address is not None) or (driver_address is not None):
-      raise Exception("If start_ray_local=True, then you cannot pass in a scheduler_address, objstore_address, or worker_address.")
+    if (scheduler_address is not None) or (node_ip_address is not None):
+      raise Exception("If start_ray_local=True, then you cannot pass in a scheduler_address or a node_ip_address.")
     if driver_mode not in [SCRIPT_MODE, PYTHON_MODE, SILENT_MODE]:
       raise Exception("If start_ray_local=True, then driver_mode must be in [SCRIPT_MODE, PYTHON_MODE, SILENT_MODE].")
+    # Use the address 127.0.0.1 in local mode.
+    node_ip_address = "127.0.0.1"
     num_workers = 1 if num_workers is None else num_workers
     num_objstores = 1 if num_objstores is None else num_objstores
     # Start the scheduler, object store, and some workers. These will be killed
     # by the call to cleanup(), which happens when the Python script exits.
-    scheduler_address, objstore_addresses, driver_addresses = services.start_ray_local(num_objstores=num_objstores, num_workers=num_workers, worker_path=None)
-    # It is possible for start_ray_local to return multiple object stores, but
-    # we will only connect the driver to one of them.
-    objstore_address = objstore_addresses[0]
-    driver_address = driver_addresses[0]
+    scheduler_address, _ = services.start_ray_local(num_objstores=num_objstores, num_workers=num_workers, worker_path=None)
   else:
     # In this case, there is an existing scheduler and object store, and we do
     # not need to start any processes.
     if (num_workers is not None) or (num_objstores is not None):
       raise Exception("The arguments num_workers and num_objstores must not be provided unless start_ray_local=True.")
+    if node_ip_address is None:
+      raise Exception("When start_ray_local=False, the node_ip_address of the current node must be provided.")
   # Connect this driver to the scheduler and object store. The corresponing call
   # to disconnect will happen in the call to cleanup() when the Python script
   # exits.
-  connect(scheduler_address, objstore_address, driver_address, is_driver=True, worker=global_worker, mode=driver_mode)
+  connect(node_ip_address, scheduler_address, is_driver=True, worker=global_worker, mode=driver_mode)
 
 def cleanup(worker=global_worker):
   """Disconnect the driver, and terminate any processes started in init.
@@ -726,14 +725,15 @@ def cleanup(worker=global_worker):
 
 atexit.register(cleanup)
 
-def connect(scheduler_address, objstore_address, worker_address, is_driver=False, worker=global_worker, mode=WORKER_MODE):
+def connect(node_ip_address, scheduler_address, objstore_address=None, is_driver=False, worker=global_worker, mode=WORKER_MODE):
   """Connect this worker to the scheduler and an object store.
 
   Args:
+    node_ip_address (str): The ip address of the node the worker runs on.
     scheduler_address (str): The ip address and port of the scheduler.
-    objstore_address (str): The ip address and port of the local object store.
-    worker_address (str): The ip address and port of this worker. The port can
-      be chosen arbitrarily.
+    objstore_address (Optional[str]): The ip address and port of the local
+      object store. Normally, this argument should be omitted and the scheduler
+      will tell the worker what object store to connect to.
     is_driver (bool): True if this worker is a driver and false otherwise.
     mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, PYTHON_MODE,
       and SILENT_MODE.
@@ -741,22 +741,20 @@ def connect(scheduler_address, objstore_address, worker_address, is_driver=False
   if hasattr(worker, "handle"):
     del worker.handle
   worker.scheduler_address = scheduler_address
-  worker.objstore_address = objstore_address
-  worker.worker_address = worker_address
-  worker.handle = raylib.create_worker(worker.scheduler_address, worker.objstore_address, worker.worker_address, is_driver)
+  worker.handle, worker.worker_address = raylib.create_worker(node_ip_address, scheduler_address, objstore_address if objstore_address is not None else "", is_driver)
   worker.set_mode(mode)
   FORMAT = "%(asctime)-15s %(message)s"
   # Configure the Python logging module. Note that if we do not provide our own
   # logger, then our logging will interfere with other Python modules that also
   # use the logging module.
-  log_handler = logging.FileHandler(config.get_log_file_path("-".join(["worker", worker_address]) + ".log"))
+  log_handler = logging.FileHandler(config.get_log_file_path("-".join(["worker", worker.worker_address]) + ".log"))
   log_handler.setLevel(logging.DEBUG)
   log_handler.setFormatter(logging.Formatter(FORMAT))
   _logger().addHandler(log_handler)
   _logger().setLevel(logging.DEBUG)
   _logger().propagate = False
   # Configure the logging from the worker C++ code.
-  raylib.set_log_config(config.get_log_file_path("-".join(["worker", worker_address, "c++"]) + ".log"))
+  raylib.set_log_config(config.get_log_file_path("-".join(["worker", worker.worker_address, "c++"]) + ".log"))
   if mode in [SCRIPT_MODE, SILENT_MODE]:
     for function_to_export in worker.cached_remote_functions:
       raylib.export_function(worker.handle, function_to_export)
