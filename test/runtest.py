@@ -13,7 +13,7 @@ import ray.array.distributed as da
 
 RAY_TEST_OBJECTS = [[1, "hello", 3.0], 42, 43L, "hello world", 42.0, 1L << 62,
                     (1.0, "hi"), None, (None, None), ("hello", None),
-                    True, False, (True, False),
+                    True, False, (True, False), u"\u262F",
                     {True: "hello", False: "world"},
                     {"hello" : "world", 1: 42, 1.0: 45}, {},
                     np.int8(3), np.int32(4), np.int64(5),

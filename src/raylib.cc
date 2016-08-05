@@ -289,6 +289,17 @@ int serialize(PyObject* worker_capsule, PyObject* val, Obj* obj, std::vector<Obj
     Py_ssize_t length;
     PyString_AsStringAndSize(val, &buffer, &length); // creates pointer to internal buffer
     obj->mutable_string_data()->set_data(buffer, length);
+  } else if (PyUnicode_Check(val)) {
+    Py_ssize_t length;
+    #if PY_MAJOR_VERSION >= 3
+      char* data = PyUnicode_AsUTF8AndSize(val, &length); // TODO(pcm): Check if this is correct
+    #else
+      PyObject* str = PyUnicode_AsUTF8String(val);
+      char* data = PyString_AS_STRING(str);
+      length = PyString_GET_SIZE(str);
+    #endif
+    obj->mutable_unicode_data()->set_data(data, length);
+    Py_XDECREF(str);
   } else if (val == Py_None) {
     obj->mutable_empty_data(); // allocate an Empty object, this is a None
   } else if (PyObject_IsInstance(val, (PyObject*) &PyObjectIDType)) {
@@ -343,7 +354,7 @@ int serialize(PyObject* worker_capsule, PyObject* val, Obj* obj, std::vector<Obj
         }
         break;
       default:
-        PyErr_SetString(RayError, "serialization: numpy datatype not know");
+        PyErr_SetString(RayError, "serialization: numpy datatype not known");
         return -1;
     }
     Py_DECREF(array); // TODO(rkn): is this right?
@@ -408,6 +419,10 @@ static PyObject* deserialize(PyObject* worker_capsule, const Obj& obj, std::vect
     const char* buffer = obj.string_data().data().data();
     Py_ssize_t length = obj.string_data().data().size();
     return PyString_FromStringAndSize(buffer, length);
+  } else if (obj.has_unicode_data()) {
+    const char* buffer = obj.unicode_data().data().data();
+    Py_ssize_t length = obj.unicode_data().data().size();
+    return PyUnicode_FromStringAndSize(buffer, length);
   } else if (obj.has_empty_data()) {
     Py_RETURN_NONE;
   } else if (obj.has_objectid_data()) {

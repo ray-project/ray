@@ -28,6 +28,9 @@ class Tuple(tuple):
 
 class Str(str):
   pass
+  
+class Unicode(unicode):
+  pass
 
 class NDArray(np.ndarray):
   pass

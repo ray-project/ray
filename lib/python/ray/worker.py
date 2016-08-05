@@ -489,6 +489,8 @@ class Worker(object):
       result = serialization.Tuple(result)
     elif isinstance(result, str):
       result = serialization.Str(result)
+    elif isinstance(result, unicode):
+      result = serialization.Unicode(result)
     elif isinstance(result, np.ndarray):
       result = result.view(serialization.NDArray)
     elif isinstance(result, np.generic):
