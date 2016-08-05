@@ -152,7 +152,7 @@ to the cluster's head node (as described by the output of the
     Then within a Python interpreter, run the following commands.
 
         import ray
-        ray.init(scheduler_address="98.76.54.321:10001", objstore_address="98.76.54.321:20001", driver_address="98.76.54.321:30001")
+        ray.init(node_ip_address="98.76.54.321", scheduler_address="98.76.54.321:10001")
     ```
 
 7. Note that there are several more commands that can be run from within

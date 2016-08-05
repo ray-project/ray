@@ -215,12 +215,66 @@ Status SchedulerService::RegisterObjStore(ServerContext* context, const Register
 }
 
 Status SchedulerService::RegisterWorker(ServerContext* context, const RegisterWorkerRequest* request, RegisterWorkerReply* reply) {
-  std::pair<WorkerId, ObjStoreId> info = register_worker(request->worker_address(), request->objstore_address(), request->is_driver());
-  WorkerId workerid = info.first;
-  ObjStoreId objstoreid = info.second;
-  RAY_LOG(RAY_INFO, "registered worker with workerid " << workerid);
+  std::string objstore_address = request->objstore_address();
+  std::string node_ip_address = request->node_ip_address();
+  bool is_driver = request->is_driver();
+  RAY_LOG(RAY_INFO, "Registering a worker from node with IP address " << node_ip_address);
+  // Find the object store to connect to. We use the max size to indicate that
+  // the object store for this worker has not been found.
+  ObjStoreId objstoreid = std::numeric_limits<size_t>::max();
+  // TODO: HACK: num_attempts is a hack
+  for (int num_attempts = 0; num_attempts < 30; ++num_attempts) {
+    auto objstores = GET(objstores_);
+    for (size_t i = 0; i < objstores->size(); ++i) {
+      if (objstore_address != "" && (*objstores)[i].address == objstore_address) {
+        // This object store address is the same as the provided object store
+        // address.
+        objstoreid = i;
+      }
+      if ((*objstores)[i].address.compare(0, node_ip_address.size(), node_ip_address) == 0) {
+        // The object store address was not provided and this object store
+        // address has node_ip_address as a prefix, so it is on the same machine
+        // as the worker that is registering.
+        objstoreid = i;
+        objstore_address = (*objstores)[i].address;
+      }
+    }
+    if (objstoreid == std::numeric_limits<size_t>::max()) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    } else {
+      break;
+    }
+  }
+  if (objstore_address.empty()) {
+    RAY_CHECK_NEQ(objstoreid, std::numeric_limits<size_t>::max(), "No object store with IP address " << node_ip_address << " has registered.");
+  } else {
+    RAY_CHECK_NEQ(objstoreid, std::numeric_limits<size_t>::max(), "Object store with address " << objstore_address << " not yet registered.");
+  }
+  // Populate the worker information and generate a worker address.
+  WorkerId workerid;
+  std::string worker_address;
+  {
+    auto workers = GET(workers_);
+    workerid = workers->size();
+    worker_address = node_ip_address + ":" + std::to_string(40000 + workerid);
+    workers->push_back(WorkerHandle());
+    auto channel = grpc::CreateChannel(worker_address, grpc::InsecureChannelCredentials());
+    (*workers)[workerid].channel = channel;
+    (*workers)[workerid].objstoreid = objstoreid;
+    (*workers)[workerid].worker_stub = WorkerService::NewStub(channel);
+    (*workers)[workerid].worker_address = worker_address;
+    (*workers)[workerid].initialized = false;
+    if (is_driver) {
+      (*workers)[workerid].current_task = ROOT_OPERATION; // We use this field to identify which workers are drivers.
+    } else {
+      (*workers)[workerid].current_task = NO_OPERATION;
+    }
+  }
+  RAY_LOG(RAY_INFO, "Finished registering worker with workerid " << workerid << ", worker address " << worker_address << " on node with IP address " << node_ip_address << ", is_driver = " << is_driver << ", assigned to object store with id " << objstoreid << " and address " << objstore_address);
   reply->set_workerid(workerid);
   reply->set_objstoreid(objstoreid);
+  reply->set_worker_address(worker_address);
+  reply->set_objstore_address(objstore_address);
   schedule();
   return Status::OK;
 }
@@ -538,42 +592,6 @@ bool SchedulerService::can_run(const Task& task) {
     }
   }
   return true;
-}
-
-std::pair<WorkerId, ObjStoreId> SchedulerService::register_worker(const std::string& worker_address, const std::string& objstore_address, bool is_driver) {
-  RAY_LOG(RAY_INFO, "registering worker " << worker_address << " connected to object store " << objstore_address);
-  ObjStoreId objstoreid = std::numeric_limits<size_t>::max();
-  // TODO: HACK: num_attempts is a hack
-  for (int num_attempts = 0; num_attempts < 30; ++num_attempts) {
-    auto objstores = GET(objstores_);
-    for (size_t i = 0; i < objstores->size(); ++i) {
-      if ((*objstores)[i].address == objstore_address) {
-        objstoreid = i;
-      }
-    }
-    if (objstoreid == std::numeric_limits<size_t>::max()) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
-  }
-  RAY_CHECK_NEQ(objstoreid, std::numeric_limits<size_t>::max(), "object store with address " << objstore_address << " not yet registered");
-  WorkerId workerid;
-  {
-    auto workers = GET(workers_);
-    workerid = workers->size();
-    workers->push_back(WorkerHandle());
-    auto channel = grpc::CreateChannel(worker_address, grpc::InsecureChannelCredentials());
-    (*workers)[workerid].channel = channel;
-    (*workers)[workerid].objstoreid = objstoreid;
-    (*workers)[workerid].worker_stub = WorkerService::NewStub(channel);
-    (*workers)[workerid].worker_address = worker_address;
-    (*workers)[workerid].initialized = false;
-    if (is_driver) {
-      (*workers)[workerid].current_task = ROOT_OPERATION; // We use this field to identify which workers are drivers.
-    } else {
-      (*workers)[workerid].current_task = NO_OPERATION;
-    }
-  }
-  return std::make_pair(workerid, objstoreid);
 }
 
 ObjectID SchedulerService::register_new_object() {

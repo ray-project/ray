@@ -62,14 +62,16 @@ message AckReply {
 }
 
 message RegisterWorkerRequest {
-  string worker_address = 1; // IP address of the worker being registered
-  string objstore_address = 2; // IP address of the object store the worker is connected to
-  bool is_driver = 3; // True if the worker is a driver, and false otherwise
+  string node_ip_address = 1; // The IP address of the node the worker is running on.
+  string objstore_address = 2; // The address of the object store the worker should connect to. If omitted, this will be assigned by the scheduler.
+  bool is_driver = 3; // True if the worker is a driver, and false otherwise.
 }
 
 message RegisterWorkerReply {
   uint64 workerid = 1; // Worker ID assigned by the scheduler
   uint64 objstoreid = 2; // The Object store ID of the worker's local object store
+  string worker_address = 3; // IP address of the worker being registered
+  string objstore_address = 4; // IP address of the object store the worker should connect to
 }
 
 message RegisterObjStoreRequest {

@@ -185,8 +185,8 @@ class RayCluster(object):
       Then within a Python interpreter or script, run the following commands.
 
           import ray
-          ray.init(scheduler_address="{}:10001", objstore_address="{}:20001", driver_address="{}:30001")
-    """.format(self.key_file, self.username, self.node_ip_addresses[0], cd_location, setup_env_path, self.node_private_ip_addresses[0], self.node_private_ip_addresses[0], self.node_private_ip_addresses[0])
+          ray.init(node_ip_address="{}", scheduler_address="{}:10001")
+    """.format(self.key_file, self.username, self.node_ip_addresses[0], cd_location, setup_env_path, self.node_private_ip_addresses[0], self.node_private_ip_addresses[0])
 
   def stop_ray(self):
     """Kill all of the processes in the Ray cluster.
