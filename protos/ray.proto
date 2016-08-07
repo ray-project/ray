@@ -22,8 +22,8 @@ service Scheduler {
   rpc RegisterWorker(RegisterWorkerRequest) returns (RegisterWorkerReply);
   // Register an object store with the scheduler
   rpc RegisterObjStore(RegisterObjStoreRequest) returns (RegisterObjStoreReply);
-  // Tell the scheduler that a worker can execute a certain function
-  rpc RegisterFunction(RegisterFunctionRequest) returns (AckReply);
+  // Tell the scheduler that a worker successfully imported a remote function.
+  rpc RegisterRemoteFunction(RegisterRemoteFunctionRequest) returns (AckReply);
   // Asks the scheduler to execute a task, immediately returns an object ID to the result
   rpc SubmitTask(SubmitTaskRequest) returns (SubmitTaskReply);
   // Increment the count of the object ID
@@ -53,9 +53,11 @@ service Scheduler {
   // Kills the workers
   rpc KillWorkers(KillWorkersRequest) returns (KillWorkersReply);
   // Exports function to the workers
-  rpc ExportFunction(ExportFunctionRequest) returns (ExportFunctionReply);
+  rpc ExportRemoteFunction(ExportRemoteFunctionRequest) returns (AckReply);
   // Ship an initializer and reinitializer for a reusable variable to the workers
   rpc ExportReusableVariable(ExportReusableVariableRequest) returns (AckReply);
+  // Notify the scheduler that a failure occurred while running a task, importing a remote function, or importing a reusable variable.
+  rpc NotifyFailure(NotifyFailureRequest) returns (AckReply);
 }
 
 message AckReply {
@@ -82,10 +84,14 @@ message RegisterObjStoreReply {
   uint64 objstoreid = 1; // Object store ID assigned by the scheduler
 }
 
-message RegisterFunctionRequest {
+message RegisterRemoteFunctionRequest {
   uint64 workerid = 1; // Worker that can execute the function
-  string fnname = 2; // Name of the function that is registered
-  uint64 num_return_vals = 3; // Number of return values of the function
+  string function_name = 2; // Name of the remote function
+  uint64 num_return_vals = 3; // Number of return values of the function. This is only present if the function was successfully imported.
+}
+
+message NotifyFailure {
+  Failure failure = 1; // The failure object.
 }
 
 message SubmitTaskRequest {
@@ -136,11 +142,6 @@ message DecrementRefCountRequest {
 
 message ReadyForNewTaskRequest {
   uint64 workerid = 1; // ID of the worker which executed the task
-  message PreviousTaskInfo {
-    bool task_succeeded = 1; // True if the task succeeded, false if it threw an exception
-    string error_message = 2; // The contents of the exception, if the task threw an exception
-  }
-  PreviousTaskInfo previous_task_info = 2; // Information about the previous task, this is only present if there was a previous task
 }
 
 message ChangeCountRequest {
@@ -221,10 +222,11 @@ message TaskInfoRequest {
 }
 
 message TaskInfoReply {
-  repeated TaskStatus failed_task = 1;
-  repeated TaskStatus running_task = 2;
-  uint64 num_succeeded = 3;
-  // TODO(mehrdadn): We'll want to return information from computation_graph since it's important for visualizing tasks that have been completed etc.
+  repeated TaskStatus failed_task = 1; // The tasks that have failed.
+  repeated TaskStatus running_task = 2; // The tasks that are currently running.
+  repeated Failure failed_remote_function_import = 3; // The remote function imports that failed.
+  repeated Failure failed_reusable_variable_import = 4; // The reusable variable imports that failed.
+  repeated Failure failed_reinitialize_reusable_variable = 5; // The reusable variable reinitializations that failed.
 }
 
 message KillWorkersRequest {
@@ -234,15 +236,16 @@ message KillWorkersReply {
   bool success = 1;  // Currently, the only reason to fail is if there are workers still executing tasks
 }
 
-message ExportFunctionRequest {
+message ExportRemoteFunctionRequest {
   Function function = 1;
-}
-
-message ExportFunctionReply {
 }
 
 message ExportReusableVariableRequest {
   ReusableVar reusable_variable = 1; // The reusable variable to export.
+}
+
+message NotifyFailureRequest {
+  Failure failure = 1; // The failure object.
 }
 
 // These messages are for getting information about the object store state
@@ -259,24 +262,19 @@ message ObjStoreInfoReply {
 // Workers
 
 service WorkerService {
-  rpc ExecuteTask(ExecuteTaskRequest) returns (ExecuteTaskReply); // Scheduler calls a function from the worker
-  rpc ImportFunction(ImportFunctionRequest) returns (ImportFunctionReply); // Scheduler imports a function into the worker
+  rpc ExecuteTask(ExecuteTaskRequest) returns (AckReply); // Scheduler calls a function from the worker
+  rpc ImportRemoteFunction(ImportRemoteFunctionRequest) returns (AckReply); // Scheduler imports a function into the worker
   rpc ImportReusableVariable(ImportReusableVariableRequest) returns (AckReply); // Scheduler imports a reusable variable into the worker
-  rpc Die(DieRequest) returns (DieReply); // Kills this worker
+  rpc Die(DieRequest) returns (AckReply); // Kills this worker
+  rpc PrintErrorMessage(PrintErrorMessageRequest) returns (AckReply); // Causes an error message to be printed.
 }
 
 message ExecuteTaskRequest {
   Task task = 1; // Contains name of the function to be executed and arguments
 }
 
-message ExecuteTaskReply {
-}
-
-message ImportFunctionRequest {
+message ImportRemoteFunctionRequest {
   Function function = 1;
-}
-
-message ImportFunctionReply {
 }
 
 message ImportReusableVariableRequest {
@@ -284,9 +282,6 @@ message ImportReusableVariableRequest {
 }
 
 message DieRequest {
-}
-
-message DieReply {
 }
 
 // This message is used by the worker service to send messages to the worker
@@ -297,4 +292,8 @@ message WorkerMessage {
     Function function = 2; // A remote function to import on the worker.
     ReusableVar reusable_variable = 3; // A reusable variable to import on the worker.
   }
+}
+
+message PrintErrorMessageRequest {
+  Failure failure = 1; // The failure object.
 }

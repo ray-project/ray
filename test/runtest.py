@@ -249,14 +249,12 @@ class APITest(unittest.TestCase):
     task_info = ray.task_info()
     self.assertEqual(len(task_info["failed_tasks"]), 0)
     self.assertEqual(len(task_info["running_tasks"]), 0)
-    self.assertEqual(task_info["num_succeeded"], 1)
 
     test_functions.no_op_fail.remote()
     time.sleep(0.2)
     task_info = ray.task_info()
     self.assertEqual(len(task_info["failed_tasks"]), 1)
     self.assertEqual(len(task_info["running_tasks"]), 0)
-    self.assertEqual(task_info["num_succeeded"], 1)
     self.assertTrue("The @remote decorator for function test_functions.no_op_fail has 0 return values, but test_functions.no_op_fail returned more than 0 values." in task_info["failed_tasks"][0].get("error_message"))
 
     ray.worker.cleanup()
@@ -273,7 +271,6 @@ class APITest(unittest.TestCase):
     task_info = ray.task_info()
     self.assertEqual(len(task_info["failed_tasks"]), 2)
     self.assertEqual(len(task_info["running_tasks"]), 0)
-    self.assertEqual(task_info["num_succeeded"], 0)
 
     ray.worker.cleanup()
 
@@ -388,6 +385,63 @@ class TaskStatusTest(unittest.TestCase):
         self.assertTrue("Test function 3 intentionally failed."in str(e))
       else:
         self.assertTrue(False) # ray.get should throw an exception
+
+    ray.worker.cleanup()
+
+  def testFailImportingRemoteFunction(self):
+    ray.init(start_ray_local=True, num_workers=2, driver_mode=ray.SILENT_MODE)
+
+    # This example is somewhat contrived. It should be successfully pickled, and
+    # then it should throw an exception when it is unpickled. This may depend a
+    # bit on the specifics of our pickler.
+    def reducer(*args):
+      raise Exception("There is a problem here.")
+    class Foo(object):
+      def __init__(self):
+        self.__name__ = "Foo_object"
+        self.func_doc = ""
+        self.__globals__ = {}
+      def __reduce__(self):
+        return reducer, ()
+      def __call__(self):
+        return
+    ray.remote([], [])(Foo())
+    time.sleep(0.1)
+    self.assertTrue("There is a problem here." in ray.task_info()["failed_remote_function_imports"][0]["error_message"])
+
+    ray.worker.cleanup()
+
+  def testFailImportingReusableVariable(self):
+    ray.init(start_ray_local=True, num_workers=2, driver_mode=ray.SILENT_MODE)
+
+    # This will throw an exception when the reusable variable is imported on the
+    # workers.
+    def initializer():
+      if ray.worker.global_worker.mode == ray.WORKER_MODE:
+        raise Exception("The initializer failed.")
+      return 0
+    ray.reusables.foo = ray.Reusable(initializer)
+    time.sleep(0.1)
+    # Check that the error message is in the task info.
+    self.assertTrue("The initializer failed." in ray.task_info()["failed_reusable_variable_imports"][0]["error_message"])
+
+    ray.worker.cleanup()
+
+  def testFailReinitializingVariable(self):
+    ray.init(start_ray_local=True, num_workers=2, driver_mode=ray.SILENT_MODE)
+
+    def initializer():
+      return 0
+    def reinitializer(foo):
+      raise Exception("The reinitializer failed.")
+    ray.reusables.foo = ray.Reusable(initializer, reinitializer)
+    @ray.remote([], [])
+    def use_foo():
+      ray.reusables.foo
+    use_foo.remote()
+    time.sleep(0.1)
+    # Check that the error message is in the task info.
+    self.assertTrue("The reinitializer failed." in ray.task_info()["failed_reinitialize_reusable_variables"][0]["error_message"])
 
     ray.worker.cleanup()
 

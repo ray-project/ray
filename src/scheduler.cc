@@ -256,7 +256,13 @@ Status SchedulerService::RegisterWorker(ServerContext* context, const RegisterWo
   {
     auto workers = GET(workers_);
     workerid = workers->size();
-    worker_address = node_ip_address + ":" + std::to_string(40000 + workerid);
+    // Generate a random port number. This is currently a hack to avoid reusing
+    // port numbers when we run the tests.
+    std::random_device rd;
+    std::mt19937 rng(rd());
+    std::uniform_int_distribution<int> uni(0, 10000);
+    int port_number = 40000 + uni(rng);
+    worker_address = node_ip_address + ":" + std::to_string(port_number);
     workers->push_back(WorkerHandle());
     auto channel = grpc::CreateChannel(worker_address, grpc::InsecureChannelCredentials());
     (*workers)[workerid].channel = channel;
@@ -279,10 +285,61 @@ Status SchedulerService::RegisterWorker(ServerContext* context, const RegisterWo
   return Status::OK;
 }
 
-Status SchedulerService::RegisterFunction(ServerContext* context, const RegisterFunctionRequest* request, AckReply* reply) {
-  RAY_LOG(RAY_INFO, "register function " << request->fnname() <<  " from workerid " << request->workerid());
-  register_function(request->fnname(), request->workerid(), request->num_return_vals());
+Status SchedulerService::RegisterRemoteFunction(ServerContext* context, const RegisterRemoteFunctionRequest* request, AckReply* reply) {
+  RAY_LOG(RAY_INFO, "register function " << request->function_name() <<  " from workerid " << request->workerid());
+  register_function(request->function_name(), request->workerid(), request->num_return_vals());
   schedule();
+  return Status::OK;
+}
+
+Status SchedulerService::NotifyFailure(ServerContext* context, const NotifyFailureRequest* request, AckReply* reply) {
+  const Failure failure = request->failure();
+  WorkerId workerid = failure.workerid();
+  if (failure.type() == FailedType::FailedTask) {
+    // A task threw an exception while executing.
+    TaskStatus failed_task_info;
+    {
+      auto workers = GET(workers_);
+      failed_task_info.set_operationid((*workers)[workerid].current_task);
+      failed_task_info.set_function_name(failure.name());
+      failed_task_info.set_worker_address((*workers)[workerid].worker_address);
+      failed_task_info.set_error_message(failure.error_message());
+    }
+    GET(failed_tasks_)->push_back(failed_task_info);
+    RAY_LOG(RAY_INFO, "Error: Task " << failed_task_info.operationid() << " executing function " << failed_task_info.function_name() << " on worker " << workerid << " failed with error message:\n" << failed_task_info.error_message());
+  } else if (failure.type() == FailedType::FailedRemoteFunctionImport) {
+    // An exception was thrown while a remote function was being imported.
+    GET(failed_remote_function_imports_)->push_back(failure);
+    RAY_LOG(RAY_INFO, "Error: Worker " << workerid << " failed to import remote function " << failure.name() << ", failed with error message:\n" << failure.error_message());
+  } else if (failure.type() == FailedType::FailedReusableVariableImport) {
+    // An exception was thrown while a reusable variable was being imported.
+    GET(failed_reusable_variable_imports_)->push_back(failure);
+    RAY_LOG(RAY_INFO, "Error: Worker " << workerid << " failed to import reusable variable " << failure.name() << ", failed with error message:\n" << failure.error_message());
+  } else if (failure.type() == FailedType::FailedReinitializeReusableVariable) {
+    // An exception was thrown while a reusable variable was being imported.
+    GET(failed_reinitialize_reusable_variables_)->push_back(failure);
+    RAY_LOG(RAY_INFO, "Error: Worker " << workerid << " failed to reinitialize a reusable variable after running remote function " << failure.name() << ", failed with error message:\n" << failure.error_message());
+  } else {
+    RAY_CHECK(false, "This code should be unreachable.")
+  }
+  // Print the failure on the relevant driver. TODO(rkn): At the moment, this
+  // prints the failure on all of the drivers. It should probably only print it
+  // on the driver that caused the problem.
+  auto workers = GET(workers_);
+  for (size_t i = 0; i < workers->size(); ++i) {
+    WorkerHandle* worker = &(*workers)[i];
+    // Check if the worker is still connected.
+    if (worker->worker_stub) {
+      // Check if this is a driver.
+      if (worker->current_task == ROOT_OPERATION) {
+        ClientContext client_context;
+        PrintErrorMessageRequest print_request;
+        print_request.mutable_failure()->CopyFrom(request->failure());
+        AckReply print_reply;
+        Status status = worker->worker_stub->PrintErrorMessage(&client_context, print_request, &print_reply);
+      }
+    }
+  }
   return Status::OK;
 }
 
@@ -306,43 +363,25 @@ Status SchedulerService::ObjReady(ServerContext* context, const ObjReadyRequest*
 
 Status SchedulerService::ReadyForNewTask(ServerContext* context, const ReadyForNewTaskRequest* request, AckReply* reply) {
   WorkerId workerid = request->workerid();
-  OperationId operationid = (*GET(workers_))[workerid].current_task;
-  RAY_LOG(RAY_INFO, "worker " << workerid << " is ready for a new task");
-  RAY_CHECK(operationid != ROOT_OPERATION, "A driver appears to have called ReadyForNewTask.");
   {
-    // Check if the worker has been initialized yet, and if not, then give it
-    // all of the exported functions and all of the exported reusable variables.
     auto workers = GET(workers_);
-    if (!(*workers)[workerid].initialized) {
-      // This should only happen once.
-      // Import all remote functions on the worker.
-      export_all_functions_to_worker(workerid, workers, GET(exported_functions_));
-      // Import all reusable variables on the worker.
-      export_all_reusable_variables_to_worker(workerid, workers, GET(exported_reusable_variables_));
-      // Mark the worker as initialized.
-      (*workers)[workerid].initialized = true;
-    }
-  }
-  if (request->has_previous_task_info()) {
-    RAY_CHECK(operationid != NO_OPERATION, "request->has_previous_task_info() should not be true if operationid == NO_OPERATION.");
-    std::string task_name;
-    task_name = GET(computation_graph_)->get_task(operationid).name();
-    TaskStatus info;
+    OperationId operationid = (*workers)[workerid].current_task;
+    RAY_LOG(RAY_INFO, "worker " << workerid << " is ready for a new task");
+    RAY_CHECK(operationid != ROOT_OPERATION, "A driver appears to have called ReadyForNewTask.");
     {
-      auto workers = GET(workers_);
-      info.set_operationid(operationid);
-      info.set_function_name(task_name);
-      info.set_worker_address((*workers)[workerid].worker_address);
-      info.set_error_message(request->previous_task_info().error_message());
-      (*workers)[workerid].current_task = NO_OPERATION; // clear operation ID
+      // Check if the worker has been initialized yet, and if not, then give it
+      // all of the exported functions and all of the exported reusable variables.
+      if (!(*workers)[workerid].initialized) {
+        // This should only happen once.
+        // Import all remote functions on the worker.
+        export_all_functions_to_worker(workerid, workers, GET(exported_functions_));
+        // Import all reusable variables on the worker.
+        export_all_reusable_variables_to_worker(workerid, workers, GET(exported_reusable_variables_));
+        // Mark the worker as initialized.
+        (*workers)[workerid].initialized = true;
+      }
     }
-    if (!request->previous_task_info().task_succeeded()) {
-      RAY_LOG(RAY_INFO, "Error: Task " << info.operationid() << " executing function " << info.function_name() << " on worker " << workerid << " failed with error message:\n" << info.error_message());
-      GET(failed_tasks_)->push_back(info);
-    } else {
-      GET(successful_tasks_)->push_back(info.operationid());
-    }
-    // TODO(rkn): Handle task failure
+    (*workers)[workerid].current_task = NO_OPERATION; // clear operation ID
   }
   GET(avail_workers_)->push_back(workerid);
   schedule();
@@ -394,14 +433,18 @@ Status SchedulerService::SchedulerInfo(ServerContext* context, const SchedulerIn
 }
 
 Status SchedulerService::TaskInfo(ServerContext* context, const TaskInfoRequest* request, TaskInfoReply* reply) {
-  auto successful_tasks = GET(successful_tasks_);
   auto failed_tasks = GET(failed_tasks_);
+  auto failed_remote_function_imports = GET(failed_remote_function_imports_);
+  auto failed_reusable_variable_imports = GET(failed_reusable_variable_imports_);
+  auto failed_reinitialize_reusable_variables = GET(failed_reinitialize_reusable_variables_);
   auto computation_graph = GET(computation_graph_);
   auto workers = GET(workers_);
+  // Return information about the failed tasks.
   for (int i = 0; i < failed_tasks->size(); ++i) {
     TaskStatus* info = reply->add_failed_task();
     *info = (*failed_tasks)[i];
   }
+  // Return information about currently running tasks.
   for (size_t i = 0; i < workers->size(); ++i) {
     OperationId operationid = (*workers)[i].current_task;
     if (operationid != NO_OPERATION && operationid != ROOT_OPERATION) {
@@ -412,7 +455,21 @@ Status SchedulerService::TaskInfo(ServerContext* context, const TaskInfoRequest*
       info->set_worker_address((*workers)[i].worker_address);
     }
   }
-  reply->set_num_succeeded(successful_tasks->size());
+  // Return information about failed remote function imports.
+  for (size_t i = 0; i < failed_remote_function_imports->size(); ++i) {
+    Failure* failure = reply->add_failed_remote_function_import();
+    *failure = (*failed_remote_function_imports)[i];
+  }
+  // Return information about failed reusable variable imports.
+  for (size_t i = 0; i < failed_reusable_variable_imports->size(); ++i) {
+    Failure* failure = reply->add_failed_reusable_variable_import();
+    *failure = (*failed_reusable_variable_imports)[i];
+  }
+  // Return information about failed reusable variable reinitializations.
+  for (size_t i = 0; i < failed_reinitialize_reusable_variables->size(); ++i) {
+    Failure* failure = reply->add_failed_reinitialize_reusable_variable();
+    *failure = (*failed_reinitialize_reusable_variables)[i];
+  }
   return Status::OK;
 }
 
@@ -449,7 +506,7 @@ Status SchedulerService::KillWorkers(ServerContext* context, const KillWorkersRe
     for (WorkerHandle* idle_worker : idle_workers) {
       ClientContext client_context;
       DieRequest die_request;
-      DieReply die_reply;
+      AckReply die_reply;
       // TODO: Fault handling... what if a worker refuses to die? We just assume it dies here.
       idle_worker->worker_stub->Die(&client_context, die_request, &die_reply);
       idle_worker->worker_stub.reset();
@@ -464,7 +521,7 @@ Status SchedulerService::KillWorkers(ServerContext* context, const KillWorkersRe
   return Status::OK;
 }
 
-Status SchedulerService::ExportFunction(ServerContext* context, const ExportFunctionRequest* request, ExportFunctionReply* reply) {
+Status SchedulerService::ExportRemoteFunction(ServerContext* context, const ExportRemoteFunctionRequest* request, AckReply* reply) {
   auto workers = GET(workers_);
   auto exported_functions = GET(exported_functions_);
   // TODO(rkn): Does this do a deep copy?
@@ -556,7 +613,7 @@ void SchedulerService::assign_task(OperationId operationid, WorkerId workerid, c
   const Task& task = computation_graph->get_task(operationid);
   ClientContext context;
   ExecuteTaskRequest request;
-  ExecuteTaskReply reply;
+  AckReply reply;
   RAY_LOG(RAY_INFO, "starting to send arguments");
   for (size_t i = 0; i < task.arg_size(); ++i) {
     if (!task.arg(i).has_obj()) {
@@ -970,10 +1027,10 @@ void SchedulerService::get_equivalent_objectids(ObjectID objectid, std::vector<O
 void SchedulerService::export_function_to_worker(WorkerId workerid, int function_index, MySynchronizedPtr<std::vector<WorkerHandle> > &workers, const MySynchronizedPtr<std::vector<std::unique_ptr<Function> > > &exported_functions) {
   RAY_LOG(RAY_INFO, "exporting function with index " << function_index << " to worker " << workerid);
   ClientContext import_context;
-  ImportFunctionRequest import_request;
+  ImportRemoteFunctionRequest import_request;
   import_request.mutable_function()->CopyFrom(*(*exported_functions)[function_index].get());
-  ImportFunctionReply import_reply;
-  (*workers)[workerid].worker_stub->ImportFunction(&import_context, import_request, &import_reply);
+  AckReply import_reply;
+  (*workers)[workerid].worker_stub->ImportRemoteFunction(&import_context, import_request, &import_reply);
 }
 
 void SchedulerService::export_reusable_variable_to_worker(WorkerId workerid, int reusable_variable_index, MySynchronizedPtr<std::vector<WorkerHandle> > &workers, const MySynchronizedPtr<std::vector<std::unique_ptr<ReusableVar> > > &exported_reusable_variables) {
