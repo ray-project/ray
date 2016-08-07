@@ -7,7 +7,7 @@ else
   # Mac OS X test
   source setup-env.sh
   pushd test
-    runtest.py
+    python runtest.py
     python array_test.py
     python microbenchmarks.py
   popd
