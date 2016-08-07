@@ -9,12 +9,14 @@ extern "C" {
   static PyObject *RayError;
 }
 
-inline WorkerServiceImpl::WorkerServiceImpl(const std::string& worker_address)
-  : worker_address_(worker_address) {
+inline WorkerServiceImpl::WorkerServiceImpl(const std::string& worker_address, Mode mode)
+  : worker_address_(worker_address),
+    mode_(mode) {
   RAY_CHECK(send_queue_.connect(worker_address_, false), "error connecting send_queue_");
 }
 
-Status WorkerServiceImpl::ExecuteTask(ServerContext* context, const ExecuteTaskRequest* request, ExecuteTaskReply* reply) {
+Status WorkerServiceImpl::ExecuteTask(ServerContext* context, const ExecuteTaskRequest* request, AckReply* reply) {
+  RAY_CHECK(mode_ == Mode::WORKER_MODE, "ExecuteTask can only be called on workers.");
   RAY_LOG(RAY_INFO, "invoked task " << request->task().name());
   std::unique_ptr<WorkerMessage> message(new WorkerMessage());
   message->mutable_task()->CopyFrom(request->task());
@@ -26,7 +28,8 @@ Status WorkerServiceImpl::ExecuteTask(ServerContext* context, const ExecuteTaskR
   return Status::OK;
 }
 
-Status WorkerServiceImpl::ImportFunction(ServerContext* context, const ImportFunctionRequest* request, ImportFunctionReply* reply) {
+Status WorkerServiceImpl::ImportRemoteFunction(ServerContext* context, const ImportRemoteFunctionRequest* request, AckReply* reply) {
+  RAY_CHECK(mode_ == Mode::WORKER_MODE, "ImportRemoteFunction can only be called on workers.");
   std::unique_ptr<WorkerMessage> message(new WorkerMessage());
   message->mutable_function()->CopyFrom(request->function());
   RAY_LOG(RAY_INFO, "importing function");
@@ -39,6 +42,7 @@ Status WorkerServiceImpl::ImportFunction(ServerContext* context, const ImportFun
 }
 
 Status WorkerServiceImpl::ImportReusableVariable(ServerContext* context, const ImportReusableVariableRequest* request, AckReply* reply) {
+  RAY_CHECK(mode_ == Mode::WORKER_MODE, "ImportReusableVariable can only be called on workers.");
   std::unique_ptr<WorkerMessage> message(new WorkerMessage());
   message->mutable_reusable_variable()->CopyFrom(request->reusable_variable());
   RAY_LOG(RAY_INFO, "importing reusable variable");
@@ -50,9 +54,36 @@ Status WorkerServiceImpl::ImportReusableVariable(ServerContext* context, const I
   return Status::OK;
 }
 
-Status WorkerServiceImpl::Die(ServerContext* context, const DieRequest* request, DieReply* reply) {
+Status WorkerServiceImpl::Die(ServerContext* context, const DieRequest* request, AckReply* reply) {
+  RAY_CHECK(mode_ == Mode::WORKER_MODE, "Die can only be called on workers.");
   WorkerMessage* message_ptr = NULL;
   RAY_CHECK(send_queue_.send(&message_ptr), "error sending over IPC");
+  return Status::OK;
+}
+
+Status WorkerServiceImpl::PrintErrorMessage(ServerContext* context, const PrintErrorMessageRequest* request, AckReply* reply) {
+  RAY_CHECK(mode_ != Mode::WORKER_MODE, "PrintErrorMessage can only be called on drivers.");
+  if (mode_ == Mode::SILENT_MODE) {
+    // Do not log error messages in this case. This is just used for the tests.
+    return Status::OK;
+  }
+  const Failure failure = request->failure();
+  WorkerId workerid = failure.workerid();
+  if (failure.type() == FailedType::FailedTask) {
+    // A task threw an exception while executing.
+    std::cout << "Error: Worker " << workerid << " failed to execute function " << failure.name() << ". Failed with error message:\n" << failure.error_message() << std::endl;
+  } else if (failure.type() == FailedType::FailedRemoteFunctionImport) {
+    // An exception was thrown while a remote function was being imported.
+    std::cout << "Error: Worker " << workerid << " failed to import remote function " << failure.name() << ", failed with error message:\n" << failure.error_message() << std::endl;
+  } else if (failure.type() == FailedType::FailedReusableVariableImport) {
+    // An exception was thrown while a reusable variable was being imported.
+    std::cout << "Error: Worker " << workerid << " failed to import reusable variable " << failure.name() << ", failed with error message:\n" << failure.error_message() << std::endl;
+  } else if (failure.type() == FailedType::FailedReinitializeReusableVariable) {
+    // An exception was thrown while a reusable variable was being reinitialized.
+    std::cout << "Error: Worker " << workerid << " failed to reinitialize a reusable variable after running remote function " << failure.name() << ", failed with error message:\n" << failure.error_message() << std::endl;
+  } else {
+    RAY_CHECK(false, "This code should be unreachable.")
+  }
   return Status::OK;
 }
 
@@ -61,6 +92,7 @@ Worker::Worker(const std::string& scheduler_address)
   auto scheduler_channel = grpc::CreateChannel(scheduler_address, grpc::InsecureChannelCredentials());
   scheduler_stub_ = Scheduler::NewStub(scheduler_channel);
 }
+
 
 SubmitTaskReply Worker::submit_task(SubmitTaskRequest* request, int max_retries, int retry_wait_milliseconds) {
   RAY_CHECK(connected_, "Attempted to perform submit_task but failed.");
@@ -312,15 +344,28 @@ void Worker::decrement_reference_count(std::vector<ObjectID> &objectids) {
   }
 }
 
-void Worker::register_function(const std::string& name, size_t num_return_vals) {
+void Worker::register_remote_function(const std::string& name, size_t num_return_vals) {
   RAY_CHECK(connected_, "Attempted to perform register_function but failed.");
   ClientContext context;
-  RegisterFunctionRequest request;
-  request.set_fnname(name);
-  request.set_num_return_vals(num_return_vals);
+  RegisterRemoteFunctionRequest request;
   request.set_workerid(workerid_);
+  request.set_function_name(name);
+  request.set_num_return_vals(num_return_vals);
   AckReply reply;
-  scheduler_stub_->RegisterFunction(&context, request, &reply);
+  scheduler_stub_->RegisterRemoteFunction(&context, request, &reply);
+}
+
+void Worker::notify_failure(FailedType type, const std::string& name, const std::string& error_message) {
+  RAY_CHECK(connected_, "Attempted to perform notify_failure but failed.");
+  ClientContext context;
+  NotifyFailureRequest request;
+  request.mutable_failure()->set_type(type);
+  request.mutable_failure()->set_workerid(workerid_);
+  request.mutable_failure()->set_worker_address(worker_address_);
+  request.mutable_failure()->set_name(name);
+  request.mutable_failure()->set_error_message(error_message);
+  AckReply reply;
+  scheduler_stub_->NotifyFailure(&context, request, &reply);
 }
 
 std::unique_ptr<WorkerMessage> Worker::receive_next_message() {
@@ -329,24 +374,19 @@ std::unique_ptr<WorkerMessage> Worker::receive_next_message() {
   return std::unique_ptr<WorkerMessage>(message_ptr);
 }
 
-void Worker::notify_task_completed(bool task_succeeded, std::string error_message) {
+void Worker::notify_task_completed() {
   RAY_CHECK(connected_, "Attempted to perform notify_task_completed but failed.");
   ClientContext context;
   ReadyForNewTaskRequest request;
   request.set_workerid(workerid_);
-  ReadyForNewTaskRequest::PreviousTaskInfo* previous_task_info = request.mutable_previous_task_info();
-  previous_task_info->set_task_succeeded(task_succeeded);
-  previous_task_info->set_error_message(error_message);
   AckReply reply;
   scheduler_stub_->ReadyForNewTask(&context, request, &reply);
 }
 
 void Worker::disconnect() {
   connected_ = false;
-}
-
-bool Worker::connected() {
-  return connected_;
+  // TODO(rkn): This probably isn't the right way to clean up the thread.
+  worker_server_thread_->detach();
 }
 
 // TODO(rkn): Should we be using pointers or references? And should they be const?
@@ -360,13 +400,14 @@ void Worker::task_info(ClientContext &context, TaskInfoRequest &request, TaskInf
   scheduler_stub_->TaskInfo(&context, request, &reply);
 }
 
-bool Worker::export_function(const std::string& function) {
+bool Worker::export_remote_function(const std::string& function_name, const std::string& function) {
   RAY_CHECK(connected_, "Attempted to export function but failed.");
   ClientContext context;
-  ExportFunctionRequest request;
+  ExportRemoteFunctionRequest request;
+  request.mutable_function()->set_name(function_name);
   request.mutable_function()->set_implementation(function);
-  ExportFunctionReply reply;
-  Status status = scheduler_stub_->ExportFunction(&context, request, &reply);
+  AckReply reply;
+  Status status = scheduler_stub_->ExportRemoteFunction(&context, request, &reply);
   return true;
 }
 
@@ -385,26 +426,32 @@ void Worker::export_reusable_variable(const std::string& name, const std::string
 // queue. This is because the Python interpreter needs to be single threaded
 // (in our case running in the main thread), whereas the WorkerService will
 // run in a separate thread and potentially utilize multiple threads.
-void Worker::start_worker_service() {
+void Worker::start_worker_service(Mode mode) {
   const char* service_addr = worker_address_.c_str();
-  worker_server_thread_ = std::thread([this, service_addr]() {
+  // Launch a new thread for running the worker service. We store this as a
+  // field so that we can clean it up when we disconnect the worker.
+  worker_server_thread_ = std::unique_ptr<std::thread>(new std::thread([this, service_addr, mode]() {
     std::string service_address(service_addr);
     std::string::iterator split_point = split_ip_address(service_address);
     std::string port;
     port.assign(split_point, service_address.end());
-    WorkerServiceImpl service(service_address);
+    // Create the worker service.
+    WorkerServiceImpl service(service_address, mode);
     ServerBuilder builder;
     builder.AddListeningPort(std::string("0.0.0.0:") + port, grpc::InsecureServerCredentials());
     builder.RegisterService(&service);
     std::unique_ptr<Server> server(builder.BuildAndStart());
     RAY_LOG(RAY_INFO, "worker server listening on " << service_address);
-
-    ClientContext context;
-    ReadyForNewTaskRequest request;
-    request.set_workerid(workerid_);
-    AckReply reply;
-    scheduler_stub_->ReadyForNewTask(&context, request, &reply);
-
+    // If this is part of a worker process (and not a driver process), then tell
+    // the scheduler that it is ready to start receiving tasks.
+    if (mode == Mode::WORKER_MODE) {
+      ClientContext context;
+      ReadyForNewTaskRequest request;
+      request.set_workerid(workerid_);
+      AckReply reply;
+      scheduler_stub_->ReadyForNewTask(&context, request, &reply);
+    }
+    // Wait for work and process work, this does not return.
     server->Wait();
-  });
+  }));
 }

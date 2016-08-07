@@ -65,7 +65,7 @@ public:
   Status AliasObjectIDs(ServerContext* context, const AliasObjectIDsRequest* request, AckReply* reply) override;
   Status RegisterObjStore(ServerContext* context, const RegisterObjStoreRequest* request, RegisterObjStoreReply* reply) override;
   Status RegisterWorker(ServerContext* context, const RegisterWorkerRequest* request, RegisterWorkerReply* reply) override;
-  Status RegisterFunction(ServerContext* context, const RegisterFunctionRequest* request, AckReply* reply) override;
+  Status RegisterRemoteFunction(ServerContext* context, const RegisterRemoteFunctionRequest* request, AckReply* reply) override;
   Status ObjReady(ServerContext* context, const ObjReadyRequest* request, AckReply* reply) override;
   Status ReadyForNewTask(ServerContext* context, const ReadyForNewTaskRequest* request, AckReply* reply) override;
   Status IncrementRefCount(ServerContext* context, const IncrementRefCountRequest* request, AckReply* reply) override;
@@ -74,8 +74,9 @@ public:
   Status SchedulerInfo(ServerContext* context, const SchedulerInfoRequest* request, SchedulerInfoReply* reply) override;
   Status TaskInfo(ServerContext* context, const TaskInfoRequest* request, TaskInfoReply* reply) override;
   Status KillWorkers(ServerContext* context, const KillWorkersRequest* request, KillWorkersReply* reply) override;
-  Status ExportFunction(ServerContext* context, const ExportFunctionRequest* request, ExportFunctionReply* reply) override;
+  Status ExportRemoteFunction(ServerContext* context, const ExportRemoteFunctionRequest* request, AckReply* reply) override;
   Status ExportReusableVariable(ServerContext* context, const ExportReusableVariableRequest* request, AckReply* reply) override;
+  Status NotifyFailure(ServerContext*, const NotifyFailureRequest* request, AckReply* reply) override;
 
 #ifdef NDEBUG
   // If we've disabled assertions, then just use regular SynchronizedPtr to skip lock checking.
@@ -168,10 +169,14 @@ private:
   // When we unlock, we subtract back the field offset to restore it to the previous field that was locked.
   mutable Synchronized<std::vector<std::pair<unsigned long long, std::pair<size_t, const char*> > > > lock_orders_;
 
-  // List of the IDs of successful tasks
-  Synchronized<std::vector<OperationId> > successful_tasks_; // Right now, we only use this information in the TaskInfo call.
   // List of failed tasks
   Synchronized<std::vector<TaskStatus> > failed_tasks_;
+  // A list of remote functions import failures.
+  Synchronized<std::vector<Failure> > failed_remote_function_imports_;
+  // A list of reusable variables import failures.
+  Synchronized<std::vector<Failure> > failed_reusable_variable_imports_;
+  // A list of reusable variables reinitialization failures.
+  Synchronized<std::vector<Failure> > failed_reinitialize_reusable_variables_;
   // List of pending get calls.
   Synchronized<std::vector<std::pair<WorkerId, ObjectID> > > get_queue_;
   // The computation graph tracks the operations that have been submitted to the

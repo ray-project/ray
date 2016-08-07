@@ -23,16 +23,25 @@ using grpc::Channel;
 using grpc::ClientContext;
 using grpc::ClientWriter;
 
+// These three constants are used to define the mode that a worker is running
+// in. Right now, this is mostly used for determining how to print information
+// about task failures.
+enum Mode {SCRIPT_MODE, WORKER_MODE, PYTHON_MODE, SILENT_MODE};
+
 class WorkerServiceImpl final : public WorkerService::Service {
 public:
-  WorkerServiceImpl(const std::string& worker_address);
-  Status ExecuteTask(ServerContext* context, const ExecuteTaskRequest* request, ExecuteTaskReply* reply) override;
-  Status ImportFunction(ServerContext* context, const ImportFunctionRequest* request, ImportFunctionReply* reply) override;
-  Status Die(ServerContext* context, const DieRequest* request, DieReply* reply) override;
+  WorkerServiceImpl(const std::string& worker_address, Mode mode);
+  Status ExecuteTask(ServerContext* context, const ExecuteTaskRequest* request, AckReply* reply) override;
+  Status ImportRemoteFunction(ServerContext* context, const ImportRemoteFunctionRequest* request, AckReply* reply) override;
+  Status Die(ServerContext* context, const DieRequest* request, AckReply* reply) override;
   Status ImportReusableVariable(ServerContext* context, const ImportReusableVariableRequest* request, AckReply* reply) override;
+  Status PrintErrorMessage(ServerContext* context, const PrintErrorMessageRequest* request, AckReply* reply) override;
 private:
   std::string worker_address_;
   MessageQueue<WorkerMessage*> send_queue_;
+  // This is true if the worker service is part of a driver process and false
+  // if it is part of a worker process.
+  Mode mode_;
 };
 
 class Worker {
@@ -71,27 +80,30 @@ class Worker {
   void increment_reference_count(std::vector<ObjectID> &objectid);
   // decrement the reference count for objectid
   void decrement_reference_count(std::vector<ObjectID> &objectid);
-  // register function with scheduler
-  void register_function(const std::string& name, size_t num_return_vals);
-  // start the worker server which accepts tasks from the scheduler and stores
-  // it in the message queue, which is read by the Python interpreter
-  void start_worker_service();
+  // Notify the scheduler that a remote function has been imported successfully.
+  void register_remote_function(const std::string& name, size_t num_return_vals);
+  // Notify the scheduler that a failure has occurred.
+  void notify_failure(FailedType type, const std::string& name, const std::string& error_message);
+  // Start the worker server which accepts commands from the scheduler. For
+  // workers, these commands are stored in the message queue, which is read by
+  // the Python interpreter. For drivers, these commands are only for printing
+  // error messages.
+  void start_worker_service(Mode mode);
   // wait for next task from the RPC system. If null, it means there are no more tasks and the worker should shut down.
   std::unique_ptr<WorkerMessage> receive_next_message();
   // tell the scheduler that we are done with the current task and request the
-  // next one, if task_succeeded is false, this tells the scheduler that the
-  // task threw an exception
-  void notify_task_completed(bool task_succeeded, std::string error_message);
+  // next one.
+  void notify_task_completed();
   // disconnect the worker
   void disconnect();
   // return connected_
-  bool connected();
+  bool connected() { return connected_; }
   // get info about scheduler state
   void scheduler_info(ClientContext &context, SchedulerInfoRequest &request, SchedulerInfoReply &reply);
   // get task statuses from scheduler
   void task_info(ClientContext &context, TaskInfoRequest &request, TaskInfoReply &reply);
   // export function to workers
-  bool export_function(const std::string& function);
+  bool export_remote_function(const std::string& function_name, const std::string& function);
   // export reusable variable to workers
   void export_reusable_variable(const std::string& name, const std::string& initializer, const std::string& reinitializer);
   // return the worker address
@@ -101,7 +113,7 @@ class Worker {
   bool connected_;
   const size_t CHUNK_SIZE = 8 * 1024;
   std::unique_ptr<Scheduler::Stub> scheduler_stub_;
-  std::thread worker_server_thread_;
+  std::unique_ptr<std::thread> worker_server_thread_;
   MessageQueue<WorkerMessage*> receive_queue_;
   bip::managed_shared_memory segment_;
   WorkerId workerid_;

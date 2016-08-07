@@ -38,13 +38,32 @@ message PyObj {
 
 // Used for shipping remote functions to workers
 message Function {
-  bytes implementation = 1;
+  string name = 1;
+  bytes implementation = 2;
 }
 
 message ReusableVar {
   string name = 1; // The name of the reusable variable.
   Function initializer = 2; // A serialized version of the function that initializes the reusable variable.
   Function reinitializer = 3; // A serialized version of the function that reinitializes the reusable variable.
+}
+
+enum FailedType {
+  FailedTask = 0;
+  FailedRemoteFunctionImport = 1;
+  FailedReusableVariableImport = 2;
+  FailedReinitializeReusableVariable = 3;
+}
+
+// Used to represent exceptions thrown in Python. This will happen when a task
+// fails to execute, a remote function fails to be imported, or a reusable
+// variable fails to be imported.
+message Failure {
+  FailedType type = 1; // The type of the failure.
+  uint64 workerid = 2; // The id of the worker on which the failure occurred.
+  string worker_address = 3; // The address of the worker on which the failure occurred. This contains the same information as the workerid.
+  string name = 4; // The name of the failed object.
+  string error_message = 5; // The error message from the failure.
 }
 
 // Union of possible object types
