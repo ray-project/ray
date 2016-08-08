@@ -7,15 +7,23 @@ import boto3
 import alexnet
 
 # Arguments to specify where the imagenet data is stored.
-parser = argparse.ArgumentParser(description="Parse information for data loading.")
+parser = argparse.ArgumentParser(description="Run the AlexNet example.")
+parser.add_argument("--node-ip-address", default=None, type=str, help="The IP address of this node.")
+parser.add_argument("--scheduler-address", default=None, type=str, help="The address of the scheduler.")
 parser.add_argument("--s3-bucket", required=True, type=str, help="Name of the bucket that contains the image data.")
 parser.add_argument("--key-prefix", default="ILSVRC2012_img_train/n015", type=str, help="Prefix for files to fetch.")
-parser.add_argument("--label-file", default="train.txt", type=str, help="File containing labels")
+parser.add_argument("--label-file", default="train.txt", type=str, help="File containing labels.")
 
 if __name__ == "__main__":
   args = parser.parse_args()
-  num_workers = 4
-  ray.init(start_ray_local=True, num_workers=num_workers)
+
+  # If node_ip_address and scheduler_address are provided, then this command
+  # will connect the driver to the existing scheduler. If not, it will start
+  # a local scheduler and connect to it.
+  ray.init(start_ray_local=(args.node_ip_address is None),
+           node_ip_address=args.node_ip_address,
+           scheduler_address=args.scheduler_address,
+           num_workers=(10 if args.node_ip_address is None else None))
 
   # Note we do not do sess.run(tf.initialize_all_variables()) because that would
   # result in a different initialization on each worker. Instead, we initialize
@@ -38,7 +46,7 @@ if __name__ == "__main__":
   filename_label_pairs = [line.split(" ") for line in filename_label_str]
   filename_label_dict = dict([(os.path.basename(name), label) for name, label in filename_label_pairs])
   filename_label_dict_id = ray.put(filename_label_dict)
-  print "Labels extracted"
+  print "Labels extracted."
 
   # Download the imagenet dataset.
   imagenet_data = alexnet.load_tarfiles_from_s3(args.s3_bucket, image_tar_files, [256, 256])
@@ -75,7 +83,8 @@ if __name__ == "__main__":
 
     # Launch tasks in parallel to compute the gradients for some batches.
     gradient_ids = []
-    for i in range(num_workers - 1):
+    num_batches = 4
+    for i in range(num_batches):
       # Choose a random batch and use it to compute the gradient of the loss.
       x_id, y_id = batches[np.random.randint(len(batches))]
       gradient_ids.append(alexnet.compute_grad.remote(x_id, y_id, mean_id, weights_id))

@@ -2,20 +2,34 @@
 # https://www.tensorflow.org/versions/r0.9/tutorials/mnist/pros/index.html#build-a-multilayer-convolutional-network
 import numpy as np
 import ray
-import os
+import argparse
 
 import tensorflow as tf
 from tensorflow.examples.tutorials.mnist import input_data
 
 import hyperopt
 
+parser = argparse.ArgumentParser(description="Run the hyperparameter optimization example.")
+parser.add_argument("--node-ip-address", default=None, type=str, help="The IP address of this node.")
+parser.add_argument("--scheduler-address", default=None, type=str, help="The address of the scheduler.")
+parser.add_argument("--trials", default=2, type=int, help="The number of random trials to do.")
+parser.add_argument("--steps", default=10, type=int, help="The number of steps of training to do per network.")
+
 if __name__ == "__main__":
-  ray.init(start_ray_local=True, num_workers=3)
+  args = parser.parse_args()
+
+  # If node_ip_address and scheduler_address are provided, then this command
+  # will connect the driver to the existing scheduler. If not, it will start
+  # a local scheduler and connect to it.
+  ray.init(start_ray_local=(args.node_ip_address is None),
+           node_ip_address=args.node_ip_address,
+           scheduler_address=args.scheduler_address,
+           num_workers=(10 if args.node_ip_address is None else None))
 
   # The number of sets of random hyperparameters to try.
-  trials = 2
+  trials = args.trials
   # The number of training passes over the dataset to use for network.
-  epochs = 10
+  steps = args.steps
 
   # Load the mnist data and turn the data into remote objects.
   print "Downloading the MNIST dataset. This may take a minute."
@@ -37,7 +51,7 @@ if __name__ == "__main__":
     dropout = np.random.uniform(0, 1)
     stddev = 10 ** np.random.uniform(-5, 5)
     params = {"learning_rate": learning_rate, "batch_size": batch_size, "dropout": dropout, "stddev": stddev}
-    results.append((params, hyperopt.train_cnn_and_compute_accuracy.remote(params, epochs, train_images, train_labels, validation_images, validation_labels)))
+    results.append((params, hyperopt.train_cnn_and_compute_accuracy.remote(params, steps, train_images, train_labels, validation_images, validation_labels)))
 
   # Fetch the results of the tasks and print the results.
   for i in range(trials):

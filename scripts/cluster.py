@@ -162,7 +162,7 @@ class RayCluster(object):
     start_scheduler_command = """
       cd "{}";
       source ../setup-env.sh;
-      python -c "import ray; ray.services.start_scheduler(\\\"{}:10001\\\", local=False)" > start_scheduler.out 2> start_scheduler.err < /dev/null &
+      python -c "import ray; ray.services.start_scheduler(\\\"{}:10001\\\", cleanup=False)" > start_scheduler.out 2> start_scheduler.err < /dev/null &
     """.format(scripts_directory, self.node_private_ip_addresses[0])
     self._run_command_over_ssh(self.node_ip_addresses[0], start_scheduler_command)
 

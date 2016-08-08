@@ -654,8 +654,8 @@ def init(start_ray_local=False, num_workers=None, num_objstores=None, scheduler_
     # not need to start any processes.
     if (num_workers is not None) or (num_objstores is not None):
       raise Exception("The arguments num_workers and num_objstores must not be provided unless start_ray_local=True.")
-    if node_ip_address is None:
-      raise Exception("When start_ray_local=False, the node_ip_address of the current node must be provided.")
+    if (node_ip_address is None) or (scheduler_address is None):
+      raise Exception("When start_ray_local=False, node_ip_address and scheduler_address must be provided.")
   # Connect this driver to the scheduler and object store. The corresponing call
   # to disconnect will happen in the call to cleanup() when the Python script
   # exits.
