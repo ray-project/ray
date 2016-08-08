@@ -47,6 +47,13 @@ class SerializationTests(unittest.TestCase):
     for t in ["int8", "uint8", "int16", "uint16", "int32", "uint32", "float32", "float64"]:
       self.numpyTest(t)
 
+  def testNumpyObject(self):
+    a = np.array([np.zeros((2,2))], dtype=object)
+    try:
+      x = self.roundTripTest([a])
+    except:
+      pass
+
   def testRay(self):
     for obj in TEST_OBJECTS:
       self.roundTripTest([obj])

@@ -1,5 +1,7 @@
 #include "numpy.h"
 
+#include <sstream>
+
 #include <numbuf/tensor.h>
 
 using namespace arrow;
@@ -95,7 +97,9 @@ Status SerializeArray(PyArrayObject* array, SequenceBuilder& builder) {
       RETURN_NOT_OK(builder.AppendTensor(dims, reinterpret_cast<double*>(data)));
       break;
     default:
-      DCHECK(false) << "numpy data type not recognized: " << dtype;
+      std::stringstream stream;
+      stream << "numpy data type not recognized: " << dtype;
+      return Status::NotImplemented(stream.str());
   }
   Py_XDECREF(contiguous);
   return Status::OK();
