@@ -64,7 +64,7 @@ def generate_random_params():
 results = []
 for _ in range(100):
   randparams = generate_random_params()
-  results.append((randparams, train_cnn_and_compute_accuracy(randparams, epochs)))
+  results.append((randparams, train_cnn_and_compute_accuracy(randparams, train_images, train_labels, validation_images, validation_labels)))
 ```
 
 Then we can inspect the contents of `results` and see which set of
@@ -105,7 +105,7 @@ computation. Instead, it simply submits a number of tasks to the scheduler.
 result_ids = []
 for _ in range(100):
   params = generate_random_params()
-  results.append((params, train_cnn_and_compute_accuracy.remote(params, epochs)))
+  results.append((params, train_cnn_and_compute_accuracy.remote(params, train_images, train_labels, validation_images, validation_labels)))
 ```
 
 If we wish to wait until the results have all been retrieved, we can retrieve

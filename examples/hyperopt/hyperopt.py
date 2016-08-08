@@ -52,7 +52,7 @@ def cnn_setup(x, y, keep_prob, lr, stddev):
 # Define a remote function that takes a set of hyperparameters as well as the
 # data, consructs and trains a network, and returns the validation accuracy.
 @ray.remote([dict, int, np.ndarray, np.ndarray, np.ndarray, np.ndarray], [float])
-def train_cnn_and_compute_accuracy(params, epochs, train_images, train_labels, validation_images, validation_labels):
+def train_cnn_and_compute_accuracy(params, steps, train_images, train_labels, validation_images, validation_labels):
   # Extract the hyperparameters from the params dictionary.
   learning_rate = params["learning_rate"]
   batch_size = params["batch_size"]
@@ -68,7 +68,7 @@ def train_cnn_and_compute_accuracy(params, epochs, train_images, train_labels, v
   with tf.Session() as sess:
     # Initialize the network weights.
     sess.run(tf.initialize_all_variables())
-    for i in range(1, epochs):
+    for i in range(1, steps + 1):
       # Fetch the next batch of data.
       image_batch = get_batch(train_images, i, batch_size)
       label_batch = get_batch(train_labels, i, batch_size)
@@ -82,7 +82,7 @@ def train_cnn_and_compute_accuracy(params, epochs, train_images, train_labels, v
         if train_ac < 0.25:
           # Compute the validation accuracy and return.
           totalacc = accuracy.eval(feed_dict={x: validation_images, y: validation_labels, keep_prob: 1.0})
-          return totalacc
+          return float(totalacc)
     # Training is done, compute the validation accuracy and return.
     totalacc = accuracy.eval(feed_dict={x: validation_images, y: validation_labels, keep_prob: 1.0})
   return float(totalacc)

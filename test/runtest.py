@@ -663,5 +663,41 @@ class ReusablesTest(unittest.TestCase):
 
     ray.worker.cleanup()
 
+class ClusterAttachingTest(unittest.TestCase):
+
+  def testAttachingToCluster(self):
+    node_ip_address = "127.0.0.1"
+    scheduler_port = np.random.randint(40000, 50000)
+    scheduler_address = "{}:{}".format(node_ip_address, scheduler_port)
+    ray.services.start_scheduler(scheduler_address, cleanup=True)
+    ray.services.start_node(scheduler_address, node_ip_address, num_workers=1, cleanup=True)
+
+    ray.init(node_ip_address=node_ip_address, scheduler_address=scheduler_address)
+
+    @ray.remote([int], [int])
+    def f(x):
+      return x + 1
+    self.assertEqual(ray.get(f.remote(0)), 1)
+
+    ray.worker.cleanup()
+
+  def testAttachingToClusterWithMultipleObjectStores(self):
+    node_ip_address = "127.0.0.1"
+    scheduler_port = np.random.randint(40000, 50000)
+    scheduler_address = "{}:{}".format(node_ip_address, scheduler_port)
+    ray.services.start_scheduler(scheduler_address, cleanup=True)
+    ray.services.start_node(scheduler_address, node_ip_address, num_workers=5, cleanup=True)
+    ray.services.start_node(scheduler_address, node_ip_address, num_workers=5, cleanup=True)
+    ray.services.start_node(scheduler_address, node_ip_address, num_workers=5, cleanup=True)
+
+    ray.init(node_ip_address=node_ip_address, scheduler_address=scheduler_address)
+
+    @ray.remote([int], [int])
+    def f(x):
+      return x + 1
+    self.assertEqual(ray.get(f.remote(0)), 1)
+
+    ray.worker.cleanup()
+
 if __name__ == "__main__":
     unittest.main()
