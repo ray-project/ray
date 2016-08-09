@@ -6,3 +6,15 @@ ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
 export GRPC_VERBOSITY=ERROR # make grpc only print error messages
 export PYTHONPATH="$ROOT_DIR/lib/python/:$ROOT_DIR/thirdparty/numbuf/build"
+
+# Print instructions for adding Ray to your bashrc.
+unamestr="$(uname)"
+if [[ "$unamestr" == "Linux" ]]; then
+  BASH_RC="~/.bashrc"
+elif [[ "$unamestr" == "Darwin" ]]; then
+  BASH_RC="~/.bash_profile"
+fi
+echo "To permanently add Ray to your Python path, run,
+
+echo 'export PYTHONPATH=$ROOT_DIR/lib/python/:$ROOT_DIR/thirdparty/numbuf/build:\$PYTHONPATH' >> $BASH_RC
+"
