@@ -343,7 +343,10 @@ int serialize(PyObject* worker_capsule, PyObject* val, Obj* obj, std::vector<Obj
             if (PyObject_IsInstance(*item, (PyObject*) &PyObjectIDType)) {
               objectid = ((PyObjectID*) (*item))->id;
             } else {
-              PyErr_SetString(PyExc_TypeError, "must be an object reference"); // TODO: improve error message
+              std::stringstream ss;
+              ss << "data type of " << PyString_AS_STRING(PyObject_Repr(*item))
+                 << " not recognized";
+              PyErr_SetString(PyExc_TypeError, ss.str().c_str());
               return -1;
             }
             data->add_objectid_data(objectid);
