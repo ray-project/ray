@@ -1,5 +1,7 @@
-# The build directory should clearly not be checked in
+# The build output should clearly not be checked in
 /build
+/lib/python/ray/objstore
+/lib/python/ray/scheduler
 
 # Python byte code files
 *.pyc
@@ -60,3 +62,9 @@
 
 # Ray cluster configuration
 scripts/nodes.txt
+
+# OS X folder attributes
+.DS_Store
+
+# Datasets from examples
+**/MNIST_data/
