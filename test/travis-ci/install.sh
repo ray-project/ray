@@ -15,7 +15,7 @@ if [[ $TRAVIS_OS_NAME == 'linux' ]]; then
   docker version
 
   # We tar the current checkout, then include it in the Docker image
-  tar --exclude './docker' -cv . > ./docker/test-base/ray.tar
+  tar --exclude './docker' -c . > ./docker/test-base/ray.tar
   docker build --no-cache -t amplab/ray:test-base docker/test-base
   rm ./docker/test-base/ray.tar
   docker build --no-cache -t amplab/ray:test-examples docker/test-examples
