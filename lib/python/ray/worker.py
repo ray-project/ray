@@ -544,7 +544,7 @@ def check_connected(worker=global_worker):
   Raises:
     Exception: An exception is raised if the worker is not connected.
   """
-  if worker.handle is None:
+  if worker.handle is None and worker.mode != raylib.PYTHON_MODE:
     raise Exception("This command cannot be called before a Ray cluster has been started. You can start one with 'ray.init(start_ray_local=True, num_workers=1)'.")
 
 def print_failed_task(task_status):
@@ -635,7 +635,10 @@ def init(start_ray_local=False, num_workers=None, num_objstores=None, scheduler_
       Exception: An exception is raised if an inappropriate combination of
         arguments is passed in.
   """
-  if start_ray_local:
+  if driver_mode == raylib.PYTHON_MODE:
+    # If starting Ray in PYTHON_MODE, don't start any other processes.
+    pass
+  elif start_ray_local:
     # In this case, we launch a scheduler, a new object store, and some workers,
     # and we connect to them.
     if (scheduler_address is not None) or (node_ip_address is not None):
@@ -669,7 +672,7 @@ def cleanup(worker=global_worker):
   services.cleanup() in the tests because we need to start and stop many
   clusters in the tests, but the import and exit only happen once.
   """
-  disconnect()
+  disconnect(worker)
   worker.set_mode(None)
   services.cleanup()
 
@@ -688,8 +691,13 @@ def connect(node_ip_address, scheduler_address, objstore_address=None, is_driver
     mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, PYTHON_MODE,
       and SILENT_MODE.
   """
-  if hasattr(worker, "handle"):
-    del worker.handle
+  assert worker.handle is None, "When connect is called, worker.handle should be None."
+  # If running Ray in PYTHON_MODE, there is no need to create call create_worker
+  # or to start the worker service.
+  if mode == raylib.PYTHON_MODE:
+    worker.mode = raylib.PYTHON_MODE
+    return
+
   worker.scheduler_address = scheduler_address
   worker.handle, worker.worker_address = raylib.create_worker(node_ip_address, scheduler_address, objstore_address if objstore_address is not None else "", is_driver)
   worker.set_mode(mode)
@@ -723,10 +731,10 @@ def disconnect(worker=global_worker):
   """Disconnect this worker from the scheduler and object store."""
   if worker.handle is not None:
     raylib.disconnect(worker.handle)
+    worker.handle = None
   # Reset the list of cached remote functions so that if more remote functions
   # are defined and then connect is called again, the remote functions will be
   # exported. This is mostly relevant for the tests.
-  worker.handle = None
   worker.cached_remote_functions = []
   reusables._cached_reusables = []
 

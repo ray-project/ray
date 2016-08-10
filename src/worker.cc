@@ -385,8 +385,11 @@ void Worker::notify_task_completed() {
 
 void Worker::disconnect() {
   connected_ = false;
-  // TODO(rkn): This probably isn't the right way to clean up the thread.
-  worker_server_thread_->detach();
+  // Shut down the worker service. This will cause the call to server->Wait() to
+  // return.
+  server_ptr_->Shutdown();
+  // Wait for the thread that launched the worker service to return.
+  worker_server_thread_->join();
 }
 
 // TODO(rkn): Should we be using pointers or references? And should they be const?
@@ -441,6 +444,7 @@ void Worker::start_worker_service(Mode mode) {
     builder.AddListeningPort(std::string("0.0.0.0:") + port, grpc::InsecureServerCredentials());
     builder.RegisterService(&service);
     std::unique_ptr<Server> server(builder.BuildAndStart());
+    server_ptr_ = server.get();
     RAY_LOG(RAY_INFO, "worker server listening on " << service_address);
     // If this is part of a worker process (and not a driver process), then tell
     // the scheduler that it is ready to start receiving tasks.
@@ -451,7 +455,9 @@ void Worker::start_worker_service(Mode mode) {
       AckReply reply;
       scheduler_stub_->ReadyForNewTask(&context, request, &reply);
     }
-    // Wait for work and process work, this does not return.
+    // Wait for work and process work. This method does not return until
+    // Shutdown is called from a different thread.
     server->Wait();
+    RAY_LOG(RAY_INFO, "Worker service thread returning.")
   }));
 }
