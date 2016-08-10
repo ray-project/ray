@@ -114,6 +114,7 @@ class Worker {
   const size_t CHUNK_SIZE = 8 * 1024;
   std::unique_ptr<Scheduler::Stub> scheduler_stub_;
   std::unique_ptr<std::thread> worker_server_thread_;
+  Server* server_ptr_;
   MessageQueue<WorkerMessage*> receive_queue_;
   bip::managed_shared_memory segment_;
   WorkerId workerid_;
