@@ -665,12 +665,12 @@ static PyObject* create_worker(PyObject* self, PyObject* args) {
   // The object store address can be the empty string, in which case the
   // scheduler will choose the object store address.
   const char* objstore_address;
-  PyObject* is_driver_obj;
-  if (!PyArg_ParseTuple(args, "sssO", &node_ip_address, &scheduler_address, &objstore_address, &is_driver_obj)) {
+  Mode mode;
+  if (!PyArg_ParseTuple(args, "sssi", &node_ip_address, &scheduler_address, &objstore_address, &mode)) {
     return NULL;
   }
-  bool is_driver = PyObject_IsTrue(is_driver_obj);
-  Worker* worker = new Worker(std::string(scheduler_address));
+  bool is_driver = (mode != Mode::WORKER_MODE);
+  Worker* worker = new Worker(std::string(node_ip_address), std::string(scheduler_address), mode);
   worker->register_worker(std::string(node_ip_address), std::string(objstore_address), is_driver);
 
   PyObject* t = PyTuple_New(2);
@@ -800,12 +800,12 @@ static PyObject* submit_task(PyObject* self, PyObject* args) {
   return list;
 }
 
-static PyObject* notify_task_completed(PyObject* self, PyObject* args) {
+static PyObject* ready_for_new_task(PyObject* self, PyObject* args) {
   Worker* worker;
   if (!PyArg_ParseTuple(args, "O&", &PyObjectToWorker, &worker)) {
     return NULL;
   }
-  worker->notify_task_completed();
+  worker->ready_for_new_task();
   Py_RETURN_NONE;
 }
 
@@ -920,18 +920,36 @@ static PyObject* scheduler_info(PyObject* self, PyObject* args) {
   SchedulerInfoReply reply;
   worker->scheduler_info(context, request, reply);
 
+  // Unpack the target object reference information.
   PyObject* target_objectid_list = PyList_New(reply.target_objectid_size());
   for (size_t i = 0; i < reply.target_objectid_size(); ++i) {
     PyList_SetItem(target_objectid_list, i, PyInt_FromLong(reply.target_objectid(i)));
   }
+  // Unpack the reference count information.
   PyObject* reference_count_list = PyList_New(reply.reference_count_size());
   for (size_t i = 0; i < reply.reference_count_size(); ++i) {
     PyList_SetItem(reference_count_list, i, PyInt_FromLong(reply.reference_count(i)));
   }
+  // Unpack the available worker information.
+  PyObject* available_worker_list = PyList_New(reply.avail_worker_size());
+  for (size_t i = 0; i < reply.avail_worker_size(); ++i) {
+    PyList_SetItem(available_worker_list, i, PyInt_FromLong(reply.avail_worker(i)));
+  }
+  // Unpack the object store information.
+  PyObject* objstore_list = PyList_New(reply.objstore_size());
+  for (size_t i = 0; i < reply.objstore_size(); ++i) {
+    PyObject* objstore_data = PyDict_New();
+    set_dict_item_and_transfer_ownership(objstore_data, PyString_FromString("objstoreid"), PyInt_FromLong(reply.objstore(i).objstoreid()));
+    set_dict_item_and_transfer_ownership(objstore_data, PyString_FromString("address"), PyString_FromStringAndSize(reply.objstore(i).address().data(), reply.objstore(i).address().size()));
+    PyList_SetItem(objstore_list, i, objstore_data);
+  }
 
+  // Store the unpacked values in a dictionary to return.
   PyObject* dict = PyDict_New();
   set_dict_item_and_transfer_ownership(dict, PyString_FromString("target_objectids"), target_objectid_list);
   set_dict_item_and_transfer_ownership(dict, PyString_FromString("reference_counts"), reference_count_list);
+  set_dict_item_and_transfer_ownership(dict, PyString_FromString("available_workers"), available_worker_list);
+  set_dict_item_and_transfer_ownership(dict, PyString_FromString("objstores"), objstore_list);
   return dict;
 }
 
@@ -1059,7 +1077,7 @@ static PyMethodDef RayLibMethods[] = {
  { "alias_objectids", alias_objectids, METH_VARARGS, "make two objectids refer to the same object" },
  { "wait_for_next_message", wait_for_next_message, METH_VARARGS, "get next message from scheduler (blocking)" },
  { "submit_task", submit_task, METH_VARARGS, "call a remote function" },
- { "notify_task_completed", notify_task_completed, METH_VARARGS, "notify the scheduler that a task has been completed" },
+ { "ready_for_new_task", ready_for_new_task, METH_VARARGS, "notify the scheduler that a task has been completed" },
  { "start_worker_service", start_worker_service, METH_VARARGS, "start the worker service" },
  { "scheduler_info", scheduler_info, METH_VARARGS, "get info about scheduler state" },
  { "task_info", task_info, METH_VARARGS, "get information about task statuses and failures" },

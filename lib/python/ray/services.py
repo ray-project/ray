@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import subprocess32 as subprocess
+import numpy as np
 
 # Ray modules
 import config
@@ -19,17 +20,8 @@ TIMEOUT_SECONDS = 5
 def address(host, port):
   return host + ":" + str(port)
 
-scheduler_port_counter = 0
 def new_scheduler_port():
-  global scheduler_port_counter
-  scheduler_port_counter += 1
-  return 10000 + scheduler_port_counter
-
-objstore_port_counter = 0
-def new_objstore_port():
-  global objstore_port_counter
-  objstore_port_counter += 1
-  return 20000 + objstore_port_counter
+  return np.random.randint(10000, 65536)
 
 def cleanup():
   """When running in local mode, shutdown the Ray processes.
@@ -68,26 +60,28 @@ def start_scheduler(scheduler_address, cleanup):
       this process will be killed by serices.cleanup() when the Python process
       that imported services exits.
   """
-  p = subprocess.Popen(["scheduler", scheduler_address, "--log-file-name", config.get_log_file_path("scheduler.log")], env=_services_env)
+  scheduler_port = scheduler_address.split(":")[1]
+  p = subprocess.Popen(["scheduler", scheduler_address, "--log-file-name", config.get_log_file_path("scheduler-" + scheduler_port + ".log")], env=_services_env)
   if cleanup:
     all_processes.append(p)
 
-def start_objstore(scheduler_address, objstore_address, cleanup):
+def start_objstore(scheduler_address, node_ip_address, cleanup):
   """This method starts an object store process.
 
   Args:
     scheduler_address (str): The ip address and port of the scheduler to connect
       to.
-    objstore_address (str): The ip address and port to use for the object store.
+    node_ip_address (str): The ip address of the node running the object store.
+      The object store's port number will be chosen by the object store process.
     cleanup (bool): True if using Ray in local mode. If cleanup is true, then
       this process will be killed by serices.cleanup() when the Python process
       that imported services exits.
   """
-  p = subprocess.Popen(["objstore", scheduler_address, objstore_address, "--log-file-name", config.get_log_file_path("-".join(["objstore", objstore_address]) + ".log")], env=_services_env)
+  p = subprocess.Popen(["objstore", scheduler_address, node_ip_address, "--log-file-prefix", config.get_log_file_path("")], env=_services_env)
   if cleanup:
     all_processes.append(p)
 
-def start_worker(node_ip_address, worker_path, scheduler_address, objstore_address=None, cleanup=True, user_source_directory=None):
+def start_worker(node_ip_address, worker_path, scheduler_address, cleanup=True, user_source_directory=None):
   """This method starts a worker process.
 
   Args:
@@ -96,8 +90,6 @@ def start_worker(node_ip_address, worker_path, scheduler_address, objstore_addre
       run.
     scheduler_address (str): The ip address and port of the scheduler to connect
       to.
-    objstore_address (Optional[str]): The ip address and port of the object
-      store to connect to.
     cleanup (Optional[bool]): True if using Ray in local mode. If cleanup is
       true, then this process will be killed by serices.cleanup() when the
       Python process that imported services exits. This is True by default.
@@ -114,8 +106,6 @@ def start_worker(node_ip_address, worker_path, scheduler_address, objstore_addre
              "--node-ip-address=" + node_ip_address,
              "--user-source-directory=" + user_source_directory,
              "--scheduler-address=" + scheduler_address]
-  if objstore_address is not None:
-    command.append("--objstore-address=" + objstore_address)
   p = subprocess.Popen(command)
   if cleanup:
     all_processes.append(p)
@@ -139,13 +129,12 @@ def start_node(scheduler_address, node_ip_address, num_workers, worker_path=None
     cleanup (bool): If cleanup is True, then the processes started by this
       command will be killed when the process that imported services exits.
   """
-  objstore_address = address(node_ip_address, new_objstore_port())
-  start_objstore(scheduler_address, objstore_address, cleanup=cleanup)
+  start_objstore(scheduler_address, node_ip_address, cleanup=cleanup)
   time.sleep(0.2)
   if worker_path is None:
     worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../../scripts/default_worker.py")
   for _ in range(num_workers):
-    start_worker(node_ip_address, worker_path, scheduler_address, objstore_address=objstore_address, user_source_directory=user_source_directory, cleanup=cleanup)
+    start_worker(node_ip_address, worker_path, scheduler_address, user_source_directory=user_source_directory, cleanup=cleanup)
   time.sleep(0.5)
 
 def start_workers(scheduler_address, objstore_address, num_workers, worker_path):
@@ -191,12 +180,9 @@ def start_ray_local(node_ip_address="127.0.0.1", num_objstores=1, num_workers=0,
   scheduler_address = address(node_ip_address, new_scheduler_port())
   start_scheduler(scheduler_address, cleanup=True)
   time.sleep(0.1)
-  objstore_addresses = []
   # create objstores
   for i in range(num_objstores):
-    objstore_address = address(node_ip_address, new_objstore_port())
-    objstore_addresses.append(objstore_address)
-    start_objstore(scheduler_address, objstore_address, cleanup=True)
+    start_objstore(scheduler_address, node_ip_address, cleanup=True)
     time.sleep(0.2)
     if i < num_objstores - 1:
       num_workers_to_start = num_workers / num_objstores
@@ -205,7 +191,7 @@ def start_ray_local(node_ip_address="127.0.0.1", num_objstores=1, num_workers=0,
       # remaining number of workers.
       num_workers_to_start = num_workers - (num_objstores - 1) * (num_workers / num_objstores)
     for _ in range(num_workers_to_start):
-      start_worker(node_ip_address, worker_path, scheduler_address, objstore_address=objstore_address, cleanup=True)
+      start_worker(node_ip_address, worker_path, scheduler_address, cleanup=True)
     time.sleep(0.3)
 
-  return scheduler_address, objstore_addresses
+  return scheduler_address

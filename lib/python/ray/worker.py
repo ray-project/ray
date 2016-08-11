@@ -651,7 +651,7 @@ def init(start_ray_local=False, num_workers=None, num_objstores=None, scheduler_
     num_objstores = 1 if num_objstores is None else num_objstores
     # Start the scheduler, object store, and some workers. These will be killed
     # by the call to cleanup(), which happens when the Python script exits.
-    scheduler_address, _ = services.start_ray_local(num_objstores=num_objstores, num_workers=num_workers, worker_path=None)
+    scheduler_address = services.start_ray_local(num_objstores=num_objstores, num_workers=num_workers, worker_path=None)
   else:
     # In this case, there is an existing scheduler and object store, and we do
     # not need to start any processes.
@@ -662,7 +662,7 @@ def init(start_ray_local=False, num_workers=None, num_objstores=None, scheduler_
   # Connect this driver to the scheduler and object store. The corresponing call
   # to disconnect will happen in the call to cleanup() when the Python script
   # exits.
-  connect(node_ip_address, scheduler_address, is_driver=True, worker=global_worker, mode=driver_mode)
+  connect(node_ip_address, scheduler_address, worker=global_worker, mode=driver_mode)
 
 def cleanup(worker=global_worker):
   """Disconnect the driver, and terminate any processes started in init.
@@ -678,7 +678,7 @@ def cleanup(worker=global_worker):
 
 atexit.register(cleanup)
 
-def connect(node_ip_address, scheduler_address, objstore_address=None, is_driver=False, worker=global_worker, mode=raylib.WORKER_MODE):
+def connect(node_ip_address, scheduler_address, objstore_address=None, worker=global_worker, mode=raylib.WORKER_MODE):
   """Connect this worker to the scheduler and an object store.
 
   Args:
@@ -687,7 +687,6 @@ def connect(node_ip_address, scheduler_address, objstore_address=None, is_driver
     objstore_address (Optional[str]): The ip address and port of the local
       object store. Normally, this argument should be omitted and the scheduler
       will tell the worker what object store to connect to.
-    is_driver (bool): True if this worker is a driver and false otherwise.
     mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, PYTHON_MODE,
       and SILENT_MODE.
   """
@@ -699,7 +698,10 @@ def connect(node_ip_address, scheduler_address, objstore_address=None, is_driver
     return
 
   worker.scheduler_address = scheduler_address
-  worker.handle, worker.worker_address = raylib.create_worker(node_ip_address, scheduler_address, objstore_address if objstore_address is not None else "", is_driver)
+  # Create a worker object. This also creates the worker service, which can
+  # receive commands from the scheduler. This call also sets up a queue between
+  # the worker and the worker service.
+  worker.handle, worker.worker_address = raylib.create_worker(node_ip_address, scheduler_address, objstore_address if objstore_address is not None else "", mode)
   worker.set_mode(mode)
   FORMAT = "%(asctime)-15s %(message)s"
   # Configure the Python logging module. Note that if we do not provide our own
@@ -720,12 +722,6 @@ def connect(node_ip_address, scheduler_address, objstore_address=None, is_driver
       _export_reusable_variable(name, reusable_variable)
   worker.cached_remote_functions = None
   reusables._cached_reusables = None
-  # Start the driver's WorkerService (if this is a driver). This will receive
-  # GRPC commands from the scheduler to print error messages. We pass in the
-  # mode below. This tells the WorkerService whether it is operating for a
-  # driver or a worker and whether it should surpress errors or not.
-  if is_driver:
-    raylib.start_worker_service(worker.handle, mode)
 
 def disconnect(worker=global_worker):
   """Disconnect this worker from the scheduler and object store."""
@@ -844,9 +840,8 @@ def main_loop(worker=global_worker):
   """
   if not raylib.connected(worker.handle):
     raise Exception("Worker is attempting to enter main_loop but has not been connected yet.")
-  # We pass in raylib.WORKER_MODE below to indicate that the WorkerService is
-  # operating for a worker and not a driver.
-  raylib.start_worker_service(worker.handle, raylib.WORKER_MODE)
+  # Notify the scheduler that the worker is ready to start receiving tasks.
+  raylib.ready_for_new_task(worker.handle)
 
   def process_task(task): # wrapping these lines in a function should cause the local variables to go out of scope more quickly, which is useful for inspecting reference counts
     """Execute a task assigned to this worker.
@@ -880,7 +875,7 @@ def main_loop(worker=global_worker):
       store_outputs_in_objstore(return_objectids, outputs, worker) # store output in local object store
     # Notify the scheduler that the task is done. This happens regardless of
     # whether the task succeeded or failed.
-    raylib.notify_task_completed(worker.handle)
+    raylib.ready_for_new_task(worker.handle)
     try:
       # Reinitialize the values of reusable variables that were used in the task
       # above so that changes made to their state do not affect other tasks.

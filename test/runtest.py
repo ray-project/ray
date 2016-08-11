@@ -81,30 +81,49 @@ class ObjStoreTest(unittest.TestCase):
 
   # Test setting up object stores, transfering data between them and retrieving data to a client
   def testObjStore(self):
-    scheduler_address, objstore_addresses = ray.services.start_ray_local(num_objstores=2, num_workers=0, worker_path=None)
+    node_ip_address = "127.0.0.1"
+    scheduler_address = ray.services.start_ray_local(num_objstores=2, num_workers=0, worker_path=None)
+    ray.connect(node_ip_address, scheduler_address, mode=ray.SCRIPT_MODE)
+    objstore_addresses = [objstore_info["address"] for objstore_info in ray.scheduler_info()["objstores"]]
     w1 = ray.worker.Worker()
     w2 = ray.worker.Worker()
-    node_ip_address = "127.0.0.1"
-    ray.connect(node_ip_address, scheduler_address, objstore_addresses[0], is_driver=True, mode=ray.SCRIPT_MODE, worker=w1)
     ray.reusables._cached_reusables = [] # This is a hack to make the test run.
-    ray.connect(node_ip_address, scheduler_address, objstore_addresses[1], is_driver=True, mode=ray.SCRIPT_MODE, worker=w2)
+    ray.connect(node_ip_address, scheduler_address, objstore_address=objstore_addresses[0], mode=ray.SCRIPT_MODE, worker=w1)
+    ray.reusables._cached_reusables = [] # This is a hack to make the test run.
+    ray.connect(node_ip_address, scheduler_address, objstore_address=objstore_addresses[1], mode=ray.SCRIPT_MODE, worker=w2)
 
     # putting and getting an object shouldn't change it
-    for data in ["h", "h" * 10000, 0, 0.0]:
+    for data in RAY_TEST_OBJECTS:
       objectid = ray.put(data, w1)
       result = ray.get(objectid, w1)
       self.assertEqual(result, data)
 
     # putting an object, shipping it to another worker, and getting it shouldn't change it
-    for data in ["h", "h" * 10000, 0, 0.0, [1, 2, 3, "a", (1, 2)], ("a", ("b", 3))]:
+    for data in RAY_TEST_OBJECTS:
       objectid = ray.put(data, w1)
       result = ray.get(objectid, w2)
       self.assertEqual(result, data)
 
+    # putting an object, shipping it to another worker, and getting it shouldn't change it
+    for data in RAY_TEST_OBJECTS:
+      objectid = ray.put(data, w2)
+      result = ray.get(objectid, w1)
+      self.assertEqual(result, data)
+
+    ARRAY_TEST_OBJECTS = [np.zeros([10, 20]), np.random.normal(size=[45, 25]),
+                          ("a", np.random.normal(size=[10, 10])),
+                          ["a", np.random.normal(size=[10, 10])]]
+
     # putting an array, shipping it to another worker, and getting it shouldn't change it
-    for data in [np.zeros([10, 20]), np.random.normal(size=[45, 25])]:
+    for data in ARRAY_TEST_OBJECTS:
       objectid = ray.put(data, w1)
       result = ray.get(objectid, w2)
+      assert_equal(result, data)
+
+    # putting an array, shipping it to another worker, and getting it shouldn't change it
+    for data in ARRAY_TEST_OBJECTS:
+      objectid = ray.put(data, w2)
+      result = ray.get(objectid, w1)
       assert_equal(result, data)
 
     # This test fails. See https://github.com/amplab/ray/issues/159.
@@ -115,20 +134,6 @@ class ObjStoreTest(unittest.TestCase):
     #   result = worker.get(objectid, w2)
     #   result = worker.get(objectid, w2)
     #   assert_equal(result, data)
-
-    # shipping a numpy array inside something else should be fine
-    data = ("a", np.random.normal(size=[10, 10]))
-    objectid = ray.put(data, w1)
-    result = ray.get(objectid, w2)
-    self.assertEqual(data[0], result[0])
-    assert_equal(data[1], result[1])
-
-    # shipping a numpy array inside something else should be fine
-    data = ["a", np.random.normal(size=[10, 10])]
-    objectid = ray.put(data, w1)
-    result = ray.get(objectid, w2)
-    self.assertEqual(data[0], result[0])
-    assert_equal(data[1], result[1])
 
     # Getting a buffer after modifying it before it finishes should return updated buffer
     objectid = ray.libraylib.get_objectid(w1.handle)

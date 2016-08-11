@@ -66,6 +66,11 @@ message Failure {
   string error_message = 5; // The error message from the failure.
 }
 
+message ObjstoreData {
+  uint64 objstoreid = 1; // The ID of the object store.
+  string address = 2; // The address of the object store.
+}
+
 // Union of possible object types
 message Obj {
   String string_data = 1;
