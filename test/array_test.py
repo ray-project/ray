@@ -9,13 +9,19 @@ from numpy.testing import assert_equal, assert_almost_equal
 import ray.array.remote as ra
 import ray.array.distributed as da
 
-class RemoteArrayTest(unittest.TestCase):
+class TestRemoteArrays(unittest.TestCase):
 
-  def testMethods(self):
+  @classmethod
+  def setUpClass(cls):
     for module in [ra.core, ra.random, ra.linalg, da.core, da.random, da.linalg]:
       reload(module)
-    ray.init(start_ray_local=True)
+    ray.init(start_ray_local=True, num_workers=1)
 
+  @classmethod
+  def tearDownClass(cls):
+    ray.worker.cleanup()
+
+  def test_methods(self):
     # test eye
     object_id = ra.eye.remote(3)
     val = ray.get(object_id)
@@ -41,40 +47,32 @@ class RemoteArrayTest(unittest.TestCase):
     r_val = ray.get(r_id)
     assert_almost_equal(np.dot(q_val, r_val), a_val)
 
-    ray.worker.cleanup()
+class TestDistributedArrays(unittest.TestCase):
 
-class DistributedArrayTest(unittest.TestCase):
-
-  def testSerialization(self):
+  @classmethod
+  def setUpClass(cls):
     for module in [ra.core, ra.random, ra.linalg, da.core, da.random, da.linalg]:
       reload(module)
-    ray.init(start_ray_local=True, num_workers=0)
+    ray.init(start_ray_local=True, num_workers=10, num_objstores=2)
 
+  @classmethod
+  def tearDownClass(cls):
+    ray.worker.cleanup()
+
+  def test_serialization(self):
     x = da.DistArray([2, 3, 4], np.array([[[ray.put(0)]]]))
     capsule, _ = ray.serialization.serialize(ray.worker.global_worker.handle, x)
     y = ray.serialization.deserialize(ray.worker.global_worker.handle, capsule)
     self.assertEqual(x.shape, y.shape)
     self.assertEqual(x.objectids[0, 0, 0].id, y.objectids[0, 0, 0].id)
 
-    ray.worker.cleanup()
-
-  def testAssemble(self):
-    for module in [ra.core, ra.random, ra.linalg, da.core, da.random, da.linalg]:
-      reload(module)
-    ray.init(start_ray_local=True, num_workers=1)
-
+  def test_assemble(self):
     a = ra.ones.remote([da.BLOCK_SIZE, da.BLOCK_SIZE])
     b = ra.zeros.remote([da.BLOCK_SIZE, da.BLOCK_SIZE])
     x = da.DistArray([2 * da.BLOCK_SIZE, da.BLOCK_SIZE], np.array([[a], [b]]))
     assert_equal(x.assemble(), np.vstack([np.ones([da.BLOCK_SIZE, da.BLOCK_SIZE]), np.zeros([da.BLOCK_SIZE, da.BLOCK_SIZE])]))
 
-    ray.worker.cleanup()
-
-  def testMethods(self):
-    for module in [ra.core, ra.random, ra.linalg, da.core, da.random, da.linalg]:
-      reload(module)
-    ray.init(start_ray_local=True, num_objstores=2, num_workers=10)
-
+  def test_methods(self):
     x = da.zeros.remote([9, 25, 51], "float")
     assert_equal(ray.get(da.assemble.remote(x)), np.zeros([9, 25, 51]))
 
@@ -207,7 +205,5 @@ class DistributedArrayTest(unittest.TestCase):
       d2 = np.random.randint(1, 35)
       test_dist_qr(d1, d2)
 
-    ray.worker.cleanup()
-
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(verbosity=2)
