@@ -2,6 +2,8 @@
 #include <iostream>
 #include <fstream>
 
+#include <grpc++/grpc++.h>
+
 struct RayConfig {
   bool log_to_file = false;
   std::ofstream logfile;
@@ -54,3 +56,9 @@ extern "C" __declspec(dllimport) int __stdcall IsDebuggerPresent();
 #define RAY_CHECK_LT(var1, var2, message) RAY_CHECK((var1) < (var2), message)
 #define RAY_CHECK_GE(var1, var2, message) RAY_CHECK((var1) >= (var2), message)
 #define RAY_CHECK_GT(var1, var2, message) RAY_CHECK((var1) > (var2), message)
+
+#define RAY_CHECK_GRPC(expr) \
+  do { \
+    grpc::Status _s = (expr); \
+    RAY_CHECK(_s.ok(), "grpc call failed with message " << _s.error_message()); \
+  } while (0);

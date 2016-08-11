@@ -328,7 +328,7 @@ Status SchedulerService::NotifyFailure(ServerContext* context, const NotifyFailu
         PrintErrorMessageRequest print_request;
         print_request.mutable_failure()->CopyFrom(request->failure());
         AckReply print_reply;
-        Status status = worker->worker_stub->PrintErrorMessage(&client_context, print_request, &print_reply);
+        RAY_CHECK_GRPC(worker->worker_stub->PrintErrorMessage(&client_context, print_request, &print_reply));
       }
     }
   }
@@ -500,7 +500,7 @@ Status SchedulerService::KillWorkers(ServerContext* context, const KillWorkersRe
       DieRequest die_request;
       AckReply die_reply;
       // TODO: Fault handling... what if a worker refuses to die? We just assume it dies here.
-      idle_worker->worker_stub->Die(&client_context, die_request, &die_reply);
+      RAY_CHECK_GRPC(idle_worker->worker_stub->Die(&client_context, die_request, &die_reply));
       idle_worker->worker_stub.reset();
     }
     avail_workers->clear();
@@ -580,7 +580,7 @@ void SchedulerService::deliver_object_async(ObjectID canonical_objectid, ObjStor
   request.set_objectid(canonical_objectid);
   auto objstores = GET(objstores_);
   request.set_objstore_address((*objstores)[from].address);
-  (*objstores)[to].objstore_stub->StartDelivery(&context, request, &reply);
+  RAY_CHECK_GRPC((*objstores)[to].objstore_stub->StartDelivery(&context, request, &reply));
 }
 
 void SchedulerService::schedule() {
@@ -622,7 +622,7 @@ void SchedulerService::assign_task(OperationId operationid, WorkerId workerid, c
     auto workers = GET(workers_);
     (*workers)[workerid].current_task = operationid;
     request.mutable_task()->CopyFrom(task); // TODO(rkn): Is ownership handled properly here?
-    Status status = (*workers)[workerid].worker_stub->ExecuteTask(&context, request, &reply);
+    RAY_CHECK_GRPC((*workers)[workerid].worker_stub->ExecuteTask(&context, request, &reply));
   }
 }
 
@@ -935,7 +935,7 @@ bool SchedulerService::attempt_notify_alias(ObjStoreId objstoreid, ObjectID alia
   NotifyAliasRequest request;
   request.set_alias_objectid(alias_objectid);
   request.set_canonical_objectid(canonical_objectid);
-  (*GET(objstores_))[objstoreid].objstore_stub->NotifyAlias(&context, request, &reply);
+  RAY_CHECK_GRPC((*GET(objstores_))[objstoreid].objstore_stub->NotifyAlias(&context, request, &reply));
   return true;
 }
 
@@ -957,7 +957,7 @@ void SchedulerService::deallocate_object(ObjectID canonical_objectid, const MySy
       request.set_canonical_objectid(canonical_objectid);
       ObjStoreId objstoreid = locations[i];
       RAY_LOG(RAY_REFCOUNT, "Attempting to deallocate canonical_objectid " << canonical_objectid << " from objstore " << objstoreid);
-      (*objstores)[objstoreid].objstore_stub->DeallocateObject(&context, request, &reply);
+      RAY_CHECK_GRPC((*objstores)[objstoreid].objstore_stub->DeallocateObject(&context, request, &reply));
     }
     locations.clear();
   }
@@ -1035,7 +1035,7 @@ void SchedulerService::export_function_to_worker(WorkerId workerid, int function
   ImportRemoteFunctionRequest import_request;
   import_request.mutable_function()->CopyFrom(*(*exported_functions)[function_index].get());
   AckReply import_reply;
-  (*workers)[workerid].worker_stub->ImportRemoteFunction(&import_context, import_request, &import_reply);
+  RAY_CHECK_GRPC((*workers)[workerid].worker_stub->ImportRemoteFunction(&import_context, import_request, &import_reply));
 }
 
 void SchedulerService::export_reusable_variable_to_worker(WorkerId workerid, int reusable_variable_index, MySynchronizedPtr<std::vector<WorkerHandle> > &workers, const MySynchronizedPtr<std::vector<std::unique_ptr<ReusableVar> > > &exported_reusable_variables) {
@@ -1044,7 +1044,7 @@ void SchedulerService::export_reusable_variable_to_worker(WorkerId workerid, int
   ImportReusableVariableRequest import_request;
   import_request.mutable_reusable_variable()->CopyFrom(*(*exported_reusable_variables)[reusable_variable_index].get());
   AckReply import_reply;
-  (*workers)[workerid].worker_stub->ImportReusableVariable(&import_context, import_request, &import_reply);
+  RAY_CHECK_GRPC((*workers)[workerid].worker_stub->ImportReusableVariable(&import_context, import_request, &import_reply));
 }
 
 void SchedulerService::export_all_functions_to_worker(WorkerId workerid, MySynchronizedPtr<std::vector<WorkerHandle> > &workers, const MySynchronizedPtr<std::vector<std::unique_ptr<Function> > > &exported_functions) {
