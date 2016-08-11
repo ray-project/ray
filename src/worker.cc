@@ -9,11 +9,8 @@ extern "C" {
   static PyObject *RayError;
 }
 
-inline WorkerServiceImpl::WorkerServiceImpl(const std::string& worker_address, Mode mode)
-  : worker_address_(worker_address),
-    mode_(mode) {
-  RAY_CHECK(send_queue_.connect(worker_address_, false), "error connecting send_queue_");
-}
+inline WorkerServiceImpl::WorkerServiceImpl(Mode mode)
+  : mode_(mode) {}
 
 Status WorkerServiceImpl::ExecuteTask(ServerContext* context, const ExecuteTaskRequest* request, AckReply* reply) {
   RAY_CHECK(mode_ == Mode::WORKER_MODE, "ExecuteTask can only be called on workers.");
@@ -87,10 +84,23 @@ Status WorkerServiceImpl::PrintErrorMessage(ServerContext* context, const PrintE
   return Status::OK;
 }
 
-Worker::Worker(const std::string& scheduler_address)
-    : scheduler_address_(scheduler_address) {
-  auto scheduler_channel = grpc::CreateChannel(scheduler_address, grpc::InsecureChannelCredentials());
+void WorkerServiceImpl::connect_to_queue() {
+  RAY_LOG(RAY_DEBUG, "Worker service creating queue with name " << worker_address_ << " to commmunicate with worker.");
+  RAY_CHECK(send_queue_.connect(worker_address_, true), "error connecting send_queue_");
+}
+
+Worker::Worker(const std::string& node_ip_address, const std::string& scheduler_address, Mode mode)
+    : node_ip_address_(node_ip_address),
+      scheduler_address_(scheduler_address),
+      mode_(mode) {
+  // Connect to the scheduler service.
+  RAY_LOG(RAY_DEBUG, "Worker creating a scheduler stub.")
+  auto scheduler_channel = grpc::CreateChannel(scheduler_address_, grpc::InsecureChannelCredentials());
   scheduler_stub_ = Scheduler::NewStub(scheduler_channel);
+  // Start the worker service. This will find an unused port which is stored in
+  // worker_port_. This also sets up a message queue between the worker and the
+  // worker service.
+  start_worker_service(mode_);
 }
 
 
@@ -122,6 +132,7 @@ void Worker::register_worker(const std::string& node_ip_address, const std::stri
   unsigned int retry_wait_milliseconds = 20;
   RegisterWorkerRequest request;
   request.set_node_ip_address(node_ip_address);
+  request.set_worker_address(worker_address_);
   // The object store address can be the empty string, in which case the
   // scheduler will assign an object store address.
   request.set_objstore_address(objstore_address);
@@ -142,11 +153,15 @@ void Worker::register_worker(const std::string& node_ip_address, const std::stri
   workerid_ = reply.workerid();
   objstoreid_ = reply.objstoreid();
   objstore_address_ = reply.objstore_address();
-  worker_address_ = reply.worker_address();
-  segmentpool_ = std::make_shared<MemorySegmentPool>(objstoreid_, false);
-  RAY_CHECK(receive_queue_.connect(worker_address_, true), "error connecting receive_queue_");
-  RAY_CHECK(request_obj_queue_.connect(std::string("queue:") + objstore_address_ + std::string(":obj"), false), "error connecting request_obj_queue_");
-  RAY_CHECK(receive_obj_queue_.connect(std::string("queue:") + objstore_address_ + std::string(":worker:") + std::to_string(workerid_) + std::string(":obj"), true), "error connecting receive_obj_queue_");
+  segmentpool_ = std::make_shared<MemorySegmentPool>(objstoreid_, objstore_address_, false);
+  // Connect to the queue for sending requests to the object store.
+  std::string request_obj_queue_name = std::string("queue:") + objstore_address_ + std::string(":obj");
+  RAY_LOG(RAY_DEBUG, "Worker connecting to queue with name " << request_obj_queue_name << " to send requests to the object store.");
+  RAY_CHECK(request_obj_queue_.connect(request_obj_queue_name, false), "error connecting request_obj_queue_");
+  // Create a queue for receiving messages from the object store.
+  std::string receive_obj_queue_name = std::string("queue:") + objstore_address_ + std::string(":worker:") + std::to_string(workerid_) + std::string(":obj");
+  RAY_LOG(RAY_DEBUG, "Worker creating queue with name " << receive_obj_queue_name << " to receive messages from the object store.");
+  RAY_CHECK(receive_obj_queue_.connect(receive_obj_queue_name, true), "error connecting receive_obj_queue_");
   connected_ = true;
   return;
 }
@@ -374,7 +389,7 @@ std::unique_ptr<WorkerMessage> Worker::receive_next_message() {
   return std::unique_ptr<WorkerMessage>(message_ptr);
 }
 
-void Worker::notify_task_completed() {
+void Worker::ready_for_new_task() {
   RAY_CHECK(connected_, "Attempted to perform notify_task_completed but failed.");
   ClientContext context;
   ReadyForNewTaskRequest request;
@@ -389,7 +404,7 @@ void Worker::disconnect() {
   // return.
   server_ptr_->Shutdown();
   // Wait for the thread that launched the worker service to return.
-  worker_server_thread_->join();
+  worker_server_thread_.join();
 }
 
 // TODO(rkn): Should we be using pointers or references? And should they be const?
@@ -430,34 +445,49 @@ void Worker::export_reusable_variable(const std::string& name, const std::string
 // (in our case running in the main thread), whereas the WorkerService will
 // run in a separate thread and potentially utilize multiple threads.
 void Worker::start_worker_service(Mode mode) {
-  const char* service_addr = worker_address_.c_str();
+  RAY_LOG(RAY_DEBUG, "Worker is starting the worker service.");
+  // Signal when the worker service has started.
+  std::condition_variable worker_service_started;
+  // Lock for the above condition.
+  std::mutex worker_service_started_mutex;
   // Launch a new thread for running the worker service. We store this as a
   // field so that we can clean it up when we disconnect the worker.
-  worker_server_thread_ = std::unique_ptr<std::thread>(new std::thread([this, service_addr, mode]() {
-    std::string service_address(service_addr);
-    std::string::iterator split_point = split_ip_address(service_address);
-    std::string port;
-    port.assign(split_point, service_address.end());
-    // Create the worker service.
-    WorkerServiceImpl service(service_address, mode);
+  worker_server_thread_ = std::thread([this, mode, &worker_service_started]() {
     ServerBuilder builder;
-    builder.AddListeningPort(std::string("0.0.0.0:") + port, grpc::InsecureServerCredentials());
+    // Get GRPC to assign an unused port number.
+    builder.AddListeningPort(std::string("0.0.0.0:0"), grpc::InsecureServerCredentials(), &worker_port_);
+    // Create and start the worker service.
+    WorkerServiceImpl service(mode);
     builder.RegisterService(&service);
     std::unique_ptr<Server> server(builder.BuildAndStart());
     server_ptr_ = server.get();
-    RAY_LOG(RAY_INFO, "worker server listening on " << service_address);
-    // If this is part of a worker process (and not a driver process), then tell
-    // the scheduler that it is ready to start receiving tasks.
-    if (mode == Mode::WORKER_MODE) {
-      ClientContext context;
-      ReadyForNewTaskRequest request;
-      request.set_workerid(workerid_);
-      AckReply reply;
-      scheduler_stub_->ReadyForNewTask(&context, request, &reply);
+    if (server == nullptr) {
+      RAY_CHECK(false, "Failed to create the worker server.")
     }
+    RAY_LOG(RAY_DEBUG, "Worker service listening on " << worker_address_);
+    worker_address_ = node_ip_address_ + ":" + std::to_string(worker_port_);
+    service.set_worker_address(worker_address_);
+    // Connect the worker service by a queue to the worker object.
+    service.connect_to_queue();
+    // Use the condition variable to notify the outside thread that the worker
+    // service has been started.
+    // TODO(rkn): Once this has been called, the outside thread will notify the
+    // scheduler that the worker is ready to receive tasks. This can happen
+    // before server->Wait() is called below. What happens to messages sent from
+    // the scheduler before the call to server->Wait()?
+    worker_service_started.notify_all();
     // Wait for work and process work. This method does not return until
     // Shutdown is called from a different thread.
     server->Wait();
     RAY_LOG(RAY_INFO, "Worker service thread returning.")
-  }));
+  });
+  {
+    // Wait until we know the worker service has been started.
+    std::unique_lock<std::mutex> lock(worker_service_started_mutex);
+    worker_service_started.wait(lock);
+  }
+  // Connect to the queue for receiving messages from the worker service.
+  std::string receive_queue_name = worker_address_;
+  RAY_LOG(RAY_DEBUG, "Worker connecting to queue with name " << receive_queue_name << " to commmunicate with worker service.");
+  RAY_CHECK(receive_queue_.connect(receive_queue_name, false), "error connecting receive_queue_");
 }

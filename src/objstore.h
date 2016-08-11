@@ -37,7 +37,12 @@ enum MemoryStatusType {READY = 0, NOT_READY = 1, DEALLOCATED = 2, NOT_PRESENT = 
 
 class ObjStoreService final : public ObjStore::Service {
 public:
-  ObjStoreService(const std::string& objstore_address, std::shared_ptr<Channel> scheduler_channel);
+  ObjStoreService(const std::string& scheduler_address);
+  // Create the scheduler stub, register the object store with the scheduler,
+  // and create a message queue for workers to connect to.
+  void register_objstore();
+  // Set the object store address.
+  void set_objstore_address(const std::string& objstore_address) { objstore_address_ = objstore_address; }
 
   Status StartDelivery(ServerContext* context, const StartDeliveryRequest* request, AckReply* reply) override;
   Status StreamObjTo(ServerContext* context, const StreamObjToRequest* request, ServerWriter<ObjChunk>* writer) override;
@@ -57,6 +62,7 @@ private:
   void object_ready(ObjectID objectid, size_t metadata_offset);
 
   static const size_t CHUNK_SIZE;
+  std::string scheduler_address_;
   std::string objstore_address_;
   ObjStoreId objstoreid_; // id of this objectstore in the scheduler object store table
   std::shared_ptr<MemorySegmentPool> segmentpool_;

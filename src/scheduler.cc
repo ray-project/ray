@@ -215,6 +215,7 @@ Status SchedulerService::RegisterObjStore(ServerContext* context, const Register
 }
 
 Status SchedulerService::RegisterWorker(ServerContext* context, const RegisterWorkerRequest* request, RegisterWorkerReply* reply) {
+  std::string worker_address = request->worker_address();
   std::string objstore_address = request->objstore_address();
   std::string node_ip_address = request->node_ip_address();
   bool is_driver = request->is_driver();
@@ -250,19 +251,11 @@ Status SchedulerService::RegisterWorker(ServerContext* context, const RegisterWo
   } else {
     RAY_CHECK_NEQ(objstoreid, std::numeric_limits<size_t>::max(), "Object store with address " << objstore_address << " not yet registered.");
   }
-  // Populate the worker information and generate a worker address.
+  // Populate the worker information.
   WorkerId workerid;
-  std::string worker_address;
   {
     auto workers = GET(workers_);
     workerid = workers->size();
-    // Generate a random port number. This is currently a hack to avoid reusing
-    // port numbers when we run the tests.
-    std::random_device rd;
-    std::mt19937 rng(rd());
-    std::uniform_int_distribution<int> uni(0, 10000);
-    int port_number = 40000 + uni(rng);
-    worker_address = node_ip_address + ":" + std::to_string(port_number);
     workers->push_back(WorkerHandle());
     auto channel = grpc::CreateChannel(worker_address, grpc::InsecureChannelCredentials());
     (*workers)[workerid].channel = channel;
@@ -279,7 +272,6 @@ Status SchedulerService::RegisterWorker(ServerContext* context, const RegisterWo
   RAY_LOG(RAY_INFO, "Finished registering worker with workerid " << workerid << ", worker address " << worker_address << " on node with IP address " << node_ip_address << ", is_driver = " << is_driver << ", assigned to object store with id " << objstoreid << " and address " << objstore_address);
   reply->set_workerid(workerid);
   reply->set_objstoreid(objstoreid);
-  reply->set_worker_address(worker_address);
   reply->set_objstore_address(objstore_address);
   schedule();
   return Status::OK;
@@ -724,27 +716,40 @@ void SchedulerService::get_info(const SchedulerInfoRequest& request, SchedulerIn
   auto avail_workers = GET(avail_workers_);
   auto task_queue = GET(task_queue_);
   auto reference_counts = GET(reference_counts_);
+  auto objstores = GET(objstores_);
   auto target_objectids = GET(target_objectids_);
   auto function_table = reply->mutable_function_table();
+  // Return info about the reference counts.
   for (int i = 0; i < reference_counts->size(); ++i) {
     reply->add_reference_count((*reference_counts)[i]);
   }
+  // Return info about the target objectids.
   for (int i = 0; i < target_objectids->size(); ++i) {
     reply->add_target_objectid((*target_objectids)[i]);
   }
+  // Return info about the function table.
   for (const auto& entry : *fntable) {
     (*function_table)[entry.first].set_num_return_vals(entry.second.num_return_vals());
     for (const WorkerId& worker : entry.second.workers()) {
       (*function_table)[entry.first].add_workerid(worker);
     }
   }
+  // Return info about the task queue.
   for (const auto& entry : *task_queue) {
     reply->add_operationid(entry);
   }
+  // Return info about the available workers.
   for (const WorkerId& entry : *avail_workers) {
     reply->add_avail_worker(entry);
   }
+  // Return info about the computation graph.
   computation_graph->to_protobuf(reply->mutable_computation_graph());
+  // Return info about the object stores.
+  for (int i = 0; i < objstores->size(); ++i) {
+    ObjstoreData* objstore_data = reply->add_objstore();
+    objstore_data->set_objstoreid(i);
+    objstore_data->set_address((*objstores)[i].address);
+  }
 }
 
 // pick_objstore must be called with a canonical_objectid
@@ -1064,6 +1069,9 @@ void start_scheduler_service(const char* service_addr, SchedulingAlgorithmType s
   builder.AddListeningPort(std::string("0.0.0.0:") + port, grpc::InsecureServerCredentials());
   builder.RegisterService(&service);
   std::unique_ptr<Server> server(builder.BuildAndStart());
+  if (server == nullptr) {
+    RAY_CHECK(false, "Failed to create the scheduler server.")
+  }
   server->Wait();
 }
 

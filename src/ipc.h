@@ -117,7 +117,7 @@ enum SegmentStatusType {UNOPENED = 0, OPENED = 1, CLOSED = 2};
 
 class MemorySegmentPool {
 public:
-  MemorySegmentPool(ObjStoreId objstoreid, bool create); // can be used in two modes: create mode and open mode (see above)
+  MemorySegmentPool(ObjStoreId objstoreid, std::string& objstore_address, bool create); // can be used in two modes: create mode and open mode (see above)
   ~MemorySegmentPool();
   ObjHandle allocate(size_t nbytes); // allocate memory, potentially creating a new segment (only run on object store)
   void deallocate(ObjHandle pointer); // deallocate object, potentially deallocating a new segment (only run on object store)
@@ -131,6 +131,10 @@ private:
   void close_segment(SegmentId segmentid); // close a segment
   bool create_mode_; // true in the object stores, false on the workers
   ObjStoreId objstoreid_; // the identity of the associated object store
+  // The address of the object store.
+  std::string objstore_address_;
+  // The port of the object store. This is used to help avoid name collisions.
+  std::string objstore_port_;
   size_t page_size_ = bip::mapped_region::get_page_size();
   std::vector<std::pair<std::unique_ptr<bip::managed_shared_memory>, SegmentStatusType> > segments_;
 };

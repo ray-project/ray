@@ -1,6 +1,8 @@
 #ifndef RAY_WORKER_H
 #define RAY_WORKER_H
 
+#include <condition_variable>
+#include <mutex>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -30,12 +32,16 @@ enum Mode {SCRIPT_MODE, WORKER_MODE, PYTHON_MODE, SILENT_MODE};
 
 class WorkerServiceImpl final : public WorkerService::Service {
 public:
-  WorkerServiceImpl(const std::string& worker_address, Mode mode);
+  WorkerServiceImpl(Mode mode);
   Status ExecuteTask(ServerContext* context, const ExecuteTaskRequest* request, AckReply* reply) override;
   Status ImportRemoteFunction(ServerContext* context, const ImportRemoteFunctionRequest* request, AckReply* reply) override;
   Status Die(ServerContext* context, const DieRequest* request, AckReply* reply) override;
   Status ImportReusableVariable(ServerContext* context, const ImportReusableVariableRequest* request, AckReply* reply) override;
   Status PrintErrorMessage(ServerContext* context, const PrintErrorMessageRequest* request, AckReply* reply) override;
+  // Set worker address.
+  void set_worker_address(const std::string& worker_address) { worker_address_ = worker_address; }
+  // Connect the worker service to the worker object via a queue.
+  void connect_to_queue();
 private:
   std::string worker_address_;
   MessageQueue<WorkerMessage*> send_queue_;
@@ -46,8 +52,10 @@ private:
 
 class Worker {
  public:
-  Worker(const std::string& scheduler_address);
-
+  // This constructor constructs a stub for the scheduler service. It also
+  // starts the worker service, which also sets up a message queue between the
+  // worker and the worker service.
+  Worker(const std::string& node_ip_address, const std::string& scheduler_address, Mode mode);
   // Submit a remote task to the scheduler. If the function in the task is not
   // registered with the scheduler, we will sleep for retry_wait_milliseconds
   // and try to resubmit the task to the scheduler up to max_retries more times.
@@ -84,16 +92,16 @@ class Worker {
   void register_remote_function(const std::string& name, size_t num_return_vals);
   // Notify the scheduler that a failure has occurred.
   void notify_failure(FailedType type, const std::string& name, const std::string& error_message);
-  // Start the worker server which accepts commands from the scheduler. For
-  // workers, these commands are stored in the message queue, which is read by
-  // the Python interpreter. For drivers, these commands are only for printing
-  // error messages.
+  // Start the worker server which accepts commands from the scheduler. This
+  // also creates a message queue that worker service uses to send messages to
+  // the worker. The queue is read by the Python interpreter. For drivers, these
+  // commands are only for printing error messages.
   void start_worker_service(Mode mode);
   // wait for next task from the RPC system. If null, it means there are no more tasks and the worker should shut down.
   std::unique_ptr<WorkerMessage> receive_next_message();
   // tell the scheduler that we are done with the current task and request the
   // next one.
-  void notify_task_completed();
+  void ready_for_new_task();
   // disconnect the worker
   void disconnect();
   // return connected_
@@ -113,8 +121,8 @@ class Worker {
   bool connected_;
   const size_t CHUNK_SIZE = 8 * 1024;
   std::unique_ptr<Scheduler::Stub> scheduler_stub_;
-  std::unique_ptr<std::thread> worker_server_thread_;
   Server* server_ptr_;
+  std::thread worker_server_thread_;
   MessageQueue<WorkerMessage*> receive_queue_;
   bip::managed_shared_memory segment_;
   WorkerId workerid_;
@@ -122,6 +130,9 @@ class Worker {
   std::string scheduler_address_;
   std::string objstore_address_;
   std::string worker_address_;
+  std::string node_ip_address_;
+  int worker_port_;
+  Mode mode_;
   MessageQueue<ObjRequest> request_obj_queue_;
   MessageQueue<ObjHandle> receive_obj_queue_;
   std::shared_ptr<MemorySegmentPool> segmentpool_;

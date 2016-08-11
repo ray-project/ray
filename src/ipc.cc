@@ -6,6 +6,7 @@
 
 #include <stdlib.h>
 #include "ray/ray.h"
+#include "utils.h"
 
 ObjHandle::ObjHandle(SegmentId segmentid, size_t size, IpcPointer ipcpointer, size_t metadata_offset)
   : segmentid_(segmentid), size_(size), ipcpointer_(ipcpointer), metadata_offset_(metadata_offset)
@@ -82,13 +83,16 @@ bool MessageQueue<>::receive(void * object, size_t size) {
   return true;
 }
 
-MemorySegmentPool::MemorySegmentPool(ObjStoreId objstoreid, bool create) : objstoreid_(objstoreid), create_mode_(create) { }
+MemorySegmentPool::MemorySegmentPool(ObjStoreId objstoreid, std::string& objstore_address, bool create) : objstoreid_(objstoreid), objstore_address_(objstore_address), create_mode_(create) {
+  std::string::iterator split_point = split_ip_address(objstore_address);
+  objstore_port_.assign(split_point, objstore_address.end());
+}
 
 // creates a memory segment if it is not already there; if the pool is in create mode,
 // space is allocated, if it is in open mode, the shared memory is mapped into the process
 void MemorySegmentPool::open_segment(SegmentId segmentid, size_t size) {
-  RAY_LOG(RAY_DEBUG, "Opening segmentid " << segmentid << " on object store " << objstoreid_ << " with create_mode_ = " << create_mode_);
-  RAY_CHECK(segmentid == segments_.size() || !create_mode_, "Object store " << objstoreid_ << " is attempting to open segmentid " << segmentid << " on the object store, but segments_.size() = " << segments_.size());
+  RAY_LOG(RAY_DEBUG, "Opening segmentid " << segmentid << " on object store " << objstoreid_ << " with port " << objstore_port_ << " with create_mode_ = " << create_mode_);
+  RAY_CHECK(segmentid == segments_.size() || !create_mode_, "Object store " << objstoreid_ << " with port " << objstore_port_ << " is attempting to open segmentid " << segmentid << " on the object store, but segments_.size() = " << segments_.size());
   if (segmentid >= segments_.size()) { // resize and initialize segments_
     int current_size = segments_.size();
     segments_.resize(segmentid + 1);
@@ -156,7 +160,7 @@ uint8_t* MemorySegmentPool::get_address(ObjHandle pointer) {
 
 // returns the name of the segment
 std::string MemorySegmentPool::get_segment_name(SegmentId segmentid) {
-  return std::string("ray-{BC200A09-2465-431D-AEC7-2F8530B04535}-objstore-") + std::to_string(objstoreid_) + std::string("-segment-") + std::to_string(segmentid);
+  return std::string("ray-{BC200A09-2465-431D-AEC7-2F8530B04535}-objstore-") + std::to_string(objstoreid_) + "-" + objstore_port_ + std::string("-segment-") + std::to_string(segmentid);
 }
 
 MemorySegmentPool::~MemorySegmentPool() {
