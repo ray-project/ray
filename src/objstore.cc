@@ -31,7 +31,7 @@ void ObjStoreService::get_data_from(ObjectID objectid, ObjStore::Stub& stub) {
     data += chunk.data().size();
     num_bytes += chunk.data().size();
   } while (reader->Read(&chunk));
-  Status status = reader->Finish(); // Right now we don't use the status.
+  RAY_CHECK_GRPC(reader->Finish());
 
   // finalize object
   RAY_CHECK_EQ(num_bytes, total_size, "Streamed objectid " << objectid << ", but num_bytes != total_size");
@@ -58,7 +58,7 @@ void ObjStoreService::register_objstore() {
   RegisterObjStoreRequest request;
   request.set_objstore_address(objstore_address_);
   RegisterObjStoreReply reply;
-  scheduler_stub_->RegisterObjStore(&context, request, &reply);
+  RAY_CHECK_GRPC(scheduler_stub_->RegisterObjStore(&context, request, &reply));
   objstoreid_ = reply.objstoreid();
   segmentpool_ = std::make_shared<MemorySegmentPool>(objstoreid_, objstore_address_, true);
 }
@@ -321,7 +321,7 @@ void ObjStoreService::object_ready(ObjectID objectid, size_t metadata_offset) {
   objready_request.set_objectid(objectid);
   objready_request.set_objstoreid(objstoreid_);
   AckReply objready_reply;
-  scheduler_stub_->ObjReady(&objready_context, objready_request, &objready_reply);
+  RAY_CHECK_GRPC(scheduler_stub_->ObjReady(&objready_context, objready_request, &objready_reply));
 }
 
 void ObjStoreService::start_objstore_service() {
