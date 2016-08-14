@@ -1,0 +1,13 @@
+sudo: required
+
+language: generic
+
+matrix:
+  include:
+    - os: linux
+      dist: trusty
+    - os: osx
+      osx_image: xcode7
+
+install:
+  - make
