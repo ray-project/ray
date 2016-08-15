@@ -424,6 +424,22 @@ void Worker::task_info(ClientContext &context, TaskInfoRequest &request, TaskInf
   RAY_CHECK_GRPC(scheduler_stub_->TaskInfo(&context, request, &reply));
 }
 
+std::vector<int> Worker::select(std::vector<ObjectID>& objectids) {
+  RAY_CHECK(connected_, "Attempted to test if object was ready but failed.");
+  ClientContext context;
+  SelectRequest request;
+  SelectReply reply;
+  for (int i = 0; i < objectids.size(); ++i) {
+    request.add_objectids(objectids[i]);
+  }
+  RAY_CHECK_GRPC(scheduler_stub_->Select(&context, request, &reply));
+  std::vector<int> result;
+  for (int i = 0; i < reply.indices_size(); ++i) {
+    result.push_back(reply.indices(i));
+  }
+  return result;
+}
+
 bool Worker::export_remote_function(const std::string& function_name, const std::string& function) {
   RAY_CHECK(connected_, "Attempted to export function but failed.");
   ClientContext context;

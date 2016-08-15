@@ -305,6 +305,24 @@ class APITest(unittest.TestCase):
 
     ray.worker.cleanup()
 
+  def testSelect(self):
+    ray.init(start_ray_local=True, num_workers=4)
+
+    @ray.remote([float], [int])
+    def f(delay):
+      time.sleep(delay)
+      return 1
+    objectids = [f.remote(1.5), f.remote(1.5), f.remote(1.0), f.remote(0.5)]
+    self.assertEqual(ray.select(objectids), [])
+    time.sleep(0.75)
+    self.assertEqual(ray.select(objectids), [3])
+    time.sleep(0.5)
+    self.assertEqual(ray.select(objectids), [2, 3])
+    time.sleep(0.5)
+    self.assertEqual(ray.select(objectids), [0, 1, 2, 3])
+
+    ray.worker.cleanup()
+
   def testCachingReusables(self):
     # Test that we can define reusable variables before the driver is connected.
     def foo_initializer():
