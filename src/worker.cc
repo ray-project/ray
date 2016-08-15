@@ -24,7 +24,7 @@ Status WorkerServiceImpl::ExecuteTask(ServerContext* context, const ExecuteTaskR
   message->mutable_task()->CopyFrom(request->task());
   {
     WorkerMessage* message_ptr = message.get();
-    RAY_CHECK(send_queue_.send(&message_ptr), "error sending over IPC");
+    RAY_CHECK(send_queue_.send(&message_ptr), "Failed to send message from the worker service to the worker because the message queue was full.");
   }
   message.release();
   return Status::OK;
@@ -37,7 +37,7 @@ Status WorkerServiceImpl::ImportRemoteFunction(ServerContext* context, const Imp
   RAY_LOG(RAY_INFO, "importing function");
   {
     WorkerMessage* message_ptr = message.get();
-    RAY_CHECK(send_queue_.send(&message_ptr), "error sending over IPC");
+    RAY_CHECK(send_queue_.send(&message_ptr), "Failed to send message from the worker service to the worker because the message queue was full.");
   }
   message.release();
   return Status::OK;
@@ -50,7 +50,7 @@ Status WorkerServiceImpl::ImportReusableVariable(ServerContext* context, const I
   RAY_LOG(RAY_INFO, "importing reusable variable");
   {
     WorkerMessage* message_ptr = message.get();
-    RAY_CHECK(send_queue_.send(&message_ptr), "error sending over IPC");
+    RAY_CHECK(send_queue_.send(&message_ptr), "Failed to send message from the worker service to the worker because the message queue was full.");
   }
   message.release();
   return Status::OK;
@@ -59,7 +59,7 @@ Status WorkerServiceImpl::ImportReusableVariable(ServerContext* context, const I
 Status WorkerServiceImpl::Die(ServerContext* context, const DieRequest* request, AckReply* reply) {
   RAY_CHECK(mode_ == Mode::WORKER_MODE, "Die can only be called on workers.");
   WorkerMessage* message_ptr = NULL;
-  RAY_CHECK(send_queue_.send(&message_ptr), "error sending over IPC");
+  RAY_CHECK(send_queue_.send(&message_ptr), "Failed to send message from the worker service to the worker because the message queue was full.");
   return Status::OK;
 }
 
@@ -201,7 +201,7 @@ slice Worker::get_object(ObjectID objectid) {
   request.workerid = workerid_;
   request.type = ObjRequestType::GET;
   request.objectid = objectid;
-  RAY_CHECK(request_obj_queue_.send(&request), "error sending over IPC");
+  RAY_CHECK(request_obj_queue_.send(&request), "Failed to send request from the worker to the object store because the message queue was full.");
   ObjHandle result;
   RAY_CHECK(receive_obj_queue_.receive(&result), "error receiving over IPC");
   slice slice;
@@ -236,7 +236,7 @@ void Worker::put_object(ObjectID objectid, const Obj* obj, std::vector<ObjectID>
   segmentpool_->unmap_segment(result.segmentid());
   request.type = ObjRequestType::WORKER_DONE;
   request.metadata_offset = 0;
-  RAY_CHECK(request_obj_queue_.send(&request), "error sending over IPC");
+  RAY_CHECK(request_obj_queue_.send(&request), "Failed to send request from the worker to the object store because the message queue was full.");
 
   // Notify the scheduler about the objectids that we are serializing in the objstore.
   AddContainedObjectIDsRequest contained_objectids_request;
@@ -266,7 +266,7 @@ const char* Worker::allocate_buffer(ObjectID objectid, int64_t size, SegmentId& 
   request.type = ObjRequestType::ALLOC;
   request.objectid = objectid;
   request.size = size;
-  RAY_CHECK(request_obj_queue_.send(&request), "error sending over IPC");
+  RAY_CHECK(request_obj_queue_.send(&request), "Failed to send request from the worker to the object store because the message queue was full.");
   ObjHandle result;
   RAY_CHECK(receive_obj_queue_.receive(&result), "error receiving over IPC");
   const char* address = reinterpret_cast<const char*>(segmentpool_->get_address(result));
@@ -281,7 +281,7 @@ PyObject* Worker::finish_buffer(ObjectID objectid, SegmentId segmentid, int64_t 
   request.objectid = objectid;
   request.type = ObjRequestType::WORKER_DONE;
   request.metadata_offset = metadata_offset;
-  RAY_CHECK(request_obj_queue_.send(&request), "error sending over IPC");
+  RAY_CHECK(request_obj_queue_.send(&request), "Failed to send request from the worker to the object store because the message queue was full.");
   Py_RETURN_NONE;
 }
 
@@ -291,7 +291,7 @@ const char* Worker::get_buffer(ObjectID objectid, int64_t &size, SegmentId& segm
   request.workerid = workerid_;
   request.type = ObjRequestType::GET;
   request.objectid = objectid;
-  RAY_CHECK(request_obj_queue_.send(&request), "error sending over IPC");
+  RAY_CHECK(request_obj_queue_.send(&request), "Failed to send request from the worker to the object store because the message queue was full.");
   ObjHandle result;
   RAY_CHECK(receive_obj_queue_.receive(&result), "error receiving over IPC");
   const char* address = reinterpret_cast<const char*>(segmentpool_->get_address(result));
@@ -307,7 +307,7 @@ bool Worker::is_arrow(ObjectID objectid) {
   request.workerid = workerid_;
   request.type = ObjRequestType::GET;
   request.objectid = objectid;
-  request_obj_queue_.send(&request);
+  RAY_CHECK(request_obj_queue_.send(&request), "Failed to send request from the worker to the object store because the message queue was full.");
   ObjHandle result;
   RAY_CHECK(receive_obj_queue_.receive(&result), "error receiving over IPC");
   return result.metadata_offset() != 0;

@@ -62,13 +62,16 @@ bool MessageQueue<>::connected() {
 }
 
 bool MessageQueue<>::send(const void * object, size_t size) {
+  bool succeeded;
   try {
-    queue_->send(object, size, 0);
+    // This will return true if the message was successfully sent and false if
+    // the message queue is full.
+    succeeded = queue_->try_send(object, size, 0);
   }
   catch (bip::interprocess_exception &ex) {
     RAY_CHECK(false, "boost::interprocess exception: " << ex.what());
   }
-  return true;
+  return succeeded;
 }
 
 bool MessageQueue<>::receive(void * object, size_t size) {
