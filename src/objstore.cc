@@ -158,7 +158,7 @@ Status ObjStoreService::NotifyAlias(ServerContext* context, const NotifyAliasReq
   ObjRequest done_request;
   done_request.type = ObjRequestType::ALIAS_DONE;
   done_request.objectid = alias_objectid;
-  RAY_CHECK(recv_queue_.send(&done_request), "error sending over IPC");
+  RAY_CHECK(recv_queue_.send(&done_request), "Failed to send message from the object store to itself because the message queue was full.");
   return Status::OK;
 }
 
@@ -214,7 +214,7 @@ void ObjStoreService::process_worker_request(const ObjRequest request) {
   switch (request.type) {
     case ObjRequestType::ALLOC: {
         ObjHandle handle = alloc(request.objectid, request.size); // This method acquires memory_lock_
-        RAY_CHECK(send_queues_[request.workerid].send(&handle), "error sending over IPC");
+        RAY_CHECK(send_queues_[request.workerid].send(&handle), "Failed to send message from the object store to the worker with id " << request.workerid << " because the message queue was full.");
       }
       break;
     case ObjRequestType::GET: {
@@ -222,7 +222,7 @@ void ObjStoreService::process_worker_request(const ObjRequest request) {
         std::pair<ObjHandle, MemoryStatusType>& item = memory_[request.objectid];
         if (item.second == MemoryStatusType::READY) {
           RAY_LOG(RAY_DEBUG, "Responding to GET request: returning objectid " << request.objectid);
-          RAY_CHECK(send_queues_[request.workerid].send(&item.first), "error sending over IPC");
+          RAY_CHECK(send_queues_[request.workerid].send(&item.first), "Failed to send message from the object store to the worker with id " << request.workerid << " because the message queue was full.");
         } else if (item.second == MemoryStatusType::NOT_READY || item.second == MemoryStatusType::NOT_PRESENT || item.second == MemoryStatusType::PRE_ALLOCED) {
           std::lock_guard<std::mutex> lock(get_queue_lock_);
           get_queue_.push_back(std::make_pair(request.workerid, request.objectid));
@@ -279,7 +279,7 @@ void ObjStoreService::process_gets_for_objectid(ObjectID objectid) {
   for (size_t i = 0; i < get_queue_.size(); ++i) {
     if (get_queue_[i].second == objectid) {
       ObjHandle& elem = memory_[objectid].first;
-      RAY_CHECK(send_queues_[get_queue_[i].first].send(&item.first), "error sending over IPC");
+      RAY_CHECK(send_queues_[get_queue_[i].first].send(&item.first), "Failed to send message from the object store to the worker with id " << get_queue_[i].first << " because the message queue was full.");
       // Remove the get task from the queue
       std::swap(get_queue_[i], get_queue_[get_queue_.size() - 1]);
       get_queue_.pop_back();
