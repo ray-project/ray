@@ -19,7 +19,7 @@ void plasma_send(int fd, plasma_request *req) {
   int req_count = sizeof(plasma_request);
   if (write(fd, req, req_count) != req_count) {
     if (req_count > 0) {
-      LOG_ERR("partial write");
+      LOG_ERR("partial write on fd %d", fd);
     } else {
       LOG_ERR("write error");
       exit(-1);
@@ -28,7 +28,8 @@ void plasma_send(int fd, plasma_request *req) {
 }
 
 plasma_buffer plasma_create(int conn, plasma_id object_id, int64_t size) {
-  plasma_request req = { PLASMA_CREATE, object_id, size };
+  LOG_INFO("called plasma_create on conn %d with size %" PRId64, conn, size);
+  plasma_request req = { .type = PLASMA_CREATE, .object_id = object_id, .size = size };
   plasma_send(conn, &req);
   plasma_reply reply;
   int fd = recv_fd(conn, (char*)&reply, sizeof(plasma_reply));
@@ -44,7 +45,7 @@ plasma_buffer plasma_create(int conn, plasma_id object_id, int64_t size) {
 }
 
 plasma_buffer plasma_get(int conn, plasma_id object_id) {
-  plasma_request req = { PLASMA_GET, object_id };
+  plasma_request req = { .type = PLASMA_GET, .object_id = object_id };
   plasma_send(conn, &req);
   plasma_reply reply;
   // the following loop is run at most twice
@@ -55,13 +56,17 @@ plasma_buffer plasma_get(int conn, plasma_id object_id) {
     fd = new_fd;
   }
   assert(reply.type == PLASMA_OBJECT);
-  void *data = mmap(NULL, reply.size, PROT_READ, 0, fd, 0);
+  void *data = mmap(NULL, reply.size, PROT_READ, MAP_SHARED, fd, 0);
+  if (data  == MAP_FAILED) {
+    LOG_ERR("mmap failed");
+    exit(-1);
+  }
   plasma_buffer buffer = { object_id, data, reply.size, 0 };
   return buffer;
 }
 
 void plasma_seal(int fd, plasma_id object_id) {
-  plasma_request req = { PLASMA_SEAL, object_id };
+  plasma_request req = { .type = PLASMA_SEAL, .object_id = object_id };
   plasma_send(fd, &req);
 }
 
@@ -77,7 +82,7 @@ int plasma_store_connect(const char* socket_name) {
   addr.sun_family = AF_UNIX;
   strncpy(addr.sun_path, socket_name, sizeof(addr.sun_path)-1);
   if (connect(fd, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
-    LOG_ERR("connect error");
+    LOG_ERR("could not connect to store %s", socket_name);
     exit(-1);
   }
   return fd;
