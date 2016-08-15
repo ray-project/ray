@@ -549,6 +549,21 @@ Status SchedulerService::ExportReusableVariable(ServerContext* context, const Ex
   return Status::OK;
 }
 
+Status SchedulerService::Select(ServerContext* context, const SelectRequest* request, SelectReply* reply) {
+  auto objtable = GET(objtable_);
+  for (int i = 0; i < request->objectids_size(); ++i) {
+    ObjectID objectid = request->objectids(i);
+    if (has_canonical_objectid(objectid)) {
+      ObjectID canonical_objectid = get_canonical_objectid(objectid);
+      RAY_CHECK_LT(canonical_objectid, objtable->size(), "Canonical_objectid is outside object table.");
+      if ((*objtable)[canonical_objectid].size() != 0) {
+        reply->add_indices(i);
+      }
+    }
+  }
+  return Status::OK;
+}
+
 void SchedulerService::deliver_object_async_if_necessary(ObjectID canonical_objectid, ObjStoreId from, ObjStoreId to) {
   bool object_present_or_in_transit;
   {

@@ -55,7 +55,10 @@ if __name__ == "__main__":
 
   # Fetch the results of the tasks and print the results.
   for i in range(trials):
-    params, result_id = results[i]
+    # Get the index of the first task that completes.
+    index = ray.select([result_id for _, result_id in results], num_objects=1)[0]
+    # Process the output of this task and remove it from the list.
+    params, result_id = results.pop(index)
     accuracy = ray.get(result_id)
     print """We achieve accuracy {:.3}% with
         learning_rate: {:.2}

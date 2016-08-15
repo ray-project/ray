@@ -58,6 +58,8 @@ service Scheduler {
   rpc ExportReusableVariable(ExportReusableVariableRequest) returns (AckReply);
   // Notify the scheduler that a failure occurred while running a task, importing a remote function, or importing a reusable variable.
   rpc NotifyFailure(NotifyFailureRequest) returns (AckReply);
+  // Polls the scheduler to see what objectids can be retrieved in the input list.
+  rpc Select(SelectRequest) returns (SelectReply);
 }
 
 message AckReply {
@@ -166,6 +168,14 @@ message SchedulerInfoReply {
   repeated uint64 reference_count = 5; // The reference_counts_ data structure
   CompGraph computation_graph = 6; // The computation graph constructed so far
   repeated ObjstoreData objstore = 7; // Information about the object stores
+}
+
+message SelectRequest {
+  repeated uint64 objectids = 1; // List of objectids to be checked.
+}
+
+message SelectReply {
+  repeated uint64 indices = 1; // List of indices that correspond to objectids in the original list that are ready.
 }
 
 // Object stores
