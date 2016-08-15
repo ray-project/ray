@@ -10,6 +10,7 @@ import numpy as np
 import colorama
 import atexit
 import threading
+import string
 
 # Ray modules
 import config
@@ -729,10 +730,13 @@ def connect(node_ip_address, scheduler_address, objstore_address=None, worker=gl
     return
 
   worker.scheduler_address = scheduler_address
+  random_string = "".join(np.random.choice(list(string.ascii_uppercase + string.digits)) for _ in range(10))
+  cpp_log_file_name = config.get_log_file_path("-".join(["worker", random_string, "c++"]) + ".log")
+  python_log_file_name = config.get_log_file_path("-".join(["worker", random_string]) + ".log")
   # Create a worker object. This also creates the worker service, which can
   # receive commands from the scheduler. This call also sets up a queue between
   # the worker and the worker service.
-  worker.handle, worker.worker_address = raylib.create_worker(node_ip_address, scheduler_address, objstore_address if objstore_address is not None else "", mode)
+  worker.handle, worker.worker_address = raylib.create_worker(node_ip_address, scheduler_address, objstore_address if objstore_address is not None else "", mode, cpp_log_file_name)
   # If this is a driver running in SCRIPT_MODE, start a thread to print error
   # messages asynchronously in the background. Ideally the scheduler would push
   # messages to the driver's worker service, but we ran into bugs when trying to
@@ -749,14 +753,12 @@ def connect(node_ip_address, scheduler_address, objstore_address=None, worker=gl
   # Configure the Python logging module. Note that if we do not provide our own
   # logger, then our logging will interfere with other Python modules that also
   # use the logging module.
-  log_handler = logging.FileHandler(config.get_log_file_path("-".join(["worker", worker.worker_address]) + ".log"))
+  log_handler = logging.FileHandler(python_log_file_name)
   log_handler.setLevel(logging.DEBUG)
   log_handler.setFormatter(logging.Formatter(FORMAT))
   _logger().addHandler(log_handler)
   _logger().setLevel(logging.DEBUG)
   _logger().propagate = False
-  # Configure the logging from the worker C++ code.
-  raylib.set_log_config(config.get_log_file_path("-".join(["worker", worker.worker_address, "c++"]) + ".log"))
   if mode in [raylib.SCRIPT_MODE, raylib.SILENT_MODE]:
     for function_name, function_to_export in worker.cached_remote_functions:
       raylib.export_remote_function(worker.handle, function_name, function_to_export)

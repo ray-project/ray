@@ -13,7 +13,7 @@ extern "C" {
 
 inline WorkerServiceImpl::WorkerServiceImpl(const std::string& send_queue_name, Mode mode)
   : mode_(mode) {
-  RAY_LOG(RAY_DEBUG, "Worker service connecting to queue " << send_queue_name);
+  RAY_LOG(RAY_INFO, "Worker service connecting to queue " << send_queue_name);
   RAY_CHECK(send_queue_.connect(send_queue_name, false), "error connecting send_queue_");
 }
 
@@ -101,7 +101,7 @@ Worker::Worker(const std::string& node_ip_address, const std::string& scheduler_
   std::mt19937 rng(rd());
   std::uniform_int_distribution<int> queue_name_generator(0, 10000000);
   receive_queue_name_ = "worker_receive_queue:" + std::to_string(queue_name_generator(rng));
-  RAY_LOG(RAY_DEBUG, "Worker creating queue " << receive_queue_name_ << std::endl);
+  RAY_LOG(RAY_INFO, "Worker creating queue " << receive_queue_name_);
   RAY_CHECK(receive_queue_.connect(receive_queue_name_, true), "error connecting receive_queue_");
 }
 
@@ -162,11 +162,11 @@ void Worker::register_worker(const std::string& node_ip_address, const std::stri
   segmentpool_ = std::make_shared<MemorySegmentPool>(objstoreid_, objstore_address_, false);
   // Connect to the queue for sending requests to the object store.
   std::string request_obj_queue_name = std::string("queue:") + objstore_address_ + std::string(":obj");
-  RAY_LOG(RAY_DEBUG, "Worker connecting to queue with name " << request_obj_queue_name << " to send requests to the object store.");
+  RAY_LOG(RAY_INFO, "Worker connecting to queue with name " << request_obj_queue_name << " to send requests to the object store.");
   RAY_CHECK(request_obj_queue_.connect(request_obj_queue_name, false), "error connecting request_obj_queue_");
   // Create a queue for receiving messages from the object store.
   std::string receive_obj_queue_name = std::string("queue:") + objstore_address_ + std::string(":worker:") + std::to_string(workerid_) + std::string(":obj");
-  RAY_LOG(RAY_DEBUG, "Worker creating queue with name " << receive_obj_queue_name << " to receive messages from the object store.");
+  RAY_LOG(RAY_INFO, "Worker creating queue with name " << receive_obj_queue_name << " to receive messages from the object store.");
   RAY_CHECK(receive_obj_queue_.connect(receive_obj_queue_name, true), "error connecting receive_obj_queue_");
   connected_ = true;
   return;
@@ -481,7 +481,7 @@ void Worker::start_worker_service(Mode mode) {
   // Wait for the worker service to start. This essentially implements a
   // condition variable using atomics, but that failed on Mac OS X on Travis.
   while (!worker_service_started.load()) {
-    RAY_LOG(RAY_DEBUG, "Looping while waiting for the worker service to start.");
+    RAY_LOG(RAY_INFO, "Looping while waiting for the worker service to start.");
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
 }
