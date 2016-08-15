@@ -1138,11 +1138,11 @@ int main(int argc, char** argv) {
     const char* scheduling_algorithm_name = get_cmd_option(argv, argv + argc, "--scheduler-algorithm");
     if (scheduling_algorithm_name) {
       if (std::string(scheduling_algorithm_name) == "naive") {
-        RAY_LOG(RAY_INFO, "scheduler: using 'naive' scheduler" << std::endl);
+        RAY_LOG(RAY_INFO, "scheduler: using 'naive' scheduler");
         scheduling_algorithm = SCHEDULING_ALGORITHM_NAIVE;
       }
       if (std::string(scheduling_algorithm_name) == "locality_aware") {
-        RAY_LOG(RAY_INFO, "scheduler: using 'locality aware' scheduler" << std::endl);
+        RAY_LOG(RAY_INFO, "scheduler: using 'locality aware' scheduler");
         scheduling_algorithm = SCHEDULING_ALGORITHM_LOCALITY_AWARE;
       }
     }

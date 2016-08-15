@@ -666,11 +666,18 @@ static PyObject* create_worker(PyObject* self, PyObject* args) {
   // scheduler will choose the object store address.
   const char* objstore_address;
   int mode;
-  if (!PyArg_ParseTuple(args, "sssi", &node_ip_address, &scheduler_address, &objstore_address, &mode)) {
+  const char* log_file_name;
+  if (!PyArg_ParseTuple(args, "sssis", &node_ip_address, &scheduler_address, &objstore_address, &mode, &log_file_name)) {
     return NULL;
   }
+  // Set the logging file.
+  create_log_dir_or_die(log_file_name);
+  global_ray_config.log_to_file = true;
+  global_ray_config.logfile.open(log_file_name);
+  // Create the worker.
   bool is_driver = (mode != Mode::WORKER_MODE);
   Worker* worker = new Worker(std::string(node_ip_address), std::string(scheduler_address), static_cast<Mode>(mode));
+  // Register the worker.
   worker->register_worker(std::string(node_ip_address), std::string(objstore_address), is_driver);
 
   PyObject* t = PyTuple_New(2);
@@ -1023,17 +1030,6 @@ static PyObject* dump_computation_graph(PyObject* self, PyObject* args) {
   Py_RETURN_NONE;
 }
 
-static PyObject* set_log_config(PyObject* self, PyObject* args) {
-  const char* log_file_name;
-  if (!PyArg_ParseTuple(args, "s", &log_file_name)) {
-    return NULL;
-  }
-  create_log_dir_or_die(log_file_name);
-  global_ray_config.log_to_file = true;
-  global_ray_config.logfile.open(log_file_name);
-  Py_RETURN_NONE;
-}
-
 static PyObject* kill_workers(PyObject* self, PyObject* args) {
   Worker* worker;
   if (!PyArg_ParseTuple(args, "O&", &PyObjectToWorker, &worker)) {
@@ -1074,7 +1070,6 @@ static PyMethodDef RayLibMethods[] = {
  { "export_remote_function", export_remote_function, METH_VARARGS, "export a remote function to workers" },
  { "export_reusable_variable", export_reusable_variable, METH_VARARGS, "export a reusable variable to the workers" },
  { "dump_computation_graph", dump_computation_graph, METH_VARARGS, "dump the current computation graph to a file" },
- { "set_log_config", set_log_config, METH_VARARGS, "set filename for raylib logging" },
  { "kill_workers", kill_workers, METH_VARARGS, "kills all of the workers" },
  { NULL, NULL, 0, NULL }
 };
