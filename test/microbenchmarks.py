@@ -6,18 +6,12 @@ import numpy as np
 
 import test_functions
 
-class TestMicroBenchmarks(unittest.TestCase):
+class MicroBenchmarkTest(unittest.TestCase):
 
-  @classmethod
-  def setUpClass(cls):
+  def testTiming(self):
     reload(test_functions)
     ray.init(start_ray_local=True, num_workers=3)
 
-  @classmethod
-  def tearDownClass(cls):
-    ray.worker.cleanup()
-
-  def test_timing(self):
     # measure the time required to submit a remote task to the scheduler
     elapsed_times = []
     for _ in range(1000):
@@ -83,5 +77,7 @@ class TestMicroBenchmarks(unittest.TestCase):
     print "    worst:           {}".format(elapsed_times[999])
     # average_elapsed_time should be about 0.00087
 
+    ray.worker.cleanup()
+
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+  unittest.main(verbosity=2)

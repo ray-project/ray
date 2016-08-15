@@ -2,6 +2,7 @@
 #define RAY_SCHEDULER_H
 
 
+#include <queue>
 #include <deque>
 #include <memory>
 #include <algorithm>
@@ -117,6 +118,10 @@ private:
   ObjStoreId pick_objstore(ObjectID objectid);
   // checks if objectid is a canonical objectid
   bool is_canonical(ObjectID objectid);
+  // Export all queued up remote functions.
+  void perform_remote_function_exports();
+  // Export all queued up reusable variables.
+  void perform_reusable_variable_exports();
   void perform_gets();
   // schedule tasks using the naive algorithm
   void schedule_tasks_naively();
@@ -146,16 +151,12 @@ private:
   void export_function_to_worker(WorkerId workerid, int function_index, MySynchronizedPtr<std::vector<WorkerHandle> > &workers, const MySynchronizedPtr<std::vector<std::unique_ptr<Function> > > &exported_functions);
   // Export a reusable variable to a worker
   void export_reusable_variable_to_worker(WorkerId workerid, int reusable_variable_index, MySynchronizedPtr<std::vector<WorkerHandle> > &workers, const MySynchronizedPtr<std::vector<std::unique_ptr<ReusableVar> > > &exported_reusable_variables);
-  // Export all reusable variables to a worker. This is used when a new worker
-  // registers and is protected by the workers lock (which is passed in) to
-  // ensure that no other reusable variables are exported to the worker while
-  // this method is being called.
-  void export_all_functions_to_worker(WorkerId workerid, MySynchronizedPtr<std::vector<WorkerHandle> > &workers, const MySynchronizedPtr<std::vector<std::unique_ptr<Function> > > &exported_functions);
-  // Export all remote functions to a worker. This is used when a new worker
-  // registers and is protected by the workers lock (which is passed in) to
-  // ensure that no other remote functions are exported to the worker while this
-  // method is being called.
-  void export_all_reusable_variables_to_worker(WorkerId workerid, MySynchronizedPtr<std::vector<WorkerHandle> > &workers, const MySynchronizedPtr<std::vector<std::unique_ptr<ReusableVar> > > &exported_reusable_variables);
+  // Add to the remote function export queue the job of exporting all remote
+  // functions to the given worker. This is used when a new worker registers.
+  void add_all_remote_functions_to_worker_export_queue(WorkerId workerid);
+  // Add to the reusable variable export queue the job of exporting all reusable
+  // variables to the given worker. This is used when a new worker registers.
+  void add_all_reusable_variables_to_worker_export_queue(WorkerId workerid);
 
   template<class T>
   MySynchronizedPtr<T> get(Synchronized<T>& my_field, const char* name,unsigned int line_number);
@@ -224,6 +225,16 @@ private:
   // lock (objects_lock_). // TODO(rkn): Consider making this part of the
   // objtable data structure.
   std::vector<std::vector<ObjectID> > objects_in_transit_;
+  // List of pending remote function exports. These should be processed in a
+  // first in first out manner. The first element of each pair is the ID of the
+  // worker to export the remote function to, and the second element of each
+  // pair is the index of the function to export.
+  Synchronized<std::queue<std::pair<WorkerId, int> > > remote_function_export_queue_;
+  // List of pending reusable variable exports. These should be processed in a
+  // first in first out manner. The first element of each pair is the ID of the
+  // worker to export the reusable variable to, and the second element of each
+  // pair is the index of the reusable variable to export.
+  Synchronized<std::queue<std::pair<WorkerId, int> > > reusable_variable_export_queue_;
   // All of the remote functions that have been exported to the workers.
   Synchronized<std::vector<std::unique_ptr<Function> > > exported_functions_;
   // All of the reusable variables that have been exported to the workers.

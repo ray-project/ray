@@ -288,7 +288,7 @@ int serialize(PyObject* worker_capsule, PyObject* val, Obj* obj, std::vector<Obj
     char* buffer;
     Py_ssize_t length;
     PyString_AsStringAndSize(val, &buffer, &length); // creates pointer to internal buffer
-    obj->mutable_string_data()->set_data(buffer, length);
+    obj->mutable_string_data()->set_data(std::string(buffer, length));
   } else if (PyUnicode_Check(val)) {
     Py_ssize_t length;
     #if PY_MAJOR_VERSION >= 3
@@ -298,7 +298,7 @@ int serialize(PyObject* worker_capsule, PyObject* val, Obj* obj, std::vector<Obj
       char* data = PyString_AS_STRING(str);
       length = PyString_GET_SIZE(str);
     #endif
-    obj->mutable_unicode_data()->set_data(data, length);
+    obj->mutable_unicode_data()->set_data(std::string(data, length));
     Py_XDECREF(str);
   } else if (val == Py_None) {
     obj->mutable_empty_data(); // allocate an Empty object, this is a None
@@ -584,7 +584,7 @@ static PyObject* serialize_task(PyObject* self, PyObject* args) {
   if (!PyArg_ParseTuple(args, "Os#O", &worker_capsule, &name, &len, &arguments)) {
     return NULL;
   }
-  task->set_name(name, len);
+  task->set_name(std::string(name, len));
   std::vector<ObjectID> objectids; // This is a vector of all the objectids that are serialized in this task, including objectids that are contained in Python objects that are passed by value.
   if (PyList_Check(arguments)) {
     for (size_t i = 0, size = PyList_Size(arguments); i < size; ++i) {
@@ -665,12 +665,12 @@ static PyObject* create_worker(PyObject* self, PyObject* args) {
   // The object store address can be the empty string, in which case the
   // scheduler will choose the object store address.
   const char* objstore_address;
-  Mode mode;
+  int mode;
   if (!PyArg_ParseTuple(args, "sssi", &node_ip_address, &scheduler_address, &objstore_address, &mode)) {
     return NULL;
   }
   bool is_driver = (mode != Mode::WORKER_MODE);
-  Worker* worker = new Worker(std::string(node_ip_address), std::string(scheduler_address), mode);
+  Worker* worker = new Worker(std::string(node_ip_address), std::string(scheduler_address), static_cast<Mode>(mode));
   worker->register_worker(std::string(node_ip_address), std::string(objstore_address), is_driver);
 
   PyObject* t = PyTuple_New(2);
@@ -785,6 +785,7 @@ static PyObject* submit_task(PyObject* self, PyObject* args) {
   request.set_allocated_task(task);
   SubmitTaskReply reply = worker->submit_task(&request);
   if (!reply.function_registered()) {
+    request.release_task();
     PyErr_SetString(RayError, "task: function not registered");
     return NULL;
   }
@@ -824,11 +825,11 @@ static PyObject* notify_failure(PyObject* self, PyObject* args) {
   Worker* worker;
   const char* name;
   const char* error_message;
-  FailedType type;
+  int type;
   if (!PyArg_ParseTuple(args, "O&ssi", &PyObjectToWorker, &worker, &name, &error_message, &type)) {
     return NULL;
   }
-  worker->notify_failure(type, std::string(name), std::string(error_message));
+  worker->notify_failure(static_cast<FailedType>(type), std::string(name), std::string(error_message));
   Py_RETURN_NONE;
 }
 
@@ -897,16 +898,6 @@ static PyObject* alias_objectids(PyObject* self, PyObject* args) {
     return NULL;
   }
   worker->alias_objectids(alias_objectid, target_objectid);
-  Py_RETURN_NONE;
-}
-
-static PyObject* start_worker_service(PyObject* self, PyObject* args) {
-  Worker* worker;
-  Mode mode;
-  if (!PyArg_ParseTuple(args, "O&i", &PyObjectToWorker, &worker, &mode)) {
-    return NULL;
-  }
-  worker->start_worker_service(mode);
   Py_RETURN_NONE;
 }
 
@@ -1077,8 +1068,7 @@ static PyMethodDef RayLibMethods[] = {
  { "alias_objectids", alias_objectids, METH_VARARGS, "make two objectids refer to the same object" },
  { "wait_for_next_message", wait_for_next_message, METH_VARARGS, "get next message from scheduler (blocking)" },
  { "submit_task", submit_task, METH_VARARGS, "call a remote function" },
- { "ready_for_new_task", ready_for_new_task, METH_VARARGS, "notify the scheduler that a task has been completed" },
- { "start_worker_service", start_worker_service, METH_VARARGS, "start the worker service" },
+ { "ready_for_new_task", ready_for_new_task, METH_VARARGS, "notify the scheduler that the worker is ready for a new task" },
  { "scheduler_info", scheduler_info, METH_VARARGS, "get info about scheduler state" },
  { "task_info", task_info, METH_VARARGS, "get information about task statuses and failures" },
  { "export_remote_function", export_remote_function, METH_VARARGS, "export a remote function to workers" },
