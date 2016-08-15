@@ -55,7 +55,7 @@ private:
 template<typename T>
 class MessageQueue : public MessageQueue<> {
 public:
-  bool connect(const std::string& name, bool create, size_t capacity = 100) { return MessageQueue<>::connect(name, create, sizeof(T), capacity); }
+  bool connect(const std::string& name, bool create, size_t capacity = 1000) { return MessageQueue<>::connect(name, create, sizeof(T), capacity); }
   bool send(const T* object) { return MessageQueue<>::send(object, sizeof(*object)); };
   bool receive(T* object) { return MessageQueue<>::receive(object, sizeof(*object)); }
 };

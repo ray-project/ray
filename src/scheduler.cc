@@ -328,7 +328,7 @@ Status SchedulerService::NotifyFailure(ServerContext* context, const NotifyFailu
         PrintErrorMessageRequest print_request;
         print_request.mutable_failure()->CopyFrom(request->failure());
         AckReply print_reply;
-        RAY_CHECK_GRPC(worker->worker_stub->PrintErrorMessage(&client_context, print_request, &print_reply));
+        // RAY_CHECK_GRPC(worker->worker_stub->PrintErrorMessage(&client_context, print_request, &print_reply));
       }
     }
   }
@@ -365,10 +365,10 @@ Status SchedulerService::ReadyForNewTask(ServerContext* context, const ReadyForN
       // all of the exported functions and all of the exported reusable variables.
       if (!(*workers)[workerid].initialized) {
         // This should only happen once.
-        // Import all remote functions on the worker.
-        export_all_functions_to_worker(workerid, workers, GET(exported_functions_));
-        // Import all reusable variables on the worker.
-        export_all_reusable_variables_to_worker(workerid, workers, GET(exported_reusable_variables_));
+        // Queue up all remote functions to be imported on the worker.
+        add_all_remote_functions_to_worker_export_queue(workerid);
+        // Queue up all reusable variables to be imported on the worker.
+        add_all_reusable_variables_to_worker_export_queue(workerid);
         // Mark the worker as initialized.
         (*workers)[workerid].initialized = true;
       }
@@ -514,28 +514,38 @@ Status SchedulerService::KillWorkers(ServerContext* context, const KillWorkersRe
 }
 
 Status SchedulerService::ExportRemoteFunction(ServerContext* context, const ExportRemoteFunctionRequest* request, AckReply* reply) {
-  auto workers = GET(workers_);
-  auto exported_functions = GET(exported_functions_);
-  // TODO(rkn): Does this do a deep copy?
-  exported_functions->push_back(std::unique_ptr<Function>(new Function(request->function())));
-  for (size_t i = 0; i < workers->size(); ++i) {
-    if ((*workers)[i].current_task != ROOT_OPERATION) {
-      export_function_to_worker(i, exported_functions->size() - 1, workers, exported_functions);
+  {
+    auto workers = GET(workers_);
+    auto remote_function_export_queue = GET(remote_function_export_queue_);
+    auto exported_functions = GET(exported_functions_);
+    // TODO(rkn): Does this do a deep copy?
+    exported_functions->push_back(std::unique_ptr<Function>(new Function(request->function())));
+    for (WorkerId workerid = 0; workerid < workers->size(); ++workerid) {
+      if ((*workers)[workerid].current_task != ROOT_OPERATION) {
+        // Add this workerid and remote function pair to the export queue.
+        remote_function_export_queue->push(std::make_pair(workerid, exported_functions->size() - 1));
+      }
     }
   }
+  schedule();
   return Status::OK;
 }
 
 Status SchedulerService::ExportReusableVariable(ServerContext* context, const ExportReusableVariableRequest* request, AckReply* reply) {
-  auto workers = GET(workers_);
-  auto exported_reusable_variables = GET(exported_reusable_variables_);
-  // TODO(rkn): Does this do a deep copy?
-  exported_reusable_variables->push_back(std::unique_ptr<ReusableVar>(new ReusableVar(request->reusable_variable())));
-  for (size_t i = 0; i < workers->size(); ++i) {
-    if ((*workers)[i].current_task != ROOT_OPERATION) {
-      export_reusable_variable_to_worker(i, exported_reusable_variables->size() - 1, workers, exported_reusable_variables);
+  {
+    auto workers = GET(workers_);
+    auto reusable_variable_export_queue = GET(reusable_variable_export_queue_);
+    auto exported_reusable_variables = GET(exported_reusable_variables_);
+    // TODO(rkn): Does this do a deep copy?
+    exported_reusable_variables->push_back(std::unique_ptr<ReusableVar>(new ReusableVar(request->reusable_variable())));
+    for (WorkerId workerid = 0; workerid < workers->size(); ++workerid) {
+      if ((*workers)[workerid].current_task != ROOT_OPERATION) {
+        // Add this workerid and reusable variable pair to the export queue.
+        reusable_variable_export_queue->push(std::make_pair(workerid, exported_reusable_variables->size() - 1));
+      }
     }
   }
+  schedule();
   return Status::OK;
 }
 
@@ -584,8 +594,16 @@ void SchedulerService::deliver_object_async(ObjectID canonical_objectid, ObjStor
 }
 
 void SchedulerService::schedule() {
-  // TODO(rkn): Do this more intelligently.
-  perform_gets(); // See what we can do in get_queue_
+  // Export remote functions to the workers. This must happen before we schedule
+  // tasks in order to guarantee that remote function calls use the most up to
+  // date definitions.
+  perform_remote_function_exports();
+  // Export reusable variables to the workers. This must happen before we
+  // schedule tasks in order to guarantee that the workers have the definitions
+  // they need.
+  perform_reusable_variable_exports();
+  // See what we can do in get_queue_
+  perform_gets();
   if (scheduling_algorithm_ == SCHEDULING_ALGORITHM_NAIVE) {
     schedule_tasks_naively(); // See what we can do in task_queue_
   } else if (scheduling_algorithm_ == SCHEDULING_ALGORITHM_LOCALITY_AWARE) {
@@ -766,6 +784,28 @@ bool SchedulerService::is_canonical(ObjectID objectid) {
   auto target_objectids = GET(target_objectids_);
   RAY_CHECK_NEQ((*target_objectids)[objectid], UNITIALIZED_ALIAS, "Attempting to call is_canonical on an objectid for which aliasing is not complete or the object is not ready, target_objectids_[objectid] == UNITIALIZED_ALIAS for objectid " << objectid << ".");
   return objectid == (*target_objectids)[objectid];
+}
+
+void SchedulerService::perform_remote_function_exports() {
+  auto workers = GET(workers_);
+  auto remote_function_export_queue = GET(remote_function_export_queue_);
+  auto exported_functions = GET(exported_functions_);
+  while (!remote_function_export_queue->empty()) {
+    std::pair<WorkerId, int> workerid_functionid_pair = remote_function_export_queue->front();
+    export_function_to_worker(workerid_functionid_pair.first, workerid_functionid_pair.second, workers, exported_functions);
+    remote_function_export_queue->pop();
+  }
+}
+
+void SchedulerService::perform_reusable_variable_exports() {
+  auto workers = GET(workers_);
+  auto reusable_variable_export_queue = GET(reusable_variable_export_queue_);
+  auto exported_reusable_variables = GET(exported_reusable_variables_);
+  while (!reusable_variable_export_queue->empty()) {
+    std::pair<WorkerId, int> workerid_variableid_pair = reusable_variable_export_queue->front();
+    export_reusable_variable_to_worker(workerid_variableid_pair.first, workerid_variableid_pair.second, workers, exported_reusable_variables);
+    reusable_variable_export_queue->pop();
+  }
 }
 
 void SchedulerService::perform_gets() {
@@ -1047,15 +1087,19 @@ void SchedulerService::export_reusable_variable_to_worker(WorkerId workerid, int
   RAY_CHECK_GRPC((*workers)[workerid].worker_stub->ImportReusableVariable(&import_context, import_request, &import_reply));
 }
 
-void SchedulerService::export_all_functions_to_worker(WorkerId workerid, MySynchronizedPtr<std::vector<WorkerHandle> > &workers, const MySynchronizedPtr<std::vector<std::unique_ptr<Function> > > &exported_functions) {
+void SchedulerService::add_all_remote_functions_to_worker_export_queue(WorkerId workerid) {
+  auto remote_function_export_queue = GET(remote_function_export_queue_);
+  auto exported_functions = GET(exported_functions_);
   for (int i = 0; i < exported_functions->size(); ++i) {
-    export_function_to_worker(workerid, i, workers, exported_functions);
+    remote_function_export_queue->push(std::make_pair(workerid, i));
   }
 }
 
-void SchedulerService::export_all_reusable_variables_to_worker(WorkerId workerid, MySynchronizedPtr<std::vector<WorkerHandle> > &workers, const MySynchronizedPtr<std::vector<std::unique_ptr<ReusableVar> > > &exported_reusable_variables) {
+void SchedulerService::add_all_reusable_variables_to_worker_export_queue(WorkerId workerid) {
+  auto reusable_variable_export_queue = GET(reusable_variable_export_queue_);
+  auto exported_reusable_variables = GET(exported_reusable_variables_);
   for (int i = 0; i < exported_reusable_variables->size(); ++i) {
-    export_reusable_variable_to_worker(workerid, i, workers, exported_reusable_variables);
+    reusable_variable_export_queue->push(std::make_pair(workerid, i));
   }
 }
 
@@ -1070,7 +1114,7 @@ void start_scheduler_service(const char* service_addr, SchedulingAlgorithmType s
   builder.RegisterService(&service);
   std::unique_ptr<Server> server(builder.BuildAndStart());
   if (server == nullptr) {
-    RAY_CHECK(false, "Failed to create the scheduler server.")
+    RAY_CHECK(false, "Failed to create the scheduler service.");
   }
   server->Wait();
 }

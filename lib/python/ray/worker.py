@@ -9,6 +9,7 @@ import funcsigs
 import numpy as np
 import colorama
 import atexit
+import threading
 
 # Ray modules
 import config
@@ -368,9 +369,6 @@ class Worker(object):
       eventually does call connect, if it is a driver, it will export these
       functions to the scheduler. If cached_remote_functions is None, that means
       that connect has been called already.
-    num_failed_tasks (int): The number of tasks that have failed and whose error
-      messages have been displayed to the user. We use this value to know when
-      a failed task hasn't been seen by the user and should be displayed.
   """
 
   def __init__(self):
@@ -379,7 +377,6 @@ class Worker(object):
     self.handle = None
     self.mode = None
     self.cached_remote_functions = []
-    self.num_failed_tasks = 0
 
   def set_mode(self, mode):
     """Set the mode of the worker.
@@ -538,6 +535,9 @@ made by one task do not affect other tasks.
 logger = logging.getLogger("ray")
 """Logger: The logging object for the Python worker code."""
 
+class RayConnectionError(Exception):
+  pass
+
 def check_connected(worker=global_worker):
   """Check if the worker is connected.
 
@@ -545,7 +545,7 @@ def check_connected(worker=global_worker):
     Exception: An exception is raised if the worker is not connected.
   """
   if worker.handle is None and worker.mode != raylib.PYTHON_MODE:
-    raise Exception("This command cannot be called before a Ray cluster has been started. You can start one with 'ray.init(start_ray_local=True, num_workers=1)'.")
+    raise RayConnectionError("This command cannot be called before a Ray cluster has been started. You can start one with 'ray.init(start_ray_local=True, num_workers=1)'.")
 
 def print_failed_task(task_status):
   """Print information about failed tasks.
@@ -678,6 +678,37 @@ def cleanup(worker=global_worker):
 
 atexit.register(cleanup)
 
+def print_error_messages(worker=global_worker):
+  num_failed_tasks = 0
+  num_failed_remote_function_imports = 0
+  num_failed_reusable_variable_imports = 0
+  num_failed_reusable_variable_reinitializations = 0
+  while True:
+    try:
+      info = task_info(worker=worker)
+      # Print failed task errors.
+      for error in info["failed_tasks"][num_failed_tasks:]:
+        print error["error_message"]
+      num_failed_tasks = len(info["failed_tasks"])
+      # Print remote function import errors.
+      for error in info["failed_remote_function_imports"][num_failed_remote_function_imports:]:
+        print error["error_message"]
+      num_failed_remote_function_imports = len(info["failed_remote_function_imports"])
+      # Print reusable variable import errors.
+      for error in info["failed_reusable_variable_imports"][num_failed_reusable_variable_imports:]:
+        print error["error_message"]
+      num_failed_reusable_variable_imports = len(info["failed_reusable_variable_imports"])
+      # Print reusable variable reinitialization errors.
+      for error in info["failed_reinitialize_reusable_variables"][num_failed_reusable_variable_reinitializations:]:
+        print error["error_message"]
+      num_failed_reusable_variable_reinitializations = len(info["failed_reinitialize_reusable_variables"])
+    except RayConnectionError:
+      # When the driver is exiting, we set worker.handle to None, which will cause
+      # the check_connected call inside of task_info to raise an exception. We use
+      # the try block here to suppress that exception.
+      pass
+    time.sleep(0.2)
+
 def connect(node_ip_address, scheduler_address, objstore_address=None, worker=global_worker, mode=raylib.WORKER_MODE):
   """Connect this worker to the scheduler and an object store.
 
@@ -702,6 +733,17 @@ def connect(node_ip_address, scheduler_address, objstore_address=None, worker=gl
   # receive commands from the scheduler. This call also sets up a queue between
   # the worker and the worker service.
   worker.handle, worker.worker_address = raylib.create_worker(node_ip_address, scheduler_address, objstore_address if objstore_address is not None else "", mode)
+  # If this is a driver running in SCRIPT_MODE, start a thread to print error
+  # messages asynchronously in the background. Ideally the scheduler would push
+  # messages to the driver's worker service, but we ran into bugs when trying to
+  # properly shutdown the driver's worker service, so we are temporarily using
+  # this implementation which constantly queries the scheduler for new error
+  # messages.
+  if mode == raylib.SCRIPT_MODE:
+    t = threading.Thread(target=print_error_messages, args=(worker,))
+    # Making the thread a daemon causes it to exit when the main thread exits.
+    t.daemon = True
+    t.start()
   worker.set_mode(mode)
   FORMAT = "%(asctime)-15s %(message)s"
   # Configure the Python logging module. Note that if we do not provide our own

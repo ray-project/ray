@@ -39,24 +39,20 @@ void ObjStoreService::get_data_from(ObjectID objectid, ObjStore::Stub& stub) {
   RAY_LOG(RAY_DEBUG, "finished streaming data, objectid was " << objectid << " and size was " << num_bytes);
 }
 
-ObjStoreService::ObjStoreService(const std::string& scheduler_address)
-    : scheduler_address_(scheduler_address) {
+ObjStoreService::ObjStoreService(std::shared_ptr<Channel> scheduler_channel)
+  : scheduler_stub_(Scheduler::NewStub(scheduler_channel)) {
 }
 
-void ObjStoreService::register_objstore() {
-  RAY_CHECK(!objstore_address_.empty(), "The object store address must be set before register_objstore is called.");
-  // Create the scheduler stub.
-  auto scheduler_channel = grpc::CreateChannel(scheduler_address_, grpc::InsecureChannelCredentials());
-  scheduler_stub_ = Scheduler::NewStub(scheduler_channel);
-
-  // Create message queue to receive requests from workers.
-  std::string recv_queue_name = std::string("queue:") + objstore_address_ + std::string(":obj");
-  RAY_LOG(RAY_INFO, "Object store creating queue with name " << recv_queue_name << " to receive requests from workers.");
+void ObjStoreService::register_objstore(const std::string& objstore_address, const std::string& recv_queue_name) {
+  // Create the queue that will be used by workers to send requests to the
+  // object store.
+  RAY_LOG(RAY_INFO, "Object store is creating queue with name " << recv_queue_name);
   RAY_CHECK(recv_queue_.connect(recv_queue_name, true), "error connecting recv_queue_");
-  // Register the objecet store with the scheduler.
+  objstore_address_ = objstore_address;
+  // Register the object store with the scheduler.
   ClientContext context;
   RegisterObjStoreRequest request;
-  request.set_objstore_address(objstore_address_);
+  request.set_objstore_address(objstore_address);
   RegisterObjStoreReply reply;
   RAY_CHECK_GRPC(scheduler_stub_->RegisterObjStore(&context, request, &reply));
   objstoreid_ = reply.objstoreid();
@@ -331,40 +327,26 @@ void ObjStoreService::start_objstore_service() {
   });
 }
 
-void set_logfile(const char* log_file_prefix, const std::string& node_ip_address, int port) {
-  if (log_file_prefix) {
-    std::string log_file_name = std::string(log_file_prefix) + "objstore-" + node_ip_address + "-" + std::to_string(port) + ".log";
-    create_log_dir_or_die(log_file_name.c_str());
-    global_ray_config.log_to_file = true;
-    global_ray_config.logfile.open(log_file_name);
-  } else {
-    std::cout << "object store: writing logs to stdout; you can change this by passing --log-file-prefix <fileprefix> to ./objstore" << std::endl;
-    global_ray_config.log_to_file = false;
-  }
-}
-
-void start_objstore(const std::string& scheduler_address, const std::string& node_ip_address, const char* log_file_prefix) {
-  // Initialize the object store.
-  ObjStoreService service(scheduler_address);
-  int port;
+void start_objstore(const char* scheduler_addr, const char* node_ip_address) {
+  RAY_LOG(RAY_INFO, "Starting an object store on node " << std::string(node_ip_address));
+  auto scheduler_channel = grpc::CreateChannel(scheduler_addr, grpc::InsecureChannelCredentials());
+  RAY_LOG(RAY_INFO, "Object store connected to scheduler " << scheduler_addr);
+  ObjStoreService service(scheduler_channel);
   ServerBuilder builder;
   // Get GRPC to assign an unused port.
+  int port;
   builder.AddListeningPort(std::string("0.0.0.0:0"), grpc::InsecureServerCredentials(), &port);
   builder.RegisterService(&service);
   std::unique_ptr<Server> server(builder.BuildAndStart());
   if (server == nullptr) {
-    RAY_CHECK(false, "Failed to create the object store server.")
+    RAY_CHECK(false, "Failed to create the object store service.");
   }
-  // Set the object store address.
-  service.set_objstore_address(node_ip_address + ":" + std::to_string(port));
-  // Set the logfile.
-  set_logfile(log_file_prefix, node_ip_address, port);
-  // Register the object store with the scheduler.
-  service.register_objstore();
-  // Launch a thread to process incoming messages in the message queue from
-  // the workers.
+  std::string objstore_address = std::string(node_ip_address) + ":" + std::to_string(port);
+  RAY_LOG(RAY_INFO, "This object store has address " << objstore_address);
+  std::string recv_queue_name = std::string("queue:") + objstore_address + std::string(":obj");
+  service.register_objstore(objstore_address, recv_queue_name);
   service.start_objstore_service();
-  // Process incoming GRPC calls. These may come from the schedeler or from
+  // Process incoming GRPC calls. These may come from the scheduler or from
   // other object stores. This method does not return.
   server->Wait();
 }
@@ -374,12 +356,20 @@ RayConfig global_ray_config;
 int main(int argc, char** argv) {
   RAY_CHECK_GE(argc, 3, "object store: expected at least two arguments (scheduler ip address and object store ip address)");
 
-  const char* log_file_prefix = nullptr;
   if (argc > 3) {
-    log_file_prefix = get_cmd_option(argv, argv + argc, "--log-file-prefix");
+    const char* log_file_name = get_cmd_option(argv, argv + argc, "--log-file-name");
+    if (log_file_name) {
+      std::cout << "object store: writing to log file " << log_file_name << std::endl;
+      create_log_dir_or_die(log_file_name);
+      global_ray_config.log_to_file = true;
+      global_ray_config.logfile.open(log_file_name);
+    } else {
+      std::cout << "object store: writing logs to stdout; you can change this by passing --log-file-name <filename> to ./scheduler" << std::endl;
+      global_ray_config.log_to_file = false;
+    }
   }
 
-  start_objstore(argv[1], argv[2], log_file_prefix);
+  start_objstore(argv[1], argv[2]);
 
   return 0;
 }

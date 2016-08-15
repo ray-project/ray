@@ -2,7 +2,8 @@ import os
 import sys
 import time
 import subprocess32 as subprocess
-import numpy as np
+import string
+import random
 
 # Ray modules
 import config
@@ -21,7 +22,7 @@ def address(host, port):
   return host + ":" + str(port)
 
 def new_scheduler_port():
-  return np.random.randint(10000, 65536)
+  return random.randint(10000, 65535)
 
 def cleanup():
   """When running in local mode, shutdown the Ray processes.
@@ -72,16 +73,16 @@ def start_objstore(scheduler_address, node_ip_address, cleanup):
     scheduler_address (str): The ip address and port of the scheduler to connect
       to.
     node_ip_address (str): The ip address of the node running the object store.
-      The object store's port number will be chosen by the object store process.
     cleanup (bool): True if using Ray in local mode. If cleanup is true, then
       this process will be killed by serices.cleanup() when the Python process
       that imported services exits.
   """
-  p = subprocess.Popen(["objstore", scheduler_address, node_ip_address, "--log-file-prefix", config.get_log_file_path("")], env=_services_env)
+  random_string = "".join(random.choice(string.ascii_uppercase + string.digits) for _ in range(10))
+  p = subprocess.Popen(["objstore", scheduler_address, node_ip_address, "--log-file-name", config.get_log_file_path("-".join(["objstore", random_string]) + ".log")], env=_services_env)
   if cleanup:
     all_processes.append(p)
 
-def start_worker(node_ip_address, worker_path, scheduler_address, cleanup=True, user_source_directory=None):
+def start_worker(node_ip_address, worker_path, scheduler_address, objstore_address=None, cleanup=True, user_source_directory=None):
   """This method starts a worker process.
 
   Args:
@@ -90,6 +91,8 @@ def start_worker(node_ip_address, worker_path, scheduler_address, cleanup=True, 
       run.
     scheduler_address (str): The ip address and port of the scheduler to connect
       to.
+    objstore_address (Optional[str]): The ip address and port of the object
+      store to connect to.
     cleanup (Optional[bool]): True if using Ray in local mode. If cleanup is
       true, then this process will be killed by serices.cleanup() when the
       Python process that imported services exits. This is True by default.
@@ -106,6 +109,8 @@ def start_worker(node_ip_address, worker_path, scheduler_address, cleanup=True, 
              "--node-ip-address=" + node_ip_address,
              "--user-source-directory=" + user_source_directory,
              "--scheduler-address=" + scheduler_address]
+  if objstore_address is not None:
+    command.append("--objstore-address=" + objstore_address)
   p = subprocess.Popen(command)
   if cleanup:
     all_processes.append(p)
@@ -155,7 +160,7 @@ def start_workers(scheduler_address, objstore_address, num_workers, worker_path)
   """
   node_ip_address = objstore_address.split(":")[0]
   for _ in range(num_workers):
-    start_worker(node_ip_address, worker_path, scheduler_address, objstore_address=objstore_address, cleanup=False)
+    start_worker(node_ip_address, worker_path, scheduler_address, cleanup=False)
 
 def start_ray_local(node_ip_address="127.0.0.1", num_objstores=1, num_workers=0, worker_path=None):
   """Start Ray in local mode.
