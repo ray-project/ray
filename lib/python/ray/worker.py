@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import traceback
 import copy
@@ -516,6 +517,23 @@ class Worker(object):
     objectids = raylib.submit_task(self.handle, task_capsule)
     return objectids
 
+  def run_function_on_all_workers(self, function):
+    """Run arbitrary code on all of the workers.
+
+    This function will first be run on the driver, and then it will be exported
+    to all of the workers to be run. It will also be run on any new workers that
+    register later.
+
+    Args:
+      function (Callable): The function to run on all of the workers. It should
+        not take any arguments. If it returns anything, its return values will
+        not be used.
+    """
+    # First run the function on the driver.
+    function()
+    # Then run the function on all of the workers.
+    raylib.run_function_on_all_workers(self.handle, pickling.dumps(function))
+
 global_worker = Worker()
 """Worker: The global Worker object for this worker process.
 
@@ -760,8 +778,18 @@ def connect(node_ip_address, scheduler_address, objstore_address=None, worker=gl
   _logger().setLevel(logging.DEBUG)
   _logger().propagate = False
   if mode in [raylib.SCRIPT_MODE, raylib.SILENT_MODE]:
+    # Add the directory containing the script that is running to the Python
+    # paths of the workers. Also add the current directory. Note that this
+    # assumes that the directory structures on the machines in the clusters are
+    # the same.
+    script_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
+    current_directory = os.path.abspath(os.path.curdir)
+    worker.run_function_on_all_workers(lambda : sys.path.insert(1, script_directory))
+    worker.run_function_on_all_workers(lambda : sys.path.insert(1, current_directory))
+    # Export cached remote functions to the workers.
     for function_name, function_to_export in worker.cached_remote_functions:
       raylib.export_remote_function(worker.handle, function_name, function_to_export)
+    # Export cached reusable variables to the workers.
     for name, reusable_variable in reusables._cached_reusables:
       _export_reusable_variable(name, reusable_variable)
   worker.cached_remote_functions = None
@@ -998,6 +1026,23 @@ def main_loop(worker=global_worker):
     else:
       _logger().info("Successfully imported reusable variable {}.".format(reusable_variable_name))
 
+  def process_function_to_run(serialized_function):
+    """Run on arbitrary function on the worker."""
+    try:
+      # Deserialize the function.
+      function = pickling.loads(serialized_function)
+      # Run the function.
+      function()
+    except:
+      # If an exception was thrown when the function was run, we record the
+      # traceback and notify the scheduler of the failure.
+      traceback_str = format_error_message(traceback.format_exc())
+      _logger().info("Failed to run function on worker. Failed with message: \n\n{}\n".format(traceback_str))
+      # Notify the scheduler that running the function failed.
+      # TODO(rkn): Notify the scheduler.
+    else:
+      _logger().info("Successfully ran function on worker.")
+
   while True:
     command, command_args = raylib.wait_for_next_message(worker.handle)
     try:
@@ -1013,6 +1058,9 @@ def main_loop(worker=global_worker):
       elif command == "reusable_variable":
         name, initializer_str, reinitializer_str = command_args
         process_reusable_variable(name, initializer_str, reinitializer_str)
+      elif command == "function_to_run":
+        serialized_function = command_args
+        process_function_to_run(serialized_function)
       else:
         _logger().info("Reached the end of the if-else loop in the main loop. This should be unreachable.")
         assert False, "This code should be unreachable."

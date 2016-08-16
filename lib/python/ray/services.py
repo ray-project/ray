@@ -82,7 +82,7 @@ def start_objstore(scheduler_address, node_ip_address, cleanup):
   if cleanup:
     all_processes.append(p)
 
-def start_worker(node_ip_address, worker_path, scheduler_address, objstore_address=None, cleanup=True, user_source_directory=None):
+def start_worker(node_ip_address, worker_path, scheduler_address, objstore_address=None, cleanup=True):
   """This method starts a worker process.
 
   Args:
@@ -96,18 +96,10 @@ def start_worker(node_ip_address, worker_path, scheduler_address, objstore_addre
     cleanup (Optional[bool]): True if using Ray in local mode. If cleanup is
       true, then this process will be killed by serices.cleanup() when the
       Python process that imported services exits. This is True by default.
-    user_source_directory (Optional[str]): The directory containing the
-      application code. This directory will be added to the path of each worker.
-      If not provided, the directory of the script currently being run is used.
   """
-  if user_source_directory is None:
-    # This extracts the directory of the script that is currently being run.
-    # This will allow users to import modules contained in this directory.
-    user_source_directory = os.path.dirname(os.path.abspath(os.path.join(os.path.curdir, sys.argv[0])))
   command = ["python",
              worker_path,
              "--node-ip-address=" + node_ip_address,
-             "--user-source-directory=" + user_source_directory,
              "--scheduler-address=" + scheduler_address]
   if objstore_address is not None:
     command.append("--objstore-address=" + objstore_address)
@@ -115,7 +107,7 @@ def start_worker(node_ip_address, worker_path, scheduler_address, objstore_addre
   if cleanup:
     all_processes.append(p)
 
-def start_node(scheduler_address, node_ip_address, num_workers, worker_path=None, user_source_directory=None, cleanup=False):
+def start_node(scheduler_address, node_ip_address, num_workers, worker_path=None, cleanup=False):
   """Start an object store and associated workers in the cluster setting.
 
   This starts an object store and the associated workers when Ray is being used
@@ -129,8 +121,6 @@ def start_node(scheduler_address, node_ip_address, num_workers, worker_path=None
     num_workers (int): The number of workers to be started on this node.
     worker_path (str): Path of the Python worker script that will be run on the
       worker.
-    user_source_directory (str): Path to the user's code the workers will import
-      modules from.
     cleanup (bool): If cleanup is True, then the processes started by this
       command will be killed when the process that imported services exits.
   """
@@ -139,7 +129,7 @@ def start_node(scheduler_address, node_ip_address, num_workers, worker_path=None
   if worker_path is None:
     worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../../scripts/default_worker.py")
   for _ in range(num_workers):
-    start_worker(node_ip_address, worker_path, scheduler_address, user_source_directory=user_source_directory, cleanup=cleanup)
+    start_worker(node_ip_address, worker_path, scheduler_address, cleanup=cleanup)
   time.sleep(0.5)
 
 def start_workers(scheduler_address, objstore_address, num_workers, worker_path):

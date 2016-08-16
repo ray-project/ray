@@ -718,7 +718,8 @@ static PyObject* wait_for_next_message(PyObject* self, PyObject* args) {
     bool task_present = !message->task().name().empty();
     bool function_present = !message->function().implementation().empty();
     bool reusable_variable_present = !message->reusable_variable().name().empty();
-    RAY_CHECK(task_present + function_present + reusable_variable_present <= 1, "The worker message should contain at most one item.");
+    bool function_to_run_present = !message->function_to_run().implementation().empty();
+    RAY_CHECK(task_present + function_present + reusable_variable_present + function_to_run_present <= 1, "The worker message should contain at most one item.");
     PyObject* t = PyTuple_New(2);
     if (task_present) {
       PyTuple_SetItem(t, 0, PyString_FromString("task"));
@@ -736,6 +737,9 @@ static PyObject* wait_for_next_message(PyObject* self, PyObject* args) {
       PyTuple_SetItem(reusable_variable, 1, PyString_FromStringAndSize(message->reusable_variable().initializer().implementation().data(), static_cast<ssize_t>(message->reusable_variable().initializer().implementation().size())));
       PyTuple_SetItem(reusable_variable, 2, PyString_FromStringAndSize(message->reusable_variable().reinitializer().implementation().data(), static_cast<ssize_t>(message->reusable_variable().reinitializer().implementation().size())));
       PyTuple_SetItem(t, 1, reusable_variable);
+    } else if (function_to_run_present) {
+      PyTuple_SetItem(t, 0, PyString_FromString("function_to_run"));
+      PyTuple_SetItem(t, 1, PyString_FromStringAndSize(message->function_to_run().implementation().data(), static_cast<ssize_t>(message->function_to_run().implementation().size())));
     } else {
       PyTuple_SetItem(t, 0, PyString_FromString("die"));
       Py_INCREF(Py_None);
@@ -744,6 +748,17 @@ static PyObject* wait_for_next_message(PyObject* self, PyObject* args) {
     return t;
   }
   RAY_CHECK(false, "This code should be unreachable.");
+  Py_RETURN_NONE;
+}
+
+static PyObject* run_function_on_all_workers(PyObject* self, PyObject* args) {
+  Worker* worker;
+  const char* function;
+  int function_size;
+  if (!PyArg_ParseTuple(args, "O&s#", &PyObjectToWorker, &worker, &function, &function_size)) {
+    return NULL;
+  }
+  worker->run_function_on_all_workers(std::string(function, static_cast<size_t>(function_size)));
   Py_RETURN_NONE;
 }
 
@@ -1088,6 +1103,7 @@ static PyMethodDef RayLibMethods[] = {
  { "ready_for_new_task", ready_for_new_task, METH_VARARGS, "notify the scheduler that the worker is ready for a new task" },
  { "scheduler_info", scheduler_info, METH_VARARGS, "get info about scheduler state" },
  { "task_info", task_info, METH_VARARGS, "get information about task statuses and failures" },
+ { "run_function_on_all_workers", run_function_on_all_workers, METH_VARARGS, "run an arbitrary function on all workers" },
  { "export_remote_function", export_remote_function, METH_VARARGS, "export a remote function to workers" },
  { "export_reusable_variable", export_reusable_variable, METH_VARARGS, "export a reusable variable to the workers" },
  { "dump_computation_graph", dump_computation_graph, METH_VARARGS, "dump the current computation graph to a file" },

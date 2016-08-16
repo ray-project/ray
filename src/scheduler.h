@@ -75,6 +75,7 @@ public:
   Status SchedulerInfo(ServerContext* context, const SchedulerInfoRequest* request, SchedulerInfoReply* reply) override;
   Status TaskInfo(ServerContext* context, const TaskInfoRequest* request, TaskInfoReply* reply) override;
   Status KillWorkers(ServerContext* context, const KillWorkersRequest* request, KillWorkersReply* reply) override;
+  Status RunFunctionOnAllWorkers(ServerContext* context, const RunFunctionOnAllWorkersRequest* request, AckReply* reply) override;
   Status ExportRemoteFunction(ServerContext* context, const ExportRemoteFunctionRequest* request, AckReply* reply) override;
   Status ExportReusableVariable(ServerContext* context, const ExportReusableVariableRequest* request, AckReply* reply) override;
   Status NotifyFailure(ServerContext*, const NotifyFailureRequest* request, AckReply* reply) override;
@@ -119,10 +120,13 @@ private:
   ObjStoreId pick_objstore(ObjectID objectid);
   // checks if objectid is a canonical objectid
   bool is_canonical(ObjectID objectid);
+  // Export all queued up functions to run.
+  void perform_functions_to_run();
   // Export all queued up remote functions.
   void perform_remote_function_exports();
   // Export all queued up reusable variables.
   void perform_reusable_variable_exports();
+  // Perform all queued up gets that can be performed.
   void perform_gets();
   // schedule tasks using the naive algorithm
   void schedule_tasks_naively();
@@ -148,10 +152,15 @@ private:
   void upstream_objectids(ObjectID objectid, std::vector<ObjectID> &objectids, const MySynchronizedPtr<std::vector<std::vector<ObjectID> > > &reverse_target_objectids);
   // Find all of the object IDs that refer to the same object as objectid (as best as we can determine at the moment). The information may be incomplete because not all of the aliases may be known.
   void get_equivalent_objectids(ObjectID objectid, std::vector<ObjectID> &equivalent_objectids);
+  // Export a function to run to a worker.
+  void export_function_to_run_to_worker(WorkerId workerid, int function_index, MySynchronizedPtr<std::vector<WorkerHandle> > &workers, const MySynchronizedPtr<std::vector<std::unique_ptr<Function> > > &exported_functions_to_run);
   // Export a remote function to a worker.
   void export_function_to_worker(WorkerId workerid, int function_index, MySynchronizedPtr<std::vector<WorkerHandle> > &workers, const MySynchronizedPtr<std::vector<std::unique_ptr<Function> > > &exported_functions);
   // Export a reusable variable to a worker
   void export_reusable_variable_to_worker(WorkerId workerid, int reusable_variable_index, MySynchronizedPtr<std::vector<WorkerHandle> > &workers, const MySynchronizedPtr<std::vector<std::unique_ptr<ReusableVar> > > &exported_reusable_variables);
+  // Add to the function to run export queue the job of exporting all functions
+  // to run to the given worker. This is used when a new worker registers.
+  void add_all_functions_to_run_to_worker_queue(WorkerId workerid);
   // Add to the remote function export queue the job of exporting all remote
   // functions to the given worker. This is used when a new worker registers.
   void add_all_remote_functions_to_worker_export_queue(WorkerId workerid);
@@ -226,6 +235,11 @@ private:
   // lock (objects_lock_). // TODO(rkn): Consider making this part of the
   // objtable data structure.
   std::vector<std::vector<ObjectID> > objects_in_transit_;
+  // List of pending functions to run on workers. These should be processed in a
+  // first in first out manner. The first element of each pair is the ID of the
+  // worker to run the function on, and the second element of each pair is the
+  // index of the function to run.
+  Synchronized<std::queue<std::pair<WorkerId, int> > > function_to_run_queue_;
   // List of pending remote function exports. These should be processed in a
   // first in first out manner. The first element of each pair is the ID of the
   // worker to export the remote function to, and the second element of each
@@ -236,6 +250,8 @@ private:
   // worker to export the reusable variable to, and the second element of each
   // pair is the index of the reusable variable to export.
   Synchronized<std::queue<std::pair<WorkerId, int> > > reusable_variable_export_queue_;
+  // All of the functions that have been exported to the workers to run.
+  Synchronized<std::vector<std::unique_ptr<Function> > > exported_functions_to_run_;
   // All of the remote functions that have been exported to the workers.
   Synchronized<std::vector<std::unique_ptr<Function> > > exported_functions_;
   // All of the reusable variables that have been exported to the workers.

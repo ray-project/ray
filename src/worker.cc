@@ -26,6 +26,21 @@ Status WorkerServiceImpl::ExecuteTask(ServerContext* context, const ExecuteTaskR
     WorkerMessage* message_ptr = message.get();
     RAY_CHECK(send_queue_.send(&message_ptr), "Failed to send message from the worker service to the worker because the message queue was full.");
   }
+  // The message will get deleted in receive_next_message().
+  message.release();
+  return Status::OK;
+}
+
+Status WorkerServiceImpl::RunFunctionOnWorker(ServerContext* context, const RunFunctionOnWorkerRequest* request, AckReply* reply) {
+  RAY_CHECK(mode_ == Mode::WORKER_MODE, "RunFunctionOnWorker can only be called on workers.");
+  std::unique_ptr<WorkerMessage> message(new WorkerMessage());
+  message->mutable_function_to_run()->CopyFrom(request->function());
+  RAY_LOG(RAY_INFO, "Running function on worker.");
+  {
+    WorkerMessage* message_ptr = message.get();
+    RAY_CHECK(send_queue_.send(&message_ptr), "Failed to send message from the worker service to the worker because the message queue was full.");
+  }
+  // The message will get deleted in receive_next_message().
   message.release();
   return Status::OK;
 }
@@ -39,6 +54,7 @@ Status WorkerServiceImpl::ImportRemoteFunction(ServerContext* context, const Imp
     WorkerMessage* message_ptr = message.get();
     RAY_CHECK(send_queue_.send(&message_ptr), "Failed to send message from the worker service to the worker because the message queue was full.");
   }
+  // The message will get deleted in receive_next_message().
   message.release();
   return Status::OK;
 }
@@ -52,6 +68,7 @@ Status WorkerServiceImpl::ImportReusableVariable(ServerContext* context, const I
     WorkerMessage* message_ptr = message.get();
     RAY_CHECK(send_queue_.send(&message_ptr), "Failed to send message from the worker service to the worker because the message queue was full.");
   }
+  // The message will get deleted in receive_next_message().
   message.release();
   return Status::OK;
 }
@@ -438,6 +455,15 @@ std::vector<int> Worker::select(std::vector<ObjectID>& objectids) {
     result.push_back(reply.indices(i));
   }
   return result;
+}
+
+void Worker::run_function_on_all_workers(const std::string& function) {
+  RAY_CHECK(connected_, "Attempted to run function on all workers but failed.");
+  ClientContext context;
+  RunFunctionOnAllWorkersRequest request;
+  request.mutable_function()->set_implementation(function);
+  AckReply reply;
+  RAY_CHECK_GRPC(scheduler_stub_->RunFunctionOnAllWorkers(&context, request, &reply));
 }
 
 bool Worker::export_remote_function(const std::string& function_name, const std::string& function) {
