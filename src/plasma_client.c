@@ -18,12 +18,8 @@
 void plasma_send(int fd, plasma_request *req) {
   int req_count = sizeof(plasma_request);
   if (write(fd, req, req_count) != req_count) {
-    if (req_count > 0) {
-      LOG_ERR("partial write on fd %d", fd);
-    } else {
-      LOG_ERR("write error");
-      exit(-1);
-    }
+    LOG_ERR("write error");
+    exit(-1);
   }
 }
 
