@@ -27,13 +27,19 @@ typedef struct {
 enum plasma_request_type {
   PLASMA_CREATE, // create a new object
   PLASMA_GET, // get an object
-  PLASMA_SEAL // seal an object
+  PLASMA_SEAL, // seal an object
+  PLASMA_TRANSFER, // request transfer to another store
+  PLASMA_DATA, // header for sending data
+  PLASMA_REGISTER // register a plasma manager
 };
 
 typedef struct {
   int type;
+  int manager_id;
   plasma_id object_id;
   int64_t size;
+  uint8_t addr[4];
+  int port;
 } plasma_request;
 
 enum plasma_reply_type {
