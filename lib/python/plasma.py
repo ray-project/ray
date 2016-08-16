@@ -1,3 +1,4 @@
+import os
 import socket
 import ctypes
 
@@ -33,13 +34,14 @@ def make_plasma_id(string):
 
 class PlasmaClient(object):
   def __init__(self, socket_name):
-    self.client = ctypes.cdll.LoadLibrary("../../build/plasma_client.so")
+    plasma_client_library = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../build/plasma_client.so")
+    self.client = ctypes.cdll.LoadLibrary(plasma_client_library)
 
     self.client.plasma_store_connect.restype = ctypes.c_int
 
     self.client.plasma_create.argtypes = [ctypes.c_int, PlasmaID, ctypes.c_int64]
     self.client.plasma_create.restype = PlasmaBuffer
-    
+
     self.client.plasma_get.argtypes = [ctypes.c_int, PlasmaID]
     self.client.plasma_get.restype = PlasmaBuffer
 
@@ -63,8 +65,6 @@ class PlasmaClient(object):
   def get(self, object_id):
     buf = self.client.plasma_get(self.sock, make_plasma_id(object_id))
     return self.buffer_from_memory(buf.data, buf.size)
-    
+
   def seal(self, object_id):
     self.client.plasma_seal(self.sock, make_plasma_id(object_id))
-
-    

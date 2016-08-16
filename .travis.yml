@@ -11,3 +11,7 @@ matrix:
 
 install:
   - make
+
+script:
+  - source setup-env.sh
+  - python test/test.py
