@@ -32,6 +32,7 @@ class WorkerServiceImpl final : public WorkerService::Service {
 public:
   WorkerServiceImpl(const std::string& worker_address, Mode mode);
   Status ExecuteTask(ServerContext* context, const ExecuteTaskRequest* request, AckReply* reply) override;
+  Status RunFunctionOnWorker(ServerContext* context, const RunFunctionOnWorkerRequest* request, AckReply* reply) override;
   Status ImportRemoteFunction(ServerContext* context, const ImportRemoteFunctionRequest* request, AckReply* reply) override;
   Status Die(ServerContext* context, const DieRequest* request, AckReply* reply) override;
   Status ImportReusableVariable(ServerContext* context, const ImportReusableVariableRequest* request, AckReply* reply) override;
@@ -104,6 +105,8 @@ class Worker {
   void task_info(ClientContext &context, TaskInfoRequest &request, TaskInfoReply &reply);
   // gets indices of available objects
   std::vector<int> select(std::vector<ObjectID>& objectids);
+  // Export a function to be run on all workers.
+  void run_function_on_all_workers(const std::string& function);
   // export function to workers
   bool export_remote_function(const std::string& function_name, const std::string& function);
   // export reusable variable to workers

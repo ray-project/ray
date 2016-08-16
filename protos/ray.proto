@@ -52,6 +52,8 @@ service Scheduler {
   rpc TaskInfo(TaskInfoRequest) returns (TaskInfoReply);
   // Kills the workers
   rpc KillWorkers(KillWorkersRequest) returns (KillWorkersReply);
+  // Run a function on all workers
+  rpc RunFunctionOnAllWorkers(RunFunctionOnAllWorkersRequest) returns (AckReply);
   // Exports function to the workers
   rpc ExportRemoteFunction(ExportRemoteFunctionRequest) returns (AckReply);
   // Ship an initializer and reinitializer for a reusable variable to the workers
@@ -247,6 +249,10 @@ message KillWorkersReply {
   bool success = 1;  // Currently, the only reason to fail is if there are workers still executing tasks
 }
 
+message RunFunctionOnAllWorkersRequest {
+  Function function = 1;
+}
+
 message ExportRemoteFunctionRequest {
   Function function = 1;
 }
@@ -274,6 +280,7 @@ message ObjStoreInfoReply {
 
 service WorkerService {
   rpc ExecuteTask(ExecuteTaskRequest) returns (AckReply); // Scheduler calls a function from the worker
+  rpc RunFunctionOnWorker(RunFunctionOnWorkerRequest) returns (AckReply); // Runs a function on the worker.
   rpc ImportRemoteFunction(ImportRemoteFunctionRequest) returns (AckReply); // Scheduler imports a function into the worker
   rpc ImportReusableVariable(ImportReusableVariableRequest) returns (AckReply); // Scheduler imports a reusable variable into the worker
   rpc Die(DieRequest) returns (AckReply); // Kills this worker
@@ -282,6 +289,10 @@ service WorkerService {
 
 message ExecuteTaskRequest {
   Task task = 1; // Contains name of the function to be executed and arguments
+}
+
+message RunFunctionOnWorkerRequest {
+  Function function = 1;
 }
 
 message ImportRemoteFunctionRequest {
@@ -302,6 +313,7 @@ message WorkerMessage {
     Task task = 1; // A task for the worker to execute.
     Function function = 2; // A remote function to import on the worker.
     ReusableVar reusable_variable = 3; // A reusable variable to import on the worker.
+    Function function_to_run = 4; // An arbitrary function to run on the worker.
   }
 }
 

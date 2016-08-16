@@ -365,6 +365,8 @@ Status SchedulerService::ReadyForNewTask(ServerContext* context, const ReadyForN
       // all of the exported functions and all of the exported reusable variables.
       if (!(*workers)[workerid].initialized) {
         // This should only happen once.
+        // Queue up all functions to run on the worker.
+        add_all_functions_to_run_to_worker_queue(workerid);
         // Queue up all remote functions to be imported on the worker.
         add_all_remote_functions_to_worker_export_queue(workerid);
         // Queue up all reusable variables to be imported on the worker.
@@ -513,6 +515,22 @@ Status SchedulerService::KillWorkers(ServerContext* context, const KillWorkersRe
   return Status::OK;
 }
 
+Status SchedulerService::RunFunctionOnAllWorkers(ServerContext* context, const RunFunctionOnAllWorkersRequest* request, AckReply* reply) {
+  {
+    auto workers = GET(workers_);
+    auto function_to_run_queue = GET(function_to_run_queue_);
+    auto exported_functions_to_run = GET(exported_functions_to_run_);
+    exported_functions_to_run->push_back(std::unique_ptr<Function>(new Function(request->function())));
+    for (WorkerId workerid = 0; workerid < workers->size(); ++workerid) {
+      if ((*workers)[workerid].current_task != ROOT_OPERATION) {
+        function_to_run_queue->push(std::make_pair(workerid, exported_functions_to_run->size() - 1));
+      }
+    }
+  }
+  schedule();
+  return Status::OK;
+}
+
 Status SchedulerService::ExportRemoteFunction(ServerContext* context, const ExportRemoteFunctionRequest* request, AckReply* reply) {
   {
     auto workers = GET(workers_);
@@ -609,6 +627,10 @@ void SchedulerService::deliver_object_async(ObjectID canonical_objectid, ObjStor
 }
 
 void SchedulerService::schedule() {
+  // Run functions on workers. This must happen before we schedule tasks in
+  // order to guarantee that remote function calls use the most up to date
+  // environment.
+  perform_functions_to_run();
   // Export remote functions to the workers. This must happen before we schedule
   // tasks in order to guarantee that remote function calls use the most up to
   // date definitions.
@@ -799,6 +821,17 @@ bool SchedulerService::is_canonical(ObjectID objectid) {
   auto target_objectids = GET(target_objectids_);
   RAY_CHECK_NEQ((*target_objectids)[objectid], UNITIALIZED_ALIAS, "Attempting to call is_canonical on an objectid for which aliasing is not complete or the object is not ready, target_objectids_[objectid] == UNITIALIZED_ALIAS for objectid " << objectid << ".");
   return objectid == (*target_objectids)[objectid];
+}
+
+void SchedulerService::perform_functions_to_run() {
+  auto workers = GET(workers_);
+  auto function_to_run_queue = GET(function_to_run_queue_);
+  auto exported_functions_to_run = GET(exported_functions_to_run_);
+  while (!function_to_run_queue->empty()) {
+    std::pair<WorkerId, int> workerid_functionid_pair = function_to_run_queue->front();
+    export_function_to_run_to_worker(workerid_functionid_pair.first, workerid_functionid_pair.second, workers, exported_functions_to_run);
+    function_to_run_queue->pop();
+  }
 }
 
 void SchedulerService::perform_remote_function_exports() {
@@ -1084,22 +1117,39 @@ void SchedulerService::get_equivalent_objectids(ObjectID objectid, std::vector<O
 }
 
 
+void SchedulerService::export_function_to_run_to_worker(WorkerId workerid, int function_index, MySynchronizedPtr<std::vector<WorkerHandle> > &workers, const MySynchronizedPtr<std::vector<std::unique_ptr<Function> > > &exported_functions_to_run) {
+  RAY_LOG(RAY_INFO, "exporting function to run with index " << function_index << " to worker " << workerid);
+  ClientContext context;
+  RunFunctionOnWorkerRequest request;
+  request.mutable_function()->CopyFrom(*(*exported_functions_to_run)[function_index].get());
+  AckReply reply;
+  RAY_CHECK_GRPC((*workers)[workerid].worker_stub->RunFunctionOnWorker(&context, request, &reply));
+}
+
 void SchedulerService::export_function_to_worker(WorkerId workerid, int function_index, MySynchronizedPtr<std::vector<WorkerHandle> > &workers, const MySynchronizedPtr<std::vector<std::unique_ptr<Function> > > &exported_functions) {
-  RAY_LOG(RAY_INFO, "exporting function with index " << function_index << " to worker " << workerid);
-  ClientContext import_context;
-  ImportRemoteFunctionRequest import_request;
-  import_request.mutable_function()->CopyFrom(*(*exported_functions)[function_index].get());
-  AckReply import_reply;
-  RAY_CHECK_GRPC((*workers)[workerid].worker_stub->ImportRemoteFunction(&import_context, import_request, &import_reply));
+  RAY_LOG(RAY_INFO, "exporting remote function with index " << function_index << " to worker " << workerid);
+  ClientContext context;
+  ImportRemoteFunctionRequest request;
+  request.mutable_function()->CopyFrom(*(*exported_functions)[function_index].get());
+  AckReply reply;
+  RAY_CHECK_GRPC((*workers)[workerid].worker_stub->ImportRemoteFunction(&context, request, &reply));
 }
 
 void SchedulerService::export_reusable_variable_to_worker(WorkerId workerid, int reusable_variable_index, MySynchronizedPtr<std::vector<WorkerHandle> > &workers, const MySynchronizedPtr<std::vector<std::unique_ptr<ReusableVar> > > &exported_reusable_variables) {
   RAY_LOG(RAY_INFO, "exporting reusable variable with index " << reusable_variable_index << " to worker " << workerid);
-  ClientContext import_context;
-  ImportReusableVariableRequest import_request;
-  import_request.mutable_reusable_variable()->CopyFrom(*(*exported_reusable_variables)[reusable_variable_index].get());
-  AckReply import_reply;
-  RAY_CHECK_GRPC((*workers)[workerid].worker_stub->ImportReusableVariable(&import_context, import_request, &import_reply));
+  ClientContext context;
+  ImportReusableVariableRequest request;
+  request.mutable_reusable_variable()->CopyFrom(*(*exported_reusable_variables)[reusable_variable_index].get());
+  AckReply reply;
+  RAY_CHECK_GRPC((*workers)[workerid].worker_stub->ImportReusableVariable(&context, request, &reply));
+}
+
+void SchedulerService::add_all_functions_to_run_to_worker_queue(WorkerId workerid) {
+  auto function_to_run_queue = GET(function_to_run_queue_);
+  auto exported_functions_to_run = GET(exported_functions_to_run_);
+  for (int i = 0; i < exported_functions_to_run->size(); ++i) {
+    function_to_run_queue->push(std::make_pair(workerid, i));
+  }
 }
 
 void SchedulerService::add_all_remote_functions_to_worker_export_queue(WorkerId workerid) {

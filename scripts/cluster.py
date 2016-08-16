@@ -138,7 +138,7 @@ class RayCluster(object):
     """.format(self.installation_directory, self.installation_directory)
     self.run_command_over_ssh_on_all_nodes_in_parallel(install_ray_command)
 
-  def start_ray(self, user_source_directory=None, num_workers_per_node=10):
+  def start_ray(self, num_workers_per_node=10):
     """Start Ray on a cluster.
 
     This method is used to start Ray on a cluster. It will ssh to the head node,
@@ -147,15 +147,8 @@ class RayCluster(object):
     workers.
 
     Args:
-      user_source_directory (Optional[str]): The path to the local directory
-        containing the user's source code. If provided, files and directories in
-        this directory can be used as modules in remote functions.
       num_workers_per_node (int): The number workers to start on each node.
     """
-    # First update the worker code on the nodes.
-    if user_source_directory is not None:
-      remote_user_source_directory = self._update_user_code(user_source_directory)
-
     scripts_directory = os.path.join(self.installation_directory, "ray/scripts")
     # Start the scheduler
     # The triple backslashes are used for two rounds of escaping, something like \\\" -> \" -> "
@@ -169,18 +162,16 @@ class RayCluster(object):
     # Start the workers on each node
     # The triple backslashes are used for two rounds of escaping, something like \\\" -> \" -> "
     start_workers_commands = []
-    remote_user_source_directory_str = "\\\"{}\\\"".format(remote_user_source_directory) if user_source_directory is not None else "None"
     for i, node_ip_address in enumerate(self.node_ip_addresses):
       start_workers_command = """
         cd "{}";
         source ../setup-env.sh;
-        python -c "import ray; ray.services.start_node(\\\"{}:10001\\\", \\\"{}\\\", {}, user_source_directory={})" > start_workers.out 2> start_workers.err < /dev/null &
-      """.format(scripts_directory, self.node_private_ip_addresses[0], self.node_private_ip_addresses[i], num_workers_per_node, remote_user_source_directory_str)
+        python -c "import ray; ray.services.start_node(\\\"{}:10001\\\", \\\"{}\\\", {})" > start_workers.out 2> start_workers.err < /dev/null &
+      """.format(scripts_directory, self.node_private_ip_addresses[0], self.node_private_ip_addresses[i], num_workers_per_node)
       start_workers_commands.append(start_workers_command)
     self.run_command_over_ssh_on_all_nodes_in_parallel(start_workers_commands)
 
     setup_env_path = os.path.join(self.installation_directory, "ray/setup-env.sh")
-    cd_location = remote_user_source_directory if user_source_directory is not None else os.path.join(self.installation_directory, "ray")
     print """
       The cluster has been started. You can attach to the cluster by sshing to the head node with the following command.
 
@@ -188,14 +179,13 @@ class RayCluster(object):
 
       Then run the following commands.
 
-          cd {}
           source {}  # Add Ray to your Python path.
 
       Then within a Python interpreter or script, run the following commands.
 
           import ray
           ray.init(node_ip_address="{}", scheduler_address="{}:10001")
-    """.format(self.key_file, self.username, self.node_ip_addresses[0], cd_location, setup_env_path, self.node_private_ip_addresses[0], self.node_private_ip_addresses[0])
+    """.format(self.key_file, self.username, self.node_ip_addresses[0], setup_env_path, self.node_private_ip_addresses[0], self.node_private_ip_addresses[0])
 
   def stop_ray(self):
     """Kill all of the processes in the Ray cluster.
@@ -230,15 +220,15 @@ class RayCluster(object):
     """.format(ray_directory, change_branch_command)
     self.run_command_over_ssh_on_all_nodes_in_parallel(update_cluster_command)
 
-  def _update_user_code(self, user_source_directory):
+  def copy_code_to_cluster(self, user_source_directory):
     """Update the user's source code on each node in the cluster.
 
-    This method is used to update the user's source code on each node in the
+    This method is used to copy the user's source code on each node in the
     cluster. The local user_source_directory will be copied under
     ray_source_files in the home directory on the worker node. For example, if
-    we call _update_source_code("~/a/b/c"), then the contents of "~/a/b/c" on
-    the local machine will be copied to "~/user_source_files/c" on each
-    node in the cluster.
+    we call copy_code_to_cluster("~/a/b/c"), then the contents of "~/a/b/c" on
+    the local machine will be copied to "~/ray_source_files/c" on each node in
+    the cluster.
 
     Args:
       user_source_directory (str): The path on the local machine to the directory
@@ -253,7 +243,7 @@ class RayCluster(object):
       raise Exception("Directory {} does not exist.".format(user_source_directory))
     # If user_source_directory is "/a/b/c", then local_directory_name is "c".
     local_directory_name = os.path.split(os.path.realpath(user_source_directory))[1]
-    remote_directory = os.path.join(self.installation_directory, "user_source_files", local_directory_name)
+    remote_directory = os.path.join(self.installation_directory, "ray_source_files", local_directory_name)
     # Remove and recreate the directory on the node.
     recreate_directory_command = """
       rm -r "{}";
