@@ -321,6 +321,16 @@ class APITest(unittest.TestCase):
     time.sleep(0.5)
     self.assertEqual(ray.select(objectids), [0, 1, 2, 3])
 
+    objectids = [f.remote(0.5), f.remote(0.75), f.remote(0.25), f.remote(1.0)]
+    values = ["a", "b", "c", "d"]
+    indices = []
+    while len(objectids) > 0:
+      index = ray.select(objectids, num_objects=1)[0]
+      indices.append(values[index])
+      objectids.pop(index)
+      values.pop(index)
+    self.assertEqual(indices, ["c", "a", "b", "d"])
+
     ray.worker.cleanup()
 
   def testCachingReusables(self):
