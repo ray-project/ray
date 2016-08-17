@@ -6,6 +6,13 @@
 #include <errno.h>
 #include <string.h>
 
+#ifdef NDEBUG
+  #define LOG_DEBUG(M, ...)
+#else
+  #define LOG_DEBUG(M, ...) \
+    fprintf(stderr, "[DEBUG] (%s:%d) " M "\n", __FILE__, __LINE__, ##__VA_ARGS__)
+#endif
+
 #define LOG_ERR(M, ...) \
   fprintf(stderr, "[ERROR] (%s:%d: errno: %s) " M "\n", \
     __FILE__, __LINE__, errno == 0 ? "None" : strerror(errno), ##__VA_ARGS__)
@@ -24,6 +31,7 @@ typedef struct {
   unsigned char id[20];
 } plasma_id;
 
+// these values must be in sync with the ones in plasma.py (can we have a test for that?)
 enum plasma_request_type {
   PLASMA_CREATE, // create a new object
   PLASMA_GET, // get an object
@@ -63,5 +71,7 @@ int plasma_store_connect(const char* socket_name);
 plasma_buffer plasma_create(int conn, plasma_id object_id, int64_t size);
 plasma_buffer plasma_get(int conn, plasma_id object_id);
 void plasma_seal(int fd, plasma_id object_id);
+
+void plasma_send(int fd, plasma_request *req);
 
 #endif

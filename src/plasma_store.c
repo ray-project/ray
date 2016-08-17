@@ -28,9 +28,12 @@
 #define MAX_NUM_CLIENTS 2048
 
 typedef struct {
-  int num_clients; // number of clients connected
-  int client_id[MAX_NUM_CLIENTS]; // unique identifier for the clients
-  struct pollfd waiting[MAX_NUM_CLIENTS]; // data structure for polling
+  // Number of clients connected.
+  int num_clients;
+  // Unique identifier for the clients.
+  int client_id[MAX_NUM_CLIENTS];
+  // Data structure for polling.
+  struct pollfd waiting[MAX_NUM_CLIENTS];
 } plasma_store_state;
 
 void init_state(plasma_store_state* s) {
@@ -48,8 +51,8 @@ int add_client(plasma_store_state* s, int fd) {
   return curr_id++;
 }
 
-// remove the client at index i by swapping it with the
-// client at index num_clients-1 and zeroing the latter out
+// Remove the client at index i by swapping it with the
+// client at index num_clients-1 and zeroing the latter out.
 void remove_client(plasma_store_state* s, int i) {
   memcpy(&s->waiting[i], &s->waiting[s->num_clients-1], sizeof(struct pollfd));
   memset(&s->waiting[s->num_clients-1], 0, sizeof(struct pollfd));
@@ -59,27 +62,35 @@ void remove_client(plasma_store_state* s, int i) {
 }
 
 typedef struct {
-  plasma_id object_id; // object id of this object
-  plasma_object_info info; // object info like size, creation time and owner
-  int fd; // memory mapped file containing the object
-  UT_hash_handle handle; // handle for the uthash table
+  // Object id of this object.
+  plasma_id object_id;
+  // Object info like size, creation time and owner.
+  plasma_object_info info;
+  // Memory mapped file containing the object.
+  int fd;
+  // Handle for the uthash table.
+  UT_hash_handle handle;
 } object_table_entry;
 
 // objects that are still being written by their owner process
 object_table_entry* open_objects = NULL;
 
-// objects that have already been sealed by their owner process and
-// can now be shared with other processes
+// Objects that have already been sealed by their owner process and
+// can now be shared with other processes.
 object_table_entry* sealed_objects = NULL;
 
 typedef struct {
-  plasma_id object_id; // object id of this object
-  int num_waiting; // number of processes waiting for the object
-  int conn[MAX_NUM_CLIENTS]; // socket connections to waiting clients
-  UT_hash_handle handle; // handle for the uthash table
+  // Object id of this object.
+  plasma_id object_id;
+  // Number of processes waiting for the object.
+  int num_waiting;
+  // Socket connections to waiting clients.
+  int conn[MAX_NUM_CLIENTS];
+  // Handle for the uthash table.
+  UT_hash_handle handle;
 } object_notify_entry;
 
-// objects that processes are waiting for
+// Objects that processes are waiting for.
 object_notify_entry* objects_notify = NULL;
 
 // Create a buffer. This is creating a temporary file and then
@@ -107,7 +118,7 @@ int create_buffer(int64_t size) {
   return fd;
 }
 
-// create a new object buffer in the hash table
+// Create a new object buffer in the hash table.
 void create_object(int conn, plasma_request* req) {
   LOG_INFO("creating object"); // TODO(pcm): add object_id here
   int fd = create_buffer(req->size);
@@ -125,7 +136,7 @@ void create_object(int conn, plasma_request* req) {
   send_fd(conn, fd, (char*) &reply, sizeof(plasma_reply));
 }
 
-// get an object from the hash table
+// Get an object from the hash table.
 void get_object(int conn, plasma_request* req) {
   object_table_entry *entry;
   HASH_FIND(handle, sealed_objects, &req->object_id, sizeof(plasma_id), entry);
@@ -146,7 +157,7 @@ void get_object(int conn, plasma_request* req) {
   }
 }
 
-// seal an object that has been created in the hash table
+// Seal an object that has been created in the hash table.
 void seal_object(int conn, plasma_request* req) {
   LOG_INFO("sealing object"); // TODO(pcm): add object_id here
   object_table_entry *entry;
@@ -158,7 +169,7 @@ void seal_object(int conn, plasma_request* req) {
   int64_t size = entry->info.size;
   int fd = entry->fd;
   HASH_ADD(handle, sealed_objects, object_id, sizeof(plasma_id), entry);
-  // inform processes that the object is ready now
+  // Inform processes that the object is ready now.
   object_notify_entry* notify_entry;
   HASH_FIND(handle, objects_notify, &req->object_id, sizeof(plasma_id), notify_entry);
   if (!notify_entry) {
@@ -205,7 +216,7 @@ void event_loop(int socket) {
         continue;
       if (state.waiting[i].fd == socket) {
         while (1) {
-          // handle new incoming connections
+          // Handle new incoming connections.
           int new_socket = accept(socket, NULL, NULL);
           if (new_socket < 0) {
             if (errno != EWOULDBLOCK) {
