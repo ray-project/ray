@@ -10,7 +10,7 @@
 #include <sys/un.h>
 #include <strings.h>
 #include <netinet/in.h>
-#include <netdb.h> 
+#include <netdb.h>
 
 #include "plasma.h"
 #include "fling.h"
@@ -77,7 +77,18 @@ int plasma_store_connect(const char* socket_name) {
   memset(&addr, 0, sizeof(addr));
   addr.sun_family = AF_UNIX;
   strncpy(addr.sun_path, socket_name, sizeof(addr.sun_path)-1);
-  if (connect(fd, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
+  // Try to connect to the Plasma store. If unsuccessful, retry several times.
+  int connected_successfully = 0;
+  for (int num_attempts = 0; num_attempts < 50; ++num_attempts) {
+    if (connect(fd, (struct sockaddr*)&addr, sizeof(addr)) == 0) {
+      connected_successfully = 1;
+      break;
+    }
+    // Sleep for 100 milliseconds.
+    usleep(100000);
+  }
+  // If we could not connect to the Plasma store, exit.
+  if (!connected_successfully) {
     LOG_ERR("could not connect to store %s", socket_name);
     exit(-1);
   }
