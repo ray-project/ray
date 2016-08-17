@@ -1,7 +1,6 @@
 import os
 import subprocess
 import sys
-import time
 import unittest
 
 import plasma
@@ -12,7 +11,6 @@ class TestPlasmaAPI(unittest.TestCase):
     # Start Plasma.
     plasma_store_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../build/plasma_store")
     self.p = subprocess.Popen([plasma_store_executable, "-s", "/tmp/store"])
-    time.sleep(0.1)
     # Connect to Plasma.
     self.plasma_client = plasma.PlasmaClient("/tmp/store")
 
