@@ -654,6 +654,8 @@ def init(start_ray_local=False, num_workers=None, num_objstores=None, scheduler_
       Exception: An exception is raised if an inappropriate combination of
         arguments is passed in.
   """
+  # Make GRPC only print error messages.
+  os.environ["GRPC_VERBOSITY"] = "ERROR"
   if driver_mode == raylib.PYTHON_MODE:
     # If starting Ray in PYTHON_MODE, don't start any other processes.
     pass
