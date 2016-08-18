@@ -128,7 +128,7 @@ void initiate_transfer(plasma_manager_state* state, plasma_request* req) {
   int manager_id = req->manager_id;
   int c = plasma_store_connect(state->store_socket_name);
   plasma_buffer buf = plasma_get(c, req->object_id);
-  
+
   int fd = socket(PF_INET, SOCK_STREAM, 0);
   if (fd < 0) {
     LOG_ERR("could not create socket");
@@ -274,7 +274,7 @@ void event_loop(int sock, plasma_manager_state* state) {
         LOG_INFO("new connection with id %d", conn_id);
       } else {
         read_from_socket(state, i, &req);
-      } 
+      }
     }
   }
 }
@@ -346,8 +346,6 @@ void start_server(const char *store_socket_name, const char* master_addr,
   event_loop(sock, &state);
 }
 
-
-
 int main(int argc, char* argv[]) {
   // Socket name of the plasma store this manager is connected to.
   char *store_socket_name = NULL;
@@ -384,7 +382,7 @@ int main(int argc, char* argv[]) {
   const char *format = "%15[0-9.]:%5[0-9]";
   char nameserver_addr[16] = { 0 };
   char nameserver_port[6] = { 0 };
-  if(!nameserver_addr_port || sscanf(nameserver_addr_port, format, nameserver_addr, nameserver_port) != 2) {
+  if (!nameserver_addr_port || sscanf(nameserver_addr_port, format, nameserver_addr, nameserver_port) != 2) {
     LOG_ERR("need to specify nameserver address in the format 123.456.789.10:12345 with -n switch");
     exit(-1);
   }
