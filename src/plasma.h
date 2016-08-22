@@ -38,12 +38,10 @@ enum plasma_request_type {
   PLASMA_SEAL, // seal an object
   PLASMA_TRANSFER, // request transfer to another store
   PLASMA_DATA, // header for sending data
-  PLASMA_REGISTER // register a plasma manager
 };
 
 typedef struct {
   int type;
-  int manager_id;
   plasma_id object_id;
   int64_t size;
   uint8_t addr[4];

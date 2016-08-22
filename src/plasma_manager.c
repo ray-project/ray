@@ -50,13 +50,6 @@ typedef struct {
 } conn_state;
 
 typedef struct {
-  // Address of the manager.
-  struct sockaddr_in name;
-  // Is this manager connected?
-  int connected;
-} manager_state;
-
-typedef struct {
   // Name of the socket connecting to local plasma store.
   const char* store_socket_name;
   // Number of connections.
@@ -65,35 +58,16 @@ typedef struct {
   struct pollfd waiting[MAX_CONNECTIONS];
   // Status of connections (both control and data).
   conn_state conn[MAX_CONNECTIONS];
-  // Other plasma managers in the cluster.
-  manager_state managers[MAX_NUM_MANAGERS];
 } plasma_manager_state;
 
 void init_manager_state(plasma_manager_state *s, const char* store_socket_name) {
   memset(&s->waiting, 0, sizeof(s->waiting));
   memset(&s->conn, 0, sizeof(s->conn));
-  memset(&s->managers, 0, sizeof(s->managers));
   s->num_conn = 0;
   s->store_socket_name = store_socket_name;
 }
 
 #define h_addr h_addr_list[0]
-
-// Add name info for another plasma manager from the cluster.
-void add_manager(plasma_manager_state *s, int manager_id, char *ip_address, int port) {
-  assert(ip_address);
-  assert(s);
-  struct hostent *manager = gethostbyname(ip_address);
-  if (!manager) {
-    LOG_ERR("plasma manager %s not found", ip_address);
-    exit(-1);
-  }
-  s->managers[manager_id].connected = 1;
-  struct sockaddr_in *name = &s->managers[manager_id].name;
-  name->sin_family = AF_INET;
-  bcopy(manager->h_addr, &name->sin_addr.s_addr, manager->h_length);
-  name->sin_port = htons(port);
-}
 
 // Add connection for sending commands or data to another plasma manager
 // (returns the connection id).
@@ -125,7 +99,6 @@ void remove_conn(plasma_manager_state* s, int i) {
 // a connection to both the manager and the local object store and sends
 // the data header to the other object manager.
 void initiate_transfer(plasma_manager_state* state, plasma_request* req) {
-  int manager_id = req->manager_id;
   int c = plasma_store_connect(state->store_socket_name);
   plasma_buffer buf = plasma_get(c, req->object_id);
 
@@ -134,9 +107,24 @@ void initiate_transfer(plasma_manager_state* state, plasma_request* req) {
     LOG_ERR("could not create socket");
     exit(-1);
   }
-  int r = connect(fd, (struct sockaddr*) &state->managers[manager_id].name, sizeof(state->managers[manager_id].name));
+  
+  char ip_addr[16];
+  snprintf(ip_addr, 32, "%d.%d.%d.%d",
+                    req->addr[0], req->addr[1],
+                    req->addr[2], req->addr[3]);
+  struct hostent *manager = gethostbyname(ip_addr); // TODO(pcm): cache this
+  if (!manager) {
+    LOG_ERR("plasma manager %s not found", ip_addr);
+    exit(-1);
+  }
+  struct sockaddr_in addr;
+  addr.sin_family = AF_INET;
+  bcopy(manager->h_addr, &addr.sin_addr.s_addr, manager->h_length);
+  addr.sin_port = htons(req->port);
+  
+  int r = connect(fd, (struct sockaddr*) &addr, sizeof(addr));
   if (r < 0) {
-    LOG_ERR("could not establish connection to manager with id %d", manager_id);
+    LOG_ERR("could not establish connection to manager with id %s:%d", &ip_addr[0], req->port);
     exit(-1);
   }
 
@@ -160,21 +148,8 @@ void setup_data_connection(int conn_idx, plasma_manager_state* state, plasma_req
 void process_command(int conn_idx, plasma_manager_state* state, plasma_request* req) {
   switch (req->type) {
   case PLASMA_TRANSFER:
-    LOG_INFO("transfering object to manager with id %d", req->manager_id);
+    LOG_INFO("transfering object to manager with port %d", req->port);
     initiate_transfer(state, req);
-    break;
-  case PLASMA_REGISTER: {
-      char buff[16];
-      snprintf(buff, 32, "%d.%d.%d.%d",
-               req->addr[0], req->addr[1],
-               req->addr[2], req->addr[3]);
-      if (req->manager_id >= MAX_NUM_MANAGERS) {
-        LOG_ERR("manager_id %d out of bounds", req->manager_id);
-      } else {
-        add_manager(state, req->manager_id, buff, req->port);
-        LOG_INFO("registering %s:%d with id %d", buff, req->port, req->manager_id);
-      }
-    }
     break;
   case PLASMA_DATA:
     LOG_INFO("starting to stream data");
@@ -279,37 +254,7 @@ void event_loop(int sock, plasma_manager_state* state) {
   }
 }
 
-// Register this plasma manager with the nameserver.
-void register_with_nameserver(const char* nameserver_addr, int nameserver_port,
-                              const char* manager_addr, int manager_port) {
-  int fd = socket(PF_INET, SOCK_STREAM, 0);
-  if (fd < 0) {
-    LOG_ERR("socket for nameserver connection could not be established");
-    exit(-1);
-  }
-  struct hostent *host = gethostbyname(nameserver_addr);
-  if (!host) {
-    LOG_ERR("nameserver %s not found", nameserver_addr);
-    exit(-1);
-  }
-  struct sockaddr_in nameserver;
-  memset(&nameserver, 0, sizeof(struct sockaddr_in));
-  nameserver.sin_family = AF_INET;
-  bcopy(host->h_addr, &nameserver.sin_addr.s_addr, host->h_length);
-  nameserver.sin_port = htons(nameserver_port);
-  if (connect(fd, (struct sockaddr*) &nameserver, sizeof(nameserver)) == -1) {
-    LOG_ERR("could not connect to nameserver %s:%d", nameserver_addr, nameserver_port);
-    exit(-1);
-  }
-  plasma_request req = { .type = PLASMA_REGISTER, .port = manager_port };
-  // TODO(pcm): input validation
-  sscanf(manager_addr, "%" SCNu8 ".%" SCNu8 ".%" SCNu8 ".%" SCNu8, &req.addr[0], &req.addr[1], &req.addr[2], &req.addr[3]);
-  plasma_send(fd, &req);
-  close(fd);
-}
-
-void start_server(const char *store_socket_name, const char* master_addr,
-                  const char* nameserver_addr, int nameserver_port) {
+void start_server(const char *store_socket_name, const char* master_addr, int port) {
   struct sockaddr_in name;
   int sock = socket(PF_INET, SOCK_STREAM, 0);
   if (sock < 0) {
@@ -317,7 +262,7 @@ void start_server(const char *store_socket_name, const char* master_addr,
     exit(-1);
   }
   name.sin_family = AF_INET;
-  name.sin_port = 0;
+  name.sin_port = htons(port);
   name.sin_addr.s_addr = htonl(INADDR_ANY);
   int on = 1;
   // TODO(pcm): http://stackoverflow.com/q/1150635
@@ -330,17 +275,11 @@ void start_server(const char *store_socket_name, const char* master_addr,
     LOG_ERR("could not bind socket");
     exit(-1);
   }
-  socklen_t len = sizeof(name);
-  if (getsockname(sock, (struct sockaddr*) &name, &len) == -1) {
-    LOG_ERR("getsockname failed");
-  } else {
-    LOG_INFO("listening on port %d", ntohs(name.sin_port));
-  }
+  LOG_INFO("listening on port %d", port);
   if (listen(sock, 5) == -1) {
     LOG_ERR("could not listen to socket");
     exit(-1);
   }
-  register_with_nameserver(nameserver_addr, nameserver_port, master_addr, ntohs(name.sin_port));
   plasma_manager_state state;
   init_manager_state(&state, store_socket_name);
   event_loop(sock, &state);
@@ -349,21 +288,21 @@ void start_server(const char *store_socket_name, const char* master_addr,
 int main(int argc, char* argv[]) {
   // Socket name of the plasma store this manager is connected to.
   char *store_socket_name = NULL;
-  // IP address and port of the nameserver.
-  char *nameserver_addr_port = NULL;
-  // IP address this host can be reached at from the outside.
+  // IP address of this node
   char *master_addr = NULL;
+  // Port number the manager should use
+  int port;
   int c;
-  while ((c = getopt(argc, argv, "n:s:m:")) != -1) {
+  while ((c = getopt(argc, argv, "s:m:p:")) != -1) {
     switch (c) {
     case 's':
       store_socket_name = optarg;
       break;
-    case 'n':
-      nameserver_addr_port = optarg;
-      break;
     case 'm':
       master_addr = optarg;
+      break;
+    case 'p':
+      port = atoi(optarg);
       break;
     default:
       LOG_ERR("unknown option %c", c);
@@ -378,13 +317,5 @@ int main(int argc, char* argv[]) {
     LOG_ERR("please specify ip address of the current host in the format 123.456.789.10 with -m switch");
     exit(-1);
   }
-  // Parse nameserver address and port.
-  const char *format = "%15[0-9.]:%5[0-9]";
-  char nameserver_addr[16] = { 0 };
-  char nameserver_port[6] = { 0 };
-  if (!nameserver_addr_port || sscanf(nameserver_addr_port, format, nameserver_addr, nameserver_port) != 2) {
-    LOG_ERR("need to specify nameserver address in the format 123.456.789.10:12345 with -n switch");
-    exit(-1);
-  }
-  start_server(store_socket_name, master_addr, nameserver_addr, atoi(nameserver_port));
+  start_server(store_socket_name, master_addr, port);
 }

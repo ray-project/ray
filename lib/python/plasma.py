@@ -16,12 +16,9 @@ PLASMA_SEAL = 2
 PLASMA_TRANSFER = 3
 PLASMA_DATA = 4
 PLASMA_REGISTER = 5
-PLASMA_GET_MANAGER_PORT = 6
-PLASMA_RETURN_MANAGER_PORT = 7
 
 class PlasmaRequest(ctypes.Structure):
   _fields_ = [("type", ctypes.c_int),
-              ("manager_id", ctypes.c_int),
               ("object_id", PlasmaID),
               ("size", ctypes.c_int64),
               ("addr", Addr),
@@ -57,16 +54,11 @@ class PlasmaManager(object):
     self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     self.sock.connect((addr, port))
 
-  def register(self, manager_id, addr, port):
-    """Register another object manager."""
-    req = PlasmaRequest(type=PLASMA_REGISTER, manager_id=manager_id,
-                        addr=Addr(*map(int, addr.split("."))), port=port)
-    self.sock.send(buffer(req)[:])
-
-  def transfer(self, manager_id, object_id):
+  def transfer(self, addr, port, object_id):
     """Transfer local object with id object_id to manager with id manager_id."""
-    req = PlasmaRequest(type=PLASMA_TRANSFER, manager_id=manager_id,
-                        object_id=make_plasma_id(object_id))
+    req = PlasmaRequest(type=PLASMA_TRANSFER, object_id=make_plasma_id(object_id),
+                        addr=Addr(*map(int, addr.split("."))), port=port)
+    print "sending port", port
     self.sock.send(buffer(req)[:])
 
 class PlasmaClient(object):
