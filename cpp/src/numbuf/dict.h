@@ -34,6 +34,7 @@ public:
         value list of the dictionary
   */
   std::shared_ptr<arrow::StructArray> Finish(
+    std::shared_ptr<arrow::Array> key_tuple_data,
     std::shared_ptr<arrow::Array> list_data,
     std::shared_ptr<arrow::Array> tuple_data,
     std::shared_ptr<arrow::Array> dict_data);
