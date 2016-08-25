@@ -171,29 +171,33 @@ Status DeserializeTuple(std::shared_ptr<Array> array, int32_t start_idx, int32_t
 
 Status SerializeDict(std::vector<PyObject*> dicts, std::shared_ptr<Array>* out) {
   DictBuilder result;
-  std::vector<PyObject*> sublists, subtuples, subdicts, dummy;
+  std::vector<PyObject*> key_tuples, val_lists, val_tuples, val_dicts, dummy;
   for (const auto& dict : dicts) {
     PyObject *key, *value;
     Py_ssize_t pos = 0;
     while (PyDict_Next(dict, &pos, &key, &value)) {
-      RETURN_NOT_OK(append(key, result.keys(), dummy, dummy, dummy));
+      RETURN_NOT_OK(append(key, result.keys(), dummy, key_tuples, dummy));
       DCHECK(dummy.size() == 0);
-      RETURN_NOT_OK(append(value, result.vals(), sublists, subtuples, subdicts));
+      RETURN_NOT_OK(append(value, result.vals(), val_lists, val_tuples, val_dicts));
     }
   }
-  std::shared_ptr<Array> val_list;
-  if (sublists.size() > 0) {
-    RETURN_NOT_OK(SerializeSequences(sublists, &val_list));
+  std::shared_ptr<Array> key_tuples_arr;
+  if (key_tuples.size() > 0) {
+    RETURN_NOT_OK(SerializeSequences(key_tuples, &key_tuples_arr));
   }
-  std::shared_ptr<Array> val_tuples;
-  if (subtuples.size() > 0) {
-    RETURN_NOT_OK(SerializeSequences(subtuples, &val_tuples));
+  std::shared_ptr<Array> val_list_arr;
+  if (val_lists.size() > 0) {
+    RETURN_NOT_OK(SerializeSequences(val_lists, &val_list_arr));
   }
-  std::shared_ptr<Array> val_dict;
-  if (subdicts.size() > 0) {
-    RETURN_NOT_OK(SerializeDict(subdicts, &val_dict));
+  std::shared_ptr<Array> val_tuples_arr;
+  if (val_tuples.size() > 0) {
+    RETURN_NOT_OK(SerializeSequences(val_tuples, &val_tuples_arr));
   }
-  *out = result.Finish(val_list, val_tuples, val_dict);
+  std::shared_ptr<Array> val_dict_arr;
+  if (val_dicts.size() > 0) {
+    RETURN_NOT_OK(SerializeDict(val_dicts, &val_dict_arr));
+  }
+  *out = result.Finish(key_tuples_arr, val_list_arr, val_tuples_arr, val_dict_arr);
   return Status::OK();
 }
 
