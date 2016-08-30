@@ -6,11 +6,11 @@ __all__ = ["matrix_power", "solve", "tensorsolve", "tensorinv", "inv",
            "svd", "eig", "eigh", "lstsq", "norm", "qr", "cond", "matrix_rank",
            "LinAlgError", "multi_dot"]
 
-@ray.remote()
+@ray.remote
 def matrix_power(M, n):
   return np.linalg.matrix_power(M, n)
 
-@ray.remote()
+@ray.remote
 def solve(a, b):
   return np.linalg.solve(a, b)
 
@@ -22,31 +22,31 @@ def tensorsolve(a):
 def tensorinv(a):
   raise NotImplementedError
 
-@ray.remote()
+@ray.remote
 def inv(a):
   return np.linalg.inv(a)
 
-@ray.remote()
+@ray.remote
 def cholesky(a):
   return np.linalg.cholesky(a)
 
-@ray.remote()
+@ray.remote
 def eigvals(a):
   return np.linalg.eigvals(a)
 
-@ray.remote()
+@ray.remote
 def eigvalsh(a):
   raise NotImplementedError
 
-@ray.remote()
+@ray.remote
 def pinv(a):
   return np.linalg.pinv(a)
 
-@ray.remote()
+@ray.remote
 def slogdet(a):
   raise NotImplementedError
 
-@ray.remote()
+@ray.remote
 def det(a):
   return np.linalg.det(a)
 
@@ -66,7 +66,7 @@ def eigh(a):
 def lstsq(a, b):
   return np.linalg.lstsq(a)
 
-@ray.remote()
+@ray.remote
 def norm(x):
   return np.linalg.norm(x)
 
@@ -74,14 +74,14 @@ def norm(x):
 def qr(a):
   return np.linalg.qr(a)
 
-@ray.remote()
+@ray.remote
 def cond(x):
   return np.linalg.cond(x)
 
-@ray.remote()
+@ray.remote
 def matrix_rank(M):
   return np.linalg.matrix_rank(M)
 
-@ray.remote()
+@ray.remote
 def multi_dot(*a):
   raise NotImplementedError

@@ -964,7 +964,7 @@ def main_loop(worker=global_worker):
       # TODO(rkn): Why is the below line necessary?
       function.__module__ = module
       assert function_name == "{}.{}".format(function.__module__, function.__name__), "The remote function name does not match the name that was passed in."
-      worker.functions[function_name] = remote(num_return_vals, worker)(function)
+      worker.functions[function_name] = remote(num_return_vals=num_return_vals)(function)
       _logger().info("Successfully imported remote function {}.".format(function_name))
       # Noify the scheduler that the remote function imported successfully.
       # We pass an empty error message string because the import succeeded.
@@ -1069,71 +1069,89 @@ def _export_reusable_variable(name, reusable, worker=global_worker):
     raise Exception("_export_reusable_variable can only be called on a driver.")
   raylib.export_reusable_variable(worker.handle, name, pickling.dumps(reusable.initializer), pickling.dumps(reusable.reinitializer))
 
-def remote(num_return_vals=1, worker=global_worker):
+def remote(*args, **kwargs):
   """This decorator is used to create remote functions.
 
   Args:
     num_return_vals (int): The number of object IDs that a call to this function
       should return.
   """
-  def remote_decorator(func):
-    def func_call(*args, **kwargs):
-      """This gets run immediately when a worker calls a remote function."""
-      check_connected()
-      args = list(args)
-      args.extend([kwargs[keyword] if kwargs.has_key(keyword) else default for keyword, default in keyword_defaults[len(args):]]) # fill in the remaining arguments
-      if _mode() == raylib.PYTHON_MODE:
-        # In raylib.PYTHON_MODE, remote calls simply execute the function. We copy the
-        # arguments to prevent the function call from mutating them and to match
-        # the usual behavior of immutable remote objects.
-        return func(*copy.deepcopy(args))
-      objectids = _submit_task(func_name, args)
-      if len(objectids) == 1:
-        return objectids[0]
-      elif len(objectids) > 1:
-        return objectids
-    def func_executor(arguments):
-      """This gets run when the remote function is executed."""
-      _logger().info("Calling function {}".format(func.__name__))
-      start_time = time.time()
-      result = func(*arguments)
-      end_time = time.time()
-      _logger().info("Finished executing function {}, it took {} seconds".format(func.__name__, end_time - start_time))
-      return result
-    def func_invoker(*args, **kwargs):
-      """This is returned by the decorator and used to invoke the function."""
-      raise Exception("Remote functions cannot be called directly. Instead of running '{}()', try '{}.remote()'.".format(func_name, func_name))
-    func_invoker.remote = func_call
-    func_invoker.executor = func_executor
-    func_invoker.is_remote = True
-    func_name = "{}.{}".format(func.__module__, func.__name__)
-    func_invoker.func_name = func_name
-    func_invoker.func_doc = func.func_doc
-    sig_params = [(k, v) for k, v in funcsigs.signature(func).parameters.iteritems()]
-    keyword_defaults = [(k, v.default) for k, v in sig_params]
-    has_vararg_param = any([v.kind == v.VAR_POSITIONAL for k, v in sig_params])
-    func_invoker.has_vararg_param = has_vararg_param
-    has_kwargs_param = any([v.kind == v.VAR_KEYWORD for k, v in sig_params])
-    check_signature_supported(has_kwargs_param, has_vararg_param, keyword_defaults, func_name)
+  worker = global_worker
+  def make_remote_decorator(num_return_vals):
+    def remote_decorator(func):
+      def func_call(*args, **kwargs):
+        """This gets run immediately when a worker calls a remote function."""
+        check_connected()
+        args = list(args)
+        args.extend([kwargs[keyword] if kwargs.has_key(keyword) else default for keyword, default in keyword_defaults[len(args):]]) # fill in the remaining arguments
+        if any([arg is funcsigs._empty for arg in args]):
+          raise Exception("Not enough arguments were provided to {}.".format(func_name))
+        if _mode() == raylib.PYTHON_MODE:
+          # In raylib.PYTHON_MODE, remote calls simply execute the function. We copy the
+          # arguments to prevent the function call from mutating them and to match
+          # the usual behavior of immutable remote objects.
+          return func(*copy.deepcopy(args))
+        objectids = _submit_task(func_name, args)
+        if len(objectids) == 1:
+          return objectids[0]
+        elif len(objectids) > 1:
+          return objectids
+      def func_executor(arguments):
+        """This gets run when the remote function is executed."""
+        _logger().info("Calling function {}".format(func.__name__))
+        start_time = time.time()
+        result = func(*arguments)
+        end_time = time.time()
+        _logger().info("Finished executing function {}, it took {} seconds".format(func.__name__, end_time - start_time))
+        return result
+      def func_invoker(*args, **kwargs):
+        """This is returned by the decorator and used to invoke the function."""
+        raise Exception("Remote functions cannot be called directly. Instead of running '{}()', try '{}.remote()'.".format(func_name, func_name))
+      func_invoker.remote = func_call
+      func_invoker.executor = func_executor
+      func_invoker.is_remote = True
+      func_name = "{}.{}".format(func.__module__, func.__name__)
+      func_invoker.func_name = func_name
+      func_invoker.func_doc = func.func_doc
 
-    # Everything ready - export the function
-    if worker.mode in [None, raylib.SCRIPT_MODE, raylib.SILENT_MODE]:
-      func_name_global_valid = func.__name__ in func.__globals__
-      func_name_global_value = func.__globals__.get(func.__name__)
-      # Set the function globally to make it refer to itself
-      func.__globals__[func.__name__] = func_invoker  # Allow the function to reference itself as a global variable
-      try:
-        to_export = pickling.dumps((func, num_return_vals, func.__module__))
-      finally:
-        # Undo our changes
-        if func_name_global_valid: func.__globals__[func.__name__] = func_name_global_value
-        else: del func.__globals__[func.__name__]
-    if worker.mode in [raylib.SCRIPT_MODE, raylib.SILENT_MODE]:
-      raylib.export_remote_function(worker.handle, func_name, to_export)
-    elif worker.mode is None:
-      worker.cached_remote_functions.append((func_name, to_export))
-    return func_invoker
-  return remote_decorator
+      sig_params = [(k, v) for k, v in funcsigs.signature(func).parameters.iteritems()]
+      keyword_defaults = [(k, v.default) for k, v in sig_params]
+      has_vararg_param = any([v.kind == v.VAR_POSITIONAL for k, v in sig_params])
+      func_invoker.has_vararg_param = has_vararg_param
+      has_kwargs_param = any([v.kind == v.VAR_KEYWORD for k, v in sig_params])
+      check_signature_supported(has_kwargs_param, has_vararg_param, keyword_defaults, func_name)
+
+      # Everything ready - export the function
+      if worker.mode in [None, raylib.SCRIPT_MODE, raylib.SILENT_MODE]:
+        func_name_global_valid = func.__name__ in func.__globals__
+        func_name_global_value = func.__globals__.get(func.__name__)
+        # Set the function globally to make it refer to itself
+        func.__globals__[func.__name__] = func_invoker  # Allow the function to reference itself as a global variable
+        try:
+          to_export = pickling.dumps((func, num_return_vals, func.__module__))
+        finally:
+          # Undo our changes
+          if func_name_global_valid: func.__globals__[func.__name__] = func_name_global_value
+          else: del func.__globals__[func.__name__]
+      if worker.mode in [raylib.SCRIPT_MODE, raylib.SILENT_MODE]:
+        raylib.export_remote_function(worker.handle, func_name, to_export)
+      elif worker.mode is None:
+        worker.cached_remote_functions.append((func_name, to_export))
+      return func_invoker
+
+    return remote_decorator
+
+  if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
+    # This is the case where the decorator is just @ray.remote.
+    num_return_vals = 1
+    func = args[0]
+    return make_remote_decorator(num_return_vals)(func)
+  else:
+    # This is the case where the decorator is something like
+    # @ray.remote(num_return_vals=2).
+    assert len(args) == 0 and "num_return_vals" in kwargs.keys(), "The @ray.remote decorator must be applied either with no arguments and no parentheses, for example '@ray.remote', or it must be applied with only the argument num_return_vals, like '@ray.remote(num_return_vals=2)'."
+    num_return_vals = kwargs["num_return_vals"]
+    return make_remote_decorator(num_return_vals)
 
 def check_signature_supported(has_kwargs_param, has_vararg_param, keyword_defaults, name):
   """Check if we support the signature of this function.

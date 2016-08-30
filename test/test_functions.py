@@ -10,54 +10,54 @@ def handle_int(a, b):
 
 # Test aliasing
 
-@ray.remote()
+@ray.remote
 def test_alias_f():
   return np.ones([3, 4, 5])
 
-@ray.remote()
+@ray.remote
 def test_alias_g():
   return test_alias_f.remote()
 
-@ray.remote()
+@ray.remote
 def test_alias_h():
   return test_alias_g.remote()
 
 # Test timing
 
-@ray.remote()
+@ray.remote
 def empty_function():
   pass
 
-@ray.remote()
+@ray.remote
 def trivial_function():
   return 1
 
 # Test keyword arguments
 
-@ray.remote()
+@ray.remote
 def keyword_fct1(a, b="hello"):
   return "{} {}".format(a, b)
 
-@ray.remote()
+@ray.remote
 def keyword_fct2(a="hello", b="world"):
   return "{} {}".format(a, b)
 
-@ray.remote()
+@ray.remote
 def keyword_fct3(a, b, c="hello", d="world"):
   return "{} {} {} {}".format(a, b, c, d)
 
 # Test variable numbers of arguments
 
-@ray.remote()
+@ray.remote
 def varargs_fct1(*a):
   return " ".join(map(str, a))
 
-@ray.remote()
+@ray.remote
 def varargs_fct2(a, *b):
   return " ".join(map(str, b))
 
 try:
-  @ray.remote()
+  @ray.remote
   def kwargs_throw_exception(**c):
     return ()
   kwargs_exception_thrown = False
@@ -65,7 +65,7 @@ except:
   kwargs_exception_thrown = True
 
 try:
-  @ray.remote()
+  @ray.remote
   def varargs_and_kwargs_throw_exception(a, b="hi", *c):
     return "{} {} {}".format(a, b, c)
   varargs_and_kwargs_exception_thrown = False
@@ -74,11 +74,11 @@ except:
 
 # test throwing an exception
 
-@ray.remote()
+@ray.remote
 def throw_exception_fct1():
   raise Exception("Test function 1 intentionally failed.")
 
-@ray.remote()
+@ray.remote
 def throw_exception_fct2():
   raise Exception("Test function 2 intentionally failed.")
 
@@ -88,18 +88,18 @@ def throw_exception_fct3(x):
 
 # test Python mode
 
-@ray.remote()
+@ray.remote
 def python_mode_f():
   return np.array([0, 0])
 
-@ray.remote()
+@ray.remote
 def python_mode_g(x):
   x[0] = 1
   return x
 
 # test no return values
 
-@ray.remote()
+@ray.remote
 def no_op():
   pass
 
@@ -107,6 +107,6 @@ class TestClass(object):
   def __init__(self):
     self.a = 5
 
-@ray.remote()
+@ray.remote
 def test_unknown_type():
   return TestClass()

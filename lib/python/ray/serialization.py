@@ -28,7 +28,7 @@ class Tuple(tuple):
 
 class Str(str):
   pass
-  
+
 class Unicode(unicode):
   pass
 

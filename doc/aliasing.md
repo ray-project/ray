@@ -10,15 +10,15 @@ However, to provide a more flexible API, we allow tasks to not only return
 values, but to also return object ids to values. As an examples, consider
 the following code.
 ```python
-@ray.remote()
+@ray.remote
 def f()
   return np.zeros(5)
 
-@ray.remote()
+@ray.remote
 def g()
   return f()
 
-@ray.remote()
+@ray.remote
 def h()
   return g()
 ```

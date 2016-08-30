@@ -5,7 +5,7 @@ functions. Remote functions are written like regular Python functions, but with
 the `@ray.remote` decorator on top.
 
 ```python
-@ray.remote()
+@ray.remote
 def increment(n):
   return n + 1
 ```

@@ -76,7 +76,7 @@ class TaskStatusTest(unittest.TestCase):
         return reducer, ()
       def __call__(self):
         return
-    ray.remote()(Foo())
+    ray.remote(Foo())
     for _ in range(100): # Retry if we need to wait longer.
       if len(ray.task_info()["failed_remote_function_imports"]) >= 1:
         break
@@ -112,7 +112,7 @@ class TaskStatusTest(unittest.TestCase):
     def reinitializer(foo):
       raise Exception("The reinitializer failed.")
     ray.reusables.foo = ray.Reusable(initializer, reinitializer)
-    @ray.remote()
+    @ray.remote
     def use_foo():
       ray.reusables.foo
     use_foo.remote()
