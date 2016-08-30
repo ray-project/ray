@@ -6,7 +6,7 @@ import ray
 
 from core import *
 
-@ray.remote([List], [DistArray])
+@ray.remote()
 def normal(shape):
   num_blocks = DistArray.compute_num_blocks(shape)
   objectids = np.empty(num_blocks, dtype=object)

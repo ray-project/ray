@@ -39,7 +39,7 @@ def load_chunk(tarfile, size=None):
     filenames.append(filename)
   return np.concatenate(result), filenames
 
-@ray.remote([str, str, List], [np.ndarray, List])
+@ray.remote(num_return_vals=2)
 def load_tarfile_from_s3(bucket, s3_key, size=[]):
   """Load an imagenet .tar file.
 
@@ -231,7 +231,7 @@ def net_initialization():
 def net_reinitialization(net_vars):
   return net_vars
 
-@ray.remote([List], [int])
+@ray.remote()
 def num_images(batches):
   """Counts number of images in batches.
 
@@ -244,7 +244,7 @@ def num_images(batches):
   shape_ids = [ra.shape.remote(batch) for batch in batches]
   return sum([ray.get(shape_id)[0] for shape_id in shape_ids])
 
-@ray.remote([List], [np.ndarray])
+@ray.remote()
 def compute_mean_image(batches):
   """Computes the mean image given a list of batches of images.
 
@@ -261,7 +261,7 @@ def compute_mean_image(batches):
   n_images = num_images.remote(batches)
   return np.sum(sum_images, axis=0).astype("float64") / ray.get(n_images)
 
-@ray.remote([np.ndarray, np.ndarray, np.ndarray, np.ndarray], [np.ndarray, np.ndarray, np.ndarray, np.ndarray])
+@ray.remote(num_return_vals=4)
 def shuffle_arrays(first_images, first_labels, second_images, second_labels):
   """Shuffles the images and labels from two batches.
 
@@ -306,7 +306,7 @@ def shuffle_pair(first_batch, second_batch):
   images1, labels1, images2, labels2 = shuffle_arrays.remote(first_batch[0], first_batch[1], second_batch[0], second_batch[1])
   return (images1, labels1), (images2, labels2)
 
-@ray.remote([list, dict], [np.ndarray])
+@ray.remote()
 def filenames_to_labels(filenames, filename_label_dict):
   """Converts filename strings to integer labels.
 
@@ -381,7 +381,7 @@ def shuffle(batches):
     new_batches.append(permuted_batches[-1])
   return new_batches
 
-@ray.remote([np.ndarray, np.ndarray, np.ndarray, List], [List])
+@ray.remote()
 def compute_grad(X, Y, mean, weights):
   """Computes the gradient of the network.
 
@@ -406,7 +406,7 @@ def compute_grad(X, Y, mean, weights):
   # Compute the gradients.
   return sess.run([g for (g, v) in comp_grads], feed_dict={images: subset_X, y_true: subset_Y, dropout: 0.5})
 
-@ray.remote([np.ndarray, np.ndarray, List], [np.float32])
+@ray.remote()
 def compute_accuracy(X, Y, weights):
   """Returns the accuracy of the network
 

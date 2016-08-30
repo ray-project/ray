@@ -107,7 +107,7 @@ def add(a, b):
 ```
 A remote function in Ray looks like this.
 ```python
-@ray.remote([int, int], [int])
+@ray.remote()
 def add(a, b):
   return a + b
 ```
@@ -156,7 +156,7 @@ passed into the actual execution of the remote function.
 Note that a remote function can return multiple object IDs.
 
 ```python
-@ray.remote([], [int, float, str])
+@ray.remote(num_return_vals=3)
 def return_multiple():
   return 0, 0.0, "zero"
 
@@ -194,7 +194,7 @@ around `time.sleep`.
 ```python
 import time
 
-@ray.remote([int], [int])
+@ray.remote()
 def sleep(n):
   time.sleep(n)
   return 0
@@ -245,11 +245,11 @@ Computation graphs encode dependencies. For example, suppose we define
 ```python
 import numpy as np
 
-@ray.remote([list], [np.ndarray])
+@ray.remote()
 def zeros(shape):
   return np.zeros(shape)
 
-@ray.remote([np.ndarray, np.ndarray], [np.ndarray])
+@ray.remote()
 def dot(a, b):
   return np.dot(a, b)
 ```
@@ -282,12 +282,12 @@ processes can also call remote functions. To illustrate this, consider the
 following example.
 
 ```python
-@ray.remote([int, int], [int])
+@ray.remote()
 def sub_experiment(i, j):
   # Run the jth sub-experiment for the ith experiment.
   return i + j
 
-@ray.remote([int], [int])
+@ray.remote()
 def run_experiment(i):
   sub_results = []
   # Launch tasks to perform 10 sub-experiments in parallel.
