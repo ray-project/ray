@@ -82,7 +82,7 @@ complicated version of this remote function is defined in
 [hyperopt.py](hyperopt.py).
 
 ```python
-@ray.remote([dict, np.ndarray, np.ndarray, np.ndarray, np.ndarray], [float])
+@ray.remote()
 def train_cnn_and_compute_accuracy(hyperparameters, train_images, train_labels, validation_images, validation_labels):
   # Actual work omitted.
   return validation_accuracy

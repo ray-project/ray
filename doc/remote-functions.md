@@ -5,7 +5,7 @@ functions. Remote functions are written like regular Python functions, but with
 the `@ray.remote` decorator on top.
 
 ```python
-@ray.remote([int], [int])
+@ray.remote()
 def increment(n):
   return n + 1
 ```
@@ -68,7 +68,7 @@ class ExampleClass(object):
     # This example assumes that field1 and field2 are serializable types.
     self.field1 = field1
     self.field2 = field2
-  
+
   @staticmethod
   def deserialize(primitives):
     (field1, field2) = primitives

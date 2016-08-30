@@ -6,7 +6,7 @@ from core import *
 
 __all__ = ["tsqr", "modified_lu", "tsqr_hr", "qr"]
 
-@ray.remote([DistArray], [DistArray, np.ndarray])
+@ray.remote(num_return_vals=2)
 def tsqr(a):
   """
   arguments:
@@ -75,7 +75,7 @@ def tsqr(a):
   return q_result, r
 
 # TODO(rkn): This is unoptimized, we really want a block version of this.
-@ray.remote([DistArray], [DistArray, np.ndarray, np.ndarray])
+@ray.remote(num_return_vals=3)
 def modified_lu(q):
   """
   Algorithm 5 from http://www.eecs.berkeley.edu/Pubs/TechRpts/2013/EECS-2013-175.pdf
@@ -105,19 +105,19 @@ def modified_lu(q):
   U = np.triu(q_work)[:b, :]
   return numpy_to_dist.remote(ray.put(L)), U, S # TODO(rkn): get rid of put
 
-@ray.remote([np.ndarray, np.ndarray, np.ndarray, int], [np.ndarray, np.ndarray])
+@ray.remote(num_return_vals=2)
 def tsqr_hr_helper1(u, s, y_top_block, b):
   y_top = y_top_block[:b, :b]
   s_full = np.diag(s)
   t = -1 * np.dot(u, np.dot(s_full, np.linalg.inv(y_top).T))
   return t, y_top
 
-@ray.remote([np.ndarray, np.ndarray], [np.ndarray])
+@ray.remote()
 def tsqr_hr_helper2(s, r_temp):
   s_full = np.diag(s)
   return np.dot(s_full, r_temp)
 
-@ray.remote([DistArray], [DistArray, np.ndarray, np.ndarray, np.ndarray])
+@ray.remote(num_return_vals=4)
 def tsqr_hr(a):
   """Algorithm 6 from http://www.eecs.berkeley.edu/Pubs/TechRpts/2013/EECS-2013-175.pdf"""
   q, r_temp = tsqr.remote(a)
@@ -127,15 +127,15 @@ def tsqr_hr(a):
   r = tsqr_hr_helper2.remote(s, r_temp)
   return y, t, y_top, r
 
-@ray.remote([np.ndarray, np.ndarray, np.ndarray, np.ndarray], [np.ndarray])
+@ray.remote()
 def qr_helper1(a_rc, y_ri, t, W_c):
   return a_rc - np.dot(y_ri, np.dot(t.T, W_c))
 
-@ray.remote([np.ndarray, np.ndarray], [np.ndarray])
+@ray.remote()
 def qr_helper2(y_ri, a_rc):
   return np.dot(y_ri.T, a_rc)
 
-@ray.remote([DistArray], [DistArray, DistArray])
+@ray.remote(num_return_vals=2)
 def qr(a):
   """Algorithm 7 from http://www.eecs.berkeley.edu/Pubs/TechRpts/2013/EECS-2013-175.pdf"""
   m, n = a.shape[0], a.shape[1]

@@ -262,42 +262,42 @@ class APITest(unittest.TestCase):
     ray.init(start_ray_local=True, num_workers=2)
 
     # Test that we can define a remote function in the shell.
-    @ray.remote([int], [int])
+    @ray.remote()
     def f(x):
       return x + 1
     self.assertEqual(ray.get(f.remote(0)), 1)
 
     # Test that we can redefine the remote function.
-    @ray.remote([int], [int])
+    @ray.remote()
     def f(x):
       return x + 10
     self.assertEqual(ray.get(f.remote(0)), 10)
 
     # Test that we can close over plain old data.
     data = [np.zeros([3, 5]), (1, 2, "a"), [0.0, 1.0, 2L], 2L, {"a": np.zeros(3)}]
-    @ray.remote([], [list])
+    @ray.remote()
     def g():
       return data
     ray.get(g.remote())
 
     # Test that we can close over modules.
-    @ray.remote([], [np.ndarray])
+    @ray.remote()
     def h():
       return np.zeros([3, 5])
     assert_equal(ray.get(h.remote()), np.zeros([3, 5]))
-    @ray.remote([], [float])
+    @ray.remote()
     def j():
       return time.time()
     ray.get(j.remote())
 
     # Test that we can define remote functions that call other remote functions.
-    @ray.remote([int], [int])
+    @ray.remote()
     def k(x):
       return x + 1
-    @ray.remote([int], [int])
+    @ray.remote()
     def l(x):
       return k.remote(x)
-    @ray.remote([int], [int])
+    @ray.remote()
     def m(x):
       return ray.get(l.remote(x))
     self.assertEqual(ray.get(k.remote(1)), 2)
@@ -309,7 +309,7 @@ class APITest(unittest.TestCase):
   def testSelect(self):
     ray.init(start_ray_local=True, num_workers=4)
 
-    @ray.remote([float], [int])
+    @ray.remote()
     def f(delay):
       time.sleep(delay)
       return 1
@@ -345,10 +345,10 @@ class APITest(unittest.TestCase):
     ray.reusables.foo = ray.Reusable(foo_initializer)
     ray.reusables.bar = ray.Reusable(bar_initializer, bar_reinitializer)
 
-    @ray.remote([], [int])
+    @ray.remote()
     def use_foo():
       return ray.reusables.foo
-    @ray.remote([], [list])
+    @ray.remote()
     def use_bar():
       ray.reusables.bar.append(1)
       return ray.reusables.bar
@@ -368,7 +368,7 @@ class APITest(unittest.TestCase):
     def f():
       sys.path.append("fake_directory")
     ray.worker.global_worker.run_function_on_all_workers(f)
-    @ray.remote([], [list])
+    @ray.remote()
     def get_path():
       return sys.path
     self.assertEqual("fake_directory", ray.get(get_path.remote())[-1])
@@ -509,7 +509,7 @@ class PythonCExtensionTest(unittest.TestCase):
     ray.init(start_ray_local=True, num_workers=1)
 
     # Make sure that we aren't accidentally messing up Python's reference counts.
-    @ray.remote([], [int])
+    @ray.remote()
     def f():
       return sys.getrefcount(None)
     first_count = ray.get(f.remote())
@@ -522,7 +522,7 @@ class PythonCExtensionTest(unittest.TestCase):
     ray.init(start_ray_local=True, num_workers=1)
 
     # Make sure that we aren't accidentally messing up Python's reference counts.
-    @ray.remote([], [int])
+    @ray.remote()
     def f():
       return sys.getrefcount(True)
     first_count = ray.get(f.remote())
@@ -535,7 +535,7 @@ class PythonCExtensionTest(unittest.TestCase):
     ray.init(start_ray_local=True, num_workers=1)
 
     # Make sure that we aren't accidentally messing up Python's reference counts.
-    @ray.remote([], [int])
+    @ray.remote()
     def f():
       return sys.getrefcount(False)
     first_count = ray.get(f.remote())
@@ -559,7 +559,7 @@ class ReusablesTest(unittest.TestCase):
     ray.reusables.foo = ray.Reusable(foo_initializer, foo_reinitializer)
     self.assertEqual(ray.reusables.foo, 1)
 
-    @ray.remote([], [int])
+    @ray.remote()
     def use_foo():
       return ray.reusables.foo
     self.assertEqual(ray.get(use_foo.remote()), 1)
@@ -573,7 +573,7 @@ class ReusablesTest(unittest.TestCase):
 
     ray.reusables.bar = ray.Reusable(bar_initializer)
 
-    @ray.remote([], [list])
+    @ray.remote()
     def use_bar():
       ray.reusables.bar.append(4)
       return ray.reusables.bar
@@ -592,7 +592,7 @@ class ReusablesTest(unittest.TestCase):
 
     ray.reusables.baz = ray.Reusable(baz_initializer, baz_reinitializer)
 
-    @ray.remote([int], [np.ndarray])
+    @ray.remote()
     def use_baz(i):
       baz = ray.reusables.baz
       baz[i] = 1
@@ -613,7 +613,7 @@ class ReusablesTest(unittest.TestCase):
 
     ray.reusables.qux = ray.Reusable(qux_initializer, qux_reinitializer)
 
-    @ray.remote([], [int])
+    @ray.remote()
     def use_qux():
       return ray.reusables.qux
     self.assertEqual(ray.get(use_qux.remote()), 0)
@@ -634,7 +634,7 @@ class ClusterAttachingTest(unittest.TestCase):
 
     ray.init(node_ip_address=node_ip_address, scheduler_address=scheduler_address)
 
-    @ray.remote([int], [int])
+    @ray.remote()
     def f(x):
       return x + 1
     self.assertEqual(ray.get(f.remote(0)), 1)
@@ -653,7 +653,7 @@ class ClusterAttachingTest(unittest.TestCase):
 
     ray.init(node_ip_address=node_ip_address, scheduler_address=scheduler_address)
 
-    @ray.remote([int], [int])
+    @ray.remote()
     def f(x):
       return x + 1
     self.assertEqual(ray.get(f.remote(0)), 1)

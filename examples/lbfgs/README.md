@@ -91,12 +91,12 @@ use remote functions to distribute the loading of the data.
 Now, lets turn `loss` and `grad` into remote functions.
 
 ```python
-@ray.remote([np.ndarray, np.ndarray, np.ndarray], [float])
+@ray.remote()
 def loss(theta, xs, ys):
   # compute the loss
   return loss
 
-@ray.remote([np.ndarray, np.ndarray, np.ndarray], [np.ndarray])
+@ray.remote()
 def grad(theta, xs, ys):
   # compute the gradient
   return grad

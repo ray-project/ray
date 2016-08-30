@@ -140,7 +140,7 @@ class TaskStatusTest(unittest.TestCase):
     def reinitializer(foo):
       raise Exception("The reinitializer failed.")
     ray.reusables.foo = ray.Reusable(initializer, reinitializer)
-    @ray.remote([], [])
+    @ray.remote()
     def use_foo():
       ray.reusables.foo
     use_foo.remote()
