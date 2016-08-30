@@ -1,4 +1,3 @@
-from typing import List
 import numpy as np
 import ray.array.remote as ra
 import ray
