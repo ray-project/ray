@@ -4,7 +4,6 @@ import time
 import traceback
 import copy
 import logging
-import typing
 import funcsigs
 import numpy as np
 import colorama
@@ -192,13 +191,13 @@ class Reusable(object):
 
   def __init__(self, initializer, reinitializer=None):
     """Initialize a Reusable object."""
-    if not isinstance(initializer, typing.Callable):
+    if not callable(initializer):
       raise Exception("When creating a RayReusable, initializer must be a function.")
     self.initializer = initializer
     if reinitializer is None:
       # If no reinitializer is passed in, use a wrapped version of the initializer.
       reinitializer = lambda value: initializer()
-    if not isinstance(reinitializer, typing.Callable):
+    if not callable(reinitializer):
       raise Exception("When creating a RayReusable, reinitializer must be a function.")
     self.reinitializer = reinitializer
 

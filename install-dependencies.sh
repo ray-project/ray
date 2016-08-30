@@ -31,11 +31,11 @@ if [[ $platform == "linux" ]]; then
   # These commands must be kept in sync with the installation instructions.
   sudo apt-get update
   sudo apt-get install -y git cmake build-essential autoconf curl libtool python-dev python-numpy python-pip libboost-all-dev unzip graphviz
-  sudo pip install ipython typing funcsigs subprocess32 protobuf colorama graphviz cloudpickle
+  sudo pip install ipython funcsigs subprocess32 protobuf colorama graphviz cloudpickle
 elif [[ $platform == "macosx" ]]; then
   # These commands must be kept in sync with the installation instructions.
   brew install git cmake automake autoconf libtool boost graphviz
   sudo easy_install pip
   sudo pip install ipython --user
-  sudo pip install numpy typing funcsigs subprocess32 protobuf colorama graphviz cloudpickle --ignore-installed six
+  sudo pip install numpy funcsigs subprocess32 protobuf colorama graphviz cloudpickle --ignore-installed six
 fi

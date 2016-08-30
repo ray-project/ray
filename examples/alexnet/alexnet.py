@@ -7,7 +7,6 @@ import tarfile, io
 import boto3
 import PIL.Image as Image
 import tensorflow as tf
-from typing import List, Tuple
 
 import ray.array.remote as ra
 

@@ -1,7 +1,6 @@
 # Note that a little bit of code here is taken and slightly modified from the pickler because it was not possible to change its behavior otherwise.
 
 import sys
-import typing
 from ctypes import c_void_p
 from cloudpickle import pickle, cloudpickle, CloudPickler, load, loads
 
@@ -38,9 +37,6 @@ def _fill_function(func, globals, defaults, closure, dict):
       pythonapi.PyCell_Set(c_void_p(id(result.__closure__[i])), c_void_p(id(v)))
   return result
 
-def _create_type(type_repr):
-  return eval(type_repr.replace("~", ""), None, (lambda d: d.setdefault("typing", typing) and None or d)(dict(typing.__dict__)))
-
 class BetterPickler(CloudPickler):
   def save_function_tuple(self, func):
     code, f_globals, defaults, closure, dct, base_globals = self.extract_func_data(func)
@@ -63,10 +59,5 @@ class BetterPickler(CloudPickler):
     self.save(cloudpickle._make_cell)
     self.save((obj.cell_contents,))
     self.write(pickle.REDUCE)
-  def save_type(self, obj):
-    self.save(_create_type)
-    self.save((repr(obj),))
-    self.write(pickle.REDUCE)
   dispatch = CloudPickler.dispatch.copy()
   dispatch[(lambda _: lambda: _)(0).__closure__[0].__class__] = save_cell
-  # dispatch[typing.GenericMeta] = save_type
