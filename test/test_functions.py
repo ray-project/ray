@@ -103,20 +103,6 @@ def python_mode_g(x):
 def no_op():
   pass
 
-@ray.remote()
-def no_op_fail():
-  return 0
-
-# test wrong return types
-
-@ray.remote()
-def test_return1():
-  return 0.0
-
-@ray.remote(num_return_vals=2)
-def test_return2():
-  return 2.0, 3.0
-
 class TestClass(object):
   def __init__(self):
     self.a = 5

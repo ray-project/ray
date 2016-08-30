@@ -6,34 +6,6 @@ import test_functions
 
 class FailureTest(unittest.TestCase):
 
-  def testNoArgs(self):
-    reload(test_functions)
-    ray.init(start_ray_local=True, num_workers=1, driver_mode=ray.SILENT_MODE)
-
-    test_functions.no_op_fail.remote()
-    time.sleep(0.2)
-    task_info = ray.task_info()
-    self.assertEqual(len(task_info["failed_tasks"]), 1)
-    self.assertEqual(len(task_info["running_tasks"]), 0)
-    self.assertTrue("The @remote decorator for function test_functions.no_op_fail has 0 return values, but test_functions.no_op_fail returned more than 0 values." in task_info["failed_tasks"][0].get("error_message"))
-
-    ray.worker.cleanup()
-
-  def testTypeChecking(self):
-    reload(test_functions)
-    ray.init(start_ray_local=True, num_workers=1, driver_mode=ray.SILENT_MODE)
-
-    # Make sure that these functions throw exceptions because there return
-    # values do not type check.
-    test_functions.test_return1.remote()
-    test_functions.test_return2.remote()
-    time.sleep(0.2)
-    task_info = ray.task_info()
-    self.assertEqual(len(task_info["failed_tasks"]), 2)
-    self.assertEqual(len(task_info["running_tasks"]), 0)
-
-    ray.worker.cleanup()
-
   def testUnknownSerialization(self):
     reload(test_functions)
     ray.init(start_ray_local=True, num_workers=1, driver_mode=ray.SILENT_MODE)
@@ -104,7 +76,7 @@ class TaskStatusTest(unittest.TestCase):
         return reducer, ()
       def __call__(self):
         return
-    ray.remote([], [])(Foo())
+    ray.remote()(Foo())
     for _ in range(100): # Retry if we need to wait longer.
       if len(ray.task_info()["failed_remote_function_imports"]) >= 1:
         break
