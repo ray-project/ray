@@ -17,6 +17,8 @@ arrow::Status DeserializeList(std::shared_ptr<arrow::Array> array, int32_t start
 arrow::Status DeserializeTuple(std::shared_ptr<arrow::Array> array, int32_t start_idx, int32_t stop_idx, PyObject** out);
 arrow::Status DeserializeDict(std::shared_ptr<arrow::Array> array, int32_t start_idx, int32_t stop_idx, PyObject** out);
 
+arrow::Status python_error_to_status();
+
 }
 
 #endif

@@ -109,7 +109,7 @@ Status append(PyObject* elem, SequenceBuilder& builder,
   } else if (PyArray_IsScalar(elem, Generic)) {
     RETURN_NOT_OK(AppendScalar(elem, builder));
   } else if (PyArray_Check(elem)) {
-    RETURN_NOT_OK(SerializeArray((PyArrayObject*) elem, builder));
+    RETURN_NOT_OK(SerializeArray((PyArrayObject*) elem, builder, subdicts));
   } else if (elem == Py_None) {
     RETURN_NOT_OK(builder.AppendNone());
   } else {

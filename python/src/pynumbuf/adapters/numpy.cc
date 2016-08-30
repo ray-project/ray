@@ -1,10 +1,16 @@
 #include "numpy.h"
+#include "python.h"
 
 #include <sstream>
 
 #include <numbuf/tensor.h>
 
 using namespace arrow;
+
+extern "C" {
+  extern PyObject *numbuf_serialize_callback;
+  extern PyObject *numbuf_deserialize_callback;
+}
 
 namespace numbuf {
 
@@ -52,7 +58,8 @@ Status DeserializeArray(std::shared_ptr<Array> array, int32_t offset, PyObject**
   return Status::OK();
 }
 
-Status SerializeArray(PyArrayObject* array, SequenceBuilder& builder) {
+Status SerializeArray(PyArrayObject* array, SequenceBuilder& builder,
+                      std::vector<PyObject*>& subdicts) {
   size_t ndim = PyArray_NDIM(array);
   int dtype = PyArray_TYPE(array);
   std::vector<int64_t> dims(ndim);
@@ -95,6 +102,23 @@ Status SerializeArray(PyArrayObject* array, SequenceBuilder& builder) {
       break;
     case NPY_DOUBLE:
       RETURN_NOT_OK(builder.AppendTensor(dims, reinterpret_cast<double*>(data)));
+      break;
+    case NPY_OBJECT:
+      if (!numbuf_serialize_callback) {
+        std::stringstream stream;
+        stream << "numpy data type not recognized: " << dtype;
+        return Status::NotImplemented(stream.str());
+      } else {
+        PyObject* arglist = Py_BuildValue("(O)", array);
+        PyObject* result = PyObject_CallObject(numbuf_serialize_callback, arglist);
+        if (!result) {
+          Py_XDECREF(arglist);
+          return python_error_to_status();
+        }
+        builder.AppendDict(PyDict_Size(result));
+        subdicts.push_back(result);
+        Py_XDECREF(arglist);
+      }
       break;
     default:
       std::stringstream stream;
