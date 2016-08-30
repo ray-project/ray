@@ -26,6 +26,9 @@ extern "C" {
 
 static PyObject *NumbufError;
 
+PyObject *numbuf_serialize_callback = NULL;
+PyObject *numbuf_deserialize_callback = NULL;
+
 int PyObjectToArrow(PyObject* object, std::shared_ptr<RowBatch> **result) {
   if (PyCapsule_IsValid(object, "arrow")) {
     *result = reinterpret_cast<std::shared_ptr<RowBatch>*>(PyCapsule_GetPointer(object, "arrow"));
@@ -131,11 +134,37 @@ static PyObject* deserialize_list(PyObject* self, PyObject* args) {
   return result;
 }
 
+static PyObject* register_callbacks(PyObject* self, PyObject* args) {
+  PyObject* result = NULL;
+  PyObject* serialize_callback;
+  PyObject* deserialize_callback;
+  if (PyArg_ParseTuple(args, "OO:register_callbacks", &serialize_callback, &deserialize_callback)) {
+    if (!PyCallable_Check(serialize_callback)) {
+      PyErr_SetString(PyExc_TypeError, "serialize_callback must be callable");
+      return NULL;
+    }
+    if (!PyCallable_Check(deserialize_callback)) {
+      PyErr_SetString(PyExc_TypeError, "deserialize_callback must be callable");
+      return NULL;
+    }
+    Py_XINCREF(serialize_callback); // Add a reference to new serialization callback
+    Py_XINCREF(deserialize_callback); // Add a reference to new deserialization callback
+    Py_XDECREF(numbuf_serialize_callback); // Dispose of old serialization callback
+    Py_XDECREF(numbuf_deserialize_callback); // Dispose of old deserialization callback
+    numbuf_serialize_callback = serialize_callback;
+    numbuf_deserialize_callback = deserialize_callback;
+    Py_INCREF(Py_None);
+    result = Py_None;
+  }
+  return result;
+}
+
 static PyMethodDef NumbufMethods[] = {
  { "serialize_list", serialize_list, METH_VARARGS, "serialize a Python list" },
  { "deserialize_list", deserialize_list, METH_VARARGS, "deserialize a Python list" },
  { "write_to_buffer", write_to_buffer, METH_VARARGS, "write serialized data to buffer"},
  { "read_from_buffer", read_from_buffer, METH_VARARGS, "read serialized data from buffer"},
+ { "register_callbacks", register_callbacks, METH_VARARGS, "set serialization and deserialization callbacks"},
  { NULL, NULL, 0, NULL }
 };
 
