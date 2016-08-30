@@ -85,7 +85,7 @@ The other parallel component of this application is the training procedure. This
 is built on top of the remote function `compute_grad`.
 
 ```python
-@ray.remote()
+@ray.remote
 def compute_grad(X, Y, mean, weights):
   # Load the weights into the network.
   # Subtract the mean and crop the images.

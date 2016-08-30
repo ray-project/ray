@@ -230,7 +230,7 @@ def net_initialization():
 def net_reinitialization(net_vars):
   return net_vars
 
-@ray.remote()
+@ray.remote
 def num_images(batches):
   """Counts number of images in batches.
 
@@ -243,7 +243,7 @@ def num_images(batches):
   shape_ids = [ra.shape.remote(batch) for batch in batches]
   return sum([ray.get(shape_id)[0] for shape_id in shape_ids])
 
-@ray.remote()
+@ray.remote
 def compute_mean_image(batches):
   """Computes the mean image given a list of batches of images.
 
@@ -305,7 +305,7 @@ def shuffle_pair(first_batch, second_batch):
   images1, labels1, images2, labels2 = shuffle_arrays.remote(first_batch[0], first_batch[1], second_batch[0], second_batch[1])
   return (images1, labels1), (images2, labels2)
 
-@ray.remote()
+@ray.remote
 def filenames_to_labels(filenames, filename_label_dict):
   """Converts filename strings to integer labels.
 
@@ -380,7 +380,7 @@ def shuffle(batches):
     new_batches.append(permuted_batches[-1])
   return new_batches
 
-@ray.remote()
+@ray.remote
 def compute_grad(X, Y, mean, weights):
   """Computes the gradient of the network.
 
@@ -405,7 +405,7 @@ def compute_grad(X, Y, mean, weights):
   # Compute the gradients.
   return sess.run([g for (g, v) in comp_grads], feed_dict={images: subset_X, y_true: subset_Y, dropout: 0.5})
 
-@ray.remote()
+@ray.remote
 def compute_accuracy(X, Y, weights):
   """Returns the accuracy of the network
 

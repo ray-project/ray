@@ -65,12 +65,12 @@ class DistArray(object):
     a = self.assemble()
     return a[sliced]
 
-@ray.remote()
+@ray.remote
 def assemble(a):
   return a.assemble()
 
 # TODO(rkn): what should we call this method
-@ray.remote()
+@ray.remote
 def numpy_to_dist(a):
   result = DistArray(a.shape)
   for index in np.ndindex(*result.num_blocks):
@@ -79,28 +79,28 @@ def numpy_to_dist(a):
     result.objectids[index] = ray.put(a[[slice(l, u) for (l, u) in zip(lower, upper)]])
   return result
 
-@ray.remote()
+@ray.remote
 def zeros(shape, dtype_name="float"):
   result = DistArray(shape)
   for index in np.ndindex(*result.num_blocks):
     result.objectids[index] = ra.zeros.remote(DistArray.compute_block_shape(index, shape), dtype_name=dtype_name)
   return result
 
-@ray.remote()
+@ray.remote
 def ones(shape, dtype_name="float"):
   result = DistArray(shape)
   for index in np.ndindex(*result.num_blocks):
     result.objectids[index] = ra.ones.remote(DistArray.compute_block_shape(index, shape), dtype_name=dtype_name)
   return result
 
-@ray.remote()
+@ray.remote
 def copy(a):
   result = DistArray(a.shape)
   for index in np.ndindex(*result.num_blocks):
     result.objectids[index] = a.objectids[index] # We don't need to actually copy the objects because cluster-level objects are assumed to be immutable.
   return result
 
-@ray.remote()
+@ray.remote
 def eye(dim1, dim2=-1, dtype_name="float"):
   dim2 = dim1 if dim2 == -1 else dim2
   shape = [dim1, dim2]
@@ -113,7 +113,7 @@ def eye(dim1, dim2=-1, dtype_name="float"):
       result.objectids[i, j] = ra.zeros.remote(block_shape, dtype_name=dtype_name)
   return result
 
-@ray.remote()
+@ray.remote
 def triu(a):
   if a.ndim != 2:
     raise Exception("Input must have 2 dimensions, but a.ndim is " + str(a.ndim))
@@ -127,7 +127,7 @@ def triu(a):
       result.objectids[i, j] = ra.zeros_like.remote(a.objectids[i, j])
   return result
 
-@ray.remote()
+@ray.remote
 def tril(a):
   if a.ndim != 2:
     raise Exception("Input must have 2 dimensions, but a.ndim is " + str(a.ndim))
@@ -141,7 +141,7 @@ def tril(a):
       result.objectids[i, j] = ra.zeros_like.remote(a.objectids[i, j])
   return result
 
-@ray.remote()
+@ray.remote
 def blockwise_dot(*matrices):
   n = len(matrices)
   if n % 2 != 0:
@@ -152,7 +152,7 @@ def blockwise_dot(*matrices):
     result += np.dot(matrices[i], matrices[n / 2 + i])
   return result
 
-@ray.remote()
+@ray.remote
 def dot(a, b):
   if a.ndim != 2:
     raise Exception("dot expects its arguments to be 2-dimensional, but a.ndim = {}.".format(a.ndim))
@@ -167,7 +167,7 @@ def dot(a, b):
     result.objectids[i, j] = blockwise_dot.remote(*args)
   return result
 
-@ray.remote()
+@ray.remote
 def subblocks(a, *ranges):
   """
   This function produces a distributed array from a subset of the blocks in the `a`. The result and `a` will have the same number of dimensions.For example,
@@ -197,7 +197,7 @@ def subblocks(a, *ranges):
     result.objectids[index] = a.objectids[tuple([ranges[i][index[i]] for i in range(a.ndim)])]
   return result
 
-@ray.remote()
+@ray.remote
 def transpose(a):
   if a.ndim != 2:
     raise Exception("transpose expects its argument to be 2-dimensional, but a.ndim = {}, a.shape = {}.".format(a.ndim, a.shape))
@@ -208,7 +208,7 @@ def transpose(a):
   return result
 
 # TODO(rkn): support broadcasting?
-@ray.remote()
+@ray.remote
 def add(x1, x2):
   if x1.shape != x2.shape:
     raise Exception("add expects arguments `x1` and `x2` to have the same shape, but x1.shape = {}, and x2.shape = {}.".format(x1.shape, x2.shape))
@@ -218,7 +218,7 @@ def add(x1, x2):
   return result
 
 # TODO(rkn): support broadcasting?
-@ray.remote()
+@ray.remote
 def subtract(x1, x2):
   if x1.shape != x2.shape:
     raise Exception("subtract expects arguments `x1` and `x2` to have the same shape, but x1.shape = {}, and x2.shape = {}.".format(x1.shape, x2.shape))

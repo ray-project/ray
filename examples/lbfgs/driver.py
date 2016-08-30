@@ -74,14 +74,14 @@ if __name__ == "__main__":
     sess.run([update_w, update_b], feed_dict={w_new: theta[:w_size].reshape(w_shape), b_new: theta[w_size:]})
 
   # Compute the loss on a batch of data.
-  @ray.remote()
+  @ray.remote
   def loss(theta, xs, ys):
     sess, _, _, cross_entropy, _, x, y_, _, _ = ray.reusables.net_vars
     load_weights(theta)
     return float(sess.run(cross_entropy, feed_dict={x: xs, y_: ys}))
 
   # Compute the gradient of the loss on a batch of data.
-  @ray.remote()
+  @ray.remote
   def grad(theta, xs, ys):
     sess, _, _, _, cross_entropy_grads, x, y_, _, _ = ray.reusables.net_vars
     load_weights(theta)

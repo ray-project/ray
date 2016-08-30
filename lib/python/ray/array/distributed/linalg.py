@@ -112,7 +112,7 @@ def tsqr_hr_helper1(u, s, y_top_block, b):
   t = -1 * np.dot(u, np.dot(s_full, np.linalg.inv(y_top).T))
   return t, y_top
 
-@ray.remote()
+@ray.remote
 def tsqr_hr_helper2(s, r_temp):
   s_full = np.diag(s)
   return np.dot(s_full, r_temp)
@@ -127,11 +127,11 @@ def tsqr_hr(a):
   r = tsqr_hr_helper2.remote(s, r_temp)
   return y, t, y_top, r
 
-@ray.remote()
+@ray.remote
 def qr_helper1(a_rc, y_ri, t, W_c):
   return a_rc - np.dot(y_ri, np.dot(t.T, W_c))
 
-@ray.remote()
+@ray.remote
 def qr_helper2(y_ri, a_rc):
   return np.dot(y_ri.T, a_rc)
 
