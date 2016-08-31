@@ -59,7 +59,7 @@ workers. At the core of our loading code is the remote function
 retrieves the appropriate object.
 
 ```python
-@ray.remote([str, str, List], [np.ndarray, List])
+@ray.remote(num_return_vals=2)
 def load_tarfile_from_s3(bucket, s3_key, size=[]):
   # Pull the object with the given key and bucket from S3, untar the contents,
   # and return it.
@@ -85,7 +85,7 @@ The other parallel component of this application is the training procedure. This
 is built on top of the remote function `compute_grad`.
 
 ```python
-@ray.remote([np.ndarray, np.ndarray, np.ndarray, List], [List])
+@ray.remote
 def compute_grad(X, Y, mean, weights):
   # Load the weights into the network.
   # Subtract the mean and crop the images.

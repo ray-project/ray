@@ -1,4 +1,3 @@
-from typing import List
 import numpy as np
 import ray
 
@@ -7,82 +6,82 @@ __all__ = ["matrix_power", "solve", "tensorsolve", "tensorinv", "inv",
            "svd", "eig", "eigh", "lstsq", "norm", "qr", "cond", "matrix_rank",
            "LinAlgError", "multi_dot"]
 
-@ray.remote([np.ndarray, int], [np.ndarray])
+@ray.remote
 def matrix_power(M, n):
   return np.linalg.matrix_power(M, n)
 
-@ray.remote([np.ndarray, np.ndarray], [np.ndarray])
+@ray.remote
 def solve(a, b):
   return np.linalg.solve(a, b)
 
-@ray.remote([np.ndarray], [np.ndarray, np.ndarray])
+@ray.remote(num_return_vals=2)
 def tensorsolve(a):
   raise NotImplementedError
 
-@ray.remote([np.ndarray], [np.ndarray, np.ndarray])
+@ray.remote(num_return_vals=2)
 def tensorinv(a):
   raise NotImplementedError
 
-@ray.remote([np.ndarray], [np.ndarray])
+@ray.remote
 def inv(a):
   return np.linalg.inv(a)
 
-@ray.remote([np.ndarray], [np.ndarray])
+@ray.remote
 def cholesky(a):
   return np.linalg.cholesky(a)
 
-@ray.remote([np.ndarray], [np.ndarray])
+@ray.remote
 def eigvals(a):
   return np.linalg.eigvals(a)
 
-@ray.remote([np.ndarray], [np.ndarray])
+@ray.remote
 def eigvalsh(a):
   raise NotImplementedError
 
-@ray.remote([np.ndarray], [np.ndarray])
+@ray.remote
 def pinv(a):
   return np.linalg.pinv(a)
 
-@ray.remote([np.ndarray], [int])
+@ray.remote
 def slogdet(a):
   raise NotImplementedError
 
-@ray.remote([np.ndarray], [float])
+@ray.remote
 def det(a):
   return np.linalg.det(a)
 
-@ray.remote([np.ndarray], [np.ndarray, np.ndarray, np.ndarray])
+@ray.remote(num_return_vals=3)
 def svd(a):
   return np.linalg.svd(a)
 
-@ray.remote([np.ndarray], [np.ndarray, np.ndarray])
+@ray.remote(num_return_vals=2)
 def eig(a):
   return np.linalg.eig(a)
 
-@ray.remote([np.ndarray], [np.ndarray, np.ndarray])
+@ray.remote(num_return_vals=2)
 def eigh(a):
   return np.linalg.eigh(a)
 
-@ray.remote([np.ndarray], [np.ndarray, np.ndarray, int, np.ndarray])
+@ray.remote(num_return_vals=4)
 def lstsq(a, b):
   return np.linalg.lstsq(a)
 
-@ray.remote([np.ndarray], [float])
+@ray.remote
 def norm(x):
   return np.linalg.norm(x)
 
-@ray.remote([np.ndarray], [np.ndarray, np.ndarray])
+@ray.remote(num_return_vals=2)
 def qr(a):
   return np.linalg.qr(a)
 
-@ray.remote([np.ndarray], [float])
+@ray.remote
 def cond(x):
   return np.linalg.cond(x)
 
-@ray.remote([np.ndarray], [int])
+@ray.remote
 def matrix_rank(M):
   return np.linalg.matrix_rank(M)
 
-@ray.remote([np.ndarray], [np.ndarray])
+@ray.remote
 def multi_dot(*a):
   raise NotImplementedError

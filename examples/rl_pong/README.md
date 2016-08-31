@@ -32,7 +32,7 @@ estimate of the gradient. Below is a simplified pseudocode version of this
 function.
 
 ```python
-@ray.remote([dict], [dict, float])
+@ray.remote(num_return_vals=2)
 def compute_gradient(model):
   # Retrieve the game environment.
   env = ray.reusables.env

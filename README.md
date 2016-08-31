@@ -21,7 +21,7 @@ import numpy as np
 ray.init(start_ray_local=True, num_workers=10)
 
 # Define a remote function for estimating pi.
-@ray.remote([int], [float])
+@ray.remote
 def estimate_pi(n):
   x = np.random.uniform(size=n)
   y = np.random.uniform(size=n)
