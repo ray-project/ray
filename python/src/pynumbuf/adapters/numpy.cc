@@ -103,7 +103,7 @@ Status SerializeArray(PyArrayObject* array, SequenceBuilder& builder,
     case NPY_DOUBLE:
       RETURN_NOT_OK(builder.AppendTensor(dims, reinterpret_cast<double*>(data)));
       break;
-    case NPY_OBJECT:
+    default:
       if (!numbuf_serialize_callback) {
         std::stringstream stream;
         stream << "numpy data type not recognized: " << dtype;
@@ -119,11 +119,6 @@ Status SerializeArray(PyArrayObject* array, SequenceBuilder& builder,
         subdicts.push_back(result);
         Py_XDECREF(arglist);
       }
-      break;
-    default:
-      std::stringstream stream;
-      stream << "numpy data type not recognized: " << dtype;
-      return Status::NotImplemented(stream.str());
   }
   Py_XDECREF(contiguous);
   return Status::OK();
