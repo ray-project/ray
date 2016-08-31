@@ -79,7 +79,7 @@ we use reusable variables to store the gym environment and the neural network po
 then used in the remote `do_rollout` function to do a remote rollout:
 
 ```python
-@ray.remote([np.ndarray, int, int], [dict])
+@ray.remote
 def do_rollout(policy, timestep_limit, seed):
   # Retrieve the game environment.
   env = ray.reusables.env

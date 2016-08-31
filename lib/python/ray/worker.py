@@ -4,8 +4,6 @@ import time
 import traceback
 import copy
 import logging
-from types import ModuleType
-import typing
 import funcsigs
 import numpy as np
 import colorama
@@ -45,7 +43,7 @@ class RayTaskError(Exception):
   def __init__(self, function_name, exception, traceback_str):
     """Initialize a RayTaskError."""
     self.function_name = function_name
-    if isinstance(exception, RayGetError) or isinstance(exception, RayGetArgumentError) or isinstance(exception, RayGetArgumentTypeError):
+    if isinstance(exception, RayGetError) or isinstance(exception, RayGetArgumentError):
       self.exception = exception
     else:
       self.exception = None
@@ -59,8 +57,6 @@ class RayTaskError(Exception):
       exception = RayGetError.deserialize(exception[1])
     elif exception[0] == "RayGetArgumentError":
       exception = RayGetArgumentError.deserialize(exception[1])
-    elif exception[0] == "RayGetArgumentTypeError":
-      exception = RayGetArgumentTypeError.deserialize(exception[1])
     elif exception[0] == "None":
       exception = None
     else:
@@ -73,8 +69,6 @@ class RayTaskError(Exception):
       serialized_exception = ("RayGetError", self.exception.serialize())
     elif isinstance(self.exception, RayGetArgumentError):
       serialized_exception = ("RayGetArgumentError", self.exception.serialize())
-    elif isinstance(self.exception, RayGetArgumentTypeError):
-      serialized_exception = ("RayGetArgumentTypeError", self.exception.serialize())
     elif self.exception is None:
       serialized_exception = ("None",)
     else:
@@ -151,41 +145,6 @@ class RayGetArgumentError(Exception):
     """Format a RayGetArgumentError as a string."""
     return "Failed to get objectid {} as argument {} for remote function {}{}{}. It was created by remote function {}{}{} which failed with:\n{}".format(self.objectid, self.argument_index, colorama.Fore.RED, self.function_name, colorama.Fore.RESET, colorama.Fore.RED, self.task_error.function_name, colorama.Fore.RESET, self.task_error)
 
-class RayGetArgumentTypeError(Exception):
-  """An exception used when a task's argument doesn't type check.
-
-  Attributes:
-    function_name (str): The name of the function for the current task.
-    argument_index (int): The index (zero indexed) of the argument in the
-      present task's remote function call.
-    received_type: The type of the argument that was passed in.
-    expected_type: The type that was expected. This is determined by the remote
-      decorator.
-  """
-
-  def __init__(self, function_name, argument_index, received_type, expected_type):
-    """Initialize a RayGetArgumentTypeError object."""
-    self.function_name = function_name
-    self.argument_index = argument_index
-    # TODO(rkn): when we support the serialization of types, then we should
-    # remove the string conversions below.
-    self.received_type = str(received_type)
-    self.expected_type = str(expected_type)
-
-  @staticmethod
-  def deserialize(primitives):
-    """Create a RayGetArgumentTypeError from a primitive object."""
-    function_name, argument_index, received_type, expected_type = primitives
-    return RayGetArgumentTypeError(function_name, argument_index, received_type, expected_type)
-
-  def serialize(self):
-    """Turn a RayGetArgumentTypeError into a primitive object."""
-    return (self.function_name, self.argument_index, self.received_type, self.expected_type)
-
-  def __str__(self):
-    """Format a RayGetArgumentTypeError as a string."""
-    return "Argument {} for remote function {}{}{} has type {} but an argument of type {} was expected.".format(self.argument_index, colorama.Fore.RED, self.function_name, colorama.Fore.RESET, self.received_type, self.expected_type)
-
 class RayDealloc(object):
   """An object used internally to properly implement reference counting.
 
@@ -232,13 +191,13 @@ class Reusable(object):
 
   def __init__(self, initializer, reinitializer=None):
     """Initialize a Reusable object."""
-    if not isinstance(initializer, typing.Callable):
+    if not callable(initializer):
       raise Exception("When creating a RayReusable, initializer must be a function.")
     self.initializer = initializer
     if reinitializer is None:
       # If no reinitializer is passed in, use a wrapped version of the initializer.
       reinitializer = lambda value: initializer()
-    if not isinstance(reinitializer, typing.Callable):
+    if not callable(reinitializer):
       raise Exception("When creating a RayReusable, reinitializer must be a function.")
     self.reinitializer = reinitializer
 
@@ -993,7 +952,7 @@ def main_loop(worker=global_worker):
   def process_remote_function(function_name, serialized_function):
     """Import a remote function."""
     try:
-      (function, arg_types, return_types, module) = pickling.loads(serialized_function)
+      function, num_return_vals, module = pickling.loads(serialized_function)
     except:
       # If an exception was thrown when the remote function was imported, we
       # record the traceback and notify the scheduler of the failure.
@@ -1005,11 +964,11 @@ def main_loop(worker=global_worker):
       # TODO(rkn): Why is the below line necessary?
       function.__module__ = module
       assert function_name == "{}.{}".format(function.__module__, function.__name__), "The remote function name does not match the name that was passed in."
-      worker.functions[function_name] = remote(arg_types, return_types, worker)(function)
+      worker.functions[function_name] = remote(num_return_vals=num_return_vals)(function)
       _logger().info("Successfully imported remote function {}.".format(function_name))
       # Noify the scheduler that the remote function imported successfully.
       # We pass an empty error message string because the import succeeded.
-      raylib.register_remote_function(worker.handle, function_name, len(return_types))
+      raylib.register_remote_function(worker.handle, function_name, num_return_vals)
 
   def process_reusable_variable(reusable_variable_name, initializer_str, reinitializer_str):
     """Import a reusable variable."""
@@ -1110,75 +1069,89 @@ def _export_reusable_variable(name, reusable, worker=global_worker):
     raise Exception("_export_reusable_variable can only be called on a driver.")
   raylib.export_reusable_variable(worker.handle, name, pickling.dumps(reusable.initializer), pickling.dumps(reusable.reinitializer))
 
-def remote(arg_types, return_types, worker=global_worker):
+def remote(*args, **kwargs):
   """This decorator is used to create remote functions.
 
   Args:
-    arg_types (List[type]): List of Python types of the function arguments.
-    return_types (List[type]): List of Python types of the return values.
+    num_return_vals (int): The number of object IDs that a call to this function
+      should return.
   """
-  def remote_decorator(func):
-    def func_call(*args, **kwargs):
-      """This gets run immediately when a worker calls a remote function."""
-      check_connected()
-      args = list(args)
-      args.extend([kwargs[keyword] if kwargs.has_key(keyword) else default for keyword, default in keyword_defaults[len(args):]]) # fill in the remaining arguments
-      if _mode() == raylib.PYTHON_MODE:
-        # In raylib.PYTHON_MODE, remote calls simply execute the function. We copy the
-        # arguments to prevent the function call from mutating them and to match
-        # the usual behavior of immutable remote objects.
-        return func(*copy.deepcopy(args))
-      check_arguments(arg_types, has_vararg_param, func_name, args) # throws an exception if args are invalid
-      objectids = _submit_task(func_name, args)
-      if len(objectids) == 1:
-        return objectids[0]
-      elif len(objectids) > 1:
-        return objectids
-    def func_executor(arguments):
-      """This gets run when the remote function is executed."""
-      _logger().info("Calling function {}".format(func.__name__))
-      start_time = time.time()
-      result = func(*arguments)
-      end_time = time.time()
-      check_return_values(func_invoker, result) # throws an exception if result is invalid
-      _logger().info("Finished executing function {}, it took {} seconds".format(func.__name__, end_time - start_time))
-      return result
-    def func_invoker(*args, **kwargs):
-      """This is returned by the decorator and used to invoke the function."""
-      raise Exception("Remote functions cannot be called directly. Instead of running '{}()', try '{}.remote()'.".format(func_name, func_name))
-    func_invoker.remote = func_call
-    func_invoker.executor = func_executor
-    func_invoker.arg_types = arg_types
-    func_invoker.return_types = return_types
-    func_invoker.is_remote = True
-    func_name = "{}.{}".format(func.__module__, func.__name__)
-    func_invoker.func_name = func_name
-    func_invoker.func_doc = func.func_doc
-    sig_params = [(k, v) for k, v in funcsigs.signature(func).parameters.iteritems()]
-    keyword_defaults = [(k, v.default) for k, v in sig_params]
-    has_vararg_param = any([v.kind == v.VAR_POSITIONAL for k, v in sig_params])
-    func_invoker.has_vararg_param = has_vararg_param
-    has_kwargs_param = any([v.kind == v.VAR_KEYWORD for k, v in sig_params])
-    check_signature_supported(has_kwargs_param, has_vararg_param, keyword_defaults, func_name)
+  worker = global_worker
+  def make_remote_decorator(num_return_vals):
+    def remote_decorator(func):
+      def func_call(*args, **kwargs):
+        """This gets run immediately when a worker calls a remote function."""
+        check_connected()
+        args = list(args)
+        args.extend([kwargs[keyword] if kwargs.has_key(keyword) else default for keyword, default in keyword_defaults[len(args):]]) # fill in the remaining arguments
+        if any([arg is funcsigs._empty for arg in args]):
+          raise Exception("Not enough arguments were provided to {}.".format(func_name))
+        if _mode() == raylib.PYTHON_MODE:
+          # In raylib.PYTHON_MODE, remote calls simply execute the function. We copy the
+          # arguments to prevent the function call from mutating them and to match
+          # the usual behavior of immutable remote objects.
+          return func(*copy.deepcopy(args))
+        objectids = _submit_task(func_name, args)
+        if len(objectids) == 1:
+          return objectids[0]
+        elif len(objectids) > 1:
+          return objectids
+      def func_executor(arguments):
+        """This gets run when the remote function is executed."""
+        _logger().info("Calling function {}".format(func.__name__))
+        start_time = time.time()
+        result = func(*arguments)
+        end_time = time.time()
+        _logger().info("Finished executing function {}, it took {} seconds".format(func.__name__, end_time - start_time))
+        return result
+      def func_invoker(*args, **kwargs):
+        """This is returned by the decorator and used to invoke the function."""
+        raise Exception("Remote functions cannot be called directly. Instead of running '{}()', try '{}.remote()'.".format(func_name, func_name))
+      func_invoker.remote = func_call
+      func_invoker.executor = func_executor
+      func_invoker.is_remote = True
+      func_name = "{}.{}".format(func.__module__, func.__name__)
+      func_invoker.func_name = func_name
+      func_invoker.func_doc = func.func_doc
 
-    # Everything ready - export the function
-    if worker.mode in [None, raylib.SCRIPT_MODE, raylib.SILENT_MODE]:
-      func_name_global_valid = func.__name__ in func.__globals__
-      func_name_global_value = func.__globals__.get(func.__name__)
-      # Set the function globally to make it refer to itself
-      func.__globals__[func.__name__] = func_invoker  # Allow the function to reference itself as a global variable
-      try:
-        to_export = pickling.dumps((func, arg_types, return_types, func.__module__))
-      finally:
-        # Undo our changes
-        if func_name_global_valid: func.__globals__[func.__name__] = func_name_global_value
-        else: del func.__globals__[func.__name__]
-    if worker.mode in [raylib.SCRIPT_MODE, raylib.SILENT_MODE]:
-      raylib.export_remote_function(worker.handle, func_name, to_export)
-    elif worker.mode is None:
-      worker.cached_remote_functions.append((func_name, to_export))
-    return func_invoker
-  return remote_decorator
+      sig_params = [(k, v) for k, v in funcsigs.signature(func).parameters.iteritems()]
+      keyword_defaults = [(k, v.default) for k, v in sig_params]
+      has_vararg_param = any([v.kind == v.VAR_POSITIONAL for k, v in sig_params])
+      func_invoker.has_vararg_param = has_vararg_param
+      has_kwargs_param = any([v.kind == v.VAR_KEYWORD for k, v in sig_params])
+      check_signature_supported(has_kwargs_param, has_vararg_param, keyword_defaults, func_name)
+
+      # Everything ready - export the function
+      if worker.mode in [None, raylib.SCRIPT_MODE, raylib.SILENT_MODE]:
+        func_name_global_valid = func.__name__ in func.__globals__
+        func_name_global_value = func.__globals__.get(func.__name__)
+        # Set the function globally to make it refer to itself
+        func.__globals__[func.__name__] = func_invoker  # Allow the function to reference itself as a global variable
+        try:
+          to_export = pickling.dumps((func, num_return_vals, func.__module__))
+        finally:
+          # Undo our changes
+          if func_name_global_valid: func.__globals__[func.__name__] = func_name_global_value
+          else: del func.__globals__[func.__name__]
+      if worker.mode in [raylib.SCRIPT_MODE, raylib.SILENT_MODE]:
+        raylib.export_remote_function(worker.handle, func_name, to_export)
+      elif worker.mode is None:
+        worker.cached_remote_functions.append((func_name, to_export))
+      return func_invoker
+
+    return remote_decorator
+
+  if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
+    # This is the case where the decorator is just @ray.remote.
+    num_return_vals = 1
+    func = args[0]
+    return make_remote_decorator(num_return_vals)(func)
+  else:
+    # This is the case where the decorator is something like
+    # @ray.remote(num_return_vals=2).
+    assert len(args) == 0 and "num_return_vals" in kwargs.keys(), "The @ray.remote decorator must be applied either with no arguments and no parentheses, for example '@ray.remote', or it must be applied with only the argument num_return_vals, like '@ray.remote(num_return_vals=2)'."
+    num_return_vals = kwargs["num_return_vals"]
+    return make_remote_decorator(num_return_vals)
 
 def check_signature_supported(has_kwargs_param, has_vararg_param, keyword_defaults, name):
   """Check if we support the signature of this function.
@@ -1205,109 +1178,12 @@ def check_signature_supported(has_kwargs_param, has_vararg_param, keyword_defaul
   if has_vararg_param and any([d != funcsigs._empty for _, d in keyword_defaults]):
     raise "Function {} has a *args argument as well as a keyword argument, which is currently not supported.".format(name)
 
-
-def check_return_values(function, result):
-  """Check the types and number of return values.
-
-  Args:
-    function (Callable): The remote function whose outputs are being checked.
-    result: The value returned by an invocation of the remote function. The
-    expected types and number are defined in the remote decorator.
-
-  Raises:
-    Exception: An exception is raised if the return values have incorrect types
-      or the function returned the wrong number of return values.
-  """
-  # If the @remote decorator declares that the function has no return values,
-  # then all we do is check that there were in fact no return values.
-  if len(function.return_types) == 0:
-    if result is not None:
-      raise Exception("The @remote decorator for function {} has 0 return values, but {} returned more than 0 values.".format(function.__name__, function.__name__))
-    return
-  # If a function has multiple return values, Python returns a tuple of the
-  # values. If there is a single return value, then Python does not return a
-  # tuple, it simply returns the value. That is why we place result with
-  # (result,) when there is only one return value, so we can treat these two
-  # cases similarly.
-  if len(function.return_types) == 1:
-    result = (result,)
-  # Below we check that the number of values returned by the function match the
-  # number of return values declared in the @remote decorator.
-  if len(result) != len(function.return_types):
-    raise Exception("The @remote decorator for function {} has {} return values with types {}, but {} returned {} values.".format(function.__name__, len(function.return_types), function.return_types, function.__name__, len(result)))
-  # Here we do some limited type checking to make sure the return values have
-  # the right types.
-  for i in range(len(result)):
-    if (not issubclass(type(result[i]), function.return_types[i])) and (not isinstance(result[i], raylib.ObjectID)):
-      raise Exception("The {}th return value for function {} has type {}, but the @remote decorator expected a return value of type {} or an ObjectID.".format(i, function.__name__, type(result[i]), function.return_types[i]))
-
-def typecheck_arg(arg, expected_type, i, name):
-  """Check that an argument has the expected type.
-
-  Args:
-    arg: An argument to function.
-    expected_type (type): The expected type of arg.
-    i (int): The position of the argument to the function.
-    name (str): The name of the function.
-
-  Raises:
-    RayGetArgumentTypeError: An exception is raised if arg does not have the
-      expected type.
-  """
-  if issubclass(type(arg), expected_type):
-    # Passed the type-checck
-    # TODO(rkn): This check doesn't really work, e.g., issubclass(type([1, 2, 3]), typing.List[str]) == True
-    pass
-  elif isinstance(arg, long) and issubclass(int, expected_type):
-    # TODO(mehrdadn): Should long really be convertible to int?
-    pass
-  else:
-    raise RayGetArgumentTypeError(name, i, type(arg), expected_type)
-
-def check_arguments(arg_types, has_vararg_param, name, args):
-  """Check that the arguments to the remote function have the right types.
-
-  This is called by the worker that calls the remote function (not the worker
-  that executes the remote function).
-
-  Args:
-    arg_types (List[type]): A list of the types of the arguments to the function
-      being checked.
-    has_vararg_param (bool): True if the function being checked has a *args
-      argument.
-    name (str): The name of the function.
-    args (List): The arguments to the function.
-
-  Raises:
-    Exception: An exception is raised the args do not all have the right types.
-  """
-  # check the number of args
-  if len(args) != len(arg_types) and not has_vararg_param:
-    raise Exception("Function {} expects {} arguments, but received {}.".format(name, len(arg_types), len(args)))
-  elif len(args) < len(arg_types) - 1 and has_vararg_param:
-    raise Exception("Function {} expects at least {} arguments, but received {}.".format(name, len(arg_types) - 1, len(args)))
-
-  for (i, arg) in enumerate(args):
-    if i <= len(arg_types) - 1:
-      expected_type = arg_types[i]
-    elif has_vararg_param:
-      expected_type = arg_types[-1]
-    else:
-      assert False, "This code should be unreachable."
-
-    if isinstance(arg, raylib.ObjectID):
-      # TODO(rkn): When we have type information in the ObjectID, do type checking here.
-      pass
-    else:
-      typecheck_arg(arg, expected_type, i, name)
-
 def get_arguments_for_execution(function, args, worker=global_worker):
   """Retrieve the arguments for the remote function.
 
   This retrieves the values for the arguments to the remote function that were
   passed in as object IDs. Argumens that were passed by value are not changed.
-  This also does some type checking. This is called by the worker that is
-  executing the remote function.
+  This is called by the worker that is executing the remote function.
 
   Args:
     function (Callable): The remote function whose arguments are being
@@ -1321,25 +1197,9 @@ def get_arguments_for_execution(function, args, worker=global_worker):
   Raises:
     RayGetArgumentError: This exception is raised if a task that created one of
       the arguments failed.
-    RayGetArgumentTypeError: This exception is raised (via typecheck_arg) if one
-      of the arguments does not have the expected type.
   """
-  # TODO(rkn): Eventually, all of the type checking can be put in `check_arguments` above so that the error will happen immediately when calling a remote function.
   arguments = []
-  # # check the number of args
-  # if len(args) != len(function.arg_types) and function.arg_types[-1] is not None:
-  #   raise Exception("Function {} expects {} arguments, but received {}.".format(function.__name__, len(function.arg_types), len(args)))
-  # elif len(args) < len(function.arg_types) - 1 and function.arg_types[-1] is None:
-  #   raise Exception("Function {} expects at least {} arguments, but received {}.".format(function.__name__, len(function.arg_types) - 1, len(args)))
-
   for (i, arg) in enumerate(args):
-    if i <= len(function.arg_types) - 1:
-      expected_type = function.arg_types[i]
-    elif function.has_vararg_param and len(function.arg_types) >= 1:
-      expected_type = function.arg_types[-1]
-    else:
-      assert False, "This code should be unreachable."
-
     if isinstance(arg, raylib.ObjectID):
       # get the object from the local object store
       _logger().info("Getting argument {} for function {}.".format(i, function.__name__))
@@ -1353,7 +1213,6 @@ def get_arguments_for_execution(function, args, worker=global_worker):
       # pass the argument by value
       argument = arg
 
-    typecheck_arg(argument, expected_type, i, function.__name__)
     arguments.append(argument)
   return arguments
 

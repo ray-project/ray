@@ -72,7 +72,7 @@ def policy_backward(eph, epx, epdlogp, model):
   dW1 = np.dot(dh.T, epx)
   return {"W1": dW1, "W2": dW2}
 
-@ray.remote([dict], [dict, float])
+@ray.remote(num_return_vals=2)
 def compute_gradient(model):
   env = ray.reusables.env
   observation = env.reset()

@@ -91,20 +91,18 @@ use remote functions to distribute the loading of the data.
 Now, lets turn `loss` and `grad` into remote functions.
 
 ```python
-@ray.remote([np.ndarray, np.ndarray, np.ndarray], [float])
+@ray.remote
 def loss(theta, xs, ys):
   # compute the loss
   return loss
 
-@ray.remote([np.ndarray, np.ndarray, np.ndarray], [np.ndarray])
+@ray.remote
 def grad(theta, xs, ys):
   # compute the gradient
   return grad
 ```
 
-The only difference is that we added the `@ray.remote` decorator specifying a
-little bit of type information (the inputs consist of numpy arrays, `loss`
-returns a float, and `grad` returns a numpy array).
+The only difference is that we added the `@ray.remote` decorator.
 
 Now, it is easy to speed up the computation of the full loss and the full
 gradient.
