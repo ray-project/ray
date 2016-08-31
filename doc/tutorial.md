@@ -112,13 +112,6 @@ def add(a, b):
   return a + b
 ```
 
-The information passed to the `@ray.remote` decorator includes type information
-for the arguments and for the return values of the function. Because of the
-distinction that we make between *submitting a task* and *executing the task*,
-we require type information so that we can catch type errors when the remote
-function is called instead of catching them when the task is actually executed
-(which could be much later and could be on a different machine).
-
 ### Remote functions
 
 Whereas in regular Python, calling `add(1, 2)` would return `3`, in Ray, calling

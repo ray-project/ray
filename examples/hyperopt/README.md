@@ -88,9 +88,7 @@ def train_cnn_and_compute_accuracy(hyperparameters, train_images, train_labels, 
   return validation_accuracy
 ```
 
-The only difference is that we added the `@ray.remote` decorator specifying a
-little bit of type information (the input is a dictionary along with some numpy
-arrays, and the return value is a float).
+The only difference is that we added the `@ray.remote` decorator.
 
 Now a call to `train_cnn_and_compute_accuracy` does not execute the function. It
 submits the task to the scheduler and returns an object ID for the output
