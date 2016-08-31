@@ -48,13 +48,6 @@ class SerializationTests(unittest.TestCase):
     for t in ["int8", "uint8", "int16", "uint16", "int32", "uint32", "float32", "float64"]:
       self.numpyTest(t)
 
-  def testNumpyObject(self):
-    a = np.array([np.zeros((2,2))], dtype=object)
-    try:
-      x = self.roundTripTest([a])
-    except:
-      pass
-
   def testRay(self):
     for obj in TEST_OBJECTS:
       self.roundTripTest([obj])
@@ -89,6 +82,23 @@ class SerializationTests(unittest.TestCase):
 
     metadata, size, serialized = libnumbuf.serialize_list([bar])
     self.assertEqual(libnumbuf.deserialize_list(serialized)[0].foo.x, 42)
+
+  def testObjectArray(self):
+    x = np.array([1, 2, "hello"], dtype=object)
+    y = np.array([[1, 2], [3, 4]], dtype=object)
+
+    def myserialize(obj):
+      return {"_pytype_": "numpy.array", "data": obj.tolist()}
+
+    def mydeserialize(obj):
+      if obj["_pytype_"] == "numpy.array":
+        return np.array(obj["data"], dtype=object)
+
+    libnumbuf.register_callbacks(myserialize, mydeserialize)
+
+    metadata, size, serialized = libnumbuf.serialize_list([x, y])
+
+    assert_equal(libnumbuf.deserialize_list(serialized), [x, y])
 
   def testBuffer(self):
     for (i, obj) in enumerate(TEST_OBJECTS):
