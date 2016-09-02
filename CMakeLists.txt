@@ -117,6 +117,7 @@ link_libraries(${CMAKE_SOURCE_DIR}/thirdparty/grpc/libs/opt/libgrpc++_unsecure.a
                ${CMAKE_SOURCE_DIR}/thirdparty/grpc/libs/opt/libgrpc++.a
                ${CMAKE_SOURCE_DIR}/thirdparty/grpc/libs/opt/libgrpc.a
                ${CMAKE_SOURCE_DIR}/thirdparty/grpc/libs/opt/protobuf/libprotobuf.a
+               ${CMAKE_SOURCE_DIR}/thirdparty/hiredis/libhiredis.a
                pthread)
 
 if(UNIX AND NOT APPLE)

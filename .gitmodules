@@ -12,3 +12,6 @@
 	path = thirdparty/python
 	url = https://github.com/austinsc/python.git
 	ignore = dirty
+[submodule "thirdparty/hiredis"]
+	path = thirdparty/hiredis
+	url = https://github.com/redis/hiredis.git
