@@ -93,7 +93,7 @@ if __name__ == "__main__":
     print "Iteration {}: accuracy = {:.3}%".format(iteration, 100 * ray.get(accuracy))
 
     # Fetch the gradients. This blocks until the gradients have been computed.
-    gradient_sets = [ray.get(gradient_id) for gradient_id in gradient_ids]
+    gradient_sets = ray.get(gradient_ids)
     # Average the gradients over all of the tasks.
     mean_gradients = [np.mean([gradient_set[i] for gradient_set in gradient_sets], axis=0) for i in range(len(weights))]
     # Use the gradients to update the network.

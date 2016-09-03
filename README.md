@@ -33,7 +33,7 @@ for _ in range(10):
   result_ids.append(estimate_pi.remote(100))
 
 # Fetch the results of the tasks and print their average.
-estimate = np.mean([ray.get(result_id) for result_id in result_ids])
+estimate = np.mean(ray.get(result_ids))
 print "Pi is approximately {}.".format(estimate)
 ```
 
