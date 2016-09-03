@@ -92,13 +92,13 @@ if __name__ == "__main__":
   def full_loss(theta):
     theta_id = ray.put(theta)
     loss_ids = [loss.remote(theta_id, xs_id, ys_id) for (xs_id, ys_id) in batch_ids]
-    return sum([ray.get(loss_id) for loss_id in loss_ids])
+    return sum(ray.get(loss_ids))
 
   # Compute the gradient of the loss on the entire dataset.
   def full_grad(theta):
     theta_id = ray.put(theta)
     grad_ids = [grad.remote(theta_id, xs_id, ys_id) for (xs_id, ys_id) in batch_ids]
-    return sum([ray.get(grad_id) for grad_id in grad_ids]).astype("float64") # This conversion is necessary for use with fmin_l_bfgs_b.
+    return sum(ray.get(grad_ids)).astype("float64") # This conversion is necessary for use with fmin_l_bfgs_b.
 
   # From the perspective of scipy.optimize.fmin_l_bfgs_b, full_loss is simply a
   # function which takes some parameters theta, and computes a loss. Similarly,

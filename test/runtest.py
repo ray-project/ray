@@ -306,6 +306,12 @@ class APITest(unittest.TestCase):
 
     ray.worker.cleanup()
 
+  def testGetMultiple(self):
+    ray.init(start_ray_local=True, num_workers=0)
+    object_ids = [ray.put(i) for i in range(10)]
+    self.assertEqual(ray.get(object_ids), range(10))
+    ray.worker.cleanup()
+
   def testSelect(self):
     ray.init(start_ray_local=True, num_workers=4)
 

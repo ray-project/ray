@@ -241,7 +241,7 @@ def num_images(batches):
     int: The number of images
   """
   shape_ids = [ra.shape.remote(batch) for batch in batches]
-  return sum([ray.get(shape_id)[0] for shape_id in shape_ids])
+  return sum([shape[0] for shape in ray.get(shape_ids)])
 
 @ray.remote
 def compute_mean_image(batches):
@@ -256,9 +256,8 @@ def compute_mean_image(batches):
   if len(batches) == 0:
     raise Exception("No images were passed into `compute_mean_image`.")
   sum_image_ids = [ra.sum.remote(batch, axis=0) for batch in batches]
-  sum_images = [ray.get(sum_image_id) for sum_image_id in sum_image_ids]
   n_images = num_images.remote(batches)
-  return np.sum(sum_images, axis=0).astype("float64") / ray.get(n_images)
+  return np.sum(ray.get(sum_image_ids), axis=0).astype("float64") / ray.get(n_images)
 
 @ray.remote(num_return_vals=4)
 def shuffle_arrays(first_images, first_labels, second_images, second_labels):

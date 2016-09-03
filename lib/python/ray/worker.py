@@ -768,22 +768,30 @@ def disconnect(worker=global_worker):
   reusables._cached_reusables = []
 
 def get(objectid, worker=global_worker):
-  """Get a remote object from an object store.
+  """Get a remote object or a list of remote objects from the object store.
 
   This method blocks until the object corresponding to objectid is available in
   the local object store. If this object is not in the local object store, it
   will be shipped from an object store that has it (once the object has been
-  created).
+  created). If objectid is a list, then the objects corresponding to each object
+  in the list will be returned.
 
   Args:
-    objectid (raylib.ObjectID): Object ID to the object to get.
+    objectid: Object ID of the object to get or a list of object IDs to get.
 
   Returns:
-    A Python object
+    A Python object or a list of Python objects.
   """
   check_connected(worker)
   if worker.mode == raylib.PYTHON_MODE:
     return objectid # In raylib.PYTHON_MODE, ray.get is the identity operation (the input will actually be a value not an objectid)
+  if isinstance(objectid, list):
+    [raylib.request_object(worker.handle, x) for x in objectid]
+    values = [worker.get_object(x) for x in objectid]
+    for i, value in enumerate(values):
+      if isinstance(value, RayTaskError):
+        raise RayGetError(objectid[i], value)
+    return values
   raylib.request_object(worker.handle, objectid)
   value = worker.get_object(objectid)
   if isinstance(value, RayTaskError):
