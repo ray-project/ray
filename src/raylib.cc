@@ -362,7 +362,10 @@ int serialize(PyObject* worker_capsule, PyObject* val, Obj* obj, std::vector<Obj
     }
     Py_DECREF(array); // TODO(rkn): is this right?
   } else {
-    PyErr_SetString(RayError, "serialization: type not know");
+    std::stringstream ss;
+    ss << "serialization: type of " << PyString_AS_STRING(PyObject_Repr(val))
+       << " not recognized";
+    PyErr_SetString(RayError, ss.str().c_str());
     return -1;
   }
   return 0;
