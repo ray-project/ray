@@ -1249,9 +1249,6 @@ def store_outputs_in_objstore(objectids, outputs, worker=global_worker):
   """
   for i in range(len(objectids)):
     if isinstance(outputs[i], raylib.ObjectID):
-      # An ObjectID is being returned, so we must alias objectids[i] so that it refers to the same object that outputs[i] refers to
-      _logger().info("Aliasing objectids {} and {}".format(objectids[i].id, outputs[i].id))
-      worker.alias_objectids(objectids[i], outputs[i])
-      pass
-    else:
-      worker.put_object(objectids[i], outputs[i])
+      raise Exception("This remote function returned an ObjectID as its {}th return value. This is not allowed.".format(i))
+  for i in range(len(objectids)):
+    worker.put_object(objectids[i], outputs[i])

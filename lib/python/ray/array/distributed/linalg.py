@@ -72,7 +72,7 @@ def tsqr(a):
       q_block_current = ra.dot.remote(q_block_current, ra.subarray.remote(q_tree[ith_index, j], lower, upper))
     q_result.objectids[i] = q_block_current
   r = current_rs[0]
-  return q_result, r
+  return q_result, ray.get(r)
 
 # TODO(rkn): This is unoptimized, we really want a block version of this.
 @ray.remote(num_return_vals=3)
@@ -103,7 +103,7 @@ def modified_lu(q):
   for i in range(b):
     L[i, i] = 1
   U = np.triu(q_work)[:b, :]
-  return numpy_to_dist.remote(ray.put(L)), U, S # TODO(rkn): get rid of put
+  return ray.get(numpy_to_dist.remote(ray.put(L))), U, S # TODO(rkn): get rid of put
 
 @ray.remote(num_return_vals=2)
 def tsqr_hr_helper1(u, s, y_top_block, b):
@@ -125,7 +125,7 @@ def tsqr_hr(a):
   y_blocked = ray.get(y)
   t, y_top = tsqr_hr_helper1.remote(u, s, y_blocked.objectids[0, 0], a.shape[1])
   r = tsqr_hr_helper2.remote(s, r_temp)
-  return y, t, y_top, r
+  return ray.get(y), ray.get(t), ray.get(y_top), ray.get(r)
 
 @ray.remote
 def qr_helper1(a_rc, y_ri, t, W_c):
@@ -183,4 +183,4 @@ def qr(a):
     y_col_block = subblocks.remote(y_res, [], [i])
     q = subtract.remote(q, dot.remote(y_col_block, dot.remote(Ts[i], dot.remote(transpose.remote(y_col_block), q))))
 
-  return q, r_res
+  return ray.get(q), r_res
