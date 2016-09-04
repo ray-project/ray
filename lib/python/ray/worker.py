@@ -609,9 +609,12 @@ def init(start_ray_local=False, num_workers=None, num_objstores=None, scheduler_
     driver_mode (Optional[bool]): The mode in which to start the driver. This
       should be one of SCRIPT_MODE, PYTHON_MODE, and SILENT_MODE.
 
-    raises:
-      Exception: An exception is raised if an inappropriate combination of
-        arguments is passed in.
+  Returns:
+    A string containing the address of the scheduler.
+
+  Raises:
+    Exception: An exception is raised if an inappropriate combination of
+      arguments is passed in.
   """
   # Make GRPC only print error messages.
   os.environ["GRPC_VERBOSITY"] = "ERROR"
@@ -643,6 +646,7 @@ def init(start_ray_local=False, num_workers=None, num_objstores=None, scheduler_
   # to disconnect will happen in the call to cleanup() when the Python script
   # exits.
   connect(node_ip_address, scheduler_address, worker=global_worker, mode=driver_mode)
+  return scheduler_address
 
 def cleanup(worker=global_worker):
   """Disconnect the driver, and terminate any processes started in init.
