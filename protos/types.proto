@@ -9,7 +9,7 @@ message Long {
 }
 
 message String {
-  string data = 1;
+  bytes data = 1;
 }
 
 message Unicode {
