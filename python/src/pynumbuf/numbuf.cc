@@ -126,11 +126,12 @@ static PyObject* read_from_buffer(PyObject* self, PyObject* args) {
 /* Documented in doc/numbuf.rst in ray-core */
 static PyObject* deserialize_list(PyObject* self, PyObject* args) {
   std::shared_ptr<RowBatch>* data;
-  if (!PyArg_ParseTuple(args, "O&", &PyObjectToArrow, &data)) {
+  PyObject* base = Py_None;
+  if (!PyArg_ParseTuple(args, "O&|O", &PyObjectToArrow, &data, &base)) {
     return NULL;
   }
   PyObject* result;
-  ARROW_CHECK_OK(DeserializeList((*data)->column(0), 0, (*data)->num_rows(), &result));
+  ARROW_CHECK_OK(DeserializeList((*data)->column(0), 0, (*data)->num_rows(), base, &result));
   return result;
 }
 

@@ -25,11 +25,15 @@ namespace numbuf {
     type* data = const_cast<type*>(values->raw_data())                       \
                    + content->offset(offset);                                \
     *out = PyArray_SimpleNewFromData(num_dims, dim.data(), NPY_##TYPE,       \
-                                       reinterpret_cast<void*>(data));       \
+                                     reinterpret_cast<void*>(data));         \
+    if (base != Py_None) {                                                   \
+      PyArray_SetBaseObject((PyArrayObject*) *out, base);                    \
+    }                                                                        \
+    Py_XINCREF(base);                                                        \
   }                                                                          \
   return Status::OK();
 
-Status DeserializeArray(std::shared_ptr<Array> array, int32_t offset, PyObject** out) {
+Status DeserializeArray(std::shared_ptr<Array> array, int32_t offset, PyObject* base, PyObject** out) {
   DCHECK(array);
   auto tensor = std::dynamic_pointer_cast<StructArray>(array);
   DCHECK(tensor);
