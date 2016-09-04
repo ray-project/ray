@@ -50,29 +50,6 @@ these internal object IDs in the `contained_objectids_` data structure).
 3. To handle the third case, we increment in the `serialize_task` method and
 decrement in the `deserialize_task` method.
 
-## How to Handle Aliasing
-Reference counting interacts with aliasing. Since multiple object IDs
-may refer to the same object, we cannot deallocate that object until all of the
-object IDs that refer to it have reference counts of 0. We keep track of
-the number of separate aliases separately. If two object IDs refer to the
-same object, the scheduler keeps track the number of occurrences of each of
-those object IDs separately. This simplifies the scheduler's job because
-it may not always know if two object IDs refer to the same object or not
-(since it assigns them before hearing back about what they refer to).
-
-When we decrement the count for an object ID, if the count reaches 0,
-we compute all object IDs that the scheduler knows to reference the same
-object. If these object IDs all have count 0, then we deallocate the
-object. Otherwise, we do not deallocate the object.
-
-You may ask, what if there is some object ID with a nonzero count which
-refers to the same object, but the scheduler does not know it? This cannot
-happen because the following invariant holds. If `a` and `b` are object
-references that will be aliased together (through a call to
-`AliasObjectIDs(a, b)`), then either the call has already happened, or both `a`
-and `b` have positive reference counts (they must have positive reference counts
-because they must be passed into `AliasObjectIDs` at some point).
-
 ## Complications
 The following problem has not yet been resolved. In the following code, the
 result `x` will be garbage.

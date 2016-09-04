@@ -182,19 +182,6 @@ class WorkerTest(unittest.TestCase):
 
 class APITest(unittest.TestCase):
 
-  def testObjectIDAliasing(self):
-    reload(test_functions)
-    ray.init(start_ray_local=True, num_workers=3)
-
-    ref = test_functions.test_alias_f.remote()
-    assert_equal(ray.get(ref), np.ones([3, 4, 5]))
-    ref = test_functions.test_alias_g.remote()
-    assert_equal(ray.get(ref), np.ones([3, 4, 5]))
-    ref = test_functions.test_alias_h.remote()
-    assert_equal(ray.get(ref), np.ones([3, 4, 5]))
-
-    ray.worker.cleanup()
-
   def testKeywordArgs(self):
     reload(test_functions)
     ray.init(start_ray_local=True, num_workers=1)
@@ -259,7 +246,7 @@ class APITest(unittest.TestCase):
     ray.worker.cleanup()
 
   def testDefiningRemoteFunctions(self):
-    ray.init(start_ray_local=True, num_workers=2)
+    ray.init(start_ray_local=True, num_workers=3)
 
     # Test that we can define a remote function in the shell.
     @ray.remote
@@ -296,7 +283,7 @@ class APITest(unittest.TestCase):
       return x + 1
     @ray.remote
     def l(x):
-      return k.remote(x)
+      return ray.get(k.remote(x))
     @ray.remote
     def m(x):
       return ray.get(l.remote(x))
@@ -403,24 +390,6 @@ class ReferenceCountingTest(unittest.TestCase):
       reload(module)
     ray.init(start_ray_local=True, num_workers=1)
 
-    x = test_functions.test_alias_f.remote()
-    ray.get(x)
-    time.sleep(0.1)
-    objectid_val = x.id
-    self.assertEqual(ray.scheduler_info()["reference_counts"][objectid_val], 1)
-
-    del x
-    self.assertEqual(ray.scheduler_info()["reference_counts"][objectid_val], -1) # -1 indicates deallocated
-
-    y = test_functions.test_alias_h.remote()
-    ray.get(y)
-    time.sleep(0.1)
-    objectid_val = y.id
-    self.assertEqual(ray.scheduler_info()["reference_counts"][objectid_val:(objectid_val + 3)], [1, 0, 0])
-
-    del y
-    self.assertEqual(ray.scheduler_info()["reference_counts"][objectid_val:(objectid_val + 3)], [-1, -1, -1])
-
     z = da.zeros.remote([da.BLOCK_SIZE, 2 * da.BLOCK_SIZE])
     time.sleep(0.1)
     objectid_val = z.id
@@ -493,7 +462,10 @@ class PythonModeTest(unittest.TestCase):
     reload(test_functions)
     ray.init(start_ray_local=True, driver_mode=ray.PYTHON_MODE)
 
-    xref = test_functions.test_alias_h.remote()
+    @ray.remote
+    def f():
+      return np.ones([3, 4, 5])
+    xref = f.remote()
     assert_equal(xref, np.ones([3, 4, 5])) # remote functions should return by value
     assert_equal(xref, ray.get(xref)) # ray.get should be the identity
     y = np.random.normal(size=[11, 12])

@@ -23,7 +23,6 @@ class TaskStatusTest(unittest.TestCase):
     reload(test_functions)
     ray.init(start_ray_local=True, num_workers=3, driver_mode=ray.SILENT_MODE)
 
-    test_functions.test_alias_f.remote()
     test_functions.throw_exception_fct1.remote()
     test_functions.throw_exception_fct1.remote()
     for _ in range(100): # Retry if we need to wait longer.
