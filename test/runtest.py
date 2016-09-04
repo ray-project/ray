@@ -440,14 +440,43 @@ class ReferenceCountingTest(unittest.TestCase):
       del x
       self.assertEqual(ray.scheduler_info()["reference_counts"][objectid], 1)
 
-    # The following currently segfaults: The second "result = " closes the
-    # memory segment as soon as the assignment is done (and the first result
-    # goes out of scope).
-    # data = np.zeros([10, 20])
-    # objectid = ray.put(data)
-    # result = worker.get(objectid)
-    # result = worker.get(objectid)
-    # assert_equal(result, data)
+    # Getting an object multiple times should not be a problem. And the remote
+    # object should not be deallocated until both of the results are out of scope.
+    for val in [np.zeros(10), [np.zeros(10)], (((np.zeros(10)),),), {(): np.zeros(10)}, [1, 2, 3, np.zeros(1)]]:
+      x = ray.put(val)
+      objectid = x.id
+      xval1 = ray.get(x)
+      xval2 = ray.get(x)
+      del xval1
+      # Make sure we can still access xval2.
+      xval2
+      del xval2
+      self.assertEqual(ray.scheduler_info()["reference_counts"][objectid], 1)
+      xval3 = ray.get(x)
+      xval4 = ray.get(x)
+      xval5 = ray.get(x)
+      del x
+      del xval4, xval5
+      # Make sure we can still access xval3.
+      xval3
+      self.assertEqual(ray.scheduler_info()["reference_counts"][objectid], 1)
+      del xval3
+      self.assertEqual(ray.scheduler_info()["reference_counts"][objectid], -1)
+
+    # Getting an object multiple times and assigning it to the same name should
+    # work. This was a problem in https://github.com/amplab/ray/issues/159.
+    for val in [np.zeros(10), [np.zeros(10)], (((np.zeros(10)),),), {(): np.zeros(10)}, [1, 2, 3, np.zeros(1)]]:
+      x = ray.put(val)
+      objectid = x.id
+      xval = ray.get(x)
+      xval = ray.get(x)
+      xval = ray.get(x)
+      xval = ray.get(x)
+      self.assertEqual(ray.scheduler_info()["reference_counts"][objectid], 1)
+      del x
+      self.assertEqual(ray.scheduler_info()["reference_counts"][objectid], 1)
+      del xval
+      self.assertEqual(ray.scheduler_info()["reference_counts"][objectid], -1)
 
     ray.worker.cleanup()
 
