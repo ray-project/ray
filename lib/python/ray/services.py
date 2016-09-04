@@ -172,8 +172,8 @@ def start_ray_local(node_ip_address="127.0.0.1", num_objstores=1, num_workers=0,
   """
   if worker_path is None:
     worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../../scripts/default_worker.py")
-  if num_workers > 0 and num_objstores < 1:
-    raise Exception("Attempting to start a cluster with {} workers per object store, but `num_objstores` is {}.".format(num_objstores))
+  if num_objstores < 1:
+    raise Exception("`num_objstores` is {}, but should be at least 1.".format(num_objstores))
   scheduler_address = address(node_ip_address, new_scheduler_port())
   start_scheduler(scheduler_address, cleanup=True)
   time.sleep(0.1)
