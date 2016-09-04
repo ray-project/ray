@@ -10,6 +10,7 @@ import colorama
 import atexit
 import threading
 import string
+import weakref
 
 # Ray modules
 import config
@@ -406,7 +407,16 @@ class Worker(object):
       metadata = np.frombuffer(buff, dtype="byte", offset=8, count=metadata_size)
       data = np.frombuffer(buff, dtype="byte")[8 + metadata_size:]
       serialized = libnumbuf.read_from_buffer(memoryview(data), bytearray(metadata), metadata_offset)
-      deserialized = libnumbuf.deserialize_list(serialized, ObjectFixture(objectid, segmentid, self.handle))
+      # If there is currently no ObjectFixture for this ObjectID, then create a
+      # new one. The object_fixtures object is a WeakValueDictionary, so entries
+      # will be discarded when there are no strong references to their values.
+      # We create object_fixture outside of the assignment because if we created
+      # it inside the assignement it would immediately go out of scope.
+      object_fixture = None
+      if objectid.id not in object_fixtures:
+        object_fixture = ObjectFixture(objectid, segmentid, self.handle)
+        object_fixtures[objectid.id] = object_fixture
+      deserialized = libnumbuf.deserialize_list(serialized, object_fixtures[objectid.id])
       # Unwrap the object from the list (it was wrapped put_object)
       assert len(deserialized) == 1
       result = deserialized[0]
@@ -475,6 +485,15 @@ made by one task do not affect other tasks.
 
 logger = logging.getLogger("ray")
 """Logger: The logging object for the Python worker code."""
+
+object_fixtures = weakref.WeakValueDictionary()
+"""WeakValueDictionary: The mapping from ObjectID to ObjectFixture object.
+
+This is to ensure that we have only one ObjectFixture per ObjectID. That way, if
+we call get on an object twice, we do not unmap the segment before both of the
+results go out of scope. It is a WeakValueDictionary instead of a regular
+dictionary so that it does not keep the ObjectFixtures in scope forever.
+"""
 
 class RayConnectionError(Exception):
   pass
