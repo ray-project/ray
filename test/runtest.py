@@ -372,16 +372,6 @@ class APITest(unittest.TestCase):
 
     ray.worker.cleanup()
 
-def check_get_deallocated(data):
-  x = ray.put(data)
-  ray.get(x)
-  return x.id
-
-def check_get_not_deallocated(data):
-  x = ray.put(data)
-  y = ray.get(x)
-  return y, x.id
-
 class ReferenceCountingTest(unittest.TestCase):
 
   def testDeallocation(self):
@@ -421,13 +411,34 @@ class ReferenceCountingTest(unittest.TestCase):
   def testGet(self):
     ray.init(start_ray_local=True, num_workers=3)
 
+    # Remote objects should be deallocated when the corresponding ObjectID goes
+    # out of scope, and all results of ray.get called on the ID go out of scope.
     for val in RAY_TEST_OBJECTS + [np.zeros((2, 2)), UserDefinedType()]:
-      objectid_val = check_get_deallocated(val)
-      self.assertEqual(ray.scheduler_info()["reference_counts"][objectid_val], -1)
+      x = ray.put(val)
+      objectid = x.id
+      xval = ray.get(x)
+      del x, xval
+      self.assertEqual(ray.scheduler_info()["reference_counts"][objectid], -1)
 
-      if not isinstance(val, bool) and not isinstance(val, np.generic) and val is not None:
-        x, objectid_val = check_get_not_deallocated(val)
-        self.assertEqual(ray.scheduler_info()["reference_counts"][objectid_val], 1)
+    # Remote objects that do not contain numpy arrays should be deallocated when
+    # the corresponding ObjectID goes out of scope, even if ray.get has been
+    # called on the ObjectID.
+    for val in [True, False, None, 1, 1.0, 1L, "hi", u"hi", [1, 2, 3], (1, 2, 3), [(), {(): ()}]]:
+      x = ray.put(val)
+      objectid = x.id
+      xval = ray.get(x)
+      del x
+      self.assertEqual(ray.scheduler_info()["reference_counts"][objectid], -1)
+
+    # Remote objects that contain numpy arrays should not be deallocated when
+    # the corresponding ObjectID goes out of scope, if ray.get has been called
+    # on the ObjectID and the result of that call is still in scope.
+    for val in [np.zeros(10), [np.zeros(10)], (((np.zeros(10)),),), {(): np.zeros(10)}, [1, 2, 3, np.zeros(1)]]:
+      x = ray.put(val)
+      objectid = x.id
+      xval = ray.get(x)
+      del x
+      self.assertEqual(ray.scheduler_info()["reference_counts"][objectid], 1)
 
     # The following currently segfaults: The second "result = " closes the
     # memory segment as soon as the assignment is done (and the first result
@@ -439,22 +450,6 @@ class ReferenceCountingTest(unittest.TestCase):
     # assert_equal(result, data)
 
     ray.worker.cleanup()
-
-  # @unittest.expectedFailure
-  # def testGetFailing(self):
-  #   ray.init(start_ray_local=True, num_workers=3)
-
-  #   # This is failing, because for bool and None, we cannot track python
-  #   # refcounts and therefore cannot keep the refcount up
-  #   # (see 5281bd414f6b404f61e1fe25ec5f6651defee206).
-  #   # The resulting behavior is still correct however because True, False and
-  #   # None are returned by get "by value" and therefore can be reclaimed from
-  #   # the object store safely.
-  # for val in [True, False, None]:
-  #    x, objectid_val = check_get_not_deallocated(val)
-  #   self.assertEqual(ray.scheduler_info()["reference_counts"][objectid_val], 1)
-
-  # ray.worker.cleanup()
 
 class PythonModeTest(unittest.TestCase):
 
