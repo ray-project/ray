@@ -53,7 +53,11 @@ static PyObject* serialize_list(PyObject* self, PyObject* args) {
   if (PyList_Check(value)) {
     Status s = SerializeSequences(std::vector<PyObject*>({value}), &array);
     if (!s.ok()) {
-      PyErr_SetString(NumbufError, s.ToString().c_str());
+      // If this condition is true, there was an error in the callback that
+      // needs to be passed through
+      if (!PyErr_Occurred()) {
+        PyErr_SetString(NumbufError, s.ToString().c_str());
+      }
       return NULL;
     }
 
@@ -131,7 +135,15 @@ static PyObject* deserialize_list(PyObject* self, PyObject* args) {
     return NULL;
   }
   PyObject* result;
-  ARROW_CHECK_OK(DeserializeList((*data)->column(0), 0, (*data)->num_rows(), base, &result));
+  Status s = DeserializeList((*data)->column(0), 0, (*data)->num_rows(), base, &result);
+  if (!s.ok()) {
+    // If this condition is true, there was an error in the callback that
+    // needs to be passed through
+    if (!PyErr_Occurred()) {
+      PyErr_SetString(NumbufError, s.ToString().c_str());
+    }
+    return NULL;
+  }
   return result;
 }
 

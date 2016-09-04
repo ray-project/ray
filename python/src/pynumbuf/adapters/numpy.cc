@@ -117,7 +117,7 @@ Status SerializeArray(PyArrayObject* array, SequenceBuilder& builder,
         PyObject* result = PyObject_CallObject(numbuf_serialize_callback, arglist);
         if (!result) {
           Py_XDECREF(arglist);
-          return python_error_to_status();
+          return Status::NotImplemented("python error"); // TODO(pcm): https://github.com/pcmoritz/numbuf/issues/10
         }
         builder.AppendDict(PyDict_Size(result));
         subdicts.push_back(result);
