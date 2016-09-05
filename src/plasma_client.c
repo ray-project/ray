@@ -23,7 +23,7 @@ void plasma_send(int fd, plasma_request *req) {
   }
 }
 
-plasma_buffer plasma_create(int conn, plasma_id object_id, int64_t size) {
+void plasma_create(int conn, plasma_id object_id, int64_t size, void **data) {
   LOG_INFO("called plasma_create on conn %d with size %" PRId64, conn, size);
   plasma_request req = { .type = PLASMA_CREATE, .object_id = object_id, .size = size };
   plasma_send(conn, &req);
@@ -31,16 +31,14 @@ plasma_buffer plasma_create(int conn, plasma_id object_id, int64_t size) {
   int fd = recv_fd(conn, (char*)&reply, sizeof(plasma_reply));
   assert(reply.type == PLASMA_OBJECT);
   assert(reply.size == size);
-  void *data = mmap(NULL, reply.size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-  if (data == MAP_FAILED) {
+  *data = mmap(NULL, reply.size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  if (*data == MAP_FAILED) {
     LOG_ERR("mmap failed");
     exit(-1);
   }
-  plasma_buffer buffer = { object_id, data, size, 1 };
-  return buffer;
 }
 
-plasma_buffer plasma_get(int conn, plasma_id object_id) {
+void plasma_get(int conn, plasma_id object_id, int64_t *size, void **data) {
   plasma_request req = { .type = PLASMA_GET, .object_id = object_id };
   plasma_send(conn, &req);
   plasma_reply reply;
@@ -52,13 +50,12 @@ plasma_buffer plasma_get(int conn, plasma_id object_id) {
     fd = new_fd;
   }
   assert(reply.type == PLASMA_OBJECT);
-  void *data = mmap(NULL, reply.size, PROT_READ, MAP_SHARED, fd, 0);
-  if (data  == MAP_FAILED) {
+  *data = mmap(NULL, reply.size, PROT_READ, MAP_SHARED, fd, 0);
+  if (*data  == MAP_FAILED) {
     LOG_ERR("mmap failed");
     exit(-1);
   }
-  plasma_buffer buffer = { object_id, data, reply.size, 0 };
-  return buffer;
+  *size = reply.size;
 }
 
 void plasma_seal(int fd, plasma_id object_id) {
@@ -93,4 +90,42 @@ int plasma_store_connect(const char* socket_name) {
     exit(-1);
   }
   return fd;
+}
+
+#define h_addr h_addr_list[0]
+
+int plasma_manager_connect(const char* ip_addr, int port) {
+  int fd = socket(PF_INET, SOCK_STREAM, 0);
+  if (fd < 0) {
+    LOG_ERR("could not create socket");
+    exit(-1);
+  }
+
+  struct hostent *manager = gethostbyname(ip_addr); // TODO(pcm): cache this
+  if (!manager) {
+    LOG_ERR("plasma manager %s not found", ip_addr);
+    exit(-1);
+  }
+
+  struct sockaddr_in addr;
+  addr.sin_family = AF_INET;
+  bcopy(manager->h_addr, &addr.sin_addr.s_addr, manager->h_length);
+  addr.sin_port = htons(port);
+
+  int r = connect(fd, (struct sockaddr*) &addr, sizeof(addr));
+  if (r < 0) {
+    LOG_ERR("could not establish connection to manager with id %s:%d", &ip_addr[0], port);
+    exit(-1);
+  }
+  return fd;
+}
+
+void plasma_transfer(int manager, const char* addr, int port, plasma_id object_id) {
+  plasma_request req = {.type = PLASMA_TRANSFER, .object_id = object_id, .port = port};
+  char* end = NULL;
+  for (int i = 0; i < 4; ++i) {
+    req.addr[i] = strtol(end ? end : addr, &end, 10);
+    end += 1; // skip the '.'
+  }
+  plasma_send(manager, &req);
 }

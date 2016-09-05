@@ -22,43 +22,7 @@
 #include <netdb.h>
 
 #include "plasma.h"
-
-#define MAX_CONNECTIONS 2048
-#define MAX_NUM_MANAGERS 1024
-
-enum conn_type {
-  // Connection to send commands to the manager.
-  CONN_CONTROL,
-  // Connection to send data to another manager.
-  CONN_WRITE_DATA,
-  // Connection to receive data from another manager.
-  CONN_READ_DATA
-};
-
-typedef struct {
-  // Unique identifier for the connection.
-  int id;
-  // Of type conn_type.
-  int type;
-  // Socket of the plasma store that is accessed for reading or writing data for
-  // this connection.
-  int store_conn;
-  // Buffer this connection is reading from or writing to.
-  plasma_buffer buf;
-  // Current position in the buffer.
-  int64_t cursor;
-} conn_state;
-
-typedef struct {
-  // Name of the socket connecting to local plasma store.
-  const char* store_socket_name;
-  // Number of connections.
-  int num_conn;
-  // For the "poll" system call.
-  struct pollfd waiting[MAX_CONNECTIONS];
-  // Status of connections (both control and data).
-  conn_state conn[MAX_CONNECTIONS];
-} plasma_manager_state;
+#include "plasma_manager.h"
 
 void init_manager_state(plasma_manager_state *s, const char* store_socket_name) {
   memset(&s->waiting, 0, sizeof(s->waiting));
@@ -67,22 +31,17 @@ void init_manager_state(plasma_manager_state *s, const char* store_socket_name) 
   s->store_socket_name = store_socket_name;
 }
 
-#define h_addr h_addr_list[0]
-
 // Add connection for sending commands or data to another plasma manager
-// (returns the connection id).
+// (returns the connection index).
 int add_conn(plasma_manager_state* s, int type, int fd, int events, plasma_buffer* buf) {
-  static int conn_id = 0;
   s->waiting[s->num_conn].fd = fd;
   s->waiting[s->num_conn].events = events;
-  s->conn[s->num_conn].id = conn_id;
   s->conn[s->num_conn].type = type;
   if (buf) {
     s->conn[s->num_conn].buf = *buf;
   }
   s->conn[s->num_conn].cursor = 0;
-  s->num_conn += 1;
-  return conn_id++;
+  return s->num_conn++;
 }
 
 // Remove connection with index i by swapping it with the last element.
@@ -100,33 +59,15 @@ void remove_conn(plasma_manager_state* s, int i) {
 // the data header to the other object manager.
 void initiate_transfer(plasma_manager_state* state, plasma_request* req) {
   int c = plasma_store_connect(state->store_socket_name);
-  plasma_buffer buf = plasma_get(c, req->object_id);
-
-  int fd = socket(PF_INET, SOCK_STREAM, 0);
-  if (fd < 0) {
-    LOG_ERR("could not create socket");
-    exit(-1);
-  }
+  plasma_buffer buf = { .object_id = req->object_id, .writable = 0 };
+  plasma_get(c, req->object_id, &buf.size, &buf.data);
   
   char ip_addr[16];
   snprintf(ip_addr, 32, "%d.%d.%d.%d",
                     req->addr[0], req->addr[1],
                     req->addr[2], req->addr[3]);
-  struct hostent *manager = gethostbyname(ip_addr); // TODO(pcm): cache this
-  if (!manager) {
-    LOG_ERR("plasma manager %s not found", ip_addr);
-    exit(-1);
-  }
-  struct sockaddr_in addr;
-  addr.sin_family = AF_INET;
-  bcopy(manager->h_addr, &addr.sin_addr.s_addr, manager->h_length);
-  addr.sin_port = htons(req->port);
-  
-  int r = connect(fd, (struct sockaddr*) &addr, sizeof(addr));
-  if (r < 0) {
-    LOG_ERR("could not establish connection to manager with id %s:%d", &ip_addr[0], req->port);
-    exit(-1);
-  }
+
+  int fd = plasma_manager_connect(&ip_addr[0], req->port);
 
   add_conn(state, CONN_WRITE_DATA, fd, POLLOUT, &buf);
 
@@ -139,7 +80,10 @@ void setup_data_connection(int conn_idx, plasma_manager_state* state, plasma_req
   int store_conn = plasma_store_connect(state->store_socket_name);
   state->conn[conn_idx].type = CONN_READ_DATA;
   state->conn[conn_idx].store_conn = store_conn;
-  state->conn[conn_idx].buf = plasma_create(store_conn, req->object_id, req->size);
+  state->conn[conn_idx].buf.object_id = req->object_id;
+  state->conn[conn_idx].buf.size = req->size;
+  state->conn[conn_idx].buf.writable = 1;
+  plasma_create(store_conn, req->object_id, req->size, &state->conn[conn_idx].buf.data);
   state->conn[conn_idx].cursor = 0;
 }
 
@@ -170,7 +114,7 @@ void read_from_socket(plasma_manager_state* state, int i, plasma_request* req) {
       if (r == 1) {
         LOG_ERR("read error");
       } else if (r == 0) {
-        LOG_INFO("connection with id %d disconnected", state->conn[i].id);
+        LOG_INFO("connection with index %d disconnected", i);
         remove_conn(state, i);
       } else {
         process_command(i, state, req);
