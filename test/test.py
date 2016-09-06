@@ -69,9 +69,6 @@ class TestPlasmaManager(unittest.TestCase):
     plasma_store_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../build/plasma_store")
     self.p2 = subprocess.Popen([plasma_store_executable, "-s", "/tmp/store1"])
     self.p3 = subprocess.Popen([plasma_store_executable, "-s", "/tmp/store2"])
-    # Connect two PlasmaClients.
-    self.client1 = plasma.PlasmaClient("/tmp/store1")
-    self.client2 = plasma.PlasmaClient("/tmp/store2")
     # Start two PlasmaManagers.
     self.port1 = random.randint(10000, 50000)
     self.port2 = random.randint(10000, 50000)
@@ -79,13 +76,13 @@ class TestPlasmaManager(unittest.TestCase):
     self.p4 = subprocess.Popen([plasma_manager_executable, "-s", "/tmp/store1", "-m", "127.0.0.1", "-p", str(self.port1)])
     self.p5 = subprocess.Popen([plasma_manager_executable, "-s", "/tmp/store2", "-m", "127.0.0.1", "-p", str(self.port2)])
     time.sleep(0.1)
-    # Connect two Python PlasmaManagers.
-    self.manager1 = plasma.PlasmaManager("127.0.0.1", self.port1)
-    self.manager2 = plasma.PlasmaManager("127.0.0.1", self.port2)
+    # Connect two PlasmaClients.
+    self.client1 = plasma.PlasmaClient("/tmp/store1", "127.0.0.1", self.port1)
+    self.client2 = plasma.PlasmaClient("/tmp/store2", "127.0.0.1", self.port2)
     time.sleep(0.5)
 
   def tearDown(self):
-    # Kill the nameserver, PlasmaStore and PlasmaManager processes.
+    # Kill the PlasmaStore and PlasmaManager processes.
     self.p2.kill()
     self.p3.kill()
     self.p4.kill()
@@ -101,11 +98,11 @@ class TestPlasmaManager(unittest.TestCase):
     # Seal the buffer.
     self.client1.seal(object_id1)
     # Transfer the buffer to the the other PlasmaStore.
-    self.manager1.transfer("127.0.0.1", self.port2, object_id1)
+    self.client1.transfer("127.0.0.1", self.port2, object_id1)
     # Compare the two buffers.
     self.assertEqual(self.client1.get(object_id1)[:], self.client2.get(object_id1)[:])
     # Transfer the buffer again.
-    self.manager1.transfer("127.0.0.1", self.port2, object_id1)
+    self.client1.transfer("127.0.0.1", self.port2, object_id1)
     # Compare the two buffers.
     self.assertEqual(self.client1.get(object_id1)[:], self.client2.get(object_id1)[:])
     # Create a new object id string.
@@ -117,7 +114,7 @@ class TestPlasmaManager(unittest.TestCase):
     # Seal the buffer.
     self.client2.seal(object_id2)
     # Transfer the buffer to the the other PlasmaStore.
-    self.manager2.transfer("127.0.0.1", self.port1, object_id2)
+    self.client2.transfer("127.0.0.1", self.port1, object_id2)
     # Compare the two buffers.
     self.assertEqual(self.client1.get(object_id2)[:], self.client2.get(object_id2)[:])
 

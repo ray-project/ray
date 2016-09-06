@@ -65,11 +65,16 @@ typedef struct {
   int writable;
 } plasma_buffer;
 
+// Connect to the local plasma store UNIX domain socket
 int plasma_store_connect(const char* socket_name);
-plasma_buffer plasma_create(int conn, plasma_id object_id, int64_t size);
-plasma_buffer plasma_get(int conn, plasma_id object_id);
-void plasma_seal(int fd, plasma_id object_id);
 
-void plasma_send(int fd, plasma_request *req);
+// Connect to a possibly remote plasma manager
+int plasma_manager_connect(const char* addr, int port);
+
+void plasma_create(int store, plasma_id object_id, int64_t size, void **data);
+void plasma_get(int store, plasma_id object_id, int64_t *size, void **data);
+void plasma_seal(int store, plasma_id object_id);
+
+void plasma_send(int conn, plasma_request *req);
 
 #endif
