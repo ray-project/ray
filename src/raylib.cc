@@ -1044,12 +1044,18 @@ static PyObject* task_info(PyObject* self, PyObject* args) {
     PyList_SetItem(failed_reinitialize_reusable_variables, i, failure_to_dict(reply.failed_reinitialize_reusable_variable(i)));
   }
 
+  PyObject* failed_function_to_runs = PyList_New(reply.failed_function_to_run_size());
+  for (size_t i = 0; i < reply.failed_function_to_run_size(); ++i) {
+    PyList_SetItem(failed_function_to_runs, i, failure_to_dict(reply.failed_function_to_run(i)));
+  }
+
   PyObject* dict = PyDict_New();
   set_dict_item_and_transfer_ownership(dict, PyString_FromString("failed_tasks"), failed_tasks_list);
   set_dict_item_and_transfer_ownership(dict, PyString_FromString("running_tasks"), running_tasks_list);
   set_dict_item_and_transfer_ownership(dict, PyString_FromString("failed_remote_function_imports"), failed_remote_function_imports);
   set_dict_item_and_transfer_ownership(dict, PyString_FromString("failed_reusable_variable_imports"), failed_reusable_variable_imports);
   set_dict_item_and_transfer_ownership(dict, PyString_FromString("failed_reinitialize_reusable_variables"), failed_reinitialize_reusable_variables);
+  set_dict_item_and_transfer_ownership(dict, PyString_FromString("failed_function_to_runs"), failed_function_to_runs);
   return dict;
 }
 
@@ -1146,6 +1152,7 @@ PyMODINIT_FUNC initlibraylib(void) {
   PyModule_AddIntConstant(m, "FailedRemoteFunctionImport", FailedType::FailedRemoteFunctionImport);
   PyModule_AddIntConstant(m, "FailedReusableVariableImport", FailedType::FailedReusableVariableImport);
   PyModule_AddIntConstant(m, "FailedReinitializeReusableVariable", FailedType::FailedReinitializeReusableVariable);
+  PyModule_AddIntConstant(m, "FailedFunctionToRun", FailedType::FailedFunctionToRun);
 }
 
 }

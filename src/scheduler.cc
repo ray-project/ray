@@ -311,6 +311,10 @@ Status SchedulerService::NotifyFailure(ServerContext* context, const NotifyFailu
     // An exception was thrown while a reusable variable was being imported.
     GET(failed_reinitialize_reusable_variables_)->push_back(failure);
     RAY_LOG(RAY_INFO, "Error: Worker " << workerid << " failed to reinitialize a reusable variable after running remote function " << failure.name() << ", failed with error message:\n" << failure.error_message());
+  } else if (failure.type() == FailedType::FailedFunctionToRun) {
+    // An exception was thrown while a function was being run on all workers.
+    GET(failed_function_to_runs_)->push_back(failure);
+    RAY_LOG(RAY_INFO, "Error: Worker " << workerid << " failed to run function " << failure.name() << " on all workers, failed with error message:\n" << failure.error_message());
   } else {
     RAY_CHECK(false, "This code should be unreachable.")
   }
@@ -431,6 +435,7 @@ Status SchedulerService::TaskInfo(ServerContext* context, const TaskInfoRequest*
   auto failed_remote_function_imports = GET(failed_remote_function_imports_);
   auto failed_reusable_variable_imports = GET(failed_reusable_variable_imports_);
   auto failed_reinitialize_reusable_variables = GET(failed_reinitialize_reusable_variables_);
+  auto failed_function_to_runs = GET(failed_function_to_runs_);
   auto computation_graph = GET(computation_graph_);
   auto workers = GET(workers_);
   // Return information about the failed tasks.
@@ -463,6 +468,11 @@ Status SchedulerService::TaskInfo(ServerContext* context, const TaskInfoRequest*
   for (size_t i = 0; i < failed_reinitialize_reusable_variables->size(); ++i) {
     Failure* failure = reply->add_failed_reinitialize_reusable_variable();
     *failure = (*failed_reinitialize_reusable_variables)[i];
+  }
+  // Return information about functions that failed to run on all workers.
+  for (size_t i = 0; i < failed_function_to_runs->size(); ++i) {
+    Failure* failure = reply->add_failed_function_to_run();
+    *failure = (*failed_function_to_runs)[i];
   }
   return Status::OK;
 }

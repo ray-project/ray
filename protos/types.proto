@@ -53,6 +53,7 @@ enum FailedType {
   FailedRemoteFunctionImport = 1;
   FailedReusableVariableImport = 2;
   FailedReinitializeReusableVariable = 3;
+  FailedFunctionToRun = 4;
 }
 
 // Used to represent exceptions thrown in Python. This will happen when a task

@@ -100,6 +100,9 @@ Status WorkerServiceImpl::PrintErrorMessage(ServerContext* context, const PrintE
   } else if (failure.type() == FailedType::FailedReinitializeReusableVariable) {
     // An exception was thrown while a reusable variable was being reinitialized.
     std::cout << "Error: Worker " << workerid << " failed to reinitialize a reusable variable after running remote function " << failure.name() << ", failed with error message:\n" << failure.error_message() << std::endl;
+  } else if (failure.type() == FailedType::FailedFunctionToRun) {
+    // An exception was thrown while a function was being run on all workers.
+    std::cout << "Error: Worker " << workerid << " failed to run function " << failure.name() << " on all workers, failed with error message:\n" << failure.error_message() << std::endl;
   } else {
     RAY_CHECK(false, "This code should be unreachable.")
   }

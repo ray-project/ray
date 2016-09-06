@@ -124,5 +124,23 @@ class TaskStatusTest(unittest.TestCase):
 
     ray.worker.cleanup()
 
+  def testFailedFunctionToRun(self):
+    ray.init(start_ray_local=True, num_workers=2, driver_mode=ray.SILENT_MODE)
+
+    def f(worker):
+      if ray.worker.global_worker.mode == ray.WORKER_MODE:
+        raise Exception("Function to run failed.")
+    ray.worker.global_worker.run_function_on_all_workers(f)
+    for _ in range(100): # Retry if we need to wait longer.
+      if len(ray.task_info()["failed_function_to_runs"]) >= 2:
+        break
+      time.sleep(0.1)
+    # Check that the error message is in the task info.
+    self.assertEqual(len(ray.task_info()["failed_function_to_runs"]), 2)
+    self.assertTrue("Function to run failed." in ray.task_info()["failed_function_to_runs"][0]["error_message"])
+    self.assertTrue("Function to run failed." in ray.task_info()["failed_function_to_runs"][1]["error_message"])
+
+    ray.worker.cleanup()
+
 if __name__ == "__main__":
   unittest.main(verbosity=2)

@@ -188,6 +188,8 @@ private:
   Synchronized<std::vector<Failure> > failed_reusable_variable_imports_;
   // A list of reusable variables reinitialization failures.
   Synchronized<std::vector<Failure> > failed_reinitialize_reusable_variables_;
+  // A list of function to run failures.
+  Synchronized<std::vector<Failure> > failed_function_to_runs_;
   // List of pending get calls.
   Synchronized<std::vector<std::pair<WorkerId, ObjectID> > > get_queue_;
   // The computation graph tracks the operations that have been submitted to the
