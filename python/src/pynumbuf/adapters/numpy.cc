@@ -114,14 +114,15 @@ Status SerializeArray(PyArrayObject* array, SequenceBuilder& builder,
         return Status::NotImplemented(stream.str());
       } else {
         PyObject* arglist = Py_BuildValue("(O)", array);
+        // The reference count of the result of the call to PyObject_CallObject
+        // must be decremented. This is done in SerializeDict in python.cc.
         PyObject* result = PyObject_CallObject(numbuf_serialize_callback, arglist);
+        Py_XDECREF(arglist);
         if (!result) {
-          Py_XDECREF(arglist);
           return Status::NotImplemented("python error"); // TODO(pcm): https://github.com/pcmoritz/numbuf/issues/10
         }
         builder.AppendDict(PyDict_Size(result));
         subdicts.push_back(result);
-        Py_XDECREF(arglist);
       }
   }
   Py_XDECREF(contiguous);
