@@ -22,13 +22,31 @@ import services
 import libnumbuf
 import libraylib as raylib
 
+contained_objectids = []
+def numbuf_serialize(value):
+  """This serializes a value and tracks the object IDs inside the value.
+
+  We also define a custom ObjectID serializer which also closes over the global
+  variable contained_objectids, and whenever the custom serializer is called, it
+  adds the releevant ObjectID to the list contained_objectids. The list
+  contained_objectids should be reset between calls to numbuf_serialize.
+
+  Args:
+    value: A Python object that will be serialized.
+
+  Returns:
+    The serialized object.
+  """
+  assert len(contained_objectids) == 0, "This should be unreachable."
+  return libnumbuf.serialize_list([value])
+
 class RayTaskError(Exception):
   """An object used internally to represent a task that threw an exception.
 
   If a task throws an exception during execution, a RayTaskError is stored in
   the object store for each of the task's outputs. When an object is retrieved
   from the object store, the Python method that retrieved it checks to see if
-  the object is a RayTaskError and if it is then an exceptionis thrown
+  the object is a RayTaskError and if it is then an exception is thrown
   propagating the error message.
 
   Currently, we either use the exception attribute or the traceback attribute
@@ -49,32 +67,6 @@ class RayTaskError(Exception):
     else:
       self.exception = None
     self.traceback_str = traceback_str
-
-  @staticmethod
-  def deserialize(primitives):
-    """Create a RayTaskError from a primitive object."""
-    function_name, exception, traceback_str = primitives
-    if exception[0] == "RayGetError":
-      exception = RayGetError.deserialize(exception[1])
-    elif exception[0] == "RayGetArgumentError":
-      exception = RayGetArgumentError.deserialize(exception[1])
-    elif exception[0] == "None":
-      exception = None
-    else:
-      assert False, "This code should be unreachable."
-    return RayTaskError(function_name, exception, traceback_str)
-
-  def serialize(self):
-    """Turn a RayTaskError into a primitive object."""
-    if isinstance(self.exception, RayGetError):
-      serialized_exception = ("RayGetError", self.exception.serialize())
-    elif isinstance(self.exception, RayGetArgumentError):
-      serialized_exception = ("RayGetArgumentError", self.exception.serialize())
-    elif self.exception is None:
-      serialized_exception = ("None",)
-    else:
-      assert False, "This code should be unreachable."
-    return (self.function_name, serialized_exception, self.traceback_str)
 
   def __str__(self):
     """Format a RayTaskError as a string."""
@@ -99,16 +91,6 @@ class RayGetError(Exception):
     self.objectid = objectid
     self.task_error = task_error
 
-  @staticmethod
-  def deserialize(primitives):
-    """Create a RayGetError from a primitive object."""
-    objectid, task_error = primitives
-    return RayGetError(objectid, RayTaskError.deserialize(task_error))
-
-  def serialize(self):
-    """Turn a RayGetError into a primitive object."""
-    return (self.objectid, self.task_error.serialize())
-
   def __str__(self):
     """Format a RayGetError as a string."""
     return "Could not get objectid {}. It was created by remote function {}{}{} which failed with:\n\n{}".format(self.objectid, colorama.Fore.RED, self.task_error.function_name, colorama.Fore.RESET, self.task_error)
@@ -131,16 +113,6 @@ class RayGetArgumentError(Exception):
     self.function_name = function_name
     self.objectid = objectid
     self.task_error = task_error
-
-  @staticmethod
-  def deserialize(primitives):
-    """Create a RayGetArgumentError from a primitive object."""
-    function_name, argument_index, objectid, task_error = primitives
-    return RayGetArgumentError(function_name, argument_index, objectid, RayTaskError.deserialize(task_error))
-
-  def serialize(self):
-    """Turn a RayGetArgumentError into a primitive object."""
-    return (self.function_name, self.argument_index, self.objectid, self.task_error.serialize())
 
   def __str__(self):
     """Format a RayGetArgumentError as a string."""
@@ -366,30 +338,27 @@ class Worker(object):
       objectid (raylib.ObjectID): The object ID of the value to be put.
       value (serializable object): The value to put in the object store.
     """
-    try:
-      # We put the value into a list here because in arrow the concept of
-      # "serializing a single object" does not exits.
-      schema, size, serialized = libnumbuf.serialize_list([value])
-      # TODO(pcm): Right now, metadata is serialized twice, change that in the future
-      # in the following line, the "8" is for storing the metadata size,
-      # the len(schema) is for storing the metadata and the 4096 is for storing
-      # the metadata in the batch (see INITIAL_METADATA_SIZE in arrow)
-      size = size + 8 + len(schema) + 4096
-      buff, segmentid = raylib.allocate_buffer(self.handle, objectid, size)
-      # write the metadata length
-      np.frombuffer(buff, dtype="int64", count=1)[0] = len(schema)
-      # metadata buffer
-      metadata = np.frombuffer(buff, dtype="byte", offset=8, count=len(schema))
-      # write the metadata
-      metadata[:] = schema
-      data = np.frombuffer(buff, dtype="byte")[8 + len(schema):]
-      metadata_offset = libnumbuf.write_to_buffer(serialized, memoryview(data))
-      raylib.finish_buffer(self.handle, objectid, segmentid, metadata_offset)
-    except:
-      # At the moment, custom object and objects that contain object IDs take this path
-      # TODO(pcm): Make sure that these are the only objects getting serialized to protobuf
-      object_capsule, contained_objectids = serialization.serialize(self.handle, value) # contained_objectids is a list of the objectids contained in object_capsule
-      raylib.put_object(self.handle, objectid, object_capsule, contained_objectids)
+    # We put the value into a list here because in arrow the concept of
+    # "serializing a single object" does not exits.
+    schema, size, serialized = numbuf_serialize(value)
+    global contained_objectids
+    raylib.add_contained_objectids(self.handle, objectid, contained_objectids)
+    contained_objectids = []
+    # TODO(pcm): Right now, metadata is serialized twice, change that in the future
+    # in the following line, the "8" is for storing the metadata size,
+    # the len(schema) is for storing the metadata and the 8192 is for storing
+    # the metadata in the batch (see INITIAL_METADATA_SIZE in arrow)
+    size = size + 8 + len(schema) + 4096
+    buff, segmentid = raylib.allocate_buffer(self.handle, objectid, size)
+    # write the metadata length
+    np.frombuffer(buff, dtype="int64", count=1)[0] = len(schema)
+    # metadata buffer
+    metadata = np.frombuffer(buff, dtype="byte", offset=8, count=len(schema))
+    # write the metadata
+    metadata[:] = schema
+    data = np.frombuffer(buff, dtype="byte")[8 + len(schema):]
+    metadata_offset = libnumbuf.write_to_buffer(serialized, memoryview(data))
+    raylib.finish_buffer(self.handle, objectid, segmentid, metadata_offset)
 
   def get_object(self, objectid):
     """Get the value in the local object store associated with objectid.
@@ -400,32 +369,25 @@ class Worker(object):
     Args:
       objectid (raylib.ObjectID): The object ID of the value to retrieve.
     """
-    if raylib.is_arrow(self.handle, objectid):
-      ## this is the new codepath
-      buff, segmentid, metadata_offset = raylib.get_buffer(self.handle, objectid)
-      metadata_size = np.frombuffer(buff, dtype="int64", count=1)[0]
-      metadata = np.frombuffer(buff, dtype="byte", offset=8, count=metadata_size)
-      data = np.frombuffer(buff, dtype="byte")[8 + metadata_size:]
-      serialized = libnumbuf.read_from_buffer(memoryview(data), bytearray(metadata), metadata_offset)
-      # If there is currently no ObjectFixture for this ObjectID, then create a
-      # new one. The object_fixtures object is a WeakValueDictionary, so entries
-      # will be discarded when there are no strong references to their values.
-      # We create object_fixture outside of the assignment because if we created
-      # it inside the assignement it would immediately go out of scope.
-      object_fixture = None
-      if objectid.id not in object_fixtures:
-        object_fixture = ObjectFixture(objectid, segmentid, self.handle)
-        object_fixtures[objectid.id] = object_fixture
-      deserialized = libnumbuf.deserialize_list(serialized, object_fixtures[objectid.id])
-      # Unwrap the object from the list (it was wrapped put_object)
-      assert len(deserialized) == 1
-      result = deserialized[0]
-      ## this is the old codepath
-      # result, segmentid = raylib.get_arrow(self.handle, objectid)
-    else:
-      object_capsule, segmentid = raylib.get_object(self.handle, objectid)
-      result = serialization.deserialize(self.handle, object_capsule)
-
+    assert raylib.is_arrow(self.handle, objectid), "All objects should be serialized using Arrow."
+    buff, segmentid, metadata_offset = raylib.get_buffer(self.handle, objectid)
+    metadata_size = np.frombuffer(buff, dtype="int64", count=1)[0]
+    metadata = np.frombuffer(buff, dtype="byte", offset=8, count=metadata_size)
+    data = np.frombuffer(buff, dtype="byte")[8 + metadata_size:]
+    serialized = libnumbuf.read_from_buffer(memoryview(data), bytearray(metadata), metadata_offset)
+    # If there is currently no ObjectFixture for this ObjectID, then create a
+    # new one. The object_fixtures object is a WeakValueDictionary, so entries
+    # will be discarded when there are no strong references to their values.
+    # We create object_fixture outside of the assignment because if we created
+    # it inside the assignement it would immediately go out of scope.
+    object_fixture = None
+    if objectid.id not in object_fixtures:
+      object_fixture = ObjectFixture(objectid, segmentid, self.handle)
+      object_fixtures[objectid.id] = object_fixture
+    deserialized = libnumbuf.deserialize_list(serialized, object_fixtures[objectid.id])
+    # Unwrap the object from the list (it was wrapped put_object)
+    assert len(deserialized) == 1
+    result = deserialized[0]
     return result
 
   def alias_objectids(self, alias_objectid, target_objectid):
@@ -445,7 +407,10 @@ class Worker(object):
         be object IDs or they can be values. If they are values, they
         must be serializable objecs.
     """
-    task_capsule = serialization.serialize_task(self.handle, func_name, args)
+    # Convert all of the argumens to object IDs. It is a little strange that we
+    # are calling put, which is external to this class.
+    args = [arg if isinstance(arg, raylib.ObjectID) else put(arg, worker=self) for arg in args]
+    task_capsule = raylib.serialize_task(self.handle, func_name, args)
     objectids = raylib.submit_task(self.handle, task_capsule)
     return objectids
 
@@ -461,10 +426,13 @@ class Worker(object):
         not take any arguments. If it returns anything, its return values will
         not be used.
     """
+    if self.mode not in [raylib.SCRIPT_MODE, raylib.SILENT_MODE, raylib.PYTHON_MODE]:
+      raise Exception("run_function_on_all_workers can only be called on a driver.")
     # First run the function on the driver.
     function(self)
     # Then run the function on all of the workers.
-    raylib.run_function_on_all_workers(self.handle, pickling.dumps(function))
+    if self.mode in [raylib.SCRIPT_MODE, raylib.SILENT_MODE]:
+      raylib.run_function_on_all_workers(self.handle, pickling.dumps(function))
 
 global_worker = Worker()
 """Worker: The global Worker object for this worker process.
@@ -567,6 +535,28 @@ def task_info(worker=global_worker):
   """Return information about failed tasks."""
   check_connected(worker)
   return raylib.task_info(worker.handle)
+
+def initialize_numbuf(worker=global_worker):
+  """Initialize the serialization library.
+
+  This defines a custom serializer for object IDs and also tells numbuf to
+  serialize several exception classes that we define for error handling.
+  """
+  # Define a custom serializer and deserializer for handling Object IDs.
+  def objectid_custom_serializer(obj):
+    class_identifier = serialization.class_identifier(type(obj))
+    contained_objectids.append(obj)
+    return raylib.serialize_objectid(worker.handle, obj)
+  def objectid_custom_deserializer(serialized_obj):
+    return raylib.deserialize_objectid(worker.handle, serialized_obj)
+  serialization.add_class_to_whitelist(raylib.ObjectID, pickle=False, custom_serializer=objectid_custom_serializer, custom_deserializer=objectid_custom_deserializer)
+
+  if worker.mode in [raylib.SCRIPT_MODE, raylib.SILENT_MODE]:
+    # These should only be called on the driver because register_class will
+    # export the class to all of the workers.
+    register_class(RayTaskError)
+    register_class(RayGetError)
+    register_class(RayGetArgumentError)
 
 def init(start_ray_local=False, num_workers=None, num_objstores=None, scheduler_address=None, node_ip_address=None, driver_mode=raylib.SCRIPT_MODE):
   """Either connect to an existing Ray cluster or start one and connect to it.
@@ -735,14 +725,16 @@ def connect(node_ip_address, scheduler_address, objstore_address=None, worker=gl
     # the same.
     script_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
     current_directory = os.path.abspath(os.path.curdir)
-    worker.run_function_on_all_workers(lambda worker : sys.path.insert(1, script_directory))
-    worker.run_function_on_all_workers(lambda worker : sys.path.insert(1, current_directory))
+    worker.run_function_on_all_workers(lambda worker: sys.path.insert(1, script_directory))
+    worker.run_function_on_all_workers(lambda worker: sys.path.insert(1, current_directory))
     # Export cached remote functions to the workers.
     for function_name, function_to_export in worker.cached_remote_functions:
       raylib.export_remote_function(worker.handle, function_name, function_to_export)
     # Export cached reusable variables to the workers.
     for name, reusable_variable in reusables._cached_reusables:
       _export_reusable_variable(name, reusable_variable)
+  # Initialize the serialization library.
+  initialize_numbuf()
   worker.cached_remote_functions = None
   reusables._cached_reusables = None
 
@@ -756,6 +748,30 @@ def disconnect(worker=global_worker):
   # exported. This is mostly relevant for the tests.
   worker.cached_remote_functions = []
   reusables._cached_reusables = []
+
+def register_class(cls, pickle=False, worker=global_worker):
+  """Enable workers to serialize or deserialize objects of a particular class.
+
+  This method runs the register_class function defined below on every worker,
+  which will enable libnumbuf to properly serialize and deserialize objects of
+  this class.
+
+  Args:
+    cls (type): The class that libnumbuf should serialize.
+    pickle (bool): If False then objects of this class will be serialized by
+      turning their __dict__ fields into a dictionary. If True, then objects
+      of this class will be serialized using pickle.
+
+  Raises:
+    Exception: An exception is raised if pickle=False and the class cannot be
+      efficiently serialized by Ray.
+  """
+  # Raise an exception if cls cannot be serialized efficiently by Ray.
+  if not pickle:
+    serialization.check_serializable(cls)
+  def register_class_for_serialization(worker):
+    serialization.add_class_to_whitelist(cls, pickle=pickle)
+  worker.run_function_on_all_workers(register_class_for_serialization)
 
 def get(objectid, worker=global_worker):
   """Get a remote object or a list of remote objects from the object store.
@@ -915,7 +931,7 @@ def main_loop(worker=global_worker):
     After the task executes, the worker resets any reusable variables that were
     accessed by the task.
     """
-    function_name, args, return_objectids = serialization.deserialize_task(worker.handle, task)
+    function_name, args, return_objectids = task
     try:
       arguments = get_arguments_for_execution(worker.functions[function_name], args, worker) # get args from objstore
       outputs = worker.functions[function_name].executor(arguments) # execute the function

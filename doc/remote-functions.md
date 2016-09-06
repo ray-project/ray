@@ -52,28 +52,11 @@ types in the object store. **The serializable types are:**
 3. Object IDs
 4. Lists, tuples, and dictionaries of other serializable types, but excluding
 custom classes (for example, `[1, 1.0, "hello"]`, `{True: "hi", 1: ["hi"]}`)
-5. Custom classes where the user has provided `serialize` and `desererialize`
-methods
+5. Custom classes in many cases. You must explicitly register the class.
 
-If you wish to define a custom class and to allow it to be serialized in the
-object store, you must implement `serialize` and `deserialize` methods which
-convert the object to and from primitive data types. A simple example is shown
-below.
+    ```python
+    class Foo(object):
+      pass
 
-```python
-BLOCK_SIZE = 1000
-
-class ExampleClass(object):
-  def __init__(self, field1, field2):
-    # This example assumes that field1 and field2 are serializable types.
-    self.field1 = field1
-    self.field2 = field2
-
-  @staticmethod
-  def deserialize(primitives):
-    (field1, field2) = primitives
-    return ExampleClass(field1, field2)
-
-  def serialize(self):
-    return (self.field1, self.field2)
-```
+    ray.register_class(Foo)
+    ```

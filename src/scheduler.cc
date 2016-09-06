@@ -673,15 +673,13 @@ void SchedulerService::assign_task(OperationId operationid, WorkerId workerid, c
   AckReply reply;
   RAY_LOG(RAY_INFO, "starting to send arguments");
   for (size_t i = 0; i < task.arg_size(); ++i) {
-    if (!task.arg(i).has_obj()) {
-      ObjectID objectid = task.arg(i).id();
-      ObjectID canonical_objectid = get_canonical_objectid(objectid);
-      // Notify the relevant objstore about potential aliasing when it's ready
-      GET(alias_notification_queue_)->push_back(std::make_pair(objstoreid, std::make_pair(objectid, canonical_objectid)));
-      attempt_notify_alias(objstoreid, objectid, canonical_objectid);
-      RAY_LOG(RAY_DEBUG, "task contains object ref " << canonical_objectid);
-      deliver_object_async_if_necessary(canonical_objectid, pick_objstore(canonical_objectid), objstoreid);
-    }
+    ObjectID objectid = task.arg(i);
+    ObjectID canonical_objectid = get_canonical_objectid(objectid);
+    // Notify the relevant objstore about potential aliasing when it's ready
+    GET(alias_notification_queue_)->push_back(std::make_pair(objstoreid, std::make_pair(objectid, canonical_objectid)));
+    attempt_notify_alias(objstoreid, objectid, canonical_objectid);
+    RAY_LOG(RAY_DEBUG, "task contains object ref " << canonical_objectid);
+    deliver_object_async_if_necessary(canonical_objectid, pick_objstore(canonical_objectid), objstoreid);
   }
   {
     auto workers = GET(workers_);
@@ -694,15 +692,13 @@ void SchedulerService::assign_task(OperationId operationid, WorkerId workerid, c
 bool SchedulerService::can_run(const Task& task) {
   auto objtable = GET(objtable_);
   for (int i = 0; i < task.arg_size(); ++i) {
-    if (!task.arg(i).has_obj()) {
-      ObjectID objectid = task.arg(i).id();
-      if (!has_canonical_objectid(objectid)) {
-        return false;
-      }
-      ObjectID canonical_objectid = get_canonical_objectid(objectid);
-      if (canonical_objectid >= objtable->size() || (*objtable)[canonical_objectid].size() == 0) {
-        return false;
-      }
+    ObjectID objectid = task.arg(i);
+    if (!has_canonical_objectid(objectid)) {
+      return false;
+    }
+    ObjectID canonical_objectid = get_canonical_objectid(objectid);
+    if (canonical_objectid >= objtable->size() || (*objtable)[canonical_objectid].size() == 0) {
+      return false;
     }
   }
   return true;
@@ -939,16 +935,14 @@ void SchedulerService::schedule_tasks_location_aware() {
         // determine how many objects would need to be shipped
         size_t num_shipped_objects = 0;
         for (int j = 0; j < task.arg_size(); ++j) {
-          if (!task.arg(j).has_obj()) {
-            ObjectID objectid = task.arg(j).id();
-            RAY_CHECK(has_canonical_objectid(objectid), "no canonical object ref found even though task is ready; that should not be possible!");
-            ObjectID canonical_objectid = get_canonical_objectid(objectid);
-            {
-              // check if the object is already in the local object store
-              auto objtable = GET(objtable_);
-              if (!std::binary_search((*objtable)[canonical_objectid].begin(), (*objtable)[canonical_objectid].end(), objstoreid)) {
-                num_shipped_objects += 1;
-              }
+          ObjectID objectid = task.arg(j);
+          RAY_CHECK(has_canonical_objectid(objectid), "no canonical object ref found even though task is ready; that should not be possible!");
+          ObjectID canonical_objectid = get_canonical_objectid(objectid);
+          {
+            // check if the object is already in the local object store
+            auto objtable = GET(objtable_);
+            if (!std::binary_search((*objtable)[canonical_objectid].begin(), (*objtable)[canonical_objectid].end(), objstoreid)) {
+              num_shipped_objects += 1;
             }
           }
         }
@@ -1059,6 +1053,9 @@ void SchedulerService::deallocate_object(ObjectID canonical_objectid, const MySy
     }
     locations.clear();
   }
+  // Decrement the reference count for all of the object IDs contained in this
+  // object. The corresponding increments happen in add_contained_objectids in
+  // worker.cc.
   decrement_ref_count((*contained_objectids)[canonical_objectid], reference_counts, contained_objectids);
 }
 

@@ -231,42 +231,24 @@ slice Worker::get_object(ObjectID objectid) {
   return slice;
 }
 
-// TODO(pcm): More error handling
-// contained_objectids is a vector of all the objectids contained in obj
-void Worker::put_object(ObjectID objectid, const Obj* obj, std::vector<ObjectID> &contained_objectids) {
-  RAY_CHECK(connected_, "Attempted to perform put_object but failed.");
-  std::string data;
-  obj->SerializeToString(&data); // TODO(pcm): get rid of this serialization
-  ObjRequest request;
-  request.workerid = workerid_;
-  request.type = ObjRequestType::ALLOC;
-  request.objectid = objectid;
-  request.size = data.size();
-  RAY_CHECK(request_obj_queue_.send(&request), "error sending over IPC");
+void Worker::add_contained_objectids(ObjectID objectid, std::vector<ObjectID> &contained_objectids) {
+  RAY_CHECK(connected_, "Attempted to perform add_contained_objectids but failed.");
   if (contained_objectids.size() > 0) {
-    RAY_LOG(RAY_REFCOUNT, "In put_object, calling increment_reference_count for contained objectids");
-    increment_reference_count(contained_objectids); // Notify the scheduler that some object references are serialized in the objstore.
+    RAY_LOG(RAY_REFCOUNT, "In add_contained_objectids, calling increment_reference_count for contained objectids");
+    // Notify the scheduler that some object references are serialized in the
+    // objstore. The corresponding decrement happens when the object
+    // corresponding to objectid is deallocated.
+    increment_reference_count(contained_objectids);
+    // Notify the scheduler about the objectids that we are serializing in the objstore.
+    AddContainedObjectIDsRequest contained_objectids_request;
+    contained_objectids_request.set_objectid(objectid);
+    for (int i = 0; i < contained_objectids.size(); ++i) {
+      contained_objectids_request.add_contained_objectid(contained_objectids[i]); // TODO(rkn): The naming here is bad
+    }
+    AckReply reply;
+    ClientContext context;
+     RAY_CHECK_GRPC(scheduler_stub_->AddContainedObjectIDs(&context, contained_objectids_request, &reply));
   }
-  ObjHandle result;
-  RAY_CHECK(receive_obj_queue_.receive(&result), "error receiving over IPC");
-  uint8_t* target = segmentpool_->get_address(result);
-  std::memcpy(target, data.data(), data.size());
-  // We immediately unmap here; if the object is going to be accessed again, it will be mapped again;
-  // This is reqired because we do not have a mechanism to unmap the object later.
-  segmentpool_->unmap_segment(result.segmentid());
-  request.type = ObjRequestType::WORKER_DONE;
-  request.metadata_offset = 0;
-  RAY_CHECK(request_obj_queue_.send(&request), "Failed to send request from the worker to the object store because the message queue was full.");
-
-  // Notify the scheduler about the objectids that we are serializing in the objstore.
-  AddContainedObjectIDsRequest contained_objectids_request;
-  contained_objectids_request.set_objectid(objectid);
-  for (int i = 0; i < contained_objectids.size(); ++i) {
-    contained_objectids_request.add_contained_objectid(contained_objectids[i]); // TODO(rkn): The naming here is bad
-  }
-  AckReply reply;
-  ClientContext context;
-   RAY_CHECK_GRPC(scheduler_stub_->AddContainedObjectIDs(&context, contained_objectids_request, &reply));
 }
 
 #define CHECK_ARROW_STATUS(s, msg)                              \

@@ -2,8 +2,6 @@ import unittest
 import ray
 import numpy as np
 import time
-import subprocess32 as subprocess
-import os
 from numpy.testing import assert_equal, assert_almost_equal
 
 import ray.array.remote as ra
@@ -45,23 +43,11 @@ class RemoteArrayTest(unittest.TestCase):
 
 class DistributedArrayTest(unittest.TestCase):
 
-  def testSerialization(self):
-    for module in [ra.core, ra.random, ra.linalg, da.core, da.random, da.linalg]:
-      reload(module)
-    ray.init(start_ray_local=True, num_workers=0)
-
-    x = da.DistArray([2, 3, 4], np.array([[[ray.put(0)]]]))
-    capsule, _ = ray.serialization.serialize(ray.worker.global_worker.handle, x)
-    y = ray.serialization.deserialize(ray.worker.global_worker.handle, capsule)
-    self.assertEqual(x.shape, y.shape)
-    self.assertEqual(x.objectids[0, 0, 0].id, y.objectids[0, 0, 0].id)
-
-    ray.worker.cleanup()
-
   def testAssemble(self):
     for module in [ra.core, ra.random, ra.linalg, da.core, da.random, da.linalg]:
       reload(module)
     ray.init(start_ray_local=True, num_workers=1)
+    ray.register_class(da.DistArray)
 
     a = ra.ones.remote([da.BLOCK_SIZE, da.BLOCK_SIZE])
     b = ra.zeros.remote([da.BLOCK_SIZE, da.BLOCK_SIZE])
@@ -74,6 +60,7 @@ class DistributedArrayTest(unittest.TestCase):
     for module in [ra.core, ra.random, ra.linalg, da.core, da.random, da.linalg]:
       reload(module)
     ray.init(start_ray_local=True, num_objstores=2, num_workers=10)
+    ray.register_class(da.DistArray)
 
     x = da.zeros.remote([9, 25, 51], "float")
     assert_equal(ray.get(da.assemble.remote(x)), np.zeros([9, 25, 51]))

@@ -1,10 +1,8 @@
 syntax = "proto3";
 
-import "types.proto";
-
 message Task {
   string name = 1; // Name of the function call. Must not be empty.
-  repeated Value arg = 2; // List of arguments, can be either object IDs or protobuf descriptions of object passed by value
+  repeated uint64 arg = 2; // List of object IDs of the arguments to the function.
   repeated uint64 result = 3; // Object IDs for result
 }
 
