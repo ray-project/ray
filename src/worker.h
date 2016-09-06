@@ -62,8 +62,8 @@ class Worker {
   ObjectID get_objectid();
   // request an object to be delivered to the local object store
   void request_object(ObjectID objectid);
-  // stores an object to the local object store
-  void put_object(ObjectID objectid, const Obj* obj, std::vector<ObjectID> &contained_objectids);
+  // Notify the scheduler about the object IDs contained within a remote object.
+  void add_contained_objectids(ObjectID objectid, std::vector<ObjectID> &contained_objectids);
   // retrieve serialized object from local object store
   slice get_object(ObjectID objectid);
   // Allocates buffer for objectid with size of size

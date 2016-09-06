@@ -37,6 +37,7 @@ static void PyObjectID_dealloc(PyObjectID *self) {
   PyObjectToWorker(self->worker_capsule, &worker);
   std::vector<ObjectID> objectids;
   objectids.push_back(self->id);
+  RAY_LOG(RAY_REFCOUNT, "In PyObjectID_dealloc, calling decrement_reference_count for objectid " << self->id);
   worker->decrement_reference_count(objectids);
   Py_DECREF(self->worker_capsule); // The corresponding increment happens in PyObjectID_init.
   self->ob_type->tp_free((PyObject*) self);
@@ -476,28 +477,24 @@ static PyObject* deserialize(PyObject* worker_capsule, const Obj& obj, std::vect
   }
 }
 
-// This returns the serialized object and a list of the object references contained in that object.
-static PyObject* serialize_object(PyObject* self, PyObject* args) {
-  Obj* obj = new Obj(); // TODO: to be freed in capsul destructor
-  PyObject* worker_capsule;
-  PyObject* pyval;
-  if (!PyArg_ParseTuple(args, "OO", &worker_capsule, &pyval)) {
-    return NULL;
-  }
-  std::vector<ObjectID> objectids;
-  if (serialize(worker_capsule, pyval, obj, objectids) != 0) {
-    return NULL;
-  }
+// This converts an Python ObjectID to an Python integer.
+static PyObject* serialize_objectid(PyObject* self, PyObject* args) {
   Worker* worker;
-  PyObjectToWorker(worker_capsule, &worker);
-  PyObject* contained_objectids = PyList_New(objectids.size());
-  for (int i = 0; i < objectids.size(); ++i) {
-    PyList_SetItem(contained_objectids, i, make_pyobjectid(worker_capsule, objectids[i]));
+  ObjectID objectid;
+  if (!PyArg_ParseTuple(args, "O&O&", &PyObjectToWorker, &worker, &PyObjectToObjectID, &objectid)) {
+    return NULL;
   }
-  PyObject* t = PyTuple_New(2); // We set the items of the tuple using PyTuple_SetItem, because that transfers ownership to the tuple.
-  PyTuple_SetItem(t, 0, PyCapsule_New(static_cast<void*>(obj), "obj", &ObjCapsule_Destructor));
-  PyTuple_SetItem(t, 1, contained_objectids);
-  return t;
+  return PyInt_FromLong(objectid);
+}
+
+// This converts a Python integer to a Python ObjectID.
+static PyObject* deserialize_objectid(PyObject* self, PyObject* args) {
+  PyObject* worker_capsule;
+  int objectid;
+  if (!PyArg_ParseTuple(args, "Oi", &worker_capsule, &objectid)) {
+    return NULL;
+  }
+  return make_pyobjectid(worker_capsule, static_cast<ObjectID>(objectid));
 }
 
 static PyObject* allocate_buffer(PyObject* self, PyObject* args) {
@@ -567,17 +564,6 @@ static PyObject* unmap_object(PyObject* self, PyObject* args) {
   Py_RETURN_NONE;
 }
 
-static PyObject* deserialize_object(PyObject* self, PyObject* args) {
-  PyObject* worker_capsule;
-  Obj* obj;
-  if (!PyArg_ParseTuple(args, "OO&", &worker_capsule, &PyObjectToObj, &obj)) {
-    return NULL;
-  }
-  std::vector<ObjectID> objectids; // This is a vector of all the objectids that are serialized in this task, including objectids that are contained in Python objects that are passed by value.
-  return deserialize(worker_capsule, *obj, objectids);
-  // TODO(rkn): Should we do anything with objectids?
-}
-
 static PyObject* serialize_task(PyObject* self, PyObject* args) {
   PyObject* worker_capsule;
   Task* task = new Task(); // TODO: to be freed in capsule destructor
@@ -592,14 +578,9 @@ static PyObject* serialize_task(PyObject* self, PyObject* args) {
   if (PyList_Check(arguments)) {
     for (size_t i = 0, size = PyList_Size(arguments); i < size; ++i) {
       PyObject* element = PyList_GetItem(arguments, i);
-      if (PyObject_IsInstance(element, (PyObject*)&PyObjectIDType)) {
-        ObjectID objectid = ((PyObjectID*) element)->id;
-        task->add_arg()->set_id(objectid);
-        objectids.push_back(objectid);
-      } else {
-        Obj* arg = task->add_arg()->mutable_obj();
-        serialize(worker_capsule, PyList_GetItem(arguments, i), arg, objectids);
-      }
+      ObjectID objectid = ((PyObjectID*) element)->id;
+      task->add_arg(objectid);
+      objectids.push_back(objectid);
     }
   } else {
     PyErr_SetString(RayError, "serialize_task: second argument needs to be a list");
@@ -634,13 +615,8 @@ static PyObject* deserialize_task(PyObject* worker_capsule, const Task& task) {
   int argsize = task.arg_size();
   PyObject* arglist = PyList_New(argsize);
   for (int i = 0; i < argsize; ++i) {
-    const Value& val = task.arg(i);
-    if (!val.has_obj()) {
-      PyList_SetItem(arglist, i, make_pyobjectid(worker_capsule, val.id()));
-      objectids.push_back(val.id());
-    } else {
-      PyList_SetItem(arglist, i, deserialize(worker_capsule, val.obj(), objectids));
-    }
+    PyList_SetItem(arglist, i, make_pyobjectid(worker_capsule, task.arg(i)));
+    objectids.push_back(task.arg(i));
   }
   Worker* worker;
   PyObjectToWorker(worker_capsule, &worker);
@@ -869,12 +845,11 @@ static PyObject* get_objectid(PyObject* self, PyObject* args) {
   return make_pyobjectid(worker_capsule, objectid);
 }
 
-static PyObject* put_object(PyObject* self, PyObject* args) {
+static PyObject* add_contained_objectids(PyObject* self, PyObject* args) {
   Worker* worker;
   ObjectID objectid;
-  Obj* obj;
   PyObject* contained_objectids;
-  if (!PyArg_ParseTuple(args, "O&O&O&O", &PyObjectToWorker, &worker, &PyObjectToObjectID, &objectid, &PyObjectToObj, &obj, &contained_objectids)) {
+  if (!PyArg_ParseTuple(args, "O&O&O", &PyObjectToWorker, &worker, &PyObjectToObjectID, &objectid, &contained_objectids)) {
     return NULL;
   }
   RAY_CHECK(PyList_Check(contained_objectids), "The contained_objectids argument must be a list.")
@@ -885,7 +860,7 @@ static PyObject* put_object(PyObject* self, PyObject* args) {
     PyObjectToObjectID(PyList_GetItem(contained_objectids, i), &contained_objectid);
     vec_contained_objectids.push_back(contained_objectid);
   }
-  worker->put_object(objectid, obj, vec_contained_objectids);
+  worker->add_contained_objectids(objectid, vec_contained_objectids);
   Py_RETURN_NONE;
 }
 
@@ -1088,8 +1063,8 @@ static PyObject* kill_workers(PyObject* self, PyObject* args) {
 }
 
 static PyMethodDef RayLibMethods[] = {
- { "serialize_object", serialize_object, METH_VARARGS, "serialize an object to protocol buffers" },
- { "deserialize_object", deserialize_object, METH_VARARGS, "deserialize an object from protocol buffers" },
+ { "serialize_objectid", serialize_objectid, METH_VARARGS, "serialize an object id" },
+ { "deserialize_objectid", deserialize_objectid, METH_VARARGS, "deserialize an object id" },
  { "allocate_buffer", allocate_buffer, METH_VARARGS, "Allocates and returns buffer for objectid."},
  { "finish_buffer", finish_buffer, METH_VARARGS, "Makes the buffer immutable and closes memory segment of objectid."},
  { "get_buffer", get_buffer, METH_VARARGS, "Gets buffer for objectid"},
@@ -1101,7 +1076,7 @@ static PyMethodDef RayLibMethods[] = {
  { "connected", connected, METH_VARARGS, "check if the worker is connected to the scheduler and the object store" },
  { "register_remote_function", register_remote_function, METH_VARARGS, "register a function with the scheduler" },
  { "notify_failure", notify_failure, METH_VARARGS, "notify the scheduler of a failure" },
- { "put_object", put_object, METH_VARARGS, "put a protocol buffer object (given as a capsule) on the local object store" },
+ { "add_contained_objectids", add_contained_objectids, METH_VARARGS, "notify the scheduler about the object IDs contained in a remote object" },
  { "get_object", get_object, METH_VARARGS, "get protocol buffer object from the local object store" },
  { "get_objectid", get_objectid, METH_VARARGS, "register a new object reference with the scheduler" },
  { "request_object" , request_object, METH_VARARGS, "request an object to be delivered to the local object store" },

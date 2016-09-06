@@ -17,14 +17,6 @@ class DistArray(object):
       raise Exception("The fields `num_blocks` and `objectids` are inconsistent, `num_blocks` is {} and `objectids` has shape {}".format(self.num_blocks, list(self.objectids.shape)))
 
   @staticmethod
-  def deserialize(primitives):
-    (shape, objectids) = primitives
-    return DistArray(shape, objectids)
-
-  def serialize(self):
-    return (self.shape, self.objectids)
-
-  @staticmethod
   def compute_block_lower(index, shape):
     if len(index) != len(shape):
       raise Exception("The fields `index` and `shape` must have the same length, but `index` is {} and `shape` is {}.".format(index, shape))

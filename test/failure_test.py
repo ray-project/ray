@@ -5,7 +5,6 @@ import time
 import test_functions
 
 class FailureTest(unittest.TestCase):
-
   def testUnknownSerialization(self):
     reload(test_functions)
     ray.init(start_ray_local=True, num_workers=1, driver_mode=ray.SILENT_MODE)
@@ -15,6 +14,27 @@ class FailureTest(unittest.TestCase):
     task_info = ray.task_info()
     self.assertEqual(len(task_info["failed_tasks"]), 1)
     self.assertEqual(len(task_info["running_tasks"]), 0)
+
+    ray.worker.cleanup()
+
+class TaskSerializationTest(unittest.TestCase):
+  def testReturnAndPassUnknownType(self):
+    ray.init(start_ray_local=True, num_workers=1, driver_mode=ray.SILENT_MODE)
+
+    class Foo(object):
+      pass
+    # Check that returning an unknown type from a remote function raises an
+    # exception.
+    @ray.remote
+    def f():
+      return Foo()
+    self.assertRaises(Exception, lambda : ray.get(f.remote()))
+    # Check that passing an unknown type into a remote function raises an
+    # exception.
+    @ray.remote
+    def g(x):
+      return 1
+    self.assertRaises(Exception, lambda : g.remote(Foo()))
 
     ray.worker.cleanup()
 

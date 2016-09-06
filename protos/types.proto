@@ -106,11 +106,6 @@ message Dict {
   repeated DictEntry elem = 1;
 }
 
-message Value {
-  uint64 id = 1; // For pass by object ID
-  Obj obj = 2; // For pass by value
-}
-
 message Array {
   repeated uint64 shape = 1;
   sint64 dtype = 2;

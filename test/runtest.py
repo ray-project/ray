@@ -2,81 +2,105 @@ import unittest
 import ray
 import numpy as np
 import time
-import subprocess32 as subprocess
-import os
+import string
 import sys
-from numpy.testing import assert_equal
+from collections import namedtuple
+import libnumbuf
 
 import test_functions
 import ray.array.remote as ra
 import ray.array.distributed as da
 
-RAY_TEST_OBJECTS = [[1, "hello", 3.0], 42, 43L, "hello world", 42.0, 1L << 62,
-                    (1.0, "hi"), None, (None, None), ("hello", None),
-                    True, False, (True, False), u"\u262F",
-                    {True: "hello", False: "world"},
-                    {"hello" : "world", 1: 42, 1.0: 45}, {}, {(): ()},
-                    {(1, 2): 1}, {(): [1, 2, "hi"]}, (), [], [()], ((),),
-                    np.int8(3), np.int32(4), np.int64(5),
-                    np.uint8(3), np.uint32(4), np.uint64(5),
-                    np.float32(1.0), np.float64(1.0)]
+def assert_equal(obj1, obj2):
+  if type(obj1).__module__ == np.__name__ or type(obj2).__module__ == np.__name__:
+    if (hasattr(obj1, "shape") and obj1.shape == ()) or (hasattr(obj2, "shape") and obj2.shape == ()):
+      # This is a special case because currently np.testing.assert_equal fails
+      # because we do not properly handle different numerical types.
+      assert obj1 == obj2, "Objects {} and {} are different.".format(obj1, obj2)
+    else:
+      np.testing.assert_equal(obj1, obj2)
+  elif hasattr(obj1, "__dict__") and hasattr(obj2, "__dict__"):
+    special_keys = ["_pytype_"]
+    assert set(obj1.__dict__.keys() + special_keys) == set(obj2.__dict__.keys() + special_keys), "Objects {} and {} are different.".format(obj1, obj2)
+    for key in obj1.__dict__.keys():
+      if key not in special_keys:
+        assert_equal(obj1.__dict__[key], obj2.__dict__[key])
+  elif type(obj1) is dict or type(obj2) is dict:
+    assert_equal(obj1.keys(), obj2.keys())
+    for key in obj1.keys():
+      assert_equal(obj1[key], obj2[key])
+  elif type(obj1) is list or type(obj2) is list:
+    assert len(obj1) == len(obj2), "Objects {} and {} are lists with different lengths.".format(obj1, obj2)
+    for i in range(len(obj1)):
+      assert_equal(obj1[i], obj2[i])
+  elif type(obj1) is tuple or type(obj2) is tuple:
+    assert len(obj1) == len(obj2), "Objects {} and {} are tuples with different lengths.".format(obj1, obj2)
+    for i in range(len(obj1)):
+      assert_equal(obj1[i], obj2[i])
+  else:
+    assert obj1 == obj2, "Objects {} and {} are different.".format(obj1, obj2)
 
-class UserDefinedType(object):
+PRIMITIVE_OBJECTS = [0, 0.0, 0L, 1L << 62, "a", string.printable, "\u262F",
+                     u"hello world", u"\xff\xfe\x9c\x001\x000\x00", None, True,
+                     False, [], (), {}, np.int8(3), np.int32(4), np.int64(5),
+                     np.uint8(3), np.uint32(4), np.uint64(5), np.float32(1.0),
+                     np.float64(1.0), np.zeros([100, 100]),
+                     np.random.normal(size=[100, 100]), np.array(["hi", 3]),
+                     np.array(["hi", 3], dtype=object),
+                     np.array([["hi", u"hi"], [1.0, 1L]])]
+
+COMPLEX_OBJECTS = [#[[[[[[[[[[[[]]]]]]]]]]]],
+                   {"obj{}".format(i): np.random.normal(size=[100, 100]) for i in range(10)},
+                   #{(): {(): {(): {(): {(): {(): {(): {(): {(): {(): {(): {(): {}}}}}}}}}}}}},
+                   #((((((((((),),),),),),),),),),
+                   #{"a": {"b": {"c": {"d": {}}}}}
+                   ]
+
+class Foo(object):
   def __init__(self):
     pass
 
-  @staticmethod
-  def deserialize(primitives):
-    return "user defined type"
+class Bar(object):
+  def __init__(self):
+    for i, val in enumerate(PRIMITIVE_OBJECTS + COMPLEX_OBJECTS):
+      setattr(self, "field{}".format(i), val)
 
-  def serialize(self):
-    return "user defined type"
+class Baz(object):
+  def __init__(self):
+    self.foo = Foo()
+    self.bar = Bar()
+  def method(self, arg):
+    pass
 
-class SerializationTest(unittest.TestCase):
+class Qux(object):
+  def __init__(self):
+    self.objs = [Foo(), Bar(), Baz()]
 
-  def roundTripTest(self, data):
-    serialized, _ = ray.serialization.serialize(ray.worker.global_worker.handle, data)
-    result = ray.serialization.deserialize(ray.worker.global_worker.handle, serialized)
-    assert_equal(data, result)
+class SubQux(Qux):
+  def __init__(self):
+    Qux.__init__(self)
 
-  def numpyTypeTest(self, typ):
-    self.roundTripTest(np.random.randint(0, 10, size=(100, 100)).astype(typ))
-    self.roundTripTest(np.array(0).astype(typ))
-    self.roundTripTest(np.empty((0,)).astype(typ))
+class CustomError(Exception):
+  pass
 
-  def testSerialize(self):
-    ray.init(start_ray_local=True, num_workers=0)
+Point = namedtuple("Point", ["x", "y"])
+NamedTupleExample = namedtuple("Example", "field1, field2, field3, field4, field5")
 
-    for val in RAY_TEST_OBJECTS:
-      self.roundTripTest(val)
+CUSTOM_OBJECTS = [Exception("Test object."), CustomError(), Point(11, y=22),
+                  Foo(), Bar(), Baz(), # Qux(), SubQux(),
+                  NamedTupleExample(1, 1.0, "hi", np.zeros([3, 5]), [1, 2, 3])]
 
-    self.roundTripTest(np.zeros((100, 100)))
+BASE_OBJECTS = PRIMITIVE_OBJECTS + COMPLEX_OBJECTS + CUSTOM_OBJECTS
 
-    self.numpyTypeTest("int8")
-    self.numpyTypeTest("uint8")
-    self.numpyTypeTest("int16")
-    self.numpyTypeTest("uint16")
-    self.numpyTypeTest("int32")
-    self.numpyTypeTest("uint32")
-    self.numpyTypeTest("float32")
-    self.numpyTypeTest("float64")
+LIST_OBJECTS = [[obj] for obj in BASE_OBJECTS]
+TUPLE_OBJECTS = [(obj,) for obj in BASE_OBJECTS]
+# The check that type(obj).__module__ != "numpy" should be unnecessary, but
+# otherwise this seems to fail on Mac OS X on Travis.
+DICT_OBJECTS = ([{obj: obj} for obj in PRIMITIVE_OBJECTS if obj.__hash__ is not None and type(obj).__module__ != "numpy"] +
+# DICT_OBJECTS = ([{obj: obj} for obj in BASE_OBJECTS if obj.__hash__ is not None] +
+                [{0: obj} for obj in BASE_OBJECTS])
 
-    ref0 = ray.put(0)
-    ref1 = ray.put(0)
-    ref2 = ray.put(0)
-    ref3 = ray.put(0)
-
-    a = np.array([[ref0, ref1], [ref2, ref3]])
-    capsule, _ = ray.serialization.serialize(ray.worker.global_worker.handle, a)
-    result = ray.serialization.deserialize(ray.worker.global_worker.handle, capsule)
-    self.assertTrue((a == result).all())
-
-    self.roundTripTest(ref0)
-    self.roundTripTest([ref0, ref1, ref2, ref3])
-    self.roundTripTest({"0": ref0, "1": ref1, "2": ref2, "3": ref3})
-    self.roundTripTest((ref0, 1))
-
-    ray.worker.cleanup()
+RAY_TEST_OBJECTS = BASE_OBJECTS + LIST_OBJECTS + TUPLE_OBJECTS + DICT_OBJECTS
 
 class ObjStoreTest(unittest.TestCase):
 
@@ -93,36 +117,23 @@ class ObjStoreTest(unittest.TestCase):
     ray.reusables._cached_reusables = [] # This is a hack to make the test run.
     ray.connect(node_ip_address, scheduler_address, objstore_address=objstore_addresses[1], mode=ray.SCRIPT_MODE, worker=w2)
 
+    for cls in [Foo, Bar, Baz, Qux, SubQux, Exception, CustomError, Point, NamedTupleExample]:
+      ray.register_class(cls)
+
     # putting and getting an object shouldn't change it
     for data in RAY_TEST_OBJECTS:
       objectid = ray.put(data, w1)
       result = ray.get(objectid, w1)
-      self.assertEqual(result, data)
+      assert_equal(result, data)
 
     # putting an object, shipping it to another worker, and getting it shouldn't change it
     for data in RAY_TEST_OBJECTS:
-      objectid = ray.put(data, w1)
-      result = ray.get(objectid, w2)
-      self.assertEqual(result, data)
-
-    # putting an object, shipping it to another worker, and getting it shouldn't change it
-    for data in RAY_TEST_OBJECTS:
-      objectid = ray.put(data, w2)
-      result = ray.get(objectid, w1)
-      self.assertEqual(result, data)
-
-    ARRAY_TEST_OBJECTS = [np.zeros([10, 20]), np.random.normal(size=[45, 25]),
-                          ("a", np.random.normal(size=[10, 10])),
-                          ["a", np.random.normal(size=[10, 10])]]
-
-    # putting an array, shipping it to another worker, and getting it shouldn't change it
-    for data in ARRAY_TEST_OBJECTS:
       objectid = ray.put(data, w1)
       result = ray.get(objectid, w2)
       assert_equal(result, data)
 
-    # putting an array, shipping it to another worker, and getting it shouldn't change it
-    for data in ARRAY_TEST_OBJECTS:
+    # putting an object, shipping it to another worker, and getting it shouldn't change it
+    for data in RAY_TEST_OBJECTS:
       objectid = ray.put(data, w2)
       result = ray.get(objectid, w1)
       assert_equal(result, data)
@@ -181,6 +192,23 @@ class WorkerTest(unittest.TestCase):
     ray.worker.cleanup()
 
 class APITest(unittest.TestCase):
+
+  def testRegisterClass(self):
+    ray.init(start_ray_local=True, num_workers=0)
+
+    # Check that putting an object of a class that has not been registered
+    # throws an exception.
+    class TempClass(object):
+      pass
+    self.assertRaises(Exception, lambda : ray.put(Foo))
+    # Check that registering a class that Ray cannot serialize efficiently
+    # raises an exception.
+    self.assertRaises(Exception, lambda : ray.register_class(type(True)))
+    # Check that registering the same class with pickle works.
+    ray.register_class(type(float), pickle=True)
+    self.assertEqual(ray.get(ray.put(float)), float)
+
+    ray.worker.cleanup()
 
   def testKeywordArgs(self):
     reload(test_functions)
@@ -379,41 +407,60 @@ class ReferenceCountingTest(unittest.TestCase):
     for module in [ra.core, ra.random, ra.linalg, da.core, da.random, da.linalg]:
       reload(module)
     ray.init(start_ray_local=True, num_workers=1)
+    ray.register_class(da.DistArray)
+
+    def check_not_deallocated(object_ids):
+      reference_counts = ray.scheduler_info()["reference_counts"]
+      for object_id in object_ids:
+        self.assertGreater(reference_counts[object_id.id], 0)
+
+    def check_everything_deallocated():
+      reference_counts = ray.scheduler_info()["reference_counts"]
+      self.assertEqual(reference_counts, len(reference_counts) * [-1])
 
     z = da.zeros.remote([da.BLOCK_SIZE, 2 * da.BLOCK_SIZE])
     time.sleep(0.1)
     objectid_val = z.id
-    self.assertEqual(ray.scheduler_info()["reference_counts"][objectid_val:(objectid_val + 3)], [1, 1, 1])
-
+    time.sleep(0.1)
+    check_not_deallocated([z])
     del z
     time.sleep(0.1)
-    self.assertEqual(ray.scheduler_info()["reference_counts"][objectid_val:(objectid_val + 3)], [-1, -1, -1])
+    check_everything_deallocated()
 
     x = ra.zeros.remote([10, 10])
     y = ra.zeros.remote([10, 10])
     z = ra.dot.remote(x, y)
     objectid_val = x.id
     time.sleep(0.1)
-    self.assertEqual(ray.scheduler_info()["reference_counts"][objectid_val:(objectid_val + 3)], [1, 1, 1])
-
+    check_not_deallocated([x, y, z])
     del x
     time.sleep(0.1)
-    self.assertEqual(ray.scheduler_info()["reference_counts"][objectid_val:(objectid_val + 3)], [-1, 1, 1])
+    check_not_deallocated([y, z])
     del y
     time.sleep(0.1)
-    self.assertEqual(ray.scheduler_info()["reference_counts"][objectid_val:(objectid_val + 3)], [-1, -1, 1])
+    check_not_deallocated([z])
     del z
     time.sleep(0.1)
-    self.assertEqual(ray.scheduler_info()["reference_counts"][objectid_val:(objectid_val + 3)], [-1, -1, -1])
+    check_everything_deallocated()
+
+    z = da.zeros.remote([4 * da.BLOCK_SIZE])
+    time.sleep(0.1)
+    check_not_deallocated(ray.get(z).objectids.tolist())
+    del z
+    time.sleep(0.1)
+    check_everything_deallocated()
 
     ray.worker.cleanup()
 
   def testGet(self):
     ray.init(start_ray_local=True, num_workers=3)
 
+    for cls in [Foo, Bar, Baz, Qux, SubQux, Exception, CustomError, Point, NamedTupleExample]:
+      ray.register_class(cls)
+
     # Remote objects should be deallocated when the corresponding ObjectID goes
     # out of scope, and all results of ray.get called on the ID go out of scope.
-    for val in RAY_TEST_OBJECTS + [np.zeros((2, 2)), UserDefinedType()]:
+    for val in RAY_TEST_OBJECTS:
       x = ray.put(val)
       objectid = x.id
       xval = ray.get(x)

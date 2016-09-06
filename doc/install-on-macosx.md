@@ -19,7 +19,8 @@ brew update
 brew install git cmake automake autoconf libtool boost graphviz
 sudo easy_install pip
 sudo pip install ipython --user
-sudo pip install numpy funcsigs subprocess32 protobuf colorama graphviz cloudpickle --ignore-installed six
+sudo pip install numpy funcsigs subprocess32 protobuf colorama graphviz --ignore-installed six
+sudo pip install git+git://github.com/cloudpipe/cloudpickle.git@0d225a4695f1f65ae1cbb2e0bbc145e10167cce4  # We use the latest version of cloudpickle because it can serialize named tuples.
 ```
 
 ## Build
