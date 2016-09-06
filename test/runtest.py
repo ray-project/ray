@@ -358,14 +358,14 @@ class APITest(unittest.TestCase):
   def testRunningFunctionOnAllWorkers(self):
     ray.init(start_ray_local=True, num_workers=1)
 
-    def f():
+    def f(worker):
       sys.path.append("fake_directory")
     ray.worker.global_worker.run_function_on_all_workers(f)
     @ray.remote
     def get_path():
       return sys.path
     self.assertEqual("fake_directory", ray.get(get_path.remote())[-1])
-    def f():
+    def f(worker):
       sys.path.pop(-1)
     ray.worker.global_worker.run_function_on_all_workers(f)
     self.assertTrue("fake_directory" not in ray.get(get_path.remote()))

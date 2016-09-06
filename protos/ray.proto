@@ -240,6 +240,7 @@ message TaskInfoReply {
   repeated Failure failed_remote_function_import = 3; // The remote function imports that failed.
   repeated Failure failed_reusable_variable_import = 4; // The reusable variable imports that failed.
   repeated Failure failed_reinitialize_reusable_variable = 5; // The reusable variable reinitializations that failed.
+  repeated Failure failed_function_to_run = 6; // The function to run on all workers that failed.
 }
 
 message KillWorkersRequest {
