@@ -116,9 +116,11 @@ if __name__ == "__main__":
   batch_size = 100
   num_batches = mnist.train.num_examples / batch_size
   batches = [mnist.train.next_batch(batch_size) for _ in range(num_batches)]
+  print "Putting MNIST in the object store."
   batch_ids = [(ray.put(xs), ray.put(ys)) for (xs, ys) in batches]
 
   # Initialize the weights for the network to the vector of all zeros.
   theta_init = 1e-2 * np.random.normal(size=dim)
   # Use L-BFGS to minimize the loss function.
+  print "Running L-BFGS."
   result = scipy.optimize.fmin_l_bfgs_b(full_loss, theta_init, maxiter=10, fprime=full_grad, disp=True)
