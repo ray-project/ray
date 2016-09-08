@@ -26,18 +26,22 @@ typedef struct {
   int64_t construct_duration;
 } plasma_object_info;
 
-// Represents an object id hash, can hold a full SHA1 hash
+/* Represents an object id hash, can hold a full SHA1 hash */
 typedef struct {
   unsigned char id[20];
 } plasma_id;
 
-// these values must be in sync with the ones in plasma.py (can we have a test for that?)
 enum plasma_request_type {
-  PLASMA_CREATE, // create a new object
-  PLASMA_GET, // get an object
-  PLASMA_SEAL, // seal an object
-  PLASMA_TRANSFER, // request transfer to another store
-  PLASMA_DATA, // header for sending data
+  /* Create a new object. */
+  PLASMA_CREATE,
+  /* Get an object. */
+  PLASMA_GET,
+  /* seal an object */
+  PLASMA_SEAL,
+  /* request transfer to another store */
+  PLASMA_TRANSFER,
+  /* Header for sending data */
+  PLASMA_DATA,
 };
 
 typedef struct {
@@ -49,8 +53,10 @@ typedef struct {
 } plasma_request;
 
 enum plasma_reply_type {
-  PLASMA_OBJECT, // the file descriptor represents an object
-  PLASMA_FUTURE, // the file descriptor represents a future
+  /* the file descriptor represents an object */
+  PLASMA_OBJECT,
+  /* the file descriptor represents a future */
+  PLASMA_FUTURE,
 };
 
 typedef struct {
@@ -65,10 +71,10 @@ typedef struct {
   int writable;
 } plasma_buffer;
 
-// Connect to the local plasma store UNIX domain socket
+/* Connect to the local plasma store UNIX domain socket */
 int plasma_store_connect(const char* socket_name);
 
-// Connect to a possibly remote plasma manager
+/* Connect to a possibly remote plasma manager */
 int plasma_manager_connect(const char* addr, int port);
 
 void plasma_create(int store, plasma_id object_id, int64_t size, void **data);

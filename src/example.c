@@ -1,11 +1,11 @@
-// A simple example on how to use the plasma store
-// 
-// Can be called in the following way:
-// 
-// cd build
-// ./plasma_store -s /tmp/plasma_socket
-// ./example -s /tmp/plasma_socket -g
-// ./example -s /tmp/plasma_socket -c -f
+/* A simple example on how to use the plasma store
+ * 
+ * Can be called in the following way:
+ * 
+ * cd build
+ * ./plasma_store -s /tmp/plasma_socket
+ * ./example -s /tmp/plasma_socket -g
+ * ./example -s /tmp/plasma_socket -c -f */
 
 #include <stdlib.h>
 #include <getopt.h>

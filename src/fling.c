@@ -26,7 +26,7 @@ int send_fd(int conn, int fd, const char* payload, int size) {
   header->cmsg_len = CMSG_LEN(sizeof(int));
   *(int *)CMSG_DATA(header) = fd;
 
-  // send file descriptor and payload
+  /* send file descriptor and payload */
   return sendmsg(conn, &msg, 0) != -1 && send(conn, payload, size, 0) == -1;
 }
 
@@ -55,9 +55,9 @@ int recv_fd(int conn, char* payload, int size) {
       }
     }
 
-  // The sender sent us more than one file descriptor. We've closed
-  // them all to prevent fd leaks but notify the caller that we got
-  // a bad message.
+  /* The sender sent us more than one file descriptor. We've closed
+   * them all to prevent fd leaks but notify the caller that we got
+   * a bad message. */
   if (oh_noes) {
     close(found_fd);
     errno = EBADMSG;

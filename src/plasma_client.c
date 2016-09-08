@@ -1,4 +1,4 @@
-// PLASMA CLIENT: Client library for using the plasma store and manager
+/* PLASMA CLIENT: Client library for using the plasma store and manager */
 
 #include <assert.h>
 #include <stdlib.h>
@@ -42,7 +42,7 @@ void plasma_get(int conn, plasma_id object_id, int64_t *size, void **data) {
   plasma_request req = { .type = PLASMA_GET, .object_id = object_id };
   plasma_send(conn, &req);
   plasma_reply reply;
-  // the following loop is run at most twice
+  /* The following loop is run at most twice. */
   int fd = recv_fd(conn, (char*)&reply, sizeof(plasma_reply));
   if (reply.type == PLASMA_FUTURE) {
     int new_fd = recv_fd(fd, (char*)&reply, sizeof(plasma_reply));
@@ -74,17 +74,17 @@ int plasma_store_connect(const char* socket_name) {
   memset(&addr, 0, sizeof(addr));
   addr.sun_family = AF_UNIX;
   strncpy(addr.sun_path, socket_name, sizeof(addr.sun_path)-1);
-  // Try to connect to the Plasma store. If unsuccessful, retry several times.
+  /* Try to connect to the Plasma store. If unsuccessful, retry several times. */
   int connected_successfully = 0;
   for (int num_attempts = 0; num_attempts < 50; ++num_attempts) {
     if (connect(fd, (struct sockaddr*)&addr, sizeof(addr)) == 0) {
       connected_successfully = 1;
       break;
     }
-    // Sleep for 100 milliseconds.
+    /* Sleep for 100 milliseconds. */
     usleep(100000);
   }
-  // If we could not connect to the Plasma store, exit.
+  /* If we could not connect to the Plasma store, exit. */
   if (!connected_successfully) {
     LOG_ERR("could not connect to store %s", socket_name);
     exit(-1);
@@ -101,7 +101,7 @@ int plasma_manager_connect(const char* ip_addr, int port) {
     exit(-1);
   }
 
-  struct hostent *manager = gethostbyname(ip_addr); // TODO(pcm): cache this
+  struct hostent *manager = gethostbyname(ip_addr); /* TODO(pcm): cache this */
   if (!manager) {
     LOG_ERR("plasma manager %s not found", ip_addr);
     exit(-1);
@@ -125,7 +125,8 @@ void plasma_transfer(int manager, const char* addr, int port, plasma_id object_i
   char* end = NULL;
   for (int i = 0; i < 4; ++i) {
     req.addr[i] = strtol(end ? end : addr, &end, 10);
-    end += 1; // skip the '.'
+    /* skip the '.' */
+    end += 1;
   }
   plasma_send(manager, &req);
 }

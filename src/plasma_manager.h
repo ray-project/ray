@@ -2,41 +2,36 @@
 #define PLASMA_MANAGER_H
 
 #include <poll.h>
+#include "utarray.h"
 
-#define MAX_CONNECTIONS 2048
+/* The buffer size in bytes. Data will get transfered in multiples of this */
+#define BUFSIZE 4096
 
-enum conn_type {
-  // Connection to send commands to the manager.
-  CONN_CONTROL,
-  // Connection to send data to another manager.
-  CONN_WRITE_DATA,
-  // Connection to receive data from another manager.
-  CONN_READ_DATA
+enum connection_type {
+  CONNECTION_REDIS,
+  CONNECTION_LISTENER,
+  CONNECTION_DATA
+};
+
+enum data_connection_type {
+  /* Connection to send commands and metadata to the manager. */
+  DATA_CONNECTION_HEADER,
+  /* Connection to send data to another manager. */
+  DATA_CONNECTION_WRITE,
+  /* Connection to receive data from another manager. */
+  DATA_CONNECTION_READ
 };
 
 typedef struct {
-  // Of type conn_type.
+  /* Of type data_connection_type. */
   int type;
-  // Socket of the plasma store that is accessed for reading or writing data for
-  // this connection.
+  /* Local socket of the plasma store that is accessed for reading or writing
+   * data for this connection. */
   int store_conn;
-  // Buffer this connection is reading from or writing to.
+  /* Buffer this connection is reading from or writing to. */
   plasma_buffer buf;
-  // Current position in the buffer.
+  /* Current position in the buffer. */
   int64_t cursor;
-} conn_state;
-
-typedef struct {
-  // ID of this manager
-  int64_t manager_id;
-  // Name of the socket connecting to local plasma store.
-  const char* store_socket_name;
-  // Number of connections.
-  int num_conn;
-  // For the "poll" system call.
-  struct pollfd waiting[MAX_CONNECTIONS];
-  // Status of connections (both control and data).
-  conn_state conn[MAX_CONNECTIONS];
-} plasma_manager_state;
+} data_connection;
 
 #endif

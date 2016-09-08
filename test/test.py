@@ -17,9 +17,10 @@ class TestPlasmaClient(unittest.TestCase):
   def setUp(self):
     # Start Plasma.
     plasma_store_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../build/plasma_store")
-    self.p = subprocess.Popen([plasma_store_executable, "-s", "/tmp/store"])
+    store_name = "/tmp/store{}".format(random.randint(0, 10000))
+    self.p = subprocess.Popen([plasma_store_executable, "-s", store_name])
     # Connect to Plasma.
-    self.plasma_client = plasma.PlasmaClient("/tmp/store")
+    self.plasma_client = plasma.PlasmaClient(store_name)
 
   def tearDown(self):
     # Kill the plasma store process.
@@ -67,18 +68,20 @@ class TestPlasmaManager(unittest.TestCase):
   def setUp(self):
     # Start two PlasmaStores.
     plasma_store_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../build/plasma_store")
-    self.p2 = subprocess.Popen([plasma_store_executable, "-s", "/tmp/store1"])
-    self.p3 = subprocess.Popen([plasma_store_executable, "-s", "/tmp/store2"])
+    store_name1 = "/tmp/store{}".format(random.randint(0, 10000))
+    store_name2 = "/tmp/store{}".format(random.randint(0, 10000))
+    self.p2 = subprocess.Popen([plasma_store_executable, "-s", store_name1])
+    self.p3 = subprocess.Popen([plasma_store_executable, "-s", store_name2])
     # Start two PlasmaManagers.
     self.port1 = random.randint(10000, 50000)
     self.port2 = random.randint(10000, 50000)
     plasma_manager_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../build/plasma_manager")
-    self.p4 = subprocess.Popen([plasma_manager_executable, "-s", "/tmp/store1", "-m", "127.0.0.1", "-p", str(self.port1)])
-    self.p5 = subprocess.Popen([plasma_manager_executable, "-s", "/tmp/store2", "-m", "127.0.0.1", "-p", str(self.port2)])
+    self.p4 = subprocess.Popen([plasma_manager_executable, "-s", store_name1, "-m", "127.0.0.1", "-p", str(self.port1)])
+    self.p5 = subprocess.Popen([plasma_manager_executable, "-s", store_name2, "-m", "127.0.0.1", "-p", str(self.port2)])
     time.sleep(0.1)
     # Connect two PlasmaClients.
-    self.client1 = plasma.PlasmaClient("/tmp/store1", "127.0.0.1", self.port1)
-    self.client2 = plasma.PlasmaClient("/tmp/store2", "127.0.0.1", self.port2)
+    self.client1 = plasma.PlasmaClient(store_name1, "127.0.0.1", self.port1)
+    self.client2 = plasma.PlasmaClient(store_name2, "127.0.0.1", self.port2)
     time.sleep(0.5)
 
   def tearDown(self):
