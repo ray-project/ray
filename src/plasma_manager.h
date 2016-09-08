@@ -7,11 +7,7 @@
 /* The buffer size in bytes. Data will get transfered in multiples of this */
 #define BUFSIZE 4096
 
-enum connection_type {
-  CONNECTION_REDIS,
-  CONNECTION_LISTENER,
-  CONNECTION_DATA
-};
+enum connection_type { CONNECTION_REDIS, CONNECTION_LISTENER, CONNECTION_DATA };
 
 enum data_connection_type {
   /* Connection to send commands and metadata to the manager. */

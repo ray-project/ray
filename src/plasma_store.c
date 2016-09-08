@@ -9,7 +9,6 @@
  * It keeps a hash table that maps object_ids (which are 20 byte long,
  * just enough to store and SHA1 hash) to memory mapped files. */
 
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -30,7 +29,7 @@
 
 typedef struct {
   /* Event loop for the plasma store. */
-  event_loop *loop;
+  event_loop* loop;
 } plasma_store_state;
 
 void init_state(plasma_store_state* s) {
@@ -103,41 +102,42 @@ void create_object(int conn, plasma_request* req) {
     LOG_ERR("could not create shared memory buffer");
     exit(-1);
   }
-  object_table_entry *entry = malloc(sizeof(object_table_entry));
+  object_table_entry* entry = malloc(sizeof(object_table_entry));
   memcpy(&entry->object_id, &req->object_id, 20);
   entry->info.size = req->size;
   /* TODO(pcm): set the other fields */
   entry->fd = fd;
   HASH_ADD(handle, open_objects, object_id, sizeof(plasma_id), entry);
-  plasma_reply reply = { PLASMA_OBJECT, req->size };
+  plasma_reply reply = {PLASMA_OBJECT, req->size};
   send_fd(conn, fd, (char*) &reply, sizeof(plasma_reply));
 }
 
 /* Get an object from the hash table. */
 void get_object(int conn, plasma_request* req) {
-  object_table_entry *entry;
+  object_table_entry* entry;
   HASH_FIND(handle, sealed_objects, &req->object_id, sizeof(plasma_id), entry);
   if (entry) {
-    plasma_reply reply = { PLASMA_OBJECT, entry->info.size };
+    plasma_reply reply = {PLASMA_OBJECT, entry->info.size};
     send_fd(conn, entry->fd, (char*) &reply, sizeof(plasma_reply));
   } else {
     LOG_INFO("object not in hash table of sealed objects");
     int fd[2];
     socketpair(AF_UNIX, SOCK_STREAM, 0, fd);
-    object_notify_entry *notify_entry = malloc(sizeof(object_notify_entry));
+    object_notify_entry* notify_entry = malloc(sizeof(object_notify_entry));
     memcpy(&notify_entry->object_id, &req->object_id, 20);
     notify_entry->conn[notify_entry->num_waiting] = fd[0];
     notify_entry->num_waiting += 1;
-    HASH_ADD(handle, objects_notify, object_id, sizeof(plasma_id), notify_entry);
-    plasma_reply reply = { PLASMA_FUTURE, -1 };
+    HASH_ADD(handle, objects_notify, object_id, sizeof(plasma_id),
+             notify_entry);
+    plasma_reply reply = {PLASMA_FUTURE, -1};
     send_fd(conn, fd[1], (char*) &reply, sizeof(plasma_reply));
   }
 }
 
 /* Seal an object that has been created in the hash table. */
 void seal_object(int conn, plasma_request* req) {
-  LOG_INFO("sealing object"); // TODO(pcm): add object_id here
-  object_table_entry *entry;
+  LOG_INFO("sealing object");  // TODO(pcm): add object_id here
+  object_table_entry* entry;
   HASH_FIND(handle, open_objects, &req->object_id, sizeof(plasma_id), entry);
   if (!entry) {
     return; /* TODO(pcm): return error */
@@ -148,11 +148,12 @@ void seal_object(int conn, plasma_request* req) {
   HASH_ADD(handle, sealed_objects, object_id, sizeof(plasma_id), entry);
   /* Inform processes that the object is ready now. */
   object_notify_entry* notify_entry;
-  HASH_FIND(handle, objects_notify, &req->object_id, sizeof(plasma_id), notify_entry);
+  HASH_FIND(handle, objects_notify, &req->object_id, sizeof(plasma_id),
+            notify_entry);
   if (!notify_entry) {
     return;
   }
-  plasma_reply reply = { PLASMA_OBJECT, size };
+  plasma_reply reply = {PLASMA_OBJECT, size};
   for (int i = 0; i < notify_entry->num_waiting; ++i) {
     send_fd(notify_entry->conn[i], fd, (char*) &reply, sizeof(plasma_reply));
     close(notify_entry->conn[i]);
@@ -190,7 +191,7 @@ void run_event_loop(int socket) {
       exit(-1);
     }
     for (int i = 0; i < event_loop_size(state.loop); ++i) {
-      struct pollfd *waiting = event_loop_get(state.loop, i);
+      struct pollfd* waiting = event_loop_get(state.loop, i);
       if (waiting->revents == 0)
         continue;
       if (waiting->fd == socket) {
@@ -230,7 +231,7 @@ void start_server(char* socket_name) {
     exit(-1);
   }
   int on = 1;
-  if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char*)&on, sizeof(on)) < 0) {
+  if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char*) &on, sizeof(on)) < 0) {
     LOG_ERR("setsockopt failed");
     close(fd);
     exit(-1);
@@ -244,15 +245,15 @@ void start_server(char* socket_name) {
   struct sockaddr_un addr;
   memset(&addr, 0, sizeof(addr));
   addr.sun_family = AF_UNIX;
-  strncpy(addr.sun_path, socket_name, sizeof(addr.sun_path)-1);
+  strncpy(addr.sun_path, socket_name, sizeof(addr.sun_path) - 1);
   unlink(socket_name);
-  bind(fd, (struct sockaddr*)&addr, sizeof(addr));
+  bind(fd, (struct sockaddr*) &addr, sizeof(addr));
   listen(fd, 5);
   run_event_loop(fd);
 }
 
 int main(int argc, char* argv[]) {
-  char *socket_name = NULL;
+  char* socket_name = NULL;
   int c;
   while ((c = getopt(argc, argv, "s:")) != -1) {
     switch (c) {

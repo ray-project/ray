@@ -15,20 +15,21 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
-/* This is neccessary for Mac OS X, see http://www.apuebook.com/faqs2e.html (10). */
+/* This is neccessary for Mac OS X, see http://www.apuebook.com/faqs2e.html
+ * (10). */
 #if !defined(CMSG_SPACE) && !defined(CMSG_LEN)
-  #define CMSG_SPACE(len) (__DARWIN_ALIGN32(sizeof(struct cmsghdr)) + __DARWIN_ALIGN32(len))
-  #define CMSG_LEN(len) (__DARWIN_ALIGN32(sizeof(struct cmsghdr)) + (len))
+#define CMSG_SPACE(len) \
+  (__DARWIN_ALIGN32(sizeof(struct cmsghdr)) + __DARWIN_ALIGN32(len))
+#define CMSG_LEN(len) (__DARWIN_ALIGN32(sizeof(struct cmsghdr)) + (len))
 #endif
 
-void init_msg(struct msghdr *msg, struct iovec *iov,
-              char *buf, size_t buf_len);
+void init_msg(struct msghdr *msg, struct iovec *iov, char *buf, size_t buf_len);
 
 /* Send a file descriptor "fd" and a payload "payload" of size "size"
  * over the socket "conn". Return 0 on success. */
-int send_fd(int conn, int fd, const char* payload, int size);
+int send_fd(int conn, int fd, const char *payload, int size);
 
 /* Receive a file descriptor and a payload of size up to "size" from a
  * socket "conn". The payload will be written to "payload" and the file
  * descriptor will be returned. Returns -1 on failure. */
-int recv_fd(int conn, char* payload, int size);
+int recv_fd(int conn, char *payload, int size);
