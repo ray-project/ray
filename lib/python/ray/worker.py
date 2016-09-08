@@ -272,7 +272,11 @@ class ObjectFixture(object):
 
   def __del__(self):
     """Unmap the segment when the object goes out of scope."""
-    raylib.unmap_object(self.handle, self.segmentid)
+    # We probably shouldn't have this if statement, but if raylib gets set to
+    # None before this __del__ call happens, then an exception will be thrown
+    # at exit.
+    if raylib is not None:
+      raylib.unmap_object(self.handle, self.segmentid)
 
 class Worker(object):
   """A class used to define the control flow of a worker process.
