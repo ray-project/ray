@@ -864,22 +864,6 @@ static PyObject* add_contained_objectids(PyObject* self, PyObject* args) {
   Py_RETURN_NONE;
 }
 
-static PyObject* get_object(PyObject* self, PyObject* args) {
-  // get_object assumes that objectid is a canonical objectid
-  Worker* worker;
-  ObjectID objectid;
-  if (!PyArg_ParseTuple(args, "O&O&", &PyObjectToWorker, &worker, &PyObjectToObjectID, &objectid)) {
-    return NULL;
-  }
-  slice s = worker->get_object(objectid);
-  Obj* obj = new Obj(); // TODO: Make sure this will get deleted
-  obj->ParseFromString(std::string(reinterpret_cast<char*>(s.data), s.len));
-  PyObject* result = PyList_New(2);
-  PyList_SetItem(result, 0, PyCapsule_New(static_cast<void*>(obj), "obj", &ObjCapsule_Destructor));
-  PyList_SetItem(result, 1, PyInt_FromLong(s.segmentid));
-  return result;
-}
-
 static PyObject* request_object(PyObject* self, PyObject* args) {
   Worker* worker;
   ObjectID objectid;
@@ -1077,7 +1061,6 @@ static PyMethodDef RayLibMethods[] = {
  { "register_remote_function", register_remote_function, METH_VARARGS, "register a function with the scheduler" },
  { "notify_failure", notify_failure, METH_VARARGS, "notify the scheduler of a failure" },
  { "add_contained_objectids", add_contained_objectids, METH_VARARGS, "notify the scheduler about the object IDs contained in a remote object" },
- { "get_object", get_object, METH_VARARGS, "get protocol buffer object from the local object store" },
  { "get_objectid", get_objectid, METH_VARARGS, "register a new object reference with the scheduler" },
  { "request_object" , request_object, METH_VARARGS, "request an object to be delivered to the local object store" },
  { "ray_select" , ray_select, METH_VARARGS, "checks the scheduler to see if a object can be gotten" },

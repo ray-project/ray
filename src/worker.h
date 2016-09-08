@@ -64,8 +64,6 @@ class Worker {
   void request_object(ObjectID objectid);
   // Notify the scheduler about the object IDs contained within a remote object.
   void add_contained_objectids(ObjectID objectid, std::vector<ObjectID> &contained_objectids);
-  // retrieve serialized object from local object store
-  slice get_object(ObjectID objectid);
   // Allocates buffer for objectid with size of size
   const char* allocate_buffer(ObjectID objectid, int64_t size, SegmentId& segmentid);
   // Finishes buffer with segmentid and an offset of metadata_ofset
