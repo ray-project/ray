@@ -53,7 +53,7 @@ class Worker {
   // Submit a remote task to the scheduler. If the function in the task is not
   // registered with the scheduler, we will sleep for retry_wait_milliseconds
   // and try to resubmit the task to the scheduler up to max_retries more times.
-  SubmitTaskReply submit_task(SubmitTaskRequest* request, int max_retries = 120, int retry_wait_milliseconds = 500);
+  SubmitTaskReply submit_task(SubmitTaskRequest* request, int max_retries = 10, int retry_wait_milliseconds = 500);
   // Requests the scheduler to kill workers
   bool kill_workers(ClientContext &context);
   // send request to the scheduler to register this worker

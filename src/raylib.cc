@@ -785,12 +785,15 @@ static PyObject* submit_task(PyObject* self, PyObject* args) {
   SubmitTaskRequest request;
   request.set_allocated_task(task);
   SubmitTaskReply reply = worker->submit_task(&request);
-  if (!reply.function_registered()) {
-    request.release_task();
-    PyErr_SetString(RayError, "task: function not registered");
+  request.release_task(); // TODO: Make sure that task is not moved, otherwise capsule pointer needs to be updated
+  if (reply.no_workers()) {
+    PyErr_SetString(RayError, "No workers have registered with the scheduler, so this function cannot be run.");
     return NULL;
   }
-  request.release_task(); // TODO: Make sure that task is not moved, otherwise capsule pointer needs to be updated
+  if (!reply.function_registered()) {
+    PyErr_SetString(RayError, "No worker has registered this function with the scheduler.");
+    return NULL;
+  }
   int size = reply.result_size();
   PyObject* list = PyList_New(size);
   std::vector<ObjectID> result_objectids;
