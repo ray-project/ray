@@ -116,12 +116,29 @@ SchedulerService::SchedulerService(SchedulingAlgorithmType scheduling_algorithm)
 Status SchedulerService::SubmitTask(ServerContext* context, const SubmitTaskRequest* request, SubmitTaskReply* reply) {
   std::unique_ptr<Task> task(new Task(request->task())); // need to copy, because request is const
   size_t num_return_vals;
+  // If there are no workers, then we will set this to true below.
+  reply->set_no_workers(false);
   {
     auto fntable = GET(fntable_);
     FnTable::const_iterator fn = fntable->find(task->name());
     if (fn == fntable->end()) {
       num_return_vals = 0;
       reply->set_function_registered(false);
+      // Check if there are any workers registered with the scheduler, so that
+      // we can tell the worker if there aren't so that it can display a better
+      // error message.
+      int num_live_workers = 0;
+      auto workers = GET(workers_);
+      for (size_t i = 0; i < workers->size(); ++i) {
+        WorkerHandle* worker = &(*workers)[i];
+        // Check if this is a driver and that it is still connected.
+        if (worker->current_task != ROOT_OPERATION && worker->worker_stub) {
+          num_live_workers += 1;
+        }
+      }
+      if (num_live_workers == 0) {
+        reply->set_no_workers(true);
+      }
     } else {
       num_return_vals = fn->second.num_return_vals();
       reply->set_function_registered(true);

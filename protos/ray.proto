@@ -105,7 +105,8 @@ message SubmitTaskRequest {
 
 message SubmitTaskReply {
   repeated uint64 result = 1; // Object IDs of the function return values
-  bool function_registered = 2; // True if the function was registered; false otherwise
+  bool function_registered = 2; // True if the function was registered, false otherwise
+  bool no_workers = 3; // True if no workers have registered with the scheduler, false otherwise
 }
 
 message RequestObjRequest {
