@@ -43,10 +43,4 @@ public:
   objstore_not_registered_error(const std::string& msg) : std::runtime_error(msg) {}
 };
 
-struct slice {
-  uint8_t* data;
-  size_t len;
-  SegmentId segmentid;
-};
-
 #endif

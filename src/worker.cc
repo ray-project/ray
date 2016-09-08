@@ -214,23 +214,6 @@ ObjectID Worker::get_objectid() {
   return reply.objectid();
 }
 
-slice Worker::get_object(ObjectID objectid) {
-  // get_object assumes that objectid is a canonical objectid
-  RAY_CHECK(connected_, "Attempted to perform get_object but failed.");
-  ObjRequest request;
-  request.workerid = workerid_;
-  request.type = ObjRequestType::GET;
-  request.objectid = objectid;
-  RAY_CHECK(request_obj_queue_.send(&request), "Failed to send request from the worker to the object store because the message queue was full.");
-  ObjHandle result;
-  RAY_CHECK(receive_obj_queue_.receive(&result), "error receiving over IPC");
-  slice slice;
-  slice.data = segmentpool_->get_address(result);
-  slice.len = result.size();
-  slice.segmentid = result.segmentid();
-  return slice;
-}
-
 void Worker::add_contained_objectids(ObjectID objectid, std::vector<ObjectID> &contained_objectids) {
   RAY_CHECK(connected_, "Attempted to perform add_contained_objectids but failed.");
   if (contained_objectids.size() > 0) {
