@@ -348,7 +348,7 @@ class Worker(object):
     # in the following line, the "8" is for storing the metadata size,
     # the len(schema) is for storing the metadata and the 8192 is for storing
     # the metadata in the batch (see INITIAL_METADATA_SIZE in arrow)
-    size = size + 8 + len(schema) + 4096
+    size = size + 8 + len(schema) + 4096 * 4
     buff, segmentid = raylib.allocate_buffer(self.handle, objectid, size)
     # write the metadata length
     np.frombuffer(buff, dtype="int64", count=1)[0] = len(schema)
@@ -371,7 +371,7 @@ class Worker(object):
     """
     assert raylib.is_arrow(self.handle, objectid), "All objects should be serialized using Arrow."
     buff, segmentid, metadata_offset = raylib.get_buffer(self.handle, objectid)
-    metadata_size = np.frombuffer(buff, dtype="int64", count=1)[0]
+    metadata_size = int(np.frombuffer(buff, dtype="int64", count=1)[0])
     metadata = np.frombuffer(buff, dtype="byte", offset=8, count=metadata_size)
     data = np.frombuffer(buff, dtype="byte")[8 + metadata_size:]
     serialized = libnumbuf.read_from_buffer(memoryview(data), bytearray(metadata), metadata_offset)
