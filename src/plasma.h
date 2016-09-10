@@ -4,6 +4,7 @@
 #include <inttypes.h>
 #include <stdio.h>
 #include <errno.h>
+#include <stddef.h>
 #include <string.h>
 
 #ifdef NDEBUG
@@ -13,12 +14,16 @@
   fprintf(stderr, "[DEBUG] (%s:%d) " M "\n", __FILE__, __LINE__, ##__VA_ARGS__)
 #endif
 
+#ifdef PLASMA_LOGGIN_ON
+#define LOG_INFO(M, ...) \
+  fprintf(stderr, "[INFO] (%s:%d) " M "\n", __FILE__, __LINE__, ##__VA_ARGS__)
+#else
+#define LOG_INFO(M, ...)
+#endif
+
 #define LOG_ERR(M, ...)                                                     \
   fprintf(stderr, "[ERROR] (%s:%d: errno: %s) " M "\n", __FILE__, __LINE__, \
           errno == 0 ? "None" : strerror(errno), ##__VA_ARGS__)
-
-#define LOG_INFO(M, ...) \
-  fprintf(stderr, "[INFO] (%s:%d) " M "\n", __FILE__, __LINE__, ##__VA_ARGS__)
 
 typedef struct {
   int64_t size;
@@ -59,7 +64,9 @@ enum plasma_reply_type {
 
 typedef struct {
   int type;
-  int64_t size;
+  ptrdiff_t offset;
+  int64_t map_size;
+  int64_t object_size;
 } plasma_reply;
 
 typedef struct {

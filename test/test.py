@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import os
 import socket
 import subprocess
@@ -129,6 +131,20 @@ class TestPlasmaManager(unittest.TestCase):
     # This test is commented out because it currently fails.
     # # Transferring the buffer before sealing it should fail.
     # self.assertRaises(Exception, lambda : self.manager1.transfer(1, object_id))
+
+  def test_stresstest(self):
+    a = time.time()
+    object_ids = []
+    for i in range(10000): # TODO(pcm): increase this to 100000
+      object_id = random_object_id()
+      object_ids.append(object_id)
+      self.client1.create(object_id, 1)
+      self.client1.seal(object_id)
+    for object_id in object_ids:
+      self.client1.transfer("127.0.0.1", self.port2, object_id)
+    b = time.time() - a
+
+    print("it took", b, "seconds to put and transfer the objects")
 
 if __name__ == "__main__":
   unittest.main(verbosity=2)

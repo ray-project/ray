@@ -97,6 +97,7 @@ def main():
                                     default_extensions),
                  help=('comma-separated list of file extensions to format, '
                        'excluding the period and case-insensitive')),
+  p.add_argument('--exclude', help='Exclude files matching this regex.')
   p.add_argument('-f', '--force', action='store_true',
                  help='allow changes to unstaged files')
   p.add_argument('-p', '--patch', action='store_true',
@@ -125,10 +126,14 @@ def main():
   if opts.verbose >= 1:
     ignored_files = set(changed_lines)
   filter_by_extension(changed_lines, opts.extensions.lower().split(','))
+  if opts.exclude:
+    for filename in changed_lines.keys():
+      if re.match(opts.exclude, filename):
+        del changed_lines[filename]
   if opts.verbose >= 1:
     ignored_files.difference_update(changed_lines)
     if ignored_files:
-      print 'Ignoring changes in the following files (wrong extension):'
+      print 'Ignoring changes in the following files:'
       for filename in ignored_files:
         print '   ', filename
     if changed_lines:

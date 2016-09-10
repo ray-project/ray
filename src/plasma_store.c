@@ -9,6 +9,7 @@
  * It keeps a hash table that maps object_ids (which are 20 byte long,
  * just enough to store and SHA1 hash) to memory mapped files. */
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -22,10 +23,13 @@
 
 #include "uthash.h"
 #include "fling.h"
+#include "malloc.h"
 #include "plasma.h"
 #include "event_loop.h"
 
 #define MAX_NUM_CLIENTS 100000
+
+void* dlmalloc(size_t);
 
 typedef struct {
   /* Event loop for the plasma store. */
@@ -44,6 +48,10 @@ typedef struct {
   plasma_object_info info;
   /* Memory mapped file containing the object. */
   int fd;
+  /* Size of the underlying map. */
+  int64_t map_size;
+  /* Offset from the base of the mmap. */
+  ptrdiff_t offset;
   /* Handle for the uthash table. */
   UT_hash_handle handle;
 } object_table_entry;
@@ -69,47 +77,32 @@ typedef struct {
 /* Objects that processes are waiting for. */
 object_notify_entry* objects_notify = NULL;
 
-/* Create a buffer. This is creating a temporary file and then
- * immediately unlinking it so we do not leave traces in the system. */
-int create_buffer(int64_t size) {
-  static char template[] = "/tmp/plasmaXXXXXX";
-  char file_name[32];
-  strncpy(file_name, template, 32);
-  int fd = mkstemp(file_name);
-  if (fd < 0)
-    return -1;
-  FILE* file = fdopen(fd, "a+");
-  if (!file) {
-    close(fd);
-    return -1;
-  }
-  if (unlink(file_name) != 0) {
-    LOG_ERR("unlink error");
-    return -1;
-  }
-  if (ftruncate(fd, (off_t) size) != 0) {
-    LOG_ERR("ftruncate error");
-    return -1;
-  }
-  return fd;
-}
-
 /* Create a new object buffer in the hash table. */
 void create_object(int conn, plasma_request* req) {
   LOG_INFO("creating object"); /* TODO(pcm): add object_id here */
-  int fd = create_buffer(req->size);
-  if (fd < 0) {
-    LOG_ERR("could not create shared memory buffer");
-    exit(-1);
-  }
+
+  void* pointer = dlmalloc(req->size);
+  int fd;
+  int64_t map_size;
+  ptrdiff_t offset;
+  get_malloc_mapinfo(pointer, &fd, &map_size, &offset);
+  assert(fd != -1);
+
   object_table_entry* entry = malloc(sizeof(object_table_entry));
   memcpy(&entry->object_id, &req->object_id, 20);
   entry->info.size = req->size;
   /* TODO(pcm): set the other fields */
   entry->fd = fd;
+  entry->map_size = map_size;
+  entry->offset = offset;
   HASH_ADD(handle, open_objects, object_id, sizeof(plasma_id), entry);
-  plasma_reply reply = {PLASMA_OBJECT, req->size};
-  send_fd(conn, fd, (char*) &reply, sizeof(plasma_reply));
+  plasma_reply reply;
+  memset(&reply, 0, sizeof(reply));
+  reply.type = PLASMA_OBJECT;
+  reply.offset = offset;
+  reply.map_size = map_size;
+  reply.object_size = req->size;
+  send_fd(conn, fd, (char*) &reply, sizeof(reply));
 }
 
 /* Get an object from the hash table. */
@@ -117,7 +110,8 @@ void get_object(int conn, plasma_request* req) {
   object_table_entry* entry;
   HASH_FIND(handle, sealed_objects, &req->object_id, sizeof(plasma_id), entry);
   if (entry) {
-    plasma_reply reply = {PLASMA_OBJECT, entry->info.size};
+    plasma_reply reply = {PLASMA_OBJECT, entry->offset, entry->map_size,
+                          entry->info.size};
     send_fd(conn, entry->fd, (char*) &reply, sizeof(plasma_reply));
   } else {
     LOG_INFO("object not in hash table of sealed objects");
@@ -129,7 +123,7 @@ void get_object(int conn, plasma_request* req) {
     notify_entry->num_waiting += 1;
     HASH_ADD(handle, objects_notify, object_id, sizeof(plasma_id),
              notify_entry);
-    plasma_reply reply = {PLASMA_FUTURE, -1};
+    plasma_reply reply = {PLASMA_FUTURE, 0, 0, -1};
     send_fd(conn, fd[1], (char*) &reply, sizeof(plasma_reply));
   }
 }
@@ -143,8 +137,6 @@ void seal_object(int conn, plasma_request* req) {
     return; /* TODO(pcm): return error */
   }
   HASH_DELETE(handle, open_objects, entry);
-  int64_t size = entry->info.size;
-  int fd = entry->fd;
   HASH_ADD(handle, sealed_objects, object_id, sizeof(plasma_id), entry);
   /* Inform processes that the object is ready now. */
   object_notify_entry* notify_entry;
@@ -153,9 +145,11 @@ void seal_object(int conn, plasma_request* req) {
   if (!notify_entry) {
     return;
   }
-  plasma_reply reply = {PLASMA_OBJECT, size};
+  plasma_reply reply = {PLASMA_OBJECT, entry->offset, entry->map_size,
+                        entry->info.size};
   for (int i = 0; i < notify_entry->num_waiting; ++i) {
-    send_fd(notify_entry->conn[i], fd, (char*) &reply, sizeof(plasma_reply));
+    send_fd(notify_entry->conn[i], entry->fd, (char*) &reply,
+            sizeof(plasma_reply));
     close(notify_entry->conn[i]);
   }
   HASH_DELETE(handle, objects_notify, notify_entry);

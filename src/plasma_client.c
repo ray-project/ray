@@ -31,12 +31,15 @@ void plasma_create(int conn, plasma_id object_id, int64_t size, void **data) {
   plasma_reply reply;
   int fd = recv_fd(conn, (char *) &reply, sizeof(plasma_reply));
   assert(reply.type == PLASMA_OBJECT);
-  assert(reply.size == size);
-  *data = mmap(NULL, reply.size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  assert(reply.object_size == size);
+  *data =
+      mmap(NULL, reply.map_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0) +
+      reply.offset;
   if (*data == MAP_FAILED) {
     LOG_ERR("mmap failed");
     exit(-1);
   }
+  close(fd);
 }
 
 void plasma_get(int conn, plasma_id object_id, int64_t *size, void **data) {
@@ -51,12 +54,14 @@ void plasma_get(int conn, plasma_id object_id, int64_t *size, void **data) {
     fd = new_fd;
   }
   assert(reply.type == PLASMA_OBJECT);
-  *data = mmap(NULL, reply.size, PROT_READ, MAP_SHARED, fd, 0);
+  *data =
+      mmap(NULL, reply.map_size, PROT_READ, MAP_SHARED, fd, 0) + reply.offset;
   if (*data == MAP_FAILED) {
     LOG_ERR("mmap failed");
     exit(-1);
   }
-  *size = reply.size;
+  close(fd);
+  *size = reply.object_size;
 }
 
 void plasma_seal(int fd, plasma_id object_id) {
@@ -116,8 +121,10 @@ int plasma_manager_connect(const char *ip_addr, int port) {
 
   int r = connect(fd, (struct sockaddr *) &addr, sizeof(addr));
   if (r < 0) {
-    LOG_ERR("could not establish connection to manager with id %s:%d",
-            &ip_addr[0], port);
+    LOG_ERR(
+        "could not establish connection to manager with id %s:%d (probably ran "
+        "out of ports)",
+        &ip_addr[0], port);
     exit(-1);
   }
   return fd;

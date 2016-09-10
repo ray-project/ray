@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -g -Wall --std=c99 -D_XOPEN_SOURCE=500
+CFLAGS = -g -Wall --std=c99 -D_XOPEN_SOURCE=500 -I.
 BUILD = build
 
 all: $(BUILD)/plasma_store $(BUILD)/plasma_manager $(BUILD)/plasma_client.so $(BUILD)/example
@@ -7,8 +7,8 @@ all: $(BUILD)/plasma_store $(BUILD)/plasma_manager $(BUILD)/plasma_client.so $(B
 clean:
 	rm -r $(BUILD)/*
 
-$(BUILD)/plasma_store: src/plasma_store.c src/plasma.h src/event_loop.h src/event_loop.c src/fling.h src/fling.c
-	$(CC) $(CFLAGS) src/plasma_store.c src/event_loop.c src/fling.c -o $(BUILD)/plasma_store
+$(BUILD)/plasma_store: src/plasma_store.c src/plasma.h src/event_loop.h src/event_loop.c src/fling.h src/fling.c src/malloc.c src/malloc.h third_party/dlmalloc.c
+	$(CC) $(CFLAGS) src/plasma_store.c src/event_loop.c src/fling.c src/malloc.c -o $(BUILD)/plasma_store
 
 $(BUILD)/plasma_manager: src/plasma_manager.c src/event_loop.h src/event_loop.c src/plasma.h src/plasma_client.c src/fling.h src/fling.c
 	$(CC) $(CFLAGS) src/plasma_manager.c src/event_loop.c src/plasma_client.c src/fling.c -o $(BUILD)/plasma_manager

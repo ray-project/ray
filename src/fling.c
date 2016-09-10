@@ -19,6 +19,7 @@ int send_fd(int conn, int fd, const char *payload, int size) {
   struct msghdr msg;
   struct iovec iov;
   char buf[CMSG_SPACE(sizeof(int))];
+  memset(&buf, 0, CMSG_SPACE(sizeof(int)));
 
   init_msg(&msg, &iov, buf, sizeof(buf));
 
