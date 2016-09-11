@@ -116,7 +116,7 @@ int plasma_manager_connect(const char *ip_addr, int port) {
 
   struct sockaddr_in addr;
   addr.sin_family = AF_INET;
-  bcopy(manager->h_addr, &addr.sin_addr.s_addr, manager->h_length);
+  memcpy(&addr.sin_addr.s_addr, manager->h_addr, manager->h_length);
   addr.sin_port = htons(port);
 
   int r = connect(fd, (struct sockaddr *) &addr, sizeof(addr));

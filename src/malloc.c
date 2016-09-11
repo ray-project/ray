@@ -19,7 +19,7 @@ int fake_munmap(void *, size_t);
 #define USE_DL_PREFIX
 #define HAVE_MORECORE 0
 
-#include "third_party/dlmalloc.c"
+#include "thirdparty/dlmalloc.c"
 
 #undef MMAP
 #undef MUNMAP

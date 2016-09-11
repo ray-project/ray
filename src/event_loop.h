@@ -2,6 +2,7 @@
 #define EVENT_LOOP_H
 
 #include <poll.h>
+#include <string.h>
 
 #include "utarray.h"
 #include "plasma.h"

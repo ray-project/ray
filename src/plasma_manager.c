@@ -49,7 +49,7 @@ void initiate_transfer(plasma_manager_state* s, plasma_request* req) {
   plasma_buffer buf = {.object_id = req->object_id, .writable = 0};
   plasma_get(store_conn, req->object_id, &buf.size, &buf.data);
 
-  char ip_addr[16];
+  char ip_addr[32];
   snprintf(ip_addr, 32, "%d.%d.%d.%d", req->addr[0], req->addr[1], req->addr[2],
            req->addr[3]);
 

@@ -7,7 +7,7 @@ else
   base_commit="$TRAVIS_BRANCH"
   echo "Running clang-format against branch $base_commit, with hash $(git rev-parse $base_commit)"
 fi
-output="$(.travis/git-clang-format --binary clang-format-3.8 --commit $base_commit --diff --exclude ^third_party/)"
+output="$(.travis/git-clang-format --binary clang-format-3.8 --commit $base_commit --diff --exclude ^thirdparty/)"
 if [ "$output" == "no modified files to format" ] || [ "$output" == "clang-format did not modify any files" ] ; then
   echo "clang-format passed."
   exit 0

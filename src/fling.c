@@ -1,5 +1,7 @@
 #include "fling.h"
 
+#include <string.h>
+
 void init_msg(struct msghdr *msg,
               struct iovec *iov,
               char *buf,
