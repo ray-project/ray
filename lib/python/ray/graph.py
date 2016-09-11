@@ -28,7 +28,7 @@ def graph_to_graphviz(computation_graph):
     creator_operationid = op.creator_operationid if op.creator_operationid != 2 ** 64 - 1 else "-root"
     dot.edge("op" + str(creator_operationid), "op" + str(i), style="dotted", constraint="false")
     for arg in op.task.arg:
-      if not arg.HasField("obj"):
-        dot.node(str(arg.id))
-        dot.edge(str(arg.id), "op" + str(i))
+      if len(arg.serialized_arg) == 0:
+        dot.node(str(arg.objectid))
+        dot.edge(str(arg.objectid), "op" + str(i))
   return dot

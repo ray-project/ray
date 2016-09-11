@@ -1,8 +1,13 @@
 syntax = "proto3";
 
+message Arg {
+  uint64 objectid = 1; // The objectid for the argument.
+  string serialized_arg = 2; // A serialized representation of an argument passed by value.
+}
+
 message Task {
   string name = 1; // Name of the function call. Must not be empty.
-  repeated uint64 arg = 2; // List of object IDs of the arguments to the function.
+  repeated Arg arg = 2; // List of object IDs of the arguments to the function.
   repeated uint64 result = 3; // Object IDs for result
 }
 

@@ -413,8 +413,20 @@ class Worker(object):
     """
     # Convert all of the argumens to object IDs. It is a little strange that we
     # are calling put, which is external to this class.
-    args = [arg if isinstance(arg, raylib.ObjectID) else put(arg, worker=self) for arg in args]
-    task_capsule = raylib.serialize_task(self.handle, func_name, args)
+    serialized_args = []
+    for arg in args:
+      if isinstance(arg, raylib.ObjectID):
+        next_arg = arg
+      else:
+        serialized_arg = serialization.serialize_argument_if_possible(arg)
+        if serialized_arg is not None:
+          # Serialize the argument and pass it by value.
+          next_arg = serialized_arg
+        else:
+          # Put the objet in the object store under the hood.
+          next_arg = put(arg)
+      serialized_args.append(next_arg)
+    task_capsule = raylib.serialize_task(self.handle, func_name, serialized_args)
     objectids = raylib.submit_task(self.handle, task_capsule)
     return objectids
 
@@ -935,9 +947,9 @@ def main_loop(worker=global_worker):
     After the task executes, the worker resets any reusable variables that were
     accessed by the task.
     """
-    function_name, args, return_objectids = task
+    function_name, serialized_args, return_objectids = task
     try:
-      arguments = get_arguments_for_execution(worker.functions[function_name], args, worker) # get args from objstore
+      arguments = get_arguments_for_execution(worker.functions[function_name], serialized_args, worker) # get args from objstore
       outputs = worker.functions[function_name].executor(arguments) # execute the function
       if len(return_objectids) == 1:
         outputs = (outputs,)
@@ -1197,7 +1209,7 @@ def check_signature_supported(has_kwargs_param, has_vararg_param, keyword_defaul
   if has_vararg_param and any([d != funcsigs._empty for _, d in keyword_defaults]):
     raise "Function {} has a *args argument as well as a keyword argument, which is currently not supported.".format(name)
 
-def get_arguments_for_execution(function, args, worker=global_worker):
+def get_arguments_for_execution(function, serialized_args, worker=global_worker):
   """Retrieve the arguments for the remote function.
 
   This retrieves the values for the arguments to the remote function that were
@@ -1207,7 +1219,9 @@ def get_arguments_for_execution(function, args, worker=global_worker):
   Args:
     function (Callable): The remote function whose arguments are being
       retrieved.
-    args (List): The arguments to the function.
+    serialized_args (List): The arguments to the function. These are either
+      strings representing serialized objects passed by value or they are
+      ObjectIDs.
 
   Returns:
     The retrieved arguments in addition to the arguments that were passed by
@@ -1218,7 +1232,7 @@ def get_arguments_for_execution(function, args, worker=global_worker):
       the arguments failed.
   """
   arguments = []
-  for (i, arg) in enumerate(args):
+  for (i, arg) in enumerate(serialized_args):
     if isinstance(arg, raylib.ObjectID):
       # get the object from the local object store
       _logger().info("Getting argument {} for function {}.".format(i, function.__name__))
@@ -1230,7 +1244,7 @@ def get_arguments_for_execution(function, args, worker=global_worker):
       _logger().info("Successfully retrieved argument {} for function {}.".format(i, function.__name__))
     else:
       # pass the argument by value
-      argument = arg
+      argument = serialization.deserialize_argument(arg)
 
     arguments.append(argument)
   return arguments

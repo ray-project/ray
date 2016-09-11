@@ -201,6 +201,29 @@ class WorkerTest(unittest.TestCase):
 
 class APITest(unittest.TestCase):
 
+  def testPassingArgumentsByValue(self):
+    ray.init(start_ray_local=True, num_workers=0)
+
+    # The types that can be passed by value are defined by
+    # is_argument_serializable in serialization.py.
+    class Foo(object):
+      pass
+    CAN_PASS_BY_VALUE = [1, 1L, 1.0, True, False, None, [1L, 1.0, True, None],
+                         ([1, 2, 3], {False: [1.0, u"hi", ()]}), 100 * ["a"]]
+    CANNOT_PASS_BY_VALUE = [int, np.int64(0), np.float64(0), Foo(), [Foo()],
+                            (Foo()), {0: Foo()}, [[[int]]], 101 * [1],
+                            np.zeros(10)]
+
+    for obj in CAN_PASS_BY_VALUE:
+      self.assertTrue(ray.serialization.is_argument_serializable(obj))
+      self.assertEqual(obj, ray.serialization.deserialize_argument(ray.serialization.serialize_argument_if_possible(obj)))
+
+    for obj in CANNOT_PASS_BY_VALUE:
+      self.assertFalse(ray.serialization.is_argument_serializable(obj))
+      self.assertEqual(None, ray.serialization.serialize_argument_if_possible(obj))
+
+    ray.worker.cleanup()
+
   def testRegisterClass(self):
     ray.init(start_ray_local=True, num_workers=0)
 
@@ -405,6 +428,24 @@ class APITest(unittest.TestCase):
       sys.path.pop(-1)
     ray.worker.global_worker.run_function_on_all_workers(f)
     self.assertTrue("fake_directory" not in ray.get(get_path.remote()))
+
+    ray.worker.cleanup()
+
+  def testComputationGraph(self):
+    ray.init(start_ray_local=True, num_workers=1)
+
+    @ray.remote
+    def f(x):
+      return x
+    @ray.remote
+    def g(x, y):
+      return x, y
+    a = f.remote(1)
+    b = f.remote(1)
+    c = f.remote(a, b)
+    c = f.remote(a, 1)
+    # Make sure that we can produce a computation_graph visualization.
+    ray.visualize_computation_graph(view=False)
 
     ray.worker.cleanup()
 
