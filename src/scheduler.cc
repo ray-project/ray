@@ -690,13 +690,15 @@ void SchedulerService::assign_task(OperationId operationid, WorkerId workerid, c
   AckReply reply;
   RAY_LOG(RAY_INFO, "starting to send arguments");
   for (size_t i = 0; i < task.arg_size(); ++i) {
-    ObjectID objectid = task.arg(i);
-    ObjectID canonical_objectid = get_canonical_objectid(objectid);
-    // Notify the relevant objstore about potential aliasing when it's ready
-    GET(alias_notification_queue_)->push_back(std::make_pair(objstoreid, std::make_pair(objectid, canonical_objectid)));
-    attempt_notify_alias(objstoreid, objectid, canonical_objectid);
-    RAY_LOG(RAY_DEBUG, "task contains object ref " << canonical_objectid);
-    deliver_object_async_if_necessary(canonical_objectid, pick_objstore(canonical_objectid), objstoreid);
+    if (task.arg(i).serialized_arg().empty()) {
+      ObjectID objectid = task.arg(i).objectid();
+      ObjectID canonical_objectid = get_canonical_objectid(objectid);
+      // Notify the relevant objstore about potential aliasing when it's ready
+      GET(alias_notification_queue_)->push_back(std::make_pair(objstoreid, std::make_pair(objectid, canonical_objectid)));
+      attempt_notify_alias(objstoreid, objectid, canonical_objectid);
+      RAY_LOG(RAY_DEBUG, "task contains object ref " << canonical_objectid);
+      deliver_object_async_if_necessary(canonical_objectid, pick_objstore(canonical_objectid), objstoreid);
+    }
   }
   {
     auto workers = GET(workers_);
@@ -709,13 +711,15 @@ void SchedulerService::assign_task(OperationId operationid, WorkerId workerid, c
 bool SchedulerService::can_run(const Task& task) {
   auto objtable = GET(objtable_);
   for (int i = 0; i < task.arg_size(); ++i) {
-    ObjectID objectid = task.arg(i);
-    if (!has_canonical_objectid(objectid)) {
-      return false;
-    }
-    ObjectID canonical_objectid = get_canonical_objectid(objectid);
-    if (canonical_objectid >= objtable->size() || (*objtable)[canonical_objectid].size() == 0) {
-      return false;
+    if (task.arg(i).serialized_arg().empty()) {
+      ObjectID objectid = task.arg(i).objectid();
+      if (!has_canonical_objectid(objectid)) {
+        return false;
+      }
+      ObjectID canonical_objectid = get_canonical_objectid(objectid);
+      if (canonical_objectid >= objtable->size() || (*objtable)[canonical_objectid].size() == 0) {
+        return false;
+      }
     }
   }
   return true;
@@ -952,14 +956,16 @@ void SchedulerService::schedule_tasks_location_aware() {
         // determine how many objects would need to be shipped
         size_t num_shipped_objects = 0;
         for (int j = 0; j < task.arg_size(); ++j) {
-          ObjectID objectid = task.arg(j);
-          RAY_CHECK(has_canonical_objectid(objectid), "no canonical object ref found even though task is ready; that should not be possible!");
-          ObjectID canonical_objectid = get_canonical_objectid(objectid);
-          {
-            // check if the object is already in the local object store
-            auto objtable = GET(objtable_);
-            if (!std::binary_search((*objtable)[canonical_objectid].begin(), (*objtable)[canonical_objectid].end(), objstoreid)) {
-              num_shipped_objects += 1;
+          if (task.arg(j).serialized_arg().empty()) {
+            ObjectID objectid = task.arg(j).objectid();
+            RAY_CHECK(has_canonical_objectid(objectid), "no canonical object ref found even though task is ready; that should not be possible!");
+            ObjectID canonical_objectid = get_canonical_objectid(objectid);
+            {
+              // check if the object is already in the local object store
+              auto objtable = GET(objtable_);
+              if (!std::binary_search((*objtable)[canonical_objectid].begin(), (*objtable)[canonical_objectid].end(), objstoreid)) {
+                num_shipped_objects += 1;
+              }
             }
           }
         }
