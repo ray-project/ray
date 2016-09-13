@@ -25,6 +25,15 @@
   fprintf(stderr, "[ERROR] (%s:%d: errno: %s) " M "\n", __FILE__, __LINE__, \
           errno == 0 ? "None" : strerror(errno), ##__VA_ARGS__)
 
+#define PLASMA_CHECK(CONDITION, M, ...)                                \
+  do {                                                                 \
+    if (!(CONDITION)) {                                                \
+      fprintf(stderr, "[FATAL] (%s:%d " #CONDITION ") \n" M, __FILE__, \
+              __LINE__);                                               \
+      exit(-1);                                                        \
+    }                                                                  \
+  } while (0)
+
 typedef struct {
   int64_t size;
   int64_t create_time;
@@ -55,15 +64,7 @@ typedef struct {
   int port;
 } plasma_request;
 
-enum plasma_reply_type {
-  /* the file descriptor represents an object */
-  PLASMA_OBJECT,
-  /* the file descriptor represents a future */
-  PLASMA_FUTURE,
-};
-
 typedef struct {
-  int type;
   ptrdiff_t offset;
   int64_t map_size;
   int64_t object_size;

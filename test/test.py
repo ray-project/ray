@@ -94,34 +94,35 @@ class TestPlasmaManager(unittest.TestCase):
     self.p5.kill()
 
   def test_transfer(self):
-    # Create an object id string.
-    object_id1 = random_object_id()
-    # Create a new buffer and write to it.
-    memory_buffer = self.client1.create(object_id1, 20000)
-    for i in range(len(memory_buffer)):
-      memory_buffer[i] = chr(i % 10)
-    # Seal the buffer.
-    self.client1.seal(object_id1)
-    # Transfer the buffer to the the other PlasmaStore.
-    self.client1.transfer("127.0.0.1", self.port2, object_id1)
-    # Compare the two buffers.
-    self.assertEqual(self.client1.get(object_id1)[:], self.client2.get(object_id1)[:])
-    # Transfer the buffer again.
-    self.client1.transfer("127.0.0.1", self.port2, object_id1)
-    # Compare the two buffers.
-    self.assertEqual(self.client1.get(object_id1)[:], self.client2.get(object_id1)[:])
-    # Create a new object id string.
-    object_id2 = random_object_id()
-    # Create a new buffer and write to it.
-    memory_buffer = self.client2.create(object_id2, 20000)
-    for i in range(len(memory_buffer)):
-      memory_buffer[i] = chr(i % 10)
-    # Seal the buffer.
-    self.client2.seal(object_id2)
-    # Transfer the buffer to the the other PlasmaStore.
-    self.client2.transfer("127.0.0.1", self.port1, object_id2)
-    # Compare the two buffers.
-    self.assertEqual(self.client1.get(object_id2)[:], self.client2.get(object_id2)[:])
+    for _ in range(100):
+      # Create an object id string.
+      object_id1 = random_object_id()
+      # Create a new buffer and set the first and last entries.
+      memory_buffer = self.client1.create(object_id1, 20000)
+      memory_buffer[0] = chr(1)
+      memory_buffer[-1] = chr(2)
+      # Seal the buffer.
+      self.client1.seal(object_id1)
+      # Transfer the buffer to the the other PlasmaStore.
+      self.client1.transfer("127.0.0.1", self.port2, object_id1)
+      # Compare the two buffers.
+      self.assertEqual(self.client1.get(object_id1)[:], self.client2.get(object_id1)[:])
+      # Transfer the buffer again.
+      self.client1.transfer("127.0.0.1", self.port2, object_id1)
+      # Compare the two buffers.
+      self.assertEqual(self.client1.get(object_id1)[:], self.client2.get(object_id1)[:])
+      # Create a new object id string.
+      object_id2 = random_object_id()
+      # Create a new buffer and set the first and last entries.
+      memory_buffer = self.client2.create(object_id2, 20000)
+      memory_buffer[0] = chr(3)
+      memory_buffer[-1] = chr(4)
+      # Seal the buffer.
+      self.client2.seal(object_id2)
+      # Transfer the buffer to the the other PlasmaStore.
+      self.client2.transfer("127.0.0.1", self.port1, object_id2)
+      # Compare the two buffers.
+      self.assertEqual(self.client1.get(object_id2)[:], self.client2.get(object_id2)[:])
 
   def test_illegal_functionality(self):
     # Create an object id string.
