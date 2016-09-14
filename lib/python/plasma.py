@@ -25,7 +25,7 @@ class PlasmaClient(object):
 
   def __init__(self, socket_name, addr=None, port=None):
     """Initialize the PlasmaClient.
-    
+
     Args:
       socket_name (str): Name of the socket the plasma store is listening at.
       addr (str): IPv4 address of plasma manager attached to the plasma store.
@@ -36,10 +36,10 @@ class PlasmaClient(object):
 
     self.client.plasma_store_connect.restype = ctypes.c_int
 
-    self.client.plasma_create.argtypes = [ctypes.c_int, PlasmaID, ctypes.c_int64, ctypes.POINTER(ctypes.c_void_p)]
+    self.client.plasma_create.argtypes = [ctypes.c_int, PlasmaID, ctypes.c_int64, ctypes.POINTER(ctypes.c_uint8), ctypes.c_int64, ctypes.POINTER(ctypes.c_void_p)]
     self.client.plasma_create.restype = None
 
-    self.client.plasma_get.argtypes = [ctypes.c_int, PlasmaID, ctypes.POINTER(ctypes.c_int64), ctypes.POINTER(ctypes.c_void_p)]
+    self.client.plasma_get.argtypes = [ctypes.c_int, PlasmaID, ctypes.POINTER(ctypes.c_int64), ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_int64), ctypes.POINTER(ctypes.c_void_p)]
     self.client.plasma_get.restype = None
 
     self.client.plasma_seal.argtypes = [ctypes.c_int, PlasmaID]
@@ -60,7 +60,7 @@ class PlasmaClient(object):
     else:
       self.manager_conn = -1 # not connected
 
-  def create(self, object_id, size):
+  def create(self, object_id, size, metadata=None):
     """Create a new buffer in the PlasmaStore for a particular object ID.
 
     The returned buffer is mutable until seal is called.
@@ -68,24 +68,48 @@ class PlasmaClient(object):
     Args:
       object_id (str): A string used to identify an object.
       size (int): The size in bytes of the created buffer.
+      metadata (buffer): An optional buffer encoding whatever metadata the user
+        wishes to encode.
     """
+    # This is used to hold the address of the buffer.
     data = ctypes.c_void_p()
-    self.client.plasma_create(self.sock, make_plasma_id(object_id), size, ctypes.byref(data))
+    # Turn the metadata into the right type.
+    metadata = buffer("") if metadata is None else metadata
+    metadata = (ctypes.c_ubyte * len(metadata)).from_buffer_copy(metadata)
+    self.client.plasma_create(self.sock, make_plasma_id(object_id), size, metadata, len(metadata), ctypes.byref(data))
     return self.buffer_from_read_write_memory(data, size)
 
   def get(self, object_id):
     """Create a buffer from the PlasmaStore based on object ID.
 
-    This method can only be called after the buffer has been sealed. The
-    retrieved buffer is immutable.
+    If the object has not been sealed yet, this call will block. The retrieved
+    buffer is immutable.
 
     Args:
       object_id (str): A string used to identify an object.
     """
     size = ctypes.c_int64()
     data = ctypes.c_void_p()
-    buf = self.client.plasma_get(self.sock, make_plasma_id(object_id), ctypes.byref(size), ctypes.byref(data))
+    metadata_size = ctypes.c_int64()
+    metadata = ctypes.c_void_p()
+    buf = self.client.plasma_get(self.sock, make_plasma_id(object_id), ctypes.byref(size), ctypes.byref(data), ctypes.byref(metadata_size), ctypes.byref(metadata))
     return self.buffer_from_memory(data, size)
+
+  def get_metadata(self, object_id):
+    """Create a buffer from the PlasmaStore based on object ID.
+
+    If the object has not been sealed yet, this call will block until the object
+    has been sealed. The retrieved buffer is immutable.
+
+    Args:
+      object_id (str): A string used to identify an object.
+    """
+    size = ctypes.c_int64()
+    data = ctypes.c_void_p()
+    metadata_size = ctypes.c_int64()
+    metadata = ctypes.c_void_p()
+    buf = self.client.plasma_get(self.sock, make_plasma_id(object_id), ctypes.byref(size), ctypes.byref(data), ctypes.byref(metadata_size), ctypes.byref(metadata))
+    return self.buffer_from_memory(metadata, metadata_size)
 
   def seal(self, object_id):
     """Seal the buffer in the PlasmaStore for a particular object ID.
@@ -100,7 +124,7 @@ class PlasmaClient(object):
 
   def transfer(self, addr, port, object_id):
     """Transfer local object with id object_id to another plasma instance
-    
+
     Args:
       addr (str): IPv4 address of the plasma instance the object is sent to.
       port (int): Port number of the plasma instance the object is sent to.
@@ -109,4 +133,3 @@ class PlasmaClient(object):
     if self.manager_conn == -1:
       raise Exception("Not connected to the plasma manager socket")
     self.client.plasma_transfer(self.manager_conn, addr, port, make_plasma_id(object_id))
-    

@@ -17,7 +17,7 @@
 int main(int argc, char *argv[]) {
   int conn = -1;
   int64_t size;
-  void *data;
+  uint8_t *data;
   int c;
   plasma_id id = {{255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
                    255, 255, 255, 255, 255, 255, 255, 255, 255, 255}};
@@ -28,14 +28,14 @@ int main(int argc, char *argv[]) {
       break;
     case 'c':
       assert(conn != -1);
-      plasma_create(conn, id, 100, &data);
+      plasma_create(conn, id, 100, NULL, 0, &data);
       break;
     case 'f':
       assert(conn != -1);
       plasma_seal(conn, id);
       break;
     case 'g':
-      plasma_get(conn, id, &size, &data);
+      plasma_get(conn, id, &size, &data, NULL, NULL);
       break;
     default:
       abort();

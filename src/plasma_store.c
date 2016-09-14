@@ -85,7 +85,7 @@ void create_object(int conn, plasma_request* req) {
   HASH_FIND(handle, open_objects, &req->object_id, sizeof(plasma_id), entry);
   PLASMA_CHECK(entry == NULL, "Cannot create object twice.");
 
-  void* pointer = dlmalloc(req->size);
+  uint8_t* pointer = dlmalloc(req->data_size + req->metadata_size);
   int fd;
   int64_t map_size;
   ptrdiff_t offset;
@@ -94,7 +94,8 @@ void create_object(int conn, plasma_request* req) {
 
   entry = malloc(sizeof(object_table_entry));
   memcpy(&entry->object_id, &req->object_id, 20);
-  entry->info.size = req->size;
+  entry->info.data_size = req->data_size;
+  entry->info.metadata_size = req->metadata_size;
   /* TODO(pcm): set the other fields */
   entry->fd = fd;
   entry->map_size = map_size;
@@ -102,9 +103,11 @@ void create_object(int conn, plasma_request* req) {
   HASH_ADD(handle, open_objects, object_id, sizeof(plasma_id), entry);
   plasma_reply reply;
   memset(&reply, 0, sizeof(reply));
-  reply.offset = offset;
+  reply.data_offset = offset;
+  reply.metadata_offset = offset + req->data_size;
   reply.map_size = map_size;
-  reply.object_size = req->size;
+  reply.data_size = req->data_size;
+  reply.metadata_size = req->metadata_size;
   send_fd(conn, fd, (char*) &reply, sizeof(reply));
 }
 
@@ -115,9 +118,10 @@ void get_object(int conn, plasma_request* req) {
   if (entry) {
     plasma_reply reply;
     memset(&reply, 0, sizeof(plasma_reply));
-    reply.offset = entry->offset;
+    reply.data_offset = entry->offset;
     reply.map_size = entry->map_size;
-    reply.object_size = entry->info.size;
+    reply.data_size = entry->info.data_size;
+    reply.metadata_size = entry->info.metadata_size;
     send_fd(conn, entry->fd, (char*) &reply, sizeof(plasma_reply));
   } else {
     object_notify_entry* notify_entry;
@@ -156,9 +160,9 @@ void seal_object(int conn, plasma_request* req) {
   if (!notify_entry) {
     return;
   }
-  plasma_reply reply = {.offset = entry->offset,
+  plasma_reply reply = {.data_offset = entry->offset,
                         .map_size = entry->map_size,
-                        .object_size = entry->info.size};
+                        .data_size = entry->info.data_size};
   for (int i = 0; i < notify_entry->num_waiting; ++i) {
     send_fd(notify_entry->conn[i], entry->fd, (char*) &reply,
             sizeof(plasma_reply));

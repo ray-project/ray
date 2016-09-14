@@ -14,6 +14,31 @@ import plasma
 def random_object_id():
   return "".join([chr(random.randint(0, 255)) for _ in range(20)])
 
+def generate_metadata(length):
+  metadata = length * ["\x00"]
+  if length > 0:
+    metadata[0] = chr(random.randint(0, 255))
+    metadata[-1] = chr(random.randint(0, 255))
+    for _ in range(100):
+      metadata[random.randint(0, length - 1)] = chr(random.randint(0, 255))
+  return buffer("".join(metadata))
+
+def write_to_data_buffer(buff, length):
+  if length > 0:
+    buff[0] = chr(random.randint(0, 255))
+    buff[-1] = chr(random.randint(0, 255))
+    for _ in range(100):
+      buff[random.randint(0, length - 1)] = chr(random.randint(0, 255))
+
+def create_object(client, data_size, metadata_size, seal=True):
+  object_id = random_object_id()
+  metadata = generate_metadata(metadata_size)
+  memory_buffer = client.create(object_id, data_size, metadata)
+  write_to_data_buffer(memory_buffer, data_size)
+  if seal:
+    client.seal(object_id)
+  return object_id, memory_buffer, metadata
+
 class TestPlasmaClient(unittest.TestCase):
 
   def setUp(self):
@@ -32,7 +57,7 @@ class TestPlasmaClient(unittest.TestCase):
     # Create an object id string.
     object_id = random_object_id()
     # Create a new buffer and write to it.
-    length = 1000
+    length = 50
     memory_buffer = self.plasma_client.create(object_id, length)
     for i in range(length):
       memory_buffer[i] = chr(i % 256)
@@ -42,6 +67,28 @@ class TestPlasmaClient(unittest.TestCase):
     memory_buffer = self.plasma_client.get(object_id)
     for i in range(length):
       self.assertEqual(memory_buffer[i], chr(i % 256))
+
+  def test_create_with_metadata(self):
+    for length in range(1000):
+      # Create an object id string.
+      object_id = random_object_id()
+      # Create a random metadata string.
+      metadata = generate_metadata(length)
+      # Create a new buffer and write to it.
+      memory_buffer = self.plasma_client.create(object_id, length, metadata)
+      for i in range(length):
+        memory_buffer[i] = chr(i % 256)
+      # Seal the object.
+      self.plasma_client.seal(object_id)
+      # Get the object.
+      memory_buffer = self.plasma_client.get(object_id)
+      for i in range(length):
+        self.assertEqual(memory_buffer[i], chr(i % 256))
+      # Get the metadata.
+      metadata_buffer = self.plasma_client.get_metadata(object_id)
+      self.assertEqual(len(metadata), len(metadata_buffer))
+      for i in range(len(metadata)):
+        self.assertEqual(metadata[i], metadata_buffer[i])
 
   def test_illegal_functionality(self):
     # Create an object id string.
@@ -95,34 +142,30 @@ class TestPlasmaManager(unittest.TestCase):
 
   def test_transfer(self):
     for _ in range(100):
-      # Create an object id string.
-      object_id1 = random_object_id()
-      # Create a new buffer and set the first and last entries.
-      memory_buffer = self.client1.create(object_id1, 20000)
-      memory_buffer[0] = chr(1)
-      memory_buffer[-1] = chr(2)
-      # Seal the buffer.
-      self.client1.seal(object_id1)
+      # Create an object.
+      object_id1, memory_buffer1, metadata1 = create_object(self.client1, 2000, 2000)
       # Transfer the buffer to the the other PlasmaStore.
       self.client1.transfer("127.0.0.1", self.port2, object_id1)
       # Compare the two buffers.
+      self.assertEqual(memory_buffer1[:], self.client2.get(object_id1)[:])
       self.assertEqual(self.client1.get(object_id1)[:], self.client2.get(object_id1)[:])
+      self.assertEqual(metadata1[:], self.client2.get_metadata(object_id1)[:])
+      self.assertEqual(self.client1.get_metadata(object_id1)[:], self.client2.get_metadata(object_id1)[:])
       # Transfer the buffer again.
       self.client1.transfer("127.0.0.1", self.port2, object_id1)
+      self.assertEqual(metadata1[:], self.client2.get_metadata(object_id1)[:])
       # Compare the two buffers.
       self.assertEqual(self.client1.get(object_id1)[:], self.client2.get(object_id1)[:])
-      # Create a new object id string.
-      object_id2 = random_object_id()
-      # Create a new buffer and set the first and last entries.
-      memory_buffer = self.client2.create(object_id2, 20000)
-      memory_buffer[0] = chr(3)
-      memory_buffer[-1] = chr(4)
-      # Seal the buffer.
-      self.client2.seal(object_id2)
+
+      # Create an object.
+      object_id2, memory_buffer2, metadata2 = create_object(self.client2, 20000, 20000)
       # Transfer the buffer to the the other PlasmaStore.
       self.client2.transfer("127.0.0.1", self.port1, object_id2)
       # Compare the two buffers.
+      self.assertEqual(memory_buffer2[:], self.client2.get(object_id2)[:])
       self.assertEqual(self.client1.get(object_id2)[:], self.client2.get(object_id2)[:])
+      self.assertEqual(metadata2[:], self.client2.get_metadata(object_id2)[:])
+      self.assertEqual(self.client1.get_metadata(object_id2)[:], self.client2.get_metadata(object_id2)[:])
 
   def test_illegal_functionality(self):
     # Create an object id string.
