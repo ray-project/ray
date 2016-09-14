@@ -77,6 +77,13 @@ static int PyObjectID_compare(PyObject* a, PyObject* b) {
   return 0;
 }
 
+static long PyObjectID_hash(PyObject* a) {
+  PyObjectID* A = (PyObjectID*) a;
+  PyObject* tuple = PyTuple_New(1);
+  PyTuple_SetItem(tuple, 0, PyInt_FromLong(A->id));
+  return PyObject_Hash(tuple);
+}
+
 char RAY_ID_LITERAL[] = "id";
 char RAY_OBJECT_ID_LITERAL[] = "object id";
 
@@ -100,7 +107,7 @@ static PyTypeObject PyObjectIDType = {
   0,                         /* tp_as_number */
   0,                         /* tp_as_sequence */
   0,                         /* tp_as_mapping */
-  0,                         /* tp_hash */
+  PyObjectID_hash,           /* tp_hash */
   0,                         /* tp_call */
   0,                         /* tp_str */
   0,                         /* tp_getattro */
