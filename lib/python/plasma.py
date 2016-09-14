@@ -31,6 +31,12 @@ class PlasmaClient(object):
       addr (str): IPv4 address of plasma manager attached to the plasma store.
       port (int): Port number of the plasma manager attached to the plasma store.
     """
+    if port is not None:
+      if not isinstance(port, int):
+        raise Exception("The 'port' argument must be an integer. The given argument has type {}.".format(type(port)))
+      if not 0 < port < 65536:
+        raise Exception("The 'port' argument must be greater than 0 and less than 65536. The given value is {}.".format(port))
+
     plasma_client_library = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../build/plasma_client.so")
     self.client = ctypes.cdll.LoadLibrary(plasma_client_library)
 
