@@ -81,7 +81,9 @@ static long PyObjectID_hash(PyObject* a) {
   PyObjectID* A = (PyObjectID*) a;
   PyObject* tuple = PyTuple_New(1);
   PyTuple_SetItem(tuple, 0, PyInt_FromLong(A->id));
-  return PyObject_Hash(tuple);
+  long hash = PyObject_Hash(tuple);
+  Py_XDECREF(tuple);
+  return hash;
 }
 
 char RAY_ID_LITERAL[] = "id";
