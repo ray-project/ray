@@ -40,14 +40,14 @@ def assert_equal(obj1, obj2):
   else:
     assert obj1 == obj2, "Objects {} and {} are different.".format(obj1, obj2)
 
-PRIMITIVE_OBJECTS = [0, 0.0, 0L, 1L << 62, "a", string.printable, "\u262F",
+PRIMITIVE_OBJECTS = [0, 0.0, 0.9, 0L, 1L << 62, "a", string.printable, "\u262F",
                      u"hello world", u"\xff\xfe\x9c\x001\x000\x00", None, True,
                      False, [], (), {}, np.int8(3), np.int32(4), np.int64(5),
-                     np.uint8(3), np.uint32(4), np.uint64(5), np.float32(1.0),
-                     np.float64(1.0), np.zeros([100, 100]),
+                     np.uint8(3), np.uint32(4), np.uint64(5), np.float32(1.9),
+                     np.float64(1.9), np.zeros([100, 100]),
                      np.random.normal(size=[100, 100]), np.array(["hi", 3]),
                      np.array(["hi", 3], dtype=object),
-                     np.array([["hi", u"hi"], [1.0, 1L]])]
+                     np.array([["hi", u"hi"], [1.3, 1L]])]
 
 COMPLEX_OBJECTS = [#[[[[[[[[[[[[]]]]]]]]]]]],
                    {"obj{}".format(i): np.random.normal(size=[100, 100]) for i in range(10)},
