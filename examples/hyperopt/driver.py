@@ -39,26 +39,39 @@ if __name__ == "__main__":
   validation_images = ray.put(mnist.validation.images)
   validation_labels = ray.put(mnist.validation.labels)
 
-  # Store the best parameters, the best accuracy, and all of the results.
+  # Keep track of the best parameters and the best accuracy.
   best_params = None
   best_accuracy = 0
-  results = []
+  # This list holds the object IDs for all of the experiments that we have
+  # launched and that have not yet been processed.
+  remaining_ids = []
+  # This is a dictionary mapping the object ID of an experiment to the
+  # parameters used for that experiment.
+  params_mapping = {}
 
-  # Randomly generate some hyperparameters, and launch a task for each set.
-  for i in range(trials):
+  # A function for generating random hyperparameters.
+  def generate_random_params():
     learning_rate = 10 ** np.random.uniform(-5, 5)
     batch_size = np.random.randint(1, 100)
     dropout = np.random.uniform(0, 1)
     stddev = 10 ** np.random.uniform(-5, 5)
-    params = {"learning_rate": learning_rate, "batch_size": batch_size, "dropout": dropout, "stddev": stddev}
-    results.append((params, hyperopt.train_cnn_and_compute_accuracy.remote(params, steps, train_images, train_labels, validation_images, validation_labels)))
+    return {"learning_rate": learning_rate, "batch_size": batch_size, "dropout": dropout, "stddev": stddev}
 
-  # Fetch the results of the tasks and print the results.
+  # Randomly generate some hyperparameters, and launch a task for each set.
   for i in range(trials):
-    # Get the index of the first task that completes.
-    index = ray.select([result_id for _, result_id in results], num_objects=1)[0]
-    # Process the output of this task and remove it from the list.
-    params, result_id = results.pop(index)
+    params = generate_random_params()
+    accuracy_id = hyperopt.train_cnn_and_compute_accuracy.remote(params, steps, train_images, train_labels, validation_images, validation_labels)
+    remaining_ids.append(accuracy_id)
+    # Keep track of which parameters correspond to this experiment.
+    params_mapping[accuracy_id] = params
+
+  # Fetch and print the results of the tasks in the order that they complete.
+  for i in range(trials):
+    # Use ray.wait to get the object ID of the first task that completes.
+    ready_ids, remaining_ids = ray.wait(remaining_ids)
+    # Process the output of this task.
+    result_id = ready_ids[0]
+    params = params_mapping[result_id]
     accuracy = ray.get(result_id)
     print """We achieve accuracy {:.3}% with
         learning_rate: {:.2}

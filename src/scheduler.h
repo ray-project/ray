@@ -79,7 +79,7 @@ public:
   Status ExportRemoteFunction(ServerContext* context, const ExportRemoteFunctionRequest* request, AckReply* reply) override;
   Status ExportReusableVariable(ServerContext* context, const ExportReusableVariableRequest* request, AckReply* reply) override;
   Status NotifyFailure(ServerContext*, const NotifyFailureRequest* request, AckReply* reply) override;
-  Status Select(ServerContext*, const SelectRequest* request, SelectReply* reply) override;
+  Status Wait(ServerContext*, const WaitRequest* request, WaitReply* reply) override;
 
 #ifdef NDEBUG
   // If we've disabled assertions, then just use regular SynchronizedPtr to skip lock checking.

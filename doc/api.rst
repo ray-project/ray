@@ -5,7 +5,7 @@ The Ray API
 .. autofunction:: ray.put
 .. autofunction:: ray.get
 .. autofunction:: ray.remote
-.. autofunction:: ray.select
+.. autofunction:: ray.wait
 .. autofunction:: ray.init
 .. autofunction:: ray.kill_workers
 .. autofunction:: ray.restart_workers_local
