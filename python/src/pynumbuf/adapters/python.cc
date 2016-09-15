@@ -64,7 +64,7 @@ Status append(PyObject* elem, SequenceBuilder& builder,
   if (PyBool_Check(elem)) {
     RETURN_NOT_OK(builder.AppendBool(elem == Py_True));
   } else if (PyFloat_Check(elem)) {
-    RETURN_NOT_OK(builder.AppendFloat(PyFloat_AS_DOUBLE(elem)));
+    RETURN_NOT_OK(builder.AppendDouble(PyFloat_AS_DOUBLE(elem)));
   } else if (PyLong_Check(elem)) {
     int overflow = 0;
     int64_t data = PyLong_AsLongLongAndOverflow(elem, &overflow);
