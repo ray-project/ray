@@ -1,7 +1,6 @@
 #include "event_loop.h"
 
 #include <assert.h>
-#include <unistd.h>
 
 UT_icd item_icd = {sizeof(event_loop_item), NULL, NULL, NULL};
 UT_icd poll_icd = {sizeof(struct pollfd), NULL, NULL, NULL};

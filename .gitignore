@@ -33,3 +33,6 @@
 # Debug files
 *.dSYM/
 *.su
+
+# Build files
+build/*
