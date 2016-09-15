@@ -108,6 +108,7 @@ void create_object(int conn, plasma_request* req) {
   reply.map_size = map_size;
   reply.data_size = req->data_size;
   reply.metadata_size = req->metadata_size;
+  reply.store_fd_val = fd;
   send_fd(conn, fd, (char*) &reply, sizeof(reply));
 }
 
@@ -122,6 +123,7 @@ void get_object(int conn, plasma_request* req) {
     reply.map_size = entry->map_size;
     reply.data_size = entry->info.data_size;
     reply.metadata_size = entry->info.metadata_size;
+    reply.store_fd_val = entry->fd;
     send_fd(conn, entry->fd, (char*) &reply, sizeof(plasma_reply));
   } else {
     object_notify_entry* notify_entry;
@@ -151,6 +153,7 @@ void seal_object(int conn, plasma_request* req) {
   if (!entry) {
     return; /* TODO(pcm): return error */
   }
+  int fd = entry->fd;
   HASH_DELETE(handle, open_objects, entry);
   HASH_ADD(handle, sealed_objects, object_id, sizeof(plasma_id), entry);
   /* Inform processes that the object is ready now. */
@@ -162,7 +165,9 @@ void seal_object(int conn, plasma_request* req) {
   }
   plasma_reply reply = {.data_offset = entry->offset,
                         .map_size = entry->map_size,
-                        .data_size = entry->info.data_size};
+                        .data_size = entry->info.data_size,
+                        .metadata_size = entry->info.metadata_size,
+                        .store_fd_val = fd};
   for (int i = 0; i < notify_entry->num_waiting; ++i) {
     send_fd(notify_entry->conn[i], entry->fd, (char*) &reply,
             sizeof(plasma_reply));

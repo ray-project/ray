@@ -40,15 +40,9 @@ class PlasmaClient(object):
     plasma_client_library = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../build/plasma_client.so")
     self.client = ctypes.cdll.LoadLibrary(plasma_client_library)
 
-    self.client.plasma_store_connect.restype = ctypes.c_int
-
-    self.client.plasma_create.argtypes = [ctypes.c_int, PlasmaID, ctypes.c_int64, ctypes.POINTER(ctypes.c_uint8), ctypes.c_int64, ctypes.POINTER(ctypes.c_void_p)]
+    self.client.plasma_store_connect.restype = ctypes.c_void_p
     self.client.plasma_create.restype = None
-
-    self.client.plasma_get.argtypes = [ctypes.c_int, PlasmaID, ctypes.POINTER(ctypes.c_int64), ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_int64), ctypes.POINTER(ctypes.c_void_p)]
     self.client.plasma_get.restype = None
-
-    self.client.plasma_seal.argtypes = [ctypes.c_int, PlasmaID]
     self.client.plasma_seal.restype = None
 
     self.buffer_from_memory = ctypes.pythonapi.PyBuffer_FromMemory
@@ -59,7 +53,7 @@ class PlasmaClient(object):
     self.buffer_from_read_write_memory.argtypes = [ctypes.c_void_p, ctypes.c_int64]
     self.buffer_from_read_write_memory.restype = ctypes.py_object
 
-    self.sock = self.client.plasma_store_connect(socket_name)
+    self.store_conn = ctypes.c_void_p(self.client.plasma_store_connect(socket_name))
 
     if addr is not None and port is not None:
       self.manager_conn = self.client.plasma_manager_connect(addr, port)
@@ -82,7 +76,7 @@ class PlasmaClient(object):
     # Turn the metadata into the right type.
     metadata = buffer("") if metadata is None else metadata
     metadata = (ctypes.c_ubyte * len(metadata)).from_buffer_copy(metadata)
-    self.client.plasma_create(self.sock, make_plasma_id(object_id), size, metadata, len(metadata), ctypes.byref(data))
+    self.client.plasma_create(self.store_conn, make_plasma_id(object_id), size, ctypes.cast(metadata, ctypes.POINTER(ctypes.c_ubyte * len(metadata))), len(metadata), ctypes.byref(data))
     return self.buffer_from_read_write_memory(data, size)
 
   def get(self, object_id):
@@ -98,7 +92,7 @@ class PlasmaClient(object):
     data = ctypes.c_void_p()
     metadata_size = ctypes.c_int64()
     metadata = ctypes.c_void_p()
-    buf = self.client.plasma_get(self.sock, make_plasma_id(object_id), ctypes.byref(size), ctypes.byref(data), ctypes.byref(metadata_size), ctypes.byref(metadata))
+    buf = self.client.plasma_get(self.store_conn, make_plasma_id(object_id), ctypes.byref(size), ctypes.byref(data), ctypes.byref(metadata_size), ctypes.byref(metadata))
     return self.buffer_from_memory(data, size)
 
   def get_metadata(self, object_id):
@@ -114,7 +108,7 @@ class PlasmaClient(object):
     data = ctypes.c_void_p()
     metadata_size = ctypes.c_int64()
     metadata = ctypes.c_void_p()
-    buf = self.client.plasma_get(self.sock, make_plasma_id(object_id), ctypes.byref(size), ctypes.byref(data), ctypes.byref(metadata_size), ctypes.byref(metadata))
+    buf = self.client.plasma_get(self.store_conn, make_plasma_id(object_id), ctypes.byref(size), ctypes.byref(data), ctypes.byref(metadata_size), ctypes.byref(metadata))
     return self.buffer_from_memory(metadata, metadata_size)
 
   def seal(self, object_id):
@@ -126,7 +120,7 @@ class PlasmaClient(object):
     Args:
       object_id (str): A string used to identify an object.
     """
-    self.client.plasma_seal(self.sock, make_plasma_id(object_id))
+    self.client.plasma_seal(self.store_conn, make_plasma_id(object_id))
 
   def transfer(self, addr, port, object_id):
     """Transfer local object with id object_id to another plasma instance

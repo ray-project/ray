@@ -13,17 +13,46 @@
 #include <netdb.h>
 
 #include "plasma.h"
+#include "plasma_client.h"
 #include "fling.h"
 
 void plasma_send(int fd, plasma_request *req) {
   int req_count = sizeof(plasma_request);
   if (write(fd, req, req_count) != req_count) {
-    LOG_ERR("write error");
+    LOG_ERR("write error, fd = %d", fd);
     exit(-1);
   }
 }
 
-void plasma_create(int conn,
+/* If the file descriptor fd has been mmapped in this client process before,
+ * return the pointer that was returned by mmap, otherwise mmap it and store the
+ * pointer in a hash table. */
+uint8_t *lookup_or_mmap(plasma_store_conn *conn,
+                        int fd,
+                        int store_fd_val,
+                        int64_t map_size) {
+  client_mmap_table_entry *entry;
+  HASH_FIND_INT(conn->mmap_table, &store_fd_val, entry);
+  if (entry) {
+    close(fd);
+    return entry->pointer;
+  } else {
+    uint8_t *result =
+        mmap(NULL, map_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (result == MAP_FAILED) {
+      LOG_ERR("mmap failed");
+      exit(-1);
+    }
+    close(fd);
+    entry = malloc(sizeof(client_mmap_table_entry));
+    entry->key = store_fd_val;
+    entry->pointer = result;
+    HASH_ADD_INT(conn->mmap_table, key, entry);
+    return result;
+  }
+}
+
+void plasma_create(plasma_store_conn *conn,
                    plasma_id object_id,
                    int64_t data_size,
                    uint8_t *metadata,
@@ -37,22 +66,15 @@ void plasma_create(int conn,
                         .object_id = object_id,
                         .data_size = data_size,
                         .metadata_size = metadata_size};
-  plasma_send(conn, &req);
+  plasma_send(conn->conn, &req);
   plasma_reply reply;
-  int fd = recv_fd(conn, (char *) &reply, sizeof(plasma_reply));
+  int fd = recv_fd(conn->conn, (char *) &reply, sizeof(plasma_reply));
   assert(reply.data_size == data_size);
   assert(reply.metadata_size == metadata_size);
   /* The metadata should come right after the data. */
   assert(reply.metadata_offset == reply.data_offset + data_size);
-
-  // TOOD(rshin): Don't call mmap if this fd has already been mapepd.
-  *data = ((uint8_t *) mmap(NULL, reply.map_size, PROT_READ | PROT_WRITE,
-                            MAP_SHARED, fd, 0)) +
+  *data = lookup_or_mmap(conn, fd, reply.store_fd_val, reply.map_size) +
           reply.data_offset;
-  if (*data == MAP_FAILED) {
-    LOG_ERR("mmap failed");
-    exit(-1);
-  }
   /* If plasma_create is being called from a transfer, then we will not copy the
    * metadata here. The metadata will be written along with the data streamed
    * from the transfer. */
@@ -60,31 +82,21 @@ void plasma_create(int conn,
     /* Copy the metadata to the buffer. */
     memcpy(*data + reply.data_size, metadata, metadata_size);
   }
-  close(fd);
 }
 
 /* This method is used to get both the data and the metadata. */
-void plasma_get(int conn,
+void plasma_get(plasma_store_conn *conn,
                 plasma_id object_id,
                 int64_t *size,
                 uint8_t **data,
                 int64_t *metadata_size,
                 uint8_t **metadata) {
   plasma_request req = {.type = PLASMA_GET, .object_id = object_id};
-  plasma_send(conn, &req);
+  plasma_send(conn->conn, &req);
   plasma_reply reply;
-  /* The following loop is run at most twice. */
-  int fd = recv_fd(conn, (char *) &reply, sizeof(plasma_reply));
-
-  // TOOD(rshin): Don't call mmap if this fd has already been mapepd.
-  *data =
-      ((uint8_t *) mmap(NULL, reply.map_size, PROT_READ, MAP_SHARED, fd, 0)) +
-      reply.data_offset;
-  if (*data == MAP_FAILED) {
-    LOG_ERR("mmap failed");
-    exit(-1);
-  }
-  close(fd);
+  int fd = recv_fd(conn->conn, (char *) &reply, sizeof(plasma_reply));
+  *data = lookup_or_mmap(conn, fd, reply.store_fd_val, reply.map_size) +
+          reply.data_offset;
   *size = reply.data_size;
   /* If requested, return the metadata as well. */
   if (metadata != NULL) {
@@ -93,12 +105,12 @@ void plasma_get(int conn,
   }
 }
 
-void plasma_seal(int fd, plasma_id object_id) {
+void plasma_seal(plasma_store_conn *conn, plasma_id object_id) {
   plasma_request req = {.type = PLASMA_SEAL, .object_id = object_id};
-  plasma_send(fd, &req);
+  plasma_send(conn->conn, &req);
 }
 
-int plasma_store_connect(const char *socket_name) {
+plasma_store_conn *plasma_store_connect(const char *socket_name) {
   assert(socket_name);
   struct sockaddr_un addr;
   int fd;
@@ -125,7 +137,11 @@ int plasma_store_connect(const char *socket_name) {
     LOG_ERR("could not connect to store %s", socket_name);
     exit(-1);
   }
-  return fd;
+  /* Initialize the store connection struct */
+  plasma_store_conn *result = malloc(sizeof(plasma_store_conn));
+  result->conn = fd;
+  result->mmap_table = NULL;
+  return result;
 }
 
 #define h_addr h_addr_list[0]

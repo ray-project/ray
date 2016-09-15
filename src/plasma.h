@@ -7,6 +7,8 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "uthash.h"
+
 #ifdef NDEBUG
 #define LOG_DEBUG(M, ...)
 #else
@@ -79,6 +81,8 @@ typedef struct {
   int64_t data_size;
   /* The size of the metadata. */
   int64_t metadata_size;
+  /* Numerical value of the fd of the memory mapped file in the store. */
+  int store_fd_val;
 } plasma_reply;
 
 typedef struct {
@@ -90,25 +94,23 @@ typedef struct {
   int writable;
 } plasma_buffer;
 
-/* Connect to the local plasma store UNIX domain socket */
-int plasma_store_connect(const char *socket_name);
+typedef struct {
+  /* Key that uniquely identifies the  memory mapped file. In practice, we
+   * take the numerical value of the file descriptor in the object store. */
+  int key;
+  /* The result of mmap for this file descriptor. */
+  uint8_t *pointer;
+  /* Handle for the uthash table. */
+  UT_hash_handle hh;
+} client_mmap_table_entry;
 
-/* Connect to a possibly remote plasma manager */
-int plasma_manager_connect(const char *addr, int port);
-
-void plasma_create(int conn,
-                   plasma_id object_id,
-                   int64_t size,
-                   uint8_t *metadata,
-                   int64_t metadata_size,
-                   uint8_t **data);
-void plasma_get(int conn,
-                plasma_id object_id,
-                int64_t *size,
-                uint8_t **data,
-                int64_t *metadata_size,
-                uint8_t **metadata);
-void plasma_seal(int store, plasma_id object_id);
+/* A client connection with a plasma store */
+typedef struct {
+  /* File descriptor of the Unix domain socket that connects to the store. */
+  int conn;
+  /* Table of dlmalloc buffer files that have been memory mapped so far. */
+  client_mmap_table_entry *mmap_table;
+} plasma_store_conn;
 
 void plasma_send(int conn, plasma_request *req);
 

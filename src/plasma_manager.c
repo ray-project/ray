@@ -22,35 +22,36 @@
 
 #include "event_loop.h"
 #include "plasma.h"
+#include "plasma_client.h"
 #include "plasma_manager.h"
 
 typedef struct {
-  /* Name of the socket connecting to local plasma store. */
-  const char* store_socket_name;
+  /* Connection to local plasma store. */
+  plasma_store_conn *conn;
   /* Event loop. */
-  event_loop* loop;
+  event_loop *loop;
 } plasma_manager_state;
 
 /* Initialize the plasma manager. This function initializes the event loop
  * of the plasma manager, and stores the address 'store_socket_name' of
  * the local plasma store socket. */
-void init_plasma_manager(plasma_manager_state* s,
-                         const char* store_socket_name) {
+void init_plasma_manager(plasma_manager_state *s,
+                         const char *store_socket_name) {
   s->loop = malloc(sizeof(event_loop));
   event_loop_init(s->loop);
-  s->store_socket_name = store_socket_name;
+  s->conn = plasma_store_connect(store_socket_name);
+  LOG_INFO("Connected to object store %s", store_socket_name);
 }
 
 /* Start transfering data to another object store manager. This establishes
- * a connection to both the manager and the local object store and sends
- * the data header to the other object manager. */
-void initiate_transfer(plasma_manager_state* s, plasma_request* req) {
-  int store_conn = plasma_store_connect(s->store_socket_name);
-  uint8_t* data;
+ * a connection to the remote manager and sends the data header to the other
+ * object manager. */
+void initiate_transfer(plasma_manager_state *s, plasma_request *req) {
+  uint8_t *data;
   int64_t data_size;
-  uint8_t* metadata;
+  uint8_t *metadata;
   int64_t metadata_size;
-  plasma_get(store_conn, req->object_id, &data_size, &data, &metadata_size,
+  plasma_get(s->conn, req->object_id, &data_size, &data, &metadata_size,
              &metadata);
   assert(metadata == data + data_size);
   plasma_buffer buf = {.object_id = req->object_id,
@@ -65,7 +66,7 @@ void initiate_transfer(plasma_manager_state* s, plasma_request* req) {
 
   int fd = plasma_manager_connect(&ip_addr[0], req->port);
   data_connection conn = {.type = DATA_CONNECTION_WRITE,
-                          .store_conn = store_conn,
+                          .store_conn = s->conn->conn,
                           .buf = buf,
                           .cursor = 0};
   event_loop_attach(s->loop, CONNECTION_DATA, &conn, fd, POLLOUT);
@@ -80,17 +81,16 @@ void initiate_transfer(plasma_manager_state* s, plasma_request* req) {
  * Initializes the object we are going to write to in the
  * local plasma store and then switches the data socket to reading mode. */
 void start_reading_data(int64_t index,
-                        plasma_manager_state* s,
-                        plasma_request* req) {
-  int store_conn = plasma_store_connect(s->store_socket_name);
+                        plasma_manager_state *s,
+                        plasma_request *req) {
   plasma_buffer buf = {.object_id = req->object_id,
                        .data_size = req->data_size,
                        .metadata_size = req->metadata_size,
                        .writable = 1};
-  plasma_create(store_conn, req->object_id, req->data_size, NULL,
+  plasma_create(s->conn, req->object_id, req->data_size, NULL,
                 req->metadata_size, &buf.data);
   data_connection conn = {.type = DATA_CONNECTION_READ,
-                          .store_conn = store_conn,
+                          .store_conn = s->conn->conn,
                           .buf = buf,
                           .cursor = 0};
   event_loop_set_connection(s->loop, index, &conn);
@@ -99,8 +99,8 @@ void start_reading_data(int64_t index,
 /* Handle a command request that came in through a socket (transfering data,
  * or accepting incoming data). */
 void process_command(int64_t id,
-                     plasma_manager_state* state,
-                     plasma_request* req) {
+                     plasma_manager_state *state,
+                     plasma_request *req) {
   switch (req->type) {
   case PLASMA_TRANSFER:
     LOG_INFO("transfering object to manager with port %d", req->port);
@@ -117,12 +117,12 @@ void process_command(int64_t id,
 }
 
 /* Handle data or command event incoming on socket with index "index". */
-void read_from_socket(plasma_manager_state* state,
-                      struct pollfd* waiting,
+void read_from_socket(plasma_manager_state *state,
+                      struct pollfd *waiting,
                       int64_t index,
-                      plasma_request* req) {
+                      plasma_request *req) {
   ssize_t r, s;
-  data_connection* conn = event_loop_get_connection(state->loop, index);
+  data_connection *conn = event_loop_get_connection(state->loop, index);
   switch (conn->type) {
   case DATA_CONNECTION_HEADER:
     r = read(waiting->fd, req, sizeof(plasma_request));
@@ -147,8 +147,7 @@ void read_from_socket(plasma_manager_state* state,
     }
     if (r == 0) {
       LOG_DEBUG("reading on channel %" PRId64 " finished", index);
-      plasma_seal(conn->store_conn, conn->buf.object_id);
-      close(conn->store_conn);
+      plasma_seal(state->conn, conn->buf.object_id);
       event_loop_detach(state->loop, index, 1);
     }
     break;
@@ -170,7 +169,6 @@ void read_from_socket(plasma_manager_state* state,
     }
     if (r == 0) {
       LOG_DEBUG("writing on channel %" PRId64 " finished", index);
-      close(conn->store_conn);
       event_loop_detach(state->loop, index, 1);
     }
     break;
@@ -181,7 +179,7 @@ void read_from_socket(plasma_manager_state* state,
 }
 
 /* Main event loop of the plasma manager. */
-void run_event_loop(int sock, plasma_manager_state* s) {
+void run_event_loop(int sock, plasma_manager_state *s) {
   /* Add listening socket. */
   event_loop_attach(s->loop, CONNECTION_LISTENER, NULL, sock, POLLIN);
   plasma_request req;
@@ -192,7 +190,7 @@ void run_event_loop(int sock, plasma_manager_state* s) {
       exit(-1);
     }
     for (int i = 0; i < event_loop_size(s->loop); ++i) {
-      struct pollfd* waiting = event_loop_get(s->loop, i);
+      struct pollfd *waiting = event_loop_get(s->loop, i);
       if (waiting->revents == 0)
         continue;
       if (waiting->fd == sock) {
@@ -215,8 +213,8 @@ void run_event_loop(int sock, plasma_manager_state* s) {
   }
 }
 
-void start_server(const char* store_socket_name,
-                  const char* master_addr,
+void start_server(const char *store_socket_name,
+                  const char *master_addr,
                   int port) {
   struct sockaddr_in name;
   int sock = socket(PF_INET, SOCK_STREAM, 0);
@@ -249,11 +247,11 @@ void start_server(const char* store_socket_name,
   run_event_loop(sock, &state);
 }
 
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
   /* Socket name of the plasma store this manager is connected to. */
-  char* store_socket_name = NULL;
+  char *store_socket_name = NULL;
   /* IP address of this node. */
-  char* master_addr = NULL;
+  char *master_addr = NULL;
   /* Port number the manager should use. */
   int port;
   int c;
