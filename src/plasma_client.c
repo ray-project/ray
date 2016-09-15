@@ -44,6 +44,8 @@ void plasma_create(int conn,
   assert(reply.metadata_size == metadata_size);
   /* The metadata should come right after the data. */
   assert(reply.metadata_offset == reply.data_offset + data_size);
+
+  // TOOD(rshin): Don't call mmap if this fd has already been mapepd.
   *data = ((uint8_t *) mmap(NULL, reply.map_size, PROT_READ | PROT_WRITE,
                             MAP_SHARED, fd, 0)) +
           reply.data_offset;
@@ -73,6 +75,8 @@ void plasma_get(int conn,
   plasma_reply reply;
   /* The following loop is run at most twice. */
   int fd = recv_fd(conn, (char *) &reply, sizeof(plasma_reply));
+
+  // TOOD(rshin): Don't call mmap if this fd has already been mapepd.
   *data =
       ((uint8_t *) mmap(NULL, reply.map_size, PROT_READ, MAP_SHARED, fd, 0)) +
       reply.data_offset;
