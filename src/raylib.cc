@@ -892,7 +892,7 @@ static PyObject* request_object(PyObject* self, PyObject* args) {
   Py_RETURN_NONE;
 }
 
-static PyObject* ray_select(PyObject* self, PyObject* args) {
+static PyObject* wait(PyObject* self, PyObject* args) {
   Worker* worker;
   PyObject* objectids;
   if (!PyArg_ParseTuple(args, "O&O", &PyObjectToWorker, &worker, &objectids)) {
@@ -904,7 +904,7 @@ static PyObject* ray_select(PyObject* self, PyObject* args) {
     PyObjectToObjectID(PyList_GetItem(objectids, i), &objectid);
     objectids_vec.push_back(objectid);
   }
-  std::vector<int> indices = worker->select(objectids_vec);
+  std::vector<int> indices = worker->wait(objectids_vec);
   PyObject* result = PyList_New(indices.size());
   for (size_t i = 0; i < indices.size(); ++i) {
     PyList_SetItem(result, i, PyInt_FromLong(indices[i]));
@@ -1081,7 +1081,7 @@ static PyMethodDef RayLibMethods[] = {
  { "add_contained_objectids", add_contained_objectids, METH_VARARGS, "notify the scheduler about the object IDs contained in a remote object" },
  { "get_objectid", get_objectid, METH_VARARGS, "register a new object reference with the scheduler" },
  { "request_object" , request_object, METH_VARARGS, "request an object to be delivered to the local object store" },
- { "ray_select" , ray_select, METH_VARARGS, "checks the scheduler to see if a object can be gotten" },
+ { "wait" , wait, METH_VARARGS, "checks the scheduler to see if a object can be gotten" },
  { "alias_objectids", alias_objectids, METH_VARARGS, "make two objectids refer to the same object" },
  { "wait_for_next_message", wait_for_next_message, METH_VARARGS, "get next message from scheduler (blocking)" },
  { "submit_task", submit_task, METH_VARARGS, "call a remote function" },

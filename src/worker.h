@@ -102,7 +102,7 @@ class Worker {
   // get task statuses from scheduler
   void task_info(ClientContext &context, TaskInfoRequest &request, TaskInfoReply &reply);
   // gets indices of available objects
-  std::vector<int> select(std::vector<ObjectID>& objectids);
+  std::vector<int> wait(std::vector<ObjectID>& objectids);
   // Export a function to be run on all workers.
   void run_function_on_all_workers(const std::string& function);
   // export function to workers

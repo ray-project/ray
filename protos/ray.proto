@@ -61,7 +61,7 @@ service Scheduler {
   // Notify the scheduler that a failure occurred while running a task, importing a remote function, or importing a reusable variable.
   rpc NotifyFailure(NotifyFailureRequest) returns (AckReply);
   // Polls the scheduler to see what objectids can be retrieved in the input list.
-  rpc Select(SelectRequest) returns (SelectReply);
+  rpc Wait(WaitRequest) returns (WaitReply);
 }
 
 message AckReply {
@@ -173,11 +173,11 @@ message SchedulerInfoReply {
   repeated ObjstoreData objstore = 7; // Information about the object stores
 }
 
-message SelectRequest {
+message WaitRequest {
   repeated uint64 objectids = 1; // List of objectids to be checked.
 }
 
-message SelectReply {
+message WaitReply {
   repeated uint64 indices = 1; // List of indices that correspond to objectids in the original list that are ready.
 }
 

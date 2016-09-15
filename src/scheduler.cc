@@ -594,7 +594,7 @@ Status SchedulerService::ExportReusableVariable(ServerContext* context, const Ex
   return Status::OK;
 }
 
-Status SchedulerService::Select(ServerContext* context, const SelectRequest* request, SelectReply* reply) {
+Status SchedulerService::Wait(ServerContext* context, const WaitRequest* request, WaitReply* reply) {
   auto objtable = GET(objtable_);
   for (int i = 0; i < request->objectids_size(); ++i) {
     ObjectID objectid = request->objectids(i);

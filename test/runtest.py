@@ -358,31 +358,35 @@ class APITest(unittest.TestCase):
     self.assertEqual(ray.get(object_ids), range(10))
     ray.worker.cleanup()
 
-  def testSelect(self):
-    ray.init(start_ray_local=True, num_workers=4)
+  def testWait(self):
+    ray.init(start_ray_local=True, num_workers=1)
 
     @ray.remote
     def f(delay):
       time.sleep(delay)
       return 1
-    objectids = [f.remote(1.5), f.remote(1.5), f.remote(1.0), f.remote(0.5)]
-    self.assertEqual(ray.select(objectids), [])
-    time.sleep(0.75)
-    self.assertEqual(ray.select(objectids), [3])
-    time.sleep(0.5)
-    self.assertEqual(ray.select(objectids), [2, 3])
-    time.sleep(0.5)
-    self.assertEqual(ray.select(objectids), [0, 1, 2, 3])
 
-    objectids = [f.remote(0.5), f.remote(0.75), f.remote(0.25), f.remote(1.0)]
-    values = ["a", "b", "c", "d"]
-    indices = []
-    while len(objectids) > 0:
-      index = ray.select(objectids, num_objects=1)[0]
-      indices.append(values[index])
-      objectids.pop(index)
-      values.pop(index)
-    self.assertEqual(indices, ["c", "a", "b", "d"])
+    objectids = [f.remote(1.0), f.remote(0.5), f.remote(0.5), f.remote(0.5)]
+    ready_ids, remaining_ids = ray.wait(objectids)
+    self.assertTrue(len(ready_ids) == 1)
+    self.assertTrue(len(remaining_ids) == 3)
+    ready_ids, remaining_ids = ray.wait(objectids, num_returns=4)
+    self.assertEqual(ready_ids, objectids)
+    self.assertEqual(remaining_ids, [])
+
+    objectids = [f.remote(0.5), f.remote(0.5), f.remote(0.5), f.remote(0.5)]
+    start_time = time.time()
+    ready_ids, remaining_ids = ray.wait(objectids, timeout=1.75, num_returns=4)
+    self.assertTrue(time.time() - start_time < 2)
+    self.assertEqual(len(ready_ids), 3)
+    self.assertEqual(len(remaining_ids), 1)
+    ray.wait(objectids)
+    objectids = [f.remote(1.0), f.remote(0.5), f.remote(0.5), f.remote(0.5)]
+    start_time = time.time()
+    ready_ids, remaining_ids = ray.wait(objectids, timeout=5)
+    self.assertTrue(time.time() - start_time < 5)
+    self.assertEqual(len(ready_ids), 1)
+    self.assertEqual(len(remaining_ids), 3)
 
     ray.worker.cleanup()
 

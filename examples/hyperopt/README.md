@@ -63,8 +63,9 @@ def generate_random_params():
 
 results = []
 for _ in range(100):
-  randparams = generate_random_params()
-  results.append((randparams, train_cnn_and_compute_accuracy(randparams, train_images, train_labels, validation_images, validation_labels)))
+  params = generate_random_params()
+  accuracy = train_cnn_and_compute_accuracy(randparams, train_images, train_labels, validation_images, validation_labels)
+  results.append(accuracy)
 ```
 
 Then we can inspect the contents of `results` and see which set of
@@ -101,16 +102,53 @@ computation. Instead, it simply submits a number of tasks to the scheduler.
 
 ```python
 result_ids = []
+# Launch 100 tasks.
 for _ in range(100):
   params = generate_random_params()
-  results.append((params, train_cnn_and_compute_accuracy.remote(params, train_images, train_labels, validation_images, validation_labels)))
+  accuracy_id = train_cnn_and_compute_accuracy.remote(randparams, train_images, train_labels, validation_images, validation_labels)
+  result_ids.append(accuracy_id)
 ```
 
 If we wish to wait until the results have all been retrieved, we can retrieve
 their values with `ray.get`.
 
 ```python
-results = [(params, ray.get(result_id)) for (params, result_id) in result_ids]
+results = ray.get(result_ids)
+```
+
+One drawback of the above approach is that nothing will be printed until all of
+the experiments have finished. What we'd really like is to start processing
+the results of certain experiments as soon as they finish (and possibly launch
+more experiments based on the outcomes of the first ones). To do this, we can
+use `ray.wait`, which takes a list of object IDs and returns two lists of object
+IDs.
+
+```python
+ready_ids, remaining_ids = ray.wait(result_ids, num_returns=3, timeout=10)
+```
+
+In the above, `result_ids` is a list of object IDs. The command `ray.wait` will
+return as soon as either three of the object IDs in `result_ids` are ready (that
+is, the task that created the corresponding object finished executing and stored
+the object in the object store) or ten seconds pass, whichever comes first. To
+wait indefinitely, omit the timeout argument. Now, we can rewrite the script as
+follows.
+
+```python
+remaining_ids = []
+# Launch 100 tasks.
+for _ in range(100):
+  params = generate_random_params()
+  accuracy_id = train_cnn_and_compute_accuracy.remote(randparams, train_images, train_labels, validation_images, validation_labels)
+  result_ids.append(accuracy_id)
+
+# Process the tasks one at a time.
+while len(remaining_ids) > 0:
+  # Process the next task that finishes.
+  ready_ids, remaining_ids = ray.wait(remaining_ids, num_returns=1)
+  # Get the accuracy corresponding to the ready object ID.
+  accuracy = ray.get(ready_ids[0])
+  print "Accuracy {}".format(accuracy)
 ```
 
 ## Additional notes
