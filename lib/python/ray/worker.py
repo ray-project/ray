@@ -678,12 +678,16 @@ def print_error_messages(worker=global_worker):
       for error in info["failed_function_to_runs"][num_failed_function_to_runs:]:
         print error["error_message"]
       num_failed_function_to_runs = len(info["failed_function_to_runs"])
-    except RayConnectionError:
-      # When the driver is exiting, we set worker.handle to None, which will cause
-      # the check_connected call inside of task_info to raise an exception. We use
-      # the try block here to suppress that exception.
+      time.sleep(0.2)
+    except:
+      # When the driver is exiting, we set worker.handle to None, which will
+      # cause the check_connected call inside of task_info to raise an
+      # exception. We use the try block here to suppress that exception. In
+      # addition, when the script exits, the different names get set to None,
+      # for example, the time module and the task_info method get set to None,
+      # and so a TypeError will be thrown when we attempt to call time.sleep or
+      # task_info.
       pass
-    time.sleep(0.2)
 
 def connect(node_ip_address, scheduler_address, objstore_address=None, worker=global_worker, mode=raylib.WORKER_MODE):
   """Connect this worker to the scheduler and an object store.
