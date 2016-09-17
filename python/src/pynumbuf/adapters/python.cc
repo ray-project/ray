@@ -118,7 +118,7 @@ Status append(PyObject* elem, SequenceBuilder& builder,
       PyObject* result = PyObject_CallObject(numbuf_serialize_callback, arglist);
       Py_XDECREF(arglist);
       if (!result) {
-        return Status::NotImplemented("python error"); // TODO(pcm): https://github.com/pcmoritz/numbuf/issues/10
+        return Status::NotImplemented("python error"); // TODO(pcm): https://github.com/ray-project/numbuf/issues/10
       }
       builder.AppendDict(PyDict_Size(result));
       subdicts.push_back(result);
@@ -259,7 +259,7 @@ Status DeserializeDict(std::shared_ptr<Array> array, int32_t start_idx, int32_t 
     Py_XDECREF(result);
     result = callback_result;
     if (!callback_result) {
-      return Status::NotImplemented("python error"); // TODO(pcm): https://github.com/pcmoritz/numbuf/issues/10
+      return Status::NotImplemented("python error"); // TODO(pcm): https://github.com/ray-project/numbuf/issues/10
     }
   }
   *out = result;
