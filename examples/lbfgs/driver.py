@@ -45,14 +45,31 @@ if __name__ == "__main__":
     cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y), reduction_indices=[1]))
     cross_entropy_grads = tf.gradients(cross_entropy, [w, b])
 
-    w_new = tf.placeholder(tf.float32, w_shape)
-    b_new = tf.placeholder(tf.float32, b_shape)
-    update_w = w.assign(w_new)
-    update_b = b.assign(b_new)
-
     sess = tf.Session()
 
-    return sess, update_w, update_b, cross_entropy, cross_entropy_grads, x, y_, w_new, b_new
+    # In order to set the weights of the TensorFlow graph on a worker, we add
+    # assignment nodes. To get the network weights (as a list of numpy arrays)
+    # and to set the network weights (from a list of numpy arrays), use the
+    # methods get_weights and set_weights. This can be done from within a remote
+    # function or on the driver.
+    def get_and_set_weights_methods():
+      assignment_placeholders = []
+      assignment_nodes = []
+      for var in tf.trainable_variables():
+        assignment_placeholders.append(tf.placeholder(var.value().dtype, var.get_shape().as_list()))
+        assignment_nodes.append(var.assign(assignment_placeholders[-1]))
+
+      def get_weights():
+        return [v.eval(session=sess) for v in tf.trainable_variables()]
+
+      def set_weights(new_weights):
+        sess.run(assignment_nodes, feed_dict={p: w for p, w in zip(assignment_placeholders, new_weights)})
+
+      return get_weights, set_weights
+
+    get_weights, set_weights = get_and_set_weights_methods()
+
+    return sess, cross_entropy, cross_entropy_grads, x, y_, get_weights, set_weights
 
   # By default, when a reusable variable is used by a remote function, the
   # initialization code will be rerun at the end of the remote task to ensure
@@ -70,20 +87,20 @@ if __name__ == "__main__":
 
   # Load the weights into the network.
   def load_weights(theta):
-    sess, update_w, update_b, _, _, _, _, w_new, b_new = ray.reusables.net_vars
-    sess.run([update_w, update_b], feed_dict={w_new: theta[:w_size].reshape(w_shape), b_new: theta[w_size:]})
+    sess, _, _, _, _, get_weights, set_weights = ray.reusables.net_vars
+    set_weights([theta[:w_size].reshape(w_shape), theta[w_size:].reshape(b_shape)])
 
   # Compute the loss on a batch of data.
   @ray.remote
   def loss(theta, xs, ys):
-    sess, _, _, cross_entropy, _, x, y_, _, _ = ray.reusables.net_vars
+    sess, cross_entropy, _, x, y_, _, _ = ray.reusables.net_vars
     load_weights(theta)
     return float(sess.run(cross_entropy, feed_dict={x: xs, y_: ys}))
 
   # Compute the gradient of the loss on a batch of data.
   @ray.remote
   def grad(theta, xs, ys):
-    sess, _, _, _, cross_entropy_grads, x, y_, _, _ = ray.reusables.net_vars
+    sess, _, cross_entropy_grads, x, y_, _, _ = ray.reusables.net_vars
     load_weights(theta)
     gradients = sess.run(cross_entropy_grads, feed_dict={x: xs, y_: ys})
     return np.concatenate([g.flatten() for g in gradients])

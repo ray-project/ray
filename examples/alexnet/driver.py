@@ -64,7 +64,7 @@ if __name__ == "__main__":
   for i in range(num_shuffles):
     batches = alexnet.shuffle(batches)
 
-  _, sess, application, _, _, _, _, placeholders, parameters, assignment, init_all_variables = ray.reusables.net_vars
+  _, sess, application, _, _, _, _, placeholders, init_all_variables, get_weights, set_weights = ray.reusables.net_vars
   # Initialize the network and optimizer weights. This is only run once on the
   # driver. We initialize the weights manually on the workers.
   sess.run(init_all_variables)
@@ -73,7 +73,7 @@ if __name__ == "__main__":
   iteration = 0
   while True:
     # Extract weights from the local copy of the network.
-    weights = sess.run(parameters)
+    weights = get_weights()
     # Put weights in the object store.
     weights_id = ray.put(weights)
 
