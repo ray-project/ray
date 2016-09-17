@@ -146,7 +146,7 @@ class ObjStoreTest(unittest.TestCase):
       result = ray.get(objectid, w1)
       assert_equal(result, data)
 
-    # This test fails. See https://github.com/amplab/ray/issues/159.
+    # This test fails. See https://github.com/ray-project/ray/issues/159.
     # getting multiple times shouldn't matter
     # for data in [np.zeros([10, 20]), np.random.normal(size=[45, 25]), np.zeros([10, 20], dtype=np.dtype("float64")), np.zeros([10, 20], dtype=np.dtype("float32")), np.zeros([10, 20], dtype=np.dtype("int64")), np.zeros([10, 20], dtype=np.dtype("int32"))]:
     #   objectid = worker.put(data, w1)
@@ -564,7 +564,7 @@ class ReferenceCountingTest(unittest.TestCase):
       self.assertEqual(ray.scheduler_info()["reference_counts"][objectid], -1)
 
     # Getting an object multiple times and assigning it to the same name should
-    # work. This was a problem in https://github.com/amplab/ray/issues/159.
+    # work. This was a problem in https://github.com/ray-project/ray/issues/159.
     for val in [np.zeros(10), [np.zeros(10)], (((np.zeros(10)),),), {(): np.zeros(10)}, [1, 2, 3, np.zeros(1)]]:
       x = ray.put(val)
       objectid = x.id

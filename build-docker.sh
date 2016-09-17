@@ -1,5 +1,5 @@
 #!/bin/bash
 
-docker build -t amplab/ray:devel docker/devel
-docker build -t amplab/ray:deploy docker/deploy
-docker build -t amplab/ray:examples docker/examples
+docker build -t ray-project/ray:devel docker/devel
+docker build -t ray-project/ray:deploy docker/deploy
+docker build -t ray-project/ray:examples docker/examples

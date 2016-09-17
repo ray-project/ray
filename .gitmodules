@@ -4,10 +4,10 @@
 	ignore = dirty
 [submodule "thirdparty/numbuf"]
 	path = thirdparty/numbuf
-	url = https://github.com/pcmoritz/numbuf.git
+	url = https://github.com/ray-project/numbuf.git
 [submodule "thirdparty/arrow"]
 	path = thirdparty/arrow
-	url = https://github.com/pcmoritz/arrow.git
+	url = https://github.com/ray-project/arrow.git
 [submodule "thirdparty/python"]
 	path = thirdparty/python
 	url = https://github.com/austinsc/python.git

@@ -5,7 +5,7 @@ Ray must currently be built from source. We have tested Ray on Ubuntu 14.04.
 ## Clone the Ray repository
 
 ```
-git clone https://github.com/amplab/ray.git
+git clone https://github.com/ray-project/ray.git
 ```
 
 ## Dependencies

@@ -5,7 +5,7 @@ Ray must currently be built from source. We have tested Ray on OS X 10.11.
 ## Clone the Ray repository
 
 ```
-git clone https://github.com/amplab/ray.git
+git clone https://github.com/ray-project/ray.git
 ```
 
 ## Dependencies
