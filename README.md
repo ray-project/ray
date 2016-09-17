@@ -54,7 +54,7 @@ estimate of pi (waiting until the computation has finished if necessary).
 - Documentation
   - [Serialization in the Object Store](doc/serialization.md)
   - [Reusable Variables](doc/reusable-variables.md)
-  - [Using Ray with TensorFlow](doc/using-ray-wih-tensorflow.md)
+  - [Using Ray with TensorFlow](doc/using-ray-with-tensorflow.md)
   - [Using Ray on a Cluster](doc/using-ray-on-a-cluster.md)
 
 ## Example Applications
