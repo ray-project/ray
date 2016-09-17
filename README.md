@@ -3,7 +3,7 @@
 [![Build Status](https://travis-ci.org/amplab/ray.svg?branch=master)](https://travis-ci.org/amplab/ray)
 
 Ray is an experimental distributed extension of Python. It is under development
-and not ready for general use.
+and not ready to be used.
 
 The goal of Ray is to make it easy to write machine learning applications that
 run on a cluster while providing the development and debugging experience of
@@ -51,8 +51,9 @@ estimate of pi (waiting until the computation has finished if necessary).
 
 - Installation on [Ubuntu](doc/install-on-ubuntu.md), [Mac OS X](doc/install-on-macosx.md), [Windows](doc/install-on-windows.md), [Docker](doc/install-on-docker.md)
 - [Tutorial](doc/tutorial.md)
-- [About the System](doc/about-the-system.md)
-- [Using Ray on a Cluster](doc/using-ray-on-a-cluster.md)
+- Documentation
+  - [Using Ray with TensorFlow](doc/using-ray-wih-tensorflow.md)
+  - [Using Ray on a Cluster](doc/using-ray-on-a-cluster.md)
 
 ## Example Applications
 

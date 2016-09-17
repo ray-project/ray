@@ -77,13 +77,12 @@ def load_tarfiles_from_s3(bucket, s3_keys, size=[]):
 
   return [load_tarfile_from_s3.remote(bucket, s3_key, size) for s3_key in s3_keys]
 
-def setup_variables(params, placeholders, assigns, kernelshape, biasshape):
-  """Creates the variables for each layer and adds the variables and the components needed to feed them to various lists
+def setup_variables(params, placeholders, kernelshape, biasshape):
+  """Create the variables for each layer.
 
   Args:
     params (List): Network parameters used for creating feed_dicts
     placeholders (List): Placeholders used for feeding weights into
-    assigns (List): Assignments used for actually setting variables
     kernelshape (List): Shape of the kernel used for the conv layer
     biasshape (List): Shape of the bias used
 
@@ -99,7 +98,6 @@ def setup_variables(params, placeholders, assigns, kernelshape, biasshape):
   update_biases = biases.assign(biases_new)
   params += [kernel, biases]
   placeholders += [kernel_new, biases_new]
-  assigns += [update_kernel, update_biases]
 
 def conv_layer(parameters, prev_layer, shape, scope):
   """Constructs a convolutional layer for the network.
@@ -123,11 +121,10 @@ def net_initialization():
   images = tf.placeholder(tf.float32, shape=[None, 224, 224, 3])
   y_true = tf.placeholder(tf.float32, shape=[None, 1000])
   parameters = []
-  assignment = []
   placeholders = []
   # conv1
   with tf.name_scope('conv1') as scope:
-    setup_variables(parameters, placeholders, assignment, [11, 11, 3, 96], [96])
+    setup_variables(parameters, placeholders, [11, 11, 3, 96], [96])
     conv1 = conv_layer(parameters, images, [1, 4, 4, 1], scope)
 
   # pool1
@@ -144,7 +141,7 @@ def net_initialization():
 
   # conv2
   with tf.name_scope('conv2') as scope:
-    setup_variables(parameters, placeholders, assignment, [5, 5, 96, 256], [256])
+    setup_variables(parameters, placeholders, [5, 5, 96, 256], [256])
     conv2 = conv_layer(parameters, pool1_lrn, [1, 1, 1, 1], scope)
 
   pool2 = tf.nn.max_pool(conv2,
@@ -160,17 +157,17 @@ def net_initialization():
 
   # conv3
   with tf.name_scope('conv3') as scope:
-    setup_variables(parameters, placeholders, assignment, [3, 3, 256, 384], [384])
+    setup_variables(parameters, placeholders, [3, 3, 256, 384], [384])
     conv3 = conv_layer(parameters, pool2_lrn, [1, 1, 1, 1], scope)
 
   # conv4
   with tf.name_scope('conv4') as scope:
-    setup_variables(parameters, placeholders, assignment, [3, 3, 384, 384], [384])
+    setup_variables(parameters, placeholders, [3, 3, 384, 384], [384])
     conv4 = conv_layer(parameters, conv3, [1, 1, 1, 1], scope)
 
   # conv5
   with tf.name_scope('conv5') as scope:
-    setup_variables(parameters, placeholders, assignment, [3, 3, 384, 256], [256])
+    setup_variables(parameters, placeholders, [3, 3, 384, 256], [256])
     conv5 = conv_layer(parameters, conv4, [1, 1, 1, 1], scope)
 
   # pool5
@@ -189,21 +186,21 @@ def net_initialization():
 
   with tf.name_scope('fc1') as scope:
     n_input = int(np.prod(pool5_lrn.get_shape().as_list()[1:]))
-    setup_variables(parameters, placeholders, assignment, [n_input, 4096], [4096])
+    setup_variables(parameters, placeholders, [n_input, 4096], [4096])
     fc_in = tf.reshape(pool5_lrn, [-1, n_input])
     fc_layer1 = tf.nn.tanh(tf.nn.bias_add(tf.matmul(fc_in, parameters[-2]), parameters[-1]))
     fc_out1 = tf.nn.dropout(fc_layer1, dropout)
 
   with tf.name_scope('fc2') as scope:
     n_input = int(np.prod(fc_out1.get_shape().as_list()[1:]))
-    setup_variables(parameters, placeholders, assignment, [n_input, 4096], [4096])
+    setup_variables(parameters, placeholders, [n_input, 4096], [4096])
     fc_in = tf.reshape(fc_out1, [-1, n_input])
     fc_layer2 = tf.nn.tanh(tf.nn.bias_add(tf.matmul(fc_in, parameters[-2]), parameters[-1]))
     fc_out2 = tf.nn.dropout(fc_layer2, dropout)
 
   with tf.name_scope('fc3') as scope:
     n_input = int(np.prod(fc_out2.get_shape().as_list()[1:]))
-    setup_variables(parameters, placeholders, assignment, [n_input, 1000], [1000])
+    setup_variables(parameters, placeholders, [n_input, 1000], [1000])
     fc_in = tf.reshape(fc_out2, [-1, n_input])
     fc_layer3 = tf.nn.softmax(tf.nn.bias_add(tf.matmul(fc_in, parameters[-2]), parameters[-1]))
 
@@ -221,10 +218,33 @@ def net_initialization():
 
   comp_grads = opt.compute_gradients(cross_entropy, parameters)
 
-  application = opt.apply_gradients(zip(placeholders,parameters))
+  application = opt.apply_gradients(zip(placeholders, parameters))
   sess = tf.Session()
   init_all_variables = tf.initialize_all_variables()
-  return comp_grads, sess, application, accuracy, images, y_true, dropout, placeholders, parameters, assignment, init_all_variables
+
+  # In order to set the weights of the TensorFlow graph on a worker, we add
+  # assignment nodes. To get the network weights (as a list of numpy arrays)
+  # and to set the network weights (from a list of numpy arrays), use the
+  # methods get_weights and set_weights. This can be done from within a remote
+  # function or on the driver.
+  def get_and_set_weights_methods():
+    assignment_placeholders = []
+    assignment_nodes = []
+    for var in tf.trainable_variables():
+      assignment_placeholders.append(tf.placeholder(var.value().dtype, var.get_shape().as_list()))
+      assignment_nodes.append(var.assign(assignment_placeholders[-1]))
+
+    def get_weights():
+      return [v.eval(session=sess) for v in tf.trainable_variables()]
+
+    def set_weights(new_weights):
+      sess.run(assignment_nodes, feed_dict={p: w for p, w in zip(assignment_placeholders, new_weights)})
+
+    return get_weights, set_weights
+
+  get_weights, set_weights = get_and_set_weights_methods()
+
+  return comp_grads, sess, application, accuracy, images, y_true, dropout, placeholders, init_all_variables, get_weights, set_weights
 
 
 def net_reinitialization(net_vars):
@@ -392,10 +412,9 @@ def compute_grad(X, Y, mean, weights):
   Returns:
     List of gradients for each variable
   """
-  comp_grads, sess, _, _, images, y_true, dropout, placeholders, _, assignment, _ = ray.reusables.net_vars
+  comp_grads, sess, _, _, images, y_true, dropout, placeholders, _, get_weights, set_weights = ray.reusables.net_vars
   # Set the network weights.
-  feed_dict = dict(zip(placeholders, weights))
-  sess.run(assignment, feed_dict=feed_dict)
+  set_weights(weights)
   # Choose a subset of the batch to compute on and crop the images.
   random_indices = np.random.randint(0, len(X), size=128)
   subset_X = crop_images(X[random_indices] - mean)
@@ -416,10 +435,9 @@ def compute_accuracy(X, Y, weights):
   Returns:
     The accuracy of the network on the given batch.
   """
-  _, sess, _, accuracy, images, y_true, dropout, placeholders, _, assignment, _ = ray.reusables.net_vars
+  _, sess, _, accuracy, images, y_true, dropout, placeholders, _, get_weights, set_weights = ray.reusables.net_vars
   # Set the network weights.
-  feed_dict = dict(zip(placeholders, weights))
-  sess.run(assignment, feed_dict=feed_dict)
+  set_weights(weights)
 
   one_hot_Y = np.asarray([one_hot(label) for label in Y])
   cropped_X = crop_images(X)
