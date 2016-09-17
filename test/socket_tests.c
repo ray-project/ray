@@ -5,7 +5,7 @@
 
 #include "sockets.h"
 
-SUITE(event_loop_tests);
+SUITE(socket_tests);
 
 TEST ipc_socket_test(void) {
   const char* socket_pathname = "test-socket";
@@ -20,11 +20,15 @@ TEST ipc_socket_test(void) {
     ASSERT(socket_fd >= 0);
     send_ipc_sock(socket_fd, test_string);
     close(socket_fd);
+    exit(0);
   } else {
-    char* message = recv_ipc_sock(socket_fd);
+    int client_fd = accept_client(socket_fd);
+    ASSERT(client_fd >= 0);
+    char* message = recv_ipc_sock(client_fd);
     ASSERT(message != NULL);
     ASSERT_STR_EQ(test_string, message);
     free(message);
+    close(client_fd);
     close(socket_fd);
     unlink(socket_pathname);
   }
@@ -32,7 +36,7 @@ TEST ipc_socket_test(void) {
   PASS();
 }
 
-SUITE(event_loop_tests) {
+SUITE(socket_tests) {
   RUN_TEST(ipc_socket_test);
 }
 
@@ -40,6 +44,6 @@ GREATEST_MAIN_DEFS();
 
 int main(int argc, char** argv) {
   GREATEST_MAIN_BEGIN();
-  RUN_SUITE(event_loop_tests);
+  RUN_SUITE(socket_tests);
   GREATEST_MAIN_END();
 }

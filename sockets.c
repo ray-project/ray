@@ -17,7 +17,7 @@ int bind_ipc_sock(const char *socket_pathname) {
   struct sockaddr_un socket_address;
   int socket_fd;
 
-  socket_fd = socket(AF_UNIX, SOCK_DGRAM, 0);
+  socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
   if (socket_fd < 0) {
     LOG_ERR("socket() failed for pathname %s.", socket_pathname);
     return -1;
@@ -38,6 +38,7 @@ int bind_ipc_sock(const char *socket_pathname) {
     LOG_ERR("Bind failed for pathname %s.", socket_pathname);
     return -1;
   }
+  listen(socket_fd, 5);
 
   return socket_fd;
 }
@@ -49,7 +50,7 @@ int connect_ipc_sock(const char *socket_pathname) {
   struct sockaddr_un socket_address;
   int socket_fd;
 
-  socket_fd = socket(AF_UNIX, SOCK_DGRAM, 0);
+  socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
   if (socket_fd < 0) {
     LOG_ERR("socket() failed for pathname %s.", socket_pathname);
     return -1;
@@ -77,16 +78,31 @@ int connect_ipc_sock(const char *socket_pathname) {
 void send_ipc_sock(int socket_fd, char *message) {
   int length = strlen(message);
   int nbytes;
-  nbytes = send(socket_fd, (char *) &length, sizeof(length), 0);
+  nbytes = write(socket_fd, (char *) &length, sizeof(length));
   if (nbytes == -1) {
-    fprintf(stderr, "Error sending to socket.\n");
+    LOG_ERR("Error sending to socket.\n");
     return;
   }
-  nbytes = send(socket_fd, (char *) message, length * sizeof(char), 0);
+  nbytes = write(socket_fd, (char *) message, length * sizeof(char));
   if (nbytes == -1) {
-    fprintf(stderr, "Error sending to socket.\n");
+    LOG_ERR("Error sending to socket.\n");
     return;
   }
+}
+
+/* Accept a new client connection on the given socket
+ * descriptor. Returns a descriptor for the new socket. */
+int accept_client(int socket_fd) {
+  struct sockaddr_un client_addr;
+  int client_fd, client_len;
+  client_len = sizeof(client_addr);
+  client_fd = accept(socket_fd, (struct sockaddr *) &client_addr,
+                     (socklen_t *) &client_len);
+  if (client_fd < 0) {
+    LOG_ERR("Error reading from socket.");
+    return -1;
+  }
+  return client_fd;
 }
 
 /* Receives a message on the given socket file descriptor. Allocates and
@@ -95,15 +111,17 @@ void send_ipc_sock(int socket_fd, char *message) {
 char *recv_ipc_sock(int socket_fd) {
   int length;
   int nbytes;
-  nbytes = recv(socket_fd, &length, sizeof(length), 0);
-  if (nbytes == -1) {
-    fprintf(stderr, "Error receiving from socket.\n");
+  nbytes = read(socket_fd, &length, sizeof(length));
+  if (nbytes < 0) {
+    LOG_ERR("Error reading length of message from socket.");
     return NULL;
   }
+
   char *message = malloc((length + 1) * sizeof(char));
-  nbytes = recv(socket_fd, message, length * sizeof(char), 0);
-  if (nbytes == -1) {
-    fprintf(stderr, "Error receiving from socket.\n");
+  nbytes = read(socket_fd, message, length);
+  if (nbytes < 0) {
+    LOG_ERR("Error reading message from socket.");
+    free(message);
     return NULL;
   }
   message[length] = '\0';
