@@ -17,6 +17,14 @@
 #define LOG_INFO(M, ...) \
   fprintf(stderr, "[INFO] (%s:%d) " M "\n", __FILE__, __LINE__, ##__VA_ARGS__)
 
+#define CHECK(COND)                        \
+  do {                                     \
+    if (!(COND)) {                         \
+      LOG_ERR("Check failure: %s", #COND); \
+      exit(-1);                            \
+    }                                      \
+  } while (0);
+
 #define UNIQUE_ID_SIZE 20
 
 typedef struct { unsigned char id[UNIQUE_ID_SIZE]; } unique_id;
