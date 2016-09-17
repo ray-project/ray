@@ -1,2 +1,2 @@
-# yokoh
-A local scheduler and node manager for Ray
+# Halo
+A local scheduler and node manager for Ray.
