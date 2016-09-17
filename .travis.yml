@@ -16,9 +16,9 @@ install:
   - ./test/travis-ci/install.sh
 
 script:
-  - ./test/travis-ci/run_test.sh --docker-image=amplab/ray:test-base 'source setup-env.sh && cd test && python runtest.py'
-  - ./test/travis-ci/run_test.sh --docker-image=amplab/ray:test-base 'source setup-env.sh && cd test && python array_test.py'
-  - ./test/travis-ci/run_test.sh --docker-image=amplab/ray:test-base 'source setup-env.sh && cd test && python failure_test.py'
-  - ./test/travis-ci/run_test.sh --docker-image=amplab/ray:test-base 'source setup-env.sh && cd test && python microbenchmarks.py'
-  - ./test/travis-ci/run_test.sh --docker-only --shm-size=500m --docker-image=amplab/ray:test-examples 'source setup-env.sh && cd examples/hyperopt && python driver.py'
-  - ./test/travis-ci/run_test.sh --docker-only --shm-size=500m --docker-image=amplab/ray:test-examples 'source setup-env.sh && cd examples/lbfgs && python driver.py'
+  - ./test/travis-ci/run_test.sh --docker-image=ray-project/ray:test-base 'source setup-env.sh && cd test && python runtest.py'
+  - ./test/travis-ci/run_test.sh --docker-image=ray-project/ray:test-base 'source setup-env.sh && cd test && python array_test.py'
+  - ./test/travis-ci/run_test.sh --docker-image=ray-project/ray:test-base 'source setup-env.sh && cd test && python failure_test.py'
+  - ./test/travis-ci/run_test.sh --docker-image=ray-project/ray:test-base 'source setup-env.sh && cd test && python microbenchmarks.py'
+  - ./test/travis-ci/run_test.sh --docker-only --shm-size=500m --docker-image=ray-project/ray:test-examples 'source setup-env.sh && cd examples/hyperopt && python driver.py'
+  - ./test/travis-ci/run_test.sh --docker-only --shm-size=500m --docker-image=ray-project/ray:test-examples 'source setup-env.sh && cd examples/lbfgs && python driver.py'

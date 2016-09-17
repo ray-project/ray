@@ -13,7 +13,7 @@ re-running the batch file.
 
 1. Install Microsoft Visual Studio 2015
 2. Install Git
-3. `git clone https://github.com/amplab/ray.git`
+3. `git clone https://github.com/ray-project/ray.git`
 4. `ray\thirdparty\download_thirdparty.bat`
 
 ## Test if the installation succeeded

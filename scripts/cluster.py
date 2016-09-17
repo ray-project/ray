@@ -130,7 +130,7 @@ class RayCluster(object):
       sudo apt-get -y install git &&
       mkdir -p "{}" &&
       cd "{}" &&
-      git clone "https://github.com/amplab/ray";
+      git clone "https://github.com/ray-project/ray";
       cd ray;
       ./install-dependencies.sh;
       ./setup.sh;

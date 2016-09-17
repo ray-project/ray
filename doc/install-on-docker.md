@@ -9,7 +9,7 @@ The Docker Platform release is available for Mac, Windows, and Linux platforms. 
 ## Clone the Ray repository
 
 ```
-git clone https://github.com/amplab/ray.git
+git clone https://github.com/ray-project/ray.git
 ```
 
 ## Build Docker images
@@ -23,16 +23,16 @@ cd ray
 
 This script creates several Docker images:
 
- * The `amplab/ray:deploy` image is a self-contained copy of code and binaries suitable for end users.
- * The `amplab/ray:examples` adds additional libraries for running examples.
- * Ray developers who want to edit locally on the host filesystem should use the `amplab/ray:devel` image, which allows local changes to be reflected immediately within the container. 
+ * The `ray-project/ray:deploy` image is a self-contained copy of code and binaries suitable for end users.
+ * The `ray-project/ray:examples` adds additional libraries for running examples.
+ * Ray developers who want to edit locally on the host filesystem should use the `ray-project/ray:devel` image, which allows local changes to be reflected immediately within the container.
 
 ## Launch Ray in Docker
 
 Start out by launching the deployment container.
 
 ```
-docker run --shm-size=1024m -t -i amplab/ray:deploy
+docker run --shm-size=1024m -t -i ray-project/ray:deploy
 ```
 
 ## Test if the installation succeeded
@@ -52,7 +52,7 @@ Ray includes a Docker image that includes dependencies necessary for running som
 
 Launch the examples container.
 ```
-docker run --shm-size=1024m -t -i amplab/ray:examples
+docker run --shm-size=1024m -t -i ray-project/ray:examples
 ```
 
 ### Hyperparameter optimization
@@ -94,7 +94,7 @@ You may see errors while running `setup.sh` on Mac OS X. If you have this proble
 Launch the developer container.
 
 ```
-docker run -v $(pwd):/home/ray-user/ray --shm-size=1024m -t -i amplab/ray:devel
+docker run -v $(pwd):/home/ray-user/ray --shm-size=1024m -t -i ray-project/ray:devel
 ```
 
 Build Ray inside of the container.

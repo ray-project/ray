@@ -74,7 +74,7 @@ You can run the code using
 ```
 
 There are few [changes](https://github.com/joschu/modular_rl/compare/master...pcmoritz:23d3ebc).
-As in the [learning to play Pong example](https://github.com/amplab/ray/tree/master/examples/rl_pong),
+As in the [learning to play Pong example](https://github.com/ray-project/ray/tree/master/examples/rl_pong),
 we use reusable variables to store the gym environment and the neural network policy. These are
 then used in the remote `do_rollout` function to do a remote rollout:
 

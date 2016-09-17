@@ -6,7 +6,7 @@
 # the Mac OS X tests.
 #
 # Usage:
-#   
+#
 #   run_test.sh [OPTIONS] [COMMAND]
 #
 # Key options are:
@@ -18,7 +18,7 @@
 # Example:
 #
 #   run_test.sh --docker-only --shm-size=500m \
-#     --docker-image=amplab/ray:test-examples \
+#     --docker-image=ray-project/ray:test-examples \
 #     'source setup-env.sh && cd examples/lbfgs && python driver.py'
 #
 # For further examples see this project's .travis.yml

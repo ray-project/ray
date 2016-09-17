@@ -13,7 +13,7 @@ RUN adduser ray-user sudo
 RUN sed -i "s|%sudo\tALL=(ALL:ALL) ALL|%sudo\tALL=NOPASSWD: ALL|" /etc/sudoers
 USER ray-user
 WORKDIR /home/ray-user
-RUN git clone https://github.com/amplab/ray
+RUN git clone https://github.com/ray-project/ray
 WORKDIR /home/ray-user/ray
 RUN ./setup.sh
 RUN ./build.sh
