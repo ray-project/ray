@@ -4,7 +4,7 @@
 
 #include "task.h"
 #include "common.h"
-#include "sockets.h"
+#include "io.h"
 
 /* Tasks are stored in a consecutive chunk of memory, the first
  * sizeof(task_spec) bytes are arranged according to the struct

@@ -1,4 +1,4 @@
-#include "sockets.h"
+#include "io.h"
 
 #include <stdlib.h>
 #include <unistd.h>
@@ -6,6 +6,7 @@
 #include <sys/un.h>
 #include <string.h>
 #include <stdio.h>
+#include <inttypes.h>
 
 #include "common.h"
 
@@ -74,22 +75,6 @@ int connect_ipc_sock(const char *socket_pathname) {
   return socket_fd;
 }
 
-/* Sends a message on the given socket file descriptor. */
-void send_ipc_sock(int socket_fd, char *message) {
-  int length = strlen(message);
-  int nbytes;
-  nbytes = write(socket_fd, (char *) &length, sizeof(length));
-  if (nbytes == -1) {
-    LOG_ERR("Error sending to socket.\n");
-    return;
-  }
-  nbytes = write(socket_fd, (char *) message, length * sizeof(char));
-  if (nbytes == -1) {
-    LOG_ERR("Error sending to socket.\n");
-    return;
-  }
-}
-
 /* Accept a new client connection on the given socket
  * descriptor. Returns a descriptor for the new socket. */
 int accept_client(int socket_fd) {
@@ -105,25 +90,52 @@ int accept_client(int socket_fd) {
   return client_fd;
 }
 
-/* Receives a message on the given socket file descriptor. Allocates and
- * returns a pointer to the message.
- * NOTE: Caller must free the message! */
-char *recv_ipc_sock(int socket_fd) {
-  int length;
-  int nbytes;
-  nbytes = read(socket_fd, &length, sizeof(length));
+/* Write a sequence of bytes on a file descriptor. */
+void write_bytes(int fd, uint8_t *bytes, int64_t length) {
+  ssize_t nbytes = write(fd, (char *) &length, sizeof(length));
+  if (nbytes == -1) {
+    LOG_ERR("Error sending to socket.\n");
+    return;
+  }
+  nbytes = write(fd, (char *) bytes, length * sizeof(char));
+  if (nbytes == -1) {
+    LOG_ERR("Error sending to socket.\n");
+    return;
+  }
+}
+
+/* Read a sequence of bytes written by write_bytes from a file descriptor.
+ * Allocates and returns a pointer to the bytes.
+ * NOTE: Caller must free the memory! */
+void read_bytes(int fd, uint8_t **bytes, int64_t *length) {
+  ssize_t nbytes = read(fd, length, sizeof(int64_t));
   if (nbytes < 0) {
     LOG_ERR("Error reading length of message from socket.");
-    return NULL;
+    *bytes = NULL;
+    return;
   }
 
-  char *message = malloc((length + 1) * sizeof(char));
-  nbytes = read(socket_fd, message, length);
+  *bytes = malloc(*length * sizeof(uint8_t));
+  nbytes = read(fd, *bytes, *length);
   if (nbytes < 0) {
     LOG_ERR("Error reading message from socket.");
-    free(message);
-    return NULL;
+    free(*bytes);
+    *bytes = NULL;
   }
-  message[length] = '\0';
-  return message;
+}
+
+/* Write a null-terminated string to a file descriptor. */
+void write_string(int fd, char *message) {
+  /* Account for the \0 at the end of the string. */
+  write_bytes(fd, (uint8_t *) message, strlen(message) + 1);
+}
+
+/* Reads a null-terminated string from the file descriptor that has been
+ * written by write_string. Allocates and returns a pointer to the string.
+ * NOTE: Caller must free the memory! */
+char *read_string(int fd) {
+  uint8_t *bytes;
+  int64_t length;
+  read_bytes(fd, &bytes, &length);
+  return (char *) bytes;
 }
