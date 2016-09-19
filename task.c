@@ -47,12 +47,16 @@ struct task_spec_impl {
   task_arg args_and_returns[0];
 };
 
+/* The size of a task specification is given by the following expression. */
+#define TASK_SPEC_SIZE(NUM_ARGS, NUM_RETURNS, ARGS_VALUE_SIZE)           \
+  (sizeof(task_spec) + ((NUM_ARGS) + (NUM_RETURNS)) * sizeof(task_arg) + \
+   (ARGS_VALUE_SIZE))
+
 task_spec *alloc_task_spec(function_id func_id,
                            int64_t num_args,
                            int64_t num_returns,
                            int64_t args_value_size) {
-  int64_t size = sizeof(task_spec) +
-                 (num_args + num_returns) * sizeof(task_arg) + args_value_size;
+  int64_t size = TASK_SPEC_SIZE(num_args, num_returns, args_value_size);
   task_spec *task = malloc(size);
   memset(task, 0, size);
   task->func_id = func_id;
@@ -61,6 +65,11 @@ task_spec *alloc_task_spec(function_id func_id,
   task->num_returns = num_returns;
   task->args_value_size = args_value_size;
   return task;
+}
+
+int64_t task_size(task_spec *spec) {
+  return TASK_SPEC_SIZE(spec->num_args, spec->num_returns,
+                        spec->args_value_size);
 }
 
 int64_t task_num_args(task_spec *spec) {
@@ -130,4 +139,17 @@ object_id *task_return(task_spec *spec, int64_t ret_index) {
 void free_task_spec(task_spec *spec) {
   CHECK(spec->arg_index == spec->num_args); /* Task was fully constructed */
   free(spec);
+}
+
+void write_task(int fd, task_spec *spec) {
+  write_bytes(fd, (uint8_t *) spec, task_size(spec));
+}
+
+task_spec *read_task(int fd) {
+  uint8_t *bytes;
+  int64_t length;
+  read_bytes(fd, &bytes, &length);
+  task_spec *spec = (task_spec *) bytes;
+  CHECK(task_size(spec) == length);
+  return spec;
 }

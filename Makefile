@@ -12,8 +12,8 @@ $(BUILD)/db_tests: hiredis test/db_tests.c thirdparty/greatest.h event_loop.c st
 $(BUILD)/io_tests: test/io_tests.c thirdparty/greatest.h io.c
 	$(CC) -o $@ test/io_tests.c io.c $(CFLAGS) -I. -Ithirdparty
 
-$(BUILD)/task_tests: test/task_tests.c task.c io.c common.h
-	$(CC) -o $@ test/task_tests.c task.c io.c $(CFLAGS) -I. -Ithirdparty
+$(BUILD)/task_tests: test/task_tests.c task.h task.c io.h io.c common.h common.h common.c
+	$(CC) -o $@ test/task_tests.c task.c io.c common.c $(CFLAGS) -I. -Ithirdparty
 
 clean:
 	rm -r $(BUILD)/*

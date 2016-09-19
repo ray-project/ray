@@ -1,3 +1,6 @@
+#ifndef TASK_H
+#define TASK_H
+
 /* This API specifies the task data structure. It is in C so we can
  * easily construct tasks from other languages like Python. The datastructures
  * are also defined in such a way that memory is contiguous and all pointers
@@ -24,6 +27,9 @@ task_spec *alloc_task_spec(function_id func_id,
                            int64_t num_returns,
                            int64_t args_value_size);
 
+/* Size of the task in bytes. */
+int64_t task_size(task_spec *spec);
+
 /* Getting the number of arguments and returns. */
 int64_t task_num_args(task_spec *spec);
 int64_t task_num_returns(task_spec *spec);
@@ -46,8 +52,10 @@ unique_id *task_return(task_spec *spec, int64_t ret_index);
 void free_task_spec(task_spec *spec);
 
 /* Write the task specification to a file or socket. */
-int send_task(int fd, task_spec *spec);
+void write_task(int fd, task_spec *spec);
 
 /* Read the task specification from a file or socket. It is the user's
  * responsibility to free the task after it has been used. */
-task_spec *recv_task(int fd);
+task_spec *read_task(int fd);
+
+#endif

@@ -1,6 +1,7 @@
 #ifndef COMMON_H
 #define COMMON_H
 
+#include <string.h>
 #include <errno.h>
 
 #ifdef NDEBUG
@@ -28,6 +29,9 @@
 #define UNIQUE_ID_SIZE 20
 
 typedef struct { unsigned char id[UNIQUE_ID_SIZE]; } unique_id;
+
+/* Generate a globally unique ID. */
+unique_id globally_unique_id(void);
 
 /* Convert a 20 byte sha1 hash to a hexdecimal string. This function assumes
  * that buffer points to an already allocated char array of size 2 *

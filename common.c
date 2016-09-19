@@ -1,5 +1,23 @@
 #include "common.h"
 
+#include <stdio.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
+unique_id globally_unique_id(void) {
+  /* Use /dev/urandom for "real" randomness. */
+  int fd;
+  if ((fd = open("/dev/urandom", O_RDONLY)) == -1) {
+    LOG_ERR("Could not generate random number");
+  }
+  unique_id result;
+  read(fd, &result.id[0], UNIQUE_ID_SIZE);
+  close(fd);
+  return result;
+}
+
 char *sha1_to_hex(const unsigned char *sha1, char *buffer) {
   static const char hex[] = "0123456789abcdef";
   char *buf = buffer;
