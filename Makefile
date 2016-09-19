@@ -1,22 +1,28 @@
 CC = gcc
-CFLAGS = -g -Wall --std=c99 -D_XOPEN_SOURCE=500 -D_POSIX_C_SOURCE=200809L
+CFLAGS = -g -Wall --std=c99 -D_XOPEN_SOURCE=500 -D_POSIX_C_SOURCE=200809L -fPIC -I. -Ithirdparty
 BUILD = build
 
 CFLAGS += -Wmissing-prototypes
 CFLAGS += -Wstrict-prototypes
 CFLAGS += -Wmissing-declarations
 
-$(BUILD)/db_tests: hiredis test/db_tests.c thirdparty/greatest.h event_loop.c state/redis.c common.c
-	$(CC) -o $@ test/db_tests.c event_loop.c state/redis.c common.c thirdparty/hiredis/libhiredis.a $(CFLAGS) -I. -Ithirdparty
+all: $(BUILD)/libcommon.a
 
-$(BUILD)/io_tests: test/io_tests.c thirdparty/greatest.h io.c
-	$(CC) -o $@ test/io_tests.c io.c $(CFLAGS) -I. -Ithirdparty
+$(BUILD)/libcommon.a: event_loop.o common.o task.o io.o state/redis.o
+	ar rcs $@ $^
 
-$(BUILD)/task_tests: test/task_tests.c task.h task.c io.h io.c common.h common.h common.c
-	$(CC) -o $@ test/task_tests.c task.c io.c common.c $(CFLAGS) -I. -Ithirdparty
+$(BUILD)/db_tests: hiredis test/db_tests.c $(BUILD)/libcommon.a
+	$(CC) -o $@ test/db_tests.c $(BUILD)/libcommon.a thirdparty/hiredis/libhiredis.a $(CFLAGS)
+
+$(BUILD)/io_tests: test/io_tests.c $(BUILD)/libcommon.a
+	$(CC) -o $@ $^ $(CFLAGS)
+
+$(BUILD)/task_tests: test/task_tests.c $(BUILD)/libcommon.a
+	$(CC) -o $@ $^ $(CFLAGS)
 
 clean:
-	rm -r $(BUILD)/*
+	rm -f *.o state/*.o test/*.o
+	rm -rf $(BUILD)/*
 
 redis:
 	cd thirdparty ; bash ./build-redis.sh
