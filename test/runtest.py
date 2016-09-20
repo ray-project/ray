@@ -110,6 +110,39 @@ except AttributeError:
   cloudpickle_command = "sudo pip install --upgrade git+git://github.com/cloudpipe/cloudpickle.git@0d225a4695f1f65ae1cbb2e0bbc145e10167cce4"
   raise Exception("You have an older version of cloudpickle that is not able to serialize namedtuples. Try running \n\n{}\n\n".format(cloudpickle_command))
 
+class SerializationTest(unittest.TestCase):
+
+  def testRecursiveObjects(self):
+    ray.init(start_ray_local=True, num_workers=0)
+
+    class ClassA(object):
+      pass
+
+    ray.register_class(ClassA)
+
+    # Make a list that contains itself.
+    l = []
+    l.append(l)
+    # Make an object that contains itself as a field.
+    a1 = ClassA()
+    a1.field = a1
+    # Make two objects that contain each other as fields.
+    a2 = ClassA()
+    a3 = ClassA()
+    a2.field = a3
+    a3.field = a2
+    # Make a dictionary that contains itself.
+    d1 = {}
+    d1["key"] = d1
+    # Create a list of recursive objects.
+    recursive_objects = [l, a1, a2, a3, d1]
+
+    # Check that exceptions are thrown when we serialize the recursive objects.
+    for obj in recursive_objects:
+      self.assertRaises(Exception, lambda : ray.put(obj))
+
+    ray.worker.cleanup()
+
 class ObjStoreTest(unittest.TestCase):
 
   # Test setting up object stores, transfering data between them and retrieving data to a client
