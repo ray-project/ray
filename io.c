@@ -10,7 +10,7 @@
 
 #include "common.h"
 
-/* Binds to a Unix domain datagram socket at the given
+/* Binds to a Unix domain streaming socket at the given
  * pathname. Removes any existing file at the pathname. Returns
  * a file descriptor for the socket, or -1 if an error
  * occurred. */
@@ -44,7 +44,7 @@ int bind_ipc_sock(const char *socket_pathname) {
   return socket_fd;
 }
 
-/* Connects to a Unix domain datagram socket at the given
+/* Connects to a Unix domain streaming socket at the given
  * pathname. Returns a file descriptor for the socket, or -1 if
  * an error occurred. */
 int connect_ipc_sock(const char *socket_pathname) {

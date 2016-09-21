@@ -108,12 +108,15 @@ TEST object_table_lookup_test(void) {
 
   event_loop_free(&loop);
 
+  lookup_successful = 0;
   PASS();
 }
 
 SUITE(db_tests) {
-  RUN_TEST(object_table_lookup_test);
-  /* RUN_TEST(task_queue_test); */
+  redisContext *context = redisConnect("127.0.0.1", 6379);
+  redisCommand(context, "FLUSHALL");
+  RUN_REDIS_TEST(context, object_table_lookup_test);
+  redisFree(context);
 }
 
 GREATEST_MAIN_DEFS();

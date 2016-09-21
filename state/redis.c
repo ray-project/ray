@@ -8,12 +8,13 @@
 #include "task_queue.h"
 #include "event_loop.h"
 #include "redis.h"
+#include "io.h"
 
 static void poll_add_read(void *privdata) {
   db_conn *conn = (db_conn *) privdata;
   if (!conn->reading) {
     conn->reading = 1;
-    event_loop_get(conn->loop, 0)->events |= POLLIN;
+    event_loop_get(conn->loop, conn->db_index)->events |= POLLIN;
   }
 }
 
@@ -21,7 +22,7 @@ static void poll_del_read(void *privdata) {
   db_conn *conn = (db_conn *) privdata;
   if (conn->reading) {
     conn->reading = 0;
-    event_loop_get(conn->loop, 0)->events &= ~POLLIN;
+    event_loop_get(conn->loop, conn->db_index)->events &= ~POLLIN;
   }
 }
 
@@ -29,7 +30,7 @@ static void poll_add_write(void *privdata) {
   db_conn *conn = (db_conn *) privdata;
   if (!conn->writing) {
     conn->writing = 1;
-    event_loop_get(conn->loop, 0)->events |= POLLOUT;
+    event_loop_get(conn->loop, conn->db_index)->events |= POLLOUT;
   }
 }
 
@@ -37,7 +38,7 @@ static void poll_del_write(void *privdata) {
   db_conn *conn = (db_conn *) privdata;
   if (conn->writing) {
     conn->writing = 0;
-    event_loop_get(conn->loop, 0)->events &= ~POLLOUT;
+    event_loop_get(conn->loop, conn->db_index)->events &= ~POLLOUT;
   }
 }
 
@@ -143,8 +144,10 @@ int64_t db_attach(db_conn *db, event_loop *loop, int connection_type) {
 
   ac->ev.data = db;
 
-  return event_loop_attach(loop, connection_type, NULL, c->fd,
-                           POLLIN | POLLOUT);
+  int64_t index =
+      event_loop_attach(loop, connection_type, NULL, c->fd, POLLIN | POLLOUT);
+  db->db_index = index;
+  return index;
 }
 
 void object_table_add(db_conn *db, unique_id object_id) {
@@ -210,4 +213,24 @@ void object_table_lookup(db_conn *db,
   if (db->context->err) {
     LOG_REDIS_ERR(db->context, "error in object_table lookup");
   }
+}
+
+void send_redis_command(int socket_fd, const char *format, ...) {
+  char *cmd;
+  va_list ap;
+  int len;
+
+  va_start(ap, format);
+  len = redisvFormatCommand(&cmd, format, ap);
+  va_end(ap);
+  if (len == -1) {
+    LOG_ERR("Out of memory while formatting Redis command.");
+    return;
+  } else if (len == -2) {
+    LOG_ERR("Invalid Redis format string.");
+    return;
+  }
+
+  write_string(socket_fd, cmd);
+  free(cmd);
 }

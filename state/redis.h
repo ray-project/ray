@@ -25,6 +25,8 @@ struct db_conn_impl {
   int reading, writing;
   /* The event loop this global state store connection is part of. */
   event_loop *loop;
+  /* Index of the database connection in the event loop */
+  int64_t db_index;
   /* Cache for the IP addresses of services. */
   service_cache_entry *service_cache;
   /* Redis context for synchronous connections.
@@ -44,3 +46,5 @@ void object_table_get_entry(redisAsyncContext *c, void *r, void *privdata);
 void object_table_lookup_callback(redisAsyncContext *c,
                                   void *r,
                                   void *privdata);
+
+void send_redis_command(int socket_fd, const char *format, ...);
