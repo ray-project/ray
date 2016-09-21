@@ -2,10 +2,6 @@ CC = gcc
 CFLAGS = -g -Wall --std=c99 -D_XOPEN_SOURCE=500 -D_POSIX_C_SOURCE=200809L -fPIC -I. -Ithirdparty
 BUILD = build
 
-CFLAGS += -Wmissing-prototypes
-CFLAGS += -Wstrict-prototypes
-CFLAGS += -Wmissing-declarations
-
 all: $(BUILD)/libcommon.a
 
 $(BUILD)/libcommon.a: event_loop.o common.o task.o io.o state/redis.o

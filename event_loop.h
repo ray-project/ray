@@ -34,5 +34,6 @@ int64_t event_loop_size(event_loop *loop);
 struct pollfd *event_loop_get(event_loop *loop, int64_t index);
 void event_loop_set_data(event_loop *loop, int64_t index, void *data);
 void *event_loop_get_data(event_loop *loop, int64_t index);
+int event_loop_type(event_loop *loop, int64_t index);
 
 #endif

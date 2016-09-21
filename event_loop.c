@@ -12,6 +12,13 @@ void event_loop_init(event_loop *loop) {
   utarray_new(loop->waiting, &poll_icd);
 }
 
+/* Free the space associated to the event loop.
+ * Does not free the event_loop datastructure itself. */
+void event_loop_free(event_loop *loop) {
+  utarray_free(loop->items);
+  utarray_free(loop->waiting);
+}
+
 /* Add a new file descriptor fd to the event loop.
  * This function sets a user defined type and id for the file descriptor
  * which can be queried using event_loop_type and event_loop_id. The parameter
@@ -83,9 +90,9 @@ void *event_loop_get_data(event_loop *loop, int64_t index) {
   return item->data;
 }
 
-/* Free the space associated to the event loop.
- * Does not free the event_loop datastructure itself. */
-void event_loop_free(event_loop *loop) {
-  utarray_free(loop->items);
-  utarray_free(loop->waiting);
+/* Return the type of connection. */
+int event_loop_type(event_loop *loop, int64_t index) {
+  event_loop_item *item =
+      (event_loop_item *) utarray_eltptr(loop->items, index);
+  return item->type;
 }

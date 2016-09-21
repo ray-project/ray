@@ -38,4 +38,6 @@ unique_id globally_unique_id(void);
  * UNIQUE_ID_SIZE + 1 */
 char *sha1_to_hex(const unsigned char *sha1, char *buffer);
 
+typedef unique_id object_id;
+
 #endif

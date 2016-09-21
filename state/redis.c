@@ -5,6 +5,7 @@
 #include "common.h"
 #include "db.h"
 #include "object_table.h"
+#include "task_queue.h"
 #include "event_loop.h"
 #include "redis.h"
 
@@ -88,18 +89,31 @@ void db_connect(const char *address,
     }
     freeReplyObject(reply);
   }
-  redisFree(context);
 
   db->client_type = strdup(client_type);
   db->client_id = num_clients;
   db->reading = 0;
   db->writing = 0;
+  db->service_cache = NULL;
+  db->sync_context = context;
 
   /* Establish async connection */
   db->context = redisAsyncConnect(address, port);
   CHECK_REDIS_CONNECT(redisAsyncContext, db->context,
                       "could not connect to redis %s:%d", address, port);
   db->context->data = (void *) db;
+}
+
+void db_disconnect(db_conn *db) {
+  redisFree(db->sync_context);
+  redisAsyncFree(db->context);
+  service_cache_entry *e, *tmp;
+  HASH_ITER(hh, db->service_cache, e, tmp) {
+    free(e->addr);
+    HASH_DEL(db->service_cache, e);
+    free(e);
+  }
+  free(db->client_type);
 }
 
 void db_event(db_conn *db) {
@@ -137,51 +151,62 @@ void object_table_add(db_conn *db, unique_id object_id) {
   static char hex_object_id[2 * UNIQUE_ID_SIZE + 1];
   sha1_to_hex(&object_id.id[0], &hex_object_id[0]);
   redisAsyncCommand(db->context, NULL, NULL, "SADD obj:%s %d",
-                    &hex_object_id[0], 0);
+                    &hex_object_id[0], db->client_id);
   if (db->context->err) {
     LOG_REDIS_ERR(db->context, "could not add object_table entry");
   }
 }
 
-void object_table_lookup_callback(redisAsyncContext *c,
-                                  void *r,
-                                  void *privdata) {
+void object_table_get_entry(redisAsyncContext *c, void *r, void *privdata) {
+  db_conn *db = c->data;
+  lookup_callback_data *cb_data = privdata;
   redisReply *reply = r;
   if (reply == NULL)
     return;
-  lookup_callback callback = privdata;
-  char *str = malloc(reply->len);
-  memcpy(str, reply->str, reply->len);
-  callback(str);
-}
-
-void object_table_fetch_addr_port(redisAsyncContext *c,
-                                  void *r,
-                                  void *privdata) {
-  redisReply *reply = r;
-  if (reply == NULL)
-    return;
-  long long manager_id = -1;
-  if (reply->type == REDIS_REPLY_STRING) {
-    manager_id = strtoll(reply->str, NULL, 10);
-  } else if (reply->type != REDIS_REPLY_INTEGER) {
-    manager_id = reply->integer;
+  int *result = malloc(reply->elements * sizeof(int));
+  int64_t manager_count = reply->elements;
+  if (reply->type == REDIS_REPLY_ARRAY) {
+    for (int j = 0; j < reply->elements; j++) {
+      CHECK(reply->element[j]->type == REDIS_REPLY_STRING);
+      result[j] = atoi(reply->element[j]->str);
+      service_cache_entry *entry;
+      HASH_FIND_INT(db->service_cache, &result[j], entry);
+      if (!entry) {
+        redisReply *reply = redisCommand(db->sync_context, "HGET %s %lld",
+                                         db->client_type, result[j]);
+        CHECK(reply->type == REDIS_REPLY_STRING);
+        entry = malloc(sizeof(service_cache_entry));
+        entry->service_id = result[j];
+        entry->addr = strdup(reply->str);
+        HASH_ADD_INT(db->service_cache, service_id, entry);
+        freeReplyObject(reply);
+      }
+    }
   } else {
     LOG_ERR("expected integer or string, received type %d", reply->type);
     exit(-1);
   }
-  db_conn *db = c->data;
-  redisAsyncCommand(db->context, object_table_lookup_callback, privdata,
-                    "HGET %s %lld", db->client_type, manager_id);
+  const char **manager_vector = malloc(manager_count * sizeof(char *));
+  for (int j = 0; j < manager_count; ++j) {
+    service_cache_entry *entry;
+    HASH_FIND_INT(db->service_cache, &result[j], entry);
+    manager_vector[j] = entry->addr;
+  }
+  cb_data->callback(cb_data->object_id, manager_count, manager_vector);
+  free(privdata);
+  free(result);
 }
 
 void object_table_lookup(db_conn *db,
-                         unique_id object_id,
+                         object_id object_id,
                          lookup_callback callback) {
   static char hex_object_id[2 * UNIQUE_ID_SIZE + 1];
   sha1_to_hex(&object_id.id[0], &hex_object_id[0]);
-  redisAsyncCommand(db->context, object_table_fetch_addr_port, callback,
-                    "SRANDMEMBER obj:%s", &hex_object_id[0]);
+  lookup_callback_data *cb_data = malloc(sizeof(lookup_callback_data));
+  cb_data->callback = callback;
+  cb_data->object_id = object_id;
+  redisAsyncCommand(db->context, object_table_get_entry, cb_data,
+                    "SMEMBERS obj:%s", &hex_object_id[0]);
   if (db->context->err) {
     LOG_REDIS_ERR(db->context, "error in object_table lookup");
   }
