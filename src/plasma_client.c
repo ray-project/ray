@@ -16,7 +16,7 @@
 #include "plasma_client.h"
 #include "fling.h"
 
-void plasma_send(int fd, plasma_request *req) {
+void plasma_send_request(int fd, plasma_request *req) {
   int req_count = sizeof(plasma_request);
   if (write(fd, req, req_count) != req_count) {
     LOG_ERR("write error, fd = %d", fd);
@@ -66,7 +66,7 @@ void plasma_create(plasma_store_conn *conn,
                         .object_id = object_id,
                         .data_size = data_size,
                         .metadata_size = metadata_size};
-  plasma_send(conn->conn, &req);
+  plasma_send_request(conn->conn, &req);
   plasma_reply reply;
   int fd = recv_fd(conn->conn, (char *) &reply, sizeof(plasma_reply));
   assert(reply.data_size == data_size);
@@ -92,7 +92,7 @@ void plasma_get(plasma_store_conn *conn,
                 int64_t *metadata_size,
                 uint8_t **metadata) {
   plasma_request req = {.type = PLASMA_GET, .object_id = object_id};
-  plasma_send(conn->conn, &req);
+  plasma_send_request(conn->conn, &req);
   plasma_reply reply;
   int fd = recv_fd(conn->conn, (char *) &reply, sizeof(plasma_reply));
   *data = lookup_or_mmap(conn, fd, reply.store_fd_val, reply.map_size) +
@@ -105,9 +105,27 @@ void plasma_get(plasma_store_conn *conn,
   }
 }
 
+/* This method is used to query whether the plasma store contains an object. */
+void plasma_contains(plasma_store_conn *conn,
+                     plasma_id object_id,
+                     int *has_object) {
+  plasma_request req = {.type = PLASMA_CONTAINS, .object_id = object_id};
+  plasma_send_request(conn->conn, &req);
+  plasma_reply reply;
+  int r = read(conn->conn, &reply, sizeof(plasma_reply));
+  PLASMA_CHECK(r != -1, "read error");
+  PLASMA_CHECK(r != 0, "connection disconnected");
+  *has_object = reply.has_object;
+}
+
 void plasma_seal(plasma_store_conn *conn, plasma_id object_id) {
   plasma_request req = {.type = PLASMA_SEAL, .object_id = object_id};
-  plasma_send(conn->conn, &req);
+  plasma_send_request(conn->conn, &req);
+}
+
+void plasma_delete(plasma_store_conn *conn, plasma_id object_id) {
+  plasma_request req = {.type = PLASMA_DELETE, .object_id = object_id};
+  plasma_send_request(conn->conn, &req);
 }
 
 plasma_store_conn *plasma_store_connect(const char *socket_name) {
@@ -187,5 +205,5 @@ void plasma_transfer(int manager,
     /* skip the '.' */
     end += 1;
   }
-  plasma_send(manager, &req);
+  plasma_send_request(manager, &req);
 }

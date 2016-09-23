@@ -90,6 +90,61 @@ class TestPlasmaClient(unittest.TestCase):
       for i in range(len(metadata)):
         self.assertEqual(metadata[i], metadata_buffer[i])
 
+  def test_contains(self):
+    fake_object_ids = [random_object_id() for _ in range(100)]
+    real_object_ids = [random_object_id() for _ in range(100)]
+    for object_id in real_object_ids:
+      self.assertFalse(self.plasma_client.contains(object_id))
+      memory_buffer = self.plasma_client.create(object_id, 100)
+      self.plasma_client.seal(object_id)
+      self.assertTrue(self.plasma_client.contains(object_id))
+    for object_id in fake_object_ids:
+      self.assertFalse(self.plasma_client.contains(object_id))
+    for object_id in real_object_ids:
+      self.assertTrue(self.plasma_client.contains(object_id))
+
+  def test_individual_delete(self):
+    length = 100
+    # Create an object id string.
+    object_id = random_object_id()
+    # Create a random metadata string.
+    metadata = generate_metadata(100)
+    # Create a new buffer and write to it.
+    memory_buffer = self.plasma_client.create(object_id, length, metadata)
+    for i in range(length):
+      memory_buffer[i] = chr(i % 256)
+    # Seal the object.
+    self.plasma_client.seal(object_id)
+    # Check that the object is present.
+    self.assertTrue(self.plasma_client.contains(object_id))
+    # Delete the object.
+    self.plasma_client.delete(object_id)
+    # Make sure the object is no longer present.
+    self.assertFalse(self.plasma_client.contains(object_id))
+
+  def test_delete(self):
+    # Create some objects.
+    object_ids = [random_object_id() for _ in range(100)]
+    for object_id in object_ids:
+      length = 100
+      # Create a random metadata string.
+      metadata = generate_metadata(100)
+      # Create a new buffer and write to it.
+      memory_buffer = self.plasma_client.create(object_id, length, metadata)
+      for i in range(length):
+        memory_buffer[i] = chr(i % 256)
+      # Seal the object.
+      self.plasma_client.seal(object_id)
+      # Check that the object is present.
+      self.assertTrue(self.plasma_client.contains(object_id))
+
+    # Delete the objects and make sure they are no longer present.
+    for object_id in object_ids:
+      # Delete the object.
+      self.plasma_client.delete(object_id)
+      # Make sure the object is no longer present.
+      self.assertFalse(self.plasma_client.contains(object_id))
+
   def test_illegal_functionality(self):
     # Create an object id string.
     object_id = random_object_id()

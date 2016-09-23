@@ -51,11 +51,15 @@ enum plasma_request_type {
   PLASMA_CREATE,
   /* Get an object. */
   PLASMA_GET,
-  /* seal an object */
+  /* Check if an object is present. */
+  PLASMA_CONTAINS,
+  /* Seal an object. */
   PLASMA_SEAL,
-  /* request transfer to another store */
+  /* Delete an object. */
+  PLASMA_DELETE,
+  /* Request transfer to another store. */
   PLASMA_TRANSFER,
-  /* Header for sending data */
+  /* Header for sending data. */
   PLASMA_DATA,
 };
 
@@ -81,6 +85,8 @@ typedef struct {
   int64_t data_size;
   /* The size of the metadata. */
   int64_t metadata_size;
+  /* 1 if the object is present and 0 otherwise. Used for plasma_contains. */
+  int has_object;
   /* Numerical value of the fd of the memory mapped file in the store. */
   int store_fd_val;
 } plasma_reply;
@@ -112,6 +118,8 @@ typedef struct {
   client_mmap_table_entry *mmap_table;
 } plasma_store_conn;
 
-void plasma_send(int conn, plasma_request *req);
+void plasma_send_request(int conn, plasma_request *req);
+
+void plasma_send_reply(int conn, plasma_reply *req);
 
 #endif

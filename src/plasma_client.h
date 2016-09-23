@@ -22,6 +22,18 @@ void plasma_get(plasma_store_conn *conn,
                 int64_t *metadata_size,
                 uint8_t **metadata);
 
+/* Check if the object store contains a particular object and the object has
+ * been sealed. The result will be stored in has_object. TODO(rkn): We may want
+ * to indicate whether the object is currently being written. */
+void plasma_contains(plasma_store_conn *conn,
+                     plasma_id object_id,
+                     int *has_object);
+
 void plasma_seal(plasma_store_conn *conn, plasma_id object_id);
+
+/* Delete an object from the object store. This currently assumes that the
+ * object is present and has been sealed. TODO(rkn): We may want to allow the
+ * deletion of objects that are not present or haven't been sealed. */
+void plasma_delete(plasma_store_conn *conn, plasma_id object_id);
 
 #endif

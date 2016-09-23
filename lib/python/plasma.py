@@ -43,7 +43,9 @@ class PlasmaClient(object):
     self.client.plasma_store_connect.restype = ctypes.c_void_p
     self.client.plasma_create.restype = None
     self.client.plasma_get.restype = None
+    self.client.plasma_contains.restype = None
     self.client.plasma_seal.restype = None
+    self.client.plasma_delete.restype = None
 
     self.buffer_from_memory = ctypes.pythonapi.PyBuffer_FromMemory
     self.buffer_from_memory.argtypes = [ctypes.c_void_p, ctypes.c_int64]
@@ -111,6 +113,22 @@ class PlasmaClient(object):
     buf = self.client.plasma_get(self.store_conn, make_plasma_id(object_id), ctypes.byref(size), ctypes.byref(data), ctypes.byref(metadata_size), ctypes.byref(metadata))
     return self.buffer_from_memory(metadata, metadata_size)
 
+  def contains(self, object_id):
+    """Check if the object is present and has been sealed in the PlasmaStore.
+
+    Args:
+      object_id (str): A string used to identify an object.
+    """
+    has_object = ctypes.c_int()
+    self.client.plasma_contains(self.store_conn, make_plasma_id(object_id), ctypes.byref(has_object))
+    has_object = has_object.value
+    if has_object == 1:
+      return True
+    elif has_object == 0:
+      return False
+    else:
+      raise Exception("This code should be unreachable.")
+
   def seal(self, object_id):
     """Seal the buffer in the PlasmaStore for a particular object ID.
 
@@ -121,6 +139,16 @@ class PlasmaClient(object):
       object_id (str): A string used to identify an object.
     """
     self.client.plasma_seal(self.store_conn, make_plasma_id(object_id))
+
+  def delete(self, object_id):
+    """Delete the buffer in the PlasmaStore for a particular object ID.
+
+    Once a buffer has been deleted, the buffer is no longer accessible.
+
+    Args:
+      object_id (str): A string used to identify an object.
+    """
+    self.client.plasma_delete(self.store_conn, make_plasma_id(object_id))
 
   def transfer(self, addr, port, object_id):
     """Transfer local object with id object_id to another plasma instance

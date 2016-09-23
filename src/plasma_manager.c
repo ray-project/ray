@@ -74,7 +74,7 @@ void initiate_transfer(plasma_manager_state *s, plasma_request *req) {
                                 .object_id = req->object_id,
                                 .data_size = buf.data_size,
                                 .metadata_size = buf.metadata_size};
-  plasma_send(fd, &manager_req);
+  plasma_send_request(fd, &manager_req);
 }
 
 /* Start reading data from another object manager.
