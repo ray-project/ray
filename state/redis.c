@@ -2,6 +2,8 @@
 
 #include <assert.h>
 
+#include "utstring.h"
+
 #include "common.h"
 #include "db.h"
 #include "object_table.h"
@@ -213,6 +215,22 @@ void object_table_lookup(db_conn *db,
   if (db->context->err) {
     LOG_REDIS_ERR(db->context, "error in object_table lookup");
   }
+}
+
+void task_queue_submit_task(db_conn *db, task_iid task_iid, task_spec *task) {
+  /* For converting an id to hex, which has double the number
+   * of bytes compared to the id (+ 1 byte for '\0'). */
+  static char hex[2 * UNIQUE_ID_SIZE + 1];
+  UT_string *command;
+  utstring_new(command);
+  sha1_to_hex(&task_iid.id[0], &hex[0]);
+  utstring_printf(command, "HMSET queue:%s", &hex[0]);
+  print_task(task, command);
+  redisAsyncCommand(db->context, NULL, NULL, utstring_body(command));
+  if (db->context->err) {
+    LOG_REDIS_ERR(db->context, "error in task_queue submit_task");
+  }
+  utstring_free(command);
 }
 
 void send_redis_command(int socket_fd, const char *format, ...) {

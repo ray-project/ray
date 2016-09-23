@@ -3,6 +3,7 @@
 #include <assert.h>
 
 #include "event_loop.h"
+#include "test/example_task.h"
 #include "state/db.h"
 #include "state/object_table.h"
 #include "state/redis.h"
@@ -62,7 +63,7 @@ TEST object_table_lookup_test(void) {
   object_table_add(&conn2, id);
   object_table_lookup(&conn1, id, sync_test_callback);
   while (!lookup_successful) {
-    int num_ready = event_loop_poll(&loop);
+    int num_ready = event_loop_poll(&loop, -1);
     if (num_ready < 0) {
       exit(-1);
     }
@@ -81,7 +82,7 @@ TEST object_table_lookup_test(void) {
   lookup_successful = 0;
   object_table_lookup(&conn1, id, test_callback);
   while (!lookup_successful) {
-    int num_ready = event_loop_poll(&loop);
+    int num_ready = event_loop_poll(&loop, -1);
     if (num_ready < 0) {
       exit(-1);
     }
@@ -112,10 +113,44 @@ TEST object_table_lookup_test(void) {
   PASS();
 }
 
+TEST task_queue_test(void) {
+  event_loop loop;
+  event_loop_init(&loop);
+  db_conn conn;
+  db_connect("127.0.0.1", 6379, "local_scheduler", "", -1, &conn);
+  int64_t index = db_attach(&conn, &loop, 0);
+
+  task_spec *task = example_task();
+  task_queue_submit_task(&conn, globally_unique_id(), task);
+  while (1) {
+    int num_ready = event_loop_poll(&loop, 100);
+    if (num_ready < 0) {
+      exit(-1);
+    }
+    if (num_ready == 0) {
+      break;
+    }
+    for (int i = 0; i < event_loop_size(&loop); ++i) {
+      struct pollfd *waiting = event_loop_get(&loop, i);
+      if (waiting->revents == 0)
+        continue;
+      if (i == index) {
+        db_event(&conn);
+      }
+    }
+  }
+
+  free_task_spec(task);
+  db_disconnect(&conn);
+  event_loop_free(&loop);
+  PASS();
+}
+
 SUITE(db_tests) {
   redisContext *context = redisConnect("127.0.0.1", 6379);
   redisCommand(context, "FLUSHALL");
   RUN_REDIS_TEST(context, object_table_lookup_test);
+  RUN_TEST(task_queue_test);
   redisFree(context);
 }
 

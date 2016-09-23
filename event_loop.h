@@ -29,7 +29,7 @@ int64_t event_loop_attach(event_loop *loop,
                           int fd,
                           int events);
 void event_loop_detach(event_loop *loop, int64_t index, int shall_close);
-int event_loop_poll(event_loop *loop);
+int event_loop_poll(event_loop *loop, int timeout);
 int64_t event_loop_size(event_loop *loop);
 struct pollfd *event_loop_get(event_loop *loop, int64_t index);
 void event_loop_set_data(event_loop *loop, int64_t index, void *data);

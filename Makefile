@@ -7,6 +7,9 @@ all: $(BUILD)/libcommon.a
 $(BUILD)/libcommon.a: event_loop.o common.o task.o io.o state/redis.o
 	ar rcs $@ $^
 
+$(BUILD)/common_tests: test/common_tests.c $(BUILD)/libcommon.a
+	$(CC) -o $@ test/common_tests.c $(BUILD)/libcommon.a $(CFLAGS)
+
 $(BUILD)/db_tests: hiredis test/db_tests.c $(BUILD)/libcommon.a
 	$(CC) -o $@ test/db_tests.c $(BUILD)/libcommon.a thirdparty/hiredis/libhiredis.a $(CFLAGS)
 
@@ -29,8 +32,8 @@ redis:
 hiredis:
 	git submodule update --init --recursive -- "thirdparty/hiredis" ; cd thirdparty/hiredis ; make
 
-test: hiredis redis $(BUILD)/db_tests $(BUILD)/io_tests $(BUILD)/task_tests $(BUILD)/redis_tests FORCE
+test: hiredis redis $(BUILD)/common_tests $(BUILD)/db_tests $(BUILD)/io_tests $(BUILD)/task_tests $(BUILD)/redis_tests FORCE
 	./thirdparty/redis-3.2.3/src/redis-server &
-	sleep 1s ; ./build/db_tests ; ./build/io_tests ; ./build/task_tests ; ./build/redis_tests
+	sleep 1s ; ./build/common_tests ; ./build/db_tests ; ./build/io_tests ; ./build/task_tests ; ./build/redis_tests
 
 FORCE:

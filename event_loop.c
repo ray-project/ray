@@ -59,10 +59,10 @@ void event_loop_detach(event_loop *loop, int64_t index, int shall_close) {
 }
 
 /* Poll the file descriptors associated to this event loop.
- * See http://linux.die.net/man/2/poll */
-int event_loop_poll(event_loop *loop) {
+ * See http://linux.die.net/man/2/poll. The timeout is in milliseconds. */
+int event_loop_poll(event_loop *loop, int timeout) {
   return poll((struct pollfd *) utarray_front(loop->waiting),
-              utarray_len(loop->waiting), -1);
+              utarray_len(loop->waiting), timeout);
 }
 
 /* Get the total number of file descriptors participating in the event loop. */

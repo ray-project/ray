@@ -10,6 +10,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "common.h"
+#include "utstring.h"
 
 typedef unique_id function_id;
 typedef unique_id object_id;
@@ -22,13 +23,16 @@ enum arg_type { ARG_BY_REF, ARG_BY_VAL };
 /* Construct and modify task specifications. */
 
 /* Allocating and initializing a task. */
-task_spec *alloc_task_spec(function_id func_id,
+task_spec *alloc_task_spec(function_id function_id,
                            int64_t num_args,
                            int64_t num_returns,
                            int64_t args_value_size);
 
 /* Size of the task in bytes. */
 int64_t task_size(task_spec *spec);
+
+/* Return the function ID of the task. */
+unique_id *task_function(task_spec *spec);
 
 /* Getting the number of arguments and returns. */
 int64_t task_num_args(task_spec *spec);
@@ -57,5 +61,11 @@ void write_task(int fd, task_spec *spec);
 /* Read the task specification from a file or socket. It is the user's
  * responsibility to free the task after it has been used. */
 task_spec *read_task(int fd);
+
+/* Print task as a humanly readable string. */
+void print_task(task_spec *spec, UT_string *output);
+
+/* Parse task as printed by print_task. */
+task_spec *parse_task(char *task_string, int64_t task_length);
 
 #endif

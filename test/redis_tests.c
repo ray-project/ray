@@ -85,7 +85,7 @@ TEST async_redis_socket_test(void) {
   send_redis_command(client_fd, test_set_format, test_key, test_value);
 
   while (!lookup_successful) {
-    int num_ready = event_loop_poll(&loop);
+    int num_ready = event_loop_poll(&loop, -1);
     if (num_ready < 0) {
       exit(-1);
     }
