@@ -232,23 +232,3 @@ void task_queue_submit_task(db_conn *db, task_iid task_iid, task_spec *task) {
   }
   utstring_free(command);
 }
-
-void send_redis_command(int socket_fd, const char *format, ...) {
-  char *cmd;
-  va_list ap;
-  int len;
-
-  va_start(ap, format);
-  len = redisvFormatCommand(&cmd, format, ap);
-  va_end(ap);
-  if (len == -1) {
-    LOG_ERR("Out of memory while formatting Redis command.");
-    return;
-  } else if (len == -2) {
-    LOG_ERR("Invalid Redis format string.");
-    return;
-  }
-
-  write_string(socket_fd, cmd);
-  free(cmd);
-}

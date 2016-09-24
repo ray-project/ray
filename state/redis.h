@@ -1,3 +1,6 @@
+#ifndef REDIS_H
+#define REDIS_H
+
 #include "db.h"
 #include "object_table.h"
 
@@ -47,4 +50,4 @@ void object_table_lookup_callback(redisAsyncContext *c,
                                   void *r,
                                   void *privdata);
 
-void send_redis_command(int socket_fd, const char *format, ...);
+#endif

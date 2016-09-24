@@ -7,6 +7,8 @@
 #include <string.h>
 #include <stdio.h>
 #include <inttypes.h>
+#include <stdarg.h>
+#include <utstring.h>
 
 #include "common.h"
 
@@ -138,4 +140,17 @@ char *read_string(int fd) {
   int64_t length;
   read_bytes(fd, &bytes, &length);
   return (char *) bytes;
+}
+
+void write_formatted_string(int socket_fd, const char *format, ...) {
+  UT_string *cmd;
+  va_list ap;
+
+  utstring_new(cmd);
+  va_start(ap, format);
+  utstring_printf_va(cmd, format, ap);
+  va_end(ap);
+
+  write_string(socket_fd, utstring_body(cmd));
+  utstring_free(cmd);
 }
