@@ -12,7 +12,7 @@ typedef struct {
   /* Unique ID for this service. */
   int service_id;
   /* IP address and port of this service. */
-  const char *addr;
+  char *addr;
   /* Handle for the uthash table. */
   UT_hash_handle hh;
 } service_cache_entry;

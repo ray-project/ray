@@ -6,12 +6,12 @@
 #include "test/example_task.h"
 #include "state/db.h"
 #include "state/object_table.h"
+#include "state/task_queue.h"
 #include "state/redis.h"
 #include "task.h"
 
 SUITE(db_tests);
 
-int lookup_successful = 0;
 const char *manager_addr = "127.0.0.1";
 int manager_port1 = 12345;
 int manager_port2 = 12346;
@@ -20,20 +20,11 @@ char received_port1[6] = {0};
 char received_addr2[16] = {0};
 char received_port2[6] = {0};
 
-/* This is for synchronizing to make sure both entries have been written. */
-void sync_test_callback(object_id object_id,
-                        int manager_count,
-                        const char *manager_vector[]) {
-  lookup_successful = 1;
-  free(manager_vector);
-}
-
-/* This performs the actual test. */
+/* Test if entries have been written to the database. */
 void test_callback(object_id object_id,
                    int manager_count,
                    const char *manager_vector[]) {
   CHECK(manager_count == 2);
-  lookup_successful = 1;
   if (!manager_vector[0] ||
       sscanf(manager_vector[0], "%15[0-9.]:%5[0-9]", received_addr1,
              received_port1) != 2) {
@@ -47,57 +38,29 @@ void test_callback(object_id object_id,
   free(manager_vector);
 }
 
+int64_t timeout_handler(event_loop *loop, int64_t id, void *context) {
+  event_loop_stop(loop);
+  return -1;
+}
+
 TEST object_table_lookup_test(void) {
-  event_loop loop;
-  event_loop_init(&loop);
+  event_loop *loop = event_loop_create();
   db_conn conn1;
   db_connect("127.0.0.1", 6379, "plasma_manager", manager_addr, manager_port1,
              &conn1);
   db_conn conn2;
   db_connect("127.0.0.1", 6379, "plasma_manager", manager_addr, manager_port2,
              &conn2);
-  int64_t index1 = db_attach(&conn1, &loop, 0);
-  int64_t index2 = db_attach(&conn2, &loop, 1);
+  db_attach(&conn1, loop);
+  db_attach(&conn2, loop);
   unique_id id = globally_unique_id();
   object_table_add(&conn1, id);
   object_table_add(&conn2, id);
-  object_table_lookup(&conn1, id, sync_test_callback);
-  while (!lookup_successful) {
-    int num_ready = event_loop_poll(&loop, -1);
-    if (num_ready < 0) {
-      exit(-1);
-    }
-    for (int i = 0; i < event_loop_size(&loop); ++i) {
-      struct pollfd *waiting = event_loop_get(&loop, i);
-      if (waiting->revents == 0)
-        continue;
-      if (i == index1) {
-        db_event(&conn1);
-      }
-      if (i == index2) {
-        db_event(&conn2);
-      }
-    }
-  }
-  lookup_successful = 0;
+  event_loop_add_timer(loop, 100, timeout_handler, NULL);
+  event_loop_run(loop);
   object_table_lookup(&conn1, id, test_callback);
-  while (!lookup_successful) {
-    int num_ready = event_loop_poll(&loop, -1);
-    if (num_ready < 0) {
-      exit(-1);
-    }
-    for (int i = 0; i < event_loop_size(&loop); ++i) {
-      struct pollfd *waiting = event_loop_get(&loop, i);
-      if (waiting->revents == 0)
-        continue;
-      if (i == index1) {
-        db_event(&conn1);
-      }
-      if (i == index2) {
-        db_event(&conn2);
-      }
-    }
-  }
+  event_loop_add_timer(loop, 100, timeout_handler, NULL);
+  event_loop_run(loop);
   int port1 = atoi(received_port1);
   int port2 = atoi(received_port2);
   ASSERT_STR_EQ(&received_addr1[0], manager_addr);
@@ -107,50 +70,32 @@ TEST object_table_lookup_test(void) {
   db_disconnect(&conn1);
   db_disconnect(&conn2);
 
-  event_loop_free(&loop);
-
-  lookup_successful = 0;
+  event_loop_destroy(loop);
   PASS();
 }
 
 TEST task_queue_test(void) {
-  event_loop loop;
-  event_loop_init(&loop);
+  event_loop *loop = event_loop_create();
   db_conn conn;
   db_connect("127.0.0.1", 6379, "local_scheduler", "", -1, &conn);
-  int64_t index = db_attach(&conn, &loop, 0);
+  db_attach(&conn, loop);
 
   task_spec *task = example_task();
   task_queue_submit_task(&conn, globally_unique_id(), task);
-  while (1) {
-    int num_ready = event_loop_poll(&loop, 100);
-    if (num_ready < 0) {
-      exit(-1);
-    }
-    if (num_ready == 0) {
-      break;
-    }
-    for (int i = 0; i < event_loop_size(&loop); ++i) {
-      struct pollfd *waiting = event_loop_get(&loop, i);
-      if (waiting->revents == 0)
-        continue;
-      if (i == index) {
-        db_event(&conn);
-      }
-    }
-  }
+  event_loop_add_timer(loop, 100, timeout_handler, NULL);
+  event_loop_run(loop);
 
   free_task_spec(task);
   db_disconnect(&conn);
-  event_loop_free(&loop);
+  event_loop_destroy(loop);
   PASS();
 }
 
 SUITE(db_tests) {
   redisContext *context = redisConnect("127.0.0.1", 6379);
-  redisCommand(context, "FLUSHALL");
+  freeReplyObject(redisCommand(context, "FLUSHALL"));
   RUN_REDIS_TEST(context, object_table_lookup_test);
-  RUN_TEST(task_queue_test);
+  RUN_REDIS_TEST(context, task_queue_test);
   redisFree(context);
 }
 

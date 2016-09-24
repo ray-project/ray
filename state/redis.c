@@ -2,6 +2,8 @@
 
 #include <assert.h>
 
+#include <stdlib.h>
+#include "hiredis/adapters/ae.h"
 #include "utstring.h"
 
 #include "common.h"
@@ -11,38 +13,6 @@
 #include "event_loop.h"
 #include "redis.h"
 #include "io.h"
-
-static void poll_add_read(void *privdata) {
-  db_conn *conn = (db_conn *) privdata;
-  if (!conn->reading) {
-    conn->reading = 1;
-    event_loop_get(conn->loop, conn->db_index)->events |= POLLIN;
-  }
-}
-
-static void poll_del_read(void *privdata) {
-  db_conn *conn = (db_conn *) privdata;
-  if (conn->reading) {
-    conn->reading = 0;
-    event_loop_get(conn->loop, conn->db_index)->events &= ~POLLIN;
-  }
-}
-
-static void poll_add_write(void *privdata) {
-  db_conn *conn = (db_conn *) privdata;
-  if (!conn->writing) {
-    conn->writing = 1;
-    event_loop_get(conn->loop, conn->db_index)->events |= POLLOUT;
-  }
-}
-
-static void poll_del_write(void *privdata) {
-  db_conn *conn = (db_conn *) privdata;
-  if (conn->writing) {
-    conn->writing = 0;
-    event_loop_get(conn->loop, conn->db_index)->events &= ~POLLOUT;
-  }
-}
 
 #define LOG_REDIS_ERR(context, M, ...)                                        \
   fprintf(stderr, "[ERROR] (%s:%d: message: %s) " M "\n", __FILE__, __LINE__, \
@@ -119,37 +89,8 @@ void db_disconnect(db_conn *db) {
   free(db->client_type);
 }
 
-void db_event(db_conn *db) {
-  if (db->reading) {
-    redisAsyncHandleRead(db->context);
-  }
-  if (db->writing) {
-    redisAsyncHandleWrite(db->context);
-  }
-}
-
-int64_t db_attach(db_conn *db, event_loop *loop, int connection_type) {
-  db->loop = loop;
-
-  redisAsyncContext *ac = db->context;
-  redisContext *c = &(ac->c);
-
-  if (ac->ev.data != NULL) {
-    return REDIS_ERR;
-  }
-
-  ac->ev.addRead = poll_add_read;
-  ac->ev.delRead = poll_del_read;
-  ac->ev.addWrite = poll_add_write;
-  ac->ev.delWrite = poll_del_write;
-  // TODO(pcm): Implement cleanup function
-
-  ac->ev.data = db;
-
-  int64_t index =
-      event_loop_attach(loop, connection_type, NULL, c->fd, POLLIN | POLLOUT);
-  db->db_index = index;
-  return index;
+void db_attach(db_conn *db, event_loop *loop) {
+  redisAeAttach(loop, db->context);
 }
 
 void object_table_add(db_conn *db, unique_id object_id) {

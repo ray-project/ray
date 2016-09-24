@@ -1,10 +1,10 @@
 CC = gcc
-CFLAGS = -g -Wall --std=c99 -D_XOPEN_SOURCE=500 -D_POSIX_C_SOURCE=200809L -fPIC -I. -Ithirdparty
+CFLAGS = -g -Wall --std=c99 -D_XOPEN_SOURCE=500 -D_POSIX_C_SOURCE=200809L -fPIC -I. -Ithirdparty -Ithirdparty/ae
 BUILD = build
 
 all: $(BUILD)/libcommon.a
 
-$(BUILD)/libcommon.a: event_loop.o common.o task.o io.o state/redis.o
+$(BUILD)/libcommon.a: event_loop.o common.o task.o io.o state/redis.o thirdparty/ae/ae.o
 	ar rcs $@ $^
 
 $(BUILD)/common_tests: test/common_tests.c $(BUILD)/libcommon.a
@@ -23,7 +23,7 @@ $(BUILD)/redis_tests: hiredis test/redis_tests.c $(BUILD)/libcommon.a logging.h
 	$(CC) -o $@ test/redis_tests.c logging.c $(BUILD)/libcommon.a thirdparty/hiredis/libhiredis.a $(CFLAGS)
 
 clean:
-	rm -f *.o state/*.o test/*.o
+	rm -f *.o state/*.o test/*.o thirdparty/ae/*.o
 	rm -rf $(BUILD)/*
 
 redis:

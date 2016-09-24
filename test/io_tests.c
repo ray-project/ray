@@ -35,6 +35,7 @@ TEST ipc_socket_test(void) {
     uint8_t *bytes;
     read_bytes(client_fd, &bytes, &len);
     ASSERT(memcmp(test_bytes, bytes, len) == 0);
+    free(bytes);
     close(client_fd);
     close(socket_fd);
     unlink(socket_pathname);
