@@ -165,7 +165,7 @@ void task_queue_submit_task(db_conn *db, task_iid task_iid, task_spec *task) {
   UT_string *command;
   utstring_new(command);
   sha1_to_hex(&task_iid.id[0], &hex[0]);
-  utstring_printf(command, "HMSET queue:%s", &hex[0]);
+  utstring_printf(command, "HMSET queue:%s ", &hex[0]);
   print_task(task, command);
   redisAsyncCommand(db->context, NULL, NULL, utstring_body(command));
   if (db->context->err) {
