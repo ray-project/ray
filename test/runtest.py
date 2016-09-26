@@ -479,8 +479,8 @@ class APITest(unittest.TestCase):
       return x, y
     a = f.remote(1)
     b = f.remote(1)
-    c = f.remote(a, b)
-    c = f.remote(a, 1)
+    c = g.remote(a, b)
+    c = g.remote(a, 1)
     # Make sure that we can produce a computation_graph visualization.
     ray.visualize_computation_graph(view=False)
 
