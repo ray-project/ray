@@ -45,20 +45,18 @@ int64_t timeout_handler(event_loop *loop, int64_t id, void *context) {
 
 TEST object_table_lookup_test(void) {
   event_loop *loop = event_loop_create();
-  db_conn conn1;
-  db_connect("127.0.0.1", 6379, "plasma_manager", manager_addr, manager_port1,
-             &conn1);
-  db_conn conn2;
-  db_connect("127.0.0.1", 6379, "plasma_manager", manager_addr, manager_port2,
-             &conn2);
-  db_attach(&conn1, loop);
-  db_attach(&conn2, loop);
+  db_handle *db1 = db_connect("127.0.0.1", 6379, "plasma_manager", manager_addr,
+                              manager_port1);
+  db_handle *db2 = db_connect("127.0.0.1", 6379, "plasma_manager", manager_addr,
+                              manager_port2);
+  db_attach(db1, loop);
+  db_attach(db2, loop);
   unique_id id = globally_unique_id();
-  object_table_add(&conn1, id);
-  object_table_add(&conn2, id);
+  object_table_add(db1, id);
+  object_table_add(db2, id);
   event_loop_add_timer(loop, 100, timeout_handler, NULL);
   event_loop_run(loop);
-  object_table_lookup(&conn1, id, test_callback);
+  object_table_lookup(db1, id, test_callback);
   event_loop_add_timer(loop, 100, timeout_handler, NULL);
   event_loop_run(loop);
   int port1 = atoi(received_port1);
@@ -67,8 +65,8 @@ TEST object_table_lookup_test(void) {
   ASSERT((port1 == manager_port1 && port2 == manager_port2) ||
          (port2 == manager_port1 && port1 == manager_port2));
 
-  db_disconnect(&conn1);
-  db_disconnect(&conn2);
+  db_disconnect(db1);
+  db_disconnect(db2);
 
   event_loop_destroy(loop);
   PASS();
@@ -76,17 +74,16 @@ TEST object_table_lookup_test(void) {
 
 TEST task_queue_test(void) {
   event_loop *loop = event_loop_create();
-  db_conn conn;
-  db_connect("127.0.0.1", 6379, "local_scheduler", "", -1, &conn);
-  db_attach(&conn, loop);
+  db_handle *db = db_connect("127.0.0.1", 6379, "local_scheduler", "", -1);
+  db_attach(db, loop);
 
   task_spec *task = example_task();
-  task_queue_submit_task(&conn, globally_unique_id(), task);
+  task_queue_submit_task(db, globally_unique_id(), task);
   event_loop_add_timer(loop, 100, timeout_handler, NULL);
   event_loop_run(loop);
 
   free_task_spec(task);
-  db_disconnect(&conn);
+  db_disconnect(db);
   event_loop_destroy(loop);
   PASS();
 }

@@ -31,12 +31,12 @@
     }                                                      \
   } while (0);
 
-void db_connect(const char *address,
-                int port,
-                const char *client_type,
-                const char *client_addr,
-                int client_port,
-                db_conn *db) {
+db_handle *db_connect(const char *address,
+                      int port,
+                      const char *client_type,
+                      const char *client_addr,
+                      int client_port) {
+  db_handle *db = malloc(sizeof(db_handle));
   /* Sync connection for initial handshake */
   redisReply *reply;
   long long num_clients;
@@ -75,9 +75,10 @@ void db_connect(const char *address,
   CHECK_REDIS_CONNECT(redisAsyncContext, db->context,
                       "could not connect to redis %s:%d", address, port);
   db->context->data = (void *) db;
+  return db;
 }
 
-void db_disconnect(db_conn *db) {
+void db_disconnect(db_handle *db) {
   redisFree(db->sync_context);
   redisAsyncFree(db->context);
   service_cache_entry *e, *tmp;
@@ -87,13 +88,14 @@ void db_disconnect(db_conn *db) {
     free(e);
   }
   free(db->client_type);
+  free(db);
 }
 
-void db_attach(db_conn *db, event_loop *loop) {
+void db_attach(db_handle *db, event_loop *loop) {
   redisAeAttach(loop, db->context);
 }
 
-void object_table_add(db_conn *db, unique_id object_id) {
+void object_table_add(db_handle *db, unique_id object_id) {
   static char hex_object_id[2 * UNIQUE_ID_SIZE + 1];
   sha1_to_hex(&object_id.id[0], &hex_object_id[0]);
   redisAsyncCommand(db->context, NULL, NULL, "SADD obj:%s %d",
@@ -104,7 +106,7 @@ void object_table_add(db_conn *db, unique_id object_id) {
 }
 
 void object_table_get_entry(redisAsyncContext *c, void *r, void *privdata) {
-  db_conn *db = c->data;
+  db_handle *db = c->data;
   lookup_callback_data *cb_data = privdata;
   redisReply *reply = r;
   if (reply == NULL)
@@ -143,7 +145,7 @@ void object_table_get_entry(redisAsyncContext *c, void *r, void *privdata) {
   free(result);
 }
 
-void object_table_lookup(db_conn *db,
+void object_table_lookup(db_handle *db,
                          object_id object_id,
                          lookup_callback callback) {
   static char hex_object_id[2 * UNIQUE_ID_SIZE + 1];
@@ -158,7 +160,7 @@ void object_table_lookup(db_conn *db,
   }
 }
 
-void task_queue_submit_task(db_conn *db, task_iid task_iid, task_spec *task) {
+void task_queue_submit_task(db_handle *db, task_iid task_iid, task_spec *task) {
   /* For converting an id to hex, which has double the number
    * of bytes compared to the id (+ 1 byte for '\0'). */
   static char hex[2 * UNIQUE_ID_SIZE + 1];

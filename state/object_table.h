@@ -10,12 +10,14 @@ typedef void (*lookup_callback)(object_id object_id,
 
 /* Register a new object with the directory. */
 /* TODO(pcm): Retry, print for each attempt. */
-void object_table_add(db_conn *db, object_id object_id);
+void object_table_add(db_handle *db, object_id object_id);
 
 /* Remove object from the directory. */
-void object_table_remove(db_conn *db, object_id object_id, const char *manager);
+void object_table_remove(db_handle *db,
+                         object_id object_id,
+                         const char *manager);
 
 /* Look up entry from the directory */
-void object_table_lookup(db_conn *db,
+void object_table_lookup(db_handle *db,
                          object_id object_id,
                          lookup_callback callback);

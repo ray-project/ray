@@ -17,7 +17,7 @@ struct ray_logger_impl {
   int log_level;
   /* Whether or not we have a direct connection to Redis. */
   int is_direct;
-  /* Either a db_conn or a socket to a process with a db_conn,
+  /* Either a db_handle or a socket to a process with a db_handle,
    * depending on the is_direct flag. */
   void *conn;
 };
@@ -57,7 +57,7 @@ void ray_log(ray_logger *logger,
   UT_string *origin_id;
   utstring_new(origin_id);
   if (logger->is_direct) {
-    db_conn *db = (db_conn *) logger->conn;
+    db_handle *db = (db_handle *) logger->conn;
     utstring_printf(origin_id, "%ld:%s", db->client_id, "");
     redisAsyncCommand(db->context, NULL, NULL, log_fmt,
                       utstring_body(timestamp), logger->client_type,

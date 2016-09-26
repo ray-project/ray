@@ -17,7 +17,7 @@ typedef struct {
   UT_hash_handle hh;
 } service_cache_entry;
 
-struct db_conn_impl {
+struct db_handle_impl {
   /* String that identifies this client type. */
   char *client_type;
   /* Unique ID for this client within the type. */

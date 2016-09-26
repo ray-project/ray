@@ -68,10 +68,10 @@ TEST redis_socket_test(void) {
 }
 
 void redis_read_callback(event_loop *loop, int fd, void *context, int events) {
-  db_conn *conn = context;
+  db_handle *db = context;
   char *cmd = read_string(fd);
-  redisAsyncCommand(conn->context, async_redis_socket_test_callback, NULL, cmd,
-                    conn->client_id, 0);
+  redisAsyncCommand(db->context, async_redis_socket_test_callback, NULL, cmd,
+                    db->client_id, 0);
   free(cmd);
 }
 
@@ -102,9 +102,8 @@ TEST async_redis_socket_test(void) {
   utarray_push_back(connections, &socket_fd);
 
   /* Start connection to Redis. */
-  db_conn conn;
-  db_connect("127.0.0.1", 6379, "", "", 0, &conn);
-  db_attach(&conn, loop);
+  db_handle *db = db_connect("127.0.0.1", 6379, "", "", 0);
+  db_attach(db, loop);
 
   /* Send a command to the Redis process. */
   int client_fd = connect_ipc_sock(socket_pathname);
@@ -113,15 +112,15 @@ TEST async_redis_socket_test(void) {
   write_formatted_string(client_fd, test_set_format, test_key, test_value);
 
   event_loop_add_file(loop, client_fd, EVENT_LOOP_READ, redis_read_callback,
-                      &conn);
+                      db);
   event_loop_add_file(loop, socket_fd, EVENT_LOOP_READ, redis_accept_callback,
-                      &conn);
+                      db);
   event_loop_add_timer(loop, 100, timeout_handler, NULL);
   event_loop_run(loop);
 
   CHECK(async_redis_socket_test_callback_called);
 
-  db_disconnect(&conn);
+  db_disconnect(db);
   event_loop_destroy(loop);
   for (int *p = (int *) utarray_front(connections); p != NULL;
        p = (int *) utarray_next(connections, p)) {
@@ -148,7 +147,7 @@ void logging_read_callback(event_loop *loop,
                            int fd,
                            void *context,
                            int events) {
-  db_conn *conn = context;
+  db_handle *conn = context;
   char *cmd = read_string(fd);
   redisAsyncCommand(conn->context, logging_test_callback, NULL, cmd,
                     conn->client_id, 0);
@@ -177,9 +176,8 @@ TEST logging_test(void) {
   utarray_push_back(connections, &socket_fd);
 
   /* Start connection to Redis. */
-  db_conn conn;
-  db_connect("127.0.0.1", 6379, "", "", 0, &conn);
-  db_attach(&conn, loop);
+  db_handle *conn = db_connect("127.0.0.1", 6379, "", "", 0);
+  db_attach(conn, loop);
 
   /* Send a command to the Redis process. */
   int client_fd = connect_ipc_sock(socket_pathname);
@@ -189,16 +187,16 @@ TEST logging_test(void) {
   ray_log(logger, RAY_INFO, "TEST", "Message");
 
   event_loop_add_file(loop, socket_fd, EVENT_LOOP_READ, logging_accept_callback,
-                      &conn);
+                      conn);
   event_loop_add_file(loop, client_fd, EVENT_LOOP_READ, logging_read_callback,
-                      &conn);
+                      conn);
   event_loop_add_timer(loop, 100, timeout_handler, NULL);
   event_loop_run(loop);
 
   CHECK(logging_test_callback_called);
 
   free_ray_logger(logger);
-  db_disconnect(&conn);
+  db_disconnect(conn);
   event_loop_destroy(loop);
   for (int *p = (int *) utarray_front(connections); p != NULL;
        p = (int *) utarray_next(connections, p)) {

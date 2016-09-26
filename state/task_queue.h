@@ -21,13 +21,13 @@ typedef unique_id node_id;
 typedef void (*task_queue_callback)(task_iid *task_iid, task_spec *task);
 
 /* Submit task to the global scheduler. */
-void task_queue_submit_task(db_conn *db, task_iid task_iid, task_spec *task);
+void task_queue_submit_task(db_handle *db, task_iid task_iid, task_spec *task);
 
 /* Submit task to a local scheduler based on the decision made by the global
  * scheduler. */
-void task_queue_schedule_task(db_conn *db, task_iid task_iid, node_id node);
+void task_queue_schedule_task(db_handle *db, task_iid task_iid, node_id node);
 
 /* Subscribe to task queue. */
-void task_queue_register_callback(db_conn *db, task_queue_callback callback);
+void task_queue_register_callback(db_handle *db, task_queue_callback callback);
 
 #endif
