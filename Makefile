@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -g -Wall --std=c99 -D_XOPEN_SOURCE=500 -D_POSIX_C_SOURCE=200809L -fPIC -I. -Ithirdparty -Ithirdparty/ae
 BUILD = build
 
-all: $(BUILD)/libcommon.a
+all: hiredis $(BUILD)/libcommon.a
 
 $(BUILD)/libcommon.a: event_loop.o common.o task.o io.o state/redis.o thirdparty/ae/ae.o
 	ar rcs $@ $^
