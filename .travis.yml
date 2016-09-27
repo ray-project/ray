@@ -31,6 +31,5 @@ matrix:
         - .travis/check-git-clang-format-output.sh
 
 install:
-  - make
 
 script:
