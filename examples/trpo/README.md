@@ -21,11 +21,11 @@ Install these dependencies:
     pip install tabulate
     ```
 
-Then run
+Run this code to start an experiment.
 ```
 git clone https://github.com/joschu/modular_rl
 cd modular_rl
-./run_pg.py --env Pong-ram-v0 --agent modular_rl.agentzoo.TrpoAgent --video 0 --n_iter 500 --filter 0
+export KERAS_BACKEND=theano && ./run_pg.py --env Pong-ram-v0 --agent modular_rl.agentzoo.TrpoAgent --video 0 --n_iter 500 --filter 0
 ```
 
 **Note: On some versions of Mac OS X, this produces NaNs.**
@@ -70,7 +70,7 @@ git checkout remote
 
 You can run the code using
 ```
-./run_pg.py --env Pong-ram-v0 --agent modular_rl.agentzoo.TrpoAgent --video 0 --n_iter 500 --filter 0 --remote 1 --n_rollouts 8
+export KERAS_BACKEND=theano && ./run_pg.py --env Pong-ram-v0 --agent modular_rl.agentzoo.TrpoAgent --video 0 --n_iter 500 --filter 1 --remote 1 --n_rollouts 8
 ```
 
 There are few [changes](https://github.com/joschu/modular_rl/compare/master...pcmoritz:23d3ebc).
