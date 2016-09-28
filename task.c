@@ -148,19 +148,6 @@ void free_task_spec(task_spec *spec) {
   free(spec);
 }
 
-void write_task(int fd, task_spec *spec) {
-  write_bytes(fd, (uint8_t *) spec, task_size(spec));
-}
-
-task_spec *read_task(int fd) {
-  uint8_t *bytes;
-  int64_t length;
-  read_bytes(fd, &bytes, &length);
-  task_spec *spec = (task_spec *) bytes;
-  CHECK(task_size(spec) == length);
-  return spec;
-}
-
 void print_task(task_spec *spec, UT_string *output) {
   /* For converting an id to hex, which has double the number
    * of bytes compared to the id (+ 1 byte for '\0'). */

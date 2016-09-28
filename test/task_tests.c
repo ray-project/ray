@@ -7,6 +7,7 @@
 #include "common.h"
 #include "test/example_task.h"
 #include "task.h"
+#include "io.h"
 
 SUITE(task_tests);
 
@@ -48,8 +49,13 @@ TEST send_task(void) {
   *task_return(task, 1) = globally_unique_id();
   int fd[2];
   socketpair(AF_UNIX, SOCK_STREAM, 0, fd);
-  write_task(fd[0], task);
-  task_spec *result = read_task(fd[1]);
+  write_message(fd[0], SUBMIT_TASK, task_size(task), task);
+  int64_t type;
+  int64_t length;
+  uint8_t *message;
+  read_message(fd[1], &type, &length, &message);
+  task_spec *result = (task_spec *) message;
+  ASSERT(type == SUBMIT_TASK);
   ASSERT(memcmp(task, result, task_size(task)) == 0);
   ASSERT(memcmp(task, result, task_size(result)) == 0);
   free(task);

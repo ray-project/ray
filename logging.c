@@ -68,10 +68,10 @@ void ray_log(ray_logger *logger,
      * ID to be filled in by someone else. */
     utstring_printf(origin_id, "%s:%s", "%ld", "%ld");
     int *socket_fd = (int *) logger->conn;
-    write_formatted_string(*socket_fd, log_fmt, utstring_body(timestamp),
-                           logger->client_type, utstring_body(origin_id),
-                           log_levels[log_level], event_type, message,
-                           utstring_body(timestamp));
+    write_formatted_log_message(*socket_fd, log_fmt, utstring_body(timestamp),
+                                logger->client_type, utstring_body(origin_id),
+                                log_levels[log_level], event_type, message,
+                                utstring_body(timestamp));
   }
   utstring_free(origin_id);
   utstring_free(timestamp);

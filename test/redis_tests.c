@@ -45,10 +45,10 @@ TEST redis_socket_test(void) {
 
   int client_fd = connect_ipc_sock(socket_pathname);
   ASSERT(client_fd >= 0);
-  write_formatted_string(client_fd, test_set_format, test_key, test_value);
+  write_formatted_log_message(client_fd, test_set_format, test_key, test_value);
 
   int server_fd = accept_client(socket_fd);
-  char *cmd = read_string(server_fd);
+  char *cmd = read_log_message(server_fd);
   close(client_fd);
   close(server_fd);
   close(socket_fd);
@@ -69,7 +69,7 @@ TEST redis_socket_test(void) {
 
 void redis_read_callback(event_loop *loop, int fd, void *context, int events) {
   db_handle *db = context;
-  char *cmd = read_string(fd);
+  char *cmd = read_log_message(fd);
   redisAsyncCommand(db->context, async_redis_socket_test_callback, NULL, cmd,
                     db->client_id, 0);
   free(cmd);
@@ -109,7 +109,7 @@ TEST async_redis_socket_test(void) {
   int client_fd = connect_ipc_sock(socket_pathname);
   ASSERT(client_fd >= 0);
   utarray_push_back(connections, &client_fd);
-  write_formatted_string(client_fd, test_set_format, test_key, test_value);
+  write_formatted_log_message(client_fd, test_set_format, test_key, test_value);
 
   event_loop_add_file(loop, client_fd, EVENT_LOOP_READ, redis_read_callback,
                       db);
@@ -148,7 +148,7 @@ void logging_read_callback(event_loop *loop,
                            void *context,
                            int events) {
   db_handle *conn = context;
-  char *cmd = read_string(fd);
+  char *cmd = read_log_message(fd);
   redisAsyncCommand(conn->context, logging_test_callback, NULL, cmd,
                     conn->client_id, 0);
   free(cmd);
