@@ -43,51 +43,58 @@ typedef struct {
   int64_t construct_duration;
 } plasma_object_info;
 
-/* Represents an object id hash, can hold a full SHA1 hash */
+/** Represents an object ID hash, can hold a full SHA1 hash. */
 typedef struct { unsigned char id[20]; } plasma_id;
 
 enum plasma_request_type {
-  /* Create a new object. */
+  /** Create a new object. */
   PLASMA_CREATE,
-  /* Get an object. */
+  /** Get an object. */
   PLASMA_GET,
-  /* Check if an object is present. */
+  /** Check if an object is present. */
   PLASMA_CONTAINS,
-  /* Seal an object. */
+  /** Seal an object. */
   PLASMA_SEAL,
-  /* Delete an object. */
+  /** Delete an object. */
   PLASMA_DELETE,
-  /* Request transfer to another store. */
+  /** Request transfer to another store. */
   PLASMA_TRANSFER,
-  /* Header for sending data. */
+  /** Header for sending data. */
   PLASMA_DATA,
 };
 
 typedef struct {
+  /** The type of the request. */
   int type;
+  /** The ID of the object that the request is about. */
   plasma_id object_id;
-  /* The size of the data. */
+  /** The size of the object's data. */
   int64_t data_size;
-  /* The size of the metadata. */
+  /** The size of the object's metadata. */
   int64_t metadata_size;
+  /** In a transfer request, this is the IP address of the Plasma Manager to
+   *  transfer the object to. */
   uint8_t addr[4];
+  /** In a transfer request, this is the port of the Plasma Manager to transfer
+   *  the object to. */
   int port;
 } plasma_request;
 
 typedef struct {
-  /* The offset in the memory mapped file of the data. */
+  /** The offset in bytes in the memory mapped file of the data. */
   ptrdiff_t data_offset;
-  /* The offset in the memory mapped file of the metadata. */
+  /** The offset in bytes in the memory mapped file of the metadata. */
   ptrdiff_t metadata_offset;
-  /* The size of the memory mapped file. */
+  /** The size in bytes of the memory mapped file. */
   int64_t map_size;
-  /* The size of the data. */
+  /** The size in bytesof the data. */
   int64_t data_size;
-  /* The size of the metadata. */
+  /** The size in bytes of the metadata. */
   int64_t metadata_size;
-  /* 1 if the object is present and 0 otherwise. Used for plasma_contains. */
+  /** This is used only to respond to requests of type PLASMA_CONTAINS. It is 1
+   *  if the object is present and 0 otherwise. Used for plasma_contains. */
   int has_object;
-  /* Numerical value of the fd of the memory mapped file in the store. */
+  /** The file descriptor of the memory mapped file in the store. */
   int store_fd_val;
 } plasma_reply;
 
@@ -101,25 +108,41 @@ typedef struct {
 } plasma_buffer;
 
 typedef struct {
-  /* Key that uniquely identifies the  memory mapped file. In practice, we
-   * take the numerical value of the file descriptor in the object store. */
+  /** Key that uniquely identifies the  memory mapped file. In practice, we
+   *  take the numerical value of the file descriptor in the object store. */
   int key;
-  /* The result of mmap for this file descriptor. */
+  /** The result of mmap for this file descriptor. */
   uint8_t *pointer;
-  /* Handle for the uthash table. */
+  /** Handle for the uthash table. */
   UT_hash_handle hh;
 } client_mmap_table_entry;
 
-/* A client connection with a plasma store */
+/** Information about a connection between a Plasma Client and Plasma Store.
+ *  This is used to avoid mapping the same files into memory multiple times. */
 typedef struct {
-  /* File descriptor of the Unix domain socket that connects to the store. */
+  /** File descriptor of the Unix domain socket that connects to the store. */
   int conn;
-  /* Table of dlmalloc buffer files that have been memory mapped so far. */
+  /** Table of dlmalloc buffer files that have been memory mapped so far. */
   client_mmap_table_entry *mmap_table;
 } plasma_store_conn;
 
+/**
+ * This is used by the Plasma Client to send a request to the Plasma Store or
+ * the Plasma Manager.
+ *
+ * @param conn The file descriptor to use to send the request.
+ * @param req The address of the request to send.
+ * @return Void.
+ */
 void plasma_send_request(int conn, plasma_request *req);
 
+/**
+ * This is used by the Plasma Store to send a reply to the Plasma Client.
+ *
+ * @param conn The file descriptor to use to send the reply.
+ * @param req The address of the reply to send.
+ * @return Void.
+ */
 void plasma_send_reply(int conn, plasma_reply *req);
 
 #endif
