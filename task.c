@@ -8,6 +8,8 @@
 #include "common.h"
 #include "io.h"
 
+/* TASK SPECIFICATIONS */
+
 /* Tasks are stored in a consecutive chunk of memory, the first
  * sizeof(task_spec) bytes are arranged according to the struct
  * task_spec. Then there is an array of task_args of length
@@ -168,65 +170,49 @@ void print_task(task_spec *spec, UT_string *output) {
   }
 }
 
-UT_icd unique_id_icd = {sizeof(unique_id), NULL, NULL, NULL};
+/* TASK INSTANCES */
 
-task_spec *parse_task(char *task_string, int64_t task_length) {
-  /* We make one pass through task_string to store all the argument ids
-   * in "args" and all the return ids in "returns". */
-  UT_array *args;
-  utarray_new(args, &unique_id_icd);
-  UT_array *returns;
-  utarray_new(returns, &unique_id_icd);
-  function_id function_id;
-  char *cursor = strtok(task_string, " ");
-  int index = 0;
-  while (cursor != NULL) {
-    /* This will be equal to "args" or "returns" depending on whether we
-     * are processing an argument id or a return id. */
-    UT_array *target = NULL;
-    if (strncmp("fun", cursor, 3) == 0) {
-      /* Parse function id. */
-      CHECK(cursor + 2 * UNIQUE_ID_SIZE + 1 <= task_string + task_length);
-      cursor = strtok(NULL, " ");
-      hex_to_sha1(cursor, &function_id.id[0]);
-      cursor = strtok(NULL, " ");
-      CHECK(cursor);
-      continue;
-    } else if (strncmp("id:", cursor, 3) == 0) {
-      /* Parse pass by reference argument. */
-      sscanf(cursor, "id:%d", &index);
-      target = args;
-    } else if (strncmp("val:", cursor, 4) == 0) {
-      /* Parse pass by value argument. */
-      sscanf(cursor, "val:%d", &index);
-      CHECK(0); /* Not implemented yet */
-    } else if (strncmp("ret:", cursor, 4) == 0) {
-      /* Parse return object reference. */
-      sscanf(cursor, "ret:%d", &index);
-      target = returns;
-    }
-    cursor = strtok(NULL, " ");
-    CHECK(cursor);
-    if (index >= utarray_len(target)) {
-      utarray_resize(target, index + 1);
-    }
-    object_id *id = (object_id *) utarray_eltptr(target, index);
-    hex_to_sha1(cursor, &id->id[0]);
-    cursor = strtok(NULL, " ");
-  }
-  /* TODO(pcm): Implement pass by value. */
-  /* Now assemble the task specification. */
-  task_spec *spec =
-      alloc_task_spec(function_id, utarray_len(args), utarray_len(returns), 0);
-  for (int i = 0; i < utarray_len(args); ++i) {
-    object_id *id = (object_id *) utarray_eltptr(args, i);
-    task_args_add_ref(spec, *id);
-  }
-  for (int i = 0; i < utarray_len(returns); ++i) {
-    object_id *id = (object_id *) utarray_eltptr(returns, i);
-    *task_return(spec, i) = *id;
-  }
-  utarray_free(args);
-  utarray_free(returns);
-  return spec;
+struct task_instance_impl {
+  task_iid iid;
+  int32_t state;
+  node_id node;
+  task_spec spec;
+};
+
+task_instance *make_task_instance(task_iid task_iid,
+                                  task_spec *spec,
+                                  int32_t state,
+                                  node_id node) {
+  int64_t size = sizeof(task_instance) - sizeof(task_spec) + task_size(spec);
+  task_instance *result = malloc(size);
+  memset(result, 0, size);
+  result->iid = task_iid;
+  result->state = state;
+  result->node = node;
+  memcpy(&result->spec, spec, task_size(spec));
+  return result;
+}
+
+int64_t task_instance_size(task_instance *instance) {
+  return sizeof(task_instance) - sizeof(task_spec) + task_size(&instance->spec);
+}
+
+task_iid *task_instance_id(task_instance *instance) {
+  return &instance->iid;
+}
+
+int32_t *task_instance_state(task_instance *instance) {
+  return &instance->state;
+}
+
+node_id *task_instance_node(task_instance *instance) {
+  return &instance->node;
+}
+
+task_spec *task_instance_task_spec(task_instance *instance) {
+  return &instance->spec;
+}
+
+void task_instance_free(task_instance *instance) {
+  free(instance);
 }

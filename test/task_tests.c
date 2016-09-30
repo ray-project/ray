@@ -63,28 +63,9 @@ TEST send_task(void) {
   PASS();
 }
 
-TEST print_and_parse_task(void) {
-  task_spec *task = example_task();
-
-  UT_string *output;
-  utstring_new(output);
-  print_task(task, output);
-  task_spec *result = parse_task(utstring_body(output), utstring_len(output));
-  utstring_free(output);
-
-  ASSERT_EQ(task_size(task), task_size(result));
-  ASSERT(memcmp(task, result, task_size(task)) == 0);
-
-  free_task_spec(task);
-  free_task_spec(result);
-
-  PASS();
-}
-
 SUITE(task_tests) {
   RUN_TEST(task_test);
   RUN_TEST(send_task);
-  RUN_TEST(print_and_parse_task);
 }
 
 GREATEST_MAIN_DEFS();

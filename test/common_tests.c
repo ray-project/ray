@@ -6,11 +6,8 @@ SUITE(common_tests);
 
 TEST sha1_test(void) {
   static char hex[2 * UNIQUE_ID_SIZE + 1];
-  static unsigned char id[UNIQUE_ID_SIZE];
   unique_id uid = globally_unique_id();
   sha1_to_hex(&uid.id[0], &hex[0]);
-  hex_to_sha1(&hex[0], &id[0]);
-  ASSERT(memcmp(&uid.id[0], &id[0], 20) == 0);
   PASS();
 }
 

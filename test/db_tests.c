@@ -6,7 +6,7 @@
 #include "test/example_task.h"
 #include "state/db.h"
 #include "state/object_table.h"
-#include "state/task_queue.h"
+#include "state/task_log.h"
 #include "state/redis.h"
 #include "task.h"
 
@@ -72,19 +72,61 @@ TEST object_table_lookup_test(void) {
   PASS();
 }
 
-TEST task_queue_test(void) {
+void task_log_test_callback(task_instance *instance, void *userdata) {
+  task_instance *other = userdata;
+  CHECK(*task_instance_state(instance) == TASK_SCHEDULED);
+  CHECK(task_instance_size(instance) == task_instance_size(other));
+  CHECK(memcmp(instance, other, task_instance_size(instance)) == 0);
+}
+
+TEST task_log_test(void) {
   event_loop *loop = event_loop_create();
   db_handle *db = db_connect("127.0.0.1", 6379, "local_scheduler", "", -1);
   db_attach(db, loop);
-
+  node_id node = globally_unique_id();
   task_spec *task = example_task();
-  task_queue_submit_task(db, globally_unique_id(), task);
+  task_instance *instance =
+      make_task_instance(globally_unique_id(), task, TASK_SCHEDULED, node);
+  task_log_register_callback(db, task_log_test_callback, node, TASK_SCHEDULED,
+                             instance);
+  task_log_add_task(db, instance);
   event_loop_add_timer(loop, 100, timeout_handler, NULL);
   event_loop_run(loop);
-
+  task_instance_free(instance);
   free_task_spec(task);
   db_disconnect(db);
   event_loop_destroy(loop);
+  PASS();
+}
+
+int num_test_callback_called = 0;
+
+void task_log_all_test_callback(task_instance *instance, void *userdata) {
+  num_test_callback_called += 1;
+}
+
+TEST task_log_all_test(void) {
+  event_loop *loop = event_loop_create();
+  db_handle *db = db_connect("127.0.0.1", 6379, "local_scheduler", "", -1);
+  db_attach(db, loop);
+  task_spec *task = example_task();
+  /* Schedule two tasks on different nodes. */
+  task_instance *instance1 = make_task_instance(
+      globally_unique_id(), task, TASK_SCHEDULED, globally_unique_id());
+  task_instance *instance2 = make_task_instance(
+      globally_unique_id(), task, TASK_SCHEDULED, globally_unique_id());
+  task_log_register_callback(db, task_log_all_test_callback, NIL_ID,
+                             TASK_SCHEDULED, NULL);
+  task_log_add_task(db, instance1);
+  task_log_add_task(db, instance2);
+  event_loop_add_timer(loop, 100, timeout_handler, NULL);
+  event_loop_run(loop);
+  task_instance_free(instance2);
+  task_instance_free(instance1);
+  free_task_spec(task);
+  db_disconnect(db);
+  event_loop_destroy(loop);
+  ASSERT(num_test_callback_called == 2);
   PASS();
 }
 
@@ -92,7 +134,8 @@ SUITE(db_tests) {
   redisContext *context = redisConnect("127.0.0.1", 6379);
   freeReplyObject(redisCommand(context, "FLUSHALL"));
   RUN_REDIS_TEST(context, object_table_lookup_test);
-  RUN_REDIS_TEST(context, task_queue_test);
+  RUN_REDIS_TEST(context, task_log_test);
+  RUN_REDIS_TEST(context, task_log_all_test);
   redisFree(context);
 }
 
