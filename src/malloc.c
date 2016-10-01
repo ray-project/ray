@@ -12,13 +12,15 @@
 void *fake_mmap(size_t);
 int fake_munmap(void *, size_t);
 
+size_t dlmalloc_granularity = ((size_t) 128U * 1024U);
+
 #define MMAP(s) fake_mmap(s)
 #define MUNMAP(a, s) fake_munmap(a, s)
 #define DIRECT_MMAP(s) fake_mmap(s)
 #define DIRECT_MUNMAP(a, s) fake_munmap(a, s)
 #define USE_DL_PREFIX
 #define HAVE_MORECORE 0
-#define DEFAULT_GRANULARITY ((size_t) 1U << 25)
+#define DEFAULT_GRANULARITY (dlmalloc_granularity)
 
 #include "thirdparty/dlmalloc.c"
 
@@ -41,6 +43,8 @@ struct mmap_record {
 /* TODO(rshin): Don't have two hash tables. */
 struct mmap_record *records_by_fd = NULL;
 struct mmap_record *records_by_pointer = NULL;
+
+const int GRANULARITY_MULTIPLIER = 2;
 
 /* Create a buffer. This is creating a temporary file and then
  * immediately unlinking it so we do not leave traces in the system. */
@@ -78,6 +82,10 @@ void *fake_mmap(size_t size) {
   if (pointer == MAP_FAILED) {
     return pointer;
   }
+
+  /* Update dlmalloc's allocation granularity for future calls */
+  dlmalloc_granularity *= GRANULARITY_MULTIPLIER;
+  dlmallopt(M_GRANULARITY, dlmalloc_granularity);
 
   struct mmap_record *record = malloc(sizeof(struct mmap_record));
   record->fd = fd;
