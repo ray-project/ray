@@ -30,8 +30,12 @@ class TestPhotonClient(unittest.TestCase):
     self.p2.kill()
 
   def test_create(self):
-    l = [photon.make_id(20 * "a"), photon.make_id(20 * "b"), photon.make_id(20 * "c")]
-    self.photon_client.submit(20 * "a", l)
+    l = [20 * "a", 20 * "b", 20 * "c"]
+    r = [20 * "e", 20 * "f"]
+    # Submit a task.
+    self.photon_client.submit(20 * "d", l, r)
+    # Get the task.
+    task = self.photon_client.get_task()
 
 if __name__ == "__main__":
   unittest.main(verbosity=2)

@@ -4,11 +4,11 @@
 enum photon_message_type {
   /** Notify the local scheduler that a task has finished. */
   TASK_DONE = 64,
-};
-
-struct photon_conn_impl {
-  /* File descriptor of the Unix domain socket that connects to photon. */
-  int conn;
+  /** Get a new task from the local scheduler. */
+  GET_TASK,
+  /** This is sent from the local scheduler to a worker to tell the worker to
+   *  execute a task. */
+  EXECUTE_TASK,
 };
 
 #endif
