@@ -12,16 +12,35 @@
 #include <netinet/in.h>
 #include <netdb.h>
 
+#include "common.h"
+#include "io.h"
 #include "plasma.h"
 #include "plasma_client.h"
 #include "fling.h"
+#include "uthash.h"
 
-void plasma_send_request(int fd, plasma_request *req) {
+typedef struct {
+  /** Key that uniquely identifies the  memory mapped file. In practice, we
+   *  take the numerical value of the file descriptor in the object store. */
+  int key;
+  /** The result of mmap for this file descriptor. */
+  uint8_t *pointer;
+  /** Handle for the uthash table. */
+  UT_hash_handle hh;
+} client_mmap_table_entry;
+
+/** Information about a connection between a Plasma Client and Plasma Store.
+ *  This is used to avoid mapping the same files into memory multiple times. */
+struct plasma_store_conn {
+  /** File descriptor of the Unix domain socket that connects to the store. */
+  int conn;
+  /** Table of dlmalloc buffer files that have been memory mapped so far. */
+  client_mmap_table_entry *mmap_table;
+};
+
+void plasma_send_request(int fd, int type, plasma_request *req) {
   int req_count = sizeof(plasma_request);
-  if (write(fd, req, req_count) != req_count) {
-    LOG_ERR("write error, fd = %d", fd);
-    exit(-1);
-  }
+  write_message(fd, type, req_count, (uint8_t *) req);
 }
 
 /* If the file descriptor fd has been mmapped in this client process before,
@@ -53,97 +72,93 @@ uint8_t *lookup_or_mmap(plasma_store_conn *conn,
 }
 
 void plasma_create(plasma_store_conn *conn,
-                   plasma_id object_id,
+                   object_id object_id,
                    int64_t data_size,
                    uint8_t *metadata,
                    int64_t metadata_size,
                    uint8_t **data) {
-  LOG_INFO(
-      "called plasma_create on conn %d with size %d and metadata size "
-      "%d" PRId64,
-      conn, size, metadata_size);
-  plasma_request req = {.type = PLASMA_CREATE,
-                        .object_id = object_id,
+  LOG_DEBUG("called plasma_create on conn %d with size %" PRId64
+            " and metadata size "
+            "%" PRId64,
+            conn->conn, data_size, metadata_size);
+  plasma_request req = {.object_id = object_id,
                         .data_size = data_size,
                         .metadata_size = metadata_size};
-  plasma_send_request(conn->conn, &req);
+  plasma_send_request(conn->conn, PLASMA_CREATE, &req);
   plasma_reply reply;
   int fd = recv_fd(conn->conn, (char *) &reply, sizeof(plasma_reply));
-  assert(reply.data_size == data_size);
-  assert(reply.metadata_size == metadata_size);
+  plasma_object *object = &reply.object;
+  CHECK(object->data_size == data_size);
+  CHECK(object->metadata_size == metadata_size);
   /* The metadata should come right after the data. */
-  assert(reply.metadata_offset == reply.data_offset + data_size);
-  *data = lookup_or_mmap(conn, fd, reply.store_fd_val, reply.map_size) +
-          reply.data_offset;
+  CHECK(object->metadata_offset == object->data_offset + data_size);
+  *data = lookup_or_mmap(conn, fd, object->handle.store_fd,
+                         object->handle.mmap_size) +
+          object->data_offset;
   /* If plasma_create is being called from a transfer, then we will not copy the
    * metadata here. The metadata will be written along with the data streamed
    * from the transfer. */
   if (metadata != NULL) {
     /* Copy the metadata to the buffer. */
-    memcpy(*data + reply.data_size, metadata, metadata_size);
+    memcpy(*data + object->data_size, metadata, metadata_size);
   }
 }
 
 /* This method is used to get both the data and the metadata. */
 void plasma_get(plasma_store_conn *conn,
-                plasma_id object_id,
+                object_id object_id,
                 int64_t *size,
                 uint8_t **data,
                 int64_t *metadata_size,
                 uint8_t **metadata) {
-  plasma_request req = {.type = PLASMA_GET, .object_id = object_id};
-  plasma_send_request(conn->conn, &req);
+  plasma_request req = {.object_id = object_id};
+  plasma_send_request(conn->conn, PLASMA_GET, &req);
   plasma_reply reply;
   int fd = recv_fd(conn->conn, (char *) &reply, sizeof(plasma_reply));
-  *data = lookup_or_mmap(conn, fd, reply.store_fd_val, reply.map_size) +
-          reply.data_offset;
-  *size = reply.data_size;
+  plasma_object *object = &reply.object;
+  *data = lookup_or_mmap(conn, fd, object->handle.store_fd,
+                         object->handle.mmap_size) +
+          object->data_offset;
+  *size = object->data_size;
   /* If requested, return the metadata as well. */
   if (metadata != NULL) {
-    *metadata = *data + reply.data_size;
-    *metadata_size = reply.metadata_size;
+    *metadata = *data + object->data_size;
+    *metadata_size = object->metadata_size;
   }
 }
 
 /* This method is used to query whether the plasma store contains an object. */
 void plasma_contains(plasma_store_conn *conn,
-                     plasma_id object_id,
+                     object_id object_id,
                      int *has_object) {
-  plasma_request req = {.type = PLASMA_CONTAINS, .object_id = object_id};
-  plasma_send_request(conn->conn, &req);
+  plasma_request req = {.object_id = object_id};
+  plasma_send_request(conn->conn, PLASMA_CONTAINS, &req);
   plasma_reply reply;
   int r = read(conn->conn, &reply, sizeof(plasma_reply));
-  PLASMA_CHECK(r != -1, "read error");
-  PLASMA_CHECK(r != 0, "connection disconnected");
+  CHECKM(r != -1, "read error");
+  CHECKM(r != 0, "connection disconnected");
   *has_object = reply.has_object;
 }
 
-void plasma_seal(plasma_store_conn *conn, plasma_id object_id) {
-  plasma_request req = {.type = PLASMA_SEAL, .object_id = object_id};
-  plasma_send_request(conn->conn, &req);
+void plasma_seal(plasma_store_conn *conn, object_id object_id) {
+  plasma_request req = {.object_id = object_id};
+  plasma_send_request(conn->conn, PLASMA_SEAL, &req);
 }
 
-void plasma_delete(plasma_store_conn *conn, plasma_id object_id) {
-  plasma_request req = {.type = PLASMA_DELETE, .object_id = object_id};
-  plasma_send_request(conn->conn, &req);
+void plasma_delete(plasma_store_conn *conn, object_id object_id) {
+  plasma_request req = {.object_id = object_id};
+  plasma_send_request(conn->conn, PLASMA_DELETE, &req);
 }
 
 plasma_store_conn *plasma_store_connect(const char *socket_name) {
   assert(socket_name);
-  struct sockaddr_un addr;
-  int fd;
-  if ((fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
-    LOG_ERR("socket error");
-    exit(-1);
-  }
-  memset(&addr, 0, sizeof(addr));
-  addr.sun_family = AF_UNIX;
-  strncpy(addr.sun_path, socket_name, sizeof(addr.sun_path) - 1);
   /* Try to connect to the Plasma store. If unsuccessful, retry several times.
    */
+  int fd = -1;
   int connected_successfully = 0;
   for (int num_attempts = 0; num_attempts < 50; ++num_attempts) {
-    if (connect(fd, (struct sockaddr *) &addr, sizeof(addr)) == 0) {
+    fd = connect_ipc_sock(socket_name);
+    if (fd >= 0) {
       connected_successfully = 1;
       break;
     }
@@ -160,6 +175,11 @@ plasma_store_conn *plasma_store_connect(const char *socket_name) {
   result->conn = fd;
   result->mmap_table = NULL;
   return result;
+}
+
+void plasma_store_disconnect(plasma_store_conn *conn) {
+  close(conn->conn);
+  free(conn);
 }
 
 #define h_addr h_addr_list[0]
@@ -196,14 +216,13 @@ int plasma_manager_connect(const char *ip_addr, int port) {
 void plasma_transfer(int manager,
                      const char *addr,
                      int port,
-                     plasma_id object_id) {
-  plasma_request req = {
-      .type = PLASMA_TRANSFER, .object_id = object_id, .port = port};
+                     object_id object_id) {
+  plasma_request req = {.object_id = object_id, .port = port};
   char *end = NULL;
   for (int i = 0; i < 4; ++i) {
     req.addr[i] = strtol(end ? end : addr, &end, 10);
     /* skip the '.' */
     end += 1;
   }
-  plasma_send_request(manager, &req);
+  plasma_send_request(manager, PLASMA_TRANSFER, &req);
 }

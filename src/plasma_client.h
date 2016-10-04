@@ -1,6 +1,19 @@
 #ifndef PLASMA_CLIENT_H
 #define PLASMA_CLIENT_H
 
+typedef struct plasma_store_conn plasma_store_conn;
+
+/**
+ * This is used by the Plasma Client to send a request to the Plasma Store or
+ * the Plasma Manager.
+ *
+ * @param conn The file descriptor to use to send the request.
+ * @param type The type of request.
+ * @param req The address of the request to send.
+ * @return Void.
+ */
+void plasma_send_request(int conn, int type, plasma_request *req);
+
 /**
  * Connect to the local plasma store UNIX domain socket with path socket_name
  * and return the resulting connection.
@@ -10,6 +23,14 @@
  * @return The object containing the connection state.
  */
 plasma_store_conn *plasma_store_connect(const char *socket_name);
+
+/**
+ * Disconnect from the local plasma store.
+ *
+ * @param conn The connection to the local plasma store.
+ * @return Void.
+ */
+void plasma_store_disconnect(plasma_store_conn *conn);
 
 /**
  * Connect to a possibly remote Plasma Manager.
@@ -36,7 +57,7 @@ int plasma_manager_connect(const char *addr, int port);
  * @return Void.
  */
 void plasma_create(plasma_store_conn *conn,
-                   plasma_id object_id,
+                   object_id object_id,
                    int64_t size,
                    uint8_t *metadata,
                    int64_t metadata_size,
@@ -58,7 +79,7 @@ void plasma_create(plasma_store_conn *conn,
  * @return Void.
  */
 void plasma_get(plasma_store_conn *conn,
-                plasma_id object_id,
+                object_id object_id,
                 int64_t *size,
                 uint8_t **data,
                 int64_t *metadata_size,
@@ -77,7 +98,7 @@ void plasma_get(plasma_store_conn *conn,
  * @return Void.
  */
 void plasma_contains(plasma_store_conn *conn,
-                     plasma_id object_id,
+                     object_id object_id,
                      int *has_object);
 
 /**
@@ -88,7 +109,7 @@ void plasma_contains(plasma_store_conn *conn,
  * @param object_id The ID of the object to seal.
  * @return Void.
  */
-void plasma_seal(plasma_store_conn *conn, plasma_id object_id);
+void plasma_seal(plasma_store_conn *conn, object_id object_id);
 
 /**
  * Delete an object from the object store. This currently assumes that the
@@ -101,6 +122,6 @@ void plasma_seal(plasma_store_conn *conn, plasma_id object_id);
  * @param object_id The ID of the object to delete.
  * @return Void.
  */
-void plasma_delete(plasma_store_conn *conn, plasma_id object_id);
+void plasma_delete(plasma_store_conn *conn, object_id object_id);
 
 #endif

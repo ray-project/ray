@@ -20,197 +20,290 @@
 #include <netinet/in.h>
 #include <netdb.h>
 
+#include "uthash.h"
+#include "utlist.h"
+#include "utstring.h"
+#include "common.h"
+#include "io.h"
 #include "event_loop.h"
 #include "plasma.h"
 #include "plasma_client.h"
 #include "plasma_manager.h"
 
 typedef struct {
-  /* Connection to local plasma store. */
-  plasma_store_conn *conn;
-  /* Event loop. */
-  event_loop *loop;
+  /** Connection to the local plasma store for reading or writing data. */
+  plasma_store_conn *store_conn;
+  /** Hash table of all contexts for active connections to other plasma
+   * managers. These are used for writing data to other plasma stores. */
+  client_connection *manager_connections;
 } plasma_manager_state;
 
-/* Initialize the plasma manager. This function initializes the event loop
- * of the plasma manager, and stores the address 'store_socket_name' of
- * the local plasma store socket. */
-void init_plasma_manager(plasma_manager_state *s,
-                         const char *store_socket_name) {
-  s->loop = malloc(sizeof(event_loop));
-  event_loop_init(s->loop);
-  s->conn = plasma_store_connect(store_socket_name);
-  LOG_INFO("Connected to object store %s", store_socket_name);
-}
+typedef struct plasma_buffer plasma_buffer;
 
-/* Start transfering data to another object store manager. This establishes
- * a connection to the remote manager and sends the data header to the other
- * object manager. */
-void initiate_transfer(plasma_manager_state *s, plasma_request *req) {
+/* Buffer for reading and writing data between plasma managers. */
+struct plasma_buffer {
+  object_id object_id;
   uint8_t *data;
   int64_t data_size;
   uint8_t *metadata;
   int64_t metadata_size;
-  plasma_get(s->conn, req->object_id, &data_size, &data, &metadata_size,
-             &metadata);
-  assert(metadata == data + data_size);
-  plasma_buffer buf = {.object_id = req->object_id,
-                       .data = data, /* We treat this as a pointer to the
-                                        concatenated data and metadata. */
-                       .data_size = data_size,
-                       .metadata_size = metadata_size,
-                       .writable = 0};
-  char ip_addr[32];
-  snprintf(ip_addr, 32, "%d.%d.%d.%d", req->addr[0], req->addr[1], req->addr[2],
-           req->addr[3]);
+  int writable;
+  /* Pointer to the next buffer that we will write to this plasma manager. This
+   * field is only used if we're transferring data to another plasma manager,
+   * not if we are receiving data. */
+  plasma_buffer *next;
+};
 
-  int fd = plasma_manager_connect(&ip_addr[0], req->port);
-  data_connection conn = {.type = DATA_CONNECTION_WRITE,
-                          .store_conn = s->conn->conn,
-                          .buf = buf,
-                          .cursor = 0};
-  event_loop_attach(s->loop, CONNECTION_DATA, &conn, fd, POLLOUT);
-  plasma_request manager_req = {.type = PLASMA_DATA,
-                                .object_id = req->object_id,
-                                .data_size = buf.data_size,
-                                .metadata_size = buf.metadata_size};
-  plasma_send_request(fd, &manager_req);
-}
+/* Context for a client connection to another plasma manager. */
+struct client_connection {
+  /* Current state for this plasma manager. This is shared between all client
+   * connections to the plasma manager. */
+  plasma_manager_state *manager_state;
+  /* Current position in the buffer. */
+  int64_t cursor;
+  /* Buffer that this connection is reading from. If this is a connection to
+   * write data to another plasma store, then it is a linked list of buffers to
+   * write. */
+  plasma_buffer *transfer_queue;
+  /* File descriptor for the socket connected to the other plasma manager. */
+  int fd;
+  /* Following fields are used only for connections to plasma managers. */
+  /* Key that uniquely identifies the plasma manager that we're connected to.
+   * We will use the string <address>:<port> as an identifier. */
+  char *ip_addr_port;
+  /** Handle for the uthash table. */
+  UT_hash_handle hh;
+};
 
-/* Start reading data from another object manager.
- * Initializes the object we are going to write to in the
- * local plasma store and then switches the data socket to reading mode. */
-void start_reading_data(int64_t index,
-                        plasma_manager_state *s,
-                        plasma_request *req) {
-  plasma_buffer buf = {.object_id = req->object_id,
-                       .data_size = req->data_size,
-                       .metadata_size = req->metadata_size,
-                       .writable = 1};
-  plasma_create(s->conn, req->object_id, req->data_size, NULL,
-                req->metadata_size, &buf.data);
-  data_connection conn = {.type = DATA_CONNECTION_READ,
-                          .store_conn = s->conn->conn,
-                          .buf = buf,
-                          .cursor = 0};
-  event_loop_set_connection(s->loop, index, &conn);
+plasma_manager_state *init_plasma_manager_state(const char *store_socket_name) {
+  plasma_manager_state *state = malloc(sizeof(plasma_manager_state));
+  state->store_conn = plasma_store_connect(store_socket_name);
+  state->manager_connections = NULL;
+  return state;
 }
 
 /* Handle a command request that came in through a socket (transfering data,
  * or accepting incoming data). */
-void process_command(int64_t id,
-                     plasma_manager_state *state,
-                     plasma_request *req) {
-  switch (req->type) {
-  case PLASMA_TRANSFER:
-    LOG_INFO("transfering object to manager with port %d", req->port);
-    initiate_transfer(state, req);
-    break;
-  case PLASMA_DATA:
-    LOG_INFO("starting to stream data");
-    start_reading_data(id, state, req);
-    break;
-  default:
-    LOG_ERR("invalid request %d", req->type);
-    exit(-1);
-  }
-}
+void process_message(event_loop *loop,
+                     int client_sock,
+                     void *context,
+                     int events);
 
-/* Handle data or command event incoming on socket with index "index". */
-void read_from_socket(plasma_manager_state *state,
-                      struct pollfd *waiting,
-                      int64_t index,
-                      plasma_request *req) {
+void write_object_chunk(event_loop *loop,
+                        int data_sock,
+                        void *context,
+                        int events) {
+  client_connection *conn = (client_connection *) context;
+  if (conn->transfer_queue == NULL) {
+    /* If there are no objects to transfer, temporarily remove this connection
+     * from the event loop. It will be reawoken when we receive another
+     * PLASMA_TRANSFER request. */
+    event_loop_remove_file(loop, conn->fd);
+    return;
+  }
+
+  LOG_DEBUG("Writing data");
   ssize_t r, s;
-  data_connection *conn = event_loop_get_connection(state->loop, index);
-  switch (conn->type) {
-  case DATA_CONNECTION_HEADER:
-    r = read(waiting->fd, req, sizeof(plasma_request));
-    if (r == -1) {
-      LOG_ERR("read error");
-    } else if (r == 0) {
-      LOG_INFO("connection with id %" PRId64 " disconnected", index);
-      event_loop_detach(state->loop, index, 1);
-    } else {
-      process_command(index, state, req);
-    }
-    break;
-  case DATA_CONNECTION_READ:
-    LOG_DEBUG("polled DATA_CONNECTION_READ");
-    r = read(waiting->fd, conn->buf.data + conn->cursor, BUFSIZE);
-    if (r == -1) {
-      LOG_ERR("read error");
-    } else if (r == 0) {
-      LOG_INFO("end of file");
-    } else {
-      conn->cursor += r;
-    }
-    if (r == 0) {
-      LOG_DEBUG("reading on channel %" PRId64 " finished", index);
-      plasma_seal(state->conn, conn->buf.object_id);
-      event_loop_detach(state->loop, index, 1);
-    }
-    break;
-  case DATA_CONNECTION_WRITE:
-    LOG_DEBUG("polled DATA_CONNECTION_WRITE");
-    s = conn->buf.data_size + conn->buf.metadata_size - conn->cursor;
-    if (s > BUFSIZE)
-      s = BUFSIZE;
-    r = write(waiting->fd, conn->buf.data + conn->cursor, s);
-    if (r != s) {
-      if (r > 0) {
-        LOG_ERR("partial write on fd %d", waiting->fd);
-      } else {
-        LOG_ERR("write error");
-        exit(-1);
-      }
-    } else {
-      conn->cursor += r;
-    }
-    if (r == 0) {
-      LOG_DEBUG("writing on channel %" PRId64 " finished", index);
-      event_loop_detach(state->loop, index, 1);
-    }
-    break;
-  default:
-    LOG_ERR("invalid connection type");
-    exit(-1);
+  plasma_buffer *buf = conn->transfer_queue;
+  if (conn->cursor == 0) {
+    /* If the cursor is zero, we haven't sent any requests for this object yet,
+     * so send the initial PLASMA_DATA request. */
+    plasma_request manager_req = {.object_id = buf->object_id,
+                                  .data_size = buf->data_size,
+                                  .metadata_size = buf->metadata_size};
+    plasma_send_request(conn->fd, PLASMA_DATA, &manager_req);
   }
-}
 
-/* Main event loop of the plasma manager. */
-void run_event_loop(int sock, plasma_manager_state *s) {
-  /* Add listening socket. */
-  event_loop_attach(s->loop, CONNECTION_LISTENER, NULL, sock, POLLIN);
-  plasma_request req;
-  while (1) {
-    int num_ready = event_loop_poll(s->loop);
-    if (num_ready < 0) {
-      LOG_ERR("poll failed");
+  /* Try to write one BUFSIZE at a time. */
+  s = buf->data_size + buf->metadata_size - conn->cursor;
+  if (s > BUFSIZE)
+    s = BUFSIZE;
+  r = write(conn->fd, buf->data + conn->cursor, s);
+
+  if (r != s) {
+    if (r > 0) {
+      LOG_ERR("partial write on fd %d", conn->fd);
+    } else {
+      LOG_ERR("write error");
       exit(-1);
     }
-    for (int i = 0; i < event_loop_size(s->loop); ++i) {
-      struct pollfd *waiting = event_loop_get(s->loop, i);
-      if (waiting->revents == 0)
-        continue;
-      if (waiting->fd == sock) {
-        /* Handle new incoming connections. */
-        int new_socket = accept(sock, NULL, NULL);
-        if (new_socket < 0) {
-          if (errno != EWOULDBLOCK) {
-            LOG_ERR("accept failed");
-            exit(-1);
-          }
-          break;
-        }
-        data_connection conn = {.type = DATA_CONNECTION_HEADER};
-        event_loop_attach(s->loop, CONNECTION_DATA, &conn, new_socket, POLLIN);
-        LOG_INFO("new connection with id %" PRId64, event_loop_size(s->loop));
-      } else {
-        read_from_socket(s, waiting, i, &req);
-      }
-    }
+  } else {
+    conn->cursor += r;
   }
+  if (r == 0) {
+    /* If we've finished writing this buffer, move on to the next transfer
+     * request and reset the cursor to zero. */
+    LOG_DEBUG("writing on channel %d finished", data_sock);
+    conn->cursor = 0;
+    LL_DELETE(conn->transfer_queue, buf);
+    free(buf);
+  }
+}
+
+void read_object_chunk(event_loop *loop,
+                       int data_sock,
+                       void *context,
+                       int events) {
+  LOG_DEBUG("Reading data");
+  ssize_t r, s;
+  client_connection *conn = (client_connection *) context;
+  plasma_buffer *buf = conn->transfer_queue;
+  CHECK(buf != NULL);
+  /* Try to read one BUFSIZE at a time. */
+  s = buf->data_size + buf->metadata_size - conn->cursor;
+  if (s > BUFSIZE) {
+    s = BUFSIZE;
+  }
+  r = read(data_sock, buf->data + conn->cursor, s);
+
+  if (r == -1) {
+    LOG_ERR("read error");
+  } else if (r == 0) {
+    LOG_DEBUG("end of file");
+  } else {
+    conn->cursor += r;
+  }
+  if (conn->cursor == buf->data_size + buf->metadata_size) {
+    LOG_DEBUG("reading on channel %d finished", data_sock);
+    plasma_seal(conn->manager_state->store_conn, buf->object_id);
+    LL_DELETE(conn->transfer_queue, buf);
+    free(buf);
+    /* Switch to listening for requests from this socket, instead of reading
+     * data. */
+    event_loop_remove_file(loop, data_sock);
+    event_loop_add_file(loop, data_sock, EVENT_LOOP_READ, process_message,
+                        conn);
+  }
+  return;
+}
+
+void start_writing_data(event_loop *loop,
+                        object_id object_id,
+                        uint8_t addr[4],
+                        int port,
+                        client_connection *conn) {
+  uint8_t *data;
+  int64_t data_size;
+  uint8_t *metadata;
+  int64_t metadata_size;
+  plasma_get(conn->manager_state->store_conn, object_id, &data_size, &data,
+             &metadata_size, &metadata);
+  assert(metadata == data + data_size);
+  plasma_buffer *buf = malloc(sizeof(plasma_buffer));
+  buf->object_id = object_id;
+  buf->data = data; /* We treat this as a pointer to the
+                       concatenated data and metadata. */
+  buf->data_size = data_size;
+  buf->metadata_size = metadata_size;
+  buf->writable = 0;
+
+  /* Look to see if we already have a connection to this plasma manager. */
+  UT_string *ip_addr;
+  UT_string *ip_addr_port;
+  utstring_new(ip_addr);
+  utstring_new(ip_addr_port);
+  utstring_printf(ip_addr, "%d.%d.%d.%d", addr[0], addr[1], addr[2], addr[3]);
+  utstring_printf(ip_addr_port, "%s:%d", utstring_body(ip_addr), port);
+  client_connection *manager_conn;
+  HASH_FIND_STR(conn->manager_state->manager_connections,
+                utstring_body(ip_addr_port), manager_conn);
+
+  if (!manager_conn) {
+    /* If we don't already have a connection to this manager, start one. */
+    manager_conn = malloc(sizeof(client_connection));
+    manager_conn->fd = plasma_manager_connect(utstring_body(ip_addr), port);
+    manager_conn->manager_state = conn->manager_state;
+    manager_conn->transfer_queue = NULL;
+    manager_conn->cursor = 0;
+
+    manager_conn->ip_addr_port = strdup(utstring_body(ip_addr_port));
+    HASH_ADD_KEYPTR(hh, manager_conn->manager_state->manager_connections,
+                    manager_conn->ip_addr_port,
+                    strlen(manager_conn->ip_addr_port), manager_conn);
+  }
+  utstring_free(ip_addr_port);
+  utstring_free(ip_addr);
+
+  if (manager_conn->transfer_queue == NULL) {
+    /* If we already have a connection to this manager and its inactive,
+     * (re)register it with the event loop again. */
+    event_loop_add_file(loop, manager_conn->fd, EVENT_LOOP_WRITE,
+                        write_object_chunk, manager_conn);
+  }
+  /* Add this transfer request to this connection's transfer queue. */
+  LL_APPEND(manager_conn->transfer_queue, buf);
+}
+
+void start_reading_data(event_loop *loop,
+                        int client_sock,
+                        object_id object_id,
+                        int64_t data_size,
+                        int64_t metadata_size,
+                        client_connection *conn) {
+  plasma_buffer *buf = malloc(sizeof(plasma_buffer));
+  buf->object_id = object_id;
+  buf->data_size = data_size;
+  buf->metadata_size = metadata_size;
+  buf->writable = 1;
+
+  plasma_create(conn->manager_state->store_conn, object_id, data_size, NULL,
+                metadata_size, &(buf->data));
+  LL_APPEND(conn->transfer_queue, buf);
+  conn->cursor = 0;
+
+  /* Switch to reading the data from this socket, instead of listening for
+   * other requests. */
+  event_loop_remove_file(loop, client_sock);
+  event_loop_add_file(loop, client_sock, EVENT_LOOP_READ, read_object_chunk,
+                      conn);
+}
+
+void process_message(event_loop *loop,
+                     int client_sock,
+                     void *context,
+                     int events) {
+  client_connection *conn = (client_connection *) context;
+
+  int64_t type;
+  int64_t length;
+  plasma_request *req;
+  read_message(client_sock, &type, &length, (uint8_t **) &req);
+
+  switch (type) {
+  case PLASMA_TRANSFER:
+    LOG_DEBUG("transfering object to manager with port %d", req->port);
+    start_writing_data(loop, req->object_id, req->addr, req->port, conn);
+    break;
+  case PLASMA_DATA:
+    LOG_DEBUG("starting to stream data");
+    start_reading_data(loop, client_sock, req->object_id, req->data_size,
+                       req->metadata_size, conn);
+    break;
+  case DISCONNECT_CLIENT: {
+    LOG_INFO("Disconnecting client on fd %d", client_sock);
+    event_loop_remove_file(loop, client_sock);
+    close(client_sock);
+    free(conn);
+  } break;
+  default:
+    LOG_ERR("invalid request %" PRId64, type);
+    exit(-1);
+  }
+
+  free(req);
+}
+
+void new_client_connection(event_loop *loop,
+                           int listener_sock,
+                           void *context,
+                           int events) {
+  int new_socket = accept_client(listener_sock);
+  /* Create a new data connection context per client. */
+  client_connection *conn = malloc(sizeof(client_connection));
+  conn->manager_state = (plasma_manager_state *) context;
+  conn->transfer_queue = NULL;
+  event_loop_add_file(loop, new_socket, EVENT_LOOP_READ, process_message, conn);
+  LOG_DEBUG("new connection with fd %d", new_socket);
 }
 
 void start_server(const char *store_socket_name,
@@ -227,24 +320,27 @@ void start_server(const char *store_socket_name,
   name.sin_addr.s_addr = htonl(INADDR_ANY);
   int on = 1;
   /* TODO(pcm): http://stackoverflow.com/q/1150635 */
-  if (ioctl(sock, FIONBIO, (char*) &on) < 0) {
+  if (ioctl(sock, FIONBIO, (char *) &on) < 0) {
     LOG_ERR("ioctl failed");
     close(sock);
     exit(-1);
   }
   setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
-  if (bind(sock, (struct sockaddr*) &name, sizeof(name)) < 0) {
+  if (bind(sock, (struct sockaddr *) &name, sizeof(name)) < 0) {
     LOG_ERR("could not bind socket");
     exit(-1);
   }
-  LOG_INFO("listening on port %d", port);
+  LOG_DEBUG("listening on port %d", port);
   if (listen(sock, 5) == -1) {
     LOG_ERR("could not listen to socket");
     exit(-1);
   }
-  plasma_manager_state state;
-  init_plasma_manager(&state, store_socket_name);
-  run_event_loop(sock, &state);
+
+  event_loop *loop = event_loop_create();
+  plasma_manager_state *state = init_plasma_manager_state(store_socket_name);
+  event_loop_add_file(loop, sock, EVENT_LOOP_READ, new_client_connection,
+                      state);
+  event_loop_run(loop);
 }
 
 int main(int argc, char *argv[]) {
