@@ -95,6 +95,28 @@ int accept_client(int socket_fd) {
 }
 
 /**
+ * Reliably write a sequence of bytes into a file descriptor. This will block
+ * until one of the following happens: (1) there is an error (2) end of file,
+ * or (3) all length bytes have been written.
+ *
+ * @param fd The file descriptor to write to.
+ * @param cursor The cursor pointing to the beginning of the bytes to send.
+ * @param length The size of the bytes sequence to write.
+ * @return Void.
+ */
+void write_bytes(int fd, uint8_t *cursor, size_t length) {
+  ssize_t nbytes = 0;
+  while (length > 0) {
+    /* While we haven't written the whole message, write to the file
+     * descriptor, advance the cursor, and decrease the amount left to write. */
+    nbytes = write(fd, cursor, length);
+    CHECK(nbytes > 0);
+    cursor += nbytes;
+    length -= nbytes;
+  }
+}
+
+/**
  * Write a sequence of bytes on a file descriptor. The bytes should then be read
  * by read_message.
  *
@@ -105,17 +127,49 @@ int accept_client(int socket_fd) {
  * @return Void.
  */
 void write_message(int fd, int64_t type, int64_t length, uint8_t *bytes) {
-  ssize_t nbytes = write(fd, (char *) &type, sizeof(type));
-  CHECK(nbytes == sizeof(int64_t));
-  nbytes = write(fd, (char *) &length, sizeof(length));
-  CHECK(nbytes == sizeof(int64_t));
-  nbytes = write(fd, (char *) bytes, length * sizeof(char));
-  CHECK(nbytes >= 0);
+  write_bytes(fd, (uint8_t *) &type, sizeof(type));
+  write_bytes(fd, (uint8_t *) &length, sizeof(length));
+  write_bytes(fd, bytes, length * sizeof(char));
 }
 
 /**
- * Read a sequence of bytes written by write_bytes from a file descriptor. This
- * allocates space for the message.
+ * Reliably read a sequence of bytes from a file descriptor into a buffer. This
+ * will block until one of the following happens: (1) there is an error (2) end
+ * of file, or (3) all length bytes have been written.
+ *
+ * @note The buffer pointed to by cursor must already have length number of
+ * bytes allocated before calling this method.
+ *
+ * @param fd The file descriptor to read from.
+ * @param cursor The cursor pointing to the beginning of the buffer.
+ * @param length The size of the byte sequence to read.
+ * @return Void.
+ */
+int read_bytes(int fd, uint8_t *cursor, size_t length) {
+  ssize_t nbytes = 0;
+  while (length > 0) {
+    /* While we haven't read the whole message, read from the file descriptor,
+     * advance the cursor, and decrease the amount left to read. */
+    nbytes = read(fd, cursor, length);
+    if (nbytes < 0) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        continue;
+      }
+      /* Force an exit if there was any other type of error. */
+      CHECK(nbytes < 0);
+    }
+    if (nbytes == 0) {
+      return -1;
+    }
+    cursor += nbytes;
+    length -= nbytes;
+  }
+  return 0;
+}
+
+/**
+ * Read a sequence of bytes written by write_message from a file descriptor.
+ * This allocates space for the message.
  *
  * @note The caller must free the memory.
  *
@@ -130,20 +184,28 @@ void write_message(int fd, int64_t type, int64_t length, uint8_t *bytes) {
  * @return Void.
  */
 void read_message(int fd, int64_t *type, int64_t *length, uint8_t **bytes) {
-  ssize_t nbytes = read(fd, type, sizeof(int64_t));
-  CHECK(nbytes >= 0);
-  /* Handle the case in which the socket is closed. */
-  if (nbytes == 0) {
-    *type = DISCONNECT_CLIENT;
-    *length = 0;
-    *bytes = NULL;
-    return;
+  int closed = read_bytes(fd, (uint8_t *) type, sizeof(int64_t));
+  if (closed) {
+    goto disconnected;
   }
-  nbytes = read(fd, length, sizeof(int64_t));
-  CHECK(nbytes == sizeof(int64_t));
+  closed = read_bytes(fd, (uint8_t *) length, sizeof(int64_t));
+  if (closed) {
+    goto disconnected;
+  }
   *bytes = malloc(*length * sizeof(uint8_t));
-  nbytes = read(fd, *bytes, *length);
-  CHECK(nbytes >= 0);
+  closed = read_bytes(fd, *bytes, *length);
+  if (closed) {
+    free(*bytes);
+    goto disconnected;
+  }
+  return;
+
+disconnected:
+  /* Handle the case in which the socket is closed. */
+  *type = DISCONNECT_CLIENT;
+  *length = 0;
+  *bytes = NULL;
+  return;
 }
 
 /* Write a null-terminated string to a file descriptor. */
