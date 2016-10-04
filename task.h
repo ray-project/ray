@@ -93,10 +93,10 @@ void print_task(task_spec *spec, UT_string *output);
 /* The scheduling_state can be used as a flag when we are listening
  * for an event, for example TASK_WAITING | TASK_SCHEDULED. */
 enum scheduling_state {
-  TASK_WAITING = 1,
-  TASK_SCHEDULED = 2,
-  TASK_RUNNING = 4,
-  TASK_DONE = 8
+  TASK_STATUS_WAITING = 1,
+  TASK_STATUS_SCHEDULED = 2,
+  TASK_STATUS_RUNNING = 4,
+  TASK_STATUS_DONE = 8
 };
 
 /* A task instance is one execution of a task specification.
