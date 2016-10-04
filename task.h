@@ -13,7 +13,6 @@
 #include "utstring.h"
 
 typedef unique_id function_id;
-typedef unique_id object_id;
 
 /* The task ID is a deterministic hash of the function ID that
  * the task executes and the argument IDs or argument values */

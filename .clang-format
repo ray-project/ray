@@ -3,4 +3,7 @@ DerivePointerAlignment: true
 IndentCaseLabels: false
 PointerAlignment: Right
 SpaceAfterCStyleCast: true
-
+AllowShortBlocksOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: false
+AllowShortIfStatementsOnASingleLine: false
