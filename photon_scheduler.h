@@ -1,15 +1,39 @@
-#ifndef PHOTON_SCHEDULER
-#define PHOTON_SCHEDULER
+#ifndef PHOTON_SCHEDULER_H
+#define PHOTON_SCHEDULER_H
 
-/* Establish a connection to a new client. */
-void new_client_connection(local_scheduler_state *s, int listener_sock);
+#include "task.h"
 
-/* schedule a task on a given worker. */
-void schedule_on_worker(local_scheduler_state *s, task_spec *task,
-                        int client_id);
+typedef struct local_scheduler_state local_scheduler_state;
 
-/* Handle new incoming task that was scheduled by the globl scheduler on
- * this local scheduler. */
-void schedule_task(local_scheduler_state *s, task_spec *task)
+/**
+ * Establish a connection to a new client.
+ *
+ * @param loop Event loop of the local scheduler.
+ * @param listener_socket Socket the local scheduler is listening on for new
+ *        client requests.
+ * @param context State of the local scheduler.
+ * @param events Flag for events that are available on the listener socket.
+ * @return Void.
+ */
+void new_client_connection(event_loop *loop, int listener_sock, void *context,
+                           int events);
 
-#endif
+/**
+ * Assign a task to a worker.
+ *
+ * @param s State of the local scheduler.
+ * @param client_sock Socket by which the worker is connected.
+ * @return Void.
+ */
+void handle_get_task(local_scheduler_state *s, int client_sock);
+
+/**
+ * Handle incoming submit request by a worker.
+ *
+ * @param s State of the local scheduler.
+ * @param task Task specification of the task to be submitted.
+ * @return Void.
+ */
+void handle_submit_task(local_scheduler_state *s, task_spec *task);
+
+#endif /* PHOTON_SCHEDULER_H */

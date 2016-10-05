@@ -9,9 +9,9 @@
 #include "event_loop.h"
 #include "io.h"
 #include "photon.h"
+#include "photon_scheduler.h"
 #include "state/db.h"
-#include "state/task_queue.h"
-#include "task.h"
+#include "state/task_log.h"
 #include "utarray.h"
 
 typedef struct {
@@ -20,22 +20,90 @@ typedef struct {
 } available_worker;
 
 /* These are needed to define the UT_arrays. */
-UT_icd task_ptr_icd = {sizeof(task_spec *), NULL, NULL, NULL};
+UT_icd task_ptr_icd = {sizeof(task_instance *), NULL, NULL, NULL};
 UT_icd worker_icd = {sizeof(available_worker), NULL, NULL, NULL};
 
-typedef struct {
+struct local_scheduler_state {
   db_handle *db;
   /** This is an array of pointers to tasks that are waiting to be scheduled. */
   UT_array *task_queue;
   /** This is an array of file descriptors corresponding to clients that are
    *  waiting for tasks. */
   UT_array *available_worker_queue;
-} local_scheduler_state;
+};
 
-void try_to_assign_task(task_spec *task, local_scheduler_state *s);
-void try_to_assign_task_to_worker(int client_sock, local_scheduler_state *s);
+local_scheduler_state *
+init_local_scheduler(event_loop *loop, const char *redis_addr, int redis_port) {
+  local_scheduler_state *state = malloc(sizeof(local_scheduler_state));
+  state->db = db_connect(redis_addr, redis_port, "photon", "", -1);
+  db_attach(state->db, loop);
+  utarray_new(state->task_queue, &task_ptr_icd);
+  utarray_new(state->available_worker_queue, &worker_icd);
+  return state;
+};
 
-event_loop *init_local_scheduler() { return event_loop_create(); };
+void handle_submit_task(local_scheduler_state *s, task_spec *task) {
+  /* Create a unique task instance ID. This is different from the task ID and
+   * is used to distinguish between potentially multiple executions of the
+   * task. */
+  task_iid task_iid = globally_unique_id();
+  task_instance *instance =
+      make_task_instance(task_iid, task, TASK_STATUS_WAITING, NIL_ID);
+  /* Assign this task to an available worker. If there are no available workers,
+   * then add this task to the local task queue. */
+  int schedule_locally = utarray_len(s->available_worker_queue) > 0;
+  if (schedule_locally) {
+    /* Get the last available worker in the available worker queue. */
+    available_worker *worker =
+        (available_worker *)utarray_back(s->available_worker_queue);
+    /* Tell the available worker to execute the task. */
+    write_message(worker->client_sock, EXECUTE_TASK, task_size(task),
+                  (uint8_t *)task);
+    /* Remove the available worker from the queue and free the struct. */
+    utarray_pop_back(s->available_worker_queue);
+    free(worker);
+  } else {
+    /* Add the task to the task queue. This passes ownership of the task queue.
+     * And the task will be freed when it is assigned to a worker. */
+    utarray_push_back(s->task_queue, &instance);
+  }
+  /* Submit the task to redis. */
+  task_log_add_task(s->db, instance);
+  if (schedule_locally) {
+    /* If the task was scheduled locally, we need to free it. Otherwise,
+     * ownership of the task is passed to the task_queue, and it will be freed
+     * when it is assigned to a worker. */
+    free(instance);
+  }
+}
+
+void handle_get_task(local_scheduler_state *s, int client_sock) {
+  /* If there is an available task, assign that task to this worker. Otherwise
+   * add the worker to the queue of available workers. */
+  if (utarray_len(s->task_queue) > 0) {
+    /* Get the last task in the task queue. */
+    task_instance **back = (task_instance **)utarray_back(s->task_queue);
+    task_spec *task = task_instance_task_spec(*back);
+    /* Send a task to the worker. */
+    write_message(client_sock, EXECUTE_TASK, task_size(task), (uint8_t *)task);
+    /* Update the task queue data structure and free the task. */
+    utarray_pop_back(s->task_queue);
+    free(*back);
+  } else {
+    /* Check that client_sock is not already in the available workers. */
+    for (available_worker *p =
+             (available_worker *)utarray_front(s->available_worker_queue);
+         p != NULL;
+         p = (available_worker *)utarray_next(s->available_worker_queue, p)) {
+      CHECK(p->client_sock != client_sock);
+    }
+    /* Add client_sock to a list of available workers. This struct will be freed
+     * when a task is assigned to this worker. */
+    available_worker worker_info = {.client_sock = client_sock};
+    utarray_push_back(s->available_worker_queue, &worker_info);
+    LOG_INFO("Adding client_sock %d to available workers.\n", client_sock);
+  }
+}
 
 void process_message(event_loop *loop, int client_sock, void *context,
                      int events) {
@@ -50,19 +118,12 @@ void process_message(event_loop *loop, int client_sock, void *context,
   case SUBMIT_TASK: {
     task_spec *task = (task_spec *)message;
     CHECK(task_size(task) == length);
-    /* Create a unique task instance ID. This is different from the task ID and
-     * is used to distinguish between potentially multiple executions of the
-     * task. */
-    unique_id id = globally_unique_id();
-    // task_queue_submit_task(s->db, id, task);
-    /* Try to assign the task to a worker locally. TODO(rkn): This should
-     * probably go somewhere else. */
-    try_to_assign_task(task, s);
+    handle_submit_task(s, task);
   } break;
   case TASK_DONE: {
   } break;
   case GET_TASK: {
-    try_to_assign_task_to_worker(client_sock, s);
+    handle_get_task(s, client_sock);
   } break;
   case DISCONNECT_CLIENT: {
     LOG_INFO("Disconnecting client on fd %d", client_sock);
@@ -77,51 +138,6 @@ void process_message(event_loop *loop, int client_sock, void *context,
   free(message);
 }
 
-void try_to_assign_task(task_spec *task, local_scheduler_state *s) {
-  /* Assign this task to an available worker. If there are no available workers,
-   * then add this task to the local task queue. */
-  if (utarray_len(s->available_worker_queue) > 0) {
-    /* Get the last available worker in the available worker queue. */
-    available_worker *worker =
-        (available_worker *)utarray_back(s->available_worker_queue);
-    /* Tell the available worker to execute the task. */
-    write_message(worker->client_sock, EXECUTE_TASK, task_size(task),
-                  (uint8_t *)task);
-    utarray_pop_back(s->available_worker_queue);
-    /* TODO: Do we need to free the available_worker struct? */
-  } else {
-    /* Add the task to the task queue. */
-    task_spec *task_copy = malloc(task_size(task));
-    memcpy(task_copy, task, task_size(task));
-    utarray_push_back(s->task_queue, &task_copy);
-  }
-}
-
-void try_to_assign_task_to_worker(int client_sock, local_scheduler_state *s) {
-  if (utarray_len(s->task_queue) > 0) {
-    /* Get the last task in the task queue. */
-    task_spec **task_ptr = (task_spec **)utarray_back(s->task_queue);
-    task_spec *task = *task_ptr;
-    /* Send a task to the worker. */
-    write_message(client_sock, EXECUTE_TASK, task_size(task), (uint8_t *)task);
-    /* Update the task queue data structure and free the task. */
-    utarray_pop_back(s->task_queue);
-    free(task);
-  } else {
-    /* Check that client_sock is not already in the available workers. */
-    for (available_worker *p =
-             (available_worker *)utarray_front(s->available_worker_queue);
-         p != NULL;
-         p = (available_worker *)utarray_next(s->available_worker_queue, p)) {
-      CHECK(p->client_sock != client_sock);
-    }
-    /* Add client_sock to a list of available workers. */
-    available_worker worker_info = {.client_sock = client_sock};
-    utarray_push_back(s->available_worker_queue, &worker_info);
-    LOG_INFO("Adding client_sock %d to available workers.\n", client_sock);
-  }
-}
-
 void new_client_connection(event_loop *loop, int listener_sock, void *context,
                            int events) {
   local_scheduler_state *s = context;
@@ -133,16 +149,12 @@ void new_client_connection(event_loop *loop, int listener_sock, void *context,
 void start_server(const char *socket_name, const char *redis_addr,
                   int redis_port) {
   int fd = bind_ipc_sock(socket_name);
-  local_scheduler_state state;
-  event_loop *loop = init_local_scheduler();
-
-  state.db = db_connect(redis_addr, redis_port, "photon", "", -1);
-  db_attach(state.db, loop);
-  utarray_new(state.task_queue, &task_ptr_icd);
-  utarray_new(state.available_worker_queue, &worker_icd);
+  event_loop *loop = event_loop_create();
+  local_scheduler_state *state =
+      init_local_scheduler(loop, redis_addr, redis_port);
 
   /* Run event loop. */
-  event_loop_add_file(loop, fd, EVENT_LOOP_READ, new_client_connection, &state);
+  event_loop_add_file(loop, fd, EVENT_LOOP_READ, new_client_connection, state);
   event_loop_run(loop);
 }
 
