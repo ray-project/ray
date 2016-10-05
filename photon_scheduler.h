@@ -10,9 +10,10 @@ typedef struct local_scheduler_state local_scheduler_state;
  *
  * @param loop Event loop of the local scheduler.
  * @param listener_socket Socket the local scheduler is listening on for new
- *                        client requests.
+ *        client requests.
  * @param context State of the local scheduler.
  * @param events Flag for events that are available on the listener socket.
+ * @return Void.
  */
 void new_client_connection(event_loop *loop, int listener_sock, void *context,
                            int events);
@@ -22,6 +23,7 @@ void new_client_connection(event_loop *loop, int listener_sock, void *context,
  *
  * @param s State of the local scheduler.
  * @param client_sock Socket by which the worker is connected.
+ * @return Void.
  */
 void handle_get_task(local_scheduler_state *s, int client_sock);
 
@@ -30,6 +32,7 @@ void handle_get_task(local_scheduler_state *s, int client_sock);
  *
  * @param s State of the local scheduler.
  * @param task Task specification of the task to be submitted.
+ * @return Void.
  */
 void handle_submit_task(local_scheduler_state *s, task_spec *task);
 
