@@ -36,4 +36,11 @@ test: hiredis redis $(BUILD)/common_tests $(BUILD)/db_tests $(BUILD)/io_tests $(
 	./thirdparty/redis-3.2.3/src/redis-server &
 	sleep 1s ; ./build/common_tests ; ./build/db_tests ; ./build/io_tests ; ./build/task_tests ; ./build/redis_tests
 
+valgrind: test
+	valgrind --leak-check=full --error-exitcode=1 ./build/common_tests
+	valgrind --leak-check=full --error-exitcode=1 ./build/db_tests
+	valgrind --leak-check=full --error-exitcode=1 ./build/io_tests
+	valgrind --leak-check=full --error-exitcode=1 ./build/task_tests
+	valgrind --leak-check=full --error-exitcode=1 ./build/redis_tests
+
 FORCE:
