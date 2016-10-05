@@ -43,30 +43,43 @@ init_local_scheduler(event_loop *loop, const char *redis_addr, int redis_port) {
 };
 
 void handle_submit_task(local_scheduler_state *s, task_spec *task) {
-  /* Assign this task to an available worker. If there are no available workers,
-   * then add this task to the local task queue. */
+  /* Create a unique task instance ID. This is different from the task ID and
+   * is used to distinguish between potentially multiple executions of the
+   * task. */
   task_iid task_iid = globally_unique_id();
   task_instance *instance =
       make_task_instance(task_iid, task, TASK_STATUS_WAITING, NIL_ID);
-  if (utarray_len(s->available_worker_queue) > 0) {
+  /* Assign this task to an available worker. If there are no available workers,
+   * then add this task to the local task queue. */
+  int schedule_locally = utarray_len(s->available_worker_queue) > 0;
+  if (schedule_locally) {
     /* Get the last available worker in the available worker queue. */
     available_worker *worker =
         (available_worker *)utarray_back(s->available_worker_queue);
     /* Tell the available worker to execute the task. */
     write_message(worker->client_sock, EXECUTE_TASK, task_size(task),
                   (uint8_t *)task);
+    /* Remove the available worker from the queue and free the struct. */
     utarray_pop_back(s->available_worker_queue);
-    /* TODO: Do we need to free the available_worker struct? */
+    free(worker);
   } else {
-    /* Add the task to the task queue. */
+    /* Add the task to the task queue. This passes ownership of the task queue.
+     * And the task will be freed when it is assigned to a worker. */
     utarray_push_back(s->task_queue, &instance);
   }
-  /* Submit task to redis. */
+  /* Submit the task to redis. */
   task_log_add_task(s->db, instance);
-  // free(instance);
+  if (schedule_locally) {
+    /* If the task was scheduled locally, we need to free it. Otherwise,
+     * ownership of the task is passed to the task_queue, and it will be freed
+     * when it is assigned to a worker. */
+    free(instance);
+  }
 }
 
 void handle_get_task(local_scheduler_state *s, int client_sock) {
+  /* If there is an available task, assign that task to this worker. Otherwise
+   * add the worker to the queue of available workers. */
   if (utarray_len(s->task_queue) > 0) {
     /* Get the last task in the task queue. */
     task_instance **back = (task_instance **)utarray_back(s->task_queue);
@@ -84,7 +97,8 @@ void handle_get_task(local_scheduler_state *s, int client_sock) {
          p = (available_worker *)utarray_next(s->available_worker_queue, p)) {
       CHECK(p->client_sock != client_sock);
     }
-    /* Add client_sock to a list of available workers. */
+    /* Add client_sock to a list of available workers. This struct will be freed
+     * when a task is assigned to this worker. */
     available_worker worker_info = {.client_sock = client_sock};
     utarray_push_back(s->available_worker_queue, &worker_info);
     LOG_INFO("Adding client_sock %d to available workers.\n", client_sock);
@@ -104,13 +118,6 @@ void process_message(event_loop *loop, int client_sock, void *context,
   case SUBMIT_TASK: {
     task_spec *task = (task_spec *)message;
     CHECK(task_size(task) == length);
-    /* Create a unique task instance ID. This is different from the task ID and
-     * is used to distinguish between potentially multiple executions of the
-     * task. */
-    unique_id id = globally_unique_id();
-    // task_queue_submit_task(s->db, id, task);
-    /* Try to assign the task to a worker locally. TODO(rkn): This should
-     * probably go somewhere else. */
     handle_submit_task(s, task);
   } break;
   case TASK_DONE: {
