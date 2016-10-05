@@ -32,9 +32,8 @@ struct local_scheduler_state {
   UT_array *available_worker_queue;
 };
 
-local_scheduler_state *init_local_scheduler(event_loop *loop,
-                                            const char *redis_addr,
-                                            int redis_port) {
+local_scheduler_state *
+init_local_scheduler(event_loop *loop, const char *redis_addr, int redis_port) {
   local_scheduler_state *state = malloc(sizeof(local_scheduler_state));
   state->db = db_connect(redis_addr, redis_port, "photon", "", -1);
   db_attach(state->db, loop);
@@ -47,7 +46,8 @@ void handle_submit_task(local_scheduler_state *s, task_spec *task) {
   /* Assign this task to an available worker. If there are no available workers,
    * then add this task to the local task queue. */
   task_iid task_iid = globally_unique_id();
-  task_instance *instance = make_task_instance(task_iid, task, TASK_WAITING, NIL_ID);
+  task_instance *instance =
+      make_task_instance(task_iid, task, TASK_STATUS_WAITING, NIL_ID);
   if (utarray_len(s->available_worker_queue) > 0) {
     /* Get the last available worker in the available worker queue. */
     available_worker *worker =
@@ -143,7 +143,8 @@ void start_server(const char *socket_name, const char *redis_addr,
                   int redis_port) {
   int fd = bind_ipc_sock(socket_name);
   event_loop *loop = event_loop_create();
-  local_scheduler_state *state = init_local_scheduler(loop, redis_addr, redis_port);
+  local_scheduler_state *state =
+      init_local_scheduler(loop, redis_addr, redis_port);
 
   /* Run event loop. */
   event_loop_add_file(loop, fd, EVENT_LOOP_READ, new_client_connection, state);
