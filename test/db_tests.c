@@ -85,8 +85,8 @@ TEST task_log_test(void) {
   db_attach(db, loop);
   node_id node = globally_unique_id();
   task_spec *task = example_task();
-  task_instance *instance =
-      make_task_instance(globally_unique_id(), task, TASK_STATUS_SCHEDULED, node);
+  task_instance *instance = make_task_instance(globally_unique_id(), task,
+                                               TASK_STATUS_SCHEDULED, node);
   task_log_register_callback(db, task_log_test_callback, node,
                              TASK_STATUS_SCHEDULED, instance);
   task_log_add_task(db, instance);
