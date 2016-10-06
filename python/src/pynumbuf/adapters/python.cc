@@ -8,8 +8,12 @@ using namespace arrow;
 
 int32_t MAX_RECURSION_DEPTH = 100;
 
+extern "C" {
+
 extern PyObject* numbuf_serialize_callback;
 extern PyObject* numbuf_deserialize_callback;
+
+}
 
 namespace numbuf {
 
