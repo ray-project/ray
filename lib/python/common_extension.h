@@ -1,5 +1,5 @@
-#ifndef TYPES_H
-#define TYPES_H
+#ifndef COMMON_EXTENSION_H
+#define COMMON_EXTENSION_H
 
 #include <Python.h>
 #include "marshal.h"
@@ -30,4 +30,6 @@ PyObject *PyObjectID_make(object_id object_id);
 
 PyObject *check_simple_value(PyObject *self, PyObject *args);
 
-#endif /* TYPES_H */
+PyObject *PyTask_make(task_spec *task_spec);
+
+#endif /* COMMON_EXTENSION_H */
