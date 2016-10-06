@@ -27,7 +27,7 @@ index b1de8af..b63b603
 @@ -1 +1,26 @@
 -<?xml version="1.0" encoding="utf-8"?> <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003"> <ImportGroup Label="PropertySheets" /> <PropertyGroup Label="UserMacros" /> <PropertyGroup /> <ItemDefinitionGroup> <Link> <AdditionalDependencies>libprotobuf.lib;%(AdditionalDependencies)</AdditionalDependencies> <AdditionalLibraryDirectories>$(SolutionDir)\..\third_party\protobuf\cmake\$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories> </Link> </ItemDefinitionGroup> <ItemGroup /> </Project>
 \ No newline at end of file
-+﻿<?xml version="1.0" encoding="utf-8"?>
++<?xml version="1.0" encoding="utf-8"?>
 +<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
 +  <ImportGroup Label="PropertySheets" />
 +  <PropertyGroup Label="UserMacros" />
@@ -61,7 +61,7 @@ index 1bdc071..87a4bf4
 @@ -1 +1,15 @@
 -<?xml version="1.0" encoding="utf-8"?> <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003"> <ImportGroup Label="PropertySheets" /> <PropertyGroup Label="UserMacros" /> <PropertyGroup /> <ItemDefinitionGroup> <ClCompile> <DisableSpecificWarnings>4244;4267;%(DisableSpecificWarnings)</DisableSpecificWarnings> </ClCompile> <Link> <AdditionalDependencies>libprotoc.lib;%(AdditionalDependencies)</AdditionalDependencies> <AdditionalLibraryDirectories>$(SolutionDir)\..\third_party\protobuf\cmake\$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories> </Link> </ItemDefinitionGroup> <ItemGroup /> </Project>
 \ No newline at end of file
-+﻿<?xml version="1.0" encoding="utf-8"?>
++<?xml version="1.0" encoding="utf-8"?>
 +<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
 +  <ImportGroup Label="PropertySheets" />
 +  <PropertyGroup Label="UserMacros" />
@@ -805,7 +805,7 @@ index 9bab373..d13e9c4
      </ClInclude>
    </ItemGroup>
 diff --git a/vsprojects/vcxproj/grpc++/grpc++.vcxproj b/vsprojects/vcxproj/grpc++/grpc++.vcxproj
-index cb9e41e..f3b8b27
+index c50fc4a..f3b8b27
 --- a/vsprojects/vcxproj/grpc++/grpc++.vcxproj
 +++ b/vsprojects/vcxproj/grpc++/grpc++.vcxproj
 @@ -37,7 +37,6 @@
@@ -915,7 +915,7 @@ index cb9e41e..f3b8b27
        <TreatWarningAsError>true</TreatWarningAsError>
        <DebugInformationFormat Condition="$(Jenkins)">None</DebugInformationFormat>
        <MinimalRebuild Condition="$(Jenkins)">false</MinimalRebuild>
-@@ -258,184 +241,187 @@
+@@ -258,448 +241,189 @@
    </ItemDefinitionGroup>
  
    <ItemGroup>
@@ -966,6 +966,34 @@ index cb9e41e..f3b8b27
 -    <ClInclude Include="$(SolutionDir)\..\include\grpc++\support\stub_options.h" />
 -    <ClInclude Include="$(SolutionDir)\..\include\grpc++\support\sync_stream.h" />
 -    <ClInclude Include="$(SolutionDir)\..\include\grpc++\support\time.h" />
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\byte_buffer.h" />
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\byte_buffer_reader.h" />
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\compression.h" />
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\grpc.h" />
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\grpc_posix.h" />
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\grpc_security_constants.h" />
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\status.h" />
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\byte_buffer.h" />
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\byte_buffer_reader.h" />
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\compression_types.h" />
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\connectivity_state.h" />
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\grpc_types.h" />
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\propagation_bits.h" />
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\status.h" />
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\alloc.h" />
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\atm.h" />
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\atm_gcc_atomic.h" />
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\atm_gcc_sync.h" />
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\atm_windows.h" />
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\log.h" />
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\port_platform.h" />
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\slice.h" />
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\slice_buffer.h" />
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\sync.h" />
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\sync_generic.h" />
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\sync_posix.h" />
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\sync_windows.h" />
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\time.h" />
 -    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\codegen\async_stream.h" />
 -    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\codegen\async_unary_call.h" />
 -    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\codegen\call.h" />
@@ -996,27 +1024,6 @@ index cb9e41e..f3b8b27
 -    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\codegen\sync_no_cxx11.h" />
 -    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\codegen\sync_stream.h" />
 -    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\codegen\time.h" />
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\byte_buffer.h" />
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\byte_buffer_reader.h" />
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\compression_types.h" />
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\connectivity_state.h" />
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\grpc_types.h" />
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\propagation_bits.h" />
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\status.h" />
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\alloc.h" />
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\atm.h" />
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\atm_gcc_atomic.h" />
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\atm_gcc_sync.h" />
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\atm_windows.h" />
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\log.h" />
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\port_platform.h" />
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\slice.h" />
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\slice_buffer.h" />
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\sync.h" />
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\sync_generic.h" />
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\sync_posix.h" />
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\sync_windows.h" />
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\time.h" />
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\alarm.h" />
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\channel.h" />
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\client_context.h" />
@@ -1124,6 +1131,84 @@ index cb9e41e..f3b8b27
 -    <ClInclude Include="$(SolutionDir)\..\src\cpp\client\create_channel_internal.h" />
 -    <ClInclude Include="$(SolutionDir)\..\src\cpp\server\dynamic_thread_pool.h" />
 -    <ClInclude Include="$(SolutionDir)\..\src\cpp\server\thread_pool_interface.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\channel\channel_args.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\channel\channel_stack.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\channel\channel_stack_builder.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\channel\compress_filter.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\channel\connected_channel.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\channel\context.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\channel\http_client_filter.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\channel\http_server_filter.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\compression\algorithm_metadata.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\compression\message_compress.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\debug\trace.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\http\format_request.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\http\httpcli.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\http\parser.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\closure.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\endpoint.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\endpoint_pair.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\error.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\ev_epoll_linux.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\ev_poll_and_epoll_posix.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\ev_poll_posix.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\ev_posix.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\exec_ctx.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\executor.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\iocp_windows.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\iomgr.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\iomgr_internal.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\iomgr_posix.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\load_file.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\network_status_tracker.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\polling_entity.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\pollset.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\pollset_set.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\pollset_set_windows.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\pollset_windows.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\resolve_address.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\sockaddr.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\sockaddr_posix.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\sockaddr_utils.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\sockaddr_windows.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\socket_utils_posix.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\socket_windows.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\tcp_client.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\tcp_posix.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\tcp_server.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\tcp_windows.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\time_averaged_stats.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\timer.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\timer_heap.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\udp_server.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\unix_sockets_posix.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\wakeup_fd_pipe.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\wakeup_fd_posix.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\workqueue.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\workqueue_posix.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\workqueue_windows.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\json\json.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\json\json_common.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\json\json_reader.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\json\json_writer.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\surface\api_trace.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\surface\call.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\surface\call_test_only.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\surface\channel.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\surface\channel_init.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\surface\channel_stack_type.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\surface\completion_queue.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\surface\event_string.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\surface\init.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\surface\lame_client.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\surface\server.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\transport\byte_stream.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\transport\connectivity_state.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\transport\metadata.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\transport\metadata_batch.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\transport\static_metadata.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\transport\transport.h" />
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\transport\transport_impl.h" />
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\impl\codegen\core_codegen.h" />
 +    <ClInclude Include="$(ProjectDir)\..\..\..\src\cpp\client\secure_credentials.h" />
 +    <ClInclude Include="$(ProjectDir)\..\..\..\src\cpp\common\secure_auth_context.h" />
@@ -1134,104 +1219,278 @@ index cb9e41e..f3b8b27
    </ItemGroup>
    <ItemGroup>
 -    <ClCompile Include="$(SolutionDir)\..\src\cpp\client\secure_credentials.cc">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\common\auth_property_iterator.cc">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\common\secure_auth_context.cc">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\common\secure_channel_arguments.cc">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\common\secure_create_auth_context.cc">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\secure_server_credentials.cc">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\client\channel.cc">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\client\client_context.cc">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\client\create_channel.cc">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\client\create_channel_internal.cc">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\client\create_channel_posix.cc">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\client\credentials.cc">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\client\generic_stub.cc">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\client\insecure_credentials.cc">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\common\channel_arguments.cc">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\common\completion_queue.cc">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\common\core_codegen.cc">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\common\rpc_method.cc">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\async_generic_service.cc">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\create_default_thread_pool.cc">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\dynamic_thread_pool.cc">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\insecure_server_credentials.cc">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\server.cc">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\server_builder.cc">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\server_context.cc">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\server_credentials.cc">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\server_posix.cc">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\util\byte_buffer.cc">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\util\slice.cc">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\util\status.cc">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\util\string_ref.cc">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\util\time.cc">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\channel\channel_args.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\channel\channel_stack.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\channel\channel_stack_builder.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\channel\compress_filter.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\channel\connected_channel.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\channel\http_client_filter.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\channel\http_server_filter.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\compression\compression.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\compression\message_compress.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\debug\trace.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\http\format_request.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\http\httpcli.c">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\client\secure_credentials.cc">
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\common\auth_property_iterator.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\http\parser.c">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\common\auth_property_iterator.cc">
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\common\secure_auth_context.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\closure.c">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\common\secure_auth_context.cc">
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\common\secure_channel_arguments.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\endpoint.c">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\common\secure_channel_arguments.cc">
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\common\secure_create_auth_context.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\endpoint_pair_posix.c">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\common\secure_create_auth_context.cc">
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\secure_server_credentials.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\endpoint_pair_windows.c">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\server\secure_server_credentials.cc">
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\client\channel.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\error.c">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\client\channel.cc">
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\client\client_context.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\ev_epoll_linux.c">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\client\client_context.cc">
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\client\create_channel.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\ev_poll_and_epoll_posix.c">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\client\create_channel.cc">
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\client\create_channel_internal.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\ev_poll_posix.c">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\client\create_channel_internal.cc">
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\client\create_channel_posix.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\ev_posix.c">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\client\create_channel_posix.cc">
 +      <ExcludedFromBuild>true</ExcludedFromBuild>
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\client\credentials.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\exec_ctx.c">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\client\credentials.cc">
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\client\generic_stub.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\executor.c">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\client\generic_stub.cc">
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\client\insecure_credentials.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\iocp_windows.c">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\client\insecure_credentials.cc">
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\common\channel_arguments.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\iomgr.c">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\common\channel_arguments.cc">
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\common\completion_queue.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\iomgr_posix.c">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\common\completion_queue.cc">
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\common\core_codegen.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\iomgr_windows.c">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\common\core_codegen.cc">
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\common\rpc_method.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\load_file.c">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\common\rpc_method.cc">
 +      <ExcludedFromBuild>true</ExcludedFromBuild>
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\async_generic_service.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\network_status_tracker.c">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\server\async_generic_service.cc">
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\create_default_thread_pool.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\polling_entity.c">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\server\create_default_thread_pool.cc">
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\dynamic_thread_pool.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\pollset_set_windows.c">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\server\dynamic_thread_pool.cc">
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\insecure_server_credentials.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\pollset_windows.c">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\server\insecure_server_credentials.cc">
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\server.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\resolve_address_posix.c">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\server\server.cc">
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\server_builder.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\resolve_address_windows.c">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\server\server_builder.cc">
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\server_context.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\sockaddr_utils.c">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\server\server_context.cc">
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\server_credentials.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\socket_utils_common_posix.c">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\server\server_credentials.cc">
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\server_posix.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\socket_utils_linux.c">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\server\server_posix.cc">
 +      <ExcludedFromBuild>true</ExcludedFromBuild>
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\util\byte_buffer.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\socket_utils_posix.c">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\util\byte_buffer.cc">
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\util\slice.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\socket_windows.c">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\util\slice.cc">
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\util\status.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\tcp_client_posix.c">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\util\status.cc">
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\util\string_ref.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\tcp_client_windows.c">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\util\string_ref.cc">
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\util\time.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\tcp_posix.c">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\util\time.cc">
      </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\tcp_server_posix.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\tcp_server_windows.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\tcp_windows.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\time_averaged_stats.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\timer.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\timer_heap.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\udp_server.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\unix_sockets_posix.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\unix_sockets_posix_noop.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\wakeup_fd_eventfd.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\wakeup_fd_nospecial.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\wakeup_fd_pipe.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\wakeup_fd_posix.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\workqueue_posix.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\workqueue_windows.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\json\json.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\json\json_reader.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\json\json_string.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\json\json_writer.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\alarm.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\api_trace.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\byte_buffer.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\byte_buffer_reader.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\call.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\call_details.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\call_log_batch.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\channel.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\channel_init.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\channel_ping.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\channel_stack_type.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\completion_queue.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\event_string.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\lame_client.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\metadata_array.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\server.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\validate_metadata.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\version.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\transport\byte_stream.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\transport\connectivity_state.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\transport\metadata.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\transport\metadata_batch.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\transport\static_metadata.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\transport\transport.c">
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\transport\transport_op_string.c">
+-    </ClCompile>
 -    <ClCompile Include="$(SolutionDir)\..\src\cpp\codegen\codegen_init.cc">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\codegen\codegen_init.cc">
      </ClCompile>
@@ -1241,12 +1500,17 @@ index cb9e41e..f3b8b27
 +    <ProjectReference Include="$(ProjectDir)\..\..\..\vsprojects\vcxproj\.\grpc\grpc.vcxproj">
        <Project>{29D16885-7228-4C31-81ED-5F9187C7F2A9}</Project>
      </ProjectReference>
+-    <ProjectReference Include="$(SolutionDir)\..\vsprojects\vcxproj\.\gpr\gpr.vcxproj">
+-      <Project>{B23D3D1A-9438-4EDA-BEB6-9A0A03D17792}</Project>
+-    </ProjectReference>
    </ItemGroup>
+   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+   <ImportGroup Label="ExtensionTargets">
 diff --git a/vsprojects/vcxproj/grpc++/grpc++.vcxproj.filters b/vsprojects/vcxproj/grpc++/grpc++.vcxproj.filters
-index a905118..cfea49a
+index a68ac33..cfea49a
 --- a/vsprojects/vcxproj/grpc++/grpc++.vcxproj.filters
 +++ b/vsprojects/vcxproj/grpc++/grpc++.vcxproj.filters
-@@ -1,426 +1,411 @@
+@@ -1,942 +1,411 @@
  <?xml version="1.0" encoding="utf-8"?>
  <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
    <ItemGroup>
@@ -1321,40 +1585,40 @@ index a905118..cfea49a
        <Filter>src\cpp\common</Filter>
      </ClCompile>
 -    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\async_generic_service.cc">
--      <Filter>src\cpp\server</Filter>
--    </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\create_default_thread_pool.cc">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\server\async_generic_service.cc">
        <Filter>src\cpp\server</Filter>
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\dynamic_thread_pool.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\create_default_thread_pool.cc">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\server\create_default_thread_pool.cc">
        <Filter>src\cpp\server</Filter>
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\insecure_server_credentials.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\dynamic_thread_pool.cc">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\server\dynamic_thread_pool.cc">
        <Filter>src\cpp\server</Filter>
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\server.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\insecure_server_credentials.cc">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\server\insecure_server_credentials.cc">
        <Filter>src\cpp\server</Filter>
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\server_builder.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\server.cc">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\server\server.cc">
        <Filter>src\cpp\server</Filter>
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\server_context.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\server_builder.cc">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\server\server_builder.cc">
        <Filter>src\cpp\server</Filter>
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\server_credentials.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\server_context.cc">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\server\server_context.cc">
        <Filter>src\cpp\server</Filter>
      </ClCompile>
--    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\server_posix.cc">
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\server_credentials.cc">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\server\server_credentials.cc">
        <Filter>src\cpp\server</Filter>
      </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\cpp\server\server_posix.cc">
+-      <Filter>src\cpp\server</Filter>
+-    </ClCompile>
 -    <ClCompile Include="$(SolutionDir)\..\src\cpp\util\byte_buffer.cc">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\util\byte_buffer.cc">
        <Filter>src\cpp\util</Filter>
@@ -1375,6 +1639,267 @@ index a905118..cfea49a
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\util\time.cc">
        <Filter>src\cpp\util</Filter>
      </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\channel\channel_args.c">
+-      <Filter>src\core\lib\channel</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\channel\channel_stack.c">
+-      <Filter>src\core\lib\channel</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\channel\channel_stack_builder.c">
+-      <Filter>src\core\lib\channel</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\channel\compress_filter.c">
+-      <Filter>src\core\lib\channel</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\channel\connected_channel.c">
+-      <Filter>src\core\lib\channel</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\channel\http_client_filter.c">
+-      <Filter>src\core\lib\channel</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\channel\http_server_filter.c">
+-      <Filter>src\core\lib\channel</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\compression\compression.c">
+-      <Filter>src\core\lib\compression</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\compression\message_compress.c">
+-      <Filter>src\core\lib\compression</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\debug\trace.c">
+-      <Filter>src\core\lib\debug</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\http\format_request.c">
+-      <Filter>src\core\lib\http</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\http\httpcli.c">
+-      <Filter>src\core\lib\http</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\http\parser.c">
+-      <Filter>src\core\lib\http</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\closure.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\endpoint.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\endpoint_pair_posix.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\endpoint_pair_windows.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\error.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\ev_epoll_linux.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\ev_poll_and_epoll_posix.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\ev_poll_posix.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\ev_posix.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\exec_ctx.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\executor.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\iocp_windows.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\iomgr.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\iomgr_posix.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\iomgr_windows.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\load_file.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\network_status_tracker.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\polling_entity.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\pollset_set_windows.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\pollset_windows.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\resolve_address_posix.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\resolve_address_windows.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\sockaddr_utils.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\socket_utils_common_posix.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\socket_utils_linux.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\socket_utils_posix.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\socket_windows.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\tcp_client_posix.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\tcp_client_windows.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\tcp_posix.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\tcp_server_posix.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\tcp_server_windows.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\tcp_windows.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\time_averaged_stats.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\timer.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\timer_heap.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\udp_server.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\unix_sockets_posix.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\unix_sockets_posix_noop.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\wakeup_fd_eventfd.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\wakeup_fd_nospecial.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\wakeup_fd_pipe.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\wakeup_fd_posix.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\workqueue_posix.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\iomgr\workqueue_windows.c">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\json\json.c">
+-      <Filter>src\core\lib\json</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\json\json_reader.c">
+-      <Filter>src\core\lib\json</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\json\json_string.c">
+-      <Filter>src\core\lib\json</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\json\json_writer.c">
+-      <Filter>src\core\lib\json</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\alarm.c">
+-      <Filter>src\core\lib\surface</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\api_trace.c">
+-      <Filter>src\core\lib\surface</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\byte_buffer.c">
+-      <Filter>src\core\lib\surface</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\byte_buffer_reader.c">
+-      <Filter>src\core\lib\surface</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\call.c">
+-      <Filter>src\core\lib\surface</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\call_details.c">
+-      <Filter>src\core\lib\surface</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\call_log_batch.c">
+-      <Filter>src\core\lib\surface</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\channel.c">
+-      <Filter>src\core\lib\surface</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\channel_init.c">
+-      <Filter>src\core\lib\surface</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\channel_ping.c">
+-      <Filter>src\core\lib\surface</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\channel_stack_type.c">
+-      <Filter>src\core\lib\surface</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\completion_queue.c">
+-      <Filter>src\core\lib\surface</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\event_string.c">
+-      <Filter>src\core\lib\surface</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\lame_client.c">
+-      <Filter>src\core\lib\surface</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\metadata_array.c">
+-      <Filter>src\core\lib\surface</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\server.c">
+-      <Filter>src\core\lib\surface</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\validate_metadata.c">
+-      <Filter>src\core\lib\surface</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\surface\version.c">
+-      <Filter>src\core\lib\surface</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\transport\byte_stream.c">
+-      <Filter>src\core\lib\transport</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\transport\connectivity_state.c">
+-      <Filter>src\core\lib\transport</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\transport\metadata.c">
+-      <Filter>src\core\lib\transport</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\transport\metadata_batch.c">
+-      <Filter>src\core\lib\transport</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\transport\static_metadata.c">
+-      <Filter>src\core\lib\transport</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\transport\transport.c">
+-      <Filter>src\core\lib\transport</Filter>
+-    </ClCompile>
+-    <ClCompile Include="$(SolutionDir)\..\src\core\lib\transport\transport_op_string.c">
+-      <Filter>src\core\lib\transport</Filter>
+-    </ClCompile>
 -    <ClCompile Include="$(SolutionDir)\..\src\cpp\codegen\codegen_init.cc">
 +    <ClCompile Include="$(ProjectDir)\..\..\..\src\cpp\codegen\codegen_init.cc">
        <Filter>src\cpp\codegen</Filter>
@@ -1383,28 +1908,28 @@ index a905118..cfea49a
    </ItemGroup>
    <ItemGroup>
 -    <ClInclude Include="$(SolutionDir)\..\include\grpc++\alarm.h">
+-      <Filter>include\grpc++</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc++\channel.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\alarm.h">
        <Filter>include\grpc++</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc++\channel.h">
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc++\client_context.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\channel.h">
        <Filter>include\grpc++</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc++\client_context.h">
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc++\completion_queue.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\client_context.h">
        <Filter>include\grpc++</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc++\completion_queue.h">
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc++\create_channel.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\completion_queue.h">
        <Filter>include\grpc++</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc++\create_channel.h">
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc++\create_channel_posix.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\create_channel.h">
        <Filter>include\grpc++</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc++\create_channel_posix.h">
--      <Filter>include\grpc++</Filter>
--    </ClInclude>
 -    <ClInclude Include="$(SolutionDir)\..\include\grpc++\generic\async_generic_service.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\generic\async_generic_service.h">
        <Filter>include\grpc++\generic</Filter>
@@ -1430,64 +1955,64 @@ index a905118..cfea49a
        <Filter>include\grpc++\impl\codegen</Filter>
      </ClInclude>
 -    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\grpc_library.h">
--      <Filter>include\grpc++\impl</Filter>
--    </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\method_handler_impl.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\impl\grpc_library.h">
        <Filter>include\grpc++\impl</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\rpc_method.h">
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\method_handler_impl.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\impl\method_handler_impl.h">
        <Filter>include\grpc++\impl</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\rpc_service_method.h">
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\rpc_method.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\impl\rpc_service_method.h">
        <Filter>include\grpc++\impl</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\serialization_traits.h">
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\rpc_service_method.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\impl\serialization_traits.h">
        <Filter>include\grpc++\impl</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\server_builder_option.h">
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\serialization_traits.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\impl\server_builder_option.h">
        <Filter>include\grpc++\impl</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\server_builder_plugin.h">
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\server_builder_option.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\impl\server_builder_plugin.h">
        <Filter>include\grpc++\impl</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\server_initializer.h">
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\server_builder_plugin.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\impl\server_initializer.h">
        <Filter>include\grpc++\impl</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\service_type.h">
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\server_initializer.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\impl\service_type.h">
        <Filter>include\grpc++\impl</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\sync.h">
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\service_type.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\impl\sync.h">
        <Filter>include\grpc++\impl</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\sync_cxx11.h">
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\sync.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\impl\sync_cxx11.h">
        <Filter>include\grpc++\impl</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\sync_no_cxx11.h">
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\sync_cxx11.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\impl\sync_no_cxx11.h">
        <Filter>include\grpc++\impl</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\thd.h">
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\sync_no_cxx11.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\impl\thd.h">
        <Filter>include\grpc++\impl</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\thd_cxx11.h">
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\thd.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\impl\thd_cxx11.h">
        <Filter>include\grpc++\impl</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\thd_no_cxx11.h">
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\thd_cxx11.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\impl\thd_no_cxx11.h">
        <Filter>include\grpc++\impl</Filter>
      </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\thd_no_cxx11.h">
+-      <Filter>include\grpc++\impl</Filter>
+-    </ClInclude>
 -    <ClInclude Include="$(SolutionDir)\..\include\grpc++\security\auth_context.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\security\auth_context.h">
        <Filter>include\grpc++\security</Filter>
@@ -1567,6 +2092,90 @@ index a905118..cfea49a
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\support\time.h">
        <Filter>include\grpc++\support</Filter>
      </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\byte_buffer.h">
+-      <Filter>include\grpc</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\byte_buffer_reader.h">
+-      <Filter>include\grpc</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\compression.h">
+-      <Filter>include\grpc</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\grpc.h">
+-      <Filter>include\grpc</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\grpc_posix.h">
+-      <Filter>include\grpc</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\grpc_security_constants.h">
+-      <Filter>include\grpc</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\status.h">
+-      <Filter>include\grpc</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\byte_buffer.h">
+-      <Filter>include\grpc\impl\codegen</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\byte_buffer_reader.h">
+-      <Filter>include\grpc\impl\codegen</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\compression_types.h">
+-      <Filter>include\grpc\impl\codegen</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\connectivity_state.h">
+-      <Filter>include\grpc\impl\codegen</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\grpc_types.h">
+-      <Filter>include\grpc\impl\codegen</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\propagation_bits.h">
+-      <Filter>include\grpc\impl\codegen</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\status.h">
+-      <Filter>include\grpc\impl\codegen</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\alloc.h">
+-      <Filter>include\grpc\impl\codegen</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\atm.h">
+-      <Filter>include\grpc\impl\codegen</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\atm_gcc_atomic.h">
+-      <Filter>include\grpc\impl\codegen</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\atm_gcc_sync.h">
+-      <Filter>include\grpc\impl\codegen</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\atm_windows.h">
+-      <Filter>include\grpc\impl\codegen</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\log.h">
+-      <Filter>include\grpc\impl\codegen</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\port_platform.h">
+-      <Filter>include\grpc\impl\codegen</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\slice.h">
+-      <Filter>include\grpc\impl\codegen</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\slice_buffer.h">
+-      <Filter>include\grpc\impl\codegen</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\sync.h">
+-      <Filter>include\grpc\impl\codegen</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\sync_generic.h">
+-      <Filter>include\grpc\impl\codegen</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\sync_posix.h">
+-      <Filter>include\grpc\impl\codegen</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\sync_windows.h">
+-      <Filter>include\grpc\impl\codegen</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\time.h">
+-      <Filter>include\grpc\impl\codegen</Filter>
+-    </ClInclude>
 -    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\codegen\async_stream.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\impl\codegen\async_stream.h">
        <Filter>include\grpc++\impl\codegen</Filter>
@@ -1636,180 +2245,418 @@ index a905118..cfea49a
        <Filter>include\grpc++\impl\codegen\security</Filter>
      </ClInclude>
 -    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\codegen\serialization_traits.h">
+-      <Filter>include\grpc++\impl\codegen</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\codegen\server_context.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\impl\codegen\serialization_traits.h">
        <Filter>include\grpc++\impl\codegen</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\codegen\server_context.h">
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\codegen\server_interface.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\impl\codegen\server_context.h">
        <Filter>include\grpc++\impl\codegen</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\codegen\server_interface.h">
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\codegen\service_type.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\impl\codegen\server_interface.h">
        <Filter>include\grpc++\impl\codegen</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\codegen\service_type.h">
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\codegen\status.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\impl\codegen\service_type.h">
        <Filter>include\grpc++\impl\codegen</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\codegen\status.h">
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\codegen\status_code_enum.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\impl\codegen\status.h">
        <Filter>include\grpc++\impl\codegen</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\codegen\status_code_enum.h">
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\codegen\string_ref.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\impl\codegen\status_code_enum.h">
        <Filter>include\grpc++\impl\codegen</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\codegen\string_ref.h">
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\codegen\stub_options.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\impl\codegen\string_ref.h">
        <Filter>include\grpc++\impl\codegen</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\codegen\stub_options.h">
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\codegen\sync.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\impl\codegen\stub_options.h">
        <Filter>include\grpc++\impl\codegen</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\codegen\sync.h">
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\codegen\sync_cxx11.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\impl\codegen\sync.h">
        <Filter>include\grpc++\impl\codegen</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\codegen\sync_cxx11.h">
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\codegen\sync_no_cxx11.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\impl\codegen\sync_cxx11.h">
        <Filter>include\grpc++\impl\codegen</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\codegen\sync_no_cxx11.h">
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\codegen\sync_stream.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\impl\codegen\sync_no_cxx11.h">
        <Filter>include\grpc++\impl\codegen</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\codegen\sync_stream.h">
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\codegen\time.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\impl\codegen\sync_stream.h">
        <Filter>include\grpc++\impl\codegen</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\codegen\time.h">
+-  </ItemGroup>
+-  <ItemGroup>
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\codegen\core_codegen.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\impl\codegen\time.h">
        <Filter>include\grpc++\impl\codegen</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\byte_buffer.h">
+-    <ClInclude Include="$(SolutionDir)\..\src\cpp\client\secure_credentials.h">
+-      <Filter>src\cpp\client</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\cpp\common\secure_auth_context.h">
+-      <Filter>src\cpp\common</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\cpp\server\secure_server_credentials.h">
+-      <Filter>src\cpp\server</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\cpp\client\create_channel_internal.h">
+-      <Filter>src\cpp\client</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\cpp\server\dynamic_thread_pool.h">
+-      <Filter>src\cpp\server</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\cpp\server\thread_pool_interface.h">
+-      <Filter>src\cpp\server</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\channel\channel_args.h">
+-      <Filter>src\core\lib\channel</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\channel\channel_stack.h">
+-      <Filter>src\core\lib\channel</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\channel\channel_stack_builder.h">
+-      <Filter>src\core\lib\channel</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\channel\compress_filter.h">
+-      <Filter>src\core\lib\channel</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\channel\connected_channel.h">
+-      <Filter>src\core\lib\channel</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\channel\context.h">
+-      <Filter>src\core\lib\channel</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\channel\http_client_filter.h">
+-      <Filter>src\core\lib\channel</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\channel\http_server_filter.h">
+-      <Filter>src\core\lib\channel</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\compression\algorithm_metadata.h">
+-      <Filter>src\core\lib\compression</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\compression\message_compress.h">
+-      <Filter>src\core\lib\compression</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\debug\trace.h">
+-      <Filter>src\core\lib\debug</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\http\format_request.h">
+-      <Filter>src\core\lib\http</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\http\httpcli.h">
+-      <Filter>src\core\lib\http</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\http\parser.h">
+-      <Filter>src\core\lib\http</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\closure.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\endpoint.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\endpoint_pair.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\error.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\ev_epoll_linux.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\ev_poll_and_epoll_posix.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\ev_poll_posix.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\ev_posix.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\exec_ctx.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\executor.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\iocp_windows.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\iomgr.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\iomgr_internal.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\iomgr_posix.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\load_file.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\network_status_tracker.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\polling_entity.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\pollset.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\pollset_set.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\pollset_set_windows.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\pollset_windows.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\resolve_address.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\sockaddr.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\sockaddr_posix.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\sockaddr_utils.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\sockaddr_windows.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\socket_utils_posix.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\socket_windows.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\tcp_client.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\tcp_posix.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\tcp_server.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\tcp_windows.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\time_averaged_stats.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\timer.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\timer_heap.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\udp_server.h">
+-      <Filter>src\core\lib\iomgr</Filter>
+-    </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\unix_sockets_posix.h">
+-      <Filter>src\core\lib\iomgr</Filter>
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc\impl\codegen\byte_buffer.h">
-       <Filter>include\grpc\impl\codegen</Filter>
++      <Filter>include\grpc\impl\codegen</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\byte_buffer_reader.h">
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\wakeup_fd_pipe.h">
+-      <Filter>src\core\lib\iomgr</Filter>
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc\impl\codegen\byte_buffer_reader.h">
-       <Filter>include\grpc\impl\codegen</Filter>
++      <Filter>include\grpc\impl\codegen</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\compression_types.h">
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\wakeup_fd_posix.h">
+-      <Filter>src\core\lib\iomgr</Filter>
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc\impl\codegen\compression_types.h">
-       <Filter>include\grpc\impl\codegen</Filter>
++      <Filter>include\grpc\impl\codegen</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\connectivity_state.h">
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\workqueue.h">
+-      <Filter>src\core\lib\iomgr</Filter>
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc\impl\codegen\connectivity_state.h">
-       <Filter>include\grpc\impl\codegen</Filter>
++      <Filter>include\grpc\impl\codegen</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\grpc_types.h">
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\workqueue_posix.h">
+-      <Filter>src\core\lib\iomgr</Filter>
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc\impl\codegen\grpc_types.h">
-       <Filter>include\grpc\impl\codegen</Filter>
++      <Filter>include\grpc\impl\codegen</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\propagation_bits.h">
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\iomgr\workqueue_windows.h">
+-      <Filter>src\core\lib\iomgr</Filter>
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc\impl\codegen\propagation_bits.h">
-       <Filter>include\grpc\impl\codegen</Filter>
++      <Filter>include\grpc\impl\codegen</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\status.h">
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\json\json.h">
+-      <Filter>src\core\lib\json</Filter>
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc\impl\codegen\status.h">
-       <Filter>include\grpc\impl\codegen</Filter>
++      <Filter>include\grpc\impl\codegen</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\alloc.h">
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\json\json_common.h">
+-      <Filter>src\core\lib\json</Filter>
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc\impl\codegen\alloc.h">
-       <Filter>include\grpc\impl\codegen</Filter>
++      <Filter>include\grpc\impl\codegen</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\atm.h">
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\json\json_reader.h">
+-      <Filter>src\core\lib\json</Filter>
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc\impl\codegen\atm.h">
-       <Filter>include\grpc\impl\codegen</Filter>
++      <Filter>include\grpc\impl\codegen</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\atm_gcc_atomic.h">
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\json\json_writer.h">
+-      <Filter>src\core\lib\json</Filter>
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc\impl\codegen\atm_gcc_atomic.h">
-       <Filter>include\grpc\impl\codegen</Filter>
++      <Filter>include\grpc\impl\codegen</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\atm_gcc_sync.h">
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\surface\api_trace.h">
+-      <Filter>src\core\lib\surface</Filter>
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc\impl\codegen\atm_gcc_sync.h">
-       <Filter>include\grpc\impl\codegen</Filter>
++      <Filter>include\grpc\impl\codegen</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\atm_windows.h">
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\surface\call.h">
+-      <Filter>src\core\lib\surface</Filter>
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc\impl\codegen\atm_windows.h">
-       <Filter>include\grpc\impl\codegen</Filter>
++      <Filter>include\grpc\impl\codegen</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\log.h">
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\surface\call_test_only.h">
+-      <Filter>src\core\lib\surface</Filter>
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc\impl\codegen\log.h">
-       <Filter>include\grpc\impl\codegen</Filter>
++      <Filter>include\grpc\impl\codegen</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\port_platform.h">
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\surface\channel.h">
+-      <Filter>src\core\lib\surface</Filter>
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc\impl\codegen\port_platform.h">
-       <Filter>include\grpc\impl\codegen</Filter>
++      <Filter>include\grpc\impl\codegen</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\slice.h">
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\surface\channel_init.h">
+-      <Filter>src\core\lib\surface</Filter>
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc\impl\codegen\slice.h">
-       <Filter>include\grpc\impl\codegen</Filter>
++      <Filter>include\grpc\impl\codegen</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\slice_buffer.h">
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\surface\channel_stack_type.h">
+-      <Filter>src\core\lib\surface</Filter>
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc\impl\codegen\slice_buffer.h">
-       <Filter>include\grpc\impl\codegen</Filter>
++      <Filter>include\grpc\impl\codegen</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\sync.h">
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\surface\completion_queue.h">
+-      <Filter>src\core\lib\surface</Filter>
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc\impl\codegen\sync.h">
-       <Filter>include\grpc\impl\codegen</Filter>
++      <Filter>include\grpc\impl\codegen</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\sync_generic.h">
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\surface\event_string.h">
+-      <Filter>src\core\lib\surface</Filter>
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc\impl\codegen\sync_generic.h">
-       <Filter>include\grpc\impl\codegen</Filter>
++      <Filter>include\grpc\impl\codegen</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\sync_posix.h">
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\surface\init.h">
+-      <Filter>src\core\lib\surface</Filter>
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc\impl\codegen\sync_posix.h">
-       <Filter>include\grpc\impl\codegen</Filter>
++      <Filter>include\grpc\impl\codegen</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\sync_windows.h">
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\surface\lame_client.h">
+-      <Filter>src\core\lib\surface</Filter>
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc\impl\codegen\sync_windows.h">
-       <Filter>include\grpc\impl\codegen</Filter>
++      <Filter>include\grpc\impl\codegen</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\time.h">
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\surface\server.h">
+-      <Filter>src\core\lib\surface</Filter>
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc\impl\codegen\time.h">
-       <Filter>include\grpc\impl\codegen</Filter>
++      <Filter>include\grpc\impl\codegen</Filter>
      </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\transport\byte_stream.h">
+-      <Filter>src\core\lib\transport</Filter>
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\impl\codegen\core_codegen.h" />
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\create_channel_posix.h" />
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\impl\codegen\core_codegen.h" />
-   </ItemGroup>
-   <ItemGroup>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc++\impl\codegen\core_codegen.h">
++  </ItemGroup>
++  <ItemGroup>
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc++\impl\codegen\core_codegen.h">
-       <Filter>include\grpc++\impl\codegen</Filter>
++      <Filter>include\grpc++\impl\codegen</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\src\cpp\client\secure_credentials.h">
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\transport\connectivity_state.h">
+-      <Filter>src\core\lib\transport</Filter>
 +    <ClInclude Include="$(ProjectDir)\..\..\..\src\cpp\client\secure_credentials.h">
-       <Filter>src\cpp\client</Filter>
++      <Filter>src\cpp\client</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\src\cpp\common\secure_auth_context.h">
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\transport\metadata.h">
+-      <Filter>src\core\lib\transport</Filter>
 +    <ClInclude Include="$(ProjectDir)\..\..\..\src\cpp\common\secure_auth_context.h">
-       <Filter>src\cpp\common</Filter>
++      <Filter>src\cpp\common</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\src\cpp\server\secure_server_credentials.h">
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\transport\metadata_batch.h">
+-      <Filter>src\core\lib\transport</Filter>
 +    <ClInclude Include="$(ProjectDir)\..\..\..\src\cpp\server\secure_server_credentials.h">
-       <Filter>src\cpp\server</Filter>
++      <Filter>src\cpp\server</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\src\cpp\client\create_channel_internal.h">
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\transport\static_metadata.h">
+-      <Filter>src\core\lib\transport</Filter>
 +    <ClInclude Include="$(ProjectDir)\..\..\..\src\cpp\client\create_channel_internal.h">
-       <Filter>src\cpp\client</Filter>
++      <Filter>src\cpp\client</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\src\cpp\server\dynamic_thread_pool.h">
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\transport\transport.h">
+-      <Filter>src\core\lib\transport</Filter>
 +    <ClInclude Include="$(ProjectDir)\..\..\..\src\cpp\server\dynamic_thread_pool.h">
-       <Filter>src\cpp\server</Filter>
++      <Filter>src\cpp\server</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\src\cpp\server\thread_pool_interface.h">
+-    <ClInclude Include="$(SolutionDir)\..\src\core\lib\transport\transport_impl.h">
+-      <Filter>src\core\lib\transport</Filter>
 +    <ClInclude Include="$(ProjectDir)\..\..\..\src\cpp\server\thread_pool_interface.h">
-       <Filter>src\cpp\server</Filter>
++      <Filter>src\cpp\server</Filter>
      </ClInclude>
    </ItemGroup>
 -
    <ItemGroup>
      <Filter Include="include">
        <UniqueIdentifier>{82445414-24cd-8198-1fe1-4267c3f3df00}</UniqueIdentifier>
-@@ -477,5 +462,4 @@
+@@ -974,36 +443,6 @@
+     <Filter Include="src">
+       <UniqueIdentifier>{328ff211-2886-406e-56f9-18ba1686f363}</UniqueIdentifier>
+     </Filter>
+-    <Filter Include="src\core">
+-      <UniqueIdentifier>{d02f1155-7e7e-3736-3c69-dc9146dc523d}</UniqueIdentifier>
+-    </Filter>
+-    <Filter Include="src\core\lib">
+-      <UniqueIdentifier>{80567a8f-622f-a3ce-c12d-aebb63984b07}</UniqueIdentifier>
+-    </Filter>
+-    <Filter Include="src\core\lib\channel">
+-      <UniqueIdentifier>{e769265c-8abd-cd64-2cc2-a52da484fe7b}</UniqueIdentifier>
+-    </Filter>
+-    <Filter Include="src\core\lib\compression">
+-      <UniqueIdentifier>{701b2d46-11c6-3640-b189-45287f00bee3}</UniqueIdentifier>
+-    </Filter>
+-    <Filter Include="src\core\lib\debug">
+-      <UniqueIdentifier>{ada68fd5-8e51-98cb-71a7-baf7989d8ffa}</UniqueIdentifier>
+-    </Filter>
+-    <Filter Include="src\core\lib\http">
+-      <UniqueIdentifier>{e770844e-61d4-555e-59be-81288e21a35f}</UniqueIdentifier>
+-    </Filter>
+-    <Filter Include="src\core\lib\iomgr">
+-      <UniqueIdentifier>{04dfa1c8-7ffe-4f06-4a7c-37441dc75764}</UniqueIdentifier>
+-    </Filter>
+-    <Filter Include="src\core\lib\json">
+-      <UniqueIdentifier>{a5d5bddf-6f19-b655-a03a-f30ff5c253a5}</UniqueIdentifier>
+-    </Filter>
+-    <Filter Include="src\core\lib\surface">
+-      <UniqueIdentifier>{fb2276d7-5a11-f1d9-82c3-e7c7f1155523}</UniqueIdentifier>
+-    </Filter>
+-    <Filter Include="src\core\lib\transport">
+-      <UniqueIdentifier>{4bd7971a-68f7-0d5a-f502-6dea3099caaa}</UniqueIdentifier>
+-    </Filter>
+     <Filter Include="src\cpp">
+       <UniqueIdentifier>{2420a905-e4f1-a5aa-a364-6a112878a39e}</UniqueIdentifier>
+     </Filter>
+@@ -1023,5 +462,4 @@
        <UniqueIdentifier>{f842537a-2bf1-1ec3-b495-7d62c64a1c06}</UniqueIdentifier>
      </Filter>
    </ItemGroup>
@@ -1818,7 +2665,7 @@ index a905118..cfea49a
 +</Project>
 \ No newline at end of file
 diff --git a/vsprojects/vcxproj/grpc/grpc.vcxproj b/vsprojects/vcxproj/grpc/grpc.vcxproj
-index a9e96da..d95a974
+index 51f2107..d95a974
 --- a/vsprojects/vcxproj/grpc/grpc.vcxproj
 +++ b/vsprojects/vcxproj/grpc/grpc.vcxproj
 @@ -1,6 +1,6 @@
@@ -1948,6 +2795,7 @@ index a9e96da..d95a974
 -    <ClInclude Include="$(SolutionDir)\..\include\grpc\compression.h" />
 -    <ClInclude Include="$(SolutionDir)\..\include\grpc\grpc.h" />
 -    <ClInclude Include="$(SolutionDir)\..\include\grpc\grpc_posix.h" />
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\grpc_security_constants.h" />
 -    <ClInclude Include="$(SolutionDir)\..\include\grpc\status.h" />
 -    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\byte_buffer.h" />
 -    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\byte_buffer_reader.h" />
@@ -1971,7 +2819,6 @@ index a9e96da..d95a974
 -    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\sync_windows.h" />
 -    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\time.h" />
 -    <ClInclude Include="$(SolutionDir)\..\include\grpc\grpc_security.h" />
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\grpc_security_constants.h" />
 -    <ClInclude Include="$(SolutionDir)\..\include\grpc\census.h" />
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc\byte_buffer.h" />
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc\byte_buffer_reader.h" />
@@ -2913,7 +3760,7 @@ index a9e96da..d95a974
  </Project>
  
 diff --git a/vsprojects/vcxproj/grpc/grpc.vcxproj.filters b/vsprojects/vcxproj/grpc/grpc.vcxproj.filters
-index be77e53..ba69b28
+index 497111f..ba69b28
 --- a/vsprojects/vcxproj/grpc/grpc.vcxproj.filters
 +++ b/vsprojects/vcxproj/grpc/grpc.vcxproj.filters
 @@ -1,1121 +1,1121 @@
@@ -3686,10 +4533,13 @@ index be77e53..ba69b28
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc\grpc_posix.h">
        <Filter>include\grpc</Filter>
      </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\status.h">
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\grpc_security_constants.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc\status.h">
        <Filter>include\grpc</Filter>
      </ClInclude>
+-    <ClInclude Include="$(SolutionDir)\..\include\grpc\status.h">
+-      <Filter>include\grpc</Filter>
+-    </ClInclude>
 -    <ClInclude Include="$(SolutionDir)\..\include\grpc\impl\codegen\byte_buffer.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc\impl\codegen\byte_buffer.h">
        <Filter>include\grpc\impl\codegen</Filter>
@@ -3776,9 +4626,8 @@ index be77e53..ba69b28
      </ClInclude>
 -    <ClInclude Include="$(SolutionDir)\..\include\grpc\grpc_security.h">
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc\grpc_security.h">
-       <Filter>include\grpc</Filter>
-     </ClInclude>
--    <ClInclude Include="$(SolutionDir)\..\include\grpc\grpc_security_constants.h">
++      <Filter>include\grpc</Filter>
++    </ClInclude>
 +    <ClInclude Include="$(ProjectDir)\..\..\..\include\grpc\grpc_security_constants.h">
        <Filter>include\grpc</Filter>
      </ClInclude>
@@ -4662,7 +5511,7 @@ index 27eb935..207944a
 +++ b/vsprojects/vcxproj/grpc_plugin_support/grpc_plugin_support.vcxproj.filters
 @@ -1,74 +1,74 @@
 -<?xml version="1.0" encoding="utf-8"?>
-+﻿<?xml version="1.0" encoding="utf-8"?>
++<?xml version="1.0" encoding="utf-8"?>
  <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
    <ItemGroup>
 -    <ClCompile Include="$(SolutionDir)\..\src\compiler\cpp_generator.cc">
@@ -4910,7 +5759,7 @@ index 4aea144..9d1cff6
 +++ b/vsprojects/vcxproj/z/z.vcxproj.filters
 @@ -1,84 +1,84 @@
 -<?xml version="1.0" encoding="utf-8"?>
-+﻿<?xml version="1.0" encoding="utf-8"?>
++<?xml version="1.0" encoding="utf-8"?>
  <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
    <ItemGroup>
 -    <ClCompile Include="$(SolutionDir)\..\third_party\zlib\adler32.c">
