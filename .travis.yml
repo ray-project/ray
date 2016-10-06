@@ -29,6 +29,19 @@ matrix:
       install: []
       script:
         - .travis/check-git-clang-format-output.sh
+    - os: linux
+      dist: trusty
+      python: "2.7"
+      env: VALGRIND=1
+      before_install:
+        - sudo apt-get update -qq
+        - sudo apt-get install -qq valgrind
+      script:
+        - cd common
+        - make test
+        - cd ..
+        - source setup-env.sh
+        - python test/test.py valgrind
 
 install:
   - make

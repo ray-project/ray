@@ -1,4 +1,5 @@
 #include <inttypes.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/socket.h>
@@ -24,6 +25,9 @@ UT_icd task_ptr_icd = {sizeof(task_instance *), NULL, NULL, NULL};
 UT_icd worker_icd = {sizeof(available_worker), NULL, NULL, NULL};
 
 struct local_scheduler_state {
+  /* The local scheduler event loop. */
+  event_loop *loop;
+  /* The handle to the database. */
   db_handle *db;
   /** This is an array of pointers to tasks that are waiting to be scheduled. */
   UT_array *task_queue;
@@ -35,12 +39,21 @@ struct local_scheduler_state {
 local_scheduler_state *
 init_local_scheduler(event_loop *loop, const char *redis_addr, int redis_port) {
   local_scheduler_state *state = malloc(sizeof(local_scheduler_state));
+  state->loop = loop;
   state->db = db_connect(redis_addr, redis_port, "photon", "", -1);
   db_attach(state->db, loop);
   utarray_new(state->task_queue, &task_ptr_icd);
   utarray_new(state->available_worker_queue, &worker_icd);
   return state;
 };
+
+void free_local_scheduler(local_scheduler_state *s) {
+  db_disconnect(s->db);
+  utarray_free(s->task_queue);
+  utarray_free(s->available_worker_queue);
+  event_loop_destroy(s->loop);
+  free(s);
+}
 
 void handle_submit_task(local_scheduler_state *s, task_spec *task) {
   /* Create a unique task instance ID. This is different from the task ID and
@@ -146,19 +159,33 @@ void new_client_connection(event_loop *loop, int listener_sock, void *context,
   LOG_INFO("new connection with fd %d", new_socket);
 }
 
+/* We need this code so we can clean up when we get a SIGTERM signal. */
+
+local_scheduler_state *g_state;
+
+void signal_handler(int signal) {
+  if (signal == SIGTERM) {
+    free_local_scheduler(g_state);
+    exit(0);
+  }
+}
+
+/* End of the cleanup code. */
+
 void start_server(const char *socket_name, const char *redis_addr,
                   int redis_port) {
   int fd = bind_ipc_sock(socket_name);
   event_loop *loop = event_loop_create();
-  local_scheduler_state *state =
-      init_local_scheduler(loop, redis_addr, redis_port);
+  g_state = init_local_scheduler(loop, redis_addr, redis_port);
 
   /* Run event loop. */
-  event_loop_add_file(loop, fd, EVENT_LOOP_READ, new_client_connection, state);
+  event_loop_add_file(loop, fd, EVENT_LOOP_READ, new_client_connection,
+                      g_state);
   event_loop_run(loop);
 }
 
 int main(int argc, char *argv[]) {
+  signal(SIGTERM, signal_handler);
   /* Path of the listening socket of the local scheduler. */
   char *scheduler_socket_name = NULL;
   /* IP address and port of redis. */
