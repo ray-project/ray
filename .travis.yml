@@ -44,11 +44,17 @@ matrix:
         - python test/test.py valgrind
 
 install:
+  - ./install-dependencies.sh
   - make
-
-script:
+  - cd common/lib/python
+  - python setup.py install --user
+  - cd ../../..
+  - cd lib/python
+  - python setup.py install --user
+  - cd ../..
   - cd common
   - make test
   - cd ..
-  - source setup-env.sh
+
+script:
   - python test/test.py
