@@ -24,6 +24,8 @@ typedef struct {
 
 extern PyTypeObject PyObjectIDType;
 
+extern PyTypeObject PyTaskType;
+
 int PyObjectToUniqueID(PyObject *object, object_id *objectid);
 
 PyObject *PyObjectID_make(object_id object_id);

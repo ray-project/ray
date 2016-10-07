@@ -197,7 +197,7 @@ static PyMethodDef PyTask_methods[] = {
     {NULL} /* Sentinel */
 };
 
-static PyTypeObject PyTaskType = {
+PyTypeObject PyTaskType = {
     PyObject_HEAD_INIT(NULL) 0,  /* ob_size */
     "task.Task",                 /* tp_name */
     sizeof(PyTask),              /* tp_basicsize */
@@ -324,38 +324,4 @@ PyObject *check_simple_value(PyObject *self, PyObject *args) {
     Py_RETURN_TRUE;
   }
   Py_RETURN_FALSE;
-}
-
-static PyMethodDef common_methods[] = {
-    {"check_simple_value", check_simple_value, METH_VARARGS,
-     "Should the object be passed by value?"},
-    {NULL} /* Sentinel */
-};
-
-#ifndef PyMODINIT_FUNC /* declarations for DLL import/export */
-#define PyMODINIT_FUNC void
-#endif
-
-PyMODINIT_FUNC initcommon(void) {
-  PyObject *m;
-
-  if (PyType_Ready(&PyTaskType) < 0)
-    return;
-
-  if (PyType_Ready(&PyObjectIDType) < 0)
-    return;
-
-  m = Py_InitModule3("common", common_methods,
-                     "Example module that creates an extension type.");
-
-  Py_INCREF(&PyTaskType);
-  PyModule_AddObject(m, "Task", (PyObject *) &PyTaskType);
-
-  Py_INCREF(&PyObjectIDType);
-  PyModule_AddObject(m, "ObjectID", (PyObject *) &PyObjectIDType);
-
-  char common_error[] = "common.error";
-  CommonError = PyErr_NewException(common_error, NULL, NULL);
-  Py_INCREF(CommonError);
-  PyModule_AddObject(m, "common_error", CommonError);
 }
