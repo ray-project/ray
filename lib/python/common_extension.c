@@ -131,6 +131,7 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   int val_repr_index = 0;
   self->spec =
       alloc_task_spec(function_id, size, num_returns, value_data_bytes);
+  /* Add the task arguments. */
   for (size_t i = 0; i < size; ++i) {
     PyObject *arg = PyList_GetItem(arguments, i);
     if (PyObject_IsInstance(arg, (PyObject *) &PyObjectIDType)) {
@@ -145,6 +146,14 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
     }
   }
   utarray_free(val_repr_ptrs);
+  /* Generate and add the object IDs for the return values. */
+  for (size_t i = 0; i < num_returns; ++i) {
+    /* TODO(rkn): Later, this should be computed as a deterministic hash of (1)
+     * the contents of the task, (2) the index i, and (3) a counter of the
+     * number of tasks launched so far by the parent task. For now, we generate
+     * it randomly. */
+    *task_return(self->spec, i) = globally_unique_id();
+  }
   return 0;
 }
 
