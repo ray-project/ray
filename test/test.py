@@ -43,7 +43,7 @@ class TestPhotonClient(unittest.TestCase):
       os._exit(self.p2.returncode)
     else:
       self.p2.kill()
-    
+
 
   def test_submit_and_get_task(self):
     # TODO(rkn): This should be a FunctionID.
@@ -93,6 +93,16 @@ class TestPhotonClient(unittest.TestCase):
             self.assertEqual(args[i].id(), retrieved_args[i].id())
           else:
             self.assertEqual(args[i], retrieved_args[i])
+
+    # Submit all of the tasks.
+    for args in args_list:
+      for num_return_vals in [0, 1, 2, 3, 5, 10, 100]:
+        task = photon.Task(function_id, args, num_return_vals)
+        self.photon_client.submit(task)
+    # Get all of the tasks.
+    for args in args_list:
+      for num_return_vals in [0, 1, 2, 3, 5, 10, 100]:
+        new_task = self.photon_client.get_task()
 
 if __name__ == "__main__":
   if len(sys.argv) > 1:

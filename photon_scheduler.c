@@ -74,7 +74,6 @@ void handle_submit_task(local_scheduler_state *s, task_spec *task) {
                   (uint8_t *)task);
     /* Remove the available worker from the queue and free the struct. */
     utarray_pop_back(s->available_worker_queue);
-    free(worker);
   } else {
     /* Add the task to the task queue. This passes ownership of the task queue.
      * And the task will be freed when it is assigned to a worker. */
