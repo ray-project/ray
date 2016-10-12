@@ -47,13 +47,13 @@ def get_and_set_weights_methods():
   for var in tf.trainable_variables():
     assignment_placeholders.append(tf.placeholder(var.value().dtype, var.get_shape().as_list()))
     assignment_nodes.append(var.assign(assignment_placeholders[-1]))
-
+  # Define a function for getting the network weights.
   def get_weights():
     return [v.eval(session=sess) for v in tf.trainable_variables()]
-
+  # Define a function for setting the network weights.
   def set_weights(new_weights):
     sess.run(assignment_nodes, feed_dict={p: w for p, w in zip(assignment_placeholders, new_weights)})
-
+  # Return the methods.
   return get_weights, set_weights
 
 get_weights, set_weights = get_and_set_weights_methods()
@@ -102,21 +102,20 @@ NUM_ITERS = 201
 def net_vars_initializer():
   # Seed TensorFlow to make the script deterministic.
   tf.set_random_seed(0)
-
+  # Define the inputs.
   x_data = tf.placeholder(tf.float32, shape=[BATCH_SIZE])
   y_data = tf.placeholder(tf.float32, shape=[BATCH_SIZE])
-
+  # Define the weights and computation.
   w = tf.Variable(tf.random_uniform([1], -1.0, 1.0))
   b = tf.Variable(tf.zeros([1]))
   y = w * x_data + b
-
+  # Define the loss.
   loss = tf.reduce_mean(tf.square(y - y_data))
   optimizer = tf.train.GradientDescentOptimizer(0.5)
   train = optimizer.minimize(loss)
-
+  # Define the weight initializer and session.
   init = tf.initialize_all_variables()
   sess = tf.Session()
-
   # Additional code for setting and getting the weights.
   def get_and_set_weights_methods():
     assignment_placeholders = []
@@ -124,17 +123,13 @@ def net_vars_initializer():
     for var in tf.trainable_variables():
       assignment_placeholders.append(tf.placeholder(var.value().dtype, var.get_shape().as_list()))
       assignment_nodes.append(var.assign(assignment_placeholders[-1]))
-
     def get_weights():
       return [v.eval(session=sess) for v in tf.trainable_variables()]
-
     def set_weights(new_weights):
       sess.run(assignment_nodes, feed_dict={p: w for p, w in zip(assignment_placeholders, new_weights)})
-
     return get_weights, set_weights
-
   get_weights, set_weights = get_and_set_weights_methods()
-
+  # Return all of the data needed to use the network.
   return get_weights, set_weights, sess, train, loss, x_data, y_data, init
 
 def net_vars_reinitializer(net_vars):

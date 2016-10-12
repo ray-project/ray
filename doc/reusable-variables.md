@@ -2,28 +2,29 @@
 
 This document explains how to create and use reusable variables in Ray.
 
+A reusable variable is a per-worker variable which is (1) created when the worker starts, and (2) is reinitialized before a task reuses it. Thus, while a task can modify a reusable variable, the variable is reinitialized before the next task uses it. Reusable variables obviates the need for serialization/deserialization and, like Ray objects, avoid side effects.
+
 Reusable variables are Python objects that are created once on each worker and
-are reused by all subsequent tasks that run on that worker. There are two
-primary reasons for doing this.
+can be used by all subsequent tasks that run on that worker. Reusable variables
+will be reinitialized between tasks. There are several primary reasons for doing
+this.
 
-1. You want to use an object that is not serializable, and so the code that
-creates the object must run on each worker.
-2. Creating the object is slow (like a TensorFlow graph), and so you want to
-create it only once.
+1. Reusable variables are created once on each worker and are not shipped
+between machines, so they do not need to be serialized or deserialized (however,
+the code that creates the reusable variable does need to be pickled).
+2. Objects that are slow to construct (like a TensorFlow graph) only need to be
+constructed once on each worker.
+3. By reinitializing between tasks that use them, they help avoid side effects.
 
-To elaborate on the first point, certain Python objects cannot be easily shipped
-between processes or machines. Certain objects simply are not meaningful on
-other machines (such as a filehandle). For others, their classes may be largely
-defined in C, and so their internals may be relatively opaque to Python.
-
-In these situations, if we need the object on all of the workers, then each
-worker needs to run the code that creates the object. We accomplish this using
-reusable variables. These variables are created once on each worker and are
-reused by every task that runs on that worker.
+To elaborate on the first point, standard Python serialization libraries like
+pickle fail on some objects. With these kinds of objects, it may be easier to
+ship the code that creates the object to each worker and to run the code on each
+worker than it would be to create the object on the driver and ship the object
+to each worker.
 
 ## Creating a Reusable Variable
 
-To give an example, consider a gym environment, which is essentially provides a
+To give an example, consider a gym environment, which essentially provides a
 Python wrapper for an Atari simulator.
 
 ```python

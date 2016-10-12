@@ -140,7 +140,7 @@ remaining_ids = []
 for _ in range(100):
   params = generate_random_params()
   accuracy_id = train_cnn_and_compute_accuracy.remote(randparams, train_images, train_labels, validation_images, validation_labels)
-  result_ids.append(accuracy_id)
+  remaining_ids.append(accuracy_id)
 
 # Process the tasks one at a time.
 while len(remaining_ids) > 0:
@@ -150,6 +150,9 @@ while len(remaining_ids) > 0:
   accuracy = ray.get(ready_ids[0])
   print "Accuracy {}".format(accuracy)
 ```
+
+Note that the above example does not associate the accuracy with the parameters
+that produced that accuracy, but this is done in the actual script.
 
 ## Additional notes
 
