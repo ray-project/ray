@@ -1,6 +1,7 @@
 from __future__ import print_function
 
 import os
+import signal
 import socket
 import subprocess
 import sys
@@ -10,6 +11,8 @@ import time
 import tempfile
 
 import plasma
+
+USE_VALGRIND = False
 
 def random_object_id():
   return "".join([chr(random.randint(0, 255)) for _ in range(20)])
@@ -45,13 +48,24 @@ class TestPlasmaClient(unittest.TestCase):
     # Start Plasma.
     plasma_store_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../build/plasma_store")
     store_name = "/tmp/store{}".format(random.randint(0, 10000))
-    self.p = subprocess.Popen([plasma_store_executable, "-s", store_name])
+    command = [plasma_store_executable, "-s", store_name]
+    if USE_VALGRIND:
+      self.p = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full"] + command)
+      time.sleep(2.0)
+    else:
+      self.p = subprocess.Popen(command)
     # Connect to Plasma.
     self.plasma_client = plasma.PlasmaClient(store_name)
 
   def tearDown(self):
     # Kill the plasma store process.
-    self.p.kill()
+    if USE_VALGRIND:
+      self.p.send_signal(signal.SIGTERM)
+      self.p.wait()
+      if self.p.returncode != 0:
+        os._exit(-1)
+    else:
+      self.p.kill()
 
   def test_create(self):
     # Create an object id string.
@@ -174,15 +188,32 @@ class TestPlasmaManager(unittest.TestCase):
     plasma_store_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../build/plasma_store")
     store_name1 = "/tmp/store{}".format(random.randint(0, 10000))
     store_name2 = "/tmp/store{}".format(random.randint(0, 10000))
-    self.p2 = subprocess.Popen([plasma_store_executable, "-s", store_name1])
-    self.p3 = subprocess.Popen([plasma_store_executable, "-s", store_name2])
+    plasma_store_command1 = [plasma_store_executable, "-s", store_name1]
+    plasma_store_command2 = [plasma_store_executable, "-s", store_name2]
+
+    if USE_VALGRIND:
+      self.p2 = subprocess.Popen(["valgrind", "--track-origins=yes", "--error-exitcode=1"] + plasma_store_command1)
+      self.p3 = subprocess.Popen(["valgrind", "--track-origins=yes", "--error-exitcode=1"] + plasma_store_command2)
+    else:
+      self.p2 = subprocess.Popen(plasma_store_command1)
+      self.p3 = subprocess.Popen(plasma_store_command2)
+
     # Start two PlasmaManagers.
     self.port1 = random.randint(10000, 50000)
     self.port2 = random.randint(10000, 50000)
     plasma_manager_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../build/plasma_manager")
-    self.p4 = subprocess.Popen([plasma_manager_executable, "-s", store_name1, "-m", "127.0.0.1", "-p", str(self.port1)])
-    self.p5 = subprocess.Popen([plasma_manager_executable, "-s", store_name2, "-m", "127.0.0.1", "-p", str(self.port2)])
-    time.sleep(0.1)
+    plasma_manager_command1 = [plasma_manager_executable, "-s", store_name1, "-m", "127.0.0.1", "-p", str(self.port1)]
+    plasma_manager_command2 = [plasma_manager_executable, "-s", store_name2, "-m", "127.0.0.1", "-p", str(self.port2)]
+
+    if USE_VALGRIND:
+      self.p4 = subprocess.Popen(["valgrind", "--track-origins=yes", "--error-exitcode=1"] + plasma_manager_command1)
+      self.p5 = subprocess.Popen(["valgrind", "--track-origins=yes", "--error-exitcode=1"] + plasma_manager_command2)
+      time.sleep(2.0)
+    else:
+      self.p4 = subprocess.Popen(plasma_manager_command1)
+      self.p5 = subprocess.Popen(plasma_manager_command2)
+      time.sleep(0.1)
+
     # Connect two PlasmaClients.
     self.client1 = plasma.PlasmaClient(store_name1, "127.0.0.1", self.port1)
     self.client2 = plasma.PlasmaClient(store_name2, "127.0.0.1", self.port2)
@@ -190,10 +221,23 @@ class TestPlasmaManager(unittest.TestCase):
 
   def tearDown(self):
     # Kill the PlasmaStore and PlasmaManager processes.
-    self.p2.kill()
-    self.p3.kill()
-    self.p4.kill()
-    self.p5.kill()
+    if USE_VALGRIND:
+      self.p4.send_signal(signal.SIGTERM)
+      self.p4.wait()
+      self.p5.send_signal(signal.SIGTERM)
+      self.p5.wait()
+      self.p2.send_signal(signal.SIGTERM)
+      self.p2.wait()
+      self.p3.send_signal(signal.SIGTERM)
+      self.p3.wait()
+      if self.p2.returncode != 0 or self.p3.returncode != 0 or self.p4.returncode != 0 or self.p5.returncode != 0:
+        print("aborting due to valgrind error")
+        os._exit(-1)
+    else:
+      self.p2.kill()
+      self.p3.kill()
+      self.p4.kill()
+      self.p5.kill()
 
   def test_transfer(self):
     for _ in range(100):
@@ -226,7 +270,7 @@ class TestPlasmaManager(unittest.TestCase):
     # Create an object id string.
     object_id = random_object_id()
     # Create a new buffer.
-    memory_buffer = self.client1.create(object_id, 20000)
+    # memory_buffer = self.client1.create(object_id, 20000)
     # This test is commented out because it currently fails.
     # # Transferring the buffer before sealing it should fail.
     # self.assertRaises(Exception, lambda : self.manager1.transfer(1, object_id))
@@ -246,4 +290,10 @@ class TestPlasmaManager(unittest.TestCase):
     print("it took", b, "seconds to put and transfer the objects")
 
 if __name__ == "__main__":
+  if len(sys.argv) > 1:
+    # pop the argument so we don't mess with unittest's own argument parser
+    arg = sys.argv.pop()
+    if arg == "valgrind":
+      USE_VALGRIND = True
+      print("Using valgrind for tests")
   unittest.main(verbosity=2)

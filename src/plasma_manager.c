@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <signal.h>
 #include <stdlib.h>
 #include <sys/mman.h>
 #include <sys/types.h>
@@ -343,7 +344,15 @@ void start_server(const char *store_socket_name,
   event_loop_run(loop);
 }
 
+/* Report "success" to valgrind. */
+void signal_handler(int signal) {
+  if (signal == SIGTERM) {
+    exit(0);
+  }
+}
+
 int main(int argc, char *argv[]) {
+  signal(SIGTERM, signal_handler);
   /* Socket name of the plasma store this manager is connected to. */
   char *store_socket_name = NULL;
   /* IP address of this node. */

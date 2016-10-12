@@ -115,6 +115,7 @@ void plasma_get(plasma_store_conn *conn,
   plasma_send_request(conn->conn, PLASMA_GET, &req);
   plasma_reply reply;
   int fd = recv_fd(conn->conn, (char *) &reply, sizeof(plasma_reply));
+  CHECKM(fd != -1, "recv not successful");
   plasma_object *object = &reply.object;
   *data = lookup_or_mmap(conn, fd, object->handle.store_fd,
                          object->handle.mmap_size) +
