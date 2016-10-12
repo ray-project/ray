@@ -19,10 +19,10 @@ TEST task_test(void) {
 
   unique_id arg1 = globally_unique_id();
   ASSERT(task_args_add_ref(task, arg1) == 0);
-  ASSERT(task_args_add_val(task, (uint8_t*) "hello", 5) == 1);
+  ASSERT(task_args_add_val(task, (uint8_t *) "hello", 5) == 1);
   unique_id arg2 = globally_unique_id();
   ASSERT(task_args_add_ref(task, arg2) == 2);
-  ASSERT(task_args_add_val(task, (uint8_t*) "world", 5) == 3);
+  ASSERT(task_args_add_val(task, (uint8_t *) "world", 5) == 3);
 
   unique_id ret0 = globally_unique_id();
   unique_id ret1 = globally_unique_id();
@@ -30,10 +30,10 @@ TEST task_test(void) {
   memcpy(task_return(task, 1), &ret1, sizeof(ret1));
 
   ASSERT(memcmp(task_arg_id(task, 0), &arg1, sizeof(arg1)) == 0);
-  ASSERT(memcmp(task_arg_val(task, 1), (uint8_t*) "hello",
+  ASSERT(memcmp(task_arg_val(task, 1), (uint8_t *) "hello",
                 task_arg_length(task, 1)) == 0);
   ASSERT(memcmp(task_arg_id(task, 2), &arg2, sizeof(arg2)) == 0);
-  ASSERT(memcmp(task_arg_val(task, 3), (uint8_t*) "world",
+  ASSERT(memcmp(task_arg_val(task, 3), (uint8_t *) "world",
                 task_arg_length(task, 3)) == 0);
 
   ASSERT(memcmp(task_return(task, 0), &ret0, sizeof(unique_id)) == 0);
@@ -49,7 +49,7 @@ TEST send_task(void) {
   *task_return(task, 1) = globally_unique_id();
   int fd[2];
   socketpair(AF_UNIX, SOCK_STREAM, 0, fd);
-  write_message(fd[0], SUBMIT_TASK, task_size(task), (uint8_t*) task);
+  write_message(fd[0], SUBMIT_TASK, task_size(task), (uint8_t *) task);
   int64_t type;
   int64_t length;
   uint8_t *message;

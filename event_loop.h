@@ -31,7 +31,7 @@ typedef void (*event_loop_file_handler)(event_loop *loop,
  * as well as the context that was specified when registering this handler
  * are passed as arguments. The return is the number of milliseconds the
  * timer shall be reset to or EVENT_LOOP_TIMER_DONE if the timer shall
- * not triggered again. */
+ * not be triggered again. */
 typedef int (*event_loop_timer_handler)(event_loop *loop,
                                         timer_id timer_id,
                                         void *context);
