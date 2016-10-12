@@ -12,13 +12,13 @@ typedef struct plasma_store_state plasma_store_state;
  * @param object_id Object ID of the object to be created.
  * @param data_size Size in bytes of the object to be created.
  * @param metadata_size Size in bytes of the object metadata.
- * @return The new plasma object.
+ * @return Void.
  */
-plasma_object create_object(plasma_store_state *s,
-                            object_id object_id,
-                            int64_t data_size,
-                            int64_t metadata_size,
-                            plasma_object *result);
+void create_object(plasma_store_state *s,
+                   object_id object_id,
+                   int64_t data_size,
+                   int64_t metadata_size,
+                   plasma_object *result);
 
 /**
  * Get an object:

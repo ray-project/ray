@@ -93,11 +93,11 @@ plasma_store_state *init_plasma_store(event_loop *loop) {
 }
 
 /* Create a new object buffer in the hash table. */
-plasma_object create_object(plasma_store_state *s,
-                            object_id object_id,
-                            int64_t data_size,
-                            int64_t metadata_size,
-                            plasma_object *result) {
+void create_object(plasma_store_state *s,
+                   object_id object_id,
+                   int64_t data_size,
+                   int64_t metadata_size,
+                   plasma_object *result) {
   LOG_DEBUG("creating object"); /* TODO(pcm): add object_id here */
 
   object_table_entry *entry;
