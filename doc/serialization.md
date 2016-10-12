@@ -1,7 +1,7 @@
 # Serialization in the Object Store
 
 This document describes what Python objects Ray can and cannot serialize into
-the object store.
+the object store. Once an object is placed in the object store, it is immutable.
 
 There are a number of situations in which Ray will place objects in the object
 store.
@@ -16,8 +16,8 @@ A normal Python object may have pointers all over the place, so to place an
 object in the object store or send it between processes, it must first be
 converted to a contiguous string of bytes. This process is known as
 serialization. The process of turning the string of bytes back into a Python
-object is known as deserialization. The process of serialization and
-deserialization is often a bottleneck in distributed computing.
+object is known as deserialization. The processes of serialization and
+deserialization are often bottlenecks in distributed computing.
 
 Pickle is one example of a library for serialization and deserialization in
 Python.
@@ -34,19 +34,24 @@ large variety of Python objects. However, for numerical workloads, pickling and
 unpickling can be inefficient. For example, when unpickling a list of numpy
 arrays, pickle will create completely new arrays in memory. In Ray, when we
 deserialize a list of numpy arrays from the object store, we will create a list
-of numpy arrays in Python, but each numpy array will internally just wrap a
-pointer to the object store's memory. This allows for minimal deserialization.
+of numpy array objects in Python, but each numpy array object is essentially
+just a pointer to the relevant location in the object store's memory. There are
+some advantages to this form of serialization.
+
+- Deserialization can be very fast.
+- Memory is shared between processes so worker processes can all read the same
+data without having to copy it.
 
 ## What Objects Does Ray Handle
 
 However, Ray is not currently capable of serializing arbitrary Python objects.
-The set of Python objects that Ray can serialize is the smallest set S with the
-following properties.
+The set of Python objects that Ray can serialize includes the following.
 
-1. S contains primitive types: ints, floats, longs, bools, strings, unicode,
-numpy arrays.
-2. S contains objects whose classes can be registered with `ray.register_class`.
-3. S contains any list, dictionary, or tuple whose elements belong in S.
+1. Primitive types: ints, floats, longs, bools, strings, unicode, and numpy
+arrays.
+2. Any list, dictionary, or tuple whose elements can be serialized by Ray.
+3. Objects whose classes can be registered with `ray.register_class`. This point
+is described below.
 
 ## Registering Custom Classes
 
@@ -60,9 +65,13 @@ class Foo(object):
     self.b = b
 ```
 
-Simply calling `ray.put(Foo(1, 2))` will fail with a message like `Ray does not know
-how to serialize the object <__main__.Foo object at 0x1077d7c50>.` This can be
-addressed by calling `ray.register_class(Foo)`.
+Simply calling `ray.put(Foo(1, 2))` will fail with a message like
+
+```
+Ray does not know how to serialize the object <__main__.Foo object at 0x1077d7c50>.
+```
+
+This can be addressed by calling `ray.register_class(Foo)`.
 
 ```python
 import ray
@@ -75,8 +84,8 @@ class Foo(object):
     self.a = a
     self.b = b
 
-# Calling ray.register_class(Foo) used to ship the class definition to all of
-# the workers so that workers know how to construct new Foo objects.
+# Calling ray.register_class(Foo) ships the class definition to all of the
+# workers so that workers know how to construct new Foo objects.
 ray.register_class(Foo)
 
 # Create a Foo object, place it in the object store, and retrieve it.
@@ -111,21 +120,26 @@ efficient data structures like arrays.
 
 **Note:** Another setting where the naive replacement of an object with its
 `__dict__` attribute fails is where an object recursively contains itself (or
-multiple objects recursively contain each other). For example, the code below
-currently fails.
+multiple objects recursively contain each other). For example, consider the code
+below.
 
 ```python
 l = []
 l.append(l)
-# Running ray.put(l) will crash due to an infinite loop.
+```
+
+It will throw an exception with a message like the following.
+
+```
+This object exceeds the maximum recursion depth. It may contain itself recursively.
 ```
 
 # Last Resort Workaround
 
-If you find cases where Ray does the wrong thing, please let us know so we can
-fix it. In the meantime, you can do your own custom serialization and
-deserialization (for example by calling pickle by hand). Or by writing your own
-custom serializer and deserializer.
+If you find cases where Ray doesn't work or does the wrong thing, please let us
+know so we can fix it. In the meantime, you can do your own custom serialization
+and deserialization (for example by calling pickle by hand). Or by writing your
+own custom serializer and deserializer.
 
 ```python
 import pickle
