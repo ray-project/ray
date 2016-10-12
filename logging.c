@@ -12,7 +12,7 @@ static const char *log_fmt =
 
 struct ray_logger_impl {
   /* String that identifies this client type. */
-  char *client_type;
+  const char *client_type;
   /* Suppress all log messages below this level. */
   int log_level;
   /* Whether or not we have a direct connection to Redis. */

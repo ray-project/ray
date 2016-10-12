@@ -49,7 +49,7 @@ TEST send_task(void) {
   *task_return(task, 1) = globally_unique_id();
   int fd[2];
   socketpair(AF_UNIX, SOCK_STREAM, 0, fd);
-  write_message(fd[0], SUBMIT_TASK, task_size(task), task);
+  write_message(fd[0], SUBMIT_TASK, task_size(task), (uint8_t*) task);
   int64_t type;
   int64_t length;
   uint8_t *message;

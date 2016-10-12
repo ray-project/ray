@@ -38,9 +38,9 @@ void test_callback(object_id object_id,
   free(manager_vector);
 }
 
-int64_t timeout_handler(event_loop *loop, int64_t id, void *context) {
+int timeout_handler(event_loop *loop, timer_id timer_id, void *context) {
   event_loop_stop(loop);
-  return -1;
+  return EVENT_LOOP_TIMER_DONE;
 }
 
 TEST object_table_lookup_test(void) {

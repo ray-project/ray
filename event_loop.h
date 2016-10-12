@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include "ae/ae.h"
 
+typedef long long timer_id;
+
 typedef aeEventLoop event_loop;
 
 /* File descriptor is readable. */
@@ -11,6 +13,9 @@ typedef aeEventLoop event_loop;
 
 /* File descriptor is writable. */
 #define EVENT_LOOP_WRITE AE_WRITABLE
+
+/* Constant specifying that the timer is done and it will be removed. */
+#define EVENT_LOOP_TIMER_DONE AE_NOMORE
 
 /* Signature of the handler that will be called when there is a new event
  * on the file descriptor that this handler has been registered for. The
@@ -24,10 +29,12 @@ typedef void (*event_loop_file_handler)(event_loop *loop,
 
 /* This handler will be called when a timer times out. The id of the timer
  * as well as the context that was specified when registering this handler
- * are passed as arguments. */
-typedef int64_t (*event_loop_timer_handler)(event_loop *loop,
-                                            int64_t id,
-                                            void *context);
+ * are passed as arguments. The return is the number of milliseconds the
+ * timer shall be reset to or EVENT_LOOP_TIMER_DONE if the timer shall
+ * not triggered again. */
+typedef int (*event_loop_timer_handler)(event_loop *loop,
+                                        timer_id timer_id,
+                                        void *context);
 
 /* Create and return a new event loop. */
 event_loop *event_loop_create();
@@ -58,12 +65,8 @@ int64_t event_loop_add_timer(event_loop *loop,
                              event_loop_timer_handler handler,
                              void *context);
 
-/* Reset the timer timeout to a given number of milliseconds.
- * NOTE: This is not implemented yet. */
-void event_loop_reset_timer(event_loop *loop, int64_t id, int64_t milliseconds);
-
 /* Remove a registered time event handler from the event loop. */
-void event_loop_remove_timer(event_loop *loop, int64_t id);
+void event_loop_remove_timer(event_loop *loop, timer_id timer_id);
 
 /* Run the event loop. */
 void event_loop_run(event_loop *loop);
