@@ -86,9 +86,9 @@ void redis_accept_callback(event_loop *loop,
                       context);
 }
 
-int64_t timeout_handler(event_loop *loop, int64_t id, void *context) {
+int timeout_handler(event_loop *loop, timer_id timer_id, void *context) {
   event_loop_stop(loop);
-  return -1;
+  return EVENT_LOOP_TIMER_DONE;
 }
 
 TEST async_redis_socket_test(void) {

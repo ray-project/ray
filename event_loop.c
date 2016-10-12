@@ -48,8 +48,8 @@ int64_t event_loop_add_timer(event_loop *loop,
   return aeCreateTimeEvent(loop, milliseconds, handler, context, NULL);
 }
 
-void event_loop_remove_timer(event_loop *loop, int64_t id) {
-  int err = aeDeleteTimeEvent(loop, id);
+void event_loop_remove_timer(event_loop *loop, timer_id timer_id) {
+  int err = aeDeleteTimeEvent(loop, timer_id);
   CHECK(err == AE_OK); /* timer id found? */
 }
 

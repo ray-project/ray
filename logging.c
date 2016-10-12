@@ -1,5 +1,7 @@
 #include "logging.h"
 
+#include <stdint.h>
+#include <inttypes.h>
 #include <hiredis/hiredis.h>
 #include <utstring.h>
 
@@ -12,7 +14,7 @@ static const char *log_fmt =
 
 struct ray_logger_impl {
   /* String that identifies this client type. */
-  char *client_type;
+  const char *client_type;
   /* Suppress all log messages below this level. */
   int log_level;
   /* Whether or not we have a direct connection to Redis. */
@@ -52,13 +54,13 @@ void ray_log(ray_logger *logger,
   UT_string *timestamp;
   utstring_new(timestamp);
   gettimeofday(&tv, NULL);
-  utstring_printf(timestamp, "%ld.%ld", tv.tv_sec, tv.tv_usec);
+  utstring_printf(timestamp, "%ld.%ld", tv.tv_sec, (long) tv.tv_usec);
 
   UT_string *origin_id;
   utstring_new(origin_id);
   if (logger->is_direct) {
     db_handle *db = (db_handle *) logger->conn;
-    utstring_printf(origin_id, "%ld:%s", db->client_id, "");
+    utstring_printf(origin_id, "%" PRId64 ":%s", db->client_id, "");
     redisAsyncCommand(db->context, NULL, NULL, log_fmt,
                       utstring_body(timestamp), logger->client_type,
                       utstring_body(origin_id), log_levels[log_level],
