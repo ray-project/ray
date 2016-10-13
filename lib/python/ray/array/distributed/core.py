@@ -57,6 +57,9 @@ class DistArray(object):
     a = self.assemble()
     return a[sliced]
 
+# Register the DistArray class with Ray so that it knows how to serialize it.
+ray.register_class(DistArray)
+
 @ray.remote
 def assemble(a):
   return a.assemble()
