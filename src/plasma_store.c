@@ -282,7 +282,8 @@ void send_notifications(event_loop *loop,
 /* Subscribe to notifications about sealed objects. */
 void subscribe_to_updates(plasma_store_state *s, int conn) {
   LOG_DEBUG("subscribing to updates");
-  int fd = recv_fd(conn, NULL, 0);
+  char dummy;
+  int fd = recv_fd(conn, &dummy, 1);
   CHECKM(HASH_CNT(handle, s->open_objects) == 0,
          "plasma_subscribe should be called before any objects are created.");
   CHECKM(HASH_CNT(handle, s->sealed_objects) == 0,

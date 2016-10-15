@@ -164,8 +164,10 @@ int plasma_subscribe(plasma_store_conn *conn) {
   plasma_request req = {};
   plasma_send_request(conn->conn, PLASMA_SUBSCRIBE, &req);
   /* Send the file descriptor that the Plasma store should use to push
-   * notifications about sealed objects to this client. */
-  send_fd(conn->conn, fd[1], NULL, 0);
+   * notifications about sealed objects to this client. We include a one byte
+   * message because otherwise it seems to hang on Linux. */
+  char dummy = '\0';
+  send_fd(conn->conn, fd[1], &dummy, 1);
   /* Return the file descriptor that the client should use to read notifications
    * about sealed objects. */
   return fd[0];
