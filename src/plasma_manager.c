@@ -5,6 +5,7 @@
  * transfering an object to another object store comes in, it ships the data
  * using a new connection to the target object manager. */
 
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -12,7 +13,6 @@
 #include <stdlib.h>
 #include <sys/mman.h>
 #include <sys/types.h>
-#include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <strings.h>
@@ -319,13 +319,10 @@ void start_server(const char *store_socket_name,
   name.sin_family = AF_INET;
   name.sin_port = htons(port);
   name.sin_addr.s_addr = htonl(INADDR_ANY);
+  /* Make the socket non-blocking. */
+  int flags = fcntl(sock, F_GETFL, 0);
+  CHECK(fcntl(sock, F_SETFL, flags | O_NONBLOCK) == 0);
   int on = 1;
-  /* TODO(pcm): http://stackoverflow.com/q/1150635 */
-  if (ioctl(sock, FIONBIO, (char *) &on) < 0) {
-    LOG_ERR("ioctl failed");
-    close(sock);
-    exit(-1);
-  }
   setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
   if (bind(sock, (struct sockaddr *) &name, sizeof(name)) < 0) {
     LOG_ERR("could not bind socket");

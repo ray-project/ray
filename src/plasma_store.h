@@ -65,4 +65,21 @@ int contains_object(plasma_store_state *s, object_id object_id);
  */
 void delete_object(plasma_store_state *s, object_id object_id);
 
+/**
+ * Send notifications about sealed objects to the subscribers. This is called
+ * in seal_object. If the socket's send buffer is full, the notification will be
+ * buffered, and this will be called again when the send buffer has room.
+ *
+ * @param loop The Plasma store event loop.
+ * @param client_sock The file descriptor to send the notification to.
+ * @param context The plasma store global state.
+ * @param events This is needed for this function to have the signature of a
+          callback.
+ * @return Void.
+ */
+void send_notifications(event_loop *loop,
+                        int client_sock,
+                        void *context,
+                        int events);
+
 #endif /* PLASMA_STORE_H */

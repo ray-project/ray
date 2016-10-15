@@ -52,6 +52,8 @@ enum plasma_message_type {
   PLASMA_SEAL,
   /** Delete an object. */
   PLASMA_DELETE,
+  /** Subscribe to notifications about sealed objects. */
+  PLASMA_SUBSCRIBE,
   /** Request transfer to another store. */
   PLASMA_TRANSFER,
   /** Header for sending data. */

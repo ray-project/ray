@@ -15,6 +15,7 @@
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
+#include <sys/types.h>
 #include <sys/un.h>
 #include <getopt.h>
 #include <string.h>
@@ -71,6 +72,20 @@ typedef struct {
   UT_hash_handle handle;
 } object_notify_entry;
 
+/* This is used to define the array of object IDs used to define the
+ * notification_queue type. */
+UT_icd object_id_icd = {sizeof(object_id), NULL, NULL, NULL};
+
+typedef struct {
+  /** Client file descriptor. This is used as a key for the hash table. */
+  int subscriber_fd;
+  /** The object IDs to notify the client about. We notify the client about the
+   *  IDs in the order that the objects were sealed. */
+  UT_array *object_ids;
+  /** Handle for the uthash table. */
+  UT_hash_handle hh;
+} notification_queue;
+
 struct plasma_store_state {
   /* Event loop of the plasma store. */
   event_loop *loop;
@@ -81,6 +96,10 @@ struct plasma_store_state {
   object_table_entry *sealed_objects;
   /* Objects that processes are waiting for. */
   object_notify_entry *objects_notify;
+  /** The pending notifications that have not been sent to subscribers because
+   *  the socket send buffers were full. This is a hash table from client file
+   *  descriptor to an array of object_ids to send to that client. */
+  notification_queue *pending_notifications;
 };
 
 plasma_store_state *init_plasma_store(event_loop *loop) {
@@ -89,6 +108,7 @@ plasma_store_state *init_plasma_store(event_loop *loop) {
   state->open_objects = NULL;
   state->sealed_objects = NULL;
   state->objects_notify = NULL;
+  state->pending_notifications = NULL;
   return state;
 }
 
@@ -182,7 +202,15 @@ void seal_object(plasma_store_state *s,
   }
   HASH_DELETE(handle, s->open_objects, entry);
   HASH_ADD(handle, s->sealed_objects, object_id, sizeof(object_id), entry);
-  /* Inform processes that the object is ready now. */
+
+  /* Inform all subscribers that a new object has been sealed. */
+  notification_queue *queue, *temp_queue;
+  HASH_ITER(hh, s->pending_notifications, queue, temp_queue) {
+    utarray_push_back(queue->object_ids, &object_id);
+    send_notifications(s->loop, queue->subscriber_fd, s, 0);
+  }
+
+  /* Inform processes getting this object that the object is ready now. */
   object_notify_entry *notify_entry;
   HASH_FIND(handle, s->objects_notify, &object_id, sizeof(object_id),
             notify_entry);
@@ -214,6 +242,62 @@ void delete_object(plasma_store_state *s, object_id object_id) {
   HASH_DELETE(handle, s->sealed_objects, entry);
   dlfree(pointer);
   free(entry);
+}
+
+/* Send more notifications to a subscriber. */
+void send_notifications(event_loop *loop,
+                        int client_sock,
+                        void *context,
+                        int events) {
+  plasma_store_state *s = context;
+
+  notification_queue *queue;
+  HASH_FIND_INT(s->pending_notifications, &client_sock, queue);
+  CHECK(queue != NULL);
+
+  int num_processed = 0;
+  /* Loop over the array of pending notifications and send as many of them as
+   * possible. */
+  for (object_id *obj_id = (object_id *) utarray_front(queue->object_ids);
+       obj_id != NULL;
+       obj_id = (object_id *) utarray_next(queue->object_ids, obj_id)) {
+    /* Attempt to send a notification about this object ID. */
+    int nbytes = send(client_sock, obj_id, sizeof(object_id), 0);
+    if (nbytes >= 0) {
+      CHECK(nbytes == sizeof(object_id));
+    } else if (nbytes == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+      LOG_DEBUG(
+          "The socket's send buffer is full, so we are caching this "
+          "notification and will send it later.");
+      break;
+    } else {
+      CHECKM(0, "This code should be unreachable.");
+    }
+    num_processed += 1;
+  }
+  /* Remove the sent notifications from the array. */
+  utarray_erase(queue->object_ids, 0, num_processed);
+}
+
+/* Subscribe to notifications about sealed objects. */
+void subscribe_to_updates(plasma_store_state *s, int conn) {
+  LOG_DEBUG("subscribing to updates");
+  int fd = recv_fd(conn, NULL, 0);
+  CHECKM(HASH_CNT(handle, s->open_objects) == 0,
+         "plasma_subscribe should be called before any objects are created.");
+  CHECKM(HASH_CNT(handle, s->sealed_objects) == 0,
+         "plasma_subscribe should be called before any objects are created.");
+  /* Create a new array to buffer notifications that can't be sent to the
+   * subscriber yet because the socket send buffer is full. TODO(rkn): the queue
+   * never gets freed. */
+  notification_queue *queue =
+      (notification_queue *) malloc(sizeof(notification_queue));
+  queue->subscriber_fd = fd;
+  utarray_new(queue->object_ids, &object_id_icd);
+  HASH_ADD_INT(s->pending_notifications, subscriber_fd, queue);
+  /* Add a callback to the event loop to send queued notifications whenever
+   * there is room in the socket's send buffer. */
+  event_loop_add_file(s->loop, fd, EVENT_LOOP_WRITE, send_notifications, s);
 }
 
 void process_message(event_loop *loop,
@@ -262,6 +346,9 @@ void process_message(event_loop *loop,
     break;
   case PLASMA_DELETE:
     delete_object(s, req->object_id);
+    break;
+  case PLASMA_SUBSCRIBE:
+    subscribe_to_updates(s, client_sock);
     break;
   case DISCONNECT_CLIENT: {
     LOG_DEBUG("Disconnecting client on fd %d", client_sock);

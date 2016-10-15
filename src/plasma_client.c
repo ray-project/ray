@@ -1,6 +1,7 @@
 /* PLASMA CLIENT: Client library for using the plasma store and manager */
 
 #include <assert.h>
+#include <fcntl.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/types.h>
@@ -149,6 +150,25 @@ void plasma_seal(plasma_store_conn *conn, object_id object_id) {
 void plasma_delete(plasma_store_conn *conn, object_id object_id) {
   plasma_request req = {.object_id = object_id};
   plasma_send_request(conn->conn, PLASMA_DELETE, &req);
+}
+
+int plasma_subscribe(plasma_store_conn *conn) {
+  int fd[2];
+  /* Create a non-blocking socket pair. This will only be used to send
+   * notifications from the Plasma store to the client. */
+  socketpair(AF_UNIX, SOCK_STREAM, 0, fd);
+  /* Make the socket non-blocking. */
+  int flags = fcntl(fd[1], F_GETFL, 0);
+  CHECK(fcntl(fd[1], F_SETFL, flags | O_NONBLOCK) == 0);
+  /* Tell the Plasma store about the subscription. */
+  plasma_request req = {};
+  plasma_send_request(conn->conn, PLASMA_SUBSCRIBE, &req);
+  /* Send the file descriptor that the Plasma store should use to push
+   * notifications about sealed objects to this client. */
+  send_fd(conn->conn, fd[1], NULL, 0);
+  /* Return the file descriptor that the client should use to read notifications
+   * about sealed objects. */
+  return fd[0];
 }
 
 plasma_store_conn *plasma_store_connect(const char *socket_name) {
