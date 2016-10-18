@@ -1,6 +1,8 @@
 #include "greatest.h"
 
 #include <assert.h>
+#include <unistd.h>
+#include <sys/wait.h>
 
 #include "event_loop.h"
 #include "test/example_task.h"
@@ -23,7 +25,8 @@ char received_port2[6] = {0};
 /* Test if entries have been written to the database. */
 void test_callback(object_id object_id,
                    int manager_count,
-                   const char *manager_vector[]) {
+                   const char *manager_vector[],
+                   void *context) {
   CHECK(manager_count == 2);
   if (!manager_vector[0] ||
       sscanf(manager_vector[0], "%15[0-9.]:%5[0-9]", received_addr1,
@@ -56,7 +59,7 @@ TEST object_table_lookup_test(void) {
   object_table_add(db2, id);
   event_loop_add_timer(loop, 100, timeout_handler, NULL);
   event_loop_run(loop);
-  object_table_lookup(db1, id, test_callback);
+  object_table_lookup(db1, id, test_callback, NULL);
   event_loop_add_timer(loop, 100, timeout_handler, NULL);
   event_loop_run(loop);
   int port1 = atoi(received_port1);
@@ -130,12 +133,36 @@ TEST task_log_all_test(void) {
   PASS();
 }
 
+TEST unique_client_id_test(void) {
+  const int num_conns = 50;
+
+  db_handle *db;
+  pid_t pid = fork();
+  for (int i = 0; i < num_conns; ++i) {
+    db = db_connect("127.0.0.1", 6379, "plasma_manager", manager_addr,
+                    manager_port1);
+    db_disconnect(db);
+  }
+  if (pid == 0) {
+    exit(0);
+  } else {
+    wait(NULL);
+  }
+
+  db = db_connect("127.0.0.1", 6379, "plasma_manager", manager_addr,
+                  manager_port1);
+  ASSERT_EQ(get_client_id(db), num_conns * 2);
+  db_disconnect(db);
+  PASS();
+}
+
 SUITE(db_tests) {
   redisContext *context = redisConnect("127.0.0.1", 6379);
   freeReplyObject(redisCommand(context, "FLUSHALL"));
   RUN_REDIS_TEST(context, object_table_lookup_test);
   RUN_REDIS_TEST(context, task_log_test);
   RUN_REDIS_TEST(context, task_log_all_test);
+  RUN_REDIS_TEST(context, unique_client_id_test);
   redisFree(context);
 }
 

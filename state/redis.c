@@ -56,7 +56,8 @@ db_handle *db_connect(const char *address,
                          num_clients, client_addr, client_port);
     freeReplyObject(reply);
     reply = redisCommand(context, "EXEC");
-    if (reply) {
+    CHECK(reply);
+    if (reply->type != REDIS_REPLY_NIL) {
       freeReplyObject(reply);
       break;
     }
@@ -150,17 +151,20 @@ void object_table_get_entry(redisAsyncContext *c, void *r, void *privdata) {
     HASH_FIND_INT(db->service_cache, &result[j], entry);
     manager_vector[j] = entry->addr;
   }
-  cb_data->callback(cb_data->object_id, manager_count, manager_vector);
+  cb_data->callback(cb_data->object_id, manager_count, manager_vector,
+                    cb_data->context);
   free(privdata);
   free(result);
 }
 
 void object_table_lookup(db_handle *db,
                          object_id object_id,
-                         lookup_callback callback) {
+                         lookup_callback callback,
+                         void *context) {
   lookup_callback_data *cb_data = malloc(sizeof(lookup_callback_data));
   cb_data->callback = callback;
   cb_data->object_id = object_id;
+  cb_data->context = context;
   redisAsyncCommand(db->context, object_table_get_entry, cb_data,
                     "SMEMBERS obj:%b", &object_id.id[0], UNIQUE_ID_SIZE);
   if (db->context->err) {
@@ -228,5 +232,13 @@ void task_log_register_callback(db_handle *db,
   }
   if (db->sub_context->err) {
     LOG_REDIS_ERR(db->sub_context, "error in task_log_register_callback");
+  }
+}
+
+int get_client_id(db_handle *db) {
+  if (db) {
+    return db->client_id;
+  } else {
+    return -1;
   }
 }

@@ -14,6 +14,7 @@ enum common_message_type {
 
 /* Helper functions for socket communication. */
 
+int bind_inet_sock(const int port);
 int bind_ipc_sock(const char *socket_pathname);
 int connect_ipc_sock(const char *socket_pathname);
 
@@ -21,7 +22,7 @@ int accept_client(int socket_fd);
 
 /* Reading and writing data */
 
-void write_message(int fd, int64_t type, int64_t length, uint8_t *bytes);
+int write_message(int fd, int64_t type, int64_t length, uint8_t *bytes);
 void read_message(int fd, int64_t *type, int64_t *length, uint8_t **bytes);
 
 void write_log_message(int fd, char *message);
