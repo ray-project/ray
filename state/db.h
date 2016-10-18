@@ -20,4 +20,13 @@ void db_attach(db_handle *db, event_loop *loop);
 /* Disconnect from the global system store. */
 void db_disconnect(db_handle *db);
 
+/**
+ * Returns the client ID, according to the database.
+ *
+ * @param db The handle to the database.
+ * @returns int The client ID for this connection to the database. If
+ *          this client has no connection to the database, returns -1.
+ */
+int get_client_id(db_handle *db);
+
 #endif

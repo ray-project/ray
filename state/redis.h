@@ -65,13 +65,4 @@ void object_table_lookup_callback(redisAsyncContext *c,
                                   void *r,
                                   void *privdata);
 
-/**
- * Returns the client ID, according to Redis.
- *
- * @param db The handle to the Redis database.
- * @returns int The client ID for this connection to Redis. If
- *          this client has no connection to Redis, returns -1.
- */
-int get_client_id(db_handle *db);
-
 #endif
