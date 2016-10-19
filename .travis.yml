@@ -45,6 +45,17 @@ matrix:
 
 install:
   - ./install-dependencies.sh
+
+  # Install Plasma side by side.
+  - cd ..
+  - git clone https://github.com/ray-project/plasma.git
+  - cd plasma
+  - git checkout f189ca746b57f22371ef10077aa535492bbd8421
+  - make
+  - source setup-env.sh
+  - cd ../photon
+
+  # Install Photon.
   - make
   - cd common/lib/python
   - python setup.py install --user

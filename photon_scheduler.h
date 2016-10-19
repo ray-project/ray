@@ -2,6 +2,7 @@
 #define PHOTON_SCHEDULER_H
 
 #include "task.h"
+#include "event_loop.h"
 
 typedef struct local_scheduler_state local_scheduler_state;
 
@@ -15,25 +16,37 @@ typedef struct local_scheduler_state local_scheduler_state;
  * @param events Flag for events that are available on the listener socket.
  * @return Void.
  */
-void new_client_connection(event_loop *loop, int listener_sock, void *context,
+void new_client_connection(event_loop *loop,
+                           int listener_sock,
+                           void *context,
                            int events);
 
 /**
- * Assign a task to a worker.
+ * This function can be called by the scheduling algorithm to assign a task
+ * to a worker.
  *
- * @param s State of the local scheduler.
- * @param client_sock Socket by which the worker is connected.
+ * @param info
+ * @param task The task that is submitted to the worker.
+ * @param worker_index The index of the worker the task is submitted to.
  * @return Void.
  */
-void handle_get_task(local_scheduler_state *s, int client_sock);
+void assign_task_to_worker(scheduler_info *info,
+                           task_spec *task,
+                           int worker_index);
 
 /**
- * Handle incoming submit request by a worker.
+ * This is the callback that is used to process a notification from the Plasma
+ * store that an object has been sealed.
  *
- * @param s State of the local scheduler.
- * @param task Task specification of the task to be submitted.
+ * @param loop The local scheduler's event loop.
+ * @param client_sock The file descriptor to read the notification from.
+ * @param context The local scheduler state.
+ * @param events
  * @return Void.
  */
-void handle_submit_task(local_scheduler_state *s, task_spec *task);
+void process_plasma_notification(event_loop *loop,
+                                 int client_sock,
+                                 void *context,
+                                 int events);
 
 #endif /* PHOTON_SCHEDULER_H */
