@@ -3,7 +3,7 @@
 
 #include "plasma.h"
 
-typedef struct plasma_store_conn plasma_store_conn;
+typedef struct plasma_connection plasma_connection;
 
 /**
  * This is used by the Plasma Client to send a request to the Plasma Store or
@@ -14,25 +14,52 @@ typedef struct plasma_store_conn plasma_store_conn;
  * @param req The address of the request to send.
  * @return Void.
  */
-void plasma_send_request(int conn, int type, plasma_request *req);
+void plasma_send_request(int fd, int type, plasma_request *req);
 
 /**
- * Connect to the local plasma store UNIX domain socket with path socket_name
- * and return the resulting connection.
+ * Create a plasma request to be sent with a single object ID.
  *
- * @param socket_name The name of the socket to use to connect to the Plasma
- *        Store.
+ * @param object_id The object ID to include in the request.
+ * @return The plasma request.
+ */
+plasma_request make_plasma_request(object_id object_id);
+
+/**
+ * Create a plasma request to be sent with multiple object ID. Caller must free
+ * the returned plasma request pointer.
+ *
+ * @param num_object_ids The number of object IDs to include in the request.
+ * @param object_ids The array of object IDs to include in the request. It must
+ *        have length at least equal to num_object_ids.
+ * @return A pointer to the newly created plasma request.
+ */
+plasma_request *make_plasma_multiple_request(int num_object_ids,
+                                             object_id object_ids[]);
+
+/**
+ * Connect to the local plasma store and plasma manager. Return
+ * the resulting connection.
+ *
+ * @param socket_name The name of the UNIX domain socket to use
+ *        to connect to the Plasma Store.
+ * @param manager_addr The IP address of the plasma manager to
+ *        connect to.
+ * @param manager_addr The port of the plasma manager to connect
+ *        to.
  * @return The object containing the connection state.
  */
-plasma_store_conn *plasma_store_connect(const char *socket_name);
+plasma_connection *plasma_connect(const char *store_socket_name,
+                                  const char *manager_addr,
+                                  int manager_port);
 
 /**
- * Disconnect from the local plasma store.
+ * Disconnect from the local plasma instance, including the local store and
+ * manager.
  *
- * @param conn The connection to the local plasma store.
+ * @param conn The connection to the local plasma store and plasma manager.
  * @return Void.
  */
-void plasma_store_disconnect(plasma_store_conn *conn);
+void plasma_disconnect(plasma_connection *conn);
 
 /**
  * Connect to a possibly remote Plasma Manager.
@@ -58,7 +85,7 @@ int plasma_manager_connect(const char *addr, int port);
  * @param data The address of the newly created object will be written here.
  * @return Void.
  */
-void plasma_create(plasma_store_conn *conn,
+void plasma_create(plasma_connection *conn,
                    object_id object_id,
                    int64_t size,
                    uint8_t *metadata,
@@ -80,7 +107,7 @@ void plasma_create(plasma_store_conn *conn,
  *        address.
  * @return Void.
  */
-void plasma_get(plasma_store_conn *conn,
+void plasma_get(plasma_connection *conn,
                 object_id object_id,
                 int64_t *size,
                 uint8_t **data,
@@ -99,7 +126,7 @@ void plasma_get(plasma_store_conn *conn,
  *        present and 0 if it is not present.
  * @return Void.
  */
-void plasma_contains(plasma_store_conn *conn,
+void plasma_contains(plasma_connection *conn,
                      object_id object_id,
                      int *has_object);
 
@@ -111,7 +138,7 @@ void plasma_contains(plasma_store_conn *conn,
  * @param object_id The ID of the object to seal.
  * @return Void.
  */
-void plasma_seal(plasma_store_conn *conn, object_id object_id);
+void plasma_seal(plasma_connection *conn, object_id object_id);
 
 /**
  * Delete an object from the object store. This currently assumes that the
@@ -124,7 +151,26 @@ void plasma_seal(plasma_store_conn *conn, object_id object_id);
  * @param object_id The ID of the object to delete.
  * @return Void.
  */
-void plasma_delete(plasma_store_conn *conn, object_id object_id);
+void plasma_delete(plasma_connection *conn, object_id object_id);
+
+/**
+ * Fetch objects from remote plasma stores that have the
+ * objects stored.
+ *
+ * @param manager A file descriptor for the socket connection
+ *        to the local manager.
+ * @param object_id_count The number of object IDs requested.
+ * @param object_ids[] The vector of object IDs requested. Length must be at
+ * least num_object_ids.
+ * @param is_fetched[] The vector in which to return the success
+ *        of each object's fetch operation, in the same order as
+ *        object_ids. Length must be at least num_object_ids.
+ * @return Void.
+ */
+void plasma_fetch(plasma_connection *conn,
+                  int num_object_ids,
+                  object_id object_ids[],
+                  int is_fetched[]);
 
 /**
  * Subscribe to notifications when objects are sealed in the object store.
@@ -135,6 +181,6 @@ void plasma_delete(plasma_store_conn *conn, object_id object_id);
  * @return The file descriptor that the client should use to read notifications
            from the object store about sealed objects.
  */
-int plasma_subscribe(plasma_store_conn *conn);
+int plasma_subscribe(plasma_connection *conn);
 
 #endif

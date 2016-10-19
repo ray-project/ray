@@ -21,7 +21,9 @@ void create_object(plasma_store_state *s,
                    plasma_object *result);
 
 /**
- * Get an object:
+ * Get an object. This method assumes that we currently have or will
+ * eventually have this object sealed. If the object has not yet been sealed,
+ * the client that requested the object will be notified when it is sealed.
  *
  * @param s The plasma store state.
  * @param conn The client connection that requests the object.

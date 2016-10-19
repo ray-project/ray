@@ -43,6 +43,15 @@ def create_object(client, data_size, metadata_size, seal=True):
     client.seal(object_id)
   return object_id, memory_buffer, metadata
 
+def assert_get_object_equal(unit_test, client1, client2, object_id, memory_buffer=None, metadata=None):
+  if memory_buffer is not None:
+    unit_test.assertEqual(memory_buffer[:], client2.get(object_id)[:])
+  if metadata is not None:
+    unit_test.assertEqual(metadata[:], client2.get_metadata(object_id)[:])
+  unit_test.assertEqual(client1.get(object_id)[:], client2.get(object_id)[:])
+  unit_test.assertEqual(client1.get_metadata(object_id)[:],
+                        client2.get_metadata(object_id)[:])
+
 class TestPlasmaClient(unittest.TestCase):
 
   def setUp(self):
@@ -207,22 +216,42 @@ class TestPlasmaManager(unittest.TestCase):
     plasma_store_command2 = [plasma_store_executable, "-s", store_name2]
 
     if USE_VALGRIND:
-      self.p2 = subprocess.Popen(["valgrind", "--track-origins=yes", "--error-exitcode=1"] + plasma_store_command1)
-      self.p3 = subprocess.Popen(["valgrind", "--track-origins=yes", "--error-exitcode=1"] + plasma_store_command2)
+      self.p2 = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--error-exitcode=1"] + plasma_store_command1)
+      self.p3 = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--error-exitcode=1"] + plasma_store_command2)
     else:
       self.p2 = subprocess.Popen(plasma_store_command1)
       self.p3 = subprocess.Popen(plasma_store_command2)
+
+    # Start a Redis server.
+    redis_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../common/thirdparty/redis-3.2.3/src/redis-server")
+    self.redis_process = None
+    manager_redis_args = []
+    if os.path.exists(redis_path):
+      redis_port = 6379
+      with open(os.devnull, 'w') as FNULL:
+        self.redis_process = subprocess.Popen([redis_path,
+                                               "--port", str(redis_port)],
+                                              stdout=FNULL)
+      time.sleep(0.1)
+      manager_redis_args = ["-d", "{addr}:{port}".format(addr="127.0.0.1",
+                                                      port=redis_port)]
 
     # Start two PlasmaManagers.
     self.port1 = random.randint(10000, 50000)
     self.port2 = random.randint(10000, 50000)
     plasma_manager_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../build/plasma_manager")
-    plasma_manager_command1 = [plasma_manager_executable, "-s", store_name1, "-m", "127.0.0.1", "-p", str(self.port1)]
-    plasma_manager_command2 = [plasma_manager_executable, "-s", store_name2, "-m", "127.0.0.1", "-p", str(self.port2)]
+    plasma_manager_command1 = [plasma_manager_executable,
+                               "-s", store_name1,
+                               "-m", "127.0.0.1",
+                               "-p", str(self.port1)] + manager_redis_args
+    plasma_manager_command2 = [plasma_manager_executable,
+                               "-s", store_name2,
+                               "-m", "127.0.0.1",
+                               "-p", str(self.port2)] + manager_redis_args
 
     if USE_VALGRIND:
-      self.p4 = subprocess.Popen(["valgrind", "--track-origins=yes", "--error-exitcode=1"] + plasma_manager_command1)
-      self.p5 = subprocess.Popen(["valgrind", "--track-origins=yes", "--error-exitcode=1"] + plasma_manager_command2)
+      self.p4 = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--error-exitcode=1"] + plasma_manager_command1)
+      self.p5 = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--error-exitcode=1"] + plasma_manager_command2)
       time.sleep(2.0)
     else:
       self.p4 = subprocess.Popen(plasma_manager_command1)
@@ -253,6 +282,63 @@ class TestPlasmaManager(unittest.TestCase):
       self.p3.kill()
       self.p4.kill()
       self.p5.kill()
+    if self.redis_process:
+      self.redis_process.kill()
+
+  def test_fetch(self):
+    if self.redis_process is None:
+      print("Cannot test fetch without a running redis instance.")
+      self.assertTrue(False)
+    for _ in range(100):
+      # Create an object.
+      object_id1, memory_buffer1, metadata1 = create_object(self.client1, 2000, 2000)
+      # Fetch the object from the other plasma store.
+      # TODO(swang): This line is a hack! It makes sure that the entry will be
+      # in the object table once we call the fetch operation. Remove once
+      # retries are implemented by Ray common.
+      time.sleep(0.1)
+      successes = self.client2.fetch([object_id1])
+      self.assertEqual(successes, [True])
+      # Compare the two buffers.
+      assert_get_object_equal(self, self.client1, self.client2, object_id1,
+                              memory_buffer=memory_buffer1, metadata=metadata1)
+      # Fetch in the other direction. These should return quickly because
+      # client1 already has the object.
+      successes = self.client1.fetch([object_id1])
+      self.assertEqual(successes, [True])
+      assert_get_object_equal(self, self.client2, self.client1, object_id1,
+                              memory_buffer=memory_buffer1, metadata=metadata1)
+
+  def test_fetch_multiple(self):
+    if self.redis_process is None:
+      print("Cannot test fetch without a running redis instance.")
+      self.assertTrue(False)
+    for _ in range(20):
+      # Create two objects and a third fake one that doesn't exist.
+      object_id1, memory_buffer1, metadata1 = create_object(self.client1, 2000, 2000)
+      missing_object_id = random_object_id()
+      object_id2, memory_buffer2, metadata2 = create_object(self.client1, 2000, 2000)
+      object_ids = [object_id1, missing_object_id, object_id2]
+      # Fetch the objects from the other plasma store. The second object ID
+      # should timeout since it does not exist.
+      # TODO(swang): This line is a hack! It makes sure that the entry will be
+      # in the object table once we call the fetch operation. Remove once
+      # retries are implemented by Ray common.
+      time.sleep(0.1)
+      successes = self.client2.fetch(object_ids)
+      self.assertEqual(successes, [True, False, True])
+      # Compare the buffers of the objects that do exist.
+      assert_get_object_equal(self, self.client1, self.client2, object_id1,
+                              memory_buffer=memory_buffer1, metadata=metadata1)
+      assert_get_object_equal(self, self.client1, self.client2, object_id2,
+                              memory_buffer=memory_buffer2, metadata=metadata2)
+      # Fetch in the other direction. The fake object still does not exist.
+      successes = self.client1.fetch(object_ids)
+      self.assertEqual(successes, [True, False, True])
+      assert_get_object_equal(self, self.client2, self.client1, object_id1,
+                              memory_buffer=memory_buffer1, metadata=metadata1)
+      assert_get_object_equal(self, self.client2, self.client1, object_id2,
+                              memory_buffer=memory_buffer2, metadata=metadata2)
 
   def test_transfer(self):
     for _ in range(100):
@@ -261,25 +347,21 @@ class TestPlasmaManager(unittest.TestCase):
       # Transfer the buffer to the the other PlasmaStore.
       self.client1.transfer("127.0.0.1", self.port2, object_id1)
       # Compare the two buffers.
-      self.assertEqual(memory_buffer1[:], self.client2.get(object_id1)[:])
-      self.assertEqual(self.client1.get(object_id1)[:], self.client2.get(object_id1)[:])
-      self.assertEqual(metadata1[:], self.client2.get_metadata(object_id1)[:])
-      self.assertEqual(self.client1.get_metadata(object_id1)[:], self.client2.get_metadata(object_id1)[:])
+      assert_get_object_equal(self, self.client1, self.client2, object_id1,
+                              memory_buffer=memory_buffer1, metadata=metadata1)
       # Transfer the buffer again.
       self.client1.transfer("127.0.0.1", self.port2, object_id1)
-      self.assertEqual(metadata1[:], self.client2.get_metadata(object_id1)[:])
       # Compare the two buffers.
-      self.assertEqual(self.client1.get(object_id1)[:], self.client2.get(object_id1)[:])
+      assert_get_object_equal(self, self.client1, self.client2, object_id1,
+                              memory_buffer=memory_buffer1, metadata=metadata1)
 
       # Create an object.
       object_id2, memory_buffer2, metadata2 = create_object(self.client2, 20000, 20000)
       # Transfer the buffer to the the other PlasmaStore.
       self.client2.transfer("127.0.0.1", self.port1, object_id2)
       # Compare the two buffers.
-      self.assertEqual(memory_buffer2[:], self.client2.get(object_id2)[:])
-      self.assertEqual(self.client1.get(object_id2)[:], self.client2.get(object_id2)[:])
-      self.assertEqual(metadata2[:], self.client2.get_metadata(object_id2)[:])
-      self.assertEqual(self.client1.get_metadata(object_id2)[:], self.client2.get_metadata(object_id2)[:])
+      assert_get_object_equal(self, self.client1, self.client2, object_id2,
+                              memory_buffer=memory_buffer2, metadata=metadata2)
 
   def test_illegal_functionality(self):
     # Create an object id string.
@@ -307,8 +389,8 @@ class TestPlasmaManager(unittest.TestCase):
 if __name__ == "__main__":
   if len(sys.argv) > 1:
     # pop the argument so we don't mess with unittest's own argument parser
-    arg = sys.argv.pop()
-    if arg == "valgrind":
+    if sys.argv[-1] == "valgrind":
+      arg = sys.argv.pop()
       USE_VALGRIND = True
       print("Using valgrind for tests")
   unittest.main(verbosity=2)

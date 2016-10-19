@@ -43,6 +43,7 @@ matrix:
 
 install:
   - make
+  - make test
 
 script:
   - source setup-env.sh

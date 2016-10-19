@@ -16,7 +16,7 @@
 #include "plasma_client.h"
 
 int main(int argc, char *argv[]) {
-  plasma_store_conn *conn = NULL;
+  plasma_connection *conn = NULL;
   int64_t size;
   uint8_t *data;
   int c;
@@ -25,7 +25,7 @@ int main(int argc, char *argv[]) {
   while ((c = getopt(argc, argv, "s:cfg")) != -1) {
     switch (c) {
     case 's':
-      conn = plasma_store_connect(optarg);
+      conn = plasma_connect(optarg, NULL, 0);
       break;
     case 'c':
       assert(conn != NULL);
@@ -43,5 +43,5 @@ int main(int argc, char *argv[]) {
     }
   }
   assert(conn != NULL);
-  plasma_store_disconnect(conn);
+  plasma_disconnect(conn);
 }

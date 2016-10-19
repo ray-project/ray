@@ -113,7 +113,7 @@ plasma_store_state *init_plasma_store(event_loop *loop) {
 }
 
 /* Create a new object buffer in the hash table. */
-void create_object(plasma_store_state *s,
+void create_object(plasma_store_state *plasma_state,
                    object_id object_id,
                    int64_t data_size,
                    int64_t metadata_size,
@@ -121,7 +121,10 @@ void create_object(plasma_store_state *s,
   LOG_DEBUG("creating object"); /* TODO(pcm): add object_id here */
 
   object_table_entry *entry;
-  HASH_FIND(handle, s->open_objects, &object_id, sizeof(object_id), entry);
+  HASH_FIND(handle, plasma_state->open_objects, &object_id, sizeof(object_id),
+            entry);
+  /* TODO(swang): Return this error to the client instead of
+   * exiting. */
   CHECKM(entry == NULL, "Cannot create object twice.");
 
   uint8_t *pointer = dlmalloc(data_size + metadata_size);
@@ -140,7 +143,8 @@ void create_object(plasma_store_state *s,
   entry->fd = fd;
   entry->map_size = map_size;
   entry->offset = offset;
-  HASH_ADD(handle, s->open_objects, object_id, sizeof(object_id), entry);
+  HASH_ADD(handle, plasma_state->open_objects, object_id, sizeof(object_id),
+           entry);
   result->handle.store_fd = fd;
   result->handle.mmap_size = map_size;
   result->data_offset = offset;
@@ -150,12 +154,13 @@ void create_object(plasma_store_state *s,
 }
 
 /* Get an object from the hash table. */
-int get_object(plasma_store_state *s,
+int get_object(plasma_store_state *plasma_state,
                int conn,
                object_id object_id,
                plasma_object *result) {
   object_table_entry *entry;
-  HASH_FIND(handle, s->sealed_objects, &object_id, sizeof(object_id), entry);
+  HASH_FIND(handle, plasma_state->sealed_objects, &object_id, sizeof(object_id),
+            entry);
   if (entry) {
     result->handle.store_fd = entry->fd;
     result->handle.mmap_size = entry->map_size;
@@ -167,15 +172,15 @@ int get_object(plasma_store_state *s,
   } else {
     object_notify_entry *notify_entry;
     LOG_DEBUG("object not in hash table of sealed objects");
-    HASH_FIND(handle, s->objects_notify, &object_id, sizeof(object_id),
-              notify_entry);
+    HASH_FIND(handle, plasma_state->objects_notify, &object_id,
+              sizeof(object_id), notify_entry);
     if (!notify_entry) {
       notify_entry = malloc(sizeof(object_notify_entry));
       memset(notify_entry, 0, sizeof(object_notify_entry));
       utarray_new(notify_entry->conns, &ut_int_icd);
       memcpy(&notify_entry->object_id, &object_id, 20);
-      HASH_ADD(handle, s->objects_notify, object_id, sizeof(object_id),
-               notify_entry);
+      HASH_ADD(handle, plasma_state->objects_notify, object_id,
+               sizeof(object_id), notify_entry);
     }
     utarray_push_back(notify_entry->conns, &conn);
   }
@@ -183,36 +188,40 @@ int get_object(plasma_store_state *s,
 }
 
 /* Check if an object is present. */
-int contains_object(plasma_store_state *s, object_id object_id) {
+int contains_object(plasma_store_state *plasma_state, object_id object_id) {
   object_table_entry *entry;
-  HASH_FIND(handle, s->sealed_objects, &object_id, sizeof(object_id), entry);
+  HASH_FIND(handle, plasma_state->sealed_objects, &object_id, sizeof(object_id),
+            entry);
   return entry ? OBJECT_FOUND : OBJECT_NOT_FOUND;
 }
 
 /* Seal an object that has been created in the hash table. */
-void seal_object(plasma_store_state *s,
+void seal_object(plasma_store_state *plasma_state,
                  object_id object_id,
                  UT_array **conns,
                  plasma_object *result) {
   LOG_DEBUG("sealing object");  // TODO(pcm): add object_id here
   object_table_entry *entry;
-  HASH_FIND(handle, s->open_objects, &object_id, sizeof(object_id), entry);
+  HASH_FIND(handle, plasma_state->open_objects, &object_id, sizeof(object_id),
+            entry);
   if (!entry) {
     return; /* TODO(pcm): return error */
   }
-  HASH_DELETE(handle, s->open_objects, entry);
-  HASH_ADD(handle, s->sealed_objects, object_id, sizeof(object_id), entry);
+  HASH_DELETE(handle, plasma_state->open_objects, entry);
+  HASH_ADD(handle, plasma_state->sealed_objects, object_id, sizeof(object_id),
+           entry);
 
   /* Inform all subscribers that a new object has been sealed. */
   notification_queue *queue, *temp_queue;
-  HASH_ITER(hh, s->pending_notifications, queue, temp_queue) {
+  HASH_ITER(hh, plasma_state->pending_notifications, queue, temp_queue) {
     utarray_push_back(queue->object_ids, &object_id);
-    send_notifications(s->loop, queue->subscriber_fd, s, 0);
+    send_notifications(plasma_state->loop, queue->subscriber_fd, plasma_state,
+                       0);
   }
 
   /* Inform processes getting this object that the object is ready now. */
   object_notify_entry *notify_entry;
-  HASH_FIND(handle, s->objects_notify, &object_id, sizeof(object_id),
+  HASH_FIND(handle, plasma_state->objects_notify, &object_id, sizeof(object_id),
             notify_entry);
   if (!notify_entry) {
     *conns = NULL;
@@ -224,22 +233,23 @@ void seal_object(plasma_store_state *s,
   result->metadata_offset = entry->offset + entry->info.data_size;
   result->data_size = entry->info.data_size;
   result->metadata_size = entry->info.metadata_size;
-  HASH_DELETE(handle, s->objects_notify, notify_entry);
+  HASH_DELETE(handle, plasma_state->objects_notify, notify_entry);
   *conns = notify_entry->conns;
   free(notify_entry);
 }
 
 /* Delete an object that has been created in the hash table. */
-void delete_object(plasma_store_state *s, object_id object_id) {
+void delete_object(plasma_store_state *plasma_state, object_id object_id) {
   LOG_DEBUG("deleting object");  // TODO(rkn): add object_id here
   object_table_entry *entry;
-  HASH_FIND(handle, s->sealed_objects, &object_id, sizeof(object_id), entry);
+  HASH_FIND(handle, plasma_state->sealed_objects, &object_id, sizeof(object_id),
+            entry);
   /* TODO(rkn): This should probably not fail, but should instead throw an
    * error. Maybe we should also support deleting objects that have been created
    * but not sealed. */
   CHECKM(entry != NULL, "To delete an object it must have been sealed.");
   uint8_t *pointer = entry->pointer;
-  HASH_DELETE(handle, s->sealed_objects, entry);
+  HASH_DELETE(handle, plasma_state->sealed_objects, entry);
   dlfree(pointer);
   free(entry);
 }
@@ -249,10 +259,10 @@ void send_notifications(event_loop *loop,
                         int client_sock,
                         void *context,
                         int events) {
-  plasma_store_state *s = context;
+  plasma_store_state *plasma_state = context;
 
   notification_queue *queue;
-  HASH_FIND_INT(s->pending_notifications, &client_sock, queue);
+  HASH_FIND_INT(plasma_state->pending_notifications, &client_sock, queue);
   CHECK(queue != NULL);
 
   int num_processed = 0;
@@ -280,13 +290,13 @@ void send_notifications(event_loop *loop,
 }
 
 /* Subscribe to notifications about sealed objects. */
-void subscribe_to_updates(plasma_store_state *s, int conn) {
+void subscribe_to_updates(plasma_store_state *plasma_state, int conn) {
   LOG_DEBUG("subscribing to updates");
   char dummy;
   int fd = recv_fd(conn, &dummy, 1);
-  CHECKM(HASH_CNT(handle, s->open_objects) == 0,
+  CHECKM(HASH_CNT(handle, plasma_state->open_objects) == 0,
          "plasma_subscribe should be called before any objects are created.");
-  CHECKM(HASH_CNT(handle, s->sealed_objects) == 0,
+  CHECKM(HASH_CNT(handle, plasma_state->sealed_objects) == 0,
          "plasma_subscribe should be called before any objects are created.");
   /* Create a new array to buffer notifications that can't be sent to the
    * subscriber yet because the socket send buffer is full. TODO(rkn): the queue
@@ -295,47 +305,49 @@ void subscribe_to_updates(plasma_store_state *s, int conn) {
       (notification_queue *) malloc(sizeof(notification_queue));
   queue->subscriber_fd = fd;
   utarray_new(queue->object_ids, &object_id_icd);
-  HASH_ADD_INT(s->pending_notifications, subscriber_fd, queue);
+  HASH_ADD_INT(plasma_state->pending_notifications, subscriber_fd, queue);
   /* Add a callback to the event loop to send queued notifications whenever
    * there is room in the socket's send buffer. */
-  event_loop_add_file(s->loop, fd, EVENT_LOOP_WRITE, send_notifications, s);
+  event_loop_add_file(plasma_state->loop, fd, EVENT_LOOP_WRITE,
+                      send_notifications, plasma_state);
 }
 
 void process_message(event_loop *loop,
                      int client_sock,
                      void *context,
                      int events) {
-  plasma_store_state *s = context;
+  plasma_store_state *plasma_state = context;
   int64_t type;
   int64_t length;
   plasma_request *req;
   read_message(client_sock, &type, &length, (uint8_t **) &req);
+  /* We're only sending a single object ID at a time for now. */
   plasma_reply reply;
   memset(&reply, 0, sizeof(reply));
   UT_array *conns;
 
   switch (type) {
   case PLASMA_CREATE:
-    create_object(s, req->object_id, req->data_size, req->metadata_size,
-                  &reply.object);
+    create_object(plasma_state, req->object_ids[0], req->data_size,
+                  req->metadata_size, &reply.object);
     send_fd(client_sock, reply.object.handle.store_fd, (char *) &reply,
             sizeof(reply));
     break;
   case PLASMA_GET:
-    if (get_object(s, client_sock, req->object_id, &reply.object) ==
-        OBJECT_FOUND) {
+    if (get_object(plasma_state, client_sock, req->object_ids[0],
+                   &reply.object) == OBJECT_FOUND) {
       send_fd(client_sock, reply.object.handle.store_fd, (char *) &reply,
               sizeof(reply));
     }
     break;
   case PLASMA_CONTAINS:
-    if (contains_object(s, req->object_id) == OBJECT_FOUND) {
+    if (contains_object(plasma_state, req->object_ids[0]) == OBJECT_FOUND) {
       reply.has_object = 1;
     }
     plasma_send_reply(client_sock, &reply);
     break;
   case PLASMA_SEAL:
-    seal_object(s, req->object_id, &conns, &reply.object);
+    seal_object(plasma_state, req->object_ids[0], &conns, &reply.object);
     if (conns) {
       for (int *c = (int *) utarray_front(conns); c != NULL;
            c = (int *) utarray_next(conns, c)) {
@@ -346,10 +358,10 @@ void process_message(event_loop *loop,
     }
     break;
   case PLASMA_DELETE:
-    delete_object(s, req->object_id);
+    delete_object(plasma_state, req->object_ids[0]);
     break;
   case PLASMA_SUBSCRIBE:
-    subscribe_to_updates(s, client_sock);
+    subscribe_to_updates(plasma_state, client_sock);
     break;
   case DISCONNECT_CLIENT: {
     LOG_DEBUG("Disconnecting client on fd %d", client_sock);

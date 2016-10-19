@@ -5,7 +5,7 @@ BUILD = build
 all: $(BUILD)/plasma_store $(BUILD)/plasma_manager $(BUILD)/plasma_client.so $(BUILD)/example $(BUILD)/libplasma_client.a
 
 debug: FORCE
-debug: CFLAGS += -DDEBUG=1
+debug: CFLAGS += -DRAY_COMMON_DEBUG=1
 debug: all
 
 clean:
@@ -16,7 +16,7 @@ $(BUILD)/plasma_store: src/plasma_store.c src/plasma.h src/fling.h src/fling.c s
 	$(CC) $(CFLAGS) src/plasma_store.c src/fling.c src/malloc.c common/build/libcommon.a -o $(BUILD)/plasma_store
 
 $(BUILD)/plasma_manager: src/plasma_manager.c src/plasma.h src/plasma_client.c src/fling.h src/fling.c common
-	$(CC) $(CFLAGS) src/plasma_manager.c src/plasma_client.c src/fling.c common/build/libcommon.a -o $(BUILD)/plasma_manager
+	$(CC) $(CFLAGS) src/plasma_manager.c src/plasma_client.c src/fling.c common/build/libcommon.a common/thirdparty/hiredis/libhiredis.a -o $(BUILD)/plasma_manager
 
 $(BUILD)/plasma_client.so: src/plasma_client.c src/fling.h src/fling.c common
 	$(CC) $(CFLAGS) src/plasma_client.c src/fling.c common/build/libcommon.a -fPIC -shared -o $(BUILD)/plasma_client.so
@@ -30,5 +30,11 @@ $(BUILD)/example: src/plasma_client.c src/plasma.h src/example.c src/fling.h src
 common: FORCE
 		git submodule update --init --recursive
 		cd common; make
+
+# Set the request timeout low for testing purposes.
+test: CFLAGS += -DRAY_TIMEOUT=50
+test: FORCE
+		cd common; make redis
+test: all
 
 FORCE:
