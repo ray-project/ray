@@ -17,6 +17,45 @@ def make_plasma_id(string):
   object_id = map(ord, string)
   return PlasmaID(plasma_id=ID(*object_id))
 
+class PlasmaBuffer(object):
+  """This is the type of objects returned by calls to get with a PlasmaClient.
+
+  We define our own class instead of directly returning a buffer object so that
+  we can add a custom destructor which notifies Plasma that the object is no
+  longer being used, so the memory in the Plasma store backing the object can
+  potentially be freed.
+
+  Attributes:
+    buffer (buffer): A buffer containing an object in the Plasma store.
+    plasma_id (PlasmaID): The ID of the object in the buffer.
+    plasma_client (PlasmaClient): The PlasmaClient that we use to communicate
+      with the store and manager.
+  """
+  def __init__(self, buff, plasma_id, plasma_client):
+    """Initialize a PlasmaBuffer."""
+    self.buffer = buff
+    self.plasma_id = plasma_id
+    self.plasma_client = plasma_client
+
+  def __del__(self):
+    """Notify Plasma that the object is no longer needed."""
+    self.plasma_client.client.plasma_release(self.plasma_client.plasma_conn, self.plasma_id)
+
+  def __getitem__(self, index):
+    """Read from the PlasmaBuffer as if it were just a regular buffer."""
+    return self.buffer[index]
+
+  def __setitem__(self, index, value):
+    """Write to the PlasmaBuffer as if it were just a regular buffer.
+
+    This should fail because the buffer should be read only.
+    """
+    self.buffer[index] = value
+
+  def __len__(self):
+    """Return the length of the buffer."""
+    return len(self.buffer)
+
 class PlasmaClient(object):
   """The PlasmaClient is used to interface with a plasma store and a plasma manager.
 
@@ -45,6 +84,7 @@ class PlasmaClient(object):
     self.client.plasma_connect.restype = ctypes.c_void_p
     self.client.plasma_create.restype = None
     self.client.plasma_get.restype = None
+    self.client.plasma_release.restype = None
     self.client.plasma_contains.restype = None
     self.client.plasma_seal.restype = None
     self.client.plasma_delete.restype = None
@@ -82,7 +122,7 @@ class PlasmaClient(object):
     metadata = buffer("") if metadata is None else metadata
     metadata = (ctypes.c_ubyte * len(metadata)).from_buffer_copy(metadata)
     self.client.plasma_create(self.plasma_conn, make_plasma_id(object_id), size, ctypes.cast(metadata, ctypes.POINTER(ctypes.c_ubyte * len(metadata))), len(metadata), ctypes.byref(data))
-    return self.buffer_from_read_write_memory(data, size)
+    return PlasmaBuffer(self.buffer_from_read_write_memory(data, size), make_plasma_id(object_id), self)
 
   def get(self, object_id):
     """Create a buffer from the PlasmaStore based on object ID.
@@ -97,8 +137,8 @@ class PlasmaClient(object):
     data = ctypes.c_void_p()
     metadata_size = ctypes.c_int64()
     metadata = ctypes.c_void_p()
-    buf = self.client.plasma_get(self.plasma_conn, make_plasma_id(object_id), ctypes.byref(size), ctypes.byref(data), ctypes.byref(metadata_size), ctypes.byref(metadata))
-    return self.buffer_from_memory(data, size)
+    self.client.plasma_get(self.plasma_conn, make_plasma_id(object_id), ctypes.byref(size), ctypes.byref(data), ctypes.byref(metadata_size), ctypes.byref(metadata))
+    return PlasmaBuffer(self.buffer_from_memory(data, size), make_plasma_id(object_id), self)
 
   def get_metadata(self, object_id):
     """Create a buffer from the PlasmaStore based on object ID.
@@ -113,8 +153,8 @@ class PlasmaClient(object):
     data = ctypes.c_void_p()
     metadata_size = ctypes.c_int64()
     metadata = ctypes.c_void_p()
-    buf = self.client.plasma_get(self.plasma_conn, make_plasma_id(object_id), ctypes.byref(size), ctypes.byref(data), ctypes.byref(metadata_size), ctypes.byref(metadata))
-    return self.buffer_from_memory(metadata, metadata_size)
+    self.client.plasma_get(self.plasma_conn, make_plasma_id(object_id), ctypes.byref(size), ctypes.byref(data), ctypes.byref(metadata_size), ctypes.byref(metadata))
+    return PlasmaBuffer(self.buffer_from_memory(metadata, metadata_size), make_plasma_id(object_id), self)
 
   def contains(self, object_id):
     """Check if the object is present and has been sealed in the PlasmaStore.

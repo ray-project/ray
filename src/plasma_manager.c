@@ -312,6 +312,9 @@ void write_object_chunk(client_connection *conn, plasma_request_buffer *buf) {
     /* If we've finished writing this buffer, reset the cursor to zero. */
     LOG_DEBUG("writing on channel %d finished", conn->fd);
     conn->cursor = 0;
+    /* We are done sending the object, so release it. The corresponding call to
+     * plasma_get occurred in process_transfer_request. */
+    plasma_release(conn->manager_state->plasma_conn, buf->object_id);
   }
 }
 
@@ -392,9 +395,11 @@ void process_data_chunk(event_loop *loop,
     return;
   }
 
-  /* Seal the object.*/
+  /* Seal the object and release it. The release corresponds to the call to
+   * plasma_create that occurred in process_data_request. */
   LOG_DEBUG("reading on channel %d finished", data_sock);
   plasma_seal(conn->manager_state->plasma_conn, buf->object_id);
+  plasma_release(conn->manager_state->plasma_conn, buf->object_id);
   /* Notify any clients who were waiting on a fetch to this object. */
   client_object_connection *object_conn, *next;
   client_connection *client_conn;
@@ -459,6 +464,8 @@ void process_transfer_request(event_loop *loop,
   int64_t metadata_size;
   /* TODO(swang): A non-blocking plasma_get, or else we could block here
    * forever if we don't end up sealing this object. */
+  /* The corresponding call to plasma_release will happen in
+   * write_object_chunk. */
   plasma_get(conn->manager_state->plasma_conn, object_id, &data_size, &data,
              &metadata_size, &metadata);
   assert(metadata == data + data_size);
@@ -498,6 +505,8 @@ void process_data_request(event_loop *loop,
   buf->data_size = data_size;
   buf->metadata_size = metadata_size;
 
+  /* The corresponding call to plasma_release should happen in
+   * process_data_chunk. */
   plasma_create(conn->manager_state->plasma_conn, object_id, data_size, NULL,
                 metadata_size, &(buf->data));
   LL_APPEND(conn->transfer_queue, buf);

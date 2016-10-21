@@ -40,12 +40,12 @@ plasma_request *make_plasma_multiple_request(int num_object_ids,
  * Connect to the local plasma store and plasma manager. Return
  * the resulting connection.
  *
- * @param socket_name The name of the UNIX domain socket to use
- *        to connect to the Plasma Store.
- * @param manager_addr The IP address of the plasma manager to
- *        connect to.
- * @param manager_addr The port of the plasma manager to connect
- *        to.
+ * @param socket_name The name of the UNIX domain socket to use to connect to
+ *        the Plasma Store.
+ * @param manager_addr The IP address of the plasma manager to connect to. If
+ *        this is NULL, then this function will not connect to a manager.
+ * @param manager_port The port of the plasma manager to connect to. If
+ *        manager_addr is NULL, then this argument is unused.
  * @return The object containing the connection state.
  */
 plasma_connection *plasma_connect(const char *store_socket_name,
@@ -115,6 +115,18 @@ void plasma_get(plasma_connection *conn,
                 uint8_t **metadata);
 
 /**
+ * Tell Plasma that the client no longer needs the object. This should be called
+ * after plasma_get when the client is done with the object. After this call,
+ * the address returned by plasma_get is no longer valid. This should be called
+ * once for each call to plasma_get (with the same object ID).
+ *
+ * @param conn The object containing the connection state.
+ * @param object_id The ID of the object that is no longer needed.
+ * @return Void.
+ */
+void plasma_release(plasma_connection *conn, object_id object_id);
+
+/**
  * Check if the object store contains a particular object and the object has
  * been sealed. The result will be stored in has_object.
  *
@@ -161,7 +173,7 @@ void plasma_delete(plasma_connection *conn, object_id object_id);
  *        to the local manager.
  * @param object_id_count The number of object IDs requested.
  * @param object_ids[] The vector of object IDs requested. Length must be at
- * least num_object_ids.
+ *        least num_object_ids.
  * @param is_fetched[] The vector in which to return the success
  *        of each object's fetch operation, in the same order as
  *        object_ids. Length must be at least num_object_ids.
