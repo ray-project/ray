@@ -51,9 +51,17 @@ static PyObject *PyObjectID_id(PyObject *self) {
                                     UNIQUE_ID_SIZE);
 }
 
+static PyObject *PyObjectID___reduce__(PyObjectID *self) {
+  PyErr_SetString(CommonError, "ObjectID objects cannot be serialized.");
+  return NULL;
+}
+
 static PyMethodDef PyObjectID_methods[] = {
     {"id", (PyCFunction) PyObjectID_id, METH_NOARGS,
      "Return the hash associated with this ObjectID"},
+    {"__reduce__", (PyCFunction) PyObjectID___reduce__, METH_NOARGS,
+     "Say how to pickle this ObjectID. This raises an exception to prevent"
+     "object IDs from being serialized."},
     {NULL} /* Sentinel */
 };
 

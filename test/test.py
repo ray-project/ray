@@ -1,5 +1,6 @@
 from __future__ import print_function
 
+import pickle
 import unittest
 
 import common
@@ -51,6 +52,23 @@ class TestObjectID(unittest.TestCase):
 
   def test_create_object_id(self):
     object_id = common.ObjectID(20 * "a")
+
+  def test_cannot_pickle_object_ids(self):
+    object_ids = [common.ObjectID(20 * chr(i)) for i in range(256)]
+    def f():
+      return object_ids
+    def g(val=object_ids):
+      return 1
+    def h():
+      x = object_ids[0]
+      return 1
+    # Make sure that object IDs cannot be pickled (including functions that
+    # close over object IDs).
+    self.assertRaises(Exception, lambda : pickling.dumps(object_ids[0]))
+    self.assertRaises(Exception, lambda : pickling.dumps(object_ids))
+    self.assertRaises(Exception, lambda : pickling.dumps(f))
+    self.assertRaises(Exception, lambda : pickling.dumps(g))
+    self.assertRaises(Exception, lambda : pickling.dumps(h))
 
 class TestTask(unittest.TestCase):
 
