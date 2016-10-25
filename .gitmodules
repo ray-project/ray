@@ -1,17 +1,3 @@
-[submodule "thirdparty/grpc"]
-	path = thirdparty/grpc
-	url = https://github.com/grpc/grpc
-	ignore = dirty
-[submodule "thirdparty/numbuf"]
-	path = thirdparty/numbuf
-	url = https://github.com/ray-project/numbuf.git
 [submodule "thirdparty/arrow"]
 	path = thirdparty/arrow
 	url = https://github.com/ray-project/arrow.git
-[submodule "thirdparty/python"]
-	path = thirdparty/python
-	url = https://github.com/austinsc/python.git
-	ignore = dirty
-[submodule "thirdparty/hiredis"]
-	path = thirdparty/hiredis
-	url = https://github.com/redis/hiredis.git
