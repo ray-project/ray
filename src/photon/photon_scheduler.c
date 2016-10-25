@@ -121,7 +121,6 @@ void process_message(event_loop *loop, int client_sock, void *context,
   case GET_TASK: {
     worker_index *wi;
     HASH_FIND_INT(s->worker_index, &client_sock, wi);
-    printf("worker_index is %" PRId64 "\n", wi->worker_index);
     handle_worker_available(s->scheduler_info, s->scheduler_state,
                             wi->worker_index);
   } break;

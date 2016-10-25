@@ -1,3 +1,0 @@
-[submodule "thirdparty/arrow"]
-	path = thirdparty/arrow
-	url = https://github.com/ray-project/arrow.git

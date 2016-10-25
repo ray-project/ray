@@ -13,12 +13,16 @@ else
   exit 1
 fi
 
-mkdir -p "$ROOT_DIR/build"
-pushd "$ROOT_DIR/build"
-  cmake ..
-  make install -j$PARALLEL
+pushd "$ROOT_DIR/src/common"
+  make
+  make test
 popd
 
-pushd "$ROOT_DIR/scripts/"
-  ./gen-protobuf.sh
+pushd "$ROOT_DIR/src/plasma"
+  make
+  make test
+popd
+
+pushd "$ROOT_DIR/src/photon"
+  make
 popd
