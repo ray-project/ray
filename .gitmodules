@@ -1,3 +1,0 @@
-[submodule "common"]
-	path = common
-	url = https://github.com/ray-project/common
