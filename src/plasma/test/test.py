@@ -223,7 +223,7 @@ class TestPlasmaManager(unittest.TestCase):
       self.p3 = subprocess.Popen(plasma_store_command2)
 
     # Start a Redis server.
-    redis_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../common/thirdparty/redis-3.2.3/src/redis-server")
+    redis_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../common/thirdparty/redis-3.2.3/src/redis-server")
     self.redis_process = None
     manager_redis_args = []
     if os.path.exists(redis_path):
