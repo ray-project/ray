@@ -37,6 +37,11 @@ scheduler_state *make_scheduler_state(void) {
 }
 
 void free_scheduler_state(scheduler_state *s) {
+  for (int i = 0; i < utarray_len(s->task_queue); ++i) {
+    task_instance **instance =
+        (task_instance **) utarray_eltptr(s->task_queue, i);
+    free(*instance);
+  }
   utarray_free(s->task_queue);
   utarray_free(s->available_workers);
   free(s);
