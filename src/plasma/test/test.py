@@ -60,7 +60,7 @@ class TestPlasmaClient(unittest.TestCase):
     store_name = "/tmp/store{}".format(random.randint(0, 10000))
     command = [plasma_store_executable, "-s", store_name]
     if USE_VALGRIND:
-      self.p = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full"] + command)
+      self.p = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + command)
       time.sleep(2.0)
     else:
       self.p = subprocess.Popen(command)
@@ -216,8 +216,8 @@ class TestPlasmaManager(unittest.TestCase):
     plasma_store_command2 = [plasma_store_executable, "-s", store_name2]
 
     if USE_VALGRIND:
-      self.p2 = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--error-exitcode=1"] + plasma_store_command1)
-      self.p3 = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--error-exitcode=1"] + plasma_store_command2)
+      self.p2 = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + plasma_store_command1)
+      self.p3 = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + plasma_store_command2)
     else:
       self.p2 = subprocess.Popen(plasma_store_command1)
       self.p3 = subprocess.Popen(plasma_store_command2)
@@ -250,8 +250,8 @@ class TestPlasmaManager(unittest.TestCase):
                                "-p", str(self.port2)] + manager_redis_args
 
     if USE_VALGRIND:
-      self.p4 = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--error-exitcode=1"] + plasma_manager_command1)
-      self.p5 = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--error-exitcode=1"] + plasma_manager_command2)
+      self.p4 = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + plasma_manager_command1)
+      self.p5 = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + plasma_manager_command2)
       time.sleep(2.0)
     else:
       self.p4 = subprocess.Popen(plasma_manager_command1)
