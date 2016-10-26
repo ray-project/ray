@@ -18,7 +18,7 @@ class TestPhotonClient(unittest.TestCase):
 
   def setUp(self):
     # Start Redis.
-    redis_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../common/thirdparty/redis-3.2.3/src/redis-server")
+    redis_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../common/thirdparty/redis-3.2.3/src/redis-server")
     self.p1 = subprocess.Popen([redis_executable, "--loglevel", "warning"])
     # Start Plasma.
     plasma_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../plasma/build/plasma_store")

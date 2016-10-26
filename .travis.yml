@@ -6,19 +6,54 @@ matrix:
   include:
     - os: linux
       dist: trusty
+      python: "2.7"
+    - os: linux
+      dist: trusty
+      python: "3.5"
     - os: osx
       osx_image: xcode7
-
-services:
-  - docker
+      python: "2.7"
+    - os: osx
+      osx_image: xcode7
+      python: "3.5"
+    - os: linux
+      dist: trusty
+      python: "2.7"
+      env: LINT=1
+      before_install:
+        # In case we ever want to use a different version of clang-format:
+        #- wget -O - http://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+        #- echo "deb http://apt.llvm.org/trusty/ llvm-toolchain-trusty main" | sudo tee -a /etc/apt/sources.list > /dev/null
+        - sudo apt-get update -qq
+        - sudo apt-get install -qq clang-format-3.8
+      install: []
+      script:
+        - .travis/check-git-clang-format-output.sh
+    - os: linux
+      dist: trusty
+      python: "2.7"
+      env: VALGRIND=1
+      before_install:
+        - sudo apt-get update -qq
+        - sudo apt-get install -qq valgrind
+      script:
+        - python src/photon/test/test.py valgrind
 
 install:
-  - ./test/travis-ci/install.sh
+  - ./install-dependencies.sh
+  - ./build.sh
+
+  - cd src/common/lib/python
+  - sudo python setup.py install
+  - cd ../../../..
+
+  - cd src/photon/lib/python
+  - sudo python setup.py install
+  - cd ../../../..
+
+  - source src/plasma/setup-env.sh
 
 script:
-  - ./test/travis-ci/run_test.sh --docker-image=ray-project/ray:test-base 'source setup-env.sh && cd test && python runtest.py'
-  - ./test/travis-ci/run_test.sh --docker-image=ray-project/ray:test-base 'source setup-env.sh && cd test && python array_test.py'
-  - ./test/travis-ci/run_test.sh --docker-image=ray-project/ray:test-base 'source setup-env.sh && cd test && python failure_test.py'
-  - ./test/travis-ci/run_test.sh --docker-image=ray-project/ray:test-base 'source setup-env.sh && cd test && python microbenchmarks.py'
-  - ./test/travis-ci/run_test.sh --docker-only --shm-size=500m --docker-image=ray-project/ray:test-examples 'source setup-env.sh && cd examples/hyperopt && python driver.py'
-  - ./test/travis-ci/run_test.sh --docker-only --shm-size=500m --docker-image=ray-project/ray:test-examples 'source setup-env.sh && cd examples/lbfgs && python driver.py'
+  - python src/common/test/test.py
+  - python src/plasma/test/test.py
+  - python src/photon/test/test.py
