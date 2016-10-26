@@ -37,7 +37,7 @@ typedef int (*event_loop_timer_handler)(event_loop *loop,
                                         void *context);
 
 /* Create and return a new event loop. */
-event_loop *event_loop_create();
+event_loop *event_loop_create(void);
 
 /* Deallocate space associated with the event loop that was created
  * with the "create" function. */

@@ -35,7 +35,7 @@ struct local_scheduler_state {
   /* The local scheduler event loop. */
   event_loop *loop;
   /* The Plasma client. */
-  plasma_store_conn *plasma_conn;
+  plasma_connection *plasma_conn;
   /* Association between client socket and worker index. */
   worker_index *worker_index;
   /* Info that is exposed to the scheduling algorithm. */
@@ -50,8 +50,9 @@ local_scheduler_state *init_local_scheduler(event_loop *loop,
                                             const char *plasma_socket_name) {
   local_scheduler_state *state = malloc(sizeof(local_scheduler_state));
   state->loop = loop;
-  /* Connect to Plasma. This method will retry if Plasma hasn't started yet. */
-  state->plasma_conn = plasma_store_connect(plasma_socket_name);
+  /* Connect to Plasma. This method will retry if Plasma hasn't started yet.
+   * Pass in a NULL manager address and port. */
+  state->plasma_conn = plasma_connect(plasma_socket_name, NULL, 0);
   /* Subscribe to notifications about sealed objects. */
   int plasma_fd = plasma_subscribe(state->plasma_conn);
   /* Add the callback that processes the notification to the event loop. */
@@ -120,7 +121,6 @@ void process_message(event_loop *loop, int client_sock, void *context,
   case GET_TASK: {
     worker_index *wi;
     HASH_FIND_INT(s->worker_index, &client_sock, wi);
-    printf("worker_index is %" PRId64 "\n", wi->worker_index);
     handle_worker_available(s->scheduler_info, s->scheduler_state,
                             wi->worker_index);
   } break;

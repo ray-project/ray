@@ -5,7 +5,7 @@
 
 #define INITIAL_EVENT_LOOP_SIZE 1024
 
-event_loop *event_loop_create() {
+event_loop *event_loop_create(void) {
   return aeCreateEventLoop(INITIAL_EVENT_LOOP_SIZE);
 }
 
