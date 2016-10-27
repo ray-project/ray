@@ -364,7 +364,9 @@ void send_notifications(event_loop *loop,
           "The socket's send buffer is full, so we are caching this "
           "notification and will send it later.");
       /* Add a callback to the event loop to send queued notifications whenever
-       * there is room in the socket's send buffer. */
+       * there is room in the socket's send buffer. Callbacks can be added
+       * more than once here and will be overwritten. The callback is removed
+       * at the end of the method. */
       event_loop_add_file(plasma_state->loop, client_sock, EVENT_LOOP_WRITE,
                           send_notifications, plasma_state);
       break;
