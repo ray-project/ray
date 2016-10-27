@@ -73,6 +73,13 @@ local_scheduler_state *init_local_scheduler(event_loop *loop,
 
 void free_local_scheduler(local_scheduler_state *s) {
   db_disconnect(s->scheduler_info->db);
+  free(s->plasma_conn);
+  worker_index *current_worker_index, *temp_worker_index;
+  HASH_ITER(hh, s->worker_index, current_worker_index, temp_worker_index) {
+    HASH_DEL(s->worker_index, current_worker_index);
+    free(current_worker_index);
+  }
+  utarray_free(s->scheduler_info->workers);
   free(s->scheduler_info);
   free_scheduler_state(s->scheduler_state);
   event_loop_destroy(s->loop);
@@ -93,10 +100,9 @@ void process_plasma_notification(event_loop *loop,
                                  int events) {
   local_scheduler_state *s = context;
   /* Read the notification from Plasma. */
-  uint8_t *message = (uint8_t *) malloc(sizeof(object_id));
-  recv(client_sock, message, sizeof(object_id), 0);
-  object_id *obj_id = (object_id *) message;
-  handle_object_available(s->scheduler_info, s->scheduler_state, *obj_id);
+  object_id obj_id;
+  recv(client_sock, &obj_id, sizeof(object_id), 0);
+  handle_object_available(s->scheduler_info, s->scheduler_state, obj_id);
 }
 
 void process_message(event_loop *loop, int client_sock, void *context,
