@@ -44,6 +44,11 @@ void free_scheduler_state(scheduler_state *s) {
   }
   utarray_free(s->task_queue);
   utarray_free(s->available_workers);
+  available_object *available_obj, *tmp;
+  HASH_ITER(handle, s->local_objects, available_obj, tmp) {
+    HASH_DELETE(handle, s->local_objects, available_obj);
+    free(available_obj);
+  }
   free(s);
 }
 
