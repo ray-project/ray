@@ -363,6 +363,10 @@ void send_notifications(event_loop *loop,
       LOG_DEBUG(
           "The socket's send buffer is full, so we are caching this "
           "notification and will send it later.");
+      /* Add a callback to the event loop to send queued notifications whenever
+       * there is room in the socket's send buffer. */
+      event_loop_add_file(plasma_state->loop, client_sock, EVENT_LOOP_WRITE,
+                          send_notifications, plasma_state);
       break;
     } else {
       CHECKM(0, "This code should be unreachable.");
@@ -371,6 +375,10 @@ void send_notifications(event_loop *loop,
   }
   /* Remove the sent notifications from the array. */
   utarray_erase(queue->object_ids, 0, num_processed);
+  /* If we have sent all notifications, remove the fd from the event loop. */
+  if (utarray_len(queue->object_ids) == 0) {
+    event_loop_remove_file(loop, client_sock);
+  }
 }
 
 /* Subscribe to notifications about sealed objects. */
@@ -391,10 +399,6 @@ void subscribe_to_updates(client *client_context, int conn) {
   queue->subscriber_fd = fd;
   utarray_new(queue->object_ids, &object_table_entry_icd);
   HASH_ADD_INT(plasma_state->pending_notifications, subscriber_fd, queue);
-  /* Add a callback to the event loop to send queued notifications whenever
-   * there is room in the socket's send buffer. */
-  event_loop_add_file(plasma_state->loop, fd, EVENT_LOOP_WRITE,
-                      send_notifications, plasma_state);
 }
 
 void process_message(event_loop *loop,
