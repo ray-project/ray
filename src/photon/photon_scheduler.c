@@ -100,11 +100,9 @@ void process_plasma_notification(event_loop *loop,
                                  int events) {
   local_scheduler_state *s = context;
   /* Read the notification from Plasma. */
-  uint8_t *message = (uint8_t *) malloc(sizeof(object_id));
-  recv(client_sock, message, sizeof(object_id), 0);
-  object_id *obj_id = (object_id *) message;
-  handle_object_available(s->scheduler_info, s->scheduler_state, *obj_id);
-  free(message);
+  object_id obj_id;
+  recv(client_sock, &obj_id, sizeof(object_id), 0);
+  handle_object_available(s->scheduler_info, s->scheduler_state, obj_id);
 }
 
 void process_message(event_loop *loop, int client_sock, void *context,
