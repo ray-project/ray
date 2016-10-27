@@ -30,7 +30,7 @@ class TestPhotonClient(unittest.TestCase):
     scheduler_name = "/tmp/scheduler{}".format(random.randint(0, 10000))
     command = [scheduler_executable, "-s", scheduler_name, "-r", "127.0.0.1:6379", "-p", plasma_socket]
     if USE_VALGRIND:
-      self.p3 = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all"] + command)
+      self.p3 = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + command)
     else:
       self.p3 = subprocess.Popen(command)
     if USE_VALGRIND:
