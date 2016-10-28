@@ -5,7 +5,6 @@ import time
 import string
 import sys
 from collections import namedtuple
-import libnumbuf
 
 import test_functions
 import ray.array.remote as ra

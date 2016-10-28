@@ -1,7 +1,7 @@
 import numpy as np
 import pickling
 import libraylib as raylib
-import libnumbuf
+import numbuf
 
 def is_argument_serializable(value):
   """Checks if value is a composition of primitive types.
@@ -216,4 +216,4 @@ def deserialize(serialized_obj):
   return obj
 
 # Register the callbacks with numbuf.
-libnumbuf.register_callbacks(serialize, deserialize)
+numbuf.register_callbacks(serialize, deserialize)

@@ -19,7 +19,7 @@ import serialization
 import internal.graph_pb2
 import graph
 import services
-import libnumbuf
+import numbuf
 import libraylib as raylib
 
 contained_objectids = []
@@ -38,7 +38,7 @@ def numbuf_serialize(value):
     The serialized object.
   """
   assert len(contained_objectids) == 0, "This should be unreachable."
-  return libnumbuf.serialize_list([value])
+  return numbuf.serialize_list([value])
 
 class RayTaskError(Exception):
   """An object used internally to represent a task that threw an exception.
@@ -419,7 +419,7 @@ class Worker(object):
     # write the metadata
     metadata[:] = schema
     data = np.frombuffer(buff, dtype="byte")[8 + len(schema):]
-    metadata_offset = libnumbuf.write_to_buffer(serialized, memoryview(data))
+    metadata_offset = numbuf.write_to_buffer(serialized, memoryview(data))
     raylib.finish_buffer(self.handle, objectid, segmentid, metadata_offset)
 
   def get_object(self, objectid):
@@ -436,7 +436,7 @@ class Worker(object):
     metadata_size = int(np.frombuffer(buff, dtype="int64", count=1)[0])
     metadata = np.frombuffer(buff, dtype="byte", offset=8, count=metadata_size)
     data = np.frombuffer(buff, dtype="byte")[8 + metadata_size:]
-    serialized = libnumbuf.read_from_buffer(memoryview(data), bytearray(metadata), metadata_offset)
+    serialized = numbuf.read_from_buffer(memoryview(data), bytearray(metadata), metadata_offset)
     # If there is currently no ObjectFixture for this ObjectID, then create a
     # new one. The object_fixtures object is a WeakValueDictionary, so entries
     # will be discarded when there are no strong references to their values.
@@ -446,7 +446,7 @@ class Worker(object):
     if objectid.id not in object_fixtures:
       object_fixture = ObjectFixture(objectid, segmentid, self.handle)
       object_fixtures[objectid.id] = object_fixture
-    deserialized = libnumbuf.deserialize_list(serialized, object_fixtures[objectid.id])
+    deserialized = numbuf.deserialize_list(serialized, object_fixtures[objectid.id])
     # Unwrap the object from the list (it was wrapped put_object)
     assert len(deserialized) == 1
     result = deserialized[0]
@@ -855,11 +855,11 @@ def register_class(cls, pickle=False, worker=global_worker):
   """Enable workers to serialize or deserialize objects of a particular class.
 
   This method runs the register_class function defined below on every worker,
-  which will enable libnumbuf to properly serialize and deserialize objects of
-  this class.
+  which will enable numbuf to properly serialize and deserialize objects of this
+  class.
 
   Args:
-    cls (type): The class that libnumbuf should serialize.
+    cls (type): The class that numbuf should serialize.
     pickle (bool): If False then objects of this class will be serialized by
       turning their __dict__ fields into a dictionary. If True, then objects
       of this class will be serialized using pickle.
