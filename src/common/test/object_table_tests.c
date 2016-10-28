@@ -183,9 +183,12 @@ TEST lookup_retry_test(void) {
   /* Disconnect the database to let the lookup time out the first time. */
   close(db->context->c.fd);
   /* Install handler for reconnecting the database. */
-  event_loop_add_timer(g_loop, 150, reconnect_context_callback, db);
+  event_loop_add_timer(
+      g_loop, 150, (event_loop_timer_handler) reconnect_context_callback, db);
   /* Install handler for terminating the event loop. */
-  event_loop_add_timer(g_loop, 750, terminate_event_loop_callback, NULL);
+  event_loop_add_timer(g_loop, 750,
+                       (event_loop_timer_handler) terminate_event_loop_callback,
+                       NULL);
   event_loop_run(g_loop);
   db_disconnect(db);
   event_loop_destroy(g_loop);
@@ -223,9 +226,12 @@ TEST add_retry_test(void) {
   /* Disconnect the database to let the add time out the first time. */
   close(db->context->c.fd);
   /* Install handler for reconnecting the database. */
-  event_loop_add_timer(g_loop, 150, reconnect_context_callback, db);
+  event_loop_add_timer(
+      g_loop, 150, (event_loop_timer_handler) reconnect_context_callback, db);
   /* Install handler for terminating the event loop. */
-  event_loop_add_timer(g_loop, 750, terminate_event_loop_callback, NULL);
+  event_loop_add_timer(g_loop, 750,
+                       (event_loop_timer_handler) terminate_event_loop_callback,
+                       NULL);
   event_loop_run(g_loop);
   db_disconnect(db);
   event_loop_destroy(g_loop);
@@ -279,9 +285,13 @@ TEST subscribe_retry_test(void) {
   /* Disconnect the database to let the subscribe times out the first time. */
   close(db->sub_context->c.fd);
   /* Install handler for reconnecting the database. */
-  event_loop_add_timer(g_loop, 150, reconnect_sub_context_callback, db);
+  event_loop_add_timer(
+      g_loop, 150, (event_loop_timer_handler) reconnect_sub_context_callback,
+      db);
   /* Install handler for terminating the event loop. */
-  event_loop_add_timer(g_loop, 750, terminate_event_loop_callback, NULL);
+  event_loop_add_timer(g_loop, 750,
+                       (event_loop_timer_handler) terminate_event_loop_callback,
+                       NULL);
   event_loop_run(g_loop);
   db_disconnect(db);
   event_loop_destroy(g_loop);
@@ -322,7 +332,9 @@ TEST lookup_late_test(void) {
   object_table_lookup(db, NIL_ID, &retry, lookup_late_done_callback,
                       (void *) lookup_late_context);
   /* Install handler for terminating the event loop. */
-  event_loop_add_timer(g_loop, 750, terminate_event_loop_callback, NULL);
+  event_loop_add_timer(g_loop, 750,
+                       (event_loop_timer_handler) terminate_event_loop_callback,
+                       NULL);
   /* First process timer events to make sure the timeout is processed before
    * anything else. */
   aeProcessEvents(g_loop, AE_TIME_EVENTS);
@@ -359,7 +371,9 @@ TEST add_late_test(void) {
   object_table_add(db, NIL_ID, &retry, add_late_done_callback,
                    (void *) add_late_context);
   /* Install handler for terminating the event loop. */
-  event_loop_add_timer(g_loop, 750, terminate_event_loop_callback, NULL);
+  event_loop_add_timer(g_loop, 750,
+                       (event_loop_timer_handler) terminate_event_loop_callback,
+                       NULL);
   /* First process timer events to make sure the timeout is processed before
    * anything else. */
   aeProcessEvents(g_loop, AE_TIME_EVENTS);
@@ -399,7 +413,9 @@ TEST subscribe_late_test(void) {
                          subscribe_late_done_callback,
                          (void *) subscribe_late_context);
   /* Install handler for terminating the event loop. */
-  event_loop_add_timer(g_loop, 750, terminate_event_loop_callback, NULL);
+  event_loop_add_timer(g_loop, 750,
+                       (event_loop_timer_handler) terminate_event_loop_callback,
+                       NULL);
   /* First process timer events to make sure the timeout is processed before
    * anything else. */
   aeProcessEvents(g_loop, AE_TIME_EVENTS);
@@ -452,7 +468,9 @@ TEST subscribe_success_test(void) {
                          subscribe_success_done_callback, (void *) db);
 
   /* Install handler for terminating the event loop. */
-  event_loop_add_timer(g_loop, 750, terminate_event_loop_callback, NULL);
+  event_loop_add_timer(g_loop, 750,
+                       (event_loop_timer_handler) terminate_event_loop_callback,
+                       NULL);
 
   event_loop_run(g_loop);
   db_disconnect(db);

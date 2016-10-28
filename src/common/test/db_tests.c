@@ -80,12 +80,12 @@ TEST object_table_lookup_test(void) {
   };
   object_table_add(db1, id, &retry, add_done_callback, NULL);
   object_table_add(db2, id, &retry, add_done_callback, NULL);
-  event_loop_add_timer(loop, 200, timeout_handler, NULL);
+  event_loop_add_timer(loop, 200, (event_loop_timer_handler) timeout_handler,
+                       NULL);
   event_loop_run(loop);
-  user_context user_context;
-  user_context.test_number = TEST_NUMBER;
   object_table_lookup(db1, id, &retry, lookup_done_callback, NULL);
-  event_loop_add_timer(loop, 200, timeout_handler, NULL);
+  event_loop_add_timer(loop, 200, (event_loop_timer_handler) timeout_handler,
+                       NULL);
   event_loop_run(loop);
   int port1 = atoi(received_port1);
   int port2 = atoi(received_port2);
@@ -121,7 +121,8 @@ TEST task_log_test(void) {
   task_log_subscribe(db, node, TASK_STATUS_SCHEDULED, task_log_test_callback,
                      instance, &retry, NULL, NULL);
   task_log_publish(db, instance, &retry, NULL, NULL);
-  event_loop_add_timer(loop, 200, timeout_handler, NULL);
+  event_loop_add_timer(loop, 200, (event_loop_timer_handler) timeout_handler,
+                       NULL);
   event_loop_run(loop);
   task_instance_free(instance);
   free_task_spec(task);
@@ -151,12 +152,14 @@ TEST task_log_all_test(void) {
   };
   task_log_subscribe(db, NIL_ID, TASK_STATUS_SCHEDULED,
                      task_log_all_test_callback, NULL, &retry, NULL, NULL);
-  event_loop_add_timer(loop, 50, timeout_handler, NULL);
+  event_loop_add_timer(loop, 50, (event_loop_timer_handler) timeout_handler,
+                       NULL);
   event_loop_run(loop);
   /* TODO(pcm): Get rid of this sleep once the robust pubsub is implemented. */
   task_log_publish(db, instance1, &retry, NULL, NULL);
   task_log_publish(db, instance2, &retry, NULL, NULL);
-  event_loop_add_timer(loop, 200, timeout_handler, NULL);
+  event_loop_add_timer(loop, 200, (event_loop_timer_handler) timeout_handler,
+                       NULL);
   event_loop_run(loop);
   task_instance_free(instance2);
   task_instance_free(instance1);

@@ -148,9 +148,12 @@ TEST subscribe_retry_test(void) {
   /* Disconnect the database to see if the subscribe times out. */
   close(db->sub_context->c.fd);
   /* Install handler for reconnecting the database. */
-  event_loop_add_timer(loop, 150, reconnect_db_callback, db);
+  event_loop_add_timer(loop, 150,
+                       (event_loop_timer_handler) reconnect_db_callback, db);
   /* Install handler for terminating the event loop. */
-  event_loop_add_timer(loop, 750, terminate_event_loop_callback, NULL);
+  event_loop_add_timer(loop, 750,
+                       (event_loop_timer_handler) terminate_event_loop_callback,
+                       NULL);
   event_loop_run(loop);
   db_disconnect(db);
   event_loop_destroy(loop);
@@ -189,9 +192,12 @@ TEST publish_retry_test(void) {
   /* Disconnect the database to see if the publish times out. */
   close(db->sub_context->c.fd);
   /* Install handler for reconnecting the database. */
-  event_loop_add_timer(loop, 150, reconnect_db_callback, db);
+  event_loop_add_timer(loop, 150,
+                       (event_loop_timer_handler) reconnect_db_callback, db);
   /* Install handler for terminating the event loop. */
-  event_loop_add_timer(loop, 750, terminate_event_loop_callback, NULL);
+  event_loop_add_timer(loop, 750,
+                       (event_loop_timer_handler) terminate_event_loop_callback,
+                       NULL);
   event_loop_run(loop);
   db_disconnect(db);
   event_loop_destroy(loop);
@@ -231,7 +237,9 @@ TEST subscribe_late_test(void) {
                      subscribe_late_done_callback,
                      (void *) subscribe_late_context);
   /* Install handler for terminating the event loop. */
-  event_loop_add_timer(loop, 750, terminate_event_loop_callback, NULL);
+  event_loop_add_timer(loop, 750,
+                       (event_loop_timer_handler) terminate_event_loop_callback,
+                       NULL);
   /* First process timer events to make sure the timeout is processed before
    * anything else. */
   aeProcessEvents(loop, AE_TIME_EVENTS);
@@ -271,7 +279,9 @@ TEST publish_late_test(void) {
   task_log_publish(db, task, &retry, publish_late_done_callback,
                    (void *) publish_late_context);
   /* Install handler for terminating the event loop. */
-  event_loop_add_timer(loop, 750, terminate_event_loop_callback, NULL);
+  event_loop_add_timer(loop, 750,
+                       (event_loop_timer_handler) terminate_event_loop_callback,
+                       NULL);
   /* First process timer events to make sure the timeout is processed before
    * anything else. */
   aeProcessEvents(loop, AE_TIME_EVENTS);
