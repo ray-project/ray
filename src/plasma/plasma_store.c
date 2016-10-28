@@ -495,10 +495,10 @@ void signal_handler(int signal) {
 }
 
 void start_server(char *socket_name) {
-  int socket = bind_ipc_sock(socket_name);
-  CHECK(socket >= 0);
   event_loop *loop = event_loop_create();
   plasma_store_state *state = init_plasma_store(loop);
+  int socket = bind_ipc_sock(socket_name);
+  CHECK(socket >= 0);
   event_loop_add_file(loop, socket, EVENT_LOOP_READ, new_client_connection,
                       state);
   event_loop_run(loop);

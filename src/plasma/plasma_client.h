@@ -62,11 +62,13 @@ plasma_connection *plasma_connect(const char *store_socket_name,
 void plasma_disconnect(plasma_connection *conn);
 
 /**
- * Connect to a possibly remote Plasma Manager.
+ * Try to connect to a possibly remote Plasma Manager.
  *
  * @param addr The IP address of the Plasma Manager to connect to.
  * @param port The port of the Plasma Manager to connect to.
- * @return The file descriptor to use to send messages to the Plasma Manager.
+ * @return The file descriptor to use to send messages to the
+ *         Plasma Manager. If connection was unsuccessful, this
+ *         value is -1.
  */
 int plasma_manager_connect(const char *addr, int port);
 
@@ -194,5 +196,14 @@ void plasma_fetch(plasma_connection *conn,
            from the object store about sealed objects.
  */
 int plasma_subscribe(plasma_connection *conn);
+
+/**
+ * Get the file descriptor for the socket connection to the plasma manager.
+ *
+ * @param conn The plasma connection.
+ * @return The file descriptor for the manager connection. If there is no
+ *         connection to the manager, this is -1.
+ */
+int get_manager_fd(plasma_connection *conn);
 
 #endif

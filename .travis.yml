@@ -37,6 +37,12 @@ matrix:
         - sudo apt-get update -qq
         - sudo apt-get install -qq valgrind
       script:
+        - cd src/plasma
+        - make valgrind
+        - cd ../..
+
+        - python src/plasma/test/test.py valgrind
+
         - python src/photon/test/test.py valgrind
 
 install:
