@@ -1,7 +1,9 @@
 # The build output should clearly not be checked in
 /build
-/lib/python/ray/objstore
-/lib/python/ray/scheduler
+/src/plasma/build
+/src/photon/build
+/src/common/build
+/src/common/thirdparty/redis-3.2.3
 
 # Python byte code files
 *.pyc
@@ -65,6 +67,16 @@ scripts/nodes.txt
 
 # OS X folder attributes
 .DS_Store
+
+# Debug files
+*.dSYM/
+*.su
+
+# Python setup files
+*.egg-info
+
+# Compressed files
+*.gz
 
 # Datasets from examples
 **/MNIST_data/
