@@ -6,9 +6,9 @@
 table_callback_data *init_table_callback(db_handle *db_handle,
                                          unique_id id,
                                          void *data,
-                                         retry_struct *retry,
+                                         retry_info *retry,
                                          table_done_cb done_cb,
-                                         table_fail_cb fail_cb,
+                                         table_retry_cb retry_cb,
                                          void *user_context) {
   CHECK(db_handle);
   CHECK(db_handle->loop);
@@ -17,11 +17,9 @@ table_callback_data *init_table_callback(db_handle *db_handle,
   table_callback_data *cb_data = malloc(sizeof(table_callback_data));
   CHECKM(cb_data != NULL, "Memory allocation error!")
   cb_data->id = id;
+  cb_data->retry = *retry;
   cb_data->done_cb = done_cb;
-  cb_data->fail_cb = fail_cb;
-  cb_data->retry.cb = retry->cb;
-  cb_data->retry.count = retry->count;
-  cb_data->retry.timeout = retry->timeout;
+  cb_data->retry_cb = retry_cb;
   cb_data->data = data;
   cb_data->requests_info = NULL;
   cb_data->user_context = user_context;
@@ -31,7 +29,7 @@ table_callback_data *init_table_callback(db_handle *db_handle,
                                            table_timeout_handler, cb_data);
   outstanding_callbacks_add(cb_data);
 
-  cb_data->retry.cb(cb_data);
+  cb_data->retry_cb(cb_data);
 
   return cb_data;
 }
@@ -58,22 +56,22 @@ int64_t table_timeout_handler(event_loop *loop,
   CHECK(user_context != NULL);
   table_callback_data *cb_data = (table_callback_data *) user_context;
 
-  CHECK(cb_data->retry.count >= 0)
-  LOG_DEBUG("retrying operation, retry_count = %d", cb_data->retry.count);
+  CHECK(cb_data->retry.num_retries >= 0)
+  LOG_DEBUG("retrying operation, retry_count = %d", cb_data->retry.num_retries);
 
-  if (cb_data->retry.count == 0) {
+  if (cb_data->retry.num_retries == 0) {
     /* We didn't get a response from the database after exhausting all retries;
      * let user know, cleanup the state, and remove the timer. */
-    if (cb_data->fail_cb) {
-      cb_data->fail_cb(cb_data->id, cb_data->user_context);
+    if (cb_data->retry.fail_cb) {
+      cb_data->retry.fail_cb(cb_data->id, cb_data->user_context);
     }
     destroy_table_callback(cb_data);
     return EVENT_LOOP_TIMER_DONE;
   }
 
   /* Decrement retry count and try again. */
-  cb_data->retry.count--;
-  cb_data->retry.cb(cb_data);
+  cb_data->retry.num_retries--;
+  cb_data->retry_cb(cb_data);
   return cb_data->retry.timeout;
 }
 

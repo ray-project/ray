@@ -73,16 +73,16 @@ TEST object_table_lookup_test(void) {
   db_attach(db1, loop);
   db_attach(db2, loop);
   unique_id id = globally_unique_id();
-  object_table_add(db1, id, NUM_RETRIES, TIMEOUT, add_done_cb, timeout_cb,
-                   NULL);
-  object_table_add(db2, id, NUM_RETRIES, TIMEOUT, add_done_cb, timeout_cb,
-                   NULL);
+  retry_info retry = {
+      .num_retries = NUM_RETRIES, .timeout = TIMEOUT, .fail_cb = timeout_cb,
+  };
+  object_table_add(db1, id, &retry, add_done_cb, NULL);
+  object_table_add(db2, id, &retry, add_done_cb, NULL);
   event_loop_add_timer(loop, 200, timeout_handler, NULL);
   event_loop_run(loop);
   user_context user_context;
   user_context.test_number = TEST_NUMBER;
-  object_table_lookup(db1, id, NUM_RETRIES, TIMEOUT, lookup_done_cb, timeout_cb,
-                      NULL);
+  object_table_lookup(db1, id, &retry, lookup_done_cb, NULL);
   event_loop_add_timer(loop, 200, timeout_handler, NULL);
   event_loop_run(loop);
   int port1 = atoi(received_port1);
@@ -113,9 +113,12 @@ TEST task_log_test(void) {
   task_spec *task = example_task();
   task_instance *instance = make_task_instance(globally_unique_id(), task,
                                                TASK_STATUS_SCHEDULED, node);
+  retry_info retry = {
+      .num_retries = NUM_RETRIES, .timeout = TIMEOUT, .fail_cb = NULL,
+  };
   task_log_subscribe(db, node, TASK_STATUS_SCHEDULED, task_log_test_callback,
-                     instance, NUM_RETRIES, TIMEOUT, NULL, NULL, NULL);
-  task_log_publish(db, instance, NUM_RETRIES, TIMEOUT, NULL, NULL, NULL);
+                     instance, &retry, NULL, NULL);
+  task_log_publish(db, instance, &retry, NULL, NULL);
   event_loop_add_timer(loop, 200, timeout_handler, NULL);
   event_loop_run(loop);
   task_instance_free(instance);
@@ -141,14 +144,16 @@ TEST task_log_all_test(void) {
       globally_unique_id(), task, TASK_STATUS_SCHEDULED, globally_unique_id());
   task_instance *instance2 = make_task_instance(
       globally_unique_id(), task, TASK_STATUS_SCHEDULED, globally_unique_id());
+  retry_info retry = {
+      .num_retries = NUM_RETRIES, .timeout = TIMEOUT, .fail_cb = NULL,
+  };
   task_log_subscribe(db, NIL_ID, TASK_STATUS_SCHEDULED,
-                     task_log_all_test_callback, NULL, NUM_RETRIES, TIMEOUT,
-                     NULL, NULL, NULL);
+                     task_log_all_test_callback, NULL, &retry, NULL, NULL);
   event_loop_add_timer(loop, 50, timeout_handler, NULL);
   event_loop_run(loop);
   /* TODO(pcm): Get rid of this sleep once the robust pubsub is implemented. */
-  task_log_publish(db, instance1, NUM_RETRIES, TIMEOUT, NULL, NULL, NULL);
-  task_log_publish(db, instance2, NUM_RETRIES, TIMEOUT, NULL, NULL, NULL);
+  task_log_publish(db, instance1, &retry, NULL, NULL);
+  task_log_publish(db, instance2, &retry, NULL, NULL);
   event_loop_add_timer(loop, 200, timeout_handler, NULL);
   event_loop_run(loop);
   task_instance_free(instance2);

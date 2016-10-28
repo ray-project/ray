@@ -22,12 +22,12 @@ typedef void (*table_retry_cb)(table_callback_data *cb_data);
  */
 typedef struct {
   /** Number of retries left. */
-  int count;
+  int num_retries;
   /** Timeout, in milliseconds. */
   uint64_t timeout;
-  /** The callback that will be called to initiate the next try. */
-  table_retry_cb cb;
-} retry_struct;
+  /** The callback that will be called if there are no more retries left. */
+  table_fail_cb fail_cb;
+} retry_info;
 
 struct table_callback_data {
   /** ID of the entry in the table that we are going to look up, remove or add.
@@ -35,13 +35,12 @@ struct table_callback_data {
   unique_id id;
   /** The callback that will be called when results is returned. */
   table_done_cb done_cb;
-  /** The callback that will be called when the redis command times out. */
-  table_fail_cb fail_cb;
-  /** Retry structure containong the remaining number of retries, timeout and a
-   * point
-   * to the retry callback.
+  /** The callback that will be called to initiate the next try. */
+  table_retry_cb retry_cb;
+  /** Retry information containing the remaining number of retries, the timeout
+   *  before the next retry, and a pointer to the failure callback.
    */
-  retry_struct retry;
+  retry_info retry;
   /** Pointer to the data that is entered into the table. */
   void *data;
   /** Pointer to the data used internally to handle multiple database requests.
@@ -83,9 +82,9 @@ int64_t table_timeout_handler(event_loop *loop,
 table_callback_data *init_table_callback(db_handle *db_handle,
                                          unique_id id,
                                          void *data,
-                                         retry_struct *retry,
+                                         retry_info *retry,
                                          table_done_cb done_cb,
-                                         table_fail_cb fail_cb,
+                                         table_retry_cb retry_cb,
                                          void *user_context);
 
 void destroy_table_callback(table_callback_data *cb_data);

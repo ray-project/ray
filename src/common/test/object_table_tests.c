@@ -38,7 +38,10 @@ TEST lookup_timeout_test(void) {
   db_handle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 1234);
   db_attach(db, g_loop);
-  object_table_lookup(db, NIL_ID, 5, 100, lookup_done_cb, lookup_fail_cb,
+  retry_info retry = {
+      .num_retries = 5, .timeout = 100, .fail_cb = lookup_fail_cb,
+  };
+  object_table_lookup(db, NIL_ID, &retry, lookup_done_cb,
                       (void *) lookup_timeout_context);
   /* Disconnect the database to see if the lookup times out. */
   close(db->context->c.fd);
@@ -70,7 +73,10 @@ TEST add_timeout_test(void) {
   db_handle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 1234);
   db_attach(db, g_loop);
-  object_table_add(db, NIL_ID, 5, 100, add_done_cb, add_fail_cb,
+  retry_info retry = {
+      .num_retries = 5, .timeout = 100, .fail_cb = add_fail_cb,
+  };
+  object_table_add(db, NIL_ID, &retry, add_done_cb,
                    (void *) add_timeout_context);
   /* Disconnect the database to see if the lookup times out. */
   close(db->context->c.fd);
@@ -102,8 +108,11 @@ TEST subscribe_timeout_test(void) {
   db_handle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 1234);
   db_attach(db, g_loop);
-  object_table_subscribe(db, NIL_ID, NULL, NULL, 5, 100, subscribe_done_cb,
-                         subscribe_fail_cb, (void *) subscribe_timeout_context);
+  retry_info retry = {
+      .num_retries = 5, .timeout = 100, .fail_cb = subscribe_fail_cb,
+  };
+  object_table_subscribe(db, NIL_ID, NULL, NULL, &retry, subscribe_done_cb,
+                         (void *) subscribe_timeout_context);
   /* Disconnect the database to see if the lookup times out. */
   close(db->sub_context->c.fd);
   event_loop_run(g_loop);
@@ -161,8 +170,11 @@ TEST lookup_retry_test(void) {
   db_handle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11235);
   db_attach(db, g_loop);
-  object_table_lookup(db, NIL_ID, 5, 100, lookup_retry_done_cb,
-                      lookup_retry_fail_cb, (void *) lookup_retry_context);
+  retry_info retry = {
+      .num_retries = 5, .timeout = 100, .fail_cb = lookup_retry_fail_cb,
+  };
+  object_table_lookup(db, NIL_ID, &retry, lookup_retry_done_cb,
+                      (void *) lookup_retry_context);
   /* Disconnect the database to let the lookup time out the first time. */
   close(db->context->c.fd);
   /* Install handler for reconnecting the database. */
@@ -196,7 +208,10 @@ TEST add_retry_test(void) {
   db_handle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11235);
   db_attach(db, g_loop);
-  object_table_add(db, NIL_ID, 5, 100, add_retry_done_cb, add_retry_fail_cb,
+  retry_info retry = {
+      .num_retries = 5, .timeout = 100, .fail_cb = add_retry_fail_cb,
+  };
+  object_table_add(db, NIL_ID, &retry, add_retry_done_cb,
                    (void *) add_retry_context);
   /* Disconnect the database to let the add time out the first time. */
   close(db->context->c.fd);
@@ -246,8 +261,11 @@ TEST subscribe_retry_test(void) {
   db_handle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11235);
   db_attach(db, g_loop);
-  object_table_subscribe(db, NIL_ID, NULL, NULL, 5, 100,
-                         subscribe_retry_done_cb, subscribe_retry_fail_cb,
+  retry_info retry = {
+      .num_retries = 5, .timeout = 100, .fail_cb = subscribe_retry_fail_cb,
+  };
+  object_table_subscribe(db, NIL_ID, NULL, NULL, &retry,
+                         subscribe_retry_done_cb,
                          (void *) subscribe_retry_context);
   /* Disconnect the database to let the subscribe times out the first time. */
   close(db->sub_context->c.fd);
@@ -287,8 +305,11 @@ TEST lookup_late_test(void) {
   db_handle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11236);
   db_attach(db, g_loop);
-  object_table_lookup(db, NIL_ID, 0, 0, lookup_late_done_cb,
-                      lookup_late_fail_cb, (void *) lookup_late_context);
+  retry_info retry = {
+      .num_retries = 0, .timeout = 0, .fail_cb = lookup_late_fail_cb,
+  };
+  object_table_lookup(db, NIL_ID, &retry, lookup_late_done_cb,
+                      (void *) lookup_late_context);
   /* Install handler for terminating the event loop. */
   event_loop_add_timer(g_loop, 750, terminate_event_loop_cb, NULL);
   /* First process timer events to make sure the timeout is processed before
@@ -321,7 +342,10 @@ TEST add_late_test(void) {
   db_handle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11236);
   db_attach(db, g_loop);
-  object_table_add(db, NIL_ID, 0, 0, add_late_done_cb, add_late_fail_cb,
+  retry_info retry = {
+      .num_retries = 0, .timeout = 0, .fail_cb = add_late_fail_cb,
+  };
+  object_table_add(db, NIL_ID, &retry, add_late_done_cb,
                    (void *) add_late_context);
   /* Install handler for terminating the event loop. */
   event_loop_add_timer(g_loop, 750, terminate_event_loop_cb, NULL);
@@ -355,8 +379,10 @@ TEST subscribe_late_test(void) {
   db_handle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11236);
   db_attach(db, g_loop);
-  object_table_subscribe(db, NIL_ID, NULL, NULL, 0, 0, subscribe_late_done_cb,
-                         subscribe_late_fail_cb,
+  retry_info retry = {
+      .num_retries = 0, .timeout = 0, .fail_cb = subscribe_late_fail_cb,
+  };
+  object_table_subscribe(db, NIL_ID, NULL, NULL, &retry, subscribe_late_done_cb,
                          (void *) subscribe_late_context);
   /* Install handler for terminating the event loop. */
   event_loop_add_timer(g_loop, 750, terminate_event_loop_cb, NULL);
@@ -382,8 +408,10 @@ void subscribe_success_fail_cb(unique_id id, void *user_context) {
 }
 
 void subscribe_success_done_cb(object_id object_id, void *user_context) {
-  object_table_add((db_handle *) user_context, object_id, 0, 0, NULL, NULL,
-                   NULL);
+  retry_info retry = {
+      .num_retries = 0, .timeout = 0, .fail_cb = NULL,
+  };
+  object_table_add((db_handle *) user_context, object_id, &retry, NULL, NULL);
   subscribe_success_done = 1;
 }
 
@@ -400,10 +428,12 @@ TEST subscribe_success_test(void) {
   db_attach(db, g_loop);
   unique_id id = globally_unique_id();
 
+  retry_info retry = {
+      .num_retries = 0, .timeout = 100, .fail_cb = subscribe_success_fail_cb,
+  };
   object_table_subscribe(db, id, subscribe_success_object_available_cb,
-                         (void *) subscribe_success_context, 0, 100,
-                         subscribe_success_done_cb, subscribe_success_fail_cb,
-                         (void *) db);
+                         (void *) subscribe_success_context, &retry,
+                         subscribe_success_done_cb, (void *) db);
 
   /* Install handler for terminating the event loop. */
   event_loop_add_timer(g_loop, 750, terminate_event_loop_cb, NULL);

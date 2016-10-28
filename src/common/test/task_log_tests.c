@@ -37,9 +37,11 @@ TEST subscribe_timeout_test(void) {
   db_handle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 1234);
   db_attach(db, loop);
-  task_log_subscribe(db, NIL_ID, TASK_STATUS_WAITING, NULL, NULL, 5, 100,
-                     subscribe_done_cb, subscribe_fail_cb,
-                     (void *) subscribe_timeout_context);
+  retry_info retry = {
+      .num_retries = 5, .timeout = 100, .fail_cb = subscribe_fail_cb,
+  };
+  task_log_subscribe(db, NIL_ID, TASK_STATUS_WAITING, NULL, NULL, &retry,
+                     subscribe_done_cb, (void *) subscribe_timeout_context);
   /* Disconnect the database to see if the subscribe times out. */
   close(db->sub_context->c.fd);
   aeProcessEvents(loop, AE_TIME_EVENTS);
@@ -73,7 +75,10 @@ TEST publish_timeout_test(void) {
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 1234);
   db_attach(db, loop);
   task_instance *task = example_task_instance();
-  task_log_publish(db, task, 5, 100, publish_done_cb, publish_fail_cb,
+  retry_info retry = {
+      .num_retries = 5, .timeout = 100, .fail_cb = publish_fail_cb,
+  };
+  task_log_publish(db, task, &retry, publish_done_cb,
                    (void *) publish_timeout_context);
   /* Disconnect the database to see if the publish times out. */
   close(db->context->c.fd);
@@ -127,9 +132,11 @@ TEST subscribe_retry_test(void) {
   db_handle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11235);
   db_attach(db, loop);
-  task_log_subscribe(db, NIL_ID, TASK_STATUS_WAITING, NULL, NULL, 5, 100,
-                     subscribe_retry_done_cb, subscribe_retry_fail_cb,
-                     (void *) subscribe_retry_context);
+  retry_info retry = {
+      .num_retries = 5, .timeout = 100, .fail_cb = subscribe_retry_fail_cb,
+  };
+  task_log_subscribe(db, NIL_ID, TASK_STATUS_WAITING, NULL, NULL, &retry,
+                     subscribe_retry_done_cb, (void *) subscribe_retry_context);
   /* Disconnect the database to see if the subscribe times out. */
   close(db->sub_context->c.fd);
   /* Install handler for reconnecting the database. */
@@ -164,8 +171,11 @@ TEST publish_retry_test(void) {
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11235);
   db_attach(db, loop);
   task_instance *task = example_task_instance();
-  task_log_publish(db, task, 5, 100, publish_retry_done_cb,
-                   publish_retry_fail_cb, (void *) publish_retry_context);
+  retry_info retry = {
+      .num_retries = 5, .timeout = 100, .fail_cb = publish_retry_fail_cb,
+  };
+  task_log_publish(db, task, &retry, publish_retry_done_cb,
+                   (void *) publish_retry_context);
   /* Disconnect the database to see if the publish times out. */
   close(db->sub_context->c.fd);
   /* Install handler for reconnecting the database. */
@@ -202,9 +212,11 @@ TEST subscribe_late_test(void) {
   db_handle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11236);
   db_attach(db, loop);
-  task_log_subscribe(db, NIL_ID, TASK_STATUS_WAITING, NULL, NULL, 0, 0,
-                     subscribe_late_done_cb, subscribe_late_fail_cb,
-                     (void *) subscribe_late_context);
+  retry_info retry = {
+      .num_retries = 0, .timeout = 0, .fail_cb = subscribe_late_fail_cb,
+  };
+  task_log_subscribe(db, NIL_ID, TASK_STATUS_WAITING, NULL, NULL, &retry,
+                     subscribe_late_done_cb, (void *) subscribe_late_context);
   /* Install handler for terminating the event loop. */
   event_loop_add_timer(loop, 750, terminate_event_loop_cb, NULL);
   /* First process timer events to make sure the timeout is processed before
@@ -238,7 +250,10 @@ TEST publish_late_test(void) {
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11236);
   db_attach(db, loop);
   task_instance *task = example_task_instance();
-  task_log_publish(db, task, 0, 0, publish_late_done_cb, publish_late_fail_cb,
+  retry_info retry = {
+      .num_retries = 0, .timeout = 0, .fail_cb = publish_late_fail_cb,
+  };
+  task_log_publish(db, task, &retry, publish_late_done_cb,
                    (void *) publish_late_context);
   /* Install handler for terminating the event loop. */
   event_loop_add_timer(loop, 750, terminate_event_loop_cb, NULL);

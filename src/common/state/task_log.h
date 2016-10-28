@@ -25,20 +25,15 @@ typedef void (*task_log_done_cb)(task_iid task_iid, void *user_context);
 
 /** Add or update a task instance to the task log.
  *  @param db_handle Database handle.
- *  @param retry_count Number of retries to the database before giving up.
- *  @param timeout Timout between retries (in milliseconds).
+ *  @param retry Information about retrying the request to the database.
  *  @param done_cb Function to be called when database returns result.
- *  @param fail_cb Function to be called if we failed to contact
- *         database after retry_count retries.
  *  @param user_context Data that will be passed to done_cb and fail_cb.
  *  @return Void.
  */
 void task_log_publish(db_handle *db_handle,
                       task_instance *task_instance,
-                      int retry_count,
-                      uint64_t timeout,
+                      retry_info *retry,
                       task_log_done_cb done_cb,
-                      table_fail_cb fail_cb,
                       void *user_context);
 
 /*
@@ -60,11 +55,8 @@ typedef void (*task_log_subscribe_cb)(task_instance *task_instance,
  *  @param state_filter Flags for events we want to listen to. If you want
  *         to listen to all events, use state_filter = TASK_WAITING |
  *         TASK_SCHEDULED | TASK_RUNNING | TASK_DONE.
- *  @param retry_count Number of retries to the database before giving up.
- *  @param timeout Timout between retries (in milliseconds).
+ *  @param retry Information about retrying the request to the database.
  *  @param done_cb Function to be called when database returns result.
- *  @param fail_cb Function to be called if we failed to contact
- *         database after retry_count retries.
  *  @param user_context Data that will be passed to done_cb and fail_cb.
  *  @return Void.
  */
@@ -73,10 +65,8 @@ void task_log_subscribe(db_handle *db_handle,
                         int32_t state_filter,
                         task_log_subscribe_cb subscribe_cb,
                         void *subscribe_context,
-                        int retry_count,
-                        uint64_t timeout,
+                        retry_info *retry,
                         task_log_done_cb done_cb,
-                        table_fail_cb fail_cb,
                         void *user_context);
 
 /* Data that is needed to register task log subscribe callbacks with the state
