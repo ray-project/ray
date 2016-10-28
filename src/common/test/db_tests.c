@@ -14,6 +14,10 @@
 
 SUITE(db_tests);
 
+/* Retry 10 times with an 100ms timeout. */
+const int NUM_RETRIES = 10;
+const uint64_t TIMEOUT = 50;
+
 const char *manager_addr = "127.0.0.1";
 int manager_port1 = 12345;
 int manager_port2 = 12346;
@@ -22,11 +26,16 @@ char received_port1[6] = {0};
 char received_addr2[16] = {0};
 char received_port2[6] = {0};
 
+typedef struct { int test_number; } user_context;
+
+const int TEST_NUMBER = 10;
+
 /* Test if entries have been written to the database. */
-void test_callback(object_id object_id,
-                   int manager_count,
-                   const char *manager_vector[],
-                   void *context) {
+
+void lookup_done_cb(object_id object_id,
+                    int manager_count,
+                    const char *manager_vector[],
+                    void *user_context) {
   CHECK(manager_count == 2);
   if (!manager_vector[0] ||
       sscanf(manager_vector[0], "%15[0-9.]:%5[0-9]", received_addr1,
@@ -41,7 +50,16 @@ void test_callback(object_id object_id,
   free(manager_vector);
 }
 
-int timeout_handler(event_loop *loop, timer_id timer_id, void *context) {
+/* Entry added to database successfully. */
+void add_done_cb(object_id object_id, void *user_context) {}
+
+/* Test if we got a timeout callback if we couldn't connect database. */
+void timeout_cb(object_id object_id, void *context) {
+  user_context *uc = (user_context *) context;
+  CHECK(uc->test_number == TEST_NUMBER)
+}
+
+int64_t timeout_handler(event_loop *loop, int64_t id, void *context) {
   event_loop_stop(loop);
   return EVENT_LOOP_TIMER_DONE;
 }
@@ -55,12 +73,17 @@ TEST object_table_lookup_test(void) {
   db_attach(db1, loop);
   db_attach(db2, loop);
   unique_id id = globally_unique_id();
-  object_table_add(db1, id);
-  object_table_add(db2, id);
-  event_loop_add_timer(loop, 100, timeout_handler, NULL);
+  object_table_add(db1, id, NUM_RETRIES, TIMEOUT, add_done_cb, timeout_cb,
+                   NULL);
+  object_table_add(db2, id, NUM_RETRIES, TIMEOUT, add_done_cb, timeout_cb,
+                   NULL);
+  event_loop_add_timer(loop, 200, timeout_handler, NULL);
   event_loop_run(loop);
-  object_table_lookup(db1, id, test_callback, NULL);
-  event_loop_add_timer(loop, 100, timeout_handler, NULL);
+  user_context user_context;
+  user_context.test_number = TEST_NUMBER;
+  object_table_lookup(db1, id, NUM_RETRIES, TIMEOUT, lookup_done_cb, timeout_cb,
+                      NULL);
+  event_loop_add_timer(loop, 200, timeout_handler, NULL);
   event_loop_run(loop);
   int port1 = atoi(received_port1);
   int port2 = atoi(received_port2);
@@ -90,10 +113,10 @@ TEST task_log_test(void) {
   task_spec *task = example_task();
   task_instance *instance = make_task_instance(globally_unique_id(), task,
                                                TASK_STATUS_SCHEDULED, node);
-  task_log_register_callback(db, task_log_test_callback, node,
-                             TASK_STATUS_SCHEDULED, instance);
-  task_log_add_task(db, instance);
-  event_loop_add_timer(loop, 100, timeout_handler, NULL);
+  task_log_subscribe(db, node, TASK_STATUS_SCHEDULED, task_log_test_callback,
+                     instance, NUM_RETRIES, TIMEOUT, NULL, NULL, NULL);
+  task_log_publish(db, instance, NUM_RETRIES, TIMEOUT, NULL, NULL, NULL);
+  event_loop_add_timer(loop, 200, timeout_handler, NULL);
   event_loop_run(loop);
   task_instance_free(instance);
   free_task_spec(task);
@@ -118,17 +141,22 @@ TEST task_log_all_test(void) {
       globally_unique_id(), task, TASK_STATUS_SCHEDULED, globally_unique_id());
   task_instance *instance2 = make_task_instance(
       globally_unique_id(), task, TASK_STATUS_SCHEDULED, globally_unique_id());
-  task_log_register_callback(db, task_log_all_test_callback, NIL_ID,
-                             TASK_STATUS_SCHEDULED, NULL);
-  task_log_add_task(db, instance1);
-  task_log_add_task(db, instance2);
-  event_loop_add_timer(loop, 100, timeout_handler, NULL);
+  task_log_subscribe(db, NIL_ID, TASK_STATUS_SCHEDULED,
+                     task_log_all_test_callback, NULL, NUM_RETRIES, TIMEOUT,
+                     NULL, NULL, NULL);
+  event_loop_add_timer(loop, 50, timeout_handler, NULL);
+  event_loop_run(loop);
+  /* TODO(pcm): Get rid of this sleep once the robust pubsub is implemented. */
+  task_log_publish(db, instance1, NUM_RETRIES, TIMEOUT, NULL, NULL, NULL);
+  task_log_publish(db, instance2, NUM_RETRIES, TIMEOUT, NULL, NULL, NULL);
+  event_loop_add_timer(loop, 200, timeout_handler, NULL);
   event_loop_run(loop);
   task_instance_free(instance2);
   task_instance_free(instance1);
   free_task_spec(task);
   db_disconnect(db);
   event_loop_destroy(loop);
+  printf("num_test_callback_called = %d\n", num_test_callback_called);
   ASSERT(num_test_callback_called == 2);
   PASS();
 }

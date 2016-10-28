@@ -27,9 +27,9 @@ typedef unique_id task_iid;
 typedef unique_id node_id;
 
 /*
- * TASK SPECIFICATIONS: Contain all the information neccessary
- * to execute the task (function id, arguments, return object ids).
- *
+ * ==== Task specifications ====
+ * Contain all the information neccessary to execute the
+ * task (function id, arguments, return object ids).
  */
 
 typedef struct task_spec_impl task_spec;
@@ -83,11 +83,10 @@ task_spec *read_task(int fd);
 void print_task(task_spec *spec, UT_string *output);
 
 /*
- * SCHEDULED TASK: Contains information about a scheduled task:
- * the task iid, the task specification and the task status
- * (WAITING, SCHEDULED, RUNNING, DONE) and which node the
- * task is scheduled on.
- *
+ * ==== Task instance ====
+ * Contains information about a scheduled task: The task iid,
+ * the task specification and the task status (WAITING, SCHEDULED,
+ * RUNNING, DONE) and which node the task is scheduled on.
  */
 
 /* The scheduling_state can be used as a flag when we are listening
@@ -128,5 +127,15 @@ task_spec *task_instance_task_spec(task_instance *instance);
 
 /* Free this task instance datastructure. */
 void task_instance_free(task_instance *instance);
+
+/*
+ * ==== Task update ====
+ * Contains the information necessary to update a task in the task log.
+ */
+
+typedef struct {
+  int32_t state;
+  node_id node;
+} task_update;
 
 #endif
