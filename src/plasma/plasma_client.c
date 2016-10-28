@@ -20,6 +20,9 @@
 #include "fling.h"
 #include "uthash.h"
 
+/* Number of times we try connecting to a socket. */
+#define NUM_CONNECT_ATTEMPTS 50
+
 typedef struct {
   /** Key that uniquely identifies the  memory mapped file. In practice, we
    *  take the numerical value of the file descriptor in the object store. */
@@ -311,7 +314,8 @@ plasma_connection *plasma_connect(const char *store_socket_name,
    */
   int fd = -1;
   int connected_successfully = 0;
-  for (int num_attempts = 0; num_attempts < 50; ++num_attempts) {
+  for (int num_attempts = 0; num_attempts < NUM_CONNECT_ATTEMPTS;
+       ++num_attempts) {
     fd = connect_ipc_sock(store_socket_name);
     if (fd >= 0) {
       connected_successfully = 1;
@@ -330,6 +334,10 @@ plasma_connection *plasma_connect(const char *store_socket_name,
   result->store_conn = fd;
   if (manager_addr != NULL) {
     result->manager_conn = plasma_manager_connect(manager_addr, manager_port);
+    if (result->manager_conn < 0) {
+      LOG_ERR("Could not connect to Plasma manager %s:%d", manager_addr,
+              manager_port);
+    }
   } else {
     result->manager_conn = -1;
   }
@@ -348,18 +356,17 @@ void plasma_disconnect(plasma_connection *conn) {
 
 #define h_addr h_addr_list[0]
 
-/* TODO(swang): Return the error to the caller. */
-int plasma_manager_connect(const char *ip_addr, int port) {
+int plasma_manager_try_connect(const char *ip_addr, int port) {
   int fd = socket(PF_INET, SOCK_STREAM, 0);
   if (fd < 0) {
     LOG_ERR("could not create socket");
-    exit(-1);
+    return -1;
   }
 
   struct hostent *manager = gethostbyname(ip_addr); /* TODO(pcm): cache this */
   if (!manager) {
     LOG_ERR("plasma manager %s not found", ip_addr);
-    exit(-1);
+    return -1;
   }
 
   struct sockaddr_in addr;
@@ -370,10 +377,26 @@ int plasma_manager_connect(const char *ip_addr, int port) {
   int r = connect(fd, (struct sockaddr *) &addr, sizeof(addr));
   if (r < 0) {
     LOG_ERR(
-        "could not establish connection to manager with id %s:%d (probably ran "
+        "could not establish connection to manager with id %s:%d (may have run "
         "out of ports)",
         &ip_addr[0], port);
-    exit(-1);
+    return -1;
+  }
+  return fd;
+}
+
+int plasma_manager_connect(const char *ip_addr, int port) {
+  /* Try to connect to the Plasma manager. If unsuccessful, retry several times.
+   */
+  int fd = -1;
+  for (int num_attempts = 0; num_attempts < NUM_CONNECT_ATTEMPTS;
+       ++num_attempts) {
+    fd = plasma_manager_try_connect(ip_addr, port);
+    if (fd >= 0) {
+      break;
+    }
+    /* Sleep for 100 milliseconds. */
+    usleep(100000);
   }
   return fd;
 }
@@ -431,4 +454,8 @@ void plasma_fetch(plasma_connection *conn,
     CHECKM(i != num_object_ids,
            "Received unexpected object ID from manager during fetch.");
   }
+}
+
+int get_manager_fd(plasma_connection *conn) {
+  return conn->manager_conn;
 }
