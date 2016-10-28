@@ -9,13 +9,13 @@
 
 typedef struct table_callback_data table_callback_data;
 
-typedef void *table_done_cb;
+typedef void *table_done_callback;
 
 /* The callback called when the database operation hasn't completed after
  * the number of retries specified for the operation. */
-typedef void (*table_fail_cb)(unique_id id, void *user_context);
+typedef void (*table_fail_callback)(unique_id id, void *user_context);
 
-typedef void (*table_retry_cb)(table_callback_data *cb_data);
+typedef void (*table_retry_callback)(table_callback_data *callback_data);
 
 /**
  * Data structure consolidating the retry related varaibles.
@@ -26,7 +26,7 @@ typedef struct {
   /** Timeout, in milliseconds. */
   uint64_t timeout;
   /** The callback that will be called if there are no more retries left. */
-  table_fail_cb fail_cb;
+  table_fail_callback fail_callback;
 } retry_info;
 
 struct table_callback_data {
@@ -34,9 +34,9 @@ struct table_callback_data {
    */
   unique_id id;
   /** The callback that will be called when results is returned. */
-  table_done_cb done_cb;
+  table_done_callback done_callback;
   /** The callback that will be called to initiate the next try. */
-  table_retry_cb retry_cb;
+  table_retry_callback retry_callback;
   /** Retry information containing the remaining number of retries, the timeout
    *  before the next retry, and a pointer to the failure callback.
    */
@@ -73,8 +73,9 @@ int64_t table_timeout_handler(event_loop *loop,
  * @param data Data entered into the table.
  * @param retry Retry relevant information: retry timeout, number of remaining
  * retries, and retry callback.
- * @param done_cb Function to be called when database returns result.
- * @param fail_cb Function to be called when number of retries is exhausted.
+ * @param done_callback Function to be called when database returns result.
+ * @param fail_callback Function to be called when number of retries is
+ * exhausted.
  * @param user_context Context that can be provided by the user and will be
  *        passed on to the various callbacks.
  * @return New table callback data struct.
@@ -83,11 +84,11 @@ table_callback_data *init_table_callback(db_handle *db_handle,
                                          unique_id id,
                                          void *data,
                                          retry_info *retry,
-                                         table_done_cb done_cb,
-                                         table_retry_cb retry_cb,
+                                         table_done_callback done_callback,
+                                         table_retry_callback retry_callback,
                                          void *user_context);
 
-void destroy_table_callback(table_callback_data *cb_data);
+void destroy_table_callback(table_callback_data *callback_data);
 
 /**
  * Hash table maintaining the outstanding callbacks.

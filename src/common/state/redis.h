@@ -57,27 +57,27 @@ void object_table_lookup_callback(redisAsyncContext *c,
 
 /**
  *  Lookup object table entry in redis.
- *  @param cb_data Data structure containing redis connection and timeout
+ *  @param callback_data Data structure containing redis connection and timeout
  * information.
  *  @return Void.
  */
-void redis_object_table_lookup(table_callback_data *cb_data);
+void redis_object_table_lookup(table_callback_data *callback_data);
 
 /**
  * Add an entry to the object table in redis.
- * @param cb_data Data structure containing redis connection and timeout
+ * @param callback_data Data structure containing redis connection and timeout
  * information.
  * @return Void.
  */
-void redis_object_table_add(table_callback_data *cb_data);
+void redis_object_table_add(table_callback_data *callback_data);
 
 /**
  * Subscribe to learn when a new object becomes available.
- * @param cb_data Data structure containing redis connection and timeout
+ * @param callback_data Data structure containing redis connection and timeout
  * information.
  * @return Void.
  */
-void redis_object_table_subscribe(table_callback_data *cb_data);
+void redis_object_table_subscribe(table_callback_data *callback_data);
 
 /*
  * ==== Redis task table function =====
@@ -85,11 +85,11 @@ void redis_object_table_subscribe(table_callback_data *cb_data);
 
 /**
  * Add or update task log entry with new scheduling information.
- * @param cb_data Data structure containing redis connection and timeout
+ * @param callback_data Data structure containing redis connection and timeout
  * information.
  * @return Void.
  */
-void redis_task_log_publish(table_callback_data *cb_data);
+void redis_task_log_publish(table_callback_data *callback_data);
 
 /**
  * Callback invoked when the replya from the task push command is received.
@@ -97,9 +97,9 @@ void redis_task_log_publish(table_callback_data *cb_data);
  * @param r Reply (not used).
  * @param privdata Data associated to the callback.
  */
-void redis_task_log_publish_push_cb(redisAsyncContext *c,
-                                    void *r,
-                                    void *privdata);
+void redis_task_log_publish_push_callback(redisAsyncContext *c,
+                                          void *r,
+                                          void *privdata);
 
 /**
  * Callback invoked when the replya from the task publish command is received.
@@ -107,16 +107,16 @@ void redis_task_log_publish_push_cb(redisAsyncContext *c,
  * @param r Reply (not used).
  * @param privdata Data associated to the callback.
  */
-void redis_task_log_publish_publish_cb(redisAsyncContext *c,
-                                       void *r,
-                                       void *privdata);
+void redis_task_log_publish_publish_callback(redisAsyncContext *c,
+                                             void *r,
+                                             void *privdata);
 
 /**
  * Subscribe to updates of the task log.
- * @param cb_data Data structure containing redis connection and timeout
+ * @param callback_data Data structure containing redis connection and timeout
  * information.
  * @return Void.
  */
-void redis_task_log_subscribe(table_callback_data *cb_data);
+void redis_task_log_subscribe(table_callback_data *callback_data);
 
 #endif /* REDIS_H */

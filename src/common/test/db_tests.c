@@ -32,10 +32,10 @@ const int TEST_NUMBER = 10;
 
 /* Test if entries have been written to the database. */
 
-void lookup_done_cb(object_id object_id,
-                    int manager_count,
-                    const char *manager_vector[],
-                    void *user_context) {
+void lookup_done_callback(object_id object_id,
+                          int manager_count,
+                          const char *manager_vector[],
+                          void *user_context) {
   CHECK(manager_count == 2);
   if (!manager_vector[0] ||
       sscanf(manager_vector[0], "%15[0-9.]:%5[0-9]", received_addr1,
@@ -51,10 +51,10 @@ void lookup_done_cb(object_id object_id,
 }
 
 /* Entry added to database successfully. */
-void add_done_cb(object_id object_id, void *user_context) {}
+void add_done_callback(object_id object_id, void *user_context) {}
 
 /* Test if we got a timeout callback if we couldn't connect database. */
-void timeout_cb(object_id object_id, void *context) {
+void timeout_callback(object_id object_id, void *context) {
   user_context *uc = (user_context *) context;
   CHECK(uc->test_number == TEST_NUMBER)
 }
@@ -74,15 +74,17 @@ TEST object_table_lookup_test(void) {
   db_attach(db2, loop);
   unique_id id = globally_unique_id();
   retry_info retry = {
-      .num_retries = NUM_RETRIES, .timeout = TIMEOUT, .fail_cb = timeout_cb,
+      .num_retries = NUM_RETRIES,
+      .timeout = TIMEOUT,
+      .fail_callback = timeout_callback,
   };
-  object_table_add(db1, id, &retry, add_done_cb, NULL);
-  object_table_add(db2, id, &retry, add_done_cb, NULL);
+  object_table_add(db1, id, &retry, add_done_callback, NULL);
+  object_table_add(db2, id, &retry, add_done_callback, NULL);
   event_loop_add_timer(loop, 200, timeout_handler, NULL);
   event_loop_run(loop);
   user_context user_context;
   user_context.test_number = TEST_NUMBER;
-  object_table_lookup(db1, id, &retry, lookup_done_cb, NULL);
+  object_table_lookup(db1, id, &retry, lookup_done_callback, NULL);
   event_loop_add_timer(loop, 200, timeout_handler, NULL);
   event_loop_run(loop);
   int port1 = atoi(received_port1);
@@ -114,7 +116,7 @@ TEST task_log_test(void) {
   task_instance *instance = make_task_instance(globally_unique_id(), task,
                                                TASK_STATUS_SCHEDULED, node);
   retry_info retry = {
-      .num_retries = NUM_RETRIES, .timeout = TIMEOUT, .fail_cb = NULL,
+      .num_retries = NUM_RETRIES, .timeout = TIMEOUT, .fail_callback = NULL,
   };
   task_log_subscribe(db, node, TASK_STATUS_SCHEDULED, task_log_test_callback,
                      instance, &retry, NULL, NULL);
@@ -145,7 +147,7 @@ TEST task_log_all_test(void) {
   task_instance *instance2 = make_task_instance(
       globally_unique_id(), task, TASK_STATUS_SCHEDULED, globally_unique_id());
   retry_info retry = {
-      .num_retries = NUM_RETRIES, .timeout = TIMEOUT, .fail_cb = NULL,
+      .num_retries = NUM_RETRIES, .timeout = TIMEOUT, .fail_callback = NULL,
   };
   task_log_subscribe(db, NIL_ID, TASK_STATUS_SCHEDULED,
                      task_log_all_test_callback, NULL, &retry, NULL, NULL);
