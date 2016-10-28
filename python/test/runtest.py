@@ -1,10 +1,10 @@
 import unittest
-import libnumbuf
+import numbuf
 import numpy as np
 from numpy.testing import assert_equal
 
-TEST_OBJECTS = [{(1,2) : 1}, {() : 2}, [1, "hello", 3.0], 42, 43L, "hello world", 
-                u"x", u"\u262F", 42.0, 
+TEST_OBJECTS = [{(1,2) : 1}, {() : 2}, [1, "hello", 3.0], 42, 43L, "hello world",
+                u"x", u"\u262F", 42.0,
                 1L << 62, (1.0, "hi"),
                 None, (None, None), ("hello", None),
                 True, False, (True, False), "hello",
@@ -17,8 +17,8 @@ TEST_OBJECTS = [{(1,2) : 1}, {() : 2}, [1, "hello", 3.0], 42, 43L, "hello world"
 class SerializationTests(unittest.TestCase):
 
   def roundTripTest(self, data):
-    schema, size, serialized = libnumbuf.serialize_list(data)
-    result = libnumbuf.deserialize_list(serialized)
+    schema, size, serialized = numbuf.serialize_list(data)
+    result = numbuf.deserialize_list(serialized)
     assert_equal(data, result)
 
   def testSimple(self):
@@ -78,10 +78,10 @@ class SerializationTests(unittest.TestCase):
     bar = Bar()
     bar.foo.x = 42
 
-    libnumbuf.register_callbacks(serialize, deserialize)
+    numbuf.register_callbacks(serialize, deserialize)
 
-    metadata, size, serialized = libnumbuf.serialize_list([bar])
-    self.assertEqual(libnumbuf.deserialize_list(serialized)[0].foo.x, 42)
+    metadata, size, serialized = numbuf.serialize_list([bar])
+    self.assertEqual(numbuf.deserialize_list(serialized)[0].foo.x, 42)
 
   def testObjectArray(self):
     x = np.array([1, 2, "hello"], dtype=object)
@@ -94,21 +94,21 @@ class SerializationTests(unittest.TestCase):
       if obj["_pytype_"] == "numpy.array":
         return np.array(obj["data"], dtype=object)
 
-    libnumbuf.register_callbacks(myserialize, mydeserialize)
+    numbuf.register_callbacks(myserialize, mydeserialize)
 
-    metadata, size, serialized = libnumbuf.serialize_list([x, y])
+    metadata, size, serialized = numbuf.serialize_list([x, y])
 
-    assert_equal(libnumbuf.deserialize_list(serialized), [x, y])
+    assert_equal(numbuf.deserialize_list(serialized), [x, y])
 
   def testBuffer(self):
     for (i, obj) in enumerate(TEST_OBJECTS):
-      schema, size, batch = libnumbuf.serialize_list([obj])
+      schema, size, batch = numbuf.serialize_list([obj])
       size = size + 4096 # INITIAL_METADATA_SIZE in arrow
       buff = np.zeros(size, dtype="uint8")
-      metadata_offset = libnumbuf.write_to_buffer(batch, memoryview(buff))
-      array = libnumbuf.read_from_buffer(memoryview(buff), schema, metadata_offset)
-      result = libnumbuf.deserialize_list(array)
+      metadata_offset = numbuf.write_to_buffer(batch, memoryview(buff))
+      array = numbuf.read_from_buffer(memoryview(buff), schema, metadata_offset)
+      result = numbuf.deserialize_list(array)
       assert_equal(result[0], obj)
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(verbosity=2)
