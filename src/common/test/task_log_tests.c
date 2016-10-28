@@ -51,7 +51,7 @@ TEST subscribe_timeout_test(void) {
   event_loop_run(loop);
   db_disconnect(db);
   event_loop_destroy(loop);
-  CHECK(subscribe_failed);
+  ASSERT(subscribe_failed);
   PASS();
 }
 
@@ -89,7 +89,7 @@ TEST publish_timeout_test(void) {
   event_loop_run(loop);
   db_disconnect(db);
   event_loop_destroy(loop);
-  CHECK(publish_failed);
+  ASSERT(publish_failed);
   task_instance_free(task);
   PASS();
 }
@@ -157,7 +157,7 @@ TEST subscribe_retry_test(void) {
   event_loop_run(loop);
   db_disconnect(db);
   event_loop_destroy(loop);
-  CHECK(subscribe_retry_succeeded);
+  ASSERT(subscribe_retry_succeeded);
   PASS();
 }
 
@@ -201,7 +201,7 @@ TEST publish_retry_test(void) {
   event_loop_run(loop);
   db_disconnect(db);
   event_loop_destroy(loop);
-  CHECK(publish_retry_succeeded);
+  ASSERT(publish_retry_succeeded);
   task_instance_free(task);
   PASS();
 }
@@ -246,7 +246,7 @@ TEST subscribe_late_test(void) {
   event_loop_run(loop);
   db_disconnect(db);
   event_loop_destroy(loop);
-  CHECK(subscribe_late_failed);
+  ASSERT(subscribe_late_failed);
   PASS();
 }
 
@@ -288,7 +288,7 @@ TEST publish_late_test(void) {
   event_loop_run(loop);
   db_disconnect(db);
   event_loop_destroy(loop);
-  CHECK(publish_late_failed);
+  ASSERT(publish_late_failed);
   task_instance_free(task);
   PASS();
 }

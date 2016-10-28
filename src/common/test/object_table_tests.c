@@ -48,7 +48,7 @@ TEST lookup_timeout_test(void) {
   event_loop_run(g_loop);
   db_disconnect(db);
   event_loop_destroy(g_loop);
-  CHECK(lookup_failed);
+  ASSERT(lookup_failed);
   PASS();
 }
 
@@ -83,7 +83,7 @@ TEST add_timeout_test(void) {
   event_loop_run(g_loop);
   db_disconnect(db);
   event_loop_destroy(g_loop);
-  CHECK(add_failed);
+  ASSERT(add_failed);
   PASS();
 }
 
@@ -121,7 +121,7 @@ TEST subscribe_timeout_test(void) {
   event_loop_run(g_loop);
   db_disconnect(db);
   event_loop_destroy(g_loop);
-  CHECK(subscribe_failed);
+  ASSERT(subscribe_failed);
   PASS();
 }
 
@@ -192,7 +192,7 @@ TEST lookup_retry_test(void) {
   event_loop_run(g_loop);
   db_disconnect(db);
   event_loop_destroy(g_loop);
-  CHECK(lookup_retry_succeeded);
+  ASSERT(lookup_retry_succeeded);
   PASS();
 }
 
@@ -235,7 +235,7 @@ TEST add_retry_test(void) {
   event_loop_run(g_loop);
   db_disconnect(db);
   event_loop_destroy(g_loop);
-  CHECK(add_retry_succeeded);
+  ASSERT(add_retry_succeeded);
   PASS();
 }
 
@@ -295,7 +295,7 @@ TEST subscribe_retry_test(void) {
   event_loop_run(g_loop);
   db_disconnect(db);
   event_loop_destroy(g_loop);
-  CHECK(subscribe_retry_succeeded);
+  ASSERT(subscribe_retry_succeeded);
   PASS();
 }
 
@@ -341,7 +341,7 @@ TEST lookup_late_test(void) {
   event_loop_run(g_loop);
   db_disconnect(db);
   event_loop_destroy(g_loop);
-  CHECK(lookup_late_failed);
+  ASSERT(lookup_late_failed);
   PASS();
 }
 
@@ -380,7 +380,7 @@ TEST add_late_test(void) {
   event_loop_run(g_loop);
   db_disconnect(db);
   event_loop_destroy(g_loop);
-  CHECK(add_late_failed);
+  ASSERT(add_late_failed);
   PASS();
 }
 
@@ -422,7 +422,7 @@ TEST subscribe_late_test(void) {
   event_loop_run(g_loop);
   db_disconnect(db);
   event_loop_destroy(g_loop);
-  CHECK(subscribe_late_failed);
+  ASSERT(subscribe_late_failed);
   PASS();
 }
 
@@ -476,8 +476,8 @@ TEST subscribe_success_test(void) {
   db_disconnect(db);
   event_loop_destroy(g_loop);
 
-  CHECK(subscribe_success_done);
-  CHECK(subscribe_success_succeeded);
+  ASSERT(subscribe_success_done);
+  ASSERT(subscribe_success_succeeded);
   PASS();
 }
 
