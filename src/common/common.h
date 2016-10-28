@@ -7,8 +7,6 @@
 #include <errno.h>
 #include <inttypes.h>
 
-#define RAY_COMMON_DEBUG
-
 #ifndef RAY_COMMON_DEBUG
 #define LOG_DEBUG(M, ...)
 #else

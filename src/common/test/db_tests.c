@@ -163,7 +163,6 @@ TEST task_log_all_test(void) {
   free_task_spec(task);
   db_disconnect(db);
   event_loop_destroy(loop);
-  printf("num_test_callback_called = %d\n", num_test_callback_called);
   ASSERT(num_test_callback_called == 2);
   PASS();
 }
