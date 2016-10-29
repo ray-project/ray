@@ -42,15 +42,14 @@ void event_loop_remove_file(event_loop *loop, int fd) {
 }
 
 int64_t event_loop_add_timer(event_loop *loop,
-                             int64_t milliseconds,
+                             int64_t timeout,
                              event_loop_timer_handler handler,
                              void *context) {
-  return aeCreateTimeEvent(loop, milliseconds, handler, context, NULL);
+  return aeCreateTimeEvent(loop, timeout, handler, context, NULL);
 }
 
-void event_loop_remove_timer(event_loop *loop, timer_id timer_id) {
-  int err = aeDeleteTimeEvent(loop, timer_id);
-  CHECK(err == AE_OK); /* timer id found? */
+int event_loop_remove_timer(event_loop *loop, int64_t id) {
+  return aeDeleteTimeEvent(loop, id);
 }
 
 void event_loop_run(event_loop *loop) {

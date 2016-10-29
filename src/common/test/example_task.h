@@ -11,4 +11,13 @@ task_spec *example_task(void) {
   return task;
 }
 
+task_instance *example_task_instance(void) {
+  task_iid iid = globally_unique_id();
+  task_spec *spec = example_task();
+  task_instance *instance =
+      make_task_instance(iid, spec, TASK_STATUS_WAITING, NIL_ID);
+  free_task_spec(spec);
+  return instance;
+}
+
 #endif

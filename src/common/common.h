@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <inttypes.h>
 
 #ifndef RAY_COMMON_DEBUG
 #define LOG_DEBUG(M, ...)
@@ -35,6 +36,10 @@
       exit(-1);                                                \
     }                                                          \
   } while (0);
+
+/** This macro indicates that this pointer owns the data it is pointing to
+ *  and is responsible for freeing it. */
+#define OWNER
 
 #define UNIQUE_ID_SIZE 20
 
