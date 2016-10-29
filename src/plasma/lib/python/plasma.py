@@ -220,12 +220,12 @@ class PlasmaClient(object):
     return [bool(success) for success in success_array]
 
   def wait(self, object_ids, timeout, num_returns):
-    """Wait until num_returns objects out of the list of object_ids
-       are available and return them.
+    """Wait until num_returns objects in object_ids are ready.
 
     Args:
       object_ids (List[str]): List of object IDs to wait for.
       timeout (int): Return to the caller after timeout milliseconds.
+      num_returns (int): We are waiting for this number of objects to be ready.
 
     Returns:
       ready_ids, waiting_ids (List[str], List[str]): List of object IDs that
