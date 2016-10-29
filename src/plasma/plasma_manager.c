@@ -39,9 +39,9 @@ typedef struct client_object_connection client_object_connection;
 
 /* Entry of the hashtable of objects that are available locally. */
 typedef struct {
-  /* Object id of this object. */
+  /** Object id of this object. */
   object_id object_id;
-  /* Handle for the uthash table. */
+  /** Handle for the uthash table. */
   UT_hash_handle hh;
 } available_object;
 
@@ -155,7 +155,7 @@ int send_client_reply(client_connection *conn, plasma_reply *reply) {
 }
 
 int send_client_failure_reply(object_id object_id, client_connection *conn) {
-  plasma_reply reply = {.object_ids = {object_conn->object_id},
+  plasma_reply reply = {.object_ids = {object_id},
                         .num_object_ids = 1,
                         .has_object = 0};
   return send_client_reply(conn, &reply);

@@ -204,9 +204,12 @@ void plasma_fetch(plasma_connection *conn,
  * @param object_ids Object IDs wait is called on.
  * @param timeout Wait will time out and return after this number of ms.
  * @param num_returns Number of object IDs wait will return if it doesn't time
- * out.
+ *        out.
  * @param return_object_ids Out parameter for the object IDs returned by wait.
- * @Return Number of objects that are actually ready.
+ *        This is an array of size num_returns. If the number of objects that
+ *        are ready when we time out, the objects will be stored in the last
+ *        slots of the array and the number of objects is returned.
+ * @return Number of objects that are actually ready.
  */
 int plasma_wait(plasma_connection *conn,
                 int num_object_ids,
