@@ -58,10 +58,10 @@ plasma_mock *init_plasma_mock(int port, plasma_mock *remote_mock) {
   mock->loop = get_event_loop(mock->state);
   /* Accept a connection from the local manager on the remote manager. */
   if (remote_mock != NULL) {
-    mock->write_conn =
-        get_manager_connection(remote_mock->state, manager_addr, port);
-    mock->read_conn =
-        new_client_connection(mock->loop, mock->manager_remote_fd, mock->state, 0);
+    mock->write_conn = get_manager_connection(remote_mock->state, manager_addr,
+                                              port);
+    mock->read_conn = new_client_connection(mock->loop, mock->manager_remote_fd,
+                                            mock->state, 0);
   } else {
     mock->write_conn = NULL;
     mock->read_conn = NULL;
@@ -76,8 +76,7 @@ plasma_mock *init_plasma_mock(int port, plasma_mock *remote_mock) {
 void add_mock_object_conn(plasma_mock *mock, object_id oid) {
   /* Connect a new client to the local plasma manager and mock a request to an
    * object. */
-  mock->plasma_conn =
-      plasma_connect(store_socket_name, manager_socket_name);
+  mock->plasma_conn = plasma_connect(store_socket_name, manager_socket_name);
   mock->client_conn =
       new_client_connection(mock->loop, mock->manager_local_fd, mock->state, 0);
   mock->object_conn = add_object_connection(mock->client_conn, oid);

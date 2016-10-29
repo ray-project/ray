@@ -306,7 +306,9 @@ int plasma_subscribe(plasma_connection *conn) {
   return fd[0];
 }
 
-int socket_connect_retry(const char *socket_name, int num_retries, int64_t timeout) {
+int socket_connect_retry(const char *socket_name,
+                         int num_retries,
+                         int64_t timeout) {
   CHECK(socket_name);
   int fd = -1;
   for (int num_attempts = 0; num_attempts < num_retries; ++num_attempts) {

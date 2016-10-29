@@ -833,18 +833,20 @@ int main(int argc, char *argv[]) {
     exit(-1);
   }
   if (port == -1) {
-   LOG_ERR(
-       "please specify port the plasma manager shall listen to in the"
-       "format 12345 with -p switch");
-   exit(-1);
+    LOG_ERR(
+        "please specify port the plasma manager shall listen to in the"
+        "format 12345 with -p switch");
+    exit(-1);
   }
   char db_addr[16];
   int db_port;
   if (db_host) {
     parse_ip_addr_port(db_host, db_addr, &db_port);
-    start_server(store_socket_name, manager_socket_name, master_addr, port, db_addr, db_port);
+    start_server(store_socket_name, manager_socket_name, master_addr, port,
+                 db_addr, db_port);
   } else {
-    start_server(store_socket_name, manager_socket_name, master_addr, port, NULL, 0);
+    start_server(store_socket_name, manager_socket_name, master_addr, port,
+                 NULL, 0);
   }
 }
 #endif

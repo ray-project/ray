@@ -44,7 +44,9 @@ plasma_request *make_plasma_multiple_request(int num_object_ids,
  * @param timeout Timeout in milliseconds.
  * @return File descriptor of the socket.
  */
-int socket_connect_retry(const char *socket_name, int num_retries, int64_t timeout);
+int socket_connect_retry(const char *socket_name,
+                         int num_retries,
+                         int64_t timeout);
 
 /**
  * Connect to the local plasma store and plasma manager. Return
