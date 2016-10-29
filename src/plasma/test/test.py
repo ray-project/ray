@@ -10,6 +10,7 @@ import unittest
 import random
 import time
 import tempfile
+import threading
 
 import plasma
 
@@ -340,6 +341,57 @@ class TestPlasmaManager(unittest.TestCase):
   #                             memory_buffer=memory_buffer1, metadata=metadata1)
   #     assert_get_object_equal(self, self.client2, self.client1, object_id2,
   #                             memory_buffer=memory_buffer2, metadata=metadata2)
+  
+  def test_wait(self):
+    # Test timeout.
+    obj_id0 = random_object_id()
+    self.client1.wait([obj_id0], timeout=100, num_returns=1)
+    # If we get here, the test worked.
+
+    # Test wait if local objects available.
+    obj_id1 = random_object_id()
+    self.client1.create(obj_id1, 1000)
+    self.client1.seal(obj_id1)
+    ready, waiting = self.client1.wait([obj_id1], timeout=100, num_returns=1)
+    self.assertEqual(len(ready), 1)
+    self.assertEqual(ready[0], obj_id1)
+    self.assertEqual(len(waiting), 0)
+
+    # Test wait if only one object available and only one object waited for.
+    obj_id2 = random_object_id()
+    self.client1.create(obj_id2, 1000)
+    # Don't seal.
+    ready, waiting = self.client1.wait([obj_id2, obj_id1], timeout=100, num_returns=1)
+    self.assertEqual(len(ready), 1)
+    self.assertEqual(ready[0], obj_id1)
+    self.assertEqual(len(waiting), 1)
+    self.assertEqual(waiting[0], obj_id2)
+    
+    # Test wait if object is sealed later.
+    obj_id3 = random_object_id()
+
+    def finish():
+      self.client2.create(obj_id3, 1000)
+      self.client2.seal(obj_id3)
+      self.client2.transfer("127.0.0.1", self.port1, obj_id3)
+
+    t = threading.Timer(0.1, finish)
+    t.start()
+    ready, waiting = self.client1.wait([obj_id3, obj_id2, obj_id1], timeout=500, num_returns=2)
+    self.assertEqual(len(ready), 2)
+    self.assertTrue((ready[0] == obj_id1 and ready[1] == obj_id3) or (ready[0] == obj_id3 and ready[1] == obj_id1))
+    self.assertEqual(len(waiting), 1)
+    self.assertTrue(waiting[0] == obj_id2)
+
+    # Test if the appropriate number of objects is shown if some objects are not ready
+    ready, wait = self.client1.wait([obj_id3, obj_id2, obj_id1], 100, 3)
+    self.assertEqual(len(ready), 2)
+    self.assertTrue((ready[0] == obj_id1 and ready[1] == obj_id3) or (ready[0] == obj_id3 and ready[1] == obj_id1))
+    self.assertEqual(len(waiting), 1)
+    self.assertTrue(waiting[0] == obj_id2)
+
+    # Don't forget to seal obj_id2.
+    self.client1.seal(obj_id2)
 
   def test_transfer(self):
     for _ in range(100):

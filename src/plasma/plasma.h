@@ -62,6 +62,8 @@ enum plasma_message_type {
   PLASMA_DATA,
   /** Request a fetch of an object in another store. */
   PLASMA_FETCH,
+  /** Wait until an object becomes available. */
+  PLASMA_WAIT
 };
 
 typedef struct {
@@ -69,6 +71,10 @@ typedef struct {
   int64_t data_size;
   /** The size of the object's metadata. */
   int64_t metadata_size;
+  /** The timeout of the request. */
+  uint64_t timeout;
+  /** The number of objects we wait for for wait. */
+  int num_returns;
   /** In a transfer request, this is the IP address of the Plasma Manager to
    *  transfer the object to. */
   uint8_t addr[4];
@@ -82,8 +88,6 @@ typedef struct {
 } plasma_request;
 
 typedef struct {
-  /** The object ID that this reply refers to. */
-  object_id object_id;
   /** The object that is returned with this reply. */
   plasma_object object;
   /** This is used only to respond to requests of type
@@ -91,6 +95,12 @@ typedef struct {
    *  present and 0 otherwise. Used for plasma_contains and
    *  plasma_fetch. */
   int has_object;
+  /** Number of object IDs a wait is returning. */
+  int num_objects_returned;
+  /** The number of object IDs that will be included in this reply. */
+  int num_object_ids;
+  /** The IDs of the objects that this reply refers to. */
+  object_id object_ids[1];
 } plasma_reply;
 
 #endif
