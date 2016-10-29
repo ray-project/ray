@@ -136,6 +136,11 @@ int send_client_reply(client_connection *conn, plasma_reply *reply) {
   return (n != sizeof(plasma_reply));
 }
 
+int send_client_failure_reply(object_id object_id, client_connection *conn) {
+  plasma_reply reply = {.object_id = object_id, .has_object = 0};
+  return send_client_reply(conn, &reply);
+}
+
 /**
  * Get the context for the given object ID for the given client
  * connection, if there is one active.
@@ -259,9 +264,14 @@ void destroy_plasma_manager_state(plasma_manager_state *state) {
     free(manager_conn->ip_addr_port);
     free(manager_conn);
   }
-  /* There should not be any outstanding client connections if
-   * we're shutting down. */
-  CHECK(state->fetch_connections == NULL);
+
+  if (state->fetch_connections != NULL) {
+    LOG_DEBUG("There were outstanding fetch requests.");
+    client_object_connection *object_conn, *tmp;
+    HASH_ITER(fetch_hh, state->fetch_connections, object_conn, tmp) {
+      remove_object_connection(object_conn->client_conn, object_conn);
+    }
+  }
 
   free(state->plasma_conn);
   event_loop_destroy(state->loop);
@@ -592,16 +602,25 @@ void request_transfer(object_id object_id,
   client_connection *client_conn = (client_connection *) context;
   client_object_connection *object_conn =
       get_object_connection(client_conn, object_id);
-  CHECK(object_conn);
+  /* If there's already an outstanding fetch for this object for this client,
+   * let the outstanding request finish the work. */
+  if (object_conn) {
+    return;
+  }
+  /* If the object isn't on any managers, report a failure to the client. */
   LOG_DEBUG("Object is on %d managers", manager_count);
   if (manager_count == 0) {
     /* TODO(swang): Instead of immediately counting this as a failure, maybe
      * register a Redis callback for changes to this object table entry. */
     free(manager_vector);
-    plasma_reply reply = {.object_id = object_conn->object_id, .has_object = 0};
-    send_client_reply(client_conn, &reply);
-    remove_object_connection(client_conn, object_conn);
+    send_client_failure_reply(object_id, client_conn);
     return;
+  }
+  /* Register the new outstanding fetch with the current client connection. */
+  object_conn = add_object_connection(client_conn, object_id);
+  if (!object_conn) {
+    LOG_DEBUG("Unable to allocate memory for object context.");
+    send_client_failure_reply(object_id, client_conn);
   }
   /* Pick a different manager to request a transfer from on every attempt. */
   object_conn->manager_count = manager_count;
@@ -640,18 +659,13 @@ void process_fetch_request(client_connection *client_conn,
     send_client_reply(client_conn, &reply);
     return;
   }
-  /* Register the new context with the current client connection. */
-  /* TODO(swang): If there is already an outstanding fetch request for this
-   * object, exit now. */
-  client_object_connection *object_conn =
-      add_object_connection(client_conn, object_id);
-  if (!object_conn) {
-    LOG_DEBUG("Unable to allocate memory for object context.");
-    reply.has_object = 0;
-    send_client_reply(client_conn, &reply);
-  }
+  retry_info retry = {
+      .num_retries = NUM_RETRIES,
+      .timeout = MANAGER_TIMEOUT,
+      .fail_callback = (table_fail_callback) send_client_failure_reply,
+  };
   /* Request a transfer from a plasma manager that has this object. */
-  object_table_lookup(client_conn->manager_state->db, object_id,
+  object_table_lookup(client_conn->manager_state->db, object_id, &retry,
                       request_transfer, client_conn);
 }
 
@@ -692,7 +706,15 @@ void process_message(event_loop *loop,
   case PLASMA_SEAL:
     LOG_DEBUG("Publishing to object table from DB client %d.",
               get_client_id(conn->manager_state->db));
-    object_table_add(conn->manager_state->db, req->object_ids[0]);
+    /* TODO(swang): Log the error if we fail to add the object, and possibly
+     * retry later? */
+    retry_info retry = {
+        .num_retries = NUM_RETRIES,
+        .timeout = MANAGER_TIMEOUT,
+        .fail_callback = NULL,
+    };
+    object_table_add(conn->manager_state->db, req->object_ids[0], &retry, NULL,
+                     NULL);
     break;
   case DISCONNECT_CLIENT: {
     LOG_INFO("Disconnecting client on fd %d", client_sock);

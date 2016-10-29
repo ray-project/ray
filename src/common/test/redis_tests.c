@@ -118,7 +118,7 @@ TEST async_redis_socket_test(void) {
   event_loop_add_timer(loop, 100, timeout_handler, NULL);
   event_loop_run(loop);
 
-  CHECK(async_redis_socket_test_callback_called);
+  ASSERT(async_redis_socket_test_callback_called);
 
   db_disconnect(db);
   event_loop_destroy(loop);
@@ -193,7 +193,7 @@ TEST logging_test(void) {
   event_loop_add_timer(loop, 100, timeout_handler, NULL);
   event_loop_run(loop);
 
-  CHECK(logging_test_callback_called);
+  ASSERT(logging_test_callback_called);
 
   free_ray_logger(logger);
   db_disconnect(conn);

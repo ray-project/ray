@@ -3,7 +3,7 @@
 
 #include "event_loop.h"
 
-typedef struct db_handle_impl db_handle;
+typedef struct db_handle db_handle;
 
 /* Connect to the global system store at address and port. Returns
  * a handle to the database, which must be freed with db_disconnect

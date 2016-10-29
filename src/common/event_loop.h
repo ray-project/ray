@@ -4,6 +4,9 @@
 #include <stdint.h>
 #include "ae/ae.h"
 
+/* Unique timer ID that will be generated when the timer is added to the
+ * event loop. Will not be reused later on in another call
+ * to event_loop_add_timer. */
 typedef long long timer_id;
 
 typedef aeEventLoop event_loop;
@@ -57,16 +60,30 @@ void event_loop_add_file(event_loop *loop,
 /* Remove a registered file event handler from the event loop. */
 void event_loop_remove_file(event_loop *loop, int fd);
 
-/* Register a handler that will be called after a time slice of
- * "milliseconds" milliseconds. Can specify a context that will be passed
- * as an argument to the handler. Return the id of the time event. */
+/** Register a handler that will be called after a time slice of
+ *  "timeout" milliseconds.
+ *
+ *  @param loop The event loop.
+ *  @param timeout The timeout in milliseconds.
+ *  @param handler The handler for the timeout.
+ *  @param context User context that can be passed in and will be passed in
+ *         as an argument for the timer handler.
+ *  @return The ID of the timer.
+ */
 int64_t event_loop_add_timer(event_loop *loop,
-                             int64_t milliseconds,
+                             int64_t timeout,
                              event_loop_timer_handler handler,
                              void *context);
 
-/* Remove a registered time event handler from the event loop. */
-void event_loop_remove_timer(event_loop *loop, timer_id timer_id);
+/**
+ * Remove a registered time event handler from the event loop. Can be called
+ * multiple times on the same timer.
+ *
+ * @param loop The event loop.
+ * @param timer_id The ID of the timer to be removed.
+ * @return Returns 0 if the removal was successful.
+ */
+int event_loop_remove_timer(event_loop *loop, int64_t timer_id);
 
 /* Run the event loop. */
 void event_loop_run(event_loop *loop);

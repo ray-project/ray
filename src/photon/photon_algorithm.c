@@ -141,7 +141,11 @@ void handle_task_submitted(scheduler_info *info,
     utarray_push_back(s->task_queue, &instance);
   }
   /* Submit the task to redis. */
-  task_log_add_task(info->db, instance);
+  /* TODO(swang): We should set these values in a config file somewhere. */
+  retry_info retry = {
+      .num_retries = 0, .timeout = 0, .fail_callback = NULL,
+  };
+  task_log_publish(info->db, instance, &retry, NULL, NULL);
   if (schedule_locally) {
     /* If the task was scheduled locally, we need to free it. Otherwise,
      * ownership of the task is passed to the task_queue, and it will be freed
