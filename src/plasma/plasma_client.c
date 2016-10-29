@@ -22,6 +22,7 @@
 
 /* Number of times we try connecting to a socket. */
 #define NUM_CONNECT_ATTEMPTS 50
+#define CONNECT_TIMEOUT 100
 
 typedef struct {
   /** Key that uniquely identifies the  memory mapped file. In practice, we
@@ -316,7 +317,7 @@ int socket_connect_retry(const char *socket_name,
     if (fd >= 0) {
       break;
     }
-    /* Sleep for 100 milliseconds. */
+    /* Sleep for timeout milliseconds. */
     usleep(timeout * 1000);
   }
   /* If we could not connect to the socket, exit. */
@@ -331,9 +332,11 @@ plasma_connection *plasma_connect(const char *store_socket_name,
                                   const char *manager_socket_name) {
   /* Initialize the store connection struct */
   plasma_connection *result = malloc(sizeof(plasma_connection));
-  result->store_conn = socket_connect_retry(store_socket_name, 50, 100);
+  result->store_conn = socket_connect_retry(
+      store_socket_name, NUM_CONNECT_ATTEMPTS, CONNECT_TIMEOUT);
   if (manager_socket_name != NULL) {
-    result->manager_conn = socket_connect_retry(manager_socket_name, 50, 100);
+    result->manager_conn = socket_connect_retry(
+        manager_socket_name, NUM_CONNECT_ATTEMPTS, CONNECT_TIMEOUT);
   } else {
     result->manager_conn = -1;
   }
