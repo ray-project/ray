@@ -5,7 +5,7 @@
 #include "table.h"
 #include "task.h"
 
-/** 
+/**
  * The task log is a message bus that is used for all communication between
  * local and global schedulers (and also persisted to the state database).
  * Here are examples of events that are recorded by the task log:
@@ -24,7 +24,7 @@ typedef void (*task_log_done_callback)(task_iid task_iid, void *user_context);
  *  ==== Publish the task log ====
  */
 
-/** 
+/**
  * Add or update a task instance to the task log.
  *
  * @param db_handle Database handle.
@@ -48,7 +48,7 @@ void task_log_publish(db_handle *db_handle,
 typedef void (*task_log_subscribe_callback)(task_instance *task_instance,
                                             void *user_context);
 
-/** 
+/**
  * Register callback for a certain event.
  *
  * @param db_handle Database handle.

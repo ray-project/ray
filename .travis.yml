@@ -37,6 +37,10 @@ matrix:
         - sudo apt-get update -qq
         - sudo apt-get install -qq valgrind
       script:
+        - cd src/common
+        - make valgrind
+        - cd ../..
+
         - cd src/plasma
         - make valgrind
         - cd ../..
