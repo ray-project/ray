@@ -57,6 +57,7 @@ struct table_callback_data {
 
 /**
  * Function to handle the timeout event.
+ *
  * @param loop Event loop.
  * @param timer_id Timer identifier.
  * @param context Pointer to the callback data for the object table
@@ -68,15 +69,16 @@ int64_t table_timeout_handler(event_loop *loop,
                               void *context);
 
 /**
+ * Initialize the table callback and call the retry_callback for the first time.
  *
  * @param db_handle Database handle.
  * @param id ID of the object that is looked up, added or removed.
- * @param data Data entered into the table.
+ * @param data Data entered into the table. Shall be freed by the user.
  * @param retry Retry relevant information: retry timeout, number of remaining
- * retries, and retry callback.
+ *        retries, and retry callback.
  * @param done_callback Function to be called when database returns result.
  * @param fail_callback Function to be called when number of retries is
- * exhausted.
+ *        exhausted.
  * @param user_context Context that can be provided by the user and will be
  *        passed on to the various callbacks.
  * @return New table callback data struct.
@@ -136,7 +138,7 @@ table_callback_data *outstanding_callbacks_find(int64_t key);
  *
  * @param callback_data The pointer to the data structure of the callback we
  *        want to remove.
- * @return None.
+ * @return Void.
  */
 void outstanding_callbacks_remove(table_callback_data *callback_data);
 
@@ -145,6 +147,7 @@ void outstanding_callbacks_remove(table_callback_data *callback_data);
  * from the event loop.
  *
  * @param loop The event loop from which we want to remove the timer events.
+ * @return Void.
  */
 void destroy_outstanding_callbacks(event_loop *loop);
 

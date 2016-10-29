@@ -44,9 +44,6 @@ void destroy_timer_callback(event_loop *loop,
 void destroy_table_callback(table_callback_data *callback_data) {
   CHECK(callback_data != NULL);
 
-  // if (callback_data->data)
-  //   free(callback_data->data);
-
   if (callback_data->requests_info)
     free(callback_data->requests_info);
 
@@ -84,7 +81,8 @@ int64_t table_timeout_handler(event_loop *loop,
   return callback_data->retry.timeout;
 }
 
-/** Hash table maintaining the outstanding callbacks.
+/**
+ * Hash table maintaining the outstanding callbacks.
  *
  * This hash table is used to handle the following case:
  * - a table command is issued with an associated callback and a callback data

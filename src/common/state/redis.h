@@ -11,11 +11,11 @@
 #include "utarray.h"
 
 typedef struct {
-  /* Unique ID for this service. */
+  /** Unique ID for this service. */
   int service_id;
-  /* IP address and port of this service. */
+  /** IP address and port of this service. */
   char *addr;
-  /* Handle for the uthash table. */
+  /** Handle for the uthash table. */
   UT_hash_handle hh;
 } service_cache_entry;
 
@@ -39,7 +39,7 @@ struct db_handle {
   /** Redis context for synchronous connections.
    * Should only be used very rarely, it is not asynchronous. */
   redisContext *sync_context;
-  /* Data structure for callbacks that needs to be freed. */
+  /** Data structure for callbacks that needs to be freed. */
   UT_array *callback_freelist;
 };
 
@@ -56,25 +56,28 @@ void object_table_lookup_callback(redisAsyncContext *c,
  */
 
 /**
- *  Lookup object table entry in redis.
- *  @param callback_data Data structure containing redis connection and timeout
- * information.
- *  @return Void.
+ * Lookup object table entry in redis.
+ *
+ * @param callback_data Data structure containing redis connection and timeout
+ *        information.
+ * @return Void.
  */
 void redis_object_table_lookup(table_callback_data *callback_data);
 
 /**
  * Add an entry to the object table in redis.
+ *
  * @param callback_data Data structure containing redis connection and timeout
- * information.
+ *        information.
  * @return Void.
  */
 void redis_object_table_add(table_callback_data *callback_data);
 
 /**
  * Subscribe to learn when a new object becomes available.
+ *
  * @param callback_data Data structure containing redis connection and timeout
- * information.
+ *        information.
  * @return Void.
  */
 void redis_object_table_subscribe(table_callback_data *callback_data);
@@ -85,17 +88,20 @@ void redis_object_table_subscribe(table_callback_data *callback_data);
 
 /**
  * Add or update task log entry with new scheduling information.
+ *
  * @param callback_data Data structure containing redis connection and timeout
- * information.
+ *        information.
  * @return Void.
  */
 void redis_task_log_publish(table_callback_data *callback_data);
 
 /**
  * Callback invoked when the replya from the task push command is received.
+ *
  * @param c Redis context.
  * @param r Reply (not used).
  * @param privdata Data associated to the callback.
+ * @return Void.
  */
 void redis_task_log_publish_push_callback(redisAsyncContext *c,
                                           void *r,
@@ -103,9 +109,11 @@ void redis_task_log_publish_push_callback(redisAsyncContext *c,
 
 /**
  * Callback invoked when the replya from the task publish command is received.
+ *
  * @param c Redis context.
  * @param r Reply (not used).
  * @param privdata Data associated to the callback.
+ * @return Void.
  */
 void redis_task_log_publish_publish_callback(redisAsyncContext *c,
                                              void *r,
@@ -113,8 +121,9 @@ void redis_task_log_publish_publish_callback(redisAsyncContext *c,
 
 /**
  * Subscribe to updates of the task log.
+ *
  * @param callback_data Data structure containing redis connection and timeout
- * information.
+ *        information.
  * @return Void.
  */
 void redis_task_log_subscribe(table_callback_data *callback_data);

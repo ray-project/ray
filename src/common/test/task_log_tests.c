@@ -8,7 +8,6 @@
 
 #include <unistd.h>
 #include <ae.h>
-// #include <hiredis/adapters/ae.h>
 
 SUITE(task_log_tests);
 

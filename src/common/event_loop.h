@@ -4,6 +4,9 @@
 #include <stdint.h>
 #include "ae/ae.h"
 
+/* Unique timer ID that will be generated when the timer is added to the
+ * event loop. Will not be reused later on in another call
+ * to event_loop_add_timer. */
 typedef long long timer_id;
 
 typedef aeEventLoop event_loop;
@@ -73,7 +76,8 @@ int64_t event_loop_add_timer(event_loop *loop,
                              void *context);
 
 /**
- * Remove a registered time event handler from the event loop.
+ * Remove a registered time event handler from the event loop. Can be called
+ * multiple times on the same timer.
  *
  * @param loop The event loop.
  * @param timer_id The ID of the timer to be removed.
