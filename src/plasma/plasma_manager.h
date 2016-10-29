@@ -147,13 +147,15 @@ void process_fetch_requests(client_connection *client_conn,
 
 /**
  * Process a wait request from a client.
- * @return client_conn The connection context for the client that made the
- *         request.
+ *
+ * @param client_conn The connection context for the client that made the
+ *        request.
  * @param num_object_ids Number of object IDs wait is called on.
  * @param object_ids Object IDs wait is called on.
- * @param timeout Wait will time out and return after this number of ms.
+ * @param timeout Wait will time out and return after this number of
+ *        milliseconds.
  * @param num_returns Number of object IDs wait will return if it doesn't time
- * out.
+ *        out.
  * @return Void.
  */
 void process_wait_request(client_connection *client_conn,
@@ -169,6 +171,7 @@ void process_wait_request(client_connection *client_conn,
  * @param client_sock The connection to the plasma store.
  * @param context Plasma manager state.
  * @param events (unused).
+ * @return Void.
  */
 void process_object_notification(event_loop *loop,
                                  int client_sock,
@@ -267,6 +270,7 @@ void request_transfer(object_id object_id,
  *
  * @param client_conn The client connection context.
  * @param object_id The object ID whose context we want to delete.
+ * @return Void.
  */
 void remove_object_connection(client_connection *client_conn,
                               client_object_connection *object_conn);
@@ -290,9 +294,9 @@ client_connection *get_manager_connection(plasma_manager_state *state,
  *
  * @param conn The connection to the client who's sending the data.
  * @param buf The buffer to write the data into.
- * @return An integer representing whether the client is done
- *         sending this object. 1 means that the client has
- *         sent all the data, 0 means there is more.
+ * @return An integer representing whether the client is done sending this
+ *         object. 1 means that the client has sent all the data, 0 means there
+ *         is more.
  */
 int read_object_chunk(client_connection *conn, plasma_request_buffer *buf);
 

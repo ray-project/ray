@@ -155,9 +155,8 @@ int send_client_reply(client_connection *conn, plasma_reply *reply) {
 }
 
 int send_client_failure_reply(object_id object_id, client_connection *conn) {
-  plasma_reply reply = {.object_ids = {object_id},
-                        .num_object_ids = 1,
-                        .has_object = 0};
+  plasma_reply reply = {
+      .object_ids = {object_id}, .num_object_ids = 1, .has_object = 0};
   return send_client_reply(conn, &reply);
 }
 

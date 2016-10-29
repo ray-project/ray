@@ -341,7 +341,7 @@ class TestPlasmaManager(unittest.TestCase):
   #                             memory_buffer=memory_buffer1, metadata=metadata1)
   #     assert_get_object_equal(self, self.client2, self.client1, object_id2,
   #                             memory_buffer=memory_buffer2, metadata=metadata2)
-  
+
   def test_wait(self):
     # Test timeout.
     obj_id0 = random_object_id()
@@ -366,7 +366,7 @@ class TestPlasmaManager(unittest.TestCase):
     self.assertEqual(ready[0], obj_id1)
     self.assertEqual(len(waiting), 1)
     self.assertEqual(waiting[0], obj_id2)
-    
+
     # Test wait if object is sealed later.
     obj_id3 = random_object_id()
 
