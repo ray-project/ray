@@ -18,6 +18,7 @@ SUITE(plasma_manager_tests);
 const char *manager_addr = "127.0.0.1";
 int manager_port = 12345;
 const char *store_socket_name = "/tmp/store12345";
+const char *manager_socket_name = "/tmp/manager12345";
 object_id oid;
 
 int test_done_handler(event_loop *loop, timer_id id, void *context) {
@@ -27,8 +28,12 @@ int test_done_handler(event_loop *loop, timer_id id, void *context) {
 
 typedef struct {
   int port;
-  int manager_fd;
+  /** Connection to the manager's TCP socket. */
+  int manager_remote_fd;
+  /** Connection to the manager's Unix socket. */
+  int manager_local_fd;
   int local_store;
+  int manager;
   plasma_manager_state *state;
   event_loop *loop;
   /* Accept a connection from the local manager on the remote manager. */
@@ -45,7 +50,8 @@ plasma_mock *init_plasma_mock(int port, plasma_mock *remote_mock) {
   plasma_mock *mock = malloc(sizeof(plasma_mock));
   /* Start listening on all the ports and initiate the local plasma manager. */
   mock->port = port;
-  mock->manager_fd = bind_inet_sock(port);
+  mock->manager_remote_fd = bind_inet_sock(port);
+  mock->manager_local_fd = bind_ipc_sock(manager_socket_name);
   mock->local_store = bind_ipc_sock(store_socket_name);
   mock->state =
       init_plasma_manager_state(store_socket_name, manager_addr, port, NULL, 0);
@@ -54,8 +60,8 @@ plasma_mock *init_plasma_mock(int port, plasma_mock *remote_mock) {
   if (remote_mock != NULL) {
     mock->write_conn =
         get_manager_connection(remote_mock->state, manager_addr, port);
-    mock->read_conn =
-        new_client_connection(mock->loop, mock->manager_fd, mock->state, 0);
+    mock->read_conn = new_client_connection(mock->loop, mock->manager_remote_fd,
+                                            mock->state, 0);
   } else {
     mock->write_conn = NULL;
     mock->read_conn = NULL;
@@ -70,10 +76,9 @@ plasma_mock *init_plasma_mock(int port, plasma_mock *remote_mock) {
 void add_mock_object_conn(plasma_mock *mock, object_id oid) {
   /* Connect a new client to the local plasma manager and mock a request to an
    * object. */
-  mock->plasma_conn =
-      plasma_connect(store_socket_name, manager_addr, mock->port);
+  mock->plasma_conn = plasma_connect(store_socket_name, manager_socket_name);
   mock->client_conn =
-      new_client_connection(mock->loop, mock->manager_fd, mock->state, 0);
+      new_client_connection(mock->loop, mock->manager_local_fd, mock->state, 0);
   mock->object_conn = add_object_connection(mock->client_conn, oid);
 }
 
@@ -88,7 +93,8 @@ void destroy_plasma_mock(plasma_mock *mock) {
   }
   destroy_plasma_manager_state(mock->state);
   close(mock->local_store);
-  close(mock->manager_fd);
+  close(mock->manager_local_fd);
+  close(mock->manager_remote_fd);
   free(mock);
 }
 

@@ -22,6 +22,7 @@
 
 /* Number of times we try connecting to a socket. */
 #define NUM_CONNECT_ATTEMPTS 50
+#define CONNECT_TIMEOUT 100
 
 typedef struct {
   /** Key that uniquely identifies the  memory mapped file. In practice, we
@@ -306,38 +307,36 @@ int plasma_subscribe(plasma_connection *conn) {
   return fd[0];
 }
 
-plasma_connection *plasma_connect(const char *store_socket_name,
-                                  const char *manager_addr,
-                                  int manager_port) {
-  CHECK(store_socket_name);
-  /* Try to connect to the Plasma store. If unsuccessful, retry several times.
-   */
+int socket_connect_retry(const char *socket_name,
+                         int num_retries,
+                         int64_t timeout) {
+  CHECK(socket_name);
   int fd = -1;
-  int connected_successfully = 0;
-  for (int num_attempts = 0; num_attempts < NUM_CONNECT_ATTEMPTS;
-       ++num_attempts) {
-    fd = connect_ipc_sock(store_socket_name);
+  for (int num_attempts = 0; num_attempts < num_retries; ++num_attempts) {
+    fd = connect_ipc_sock(socket_name);
     if (fd >= 0) {
-      connected_successfully = 1;
       break;
     }
-    /* Sleep for 100 milliseconds. */
-    usleep(100000);
+    /* Sleep for timeout milliseconds. */
+    usleep(timeout * 1000);
   }
-  /* If we could not connect to the Plasma store, exit. */
-  if (!connected_successfully) {
-    LOG_ERR("could not connect to store %s", store_socket_name);
+  /* If we could not connect to the socket, exit. */
+  if (fd == -1) {
+    LOG_ERR("could not connect to socket %s", socket_name);
     exit(-1);
   }
+  return fd;
+}
+
+plasma_connection *plasma_connect(const char *store_socket_name,
+                                  const char *manager_socket_name) {
   /* Initialize the store connection struct */
   plasma_connection *result = malloc(sizeof(plasma_connection));
-  result->store_conn = fd;
-  if (manager_addr != NULL) {
-    result->manager_conn = plasma_manager_connect(manager_addr, manager_port);
-    if (result->manager_conn < 0) {
-      LOG_ERR("Could not connect to Plasma manager %s:%d", manager_addr,
-              manager_port);
-    }
+  result->store_conn = socket_connect_retry(
+      store_socket_name, NUM_CONNECT_ATTEMPTS, CONNECT_TIMEOUT);
+  if (manager_socket_name != NULL) {
+    result->manager_conn = socket_connect_retry(
+        manager_socket_name, NUM_CONNECT_ATTEMPTS, CONNECT_TIMEOUT);
   } else {
     result->manager_conn = -1;
   }

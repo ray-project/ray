@@ -64,19 +64,13 @@ class PlasmaClient(object):
   strings.
   """
 
-  def __init__(self, socket_name, addr=None, port=None):
+  def __init__(self, store_socket_name, manager_socket_name=None):
     """Initialize the PlasmaClient.
 
     Args:
-      socket_name (str): Name of the socket the plasma store is listening at.
-      addr (str): IPv4 address of plasma manager attached to the plasma store.
-      port (int): Port number of the plasma manager attached to the plasma store.
+      store_socket_name (str): Name of the socket the plasma store is listening at.
+      manager_socket_name (str): Name of the socket the plasma manager is listening at.
     """
-    if port is not None:
-      if not isinstance(port, int):
-        raise Exception("The 'port' argument must be an integer. The given argument has type {}.".format(type(port)))
-      if not 0 < port < 65536:
-        raise Exception("The 'port' argument must be greater than 0 and less than 65536. The given value is {}.".format(port))
 
     plasma_client_library = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../build/plasma_client.so")
     self.client = ctypes.cdll.LoadLibrary(plasma_client_library)
@@ -98,12 +92,12 @@ class PlasmaClient(object):
     self.buffer_from_read_write_memory.argtypes = [ctypes.c_void_p, ctypes.c_int64]
     self.buffer_from_read_write_memory.restype = ctypes.py_object
 
-    if addr is not None and port is not None:
+    if manager_socket_name is not None:
       self.has_manager_conn = True
-      self.plasma_conn = ctypes.c_void_p(self.client.plasma_connect(socket_name, addr, port))
+      self.plasma_conn = ctypes.c_void_p(self.client.plasma_connect(store_socket_name, manager_socket_name))
     else:
       self.has_manager_conn = False
-      self.plasma_conn = ctypes.c_void_p(self.client.plasma_connect(socket_name, None, 0))
+      self.plasma_conn = ctypes.c_void_p(self.client.plasma_connect(store_socket_name, None))
 
   def create(self, object_id, size, metadata=None):
     """Create a new buffer in the PlasmaStore for a particular object ID.
