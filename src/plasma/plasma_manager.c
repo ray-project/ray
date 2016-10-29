@@ -762,6 +762,13 @@ void process_object_notification(event_loop *loop,
   object_id obj_id;
   /* Read the notification from Plasma. */
   int n = recv(client_sock, &obj_id, sizeof(object_id), MSG_WAITALL);
+  if (n == 0) {
+    /* The store has closed the socket. */
+    LOG_DEBUG("The plasma store has closed the object notification socket.");
+    event_loop_remove_file(loop, client_sock);
+    close(client_sock);
+    return;
+  }
   CHECK(n == sizeof(object_id));
   /* Add object to locally available object. */
   /* TODO(pcm): Where is this deallocated? */
