@@ -43,7 +43,6 @@ typedef struct {
    * object. */
   plasma_connection *plasma_conn;
   client_connection *client_conn;
-  client_object_connection *object_conn;
 } plasma_mock;
 
 plasma_mock *init_plasma_mock(int port, plasma_mock *remote_mock) {
@@ -66,31 +65,22 @@ plasma_mock *init_plasma_mock(int port, plasma_mock *remote_mock) {
     mock->write_conn = NULL;
     mock->read_conn = NULL;
   }
-
-  mock->plasma_conn = NULL;
-  mock->client_conn = NULL;
-  mock->object_conn = NULL;
-  return mock;
-}
-
-void add_client_conn(plasma_mock *mock) {
   /* Connect a new client to the local plasma manager and mock a request to an
    * object. */
   mock->plasma_conn = plasma_connect(store_socket_name, manager_socket_name);
   mock->client_conn =
       new_client_connection(mock->loop, mock->manager_local_fd, mock->state, 0);
+  return mock;
 }
 
 void destroy_plasma_mock(plasma_mock *mock) {
-  if (mock->object_conn != NULL) {
-    free(mock->client_conn);
-    free(mock->plasma_conn);
-  }
   if (mock->read_conn != NULL) {
     close(get_client_sock(mock->read_conn));
     free(mock->read_conn);
   }
   destroy_plasma_manager_state(mock->state);
+  free(mock->client_conn);
+  free(mock->plasma_conn);
   close(mock->local_store);
   close(mock->manager_local_fd);
   close(mock->manager_remote_fd);
@@ -109,7 +99,6 @@ void destroy_plasma_mock(plasma_mock *mock) {
  */
 TEST request_transfer_test(void) {
   plasma_mock *local_mock = init_plasma_mock(manager_port, NULL);
-  add_client_conn(local_mock);
   plasma_mock *remote_mock = init_plasma_mock(12346, local_mock);
   const char **manager_vector = malloc(sizeof(char *));
   manager_vector[0] = "127.0.0.1:12346";
@@ -146,7 +135,6 @@ TEST request_transfer_test(void) {
  */
 TEST request_transfer_retry_test(void) {
   plasma_mock *local_mock = init_plasma_mock(manager_port, NULL);
-  add_client_conn(local_mock);
   plasma_mock *remote_mock1 = init_plasma_mock(12346, local_mock);
   plasma_mock *remote_mock2 = init_plasma_mock(12347, local_mock);
   const char **manager_vector = malloc(sizeof(char *) * 2);
@@ -186,7 +174,6 @@ TEST request_transfer_retry_test(void) {
  */
 TEST request_transfer_timeout_test(void) {
   plasma_mock *local_mock = init_plasma_mock(manager_port, NULL);
-  add_client_conn(local_mock);
   plasma_mock *remote_mock = init_plasma_mock(12346, local_mock);
   const char **manager_vector = malloc(sizeof(char *));
   manager_vector[0] = "127.0.0.1:12346";

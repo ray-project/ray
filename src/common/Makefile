@@ -48,5 +48,7 @@ valgrind: test
 	valgrind --leak-check=full --error-exitcode=1 ./build/io_tests
 	valgrind --leak-check=full --error-exitcode=1 ./build/task_tests
 	valgrind --leak-check=full --error-exitcode=1 ./build/redis_tests
+	valgrind --leak-check=full --error-exitcode=1 ./build/task_log_tests
+	valgrind --leak-check=full --error-exitcode=1 ./build/object_table_tests
 
 FORCE:
