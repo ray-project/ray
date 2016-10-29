@@ -52,7 +52,7 @@ local_scheduler_state *init_local_scheduler(event_loop *loop,
   state->loop = loop;
   /* Connect to Plasma. This method will retry if Plasma hasn't started yet.
    * Pass in a NULL manager address and port. */
-  state->plasma_conn = plasma_connect(plasma_socket_name, NULL, 0);
+  state->plasma_conn = plasma_connect(plasma_socket_name, NULL);
   /* Subscribe to notifications about sealed objects. */
   int plasma_fd = plasma_subscribe(state->plasma_conn);
   /* Add the callback that processes the notification to the event loop. */

@@ -58,8 +58,8 @@ plasma_mock *init_plasma_mock(int port, plasma_mock *remote_mock) {
   mock->loop = get_event_loop(mock->state);
   /* Accept a connection from the local manager on the remote manager. */
   if (remote_mock != NULL) {
-    mock->write_conn = get_manager_connection(remote_mock->state, manager_addr,
-                                              port);
+    mock->write_conn =
+        get_manager_connection(remote_mock->state, manager_addr, port);
     mock->read_conn = new_client_connection(mock->loop, mock->manager_remote_fd,
                                             mock->state, 0);
   } else {
