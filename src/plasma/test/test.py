@@ -212,6 +212,8 @@ class TestPlasmaManager(unittest.TestCase):
     plasma_store_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../build/plasma_store")
     store_name1 = "/tmp/store{}".format(random.randint(0, 10000))
     store_name2 = "/tmp/store{}".format(random.randint(0, 10000))
+    manager_name1 = "/tmp/manager{}".format(random.randint(0, 10000))
+    manager_name2 = "/tmp/manager{}".format(random.randint(0, 10000))
     plasma_store_command1 = [plasma_store_executable, "-s", store_name1]
     plasma_store_command2 = [plasma_store_executable, "-s", store_name2]
 
@@ -233,7 +235,7 @@ class TestPlasmaManager(unittest.TestCase):
                                                "--port", str(redis_port)],
                                               stdout=FNULL)
       time.sleep(0.1)
-      manager_redis_args = ["-d", "{addr}:{port}".format(addr="127.0.0.1",
+      manager_redis_args = ["-r", "{addr}:{port}".format(addr="127.0.0.1",
                                                       port=redis_port)]
 
     # Start two PlasmaManagers.
@@ -242,11 +244,13 @@ class TestPlasmaManager(unittest.TestCase):
     plasma_manager_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../build/plasma_manager")
     plasma_manager_command1 = [plasma_manager_executable,
                                "-s", store_name1,
-                               "-m", "127.0.0.1",
+                               "-m", manager_name1,
+                               "-h", "127.0.0.1",
                                "-p", str(self.port1)] + manager_redis_args
     plasma_manager_command2 = [plasma_manager_executable,
                                "-s", store_name2,
-                               "-m", "127.0.0.1",
+                               "-m", manager_name2,
+                               "-h", "127.0.0.1",
                                "-p", str(self.port2)] + manager_redis_args
 
     if USE_VALGRIND:
@@ -257,8 +261,8 @@ class TestPlasmaManager(unittest.TestCase):
       self.p5 = subprocess.Popen(plasma_manager_command2)
 
     # Connect two PlasmaClients.
-    self.client1 = plasma.PlasmaClient(store_name1, "127.0.0.1", self.port1)
-    self.client2 = plasma.PlasmaClient(store_name2, "127.0.0.1", self.port2)
+    self.client1 = plasma.PlasmaClient(store_name1, manager_name1)
+    self.client2 = plasma.PlasmaClient(store_name2, manager_name2)
 
   def tearDown(self):
     # Kill the PlasmaStore and PlasmaManager processes.

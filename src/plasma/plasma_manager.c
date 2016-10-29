@@ -226,7 +226,7 @@ plasma_manager_state *init_plasma_manager_state(const char *store_socket_name,
                                                 int db_port) {
   plasma_manager_state *state = malloc(sizeof(plasma_manager_state));
   state->loop = event_loop_create();
-  state->plasma_conn = plasma_connect(store_socket_name, NULL, 0);
+  state->plasma_conn = plasma_connect(store_socket_name, NULL);
   state->manager_connections = NULL;
   state->fetch_connections = NULL;
   if (db_addr) {
@@ -710,6 +710,9 @@ void process_message(event_loop *loop,
   free(req);
 }
 
+/* TODO(pcm): Split this into two methods: new_worker_connection
+ * and new_manager_connection and also split client_connection
+ * into two structs, one for workers and one for other plasma managers. */
 client_connection *new_client_connection(event_loop *loop,
                                          int listener_sock,
                                          void *context,
@@ -724,7 +727,7 @@ client_connection *new_client_connection(event_loop *loop,
   conn->active_objects = NULL;
   conn->num_return_objects = 0;
   event_loop_add_file(loop, new_socket, EVENT_LOOP_READ, process_message, conn);
-  LOG_DEBUG("New plasma manager connection with fd %d", new_socket);
+  LOG_DEBUG("New client connection with fd %d", new_socket);
   return conn;
 }
 
@@ -740,6 +743,7 @@ int get_client_sock(client_connection *conn) {
 }
 
 void start_server(const char *store_socket_name,
+                  const char *manager_socket_name,
                   const char *master_addr,
                   int port,
                   const char *db_addr,
@@ -748,12 +752,16 @@ void start_server(const char *store_socket_name,
                                               port, db_addr, db_port);
   CHECK(g_manager_state);
 
-  int sock = bind_inet_sock(port);
-  CHECKM(sock >= 0, "Unable to bind to manager port");
+  int remote_sock = bind_inet_sock(port);
+  CHECKM(remote_sock >= 0, "Unable to bind to manager port");
+  int local_sock = bind_ipc_sock(manager_socket_name);
+  CHECKM(local_sock >= 0, "Unable to bind local manager socket");
 
   LOG_DEBUG("Started server connected to store %s, listening on port %d",
             store_socket_name, port);
-  event_loop_add_file(g_manager_state->loop, sock, EVENT_LOOP_READ,
+  event_loop_add_file(g_manager_state->loop, local_sock, EVENT_LOOP_READ,
+                      handle_new_client, g_manager_state);
+  event_loop_add_file(g_manager_state->loop, remote_sock, EVENT_LOOP_READ,
                       handle_new_client, g_manager_state);
   event_loop_run(g_manager_state->loop);
 }
@@ -775,25 +783,30 @@ int main(int argc, char *argv[]) {
   signal(SIGTERM, signal_handler);
   /* Socket name of the plasma store this manager is connected to. */
   char *store_socket_name = NULL;
+  /* Socket name this manager will bind to. */
+  char *manager_socket_name = NULL;
   /* IP address of this node. */
   char *master_addr = NULL;
   /* Port number the manager should use. */
-  int port;
+  int port = -1;
   /* IP address and port of state database. */
   char *db_host = NULL;
   int c;
-  while ((c = getopt(argc, argv, "s:m:p:d:")) != -1) {
+  while ((c = getopt(argc, argv, "s:m:h:p:r:")) != -1) {
     switch (c) {
     case 's':
       store_socket_name = optarg;
       break;
     case 'm':
+      manager_socket_name = optarg;
+      break;
+    case 'h':
       master_addr = optarg;
       break;
     case 'p':
       port = atoi(optarg);
       break;
-    case 'd':
+    case 'r':
       db_host = optarg;
       break;
     default:
@@ -807,19 +820,31 @@ int main(int argc, char *argv[]) {
         "switch");
     exit(-1);
   }
+  if (!manager_socket_name) {
+    LOG_ERR(
+        "please specify socket name of the manager's local socket with -m "
+        "switch");
+    exit(-1);
+  }
   if (!master_addr) {
     LOG_ERR(
         "please specify ip address of the current host in the format "
         "123.456.789.10 with -m switch");
     exit(-1);
   }
+  if (port == -1) {
+   LOG_ERR(
+       "please specify port the plasma manager shall listen to in the"
+       "format 12345 with -p switch");
+   exit(-1);
+  }
   char db_addr[16];
   int db_port;
   if (db_host) {
     parse_ip_addr_port(db_host, db_addr, &db_port);
-    start_server(store_socket_name, master_addr, port, db_addr, db_port);
+    start_server(store_socket_name, manager_socket_name, master_addr, port, db_addr, db_port);
   } else {
-    start_server(store_socket_name, master_addr, port, NULL, 0);
+    start_server(store_socket_name, manager_socket_name, master_addr, port, NULL, 0);
   }
 }
 #endif
