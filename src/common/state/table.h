@@ -52,6 +52,7 @@ struct table_callback_data {
   db_handle *db_handle;
   /** Handle to timer. */
   int64_t timer_id;
+  UT_hash_handle hh; /* makes this structure hashable */
 };
 
 /**
@@ -88,61 +89,63 @@ table_callback_data *init_table_callback(db_handle *db_handle,
                                          table_retry_callback retry_callback,
                                          void *user_context);
 
+/**
+ * Destroy any state associated with the callback data. This removes all
+ * associated state from the outstanding callbacks hash table and frees any
+ * associated memory. This does not remove any associated timer events.
+ *
+ * @param callback_data The pointer to the data structure of the callback we
+ *        want to remove.
+ * @return Void.
+ */
 void destroy_table_callback(table_callback_data *callback_data);
 
 /**
- * Hash table maintaining the outstanding callbacks.
+ * Destroy all state events associated with the callback data, including memory
+ * and timer events.
  *
- * This hash table is used to handle the following case:
- * - a table command is issued with an associated callback and a callback data
- * structure;
- * - the last timeout associated to this command expires, as a result the
- * callback data structure is freed;
- * - a reply arrives, but now the callback data structure is gone, so we have to
- * ignore this reply;
- *
- * This hash table enables us to ignore such replies. The operations on the hash
- * table are as follows.
- *
- * When we issue a table command we add a new entry to the hash table that is
- * keyed by the address of the callback's
- * data structure.
- *
- * When we receive the reply, we check whether the callback still exists in this
- * hash table, and if not we just ignore
- * the reply.
- *
- * When the last timeout associated to the command expires we remove the entry
- * associated to the collback.
+ * @param callback_data The pointer to the data structure of the callback we
+ *        want to remove.
+ * @return Void.
  */
-typedef struct {
-  table_callback_data *key;
-  int dummy;
-  UT_hash_handle hh; /* makes this structure hashable */
-} outstanding_callback;
+void destroy_timer_callback(event_loop *loop,
+                            table_callback_data *callback_data);
 
 /**
+ * Add an outstanding callback entry.
  *
- * @param key The pointer to the data structure of the callback we want to
- * insert.
+ * @param callback_data The pointer to the data structure of the callback we
+ *        want to insert.
  * @return None.
  */
-void outstanding_callbacks_add(table_callback_data *key);
+void outstanding_callbacks_add(table_callback_data *callback_data);
 
 /**
+ * Find an outstanding callback entry.
  *
- * @param key The pointer to the data structure of the callback we are looking
- * for.
- * @return Returns callback if found, NULL otherwise.
+ * @param key The key for the outstanding callbacks hash table. We use the
+ *        timer ID assigned by the Redis ae event loop.
+ * @return Returns the callback data if found, NULL otherwise.
  */
-outstanding_callback *outstanding_callbacks_find(table_callback_data *key);
+table_callback_data *outstanding_callbacks_find(int64_t key);
 
 /**
+ * Remove an outstanding callback entry. This only removes the callback entry
+ * from the hash table. It does not free the entry or remove any associated
+ * timer events.
  *
- * @param key Key, defined as the pointer to the data structure of the callback
- * we want to remove.
+ * @param callback_data The pointer to the data structure of the callback we
+ *        want to remove.
  * @return None.
  */
-void outstanding_callbacks_remove(table_callback_data *key);
+void outstanding_callbacks_remove(table_callback_data *callback_data);
+
+/**
+ * Destroy all outstanding callbacks and remove their associated timer events
+ * from the event loop.
+ *
+ * @param loop The event loop from which we want to remove the timer events.
+ */
+void destroy_outstanding_callbacks(event_loop *loop);
 
 #endif /* TABLE_H */

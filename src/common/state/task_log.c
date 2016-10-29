@@ -13,6 +13,7 @@ void task_log_publish(db_handle *db_handle,
                       redis_task_log_publish, user_context);
 }
 
+/* TODO(swang): A corresponding task_log_unsubscribe. */
 void task_log_subscribe(db_handle *db_handle,
                         node_id node,
                         int32_t state_filter,

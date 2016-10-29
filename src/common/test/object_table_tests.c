@@ -47,6 +47,7 @@ TEST lookup_timeout_test(void) {
   close(db->context->c.fd);
   event_loop_run(g_loop);
   db_disconnect(db);
+  destroy_outstanding_callbacks(g_loop);
   event_loop_destroy(g_loop);
   ASSERT(lookup_failed);
   PASS();
@@ -82,6 +83,7 @@ TEST add_timeout_test(void) {
   close(db->context->c.fd);
   event_loop_run(g_loop);
   db_disconnect(db);
+  destroy_outstanding_callbacks(g_loop);
   event_loop_destroy(g_loop);
   ASSERT(add_failed);
   PASS();
@@ -120,6 +122,7 @@ TEST subscribe_timeout_test(void) {
   close(db->sub_context->c.fd);
   event_loop_run(g_loop);
   db_disconnect(db);
+  destroy_outstanding_callbacks(g_loop);
   event_loop_destroy(g_loop);
   ASSERT(subscribe_failed);
   PASS();
@@ -191,6 +194,7 @@ TEST lookup_retry_test(void) {
                        NULL);
   event_loop_run(g_loop);
   db_disconnect(db);
+  destroy_outstanding_callbacks(g_loop);
   event_loop_destroy(g_loop);
   ASSERT(lookup_retry_succeeded);
   PASS();
@@ -234,6 +238,7 @@ TEST add_retry_test(void) {
                        NULL);
   event_loop_run(g_loop);
   db_disconnect(db);
+  destroy_outstanding_callbacks(g_loop);
   event_loop_destroy(g_loop);
   ASSERT(add_retry_succeeded);
   PASS();
@@ -294,6 +299,7 @@ TEST subscribe_retry_test(void) {
                        NULL);
   event_loop_run(g_loop);
   db_disconnect(db);
+  destroy_outstanding_callbacks(g_loop);
   event_loop_destroy(g_loop);
   ASSERT(subscribe_retry_succeeded);
   PASS();
@@ -340,6 +346,7 @@ TEST lookup_late_test(void) {
   aeProcessEvents(g_loop, AE_TIME_EVENTS);
   event_loop_run(g_loop);
   db_disconnect(db);
+  destroy_outstanding_callbacks(g_loop);
   event_loop_destroy(g_loop);
   ASSERT(lookup_late_failed);
   PASS();
@@ -379,6 +386,7 @@ TEST add_late_test(void) {
   aeProcessEvents(g_loop, AE_TIME_EVENTS);
   event_loop_run(g_loop);
   db_disconnect(db);
+  destroy_outstanding_callbacks(g_loop);
   event_loop_destroy(g_loop);
   ASSERT(add_late_failed);
   PASS();
@@ -421,6 +429,7 @@ TEST subscribe_late_test(void) {
   aeProcessEvents(g_loop, AE_TIME_EVENTS);
   event_loop_run(g_loop);
   db_disconnect(db);
+  destroy_outstanding_callbacks(g_loop);
   event_loop_destroy(g_loop);
   ASSERT(subscribe_late_failed);
   PASS();
@@ -474,6 +483,7 @@ TEST subscribe_success_test(void) {
 
   event_loop_run(g_loop);
   db_disconnect(db);
+  destroy_outstanding_callbacks(g_loop);
   event_loop_destroy(g_loop);
 
   ASSERT(subscribe_success_done);

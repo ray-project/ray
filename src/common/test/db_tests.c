@@ -96,6 +96,7 @@ TEST object_table_lookup_test(void) {
   db_disconnect(db1);
   db_disconnect(db2);
 
+  destroy_outstanding_callbacks(loop);
   event_loop_destroy(loop);
   PASS();
 }
@@ -127,6 +128,7 @@ TEST task_log_test(void) {
   task_instance_free(instance);
   free_task_spec(task);
   db_disconnect(db);
+  destroy_outstanding_callbacks(loop);
   event_loop_destroy(loop);
   PASS();
 }
@@ -165,6 +167,7 @@ TEST task_log_all_test(void) {
   task_instance_free(instance1);
   free_task_spec(task);
   db_disconnect(db);
+  destroy_outstanding_callbacks(loop);
   event_loop_destroy(loop);
   ASSERT(num_test_callback_called == 2);
   PASS();

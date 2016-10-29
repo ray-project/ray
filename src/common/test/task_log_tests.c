@@ -50,6 +50,7 @@ TEST subscribe_timeout_test(void) {
   aeProcessEvents(loop, AE_TIME_EVENTS);
   event_loop_run(loop);
   db_disconnect(db);
+  destroy_outstanding_callbacks(loop);
   event_loop_destroy(loop);
   ASSERT(subscribe_failed);
   PASS();
@@ -88,6 +89,7 @@ TEST publish_timeout_test(void) {
   aeProcessEvents(loop, AE_TIME_EVENTS);
   event_loop_run(loop);
   db_disconnect(db);
+  destroy_outstanding_callbacks(loop);
   event_loop_destroy(loop);
   ASSERT(publish_failed);
   task_instance_free(task);
@@ -156,6 +158,7 @@ TEST subscribe_retry_test(void) {
                        NULL);
   event_loop_run(loop);
   db_disconnect(db);
+  destroy_outstanding_callbacks(loop);
   event_loop_destroy(loop);
   ASSERT(subscribe_retry_succeeded);
   PASS();
@@ -200,6 +203,7 @@ TEST publish_retry_test(void) {
                        NULL);
   event_loop_run(loop);
   db_disconnect(db);
+  destroy_outstanding_callbacks(loop);
   event_loop_destroy(loop);
   ASSERT(publish_retry_succeeded);
   task_instance_free(task);
@@ -245,6 +249,7 @@ TEST subscribe_late_test(void) {
   aeProcessEvents(loop, AE_TIME_EVENTS);
   event_loop_run(loop);
   db_disconnect(db);
+  destroy_outstanding_callbacks(loop);
   event_loop_destroy(loop);
   ASSERT(subscribe_late_failed);
   PASS();
@@ -287,6 +292,7 @@ TEST publish_late_test(void) {
   aeProcessEvents(loop, AE_TIME_EVENTS);
   event_loop_run(loop);
   db_disconnect(db);
+  destroy_outstanding_callbacks(loop);
   event_loop_destroy(loop);
   ASSERT(publish_late_failed);
   task_instance_free(task);

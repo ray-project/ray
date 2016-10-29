@@ -26,12 +26,19 @@ table_callback_data *init_table_callback(db_handle *db_handle,
   callback_data->db_handle = db_handle;
   /* Add timer and initialize it. */
   callback_data->timer_id = event_loop_add_timer(
-      db_handle->loop, retry->timeout, table_timeout_handler, callback_data);
+      db_handle->loop, retry->timeout,
+      (event_loop_timer_handler) table_timeout_handler, callback_data);
   outstanding_callbacks_add(callback_data);
 
   callback_data->retry_callback(callback_data);
 
   return callback_data;
+}
+
+void destroy_timer_callback(event_loop *loop,
+                            table_callback_data *callback_data) {
+  event_loop_remove_timer(loop, callback_data->timer_id);
+  destroy_table_callback(callback_data);
 }
 
 void destroy_table_callback(table_callback_data *callback_data) {
@@ -77,36 +84,52 @@ int64_t table_timeout_handler(event_loop *loop,
   return callback_data->retry.timeout;
 }
 
-/**
- * List of outstanding callbacks. We need to maintain this list for the case in
- * which a reply is received
- * after te last timeout expires and all relevant data structures are removed.
- * In this case we just need
- * to ignore the reply.
- * */
-static outstanding_callback *outstanding_callbacks = NULL;
+/** Hash table maintaining the outstanding callbacks.
+ *
+ * This hash table is used to handle the following case:
+ * - a table command is issued with an associated callback and a callback data
+ *   structure;
+ * - the last timeout associated to this command expires, as a result the
+ *   callback data structure is freed;
+ * - a reply arrives, but now the callback data structure is gone, so we have
+ *   to ignore this reply;
+ *
+ * This hash table enables us to ignore such replies. The operations on the
+ * hash table are as follows.
+ *
+ * When we issue a table command and a timeout event to wait for the reply, we
+ * add a new entry to the hash table that is keyed by the ID of the timer. Note
+ * that table commands must have unique timer IDs, which are assigned by the
+ * Redis ae event loop.
+ *
+ * When we receive the reply, we check whether the callback still exists in
+ * this hash table, and if not we just ignore the reply. If the callback does
+ * exist, the reply receiver is responsible for removing the timer and the
+ * entry associated to the callback, or else the timeout handler will continue
+ * firing.
+ *
+ * When the last timeout associated to the command expires we remove the entry
+ * associated to the callback.
+ */
+static table_callback_data *outstanding_callbacks = NULL;
 
-void outstanding_callbacks_add(table_callback_data *key) {
-  outstanding_callback *callback = malloc(sizeof(outstanding_callback));
-
-  CHECK(callback != NULL);
-  callback->key = key;
-  HASH_ADD_PTR(outstanding_callbacks, key, callback);
+void outstanding_callbacks_add(table_callback_data *callback_data) {
+  HASH_ADD_INT(outstanding_callbacks, timer_id, callback_data);
 }
 
-outstanding_callback *outstanding_callbacks_find(table_callback_data *key) {
-  outstanding_callback *callback = NULL;
-
-  HASH_FIND_PTR(outstanding_callbacks, &key, callback);
-  return callback;
+table_callback_data *outstanding_callbacks_find(int64_t key) {
+  table_callback_data *callback_data = NULL;
+  HASH_FIND_INT(outstanding_callbacks, &key, callback_data);
+  return callback_data;
 }
 
-void outstanding_callbacks_remove(table_callback_data *key) {
-  outstanding_callback *callback = NULL;
+void outstanding_callbacks_remove(table_callback_data *callback_data) {
+  HASH_DEL(outstanding_callbacks, callback_data);
+}
 
-  callback = outstanding_callbacks_find(key);
-  if (callback != NULL) {
-    HASH_DEL(outstanding_callbacks, callback);
-    free(callback);
+void destroy_outstanding_callbacks(event_loop *loop) {
+  table_callback_data *callback_data, *tmp;
+  HASH_ITER(hh, outstanding_callbacks, callback_data, tmp) {
+    destroy_timer_callback(loop, callback_data);
   }
 }
