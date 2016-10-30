@@ -53,6 +53,11 @@ def assert_get_object_equal(unit_test, client1, client2, object_id, memory_buffe
   unit_test.assertEqual(client1.get_metadata(object_id)[:],
                         client2.get_metadata(object_id)[:])
 
+# Check if the redis-server binary is present.
+redis_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../common/thirdparty/redis-3.2.3/src/redis-server")
+if not os.path.exists(redis_path):
+  raise Exception("You do not have the redis-server binary. Run `make test` in the plasma directory to get it.")
+
 class TestPlasmaClient(unittest.TestCase):
 
   def setUp(self):
@@ -227,17 +232,12 @@ class TestPlasmaManager(unittest.TestCase):
 
     # Start a Redis server.
     redis_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../common/thirdparty/redis-3.2.3/src/redis-server")
-    self.redis_process = None
-    manager_redis_args = []
-    if os.path.exists(redis_path):
-      redis_port = 6379
-      with open(os.devnull, 'w') as FNULL:
-        self.redis_process = subprocess.Popen([redis_path,
-                                               "--port", str(redis_port)],
-                                              stdout=FNULL)
-      time.sleep(0.1)
-      manager_redis_args = ["-r", "{addr}:{port}".format(addr="127.0.0.1",
-                                                      port=redis_port)]
+    redis_port = 6379
+    with open(os.devnull, "w") as FNULL:
+      self.redis_process = subprocess.Popen([redis_path,
+                                             "--port", str(redis_port)],
+                                             stdout=FNULL)
+    time.sleep(0.1)
 
     # Start two PlasmaManagers.
     self.port1 = random.randint(10000, 50000)
@@ -247,12 +247,16 @@ class TestPlasmaManager(unittest.TestCase):
                                "-s", store_name1,
                                "-m", manager_name1,
                                "-h", "127.0.0.1",
-                               "-p", str(self.port1)] + manager_redis_args
+                               "-p", str(self.port1),
+                               "-r", "{addr}:{port}".format(addr="127.0.0.1",
+                                                            port=redis_port)]
     plasma_manager_command2 = [plasma_manager_executable,
                                "-s", store_name2,
                                "-m", manager_name2,
                                "-h", "127.0.0.1",
-                               "-p", str(self.port2)] + manager_redis_args
+                               "-p", str(self.port2),
+                               "-r", "{addr}:{port}".format(addr="127.0.0.1",
+                                                            port=redis_port)]
 
     if USE_VALGRIND:
       self.p4 = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + plasma_manager_command1)
@@ -284,8 +288,7 @@ class TestPlasmaManager(unittest.TestCase):
       self.p3.kill()
       self.p4.kill()
       self.p5.kill()
-    if self.redis_process:
-      self.redis_process.kill()
+    self.redis_process.kill()
 
   # def test_fetch(self):
   #   if self.redis_process is None:
