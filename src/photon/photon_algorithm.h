@@ -42,7 +42,7 @@ void free_scheduler_state(scheduler_state *state);
  */
 void handle_task_submitted(scheduler_info *info,
                            scheduler_state *state,
-                           task_spec *task);
+                           task_spec *spec);
 
 /**
  * This function will be called when a task is assigned by the global scheduler

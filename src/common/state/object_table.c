@@ -36,3 +36,24 @@ void object_table_subscribe(
   init_table_callback(db_handle, object_id, sub_data, retry, done_callback,
                       redis_object_table_subscribe, user_context);
 }
+
+void result_table_add(db_handle *db_handle,
+                      object_id object_id,
+                      task_id task_id_arg,
+                      retry_info *retry,
+                      result_table_done_callback done_callback,
+                      void *user_context) {
+  task_id *task_id_copy = malloc(UNIQUE_ID_SIZE);
+  memcpy(task_id_copy, task_id_arg.id, UNIQUE_ID_SIZE);
+  init_table_callback(db_handle, object_id, task_id_copy, retry, done_callback,
+                      redis_result_table_add, user_context);
+}
+
+void result_table_lookup(db_handle *db_handle,
+                         object_id object_id,
+                         retry_info *retry,
+                         result_table_lookup_callback done_callback,
+                         void *user_context) {
+  init_table_callback(db_handle, object_id, NULL, retry, done_callback,
+                      redis_result_table_lookup, user_context);
+}

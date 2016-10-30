@@ -14,11 +14,12 @@
 #include "photon_scheduler.h"
 #include "plasma_client.h"
 #include "state/db.h"
-#include "state/task_log.h"
+#include "state/task_table.h"
+#include "state/object_table.h"
 #include "utarray.h"
 #include "uthash.h"
 
-UT_icd task_ptr_icd = {sizeof(task_instance *), NULL, NULL, NULL};
+UT_icd task_ptr_icd = {sizeof(task *), NULL, NULL, NULL};
 UT_icd worker_icd = {sizeof(worker), NULL, NULL, NULL};
 
 /** Association between the socket fd of a worker and its worker_index. */
@@ -95,11 +96,11 @@ void free_local_scheduler(local_scheduler_state *s) {
 }
 
 void assign_task_to_worker(scheduler_info *info,
-                           task_spec *task,
+                           task_spec *spec,
                            int worker_index) {
   CHECK(worker_index < utarray_len(info->workers));
   worker *w = (worker *) utarray_eltptr(info->workers, worker_index);
-  write_message(w->sock, EXECUTE_TASK, task_size(task), (uint8_t *) task);
+  write_message(w->sock, EXECUTE_TASK, task_spec_size(spec), (uint8_t *) spec);
 }
 
 void process_plasma_notification(event_loop *loop,

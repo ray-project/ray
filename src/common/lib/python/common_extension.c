@@ -176,7 +176,7 @@ static PyObject *PyTask_function_id(PyObject *self) {
 }
 
 static PyObject *PyTask_task_id(PyObject *self) {
-  task_id task_id = task_task_id(((PyTask *) self)->spec);
+  task_id task_id = task_spec_id(((PyTask *) self)->spec);
   return PyObjectID_make(task_id);
 }
 

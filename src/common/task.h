@@ -1,7 +1,8 @@
 #ifndef TASK_H
 #define TASK_H
 
-/* This API specifies the task data structures. It is in C so we can
+/**
+ * This API specifies the task data structures. It is in C so we can
  * easily construct tasks from other languages like Python. The datastructures
  * are also defined in such a way that memory is contiguous and all pointers
  * are relative, so that we can memcpy the datastructure and ship it over the
@@ -12,6 +13,10 @@
 #include <stdint.h>
 #include "common.h"
 #include "utstring.h"
+
+#define NIL_TASK_ID NIL_ID
+#define NIL_FUNCTION_ID NIL_ID
+#define NIL_NODE_ID NIL_ID
 
 typedef unique_id function_id;
 
@@ -26,7 +31,7 @@ typedef unique_id task_iid;
 /** The node id is an identifier for the node the task is scheduled on. */
 typedef unique_id node_id;
 
-/*
+/**
  * ==== Task specifications ====
  * Contain all the information neccessary to execute the
  * task (function id, arguments, return object ids).
@@ -47,6 +52,14 @@ enum arg_type { ARG_BY_REF, ARG_BY_VAL };
 bool task_ids_equal(task_id first_id, task_id second_id);
 
 /**
+ * Compare a task ID to the nil ID.
+ *
+ * @param id The task ID to compare to nil.
+ * @return True if the task ID is equal to nil.
+ */
+bool task_id_is_nil(task_id id);
+
+/**
  * Compare two function IDs.
  *
  * @param first_id The first function ID to compare.
@@ -54,6 +67,14 @@ bool task_ids_equal(task_id first_id, task_id second_id);
  * @return True if the function IDs are the same and false otherwise.
  */
 bool function_ids_equal(function_id first_id, function_id second_id);
+
+/**
+ * Compare a function ID to the nil ID.
+ *
+ * @param id The function ID to compare to nil.
+ * @return True if the function ID is equal to nil.
+ */
+bool function_id_is_nil(function_id id);
 
 /* Construct and modify task specifications. */
 
@@ -89,12 +110,22 @@ task_spec *start_construct_task_spec(task_id parent_task_id,
 void finish_construct_task_spec(task_spec *spec);
 
 /**
+ * Allocate and initialize an empty task spec. All task spec fields that are
+ * not unique_ids will be set to 0. unique_id fields will be NIL_ID. Must be
+ * freed with free_task_spec after use.
+ *
+ * @param task_id The returned task spec will have its ID set to this value.
+ * @return A pointer to an empty task spec.
+ */
+task_spec *alloc_nil_task_spec(task_id task_id);
+
+/**
  * The size of the task in bytes.
  *
  * @param spec The task_spec in question.
  * @return The size of the task_spec in bytes.
  */
-int64_t task_size(task_spec *spec);
+int64_t task_spec_size(task_spec *spec);
 
 /**
  * Return the function ID of the task.
@@ -110,7 +141,7 @@ function_id task_function(task_spec *spec);
  * @param spec The task_spec in question.
  * @return The task ID of the task.
  */
-task_id task_task_id(task_spec *spec);
+task_id task_spec_id(task_spec *spec);
 
 /**
  * Get the number of arguments to this task.
@@ -216,8 +247,8 @@ void free_task_spec(task_spec *spec);
  */
 void print_task(task_spec *spec, UT_string *output);
 
-/*
- * ==== Task instance ====
+/**
+ * ==== Task ====
  * Contains information about a scheduled task: The task iid,
  * the task specification and the task status (WAITING, SCHEDULED,
  * RUNNING, DONE) and which node the task is scheduled on.
@@ -225,50 +256,80 @@ void print_task(task_spec *spec, UT_string *output);
 
 /** The scheduling_state can be used as a flag when we are listening
  *  for an event, for example TASK_WAITING | TASK_SCHEDULED. */
-enum scheduling_state {
+typedef enum {
   TASK_STATUS_WAITING = 1,
   TASK_STATUS_SCHEDULED = 2,
   TASK_STATUS_RUNNING = 4,
   TASK_STATUS_DONE = 8
-};
+} scheduling_state;
 
-/** A task instance is one execution of a task specification. It has a unique
- *  instance id, a state of execution (see scheduling_state) and a node it is
- *  scheduled on or running on. */
-typedef struct task_instance_impl task_instance;
+/**
+ * Compare two node IDs.
+ *
+ * @param first_id The first node ID to compare.
+ * @param second_id The first node ID to compare.
+ * @return True if the node IDs are the same and false
+ *         otherwise.
+ */
+bool node_ids_equal(node_id first_id, node_id second_id);
 
-/* Allocate and initialize a new task instance. Must be freed with
- * scheduled_task_free after use. */
-task_instance *make_task_instance(task_iid task_iid,
-                                  task_spec *task,
-                                  int32_t state,
-                                  node_id node);
+/**
+ * Compare a node ID to the nil ID.
+ *
+ * @param id The node ID to compare to nil.
+ * @return True if the node ID is equal to nil.
+ */
+bool node_id_is_nil(node_id id);
 
-/* Size of task instance structure in bytes. */
-int64_t task_instance_size(task_instance *instance);
+/** A task is an execution of a task specification.  It has a state of
+ *  execution (see scheduling_state) and a node it is scheduled on or running
+ *  on. */
+typedef struct task_impl task;
 
-/* Instance ID of the task instance. */
-task_iid *task_instance_id(task_instance *instance);
+/**
+ * Allocate a new task. Must be freed with free_task after use.
+ *
+ * @param spec The task spec for the new task.
+ * @param state The scheduling state for the new task.
+ * @param node The ID of the node that the task is scheduled on, if any.
+ */
+task *alloc_task(task_spec *spec, scheduling_state state, node_id node);
 
-/* The scheduling state of the task instance. */
-int32_t *task_instance_state(task_instance *instance);
+/**
+ * Allocate and initialize an empty task. All task fields that are not
+ * unique_ids will be set to 0. unique_id fields will be NIL_ID. Must be freed
+ * with free_task after use.
+ *
+ * @param task_id The returned task will have its ID set to this value.
+ * @return A pointer to an empty task.
+ */
+task *alloc_nil_task(task_id task_id);
 
-/* Node this task instance has been assigned to or is running on. */
-node_id *task_instance_node(task_instance *instance);
+/** Size of task structure in bytes. */
+int64_t task_size(task *task);
 
-/* Task specification of this task instance. */
-task_spec *task_instance_task_spec(task_instance *instance);
+/** The scheduling state of the task. */
+scheduling_state task_state(task *task);
 
-/* Free this task instance datastructure. */
-void task_instance_free(task_instance *instance);
+/** Node this task has been assigned to or is running on. */
+node_id task_node(task *task);
 
-/*
+/** Task specification of this task. */
+task_spec *task_task_spec(task *task);
+
+/** Task ID of this task. */
+task_id task_task_id(task *task);
+
+/** Free this task datastructure. */
+void free_task(task *task);
+
+/**
  * ==== Task update ====
  * Contains the information necessary to update a task in the task log.
  */
 
 typedef struct {
-  int32_t state;
+  scheduling_state state;
   node_id node;
 } task_update;
 
