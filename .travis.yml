@@ -63,6 +63,10 @@ install:
 
   - source src/plasma/setup-env.sh
 
+  - cd lib/python
+  - sudo python setup.py install
+  - cd ../..
+
 script:
   - python src/common/test/test.py
   - python src/plasma/test/test.py
