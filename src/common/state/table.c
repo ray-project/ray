@@ -68,8 +68,8 @@ int64_t table_timeout_handler(event_loop *loop,
     /* We didn't get a response from the database after exhausting all retries;
      * let user know, cleanup the state, and remove the timer. */
     if (callback_data->retry.fail_callback) {
-      callback_data->retry.fail_callback(callback_data->id,
-                                         callback_data->user_context);
+      callback_data->retry.fail_callback(
+          callback_data->id, callback_data->user_context, callback_data->data);
     }
     destroy_table_callback(callback_data);
     return EVENT_LOOP_TIMER_DONE;

@@ -4,6 +4,7 @@
 #include "common.h"
 #include "table.h"
 #include "db.h"
+#include "task.h"
 
 /*
  *  ==== Lookup call and callback ====
@@ -12,7 +13,7 @@
 /* Callback called when the lookup completes. The callback should free
  * the manager_vector array, but NOT the strings they are pointing to.
  */
-typedef void (*object_table_lookup_done_callback)(
+typedef void (*object_table_lookup_location_done_callback)(
     object_id object_id,
     int manager_count,
     OWNER const char *manager_vector[],
@@ -28,19 +29,20 @@ typedef void (*object_table_lookup_done_callback)(
  *  @param user_context Context passed by the caller.
  *  @return Void.
  */
-void object_table_lookup(db_handle *db_handle,
-                         object_id object_id,
-                         retry_info *retry,
-                         object_table_lookup_done_callback done_callback,
-                         void *user_context);
+void object_table_lookup_location(
+    db_handle *db_handle,
+    object_id object_id,
+    retry_info *retry,
+    object_table_lookup_location_done_callback done_callback,
+    void *user_context);
 
 /*
  *  ==== Add object call and callback ====
  */
 
 /* Callback called when the object add/remove operation completes. */
-typedef void (*object_table_done_callback)(object_id object_id,
-                                           void *user_context);
+typedef void (*object_table_location_done_callback)(object_id object_id,
+                                                    void *user_context);
 
 /**
  * Add the plasma manager that created the db_handle to the
@@ -53,11 +55,12 @@ typedef void (*object_table_done_callback)(object_id object_id,
  * @param user_context User context to be passed in the callbacks.
  * @return Void.
  */
-void object_table_add(db_handle *db_handle,
-                      object_id object_id,
-                      retry_info *retry,
-                      object_table_done_callback done_callback,
-                      void *user_context);
+void object_table_add_location(
+    db_handle *db_handle,
+    object_id object_id,
+    retry_info *retry,
+    object_table_location_done_callback done_callback,
+    void *user_context);
 
 /*
  *  ==== Remove object call and callback ====
@@ -79,7 +82,7 @@ void object_table_remove(db_handle *db,
                          lookup_callback callback,
                          void *context);
                          retry_info *retry,
-                         object_table_done_callback done_callback,
+                         object_table_location_done_callback done_callback,
                          void *user_context);
 */
 
@@ -113,7 +116,7 @@ void object_table_subscribe(
     object_table_object_available_callback object_available_callback,
     void *subscribe_context,
     retry_info *retry,
-    object_table_done_callback done_callback,
+    object_table_location_done_callback done_callback,
     void *user_context);
 
 /* Data that is needed to register new object available callbacks with the state
@@ -122,5 +125,66 @@ typedef struct {
   object_table_object_available_callback object_available_callback;
   void *subscribe_context;
 } object_table_subscribe_data;
+
+/*
+ *  ==== Other object metadata ====
+ */
+
+typedef struct {
+  task_id task_id;
+  task_spec *task;
+} object_metadata;
+
+void free_object_metadata(object_metadata *metadata);
+
+/**
+ * Callback called when the object metadata add/remove operation
+ * completes. */
+typedef void (*object_table_metadata_done_callback)(object_id object_id,
+                                                    object_metadata *metadata,
+                                                    void *user_context);
+
+/**
+ * Add information about a new object to the object table. This
+ * is immutable information like the ID of the task that
+ * created the object.
+ *
+ * @param db_handle Handle to object_table database.
+ * @param object_id ID of the object to add.
+ * @param task_id ID of the task that creates this object.
+ * @param retry Information about retrying the request to the database.
+ * @param done_callback Function to be called when database returns result.
+ * @param user_context Context passed by the caller.
+ * @return Void.
+ */
+void object_table_new_object(db_handle *db_handle,
+                             object_id object_id,
+                             task_id task_id,
+                             retry_info *retry,
+                             object_table_metadata_done_callback done_callback,
+                             void *user_context);
+
+/** Callback called when the metadata lookup completes. */
+typedef void (*object_table_lookup_metadata_done_callback)(
+    object_id object_id,
+    object_metadata *metadata,
+    void *user_context);
+
+/**
+ * Lookup metadata for an object in the object table.
+ *
+ * @param db_handle Handle to object_table database.
+ * @param object_id ID of the object to add.
+ * @param retry Information about retrying the request to the database.
+ * @param done_callback Function to be called when database returns result.
+ * @param user_context Context passed by the caller.
+ * @return Void.
+ */
+void object_table_lookup_metadata(
+    db_handle *db_handle,
+    object_id object_id,
+    retry_info *retry,
+    object_table_metadata_done_callback done_callback,
+    void *user_context);
 
 #endif /* OBJECT_TABLE_H */

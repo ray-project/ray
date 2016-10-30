@@ -15,6 +15,7 @@
 #include "plasma_client.h"
 #include "state/db.h"
 #include "state/task_log.h"
+#include "state/object_table.h"
 #include "utarray.h"
 #include "uthash.h"
 
@@ -110,6 +111,29 @@ void process_plasma_notification(event_loop *loop,
   object_id obj_id;
   recv(client_sock, &obj_id, sizeof(object_id), 0);
   handle_object_available(s->scheduler_info, s->scheduler_state, obj_id);
+}
+
+void reconstruct_object_callback(object_id object_id,
+                                 object_metadata *metadata,
+                                 void *user_context) {
+  local_scheduler_state *state = user_context;
+  if (metadata->task) {
+    handle_task_submitted(state->scheduler_info, state->scheduler_state,
+                          metadata->task);
+  } else {
+    LOG_ERR("Unable to find task that created this object.");
+  }
+}
+
+void reconstruct_object(local_scheduler_state *state, object_id object_id) {
+  /* Look up the task that originally created this object. */
+  db_handle *db = state->scheduler_info->db;
+  /* TODO(swang): We should set retry values in a config file somewhere. */
+  retry_info retry = {
+      .num_retries = 0, .timeout = 0, .fail_callback = NULL,
+  };
+  object_table_lookup_metadata(db, object_id, &retry,
+                               reconstruct_object_callback, state);
 }
 
 void process_message(event_loop *loop, int client_sock, void *context,

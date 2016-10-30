@@ -25,9 +25,11 @@ void subscribe_done_callback(task_iid task_iid, void *user_context) {
   CHECK(0);
 }
 
-void subscribe_fail_callback(unique_id id, void *user_data) {
+void subscribe_fail_callback(unique_id id,
+                             void *user_context,
+                             void *user_data) {
   subscribe_failed = 1;
-  CHECK(user_data == (void *) subscribe_timeout_context);
+  CHECK(user_context == (void *) subscribe_timeout_context);
   event_loop_stop(loop);
 }
 
@@ -66,9 +68,9 @@ void publish_done_callback(task_iid task_iid, void *user_context) {
   CHECK(0);
 }
 
-void publish_fail_callback(unique_id id, void *user_data) {
+void publish_fail_callback(unique_id id, void *user_context, void *user_data) {
   publish_failed = 1;
-  CHECK(user_data == (void *) publish_timeout_context);
+  CHECK(user_context == (void *) publish_timeout_context);
   event_loop_stop(loop);
 }
 
@@ -128,7 +130,9 @@ void subscribe_retry_done_callback(object_id object_id, void *user_context) {
   subscribe_retry_succeeded = 1;
 }
 
-void subscribe_retry_fail_callback(unique_id id, void *user_data) {
+void subscribe_retry_fail_callback(unique_id id,
+                                   void *user_context,
+                                   void *user_data) {
   /* The fail callback should not be called. */
   CHECK(0);
 }
@@ -173,7 +177,9 @@ void publish_retry_done_callback(object_id object_id, void *user_context) {
   publish_retry_succeeded = 1;
 }
 
-void publish_retry_fail_callback(unique_id id, void *user_data) {
+void publish_retry_fail_callback(unique_id id,
+                                 void *user_context,
+                                 void *user_data) {
   /* The fail callback should not be called. */
   CHECK(0);
 }
@@ -216,7 +222,9 @@ TEST publish_retry_test(void) {
 const char *subscribe_late_context = "subscribe_late";
 int subscribe_late_failed = 0;
 
-void subscribe_late_fail_callback(unique_id id, void *user_context) {
+void subscribe_late_fail_callback(unique_id id,
+                                  void *user_context,
+                                  void *user_data) {
   CHECK(user_context == (void *) subscribe_late_context);
   subscribe_late_failed = 1;
 }
@@ -259,7 +267,9 @@ TEST subscribe_late_test(void) {
 const char *publish_late_context = "publish_late";
 int publish_late_failed = 0;
 
-void publish_late_fail_callback(unique_id id, void *user_context) {
+void publish_late_fail_callback(unique_id id,
+                                void *user_context,
+                                void *user_data) {
   CHECK(user_context == (void *) publish_late_context);
   publish_late_failed = 1;
 }

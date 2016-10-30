@@ -47,9 +47,9 @@ void redis_object_table_get_entry(redisAsyncContext *c,
                                   void *r,
                                   void *privdata);
 
-void object_table_lookup_callback(redisAsyncContext *c,
-                                  void *r,
-                                  void *privdata);
+void object_table_lookup_location_callback(redisAsyncContext *c,
+                                           void *r,
+                                           void *privdata);
 
 /*
  * ==== Redis object table functions ====
@@ -62,16 +62,16 @@ void object_table_lookup_callback(redisAsyncContext *c,
  *        information.
  * @return Void.
  */
-void redis_object_table_lookup(table_callback_data *callback_data);
+void redis_object_table_lookup_location(table_callback_data *callback_data);
 
 /**
- * Add an entry to the object table in redis.
+ * Add a location entry to the object table in redis.
  *
  * @param callback_data Data structure containing redis connection and timeout
  *        information.
  * @return Void.
  */
-void redis_object_table_add(table_callback_data *callback_data);
+void redis_object_table_add_location(table_callback_data *callback_data);
 
 /**
  * Subscribe to learn when a new object becomes available.
@@ -81,6 +81,25 @@ void redis_object_table_add(table_callback_data *callback_data);
  * @return Void.
  */
 void redis_object_table_subscribe(table_callback_data *callback_data);
+
+/**
+ * Add a new object to the object table in redis.
+ *
+ * @param callback_data Data structure containing redis connection and timeout
+ *        information.
+ * @return Void.
+ */
+void redis_object_table_new_object(table_callback_data *callback_data);
+
+/**
+ * Lookup the object in the object table in redis. The entry in
+ * the object table contains metadata about the object.
+ *
+ * @param callback_data Data structure containing redis connection and timeout
+ *        information.
+ * @return Void.
+ */
+void redis_object_table_lookup_metadata(table_callback_data *callback_data);
 
 /*
  * ==== Redis task table function =====
@@ -127,5 +146,23 @@ void redis_task_log_publish_publish_callback(redisAsyncContext *c,
  * @return Void.
  */
 void redis_task_log_subscribe(table_callback_data *callback_data);
+
+/**
+ * Add a task to the task table.
+ *
+ * @param callback_data Data structure containing redis connection and timeout
+ *        information.
+ * @return Void.
+ */
+void redis_task_table_add_task(table_callback_data *callback_data);
+
+/**
+ * Get a task from the task table.
+ *
+ * @param callback_data Data structure containing redis connection and timeout
+ *        information.
+ * @return Void.
+ */
+void redis_task_table_get_task(table_callback_data *callback_data);
 
 #endif /* REDIS_H */
