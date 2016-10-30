@@ -14,8 +14,10 @@ class PlasmaID(ctypes.Structure):
 def make_plasma_id(string):
   if len(string) != PLASMA_ID_SIZE:
     raise Exception("PlasmaIDs must be {} characters long".format(PLASMA_ID_SIZE))
-  object_id = map(ord, string)
-  return PlasmaID(plasma_id=ID(*object_id))
+  return PlasmaID(plasma_id=ID.from_buffer_copy(string))
+
+def plasma_id_to_str(plasma_id):
+  return str(bytearray(plasma_id.plasma_id))
 
 class PlasmaBuffer(object):
   """This is the type of objects returned by calls to get with a PlasmaClient.
@@ -216,6 +218,31 @@ class PlasmaClient(object):
                              object_id_array,
                              success_array);
     return [bool(success) for success in success_array]
+
+  def wait(self, object_ids, timeout, num_returns):
+    """Wait until num_returns objects in object_ids are ready.
+
+    Args:
+      object_ids (List[str]): List of object IDs to wait for.
+      timeout (int): Return to the caller after timeout milliseconds.
+      num_returns (int): We are waiting for this number of objects to be ready.
+
+    Returns:
+      ready_ids, waiting_ids (List[str], List[str]): List of object IDs that
+        are ready and list of object IDs we might still wait on respectively.
+    """
+    if not self.has_manager_conn:
+      raise Exception("Not connected to the plasma manager socket")
+    object_id_array = (len(object_ids) * PlasmaID)()
+    for i, object_id in enumerate(object_ids):
+      object_id_array[i] = make_plasma_id(object_id)
+    return_id_array = (num_returns * PlasmaID)()
+    num_return_objects = self.client.plasma_wait(self.plasma_conn,
+                                                 object_id_array._length_,
+                                                 object_id_array,
+                                                 timeout, num_returns, return_id_array)
+    ready_ids = map(plasma_id_to_str, return_id_array[num_returns-num_return_objects:])
+    return ready_ids, list(set(object_ids) - set(ready_ids))
 
   def subscribe(self):
     """Subscribe to notifications about sealed objects."""
