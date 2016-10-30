@@ -6,6 +6,7 @@
 #include <string.h>
 #include <errno.h>
 #include <inttypes.h>
+#include <execinfo.h>
 
 #ifndef RAY_COMMON_DEBUG
 #define LOG_DEBUG(M, ...)
@@ -21,21 +22,18 @@
 #define LOG_INFO(M, ...) \
   fprintf(stderr, "[INFO] (%s:%d) " M "\n", __FILE__, __LINE__, ##__VA_ARGS__)
 
-#define CHECK(COND)                        \
-  do {                                     \
-    if (!(COND)) {                         \
-      LOG_ERR("Check failure: %s", #COND); \
-      exit(-1);                            \
-    }                                      \
+#define CHECKM(COND, M, ...)                                                \
+  do {                                                                      \
+    if (!(COND)) {                                                          \
+      LOG_ERR("Check failure: %s \n" M, #COND, ##__VA_ARGS__);              \
+      void *buffer[255];                                                    \
+      const int calls = backtrace(buffer, sizeof(buffer) / sizeof(void *)); \
+      backtrace_symbols_fd(buffer, calls, 1);                               \
+      exit(-1);                                                             \
+    }                                                                       \
   } while (0);
 
-#define CHECKM(COND, M, ...)                                   \
-  do {                                                         \
-    if (!(COND)) {                                             \
-      LOG_ERR("Check failure: %s \n" M, #COND, ##__VA_ARGS__); \
-      exit(-1);                                                \
-    }                                                          \
-  } while (0);
+#define CHECK(COND) CHECKM(COND, "")
 
 /** This macro indicates that this pointer owns the data it is pointing to
  *  and is responsible for freeing it. */

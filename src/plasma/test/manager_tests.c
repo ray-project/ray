@@ -22,6 +22,14 @@ const char *store_socket_name = "/tmp/store12345";
 const char *manager_socket_name = "/tmp/manager12345";
 object_id oid;
 
+void wait_for_pollin(int fd) {
+  struct pollfd poll_list[1];
+  poll_list[0].fd = fd;
+  poll_list[0].events = POLLIN;
+  int retval = poll(poll_list, (unsigned long) 1, -1);
+  CHECK(retval > 0);
+}
+
 int test_done_handler(event_loop *loop, timer_id id, void *context) {
   event_loop_stop(loop);
   return AE_NOMORE;
@@ -60,6 +68,7 @@ plasma_mock *init_plasma_mock(int port, plasma_mock *remote_mock) {
   if (remote_mock != NULL) {
     mock->write_conn =
         get_manager_connection(remote_mock->state, manager_addr, port);
+    wait_for_pollin(mock->manager_remote_fd);
     mock->read_conn = new_client_connection(mock->loop, mock->manager_remote_fd,
                                             mock->state, 0);
   } else {
@@ -69,6 +78,7 @@ plasma_mock *init_plasma_mock(int port, plasma_mock *remote_mock) {
   /* Connect a new client to the local plasma manager and mock a request to an
    * object. */
   mock->plasma_conn = plasma_connect(store_socket_name, manager_socket_name);
+  wait_for_pollin(mock->manager_local_fd);
   mock->client_conn =
       new_client_connection(mock->loop, mock->manager_local_fd, mock->state, 0);
   return mock;
@@ -230,11 +240,7 @@ TEST read_write_object_chunk_test(void) {
    */
   write_object_chunk(remote_mock->write_conn, &remote_buf);
   /* Wait until the data is ready to be read. */
-  struct pollfd poll_list[1];
-  poll_list[0].fd = get_client_sock(remote_mock->read_conn);
-  poll_list[0].events = POLLIN;
-  int retval = poll(poll_list, (unsigned long) 1, -1);
-  ASSERT(retval > 0);
+  wait_for_pollin(get_client_sock(remote_mock->read_conn));
   /* Read the data. */
   int done = read_object_chunk(remote_mock->read_conn, &local_buf);
   ASSERT(done);
