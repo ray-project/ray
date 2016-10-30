@@ -28,6 +28,7 @@
 #include "utstring.h"
 #include "common.h"
 #include "io.h"
+#include "net.h"
 #include "event_loop.h"
 #include "plasma.h"
 #include "plasma_client.h"
@@ -229,17 +230,6 @@ void remove_object_connection(client_connection *client_conn,
   LL_DELETE(object_conns, object_conn);
   /* Free the object. */
   free_client_object_connection(object_conn);
-}
-
-/* Helper function to parse a string of the form <IP address>:<port> into the
- * given ip_addr and port pointers. The ip_addr buffer must already be
- * allocated. */
-/* TODO(swang): Move this function to Ray common. */
-void parse_ip_addr_port(const char *ip_addr_port, char *ip_addr, int *port) {
-  char port_str[6];
-  int parsed = sscanf(ip_addr_port, "%15[0-9.]:%5[0-9]", ip_addr, port_str);
-  CHECK(parsed == 2);
-  *port = atoi(port_str);
 }
 
 plasma_manager_state *init_plasma_manager_state(const char *store_socket_name,
