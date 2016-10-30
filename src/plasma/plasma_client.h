@@ -197,6 +197,28 @@ void plasma_fetch(plasma_connection *conn,
                   int is_fetched[]);
 
 /**
+ * Wait for objects to be created (right now, wait for local objects).
+ *
+ * @param conn The object containing the connection state.
+ * @param num_object_ids Number of object IDs wait is called on.
+ * @param object_ids Object IDs wait is called on.
+ * @param timeout Wait will time out and return after this number of ms.
+ * @param num_returns Number of object IDs wait will return if it doesn't time
+ *        out.
+ * @param return_object_ids Out parameter for the object IDs returned by wait.
+ *        This is an array of size num_returns. If the number of objects that
+ *        are ready when we time out, the objects will be stored in the last
+ *        slots of the array and the number of objects is returned.
+ * @return Number of objects that are actually ready.
+ */
+int plasma_wait(plasma_connection *conn,
+                int num_object_ids,
+                object_id object_ids[],
+                uint64_t timeout,
+                int num_returns,
+                object_id return_object_ids[]);
+
+/**
  * Subscribe to notifications when objects are sealed in the object store.
  * Whenever an object is sealed, a message will be written to the client socket
  * that is returned by this method.

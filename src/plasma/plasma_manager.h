@@ -137,13 +137,46 @@ void process_fetch_request(client_connection *client_conn, object_id object_id);
  *
  * @param client_conn The connection context for the client that made the
  *        request.
- * @param object_id_count The number of object IDs requested.
+ * @param num_object_ids The number of object IDs requested.
  * @param object_ids[] The vector of object IDs requested.
  * @return Void.
  */
 void process_fetch_requests(client_connection *client_conn,
-                            int object_id_count,
+                            int num_object_ids,
                             object_id object_ids[]);
+
+/**
+ * Process a wait request from a client.
+ *
+ * @param client_conn The connection context for the client that made the
+ *        request.
+ * @param num_object_ids Number of object IDs wait is called on.
+ * @param object_ids Object IDs wait is called on.
+ * @param timeout Wait will time out and return after this number of
+ *        milliseconds.
+ * @param num_returns Number of object IDs wait will return if it doesn't time
+ *        out.
+ * @return Void.
+ */
+void process_wait_request(client_connection *client_conn,
+                          int num_object_ids,
+                          object_id object_ids[],
+                          uint64_t timeout,
+                          int num_returns);
+
+/**
+ * Callback that will be called when a new object becomes available.
+ *
+ * @param loop This is the event loop of the plasma manager.
+ * @param client_sock The connection to the plasma store.
+ * @param context Plasma manager state.
+ * @param events (unused).
+ * @return Void.
+ */
+void process_object_notification(event_loop *loop,
+                                 int client_sock,
+                                 void *context,
+                                 int events);
 
 /**
  * Send the next request queued for the other plasma manager connected to the
@@ -237,6 +270,7 @@ void request_transfer(object_id object_id,
  *
  * @param client_conn The client connection context.
  * @param object_id The object ID whose context we want to delete.
+ * @return Void.
  */
 void remove_object_connection(client_connection *client_conn,
                               client_object_connection *object_conn);
@@ -260,9 +294,9 @@ client_connection *get_manager_connection(plasma_manager_state *state,
  *
  * @param conn The connection to the client who's sending the data.
  * @param buf The buffer to write the data into.
- * @return An integer representing whether the client is done
- *         sending this object. 1 means that the client has
- *         sent all the data, 0 means there is more.
+ * @return An integer representing whether the client is done sending this
+ *         object. 1 means that the client has sent all the data, 0 means there
+ *         is more.
  */
 int read_object_chunk(client_connection *conn, plasma_request_buffer *buf);
 

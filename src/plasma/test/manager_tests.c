@@ -186,7 +186,8 @@ TEST request_transfer_timeout_test(void) {
   int manager_fd = get_manager_fd(local_mock->plasma_conn);
   int nbytes = recv(manager_fd, (uint8_t *) &reply, sizeof(reply), MSG_WAITALL);
   ASSERT_EQ(nbytes, sizeof(reply));
-  ASSERT_EQ(memcmp(&oid, &reply.object_id, sizeof(object_id)), 0);
+  ASSERT_EQ(reply.num_object_ids, 1);
+  ASSERT_EQ(memcmp(&oid, &reply.object_ids, sizeof(object_id)), 0);
   ASSERT_EQ(reply.has_object, 0);
   /* Clean up. */
   destroy_plasma_mock(remote_mock);
