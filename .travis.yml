@@ -54,17 +54,15 @@ install:
   - ./build.sh
 
   - cd src/common/lib/python
-  - sudo python setup.py install
+  - python setup.py install
   - cd ../../../..
 
-  - cd src/photon/lib/python
-  - sudo python setup.py install
-  - cd ../../../..
-
-  - source src/plasma/setup-env.sh
+  - cd src/photon
+  - python setup.py install
+  - cd ../..
 
   - cd lib/python
-  - sudo python setup.py install
+  - python setup.py install
   - cd ../..
 
 script:

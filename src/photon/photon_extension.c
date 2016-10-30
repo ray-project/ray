@@ -109,7 +109,7 @@ static PyMethodDef photon_methods[] = {
 #define PyMODINIT_FUNC void
 #endif
 
-PyMODINIT_FUNC initphoton(void) {
+PyMODINIT_FUNC initlibphoton(void) {
   PyObject *m;
 
   if (PyType_Ready(&PyTaskType) < 0)
@@ -121,7 +121,7 @@ PyMODINIT_FUNC initphoton(void) {
   if (PyType_Ready(&PyPhotonClientType) < 0)
     return;
 
-  m = Py_InitModule3("photon", photon_methods,
+  m = Py_InitModule3("libphoton", photon_methods,
                      "A module for the local scheduler.");
 
   Py_INCREF(&PyTaskType);
