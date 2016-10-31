@@ -35,6 +35,9 @@
 
 #define CHECK(COND) CHECKM(COND, "")
 
+/* These are exit codes for common errors that can occur in Ray components. */
+#define EXIT_COULD_NOT_BIND_PORT -2
+
 /** This macro indicates that this pointer owns the data it is pointing to
  *  and is responsible for freeing it. */
 #define OWNER
