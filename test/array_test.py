@@ -58,7 +58,9 @@ class DistributedArrayTest(unittest.TestCase):
   def testMethods(self):
     for module in [ra.core, ra.random, ra.linalg, da.core, da.random, da.linalg]:
       reload(module)
-    ray.init(start_ray_local=True, num_objstores=2, num_workers=10)
+    # Change the number of object stores back to 2.
+    # ray.init(start_ray_local=True, num_objstores=2, num_workers=10)
+    ray.init(start_ray_local=True, num_objstores=1, num_workers=10)
 
     x = da.zeros.remote([9, 25, 51], "float")
     assert_equal(ray.get(da.assemble.remote(x)), np.zeros([9, 25, 51]))

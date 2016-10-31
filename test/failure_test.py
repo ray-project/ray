@@ -4,16 +4,24 @@ import time
 
 import test_functions
 
+def wait_for_errors(error_type, num_errors, timeout=1):
+  start_time = time.time()
+  while time.time() - start_time < timeout:
+    error_info = ray.error_info()
+    if len(error_info[error_type]) >= num_errors:
+      return
+    time.sleep(0.1)
+  print("Timing out of wait.")
+
 class FailureTest(unittest.TestCase):
   def testUnknownSerialization(self):
     reload(test_functions)
     ray.init(start_ray_local=True, num_workers=1, driver_mode=ray.SILENT_MODE)
 
     test_functions.test_unknown_type.remote()
-    time.sleep(0.2)
-    task_info = ray.task_info()
-    self.assertEqual(len(task_info["failed_tasks"]), 1)
-    self.assertEqual(len(task_info["running_tasks"]), 0)
+    wait_for_errors("TaskError", 1)
+    error_info = ray.error_info()
+    self.assertEqual(len(error_info["TaskError"]), 1)
 
     ray.worker.cleanup()
 
@@ -45,19 +53,12 @@ class TaskStatusTest(unittest.TestCase):
 
     test_functions.throw_exception_fct1.remote()
     test_functions.throw_exception_fct1.remote()
-    for _ in range(100): # Retry if we need to wait longer.
-      if len(ray.task_info()["failed_tasks"]) >= 2:
-        break
-      time.sleep(0.1)
-    result = ray.task_info()
-    self.assertEqual(len(result["failed_tasks"]), 2)
-    task_ids = set()
-    for task in result["failed_tasks"]:
-      self.assertTrue(task.has_key("worker_address"))
-      self.assertTrue(task.has_key("operationid"))
-      self.assertTrue("Test function 1 intentionally failed." in task.get("error_message"))
-      self.assertTrue(task["operationid"] not in task_ids)
-      task_ids.add(task["operationid"])
+
+    wait_for_errors("TaskError", 2)
+    result = ray.error_info()
+    self.assertEqual(len(result["TaskError"]), 2)
+    for task in result["TaskError"]:
+      self.assertTrue("Test function 1 intentionally failed." in task.get("message"))
 
     x = test_functions.throw_exception_fct2.remote()
     try:
@@ -96,11 +97,8 @@ class TaskStatusTest(unittest.TestCase):
       def __call__(self):
         return
     ray.remote(Foo())
-    for _ in range(100): # Retry if we need to wait longer.
-      if len(ray.task_info()["failed_remote_function_imports"]) >= 1:
-        break
-      time.sleep(0.1)
-    self.assertTrue("There is a problem here." in ray.task_info()["failed_remote_function_imports"][0]["error_message"])
+    wait_for_errors("RemoteFunctionImportError", 1)
+    self.assertTrue("There is a problem here." in ray.error_info()["RemoteFunctionImportError"][0]["message"])
 
     ray.worker.cleanup()
 
@@ -114,12 +112,9 @@ class TaskStatusTest(unittest.TestCase):
         raise Exception("The initializer failed.")
       return 0
     ray.reusables.foo = ray.Reusable(initializer)
-    for _ in range(100): # Retry if we need to wait longer.
-      if len(ray.task_info()["failed_reusable_variable_imports"]) >= 1:
-        break
-      time.sleep(0.1)
+    wait_for_errors("ReusableVariableImportError", 1)
     # Check that the error message is in the task info.
-    self.assertTrue("The initializer failed." in ray.task_info()["failed_reusable_variable_imports"][0]["error_message"])
+    self.assertTrue("The initializer failed." in ray.error_info()["ReusableVariableImportError"][0]["message"])
 
     ray.worker.cleanup()
 
@@ -135,12 +130,9 @@ class TaskStatusTest(unittest.TestCase):
     def use_foo():
       ray.reusables.foo
     use_foo.remote()
-    for _ in range(100): # Retry if we need to wait longer.
-      if len(ray.task_info()["failed_reinitialize_reusable_variables"]) >= 1:
-        break
-      time.sleep(0.1)
+    wait_for_errors("ReusableVariableReinitializeError", 1)
     # Check that the error message is in the task info.
-    self.assertTrue("The reinitializer failed." in ray.task_info()["failed_reinitialize_reusable_variables"][0]["error_message"])
+    self.assertTrue("The reinitializer failed." in ray.error_info()["ReusableVariableReinitializeError"][0]["message"])
 
     ray.worker.cleanup()
 
@@ -151,14 +143,11 @@ class TaskStatusTest(unittest.TestCase):
       if ray.worker.global_worker.mode == ray.WORKER_MODE:
         raise Exception("Function to run failed.")
     ray.worker.global_worker.run_function_on_all_workers(f)
-    for _ in range(100): # Retry if we need to wait longer.
-      if len(ray.task_info()["failed_function_to_runs"]) >= 2:
-        break
-      time.sleep(0.1)
+    wait_for_errors("FunctionToRunError", 2)
     # Check that the error message is in the task info.
-    self.assertEqual(len(ray.task_info()["failed_function_to_runs"]), 2)
-    self.assertTrue("Function to run failed." in ray.task_info()["failed_function_to_runs"][0]["error_message"])
-    self.assertTrue("Function to run failed." in ray.task_info()["failed_function_to_runs"][1]["error_message"])
+    self.assertEqual(len(ray.error_info()["FunctionToRunError"]), 2)
+    self.assertTrue("Function to run failed." in ray.error_info()["FunctionToRunError"][0]["message"])
+    self.assertTrue("Function to run failed." in ray.error_info()["FunctionToRunError"][1]["message"])
 
     ray.worker.cleanup()
 
