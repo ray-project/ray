@@ -53,6 +53,32 @@ def assert_get_object_equal(unit_test, client1, client2, object_id, memory_buffe
   unit_test.assertEqual(client1.get_metadata(object_id)[:],
                         client2.get_metadata(object_id)[:])
 
+def start_plasma_manager(store_name, host_name, redis_port, use_valgrind=False):
+  """Start a plasma manager and return the ports it listens on."""
+  plasma_manager_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../build/plasma_manager")
+  num_retries = 5
+  port = None
+  process = None
+  while num_retries >= 0:
+    port = random.randint(10000, 50000)
+    command = [plasma_manager_executable,
+               "-s", store_name,
+               "-m", host_name,
+               "-h", "127.0.0.1",
+               "-p", str(port),
+               "-r", "{addr}:{port}".format(addr="127.0.0.1", port=redis_port)]
+    print("Try to start plasma manager on port " + str(port))
+    if use_valgrind:
+      process = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + command)
+    else:
+      process = subprocess.Popen(command)
+    time.sleep(0.1)
+    # See if the process has terminated
+    if process.poll() == None:
+      return process, port
+    num_retries = num_retries - 1
+  raise Exception("Couldn't start plasma manager")
+
 # Check if the redis-server binary is present.
 redis_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../common/thirdparty/redis-3.2.3/src/redis-server")
 if not os.path.exists(redis_path):
@@ -240,30 +266,8 @@ class TestPlasmaManager(unittest.TestCase):
     time.sleep(0.1)
 
     # Start two PlasmaManagers.
-    self.port1 = random.randint(10000, 50000)
-    self.port2 = random.randint(10000, 50000)
-    plasma_manager_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../build/plasma_manager")
-    plasma_manager_command1 = [plasma_manager_executable,
-                               "-s", store_name1,
-                               "-m", manager_name1,
-                               "-h", "127.0.0.1",
-                               "-p", str(self.port1),
-                               "-r", "{addr}:{port}".format(addr="127.0.0.1",
-                                                            port=redis_port)]
-    plasma_manager_command2 = [plasma_manager_executable,
-                               "-s", store_name2,
-                               "-m", manager_name2,
-                               "-h", "127.0.0.1",
-                               "-p", str(self.port2),
-                               "-r", "{addr}:{port}".format(addr="127.0.0.1",
-                                                            port=redis_port)]
-
-    if USE_VALGRIND:
-      self.p4 = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + plasma_manager_command1)
-      self.p5 = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + plasma_manager_command2)
-    else:
-      self.p4 = subprocess.Popen(plasma_manager_command1)
-      self.p5 = subprocess.Popen(plasma_manager_command2)
+    self.p4, self.port1 = start_plasma_manager(store_name1, manager_name1, redis_port, USE_VALGRIND)
+    self.p5, self.port2 = start_plasma_manager(store_name2, manager_name2, redis_port, USE_VALGRIND)
 
     # Connect two PlasmaClients.
     self.client1 = plasma.PlasmaClient(store_name1, manager_name1)

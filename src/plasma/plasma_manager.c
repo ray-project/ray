@@ -908,7 +908,9 @@ void start_server(const char *store_socket_name,
   CHECK(g_manager_state);
 
   int remote_sock = bind_inet_sock(port);
-  CHECKM(remote_sock >= 0, "Unable to bind to manager port");
+  if (remote_sock < 0) {
+    exit(EXIT_COULD_NOT_BIND_PORT);
+  }
   int local_sock = bind_ipc_sock(manager_socket_name);
   CHECKM(local_sock >= 0, "Unable to bind local manager socket");
 
@@ -984,7 +986,7 @@ int main(int argc, char *argv[]) {
   if (!master_addr) {
     LOG_ERR(
         "please specify ip address of the current host in the format "
-        "123.456.789.10 with -m switch");
+        "123.456.789.10 with -h switch");
     exit(-1);
   }
   if (port == -1) {
