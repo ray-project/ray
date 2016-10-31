@@ -380,7 +380,7 @@ class TestPlasmaManager(unittest.TestCase):
 
     t = threading.Timer(0.1, finish)
     t.start()
-    ready, waiting = self.client1.wait([obj_id3, obj_id2, obj_id1], timeout=500, num_returns=2)
+    ready, waiting = self.client1.wait([obj_id3, obj_id2, obj_id1], timeout=1000, num_returns=2)
     self.assertEqual(len(ready), 2)
     self.assertTrue((ready[0] == obj_id1 and ready[1] == obj_id3) or (ready[0] == obj_id3 and ready[1] == obj_id1))
     self.assertEqual(len(waiting), 1)
