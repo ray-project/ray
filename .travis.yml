@@ -57,11 +57,13 @@ install:
   - sudo python setup.py install
   - cd ../../../..
 
-  - cd src/photon/lib/python
+  - cd src/photon
   - sudo python setup.py install
-  - cd ../../../..
+  - cd ../..
 
-  - source src/plasma/setup-env.sh
+  - cd lib/python
+  - sudo python setup.py install
+  - cd ../..
 
 script:
   - python src/common/test/test.py
