@@ -11,7 +11,7 @@ SUITE(io_tests);
 
 TEST ipc_socket_test(void) {
   const char *socket_pathname = "test-socket";
-  int socket_fd = bind_ipc_sock(socket_pathname);
+  int socket_fd = bind_ipc_sock(socket_pathname, true);
   ASSERT(socket_fd >= 0);
 
   char *test_string = "hello world";
@@ -50,7 +50,7 @@ TEST ipc_socket_test(void) {
 
 TEST long_ipc_socket_test(void) {
   const char *socket_pathname = "long-test-socket";
-  int socket_fd = bind_ipc_sock(socket_pathname);
+  int socket_fd = bind_ipc_sock(socket_pathname, true);
   ASSERT(socket_fd >= 0);
 
   UT_string *test_string;
