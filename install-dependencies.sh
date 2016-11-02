@@ -30,15 +30,14 @@ fi
 if [[ $platform == "linux" ]]; then
   # These commands must be kept in sync with the installation instructions.
   sudo apt-get update
-  sudo apt-get install -y git cmake build-essential autoconf curl libtool python-dev python-numpy python-pip libboost-all-dev unzip graphviz
-  sudo pip install ipython funcsigs subprocess32 protobuf colorama graphviz redis
+  sudo apt-get install -y git cmake build-essential autoconf curl libtool python-dev python-numpy python-pip libboost-all-dev unzip
+  sudo pip install funcsigs colorama redis
   sudo pip install --upgrade git+git://github.com/cloudpipe/cloudpickle.git@0d225a4695f1f65ae1cbb2e0bbc145e10167cce4  # We use the latest version of cloudpickle because it can serialize named tuples.
 elif [[ $platform == "macosx" ]]; then
   # These commands must be kept in sync with the installation instructions.
-  brew install git cmake automake autoconf libtool boost graphviz
+  brew install git cmake automake autoconf libtool boost
   sudo easy_install pip
-  sudo pip install ipython --user
-  sudo pip install numpy funcsigs subprocess32 protobuf colorama graphviz redis --ignore-installed six
+  sudo pip install numpy funcsigs colorama redis --ignore-installed six
   sudo pip install --upgrade git+git://github.com/cloudpipe/cloudpickle.git@0d225a4695f1f65ae1cbb2e0bbc145e10167cce4  # We use the latest version of cloudpickle because it can serialize named tuples.
 fi
 
