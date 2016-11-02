@@ -34,7 +34,7 @@ UT_string *bind_ipc_sock_retry(int *fd) {
     LOG_INFO("trying to find plasma socket (attempt %d)", num_retries);
     utstring_renew(socket_name);
     utstring_printf(socket_name, "/tmp/plasma_socket_%d", rand());
-    *fd = bind_ipc_sock(utstring_body(socket_name));
+    *fd = bind_ipc_sock(utstring_body(socket_name), true);
     if (*fd < 0) {
       /* Sleep for 100ms. */
       usleep(100000);
@@ -49,7 +49,7 @@ int bind_inet_sock_retry(int *fd) {
   int port = -1;
   for (int num_retries = 0; num_retries < 5; ++num_retries) {
     port = 10000 + rand() % 40000;
-    *fd = bind_inet_sock(port);
+    *fd = bind_inet_sock(port, true);
     if (*fd < 0) {
       /* Sleep for 100ms. */
       usleep(100000);
