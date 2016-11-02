@@ -148,7 +148,7 @@ void new_client_connection(event_loop *loop, int listener_sock, void *context,
   local_scheduler_state *s = context;
   int new_socket = accept_client(listener_sock);
   event_loop_add_file(loop, new_socket, EVENT_LOOP_READ, process_message, s);
-  LOG_INFO("new connection with fd %d", new_socket);
+  LOG_DEBUG("new connection with fd %d", new_socket);
   /* Add worker to list of workers. */
   /* TODO(pcm): Where shall we free this? */
   worker_index *new_worker_index = malloc(sizeof(worker_index));
