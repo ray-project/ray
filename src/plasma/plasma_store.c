@@ -356,30 +356,35 @@ void delete_object(client *client_context, object_id object_id) {
   free(entry);
 }
 
-/* Write object to disk and record offset of object in file. */
+/* Convert object_id to a unique file path on-disk */
+void object_id_to_persist_path(object_id object_id, char *file_path, size_t path_size) {
+  strcpy(file_path, PERSIST_PATH);
+  for (int i = strlen(PERSIST_PATH); i < path_size; i++) {
+    sprintf(&file_path[i*2], "%02X", object_id.id[i]);
+  }
+}
+
+/* Write object to disk and record offset of object in file. 
+ * TODO(um): Maybe use an on-disk KV store instead? */
 void persist_object(client *client_context, object_id object_id) {
   LOG_DEBUG("persisting object");
   plasma_store_state *plasma_state = client_context->plasma_state;
   object_table_entry *entry;
-  object_offset_entry *offset_entry;
   HASH_FIND(handle, plasma_state->sealed_objects, &object_id, sizeof(object_id),
             entry);
   CHECKM(entry != NULL, "To persist an object it must have been sealed.");
-  HASH_FIND(handle, plasma_state->persisted_object_offsets, &object_id, sizeof(object_id),
-            offset_entry);
-  CHECKM(offset_entry == NULL, "An already persisted object can't be persisted again.");
   uint8_t *pointer = entry->pointer;
-  /* Append object to file on disk.
-   * TODO(um): Maybe use an on-disk KV store instead? */
-  int fd = open(PERSIST_PATH, O_WRONLY|O_APPEND);
-  off_t offset = lseek(fd, 0, SEEK_END);
+  /* Check if file containing object exists. */
+  size_t path_size = strlen(PERSIST_PATH) + (UNIQUE_ID_SIZE * 2) + 1;
+  char file_path[path_size];
+  object_id_to_persist_path(object_id, file_path, path_size);
+  int fd = open(file_path, O_WRONLY);
+  close(fd); /* TODO(um): probably a cleaner way to do this (stat?). */
+  CHECKM(fd < 0, "An already persisted object can't be persisted again.");
+  /* Create if it does not exist and write object. */
+  fd = open(file_path, O_WRONLY|O_CREAT);
   write(fd, pointer, entry->info.data_size);
-  /* Store its offset. */
-  offset_entry = malloc(sizeof(object_offset_entry));
-  memcpy(&offset_entry->object_id, &object_id, sizeof(object_id));
-  offset_entry->offset = offset;
-  HASH_ADD(handle, plasma_state->persisted_object_offsets, object_id, sizeof(object_id),
-           offset_entry);
+  close(fd);
 }
 
 /* Read persisted object from disk back into memory. */
@@ -387,17 +392,18 @@ void get_persisted_object(client *client_context, object_id object_id) {
   LOG_DEBUG("reading persisted object");
   plasma_store_state *plasma_state = client_context->plasma_state;
   object_table_entry *entry;
-  object_offset_entry *offset_entry;
   HASH_FIND(handle, plasma_state->sealed_objects, &object_id, sizeof(object_id),
             entry);
-  HASH_FIND(handle, plasma_state->persisted_object_offsets, &object_id, sizeof(object_id),
-            offset_entry);
-  CHECKM(offset_entry != NULL, "Can't read an object that was never persisted.");
+  CHECKM(entry != NULL, "There must be a sealed object entry to read it into.");
   uint8_t *pointer = entry->pointer;
   /* Read object into allocated space. */
-  int fd = open(PERSIST_PATH, O_RDONLY);
-  lseek(fd, offset_entry->offset, SEEK_SET);
+  size_t path_size = strlen(PERSIST_PATH) + (UNIQUE_ID_SIZE * 2) + 1;
+  char file_path[path_size];
+  object_id_to_persist_path(object_id, file_path, path_size);
+  int fd = open(file_path, O_RDONLY);
+  CHECKM(fd > 0, "Can't read an object that was never persisted.");
   read(fd, pointer, entry->info.data_size);
+  close(fd);
 }
 
 /* Send more notifications to a subscriber. */
