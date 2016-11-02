@@ -32,6 +32,9 @@ SILENT_MODE = 3
 def random_object_id():
   return photon.ObjectID("".join([chr(random.randint(0, 255)) for _ in range(20)]))
 
+def random_string():
+  return "".join([chr(random.randint(0, 255)) for _ in range(20)])
+
 class FunctionID(object):
   def __init__(self, function_id):
     self.function_id = function_id
@@ -516,7 +519,7 @@ class Worker(object):
     if self.mode is None:
       self.cached_functions_to_run.append(function)
     else:
-      function_to_run_id = np.random.randint(0, 1000)
+      function_to_run_id = random_string()
       key = "FunctionsToRun:{}".format(function_to_run_id)
       self.redis_client.hmset(key, {"function_id": function_to_run_id,
                                     "function": pickling.dumps(function)})
@@ -747,7 +750,7 @@ def fetch_and_process_reusable_variable(key, worker=global_worker):
     # record the traceback and notify the scheduler of the failure.
     traceback_str = format_error_message(traceback.format_exc())
     # Log the error message.
-    error_key = "ReusableVariableImportError:{}".format("".join([chr(random.randint(0, 255)) for _ in range(20)]))
+    error_key = "ReusableVariableImportError:{}".format(random_string())
     worker.redis_client.hmset(error_key, {"name": reusable_variable_name,
                                           "message": traceback_str})
     worker.redis_client.rpush("ErrorKeys", error_key)
@@ -766,7 +769,7 @@ def fetch_and_process_function_to_run(key, worker=global_worker):
     traceback_str = traceback.format_exc()
     # Log the error message.
     name = function.__name__  if "function" in locals() and hasattr(function, "__name__") else ""
-    error_key = "FunctionToRunError:{}".format("".join([chr(random.randint(0, 255)) for _ in range(20)]))
+    error_key = "FunctionToRunError:{}".format(random_string())
     worker.redis_client.hmset(error_key, {"name": name,
                                           "message": traceback_str})
     worker.redis_client.rpush("ErrorKeys", error_key)
@@ -832,7 +835,7 @@ def connect(address_info, mode=WORKER_MODE, worker=global_worker):
     mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, PYTHON_MODE,
       and SILENT_MODE.
   """
-  worker.worker_id = np.random.randint(0, 1000000)
+  worker.worker_id = random_string()
   worker.connected = True
   worker.set_mode(mode)
   # If running Ray in PYTHON_MODE, there is no need to create call create_worker
@@ -1069,7 +1072,7 @@ def main_loop(worker=global_worker):
       failure_objects = [failure_object for _ in range(len(return_object_ids))]
       store_outputs_in_objstore(return_object_ids, failure_objects, worker)
       # Log the error message.
-      error_key = "TaskError:{}".format("".join([chr(random.randint(0, 255)) for _ in range(20)]))
+      error_key = "TaskError:{}".format(random_string())
       worker.redis_client.hmset(error_key, {"function_id": function_id.id(),
                                             "function_name": function_name,
                                             "message": traceback_str})
@@ -1082,7 +1085,7 @@ def main_loop(worker=global_worker):
       # The attempt to reinitialize the reusable variables threw an exception.
       # We record the traceback and notify the scheduler.
       traceback_str = format_error_message(traceback.format_exc())
-      error_key = "ReusableVariableReinitializeError:{}".format("".join([chr(random.randint(0, 255)) for _ in range(20)]))
+      error_key = "ReusableVariableReinitializeError:{}".format(random_string())
       worker.redis_client.hmset(error_key, {"task_instance_id": "NOTIMPLEMENTED",
                                             "task_id": "NOTIMPLEMENTED",
                                             "function_id": function_id.id(),

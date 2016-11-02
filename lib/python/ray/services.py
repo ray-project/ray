@@ -28,6 +28,9 @@ def address(host, port):
 def new_port():
   return random.randint(10000, 65535)
 
+def random_name():
+  return str(random.randint(0, 99999999))
+
 def cleanup():
   """When running in local mode, shutdown the Ray processes.
 
@@ -65,7 +68,7 @@ def start_redis(port):
 
 def start_local_scheduler(redis_address, plasma_store_name):
   local_scheduler_filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../photon/build/photon_scheduler")
-  local_scheduler_name = "/tmp/scheduler{}".format(random.randint(0, 10000))
+  local_scheduler_name = "/tmp/scheduler{}".format(random_name())
   p = subprocess.Popen([local_scheduler_filepath, "-s", local_scheduler_name, "-r", redis_address, "-p", plasma_store_name])
   if cleanup:
     all_processes.append(p)
@@ -81,12 +84,12 @@ def start_objstore(node_ip_address, redis_address, cleanup):
       that imported services exits.
   """
   plasma_store_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../plasma/build/plasma_store")
-  store_name = "/tmp/ray_plasma_store{}".format(random.randint(0, 10000))
+  store_name = "/tmp/ray_plasma_store{}".format(random_name())
   p1 = subprocess.Popen([plasma_store_executable, "-s", store_name])
 
   plasma_manager_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../plasma/build/plasma_manager")
-  manager_name = "/tmp/ray_plasma_manager{}".format(random.randint(0, 10000))
-  manager_port = random.randint(10000, 50000)
+  manager_name = "/tmp/ray_plasma_manager{}".format(random_name())
+  manager_port = new_port()
   p2 = subprocess.Popen([plasma_manager_executable,
                          "-s", store_name,
                          "-m", manager_name,
