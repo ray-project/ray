@@ -53,7 +53,6 @@ class TaskStatusTest(unittest.TestCase):
 
     test_functions.throw_exception_fct1.remote()
     test_functions.throw_exception_fct1.remote()
-
     wait_for_errors("TaskError", 2)
     result = ray.error_info()
     self.assertEqual(len(result["TaskError"]), 2)

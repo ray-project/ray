@@ -1,5 +1,6 @@
 from __future__ import print_function
 
+import hashlib
 import os
 import sys
 import time
@@ -37,9 +38,6 @@ class FunctionID(object):
 
   def id(self):
     return self.function_id
-
-def random_function_id():
-  return FunctionID("".join([chr(random.randint(0, 255)) for _ in range(20)]))
 
 contained_objectids = []
 def numbuf_serialize(value):
@@ -414,7 +412,7 @@ class Worker(object):
       objectid (object_id.ObjectID): The object ID of the value to be put.
       value (serializable object): The value to put in the object store.
     """
-    # Serialize and put the object
+    # Serialize and put the object in the object store.
     schema, size, serialized = numbuf_serialize(value)
     size = size + 4096 * 4 + 8 # The last 8 bytes are for the metadata offset. This is temporary.
     buff = self.plasma_client.create(objectid.id(), size, buffer(schema))
@@ -422,10 +420,6 @@ class Worker(object):
     metadata_offset = numbuf.write_to_buffer(serialized, memoryview(data))
     np.frombuffer(buff.buffer, dtype="int64", count=1)[0] = metadata_offset
     self.plasma_client.seal(objectid.id())
-
-    key = "Object:{}".format(objectid.id())
-    object_store_id = 0 # TODO(rkn): This only works when there is one object store. This is temporary.
-    self.redis_client.rpush(key, object_store_id)
 
     global contained_objectids
     # Optionally do something with the contained_objectids here.
@@ -754,9 +748,7 @@ def fetch_and_process_remote_function(key, worker=global_worker):
     worker.function_names[function_id.id()] = function_name
     worker.num_return_vals[function_id.id()] = num_return_vals
     worker.function_export_counters[function_id.id()] = function_export_counter
-    # Notify the scheduler that the remote function imported successfully.
-    # We pass an empty error message string because the import succeeded.
-    # TODO(rkn): The below needs to identify the worker somehow...
+    # Add the function to the function table.
     worker.redis_client.rpush("FunctionTable:{}".format(function_id.id()), worker.worker_id)
 
 def fetch_and_process_reusable_variable(key, worker=global_worker):
@@ -776,10 +768,6 @@ def fetch_and_process_reusable_variable(key, worker=global_worker):
                                           "message": traceback_str})
     worker.redis_client.rpush("ErrorKeys", error_key)
 
-
-  else:
-    pass
-
 def fetch_and_process_function_to_run(key, worker=global_worker):
   """Run on arbitrary function on the worker."""
   serialized_function, = worker.redis_client.hmget(key, ["function"])
@@ -798,9 +786,6 @@ def fetch_and_process_function_to_run(key, worker=global_worker):
     worker.redis_client.hmset(error_key, {"name": name,
                                           "message": traceback_str})
     worker.redis_client.rpush("ErrorKeys", error_key)
-
-  else:
-    pass
 
 def import_thread(worker):
   worker.import_pubsub_client = worker.redis_client.pubsub()
@@ -1091,12 +1076,10 @@ def main_loop(worker=global_worker):
     After the task executes, the worker resets any reusable variables that were
     accessed by the task.
     """
-
     function_id = task.function_id()
     args = task.arguments()
     return_object_ids = task.returns()
     function_name = worker.function_names[function_id.id()]
-
     try:
       arguments = get_arguments_for_execution(worker.functions[function_id.id()], args, worker) # get args from objstore
       outputs = worker.functions[function_id.id()].executor(arguments) # execute the function
@@ -1113,9 +1096,7 @@ def main_loop(worker=global_worker):
       store_outputs_in_objstore(return_object_ids, failure_objects, worker)
       # Log the error message.
       error_key = "TaskError:{}".format("".join([chr(random.randint(0, 255)) for _ in range(20)]))
-      worker.redis_client.hmset(error_key, {"task_instance_id": "NOTIMPLEMENTED",
-                                            "task_id": "NOTIMPLEMENTED",
-                                            "function_id": function_id.id(),
+      worker.redis_client.hmset(error_key, {"function_id": function_id.id(),
                                             "function_name": function_name,
                                             "message": traceback_str})
       worker.redis_client.rpush("ErrorKeys", error_key)
@@ -1218,9 +1199,6 @@ def export_remote_function(function_id, func_name, func, num_return_vals, worker
   worker.redis_client.rpush("Exports", key)
   worker.driver_export_counter += 1
 
-import hashlib
-
-
 def remote(*args, **kwargs):
   """This decorator is used to create remote functions.
 
@@ -1233,13 +1211,9 @@ def remote(*args, **kwargs):
     def remote_decorator(func):
       func_name = "{}.{}".format(func.__module__, func.__name__)
       if func_id is None:
-        pickled_func = pickling.dumps(func)
-        #function_id = FunctionID(("XXXXXX" + hashlib.md5(pickled_func).digest())[:20])
-        function_id = FunctionID((hashlib.md5(func_name).digest() + "XXXXXX")[:20])
-        blah = True
+        function_id = FunctionID((hashlib.sha256(func_name).digest())[:20])
       else:
         function_id = func_id
-        blah = False
 
       def func_call(*args, **kwargs):
         """This gets run immediately when a worker calls a remote function."""
@@ -1401,7 +1375,7 @@ def store_outputs_in_objstore(objectids, outputs, worker=global_worker):
     The arguments objectids and outputs should have the same length.
 
   Args:
-    objectids (List[object_id.ObjectID]): The object IDs that were assigned to the
+    objectids (List[ObjectID]): The object IDs that were assigned to the
       outputs of the remote function call.
     outputs (Tuple): The value returned by the remote function. If the remote
       function was supposed to only return one value, then its output was

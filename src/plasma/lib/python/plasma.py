@@ -109,8 +109,9 @@ class PlasmaClient(object):
   def shutdown(self):
     """Shutdown the client so that it does not send messages.
 
-    This is useful if we have killed the store and manager that this client is
-    connected to.
+    If we kill the Plasma store and Plasma manager that this client is connected
+    to, then we can use this method to prevent the client from trying to send
+    messages to the killed processes.
     """
     self.alive = False
 
