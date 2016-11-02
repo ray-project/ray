@@ -70,7 +70,6 @@ def start_plasma_manager(store_name, manager_name, redis_port, use_valgrind=Fals
                "-h", "127.0.0.1",
                "-p", str(port),
                "-r", "{addr}:{port}".format(addr="127.0.0.1", port=redis_port)]
-
     if use_valgrind:
       process = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + command)
     else:
