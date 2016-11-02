@@ -349,7 +349,7 @@ class Worker(object):
     functions (Dict[str, Callable]): A dictionary mapping the name of a remote
       function to the remote function itself. This is the set of remote
       functions that can be executed by this worker.
-    handle (worker capsule): A Python object wrapping a C++ Worker object.
+    connected (bool): True if Ray has been started and False otherwise.
     mode: The mode of the worker. One of SCRIPT_MODE, PYTHON_MODE, SILENT_MODE,
       and WORKER_MODE.
     cached_remote_functions (List[Tuple[str, str]]): A list of pairs
@@ -373,7 +373,7 @@ class Worker(object):
     self.num_return_vals = {}
     self.function_names = {}
     self.function_export_counters = {}
-    self.handle = None
+    self.connected = False
     self.mode = None
     self.cached_remote_functions = []
     self.cached_functions_to_run = []
@@ -428,7 +428,7 @@ class Worker(object):
     self.redis_client.rpush(key, object_store_id)
 
     global contained_objectids
-    # raylib.add_contained_objectids(self.handle, objectid, contained_objectids)
+    # Optionally do something with the contained_objectids here.
     contained_objectids = []
 
   def get_object(self, objectid):
@@ -555,9 +555,8 @@ def check_connected(worker=global_worker):
   Raises:
     Exception: An exception is raised if the worker is not connected.
   """
-  # TODO(rkn): Bring this method back.
-  #if worker.handle is None and worker.mode != PYTHON_MODE:
-    #raise RayConnectionError("This command cannot be called before a Ray cluster has been started. You can start one with 'ray.init(start_ray_local=True, num_workers=1)'.")
+  if not worker.connected:
+    raise RayConnectionError("This command cannot be called before Ray has been started. You can start Ray with 'ray.init(start_ray_local=True, num_workers=1)'.")
 
 def print_failed_task(task_status):
   """Print information about failed tasks.
@@ -572,50 +571,6 @@ def print_failed_task(task_status):
       Task ID: {}
       Error Message: \n{}
   """.format(task_status["function_name"], task_status["operationid"], task_status["error_message"]))
-
-def scheduler_info(worker=global_worker):
-  """Return information about the state of the scheduler."""
-  #check_connected(worker)
-  #return raylib.scheduler_info(worker.handle)
-  raise Exception("SCHEDULER_INFO NOT IMPLEMENTED.")
-
-def visualize_computation_graph(file_path=None, view=False, worker=global_worker):
-  """Write the computation graph to a pdf file.
-
-  Args:
-    file_path (str): The name of a pdf file that the rendered computation graph
-      will be written to. If this argument is None, a temporary path will be
-      used.
-    view (bool): If true, the result the python graphviz package will try to
-      open the result in a viewer.
-
-  Examples:
-    Try the following code.
-
-    >>> import ray.array.distributed as da
-    >>> x = da.zeros([20, 20])
-    >>> y = da.zeros([20, 20])
-    >>> z = da.dot(x, y)
-    >>> ray.visualize_computation_graph(view=True)
-  """
-  raise Exception("COMPUTATION GRAPH NOT IMPLEMENTED")
-  check_connected(worker)
-  if file_path is None:
-    file_path = config.get_log_file_path("computation-graph.pdf")
-
-  base_path, extension = os.path.splitext(file_path)
-  if extension != ".pdf":
-    raise Exception("File path must be a .pdf file")
-  proto_path = base_path + ".binaryproto"
-
-  raylib.dump_computation_graph(worker.handle, proto_path)
-  g = internal.graph_pb2.CompGraph()
-  g.ParseFromString(open(proto_path).read())
-  graph.graph_to_graphviz(g).render(base_path, view=view)
-
-  print("Wrote graph dot description to file {}".format(base_path))
-  print("Wrote graph protocol buffer description to file {}".format(proto_path))
-  print("Wrote computation graph to file {}.pdf".format(base_path))
 
 def error_info(worker=global_worker):
   """Return information about failed tasks."""
@@ -729,7 +684,8 @@ def cleanup(worker=global_worker):
   worker.set_mode(None)
   worker.driver_export_counter = 0
   worker.worker_import_counter = 0
-  worker.plasma_client.shutdown()
+  if hasattr(worker, "plasma_client"):
+    worker.plasma_client.shutdown()
   services.cleanup()
 
 atexit.register(cleanup)
@@ -909,8 +865,8 @@ def connect(node_ip_address, redis_address, object_store_name, object_store_mana
       and SILENT_MODE.
   """
   worker.worker_id = np.random.randint(0, 1000000)
+  worker.connected = True
 
-  assert worker.handle is None, "When connect is called, worker.handle should be None."
   # If running Ray in PYTHON_MODE, there is no need to create call create_worker
   # or to start the worker service.
   if mode == PYTHON_MODE:
@@ -987,6 +943,7 @@ def disconnect(worker=global_worker):
   # Reset the list of cached remote functions so that if more remote functions
   # are defined and then connect is called again, the remote functions will be
   # exported. This is mostly relevant for the tests.
+  worker.connected = False
   worker.cached_functions_to_run = []
   worker.cached_remote_functions = []
   reusables._cached_reusables = []
@@ -1039,14 +996,11 @@ def get(objectid, worker=global_worker):
   if worker.mode == PYTHON_MODE:
     return objectid # In PYTHON_MODE, ray.get is the identity operation (the input will actually be a value not an objectid)
   if isinstance(objectid, list):
-    # TODO(rkn): These fetch commands are necessary for the multi object store setting.
-    #[worker.plasma_client.fetch(x.objectid) for x in objectid]
     values = [worker.get_object(x) for x in objectid]
     for i, value in enumerate(values):
       if isinstance(value, RayTaskError):
         raise RayGetError(objectid[i], value)
     return values
-  #worker.plasma_client.fetch(objectid.objectid)
   value = worker.get_object(objectid)
   if isinstance(value, RayTaskError):
     # If the result is a RayTaskError, then the task that created this object
@@ -1182,70 +1136,25 @@ def main_loop(worker=global_worker):
                                             "message": traceback_str})
       worker.redis_client.rpush("ErrorKeys", error_key)
 
-  num_tasks = 0
-
-  worker_task_queue = "TaskQueue:Worker{}".format(worker.worker_id)
-
-
   while True:
     task = worker.photon_client.get_task()
-    # TODO(rkn): Check that the number of imports we have is at least as great
-    # as the export counter for the task. If not, wait until we have imported
-    # enough.
+    function_id = task.function_id()
+    # Check that the number of imports we have is at least as great as the
+    # export counter for the task. If not, wait until we have imported enough.
+    while True:
+      try:
+        worker.lock.acquire()
+        if worker.functions.has_key(function_id.id()) and worker.function_export_counters[function_id.id()] <= worker.worker_import_counter:
+          break
+        time.sleep(0.001)
+      finally:
+        worker.lock.release()
+    # Execute the task.
     try:
-      # Wait until the remote function has been registered before executing the
-      # task.
-      function_id = task.function_id()
-
-      while True:
-        try:
-          worker.lock.acquire()
-          if worker.functions.has_key(function_id.id()) and worker.function_export_counters[function_id.id()] <= worker.worker_import_counter:
-            break
-          time.sleep(0.001)
-        finally:
-          worker.lock.release()
-
       worker.lock.acquire()
       process_task(task)
     finally:
       worker.lock.release()
-
-    """
-    time.sleep(0.001)
-    try:
-      worker.lock.acquire()
-      if worker.redis_client.llen(worker_task_queue) > num_tasks:
-        task_id = worker.redis_client.lindex(worker_task_queue, num_tasks)
-        key = "graph:{}".format(task_id)
-
-        task_info = worker.redis_client.hgetall(key)
-        function_id = task_info["function_id"]
-        function_name = worker.function_names[function_id]
-
-        arg_keys = [k for k, v in task_info.items() if k.startswith("arg")]
-        num_args = len(arg_keys)
-        args = []
-        for i in range(num_args):
-          arg_id_key =  "arg:{}:id".format(i)
-          arg_val_key =  "arg:{}:val".format(i)
-          if arg_id_key in arg_keys:
-            args.append(object_id.ObjectID(task_info[arg_id_key]))
-          else:
-            args.append(task_info[arg_val_key])
-
-        return_object_ids = []
-        return_id_keys = [k for k, v in task_info.items() if k.startswith("return")]
-        for i in range(len(return_id_keys)):
-          return_object_ids.append(object_id.ObjectID(task_info["return_id:{}".format(i)]))
-
-        process_task(function_id, function_name, args, return_object_ids)
-
-        num_tasks += 1
-
-    finally:
-      worker.lock.release()
-    """
 
 def _submit_task(function_id, func_name, args, worker=global_worker):
   """This is a wrapper around worker.submit_task.
