@@ -197,6 +197,44 @@ class TestPlasmaClient(unittest.TestCase):
       memory_buffer[0] = chr(0)
     self.assertRaises(Exception, illegal_assignment)
 
+  def test_evict(self):
+    object_id1 = random_object_id()
+    b1 = self.plasma_client.create(object_id1, 1000)
+    self.plasma_client.seal(object_id1)
+    del b1
+    self.assertEqual(self.plasma_client.evict(1), 1000)
+
+    object_id2 = random_object_id()
+    object_id3 = random_object_id()
+    b2 = self.plasma_client.create(object_id2, 999)
+    b3 = self.plasma_client.create(object_id3, 998)
+    del b3
+    self.plasma_client.seal(object_id3)
+    self.assertEqual(self.plasma_client.evict(1000), 998)
+
+    object_id4 = random_object_id()
+    b4 = self.plasma_client.create(object_id4, 997)
+    self.plasma_client.seal(object_id4)
+    del b4
+    self.plasma_client.seal(object_id2)
+    del b2
+    self.assertEqual(self.plasma_client.evict(1), 997)
+    self.assertEqual(self.plasma_client.evict(1), 999)
+
+    object_id5 = random_object_id()
+    object_id6 = random_object_id()
+    object_id7 = random_object_id()
+    b5 = self.plasma_client.create(object_id5, 996)
+    b6 = self.plasma_client.create(object_id6, 995)
+    b7 = self.plasma_client.create(object_id7, 994)
+    self.plasma_client.seal(object_id5)
+    self.plasma_client.seal(object_id6)
+    self.plasma_client.seal(object_id7)
+    del b5
+    del b6
+    del b7
+    self.assertEqual(self.plasma_client.evict(2000), 996 + 995 + 994)
+
   def test_subscribe(self):
     # Subscribe to notifications from the Plasma Store.
     sock = self.plasma_client.subscribe()
