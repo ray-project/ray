@@ -866,11 +866,11 @@ def connect(node_ip_address, redis_address, object_store_name, object_store_mana
   """
   worker.worker_id = np.random.randint(0, 1000000)
   worker.connected = True
+  worker.set_mode(mode)
 
   # If running Ray in PYTHON_MODE, there is no need to create call create_worker
   # or to start the worker service.
   if mode == PYTHON_MODE:
-    worker.mode = PYTHON_MODE
     return
 
   # Create a Redis client.
@@ -912,7 +912,6 @@ def connect(node_ip_address, redis_address, object_store_name, object_store_mana
     t.daemon = True
     t.start()
 
-  worker.set_mode(mode)
   # Initialize the serialization library. This registers some classes, and so
   # it must be run before we export all of the cached remote functions.
   initialize_numbuf()
