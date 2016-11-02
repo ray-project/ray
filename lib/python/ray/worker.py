@@ -710,7 +710,7 @@ def print_error_messages(worker):
     # we catch here.
     pass
 
-def fetch_and_process_remote_function(key, worker=global_worker):
+def fetch_and_register_remote_function(key, worker=global_worker):
   """Import a remote function."""
   function_id_str, function_name, serialized_function, num_return_vals, module, function_export_counter = worker.redis_client.hmget(key, ["function_id", "name", "function", "num_return_vals", "module", "driver_export_counter"])
   function_id = photon.ObjectID(function_id_str)
@@ -738,7 +738,7 @@ def fetch_and_process_remote_function(key, worker=global_worker):
     # Add the function to the function table.
     worker.redis_client.rpush("FunctionTable:{}".format(function_id.id()), worker.worker_id)
 
-def fetch_and_process_reusable_variable(key, worker=global_worker):
+def fetch_and_register_reusable_variable(key, worker=global_worker):
   """Import a reusable variable."""
   reusable_variable_name, serialized_initializer, serialized_reinitializer = worker.redis_client.hmget(key, ["name", "initializer", "reinitializer"])
   try:
@@ -755,7 +755,7 @@ def fetch_and_process_reusable_variable(key, worker=global_worker):
                                           "message": traceback_str})
     worker.redis_client.rpush("ErrorKeys", error_key)
 
-def fetch_and_process_function_to_run(key, worker=global_worker):
+def fetch_and_execute_function_to_run(key, worker=global_worker):
   """Run on arbitrary function on the worker."""
   serialized_function, = worker.redis_client.hmget(key, ["function"])
   try:
@@ -790,11 +790,11 @@ def import_thread(worker):
     export_keys = worker.redis_client.lrange("Exports", 0, -1)
     for key in export_keys:
       if key.startswith("RemoteFunction"):
-        fetch_and_process_remote_function(key, worker=worker)
+        fetch_and_register_remote_function(key, worker=worker)
       elif key.startswith("ReusableVariables"):
-        fetch_and_process_reusable_variable(key, worker=worker)
+        fetch_and_register_reusable_variable(key, worker=worker)
       elif key.startswith("FunctionsToRun"):
-        fetch_and_process_function_to_run(key, worker=worker)
+        fetch_and_execute_function_to_run(key, worker=worker)
       else:
         raise Exception("This code should be unreachable.")
       worker.redis_client.hincrby(worker_info_key, "export_counter", 1)
@@ -813,11 +813,11 @@ def import_thread(worker):
       for i in range(worker.worker_import_counter, num_imports):
         key = worker.redis_client.lindex("Exports", i)
         if key.startswith("RemoteFunction"):
-          fetch_and_process_remote_function(key, worker=worker)
+          fetch_and_register_remote_function(key, worker=worker)
         elif key.startswith("ReusableVariables"):
-          fetch_and_process_reusable_variable(key, worker=worker)
+          fetch_and_register_reusable_variable(key, worker=worker)
         elif key.startswith("FunctionsToRun"):
-          fetch_and_process_function_to_run(key, worker=worker)
+          fetch_and_execute_function_to_run(key, worker=worker)
         else:
           raise Exception("This code should be unreachable.")
         worker.redis_client.hincrby(worker_info_key, "export_counter", 1)

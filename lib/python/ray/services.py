@@ -10,17 +10,10 @@ import random
 # Ray modules
 import config
 
-_services_env = os.environ.copy()
-_services_env["PATH"] = os.pathsep.join([os.path.dirname(os.path.abspath(__file__)), _services_env["PATH"]])
-# Make GRPC only print error messages.
-_services_env["GRPC_VERBOSITY"] = "ERROR"
-
 # all_processes is a list of the scheduler, object store, and worker processes
 # that have been started by this services module if Ray is being used in local
 # mode.
 all_processes = []
-
-TIMEOUT_SECONDS = 5
 
 def address(host, port):
   return host + ":" + str(port)
