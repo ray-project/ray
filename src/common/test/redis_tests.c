@@ -10,6 +10,7 @@
 #include "state/redis.h"
 #include "io.h"
 #include "logging.h"
+#include "test_common.h"
 
 SUITE(redis_tests);
 
@@ -208,12 +209,9 @@ TEST logging_test(void) {
 }
 
 SUITE(redis_tests) {
-  redisContext *context = redisConnect("127.0.0.1", 6379);
-  freeReplyObject(redisCommand(context, "FLUSHALL"));
-  RUN_REDIS_TEST(context, redis_socket_test);
-  RUN_REDIS_TEST(context, async_redis_socket_test);
-  RUN_REDIS_TEST(context, logging_test);
-  redisFree(context);
+  RUN_REDIS_TEST(redis_socket_test);
+  RUN_REDIS_TEST(async_redis_socket_test);
+  RUN_REDIS_TEST(logging_test);
 }
 
 GREATEST_MAIN_DEFS();

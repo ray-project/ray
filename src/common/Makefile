@@ -23,7 +23,7 @@ $(BUILD)/io_tests: test/io_tests.c $(BUILD)/libcommon.a
 	$(CC) -o $@ $^ $(CFLAGS)
 
 $(BUILD)/task_tests: test/task_tests.c $(BUILD)/libcommon.a
-	$(CC) -o $@ $^ $(CFLAGS)
+	$(CC) -o $@ $^ thirdparty/hiredis/libhiredis.a $(CFLAGS)
 
 $(BUILD)/redis_tests: hiredis test/redis_tests.c $(BUILD)/libcommon.a logging.h
 	$(CC) -o $@ test/redis_tests.c logging.c $(BUILD)/libcommon.a thirdparty/hiredis/libhiredis.a $(CFLAGS)

@@ -1,7 +1,7 @@
 #include "greatest.h"
 
 #include "event_loop.h"
-#include "example_task.h"
+#include "test_common.h"
 #include "common.h"
 #include "state/object_table.h"
 #include "state/redis.h"
