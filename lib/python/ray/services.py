@@ -100,77 +100,64 @@ def start_objstore(node_ip_address, redis_address, cleanup):
 
   return store_name, manager_name, manager_port
 
-def start_worker(node_ip_address, redis_address, object_store_name, object_store_manager_name, local_scheduler_name, worker_path, cleanup=True):
+def start_worker(address_info, worker_path, cleanup=True):
   """This method starts a worker process.
 
   Args:
-    node_ip_address (str): The IP address of the node that the worker runs on.
-    redis_address (str): TODO
-    object_store_name (str): TODO
-    object_store_manager_name (str): TODO
-    local_scheduler_name (str): TODO
+    address_info (dict): This dictionary contains the node_ip_address,
+      redis_port, object_store_name, object_store_manager_name, and
+      local_scheduler_name.
     worker_path (str): The path of the source code which the worker process will
       run.
-    cleanup (Optional[bool]): True if using Ray in local mode. If cleanup is
-      true, then this process will be killed by services.cleanup() when the
-      Python process that imported services exits. This is True by default.
+    cleanup (bool): True if using Ray in local mode. If cleanup is true, then
+      this process will be killed by services.cleanup() when the Python process
+      that imported services exits. This is True by default.
   """
   command = ["python",
              worker_path,
-             "--node-ip-address=" + node_ip_address,
-             "--object-store-name=" + object_store_name,
-             "--object-store-manager-name=" + str(object_store_manager_name),
-             "--local-scheduler-name=" + local_scheduler_name,
-             "--redis-address=" + redis_address]
+             "--node-ip-address=" + address_info["node_ip_address"],
+             "--object-store-name=" + address_info["object_store_name"],
+             "--object-store-manager-name=" + address_info["object_store_manager_name"],
+             "--local-scheduler-name=" + address_info["local_scheduler_name"],
+             "--redis-port=" + str(address_info["redis_port"])]
   p = subprocess.Popen(command)
   if cleanup:
     all_processes.append(p)
 
-def start_ray_local(node_ip_address="127.0.0.1", num_objstores=1, num_workers=0, worker_path=None):
+def start_ray_local(node_ip_address="127.0.0.1", num_workers=0, worker_path=None):
   """Start Ray in local mode.
 
-  This method starts Ray in local mode (as opposed to cluster mode, which is
-  handled by cluster.py).
-
   Args:
-    num_objstores (int): The number of object stores to start. Aside from
-      testing, this should be one.
     num_workers (int): The number of workers to start.
     worker_path (str): The path of the source code that will be run by the
       worker.
 
   Returns:
-    The address of the scheduler and the addresses of all of the object stores.
+    This returns a tuple of three things. The first element is a tuple of the
+    Redis hostname and port. The second
   """
   if worker_path is None:
     worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "default_worker.py")
-  if num_objstores < 1:
-    raise Exception("`num_objstores` is {}, but should be at least 1.".format(num_objstores))
+  # Start Redis.
   redis_port = new_port()
   redis_address = address(node_ip_address, redis_port)
   start_redis(redis_port)
   time.sleep(0.1)
-
-  # create objstores
-  object_store_info = []
-  for i in range(num_objstores):
-    object_store_name, object_store_manager_name, object_store_manager_port = start_objstore(node_ip_address, redis_address, cleanup=True)
-    object_store_info.append((object_store_name, object_store_manager_name, object_store_manager_port))
-
+  # Start Plasma.
+  object_store_name, object_store_manager_name, object_store_manager_port = start_objstore(node_ip_address, redis_address, cleanup=True)
+  # Start the local scheduler.
   time.sleep(0.1)
   local_scheduler_name = start_local_scheduler(redis_address, object_store_name)
-
   time.sleep(0.2)
-  for i in range(num_objstores):
-    object_store_name, object_store_manager_name, object_store_manager_port = object_store_info[i]
-    if i < num_objstores - 1:
-      num_workers_to_start = num_workers / num_objstores
-    else:
-      # In case num_workers is not divisible by num_objstores, start the correct
-      # remaining number of workers.
-      num_workers_to_start = num_workers - (num_objstores - 1) * (num_workers / num_objstores)
-    for _ in range(num_workers_to_start):
-      start_worker(node_ip_address, redis_address, object_store_name, object_store_manager_name, local_scheduler_name, worker_path, cleanup=True)
-    time.sleep(0.3)
-
-  return redis_address, object_store_info, local_scheduler_name
+  # Aggregate the address information together.
+  address_info = {"node_ip_address": node_ip_address,
+                  "redis_port": redis_port,
+                  "object_store_name": object_store_name,
+                  "object_store_manager_name": object_store_manager_name,
+                  "local_scheduler_name": local_scheduler_name}
+  # Start the workers.
+  for _ in range(num_workers):
+    start_worker(address_info, worker_path, cleanup=True)
+  time.sleep(0.3)
+  # Return the addresses of the relevant processes.
+  return address_info

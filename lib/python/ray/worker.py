@@ -605,7 +605,7 @@ def initialize_numbuf(worker=global_worker):
     register_class(RayGetError)
     register_class(RayGetArgumentError)
 
-def init(start_ray_local=False, num_workers=None, num_objstores=None, node_ip_address=None, redis_address=None, driver_mode=SCRIPT_MODE):
+def init(start_ray_local=False, num_workers=None, driver_mode=SCRIPT_MODE):
   """Either connect to an existing Ray cluster or start one and connect to it.
 
   This method handles two cases. Either a Ray cluster already exists and we
@@ -618,16 +618,11 @@ def init(start_ray_local=False, num_workers=None, num_objstores=None, node_ip_ad
       existing Ray cluster.
     num_workers (Optional[int]): The number of workers to start if
       start_ray_local is True.
-    num_objstores (Optional[int]): The number of object stores to start if
-      start_ray_local is True.
-    node_ip_address (Optional[str]): The address of the node the worker is
-      running on. It is required if start_ray_local is False and it cannot be
-      provided otherwise.
     driver_mode (Optional[bool]): The mode in which to start the driver. This
       should be one of SCRIPT_MODE, PYTHON_MODE, and SILENT_MODE.
 
   Returns:
-    A string containing the address of the scheduler.
+    The address of the Redis server.
 
   Raises:
     Exception: An exception is raised if an inappropriate combination of
@@ -635,36 +630,25 @@ def init(start_ray_local=False, num_workers=None, num_objstores=None, node_ip_ad
   """
   if driver_mode == PYTHON_MODE:
     # If starting Ray in PYTHON_MODE, don't start any other processes.
-    object_store_name = None
-    object_store_manager_name = None
-    local_scheduler_name = None
+    address_info = {}
   elif start_ray_local:
     # In this case, we launch a scheduler, a new object store, and some workers,
     # and we connect to them.
-    if (node_ip_address is not None):
-      raise Exception("If start_ray_local=True, then you cannot pass in a redis_address or a node_ip_address.")
     if driver_mode not in [SCRIPT_MODE, PYTHON_MODE, SILENT_MODE]:
       raise Exception("If start_ray_local=True, then driver_mode must be in [ray.SCRIPT_MODE, ray.PYTHON_MODE, ray.SILENT_MODE].")
     # Use the address 127.0.0.1 in local mode.
-    node_ip_address = "127.0.0.1"
     num_workers = 1 if num_workers is None else num_workers
-    num_objstores = 1 if num_objstores is None else num_objstores
     # Start the scheduler, object store, and some workers. These will be killed
     # by the call to cleanup(), which happens when the Python script exits.
-    redis_address, object_store_info, local_scheduler_name = services.start_ray_local(num_objstores=num_objstores, num_workers=num_workers, worker_path=None)
-    object_store_name, object_store_manager_name, _ = object_store_info[0]
+    address_info = services.start_ray_local(num_workers=num_workers)
   else:
-    # In this case, there is an existing scheduler and object store, and we do
-    # not need to start any processes.
-    if (num_workers is not None) or (num_objstores is not None):
-      raise Exception("The arguments num_workers and num_objstores must not be provided unless start_ray_local=True.")
-    if (node_ip_address is None) or (scheduler_address is None):
-      raise Exception("When start_ray_local=False, node_ip_address and scheduler_address must be provided.")
-  # Connect this driver to the scheduler and object store. The corresponing call
-  # to disconnect will happen in the call to cleanup() when the Python script
-  # exits.
-  connect(node_ip_address, redis_address, object_store_name, object_store_manager_name, local_scheduler_name, worker=global_worker, mode=driver_mode)
-  return redis_address
+    raise Exception("This mode is currently not enabled.")
+  # Connect this driver to Redis, the object store, and the local scheduler. The
+  # corresponing call to disconnect will happen in the call to cleanup() when
+  # the Python script exits.
+  connect(address_info, driver_mode, worker=global_worker)
+  if driver_mode != PYTHON_MODE:
+    return "{}:{}".format(address_info["node_ip_address"], address_info["redis_port"])
 
 def cleanup(worker=global_worker):
   """Disconnect the driver, and terminate any processes started in init.
@@ -838,39 +822,31 @@ def import_thread(worker):
     finally:
       worker.lock.release()
 
-def connect(node_ip_address, redis_address, object_store_name, object_store_manager_name, local_scheduler_name, worker=global_worker, mode=WORKER_MODE):
+def connect(address_info, mode=WORKER_MODE, worker=global_worker):
   """Connect this worker to the scheduler and an object store.
 
   Args:
-    node_ip_address (str): The ip address of the node the worker runs on.
-    objstore_address (Optional[str]): The ip address and port of the local
-      object store. Normally, this argument should be omitted and the scheduler
-      will tell the worker what object store to connect to.
+    address_info (dict): This contains the entries node_ip_address,
+      redis_address, object_store_name, object_store_manager_name, and
+      local_scheduler_name.
     mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, PYTHON_MODE,
       and SILENT_MODE.
   """
   worker.worker_id = np.random.randint(0, 1000000)
   worker.connected = True
   worker.set_mode(mode)
-
   # If running Ray in PYTHON_MODE, there is no need to create call create_worker
   # or to start the worker service.
   if mode == PYTHON_MODE:
     return
-
   # Create a Redis client.
-  redis_host, redis_port = redis_address.split(":")
-  redis_port = int(redis_port)
-  worker.redis_client = redis.StrictRedis(host=redis_host, port=redis_port)
+  worker.redis_client = redis.StrictRedis(host=address_info["node_ip_address"], port=address_info["redis_port"])
   worker.redis_client.config_set("notify-keyspace-events", "AKE")
   worker.lock = threading.Lock()
-
   # Create an object store client.
-  worker.plasma_client = plasma.PlasmaClient(object_store_name, object_store_manager_name)
-
+  worker.plasma_client = plasma.PlasmaClient(address_info["object_store_name"], address_info["object_store_manager_name"])
   # Create the local scheduler client.
-  worker.photon_client = photon.PhotonClient(local_scheduler_name)
-
+  worker.photon_client = photon.PhotonClient(address_info["local_scheduler_name"])
   # Register the worker with Redis.
   if mode in [SCRIPT_MODE, SILENT_MODE]:
     worker.redis_client.rpush("Drivers", worker.worker_id)
@@ -878,13 +854,12 @@ def connect(node_ip_address, redis_address, object_store_name, object_store_mana
     worker.redis_client.rpush("Workers", worker.worker_id)
   else:
     raise Exception("This code should be unreachable.")
-
+  # If this is a worker, then start a thread to import exports from the driver.
   if mode == WORKER_MODE:
     t = threading.Thread(target=import_thread, args=(worker,))
     # Making the thread a daemon causes it to exit when the main thread exits.
     t.daemon = True
     t.start()
-
   # If this is a driver running in SCRIPT_MODE, start a thread to print error
   # messages asynchronously in the background. Ideally the scheduler would push
   # messages to the driver's worker service, but we ran into bugs when trying to
@@ -896,7 +871,6 @@ def connect(node_ip_address, redis_address, object_store_name, object_store_mana
     # Making the thread a daemon causes it to exit when the main thread exits.
     t.daemon = True
     t.start()
-
   # Initialize the serialization library. This registers some classes, and so
   # it must be run before we export all of the cached remote functions.
   initialize_numbuf()
