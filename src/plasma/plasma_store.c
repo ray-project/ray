@@ -10,11 +10,13 @@
  * just enough to store and SHA1 hash) to memory mapped files. */
 
 #include <assert.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/un.h>
 #include <getopt.h>
@@ -31,6 +33,8 @@
 #include "fling.h"
 #include "malloc.h"
 #include "plasma_store.h"
+
+const char *PERSIST_PATH = "persisted.objects";
 
 void *dlmalloc(size_t);
 void dlfree(void *);
@@ -64,6 +68,15 @@ typedef struct {
   /** An array of the clients that are currently using this object. */
   UT_array *clients;
 } object_table_entry;
+
+typedef struct {
+  /* Object id of this object. */
+  object_id object_id;
+  /* Handle for the uthash table. */
+  UT_hash_handle handle;
+  /* Offset for on-disk file. */
+  off_t offset;
+} object_offset_entry;
 
 typedef struct {
   /* Object id of this object. */
@@ -110,6 +123,8 @@ struct plasma_store_state {
   object_table_entry *sealed_objects;
   /* Objects that processes are waiting for. */
   object_notify_entry *objects_notify;
+  /* Offsets of objects that have been persisted. */
+  object_offset_entry *persisted_object_offsets;
   /** The pending notifications that have not been sent to subscribers because
    *  the socket send buffers were full. This is a hash table from client file
    *  descriptor to an array of object_ids to send to that client. */
@@ -121,6 +136,7 @@ plasma_store_state *init_plasma_store(event_loop *loop) {
   state->loop = loop;
   state->open_objects = NULL;
   state->sealed_objects = NULL;
+  state->persisted_object_offsets = NULL;
   state->objects_notify = NULL;
   state->pending_notifications = NULL;
   return state;
@@ -338,6 +354,50 @@ void delete_object(client *client_context, object_id object_id) {
   dlfree(pointer);
   utarray_free(entry->clients);
   free(entry);
+}
+
+/* Write object to disk and record offset of object in file */
+void persist_object(client *client_context, object_id object_id) {
+  LOG_DEBUG("persisting object");
+  plasma_store_state *plasma_state = client_context->plasma_state;
+  object_table_entry *entry;
+  object_offset_entry *offset_entry;
+  HASH_FIND(handle, plasma_state->sealed_objects, &object_id, sizeof(object_id),
+            entry);
+  CHECKM(entry != NULL, "To persist an object it must have been sealed.");
+  HASH_FIND(handle, plasma_state->persisted_object_offsets, &object_id, sizeof(object_id),
+            offset_entry);
+  CHECKM(offset_entry == NULL, "An already persisted object can't be persisted again.");
+  uint8_t *pointer = entry->pointer;
+  /* Append object to file on disk.
+   * TODO(um): Maybe use an on-disk KV store instead? */
+  int fd = open(PERSIST_PATH, O_WRONLY|O_APPEND);
+  off_t offset = lseek(fd, 0, SEEK_CUR);
+  write(fd, pointer, entry->info.data_size);
+  /* Store its offset */
+  offset_entry = malloc(sizeof(object_offset_entry));
+  memcpy(&offset_entry->object_id, &object_id, sizeof(object_id));
+  offset_entry->offset = offset;
+  HASH_ADD(handle, plasma_state->persisted_object_offsets, object_id, sizeof(object_id),
+           offset_entry);
+}
+
+/* Read persisted object from disk back into memory */
+void get_persisted_object(client *client_context, object_id object_id) {
+  LOG_DEBUG("reading persisted object");
+  plasma_store_state *plasma_state = client_context->plasma_state;
+  object_table_entry *entry;
+  object_offset_entry *offset_entry;
+  HASH_FIND(handle, plasma_state->sealed_objects, &object_id, sizeof(object_id),
+            entry);
+  HASH_FIND(handle, plasma_state->persisted_object_offsets, &object_id, sizeof(object_id),
+            offset_entry);
+  CHECKM(offset_entry != NULL, "Can't read an object that was never persisted.");
+  uint8_t *pointer = entry->pointer;
+  /* Read object into allocated space */
+  int fd = open(PERSIST_PATH, O_RDONLY);
+  lseek(fd, offset_entry->offset, SEEK_SET);
+  read(fd, pointer, entry->info.data_size);
 }
 
 /* Send more notifications to a subscriber. */
