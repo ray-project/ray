@@ -903,16 +903,23 @@ void start_server(const char *store_socket_name,
                   int port,
                   const char *db_addr,
                   int db_port) {
+  /* Bind the sockets before we try to connect to the plasma store.
+   * In case the bind does not succeed, we want to be able to exit
+   * without breaking the pipe to the store. */
+  int remote_sock = bind_inet_sock(port, false);
+  if (remote_sock < 0) {
+    exit(EXIT_COULD_NOT_BIND_PORT);
+  }
+
+  int local_sock = bind_ipc_sock(manager_socket_name, false);
+  CHECKM(local_sock >= 0, "Unable to bind local manager socket");
+
   g_manager_state = init_plasma_manager_state(store_socket_name, master_addr,
                                               port, db_addr, db_port);
   CHECK(g_manager_state);
 
-  int remote_sock = bind_inet_sock(port);
-  if (remote_sock < 0) {
-    exit(EXIT_COULD_NOT_BIND_PORT);
-  }
-  int local_sock = bind_ipc_sock(manager_socket_name);
-  CHECKM(local_sock >= 0, "Unable to bind local manager socket");
+  CHECK(listen(remote_sock, 5) != -1);
+  CHECK(listen(local_sock, 5) != -1);
 
   LOG_DEBUG("Started server connected to store %s, listening on port %d",
             store_socket_name, port);

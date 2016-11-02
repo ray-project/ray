@@ -1,5 +1,7 @@
-#ifndef EXAMPLE_TASK_H
-#define EXAMPLE_TASK_H
+#ifndef TEST_COMMON_H
+#define TEST_COMMON_H
+
+#include "hiredis/hiredis.h"
 
 #include "task.h"
 
@@ -20,4 +22,18 @@ task_instance *example_task_instance(void) {
   return instance;
 }
 
-#endif
+/* Flush redis. */
+void flushall_redis() {
+  redisContext *context = redisConnect("127.0.0.1", 6379);
+  freeReplyObject(redisCommand(context, "FLUSHALL"));
+  redisFree(context);
+}
+
+/* Cleanup method for running tests with the greatest library.
+ * Runs the test, then clears the Redis database. */
+#define RUN_REDIS_TEST(test) \
+  flushall_redis();          \
+  RUN_TEST(test);            \
+  flushall_redis();
+
+#endif /* TEST_COMMON */

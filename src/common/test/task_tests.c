@@ -5,7 +5,7 @@
 #include <sys/socket.h>
 
 #include "common.h"
-#include "test/example_task.h"
+#include "test_common.h"
 #include "task.h"
 #include "io.h"
 
