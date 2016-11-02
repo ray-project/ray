@@ -176,7 +176,7 @@ void start_server(const char *socket_name,
                   const char *redis_addr,
                   int redis_port,
                   const char *plasma_socket_name) {
-  int fd = bind_ipc_sock(socket_name);
+  int fd = bind_ipc_sock(socket_name, true);
   event_loop *loop = event_loop_create();
   g_state =
       init_local_scheduler(loop, redis_addr, redis_port, plasma_socket_name);
