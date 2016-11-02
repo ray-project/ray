@@ -56,6 +56,8 @@ enum plasma_message_type {
   PLASMA_SEAL,
   /** Delete an object. */
   PLASMA_DELETE,
+  /** Evict objects from the store. */
+  PLASMA_EVICT,
   /** Subscribe to notifications about sealed objects. */
   PLASMA_SUBSCRIBE,
   /** Request transfer to another store. */
@@ -83,6 +85,8 @@ typedef struct {
   /** In a transfer request, this is the port of the Plasma Manager to transfer
    *  the object to. */
   int port;
+  /** A number of bytes. This is used for eviction requests. */
+  int64_t num_bytes;
   /** The number of object IDs that will be included in this request. */
   int num_object_ids;
   /** The IDs of the objects that the request is about. */
@@ -97,6 +101,8 @@ typedef struct {
    *  present and 0 otherwise. Used for plasma_contains and
    *  plasma_fetch. */
   int has_object;
+  /** A number of bytes. This is used for replies to eviction requests. */
+  int64_t num_bytes;
   /** Number of object IDs a wait is returning. */
   int num_objects_returned;
   /** The number of object IDs that will be included in this reply. */
