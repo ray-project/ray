@@ -1,6 +1,7 @@
 #ifndef IO_H
 #define IO_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 enum common_message_type {
@@ -14,8 +15,8 @@ enum common_message_type {
 
 /* Helper functions for socket communication. */
 
-int bind_inet_sock(const int port);
-int bind_ipc_sock(const char *socket_pathname);
+int bind_inet_sock(const int port, bool shall_listen);
+int bind_ipc_sock(const char *socket_pathname, bool shall_listen);
 int connect_ipc_sock(const char *socket_pathname);
 
 int accept_client(int socket_fd);
@@ -29,4 +30,4 @@ void write_log_message(int fd, char *message);
 void write_formatted_log_message(int fd, const char *format, ...);
 char *read_log_message(int fd);
 
-#endif
+#endif /* IO_H */

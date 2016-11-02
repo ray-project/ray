@@ -25,10 +25,11 @@
  * write_message and read_message methods.
  *
  * @param port The port to bind to.
+ * @param shall_listen Are we also starting to listen on the socket?
  * @return A non-blocking file descriptor for the socket, or -1 if an error
  *         occurs.
  */
-int bind_inet_sock(const int port) {
+int bind_inet_sock(const int port, bool shall_listen) {
   struct sockaddr_in name;
   int socket_fd = socket(PF_INET, SOCK_STREAM, 0);
   if (socket_fd < 0) {
@@ -55,7 +56,7 @@ int bind_inet_sock(const int port) {
     close(socket_fd);
     return -1;
   }
-  if (listen(socket_fd, 5) == -1) {
+  if (shall_listen && listen(socket_fd, 5) == -1) {
     LOG_ERR("Could not listen to socket %d", port);
     close(socket_fd);
     return -1;
@@ -68,10 +69,11 @@ int bind_inet_sock(const int port) {
  * pathname. Removes any existing file at the pathname.
  *
  * @param socket_pathname The pathname for the socket.
+ * @param shall_listen Are we also starting to listen on the socket?
  * @return A blocking file descriptor for the socket, or -1 if an error
  *         occurs.
  */
-int bind_ipc_sock(const char *socket_pathname) {
+int bind_ipc_sock(const char *socket_pathname, bool shall_listen) {
   struct sockaddr_un socket_address;
   int socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
   if (socket_fd < 0) {
@@ -104,7 +106,7 @@ int bind_ipc_sock(const char *socket_pathname) {
     close(socket_fd);
     return -1;
   }
-  if (listen(socket_fd, 5) == -1) {
+  if (shall_listen && listen(socket_fd, 5) == -1) {
     LOG_ERR("Could not listen to socket %s", socket_pathname);
     close(socket_fd);
     return -1;

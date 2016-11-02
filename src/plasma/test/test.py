@@ -276,6 +276,7 @@ class TestPlasmaManager(unittest.TestCase):
   def tearDown(self):
     # Kill the PlasmaStore and PlasmaManager processes.
     if USE_VALGRIND:
+      time.sleep(1) # give processes opportunity to finish work
       self.p4.send_signal(signal.SIGTERM)
       self.p4.wait()
       self.p5.send_signal(signal.SIGTERM)

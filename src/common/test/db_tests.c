@@ -5,7 +5,7 @@
 #include <sys/wait.h>
 
 #include "event_loop.h"
-#include "test/example_task.h"
+#include "test_common.h"
 #include "state/db.h"
 #include "state/object_table.h"
 #include "state/task_log.h"
@@ -197,13 +197,10 @@ TEST unique_client_id_test(void) {
 }
 
 SUITE(db_tests) {
-  redisContext *context = redisConnect("127.0.0.1", 6379);
-  freeReplyObject(redisCommand(context, "FLUSHALL"));
-  RUN_REDIS_TEST(context, object_table_lookup_test);
-  RUN_REDIS_TEST(context, task_log_test);
-  RUN_REDIS_TEST(context, task_log_all_test);
-  RUN_REDIS_TEST(context, unique_client_id_test);
-  redisFree(context);
+  RUN_REDIS_TEST(object_table_lookup_test);
+  RUN_REDIS_TEST(task_log_test);
+  RUN_REDIS_TEST(task_log_all_test);
+  RUN_REDIS_TEST(unique_client_id_test);
 }
 
 GREATEST_MAIN_DEFS();

@@ -23,7 +23,7 @@ $(BUILD)/io_tests: test/io_tests.c $(BUILD)/libcommon.a
 	$(CC) -o $@ $^ $(CFLAGS)
 
 $(BUILD)/task_tests: test/task_tests.c $(BUILD)/libcommon.a
-	$(CC) -o $@ $^ $(CFLAGS)
+	$(CC) -o $@ $^ thirdparty/hiredis/libhiredis.a $(CFLAGS)
 
 $(BUILD)/redis_tests: hiredis test/redis_tests.c $(BUILD)/libcommon.a logging.h
 	$(CC) -o $@ test/redis_tests.c logging.c $(BUILD)/libcommon.a thirdparty/hiredis/libhiredis.a $(CFLAGS)
@@ -40,7 +40,14 @@ hiredis:
 
 test: hiredis redis $(BUILD)/common_tests $(BUILD)/task_log_tests $(BUILD)/object_table_tests $(BUILD)/db_tests $(BUILD)/io_tests $(BUILD)/task_tests $(BUILD)/redis_tests FORCE
 	./thirdparty/redis-3.2.3/src/redis-server &
-	sleep 1s ; ./build/common_tests ; ./build/db_tests ; ./build/task_log_tests ; ./build/object_table_tests ; ./build/io_tests ; ./build/task_tests ; ./build/redis_tests
+	sleep 1s
+	./build/common_tests
+	./build/db_tests
+	./build/io_tests
+	./build/task_tests
+	./build/redis_tests
+	./build/task_log_tests
+	./build/object_table_tests
 
 valgrind: test
 	valgrind --leak-check=full --error-exitcode=1 ./build/common_tests
