@@ -53,30 +53,35 @@ def assert_get_object_equal(unit_test, client1, client2, object_id, memory_buffe
   unit_test.assertEqual(client1.get_metadata(object_id)[:],
                         client2.get_metadata(object_id)[:])
 
-def start_plasma_manager(store_name, host_name, redis_port, use_valgrind=False):
+def start_plasma_manager(store_name, manager_name, redis_port, use_valgrind=False):
   """Start a plasma manager and return the ports it listens on."""
   plasma_manager_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../build/plasma_manager")
   num_retries = 5
   port = None
   process = None
-  while num_retries >= 0:
+  counter = 0
+  while counter < num_retries:
+    if counter > 0:
+      print("Plasma manager failed to start, retrying now.")
     port = random.randint(10000, 50000)
     command = [plasma_manager_executable,
                "-s", store_name,
-               "-m", host_name,
+               "-m", manager_name,
                "-h", "127.0.0.1",
                "-p", str(port),
                "-r", "{addr}:{port}".format(addr="127.0.0.1", port=redis_port)]
-    print("Try to start plasma manager on port " + str(port))
+
     if use_valgrind:
       process = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + command)
     else:
       process = subprocess.Popen(command)
+    # This sleep is critical. If the plasma_manager fails to start because the
+    # port is already in use, then we need it to fail within 0.1 seconds.
     time.sleep(0.1)
     # See if the process has terminated
     if process.poll() == None:
       return process, port
-    num_retries = num_retries - 1
+    counter += 1
   raise Exception("Couldn't start plasma manager")
 
 # Check if the redis-server binary is present.

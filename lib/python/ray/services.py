@@ -67,6 +67,33 @@ def start_local_scheduler(redis_address, plasma_store_name):
     all_processes.append(p)
   return local_scheduler_name
 
+def start_plasma_manager(store_name, manager_name, redis_address):
+  """Start a plasma manager and return the ports it listens on."""
+  plasma_manager_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../plasma/build/plasma_manager")
+  num_retries = 5
+  port = None
+  process = None
+  counter = 0
+  while counter < num_retries:
+    if counter > 0:
+      print("Plasma manager failed to start, retrying now.")
+    port = new_port()
+    command = [plasma_manager_executable,
+               "-s", store_name,
+               "-m", manager_name,
+               "-h", "127.0.0.1",
+               "-p", str(port),
+               "-r", redis_address]
+    process = subprocess.Popen(command)
+    # This sleep is critical. If the plasma_manager fails to start because the
+    # port is already in use, then we need it to fail within 0.1 seconds.
+    time.sleep(0.1)
+    # See if the process has terminated
+    if process.poll() == None:
+      return process, port
+    counter += 1
+  raise Exception("Couldn't start plasma manager")
+
 def start_objstore(node_ip_address, redis_address, cleanup):
   """This method starts an object store process.
 
@@ -80,15 +107,8 @@ def start_objstore(node_ip_address, redis_address, cleanup):
   store_name = "/tmp/ray_plasma_store{}".format(random_name())
   p1 = subprocess.Popen([plasma_store_executable, "-s", store_name])
 
-  plasma_manager_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../plasma/build/plasma_manager")
   manager_name = "/tmp/ray_plasma_manager{}".format(random_name())
-  manager_port = new_port()
-  p2 = subprocess.Popen([plasma_manager_executable,
-                         "-s", store_name,
-                         "-m", manager_name,
-                         "-h", node_ip_address,
-                         "-p", str(manager_port),
-                         "-r", redis_address])
+  p2, manager_port = start_plasma_manager(store_name, manager_name, redis_address)
 
   if cleanup:
     all_processes.append(p1)
