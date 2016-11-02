@@ -34,7 +34,7 @@
 #include "malloc.h"
 #include "plasma_store.h"
 
-const char *PERSIST_PATH = "persisted.objects";
+const char *PERSIST_PATH = "persisted/";
 
 void *dlmalloc(size_t);
 void dlfree(void *);
@@ -356,7 +356,7 @@ void delete_object(client *client_context, object_id object_id) {
   free(entry);
 }
 
-/* Write object to disk and record offset of object in file */
+/* Write object to disk and record offset of object in file. */
 void persist_object(client *client_context, object_id object_id) {
   LOG_DEBUG("persisting object");
   plasma_store_state *plasma_state = client_context->plasma_state;
@@ -372,9 +372,9 @@ void persist_object(client *client_context, object_id object_id) {
   /* Append object to file on disk.
    * TODO(um): Maybe use an on-disk KV store instead? */
   int fd = open(PERSIST_PATH, O_WRONLY|O_APPEND);
-  off_t offset = lseek(fd, 0, SEEK_CUR);
+  off_t offset = lseek(fd, 0, SEEK_END);
   write(fd, pointer, entry->info.data_size);
-  /* Store its offset */
+  /* Store its offset. */
   offset_entry = malloc(sizeof(object_offset_entry));
   memcpy(&offset_entry->object_id, &object_id, sizeof(object_id));
   offset_entry->offset = offset;
@@ -382,7 +382,7 @@ void persist_object(client *client_context, object_id object_id) {
            offset_entry);
 }
 
-/* Read persisted object from disk back into memory */
+/* Read persisted object from disk back into memory. */
 void get_persisted_object(client *client_context, object_id object_id) {
   LOG_DEBUG("reading persisted object");
   plasma_store_state *plasma_state = client_context->plasma_state;
@@ -394,7 +394,7 @@ void get_persisted_object(client *client_context, object_id object_id) {
             offset_entry);
   CHECKM(offset_entry != NULL, "Can't read an object that was never persisted.");
   uint8_t *pointer = entry->pointer;
-  /* Read object into allocated space */
+  /* Read object into allocated space. */
   int fd = open(PERSIST_PATH, O_RDONLY);
   lseek(fd, offset_entry->offset, SEEK_SET);
   read(fd, pointer, entry->info.data_size);
