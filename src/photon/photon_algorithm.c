@@ -169,7 +169,7 @@ void handle_worker_available(scheduler_info *info,
     /* Add client_sock to a list of available workers. This struct will be freed
      * when a task is assigned to this worker. */
     utarray_push_back(state->available_workers, &worker_index);
-    LOG_INFO("Adding worker_index %d to available workers.\n", worker_index);
+    LOG_DEBUG("Adding worker_index %d to available workers.\n", worker_index);
   }
 }
 

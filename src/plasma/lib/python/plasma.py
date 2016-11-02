@@ -40,8 +40,12 @@ class PlasmaBuffer(object):
     self.plasma_client = plasma_client
 
   def __del__(self):
-    """Notify Plasma that the object is no longer needed."""
-    self.plasma_client.client.plasma_release(self.plasma_client.plasma_conn, self.plasma_id)
+    """Notify Plasma that the object is no longer needed.
+
+    If the plasma client has been shut down, then don't do anything.
+    """
+    if self.plasma_client.alive:
+      self.plasma_client.client.plasma_release(self.plasma_client.plasma_conn, self.plasma_id)
 
   def __getitem__(self, index):
     """Read from the PlasmaBuffer as if it were just a regular buffer."""
@@ -73,7 +77,7 @@ class PlasmaClient(object):
       store_socket_name (str): Name of the socket the plasma store is listening at.
       manager_socket_name (str): Name of the socket the plasma manager is listening at.
     """
-
+    self.alive = True
     plasma_client_library = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../build/plasma_client.so")
     self.client = ctypes.cdll.LoadLibrary(plasma_client_library)
 
@@ -85,6 +89,7 @@ class PlasmaClient(object):
     self.client.plasma_seal.restype = None
     self.client.plasma_delete.restype = None
     self.client.plasma_subscribe.restype = ctypes.c_int
+    self.client.plasma_wait.restype = ctypes.c_int
 
     self.buffer_from_memory = ctypes.pythonapi.PyBuffer_FromMemory
     self.buffer_from_memory.argtypes = [ctypes.c_void_p, ctypes.c_int64]
@@ -100,6 +105,15 @@ class PlasmaClient(object):
     else:
       self.has_manager_conn = False
       self.plasma_conn = ctypes.c_void_p(self.client.plasma_connect(store_socket_name, None))
+
+  def shutdown(self):
+    """Shutdown the client so that it does not send messages.
+
+    If we kill the Plasma store and Plasma manager that this client is connected
+    to, then we can use this method to prevent the client from trying to send
+    messages to the killed processes.
+    """
+    self.alive = False
 
   def create(self, object_id, size, metadata=None):
     """Create a new buffer in the PlasmaStore for a particular object ID.
@@ -233,6 +247,12 @@ class PlasmaClient(object):
     """
     if not self.has_manager_conn:
       raise Exception("Not connected to the plasma manager socket")
+    if num_returns < 0:
+      raise Exception("The argument num_returns cannot be less than one.")
+    if num_returns > len(object_ids):
+      raise Exception("The argument num_returns cannot be greater than len(object_ids): num_returns is {}, len(object_ids) is {}.".format(num_returns, len(object_ids)))
+    if timeout > 2 ** 36:
+      raise Exception("The method wait currently cannot be used with a timeout greater than 2 ** 36.")
     object_id_array = (len(object_ids) * PlasmaID)()
     for i, object_id in enumerate(object_ids):
       object_id_array[i] = make_plasma_id(object_id)
@@ -240,7 +260,9 @@ class PlasmaClient(object):
     num_return_objects = self.client.plasma_wait(self.plasma_conn,
                                                  object_id_array._length_,
                                                  object_id_array,
-                                                 timeout, num_returns, return_id_array)
+                                                 ctypes.c_int64(timeout),
+                                                 num_returns,
+                                                 return_id_array)
     ready_ids = map(plasma_id_to_str, return_id_array[num_returns-num_return_objects:])
     return ready_ids, list(set(object_ids) - set(ready_ids))
 

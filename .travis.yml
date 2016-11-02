@@ -69,3 +69,8 @@ script:
   - python src/common/test/test.py
   - python src/plasma/test/test.py
   - python src/photon/test/test.py
+
+  - python test/runtest.py
+  - python test/array_test.py
+  - python test/failure_test.py
+  - python test/microbenchmarks.py
