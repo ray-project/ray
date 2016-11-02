@@ -90,7 +90,6 @@ class PlasmaClient(object):
     self.client.plasma_contains.restype = None
     self.client.plasma_seal.restype = None
     self.client.plasma_delete.restype = None
-    self.client.plasma_evict.restype = ctypes.c_int64
     self.client.plasma_subscribe.restype = ctypes.c_int
     self.client.plasma_wait.restype = ctypes.c_int
 

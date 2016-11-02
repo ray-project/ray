@@ -25,6 +25,7 @@
 
 #include "common.h"
 #include "event_loop.h"
+#include "eviction_policy.h"
 #include "io.h"
 #include "uthash.h"
 #include "utarray.h"
@@ -49,34 +50,14 @@ void plasma_send_reply(int fd, plasma_reply *reply) {
 typedef struct {
   /* Object id of this object. */
   object_id object_id;
-  /* Object info like size, creation time and owner. */
-  plasma_object_info info;
-  /* Memory mapped file containing the object. */
-  int fd;
-  /* Size of the underlying map. */
-  int64_t map_size;
-  /* Offset from the base of the mmap. */
-  ptrdiff_t offset;
-  /* Handle for the uthash table. */
-  UT_hash_handle handle;
-  /* Pointer to the object data. Needed to free the object. */
-  uint8_t *pointer;
-  /* An array of the clients that are currently using this object. */
-  UT_array *clients;
-  /* The state of the object, e.g., whether it is open or sealed. */
-  object_state state;
-} object_table_entry;
-
-typedef struct {
-  /* Object id of this object. */
-  object_id object_id;
   /* An array of the clients that are waiting to get this object. */
   UT_array *waiting_clients;
   /* Handle for the uthash table. */
   UT_hash_handle handle;
 } object_notify_entry;
 
-/** Contains all information that is associated with a client. */
+/** Contains all information that is associated with a Plasma store client. This
+ *  is here because it is exposed to the eviction policy. */
 struct client {
   /** The socket used to communicate with the client. */
   int sock;
@@ -105,22 +86,17 @@ typedef struct {
 struct plasma_store_state {
   /* Event loop of the plasma store. */
   event_loop *loop;
-  /* A hash table of all the objects in the store. */
-  object_table_entry *objects;
   /* Objects that processes are waiting for. */
   object_notify_entry *objects_notify;
   /** The pending notifications that have not been sent to subscribers because
    *  the socket send buffers were full. This is a hash table from client file
    *  descriptor to an array of object_ids to send to that client. */
   notification_queue *pending_notifications;
-  /** The amount of memory (in bytes) that we allow to be allocated in this
-   *  store. */
-  int64_t memory_capacity;
-  /** The amount of memory (in bytes) currently being used. */
-  int64_t memory_used;
-  /** An array of the released objects in order from least recently released
-   *  to most recently released. */
-  UT_array *released_objects;
+  /** The plasma store information, including the object tables, that is exposed
+   *  to the eviction policy. */
+  plasma_store_info *plasma_store_info;
+  /** The state that is managed by the eviction policy. */
+  eviction_state *eviction_state;
 };
 
 plasma_store_state *init_plasma_store(event_loop *loop) {
@@ -129,10 +105,12 @@ plasma_store_state *init_plasma_store(event_loop *loop) {
   state->objects = NULL;
   state->objects_notify = NULL;
   state->pending_notifications = NULL;
-  /* Find the amount of available memory on the machine. */
-  state->memory_capacity = 1000000000;
-  state->memory_used = 0;
-  utarray_new(state->released_objects, &object_table_entry_icd);
+  /* Initialize the plasma store info. */
+  state->plasma_store_info = malloc(sizeof(plasma_store_info));
+  state->plasma_store_info->open_objects = NULL;
+  state->plasma_store_info->sealed_objects = NULL;
+  /* Initialize the eviction state. */
+  state->eviction_state = make_eviction_state();
   return state;
 }
 
@@ -147,24 +125,8 @@ void add_client_to_object_clients(object_table_entry *entry,
       return;
     }
   }
-  /* If the object was previously unused, remove the object from the list of
-   * released objects. */
-  /* TODO(rkn): This is extremely slow. It can be made more efficient with
-   * better data structures. */
-  if (utarray_len(entry->clients) == 0) {
-    plasma_store_state *plasma_state = client_info->plasma_state;
-    for (int i = 0; i < utarray_len(plasma_state->released_objects); ++i) {
-      object_id *obj_id =
-          (object_id *) utarray_eltptr(plasma_state->released_objects, i);
-      if (memcmp(obj_id, &entry->object_id, sizeof(object_id)) == 0) {
-        utarray_erase(plasma_state->released_objects, i, 1);
-        break;
-      }
-    }
-    /* TODO(rkn): It'd be nice to check that something was actually removed, but
-     * the first time we call add_client_to_object_clients, it won't be in the
-     * list. */
-  }
+  handle_add_client(client_info->plasma_state->eviction_state,
+                    client_info->plasma_state->plasma_store_info, entry);
   /* Add the client pointer to the list of clients using this object. */
   utarray_push_back(entry->clients, &client_info);
 }
@@ -177,26 +139,17 @@ void create_object(client *client_context,
                    plasma_object *result) {
   LOG_DEBUG("creating object"); /* TODO(pcm): add object_id here */
   plasma_store_state *plasma_state = client_context->plasma_state;
-
-  /* Check if there is enough space to create the object. */
-  int64_t required_space = plasma_state->memory_used + data_size +
-                           metadata_size - plasma_state->memory_capacity;
-  if (required_space > 0) {
-    /* Try to free up as much free space as we need right now. */
-    LOG_DEBUG("not enough space to create this object, so evicting objects");
-    printf("There is not enough space to create this object, so evicting objects.\n");
-    int64_t num_bytes_evicted = evict_objects(client_context, required_space);
-    printf("Evicted %lld bytes.\n", num_bytes_evicted);
-    CHECK(num_bytes_evicted >= required_space);
-  }
-  plasma_state->memory_used += (data_size + metadata_size);
-
   object_table_entry *entry;
   /* TODO(swang): Return these error to the client instead of exiting. */
-  HASH_FIND(handle, plasma_state->objects, &object_id, sizeof(object_id),
-            entry);
+  HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
+            sizeof(object_id), entry);
   CHECKM(entry == NULL, "Cannot create object twice.");
-
+  /* Allow the eviction policy to process the fact that we are trying to create
+   * a new object. */
+  handle_before_create(plasma_state->eviction_state,
+                       plasma_state->plasma_store_info,
+                       data_size + metadata_size);
+  /* Allocate space for the new object */
   uint8_t *pointer = dlmalloc(data_size + metadata_size);
   int fd;
   int64_t map_size;
@@ -215,7 +168,8 @@ void create_object(client *client_context,
   entry->offset = offset;
   entry->state = OPEN;
   utarray_new(entry->clients, &client_icd);
-  HASH_ADD(handle, plasma_state->objects, object_id, sizeof(object_id), entry);
+  HASH_ADD(handle, plasma_state->plasma_store_info->objects, object_id,
+           sizeof(object_id), entry);
   result->handle.store_fd = fd;
   result->handle.mmap_size = map_size;
   result->data_offset = offset;
@@ -233,8 +187,8 @@ int get_object(client *client_context,
                plasma_object *result) {
   plasma_store_state *plasma_state = client_context->plasma_state;
   object_table_entry *entry;
-  HASH_FIND(handle, plasma_state->objects, &object_id, sizeof(object_id),
-            entry);
+  HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
+            sizeof(object_id), entry);
   if (entry && entry->state == SEALED) {
     result->handle.store_fd = entry->fd;
     result->handle.mmap_size = entry->map_size;
@@ -272,12 +226,8 @@ int remove_client_from_object_clients(object_table_entry *entry,
     if (*c == client_info) {
       /* Remove the client from the array. */
       utarray_erase(entry->clients, i, 1);
-      /* If no more clients are using this object, add the object to the list of
-       * released objects. */
-      if (utarray_len(entry->clients) == 0) {
-        plasma_store_state *plasma_state = client_info->plasma_state;
-        utarray_push_back(plasma_state->released_objects, &entry->object_id);
-      }
+      handle_remove_client(client_info->plasma_state->eviction_state,
+                           client_info->plasma_state->plasma_store_info, entry);
       /* Return 1 to indicate that the client was removed. */
       return 1;
     }
@@ -289,8 +239,8 @@ int remove_client_from_object_clients(object_table_entry *entry,
 void release_object(client *client_context, object_id object_id) {
   plasma_store_state *plasma_state = client_context->plasma_state;
   object_table_entry *entry;
-  HASH_FIND(handle, plasma_state->objects, &object_id, sizeof(object_id),
-            entry);
+  HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
+            sizeof(object_id), entry);
   CHECK(entry != NULL);
   /* Remove the client from the object's array of clients. */
   CHECK(remove_client_from_object_clients(entry, client_context) == 1);
@@ -300,8 +250,8 @@ void release_object(client *client_context, object_id object_id) {
 int contains_object(client *client_context, object_id object_id) {
   plasma_store_state *plasma_state = client_context->plasma_state;
   object_table_entry *entry;
-  HASH_FIND(handle, plasma_state->objects, &object_id, sizeof(object_id),
-            entry);
+  HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
+            sizeof(object_id), entry);
   return entry && (entry->state == SEALED) ? OBJECT_FOUND : OBJECT_NOT_FOUND;
 }
 
@@ -310,8 +260,8 @@ void seal_object(client *client_context, object_id object_id) {
   LOG_DEBUG("sealing object");  // TODO(pcm): add object_id here
   plasma_store_state *plasma_state = client_context->plasma_state;
   object_table_entry *entry;
-  HASH_FIND(handle, plasma_state->objects, &object_id, sizeof(object_id),
-            entry);
+  HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
+            sizeof(object_id), entry);
   CHECK(entry != NULL && entry->state == OPEN);
   /* Set the state of object to SEALED. */
   entry->state = SEALED;
@@ -356,8 +306,8 @@ void delete_object(client *client_context, object_id object_id) {
   LOG_DEBUG("deleting object");  // TODO(rkn): add object_id here
   plasma_store_state *plasma_state = client_context->plasma_state;
   object_table_entry *entry;
-  HASH_FIND(handle, plasma_state->objects, &object_id, sizeof(object_id),
-            entry);
+  HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
+            sizeof(object_id), entry);
   /* TODO(rkn): This should probably not fail, but should instead throw an
    * error. Maybe we should also support deleting objects that have been created
    * but not sealed. */
@@ -367,38 +317,10 @@ void delete_object(client *client_context, object_id object_id) {
   CHECKM(utarray_len(entry->clients) == 0,
          "To delete an object, there must be no clients currently using it.");
   uint8_t *pointer = entry->pointer;
-  HASH_DELETE(handle, plasma_state->objects, entry);
+  HASH_DELETE(handle, plasma_state->plasma_store_info->objects, entry);
   dlfree(pointer);
   utarray_free(entry->clients);
   free(entry);
-}
-
-/* Remove the least recently released objects. */
-int64_t evict_objects(client *client_context, int64_t num_bytes) {
-  int num_objects_evicted = 0;
-  int64_t num_bytes_evicted = 0;
-  plasma_store_state *plasma_state = client_context->plasma_state;
-  for (int i = 0; i < utarray_len(plasma_state->released_objects); ++i) {
-    if (num_bytes_evicted >= num_bytes) {
-      break;
-    }
-    object_id *obj_id =
-        (object_id *) utarray_eltptr(plasma_state->released_objects, i);
-    object_table_entry *entry;
-    HASH_FIND(handle, plasma_state->open_objects, obj_id, sizeof(object_id),
-              entry);
-    if (entry == NULL) {
-      HASH_FIND(handle, plasma_state->sealed_objects, obj_id, sizeof(object_id),
-                entry);
-    }
-    num_objects_evicted += 1;
-    num_bytes_evicted += (entry->info.data_size + entry->info.metadata_size);
-    delete_object(client_context, *obj_id);
-  }
-  /* Remove the deleted objects from the released objects. */
-  utarray_erase(plasma_state->released_objects, 0, num_objects_evicted);
-  plasma_state->memory_used -= num_bytes_evicted;
-  return num_bytes_evicted;
 }
 
 /* Send more notifications to a subscriber. */
@@ -450,7 +372,7 @@ void subscribe_to_updates(client *client_context, int conn) {
   plasma_store_state *plasma_state = client_context->plasma_state;
   char dummy;
   int fd = recv_fd(conn, &dummy, 1);
-  CHECKM(HASH_CNT(handle, plasma_state->objects) == 0,
+  CHECKM(HASH_CNT(handle, plasma_state->plasma_store_info->objects) == 0,
          "plasma_subscribe should be called before any objects are created.");
   /* Create a new array to buffer notifications that can't be sent to the
    * subscriber yet because the socket send buffer is full. TODO(rkn): the queue
@@ -505,7 +427,10 @@ void process_message(event_loop *loop,
     delete_object(client_context, req->object_ids[0]);
     break;
   case PLASMA_EVICT: {
-    int num_bytes_evicted = evict_objects(client_context, req->num_bytes);
+    int num_bytes_evicted =
+        evict_objects(client_context->plasma_state->eviction_state,
+                      client_context->plasma_state->plasma_store_info,
+                      req->num_bytes);
     reply.num_bytes = num_bytes_evicted;
     plasma_send_reply(client_sock, &reply);
     break;
@@ -520,7 +445,8 @@ void process_message(event_loop *loop,
      * lists. */
     plasma_store_state *plasma_state = client_context->plasma_state;
     object_table_entry *entry, *temp_entry;
-    HASH_ITER(handle, plasma_state->objects, entry, temp_entry) {
+    HASH_ITER(handle, plasma_state->plasma_store_info->objects, entry,
+              temp_entry) {
       remove_client_from_object_clients(entry, client_context);
     }
   } break;

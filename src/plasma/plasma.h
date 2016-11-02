@@ -9,6 +9,9 @@
 
 #include "common.h"
 
+#include "utarray.h"
+#include "uthash.h"
+
 typedef struct {
   int64_t data_size;
   int64_t metadata_size;
@@ -110,5 +113,37 @@ typedef struct {
   /** The IDs of the objects that this reply refers to. */
   object_id object_ids[1];
 } plasma_reply;
+
+/** This type is used by the Plasma store. It is here because it is exposed to
+ *  the eviction policy. */
+typedef struct {
+  /* Object id of this object. */
+  object_id object_id;
+  /* Object info like size, creation time and owner. */
+  plasma_object_info info;
+  /* Memory mapped file containing the object. */
+  int fd;
+  /* Size of the underlying map. */
+  int64_t map_size;
+  /* Offset from the base of the mmap. */
+  ptrdiff_t offset;
+  /* Handle for the uthash table. */
+  UT_hash_handle handle;
+  /* Pointer to the object data. Needed to free the object. */
+  uint8_t *pointer;
+  /** An array of the clients that are currently using this object. */
+  UT_array *clients;
+  /* The state of the object, e.g., whether it is open or sealed. */
+  object_state state;
+} object_table_entry;
+
+/** The plasma store information that is exposed to the eviction policy. */
+typedef struct {
+  /* Objects that are still being written by their owner process. */
+  object_table_entry *open_objects;
+  /* Objects that have already been sealed by their owner process and
+   * can now be shared with other processes. */
+  object_table_entry *sealed_objects;
+} plasma_store_info;
 
 #endif
