@@ -4,7 +4,7 @@ import time
 
 import test_functions
 
-def wait_for_errors(error_type, num_errors, timeout=1):
+def wait_for_errors(error_type, num_errors, timeout=10):
   start_time = time.time()
   while time.time() - start_time < timeout:
     error_info = ray.error_info()
