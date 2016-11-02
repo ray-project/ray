@@ -917,7 +917,7 @@ void start_server(const char *store_socket_name,
   g_manager_state = init_plasma_manager_state(store_socket_name, master_addr,
                                               port, db_addr, db_port);
   CHECK(g_manager_state);
-  
+
   CHECK(listen(remote_sock, 5) != -1);
   CHECK(listen(local_sock, 5) != -1);
 
