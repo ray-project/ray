@@ -9,6 +9,7 @@ import random
 
 # Ray modules
 import config
+import plasma
 
 # all_processes is a list of the scheduler, object store, and worker processes
 # that have been started by this services module if Ray is being used in local
@@ -80,15 +81,8 @@ def start_objstore(node_ip_address, redis_address, cleanup):
   store_name = "/tmp/ray_plasma_store{}".format(random_name())
   p1 = subprocess.Popen([plasma_store_executable, "-s", store_name])
 
-  plasma_manager_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../plasma/build/plasma_manager")
   manager_name = "/tmp/ray_plasma_manager{}".format(random_name())
-  manager_port = new_port()
-  p2 = subprocess.Popen([plasma_manager_executable,
-                         "-s", store_name,
-                         "-m", manager_name,
-                         "-h", node_ip_address,
-                         "-p", str(manager_port),
-                         "-r", redis_address])
+  p2, manager_port = plasma.start_plasma_manager(store_name, manager_name, redis_address)
 
   if cleanup:
     all_processes.append(p1)

@@ -1,6 +1,8 @@
-import os
-import socket
 import ctypes
+import os
+import random
+import socket
+import subprocess
 import time
 
 Addr = ctypes.c_ubyte * 4
@@ -287,3 +289,48 @@ class PlasmaClient(object):
         assert len(message_data) == PLASMA_ID_SIZE
         break
     return message_data
+
+def start_plasma_manager(store_name, manager_name, redis_address, num_retries=5, use_valgrind=False):
+  """Start a plasma manager and return the ports it listens on.
+
+  Args:
+    store_name (str): The name of the plasma store socket.
+    manager_name (str): The name of the plasma manager socket.
+    redis_address (str): The address of the Redis server.
+    use_valgrind (bool): True if the Plasma manager should be started inside of
+      valgrind and False otherwise.
+
+  Returns:
+    The process ID of the Plasma manager and the port that the manager is
+      listening on.
+
+  Raises:
+    Exception: An exception is raised if the manager could not be properly
+      started.
+  """
+  plasma_manager_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../build/plasma_manager")
+  port = None
+  process = None
+  counter = 0
+  while counter < num_retries:
+    if counter > 0:
+      print("Plasma manager failed to start, retrying now.")
+    port = random.randint(10000, 65535)
+    command = [plasma_manager_executable,
+               "-s", store_name,
+               "-m", manager_name,
+               "-h", "127.0.0.1",
+               "-p", str(port),
+               "-r", redis_address]
+    if use_valgrind:
+      process = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + command)
+    else:
+      process = subprocess.Popen(command)
+    # This sleep is critical. If the plasma_manager fails to start because the
+    # port is already in use, then we need it to fail within 0.1 seconds.
+    time.sleep(0.1)
+    # See if the process has terminated
+    if process.poll() == None:
+      return process, port
+    counter += 1
+  raise Exception("Couldn't start plasma manager.")

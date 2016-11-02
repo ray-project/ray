@@ -1086,8 +1086,7 @@ def main_loop(worker=global_worker):
       # We record the traceback and notify the scheduler.
       traceback_str = format_error_message(traceback.format_exc())
       error_key = "ReusableVariableReinitializeError:{}".format(random_string())
-      worker.redis_client.hmset(error_key, {"task_instance_id": "NOTIMPLEMENTED",
-                                            "task_id": "NOTIMPLEMENTED",
+      worker.redis_client.hmset(error_key, {"task_id": "NOTIMPLEMENTED",
                                             "function_id": function_id.id(),
                                             "function_name": function_name,
                                             "message": traceback_str})
@@ -1151,7 +1150,6 @@ def _export_reusable_variable(name, reusable, worker=global_worker):
   """
   if _mode(worker) not in [SCRIPT_MODE, SILENT_MODE]:
     raise Exception("_export_reusable_variable can only be called on a driver.")
-
   reusable_variable_id = name
   key = "ReusableVariables:{}".format(reusable_variable_id)
   worker.redis_client.hmset(key, {"name": name,
@@ -1161,11 +1159,10 @@ def _export_reusable_variable(name, reusable, worker=global_worker):
   worker.driver_export_counter += 1
 
 def export_remote_function(function_id, func_name, func, num_return_vals, worker=global_worker):
+  if _mode(worker) not in [SCRIPT_MODE, SILENT_MODE]:
+    raise Exception("export_remote_function can only be called on a driver.")
   key = "RemoteFunction:{}".format(function_id.id())
-
   worker.num_return_vals[function_id.id()] = num_return_vals
-
-
   pickled_func = pickling.dumps(func)
   worker.redis_client.hmset(key, {"function_id": function_id.id(),
                                   "name": func_name,
