@@ -34,21 +34,28 @@ typedef struct {
 } task_arg;
 
 struct task_spec_impl {
-  /* Function ID of the task. */
+  /** Task ID of the task. */
+  task_id task_id;
+  /** Task ID of the parent task. */
+  task_id parent_task_id;
+  /** A count of the number of tasks submitted by the parent task before this
+   *  one. */
+  int64_t parent_counter;
+  /** Function ID of the task. */
   function_id function_id;
-  /* Total number of arguments. */
+  /** Total number of arguments. */
   int64_t num_args;
-  /* Index of the last argument that has been constructed. */
+  /** Index of the last argument that has been constructed. */
   int64_t arg_index;
-  /* Number of return values. */
+  /** Number of return values. */
   int64_t num_returns;
-  /* Number of bytes the pass-by-value arguments are occupying. */
+  /** Number of bytes the pass-by-value arguments are occupying. */
   int64_t args_value_size;
-  /* The offset of the number of bytes of pass-by-value data that
-   * has been written so far, relative to &task_spec->args_and_returns[0] +
-   * (task_spec->num_args + task_spec->num_returns) * sizeof(task_arg) */
+  /** The offset of the number of bytes of pass-by-value data that
+   *  has been written so far, relative to &task_spec->args_and_returns[0] +
+   *  (task_spec->num_args + task_spec->num_returns) * sizeof(task_arg) */
   int64_t args_value_offset;
-  /* Argument and return IDs as well as offsets for pass-by-value args. */
+  /** Argument and return IDs as well as offsets for pass-by-value args. */
   task_arg args_and_returns[0];
 };
 
@@ -57,13 +64,25 @@ struct task_spec_impl {
   (sizeof(task_spec) + ((NUM_ARGS) + (NUM_RETURNS)) * sizeof(task_arg) + \
    (ARGS_VALUE_SIZE))
 
-task_spec *alloc_task_spec(function_id function_id,
+task_id compute_task_id(task_spec *spec) {
+  return globally_unique_id();
+}
+
+object_id compute_return_id(task_id task_id, int64_t return_index) {
+  return globally_unique_id();
+}
+
+task_spec *alloc_task_spec(task_id parent_task_id,
+                           int64_t parent_counter,
+                           function_id function_id,
                            int64_t num_args,
                            int64_t num_returns,
                            int64_t args_value_size) {
   int64_t size = TASK_SPEC_SIZE(num_args, num_returns, args_value_size);
   task_spec *task = malloc(size);
   memset(task, 0, size);
+  task->parent_task_id = parent_task_id;
+  task->parent_counter = parent_counter;
   task->function_id = function_id;
   task->num_args = num_args;
   task->arg_index = 0;
@@ -72,13 +91,33 @@ task_spec *alloc_task_spec(function_id function_id,
   return task;
 }
 
+void add_task_and_return_ids(task_spec *spec) {
+  /* Check that the task was fully constructed */
+  CHECK(spec->arg_index == spec->num_args);
+  /* Compute the task ID. This must be done after all of the other fields have
+   * been set but before the return object IDs have been set. It is also
+   * important that the task_spec is zero-initialized so that uninitialized
+   * fields will not make the task ID nondeterministic. */
+  task_id task_id = compute_task_id(spec);
+  spec->task_id = task_id;
+  /* Set the object IDs for the return values. */
+  for (int64_t i = 0; i < spec->num_returns; ++i) {
+    object_id *return_id = task_return(spec, i);
+    *return_id = compute_return_id(task_id, i);
+  }
+}
+
 int64_t task_size(task_spec *spec) {
   return TASK_SPEC_SIZE(spec->num_args, spec->num_returns,
                         spec->args_value_size);
 }
 
-unique_id *task_function(task_spec *spec) {
+function_id *task_function(task_spec *spec) {
   return &spec->function_id;
+}
+
+task_id *task_task_id(task_spec *spec) {
+  return &spec->task_id;
 }
 
 int64_t task_num_args(task_spec *spec) {

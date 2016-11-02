@@ -112,7 +112,7 @@ PyTypeObject PyObjectIDType = {
 
 /* Define the PyTask class. */
 
-static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
+static int PyTask_init(PyTask *self, PyObject *args) {
   function_id function_id;
   /* Arguments of the task (can be PyObjectIDs or Python values). */
   PyObject *arguments;
@@ -120,8 +120,13 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   UT_array *val_repr_ptrs;
   utarray_new(val_repr_ptrs, &ut_ptr_icd);
   int num_returns;
-  if (!PyArg_ParseTuple(args, "O&Oi", &PyObjectToUniqueID, &function_id,
-                        &arguments, &num_returns)) {
+  /* The ID of the task that called this task. */
+  task_id parent_task_id;
+  /* The number of tasks that the parent task has called prior to this one. */
+  int parent_counter;
+  if (!PyArg_ParseTuple(args, "O&OiO&i", &PyObjectToUniqueID, &function_id,
+                        &arguments, &num_returns, &PyObjectToUniqueID,
+                        &parent_task_id, &parent_counter)) {
     return -1;
   }
   size_t size = PyList_Size(arguments);
@@ -137,8 +142,8 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   }
   /* Construct the task specification. */
   int val_repr_index = 0;
-  self->spec =
-      alloc_task_spec(function_id, size, num_returns, value_data_bytes);
+  self->spec = alloc_task_spec(parent_task_id, parent_counter, function_id,
+                               size, num_returns, value_data_bytes);
   /* Add the task arguments. */
   for (size_t i = 0; i < size; ++i) {
     PyObject *arg = PyList_GetItem(arguments, i);
@@ -154,14 +159,8 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
     }
   }
   utarray_free(val_repr_ptrs);
-  /* Generate and add the object IDs for the return values. */
-  for (size_t i = 0; i < num_returns; ++i) {
-    /* TODO(rkn): Later, this should be computed as a deterministic hash of (1)
-     * the contents of the task, (2) the index i, and (3) a counter of the
-     * number of tasks launched so far by the parent task. For now, we generate
-     * it randomly. */
-    *task_return(self->spec, i) = globally_unique_id();
-  }
+  /* Compute the task ID and the return object IDs. */
+  add_task_and_return_ids(self->spec);
   return 0;
 }
 
@@ -173,6 +172,11 @@ static void PyTask_dealloc(PyTask *self) {
 static PyObject *PyTask_function_id(PyObject *self) {
   function_id function_id = *task_function(((PyTask *) self)->spec);
   return PyObjectID_make(function_id);
+}
+
+static PyObject *PyTask_task_id(PyObject *self) {
+  task_id task_id = *task_task_id(((PyTask *) self)->spec);
+  return PyObjectID_make(task_id);
 }
 
 static PyObject *PyTask_arguments(PyObject *self) {
@@ -207,6 +211,8 @@ static PyObject *PyTask_returns(PyObject *self) {
 static PyMethodDef PyTask_methods[] = {
     {"function_id", (PyCFunction) PyTask_function_id, METH_NOARGS,
      "Return the function ID for this task."},
+    {"task_id", (PyCFunction) PyTask_task_id, METH_NOARGS,
+     "Return the task ID for this task."},
     {"arguments", (PyCFunction) PyTask_arguments, METH_NOARGS,
      "Return the arguments for the task."},
     {"returns", (PyCFunction) PyTask_returns, METH_NOARGS,

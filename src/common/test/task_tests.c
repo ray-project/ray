@@ -12,8 +12,9 @@
 SUITE(task_tests);
 
 TEST task_test(void) {
+  task_id parent_task_id = globally_unique_id();
   function_id func_id = globally_unique_id();
-  task_spec *task = alloc_task_spec(func_id, 4, 2, 10);
+  task_spec *task = alloc_task_spec(parent_task_id, 0, func_id, 4, 2, 10);
   ASSERT(task_num_args(task) == 4);
   ASSERT(task_num_returns(task) == 2);
 
@@ -44,8 +45,9 @@ TEST task_test(void) {
 }
 
 TEST send_task(void) {
+  task_id parent_task_id = globally_unique_id();
   function_id func_id = globally_unique_id();
-  task_spec *task = alloc_task_spec(func_id, 4, 2, 10);
+  task_spec *task = alloc_task_spec(parent_task_id, 0, func_id, 4, 2, 10);
   *task_return(task, 1) = globally_unique_id();
   int fd[2];
   socketpair(AF_UNIX, SOCK_STREAM, 0, fd);
