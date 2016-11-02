@@ -276,6 +276,7 @@ class TestPlasmaManager(unittest.TestCase):
   def tearDown(self):
     # Kill the PlasmaStore and PlasmaManager processes.
     if USE_VALGRIND:
+      time.sleep(1) # give processes opportunity to finish work
       self.p4.send_signal(signal.SIGTERM)
       self.p4.wait()
       self.p5.send_signal(signal.SIGTERM)
@@ -346,7 +347,7 @@ class TestPlasmaManager(unittest.TestCase):
   #     self.assertEqual(successes, [True, False, True])
   #     assert_get_object_equal(self, self.client2, self.client1, object_id1,
   #                             memory_buffer=memory_buffer1, metadata=metadata1)
-  #     assert_get_object_equal(self, self.client2, self.client1, object_id2,
+  #     assert_get_object_qual(self, self.client2, self.client1, object_id2,
   #                             memory_buffer=memory_buffer2, metadata=metadata2)
 
   def test_wait(self):
