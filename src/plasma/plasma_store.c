@@ -357,15 +357,18 @@ void delete_object(client *client_context, object_id object_id) {
 }
 
 /* Convert object_id to a unique file path on-disk */
-void object_id_to_persist_path(object_id object_id, char *file_path, size_t path_size) {
+char *object_id_to_persist_path(object_id object_id) {
+  size_t path_size = strlen(PERSIST_PATH) + (UNIQUE_ID_SIZE * 2) + 1;
+  char *file_path = malloc(path_size);
   strcpy(file_path, PERSIST_PATH);
   for (int i = strlen(PERSIST_PATH); i < path_size; i++) {
     sprintf(&file_path[i*2], "%02X", object_id.id[i]);
   }
+  return file_path;
 }
 
-/* Write object to disk and record offset of object in file. 
- * TODO(um): Maybe use an on-disk KV store instead? */
+/* Write a sealed object resident in memory to disk. 
+ * TODO(um): Maybe use an on-disk KV store instead of files? */
 void persist_object(client *client_context, object_id object_id) {
   LOG_DEBUG("persisting object");
   plasma_store_state *plasma_state = client_context->plasma_state;
@@ -374,20 +377,20 @@ void persist_object(client *client_context, object_id object_id) {
             entry);
   CHECKM(entry != NULL, "To persist an object it must have been sealed.");
   uint8_t *pointer = entry->pointer;
-  /* Check if file containing object exists. */
-  size_t path_size = strlen(PERSIST_PATH) + (UNIQUE_ID_SIZE * 2) + 1;
-  char file_path[path_size];
-  object_id_to_persist_path(object_id, file_path, path_size);
+  /* Check if file containing object exists. 
+   * TODO(um): use a cleaner way to test for this (stat?). */
+  char *file_path = object_id_to_persist_path(object_id);
   int fd = open(file_path, O_WRONLY);
-  close(fd); /* TODO(um): probably a cleaner way to do this (stat?). */
+  close(fd); 
   CHECKM(fd < 0, "An already persisted object can't be persisted again.");
   /* Create if it does not exist and write object. */
   fd = open(file_path, O_WRONLY|O_CREAT);
   write(fd, pointer, entry->info.data_size);
   close(fd);
+  free(file_path);
 }
 
-/* Read persisted object from disk back into memory. */
+/* Read a persisted object from disk back into memory. */
 void get_persisted_object(client *client_context, object_id object_id) {
   LOG_DEBUG("reading persisted object");
   plasma_store_state *plasma_state = client_context->plasma_state;
@@ -397,10 +400,9 @@ void get_persisted_object(client *client_context, object_id object_id) {
   CHECKM(entry != NULL, "There must be a sealed object entry to read it into.");
   uint8_t *pointer = entry->pointer;
   /* Read object into allocated space. */
-  size_t path_size = strlen(PERSIST_PATH) + (UNIQUE_ID_SIZE * 2) + 1;
-  char file_path[path_size];
-  object_id_to_persist_path(object_id, file_path, path_size);
+  char *file_path = object_id_to_persist_path(object_id);
   int fd = open(file_path, O_RDONLY);
+  free(file_path);
   CHECKM(fd > 0, "Can't read an object that was never persisted.");
   read(fd, pointer, entry->info.data_size);
   close(fd);
