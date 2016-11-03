@@ -172,8 +172,7 @@ void create_object(client *client_context,
   entry->offset = offset;
   entry->state = OPEN;
   utarray_new(entry->clients, &client_icd);
-  HASH_ADD(handle, plasma_state->objects, object_id, sizeof(object_id),
-           entry);
+  HASH_ADD(handle, plasma_state->objects, object_id, sizeof(object_id), entry);
   result->handle.store_fd = fd;
   result->handle.mmap_size = map_size;
   result->data_offset = offset;
@@ -314,7 +313,8 @@ void delete_object(client *client_context, object_id object_id) {
    * error. Maybe we should also support deleting objects that have been created
    * but not sealed. */
   CHECKM(entry != NULL, "To delete an object it must have been created.");
-  CHECKM(entry->state == SEALED, "To delete an object it must have been sealed.");
+  CHECKM(entry->state == SEALED, 
+         "To delete an object it must have been sealed.");
   CHECKM(utarray_len(entry->clients) == 0,
          "To delete an object, there must be no clients currently using it.");
   uint8_t *pointer = entry->pointer;
