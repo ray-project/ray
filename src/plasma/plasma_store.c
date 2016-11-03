@@ -63,8 +63,6 @@ typedef struct {
   uint8_t *pointer;
   /* An array of the clients that are currently using this object. */
   UT_array *clients;
-  /* Where the object is located. */
-  object_residency residency;
   /* Whether or not the object has been sealed. */
   object_state state;
 
