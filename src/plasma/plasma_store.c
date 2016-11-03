@@ -63,9 +63,8 @@ typedef struct {
   uint8_t *pointer;
   /* An array of the clients that are currently using this object. */
   UT_array *clients;
-  /* Whether or not the object has been sealed. */
+  /* The state of the object, e.g., whether it is open or sealed. */
   object_state state;
-
 } object_table_entry;
 
 typedef struct {
@@ -106,7 +105,7 @@ typedef struct {
 struct plasma_store_state {
   /* Event loop of the plasma store. */
   event_loop *loop;
-  /* All objects. */
+  /* A hash table of all the objects in the store. */
   object_table_entry *objects;
   /* Objects that processes are waiting for. */
   object_notify_entry *objects_notify;
@@ -172,7 +171,6 @@ void create_object(client *client_context,
   entry->map_size = map_size;
   entry->offset = offset;
   entry->state = OPEN;
-  entry->residency = IN_MEMORY_ONLY;
   utarray_new(entry->clients, &client_icd);
   HASH_ADD(handle, plasma_state->objects, object_id, sizeof(object_id),
            entry);
@@ -243,13 +241,11 @@ int remove_client_from_object_clients(object_table_entry *entry,
 void release_object(client *client_context, object_id object_id) {
   plasma_store_state *plasma_state = client_context->plasma_state;
   object_table_entry *entry;
-
   HASH_FIND(handle, plasma_state->objects, &object_id, sizeof(object_id),
             entry);
+  CHECK(entry != NULL);
   /* Remove the client from the object's array of clients. */
-  if (entry != NULL) {
-    CHECK(remove_client_from_object_clients(entry, client_context) == 1);
-  }
+  CHECK(remove_client_from_object_clients(entry, client_context) == 1);
 }
 
 /* Check if an object is present. */
@@ -258,7 +254,7 @@ int contains_object(client *client_context, object_id object_id) {
   object_table_entry *entry;
   HASH_FIND(handle, plasma_state->objects, &object_id, sizeof(object_id),
             entry);
-  return entry && entry->state == SEALED ? OBJECT_FOUND : OBJECT_NOT_FOUND;
+  return entry && (entry->state == SEALED) ? OBJECT_FOUND : OBJECT_NOT_FOUND;
 }
 
 /* Seal an object that has been created in the hash table. */
@@ -269,7 +265,7 @@ void seal_object(client *client_context, object_id object_id) {
   HASH_FIND(handle, plasma_state->objects, &object_id, sizeof(object_id),
             entry);
   CHECK(entry != NULL && entry->state == OPEN);
-  /* Set state of object to SEALED */
+  /* Set the state of object to SEALED. */
   entry->state = SEALED;
   /* Inform all subscribers that a new object has been sealed. */
   notification_queue *queue, *temp_queue;
