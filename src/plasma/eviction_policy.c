@@ -1,5 +1,7 @@
 #include "eviction_policy.h"
 
+void dlfree(void *);
+
 /** The part of the Plasma state that is maintained by the eviction policy. */
 struct eviction_state {
   /** The amount of memory (in bytes) that we allow to be allocated in this
@@ -30,6 +32,26 @@ void free_eviction_state(eviction_state *s) {
   free(s);
 }
 
+void delete_obj(eviction_state *eviction_state,
+                plasma_store_info *plasma_store_info,
+                object_id object_id) {
+  LOG_DEBUG("deleting object");
+  object_table_entry *entry;
+  HASH_FIND(handle, plasma_store_info->sealed_objects, &object_id,
+            sizeof(object_id), entry);
+  /* TODO(rkn): This should probably not fail, but should instead throw an
+   * error. Maybe we should also support deleting objects that have been created
+   * but not sealed. */
+  CHECKM(entry != NULL, "To delete an object it must have been sealed.");
+  CHECKM(utarray_len(entry->clients) == 0,
+         "To delete an object, there must be no clients currently using it.");
+  uint8_t *pointer = entry->pointer;
+  HASH_DELETE(handle, plasma_store_info->sealed_objects, entry);
+  dlfree(pointer);
+  utarray_free(entry->clients);
+  free(entry);
+}
+
 /* Remove the least recently released objects. */
 int64_t evict_objects(eviction_state *eviction_state,
                       plasma_store_info *plasma_store_info,
@@ -51,8 +73,7 @@ int64_t evict_objects(eviction_state *eviction_state,
     }
     num_objects_evicted += 1;
     num_bytes_evicted += (entry->info.data_size + entry->info.metadata_size);
-    // TODO: THIS NEEDS TO BE ENABLED.
-    //delete_object(client_context, *obj_id);
+    delete_obj(eviction_state, plasma_store_info, *obj_id);
   }
   /* Remove the deleted objects from the released objects. */
   utarray_erase(eviction_state->released_objects, 0, num_objects_evicted);
@@ -108,4 +129,10 @@ void handle_remove_client(eviction_state *eviction_state,
   if (utarray_len(entry->clients) == 0) {
     utarray_push_back(eviction_state->released_objects, &entry->object_id);
   }
+}
+
+void handle_delete(eviction_state *eviction_state,
+                   plasma_store_info *plasma_store_info,
+                   object_id object_id) {
+  delete_obj(eviction_state, plasma_store_info, object_id);
 }

@@ -69,15 +69,6 @@ void seal_object(client *client_context, object_id object_id);
 int contains_object(client *client_context, object_id object_id);
 
 /**
- * Delete an object from the plasma store:
- *
- * @param client_context The context of the client making this request.
- * @param object_id Object ID of the object to be deleted.
- * @return Void.
- */
-void delete_object(client *client_context, object_id object_id);
-
-/**
  * Send notifications about sealed objects to the subscribers. This is called
  * in seal_object. If the socket's send buffer is full, the notification will be
  * buffered, and this will be called again when the send buffer has room.

@@ -303,24 +303,8 @@ void seal_object(client *client_context, object_id object_id) {
 
 /* Delete an object that has been created in the hash table. */
 void delete_object(client *client_context, object_id object_id) {
-  LOG_DEBUG("deleting object");  // TODO(rkn): add object_id here
-  plasma_store_state *plasma_state = client_context->plasma_state;
-  object_table_entry *entry;
-  HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
-            sizeof(object_id), entry);
-  /* TODO(rkn): This should probably not fail, but should instead throw an
-   * error. Maybe we should also support deleting objects that have been created
-   * but not sealed. */
-  CHECKM(entry != NULL, "To delete an object it must have been created.");
-  CHECKM(entry->state == SEALED,
-         "To delete an object it must have been sealed.");
-  CHECKM(utarray_len(entry->clients) == 0,
-         "To delete an object, there must be no clients currently using it.");
-  uint8_t *pointer = entry->pointer;
-  HASH_DELETE(handle, plasma_state->plasma_store_info->objects, entry);
-  dlfree(pointer);
-  utarray_free(entry->clients);
-  free(entry);
+  handle_delete(client_context->plasma_state->eviction_state,
+                client_context->plasma_state->plasma_store_info, object_id);
 }
 
 /* Send more notifications to a subscriber. */

@@ -71,6 +71,19 @@ void handle_remove_client(eviction_state *eviction_state,
                           object_table_entry *entry);
 
 /**
+ * This method will be called whenever delete is called in the Plasma store.
+ *
+ * @param eviction_state The state managed by the eviction policy.
+ * @param plasma_store_info Information about the Plasma store that is exposed
+ *        to the eviction policy.
+ * @param object_id The object_id of the object to delete.
+ * @return Void.
+ */
+void handle_delete(eviction_state *eviction_state,
+                   plasma_store_info *plasma_store_info,
+                   object_id object_id);
+
+/**
  * Remove the least recently released objects to try to free up some space.
  *
  * @note This method is not part of the API. It is exposed in the header file
