@@ -3,6 +3,7 @@ from __future__ import print_function
 import os
 import sys
 import time
+import signal
 import subprocess
 import string
 import random
@@ -39,6 +40,8 @@ def cleanup():
   for p in all_processes[::-1]:
     if p.poll() is not None: # process has already terminated
       continue
+    os.kill(p.pid, signal.SIGINT)
+    time.sleep(0.1) # Wait for profiling data to be written.
     p.kill()
     time.sleep(0.05) # is this necessary?
     if p.poll() is not None:
@@ -60,10 +63,14 @@ def start_redis(port):
   if cleanup:
     all_processes.append(p)
 
-def start_local_scheduler(redis_address, plasma_store_name):
+def start_local_scheduler(redis_address, plasma_store_name, run_profiler=False):
   local_scheduler_filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../photon/build/photon_scheduler")
+  if run_profiler:
+    local_scheduler_prefix = ["valgrind", "--tool=callgrind", local_scheduler_filepath]
+  else:
+    local_scheduler_prefix = [local_scheduler_filepath]
   local_scheduler_name = "/tmp/scheduler{}".format(random_name())
-  p = subprocess.Popen([local_scheduler_filepath, "-s", local_scheduler_name, "-r", redis_address, "-p", plasma_store_name])
+  p = subprocess.Popen(local_scheduler_prefix + ["-s", local_scheduler_name, "-r", redis_address, "-p", plasma_store_name])
   if cleanup:
     all_processes.append(p)
   return local_scheduler_name
@@ -137,7 +144,7 @@ def start_ray_local(node_ip_address="127.0.0.1", num_workers=0, worker_path=None
   object_store_name, object_store_manager_name, object_store_manager_port = start_objstore(node_ip_address, redis_address, cleanup=True)
   # Start the local scheduler.
   time.sleep(0.1)
-  local_scheduler_name = start_local_scheduler(redis_address, object_store_name)
+  local_scheduler_name = start_local_scheduler(redis_address, object_store_name, run_profiler=False)
   time.sleep(0.2)
   # Aggregate the address information together.
   address_info = {"node_ip_address": node_ip_address,

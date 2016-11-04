@@ -172,7 +172,7 @@ void handle_worker_available(scheduler_info *info,
   if (!scheduled_task) {
     for (int *p = (int *) utarray_front(state->available_workers); p != NULL;
          p = (int *) utarray_next(state->available_workers, p)) {
-      CHECK(*p != worker_index);
+      DCHECK(*p != worker_index);
     }
     /* Add client_sock to a list of available workers. This struct will be freed
      * when a task is assigned to this worker. */

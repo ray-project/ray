@@ -35,6 +35,11 @@
 
 #define CHECK(COND) CHECKM(COND, "")
 
+#define DCHECK(COND)
+  #ifdef RAY_COMMON_DEBUG
+  CHECK(COND)
+  #endif
+
 /* These are exit codes for common errors that can occur in Ray components. */
 #define EXIT_COULD_NOT_BIND_PORT -2
 

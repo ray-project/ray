@@ -303,6 +303,30 @@ disconnected:
   return;
 }
 
+void read_buffer(int fd, int64_t *type, UT_array* buffer) {
+  int64_t length;
+  int closed = read_bytes(fd, (uint8_t *) type, sizeof(int64_t));
+  if (closed) {
+    goto disconnected;
+  }
+  closed = read_bytes(fd, (uint8_t *) &length, sizeof(int64_t));
+  if (closed) {
+    goto disconnected;
+  }
+  if (length > utarray_len(buffer)) {
+    utarray_resize(buffer, length);
+  }
+  closed = read_bytes(fd, (uint8_t *) utarray_front(buffer), length);
+  if (closed) {
+    goto disconnected;
+  }
+  return;
+disconnected:
+  /* Handle the case in which the socket is closed. */
+  *type = DISCONNECT_CLIENT;
+  return;
+}
+
 /* Write a null-terminated string to a file descriptor. */
 void write_log_message(int fd, char *message) {
   /* Account for the \0 at the end of the string. */
