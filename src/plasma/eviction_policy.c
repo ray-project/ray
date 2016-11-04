@@ -115,16 +115,18 @@ void delete_obj(eviction_state *eviction_state,
                 object_id object_id) {
   LOG_DEBUG("deleting object");
   object_table_entry *entry;
-  HASH_FIND(handle, plasma_store_info->sealed_objects, &object_id,
-            sizeof(object_id), entry);
+  HASH_FIND(handle, plasma_store_info->objects, &object_id, sizeof(object_id),
+            entry);
   /* TODO(rkn): This should probably not fail, but should instead throw an
    * error. Maybe we should also support deleting objects that have been created
    * but not sealed. */
-  CHECKM(entry != NULL, "To delete an object it must have been sealed.");
+  CHECKM(entry != NULL, "To delete an object it must be in the object table.");
+  CHECKM(entry->state == SEALED,
+         "To delete an object it must have been sealed.")
   CHECKM(utarray_len(entry->clients) == 0,
          "To delete an object, there must be no clients currently using it.");
   uint8_t *pointer = entry->pointer;
-  HASH_DELETE(handle, plasma_store_info->sealed_objects, entry);
+  HASH_DELETE(handle, plasma_store_info->objects, entry);
   dlfree(pointer);
   utarray_free(entry->clients);
   free(entry);
@@ -144,12 +146,8 @@ int64_t evict_objects(eviction_state *eviction_state,
     object_id obj_id = element->object_id;
     /* Find the object table entry for this object. */
     object_table_entry *entry;
-    HASH_FIND(handle, plasma_store_info->open_objects, &obj_id,
-              sizeof(object_id), entry);
-    if (entry == NULL) {
-      HASH_FIND(handle, plasma_store_info->sealed_objects, &obj_id,
-                sizeof(object_id), entry);
-    }
+    HASH_FIND(handle, plasma_store_info->objects, &obj_id, sizeof(object_id),
+              entry);
     num_bytes_evicted += (entry->info.data_size + entry->info.metadata_size);
     /* Delete the object. */
     delete_obj(eviction_state, plasma_store_info, obj_id);

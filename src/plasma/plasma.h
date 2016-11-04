@@ -139,11 +139,8 @@ typedef struct {
 
 /** The plasma store information that is exposed to the eviction policy. */
 typedef struct {
-  /* Objects that are still being written by their owner process. */
-  object_table_entry *open_objects;
-  /* Objects that have already been sealed by their owner process and
-   * can now be shared with other processes. */
-  object_table_entry *sealed_objects;
+  /** Objects that are in the Plasma store. */
+  object_table_entry *objects;
 } plasma_store_info;
 
 #endif

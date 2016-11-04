@@ -102,13 +102,11 @@ struct plasma_store_state {
 plasma_store_state *init_plasma_store(event_loop *loop) {
   plasma_store_state *state = malloc(sizeof(plasma_store_state));
   state->loop = loop;
-  state->objects = NULL;
   state->objects_notify = NULL;
   state->pending_notifications = NULL;
   /* Initialize the plasma store info. */
   state->plasma_store_info = malloc(sizeof(plasma_store_info));
-  state->plasma_store_info->open_objects = NULL;
-  state->plasma_store_info->sealed_objects = NULL;
+  state->plasma_store_info->objects = NULL;
   /* Initialize the eviction state. */
   state->eviction_state = make_eviction_state();
   return state;
