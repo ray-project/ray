@@ -32,17 +32,22 @@ typedef struct {
 } worker_index;
 
 struct local_scheduler_state {
-  /* The local scheduler event loop. */
+  /** The local scheduler event loop. */
   event_loop *loop;
-  /* The Plasma client. */
+  /** The Plasma client. */
   plasma_connection *plasma_conn;
-  /* Association between client socket and worker index. */
+  /** Association between client socket and worker index. */
   worker_index *worker_index;
-  /* Info that is exposed to the scheduling algorithm. */
+  /** Info that is exposed to the scheduling algorithm. */
   scheduler_info *scheduler_info;
-  /* State for the scheduling algorithm. */
+  /** State for the scheduling algorithm. */
   scheduler_state *scheduler_state;
+  /** Input buffer, used for reading input in process_message to avoid
+   *  allocation for each call to process_message. */
+  UT_array *input_buffer;
 };
+
+UT_icd byte_icd = {sizeof(uint8_t), NULL, NULL, NULL};
 
 local_scheduler_state *init_local_scheduler(event_loop *loop,
                                             const char *redis_addr,
@@ -68,6 +73,7 @@ local_scheduler_state *init_local_scheduler(event_loop *loop,
   db_attach(state->scheduler_info->db, loop);
   /* Add scheduler state. */
   state->scheduler_state = make_scheduler_state();
+  utarray_new(state->input_buffer, &byte_icd);
   return state;
 };
 
@@ -82,6 +88,7 @@ void free_local_scheduler(local_scheduler_state *s) {
   utarray_free(s->scheduler_info->workers);
   free(s->scheduler_info);
   free_scheduler_state(s->scheduler_state);
+  utarray_free(s->input_buffer);
   event_loop_destroy(s->loop);
   free(s);
 }
@@ -109,17 +116,14 @@ void process_message(event_loop *loop, int client_sock, void *context,
                      int events) {
   local_scheduler_state *s = context;
 
-  uint8_t *message;
   int64_t type;
-  int64_t length;
-  read_message(client_sock, &type, &length, &message);
+  read_buffer(client_sock, &type, s->input_buffer);
 
   LOG_DEBUG("New event of type %" PRId64, type);
 
   switch (type) {
   case SUBMIT_TASK: {
-    task_spec *spec = (task_spec *) message;
-    CHECK(task_size(spec) == length);
+    task_spec *spec = (task_spec *) utarray_front(s->input_buffer);
     handle_task_submitted(s->scheduler_info, s->scheduler_state, spec);
   } break;
   case TASK_DONE: {
@@ -140,7 +144,6 @@ void process_message(event_loop *loop, int client_sock, void *context,
     /* This code should be unreachable. */
     CHECK(0);
   }
-  free(message);
 }
 
 void new_client_connection(event_loop *loop, int listener_sock, void *context,
