@@ -41,6 +41,8 @@ typedef struct {
 
 enum object_status { OBJECT_NOT_FOUND = 0, OBJECT_FOUND = 1 };
 
+typedef enum { OPEN, SEALED } object_state;
+
 enum plasma_message_type {
   /** Create a new object. */
   PLASMA_CREATE = 128,
