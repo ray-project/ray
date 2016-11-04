@@ -17,6 +17,11 @@ import plasma
 # mode.
 all_processes = []
 
+# True if processes are run in the valgrind profiler.
+RUN_PHOTON_PROFILER = False
+RUN_PLASMA_MANAGER_PROFILER = False
+RUN_PLASMA_STORE_PROFILER = False
+
 def address(host, port):
   return host + ":" + str(port)
 
@@ -40,8 +45,9 @@ def cleanup():
   for p in all_processes[::-1]:
     if p.poll() is not None: # process has already terminated
       continue
-    os.kill(p.pid, signal.SIGINT)
-    time.sleep(0.1) # Wait for profiling data to be written.
+    if RUN_PHOTON_PROFILER or RUN_PLASMA_MANAGER_PROFILER or RUN_PLASMA_STORE_PROFILER:
+      os.kill(p.pid, signal.SIGINT) # Give process signal to write profiler data.
+      time.sleep(0.1) # Wait for profiling data to be written.
     p.kill()
     time.sleep(0.05) # is this necessary?
     if p.poll() is not None:
@@ -57,15 +63,15 @@ def cleanup():
     print("Ray did not shut down properly.")
   all_processes = []
 
-def start_redis(port):
+def start_redis(port, cleanup=True):
   redis_filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../common/thirdparty/redis-3.2.3/src/redis-server")
   p = subprocess.Popen([redis_filepath, "--port", str(port), "--loglevel", "warning"])
   if cleanup:
     all_processes.append(p)
 
-def start_local_scheduler(redis_address, plasma_store_name, run_profiler=False):
+def start_local_scheduler(redis_address, plasma_store_name, cleanup=True):
   local_scheduler_filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../photon/build/photon_scheduler")
-  if run_profiler:
+  if RUN_PHOTON_PROFILER:
     local_scheduler_prefix = ["valgrind", "--tool=callgrind", local_scheduler_filepath]
   else:
     local_scheduler_prefix = [local_scheduler_filepath]
@@ -75,7 +81,7 @@ def start_local_scheduler(redis_address, plasma_store_name, run_profiler=False):
     all_processes.append(p)
   return local_scheduler_name
 
-def start_objstore(node_ip_address, redis_address, cleanup):
+def start_objstore(node_ip_address, redis_address, cleanup=True):
   """This method starts an object store process.
 
   Args:
@@ -84,12 +90,16 @@ def start_objstore(node_ip_address, redis_address, cleanup):
       this process will be killed by serices.cleanup() when the Python process
       that imported services exits.
   """
-  plasma_store_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../plasma/build/plasma_store")
+  plasma_store_filepath = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../plasma/build/plasma_store")
+  if RUN_PLASMA_STORE_PROFILER:
+    plasma_store_prefix = ["valgrind", "--tool=callgrind", plasma_store_filepath]
+  else:
+    plasma_store_prefix = [plasma_store_filepath]
   store_name = "/tmp/ray_plasma_store{}".format(random_name())
-  p1 = subprocess.Popen([plasma_store_executable, "-s", store_name])
+  p1 = subprocess.Popen(plasma_store_prefix + ["-s", store_name])
 
   manager_name = "/tmp/ray_plasma_manager{}".format(random_name())
-  p2, manager_port = plasma.start_plasma_manager(store_name, manager_name, redis_address)
+  p2, manager_port = plasma.start_plasma_manager(store_name, manager_name, redis_address, run_profiler=RUN_PLASMA_MANAGER_PROFILER)
 
   if cleanup:
     all_processes.append(p1)
@@ -138,13 +148,13 @@ def start_ray_local(node_ip_address="127.0.0.1", num_workers=0, worker_path=None
   # Start Redis.
   redis_port = new_port()
   redis_address = address(node_ip_address, redis_port)
-  start_redis(redis_port)
+  start_redis(redis_port, cleanup=True)
   time.sleep(0.1)
   # Start Plasma.
   object_store_name, object_store_manager_name, object_store_manager_port = start_objstore(node_ip_address, redis_address, cleanup=True)
   # Start the local scheduler.
   time.sleep(0.1)
-  local_scheduler_name = start_local_scheduler(redis_address, object_store_name, run_profiler=False)
+  local_scheduler_name = start_local_scheduler(redis_address, object_store_name, cleanup=True)
   time.sleep(0.2)
   # Aggregate the address information together.
   address_info = {"node_ip_address": node_ip_address,

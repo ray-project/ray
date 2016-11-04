@@ -32,17 +32,18 @@ typedef struct {
 } worker_index;
 
 struct local_scheduler_state {
-  /* The local scheduler event loop. */
+  /** The local scheduler event loop. */
   event_loop *loop;
-  /* The Plasma client. */
+  /** The Plasma client. */
   plasma_connection *plasma_conn;
-  /* Association between client socket and worker index. */
+  /** Association between client socket and worker index. */
   worker_index *worker_index;
-  /* Info that is exposed to the scheduling algorithm. */
+  /** Info that is exposed to the scheduling algorithm. */
   scheduler_info *scheduler_info;
-  /* State for the scheduling algorithm. */
+  /** State for the scheduling algorithm. */
   scheduler_state *scheduler_state;
-  /* Input buffer. */
+  /** Input buffer, used for reading input in process_message to avoid
+   *  allocation for each call to process_message. */
   UT_array *input_buffer;
 };
 

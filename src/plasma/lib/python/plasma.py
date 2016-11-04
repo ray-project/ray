@@ -290,7 +290,7 @@ class PlasmaClient(object):
         break
     return message_data
 
-def start_plasma_manager(store_name, manager_name, redis_address, num_retries=5, use_valgrind=False):
+def start_plasma_manager(store_name, manager_name, redis_address, num_retries=5, use_valgrind=False, run_profiler=False):
   """Start a plasma manager and return the ports it listens on.
 
   Args:
@@ -324,6 +324,8 @@ def start_plasma_manager(store_name, manager_name, redis_address, num_retries=5,
                "-r", redis_address]
     if use_valgrind:
       process = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + command)
+    elif run_profiler:
+      process = subprocess.Popen(["valgrind", "--tool=callgrind"] + command)
     else:
       process = subprocess.Popen(command)
     # This sleep is critical. If the plasma_manager fails to start because the
