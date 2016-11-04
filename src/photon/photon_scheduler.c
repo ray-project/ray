@@ -43,10 +43,10 @@ struct local_scheduler_state {
   /* State for the scheduling algorithm. */
   scheduler_state *scheduler_state;
   /* Input buffer. */
-  UT_array* input_buffer;
+  UT_array *input_buffer;
 };
 
-UT_icd byte_icd = {sizeof(uint8_t), NULL, NULL, NULL };
+UT_icd byte_icd = {sizeof(uint8_t), NULL, NULL, NULL};
 
 local_scheduler_state *init_local_scheduler(event_loop *loop,
                                             const char *redis_addr,
@@ -87,6 +87,7 @@ void free_local_scheduler(local_scheduler_state *s) {
   utarray_free(s->scheduler_info->workers);
   free(s->scheduler_info);
   free_scheduler_state(s->scheduler_state);
+  utarray_free(s->input_buffer);
   event_loop_destroy(s->loop);
   free(s);
 }

@@ -303,7 +303,7 @@ disconnected:
   return;
 }
 
-void read_buffer(int fd, int64_t *type, UT_array* buffer) {
+void read_buffer(int fd, int64_t *type, UT_array *buffer) {
   int64_t length;
   int closed = read_bytes(fd, (uint8_t *) type, sizeof(int64_t));
   if (closed) {
