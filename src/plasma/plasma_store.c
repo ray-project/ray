@@ -313,7 +313,7 @@ void delete_object(client *client_context, object_id object_id) {
    * error. Maybe we should also support deleting objects that have been created
    * but not sealed. */
   CHECKM(entry != NULL, "To delete an object it must have been created.");
-  CHECKM(entry->state == SEALED, 
+  CHECKM(entry->state == SEALED,
          "To delete an object it must have been sealed.");
   CHECKM(utarray_len(entry->clients) == 0,
          "To delete an object, there must be no clients currently using it.");
