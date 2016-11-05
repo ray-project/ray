@@ -653,3 +653,49 @@ void plasma_pull(plasma_connection *conn,
   result->shard_sizes = &shard_sizes[start_axis_i];
   result->start_axis_idx = start_axis_i;
 }
+
+void plasma_push(plasma_connection *conn,
+                 object_id kv_object_id,
+                 uint64_t range_start,
+                 uint64_t range_end,
+                 uint64_t size,
+                 void *data) {
+
+  plasma_pull_result result;
+  plasma_pull(conn, kv_object_id, range_start, range_end, &result);
+  uint64_t start_axis_i = result.start_axis_idx;
+  int shard_axis = result.shard_order == 'C' ? 0 : result.ndim-1;
+  uint64_t axis_size = result.shape[shard_axis];
+
+  // TODO Error checking, make sure we can actually do this
+  uint64_t start = (range_start * axis_size) % result.shard_sizes[start_axis_i];
+  uint64_t copy_size = result.shard_sizes[start_axis_i] - start;
+  if (copy_size > size) {
+    copy_size = size;
+  }
+  void *addr = result.shards_handle[start_axis_i] + (start * 8);
+
+  printf("Start: %d\n", start);
+  printf("range_start: %d\n", range_start);
+  printf("axis_size: %d\n", axis_size);
+
+  printf("Start size %d\n", size);
+
+  printf("copy size %d\n", copy_size);
+
+  for (uint64_t i = start_axis_i; i < start_axis_i + result.num_shards;) {
+    printf("shard_i %d\n", i);
+    printf("orign data[0]: %f\n", *(double *) addr);
+    memcpy(addr, data, copy_size * 8);
+
+    size -= copy_size;
+    data += copy_size * 8;
+    addr = result.shards_handle[++i];
+    copy_size = result.shard_sizes[i];
+    if (copy_size > size) {
+      copy_size = size;
+    }
+    printf("copy size %d\n", copy_size);
+  }
+  printf("Remaining size %d\n", size);
+}
