@@ -47,7 +47,7 @@ UT_icd released_objects_entry_icd = {sizeof(object_id), NULL, NULL, NULL};
 eviction_state *make_eviction_state(void) {
   eviction_state *state = malloc(sizeof(eviction_state));
   /* Find the amount of available memory on the machine. */
-  state->memory_capacity = 1000000000;
+  state->memory_capacity = 8000000000;
   state->memory_used = 0;
   state->released_objects = NULL;
   state->released_object_table = NULL;
@@ -116,35 +116,32 @@ int64_t choose_objects_to_evict(eviction_state *eviction_state,
                                 int64_t num_bytes_required,
                                 int64_t *num_objects_to_evict,
                                 object_id **objects_to_evict) {
-  int64_t num_objects_evicted = 0;
-  int64_t num_bytes_evicted = 0;
-  /* Evict some objects starting with the least recently released object. */
+  int64_t num_objects = 0;
+  int64_t num_bytes = 0;
+  /* Figure out how many objects need to be evicted in order to recover a
+   * sufficient number of bytes. */
   released_object *element, *temp;
   DL_FOREACH_SAFE(eviction_state->released_objects, element, temp) {
-    if (num_bytes_evicted >= num_bytes_required) {
+    if (num_bytes >= num_bytes_required) {
       break;
     }
-    object_id obj_id = element->object_id;
     /* Find the object table entry for this object. */
     object_table_entry *entry;
-    HASH_FIND(handle, plasma_store_info->objects, &obj_id, sizeof(object_id),
-              entry);
-    num_bytes_evicted += (entry->info.data_size + entry->info.metadata_size);
-    // /* Update the LRU cache. */
-    // remove_object_from_lru_cache_if_present(eviction_state, obj_id);
-    num_objects_evicted += 1;
+    HASH_FIND(handle, plasma_store_info->objects, &element->object_id,
+              sizeof(object_id), entry);
+    /* Update the cumulative bytes and the number of objects so far. */
+    num_bytes += (entry->info.data_size + entry->info.metadata_size);
+    num_objects += 1;
   }
-
   /* Construct the return values. */
-  *num_objects_to_evict = num_objects_evicted;
-  if (num_objects_evicted == 0) {
+  *num_objects_to_evict = num_objects;
+  if (num_objects == 0) {
     *objects_to_evict = NULL;
   } else {
-    *objects_to_evict =
-        (object_id *) malloc(num_objects_evicted * sizeof(object_id));
+    *objects_to_evict = (object_id *) malloc(num_objects * sizeof(object_id));
     int counter = 0;
     DL_FOREACH_SAFE(eviction_state->released_objects, element, temp) {
-      if (counter >= num_objects_evicted) {
+      if (counter == num_objects) {
         break;
       }
       (*objects_to_evict)[counter] = element->object_id;
@@ -154,10 +151,9 @@ int64_t choose_objects_to_evict(eviction_state *eviction_state,
       counter += 1;
     }
   }
-
   /* Update the number used. */
-  eviction_state->memory_used -= num_bytes_evicted;
-  return num_bytes_evicted;
+  eviction_state->memory_used -= num_bytes;
+  return num_bytes;
 }
 
 void require_space(eviction_state *eviction_state,
@@ -175,12 +171,15 @@ void require_space(eviction_state *eviction_state,
     int64_t num_bytes_evicted = choose_objects_to_evict(
         eviction_state, plasma_store_info, required_space, num_objects_to_evict,
         objects_to_evict);
-    printf("Evicted %lld bytes.\n", num_bytes_evicted);
+    printf("Evicted %" PRId64 " bytes.\n", num_bytes_evicted);
     LOG_INFO(
         "There is not enough space to create this object, so evicting "
-        "%lld objects to free up %lld bytes.\n",
+        "%" PRId64 " objects to free up %" PRId64 " bytes.\n",
         *num_objects_to_evict, num_bytes_evicted);
     CHECK(num_bytes_evicted >= required_space);
+  } else {
+    *num_objects_to_evict = 0;
+    *objects_to_evict = NULL;
   }
   eviction_state->memory_used += size;
 }
