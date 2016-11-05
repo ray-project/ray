@@ -1,6 +1,7 @@
 #ifndef PLASMA_CLIENT_H
 #define PLASMA_CLIENT_H
 
+#include <time.h>
 #include "plasma.h"
 
 typedef struct plasma_connection plasma_connection;
@@ -238,4 +239,206 @@ int plasma_subscribe(plasma_connection *conn);
  */
 int get_manager_fd(plasma_connection *conn);
 
-#endif
+
+/* === alternate API === */
+
+/* Object is stored on the local Plasma Store. */
+#define PLASMA_CLIENT_LOCAL  1
+/* Object is not stored on the local Plasma Store */
+#define PLASMA_CLIENT_NOT_LOCAL 2
+/* Object is stored on a remote Plasma store, and it is not stored on the local Plasma Store */
+#define PLASMA_CLIENT_REMOTE 3
+/**
+ * Returned when a call asks for an object in the local Plasma store which doesn't exist
+ * (e.g., could be stored remotely), or the call asks whether an object is stored
+ * in the system (e.g., either on the local or a remore Plasma store) which doesn't exist
+ * */
+#define PLASMA_CLIENT_WAIT   4
+/* Object is not stored in the system. */
+#define PLASMA_CLIENT_DOES_NOT_EXIST 5
+/* Object is currently transferred from a remote Plasma store the the local Plasma Store. */
+#define PLASMA_CLIENT_IN_TRANSFER 6
+
+enum plasma_client_notification_type {
+  /** Object has become available on the local Plasma Store. */
+          PLASMA_CLIENT_READY_LOCAL = 256,
+  /** Object has become available on a remote Plasma Store. */
+          PLASMA_CLIENT_READY_REMOTE
+};
+
+
+/**
+ * Notification event data structure.
+ *
+ * The client receives such notifications on the file descriptor returned by plasma_event_channel().
+ * Apriori the client has to call plasma_client_subscribe() or plasma_client_subscribe_all_local(),
+ * to let Plasma Manager know that it wants to receive notofication events.
+ */
+typedef struct {
+  object_id object_id;
+  int notification_type;
+} notification_event;
+
+
+/**
+ * Object information data structure.
+ */
+typedef struct {
+  /** time when the object was created (sealed) */
+  time_t last_access_time;
+  /** time when the object was accessed the last time */
+  time_t creation_date;
+  uint64_t refcount;
+} object_info;
+
+
+/**
+ * Object buffer data structure.
+ */
+typedef struct {
+  /* The size in bytes of the object. */
+  int64_t size;
+  /* The address of the object data */
+  uint8_t *data;
+  /* The metadata size in bytes */
+  int64_t metadata_size;
+  /* The address of the metadata */
+  uint8_t *metadata;
+} object_buffer;
+
+/**
+ * Get specified object from the local Plasma Store. This function is non-blocking.
+ *
+ * @param conn The object containing the connection state.
+ * @param object_id The ID of the object to get.
+ * @param objectBuffer The data structure where the object information will be written.
+ * @return PLASMA_CLIENT_LOCAL, if the object is stored at the local Plasma Store.
+ *         PLASMA_CLIENT_NOT_LOCAL, if not. In this case, the caller needs to
+ *         ignore data, metadata_size, and metadata fields.
+ */
+int plasma_get_local1(plasma_connection *conn,
+                      object_id object_id,
+                      object_buffer *object_buffer);
+
+/**
+ * Subscribe to be notified when object_id is fetched and sealed on the local Plasma Store,
+ * or when object_id is sealed on a remote Plasma Store.
+ *
+ * @param conn The object containing the connection state.
+ * @param object_id The ID of the object for which the caller is to receive a notification
+ *                  when the object is either sealed locally or on a remote node.
+ * @return If object local, return PLASMA_CLIENT_LOCAL.
+ *         If object remote, return PLASMA_CLIENT_REMOTE;
+ *         Otherwise, return PLASMA_CLIENT_WAIT. In this case the client
+ *         must wait on the file descriptor returned by plasma_event_channel()
+ *         useing select()/poll()/epol() to get the event when object_id is
+ *         sealed either locally or remotely.
+ */
+int plasma_subscribe1(plasma_connection *conn, object_id object_id);
+
+
+/**
+ * Unsubscribe from being notified when object_id is fetched and sealed locally,
+ * or when object_id is sealed on a remote node.
+ *
+ * @param conn The object containing the connection state.
+ * @param object_id The ID of the object we unsubscribe to hear from.
+ * @return Void.
+ */
+void plasma_unsubscribe1(plasma_connection *conn, object_id object_id);
+
+/**
+ * Subscribe to be notified when new objects are sealed locally.
+ *
+ * @param conn The object containing the connection state.
+ * @return Void.
+ */
+int plasma_subscribe_all_local1(plasma_connection *conn);
+
+/**
+ * Unsubscribed from being notified when new objects are sealed locally.
+ *
+ * @param conn The object containing the connection state.
+ * @param fd File descriptor on which the caller is receiving notifications.
+ * @return Void.
+ */
+int plasma_unsubscribe_all_local1(plasma_connection *conn);
+
+/**
+ * Initiates the fetch (transfer) of an object from a remote Plasma Store.
+ *
+ * If object is stored on the local Plasma Store, tell the caller.
+ *
+ * If not, check whether the object is stored on a remote Plasma Store. In this case,
+ * if either a transfer for the object has been scheduled or the object is in transfer
+ * return. Otherwise schedule a transfer for the object. In all these cases the client
+ * needs to call plasma_subscribe() to neotified once the object has been transferred
+ * (and sealed) on local node.
+ *
+ * If object is available neither locally nor remotely, the client has to invoke
+ * the local scheduler to (re)create the object. Again, in this case, the client
+ * needs to call plasma_subscribe() to be notified once object_id has
+ * been created (and sealed) on the local or a remote node.
+ *
+ * This function is non-blocking.
+ *
+ * @param conn The object containing the connection state.
+ * @param object_id The ID of the object to be fetched.
+ * @return PLASMA_CLIENT_LOCAL, if the object is stored on the local Plasma Store.
+ *         PLASMA_CLIENT_WAIT, if object is not stored on the local Plasma Store but
+ *         it is available on a remote Plasma Store.
+ *         PLASMA_CLIENT_DOES_NOT_EXIST, if object is available neither locally nor remotely.
+ */
+int plasma_fetch_remote1(plasma_connection *conn, object_id object_id);
+
+/**
+ * Return the status of a given object.
+ *
+ * @param conn The object containing the connection state.
+ * @param object_id The ID of the object whose status we query.
+ * @param total_size Object size in bytes.
+ * @param transferred_size The number of bytes from object transferred so far.
+ *                         This is non zero only when PLASMA_CLIENT_IN_TRANSFER is returned.
+ * @return PLASMA_CLIENT_LOCAL, if object is stored in the local Plasma Store.
+ *         PLASMA_CLIENT_TRANSFER_SCHEDULED, if a transfer of the object
+ *         has been already scheduled by the Plasma Manager.
+ *         PLASMA_CLIENT_IN_TRANSFER, if the object is currently being transferred.
+ *         In this case, transferred_bytes represent the number of bytes transferred so far.
+ *         PLASMA_CLIENT_REMOTE, if the object is stored at a remote Plasma Store.
+ *         PLASMA_CLIENT_DOES_NOT_EXIST, if the object doesn’t exist in system.
+ */
+int plasma_status1(plasma_connection *conn,
+                   object_id object_id,
+                   int64_t *total_size,
+                   int64_t *transferred_size);
+
+
+/**
+ * Return the information associated to a given object.
+ *
+ * @param conn The object containing the connection state.
+ * @param object_id The ID of the object whose info the client queries.
+ * @param object_info The object's infirmation.
+ * @return PLASMA_CLIENT_LOCAL, if the object is stored in the local Plasma Store.
+ *         PLASMA_CLIENT_NOT_LOCAL, if not. In this case, the caller needs to
+ *         ignore data, metadata_size, and metadata fields.
+ */
+int plasma_info(plasma_connection *conn,
+                object_id object_id,
+                object_info *object_info);
+
+
+/**
+ * Wait for a notification event that will be received when an object
+ * (for which the client has already subscribed for) is sealed.
+ *
+ * @param conn The object containing the connection state.
+ * @param timeout Timeout, in ms. If no notification event is received within "timeout"
+ *                time interval, this function returns to the caller.
+ * @param notification_event Notification event received.
+ * @return
+int plasma_wait_for_notification1(plasma_connection *conn,
+                                  int timeout_ms,
+                                  notification_event *notification_event);
+
+#endif /* PLASMA_CLIENT_H */

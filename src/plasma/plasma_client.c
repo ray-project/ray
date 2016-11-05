@@ -6,12 +6,14 @@
 #include <stdio.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <strings.h>
 #include <netinet/in.h>
 #include <netdb.h>
+#include <poll.h>
 
 #include "common.h"
 #include "io.h"
@@ -60,6 +62,10 @@ struct plasma_connection {
   int store_conn;
   /** File descriptor of the Unix domain socket that connects to the manager. */
   int manager_conn;
+  /** File descriptor of the Unix domain socket on which client receives
+   *  event notifications for the objects it subscribes for when these objects
+   *  are sealed either locally or remotely. */
+  int manager_conn_subscribe;
   /** Table of dlmalloc buffer files that have been memory mapped so far. This
    *  is a hash table mapping a file descriptor to a struct containing the
    *  address of the corresponding memory-mapped file. */
@@ -484,4 +490,268 @@ int plasma_wait(plasma_connection *conn,
 
 int get_manager_fd(plasma_connection *conn) {
   return conn->manager_conn;
+}
+
+
+/* === alternate code === */
+
+void plasma_get1(plasma_connection *conn,
+                 object_id object_id,
+                 object_buffer *object_buffer);
+
+int plasma_wait1(plasma_connection *conn,
+                 int num_object_ids,
+                 object_id object_ids[],
+                 uint64_t timeout,
+                 int num_returns,
+                 object_id return_object_ids[]);
+
+void plasma_multiget1(plasma_connection *conn,
+                      int num_object_ids,
+                      object_id object_ids[],
+                      object_buffer object_buffers[]);
+
+
+/* This method is used to get both the data and the metadata. */
+int plasma_get_local1(plasma_connection *conn,
+                      object_id object_id,
+                      object_buffer *object_buffer) {
+  CHECK(conn != NULL);
+  CHECK(conn->manager_conn >= 0);
+
+  plasma_request req = make_plasma_request(object_id);
+  plasma_send_request(conn->store_conn, PLASMA_GET_LOCAL, &req); /* XXX: need to implement PLASMA_GET_LOCAL */
+  plasma_reply reply;
+  int fd = recv_fd(conn->store_conn, (char *) &reply, sizeof(plasma_reply));
+  CHECKM(fd != -1, "recv not successful");
+  if (reply.has_object) {
+    plasma_object *object = &reply.object;
+    object_buffer->data = lookup_or_mmap(conn, fd, object->handle.store_fd, object->handle.mmap_size) +
+                           object->data_offset;
+    object_buffer->size = object->data_size;
+    /* If requested, return the metadata as well. */
+    if (object_buffer->metadata != NULL) {
+      *(object_buffer->metadata) = *(object_buffer->data) + object->data_size;
+      *(object_buffer->metadata_size) = object->metadata_size;
+    }
+    /* Increment the count of the number of instances of this object that this
+     * client is using. A call to plasma_release is required to decrement this
+     * count.
+     */
+    increment_object_count(conn, object_id, object->handle.store_fd);
+    return PLASMA_CLIENT_LOCAL;
+  }
+  /* The object is not available in the local Plasma store. */
+  return PLASMA_CLIENT_NOT_LOCAL;
+}
+
+
+/* This method is used to get both the data and the metadata. */
+void plasma_get1(plasma_connection *conn,
+                 object_id object_id,
+                 object_buffer *object_buffer) {
+
+  CHECK(conn != NULL);
+  CHECK(conn->manager_conn >= 0);
+
+  while (1) {
+    if (plasma_get_local1(conn, object_id, object_buffer) == PLASMA_CLIENT_LOCAL)
+      return;
+
+    switch (plasma_status1(conn, object_id, NULL, NULL)) {
+      case PLASMA_CLIENT_LOCAL:
+        /** object has been transfered just after calling plasma_get_local() */
+        continue;
+
+      case PLASMA_CLIENT_REMOTE:
+        if (plasma_fetch_remote1(conn, object_id) == PLASMA_CLIENT_LOCAL)
+          /** object just got sealed locally after calling plasma_status() */
+          continue;
+        /** wait for object_id to transferred */
+        if (plasma_subscribe1(conn, object_id) == PLASMA_CLIENT_LOCAL)
+          /** object just got sealed locally after calling plasma_fetch_remote() */
+          continue;
+        break;
+
+      case PLASMA_CLIENT_DOES_NOT_EXIST:
+        /* object doesn’t exist so ask local scheduler to create it */
+        /* scheduler_create_object(object_id); */
+        printf("XXX Need to schedule object -- not implemented yet!\n");
+        /* wait for object_id to become available locally */
+        if (plasma_fetch_remote1(conn, object_id) == PLASMA_CLIENT_LOCAL)
+          /* object just got sealed locally after calling plasma_status() */
+          continue;
+        /* wait for object_id to transferred */
+        if (plasma_subscribe1(conn, object_id) == PLASMA_CLIENT_LOCAL)
+          /* object just got sealed locally after calling plasma_fetch_remote() */
+          continue;
+        break;
+    }
+
+    /**
+     * Wait for object_id event or timeout, then loop again
+     * - if timeout, next iteration will retry plasma_fecth() or
+     *   scheduler_create_object()
+     * - if even_type = READY_LOCAL, next iteration will get object and return
+     * - if event_type = READ_GLOBAL, next iteration will fetch object
+     * Note: this assume a single threaded application and the only active
+     * publish_subscribe() is the one called by this function.
+     */
+#define TIMEOUT_POLL_MS 1000
+    notification_event notification_event;
+    plasma_wait_for_notification1(conn, TIMEOUT_POLL_MS, &notification_event);
+  }
+}
+
+
+int plasma_wait1(plasma_connection *conn,
+                 int num_object_ids,
+                 object_id object_ids[],
+                 uint64_t timeout,
+                 int num_returns,
+                 object_id return_object_ids[]) {
+
+  int fd, i;
+  int last_idx = 0;
+
+  CHECK(conn->manager_conn >= 0);
+  CHECK(num_object_ids >= num_returns);
+
+  for (i = 0; i < num_object_ids; i++) {
+    if (plasma_status1(conn, object_ids[i], NULL, NULL) == PLASMA_CLIENT_DOES_NOT_EXIST) {
+      /* object doesn’t exist so ask local scheduler to create it */
+      /* scheduler_create_object(object_id); */
+      printf("XXX Need to schedule object -- not implemented yet!\n");
+      /* subscribe to hear back when object_id is sealed */
+      if (plasma_subscribe1(conn, object_ids[i]) == PLASMA_CLIENT_WAIT)
+        /* object just got sealed locally after calling plasma_fetch_remote() */
+        continue;
+    }
+    return_object_ids[last_idx++] = object_ids[i];
+    if (last_idx == num_returns)
+      return num_returns;
+  }
+
+  notification_event event;
+  /** XXX - update the timeout */
+  while (plasma_wait_for_notification1(conn, timeout, &event)) {
+    return_object_ids[last_idx++] = event.object_id;
+    if (last_idx == num_returns)
+      return num_returns;
+  }
+
+  /** Timeout has expired. */
+  return last_idx;
+}
+
+
+/* This method is used to get both the data and the metadata. */
+void plasma_multiget1(plasma_connection *conn,
+                      int num_object_ids,
+                      object_id object_ids[],
+                      object_buffer object_buffers[]) {
+
+  int n, i, rc;
+  int num_wait = 0;
+  object_id object_id_list[num_object_ids];
+  object_id object_id_wait_list[num_object_ids];
+
+  /** Make sure all objects are stored somewhere in the system,
+   *  either on the local or a remote Pasma Store. */
+  n = plasma_wait1(conn, num_object_ids, object_ids, -1, num_object_ids, object_id_list);
+  CHECK(n == num_object_ids);
+
+  /* transfer objects stored remotely */
+  for (i = 0; i < num_object_ids; i++) {
+    if (plasma_status1(conn, object_id_list[i], NULL, NULL) == PLASMA_CLIENT_REMOTE) {
+      /* wait for object_id to become available locally */
+      if (plasma_fetch_remote1(conn, object_id) == PLASMA_CLIENT_LOCAL)
+        /* object just got sealed locally after calling plasma_status() */
+        continue;
+      /* subscribe to hear back when object is transferred to local store */
+      if (plasma_subscribe1(conn, object_id_list[i]) == PLASMA_CLIENT_WAIT) {
+        object_id_wait_list[num_wait] = object_id_list[i];
+        num_wait++;
+      }
+    }
+  }
+
+  if (num_wait > 0) {
+    notification_event event;
+    while (plasma_wait_for_notification1(conn, -1, &event)) {
+      CHECK(event.notification_type == PLASMA_CLIENT_READY_LOCAL);
+      int all_available = true;
+      for (i = 0; i < num_wait; i++) {
+        if (object_id_wait_list[i] == event.object_id)
+          object_id_wait_list[i] = NIL_ID;
+        continue;
+        if (object_id_wait_list[i] != NIL_ID)
+          all_available = false;
+      }
+      if (all_available)
+        break;
+    }
+  }
+
+  for (i = 0; i < num_object_ids; i++) {
+    rc = plasma_get1(conn, object_ids[i], &object_buffers[i]);
+    CHECK(rc == PLASMA_CLIENT_LOCAL);
+  }
+}
+
+
+int plasma_wait_for_notification1(plasma_connection *conn,
+                                  int timeout_ms,
+                                  notification_event *notification_event) {
+  int rc;
+  int num_fds = 1;
+  struct pollfd poll_fds[1];
+
+  poll_fds[0].fd = conn->manager_conn_subscribe;
+  poll_fds[0].events = POLLIN;
+
+  rc = poll(poll_fds, num_fds, timeout_ms);
+  /** If rc < 0 then poll has failed. */
+  CHECKM(rc >= 0, "poll() failed");
+
+  if (rc == 0)
+    /** Timeout has expired. */
+    return rc;
+
+  rc = recv(poll_fds[0].fd, notification_event, sizeof(notification_event), 0);
+  CHECKM(rc >= 0, "recv() failed")
+  CHECKM(rc == 0, "connection closed by sender")
+
+  return sizeof(notification_event);
+}
+
+
+int plasma_subscribe1(plasma_connection *conn, object_id object_id) {
+  ;
+}
+
+int plasma_unsubscribe1(plasma_connection *conn, object_id object_id) {
+  ;
+}
+
+int plasma_subscribe_all_local1(plasma_connection *conn) {
+  ;
+}
+
+int plasma_unsubscribe_all_local1(plasma_connection *conn) {
+  ;
+}
+
+
+
+int plasma_status1(plasma_connection *conn,
+                   object_id object_id,
+                   int64_t *total_size,
+                   int64_t *transferred_size) {
+  ;
+}
+
+int plasma_fetch_remote1(plasma_connection *conn,
+                         object_id object_id) {
+  ;
 }
