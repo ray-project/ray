@@ -251,4 +251,32 @@ int plasma_subscribe(plasma_connection *conn);
  */
 int get_manager_fd(plasma_connection *conn);
 
+// TODO: document
+void plasma_init_kvstore(plasma_connection *conn,
+                         object_id kv_object_id,
+                         void **shards,
+                         uint64_t *shard_sizes,
+                         uint64_t num_shards,
+                         uint64_t shard_axis,
+                         uint64_t *shape,
+                         uint64_t ndims);
+
+// TODO: document
+typedef struct {
+  void **shards_handle;
+  uint64_t num_shards;
+  uint64_t *shape;
+  uint64_t ndim;
+  uint64_t *shard_sizes;
+  uint64_t start_axis_idx;
+  uint64_t shard_axis;
+} plasma_pull_result;
+
+// TODO: document
+void plasma_pull(plasma_connection *conn,
+                 object_id kv_object_id,
+                 uint64_t range_start,
+                 uint64_t range_end,
+                 plasma_pull_result *result);
+
 #endif

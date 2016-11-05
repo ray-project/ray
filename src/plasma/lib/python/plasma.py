@@ -4,22 +4,28 @@ import random
 import socket
 import subprocess
 import time
+import numpy as np
 
 Addr = ctypes.c_ubyte * 4
 
 PLASMA_ID_SIZE = 20
 ID = ctypes.c_ubyte * PLASMA_ID_SIZE
 
+
 class PlasmaID(ctypes.Structure):
   _fields_ = [("plasma_id", ID)]
 
+
 def make_plasma_id(string):
   if len(string) != PLASMA_ID_SIZE:
-    raise Exception("PlasmaIDs must be {} characters long".format(PLASMA_ID_SIZE))
+    raise Exception(
+        "PlasmaIDs must be {} characters long".format(PLASMA_ID_SIZE))
   return PlasmaID(plasma_id=ID.from_buffer_copy(string))
+
 
 def plasma_id_to_str(plasma_id):
   return str(bytearray(plasma_id.plasma_id))
+
 
 class PlasmaBuffer(object):
   """This is the type of objects returned by calls to get with a PlasmaClient.
@@ -35,6 +41,7 @@ class PlasmaBuffer(object):
     plasma_client (PlasmaClient): The PlasmaClient that we use to communicate
       with the store and manager.
   """
+
   def __init__(self, buff, plasma_id, plasma_client):
     """Initialize a PlasmaBuffer."""
     self.buffer = buff
@@ -47,7 +54,8 @@ class PlasmaBuffer(object):
     If the plasma client has been shut down, then don't do anything.
     """
     if self.plasma_client.alive:
-      self.plasma_client.client.plasma_release(self.plasma_client.plasma_conn, self.plasma_id)
+      self.plasma_client.client.plasma_release(
+          self.plasma_client.plasma_conn, self.plasma_id)
 
   def __getitem__(self, index):
     """Read from the PlasmaBuffer as if it were just a regular buffer."""
@@ -63,6 +71,19 @@ class PlasmaBuffer(object):
   def __len__(self):
     """Return the length of the buffer."""
     return len(self.buffer)
+
+
+class PlasmaPullResult(ctypes.Structure):
+  _fields_ = [
+      ("shards_handle", ctypes.POINTER(ctypes.c_void_p)),
+      ("num_shards", ctypes.c_uint64),
+      ("shape", ctypes.POINTER(ctypes.c_uint64)),
+      ("ndim", ctypes.c_uint64),
+      ("shard_sizes", ctypes.POINTER(ctypes.c_uint64)),
+      ("start_axis_idx", ctypes.c_uint64),
+      ("shard_axis", ctypes.c_uint64),
+  ]
+
 
 class PlasmaClient(object):
   """The PlasmaClient is used to interface with a plasma store and a plasma manager.
@@ -80,7 +101,8 @@ class PlasmaClient(object):
       manager_socket_name (str): Name of the socket the plasma manager is listening at.
     """
     self.alive = True
-    plasma_client_library = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../build/plasma_client.so")
+    plasma_client_library = os.path.join(os.path.abspath(
+        os.path.dirname(__file__)), "../../build/plasma_client.so")
     self.client = ctypes.cdll.LoadLibrary(plasma_client_library)
 
     self.client.plasma_connect.restype = ctypes.c_void_p
@@ -98,15 +120,18 @@ class PlasmaClient(object):
     self.buffer_from_memory.restype = ctypes.py_object
 
     self.buffer_from_read_write_memory = ctypes.pythonapi.PyBuffer_FromReadWriteMemory
-    self.buffer_from_read_write_memory.argtypes = [ctypes.c_void_p, ctypes.c_int64]
+    self.buffer_from_read_write_memory.argtypes = [
+        ctypes.c_void_p, ctypes.c_int64]
     self.buffer_from_read_write_memory.restype = ctypes.py_object
 
     if manager_socket_name is not None:
       self.has_manager_conn = True
-      self.plasma_conn = ctypes.c_void_p(self.client.plasma_connect(store_socket_name, manager_socket_name, release_delay))
+      self.plasma_conn = ctypes.c_void_p(self.client.plasma_connect(
+          store_socket_name, manager_socket_name, release_delay))
     else:
       self.has_manager_conn = False
-      self.plasma_conn = ctypes.c_void_p(self.client.plasma_connect(store_socket_name, None, release_delay))
+      self.plasma_conn = ctypes.c_void_p(
+          self.client.plasma_connect(store_socket_name, None, release_delay))
 
   def shutdown(self):
     """Shutdown the client so that it does not send messages.
@@ -133,7 +158,8 @@ class PlasmaClient(object):
     # Turn the metadata into the right type.
     metadata = buffer("") if metadata is None else metadata
     metadata = (ctypes.c_ubyte * len(metadata)).from_buffer_copy(metadata)
-    self.client.plasma_create(self.plasma_conn, make_plasma_id(object_id), size, ctypes.cast(metadata, ctypes.POINTER(ctypes.c_ubyte * len(metadata))), len(metadata), ctypes.byref(data))
+    self.client.plasma_create(self.plasma_conn, make_plasma_id(object_id), size, ctypes.cast(
+        metadata, ctypes.POINTER(ctypes.c_ubyte * len(metadata))), len(metadata), ctypes.byref(data))
     return PlasmaBuffer(self.buffer_from_read_write_memory(data, size), make_plasma_id(object_id), self)
 
   def get(self, object_id):
@@ -149,7 +175,8 @@ class PlasmaClient(object):
     data = ctypes.c_void_p()
     metadata_size = ctypes.c_int64()
     metadata = ctypes.c_void_p()
-    self.client.plasma_get(self.plasma_conn, make_plasma_id(object_id), ctypes.byref(size), ctypes.byref(data), ctypes.byref(metadata_size), ctypes.byref(metadata))
+    self.client.plasma_get(self.plasma_conn, make_plasma_id(object_id), ctypes.byref(
+        size), ctypes.byref(data), ctypes.byref(metadata_size), ctypes.byref(metadata))
     return PlasmaBuffer(self.buffer_from_memory(data, size), make_plasma_id(object_id), self)
 
   def get_metadata(self, object_id):
@@ -165,7 +192,8 @@ class PlasmaClient(object):
     data = ctypes.c_void_p()
     metadata_size = ctypes.c_int64()
     metadata = ctypes.c_void_p()
-    self.client.plasma_get(self.plasma_conn, make_plasma_id(object_id), ctypes.byref(size), ctypes.byref(data), ctypes.byref(metadata_size), ctypes.byref(metadata))
+    self.client.plasma_get(self.plasma_conn, make_plasma_id(object_id), ctypes.byref(
+        size), ctypes.byref(data), ctypes.byref(metadata_size), ctypes.byref(metadata))
     return PlasmaBuffer(self.buffer_from_memory(metadata, metadata_size), make_plasma_id(object_id), self)
 
   def contains(self, object_id):
@@ -175,7 +203,8 @@ class PlasmaClient(object):
       object_id (str): A string used to identify an object.
     """
     has_object = ctypes.c_int()
-    self.client.plasma_contains(self.plasma_conn, make_plasma_id(object_id), ctypes.byref(has_object))
+    self.client.plasma_contains(self.plasma_conn, make_plasma_id(
+        object_id), ctypes.byref(has_object))
     has_object = has_object.value
     if has_object == 1:
       return True
@@ -226,7 +255,8 @@ class PlasmaClient(object):
     """
     if not self.has_manager_conn:
       raise Exception("Not connected to the plasma manager socket")
-    self.client.plasma_transfer(self.plasma_conn, addr, port, make_plasma_id(object_id))
+    self.client.plasma_transfer(
+        self.plasma_conn, addr, port, make_plasma_id(object_id))
 
   def fetch(self, object_ids):
     """Fetch the object with id object_id from another plasma manager instance.
@@ -243,7 +273,7 @@ class PlasmaClient(object):
     self.client.plasma_fetch(self.plasma_conn,
                              object_id_array._length_,
                              object_id_array,
-                             success_array);
+                             success_array)
     return [bool(success) for success in success_array]
 
   def wait(self, object_ids, timeout, num_returns):
@@ -263,9 +293,11 @@ class PlasmaClient(object):
     if num_returns < 0:
       raise Exception("The argument num_returns cannot be less than one.")
     if num_returns > len(object_ids):
-      raise Exception("The argument num_returns cannot be greater than len(object_ids): num_returns is {}, len(object_ids) is {}.".format(num_returns, len(object_ids)))
+      raise Exception("The argument num_returns cannot be greater than len(object_ids): num_returns is {}, len(object_ids) is {}.".format(
+          num_returns, len(object_ids)))
     if timeout > 2 ** 36:
-      raise Exception("The method wait currently cannot be used with a timeout greater than 2 ** 36.")
+      raise Exception(
+          "The method wait currently cannot be used with a timeout greater than 2 ** 36.")
     object_id_array = (len(object_ids) * PlasmaID)()
     for i, object_id in enumerate(object_ids):
       object_id_array[i] = make_plasma_id(object_id)
@@ -276,13 +308,15 @@ class PlasmaClient(object):
                                                  ctypes.c_int64(timeout),
                                                  num_returns,
                                                  return_id_array)
-    ready_ids = map(plasma_id_to_str, return_id_array[num_returns-num_return_objects:])
+    ready_ids = map(plasma_id_to_str, return_id_array[
+                    num_returns - num_return_objects:])
     return ready_ids, list(set(object_ids) - set(ready_ids))
 
   def subscribe(self):
     """Subscribe to notifications about sealed objects."""
     fd = self.client.plasma_subscribe(self.plasma_conn)
-    self.notification_sock = socket.fromfd(fd, socket.AF_UNIX, socket.SOCK_STREAM)
+    self.notification_sock = socket.fromfd(
+        fd, socket.AF_UNIX, socket.SOCK_STREAM)
     # Make the socket non-blocking.
     self.notification_sock.setblocking(0)
 
@@ -301,7 +335,96 @@ class PlasmaClient(object):
         break
     return message_data
 
-def start_plasma_manager(store_name, manager_name, redis_address, num_retries=20, use_valgrind=False, run_profiler=False):
+  def init_kvstore(self, kv_store_id, np_data, shard_axis=0, shard_size=10):
+    assert type(np_data) is np.ndarray
+    assert shard_axis <= len(np_data.shape)
+
+    axis_len = np_data.shape[shard_axis]
+    num_shards = axis_len / shard_size
+
+    # TODO: think about storing numpy array shape and handle n-dimension
+    # matrices
+    partitions = np.split(np_data, num_shards, axis=shard_axis)
+    partition_lengths = np.array([p.size for p in partitions], dtype=np.uint64)
+    void_p_partitions = np.array(
+        [p.ctypes.data_as(ctypes.c_void_p).value for p in partitions])
+    shape = np_data.ctypes.shape
+
+    void_handle_arr = void_p_partitions.ctypes.data_as(ctypes.c_void_p)
+    shard_sizes_ptr = partition_lengths.ctypes.data_as(
+        ctypes.POINTER(ctypes.c_uint64))
+
+    self.client.plasma_init_kvstore(
+        self.plasma_conn,
+        make_plasma_id(kv_store_id),
+        void_handle_arr,
+        shard_sizes_ptr,
+        len(partitions),
+        ctypes.c_uint64(shard_axis),
+        shape,
+        np_data.ndim
+    )
+
+  def pull(self, kv_store_id, interval):
+    assert type(interval) is tuple and len(interval) == 2
+
+    pull_result = PlasmaPullResult()
+
+    self.client.plasma_pull(
+        self.plasma_conn,
+        make_plasma_id(kv_store_id),
+        interval[0],
+        interval[1],
+        ctypes.byref(pull_result)
+    )
+
+    # TODO: do this slicing in C
+
+    num_shards = pull_result.num_shards
+    ndim = pull_result.ndim
+    shard_axis = pull_result.shard_axis
+    void_ptr_size = ctypes.sizeof(ctypes.c_void_p)
+
+    shard_ptr_buf_size = ctypes.c_int64(num_shards * void_ptr_size)
+    # will always use uint64_t for sizes
+    shape_buf_size = ctypes.c_int64(ndim * 8)
+
+    shards_handle_buf = self.buffer_from_memory(
+        pull_result.shards_handle, shard_ptr_buf_size)
+    shards_handle = np.frombuffer(
+        shards_handle_buf, dtype=np.uint64, count=num_shards)
+
+    shard_bytes_sizes_buf = self.buffer_from_memory(
+        pull_result.shard_sizes, shard_ptr_buf_size)
+    shard_sizes = np.frombuffer(
+        shard_bytes_sizes_buf, dtype=np.uint64, count=num_shards)
+
+    shape_buf = self.buffer_from_memory(pull_result.shape, shape_buf_size)
+    shape = np.frombuffer(shape_buf, dtype=np.uint64, count=ndim)
+
+    shard_shape = np.array(shape)  # make a copy
+    shards = []
+    for i in range(num_shards):
+      shard_data_buf = self.buffer_from_read_write_memory(
+          ctypes.cast(int(shards_handle[i]), ctypes.POINTER(
+              ctypes.c_double)),  # TODO: generic datatype
+          ctypes.c_int64(int(shard_sizes[i]) * 8),
+      )
+      shard_shape[shard_axis] = int(shard_sizes[i] / shape[shard_axis])
+      shards.append(np.frombuffer(
+          shard_data_buf,
+          dtype=np.float64,
+          count=shard_sizes[i],
+      ).reshape(shard_shape))
+
+    merged = np.concatenate(shards, axis=0)
+    start = int(interval[0] - pull_result.start_axis_idx)
+    end = int(start + (interval[1] - interval[0]))
+
+    return np.take(merged, range(start, end), axis=shard_axis)
+
+
+def start_plasma_manager(store_name, manager_name, redis_address, num_retries=5, use_valgrind=False, run_profiler=False):
   """Start a plasma manager and return the ports it listens on.
 
   Args:
@@ -318,7 +441,8 @@ def start_plasma_manager(store_name, manager_name, redis_address, num_retries=20
   Raises:
     Exception: An exception is raised if the manager could not be started.
   """
-  plasma_manager_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../build/plasma_manager")
+  plasma_manager_executable = os.path.join(os.path.abspath(
+      os.path.dirname(__file__)), "../../build/plasma_manager")
   port = None
   process = None
   counter = 0
@@ -333,7 +457,8 @@ def start_plasma_manager(store_name, manager_name, redis_address, num_retries=20
                "-p", str(port),
                "-r", redis_address]
     if use_valgrind:
-      process = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + command)
+      process = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full",
+                                  "--show-leak-kinds=all", "--error-exitcode=1"] + command)
     elif run_profiler:
       process = subprocess.Popen(["valgrind", "--tool=callgrind"] + command)
     else:
@@ -346,3 +471,10 @@ def start_plasma_manager(store_name, manager_name, redis_address, num_retries=20
       return process, port
     counter += 1
   raise Exception("Couldn't start plasma manager.")
+
+# TODO: remove
+if __name__ == '__main__':
+  x = PlasmaClient('/tmp/plasma_socket')
+  id = "a" * 20
+  foo = np.arange(1000000).reshape((1000, 1000)).astype(np.float64)
+  x.init_kvstore(id, foo)
