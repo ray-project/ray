@@ -4,6 +4,7 @@ import random
 import socket
 import subprocess
 import time
+import numpy as np
 
 Addr = ctypes.c_ubyte * 4
 
@@ -63,6 +64,19 @@ class PlasmaBuffer(object):
   def __len__(self):
     """Return the length of the buffer."""
     return len(self.buffer)
+
+
+class PlasmaPullResult(ctypes.Structure):
+  _fields_ = [
+    ("shards_handle", ctypes.POINTER(ctypes.c_void_p)),
+    ("num_shards", ctypes.c_uint64),
+    ("shape", ctypes.POINTER(ctypes.c_uint64)),
+    ("ndim", ctypes.c_uint64),
+    ("shard_sizes", ctypes.POINTER(ctypes.c_uint64)),
+    ("start_axis_idx", ctypes.c_uint64),
+    ("shard_axis", ctypes.c_uint64),
+  ]
+
 
 class PlasmaClient(object):
   """The PlasmaClient is used to interface with a plasma store and a plasma manager.
@@ -290,6 +304,85 @@ class PlasmaClient(object):
         break
     return message_data
 
+  def init_kvstore(self, kv_store_id, np_data, shard_axis=0, shard_size=10):
+    assert type(np_data) is np.ndarray
+    assert shard_axis <= len(np_data.shape)
+
+    axis_len = np_data.shape[shard_axis]
+    num_shards = axis_len / shard_size
+
+    # TODO: think about storing numpy array shape and handle n-dimension matrices
+    partitions = np.split(np_data, num_shards, axis=shard_axis)
+    partition_lengths = np.array([p.size for p in partitions], dtype=np.uint64)
+    void_p_partitions = np.array([p.ctypes.data_as(ctypes.c_void_p).value for p in partitions])
+    shape = np_data.ctypes.shape
+
+    void_handle_arr = void_p_partitions.ctypes.data_as(ctypes.c_void_p)
+    shard_sizes_ptr = partition_lengths.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64))
+
+    self.client.plasma_init_kvstore(
+      self.plasma_conn,
+      make_plasma_id(kv_store_id),
+      void_handle_arr,
+      shard_sizes_ptr,
+      len(partitions),
+      ctypes.c_uint64(shard_axis),
+      shape,
+      np_data.ndim
+    )
+
+  def pull(self, kv_store_id, interval):
+    assert type(interval) is tuple and len(interval) == 2
+
+    pull_result = PlasmaPullResult()
+
+    self.client.plasma_pull(
+      self.plasma_conn,
+      make_plasma_id(kv_store_id),
+      interval[0],
+      interval[1],
+      ctypes.byref(pull_result)
+    )
+
+    # TODO: do this slicing in C
+
+    num_shards = pull_result.num_shards
+    ndim = pull_result.ndim
+    shard_axis = pull_result.shard_axis
+    void_ptr_size = ctypes.sizeof(ctypes.c_void_p)
+
+    shard_ptr_buf_size = ctypes.c_int64(num_shards * void_ptr_size)
+    shape_buf_size = ctypes.c_int64(ndim * 8) # will always use uint64_t for sizes
+
+    shards_handle_buf = self.buffer_from_memory(pull_result.shards_handle, shard_ptr_buf_size)
+    shards_handle = np.frombuffer(shards_handle_buf, dtype=np.uint64, count=num_shards)
+
+    shard_bytes_sizes_buf = self.buffer_from_memory(pull_result.shard_sizes, shard_ptr_buf_size)
+    shard_sizes = np.frombuffer(shard_bytes_sizes_buf, dtype=np.uint64, count=num_shards)
+
+    shape_buf = self.buffer_from_memory(pull_result.shape, shape_buf_size)
+    shape = np.frombuffer(shape_buf, dtype=np.uint64, count=ndim)
+
+    shard_shape = np.array(shape) # make a copy
+    shards = []
+    for i in range(num_shards):
+      shard_data_buf = self.buffer_from_read_write_memory(
+        ctypes.cast(int(shards_handle[i]), ctypes.POINTER(ctypes.c_double)), # TODO: generic datatype
+        ctypes.c_int64(int(shard_sizes[i]) * 8),
+      )
+      shard_shape[shard_axis] = int(shard_sizes[i] / shape[shard_axis])
+      shards.append(np.frombuffer(
+        shard_data_buf,
+        dtype=np.float64,
+        count=shard_sizes[i],
+      ).reshape(shard_shape))
+
+    merged = np.concatenate(shards, axis=0)
+    start = int(interval[0] - pull_result.start_axis_idx)
+    end = int(start + (interval[1] - interval[0]))
+
+    return np.take(merged, range(start, end), axis=shard_axis)
+
 def start_plasma_manager(store_name, manager_name, redis_address, num_retries=5, use_valgrind=False, run_profiler=False):
   """Start a plasma manager and return the ports it listens on.
 
@@ -336,3 +429,10 @@ def start_plasma_manager(store_name, manager_name, redis_address, num_retries=5,
       return process, port
     counter += 1
   raise Exception("Couldn't start plasma manager.")
+
+# TODO: remove
+if __name__ == '__main__':
+  x = PlasmaClient('/tmp/plasma_socket')
+  id = "a" * 20
+  foo = np.arange(1000000).reshape((1000, 1000)).astype(np.float64)
+  x.init_kvstore(id, foo)
