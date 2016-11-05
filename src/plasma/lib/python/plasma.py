@@ -69,7 +69,8 @@ class PlasmaBuffer(object):
 class PlasmaPullResult(ctypes.Structure):
   _fields_ = [
     ("shards_handle", ctypes.POINTER(ctypes.c_void_p)),
-    ("num_shards", ctypes.c_uint64),
+    ("total_num_shards", ctypes.c_uint64),
+    ("result_num_shards", ctypes.c_uint64),
     ("shape", ctypes.POINTER(ctypes.c_uint64)),
     ("ndim", ctypes.c_uint64),
     ("shard_sizes", ctypes.POINTER(ctypes.c_uint64)),
@@ -352,7 +353,7 @@ class PlasmaClient(object):
 
     # TODO: do this slicing in C
 
-    num_shards = pull_result.num_shards
+    num_shards = pull_result.result_num_shards
     ndim = pull_result.ndim
     shard_order = str(pull_result.shard_order)
     shard_axis = 0 if shard_order == 'C' else -1
@@ -385,13 +386,16 @@ class PlasmaClient(object):
       ).reshape(shard_shape, order=shard_order))
 
     merged = np.concatenate(shards, axis=shard_axis)
-    start = int(interval[0] - pull_result.start_axis_idx)
+    shard_length = shape[shard_axis] / pull_result.total_num_shards
+    start = int(interval[0] - (pull_result.start_axis_idx * shard_length))
     end = int(start + (interval[1] - interval[0]))
-
     return np.take(merged, range(start, end), axis=shard_axis)
 
   def push(self, kv_store_id, interval, np_data, version=0):
     assert type(interval) is tuple and len(interval) == 2
+
+    # TODO: Trying to figure out how to write to memory
+    np_data = np.ascontiguousarray(np_data)
 
     self.client.plasma_push(
       self.plasma_conn,
@@ -458,14 +462,14 @@ if __name__ == '__main__':
 
     id_c = "c" * 20
     x.init_kvstore(id_c, foo)
-    yc = x.pull(id_c, (5, 15))
-    assert (yc == foo[5:15]).all()
+    assert (x.pull(id_c, (5, 15)) == foo[5:15]).all()
+    assert (x.pull(id_c, (63, 73)) == foo[63:73]).all()
     print 'C-style slicing works!'
 
     id_f = "f" * 20
     x.init_kvstore(id_f, foo, shard_order='F')
-    yf = x.pull(id_f, (5, 15))
-    assert (yf == foo[..., 5:15]).all()
+    assert (x.pull(id_f, (5, 15)) == foo[:, 5:15]).all()
+    assert (x.pull(id_f, (63, 73)) == foo[:, 63:73]).all()
     print 'F-style slicing works!'
 
   def push_test():
@@ -480,7 +484,9 @@ if __name__ == '__main__':
     assert (x.pull(id_a, (0, 10)) == update).all()
     print 'Update 1st shard success.'
 
+    import pdb
     x.push(id_a, (63, 73), update)
+    pdb.set_trace()
     assert (x.pull(id_a, (63, 73)) == update).all()
     print 'Update across multiple shards success.'
 
@@ -488,5 +494,5 @@ if __name__ == '__main__':
     assert (x.pull(id_a, (0, 1000)) == foo).all()
     print 'Reset back to foo success.'
 
-  # slice_test()
+  slice_test()
   push_test()

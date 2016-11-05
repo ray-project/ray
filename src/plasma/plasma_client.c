@@ -556,6 +556,7 @@ void plasma_pull(plasma_connection *conn,
 
   uint8_t *kv_data_cursor = kv_data;
   uint64_t total_num_shards = *(uint64_t *)kv_data_cursor;
+  result->total_num_shards = total_num_shards;
   kv_data_cursor += sizeof(uint64_t);
 
   result->ndim = *(uint64_t *)kv_data_cursor;
@@ -596,7 +597,7 @@ void plasma_pull(plasma_connection *conn,
   }
   end_axis_i = axis_i;
 
-  result->num_shards = end_axis_i - start_axis_i;
+  result->result_num_shards = end_axis_i - start_axis_i;
   result->shards_handle = &shards_handle[start_axis_i];
   result->shard_sizes = &shard_sizes[start_axis_i];
   result->start_axis_idx = start_axis_i;
@@ -631,10 +632,12 @@ void plasma_push(plasma_connection *conn,
 
   printf("copy size %d\n", copy_size);
 
-  for (uint64_t i = start_axis_i; i < start_axis_i + result.num_shards;) {
+  for (uint64_t i = start_axis_i; i < start_axis_i + result.result_num_shards;) {
     printf("shard_i %d\n", i);
     printf("orign data[0]: %f\n", *(double *) addr);
+    printf("copy data[0]: %f\n", *(double *) data);
     memcpy(addr, data, copy_size * 8);
+    printf("new data[0]: %f\n", *(double *) addr);
 
     size -= copy_size;
     data += copy_size * 8;
