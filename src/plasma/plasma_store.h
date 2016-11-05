@@ -85,4 +85,8 @@ void send_notifications(event_loop *loop,
                         void *plasma_state,
                         int events);
 
+void remove_objects(plasma_store_state *plasma_state,
+                    int64_t num_objects_to_evict,
+                    object_id *objects_to_evict);
+
 #endif /* PLASMA_STORE_H */

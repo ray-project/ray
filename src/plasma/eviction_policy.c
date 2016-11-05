@@ -2,8 +2,6 @@
 
 #include "utlist.h"
 
-void dlfree(void *);
-
 /** An element representing a released object in a doubly-linked list. This is
  *  used to implement an LRU cache. */
 typedef struct released_object {
@@ -29,7 +27,7 @@ typedef struct {
 
 /** The part of the Plasma state that is maintained by the eviction policy. */
 struct eviction_state {
-  /** The amount of memory (in bytes) that we allow to be allocated in this
+  /** The amount of memory (in bytes) that we allow to be allocated in the
    *  store. */
   int64_t memory_capacity;
   /** The amount of memory (in bytes) currently being used. */
@@ -92,50 +90,33 @@ void add_object_to_lru_cache(eviction_state *eviction_state,
            sizeof(object_id), hash_table_entry);
 }
 
-void remove_object_from_lru_cache(eviction_state *eviction_state,
-                                  object_id object_id) {
+void remove_object_from_lru_cache_if_present(eviction_state *eviction_state,
+                                             object_id object_id) {
   /* Check that the object ID is in the hash table. */
   released_object_entry *hash_table_entry;
   HASH_FIND(handle, eviction_state->released_object_table, &object_id,
             sizeof(object_id), hash_table_entry);
-  CHECK(hash_table_entry != NULL);
-  /* Remove the object ID from the doubly-linked list. */
-  DL_DELETE(eviction_state->released_objects,
-            hash_table_entry->released_object);
-            /* Free the entry from the doubly-linked list. */
-  free(hash_table_entry->released_object);
-  /* Remove the object ID from the hash table. */
-  HASH_DELETE(handle, eviction_state->released_object_table, hash_table_entry);
-  /* Free the entry from the hash table. */
-  free(hash_table_entry);
+  /* Only remove the object ID if it is in the LRU cache. */
+  if (hash_table_entry != NULL) {
+    /* Remove the object ID from the doubly-linked list. */
+    DL_DELETE(eviction_state->released_objects,
+              hash_table_entry->released_object);
+    /* Free the entry from the doubly-linked list. */
+    free(hash_table_entry->released_object);
+    /* Remove the object ID from the hash table. */
+    HASH_DELETE(handle, eviction_state->released_object_table,
+                hash_table_entry);
+    /* Free the entry from the hash table. */
+    free(hash_table_entry);
+  }
 }
 
-void delete_obj(eviction_state *eviction_state,
-                plasma_store_info *plasma_store_info,
-                object_id object_id) {
-  LOG_DEBUG("deleting object");
-  object_table_entry *entry;
-  HASH_FIND(handle, plasma_store_info->objects, &object_id, sizeof(object_id),
-            entry);
-  /* TODO(rkn): This should probably not fail, but should instead throw an
-   * error. Maybe we should also support deleting objects that have been created
-   * but not sealed. */
-  CHECKM(entry != NULL, "To delete an object it must be in the object table.");
-  CHECKM(entry->state == SEALED,
-         "To delete an object it must have been sealed.")
-  CHECKM(utarray_len(entry->clients) == 0,
-         "To delete an object, there must be no clients currently using it.");
-  uint8_t *pointer = entry->pointer;
-  HASH_DELETE(handle, plasma_store_info->objects, entry);
-  dlfree(pointer);
-  utarray_free(entry->clients);
-  free(entry);
-}
-
-/* Remove the least recently released objects. */
-int64_t evict_objects(eviction_state *eviction_state,
-                      plasma_store_info *plasma_store_info,
-                      int64_t num_bytes_required) {
+int64_t choose_objects_to_evict(eviction_state *eviction_state,
+                                plasma_store_info *plasma_store_info,
+                                int64_t num_bytes_required,
+                                int64_t *num_objects_to_evict,
+                                object_id **objects_to_evict) {
+  int64_t num_objects_evicted = 0;
   int64_t num_bytes_evicted = 0;
   /* Evict some objects starting with the least recently released object. */
   released_object *element, *temp;
@@ -149,57 +130,79 @@ int64_t evict_objects(eviction_state *eviction_state,
     HASH_FIND(handle, plasma_store_info->objects, &obj_id, sizeof(object_id),
               entry);
     num_bytes_evicted += (entry->info.data_size + entry->info.metadata_size);
-    /* Delete the object. */
-    delete_obj(eviction_state, plasma_store_info, obj_id);
-    /* Update the LRU cache. */
-    remove_object_from_lru_cache(eviction_state, obj_id);
+    // /* Update the LRU cache. */
+    // remove_object_from_lru_cache_if_present(eviction_state, obj_id);
+    num_objects_evicted += 1;
   }
+
+  /* Construct the return values. */
+  *num_objects_to_evict = num_objects_evicted;
+  if (num_objects_evicted == 0) {
+    *objects_to_evict = NULL;
+  } else {
+    *objects_to_evict =
+        (object_id *) malloc(num_objects_evicted * sizeof(object_id));
+    int counter = 0;
+    DL_FOREACH_SAFE(eviction_state->released_objects, element, temp) {
+      if (counter >= num_objects_evicted) {
+        break;
+      }
+      (*objects_to_evict)[counter] = element->object_id;
+      /* Update the LRU cache. */
+      remove_object_from_lru_cache_if_present(eviction_state,
+                                              element->object_id);
+      counter += 1;
+    }
+  }
+
   /* Update the number used. */
   eviction_state->memory_used -= num_bytes_evicted;
   return num_bytes_evicted;
 }
 
-void handle_before_create(eviction_state *eviction_state,
-                          plasma_store_info *plasma_store_info,
-                          int64_t size) {
+void require_space(eviction_state *eviction_state,
+                   plasma_store_info *plasma_store_info,
+                   int64_t size,
+                   int64_t *num_objects_to_evict,
+                   object_id **objects_to_evict) {
   /* Check if there is enough space to create the object. */
-  int64_t required_space = eviction_state->memory_used + size -
-                           eviction_state->memory_capacity;
+  int64_t required_space =
+      eviction_state->memory_used + size - eviction_state->memory_capacity;
   if (required_space > 0) {
     /* Try to free up as much free space as we need right now. */
     LOG_DEBUG("not enough space to create this object, so evicting objects");
-    printf("There is not enough space to create this object, so evicting objects.\n");
-    int64_t num_bytes_evicted = evict_objects(eviction_state, plasma_store_info,
-                                              required_space);
+    /* Choose some objects to evict, and update the return pointers. */
+    int64_t num_bytes_evicted = choose_objects_to_evict(
+        eviction_state, plasma_store_info, required_space, num_objects_to_evict,
+        objects_to_evict);
     printf("Evicted %lld bytes.\n", num_bytes_evicted);
+    LOG_INFO(
+        "There is not enough space to create this object, so evicting "
+        "%lld objects to free up %lld bytes.\n",
+        *num_objects_to_evict, num_bytes_evicted);
     CHECK(num_bytes_evicted >= required_space);
   }
   eviction_state->memory_used += size;
 }
 
-void handle_add_client(eviction_state *eviction_state,
-                       plasma_store_info *plasma_store_info,
-                       object_table_entry *entry) {
+void begin_object_access(eviction_state *eviction_state,
+                         plasma_store_info *plasma_store_info,
+                         object_id obj_id,
+                         int64_t *num_objects_to_evict,
+                         object_id **objects_to_evict) {
   /* If the object is in the LRU cache, remove it. */
-  released_object_entry *hash_table_entry;
-  HASH_FIND(handle, eviction_state->released_object_table, &entry->object_id,
-            sizeof(object_id), hash_table_entry);
-  if (hash_table_entry != NULL) {
-    remove_object_from_lru_cache(eviction_state, entry->object_id);
-  }
+  remove_object_from_lru_cache_if_present(eviction_state, obj_id);
+  *num_objects_to_evict = 0;
+  *objects_to_evict = NULL;
 }
 
-void handle_remove_client(eviction_state *eviction_state,
-                          plasma_store_info *plasma_store_info,
-                          object_table_entry *entry) {
-  /* If no more clients are using this object, add it to the LRU cache. */
-  if (utarray_len(entry->clients) == 0) {
-    add_object_to_lru_cache(eviction_state, entry->object_id);
-  }
-}
-
-void handle_delete(eviction_state *eviction_state,
-                   plasma_store_info *plasma_store_info,
-                   object_id object_id) {
-  delete_obj(eviction_state, plasma_store_info, object_id);
+void end_object_access(eviction_state *eviction_state,
+                       plasma_store_info *plasma_store_info,
+                       object_id obj_id,
+                       int64_t *num_objects_to_evict,
+                       object_id **objects_to_evict) {
+  /* Add the object to the LRU cache.*/
+  add_object_to_lru_cache(eviction_state, obj_id);
+  *num_objects_to_evict = 0;
+  *objects_to_evict = NULL;
 }
