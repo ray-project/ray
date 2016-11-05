@@ -437,6 +437,7 @@ def start_plasma_manager(store_name, manager_name, redis_address, num_retries=5,
     counter += 1
   raise Exception("Couldn't start plasma manager.")
 
+# XXX: remove
 if __name__ == '__main__':
   x = PlasmaClient('/tmp/plasma_socket')
 
