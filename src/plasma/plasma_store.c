@@ -32,6 +32,7 @@
 #include "fling.h"
 #include "malloc.h"
 #include "plasma_store.h"
+#include "plasma.h"
 
 void *dlmalloc(size_t);
 void dlfree(void *);
@@ -131,18 +132,24 @@ void add_client_to_object_clients(object_table_entry *entry,
 }
 
 /* Create a new object buffer in the hash table. */
-void create_object(client *client_context,
+bool create_object(client *client_context,
                    object_id obj_id,
                    int64_t data_size,
                    int64_t metadata_size,
                    plasma_object *result) {
+
+
   LOG_DEBUG("creating object"); /* TODO(pcm): add object_id here */
   plasma_store_state *plasma_state = client_context->plasma_state;
   object_table_entry *entry;
   /* TODO(swang): Return these error to the client instead of exiting. */
   HASH_FIND(handle, plasma_state->plasma_store_info->objects, &obj_id,
             sizeof(obj_id), entry);
-  CHECKM(entry == NULL, "Cannot create object twice.");
+  if (entry != NULL) {
+    /* There is already an object with the same ID in the Plasma Store, so
+     * ignore this requst. */
+    return false;
+  }
   /* Tell the eviction policy how much space we need to create this object. */
   int64_t num_objects_to_evict;
   object_id *objects_to_evict;
@@ -184,6 +191,7 @@ void create_object(client *client_context,
                  obj_id);
   /* Record that this client is using this object. */
   add_client_to_object_clients(entry, client_context);
+  return true;
 }
 
 /* Get an object from the hash table. */
@@ -223,6 +231,31 @@ int get_object(client *client_context,
   }
   return OBJECT_NOT_FOUND;
 }
+
+/* Get an object from the local Plasma Store if exists. */
+int get_object_local(client *client_context,
+                     int conn,
+                     object_id object_id,
+                     plasma_object *result) {
+  plasma_store_state *plasma_state = client_context->plasma_state;
+  object_table_entry *entry;
+  HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
+            sizeof(object_id), entry);
+  if (entry && entry->state == SEALED) {
+    result->handle.store_fd = entry->fd;
+    result->handle.mmap_size = entry->map_size;
+    result->data_offset = entry->offset;
+    result->metadata_offset = entry->offset + entry->info.data_size;
+    result->data_size = entry->info.data_size;
+    result->metadata_size = entry->info.metadata_size;
+    /* If necessary, record that this client is using this object. In the case
+     * where entry == NULL, this will be called from seal_object. */
+    add_client_to_object_clients(entry, client_context);
+    return OBJECT_FOUND;
+  }
+  return OBJECT_NOT_FOUND;
+}
+
 
 int remove_client_from_object_clients(object_table_entry *entry,
                                       client *client_info) {
@@ -429,14 +462,30 @@ void process_message(event_loop *loop,
   /* Process the different types of requests. */
   switch (type) {
   case PLASMA_CREATE:
-    create_object(client_context, req->object_ids[0], req->data_size,
-                  req->metadata_size, &reply.object);
+    if (create_object(client_context, req->object_ids[0], req->data_size,
+                      req->metadata_size, &reply.object)) {
+      reply.error_code = PLASMA_REPLY_OK;
+    } else {
+      reply.error_code = PLASMA_REPLY_OBJECT_ALREADY_EXISTS;
+    }
     CHECK(plasma_send_reply(client_sock, &reply) >= 0);
     CHECK(send_fd(client_sock, reply.object.handle.store_fd) >= 0);
     break;
   case PLASMA_GET:
     if (get_object(client_context, client_sock, req->object_ids[0],
                    &reply.object) == OBJECT_FOUND) {
+      CHECK(plasma_send_reply(client_sock, &reply) >= 0);
+      CHECK(send_fd(client_sock, reply.object.handle.store_fd) >= 0);
+    }
+    break;
+  case PLASMA_GET_LOCAL:
+    if (get_object_local(client_context, client_sock, req->object_ids[0],
+                         &reply.object) == OBJECT_FOUND) {
+      reply.has_object = true;
+      CHECK(plasma_send_reply(client_sock, &reply) >= 0);
+      CHECK(send_fd(client_sock, reply.object.handle.store_fd) >= 0);
+    } else {
+      reply.has_object = false;
       CHECK(plasma_send_reply(client_sock, &reply) >= 0);
       CHECK(send_fd(client_sock, reply.object.handle.store_fd) >= 0);
     }
