@@ -266,4 +266,12 @@ void plasma_pull(plasma_connection *conn,
                  uint64_t range_end,
                  plasma_pull_result *result);
 
+// TODO: document
+void plasma_push(plasma_connection *conn,
+                 object_id kv_object_id,
+                 uint64_t range_start,
+                 uint64_t range_end,
+                 uint64_t size,
+                 void* data);
+
 #endif
