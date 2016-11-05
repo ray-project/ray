@@ -557,12 +557,6 @@ void plasma_init_kvstore(plasma_connection *conn,
     memcpy(shard_datum[i], shards[i], shard_sizes[i] * 8); // copy shard data into shard
   }
 
-  printf("sample shard 0: ");
-  for (int i = 0; i < 10; i++) {
-    printf(" %.1f ", ((double **)shards)[0][i]);
-  }
-  printf("\n");
-
   // create kv_metadata shard
   int64_t shard_id_bytes = num_shards * sizeof(object_id);
   int64_t shard_sizes_bytes = num_shards * sizeof(uint64_t);
@@ -580,15 +574,12 @@ void plasma_init_kvstore(plasma_connection *conn,
   plasma_create(conn, kv_object_id, kv_data_size, NULL, 0, &kv_data);
 
   memcpy(kv_data, &num_shards, sizeof(uint64_t));
-  printf("stored total_num_shards %"PRId64"\n", *(uint64_t*)kv_data);
   kv_data += sizeof(uint64_t);
 
   memcpy(kv_data, &ndims, sizeof(uint64_t));
-  printf("ndims %"PRId64", stored %"PRId64"\n", ndims, *(uint64_t*)kv_data);
   kv_data += sizeof(uint64_t);
 
   memcpy(kv_data, &shard_order, 1);
-  printf("shard_order %c, stored %c\n", shard_order, *(char *)kv_data);
   kv_data += 1;
 
   memcpy(kv_data, shape, matrix_ndims);
