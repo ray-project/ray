@@ -54,6 +54,14 @@ typedef struct {
   UT_hash_handle hh;
 } object_in_use_entry;
 
+/** Configuration options for the plasma client. */
+typedef struct {
+  /** Number of release calls we wait until the object is actually released.
+   *  This allows us to avoid invalidating the cpu cache on workers if objects
+   *  are reused accross tasks. */
+  int release_delay;
+} plasma_client_config;
+
 /** Information about a connection between a Plasma Client and Plasma Store.
  *  This is used to avoid mapping the same files into memory multiple times. */
 struct plasma_connection {
@@ -73,6 +81,8 @@ struct plasma_connection {
    *  do not unneccessarily invalidate cpu caches. TODO(pcm): replace this with
    *  a proper lru cache of size sizeof(L3 cache). */
   UT_ringbuffer *release_history;
+  /** Configuration options for the plasma client. */
+  plasma_client_config config;
 };
 
 int plasma_request_size(int num_object_ids) {
@@ -230,24 +240,13 @@ void plasma_get(plasma_connection *conn,
   increment_object_count(conn, object_id, object->handle.store_fd);
 }
 
-void plasma_release(plasma_connection *conn, object_id obj_id) {
-  /* Delay the release by storing new releases into a ringbuffer and only
-   * popping them off and actually releasing if the buffer is full. This is
-   * so consecutive tasks don't release and map again objects and invalidate
-   * the cpu cache this way. */
-  if (!utringbuffer_full(conn->release_history)) {
-    utringbuffer_push_back(conn->release_history, &obj_id);
-    return;
-  } else {
-    object_id tmp = *(object_id *) utringbuffer_front(conn->release_history);
-    utringbuffer_push_back(conn->release_history, &obj_id);
-    obj_id = tmp;
-  }
+void plasma_perform_release(plasma_connection *conn, object_id object_id) {
   /* Decrement the count of the number of instances of this object that are
    * being used by this client. The corresponding increment should have happened
    * in plasma_get. */
   object_in_use_entry *object_entry;
-  HASH_FIND(hh, conn->objects_in_use, &obj_id, sizeof(obj_id), object_entry);
+  HASH_FIND(hh, conn->objects_in_use, &object_id, sizeof(object_id),
+            object_entry);
   CHECK(object_entry != NULL);
   object_entry->count -= 1;
   CHECK(object_entry->count >= 0);
@@ -269,11 +268,29 @@ void plasma_release(plasma_connection *conn, object_id obj_id) {
       free(entry);
     }
     /* Tell the store that the client no longer needs the object. */
-    plasma_request req = make_plasma_request(obj_id);
+    plasma_request req = make_plasma_request(object_id);
     plasma_send_request(conn->store_conn, PLASMA_RELEASE, &req);
     /* Remove the entry from the hash table of objects currently in use. */
     HASH_DELETE(hh, conn->objects_in_use, object_entry);
     free(object_entry);
+  }
+}
+
+void plasma_release(plasma_connection *conn, object_id obj_id) {
+  /* If no ringbuffer is used, don't delay the release. */
+  if (conn->config.release_delay == 0) {
+    plasma_perform_release(conn, obj_id);
+  } else if (!utringbuffer_full(conn->release_history)) {
+    /* Delay the release by storing new releases into a ringbuffer and only
+     * popping them off and actually releasing if the buffer is full. This is
+     * so consecutive tasks don't release and map again objects and invalidate
+     * the cpu cache this way. */
+    utringbuffer_push_back(conn->release_history, &obj_id);
+  } else {
+    object_id object_id_to_release =
+        *(object_id *) utringbuffer_front(conn->release_history);
+    utringbuffer_push_back(conn->release_history, &obj_id);
+    plasma_perform_release(conn, object_id_to_release);
   }
 }
 
@@ -359,7 +376,8 @@ int socket_connect_retry(const char *socket_name,
 }
 
 plasma_connection *plasma_connect(const char *store_socket_name,
-                                  const char *manager_socket_name) {
+                                  const char *manager_socket_name,
+                                  int release_delay) {
   /* Initialize the store connection struct */
   plasma_connection *result = malloc(sizeof(plasma_connection));
   result->store_conn = socket_connect_retry(
@@ -372,8 +390,8 @@ plasma_connection *plasma_connect(const char *store_socket_name,
   }
   result->mmap_table = NULL;
   result->objects_in_use = NULL;
-  result->release_history = NULL;
-  utringbuffer_new(result->release_history, 64, &object_id_icd);
+  result->config.release_delay = release_delay;
+  utringbuffer_new(result->release_history, release_delay, &object_id_icd);
   return result;
 }
 
@@ -382,6 +400,11 @@ void plasma_disconnect(plasma_connection *conn) {
   if (conn->manager_conn >= 0) {
     close(conn->manager_conn);
   }
+  object_id *id = NULL;
+  while ((id = (object_id *) utringbuffer_next(conn->release_history, id))) {
+    plasma_perform_release(conn, *id);
+  }
+  utringbuffer_free(conn->release_history);
   free(conn);
 }
 

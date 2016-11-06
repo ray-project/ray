@@ -72,7 +72,7 @@ class PlasmaClient(object):
   strings.
   """
 
-  def __init__(self, store_socket_name, manager_socket_name=None):
+  def __init__(self, store_socket_name, manager_socket_name=None, release_delay=64):
     """Initialize the PlasmaClient.
 
     Args:
@@ -103,10 +103,10 @@ class PlasmaClient(object):
 
     if manager_socket_name is not None:
       self.has_manager_conn = True
-      self.plasma_conn = ctypes.c_void_p(self.client.plasma_connect(store_socket_name, manager_socket_name))
+      self.plasma_conn = ctypes.c_void_p(self.client.plasma_connect(store_socket_name, manager_socket_name, release_delay))
     else:
       self.has_manager_conn = False
-      self.plasma_conn = ctypes.c_void_p(self.client.plasma_connect(store_socket_name, None))
+      self.plasma_conn = ctypes.c_void_p(self.client.plasma_connect(store_socket_name, None, release_delay))
 
   def shutdown(self):
     """Shutdown the client so that it does not send messages.
