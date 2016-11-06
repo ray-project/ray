@@ -98,7 +98,7 @@ struct plasma_store_state {
   eviction_state *eviction_state;
 };
 
-plasma_store_state *init_plasma_store(event_loop *loop) {
+plasma_store_state *init_plasma_store(event_loop *loop, int64_t system_memory) {
   plasma_store_state *state = malloc(sizeof(plasma_store_state));
   state->loop = loop;
   state->objects_notify = NULL;
@@ -107,7 +107,7 @@ plasma_store_state *init_plasma_store(event_loop *loop) {
   state->plasma_store_info = malloc(sizeof(plasma_store_info));
   state->plasma_store_info->objects = NULL;
   /* Initialize the eviction state. */
-  state->eviction_state = make_eviction_state();
+  state->eviction_state = make_eviction_state(system_memory);
   return state;
 }
 
@@ -528,9 +528,9 @@ void signal_handler(int signal) {
   }
 }
 
-void start_server(char *socket_name) {
+void start_server(char *socket_name, int64_t system_memory) {
   event_loop *loop = event_loop_create();
-  plasma_store_state *state = init_plasma_store(loop);
+  plasma_store_state *state = init_plasma_store(loop, system_memory);
   int socket = bind_ipc_sock(socket_name, true);
   CHECK(socket >= 0);
   event_loop_add_file(loop, socket, EVENT_LOOP_READ, new_client_connection,
@@ -541,12 +541,21 @@ void start_server(char *socket_name) {
 int main(int argc, char *argv[]) {
   signal(SIGTERM, signal_handler);
   char *socket_name = NULL;
+  int64_t system_memory = -1;
   int c;
-  while ((c = getopt(argc, argv, "s:")) != -1) {
+  while ((c = getopt(argc, argv, "s:m:")) != -1) {
     switch (c) {
     case 's':
       socket_name = optarg;
       break;
+    case 'm': {
+      char extra;
+      int scanned = sscanf(optarg, "%" SCNd64 "%c", &system_memory, &extra);
+      CHECK(scanned == 1);
+      LOG_INFO("Allowing the Plasma store to use up to %.2fGB of memory.",
+               ((double) system_memory) / 1000000000);
+      break;
+    }
     default:
       exit(-1);
     }
@@ -555,6 +564,10 @@ int main(int argc, char *argv[]) {
     LOG_ERR("please specify socket for incoming connections with -s switch");
     exit(-1);
   }
+  if (system_memory == -1) {
+    LOG_ERR("please specify the amount of system memory with -m switch");
+    exit(-1);
+  }
   LOG_DEBUG("starting server listening on %s", socket_name);
-  start_server(socket_name);
+  start_server(socket_name, system_memory);
 }

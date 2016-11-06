@@ -44,10 +44,10 @@ struct eviction_state {
  * released_objects type. */
 UT_icd released_objects_entry_icd = {sizeof(object_id), NULL, NULL, NULL};
 
-eviction_state *make_eviction_state(void) {
+eviction_state *make_eviction_state(int64_t system_memory) {
   eviction_state *state = malloc(sizeof(eviction_state));
   /* Find the amount of available memory on the machine. */
-  state->memory_capacity = 8000000000;
+  state->memory_capacity = system_memory;
   state->memory_used = 0;
   state->released_objects = NULL;
   state->released_object_table = NULL;

@@ -16,9 +16,11 @@ typedef struct eviction_state eviction_state;
 /**
  * Initialize the eviction policy state.
  *
+ * @param system_memory The amount of memory that can be used by the Plasma
+ *        store.
  * @return The internal state of the eviction policy.
  */
-eviction_state *make_eviction_state(void);
+eviction_state *make_eviction_state(int64_t system_memory);
 
 /**
  * Free the eviction policy state.

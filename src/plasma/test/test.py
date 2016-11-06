@@ -64,7 +64,7 @@ class TestPlasmaClient(unittest.TestCase):
     # Start Plasma.
     plasma_store_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../build/plasma_store")
     store_name = "/tmp/store{}".format(random.randint(0, 10000))
-    command = [plasma_store_executable, "-s", store_name]
+    command = [plasma_store_executable, "-s", store_name, "-m", "1000000000"]
     if USE_VALGRIND:
       self.p = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + command)
       time.sleep(2.0)
@@ -258,8 +258,8 @@ class TestPlasmaManager(unittest.TestCase):
     store_name2 = "/tmp/store{}".format(random.randint(0, 10000))
     manager_name1 = "/tmp/manager{}".format(random.randint(0, 10000))
     manager_name2 = "/tmp/manager{}".format(random.randint(0, 10000))
-    plasma_store_command1 = [plasma_store_executable, "-s", store_name1]
-    plasma_store_command2 = [plasma_store_executable, "-s", store_name2]
+    plasma_store_command1 = [plasma_store_executable, "-s", store_name1, "-m", "1000000000"]
+    plasma_store_command2 = [plasma_store_executable, "-s", store_name2, "-m", "1000000000"]
 
     if USE_VALGRIND:
       self.p2 = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + plasma_store_command1)
