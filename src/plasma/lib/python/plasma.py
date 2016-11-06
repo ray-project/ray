@@ -205,6 +205,17 @@ class PlasmaClient(object):
     """
     self.client.plasma_delete(self.plasma_conn, make_plasma_id(object_id))
 
+  def evict(self, num_bytes):
+    """Evict some objects until to recover some bytes.
+
+    Recover at least num_bytes bytes if possible.
+
+    Args:
+      num_bytes (int): The number of bytes to attempt to recover.
+    """
+    num_bytes_evicted = self.client.plasma_evict(self.plasma_conn, num_bytes)
+    return num_bytes_evicted
+
   def transfer(self, addr, port, object_id):
     """Transfer local object with id object_id to another plasma instance
 

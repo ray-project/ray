@@ -1,12 +1,13 @@
 from __future__ import print_function
 
+import psutil
 import os
-import sys
-import time
+import random
 import signal
+import sys
 import subprocess
 import string
-import random
+import time
 
 # Ray modules
 import config
@@ -90,13 +91,16 @@ def start_objstore(node_ip_address, redis_address, cleanup=True):
       this process will be killed by serices.cleanup() when the Python process
       that imported services exits.
   """
+  # Let the object store use a fraction of the system memory.
+  system_memory = psutil.virtual_memory().total
+  plasma_store_memory = int(system_memory * 0.75)
   plasma_store_filepath = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../plasma/build/plasma_store")
   if RUN_PLASMA_STORE_PROFILER:
     plasma_store_prefix = ["valgrind", "--tool=callgrind", plasma_store_filepath]
   else:
     plasma_store_prefix = [plasma_store_filepath]
   store_name = "/tmp/ray_plasma_store{}".format(random_name())
-  p1 = subprocess.Popen(plasma_store_prefix + ["-s", store_name])
+  p1 = subprocess.Popen(plasma_store_prefix + ["-s", store_name, "-m", str(plasma_store_memory)])
 
   manager_name = "/tmp/ray_plasma_manager{}".format(random_name())
   p2, manager_port = plasma.start_plasma_manager(store_name, manager_name, redis_address, run_profiler=RUN_PLASMA_MANAGER_PROFILER)
