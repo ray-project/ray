@@ -217,14 +217,11 @@ class RayReusables(object):
     self._local_mode_reusables = {}
     self._cached_reusables = []
     self._used = set()
-    self._slots = ("_names", "_reinitializers", "_running_remote_function_locally", "_reusables", "_local_mode_reusables", "_cached_reusables", "_used", "_slots", "_create_and_export", "_reinitialize", "__getattribute__", "__setattr__", "__delattr__")
+    self._slots = ("_names", "_reinitializers", "_running_remote_function_locally", "_reusables", "_local_mode_reusables", "_cached_reusables", "_used", "_slots", "_create_reusable_variable", "_reinitialize", "__getattribute__", "__setattr__", "__delattr__")
     # CHECKPOINT: Attributes must not be added after _slots. The above attributes are protected from deletion.
 
-  def _create_and_export(self, name, reusable):
-    """Create a reusable variable and add export it to the workers.
-
-    If ray.init has not been called yet, then store the reusable variable and
-    export it later then connect is called.
+  def _create_reusable_variable(self, name, reusable):
+    """Create a reusable variable locally.
 
     Args:
       name (str): The name of the reusable variable.
@@ -233,17 +230,10 @@ class RayReusables(object):
     """
     self._names.add(name)
     self._reinitializers[name] = reusable.reinitializer
-    # Export the reusable variable to the workers if we are on the driver. If
-    # ray.init has not been called yet, then cache the reusable variable to
-    # export later.
-    if _mode() in [SCRIPT_MODE, SILENT_MODE]:
-      _export_reusable_variable(name, reusable)
-    elif _mode() is None:
-      self._cached_reusables.append((name, reusable))
     self._reusables[name] = reusable.initializer()
     # We create a second copy of the reusable variable on the driver to use
     # inside of remote functions that run locally. This occurs when we start Ray
-    # in PYTHON_MODE and when  we call a remote function locally.
+    # in PYTHON_MODE and when we call a remote function locally.
     if _mode() in [SCRIPT_MODE, SILENT_MODE, PYTHON_MODE]:
       self._local_mode_reusables[name] = reusable.initializer()
 
@@ -313,11 +303,21 @@ class RayReusables(object):
     reusable = value
     if not issubclass(type(reusable), Reusable):
       raise Exception("To set a reusable variable, you must pass in a Reusable object")
-    # Create the reusable variable locally, and export it if possible.
-    self._create_and_export(name, reusable)
-    # Create an empty attribute with the name of the reusable variable. This
-    # allows the Python interpreter to do tab complete properly.
-    return object.__setattr__(self, name, None)
+    # If ray.init has not been called, cache the reusable variable to export
+    # later. Otherwise, export the reusable variable to the workers and define
+    # it locally.
+    if _mode() is None:
+      self._cached_reusables.append((name, reusable))
+    else:
+      # If we are on the driver, export the reusable variable to all the
+      # workers.
+      if _mode() in [SCRIPT_MODE, SILENT_MODE]:
+        _export_reusable_variable(name, reusable)
+      # Define the reusable variable locally.
+      self._create_reusable_variable(name, reusable)
+      # Create an empty attribute with the name of the reusable variable. This
+      # allows the Python interpreter to do tab complete properly.
+      object.__setattr__(self, name, None)
 
   def __delattr__(self, name):
     """We do not allow attributes of RayReusables to be deleted.
@@ -881,7 +881,7 @@ def connect(address_info, mode=WORKER_MODE, worker=global_worker):
       export_remote_function(function_id, func_name, func, num_return_vals, worker)
     # Export cached reusable variables to the workers.
     for name, reusable_variable in reusables._cached_reusables:
-      _export_reusable_variable(name, reusable_variable)
+      reusables.__setattr__(name, reusable_variable)
   worker.cached_functions_to_run = None
   worker.cached_remote_functions = None
   reusables._cached_reusables = None
