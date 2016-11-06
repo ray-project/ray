@@ -482,21 +482,6 @@ class Worker(object):
 
     return task.returns()
 
-  def export_function_to_run_on_all_workers(self, function):
-    """Export this function and run it on all workers.
-
-    Args:
-      function (Callable): The function to run on all of the workers. It should
-        not take any arguments. If it returns anything, its return values will
-        not be used.
-    """
-    if self.mode not in [SCRIPT_MODE, SILENT_MODE, PYTHON_MODE]:
-      raise Exception("run_function_on_all_workers can only be called on a driver.")
-    # Run the function on all of the workers.
-    if self.mode in [SCRIPT_MODE, SILENT_MODE]:
-      self.run_function_on_all_workers(function)
-
-
   def run_function_on_all_workers(self, function):
     """Run arbitrary code on all of the workers.
 
@@ -512,19 +497,20 @@ class Worker(object):
     """
     if self.mode not in [None, SCRIPT_MODE, SILENT_MODE, PYTHON_MODE]:
       raise Exception("run_function_on_all_workers can only be called on a driver.")
-    # First run the function on the driver.
-    function(self)
     # If ray.init has not been called yet, then cache the function and export it
     # when connect is called. Otherwise, run the function on all workers.
     if self.mode is None:
       self.cached_functions_to_run.append(function)
     else:
+      # First run the function on the driver.
+      function(self)
+      # Run the function on all workers.
       function_to_run_id = random_string()
       key = "FunctionsToRun:{}".format(function_to_run_id)
       self.redis_client.hmset(key, {"function_id": function_to_run_id,
                                     "function": pickling.dumps(function)})
       self.redis_client.rpush("Exports", key)
-    self.driver_export_counter += 1
+      self.driver_export_counter += 1
 
 global_worker = Worker()
 """Worker: The global Worker object for this worker process.
@@ -889,7 +875,7 @@ def connect(address_info, mode=WORKER_MODE, worker=global_worker):
     worker.run_function_on_all_workers(lambda worker: sys.path.insert(1, current_directory))
     # Export cached functions_to_run.
     for function in worker.cached_functions_to_run:
-      worker.export_function_to_run_on_all_workers(function)
+      worker.run_function_on_all_workers(function)
     # Export cached remote functions to the workers.
     for function_id, func_name, func, num_return_vals in worker.cached_remote_functions:
       export_remote_function(function_id, func_name, func, num_return_vals, worker)
