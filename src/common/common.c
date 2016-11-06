@@ -6,6 +6,9 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+/* This is used to define the array of object IDs. */
+const UT_icd object_id_icd = {sizeof(object_id), NULL, NULL, NULL};
+
 const unique_id NIL_ID = {{255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
                            255, 255, 255, 255, 255, 255, 255, 255, 255, 255}};
 

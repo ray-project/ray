@@ -19,6 +19,7 @@
 #include "plasma_client.h"
 #include "fling.h"
 #include "uthash.h"
+#include "utringbuffer.h"
 
 /* Number of times we try connecting to a socket. */
 #define NUM_CONNECT_ATTEMPTS 50
@@ -67,6 +68,11 @@ struct plasma_connection {
   /** A hash table of the object IDs that are currently being used by this
    * client. */
   object_in_use_entry *objects_in_use;
+  /** Object IDs of the last few release calls. This is used to delay
+   *  releasing objects to see if they can be reused by subsequent tasks so we
+   *  do not unneccessarily invalidate cpu caches. TODO(pcm): replace this with
+   *  a proper lru cache of size sizeof(L3 cache). */
+  UT_ringbuffer *release_history;
 };
 
 int plasma_request_size(int num_object_ids) {
@@ -224,13 +230,24 @@ void plasma_get(plasma_connection *conn,
   increment_object_count(conn, object_id, object->handle.store_fd);
 }
 
-void plasma_release(plasma_connection *conn, object_id object_id) {
+void plasma_release(plasma_connection *conn, object_id obj_id) {
+  /* Delay the release by storing new releases into a ringbuffer and only
+   * popping them off and actually releasing if the buffer is full. This is
+   * so consecutive tasks don't release and map again objects and invalidate
+   * the cpu cache this way. */
+  if (!utringbuffer_full(conn->release_history)) {
+    utringbuffer_push_back(conn->release_history, &obj_id);
+    return;
+  } else {
+    object_id tmp = *(object_id *) utringbuffer_front(conn->release_history);
+    utringbuffer_push_back(conn->release_history, &obj_id);
+    obj_id = tmp;
+  }
   /* Decrement the count of the number of instances of this object that are
    * being used by this client. The corresponding increment should have happened
    * in plasma_get. */
   object_in_use_entry *object_entry;
-  HASH_FIND(hh, conn->objects_in_use, &object_id, sizeof(object_id),
-            object_entry);
+  HASH_FIND(hh, conn->objects_in_use, &obj_id, sizeof(obj_id), object_entry);
   CHECK(object_entry != NULL);
   object_entry->count -= 1;
   CHECK(object_entry->count >= 0);
@@ -252,7 +269,7 @@ void plasma_release(plasma_connection *conn, object_id object_id) {
       free(entry);
     }
     /* Tell the store that the client no longer needs the object. */
-    plasma_request req = make_plasma_request(object_id);
+    plasma_request req = make_plasma_request(obj_id);
     plasma_send_request(conn->store_conn, PLASMA_RELEASE, &req);
     /* Remove the entry from the hash table of objects currently in use. */
     HASH_DELETE(hh, conn->objects_in_use, object_entry);
@@ -355,6 +372,8 @@ plasma_connection *plasma_connect(const char *store_socket_name,
   }
   result->mmap_table = NULL;
   result->objects_in_use = NULL;
+  result->release_history = NULL;
+  utringbuffer_new(result->release_history, 64, &object_id_icd);
   return result;
 }
 

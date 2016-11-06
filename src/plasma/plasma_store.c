@@ -68,10 +68,6 @@ struct client {
  * object_table_entry type. */
 UT_icd client_icd = {sizeof(client *), NULL, NULL, NULL};
 
-/* This is used to define the array of object IDs used to define the
- * notification_queue type. */
-UT_icd object_table_entry_icd = {sizeof(object_id), NULL, NULL, NULL};
-
 typedef struct {
   /** Client file descriptor. This is used as a key for the hash table. */
   int subscriber_fd;
@@ -420,7 +416,7 @@ void subscribe_to_updates(client *client_context, int conn) {
   notification_queue *queue =
       (notification_queue *) malloc(sizeof(notification_queue));
   queue->subscriber_fd = fd;
-  utarray_new(queue->object_ids, &object_table_entry_icd);
+  utarray_new(queue->object_ids, &object_id_icd);
   HASH_ADD_INT(plasma_state->pending_notifications, subscriber_fd, queue);
 }
 
