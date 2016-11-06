@@ -187,6 +187,11 @@ void create_object(client *client_context,
   result->metadata_offset = offset + data_size;
   result->data_size = data_size;
   result->metadata_size = metadata_size;
+  /* Notify the eviction policy that this object was created. This must be done
+   * immediately before the call to add_client_to_object_clients so that the
+   * eviction policy does not have an opportunity to evict the object. */
+  object_created(plasma_state->eviction_state, plasma_state->plasma_store_info,
+                 obj_id);
   /* Record that this client is using this object. */
   add_client_to_object_clients(entry, client_context);
 }

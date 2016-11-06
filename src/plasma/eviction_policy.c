@@ -90,25 +90,24 @@ void add_object_to_lru_cache(eviction_state *eviction_state,
            sizeof(object_id), hash_table_entry);
 }
 
-void remove_object_from_lru_cache_if_present(eviction_state *eviction_state,
-                                             object_id object_id) {
+void remove_object_from_lru_cache(eviction_state *eviction_state,
+                                  object_id object_id) {
   /* Check that the object ID is in the hash table. */
   released_object_entry *hash_table_entry;
   HASH_FIND(handle, eviction_state->released_object_table, &object_id,
             sizeof(object_id), hash_table_entry);
   /* Only remove the object ID if it is in the LRU cache. */
-  if (hash_table_entry != NULL) {
-    /* Remove the object ID from the doubly-linked list. */
-    DL_DELETE(eviction_state->released_objects,
-              hash_table_entry->released_object);
-    /* Free the entry from the doubly-linked list. */
-    free(hash_table_entry->released_object);
-    /* Remove the object ID from the hash table. */
-    HASH_DELETE(handle, eviction_state->released_object_table,
-                hash_table_entry);
-    /* Free the entry from the hash table. */
-    free(hash_table_entry);
-  }
+  CHECK(hash_table_entry != NULL);
+  /* Remove the object ID from the doubly-linked list. */
+  DL_DELETE(eviction_state->released_objects,
+            hash_table_entry->released_object);
+  /* Free the entry from the doubly-linked list. */
+  free(hash_table_entry->released_object);
+  /* Remove the object ID from the hash table. */
+  HASH_DELETE(handle, eviction_state->released_object_table,
+              hash_table_entry);
+  /* Free the entry from the hash table. */
+  free(hash_table_entry);
 }
 
 int64_t choose_objects_to_evict(eviction_state *eviction_state,
@@ -146,14 +145,19 @@ int64_t choose_objects_to_evict(eviction_state *eviction_state,
       }
       (*objects_to_evict)[counter] = element->object_id;
       /* Update the LRU cache. */
-      remove_object_from_lru_cache_if_present(eviction_state,
-                                              element->object_id);
+      remove_object_from_lru_cache(eviction_state, element->object_id);
       counter += 1;
     }
   }
   /* Update the number used. */
   eviction_state->memory_used -= num_bytes;
   return num_bytes;
+}
+
+void object_created(eviction_state *eviction_state,
+                    plasma_store_info *plasma_store_info,
+                    object_id obj_id) {
+  add_object_to_lru_cache(eviction_state, obj_id);
 }
 
 void require_space(eviction_state *eviction_state,
@@ -190,7 +194,7 @@ void begin_object_access(eviction_state *eviction_state,
                          int64_t *num_objects_to_evict,
                          object_id **objects_to_evict) {
   /* If the object is in the LRU cache, remove it. */
-  remove_object_from_lru_cache_if_present(eviction_state, obj_id);
+  remove_object_from_lru_cache(eviction_state, obj_id);
   *num_objects_to_evict = 0;
   *objects_to_evict = NULL;
 }

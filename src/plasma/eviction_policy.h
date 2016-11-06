@@ -29,6 +29,21 @@ eviction_state *make_eviction_state(void);
 void free_eviction_state(eviction_state *state);
 
 /**
+ * This method will be called whenever an object is first created in order to
+ * add it to the LRU cache. This is done so that the first time, the Plasma
+ * store calls begin_object_access, we can remove the object from the LRU cache.
+ *
+ * @param eviction_state The state managed by the eviction policy.
+ * @param plasma_store_info Information about the Plasma store that is exposed
+ *        to the eviction policy.
+ * @param obj_id The object ID of the object that was created.
+ * @return Void.
+ */
+void object_created(eviction_state *eviction_state,
+                    plasma_store_info *plasma_store_info,
+                    object_id obj_id);
+
+/**
  * This method will be called when the Plasma store needs more space, perhaps to
  * create a new object. If the required amount of space cannot be freed up, then
  * a fatal error will be thrown. When this method is called, the eviction policy
@@ -63,7 +78,7 @@ void require_space(eviction_state *eviction_state,
  * @param eviction_state The state managed by the eviction policy.
  * @param plasma_store_info Information about the Plasma store that is exposed
  *        to the eviction policy.
- * @param The object table entry that just had a client added to it.
+ * @param obj_id The ID of the object that is now being used.
  * @param num_objects_to_evict The number of objects that are chosen will be
  *        stored at this address.
  * @param objects_to_evict An array of the object IDs that were chosen will be
