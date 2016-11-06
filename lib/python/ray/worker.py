@@ -712,9 +712,10 @@ def print_error_messages(worker):
 
 def fetch_and_register_remote_function(key, worker=global_worker):
   """Import a remote function."""
-  function_id_str, function_name, serialized_function, num_return_vals, module, function_export_counter = worker.redis_client.hmget(key, ["function_id", "name", "function", "num_return_vals", "module", "driver_export_counter"])
+  function_id_str, function_name, serialized_function, num_return_vals, module, function_export_counter = worker.redis_client.hmget(key, ["function_id", "name", "function", "num_return_vals", "module", "function_export_counter"])
   function_id = photon.ObjectID(function_id_str)
   num_return_vals = int(num_return_vals)
+  function_export_counter = int(function_export_counter)
   try:
     function = pickling.loads(serialized_function)
   except:
@@ -1100,7 +1101,7 @@ def main_loop(worker=global_worker):
     while True:
       try:
         worker.lock.acquire()
-        if worker.functions.has_key(function_id.id()) and worker.function_export_counters[function_id.id()] <= worker.worker_import_counter:
+        if worker.functions.has_key(function_id.id()) and (worker.function_export_counters[function_id.id()] <= worker.worker_import_counter):
           break
         time.sleep(0.001)
       finally:
