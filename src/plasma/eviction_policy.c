@@ -104,8 +104,7 @@ void remove_object_from_lru_cache(eviction_state *eviction_state,
   /* Free the entry from the doubly-linked list. */
   free(hash_table_entry->released_object);
   /* Remove the object ID from the hash table. */
-  HASH_DELETE(handle, eviction_state->released_object_table,
-              hash_table_entry);
+  HASH_DELETE(handle, eviction_state->released_object_table, hash_table_entry);
   /* Free the entry from the hash table. */
   free(hash_table_entry);
 }

@@ -125,7 +125,6 @@ void end_object_access(eviction_state *eviction_state,
  * @note This method is not part of the API. It is exposed in the header file
  * only for testing.
  *
-
  * @param eviction_state The state managed by the eviction policy.
  * @param plasma_store_info Information about the Plasma store that is exposed
  *        to the eviction policy.

@@ -56,8 +56,7 @@ typedef struct {
   UT_hash_handle handle;
 } object_notify_entry;
 
-/** Contains all information that is associated with a Plasma store client. This
- *  is here because it is exposed to the eviction policy. */
+/** Contains all information that is associated with a Plasma store client. */
 struct client {
   /** The socket used to communicate with the client. */
   int sock;
@@ -329,7 +328,8 @@ void seal_object(client *client_context, object_id object_id) {
   }
 }
 
-/* Delete an object that has been created in the hash table. */
+/* Delete an object that has been created in the hash table. This should only
+ * be called on objects that are returned by the eviction policy to evict. */
 void delete_object(plasma_store_state *plasma_state, object_id object_id) {
   LOG_DEBUG("deleting object");
   object_table_entry *entry;
@@ -464,7 +464,8 @@ void process_message(event_loop *loop,
     seal_object(client_context, req->object_ids[0]);
     break;
   case PLASMA_DELETE:
-    // delete_object(client_context, req->object_ids[0]);
+    /* TODO(rkn): In the future, we can use this method to give hints to the
+     * eviction policy about when an object will no longer be needed. */
     break;
   case PLASMA_EVICT: {
     /* This code path should only be used for testing. */
