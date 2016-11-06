@@ -15,6 +15,7 @@ import threading
 import plasma
 
 USE_VALGRIND = False
+PLASMA_STORE_MEMORY = 1000000000
 
 def random_object_id():
   return "".join([chr(random.randint(0, 255)) for _ in range(plasma.PLASMA_ID_SIZE)])
@@ -64,7 +65,7 @@ class TestPlasmaClient(unittest.TestCase):
     # Start Plasma.
     plasma_store_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../build/plasma_store")
     store_name = "/tmp/store{}".format(random.randint(0, 10000))
-    command = [plasma_store_executable, "-s", store_name]
+    command = [plasma_store_executable, "-s", store_name, "-m", str(PLASMA_STORE_MEMORY)]
     if USE_VALGRIND:
       self.p = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + command)
       time.sleep(2.0)
@@ -197,6 +198,44 @@ class TestPlasmaClient(unittest.TestCase):
       memory_buffer[0] = chr(0)
     self.assertRaises(Exception, illegal_assignment)
 
+  def test_evict(self):
+    object_id1 = random_object_id()
+    b1 = self.plasma_client.create(object_id1, 1000)
+    self.plasma_client.seal(object_id1)
+    del b1
+    self.assertEqual(self.plasma_client.evict(1), 1000)
+
+    object_id2 = random_object_id()
+    object_id3 = random_object_id()
+    b2 = self.plasma_client.create(object_id2, 999)
+    b3 = self.plasma_client.create(object_id3, 998)
+    del b3
+    self.plasma_client.seal(object_id3)
+    self.assertEqual(self.plasma_client.evict(1000), 998)
+
+    object_id4 = random_object_id()
+    b4 = self.plasma_client.create(object_id4, 997)
+    self.plasma_client.seal(object_id4)
+    del b4
+    self.plasma_client.seal(object_id2)
+    del b2
+    self.assertEqual(self.plasma_client.evict(1), 997)
+    self.assertEqual(self.plasma_client.evict(1), 999)
+
+    object_id5 = random_object_id()
+    object_id6 = random_object_id()
+    object_id7 = random_object_id()
+    b5 = self.plasma_client.create(object_id5, 996)
+    b6 = self.plasma_client.create(object_id6, 995)
+    b7 = self.plasma_client.create(object_id7, 994)
+    self.plasma_client.seal(object_id5)
+    self.plasma_client.seal(object_id6)
+    self.plasma_client.seal(object_id7)
+    del b5
+    del b6
+    del b7
+    self.assertEqual(self.plasma_client.evict(2000), 996 + 995 + 994)
+
   def test_subscribe(self):
     # Subscribe to notifications from the Plasma Store.
     sock = self.plasma_client.subscribe()
@@ -220,8 +259,8 @@ class TestPlasmaManager(unittest.TestCase):
     store_name2 = "/tmp/store{}".format(random.randint(0, 10000))
     manager_name1 = "/tmp/manager{}".format(random.randint(0, 10000))
     manager_name2 = "/tmp/manager{}".format(random.randint(0, 10000))
-    plasma_store_command1 = [plasma_store_executable, "-s", store_name1]
-    plasma_store_command2 = [plasma_store_executable, "-s", store_name2]
+    plasma_store_command1 = [plasma_store_executable, "-s", store_name1, "-m", str(PLASMA_STORE_MEMORY)]
+    plasma_store_command2 = [plasma_store_executable, "-s", store_name2, "-m", str(PLASMA_STORE_MEMORY)]
 
     if USE_VALGRIND:
       self.p2 = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + plasma_store_command1)

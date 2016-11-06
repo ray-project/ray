@@ -286,6 +286,18 @@ void plasma_delete(plasma_connection *conn, object_id object_id) {
   plasma_send_request(conn->store_conn, PLASMA_DELETE, &req);
 }
 
+int64_t plasma_evict(plasma_connection *conn, int64_t num_bytes) {
+  /* Send a request to the store to evict objects. */
+  plasma_request req = {.num_bytes = num_bytes};
+  plasma_send_request(conn->store_conn, PLASMA_EVICT, &req);
+  /* Wait for a response with the number of bytes actually evicted. */
+  plasma_reply reply;
+  int r = read(conn->store_conn, &reply, sizeof(plasma_reply));
+  CHECKM(r != -1, "read error");
+  CHECKM(r != 0, "connection disconnected");
+  return reply.num_bytes;
+}
+
 int plasma_subscribe(plasma_connection *conn) {
   int fd[2];
   /* Create a non-blocking socket pair. This will only be used to send
