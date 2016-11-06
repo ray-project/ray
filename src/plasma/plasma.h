@@ -117,23 +117,23 @@ typedef struct {
 /** This type is used by the Plasma store. It is here because it is exposed to
  *  the eviction policy. */
 typedef struct {
-  /* Object id of this object. */
+  /** Object id of this object. */
   object_id object_id;
-  /* Object info like size, creation time and owner. */
+  /** Object info like size, creation time and owner. */
   plasma_object_info info;
-  /* Memory mapped file containing the object. */
+  /** Memory mapped file containing the object. */
   int fd;
-  /* Size of the underlying map. */
+  /** Size of the underlying map. */
   int64_t map_size;
-  /* Offset from the base of the mmap. */
+  /** Offset from the base of the mmap. */
   ptrdiff_t offset;
-  /* Handle for the uthash table. */
+  /** Handle for the uthash table. */
   UT_hash_handle handle;
-  /* Pointer to the object data. Needed to free the object. */
+  /** Pointer to the object data. Needed to free the object. */
   uint8_t *pointer;
   /** An array of the clients that are currently using this object. */
   UT_array *clients;
-  /* The state of the object, e.g., whether it is open or sealed. */
+  /** The state of the object, e.g., whether it is open or sealed. */
   object_state state;
 } object_table_entry;
 

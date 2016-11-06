@@ -335,7 +335,7 @@ void delete_object(plasma_store_state *plasma_state, object_id object_id) {
    * but not sealed. */
   CHECKM(entry != NULL, "To delete an object it must be in the object table.");
   CHECKM(entry->state == SEALED,
-         "To delete an object it must have been sealed.")
+         "To delete an object it must have been sealed.");
   CHECKM(utarray_len(entry->clients) == 0,
          "To delete an object, there must be no clients currently using it.");
   uint8_t *pointer = entry->pointer;
