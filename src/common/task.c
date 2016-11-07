@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "sha256.h"
 #include "utarray.h"
 
 #include "task.h"
@@ -65,11 +66,25 @@ struct task_spec_impl {
    (ARGS_VALUE_SIZE))
 
 task_id compute_task_id(task_spec *spec) {
-  return globally_unique_id();
+  SHA256_CTX ctx;
+  BYTE buff[SHA256_BLOCK_SIZE];
+  sha256_init(&ctx);
+  sha256_update(&ctx, (BYTE *) spec, task_size(spec));
+  sha256_final(&ctx, buff);
+  /* Create a task ID out of the hash. This will truncate the hash. */
+  task_id task_id;
+  memcpy(&task_id.id, buff, sizeof(task_id));
+  return task_id;
 }
 
 object_id compute_return_id(task_id task_id, int64_t return_index) {
-  return globally_unique_id();
+  /* TODO(rkn): This line requires object and task IDs to be the same size. */
+  object_id return_id = (object_id) task_id;
+  int64_t *first_bytes = (int64_t *) &return_id;
+  /* XOR the first bytes of the object ID with the return index. We add one so
+   * the first return ID is not the same as the task ID. */
+  *first_bytes = *first_bytes ^ (return_index + 1);
+  return return_id;
 }
 
 task_spec *alloc_task_spec(task_id parent_task_id,
