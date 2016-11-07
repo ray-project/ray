@@ -64,11 +64,37 @@ def cleanup():
     print("Ray did not shut down properly.")
   all_processes = []
 
-def start_redis(port, cleanup=True):
+def start_redis(num_retries=20, cleanup=True):
+  """Start a Redis server.
+
+  Args:
+    num_retries (int): The number of times to attempt to start Redis.
+    cleanup (bool): True if using Ray in local mode. If cleanup is true, then
+      this process will be killed by serices.cleanup() when the Python process
+      that imported services exits.
+
+  Returns:
+    The port used by Redis.
+
+  Raises:
+    Exception: An exception is raised if Redis could not be started.
+  """
   redis_filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../common/thirdparty/redis-3.2.3/src/redis-server")
-  p = subprocess.Popen([redis_filepath, "--port", str(port), "--loglevel", "warning"])
-  if cleanup:
-    all_processes.append(p)
+  counter = 0
+  while counter < num_retries:
+    if counter > 0:
+      print("Redis failed to start, retrying now.")
+    port = new_port()
+    p = subprocess.Popen([redis_filepath, "--port", str(port), "--loglevel", "warning"])
+    time.sleep(0.1)
+    # Check if Redis successfully started (or at least if it the executable did
+    # not exit within 0.1 seconds).
+    if p.poll() is None:
+      if cleanup:
+        all_processes.append(p)
+      return port
+    counter += 1
+  raise Exception("Couldn't start Redis.")
 
 def start_local_scheduler(redis_address, plasma_store_name, cleanup=True):
   local_scheduler_filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../photon/build/photon_scheduler")
@@ -150,9 +176,8 @@ def start_ray_local(node_ip_address="127.0.0.1", num_workers=0, worker_path=None
   if worker_path is None:
     worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "default_worker.py")
   # Start Redis.
-  redis_port = new_port()
+  redis_port = start_redis(cleanup=True)
   redis_address = address(node_ip_address, redis_port)
-  start_redis(redis_port, cleanup=True)
   time.sleep(0.1)
   # Start Plasma.
   object_store_name, object_store_manager_name, object_store_manager_port = start_objstore(node_ip_address, redis_address, cleanup=True)
