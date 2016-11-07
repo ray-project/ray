@@ -101,8 +101,9 @@ plasma_mock *init_plasma_mock(plasma_mock *remote_mock) {
     mock->write_conn =
         get_manager_connection(remote_mock->state, manager_addr, mock->port);
     wait_for_pollin(mock->manager_remote_fd);
-    mock->read_conn = new_client_connection(mock->loop, mock->manager_remote_fd,
-                                            mock->state, 0);
+    mock->read_conn =
+        new_client_connection(mock->loop, mock->manager_remote_fd, mock->state,
+                              PLASMA_DEFAULT_RELEASE_DELAY);
   } else {
     mock->write_conn = NULL;
     mock->read_conn = NULL;
@@ -110,7 +111,7 @@ plasma_mock *init_plasma_mock(plasma_mock *remote_mock) {
   /* Connect a new client to the local plasma manager and mock a request to an
    * object. */
   mock->plasma_conn = plasma_connect(utstring_body(store_socket_name),
-                                     utstring_body(manager_socket_name));
+                                     utstring_body(manager_socket_name), 0);
   wait_for_pollin(mock->manager_local_fd);
   mock->client_conn =
       new_client_connection(mock->loop, mock->manager_local_fd, mock->state, 0);
@@ -126,7 +127,7 @@ void destroy_plasma_mock(plasma_mock *mock) {
   }
   destroy_plasma_manager_state(mock->state);
   free(mock->client_conn);
-  free(mock->plasma_conn);
+  plasma_disconnect(mock->plasma_conn);
   close(mock->local_store);
   close(mock->manager_local_fd);
   close(mock->manager_remote_fd);

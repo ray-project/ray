@@ -249,7 +249,8 @@ plasma_manager_state *init_plasma_manager_state(const char *store_socket_name,
                                                 int db_port) {
   plasma_manager_state *state = malloc(sizeof(plasma_manager_state));
   state->loop = event_loop_create();
-  state->plasma_conn = plasma_connect(store_socket_name, NULL);
+  state->plasma_conn =
+      plasma_connect(store_socket_name, NULL, PLASMA_DEFAULT_RELEASE_DELAY);
   state->manager_connections = NULL;
   state->fetch_connections = NULL;
   if (db_addr) {
@@ -298,7 +299,7 @@ void destroy_plasma_manager_state(plasma_manager_state *state) {
     }
   }
 
-  free(state->plasma_conn);
+  plasma_disconnect(state->plasma_conn);
   event_loop_destroy(state->loop);
   free(state);
 }

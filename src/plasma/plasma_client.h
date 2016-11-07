@@ -3,6 +3,8 @@
 
 #include "plasma.h"
 
+#define PLASMA_DEFAULT_RELEASE_DELAY 64
+
 typedef struct plasma_connection plasma_connection;
 
 /**
@@ -60,7 +62,8 @@ int socket_connect_retry(const char *socket_name,
  * @return The object containing the connection state.
  */
 plasma_connection *plasma_connect(const char *store_socket_name,
-                                  const char *manager_socket_name);
+                                  const char *manager_socket_name,
+                                  int release_delay);
 
 /**
  * Disconnect from the local plasma instance, including the local store and
