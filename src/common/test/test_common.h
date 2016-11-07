@@ -8,8 +8,8 @@
 task_spec *example_task(void) {
   task_id parent_task_id = globally_unique_id();
   function_id func_id = globally_unique_id();
-  task_spec *task = start_construct_task_spec(parent_task_id, 0, func_id, 2, 1,
-                                              0);
+  task_spec *task =
+      start_construct_task_spec(parent_task_id, 0, func_id, 2, 1, 0);
   task_args_add_ref(task, globally_unique_id());
   task_args_add_ref(task, globally_unique_id());
   return task;

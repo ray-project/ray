@@ -142,9 +142,9 @@ static int PyTask_init(PyTask *self, PyObject *args) {
   }
   /* Construct the task specification. */
   int val_repr_index = 0;
-  self->spec = start_construct_task_spec(parent_task_id, parent_counter,
-                                         function_id, size, num_returns,
-                                         value_data_bytes);
+  self->spec =
+      start_construct_task_spec(parent_task_id, parent_counter, function_id,
+                                size, num_returns, value_data_bytes);
   /* Add the task arguments. */
   for (size_t i = 0; i < size; ++i) {
     PyObject *arg = PyList_GetItem(arguments, i);
