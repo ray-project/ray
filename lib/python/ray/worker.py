@@ -671,26 +671,20 @@ def print_error_messages(worker):
   num_errors_printed = 0
 
   # Get the exports that occurred before the call to psubscribe.
-  try:
-    worker.lock.acquire()
+  with worker.lock:
     error_keys = worker.redis_client.lrange("ErrorKeys", 0, -1)
     for error_key in error_keys:
       error_message = worker.redis_client.hget(error_key, "message")
       print(error_message)
       num_errors_printed += 1
-  finally:
-    worker.lock.release()
 
   try:
     for msg in worker.error_message_pubsub_client.listen():
-      try:
-        worker.lock.acquire()
+      with worker.lock:
         for error_key in worker.redis_client.lrange("ErrorKeys", num_errors_printed, -1):
           error_message = worker.redis_client.hget(error_key, "message")
           print(error_message)
           num_errors_printed += 1
-      finally:
-        worker.lock.release()
   except redis.ConnectionError:
     # When Redis terminates the listen call will throw a ConnectionError, which
     # we catch here.
@@ -772,8 +766,7 @@ def import_thread(worker):
   worker.worker_import_counter = 0
 
   # Get the exports that occurred before the call to psubscribe.
-  try:
-    worker.lock.acquire()
+  with worker.lock:
     export_keys = worker.redis_client.lrange("Exports", 0, -1)
     for key in export_keys:
       if key.startswith("RemoteFunction"):
@@ -786,12 +779,9 @@ def import_thread(worker):
         raise Exception("This code should be unreachable.")
       worker.redis_client.hincrby(worker_info_key, "export_counter", 1)
       worker.worker_import_counter += 1
-  finally:
-    worker.lock.release()
 
   for msg in worker.import_pubsub_client.listen():
-    try:
-      worker.lock.acquire()
+    with worker.lock:
       if msg["type"] == "psubscribe":
         continue
       assert msg["data"] == "rpush"
@@ -809,8 +799,6 @@ def import_thread(worker):
           raise Exception("This code should be unreachable.")
         worker.redis_client.hincrby(worker_info_key, "export_counter", 1)
         worker.worker_import_counter += 1
-    finally:
-      worker.lock.release()
 
 def connect(address_info, mode=WORKER_MODE, worker=global_worker):
   """Connect this worker to the scheduler and an object store.
@@ -1095,18 +1083,13 @@ def main_loop(worker=global_worker):
     # Check that the number of imports we have is at least as great as the
     # export counter for the task. If not, wait until we have imported enough.
     while True:
-      worker.lock.acquire()
-      if worker.functions.has_key(function_id.id()) and (worker.function_export_counters[function_id.id()] <= worker.worker_import_counter):
-        worker.lock.release()
-        break
-      worker.lock.release()
+      with worker.lock:
+        if worker.functions.has_key(function_id.id()) and (worker.function_export_counters[function_id.id()] <= worker.worker_import_counter):
+          break
       time.sleep(0.001)
     # Execute the task.
-    try:
-      worker.lock.acquire()
+    with worker.lock:
       process_task(task)
-    finally:
-      worker.lock.release()
 
 def _submit_task(function_id, func_name, args, worker=global_worker):
   """This is a wrapper around worker.submit_task.
