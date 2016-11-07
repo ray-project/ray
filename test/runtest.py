@@ -266,7 +266,13 @@ class APITest(unittest.TestCase):
     @ray.remote
     def f(x):
       return x + 10
-    self.assertEqual(ray.get(f.remote(0)), 10)
+    while True:
+      val = ray.get(f.remote(0))
+      self.assertTrue((val == 10) or (val == 1))
+      if val == 10:
+        break
+      else:
+        print("Still using old definition of f, trying again.")
 
     # Test that we can close over plain old data.
     data = [np.zeros([3, 5]), (1, 2, "a"), [0.0, 1.0, 2L], 2L, {"a": np.zeros(3)}]
@@ -411,13 +417,19 @@ class APITest(unittest.TestCase):
       sys.path.append("fake_directory")
     ray.worker.global_worker.run_function_on_all_workers(f)
     @ray.remote
-    def get_path():
+    def get_path1():
       return sys.path
-    self.assertEqual("fake_directory", ray.get(get_path.remote())[-1])
+    self.assertEqual("fake_directory", ray.get(get_path1.remote())[-1])
     def f(worker):
       sys.path.pop(-1)
     ray.worker.global_worker.run_function_on_all_workers(f)
-    self.assertTrue("fake_directory" not in ray.get(get_path.remote()))
+    # Create a second remote function to guarantee that when we call
+    # get_path2.remote(), the second function to run will have been run on the
+    # worker.
+    @ray.remote
+    def get_path2():
+      return sys.path
+    self.assertTrue("fake_directory" not in ray.get(get_path2.remote()))
 
     ray.worker.cleanup()
 
@@ -480,47 +492,6 @@ class PythonModeTest(unittest.TestCase):
     l.append(2)
     assert_equal(ray.get(use_l.remote()), [1])
     assert_equal(l, [2])
-
-    ray.worker.cleanup()
-
-class PythonCExtensionTest(unittest.TestCase):
-
-  # def testReferenceCountNone(self):
-  #   ray.init(start_ray_local=True, num_workers=1)
-  #
-  #   # Make sure that we aren't accidentally messing up Python's reference counts.
-  #   @ray.remote
-  #   def f():
-  #     return sys.getrefcount(None)
-  #   first_count = ray.get(f.remote())
-  #   second_count = ray.get(f.remote())
-  #   self.assertEqual(first_count, second_count)
-  #
-  #   ray.worker.cleanup()
-
-  def testReferenceCountTrue(self):
-    ray.init(start_ray_local=True, num_workers=1)
-
-    # Make sure that we aren't accidentally messing up Python's reference counts.
-    @ray.remote
-    def f():
-      return sys.getrefcount(True)
-    first_count = ray.get(f.remote())
-    second_count = ray.get(f.remote())
-    self.assertEqual(first_count, second_count)
-
-    ray.worker.cleanup()
-
-  def testReferenceCountFalse(self):
-    ray.init(start_ray_local=True, num_workers=1)
-
-    # Make sure that we aren't accidentally messing up Python's reference counts.
-    @ray.remote
-    def f():
-      return sys.getrefcount(False)
-    first_count = ray.get(f.remote())
-    second_count = ray.get(f.remote())
-    self.assertEqual(first_count, second_count)
 
     ray.worker.cleanup()
 

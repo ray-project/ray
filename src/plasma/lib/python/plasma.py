@@ -301,7 +301,7 @@ class PlasmaClient(object):
         break
     return message_data
 
-def start_plasma_manager(store_name, manager_name, redis_address, num_retries=5, use_valgrind=False, run_profiler=False):
+def start_plasma_manager(store_name, manager_name, redis_address, num_retries=20, use_valgrind=False, run_profiler=False):
   """Start a plasma manager and return the ports it listens on.
 
   Args:
@@ -316,8 +316,7 @@ def start_plasma_manager(store_name, manager_name, redis_address, num_retries=5,
       listening on.
 
   Raises:
-    Exception: An exception is raised if the manager could not be properly
-      started.
+    Exception: An exception is raised if the manager could not be started.
   """
   plasma_manager_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../build/plasma_manager")
   port = None
