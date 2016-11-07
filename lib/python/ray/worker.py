@@ -1095,13 +1095,12 @@ def main_loop(worker=global_worker):
     # Check that the number of imports we have is at least as great as the
     # export counter for the task. If not, wait until we have imported enough.
     while True:
-      try:
-        worker.lock.acquire()
-        if worker.functions.has_key(function_id.id()) and (worker.function_export_counters[function_id.id()] <= worker.worker_import_counter):
-          break
-        time.sleep(0.001)
-      finally:
+      worker.lock.acquire()
+      if worker.functions.has_key(function_id.id()) and (worker.function_export_counters[function_id.id()] <= worker.worker_import_counter):
         worker.lock.release()
+        break
+      worker.lock.release()
+      time.sleep(0.001)
     # Execute the task.
     try:
       worker.lock.acquire()
