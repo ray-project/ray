@@ -483,47 +483,6 @@ class PythonModeTest(unittest.TestCase):
 
     ray.worker.cleanup()
 
-class PythonCExtensionTest(unittest.TestCase):
-
-  # def testReferenceCountNone(self):
-  #   ray.init(start_ray_local=True, num_workers=1)
-  #
-  #   # Make sure that we aren't accidentally messing up Python's reference counts.
-  #   @ray.remote
-  #   def f():
-  #     return sys.getrefcount(None)
-  #   first_count = ray.get(f.remote())
-  #   second_count = ray.get(f.remote())
-  #   self.assertEqual(first_count, second_count)
-  #
-  #   ray.worker.cleanup()
-
-  def testReferenceCountTrue(self):
-    ray.init(start_ray_local=True, num_workers=1)
-
-    # Make sure that we aren't accidentally messing up Python's reference counts.
-    @ray.remote
-    def f():
-      return sys.getrefcount(True)
-    first_count = ray.get(f.remote())
-    second_count = ray.get(f.remote())
-    self.assertEqual(first_count, second_count)
-
-    ray.worker.cleanup()
-
-  def testReferenceCountFalse(self):
-    ray.init(start_ray_local=True, num_workers=1)
-
-    # Make sure that we aren't accidentally messing up Python's reference counts.
-    @ray.remote
-    def f():
-      return sys.getrefcount(False)
-    first_count = ray.get(f.remote())
-    second_count = ray.get(f.remote())
-    self.assertEqual(first_count, second_count)
-
-    ray.worker.cleanup()
-
 class ReusablesTest(unittest.TestCase):
 
   def testReusables(self):
