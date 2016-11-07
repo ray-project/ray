@@ -411,13 +411,19 @@ class APITest(unittest.TestCase):
       sys.path.append("fake_directory")
     ray.worker.global_worker.run_function_on_all_workers(f)
     @ray.remote
-    def get_path():
+    def get_path1():
       return sys.path
-    self.assertEqual("fake_directory", ray.get(get_path.remote())[-1])
+    self.assertEqual("fake_directory", ray.get(get_path1.remote())[-1])
     def f(worker):
       sys.path.pop(-1)
     ray.worker.global_worker.run_function_on_all_workers(f)
-    self.assertTrue("fake_directory" not in ray.get(get_path.remote()))
+    # Create a second remote function to guarantee that when we call
+    # get_path2.remote(), the second function to run will have been run on the
+    # worker.
+    @ray.remote
+    def get_path2():
+      return sys.path
+    self.assertTrue("fake_directory" not in ray.get(get_path2.remote()))
 
     ray.worker.cleanup()
 
