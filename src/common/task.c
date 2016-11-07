@@ -202,9 +202,9 @@ int64_t task_args_add_val(task_spec *spec, uint8_t *data, int64_t length) {
   return spec->arg_index++;
 }
 
-object_id *task_return(task_spec *spec, int64_t ret_index) {
-  CHECK(0 <= ret_index && ret_index < spec->num_returns);
-  task_arg *ret = &spec->args_and_returns[spec->num_args + ret_index];
+object_id *task_return(task_spec *spec, int64_t return_index) {
+  CHECK(0 <= return_index && return_index < spec->num_returns);
+  task_arg *ret = &spec->args_and_returns[spec->num_args + return_index];
   CHECK(ret->type == ARG_BY_REF); /* No memory corruption. */
   return &ret->obj_id;
 }
