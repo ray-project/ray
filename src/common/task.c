@@ -65,7 +65,20 @@ struct task_spec_impl {
   (sizeof(task_spec) + ((NUM_ARGS) + (NUM_RETURNS)) * sizeof(task_arg) + \
    (ARGS_VALUE_SIZE))
 
+/* Compute the task ID. This assumes that all of the other fields have been set
+ * and that the return IDs have not been set. It assumes the task_spec was
+ * zero-initialized so that uninitialized fields will not make the task ID
+ * nondeterministic. */
 task_id compute_task_id(task_spec *spec) {
+  /* Check that the task ID and return ID fields of the task_spec consist of all
+   * zeros. */
+  task_id zero_task_id = {0};
+  object_id zero_obj_id = {0};
+  CHECK(memcmp(&zero_task_id, &spec->task_id, sizeof(task_id)) == 0);
+  for (int i = 0; i < spec->num_returns; ++i) {
+    CHECK(memcmp(&zero_obj_id, task_return(spec, i), sizeof(object_id)) == 0);
+  }
+  /* Compute a SHA256 hash of the task_spec. */
   SHA256_CTX ctx;
   BYTE buff[SHA256_BLOCK_SIZE];
   sha256_init(&ctx);
@@ -73,6 +86,7 @@ task_id compute_task_id(task_spec *spec) {
   sha256_final(&ctx, buff);
   /* Create a task ID out of the hash. This will truncate the hash. */
   task_id task_id;
+  CHECK(sizeof(task_id) <= SHA256_BLOCK_SIZE);
   memcpy(&task_id.id, buff, sizeof(task_id));
   return task_id;
 }
@@ -87,12 +101,12 @@ object_id compute_return_id(task_id task_id, int64_t return_index) {
   return return_id;
 }
 
-task_spec *alloc_task_spec(task_id parent_task_id,
-                           int64_t parent_counter,
-                           function_id function_id,
-                           int64_t num_args,
-                           int64_t num_returns,
-                           int64_t args_value_size) {
+task_spec *start_construct_task_spec(task_id parent_task_id,
+                                     int64_t parent_counter,
+                                     function_id function_id,
+                                     int64_t num_args,
+                                     int64_t num_returns,
+                                     int64_t args_value_size) {
   int64_t size = TASK_SPEC_SIZE(num_args, num_returns, args_value_size);
   task_spec *task = malloc(size);
   memset(task, 0, size);
@@ -106,13 +120,9 @@ task_spec *alloc_task_spec(task_id parent_task_id,
   return task;
 }
 
-void add_task_and_return_ids(task_spec *spec) {
+void finish_construct_task_spec(task_spec *spec) {
   /* Check that the task was fully constructed */
   CHECK(spec->arg_index == spec->num_args);
-  /* Compute the task ID. This must be done after all of the other fields have
-   * been set but before the return object IDs have been set. It is also
-   * important that the task_spec is zero-initialized so that uninitialized
-   * fields will not make the task ID nondeterministic. */
   task_id task_id = compute_task_id(spec);
   spec->task_id = task_id;
   /* Set the object IDs for the return values. */

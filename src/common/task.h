@@ -40,12 +40,12 @@ enum arg_type { ARG_BY_REF, ARG_BY_VAL };
 /* Construct and modify task specifications. */
 
 /* Allocating and initializing a task. */
-task_spec *alloc_task_spec(task_id parent_task_id,
-                           int64_t parent_counter,
-                           function_id function_id,
-                           int64_t num_args,
-                           int64_t num_returns,
-                           int64_t args_value_size);
+task_spec *start_construct_task_spec(task_id parent_task_id,
+                                     int64_t parent_counter,
+                                     function_id function_id,
+                                     int64_t num_args,
+                                     int64_t num_returns,
+                                     int64_t args_value_size);
 
 /**
  * Compute the task ID and the object IDs of the task return values. This must
@@ -54,7 +54,7 @@ task_spec *alloc_task_spec(task_id parent_task_id,
  * @param spec The task spec whose ID and return object IDs should be computed.
  * @return Void.
  */
-void add_task_and_return_ids(task_spec *spec);
+void finish_construct_task_spec(task_spec *spec);
 
 /* Size of the task in bytes. */
 int64_t task_size(task_spec *spec);

@@ -142,8 +142,9 @@ static int PyTask_init(PyTask *self, PyObject *args) {
   }
   /* Construct the task specification. */
   int val_repr_index = 0;
-  self->spec = alloc_task_spec(parent_task_id, parent_counter, function_id,
-                               size, num_returns, value_data_bytes);
+  self->spec = start_construct_task_spec(parent_task_id, parent_counter,
+                                         function_id, size, num_returns,
+                                         value_data_bytes);
   /* Add the task arguments. */
   for (size_t i = 0; i < size; ++i) {
     PyObject *arg = PyList_GetItem(arguments, i);
@@ -160,7 +161,7 @@ static int PyTask_init(PyTask *self, PyObject *args) {
   }
   utarray_free(val_repr_ptrs);
   /* Compute the task ID and the return object IDs. */
-  add_task_and_return_ids(self->spec);
+  finish_construct_task_spec(self->spec);
   return 0;
 }
 
