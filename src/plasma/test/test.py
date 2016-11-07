@@ -72,7 +72,9 @@ class TestPlasmaClient(unittest.TestCase):
     else:
       self.p = subprocess.Popen(command)
     # Connect to Plasma.
-    self.plasma_client = plasma.PlasmaClient(store_name)
+    self.plasma_client = plasma.PlasmaClient(store_name, None, 64)
+    # For the eviction test
+    self.plasma_client2 = plasma.PlasmaClient(store_name, None, 0)
 
   def tearDown(self):
     # Kill the plasma store process.
@@ -199,42 +201,43 @@ class TestPlasmaClient(unittest.TestCase):
     self.assertRaises(Exception, illegal_assignment)
 
   def test_evict(self):
+    client = self.plasma_client2
     object_id1 = random_object_id()
-    b1 = self.plasma_client.create(object_id1, 1000)
-    self.plasma_client.seal(object_id1)
+    b1 = client.create(object_id1, 1000)
+    client.seal(object_id1)
     del b1
-    self.assertEqual(self.plasma_client.evict(1), 1000)
+    self.assertEqual(client.evict(1), 1000)
 
     object_id2 = random_object_id()
     object_id3 = random_object_id()
-    b2 = self.plasma_client.create(object_id2, 999)
-    b3 = self.plasma_client.create(object_id3, 998)
+    b2 = client.create(object_id2, 999)
+    b3 = client.create(object_id3, 998)
     del b3
-    self.plasma_client.seal(object_id3)
-    self.assertEqual(self.plasma_client.evict(1000), 998)
+    client.seal(object_id3)
+    self.assertEqual(client.evict(1000), 998)
 
     object_id4 = random_object_id()
-    b4 = self.plasma_client.create(object_id4, 997)
-    self.plasma_client.seal(object_id4)
+    b4 = client.create(object_id4, 997)
+    client.seal(object_id4)
     del b4
-    self.plasma_client.seal(object_id2)
+    client.seal(object_id2)
     del b2
-    self.assertEqual(self.plasma_client.evict(1), 997)
-    self.assertEqual(self.plasma_client.evict(1), 999)
+    self.assertEqual(client.evict(1), 997)
+    self.assertEqual(client.evict(1), 999)
 
     object_id5 = random_object_id()
     object_id6 = random_object_id()
     object_id7 = random_object_id()
-    b5 = self.plasma_client.create(object_id5, 996)
-    b6 = self.plasma_client.create(object_id6, 995)
-    b7 = self.plasma_client.create(object_id7, 994)
-    self.plasma_client.seal(object_id5)
-    self.plasma_client.seal(object_id6)
-    self.plasma_client.seal(object_id7)
+    b5 = client.create(object_id5, 996)
+    b6 = client.create(object_id6, 995)
+    b7 = client.create(object_id7, 994)
+    client.seal(object_id5)
+    client.seal(object_id6)
+    client.seal(object_id7)
     del b5
     del b6
     del b7
-    self.assertEqual(self.plasma_client.evict(2000), 996 + 995 + 994)
+    self.assertEqual(client.evict(2000), 996 + 995 + 994)
 
   def test_subscribe(self):
     # Subscribe to notifications from the Plasma Store.

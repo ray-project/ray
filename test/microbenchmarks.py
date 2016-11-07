@@ -78,5 +78,24 @@ class MicroBenchmarkTest(unittest.TestCase):
 
     ray.worker.cleanup()
 
+  def testCache(self):
+    ray.init(start_ray_local=True, num_workers=1)
+
+    A = np.random.rand(5000, 5000)
+    v = np.random.rand(5000)
+    A_id = ray.put(A)
+    v_id = ray.put(v)
+    a = time.time()
+    for i in range(100):
+      A.dot(v)
+    b = time.time() - a
+    c = time.time()
+    for i in range(100):
+      ray.get(A_id).dot(ray.get(v_id))
+    d = time.time() - c
+    self.assertLess(d, 1.5 * b)
+
+    ray.worker.cleanup()
+
 if __name__ == "__main__":
   unittest.main(verbosity=2)

@@ -8,6 +8,8 @@
 #include <inttypes.h>
 #include <execinfo.h>
 
+#include "utarray.h"
+
 #ifndef RAY_COMMON_DEBUG
 #define LOG_DEBUG(M, ...)
 #else
@@ -50,6 +52,8 @@ CHECK(COND)
 #define UNIQUE_ID_SIZE 20
 
 typedef struct { unsigned char id[UNIQUE_ID_SIZE]; } unique_id;
+
+extern const UT_icd object_id_icd;
 
 extern const unique_id NIL_ID;
 
