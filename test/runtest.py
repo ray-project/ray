@@ -266,7 +266,13 @@ class APITest(unittest.TestCase):
     @ray.remote
     def f(x):
       return x + 10
-    self.assertEqual(ray.get(f.remote(0)), 10)
+    while True:
+      val = ray.get(f.remote(0))
+      self.assertTrue((val == 10) or (val == 1))
+      if val == 10:
+        break
+      else:
+        print("Still using old definition of f, trying again.")
 
     # Test that we can close over plain old data.
     data = [np.zeros([3, 5]), (1, 2, "a"), [0.0, 1.0, 2L], 2L, {"a": np.zeros(3)}]
