@@ -54,7 +54,7 @@ void lookup_done_callback(object_id object_id,
 void add_done_callback(object_id object_id, void *user_context) {}
 
 /* Test if we got a timeout callback if we couldn't connect database. */
-void timeout_callback(object_id object_id, void *context) {
+void timeout_callback(object_id object_id, void *context, void *user_data) {
   user_context *uc = (user_context *) context;
   CHECK(uc->test_number == TEST_NUMBER)
 }
@@ -64,7 +64,7 @@ int64_t timeout_handler(event_loop *loop, int64_t id, void *context) {
   return EVENT_LOOP_TIMER_DONE;
 }
 
-TEST object_table_lookup_test(void) {
+TEST object_table_lookup_location_test(void) {
   event_loop *loop = event_loop_create();
   db_handle *db1 = db_connect("127.0.0.1", 6379, "plasma_manager", manager_addr,
                               manager_port1);
@@ -78,12 +78,12 @@ TEST object_table_lookup_test(void) {
       .timeout = TIMEOUT,
       .fail_callback = timeout_callback,
   };
-  object_table_add(db1, id, &retry, add_done_callback, NULL);
-  object_table_add(db2, id, &retry, add_done_callback, NULL);
+  object_table_add_location(db1, id, &retry, add_done_callback, NULL);
+  object_table_add_location(db2, id, &retry, add_done_callback, NULL);
   event_loop_add_timer(loop, 200, (event_loop_timer_handler) timeout_handler,
                        NULL);
   event_loop_run(loop);
-  object_table_lookup(db1, id, &retry, lookup_done_callback, NULL);
+  object_table_lookup_location(db1, id, &retry, lookup_done_callback, NULL);
   event_loop_add_timer(loop, 200, (event_loop_timer_handler) timeout_handler,
                        NULL);
   event_loop_run(loop);
@@ -197,7 +197,7 @@ TEST unique_client_id_test(void) {
 }
 
 SUITE(db_tests) {
-  RUN_REDIS_TEST(object_table_lookup_test);
+  RUN_REDIS_TEST(object_table_lookup_location_test);
   RUN_REDIS_TEST(task_log_test);
   RUN_REDIS_TEST(task_log_all_test);
   RUN_REDIS_TEST(unique_client_id_test);

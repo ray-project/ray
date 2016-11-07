@@ -4,7 +4,7 @@ BUILD = build
 
 all: hiredis $(BUILD)/libcommon.a
 
-$(BUILD)/libcommon.a: event_loop.o common.o task.o io.o state/redis.o state/table.o state/object_table.o state/task_log.o thirdparty/ae/ae.o
+$(BUILD)/libcommon.a: event_loop.o common.o task.o io.o state/redis.o state/table.o state/object_table.o state/task_log.o state/task_table.o thirdparty/ae/ae.o
 	ar rcs $@ $^
 
 $(BUILD)/common_tests: test/common_tests.c $(BUILD)/libcommon.a
@@ -18,6 +18,9 @@ $(BUILD)/object_table_tests: hiredis test/object_table_tests.c $(BUILD)/libcommo
 
 $(BUILD)/task_log_tests: hiredis test/task_log_tests.c $(BUILD)/libcommon.a
 	$(CC) -o $@ test/task_log_tests.c $(BUILD)/libcommon.a thirdparty/hiredis/libhiredis.a $(CFLAGS)
+
+$(BUILD)/task_table_tests: hiredis test/task_table_tests.c $(BUILD)/libcommon.a
+	$(CC) -o $@ test/task_table_tests.c $(BUILD)/libcommon.a thirdparty/hiredis/libhiredis.a $(CFLAGS)
 
 $(BUILD)/io_tests: test/io_tests.c $(BUILD)/libcommon.a
 	$(CC) -o $@ $^ $(CFLAGS)
@@ -38,7 +41,7 @@ redis:
 hiredis:
 	git submodule update --init --recursive -- "thirdparty/hiredis" ; cd thirdparty/hiredis ; make
 
-test: hiredis redis $(BUILD)/common_tests $(BUILD)/task_log_tests $(BUILD)/object_table_tests $(BUILD)/db_tests $(BUILD)/io_tests $(BUILD)/task_tests $(BUILD)/redis_tests FORCE
+test: hiredis redis $(BUILD)/common_tests $(BUILD)/task_log_tests $(BUILD)/object_table_tests $(BUILD)/db_tests $(BUILD)/io_tests $(BUILD)/task_tests $(BUILD)/redis_tests $(BUILD)/task_table_tests FORCE
 	./thirdparty/redis-3.2.3/src/redis-server &
 	sleep 1s
 	./build/common_tests
@@ -48,6 +51,7 @@ test: hiredis redis $(BUILD)/common_tests $(BUILD)/task_log_tests $(BUILD)/objec
 	./build/redis_tests
 	./build/task_log_tests
 	./build/object_table_tests
+	./build/task_table_tests
 
 valgrind: test
 	valgrind --leak-check=full --error-exitcode=1 ./build/common_tests
@@ -57,5 +61,6 @@ valgrind: test
 	valgrind --leak-check=full --error-exitcode=1 ./build/redis_tests
 	valgrind --leak-check=full --error-exitcode=1 ./build/task_log_tests
 	valgrind --leak-check=full --error-exitcode=1 ./build/object_table_tests
+	valgrind --leak-check=full --error-exitcode=1 ./build/task_table_tests
 
 FORCE:

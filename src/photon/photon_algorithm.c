@@ -149,7 +149,7 @@ void handle_task_submitted(scheduler_info *info,
     DL_APPEND(s->task_queue, elt);
   }
   /* Submit the task to redis. */
-  /* TODO(swang): We should set these values in a config file somewhere. */
+  /* TODO(swang): We should set retry values in a config file somewhere. */
   retry_info retry = {
       .num_retries = 0, .timeout = 0, .fail_callback = NULL,
   };

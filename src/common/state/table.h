@@ -12,8 +12,19 @@ typedef struct table_callback_data table_callback_data;
 typedef void *table_done_callback;
 
 /* The callback called when the database operation hasn't completed after
- * the number of retries specified for the operation. */
-typedef void (*table_fail_callback)(unique_id id, void *user_context);
+ * the number of retries specified for the operation.
+ *
+ * @param id The unique ID that identifies this callback. Examples include an
+ *        object ID or task ID.
+ * @param user_context The state context for the callback. This is equivalent
+ *        to the user_context field in table_callback_data.
+ * @param user_data A data argument for the callback. This is equivalent to the
+ *        data field in table_callback_data. The user is responsible for
+ *        freeing user_data.
+ */
+typedef void (*table_fail_callback)(unique_id id,
+                                    void *user_context,
+                                    void *user_data);
 
 typedef void (*table_retry_callback)(table_callback_data *callback_data);
 
@@ -41,7 +52,9 @@ struct table_callback_data {
    *  before the next retry, and a pointer to the failure callback.
    */
   retry_info retry;
-  /** Pointer to the data that is entered into the table. */
+  /** Pointer to the data that is entered into the table. This can be used to
+   *  pass the result of the call to the callback. The user is responsible for
+   *  freeing data in both the fail_callback and done_callback. */
   void *data;
   /** Pointer to the data used internally to handle multiple database requests.
    */

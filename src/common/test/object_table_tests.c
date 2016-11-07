@@ -3,6 +3,7 @@
 #include "event_loop.h"
 #include "test_common.h"
 #include "common.h"
+#include "state/task_table.h"
 #include "state/object_table.h"
 #include "state/redis.h"
 
@@ -11,6 +12,136 @@
 SUITE(object_table_tests);
 
 static event_loop *g_loop;
+
+/* ==== Test adding and looking up metadata ==== */
+
+int new_object_failed = 0;
+object_id new_object_id;
+task_id new_object_task_id;
+task_spec *new_object_task_spec;
+
+void new_object_fail_callback(unique_id id,
+                              void *user_context,
+                              void *user_data) {
+  new_object_failed = 1;
+  event_loop_stop(g_loop);
+}
+
+/* === Test adding an object with an associated task === */
+
+void new_object_done_callback(object_id object_id,
+                              object_metadata *metadata,
+                              void *user_context) {
+  CHECK(memcmp(object_id.id, new_object_id.id, UNIQUE_ID_SIZE) == 0);
+  CHECK(metadata->task);
+  CHECK(memcmp(metadata->task, new_object_task_spec,
+               task_size(new_object_task_spec)) == 0);
+  CHECK(memcmp(metadata->task_id.id, new_object_task_id.id, UNIQUE_ID_SIZE) ==
+        0);
+  free_object_metadata(metadata);
+  event_loop_stop(g_loop);
+}
+
+void new_object_lookup_callback(object_id object_id,
+                                object_metadata *metadata,
+                                void *user_context) {
+  CHECK(memcmp(metadata->task_id.id, new_object_task_id.id, UNIQUE_ID_SIZE) ==
+        0);
+  retry_info retry = {
+      .num_retries = 5,
+      .timeout = 100,
+      .fail_callback = new_object_fail_callback,
+  };
+  db_handle *db = user_context;
+  object_table_lookup_metadata(db, new_object_id, &retry,
+                               new_object_done_callback, (void *) NULL);
+}
+
+void new_object_task_callback(task_id task_id,
+                              task_spec *task,
+                              void *user_context) {
+  retry_info retry = {
+      .num_retries = 5,
+      .timeout = 100,
+      .fail_callback = new_object_fail_callback,
+  };
+  db_handle *db = user_context;
+  object_table_new_object(db, new_object_id, new_object_task_id, &retry,
+                          new_object_lookup_callback, (void *) db);
+}
+
+TEST new_object_test(void) {
+  new_object_id = globally_unique_id();
+  new_object_task_id = globally_unique_id();
+  new_object_task_spec = example_task();
+  g_loop = event_loop_create();
+  db_handle *db =
+      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 1234);
+  db_attach(db, g_loop);
+  retry_info retry = {
+      .num_retries = 5,
+      .timeout = 100,
+      .fail_callback = new_object_fail_callback,
+  };
+  task_table_add_task(db, new_object_task_id, new_object_task_spec, &retry,
+                      new_object_task_callback, db);
+  /* Disconnect the database to see if the lookup times out. */
+  event_loop_run(g_loop);
+  db_disconnect(db);
+  destroy_outstanding_callbacks(g_loop);
+  event_loop_destroy(g_loop);
+  free_task_spec(new_object_task_spec);
+  ASSERT(!new_object_failed);
+  PASS();
+}
+
+/* === Test adding an object without an associated task === */
+
+void new_object_no_task_lookup_callback(object_id object_id,
+                                        object_metadata *metadata,
+                                        void *user_context) {
+  CHECK(metadata->task == NULL);
+  CHECK(memcmp(metadata->task_id.id, new_object_task_id.id, UNIQUE_ID_SIZE) ==
+        0);
+  event_loop_stop(g_loop);
+  free_object_metadata(metadata);
+}
+
+void new_object_no_task_callback(object_id object_id,
+                                 object_metadata *metadata,
+                                 void *user_context) {
+  retry_info retry = {
+      .num_retries = 5,
+      .timeout = 100,
+      .fail_callback = new_object_fail_callback,
+  };
+  db_handle *db = user_context;
+  object_table_lookup_metadata(db, new_object_id, &retry,
+                               new_object_no_task_lookup_callback, NULL);
+}
+
+TEST new_object_no_task_test(void) {
+  new_object_id = globally_unique_id();
+  new_object_task_id = globally_unique_id();
+  g_loop = event_loop_create();
+  db_handle *db =
+      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 1234);
+  db_attach(db, g_loop);
+  retry_info retry = {
+      .num_retries = 5,
+      .timeout = 100,
+      .fail_callback = new_object_fail_callback,
+  };
+  object_table_new_object(db, new_object_id, new_object_task_id, &retry,
+                          new_object_no_task_callback, db);
+  /* Disconnect the database to see if the lookup times out. */
+  event_loop_run(g_loop);
+  db_disconnect(db);
+  destroy_outstanding_callbacks(g_loop);
+  event_loop_destroy(g_loop);
+  ASSERT(!new_object_failed);
+  PASS();
+}
 
 /* ==== Test if operations time out correctly ==== */
 
@@ -27,9 +158,9 @@ void lookup_done_callback(object_id object_id,
   CHECK(0);
 }
 
-void lookup_fail_callback(unique_id id, void *user_data) {
+void lookup_fail_callback(unique_id id, void *user_context, void *user_data) {
   lookup_failed = 1;
-  CHECK(user_data == (void *) lookup_timeout_context);
+  CHECK(user_context == (void *) lookup_timeout_context);
   event_loop_stop(g_loop);
 }
 
@@ -41,8 +172,8 @@ TEST lookup_timeout_test(void) {
   retry_info retry = {
       .num_retries = 5, .timeout = 100, .fail_callback = lookup_fail_callback,
   };
-  object_table_lookup(db, NIL_ID, &retry, lookup_done_callback,
-                      (void *) lookup_timeout_context);
+  object_table_lookup_location(db, NIL_ID, &retry, lookup_done_callback,
+                               (void *) lookup_timeout_context);
   /* Disconnect the database to see if the lookup times out. */
   close(db->context->c.fd);
   event_loop_run(g_loop);
@@ -63,9 +194,9 @@ void add_done_callback(object_id object_id, void *user_context) {
   CHECK(0);
 }
 
-void add_fail_callback(unique_id id, void *user_data) {
+void add_fail_callback(unique_id id, void *user_context, void *user_data) {
   add_failed = 1;
-  CHECK(user_data == (void *) add_timeout_context);
+  CHECK(user_context == (void *) add_timeout_context);
   event_loop_stop(g_loop);
 }
 
@@ -77,8 +208,8 @@ TEST add_timeout_test(void) {
   retry_info retry = {
       .num_retries = 5, .timeout = 100, .fail_callback = add_fail_callback,
   };
-  object_table_add(db, NIL_ID, &retry, add_done_callback,
-                   (void *) add_timeout_context);
+  object_table_add_location(db, NIL_ID, &retry, add_done_callback,
+                            (void *) add_timeout_context);
   /* Disconnect the database to see if the lookup times out. */
   close(db->context->c.fd);
   event_loop_run(g_loop);
@@ -99,9 +230,11 @@ void subscribe_done_callback(object_id object_id, void *user_context) {
   CHECK(0);
 }
 
-void subscribe_fail_callback(unique_id id, void *user_data) {
+void subscribe_fail_callback(unique_id id,
+                             void *user_context,
+                             void *user_data) {
   subscribe_failed = 1;
-  CHECK(user_data == (void *) subscribe_timeout_context);
+  CHECK(user_context == (void *) subscribe_timeout_context);
   event_loop_stop(g_loop);
 }
 
@@ -166,7 +299,9 @@ void lookup_retry_done_callback(object_id object_id,
   free(manager_vector);
 }
 
-void lookup_retry_fail_callback(unique_id id, void *user_data) {
+void lookup_retry_fail_callback(unique_id id,
+                                void *user_context,
+                                void *user_data) {
   /* The fail callback should not be called. */
   CHECK(0);
 }
@@ -181,8 +316,8 @@ TEST lookup_retry_test(void) {
       .timeout = 100,
       .fail_callback = lookup_retry_fail_callback,
   };
-  object_table_lookup(db, NIL_ID, &retry, lookup_retry_done_callback,
-                      (void *) lookup_retry_context);
+  object_table_lookup_location(db, NIL_ID, &retry, lookup_retry_done_callback,
+                               (void *) lookup_retry_context);
   /* Disconnect the database to let the lookup time out the first time. */
   close(db->context->c.fd);
   /* Install handler for reconnecting the database. */
@@ -210,7 +345,9 @@ void add_retry_done_callback(object_id object_id, void *user_context) {
   add_retry_succeeded = 1;
 }
 
-void add_retry_fail_callback(unique_id id, void *user_data) {
+void add_retry_fail_callback(unique_id id,
+                             void *user_context,
+                             void *user_data) {
   /* The fail callback should not be called. */
   CHECK(0);
 }
@@ -225,8 +362,8 @@ TEST add_retry_test(void) {
       .timeout = 100,
       .fail_callback = add_retry_fail_callback,
   };
-  object_table_add(db, NIL_ID, &retry, add_retry_done_callback,
-                   (void *) add_retry_context);
+  object_table_add_location(db, NIL_ID, &retry, add_retry_done_callback,
+                            (void *) add_retry_context);
   /* Disconnect the database to let the add time out the first time. */
   close(db->context->c.fd);
   /* Install handler for reconnecting the database. */
@@ -269,7 +406,9 @@ void subscribe_retry_done_callback(object_id object_id, void *user_context) {
   subscribe_retry_succeeded = 1;
 }
 
-void subscribe_retry_fail_callback(unique_id id, void *user_data) {
+void subscribe_retry_fail_callback(unique_id id,
+                                   void *user_context,
+                                   void *user_data) {
   /* The fail callback should not be called. */
   CHECK(0);
 }
@@ -312,7 +451,9 @@ TEST subscribe_retry_test(void) {
 const char *lookup_late_context = "lookup_late";
 int lookup_late_failed = 0;
 
-void lookup_late_fail_callback(unique_id id, void *user_context) {
+void lookup_late_fail_callback(unique_id id,
+                               void *user_context,
+                               void *user_data) {
   CHECK(user_context == (void *) lookup_late_context);
   lookup_late_failed = 1;
 }
@@ -335,8 +476,8 @@ TEST lookup_late_test(void) {
       .timeout = 0,
       .fail_callback = lookup_late_fail_callback,
   };
-  object_table_lookup(db, NIL_ID, &retry, lookup_late_done_callback,
-                      (void *) lookup_late_context);
+  object_table_lookup_location(db, NIL_ID, &retry, lookup_late_done_callback,
+                               (void *) lookup_late_context);
   /* Install handler for terminating the event loop. */
   event_loop_add_timer(g_loop, 750,
                        (event_loop_timer_handler) terminate_event_loop_callback,
@@ -357,7 +498,7 @@ TEST lookup_late_test(void) {
 const char *add_late_context = "add_late";
 int add_late_failed = 0;
 
-void add_late_fail_callback(unique_id id, void *user_context) {
+void add_late_fail_callback(unique_id id, void *user_context, void *user_data) {
   CHECK(user_context == (void *) add_late_context);
   add_late_failed = 1;
 }
@@ -375,8 +516,8 @@ TEST add_late_test(void) {
   retry_info retry = {
       .num_retries = 0, .timeout = 0, .fail_callback = add_late_fail_callback,
   };
-  object_table_add(db, NIL_ID, &retry, add_late_done_callback,
-                   (void *) add_late_context);
+  object_table_add_location(db, NIL_ID, &retry, add_late_done_callback,
+                            (void *) add_late_context);
   /* Install handler for terminating the event loop. */
   event_loop_add_timer(g_loop, 750,
                        (event_loop_timer_handler) terminate_event_loop_callback,
@@ -397,7 +538,9 @@ TEST add_late_test(void) {
 const char *subscribe_late_context = "subscribe_late";
 int subscribe_late_failed = 0;
 
-void subscribe_late_fail_callback(unique_id id, void *user_context) {
+void subscribe_late_fail_callback(unique_id id,
+                                  void *user_context,
+                                  void *user_data) {
   CHECK(user_context == (void *) subscribe_late_context);
   subscribe_late_failed = 1;
 }
@@ -441,7 +584,9 @@ const char *subscribe_success_context = "subscribe_success";
 int subscribe_success_done = 0;
 int subscribe_success_succeeded = 0;
 
-void subscribe_success_fail_callback(unique_id id, void *user_context) {
+void subscribe_success_fail_callback(unique_id id,
+                                     void *user_context,
+                                     void *user_data) {
   /* This function should never be called. */
   CHECK(0);
 }
@@ -450,7 +595,8 @@ void subscribe_success_done_callback(object_id object_id, void *user_context) {
   retry_info retry = {
       .num_retries = 0, .timeout = 0, .fail_callback = NULL,
   };
-  object_table_add((db_handle *) user_context, object_id, &retry, NULL, NULL);
+  object_table_add_location((db_handle *) user_context, object_id, &retry, NULL,
+                            NULL);
   subscribe_success_done = 1;
 }
 
@@ -492,16 +638,18 @@ TEST subscribe_success_test(void) {
 }
 
 SUITE(object_table_tests) {
-  RUN_TEST(lookup_timeout_test);
-  RUN_TEST(add_timeout_test);
-  RUN_TEST(subscribe_timeout_test);
-  RUN_TEST(lookup_retry_test);
-  RUN_TEST(add_retry_test);
-  RUN_TEST(subscribe_retry_test);
-  RUN_TEST(lookup_late_test);
-  RUN_TEST(add_late_test);
-  RUN_TEST(subscribe_late_test);
-  RUN_TEST(subscribe_success_test);
+  RUN_REDIS_TEST(new_object_test);
+  RUN_REDIS_TEST(new_object_no_task_test);
+  RUN_REDIS_TEST(lookup_timeout_test);
+  RUN_REDIS_TEST(add_timeout_test);
+  RUN_REDIS_TEST(subscribe_timeout_test);
+  RUN_REDIS_TEST(lookup_retry_test);
+  RUN_REDIS_TEST(add_retry_test);
+  RUN_REDIS_TEST(subscribe_retry_test);
+  RUN_REDIS_TEST(lookup_late_test);
+  RUN_REDIS_TEST(add_late_test);
+  RUN_REDIS_TEST(subscribe_late_test);
+  RUN_REDIS_TEST(subscribe_success_test);
 }
 
 GREATEST_MAIN_DEFS();

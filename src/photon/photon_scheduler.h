@@ -49,4 +49,15 @@ void process_plasma_notification(event_loop *loop,
                                  void *context,
                                  int events);
 
+/**
+ * Attempt to reconstruct the object with the given object ID. This resubmits
+ * the task that originally created the object. The caller can determine
+ * whether the attempt was successful using Plasma's wait operation.
+ *
+ * @param state State of the local scheduler.
+ * @param object_id The object ID whose data we want to reconstruct.
+ * @return Void.
+ */
+void reconstruct_object(local_scheduler_state *state, object_id object_id);
+
 #endif /* PHOTON_SCHEDULER_H */
