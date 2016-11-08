@@ -38,9 +38,13 @@
 
 #define CHECK(COND) CHECKM(COND, "")
 
+/* This should be defined if we want to check calls to DCHECK. */
+#define RAY_DCHECK
+
+#ifdef RAY_DCHECK
+#define DCHECK(COND) CHECK(COND)
+#else
 #define DCHECK(COND)
-#ifdef RAY_COMMON_DEBUG
-CHECK(COND)
 #endif
 
 /* These are exit codes for common errors that can occur in Ray components. */
