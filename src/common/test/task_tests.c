@@ -92,8 +92,8 @@ TEST deterministic_ids_test(void) {
   finish_construct_task_spec(task4);
 
   /* Construct a task with a different function ID. */
-  task_spec *task5 = start_construct_task_spec(
-      parent_task_id, 0, globally_unique_id(), 2, 3, 11);
+  task_spec *task5 = start_construct_task_spec(parent_task_id, 0,
+                                               globally_unique_id(), 2, 3, 11);
   task_args_add_ref(task5, arg1);
   task_args_add_val(task5, arg2, 11);
   finish_construct_task_spec(task5);
