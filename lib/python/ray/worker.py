@@ -477,7 +477,14 @@ class Worker(object):
         args_for_photon.append(put(arg))
 
     # Submit the task to Photon.
-    task = photon.Task(photon.ObjectID(function_id.id()), args_for_photon, self.num_return_vals[function_id.id()])
+    task = photon.Task(photon.ObjectID(function_id.id()),
+                       args_for_photon,
+                       self.num_return_vals[function_id.id()],
+                       self.current_task_id,
+                       self.task_index)
+    # Increment the worker's task index to track how many tasks have been
+    # submitted by the current task so far.
+    self.task_index += 1
     self.photon_client.submit(task)
 
     return task.returns()
@@ -832,6 +839,11 @@ def connect(address_info, mode=WORKER_MODE, worker=global_worker):
     worker.redis_client.rpush("Workers", worker.worker_id)
   else:
     raise Exception("This code should be unreachable.")
+  # If this is a driver, set the current task ID to a specific fixed value and
+  # set the task index to 0.
+  if mode in [SCRIPT_MODE, SILENT_MODE]:
+    worker.current_task_id = photon.ObjectID("".join(chr(i) for i in range(20)))
+    worker.task_index = 0
   # If this is a worker, then start a thread to import exports from the driver.
   if mode == WORKER_MODE:
     t = threading.Thread(target=import_thread, args=(worker,))
@@ -1038,6 +1050,8 @@ def main_loop(worker=global_worker):
     After the task executes, the worker resets any reusable variables that were
     accessed by the task.
     """
+    worker.current_task_id = task.task_id()
+    worker.task_index = 0
     function_id = task.function_id()
     args = task.arguments()
     return_object_ids = task.returns()
