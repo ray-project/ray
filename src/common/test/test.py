@@ -74,7 +74,8 @@ class TestTask(unittest.TestCase):
 
   def test_create_task(self):
     # TODO(rkn): The function ID should be a FunctionID object, not an ObjectID.
-    function_id = common.ObjectID(20 * "a")
+    parent_id = common.ObjectID(20 * "a")
+    function_id = common.ObjectID(20 * "b")
     object_ids = [common.ObjectID(20 * chr(i)) for i in range(256)]
     args_list = [
       [],
@@ -104,7 +105,7 @@ class TestTask(unittest.TestCase):
     ]
     for args in args_list:
       for num_return_vals in [0, 1, 2, 3, 5, 10, 100]:
-        task = common.Task(function_id, args, num_return_vals)
+        task = common.Task(function_id, args, num_return_vals, parent_id, 0)
         self.assertEqual(function_id.id(), task.function_id().id())
         retrieved_args = task.arguments()
         self.assertEqual(num_return_vals, len(task.returns()))

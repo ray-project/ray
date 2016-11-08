@@ -1,6 +1,7 @@
 #ifndef COMMON_H
 #define COMMON_H
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -37,9 +38,13 @@
 
 #define CHECK(COND) CHECKM(COND, "")
 
+/* This should be defined if we want to check calls to DCHECK. */
+#define RAY_DCHECK
+
+#ifdef RAY_DCHECK
+#define DCHECK(COND) CHECK(COND)
+#else
 #define DCHECK(COND)
-#ifdef RAY_COMMON_DEBUG
-CHECK(COND)
 #endif
 
 /* These are exit codes for common errors that can occur in Ray components. */
@@ -66,5 +71,14 @@ unique_id globally_unique_id(void);
 char *sha1_to_hex(const unsigned char *sha1, char *buffer);
 
 typedef unique_id object_id;
+
+/**
+ * Compare two object IDs.
+ *
+ * @param first_id The first object ID to compare.
+ * @param second_id The first object ID to compare.
+ * @return True if the object IDs are the same and false otherwise.
+ */
+bool object_ids_equal(object_id first_id, object_id second_id);
 
 #endif

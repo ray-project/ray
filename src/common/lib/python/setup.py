@@ -7,6 +7,6 @@ common_module = Extension("common",
                           extra_compile_args=["--std=c99", "-Werror"])
 
 setup(name="Common",
-      version="0.1",
+      version="0.01",
       description="Common library for Ray",
       ext_modules=[common_module])

@@ -72,7 +72,7 @@ bool can_run(scheduler_state *s, task_spec *task) {
   int64_t num_args = task_num_args(task);
   for (int i = 0; i < num_args; ++i) {
     if (task_arg_type(task, i) == ARG_BY_REF) {
-      object_id obj_id = *task_arg_id(task, i);
+      object_id obj_id = task_arg_id(task, i);
       available_object *entry;
       HASH_FIND(handle, s->local_objects, &obj_id, sizeof(object_id), entry);
       if (entry == NULL) {
