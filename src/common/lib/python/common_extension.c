@@ -112,7 +112,7 @@ PyTypeObject PyObjectIDType = {
 
 /* Define the PyTask class. */
 
-static int PyTask_init(PyTask *self, PyObject *args) {
+static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   function_id function_id;
   /* Arguments of the task (can be PyObjectIDs or Python values). */
   PyObject *arguments;
@@ -171,12 +171,12 @@ static void PyTask_dealloc(PyTask *self) {
 }
 
 static PyObject *PyTask_function_id(PyObject *self) {
-  function_id function_id = *task_function(((PyTask *) self)->spec);
+  function_id function_id = task_function(((PyTask *) self)->spec);
   return PyObjectID_make(function_id);
 }
 
 static PyObject *PyTask_task_id(PyObject *self) {
-  task_id task_id = *task_task_id(((PyTask *) self)->spec);
+  task_id task_id = task_task_id(((PyTask *) self)->spec);
   return PyObjectID_make(task_id);
 }
 
@@ -186,7 +186,7 @@ static PyObject *PyTask_arguments(PyObject *self) {
   task_spec *task = ((PyTask *) self)->spec;
   for (int i = 0; i < num_args; ++i) {
     if (task_arg_type(task, i) == ARG_BY_REF) {
-      object_id object_id = *task_arg_id(task, i);
+      object_id object_id = task_arg_id(task, i);
       PyList_SetItem(arg_list, i, PyObjectID_make(object_id));
     } else {
       PyObject *s =
@@ -203,7 +203,7 @@ static PyObject *PyTask_returns(PyObject *self) {
   PyObject *return_id_list = PyList_New((Py_ssize_t) num_returns);
   task_spec *task = ((PyTask *) self)->spec;
   for (int i = 0; i < num_returns; ++i) {
-    object_id object_id = *task_return(task, i);
+    object_id object_id = task_return(task, i);
     PyList_SetItem(return_id_list, i, PyObjectID_make(object_id));
   }
   return return_id_list;

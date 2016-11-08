@@ -7,6 +7,7 @@
  * are relative, so that we can memcpy the datastructure and ship it over the
  * network without serialization and deserialization. */
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include "common.h"
@@ -36,10 +37,28 @@ typedef struct task_spec_impl task_spec;
 /** If argument is passed by value or reference. */
 enum arg_type { ARG_BY_REF, ARG_BY_VAL };
 
+/**
+ * Compare two task IDs.
+ *
+ * @param first_id The first task ID to compare.
+ * @param second_id The first task ID to compare.
+ * @return True if the task IDs are the same and false otherwise.
+ */
+bool task_ids_equal(task_id first_id, task_id second_id);
+
+/**
+ * Compare two function IDs.
+ *
+ * @param first_id The first function ID to compare.
+ * @param second_id The first function ID to compare.
+ * @return True if the function IDs are the same and false otherwise.
+ */
+bool function_ids_equal(function_id first_id, function_id second_id);
+
 /* Construct and modify task specifications. */
 
 /**
- * Being constructing a task_spec. After this is called, the arguments must be
+ * Begin constructing a task_spec. After this is called, the arguments must be
  * added to the task_spec and then finish_construct_task_spec must be called.
  *
  * @param parent_task_id The task ID of the task that submitted this task.
@@ -48,8 +67,9 @@ enum arg_type { ARG_BY_REF, ARG_BY_VAL };
  * @param function_id The function ID of the function to execute in this task.
  * @param num_args The number of arguments that this task has.
  * @param num_returns The number of return values that this task has.
- * @param args_value_size The total size in bytes of the arguments to this task.
- * @return The task_spec.
+ * @param args_value_size The total size in bytes of the arguments to this task
+          ignoring object ID arguments.
+ * @return The partially constructed task_spec.
  */
 task_spec *start_construct_task_spec(task_id parent_task_id,
                                      int64_t parent_counter,
@@ -82,7 +102,7 @@ int64_t task_size(task_spec *spec);
  * @param spec The task_spec in question.
  * @return The function ID of the function to execute in this task.
  */
-function_id *task_function(task_spec *spec);
+function_id task_function(task_spec *spec);
 
 /**
  * Return the task ID of the task.
@@ -90,7 +110,7 @@ function_id *task_function(task_spec *spec);
  * @param spec The task_spec in question.
  * @return The task ID of the task.
  */
-task_id *task_task_id(task_spec *spec);
+task_id task_task_id(task_spec *spec);
 
 /**
  * Get the number of arguments to this task.
@@ -126,7 +146,7 @@ int8_t task_arg_type(task_spec *spec, int64_t arg_index);
  * @param arg_index The index of the argument in question.
  * @return The argument at that index.
  */
-object_id *task_arg_id(task_spec *spec, int64_t arg_index);
+object_id task_arg_id(task_spec *spec, int64_t arg_index);
 
 /**
  * Get a particular argument to this task. This assumes the argument is a value.
@@ -171,14 +191,13 @@ int64_t task_args_add_ref(task_spec *spec, object_id obj_id);
 int64_t task_args_add_val(task_spec *spec, uint8_t *data, int64_t length);
 
 /**
- * Get and set return arguments to a task. Tasks return by reference for now.
- * Setting should only be used internally.
+ * Get a particular return object ID of a task.
  *
  * @param spec The task_spec in question.
  * @param return_index The index of the return object ID in question.
- * @return The address of the relevant return object ID.
+ * @return The relevant return object ID.
  */
-object_id *task_return(task_spec *spec, int64_t return_index);
+object_id task_return(task_spec *spec, int64_t return_index);
 
 /**
  * Free a task_spec.

@@ -24,6 +24,10 @@ unique_id globally_unique_id(void) {
   return result;
 }
 
+bool object_ids_equal(object_id first_id, object_id second_id) {
+  return memcmp(&first_id, &second_id, sizeof(object_id)) == 0 ? true : false;
+}
+
 char *sha1_to_hex(const unsigned char *sha1, char *buffer) {
   static const char hex[] = "0123456789abcdef";
   char *buf = buffer;
