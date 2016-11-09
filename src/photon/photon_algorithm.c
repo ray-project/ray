@@ -130,14 +130,46 @@ int find_and_schedule_task_if_possible(scheduler_info *info,
 void handle_task_submitted(scheduler_info *info,
                            scheduler_state *s,
                            task_spec *spec) {
-  /* Create a unique task instance ID. This is different from the task ID and
-   * is used to distinguish between potentially multiple executions of the
-   * task. */
-  task *task = alloc_task(spec, TASK_STATUS_WAITING, NIL_ID);
   /* If this task's dependencies are available locally, and if there is an
    * available worker, then assign this task to an available worker. Otherwise,
-   * add this task to the local task queue. */
-  int schedule_locally =
+   * add this task to the local task queue or pass it along to the global
+   * scheduler. */
+  bool schedule_locally =
+      (utarray_len(s->available_workers) > 0) && can_run(s, spec);
+  bool queue_locally = false;
+  if (schedule_locally) {
+    /* Get the last available worker in the available worker queue. */
+    int *worker_index = (int *) utarray_back(s->available_workers);
+    /* Tell the available worker to execute the task. */
+    assign_task_to_worker(info, spec, *worker_index);
+    /* Remove the available worker from the queue and free the struct. */
+    utarray_pop_back(s->available_workers);
+    /* Update the global task table. TODO(rkn): Maybe this should be done in
+     * assign_task_to_worker. */
+    task *task = alloc_task(spec, TASK_STATUS_RUNNING, NIL_ID);
+    task_table_add_task(info->db, task, (retry_info *) &photon_retry, NULL, NULL);
+    free_task(task);
+  } else if (queue_locally) {
+    /* Add the task to the task queue. This passes ownership of the task queue.
+     * And the task will be freed when it is assigned to a worker. */
+    task *task = alloc_task(spec, TASK_STATUS_RUNNING, NIL_ID);
+    task_queue_entry *elt = malloc(sizeof(task_queue_entry));
+    elt->task = task;
+    DL_APPEND(s->task_queue, elt);
+    /* Update the global task table. */
+    task_table_add_task(info->db, task, (retry_info *) &photon_retry, NULL, NULL);
+  } else {
+    /* Pass on the task to the global scheduler. */
+    task *task = alloc_task(spec, TASK_STATUS_WAITING, NIL_ID);
+    task_table_add_task(info->db, task, (retry_info *) &photon_retry, NULL, NULL);
+    free_task(task);
+  }
+}
+
+void handle_task_scheduled(scheduler_info *info,
+                           scheduler_state *s,
+                           task_spec *spec) {
+  bool schedule_locally =
       (utarray_len(s->available_workers) > 0) && can_run(s, spec);
   if (schedule_locally) {
     /* Get the last available worker in the available worker queue. */
@@ -146,22 +178,20 @@ void handle_task_submitted(scheduler_info *info,
     assign_task_to_worker(info, spec, *worker_index);
     /* Remove the available worker from the queue and free the struct. */
     utarray_pop_back(s->available_workers);
+    /* Update the global task table. TODO(rkn): Maybe this should be done in
+     * assign_task_to_worker. */
+    task *task = alloc_task(spec, TASK_STATUS_RUNNING, NIL_ID);
+    task_table_update(info->db, task, (retry_info *) &photon_retry, NULL, NULL);
+    free_task(task);
   } else {
     /* Add the task to the task queue. This passes ownership of the task queue.
      * And the task will be freed when it is assigned to a worker. */
+    task *task = alloc_task(spec, TASK_STATUS_RUNNING, NIL_ID);
     task_queue_entry *elt = malloc(sizeof(task_queue_entry));
     elt->task = task;
     DL_APPEND(s->task_queue, elt);
-  }
-  /* Submit the task to redis. */
-  /* TODO(swang): This should be task_table_update if the task is already in the
-   * log. */
-  task_table_add_task(info->db, task, (retry_info *) &photon_retry, NULL, NULL);
-  if (schedule_locally) {
-    /* If the task was scheduled locally, we need to free it. Otherwise,
-     * ownership of the task is passed to the task_queue, and it will be freed
-     * when it is assigned to a worker. */
-    free_task(task);
+    /* Update the global task table. */
+    task_table_update(info->db, task, (retry_info *) &photon_retry, NULL, NULL);
   }
 }
 

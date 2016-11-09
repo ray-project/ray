@@ -1,6 +1,7 @@
 #ifndef DB_H
 #define DB_H
 
+#include "common.h"
 #include "event_loop.h"
 
 typedef struct db_handle db_handle;
@@ -27,6 +28,6 @@ void db_disconnect(db_handle *db);
  * @returns int The client ID for this connection to the database. If
  *          this client has no connection to the database, returns -1.
  */
-int get_client_id(db_handle *db);
+client_id get_client_id(db_handle *db);
 
 #endif

@@ -643,8 +643,7 @@ def init(start_ray_local=False, num_workers=None, driver_mode=SCRIPT_MODE):
   # corresponing call to disconnect will happen in the call to cleanup() when
   # the Python script exits.
   connect(address_info, driver_mode, worker=global_worker)
-  if driver_mode != PYTHON_MODE:
-    return "{}:{}".format(address_info["node_ip_address"], address_info["redis_port"])
+  return address_info
 
 def cleanup(worker=global_worker):
   """Disconnect the driver, and terminate any processes started in init.

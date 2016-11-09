@@ -32,6 +32,10 @@ bool object_id_is_nil(object_id id) {
   return object_ids_equal(id, NIL_OBJECT_ID);
 }
 
+bool client_ids_equal(client_id first_id, client_id second_id) {
+  return UNIQUE_ID_EQ(first_id, second_id) ? true : false;
+}
+
 char *sha1_to_hex(const unsigned char *sha1, char *buffer) {
   static const char hex[] = "0123456789abcdef";
   char *buf = buffer;

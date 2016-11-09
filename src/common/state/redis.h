@@ -12,7 +12,7 @@
 
 typedef struct {
   /** Unique ID for this service. */
-  int service_id;
+  client_id service_id;
   /** IP address and port of this service. */
   char *addr;
   /** Handle for the uthash table. */
@@ -23,21 +23,21 @@ struct db_handle {
   /** String that identifies this client type. */
   char *client_type;
   /** Unique ID for this client within the type. */
-  int64_t client_id;
+  client_id client;
   /** Redis context for this global state store connection. */
   redisAsyncContext *context;
-  /** Redis context for "subscribe" communication.
-   * Yes, we need a separate one for that, see
-   * https://github.com/redis/hiredis/issues/55 */
+  /** Redis context for "subscribe" communication. Yes, we need a separate one
+   *  for that, see https://github.com/redis/hiredis/issues/55. */
   redisAsyncContext *sub_context;
   /** The event loop this global state store connection is part of. */
   event_loop *loop;
   /** Index of the database connection in the event loop */
   int64_t db_index;
-  /** Cache for the IP addresses of services. */
+  /** Cache for the IP addresses of services. This is a hash table mapping
+   *  client IDs to addresses. */
   service_cache_entry *service_cache;
-  /** Redis context for synchronous connections.
-   * Should only be used very rarely, it is not asynchronous. */
+  /** Redis context for synchronous connections. This should only be used very
+   *  rarely, it is not asynchronous. */
   redisContext *sync_context;
   /** Data structure for callbacks that needs to be freed. */
   UT_array *callback_freelist;
@@ -167,5 +167,14 @@ void redis_task_table_publish_publish_callback(redisAsyncContext *c,
  * @return Void.
  */
 void redis_task_table_subscribe(table_callback_data *callback_data);
+
+/**
+ * Subscribe to updates from the local scheduelr table.
+ *
+ * @param callback_data Data structure containing redis connection and timeout
+ *        information.
+ * @return Void.
+ */
+void redis_local_scheduler_table_subscribe(table_callback_data *callback_data);
 
 #endif /* REDIS_H */

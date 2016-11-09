@@ -247,8 +247,6 @@ plasma_manager_state *init_plasma_manager_state(const char *store_socket_name,
     state->db = db_connect(db_addr, db_port, "plasma_manager", manager_addr,
                            manager_port);
     db_attach(state->db, state->loop);
-    LOG_DEBUG("Connected to db at %s:%d, assigned client ID %d", db_addr,
-              db_port, get_client_id(state->db));
   } else {
     state->db = NULL;
     LOG_DEBUG("No db connection specified");
@@ -352,8 +350,6 @@ void send_queued_request(event_loop *loop,
   plasma_request manager_req = make_plasma_request(buf->object_id);
   switch (buf->type) {
   case PLASMA_TRANSFER:
-    LOG_DEBUG("Requesting transfer on DB client %d",
-              get_client_id(conn->manager_state->db));
     memcpy(manager_req.addr, conn->manager_state->addr,
            sizeof(manager_req.addr));
     manager_req.port = conn->manager_state->port;
@@ -450,8 +446,6 @@ client_connection *get_manager_connection(plasma_manager_state *state,
   client_connection *manager_conn;
   HASH_FIND(manager_hh, state->manager_connections, utstring_body(ip_addr_port),
             utstring_len(ip_addr_port), manager_conn);
-  LOG_DEBUG("Getting manager connection to %s on DB client %d",
-            utstring_body(ip_addr_port), get_client_id(state->db));
   if (!manager_conn) {
     /* If we don't already have a connection to this manager, start one. */
     int fd = plasma_manager_connect(ip_addr, port);
@@ -829,9 +823,7 @@ void process_message(event_loop *loop,
     process_wait_request(conn, req->num_object_ids, req->object_ids,
                          req->timeout, req->num_returns);
     break;
-  case PLASMA_SEAL:
-    LOG_DEBUG("Publishing to object table from DB client %d.",
-              get_client_id(conn->manager_state->db));
+  case PLASMA_SEAL: {
     /* TODO(swang): Log the error if we fail to add the object, and possibly
      * retry later? */
     retry_info retry = {
@@ -841,7 +833,7 @@ void process_message(event_loop *loop,
     };
     object_table_add(conn->manager_state->db, req->object_ids[0], &retry, NULL,
                      NULL);
-    break;
+  } break;
   case DISCONNECT_CLIENT: {
     LOG_INFO("Disconnecting client on fd %d", client_sock);
     /* TODO(swang): Check if this connection was to a plasma manager. If so,
