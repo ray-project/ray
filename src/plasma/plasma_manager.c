@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -36,6 +37,14 @@
 
 typedef struct client_object_connection client_object_connection;
 
+/* Entry of the hashtable of objects that are available locally. */
+typedef struct {
+  /** Object id of this object. */
+  object_id object_id;
+  /** Handle for the uthash table. */
+  UT_hash_handle hh;
+} available_object;
+
 struct plasma_manager_state {
   /** Event loop. */
   event_loop *loop;
@@ -54,6 +63,8 @@ struct plasma_manager_state {
    *  object id, value is a list of connections to the clients
    *  who are blocking on a fetch of this object. */
   client_object_connection *fetch_connections;
+  /** Initialize an empty hash map for the cache of local available object. */
+  available_object *local_available_objects;
 };
 
 plasma_manager_state *g_manager_state = NULL;
@@ -106,6 +117,13 @@ struct client_connection {
   /** File descriptor for the socket connected to the other
    *  plasma manager. */
   int fd;
+  /** Timer id for timing out wait (or fetch). */
+  int64_t timer_id;
+  /** True if this client is in a "wait" and false if it is in a "fetch". */
+  bool is_wait;
+  /** If this client is processing a wait, this contains the object ids that
+   *  are already available. */
+  plasma_reply *wait_reply;
   /** The objects that we are waiting for and their callback
    *  contexts, for either a fetch or a wait operation. */
   client_object_connection *active_objects;
@@ -136,6 +154,12 @@ int send_client_reply(client_connection *conn, plasma_reply *reply) {
   return (n != sizeof(plasma_reply));
 }
 
+int send_client_failure_reply(object_id object_id, client_connection *conn) {
+  plasma_reply reply = {
+      .object_ids = {object_id}, .num_object_ids = 1, .has_object = 0};
+  return send_client_reply(conn, &reply);
+}
+
 /**
  * Get the context for the given object ID for the given client
  * connection, if there is one active.
@@ -155,7 +179,6 @@ client_object_connection *get_object_connection(client_connection *client_conn,
 
 client_object_connection *add_object_connection(client_connection *client_conn,
                                                 object_id object_id) {
-  /* TODO(swang): Support registration of wait operations. */
   /* Create a new context for this client connection and object. */
   client_object_connection *object_conn =
       malloc(sizeof(client_object_connection));
@@ -226,7 +249,8 @@ plasma_manager_state *init_plasma_manager_state(const char *store_socket_name,
                                                 int db_port) {
   plasma_manager_state *state = malloc(sizeof(plasma_manager_state));
   state->loop = event_loop_create();
-  state->plasma_conn = plasma_connect(store_socket_name, NULL, 0);
+  state->plasma_conn =
+      plasma_connect(store_socket_name, NULL, PLASMA_DEFAULT_RELEASE_DELAY);
   state->manager_connections = NULL;
   state->fetch_connections = NULL;
   if (db_addr) {
@@ -242,6 +266,13 @@ plasma_manager_state *init_plasma_manager_state(const char *store_socket_name,
   sscanf(manager_addr, "%hhu.%hhu.%hhu.%hhu", &state->addr[0], &state->addr[1],
          &state->addr[2], &state->addr[3]);
   state->port = manager_port;
+  /* Initialize an empty hash map for the cache of local available objects. */
+  state->local_available_objects = NULL;
+  /* Subscribe to notifications about sealed objects. */
+  int plasma_fd = plasma_subscribe(state->plasma_conn);
+  /* Add the callback that processes the notification to the event loop. */
+  event_loop_add_file(state->loop, plasma_fd, EVENT_LOOP_READ,
+                      process_object_notification, state);
   return state;
 }
 
@@ -259,11 +290,16 @@ void destroy_plasma_manager_state(plasma_manager_state *state) {
     free(manager_conn->ip_addr_port);
     free(manager_conn);
   }
-  /* There should not be any outstanding client connections if
-   * we're shutting down. */
-  CHECK(state->fetch_connections == NULL);
 
-  free(state->plasma_conn);
+  if (state->fetch_connections != NULL) {
+    LOG_DEBUG("There were outstanding fetch requests.");
+    client_object_connection *object_conn, *tmp;
+    HASH_ITER(fetch_hh, state->fetch_connections, object_conn, tmp) {
+      remove_object_connection(object_conn->client_conn, object_conn);
+    }
+  }
+
+  plasma_disconnect(state->plasma_conn);
   event_loop_destroy(state->loop);
   free(state);
 }
@@ -399,23 +435,10 @@ void process_data_chunk(event_loop *loop,
   /* Seal the object and release it. The release corresponds to the call to
    * plasma_create that occurred in process_data_request. */
   LOG_DEBUG("reading on channel %d finished", data_sock);
+  /* The following seal also triggers notification of clients for fetch or
+   * wait requests, see process_object_notification. */
   plasma_seal(conn->manager_state->plasma_conn, buf->object_id);
   plasma_release(conn->manager_state->plasma_conn, buf->object_id);
-  /* Notify any clients who were waiting on a fetch to this object. */
-  client_object_connection *object_conn, *next;
-  client_connection *client_conn;
-  HASH_FIND(fetch_hh, conn->manager_state->fetch_connections, &(buf->object_id),
-            sizeof(buf->object_id), object_conn);
-  plasma_reply reply = {.object_id = buf->object_id, .has_object = 1};
-  while (object_conn) {
-    next = object_conn->next;
-    client_conn = object_conn->client_conn;
-    send_client_reply(client_conn, &reply);
-    event_loop_remove_timer(client_conn->manager_state->loop,
-                            object_conn->timer);
-    remove_object_connection(client_conn, object_conn);
-    object_conn = next;
-  }
   /* Remove the request buffer used for reading this object's data. */
   LL_DELETE(conn->transfer_queue, buf);
   free(buf);
@@ -576,10 +599,12 @@ int manager_timeout_handler(event_loop *loop, timer_id id, void *context) {
     object_conn->num_retries--;
     return MANAGER_TIMEOUT;
   }
-  plasma_reply reply = {.object_id = object_conn->object_id, .has_object = 0};
+  plasma_reply reply = {.object_ids = {object_conn->object_id},
+                        .num_object_ids = 1,
+                        .has_object = 0};
   send_client_reply(client_conn, &reply);
   remove_object_connection(client_conn, object_conn);
-  return AE_NOMORE;
+  return EVENT_LOOP_TIMER_DONE;
 }
 
 /* TODO(swang): Consolidate transfer requests for same object
@@ -592,16 +617,26 @@ void request_transfer(object_id object_id,
   client_connection *client_conn = (client_connection *) context;
   client_object_connection *object_conn =
       get_object_connection(client_conn, object_id);
-  CHECK(object_conn);
+  /* If there's already an outstanding fetch for this object for this client,
+   * let the outstanding request finish the work. */
+  if (object_conn) {
+    return;
+  }
+  /* If the object isn't on any managers, report a failure to the client. */
   LOG_DEBUG("Object is on %d managers", manager_count);
   if (manager_count == 0) {
     /* TODO(swang): Instead of immediately counting this as a failure, maybe
      * register a Redis callback for changes to this object table entry. */
     free(manager_vector);
-    plasma_reply reply = {.object_id = object_conn->object_id, .has_object = 0};
-    send_client_reply(client_conn, &reply);
+    send_client_failure_reply(object_id, client_conn);
     remove_object_connection(client_conn, object_conn);
     return;
+  }
+  /* Register the new outstanding fetch with the current client connection. */
+  object_conn = add_object_connection(client_conn, object_id);
+  if (!object_conn) {
+    LOG_DEBUG("Unable to allocate memory for object context.");
+    send_client_failure_reply(object_id, client_conn);
   }
   /* Pick a different manager to request a transfer from on every attempt. */
   object_conn->manager_count = manager_count;
@@ -625,7 +660,9 @@ void request_transfer(object_id object_id,
 
 void process_fetch_request(client_connection *client_conn,
                            object_id object_id) {
-  plasma_reply reply = {.object_id = object_id};
+  client_conn->is_wait = false;
+  client_conn->wait_reply = NULL;
+  plasma_reply reply = {.object_ids = {object_id}, .num_object_ids = 1};
   if (client_conn->manager_state->db == NULL) {
     reply.has_object = 0;
     send_client_reply(client_conn, &reply);
@@ -640,18 +677,13 @@ void process_fetch_request(client_connection *client_conn,
     send_client_reply(client_conn, &reply);
     return;
   }
-  /* Register the new context with the current client connection. */
-  /* TODO(swang): If there is already an outstanding fetch request for this
-   * object, exit now. */
-  client_object_connection *object_conn =
-      add_object_connection(client_conn, object_id);
-  if (!object_conn) {
-    LOG_DEBUG("Unable to allocate memory for object context.");
-    reply.has_object = 0;
-    send_client_reply(client_conn, &reply);
-  }
+  retry_info retry = {
+      .num_retries = NUM_RETRIES,
+      .timeout = MANAGER_TIMEOUT,
+      .fail_callback = (table_fail_callback) send_client_failure_reply,
+  };
   /* Request a transfer from a plasma manager that has this object. */
-  object_table_lookup(client_conn->manager_state->db, object_id,
+  object_table_lookup(client_conn->manager_state->db, object_id, &retry,
                       request_transfer, client_conn);
 }
 
@@ -661,6 +693,118 @@ void process_fetch_requests(client_connection *client_conn,
   for (int i = 0; i < num_object_ids; ++i) {
     ++client_conn->num_return_objects;
     process_fetch_request(client_conn, object_ids[i]);
+  }
+}
+
+void return_from_wait(client_connection *client_conn) {
+  CHECK(client_conn->is_wait);
+  int64_t size =
+      sizeof(plasma_reply) +
+      (client_conn->wait_reply->num_object_ids - 1) * sizeof(object_id);
+  client_conn->wait_reply->num_objects_returned =
+      client_conn->wait_reply->num_object_ids - client_conn->num_return_objects;
+  int n = write(client_conn->fd, (uint8_t *) client_conn->wait_reply, size);
+  CHECK(n == size);
+  free(client_conn->wait_reply);
+  /* Clean the remaining object connections. */
+  client_object_connection *object_conn, *tmp;
+  HASH_ITER(active_hh, client_conn->active_objects, object_conn, tmp) {
+    remove_object_connection(client_conn, object_conn);
+  }
+}
+
+int wait_timeout_handler(event_loop *loop, timer_id id, void *context) {
+  client_connection *client_conn = context;
+  CHECK(client_conn->timer_id == id);
+  return_from_wait(client_conn);
+  return EVENT_LOOP_TIMER_DONE;
+}
+
+void process_wait_request(client_connection *client_conn,
+                          int num_object_ids,
+                          object_id object_ids[],
+                          uint64_t timeout,
+                          int num_returns) {
+  plasma_manager_state *manager_state = client_conn->manager_state;
+  client_conn->num_return_objects = num_returns;
+  client_conn->is_wait = true;
+  client_conn->timer_id = event_loop_add_timer(
+      manager_state->loop, timeout, wait_timeout_handler, client_conn);
+  int64_t size = sizeof(plasma_reply) + (num_returns - 1) * sizeof(object_id);
+  client_conn->wait_reply = malloc(size);
+  memset(client_conn->wait_reply, 0, size);
+  client_conn->wait_reply->num_object_ids = num_returns;
+  for (int i = 0; i < num_object_ids; ++i) {
+    available_object *entry;
+    HASH_FIND(hh, manager_state->local_available_objects, &object_ids[i],
+              sizeof(object_id), entry);
+    if (entry) {
+      /* If an object id occurs twice in object_ids, this will count them twice.
+       * This might not be desirable behavior. */
+      client_conn->num_return_objects -= 1;
+      client_conn->wait_reply->object_ids[client_conn->num_return_objects] =
+          entry->object_id;
+      if (client_conn->num_return_objects == 0) {
+        event_loop_remove_timer(manager_state->loop, client_conn->timer_id);
+        return_from_wait(client_conn);
+        return;
+      }
+    } else {
+      add_object_connection(client_conn, object_ids[i]);
+    }
+  }
+}
+
+void process_object_notification(event_loop *loop,
+                                 int client_sock,
+                                 void *context,
+                                 int events) {
+  plasma_manager_state *state = context;
+  object_id obj_id;
+  /* Read the notification from Plasma. */
+  int n = recv(client_sock, &obj_id, sizeof(object_id), MSG_WAITALL);
+  if (n == 0) {
+    /* The store has closed the socket. */
+    LOG_DEBUG("The plasma store has closed the object notification socket.");
+    event_loop_remove_file(loop, client_sock);
+    close(client_sock);
+    return;
+  }
+  CHECK(n == sizeof(object_id));
+  /* Add object to locally available object. */
+  /* TODO(pcm): Where is this deallocated? */
+  available_object *entry =
+      (available_object *) malloc(sizeof(available_object));
+  entry->object_id = obj_id;
+  HASH_ADD(hh, state->local_available_objects, object_id, sizeof(object_id),
+           entry);
+  /* Notify any clients who were waiting on a fetch to this object and tick
+   * off objects we are waiting for. */
+  client_object_connection *object_conn, *next;
+  client_connection *client_conn;
+  HASH_FIND(fetch_hh, state->fetch_connections, &obj_id, sizeof(object_id),
+            object_conn);
+  plasma_reply reply = {
+      .object_ids = {obj_id}, .num_object_ids = 1, .has_object = 1};
+  while (object_conn) {
+    next = object_conn->next;
+    client_conn = object_conn->client_conn;
+    if (!client_conn->is_wait) {
+      event_loop_remove_timer(state->loop, object_conn->timer);
+      send_client_reply(client_conn, &reply);
+    } else {
+      client_conn->num_return_objects -= 1;
+      client_conn->wait_reply->object_ids[client_conn->num_return_objects] =
+          obj_id;
+      if (client_conn->num_return_objects == 0) {
+        event_loop_remove_timer(loop, client_conn->timer_id);
+        return_from_wait(client_conn);
+        object_conn = next;
+        continue;
+      }
+    }
+    remove_object_connection(client_conn, object_conn);
+    object_conn = next;
   }
 }
 
@@ -689,10 +833,22 @@ void process_message(event_loop *loop,
     LOG_DEBUG("Processing fetch");
     process_fetch_requests(conn, req->num_object_ids, req->object_ids);
     break;
+  case PLASMA_WAIT:
+    LOG_DEBUG("Processing wait");
+    process_wait_request(conn, req->num_object_ids, req->object_ids,
+                         req->timeout, req->num_returns);
   case PLASMA_SEAL:
     LOG_DEBUG("Publishing to object table from DB client %d.",
               get_client_id(conn->manager_state->db));
-    object_table_add(conn->manager_state->db, req->object_ids[0]);
+    /* TODO(swang): Log the error if we fail to add the object, and possibly
+     * retry later? */
+    retry_info retry = {
+        .num_retries = NUM_RETRIES,
+        .timeout = MANAGER_TIMEOUT,
+        .fail_callback = NULL,
+    };
+    object_table_add(conn->manager_state->db, req->object_ids[0], &retry, NULL,
+                     NULL);
     break;
   case DISCONNECT_CLIENT: {
     LOG_INFO("Disconnecting client on fd %d", client_sock);
@@ -710,6 +866,9 @@ void process_message(event_loop *loop,
   free(req);
 }
 
+/* TODO(pcm): Split this into two methods: new_worker_connection
+ * and new_manager_connection and also split client_connection
+ * into two structs, one for workers and one for other plasma managers. */
 client_connection *new_client_connection(event_loop *loop,
                                          int listener_sock,
                                          void *context,
@@ -724,7 +883,7 @@ client_connection *new_client_connection(event_loop *loop,
   conn->active_objects = NULL;
   conn->num_return_objects = 0;
   event_loop_add_file(loop, new_socket, EVENT_LOOP_READ, process_message, conn);
-  LOG_DEBUG("New plasma manager connection with fd %d", new_socket);
+  LOG_DEBUG("New client connection with fd %d", new_socket);
   return conn;
 }
 
@@ -740,20 +899,34 @@ int get_client_sock(client_connection *conn) {
 }
 
 void start_server(const char *store_socket_name,
+                  const char *manager_socket_name,
                   const char *master_addr,
                   int port,
                   const char *db_addr,
                   int db_port) {
+  /* Bind the sockets before we try to connect to the plasma store.
+   * In case the bind does not succeed, we want to be able to exit
+   * without breaking the pipe to the store. */
+  int remote_sock = bind_inet_sock(port, false);
+  if (remote_sock < 0) {
+    exit(EXIT_COULD_NOT_BIND_PORT);
+  }
+
+  int local_sock = bind_ipc_sock(manager_socket_name, false);
+  CHECKM(local_sock >= 0, "Unable to bind local manager socket");
+
   g_manager_state = init_plasma_manager_state(store_socket_name, master_addr,
                                               port, db_addr, db_port);
   CHECK(g_manager_state);
 
-  int sock = bind_inet_sock(port);
-  CHECKM(sock >= 0, "Unable to bind to manager port");
+  CHECK(listen(remote_sock, 5) != -1);
+  CHECK(listen(local_sock, 5) != -1);
 
   LOG_DEBUG("Started server connected to store %s, listening on port %d",
             store_socket_name, port);
-  event_loop_add_file(g_manager_state->loop, sock, EVENT_LOOP_READ,
+  event_loop_add_file(g_manager_state->loop, local_sock, EVENT_LOOP_READ,
+                      handle_new_client, g_manager_state);
+  event_loop_add_file(g_manager_state->loop, remote_sock, EVENT_LOOP_READ,
                       handle_new_client, g_manager_state);
   event_loop_run(g_manager_state->loop);
 }
@@ -775,25 +948,30 @@ int main(int argc, char *argv[]) {
   signal(SIGTERM, signal_handler);
   /* Socket name of the plasma store this manager is connected to. */
   char *store_socket_name = NULL;
+  /* Socket name this manager will bind to. */
+  char *manager_socket_name = NULL;
   /* IP address of this node. */
   char *master_addr = NULL;
   /* Port number the manager should use. */
-  int port;
+  int port = -1;
   /* IP address and port of state database. */
   char *db_host = NULL;
   int c;
-  while ((c = getopt(argc, argv, "s:m:p:d:")) != -1) {
+  while ((c = getopt(argc, argv, "s:m:h:p:r:")) != -1) {
     switch (c) {
     case 's':
       store_socket_name = optarg;
       break;
     case 'm':
+      manager_socket_name = optarg;
+      break;
+    case 'h':
       master_addr = optarg;
       break;
     case 'p':
       port = atoi(optarg);
       break;
-    case 'd':
+    case 'r':
       db_host = optarg;
       break;
     default:
@@ -807,19 +985,33 @@ int main(int argc, char *argv[]) {
         "switch");
     exit(-1);
   }
+  if (!manager_socket_name) {
+    LOG_ERR(
+        "please specify socket name of the manager's local socket with -m "
+        "switch");
+    exit(-1);
+  }
   if (!master_addr) {
     LOG_ERR(
         "please specify ip address of the current host in the format "
-        "123.456.789.10 with -m switch");
+        "123.456.789.10 with -h switch");
+    exit(-1);
+  }
+  if (port == -1) {
+    LOG_ERR(
+        "please specify port the plasma manager shall listen to in the"
+        "format 12345 with -p switch");
     exit(-1);
   }
   char db_addr[16];
   int db_port;
   if (db_host) {
     parse_ip_addr_port(db_host, db_addr, &db_port);
-    start_server(store_socket_name, master_addr, port, db_addr, db_port);
+    start_server(store_socket_name, manager_socket_name, master_addr, port,
+                 db_addr, db_port);
   } else {
-    start_server(store_socket_name, master_addr, port, NULL, 0);
+    start_server(store_socket_name, manager_socket_name, master_addr, port,
+                 NULL, 0);
   }
 }
 #endif

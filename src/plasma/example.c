@@ -25,7 +25,7 @@ int main(int argc, char *argv[]) {
   while ((c = getopt(argc, argv, "s:cfg")) != -1) {
     switch (c) {
     case 's':
-      conn = plasma_connect(optarg, NULL, 0);
+      conn = plasma_connect(optarg, NULL, PLASMA_DEFAULT_RELEASE_DELAY);
       break;
     case 'c':
       assert(conn != NULL);

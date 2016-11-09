@@ -2,10 +2,17 @@
 
 #include <stdbool.h>
 #include "utarray.h"
+#include "utlist.h"
 
 #include "state/task_log.h"
 #include "photon.h"
 #include "photon_scheduler.h"
+
+typedef struct task_queue_entry {
+  task_instance *task;
+  struct task_queue_entry *prev;
+  struct task_queue_entry *next;
+} task_queue_entry;
 
 typedef struct {
   /* Object id of this object. */
@@ -17,7 +24,7 @@ typedef struct {
 /** Part of the photon state that is maintained by the scheduling algorithm. */
 struct scheduler_state {
   /** An array of pointers to tasks that are waiting to be scheduled. */
-  UT_array *task_queue;
+  task_queue_entry *task_queue;
   /** An array of worker indices corresponding to clients that are
    *  waiting for tasks. */
   UT_array *available_workers;
@@ -31,21 +38,21 @@ scheduler_state *make_scheduler_state(void) {
   /* Initialize an empty hash map for the cache of local available objects. */
   state->local_objects = NULL;
   /* Initialize the local data structures used for queuing tasks and workers. */
-  utarray_new(state->task_queue, &task_ptr_icd);
+  state->task_queue = NULL;
   utarray_new(state->available_workers, &ut_int_icd);
   return state;
 }
 
 void free_scheduler_state(scheduler_state *s) {
-  for (int i = 0; i < utarray_len(s->task_queue); ++i) {
-    task_instance **instance =
-        (task_instance **) utarray_eltptr(s->task_queue, i);
-    free(*instance);
+  task_queue_entry *elt, *tmp1;
+  DL_FOREACH_SAFE(s->task_queue, elt, tmp1) {
+    DL_DELETE(s->task_queue, elt);
+    free(elt->task);
+    free(elt);
   }
-  utarray_free(s->task_queue);
   utarray_free(s->available_workers);
-  available_object *available_obj, *tmp;
-  HASH_ITER(handle, s->local_objects, available_obj, tmp) {
+  available_object *available_obj, *tmp2;
+  HASH_ITER(handle, s->local_objects, available_obj, tmp2) {
     HASH_DELETE(handle, s->local_objects, available_obj);
     free(available_obj);
   }
@@ -90,14 +97,12 @@ bool can_run(scheduler_state *s, task_spec *task) {
 int find_and_schedule_task_if_possible(scheduler_info *info,
                                        scheduler_state *state,
                                        int worker_index) {
+  task_queue_entry *elt, *tmp;
+  task_spec *spec;
   int found_task_to_schedule = 0;
   /* Find the first task whose dependencies are available locally. */
-  task_spec *spec;
-  task_instance **task;
-  int i = 0;
-  for (; i < utarray_len(state->task_queue); ++i) {
-    task = (task_instance **) utarray_eltptr(state->task_queue, i);
-    spec = task_instance_task_spec(*task);
+  DL_FOREACH_SAFE(state->task_queue, elt, tmp) {
+    spec = task_instance_task_spec(elt->task);
     if (can_run(state, spec)) {
       found_task_to_schedule = 1;
       break;
@@ -108,8 +113,9 @@ int find_and_schedule_task_if_possible(scheduler_info *info,
      * worker. */
     assign_task_to_worker(info, spec, worker_index);
     /* Update the task queue data structure and free the task. */
-    free(*task);
-    utarray_erase(state->task_queue, i, 1);
+    DL_DELETE(state->task_queue, elt);
+    free(elt->task);
+    free(elt);
   }
   return found_task_to_schedule;
 }
@@ -138,10 +144,16 @@ void handle_task_submitted(scheduler_info *info,
   } else {
     /* Add the task to the task queue. This passes ownership of the task queue.
      * And the task will be freed when it is assigned to a worker. */
-    utarray_push_back(s->task_queue, &instance);
+    task_queue_entry *elt = malloc(sizeof(task_queue_entry));
+    elt->task = instance;
+    DL_APPEND(s->task_queue, elt);
   }
   /* Submit the task to redis. */
-  task_log_add_task(info->db, instance);
+  /* TODO(swang): We should set these values in a config file somewhere. */
+  retry_info retry = {
+      .num_retries = 0, .timeout = 0, .fail_callback = NULL,
+  };
+  task_log_publish(info->db, instance, &retry, NULL, NULL);
   if (schedule_locally) {
     /* If the task was scheduled locally, we need to free it. Otherwise,
      * ownership of the task is passed to the task_queue, and it will be freed
@@ -160,12 +172,12 @@ void handle_worker_available(scheduler_info *info,
   if (!scheduled_task) {
     for (int *p = (int *) utarray_front(state->available_workers); p != NULL;
          p = (int *) utarray_next(state->available_workers, p)) {
-      CHECK(*p != worker_index);
+      DCHECK(*p != worker_index);
     }
     /* Add client_sock to a list of available workers. This struct will be freed
      * when a task is assigned to this worker. */
     utarray_push_back(state->available_workers, &worker_index);
-    LOG_INFO("Adding worker_index %d to available workers.\n", worker_index);
+    LOG_DEBUG("Adding worker_index %d to available workers.\n", worker_index);
   }
 }
 

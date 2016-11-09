@@ -37,6 +37,10 @@ matrix:
         - sudo apt-get update -qq
         - sudo apt-get install -qq valgrind
       script:
+        - cd src/common
+        - make valgrind
+        - cd ../..
+
         - cd src/plasma
         - make valgrind
         - cd ../..
@@ -53,13 +57,20 @@ install:
   - sudo python setup.py install
   - cd ../../../..
 
-  - cd src/photon/lib/python
+  - cd src/photon
   - sudo python setup.py install
-  - cd ../../../..
+  - cd ../..
 
-  - source src/plasma/setup-env.sh
+  - cd lib/python
+  - sudo python setup.py install
+  - cd ../..
 
 script:
   - python src/common/test/test.py
   - python src/plasma/test/test.py
   - python src/photon/test/test.py
+
+  - python test/runtest.py
+  - python test/array_test.py
+  - python test/failure_test.py
+  - python test/microbenchmarks.py

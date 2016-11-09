@@ -3,6 +3,8 @@
 
 #include "plasma.h"
 
+#define PLASMA_DEFAULT_RELEASE_DELAY 64
+
 typedef struct plasma_connection plasma_connection;
 
 /**
@@ -37,20 +39,31 @@ plasma_request *make_plasma_multiple_request(int num_object_ids,
                                              object_id object_ids[]);
 
 /**
+ * Try to connect to the socket several times. If unsuccessful, fail.
+ *
+ * @param socket_name Name of the Unix domain socket to connect to.
+ * @param num_retries Number of retries.
+ * @param timeout Timeout in milliseconds.
+ * @return File descriptor of the socket.
+ */
+int socket_connect_retry(const char *socket_name,
+                         int num_retries,
+                         int64_t timeout);
+
+/**
  * Connect to the local plasma store and plasma manager. Return
  * the resulting connection.
  *
- * @param socket_name The name of the UNIX domain socket to use to connect to
- *        the Plasma Store.
- * @param manager_addr The IP address of the plasma manager to connect to. If
- *        this is NULL, then this function will not connect to a manager.
- * @param manager_port The port of the plasma manager to connect to. If
- *        manager_addr is NULL, then this argument is unused.
+ * @param store_socket_name The name of the UNIX domain socket to use to
+ *        connect to the Plasma store.
+ * @param manager_socket_name The name of the UNIX domain socket to use to
+ *        connect to the local Plasma manager. If this is NULL, then this
+ *        function will not connect to a manager.
  * @return The object containing the connection state.
  */
 plasma_connection *plasma_connect(const char *store_socket_name,
-                                  const char *manager_addr,
-                                  int manager_port);
+                                  const char *manager_socket_name,
+                                  int release_delay);
 
 /**
  * Disconnect from the local plasma instance, including the local store and
@@ -168,6 +181,16 @@ void plasma_seal(plasma_connection *conn, object_id object_id);
 void plasma_delete(plasma_connection *conn, object_id object_id);
 
 /**
+ * Delete objects until we have freed up num_bytes bytes or there are no more
+ * released objects that can be deleted.
+ *
+ * @param conn The object containing the connection state.
+ * @param num_bytes The number of bytes to try to free up.
+ * @return The total number of bytes of space retrieved.
+ */
+int64_t plasma_evict(plasma_connection *conn, int64_t num_bytes);
+
+/**
  * Fetch objects from remote plasma stores that have the
  * objects stored.
  *
@@ -185,6 +208,28 @@ void plasma_fetch(plasma_connection *conn,
                   int num_object_ids,
                   object_id object_ids[],
                   int is_fetched[]);
+
+/**
+ * Wait for objects to be created (right now, wait for local objects).
+ *
+ * @param conn The object containing the connection state.
+ * @param num_object_ids Number of object IDs wait is called on.
+ * @param object_ids Object IDs wait is called on.
+ * @param timeout Wait will time out and return after this number of ms.
+ * @param num_returns Number of object IDs wait will return if it doesn't time
+ *        out.
+ * @param return_object_ids Out parameter for the object IDs returned by wait.
+ *        This is an array of size num_returns. If the number of objects that
+ *        are ready when we time out, the objects will be stored in the last
+ *        slots of the array and the number of objects is returned.
+ * @return Number of objects that are actually ready.
+ */
+int plasma_wait(plasma_connection *conn,
+                int num_object_ids,
+                object_id object_ids[],
+                uint64_t timeout,
+                int num_returns,
+                object_id return_object_ids[]);
 
 /**
  * Subscribe to notifications when objects are sealed in the object store.

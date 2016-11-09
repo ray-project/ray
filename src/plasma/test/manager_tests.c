@@ -2,12 +2,14 @@
 
 #include <assert.h>
 #include <unistd.h>
+#include <poll.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 
 #include "common.h"
 #include "event_loop.h"
 #include "io.h"
+#include "utstring.h"
 
 #include "plasma.h"
 #include "plasma_client.h"
@@ -16,9 +18,47 @@
 SUITE(plasma_manager_tests);
 
 const char *manager_addr = "127.0.0.1";
-int manager_port = 12345;
-const char *store_socket_name = "/tmp/store12345";
 object_id oid;
+
+void wait_for_pollin(int fd) {
+  struct pollfd poll_list[1];
+  poll_list[0].fd = fd;
+  poll_list[0].events = POLLIN;
+  int retval = poll(poll_list, (unsigned long) 1, -1);
+  CHECK(retval > 0);
+}
+
+UT_string *bind_ipc_sock_retry(int *fd) {
+  UT_string *socket_name = NULL;
+  for (int num_retries = 0; num_retries < 5; ++num_retries) {
+    LOG_INFO("trying to find plasma socket (attempt %d)", num_retries);
+    utstring_renew(socket_name);
+    utstring_printf(socket_name, "/tmp/plasma_socket_%d", rand());
+    *fd = bind_ipc_sock(utstring_body(socket_name), true);
+    if (*fd < 0) {
+      /* Sleep for 100ms. */
+      usleep(100000);
+      continue;
+    }
+    break;
+  }
+  return socket_name;
+}
+
+int bind_inet_sock_retry(int *fd) {
+  int port = -1;
+  for (int num_retries = 0; num_retries < 5; ++num_retries) {
+    port = 10000 + rand() % 40000;
+    *fd = bind_inet_sock(port, true);
+    if (*fd < 0) {
+      /* Sleep for 100ms. */
+      usleep(100000);
+      continue;
+    }
+    break;
+  }
+  return port;
+}
 
 int test_done_handler(event_loop *loop, timer_id id, void *context) {
   event_loop_stop(loop);
@@ -27,8 +67,12 @@ int test_done_handler(event_loop *loop, timer_id id, void *context) {
 
 typedef struct {
   int port;
-  int manager_fd;
+  /** Connection to the manager's TCP socket. */
+  int manager_remote_fd;
+  /** Connection to the manager's Unix socket. */
+  int manager_local_fd;
   int local_store;
+  int manager;
   plasma_manager_state *state;
   event_loop *loop;
   /* Accept a connection from the local manager on the remote manager. */
@@ -38,57 +82,55 @@ typedef struct {
    * object. */
   plasma_connection *plasma_conn;
   client_connection *client_conn;
-  client_object_connection *object_conn;
 } plasma_mock;
 
-plasma_mock *init_plasma_mock(int port, plasma_mock *remote_mock) {
+plasma_mock *init_plasma_mock(plasma_mock *remote_mock) {
   plasma_mock *mock = malloc(sizeof(plasma_mock));
   /* Start listening on all the ports and initiate the local plasma manager. */
-  mock->port = port;
-  mock->manager_fd = bind_inet_sock(port);
-  mock->local_store = bind_ipc_sock(store_socket_name);
-  mock->state =
-      init_plasma_manager_state(store_socket_name, manager_addr, port, NULL, 0);
+  mock->port = bind_inet_sock_retry(&mock->manager_remote_fd);
+  UT_string *store_socket_name = bind_ipc_sock_retry(&mock->local_store);
+  UT_string *manager_socket_name = bind_ipc_sock_retry(&mock->manager_local_fd);
+
+  CHECK(mock->manager_local_fd >= 0 && mock->local_store >= 0);
+
+  mock->state = init_plasma_manager_state(utstring_body(store_socket_name),
+                                          manager_addr, mock->port, NULL, 0);
   mock->loop = get_event_loop(mock->state);
   /* Accept a connection from the local manager on the remote manager. */
   if (remote_mock != NULL) {
     mock->write_conn =
-        get_manager_connection(remote_mock->state, manager_addr, port);
+        get_manager_connection(remote_mock->state, manager_addr, mock->port);
+    wait_for_pollin(mock->manager_remote_fd);
     mock->read_conn =
-        new_client_connection(mock->loop, mock->manager_fd, mock->state, 0);
+        new_client_connection(mock->loop, mock->manager_remote_fd, mock->state,
+                              PLASMA_DEFAULT_RELEASE_DELAY);
   } else {
     mock->write_conn = NULL;
     mock->read_conn = NULL;
   }
-
-  mock->plasma_conn = NULL;
-  mock->client_conn = NULL;
-  mock->object_conn = NULL;
+  /* Connect a new client to the local plasma manager and mock a request to an
+   * object. */
+  mock->plasma_conn = plasma_connect(utstring_body(store_socket_name),
+                                     utstring_body(manager_socket_name), 0);
+  wait_for_pollin(mock->manager_local_fd);
+  mock->client_conn =
+      new_client_connection(mock->loop, mock->manager_local_fd, mock->state, 0);
+  utstring_free(store_socket_name);
+  utstring_free(manager_socket_name);
   return mock;
 }
 
-void add_mock_object_conn(plasma_mock *mock, object_id oid) {
-  /* Connect a new client to the local plasma manager and mock a request to an
-   * object. */
-  mock->plasma_conn =
-      plasma_connect(store_socket_name, manager_addr, mock->port);
-  mock->client_conn =
-      new_client_connection(mock->loop, mock->manager_fd, mock->state, 0);
-  mock->object_conn = add_object_connection(mock->client_conn, oid);
-}
-
 void destroy_plasma_mock(plasma_mock *mock) {
-  if (mock->object_conn != NULL) {
-    free(mock->client_conn);
-    free(mock->plasma_conn);
-  }
   if (mock->read_conn != NULL) {
     close(get_client_sock(mock->read_conn));
     free(mock->read_conn);
   }
   destroy_plasma_manager_state(mock->state);
+  free(mock->client_conn);
+  plasma_disconnect(mock->plasma_conn);
   close(mock->local_store);
-  close(mock->manager_fd);
+  close(mock->manager_local_fd);
+  close(mock->manager_remote_fd);
   free(mock);
 }
 
@@ -103,11 +145,13 @@ void destroy_plasma_mock(plasma_mock *mock) {
  *   correct object ID.
  */
 TEST request_transfer_test(void) {
-  plasma_mock *local_mock = init_plasma_mock(manager_port, NULL);
-  add_mock_object_conn(local_mock, oid);
-  plasma_mock *remote_mock = init_plasma_mock(12346, local_mock);
+  plasma_mock *local_mock = init_plasma_mock(NULL);
+  plasma_mock *remote_mock = init_plasma_mock(local_mock);
   const char **manager_vector = malloc(sizeof(char *));
-  manager_vector[0] = "127.0.0.1:12346";
+  UT_string *addr = NULL;
+  utstring_new(addr);
+  utstring_printf(addr, "127.0.0.1:%d", remote_mock->port);
+  manager_vector[0] = utstring_body(addr);
   request_transfer(oid, 1, manager_vector, local_mock->client_conn);
   event_loop_add_timer(local_mock->loop, MANAGER_TIMEOUT, test_done_handler,
                        local_mock->state);
@@ -121,9 +165,9 @@ TEST request_transfer_test(void) {
   ASSERT(req->num_object_ids == 1);
   ASSERT(memcmp(&oid, &req->object_ids[0], sizeof(object_id)) == 0);
   /* Clean up. */
+  utstring_free(addr);
   free(req);
   destroy_plasma_mock(remote_mock);
-  remove_object_connection(local_mock->client_conn, local_mock->object_conn);
   destroy_plasma_mock(local_mock);
   PASS();
 }
@@ -141,13 +185,18 @@ TEST request_transfer_test(void) {
  *   with the correct object ID.
  */
 TEST request_transfer_retry_test(void) {
-  plasma_mock *local_mock = init_plasma_mock(manager_port, NULL);
-  add_mock_object_conn(local_mock, oid);
-  plasma_mock *remote_mock1 = init_plasma_mock(12346, local_mock);
-  plasma_mock *remote_mock2 = init_plasma_mock(12347, local_mock);
+  plasma_mock *local_mock = init_plasma_mock(NULL);
+  plasma_mock *remote_mock1 = init_plasma_mock(local_mock);
+  plasma_mock *remote_mock2 = init_plasma_mock(local_mock);
   const char **manager_vector = malloc(sizeof(char *) * 2);
-  manager_vector[0] = "127.0.0.1:12346";
-  manager_vector[1] = "127.0.0.1:12347";
+  UT_string *addr0 = NULL;
+  utstring_new(addr0);
+  utstring_printf(addr0, "127.0.0.1:%d", remote_mock1->port);
+  manager_vector[0] = utstring_body(addr0);
+  UT_string *addr1 = NULL;
+  utstring_new(addr1);
+  utstring_printf(addr1, "127.0.0.1:%d", remote_mock2->port);
+  manager_vector[1] = utstring_body(addr1);
   request_transfer(oid, 2, manager_vector, local_mock->client_conn);
   event_loop_add_timer(local_mock->loop, MANAGER_TIMEOUT * 2, test_done_handler,
                        local_mock->state);
@@ -162,10 +211,11 @@ TEST request_transfer_retry_test(void) {
   ASSERT(req->num_object_ids == 1);
   ASSERT(memcmp(&oid, &req->object_ids[0], sizeof(object_id)) == 0);
   /* Clean up. */
+  utstring_free(addr0);
+  utstring_free(addr1);
   free(req);
   destroy_plasma_mock(remote_mock2);
   destroy_plasma_mock(remote_mock1);
-  remove_object_connection(local_mock->client_conn, local_mock->object_conn);
   destroy_plasma_mock(local_mock);
   PASS();
 }
@@ -182,11 +232,13 @@ TEST request_transfer_retry_test(void) {
  *   wasn't fetched.
  */
 TEST request_transfer_timeout_test(void) {
-  plasma_mock *local_mock = init_plasma_mock(manager_port, NULL);
-  add_mock_object_conn(local_mock, oid);
-  plasma_mock *remote_mock = init_plasma_mock(12346, local_mock);
+  plasma_mock *local_mock = init_plasma_mock(NULL);
+  plasma_mock *remote_mock = init_plasma_mock(local_mock);
   const char **manager_vector = malloc(sizeof(char *));
-  manager_vector[0] = "127.0.0.1:12346";
+  UT_string *addr = NULL;
+  utstring_new(addr);
+  utstring_printf(addr, "127.0.0.1:%d", remote_mock->port);
+  manager_vector[0] = utstring_body(addr);
   request_transfer(oid, 1, manager_vector, local_mock->client_conn);
   event_loop_add_timer(local_mock->loop, MANAGER_TIMEOUT * (NUM_RETRIES + 2),
                        test_done_handler, local_mock->state);
@@ -196,9 +248,11 @@ TEST request_transfer_timeout_test(void) {
   int manager_fd = get_manager_fd(local_mock->plasma_conn);
   int nbytes = recv(manager_fd, (uint8_t *) &reply, sizeof(reply), MSG_WAITALL);
   ASSERT_EQ(nbytes, sizeof(reply));
-  ASSERT_EQ(memcmp(&oid, &reply.object_id, sizeof(object_id)), 0);
+  ASSERT_EQ(reply.num_object_ids, 1);
+  ASSERT_EQ(memcmp(&oid, &reply.object_ids, sizeof(object_id)), 0);
   ASSERT_EQ(reply.has_object, 0);
   /* Clean up. */
+  utstring_free(addr);
   destroy_plasma_mock(remote_mock);
   destroy_plasma_mock(local_mock);
   PASS();
@@ -212,8 +266,8 @@ TEST request_transfer_timeout_test(void) {
  * - Expect to see the same data.
  */
 TEST read_write_object_chunk_test(void) {
-  plasma_mock *local_mock = init_plasma_mock(manager_port, NULL);
-  plasma_mock *remote_mock = init_plasma_mock(12346, local_mock);
+  plasma_mock *local_mock = init_plasma_mock(NULL);
+  plasma_mock *remote_mock = init_plasma_mock(local_mock);
   /* Create a mock object buffer to transfer. */
   const char *data = "Hello world!";
   const int data_size = strlen(data) + 1;
@@ -238,6 +292,9 @@ TEST read_write_object_chunk_test(void) {
    * - Check that the data matches.
    */
   write_object_chunk(remote_mock->write_conn, &remote_buf);
+  /* Wait until the data is ready to be read. */
+  wait_for_pollin(get_client_sock(remote_mock->read_conn));
+  /* Read the data. */
   int done = read_object_chunk(remote_mock->read_conn, &local_buf);
   ASSERT(done);
   ASSERT_EQ(memcmp(remote_buf.data, local_buf.data, data_size), 0);

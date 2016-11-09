@@ -13,6 +13,7 @@ import photon
 import plasma
 
 USE_VALGRIND = False
+PLASMA_STORE_MEMORY = 1000000000
 
 class TestPhotonClient(unittest.TestCase):
 
@@ -23,7 +24,7 @@ class TestPhotonClient(unittest.TestCase):
     # Start Plasma.
     plasma_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../plasma/build/plasma_store")
     plasma_socket = "/tmp/plasma_store{}".format(random.randint(0, 10000))
-    self.p2 = subprocess.Popen([plasma_executable, "-s", plasma_socket])
+    self.p2 = subprocess.Popen([plasma_executable, "-s", plasma_socket, "-m", str(PLASMA_STORE_MEMORY)])
     time.sleep(0.1)
     self.plasma_client = plasma.PlasmaClient(plasma_socket)
     scheduler_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../build/photon_scheduler")

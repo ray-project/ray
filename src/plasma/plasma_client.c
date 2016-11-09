@@ -19,9 +19,11 @@
 #include "plasma_client.h"
 #include "fling.h"
 #include "uthash.h"
+#include "utringbuffer.h"
 
 /* Number of times we try connecting to a socket. */
 #define NUM_CONNECT_ATTEMPTS 50
+#define CONNECT_TIMEOUT 100
 
 typedef struct {
   /** Key that uniquely identifies the  memory mapped file. In practice, we
@@ -52,6 +54,14 @@ typedef struct {
   UT_hash_handle hh;
 } object_in_use_entry;
 
+/** Configuration options for the plasma client. */
+typedef struct {
+  /** Number of release calls we wait until the object is actually released.
+   *  This allows us to avoid invalidating the cpu cache on workers if objects
+   *  are reused accross tasks. */
+  int release_delay;
+} plasma_client_config;
+
 /** Information about a connection between a Plasma Client and Plasma Store.
  *  This is used to avoid mapping the same files into memory multiple times. */
 struct plasma_connection {
@@ -66,6 +76,13 @@ struct plasma_connection {
   /** A hash table of the object IDs that are currently being used by this
    * client. */
   object_in_use_entry *objects_in_use;
+  /** Object IDs of the last few release calls. This is used to delay
+   *  releasing objects to see if they can be reused by subsequent tasks so we
+   *  do not unneccessarily invalidate cpu caches. TODO(pcm): replace this with
+   *  a proper lru cache of size sizeof(L3 cache). */
+  UT_ringbuffer *release_history;
+  /** Configuration options for the plasma client. */
+  plasma_client_config config;
 };
 
 int plasma_request_size(int num_object_ids) {
@@ -223,7 +240,7 @@ void plasma_get(plasma_connection *conn,
   increment_object_count(conn, object_id, object->handle.store_fd);
 }
 
-void plasma_release(plasma_connection *conn, object_id object_id) {
+void plasma_perform_release(plasma_connection *conn, object_id object_id) {
   /* Decrement the count of the number of instances of this object that are
    * being used by this client. The corresponding increment should have happened
    * in plasma_get. */
@@ -259,6 +276,24 @@ void plasma_release(plasma_connection *conn, object_id object_id) {
   }
 }
 
+void plasma_release(plasma_connection *conn, object_id obj_id) {
+  /* If no ringbuffer is used, don't delay the release. */
+  if (conn->config.release_delay == 0) {
+    plasma_perform_release(conn, obj_id);
+  } else if (!utringbuffer_full(conn->release_history)) {
+    /* Delay the release by storing new releases into a ringbuffer and only
+     * popping them off and actually releasing if the buffer is full. This is
+     * so consecutive tasks don't release and map again objects and invalidate
+     * the cpu cache this way. */
+    utringbuffer_push_back(conn->release_history, &obj_id);
+  } else {
+    object_id object_id_to_release =
+        *(object_id *) utringbuffer_front(conn->release_history);
+    utringbuffer_push_back(conn->release_history, &obj_id);
+    plasma_perform_release(conn, object_id_to_release);
+  }
+}
+
 /* This method is used to query whether the plasma store contains an object. */
 void plasma_contains(plasma_connection *conn,
                      object_id object_id,
@@ -285,6 +320,18 @@ void plasma_delete(plasma_connection *conn, object_id object_id) {
   plasma_send_request(conn->store_conn, PLASMA_DELETE, &req);
 }
 
+int64_t plasma_evict(plasma_connection *conn, int64_t num_bytes) {
+  /* Send a request to the store to evict objects. */
+  plasma_request req = {.num_bytes = num_bytes};
+  plasma_send_request(conn->store_conn, PLASMA_EVICT, &req);
+  /* Wait for a response with the number of bytes actually evicted. */
+  plasma_reply reply;
+  int r = read(conn->store_conn, &reply, sizeof(plasma_reply));
+  CHECKM(r != -1, "read error");
+  CHECKM(r != 0, "connection disconnected");
+  return reply.num_bytes;
+}
+
 int plasma_subscribe(plasma_connection *conn) {
   int fd[2];
   /* Create a non-blocking socket pair. This will only be used to send
@@ -301,48 +348,50 @@ int plasma_subscribe(plasma_connection *conn) {
    * message because otherwise it seems to hang on Linux. */
   char dummy = '\0';
   send_fd(conn->store_conn, fd[1], &dummy, 1);
+  close(fd[1]);
   /* Return the file descriptor that the client should use to read notifications
    * about sealed objects. */
   return fd[0];
 }
 
-plasma_connection *plasma_connect(const char *store_socket_name,
-                                  const char *manager_addr,
-                                  int manager_port) {
-  CHECK(store_socket_name);
-  /* Try to connect to the Plasma store. If unsuccessful, retry several times.
-   */
+int socket_connect_retry(const char *socket_name,
+                         int num_retries,
+                         int64_t timeout) {
+  CHECK(socket_name);
   int fd = -1;
-  int connected_successfully = 0;
-  for (int num_attempts = 0; num_attempts < NUM_CONNECT_ATTEMPTS;
-       ++num_attempts) {
-    fd = connect_ipc_sock(store_socket_name);
+  for (int num_attempts = 0; num_attempts < num_retries; ++num_attempts) {
+    fd = connect_ipc_sock(socket_name);
     if (fd >= 0) {
-      connected_successfully = 1;
       break;
     }
-    /* Sleep for 100 milliseconds. */
-    usleep(100000);
+    /* Sleep for timeout milliseconds. */
+    usleep(timeout * 1000);
   }
-  /* If we could not connect to the Plasma store, exit. */
-  if (!connected_successfully) {
-    LOG_ERR("could not connect to store %s", store_socket_name);
+  /* If we could not connect to the socket, exit. */
+  if (fd == -1) {
+    LOG_ERR("could not connect to socket %s", socket_name);
     exit(-1);
   }
+  return fd;
+}
+
+plasma_connection *plasma_connect(const char *store_socket_name,
+                                  const char *manager_socket_name,
+                                  int release_delay) {
   /* Initialize the store connection struct */
   plasma_connection *result = malloc(sizeof(plasma_connection));
-  result->store_conn = fd;
-  if (manager_addr != NULL) {
-    result->manager_conn = plasma_manager_connect(manager_addr, manager_port);
-    if (result->manager_conn < 0) {
-      LOG_ERR("Could not connect to Plasma manager %s:%d", manager_addr,
-              manager_port);
-    }
+  result->store_conn = socket_connect_retry(
+      store_socket_name, NUM_CONNECT_ATTEMPTS, CONNECT_TIMEOUT);
+  if (manager_socket_name != NULL) {
+    result->manager_conn = socket_connect_retry(
+        manager_socket_name, NUM_CONNECT_ATTEMPTS, CONNECT_TIMEOUT);
   } else {
     result->manager_conn = -1;
   }
   result->mmap_table = NULL;
   result->objects_in_use = NULL;
+  result->config.release_delay = release_delay;
+  utringbuffer_new(result->release_history, release_delay, &object_id_icd);
   return result;
 }
 
@@ -351,6 +400,11 @@ void plasma_disconnect(plasma_connection *conn) {
   if (conn->manager_conn >= 0) {
     close(conn->manager_conn);
   }
+  object_id *id = NULL;
+  while ((id = (object_id *) utringbuffer_next(conn->release_history, id))) {
+    plasma_perform_release(conn, *id);
+  }
+  utringbuffer_free(conn->release_history);
   free(conn);
 }
 
@@ -441,10 +495,12 @@ void plasma_fetch(plasma_connection *conn,
       CHECK(nbytes == sizeof(reply));
       success = reply.has_object;
     }
+    CHECK(reply.num_object_ids == 1);
     /* Update the correct index in is_fetched. */
     int i = 0;
     for (; i < num_object_ids; i++) {
-      if (memcmp(&object_ids[i], &reply.object_id, sizeof(object_id)) == 0) {
+      if (memcmp(&object_ids[i], &reply.object_ids[0], sizeof(object_id)) ==
+          0) {
         /* Check that this isn't a duplicate response. */
         CHECK(!is_fetched[i]);
         is_fetched[i] = success;
@@ -454,6 +510,30 @@ void plasma_fetch(plasma_connection *conn,
     CHECKM(i != num_object_ids,
            "Received unexpected object ID from manager during fetch.");
   }
+}
+
+int plasma_wait(plasma_connection *conn,
+                int num_object_ids,
+                object_id object_ids[],
+                uint64_t timeout,
+                int num_returns,
+                object_id return_object_ids[]) {
+  CHECK(conn->manager_conn >= 0);
+  plasma_request *req =
+      make_plasma_multiple_request(num_object_ids, object_ids);
+  req->num_returns = num_returns;
+  req->timeout = timeout;
+  plasma_send_request(conn->manager_conn, PLASMA_WAIT, req);
+  free(req);
+  int64_t return_size =
+      sizeof(plasma_reply) + (num_returns - 1) * sizeof(object_id);
+  plasma_reply *reply = malloc(return_size);
+  int nbytes = recv(conn->manager_conn, (uint8_t *) reply, return_size, 0);
+  CHECK(nbytes == return_size);
+  memcpy(return_object_ids, reply->object_ids, num_returns * sizeof(object_id));
+  int num_objects_returned = reply->num_objects_returned;
+  free(reply);
+  return num_objects_returned;
 }
 
 int get_manager_fd(plasma_connection *conn) {

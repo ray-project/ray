@@ -10,10 +10,12 @@ import unittest
 import random
 import time
 import tempfile
+import threading
 
 import plasma
 
 USE_VALGRIND = False
+PLASMA_STORE_MEMORY = 1000000000
 
 def random_object_id():
   return "".join([chr(random.randint(0, 255)) for _ in range(plasma.PLASMA_ID_SIZE)])
@@ -52,20 +54,27 @@ def assert_get_object_equal(unit_test, client1, client2, object_id, memory_buffe
   unit_test.assertEqual(client1.get_metadata(object_id)[:],
                         client2.get_metadata(object_id)[:])
 
+# Check if the redis-server binary is present.
+redis_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../common/thirdparty/redis-3.2.3/src/redis-server")
+if not os.path.exists(redis_path):
+  raise Exception("You do not have the redis-server binary. Run `make test` in the plasma directory to get it.")
+
 class TestPlasmaClient(unittest.TestCase):
 
   def setUp(self):
     # Start Plasma.
     plasma_store_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../build/plasma_store")
     store_name = "/tmp/store{}".format(random.randint(0, 10000))
-    command = [plasma_store_executable, "-s", store_name]
+    command = [plasma_store_executable, "-s", store_name, "-m", str(PLASMA_STORE_MEMORY)]
     if USE_VALGRIND:
       self.p = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + command)
       time.sleep(2.0)
     else:
       self.p = subprocess.Popen(command)
     # Connect to Plasma.
-    self.plasma_client = plasma.PlasmaClient(store_name)
+    self.plasma_client = plasma.PlasmaClient(store_name, None, 64)
+    # For the eviction test
+    self.plasma_client2 = plasma.PlasmaClient(store_name, None, 0)
 
   def tearDown(self):
     # Kill the plasma store process.
@@ -191,6 +200,45 @@ class TestPlasmaClient(unittest.TestCase):
       memory_buffer[0] = chr(0)
     self.assertRaises(Exception, illegal_assignment)
 
+  def test_evict(self):
+    client = self.plasma_client2
+    object_id1 = random_object_id()
+    b1 = client.create(object_id1, 1000)
+    client.seal(object_id1)
+    del b1
+    self.assertEqual(client.evict(1), 1000)
+
+    object_id2 = random_object_id()
+    object_id3 = random_object_id()
+    b2 = client.create(object_id2, 999)
+    b3 = client.create(object_id3, 998)
+    del b3
+    client.seal(object_id3)
+    self.assertEqual(client.evict(1000), 998)
+
+    object_id4 = random_object_id()
+    b4 = client.create(object_id4, 997)
+    client.seal(object_id4)
+    del b4
+    client.seal(object_id2)
+    del b2
+    self.assertEqual(client.evict(1), 997)
+    self.assertEqual(client.evict(1), 999)
+
+    object_id5 = random_object_id()
+    object_id6 = random_object_id()
+    object_id7 = random_object_id()
+    b5 = client.create(object_id5, 996)
+    b6 = client.create(object_id6, 995)
+    b7 = client.create(object_id7, 994)
+    client.seal(object_id5)
+    client.seal(object_id6)
+    client.seal(object_id7)
+    del b5
+    del b6
+    del b7
+    self.assertEqual(client.evict(2000), 996 + 995 + 994)
+
   def test_subscribe(self):
     # Subscribe to notifications from the Plasma Store.
     sock = self.plasma_client.subscribe()
@@ -212,8 +260,10 @@ class TestPlasmaManager(unittest.TestCase):
     plasma_store_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../build/plasma_store")
     store_name1 = "/tmp/store{}".format(random.randint(0, 10000))
     store_name2 = "/tmp/store{}".format(random.randint(0, 10000))
-    plasma_store_command1 = [plasma_store_executable, "-s", store_name1]
-    plasma_store_command2 = [plasma_store_executable, "-s", store_name2]
+    manager_name1 = "/tmp/manager{}".format(random.randint(0, 10000))
+    manager_name2 = "/tmp/manager{}".format(random.randint(0, 10000))
+    plasma_store_command1 = [plasma_store_executable, "-s", store_name1, "-m", str(PLASMA_STORE_MEMORY)]
+    plasma_store_command2 = [plasma_store_executable, "-s", store_name2, "-m", str(PLASMA_STORE_MEMORY)]
 
     if USE_VALGRIND:
       self.p2 = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + plasma_store_command1)
@@ -224,45 +274,26 @@ class TestPlasmaManager(unittest.TestCase):
 
     # Start a Redis server.
     redis_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../common/thirdparty/redis-3.2.3/src/redis-server")
-    self.redis_process = None
-    manager_redis_args = []
-    if os.path.exists(redis_path):
-      redis_port = 6379
-      with open(os.devnull, 'w') as FNULL:
-        self.redis_process = subprocess.Popen([redis_path,
-                                               "--port", str(redis_port)],
-                                              stdout=FNULL)
-      time.sleep(0.1)
-      manager_redis_args = ["-d", "{addr}:{port}".format(addr="127.0.0.1",
-                                                      port=redis_port)]
+    redis_port = 6379
+    with open(os.devnull, "w") as FNULL:
+      self.redis_process = subprocess.Popen([redis_path,
+                                             "--port", str(redis_port)],
+                                             stdout=FNULL)
+    time.sleep(0.1)
 
     # Start two PlasmaManagers.
-    self.port1 = random.randint(10000, 50000)
-    self.port2 = random.randint(10000, 50000)
-    plasma_manager_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../build/plasma_manager")
-    plasma_manager_command1 = [plasma_manager_executable,
-                               "-s", store_name1,
-                               "-m", "127.0.0.1",
-                               "-p", str(self.port1)] + manager_redis_args
-    plasma_manager_command2 = [plasma_manager_executable,
-                               "-s", store_name2,
-                               "-m", "127.0.0.1",
-                               "-p", str(self.port2)] + manager_redis_args
-
-    if USE_VALGRIND:
-      self.p4 = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + plasma_manager_command1)
-      self.p5 = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + plasma_manager_command2)
-    else:
-      self.p4 = subprocess.Popen(plasma_manager_command1)
-      self.p5 = subprocess.Popen(plasma_manager_command2)
+    redis_address = "{}:{}".format("127.0.0.1", redis_port)
+    self.p4, self.port1 = plasma.start_plasma_manager(store_name1, manager_name1, redis_address, use_valgrind=USE_VALGRIND)
+    self.p5, self.port2 = plasma.start_plasma_manager(store_name2, manager_name2, redis_address, use_valgrind=USE_VALGRIND)
 
     # Connect two PlasmaClients.
-    self.client1 = plasma.PlasmaClient(store_name1, "127.0.0.1", self.port1)
-    self.client2 = plasma.PlasmaClient(store_name2, "127.0.0.1", self.port2)
+    self.client1 = plasma.PlasmaClient(store_name1, manager_name1)
+    self.client2 = plasma.PlasmaClient(store_name2, manager_name2)
 
   def tearDown(self):
     # Kill the PlasmaStore and PlasmaManager processes.
     if USE_VALGRIND:
+      time.sleep(1) # give processes opportunity to finish work
       self.p4.send_signal(signal.SIGTERM)
       self.p4.wait()
       self.p5.send_signal(signal.SIGTERM)
@@ -279,8 +310,7 @@ class TestPlasmaManager(unittest.TestCase):
       self.p3.kill()
       self.p4.kill()
       self.p5.kill()
-    if self.redis_process:
-      self.redis_process.kill()
+    self.redis_process.kill()
 
   # def test_fetch(self):
   #   if self.redis_process is None:
@@ -336,6 +366,57 @@ class TestPlasmaManager(unittest.TestCase):
   #                             memory_buffer=memory_buffer1, metadata=metadata1)
   #     assert_get_object_equal(self, self.client2, self.client1, object_id2,
   #                             memory_buffer=memory_buffer2, metadata=metadata2)
+
+  def test_wait(self):
+    # Test timeout.
+    obj_id0 = random_object_id()
+    self.client1.wait([obj_id0], timeout=100, num_returns=1)
+    # If we get here, the test worked.
+
+    # Test wait if local objects available.
+    obj_id1 = random_object_id()
+    self.client1.create(obj_id1, 1000)
+    self.client1.seal(obj_id1)
+    ready, waiting = self.client1.wait([obj_id1], timeout=100, num_returns=1)
+    self.assertEqual(len(ready), 1)
+    self.assertEqual(ready[0], obj_id1)
+    self.assertEqual(len(waiting), 0)
+
+    # Test wait if only one object available and only one object waited for.
+    obj_id2 = random_object_id()
+    self.client1.create(obj_id2, 1000)
+    # Don't seal.
+    ready, waiting = self.client1.wait([obj_id2, obj_id1], timeout=100, num_returns=1)
+    self.assertEqual(len(ready), 1)
+    self.assertEqual(ready[0], obj_id1)
+    self.assertEqual(len(waiting), 1)
+    self.assertEqual(waiting[0], obj_id2)
+
+    # Test wait if object is sealed later.
+    obj_id3 = random_object_id()
+
+    def finish():
+      self.client2.create(obj_id3, 1000)
+      self.client2.seal(obj_id3)
+      self.client2.transfer("127.0.0.1", self.port1, obj_id3)
+
+    t = threading.Timer(0.1, finish)
+    t.start()
+    ready, waiting = self.client1.wait([obj_id3, obj_id2, obj_id1], timeout=1000, num_returns=2)
+    self.assertEqual(len(ready), 2)
+    self.assertTrue((ready[0] == obj_id1 and ready[1] == obj_id3) or (ready[0] == obj_id3 and ready[1] == obj_id1))
+    self.assertEqual(len(waiting), 1)
+    self.assertTrue(waiting[0] == obj_id2)
+
+    # Test if the appropriate number of objects is shown if some objects are not ready
+    ready, wait = self.client1.wait([obj_id3, obj_id2, obj_id1], 100, 3)
+    self.assertEqual(len(ready), 2)
+    self.assertTrue((ready[0] == obj_id1 and ready[1] == obj_id3) or (ready[0] == obj_id3 and ready[1] == obj_id1))
+    self.assertEqual(len(waiting), 1)
+    self.assertTrue(waiting[0] == obj_id2)
+
+    # Don't forget to seal obj_id2.
+    self.client1.seal(obj_id2)
 
   def test_transfer(self):
     for _ in range(100):

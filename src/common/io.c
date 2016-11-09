@@ -25,10 +25,11 @@
  * write_message and read_message methods.
  *
  * @param port The port to bind to.
+ * @param shall_listen Are we also starting to listen on the socket?
  * @return A non-blocking file descriptor for the socket, or -1 if an error
  *         occurs.
  */
-int bind_inet_sock(const int port) {
+int bind_inet_sock(const int port, bool shall_listen) {
   struct sockaddr_in name;
   int socket_fd = socket(PF_INET, SOCK_STREAM, 0);
   if (socket_fd < 0) {
@@ -55,7 +56,7 @@ int bind_inet_sock(const int port) {
     close(socket_fd);
     return -1;
   }
-  if (listen(socket_fd, 5) == -1) {
+  if (shall_listen && listen(socket_fd, 5) == -1) {
     LOG_ERR("Could not listen to socket %d", port);
     close(socket_fd);
     return -1;
@@ -68,10 +69,11 @@ int bind_inet_sock(const int port) {
  * pathname. Removes any existing file at the pathname.
  *
  * @param socket_pathname The pathname for the socket.
+ * @param shall_listen Are we also starting to listen on the socket?
  * @return A blocking file descriptor for the socket, or -1 if an error
  *         occurs.
  */
-int bind_ipc_sock(const char *socket_pathname) {
+int bind_ipc_sock(const char *socket_pathname, bool shall_listen) {
   struct sockaddr_un socket_address;
   int socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
   if (socket_fd < 0) {
@@ -104,7 +106,7 @@ int bind_ipc_sock(const char *socket_pathname) {
     close(socket_fd);
     return -1;
   }
-  if (listen(socket_fd, 5) == -1) {
+  if (shall_listen && listen(socket_fd, 5) == -1) {
     LOG_ERR("Could not listen to socket %s", socket_pathname);
     close(socket_fd);
     return -1;
@@ -264,16 +266,15 @@ int read_bytes(int fd, uint8_t *cursor, size_t length) {
  *
  * @param fd The file descriptor to read from. It can be non-blocking.
  * @param type The type of the message that is read will be written at this
-          address. If there was an error while reading, this will be
-          DISCONNECT_CLIENT.
+ *        address. If there was an error while reading, this will be
+ *        DISCONNECT_CLIENT.
  * @param length The size in bytes of the message that is read will be written
-          at this address. This size does not include the bytes used to encode
-          the type and length. If there was an error while reading, this will
-          be 0.
+ *        at this address. This size does not include the bytes used to encode
+ *        the type and length. If there was an error while reading, this will
+ *        be 0.
  * @param bytes The address at which to write the pointer to the bytes that are
-          read and allocated by this function. If there was an error while
-          reading, this will be NULL.
-
+ *        read and allocated by this function. If there was an error while
+ *        reading, this will be NULL.
  * @return Void.
  */
 void read_message(int fd, int64_t *type, int64_t *length, uint8_t **bytes) {
@@ -299,6 +300,47 @@ disconnected:
   *length = 0;
   *bytes = NULL;
   return;
+}
+
+/**
+ * Read a sequence of bytes written by write_message from a file descriptor.
+ * This does not allocate space for the message if the provided buffer is
+ * large enough and can therefore often avoid allocations.
+ *
+ * @note The caller must create and free the buffer.
+ *
+ * @param fd The file descriptor to read from. It can be non-blocking.
+ * @param type The type of the message that is read will be written at this
+ *        address. If there was an error while reading, this will be
+ *        DISCONNECT_CLIENT.
+ * @param buffer The array the message will be written to. If it is not
+ *        large enough to hold the message, it will be enlarged by read_buffer.
+ * @return Number of bytes of the message that were read. This size does not
+ *         include the bytes used to encode the type and length. If there was
+ *         an error while reading, this will be 0.
+ */
+int64_t read_buffer(int fd, int64_t *type, UT_array *buffer) {
+  int64_t length;
+  int closed = read_bytes(fd, (uint8_t *) type, sizeof(int64_t));
+  if (closed) {
+    goto disconnected;
+  }
+  closed = read_bytes(fd, (uint8_t *) &length, sizeof(int64_t));
+  if (closed) {
+    goto disconnected;
+  }
+  if (length > utarray_len(buffer)) {
+    utarray_resize(buffer, length);
+  }
+  closed = read_bytes(fd, (uint8_t *) utarray_front(buffer), length);
+  if (closed) {
+    goto disconnected;
+  }
+  return length;
+disconnected:
+  /* Handle the case in which the socket is closed. */
+  *type = DISCONNECT_CLIENT;
+  return 0;
 }
 
 /* Write a null-terminated string to a file descriptor. */

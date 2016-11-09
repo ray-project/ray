@@ -5,6 +5,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <inttypes.h>
+#include <execinfo.h>
+
+#include "utarray.h"
 
 #ifndef RAY_COMMON_DEBUG
 #define LOG_DEBUG(M, ...)
@@ -20,31 +24,36 @@
 #define LOG_INFO(M, ...) \
   fprintf(stderr, "[INFO] (%s:%d) " M "\n", __FILE__, __LINE__, ##__VA_ARGS__)
 
-#define CHECK(COND)                        \
-  do {                                     \
-    if (!(COND)) {                         \
-      LOG_ERR("Check failure: %s", #COND); \
-      exit(-1);                            \
-    }                                      \
+#define CHECKM(COND, M, ...)                                                \
+  do {                                                                      \
+    if (!(COND)) {                                                          \
+      LOG_ERR("Check failure: %s \n" M, #COND, ##__VA_ARGS__);              \
+      void *buffer[255];                                                    \
+      const int calls = backtrace(buffer, sizeof(buffer) / sizeof(void *)); \
+      backtrace_symbols_fd(buffer, calls, 1);                               \
+      exit(-1);                                                             \
+    }                                                                       \
   } while (0);
 
-#define CHECKM(COND, M, ...)                                   \
-  do {                                                         \
-    if (!(COND)) {                                             \
-      LOG_ERR("Check failure: %s \n" M, #COND, ##__VA_ARGS__); \
-      exit(-1);                                                \
-    }                                                          \
-  } while (0);
+#define CHECK(COND) CHECKM(COND, "")
+
+#define DCHECK(COND)
+#ifdef RAY_COMMON_DEBUG
+CHECK(COND)
+#endif
+
+/* These are exit codes for common errors that can occur in Ray components. */
+#define EXIT_COULD_NOT_BIND_PORT -2
+
+/** This macro indicates that this pointer owns the data it is pointing to
+ *  and is responsible for freeing it. */
+#define OWNER
 
 #define UNIQUE_ID_SIZE 20
 
-/* Cleanup method for running tests with the greatest library.
- * Runs the test, then clears the Redis database. */
-#define RUN_REDIS_TEST(context, test) \
-  RUN_TEST(test);                     \
-  freeReplyObject(redisCommand(context, "FLUSHALL"));
-
 typedef struct { unsigned char id[UNIQUE_ID_SIZE]; } unique_id;
+
+extern const UT_icd object_id_icd;
 
 extern const unique_id NIL_ID;
 

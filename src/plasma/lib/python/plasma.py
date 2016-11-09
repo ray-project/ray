@@ -1,6 +1,8 @@
-import os
-import socket
 import ctypes
+import os
+import random
+import socket
+import subprocess
 import time
 
 Addr = ctypes.c_ubyte * 4
@@ -14,8 +16,10 @@ class PlasmaID(ctypes.Structure):
 def make_plasma_id(string):
   if len(string) != PLASMA_ID_SIZE:
     raise Exception("PlasmaIDs must be {} characters long".format(PLASMA_ID_SIZE))
-  object_id = map(ord, string)
-  return PlasmaID(plasma_id=ID(*object_id))
+  return PlasmaID(plasma_id=ID.from_buffer_copy(string))
+
+def plasma_id_to_str(plasma_id):
+  return str(bytearray(plasma_id.plasma_id))
 
 class PlasmaBuffer(object):
   """This is the type of objects returned by calls to get with a PlasmaClient.
@@ -38,8 +42,12 @@ class PlasmaBuffer(object):
     self.plasma_client = plasma_client
 
   def __del__(self):
-    """Notify Plasma that the object is no longer needed."""
-    self.plasma_client.client.plasma_release(self.plasma_client.plasma_conn, self.plasma_id)
+    """Notify Plasma that the object is no longer needed.
+
+    If the plasma client has been shut down, then don't do anything.
+    """
+    if self.plasma_client.alive:
+      self.plasma_client.client.plasma_release(self.plasma_client.plasma_conn, self.plasma_id)
 
   def __getitem__(self, index):
     """Read from the PlasmaBuffer as if it were just a regular buffer."""
@@ -64,20 +72,14 @@ class PlasmaClient(object):
   strings.
   """
 
-  def __init__(self, socket_name, addr=None, port=None):
+  def __init__(self, store_socket_name, manager_socket_name=None, release_delay=64):
     """Initialize the PlasmaClient.
 
     Args:
-      socket_name (str): Name of the socket the plasma store is listening at.
-      addr (str): IPv4 address of plasma manager attached to the plasma store.
-      port (int): Port number of the plasma manager attached to the plasma store.
+      store_socket_name (str): Name of the socket the plasma store is listening at.
+      manager_socket_name (str): Name of the socket the plasma manager is listening at.
     """
-    if port is not None:
-      if not isinstance(port, int):
-        raise Exception("The 'port' argument must be an integer. The given argument has type {}.".format(type(port)))
-      if not 0 < port < 65536:
-        raise Exception("The 'port' argument must be greater than 0 and less than 65536. The given value is {}.".format(port))
-
+    self.alive = True
     plasma_client_library = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../build/plasma_client.so")
     self.client = ctypes.cdll.LoadLibrary(plasma_client_library)
 
@@ -89,6 +91,7 @@ class PlasmaClient(object):
     self.client.plasma_seal.restype = None
     self.client.plasma_delete.restype = None
     self.client.plasma_subscribe.restype = ctypes.c_int
+    self.client.plasma_wait.restype = ctypes.c_int
 
     self.buffer_from_memory = ctypes.pythonapi.PyBuffer_FromMemory
     self.buffer_from_memory.argtypes = [ctypes.c_void_p, ctypes.c_int64]
@@ -98,12 +101,21 @@ class PlasmaClient(object):
     self.buffer_from_read_write_memory.argtypes = [ctypes.c_void_p, ctypes.c_int64]
     self.buffer_from_read_write_memory.restype = ctypes.py_object
 
-    if addr is not None and port is not None:
+    if manager_socket_name is not None:
       self.has_manager_conn = True
-      self.plasma_conn = ctypes.c_void_p(self.client.plasma_connect(socket_name, addr, port))
+      self.plasma_conn = ctypes.c_void_p(self.client.plasma_connect(store_socket_name, manager_socket_name, release_delay))
     else:
       self.has_manager_conn = False
-      self.plasma_conn = ctypes.c_void_p(self.client.plasma_connect(socket_name, None, 0))
+      self.plasma_conn = ctypes.c_void_p(self.client.plasma_connect(store_socket_name, None, release_delay))
+
+  def shutdown(self):
+    """Shutdown the client so that it does not send messages.
+
+    If we kill the Plasma store and Plasma manager that this client is connected
+    to, then we can use this method to prevent the client from trying to send
+    messages to the killed processes.
+    """
+    self.alive = False
 
   def create(self, object_id, size, metadata=None):
     """Create a new buffer in the PlasmaStore for a particular object ID.
@@ -193,6 +205,17 @@ class PlasmaClient(object):
     """
     self.client.plasma_delete(self.plasma_conn, make_plasma_id(object_id))
 
+  def evict(self, num_bytes):
+    """Evict some objects until to recover some bytes.
+
+    Recover at least num_bytes bytes if possible.
+
+    Args:
+      num_bytes (int): The number of bytes to attempt to recover.
+    """
+    num_bytes_evicted = self.client.plasma_evict(self.plasma_conn, num_bytes)
+    return num_bytes_evicted
+
   def transfer(self, addr, port, object_id):
     """Transfer local object with id object_id to another plasma instance
 
@@ -223,6 +246,39 @@ class PlasmaClient(object):
                              success_array);
     return [bool(success) for success in success_array]
 
+  def wait(self, object_ids, timeout, num_returns):
+    """Wait until num_returns objects in object_ids are ready.
+
+    Args:
+      object_ids (List[str]): List of object IDs to wait for.
+      timeout (int): Return to the caller after timeout milliseconds.
+      num_returns (int): We are waiting for this number of objects to be ready.
+
+    Returns:
+      ready_ids, waiting_ids (List[str], List[str]): List of object IDs that
+        are ready and list of object IDs we might still wait on respectively.
+    """
+    if not self.has_manager_conn:
+      raise Exception("Not connected to the plasma manager socket")
+    if num_returns < 0:
+      raise Exception("The argument num_returns cannot be less than one.")
+    if num_returns > len(object_ids):
+      raise Exception("The argument num_returns cannot be greater than len(object_ids): num_returns is {}, len(object_ids) is {}.".format(num_returns, len(object_ids)))
+    if timeout > 2 ** 36:
+      raise Exception("The method wait currently cannot be used with a timeout greater than 2 ** 36.")
+    object_id_array = (len(object_ids) * PlasmaID)()
+    for i, object_id in enumerate(object_ids):
+      object_id_array[i] = make_plasma_id(object_id)
+    return_id_array = (num_returns * PlasmaID)()
+    num_return_objects = self.client.plasma_wait(self.plasma_conn,
+                                                 object_id_array._length_,
+                                                 object_id_array,
+                                                 ctypes.c_int64(timeout),
+                                                 num_returns,
+                                                 return_id_array)
+    ready_ids = map(plasma_id_to_str, return_id_array[num_returns-num_return_objects:])
+    return ready_ids, list(set(object_ids) - set(ready_ids))
+
   def subscribe(self):
     """Subscribe to notifications about sealed objects."""
     fd = self.client.plasma_subscribe(self.plasma_conn)
@@ -244,3 +300,49 @@ class PlasmaClient(object):
         assert len(message_data) == PLASMA_ID_SIZE
         break
     return message_data
+
+def start_plasma_manager(store_name, manager_name, redis_address, num_retries=20, use_valgrind=False, run_profiler=False):
+  """Start a plasma manager and return the ports it listens on.
+
+  Args:
+    store_name (str): The name of the plasma store socket.
+    manager_name (str): The name of the plasma manager socket.
+    redis_address (str): The address of the Redis server.
+    use_valgrind (bool): True if the Plasma manager should be started inside of
+      valgrind and False otherwise.
+
+  Returns:
+    The process ID of the Plasma manager and the port that the manager is
+      listening on.
+
+  Raises:
+    Exception: An exception is raised if the manager could not be started.
+  """
+  plasma_manager_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../build/plasma_manager")
+  port = None
+  process = None
+  counter = 0
+  while counter < num_retries:
+    if counter > 0:
+      print("Plasma manager failed to start, retrying now.")
+    port = random.randint(10000, 65535)
+    command = [plasma_manager_executable,
+               "-s", store_name,
+               "-m", manager_name,
+               "-h", "127.0.0.1",
+               "-p", str(port),
+               "-r", redis_address]
+    if use_valgrind:
+      process = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + command)
+    elif run_profiler:
+      process = subprocess.Popen(["valgrind", "--tool=callgrind"] + command)
+    else:
+      process = subprocess.Popen(command)
+    # This sleep is critical. If the plasma_manager fails to start because the
+    # port is already in use, then we need it to fail within 0.1 seconds.
+    time.sleep(0.1)
+    # See if the process has terminated
+    if process.poll() == None:
+      return process, port
+    counter += 1
+  raise Exception("Couldn't start plasma manager.")
