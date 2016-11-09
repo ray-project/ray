@@ -371,7 +371,6 @@ char *object_id_to_persist_path(object_id object_id) {
   for (int i = strlen(PERSIST_PATH); i < path_size; i++) {
     sprintf(&file_path[i*2], "%02X", object_id.id[i]);
   }
-  printf("Creating path: %s\n", file_path);
   return file_path;
 }
 
