@@ -97,10 +97,7 @@ void new_object_no_task_lookup_callback(object_id object_id,
                                         task *task,
                                         void *user_context) {
   new_object_succeeded = 1;
-  CHECK(task_ids_equal(task_task_id(task), new_object_task_id));
-  CHECK(node_id_is_nil(task_node(task)));
-  task_spec *spec = task_task_spec(task);
-  CHECK(function_id_is_nil(task_function(spec)));
+  CHECK(task == NULL);
   event_loop_stop(g_loop);
 }
 

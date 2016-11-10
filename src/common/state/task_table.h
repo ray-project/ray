@@ -10,7 +10,7 @@
  * local and global schedulers (and also persisted to the state database).
  * Here are examples of events that are recorded by the task table:
  *
- * 1) local scheduler writes it when submits a task to the global scheduler;
+ * 1) local scheduler writes when it submits a task to the global scheduler;
  * 2) global scheduler reads it to get the task submitted by local schedulers;
  * 3) global scheduler writes it when assigning the task to a local scheduler;
  * 4) local scheduler reads it to get its tasks assigned by global scheduler;
@@ -43,8 +43,7 @@ void task_table_get_task(db_handle *db,
 /**
  * Add a task entry, including task spec and scheduling information, to the
  * task table. This will overwrite any task already in the task table with the
- * same
- * task ID.
+ * same task ID.
  *
  * @param db_handle Database handle.
  * @param task The task entry to add to the table.
@@ -91,7 +90,10 @@ void task_table_update(db_handle *db_handle,
 typedef void (*task_table_subscribe_callback)(task *task, void *user_context);
 
 /**
- * Register callback for a certain event.
+ * Register a callback for a task event. An event is any update of a task in
+ * the task table, produced by task_table_add_task or task_table_add_task.
+ * Events include changes to the task's scheduling state or changes to the
+ * task's node location.
  *
  * @param db_handle Database handle.
  * @param subscribe_callback Callback that will be called when the task table is
@@ -111,7 +113,7 @@ typedef void (*task_table_subscribe_callback)(task *task, void *user_context);
  */
 void task_table_subscribe(db_handle *db_handle,
                           node_id node,
-                          int32_t state_filter,
+                          scheduling_state state_filter,
                           task_table_subscribe_callback subscribe_callback,
                           void *subscribe_context,
                           retry_info *retry,
@@ -122,7 +124,7 @@ void task_table_subscribe(db_handle *db_handle,
  * database. */
 typedef struct {
   node_id node;
-  int32_t state_filter;
+  scheduling_state state_filter;
   task_table_subscribe_callback subscribe_callback;
   void *subscribe_context;
 } task_table_subscribe_data;

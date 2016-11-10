@@ -33,7 +33,7 @@ void task_table_update(db_handle *db_handle,
 /* TODO(swang): A corresponding task_table_unsubscribe. */
 void task_table_subscribe(db_handle *db_handle,
                           node_id node,
-                          int32_t state_filter,
+                          scheduling_state state_filter,
                           task_table_subscribe_callback subscribe_callback,
                           void *subscribe_context,
                           retry_info *retry,

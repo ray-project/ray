@@ -110,16 +110,6 @@ task_spec *start_construct_task_spec(task_id parent_task_id,
 void finish_construct_task_spec(task_spec *spec);
 
 /**
- * Allocate and initialize an empty task spec. All task spec fields that are
- * not unique_ids will be set to 0. unique_id fields will be NIL_ID. Must be
- * freed with free_task_spec after use.
- *
- * @param task_id The returned task spec will have its ID set to this value.
- * @return A pointer to an empty task spec.
- */
-task_spec *alloc_nil_task_spec(task_id task_id);
-
-/**
  * The size of the task in bytes.
  *
  * @param spec The task_spec in question.
@@ -294,16 +284,6 @@ typedef struct task_impl task;
  * @param node The ID of the node that the task is scheduled on, if any.
  */
 task *alloc_task(task_spec *spec, scheduling_state state, node_id node);
-
-/**
- * Allocate and initialize an empty task. All task fields that are not
- * unique_ids will be set to 0. unique_id fields will be NIL_ID. Must be freed
- * with free_task after use.
- *
- * @param task_id The returned task will have its ID set to this value.
- * @return A pointer to an empty task.
- */
-task *alloc_nil_task(task_id task_id);
 
 /** Size of task structure in bytes. */
 int64_t task_size(task *task);

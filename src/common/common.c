@@ -25,7 +25,7 @@ unique_id globally_unique_id(void) {
 }
 
 bool object_ids_equal(object_id first_id, object_id second_id) {
-  return UNIQUE_ID_EQ(first_id, second_id);
+  return UNIQUE_ID_EQ(first_id, second_id) ? true : false;
 }
 
 bool object_id_is_nil(object_id id) {

@@ -30,13 +30,8 @@ void lookup_nil_fail_callback(unique_id id,
 
 void lookup_nil_success_callback(task *task, void *context) {
   lookup_nil_success = 1;
-  task_spec *spec = task_task_spec(task);
-  task_id task_id = task_spec_id(spec);
+  CHECK(task == NULL);
   CHECK(context == (void *) lookup_nil_context);
-  CHECK(task_ids_equal(task_id, lookup_nil_id));
-  CHECK(task_state(task) == 0);
-  CHECK(task_id_is_nil(task_node(task)));
-  CHECK(function_id_is_nil(task_function(spec)));
   event_loop_stop(g_loop);
 }
 
