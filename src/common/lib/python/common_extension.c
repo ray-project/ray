@@ -51,6 +51,73 @@ static PyObject *PyObjectID_id(PyObject *self) {
                                     sizeof(object_id));
 }
 
+static PyObject *PyObjectID_richcompare(PyObjectID *self,
+                                        PyObject *other,
+                                        int op) {
+  PyObject *result = NULL;
+  if (Py_TYPE(self)->tp_richcompare != Py_TYPE(other)->tp_richcompare) {
+    result = Py_NotImplemented;
+  } else {
+    PyObjectID *other_id = (PyObjectID *) other;
+    switch (op) {
+    case Py_LT:
+      result = Py_NotImplemented;
+      break;
+    case Py_LE:
+      result = Py_NotImplemented;
+      break;
+    case Py_EQ:
+      result = (memcmp(&self->object_id.id[0], &other_id->object_id.id[0],
+                       UNIQUE_ID_SIZE) == 0)
+                   ? Py_True
+                   : Py_False;
+      break;
+    case Py_NE:
+      result = (memcmp(&self->object_id.id[0], &other_id->object_id.id[0],
+                       UNIQUE_ID_SIZE) != 0)
+                   ? Py_True
+                   : Py_False;
+      break;
+    case Py_GT:
+      result = Py_NotImplemented;
+      break;
+    case Py_GE:
+      result = Py_NotImplemented;
+      break;
+    }
+  }
+  Py_XINCREF(result);
+  return result;
+}
+
+static long PyObjectID_hash(PyObjectID *self) {
+  PyObject *tuple = PyTuple_New(UNIQUE_ID_SIZE);
+  for (int i = 0; i < UNIQUE_ID_SIZE; ++i) {
+    PyTuple_SetItem(tuple, i, PyInt_FromLong(self->object_id.id[i]));
+  }
+  long hash = PyObject_Hash(tuple);
+  Py_XDECREF(tuple);
+  return hash;
+}
+
+static PyObject *PyObjectID_repr(PyObjectID *self) {
+  Py_ssize_t hex_length = 2 * UNIQUE_ID_SIZE;
+  char hex_id[hex_length];
+  hex_id[0] = 'O';
+  hex_id[1] = 'b';
+  hex_id[2] = 'j';
+  hex_id[3] = 'e';
+  hex_id[4] = 'c';
+  hex_id[5] = 't';
+  hex_id[6] = 'I';
+  hex_id[7] = 'D';
+  hex_id[8] = '(';
+  sha1_to_hex(self->object_id.id, &hex_id[9]);
+  /* This overrides a null byte written by sha1_to_hex. */
+  hex_id[8 + hex_length + 1] = ')';
+  return PyString_FromStringAndSize(hex_id, 8 + hex_length + 2);
+}
+
 static PyObject *PyObjectID___reduce__(PyObjectID *self) {
   PyErr_SetString(CommonError, "ObjectID objects cannot be serialized.");
   return NULL;
@@ -70,44 +137,44 @@ static PyMemberDef PyObjectID_members[] = {
 };
 
 PyTypeObject PyObjectIDType = {
-    PyObject_HEAD_INIT(NULL) 0, /* ob_size */
-    "common.ObjectID",          /* tp_name */
-    sizeof(PyObjectID),         /* tp_basicsize */
-    0,                          /* tp_itemsize */
-    0,                          /* tp_dealloc */
-    0,                          /* tp_print */
-    0,                          /* tp_getattr */
-    0,                          /* tp_setattr */
-    0,                          /* tp_compare */
-    0,                          /* tp_repr */
-    0,                          /* tp_as_number */
-    0,                          /* tp_as_sequence */
-    0,                          /* tp_as_mapping */
-    0,                          /* tp_hash */
-    0,                          /* tp_call */
-    0,                          /* tp_str */
-    0,                          /* tp_getattro */
-    0,                          /* tp_setattro */
-    0,                          /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT,         /* tp_flags */
-    "ObjectID object",          /* tp_doc */
-    0,                          /* tp_traverse */
-    0,                          /* tp_clear */
-    0,                          /* tp_richcompare */
-    0,                          /* tp_weaklistoffset */
-    0,                          /* tp_iter */
-    0,                          /* tp_iternext */
-    PyObjectID_methods,         /* tp_methods */
-    PyObjectID_members,         /* tp_members */
-    0,                          /* tp_getset */
-    0,                          /* tp_base */
-    0,                          /* tp_dict */
-    0,                          /* tp_descr_get */
-    0,                          /* tp_descr_set */
-    0,                          /* tp_dictoffset */
-    (initproc) PyObjectID_init, /* tp_init */
-    0,                          /* tp_alloc */
-    PyType_GenericNew,          /* tp_new */
+    PyObject_HEAD_INIT(NULL) 0,           /* ob_size */
+    "common.ObjectID",                    /* tp_name */
+    sizeof(PyObjectID),                   /* tp_basicsize */
+    0,                                    /* tp_itemsize */
+    0,                                    /* tp_dealloc */
+    0,                                    /* tp_print */
+    0,                                    /* tp_getattr */
+    0,                                    /* tp_setattr */
+    0,                                    /* tp_compare */
+    (reprfunc) PyObjectID_repr,           /* tp_repr */
+    0,                                    /* tp_as_number */
+    0,                                    /* tp_as_sequence */
+    0,                                    /* tp_as_mapping */
+    (hashfunc) PyObjectID_hash,           /* tp_hash */
+    0,                                    /* tp_call */
+    0,                                    /* tp_str */
+    0,                                    /* tp_getattro */
+    0,                                    /* tp_setattro */
+    0,                                    /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,                   /* tp_flags */
+    "ObjectID object",                    /* tp_doc */
+    0,                                    /* tp_traverse */
+    0,                                    /* tp_clear */
+    (richcmpfunc) PyObjectID_richcompare, /* tp_richcompare */
+    0,                                    /* tp_weaklistoffset */
+    0,                                    /* tp_iter */
+    0,                                    /* tp_iternext */
+    PyObjectID_methods,                   /* tp_methods */
+    PyObjectID_members,                   /* tp_members */
+    0,                                    /* tp_getset */
+    0,                                    /* tp_base */
+    0,                                    /* tp_dict */
+    0,                                    /* tp_descr_get */
+    0,                                    /* tp_descr_set */
+    0,                                    /* tp_dictoffset */
+    (initproc) PyObjectID_init,           /* tp_init */
+    0,                                    /* tp_alloc */
+    PyType_GenericNew,                    /* tp_new */
 };
 
 /* Define the PyTask class. */

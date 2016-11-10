@@ -70,6 +70,27 @@ class TestObjectID(unittest.TestCase):
     self.assertRaises(Exception, lambda : pickling.dumps(g))
     self.assertRaises(Exception, lambda : pickling.dumps(h))
 
+  def test_equality_comparisons(self):
+    x1 = common.ObjectID(20 * "a")
+    x2 = common.ObjectID(20 * "a")
+    y1 = common.ObjectID(20 * "b")
+    y2 = common.ObjectID(20 * "b")
+    self.assertEqual(x1, x2)
+    self.assertEqual(y1, y2)
+    self.assertNotEqual(x1, y1)
+
+    object_ids1 = [common.ObjectID(20 * chr(i)) for i in range(256)]
+    object_ids2 = [common.ObjectID(20 * chr(i)) for i in range(256)]
+    self.assertEqual(len(set(object_ids1)), 256)
+    self.assertEqual(len(set(object_ids1 + object_ids2)), 256)
+    self.assertEqual(set(object_ids1), set(object_ids2))
+
+  def test_hashability(self):
+    x = common.ObjectID(20 * "a")
+    y = common.ObjectID(20 * "b")
+    {x: y}
+    set([x, y])
+
 class TestTask(unittest.TestCase):
 
   def test_create_task(self):
