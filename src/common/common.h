@@ -25,16 +25,20 @@
 #define LOG_INFO(M, ...) \
   fprintf(stderr, "[INFO] (%s:%d) " M "\n", __FILE__, __LINE__, ##__VA_ARGS__)
 
-#define CHECKM(COND, M, ...)                                                \
-  do {                                                                      \
-    if (!(COND)) {                                                          \
-      LOG_ERR("Check failure: %s \n" M, #COND, ##__VA_ARGS__);              \
-      void *buffer[255];                                                    \
-      const int calls = backtrace(buffer, sizeof(buffer) / sizeof(void *)); \
-      backtrace_symbols_fd(buffer, calls, 1);                               \
-      exit(-1);                                                             \
-    }                                                                       \
+#define LOG_FATAL(M, ...)                                                 \
+  do {                                                                    \
+    fprintf(stderr, "[FATAL] (%s:%d) " M "\n", __FILE__, __LINE__,        \
+            ##__VA_ARGS__);                                               \
+    void *buffer[255];                                                    \
+    const int calls = backtrace(buffer, sizeof(buffer) / sizeof(void *)); \
+    backtrace_symbols_fd(buffer, calls, 1);                               \
+    exit(-1);                                                             \
   } while (0);
+
+#define CHECKM(COND, M, ...)                                 \
+  if (!(COND)) {                                             \
+    LOG_ERR("Check failure: %s \n" M, #COND, ##__VA_ARGS__); \
+  }
 
 #define CHECK(COND) CHECKM(COND, "")
 

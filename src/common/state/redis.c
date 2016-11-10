@@ -16,16 +16,14 @@
 #include "redis.h"
 #include "io.h"
 
-#define LOG_REDIS_ERR(context, M, ...)                                 \
-  fprintf(stderr, "[ERROR] (%s:%d: message: %d %s) " M "\n", __FILE__, \
-          __LINE__, context->err, context->errstr, ##__VA_ARGS__)
+#define LOG_REDIS_ERR(context, M, ...) \
+  LOG_INFO("Redis error %d %s; %s", context->err, context->errstr, M)
 
 #define CHECK_REDIS_CONNECT(CONTEXT_TYPE, context, M, ...) \
   do {                                                     \
     CONTEXT_TYPE *_context = (context);                    \
     if (!_context) {                                       \
-      LOG_ERR("could not allocate redis context");         \
-      exit(-1);                                            \
+      LOG_FATAL("could not allocate redis context");       \
     }                                                      \
     if (_context->err) {                                   \
       LOG_REDIS_ERR(_context, M, ##__VA_ARGS__);           \
@@ -158,19 +156,19 @@ task *parse_redis_task_table_entry(task_id id,
     } else if (strcmp(key, "state") == 0) {
       int scanned = sscanf(value->str, "%d", (int *) &state);
       if (scanned != 1) {
-        LOG_ERR("Scheduling state for task is malformed");
+        LOG_FATAL("Scheduling state for task is malformed");
         state = 0;
       }
     } else if (strcmp(key, "task_spec") == 0) {
       spec = malloc(value->len);
       memcpy(spec, value->str, value->len);
     } else {
-      CHECKM(0, "Found unexpected %s field in task log", key);
+      LOG_FATAL("Found unexpected %s field in task log", key);
     }
   }
   /* Exit immediately if we couldn't parse the task spec. */
   if (spec == NULL) {
-    CHECKM(0, "Could not parse task spec from task log");
+    LOG_FATAL("Could not parse task spec from task log");
   }
   /* Build and return the task. */
   DCHECK(task_ids_equal(task_spec_id(spec), id));
@@ -260,8 +258,8 @@ void redis_result_table_lookup_task_callback(redisAsyncContext *c,
   redisReply *reply = r;
   /* Check that we received a Redis hashmap. */
   if (reply->type != REDIS_REPLY_ARRAY) {
-    CHECKM(0, "Expected Redis array, received type %d %s", reply->type,
-           reply->str);
+    LOG_FATAL("Expected Redis array, received type %d %s", reply->type,
+              reply->str);
   }
   /* If the user registered a success callback, construct the task object from
    * the Redis reply and call the callback. */
@@ -306,8 +304,7 @@ void redis_result_table_lookup_object_callback(redisAsyncContext *c,
     destroy_timer_callback(db->loop, callback_data);
     return;
   } else {
-    LOG_ERR("expected string or nil, received type %d", reply->type);
-    exit(-1);
+    LOG_FATAL("expected string or nil, received type %d", reply->type);
   }
 }
 
@@ -375,8 +372,7 @@ void redis_object_table_get_entry(redisAsyncContext *c,
     destroy_timer_callback(callback_data->db_handle->loop, callback_data);
     free(managers);
   } else {
-    LOG_ERR("expected integer or string, received type %d", reply->type);
-    exit(-1);
+    LOG_FATAL("expected integer or string, received type %d", reply->type);
   }
 }
 
@@ -433,9 +429,8 @@ void redis_task_table_get_task_callback(redisAsyncContext *c,
   redisReply *reply = r;
   /* Check that we received a Redis hashmap. */
   if (reply->type != REDIS_REPLY_ARRAY) {
-    LOG_ERR("Expected Redis array, received type %d %s", reply->type,
-            reply->str);
-    exit(-1);
+    LOG_FATAL("Expected Redis array, received type %d %s", reply->type,
+              reply->str);
   }
   /* If the user registered a success callback, construct the task object from
    * the Redis reply and call the callback. */

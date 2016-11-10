@@ -213,17 +213,14 @@ int main(int argc, char *argv[]) {
       plasma_socket_name = optarg;
       break;
     default:
-      LOG_ERR("unknown option %c", c);
-      exit(-1);
+      LOG_FATAL("unknown option %c", c);
     }
   }
   if (!scheduler_socket_name) {
-    LOG_ERR("please specify socket for incoming connections with -s switch");
-    exit(-1);
+    LOG_FATAL("please specify socket for incoming connections with -s switch");
   }
   if (!plasma_socket_name) {
-    LOG_ERR("please specify socket for connecting to Plasma with -p switch");
-    exit(-1);
+    LOG_FATAL("please specify socket for connecting to Plasma with -p switch");
   }
   /* Parse the Redis address into an IP address and a port. */
   char redis_addr[16] = {0};
@@ -231,8 +228,8 @@ int main(int argc, char *argv[]) {
   if (!redis_addr_port ||
       sscanf(redis_addr_port, "%15[0-9.]:%5[0-9]", redis_addr, redis_port) !=
           2) {
-    LOG_ERR("need to specify redis address like 127.0.0.1:6379 with -r switch");
-    exit(-1);
+    LOG_FATAL(
+        "need to specify redis address like 127.0.0.1:6379 with -r switch");
   }
   start_server(scheduler_socket_name, &redis_addr[0], atoi(redis_port),
                plasma_socket_name);

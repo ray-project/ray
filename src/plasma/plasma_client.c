@@ -127,8 +127,7 @@ uint8_t *lookup_or_mmap(plasma_connection *conn,
     uint8_t *result =
         mmap(NULL, map_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (result == MAP_FAILED) {
-      LOG_ERR("mmap failed");
-      exit(-1);
+      LOG_FATAL("mmap failed");
     }
     close(fd);
     entry = malloc(sizeof(client_mmap_table_entry));
@@ -369,8 +368,7 @@ int socket_connect_retry(const char *socket_name,
   }
   /* If we could not connect to the socket, exit. */
   if (fd == -1) {
-    LOG_ERR("could not connect to socket %s", socket_name);
-    exit(-1);
+    LOG_FATAL("could not connect to socket %s", socket_name);
   }
   return fd;
 }
