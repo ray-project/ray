@@ -111,6 +111,19 @@ void task_table_test_fail_callback(unique_id id,
   event_loop_stop(loop);
 }
 
+int64_t task_table_delayed_add_task(event_loop *loop,
+                                    int64_t id,
+                                    void *context) {
+  db_handle *db = context;
+  retry_info retry = {
+      .num_retries = NUM_RETRIES,
+      .timeout = TIMEOUT,
+      .fail_callback = task_table_test_fail_callback,
+  };
+  task_table_add_task(db, task_table_test_task, &retry, NULL, (void *) loop);
+  return EVENT_LOOP_TIMER_DONE;
+}
+
 void task_table_test_callback(task *callback_task, void *user_data) {
   task_table_test_callback_called = 1;
   CHECK(task_state(callback_task) == TASK_STATUS_SCHEDULED);
@@ -138,7 +151,8 @@ TEST task_table_test(void) {
   task_table_subscribe(db, node, TASK_STATUS_SCHEDULED,
                        task_table_test_callback, (void *) loop, &retry, NULL,
                        (void *) loop);
-  task_table_add_task(db, task_table_test_task, &retry, NULL, (void *) loop);
+  event_loop_add_timer(
+      loop, 200, (event_loop_timer_handler) task_table_delayed_add_task, db);
   event_loop_run(loop);
   free_task(task_table_test_task);
   db_disconnect(db);
