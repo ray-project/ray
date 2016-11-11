@@ -8,8 +8,6 @@ import alexnet
 
 # Arguments to specify where the imagenet data is stored.
 parser = argparse.ArgumentParser(description="Run the AlexNet example.")
-parser.add_argument("--node-ip-address", default=None, type=str, help="The IP address of this node.")
-parser.add_argument("--scheduler-address", default=None, type=str, help="The address of the scheduler.")
 parser.add_argument("--s3-bucket", required=True, type=str, help="Name of the bucket that contains the image data.")
 parser.add_argument("--key-prefix", default="ILSVRC2012_img_train/n015", type=str, help="Prefix for files to fetch.")
 parser.add_argument("--label-file", default="train.txt", type=str, help="File containing labels.")
@@ -17,13 +15,7 @@ parser.add_argument("--label-file", default="train.txt", type=str, help="File co
 if __name__ == "__main__":
   args = parser.parse_args()
 
-  # If node_ip_address and scheduler_address are provided, then this command
-  # will connect the driver to the existing scheduler. If not, it will start
-  # a local scheduler and connect to it.
-  ray.init(start_ray_local=(args.node_ip_address is None),
-           node_ip_address=args.node_ip_address,
-           scheduler_address=args.scheduler_address,
-           num_workers=(10 if args.node_ip_address is None else None))
+  ray.init(start_ray_local=True, num_workers=10)
 
   # Note we do not do sess.run(tf.initialize_all_variables()) because that would
   # result in a different initialization on each worker. Instead, we initialize

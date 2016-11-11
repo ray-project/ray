@@ -4,13 +4,8 @@
 import numpy as np
 import cPickle as pickle
 import ray
-import argparse
 
 import gym
-
-parser = argparse.ArgumentParser(description="Run the Pong example.")
-parser.add_argument("--node-ip-address", default=None, type=str, help="The IP address of this node.")
-parser.add_argument("--scheduler-address", default=None, type=str, help="The address of the scheduler.")
 
 # hyperparameters
 H = 200 # number of hidden layer neurons
@@ -113,15 +108,7 @@ def compute_gradient(model):
   return policy_backward(eph, epx, epdlogp, model), reward_sum
 
 if __name__ == "__main__":
-  args = parser.parse_args()
-
-  # If node_ip_address and scheduler_address are provided, then this command
-  # will connect the driver to the existing scheduler. If not, it will start
-  # a local scheduler and connect to it.
-  ray.init(start_ray_local=(args.node_ip_address is None),
-           node_ip_address=args.node_ip_address,
-           scheduler_address=args.scheduler_address,
-           num_workers=(10 if args.node_ip_address is None else None))
+  ray.init(start_ray_local=True, num_workers=10)
 
   # Run the reinforcement learning
   running_reward = None

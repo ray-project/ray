@@ -1,5 +1,4 @@
 import ray
-import argparse
 
 import numpy as np
 import scipy.optimize
@@ -7,20 +6,8 @@ import tensorflow as tf
 
 from tensorflow.examples.tutorials.mnist import input_data
 
-parser = argparse.ArgumentParser(description="Run the L-BFGS example.")
-parser.add_argument("--node-ip-address", default=None, type=str, help="The IP address of this node.")
-parser.add_argument("--scheduler-address", default=None, type=str, help="The address of the scheduler.")
-
 if __name__ == "__main__":
-  args = parser.parse_args()
-
-  # If node_ip_address and scheduler_address are provided, then this command
-  # will connect the driver to the existing scheduler. If not, it will start
-  # a local scheduler and connect to it.
-  ray.init(start_ray_local=(args.node_ip_address is None),
-           node_ip_address=args.node_ip_address,
-           scheduler_address=args.scheduler_address,
-           num_workers=(10 if args.node_ip_address is None else None))
+  ray.init(start_ray_local=True, num_workers=10)
 
   # Define the dimensions of the data and of the model.
   image_dimension = 784
