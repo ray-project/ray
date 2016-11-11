@@ -113,7 +113,7 @@ class RayGetError(Exception):
 
   def __str__(self):
     """Format a RayGetError as a string."""
-    return "Could not get objectid {}. It was created by remote function {}{}{} which failed with:\n\n{}".format(self.objectid.id(), colorama.Fore.RED, self.task_error.function_name, colorama.Fore.RESET, self.task_error)
+    return "Could not get objectid {}. It was created by remote function {}{}{} which failed with:\n\n{}".format(self.objectid, colorama.Fore.RED, self.task_error.function_name, colorama.Fore.RESET, self.task_error)
 
 class RayGetArgumentError(Exception):
   """An exception used when a task's argument was produced by a failed task.
@@ -136,7 +136,7 @@ class RayGetArgumentError(Exception):
 
   def __str__(self):
     """Format a RayGetArgumentError as a string."""
-    return "Failed to get objectid {} as argument {} for remote function {}{}{}. It was created by remote function {}{}{} which failed with:\n{}".format(self.objectid.id(), self.argument_index, colorama.Fore.RED, self.function_name, colorama.Fore.RESET, colorama.Fore.RED, self.task_error.function_name, colorama.Fore.RESET, self.task_error)
+    return "Failed to get objectid {} as argument {} for remote function {}{}{}. It was created by remote function {}{}{} which failed with:\n{}".format(self.objectid, self.argument_index, colorama.Fore.RED, self.function_name, colorama.Fore.RESET, colorama.Fore.RED, self.task_error.function_name, colorama.Fore.RESET, self.task_error)
 
 
 class Reusable(object):
@@ -1008,6 +1008,8 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
   object_id_strs = [object_id.id() for object_id in object_ids]
   timeout = timeout if timeout is not None else 2 ** 36
   ready_ids, remaining_ids = worker.plasma_client.wait(object_id_strs, timeout, num_returns)
+  ready_ids = [photon.ObjectID(object_id) for object_id in ready_ids]
+  remaining_ids = [photon.ObjectID(object_id) for object_id in remaining_ids]
   return ready_ids, remaining_ids
 
 def format_error_message(exception_message):

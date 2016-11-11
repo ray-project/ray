@@ -10,21 +10,13 @@ from tensorflow.examples.tutorials.mnist import input_data
 import hyperopt
 
 parser = argparse.ArgumentParser(description="Run the hyperparameter optimization example.")
-parser.add_argument("--node-ip-address", default=None, type=str, help="The IP address of this node.")
-parser.add_argument("--scheduler-address", default=None, type=str, help="The address of the scheduler.")
 parser.add_argument("--trials", default=2, type=int, help="The number of random trials to do.")
 parser.add_argument("--steps", default=10, type=int, help="The number of steps of training to do per network.")
 
 if __name__ == "__main__":
   args = parser.parse_args()
 
-  # If node_ip_address and scheduler_address are provided, then this command
-  # will connect the driver to the existing scheduler. If not, it will start
-  # a local scheduler and connect to it.
-  ray.init(start_ray_local=(args.node_ip_address is None),
-           node_ip_address=args.node_ip_address,
-           scheduler_address=args.scheduler_address,
-           num_workers=(10 if args.node_ip_address is None else None))
+  ray.init(start_ray_local=True, num_workers=10)
 
   # The number of sets of random hyperparameters to try.
   trials = args.trials
