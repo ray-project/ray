@@ -4,12 +4,12 @@
 #include "utarray.h"
 #include "utlist.h"
 
-#include "state/task_log.h"
+#include "state/task_table.h"
 #include "photon.h"
 #include "photon_scheduler.h"
 
 typedef struct task_queue_entry {
-  task_instance *task;
+  task *task;
   struct task_queue_entry *prev;
   struct task_queue_entry *next;
 } task_queue_entry;
@@ -102,7 +102,7 @@ int find_and_schedule_task_if_possible(scheduler_info *info,
   int found_task_to_schedule = 0;
   /* Find the first task whose dependencies are available locally. */
   DL_FOREACH_SAFE(state->task_queue, elt, tmp) {
-    spec = task_instance_task_spec(elt->task);
+    spec = task_task_spec(elt->task);
     if (can_run(state, spec)) {
       found_task_to_schedule = 1;
       break;
@@ -122,43 +122,43 @@ int find_and_schedule_task_if_possible(scheduler_info *info,
 
 void handle_task_submitted(scheduler_info *info,
                            scheduler_state *s,
-                           task_spec *task) {
+                           task_spec *spec) {
   /* Create a unique task instance ID. This is different from the task ID and
    * is used to distinguish between potentially multiple executions of the
    * task. */
-  task_iid task_iid = globally_unique_id();
-  task_instance *instance =
-      make_task_instance(task_iid, task, TASK_STATUS_WAITING, NIL_ID);
+  task *task = alloc_task(spec, TASK_STATUS_WAITING, NIL_ID);
   /* If this task's dependencies are available locally, and if there is an
    * available worker, then assign this task to an available worker. Otherwise,
    * add this task to the local task queue. */
   int schedule_locally =
-      (utarray_len(s->available_workers) > 0) && can_run(s, task);
+      (utarray_len(s->available_workers) > 0) && can_run(s, spec);
   if (schedule_locally) {
     /* Get the last available worker in the available worker queue. */
     int *worker_index = (int *) utarray_back(s->available_workers);
     /* Tell the available worker to execute the task. */
-    assign_task_to_worker(info, task, *worker_index);
+    assign_task_to_worker(info, spec, *worker_index);
     /* Remove the available worker from the queue and free the struct. */
     utarray_pop_back(s->available_workers);
   } else {
     /* Add the task to the task queue. This passes ownership of the task queue.
      * And the task will be freed when it is assigned to a worker. */
     task_queue_entry *elt = malloc(sizeof(task_queue_entry));
-    elt->task = instance;
+    elt->task = task;
     DL_APPEND(s->task_queue, elt);
   }
   /* Submit the task to redis. */
-  /* TODO(swang): We should set these values in a config file somewhere. */
+  /* TODO(swang): We should set retry values in a config file somewhere. */
   retry_info retry = {
       .num_retries = 0, .timeout = 0, .fail_callback = NULL,
   };
-  task_log_publish(info->db, instance, &retry, NULL, NULL);
+  /* TODO(swang): This should be task_table_update if the task is already in the
+   * log. */
+  task_table_add_task(info->db, task, &retry, NULL, NULL);
   if (schedule_locally) {
     /* If the task was scheduled locally, we need to free it. Otherwise,
      * ownership of the task is passed to the task_queue, and it will be freed
      * when it is assigned to a worker. */
-    free(instance);
+    free_task(task);
   }
 }
 

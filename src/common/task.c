@@ -9,10 +9,6 @@
 #include "common.h"
 #include "io.h"
 
-const unique_id NIL_TASK_ID = {{255, 255, 255, 255, 255, 255, 255,
-                                255, 255, 255, 255, 255, 255, 255,
-                                255, 255, 255, 255, 255, 255}};
-
 /* TASK SPECIFICATIONS */
 
 /* Tasks are stored in a consecutive chunk of memory, the first
@@ -70,11 +66,19 @@ struct task_spec_impl {
    (ARGS_VALUE_SIZE))
 
 bool task_ids_equal(task_id first_id, task_id second_id) {
-  return memcmp(&first_id, &second_id, sizeof(task_id)) == 0 ? true : false;
+  return UNIQUE_ID_EQ(first_id, second_id) ? true : false;
+}
+
+bool task_id_is_nil(task_id id) {
+  return task_ids_equal(id, NIL_TASK_ID);
 }
 
 bool function_ids_equal(function_id first_id, function_id second_id) {
-  return memcmp(&first_id, &second_id, sizeof(function_id)) == 0 ? true : false;
+  return UNIQUE_ID_EQ(first_id, second_id) ? true : false;
+}
+
+bool function_id_is_nil(function_id id) {
+  return function_ids_equal(id, NIL_FUNCTION_ID);
 }
 
 task_id *task_return_ptr(task_spec *spec, int64_t return_index) {
@@ -99,7 +103,7 @@ task_id compute_task_id(task_spec *spec) {
   SHA256_CTX ctx;
   BYTE buff[SHA256_BLOCK_SIZE];
   sha256_init(&ctx);
-  sha256_update(&ctx, (BYTE *) spec, task_size(spec));
+  sha256_update(&ctx, (BYTE *) spec, task_spec_size(spec));
   sha256_final(&ctx, buff);
   /* Create a task ID out of the hash. This will truncate the hash. */
   task_id task_id;
@@ -151,7 +155,15 @@ void finish_construct_task_spec(task_spec *spec) {
   }
 }
 
-int64_t task_size(task_spec *spec) {
+task_spec *alloc_nil_task_spec(task_id task_id) {
+  task_spec *spec =
+      start_construct_task_spec(NIL_ID, 0, NIL_FUNCTION_ID, 0, 0, 0);
+  finish_construct_task_spec(spec);
+  spec->task_id = task_id;
+  return spec;
+}
+
+int64_t task_spec_size(task_spec *spec) {
   return TASK_SPEC_SIZE(spec->num_args, spec->num_returns,
                         spec->args_value_size);
 }
@@ -162,7 +174,7 @@ function_id task_function(task_spec *spec) {
   return spec->function_id;
 }
 
-task_id task_task_id(task_spec *spec) {
+task_id task_spec_id(task_spec *spec) {
   /* Check that the task has been constructed. */
   DCHECK(!task_ids_equal(spec->task_id, NIL_TASK_ID));
   return spec->task_id;
@@ -269,47 +281,58 @@ void print_task(task_spec *spec, UT_string *output) {
 
 /* TASK INSTANCES */
 
-struct task_instance_impl {
-  task_iid iid;
-  int32_t state;
+struct task_impl {
+  scheduling_state state;
   node_id node;
   task_spec spec;
 };
 
-task_instance *make_task_instance(task_iid task_iid,
-                                  task_spec *spec,
-                                  int32_t state,
-                                  node_id node) {
-  int64_t size = sizeof(task_instance) - sizeof(task_spec) + task_size(spec);
-  task_instance *result = malloc(size);
+bool node_ids_equal(node_id first_id, node_id second_id) {
+  return UNIQUE_ID_EQ(first_id, second_id) ? true : false;
+}
+
+bool node_id_is_nil(node_id id) {
+  return node_ids_equal(id, NIL_NODE_ID);
+}
+
+task *alloc_task(task_spec *spec, scheduling_state state, node_id node) {
+  int64_t size = sizeof(task) - sizeof(task_spec) + task_spec_size(spec);
+  task *result = malloc(size);
   memset(result, 0, size);
-  result->iid = task_iid;
   result->state = state;
   result->node = node;
-  memcpy(&result->spec, spec, task_size(spec));
+  memcpy(&result->spec, spec, task_spec_size(spec));
   return result;
 }
 
-int64_t task_instance_size(task_instance *instance) {
-  return sizeof(task_instance) - sizeof(task_spec) + task_size(&instance->spec);
+task *alloc_nil_task(task_id task_id) {
+  task_spec *nil_spec = alloc_nil_task_spec(task_id);
+  task *nil_task = alloc_task(nil_spec, 0, NIL_ID);
+  free_task_spec(nil_spec);
+  return nil_task;
 }
 
-task_iid *task_instance_id(task_instance *instance) {
-  return &instance->iid;
+int64_t task_size(task *task_arg) {
+  return sizeof(task) - sizeof(task_spec) + task_spec_size(&task_arg->spec);
 }
 
-int32_t *task_instance_state(task_instance *instance) {
-  return &instance->state;
+scheduling_state task_state(task *task) {
+  return task->state;
 }
 
-node_id *task_instance_node(task_instance *instance) {
-  return &instance->node;
+node_id task_node(task *task) {
+  return task->node;
 }
 
-task_spec *task_instance_task_spec(task_instance *instance) {
-  return &instance->spec;
+task_spec *task_task_spec(task *task) {
+  return &task->spec;
 }
 
-void task_instance_free(task_instance *instance) {
-  free(instance);
+task_id task_task_id(task *task) {
+  task_spec *spec = task_task_spec(task);
+  return task_spec_id(spec);
+}
+
+void free_task(task *task) {
+  free(task);
 }

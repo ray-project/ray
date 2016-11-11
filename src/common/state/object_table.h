@@ -4,6 +4,7 @@
 #include "common.h"
 #include "table.h"
 #include "db.h"
+#include "task.h"
 
 /*
  *  ==== Lookup call and callback ====
@@ -122,5 +123,56 @@ typedef struct {
   object_table_object_available_callback object_available_callback;
   void *subscribe_context;
 } object_table_subscribe_data;
+
+/*
+ *  ==== Result table ====
+ */
+
+/**
+ * Callback called when the add/remove operation for a result table entry
+ * completes. */
+typedef void (*result_table_done_callback)(object_id object_id,
+                                           void *user_context);
+
+/**
+ * Add information about a new object to the object table. This
+ * is immutable information like the ID of the task that
+ * created the object.
+ *
+ * @param db_handle Handle to object_table database.
+ * @param object_id ID of the object to add.
+ * @param task_id ID of the task that creates this object.
+ * @param retry Information about retrying the request to the database.
+ * @param done_callback Function to be called when database returns result.
+ * @param user_context Context passed by the caller.
+ * @return Void.
+ */
+void result_table_add(db_handle *db_handle,
+                      object_id object_id,
+                      task_id task_id,
+                      retry_info *retry,
+                      result_table_done_callback done_callback,
+                      void *user_context);
+
+/** Callback called when the result table lookup completes. */
+typedef void (*result_table_lookup_callback)(object_id object_id,
+                                             task *task,
+                                             void *user_context);
+
+/**
+ * Lookup the task that created an object in the result table.
+ *
+ * @param db_handle Handle to object_table database.
+ * @param object_id ID of the object to lookup.
+ * @param retry Information about retrying the request to the database.
+ * @param done_callback Function to be called when database returns result.
+ * @param user_context Context passed by the caller.
+ * @return Void.
+ */
+void result_table_lookup(db_handle *db_handle,
+                         object_id object_id,
+                         retry_info *retry,
+                         result_table_lookup_callback done_callback,
+                         void *user_context);
 
 #endif /* OBJECT_TABLE_H */

@@ -328,8 +328,9 @@ void write_object_chunk(client_connection *conn, plasma_request_buffer *buf) {
     if (r > 0) {
       LOG_ERR("partial write on fd %d", conn->fd);
     } else {
-      LOG_ERR("write error");
-      exit(-1);
+      /* TODO(swang): This should not be a fatal error, since connections can
+       * close at any time. */
+      LOG_FATAL("write error");
     }
   } else {
     conn->cursor += r;
@@ -381,7 +382,7 @@ void send_queued_request(event_loop *loop,
     write_object_chunk(conn, buf);
     break;
   default:
-    LOG_ERR("Buffered request has unknown type.");
+    LOG_FATAL("Buffered request has unknown type.");
   }
 
   /* We are done sending this request. */
@@ -859,8 +860,7 @@ void process_message(event_loop *loop,
     free(conn);
   } break;
   default:
-    LOG_ERR("invalid request %" PRId64, type);
-    exit(-1);
+    LOG_FATAL("invalid request %" PRId64, type);
   }
 
   free(req);
@@ -975,33 +975,28 @@ int main(int argc, char *argv[]) {
       db_host = optarg;
       break;
     default:
-      LOG_ERR("unknown option %c", c);
-      exit(-1);
+      LOG_FATAL("unknown option %c", c);
     }
   }
   if (!store_socket_name) {
-    LOG_ERR(
+    LOG_FATAL(
         "please specify socket for connecting to the plasma store with -s "
         "switch");
-    exit(-1);
   }
   if (!manager_socket_name) {
-    LOG_ERR(
+    LOG_FATAL(
         "please specify socket name of the manager's local socket with -m "
         "switch");
-    exit(-1);
   }
   if (!master_addr) {
-    LOG_ERR(
+    LOG_FATAL(
         "please specify ip address of the current host in the format "
         "123.456.789.10 with -h switch");
-    exit(-1);
   }
   if (port == -1) {
-    LOG_ERR(
+    LOG_FATAL(
         "please specify port the plasma manager shall listen to in the"
         "format 12345 with -p switch");
-    exit(-1);
   }
   char db_addr[16];
   int db_port;
