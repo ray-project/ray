@@ -67,14 +67,12 @@ static PyObject *PyObjectID_richcompare(PyObjectID *self,
       result = Py_NotImplemented;
       break;
     case Py_EQ:
-      result = (memcmp(&self->object_id.id[0], &other_id->object_id.id[0],
-                       UNIQUE_ID_SIZE) == 0)
+      result = object_ids_equal(self->object_id, other_id->object_id)
                    ? Py_True
                    : Py_False;
       break;
     case Py_NE:
-      result = (memcmp(&self->object_id.id[0], &other_id->object_id.id[0],
-                       UNIQUE_ID_SIZE) != 0)
+      result = !object_ids_equal(self->object_id, other_id->object_id)
                    ? Py_True
                    : Py_False;
       break;
@@ -101,21 +99,15 @@ static long PyObjectID_hash(PyObjectID *self) {
 }
 
 static PyObject *PyObjectID_repr(PyObjectID *self) {
-  Py_ssize_t hex_length = 2 * UNIQUE_ID_SIZE;
+  int hex_length = 2 * UNIQUE_ID_SIZE + 1;
   char hex_id[hex_length];
-  hex_id[0] = 'O';
-  hex_id[1] = 'b';
-  hex_id[2] = 'j';
-  hex_id[3] = 'e';
-  hex_id[4] = 'c';
-  hex_id[5] = 't';
-  hex_id[6] = 'I';
-  hex_id[7] = 'D';
-  hex_id[8] = '(';
-  sha1_to_hex(self->object_id.id, &hex_id[9]);
-  /* This overrides a null byte written by sha1_to_hex. */
-  hex_id[8 + hex_length + 1] = ')';
-  return PyString_FromStringAndSize(hex_id, 8 + hex_length + 2);
+  sha1_to_hex(self->object_id.id, hex_id);
+  UT_string *repr;
+  utstring_new(repr);
+  utstring_printf(repr, "ObjectID(%s)", hex_id);
+  PyObject *result = PyString_FromString(utstring_body(repr));
+  utstring_free(repr);
+  return result;
 }
 
 static PyObject *PyObjectID___reduce__(PyObjectID *self) {
