@@ -14,11 +14,12 @@
 #include "photon_scheduler.h"
 #include "plasma_client.h"
 #include "state/db.h"
-#include "state/task_log.h"
+#include "state/task_table.h"
+#include "state/object_table.h"
 #include "utarray.h"
 #include "uthash.h"
 
-UT_icd task_ptr_icd = {sizeof(task_instance *), NULL, NULL, NULL};
+UT_icd task_ptr_icd = {sizeof(task *), NULL, NULL, NULL};
 UT_icd worker_icd = {sizeof(worker), NULL, NULL, NULL};
 
 /** Association between the socket fd of a worker and its worker_index. */
@@ -95,11 +96,11 @@ void free_local_scheduler(local_scheduler_state *s) {
 }
 
 void assign_task_to_worker(scheduler_info *info,
-                           task_spec *task,
+                           task_spec *spec,
                            int worker_index) {
   CHECK(worker_index < utarray_len(info->workers));
   worker *w = (worker *) utarray_eltptr(info->workers, worker_index);
-  write_message(w->sock, EXECUTE_TASK, task_size(task), (uint8_t *) task);
+  write_message(w->sock, EXECUTE_TASK, task_spec_size(spec), (uint8_t *) spec);
 }
 
 void process_plasma_notification(event_loop *loop,
@@ -212,17 +213,14 @@ int main(int argc, char *argv[]) {
       plasma_socket_name = optarg;
       break;
     default:
-      LOG_ERR("unknown option %c", c);
-      exit(-1);
+      LOG_FATAL("unknown option %c", c);
     }
   }
   if (!scheduler_socket_name) {
-    LOG_ERR("please specify socket for incoming connections with -s switch");
-    exit(-1);
+    LOG_FATAL("please specify socket for incoming connections with -s switch");
   }
   if (!plasma_socket_name) {
-    LOG_ERR("please specify socket for connecting to Plasma with -p switch");
-    exit(-1);
+    LOG_FATAL("please specify socket for connecting to Plasma with -p switch");
   }
   /* Parse the Redis address into an IP address and a port. */
   char redis_addr[16] = {0};
@@ -230,8 +228,8 @@ int main(int argc, char *argv[]) {
   if (!redis_addr_port ||
       sscanf(redis_addr_port, "%15[0-9.]:%5[0-9]", redis_addr, redis_port) !=
           2) {
-    LOG_ERR("need to specify redis address like 127.0.0.1:6379 with -r switch");
-    exit(-1);
+    LOG_FATAL(
+        "need to specify redis address like 127.0.0.1:6379 with -r switch");
   }
   start_server(scheduler_socket_name, &redis_addr[0], atoi(redis_port),
                plasma_socket_name);

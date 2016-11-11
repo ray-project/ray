@@ -42,8 +42,7 @@ void dlfree(void *);
 void plasma_send_reply(int fd, plasma_reply *reply) {
   int reply_count = sizeof(plasma_reply);
   if (write(fd, reply, reply_count) != reply_count) {
-    LOG_ERR("write error, fd = %d", fd);
-    exit(-1);
+    LOG_FATAL("write error, fd = %d", fd);
   }
 }
 
@@ -557,12 +556,10 @@ int main(int argc, char *argv[]) {
     }
   }
   if (!socket_name) {
-    LOG_ERR("please specify socket for incoming connections with -s switch");
-    exit(-1);
+    LOG_FATAL("please specify socket for incoming connections with -s switch");
   }
   if (system_memory == -1) {
-    LOG_ERR("please specify the amount of system memory with -m switch");
-    exit(-1);
+    LOG_FATAL("please specify the amount of system memory with -m switch");
   }
   LOG_DEBUG("starting server listening on %s", socket_name);
   start_server(socket_name, system_memory);

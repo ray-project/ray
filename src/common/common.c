@@ -25,7 +25,11 @@ unique_id globally_unique_id(void) {
 }
 
 bool object_ids_equal(object_id first_id, object_id second_id) {
-  return memcmp(&first_id, &second_id, sizeof(object_id)) == 0 ? true : false;
+  return UNIQUE_ID_EQ(first_id, second_id) ? true : false;
+}
+
+bool object_id_is_nil(object_id id) {
+  return object_ids_equal(id, NIL_OBJECT_ID);
 }
 
 char *sha1_to_hex(const unsigned char *sha1, char *buffer) {

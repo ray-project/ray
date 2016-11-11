@@ -11,7 +11,8 @@ photon_conn *photon_connect(const char *photon_socket) {
 }
 
 void photon_submit(photon_conn *conn, task_spec *task) {
-  write_message(conn->conn, SUBMIT_TASK, task_size(task), (uint8_t *)task);
+  write_message(conn->conn, SUBMIT_TASK, task_spec_size(task),
+                (uint8_t *) task);
 }
 
 task_spec *photon_get_task(photon_conn *conn) {
@@ -24,7 +25,7 @@ task_spec *photon_get_task(photon_conn *conn) {
   read_message(conn->conn, &type, &length, &message);
   CHECK(type == EXECUTE_TASK);
   task_spec *task = (task_spec *)message;
-  CHECK(length == task_size(task));
+  CHECK(length == task_spec_size(task));
   return task;
 }
 

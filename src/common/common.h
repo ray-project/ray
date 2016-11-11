@@ -25,16 +25,20 @@
 #define LOG_INFO(M, ...) \
   fprintf(stderr, "[INFO] (%s:%d) " M "\n", __FILE__, __LINE__, ##__VA_ARGS__)
 
-#define CHECKM(COND, M, ...)                                                \
-  do {                                                                      \
-    if (!(COND)) {                                                          \
-      LOG_ERR("Check failure: %s \n" M, #COND, ##__VA_ARGS__);              \
-      void *buffer[255];                                                    \
-      const int calls = backtrace(buffer, sizeof(buffer) / sizeof(void *)); \
-      backtrace_symbols_fd(buffer, calls, 1);                               \
-      exit(-1);                                                             \
-    }                                                                       \
+#define LOG_FATAL(M, ...)                                                 \
+  do {                                                                    \
+    fprintf(stderr, "[FATAL] (%s:%d) " M "\n", __FILE__, __LINE__,        \
+            ##__VA_ARGS__);                                               \
+    void *buffer[255];                                                    \
+    const int calls = backtrace(buffer, sizeof(buffer) / sizeof(void *)); \
+    backtrace_symbols_fd(buffer, calls, 1);                               \
+    exit(-1);                                                             \
   } while (0);
+
+#define CHECKM(COND, M, ...)                                 \
+  if (!(COND)) {                                             \
+    LOG_ERR("Check failure: %s \n" M, #COND, ##__VA_ARGS__); \
+  }
 
 #define CHECK(COND) CHECKM(COND, "")
 
@@ -56,6 +60,10 @@
 
 #define UNIQUE_ID_SIZE 20
 
+#define UNIQUE_ID_EQ(id1, id2) (memcmp((id1).id, (id2).id, UNIQUE_ID_SIZE) == 0)
+
+#define IS_NIL_ID(id) UNIQUE_ID_EQ(id, NIL_ID)
+
 typedef struct { unsigned char id[UNIQUE_ID_SIZE]; } unique_id;
 
 extern const UT_icd object_id_icd;
@@ -70,6 +78,8 @@ unique_id globally_unique_id(void);
  * UNIQUE_ID_SIZE + 1 */
 char *sha1_to_hex(const unsigned char *sha1, char *buffer);
 
+#define NIL_OBJECT_ID NIL_ID
+
 typedef unique_id object_id;
 
 /**
@@ -80,5 +90,13 @@ typedef unique_id object_id;
  * @return True if the object IDs are the same and false otherwise.
  */
 bool object_ids_equal(object_id first_id, object_id second_id);
+
+/**
+ * Compare a object ID to the nil ID.
+ *
+ * @param id The object ID to compare to nil.
+ * @return True if the object ID is equal to nil.
+ */
+bool object_id_is_nil(object_id id);
 
 #endif

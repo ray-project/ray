@@ -28,12 +28,12 @@ static int PyObjectID_init(PyObjectID *self, PyObject *args, PyObject *kwds) {
   if (!PyArg_ParseTuple(args, "s#", &data, &size)) {
     return -1;
   }
-  if (size != UNIQUE_ID_SIZE) {
+  if (size != sizeof(object_id)) {
     PyErr_SetString(CommonError,
                     "ObjectID: object id string needs to have length 20");
     return -1;
   }
-  memcpy(&self->object_id.id[0], data, UNIQUE_ID_SIZE);
+  memcpy(&self->object_id.id[0], data, sizeof(object_id));
   return 0;
 }
 
@@ -48,7 +48,7 @@ PyObject *PyObjectID_make(object_id object_id) {
 static PyObject *PyObjectID_id(PyObject *self) {
   PyObjectID *s = (PyObjectID *) self;
   return PyString_FromStringAndSize((char *) &s->object_id.id[0],
-                                    UNIQUE_ID_SIZE);
+                                    sizeof(object_id));
 }
 
 static PyObject *PyObjectID___reduce__(PyObjectID *self) {
@@ -176,7 +176,7 @@ static PyObject *PyTask_function_id(PyObject *self) {
 }
 
 static PyObject *PyTask_task_id(PyObject *self) {
-  task_id task_id = task_task_id(((PyTask *) self)->spec);
+  task_id task_id = task_spec_id(((PyTask *) self)->spec);
   return PyObjectID_make(task_id);
 }
 

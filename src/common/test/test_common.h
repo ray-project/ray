@@ -5,7 +5,7 @@
 
 #include "task.h"
 
-task_spec *example_task(void) {
+task_spec *example_task_spec(void) {
   task_id parent_task_id = globally_unique_id();
   function_id func_id = globally_unique_id();
   task_spec *task =
@@ -16,11 +16,9 @@ task_spec *example_task(void) {
   return task;
 }
 
-task_instance *example_task_instance(void) {
-  task_iid iid = globally_unique_id();
-  task_spec *spec = example_task();
-  task_instance *instance =
-      make_task_instance(iid, spec, TASK_STATUS_WAITING, NIL_ID);
+task *example_task(void) {
+  task_spec *spec = example_task_spec();
+  task *instance = alloc_task(spec, TASK_STATUS_WAITING, NIL_ID);
   free_task_spec(spec);
   return instance;
 }
