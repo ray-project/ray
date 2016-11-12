@@ -67,7 +67,7 @@ int64_t table_timeout_handler(event_loop *loop,
   if (callback_data->retry.num_retries == 0) {
     /* We didn't get a response from the database after exhausting all retries;
      * let user know, cleanup the state, and remove the timer. */
-    LOG_ERR("Table command with timer ID %ld failed", timer_id);
+    LOG_ERROR("Table command with timer ID %ld failed", timer_id);
     if (callback_data->retry.fail_callback) {
       callback_data->retry.fail_callback(
           callback_data->id, callback_data->user_context, callback_data->data);

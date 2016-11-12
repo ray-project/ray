@@ -38,6 +38,7 @@ redis:
 hiredis:
 	git submodule update --init --recursive -- "thirdparty/hiredis" ; cd thirdparty/hiredis ; make
 
+test: CFLAGS += -DRAY_COMMON_LOG_LEVEL=4
 test: hiredis redis $(BUILD)/common_tests $(BUILD)/task_table_tests $(BUILD)/object_table_tests $(BUILD)/db_tests $(BUILD)/io_tests $(BUILD)/task_tests $(BUILD)/redis_tests FORCE
 	./thirdparty/redis-3.2.3/src/redis-server &
 	sleep 1s

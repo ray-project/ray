@@ -61,11 +61,11 @@ int create_buffer(int64_t size) {
     return -1;
   }
   if (unlink(file_name) != 0) {
-    LOG_ERR("unlink error");
+    LOG_ERROR("unlink error");
     return -1;
   }
   if (ftruncate(fd, (off_t) size) != 0) {
-    LOG_ERR("ftruncate error");
+    LOG_ERROR("ftruncate error");
     return -1;
   }
   return fd;

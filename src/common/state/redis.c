@@ -16,8 +16,11 @@
 #include "redis.h"
 #include "io.h"
 
-#define LOG_REDIS_ERR(context, M, ...) \
-  LOG_INFO("Redis error %d %s; %s", context->err, context->errstr, M)
+#define LOG_REDIS_ERROR(context, M, ...) \
+  LOG_ERROR("Redis error %d %s; %s", context->err, context->errstr, M)
+
+#define LOG_REDIS_DEBUG(context, M, ...) \
+  LOG_DEBUG("Redis error %d %s; %s", context->err, context->errstr, M)
 
 #define CHECK_REDIS_CONNECT(CONTEXT_TYPE, context, M, ...) \
   do {                                                     \
@@ -26,7 +29,7 @@
       LOG_FATAL("could not allocate redis context");       \
     }                                                      \
     if (_context->err) {                                   \
-      LOG_REDIS_ERR(_context, M, ##__VA_ARGS__);           \
+      LOG_REDIS_ERROR(_context, M, ##__VA_ARGS__);         \
       exit(-1);                                            \
     }                                                      \
   } while (0);
@@ -202,7 +205,7 @@ void redis_object_table_add(table_callback_data *callback_data) {
                         (void *) callback_data->timer_id, "SADD obj:%b %d",
                         id.id, sizeof(object_id), db->client_id);
   if ((status == REDIS_ERR) || db->context->err) {
-    LOG_REDIS_ERR(db->context, "could not add object_table entry");
+    LOG_REDIS_DEBUG(db->context, "could not add object_table entry");
   }
 }
 
@@ -216,7 +219,7 @@ void redis_object_table_lookup(table_callback_data *callback_data) {
                                  (void *) callback_data->timer_id,
                                  "SMEMBERS obj:%b", id.id, sizeof(object_id));
   if ((status == REDIS_ERR) || db->context->err) {
-    LOG_REDIS_ERR(db->context, "error in object_table lookup");
+    LOG_REDIS_DEBUG(db->context, "error in object_table lookup");
   }
 }
 
@@ -247,7 +250,7 @@ void redis_result_table_add(table_callback_data *callback_data) {
                                  "SET result:%b %b", id.id, sizeof(object_id),
                                  (*result_task_id).id, sizeof(task_id));
   if ((status == REDIS_ERR) || db->context->err) {
-    LOG_REDIS_ERR(db->context, "Error in result table add");
+    LOG_REDIS_DEBUG(db->context, "Error in result table add");
   }
 }
 
@@ -292,11 +295,11 @@ void redis_result_table_lookup_object_callback(redisAsyncContext *c,
                           (void *) callback_data->timer_id, "HGETALL task:%b",
                           (*result_task_id).id, sizeof(task_id));
     if ((status == REDIS_ERR) || db->context->err) {
-      LOG_REDIS_ERR(db->context, "Could not look up result table entry");
+      LOG_REDIS_DEBUG(db->context, "Could not look up result table entry");
     }
   } else if (reply->type == REDIS_REPLY_NIL) {
     /* The object with the requested ID was not in the table. */
-    LOG_ERR("Object's result not in table.");
+    LOG_ERROR("Object's result not in table.");
     result_table_lookup_callback done_callback = callback_data->done_callback;
     if (done_callback) {
       done_callback(callback_data->id, NULL, callback_data->user_context);
@@ -318,7 +321,7 @@ void redis_result_table_lookup(table_callback_data *callback_data) {
                         (void *) callback_data->timer_id, "GET result:%b",
                         id.id, sizeof(object_id));
   if ((status == REDIS_ERR) || db->context->err) {
-    LOG_REDIS_ERR(db->context, "Error in result table lookup");
+    LOG_REDIS_DEBUG(db->context, "Error in result table lookup");
   }
 }
 
@@ -413,8 +416,8 @@ void redis_object_table_subscribe(table_callback_data *callback_data) {
                                  "SUBSCRIBE __keyspace@0__:%b add", id.id,
                                  sizeof(object_id));
   if ((status == REDIS_ERR) || db->sub_context->err) {
-    LOG_REDIS_ERR(db->sub_context,
-                  "error in redis_object_table_subscribe_callback");
+    LOG_REDIS_DEBUG(db->sub_context,
+                    "error in redis_object_table_subscribe_callback");
   }
 }
 
@@ -453,7 +456,7 @@ void redis_task_table_get_task(table_callback_data *callback_data) {
                         (void *) callback_data->timer_id, "HGETALL task:%b",
                         id.id, sizeof(task_id));
   if ((status == REDIS_ERR) || db->sub_context->err) {
-    LOG_REDIS_ERR(db->sub_context, "Could not get task from task table");
+    LOG_REDIS_DEBUG(db->sub_context, "Could not get task from task table");
   }
 }
 
@@ -506,7 +509,7 @@ void redis_task_table_publish(table_callback_data *callback_data,
           (char *) spec, task_spec_size(spec));
     }
     if ((status = REDIS_ERR) || db->context->err) {
-      LOG_REDIS_ERR(db->context, "error setting task in task_table_add_task");
+      LOG_REDIS_DEBUG(db->context, "error setting task in task_table_add_task");
     }
   }
 
@@ -518,8 +521,8 @@ void redis_task_table_publish(table_callback_data *callback_data,
         task_size(task));
 
     if ((status == REDIS_ERR) || db->context->err) {
-      LOG_REDIS_ERR(db->context,
-                    "error publishing task in task_table_add_task");
+      LOG_REDIS_DEBUG(db->context,
+                      "error publishing task in task_table_add_task");
     }
   }
 }
@@ -617,7 +620,7 @@ void redis_task_table_subscribe(table_callback_data *callback_data) {
         (char *) node.id, sizeof(node_id), data->state_filter);
   }
   if ((status == REDIS_ERR) || db->sub_context->err) {
-    LOG_REDIS_ERR(db->sub_context, "error in task_table_register_callback");
+    LOG_REDIS_DEBUG(db->sub_context, "error in task_table_register_callback");
   }
 }
 
