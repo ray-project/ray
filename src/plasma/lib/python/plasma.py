@@ -75,15 +75,6 @@ class PlasmaBuffer(object):
 
 class PlasmaPullResult(ctypes.Structure):
   _fields_ = [
-<<<<<<< HEAD
-      ("shards_handle", ctypes.POINTER(ctypes.c_void_p)),
-      ("num_shards", ctypes.c_uint64),
-      ("shape", ctypes.POINTER(ctypes.c_uint64)),
-      ("ndim", ctypes.c_uint64),
-      ("shard_sizes", ctypes.POINTER(ctypes.c_uint64)),
-      ("start_axis_idx", ctypes.c_uint64),
-      ("shard_axis", ctypes.c_uint64),
-=======
     ("shards_handle", ctypes.POINTER(ctypes.c_void_p)),
     ("total_num_shards", ctypes.c_uint64),
     ("result_num_shards", ctypes.c_uint64),
@@ -92,7 +83,6 @@ class PlasmaPullResult(ctypes.Structure):
     ("shard_sizes", ctypes.POINTER(ctypes.c_uint64)),
     ("start_axis_idx", ctypes.c_uint64),
     ("shard_order", ctypes.c_char),
->>>>>>> C- and F-style sharding
   ]
 
 
@@ -359,17 +349,14 @@ class PlasmaClient(object):
     axis_len = np_data.shape[shard_axis]
     num_shards = axis_len / shard_size
 
-    # TODO: think about storing numpy array shape and handle n-dimension
-    # matrices
+    # TODO: think about storing numpy array shape and handle n-dimension matrices
     partitions = np.split(np_data, num_shards, axis=shard_axis)
     partition_lengths = np.array([p.size for p in partitions], dtype=np.uint64)
-    void_p_partitions = np.array(
-        [p.ctypes.data_as(ctypes.c_void_p).value for p in partitions])
+    void_p_partitions = np.array([p.ctypes.data_as(ctypes.c_void_p).value for p in partitions])
     shape = np_data.ctypes.shape
 
     void_handle_arr = void_p_partitions.ctypes.data_as(ctypes.c_void_p)
-    shard_sizes_ptr = partition_lengths.ctypes.data_as(
-        ctypes.POINTER(ctypes.c_uint64))
+    shard_sizes_ptr = partition_lengths.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64))
 
     self.client.plasma_init_kvstore(
       self.plasma_conn,
@@ -388,11 +375,11 @@ class PlasmaClient(object):
     pull_result = PlasmaPullResult()
 
     self.client.plasma_pull(
-        self.plasma_conn,
-        make_plasma_id(kv_store_id),
-        interval[0],
-        interval[1],
-        ctypes.byref(pull_result)
+      self.plasma_conn,
+      make_plasma_id(kv_store_id),
+      interval[0],
+      interval[1],
+      ctypes.byref(pull_result)
     )
 
     # TODO: do this slicing in C
@@ -404,29 +391,23 @@ class PlasmaClient(object):
     void_ptr_size = ctypes.sizeof(ctypes.c_void_p)
 
     shard_ptr_buf_size = ctypes.c_int64(num_shards * void_ptr_size)
-    # will always use uint64_t for sizes
-    shape_buf_size = ctypes.c_int64(ndim * 8)
+    shape_buf_size = ctypes.c_int64(ndim * 8) # will always use uint64_t for sizes
 
-    shards_handle_buf = self.buffer_from_memory(
-        pull_result.shards_handle, shard_ptr_buf_size)
-    shards_handle = np.frombuffer(
-        shards_handle_buf, dtype=np.uint64, count=num_shards)
+    shards_handle_buf = self.buffer_from_memory(pull_result.shards_handle, shard_ptr_buf_size)
+    shards_handle = np.frombuffer(shards_handle_buf, dtype=np.uint64, count=num_shards)
 
-    shard_bytes_sizes_buf = self.buffer_from_memory(
-        pull_result.shard_sizes, shard_ptr_buf_size)
-    shard_sizes = np.frombuffer(
-        shard_bytes_sizes_buf, dtype=np.uint64, count=num_shards)
+    shard_bytes_sizes_buf = self.buffer_from_memory(pull_result.shard_sizes, shard_ptr_buf_size)
+    shard_sizes = np.frombuffer(shard_bytes_sizes_buf, dtype=np.uint64, count=num_shards)
 
     shape_buf = self.buffer_from_memory(pull_result.shape, shape_buf_size)
     shape = np.frombuffer(shape_buf, dtype=np.uint64, count=ndim)
 
-    shard_shape = np.array(shape)  # make a copy
+    shard_shape = np.array(shape) # make a copy
     shards = []
     for i in range(num_shards):
       shard_data_buf = self.buffer_from_read_write_memory(
-          ctypes.cast(int(shards_handle[i]), ctypes.POINTER(
-              ctypes.c_double)),  # TODO: generic datatype
-          ctypes.c_int64(int(shard_sizes[i]) * 8),
+        ctypes.cast(int(shards_handle[i]), ctypes.POINTER(ctypes.c_double)), # TODO: generic datatype
+        ctypes.c_int64(int(shard_sizes[i]) * 8),
       )
       shard_shape[shard_axis] = int(shard_sizes[i] / shape[shard_axis])
       shards.append(np.frombuffer(
