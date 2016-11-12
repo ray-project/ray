@@ -385,23 +385,20 @@ typedef struct {
 } object_request;
 
 /**
- * Wait for a bunch of objects to be available (sealed) in the local Plasma Store
- * or in a remote Plasma Store, or for a timeout to expire. This is a blocking call.
+ * Wait for (1) a specified number of objects to be available (sealed) in the local Plasma Store
+ * or in a remote Plasma Store, or (2) for a timeout to expire. This is a blocking call.
  *
  * @param conn The object containing the connection state.
  * @param num_object_requests Size of the object_requests array.
  * @param object_requests Object event array. Each element contains a request for a particular
  *                        object_id. The type of request is specified in the "type" field.
  *                        A PLASMA_OBJECT_LOCAL request is satisfied when object_id becomes
- *                        available in the local Plasma Store. In this case, the "status"
- *                        field is set to PLASMA_OBJECT_LOCAL.
+ *                        available in the local Plasma Store. In this case, this function sets
+ *                        the "status" field to PLASMA_OBJECT_LOCAL.
  *                        A PLASMA_OBJECT_ANYWHERE request is satisfied when object_id becomes
  *                        available either at the local Plasma Store or on a remote Plasma Store.
- *                        In this case, the "status" field is set to either PLASMA_OBJECT_LOCAL
- *                        or PLASMA_OBJECT_LOCAL remote.
- *                        If object_id is ID_NIL, the function will return any object with an
- *                        object_id that doesn't match any specified object_id in object_requests
- *                        and which satisfies the request "type".
+ *                        In this case, the functions sets the "status" field  to PLASMA_OBJECT_LOCAL
+ *                        or PLASMA_OBJECT_REMOTE.
  * @param min_num_ready_objects The minimum number of requests in object_requests array that must be
  *                              satisfied before the function returns, unless it timeouts.
  *                              min_num_ready_objects should be no larger than num_object_requests.

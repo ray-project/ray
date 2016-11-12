@@ -488,6 +488,7 @@ int plasma_wait(plasma_connection *conn,
   return num_objects_returned;
 }
 
+
 int get_manager_fd(plasma_connection *conn) {
   return conn->manager_conn;
 }
@@ -511,6 +512,27 @@ void plasma_multiget1(plasma_connection *conn,
                       object_id object_ids[],
                       object_buffer object_buffers[]);
 
+
+int plasma_status1(plasma_connection *conn,
+                   object_id object_id,
+                   int64_t *total_size,
+                   int64_t *transferred_size) {
+  ;
+}
+
+int plasma_fetch_remote1(plasma_connection *conn,
+                         object_id object_id) {
+  ;
+}
+
+
+int plasma_wait_for_objects1(plasma_connection *conn,
+                             int num_object_requests,
+                             object_request object_requests[],
+                             int min_num_ready_objects,
+                             int timeout_ms) {
+  ;
+}
 
 /* This method is used to get both the data and the metadata. */
 int plasma_get_local1(plasma_connection *conn,
@@ -622,19 +644,19 @@ int plasma_wait1(plasma_connection *conn,
 
   object_request requests[num_object_ids];
 
-  /** Initialize object requests. We only care for the objects to be present in the systen,
+  /** Initialize object requests. We only care for the objects to be present in the system,
    *  not necessary in the local Plasma Store. Thus, we set the request type to
    *  PLASMA_OBJECT_ANYWHWERE.
    */
   for (i = 0; i < num_object_ids; i++) {
     requests[i].object_id = object_ids[i];
-    requests[i].request = PLASMA_OBJECT_ANYWHWERE;
+    requests[i].type = PLASMA_OBJECT_ANYWHWERE;
   }
 
   while (true) {
     int n;
     clock_t start = clock();
-    n = plasma_wait_for_objects1(conn, num_object_ids, &events, num_returns, MIN(timeout, TIMEOUT_WAIT_MS));
+    n = plasma_wait_for_objects1(conn, num_object_ids, &requests, num_returns, MIN(timeout, TIMEOUT_WAIT_MS));
     timeout -= (clock() - start) / 1000;
     if (timeout < 0)
       timeout = 0;
@@ -683,12 +705,12 @@ void plasma_multiget1(plasma_connection *conn,
   while (true) {
     rc = plasma_wait_for_objects1(conn, num_object_ids, &requests, num_object_ids, TIMEOUT_WAIT_MS);
 
-    if (rc = num_object_ids)
+    if (rc == num_object_ids)
       break;
 
     for (j = 0; j < num_object_ids; j++) {
       if (requests[j].status == PLASMA_OBJECT_REMOTE) {
-        plasma_fetch_remote1(conn, events[j].object_id);
+        plasma_fetch_remote1(conn, requests[j].object_id);
       }
       if (requests[j].status == PLASMA_OBJECT_DOES_NOT_EXIST) {
         /* object doesn’t exist so ask local scheduler to create it */
@@ -707,26 +729,6 @@ void plasma_multiget1(plasma_connection *conn,
 
 
 
-int plasma_status1(plasma_connection *conn,
-                   object_id object_id,
-                   int64_t *total_size,
-                   int64_t *transferred_size) {
-  ;
-}
-
-int plasma_fetch_remote1(plasma_connection *conn,
-                         object_id object_id) {
-  ;
-}
-
-
-int plasma_wait_for_objects1(plasma_connection *conn,
-                             int num_object_requests,
-                             object_request object_requests[],
-                             int min_num_ready_objects,
-                             int timeout_ms) {
-  ;
-}
 
 
 

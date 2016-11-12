@@ -836,6 +836,7 @@ void process_message(event_loop *loop,
     LOG_DEBUG("Processing wait");
     process_wait_request(conn, req->num_object_ids, req->object_ids,
                          req->timeout, req->num_returns);
+      break;
   case PLASMA_SEAL:
     LOG_DEBUG("Publishing to object table from DB client %d.",
               get_client_id(conn->manager_state->db));
