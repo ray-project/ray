@@ -1,6 +1,7 @@
 #ifndef PLASMA_CLIENT_H
 #define PLASMA_CLIENT_H
 
+#include <time.h>
 #include "plasma.h"
 
 #define PLASMA_DEFAULT_RELEASE_DELAY 64
@@ -251,4 +252,180 @@ int plasma_subscribe(plasma_connection *conn);
  */
 int get_manager_fd(plasma_connection *conn);
 
-#endif
+
+/* === alternate API === */
+
+/* Object is stored on the local Plasma Store. */
+#define PLASMA_OBJECT_LOCAL  1
+/* Object is not stored on the local Plasma Store */
+#define PLASMA_OBJECT_NOT_LOCAL 2
+/* Object is stored on a remote Plasma store, and it is not stored on the local Plasma Store */
+#define PLASMA_OBJECT_REMOTE 3
+/* Object is not stored in the system. */
+#define PLASMA_OBJECT_DOES_NOT_EXIST 5
+/* Object is currently transferred from a remote Plasma store the the local Plasma Store. */
+#define PLASMA_OBJECT_IN_TRANSFER 6
+#define PLASMA_OBJECT_ANYWHWERE 7
+
+enum plasma_client_notification_type {
+  /** Object has become available on the local Plasma Store. */
+          PLASMA_OBJECT_READY_LOCAL = 256,
+  /** Object has become available on a remote Plasma Store. */
+          PLASMA_OBJECT_READY_REMOTE
+};
+
+
+
+/**
+ * Object buffer data structure.
+ */
+typedef struct {
+  /* The size in bytes of the object. */
+  int64_t size;
+  /* The address of the object data */
+  uint8_t *data;
+  /* The metadata size in bytes */
+  int64_t metadata_size;
+  /* The address of the metadata */
+  uint8_t *metadata;
+} object_buffer;
+
+/**
+ * Object information data structure.
+ */
+typedef struct {
+  /** time when the object was created (sealed) */
+  time_t last_access_time;
+  /** time when the object was accessed the last time */
+  time_t creation_date;
+  uint64_t refcount;
+} object_info;
+
+
+/**
+ * Get specified object from the local Plasma Store. This function is non-blocking.
+ *
+ * @param conn The object containing the connection state.
+ * @param object_id The ID of the object to get.
+ * @param objectBuffer The data structure where the object information will be written.
+ * @return PLASMA_CLIENT_LOCAL, if the object is stored at the local Plasma Store.
+ *         PLASMA_CLIENT_NOT_LOCAL, if not. In this case, the caller needs to
+ *         ignore data, metadata_size, and metadata fields.
+ */
+int plasma_get_local1(plasma_connection *conn,
+                      object_id object_id,
+                      object_buffer *object_buffer);
+
+/**
+ * Initiates the fetch (transfer) of an object from a remote Plasma Store.
+ *
+ * If object is stored in the local Plasma Store, tell the caller.
+ *
+ * If not, check whether the object is stored on a remote Plasma Store. In yes, and
+ * if either a transfer for the object has been scheduled or the object is in transfer
+ * return. Otherwise schedule a transfer for the object.
+ *
+ * If object is available neither locally nor remotely, the client has to invoke
+ * the local scheduler to (re)create the object.
+ *
+ * This function is non-blocking.
+ *
+ * @param conn The object containing the connection state.
+ * @param object_id The ID of the object to be fetched.
+ * @return PLASMA_CLIENT_LOCAL, if the object is stored on the local Plasma Store.
+ *         PLASMA_CLIENT_WAIT, if object is not stored on the local Plasma Store but
+ *         it is available on a remote Plasma Store.
+ *         PLASMA_CLIENT_DOES_NOT_EXIST, if object is available neither locally nor remotely.
+ */
+int plasma_fetch_remote1(plasma_connection *conn, object_id object_id);
+
+/**
+ * Return the status of a given object.
+ *
+ * @param conn The object containing the connection state.
+ * @param object_id The ID of the object whose status we query.
+ * @param total_size Object size in bytes.
+ * @param transferred_size The number of bytes from object transferred so far.
+ *                         This is non zero only when PLASMA_CLIENT_IN_TRANSFER is returned.
+ * @return PLASMA_CLIENT_LOCAL, if object is stored in the local Plasma Store.
+ *         has been already scheduled by the Plasma Manager.
+ *         PLASMA_CLIENT_IN_TRANSFER, if the object is currently being scheduled for
+ *                                    being transferred or it is transferring.
+ *         In this case, transferred_bytes represent the number of bytes transferred so far.
+ *         PLASMA_CLIENT_REMOTE, if the object is stored at a remote Plasma Store.
+ *         PLASMA_CLIENT_DOES_NOT_EXIST, if the object doesn’t exist in system.
+ */
+int plasma_status1(plasma_connection *conn,
+                   object_id object_id,
+                   int64_t *total_size,
+                   int64_t *transferred_size);
+
+
+/**
+ * Return the information associated to a given object.
+ *
+ * @param conn The object containing the connection state.
+ * @param object_id The ID of the object whose info the client queries.
+ * @param object_info The object's infirmation.
+ * @return PLASMA_CLIENT_LOCAL, if the object is stored in the local Plasma Store.
+ *         PLASMA_CLIENT_NOT_LOCAL, if not. In this case, the caller needs to
+ *         ignore data, metadata_size, and metadata fields.
+ */
+int plasma_info(plasma_connection *conn,
+                object_id object_id,
+                object_info *object_info);
+
+
+/**
+ * Object rquest data structure. Used in the plasma_wait_for_objects() argument.
+ */
+typedef struct {
+  /** ID of the requested object. If ID_NIL request any object */
+  object_id object_id;
+  /** Request associated to the object. It can take one of the following values:
+   * - PLASMA_OBJECT_LOCAL: return if or when the object is available in the local Plasma Store.
+   * - PLASMA_OBJECT_ANYWHWERE: return if or when the object is available in the
+   *                            system (i.e., either in the local or a remote Plasma Store. */
+  int type;
+  /** Object status. Same as the status returned by plasma_status() function call.
+   *  This is filled in by plasma_wait_for_objects1():
+   * - PLASMA_OBJECT_READY_LOCAL: object is ready at the local Plasma Store.
+   * - PLASMA_OBJECT_READY_REMOTE: object is ready at a remote Plasma Store.
+   * - PLASMA_OBJECT_DOES_NOT_EXIST: object does not exist in the system.
+   * - PLASMA_CLIENT_IN_TRANSFER, if the object is currently being scheduled for
+   *                              being transferred or it is transferring. */
+  int status;
+} object_request;
+
+/**
+ * Wait for (1) a specified number of objects to be available (sealed) in the local Plasma Store
+ * or in a remote Plasma Store, or (2) for a timeout to expire. This is a blocking call.
+ *
+ * @param conn The object containing the connection state.
+ * @param num_object_requests Size of the object_requests array.
+ * @param object_requests Object event array. Each element contains a request for a particular
+ *                        object_id. The type of request is specified in the "type" field.
+ *                        A PLASMA_OBJECT_LOCAL request is satisfied when object_id becomes
+ *                        available in the local Plasma Store. In this case, this function sets
+ *                        the "status" field to PLASMA_OBJECT_LOCAL.
+ *                        A PLASMA_OBJECT_ANYWHERE request is satisfied when object_id becomes
+ *                        available either at the local Plasma Store or on a remote Plasma Store.
+ *                        In this case, the functions sets the "status" field  to PLASMA_OBJECT_LOCAL
+ *                        or PLASMA_OBJECT_REMOTE.
+ * @param min_num_ready_objects The minimum number of requests in object_requests array that must be
+ *                              satisfied before the function returns, unless it timeouts.
+ *                              min_num_ready_objects should be no larger than num_object_requests.
+ * @param timeout_ms  Timeout value in milliseconds. If this timeout expires before
+ *                    "min_num_ready_objects" of requests are satisfied, the function returns.
+ * @return Number of satisfied requests in the object_requests list. If the returned number is less
+ *         than min_num_ready_objects this means that timeout expired.
+ */
+int plasma_wait_for_objects1(plasma_connection *conn,
+                             int num_object_requests,
+                             object_request object_requests[],
+                             int min_num_ready_objects,
+                             int timeout_ms);
+
+
+
+#endif /* PLASMA_CLIENT_H */

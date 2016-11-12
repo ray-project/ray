@@ -32,6 +32,7 @@
 #include "fling.h"
 #include "malloc.h"
 #include "plasma_store.h"
+#include "plasma.h"
 
 void *dlmalloc(size_t);
 void dlfree(void *);
@@ -446,6 +447,16 @@ void process_message(event_loop *loop,
               sizeof(reply));
     }
     break;
+    case PLASMA_GET_LOCAL:
+      if (get_object(client_context, client_sock, req->object_ids[0],
+                     &reply.object) == OBJECT_FOUND) {
+        send_fd(client_sock, reply.object.handle.store_fd, (char *) &reply,
+                sizeof(reply));
+      } else {
+        reply.has_object = false;
+        send_fd(client_sock, 0, (char *) &reply, sizeof(reply));
+      }
+      break;
   case PLASMA_RELEASE:
     release_object(client_context, req->object_ids[0]);
     break;

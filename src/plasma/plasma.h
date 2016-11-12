@@ -51,6 +51,8 @@ enum plasma_message_type {
   PLASMA_CREATE = 128,
   /** Get an object. */
   PLASMA_GET,
+  /** Get an object stored at the local Plasma Store. */
+  PLASMA_GET_LOCAL,
   /** Tell the store that the client no longer needs an object. */
   PLASMA_RELEASE,
   /** Check if an object is present. */
