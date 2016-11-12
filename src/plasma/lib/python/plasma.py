@@ -132,6 +132,18 @@ class PlasmaClient(object):
     """
     return libplasma.contains(self.conn, object_id)
 
+  def hash(self, object_id):
+    """Compute the hash of an object in the object store.
+
+    Args:
+      object_id (str): A string used to identify an object.
+
+    Returns:
+      A digest string object's SHA256 hash. If the object isn't in the object
+      store, the string will have length zero.
+    """
+    return libplasma.hash(self.conn, object_id)
+
   def seal(self, object_id):
     """Seal the buffer in the PlasmaStore for a particular object ID.
 

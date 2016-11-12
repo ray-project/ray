@@ -71,6 +71,23 @@ PyObject *PyPlasma_create(PyObject *self, PyObject *args) {
   return PyBuffer_FromReadWriteMemory((void *) data, (Py_ssize_t) size);
 }
 
+PyObject *PyPlasma_hash(PyObject *self, PyObject *args) {
+  plasma_connection *conn;
+  object_id object_id;
+  if (!PyArg_ParseTuple(args, "O&O&", PyObjectToPlasmaConnection, &conn,
+                        PyObjectToUniqueID, &object_id)) {
+    return NULL;
+  }
+  unsigned char digest[DIGEST_SIZE + 1];
+  plasma_compute_object_hash(conn, object_id, digest);
+  digest[DIGEST_SIZE] = '\0';
+  if (strcmp(digest, "") == 0) {
+    Py_RETURN_NONE;
+  }
+  PyObject *digest_string = PyString_FromString(digest);
+  return digest_string;
+}
+
 PyObject *PyPlasma_seal(PyObject *self, PyObject *args) {
   plasma_connection *conn;
   object_id object_id;
@@ -307,6 +324,8 @@ static PyMethodDef plasma_methods[] = {
     {"disconnect", PyPlasma_disconnect, METH_VARARGS,
      "Disconnect from plasma."},
     {"create", PyPlasma_create, METH_VARARGS, "Create a new plasma object."},
+    {"hash", PyPlasma_hash, METH_VARARGS,
+     "Compute the hash of a plasma object."},
     {"seal", PyPlasma_seal, METH_VARARGS, "Seal a plasma object."},
     {"get", PyPlasma_get, METH_VARARGS, "Get a plasma object."},
     {"contains", PyPlasma_contains, METH_VARARGS,
