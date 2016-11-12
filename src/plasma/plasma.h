@@ -152,6 +152,9 @@ typedef struct {
   int port;
   /** A number of bytes. This is used for eviction requests. */
   int64_t num_bytes;
+  /** A digest describing the object. This is used for detecting
+   *  nondeterministic tasks. */
+  unsigned char digest[DIGEST_SIZE];
   /** The number of object IDs that will be included in this request. */
   int num_object_ids;
   /** The object requests that the request is about. */
@@ -215,6 +218,15 @@ typedef struct {
   /** Objects that are in the Plasma store. */
   object_table_entry *objects;
 } plasma_store_info;
+
+typedef struct {
+  /** The ID of the object. */
+  object_id obj_id;
+  /** The size of the object. */
+  int64_t data_size;
+  /** The digest of the object used, used to see if two objects are the same. */
+  unsigned char digest[DIGEST_SIZE];
+} object_id_notification;
 
 /**
  * Create a plasma request with one object ID on the stack.

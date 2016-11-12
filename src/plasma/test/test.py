@@ -146,6 +146,57 @@ class TestPlasmaClient(unittest.TestCase):
     for object_id in real_object_ids:
       self.assertTrue(self.plasma_client.contains(object_id))
 
+  def test_hash(self):
+    # Check the hash of an object that doesn't exist.
+    object_id1 = random_object_id()
+    h = self.plasma_client.hash(object_id1)
+
+    length = 1000
+    # Create a random object, and check that the hash function always returns
+    # the same value.
+    metadata = generate_metadata(length)
+    memory_buffer = self.plasma_client.create(object_id1, length, metadata)
+    for i in range(length):
+      memory_buffer[i] = chr(i % 256)
+    self.plasma_client.seal(object_id1)
+    self.assertEqual(self.plasma_client.hash(object_id1),
+                     self.plasma_client.hash(object_id1))
+
+    # Create a second object with the same value as the first, and check that
+    # their hashes are equal.
+    object_id2 = random_object_id()
+    memory_buffer = self.plasma_client.create(object_id2, length, metadata)
+    for i in range(length):
+      memory_buffer[i] = chr(i % 256)
+    self.plasma_client.seal(object_id2)
+    self.assertEqual(self.plasma_client.hash(object_id1),
+                     self.plasma_client.hash(object_id2))
+
+    # Create a third object with a different value from the first two, and
+    # check that its hash is different.
+    object_id3 = random_object_id()
+    metadata = generate_metadata(length)
+    memory_buffer = self.plasma_client.create(object_id3, length, metadata)
+    for i in range(length):
+      memory_buffer[i] = chr((i + 1) % 256)
+    self.plasma_client.seal(object_id3)
+    self.assertNotEqual(self.plasma_client.hash(object_id1),
+                        self.plasma_client.hash(object_id3))
+
+    # Create a fourth object with the same value as the third, but different
+    # metadata. Check that its hash is different from any of the previous
+    # three.
+    object_id4 = random_object_id()
+    metadata4 = generate_metadata(length)
+    memory_buffer = self.plasma_client.create(object_id4, length, metadata4)
+    for i in range(length):
+      memory_buffer[i] = chr((i + 1) % 256)
+    self.plasma_client.seal(object_id4)
+    self.assertNotEqual(self.plasma_client.hash(object_id1),
+                        self.plasma_client.hash(object_id4))
+    self.assertNotEqual(self.plasma_client.hash(object_id3),
+                        self.plasma_client.hash(object_id4))
+
   # def test_individual_delete(self):
   #   length = 100
   #   # Create an object id string.
@@ -289,26 +340,24 @@ class TestPlasmaManager(unittest.TestCase):
     self.client1 = plasma.PlasmaClient(store_name1, manager_name1)
     self.client2 = plasma.PlasmaClient(store_name2, manager_name2)
 
+    # Store the processes that will be explicitly killed during tearDown so
+    # that a test case can remove ones that will be killed during the test.
+    # NOTE: If this specific order is changed, valgrind will fail.
+    self.processes_to_kill = [self.p4, self.p5, self.p2, self.p3]
+
   def tearDown(self):
     # Kill the PlasmaStore and PlasmaManager processes.
     if USE_VALGRIND:
       time.sleep(1) # give processes opportunity to finish work
-      self.p4.send_signal(signal.SIGTERM)
-      self.p4.wait()
-      self.p5.send_signal(signal.SIGTERM)
-      self.p5.wait()
-      self.p2.send_signal(signal.SIGTERM)
-      self.p2.wait()
-      self.p3.send_signal(signal.SIGTERM)
-      self.p3.wait()
-      if self.p2.returncode != 0 or self.p3.returncode != 0 or self.p4.returncode != 0 or self.p5.returncode != 0:
-        print("aborting due to valgrind error")
-        os._exit(-1)
+      for process in self.processes_to_kill:
+        process.send_signal(signal.SIGTERM)
+        process.wait()
+        if process.returncode != 0:
+          print("aborting due to valgrind error")
+          os._exit(-1)
     else:
-      self.p2.kill()
-      self.p3.kill()
-      self.p4.kill()
-      self.p5.kill()
+      for process in self.processes_to_kill:
+        process.kill()
     self.redis_process.kill()
 
   def test_fetch(self):
@@ -527,6 +576,35 @@ class TestPlasmaManager(unittest.TestCase):
       # Compare the two buffers.
       assert_get_object_equal(self, self.client1, self.client2, object_id2,
                               memory_buffer=memory_buffer2, metadata=metadata2)
+
+  def test_illegal_put(self):
+    """
+    Test doing a put at the same object ID, but with different object data. The
+    first put should succeed. The second put should cause the plasma manager to
+    exit with a fatal error.
+    """
+    # Create and seal the first object.
+    length = 1000
+    object_id = random_object_id()
+    memory_buffer1 = self.client1.create(object_id, length)
+    for i in range(length):
+      memory_buffer1[i] = chr(i % 256)
+    self.client1.seal(object_id)
+    # Create and seal the second object. It has all the same data as the first
+    # object, with one bit flipped.
+    memory_buffer2 = self.client2.create(object_id, length)
+    for i in range(length):
+      j = i
+      if j == 0:
+        j += 1
+      memory_buffer2[i] = chr(j % 256)
+    self.client2.seal(object_id)
+    # Give the second manager some time to complete the seal, then make sure it
+    # exited.
+    time.sleep(0.2)
+    self.p5.poll()
+    self.assertNotEqual(self.p5.returncode, None)
+    self.processes_to_kill.remove(self.p5)
 
   def test_illegal_functionality(self):
     # Create an object id string.

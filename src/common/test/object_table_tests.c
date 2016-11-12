@@ -192,6 +192,8 @@ void add_fail_callback(unique_id id, void *user_context, void *user_data) {
   add_failed = 1;
   CHECK(user_context == (void *) add_timeout_context);
   event_loop_stop(g_loop);
+  unsigned char *object_hash = user_data;
+  free(object_hash);
 }
 
 TEST add_timeout_test(void) {
@@ -202,8 +204,8 @@ TEST add_timeout_test(void) {
   retry_info retry = {
       .num_retries = 5, .timeout = 100, .fail_callback = add_fail_callback,
   };
-  object_table_add(db, NIL_ID, &retry, add_done_callback,
-                   (void *) add_timeout_context);
+  object_table_add(db, NIL_ID, (unsigned char *) NIL_DIGEST, &retry,
+                   add_done_callback, (void *) add_timeout_context);
   /* Disconnect the database to see if the lookup times out. */
   close(db->context->c.fd);
   event_loop_run(g_loop);
@@ -272,6 +274,7 @@ int64_t reconnect_context_callback(event_loop *loop,
   db->sync_context = redisConnect("127.0.0.1", 6379);
   /* Re-attach the database to the event loop (the file descriptor changed). */
   db_attach(db, loop, true);
+  LOG_DEBUG("Reconnected to Redis");
   return EVENT_LOOP_TIMER_DONE;
 }
 
@@ -304,6 +307,7 @@ void lookup_retry_fail_callback(unique_id id,
 
 TEST lookup_retry_test(void) {
   g_loop = event_loop_create();
+  lookup_retry_succeeded = 0;
   db_handle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11235);
   db_attach(db, g_loop, false);
@@ -345,7 +349,7 @@ void add_retry_fail_callback(unique_id id,
                              void *user_context,
                              void *user_data) {
   /* The fail callback should not be called. */
-  CHECK(0);
+  LOG_FATAL("add_retry_succeded value was %d", add_retry_succeeded);
 }
 
 TEST add_retry_test(void) {
@@ -358,8 +362,8 @@ TEST add_retry_test(void) {
       .timeout = 100,
       .fail_callback = add_retry_fail_callback,
   };
-  object_table_add(db, NIL_ID, &retry, add_retry_done_callback,
-                   (void *) add_retry_context);
+  object_table_add(db, NIL_ID, (unsigned char *) NIL_DIGEST, &retry,
+                   add_retry_done_callback, (void *) add_retry_context);
   /* Disconnect the database to let the add time out the first time. */
   close(db->context->c.fd);
   /* Install handler for reconnecting the database. */
@@ -374,6 +378,55 @@ TEST add_retry_test(void) {
   destroy_outstanding_callbacks(g_loop);
   event_loop_destroy(g_loop);
   ASSERT(add_retry_succeeded);
+  PASS();
+}
+
+/* === Test add then lookup retry === */
+
+void add_lookup_done_callback(object_id object_id,
+                              int manager_count,
+                              OWNER const char *manager_vector[],
+                              void *context) {
+  CHECK(context == (void *) lookup_retry_context);
+  CHECK(manager_count == 1);
+  CHECK(strcmp(manager_vector[0], "127.0.0.1:11235") == 0);
+  lookup_retry_succeeded = 1;
+  free(manager_vector);
+}
+
+void add_lookup_callback(object_id object_id, void *user_context) {
+  db_handle *db = user_context;
+  retry_info retry = {
+      .num_retries = 5,
+      .timeout = 100,
+      .fail_callback = lookup_retry_fail_callback,
+  };
+  object_table_lookup(db, NIL_ID, &retry, add_lookup_done_callback,
+                      (void *) lookup_retry_context);
+}
+
+TEST add_lookup_test(void) {
+  g_loop = event_loop_create();
+  lookup_retry_succeeded = 0;
+  db_handle *db =
+      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11235);
+  db_attach(db, g_loop);
+  retry_info retry = {
+      .num_retries = 5,
+      .timeout = 100,
+      .fail_callback = lookup_retry_fail_callback,
+  };
+  object_table_add(db, NIL_ID, (unsigned char *) NIL_DIGEST, &retry,
+                   add_lookup_callback, (void *) db);
+  /* Install handler for terminating the event loop. */
+  event_loop_add_timer(g_loop, 750,
+                       (event_loop_timer_handler) terminate_event_loop_callback,
+                       NULL);
+  event_loop_run(g_loop);
+  db_disconnect(db);
+  destroy_outstanding_callbacks(g_loop);
+  event_loop_destroy(g_loop);
+  ASSERT(lookup_retry_succeeded);
   PASS();
 }
 
@@ -503,6 +556,8 @@ int add_late_failed = 0;
 void add_late_fail_callback(unique_id id, void *user_context, void *user_data) {
   CHECK(user_context == (void *) add_late_context);
   add_late_failed = 1;
+  unsigned char *object_hash = user_data;
+  free(object_hash);
 }
 
 void add_late_done_callback(object_id object_id, void *user_context) {
@@ -518,8 +573,8 @@ TEST add_late_test(void) {
   retry_info retry = {
       .num_retries = 0, .timeout = 0, .fail_callback = add_late_fail_callback,
   };
-  object_table_add(db, NIL_ID, &retry, add_late_done_callback,
-                   (void *) add_late_context);
+  object_table_add(db, NIL_ID, (unsigned char *) NIL_DIGEST, &retry,
+                   add_late_done_callback, (void *) add_late_context);
   /* Install handler for terminating the event loop. */
   event_loop_add_timer(g_loop, 750,
                        (event_loop_timer_handler) terminate_event_loop_callback,
@@ -601,9 +656,10 @@ void subscribe_success_done_callback(object_id object_id,
                                      const char *manager_vector[],
                                      void *user_context) {
   retry_info retry = {
-      .num_retries = 0, .timeout = 0, .fail_callback = NULL,
+      .num_retries = 0, .timeout = 750, .fail_callback = NULL,
   };
-  object_table_add((db_handle *) user_context, object_id, &retry, NULL, NULL);
+  object_table_add((db_handle *) user_context, object_id,
+                   (unsigned char *) NIL_DIGEST, &retry, NULL, NULL);
   subscribe_success_done = 1;
 }
 
@@ -794,6 +850,7 @@ SUITE(object_table_tests) {
   RUN_REDIS_TEST(subscribe_timeout_test);
   RUN_REDIS_TEST(lookup_retry_test);
   RUN_REDIS_TEST(add_retry_test);
+  RUN_REDIS_TEST(add_lookup_test);
   RUN_REDIS_TEST(subscribe_retry_test);
   RUN_REDIS_TEST(lookup_late_test);
   RUN_REDIS_TEST(add_late_test);

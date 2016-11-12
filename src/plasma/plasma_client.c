@@ -27,6 +27,7 @@
 #include "fling.h"
 #include "uthash.h"
 #include "utringbuffer.h"
+#include "sha256.h"
 
 /* Number of times we try connecting to a socket. */
 #define NUM_CONNECT_ATTEMPTS 50
@@ -334,6 +335,32 @@ void plasma_contains(plasma_connection *conn,
   *has_object = reply.has_object;
 }
 
+void plasma_compute_object_hash(plasma_connection *conn,
+                                object_id obj_id,
+                                unsigned char *digest) {
+  /* If we don't have the object, return an empty digest. */
+  int has_object;
+  plasma_contains(conn, obj_id, &has_object);
+  if (!has_object) {
+    memset(digest, 0, DIGEST_SIZE);
+    return;
+  }
+  /* Get the plasma object data. */
+  int64_t size;
+  uint8_t *data;
+  int64_t metadata_size;
+  uint8_t *metadata;
+  plasma_get(conn, obj_id, &size, &data, &metadata_size, &metadata);
+  /* Compute the hash. */
+  SHA256_CTX sha256_context;
+  sha256_init(&sha256_context);
+  sha256_update(&sha256_context, (unsigned char *) data, size);
+  sha256_update(&sha256_context, (unsigned char *) metadata, metadata_size);
+  sha256_final(&sha256_context, digest);
+  /* Release the plasma object. */
+  plasma_release(conn, obj_id);
+}
+
 void plasma_seal(plasma_connection *conn, object_id object_id) {
   /* Make sure this client has a reference to the object before sending the
    * request to Plasma. */
@@ -347,6 +374,7 @@ void plasma_seal(plasma_connection *conn, object_id object_id) {
   object_entry->is_sealed = true;
   /* Send the seal request to Plasma. */
   plasma_request req = plasma_make_request(object_id);
+  plasma_compute_object_hash(conn, object_id, req.digest);
   CHECK(plasma_send_request(conn->store_conn, PLASMA_SEAL, &req) >= 0);
 }
 
