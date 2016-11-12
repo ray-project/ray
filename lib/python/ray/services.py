@@ -174,7 +174,7 @@ def start_ray_local(node_ip_address="127.0.0.1", num_workers=0, worker_path=None
     Redis hostname and port. The second
   """
   if worker_path is None:
-    worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "default_worker.py")
+    worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "workers/default_worker.py")
   # Start Redis.
   redis_port = start_redis(cleanup=True)
   redis_address = address(node_ip_address, redis_port)
