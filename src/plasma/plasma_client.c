@@ -3,7 +3,6 @@
 #include <assert.h>
 #include <fcntl.h>
 #include <stdlib.h>
-#include <string.h>
 #include <stdio.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -395,15 +394,15 @@ plasma_connection *plasma_connect(const char *store_socket_name,
 }
 
 void plasma_disconnect(plasma_connection *conn) {
-  close(conn->store_conn);
-  if (conn->manager_conn >= 0) {
-    close(conn->manager_conn);
-  }
   object_id *id = NULL;
   while ((id = (object_id *) utringbuffer_next(conn->release_history, id))) {
     plasma_perform_release(conn, *id);
   }
   utringbuffer_free(conn->release_history);
+  close(conn->store_conn);
+  if (conn->manager_conn >= 0) {
+    close(conn->manager_conn);
+  }
   free(conn);
 }
 

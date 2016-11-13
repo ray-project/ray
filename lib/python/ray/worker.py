@@ -29,11 +29,11 @@ WORKER_MODE = 1
 PYTHON_MODE = 2
 SILENT_MODE = 3
 
-def random_object_id():
-  return photon.ObjectID(random_string())
-
 def random_string():
   return np.random.bytes(20)
+
+def random_object_id():
+  return photon.ObjectID(random_string())
 
 class FunctionID(object):
   def __init__(self, function_id):

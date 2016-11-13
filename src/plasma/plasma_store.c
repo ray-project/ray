@@ -91,7 +91,8 @@ struct plasma_store_state {
   plasma_store_info *plasma_store_info;
   /** The state that is managed by the eviction policy. */
   eviction_state *eviction_state;
-  /** Input buffer. */
+  /** Input buffer. This is allocated only once to avoid mallocs for every
+   *  call to process_message. */
   UT_array *input_buffer;
 };
 

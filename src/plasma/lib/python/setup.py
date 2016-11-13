@@ -1,4 +1,4 @@
-from setuptools import setup, find_packages, Extension
+from setuptools import setup, find_packages
 import setuptools.command.install as _install
 
 import subprocess

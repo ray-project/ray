@@ -6,6 +6,7 @@ import time
 import libplasma
 
 PLASMA_ID_SIZE = 20
+PLASMA_WAIT_TIMEOUT = 2 ** 36
 
 class PlasmaBuffer(object):
   """This is the type of objects returned by calls to get with a PlasmaClient.
@@ -79,6 +80,8 @@ class PlasmaClient(object):
     to, then we can use this method to prevent the client from trying to send
     messages to the killed processes.
     """
+    if self.alive:
+      libplasma.disconnect(self.conn)
     self.alive = False
 
   def create(self, object_id, size, metadata=None):
@@ -178,7 +181,7 @@ class PlasmaClient(object):
     """
     return libplasma.fetch(self.conn, object_ids)
 
-  def wait(self, object_ids, timeout=2**32-1, num_returns=1):
+  def wait(self, object_ids, timeout=PLASMA_WAIT_TIMEOUT, num_returns=1):
     """Wait until num_returns objects in object_ids are ready.
 
     Args:
