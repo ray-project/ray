@@ -16,6 +16,40 @@ typedef struct {
   int64_t construct_duration;
 } plasma_object_info;
 
+/* Object is stored on the local Plasma Store. */
+#define PLASMA_OBJECT_LOCAL  1
+/* Object is not stored on the local Plasma Store */
+#define PLASMA_OBJECT_NOT_LOCAL 2
+/* Object is stored on a remote Plasma store, and it is not stored on the local Plasma Store */
+#define PLASMA_OBJECT_REMOTE 3
+/* Object is not stored in the system. */
+#define PLASMA_OBJECT_DOES_NOT_EXIST 5
+/* Object is currently transferred from a remote Plasma store the the local Plasma Store. */
+#define PLASMA_OBJECT_IN_TRANSFER 6
+#define PLASMA_OBJECT_ANYWHERE 7
+
+/**
+ * Object rquest data structure. Used in the plasma_wait_for_objects() argument.
+ */
+typedef struct {
+  /** ID of the requested object. If ID_NIL request any object */
+  object_id object_id;
+  /** Request associated to the object. It can take one of the following values:
+   * - PLASMA_OBJECT_LOCAL: return if or when the object is available in the local Plasma Store.
+   * - PLASMA_OBJECT_ANYWHWERE: return if or when the object is available in the
+   *                            system (i.e., either in the local or a remote Plasma Store. */
+  int type;
+  /** Object status. Same as the status returned by plasma_status() function call.
+   *  This is filled in by plasma_wait_for_objects1():
+   * - PLASMA_OBJECT_LOCAL: object is ready at the local Plasma Store.
+   * - PLASMA_OBJECT_REMOTE: object is ready at a remote Plasma Store.
+   * - PLASMA_OBJECT_DOES_NOT_EXIST: object does not exist in the system.
+   * - PLASMA_CLIENT_IN_TRANSFER, if the object is currently being scheduled for
+   *                              being transferred or it is transferring. */
+  int status;
+} object_request;
+
+
 /* Handle to access memory mapped file and map it into client address space */
 typedef struct {
   /** The file descriptor of the memory mapped file in the store. It is used
@@ -67,7 +101,9 @@ enum plasma_message_type {
   /** Request a fetch of an object in another store. */
   PLASMA_FETCH,
   /** Wait until an object becomes available. */
-  PLASMA_WAIT
+  PLASMA_WAIT,
+  /** Wait until an object becomes available. */
+  PLASMA_WAIT1
 };
 
 typedef struct {
@@ -77,8 +113,8 @@ typedef struct {
   int64_t metadata_size;
   /** The timeout of the request. */
   uint64_t timeout;
-  /** The number of objects we wait for for wait. */
-  int num_returns;
+  /** The number of objects we are waiting for to be ready. */
+  int num_ready_objects;
   /** In a transfer request, this is the IP address of the Plasma Manager to
    *  transfer the object to. */
   uint8_t addr[4];
@@ -88,7 +124,10 @@ typedef struct {
   /** The number of object IDs that will be included in this request. */
   int num_object_ids;
   /** The IDs of the objects that the request is about. */
-  object_id object_ids[1];
+  union {
+    object_id object_ids[1];
+    object_request object_requests[1];
+  };
 } plasma_request;
 
 typedef struct {
@@ -104,7 +143,11 @@ typedef struct {
   /** The number of object IDs that will be included in this reply. */
   int num_object_ids;
   /** The IDs of the objects that this reply refers to. */
-  object_id object_ids[1];
+  union {
+    object_id object_ids[1];
+    object_request object_requests[1];
+  };
 } plasma_reply;
 
-#endif
+
+#endif /* PLASMA_H */
