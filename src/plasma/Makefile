@@ -32,7 +32,6 @@ $(BUILD)/example: plasma_client.c plasma.h example.c fling.h fling.c common
 	$(CC) $(CFLAGS) plasma_client.c example.c fling.c ../common/build/libcommon.a -o $(BUILD)/example
 
 common: FORCE
-	git submodule update --init --recursive
 	cd ../common; make
 
 # Set the request timeout low for testing purposes.
