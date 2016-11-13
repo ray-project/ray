@@ -422,11 +422,16 @@ class PlasmaClient(object):
     end = int(start + (interval[1] - interval[0]))
     return np.take(merged, range(start, end), axis=shard_axis)
 
-  def push(self, kv_store_id, interval, np_data, version=0):
+  # TODO: shard order should be implicit
+  def push(self, kv_store_id, interval, np_data, shard_order='C', version=0):
     assert type(interval) is tuple and len(interval) == 2
+    assert shard_order in ['C', 'F']
 
     # TODO: Trying to figure out how to write to memory
-    np_data = np.ascontiguousarray(np_data)
+    if shard_order == 'C' and not np_data.flags.c_contiguous:
+      np_data = np.ascontiguousarray(np_data)
+    elif shard_order == 'F' and not np_data.flags.f_contiguous:
+      np_data = np.asfortranarray(np_data)
 
     self.client.plasma_push(
       self.plasma_conn,
@@ -516,9 +521,7 @@ if __name__ == '__main__':
     assert (x.pull(id_a, (0, 10)) == update).all()
     print 'Update 1st shard success.'
 
-    import pdb
     x.push(id_a, (63, 73), update)
-    pdb.set_trace()
     assert (x.pull(id_a, (63, 73)) == update).all()
     print 'Update across multiple shards success.'
 
