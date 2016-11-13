@@ -91,11 +91,11 @@ struct plasma_store_state {
   plasma_store_info *plasma_store_info;
   /** The state that is managed by the eviction policy. */
   eviction_state *eviction_state;
-  /* Input buffer. */
-  UT_array* input_buffer;
+  /** Input buffer. */
+  UT_array *input_buffer;
 };
 
-UT_icd byte_icd = {sizeof(uint8_t), NULL, NULL, NULL };
+UT_icd byte_icd = {sizeof(uint8_t), NULL, NULL, NULL};
 
 plasma_store_state *init_plasma_store(event_loop *loop, int64_t system_memory) {
   plasma_store_state *state = malloc(sizeof(plasma_store_state));

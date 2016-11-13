@@ -23,7 +23,7 @@ static int PyObjectToUniqueID(PyObject *object, object_id *object_id) {
   }
 }
 
-static void PlasmaCapsule_Destructor(PyObject* capsule) {
+static void PlasmaCapsule_Destructor(PyObject *capsule) {
   /* TODO(pcm): Close the connection here. */
   /*
   plasma_connection* conn =
@@ -36,15 +36,16 @@ PyObject *PyPlasma_connect(PyObject *self, PyObject *args) {
   const char *store_socket_name;
   const char *manager_socket_name;
   int release_delay;
-  if (!PyArg_ParseTuple(args, "ssi", &store_socket_name, &manager_socket_name, &release_delay)) {
+  if (!PyArg_ParseTuple(args, "ssi", &store_socket_name, &manager_socket_name,
+                        &release_delay)) {
     return NULL;
   }
-  printf("release delay is %d\n", release_delay);
   plasma_connection *conn;
   if (strlen(manager_socket_name) == 0) {
     conn = plasma_connect(store_socket_name, NULL, release_delay);
   } else {
-    conn = plasma_connect(store_socket_name, manager_socket_name, release_delay);
+    conn =
+        plasma_connect(store_socket_name, manager_socket_name, release_delay);
   }
   return PyCapsule_New(conn, "plasma", &PlasmaCapsule_Destructor);
 }
@@ -54,7 +55,8 @@ PyObject *PyPlasma_create(PyObject *self, PyObject *args) {
   object_id object_id;
   long long size;
   PyObject *metadata;
-  if (!PyArg_ParseTuple(args, "O&O&LO", PyObjectToPlasma, &conn, PyObjectToUniqueID, &object_id, &size, &metadata)) {
+  if (!PyArg_ParseTuple(args, "O&O&LO", PyObjectToPlasma, &conn,
+                        PyObjectToUniqueID, &object_id, &size, &metadata)) {
     return NULL;
   }
   if (!PyByteArray_Check(metadata)) {
@@ -62,14 +64,17 @@ PyObject *PyPlasma_create(PyObject *self, PyObject *args) {
     return NULL;
   }
   uint8_t *data;
-  plasma_create(conn, object_id, size, (uint8_t*) PyByteArray_AsString(metadata), PyByteArray_Size(metadata), &data);
+  plasma_create(conn, object_id, size,
+                (uint8_t *) PyByteArray_AsString(metadata),
+                PyByteArray_Size(metadata), &data);
   return PyBuffer_FromReadWriteMemory((void *) data, (Py_ssize_t) size);
 }
 
 PyObject *PyPlasma_seal(PyObject *self, PyObject *args) {
   plasma_connection *conn;
   object_id object_id;
-  if (!PyArg_ParseTuple(args, "O&O&", PyObjectToPlasma, &conn, PyObjectToUniqueID, &object_id)) {
+  if (!PyArg_ParseTuple(args, "O&O&", PyObjectToPlasma, &conn,
+                        PyObjectToUniqueID, &object_id)) {
     return NULL;
   }
   plasma_seal(conn, object_id);
@@ -79,7 +84,8 @@ PyObject *PyPlasma_seal(PyObject *self, PyObject *args) {
 PyObject *PyPlasma_release(PyObject *self, PyObject *args) {
   plasma_connection *conn;
   object_id object_id;
-  if (!PyArg_ParseTuple(args, "O&O&", PyObjectToPlasma, &conn, PyObjectToUniqueID, &object_id)) {
+  if (!PyArg_ParseTuple(args, "O&O&", PyObjectToPlasma, &conn,
+                        PyObjectToUniqueID, &object_id)) {
     return NULL;
   }
   plasma_release(conn, object_id);
@@ -89,7 +95,8 @@ PyObject *PyPlasma_release(PyObject *self, PyObject *args) {
 PyObject *PyPlasma_get(PyObject *self, PyObject *args) {
   plasma_connection *conn;
   object_id object_id;
-  if (!PyArg_ParseTuple(args, "O&O&", PyObjectToPlasma, &conn, PyObjectToUniqueID, &object_id)) {
+  if (!PyArg_ParseTuple(args, "O&O&", PyObjectToPlasma, &conn,
+                        PyObjectToUniqueID, &object_id)) {
     return NULL;
   }
   int64_t size;
@@ -99,14 +106,16 @@ PyObject *PyPlasma_get(PyObject *self, PyObject *args) {
   plasma_get(conn, object_id, &size, &data, &metadata_size, &metadata);
   PyObject *t = PyTuple_New(2);
   PyTuple_SetItem(t, 0, PyBuffer_FromMemory((void *) data, (Py_ssize_t) size));
-  PyTuple_SetItem(t, 1, PyByteArray_FromStringAndSize((void *) metadata, (Py_ssize_t) metadata_size));
+  PyTuple_SetItem(t, 1, PyByteArray_FromStringAndSize(
+                            (void *) metadata, (Py_ssize_t) metadata_size));
   return t;
 }
 
 PyObject *PyPlasma_contains(PyObject *self, PyObject *args) {
   plasma_connection *conn;
   object_id object_id;
-  if (!PyArg_ParseTuple(args, "O&O&", PyObjectToPlasma, &conn, PyObjectToUniqueID, &object_id)) {
+  if (!PyArg_ParseTuple(args, "O&O&", PyObjectToPlasma, &conn,
+                        PyObjectToUniqueID, &object_id)) {
     return NULL;
   }
   int has_object;
@@ -121,7 +130,8 @@ PyObject *PyPlasma_contains(PyObject *self, PyObject *args) {
 PyObject *PyPlasma_fetch(PyObject *self, PyObject *args) {
   plasma_connection *conn;
   PyObject *object_id_list;
-  if (!PyArg_ParseTuple(args, "O&O", PyObjectToPlasma, &conn, &object_id_list)) {
+  if (!PyArg_ParseTuple(args, "O&O", PyObjectToPlasma, &conn,
+                        &object_id_list)) {
     return NULL;
   }
 
@@ -157,7 +167,8 @@ PyObject *PyPlasma_wait(PyObject *self, PyObject *args) {
   PyObject *object_id_list;
   long long timeout;
   int num_returns;
-  if (!PyArg_ParseTuple(args, "O&OLi", PyObjectToPlasma, &conn, &object_id_list, &timeout, &num_returns)) {
+  if (!PyArg_ParseTuple(args, "O&OLi", PyObjectToPlasma, &conn, &object_id_list,
+                        &timeout, &num_returns)) {
     return NULL;
   }
   Py_ssize_t n = PyList_Size(object_id_list);
@@ -167,11 +178,14 @@ PyObject *PyPlasma_wait(PyObject *self, PyObject *args) {
     return NULL;
   }
   if (num_returns < 0) {
-    PyErr_SetString(PyExc_RuntimeError, "The argument num_returns cannot be less than zero.");
+    PyErr_SetString(PyExc_RuntimeError,
+                    "The argument num_returns cannot be less than zero.");
     return NULL;
   }
   if (num_returns > n) {
-    PyErr_SetString(PyExc_RuntimeError, "The argument num_returns cannot be greater than len(object_ids)");
+    PyErr_SetString(
+        PyExc_RuntimeError,
+        "The argument num_returns cannot be greater than len(object_ids)");
   }
 
   object_id *object_ids = malloc(sizeof(object_id) * n);
@@ -179,15 +193,20 @@ PyObject *PyPlasma_wait(PyObject *self, PyObject *args) {
     PyObjectToUniqueID(PyList_GetItem(object_id_list, i), &object_ids[i]);
   }
   object_id *return_ids = malloc(sizeof(object_id) * num_returns);
-  /* Drop the global interpreter lock while we are waiting, so other threads can run. */
+
+  /* Drop the global interpreter lock while we are waiting, so other threads can
+   * run. */
   int num_return_objects;
-  Py_BEGIN_ALLOW_THREADS
-  num_return_objects = plasma_wait(conn, (int) n, object_ids, (uint64_t) timeout, num_returns, return_ids);
-  Py_END_ALLOW_THREADS
+  Py_BEGIN_ALLOW_THREADS;
+  num_return_objects = plasma_wait(conn, (int) n, object_ids,
+                                   (uint64_t) timeout, num_returns, return_ids);
+  Py_END_ALLOW_THREADS;
+
   PyObject *ready_ids = PyList_New(num_return_objects);
   PyObject *waiting_ids = PySet_New(object_id_list);
   for (int i = num_returns - num_return_objects; i < num_returns; ++i) {
-    PyObject *ready = PyString_FromStringAndSize((char*) return_ids[i].id, UNIQUE_ID_SIZE);
+    PyObject *ready =
+        PyString_FromStringAndSize((char *) return_ids[i].id, UNIQUE_ID_SIZE);
     PyList_SetItem(ready_ids, i - (num_returns - num_return_objects), ready);
     PySet_Discard(waiting_ids, ready);
   }
@@ -210,7 +229,8 @@ PyObject *PyPlasma_evict(PyObject *self, PyObject *args) {
 PyObject *PyPlasma_delete(PyObject *self, PyObject *args) {
   plasma_connection *conn;
   object_id object_id;
-  if (!PyArg_ParseTuple(args, "O&O&", PyObjectToPlasma, &conn, PyObjectToUniqueID, &object_id)) {
+  if (!PyArg_ParseTuple(args, "O&O&", PyObjectToPlasma, &conn,
+                        PyObjectToUniqueID, &object_id)) {
     return NULL;
   }
   plasma_delete(conn, object_id);
@@ -220,9 +240,10 @@ PyObject *PyPlasma_delete(PyObject *self, PyObject *args) {
 PyObject *PyPlasma_transfer(PyObject *self, PyObject *args) {
   plasma_connection *conn;
   object_id object_id;
-  const char* addr;
+  const char *addr;
   int port;
-  if (!PyArg_ParseTuple(args, "O&O&si", PyObjectToPlasma, &conn, PyObjectToUniqueID, &object_id, &addr, &port)) {
+  if (!PyArg_ParseTuple(args, "O&O&si", PyObjectToPlasma, &conn,
+                        PyObjectToUniqueID, &object_id, &addr, &port)) {
     return NULL;
   }
 
@@ -245,30 +266,24 @@ PyObject *PyPlasma_subscribe(PyObject *self, PyObject *args) {
 }
 
 static PyMethodDef plasma_methods[] = {
-    {"connect", PyPlasma_connect, METH_VARARGS,
-     "Connect to plasma."},
-    {"create", PyPlasma_create, METH_VARARGS,
-     "Create a new plasma object."},
-    {"seal", PyPlasma_seal, METH_VARARGS,
-      "Seal a plasma object."},
-    {"get", PyPlasma_get, METH_VARARGS,
-      "Get a plasma object."},
+    {"connect", PyPlasma_connect, METH_VARARGS, "Connect to plasma."},
+    {"create", PyPlasma_create, METH_VARARGS, "Create a new plasma object."},
+    {"seal", PyPlasma_seal, METH_VARARGS, "Seal a plasma object."},
+    {"get", PyPlasma_get, METH_VARARGS, "Get a plasma object."},
     {"contains", PyPlasma_contains, METH_VARARGS,
-      "Does the plasma store contain this plasma object?"},
+     "Does the plasma store contain this plasma object?"},
     {"fetch", PyPlasma_fetch, METH_VARARGS,
-      "Fetch the object from another plasma manager instance."},
+     "Fetch the object from another plasma manager instance."},
     {"wait", PyPlasma_wait, METH_VARARGS,
-      "Wait until num_returns objects in object_ids are ready."},
+     "Wait until num_returns objects in object_ids are ready."},
     {"evict", PyPlasma_evict, METH_VARARGS,
-      "Evict some objects until we recover some number of bytes."},
-    {"release", PyPlasma_release, METH_VARARGS,
-      "Release the plasma object."},
-    {"delete", PyPlasma_delete, METH_VARARGS,
-      "Deleta a plasma object."},
+     "Evict some objects until we recover some number of bytes."},
+    {"release", PyPlasma_release, METH_VARARGS, "Release the plasma object."},
+    {"delete", PyPlasma_delete, METH_VARARGS, "Deleta a plasma object."},
     {"transfer", PyPlasma_transfer, METH_VARARGS,
-      "Transfer object to another plasma manager."},
+     "Transfer object to another plasma manager."},
     {"subscribe", PyPlasma_subscribe, METH_VARARGS,
-      "Subscribe to the plasma notification socket."},
+     "Subscribe to the plasma notification socket."},
     {NULL} /* Sentinel */
 };
 
