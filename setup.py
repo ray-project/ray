@@ -19,5 +19,6 @@ setup(name="numbuf",
       packages=find_packages(),
       package_data={"numbuf": ["libnumbuf.so"]},
       cmdclass={"install": install},
+      setup_requires=["numpy"],
       include_package_data=True,
       zip_safe=False)

@@ -15,7 +15,11 @@ else
   exit 1
 fi
 
-if [[ $platform == "macosx" ]]; then
+if [[ $platform == "linux" ]]; then
+  # These commands must be kept in sync with the installation instructions.
+  sudo apt-get update
+  sudo apt-get install -y cmake build-essential autoconf libtool python-dev python-numpy libboost-all-dev
+elif [[ $platform == "macosx" ]]; then
   # check that brew is installed
   which -s brew
   if [[ $? != 0 ]]; then
@@ -25,13 +29,6 @@ if [[ $platform == "macosx" ]]; then
     echo "Updating brew."
     brew update
   fi
-fi
-
-if [[ $platform == "linux" ]]; then
-  # These commands must be kept in sync with the installation instructions.
-  sudo apt-get update
-  sudo apt-get install -y cmake build-essential autoconf libtool python-dev python-numpy python-pip libboost-all-dev
-elif [[ $platform == "macosx" ]]; then
   # These commands must be kept in sync with the installation instructions.
   brew install cmake automake autoconf libtool boost
   sudo easy_install pip
