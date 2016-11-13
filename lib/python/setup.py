@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import subprocess
 
 from setuptools import setup, find_packages
@@ -21,5 +23,13 @@ setup(name="ray",
                     "photon": ["build/photon_scheduler",
                                "libphoton.so"]},
       cmdclass={"install": install},
+      install_requires=["numpy",
+                        "funcsigs",
+                        "colorama",
+                        "psutil",
+                        "redis",
+                        "cloudpickle",
+                        "numbuf==0.0.1"],
       include_package_data=True,
-      zip_safe=False)
+      zip_safe=False,
+      license="Apache 2.0")

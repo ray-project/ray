@@ -1,44 +1,43 @@
 # Installation on Ubuntu
 
-Ray must currently be built from source. We have tested Ray on Ubuntu 14.04.
-
-## Clone the Ray repository
-
-```
-git clone https://github.com/ray-project/ray.git
-```
+Ray should work with Python 2 and Python 3. We have tested Ray on Ubuntu 14.04
+and Ubuntu 16.04
 
 ## Dependencies
 
-First install the dependencies. We currently do not support Python 3.
+To install Ray, first install the following dependencies. We recommend using
+[Anaconda](https://www.continuum.io/downloads).
 
 ```
 sudo apt-get update
-sudo apt-get install -y git cmake build-essential autoconf curl libtool python-dev python-numpy python-pip libboost-all-dev unzip
-sudo pip install funcsigs colorama
+sudo apt-get install -y cmake build-essential autoconf curl libtool python-dev python-numpy python-pip libboost-all-dev unzip
+
+sudo pip install funcsigs colorama psutil redis
 sudo pip install --upgrade git+git://github.com/cloudpipe/cloudpickle.git@0d225a4695f1f65ae1cbb2e0bbc145e10167cce4  # We use the latest version of cloudpickle because it can serialize named tuples.
+sudo pip install --upgrade --verbose git+git://github.com/ray-project/numbuf.git@d1974afbab9f0f1bcf8af15a8c476d868ad31aff
 ```
 
-## Build
+# Install Ray
 
-Then run the setup scripts.
+Ray can be installed with pip as follows.
 
 ```
-cd ray
-./setup.sh # Build all necessary third party libraries (e.g., gRPC and Apache Arrow). This may take about 10 minutes.
-./build.sh # Build Ray.
-source setup-env.sh # Add Ray to your Python path.
+sudo pip install --upgrade --verbose "git+git://github.com/ray-project/ray.git#egg=ray&subdirectory=lib/python"
 ```
 
-For convenience, you may also want to add the line `source
-"$RAY_ROOT/setup-env.sh"` to the bottom of your `~/.bashrc` file manually, where
-`$RAY_ROOT` is the Ray directory (e.g., `/home/ubuntu/ray`).
+Alternatively, Ray can be built from source as follows.
+
+```
+git clone https://github.com/ray-project/ray.git
+cd lib/python
+sudo python setup.py install
+```
 
 ## Test if the installation succeeded
 
-To test if the installation was successful, try running some tests.
+To test if the installation was successful, try running some tests (from the
+`ray` directory).
 
 ```
-python test/runtest.py # This tests basic functionality.
-python test/array_test.py # This tests some array libraries.
+python test/runtest.py
 ```
