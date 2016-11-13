@@ -34,8 +34,8 @@ python setup.py install
 ```
 
 ## Test if the installation succeeded
-To test if the installation was successful, try running some tests (from the
-`ray` directory).
+To test if the installation was successful, try running some tests. This assumes
+that you've cloned the git repository.
 
 ```
 python test/runtest.py
