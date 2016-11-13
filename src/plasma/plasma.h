@@ -46,6 +46,8 @@ enum object_status { OBJECT_NOT_FOUND = 0, OBJECT_FOUND = 1 };
 
 typedef enum { OPEN, SEALED } object_state;
 
+typedef enum { NONE, MEMORY, DISK } object_residence; 
+
 enum plasma_message_type {
   /** Create a new object. */
   PLASMA_CREATE = 128,
@@ -135,6 +137,8 @@ typedef struct {
   UT_array *clients;
   /** The state of the object, e.g., whether it is open or sealed. */
   object_state state;
+  /** Whether the object is in memory or on disk **/
+  object_residence res; 
 } object_table_entry;
 
 /** The plasma store information that is exposed to the eviction policy. */

@@ -71,6 +71,7 @@ class TestPlasmaClient(unittest.TestCase):
       time.sleep(2.0)
     else:
       self.p = subprocess.Popen(command)
+      time.sleep(2.0)
     # Connect to Plasma.
     self.plasma_client = plasma.PlasmaClient(store_name, None, 64)
     # For the eviction test
@@ -460,6 +461,45 @@ class TestPlasmaManager(unittest.TestCase):
       self.client1.seal(object_id)
     for object_id in object_ids:
       self.client1.transfer("127.0.0.1", self.port2, object_id)
+    b = time.time() - a
+
+    print("it took", b, "seconds to put and transfer the objects")
+
+  def test_persist_test(self):
+    a = time.time()
+    object_ids = []
+    for i in range(10001): 
+      object_id = random_object_id()
+      object_ids.append(object_id)
+      buf = self.client1.create(object_id, 100000)
+      temp = 0
+      buf[0] = object_id[0]
+      
+      self.client1.seal(object_id)
+    print("Now accessing everything")
+    for i in range(len(object_ids)):
+      buf = self.client1.get(object_ids[len(object_ids) - 1 - i])
+      self.assertEqual(buf[0], object_ids[len(object_ids) - 1 - i][0])
+    b = time.time() - a
+
+    print("it took", b, "seconds to put and transfer the objects")
+
+  def test_LRU_thrash_test(self):
+    a = time.time()
+    object_ids = []
+    for i in range(10001): 
+      object_id = random_object_id()
+      object_ids.append(object_id)
+      buf = self.client1.create(object_id, 100000)
+      temp = 0
+      buf[0] = object_id[0]
+      
+      self.client1.seal(object_id)
+    print("Now accessing everything")
+
+    for i in range(0, len(object_ids)):
+      buf = self.client1.get(object_ids[i])
+      self.assertEqual(buf[0], object_ids[i][0])
     b = time.time() - a
 
     print("it took", b, "seconds to put and transfer the objects")
