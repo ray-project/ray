@@ -36,7 +36,7 @@ redis:
 	cd thirdparty ; bash ./build-redis.sh
 
 hiredis:
-	git submodule update --init --recursive -- "thirdparty/hiredis" ; cd thirdparty/hiredis ; make
+	cd thirdparty/hiredis ; make
 
 test: hiredis redis $(BUILD)/common_tests $(BUILD)/task_table_tests $(BUILD)/object_table_tests $(BUILD)/db_tests $(BUILD)/io_tests $(BUILD)/task_tests $(BUILD)/redis_tests FORCE
 	./thirdparty/redis-3.2.3/src/redis-server &
