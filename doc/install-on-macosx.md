@@ -10,11 +10,11 @@ To install Ray, first install the following dependencies. We recommend using
 ```
 brew update
 brew install cmake automake autoconf libtool boost
-sudo easy_install pip
+sudo easy_install pip  # If you're using Anaconda, then this is unnecessary.
 
-sudo pip install numpy funcsigs colorama psutil redis --ignore-installed six
-sudo pip install --upgrade git+git://github.com/cloudpipe/cloudpickle.git@0d225a4695f1f65ae1cbb2e0bbc145e10167cce4  # We use the latest version of cloudpickle because it can serialize named tuples.
-sudo pip install --upgrade --verbose git+git://github.com/ray-project/numbuf.git@d1974afbab9f0f1bcf8af15a8c476d868ad31aff
+pip install numpy funcsigs colorama psutil redis --ignore-installed six
+pip install --upgrade git+git://github.com/cloudpipe/cloudpickle.git@0d225a4695f1f65ae1cbb2e0bbc145e10167cce4  # We use the latest version of cloudpickle because it can serialize named tuples.
+pip install --upgrade --verbose git+git://github.com/ray-project/numbuf.git@d1974afbab9f0f1bcf8af15a8c476d868ad31aff
 ```
 
 # Install Ray
@@ -22,7 +22,7 @@ sudo pip install --upgrade --verbose git+git://github.com/ray-project/numbuf.git
 Ray can be installed with pip as follows.
 
 ```
-sudo pip install --upgrade --verbose "git+git://github.com/ray-project/ray.git#egg=ray&subdirectory=lib/python"
+pip install --upgrade --verbose "git+git://github.com/ray-project/ray.git#egg=ray&subdirectory=lib/python"
 ```
 
 Alternatively, Ray can be built from source as follows.
@@ -30,7 +30,7 @@ Alternatively, Ray can be built from source as follows.
 ```
 git clone https://github.com/ray-project/ray.git
 cd lib/python
-sudo python setup.py install
+python setup.py install
 ```
 
 ## Test if the installation succeeded
