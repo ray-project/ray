@@ -267,56 +267,19 @@ typedef struct {
 } object_info;
 
 /**
- * Copy an array of object requests into another one.
- *
- * @param num_object_requests Number of elements in the object_requests arrays.
- * @param object_requests_dst Destination object_requests array.
- * @param object_requests_dst Source object_requests array.
- * @return None.
- */
-void object_requests_copy(int num_object_requests,
-                          object_request object_requests_dst[],
-                          object_request object_requests_src[]);
-
-/**
- * Get object request form an array of object requests.
- *
- * @param object_id Identifier of the requested object.
- * @param num_object_requests Number of elements in the object requests array.
- * @param object_requests The array of object requests in which we
- *        are looking for the object (object_id).
- * @return Object request if found; NULL, if not found.
- */
-object_request *object_requests_get_object(object_id object_id,
-                                           int num_object_requests,
-                                           object_request object_requests[]);
-
-/**
- * Initialize status of all object requests in an array.
- *
- * @param num_object_requests Number of elements in the array of object requests.
- * @param object_requests Array of object requests.
- * @param status Value with which we initialize the status of each
- *               object request in the array.
- * @return Void.
- */
-void object_requests_set_status_all(int num_object_requests,
-                                   object_request object_requests[],
-                                   int status);
-
-/**
  * Get specified object from the local Plasma Store. This function is non-blocking.
  *
  * @param conn The object containing the connection state.
  * @param object_id The ID of the object to get.
- * @param objectBuffer The data structure where the object information will be written.
+ * @param object_buffer The data structure where the object information will
+ *                      be written, including object payload and metadata.
  * @return PLASMA_CLIENT_LOCAL, if the object is stored at the local Plasma Store.
  *         PLASMA_CLIENT_NOT_LOCAL, if not. In this case, the caller needs to
  *         ignore data, metadata_size, and metadata fields.
  */
-int plasma_get_local1(plasma_connection *conn,
-                      object_id object_id,
-                      object_buffer *object_buffer);
+int plasma_get_local(plasma_connection *conn,
+                     object_id object_id,
+                     object_buffer *object_buffer);
 
 /**
  * Initiates the fetch (transfer) of an object from a remote Plasma Store.
@@ -339,7 +302,7 @@ int plasma_get_local1(plasma_connection *conn,
  *         it is available on a remote Plasma Store.
  *         PLASMA_CLIENT_DOES_NOT_EXIST, if object is available neither locally nor remotely.
  */
-int plasma_fetch_remote1(plasma_connection *conn, object_id object_id);
+int plasma_fetch_remote(plasma_connection *conn, object_id object_id);
 
 /**
  * Return the status of a given object.
@@ -357,10 +320,10 @@ int plasma_fetch_remote1(plasma_connection *conn, object_id object_id);
  *         PLASMA_CLIENT_REMOTE, if the object is stored at a remote Plasma Store.
  *         PLASMA_CLIENT_DOES_NOT_EXIST, if the object doesn’t exist in system.
  */
-int plasma_status1(plasma_connection *conn,
-                   object_id object_id,
-                   int64_t *total_size,
-                   int64_t *transferred_size);
+int plasma_status(plasma_connection *conn,
+                  object_id object_id,
+                  int64_t *total_size,
+                  int64_t *transferred_size);
 
 
 /**
@@ -402,11 +365,116 @@ int plasma_info(plasma_connection *conn,
  * @return Number of satisfied requests in the object_requests list. If the returned number is less
  *         than min_num_ready_objects this means that timeout expired.
  */
-int plasma_wait_for_objects1(plasma_connection *conn,
-                             int num_object_requests,
-                             object_request object_requests[],
-                             int num_ready_objects,
-                             uint64_t timeout_ms);
+int plasma_wait_for_objects(plasma_connection *conn,
+                            int num_object_requests,
+                            object_request object_requests[],
+                            int num_ready_objects,
+                            uint64_t timeout_ms);
+
+/*
+ *  TODO: maybe move the plasma_client_* functions in another file.
+ *
+ *  plasma_client_* represent functions implemented by client; so probably
+ *  need to be in a different file.
+ */
+
+ /**
+  * Get an object from the Plasma Store. This function will block until the
+  * object has been created and sealed in the Plasma Store.
+  *
+  * @param conn The object containing the connection state.
+  * @param object_id The ID of the object to get.
+  * @param object_buffer The data structure where the object information will
+  *                      be written, including object payload and metadata.
+  * @return Void.
+  */
+void plasma_client_get(plasma_connection *conn,
+                       object_id object_id,
+                       object_buffer *object_buffer);
+
+/**
+ * Wait for objects to be created (right now, wait for local objects).
+ *
+ * @param conn The object containing the connection state.
+ * @param num_object_ids Number of object IDs wait is called on.
+ * @param object_ids Object IDs wait is called on.
+ * @param timeout Wait will time out and return after this number of ms.
+ * @param num_returns Number of object IDs wait will return if it doesn't time
+ *        out.
+ * @param return_object_ids Out parameter for the object IDs returned by wait.
+ *        This is an array of size num_returns. If the number of objects that
+ *        are ready when we time out, the objects will be stored in the last
+ *        slots of the array and the number of objects is returned.
+ * @return Number of objects that are actually ready.
+ */
+int plasma_client_wait(plasma_connection *conn,
+                       int num_object_ids,
+                       object_id object_ids[],
+                       uint64_t timeout,
+                       int num_returns,
+                       object_id return_object_ids[]);
+
+/**
+ * Get an array of objects from the Plasma Store. This function will block until
+ * all object in the array have been created and sealed in the Plasma Store.
+ *
+ * @param conn The object containing the connection state.
+ * @param num_object_ids The number of objects in the array to be returned.
+ * @param object_ids The array of object IDs to be returned.
+ * @param object_buffers The array of data structure where the information of
+ *                       the return objects will be stored. The objects appear
+ *                       in the same order as their IDs in the object_ids array,
+ * @return Void.
+ */
+void plasma_client_multiget(plasma_connection *conn,
+                            int num_object_ids,
+                            object_id object_ids[],
+                            object_buffer object_buffers[]);
+
+/**
+ * TODO: maybe move object_requests_* functions in another file.
+ * The object_request data structure is defined in plasma.h since
+ * it is used by plasma_request and plasma_reply, but there is no
+ * plasma.c file.
+ */
+
+ /**
+  * Copy an array of object requests into another one.
+  *
+  * @param num_object_requests Number of elements in the object_requests arrays.
+  * @param object_requests_dst Destination object_requests array.
+  * @param object_requests_dst Source object_requests array.
+  * @return None.
+  */
+ void object_requests_copy(int num_object_requests,
+                           object_request object_requests_dst[],
+                           object_request object_requests_src[]);
+
+ /**
+  * Get object request form an array of object requests.
+  *
+  * @param object_id Identifier of the requested object.
+  * @param num_object_requests Number of elements in the object requests array.
+  * @param object_requests The array of object requests in which we
+  *        are looking for the object (object_id).
+  * @return Object request if found; NULL, if not found.
+  */
+ object_request *object_requests_get_object(object_id object_id,
+                                            int num_object_requests,
+                                            object_request object_requests[]);
+
+ /**
+  * Initialize status of all object requests in an array.
+  *
+  * @param num_object_requests Number of elements in the array of object requests.
+  * @param object_requests Array of object requests.
+  * @param status Value with which we initialize the status of each
+  *               object request in the array.
+  * @return Void.
+  */
+ void object_requests_set_status_all(int num_object_requests,
+                                    object_request object_requests[],
+                                    int status);
 
 
 #endif /* PLASMA_CLIENT_H */

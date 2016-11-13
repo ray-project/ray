@@ -61,4 +61,7 @@ typedef unique_id object_id;
 /* Compare two IDs for equaity. */
 #define CMP_ID(x, y) (memcmp((void *)(x), (void*)(y), UNIQUE_ID_SIZE) == 0 ? true : false)
 
+#define MAX(x, y) ((x) >= (y) ? (x) : (y))
+#define MIN(x, y) ((x) <= (y) ? (x) : (y))
+
 #endif
