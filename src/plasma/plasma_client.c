@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <fcntl.h>
 #include <stdlib.h>
+#include <string.h>
 #include <stdio.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -404,6 +405,10 @@ void plasma_disconnect(plasma_connection *conn) {
   }
   utringbuffer_free(conn->release_history);
   free(conn);
+}
+
+bool plasma_manager_is_connected(plasma_connection *conn) {
+  return conn->manager_conn >= 0;
 }
 
 #define h_addr h_addr_list[0]

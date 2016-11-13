@@ -30,10 +30,10 @@ PYTHON_MODE = 2
 SILENT_MODE = 3
 
 def random_object_id():
-  return photon.ObjectID("".join([chr(random.randint(0, 255)) for _ in range(20)]))
+  return photon.ObjectID(random_string())
 
 def random_string():
-  return "".join([chr(random.randint(0, 255)) for _ in range(20)])
+  return np.random.bytes(20)
 
 class FunctionID(object):
   def __init__(self, function_id):
@@ -418,7 +418,7 @@ class Worker(object):
     # Serialize and put the object in the object store.
     schema, size, serialized = numbuf_serialize(value)
     size = size + 4096 * 4 + 8 # The last 8 bytes are for the metadata offset. This is temporary.
-    buff = self.plasma_client.create(objectid.id(), size, buffer(schema))
+    buff = self.plasma_client.create(objectid.id(), size, bytearray(schema))
     data = np.frombuffer(buff.buffer, dtype="byte")[8:]
     metadata_offset = numbuf.write_to_buffer(serialized, memoryview(data))
     np.frombuffer(buff.buffer, dtype="int64", count=1)[0] = metadata_offset

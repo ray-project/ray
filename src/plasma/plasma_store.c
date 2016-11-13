@@ -91,7 +91,11 @@ struct plasma_store_state {
   plasma_store_info *plasma_store_info;
   /** The state that is managed by the eviction policy. */
   eviction_state *eviction_state;
+  /* Input buffer. */
+  UT_array* input_buffer;
 };
+
+UT_icd byte_icd = {sizeof(uint8_t), NULL, NULL, NULL };
 
 plasma_store_state *init_plasma_store(event_loop *loop, int64_t system_memory) {
   plasma_store_state *state = malloc(sizeof(plasma_store_state));
@@ -103,6 +107,7 @@ plasma_store_state *init_plasma_store(event_loop *loop, int64_t system_memory) {
   state->plasma_store_info->objects = NULL;
   /* Initialize the eviction state. */
   state->eviction_state = make_eviction_state(system_memory);
+  utarray_new(state->input_buffer, &byte_icd);
   return state;
 }
 
@@ -424,10 +429,11 @@ void process_message(event_loop *loop,
                      void *context,
                      int events) {
   client *client_context = context;
+  plasma_store_state *state = client_context->plasma_state;
   int64_t type;
-  int64_t length;
-  plasma_request *req;
-  read_message(client_sock, &type, &length, (uint8_t **) &req);
+  read_buffer(client_sock, &type, state->input_buffer);
+  plasma_request *req = (plasma_request *) utarray_front(state->input_buffer);
+
   /* We're only sending a single object ID at a time for now. */
   plasma_reply reply;
   memset(&reply, 0, sizeof(reply));
@@ -495,8 +501,6 @@ void process_message(event_loop *loop,
     /* This code should be unreachable. */
     CHECK(0);
   }
-
-  free(req);
 }
 
 void new_client_connection(event_loop *loop,

@@ -34,11 +34,16 @@ cp "$COMMON_DIR/thirdparty/redis-3.2.3/src/redis-server" "$PYTHON_COMMON_DIR/thi
 pushd "$PLASMA_DIR"
   make
   make test
+  pushd "$PLASMA_DIR/build"
+    cmake ..
+    make install
+  popd
 popd
 cp "$PLASMA_DIR/build/plasma_store" "$PYTHON_PLASMA_DIR/build/"
 cp "$PLASMA_DIR/build/plasma_manager" "$PYTHON_PLASMA_DIR/build/"
 cp "$PLASMA_DIR/build/plasma_client.so" "$PYTHON_PLASMA_DIR/build/"
 cp "$PLASMA_DIR/lib/python/plasma.py" "$PYTHON_PLASMA_DIR/lib/python/"
+cp "$PLASMA_DIR/build/libplasma.so" "$PYTHON_PLASMA_DIR/lib/python"
 
 pushd "$PHOTON_DIR"
   make
