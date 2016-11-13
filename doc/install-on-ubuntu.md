@@ -25,7 +25,7 @@ Ray can be installed with pip as follows.
 pip install --upgrade --verbose "git+git://github.com/ray-project/ray.git#egg=ray&subdirectory=lib/python"
 ```
 
-Alternatively, Ray can be built from source as follows.
+Alternatively, Ray can be built from the repository as follows.
 
 ```
 git clone https://github.com/ray-project/ray.git
