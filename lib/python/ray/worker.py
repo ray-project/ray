@@ -1006,7 +1006,7 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
   """
   check_connected(worker)
   object_id_strs = [object_id.id() for object_id in object_ids]
-  timeout = timeout if timeout is not None else 2 ** 36
+  timeout = timeout if timeout is not None else 2 ** 30
   ready_ids, remaining_ids = worker.plasma_client.wait(object_id_strs, timeout, num_returns)
   ready_ids = [photon.ObjectID(object_id) for object_id in ready_ids]
   remaining_ids = [photon.ObjectID(object_id) for object_id in remaining_ids]
