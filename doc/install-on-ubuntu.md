@@ -14,7 +14,7 @@ sudo apt-get install -y cmake build-essential autoconf curl libtool python-dev p
 
 pip install numpy funcsigs colorama psutil redis
 pip install --upgrade git+git://github.com/cloudpipe/cloudpickle.git@0d225a4695f1f65ae1cbb2e0bbc145e10167cce4  # We use the latest version of cloudpickle because it can serialize named tuples.
-pip install --upgrade --verbose git+git://github.com/ray-project/numbuf.git@d1974afbab9f0f1bcf8af15a8c476d868ad31aff
+pip install --upgrade --verbose git+git://github.com/ray-project/numbuf.git@488f881d708bc54e86ed375ee97aa94540808fa1
 ```
 
 # Install Ray

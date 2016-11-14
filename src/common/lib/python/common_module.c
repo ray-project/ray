@@ -1,5 +1,4 @@
 #include <Python.h>
-#include "node.h"
 
 #include "common_extension.h"
 

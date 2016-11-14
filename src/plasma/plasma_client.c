@@ -394,16 +394,20 @@ plasma_connection *plasma_connect(const char *store_socket_name,
 }
 
 void plasma_disconnect(plasma_connection *conn) {
-  close(conn->store_conn);
-  if (conn->manager_conn >= 0) {
-    close(conn->manager_conn);
-  }
   object_id *id = NULL;
   while ((id = (object_id *) utringbuffer_next(conn->release_history, id))) {
     plasma_perform_release(conn, *id);
   }
   utringbuffer_free(conn->release_history);
+  close(conn->store_conn);
+  if (conn->manager_conn >= 0) {
+    close(conn->manager_conn);
+  }
   free(conn);
+}
+
+bool plasma_manager_is_connected(plasma_connection *conn) {
+  return conn->manager_conn >= 0;
 }
 
 #define h_addr h_addr_list[0]
