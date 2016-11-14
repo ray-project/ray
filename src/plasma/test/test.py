@@ -11,6 +11,7 @@ import random
 import time
 import tempfile
 import threading
+import numpy as np
 
 import plasma
 
@@ -18,7 +19,7 @@ USE_VALGRIND = False
 PLASMA_STORE_MEMORY = 1000000000
 
 def random_object_id():
-  return "".join([chr(random.randint(0, 255)) for _ in range(plasma.PLASMA_ID_SIZE)])
+  return np.random.bytes(20)
 
 def generate_metadata(length):
   metadata = length * ["\x00"]
@@ -27,7 +28,7 @@ def generate_metadata(length):
     metadata[-1] = chr(random.randint(0, 255))
     for _ in range(100):
       metadata[random.randint(0, length - 1)] = chr(random.randint(0, 255))
-  return buffer("".join(metadata))
+  return bytearray("".join(metadata))
 
 def write_to_data_buffer(buff, length):
   if length > 0:
