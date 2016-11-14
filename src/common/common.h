@@ -67,7 +67,7 @@
 
 #define CHECKM(COND, M, ...)                                   \
   if (!(COND)) {                                               \
-    LOG_ERROR("Check failure: %s \n" M, #COND, ##__VA_ARGS__); \
+    LOG_FATAL("Check failure: %s \n" M, #COND, ##__VA_ARGS__); \
   }
 
 #define CHECK(COND) CHECKM(COND, "")
