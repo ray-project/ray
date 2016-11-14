@@ -10,11 +10,13 @@
  * just enough to store and SHA1 hash) to memory mapped files. */
 
 #include <assert.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/un.h>
 #include <getopt.h>
@@ -32,6 +34,8 @@
 #include "fling.h"
 #include "malloc.h"
 #include "plasma_store.h"
+
+const char *PERSIST_PATH = "/Users/belugajustin/Downloads/misaka/persisted/";
 
 void *dlmalloc(size_t);
 void dlfree(void *);
@@ -159,7 +163,15 @@ void create_object(client *client_context,
   require_space(plasma_state->eviction_state, plasma_state->plasma_store_info,
                 data_size + metadata_size, &num_objects_to_evict,
                 &objects_to_evict);
+  /* Persist objects first */
+  if (num_objects_to_evict > 0) {
+    for (int i = 0; i < num_objects_to_evict; ++i) {
+      persist_object(client_context, objects_to_evict[i]);
+    }
+  }
+  /* Actually evict */
   remove_objects(plasma_state, num_objects_to_evict, objects_to_evict);
+
   /* Allocate space for the new object */
   uint8_t *pointer = dlmalloc(data_size + metadata_size);
   int fd;
@@ -178,6 +190,7 @@ void create_object(client *client_context,
   entry->map_size = map_size;
   entry->offset = offset;
   entry->state = OPEN;
+  entry->res = MEMORY;
   utarray_new(entry->clients, &client_icd);
   HASH_ADD(handle, plasma_state->plasma_store_info->objects, object_id,
            sizeof(object_id), entry);
@@ -199,13 +212,13 @@ void create_object(client *client_context,
 /* Get an object from the hash table. */
 int get_object(client *client_context,
                int conn,
-               object_id object_id,
+               object_id obj_id,
                plasma_object *result) {
   plasma_store_state *plasma_state = client_context->plasma_state;
   object_table_entry *entry;
-  HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
+  HASH_FIND(handle, plasma_state->plasma_store_info->objects, &obj_id,
             sizeof(object_id), entry);
-  if (entry && entry->state == SEALED) {
+  if (entry && entry->state == SEALED && entry->res == MEMORY) {
     result->handle.store_fd = entry->fd;
     result->handle.mmap_size = entry->map_size;
     result->data_offset = entry->offset;
@@ -216,16 +229,42 @@ int get_object(client *client_context,
      * where entry == NULL, this will be called from seal_object. */
     add_client_to_object_clients(entry, client_context);
     return OBJECT_FOUND;
+  } else if (entry && entry->res == DISK) {
+    /* The object exists, we just have to fetch it from disk again */
+    CHECKM(entry->state == SEALED, "Only sealed objects can persist");
+
+    int64_t num_objects_to_evict;
+    object_id *objects_to_evict;
+    require_space(plasma_state->eviction_state, plasma_state->plasma_store_info,
+                  entry->info.data_size + entry->info.metadata_size, &num_objects_to_evict,
+                  &objects_to_evict);
+    /* Persist objects first */
+    if (num_objects_to_evict > 0) {
+      for (int i = 0; i < num_objects_to_evict; ++i) {
+        persist_object(client_context, objects_to_evict[i]);
+      }
+    }
+    /* Actually evict */
+    remove_objects(plasma_state, num_objects_to_evict, objects_to_evict);
+
+    //have to get space for the object again
+    entry->pointer = dlmalloc(entry->info.data_size + entry->info.metadata_size);
+    get_persisted_object(client_context, obj_id);
+    entry->res = MEMORY; 
+    /* Notify the LRU cache that this object is back in business */ 
+    object_created(plasma_state->eviction_state, plasma_state->plasma_store_info,
+                   obj_id);
+    return get_object(client_context, conn, obj_id, result);
   } else {
     object_notify_entry *notify_entry;
     LOG_DEBUG("object not in hash table of sealed objects");
-    HASH_FIND(handle, plasma_state->objects_notify, &object_id,
-              sizeof(object_id), notify_entry);
+    HASH_FIND(handle, plasma_state->objects_notify, &obj_id,
+              sizeof(obj_id), notify_entry);
     if (!notify_entry) {
       notify_entry = malloc(sizeof(object_notify_entry));
       memset(notify_entry, 0, sizeof(object_notify_entry));
       utarray_new(notify_entry->waiting_clients, &client_icd);
-      memcpy(&notify_entry->object_id, &object_id, sizeof(object_id));
+      memcpy(&notify_entry->object_id, &obj_id, sizeof(object_id));
       HASH_ADD(handle, plasma_state->objects_notify, object_id,
                sizeof(object_id), notify_entry);
     }
@@ -329,8 +368,7 @@ void seal_object(client *client_context, object_id object_id) {
   }
 }
 
-/* Delete an object that has been created in the hash table. This should only
- * be called on objects that are returned by the eviction policy to evict. */
+/* Delete an object that has been created in the hash table. */
 void delete_object(plasma_store_state *plasma_state, object_id object_id) {
   LOG_DEBUG("deleting object");
   object_table_entry *entry;
@@ -351,17 +389,94 @@ void delete_object(plasma_store_state *plasma_state, object_id object_id) {
   free(entry);
 }
 
+/* Evict an object that has been created in the hash table. This should only
+ * be called on objects that have been returned by the eviction policy to evict. */
+void evict_object(plasma_store_state *plasma_state, object_id object_id) {
+  LOG_DEBUG("evicting object");
+  object_table_entry *entry;
+  HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
+            sizeof(object_id), entry);
+  CHECKM(entry != NULL, "To evict an object it must be in the object table.");
+  CHECKM(entry->state == SEALED,
+         "To evict an object it must have been sealed.");
+  CHECKM(utarray_len(entry->clients) == 0,
+         "To evict an object, there must be no clients currently using it.");
+  CHECKM(entry->res == MEMORY, 
+         "To evict an object, it must be in memory.")
+  uint8_t *pointer = entry->pointer;
+  //HASH_DELETE(handle, plasma_state->plasma_store_info->objects, entry);
+  /* Free data */ 
+  dlfree(pointer);
+  entry->res = DISK; 
+  //utarray_free(entry->clients);
+  //free(entry);
+}
+
+/* Should only be called for eviction, not deletion */ 
 void remove_objects(plasma_store_state *plasma_state,
                     int64_t num_objects_to_evict,
                     object_id *objects_to_evict) {
   if (num_objects_to_evict > 0) {
     for (int i = 0; i < num_objects_to_evict; ++i) {
-      delete_object(plasma_state, objects_to_evict[i]);
+      evict_object(plasma_state, objects_to_evict[i]);
     }
     /* Free the array of objects to evict. This array was originally allocated
      * by the eviction policy. */
     free(objects_to_evict);
   }
+}
+
+/* Convert object_id to a unique file path on-disk */
+char *object_id_to_persist_path(object_id object_id) {
+  // 2x for up to 2-digit-hex
+  size_t path_size = strlen(PERSIST_PATH) + 2*UNIQUE_ID_SIZE + 1;
+  char *file_path = malloc(path_size);
+  strcpy(file_path, PERSIST_PATH);
+  for (int i = strlen(PERSIST_PATH); i < path_size - 1; i+=2) {
+    int j = (i-strlen(PERSIST_PATH)) / 2;
+    sprintf(&file_path[i], "%hhx", (unsigned int)(object_id.id[j] & 0xFF));
+  }
+  file_path[path_size - 1] = '\0';
+  return file_path;
+}
+
+/* Write a sealed object resident in memory to its own file on disk. */
+void persist_object(client *client_context, object_id object_id) {
+  LOG_DEBUG("persisting object");
+  plasma_store_state *plasma_state = client_context->plasma_state;
+  object_table_entry *entry;
+  HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id, 
+            sizeof(object_id), entry);
+  CHECKM(entry != NULL , "To persist an object it must exist.");
+  CHECKM(entry->state == SEALED, "To persist an object it must be sealed.");
+  /* Check if the file containing the object already exists. */
+  for(int i = 0; i < 20; i++){}
+  char *file_path = object_id_to_persist_path(object_id);
+  struct stat buffer;
+  //CHECKM(stat(file_path, &buffer) != 0, "Cannot persist an object twice");
+  /* Create the file if it does not exist and write object. */
+  int fd = open(file_path, O_RDWR|O_CREAT, S_IRUSR | S_IWUSR);
+  CHECKM(fd > 0, "Something went wrong while creating persistence file");
+  write(fd, entry->pointer, entry->info.data_size + entry->info.metadata_size);
+  close(fd);
+  free(file_path);
+}
+
+/* Read a persisted object from disk back into memory. */
+void get_persisted_object(client *client_context, object_id object_id) {
+  LOG_DEBUG("reading persisted object");
+  plasma_store_state *plasma_state = client_context->plasma_state;
+  object_table_entry *entry;
+  HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id, 
+            sizeof(object_id), entry);
+  CHECKM(entry != NULL, "There must be an object entry to read it into.");
+  /* Read object into allocated space. */
+  char *file_path = object_id_to_persist_path(object_id);
+  int fd = open(file_path, O_RDONLY);
+  free(file_path);
+  CHECKM(fd > 0, "Cannot read an object that was never persisted.");
+  read(fd, entry->pointer, entry->info.data_size + entry->info.metadata_size);
+  close(fd);
 }
 
 /* Send more notifications to a subscriber. */
