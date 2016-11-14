@@ -44,6 +44,8 @@ struct table_callback_data {
   /** ID of the entry in the table that we are going to look up, remove or add.
    */
   unique_id id;
+  /** A label to identify the original request for logging purposes. */
+  const char *label;
   /** The callback that will be called when results is returned. */
   table_done_callback done_callback;
   /** The callback that will be called to initiate the next try. */
@@ -86,6 +88,8 @@ int64_t table_timeout_handler(event_loop *loop,
  *
  * @param db_handle Database handle.
  * @param id ID of the object that is looked up, added or removed.
+ * @param label A string label to identify the type of table request for
+ *        logging purposes.
  * @param data Data entered into the table. Shall be freed by the user.
  * @param retry Retry relevant information: retry timeout, number of remaining
  *        retries, and retry callback.
@@ -98,6 +102,7 @@ int64_t table_timeout_handler(event_loop *loop,
  */
 table_callback_data *init_table_callback(db_handle *db_handle,
                                          unique_id id,
+                                         const char *label,
                                          void *data,
                                          retry_info *retry,
                                          table_done_callback done_callback,

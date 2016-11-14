@@ -78,6 +78,7 @@ void *fake_mmap(size_t size) {
   size += sizeof(size_t);
 
   int fd = create_buffer(size);
+  CHECKM(fd >= 0, "Failed to create buffer during mmap");
   void *pointer = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
   if (pointer == MAP_FAILED) {
     return pointer;

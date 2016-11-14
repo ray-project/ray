@@ -36,6 +36,13 @@
   fprintf(stderr, "[INFO] (%s:%d) " M "\n", __FILE__, __LINE__, ##__VA_ARGS__)
 #endif
 
+#if (RAY_COMMON_LOG_LEVEL > RAY_COMMON_WARNING)
+#define LOG_WARN(M, ...)
+#else
+#define LOG_WARN(M, ...) \
+  fprintf(stderr, "[WARN] (%s:%d) " M "\n", __FILE__, __LINE__, ##__VA_ARGS__)
+#endif
+
 #if (RAY_COMMON_LOG_LEVEL > RAY_COMMON_ERROR)
 #define LOG_ERROR(M, ...)
 #else

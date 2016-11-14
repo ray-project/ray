@@ -411,13 +411,11 @@ void plasma_disconnect(plasma_connection *conn) {
 int plasma_manager_try_connect(const char *ip_addr, int port) {
   int fd = socket(PF_INET, SOCK_STREAM, 0);
   if (fd < 0) {
-    LOG_ERROR("could not create socket");
     return -1;
   }
 
   struct hostent *manager = gethostbyname(ip_addr); /* TODO(pcm): cache this */
   if (!manager) {
-    LOG_ERROR("plasma manager %s not found", ip_addr);
     return -1;
   }
 
@@ -428,10 +426,6 @@ int plasma_manager_try_connect(const char *ip_addr, int port) {
 
   int r = connect(fd, (struct sockaddr *) &addr, sizeof(addr));
   if (r < 0) {
-    LOG_ERROR(
-        "could not establish connection to manager with id %s:%d (may have run "
-        "out of ports)",
-        &ip_addr[0], port);
     return -1;
   }
   return fd;
@@ -449,6 +443,9 @@ int plasma_manager_connect(const char *ip_addr, int port) {
     }
     /* Sleep for 100 milliseconds. */
     usleep(100000);
+  }
+  if (fd < 0) {
+    LOG_WARN("Unable to connect to plasma manager at %s:%d", ip_addr, port);
   }
   return fd;
 }

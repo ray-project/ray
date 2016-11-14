@@ -299,7 +299,7 @@ void redis_result_table_lookup_object_callback(redisAsyncContext *c,
     }
   } else if (reply->type == REDIS_REPLY_NIL) {
     /* The object with the requested ID was not in the table. */
-    LOG_ERROR("Object's result not in table.");
+    LOG_INFO("Object's result not in table.");
     result_table_lookup_callback done_callback = callback_data->done_callback;
     if (done_callback) {
       done_callback(callback_data->id, NULL, callback_data->user_context);
