@@ -222,6 +222,31 @@ int get_object(client *client_context,
   return OBJECT_NOT_FOUND;
 }
 
+/* Get an object from the local Plasma Store if exists. */
+int get_object_local(client *client_context,
+                     int conn,
+                     object_id object_id,
+                     plasma_object *result) {
+  plasma_store_state *plasma_state = client_context->plasma_state;
+  object_table_entry *entry;
+  HASH_FIND(handle, plasma_state->objects, &object_id, sizeof(object_id),
+            entry);
+  if (entry && entry->state == SEALED) {
+    result->handle.store_fd = entry->fd;
+    result->handle.mmap_size = entry->map_size;
+    result->data_offset = entry->offset;
+    result->metadata_offset = entry->offset + entry->info.data_size;
+    result->data_size = entry->info.data_size;
+    result->metadata_size = entry->info.metadata_size;
+    /* If necessary, record that this client is using this object. In the case
+     * where entry == NULL, this will be called from seal_object. */
+    add_client_to_object_clients(entry, client_context);
+    return OBJECT_FOUND;
+  }
+  return OBJECT_NOT_FOUND;
+}
+
+
 int remove_client_from_object_clients(object_table_entry *entry,
                                       client *client_info) {
   /* Find the location of the client in the array. */
@@ -413,16 +438,16 @@ void process_message(event_loop *loop,
               sizeof(reply));
     }
     break;
-    case PLASMA_GET_LOCAL:
-      if (get_object(client_context, client_sock, req->object_ids[0],
-                     &reply.object) == OBJECT_FOUND) {
-        send_fd(client_sock, reply.object.handle.store_fd, (char *) &reply,
-                sizeof(reply));
-      } else {
-        reply.has_object = false;
-        send_fd(client_sock, 0, (char *) &reply, sizeof(reply));
-      }
-      break;
+  case PLASMA_GET_LOCAL:
+    if (get_object_local(client_context, client_sock, req->object_ids[0],
+                         &reply.object) == OBJECT_FOUND) {
+      send_fd(client_sock, reply.object.handle.store_fd, (char *) &reply,
+              sizeof(reply));
+    } else {
+      reply.has_object = false;
+      send_fd(client_sock, 0, (char *) &reply, sizeof(reply));
+    }
+    break;
   case PLASMA_RELEASE:
     release_object(client_context, req->object_ids[0]);
     break;
