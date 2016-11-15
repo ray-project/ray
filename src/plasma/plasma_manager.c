@@ -722,6 +722,7 @@ void process_fetch_requests(client_connection *client_conn,
 
 void return_from_wait(client_connection *client_conn) {
   CHECK(client_conn->is_wait);
+  /** TODO (check for wait1 */
   int64_t size =
       sizeof(plasma_reply) +
       (client_conn->wait_reply->num_object_ids - 1) * sizeof(object_id);
@@ -832,6 +833,7 @@ void process_wait_request1(client_connection *client_conn,
       }
     } else {
       object_request *object_request = &client_conn->wait_reply->object_requests[i];
+      /** TODO (istoica): chek whether is in ransfer */
       /** TODO: First we should check whether a transfer for this object
         * is in progress. This means that the object is remote so we won't need
         * to checkObject Table if object_request->type == PLASMA_OBJECT_ANYWHERE */
@@ -854,6 +856,7 @@ void process_wait_request1(client_connection *client_conn,
 }
 
 void wait_object_available_callback(object_id object_id, void *user_context) {
+
   client_connection *client_conn = (client_connection *)user_context;
   CHECK(client_conn != NULL);
   plasma_manager_state *manager_state = client_conn->manager_state;
@@ -1075,6 +1078,7 @@ void process_fetch_or_status_request(client_connection *client_conn,
   client_conn->wait_reply = NULL;
 
   if (client_conn->manager_state->db == NULL) {
+    /* TODO: maybe send another reply */
     send_client_object_does_not_exist_reply(object_id, client_conn);
     return;
   }
