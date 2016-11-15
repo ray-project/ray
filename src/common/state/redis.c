@@ -538,6 +538,7 @@ void redis_task_table_update(table_callback_data *callback_data) {
 void redis_task_table_publish_push_callback(redisAsyncContext *c,
                                             void *r,
                                             void *privdata) {
+  LOG_DEBUG("Calling publish push callback");
   REDIS_CALLBACK_HEADER(db, callback_data, r)
   CHECK(callback_data->requests_info != NULL);
   ((bool *) callback_data->requests_info)[PUSH_INDEX] = true;
@@ -554,6 +555,7 @@ void redis_task_table_publish_push_callback(redisAsyncContext *c,
 void redis_task_table_publish_publish_callback(redisAsyncContext *c,
                                                void *r,
                                                void *privdata) {
+  LOG_DEBUG("Calling publish publish callback");
   REDIS_CALLBACK_HEADER(db, callback_data, r)
   CHECK(callback_data->requests_info != NULL);
   ((bool *) callback_data->requests_info)[PUBLISH_INDEX] = true;

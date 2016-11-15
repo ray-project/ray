@@ -8,6 +8,13 @@
 #include "photon.h"
 #include "photon_scheduler.h"
 
+/* TODO(swang): We should set retry values in a config file somewhere. */
+const retry_info photon_retry = {
+    .num_retries = 0,
+    .timeout = 1000,
+    .fail_callback = NULL,
+};
+
 typedef struct task_queue_entry {
   task *task;
   struct task_queue_entry *prev;
@@ -147,13 +154,9 @@ void handle_task_submitted(scheduler_info *info,
     DL_APPEND(s->task_queue, elt);
   }
   /* Submit the task to redis. */
-  /* TODO(swang): We should set retry values in a config file somewhere. */
-  retry_info retry = {
-      .num_retries = 0, .timeout = 0, .fail_callback = NULL,
-  };
   /* TODO(swang): This should be task_table_update if the task is already in the
    * log. */
-  task_table_add_task(info->db, task, &retry, NULL, NULL);
+  task_table_add_task(info->db, task, (retry_info *) &photon_retry, NULL, NULL);
   if (schedule_locally) {
     /* If the task was scheduled locally, we need to free it. Otherwise,
      * ownership of the task is passed to the task_queue, and it will be freed

@@ -32,6 +32,8 @@ table_callback_data *init_table_callback(db_handle *db_handle,
       (event_loop_timer_handler) table_timeout_handler, callback_data);
   outstanding_callbacks_add(callback_data);
 
+  LOG_DEBUG("Initializing table command %s with timer ID %" PRId64,
+            callback_data->label, callback_data->timer_id);
   callback_data->retry_callback(callback_data);
 
   return callback_data;
