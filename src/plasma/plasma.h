@@ -98,8 +98,14 @@ enum plasma_message_type {
   PLASMA_TRANSFER,
   /** Header for sending data. */
   PLASMA_DATA,
-  /** Request a fetch of an object in another store. */
+  /** Request a fetch of an object in another store. Unblocking call */
+  PLASMA_FETCH_REMOTE,
+  /** Request a fetch of an object in another store. Blocking call. */
   PLASMA_FETCH,
+  /** Request status of an object, i.e., whether the object is stored in
+   * the local Plasma Store, in a remote Plasma Store, in transfer, or
+   * doesn't exist in the system */
+  PLASMA_STATUS,
   /** Wait until an object becomes available. */
   PLASMA_WAIT,
   /** Wait until an object becomes available. */
@@ -137,7 +143,11 @@ typedef struct {
    *  PLASMA_CONTAINS or PLASMA_FETCH. It is 1 if the object is
    *  present and 0 otherwise. Used for plasma_contains and
    *  plasma_fetch. */
-  int has_object;
+   /* XXX */
+  union {
+    int object_status;
+    int has_object;
+  };
   /** Number of object IDs a wait is returning. */
   int num_objects_returned;
   /** The number of object IDs that will be included in this reply. */
@@ -148,6 +158,5 @@ typedef struct {
     object_request object_requests[1];
   };
 } plasma_reply;
-
 
 #endif /* PLASMA_H */

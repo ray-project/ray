@@ -480,6 +480,31 @@ void plasma_fetch(plasma_connection *conn,
   }
 }
 
+int plasma_fetch_remote(plasma_connection *conn,
+                        object_id object_id) {
+  CHECK(conn);
+  CHECK(conn->manager_conn >= 0);
+
+  plasma_request req = make_plasma_request(object_id);
+  LOG_DEBUG("Requesting fetch");
+  plasma_send_request(conn->manager_conn, PLASMA_FETCH_REMOTE, &req);
+
+  plasma_reply reply;
+  int nbytes;
+
+  nbytes = recv(conn->manager_conn, (uint8_t *) &reply, sizeof(reply),
+                MSG_WAITALL);
+  if (nbytes < 0) {
+    LOG_ERR("Error while waiting for manager response in fetch");
+  } else if (nbytes == 0) {
+    /** XXX (istoica): check for recv error */
+    LOG_ERR("Error while waiting for manager response in fetch");
+  } else {
+    CHECK(nbytes == sizeof(reply));
+  }
+  return reply.object_status;
+}
+
 int plasma_wait(plasma_connection *conn,
                 int num_object_ids,
                 object_id object_ids[],
@@ -510,13 +535,13 @@ int get_manager_fd(plasma_connection *conn) {
 }
 
 /** === ALTERNATE PLASMA CLIENT API ===
+
  * This API simplifies the previous one in two ways. First if factors out
  * object (re)construction from the Plasma Manager. Second, except for
  * plasma_wait_for_objects() all other functions are non-blocking.
  *
  * TODO:
- * - plasma_status(), plasma_info() and plasma_fetch_remote()
- *   are not implemented yet.
+ * - plasma_status() not implemented yet, but not needed at this point.
  * - assume new implementation of object_table_subscribe() which returns
  *   if object is in the Local Store (check with jpm).
  * - need to phase out old API and drope *1 from the names of the functions
@@ -531,6 +556,7 @@ int plasma_get_local(plasma_connection *conn,
 
   plasma_request req = make_plasma_request(object_id);
   plasma_send_request(conn->store_conn, PLASMA_GET_LOCAL, &req);
+
   plasma_reply reply;
   int fd = recv_fd(conn->store_conn, (char *) &reply, sizeof(plasma_reply));
   CHECKM(fd != -1, "recv not successful");
@@ -559,20 +585,20 @@ int plasma_get_local(plasma_connection *conn,
 }
 
 
-int plasma_status(plasma_connection *conn,
-                  object_id object_id,
-                  int64_t *total_size,
-                  int64_t *transferred_size) {
-  CHECK(conn != NULL);
-}
+int plasma_status(plasma_connection *conn, object_id object_id) {
 
-int plasma_fetch_remote(plasma_connection *conn,
-                        object_id object_id) {
-  /** TODO - This should be identical to existing one
-    * minus object reconstruction, if any. */
   CHECK(conn != NULL);
-}
+  CHECK(conn->manager_conn >= 0);
 
+  plasma_request req = make_plasma_request(object_id);
+  plasma_send_request(conn->store_conn, PLASMA_STATUS, &req);
+
+  plasma_reply reply;
+  int fd = recv_fd(conn->store_conn, (char *) &reply, sizeof(plasma_reply));
+  CHECKM(fd != -1, "recv not successful");
+
+  return reply.object_status;
+}
 
 int plasma_wait_for_objects(plasma_connection *conn,
                             int num_object_requests,
@@ -642,7 +668,7 @@ void plasma_client_get(plasma_connection *conn,
       /** Object is in the local Plasma Store. */
       return;
 
-    switch (plasma_status(conn, object_id, NULL, NULL)) {
+    switch (plasma_status(conn, object_id)) {
       case PLASMA_OBJECT_LOCAL:
         /** Object has been transfered just after calling plasma_get_local(),
           * and it is now in the local Plasma Store. Loop again to call

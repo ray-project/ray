@@ -309,9 +309,6 @@ int plasma_fetch_remote(plasma_connection *conn, object_id object_id);
  *
  * @param conn The object containing the connection state.
  * @param object_id The ID of the object whose status we query.
- * @param total_size Object size in bytes.
- * @param transferred_size The number of bytes from object transferred so far.
- *                         This is non zero only when PLASMA_CLIENT_IN_TRANSFER is returned.
  * @return PLASMA_CLIENT_LOCAL, if object is stored in the local Plasma Store.
  *         has been already scheduled by the Plasma Manager.
  *         PLASMA_CLIENT_IN_TRANSFER, if the object is currently being scheduled for
@@ -320,10 +317,7 @@ int plasma_fetch_remote(plasma_connection *conn, object_id object_id);
  *         PLASMA_CLIENT_REMOTE, if the object is stored at a remote Plasma Store.
  *         PLASMA_CLIENT_DOES_NOT_EXIST, if the object doesn’t exist in system.
  */
-int plasma_status(plasma_connection *conn,
-                  object_id object_id,
-                  int64_t *total_size,
-                  int64_t *transferred_size);
+int plasma_status(plasma_connection *conn, object_id object_id);
 
 
 /**
