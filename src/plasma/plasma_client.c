@@ -668,19 +668,16 @@ void plasma_client_get(plasma_connection *conn,
       /** Object is in the local Plasma Store. */
       return;
 
-    switch (plasma_status(conn, object_id)) {
+    switch (plasma_fetch_remote(conn, object_id)) {
       case PLASMA_OBJECT_LOCAL:
-        /** Object has been transfered just after calling plasma_get_local(),
-          * and it is now in the local Plasma Store. Loop again to call
-          * plasma_get_local() and eventually return. */
+        /** Object has finished being transfered just after calling
+          * plasma_get_local(), and it is now in the local Plasma Store.
+          * Loop again to call plasma_get_local() and eventually return. */
         continue;
 
       case PLASMA_OBJECT_REMOTE:
-        if (plasma_fetch_remote(conn, object_id) == PLASMA_OBJECT_LOCAL)
-          /** Object just got sealed locally after calling plasma_status().
-            * Loop again to call plasma_get_local() and eventually return.  */
-          continue;
-        /* Set request type to wait for fetch to complete. */
+        /** A fetch request has been already scheduled for object_id,
+          * so wait for it to complete */
         request.type = PLASMA_OBJECT_LOCAL;
         break;
 
@@ -689,13 +686,8 @@ void plasma_client_get(plasma_connection *conn,
           * create it. */
         /* TODO: scheduler_create_object(object_id); */
         printf("XXX Need to schedule object -- not implemented yet!\n");
-        /* Wait for object_id to become available locally. */
-        if (plasma_fetch_remote(conn, object_id) == PLASMA_OBJECT_LOCAL)
-          /** Object just got sealed locally after calling plasma_status().
-            * Loop again to call plasma_get_local() and eventually return.  */
-          continue;
-        /** Set request type to wait for the object to be (re)constructed
-         * and sealed either in the local Plasma Store or remotely. */
+        /** Wait for the object to be (re)constructed and sealed either
+         * in the local Plasma Store or remotely. */
         request.type = PLASMA_OBJECT_ANYWHERE;
         break;
       default:

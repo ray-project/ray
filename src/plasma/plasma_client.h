@@ -286,9 +286,9 @@ int plasma_get_local(plasma_connection *conn,
  *
  * If object is stored in the local Plasma Store, tell the caller.
  *
- * If not, check whether the object is stored on a remote Plasma Store. In yes, and
- * if either a transfer for the object has been scheduled or the object is in transfer
- * return. Otherwise schedule a transfer for the object.
+ * If not, check whether the object is stored on a remote Plasma Store. In yes,
+ * and either a transfer for the object has been scheduled or the object is in
+ * transfer, return. Otherwise schedule a transfer for the object.
  *
  * If object is available neither locally nor remotely, the client has to invoke
  * the local scheduler to (re)create the object.
@@ -296,26 +296,35 @@ int plasma_get_local(plasma_connection *conn,
  * This function is non-blocking.
  *
  * @param conn The object containing the connection state.
- * @param object_id The ID of the object to be fetched.
- * @return PLASMA_CLIENT_LOCAL, if the object is stored on the local Plasma Store.
- *         PLASMA_CLIENT_WAIT, if object is not stored on the local Plasma Store but
- *         it is available on a remote Plasma Store.
- *         PLASMA_CLIENT_DOES_NOT_EXIST, if object is available neither locally nor remotely.
+ * @param object_id The ID of the object we want to transfer.
+ * @return Status as returned by get_status() function. Status can take the
+ *         following values.
+ *         - PLASMA_CLIENT_LOCAL, if object is stored in the local Plasma Store.
+ *           has been already scheduled by the Plasma Manager.
+ *         - PLASMA_CLIENT_IN_TRANSFER, if the object is either currently being
+ *           transferred or just scheduled.
+ *         - PLASMA_CLIENT_REMOTE, if the object is stored at a remote
+ *           Plasma Store.
+ *         - PLASMA_CLIENT_DOES_NOT_EXIST, if the object doesn’t exist in system.
  */
 int plasma_fetch_remote(plasma_connection *conn, object_id object_id);
 
 /**
- * Return the status of a given object.
+ * Return the status of a given object. This function is similar to
+ * plasma_fetch_remote() with the only difference that plamsa_fetch_remote()
+ * also schedules the obejct transfer, if not local.
  *
  * @param conn The object containing the connection state.
  * @param object_id The ID of the object whose status we query.
- * @return PLASMA_CLIENT_LOCAL, if object is stored in the local Plasma Store.
- *         has been already scheduled by the Plasma Manager.
- *         PLASMA_CLIENT_IN_TRANSFER, if the object is currently being scheduled for
- *                                    being transferred or it is transferring.
- *         In this case, transferred_bytes represent the number of bytes transferred so far.
- *         PLASMA_CLIENT_REMOTE, if the object is stored at a remote Plasma Store.
- *         PLASMA_CLIENT_DOES_NOT_EXIST, if the object doesn’t exist in system.
+ * @return Status as returned by get_status() function. Status can take the
+ *         following values.
+ *         - PLASMA_CLIENT_LOCAL, if object is stored in the local Plasma Store.
+ *           has been already scheduled by the Plasma Manager.
+ *         - PLASMA_CLIENT_IN_TRANSFER, if the object is either currently being
+ *           transferred or just scheduled.
+ *         - PLASMA_CLIENT_REMOTE, if the object is stored at a remote
+ *           Plasma Store.
+ *         - PLASMA_CLIENT_DOES_NOT_EXIST, if the object doesn’t exist in system.
  */
 int plasma_status(plasma_connection *conn, object_id object_id);
 
@@ -333,8 +342,6 @@ int plasma_status(plasma_connection *conn, object_id object_id);
 int plasma_info(plasma_connection *conn,
                 object_id object_id,
                 object_info *object_info);
-
-
 
 /**
  * Wait for (1) a specified number of objects to be available (sealed) in the local Plasma Store
