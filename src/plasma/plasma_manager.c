@@ -676,6 +676,13 @@ void request_transfer(object_id object_id,
   request_transfer_from(client_conn, object_id);
 }
 
+bool is_object_local(client_connection *client_conn, object_id *object_id)
+{
+  available_object *entry;
+  HASH_FIND(hh, client_conn->manager_state->local_available_objects,
+            &object_id, sizeof(object_id), entry);
+  return (entry == NULL ? false : true);
+}
 
 void process_fetch_request(client_connection *client_conn,
                            object_id object_id) {
@@ -688,10 +695,7 @@ void process_fetch_request(client_connection *client_conn,
     return;
   }
   /* Return success immediately if we already have this object. */
-  int is_local = 0;
-  plasma_contains(client_conn->manager_state->plasma_conn, object_id,
-                  &is_local);
-  if (is_local) {
+  if (is_object_local(client_conn, &object_id)) {
     reply.has_object = 1;
     send_client_reply(client_conn, &reply);
     return;
@@ -778,10 +782,6 @@ void process_wait_request(client_connection *client_conn,
 
 /** === START - ALTERNATE PLASMA CLIENT API === */
 
-retry_info g_wait_retry = {
-  .num_retries = 0, .timeout = 0, .fail_callback = NULL,
-};
-
 void process_wait_request1(client_connection *client_conn,
                            int num_object_requests,
                            object_request object_requests[],
@@ -791,15 +791,13 @@ void process_wait_request1(client_connection *client_conn,
   client_conn->num_return_objects = num_ready_objects;
   /** We can only run a command at a time on any given
    *  client connection (client_conn) so set up is_wait
-   * so callback() can check whether we are still in wait()
-   */
+   * so callback() can check whether we are still in wait() */
   client_conn->is_wait = true;
   client_conn->wait1 = true; /* new wait request */
-  /**
-    * Allocate space for wait_reply and initialize it to object_requests.
+
+  /** Allocate space for wait_reply and initialize it to object_requests.
     * When computing "size" we substract "-1" from num_object_requests since
-    * plasma_reply already includes one object_request element.
-    */
+    * plasma_reply already includes one object_request element. */
   int64_t size =
     sizeof(plasma_reply) + (num_object_requests - 1) * sizeof(object_request);
   client_conn->wait_reply = malloc(size);
@@ -821,10 +819,7 @@ void process_wait_request1(client_connection *client_conn,
    * if not, check whether they are remote.
    */
   for (int i = 0; i < num_object_requests; ++i) {
-    available_object *entry;
-    HASH_FIND(hh, manager_state->local_available_objects,
-              &object_requests[i].object_id, sizeof(object_id), entry);
-    if (entry) {
+    if (is_object_local(client_conn, &object_requests[i].object_id)) {
       /** If an object id occurs twice in object_requests, this will count
        * them twice. This might not be desirable behavior. */
       client_conn->num_return_objects -= 1;
@@ -843,11 +838,14 @@ void process_wait_request1(client_connection *client_conn,
       if (object_request->status == PLASMA_OBJECT_DOES_NOT_EXIST) {
         /** Check whether object is somewhere else and if not
         * subscribe to be notified when it becomes available.*/
+        retry_info retry = {
+          .num_retries = 0, .timeout = 0, .fail_callback = NULL,
+        };
         object_table_subscribe(g_manager_state->db,
                                client_conn->wait_reply->object_requests[i].object_id,
                                wait_object_available_callback,
                                (void *)client_conn,
-                               &g_wait_retry,
+                               &retry,
                                NULL,
                                NULL);
       }
@@ -876,10 +874,7 @@ void wait_object_available_callback(object_id object_id, void *user_context) {
   }
 
   /* Check first whether object is avilable in the local Object Store. */
-  available_object *entry;
-  HASH_FIND(hh, manager_state->local_available_objects,
-            &object_id, sizeof(object_id), entry);
-  if (entry) {
+  if (is_object_local(client_conn, &object_id)) {
     client_conn->num_return_objects -= 1;
     object_request->status = PLASMA_OBJECT_LOCAL;
   } else {
@@ -1085,10 +1080,7 @@ void process_fetch_or_status_request(client_connection *client_conn,
   }
 
   /* Return success immediately if we already have this object. */
-  int is_local = 0;
-  plasma_contains(client_conn->manager_state->plasma_conn, object_id,
-                  &is_local);
-  if (is_local) {
+  if (is_object_local(client_conn, &object_id)) {
     send_client_object_status_reply(object_id,
                                     client_conn,
                                     PLASMA_OBJECT_LOCAL);
@@ -1195,6 +1187,7 @@ void process_object_notification(event_loop *loop,
     object_req = next;
   }
 }
+
 
 void process_message(event_loop *loop,
                      int client_sock,
