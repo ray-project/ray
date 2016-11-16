@@ -1,6 +1,8 @@
 #ifndef PLASMA_CLIENT_H
 #define PLASMA_CLIENT_H
 
+#include <stdbool.h>
+
 #include "plasma.h"
 
 #define PLASMA_DEFAULT_RELEASE_DELAY 64
@@ -73,6 +75,14 @@ plasma_connection *plasma_connect(const char *store_socket_name,
  * @return Void.
  */
 void plasma_disconnect(plasma_connection *conn);
+
+/**
+ * Return true if the plasma manager is connected.
+ *
+ * @param conn The connection to the local plasma store and plasma manager.
+ * @return True if the plasma manager is connected and false otherwise.
+ */
+bool plasma_manager_is_connected(plasma_connection *conn);
 
 /**
  * Try to connect to a possibly remote Plasma Manager.
@@ -208,6 +218,21 @@ void plasma_fetch(plasma_connection *conn,
                   int num_object_ids,
                   object_id object_ids[],
                   int is_fetched[]);
+
+/**
+ * Transfer local object to a different plasma manager.
+ *
+ * @param conn The object containing the connection state.
+ * @param addr IP address of the plasma manager we are transfering to.
+ * @param port Port of the plasma manager we are transfering to.
+ * @object_id ObjectID of the object we are transfering.
+ *
+ * @return Void.
+ */
+void plasma_transfer(plasma_connection *conn,
+                     const char *addr,
+                     int port,
+                     object_id object_id);
 
 /**
  * Wait for objects to be created (right now, wait for local objects).
