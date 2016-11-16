@@ -161,6 +161,24 @@ def start_worker(address_info, worker_path, cleanup=True):
   if cleanup:
     all_processes.append(p)
 
+def start_webui(redis_port, cleanup=True):
+  """This method starts the web interface.
+
+  Args:
+    redis_port (int): The redis server's port
+    cleanup (bool): True if using Ray in local mode. If cleanup is true, then
+      this process will be killed by services.cleanup() when the Python process
+      that imported services exits. This is True by default.
+
+  """
+  executable = "nodejs" if sys.platform == "linux" or sys.platform == "linux2" else "node"
+  directory = "../webui"
+  command = [executable, os.path.join(os.path.abspath(os.path.dirname(__file__)), directory + "/index.js"), str(redis_port)]
+  with open("/tmp/webui_out.txt", "wb") as out:
+    p = subprocess.Popen(command, stdout=out)
+  if cleanup:
+    all_processes.append(p)
+
 def start_ray_local(node_ip_address="127.0.0.1", num_workers=0, worker_path=None):
   """Start Ray in local mode.
 
@@ -196,4 +214,6 @@ def start_ray_local(node_ip_address="127.0.0.1", num_workers=0, worker_path=None
     start_worker(address_info, worker_path, cleanup=True)
   time.sleep(0.3)
   # Return the addresses of the relevant processes.
+  start_webui(redis_port)
+  time.sleep(0.2)
   return address_info
