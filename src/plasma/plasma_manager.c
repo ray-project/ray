@@ -326,7 +326,7 @@ void write_object_chunk(client_connection *conn, plasma_request_buffer *buf) {
 
   if (r != s) {
     if (r > 0) {
-      LOG_ERR("partial write on fd %d", conn->fd);
+      LOG_ERROR("partial write on fd %d", conn->fd);
     } else {
       /* TODO(swang): This should not be a fatal error, since connections can
        * close at any time. */
@@ -405,7 +405,7 @@ int read_object_chunk(client_connection *conn, plasma_request_buffer *buf) {
   r = read(conn->fd, buf->data + conn->cursor, s);
 
   if (r == -1) {
-    LOG_ERR("read error");
+    LOG_ERROR("read error");
   } else if (r == 0) {
     LOG_DEBUG("end of file");
   } else {

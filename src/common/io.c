@@ -33,7 +33,7 @@ int bind_inet_sock(const int port, bool shall_listen) {
   struct sockaddr_in name;
   int socket_fd = socket(PF_INET, SOCK_STREAM, 0);
   if (socket_fd < 0) {
-    LOG_ERR("socket() failed for port %d.", port);
+    LOG_ERROR("socket() failed for port %d.", port);
     return -1;
   }
   name.sin_family = AF_INET;
@@ -42,22 +42,22 @@ int bind_inet_sock(const int port, bool shall_listen) {
   int on = 1;
   /* TODO(pcm): http://stackoverflow.com/q/1150635 */
   if (ioctl(socket_fd, FIONBIO, (char *) &on) < 0) {
-    LOG_ERR("ioctl failed");
+    LOG_ERROR("ioctl failed");
     close(socket_fd);
     return -1;
   }
   if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) < 0) {
-    LOG_ERR("setsockopt failed for port %d", port);
+    LOG_ERROR("setsockopt failed for port %d", port);
     close(socket_fd);
     return -1;
   }
   if (bind(socket_fd, (struct sockaddr *) &name, sizeof(name)) < 0) {
-    LOG_ERR("Bind failed for port %d", port);
+    LOG_ERROR("Bind failed for port %d", port);
     close(socket_fd);
     return -1;
   }
   if (shall_listen && listen(socket_fd, 5) == -1) {
-    LOG_ERR("Could not listen to socket %d", port);
+    LOG_ERROR("Could not listen to socket %d", port);
     close(socket_fd);
     return -1;
   }
@@ -77,14 +77,14 @@ int bind_ipc_sock(const char *socket_pathname, bool shall_listen) {
   struct sockaddr_un socket_address;
   int socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
   if (socket_fd < 0) {
-    LOG_ERR("socket() failed for pathname %s.", socket_pathname);
+    LOG_ERROR("socket() failed for pathname %s.", socket_pathname);
     return -1;
   }
   /* Tell the system to allow the port to be reused. */
   int on = 1;
   if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, (char *) &on,
                  sizeof(on)) < 0) {
-    LOG_ERR("setsockopt failed for pathname %s", socket_pathname);
+    LOG_ERROR("setsockopt failed for pathname %s", socket_pathname);
     close(socket_fd);
     return -1;
   }
@@ -93,7 +93,7 @@ int bind_ipc_sock(const char *socket_pathname, bool shall_listen) {
   memset(&socket_address, 0, sizeof(struct sockaddr_un));
   socket_address.sun_family = AF_UNIX;
   if (strlen(socket_pathname) + 1 > sizeof(socket_address.sun_path)) {
-    LOG_ERR("Socket pathname is too long.");
+    LOG_ERROR("Socket pathname is too long.");
     close(socket_fd);
     return -1;
   }
@@ -102,12 +102,12 @@ int bind_ipc_sock(const char *socket_pathname, bool shall_listen) {
 
   if (bind(socket_fd, (struct sockaddr *) &socket_address,
            sizeof(struct sockaddr_un)) != 0) {
-    LOG_ERR("Bind failed for pathname %s.", socket_pathname);
+    LOG_ERROR("Bind failed for pathname %s.", socket_pathname);
     close(socket_fd);
     return -1;
   }
   if (shall_listen && listen(socket_fd, 5) == -1) {
-    LOG_ERR("Could not listen to socket %s", socket_pathname);
+    LOG_ERROR("Could not listen to socket %s", socket_pathname);
     close(socket_fd);
     return -1;
   }
@@ -125,14 +125,14 @@ int connect_ipc_sock(const char *socket_pathname) {
 
   socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
   if (socket_fd < 0) {
-    LOG_ERR("socket() failed for pathname %s.", socket_pathname);
+    LOG_ERROR("socket() failed for pathname %s.", socket_pathname);
     return -1;
   }
 
   memset(&socket_address, 0, sizeof(struct sockaddr_un));
   socket_address.sun_family = AF_UNIX;
   if (strlen(socket_pathname) + 1 > sizeof(socket_address.sun_path)) {
-    LOG_ERR("Socket pathname is too long.");
+    LOG_ERROR("Socket pathname is too long.");
     return -1;
   }
   strncpy(socket_address.sun_path, socket_pathname,
@@ -140,7 +140,7 @@ int connect_ipc_sock(const char *socket_pathname) {
 
   if (connect(socket_fd, (struct sockaddr *) &socket_address,
               sizeof(struct sockaddr_un)) != 0) {
-    LOG_ERR("Connection to socket failed for pathname %s.", socket_pathname);
+    LOG_ERROR("Connection to socket failed for pathname %s.", socket_pathname);
     return -1;
   }
 
@@ -154,7 +154,7 @@ int connect_ipc_sock(const char *socket_pathname) {
 int accept_client(int socket_fd) {
   int client_fd = accept(socket_fd, NULL, NULL);
   if (client_fd < 0) {
-    LOG_ERR("Error reading from socket.");
+    LOG_ERROR("Error reading from socket.");
     return -1;
   }
   return client_fd;

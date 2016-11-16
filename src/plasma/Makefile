@@ -6,7 +6,7 @@ BUILD = build
 all: $(BUILD)/plasma_store $(BUILD)/plasma_manager $(BUILD)/plasma_client.so $(BUILD)/example $(BUILD)/libplasma_client.a
 
 debug: FORCE
-debug: CFLAGS += -DRAY_COMMON_DEBUG=1
+debug: CFLAGS += -DRAY_COMMON_LOG_LEVEL=0
 debug: all
 
 clean:
@@ -34,8 +34,8 @@ $(BUILD)/example: plasma_client.c plasma.h example.c fling.h fling.c common
 common: FORCE
 	cd ../common; make
 
-# Set the request timeout low for testing purposes.
-test: CFLAGS += -DRAY_TIMEOUT=50
+# Set the request timeout low and logging level at FATAL for testing purposes.
+test: CFLAGS += -DRAY_TIMEOUT=50 -DRAY_COMMON_LOG_LEVEL=4
 # First, build and run all the unit tests.
 test: $(BUILD)/manager_tests FORCE
 	./build/manager_tests

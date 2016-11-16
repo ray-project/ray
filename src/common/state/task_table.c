@@ -8,7 +8,7 @@ void task_table_get_task(db_handle *db_handle,
                          retry_info *retry,
                          task_table_get_callback done_callback,
                          void *user_context) {
-  init_table_callback(db_handle, task_id, NULL, retry, done_callback,
+  init_table_callback(db_handle, task_id, __func__, NULL, retry, done_callback,
                       redis_task_table_get_task, user_context);
 }
 
@@ -17,8 +17,8 @@ void task_table_add_task(db_handle *db_handle,
                          retry_info *retry,
                          task_table_done_callback done_callback,
                          void *user_context) {
-  init_table_callback(db_handle, task_task_id(task), task, retry, done_callback,
-                      redis_task_table_add_task, user_context);
+  init_table_callback(db_handle, task_task_id(task), __func__, task, retry,
+                      done_callback, redis_task_table_add_task, user_context);
 }
 
 void task_table_update(db_handle *db_handle,
@@ -26,8 +26,8 @@ void task_table_update(db_handle *db_handle,
                        retry_info *retry,
                        task_table_done_callback done_callback,
                        void *user_context) {
-  init_table_callback(db_handle, task_task_id(task), task, retry, done_callback,
-                      redis_task_table_update, user_context);
+  init_table_callback(db_handle, task_task_id(task), __func__, task, retry,
+                      done_callback, redis_task_table_update, user_context);
 }
 
 /* TODO(swang): A corresponding task_table_unsubscribe. */
@@ -47,6 +47,6 @@ void task_table_subscribe(db_handle *db_handle,
   sub_data->subscribe_callback = subscribe_callback;
   sub_data->subscribe_context = subscribe_context;
 
-  init_table_callback(db_handle, node, sub_data, retry, done_callback,
+  init_table_callback(db_handle, node, __func__, sub_data, retry, done_callback,
                       redis_task_table_subscribe, user_context);
 }
