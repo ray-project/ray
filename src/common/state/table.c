@@ -5,6 +5,7 @@
 
 table_callback_data *init_table_callback(db_handle *db_handle,
                                          unique_id id,
+                                         const char *label,
                                          void *data,
                                          retry_info *retry,
                                          table_done_callback done_callback,
@@ -17,6 +18,7 @@ table_callback_data *init_table_callback(db_handle *db_handle,
   table_callback_data *callback_data = malloc(sizeof(table_callback_data));
   CHECKM(callback_data != NULL, "Memory allocation error!")
   callback_data->id = id;
+  callback_data->label = label;
   callback_data->retry = *retry;
   callback_data->done_callback = done_callback;
   callback_data->retry_callback = retry_callback;
@@ -30,6 +32,8 @@ table_callback_data *init_table_callback(db_handle *db_handle,
       (event_loop_timer_handler) table_timeout_handler, callback_data);
   outstanding_callbacks_add(callback_data);
 
+  LOG_DEBUG("Initializing table command %s with timer ID %" PRId64,
+            callback_data->label, callback_data->timer_id);
   callback_data->retry_callback(callback_data);
 
   return callback_data;
@@ -67,7 +71,8 @@ int64_t table_timeout_handler(event_loop *loop,
   if (callback_data->retry.num_retries == 0) {
     /* We didn't get a response from the database after exhausting all retries;
      * let user know, cleanup the state, and remove the timer. */
-    LOG_ERR("Table command with timer ID %ld failed", timer_id);
+    LOG_WARN("Table command %s with timer ID %" PRId64 " failed",
+             callback_data->label, timer_id);
     if (callback_data->retry.fail_callback) {
       callback_data->retry.fail_callback(
           callback_data->id, callback_data->user_context, callback_data->data);

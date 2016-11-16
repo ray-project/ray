@@ -16,7 +16,7 @@ unique_id globally_unique_id(void) {
   /* Use /dev/urandom for "real" randomness. */
   int fd;
   if ((fd = open("/dev/urandom", O_RDONLY)) == -1) {
-    LOG_ERR("Could not generate random number");
+    LOG_ERROR("Could not generate random number");
   }
   unique_id result;
   read(fd, &result.id[0], UNIQUE_ID_SIZE);

@@ -6,8 +6,8 @@ void object_table_lookup(db_handle *db_handle,
                          retry_info *retry,
                          object_table_lookup_done_callback done_callback,
                          void *user_context) {
-  init_table_callback(db_handle, object_id, NULL, retry, done_callback,
-                      redis_object_table_lookup, user_context);
+  init_table_callback(db_handle, object_id, __func__, NULL, retry,
+                      done_callback, redis_object_table_lookup, user_context);
 }
 
 void object_table_add(db_handle *db_handle,
@@ -15,8 +15,8 @@ void object_table_add(db_handle *db_handle,
                       retry_info *retry,
                       object_table_done_callback done_callback,
                       void *user_context) {
-  init_table_callback(db_handle, object_id, NULL, retry, done_callback,
-                      redis_object_table_add, user_context);
+  init_table_callback(db_handle, object_id, __func__, NULL, retry,
+                      done_callback, redis_object_table_add, user_context);
 }
 
 void object_table_subscribe(
@@ -33,8 +33,9 @@ void object_table_subscribe(
   sub_data->object_available_callback = object_available_callback;
   sub_data->subscribe_context = subscribe_context;
 
-  init_table_callback(db_handle, object_id, sub_data, retry, done_callback,
-                      redis_object_table_subscribe, user_context);
+  init_table_callback(db_handle, object_id, __func__, sub_data, retry,
+                      done_callback, redis_object_table_subscribe,
+                      user_context);
 }
 
 void result_table_add(db_handle *db_handle,
@@ -45,8 +46,8 @@ void result_table_add(db_handle *db_handle,
                       void *user_context) {
   task_id *task_id_copy = malloc(sizeof(task_id));
   memcpy(task_id_copy, task_id_arg.id, sizeof(task_id));
-  init_table_callback(db_handle, object_id, task_id_copy, retry, done_callback,
-                      redis_result_table_add, user_context);
+  init_table_callback(db_handle, object_id, __func__, task_id_copy, retry,
+                      done_callback, redis_result_table_add, user_context);
 }
 
 void result_table_lookup(db_handle *db_handle,
@@ -54,6 +55,6 @@ void result_table_lookup(db_handle *db_handle,
                          retry_info *retry,
                          result_table_lookup_callback done_callback,
                          void *user_context) {
-  init_table_callback(db_handle, object_id, NULL, retry, done_callback,
-                      redis_result_table_lookup, user_context);
+  init_table_callback(db_handle, object_id, __func__, NULL, retry,
+                      done_callback, redis_result_table_lookup, user_context);
 }
