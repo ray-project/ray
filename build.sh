@@ -30,14 +30,12 @@ PYTHON_GLOBAL_SCHEDULER_DIR="$PYTHON_DIR/global_scheduler"
 pushd "$COMMON_DIR"
   make clean
   make
-  make test
 popd
 cp "$COMMON_DIR/thirdparty/redis-3.2.3/src/redis-server" "$PYTHON_COMMON_DIR/thirdparty/redis-3.2.3/src/"
 
 pushd "$PLASMA_DIR"
   make clean
   make
-  make test
   pushd "$PLASMA_DIR/build"
     cmake ..
     make install
