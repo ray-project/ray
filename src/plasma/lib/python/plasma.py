@@ -4,6 +4,7 @@ import socket
 import subprocess
 import time
 import libplasma
+import ctypes
 import numpy as np
 
 PLASMA_ID_SIZE = 20
@@ -83,6 +84,16 @@ class PlasmaClient(object):
       manager_socket_name (str): Name of the socket the plasma manager is listening at.
     """
     self.alive = True
+
+    # TODO: please forgive me because i have sinned HACK
+    self.buffer_from_memory = ctypes.pythonapi.PyBuffer_FromMemory
+    self.buffer_from_memory.argtypes = [ctypes.c_void_p, ctypes.c_int64]
+    self.buffer_from_memory.restype = ctypes.py_object
+
+    self.buffer_from_read_write_memory = ctypes.pythonapi.PyBuffer_FromReadWriteMemory
+    self.buffer_from_read_write_memory.argtypes = [
+        ctypes.c_void_p, ctypes.c_int64]
+    self.buffer_from_read_write_memory.restype = ctypes.py_object
 
     if manager_socket_name is not None:
       self.conn = libplasma.connect(store_socket_name, manager_socket_name, release_delay)
@@ -247,23 +258,22 @@ class PlasmaClient(object):
     axis_len = np_data.shape[shard_axis]
     num_shards = axis_len / shard_size
 
-    # TODO: think about storing numpy array shape and handle n-dimension matrices
     partitions = np.split(np_data, num_shards, axis=shard_axis)
     partition_lengths = np.array([p.size for p in partitions], dtype=np.uint64)
     void_p_partitions = np.array([p.ctypes.data_as(ctypes.c_void_p).value for p in partitions])
-    shape = np_data.ctypes.shape
+    shape = np.array(np_data.shape).ctypes.data_as(ctypes.c_void_p) # horrible HACK
 
     void_handle_arr = void_p_partitions.ctypes.data_as(ctypes.c_void_p)
-    shard_sizes_ptr = partition_lengths.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64))
+    shard_sizes_ptr = partition_lengths.ctypes.data_as(ctypes.c_void_p)
 
-    self.client.plasma_init_kvstore(
-      self.plasma_conn,
-      make_plasma_id(kv_store_id),
-      void_handle_arr,
-      shard_sizes_ptr,
+    libplasma.init_kvstore(
+      self.conn,
+      kv_store_id,
+      void_handle_arr.value,
+      shard_sizes_ptr.value,
       len(partitions),
-      ctypes.c_char(shard_order),
-      shape,
+      shard_order,
+      shape.value,
       np_data.ndim
     )
 
@@ -272,12 +282,12 @@ class PlasmaClient(object):
 
     pull_result = PlasmaPullResult()
 
-    self.client.plasma_pull(
-      self.plasma_conn,
-      make_plasma_id(kv_store_id),
+    libplasma.pull(
+      self.conn,
+      kv_store_id,
       interval[0],
       interval[1],
-      ctypes.byref(pull_result)
+      ctypes.addressof(pull_result)
     )
 
     # TODO: do this slicing in C
@@ -320,24 +330,23 @@ class PlasmaClient(object):
     end = int(start + (interval[1] - interval[0]))
     return np.take(merged, range(start, end), axis=shard_axis)
 
-  # TODO: shard order should be implicit
   def push(self, kv_store_id, interval, np_data, shard_order='C', version=0):
     assert type(interval) is tuple and len(interval) == 2
     assert shard_order in ['C', 'F']
 
-    # TODO: Trying to figure out how to write to memory
+    # TODO: shard order should be implicit
     if shard_order == 'C' and not np_data.flags.c_contiguous:
       np_data = np.ascontiguousarray(np_data)
     elif shard_order == 'F' and not np_data.flags.f_contiguous:
       np_data = np.asfortranarray(np_data)
 
-    self.client.plasma_push(
-      self.plasma_conn,
-      make_plasma_id(kv_store_id),
+    libplasma.push(
+      self.conn,
+      kv_store_id,
       interval[0],
       interval[1],
       np_data.size,
-      np_data.ctypes.data_as(ctypes.c_void_p)
+      np_data.ctypes.data_as(ctypes.c_void_p).value
     )
 
 def start_plasma_manager(store_name, manager_name, redis_address, num_retries=5, use_valgrind=False, run_profiler=False):
