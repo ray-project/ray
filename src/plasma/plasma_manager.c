@@ -783,11 +783,40 @@ void process_wait_request(client_connection *client_conn,
 
 /** === START - ALTERNATE PLASMA CLIENT API === */
 
+void return_from_wait1(client_connection *client_conn) {
+
+  CHECK(client_conn->is_wait);
+  CHECK(client_conn->wait1);
+
+  int64_t size = sizeof(client_conn->wait_reply);
+  /** Just to be on the safe side. This return_from_wait1()
+   *  cannot happen for another process_wait_request1(), since
+   *  process_wait_request1() removes the timer whenever it calls
+   *  return_from_wait1(). Of course, here we asume that the Plasma Manager
+   *  code is single threaded and thus there are no race conditions. */
+  CHECK(size ==
+    (sizeof(plasma_reply) +
+     (client_conn->wait_reply->num_object_ids - 1) * sizeof(object_request)));
+
+  int n = write(client_conn->fd,
+                (uint8_t *) client_conn->wait_reply,
+                size);
+  CHECK(n == size);
+  free(client_conn->wait_reply);
+
+  /* Clean the remaining object connections. */
+  client_object_request *object_req, *tmp;
+  HASH_ITER(active_hh, client_conn->active_objects, object_req, tmp) {
+    remove_object_request(client_conn, object_req);
+  }
+}
+
 void process_wait_request1(client_connection *client_conn,
                            int num_object_requests,
                            object_request object_requests[],
                            uint64_t timeout,
                            int num_ready_objects) {
+
   plasma_manager_state *manager_state = client_conn->manager_state;
   client_conn->num_return_objects = num_ready_objects;
   /** We can only run a command at a time on any given
@@ -828,18 +857,28 @@ void process_wait_request1(client_connection *client_conn,
       if (client_conn->num_return_objects == 0) {
         /** We got num_return_objects in the local Object Store, so return */
         event_loop_remove_timer(manager_state->loop, client_conn->timer_id);
-        return_from_wait(client_conn);
+        return_from_wait1(client_conn);
         return;
       }
     } else {
       object_request *object_request = &client_conn->wait_reply->object_requests[i];
-      /** TODO (istoica): chek whether is in ransfer */
-      /** TODO: First we should check whether a transfer for this object
-        * is in progress. This means that the object is remote so we won't need
-        * to checkObject Table if object_request->type == PLASMA_OBJECT_ANYWHERE */
+
       if (object_request->status == PLASMA_OBJECT_DOES_NOT_EXIST) {
-        /** Check whether object is somewhere else and if not
-        * subscribe to be notified when it becomes available.*/
+        if (get_object_request(client_conn, object_request->object_id)) {
+          /** This object is in transfer, which means that it is stored at a
+           * a remote node. */
+          client_conn->wait_reply->object_requests[i].status = PLASMA_OBJECT_REMOTE;
+          if (client_conn->wait_reply->object_requests[i].type == PLASMA_OBJECT_ANYWHERE) {
+            client_conn->num_return_objects -= 1;
+            if (client_conn->num_return_objects == 0) {
+              /** We got num_return_objects in the local Object Store, so return */
+              event_loop_remove_timer(manager_state->loop, client_conn->timer_id);
+              return_from_wait1(client_conn);
+              return;
+            }
+          }
+        }
+        /** Subscribe to hear when object becomes available. */
         retry_info retry = {
           .num_retries = 0, .timeout = 0, .fail_callback = NULL,
         };
@@ -862,7 +901,7 @@ void wait_object_available_callback(object_id object_id, void *user_context) {
   plasma_manager_state *manager_state = client_conn->manager_state;
   CHECK(manager_state);
 
-  if (!client_conn->is_wait) {
+  if ((!client_conn->is_wait) || (!client_conn->wait1)) {
     return;
   }
 
@@ -876,7 +915,7 @@ void wait_object_available_callback(object_id object_id, void *user_context) {
     return;
   }
 
-  /* Check first whether object is avilable in the local Object Store. */
+  /* Check first whether object is avilable in the local Plasma Store. */
   if (is_object_local(client_conn, &object_id)) {
     client_conn->num_return_objects -= 1;
     object_request->status = PLASMA_OBJECT_LOCAL;
@@ -893,7 +932,7 @@ void wait_object_available_callback(object_id object_id, void *user_context) {
   if (client_conn->num_return_objects == 0) {
     /** We got num_return_objects in the local Object Store, so return */
     event_loop_remove_timer(manager_state->loop, client_conn->timer_id);
-    return_from_wait(client_conn);
+    return_from_wait1(client_conn);
   }
 }
 
