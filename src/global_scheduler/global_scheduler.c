@@ -38,7 +38,7 @@ global_scheduler_state *init_global_scheduler(event_loop *loop,
   return state;
 }
 
-void start_server(const char* redis_addr, int redis_port) {
+void start_server(const char *redis_addr, int redis_port) {
   event_loop *loop = event_loop_create();
   global_scheduler_state *state =
       init_global_scheduler(loop, redis_addr, redis_port);

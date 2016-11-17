@@ -74,6 +74,8 @@ local_scheduler_state *init_local_scheduler(event_loop *loop,
     state->scheduler_info->db =
         db_connect(redis_addr, redis_port, "photon", "", -1);
     db_attach(state->scheduler_info->db, loop);
+  } else {
+    state->scheduler_info->db = NULL;
   }
   /* Add scheduler state. */
   state->scheduler_state = make_scheduler_state();
