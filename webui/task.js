@@ -5,8 +5,14 @@ var task_argument = {
   'jBinary.littleEndian': true,
   is_ref: ['enum', 'int8', [true, false]],
   padding: ['array', 'int8', 7],
-  reference: ['if', 'is_ref', {object_id: ['array', 'uint8', 20], padding: ['array', 'int8', 4]}],
-  value: ['if_not', 'is_ref', {offset: 'int64', length: 'int64', padding: ['array', 'int8', 8]}]
+  reference: [
+    'if', 'is_ref', 
+    {object_id: ['array', 'uint8', 20], padding: ['array', 'int8', 4]}
+  ],
+  value: [
+    'if_not', 'is_ref', 
+    {offset: 'int64', length: 'int64', padding: ['array', 'int8', 8]}
+  ]
 };
 
 var task_spec_header = {
@@ -38,7 +44,7 @@ function id_to_hex(id) {
 }
 
 module.exports = {
-  parse_task_instance: function (buffer) {
+  parse_task_instance: function(buffer) {
     var binary = new jb(buffer, task_instance);
     binary.read('padding');
     var task_spec = binary.read('task_spec_header');
@@ -46,7 +52,7 @@ module.exports = {
     for (var i = 0; i < task_spec['arguments'].length; i++) {
       var arg = task_spec['arguments'][i];
       if (arg['is_ref']) {
-        console.log(arg['reference']['object_id'])
+        console.log(arg['reference']['object_id']);
         arguments.push(id_to_hex(arg['reference']['object_id']));
       } else {
         arguments.push("value");
@@ -55,10 +61,8 @@ module.exports = {
     var state = binary.read('state');
     var node_id = binary.read('node_id');
     return {
-      state: state,
-      node_id: id_to_hex(node_id),
-      function_id: id_to_hex(task_spec['function_id']),
-      arguments: arguments
+      state: state, node_id: id_to_hex(node_id),
+          function_id: id_to_hex(task_spec['function_id']), arguments: arguments
     }
   }
 }
