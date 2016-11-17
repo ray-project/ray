@@ -147,7 +147,8 @@ void handle_task_submitted(scheduler_info *info,
     /* Update the global task table. TODO(rkn): Maybe this should be done in
      * assign_task_to_worker. */
     task *task = alloc_task(spec, TASK_STATUS_RUNNING, NIL_ID);
-    task_table_add_task(info->db, task, (retry_info *) &photon_retry, NULL, NULL);
+    task_table_add_task(info->db, task, (retry_info *) &photon_retry, NULL,
+                        NULL);
     free_task(task);
   } else if (queue_locally) {
     /* Add the task to the task queue. This passes ownership of the task queue.
@@ -157,11 +158,13 @@ void handle_task_submitted(scheduler_info *info,
     elt->task = task;
     DL_APPEND(s->task_queue, elt);
     /* Update the global task table. */
-    task_table_add_task(info->db, task, (retry_info *) &photon_retry, NULL, NULL);
+    task_table_add_task(info->db, task, (retry_info *) &photon_retry, NULL,
+                        NULL);
   } else {
     /* Pass on the task to the global scheduler. */
     task *task = alloc_task(spec, TASK_STATUS_WAITING, NIL_ID);
-    task_table_add_task(info->db, task, (retry_info *) &photon_retry, NULL, NULL);
+    task_table_add_task(info->db, task, (retry_info *) &photon_retry, NULL,
+                        NULL);
     free_task(task);
   }
 }

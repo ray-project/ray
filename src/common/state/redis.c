@@ -205,11 +205,10 @@ void redis_object_table_add(table_callback_data *callback_data) {
   CHECK(callback_data);
   db_handle *db = callback_data->db_handle;
   object_id id = callback_data->id;
-  int status =
-      redisAsyncCommand(db->context, redis_object_table_add_callback,
-                        (void *) callback_data->timer_id, "SADD obj:%b %b",
-                        id.id, sizeof(object_id), (char *) db->client.id,
-                        sizeof(client_id));
+  int status = redisAsyncCommand(db->context, redis_object_table_add_callback,
+                                 (void *) callback_data->timer_id,
+                                 "SADD obj:%b %b", id.id, sizeof(object_id),
+                                 (char *) db->client.id, sizeof(client_id));
 
   if ((status == REDIS_ERR) || db->context->err) {
     LOG_REDIS_DEBUG(db->context, "could not add object_table entry");
@@ -677,14 +676,12 @@ void redis_local_scheduler_table_subscribe_callback(redisAsyncContext *c,
 void redis_local_scheduler_table_subscribe(table_callback_data *callback_data) {
   db_handle *db = callback_data->db_handle;
   local_scheduler_table_subscribe_data *data = callback_data->data;
-  int status =
-      redisAsyncCommand(db->sub_context,
-                        redis_local_scheduler_table_subscribe_callback,
-                        (void *) callback_data->timer_id,
-                        "SUBSCRIBE photon");
+  int status = redisAsyncCommand(
+      db->sub_context, redis_local_scheduler_table_subscribe_callback,
+      (void *) callback_data->timer_id, "SUBSCRIBE photon");
   if ((status == REDIS_ERR) || db->sub_context->err) {
-    LOG_REDIS_DEBUG(db->sub_context, "error in "
-                    "local_scheduler_table_register_callback");
+    LOG_REDIS_DEBUG(db->sub_context,
+                    "error in local_scheduler_table_register_callback");
   }
 }
 

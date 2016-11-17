@@ -19,8 +19,8 @@ UT_icd local_scheduler_icd = {sizeof(local_scheduler), NULL, NULL, NULL};
 void assign_task_to_local_scheduler(global_scheduler_state *state,
                                     task *original_task,
                                     node_id node_id) {
-  task *updated_task = alloc_task(task_task_spec(original_task),
-                                  TASK_STATUS_SCHEDULED, node_id);
+  task *updated_task =
+      alloc_task(task_task_spec(original_task), TASK_STATUS_SCHEDULED, node_id);
   retry_info retry = {
       .num_retries = 0, .timeout = 100, .fail_callback = NULL,
   };
@@ -40,8 +40,8 @@ global_scheduler_state *init_global_scheduler(event_loop *loop,
 
 void start_server(const char* redis_addr, int redis_port) {
   event_loop *loop = event_loop_create();
-  global_scheduler_state *state = init_global_scheduler(loop, redis_addr,
-                                                        redis_port);
+  global_scheduler_state *state =
+      init_global_scheduler(loop, redis_addr, redis_port);
   /* Generic retry information for notification subscriptions. */
   retry_info retry = {
       .num_retries = 0, .timeout = 100, .fail_callback = NULL,
@@ -75,8 +75,8 @@ int main(int argc, char *argv[]) {
   int redis_port;
   if (!redis_addr_port ||
       parse_ip_addr_port(redis_addr_port, redis_addr, &redis_port) == -1) {
-    LOG_ERROR("need to specify redis address like 127.0.0.1:6379 with -r "
-              "switch");
+    LOG_ERROR(
+        "need to specify redis address like 127.0.0.1:6379 with -r switch");
     exit(-1);
   }
   start_server(redis_addr, redis_port);

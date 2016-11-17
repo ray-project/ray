@@ -199,9 +199,7 @@ void start_server(const char *socket_name,
    * tasks that were assigned to this local scheduler before the call to
    * subscribe. */
   retry_info retry = {
-      .num_retries = 0,
-      .timeout = 100,
-      .fail_callback = NULL,
+      .num_retries = 0, .timeout = 100, .fail_callback = NULL,
   };
   task_table_subscribe(g_state->scheduler_info->db,
                        get_client_id(g_state->scheduler_info->db),
