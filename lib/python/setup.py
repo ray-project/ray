@@ -4,6 +4,8 @@ import subprocess
 from setuptools import setup, find_packages
 import setuptools.command.install as _install
 
+
+subprocess.check_call(["../../build-webui.sh"])
 datadir = "./webui"
 datafiles = [(root, [os.path.join(root, f) for f in files])
     for root, dirs, files in os.walk(datadir)]
@@ -11,7 +13,6 @@ datafiles = [(root, [os.path.join(root, f) for f in files])
 class install(_install.install):
   def run(self):
     subprocess.check_call(["../../build.sh"])
-    subprocess.check_call(["../../build-webui.sh"])
     # Calling _install.install.run(self) does not fetch required packages and
     # instead performs an old-style install. See command/install.py in
     # setuptools. So, calling do_egg_install() manually here.
