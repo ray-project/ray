@@ -9,6 +9,8 @@ void handle_task_waiting(task *original_task, void *user_context) {
     local_scheduler *scheduler =
         (local_scheduler *) utarray_eltptr(state->local_schedulers, 0);
     assign_task_to_local_scheduler(state, original_task, scheduler->id);
+  } else {
+    CHECKM(0, "We currently don't handle this case.");
   }
 }
 
