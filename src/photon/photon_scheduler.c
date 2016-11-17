@@ -69,10 +69,12 @@ local_scheduler_state *init_local_scheduler(event_loop *loop,
   /* Add scheduler info. */
   state->scheduler_info = malloc(sizeof(scheduler_info));
   utarray_new(state->scheduler_info->workers, &worker_icd);
-  /* Connect to Redis. */
-  state->scheduler_info->db =
-      db_connect(redis_addr, redis_port, "photon", "", -1);
-  db_attach(state->scheduler_info->db, loop);
+  /* Connect to Redis if a Redis address is provided. */
+  if (redis_addr != NULL) {
+    state->scheduler_info->db =
+        db_connect(redis_addr, redis_port, "photon", "", -1);
+    db_attach(state->scheduler_info->db, loop);
+  }
   /* Add scheduler state. */
   state->scheduler_state = make_scheduler_state();
   utarray_new(state->input_buffer, &byte_icd);
@@ -80,7 +82,9 @@ local_scheduler_state *init_local_scheduler(event_loop *loop,
 };
 
 void free_local_scheduler(local_scheduler_state *s) {
-  db_disconnect(s->scheduler_info->db);
+  if (s->scheduler_info->db != NULL) {
+    db_disconnect(s->scheduler_info->db);
+  }
   plasma_disconnect(s->plasma_conn);
   worker_index *current_worker_index, *temp_worker_index;
   HASH_ITER(hh, s->worker_index, current_worker_index, temp_worker_index) {
@@ -201,10 +205,12 @@ void start_server(const char *socket_name,
   retry_info retry = {
       .num_retries = 0, .timeout = 100, .fail_callback = NULL,
   };
-  task_table_subscribe(g_state->scheduler_info->db,
-                       get_client_id(g_state->scheduler_info->db),
-                       TASK_STATUS_SCHEDULED, handle_task_scheduled_callback,
-                       NULL, &retry, NULL, NULL);
+  if (g_state->scheduler_info->db != NULL) {
+    task_table_subscribe(g_state->scheduler_info->db,
+                         get_client_id(g_state->scheduler_info->db),
+                         TASK_STATUS_SCHEDULED, handle_task_scheduled_callback,
+                         NULL, &retry, NULL, NULL);
+  }
   /* Run event loop. */
   event_loop_run(loop);
 }
@@ -239,15 +245,21 @@ int main(int argc, char *argv[]) {
   if (!plasma_socket_name) {
     LOG_FATAL("please specify socket for connecting to Plasma with -p switch");
   }
-  /* Parse the Redis address into an IP address and a port. */
-  char redis_addr[16] = {0};
-  char redis_port[6] = {0};
-  if (!redis_addr_port ||
-      sscanf(redis_addr_port, "%15[0-9.]:%5[0-9]", redis_addr, redis_port) !=
-          2) {
-    LOG_FATAL(
-        "need to specify redis address like 127.0.0.1:6379 with -r switch");
+  if (!redis_addr_port) {
+    /* Start the local scheduler without connecting to Redis. In this case, all
+     * submitted tasks will be queued and scheduled locally. */
+    start_server(scheduler_socket_name, NULL, -1, plasma_socket_name);
+  } else {
+    /* Parse the Redis address into an IP address and a port. */
+    char redis_addr[16] = {0};
+    char redis_port[6] = {0};
+    if (sscanf(redis_addr_port, "%15[0-9.]:%5[0-9]", redis_addr, redis_port) !=
+        2) {
+      LOG_FATAL(
+          "if a redis address is provided with the -r switch, it should be "
+          "formatted like 127.0.0.1:6379");
+    }
+    start_server(scheduler_socket_name, &redis_addr[0], atoi(redis_port),
+                 plasma_socket_name);
   }
-  start_server(scheduler_socket_name, &redis_addr[0], atoi(redis_port),
-               plasma_socket_name);
 }

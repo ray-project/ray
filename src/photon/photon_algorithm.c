@@ -131,12 +131,14 @@ void handle_task_submitted(scheduler_info *info,
                            scheduler_state *s,
                            task_spec *spec) {
   /* If this task's dependencies are available locally, and if there is an
-   * available worker, then assign this task to an available worker. Otherwise,
-   * add this task to the local task queue or pass it along to the global
-   * scheduler. */
+   * available worker, then assign this task to an available worker. */
   bool schedule_locally =
       (utarray_len(s->available_workers) > 0) && can_run(s, spec);
-  bool queue_locally = false;
+
+  /* If we cannot assign the task to a worker immediately, we either queue the
+   * task in the local task queue or we pass the task to the global scheduler.
+   * For now, we pass the task along to the global scheduler if there is one. */
+  bool queue_locally = info->db == NULL;
   if (schedule_locally) {
     /* Get the last available worker in the available worker queue. */
     int *worker_index = (int *) utarray_back(s->available_workers);
@@ -147,8 +149,10 @@ void handle_task_submitted(scheduler_info *info,
     /* Update the global task table. TODO(rkn): Maybe this should be done in
      * assign_task_to_worker. */
     task *task = alloc_task(spec, TASK_STATUS_RUNNING, NIL_ID);
-    task_table_add_task(info->db, task, (retry_info *) &photon_retry, NULL,
-                        NULL);
+    if (info->db != NULL) {
+      task_table_add_task(info->db, task, (retry_info *) &photon_retry, NULL,
+                          NULL);
+    }
     free_task(task);
   } else if (queue_locally) {
     /* Add the task to the task queue. This passes ownership of the task queue.
@@ -158,11 +162,14 @@ void handle_task_submitted(scheduler_info *info,
     elt->task = task;
     DL_APPEND(s->task_queue, elt);
     /* Update the global task table. */
-    task_table_add_task(info->db, task, (retry_info *) &photon_retry, NULL,
-                        NULL);
+    if (info->db != NULL) {
+      task_table_add_task(info->db, task, (retry_info *) &photon_retry, NULL,
+                          NULL);
+    }
   } else {
     /* Pass on the task to the global scheduler. */
     task *task = alloc_task(spec, TASK_STATUS_WAITING, NIL_ID);
+    DCHECK(info->db != NULL);
     task_table_add_task(info->db, task, (retry_info *) &photon_retry, NULL,
                         NULL);
     free_task(task);
@@ -172,6 +179,10 @@ void handle_task_submitted(scheduler_info *info,
 void handle_task_scheduled(scheduler_info *info,
                            scheduler_state *s,
                            task_spec *spec) {
+  /* This callback handles tasks that were assigned to this local scheduler by
+   * the global scheduler, so we can safely assert that there is a connection
+   * to the database. */
+  DCHECK(info->db != NULL);
   bool schedule_locally =
       (utarray_len(s->available_workers) > 0) && can_run(s, spec);
   if (schedule_locally) {
