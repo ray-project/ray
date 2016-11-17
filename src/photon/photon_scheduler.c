@@ -103,10 +103,24 @@ void free_local_scheduler(local_scheduler_state *s) {
 
 void assign_task_to_worker(scheduler_info *info,
                            task_spec *spec,
-                           int worker_index) {
+                           int worker_index,
+                           bool from_global_scheduler) {
   CHECK(worker_index < utarray_len(info->workers));
   worker *w = (worker *) utarray_eltptr(info->workers, worker_index);
   write_message(w->sock, EXECUTE_TASK, task_spec_size(spec), (uint8_t *) spec);
+  /* Update the global task table. */
+  if (info->db != NULL) {
+    retry_info retry = {
+        .num_retries = 0, .timeout = 100, .fail_callback = NULL,
+    };
+    task *task = alloc_task(spec, TASK_STATUS_RUNNING, get_db_client_id(info->db));
+    if (from_global_scheduler) {
+      task_table_update(info->db, task, (retry_info *) &retry, NULL, NULL);
+    } else {
+      task_table_add_task(info->db, task, (retry_info *) &retry, NULL, NULL);
+    }
+    free_task(task);
+  }
 }
 
 void process_plasma_notification(event_loop *loop,
