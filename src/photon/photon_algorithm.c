@@ -17,7 +17,7 @@ const retry_info photon_retry = {
 
 typedef struct task_queue_entry {
   /** The task that is queued. */
-  task *task;
+  task_spec *spec;
   /** True if this task was assigned to this local scheduler by the global
    *  scheduler and false otherwise. */
   bool from_global_scheduler;
@@ -58,7 +58,7 @@ void free_scheduler_state(scheduler_state *s) {
   task_queue_entry *elt, *tmp1;
   DL_FOREACH_SAFE(s->task_queue, elt, tmp1) {
     DL_DELETE(s->task_queue, elt);
-    free(elt->task);
+    free_task_spec(elt->spec);
     free(elt);
   }
   utarray_free(s->available_workers);
@@ -109,14 +109,10 @@ bool find_and_schedule_task_if_possible(scheduler_info *info,
                                         scheduler_state *state,
                                         int worker_index) {
   task_queue_entry *elt, *tmp;
-  task_spec *spec;
-  bool from_global_scheduler;
   bool found_task_to_schedule = false;
   /* Find the first task whose dependencies are available locally. */
   DL_FOREACH_SAFE(state->task_queue, elt, tmp) {
-    spec = task_task_spec(elt->task);
-    from_global_scheduler = elt->from_global_scheduler;
-    if (can_run(state, spec)) {
+    if (can_run(state, elt->spec)) {
       found_task_to_schedule = true;
       break;
     }
@@ -124,20 +120,19 @@ bool find_and_schedule_task_if_possible(scheduler_info *info,
   if (found_task_to_schedule) {
     /* This task's dependencies are available locally, so assign the task to the
      * worker. */
-    assign_task_to_worker(info, spec, worker_index, from_global_scheduler);
+    assign_task_to_worker(info, elt->spec, worker_index,
+                          elt->from_global_scheduler);
     /* Update the task queue data structure and free the task. */
     DL_DELETE(state->task_queue, elt);
-    free_task(elt->task);
+    free_task_spec(elt->spec);
     free(elt);
   }
   return found_task_to_schedule;
 }
 
-/* This method takes ownership of the task spec and will be responsible for
- * freeing it. */
 void run_task_immediately(scheduler_info *info,
                           scheduler_state *s,
-                          OWNER task_spec *spec,
+                          task_spec *spec,
                           bool from_global_scheduler) {
   /* Get the last available worker in the available worker queue. */
   int *worker_index = (int *) utarray_back(s->available_workers);
@@ -147,33 +142,28 @@ void run_task_immediately(scheduler_info *info,
   utarray_pop_back(s->available_workers);
 }
 
-/* This method takes ownership of the task spec and will be responsible for
- * freeing it. */
 void queue_task_locally(scheduler_info *info,
                         scheduler_state *s,
-                        OWNER task_spec *spec,
+                        task_spec *spec,
                         bool from_global_scheduler) {
-  /* Add the task to the task queue. This passes ownership of the task queue.
-   * And the task will be freed when it is assigned to a worker. */
-  task *task = alloc_task(spec, TASK_STATUS_RUNNING, NIL_ID);
+  /* Copy the spec and add it to the task queue. The allocated spec will be
+   * freed when it is assigned to a worker. */
   task_queue_entry *elt = malloc(sizeof(task_queue_entry));
-  elt->task = task;
+  elt->spec = malloc(task_spec_size(spec));
+  memcpy(elt->spec, spec, task_spec_size(spec));
   elt->from_global_scheduler = from_global_scheduler;
   DL_APPEND(s->task_queue, elt);
 }
 
-/* This method takes ownership of the task spec and will be responsible for
- * freeing it. */
 void give_task_to_global_scheduler(scheduler_info *info,
                                    scheduler_state *s,
-                                   OWNER task_spec *spec,
+                                   task_spec *spec,
                                    bool from_global_scheduler) {
   /* Pass on the task to the global scheduler. */
   DCHECK(!from_global_scheduler);
   task *task = alloc_task(spec, TASK_STATUS_WAITING, NIL_ID);
   DCHECK(info->db != NULL);
-  task_table_add_task(info->db, task, (retry_info *) &photon_retry, NULL,
-                      NULL);
+  task_table_add_task(info->db, task, (retry_info *) &photon_retry, NULL, NULL);
   free_task(task);
 }
 

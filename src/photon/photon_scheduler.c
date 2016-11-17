@@ -113,7 +113,8 @@ void assign_task_to_worker(scheduler_info *info,
     retry_info retry = {
         .num_retries = 0, .timeout = 100, .fail_callback = NULL,
     };
-    task *task = alloc_task(spec, TASK_STATUS_RUNNING, get_db_client_id(info->db));
+    task *task =
+        alloc_task(spec, TASK_STATUS_RUNNING, get_db_client_id(info->db));
     if (from_global_scheduler) {
       task_table_update(info->db, task, (retry_info *) &retry, NULL, NULL);
     } else {
