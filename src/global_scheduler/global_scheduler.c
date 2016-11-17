@@ -5,9 +5,9 @@
 
 #include "common.h"
 #include "event_loop.h"
+#include "global_scheduler.h"
 #include "global_scheduler_algorithm.h"
-#include "global_scheduler_shared.h"
-#include "local_scheduler_table.h"
+#include "db_client_table.h"
 #include "net.h"
 #include "table.h"
 #include "task_table.h"
@@ -38,6 +38,20 @@ global_scheduler_state *init_global_scheduler(event_loop *loop,
   return state;
 }
 
+void process_task_waiting(task *task, void *user_context) {
+  global_scheduler_state *state = (global_scheduler_state *) user_context;
+  handle_task_waiting(state, task);
+}
+
+void process_new_db_client(db_client_id db_client_id,
+                           const char *client_type,
+                           void *user_context) {
+  global_scheduler_state *state = (global_scheduler_state *) user_context;
+  if (strcmp(client_type, "photon") == 0) {
+    handle_new_local_scheduler(state, db_client_id);
+  }
+}
+
 void start_server(const char *redis_addr, int redis_port) {
   event_loop *loop = event_loop_create();
   global_scheduler_state *state =
@@ -48,11 +62,12 @@ void start_server(const char *redis_addr, int redis_port) {
   };
   /* TODO(rkn): subscribe to notifications from the object table. */
   /* Subscribe to notifications about new local schedulers. */
-  local_scheduler_table_subscribe(state->db, handle_new_local_scheduler,
-                                  (void *) state, &retry, NULL, NULL);
+  db_client_table_subscribe(state->db, process_new_db_client, (void *) state,
+                            &retry, NULL, NULL);
   /* Subscribe to notifications about waiting tasks. */
   task_table_subscribe(state->db, NIL_ID, TASK_STATUS_WAITING,
-                       handle_task_waiting, (void *) state, &retry, NULL, NULL);
+                       process_task_waiting, (void *) state, &retry, NULL,
+                       NULL);
   /* Start the event loop. */
   event_loop_run(loop);
 }

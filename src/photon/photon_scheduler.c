@@ -209,7 +209,7 @@ void start_server(const char *socket_name,
   };
   if (g_state->scheduler_info->db != NULL) {
     task_table_subscribe(g_state->scheduler_info->db,
-                         get_client_id(g_state->scheduler_info->db),
+                         get_db_client_id(g_state->scheduler_info->db),
                          TASK_STATUS_SCHEDULED, handle_task_scheduled_callback,
                          NULL, &retry, NULL, NULL);
   }

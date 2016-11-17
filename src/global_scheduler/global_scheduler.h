@@ -1,5 +1,5 @@
-#ifndef GLOBAL_SCHEDULER_SHARED_H
-#define GLOBAL_SCHEDULER_SHARED_H
+#ifndef GLOBAL_SCHEDULER_H
+#define GLOBAL_SCHEDULER_H
 
 #include "task.h"
 
@@ -8,7 +8,7 @@
 /** Contains all information that is associated with a local scheduler. */
 typedef struct {
   /** The ID of the local scheduler in Redis. */
-  client_id id;
+  db_client_id id;
 } local_scheduler;
 
 typedef struct {
@@ -24,4 +24,4 @@ void assign_task_to_local_scheduler(global_scheduler_state *state,
                                     task *original_task,
                                     node_id node_id);
 
-#endif /* GLOBAL_SCHEDULER_SHARED_H */
+#endif /* GLOBAL_SCHEDULER_H */

@@ -129,15 +129,15 @@ bool object_ids_equal(object_id first_id, object_id second_id);
  */
 bool object_id_is_nil(object_id id);
 
-typedef unique_id client_id;
+typedef unique_id db_client_id;
 
 /**
- * Compare two client IDs.
+ * Compare two db client IDs.
  *
- * @param first_id The first client ID to compare.
- * @param second_id The first client ID to compare.
- * @return True if the client IDs are the same and false otherwise.
+ * @param first_id The first db client ID to compare.
+ * @param second_id The first db client ID to compare.
+ * @return True if the db client IDs are the same and false otherwise.
  */
-bool client_ids_equal(client_id first_id, client_id second_id);
+bool db_client_ids_equal(db_client_id first_id, db_client_id second_id);
 
 #endif

@@ -66,7 +66,7 @@ struct task_spec_impl {
    (ARGS_VALUE_SIZE))
 
 bool task_ids_equal(task_id first_id, task_id second_id) {
-  return UNIQUE_ID_EQ(first_id, second_id) ? true : false;
+  return UNIQUE_ID_EQ(first_id, second_id);
 }
 
 bool task_id_is_nil(task_id id) {
@@ -74,7 +74,7 @@ bool task_id_is_nil(task_id id) {
 }
 
 bool function_ids_equal(function_id first_id, function_id second_id) {
-  return UNIQUE_ID_EQ(first_id, second_id) ? true : false;
+  return UNIQUE_ID_EQ(first_id, second_id);
 }
 
 bool function_id_is_nil(function_id id) {
@@ -288,7 +288,7 @@ struct task_impl {
 };
 
 bool node_ids_equal(node_id first_id, node_id second_id) {
-  return UNIQUE_ID_EQ(first_id, second_id) ? true : false;
+  return UNIQUE_ID_EQ(first_id, second_id);
 }
 
 bool node_id_is_nil(node_id id) {

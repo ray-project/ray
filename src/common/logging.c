@@ -66,7 +66,7 @@ void ray_log(ray_logger *logger,
     db_handle *db = (db_handle *) logger->conn;
     /* Fill in the client ID and send the message to Redis. */
     redisAsyncCommand(db->context, NULL, NULL, utstring_body(formatted_message),
-                      (char *) db->client.id, sizeof(client_id));
+                      (char *) db->client.id, sizeof(db_client_id));
   } else {
     /* If we don't own a Redis connection, we leave our client
      * ID to be filled in by someone else. */

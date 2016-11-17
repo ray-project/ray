@@ -150,7 +150,7 @@ void logging_read_callback(event_loop *loop,
   db_handle *conn = context;
   char *cmd = read_log_message(fd);
   redisAsyncCommand(conn->context, logging_test_callback, NULL, cmd,
-                    (char *) conn->client.id, sizeof(client_id));
+                    (char *) conn->client.id, sizeof(db_client_id));
   free(cmd);
 }
 

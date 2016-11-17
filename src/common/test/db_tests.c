@@ -203,17 +203,17 @@ TEST task_table_all_test(void) {
 TEST unique_client_id_test(void) {
   const int num_conns = 100;
 
-  client_id ids[num_conns];
+  db_client_id ids[num_conns];
   db_handle *db;
   for (int i = 0; i < num_conns; ++i) {
     db = db_connect("127.0.0.1", 6379, "plasma_manager", manager_addr,
                     manager_port1);
-    ids[i] = get_client_id(db);
+    ids[i] = get_db_client_id(db);
     db_disconnect(db);
   }
   for (int i = 0; i < num_conns; ++i) {
     for (int j = 0; j < i; ++j) {
-      ASSERT(!client_ids_equal(ids[i], ids[j]));
+      ASSERT(!db_client_ids_equal(ids[i], ids[j]));
     }
   }
   PASS();
