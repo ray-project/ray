@@ -14,7 +14,6 @@ import photon
 import plasma
 
 USE_VALGRIND = False
-PLASMA_STORE_MEMORY = 1000000000
 ID_SIZE = 20
 
 def random_object_id():
@@ -29,21 +28,11 @@ def random_function_id():
 class TestPhotonClient(unittest.TestCase):
 
   def setUp(self):
-    # Start Plasma.
-    plasma_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../plasma/build/plasma_store")
-    plasma_socket = "/tmp/plasma_store{}".format(random.randint(0, 10000))
-    self.p1 = subprocess.Popen([plasma_executable, "-s", plasma_socket, "-m", str(PLASMA_STORE_MEMORY)])
-    time.sleep(0.1)
-    self.plasma_client = plasma.PlasmaClient(plasma_socket)
-    scheduler_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../build/photon_scheduler")
-    scheduler_name = "/tmp/scheduler{}".format(random.randint(0, 10000))
-    command = [scheduler_executable, "-s", scheduler_name, "-p", plasma_socket]
-    if USE_VALGRIND:
-      self.p2 = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + command)
-      time.sleep(1.0)
-    else:
-      self.p2 = subprocess.Popen(command)
-      time.sleep(0.1)
+    # Start Plasma store.
+    plasma_store_name, self.p1 = plasma.start_plasma_store()
+    self.plasma_client = plasma.PlasmaClient(plasma_store_name)
+    # Start a local scheduler.
+    scheduler_name, self.p2 = photon.start_local_scheduler(plasma_store_name, use_valgrind=USE_VALGRIND)
     # Connect to the scheduler.
     self.photon_client = photon.PhotonClient(scheduler_name)
 

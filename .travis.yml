@@ -57,10 +57,6 @@ install:
   - sudo python setup.py install
   - cd ../../../..
 
-  - cd src/photon
-  - sudo python setup.py install
-  - cd ../..
-
   - cd lib/python
   - sudo python setup.py install
   - cd ../..

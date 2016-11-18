@@ -57,10 +57,12 @@ pushd "$PHOTON_DIR"
   popd
 popd
 cp "$PHOTON_DIR/build/photon_scheduler" "$PYTHON_PHOTON_DIR/build/"
-cp "$PHOTON_DIR/photon/libphoton.so" "$PYTHON_PHOTON_DIR/"
+cp "$PHOTON_DIR/photon/libphoton.so" "$PYTHON_PHOTON_DIR/photon/"
+cp "$PHOTON_DIR/photon/photon_services.py" "$PYTHON_PHOTON_DIR/photon/"
 
 pushd "$GLOBAL_SCHEDULER_DIR"
   make clean
   make
 popd
 cp "$GLOBAL_SCHEDULER_DIR/build/global_scheduler" "$PYTHON_GLOBAL_SCHEDULER_DIR/build/"
+cp "$GLOBAL_SCHEDULER_DIR/lib/python/global_scheduler_services.py" "$PYTHON_GLOBAL_SCHEDULER_DIR/lib/python/"

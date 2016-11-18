@@ -11,7 +11,9 @@ import threading
 import time
 import unittest
 
+import global_scheduler
 import photon
+import plasma
 
 USE_VALGRIND = False
 PLASMA_STORE_MEMORY = 1000000000
@@ -48,25 +50,12 @@ class TestGlobalScheduler(unittest.TestCase):
     # Create a Redis client.
     self.redis_client = redis.StrictRedis(host=node_ip_address, port=redis_port)
     # Start the global scheduler.
-    global_scheduler_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../build/global_scheduler")
-    command = [global_scheduler_executable, "-r", redis_address]
-    if USE_VALGRIND:
-      self.p1 = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + command)
-      time.sleep(1.0)
-    else:
-      self.p1 = subprocess.Popen(command)
-      time.sleep(0.1)
+    self.p1 = global_scheduler.start_global_scheduler(redis_address, USE_VALGRIND)
     # Start the Plasma store.
-    plasma_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../plasma/build/plasma_store")
-    plasma_socket = "/tmp/plasma_store{}".format(random.randint(0, 10000))
-    self.p2 = subprocess.Popen([plasma_executable, "-s", plasma_socket, "-m", str(PLASMA_STORE_MEMORY)])
-    time.sleep(0.1)
+    plasma_store_name, self.p2 = plasma.start_plasma_store()
     # Start the local scheduler.
-    local_scheduler_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../photon/build/photon_scheduler")
-    local_scheduler_name = "/tmp/scheduler{}".format(random.randint(0, 10000))
-    self.p3 = subprocess.Popen([local_scheduler_executable, "-s", local_scheduler_name, "-p", plasma_socket, "-r", redis_address])
+    local_scheduler_name, self.p3 = photon.start_local_scheduler(plasma_store_name, redis_address=redis_address)
     # Connect to the scheduler.
-    time.sleep(0.1)
     self.photon_client = photon.PhotonClient(local_scheduler_name)
 
   def tearDown(self):
