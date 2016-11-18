@@ -18,7 +18,7 @@ fi
 if [[ $platform == "linux" ]]; then
   # These commands must be kept in sync with the installation instructions.
   sudo apt-get update
-  sudo apt-get install -y cmake build-essential autoconf curl libtool python-dev python-numpy python-pip libboost-all-dev unzip
+  sudo apt-get install -y cmake build-essential autoconf curl libtool python-dev python-numpy python-pip libboost-all-dev unzip nodejs npm
   sudo pip install funcsigs colorama psutil redis
 elif [[ $platform == "macosx" ]]; then
   # check that brew is installed
@@ -31,7 +31,7 @@ elif [[ $platform == "macosx" ]]; then
     brew update
   fi
   # These commands must be kept in sync with the installation instructions.
-  brew install cmake automake autoconf libtool boost
+  brew install cmake automake autoconf libtool boost node
   sudo easy_install pip
   sudo pip install numpy funcsigs colorama psutil redis --ignore-installed six
 fi

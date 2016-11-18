@@ -1,0 +1,32 @@
+{
+  "name": "RayWebUI",
+  "version": "0.0.1",
+  "description": "A Web UI for Ray",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/ray-project/ray.git" 
+  },
+  "private": true,
+  "dependencies": {
+    "babel-core": "~6.17.0",
+    "babel-loader": "~6.2.5",
+    "babel-preset-es2015": "~6.16.0",
+    "babel-preset-react": "~6.16.0",
+    "classnames": "~2.2.5",
+    "express": "^4.10.2",
+    "jbinary": "^2.1.3",
+    "react": "~15.3.2",
+    "react-addons-shallow-compare": "~15.3.2",
+    "react-dom": "~15.3.2",
+    "react-virtualized": "~8.0.12",
+    "redis": "^2.6.2",
+    "socket.io": "^1.5.0",
+    "socket.io-client": "~1.5.0",
+    "webpack": "~1.13.2",
+    "dom-helpers": "~3.0.0",
+    "jsesc": "~2.2.0"
+  },
+  "devDependencies": {
+    "webpack": "~1.13.3"
+  }
+}
