@@ -44,16 +44,16 @@ sub.on('pmessage', function(pattern, channel, message) {
     case "Failures":
       db.lindex("Failures", failureindex++, function(err, result) {
         backlogfailures.push({
-          "functionname": result.toString().split(" ")[2].slice(5, -5), 
+          "functionname": result.toString().split(" ")[2].slice(5, -5),
           "error": result.toString()
         });
       });
       break;
     case "obj":
       db.smembers(channel.slice(15), function(err, result) {
-        console.log(result); 
+        console.log(result);
         backlogobject.push({
-          "ObjectId": channel.slice(19).toString('hex'), 
+          "ObjectId": channel.slice(19).toString('hex'),
           "PlasmaStoreId": result[0].toString()
         });
       });
@@ -67,9 +67,9 @@ sub.on('pmessage', function(pattern, channel, message) {
         });
       });
       break;
-    default: 
+    default:
       console.log(channel.toString());
-      break;         
+      break;
     }
   } else {
     backlogtask.push(task.parse_task_instance(message));

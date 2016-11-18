@@ -13,6 +13,7 @@ else
 fi
 
 WEBUI_DIR="$ROOT_DIR/webui"
+PYTHON_DIR="$ROOT_DIR/lib/python"
 
 pushd "$WEBUI_DIR"
   npm install
@@ -22,9 +23,8 @@ pushd "$WEBUI_DIR"
     node ./node_modules/.bin/webpack -g
   fi
   pushd node_modules
-    sudo rm -rf react* babel* classnames dom-helpers jsesc webpack .bin
+    rm -rf react* babel* classnames dom-helpers jsesc webpack .bin
   popd
 popd
 
-mkdir "$ROOT_DIR/lib/python/webui"
-cp -r $WEBUI_DIR "$ROOT_DIR/lib/python"
+cp -r $WEBUI_DIR $PYTHON_DIR
