@@ -3,6 +3,7 @@
 
 #include "task.h"
 
+#include "state/db.h"
 #include "utarray.h"
 
 /** Contains all information that is associated with a local scheduler. */

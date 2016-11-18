@@ -268,7 +268,7 @@ class APITest(unittest.TestCase):
       return x + 10
     while True:
       val = ray.get(f.remote(0))
-      self.assertTrue((val == 10) or (val == 1))
+      self.assertTrue(val in [1, 10])
       if val == 10:
         break
       else:

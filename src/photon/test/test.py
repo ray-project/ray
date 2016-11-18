@@ -1,22 +1,30 @@
 from __future__ import print_function
 
+import numpy as np
 import os
+import random
 import signal
 import subprocess
 import sys
-import unittest
-import random
 import threading
 import time
+import unittest
 
 import photon
 import plasma
 
 USE_VALGRIND = False
 PLASMA_STORE_MEMORY = 1000000000
+ID_SIZE = 20
 
 def random_object_id():
-  return photon.ObjectID("".join([chr(random.randint(0, 255)) for _ in range(plasma.PLASMA_ID_SIZE)]))
+  return photon.ObjectID(np.random.bytes(ID_SIZE))
+
+def random_task_id():
+  return photon.ObjectID(np.random.bytes(ID_SIZE))
+
+def random_function_id():
+  return photon.ObjectID(np.random.bytes(ID_SIZE))
 
 class TestPhotonClient(unittest.TestCase):
 
@@ -32,11 +40,9 @@ class TestPhotonClient(unittest.TestCase):
     command = [scheduler_executable, "-s", scheduler_name, "-p", plasma_socket]
     if USE_VALGRIND:
       self.p2 = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + command)
-    else:
-      self.p2 = subprocess.Popen(command)
-    if USE_VALGRIND:
       time.sleep(1.0)
     else:
+      self.p2 = subprocess.Popen(command)
       time.sleep(0.1)
     # Connect to the scheduler.
     self.photon_client = photon.PhotonClient(scheduler_name)
@@ -53,9 +59,8 @@ class TestPhotonClient(unittest.TestCase):
       self.p2.kill()
 
   def test_submit_and_get_task(self):
-    # TODO(rkn): This should be a FunctionID.
-    function_id = photon.ObjectID(20 * "a")
-    object_ids = [photon.ObjectID(20 * chr(i)) for i in range(256)]
+    function_id = random_function_id()
+    object_ids = [random_object_id() for i in range(256)]
     # Create and seal the objects in the object store so that we can schedule
     # all of the subsequent tasks.
     for object_id in object_ids:
@@ -93,7 +98,7 @@ class TestPhotonClient(unittest.TestCase):
 
     for args in args_list:
       for num_return_vals in [0, 1, 2, 3, 5, 10, 100]:
-        task = photon.Task(function_id, args, num_return_vals, random_object_id(), 0)
+        task = photon.Task(function_id, args, num_return_vals, random_task_id(), 0)
         # Submit a task.
         self.photon_client.submit(task)
         # Get the task.
@@ -112,7 +117,7 @@ class TestPhotonClient(unittest.TestCase):
     # Submit all of the tasks.
     for args in args_list:
       for num_return_vals in [0, 1, 2, 3, 5, 10, 100]:
-        task = photon.Task(function_id, args, num_return_vals, random_object_id(), 0)
+        task = photon.Task(function_id, args, num_return_vals, random_task_id(), 0)
         self.photon_client.submit(task)
     # Get all of the tasks.
     for args in args_list:
@@ -121,10 +126,8 @@ class TestPhotonClient(unittest.TestCase):
 
   def test_scheduling_when_objects_ready(self):
     # Create a task and submit it.
-    object_id = photon.ObjectID(20 * chr(0))
-    # TODO(rkn): This should be a FunctionID.
-    function_id = photon.ObjectID(20 * "a")
-    task = photon.Task(function_id, [object_id], 0, random_object_id(), 0)
+    object_id = random_object_id()
+    task = photon.Task(random_function_id(), [object_id], 0, random_task_id(), 0)
     self.photon_client.submit(task)
     # Launch a thread to get the task.
     def get_task():

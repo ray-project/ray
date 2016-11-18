@@ -1,17 +1,17 @@
 from __future__ import print_function
 
+import numpy as np
 import os
+import random
 import signal
 import socket
 import struct
 import subprocess
 import sys
-import unittest
-import random
-import time
 import tempfile
 import threading
-import numpy as np
+import time
+import unittest
 
 import plasma
 
