@@ -169,7 +169,6 @@ def start_webui(redis_port, cleanup=True):
     cleanup (bool): True if using Ray in local mode. If cleanup is true, then
       this process will be killed by services.cleanup() when the Python process
       that imported services exits. This is True by default.
-
   """
   executable = "nodejs" if sys.platform == "linux" or sys.platform == "linux2" else "node"
   command = [executable, os.path.join(os.path.abspath(os.path.dirname(__file__)), "../webui/index.js"), str(redis_port)]
@@ -214,5 +213,4 @@ def start_ray_local(node_ip_address="127.0.0.1", num_workers=0, worker_path=None
   time.sleep(0.3)
   # Return the addresses of the relevant processes.
   start_webui(redis_port)
-  time.sleep(0.2)
   return address_info

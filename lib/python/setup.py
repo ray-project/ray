@@ -1,14 +1,14 @@
+from __future__ import print_function
+
 import os
 import subprocess
 
 from setuptools import setup, find_packages
 import setuptools.command.install as _install
 
-
 subprocess.check_call(["../../build-webui.sh"])
-datadir = "./webui"
 datafiles = [(root, [os.path.join(root, f) for f in files])
-    for root, dirs, files in os.walk(datadir)]
+    for root, dirs, files in os.walk("./webui")]
 
 class install(_install.install):
   def run(self):

@@ -13,7 +13,9 @@ else
 fi
 
 WEBUI_DIR="$ROOT_DIR/webui"
+
 PYTHON_DIR="$ROOT_DIR/lib/python"
+PYTHON_WEBUI_DIR="$PYTHON_DIR/webui"
 
 pushd "$WEBUI_DIR"
   npm install
@@ -27,4 +29,4 @@ pushd "$WEBUI_DIR"
   popd
 popd
 
-cp -r $WEBUI_DIR $PYTHON_DIR
+cp -r $WEBUI_DIR/* $PYTHON_WEBUI_DIR/
