@@ -61,8 +61,8 @@ sub.on('pmessage', function(pattern, channel, message) {
     case "RemoteFunction":
       db.hgetall(channel.slice(15), function(err, result) {
         backlogremotefunction.push({
-          "function_id": result.function_id.toString('hex'), 
-          "module": result.module.toString(), 
+          "function_id": result.function_id.toString('hex'),
+          "module": result.module.toString(),
           "name": result.name.toString()
         });
       });
