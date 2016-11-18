@@ -6,11 +6,11 @@ var task_argument = {
   is_ref: ['enum', 'int8', [true, false]],
   padding: ['array', 'int8', 7],
   reference: [
-    'if', 'is_ref', 
+    'if', 'is_ref',
     {object_id: ['array', 'uint8', 20], padding: ['array', 'int8', 4]}
   ],
   value: [
-    'if_not', 'is_ref', 
+    'if_not', 'is_ref',
     {offset: 'int64', length: 'int64', padding: ['array', 'int8', 8]}
   ]
 };

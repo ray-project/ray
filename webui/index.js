@@ -28,9 +28,7 @@ sub.psubscribe("__keyspace@0__:RemoteFunction*");
 io.on('connection', function(socket) {
   console.log('a user connected');
   socket.on('disconnect', function() { console.log('user disconnected'); });
-  sub.on('psubscribe', function (channel, count) {
-    console.log("Subscribed");
-  });
+  sub.on('psubscribe', function(channel, count) { console.log("Subscribed"); });
 });
 
 backlogobject = [];
@@ -38,49 +36,49 @@ backlogtask = [];
 backlogfailures = [];
 backlogremotefunction = [];
 var failureindex;
-db.llen("Failures", function(err,result){failureindex = result;});
-sub.on('pmessage', function (pattern, channel, message) {
-  if (channel.toString().split(":")[0]==="__keyspace@0__") {
-     console.log(channel.toString());
-     switch (channel.toString().split(":")[1]) {
-       case "Failures":
-         db.lindex("Failures", failureindex++, function(err,result){
-           backlogfailures.push({
-             "functionname":result.toString().split(" ")[2].slice(5,-5), 
-             "error":result.toString()
-           });
-         });
-         break;
-       case "obj":
-         db.smembers(channel.slice(15), function(err,result){
-           console.log(result); 
-           backlogobject.push({
-             "ObjectId":channel.slice(19).toString('hex'), 
-             "PlasmaStoreId":result[0].toString()
-           });
-         });
-         break;
-       case "RemoteFunction":
-         db.hgetall(channel.slice(15), function(err,result){
-           backlogremotefunction.push({
-             "function_id":result.function_id.toString('hex'), 
-             "module":result.module.toString(), 
-             "name":result.name.toString()
-           });
-         });
-         break;
-       default: 
-         console.log(channel.toString());
-         break;         
-      }
-    } else {
-      backlogtask.push(task.parse_task_instance(message));
-   }
-  });
+db.llen("Failures", function(err, result) { failureindex = result; });
+sub.on('pmessage', function(pattern, channel, message) {
+  if (channel.toString().split(":")[0] === "__keyspace@0__") {
+    console.log(channel.toString());
+    switch (channel.toString().split(":")[1]) {
+    case "Failures":
+      db.lindex("Failures", failureindex++, function(err, result) {
+        backlogfailures.push({
+          "functionname": result.toString().split(" ")[2].slice(5, -5), 
+          "error": result.toString()
+        });
+      });
+      break;
+    case "obj":
+      db.smembers(channel.slice(15), function(err, result) {
+        console.log(result); 
+        backlogobject.push({
+          "ObjectId": channel.slice(19).toString('hex'), 
+          "PlasmaStoreId": result[0].toString()
+        });
+      });
+      break;
+    case "RemoteFunction":
+      db.hgetall(channel.slice(15), function(err, result) {
+        backlogremotefunction.push({
+          "function_id": result.function_id.toString('hex'), 
+          "module": result.module.toString(), 
+          "name": result.name.toString()
+        });
+      });
+      break;
+    default: 
+      console.log(channel.toString());
+      break;         
+    }
+  } else {
+    backlogtask.push(task.parse_task_instance(message));
+  }
+});
 
 
 
-setInterval(function () {
+setInterval(function() {
   if (backlogfailures.length > 0) {
     console.log("Sending ", backlogfailures.length, " objects on failure");
     console.log(backlogfailures);
@@ -88,7 +86,7 @@ setInterval(function () {
   }
   backlogfailures = [];
 }, 30);
-setInterval(function () {
+setInterval(function() {
   if (backlogobject.length > 0) {
     console.log("Sending ", backlogobject.length, " objects on object");
     console.log(backlogobject);
@@ -96,14 +94,14 @@ setInterval(function () {
   }
   backlogobject = [];
 }, 30);
-setInterval(function () {
+setInterval(function() {
   if (backlogtask.length > 0) {
     console.log("Sending ", backlogtask.length, " objects on task");
     io.sockets.emit('task', backlogtask);
   }
   backlogtask = [];
 }, 30);
-setInterval(function () {
+setInterval(function() {
   if (backlogremotefunction.length > 0) {
     console.log("Sending ", backlogremotefunction.length, " objects on remote");
     console.log(backlogremotefunction);
@@ -111,4 +109,4 @@ setInterval(function () {
   }
   backlogremotefunction = [];
 }, 30);
-http.listen(3000, function(){ console.log('listening on *:3000'); });
+http.listen(3000, function() { console.log('listening on *:3000'); });
