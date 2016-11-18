@@ -172,8 +172,7 @@ def start_webui(redis_port, cleanup=True):
 
   """
   executable = "nodejs" if sys.platform == "linux" or sys.platform == "linux2" else "node"
-  directory = "../webui"
-  command = [executable, os.path.join(os.path.abspath(os.path.dirname(__file__)), directory + "/index.js"), str(redis_port)]
+  command = [executable, os.path.join(os.path.abspath(os.path.dirname(__file__)), "../webui/index.js"), str(redis_port)]
   with open("/tmp/webui_out.txt", "wb") as out:
     p = subprocess.Popen(command, stdout=out)
   if cleanup:
