@@ -90,7 +90,7 @@ int bind_ipc_sock(const char *socket_pathname, bool shall_listen) {
   }
 
   unlink(socket_pathname);
-  memset(&socket_address, 0, sizeof(struct sockaddr_un));
+  memset(&socket_address, 0, sizeof(socket_address));
   socket_address.sun_family = AF_UNIX;
   if (strlen(socket_pathname) + 1 > sizeof(socket_address.sun_path)) {
     LOG_ERROR("Socket pathname is too long.");
@@ -101,7 +101,7 @@ int bind_ipc_sock(const char *socket_pathname, bool shall_listen) {
           strlen(socket_pathname) + 1);
 
   if (bind(socket_fd, (struct sockaddr *) &socket_address,
-           sizeof(struct sockaddr_un)) != 0) {
+           sizeof(socket_address)) != 0) {
     LOG_ERROR("Bind failed for pathname %s.", socket_pathname);
     close(socket_fd);
     return -1;
@@ -129,7 +129,7 @@ int connect_ipc_sock(const char *socket_pathname) {
     return -1;
   }
 
-  memset(&socket_address, 0, sizeof(struct sockaddr_un));
+  memset(&socket_address, 0, sizeof(socket_address));
   socket_address.sun_family = AF_UNIX;
   if (strlen(socket_pathname) + 1 > sizeof(socket_address.sun_path)) {
     LOG_ERROR("Socket pathname is too long.");
@@ -139,7 +139,7 @@ int connect_ipc_sock(const char *socket_pathname) {
           strlen(socket_pathname) + 1);
 
   if (connect(socket_fd, (struct sockaddr *) &socket_address,
-              sizeof(struct sockaddr_un)) != 0) {
+              sizeof(socket_address)) != 0) {
     LOG_ERROR("Connection to socket failed for pathname %s.", socket_pathname);
     return -1;
   }
@@ -278,11 +278,11 @@ int read_bytes(int fd, uint8_t *cursor, size_t length) {
  * @return Void.
  */
 void read_message(int fd, int64_t *type, int64_t *length, uint8_t **bytes) {
-  int closed = read_bytes(fd, (uint8_t *) type, sizeof(int64_t));
+  int closed = read_bytes(fd, (uint8_t *) type, sizeof(*type));
   if (closed) {
     goto disconnected;
   }
-  closed = read_bytes(fd, (uint8_t *) length, sizeof(int64_t));
+  closed = read_bytes(fd, (uint8_t *) length, sizeof(*length));
   if (closed) {
     goto disconnected;
   }
@@ -321,11 +321,11 @@ disconnected:
  */
 int64_t read_buffer(int fd, int64_t *type, UT_array *buffer) {
   int64_t length;
-  int closed = read_bytes(fd, (uint8_t *) type, sizeof(int64_t));
+  int closed = read_bytes(fd, (uint8_t *) type, sizeof(*type));
   if (closed) {
     goto disconnected;
   }
-  closed = read_bytes(fd, (uint8_t *) &length, sizeof(int64_t));
+  closed = read_bytes(fd, (uint8_t *) &length, sizeof(length));
   if (closed) {
     goto disconnected;
   }

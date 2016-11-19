@@ -110,9 +110,11 @@ void assign_task_to_worker(scheduler_info *info,
   write_message(w->sock, EXECUTE_TASK, task_spec_size(spec), (uint8_t *) spec);
   /* Update the global task table. */
   if (info->db != NULL) {
-    retry_info retry = {
-        .num_retries = 0, .timeout = 100, .fail_callback = NULL,
-    };
+    retry_info retry;
+    memset(&retry, 0, sizeof(retry));
+    retry.num_retries = 0;
+    retry.timeout = 100;
+    retry.fail_callback = NULL;
     task *task =
         alloc_task(spec, TASK_STATUS_RUNNING, get_db_client_id(info->db));
     if (from_global_scheduler) {
@@ -131,7 +133,7 @@ void process_plasma_notification(event_loop *loop,
   local_scheduler_state *s = context;
   /* Read the notification from Plasma. */
   object_id obj_id;
-  recv(client_sock, &obj_id, sizeof(object_id), 0);
+  recv(client_sock, &obj_id, sizeof(obj_id), 0);
   handle_object_available(s->scheduler_info, s->scheduler_state, obj_id);
 }
 
@@ -219,9 +221,11 @@ void start_server(const char *socket_name,
    * local scheduler by the global scheduler. TODO(rkn): we also need to get any
    * tasks that were assigned to this local scheduler before the call to
    * subscribe. */
-  retry_info retry = {
-      .num_retries = 0, .timeout = 100, .fail_callback = NULL,
-  };
+  retry_info retry;
+  memset(&retry, 0, sizeof(retry));
+  retry.num_retries = 0;
+  retry.timeout = 100;
+  retry.fail_callback = NULL;
   if (g_state->scheduler_info->db != NULL) {
     task_table_subscribe(g_state->scheduler_info->db,
                          get_db_client_id(g_state->scheduler_info->db),
@@ -270,8 +274,9 @@ int main(int argc, char *argv[]) {
     /* Parse the Redis address into an IP address and a port. */
     char redis_addr[16] = {0};
     char redis_port[6] = {0};
-    if (sscanf(redis_addr_port, "%15[0-9.]:%5[0-9]", redis_addr, redis_port) !=
-        2) {
+    int num_assigned =
+        sscanf(redis_addr_port, "%15[0-9.]:%5[0-9]", redis_addr, redis_port);
+    if (num_assigned != 2) {
       LOG_FATAL(
           "if a redis address is provided with the -r switch, it should be "
           "formatted like 127.0.0.1:6379");

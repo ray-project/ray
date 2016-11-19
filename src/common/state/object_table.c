@@ -45,7 +45,7 @@ void result_table_add(db_handle *db_handle,
                       result_table_done_callback done_callback,
                       void *user_context) {
   task_id *task_id_copy = malloc(sizeof(task_id));
-  memcpy(task_id_copy, task_id_arg.id, sizeof(task_id));
+  memcpy(task_id_copy, task_id_arg.id, sizeof(*task_id_copy));
   init_table_callback(db_handle, object_id, __func__, task_id_copy, retry,
                       done_callback, redis_result_table_add, user_context);
 }

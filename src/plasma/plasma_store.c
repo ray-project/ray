@@ -40,7 +40,7 @@ void dlfree(void *);
  * This is used by the Plasma Store to send a reply to the Plasma Client.
  */
 void plasma_send_reply(int fd, plasma_reply *reply) {
-  int reply_count = sizeof(plasma_reply);
+  int reply_count = sizeof(*reply);
   if (write(fd, reply, reply_count) != reply_count) {
     LOG_FATAL("write error, fd = %d", fd);
   }
@@ -151,7 +151,7 @@ void create_object(client *client_context,
   object_table_entry *entry;
   /* TODO(swang): Return these error to the client instead of exiting. */
   HASH_FIND(handle, plasma_state->plasma_store_info->objects, &obj_id,
-            sizeof(object_id), entry);
+            sizeof(obj_id), entry);
   CHECKM(entry == NULL, "Cannot create object twice.");
   /* Tell the eviction policy how much space we need to create this object. */
   int64_t num_objects_to_evict;
@@ -169,7 +169,7 @@ void create_object(client *client_context,
   assert(fd != -1);
 
   entry = malloc(sizeof(object_table_entry));
-  memcpy(&entry->object_id, &obj_id, sizeof(object_id));
+  memcpy(&entry->object_id, &obj_id, sizeof(entry->object_id));
   entry->info.data_size = data_size;
   entry->info.metadata_size = metadata_size;
   entry->pointer = pointer;
@@ -225,7 +225,7 @@ int get_object(client *client_context,
       notify_entry = malloc(sizeof(object_notify_entry));
       memset(notify_entry, 0, sizeof(object_notify_entry));
       utarray_new(notify_entry->waiting_clients, &client_icd);
-      memcpy(&notify_entry->object_id, &object_id, sizeof(object_id));
+      notify_entry->object_id = object_id;
       HASH_ADD(handle, plasma_state->objects_notify, object_id,
                sizeof(object_id), notify_entry);
     }
@@ -380,9 +380,9 @@ void send_notifications(event_loop *loop,
   for (int i = 0; i < utarray_len(queue->object_ids); ++i) {
     object_id *obj_id = (object_id *) utarray_eltptr(queue->object_ids, i);
     /* Attempt to send a notification about this object ID. */
-    int nbytes = send(client_sock, obj_id, sizeof(object_id), 0);
+    int nbytes = send(client_sock, obj_id, sizeof(*obj_id), 0);
     if (nbytes >= 0) {
-      CHECK(nbytes == sizeof(object_id));
+      CHECK(nbytes == sizeof(*obj_id));
     } else if (nbytes == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
       LOG_DEBUG(
           "The socket's send buffer is full, so we are caching this "
