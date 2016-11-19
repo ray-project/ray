@@ -7,31 +7,38 @@ if(NOT APPLE)
   find_package(PythonLibs REQUIRED)
   set(CUSTOM_PYTHON_EXECUTABLE ${PYTHON_EXECUTABLE})
 else()
+  message("-- -- Trying custom approach for finding Python.")
   find_program(CUSTOM_PYTHON_EXECUTABLE python)
   message("-- Found Python program: ${CUSTOM_PYTHON_EXECUTABLE}")
   execute_process(COMMAND ${CUSTOM_PYTHON_EXECUTABLE} -c
                     "import sys; print 'python' + sys.version[0:3]"
                     OUTPUT_VARIABLE PYTHON_LIBRARY_NAME OUTPUT_STRIP_TRAILING_WHITESPACE)
+  message("-- PYTHON_LIBRARY_NAME: " ${PYTHON_LIBRARY_NAME})
     execute_process(COMMAND ${CUSTOM_PYTHON_EXECUTABLE} -c
                     "import sys; print sys.exec_prefix"
                     OUTPUT_VARIABLE PYTHON_PREFIX OUTPUT_STRIP_TRAILING_WHITESPACE)
+    message("-- PYTHON_PREFIX: " ${PYTHON_PREFIX})
     FIND_LIBRARY(PYTHON_LIBRARIES
                  NAMES ${PYTHON_LIBRARY_NAME}
                  HINTS "${PYTHON_PREFIX}"
                  PATH_SUFFIXES "lib" "libs"
                  NO_DEFAULT_PATH)
+    message("-- PYTHON_LIBRARIES: " ${PYTHON_LIBRARIES})
     execute_process(COMMAND ${CUSTOM_PYTHON_EXECUTABLE} -c
                     "from distutils.sysconfig import *; print get_python_inc()"
                     OUTPUT_VARIABLE PYTHON_INCLUDE_DIRS OUTPUT_STRIP_TRAILING_WHITESPACE)
+    message("-- PYTHON_INCLUDE_DIRS: " ${PYTHON_INCLUDE_DIRS})
     if(PYTHON_LIBRARIES AND PYTHON_INCLUDE_DIRS)
+        message("-- -- The custom approach for finding Python succeeded.")
         SET(PYTHONLIBS_FOUND TRUE)
-        message("-- Found PythonLibs: " ${PYTHON_LIBRARIES})
-        message("-- -- Used custom search path")
     else()
+        message("-- -- The custom approach for finding Python failed. Defaulting to find_package.")
+        find_package(PythonInterp REQUIRED)
         find_package(PythonLibs REQUIRED)
-        message("-- -- Used find_package(PythonLibs)")
     endif()
 endif()
+message("-- Using PYTHON_LIBRARIES: " ${PYTHON_LIBRARIES})
+message("-- Using PYTHON_INCLUDE_DIRS: " ${PYTHON_INCLUDE_DIRS})
 
 if(APPLE)
   SET(CMAKE_SHARED_LIBRARY_SUFFIX ".so")
