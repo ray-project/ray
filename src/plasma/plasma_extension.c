@@ -268,6 +268,88 @@ PyObject *PyPlasma_subscribe(PyObject *self, PyObject *args) {
   return PyInt_FromLong(sock);
 }
 
+PyObject *PyPlasma_init_kvstore(PyObject *self, PyObject *args) {
+  plasma_connection *conn;
+  object_id kv_object_id;
+  long long shards_handle; /* void ** */
+  long long shard_sizes_ptr; /* uint64_t * */
+  long long num_shards;
+  char shard_order;
+  long long shape_ptr; /* uint64_t * */
+  long long ndims;
+  if (!PyArg_ParseTuple(args, "O&O&LLLcLL",
+                        PyObjectToPlasmaConnection, &conn,
+                        PyObjectToUniqueID, &kv_object_id,
+                        &shards_handle,
+                        &shard_sizes_ptr,
+                        &num_shards,
+                        &shard_order,
+                        &shape_ptr,
+                        &ndims)) {
+    return NULL;
+  }
+
+  plasma_init_kvstore(conn, kv_object_id,
+                      (void **) shards_handle,
+                      (uint64_t *) shard_sizes_ptr,
+                      num_shards,
+                      shard_order,
+                      (uint64_t *) shape_ptr,
+                      ndims);
+
+  Py_RETURN_NONE;
+}
+
+PyObject *PyPlasma_pull(PyObject *self, PyObject *args) {
+  plasma_connection *conn;
+  object_id kv_object_id;
+  long long range_start;
+  long long range_end;
+  long long pull_result_ptr; /* plasma_pull_result * */
+  if (!PyArg_ParseTuple(args, "O&O&LLL",
+                        PyObjectToPlasmaConnection, &conn,
+                        PyObjectToUniqueID, &kv_object_id,
+                        &range_start,
+                        &range_end,
+                        &pull_result_ptr)) {
+    return NULL;
+  }
+
+  plasma_pull(conn, kv_object_id,
+              range_start,
+              range_end,
+              (plasma_pull_result *) pull_result_ptr);
+
+  Py_RETURN_NONE;
+}
+
+PyObject *PyPlasma_push(PyObject *self, PyObject *args) {
+  plasma_connection *conn;
+
+  object_id kv_object_id;
+  long long range_start;
+  long long range_end;
+  long long size;
+  long long data_ptr; /* void * */
+  if (!PyArg_ParseTuple(args, "O&O&LLLL",
+                        PyObjectToPlasmaConnection, &conn,
+                        PyObjectToUniqueID, &kv_object_id,
+                        &range_start,
+                        &range_end,
+                        &size,
+                        &data_ptr)) {
+    return NULL;
+  }
+
+  plasma_push(conn, kv_object_id,
+              range_start,
+              range_end,
+              size,
+              (void *) data_ptr);
+
+  Py_RETURN_NONE;
+}
+
 static PyMethodDef plasma_methods[] = {
     {"connect", PyPlasma_connect, METH_VARARGS, "Connect to plasma."},
     {"disconnect", PyPlasma_disconnect, METH_VARARGS,
@@ -289,6 +371,9 @@ static PyMethodDef plasma_methods[] = {
      "Transfer object to another plasma manager."},
     {"subscribe", PyPlasma_subscribe, METH_VARARGS,
      "Subscribe to the plasma notification socket."},
+    {"init_kvstore", PyPlasma_init_kvstore, METH_VARARGS, "TODO"},
+    {"pull", PyPlasma_pull, METH_VARARGS, "TODO"},
+    {"push", PyPlasma_push, METH_VARARGS, "TODO"},
     {NULL} /* Sentinel */
 };
 

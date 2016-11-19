@@ -4,6 +4,8 @@ import socket
 import subprocess
 import time
 import libplasma
+import ctypes
+import numpy as np
 
 PLASMA_ID_SIZE = 20
 PLASMA_WAIT_TIMEOUT = 2 ** 36
@@ -22,6 +24,7 @@ class PlasmaBuffer(object):
     plasma_client (PlasmaClient): The PlasmaClient that we use to communicate
       with the store and manager.
   """
+
   def __init__(self, buff, plasma_id, plasma_client):
     """Initialize a PlasmaBuffer."""
     self.buffer = buff
@@ -51,6 +54,20 @@ class PlasmaBuffer(object):
     """Return the length of the buffer."""
     return len(self.buffer)
 
+
+class PlasmaPullResult(ctypes.Structure):
+  _fields_ = [
+    ("shards_handle", ctypes.POINTER(ctypes.c_void_p)),
+    ("total_num_shards", ctypes.c_uint64),
+    ("result_num_shards", ctypes.c_uint64),
+    ("shape", ctypes.POINTER(ctypes.c_uint64)),
+    ("ndim", ctypes.c_uint64),
+    ("shard_sizes", ctypes.POINTER(ctypes.c_uint64)),
+    ("start_axis_idx", ctypes.c_uint64),
+    ("shard_order", ctypes.c_char),
+  ]
+
+
 class PlasmaClient(object):
   """The PlasmaClient is used to interface with a plasma store and a plasma manager.
 
@@ -67,6 +84,16 @@ class PlasmaClient(object):
       manager_socket_name (str): Name of the socket the plasma manager is listening at.
     """
     self.alive = True
+
+    # TODO: please forgive me because i have sinned HACK
+    self.buffer_from_memory = ctypes.pythonapi.PyBuffer_FromMemory
+    self.buffer_from_memory.argtypes = [ctypes.c_void_p, ctypes.c_int64]
+    self.buffer_from_memory.restype = ctypes.py_object
+
+    self.buffer_from_read_write_memory = ctypes.pythonapi.PyBuffer_FromReadWriteMemory
+    self.buffer_from_read_write_memory.argtypes = [
+        ctypes.c_void_p, ctypes.c_int64]
+    self.buffer_from_read_write_memory.restype = ctypes.py_object
 
     if manager_socket_name is not None:
       self.conn = libplasma.connect(store_socket_name, manager_socket_name, release_delay)
@@ -218,7 +245,111 @@ class PlasmaClient(object):
         break
     return message_data
 
-def start_plasma_manager(store_name, manager_name, redis_address, num_retries=20, use_valgrind=False, run_profiler=False):
+  def init_kvstore(self, kv_store_id, np_data, shard_order='C', shard_size=10):
+    assert type(np_data) is np.ndarray
+    assert shard_order in ['C', 'F']
+
+    if shard_order == 'C' and not np_data.flags.c_contiguous:
+      np_data = np.ascontiguousarray(np_data)
+    elif shard_order == 'F' and not np_data.flags.f_contiguous:
+      np_data = np.asfortranarray(np_data)
+
+    shard_axis = 0 if shard_order == 'C' else -1
+    axis_len = np_data.shape[shard_axis]
+    num_shards = axis_len / shard_size
+
+    partitions = np.split(np_data, num_shards, axis=shard_axis)
+    partition_lengths = np.array([p.size for p in partitions], dtype=np.uint64)
+    void_p_partitions = np.array([p.ctypes.data_as(ctypes.c_void_p).value for p in partitions])
+    shape = np.array(np_data.shape).ctypes.data_as(ctypes.c_void_p) # horrible HACK
+
+    void_handle_arr = void_p_partitions.ctypes.data_as(ctypes.c_void_p)
+    shard_sizes_ptr = partition_lengths.ctypes.data_as(ctypes.c_void_p)
+
+    libplasma.init_kvstore(
+      self.conn,
+      kv_store_id,
+      void_handle_arr.value,
+      shard_sizes_ptr.value,
+      len(partitions),
+      shard_order,
+      shape.value,
+      np_data.ndim
+    )
+
+  def pull(self, kv_store_id, interval):
+    assert type(interval) is tuple and len(interval) == 2
+
+    pull_result = PlasmaPullResult()
+
+    libplasma.pull(
+      self.conn,
+      kv_store_id,
+      interval[0],
+      interval[1],
+      ctypes.addressof(pull_result)
+    )
+
+    # TODO: do this slicing in C
+
+    num_shards = pull_result.result_num_shards
+    ndim = pull_result.ndim
+    shard_order = str(pull_result.shard_order)
+    shard_axis = 0 if shard_order == 'C' else -1
+    void_ptr_size = ctypes.sizeof(ctypes.c_void_p)
+
+    shard_ptr_buf_size = ctypes.c_int64(num_shards * void_ptr_size)
+    shape_buf_size = ctypes.c_int64(ndim * 8) # will always use uint64_t for sizes
+
+    shards_handle_buf = self.buffer_from_memory(pull_result.shards_handle, shard_ptr_buf_size)
+    shards_handle = np.frombuffer(shards_handle_buf, dtype=np.uint64, count=num_shards)
+
+    shard_bytes_sizes_buf = self.buffer_from_memory(pull_result.shard_sizes, shard_ptr_buf_size)
+    shard_sizes = np.frombuffer(shard_bytes_sizes_buf, dtype=np.uint64, count=num_shards)
+
+    shape_buf = self.buffer_from_memory(pull_result.shape, shape_buf_size)
+    shape = np.frombuffer(shape_buf, dtype=np.uint64, count=ndim)
+
+    shard_shape = np.array(shape) # make a copy
+    shards = []
+    for i in range(num_shards):
+      shard_data_buf = self.buffer_from_read_write_memory(
+        ctypes.cast(int(shards_handle[i]), ctypes.POINTER(ctypes.c_double)), # TODO: generic datatype
+        ctypes.c_int64(int(shard_sizes[i]) * 8),
+      )
+      shard_shape[shard_axis] = int(shard_sizes[i] / shape[shard_axis])
+      shards.append(np.frombuffer(
+        shard_data_buf,
+        dtype=np.float64,
+        count=shard_sizes[i],
+      ).reshape(shard_shape, order=shard_order))
+
+    merged = np.concatenate(shards, axis=shard_axis)
+    shard_length = shape[shard_axis] / pull_result.total_num_shards
+    start = int(interval[0] - (pull_result.start_axis_idx * shard_length))
+    end = int(start + (interval[1] - interval[0]))
+    return np.take(merged, range(start, end), axis=shard_axis)
+
+  def push(self, kv_store_id, interval, np_data, shard_order='C', version=0):
+    assert type(interval) is tuple and len(interval) == 2
+    assert shard_order in ['C', 'F']
+
+    # TODO: shard order should be implicit
+    if shard_order == 'C' and not np_data.flags.c_contiguous:
+      np_data = np.ascontiguousarray(np_data)
+    elif shard_order == 'F' and not np_data.flags.f_contiguous:
+      np_data = np.asfortranarray(np_data)
+
+    libplasma.push(
+      self.conn,
+      kv_store_id,
+      interval[0],
+      interval[1],
+      np_data.size,
+      np_data.ctypes.data_as(ctypes.c_void_p).value
+    )
+
+def start_plasma_manager(store_name, manager_name, redis_address, num_retries=5, use_valgrind=False, run_profiler=False):
   """Start a plasma manager and return the ports it listens on.
 
   Args:
@@ -235,7 +366,8 @@ def start_plasma_manager(store_name, manager_name, redis_address, num_retries=20
   Raises:
     Exception: An exception is raised if the manager could not be started.
   """
-  plasma_manager_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../build/plasma_manager")
+  plasma_manager_executable = os.path.join(os.path.abspath(
+      os.path.dirname(__file__)), "../../build/plasma_manager")
   port = None
   process = None
   counter = 0
@@ -250,7 +382,8 @@ def start_plasma_manager(store_name, manager_name, redis_address, num_retries=20
                "-p", str(port),
                "-r", redis_address]
     if use_valgrind:
-      process = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + command)
+      process = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full",
+                                  "--show-leak-kinds=all", "--error-exitcode=1"] + command)
     elif run_profiler:
       process = subprocess.Popen(["valgrind", "--tool=callgrind"] + command)
     else:
@@ -263,3 +396,45 @@ def start_plasma_manager(store_name, manager_name, redis_address, num_retries=20
       return process, port
     counter += 1
   raise Exception("Couldn't start plasma manager.")
+
+# XXX: remove
+if __name__ == '__main__':
+  x = PlasmaClient('/tmp/plasma_socket')
+
+  def slice_test():
+    foo = np.arange(1000000).reshape((1000, 1000)).astype(np.float64)
+
+    id_c = "c" * 20
+    x.init_kvstore(id_c, foo)
+    assert (x.pull(id_c, (5, 15)) == foo[5:15]).all()
+    assert (x.pull(id_c, (63, 73)) == foo[63:73]).all()
+    print 'C-style slicing works!'
+
+    id_f = "f" * 20
+    x.init_kvstore(id_f, foo, shard_order='F')
+    assert (x.pull(id_f, (5, 15)) == foo[:, 5:15]).all()
+    assert (x.pull(id_f, (63, 73)) == foo[:, 63:73]).all()
+    print 'F-style slicing works!'
+
+  def push_test():
+    foo = np.arange(1000000).reshape((1000, 1000)).astype(np.float64)
+
+    id_a = "a" * 20
+    x.init_kvstore(id_a, foo)
+    update = foo[10:20]
+
+    x.push(id_a, (0, 10), update)
+
+    assert (x.pull(id_a, (0, 10)) == update).all()
+    print 'Update 1st shard success.'
+
+    x.push(id_a, (63, 73), update)
+    assert (x.pull(id_a, (63, 73)) == update).all()
+    print 'Update across multiple shards success.'
+
+    x.push(id_a, (0, 1000), foo)
+    assert (x.pull(id_a, (0, 1000)) == foo).all()
+    print 'Reset back to foo success.'
+
+  slice_test()
+  push_test()

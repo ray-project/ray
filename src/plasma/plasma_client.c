@@ -25,6 +25,14 @@
 #define NUM_CONNECT_ATTEMPTS 50
 #define CONNECT_TIMEOUT 100
 
+#define sample_array(addr, msg, size, type) \
+  printf("%s: ", msg); fflush(stdout); \
+  for (int i = 0; i < size; i++) { \
+    printf(" %f ", ((type *)addr)[i]); fflush(stdout); \
+  } \
+  printf("\n"); fflush(stdout);
+
+
 typedef struct {
   /** Key that uniquely identifies the  memory mapped file. In practice, we
    *  take the numerical value of the file descriptor in the object store. */
@@ -537,4 +545,155 @@ int plasma_wait(plasma_connection *conn,
 
 int get_manager_fd(plasma_connection *conn) {
   return conn->manager_conn;
+}
+
+// TODO: need to lookup if kv_object_id already exists on some other machine
+void plasma_init_kvstore(plasma_connection *conn,
+                         object_id kv_object_id,
+                         void **shards,
+                         uint64_t *shard_sizes,
+                         uint64_t num_shards,
+                         char shard_order,
+                         uint64_t *shape,
+                         uint64_t ndims) {
+
+  object_id shard_ids[num_shards];
+  uint8_t *shard_datum[num_shards];
+  // create an object for each shard
+  for (size_t i = 0; i < num_shards; i++) {
+    object_id cur_shard_id = globally_unique_id();
+    plasma_create(conn, cur_shard_id, shard_sizes[i] * 8, NULL, 0, &shard_datum[i]);
+    memcpy(shard_datum[i], shards[i], shard_sizes[i] * 8); // copy shard data into shard
+  }
+
+  // create kv_metadata shard
+  int64_t shard_id_bytes = num_shards * sizeof(object_id);
+  int64_t shard_sizes_bytes = num_shards * sizeof(uint64_t);
+  int64_t shard_datum_ptr_bytes = num_shards * sizeof(void *);
+  int64_t matrix_ndims = ndims * sizeof(uint64_t);
+
+  int64_t kv_data_size = (2 * sizeof(uint64_t))
+    + sizeof(char)
+    + shard_id_bytes
+    + shard_sizes_bytes
+    + shard_datum_ptr_bytes
+    + matrix_ndims;
+
+  uint8_t *kv_data;
+  plasma_create(conn, kv_object_id, kv_data_size, NULL, 0, &kv_data);
+
+  memcpy(kv_data, &num_shards, sizeof(uint64_t));
+  kv_data += sizeof(uint64_t);
+
+  memcpy(kv_data, &ndims, sizeof(uint64_t));
+  kv_data += sizeof(uint64_t);
+
+  memcpy(kv_data, &shard_order, 1);
+  kv_data += 1;
+
+  memcpy(kv_data, shape, matrix_ndims);
+  kv_data += matrix_ndims;;
+
+  memcpy(kv_data, shard_ids, shard_id_bytes); // write shard object_ids
+  kv_data += shard_id_bytes;
+
+  memcpy(kv_data, shard_sizes, shard_sizes_bytes); // write shard sizes
+  kv_data += shard_sizes_bytes;
+
+  memcpy(kv_data, shard_datum, shard_datum_ptr_bytes); // write shard object_ids
+
+  plasma_seal(conn, kv_object_id);
+}
+
+void plasma_pull(plasma_connection *conn,
+                 object_id kv_object_id,
+                 uint64_t range_start,
+                 uint64_t range_end,
+                 plasma_pull_result *result) {
+
+  int64_t kv_data_size;
+  uint8_t *kv_data;
+  plasma_get(conn, kv_object_id, &kv_data_size, &kv_data, NULL, NULL);
+
+  uint8_t *kv_data_cursor = kv_data;
+  uint64_t total_num_shards = *(uint64_t *)kv_data_cursor;
+  result->total_num_shards = total_num_shards;
+  kv_data_cursor += sizeof(uint64_t);
+
+  result->ndim = *(uint64_t *)kv_data_cursor;
+  kv_data_cursor += sizeof(uint64_t);
+
+  result->shard_order = *(char *)kv_data_cursor;
+  int shard_axis = result->shard_order == 'C' ? 0 : result->ndim-1;
+  kv_data_cursor += sizeof(char);
+
+  result->shape = (uint64_t *)kv_data_cursor;
+  uint64_t axis_size = result->shape[shard_axis];
+  kv_data_cursor += (result->ndim) * sizeof(uint64_t);
+
+  /* object_id *UNUSED_shard_axis_ids = (object_id *) kv_data_cursor; */
+  kv_data_cursor += total_num_shards * sizeof(object_id);
+
+  uint64_t *shard_sizes = (uint64_t *) kv_data_cursor;
+  kv_data_cursor += total_num_shards * sizeof(uint64_t);
+
+  void **shards_handle = (void **) kv_data_cursor;
+
+  // TODO: pray we won't go out of bounds
+  uint64_t cum_size = 0;
+  uint64_t start_i;
+  int start_axis_i, end_axis_i;
+  int axis_i = 0;
+
+  while (cum_size <= range_start) {
+    cum_size += shard_sizes[axis_i] / axis_size;
+    axis_i++;
+  }
+  start_axis_i = axis_i-1;
+  start_i = cum_size - shard_sizes[start_axis_i];
+
+  while (range_end > cum_size) {
+    cum_size += shard_sizes[axis_i] / axis_size;
+    axis_i++;
+  }
+  end_axis_i = axis_i;
+
+  result->result_num_shards = end_axis_i - start_axis_i;
+  result->shards_handle = &shards_handle[start_axis_i];
+  result->shard_sizes = &shard_sizes[start_axis_i];
+  result->start_axis_idx = start_axis_i;
+}
+
+void plasma_push(plasma_connection *conn,
+                 object_id kv_object_id,
+                 uint64_t range_start,
+                 uint64_t range_end,
+                 uint64_t size,
+                 void *data) {
+
+  plasma_pull_result result;
+  plasma_pull(conn, kv_object_id, range_start, range_end, &result);
+  uint64_t start_axis_i = result.start_axis_idx;
+  int shard_axis = result.shard_order == 'C' ? 0 : result.ndim-1;
+  uint64_t axis_size = result.shape[shard_axis];
+
+  // TODO Error checking, make sure we can actually do this
+  uint64_t start = (range_start * axis_size) % result.shard_sizes[start_axis_i];
+  uint64_t copy_size = result.shard_sizes[start_axis_i] - start;
+  if (copy_size > size) {
+    copy_size = size;
+  }
+  void *addr = result.shards_handle[0] + (start * 8);
+
+  for (uint64_t i = 0; i < result.result_num_shards;) {
+    memcpy(addr, data, copy_size * 8);
+
+    size -= copy_size;
+    data += copy_size * 8;
+    addr = result.shards_handle[++i];
+    copy_size = result.shard_sizes[i];
+    if (copy_size > size) {
+      copy_size = size;
+    }
+  }
 }
