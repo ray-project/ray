@@ -225,8 +225,7 @@ int get_object(client *client_context,
       notify_entry = malloc(sizeof(object_notify_entry));
       memset(notify_entry, 0, sizeof(object_notify_entry));
       utarray_new(notify_entry->waiting_clients, &client_icd);
-      memcpy(&notify_entry->object_id, &object_id,
-             sizeof(notify_entry->object_id));
+      notify_entry->object_id = object_id;
       HASH_ADD(handle, plasma_state->objects_notify, object_id,
                sizeof(object_id), notify_entry);
     }

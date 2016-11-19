@@ -498,8 +498,7 @@ void plasma_fetch(plasma_connection *conn,
     /* Update the correct index in is_fetched. */
     int i = 0;
     for (; i < num_object_ids; i++) {
-      if (memcmp(&object_ids[i], &reply.object_ids[0], sizeof(object_ids[i])) ==
-          0) {
+      if (object_ids_equal(object_ids[i], reply.object_ids[0])) {
         /* Check that this isn't a duplicate response. */
         CHECK(!is_fetched[i]);
         is_fetched[i] = success;

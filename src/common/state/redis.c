@@ -463,7 +463,7 @@ void redis_task_table_get_task(table_callback_data *callback_data) {
                         (void *) callback_data->timer_id, "HGETALL task:%b",
                         id.id, sizeof(id.id));
   if ((status == REDIS_ERR) || db->context->err) {
-    LOG_REDIS_DEBUG(db->sub_context, "Could not get task from task table");
+    LOG_REDIS_DEBUG(db->context, "Could not get task from task table");
   }
 }
 
