@@ -272,8 +272,8 @@ int main(int argc, char *argv[]) {
     /* Parse the Redis address into an IP address and a port. */
     char redis_addr[16] = {0};
     char redis_port[6] = {0};
-    int num_assigned = sscanf(redis_addr_port, "%15[0-9.]:%5[0-9]", redis_addr,
-                              redis_port);
+    int num_assigned =
+        sscanf(redis_addr_port, "%15[0-9.]:%5[0-9]", redis_addr, redis_port);
     if (num_assigned != 2) {
       LOG_FATAL(
           "if a redis address is provided with the -r switch, it should be "

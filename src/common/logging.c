@@ -65,10 +65,9 @@ void ray_log(ray_logger *logger,
   if (logger->is_direct) {
     db_handle *db = (db_handle *) logger->conn;
     /* Fill in the client ID and send the message to Redis. */
-    int status = redisAsyncCommand(db->context, NULL, NULL,
-                                   utstring_body(formatted_message),
-                                   (char *) db->client.id,
-                                   sizeof(db->client.id));
+    int status = redisAsyncCommand(
+        db->context, NULL, NULL, utstring_body(formatted_message),
+        (char *) db->client.id, sizeof(db->client.id));
     if ((status == REDIS_ERR) || db->context->err) {
       LOG_REDIS_DEBUG(db->context, "error while logging message to log table");
     }

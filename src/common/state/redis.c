@@ -248,11 +248,10 @@ void redis_result_table_add(table_callback_data *callback_data) {
   object_id id = callback_data->id;
   task_id *result_task_id = (task_id *) callback_data->data;
   /* Add the result entry to the result table. */
-  int status = redisAsyncCommand(db->context, redis_result_table_add_callback,
-                                 (void *) callback_data->timer_id,
-                                 "SET result:%b %b", id.id, sizeof(id.id),
-                                 (*result_task_id).id,
-                                 sizeof((*result_task_id).id));
+  int status = redisAsyncCommand(
+      db->context, redis_result_table_add_callback,
+      (void *) callback_data->timer_id, "SET result:%b %b", id.id,
+      sizeof(id.id), result_task_id->id, sizeof(result_task_id->id));
   if ((status == REDIS_ERR) || db->context->err) {
     LOG_REDIS_DEBUG(db->context, "Error in result table add");
   }
@@ -297,7 +296,7 @@ void redis_result_table_lookup_object_callback(redisAsyncContext *c,
     int status =
         redisAsyncCommand(db->context, redis_result_table_lookup_task_callback,
                           (void *) callback_data->timer_id, "HGETALL task:%b",
-                          (*result_task_id).id, sizeof((*result_task_id).id));
+                          result_task_id->id, sizeof(result_task_id->id));
     if ((status == REDIS_ERR) || db->context->err) {
       LOG_REDIS_DEBUG(db->context, "Could not look up result table entry");
     }
@@ -320,10 +319,9 @@ void redis_result_table_lookup(table_callback_data *callback_data) {
   db_handle *db = callback_data->db_handle;
   /* First, lookup the ID of the task that created this object. */
   object_id id = callback_data->id;
-  int status =
-      redisAsyncCommand(db->context, redis_result_table_lookup_object_callback,
-                        (void *) callback_data->timer_id, "GET result:%b",
-                        id.id, sizeof(id.id));
+  int status = redisAsyncCommand(
+      db->context, redis_result_table_lookup_object_callback,
+      (void *) callback_data->timer_id, "GET result:%b", id.id, sizeof(id.id));
   if ((status == REDIS_ERR) || db->context->err) {
     LOG_REDIS_DEBUG(db->context, "Error in result table lookup");
   }
@@ -671,8 +669,7 @@ void redis_db_client_table_subscribe_callback(redisAsyncContext *c,
    * client_type string, and we add 1 to null-terminate the string. */
   int client_type_length = payload->len - 1 - sizeof(client.id) + 1;
   char *client_type = malloc(client_type_length);
-  memcpy(client_type, &payload->str[1 + sizeof(client.id)],
-         client_type_length);
+  memcpy(client_type, &payload->str[1 + sizeof(client.id)], client_type_length);
   if (data->subscribe_callback) {
     data->subscribe_callback(client, client_type, data->subscribe_context);
   }
