@@ -16,15 +16,14 @@
 UT_icd local_scheduler_icd = {sizeof(local_scheduler), NULL, NULL, NULL};
 
 void assign_task_to_local_scheduler(global_scheduler_state *state,
-                                    task *original_task,
+                                    task *task,
                                     node_id node_id) {
-  task *updated_task =
-      alloc_task(task_task_spec(original_task), TASK_STATUS_SCHEDULED, node_id);
+  task_set_state(task, TASK_STATUS_SCHEDULED);
+  task_set_node(task, node_id);
   retry_info retry = {
       .num_retries = 0, .timeout = 100, .fail_callback = NULL,
   };
-  task_table_update(state->db, updated_task, &retry, NULL, NULL);
-  free_task(updated_task);
+  task_table_update(state->db, task, &retry, NULL, NULL);
 }
 
 global_scheduler_state *init_global_scheduler(event_loop *loop,
@@ -78,10 +77,13 @@ void start_server(const char *redis_addr, int redis_port) {
       .num_retries = 0, .timeout = 100, .fail_callback = NULL,
   };
   /* TODO(rkn): subscribe to notifications from the object table. */
-  /* Subscribe to notifications about new local schedulers. */
+  /* Subscribe to notifications about new local schedulers. TODO(rkn): this
+   * needs to also get all of the clients that registered with the database
+   * before this call to subscribe. */
   db_client_table_subscribe(g_state->db, process_new_db_client,
                             (void *) g_state, &retry, NULL, NULL);
-  /* Subscribe to notifications about waiting tasks. */
+  /* Subscribe to notifications about waiting tasks. TODO(rkn): this may need to
+   * get tasks that were submitted to the database before the subscribe. */
   task_table_subscribe(g_state->db, NIL_ID, TASK_STATUS_WAITING,
                        process_task_waiting, (void *) g_state, &retry, NULL,
                        NULL);

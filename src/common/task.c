@@ -320,8 +320,16 @@ scheduling_state task_state(task *task) {
   return task->state;
 }
 
+void task_set_state(task *task, scheduling_state state) {
+  task->state = state;
+}
+
 node_id task_node(task *task) {
   return task->node;
+}
+
+void task_set_node(task *task, node_id node) {
+  task->node = node;
 }
 
 task_spec *task_task_spec(task *task) {

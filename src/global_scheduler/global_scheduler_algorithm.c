@@ -3,22 +3,18 @@
 
 #include "global_scheduler_algorithm.h"
 
-void handle_task_waiting(global_scheduler_state *state, task *original_task) {
+void handle_task_waiting(global_scheduler_state *state, task *task) {
   if (utarray_len(state->local_schedulers) > 0) {
     local_scheduler *scheduler =
         (local_scheduler *) utarray_eltptr(state->local_schedulers, 0);
-    assign_task_to_local_scheduler(state, original_task, scheduler->id);
+    assign_task_to_local_scheduler(state, task, scheduler->id);
   } else {
     CHECKM(0, "We currently don't handle this case.");
   }
 }
 
-void handle_object_available(global_scheduler_state *state, object_id obj_id) {
-  /* Do nothing for now. */
-}
-
-void handle_object_unavailable(global_scheduler_state *state,
-                               object_id obj_id) {
+void handle_object_available(global_scheduler_state *state,
+                             object_id object_id) {
   /* Do nothing for now. */
 }
 

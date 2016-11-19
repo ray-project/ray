@@ -291,8 +291,14 @@ int64_t task_size(task *task);
 /** The scheduling state of the task. */
 scheduling_state task_state(task *task);
 
+/** Update the schedule state of the task. */
+void task_set_state(task *task, scheduling_state state);
+
 /** Node this task has been assigned to or is running on. */
 node_id task_node(task *task);
+
+/** Set the node for this task. */
+void task_set_node(task *task, node_id node);
 
 /** Task specification of this task. */
 task_spec *task_task_spec(task *task);

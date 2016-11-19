@@ -13,14 +13,44 @@
  *
  */
 
-void handle_task_waiting(global_scheduler_state *state, task *original_task);
+/**
+ * Assign the task to a local scheduler. At the moment, this simply assigns the
+ * task to the first local scheduler and if there are no local schedulers it
+ * fails.
+ *
+ * @param state The global scheduler state.
+ * @param task The task that is waiting to be scheduled.
+ * @return Void.
+ */
+void handle_task_waiting(global_scheduler_state *state, task *task);
 
-void handle_object_available(global_scheduler_state *state, object_id obj_id);
+/**
+ * Handle the fact that a new object is available.
+ *
+ * @param state The global scheduler state.
+ * @param object_id The ID of the object that is now available.
+ * @return Void.
+ */
+void handle_object_available(global_scheduler_state *state,
+                             object_id object_id);
 
-void handle_object_unavailable(global_scheduler_state *state, object_id obj_id);
-
+/**
+ * Handle a heartbeat message from a local scheduler. TODO(rkn): this is a
+ * placeholder for now.
+ *
+ * @param state The global scheduler state.
+ * @return Void.
+ */
 void handle_local_scheduler_heartbeat(global_scheduler_state *state);
 
+/**
+ * Handle the presence of a new local scheduler. Currently, this just adds the
+ * local scheduler to a queue of local schedulers.
+ *
+ * @param state The global scheduler state.
+ * @param The db client ID of the new local scheduler.
+ * @return Void.
+ */
 void handle_new_local_scheduler(global_scheduler_state *state,
                                 db_client_id db_client_id);
 

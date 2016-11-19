@@ -22,7 +22,7 @@ typedef struct {
 } global_scheduler_state;
 
 void assign_task_to_local_scheduler(global_scheduler_state *state,
-                                    task *original_task,
+                                    task *task,
                                     node_id node_id);
 
 #endif /* GLOBAL_SCHEDULER_H */

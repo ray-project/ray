@@ -59,8 +59,6 @@ class TestGlobalScheduler(unittest.TestCase):
     self.photon_client = photon.PhotonClient(local_scheduler_name)
 
   def tearDown(self):
-    # Kill Redis.
-    self.redis_process.kill()
     # Kill the global scheduler.
     if USE_VALGRIND:
       self.p1.send_signal(signal.SIGTERM)
@@ -70,6 +68,9 @@ class TestGlobalScheduler(unittest.TestCase):
       self.p1.kill()
     self.p2.kill()
     self.p3.kill()
+    # Kill Redis. In the event that we are using valgrind, this needs to happen
+    # after we kill the global scheduler.
+    self.redis_process.kill()
 
   def test_redis_contents(self):
     # There should be two db clients, the global scheduler and the local
