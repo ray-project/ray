@@ -8,8 +8,8 @@
 using namespace arrow;
 
 extern "C" {
-  extern PyObject *numbuf_serialize_callback;
-  extern PyObject *numbuf_deserialize_callback;
+extern PyObject* numbuf_serialize_callback;
+extern PyObject* numbuf_deserialize_callback;
 }
 
 namespace numbuf {
@@ -18,22 +18,20 @@ namespace numbuf {
   case Type::TYPE:                     \
     return NPY_##TYPE;
 
-#define DESERIALIZE_ARRAY_CASE(TYPE, ArrayType, type)                        \
-  case Type::TYPE: {                                                         \
-    auto values = std::dynamic_pointer_cast<ArrayType>(content->values());   \
-    DCHECK(values);                                                          \
-    type* data = const_cast<type*>(values->raw_data())                       \
-                   + content->offset(offset);                                \
-    *out = PyArray_SimpleNewFromData(num_dims, dim.data(), NPY_##TYPE,       \
-                                     reinterpret_cast<void*>(data));         \
-    if (base != Py_None) {                                                   \
-      PyArray_SetBaseObject((PyArrayObject*) *out, base);                    \
-    }                                                                        \
-    Py_XINCREF(base);                                                        \
-  }                                                                          \
-  return Status::OK();
+#define DESERIALIZE_ARRAY_CASE(TYPE, ArrayType, type)                             \
+  case Type::TYPE: {                                                              \
+    auto values = std::dynamic_pointer_cast<ArrayType>(content->values());        \
+    DCHECK(values);                                                               \
+    type* data = const_cast<type*>(values->raw_data()) + content->offset(offset); \
+    *out = PyArray_SimpleNewFromData(                                             \
+        num_dims, dim.data(), NPY_##TYPE, reinterpret_cast<void*>(data));         \
+    if (base != Py_None) { PyArray_SetBaseObject((PyArrayObject*)*out, base); }   \
+    Py_XINCREF(base);                                                             \
+  }                                                                               \
+    return Status::OK();
 
-Status DeserializeArray(std::shared_ptr<Array> array, int32_t offset, PyObject* base, PyObject** out) {
+Status DeserializeArray(
+    std::shared_ptr<Array> array, int32_t offset, PyObject* base, PyObject** out) {
   DCHECK(array);
   auto tensor = std::dynamic_pointer_cast<StructArray>(array);
   DCHECK(tensor);
@@ -41,9 +39,9 @@ Status DeserializeArray(std::shared_ptr<Array> array, int32_t offset, PyObject* 
   auto content = std::dynamic_pointer_cast<ListArray>(tensor->field(1));
   npy_intp num_dims = dims->value_length(offset);
   std::vector<npy_intp> dim(num_dims);
-  for (int i = dims->offset(offset); i < dims->offset(offset+1); ++i) {
+  for (int i = dims->offset(offset); i < dims->offset(offset + 1); ++i) {
     dim[i - dims->offset(offset)] =
-      std::dynamic_pointer_cast<Int64Array>(dims->values())->Value(i);
+        std::dynamic_pointer_cast<Int64Array>(dims->values())->Value(i);
   }
   switch (content->value_type()->type) {
     DESERIALIZE_ARRAY_CASE(INT8, Int8Array, int8_t)
@@ -62,8 +60,8 @@ Status DeserializeArray(std::shared_ptr<Array> array, int32_t offset, PyObject* 
   return Status::OK();
 }
 
-Status SerializeArray(PyArrayObject* array, SequenceBuilder& builder,
-                      std::vector<PyObject*>& subdicts) {
+Status SerializeArray(
+    PyArrayObject* array, SequenceBuilder& builder, std::vector<PyObject*>& subdicts) {
   size_t ndim = PyArray_NDIM(array);
   int dtype = PyArray_TYPE(array);
   std::vector<int64_t> dims(ndim);
@@ -119,7 +117,8 @@ Status SerializeArray(PyArrayObject* array, SequenceBuilder& builder,
         PyObject* result = PyObject_CallObject(numbuf_serialize_callback, arglist);
         Py_XDECREF(arglist);
         if (!result) {
-          return Status::NotImplemented("python error"); // TODO(pcm): https://github.com/ray-project/numbuf/issues/10
+          return Status::NotImplemented("python error");  // TODO(pcm):
+          // https://github.com/ray-project/numbuf/issues/10
         }
         builder.AppendDict(PyDict_Size(result));
         subdicts.push_back(result);
@@ -128,5 +127,4 @@ Status SerializeArray(PyArrayObject* array, SequenceBuilder& builder,
   Py_XDECREF(contiguous);
   return Status::OK();
 }
-
 }

@@ -12,46 +12,54 @@ extern "C" {
 
 extern PyObject* numbuf_serialize_callback;
 extern PyObject* numbuf_deserialize_callback;
-
 }
 
 namespace numbuf {
 
-Status get_value(ArrayPtr arr, int32_t index, int32_t type, PyObject* base, PyObject** result) {
+Status get_value(
+    ArrayPtr arr, int32_t index, int32_t type, PyObject* base, PyObject** result) {
   switch (arr->type()->type) {
     case Type::BOOL:
-      *result = PyBool_FromLong(std::static_pointer_cast<BooleanArray>(arr)->Value(index));
+      *result =
+          PyBool_FromLong(std::static_pointer_cast<BooleanArray>(arr)->Value(index));
       return Status::OK();
     case Type::INT64:
       *result = PyInt_FromLong(std::static_pointer_cast<Int64Array>(arr)->Value(index));
       return Status::OK();
     case Type::BINARY: {
       int32_t nchars;
-      const uint8_t* str = std::static_pointer_cast<BinaryArray>(arr)->GetValue(index, &nchars);
+      const uint8_t* str =
+          std::static_pointer_cast<BinaryArray>(arr)->GetValue(index, &nchars);
       *result = PyString_FromStringAndSize(reinterpret_cast<const char*>(str), nchars);
       return Status::OK();
     }
     case Type::STRING: {
       int32_t nchars;
-      const uint8_t* str = std::static_pointer_cast<StringArray>(arr)->GetValue(index, &nchars);
+      const uint8_t* str =
+          std::static_pointer_cast<StringArray>(arr)->GetValue(index, &nchars);
       *result = PyUnicode_FromStringAndSize(reinterpret_cast<const char*>(str), nchars);
       return Status::OK();
     }
     case Type::FLOAT:
-      *result = PyFloat_FromDouble(std::static_pointer_cast<FloatArray>(arr)->Value(index));
+      *result =
+          PyFloat_FromDouble(std::static_pointer_cast<FloatArray>(arr)->Value(index));
       return Status::OK();
     case Type::DOUBLE:
-      *result = PyFloat_FromDouble(std::static_pointer_cast<DoubleArray>(arr)->Value(index));
+      *result =
+          PyFloat_FromDouble(std::static_pointer_cast<DoubleArray>(arr)->Value(index));
       return Status::OK();
     case Type::STRUCT: {
       auto s = std::static_pointer_cast<StructArray>(arr);
       auto l = std::static_pointer_cast<ListArray>(s->field(0));
       if (s->type()->child(0)->name == "list") {
-        return DeserializeList(l->values(), l->value_offset(index), l->value_offset(index+1), base, result);
+        return DeserializeList(l->values(), l->value_offset(index),
+            l->value_offset(index + 1), base, result);
       } else if (s->type()->child(0)->name == "tuple") {
-        return DeserializeTuple(l->values(), l->value_offset(index), l->value_offset(index+1), base, result);
+        return DeserializeTuple(l->values(), l->value_offset(index),
+            l->value_offset(index + 1), base, result);
       } else if (s->type()->child(0)->name == "dict") {
-        return DeserializeDict(l->values(), l->value_offset(index), l->value_offset(index+1), base, result);
+        return DeserializeDict(l->values(), l->value_offset(index),
+            l->value_offset(index + 1), base, result);
       } else {
         return DeserializeArray(arr, index, base, result);
       }
@@ -62,10 +70,8 @@ Status get_value(ArrayPtr arr, int32_t index, int32_t type, PyObject* base, PyOb
   return Status::OK();
 }
 
-Status append(PyObject* elem, SequenceBuilder& builder,
-              std::vector<PyObject*>& sublists,
-              std::vector<PyObject*>& subtuples,
-              std::vector<PyObject*>& subdicts) {
+Status append(PyObject* elem, SequenceBuilder& builder, std::vector<PyObject*>& sublists,
+    std::vector<PyObject*>& subtuples, std::vector<PyObject*>& subdicts) {
   // The bool case must precede the int case (PyInt_Check passes for bools)
   if (PyBool_Check(elem)) {
     RETURN_NOT_OK(builder.AppendBool(elem == Py_True));
@@ -75,9 +81,7 @@ Status append(PyObject* elem, SequenceBuilder& builder,
     int overflow = 0;
     int64_t data = PyLong_AsLongLongAndOverflow(elem, &overflow);
     RETURN_NOT_OK(builder.AppendInt64(data));
-    if(overflow) {
-      return Status::NotImplemented("long overflow");
-    }
+    if (overflow) { return Status::NotImplemented("long overflow"); }
   } else if (PyInt_Check(elem)) {
     RETURN_NOT_OK(builder.AppendInt64(static_cast<int64_t>(PyInt_AS_LONG(elem))));
   } else if (PyString_Check(elem)) {
@@ -86,13 +90,14 @@ Status append(PyObject* elem, SequenceBuilder& builder,
     RETURN_NOT_OK(builder.AppendBytes(data, size));
   } else if (PyUnicode_Check(elem)) {
     Py_ssize_t size;
-    #if PY_MAJOR_VERSION >= 3
-      char* data = PyUnicode_AsUTF8AndSize(elem, &size); // TODO(pcm): Check if this is correct
-    #else
-      PyObject* str = PyUnicode_AsUTF8String(elem);
-      char* data = PyString_AS_STRING(str);
-      size = PyString_GET_SIZE(str);
-    #endif
+#if PY_MAJOR_VERSION >= 3
+    char* data =
+        PyUnicode_AsUTF8AndSize(elem, &size);  // TODO(pcm): Check if this is correct
+#else
+    PyObject* str = PyUnicode_AsUTF8String(elem);
+    char* data = PyString_AS_STRING(str);
+    size = PyString_GET_SIZE(str);
+#endif
     Status s = builder.AppendString(data, size);
     Py_XDECREF(str);
     RETURN_NOT_OK(s);
@@ -108,14 +113,14 @@ Status append(PyObject* elem, SequenceBuilder& builder,
   } else if (PyArray_IsScalar(elem, Generic)) {
     RETURN_NOT_OK(AppendScalar(elem, builder));
   } else if (PyArray_Check(elem)) {
-    RETURN_NOT_OK(SerializeArray((PyArrayObject*) elem, builder, subdicts));
+    RETURN_NOT_OK(SerializeArray((PyArrayObject*)elem, builder, subdicts));
   } else if (elem == Py_None) {
     RETURN_NOT_OK(builder.AppendNone());
   } else {
     if (!numbuf_serialize_callback) {
       std::stringstream ss;
       ss << "data type of " << PyString_AS_STRING(PyObject_Repr(elem))
-        << " not recognized and custom serialization handler not registered";
+         << " not recognized and custom serialization handler not registered";
       return Status::NotImplemented(ss.str());
     } else {
       PyObject* arglist = Py_BuildValue("(O)", elem);
@@ -124,7 +129,8 @@ Status append(PyObject* elem, SequenceBuilder& builder,
       PyObject* result = PyObject_CallObject(numbuf_serialize_callback, arglist);
       Py_XDECREF(arglist);
       if (!result) {
-        return Status::NotImplemented("python error"); // TODO(pcm): https://github.com/ray-project/numbuf/issues/10
+        return Status::NotImplemented("python error");  // TODO(pcm):
+        // https://github.com/ray-project/numbuf/issues/10
       }
       builder.AppendDict(PyDict_Size(result));
       subdicts.push_back(result);
@@ -133,13 +139,16 @@ Status append(PyObject* elem, SequenceBuilder& builder,
   return Status::OK();
 }
 
-Status SerializeSequences(std::vector<PyObject*> sequences, int32_t recursion_depth, std::shared_ptr<Array>* out) {
+Status SerializeSequences(std::vector<PyObject*> sequences, int32_t recursion_depth,
+    std::shared_ptr<Array>* out) {
   DCHECK(out);
   if (recursion_depth >= MAX_RECURSION_DEPTH) {
-    return Status::NotImplemented("This object exceeds the maximum recursion depth. It may contain itself recursively.");
+    return Status::NotImplemented(
+        "This object exceeds the maximum recursion depth. It may contain itself "
+        "recursively.");
   }
   SequenceBuilder builder(nullptr);
-  std::vector<PyObject*> sublists, subtuples, subdicts;
+  std::vector<PyObject *> sublists, subtuples, subdicts;
   for (const auto& sequence : sequences) {
     PyObject* item;
     PyObject* iterator = PyObject_GetIter(sequence);
@@ -169,42 +178,47 @@ Status SerializeSequences(std::vector<PyObject*> sequences, int32_t recursion_de
   return builder.Finish(list, tuple, dict, out);
 }
 
-#define DESERIALIZE_SEQUENCE(CREATE, SET_ITEM)                                \
-  auto data = std::dynamic_pointer_cast<UnionArray>(array);                   \
-  int32_t size = array->length();                                             \
-  PyObject* result = CREATE(stop_idx - start_idx);                            \
-  auto types = std::make_shared<Int8Array>(size, data->types());              \
-  auto offsets = std::make_shared<Int32Array>(size, data->offset_buf());      \
-  for (size_t i = start_idx; i < stop_idx; ++i) {                             \
-    if (data->IsNull(i)) {                                                    \
-      Py_INCREF(Py_None);                                                     \
-      SET_ITEM(result, i-start_idx, Py_None);                                 \
-    } else {                                                                  \
-      int32_t offset = offsets->Value(i);                                     \
-      int8_t type = types->Value(i);                                          \
-      ArrayPtr arr = data->child(type);                                       \
-      PyObject* value;                                                        \
-      RETURN_NOT_OK(get_value(arr, offset, type, base, &value));              \
-      SET_ITEM(result, i-start_idx, value);                                   \
-    }                                                                         \
-  }                                                                           \
-  *out = result;                                                              \
+#define DESERIALIZE_SEQUENCE(CREATE, SET_ITEM)                           \
+  auto data = std::dynamic_pointer_cast<UnionArray>(array);              \
+  int32_t size = array->length();                                        \
+  PyObject* result = CREATE(stop_idx - start_idx);                       \
+  auto types = std::make_shared<Int8Array>(size, data->types());         \
+  auto offsets = std::make_shared<Int32Array>(size, data->offset_buf()); \
+  for (size_t i = start_idx; i < stop_idx; ++i) {                        \
+    if (data->IsNull(i)) {                                               \
+      Py_INCREF(Py_None);                                                \
+      SET_ITEM(result, i - start_idx, Py_None);                          \
+    } else {                                                             \
+      int32_t offset = offsets->Value(i);                                \
+      int8_t type = types->Value(i);                                     \
+      ArrayPtr arr = data->child(type);                                  \
+      PyObject* value;                                                   \
+      RETURN_NOT_OK(get_value(arr, offset, type, base, &value));         \
+      SET_ITEM(result, i - start_idx, value);                            \
+    }                                                                    \
+  }                                                                      \
+  *out = result;                                                         \
   return Status::OK();
 
-Status DeserializeList(std::shared_ptr<Array> array, int32_t start_idx, int32_t stop_idx, PyObject* base, PyObject** out) {
+Status DeserializeList(std::shared_ptr<Array> array, int32_t start_idx, int32_t stop_idx,
+    PyObject* base, PyObject** out) {
   DESERIALIZE_SEQUENCE(PyList_New, PyList_SetItem)
 }
 
-Status DeserializeTuple(std::shared_ptr<Array> array, int32_t start_idx, int32_t stop_idx, PyObject* base, PyObject** out) {
+Status DeserializeTuple(std::shared_ptr<Array> array, int32_t start_idx, int32_t stop_idx,
+    PyObject* base, PyObject** out) {
   DESERIALIZE_SEQUENCE(PyTuple_New, PyTuple_SetItem)
 }
 
-Status SerializeDict(std::vector<PyObject*> dicts, int32_t recursion_depth, std::shared_ptr<Array>* out) {
+Status SerializeDict(
+    std::vector<PyObject*> dicts, int32_t recursion_depth, std::shared_ptr<Array>* out) {
   DictBuilder result;
   if (recursion_depth >= MAX_RECURSION_DEPTH) {
-    return Status::NotImplemented("This object exceeds the maximum recursion depth. It may contain itself recursively.");
+    return Status::NotImplemented(
+        "This object exceeds the maximum recursion depth. It may contain itself "
+        "recursively.");
   }
-  std::vector<PyObject*> key_tuples, val_lists, val_tuples, val_dicts, dummy;
+  std::vector<PyObject *> key_tuples, val_lists, val_tuples, val_dicts, dummy;
   for (const auto& dict : dicts) {
     PyObject *key, *value;
     Py_ssize_t pos = 0;
@@ -248,7 +262,8 @@ Status SerializeDict(std::vector<PyObject*> dicts, int32_t recursion_depth, std:
   return Status::OK();
 }
 
-Status DeserializeDict(std::shared_ptr<Array> array, int32_t start_idx, int32_t stop_idx, PyObject* base, PyObject** out) {
+Status DeserializeDict(std::shared_ptr<Array> array, int32_t start_idx, int32_t stop_idx,
+    PyObject* base, PyObject** out) {
   auto data = std::dynamic_pointer_cast<StructArray>(array);
   // TODO(pcm): error handling, get rid of the temporary copy of the list
   PyObject *keys, *vals;
@@ -256,10 +271,11 @@ Status DeserializeDict(std::shared_ptr<Array> array, int32_t start_idx, int32_t 
   ARROW_RETURN_NOT_OK(DeserializeList(data->field(0), start_idx, stop_idx, base, &keys));
   ARROW_RETURN_NOT_OK(DeserializeList(data->field(1), start_idx, stop_idx, base, &vals));
   for (size_t i = start_idx; i < stop_idx; ++i) {
-    PyDict_SetItem(result, PyList_GetItem(keys, i - start_idx), PyList_GetItem(vals, i - start_idx));
+    PyDict_SetItem(
+        result, PyList_GetItem(keys, i - start_idx), PyList_GetItem(vals, i - start_idx));
   }
-  Py_XDECREF(keys); // PyList_GetItem(keys, ...) incremented the reference count
-  Py_XDECREF(vals); // PyList_GetItem(vals, ...) incremented the reference count
+  Py_XDECREF(keys);  // PyList_GetItem(keys, ...) incremented the reference count
+  Py_XDECREF(vals);  // PyList_GetItem(vals, ...) incremented the reference count
   static PyObject* py_type = PyString_FromString("_pytype_");
   if (PyDict_Contains(result, py_type) && numbuf_deserialize_callback) {
     PyObject* arglist = Py_BuildValue("(O)", result);
@@ -270,12 +286,11 @@ Status DeserializeDict(std::shared_ptr<Array> array, int32_t start_idx, int32_t 
     Py_XDECREF(result);
     result = callback_result;
     if (!callback_result) {
-      return Status::NotImplemented("python error"); // TODO(pcm): https://github.com/ray-project/numbuf/issues/10
+      return Status::NotImplemented("python error");  // TODO(pcm):
+      // https://github.com/ray-project/numbuf/issues/10
     }
   }
   *out = result;
   return Status::OK();
 }
-
-
 }

@@ -1,9 +1,9 @@
 #ifndef NUMBUF_LIST_H
 #define NUMBUF_LIST_H
 
+#include "tensor.h"
 #include <arrow/api.h>
 #include <arrow/types/union.h>
-#include "tensor.h"
 
 namespace numbuf {
 
@@ -25,7 +25,7 @@ class SequenceBuilder {
 
   //! Appending an uint64_t to the sequence
   arrow::Status AppendUInt64(uint64_t data);
-  
+
   //! Append a list of bytes to the sequence
   arrow::Status AppendBytes(const uint8_t* data, int32_t length);
 
@@ -79,11 +79,9 @@ class SequenceBuilder {
   arrow::Status AppendDict(int32_t size);
 
   //! Finish building the sequence and return the result
-  arrow::Status Finish(
-    std::shared_ptr<arrow::Array> list_data,
-    std::shared_ptr<arrow::Array> tuple_data,
-    std::shared_ptr<arrow::Array> dict_data,
-    std::shared_ptr<arrow::Array>* out);
+  arrow::Status Finish(std::shared_ptr<arrow::Array> list_data,
+      std::shared_ptr<arrow::Array> tuple_data, std::shared_ptr<arrow::Array> dict_data,
+      std::shared_ptr<arrow::Array>* out);
 
  private:
   arrow::MemoryPool* pool_;
@@ -139,6 +137,6 @@ class SequenceBuilder {
   int8_t num_tags = 0;
 };
 
-} // namespace numbuf
+}  // namespace numbuf
 
-#endif // NUMBUF_LIST_H
+#endif  // NUMBUF_LIST_H

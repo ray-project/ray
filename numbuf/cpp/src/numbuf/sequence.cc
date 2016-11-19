@@ -25,15 +25,17 @@ SequenceBuilder::SequenceBuilder(MemoryPool* pool)
       int64_tensors_(std::make_shared<Int64Type>(), pool),
       float_tensors_(std::make_shared<FloatType>(), pool),
       double_tensors_(std::make_shared<DoubleType>(), pool),
-      list_offsets_({0}), tuple_offsets_({0}), dict_offsets_({0}) {}
+      list_offsets_({0}),
+      tuple_offsets_({0}),
+      dict_offsets_({0}) {}
 
-#define UPDATE(OFFSET, TAG)                    \
-  if (TAG == -1) {                             \
-    TAG = num_tags;                            \
-    num_tags += 1;                             \
-  }                                            \
-  RETURN_NOT_OK(offsets_.Append(OFFSET));      \
-  RETURN_NOT_OK(types_.Append(TAG));           \
+#define UPDATE(OFFSET, TAG)               \
+  if (TAG == -1) {                        \
+    TAG = num_tags;                       \
+    num_tags += 1;                        \
+  }                                       \
+  RETURN_NOT_OK(offsets_.Append(OFFSET)); \
+  RETURN_NOT_OK(types_.Append(TAG));      \
   RETURN_NOT_OK(nones_.AppendToBitmap(true));
 
 Status SequenceBuilder::AppendNone() {
@@ -79,9 +81,7 @@ Status SequenceBuilder::AppendDouble(double data) {
 
 #define DEF_TENSOR_APPEND(NAME, TYPE, TAG)                                             \
   Status SequenceBuilder::AppendTensor(const std::vector<int64_t>& dims, TYPE* data) { \
-    if (TAG == -1) {                                                                   \
-      NAME.Start();                                                                    \
-    }                                                                                  \
+    if (TAG == -1) { NAME.Start(); }                                                   \
     UPDATE(NAME.length(), TAG);                                                        \
     return NAME.Append(dims, data);                                                    \
   }
@@ -138,12 +138,9 @@ Status SequenceBuilder::AppendDict(int32_t size) {
     DCHECK(OFFSETS.size() == 1);                                              \
   }
 
-Status SequenceBuilder::Finish(
-  std::shared_ptr<Array> list_data,
-  std::shared_ptr<Array> tuple_data,
-  std::shared_ptr<Array> dict_data,
-  std::shared_ptr<Array>* out) {
-
+Status SequenceBuilder::Finish(std::shared_ptr<Array> list_data,
+    std::shared_ptr<Array> tuple_data, std::shared_ptr<Array> dict_data,
+    std::shared_ptr<Array>* out) {
   std::vector<std::shared_ptr<Field>> types(num_tags);
   std::vector<ArrayPtr> children(num_tags);
 
@@ -174,10 +171,8 @@ Status SequenceBuilder::Finish(
 
   std::vector<uint8_t> type_ids = {};
   TypePtr type = TypePtr(new UnionType(types, type_ids, UnionMode::DENSE));
-  out->reset(new UnionArray(type, types_.length(),
-           children, types_.data(), offsets_.data(),
-           nones_.null_count(), nones_.null_bitmap()));
+  out->reset(new UnionArray(type, types_.length(), children, types_.data(),
+      offsets_.data(), nones_.null_count(), nones_.null_bitmap()));
   return Status::OK();
 }
-
 }

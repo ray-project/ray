@@ -13,9 +13,8 @@ namespace numbuf {
     can be obtained via the Finish method.
 */
 class DictBuilder {
-public:
-  DictBuilder(arrow::MemoryPool* pool = nullptr)
-    : keys_(pool), vals_(pool) {}
+ public:
+  DictBuilder(arrow::MemoryPool* pool = nullptr) : keys_(pool), vals_(pool) {}
 
   //! Builder for the keys of the dictionary
   SequenceBuilder& keys() { return keys_; }
@@ -33,18 +32,15 @@ public:
         List containing the data from nested dictionaries in the
         value list of the dictionary
   */
-  arrow::Status Finish(
-    std::shared_ptr<arrow::Array> key_tuple_data,
-    std::shared_ptr<arrow::Array> val_list_data,
-    std::shared_ptr<arrow::Array> val_tuple_data,
-    std::shared_ptr<arrow::Array> val_dict_data,
-    std::shared_ptr<arrow::Array>* out);
+  arrow::Status Finish(std::shared_ptr<arrow::Array> key_tuple_data,
+      std::shared_ptr<arrow::Array> val_list_data,
+      std::shared_ptr<arrow::Array> val_tuple_data,
+      std::shared_ptr<arrow::Array> val_dict_data, std::shared_ptr<arrow::Array>* out);
 
-private:
+ private:
   SequenceBuilder keys_;
   SequenceBuilder vals_;
 };
-
 }
 
 #endif
