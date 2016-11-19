@@ -111,6 +111,7 @@ void assign_task_to_worker(scheduler_info *info,
   /* Update the global task table. */
   if (info->db != NULL) {
     retry_info retry;
+    memset(&retry, 0, sizeof(retry));
     retry.num_retries = 0;
     retry.timeout = 100;
     retry.fail_callback = NULL;
@@ -221,6 +222,7 @@ void start_server(const char *socket_name,
    * tasks that were assigned to this local scheduler before the call to
    * subscribe. */
   retry_info retry;
+  memset(&retry, 0, sizeof(retry));
   retry.num_retries = 0;
   retry.timeout = 100;
   retry.fail_callback = NULL;
