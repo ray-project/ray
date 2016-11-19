@@ -1,0 +1,25 @@
+sudo: required
+
+language: generic
+
+matrix:
+  include:
+    - os: linux
+      dist: trusty
+      python: "2.7"
+    - os: linux
+      dist: trusty
+      python: "3.5"
+    - os: osx
+      osx_image: xcode7
+      python: "2.7"
+    - os: osx
+      osx_image: xcode7
+      python: "3.5"
+
+install:
+  - ./install-dependencies.sh
+  - python setup.py install --user
+
+script:
+  - python python/test/runtest.py
