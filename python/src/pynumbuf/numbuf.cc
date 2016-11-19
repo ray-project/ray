@@ -1,6 +1,5 @@
 #include <Python.h>
 #include <arrow/api.h>
-#include <arrow/ipc/memory.h>
 #include <arrow/ipc/adapter.h>
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #define PY_ARRAY_UNIQUE_SYMBOL NUMBUF_ARRAY_API
@@ -16,10 +15,10 @@
 using namespace arrow;
 using namespace numbuf;
 
-std::shared_ptr<RowBatch> make_row_batch(std::shared_ptr<Array> data) {
+std::shared_ptr<RecordBatch> make_row_batch(std::shared_ptr<Array> data) {
   auto field = std::make_shared<Field>("list", data->type());
   std::shared_ptr<Schema> schema(new Schema({field}));
-  return std::shared_ptr<RowBatch>(new RowBatch(schema, data->length(), {data}));
+  return std::shared_ptr<RecordBatch>(new RecordBatch(schema, data->length(), {data}));
 }
 
 extern "C" {
@@ -29,9 +28,9 @@ static PyObject *NumbufError;
 PyObject *numbuf_serialize_callback = NULL;
 PyObject *numbuf_deserialize_callback = NULL;
 
-int PyObjectToArrow(PyObject* object, std::shared_ptr<RowBatch> **result) {
+int PyObjectToArrow(PyObject* object, std::shared_ptr<RecordBatch> **result) {
   if (PyCapsule_IsValid(object, "arrow")) {
-    *result = reinterpret_cast<std::shared_ptr<RowBatch>*>(PyCapsule_GetPointer(object, "arrow"));
+    *result = reinterpret_cast<std::shared_ptr<RecordBatch>*>(PyCapsule_GetPointer(object, "arrow"));
     return 1;
   } else {
     PyErr_SetString(PyExc_TypeError, "must be an 'arrow' capsule");
@@ -40,7 +39,7 @@ int PyObjectToArrow(PyObject* object, std::shared_ptr<RowBatch> **result) {
 }
 
 static void ArrowCapsule_Destructor(PyObject* capsule) {
-  delete reinterpret_cast<std::shared_ptr<RowBatch>*>(PyCapsule_GetPointer(capsule, "arrow"));
+  delete reinterpret_cast<std::shared_ptr<RecordBatch>*>(PyCapsule_GetPointer(capsule, "arrow"));
 }
 
 /* Documented in doc/numbuf.rst in ray-core */
@@ -62,11 +61,11 @@ static PyObject* serialize_list(PyObject* self, PyObject* args) {
       return NULL;
     }
 
-    auto batch = new std::shared_ptr<RowBatch>();
+    auto batch = new std::shared_ptr<RecordBatch>();
     *batch = make_row_batch(array);
 
     int64_t size = 0;
-    ARROW_CHECK_OK(arrow::ipc::GetRowBatchSize(batch->get(), &size));
+    ARROW_CHECK_OK(arrow::ipc::GetRecordBatchSize(batch->get(), &size));
 
     std::shared_ptr<Buffer> buffer;
     ARROW_CHECK_OK(ipc::WriteSchema((*batch)->schema().get(), &buffer));
@@ -84,7 +83,7 @@ static PyObject* serialize_list(PyObject* self, PyObject* args) {
 
 /* Documented in doc/numbuf.rst in ray-core */
 static PyObject* write_to_buffer(PyObject* self, PyObject* args) {
-  std::shared_ptr<RowBatch>* batch;
+  std::shared_ptr<RecordBatch>* batch;
   PyObject* memoryview;
   if (!PyArg_ParseTuple(args, "O&O", &PyObjectToArrow, &batch, &memoryview)) {
     return NULL;
@@ -93,10 +92,11 @@ static PyObject* write_to_buffer(PyObject* self, PyObject* args) {
     return NULL;
   }
   Py_buffer* buffer = PyMemoryView_GET_BUFFER(memoryview);
-  auto target = std::make_shared<BufferSource>(reinterpret_cast<uint8_t*>(buffer->buf), buffer->len);
-  int64_t metadata_offset;
-  ARROW_CHECK_OK(ipc::WriteRowBatch(target.get(), batch->get(), 0, &metadata_offset));
-  return PyInt_FromLong(metadata_offset);
+  auto target = std::make_shared<FixedBufferStream>(reinterpret_cast<uint8_t*>(buffer->buf), buffer->len);
+  int64_t body_end_offset;
+  int64_t header_end_offset;
+  ARROW_CHECK_OK(ipc::WriteRecordBatch((*batch)->columns(), (*batch)->num_rows(), target.get(), &body_end_offset, &header_end_offset));
+  return PyInt_FromLong(header_end_offset);
 }
 
 /* Documented in doc/numbuf.rst in ray-core */
@@ -118,11 +118,11 @@ static PyObject* read_from_buffer(PyObject* self, PyObject* args) {
   ARROW_CHECK_OK(schema_msg->GetSchema(&schema));
 
   Py_buffer* buffer = PyMemoryView_GET_BUFFER(memoryview);
-  auto source = std::make_shared<BufferSource>(reinterpret_cast<uint8_t*>(buffer->buf), buffer->len);
-  std::shared_ptr<arrow::ipc::RowBatchReader> reader;
-  ARROW_CHECK_OK(arrow::ipc::RowBatchReader::Open(source.get(), metadata_offset, &reader));
-  auto batch = new std::shared_ptr<arrow::RowBatch>();
-  ARROW_CHECK_OK(reader->GetRowBatch(schema, batch));
+  auto source = std::make_shared<FixedBufferStream>(reinterpret_cast<uint8_t*>(buffer->buf), buffer->len);
+  std::shared_ptr<arrow::ipc::RecordBatchReader> reader;
+  ARROW_CHECK_OK(arrow::ipc::RecordBatchReader::Open(source.get(), metadata_offset, &reader));
+  auto batch = new std::shared_ptr<arrow::RecordBatch>();
+  ARROW_CHECK_OK(reader->GetRecordBatch(schema, batch));
 
   return PyCapsule_New(reinterpret_cast<void*>(batch),
                        "arrow", &ArrowCapsule_Destructor);
@@ -130,7 +130,7 @@ static PyObject* read_from_buffer(PyObject* self, PyObject* args) {
 
 /* Documented in doc/numbuf.rst in ray-core */
 static PyObject* deserialize_list(PyObject* self, PyObject* args) {
-  std::shared_ptr<RowBatch>* data;
+  std::shared_ptr<RecordBatch>* data;
   PyObject* base = Py_None;
   if (!PyArg_ParseTuple(args, "O&|O", &PyObjectToArrow, &data, &base)) {
     return NULL;

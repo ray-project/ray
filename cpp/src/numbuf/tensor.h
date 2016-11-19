@@ -18,6 +18,8 @@ public:
   typedef typename T::c_type elem_type;
 
   TensorBuilder(const arrow::TypePtr& dtype, arrow::MemoryPool* pool = nullptr);
+  
+  arrow::Status Start();
 
   /*! Append a new tensor.
 
@@ -31,7 +33,7 @@ public:
   arrow::Status Append(const std::vector<int64_t>& dims, const elem_type* data);
 
   //! Convert the tensors to an Arrow StructArray
-  std::shared_ptr<arrow::Array> Finish();
+  arrow::Status Finish(std::shared_ptr<arrow::Array>* out);
 
   //! Number of tensors in the column
   int32_t length() {
@@ -44,6 +46,7 @@ public:
 
 private:
 	arrow::TypePtr dtype_;
+  arrow::MemoryPool* pool_;
   std::shared_ptr<arrow::Int64Builder> dim_data_;
   std::shared_ptr<arrow::ListBuilder> dims_;
   std::shared_ptr<arrow::PrimitiveBuilder<T>> value_data_;

@@ -33,11 +33,12 @@ public:
         List containing the data from nested dictionaries in the
         value list of the dictionary
   */
-  std::shared_ptr<arrow::StructArray> Finish(
+  arrow::Status Finish(
     std::shared_ptr<arrow::Array> key_tuple_data,
     std::shared_ptr<arrow::Array> val_list_data,
     std::shared_ptr<arrow::Array> val_tuple_data,
-    std::shared_ptr<arrow::Array> val_dict_data);
+    std::shared_ptr<arrow::Array> val_dict_data,
+    std::shared_ptr<arrow::Array>* out);
 
 private:
   SequenceBuilder keys_;

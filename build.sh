@@ -15,6 +15,6 @@ fi
 
 mkdir -p "$ROOT_DIR/build"
 pushd "$ROOT_DIR/build"
-  cmake -DCMAKE_BUILD_TYPE=Release ..
+  cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS="-g" -DCMAKE_CXX_FLAGS="-g" ..
   make install -j$PARALLEL
 popd
