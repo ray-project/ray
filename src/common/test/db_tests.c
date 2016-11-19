@@ -154,9 +154,8 @@ TEST task_table_test(void) {
   event_loop_add_timer(
       loop, 200, (event_loop_timer_handler) task_table_delayed_add_task, db);
   event_loop_run(loop);
-  free_task(task_table_test_task);
   db_disconnect(db);
-  destroy_outstanding_callbacks(loop);
+  // destroy_outstanding_callbacks(loop);
   event_loop_destroy(loop);
   ASSERT(task_table_test_callback_called);
   PASS();
@@ -190,11 +189,9 @@ TEST task_table_all_test(void) {
   event_loop_add_timer(loop, 200, (event_loop_timer_handler) timeout_handler,
                        NULL);
   event_loop_run(loop);
-  free(task2);
-  free(task1);
   free_task_spec(spec);
   db_disconnect(db);
-  destroy_outstanding_callbacks(loop);
+  // destroy_outstanding_callbacks(loop);
   event_loop_destroy(loop);
   ASSERT(num_test_callback_called == 2);
   PASS();

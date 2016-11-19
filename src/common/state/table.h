@@ -55,8 +55,8 @@ struct table_callback_data {
    */
   retry_info retry;
   /** Pointer to the data that is entered into the table. This can be used to
-   *  pass the result of the call to the callback. The user is responsible for
-   *  freeing data in both the fail_callback and done_callback. */
+   *  pass the result of the call to the callback. The callback takes ownership
+   *  over this data and will free it. */
   void *data;
   /** Pointer to the data used internally to handle multiple database requests.
    */
@@ -103,7 +103,7 @@ int64_t table_timeout_handler(event_loop *loop,
 table_callback_data *init_table_callback(db_handle *db_handle,
                                          unique_id id,
                                          const char *label,
-                                         void *data,
+                                         OWNER void *data,
                                          retry_info *retry,
                                          table_done_callback done_callback,
                                          table_retry_callback retry_callback,
