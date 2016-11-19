@@ -9,11 +9,7 @@
 #include "photon_scheduler.h"
 
 /* TODO(swang): We should set retry values in a config file somewhere. */
-const retry_info photon_retry = {
-    .num_retries = 0,
-    .timeout = 1000,
-    .fail_callback = NULL,
-};
+const retry_info photon_retry = {0, 1000, NULL};
 
 typedef struct task_queue_entry {
   /** The task that is queued. */
@@ -85,7 +81,7 @@ bool can_run(scheduler_state *s, task_spec *task) {
     if (task_arg_type(task, i) == ARG_BY_REF) {
       object_id obj_id = task_arg_id(task, i);
       available_object *entry;
-      HASH_FIND(handle, s->local_objects, &obj_id, sizeof(object_id), entry);
+      HASH_FIND(handle, s->local_objects, &obj_id, sizeof(obj_id), entry);
       if (entry == NULL) {
         /* The object is not present locally, so this task cannot be scheduled
          * right now. */
@@ -149,7 +145,7 @@ void queue_task_locally(scheduler_info *info,
   /* Copy the spec and add it to the task queue. The allocated spec will be
    * freed when it is assigned to a worker. */
   task_queue_entry *elt = malloc(sizeof(task_queue_entry));
-  elt->spec = malloc(task_spec_size(spec));
+  elt->spec = (task_spec *) malloc(task_spec_size(spec));
   memcpy(elt->spec, spec, task_spec_size(spec));
   elt->from_global_scheduler = from_global_scheduler;
   DL_APPEND(s->task_queue, elt);

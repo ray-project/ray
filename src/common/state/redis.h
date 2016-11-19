@@ -10,6 +10,12 @@
 #include "uthash.h"
 #include "utarray.h"
 
+#define LOG_REDIS_ERROR(context, M, ...) \
+  LOG_ERROR("Redis error %d %s; %s", context->err, context->errstr, M)
+
+#define LOG_REDIS_DEBUG(context, M, ...) \
+  LOG_DEBUG("Redis error %d %s; %s", context->err, context->errstr, M)
+
 typedef struct {
   /** Unique ID for this db client. */
   db_client_id db_client_id;

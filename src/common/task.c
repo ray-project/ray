@@ -108,7 +108,7 @@ task_id compute_task_id(task_spec *spec) {
   /* Create a task ID out of the hash. This will truncate the hash. */
   task_id task_id;
   CHECK(sizeof(task_id) <= SHA256_BLOCK_SIZE);
-  memcpy(&task_id.id, buff, sizeof(task_id));
+  memcpy(&task_id.id, buff, sizeof(task_id.id));
   return task_id;
 }
 

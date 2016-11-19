@@ -1,5 +1,4 @@
 #include <getopt.h>
-#include <signal.h>
 #include <stdlib.h>
 
 #include "common.h"
@@ -46,11 +45,8 @@ void free_global_scheduler(global_scheduler_state *state) {
 
 global_scheduler_state *g_state;
 
-void signal_handler(int signal) {
-  if (signal == SIGTERM) {
-    free_global_scheduler(g_state);
-    exit(0);
-  }
+void cleanup(void) {
+  free_global_scheduler(g_state);
 }
 
 /* End of the cleanup code. */
@@ -92,7 +88,7 @@ void start_server(const char *redis_addr, int redis_port) {
 }
 
 int main(int argc, char *argv[]) {
-  signal(SIGTERM, signal_handler);
+  atexit(cleanup);
   /* IP address and port of redis. */
   char *redis_addr_port = NULL;
   int c;

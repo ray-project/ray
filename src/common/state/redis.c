@@ -17,12 +17,6 @@
 #include "redis.h"
 #include "io.h"
 
-#define LOG_REDIS_ERROR(context, M, ...) \
-  LOG_ERROR("Redis error %d %s; %s", context->err, context->errstr, M)
-
-#define LOG_REDIS_DEBUG(context, M, ...) \
-  LOG_DEBUG("Redis error %d %s; %s", context->err, context->errstr, M)
-
 #define CHECK_REDIS_CONNECT(CONTEXT_TYPE, context, M, ...) \
   do {                                                     \
     CONTEXT_TYPE *_context = (context);                    \
@@ -33,7 +27,7 @@
       LOG_REDIS_ERROR(_context, M, ##__VA_ARGS__);         \
       exit(-1);                                            \
     }                                                      \
-  } while (0);
+  } while (0)
 
 #define REDIS_CALLBACK_HEADER(DB, CB_DATA, REPLY)     \
   if ((REPLY) == NULL) {                              \
@@ -45,7 +39,9 @@
   if (CB_DATA == NULL)                                \
     /* the callback data structure has been           \
      * already freed; just ignore this reply */       \
-    return;
+    return;                                           \
+  do {                                                \
+  } while (0)
 
 db_handle *db_connect(const char *address,
                       int port,
@@ -60,7 +56,7 @@ db_handle *db_connect(const char *address,
                       address, port);
   /* Add new client using optimistic locking. */
   db_client_id client = globally_unique_id();
-  while (1) {
+  while (true) {
     reply = redisCommand(context, "WATCH %s", client_type);
     freeReplyObject(reply);
     reply = redisCommand(context, "HLEN %s", client_type);
@@ -70,11 +66,11 @@ db_handle *db_connect(const char *address,
     reply = redisCommand(
         context,
         "HMSET db_clients:%b client_type %s address %s:%d db_client_id %b",
-        (char *) client.id, sizeof(db_client_id), client_type, client_addr,
-        client_port, (char *) client.id, sizeof(db_client_id));
+        (char *) client.id, sizeof(client.id), client_type, client_addr,
+        client_port, (char *) client.id, sizeof(client.id));
     freeReplyObject(reply);
     reply = redisCommand(context, "PUBLISH db_clients %b:%s",
-                         (char *) client.id, sizeof(db_client_id), client_type);
+                         (char *) client.id, sizeof(client.id), client_type);
     freeReplyObject(reply);
     reply = redisCommand(context, "EXEC");
     CHECK(reply);
@@ -193,7 +189,7 @@ task *parse_redis_task_table_entry(task_id id,
 void redis_object_table_add_callback(redisAsyncContext *c,
                                      void *r,
                                      void *privdata) {
-  REDIS_CALLBACK_HEADER(db, callback_data, r)
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
 
   if (callback_data->done_callback) {
     task_table_done_callback done_callback = callback_data->done_callback;
@@ -208,8 +204,8 @@ void redis_object_table_add(table_callback_data *callback_data) {
   object_id id = callback_data->id;
   int status = redisAsyncCommand(db->context, redis_object_table_add_callback,
                                  (void *) callback_data->timer_id,
-                                 "SADD obj:%b %b", id.id, sizeof(object_id),
-                                 (char *) db->client.id, sizeof(db_client_id));
+                                 "SADD obj:%b %b", id.id, sizeof(id.id),
+                                 (char *) db->client.id, sizeof(db->client.id));
 
   if ((status == REDIS_ERR) || db->context->err) {
     LOG_REDIS_DEBUG(db->context, "could not add object_table entry");
@@ -224,7 +220,7 @@ void redis_object_table_lookup(table_callback_data *callback_data) {
   object_id id = callback_data->id;
   int status = redisAsyncCommand(db->context, redis_object_table_get_entry,
                                  (void *) callback_data->timer_id,
-                                 "SMEMBERS obj:%b", id.id, sizeof(object_id));
+                                 "SMEMBERS obj:%b", id.id, sizeof(id.id));
   if ((status == REDIS_ERR) || db->context->err) {
     LOG_REDIS_DEBUG(db->context, "error in object_table lookup");
   }
@@ -233,7 +229,7 @@ void redis_object_table_lookup(table_callback_data *callback_data) {
 void redis_result_table_add_callback(redisAsyncContext *c,
                                      void *r,
                                      void *privdata) {
-  REDIS_CALLBACK_HEADER(db, callback_data, r)
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
   redisReply *reply = r;
   CHECK(reply->type == REDIS_REPLY_STATUS ||
         reply->type == REDIS_REPLY_INTEGER);
@@ -254,8 +250,9 @@ void redis_result_table_add(table_callback_data *callback_data) {
   /* Add the result entry to the result table. */
   int status = redisAsyncCommand(db->context, redis_result_table_add_callback,
                                  (void *) callback_data->timer_id,
-                                 "SET result:%b %b", id.id, sizeof(object_id),
-                                 (*result_task_id).id, sizeof(task_id));
+                                 "SET result:%b %b", id.id, sizeof(id.id),
+                                 (*result_task_id).id,
+                                 sizeof((*result_task_id).id));
   if ((status == REDIS_ERR) || db->context->err) {
     LOG_REDIS_DEBUG(db->context, "Error in result table add");
   }
@@ -264,7 +261,7 @@ void redis_result_table_add(table_callback_data *callback_data) {
 void redis_result_table_lookup_task_callback(redisAsyncContext *c,
                                              void *r,
                                              void *privdata) {
-  REDIS_CALLBACK_HEADER(db, callback_data, r)
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
   redisReply *reply = r;
   /* Check that we received a Redis hashmap. */
   if (reply->type != REDIS_REPLY_ARRAY) {
@@ -288,7 +285,7 @@ void redis_result_table_lookup_task_callback(redisAsyncContext *c,
 void redis_result_table_lookup_object_callback(redisAsyncContext *c,
                                                void *r,
                                                void *privdata) {
-  REDIS_CALLBACK_HEADER(db, callback_data, r)
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
   redisReply *reply = r;
 
   if (reply->type == REDIS_REPLY_STRING) {
@@ -300,7 +297,7 @@ void redis_result_table_lookup_object_callback(redisAsyncContext *c,
     int status =
         redisAsyncCommand(db->context, redis_result_table_lookup_task_callback,
                           (void *) callback_data->timer_id, "HGETALL task:%b",
-                          (*result_task_id).id, sizeof(task_id));
+                          (*result_task_id).id, sizeof((*result_task_id).id));
     if ((status == REDIS_ERR) || db->context->err) {
       LOG_REDIS_DEBUG(db->context, "Could not look up result table entry");
     }
@@ -326,7 +323,7 @@ void redis_result_table_lookup(table_callback_data *callback_data) {
   int status =
       redisAsyncCommand(db->context, redis_result_table_lookup_object_callback,
                         (void *) callback_data->timer_id, "GET result:%b",
-                        id.id, sizeof(object_id));
+                        id.id, sizeof(id.id));
   if ((status == REDIS_ERR) || db->context->err) {
     LOG_REDIS_DEBUG(db->context, "Error in result table lookup");
   }
@@ -350,7 +347,7 @@ void redis_get_cached_db_client(db_handle *db,
     /* This is a very rare case. It should happen at most once per db client. */
     redisReply *reply =
         redisCommand(db->sync_context, "HGET db_clients:%b address",
-                     (char *) db_client_id.id, sizeof(db_client_id));
+                     (char *) db_client_id.id, sizeof(db_client_id.id));
     CHECK(reply->type == REDIS_REPLY_STRING);
     entry = malloc(sizeof(db_client_cache_entry));
     entry->db_client_id = db_client_id;
@@ -365,7 +362,7 @@ void redis_get_cached_db_client(db_handle *db,
 void redis_object_table_get_entry(redisAsyncContext *c,
                                   void *r,
                                   void *privdata) {
-  REDIS_CALLBACK_HEADER(db, callback_data, r)
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
   redisReply *reply = r;
 
   db_client_id *managers = malloc(reply->elements * sizeof(db_client_id));
@@ -375,7 +372,7 @@ void redis_object_table_get_entry(redisAsyncContext *c,
     const char **manager_vector = malloc(manager_count * sizeof(char *));
     for (int j = 0; j < reply->elements; ++j) {
       CHECK(reply->element[j]->type == REDIS_REPLY_STRING);
-      memcpy(managers[j].id, reply->element[j]->str, sizeof(db_client_id));
+      memcpy(managers[j].id, reply->element[j]->str, sizeof(managers[j].id));
       redis_get_cached_db_client(db, managers[j], manager_vector + j);
     }
 
@@ -394,7 +391,7 @@ void redis_object_table_get_entry(redisAsyncContext *c,
 void object_table_redis_callback(redisAsyncContext *c,
                                  void *r,
                                  void *privdata) {
-  REDIS_CALLBACK_HEADER(db, callback_data, r)
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
   redisReply *reply = r;
 
   CHECK(reply->type == REDIS_REPLY_ARRAY);
@@ -426,7 +423,7 @@ void redis_object_table_subscribe(table_callback_data *callback_data) {
   int status = redisAsyncCommand(db->sub_context, object_table_redis_callback,
                                  (void *) callback_data->timer_id,
                                  "SUBSCRIBE __keyspace@0__:%b add", id.id,
-                                 sizeof(object_id));
+                                 sizeof(id.id));
   if ((status == REDIS_ERR) || db->sub_context->err) {
     LOG_REDIS_DEBUG(db->sub_context,
                     "error in redis_object_table_subscribe_callback");
@@ -440,7 +437,7 @@ void redis_object_table_subscribe(table_callback_data *callback_data) {
 void redis_task_table_get_task_callback(redisAsyncContext *c,
                                         void *r,
                                         void *privdata) {
-  REDIS_CALLBACK_HEADER(db, callback_data, r)
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
   redisReply *reply = r;
   /* Check that we received a Redis hashmap. */
   if (reply->type != REDIS_REPLY_ARRAY) {
@@ -466,8 +463,8 @@ void redis_task_table_get_task(table_callback_data *callback_data) {
   int status =
       redisAsyncCommand(db->context, redis_task_table_get_task_callback,
                         (void *) callback_data->timer_id, "HGETALL task:%b",
-                        id.id, sizeof(task_id));
-  if ((status == REDIS_ERR) || db->sub_context->err) {
+                        id.id, sizeof(id.id));
+  if ((status == REDIS_ERR) || db->context->err) {
     LOG_REDIS_DEBUG(db->sub_context, "Could not get task from task table");
   }
 }
@@ -510,14 +507,14 @@ void redis_task_table_publish(table_callback_data *callback_data,
       status = redisAsyncCommand(
           db->context, redis_task_table_publish_push_callback,
           (void *) callback_data->timer_id, "HMSET task:%b state %d node %b",
-          (char *) id.id, sizeof(task_id), state, (char *) node.id,
-          sizeof(node_id));
+          (char *) id.id, sizeof(id.id), state, (char *) node.id,
+          sizeof(node.id));
     } else {
       status = redisAsyncCommand(
           db->context, redis_task_table_publish_push_callback,
           (void *) callback_data->timer_id,
           "HMSET task:%b state %d node %b task_spec %b", (char *) id.id,
-          sizeof(task_id), state, (char *) node.id, sizeof(node_id),
+          sizeof(id.id), state, (char *) node.id, sizeof(node.id),
           (char *) spec, task_spec_size(spec));
     }
     if ((status = REDIS_ERR) || db->context->err) {
@@ -529,7 +526,7 @@ void redis_task_table_publish(table_callback_data *callback_data,
     int status = redisAsyncCommand(
         db->context, redis_task_table_publish_publish_callback,
         (void *) callback_data->timer_id, "PUBLISH task:%b:%d %b",
-        (char *) node.id, sizeof(node_id), state, (char *) task,
+        (char *) node.id, sizeof(node.id), state, (char *) task,
         task_size(task));
 
     if ((status == REDIS_ERR) || db->context->err) {
@@ -551,7 +548,7 @@ void redis_task_table_publish_push_callback(redisAsyncContext *c,
                                             void *r,
                                             void *privdata) {
   LOG_DEBUG("Calling publish push callback");
-  REDIS_CALLBACK_HEADER(db, callback_data, r)
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
   CHECK(callback_data->requests_info != NULL);
   ((bool *) callback_data->requests_info)[PUSH_INDEX] = true;
 
@@ -568,7 +565,7 @@ void redis_task_table_publish_publish_callback(redisAsyncContext *c,
                                                void *r,
                                                void *privdata) {
   LOG_DEBUG("Calling publish publish callback");
-  REDIS_CALLBACK_HEADER(db, callback_data, r)
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
   CHECK(callback_data->requests_info != NULL);
   ((bool *) callback_data->requests_info)[PUBLISH_INDEX] = true;
 
@@ -584,7 +581,7 @@ void redis_task_table_publish_publish_callback(redisAsyncContext *c,
 void redis_task_table_subscribe_callback(redisAsyncContext *c,
                                          void *r,
                                          void *privdata) {
-  REDIS_CALLBACK_HEADER(db, callback_data, r)
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
   redisReply *reply = r;
 
   CHECK(reply->type == REDIS_REPLY_ARRAY);
@@ -631,7 +628,7 @@ void redis_task_table_subscribe(table_callback_data *callback_data) {
     status = redisAsyncCommand(
         db->sub_context, redis_task_table_subscribe_callback,
         (void *) callback_data->timer_id, "SUBSCRIBE task:%b:%d",
-        (char *) node.id, sizeof(node_id), data->state_filter);
+        (char *) node.id, sizeof(node.id), data->state_filter);
   }
   if ((status == REDIS_ERR) || db->sub_context->err) {
     LOG_REDIS_DEBUG(db->sub_context, "error in task_table_register_callback");
@@ -645,7 +642,7 @@ void redis_task_table_subscribe(table_callback_data *callback_data) {
 void redis_db_client_table_subscribe_callback(redisAsyncContext *c,
                                               void *r,
                                               void *privdata) {
-  REDIS_CALLBACK_HEADER(db, callback_data, r)
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
   redisReply *reply = r;
 
   CHECK(reply->type == REDIS_REPLY_ARRAY);
@@ -669,12 +666,12 @@ void redis_db_client_table_subscribe_callback(redisAsyncContext *c,
   /* Otherwise, parse the payload and call the callback. */
   db_client_table_subscribe_data *data = callback_data->data;
   db_client_id client;
-  memcpy(client.id, payload->str, sizeof(db_client_id));
-  /* We subtract 1 + sizeof(db_client_id) to compute the length of the
+  memcpy(client.id, payload->str, sizeof(client.id));
+  /* We subtract 1 + sizeof(client.id) to compute the length of the
    * client_type string, and we add 1 to null-terminate the string. */
-  int client_type_length = payload->len - 1 - sizeof(db_client_id) + 1;
+  int client_type_length = payload->len - 1 - sizeof(client.id) + 1;
   char *client_type = malloc(client_type_length);
-  memcpy(client_type, &payload->str[1 + sizeof(db_client_id)],
+  memcpy(client_type, &payload->str[1 + sizeof(client.id)],
          client_type_length);
   if (data->subscribe_callback) {
     data->subscribe_callback(client, client_type, data->subscribe_context);

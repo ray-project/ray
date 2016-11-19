@@ -24,6 +24,7 @@ void handle_local_scheduler_heartbeat(global_scheduler_state *state) {
 
 void handle_new_local_scheduler(global_scheduler_state *state,
                                 db_client_id db_client_id) {
-  local_scheduler local_scheduler = {.id = db_client_id};
+  local_scheduler local_scheduler;
+  local_scheduler.id = db_client_id;
   utarray_push_back(state->local_schedulers, &local_scheduler);
 }

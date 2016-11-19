@@ -151,8 +151,8 @@ int send_client_reply(client_connection *conn, plasma_reply *reply) {
   CHECK(conn->num_return_objects >= 0);
   --conn->num_return_objects;
   /* TODO(swang): Handle errors in write. */
-  int n = write(conn->fd, (uint8_t *) reply, sizeof(plasma_reply));
-  return (n != sizeof(plasma_reply));
+  int n = write(conn->fd, (uint8_t *) reply, sizeof(reply));
+  return (n != sizeof(reply));
 }
 
 int send_client_failure_reply(object_id object_id, client_connection *conn) {

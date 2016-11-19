@@ -300,7 +300,7 @@ void plasma_contains(plasma_connection *conn,
   plasma_request req = make_plasma_request(object_id);
   plasma_send_request(conn->store_conn, PLASMA_CONTAINS, &req);
   plasma_reply reply;
-  int r = read(conn->store_conn, &reply, sizeof(plasma_reply));
+  int r = read(conn->store_conn, &reply, sizeof(reply));
   CHECKM(r != -1, "read error");
   CHECKM(r != 0, "connection disconnected");
   *has_object = reply.has_object;
@@ -325,7 +325,7 @@ int64_t plasma_evict(plasma_connection *conn, int64_t num_bytes) {
   plasma_send_request(conn->store_conn, PLASMA_EVICT, &req);
   /* Wait for a response with the number of bytes actually evicted. */
   plasma_reply reply;
-  int r = read(conn->store_conn, &reply, sizeof(plasma_reply));
+  int r = read(conn->store_conn, &reply, sizeof(reply));
   CHECKM(r != -1, "read error");
   CHECKM(r != 0, "connection disconnected");
   return reply.num_bytes;
@@ -498,7 +498,7 @@ void plasma_fetch(plasma_connection *conn,
     /* Update the correct index in is_fetched. */
     int i = 0;
     for (; i < num_object_ids; i++) {
-      if (memcmp(&object_ids[i], &reply.object_ids[0], sizeof(object_id)) ==
+      if (memcmp(&object_ids[i], &reply.object_ids[0], sizeof(object_ids[i])) ==
           0) {
         /* Check that this isn't a duplicate response. */
         CHECK(!is_fetched[i]);
