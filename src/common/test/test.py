@@ -1,9 +1,21 @@
 from __future__ import print_function
 
+import numpy as np
 import pickle
 import unittest
 
 import common
+
+ID_SIZE = 20
+
+def random_object_id():
+  return common.ObjectID(np.random.bytes(ID_SIZE))
+
+def random_function_id():
+  return common.ObjectID(np.random.bytes(ID_SIZE))
+
+def random_task_id():
+  return common.ObjectID(np.random.bytes(ID_SIZE))
 
 BASE_SIMPLE_OBJECTS = [
   0, 1, 100000, 0L, 1L, 100000L, 1L << 100, 0.0, 0.5, 0.9, 100000.1, (), [], {},
@@ -51,10 +63,10 @@ class TestSerialization(unittest.TestCase):
 class TestObjectID(unittest.TestCase):
 
   def test_create_object_id(self):
-    object_id = common.ObjectID(20 * "a")
+    object_id = random_object_id()
 
   def test_cannot_pickle_object_ids(self):
-    object_ids = [common.ObjectID(20 * chr(i)) for i in range(256)]
+    object_ids = [random_object_id() for _ in range(256)]
     def f():
       return object_ids
     def g(val=object_ids):
@@ -71,23 +83,23 @@ class TestObjectID(unittest.TestCase):
     self.assertRaises(Exception, lambda : pickling.dumps(h))
 
   def test_equality_comparisons(self):
-    x1 = common.ObjectID(20 * "a")
-    x2 = common.ObjectID(20 * "a")
-    y1 = common.ObjectID(20 * "b")
-    y2 = common.ObjectID(20 * "b")
+    x1 = common.ObjectID(ID_SIZE * "a")
+    x2 = common.ObjectID(ID_SIZE * "a")
+    y1 = common.ObjectID(ID_SIZE * "b")
+    y2 = common.ObjectID(ID_SIZE * "b")
     self.assertEqual(x1, x2)
     self.assertEqual(y1, y2)
     self.assertNotEqual(x1, y1)
 
-    object_ids1 = [common.ObjectID(20 * chr(i)) for i in range(256)]
-    object_ids2 = [common.ObjectID(20 * chr(i)) for i in range(256)]
+    object_ids1 = [common.ObjectID(ID_SIZE * chr(i)) for i in range(256)]
+    object_ids2 = [common.ObjectID(ID_SIZE * chr(i)) for i in range(256)]
     self.assertEqual(len(set(object_ids1)), 256)
     self.assertEqual(len(set(object_ids1 + object_ids2)), 256)
     self.assertEqual(set(object_ids1), set(object_ids2))
 
   def test_hashability(self):
-    x = common.ObjectID(20 * "a")
-    y = common.ObjectID(20 * "b")
+    x = random_object_id()
+    y = random_object_id()
     {x: y}
     set([x, y])
 
@@ -95,9 +107,9 @@ class TestTask(unittest.TestCase):
 
   def test_create_task(self):
     # TODO(rkn): The function ID should be a FunctionID object, not an ObjectID.
-    parent_id = common.ObjectID(20 * "a")
-    function_id = common.ObjectID(20 * "b")
-    object_ids = [common.ObjectID(20 * chr(i)) for i in range(256)]
+    parent_id = random_task_id()
+    function_id = random_function_id()
+    object_ids = [random_object_id() for _ in range(256)]
     args_list = [
       [],
       1 * [1],

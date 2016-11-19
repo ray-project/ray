@@ -16,15 +16,19 @@ const retry_info photon_retry = {
 };
 
 typedef struct task_queue_entry {
-  task *task;
+  /** The task that is queued. */
+  task_spec *spec;
+  /** True if this task was assigned to this local scheduler by the global
+   *  scheduler and false otherwise. */
+  bool from_global_scheduler;
   struct task_queue_entry *prev;
   struct task_queue_entry *next;
 } task_queue_entry;
 
 typedef struct {
-  /* Object id of this object. */
+  /** Object id of this object. */
   object_id object_id;
-  /* Handle for the uthash table. */
+  /** Handle for the uthash table. */
   UT_hash_handle handle;
 } available_object;
 
@@ -54,7 +58,7 @@ void free_scheduler_state(scheduler_state *s) {
   task_queue_entry *elt, *tmp1;
   DL_FOREACH_SAFE(s->task_queue, elt, tmp1) {
     DL_DELETE(s->task_queue, elt);
-    free(elt->task);
+    free_task_spec(elt->spec);
     free(elt);
   }
   utarray_free(s->available_workers);
@@ -101,67 +105,99 @@ bool can_run(scheduler_state *s, task_spec *task) {
  * @return This returns 1 if it successfully assigned a task to the worker,
  *         otherwise it returns 0.
  */
-int find_and_schedule_task_if_possible(scheduler_info *info,
-                                       scheduler_state *state,
-                                       int worker_index) {
+bool find_and_schedule_task_if_possible(scheduler_info *info,
+                                        scheduler_state *state,
+                                        int worker_index) {
   task_queue_entry *elt, *tmp;
-  task_spec *spec;
-  int found_task_to_schedule = 0;
+  bool found_task_to_schedule = false;
   /* Find the first task whose dependencies are available locally. */
   DL_FOREACH_SAFE(state->task_queue, elt, tmp) {
-    spec = task_task_spec(elt->task);
-    if (can_run(state, spec)) {
-      found_task_to_schedule = 1;
+    if (can_run(state, elt->spec)) {
+      found_task_to_schedule = true;
       break;
     }
   }
   if (found_task_to_schedule) {
     /* This task's dependencies are available locally, so assign the task to the
      * worker. */
-    assign_task_to_worker(info, spec, worker_index);
+    assign_task_to_worker(info, elt->spec, worker_index,
+                          elt->from_global_scheduler);
     /* Update the task queue data structure and free the task. */
     DL_DELETE(state->task_queue, elt);
-    free(elt->task);
+    free_task_spec(elt->spec);
     free(elt);
   }
   return found_task_to_schedule;
 }
 
+void run_task_immediately(scheduler_info *info,
+                          scheduler_state *s,
+                          task_spec *spec,
+                          bool from_global_scheduler) {
+  /* Get the last available worker in the available worker queue. */
+  int *worker_index = (int *) utarray_back(s->available_workers);
+  /* Tell the available worker to execute the task. */
+  assign_task_to_worker(info, spec, *worker_index, from_global_scheduler);
+  /* Remove the available worker from the queue and free the struct. */
+  utarray_pop_back(s->available_workers);
+}
+
+void queue_task_locally(scheduler_info *info,
+                        scheduler_state *s,
+                        task_spec *spec,
+                        bool from_global_scheduler) {
+  /* Copy the spec and add it to the task queue. The allocated spec will be
+   * freed when it is assigned to a worker. */
+  task_queue_entry *elt = malloc(sizeof(task_queue_entry));
+  elt->spec = malloc(task_spec_size(spec));
+  memcpy(elt->spec, spec, task_spec_size(spec));
+  elt->from_global_scheduler = from_global_scheduler;
+  DL_APPEND(s->task_queue, elt);
+}
+
+void give_task_to_global_scheduler(scheduler_info *info,
+                                   scheduler_state *s,
+                                   task_spec *spec,
+                                   bool from_global_scheduler) {
+  /* Pass on the task to the global scheduler. */
+  DCHECK(!from_global_scheduler);
+  task *task = alloc_task(spec, TASK_STATUS_WAITING, NIL_ID);
+  DCHECK(info->db != NULL);
+  task_table_add_task(info->db, task, (retry_info *) &photon_retry, NULL, NULL);
+  free_task(task);
+}
+
 void handle_task_submitted(scheduler_info *info,
                            scheduler_state *s,
                            task_spec *spec) {
-  /* Create a unique task instance ID. This is different from the task ID and
-   * is used to distinguish between potentially multiple executions of the
-   * task. */
-  task *task = alloc_task(spec, TASK_STATUS_WAITING, NIL_ID);
   /* If this task's dependencies are available locally, and if there is an
-   * available worker, then assign this task to an available worker. Otherwise,
-   * add this task to the local task queue. */
-  int schedule_locally =
-      (utarray_len(s->available_workers) > 0) && can_run(s, spec);
-  if (schedule_locally) {
-    /* Get the last available worker in the available worker queue. */
-    int *worker_index = (int *) utarray_back(s->available_workers);
-    /* Tell the available worker to execute the task. */
-    assign_task_to_worker(info, spec, *worker_index);
-    /* Remove the available worker from the queue and free the struct. */
-    utarray_pop_back(s->available_workers);
+   * available worker, then assign this task to an available worker. If we
+   * cannot assign the task to a worker immediately, we either queue the task in
+   * the local task queue or we pass the task to the global scheduler. For now,
+   * we pass the task along to the global scheduler if there is one. */
+  if ((utarray_len(s->available_workers) > 0) && can_run(s, spec)) {
+    run_task_immediately(info, s, spec, false);
+  } else if (info->db == NULL) {
+    queue_task_locally(info, s, spec, false);
   } else {
-    /* Add the task to the task queue. This passes ownership of the task queue.
-     * And the task will be freed when it is assigned to a worker. */
-    task_queue_entry *elt = malloc(sizeof(task_queue_entry));
-    elt->task = task;
-    DL_APPEND(s->task_queue, elt);
+    give_task_to_global_scheduler(info, s, spec, false);
   }
-  /* Submit the task to redis. */
-  /* TODO(swang): This should be task_table_update if the task is already in the
-   * log. */
-  task_table_add_task(info->db, task, (retry_info *) &photon_retry, NULL, NULL);
-  if (schedule_locally) {
-    /* If the task was scheduled locally, we need to free it. Otherwise,
-     * ownership of the task is passed to the task_queue, and it will be freed
-     * when it is assigned to a worker. */
-    free_task(task);
+}
+
+void handle_task_scheduled(scheduler_info *info,
+                           scheduler_state *s,
+                           task_spec *spec) {
+  /* This callback handles tasks that were assigned to this local scheduler by
+   * the global scheduler, so we can safely assert that there is a connection
+   * to the database. */
+  DCHECK(info->db != NULL);
+  /* If this task's dependencies are available locally, and if there is an
+   * available worker, then assign this task to an available worker. If we
+   * cannot assign the task to a worker immediately, queue the task locally. */
+  if ((utarray_len(s->available_workers) > 0) && can_run(s, spec)) {
+    run_task_immediately(info, s, spec, true);
+  } else {
+    queue_task_locally(info, s, spec, true);
   }
 }
 

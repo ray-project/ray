@@ -71,8 +71,7 @@ TEST redis_socket_test(void) {
 void redis_read_callback(event_loop *loop, int fd, void *context, int events) {
   db_handle *db = context;
   char *cmd = read_log_message(fd);
-  redisAsyncCommand(db->context, async_redis_socket_test_callback, NULL, cmd,
-                    db->client_id, 0);
+  redisAsyncCommand(db->context, async_redis_socket_test_callback, NULL, cmd);
   free(cmd);
 }
 
@@ -151,7 +150,7 @@ void logging_read_callback(event_loop *loop,
   db_handle *conn = context;
   char *cmd = read_log_message(fd);
   redisAsyncCommand(conn->context, logging_test_callback, NULL, cmd,
-                    conn->client_id, 0);
+                    (char *) conn->client.id, sizeof(db_client_id));
   free(cmd);
 }
 

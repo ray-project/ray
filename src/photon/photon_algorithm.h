@@ -54,9 +54,9 @@ void handle_task_submitted(scheduler_info *info,
  * @param task Task that is assigned by the global scheduler.
  * @return Void.
  */
-void handle_task_assigned(scheduler_info *info,
-                          scheduler_state *state,
-                          task_spec *task);
+void handle_task_scheduled(scheduler_info *info,
+                           scheduler_state *state,
+                           task_spec *spec);
 
 /**
  * This function is called if a new object becomes available in the local

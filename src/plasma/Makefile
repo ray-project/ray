@@ -11,7 +11,7 @@ debug: all
 
 clean:
 	cd ../common; make clean
-	rm -r $(BUILD)/*
+	rm -rf $(BUILD)/*
 
 $(BUILD)/manager_tests: test/manager_tests.c plasma.h plasma_client.h plasma_client.c plasma_manager.h plasma_manager.c fling.h fling.c common
 	$(CC) $(CFLAGS) $(TEST_CFLAGS) -o $@ test/manager_tests.c plasma_manager.c plasma_client.c fling.c ../common/build/libcommon.a ../common/thirdparty/hiredis/libhiredis.a

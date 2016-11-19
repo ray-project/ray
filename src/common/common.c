@@ -25,11 +25,15 @@ unique_id globally_unique_id(void) {
 }
 
 bool object_ids_equal(object_id first_id, object_id second_id) {
-  return UNIQUE_ID_EQ(first_id, second_id) ? true : false;
+  return UNIQUE_ID_EQ(first_id, second_id);
 }
 
 bool object_id_is_nil(object_id id) {
   return object_ids_equal(id, NIL_OBJECT_ID);
+}
+
+bool db_client_ids_equal(db_client_id first_id, db_client_id second_id) {
+  return UNIQUE_ID_EQ(first_id, second_id);
 }
 
 char *sha1_to_hex(const unsigned char *sha1, char *buffer) {

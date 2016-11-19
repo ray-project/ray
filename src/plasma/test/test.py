@@ -1,17 +1,17 @@
 from __future__ import print_function
 
+import numpy as np
 import os
+import random
 import signal
 import socket
 import struct
 import subprocess
 import sys
-import unittest
-import random
-import time
 import tempfile
 import threading
-import numpy as np
+import time
+import unittest
 
 import plasma
 
@@ -63,19 +63,12 @@ if not os.path.exists(redis_path):
 class TestPlasmaClient(unittest.TestCase):
 
   def setUp(self):
-    # Start Plasma.
-    plasma_store_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../build/plasma_store")
-    store_name = "/tmp/store{}".format(random.randint(0, 10000))
-    command = [plasma_store_executable, "-s", store_name, "-m", str(PLASMA_STORE_MEMORY)]
-    if USE_VALGRIND:
-      self.p = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + command)
-      time.sleep(2.0)
-    else:
-      self.p = subprocess.Popen(command)
+    # Start Plasma store.
+    plasma_store_name, self.p = plasma.start_plasma_store(use_valgrind=USE_VALGRIND)
     # Connect to Plasma.
-    self.plasma_client = plasma.PlasmaClient(store_name, None, 64)
+    self.plasma_client = plasma.PlasmaClient(plasma_store_name, None, 64)
     # For the eviction test
-    self.plasma_client2 = plasma.PlasmaClient(store_name, None, 0)
+    self.plasma_client2 = plasma.PlasmaClient(plasma_store_name, None, 0)
 
   def tearDown(self):
     # Kill the plasma store process.
@@ -258,21 +251,8 @@ class TestPlasmaManager(unittest.TestCase):
 
   def setUp(self):
     # Start two PlasmaStores.
-    plasma_store_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../build/plasma_store")
-    store_name1 = "/tmp/store{}".format(random.randint(0, 10000))
-    store_name2 = "/tmp/store{}".format(random.randint(0, 10000))
-    manager_name1 = "/tmp/manager{}".format(random.randint(0, 10000))
-    manager_name2 = "/tmp/manager{}".format(random.randint(0, 10000))
-    plasma_store_command1 = [plasma_store_executable, "-s", store_name1, "-m", str(PLASMA_STORE_MEMORY)]
-    plasma_store_command2 = [plasma_store_executable, "-s", store_name2, "-m", str(PLASMA_STORE_MEMORY)]
-
-    if USE_VALGRIND:
-      self.p2 = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + plasma_store_command1)
-      self.p3 = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + plasma_store_command2)
-    else:
-      self.p2 = subprocess.Popen(plasma_store_command1)
-      self.p3 = subprocess.Popen(plasma_store_command2)
-
+    store_name1, self.p2 = plasma.start_plasma_store(use_valgrind=USE_VALGRIND)
+    store_name2, self.p3 = plasma.start_plasma_store(use_valgrind=USE_VALGRIND)
     # Start a Redis server.
     redis_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../common/thirdparty/redis-3.2.3/src/redis-server")
     redis_port = 6379
@@ -281,12 +261,10 @@ class TestPlasmaManager(unittest.TestCase):
                                              "--port", str(redis_port)],
                                              stdout=FNULL)
     time.sleep(0.1)
-
     # Start two PlasmaManagers.
     redis_address = "{}:{}".format("127.0.0.1", redis_port)
-    self.p4, self.port1 = plasma.start_plasma_manager(store_name1, manager_name1, redis_address, use_valgrind=USE_VALGRIND)
-    self.p5, self.port2 = plasma.start_plasma_manager(store_name2, manager_name2, redis_address, use_valgrind=USE_VALGRIND)
-
+    manager_name1, self.p4, self.port1 = plasma.start_plasma_manager(store_name1, redis_address, use_valgrind=USE_VALGRIND)
+    manager_name2, self.p5, self.port2 = plasma.start_plasma_manager(store_name2, redis_address, use_valgrind=USE_VALGRIND)
     # Connect two PlasmaClients.
     self.client1 = plasma.PlasmaClient(store_name1, manager_name1)
     self.client2 = plasma.PlasmaClient(store_name2, manager_name2)
