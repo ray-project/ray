@@ -9,6 +9,7 @@
 
 #include "common.h"
 #include "db.h"
+#include "db_client_table.h"
 #include "object_table.h"
 #include "task.h"
 #include "task_table.h"
@@ -54,21 +55,26 @@ db_handle *db_connect(const char *address,
   db_handle *db = malloc(sizeof(db_handle));
   /* Sync connection for initial handshake */
   redisReply *reply;
-  long long num_clients;
   redisContext *context = redisConnect(address, port);
   CHECK_REDIS_CONNECT(redisContext, context, "could not connect to redis %s:%d",
                       address, port);
   /* Add new client using optimistic locking. */
+  db_client_id client = globally_unique_id();
   while (1) {
     reply = redisCommand(context, "WATCH %s", client_type);
     freeReplyObject(reply);
     reply = redisCommand(context, "HLEN %s", client_type);
-    num_clients = reply->integer;
     freeReplyObject(reply);
     reply = redisCommand(context, "MULTI");
     freeReplyObject(reply);
-    reply = redisCommand(context, "HSET %s %lld %s:%d", client_type,
-                         num_clients, client_addr, client_port);
+    reply = redisCommand(
+        context,
+        "HMSET db_clients:%b client_type %s address %s:%d db_client_id %b",
+        (char *) client.id, sizeof(db_client_id), client_type, client_addr,
+        client_port, (char *) client.id, sizeof(db_client_id));
+    freeReplyObject(reply);
+    reply = redisCommand(context, "PUBLISH db_clients %b:%s",
+                         (char *) client.id, sizeof(db_client_id), client_type);
     freeReplyObject(reply);
     reply = redisCommand(context, "EXEC");
     CHECK(reply);
@@ -80,8 +86,8 @@ db_handle *db_connect(const char *address,
   }
 
   db->client_type = strdup(client_type);
-  db->client_id = num_clients;
-  db->service_cache = NULL;
+  db->client = client;
+  db->db_client_cache = NULL;
   db->sync_context = context;
   utarray_new(db->callback_freelist, &ut_ptr_icd);
 
@@ -103,10 +109,10 @@ void db_disconnect(db_handle *db) {
   redisFree(db->sync_context);
   redisAsyncFree(db->context);
   redisAsyncFree(db->sub_context);
-  service_cache_entry *e, *tmp;
-  HASH_ITER(hh, db->service_cache, e, tmp) {
+  db_client_cache_entry *e, *tmp;
+  HASH_ITER(hh, db->db_client_cache, e, tmp) {
     free(e->addr);
-    HASH_DEL(db->service_cache, e);
+    HASH_DELETE(hh, db->db_client_cache, e);
     free(e);
   }
   free(db->client_type);
@@ -200,10 +206,11 @@ void redis_object_table_add(table_callback_data *callback_data) {
   CHECK(callback_data);
   db_handle *db = callback_data->db_handle;
   object_id id = callback_data->id;
-  int status =
-      redisAsyncCommand(db->context, redis_object_table_add_callback,
-                        (void *) callback_data->timer_id, "SADD obj:%b %d",
-                        id.id, sizeof(object_id), db->client_id);
+  int status = redisAsyncCommand(db->context, redis_object_table_add_callback,
+                                 (void *) callback_data->timer_id,
+                                 "SADD obj:%b %b", id.id, sizeof(object_id),
+                                 (char *) db->client.id, sizeof(db_client_id));
+
   if ((status == REDIS_ERR) || db->context->err) {
     LOG_REDIS_DEBUG(db->context, "could not add object_table entry");
   }
@@ -330,21 +337,26 @@ void redis_result_table_lookup(table_callback_data *callback_data) {
  *
  * @param db The database handle.
  * @param index The index of the plasma manager.
- * @param *manager The pointer where the IP address of the manager gets written.
+ * @param manager The pointer where the IP address of the manager gets written.
  * @return Void.
  */
-void redis_get_cached_service(db_handle *db, int index, const char **manager) {
-  service_cache_entry *entry;
-  HASH_FIND_INT(db->service_cache, &index, entry);
+void redis_get_cached_db_client(db_handle *db,
+                                db_client_id db_client_id,
+                                const char **manager) {
+  db_client_cache_entry *entry;
+  HASH_FIND(hh, db->db_client_cache, &db_client_id, sizeof(db_client_id),
+            entry);
   if (!entry) {
-    /* This is a very rare case. */
+    /* This is a very rare case. It should happen at most once per db client. */
     redisReply *reply =
-        redisCommand(db->sync_context, "HGET %s %lld", db->client_type, index);
+        redisCommand(db->sync_context, "HGET db_clients:%b address",
+                     (char *) db_client_id.id, sizeof(db_client_id));
     CHECK(reply->type == REDIS_REPLY_STRING);
-    entry = malloc(sizeof(service_cache_entry));
-    entry->service_id = index;
+    entry = malloc(sizeof(db_client_cache_entry));
+    entry->db_client_id = db_client_id;
     entry->addr = strdup(reply->str);
-    HASH_ADD_INT(db->service_cache, service_id, entry);
+    HASH_ADD(hh, db->db_client_cache, db_client_id, sizeof(db_client_id),
+             entry);
     freeReplyObject(reply);
   }
   *manager = entry->addr;
@@ -356,15 +368,15 @@ void redis_object_table_get_entry(redisAsyncContext *c,
   REDIS_CALLBACK_HEADER(db, callback_data, r)
   redisReply *reply = r;
 
-  int *managers = malloc(reply->elements * sizeof(int));
+  db_client_id *managers = malloc(reply->elements * sizeof(db_client_id));
   int64_t manager_count = reply->elements;
 
   if (reply->type == REDIS_REPLY_ARRAY) {
     const char **manager_vector = malloc(manager_count * sizeof(char *));
-    for (int j = 0; j < reply->elements; j++) {
+    for (int j = 0; j < reply->elements; ++j) {
       CHECK(reply->element[j]->type == REDIS_REPLY_STRING);
-      managers[j] = atoi(reply->element[j]->str);
-      redis_get_cached_service(db, managers[j], manager_vector + j);
+      memcpy(managers[j].id, reply->element[j]->str, sizeof(db_client_id));
+      redis_get_cached_db_client(db, managers[j], manager_vector + j);
     }
 
     object_table_lookup_done_callback done_callback =
@@ -626,10 +638,62 @@ void redis_task_table_subscribe(table_callback_data *callback_data) {
   }
 }
 
-int get_client_id(db_handle *db) {
-  if (db) {
-    return db->client_id;
-  } else {
-    return -1;
+/*
+ *  ==== db client table callbacks ====
+ */
+
+void redis_db_client_table_subscribe_callback(redisAsyncContext *c,
+                                              void *r,
+                                              void *privdata) {
+  REDIS_CALLBACK_HEADER(db, callback_data, r)
+  redisReply *reply = r;
+
+  CHECK(reply->type == REDIS_REPLY_ARRAY);
+  /* If this condition is true, we got the initial message that acknowledged the
+   * subscription. */
+  CHECK(reply->elements > 2);
+  /* First entry is message type, then possibly the regex we psubscribed to,
+   * then topic, then payload. */
+  redisReply *payload = reply->element[reply->elements - 1];
+  if (payload->str == NULL) {
+    if (callback_data->done_callback) {
+      db_client_table_done_callback done_callback =
+          callback_data->done_callback;
+      done_callback(callback_data->id, callback_data->user_context);
+    }
+    /* Note that we do not destroy the callback data yet because the
+     * subscription callback needs this data. */
+    event_loop_remove_timer(db->loop, callback_data->timer_id);
+    return;
   }
+  /* Otherwise, parse the payload and call the callback. */
+  db_client_table_subscribe_data *data = callback_data->data;
+  db_client_id client;
+  memcpy(client.id, payload->str, sizeof(db_client_id));
+  /* We subtract 1 + sizeof(db_client_id) to compute the length of the
+   * client_type string, and we add 1 to null-terminate the string. */
+  int client_type_length = payload->len - 1 - sizeof(db_client_id) + 1;
+  char *client_type = malloc(client_type_length);
+  memcpy(client_type, &payload->str[1 + sizeof(db_client_id)],
+         client_type_length);
+  if (data->subscribe_callback) {
+    data->subscribe_callback(client, client_type, data->subscribe_context);
+  }
+  free(client_type);
+}
+
+void redis_db_client_table_subscribe(table_callback_data *callback_data) {
+  db_handle *db = callback_data->db_handle;
+  int status = redisAsyncCommand(
+      db->sub_context, redis_db_client_table_subscribe_callback,
+      (void *) callback_data->timer_id, "SUBSCRIBE db_clients");
+  if ((status == REDIS_ERR) || db->sub_context->err) {
+    LOG_REDIS_DEBUG(db->sub_context,
+                    "error in db_client_table_register_callback");
+  }
+}
+
+db_client_id get_db_client_id(db_handle *db) {
+  CHECK(db != NULL);
+  return db->client;
 }

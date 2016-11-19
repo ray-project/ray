@@ -69,10 +69,14 @@ local_scheduler_state *init_local_scheduler(event_loop *loop,
   /* Add scheduler info. */
   state->scheduler_info = malloc(sizeof(scheduler_info));
   utarray_new(state->scheduler_info->workers, &worker_icd);
-  /* Connect to Redis. */
-  state->scheduler_info->db =
-      db_connect(redis_addr, redis_port, "photon", "", -1);
-  db_attach(state->scheduler_info->db, loop);
+  /* Connect to Redis if a Redis address is provided. */
+  if (redis_addr != NULL) {
+    state->scheduler_info->db =
+        db_connect(redis_addr, redis_port, "photon", "", -1);
+    db_attach(state->scheduler_info->db, loop);
+  } else {
+    state->scheduler_info->db = NULL;
+  }
   /* Add scheduler state. */
   state->scheduler_state = make_scheduler_state();
   utarray_new(state->input_buffer, &byte_icd);
@@ -80,7 +84,9 @@ local_scheduler_state *init_local_scheduler(event_loop *loop,
 };
 
 void free_local_scheduler(local_scheduler_state *s) {
-  db_disconnect(s->scheduler_info->db);
+  if (s->scheduler_info->db != NULL) {
+    db_disconnect(s->scheduler_info->db);
+  }
   plasma_disconnect(s->plasma_conn);
   worker_index *current_worker_index, *temp_worker_index;
   HASH_ITER(hh, s->worker_index, current_worker_index, temp_worker_index) {
@@ -97,10 +103,25 @@ void free_local_scheduler(local_scheduler_state *s) {
 
 void assign_task_to_worker(scheduler_info *info,
                            task_spec *spec,
-                           int worker_index) {
+                           int worker_index,
+                           bool from_global_scheduler) {
   CHECK(worker_index < utarray_len(info->workers));
   worker *w = (worker *) utarray_eltptr(info->workers, worker_index);
   write_message(w->sock, EXECUTE_TASK, task_spec_size(spec), (uint8_t *) spec);
+  /* Update the global task table. */
+  if (info->db != NULL) {
+    retry_info retry = {
+        .num_retries = 0, .timeout = 100, .fail_callback = NULL,
+    };
+    task *task =
+        alloc_task(spec, TASK_STATUS_RUNNING, get_db_client_id(info->db));
+    if (from_global_scheduler) {
+      task_table_update(info->db, task, (retry_info *) &retry, NULL, NULL);
+    } else {
+      task_table_add_task(info->db, task, (retry_info *) &retry, NULL, NULL);
+    }
+    free_task(task);
+  }
 }
 
 void process_plasma_notification(event_loop *loop,
@@ -177,6 +198,11 @@ void signal_handler(int signal) {
 
 /* End of the cleanup code. */
 
+void handle_task_scheduled_callback(task *original_task, void *user_context) {
+  handle_task_scheduled(g_state->scheduler_info, g_state->scheduler_state,
+                        task_task_spec(original_task));
+}
+
 void start_server(const char *socket_name,
                   const char *redis_addr,
                   int redis_port,
@@ -186,9 +212,23 @@ void start_server(const char *socket_name,
   g_state =
       init_local_scheduler(loop, redis_addr, redis_port, plasma_socket_name);
 
-  /* Run event loop. */
+  /* Register a callback for registering new clients. */
   event_loop_add_file(loop, fd, EVENT_LOOP_READ, new_client_connection,
                       g_state);
+  /* Subscribe to receive notifications about tasks that are assigned to this
+   * local scheduler by the global scheduler. TODO(rkn): we also need to get any
+   * tasks that were assigned to this local scheduler before the call to
+   * subscribe. */
+  retry_info retry = {
+      .num_retries = 0, .timeout = 100, .fail_callback = NULL,
+  };
+  if (g_state->scheduler_info->db != NULL) {
+    task_table_subscribe(g_state->scheduler_info->db,
+                         get_db_client_id(g_state->scheduler_info->db),
+                         TASK_STATUS_SCHEDULED, handle_task_scheduled_callback,
+                         NULL, &retry, NULL, NULL);
+  }
+  /* Run event loop. */
   event_loop_run(loop);
 }
 
@@ -222,15 +262,21 @@ int main(int argc, char *argv[]) {
   if (!plasma_socket_name) {
     LOG_FATAL("please specify socket for connecting to Plasma with -p switch");
   }
-  /* Parse the Redis address into an IP address and a port. */
-  char redis_addr[16] = {0};
-  char redis_port[6] = {0};
-  if (!redis_addr_port ||
-      sscanf(redis_addr_port, "%15[0-9.]:%5[0-9]", redis_addr, redis_port) !=
-          2) {
-    LOG_FATAL(
-        "need to specify redis address like 127.0.0.1:6379 with -r switch");
+  if (!redis_addr_port) {
+    /* Start the local scheduler without connecting to Redis. In this case, all
+     * submitted tasks will be queued and scheduled locally. */
+    start_server(scheduler_socket_name, NULL, -1, plasma_socket_name);
+  } else {
+    /* Parse the Redis address into an IP address and a port. */
+    char redis_addr[16] = {0};
+    char redis_port[6] = {0};
+    if (sscanf(redis_addr_port, "%15[0-9.]:%5[0-9]", redis_addr, redis_port) !=
+        2) {
+      LOG_FATAL(
+          "if a redis address is provided with the -r switch, it should be "
+          "formatted like 127.0.0.1:6379");
+    }
+    start_server(scheduler_socket_name, &redis_addr[0], atoi(redis_port),
+                 plasma_socket_name);
   }
-  start_server(scheduler_socket_name, &redis_addr[0], atoi(redis_port),
-               plasma_socket_name);
 }

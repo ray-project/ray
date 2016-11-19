@@ -46,8 +46,8 @@ matrix:
         - cd ../..
 
         - python src/plasma/test/test.py valgrind
-
         - python src/photon/test/test.py valgrind
+        - python src/global_scheduler/test/test.py valgrind
 
 install:
   - ./install-dependencies.sh
@@ -57,10 +57,6 @@ install:
   - sudo python setup.py install
   - cd ../../../..
 
-  - cd src/photon
-  - sudo python setup.py install
-  - cd ../..
-
   - cd lib/python
   - sudo python setup.py install
   - cd ../..
@@ -69,6 +65,7 @@ script:
   - python src/common/test/test.py
   - python src/plasma/test/test.py
   - python src/photon/test/test.py
+  - python src/global_scheduler/test/test.py
 
   - python test/runtest.py
   - python test/array_test.py

@@ -218,24 +218,58 @@ class PlasmaClient(object):
         break
     return message_data
 
-def start_plasma_manager(store_name, manager_name, redis_address, num_retries=20, use_valgrind=False, run_profiler=False):
+DEFAULT_PLASMA_STORE_MEMORY = 10 ** 9
+
+def random_name():
+  return str(random.randint(0, 99999999))
+
+def start_plasma_store(plasma_store_memory=DEFAULT_PLASMA_STORE_MEMORY, use_valgrind=False, use_profiler=False):
+  """Start a plasma store process.
+
+  Args:
+    use_valgrind (bool): True if the plasma store should be started inside of
+      valgrind. If this is True, use_profiler must be False.
+    use_profiler (bool): True if the plasma store should be started inside a
+      profiler. If this is True, use_valgrind must be False.
+
+  Return:
+    A tuple of the name of the plasma store socket and the process ID of the
+      plasma store process.
+  """
+  if use_valgrind and use_profiler:
+    raise Exception("Cannot use valgrind and profiler at the same time.")
+  plasma_store_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../build/plasma_store")
+  plasma_store_name = "/tmp/scheduler{}".format(random_name())
+  command = [plasma_store_executable, "-s", plasma_store_name, "-m", str(plasma_store_memory)]
+  if use_valgrind:
+    pid = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + command)
+    time.sleep(1.0)
+  elif use_profiler:
+    pid = subprocess.Popen(["valgrind", "--tool=callgrind"] + command)
+    time.sleep(1.0)
+  else:
+    pid = subprocess.Popen(command)
+    time.sleep(0.1)
+  return plasma_store_name, pid
+
+def start_plasma_manager(store_name, redis_address, num_retries=20, use_valgrind=False, run_profiler=False):
   """Start a plasma manager and return the ports it listens on.
 
   Args:
     store_name (str): The name of the plasma store socket.
-    manager_name (str): The name of the plasma manager socket.
     redis_address (str): The address of the Redis server.
     use_valgrind (bool): True if the Plasma manager should be started inside of
       valgrind and False otherwise.
 
   Returns:
-    The process ID of the Plasma manager and the port that the manager is
-      listening on.
+    A tuple of the Plasma manager socket name, the process ID of the Plasma
+      manager process, and the port that the manager is listening on.
 
   Raises:
     Exception: An exception is raised if the manager could not be started.
   """
   plasma_manager_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../build/plasma_manager")
+  plasma_manager_name = "/tmp/scheduler{}".format(random_name())
   port = None
   process = None
   counter = 0
@@ -245,7 +279,7 @@ def start_plasma_manager(store_name, manager_name, redis_address, num_retries=20
     port = random.randint(10000, 65535)
     command = [plasma_manager_executable,
                "-s", store_name,
-               "-m", manager_name,
+               "-m", plasma_manager_name,
                "-h", "127.0.0.1",
                "-p", str(port),
                "-r", redis_address]
@@ -260,6 +294,6 @@ def start_plasma_manager(store_name, manager_name, redis_address, num_retries=20
     time.sleep(0.1)
     # See if the process has terminated
     if process.poll() == None:
-      return process, port
+      return plasma_manager_name, process, port
     counter += 1
   raise Exception("Couldn't start plasma manager.")

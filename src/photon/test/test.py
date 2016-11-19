@@ -1,66 +1,55 @@
 from __future__ import print_function
 
+import numpy as np
 import os
+import random
 import signal
 import subprocess
 import sys
-import unittest
-import random
 import threading
 import time
+import unittest
 
 import photon
 import plasma
 
 USE_VALGRIND = False
-PLASMA_STORE_MEMORY = 1000000000
+ID_SIZE = 20
 
 def random_object_id():
-  return photon.ObjectID("".join([chr(random.randint(0, 255)) for _ in range(plasma.PLASMA_ID_SIZE)]))
+  return photon.ObjectID(np.random.bytes(ID_SIZE))
+
+def random_task_id():
+  return photon.ObjectID(np.random.bytes(ID_SIZE))
+
+def random_function_id():
+  return photon.ObjectID(np.random.bytes(ID_SIZE))
 
 class TestPhotonClient(unittest.TestCase):
 
   def setUp(self):
-    # Start Redis.
-    redis_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../common/thirdparty/redis-3.2.3/src/redis-server")
-    self.p1 = subprocess.Popen([redis_executable, "--loglevel", "warning"])
-    # Start Plasma.
-    plasma_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../plasma/build/plasma_store")
-    plasma_socket = "/tmp/plasma_store{}".format(random.randint(0, 10000))
-    self.p2 = subprocess.Popen([plasma_executable, "-s", plasma_socket, "-m", str(PLASMA_STORE_MEMORY)])
-    time.sleep(0.1)
-    self.plasma_client = plasma.PlasmaClient(plasma_socket)
-    scheduler_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../build/photon_scheduler")
-    scheduler_name = "/tmp/scheduler{}".format(random.randint(0, 10000))
-    command = [scheduler_executable, "-s", scheduler_name, "-r", "127.0.0.1:6379", "-p", plasma_socket]
-    if USE_VALGRIND:
-      self.p3 = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + command)
-    else:
-      self.p3 = subprocess.Popen(command)
-    if USE_VALGRIND:
-      time.sleep(1.0)
-    else:
-      time.sleep(0.1)
+    # Start Plasma store.
+    plasma_store_name, self.p1 = plasma.start_plasma_store()
+    self.plasma_client = plasma.PlasmaClient(plasma_store_name)
+    # Start a local scheduler.
+    scheduler_name, self.p2 = photon.start_local_scheduler(plasma_store_name, use_valgrind=USE_VALGRIND)
     # Connect to the scheduler.
     self.photon_client = photon.PhotonClient(scheduler_name)
 
   def tearDown(self):
-    # Kill the Redis server.
-    self.p1.kill()
     # Kill Plasma.
-    self.p2.kill()
+    self.p1.kill()
     # Kill the local scheduler.
     if USE_VALGRIND:
-      self.p3.send_signal(signal.SIGTERM)
-      self.p3.wait()
-      os._exit(self.p3.returncode)
+      self.p2.send_signal(signal.SIGTERM)
+      self.p2.wait()
+      os._exit(self.p2.returncode)
     else:
-      self.p3.kill()
+      self.p2.kill()
 
   def test_submit_and_get_task(self):
-    # TODO(rkn): This should be a FunctionID.
-    function_id = photon.ObjectID(20 * "a")
-    object_ids = [photon.ObjectID(20 * chr(i)) for i in range(256)]
+    function_id = random_function_id()
+    object_ids = [random_object_id() for i in range(256)]
     # Create and seal the objects in the object store so that we can schedule
     # all of the subsequent tasks.
     for object_id in object_ids:
@@ -98,7 +87,7 @@ class TestPhotonClient(unittest.TestCase):
 
     for args in args_list:
       for num_return_vals in [0, 1, 2, 3, 5, 10, 100]:
-        task = photon.Task(function_id, args, num_return_vals, random_object_id(), 0)
+        task = photon.Task(function_id, args, num_return_vals, random_task_id(), 0)
         # Submit a task.
         self.photon_client.submit(task)
         # Get the task.
@@ -117,7 +106,7 @@ class TestPhotonClient(unittest.TestCase):
     # Submit all of the tasks.
     for args in args_list:
       for num_return_vals in [0, 1, 2, 3, 5, 10, 100]:
-        task = photon.Task(function_id, args, num_return_vals, random_object_id(), 0)
+        task = photon.Task(function_id, args, num_return_vals, random_task_id(), 0)
         self.photon_client.submit(task)
     # Get all of the tasks.
     for args in args_list:
@@ -126,10 +115,8 @@ class TestPhotonClient(unittest.TestCase):
 
   def test_scheduling_when_objects_ready(self):
     # Create a task and submit it.
-    object_id = photon.ObjectID(20 * chr(0))
-    # TODO(rkn): This should be a FunctionID.
-    function_id = photon.ObjectID(20 * "a")
-    task = photon.Task(function_id, [object_id], 0, random_object_id(), 0)
+    object_id = random_object_id()
+    task = photon.Task(random_function_id(), [object_id], 0, random_task_id(), 0)
     self.photon_client.submit(task)
     # Launch a thread to get the task.
     def get_task():

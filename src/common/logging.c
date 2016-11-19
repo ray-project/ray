@@ -10,7 +10,7 @@
 
 static const char *log_levels[5] = {"DEBUG", "INFO", "WARN", "ERROR", "FATAL"};
 static const char *log_fmt =
-    "HMSET log:%s:%s:%s log_level %s event_type %s message %s timestamp %s";
+    "HMSET log:%s:%s log_level %s event_type %s message %s timestamp %s";
 
 struct ray_logger_impl {
   /* String that identifies this client type. */
@@ -56,25 +56,23 @@ void ray_log(ray_logger *logger,
   gettimeofday(&tv, NULL);
   utstring_printf(timestamp, "%ld.%ld", tv.tv_sec, (long) tv.tv_usec);
 
-  UT_string *origin_id;
-  utstring_new(origin_id);
+  UT_string *formatted_message;
+  utstring_new(formatted_message);
+  /* Fill out everything except the client ID, which is binary data. */
+  utstring_printf(formatted_message, log_fmt, utstring_body(timestamp), "%b",
+                  log_levels[log_level], event_type, message,
+                  utstring_body(timestamp));
   if (logger->is_direct) {
     db_handle *db = (db_handle *) logger->conn;
-    utstring_printf(origin_id, "%" PRId64 ":%s", db->client_id, "");
-    redisAsyncCommand(db->context, NULL, NULL, log_fmt,
-                      utstring_body(timestamp), logger->client_type,
-                      utstring_body(origin_id), log_levels[log_level],
-                      event_type, message, utstring_body(timestamp));
+    /* Fill in the client ID and send the message to Redis. */
+    redisAsyncCommand(db->context, NULL, NULL, utstring_body(formatted_message),
+                      (char *) db->client.id, sizeof(db_client_id));
   } else {
     /* If we don't own a Redis connection, we leave our client
      * ID to be filled in by someone else. */
-    utstring_printf(origin_id, "%s:%s", "%ld", "%ld");
     int *socket_fd = (int *) logger->conn;
-    write_formatted_log_message(*socket_fd, log_fmt, utstring_body(timestamp),
-                                logger->client_type, utstring_body(origin_id),
-                                log_levels[log_level], event_type, message,
-                                utstring_body(timestamp));
+    write_log_message(*socket_fd, utstring_body(formatted_message));
   }
-  utstring_free(origin_id);
+  utstring_free(formatted_message);
   utstring_free(timestamp);
 }
