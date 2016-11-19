@@ -126,7 +126,7 @@ int64_t choose_objects_to_evict(eviction_state *eviction_state,
     /* Find the object table entry for this object. */
     object_table_entry *entry;
     HASH_FIND(handle, plasma_store_info->objects, &element->object_id,
-              sizeof(object_id), entry);
+              sizeof(element->object_id), entry);
     /* Update the cumulative bytes and the number of objects so far. */
     num_bytes += (entry->info.data_size + entry->info.metadata_size);
     num_objects += 1;

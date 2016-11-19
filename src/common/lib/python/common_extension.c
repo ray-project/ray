@@ -33,7 +33,7 @@ static int PyObjectID_init(PyObjectID *self, PyObject *args, PyObject *kwds) {
                     "ObjectID: object id string needs to have length 20");
     return -1;
   }
-  memcpy(&self->object_id.id[0], data, sizeof(object_id));
+  memcpy(&self->object_id.id[0], data, sizeof(self->object_id.id));
   return 0;
 }
 
@@ -48,7 +48,7 @@ PyObject *PyObjectID_make(object_id object_id) {
 static PyObject *PyObjectID_id(PyObject *self) {
   PyObjectID *s = (PyObjectID *) self;
   return PyString_FromStringAndSize((char *) &s->object_id.id[0],
-                                    sizeof(object_id));
+                                    sizeof(s->object_id.id));
 }
 
 static PyObject *PyObjectID_richcompare(PyObjectID *self,
