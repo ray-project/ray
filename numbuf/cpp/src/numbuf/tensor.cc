@@ -4,11 +4,11 @@ using namespace arrow;
 
 namespace numbuf {
 
-template<typename T>
+template <typename T>
 TensorBuilder<T>::TensorBuilder(const TypePtr& dtype, MemoryPool* pool)
     : dtype_(dtype), pool_(pool) {}
 
-template<typename T>
+template <typename T>
 Status TensorBuilder<T>::Start() {
   dim_data_ = std::make_shared<Int64Builder>(pool_, std::make_shared<Int64Type>());
   dims_ = std::make_shared<ListBuilder>(pool_, dim_data_);
@@ -16,12 +16,14 @@ Status TensorBuilder<T>::Start() {
   values_ = std::make_shared<ListBuilder>(pool_, value_data_);
   auto dims_field = std::make_shared<Field>("dims", dims_->type());
   auto values_field = std::make_shared<Field>("data", values_->type());
-  auto type = std::make_shared<StructType>(std::vector<FieldPtr>({dims_field, values_field}));
-  tensors_ = std::make_shared<StructBuilder>(pool_, type, std::vector<std::shared_ptr<ArrayBuilder>>({dims_, values_}));
+  auto type =
+      std::make_shared<StructType>(std::vector<FieldPtr>({dims_field, values_field}));
+  tensors_ = std::make_shared<StructBuilder>(
+      pool_, type, std::vector<std::shared_ptr<ArrayBuilder>>({dims_, values_}));
   return Status::OK();
 }
 
-template<typename T>
+template <typename T>
 Status TensorBuilder<T>::Append(const std::vector<int64_t>& dims, const elem_type* data) {
   DCHECK(tensors_);
   RETURN_NOT_OK(tensors_->Append());
@@ -33,10 +35,10 @@ Status TensorBuilder<T>::Append(const std::vector<int64_t>& dims, const elem_typ
     RETURN_NOT_OK(dim_data_->Append(dim));
   }
   RETURN_NOT_OK(value_data_->Append(data, size));
-  return Status::OK(); // tensors_->Append();
+  return Status::OK();  // tensors_->Append();
 }
 
-template<typename T>
+template <typename T>
 Status TensorBuilder<T>::Finish(std::shared_ptr<Array>* out) {
   return tensors_->Finish(out);
 }
@@ -51,5 +53,4 @@ template class TensorBuilder<UInt64Type>;
 template class TensorBuilder<Int64Type>;
 template class TensorBuilder<FloatType>;
 template class TensorBuilder<DoubleType>;
-
 }
