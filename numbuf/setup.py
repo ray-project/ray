@@ -1,5 +1,5 @@
 import subprocess
-from setuptools import setup, find_packages, Extension
+from setuptools import setup, find_packages
 import setuptools.command.install as _install
 from sys import platform
 
@@ -23,7 +23,10 @@ class install(_install.install):
 setup(name="numbuf",
       version="0.0.1",
       packages=find_packages(),
-      package_data={"numbuf": ["libnumbuf.so", "libarrow" + extension, "libarrow_io" + extension, "libarrow_ipc" + extension]},
+      package_data={"numbuf": ["libnumbuf.so",
+                               "libarrow" + extension,
+                               "libarrow_io" + extension,
+                               "libarrow_ipc" + extension]},
       cmdclass={"install": install},
       setup_requires=["numpy"],
       include_package_data=True,

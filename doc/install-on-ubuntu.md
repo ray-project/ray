@@ -1,6 +1,6 @@
 # Installation on Ubuntu
 
-Ray should work with Python 2 and Python 3. We have tested Ray on Ubuntu 14.04
+Ray should work with Python 2. We have tested Ray on Ubuntu 14.04
 and Ubuntu 16.04
 
 ## Dependencies
@@ -14,7 +14,7 @@ sudo apt-get install -y cmake build-essential autoconf curl libtool python-dev p
 
 pip install numpy funcsigs colorama psutil redis
 pip install --upgrade git+git://github.com/cloudpipe/cloudpickle.git@0d225a4695f1f65ae1cbb2e0bbc145e10167cce4  # We use the latest version of cloudpickle because it can serialize named tuples.
-pip install --upgrade --verbose git+git://github.com/ray-project/numbuf.git@488f881d708bc54e86ed375ee97aa94540808fa1
+pip install --upgrade --verbose "git+git://github.com/ray-project/ray.git#egg=ray&subdirectory=numbuf"
 ```
 
 # Install Ray

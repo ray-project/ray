@@ -15,7 +15,7 @@ else
   exit 1
 fi
 
-pushd "$ROOT_DIR/thirdparty"
-  ./download_thirdparty.sh
-  ./build_thirdparty.sh
+pushd "$ROOT_DIR"
+  ./thirdparty/download_thirdparty.sh
+  ./thirdparty/build_thirdparty.sh
 popd
