@@ -1089,7 +1089,9 @@ void request_fetch_or_status(object_id object_id,
   if (manager_count == 0) {
     free(manager_vector);
     send_client_object_does_not_exist_reply(object_id, client_conn);
-    remove_object_request(client_conn, object_req);
+    if (transfer) {
+      remove_object_request(client_conn, object_req);
+    }
     return;
   }
 
