@@ -6,7 +6,7 @@
 #include <errno.h>
 #include <stddef.h>
 #include <string.h>
-
+#include <stdbool.h>
 #include "common.h"
 
 typedef struct {
@@ -18,14 +18,12 @@ typedef struct {
 
 /* Object is stored on the local Plasma Store. */
 #define PLASMA_OBJECT_LOCAL  1
-/* Object is not stored on the local Plasma Store */
-#define PLASMA_OBJECT_NOT_LOCAL 2
 /* Object is stored on a remote Plasma store, and it is not stored on the local Plasma Store */
 #define PLASMA_OBJECT_REMOTE 3
 /* Object is not stored in the system. */
 #define PLASMA_OBJECT_DOES_NOT_EXIST 5
 /* Object is currently transferred from a remote Plasma store the the local Plasma Store. */
-#define PLASMA_OBJECT_IN_TRANSFER 6
+#define PLASMA_OBJECT_TRANSFER 6
 #define PLASMA_OBJECT_ANYWHERE 7
 
 /**

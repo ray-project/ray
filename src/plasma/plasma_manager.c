@@ -43,15 +43,36 @@ int send_client_object_status_reply(object_id object_id,
                                     int object_status);
 int send_client_object_does_not_exist_reply(object_id object_id,
                                             client_connection *conn);
+/**
+ * Process either the fetch or the status request.
+ *
+ * @param client_conn Client connection.
+ * @param object_id ID of the object for which we process this request.
+ * @param fetc If true we process a fetch request, and if false
+ *             we process a status request.
+ * @return Void.
+ */
 void process_fetch_or_status_request(client_connection *client_conn,
                                      object_id object_id,
                                      bool fetch);
-/**/
-void request_transfer_or_status(object_id object_id,
-                                int manager_count,
-                                const char *manager_vector[],
-                                void *context,
-                                bool transfer);
+/**
+ * Request the transfer from a remote node or get the status of
+ * a given object. This is called for an object that is stored at
+ * a remote Plasma Store.
+ *
+ * @param object_id ID of the object to transfer or to get its status.
+ * @param manager_cont Number of remote nodes object_id is stored at.
+ * @param manager_vector Array containing the Plasma Managers
+ *                       running at the nodes where object_id is stored.
+ * @param context Client connection.
+ * @param transfer If true, we request the transfer of object_id, if not.
+ *                 we request its status.
+ */
+void request_fetch_or_status(object_id object_id,
+                             int manager_count,
+                             const char *manager_vector[],
+                             void *context,
+                             bool transfer);
 
 
 /* Entry of the hashtable of objects that are available locally. */
@@ -804,11 +825,19 @@ void return_from_wait1(client_connection *client_conn) {
   CHECK(n == size);
   free(client_conn->wait_reply);
 
-  /* Clean the remaining object connections. */
+  /** Clean the remaining object connections.
+   * TODO (istoica) Check with Phlipp. */
   client_object_request *object_req, *tmp;
   HASH_ITER(active_hh, client_conn->active_objects, object_req, tmp) {
     remove_object_request(client_conn, object_req);
   }
+}
+
+int wait_timeout_handler1(event_loop *loop, timer_id id, void *context) {
+  client_connection *client_conn = context;
+  CHECK(client_conn->timer_id == id);
+  return_from_wait1(client_conn);
+  return EVENT_LOOP_TIMER_DONE;
 }
 
 void process_wait_request1(client_connection *client_conn,
@@ -817,8 +846,11 @@ void process_wait_request1(client_connection *client_conn,
                            uint64_t timeout,
                            int num_ready_objects) {
 
+  CHECK(client_conn != NULL);
+
   plasma_manager_state *manager_state = client_conn->manager_state;
   client_conn->num_return_objects = num_ready_objects;
+
   /** We can only run a command at a time on any given
    *  client connection (client_conn) so set up is_wait
    * so callback() can check whether we are still in wait() */
@@ -836,6 +868,8 @@ void process_wait_request1(client_connection *client_conn,
   object_requests_set_status_all(num_object_requests,
                                  client_conn->wait_reply->object_requests,
                                  PLASMA_OBJECT_DOES_NOT_EXIST);
+  /** We will just return back the same object_requests list after
+    * setting the status of the requests. */
   client_conn->wait_reply->num_object_ids = num_object_requests;
 
   /** add timer callback --
@@ -843,14 +877,13 @@ void process_wait_request1(client_connection *client_conn,
    * if we get num_ready_objects before timeout expires,
    * we remove timer */
   client_conn->timer_id = event_loop_add_timer(
-      manager_state->loop, timeout, wait_timeout_handler, client_conn);
+      manager_state->loop, timeout, wait_timeout_handler1, client_conn);
 
   /** Now check whether objects are in the Local Object store, and
-   * if not, check whether they are remote.
-   */
+   * if not, check whether they are remote. */
   for (int i = 0; i < num_object_requests; ++i) {
     if (is_object_local(client_conn, &object_requests[i].object_id)) {
-      /** If an object id occurs twice in object_requests, this will count
+      /** If an object ID occurs twice in object_requests, this will count
        * them twice. This might not be desirable behavior. */
       client_conn->num_return_objects -= 1;
       client_conn->wait_reply->object_requests[i].status = PLASMA_OBJECT_LOCAL;
@@ -882,6 +915,7 @@ void process_wait_request1(client_connection *client_conn,
         retry_info retry = {
           .num_retries = 0, .timeout = 0, .fail_callback = NULL,
         };
+        /** TODO (istoica) We should really cache the results here. */
         object_table_subscribe(g_manager_state->db,
                                client_conn->wait_reply->object_requests[i].object_id,
                                wait_object_available_callback,
@@ -911,7 +945,7 @@ void wait_object_available_callback(object_id object_id, void *user_context) {
                                               wait_reply->num_object_ids,
                                               wait_reply->object_requests);
   if (object_request == NULL) {
-    /** Maybe this is from a previous wait call */
+    /** Maybe this is from a previous wait call, so ignore it. */
     return;
   }
 
@@ -962,7 +996,7 @@ void wait_process_object_available_local(client_connection *client_conn,
  * @param contect Client connection.
  * @return Void.
  */
-int transfer_timeout_handler(event_loop *loop, timer_id id, void *context) {
+int fetch_timeout_handler(event_loop *loop, timer_id id, void *context) {
   CHECK(loop);
   CHECK(context);
 
@@ -992,12 +1026,12 @@ int transfer_timeout_handler(event_loop *loop, timer_id id, void *context) {
  * @param context Client connection.
  * @return Void.
  */
- void request_transfer_remote(object_id object_id,
+ void request_fetch_initiate(object_id object_id,
                              int manager_count,
                              const char *manager_vector[],
                              void *context)
 {
-  request_transfer_or_status(object_id, manager_count,
+  request_fetch_or_status(object_id, manager_count,
                              manager_vector, context, true);
 
 }
@@ -1023,25 +1057,12 @@ void request_status_done(object_id object_id,
                          const char *manager_vector[],
                          void *context)
 {
-  request_transfer_or_status(object_id, manager_count,
+  request_fetch_or_status(object_id, manager_count,
                              manager_vector, context, false);
 
 }
 
-/**
- * Request the transfer from a remote node or get the status of
- * a given object. This is called for an object that is stored at
- * a remote Plasma Store.
- *
- * @param object_id ID of the object to transfer or to get its status.
- * @param manager_cont Number of remote nodes object_id is stored at.
- * @param manager_vector Array containing the Plasma Managers
- *                       running at the nodes where object_id is stored.
- * @param context Client connection.
- * @param transfer If true, we request the transfer of object_id, if not.
- *                 we request its status.
- */
-void request_transfer_or_status(object_id object_id,
+void request_fetch_or_status(object_id object_id,
                                 int manager_count,
                                 const char *manager_vector[],
                                 void *context,
@@ -1050,15 +1071,16 @@ void request_transfer_or_status(object_id object_id,
   client_object_request *object_req =
     get_object_request(client_conn, object_id);
 
-  /** Check whetehr there's already an outstanding fetch for this object for
-   * this client, and if yes let let the outstanding request finish the work.
+  /** Check wether there's already an outstanding fetch for this object for
+   * this client, and if yes let the outstanding request finish the work.
    * Note that we have already checked for this in
    * process_fetch_or_status_request(), but since then the object could have
    * been evicted. */
   if (object_req) {
+    /** TODO (istocia): Shouldn't we free(manager_vector) here? */
     send_client_object_status_reply(object_id,
                                    client_conn,
-                                   PLASMA_OBJECT_IN_TRANSFER);
+                                   PLASMA_OBJECT_TRANSFER);
     return;
   }
 
@@ -1092,7 +1114,7 @@ void request_transfer_or_status(object_id object_id,
     object_req->num_retries = NUM_RETRIES;
     object_req->timer =
         event_loop_add_timer(client_conn->manager_state->loop, MANAGER_TIMEOUT,
-                             transfer_timeout_handler, object_req);
+                             fetch_timeout_handler, object_req);
     request_transfer_from(client_conn, object_id);
     /* let scheduling the fetch request proceded and return */
   }
@@ -1101,15 +1123,7 @@ void request_transfer_or_status(object_id object_id,
                                  PLASMA_OBJECT_REMOTE);
 }
 
-/**
- * Process either the fetch or the status request.
- *
- * @param client_conn Client connection.
- * @param object_id ID of the object for which we process this request.
- * @param fetc If true we process a fetch request, and if false
- *             we process a status request.
- * @return Void.
- */
+
 void process_fetch_or_status_request(client_connection *client_conn,
                                      object_id object_id,
                                      bool fetch) {
@@ -1134,7 +1148,7 @@ void process_fetch_or_status_request(client_connection *client_conn,
   if (get_object_request(client_conn, object_id)) {
     send_client_object_status_reply(object_id,
                                    client_conn,
-                                   PLASMA_OBJECT_IN_TRANSFER);
+                                   PLASMA_OBJECT_TRANSFER);
     return;
   }
 
@@ -1148,7 +1162,7 @@ void process_fetch_or_status_request(client_connection *client_conn,
   if (fetch) {
     /* Request a transfer from a plasma manager that has this object, if any. */
     object_table_lookup(client_conn->manager_state->db, object_id, &retry,
-                        request_transfer_remote, client_conn);
+                        request_fetch_initiate, client_conn);
   } else {
     object_table_lookup(client_conn->manager_state->db, object_id, &retry,
                         request_status_done, client_conn);

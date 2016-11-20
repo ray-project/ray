@@ -480,31 +480,6 @@ void plasma_fetch(plasma_connection *conn,
   }
 }
 
-int plasma_fetch_remote(plasma_connection *conn,
-                        object_id object_id) {
-  CHECK(conn);
-  CHECK(conn->manager_conn >= 0);
-
-  plasma_request req = make_plasma_request(object_id);
-  LOG_DEBUG("Requesting fetch");
-  plasma_send_request(conn->manager_conn, PLASMA_FETCH_REMOTE, &req);
-
-  plasma_reply reply;
-  int nbytes;
-
-  nbytes = recv(conn->manager_conn, (uint8_t *) &reply, sizeof(reply),
-                MSG_WAITALL);
-  if (nbytes < 0) {
-    LOG_ERR("Error while waiting for manager response in fetch");
-  } else if (nbytes == 0) {
-    /** XXX (istoica): check for recv error */
-    LOG_ERR("Error while waiting for manager response in fetch");
-  } else {
-    CHECK(nbytes == sizeof(reply));
-  }
-  return reply.object_status;
-}
-
 int plasma_wait(plasma_connection *conn,
                 int num_object_ids,
                 object_id object_ids[],
@@ -529,7 +504,6 @@ int plasma_wait(plasma_connection *conn,
   return num_objects_returned;
 }
 
-
 int get_manager_fd(plasma_connection *conn) {
   return conn->manager_conn;
 }
@@ -541,16 +515,16 @@ int get_manager_fd(plasma_connection *conn) {
  * plasma_wait_for_objects() all other functions are non-blocking.
  *
  * TODO:
- * - plasma_status() not implemented yet, but not needed at this point.
+ * - plasma_info() not implemented yet, but not needed at this point.
  * - assume new implementation of object_table_subscribe() which returns
  *   if object is in the Local Store (check with jpm).
  * - need to phase out old API and drope *1 from the names of the functions
  *   once the old ones are dropped.
  */
 
-int plasma_get_local(plasma_connection *conn,
-                     object_id object_id,
-                     object_buffer *object_buffer) {
+bool plasma_get_local(plasma_connection *conn,
+                      object_id object_id,
+                      object_buffer *object_buffer) {
   CHECK(conn != NULL);
   CHECK(conn->manager_conn >= 0);
 
@@ -559,7 +533,7 @@ int plasma_get_local(plasma_connection *conn,
 
   plasma_reply reply;
   int fd = recv_fd(conn->store_conn, (char *) &reply, sizeof(plasma_reply));
-  CHECKM(fd != -1, "recv not successful");
+  CHECKM(fd != -1, "recv_fd() not successful");
 
   if (reply.has_object) {
     plasma_object *object = &reply.object;
@@ -578,10 +552,36 @@ int plasma_get_local(plasma_connection *conn,
      * count.
      */
     increment_object_count(conn, object_id, object->handle.store_fd);
-    return PLASMA_OBJECT_LOCAL;
+    return true;
   }
-  /* The object is not available in the local Plasma store. */
-  return PLASMA_OBJECT_NOT_LOCAL;
+  /** The object is either (1) not available in the local Plasma store, or
+   *  (2) it is not sealed yet
+   */
+  return false;
+}
+
+
+int plasma_fetch_remote(plasma_connection *conn,
+                        object_id object_id) {
+  CHECK(conn);
+  CHECK(conn->manager_conn >= 0);
+
+  plasma_request req = make_plasma_request(object_id);
+  plasma_send_request(conn->manager_conn, PLASMA_FETCH_REMOTE, &req);
+
+  plasma_reply reply;
+  int nbytes;
+
+  nbytes = recv(conn->manager_conn, (uint8_t *) &reply, sizeof(reply),
+                MSG_WAITALL);
+  if (nbytes < 0) {
+    LOG_ERR("Error while waiting for manager response in fetch.");
+  } else if (nbytes == 0) {
+    LOG_ERR("Error as Plasma Manager has closed the socket.");
+  } else {
+    CHECK(nbytes == sizeof(reply));
+  }
+  return reply.object_status;
 }
 
 
@@ -601,10 +601,11 @@ int plasma_status(plasma_connection *conn, object_id object_id) {
 }
 
 int plasma_wait_for_objects(plasma_connection *conn,
-                            int num_object_requests,
-                            object_request object_requests[],
-                            int num_ready_objects,
-                            uint64_t timeout_ms) {
+                           int num_object_requests,
+                           object_request object_requests[],
+                           int num_ready_objects,
+                           uint64_t timeout_ms) {
+  CHECK(conn != NULL);
   CHECK(conn->manager_conn >= 0);
   CHECK(num_object_requests > 0);
 
@@ -664,8 +665,8 @@ void plasma_client_get(plasma_connection *conn,
   request.object_id = object_id;
 
   while (true) {
-    if (plasma_get_local(conn, object_id, object_buffer) == PLASMA_OBJECT_LOCAL)
-      /** Object is in the local Plasma Store. */
+    if (plasma_get_local(conn, object_id, object_buffer))
+      /** Object is in the local Plasma Store, and it sealed */
       return;
 
     switch (plasma_fetch_remote(conn, object_id)) {
@@ -727,16 +728,14 @@ int plasma_client_wait(plasma_connection *conn,
 
   /** Initialize array of object requests. We only care for the objects
    *  to be present in the system, not necessary in the local Plasma Store.
-   *  Thus, we set the request type to PLASMA_OBJECT_ANYWHERE.
-   */
+   *  Thus, we set the request type to PLASMA_OBJECT_ANYWHERE. */
    for (int i = 0; i < num_object_ids; i++) {
      requests[i].object_id = object_ids[i];
      requests[i].type = PLASMA_OBJECT_ANYWHERE;
    }
 
   /** Loop until we get num_returns objects stored in the system
-   *  either in the local Plasma Store or remotely.
-   */
+   *  either in the local Plasma Store or remotely. */
   while (true) {
     int n;
     clock_t start = clock();
@@ -761,8 +760,7 @@ int plasma_client_wait(plasma_connection *conn,
       return idx_returns;
     }
     /** The timeout hasn't expired and we got less than num_returns
-      * in the system. Trigger reconstruction of the missing objects.
-      */
+      * in the system. Trigger reconstruction of the missing objects. */
     for (int i = 0; i < num_returns; i++) {
       if (requests[i].status == PLASMA_OBJECT_DOES_NOT_EXIST) {
         /** Object doesn’t exist in the system so ask local scheduler to
@@ -780,7 +778,6 @@ void plasma_client_multiget(plasma_connection *conn,
                             object_id object_ids[],
                             object_buffer object_buffers[]) {
 
-  int rc;
   object_request requests[num_object_ids];
 
   /** Set all request types to PLASMA_OBJECT_LOCAL, as we want to get all objects
@@ -792,16 +789,19 @@ void plasma_client_multiget(plasma_connection *conn,
   }
 
   while (true) {
+    int n;
+
     /** Wait to get all objects in the system.
      * The reason we call plasma_wait_for_objects() here instaed of
      * iterating over plasma_client_get() is to increase concurrency as
      * plasma_client_get() is blocking. */
-    rc = plasma_wait_for_objects(conn, num_object_ids,
-                                 requests, num_object_ids,
-                                 TIMEOUT_WAIT_MS);
+    n = plasma_wait_for_objects(conn, num_object_ids,
+                                requests, num_object_ids,
+                                TIMEOUT_WAIT_MS);
 
-    if (rc == num_object_ids)
-      /** All objects are in the syste, Done */
+    if (n == num_object_ids)
+      /** All objects are in the system either on the local or a remote
+       *  Plasma sure. Done */
       break;
 
     for (int i = 0; i < num_object_ids; i++) {
