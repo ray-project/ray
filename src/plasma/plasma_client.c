@@ -591,11 +591,17 @@ int plasma_status(plasma_connection *conn, object_id object_id) {
   CHECK(conn->manager_conn >= 0);
 
   plasma_request req = make_plasma_request(object_id);
-  plasma_send_request(conn->store_conn, PLASMA_STATUS, &req);
+  plasma_send_request(conn->manager_conn, PLASMA_STATUS, &req);
 
   plasma_reply reply;
-  int fd = recv_fd(conn->store_conn, (char *) &reply, sizeof(plasma_reply));
-  CHECKM(fd != -1, "recv not successful");
+  int nbytes = recv(conn->manager_conn, (uint8_t *) &reply, sizeof(plasma_reply), MSG_WAITALL);
+  if (nbytes < 0) {
+    LOG_ERR("Error while waiting for manager response in fetch.");
+  } else if (nbytes == 0) {
+    LOG_ERR("Error as Plasma Manager has closed the socket.");
+  } else {
+    CHECK(nbytes == sizeof(plasma_reply));
+  }
 
   return reply.object_status;
 }

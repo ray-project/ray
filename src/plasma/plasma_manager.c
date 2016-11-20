@@ -697,7 +697,7 @@ void request_transfer(object_id object_id,
   request_transfer_from(client_conn, object_id);
 }
 
-bool is_object_local(client_connection *client_conn, object_id *object_id)
+bool is_object_local(client_connection *client_conn, object_id object_id)
 {
   available_object *entry;
   HASH_FIND(hh, client_conn->manager_state->local_available_objects,
@@ -716,7 +716,7 @@ void process_fetch_request(client_connection *client_conn,
     return;
   }
   /* Return success immediately if we already have this object. */
-  if (is_object_local(client_conn, &object_id)) {
+  if (is_object_local(client_conn, object_id)) {
     reply.has_object = 1;
     send_client_reply(client_conn, &reply);
     return;
@@ -882,7 +882,7 @@ void process_wait_request1(client_connection *client_conn,
   /** Now check whether objects are in the Local Object store, and
    * if not, check whether they are remote. */
   for (int i = 0; i < num_object_requests; ++i) {
-    if (is_object_local(client_conn, &object_requests[i].object_id)) {
+    if (is_object_local(client_conn, object_requests[i].object_id)) {
       /** If an object ID occurs twice in object_requests, this will count
        * them twice. This might not be desirable behavior. */
       client_conn->num_return_objects -= 1;
@@ -950,7 +950,7 @@ void wait_object_available_callback(object_id object_id, void *user_context) {
   }
 
   /* Check first whether object is avilable in the local Plasma Store. */
-  if (is_object_local(client_conn, &object_id)) {
+  if (is_object_local(client_conn, object_id)) {
     client_conn->num_return_objects -= 1;
     object_request->status = PLASMA_OBJECT_LOCAL;
   } else {
@@ -1130,14 +1130,8 @@ void process_fetch_or_status_request(client_connection *client_conn,
   client_conn->is_wait = false;
   client_conn->wait_reply = NULL;
 
-  if (client_conn->manager_state->db == NULL) {
-    /* TODO: maybe send another reply */
-    send_client_object_does_not_exist_reply(object_id, client_conn);
-    return;
-  }
-
   /* Return success immediately if we already have this object. */
-  if (is_object_local(client_conn, &object_id)) {
+  if (is_object_local(client_conn, object_id)) {
     send_client_object_status_reply(object_id,
                                     client_conn,
                                     PLASMA_OBJECT_LOCAL);
@@ -1159,6 +1153,11 @@ void process_fetch_or_status_request(client_connection *client_conn,
       .fail_callback = (table_fail_callback) send_client_object_does_not_exist_reply,
   };
 
+  if (client_conn->manager_state->db == NULL) {
+    send_client_object_does_not_exist_reply(object_id, client_conn);
+    return;
+  }
+
   if (fetch) {
     /* Request a transfer from a plasma manager that has this object, if any. */
     object_table_lookup(client_conn->manager_state->db, object_id, &retry,
@@ -1169,6 +1168,11 @@ void process_fetch_or_status_request(client_connection *client_conn,
   }
 }
 
+int send_client_reply1(client_connection *conn, plasma_reply *reply) {
+  int n = write(conn->fd, (uint8_t *) reply, sizeof(plasma_reply));
+  return (n != sizeof(plasma_reply));
+}
+
 int send_client_object_status_reply(object_id object_id,
                                     client_connection *conn,
                                     int object_status) {
@@ -1176,7 +1180,7 @@ int send_client_object_status_reply(object_id object_id,
       .object_ids = {object_id},
       .num_object_ids = 1,
       .object_status = object_status};
-  return send_client_reply(conn, &reply);
+  return send_client_reply1(conn, &reply);
 }
 
 int send_client_object_does_not_exist_reply(object_id object_id,
@@ -1299,8 +1303,10 @@ void process_message(event_loop *loop,
         .timeout = MANAGER_TIMEOUT,
         .fail_callback = NULL,
     };
-    object_table_add(conn->manager_state->db, req->object_ids[0], &retry, NULL,
-                     NULL);
+    if (conn->manager_state->db) {
+      object_table_add(conn->manager_state->db, req->object_ids[0], &retry, NULL,
+                       NULL);
+    }
     break;
   case DISCONNECT_CLIENT: {
     LOG_INFO("Disconnecting client on fd %d", client_sock);
