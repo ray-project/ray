@@ -7,7 +7,9 @@
 #include <string.h>
 #include <errno.h>
 #include <inttypes.h>
+#ifndef _WIN32
 #include <execinfo.h>
+#endif
 
 #include "utarray.h"
 
@@ -53,7 +55,7 @@
 
 #if (RAY_COMMON_LOG_LEVEL > RAY_COMMON_FATAL)
 #define LOG_FATAL(M, ...)
-#else
+#elif defined(_EXECINFO_H) || !defined(_WIN32)
 #define LOG_FATAL(M, ...)                                                 \
   do {                                                                    \
     fprintf(stderr, "[FATAL] (%s:%d) " M "\n", __FILE__, __LINE__,        \
@@ -62,6 +64,13 @@
     const int calls = backtrace(buffer, sizeof(buffer) / sizeof(void *)); \
     backtrace_symbols_fd(buffer, calls, 1);                               \
     exit(-1);                                                             \
+  } while (0);
+#else
+#define LOG_FATAL(M, ...)                                          \
+  do {                                                             \
+    fprintf(stderr, "[FATAL] (%s:%d) " M "\n", __FILE__, __LINE__, \
+            ##__VA_ARGS__);                                        \
+    exit(-1);                                                      \
   } while (0);
 #endif
 

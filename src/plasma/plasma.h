@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <stddef.h>
 #include <string.h>
+#include <unistd.h>  // pid_t
 
 #include "common.h"
 

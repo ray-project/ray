@@ -1,7 +1,9 @@
 #include "logging.h"
 
-#include <stdint.h>
 #include <inttypes.h>
+#include <stdint.h>
+#include <sys/time.h>
+
 #include <hiredis/hiredis.h>
 #include <utstring.h>
 

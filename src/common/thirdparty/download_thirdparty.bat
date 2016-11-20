@@ -4,6 +4,7 @@
 		git                                                     submodule update --init --jobs="%NUMBER_OF_PROCESSORS%"
 		@If Not Exist  "python\.git" git                        clone "https://github.com/austinsc/python.git"
 		Call :GitApply "python"                                 "%CD%/patches/windows/python-pyconfig.patch"
+		Call :GitApply "redis-windows"                          "%CD%/patches/windows/redis.patch"
 	@PopD
 @EndLocal
 @GoTo :EOF

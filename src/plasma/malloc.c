@@ -46,13 +46,33 @@ struct mmap_record *records_by_pointer = NULL;
 
 const int GRANULARITY_MULTIPLIER = 2;
 
+static void *pointer_advance(void *p, ptrdiff_t n) {
+  return (unsigned char *) p + n;
+}
+
+static void *pointer_retreat(void *p, ptrdiff_t n) {
+  return (unsigned char *) p - n;
+}
+
+static ptrdiff_t pointer_distance(void const *pfrom, void const *pto) {
+  return (unsigned char const *) pto - (unsigned char const *) pfrom;
+}
+
 /* Create a buffer. This is creating a temporary file and then
  * immediately unlinking it so we do not leave traces in the system. */
 int create_buffer(int64_t size) {
+  int fd;
+#ifdef _WIN32
+  if (!CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE,
+                         (DWORD)((uint64_t) size >> (CHAR_BIT * sizeof(DWORD))),
+                         (DWORD)(uint64_t) size, NULL)) {
+    fd = -1;
+  }
+#else
   static char template[] = "/tmp/plasmaXXXXXX";
   char file_name[32];
   strncpy(file_name, template, 32);
-  int fd = mkstemp(file_name);
+  fd = mkstemp(file_name);
   if (fd < 0)
     return -1;
   FILE *file = fdopen(fd, "a+");
@@ -68,6 +88,7 @@ int create_buffer(int64_t size) {
     LOG_ERROR("ftruncate error");
     return -1;
   }
+#endif
   return fd;
 }
 
@@ -95,14 +116,14 @@ void *fake_mmap(size_t size) {
   HASH_ADD(hh_pointer, records_by_pointer, pointer, sizeof(pointer), record);
 
   /* We lie to dlmalloc about where mapped memory actually lives. */
-  pointer += sizeof(size_t);
+  pointer = pointer_advance(pointer, sizeof(size_t));
   LOG_DEBUG("%p = fake_mmap(%lu)", pointer, size);
   return pointer;
 }
 
 int fake_munmap(void *addr, size_t size) {
   LOG_DEBUG("fake_munmap(%p, %lu)", addr, size);
-  addr -= sizeof(size_t);
+  addr = pointer_retreat(addr, sizeof(size_t));
   size += sizeof(size_t);
 
   struct mmap_record *record;
@@ -113,12 +134,15 @@ int fake_munmap(void *addr, size_t size) {
      * calls to mmap, to prevent dlmalloc from trimming. */
     return -1;
   }
-  close(record->fd);
 
   HASH_DELETE(hh_fd, records_by_fd, record);
   HASH_DELETE(hh_pointer, records_by_pointer, record);
 
-  return munmap(addr, size);
+  int r = munmap(addr, size);
+  if (r == 0) {
+    close(record->fd);
+  }
+  return r;
 }
 
 void get_malloc_mapinfo(void *addr,
@@ -128,10 +152,11 @@ void get_malloc_mapinfo(void *addr,
   struct mmap_record *record;
   /* TODO(rshin): Implement a more efficient search through records_by_fd. */
   for (record = records_by_fd; record != NULL; record = record->hh_fd.next) {
-    if (addr >= record->pointer && addr < record->pointer + record->size) {
+    if (addr >= record->pointer &&
+        addr < pointer_advance(record->pointer, record->size)) {
       *fd = record->fd;
       *map_size = record->size;
-      *offset = addr - record->pointer;
+      *offset = pointer_distance(record->pointer, addr);
       return;
     }
   }

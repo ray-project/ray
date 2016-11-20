@@ -156,8 +156,11 @@ int send_client_reply(client_connection *conn, plasma_reply *reply) {
 }
 
 int send_client_failure_reply(object_id object_id, client_connection *conn) {
-  plasma_reply reply = {
-      .object_ids = {object_id}, .num_object_ids = 1, .has_object = 0};
+  plasma_reply reply;
+  memset(&reply, 0, sizeof(reply));
+  reply.object_ids[0] = object_id;
+  reply.num_object_ids = 1;
+  reply.has_object = 0;
   return send_client_reply(conn, &reply);
 }
 
@@ -584,9 +587,11 @@ int manager_timeout_handler(event_loop *loop, timer_id id, void *context) {
     object_conn->num_retries--;
     return MANAGER_TIMEOUT;
   }
-  plasma_reply reply = {.object_ids = {object_conn->object_id},
-                        .num_object_ids = 1,
-                        .has_object = 0};
+  plasma_reply reply;
+  memset(&reply, 0, sizeof(reply));
+  reply.object_ids[0] = object_conn->object_id;
+  reply.num_object_ids = 1;
+  reply.has_object = 0;
   send_client_reply(client_conn, &reply);
   remove_object_connection(client_conn, object_conn);
   return EVENT_LOOP_TIMER_DONE;
@@ -647,7 +652,10 @@ void process_fetch_request(client_connection *client_conn,
                            object_id object_id) {
   client_conn->is_wait = false;
   client_conn->wait_reply = NULL;
-  plasma_reply reply = {.object_ids = {object_id}, .num_object_ids = 1};
+  plasma_reply reply;
+  memset(&reply, 0, sizeof(reply));
+  reply.object_ids[0] = object_id;
+  reply.num_object_ids = 1;
   if (client_conn->manager_state->db == NULL) {
     reply.has_object = 0;
     send_client_reply(client_conn, &reply);
@@ -747,7 +755,7 @@ void process_object_notification(event_loop *loop,
   plasma_manager_state *state = context;
   object_id obj_id;
   /* Read the notification from Plasma. */
-  int n = recv(client_sock, &obj_id, sizeof(object_id), MSG_WAITALL);
+  int n = recv(client_sock, (char *) &obj_id, sizeof(object_id), MSG_WAITALL);
   if (n == 0) {
     /* The store has closed the socket. */
     LOG_DEBUG("The plasma store has closed the object notification socket.");
@@ -769,8 +777,11 @@ void process_object_notification(event_loop *loop,
   client_connection *client_conn;
   HASH_FIND(fetch_hh, state->fetch_connections, &obj_id, sizeof(object_id),
             object_conn);
-  plasma_reply reply = {
-      .object_ids = {obj_id}, .num_object_ids = 1, .has_object = 1};
+  plasma_reply reply;
+  memset(&reply, 0, sizeof(reply));
+  reply.object_ids[0] = obj_id;
+  reply.num_object_ids = 1;
+  reply.has_object = 1;
   while (object_conn) {
     next = object_conn->next;
     client_conn = object_conn->client_conn;
