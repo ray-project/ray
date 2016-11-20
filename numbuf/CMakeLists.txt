@@ -82,21 +82,12 @@ endif()
 set(ARROW_DIR "${CMAKE_SOURCE_DIR}/thirdparty/arrow/"
     CACHE STRING "Path of the arrow source directory")
 
-if(APPLE)
-  set(ARROW_LIB "${CMAKE_SOURCE_DIR}/thirdparty/arrow/cpp/build/release/libarrow.dylib"
-      CACHE STRING "Path to libarrow.dylib (needs to be changed if arrow is build in debug mode)")
-  set(ARROW_IO_LIB "${CMAKE_SOURCE_DIR}/thirdparty/arrow/cpp/build/release/libarrow_io.dylib"
-      CACHE STRING "Path to libarrow_io.dylib (needs to be changed if arrow is build in debug mode)")
-  set(ARROW_IPC_LIB "${CMAKE_SOURCE_DIR}/thirdparty/arrow/cpp/build/release/libarrow_ipc.dylib"
-      CACHE STRING "Path to libarrow_ipc.dylib (needs to be changed if arrow is build in debug mode)")
-else()
-  set(ARROW_LIB "${CMAKE_SOURCE_DIR}/thirdparty/arrow/cpp/build/release/libarrow.so"
-      CACHE STRING "Path to libarrow.so (needs to be changed if arrow is build in debug mode)")
-  set(ARROW_IO_LIB "${CMAKE_SOURCE_DIR}/thirdparty/arrow/cpp/build/release/libarrow_io.so"
-      CACHE STRING "Path to libarrow_io.so (needs to be changed if arrow is build in debug mode)")
-  set(ARROW_IPC_LIB "${CMAKE_SOURCE_DIR}/thirdparty/arrow/cpp/build/release/libarrow_ipc.so"
-      CACHE STRING "Path to libarrow_ipc.so (needs to be changed if arrow is build in debug mode)")
-endif()
+set(ARROW_LIB "${CMAKE_SOURCE_DIR}/thirdparty/arrow/cpp/build/release/libarrow.a"
+    CACHE STRING "Path to libarrow.so (needs to be changed if arrow is build in debug mode)")
+set(ARROW_IO_LIB "${CMAKE_SOURCE_DIR}/thirdparty/arrow/cpp/build/release/libarrow_io.a"
+    CACHE STRING "Path to libarrow_io.so (needs to be changed if arrow is build in debug mode)")
+set(ARROW_IPC_LIB "${CMAKE_SOURCE_DIR}/thirdparty/arrow/cpp/build/release/libarrow_ipc.a"
+    CACHE STRING "Path to libarrow_ipc.so (needs to be changed if arrow is build in debug mode)")
 
 include_directories("${ARROW_DIR}/cpp/src/")
 include_directories("cpp/src/")
@@ -116,15 +107,9 @@ get_filename_component(PYTHON_SHARED_LIBRARY ${PYTHON_LIBRARIES} NAME)
 if(APPLE)
   add_custom_command(TARGET numbuf
       POST_BUILD COMMAND ${CMAKE_INSTALL_NAME_TOOL} -change ${PYTHON_SHARED_LIBRARY} ${PYTHON_LIBRARIES} libnumbuf.so)
-  add_custom_command(TARGET numbuf
-      POST_BUILD COMMAND ${CMAKE_INSTALL_NAME_TOOL} -change "@rpath/libarrow.dylib" "@loader_path/libarrow.dylib" libnumbuf.so)
-  add_custom_command(TARGET numbuf
-      POST_BUILD COMMAND ${CMAKE_INSTALL_NAME_TOOL} -change "@rpath/libarrow_io.dylib" "@loader_path/libarrow_io.dylib" libnumbuf.so)
-  add_custom_command(TARGET numbuf
-      POST_BUILD COMMAND ${CMAKE_INSTALL_NAME_TOOL} -change "@rpath/libarrow_ipc.dylib" "@loader_path/libarrow_ipc.dylib" libnumbuf.so)
 endif(APPLE)
 
 target_link_libraries(numbuf ${ARROW_LIB} ${ARROW_IO_LIB} ${ARROW_IPC_LIB} ${PYTHON_LIBRARIES})
 
 install(TARGETS numbuf DESTINATION ${CMAKE_SOURCE_DIR}/numbuf/)
-install(FILES ${ARROW_LIB} ${ARROW_IO_LIB} ${ARROW_IPC_LIB} DESTINATION ${CMAKE_SOURCE_DIR}/numbuf/)
+#install(FILES ${ARROW_LIB} ${ARROW_IO_LIB} ${ARROW_IPC_LIB} DESTINATION ${CMAKE_SOURCE_DIR}/numbuf/)
