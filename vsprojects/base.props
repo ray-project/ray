@@ -2,7 +2,7 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ImportGroup Label="PropertySheets" />
   <PropertyGroup Label="UserMacros">
-    <THIRD_PARTY>$(SolutionDir)thirdparty\</THIRD_PARTY>
+    <THIRD_PARTY>$(ProjectDir)..\src\common\thirdparty\</THIRD_PARTY>
   </PropertyGroup>
   <PropertyGroup>
     <OutDir>$(SolutionDir)build\$(Platform)\$(Configuration)\</OutDir>
@@ -16,17 +16,17 @@
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>
-      <AdditionalIncludeDirectories>$(PYTHONHOME)\Lib\site-packages\numpy\core\include;$(THIRD_PARTY)python\inc;$(THIRD_PARTY)python\inc\Windows;$(ProjectDir)..\build\generated;$(ProjectDir)..\include;$(THIRD_PARTY)numbuf\cpp\src;$(THIRD_PARTY)numbuf\python\src;$(THIRD_PARTY)grpc\include;$(THIRD_PARTY)grpc\third_party\protobuf\src;$(BOOST_ROOT);$(BOOST_ROOT)\libs\interprocess\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>_SCL_SECURE_NO_WARNINGS;_WIN32_WINNT=0x0600;BOOST_DATE_TIME_NO_LIB=1;HAVE_ROUND;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\src;$(ProjectDir)..\src\$(MSBuildProjectName);$(ProjectDir)..\src\common;$(ProjectDir)..\src\common\lib\python;$(ProjectDir)..\src\common\shims\windows;$(PYTHONHOME)\Lib\site-packages\numpy\core\include;$(THIRD_PARTY)python\inc;$(THIRD_PARTY)redis-windows\src;$(THIRD_PARTY)redis-windows\deps;$(THIRD_PARTY)redis-windows\deps\hiredis;$(THIRD_PARTY)python\inc\Windows;$(THIRD_PARTY);$(ProjectDir)..\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>FDAPI_NOCRTREDEFS;USE_STATIC;_CRT_NONSTDC_NO_DEPRECATE;_CRT_OBSOLETE_NO_DEPRECATE;_CRT_SECURE_NO_WARNINGS;_SCL_SECURE_NO_WARNINGS;_WIN32_WINNT=0x0502;HAVE_ROUND;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <DisableSpecificWarnings>4191;;4100;4371;4514;4571;4619;4668;4710;4820</DisableSpecificWarnings>
-      <AdditionalOptions>/FS %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/we4013 /FS %(AdditionalOptions)</AdditionalOptions>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <MinimalRebuild>false</MinimalRebuild>
+      <WarningLevel>Level4</WarningLevel>
     </ClCompile>
     <Link>
       <AdditionalLibraryDirectories>$(THIRD_PARTY)python\lib\Windows\$(PlatformTarget);$(SolutionDir)packages\grpc.dependencies.openssl.1.0.204.1\build\native\lib\$(PlatformToolset)\$(Platform)\$(Configuration)\static;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalOptions>/NoDefaultLib:libcmt.lib /NoDefaultLib:libcmtd.lib /NoDefaultLib:libcpmt.lib /NoDefaultLib:libcpmtd.lib /ignore:4099 /ignore:4217 %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalDependencies>libeay32.lib;ssleay32.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalOptions>/ignore:4099 /ignore:4217 %(AdditionalOptions)</AdditionalOptions>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>

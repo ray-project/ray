@@ -15,12 +15,12 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\src\objstore.cc">
+    <ClCompile Include="..\src\plasma\plasma_store.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\src\objstore.h">
+    <ClInclude Include="..\src\plasma\plasma_store.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

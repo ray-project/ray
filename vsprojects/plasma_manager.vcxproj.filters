@@ -15,18 +15,12 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\src\scheduler.cc">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\computation_graph.cc">
+    <ClCompile Include="..\src\plasma\plasma_manager.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\src\scheduler.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\computation_graph.h">
+    <ClInclude Include="..\src\plasma\plasma_manager.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
