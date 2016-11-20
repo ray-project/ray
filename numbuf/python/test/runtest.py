@@ -38,7 +38,7 @@ class SerializationTests(unittest.TestCase):
     self.roundTripTest([{"hello": [1, 2, 3]}])
     self.roundTripTest([{"hello": [1, [2, 3]]}])
     self.roundTripTest([{"hello": (None, 2, [3, 4])}])
-    self.roundTripTest([{"hello": (None, 2, [3, 4], np.ndarray([1.0, 2.0, 3.0]))}])
+    self.roundTripTest([{"hello": (None, 2, [3, 4], np.array([1.0, 2.0, 3.0]))}])
 
   def numpyTest(self, t):
     a = np.random.randint(0, 10, size=(100, 100)).astype(t)

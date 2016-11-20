@@ -52,6 +52,10 @@ matrix:
 install:
   - ./install-dependencies.sh
   - ./build.sh
+  
+  - cd numbuf
+  - sudo python setup.py install
+  - cd ..
 
   - cd src/common/lib/python
   - sudo python setup.py install
@@ -62,6 +66,8 @@ install:
   - cd ../..
 
 script:
+  - python numbuf/python/test/runtest.py
+
   - python src/common/test/test.py
   - python src/plasma/test/test.py
   - python src/photon/test/test.py

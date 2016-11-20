@@ -128,10 +128,7 @@ Status append(PyObject* elem, SequenceBuilder& builder, std::vector<PyObject*>& 
       // must be decremented. This is done in SerializeDict in this file.
       PyObject* result = PyObject_CallObject(numbuf_serialize_callback, arglist);
       Py_XDECREF(arglist);
-      if (!result) {
-        return Status::NotImplemented("python error");  // TODO(pcm):
-        // https://github.com/ray-project/numbuf/issues/10
-      }
+      if (!result) { return Status::NotImplemented("python error"); }
       builder.AppendDict(PyDict_Size(result));
       subdicts.push_back(result);
     }
@@ -285,10 +282,7 @@ Status DeserializeDict(std::shared_ptr<Array> array, int32_t start_idx, int32_t 
     Py_XDECREF(arglist);
     Py_XDECREF(result);
     result = callback_result;
-    if (!callback_result) {
-      return Status::NotImplemented("python error");  // TODO(pcm):
-      // https://github.com/ray-project/numbuf/issues/10
-    }
+    if (!callback_result) { return Status::NotImplemented("python error"); }
   }
   *out = result;
   return Status::OK();
