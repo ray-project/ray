@@ -52,7 +52,7 @@ matrix:
 install:
   - ./install-dependencies.sh
   - ./build.sh
-  
+
   - cd numbuf
   - sudo python setup.py install
   - cd ..
@@ -77,3 +77,11 @@ script:
   - python test/array_test.py
   - python test/failure_test.py
   - python test/microbenchmarks.py
+
+after_script:
+  # Make sure that we can build numbuf as a standalone library.
+  - pip uninstall -y numbuf
+  - cd numbuf/build
+  - rm -rf *
+  - cmake -DHAS_PLASMA=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS="-g" -DCMAKE_CXX_FLAGS="-g" ..
+  - make install
