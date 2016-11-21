@@ -3,7 +3,7 @@
 /src/plasma/build
 /src/photon/build
 /src/common/build
-/src/common/thirdparty/redis-3.2.3
+/src/common/thirdparty/redis
 
 # Python byte code files
 *.pyc
