@@ -4,7 +4,15 @@ project(numbuf)
 
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake/Modules)
 
-# Make libnumbuf.so look for shared libraries in the folder libnumbuf.so is in.
+option(HAS_PLASMA
+  "Are we linking with the plasma object store? Recommended if numbuf is used as part of ray."
+  OFF)
+
+if(HAS_PLASMA)
+  add_definitions(-DHAS_PLASMA)
+endif()
+
+# Make libnumbuf.so look for shared libraries in the folder libnumbuf.so is in
 set(CMAKE_INSTALL_RPATH "$ORIGIN/")
 set(CMAKE_MACOSX_RPATH 1)
 
@@ -102,6 +110,12 @@ include_directories("${ARROW_DIR}/cpp/src/")
 include_directories("cpp/src/")
 include_directories("python/src/")
 
+if(HAS_PLASMA)
+  include_directories("../src/plasma")
+  include_directories("../src/common")
+  include_directories("../src/common/thirdparty")
+endif()
+
 add_definitions(-fPIC)
 
 add_library(numbuf SHARED
@@ -124,7 +138,11 @@ if(APPLE)
       POST_BUILD COMMAND ${CMAKE_INSTALL_NAME_TOOL} -change "@rpath/libarrow_ipc.dylib" "@loader_path/libarrow_ipc.dylib" libnumbuf.so)
 endif(APPLE)
 
-target_link_libraries(numbuf ${ARROW_LIB} ${ARROW_IO_LIB} ${ARROW_IPC_LIB} ${PYTHON_LIBRARIES})
+if(HAS_PLASMA)
+  target_link_libraries(numbuf ${ARROW_LIB} ${ARROW_IO_LIB} ${ARROW_IPC_LIB} ${PYTHON_LIBRARIES} "${CMAKE_SOURCE_DIR}/../src/plasma/build/libplasma_client.a" "${CMAKE_SOURCE_DIR}/../src/common/build/libcommon.a")
+else()
+  target_link_libraries(numbuf ${ARROW_LIB} ${ARROW_IO_LIB} ${ARROW_IPC_LIB} ${PYTHON_LIBRARIES})
+endif()
 
 install(TARGETS numbuf DESTINATION ${CMAKE_SOURCE_DIR}/numbuf/)
 install(FILES ${ARROW_LIB} ${ARROW_IO_LIB} ${ARROW_IPC_LIB} DESTINATION ${CMAKE_SOURCE_DIR}/numbuf/)
