@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -g -Wall -Wno-typedef-redefinition --std=c99 -D_XOPEN_SOURCE=500 -D_POSIX_C_SOURCE=200809L -fPIC -I. -Ithirdparty -Ithirdparty/ae
 BUILD = build
 
-all: hiredis $(BUILD)/libcommon.a
+all: hiredis redis $(BUILD)/libcommon.a
 
 $(BUILD)/libcommon.a: event_loop.o common.o task.o io.o net.o state/redis.o state/table.o state/object_table.o state/task_table.o state/db_client_table.o thirdparty/ae/ae.o thirdparty/sha256.o
 	ar rcs $@ $^
