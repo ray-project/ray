@@ -25,6 +25,11 @@
 #define NUM_CONNECT_ATTEMPTS 50
 #define CONNECT_TIMEOUT 100
 
+#ifndef _WIN32
+/* This function is actually not declared in standard POSIX, so declare it */
+extern int usleep(useconds_t usec);
+#endif
+
 typedef struct {
   /** Key that uniquely identifies the  memory mapped file. In practice, we
    *  take the numerical value of the file descriptor in the object store. */
