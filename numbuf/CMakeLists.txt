@@ -83,11 +83,11 @@ set(ARROW_DIR "${CMAKE_SOURCE_DIR}/thirdparty/arrow/"
     CACHE STRING "Path of the arrow source directory")
 
 set(ARROW_LIB "${CMAKE_SOURCE_DIR}/thirdparty/arrow/cpp/build/release/libarrow.a"
-    CACHE STRING "Path to libarrow.so (needs to be changed if arrow is build in debug mode)")
+    CACHE STRING "Path to libarrow.a (needs to be changed if arrow is build in debug mode)")
 set(ARROW_IO_LIB "${CMAKE_SOURCE_DIR}/thirdparty/arrow/cpp/build/release/libarrow_io.a"
-    CACHE STRING "Path to libarrow_io.so (needs to be changed if arrow is build in debug mode)")
+    CACHE STRING "Path to libarrow_io.a (needs to be changed if arrow is build in debug mode)")
 set(ARROW_IPC_LIB "${CMAKE_SOURCE_DIR}/thirdparty/arrow/cpp/build/release/libarrow_ipc.a"
-    CACHE STRING "Path to libarrow_ipc.so (needs to be changed if arrow is build in debug mode)")
+    CACHE STRING "Path to libarrow_ipc.a (needs to be changed if arrow is build in debug mode)")
 
 include_directories("${ARROW_DIR}/cpp/src/")
 include_directories("cpp/src/")
@@ -109,7 +109,11 @@ if(APPLE)
       POST_BUILD COMMAND ${CMAKE_INSTALL_NAME_TOOL} -change ${PYTHON_SHARED_LIBRARY} ${PYTHON_LIBRARIES} libnumbuf.so)
 endif(APPLE)
 
-target_link_libraries(numbuf ${ARROW_LIB} ${ARROW_IO_LIB} ${ARROW_IPC_LIB} ${PYTHON_LIBRARIES})
+if(APPLE)
+  target_link_libraries(numbuf ${ARROW_LIB} ${ARROW_IO_LIB} ${ARROW_IPC_LIB} ${PYTHON_LIBRARIES})
+else()
+  target_link_libraries(numbuf -Wl,--whole-archive ${ARROW_LIB} -Wl,--no-whole-archive ${ARROW_IO_LIB} ${ARROW_IPC_LIB} ${PYTHON_LIBRARIES})
+endif()
 
 install(TARGETS numbuf DESTINATION ${CMAKE_SOURCE_DIR}/numbuf/)
-#install(FILES ${ARROW_LIB} ${ARROW_IO_LIB} ${ARROW_IPC_LIB} DESTINATION ${CMAKE_SOURCE_DIR}/numbuf/)
+
