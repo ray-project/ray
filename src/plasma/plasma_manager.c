@@ -1063,10 +1063,10 @@ void request_status_done(object_id object_id,
 }
 
 void request_fetch_or_status(object_id object_id,
-                                int manager_count,
-                                const char *manager_vector[],
-                                void *context,
-                                bool transfer) {
+                             int manager_count,
+                             const char *manager_vector[],
+                             void *context,
+                             bool fetch) {
   client_connection *client_conn = (client_connection *) context;
   client_object_request *object_req =
     get_object_request(client_conn, object_id);
@@ -1077,10 +1077,10 @@ void request_fetch_or_status(object_id object_id,
    * process_fetch_or_status_request(), but since then the object could have
    * been evicted. */
   if (object_req) {
-    /** TODO (istocia): Shouldn't we free(manager_vector) here? */
+    /** TODO (istoica): Shouldn't we free(manager_vector) here? */
     send_client_object_status_reply(object_id,
-                                   client_conn,
-                                   PLASMA_OBJECT_TRANSFER);
+                                    client_conn,
+                                    PLASMA_OBJECT_TRANSFER);
     return;
   }
 
@@ -1089,13 +1089,13 @@ void request_fetch_or_status(object_id object_id,
   if (manager_count == 0) {
     free(manager_vector);
     send_client_object_does_not_exist_reply(object_id, client_conn);
-    if (transfer) {
+    if (object_req) {
       remove_object_request(client_conn, object_req);
     }
     return;
   }
 
-  if (transfer) {
+  if (fetch) {
     /* Register the new outstanding fetch with the current client connection. */
     object_req = add_object_request(client_conn, object_id);
     CHECKM(object_req != NULL, "Unable to allocate memory for object context.");
@@ -1181,7 +1181,8 @@ int send_client_object_status_reply(object_id object_id,
   plasma_reply reply = {
       .object_ids = {object_id},
       .num_object_ids = 1,
-      .object_status = object_status};
+      .object_status = object_status
+  };
   return send_client_reply1(conn, &reply);
 }
 
