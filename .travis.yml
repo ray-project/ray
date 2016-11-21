@@ -52,7 +52,15 @@ matrix:
 install:
   - ./install-dependencies.sh
   - ./build.sh
-  
+
+  - cd src/common
+  - make test
+  - cd ../..
+
+  - cd src/plasma
+  - make test
+  - cd ../..
+
   - cd numbuf
   - sudo python setup.py install
   - cd ..
