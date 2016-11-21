@@ -116,4 +116,3 @@ else()
 endif()
 
 install(TARGETS numbuf DESTINATION ${CMAKE_SOURCE_DIR}/numbuf/)
-
