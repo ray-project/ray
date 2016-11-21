@@ -7,6 +7,7 @@ from numpy.testing import assert_equal, assert_almost_equal
 import ray.array.remote as ra
 import ray.array.distributed as da
 
+"""
 class RemoteArrayTest(unittest.TestCase):
 
   def testMethods(self):
@@ -40,9 +41,11 @@ class RemoteArrayTest(unittest.TestCase):
     assert_almost_equal(np.dot(q_val, r_val), a_val)
 
     ray.worker.cleanup()
+"""
 
 class DistributedArrayTest(unittest.TestCase):
 
+  """
   def testAssemble(self):
     for module in [ra.core, ra.random, ra.linalg, da.core, da.random, da.linalg]:
       reload(module)
@@ -54,6 +57,7 @@ class DistributedArrayTest(unittest.TestCase):
     assert_equal(x.assemble(), np.vstack([np.ones([da.BLOCK_SIZE, da.BLOCK_SIZE]), np.zeros([da.BLOCK_SIZE, da.BLOCK_SIZE])]))
 
     ray.worker.cleanup()
+  """
 
   def testMethods(self):
     for module in [ra.core, ra.random, ra.linalg, da.core, da.random, da.linalg]:
@@ -128,6 +132,7 @@ class DistributedArrayTest(unittest.TestCase):
       assert_almost_equal(x_val, np.dot(q_val, r_val))
       assert_almost_equal(np.dot(q_val.T, q_val), np.eye(K))
 
+    """
     # test da.linalg.modified_lu
     def test_modified_lu(d1, d2):
       print "testing dist_modified_lu with d1 = " + str(d1) + ", d2 = " + str(d2)
@@ -191,6 +196,7 @@ class DistributedArrayTest(unittest.TestCase):
       d1 = np.random.randint(1, 35)
       d2 = np.random.randint(1, 35)
       test_dist_qr(d1, d2)
+    """
 
     ray.worker.cleanup()
 

@@ -24,11 +24,16 @@ PyObject *PyPlasma_connect(PyObject *self, PyObject *args) {
 }
 
 PyObject *PyPlasma_disconnect(PyObject *self, PyObject *args) {
+  PyObject* conn_capsule;
+  if (!PyArg_ParseTuple(args, "O", &conn_capsule)) {
+    return NULL;
+  }
   plasma_connection *conn;
-  if (!PyArg_ParseTuple(args, "O&", PyObjectToPlasmaConnection, &conn)) {
+  if (!PyObjectToPlasmaConnection(conn_capsule, &conn)) {
     return NULL;
   }
   plasma_disconnect(conn);
+  PyCapsule_SetContext(conn_capsule, CONN_CAPSULE_DISCONNECTED);
   Py_RETURN_NONE;
 }
 
@@ -64,13 +69,18 @@ PyObject *PyPlasma_seal(PyObject *self, PyObject *args) {
 }
 
 PyObject *PyPlasma_release(PyObject *self, PyObject *args) {
+  PyObject *conn_capsule;
   plasma_connection *conn;
   object_id object_id;
-  if (!PyArg_ParseTuple(args, "O&O&", PyObjectToPlasmaConnection, &conn,
-                        PyObjectToUniqueID, &object_id)) {
+  if (!PyArg_ParseTuple(args, "OO&", &conn, PyObjectToUniqueID, &object_id)) {
     return NULL;
   }
-  plasma_release(conn, object_id);
+  if (!PyObjectToPlasmaConnection(conn_capsule, &conn)) {
+    return NULL;
+  }
+  if (PyCapsule_GetContext(conn_capsule) != CONN_CAPSULE_DISCONNECTED) {
+    plasma_release(conn, object_id);
+  }
   Py_RETURN_NONE;
 }
 

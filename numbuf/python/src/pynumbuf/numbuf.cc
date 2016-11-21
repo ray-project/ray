@@ -203,8 +203,13 @@ static PyObject* register_callbacks(PyObject* self, PyObject* args) {
  */
 static void BufferCapsule_Destructor(PyObject* capsule) {
   object_id *id = reinterpret_cast<object_id*>(PyCapsule_GetPointer(capsule, "buffer"));
-  plasma_connection *conn = reinterpret_cast<plasma_connection*>(PyCapsule_GetContext(capsule));
-  plasma_release(conn, *id);
+  auto context = reinterpret_cast<PyObject*>(PyCapsule_GetContext(capsule));
+  Py_XDECREF(context);
+  plasma_connection *conn;
+  CHECK(PyObjectToPlasmaConnection(context, &conn));
+  if (conn) {
+    plasma_release(conn, *id);
+  }
   delete id;
 }
 
@@ -272,8 +277,12 @@ static PyObject* store_list(PyObject* self, PyObject* args) {
  */
 static PyObject* retrieve_list(PyObject* self, PyObject* args) {
   object_id obj_id;
+  PyObject *plasma_conn;
+  if (!PyArg_ParseTuple(args, "O&O", PyObjectToUniqueID, &obj_id, &plasma_conn)) {
+    return NULL;
+  }
   plasma_connection *conn;
-  if (!PyArg_ParseTuple(args, "O&O&", PyObjectToUniqueID, &obj_id, PyObjectToPlasmaConnection, &conn)) {
+  if (!PyObjectToPlasmaConnection(plasma_conn, &conn)) {
     return NULL;
   }
   object_id *buffer_obj_id = new object_id(obj_id);
@@ -281,7 +290,8 @@ static PyObject* retrieve_list(PyObject* self, PyObject* args) {
    * buffer is in scope. This prevents memory in the object store from getting
    * released while it is still being used to back a Python object. */
   PyObject* base = PyCapsule_New(buffer_obj_id, "buffer", BufferCapsule_Destructor);
-  PyCapsule_SetContext(base, conn);
+  PyCapsule_SetContext(base, plasma_conn);
+  Py_XINCREF(plasma_conn);
 
   int64_t size, metadata_size;
   uint8_t *data, *metadata;

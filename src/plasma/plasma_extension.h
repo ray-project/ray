@@ -1,6 +1,10 @@
 #ifndef PLASMA_EXTENSION_H
 #define PLASMA_EXTENSION_H
 
+/* If this is the context of the PyCapsule for plasma connections,
+ * it means that the connection has been disconnected. */
+#define CONN_CAPSULE_DISCONNECTED ((void *) 1)
+
 static int PyObjectToPlasmaConnection(PyObject *object,
                                       plasma_connection **conn) {
   if (PyCapsule_IsValid(object, "plasma")) {
