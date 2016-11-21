@@ -31,7 +31,7 @@ pushd "$COMMON_DIR"
   make clean
   make
 popd
-cp "$COMMON_DIR/thirdparty/redis-3.2.3/src/redis-server" "$PYTHON_COMMON_DIR/thirdparty/redis-3.2.3/src/"
+cp "$COMMON_DIR/thirdparty/redis/src/redis-server" "$PYTHON_COMMON_DIR/thirdparty/redis/src/"
 
 pushd "$PLASMA_DIR"
   make clean

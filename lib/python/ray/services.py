@@ -81,7 +81,7 @@ def start_redis(num_retries=20, cleanup=True):
   Raises:
     Exception: An exception is raised if Redis could not be started.
   """
-  redis_filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../common/thirdparty/redis-3.2.3/src/redis-server")
+  redis_filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../common/thirdparty/redis/src/redis-server")
   counter = 0
   while counter < num_retries:
     if counter > 0:
