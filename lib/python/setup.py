@@ -21,7 +21,7 @@ class install(_install.install):
 setup(name="ray",
       version="0.0.1",
       packages=find_packages(),
-      package_data={"common": ["thirdparty/redis-3.2.3/src/redis-server"],
+      package_data={"common": ["thirdparty/redis/src/redis-server"],
                     "plasma": ["build/plasma_store",
                                "build/plasma_manager",
                                "lib/python/libplasma.so"],
