@@ -15,6 +15,11 @@
 #include "plasma_client.h"
 #include "plasma_manager.h"
 
+#ifndef _WIN32
+/* This function is actually not declared in standard POSIX, so declare it. */
+extern int usleep(useconds_t usec);
+#endif
+
 SUITE(plasma_manager_tests);
 
 const char *manager_addr = "127.0.0.1";

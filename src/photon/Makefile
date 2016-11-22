@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -g -Wall --std=c99 -D_XOPEN_SOURCE=500 -D_POSIX_C_SOURCE=200809L -I.. -I../common -I../common/thirdparty -fPIC
+CFLAGS = -g -Wall -Wextra -Werror=implicit-function-declaration -Wno-sign-compare -Wno-unused-parameter -Wno-type-limits -Wno-missing-field-initializers --std=c99 -D_XOPEN_SOURCE=500 -D_POSIX_C_SOURCE=200809L -I.. -I../common -I../common/thirdparty -fPIC
 BUILD = build
 
 all: $(BUILD)/photon_scheduler $(BUILD)/photon_client.a
