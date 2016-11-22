@@ -26,7 +26,7 @@
 #define CONNECT_TIMEOUT 100
 
 #ifndef _WIN32
-/* This function is actually not declared in standard POSIX, so declare it */
+/* This function is actually not declared in standard POSIX, so declare it. */
 extern int usleep(useconds_t usec);
 #endif
 
