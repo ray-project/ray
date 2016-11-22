@@ -366,12 +366,12 @@ void remove_objects(plasma_store_state *plasma_state,
 /* Convert object_id to a unique file path on-disk */
 char *object_id_to_persist_path(object_id object_id) {
   // 2x for up to 2-digit-hex
-  size_t path_size = strlen(PERSIST_PATH) + 2*UNIQUE_ID_SIZE + 1;
+  size_t path_size = strlen(PERSIST_PATH) + 2 * UNIQUE_ID_SIZE + 1;
   char *file_path = malloc(path_size);
   strcpy(file_path, PERSIST_PATH);
-  for (int i = strlen(PERSIST_PATH); i < path_size - 1; i+=2) {
-    int j = (i-strlen(PERSIST_PATH)) / 2;
-    sprintf(&file_path[i], "%hhx", (unsigned int)(object_id.id[j] & 0xFF));
+  for (int i = strlen(PERSIST_PATH); i < path_size - 1; i += 2) {
+    int j = (i - strlen(PERSIST_PATH)) / 2;
+    sprintf(&file_path[i], "%hhx", (unsigned int) (object_id.id[j] & 0xFF));
   }
   file_path[path_size - 1] = '\0';
   return file_path;
@@ -382,16 +382,16 @@ void persist_object(client *client_context, object_id object_id) {
   LOG_DEBUG("persisting object");
   plasma_store_state *plasma_state = client_context->plasma_state;
   object_table_entry *entry;
-  HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id, 
+  HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
             sizeof(object_id), entry);
-  CHECKM(entry != NULL , "To persist an object it must exist.");
+  CHECKM(entry != NULL, "To persist an object it must exist.");
   CHECKM(entry->state == SEALED, "To persist an object it must be sealed.");
   /* Check if the file containing the object already exists. */
   char *file_path = object_id_to_persist_path(object_id);
   struct stat buffer;
   CHECKM(stat(file_path, &buffer) != 0, "Cannot persist an object twice");
   /* Create the file if it does not exist and write object. */
-  int fd = open(file_path, O_RDWR|O_CREAT, S_IRUSR | S_IWUSR);
+  int fd = open(file_path, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
   CHECKM(fd > 0, "Something went wrong while creating persistence file");
   write(fd, entry->pointer, entry->info.data_size + entry->info.metadata_size);
   close(fd);
@@ -403,7 +403,7 @@ void get_persisted_object(client *client_context, object_id object_id) {
   LOG_DEBUG("reading persisted object");
   plasma_store_state *plasma_state = client_context->plasma_state;
   object_table_entry *entry;
-  HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id, 
+  HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
             sizeof(object_id), entry);
   CHECKM(entry != NULL, "There must be an object entry to read it into.");
   /* Read object into allocated space. */
