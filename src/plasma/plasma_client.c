@@ -342,10 +342,8 @@ int64_t plasma_evict(plasma_connection *conn, int64_t num_bytes) {
 
 int plasma_subscribe(plasma_connection *conn) {
   int fd[2];
-  /* TODO: Just create 1 socket,
-   * bind it to port 0 to find a free port,
-   * and send the port number instead, and let the client connect.
-   */
+  /* TODO: Just create 1 socket, bind it to port 0 to find a free port, and
+   * send the port number instead, and let the client connect. */
   /* Create a non-blocking socket pair. This will only be used to send
    * notifications from the Plasma store to the client. */
   socketpair(AF_UNIX, SOCK_STREAM, 0, fd);

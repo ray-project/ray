@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SOCKET_H
+#define SOCKET_H
 
 typedef unsigned short sa_family_t;
 
@@ -31,3 +32,5 @@ int dumb_socketpair(SOCKET socks[2]);
 ssize_t sendmsg(int sockfd, struct msghdr *msg, int flags);
 ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags);
 int socketpair(int domain, int type, int protocol, int sv[2]);
+
+#endif /* SOCKET_H */

@@ -4,7 +4,8 @@
 #include <stdbool.h>
 
 #include <stdlib.h>
-#include "hiredis/hiredis.h"  // necessary on Windows for typedefs used in ae.h
+/* Including hiredis here is necessary on Windows for typedefs used in ae.h. */
+#include "hiredis/hiredis.h"
 #include "hiredis/adapters/ae.h"
 #include "utstring.h"
 
