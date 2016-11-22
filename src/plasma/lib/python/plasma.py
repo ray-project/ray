@@ -6,7 +6,7 @@ import time
 import libplasma
 
 PLASMA_ID_SIZE = 20
-PLASMA_WAIT_TIMEOUT = 2 ** 36
+PLASMA_WAIT_TIMEOUT = 2 ** 30
 
 class PlasmaBuffer(object):
   """This is the type of objects returned by calls to get with a PlasmaClient.

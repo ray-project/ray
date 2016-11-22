@@ -189,6 +189,12 @@ PyObject *PyPlasma_wait(PyObject *self, PyObject *args) {
         "The argument num_returns cannot be greater than len(object_ids)");
     return NULL;
   }
+  int64_t threshold = 1 << 30;
+  if (timeout > threshold) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "The argument timeout cannot be greater than 2 ** 30.");
+    return NULL;
+  }
 
   object_id *object_ids = malloc(sizeof(object_id) * n);
   for (int i = 0; i < n; ++i) {
