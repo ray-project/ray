@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -g -Wall -Wno-typedef-redefinition --std=c99 -D_XOPEN_SOURCE=500 -D_POSIX_C_SOURCE=200809L -fPIC -I. -Ithirdparty -Ithirdparty/ae
+CFLAGS = -g -Wall -Wextra -Werror=implicit-function-declaration -Wno-typedef-redefinition -Wno-sign-compare -Wno-unused-parameter -Wno-type-limits -Wno-missing-field-initializers --std=c99 -D_XOPEN_SOURCE=500 -D_POSIX_C_SOURCE=200809L -fPIC -I. -Ithirdparty -Ithirdparty/ae
 BUILD = build
 
 all: hiredis redis $(BUILD)/libcommon.a
