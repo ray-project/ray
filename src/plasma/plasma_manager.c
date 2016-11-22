@@ -190,6 +190,11 @@ client_object_connection *add_object_connection(client_connection *client_conn,
   object_conn->manager_vector = NULL;
   object_conn->next_manager = 0;
   /* Register the object context with the client context. */
+  client_object_connection *temp_object_conn = NULL;
+  HASH_FIND(active_hh, client_conn->active_objects, &object_id,
+            sizeof(object_id), temp_object_conn);
+  CHECKM(temp_object_conn == NULL,
+         "The hash table already has an object connection for this object ID.");
   HASH_ADD(active_hh, client_conn->active_objects, object_id, sizeof(object_id),
            object_conn);
   /* Register the object context with the manager state. */
@@ -211,6 +216,7 @@ client_object_connection *add_object_connection(client_connection *client_conn,
 void remove_object_connection(client_connection *client_conn,
                               client_object_connection *object_conn) {
   /* Deregister the object context with the client context. */
+  /* TODO(rkn): Check that object_conn is actually in the hash table. */
   HASH_DELETE(active_hh, client_conn->active_objects, object_conn);
   /* Deregister the object context with the manager state. */
   client_object_connection *object_conns;
@@ -611,7 +617,8 @@ void request_transfer(object_id object_id,
      * register a Redis callback for changes to this object table entry. */
     free(manager_vector);
     send_client_failure_reply(object_id, client_conn);
-    remove_object_connection(client_conn, object_conn);
+    /* The object connection was never added, so can't be removed, right? */
+    /* remove_object_connection(client_conn, object_conn); */
     return;
   }
   /* Register the new outstanding fetch with the current client connection. */
