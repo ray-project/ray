@@ -147,6 +147,7 @@ PyObject *PyPlasma_fetch(PyObject *self, PyObject *args) {
     PyObjectToUniqueID(PyList_GetItem(object_id_list, i), &object_ids[i]);
   }
   int *success_array = malloc(sizeof(int) * n);
+  memset(success_array, 0, sizeof(int) * n);
   plasma_fetch(conn, (int) n, object_ids, success_array);
   PyObject *success_list = PyList_New(n);
   for (int i = 0; i < n; ++i) {
