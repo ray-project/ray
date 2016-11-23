@@ -298,6 +298,8 @@ bool node_id_is_nil(node_id id) {
 task *alloc_task(task_spec *spec, scheduling_state state, node_id node) {
   int64_t size = sizeof(task) - sizeof(task_spec) + task_spec_size(spec);
   task *result = malloc(size);
+  printf("%" PRId64 "\n", size);
+  CHECK(result);
   memset(result, 0, size);
   result->state = state;
   result->node = node;
