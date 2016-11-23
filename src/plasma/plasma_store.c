@@ -380,7 +380,7 @@ void send_notifications(event_loop *loop,
   for (int i = 0; i < utarray_len(queue->object_ids); ++i) {
     object_id *obj_id = (object_id *) utarray_eltptr(queue->object_ids, i);
     /* Attempt to send a notification about this object ID. */
-    int nbytes = send(client_sock, obj_id, sizeof(*obj_id), 0);
+    int nbytes = send(client_sock, (char const *) obj_id, sizeof(*obj_id), 0);
     if (nbytes >= 0) {
       CHECK(nbytes == sizeof(*obj_id));
     } else if (nbytes == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {

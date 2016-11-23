@@ -133,7 +133,7 @@ void process_plasma_notification(event_loop *loop,
   local_scheduler_state *s = context;
   /* Read the notification from Plasma. */
   object_id obj_id;
-  recv(client_sock, &obj_id, sizeof(obj_id), 0);
+  recv(client_sock, (char *) &obj_id, sizeof(obj_id), 0);
   handle_object_available(s->scheduler_info, s->scheduler_state, obj_id);
 }
 
@@ -183,7 +183,9 @@ void new_client_connection(event_loop *loop, int listener_sock, void *context,
   new_worker_index->sock = new_socket;
   new_worker_index->worker_index = utarray_len(s->scheduler_info->workers);
   HASH_ADD_INT(s->worker_index, sock, new_worker_index);
-  worker worker = {.sock = new_socket};
+  worker worker;
+  memset(&worker, 0, sizeof(worker));
+  worker.sock = new_socket;
   utarray_push_back(s->scheduler_info->workers, &worker);
 }
 

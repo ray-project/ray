@@ -15,7 +15,8 @@ const unique_id NIL_ID = {{255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
 unique_id globally_unique_id(void) {
   /* Use /dev/urandom for "real" randomness. */
   int fd;
-  if ((fd = open("/dev/urandom", O_RDONLY)) == -1) {
+  int const flags = 0 /* for Windows compatibility */;
+  if ((fd = open("/dev/urandom", O_RDONLY, flags)) == -1) {
     LOG_ERROR("Could not generate random number");
   }
   unique_id result;

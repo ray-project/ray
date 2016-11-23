@@ -18,14 +18,41 @@
       <Platform>x64</Platform>
     </ProjectConfiguration>
   </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\src\plasma\plasma_manager.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\src\plasma\plasma_manager.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="common.vcxproj">
+      <Project>{c002f9f6-8447-4b95-aa18-fb781f4a7865}</Project>
+    </ProjectReference>
+    <ProjectReference Include="plasma_client.vcxproj">
+      <Project>{ddfcec30-7024-421a-979a-b1bf69cf464e}</Project>
+    </ProjectReference>
+  </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{D4F50B21-7FDE-41CE-87F5-2CF71178EF40}</ProjectGuid>
+    <ProjectGuid>{75348CBF-9F7A-4a49-82D8-AA71AD9306C4}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
+    <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Label="Configuration">
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>v140_xp</PlatformToolset>
     <ConfigurationType>Application</ConfigurationType>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
@@ -41,23 +68,11 @@
     <Link>
       <SubSystem>Console</SubSystem>
     </Link>
+    <ClCompile />
+    <ClCompile />
+    <ClCompile />
+    <ClCompile />
   </ItemDefinitionGroup>
-  <ItemGroup>
-    <ClInclude Include="..\src\computation_graph.h" />
-    <ClInclude Include="..\src\scheduler.h" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="..\src\computation_graph.cc" />
-    <ClCompile Include="..\src\scheduler.cc" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="Ray.vcxproj">
-      <Project>{c002f9f6-8447-4b95-aa18-fb781f4a7865}</Project>
-    </ProjectReference>
-    <ProjectReference Include="RayLib.vcxproj">
-      <Project>{76be8e91-0f74-4276-a6a7-b279c6fea0d2}</Project>
-    </ProjectReference>
-  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

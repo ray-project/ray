@@ -10,6 +10,7 @@
 SUITE(io_tests);
 
 TEST ipc_socket_test(void) {
+#ifndef _WIN32
   const char *socket_pathname = "test-socket";
   int socket_fd = bind_ipc_sock(socket_pathname, true);
   ASSERT(socket_fd >= 0);
@@ -44,11 +45,12 @@ TEST ipc_socket_test(void) {
     close(socket_fd);
     unlink(socket_pathname);
   }
-
+#endif
   PASS();
 }
 
 TEST long_ipc_socket_test(void) {
+#ifndef _WIN32
   const char *socket_pathname = "long-test-socket";
   int socket_fd = bind_ipc_sock(socket_pathname, true);
   ASSERT(socket_fd >= 0);
@@ -89,6 +91,7 @@ TEST long_ipc_socket_test(void) {
   }
 
   utstring_free(test_string);
+#endif
   PASS();
 }
 
