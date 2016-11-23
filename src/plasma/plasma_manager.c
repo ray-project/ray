@@ -152,6 +152,8 @@ struct client_connection {
    *  list of buffers to write. */
   /* TODO(swang): Split into two queues, data transfers and data requests. */
   plasma_request_buffer *transfer_queue;
+  /** Buffer used to receive transfers (data fetches) we want to ignore */
+  plasma_request_buffer *ignore_buffer;
   /** File descriptor for the socket connected to the other
    *  plasma manager. */
   int fd;
@@ -487,6 +489,31 @@ void process_data_chunk(event_loop *loop,
   event_loop_add_file(loop, data_sock, EVENT_LOOP_READ, process_message, conn);
 }
 
+void ignore_data_chunk(event_loop *loop,
+                       int data_sock,
+                       void *context,
+                       int events) {
+  /* Read the object chunk. */
+  client_connection *conn = (client_connection *) context;
+  plasma_request_buffer *buf = conn->ignore_buffer;
+
+  /** Just read the transferred data into ignore_buf and then drop (free) it. */
+  int done = read_object_chunk(conn, buf);
+  if (!done) {
+    return;
+  }
+
+  free(buf->data);
+  if (buf->metadata) {
+    free(buf->metadata);
+  }
+  free(buf);
+  /** Switch to listening for requests from this socket, instead of reading
+   *  object data. */
+  event_loop_remove_file(loop, data_sock);
+  event_loop_add_file(loop, data_sock, EVENT_LOOP_READ, process_message, conn);
+}
+
 client_connection *get_manager_connection(plasma_manager_state *state,
                                           const char *ip_addr,
                                           int port) {
@@ -575,16 +602,42 @@ void process_data_request(event_loop *loop,
 
   /* The corresponding call to plasma_release should happen in
    * process_data_chunk. */
-  plasma_create(conn->manager_state->plasma_conn, object_id, data_size, NULL,
-                metadata_size, &(buf->data));
-  LL_APPEND(conn->transfer_queue, buf);
+  bool success_create = plasma_create(conn->manager_state->plasma_conn,
+                                      object_id, data_size, NULL,
+                                      metadata_size, &(buf->data));
+  /** If success_create == true, a new object has been created.
+   * If success_create == false the object creation has failed, possibly
+   * due an object with the same ID already existing in the Plasma Store.
+   */
+  if (success_create) {
+    /** Add buffer where the fetched data is to be stored to conn->transfer_queue. */
+    LL_APPEND(conn->transfer_queue, buf);
+  }
   CHECK(conn->cursor == 0);
+  printf("----> success_create = %d\n", success_create);
 
   /* Switch to reading the data from this socket, instead of listening for
    * other requests. */
   event_loop_remove_file(loop, client_sock);
-  event_loop_add_file(loop, client_sock, EVENT_LOOP_READ, process_data_chunk,
-                      conn);
+  if (success_create) {
+    event_loop_add_file(loop, client_sock, EVENT_LOOP_READ,
+                        process_data_chunk, conn);
+  } else {
+    /** Since plasma_create() has failed, we ignore the data transfer.
+     * We will receive this transfer in g_ignore_buf and then drop it.
+     * Allocate memory for data and metadata, if needed.
+     * All memory associated to buf/g_ignore_buf will be freed in ignore_data_chunkc().
+     */
+    conn->ignore_buffer = buf;
+    buf->data = (uint8_t *)malloc(buf->data_size);
+    if (buf->metadata_size > 0) {
+      buf->metadata = (uint8_t *) malloc(buf->metadata_size);
+    } else {
+      buf->metadata = NULL;
+    }
+    event_loop_add_file(loop, client_sock, EVENT_LOOP_READ,
+                        ignore_data_chunk, conn);
+  }
 }
 
 /**
@@ -633,6 +686,7 @@ int manager_timeout_handler(event_loop *loop, timer_id id, void *context) {
   client_object_request *object_req = context;
   client_connection *client_conn = object_req->client_conn;
   LOG_DEBUG("Timer went off, %d tries left", object_req->num_retries);
+  printf("+++++> object_req->num_retries = %d\n", object_req->num_retries);
   if (object_req->num_retries > 0) {
     request_transfer_from(client_conn, object_req->object_id);
     object_req->num_retries--;
@@ -1088,10 +1142,10 @@ void request_fetch_or_status(object_id object_id,
   LOG_DEBUG("Object is on %d managers", manager_count);
   if (manager_count == 0) {
     free(manager_vector);
-    send_client_object_does_not_exist_reply(object_id, client_conn);
     if (object_req) {
       remove_object_request(client_conn, object_req);
     }
+    send_client_object_does_not_exist_reply(object_id, client_conn);
     return;
   }
 
@@ -1114,9 +1168,10 @@ void request_fetch_or_status(object_id object_id,
     /* Wait for the object data for the default number of retries, which timeout
      * after a default interval. */
     object_req->num_retries = NUM_RETRIES;
-    object_req->timer =
-        event_loop_add_timer(client_conn->manager_state->loop, MANAGER_TIMEOUT,
-                             fetch_timeout_handler, object_req);
+    object_req->timer = event_loop_add_timer(client_conn->manager_state->loop,
+                                             MANAGER_TIMEOUT,
+                                             fetch_timeout_handler,
+                                             object_req);
     request_transfer_from(client_conn, object_id);
     /* let scheduling the fetch request proceded and return */
   }
@@ -1148,17 +1203,17 @@ void process_fetch_or_status_request(client_connection *client_conn,
     return;
   }
 
+  if (client_conn->manager_state->db == NULL) {
+    send_client_object_does_not_exist_reply(object_id, client_conn);
+    return;
+  }
+
   /* object not local, so check whether it is stored remotely */
   retry_info retry = {
       .num_retries = NUM_RETRIES,
       .timeout = MANAGER_TIMEOUT,
       .fail_callback = (table_fail_callback) send_client_object_does_not_exist_reply,
   };
-
-  if (client_conn->manager_state->db == NULL) {
-    send_client_object_does_not_exist_reply(object_id, client_conn);
-    return;
-  }
 
   if (fetch) {
     /* Request a transfer from a plasma manager that has this object, if any. */
@@ -1183,6 +1238,9 @@ int send_client_object_status_reply(object_id object_id,
       .num_object_ids = 1,
       .object_status = object_status
   };
+
+
+  printf("===> status = %d\n", object_status);
   return send_client_reply1(conn, &reply);
 }
 

@@ -156,6 +156,7 @@ void add_client_to_object_clients(object_table_entry *entry,
   if (entry != NULL) {
     /** There is already an object with the same ID in the Plasma Store,
      * so ignore this requst. */
+    printf("---> create_object, return: %p\n", entry);
     return false;
   }
   /** TODO (istoica) remove this
@@ -439,6 +440,7 @@ void process_message(event_loop *loop,
     } else {
       reply.error_code = PLASMA_REPLY_OK;
     }
+    printf("----> PLASMA_CREATE reply.error_code = %d\n", reply.error_code);
     send_fd(client_sock, reply.object.handle.store_fd, (char *) &reply,
             sizeof(reply));
     break;
