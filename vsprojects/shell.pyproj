@@ -35,8 +35,8 @@ PATH=$(SolutionDir)build\x64\$(Configuration)\;$(SolutionDir)build\Win32\$(Confi
       <Project>{609d1438-d42d-4cba-80a5-a1398c3bcc85}</Project>
       <Private>False</Private>
     </ProjectReference>
-    <ProjectReference Include="objstore.vcxproj">
-      <Name>objstore</Name>
+    <ProjectReference Include="plasma.vcxproj">
+      <Name>plasma</Name>
       <Project>{ddfcec30-7024-421a-979a-b1bf69cf464e}</Project>
       <Private>False</Private>
     </ProjectReference>
@@ -45,8 +45,8 @@ PATH=$(SolutionDir)build\x64\$(Configuration)\;$(SolutionDir)build\Win32\$(Confi
       <Project>{76be8e91-0f74-4276-a6a7-b279c6fea0d2}</Project>
       <Private>False</Private>
     </ProjectReference>
-    <ProjectReference Include="scheduler.vcxproj">
-      <Name>scheduler</Name>
+    <ProjectReference Include="photon.vcxproj">
+      <Name>photon</Name>
       <Project>{d4f50b21-7fde-41ce-87f5-2cf71178ef40}</Project>
       <Private>False</Private>
     </ProjectReference>

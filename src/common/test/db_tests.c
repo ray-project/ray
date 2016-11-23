@@ -201,7 +201,7 @@ TEST task_table_all_test(void) {
 }
 
 TEST unique_client_id_test(void) {
-  const int num_conns = 100;
+  enum { num_conns = 100 };
 
   db_client_id ids[num_conns];
   db_handle *db;

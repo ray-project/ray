@@ -1,5 +1,9 @@
 /* PLASMA CLIENT: Client library for using the plasma store and manager */
 
+#ifdef _WIN32
+#include <Win32_Interop/win32_types.h>
+#endif
+
 #include <assert.h>
 #include <fcntl.h>
 #include <stdlib.h>
@@ -103,7 +107,10 @@ void plasma_send_request(int fd, int type, plasma_request *req) {
 }
 
 plasma_request make_plasma_request(object_id object_id) {
-  plasma_request req = {.num_object_ids = 1, .object_ids = {object_id}};
+  plasma_request req;
+  memset(&req, 0, sizeof(req));
+  req.num_object_ids = 1;
+  req.object_ids[0] = object_id;
   return req;
 }
 
@@ -326,7 +333,9 @@ void plasma_delete(plasma_connection *conn, object_id object_id) {
 
 int64_t plasma_evict(plasma_connection *conn, int64_t num_bytes) {
   /* Send a request to the store to evict objects. */
-  plasma_request req = {.num_bytes = num_bytes};
+  plasma_request req;
+  memset(&req, 0, sizeof(req));
+  req.num_bytes = num_bytes;
   plasma_send_request(conn->store_conn, PLASMA_EVICT, &req);
   /* Wait for a response with the number of bytes actually evicted. */
   plasma_reply reply;
@@ -338,6 +347,8 @@ int64_t plasma_evict(plasma_connection *conn, int64_t num_bytes) {
 
 int plasma_subscribe(plasma_connection *conn) {
   int fd[2];
+  /* TODO: Just create 1 socket, bind it to port 0 to find a free port, and
+   * send the port number instead, and let the client connect. */
   /* Create a non-blocking socket pair. This will only be used to send
    * notifications from the Plasma store to the client. */
   socketpair(AF_UNIX, SOCK_STREAM, 0, fd);
@@ -345,7 +356,7 @@ int plasma_subscribe(plasma_connection *conn) {
   int flags = fcntl(fd[1], F_GETFL, 0);
   CHECK(fcntl(fd[1], F_SETFL, flags | O_NONBLOCK) == 0);
   /* Tell the Plasma store about the subscription. */
-  plasma_request req = {};
+  plasma_request req = {0};
   plasma_send_request(conn->store_conn, PLASMA_SUBSCRIBE, &req);
   /* Send the file descriptor that the Plasma store should use to push
    * notifications about sealed objects to this client. We include a one byte

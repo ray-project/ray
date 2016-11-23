@@ -5,7 +5,7 @@
 
 #include "task.h"
 
-task_spec *example_task_spec(void) {
+static task_spec *example_task_spec(void) {
   task_id parent_task_id = globally_unique_id();
   function_id func_id = globally_unique_id();
   task_spec *task =
@@ -16,7 +16,7 @@ task_spec *example_task_spec(void) {
   return task;
 }
 
-task *example_task(void) {
+static task *example_task(void) {
   task_spec *spec = example_task_spec();
   task *instance = alloc_task(spec, TASK_STATUS_WAITING, NIL_ID);
   free_task_spec(spec);
@@ -24,7 +24,7 @@ task *example_task(void) {
 }
 
 /* Flush redis. */
-void flushall_redis() {
+static void flushall_redis() {
   redisContext *context = redisConnect("127.0.0.1", 6379);
   freeReplyObject(redisCommand(context, "FLUSHALL"));
   redisFree(context);

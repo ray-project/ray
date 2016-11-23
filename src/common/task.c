@@ -114,7 +114,7 @@ task_id compute_task_id(task_spec *spec) {
 
 object_id compute_return_id(task_id task_id, int64_t return_index) {
   /* TODO(rkn): This line requires object and task IDs to be the same size. */
-  object_id return_id = (object_id) task_id;
+  object_id return_id = task_id;
   int64_t *first_bytes = (int64_t *) &return_id;
   /* XOR the first bytes of the object ID with the return index. We add one so
    * the first return ID is not the same as the task ID. */

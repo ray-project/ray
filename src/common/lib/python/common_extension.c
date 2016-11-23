@@ -99,7 +99,7 @@ static long PyObjectID_hash(PyObjectID *self) {
 }
 
 static PyObject *PyObjectID_repr(PyObjectID *self) {
-  int hex_length = 2 * UNIQUE_ID_SIZE + 1;
+  enum { hex_length = 2 * UNIQUE_ID_SIZE + 1 };
   char hex_id[hex_length];
   sha1_to_hex(self->object_id.id, hex_id);
   UT_string *repr;
