@@ -64,14 +64,14 @@
     const int calls = backtrace(buffer, sizeof(buffer) / sizeof(void *)); \
     backtrace_symbols_fd(buffer, calls, 1);                               \
     exit(-1);                                                             \
-  } while (0);
+  } while (0)
 #else
 #define LOG_FATAL(M, ...)                                          \
   do {                                                             \
     fprintf(stderr, "[FATAL] (%s:%d) " M "\n", __FILE__, __LINE__, \
             ##__VA_ARGS__);                                        \
     exit(-1);                                                      \
-  } while (0);
+  } while (0)
 #endif
 
 #define CHECKM(COND, M, ...)                                   \
