@@ -141,9 +141,6 @@ void db_attach(db_handle *db, event_loop *loop) {
 task *parse_redis_task_table_entry(task_id id,
                                    int num_redis_replies,
                                    redisReply **redis_replies) {
-  static int counter = 0;
-  printf("xxx %d \n", counter);
-  counter++;
   task *task_result;
   if (num_redis_replies == 0) {
     /* There was no information about this task. */
@@ -181,9 +178,7 @@ task *parse_redis_task_table_entry(task_id id,
   /* Build and return the task. */
   DCHECK(task_ids_equal(task_spec_id(spec), id));
   task_result = alloc_task(spec, state, node);
-  CHECK(task_result);
   free_task_spec(spec);
-  CHECK(task_result);
   return task_result;
 }
 
@@ -453,7 +448,6 @@ void redis_task_table_get_task_callback(redisAsyncContext *c,
     task_table_get_callback done_callback = callback_data->done_callback;
     task *task_reply = parse_redis_task_table_entry(
         callback_data->id, reply->elements, reply->element);
-    CHECK(task_reply);
     done_callback(task_reply, callback_data->user_context);
     free_task(task_reply);
   }

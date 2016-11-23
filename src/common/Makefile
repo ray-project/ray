@@ -49,6 +49,7 @@ test: hiredis redis $(BUILD)/common_tests $(BUILD)/task_table_tests $(BUILD)/obj
 	./build/redis_tests
 	./build/task_table_tests
 	./build/object_table_tests
+	./thirdparty/redis/src/redis-cli shutdown
 
 valgrind: test
 	valgrind --leak-check=full --error-exitcode=1 ./build/common_tests
@@ -58,5 +59,6 @@ valgrind: test
 	valgrind --leak-check=full --error-exitcode=1 ./build/redis_tests
 	valgrind --leak-check=full --error-exitcode=1 ./build/task_table_tests
 	valgrind --leak-check=full --error-exitcode=1 ./build/object_table_tests
+
 
 FORCE:
