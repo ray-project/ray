@@ -458,6 +458,13 @@ void plasma_fetch(plasma_connection *conn,
                   object_id object_ids[],
                   int is_fetched[]) {
   CHECK(conn->manager_conn >= 0);
+  /* Make sure that there are no duplicated object IDs. TODO(rkn): we should
+   * allow this case in the future. */
+  for (int i = 0; i < num_object_ids; ++i) {
+    for (int j = 0; j < i; ++j) {
+      CHECK(!object_ids_equal(object_ids[0], object_ids[1]));
+    }
+  }
   plasma_request *req = plasma_alloc_request(num_object_ids, object_ids);
   LOG_DEBUG("Requesting fetch");
   CHECK(plasma_send_request(conn->manager_conn, PLASMA_FETCH, req) >= 0);
@@ -481,15 +488,15 @@ void plasma_fetch(plasma_connection *conn,
     /* Update the correct index in is_fetched. */
     int i = 0;
     for (; i < num_object_ids; i++) {
-      if (object_ids_equal(object_ids[i], reply.object_ids[0])) {
-        /* Check that this isn't a duplicate response. */
-        CHECK(!is_fetched[i]);
+      if (object_ids_equal(object_ids[i], reply.object_ids[0]) &&
+          !is_fetched[i]) {
         is_fetched[i] = success;
         break;
       }
     }
     CHECKM(i != num_object_ids,
-           "Received unexpected object ID from manager during fetch.");
+           "Received an unexpected object ID from manager during fetch or the "
+           "object ID was received multiple times.");
   }
 }
 

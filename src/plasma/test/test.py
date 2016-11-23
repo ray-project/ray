@@ -346,6 +346,10 @@ class TestPlasmaManager(unittest.TestCase):
       assert_get_object_equal(self, self.client2, self.client1, object_id2,
                               memory_buffer=memory_buffer2, metadata=metadata2)
 
+    # Check that calling fetch with the same object ID fails.
+    object_id = random_object_id()
+    self.assertRaises(Exception, lambda : self.client1.fetch([object_id, object_id]))
+
   def test_wait(self):
     # Test timeout.
     obj_id0 = random_object_id()
