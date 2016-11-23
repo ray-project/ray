@@ -96,9 +96,10 @@ int plasma_manager_connect(const char *addr, int port);
  * @param metadata_size The size in bytes of the metadata. If there is no
           metadata, this should be 0.
  * @param data The address of the newly created object will be written here.
- * @return Void.
+ * @return true, if object was created, false, otherwise (e.g., if object
+ *         has been already created).
  */
-void plasma_create(plasma_connection *conn,
+bool plasma_create(plasma_connection *conn,
                    object_id object_id,
                    int64_t size,
                    uint8_t *metadata,

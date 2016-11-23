@@ -141,7 +141,7 @@ void add_client_to_object_clients(object_table_entry *entry,
 }
 
 /* Create a new object buffer in the hash table. */
-void create_object(client *client_context,
+ bool create_object(client *client_context,
                    object_id object_id,
                    int64_t data_size,
                    int64_t metadata_size,
@@ -151,9 +151,15 @@ void create_object(client *client_context,
 
   object_table_entry *entry;
   /* TODO(swang): Return these error to the client instead of exiting. */
-  HASH_FIND(handle, plasma_state->objects, &object_id, sizeof(object_id),
-            entry);
-  CHECKM(entry == NULL, "Cannot create object twice.");
+  HASH_FIND(handle, plasma_state->objects, &object_id, sizeof(object_id), entry);
+
+  if (entry != NULL) {
+    /** There is already an object with the same ID in the Plasma Store,
+     * so ignore this requst. */
+    return false;
+  }
+  /** TODO (istoica) remove this
+   * CHECKM(entry == NULL, "Cannot create object twice."); */
 
   uint8_t *pointer = dlmalloc(data_size + metadata_size);
   int fd;
@@ -182,6 +188,7 @@ void create_object(client *client_context,
   result->metadata_size = metadata_size;
   /* Record that this client is using this object. */
   add_client_to_object_clients(entry, client_context);
+  return true;
 }
 
 /* Get an object from the hash table. */
@@ -426,8 +433,12 @@ void process_message(event_loop *loop,
   /* Process the different types of requests. */
   switch (type) {
   case PLASMA_CREATE:
-    create_object(client_context, req->object_ids[0], req->data_size,
-                  req->metadata_size, &reply.object);
+    if (create_object(client_context, req->object_ids[0], req->data_size,
+                      req->metadata_size, &reply.object) == false) {
+      reply.error_code = PLASMA_REPLY_OBJECT_ALREADY_EXISTS;
+    } else {
+      reply.error_code = PLASMA_REPLY_OK;
+    }
     send_fd(client_sock, reply.object.handle.store_fd, (char *) &reply,
             sizeof(reply));
     break;

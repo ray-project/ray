@@ -181,15 +181,15 @@ void increment_object_count(plasma_connection *conn,
   object_entry->count += 1;
 }
 
-void plasma_create(plasma_connection *conn,
+bool plasma_create(plasma_connection *conn,
                    object_id object_id,
                    int64_t data_size,
                    uint8_t *metadata,
                    int64_t metadata_size,
                    uint8_t **data) {
   LOG_DEBUG("called plasma_create on conn %d with size %" PRId64
-            " and metadata size "
-            "%" PRId64,
+                    " and metadata size "
+                            "%" PRId64,
             conn->store_conn, data_size, metadata_size);
   plasma_request req = make_plasma_request(object_id);
   req.data_size = data_size;
@@ -197,6 +197,11 @@ void plasma_create(plasma_connection *conn,
   plasma_send_request(conn->store_conn, PLASMA_CREATE, &req);
   plasma_reply reply;
   int fd = recv_fd(conn->store_conn, (char *) &reply, sizeof(plasma_reply));
+  CHECKM(fd != -1, "recv not successful");
+  if (reply.error_code == PLASMA_REPLY_OBJECT_ALREADY_EXISTS) {
+    LOG_DEBUG("returned from plasma_create with error %d", reply.error_code);
+    return false;
+  }
   plasma_object *object = &reply.object;
   CHECK(object->data_size == data_size);
   CHECK(object->metadata_size == metadata_size);
@@ -216,7 +221,9 @@ void plasma_create(plasma_connection *conn,
    * client is using. A call to plasma_release is required to decrement this
    * count. */
   increment_object_count(conn, object_id, object->handle.store_fd);
+  return true;
 }
+
 
 /* This method is used to get both the data and the metadata. */
 void plasma_get(plasma_connection *conn,

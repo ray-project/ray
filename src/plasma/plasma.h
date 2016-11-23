@@ -16,15 +16,18 @@ typedef struct {
   int64_t construct_duration;
 } plasma_object_info;
 
-/* Object is stored on the local Plasma Store. */
-#define PLASMA_OBJECT_LOCAL  1
+/* Object was cerated but not sealed in the local Plasma store. */
+#define PLASMA_OBJECT_CREATED 10
+/* Object is sealed and stored on the local Plasma Store. */
+#define PLASMA_OBJECT_SEALED 20
+#define PLASMA_OBJECT_LOCAL  PLASMA_OBJECT_SEALED
 /* Object is stored on a remote Plasma store, and it is not stored on the local Plasma Store */
-#define PLASMA_OBJECT_REMOTE 3
+#define PLASMA_OBJECT_REMOTE 30
 /* Object is not stored in the system. */
-#define PLASMA_OBJECT_DOES_NOT_EXIST 5
+#define PLASMA_OBJECT_DOES_NOT_EXIST 50
 /* Object is currently transferred from a remote Plasma store the the local Plasma Store. */
-#define PLASMA_OBJECT_TRANSFER 6
-#define PLASMA_OBJECT_ANYWHERE 7
+#define PLASMA_OBJECT_TRANSFER 60
+#define PLASMA_OBJECT_ANYWHERE 70
 
 /**
  * Object rquest data structure. Used in the plasma_wait_for_objects() argument.
@@ -155,6 +158,10 @@ typedef struct {
     object_id object_ids[1];
     object_request object_requests[1];
   };
+  /** Return error code. */
+#define PLASMA_REPLY_OK 0
+#define PLASMA_REPLY_OBJECT_ALREADY_EXISTS 1
+  int error_code;
 } plasma_reply;
 
 #endif /* PLASMA_H */
