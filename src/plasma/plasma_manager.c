@@ -617,8 +617,6 @@ void request_transfer(object_id object_id,
      * register a Redis callback for changes to this object table entry. */
     free(manager_vector);
     send_client_failure_reply(object_id, client_conn);
-    /* The object connection was never added, so can't be removed, right? */
-    /* remove_object_connection(client_conn, object_conn); */
     return;
   }
   /* Register the new outstanding fetch with the current client connection. */
