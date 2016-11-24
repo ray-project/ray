@@ -146,15 +146,11 @@ PyObject *PyPlasma_fetch(PyObject *self, PyObject *args) {
   }
   /* Check that there are no duplicate object IDs. TODO(rkn): we should allow
    * this in the future. */
-  for (int i = 0; i < n; ++i) {
-    for (int j = 0; j < i; ++j) {
-      if (object_ids_equal(object_ids[i], object_ids[j])) {
-        PyErr_SetString(PyExc_RuntimeError,
-                        "The same object ID is used multiple times in this "
-                        "call to fetch.");
-        return NULL;
-      }
-    }
+  if (!plasma_object_ids_distinct(num_object_ids, object_ids)) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "The same object ID is used multiple times in this call to "
+                    "fetch.");
+    return NULL;
   }
   int *success_array = malloc(sizeof(int) * n);
   memset(success_array, 0, sizeof(int) * n);

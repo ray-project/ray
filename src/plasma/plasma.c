@@ -88,3 +88,14 @@ int plasma_receive_request(int sock, int64_t *type, plasma_request **request) {
   }
   return length == plasma_request_size((*request)->num_object_ids) ? 0 : -1;
 }
+
+bool plasma_object_ids_distinct(int num_object_ids, object_id object_ids[]) {
+  for (int i = 0; i < num_object_ids; ++i) {
+    for (int j = 0; j < i; ++j) {
+      if (object_ids_equal(object_ids[i], object_ids[j])) {
+        return false;
+      }
+    }
+  }
+  return true;
+}

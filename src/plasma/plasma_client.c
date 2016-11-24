@@ -460,11 +460,7 @@ void plasma_fetch(plasma_connection *conn,
   CHECK(conn->manager_conn >= 0);
   /* Make sure that there are no duplicated object IDs. TODO(rkn): we should
    * allow this case in the future. */
-  for (int i = 0; i < num_object_ids; ++i) {
-    for (int j = 0; j < i; ++j) {
-      CHECK(!object_ids_equal(object_ids[i], object_ids[j]));
-    }
-  }
+  CHECK(plasma_object_ids_distinct(num_object_ids, object_ids));
   plasma_request *req = plasma_alloc_request(num_object_ids, object_ids);
   LOG_DEBUG("Requesting fetch");
   CHECK(plasma_send_request(conn->manager_conn, PLASMA_FETCH, req) >= 0);
