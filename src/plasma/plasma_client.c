@@ -462,7 +462,7 @@ void plasma_fetch(plasma_connection *conn,
    * allow this case in the future. */
   for (int i = 0; i < num_object_ids; ++i) {
     for (int j = 0; j < i; ++j) {
-      CHECK(!object_ids_equal(object_ids[0], object_ids[1]));
+      CHECK(!object_ids_equal(object_ids[i], object_ids[j]));
     }
   }
   plasma_request *req = plasma_alloc_request(num_object_ids, object_ids);
