@@ -428,7 +428,7 @@ void object_table_redis_subscribe_callback(redisAsyncContext *c,
   CHECK(reply->elements > 2);
   /* If this condition is true, we got the initial message that acknowledged the
    * subscription. */
-  if (strncmp(reply->element[1]->str, "add", 3) != 0) {
+  if (reply->element[2]->str && strcmp(reply->element[2]->str, "add") != 0) {
     /* Do a lookup to see if the key has been in redis before we started the
      * subscription. */
     int status = redisAsyncCommand(

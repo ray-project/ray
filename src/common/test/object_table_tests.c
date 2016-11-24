@@ -665,7 +665,7 @@ TEST subscribe_object_present_test(void) {
   db_disconnect(db);
   destroy_outstanding_callbacks(g_loop);
   event_loop_destroy(g_loop);
-  ASSERT(subscribe_object_present_succeeded);
+  ASSERT(subscribe_object_present_succeeded == 1);
   PASS();
 }
 
