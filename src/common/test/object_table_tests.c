@@ -387,9 +387,12 @@ int64_t reconnect_sub_context_callback(event_loop *loop,
   db_handle *db = context;
   /* Reconnect to redis. This is not reconnecting the pub/sub channel. */
   redisAsyncFree(db->sub_context);
+  redisAsyncFree(db->context);
   redisFree(db->sync_context);
   db->sub_context = redisAsyncConnect("127.0.0.1", 6379);
   db->sub_context->data = (void *) db;
+  db->context = redisAsyncConnect("127.0.0.1", 6379);
+  db->context->data = (void *) db;
   db->sync_context = redisConnect("127.0.0.1", 6379);
   /* Re-attach the database to the event loop (the file descriptor changed). */
   db_attach(db, loop);
