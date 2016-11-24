@@ -431,8 +431,8 @@ void object_table_redis_subscribe_callback(redisAsyncContext *c,
   if (strncmp(reply->element[1]->str, "add", 3) != 0) {
     /* Do a lookup to see if the key has been in redis before we started the
      * subscription. */
-    int status = redisAsyncCommand(db->context,
-        redis_object_table_subscribe_lookup, NULL,
+    int status = redisAsyncCommand(
+        db->context, redis_object_table_subscribe_lookup, NULL,
         "SMEMBERS obj:%b", callback_data->id.id, sizeof(callback_data->id.id));
     if ((status == REDIS_ERR) || db->context->err) {
       LOG_REDIS_ERROR(db->context,
@@ -455,8 +455,7 @@ void redis_object_table_subscribe(table_callback_data *callback_data) {
   object_id id = callback_data->id;
   int status = redisAsyncCommand(
       db->sub_context, object_table_redis_subscribe_callback,
-      (void *) callback_data->timer_id,
-      "SUBSCRIBE __keyspace@0__:obj:%b add",
+      (void *) callback_data->timer_id, "SUBSCRIBE __keyspace@0__:obj:%b add",
       id.id, sizeof(id.id));
   if ((status == REDIS_ERR) || db->sub_context->err) {
     LOG_REDIS_DEBUG(db->sub_context,
