@@ -2,6 +2,7 @@
 #define PLASMA_H
 
 #include <inttypes.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
 #include <stddef.h>
@@ -144,4 +145,114 @@ typedef struct {
   object_table_entry *objects;
 } plasma_store_info;
 
-#endif
+/**
+ * Create a plasma request with one object ID on the stack.
+ *
+ * @param object_id The object ID to include in the request.
+ * @return The plasma request.
+ */
+plasma_request plasma_make_request(object_id object_id);
+
+/**
+ * Create a plasma request with one or more object IDs on the heap. The caller
+ * must free the returned plasma request pointer with plasma_free_request.
+ *
+ * @param num_object_ids The number of object IDs to include in the request.
+ * @param object_ids The array of object IDs to include in the request. It must
+ *        have length at least equal to num_object_ids.
+ * @return A pointer to the newly created plasma request.
+ */
+plasma_request *plasma_alloc_request(int num_object_ids,
+                                     object_id object_ids[]);
+
+/**
+ * Free a plasma request.
+ *
+ * @param request Pointer to the plasma request to be freed.
+ * @return Void.
+ */
+void plasma_free_request(plasma_request *request);
+
+/**
+ * Size of a request in bytes.
+ *
+ * @param num_object_ids Number of object IDs in the request.
+ * @return The size of the request in bytes.
+ */
+int64_t plasma_request_size(int num_object_ids);
+
+/**
+ * Create a plasma reply with one object ID on the stack.
+ *
+ * @param object_id The object ID to include in the reply.
+ * @return The plasma reply.
+ */
+plasma_reply plasma_make_reply(object_id object_id);
+
+/**
+ * Create a plasma reply with one or more object IDs on the heap. The caller
+ * must free the returned plasma reply pointer with plasma_free_reply.
+ *
+ * @param num_object_ids The number of object IDs to include in the reply.
+ * @return A pointer to the newly created plasma reply.
+ */
+plasma_reply *plasma_alloc_reply(int num_object_ids);
+
+/**
+ * Free a plasma reply.
+ *
+ * @param request Pointer to the plasma reply to be freed.
+ * @return Void.
+ */
+void plasma_free_reply(plasma_reply *request);
+
+/**
+ * Size of a reply in bytes.
+ *
+ * @param num_returns Number of object IDs returned with this reply.
+ * @return The size of the reply in bytes.
+ */
+int64_t plasma_reply_size(int num_returns);
+
+/**
+ * Send a plasma reply.
+ *
+ * @param sock The file descriptor to use to send the request.
+ * @param reply Address of the reply that is sent.
+ * @return Returns a value >= 0 on success.
+ */
+int plasma_send_reply(int sock, plasma_reply *reply);
+
+/**
+ * Receive a plasma reply.
+ *
+ * @param sock The file descriptor to use to get the reply.
+ * @param reply Address of the reply that is received.
+ * @return Returns a value >= 0 on success.
+ */
+int plasma_receive_reply(int sock, int64_t receive_size, plasma_reply *reply);
+
+/**
+ * This is used to send a request to the Plasma Store or
+ * the Plasma Manager.
+ *
+ * @param sock The file descriptor to use to send the request.
+ * @param type The type of request.
+ * @param req The address of the request to send.
+ * @return Returns a value >= 0 on success.
+ */
+int plasma_send_request(int sock, int64_t type, plasma_request *request);
+
+/**
+ * Receive a plasma request. This allocates memory for the request which
+ * needs to be freed by the user.
+ *
+ * @param sock The file descriptor to use to get the reply.
+ * @param type Address where the type of the request is written to.
+ * @param request Address at which the address of the allocated request is
+ *        written.
+ * @return Returns a value >= 0 on success.
+ */
+int plasma_receive_request(int sock, int64_t *type, plasma_request **request);
+
+#endif /* PLASMA_H */

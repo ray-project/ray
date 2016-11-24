@@ -147,21 +147,16 @@ void free_client_object_connection(client_object_connection *object_conn) {
   free(object_conn);
 }
 
-int send_client_reply(client_connection *conn, plasma_reply *reply) {
+void send_client_reply(client_connection *conn, plasma_reply *reply) {
   CHECK(conn->num_return_objects >= 0);
   --conn->num_return_objects;
-  /* TODO(swang): Handle errors in write. */
-  int n = write(conn->fd, (uint8_t *) reply, sizeof(*reply));
-  return (n != sizeof(*reply));
+  CHECK(plasma_send_reply(conn->fd, reply) >= 0);
 }
 
-int send_client_failure_reply(object_id object_id, client_connection *conn) {
-  plasma_reply reply;
-  memset(&reply, 0, sizeof(reply));
-  reply.object_ids[0] = object_id;
-  reply.num_object_ids = 1;
+void send_client_failure_reply(object_id object_id, client_connection *conn) {
+  plasma_reply reply = plasma_make_reply(object_id);
   reply.has_object = 0;
-  return send_client_reply(conn, &reply);
+  send_client_reply(conn, &reply);
 }
 
 /**
@@ -350,13 +345,13 @@ void send_queued_request(event_loop *loop,
   }
 
   plasma_request_buffer *buf = conn->transfer_queue;
-  plasma_request manager_req = make_plasma_request(buf->object_id);
+  plasma_request manager_req = plasma_make_request(buf->object_id);
   switch (buf->type) {
   case PLASMA_TRANSFER:
     memcpy(manager_req.addr, conn->manager_state->addr,
            sizeof(manager_req.addr));
     manager_req.port = conn->manager_state->port;
-    plasma_send_request(conn->fd, buf->type, &manager_req);
+    CHECK(plasma_send_request(conn->fd, PLASMA_TRANSFER, &manager_req) >= 0);
     break;
   case PLASMA_DATA:
     LOG_DEBUG("Transferring object to manager");
@@ -366,7 +361,7 @@ void send_queued_request(event_loop *loop,
        * so send the initial PLASMA_DATA request. */
       manager_req.data_size = buf->data_size;
       manager_req.metadata_size = buf->metadata_size;
-      plasma_send_request(conn->fd, PLASMA_DATA, &manager_req);
+      CHECK(plasma_send_request(conn->fd, PLASMA_DATA, &manager_req) >= 0);
     }
     write_object_chunk(conn, buf);
     break;
@@ -587,10 +582,7 @@ int manager_timeout_handler(event_loop *loop, timer_id id, void *context) {
     object_conn->num_retries--;
     return MANAGER_TIMEOUT;
   }
-  plasma_reply reply;
-  memset(&reply, 0, sizeof(reply));
-  reply.object_ids[0] = object_conn->object_id;
-  reply.num_object_ids = 1;
+  plasma_reply reply = plasma_make_reply(object_conn->object_id);
   reply.has_object = 0;
   send_client_reply(client_conn, &reply);
   remove_object_connection(client_conn, object_conn);
@@ -652,10 +644,7 @@ void process_fetch_request(client_connection *client_conn,
                            object_id object_id) {
   client_conn->is_wait = false;
   client_conn->wait_reply = NULL;
-  plasma_reply reply;
-  memset(&reply, 0, sizeof(reply));
-  reply.object_ids[0] = object_id;
-  reply.num_object_ids = 1;
+  plasma_reply reply = plasma_make_reply(object_id);
   if (client_conn->manager_state->db == NULL) {
     reply.has_object = 0;
     send_client_reply(client_conn, &reply);
@@ -691,14 +680,10 @@ void process_fetch_requests(client_connection *client_conn,
 
 void return_from_wait(client_connection *client_conn) {
   CHECK(client_conn->is_wait);
-  int64_t size =
-      sizeof(plasma_reply) +
-      (client_conn->wait_reply->num_object_ids - 1) * sizeof(object_id);
   client_conn->wait_reply->num_objects_returned =
       client_conn->wait_reply->num_object_ids - client_conn->num_return_objects;
-  int n = write(client_conn->fd, (uint8_t *) client_conn->wait_reply, size);
-  CHECK(n == size);
-  free(client_conn->wait_reply);
+  CHECK(plasma_send_reply(client_conn->fd, client_conn->wait_reply) >= 0);
+  plasma_free_reply(client_conn->wait_reply);
   /* Clean the remaining object connections. */
   client_object_connection *object_conn, *tmp;
   HASH_ITER(active_hh, client_conn->active_objects, object_conn, tmp) {
@@ -723,10 +708,7 @@ void process_wait_request(client_connection *client_conn,
   client_conn->is_wait = true;
   client_conn->timer_id = event_loop_add_timer(
       manager_state->loop, timeout, wait_timeout_handler, client_conn);
-  int64_t size = sizeof(plasma_reply) + (num_returns - 1) * sizeof(object_id);
-  client_conn->wait_reply = malloc(size);
-  memset(client_conn->wait_reply, 0, size);
-  client_conn->wait_reply->num_object_ids = num_returns;
+  client_conn->wait_reply = plasma_alloc_reply(num_returns);
   for (int i = 0; i < num_object_ids; ++i) {
     available_object *entry;
     HASH_FIND(hh, manager_state->local_available_objects, &object_ids[i],
@@ -777,10 +759,7 @@ void process_object_notification(event_loop *loop,
   client_connection *client_conn;
   HASH_FIND(fetch_hh, state->fetch_connections, &obj_id, sizeof(object_id),
             object_conn);
-  plasma_reply reply;
-  memset(&reply, 0, sizeof(reply));
-  reply.object_ids[0] = obj_id;
-  reply.num_object_ids = 1;
+  plasma_reply reply = plasma_make_reply(obj_id);
   reply.has_object = 1;
   while (object_conn) {
     next = object_conn->next;
@@ -811,9 +790,8 @@ void process_message(event_loop *loop,
   client_connection *conn = (client_connection *) context;
 
   int64_t type;
-  int64_t length;
   plasma_request *req;
-  read_message(client_sock, &type, &length, (uint8_t **) &req);
+  CHECK(plasma_receive_request(client_sock, &type, &req) >= 0);
 
   switch (type) {
   case PLASMA_TRANSFER:
