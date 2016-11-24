@@ -388,9 +388,22 @@ void redis_object_table_get_entry(redisAsyncContext *c,
   }
 }
 
-void object_table_redis_callback(redisAsyncContext *c,
-                                 void *r,
-                                 void *privdata) {
+void redis_object_table_subscribe_lookup(redisAsyncContext *c,
+                                         void *r,
+                                         void *privdata) {
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
+  redisReply *reply = r;
+
+  if (callback_data->done_callback) {
+    object_table_done_callback done_callback = callback_data->done_callback;
+    done_callback(callback_data->id, callback_data->user_context);
+  }
+  event_loop_remove_timer(db->loop, callback_data->timer_id);
+}
+
+void object_table_redis_subscribe_callback(redisAsyncContext *c,
+                                           void *r,
+                                           void *privdata) {
   REDIS_CALLBACK_HEADER(db, callback_data, r);
   redisReply *reply = r;
 
@@ -400,11 +413,9 @@ void object_table_redis_callback(redisAsyncContext *c,
   /* If this condition is true, we got the initial message that acknowledged the
    * subscription. */
   if (strncmp(reply->element[1]->str, "add", 3) != 0) {
-    if (callback_data->done_callback) {
-      object_table_done_callback done_callback = callback_data->done_callback;
-      done_callback(callback_data->id, callback_data->user_context);
-    }
-    event_loop_remove_timer(db->loop, callback_data->timer_id);
+    /* Do a lookup to see if the key has been in redis before we started the subscription. */
+    int status = redisAsyncCommand(db->context, redis_object_table_subscribe_lookup,
+                                   "SMEMBERS obj:%b", callback_data->id.id, sizeof(callback_data->id.id));
     return;
   }
   /* Otherwise, parse the task and call the callback. */
@@ -420,7 +431,7 @@ void redis_object_table_subscribe(table_callback_data *callback_data) {
 
   /* subscribe to key notification associated to object id */
   object_id id = callback_data->id;
-  int status = redisAsyncCommand(db->sub_context, object_table_redis_callback,
+  int status = redisAsyncCommand(db->sub_context, object_table_redis_subscribe_callback,
                                  (void *) callback_data->timer_id,
                                  "SUBSCRIBE __keyspace@0__:%b add", id.id,
                                  sizeof(id.id));
