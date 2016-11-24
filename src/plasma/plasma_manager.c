@@ -1017,6 +1017,7 @@ void wait_object_available_callback(object_id object_id, void *user_context) {
       add_object_request(client_conn, object_id);
     }
   }
+
   if (client_conn->num_return_objects == 0) {
     /** We got num_return_objects in the local Object Store, so return */
     event_loop_remove_timer(manager_state->loop, client_conn->timer_id);
@@ -1174,10 +1175,11 @@ void request_fetch_or_status(object_id object_id,
                                              object_req);
     request_transfer_from(client_conn, object_id);
     /* let scheduling the fetch request proceded and return */
-  }
-  send_client_object_status_reply(object_id,
-                                 client_conn,
-                                 PLASMA_OBJECT_REMOTE);
+  };
+
+  int rc = (manager_count > 0 ? PLASMA_OBJECT_REMOTE : PLASMA_OBJECT_DOES_NOT_EXIST);
+  send_client_object_status_reply(object_id, client_conn, rc);
+
 }
 
 
@@ -1238,7 +1240,6 @@ int send_client_object_status_reply(object_id object_id,
       .num_object_ids = 1,
       .object_status = object_status
   };
-
 
   printf("===> status = %d\n", object_status);
   return send_client_reply1(conn, &reply);

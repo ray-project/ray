@@ -146,6 +146,8 @@ void add_client_to_object_clients(object_table_entry *entry,
                    int64_t data_size,
                    int64_t metadata_size,
                    plasma_object *result) {
+
+
   LOG_DEBUG("creating object"); /* TODO(pcm): add object_id here */
   plasma_store_state *plasma_state = client_context->plasma_state;
 
@@ -156,9 +158,10 @@ void add_client_to_object_clients(object_table_entry *entry,
   if (entry != NULL) {
     /** There is already an object with the same ID in the Plasma Store,
      * so ignore this requst. */
-    printf("---> create_object, return: %p\n", entry);
+    printf("---> create_object() -- false, entry = : %p\n", entry);
     return false;
   }
+   printf("---> create_object() -- true, entry = : %p\n", entry);
   /** TODO (istoica) remove this
    * CHECKM(entry == NULL, "Cannot create object twice."); */
 

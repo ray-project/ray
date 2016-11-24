@@ -591,6 +591,8 @@ int plasma_fetch_remote(plasma_connection *conn,
   } else {
     CHECK(nbytes == sizeof(reply));
   }
+
+  printf("oooo nbytes = %d, reply.object_status = %d\n", nbytes, reply.object_status);
   return reply.object_status;
 }
 

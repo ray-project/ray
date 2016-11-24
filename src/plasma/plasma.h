@@ -145,10 +145,10 @@ typedef struct {
    *  present and 0 otherwise. Used for plasma_contains and
    *  plasma_fetch. */
    /* XXX */
-  union {
+  //union {
     int object_status;
     int has_object;
-  };
+  //};
   /** Number of object IDs a wait is returning. */
   int num_objects_returned;
   /** The number of object IDs that will be included in this reply. */

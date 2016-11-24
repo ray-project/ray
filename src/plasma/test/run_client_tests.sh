@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 ../common/thirdparty/redis-3.2.3/src/redis-server &
 sleep 1
 # flush the redis server
