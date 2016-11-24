@@ -246,9 +246,9 @@ int get_manager_fd(plasma_connection *conn);
  * Object buffer data structure.
  */
 typedef struct {
-  /* The size in bytes of the object. */
-  int64_t size;
-  /* The address of the object data */
+  /* The size in bytes of the data object. */
+  int64_t data_size;
+  /* The address of the data object */
   uint8_t *data;
   /* The metadata size in bytes */
   int64_t metadata_size;
@@ -476,6 +476,17 @@ void plasma_client_multiget(plasma_connection *conn,
  void object_requests_set_status_all(int num_object_requests,
                                      object_request object_requests[],
                                      int status);
+
+/**
+ * Print all object requests in an array (for debugging purposes).
+ *
+ * @param num_object_requests Number of elements in the array of object requests.
+ * @param object_requests Array of object requests.
+ * @return Void.
+ */
+void object_requests_print(int num_object_requests,
+                           object_request object_requests[]);
+
 
 
 #endif /* PLASMA_CLIENT_H */

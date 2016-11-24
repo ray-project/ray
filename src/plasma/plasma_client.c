@@ -550,13 +550,10 @@ bool plasma_get_local(plasma_connection *conn,
     object_buffer->data =
       lookup_or_mmap(conn, fd, object->handle.store_fd, object->handle.mmap_size) +
                      object->data_offset;
-    object_buffer->size = object->data_size;
+    object_buffer->data_size = object->data_size;
+    object_buffer->metadata = object_buffer->data + object->data_size;
+    object_buffer->metadata_size = object->metadata_size;
 
-    /* If requested, return the metadata as well. */
-    if (object_buffer->metadata != NULL) {
-      object_buffer->metadata = object_buffer->data + object->data_size;
-      object_buffer->metadata_size = object->metadata_size;
-    }
     /* Increment the count of the number of instances of this object that this
      * client is using. A call to plasma_release is required to decrement this
      * count.
@@ -591,13 +588,6 @@ int plasma_fetch_remote(plasma_connection *conn,
   } else {
     CHECK(nbytes == sizeof(reply));
   }
-  /*
-  printf("RECV FETCH REPLY (nbytes = %d, reply.object_status = %d) : ", nbytes, reply.object_status);
-  for (int i = 0; i < sizeof(reply); i++) {
-    printf("%d.", ((uint8_t *)&reply)[i]);
-  }
-  printf("\n");
-   */
   return reply.object_status;
 }
 
@@ -634,10 +624,17 @@ int plasma_wait_for_objects(plasma_connection *conn,
   CHECK(conn->manager_conn >= 0);
   CHECK(num_object_requests > 0);
 
+  printf("---->1 plasma_wait_for_objects(): num_object_requests = %d, num_ready_objects = %d\n",
+         num_object_requests, num_ready_objects);
+
   plasma_request *req =
     make_plasma_multiple_object_requests(num_object_requests, object_requests);
   req->num_ready_objects = num_ready_objects;
   req->timeout = timeout_ms;
+
+  printf("---->2 plasma_wait_for_objects(): ");
+  object_requests_print(req->num_object_ids, req->object_requests);
+
   plasma_send_request(conn->manager_conn, PLASMA_WAIT1, req);
   free(req);
 
@@ -657,8 +654,10 @@ int plasma_wait_for_objects(plasma_connection *conn,
     status = reply->object_requests[i].status;
     object_requests[i].status = status;
 
-    if (type == PLASMA_OBJECT_LOCAL && status == PLASMA_OBJECT_LOCAL) {
-      num_objects_ready++;
+    if (type == PLASMA_OBJECT_LOCAL) {
+      if (status == PLASMA_OBJECT_LOCAL) {
+        num_objects_ready++;
+      }
     } else {
       CHECK(type == PLASMA_OBJECT_ANYWHERE);
       if (status == PLASMA_OBJECT_LOCAL ||
@@ -883,4 +882,21 @@ void object_requests_set_status_all(int num_object_requests,
   for (int i = 0; i < num_object_requests; i++) {
     object_requests[i].status = status;
   }
+}
+
+
+void object_requests_print(int num_object_requests,
+                           object_request object_requests[])
+{
+  for (int i = 0; i < num_object_requests; i++) {
+    printf("[");
+    for (int j = 0; j < sizeof(object_id); j++) {
+      printf("%d", object_requests[i].object_id.id[j]);
+      if (j < sizeof(object_id) - 1) {
+        printf(".");
+      }
+    }
+    printf(" | %d | %d], ", object_requests[i].type, object_requests[i].status);
+  }
+  printf("\n");
 }

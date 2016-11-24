@@ -457,6 +457,7 @@ void process_message(event_loop *loop,
   case PLASMA_GET_LOCAL:
     if (get_object_local(client_context, client_sock, req->object_ids[0],
                          &reply.object) == OBJECT_FOUND) {
+      reply.has_object = true;
       send_fd(client_sock, reply.object.handle.store_fd, (char *) &reply,
               sizeof(reply));
     } else {

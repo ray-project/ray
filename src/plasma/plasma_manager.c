@@ -872,19 +872,14 @@ void return_from_wait1(client_connection *client_conn) {
   CHECK(client_conn->is_wait);
   CHECK(client_conn->wait1);
 
-  int64_t size = sizeof(client_conn->wait_reply);
-  /** Just to be on the safe side. This return_from_wait1()
-   *  cannot happen for another process_wait_request1(), since
-   *  process_wait_request1() removes the timer whenever it calls
-   *  return_from_wait1(). Of course, here we asume that the Plasma Manager
-   *  code is single threaded and thus there are no race conditions. */
-  CHECK(size ==
-    (sizeof(plasma_reply) +
-     (client_conn->wait_reply->num_object_ids - 1) * sizeof(object_request)));
+  int64_t size = sizeof(plasma_reply) + (client_conn->wait_reply->num_object_ids - 1) * sizeof(object_request);
+  printf("====>1 return_from_wait1() size = %lld\n", size);
 
   int n = write(client_conn->fd,
                 (uint8_t *) client_conn->wait_reply,
                 size);
+
+  printf("====>2 return_from_wait1() n = %d, size = %lld\n", n, size);
   CHECK(n == size);
   free(client_conn->wait_reply);
 
@@ -926,6 +921,8 @@ void process_wait_request1(client_connection *client_conn,
   int64_t size =
     sizeof(plasma_reply) + (num_object_requests - 1) * sizeof(object_request);
   client_conn->wait_reply = malloc(size);
+
+  object_requests_print(num_object_requests, object_requests);
   object_requests_copy(num_object_requests,
                        client_conn->wait_reply->object_requests, object_requests);
   object_requests_set_status_all(num_object_requests,
@@ -978,6 +975,7 @@ void process_wait_request1(client_connection *client_conn,
         retry_info retry = {
           .num_retries = 0, .timeout = 0, .fail_callback = NULL,
         };
+        printf("=====>1 process_wait_request1\n");
         /** TODO (istoica) We should really cache the results here. */
         object_table_subscribe(g_manager_state->db,
                                client_conn->wait_reply->object_requests[i].object_id,
@@ -997,6 +995,8 @@ void wait_object_available_callback(object_id object_id, void *user_context) {
   CHECK(client_conn != NULL);
   plasma_manager_state *manager_state = client_conn->manager_state;
   CHECK(manager_state);
+
+  printf("?????????????????\n");
 
   if ((!client_conn->is_wait) || (!client_conn->wait1)) {
     return;
