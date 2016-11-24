@@ -592,7 +592,11 @@ int plasma_fetch_remote(plasma_connection *conn,
     CHECK(nbytes == sizeof(reply));
   }
 
-  printf("oooo nbytes = %d, reply.object_status = %d\n", nbytes, reply.object_status);
+  printf("RECV FETCH REPLY (nbytes = %d, reply.object_status = %d) : ", nbytes, reply.object_status);
+  for (int i = 0; i < sizeof(reply); i++) {
+    printf("%d.", ((uint8_t *)&reply)[i]);
+  }
+  printf("\n");
   return reply.object_status;
 }
 

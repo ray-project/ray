@@ -1228,6 +1228,11 @@ void process_fetch_or_status_request(client_connection *client_conn,
 }
 
 int send_client_reply1(client_connection *conn, plasma_reply *reply) {
+  printf("SEND REPLY (%lu) :", sizeof(plasma_reply));
+  for (int i = 0; i < sizeof(plasma_reply); i++) {
+    printf("%d.", ((uint8_t *)reply)[i]);
+  }
+  printf("\n");
   int n = write(conn->fd, (uint8_t *) reply, sizeof(plasma_reply));
   return (n != sizeof(plasma_reply));
 }
