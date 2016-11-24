@@ -191,7 +191,13 @@ void free_client_object_request(client_object_request *object_req) {
 int send_client_reply(client_connection *conn, plasma_reply *reply) {
   CHECK(conn->num_return_objects >= 0);
   --conn->num_return_objects;
-  /* TODO(swang): Handle errors in write. */
+  /*
+  printf("SEND REPLY (%lu) :", sizeof(plasma_reply));
+  for (int i = 0; i < sizeof(plasma_reply); i++) {
+    printf("%d.", ((uint8_t *)reply)[i]);
+  }
+  printf("\n");
+   */
   int n = write(conn->fd, (uint8_t *) reply, sizeof(plasma_reply));
   return (n != sizeof(plasma_reply));
 }
@@ -199,6 +205,7 @@ int send_client_reply(client_connection *conn, plasma_reply *reply) {
 int send_client_failure_reply(object_id object_id, client_connection *conn) {
   plasma_reply reply = {
       .object_ids = {object_id}, .num_object_ids = 1, .has_object = 0};
+  // printf("------------send_client_failure_reply()--------------\n");
   return send_client_reply(conn, &reply);
 }
 
@@ -614,7 +621,7 @@ void process_data_request(event_loop *loop,
     LL_APPEND(conn->transfer_queue, buf);
   }
   CHECK(conn->cursor == 0);
-  printf("----> success_create = %d\n", success_create);
+  // printf("----> success_create = %d\n", success_create);
 
   /* Switch to reading the data from this socket, instead of listening for
    * other requests. */
@@ -686,7 +693,6 @@ int manager_timeout_handler(event_loop *loop, timer_id id, void *context) {
   client_object_request *object_req = context;
   client_connection *client_conn = object_req->client_conn;
   LOG_DEBUG("Timer went off, %d tries left", object_req->num_retries);
-  printf("+++++> object_req->num_retries = %d\n", object_req->num_retries);
   if (object_req->num_retries > 0) {
     request_transfer_from(client_conn, object_req->object_id);
     object_req->num_retries--;
@@ -766,12 +772,14 @@ void process_fetch_request(client_connection *client_conn,
   plasma_reply reply = {.object_ids = {object_id}, .num_object_ids = 1};
   if (client_conn->manager_state->db == NULL) {
     reply.has_object = 0;
+    //printf("----------------process_fetch_request()--------\n");
     send_client_reply(client_conn, &reply);
     return;
   }
   /* Return success immediately if we already have this object. */
   if (is_object_local(client_conn, object_id)) {
     reply.has_object = 1;
+    //printf("----------------process_fetch_request()1--------\n");
     send_client_reply(client_conn, &reply);
     return;
   }
@@ -780,6 +788,7 @@ void process_fetch_request(client_connection *client_conn,
       .timeout = MANAGER_TIMEOUT,
       .fail_callback = (table_fail_callback) send_client_failure_reply,
   };
+  //printf("-----------------2222222----------------\n");
   /* Request a transfer from a plasma manager that has this object. */
   object_table_lookup(client_conn->manager_state->db, object_id, &retry,
                       request_transfer, client_conn);
@@ -1126,6 +1135,12 @@ void request_fetch_or_status(object_id object_id,
   client_object_request *object_req =
     get_object_request(client_conn, object_id);
 
+  /* Return success immediately if we already have this object. */
+  if (is_object_local(client_conn, object_id)) {
+    send_client_object_status_reply(object_id, client_conn, PLASMA_OBJECT_LOCAL);
+    return;
+  }
+
   /** Check wether there's already an outstanding fetch for this object for
    * this client, and if yes let the outstanding request finish the work.
    * Note that we have already checked for this in
@@ -1228,11 +1243,13 @@ void process_fetch_or_status_request(client_connection *client_conn,
 }
 
 int send_client_reply1(client_connection *conn, plasma_reply *reply) {
-  printf("SEND REPLY (%lu) :", sizeof(plasma_reply));
+  /*
+  printf("SEND REPLY1 (%lu) :", sizeof(plasma_reply));
   for (int i = 0; i < sizeof(plasma_reply); i++) {
     printf("%d.", ((uint8_t *)reply)[i]);
   }
   printf("\n");
+   */
   int n = write(conn->fd, (uint8_t *) reply, sizeof(plasma_reply));
   return (n != sizeof(plasma_reply));
 }
@@ -1246,7 +1263,7 @@ int send_client_object_status_reply(object_id object_id,
       .object_status = object_status
   };
 
-  printf("===> status = %d\n", object_status);
+  // printf("===> status = %d\n", object_status);
   return send_client_reply1(conn, &reply);
 }
 
@@ -1295,7 +1312,8 @@ void process_object_notification(event_loop *loop,
     client_conn = object_req->client_conn;
     if (!client_conn->is_wait) {
       event_loop_remove_timer(state->loop, object_req->timer);
-      send_client_reply(client_conn, &reply);
+      printf("----------------process_object_notification()--------\n");
+      //send_client_reply(client_conn, &reply);
     } else {
       if (client_conn->wait1) {
         wait_process_object_available_local(client_conn, obj_id);
