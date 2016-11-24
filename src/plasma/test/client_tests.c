@@ -88,7 +88,7 @@ TEST plasma_fetch_remote_tests(void) {
 }
 
 SUITE(plasma_client_tests) {
-  // RUN_TEST(plasma_status_tests);
+  RUN_TEST(plasma_status_tests);
   RUN_TEST(plasma_fetch_remote_tests);
 }
 
