@@ -17,7 +17,7 @@ void init_msg(struct msghdr *msg,
   msg->msg_namelen = 0;
 }
 
-int send_fd(int conn, int fd, const char *payload, int size) {
+int send_fd(int conn, int fd) {
   struct msghdr msg;
   struct iovec iov;
   char buf[CMSG_SPACE(sizeof(int))];
@@ -31,11 +31,11 @@ int send_fd(int conn, int fd, const char *payload, int size) {
   header->cmsg_len = CMSG_LEN(sizeof(int));
   *(int *) CMSG_DATA(header) = fd;
 
-  /* send file descriptor and payload */
-  return sendmsg(conn, &msg, 0) != -1 && send(conn, payload, size, 0) == -1;
+  /* Send file descriptor. */
+  return sendmsg(conn, &msg, 0);
 }
 
-int recv_fd(int conn, char *payload, int size) {
+int recv_fd(int conn) {
   struct msghdr msg;
   struct iovec iov;
   char buf[CMSG_SPACE(sizeof(int))];
@@ -69,11 +69,6 @@ int recv_fd(int conn, char *payload, int size) {
   if (oh_noes) {
     close(found_fd);
     errno = EBADMSG;
-    return -1;
-  }
-
-  ssize_t len = recv(conn, payload, size, 0);
-  if (len < 0) {
     return -1;
   }
 
