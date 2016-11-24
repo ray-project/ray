@@ -146,7 +146,7 @@ PyObject *PyPlasma_fetch(PyObject *self, PyObject *args) {
   }
   /* Check that there are no duplicate object IDs. TODO(rkn): we should allow
    * this in the future. */
-  if (!plasma_object_ids_distinct(num_object_ids, object_ids)) {
+  if (!plasma_object_ids_distinct(n, object_ids)) {
     PyErr_SetString(PyExc_RuntimeError,
                     "The same object ID is used multiple times in this call to "
                     "fetch.");
