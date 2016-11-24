@@ -631,6 +631,46 @@ TEST subscribe_success_test(void) {
   PASS();
 }
 
+/* Test if subscribe succeeds if the object is already present. */
+
+const char *subscribe_object_present_context = "subscribe_object_present";
+int subscribe_object_present_succeeded = 0;
+
+void subscribe_object_present_object_available_callback(object_id object_id,
+                                                        void *user_context) {
+  CHECK(user_context == (void *) subscribe_object_present_context);
+  subscribe_object_present_succeeded = 1;
+}
+
+TEST subscribe_object_present_test(void) {
+  g_loop = event_loop_create();
+  db_handle *db =
+          db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11236);
+  db_attach(db, g_loop);
+  unique_id id = globally_unique_id();
+  retry_info retry = {
+          .num_retries = 0,
+          .timeout = 100,
+          .fail_callback = NULL,
+  };
+  object_table_add(db, id, &retry, NULL, NULL);
+  object_table_subscribe(db, id, subscribe_object_present_object_available_callback,
+                         (void *) subscribe_object_present_context, &retry,
+                         NULL, (void *) db);
+
+  /* Install handler for terminating the event loop. */
+  event_loop_add_timer(g_loop, 750,
+                       (event_loop_timer_handler) terminate_event_loop_callback,
+                       NULL);
+
+  event_loop_run(g_loop);
+  db_disconnect(db);
+  destroy_outstanding_callbacks(g_loop);
+  event_loop_destroy(g_loop);
+  ASSERT(subscribe_object_present_succeeded);
+  PASS();
+}
+
 SUITE(object_table_tests) {
   RUN_REDIS_TEST(new_object_test);
   RUN_REDIS_TEST(new_object_no_task_test);
@@ -644,6 +684,7 @@ SUITE(object_table_tests) {
   RUN_REDIS_TEST(add_late_test);
   RUN_REDIS_TEST(subscribe_late_test);
   RUN_REDIS_TEST(subscribe_success_test);
+  RUN_REDIS_TEST(subscribe_object_present_test);
 }
 
 GREATEST_MAIN_DEFS();
