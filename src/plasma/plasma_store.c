@@ -36,16 +36,6 @@
 void *dlmalloc(size_t);
 void dlfree(void *);
 
-/**
- * This is used by the Plasma Store to send a reply to the Plasma Client.
- */
-void plasma_send_reply(int fd, plasma_reply *reply) {
-  int reply_count = sizeof(*reply);
-  if (write(fd, reply, reply_count) != reply_count) {
-    LOG_FATAL("write error, fd = %d", fd);
-  }
-}
-
 typedef struct {
   /* Object id of this object. */
   object_id object_id;
@@ -306,8 +296,7 @@ void seal_object(client *client_context, object_id object_id) {
   HASH_FIND(handle, plasma_state->objects_notify, &object_id, sizeof(object_id),
             notify_entry);
   if (notify_entry) {
-    plasma_reply reply;
-    memset(&reply, 0, sizeof(reply));
+    plasma_reply reply = plasma_make_reply(NIL_OBJECT_ID);
     plasma_object *result = &reply.object;
     result->handle.store_fd = entry->fd;
     result->handle.mmap_size = entry->map_size;
@@ -319,8 +308,8 @@ void seal_object(client *client_context, object_id object_id) {
     /* Send notifications to the clients that were waiting for this object. */
     for (int i = 0; i < utarray_len(notify_entry->waiting_clients); ++i) {
       client **c = (client **) utarray_eltptr(notify_entry->waiting_clients, i);
-      send_fd((*c)->sock, reply.object.handle.store_fd, (char *) &reply,
-              sizeof(reply));
+      CHECK(plasma_send_reply((*c)->sock, &reply) >= 0);
+      CHECK(send_fd((*c)->sock, reply.object.handle.store_fd) >= 0);
       /* Record that the client is using this object. */
       add_client_to_object_clients(entry, *c);
     }
@@ -411,8 +400,8 @@ void send_notifications(event_loop *loop,
 void subscribe_to_updates(client *client_context, int conn) {
   LOG_DEBUG("subscribing to updates");
   plasma_store_state *plasma_state = client_context->plasma_state;
-  char dummy;
-  int fd = recv_fd(conn, &dummy, 1);
+  int fd = recv_fd(conn);
+  CHECK(fd >= 0);
   CHECKM(HASH_CNT(handle, plasma_state->plasma_store_info->objects) == 0,
          "plasma_subscribe should be called before any objects are created.");
   /* Create a new array to buffer notifications that can't be sent to the
@@ -436,21 +425,20 @@ void process_message(event_loop *loop,
   plasma_request *req = (plasma_request *) utarray_front(state->input_buffer);
 
   /* We're only sending a single object ID at a time for now. */
-  plasma_reply reply;
-  memset(&reply, 0, sizeof(reply));
+  plasma_reply reply = plasma_make_reply(NIL_OBJECT_ID);
   /* Process the different types of requests. */
   switch (type) {
   case PLASMA_CREATE:
     create_object(client_context, req->object_ids[0], req->data_size,
                   req->metadata_size, &reply.object);
-    send_fd(client_sock, reply.object.handle.store_fd, (char *) &reply,
-            sizeof(reply));
+    CHECK(plasma_send_reply(client_sock, &reply) >= 0);
+    CHECK(send_fd(client_sock, reply.object.handle.store_fd) >= 0);
     break;
   case PLASMA_GET:
     if (get_object(client_context, client_sock, req->object_ids[0],
                    &reply.object) == OBJECT_FOUND) {
-      send_fd(client_sock, reply.object.handle.store_fd, (char *) &reply,
-              sizeof(reply));
+      CHECK(plasma_send_reply(client_sock, &reply) >= 0);
+      CHECK(send_fd(client_sock, reply.object.handle.store_fd) >= 0);
     }
     break;
   case PLASMA_RELEASE:
@@ -460,7 +448,7 @@ void process_message(event_loop *loop,
     if (contains_object(client_context, req->object_ids[0]) == OBJECT_FOUND) {
       reply.has_object = 1;
     }
-    plasma_send_reply(client_sock, &reply);
+    CHECK(plasma_send_reply(client_sock, &reply) >= 0);
     break;
   case PLASMA_SEAL:
     seal_object(client_context, req->object_ids[0]);
@@ -480,7 +468,7 @@ void process_message(event_loop *loop,
     remove_objects(client_context->plasma_state, num_objects_to_evict,
                    objects_to_evict);
     reply.num_bytes = num_bytes_evicted;
-    plasma_send_reply(client_sock, &reply);
+    CHECK(plasma_send_reply(client_sock, &reply) >= 0);
     break;
   }
   case PLASMA_SUBSCRIBE:

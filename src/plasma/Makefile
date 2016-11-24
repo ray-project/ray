@@ -13,23 +13,23 @@ clean:
 	cd ../common; make clean
 	rm -rf $(BUILD)/*
 
-$(BUILD)/manager_tests: test/manager_tests.c plasma.h plasma_client.h plasma_client.c plasma_manager.h plasma_manager.c fling.h fling.c common
-	$(CC) $(CFLAGS) $(TEST_CFLAGS) -o $@ test/manager_tests.c plasma_manager.c plasma_client.c fling.c ../common/build/libcommon.a ../common/thirdparty/hiredis/libhiredis.a
+$(BUILD)/manager_tests: test/manager_tests.c plasma.h plasma.c plasma_client.h plasma_client.c plasma_manager.h plasma_manager.c fling.h fling.c common
+	$(CC) $(CFLAGS) $(TEST_CFLAGS) -o $@ test/manager_tests.c plasma.c plasma_manager.c plasma_client.c fling.c ../common/build/libcommon.a ../common/thirdparty/hiredis/libhiredis.a
 
-$(BUILD)/plasma_store: plasma_store.c plasma.h eviction_policy.c fling.h fling.c malloc.c malloc.h thirdparty/dlmalloc.c common
-	$(CC) $(CFLAGS) plasma_store.c eviction_policy.c fling.c malloc.c ../common/build/libcommon.a -o $(BUILD)/plasma_store
+$(BUILD)/plasma_store: plasma_store.c plasma.h plasma.c eviction_policy.c fling.h fling.c malloc.c malloc.h thirdparty/dlmalloc.c common
+	$(CC) $(CFLAGS) plasma_store.c plasma.c eviction_policy.c fling.c malloc.c ../common/build/libcommon.a -o $(BUILD)/plasma_store
 
-$(BUILD)/plasma_manager: plasma_manager.c plasma.h plasma_client.c fling.h fling.c common
-	$(CC) $(CFLAGS) plasma_manager.c plasma_client.c fling.c ../common/build/libcommon.a ../common/thirdparty/hiredis/libhiredis.a -o $(BUILD)/plasma_manager
+$(BUILD)/plasma_manager: plasma_manager.c plasma.h plasma.c plasma_client.c fling.h fling.c common
+	$(CC) $(CFLAGS) plasma_manager.c plasma.c plasma_client.c fling.c ../common/build/libcommon.a ../common/thirdparty/hiredis/libhiredis.a -o $(BUILD)/plasma_manager
 
-$(BUILD)/plasma_client.so: plasma_client.c fling.h fling.c common
-	$(CC) $(CFLAGS) plasma_client.c fling.c ../common/build/libcommon.a -fPIC -shared -o $(BUILD)/plasma_client.so
+$(BUILD)/plasma_client.so: plasma.h plasma.c plasma_client.c fling.h fling.c common
+	$(CC) $(CFLAGS) plasma.c plasma_client.c fling.c ../common/build/libcommon.a -fPIC -shared -o $(BUILD)/plasma_client.so
 
-$(BUILD)/libplasma_client.a: plasma_client.o fling.o
+$(BUILD)/libplasma_client.a: plasma.o plasma_client.o fling.o
 	ar rcs $@ $^
 
-$(BUILD)/example: plasma_client.c plasma.h example.c fling.h fling.c common
-	$(CC) $(CFLAGS) plasma_client.c example.c fling.c ../common/build/libcommon.a -o $(BUILD)/example
+$(BUILD)/example: plasma_client.c plasma.h plasma.c example.c fling.h fling.c common
+	$(CC) $(CFLAGS) plasma_client.c plasma.c example.c fling.c ../common/build/libcommon.a -o $(BUILD)/example
 
 common: FORCE
 	cd ../common; make

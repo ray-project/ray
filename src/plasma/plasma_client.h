@@ -10,37 +10,6 @@
 typedef struct plasma_connection plasma_connection;
 
 /**
- * This is used by the Plasma Client to send a request to the Plasma Store or
- * the Plasma Manager.
- *
- * @param conn The file descriptor to use to send the request.
- * @param type The type of request.
- * @param req The address of the request to send.
- * @return Void.
- */
-void plasma_send_request(int fd, int type, plasma_request *req);
-
-/**
- * Create a plasma request to be sent with a single object ID.
- *
- * @param object_id The object ID to include in the request.
- * @return The plasma request.
- */
-plasma_request make_plasma_request(object_id object_id);
-
-/**
- * Create a plasma request to be sent with multiple object ID. Caller must free
- * the returned plasma request pointer.
- *
- * @param num_object_ids The number of object IDs to include in the request.
- * @param object_ids The array of object IDs to include in the request. It must
- *        have length at least equal to num_object_ids.
- * @return A pointer to the newly created plasma request.
- */
-plasma_request *make_plasma_multiple_request(int num_object_ids,
-                                             object_id object_ids[]);
-
-/**
  * Try to connect to the socket several times. If unsuccessful, fail.
  *
  * @param socket_name Name of the Unix domain socket to connect to.

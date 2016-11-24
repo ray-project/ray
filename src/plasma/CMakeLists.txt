@@ -80,6 +80,7 @@ include_directories("${CMAKE_SOURCE_DIR}/../common/thirdparty/")
 include_directories("${CMAKE_SOURCE_DIR}/../common/lib/python/")
 
 add_library(plasma SHARED
+  plasma.c
   plasma_extension.c
   plasma_client.c
   fling.c)
