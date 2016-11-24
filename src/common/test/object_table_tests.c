@@ -645,18 +645,16 @@ void subscribe_object_present_object_available_callback(object_id object_id,
 TEST subscribe_object_present_test(void) {
   g_loop = event_loop_create();
   db_handle *db =
-          db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11236);
+      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11236);
   db_attach(db, g_loop);
   unique_id id = globally_unique_id();
   retry_info retry = {
-          .num_retries = 0,
-          .timeout = 100,
-          .fail_callback = NULL,
+      .num_retries = 0, .timeout = 100, .fail_callback = NULL,
   };
   object_table_add(db, id, &retry, NULL, NULL);
-  object_table_subscribe(db, id, subscribe_object_present_object_available_callback,
-                         (void *) subscribe_object_present_context, &retry,
-                         NULL, (void *) db);
+  object_table_subscribe(
+      db, id, subscribe_object_present_object_available_callback,
+      (void *) subscribe_object_present_context, &retry, NULL, (void *) db);
 
   /* Install handler for terminating the event loop. */
   event_loop_add_timer(g_loop, 750,
