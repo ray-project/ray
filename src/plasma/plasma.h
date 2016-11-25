@@ -255,4 +255,13 @@ int plasma_send_request(int sock, int64_t type, plasma_request *request);
  */
 int plasma_receive_request(int sock, int64_t *type, plasma_request **request);
 
+/**
+ * Check if a collection of object IDs contains any duplicates.
+ *
+ * @param num_object_ids The number of object IDs.
+ * @param object_ids[] The list of object IDs to check.
+ * @return True if the object IDs are all distinct and false otherwise.
+ */
+bool plasma_object_ids_distinct(int num_object_ids, object_id object_ids[]);
+
 #endif /* PLASMA_H */

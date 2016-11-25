@@ -135,18 +135,25 @@ PyObject *PyPlasma_fetch(PyObject *self, PyObject *args) {
                         &object_id_list)) {
     return NULL;
   }
-
   if (!plasma_manager_is_connected(conn)) {
     PyErr_SetString(PyExc_RuntimeError, "Not connected to the plasma manager");
     return NULL;
   }
-
   Py_ssize_t n = PyList_Size(object_id_list);
   object_id *object_ids = malloc(sizeof(object_id) * n);
   for (int i = 0; i < n; ++i) {
     PyObjectToUniqueID(PyList_GetItem(object_id_list, i), &object_ids[i]);
   }
+  /* Check that there are no duplicate object IDs. TODO(rkn): we should allow
+   * this in the future. */
+  if (!plasma_object_ids_distinct(n, object_ids)) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "The same object ID is used multiple times in this call to "
+                    "fetch.");
+    return NULL;
+  }
   int *success_array = malloc(sizeof(int) * n);
+  memset(success_array, 0, sizeof(int) * n);
   plasma_fetch(conn, (int) n, object_ids, success_array);
   PyObject *success_list = PyList_New(n);
   for (int i = 0; i < n; ++i) {
