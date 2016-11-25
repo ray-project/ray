@@ -199,8 +199,6 @@ bool plasma_create(plasma_connection *conn,
   int fd = recv_fd(conn->store_conn, (char *) &reply, sizeof(plasma_reply));
   CHECKM(fd != -1, "recv not successful");
 
-  // printf("----> reply.error_code = %d\n", reply.error_code );
-
   if (reply.error_code == PLASMA_REPLY_OBJECT_ALREADY_EXISTS) {
     LOG_DEBUG("returned from plasma_create with error %d", reply.error_code);
     return false;
@@ -624,16 +622,10 @@ int plasma_wait_for_objects(plasma_connection *conn,
   CHECK(conn->manager_conn >= 0);
   CHECK(num_object_requests > 0);
 
-  printf("---->1 plasma_wait_for_objects(): num_object_requests = %d, num_ready_objects = %d\n",
-         num_object_requests, num_ready_objects);
-
   plasma_request *req =
     make_plasma_multiple_object_requests(num_object_requests, object_requests);
   req->num_ready_objects = num_ready_objects;
   req->timeout = timeout_ms;
-
-  printf("---->2 plasma_wait_for_objects(): ");
-  object_requests_print(req->num_object_ids, req->object_requests);
 
   plasma_send_request(conn->manager_conn, PLASMA_WAIT1, req);
   free(req);
