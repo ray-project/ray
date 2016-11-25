@@ -400,6 +400,10 @@ void redis_object_table_subscribe_lookup(redisAsyncContext *c,
 
   if (reply->type == REDIS_REPLY_ARRAY) {
     if (reply->elements > 0) {
+      CHECK(reply->element[0]->len == UNIQUE_ID_SIZE);
+      /* Check that the reply corresponds to the right object ID. */
+      CHECK(strncmp(reply->element[0]->str, callback_data->id.id,
+                    UNIQUE_ID_SIZE));
       object_table_subscribe_data *data = callback_data->data;
       if (data->object_available_callback) {
         data->object_available_callback(callback_data->id,
@@ -429,7 +433,7 @@ void object_table_redis_subscribe_callback(redisAsyncContext *c,
   /* If this condition is true, we got the initial message that acknowledged the
    * subscription. */
   bool is_add =
-      reply->element[1]->str && strcmp(reply->element[1]->str, "add") != 0;
+      reply->element[1]->str && strcmp(reply->element[1]->str, "add");
   if (is_add) {
     /* Do a lookup to see if the key has been in redis before we started the
      * subscription. */
