@@ -779,7 +779,6 @@ void process_fetch_request(client_connection *client_conn,
   /* Return success immediately if we already have this object. */
   if (is_object_local(client_conn, object_id)) {
     reply.has_object = 1;
-    //printf("----------------process_fetch_request()1--------\n");
     send_client_reply(client_conn, &reply);
     return;
   }
@@ -788,7 +787,6 @@ void process_fetch_request(client_connection *client_conn,
       .timeout = MANAGER_TIMEOUT,
       .fail_callback = (table_fail_callback) send_client_failure_reply,
   };
-  //printf("-----------------2222222----------------\n");
   /* Request a transfer from a plasma manager that has this object. */
   object_table_lookup(client_conn->manager_state->db, object_id, &retry,
                       request_transfer, client_conn);
@@ -975,7 +973,6 @@ void process_wait_request1(client_connection *client_conn,
         retry_info retry = {
           .num_retries = 0, .timeout = 0, .fail_callback = NULL,
         };
-        printf("=====>1 process_wait_request1\n");
         /** TODO (istoica) We should really cache the results here. */
         object_table_subscribe(g_manager_state->db,
                                client_conn->wait_reply->object_requests[i].object_id,
@@ -1033,6 +1030,7 @@ void wait_object_available_callback(object_id object_id, void *user_context) {
     return_from_wait1(client_conn);
   }
 }
+
 
 void wait_process_object_available_local(client_connection *client_conn,
                                          object_id object_id) {
@@ -1196,6 +1194,7 @@ void request_fetch_or_status(object_id object_id,
   send_client_object_status_reply(object_id, client_conn, rc);
 
 }
+
 
 
 void process_fetch_or_status_request(client_connection *client_conn,
