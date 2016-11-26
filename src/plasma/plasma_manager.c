@@ -659,9 +659,6 @@ void request_transfer_from(client_connection *client_conn,
                            object_id object_id) {
   client_object_request *object_req =
       get_object_request(client_conn, object_id);
-  if (object_req == NULL) {
-    return;
-  }
   CHECK(object_req);
   CHECK(object_req->manager_count > 0);
   CHECK(object_req->next_manager >= 0 &&

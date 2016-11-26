@@ -364,7 +364,47 @@ TEST plasma_wait_tests(void) {
   PASS();
 }
 
+TEST plasma_multiget_tests(void) {
+  plasma_connection *plasma_conn1 = plasma_connect("/tmp/store1", "/tmp/manager1");
+  plasma_connection *plasma_conn2 = plasma_connect("/tmp/store2", "/tmp/manager2");
+  object_id oid1 = {{51,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}};
+  object_id oid2 = {{52,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}};
+  object_id obj_ids[NUM_OBJ_REQUEST];
+  object_buffer obj_buffer[NUM_OBJ_REQUEST];
+  int obj1_first = 1, obj2_first = 2;
 
+  printf("starting plasma_multiget_tests()...\n");
+
+  obj_ids[0] = oid1;
+  obj_ids[1] = oid2;
+
+  int64_t data_size = 4;
+  uint8_t metadata[] = {5};
+  int64_t metadata_size = sizeof(metadata);
+  uint8_t *data;
+  plasma_create(plasma_conn1, oid1, data_size, metadata, metadata_size, &data);
+  init_data_123(data, data_size, obj1_first);
+  plasma_seal(plasma_conn1, oid1);
+
+  plasma_client_multiget(plasma_conn1, 1, obj_ids, obj_buffer);
+  ASSERT(data[0] == obj_buffer[0].data[0]);
+
+  plasma_create(plasma_conn2, oid2, data_size, metadata, metadata_size, &data);
+  init_data_123(data, data_size, obj2_first);
+  plasma_seal(plasma_conn2, oid2);
+
+  plasma_client_multiget(plasma_conn1, 2, obj_ids, obj_buffer);
+  ASSERT(obj1_first == obj_buffer[0].data[0]);
+  ASSERT(obj2_first == obj_buffer[1].data[0]);
+
+  printf("... ending plasma_multiget_tests()\n");
+
+  sleep(1);
+  plasma_disconnect(plasma_conn1);
+  plasma_disconnect(plasma_conn2);
+
+  PASS();
+}
 
 SUITE(plasma_client_tests) {
   RUN_TEST(plasma_status_tests);
@@ -373,6 +413,7 @@ SUITE(plasma_client_tests) {
   RUN_TEST(plasma_wait_for_objects_tests);
   RUN_TEST(plasma_get_tests);
   RUN_TEST(plasma_wait_tests);
+  RUN_TEST(plasma_multiget_tests);
 }
 
 GREATEST_MAIN_DEFS();
