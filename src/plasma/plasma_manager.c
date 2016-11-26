@@ -47,6 +47,13 @@ void wait_object_lookup_callback(object_id object_id,
                                  void *context);
 int do_nothing(object_id object_id, client_connection *conn);
 
+// XXX
+void object_id_print(object_id obj_id) {
+  for (int i = 0; i < sizeof(object_id); i++) {
+    printf("%u.", obj_id.id[i]);
+  }
+  printf("\n");
+}
 
 /**
  * Process either the fetch or the status request.
@@ -276,6 +283,9 @@ void remove_object_request(client_connection *client_conn,
   LL_DELETE(object_reqs, object_req);
   /* Free the object. */
   free_client_object_request(object_req);
+  /** Not every function calling remove_object_request() returns EVENT_LOOP_TIMER_DONE,
+   * so we remove the timer here as well to be on the safe side. */
+  event_loop_remove_timer(client_conn->manager_state->loop, object_req->timer);
 }
 
 /* Helper function to parse a string of the form <IP address>:<port> into the
@@ -657,6 +667,9 @@ void request_transfer_from(client_connection *client_conn,
                            object_id object_id) {
   client_object_request *object_req =
       get_object_request(client_conn, object_id);
+  if (object_req == NULL) {
+    return;
+  }
   CHECK(object_req);
   CHECK(object_req->manager_count > 0);
   CHECK(object_req->next_manager >= 0 &&
@@ -993,7 +1006,7 @@ void process_wait_request1(client_connection *client_conn,
 }
 
 int do_nothing(object_id object_id, client_connection *conn) {
-  ;
+  return 0;
 }
 
 
@@ -1035,11 +1048,13 @@ void wait_object_available_callback(object_id object_id, void *user_context) {
     object_request->status = PLASMA_OBJECT_REMOTE;
     if (object_request->type == PLASMA_OBJECT_ANYWHERE) {
       client_conn->num_return_objects -= 1;
-    } else {
-      CHECK(object_request->type == PLASMA_OBJECT_LOCAL);
-      /* Wait for object to be fetched locally. */
-      add_object_request(client_conn, object_id);
     }
+    //else {
+    //  CHECK(object_request->type == PLASMA_OBJECT_LOCAL);
+    //  /* Wait for object to be fetched locally. */
+    //  printf("1111111111\n");
+    //  add_object_request(client_conn, object_id);
+    // }
   }
 
   if (client_conn->num_return_objects == 0) {
@@ -1200,6 +1215,7 @@ int request_fetch_or_status(object_id object_id,
     /* Wait for the object data for the default number of retries, which timeout
      * after a default interval. */
     object_req->num_retries = NUM_RETRIES;
+    object_req->object_id = object_id;
     object_req->timer = event_loop_add_timer(client_conn->manager_state->loop,
                                              MANAGER_TIMEOUT,
                                              fetch_timeout_handler,
@@ -1258,13 +1274,6 @@ void process_fetch_or_status_request(client_connection *client_conn,
 }
 
 int send_client_reply1(client_connection *conn, plasma_reply *reply) {
-  /*
-  printf("SEND REPLY1 (%lu) :", sizeof(plasma_reply));
-  for (int i = 0; i < sizeof(plasma_reply); i++) {
-    printf("%d.", ((uint8_t *)reply)[i]);
-  }
-  printf("\n");
-   */
   int n = write(conn->fd, (uint8_t *) reply, sizeof(plasma_reply));
   return (n != sizeof(plasma_reply));
 }
@@ -1278,7 +1287,6 @@ int send_client_object_status_reply(object_id object_id,
       .object_status = object_status
   };
 
-  // printf("===> status = %d\n", object_status);
   return send_client_reply1(conn, &reply);
 }
 
@@ -1339,7 +1347,11 @@ void process_object_notification(event_loop *loop,
       }
       if (client_conn->num_return_objects == 0) {
         event_loop_remove_timer(loop, client_conn->timer_id);
-        return_from_wait(client_conn);
+        if (client_conn->wait1) {
+          return_from_wait1(client_conn);
+        } else {
+          return_from_wait(client_conn);
+        }
         object_req = next;
         continue;
       }

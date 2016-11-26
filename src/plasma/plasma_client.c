@@ -673,7 +673,6 @@ int plasma_wait_for_objects(plasma_connection *conn,
 void plasma_client_get(plasma_connection *conn,
                        object_id object_id,
                        object_buffer *object_buffer) {
-
   CHECK(conn != NULL);
   CHECK(conn->manager_conn >= 0);
 
