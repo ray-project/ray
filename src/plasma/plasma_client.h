@@ -477,6 +477,15 @@ void plasma_client_multiget(plasma_connection *conn,
                                      object_request object_requests[],
                                      int status);
 
+
+/**
+ * Print an object ID with bytes separated by ".".
+ *
+ * @param object_id Object ID to be printed.
+ * @return Void.
+ */
+void object_id_print(object_id object_id);
+
 /**
  * Print all object requests in an array (for debugging purposes).
  *

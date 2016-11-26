@@ -178,7 +178,7 @@ TEST plasma_wait_for_objects_tests(void) {
   ASSERT(n == 0);
   gettimeofday(&end, NULL);
   float diff_ms = (end.tv_sec - start.tv_sec);
-  diff_ms =(((diff_ms*1000000.) + end.tv_usec) - (start.tv_usec))/1000.;
+  diff_ms = (((diff_ms*1000000.) + end.tv_usec) - (start.tv_usec))/1000.;
   /** Reduce threshold by 10% to make sure we pass consistently. */
   ASSERT(diff_ms > WAIT_TIMEOUT_MS*0.9);
 
@@ -205,7 +205,7 @@ TEST plasma_wait_for_objects_tests(void) {
                               WAIT_TIMEOUT_MS);
   ASSERT(n == 2);
 
-  n = plasma_wait_for_objects(plasma_conn1, NUM_OBJ_REQUEST,
+  n = plasma_wait_for_objects(plasma_conn2, NUM_OBJ_REQUEST,
                               obj_requests, NUM_OBJ_REQUEST,
                               WAIT_TIMEOUT_MS);
   ASSERT(n == 2);
@@ -267,12 +267,112 @@ TEST plasma_get_tests(void) {
   PASS();
 }
 
+TEST plasma_wait_tests(void) {
+  plasma_connection *plasma_conn1 = plasma_connect("/tmp/store1", "/tmp/manager1");
+  plasma_connection *plasma_conn2 = plasma_connect("/tmp/store2", "/tmp/manager2");
+  object_id oid1 = {{41,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}};
+  object_id oid2 = {{42,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}};
+  object_id obj_ids[NUM_OBJ_REQUEST];
+  object_id return_obj_ids[NUM_OBJ_REQUEST];
+
+  printf("starting plasma_wait_tests()...\n");
+
+  obj_ids[0] = oid1;
+  obj_ids[1] = oid2;
+
+  struct timeval start, end;
+  gettimeofday(&start, NULL);
+
+  int n = plasma_client_wait(plasma_conn1,
+                             NUM_OBJ_REQUEST,
+                             obj_ids,
+                             WAIT_TIMEOUT_MS,
+                             1,
+                             return_obj_ids);
+
+  ASSERT(n == 0);
+  gettimeofday(&end, NULL);
+  float diff_ms = (end.tv_sec - start.tv_sec);
+  diff_ms = (((diff_ms*1000000.) + end.tv_usec) - (start.tv_usec))/1000.;
+  /** Reduce threshold by 10% to make sure we pass consistently. */
+  ASSERT(diff_ms > WAIT_TIMEOUT_MS*0.9);
+
+  /** create and insert an object in plasma_conn1 */
+  int64_t data_size = 4;
+  uint8_t metadata[] = {5};
+  int64_t metadata_size = sizeof(metadata);
+  uint8_t *data;
+  plasma_create(plasma_conn1, oid1, data_size, metadata, metadata_size, &data);
+  plasma_seal(plasma_conn1, oid1);
+
+  n = plasma_client_wait(plasma_conn1,
+                         NUM_OBJ_REQUEST,
+                         obj_ids,
+                         WAIT_TIMEOUT_MS,
+                         1,
+                         return_obj_ids);
+  ASSERT(n == 1);
+  ASSERT(oid1.id[0] == return_obj_ids[0].id[0]);
+
+  gettimeofday(&start, NULL);
+  return_obj_ids[0].id[0] = 0;
+  n = plasma_client_wait(plasma_conn1,
+                         NUM_OBJ_REQUEST,
+                         obj_ids,
+                         WAIT_TIMEOUT_MS,
+                         2,
+                         return_obj_ids);
+  ASSERT(n == 1);
+  ASSERT(oid1.id[0] == return_obj_ids[0].id[0]);
+  gettimeofday(&end, NULL);
+  diff_ms = (end.tv_sec - start.tv_sec);
+  diff_ms = (((diff_ms*1000000.) + end.tv_usec) - (start.tv_usec))/1000.;
+  ASSERT(diff_ms > WAIT_TIMEOUT_MS*0.9);
+
+  /** create and insert an object in plasma_conn1 */
+  plasma_create(plasma_conn2, oid2, data_size, metadata, metadata_size, &data);
+  plasma_seal(plasma_conn2, oid2);
+
+  return_obj_ids[0].id[0] = 0;
+  n = plasma_client_wait(plasma_conn1,
+                         NUM_OBJ_REQUEST,
+                         obj_ids,
+                         WAIT_TIMEOUT_MS,
+                         2,
+                         return_obj_ids);
+  ASSERT(n == 2);
+  ASSERT(oid1.id[0] == return_obj_ids[0].id[0]);
+  ASSERT(oid2.id[0] == return_obj_ids[1].id[0]);
+
+  return_obj_ids[0].id[0] = return_obj_ids[1].id[0] = 0;
+  n = plasma_client_wait(plasma_conn2,
+                         NUM_OBJ_REQUEST,
+                         obj_ids,
+                         WAIT_TIMEOUT_MS,
+                         2,
+                         return_obj_ids);
+  ASSERT(n == 2);
+  ASSERT(oid1.id[0] == return_obj_ids[0].id[0]);
+  ASSERT(oid2.id[0] == return_obj_ids[1].id[0]);
+
+  sleep(1);
+  plasma_disconnect(plasma_conn1);
+  plasma_disconnect(plasma_conn2);
+
+  printf("... ending plasma_wait_tests()\n");
+
+  PASS();
+}
+
+
+
 SUITE(plasma_client_tests) {
   RUN_TEST(plasma_status_tests);
   RUN_TEST(plasma_fetch_remote_tests);
   RUN_TEST(plasma_get_local_tests);
   RUN_TEST(plasma_wait_for_objects_tests);
   RUN_TEST(plasma_get_tests);
+  RUN_TEST(plasma_wait_tests);
 }
 
 GREATEST_MAIN_DEFS();

@@ -12,6 +12,7 @@
 #include <sys/un.h>
 #include <strings.h>
 #include <netinet/in.h>
+#include <sys/time.h>
 #include <netdb.h>
 #include <poll.h>
 
@@ -723,7 +724,7 @@ void plasma_client_get(plasma_connection *conn,
      * - if request.status == PLASMA_OBJECT_DOES_NOT_EXIST, next iteration
      *     will call scheduler_create_object()
      */
-#define TIMEOUT_WAIT_MS 1000
+#define TIMEOUT_WAIT_MS 200
     plasma_wait_for_objects(conn, 1, &request, 1, TIMEOUT_WAIT_MS);
   }
 }
@@ -751,16 +752,23 @@ int plasma_client_wait(plasma_connection *conn,
 
   /** Loop until we get num_returns objects stored in the system
    *  either in the local Plasma Store or remotely. */
+  uint64_t remaining_timeout = timeout;
   while (true) {
-    int n;
-    clock_t start = clock();
-    n = plasma_wait_for_objects(conn, num_object_ids,
-                                requests, num_returns,
-                                MIN(timeout, TIMEOUT_WAIT_MS));
-    uint64_t diff = (clock() - start) / 1000;
-    timeout = (timeout >= diff ? timeout - diff : 0);
+    struct timeval start, end;
+    gettimeofday(&start, NULL);
 
-    if (n >= num_returns || timeout == 0) {
+    int n = plasma_wait_for_objects(conn, num_object_ids,
+                                    requests, num_returns,
+                                    MIN(remaining_timeout, TIMEOUT_WAIT_MS));
+
+    gettimeofday(&end, NULL);
+    float diff_ms = (end.tv_sec - start.tv_sec);
+    diff_ms = (((diff_ms*1000000.) + end.tv_usec) - (start.tv_usec))/1000.;
+    remaining_timeout = (remaining_timeout >= diff_ms ?
+                         remaining_timeout - diff_ms :
+                         0);
+
+    if (n >= num_returns || remaining_timeout == 0) {
       /** Either (1) num_returns requests are satisfied or
         * or (2) timeout expierd. In both cases we return. */
       int idx_returns = 0;
@@ -876,16 +884,23 @@ void object_requests_set_status_all(int num_object_requests,
 }
 
 
+void object_id_print(object_id obj_id) {
+  for (int i = 0; i < sizeof(object_id); i++) {
+    printf("%u.", obj_id.id[i]);
+    if (i < sizeof(object_id) - 1) {
+      printf(".");
+    }
+  }
+}
+
+
 void object_requests_print(int num_object_requests,
                            object_request object_requests[])
 {
   for (int i = 0; i < num_object_requests; i++) {
     printf("[");
     for (int j = 0; j < sizeof(object_id); j++) {
-      printf("%d", object_requests[i].object_id.id[j]);
-      if (j < sizeof(object_id) - 1) {
-        printf(".");
-      }
+      object_id_print(object_requests[i].object_id);
     }
     printf(" | %d | %d], ", object_requests[i].type, object_requests[i].status);
   }

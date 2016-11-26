@@ -47,14 +47,6 @@ void wait_object_lookup_callback(object_id object_id,
                                  void *context);
 int do_nothing(object_id object_id, client_connection *conn);
 
-// XXX
-void object_id_print(object_id obj_id) {
-  for (int i = 0; i < sizeof(object_id); i++) {
-    printf("%u.", obj_id.id[i]);
-  }
-  printf("\n");
-}
-
 /**
  * Process either the fetch or the status request.
  *
