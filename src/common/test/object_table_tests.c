@@ -674,11 +674,13 @@ TEST subscribe_object_present_test(void) {
 
 /* Test if subscribe is not called if object is not present. */
 
-const char *subscribe_object_not_present_context = "subscribe_object_not_present";
+const char *subscribe_object_not_present_context =
+    "subscribe_object_not_present";
 int subscribe_object_not_present_succeeded = 0;
 
-void subscribe_object_not_present_object_available_callback(object_id object_id,
-                                                            void *user_context) {
+void subscribe_object_not_present_object_available_callback(
+    object_id object_id,
+    void *user_context) {
   CHECK(user_context == (void *) subscribe_object_not_present_context);
   subscribe_object_not_present_succeeded = 1;
 }
@@ -711,19 +713,19 @@ TEST subscribe_object_not_present_test(void) {
 
 /* Test if subscribe is called if object becomes available later. */
 
-const char *subscribe_object_available_later_context = "subscribe_object_available_later";
+const char *subscribe_object_available_later_context =
+    "subscribe_object_available_later";
 int subscribe_object_available_later_succeeded = 0;
 
-void subscribe_object_available_later_object_available_callback(object_id object_id,
-                                                                void *user_context) {
+void subscribe_object_available_later_object_available_callback(
+    object_id object_id,
+    void *user_context) {
   CHECK(user_context == (void *) subscribe_object_available_later_context);
   /* Make sure the callback is only called once. */
   subscribe_object_available_later_succeeded += 1;
 }
 
-int64_t add_object_callback(event_loop *loop,
-                            int64_t timer_id,
-                            void *context) {
+int64_t add_object_callback(event_loop *loop, int64_t timer_id, void *context) {
   db_handle *db = (db_handle *) context;
   retry_info retry = {
       .num_retries = 0, .timeout = 100, .fail_callback = NULL,
@@ -744,7 +746,8 @@ TEST subscribe_object_available_later_test(void) {
   };
   object_table_subscribe(
       db, id, subscribe_object_available_later_object_available_callback,
-      (void *) subscribe_object_available_later_context, &retry, NULL, (void *) db);
+      (void *) subscribe_object_available_later_context, &retry, NULL,
+      (void *) db);
 
   event_loop_add_timer(g_loop, 300,
                        (event_loop_timer_handler) add_object_callback, db);
