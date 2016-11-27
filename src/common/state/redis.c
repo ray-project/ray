@@ -432,12 +432,12 @@ void object_table_redis_subscribe_callback(redisAsyncContext *c,
   CHECK(reply->elements > 2);
   /* If this condition is true, we got the initial message that acknowledged the
    * subscription. */
-  bool is_add = reply->element[1]->str && strcmp(reply->element[1]->str, "add");
+  bool is_add = reply->element[1]->str && strcmp(reply->element[1]->str, "sadd") == 0;
   if (is_add) {
     /* Do a lookup to see if the key has been in redis before we started the
      * subscription. */
     int status = redisAsyncCommand(
-        db->context, redis_object_table_subscribe_lookup, NULL,
+        db->context, redis_object_table_subscribe_lookup, (void *) callback_data->timer_id,
         "SMEMBERS obj:%b", callback_data->id.id, sizeof(callback_data->id.id));
     if ((status == REDIS_ERR) || db->context->err) {
       LOG_REDIS_ERROR(db->context,
@@ -445,11 +445,14 @@ void object_table_redis_subscribe_callback(redisAsyncContext *c,
     }
     return;
   }
-  /* Otherwise, parse the task and call the callback. */
-  object_table_subscribe_data *data = callback_data->data;
+  
+  /* If the subscription is issued, parse the task and call the callback. */
+  if (strcmp(reply->element[0]->str, "message") == 0) {
+    object_table_subscribe_data *data = callback_data->data;
 
-  if (data->object_available_callback) {
-    data->object_available_callback(callback_data->id, data->subscribe_context);
+    if (data->object_available_callback) {
+      data->object_available_callback(callback_data->id, data->subscribe_context);
+    }
   }
 }
 
@@ -460,7 +463,7 @@ void redis_object_table_subscribe(table_callback_data *callback_data) {
   object_id id = callback_data->id;
   int status = redisAsyncCommand(
       db->sub_context, object_table_redis_subscribe_callback,
-      (void *) callback_data->timer_id, "SUBSCRIBE __keyspace@0__:obj:%b add",
+      (void *) callback_data->timer_id, "SUBSCRIBE __keyspace@0__:obj:%b sadd",
       id.id, sizeof(id.id));
   if ((status == REDIS_ERR) || db->sub_context->err) {
     LOG_REDIS_DEBUG(db->sub_context,
