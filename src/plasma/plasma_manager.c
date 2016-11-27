@@ -60,6 +60,28 @@ void process_fetch_or_status_request(client_connection *client_conn,
                                      object_id object_id,
                                      bool fetch);
 /**
+ * Request a transfer for the given object ID from the next manager believed to
+ * have a copy. Adds the request for this object ID to the queue of outgoing
+ * requests to the manager we want to try.
+ *
+ * requst_trasnfer_from() will lead to thic Plasma manager, call it S,
+ * (1) sending a PLASMA_TRANFER request for object_id to the other
+ *     end-point, R, of the client_conn. R is a remote Plasma manager
+ *     which is expected to store object_id.
+ * (2) upon receiving this request, R will invoke process_transfer_request()
+ *     which will send a PLASMA_DATA request containing object_id back to
+ *     S.
+ * (3) Upen receiving the PLASMA_DATA request, S, will invoke process_data_request()
+ *     (via process_data_chunk()) to read object_id.
+ * Note that all requests that are exchanged between S and R are via FIFO queues.
+ *
+ * @param client_conn The context for the connection to this client.
+ * @param object_id The object ID we want to request a transfer of.
+ * @returns Void.
+ */
+void request_transfer_from(client_connection *client_conn, object_id object_id);
+
+/**
  * Request the transfer from a remote node or get the status of
  * a given object. This is called for an object that is stored at
  * a remote Plasma Store.
@@ -79,6 +101,40 @@ int request_fetch_or_status(object_id object_id,
                             void *context,
                             bool fetch);
 
+/**
+ * Send requested object_id back to the Plasma Manager identified
+ * by (addr, port) which requested it. This is done via a
+ * PLASMA_DATA message.
+ *
+ * @param loop
+ * @param object_id The ID of the object being transferred to (addr, port).
+ * @param addr The address of the Plasma Manager object_id is sent to.
+ * @param port The port number of the Plasma Manager object_id is sent to.
+ * @param conn The client connection object.
+ */
+void process_transfer_request(event_loop *loop,
+                              object_id object_id,
+                              uint8_t addr[4],
+                              int port,
+                              client_connection *conn);
+
+/**
+ * Receive object_id requested by this Plamsa Manager from the remote Plasma Manager
+ * identified by client_sock. The object_id is sent via the PLASMA_DATA message.
+ *
+ * @param loop The event data structure.
+ * @param client_sock The sender's socket.
+ * @param object_id ID of the object being received.
+ * @param data_size Size of the data of object_id.
+ * @param metadata_size Size of the metadata of object_id.
+ * @param conn The connection object.
+ */
+void process_data_request(event_loop *loop,
+                          int client_sock,
+                          object_id object_id,
+                          int64_t data_size,
+                          int64_t metadata_size,
+                          client_connection *conn);
 
 /* Entry of the hashtable of objects that are available locally. */
 typedef struct {
@@ -275,8 +331,12 @@ void remove_object_request(client_connection *client_conn,
   LL_DELETE(object_reqs, object_req);
   /* Free the object. */
   free_client_object_request(object_req);
-  /** Not every function calling remove_object_request() returns EVENT_LOOP_TIMER_DONE,
-   * so we remove the timer here as well to be on the safe side. */
+  /** remove_object_request() is not always called from the request's timer handle,
+   * so we remove the request's timer explicitly here.
+   * If remove_object_request() is called from the the request's timer handle, the
+   * code will still work correctly. While the timer handle returning
+   * EVENT_LOOP_TIMER_DONE will trigger another call for removing the request's timer,
+   * that's ok as event_loop_remove_timer() is idempotent. */
   event_loop_remove_timer(client_conn->manager_state->loop, object_req->timer);
 }
 
@@ -555,6 +615,7 @@ client_connection *get_manager_connection(plasma_manager_state *state,
   return manager_conn;
 }
 
+
 void process_transfer_request(event_loop *loop,
                               object_id object_id,
                               uint8_t addr[4],
@@ -596,6 +657,17 @@ void process_transfer_request(event_loop *loop,
   LL_APPEND(manager_conn->transfer_queue, buf);
 }
 
+/**
+ * Receive object_id requested by this Plamsa Manager from the remote Plasma Manager
+ * identified by client_sock. The object_id is sent via the PLASMA_DATA message.
+ *
+ * @param loop The event data structure.
+ * @param client_sock The sender's socket.
+ * @param object_id ID of the object being received.
+ * @param data_size Size of the data of object_id.
+ * @param metadata_size Size of the metadata of object_id.
+ * @param conn The connection object.
+ */
 void process_data_request(event_loop *loop,
                           int client_sock,
                           object_id object_id,
@@ -646,15 +718,6 @@ void process_data_request(event_loop *loop,
   }
 }
 
-/**
- * Request a transfer for the given object ID from the next manager believed to
- * have a copy. Adds the request for this object ID to the queue of outgoing
- * requests to the manager we want to try.
- *
- * @param client_conn The context for the connection to this client.
- * @param object_id The object ID we want to request a transfer of.
- * @returns Void.
- */
 void request_transfer_from(client_connection *client_conn,
                            object_id object_id) {
   client_object_request *object_req =
@@ -1038,12 +1101,6 @@ void wait_object_available_callback(object_id object_id, void *user_context) {
     if (object_request->type == PLASMA_OBJECT_ANYWHERE) {
       client_conn->num_return_objects -= 1;
     }
-    //else {
-    //  CHECK(object_request->type == PLASMA_OBJECT_LOCAL);
-    //  /* Wait for object to be fetched locally. */
-    //  printf("1111111111\n");
-    //  add_object_request(client_conn, object_id);
-    // }
   }
 
   if (client_conn->num_return_objects == 0) {
@@ -1168,10 +1225,9 @@ int request_fetch_or_status(object_id object_id,
   /** Check wether there's already an outstanding fetch for this object for
    * this client, and if yes let the outstanding request finish the work.
    * Note that we have already checked for this in
-   * process_fetch_or_status_request(), but since then the object could have
-   * been evicted. */
+   * process_fetch_or_status_request(), but we need to check again here
+   * as the object could hav been evicted since then. */
   if (object_req) {
-    /** TODO (istoica): Shouldn't we free(manager_vector) here? */
     return PLASMA_OBJECT_TRANSFER;
   }
 
@@ -1186,7 +1242,7 @@ int request_fetch_or_status(object_id object_id,
   }
 
   if (fetch) {
-    /* Register the new outstanding fetch with the current client connection. */
+    /** Register the new outstanding fetch with the current client connection. */
     object_req = add_object_request(client_conn, object_id);
     CHECKM(object_req != NULL, "Unable to allocate memory for object context.");
 
@@ -1201,7 +1257,7 @@ int request_fetch_or_status(object_id object_id,
       object_req->manager_vector[i][len] = '\0';
     }
     free(manager_vector);
-    /* Wait for the object data for the default number of retries, which timeout
+    /** Wait for the object data for the default number of retries, which timeout
      * after a default interval. */
     object_req->num_retries = NUM_RETRIES;
     object_req->object_id = object_id;
@@ -1210,9 +1266,12 @@ int request_fetch_or_status(object_id object_id,
                                              fetch_timeout_handler,
                                              object_req);
     request_transfer_from(client_conn, object_id);
-    /* let scheduling the fetch request proceded and return */
+    /* Let scheduling the fetch request proceded and return. */
   };
 
+  /** Since object is not stored at the local locally, manager_count > 0
+   * means that the object is stored at another remote object. Otherwise, if
+   * manager_count == 0, the object is not stored anywhere. */
   return (manager_count > 0 ? PLASMA_OBJECT_REMOTE : PLASMA_OBJECT_DOES_NOT_EXIST);
 }
 
