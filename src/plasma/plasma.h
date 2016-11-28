@@ -27,11 +27,13 @@ typedef struct {
 /* Object is sealed and stored on the local Plasma Store. */
 #define PLASMA_OBJECT_SEALED 20
 #define PLASMA_OBJECT_LOCAL  PLASMA_OBJECT_SEALED
-/* Object is stored on a remote Plasma store, and it is not stored on the local Plasma Store */
+/* Object is stored on a remote Plasma store, and it is not stored on the local
+ * Plasma Store. */
 #define PLASMA_OBJECT_REMOTE 30
 /* Object is not stored in the system. */
 #define PLASMA_OBJECT_DOES_NOT_EXIST 50
-/* Object is currently transferred from a remote Plasma store the the local Plasma Store. */
+/* Object is currently transferred from a remote Plasma store the the local
+ * Plasma Store. */
 #define PLASMA_OBJECT_TRANSFER 60
 #define PLASMA_OBJECT_ANYWHERE 70
 
@@ -42,20 +44,20 @@ typedef struct {
   /** ID of the requested object. If ID_NIL request any object */
   object_id object_id;
   /** Request associated to the object. It can take one of the following values:
-   * - PLASMA_OBJECT_LOCAL: return if or when the object is available in the local Plasma Store.
+   * - PLASMA_OBJECT_LOCAL: return if or when the object is available in the
+   *   local Plasma Store.
    * - PLASMA_OBJECT_ANYWHWERE: return if or when the object is available in the
-   *                            system (i.e., either in the local or a remote Plasma Store. */
+   *   system (i.e., either in the local or a remote Plasma Store. */
   int type;
-  /** Object status. Same as the status returned by plasma_status() function call.
-   *  This is filled in by plasma_wait_for_objects1():
-   * - PLASMA_OBJECT_LOCAL: object is ready at the local Plasma Store.
-   * - PLASMA_OBJECT_REMOTE: object is ready at a remote Plasma Store.
-   * - PLASMA_OBJECT_DOES_NOT_EXIST: object does not exist in the system.
-   * - PLASMA_CLIENT_IN_TRANSFER, if the object is currently being scheduled for
-   *                              being transferred or it is transferring. */
+  /** Object status. Same as the status returned by plasma_status() function
+   *  call. This is filled in by plasma_wait_for_objects1():
+   *  - PLASMA_OBJECT_LOCAL: object is ready at the local Plasma Store.
+   *  - PLASMA_OBJECT_REMOTE: object is ready at a remote Plasma Store.
+   *  - PLASMA_OBJECT_DOES_NOT_EXIST: object does not exist in the system.
+   *  - PLASMA_CLIENT_IN_TRANSFER, if the object is currently being scheduled
+   *    for being transferred or it is transferring. */
   int status;
 } object_request;
-
 
 /* Handle to access memory mapped file and map it into client address space */
 typedef struct {
@@ -168,7 +170,7 @@ typedef struct {
     object_id object_ids[1];
     object_request object_requests[1];
   };
-  /** Return error code. */
+/** Return error code. */
 #define PLASMA_REPLY_OK 0
 #define PLASMA_REPLY_OBJECT_ALREADY_EXISTS 1
   int error_code;

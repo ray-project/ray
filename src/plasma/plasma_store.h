@@ -51,14 +51,13 @@ int get_object(client *client_context,
  * @param client_context The context of the client making this request.
  * @param conn The client connection that requests the object.
  * @param object_id Object ID of the object to be gotten.
- * @return Return OBJECT_FOUND if object was found, 
- *         and OBJECT_NOT_FOUND otherwise.
+ * @return Return OBJECT_FOUND if object was found, and OBJECT_NOT_FOUND
+ *         otherwise.
  */
 int get_object_local(client *client_context,
                      int conn,
                      object_id object_id,
                      plasma_object *result);
-
 
 /**
  * Record the fact that a particular client is no longer using an object.

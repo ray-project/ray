@@ -137,8 +137,6 @@ bool create_object(client *client_context,
                    int64_t data_size,
                    int64_t metadata_size,
                    plasma_object *result) {
-
-
   LOG_DEBUG("creating object"); /* TODO(pcm): add object_id here */
   plasma_store_state *plasma_state = client_context->plasma_state;
   object_table_entry *entry;
@@ -255,7 +253,6 @@ int get_object_local(client *client_context,
   }
   return OBJECT_NOT_FOUND;
 }
-
 
 int remove_client_from_object_clients(object_table_entry *entry,
                                       client *client_info) {
