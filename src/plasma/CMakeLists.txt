@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 2.8)
 
 project(plasma)
 
-if(NOT APPLE)
+if(FALSE)
   find_package(PythonInterp REQUIRED)
   find_package(PythonLibs ${PYTHON_VERSION_STRING} EXACT REQUIRED)
   set(CUSTOM_PYTHON_EXECUTABLE ${PYTHON_EXECUTABLE})
