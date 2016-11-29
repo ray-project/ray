@@ -101,22 +101,6 @@ struct plasma_connection {
   plasma_client_config config;
 };
 
-plasma_request *make_plasma_multiple_object_requests(
-    int num_object_requests,
-    object_request object_requests[]) {
-  int req_size =
-    sizeof(plasma_request) + sizeof(object_request) * (num_object_requests -1);
-
-  plasma_request *req = malloc(req_size);
-  CHECK(req != NULL);
-  req->num_object_ids = num_object_requests;
-
-  object_requests_copy(num_object_requests,
-                       req->object_requests, object_requests);
-
-  return req;
-}
-
 /* If the file descriptor fd has been mmapped in this client process before,
  * return the pointer that was returned by mmap, otherwise mmap it and store the
  * pointer in a hash table. */
@@ -510,7 +494,7 @@ void plasma_fetch(plasma_connection *conn,
     CHECK(reply.num_object_ids == 1);
     /* Update the correct index in is_fetched. */
     int i = 0;
-    for (; i < num_object_ids; i++) {
+    for (; i < num_object_ids; ++i) {
       if (object_ids_equal(object_ids[i], reply.object_ids[0]) &&
           !is_fetched[i]) {
         is_fetched[i] = success;
@@ -569,7 +553,7 @@ bool plasma_get_local(plasma_connection *conn,
   CHECK(conn->manager_conn >= 0);
 
   plasma_request req = plasma_make_request(object_id);
-  plasma_send_request(conn->store_conn, PLASMA_GET_LOCAL, &req);
+  CHECK(plasma_send_request(conn->store_conn, PLASMA_GET_LOCAL, &req) >= 0);
 
   plasma_reply reply;
   CHECK(plasma_receive_reply(conn->store_conn, sizeof(reply), &reply) >= 0);
@@ -603,7 +587,7 @@ int plasma_fetch_remote(plasma_connection *conn, object_id object_id) {
   CHECK(conn->manager_conn >= 0);
 
   plasma_request req = plasma_make_request(object_id);
-  plasma_send_request(conn->manager_conn, PLASMA_FETCH_REMOTE, &req);
+  CHECK(plasma_send_request(conn->manager_conn, PLASMA_FETCH_REMOTE, &req) >= 0);
 
   plasma_reply reply;
   int nbytes;
@@ -625,7 +609,7 @@ int plasma_status(plasma_connection *conn, object_id object_id) {
   CHECK(conn->manager_conn >= 0);
 
   plasma_request req = plasma_make_request(object_id);
-  plasma_send_request(conn->manager_conn, PLASMA_STATUS, &req);
+  CHECK(plasma_send_request(conn->manager_conn, PLASMA_STATUS, &req) >= 0);
 
   plasma_reply reply;
 
@@ -651,22 +635,18 @@ int plasma_wait_for_objects(plasma_connection *conn,
   CHECK(conn->manager_conn >= 0);
   CHECK(num_object_requests > 0);
 
-  plasma_request *req = make_plasma_multiple_object_requests(
-      num_object_requests, object_requests);
+  plasma_request *req = plasma_alloc_request2(num_object_requests,
+                                              object_requests);
   req->num_ready_objects = num_ready_objects;
   req->timeout = timeout_ms;
   CHECK(plasma_send_request(conn->manager_conn, PLASMA_WAIT1, req) >= 0);
   free(req);
 
-  int64_t reply_size =
-      sizeof(plasma_reply) + (num_object_requests - 1) * sizeof(object_request);
-  plasma_reply *reply = malloc(reply_size);
-  CHECK(reply != NULL);
-  int nbytes = recv(conn->manager_conn, (uint8_t *) reply, reply_size, 0);
-  CHECK(nbytes == reply_size);
-
+  plasma_reply *reply = plasma_alloc_reply2(num_object_requests);
+  CHECK(plasma_receive_reply(
+      conn->manager_conn, plasma_reply_size2(num_object_requests), reply) >= 0);
   int num_objects_ready = 0;
-  for (int i = 0; i < num_object_requests; i++) {
+  for (int i = 0; i < num_object_requests; ++i) {
     int type, status;
     object_requests[i].object_id = reply->object_requests[i].object_id;
     type = reply->object_requests[i].type;
@@ -676,12 +656,12 @@ int plasma_wait_for_objects(plasma_connection *conn,
 
     if (type == PLASMA_OBJECT_LOCAL) {
       if (status == PLASMA_OBJECT_LOCAL) {
-        num_objects_ready++;
+        num_objects_ready += 1;
       }
     } else {
       CHECK(type == PLASMA_OBJECT_ANYWHERE);
       if (status == PLASMA_OBJECT_LOCAL || status == PLASMA_OBJECT_REMOTE) {
-        num_objects_ready++;
+        num_objects_ready += 1;
       }
     }
   }
@@ -706,15 +686,16 @@ void plasma_client_get(plasma_connection *conn,
   request.object_id = object_id;
 
   while (true) {
-    if (plasma_get_local(conn, object_id, object_buffer))
-      /** Object is in the local Plasma Store, and it sealed */
+    if (plasma_get_local(conn, object_id, object_buffer)) {
+      /* Object is in the local Plasma Store, and it is sealed. */
       return;
+    }
 
     switch (plasma_fetch_remote(conn, object_id)) {
     case PLASMA_OBJECT_LOCAL:
       /* Object has finished being transfered just after calling
-       * plasma_get_local(), and it is now in the local Plasma Store. Loop
-       * again to call plasma_get_local() and eventually return. */
+       * plasma_get_local(), and it is now in the local Plasma Store. Loop again
+       * to call plasma_get_local() and eventually return. */
       continue;
     case PLASMA_OBJECT_REMOTE:
       /* A fetch request has been already scheduled for object_id, so wait for
@@ -734,7 +715,7 @@ void plasma_client_get(plasma_connection *conn,
       CHECKM(0, "Unrecognizable object status.")
     }
 
-/**
+/*
  * Wait for object_id to (1) be transferred and sealed in the local
  * Plasma Store, if available remotely, or (2) be (re)constructued either
  * locally or remotely, if object_id didn't exist in the system.
@@ -792,24 +773,24 @@ int plasma_client_wait(plasma_connection *conn,
        * In both cases we return. */
       int idx_returns = 0;
 
-      for (int i = 0; i < num_returns; i++) {
+      for (int i = 0; i < num_returns; ++i) {
         if (requests[i].status == PLASMA_OBJECT_LOCAL ||
             requests[i].status == PLASMA_OBJECT_REMOTE) {
           return_object_ids[idx_returns] = requests[i].object_id;
-          idx_returns++;
+          idx_returns += 1;
         }
       }
       return idx_returns;
     }
-    /** The timeout hasn't expired and we got less than num_returns
-      * in the system. Trigger reconstruction of the missing objects. */
-    for (int i = 0; i < num_returns; i++) {
+    /* The timeout hasn't expired and we got less than num_returns in the
+     * system. Trigger reconstruction of the missing objects. */
+    for (int i = 0; i < num_returns; ++i) {
       if (requests[i].status == PLASMA_OBJECT_DOES_NOT_EXIST) {
-        /** Object doesn’t exist in the system so ask local scheduler to
-          * create object with ID requests[i].object_id. */
+        /* Object doesn’t exist in the system so ask local scheduler to create
+         * object with ID requests[i].object_id. */
         /* TODO: scheduler_create_object(object_id); */
         printf("XXX Need to schedule object -- not implemented yet!\n");
-        /* subscribe to hear back when object_id is sealed */
+        /* Subscribe to hear back when object_id is sealed. */
       }
     }
   }
@@ -838,10 +819,11 @@ void plasma_client_multiget(plasma_connection *conn,
     n = plasma_wait_for_objects(conn, num_object_ids, requests, num_object_ids,
                                 TIMEOUT_WAIT_MS);
 
-    if (n == num_object_ids)
+    if (n == num_object_ids) {
       /* All objects are in the system either on the local or a remote Plasma
        * store, so we are done. */
       break;
+    }
 
     for (int i = 0; i < num_object_ids; ++i) {
       if (requests[i].status == PLASMA_OBJECT_REMOTE) {
@@ -907,8 +889,7 @@ void object_id_print(object_id obj_id) {
 }
 
 void object_requests_print(int num_object_requests,
-                           object_request object_requests[])
-{
+                           object_request object_requests[]) {
   for (int i = 0; i < num_object_requests; ++i) {
     printf("[");
     for (int j = 0; j < sizeof(object_id); ++j) {

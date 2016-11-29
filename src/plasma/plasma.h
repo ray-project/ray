@@ -225,6 +225,10 @@ plasma_request plasma_make_request(object_id object_id);
 plasma_request *plasma_alloc_request(int num_object_ids,
                                      object_id object_ids[]);
 
+/* TODO(rkn): Remove this method. */
+plasma_request *plasma_alloc_request2(int num_object_requests,
+                                      object_request object_requests[]);
+
 /**
  * Free a plasma request.
  *
@@ -240,6 +244,9 @@ void plasma_free_request(plasma_request *request);
  * @return The size of the request in bytes.
  */
 int64_t plasma_request_size(int num_object_ids);
+
+/* TODO(rkn): Get rid of this method. */
+int64_t plasma_request_size2(int num_object_ids);
 
 /**
  * Create a plasma reply with one object ID on the stack.
@@ -258,6 +265,9 @@ plasma_reply plasma_make_reply(object_id object_id);
  */
 plasma_reply *plasma_alloc_reply(int num_object_ids);
 
+/* TODO(rkn): Remove this method. */
+plasma_reply *plasma_alloc_reply2(int num_object_requests);
+
 /**
  * Free a plasma reply.
  *
@@ -273,6 +283,9 @@ void plasma_free_reply(plasma_reply *request);
  * @return The size of the reply in bytes.
  */
 int64_t plasma_reply_size(int num_returns);
+
+/* TODO(rkn): Get rid of this method. */
+int64_t plasma_reply_size2(int num_object_ids);
 
 /**
  * Send a plasma reply.
