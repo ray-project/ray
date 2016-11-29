@@ -1,6 +1,3 @@
-//
-// Created by Ion Stoica on 11/20/16.
-//
 #include "greatest.h"
 
 #include <assert.h>
@@ -82,17 +79,17 @@ TEST plasma_fetch_remote_tests(void) {
   ASSERT((status == PLASMA_OBJECT_LOCAL) ||
          (status == PLASMA_OBJECT_DOES_NOT_EXIST));
 
-  /** Sleep to make sure Plasma Manager got the notification. */
+  /* Sleep to make sure Plasma Manager got the notification. */
   sleep(1);
   status = plasma_fetch_remote(plasma_conn1, oid1);
   ASSERT(status == PLASMA_OBJECT_LOCAL);
 
-  /** Test for object being remote. */
+  /* Test for object being remote. */
   status = plasma_fetch_remote(plasma_conn2, oid1);
   ASSERT(status == PLASMA_OBJECT_REMOTE);
 
-  /** Sleep to make sure the object has been fetched and it is
-   * now stored in the local Plasma Store */
+  /* Sleep to make sure the object has been fetched and it is now stored in the
+   * local Plasma Store. */
   sleep(1);
   status = plasma_fetch_remote(plasma_conn2, oid1);
   ASSERT(status == PLASMA_OBJECT_LOCAL);

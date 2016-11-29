@@ -41,13 +41,13 @@ typedef struct {
  * Object rquest data structure. Used in the plasma_wait_for_objects() argument.
  */
 typedef struct {
-  /** ID of the requested object. If ID_NIL request any object */
+  /** The ID of the requested object. If ID_NIL request any object. */
   object_id object_id;
   /** Request associated to the object. It can take one of the following values:
    * - PLASMA_OBJECT_LOCAL: return if or when the object is available in the
    *   local Plasma Store.
    * - PLASMA_OBJECT_ANYWHWERE: return if or when the object is available in the
-   *   system (i.e., either in the local or a remote Plasma Store. */
+   *   system (i.e., either in the local or a remote Plasma Store). */
   int type;
   /** Object status. Same as the status returned by plasma_status() function
    *  call. This is filled in by plasma_wait_for_objects1():
@@ -59,7 +59,7 @@ typedef struct {
   int status;
 } object_request;
 
-/* Handle to access memory mapped file and map it into client address space */
+/* Handle to access memory mapped file and map it into client address space. */
 typedef struct {
   /** The file descriptor of the memory mapped file in the store. It is used
    * as a unique identifier of the file in the client to look up the

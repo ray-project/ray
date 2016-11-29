@@ -560,7 +560,7 @@ void ignore_data_chunk(event_loop *loop,
   client_connection *conn = (client_connection *) context;
   plasma_request_buffer *buf = conn->ignore_buffer;
 
-  /** Just read the transferred data into ignore_buf and then drop (free) it. */
+  /* Just read the transferred data into ignore_buf and then drop (free) it. */
   int done = read_object_chunk(conn, buf);
   if (!done) {
     return;
@@ -571,8 +571,8 @@ void ignore_data_chunk(event_loop *loop,
     free(buf->metadata);
   }
   free(buf);
-  /** Switch to listening for requests from this socket, instead of reading
-   *  object data. */
+  /* Switch to listening for requests from this socket, instead of reading
+   * object data. */
   event_loop_remove_file(loop, data_sock);
   event_loop_add_file(loop, data_sock, EVENT_LOOP_READ, process_message, conn);
 }
@@ -921,8 +921,8 @@ void return_from_wait1(client_connection *client_conn) {
   CHECK(n == size);
   free(client_conn->wait_reply);
 
-  /** Clean the remaining object connections.
-   * TODO (istoica) Check with Phlipp. */
+  /* Clean the remaining object connections. TODO(istoica): Check with Philipp.
+   */
   client_object_request *object_req, *tmp;
   HASH_ITER(active_hh, client_conn->active_objects, object_req, tmp) {
     remove_object_request(client_conn, object_req);
@@ -946,15 +946,15 @@ void process_wait_request1(client_connection *client_conn,
   plasma_manager_state *manager_state = client_conn->manager_state;
   client_conn->num_return_objects = num_ready_objects;
 
-  /** We can only run a command at a time on any given
-   *  client connection (client_conn) so set up is_wait
-   * so callback() can check whether we are still in wait() */
+  /* We can only run a command at a time on any given client connection
+   * (client_conn) so set up is_wait so callback() can check whether we are
+   * still in wait(). */
   client_conn->is_wait = true;
   client_conn->wait1 = true; /* new wait request */
 
-  /** Allocate space for wait_reply and initialize it to object_requests.
-    * When computing "size" we substract "-1" from num_object_requests since
-    * plasma_reply already includes one object_request element. */
+  /* Allocate space for wait_reply and initialize it to object_requests. When
+   * computing "size" we substract "-1" from num_object_requests since
+   * plasma_reply already includes one object_request element. */
   int64_t size =
       sizeof(plasma_reply) + (num_object_requests - 1) * sizeof(object_request);
   client_conn->wait_reply = malloc(size);
@@ -964,27 +964,25 @@ void process_wait_request1(client_connection *client_conn,
   object_requests_set_status_all(num_object_requests,
                                  client_conn->wait_reply->object_requests,
                                  PLASMA_OBJECT_DOES_NOT_EXIST);
-  /** We will just return back the same object_requests list after
-    * setting the status of the requests. */
+  /* We will just return back the same object_requests list after setting the
+   * status of the requests. */
   client_conn->wait_reply->num_object_ids = num_object_requests;
 
-  /** add timer callback --
-   * if timeout expires, it invokes wait_timeout_handler()
-   * if we get num_ready_objects before timeout expires,
-   * we remove timer */
+  /* Add timer callback. If timeout expires, it invokes wait_timeout_handler().
+   * If we get num_ready_objects before timeout expires, we remove the timer. */
   client_conn->timer_id = event_loop_add_timer(
       manager_state->loop, timeout, wait_timeout_handler1, client_conn);
 
-  /** Now check whether objects are in the Local Object store, and
-   * if not, check whether they are remote. */
+  /* Now check whether objects are in the Local Object store, and if not, check
+   * whether they are remote. */
   for (int i = 0; i < num_object_requests; ++i) {
     if (is_object_local(client_conn, object_requests[i].object_id)) {
-      /** If an object ID occurs twice in object_requests, this will count
-       * them twice. This might not be desirable behavior. */
+      /* If an object ID occurs twice in object_requests, this will count them
+       * twice. This might not be desirable behavior. */
       client_conn->num_return_objects -= 1;
       client_conn->wait_reply->object_requests[i].status = PLASMA_OBJECT_LOCAL;
       if (client_conn->num_return_objects == 0) {
-        /** We got num_return_objects in the local Object Store, so return */
+        /* We got num_return_objects in the local Object Store, so return. */
         event_loop_remove_timer(manager_state->loop, client_conn->timer_id);
         return_from_wait1(client_conn);
         return;
@@ -995,8 +993,8 @@ void process_wait_request1(client_connection *client_conn,
 
       if (object_request->status == PLASMA_OBJECT_DOES_NOT_EXIST) {
         if (get_object_request(client_conn, object_request->object_id)) {
-          /** This object is in transfer, which means that it is stored at a
-           * a remote node. */
+          /* This object is in transfer, which means that it is stored on a
+           * remote node. */
           client_conn->wait_reply->object_requests[i].status =
               PLASMA_OBJECT_REMOTE;
           if (client_conn->wait_reply->object_requests[i].type ==
@@ -1012,17 +1010,17 @@ void process_wait_request1(client_connection *client_conn,
             }
           }
         }
-        /** Subscribe to hear when object becomes available. */
+        /* Subscribe to hear when object becomes available. */
         retry_info retry_subscribe = {
             .num_retries = 0, .timeout = 0, .fail_callback = NULL,
         };
-        /** TODO (istoica) We should really cache the results here. */
+        /* TODO(istoica): We should really cache the results here. */
         object_table_subscribe(
             g_manager_state->db,
             client_conn->wait_reply->object_requests[i].object_id,
             wait_object_available_callback, (void *) client_conn,
             &retry_subscribe, NULL, NULL);
-        /* TODO (istoica): Since the existing subscribe doesn't return when the
+        /* TODO(istoica): Since the existing subscribe doesn't return when the
          * object already exists in the Object Table, do a lookup as well. */
         retry_info retry_lookup = {
             .num_retries = NUM_RETRIES,
@@ -1083,7 +1081,7 @@ void wait_object_available_callback(object_id object_id, void *user_context) {
   }
 
   if (client_conn->num_return_objects == 0) {
-    /** We got num_return_objects in the local Object Store, so return */
+    /* We got num_return_objects in the local Object Store, so return. */
     event_loop_remove_timer(manager_state->loop, client_conn->timer_id);
     return_from_wait1(client_conn);
   }
