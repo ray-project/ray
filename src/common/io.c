@@ -234,28 +234,32 @@ int write_message(int fd, int64_t type, int64_t length, uint8_t *bytes) {
  * @param fd The file descriptor to read from. It can be non-blocking.
  * @param cursor The cursor pointing to the beginning of the buffer.
  * @param length The size of the byte sequence to read.
- * @return int Whether there was an error while writing. 0 corresponds to
+ * @return int Whether there was an error while reading. 0 corresponds to
  *         success and -1 corresponds to an error (errno will be set).
  */
 int read_bytes(int fd, uint8_t *cursor, size_t length) {
   ssize_t nbytes = 0;
-  while (length > 0) {
-    /* While we haven't read the whole message, read from the file descriptor,
-     * advance the cursor, and decrease the amount left to read. */
-    nbytes = read(fd, cursor, length);
-    if (nbytes < 0) {
-      if (errno == EAGAIN || errno == EWOULDBLOCK) {
-        continue;
-      }
-      /* Force an exit if there was any other type of error. */
-      CHECK(nbytes < 0);
-    }
-    if (nbytes == 0) {
-      return -1;
-    }
-    cursor += nbytes;
-    length -= nbytes;
+  /* termination condition: EOF or read 'length' bytes total
+   *
+   */
+  size_t bytesleft = length;
+  size_t offset = 0;
+  while (bytesleft > 0) {
+	  nbytes = read(fd, cursor+offset, bytesleft);
+	  if (nbytes < 0) {
+		  if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+			  continue;
+		  }
+		  return -1;
+	  } else if (0 == nbytes) {
+		  /* encountered early EOF */
+		  return -1;
+	  }
+	  CHECK(nbytes > 0);
+	  bytesleft -= nbytes;
+	  offset += nbytes;
   }
+
   return 0;
 }
 
