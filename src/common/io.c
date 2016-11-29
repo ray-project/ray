@@ -174,24 +174,26 @@ int accept_client(int socket_fd) {
  */
 int write_bytes(int fd, uint8_t *cursor, size_t length) {
   ssize_t nbytes = 0;
-  while (length > 0) {
+  size_t bytesleft = length;
+  size_t offset = 0;
+  while (bytesleft > 0) {
     /* While we haven't written the whole message, write to the file
      * descriptor, advance the cursor, and decrease the amount left to write. */
-    nbytes = write(fd, cursor, length);
+    nbytes = write(fd, cursor + offset, bytesleft);
     if (nbytes < 0) {
-      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
         continue;
       }
-      /* TODO(swang): Return the error instead of exiting. */
-      /* Force an exit if there was any other type of error. */
-      CHECK(nbytes < 0);
-    }
-    if (nbytes == 0) {
+      return -1; /* Errno will be set. */
+    } else if (0 == nbytes) {
+      /* Encountered early EOF. */
       return -1;
     }
-    cursor += nbytes;
-    length -= nbytes;
+    CHECK(nbytes > 0);
+    bytesleft -= nbytes;
+    offset += nbytes;
   }
+
   return 0;
 }
 
