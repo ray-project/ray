@@ -16,8 +16,8 @@ clean:
 $(BUILD)/manager_tests: test/manager_tests.c plasma.h plasma.c plasma_client.h plasma_client.c plasma_manager.h plasma_manager.c fling.h fling.c common
 	$(CC) $(CFLAGS) $(TEST_CFLAGS) -o $@ test/manager_tests.c plasma.c plasma_manager.c plasma_client.c fling.c ../common/build/libcommon.a ../common/thirdparty/hiredis/libhiredis.a
 
-$(BUILD)/client_tests: test/client_tests.c plasma.h plasma_client.h plasma_client.c plasma_manager.h plasma_manager.c fling.h fling.c common
-	$(CC) $(CFLAGS) $(TEST_CFLAGS) -o $@ test/client_tests.c plasma_manager.c plasma_client.c fling.c ../common/build/libcommon.a ../common/thirdparty/hiredis/libhiredis.a
+$(BUILD)/client_tests: test/client_tests.c plasma.h plasma.c plasma_client.h plasma_client.c plasma_manager.h plasma_manager.c fling.h fling.c common
+	$(CC) $(CFLAGS) $(TEST_CFLAGS) -o $@ test/client_tests.c plasma.c plasma_manager.c plasma_client.c fling.c ../common/build/libcommon.a ../common/thirdparty/hiredis/libhiredis.a
 
 $(BUILD)/plasma_store: plasma_store.c plasma.h plasma.c eviction_policy.c fling.h fling.c malloc.c malloc.h thirdparty/dlmalloc.c common
 	$(CC) $(CFLAGS) plasma_store.c plasma.c eviction_policy.c fling.c malloc.c ../common/build/libcommon.a -o $(BUILD)/plasma_store
