@@ -239,25 +239,23 @@ int write_message(int fd, int64_t type, int64_t length, uint8_t *bytes) {
  */
 int read_bytes(int fd, uint8_t *cursor, size_t length) {
   ssize_t nbytes = 0;
-  /* termination condition: EOF or read 'length' bytes total
-   *
-   */
+  /* Termination condition: EOF or read 'length' bytes total. */
   size_t bytesleft = length;
   size_t offset = 0;
   while (bytesleft > 0) {
-	  nbytes = read(fd, cursor+offset, bytesleft);
-	  if (nbytes < 0) {
-		  if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
-			  continue;
-		  }
-		  return -1;
-	  } else if (0 == nbytes) {
-		  /* encountered early EOF */
-		  return -1;
-	  }
-	  CHECK(nbytes > 0);
-	  bytesleft -= nbytes;
-	  offset += nbytes;
+    nbytes = read(fd, cursor + offset, bytesleft);
+    if (nbytes < 0) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+        continue;
+      }
+      return -1;
+    } else if (0 == nbytes) {
+      /* Encountered early EOF. */
+      return -1;
+    }
+    CHECK(nbytes > 0);
+    bytesleft -= nbytes;
+    offset += nbytes;
   }
 
   return 0;
