@@ -195,6 +195,26 @@ class PlasmaClient(object):
     """
     self.client.plasma_seal(self.plasma_conn, make_plasma_id(object_id))
 
+  def persist(self, object_id):
+    """Persist the sealed buffer in the PlasmaStore for a particular object ID.
+
+    Once a buffer has been persisted, it has a copy of its contents on disk.
+
+    Args:
+      object_id (str): A string used to identify an object.
+    """
+    self.client.plasma_persist(self.plasma_conn, make_plasma_id(object_id))
+
+  def reload(self, object_id):
+    """Reload the persisted object with particular object id from disk copy.
+
+    Once an object has been reloaded, it should be the same as its disk copy.
+
+    Args:
+      object_id (str): A string used to identify an object.
+    """
+    self.client.plasma_persist(self.plasma_conn, make_plasma_id(object_id))
+
   def delete(self, object_id):
     """Delete the buffer in the PlasmaStore for a particular object ID.
 

@@ -71,6 +71,7 @@ class TestPlasmaClient(unittest.TestCase):
       time.sleep(2.0)
     else:
       self.p = subprocess.Popen(command)
+      time.sleep(2.0)
     # Connect to Plasma.
     self.plasma_client = plasma.PlasmaClient(store_name, None, 64)
     # For the eviction test
@@ -96,6 +97,24 @@ class TestPlasmaClient(unittest.TestCase):
       memory_buffer[i] = chr(i % 256)
     # Seal the object.
     self.plasma_client.seal(object_id)
+    # Get the object.
+    memory_buffer = self.plasma_client.get(object_id)
+    for i in range(length):
+      self.assertEqual(memory_buffer[i], chr(i % 256))
+
+  def test_persist_sanity(self):
+    # Create an object id string.
+    object_id = random_object_id()
+    # Create a new buffer and write to it.
+    length = 50
+    memory_buffer = self.plasma_client.create(object_id, length)
+    for i in range(length):
+      memory_buffer[i] = chr(i % 256)
+    # Seal the object.
+    self.plasma_client.seal(object_id)
+
+    self.plasma_client.persist(object_id)
+    self.plasma_client.reload(object_id)
     # Get the object.
     memory_buffer = self.plasma_client.get(object_id)
     for i in range(length):

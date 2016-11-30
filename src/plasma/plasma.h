@@ -70,7 +70,11 @@ enum plasma_message_type {
   /** Request a fetch of an object in another store. */
   PLASMA_FETCH,
   /** Wait until an object becomes available. */
-  PLASMA_WAIT
+  PLASMA_WAIT,
+  /** Persist an object on disk **/
+  PLASMA_PERSIST,
+  /** Reload an object from disk onto memory **/ 
+  PLASMA_RELOAD,
 };
 
 typedef struct {

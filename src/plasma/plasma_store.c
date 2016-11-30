@@ -35,7 +35,7 @@
 #include "malloc.h"
 #include "plasma_store.h"
 
-const char *PERSIST_PATH = "persisted/";
+const char *PERSIST_PATH = "/Users/belugajustin/Downloads/misaka/persisted/";
 
 void *dlmalloc(size_t);
 void dlfree(void *);
@@ -389,7 +389,8 @@ void persist_object(client *client_context, object_id object_id) {
   /* Check if the file containing the object already exists. */
   char *file_path = object_id_to_persist_path(object_id);
   struct stat buffer;
-  CHECKM(stat(file_path, &buffer) != 0, "Cannot persist an object twice");
+  //CHECKM(stat(file_path, &buffer) != 0, "Cannot persist an object twice"); 
+  //took out b/c exposing persistence to the user now
   /* Create the file if it does not exist and write object. */
   int fd = open(file_path, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
   CHECKM(fd > 0, "Something went wrong while creating persistence file");
@@ -548,6 +549,12 @@ void process_message(event_loop *loop,
       remove_client_from_object_clients(entry, client_context);
     }
   } break;
+  case PLASMA_PERSIST: 
+    persist_object(client_context, req->object_ids[0]);
+    break;
+  case PLASMA_RELOAD:
+    get_persisted_object(client_context, req->object_ids[0]);
+    break; 
   default:
     /* This code should be unreachable. */
     CHECK(0);

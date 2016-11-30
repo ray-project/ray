@@ -539,3 +539,19 @@ int plasma_wait(plasma_connection *conn,
 int get_manager_fd(plasma_connection *conn) {
   return conn->manager_conn;
 }
+
+void plasma_persist(plasma_connection *conn, object_id object_id) {
+  plasma_request req = make_plasma_request(object_id);
+  plasma_send_request(conn->store_conn, PLASMA_PERSIST, &req);
+  if (conn->manager_conn >= 0) {
+    plasma_send_request(conn->manager_conn, PLASMA_PERSIST, &req);
+  }
+}
+
+void plasma_reload(plasma_connection *conn, object_id object_id) {
+  plasma_request req = make_plasma_request(object_id);
+  plasma_send_request(conn->store_conn, PLASMA_RELOAD, &req);
+  if (conn->manager_conn >= 0) {
+    plasma_send_request(conn->manager_conn, PLASMA_RELOAD, &req);
+  }
+}
