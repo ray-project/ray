@@ -1348,6 +1348,7 @@ void process_object_notification(event_loop *loop,
     client_conn = object_req->client_conn;
     if (!client_conn->is_wait) {
       event_loop_remove_timer(state->loop, object_req->timer);
+      send_client_reply(client_conn, &reply);
     } else {
       if (client_conn->wait1) {
         wait_process_object_available_local(client_conn, obj_id);

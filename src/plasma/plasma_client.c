@@ -478,20 +478,11 @@ void plasma_fetch(plasma_connection *conn,
   free(req);
 
   plasma_reply reply;
-  int nbytes, success;
+  int success;
   for (int received = 0; received < num_object_ids; ++received) {
-    nbytes = recv(conn->manager_conn, (uint8_t *) &reply, sizeof(reply),
-                  MSG_WAITALL);
-    if (nbytes < 0) {
-      LOG_ERROR("Error while waiting for manager response in fetch");
-      success = 0;
-    } else if (nbytes == 0) {
-      success = 0;
-    } else {
-      CHECK(nbytes == sizeof(reply));
-      success = reply.has_object;
-    }
+    CHECK(plasma_receive_reply(conn->manager_conn, sizeof(reply), &reply) >= 0);
     CHECK(reply.num_object_ids == 1);
+    success = reply.has_object;
     /* Update the correct index in is_fetched. */
     int i = 0;
     for (; i < num_object_ids; ++i) {
@@ -706,7 +697,6 @@ void plasma_client_get(plasma_connection *conn,
       /* Object doesn’t exist in the system so ask local scheduler to create it.
        */
       /* TODO: scheduler_create_object(object_id); */
-      printf("XXX Need to schedule object -- not implemented yet!\n");
       /* Wait for the object to be (re)constructed and sealed either in the
        * local Plasma Store or remotely. */
       request.type = PLASMA_OBJECT_ANYWHERE;
