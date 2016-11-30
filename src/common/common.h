@@ -56,21 +56,21 @@
 #if (RAY_COMMON_LOG_LEVEL > RAY_COMMON_FATAL)
 #define LOG_FATAL(M, ...)
 #elif defined(_EXECINFO_H) || !defined(_WIN32)
-#define LOG_FATAL(M, ...)                                                 \
-  do {                                                                    \
-    fprintf(stderr, "[FATAL] (%s:%d) " M "\n", __FILE__, __LINE__,        \
-            ##__VA_ARGS__);                                               \
-    void *buffer[255];                                                    \
-    const int calls = backtrace(buffer, sizeof(buffer) / sizeof(void *)); \
-    backtrace_symbols_fd(buffer, calls, 1);                               \
-    exit(-1);                                                             \
+#define LOG_FATAL(M, ...)                                                     \
+  do {                                                                        \
+    fprintf(stderr, "[FATAL] (%s:%d: errno: %s) " M "\n", __FILE__, __LINE__, \
+            errno == 0 ? "None" : strerror(errno), ##__VA_ARGS__);            \
+    void *buffer[255];                                                        \
+    const int calls = backtrace(buffer, sizeof(buffer) / sizeof(void *));     \
+    backtrace_symbols_fd(buffer, calls, 1);                                   \
+    exit(-1);                                                                 \
   } while (0)
 #else
-#define LOG_FATAL(M, ...)                                          \
-  do {                                                             \
-    fprintf(stderr, "[FATAL] (%s:%d) " M "\n", __FILE__, __LINE__, \
-            ##__VA_ARGS__);                                        \
-    exit(-1);                                                      \
+#define LOG_FATAL(M, ...)                                                     \
+  do {                                                                        \
+    fprintf(stderr, "[FATAL] (%s:%d: errno: %s) " M "\n", __FILE__, __LINE__, \
+            errno == 0 ? "None" : strerror(errno), ##__VA_ARGS__);            \
+    exit(-1);                                                                 \
   } while (0)
 #endif
 
