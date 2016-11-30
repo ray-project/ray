@@ -91,7 +91,7 @@ def serialize(obj):
   """
   class_id = class_identifier(type(obj))
   if class_id not in whitelisted_classes:
-    raise Exception("Ray does not know how to serialize the object {}. To fix this, call 'ray.register_class' on the class of the object.".format(obj))
+    raise Exception("Ray does not know how to serialize objects of type {}. To fix this, call 'ray.register_class' with this class.".format(type(obj)))
   if class_id in classes_to_pickle:
     serialized_obj = {"data": pickling.dumps(obj)}
   elif class_id in custom_serializers.keys():
