@@ -32,5 +32,7 @@ int64_t read_buffer(int fd, int64_t *type, UT_array *buffer);
 void write_log_message(int fd, char *message);
 void write_formatted_log_message(int fd, const char *format, ...);
 char *read_log_message(int fd);
+int read_bytes(int fd, uint8_t *cursor, size_t length);
+int write_bytes(int fd, uint8_t *cursor, size_t length);
 
 #endif /* IO_H */

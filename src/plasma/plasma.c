@@ -62,15 +62,11 @@ int64_t plasma_reply_size(int num_object_ids) {
 int plasma_send_reply(int sock, plasma_reply *reply) {
   DCHECK(reply);
   int64_t reply_size = plasma_reply_size(reply->num_object_ids);
-  int n = write(sock, (uint8_t *) reply, reply_size);
-  return n == reply_size ? 0 : -1;
+  return write_bytes(sock, (uint8_t *) reply, reply_size);
 }
 
 int plasma_receive_reply(int sock, int64_t reply_size, plasma_reply *reply) {
-  int r = recv(sock, reply, reply_size, 0);
-  CHECKM(r != -1, "read error");
-  CHECKM(r != 0, "connection disconnected");
-  return r == reply_size ? 0 : -1;
+  return read_bytes(sock, (uint8_t *) reply, reply_size);
 }
 
 int plasma_send_request(int sock, int64_t type, plasma_request *request) {
