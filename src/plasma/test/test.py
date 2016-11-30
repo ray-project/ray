@@ -303,9 +303,7 @@ class TestPlasmaManager(unittest.TestCase):
       # in the object table once we call the fetch operation. Remove once
       # retries are implemented by Ray common.
       time.sleep(0.1)
-      print("AAA")
       successes = self.client2.fetch([object_id1])
-      print("BBB")
       self.assertEqual(successes, [True])
       # Compare the two buffers.
       assert_get_object_equal(self, self.client1, self.client2, object_id1,

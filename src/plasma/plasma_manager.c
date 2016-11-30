@@ -228,8 +228,10 @@ struct client_connection {
   int64_t timer_id;
   /** True if this client is in a "wait" and false if it is in a "fetch". */
   bool is_wait;
-  /** True if we use new version of wait() */
+  /** True if we use new version of wait. */
   bool wait1;
+  /** True if we use the new version of fetch. */
+  bool fetch1;
   /** If this client is processing a wait, this contains the object ids that
    *  are already available. */
   plasma_reply *wait_reply;
@@ -821,6 +823,7 @@ bool is_object_local(client_connection *client_conn, object_id object_id) {
 void process_fetch_request(client_connection *client_conn,
                            object_id object_id) {
   client_conn->is_wait = false;
+  client_conn->fetch1 = false;
   client_conn->wait_reply = NULL;
   plasma_reply reply = plasma_make_reply(object_id);
   if (client_conn->manager_state->db == NULL) {
@@ -883,6 +886,7 @@ void process_wait_request(client_connection *client_conn,
   client_conn->num_return_objects = num_ready_objects;
   client_conn->is_wait = true;
   client_conn->wait1 = false; /* old wait */
+  client_conn->fetch1 = false;
   client_conn->timer_id = event_loop_add_timer(
       manager_state->loop, timeout, wait_timeout_handler, client_conn);
   client_conn->wait_reply = plasma_alloc_reply(num_ready_objects);
@@ -951,6 +955,7 @@ void process_wait_request1(client_connection *client_conn,
    * still in wait(). */
   client_conn->is_wait = true;
   client_conn->wait1 = true; /* new wait request */
+  client_conn->fetch1 = false;
 
   /* Allocate space for wait_reply and initialize it to object_requests. When
    * computing "size" we substract "-1" from num_object_requests since
@@ -1251,6 +1256,7 @@ void process_fetch_or_status_request(client_connection *client_conn,
                                      object_id object_id,
                                      bool fetch) {
   client_conn->is_wait = false;
+  client_conn->fetch1 = true;
   client_conn->wait_reply = NULL;
 
   /* Return success immediately if we already have this object. */
@@ -1348,7 +1354,9 @@ void process_object_notification(event_loop *loop,
     client_conn = object_req->client_conn;
     if (!client_conn->is_wait) {
       event_loop_remove_timer(state->loop, object_req->timer);
-      send_client_reply(client_conn, &reply);
+      if (!client_conn->fetch1) {
+        send_client_reply(client_conn, &reply);
+      }
     } else {
       if (client_conn->wait1) {
         wait_process_object_available_local(client_conn, obj_id);
