@@ -294,6 +294,9 @@ client_object_request *add_object_request(client_connection *client_conn,
   CHECK(object_req);
   object_req->object_id = object_id;
   object_req->client_conn = client_conn;
+  /* The timer ID returned by event_loop_add_timer is positive, so we can check
+   * if the timer is -1 to see if a timer has been added. */
+  object_req->timer = -1;
   object_req->manager_count = 0;
   object_req->manager_vector = NULL;
   object_req->next_manager = 0;
@@ -348,7 +351,10 @@ void remove_object_request(client_connection *client_conn,
    * code will still work correctly. While the timer handle returning
    * EVENT_LOOP_TIMER_DONE will trigger another call for removing the request's
    * timer, that's ok as event_loop_remove_timer() is idempotent. */
-  event_loop_remove_timer(client_conn->manager_state->loop, object_req->timer);
+  if (object_req->timer != -1) {
+    event_loop_remove_timer(client_conn->manager_state->loop,
+                            object_req->timer);
+  }
 }
 
 plasma_manager_state *init_plasma_manager_state(const char *store_socket_name,
