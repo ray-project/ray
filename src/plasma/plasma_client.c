@@ -181,7 +181,7 @@ bool plasma_create(plasma_connection *conn,
   CHECK(plasma_receive_reply(conn->store_conn, sizeof(reply), &reply) >= 0);
   int fd = recv_fd(conn->store_conn);
   CHECKM(fd >= 0, "recv not successful");
-  if (reply.error_code == PLASMA_REPLY_OBJECT_ALREADY_EXISTS) {
+  if (reply.error_code == PLASMA_OBJECT_ALREADY_EXISTS) {
     LOG_DEBUG("returned from plasma_create with error %d", reply.error_code);
     return false;
   }

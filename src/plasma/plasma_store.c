@@ -299,7 +299,8 @@ int contains_object(client *client_context, object_id object_id) {
   object_table_entry *entry;
   HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
             sizeof(object_id), entry);
-  return entry && (entry->state == PLASMA_SEALED) ? OBJECT_FOUND : OBJECT_NOT_FOUND;
+  return entry && (entry->state == PLASMA_SEALED) ? OBJECT_FOUND
+                                                  : OBJECT_NOT_FOUND;
 }
 
 /* Seal an object that has been created in the hash table. */
@@ -464,7 +465,7 @@ void process_message(event_loop *loop,
                       req->data_size, req->metadata_size, &reply.object)) {
       reply.error_code = PLASMA_REPLY_OK;
     } else {
-      reply.error_code = PLASMA_REPLY_OBJECT_ALREADY_EXISTS;
+      reply.error_code = PLASMA_OBJECT_ALREADY_EXISTS;
     }
     CHECK(plasma_send_reply(client_sock, &reply) >= 0);
     CHECK(send_fd(client_sock, reply.object.handle.store_fd) >= 0);

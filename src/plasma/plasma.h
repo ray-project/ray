@@ -76,7 +76,9 @@ typedef enum {
 } object_state;
 
 typedef enum {
+  /** The object was not found. */
   OBJECT_NOT_FOUND = 0,
+  /** The object was found. */
   OBJECT_FOUND = 1
 } object_status;
 
@@ -160,10 +162,12 @@ typedef struct {
   object_request object_requests[1];
 } plasma_request;
 
-enum plasma_error {
-  PLASMA_REPLY_OK = 0,
-  PLASMA_OBJECT_EXISTS
-};
+typedef enum {
+  /** There is no error. */
+  PLASMA_REPLY_OK = 1,
+  /** The object already exists. */
+  PLASMA_OBJECT_ALREADY_EXISTS
+} plasma_error;
 
 typedef struct {
   /** The object that is returned with this reply. */
@@ -183,8 +187,8 @@ typedef struct {
   int num_object_ids;
   /** The object requests that this reply refers to. */
   object_request object_requests[1];
-  /** Return error code of type plasma_error. */
-  int error_code;
+  /** Return error code. */
+  plasma_error error_code;
 } plasma_reply;
 
 /** This type is used by the Plasma store. It is here because it is exposed to

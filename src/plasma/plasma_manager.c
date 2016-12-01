@@ -780,7 +780,9 @@ void request_transfer(object_id object_id,
     /* TODO(swang): Instead of immediately counting this as a failure, maybe
      * register a Redis callback for changes to this object table entry. */
     free(manager_vector);
-    send_client_object_does_not_exist_reply(object_id, client_conn);
+    plasma_reply reply = plasma_make_reply(object_id);
+    reply.object_status = PLASMA_OBJECT_NONEXISTENT;
+    CHECK(plasma_send_reply(client_conn->fd, &reply) >= 0);
     return;
   }
   /* Register the new outstanding fetch with the current client connection. */
@@ -1027,7 +1029,7 @@ void process_wait_request1(client_connection *client_conn,
         retry_info retry_lookup = {
             .num_retries = NUM_RETRIES,
             .timeout = MANAGER_TIMEOUT,
-            .fail_callback = (table_fail_callback) do_nothing,
+            .fail_callback = NULL,
         };
 
         object_table_lookup(
@@ -1037,10 +1039,6 @@ void process_wait_request1(client_connection *client_conn,
       }
     }
   }
-}
-
-int do_nothing(object_id object_id, client_connection *conn) {
-  return 0;
 }
 
 void wait_object_lookup_callback(object_id object_id,
@@ -1128,7 +1126,9 @@ int fetch_timeout_handler(event_loop *loop, timer_id id, void *context) {
     object_req->num_retries--;
     return MANAGER_TIMEOUT;
   }
-  send_client_object_does_not_exist_reply(object_req->object_id, client_conn);
+  plasma_reply reply = plasma_make_reply(object_req->object_id);
+  reply.object_status = PLASMA_OBJECT_NONEXISTENT;
+  CHECK(plasma_send_reply(client_conn->fd, &reply) >= 0);
 
   remove_object_request(client_conn, object_req);
   return EVENT_LOOP_TIMER_DONE;
@@ -1149,11 +1149,11 @@ void request_fetch_initiate(object_id object_id,
                             const char *manager_vector[],
                             void *context) {
   client_connection *client_conn = (client_connection *) context;
-
   int status = request_fetch_or_status(object_id, manager_count, manager_vector,
                                        context, true);
-
-  send_client_object_status_reply(object_id, client_conn, status);
+  plasma_reply reply = plasma_make_reply(object_id);
+  reply.object_status = status;
+  CHECK(plasma_send_reply(client_conn->fd, &reply) >= 0);
 }
 
 /**
@@ -1176,10 +1176,11 @@ void request_status_done(object_id object_id,
                          const char *manager_vector[],
                          void *context) {
   client_connection *client_conn = (client_connection *) context;
-
   int status = request_fetch_or_status(object_id, manager_count, manager_vector,
                                        context, false);
-  send_client_object_status_reply(object_id, client_conn, status);
+  plasma_reply reply = plasma_make_reply(object_id);
+  reply.object_status = status;
+  CHECK(plasma_send_reply(client_conn->fd, &reply) >= 0);
 }
 
 int request_fetch_or_status(object_id object_id,
@@ -1245,8 +1246,15 @@ int request_fetch_or_status(object_id object_id,
   /* Since object is not stored at the local locally, manager_count > 0 means
    * that the object is stored at another remote object. Otherwise, if
    * manager_count == 0, the object is not stored anywhere. */
-  return (manager_count > 0 ? PLASMA_OBJECT_REMOTE
-                            : PLASMA_OBJECT_NONEXISTENT);
+  return (manager_count > 0 ? PLASMA_OBJECT_REMOTE : PLASMA_OBJECT_NONEXISTENT);
+}
+
+void object_table_lookup_fail_callback(object_id object_id,
+                                       void *user_context,
+                                       void *user_data) {
+  /* Fail for now. Later, we may want to send a PLASMA_OBJECT_NONEXISTENT to the
+   * client. */
+  CHECK(0);
 }
 
 void process_fetch_or_status_request(client_connection *client_conn,
@@ -1258,29 +1266,32 @@ void process_fetch_or_status_request(client_connection *client_conn,
 
   /* Return success immediately if we already have this object. */
   if (is_object_local(client_conn, object_id)) {
-    send_client_object_status_reply(object_id, client_conn,
-                                    PLASMA_OBJECT_LOCAL);
+    plasma_reply reply = plasma_make_reply(object_id);
+    reply.object_status = PLASMA_OBJECT_LOCAL;
+    CHECK(plasma_send_reply(client_conn->fd, &reply) >= 0);
     return;
   }
 
   /* Check whether a transfer request for this object is already pending. */
   if (get_object_request(client_conn, object_id)) {
-    send_client_object_status_reply(object_id, client_conn,
-                                    PLASMA_OBJECT_IN_TRANSFER);
+    plasma_reply reply = plasma_make_reply(object_id);
+    reply.object_status = PLASMA_OBJECT_IN_TRANSFER;
+    CHECK(plasma_send_reply(client_conn->fd, &reply) >= 0);
     return;
   }
 
   if (client_conn->manager_state->db == NULL) {
-    send_client_object_does_not_exist_reply(object_id, client_conn);
+    plasma_reply reply = plasma_make_reply(object_id);
+    reply.object_status = PLASMA_OBJECT_NONEXISTENT;
+    CHECK(plasma_send_reply(client_conn->fd, &reply) >= 0);
     return;
   }
 
-  /* object not local, so check whether it is stored remotely */
+  /* The object is not local, so check whether it is stored remotely. */
   retry_info retry = {
       .num_retries = NUM_RETRIES,
       .timeout = MANAGER_TIMEOUT,
-      .fail_callback =
-          (table_fail_callback) send_client_object_does_not_exist_reply,
+      .fail_callback = object_table_lookup_fail_callback,
   };
 
   if (fetch) {
@@ -1291,25 +1302,6 @@ void process_fetch_or_status_request(client_connection *client_conn,
     object_table_lookup(client_conn->manager_state->db, object_id, &retry,
                         request_status_done, client_conn);
   }
-}
-
-int send_client_reply1(client_connection *conn, plasma_reply *reply) {
-  int n = write(conn->fd, (uint8_t *) reply, sizeof(plasma_reply));
-  return (n != sizeof(plasma_reply));
-}
-
-int send_client_object_status_reply(object_id object_id,
-                                    client_connection *conn,
-                                    int object_status) {
-  plasma_reply reply = plasma_make_reply(object_id);
-  reply.object_status = object_status;
-  return send_client_reply1(conn, &reply);
-}
-
-int send_client_object_does_not_exist_reply(object_id object_id,
-                                            client_connection *conn) {
-  return send_client_object_status_reply(object_id, conn,
-                                         PLASMA_OBJECT_NONEXISTENT);
 }
 
 /* === END - ALTERNATE PLASMA CLIENT API === */
