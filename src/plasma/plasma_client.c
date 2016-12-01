@@ -645,12 +645,12 @@ int plasma_wait_for_objects(plasma_connection *conn,
     status = reply->object_requests[i].status;
     object_requests[i].status = status;
 
-    if (type == PLASMA_OBJECT_LOCAL) {
+    if (type == PLASMA_QUERY_LOCAL) {
       if (status == PLASMA_OBJECT_LOCAL) {
         num_objects_ready += 1;
       }
     } else {
-      CHECK(type == PLASMA_OBJECT_ANYWHERE);
+      CHECK(type == PLASMA_QUERY_ANYWHERE);
       if (status == PLASMA_OBJECT_LOCAL || status == PLASMA_OBJECT_REMOTE) {
         num_objects_ready += 1;
       }
@@ -691,15 +691,15 @@ void plasma_client_get(plasma_connection *conn,
     case PLASMA_OBJECT_REMOTE:
       /* A fetch request has been already scheduled for object_id, so wait for
        * it to complete. */
-      request.type = PLASMA_OBJECT_LOCAL;
+      request.type = PLASMA_QUERY_LOCAL;
       break;
-    case PLASMA_OBJECT_DOES_NOT_EXIST:
+    case PLASMA_OBJECT_NONEXISTENT:
       /* Object doesn’t exist in the system so ask local scheduler to create it.
        */
       /* TODO: scheduler_create_object(object_id); */
       /* Wait for the object to be (re)constructed and sealed either in the
        * local Plasma Store or remotely. */
-      request.type = PLASMA_OBJECT_ANYWHERE;
+      request.type = PLASMA_QUERY_ANYWHERE;
       break;
     default:
       CHECKM(0, "Unrecognizable object status.")
@@ -715,7 +715,7 @@ void plasma_client_get(plasma_connection *conn,
  *     will get object and return
  * - if request.status == PLASMA_OBJECT_REMOTE, next iteration
  *     will call plasma_fetch()
- * - if request.status == PLASMA_OBJECT_DOES_NOT_EXIST, next iteration
+ * - if request.status == PLASMA_OBJECT_NONEXISTENT, next iteration
  *     will call scheduler_create_object()
  */
 #define TIMEOUT_WAIT_MS 200
@@ -736,10 +736,10 @@ int plasma_client_wait(plasma_connection *conn,
 
   /* Initialize array of object requests. We only care for the objects to be
    * present in the system, not necessary in the local Plasma Store. Thus, we
-   * set the request type to PLASMA_OBJECT_ANYWHERE. */
+   * set the request type to PLASMA_QUERY_ANYWHERE. */
   for (int i = 0; i < num_object_ids; ++i) {
     requests[i].object_id = object_ids[i];
-    requests[i].type = PLASMA_OBJECT_ANYWHERE;
+    requests[i].type = PLASMA_QUERY_ANYWHERE;
   }
 
   /* Loop until we get num_returns objects stored in the system either in the
@@ -775,7 +775,7 @@ int plasma_client_wait(plasma_connection *conn,
     /* The timeout hasn't expired and we got less than num_returns in the
      * system. Trigger reconstruction of the missing objects. */
     for (int i = 0; i < num_returns; ++i) {
-      if (requests[i].status == PLASMA_OBJECT_DOES_NOT_EXIST) {
+      if (requests[i].status == PLASMA_OBJECT_NONEXISTENT) {
         /* Object doesn’t exist in the system so ask local scheduler to create
          * object with ID requests[i].object_id. */
         /* TODO: scheduler_create_object(object_id); */
@@ -796,7 +796,7 @@ void plasma_client_multiget(plasma_connection *conn,
    * into the local Plasma Store. */
   for (int i = 0; i < num_object_ids; ++i) {
     requests[i].object_id = object_ids[i];
-    requests[i].type = PLASMA_OBJECT_LOCAL;
+    requests[i].type = PLASMA_QUERY_LOCAL;
   }
 
   while (true) {
@@ -819,7 +819,7 @@ void plasma_client_multiget(plasma_connection *conn,
       if (requests[i].status == PLASMA_OBJECT_REMOTE) {
         plasma_fetch_remote(conn, requests[i].object_id);
       } else {
-        if (requests[i].status == PLASMA_OBJECT_DOES_NOT_EXIST) {
+        if (requests[i].status == PLASMA_OBJECT_NONEXISTENT) {
           /* Object doesn’t exist so ask local scheduler to create it. */
           /* TODO: scheduler_create_object(requests[i].object_id); */
           printf("XXX Need to schedule object -- not implemented yet!\n");

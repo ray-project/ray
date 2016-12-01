@@ -172,7 +172,7 @@ bool create_object(client *client_context,
   entry->fd = fd;
   entry->map_size = map_size;
   entry->offset = offset;
-  entry->state = OPEN;
+  entry->state = PLASMA_CREATED;
   utarray_new(entry->clients, &client_icd);
   HASH_ADD(handle, plasma_state->plasma_store_info->objects, object_id,
            sizeof(object_id), entry);
@@ -201,7 +201,7 @@ int get_object(client *client_context,
   object_table_entry *entry;
   HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
             sizeof(object_id), entry);
-  if (entry && entry->state == SEALED) {
+  if (entry && entry->state == PLASMA_SEALED) {
     result->handle.store_fd = entry->fd;
     result->handle.mmap_size = entry->map_size;
     result->data_offset = entry->offset;
@@ -239,7 +239,7 @@ int get_object_local(client *client_context,
   object_table_entry *entry;
   HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
             sizeof(object_id), entry);
-  if (entry && entry->state == SEALED) {
+  if (entry && entry->state == PLASMA_SEALED) {
     result->handle.store_fd = entry->fd;
     result->handle.mmap_size = entry->map_size;
     result->data_offset = entry->offset;
@@ -299,7 +299,7 @@ int contains_object(client *client_context, object_id object_id) {
   object_table_entry *entry;
   HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
             sizeof(object_id), entry);
-  return entry && (entry->state == SEALED) ? OBJECT_FOUND : OBJECT_NOT_FOUND;
+  return entry && (entry->state == PLASMA_SEALED) ? OBJECT_FOUND : OBJECT_NOT_FOUND;
 }
 
 /* Seal an object that has been created in the hash table. */
@@ -310,9 +310,9 @@ void seal_object(client *client_context, object_id object_id) {
   HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
             sizeof(object_id), entry);
   CHECK(entry != NULL);
-  CHECK(entry->state == OPEN);
+  CHECK(entry->state == PLASMA_CREATED);
   /* Set the state of object to SEALED. */
-  entry->state = SEALED;
+  entry->state = PLASMA_SEALED;
   /* Inform all subscribers that a new object has been sealed. */
   notification_queue *queue, *temp_queue;
   HASH_ITER(hh, plasma_state->pending_notifications, queue, temp_queue) {
@@ -359,7 +359,7 @@ void delete_object(plasma_store_state *plasma_state, object_id object_id) {
    * error. Maybe we should also support deleting objects that have been created
    * but not sealed. */
   CHECKM(entry != NULL, "To delete an object it must be in the object table.");
-  CHECKM(entry->state == SEALED,
+  CHECKM(entry->state == PLASMA_SEALED,
          "To delete an object it must have been sealed.");
   CHECKM(utarray_len(entry->clients) == 0,
          "To delete an object, there must be no clients currently using it.");

@@ -18,7 +18,7 @@ TEST plasma_status_tests(void) {
 
   /* Test for object non-existence. */
   int status = plasma_status(plasma_conn1, oid1);
-  ASSERT(status == PLASMA_OBJECT_DOES_NOT_EXIST);
+  ASSERT(status == PLASMA_OBJECT_NONEXISTENT);
 
   /* Test for the object being in local Plasma store. */
   /* First create object. */
@@ -56,7 +56,7 @@ TEST plasma_fetch_remote_tests(void) {
 
   /* No object in the system */
   status = plasma_fetch_remote(plasma_conn1, oid1);
-  ASSERT(status == PLASMA_OBJECT_DOES_NOT_EXIST);
+  ASSERT(status == PLASMA_OBJECT_NONEXISTENT);
 
   /* Test for the object being in local Plasma store. */
   /* First create object. */
@@ -72,7 +72,7 @@ TEST plasma_fetch_remote_tests(void) {
    * received the notification from the Plasma Store or not. */
   status = plasma_fetch_remote(plasma_conn1, oid1);
   ASSERT((status == PLASMA_OBJECT_LOCAL) ||
-         (status == PLASMA_OBJECT_DOES_NOT_EXIST));
+         (status == PLASMA_OBJECT_NONEXISTENT));
 
   /* Sleep to make sure Plasma Manager got the notification. */
   sleep(1);
@@ -154,9 +154,9 @@ TEST plasma_wait_for_objects_tests(void) {
   object_request obj_requests[NUM_OBJ_REQUEST];
 
   obj_requests[0].object_id = oid1;
-  obj_requests[0].type = PLASMA_OBJECT_ANYWHERE;
+  obj_requests[0].type = PLASMA_QUERY_ANYWHERE;
   obj_requests[1].object_id = oid2;
-  obj_requests[1].type = PLASMA_OBJECT_ANYWHERE;
+  obj_requests[1].type = PLASMA_QUERY_ANYWHERE;
 
   struct timeval start, end;
   gettimeofday(&start, NULL);
@@ -194,8 +194,8 @@ TEST plasma_wait_for_objects_tests(void) {
                               NUM_OBJ_REQUEST, WAIT_TIMEOUT_MS);
   ASSERT(n == 2);
 
-  obj_requests[0].type = PLASMA_OBJECT_LOCAL;
-  obj_requests[1].type = PLASMA_OBJECT_LOCAL;
+  obj_requests[0].type = PLASMA_QUERY_LOCAL;
+  obj_requests[1].type = PLASMA_QUERY_LOCAL;
   n = plasma_wait_for_objects(plasma_conn1, NUM_OBJ_REQUEST, obj_requests,
                               NUM_OBJ_REQUEST, WAIT_TIMEOUT_MS);
   ASSERT(n == 1);

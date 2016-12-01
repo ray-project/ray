@@ -974,7 +974,7 @@ void process_wait_request1(client_connection *client_conn,
                        object_requests);
   object_requests_set_status_all(num_object_requests,
                                  client_conn->wait_reply->object_requests,
-                                 PLASMA_OBJECT_DOES_NOT_EXIST);
+                                 PLASMA_OBJECT_NONEXISTENT);
   /* We will just return back the same object_requests list after setting the
    * status of the requests. */
   client_conn->wait_reply->num_object_ids = num_object_requests;
@@ -1002,14 +1002,14 @@ void process_wait_request1(client_connection *client_conn,
       object_request *object_request =
           &client_conn->wait_reply->object_requests[i];
 
-      if (object_request->status == PLASMA_OBJECT_DOES_NOT_EXIST) {
+      if (object_request->status == PLASMA_OBJECT_NONEXISTENT) {
         if (get_object_request(client_conn, object_request->object_id)) {
           /* This object is in transfer, which means that it is stored on a
            * remote node. */
           client_conn->wait_reply->object_requests[i].status =
               PLASMA_OBJECT_REMOTE;
           if (client_conn->wait_reply->object_requests[i].type ==
-              PLASMA_OBJECT_ANYWHERE) {
+              PLASMA_QUERY_ANYWHERE) {
             client_conn->num_return_objects -= 1;
             if (client_conn->num_return_objects == 0) {
               /* We got num_return_objects in the local Object Store, so return.
@@ -1086,7 +1086,7 @@ void wait_object_available_callback(object_id object_id, void *user_context) {
     object_request->status = PLASMA_OBJECT_LOCAL;
   } else {
     object_request->status = PLASMA_OBJECT_REMOTE;
-    if (object_request->type == PLASMA_OBJECT_ANYWHERE) {
+    if (object_request->type == PLASMA_QUERY_ANYWHERE) {
       client_conn->num_return_objects -= 1;
     }
   }
@@ -1173,7 +1173,7 @@ void request_fetch_initiate(object_id object_id,
  *        manager_count > 0, then object_id exists on a remote node an its
  *        status is PLASMA_OBJECT_REMOTE. Otherwise, if manager_count == 0, the
  *        object doesn't exist in the system and its status is
- *        PLASMA_OBJECT_DOES_NOT_EXIST.
+ *        PLASMA_OBJECT_NONEXISTENT.
  * @param manager_vector Array containing the Plasma Managers running at the
  *        nodes where object_id is stored. Not used; it will be eventually
  *        deallocated.
@@ -1211,7 +1211,7 @@ int request_fetch_or_status(object_id object_id,
    * we need to check again here as the object could hav been evicted since
    * then. */
   if (object_req) {
-    return PLASMA_OBJECT_TRANSFER;
+    return PLASMA_OBJECT_IN_TRANSFER;
   }
 
   /* If the object isn't on any managers, report a failure to the client. */
@@ -1221,7 +1221,7 @@ int request_fetch_or_status(object_id object_id,
     if (object_req) {
       remove_object_request(client_conn, object_req);
     }
-    return PLASMA_OBJECT_DOES_NOT_EXIST;
+    return PLASMA_OBJECT_NONEXISTENT;
   }
 
   if (fetch) {
@@ -1255,7 +1255,7 @@ int request_fetch_or_status(object_id object_id,
    * that the object is stored at another remote object. Otherwise, if
    * manager_count == 0, the object is not stored anywhere. */
   return (manager_count > 0 ? PLASMA_OBJECT_REMOTE
-                            : PLASMA_OBJECT_DOES_NOT_EXIST);
+                            : PLASMA_OBJECT_NONEXISTENT);
 }
 
 void process_fetch_or_status_request(client_connection *client_conn,
@@ -1275,7 +1275,7 @@ void process_fetch_or_status_request(client_connection *client_conn,
   /* Check whether a transfer request for this object is already pending. */
   if (get_object_request(client_conn, object_id)) {
     send_client_object_status_reply(object_id, client_conn,
-                                    PLASMA_OBJECT_TRANSFER);
+                                    PLASMA_OBJECT_IN_TRANSFER);
     return;
   }
 
@@ -1318,7 +1318,7 @@ int send_client_object_status_reply(object_id object_id,
 int send_client_object_does_not_exist_reply(object_id object_id,
                                             client_connection *conn) {
   return send_client_object_status_reply(object_id, conn,
-                                         PLASMA_OBJECT_DOES_NOT_EXIST);
+                                         PLASMA_OBJECT_NONEXISTENT);
 }
 
 /* === END - ALTERNATE PLASMA CLIENT API === */
