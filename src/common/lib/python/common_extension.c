@@ -209,7 +209,8 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
     if (!PyObject_IsInstance(arg, (PyObject *) &PyObjectIDType)) {
       CHECK(pickle_module != NULL);
       CHECK(pickle_dumps != NULL);
-      PyObject *data = PyObject_CallMethodObjArgs(pickle_module, pickle_dumps, arg, NULL);
+      PyObject *data =
+          PyObject_CallMethodObjArgs(pickle_module, pickle_dumps, arg, NULL);
       value_data_bytes += PyString_Size(data);
       utarray_push_back(val_repr_ptrs, &data);
     }
@@ -265,8 +266,11 @@ static PyObject *PyTask_arguments(PyObject *self) {
     } else {
       CHECK(pickle_module != NULL);
       CHECK(pickle_loads != NULL);
-      PyObject *str = PyString_FromStringAndSize((char *) task_arg_val(task, i), (Py_ssize_t) task_arg_length(task, i));
-      PyObject *val = PyObject_CallMethodObjArgs(pickle_module, pickle_loads, str, NULL);
+      PyObject *str =
+          PyString_FromStringAndSize((char *) task_arg_val(task, i),
+                                     (Py_ssize_t) task_arg_length(task, i));
+      PyObject *val =
+          PyObject_CallMethodObjArgs(pickle_module, pickle_loads, str, NULL);
       Py_XDECREF(str);
       PyList_SetItem(arg_list, i, val);
     }
