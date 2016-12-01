@@ -55,13 +55,13 @@ typedef struct {
 typedef struct {
   /** The ID of the object. This is used as the key in the hash table. */
   object_id object_id;
-  /** The file descriptor of the memory-mapped file that contains the object. */
-  int fd;
   /** A count of the number of times this client has called plasma_create or
    *  plasma_get on this object ID minus the number of calls to plasma_release.
    *  When this count reaches zero, we remove the entry from the objects_in_use
    *  and decrement a count in the relevant client_mmap_table_entry. */
   int count;
+  /** Cached information to read the object. */
+  plasma_object object;
   /** Handle for the uthash table. */
   UT_hash_handle hh;
 } object_in_use_entry;
@@ -132,7 +132,7 @@ uint8_t *lookup_or_mmap(plasma_connection *conn,
 
 void increment_object_count(plasma_connection *conn,
                             object_id object_id,
-                            int fd) {
+                            plasma_object *object) {
   /* Increment the count of the object to track the fact that it is being used.
    * The corresponding decrement should happen in plasma_release. */
   object_in_use_entry *object_entry;
@@ -143,7 +143,7 @@ void increment_object_count(plasma_connection *conn,
      * corresponding call to free happens in plasma_release. */
     object_entry = malloc(sizeof(object_in_use_entry));
     object_entry->object_id = object_id;
-    object_entry->fd = fd;
+    object_entry->object = *object;
     object_entry->count = 0;
     HASH_ADD(hh, conn->objects_in_use, object_id, sizeof(object_id),
              object_entry);
@@ -151,7 +151,7 @@ void increment_object_count(plasma_connection *conn,
      * that are being used. The corresponding decrement should happen in
      * plasma_release. */
     client_mmap_table_entry *entry;
-    HASH_FIND_INT(conn->mmap_table, &object_entry->fd, entry);
+    HASH_FIND_INT(conn->mmap_table, &object->handle.store_fd, entry);
     CHECK(entry != NULL);
     CHECK(entry->count >= 0);
     entry->count += 1;
@@ -203,7 +203,7 @@ bool plasma_create(plasma_connection *conn,
   /* Increment the count of the number of instances of this object that this
    * client is using. A call to plasma_release is required to decrement this
    * count. */
-  increment_object_count(conn, object_id, object->handle.store_fd);
+  increment_object_count(conn, object_id, object);
   return true;
 }
 
@@ -233,7 +233,7 @@ void plasma_get(plasma_connection *conn,
   /* Increment the count of the number of instances of this object that this
    * client is using. A call to plasma_release is required to decrement this
    * count. */
-  increment_object_count(conn, object_id, object->handle.store_fd);
+  increment_object_count(conn, object_id, object);
 }
 
 void plasma_perform_release(plasma_connection *conn, object_id object_id) {
@@ -252,7 +252,8 @@ void plasma_perform_release(plasma_connection *conn, object_id object_id) {
      * that the client is using. The corresponding increment should have
      * happened in plasma_get. */
     client_mmap_table_entry *entry;
-    HASH_FIND_INT(conn->mmap_table, &object_entry->fd, entry);
+    int fd = object_entry->object.handle.store_fd;
+    HASH_FIND_INT(conn->mmap_table, &fd, entry);
     CHECK(entry != NULL);
     entry->count -= 1;
     CHECK(entry->count >= 0);
