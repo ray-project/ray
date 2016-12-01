@@ -168,7 +168,7 @@ TEST request_transfer_test(void) {
   read_message(read_fd, &type, &length, (uint8_t **) &req);
   ASSERT(type == PLASMA_TRANSFER);
   ASSERT(req->num_object_ids == 1);
-  ASSERT(object_ids_equal(oid, req->object_ids[0]));
+  ASSERT(object_ids_equal(oid, req->object_requests[0].object_id));
   /* Clean up. */
   utstring_free(addr);
   free(req);
@@ -214,7 +214,7 @@ TEST request_transfer_retry_test(void) {
   read_message(read_fd, &type, &length, (uint8_t **) &req);
   ASSERT(type == PLASMA_TRANSFER);
   ASSERT(req->num_object_ids == 1);
-  ASSERT(object_ids_equal(oid, req->object_ids[0]));
+  ASSERT(object_ids_equal(oid, req->object_requests[0].object_id));
   /* Clean up. */
   utstring_free(addr0);
   utstring_free(addr1);
@@ -254,7 +254,7 @@ TEST request_transfer_timeout_test(void) {
   int nbytes = recv(manager_fd, (uint8_t *) &reply, sizeof(reply), MSG_WAITALL);
   ASSERT_EQ(nbytes, sizeof(reply));
   ASSERT_EQ(reply.num_object_ids, 1);
-  ASSERT(object_ids_equal(oid, reply.object_ids[0]));
+  ASSERT(object_ids_equal(oid, reply.object_requests[0].object_id));
   ASSERT_EQ(reply.has_object, 0);
   /* Clean up. */
   utstring_free(addr);

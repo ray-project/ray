@@ -472,7 +472,10 @@ void plasma_fetch(plasma_connection *conn,
   /* Make sure that there are no duplicated object IDs. TODO(rkn): we should
    * allow this case in the future. */
   CHECK(plasma_object_ids_distinct(num_object_ids, object_ids));
-  plasma_request *req = plasma_alloc_request(num_object_ids, object_ids);
+  plasma_request *req = plasma_alloc_request(num_object_ids);
+  for (int i = 0; i < num_object_ids; ++i) {
+    req->object_requests[i].object_id = object_ids[i];
+  }
   LOG_DEBUG("Requesting fetch");
   CHECK(plasma_send_request(conn->manager_conn, PLASMA_FETCH, req) >= 0);
   free(req);
@@ -486,7 +489,7 @@ void plasma_fetch(plasma_connection *conn,
     /* Update the correct index in is_fetched. */
     int i = 0;
     for (; i < num_object_ids; ++i) {
-      if (object_ids_equal(object_ids[i], reply.object_ids[0]) &&
+      if (object_ids_equal(object_ids[i], reply.object_requests[0].object_id) &&
           !is_fetched[i]) {
         is_fetched[i] = success;
         break;
@@ -505,7 +508,10 @@ int plasma_wait(plasma_connection *conn,
                 int num_returns,
                 object_id return_object_ids[]) {
   CHECK(conn->manager_conn >= 0);
-  plasma_request *req = plasma_alloc_request(num_object_ids, object_ids);
+  plasma_request *req = plasma_alloc_request(num_object_ids);
+  for (int i = 0; i < num_object_ids; ++i) {
+    req->object_requests[i].object_id = object_ids[i];
+  }
   req->num_ready_objects = num_returns;
   req->timeout = timeout;
   CHECK(plasma_send_request(conn->manager_conn, PLASMA_WAIT, req) >= 0);
@@ -513,7 +519,9 @@ int plasma_wait(plasma_connection *conn,
   int64_t return_size = plasma_reply_size(num_returns);
   plasma_reply *reply = malloc(return_size);
   CHECK(plasma_receive_reply(conn->manager_conn, return_size, reply) >= 0);
-  memcpy(return_object_ids, reply->object_ids, num_returns * sizeof(object_id));
+  for (int i = 0; i < num_returns; ++i) {
+    return_object_ids[i] = reply->object_requests[i].object_id;
+  }
   int num_objects_returned = reply->num_objects_returned;
   free(reply);
   return num_objects_returned;
@@ -625,16 +633,18 @@ int plasma_wait_for_objects(plasma_connection *conn,
   CHECK(conn->manager_conn >= 0);
   CHECK(num_object_requests > 0);
 
-  plasma_request *req =
-      plasma_alloc_request2(num_object_requests, object_requests);
+  plasma_request *req = plasma_alloc_request(num_object_requests);
+  for (int i = 0; i < num_object_requests; ++i) {
+    req->object_requests[i] = object_requests[i];
+  }
   req->num_ready_objects = num_ready_objects;
   req->timeout = timeout_ms;
   CHECK(plasma_send_request(conn->manager_conn, PLASMA_WAIT1, req) >= 0);
   free(req);
 
-  plasma_reply *reply = plasma_alloc_reply2(num_object_requests);
+  plasma_reply *reply = plasma_alloc_reply(num_object_requests);
   CHECK(plasma_receive_reply(conn->manager_conn,
-                             plasma_reply_size2(num_object_requests),
+                             plasma_reply_size(num_object_requests),
                              reply) >= 0);
   int num_objects_ready = 0;
   for (int i = 0; i < num_object_requests; ++i) {

@@ -156,11 +156,8 @@ typedef struct {
   int64_t num_bytes;
   /** The number of object IDs that will be included in this request. */
   int num_object_ids;
-  /** The IDs of the objects that the request is about. */
-  union {
-    object_id object_ids[1];
-    object_request object_requests[1];
-  };
+  /** The object requests that the request is about. */
+  object_request object_requests[1];
 } plasma_request;
 
 typedef struct {
@@ -179,11 +176,8 @@ typedef struct {
   int num_objects_returned;
   /** The number of object IDs that will be included in this reply. */
   int num_object_ids;
-  /** The IDs of the objects that this reply refers to. */
-  union {
-    object_id object_ids[1];
-    object_request object_requests[1];
-  };
+  /** The object requests that this reply refers to. */
+  object_request object_requests[1];
 /** Return error code. */
 #define PLASMA_REPLY_OK 0
 #define PLASMA_REPLY_OBJECT_ALREADY_EXISTS 1
@@ -232,16 +226,9 @@ plasma_request plasma_make_request(object_id object_id);
  * must free the returned plasma request pointer with plasma_free_request.
  *
  * @param num_object_ids The number of object IDs to include in the request.
- * @param object_ids The array of object IDs to include in the request. It must
- *        have length at least equal to num_object_ids.
  * @return A pointer to the newly created plasma request.
  */
-plasma_request *plasma_alloc_request(int num_object_ids,
-                                     object_id object_ids[]);
-
-/* TODO(rkn): Remove this method. */
-plasma_request *plasma_alloc_request2(int num_object_requests,
-                                      object_request object_requests[]);
+plasma_request *plasma_alloc_request(int num_object_ids);
 
 /**
  * Free a plasma request.
@@ -258,9 +245,6 @@ void plasma_free_request(plasma_request *request);
  * @return The size of the request in bytes.
  */
 int64_t plasma_request_size(int num_object_ids);
-
-/* TODO(rkn): Get rid of this method. */
-int64_t plasma_request_size2(int num_object_ids);
 
 /**
  * Create a plasma reply with one object ID on the stack.
@@ -279,9 +263,6 @@ plasma_reply plasma_make_reply(object_id object_id);
  */
 plasma_reply *plasma_alloc_reply(int num_object_ids);
 
-/* TODO(rkn): Remove this method. */
-plasma_reply *plasma_alloc_reply2(int num_object_requests);
-
 /**
  * Free a plasma reply.
  *
@@ -297,9 +278,6 @@ void plasma_free_reply(plasma_reply *request);
  * @return The size of the reply in bytes.
  */
 int64_t plasma_reply_size(int num_returns);
-
-/* TODO(rkn): Get rid of this method. */
-int64_t plasma_reply_size2(int num_object_ids);
 
 /**
  * Send a plasma reply.

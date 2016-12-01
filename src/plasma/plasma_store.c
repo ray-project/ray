@@ -459,8 +459,9 @@ void process_message(event_loop *loop,
   /* Process the different types of requests. */
   switch (type) {
   case PLASMA_CREATE:
-    if (create_object(client_context, req->object_ids[0], req->data_size,
-                      req->metadata_size, &reply.object)) {
+    DCHECK(req->num_object_ids == 1);
+    if (create_object(client_context, req->object_requests[0].object_id,
+                      req->data_size, req->metadata_size, &reply.object)) {
       reply.error_code = PLASMA_REPLY_OK;
     } else {
       reply.error_code = PLASMA_REPLY_OBJECT_ALREADY_EXISTS;
@@ -469,14 +470,18 @@ void process_message(event_loop *loop,
     CHECK(send_fd(client_sock, reply.object.handle.store_fd) >= 0);
     break;
   case PLASMA_GET:
-    if (get_object(client_context, client_sock, req->object_ids[0],
+    DCHECK(req->num_object_ids == 1);
+    if (get_object(client_context, client_sock,
+                   req->object_requests[0].object_id,
                    &reply.object) == OBJECT_FOUND) {
       CHECK(plasma_send_reply(client_sock, &reply) >= 0);
       CHECK(send_fd(client_sock, reply.object.handle.store_fd) >= 0);
     }
     break;
   case PLASMA_GET_LOCAL:
-    if (get_object_local(client_context, client_sock, req->object_ids[0],
+    DCHECK(req->num_object_ids == 1);
+    if (get_object_local(client_context, client_sock,
+                         req->object_requests[0].object_id,
                          &reply.object) == OBJECT_FOUND) {
       reply.has_object = true;
       CHECK(plasma_send_reply(client_sock, &reply) >= 0);
@@ -488,16 +493,20 @@ void process_message(event_loop *loop,
     }
     break;
   case PLASMA_RELEASE:
-    release_object(client_context, req->object_ids[0]);
+    DCHECK(req->num_object_ids == 1);
+    release_object(client_context, req->object_requests[0].object_id);
     break;
   case PLASMA_CONTAINS:
-    if (contains_object(client_context, req->object_ids[0]) == OBJECT_FOUND) {
+    DCHECK(req->num_object_ids == 1);
+    if (contains_object(client_context, req->object_requests[0].object_id) ==
+        OBJECT_FOUND) {
       reply.has_object = 1;
     }
     CHECK(plasma_send_reply(client_sock, &reply) >= 0);
     break;
   case PLASMA_SEAL:
-    seal_object(client_context, req->object_ids[0]);
+    DCHECK(req->num_object_ids == 1);
+    seal_object(client_context, req->object_requests[0].object_id);
     break;
   case PLASMA_DELETE:
     /* TODO(rkn): In the future, we can use this method to give hints to the

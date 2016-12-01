@@ -855,10 +855,10 @@ void process_fetch_request(client_connection *client_conn,
 
 void process_fetch_requests(client_connection *client_conn,
                             int num_object_ids,
-                            object_id object_ids[]) {
+                            object_request object_requests[]) {
   for (int i = 0; i < num_object_ids; ++i) {
     ++client_conn->num_return_objects;
-    process_fetch_request(client_conn, object_ids[i]);
+    process_fetch_request(client_conn, object_requests[i].object_id);
   }
 }
 
@@ -885,7 +885,7 @@ int wait_timeout_handler(event_loop *loop, timer_id id, void *context) {
 
 void process_wait_request(client_connection *client_conn,
                           int num_object_ids,
-                          object_id object_ids[],
+                          object_request object_requests[],
                           uint64_t timeout,
                           int num_ready_objects) {
   plasma_manager_state *manager_state = client_conn->manager_state;
@@ -898,21 +898,22 @@ void process_wait_request(client_connection *client_conn,
   client_conn->wait_reply = plasma_alloc_reply(num_ready_objects);
   for (int i = 0; i < num_object_ids; ++i) {
     available_object *entry;
-    HASH_FIND(hh, manager_state->local_available_objects, &object_ids[i],
-              sizeof(object_id), entry);
+    HASH_FIND(hh, manager_state->local_available_objects,
+              &(object_requests[i].object_id),
+              sizeof(object_requests[i].object_id), entry);
     if (entry) {
       /* If an object id occurs twice in object_ids, this will count them twice.
        * This might not be desirable behavior. */
       client_conn->num_return_objects -= 1;
-      client_conn->wait_reply->object_ids[client_conn->num_return_objects] =
-          entry->object_id;
+      client_conn->wait_reply->object_requests[client_conn->num_return_objects]
+          .object_id = entry->object_id;
       if (client_conn->num_return_objects == 0) {
         event_loop_remove_timer(manager_state->loop, client_conn->timer_id);
         return_from_wait(client_conn);
         return;
       }
     } else {
-      add_object_request(client_conn, object_ids[i]);
+      add_object_request(client_conn, object_requests[i].object_id);
     }
   }
 }
@@ -1367,8 +1368,9 @@ void process_object_notification(event_loop *loop,
         wait_process_object_available_local(client_conn, obj_id);
       } else {
         client_conn->num_return_objects -= 1;
-        client_conn->wait_reply->object_ids[client_conn->num_return_objects] =
-            obj_id;
+        client_conn->wait_reply
+            ->object_requests[client_conn->num_return_objects]
+            .object_id = obj_id;
       }
       if (client_conn->num_return_objects == 0) {
         event_loop_remove_timer(loop, client_conn->timer_id);
@@ -1398,25 +1400,29 @@ void process_message(event_loop *loop,
 
   switch (type) {
   case PLASMA_TRANSFER:
-    process_transfer_request(loop, req->object_ids[0], req->addr, req->port,
-                             conn);
+    DCHECK(req->num_object_ids == 1);
+    process_transfer_request(loop, req->object_requests[0].object_id, req->addr,
+                             req->port, conn);
     break;
   case PLASMA_DATA:
     LOG_DEBUG("Starting to stream data");
-    process_data_request(loop, client_sock, req->object_ids[0], req->data_size,
-                         req->metadata_size, conn);
+    DCHECK(req->num_object_ids == 1);
+    process_data_request(loop, client_sock, req->object_requests[0].object_id,
+                         req->data_size, req->metadata_size, conn);
     break;
   case PLASMA_FETCH:
     LOG_DEBUG("Processing fetch");
-    process_fetch_requests(conn, req->num_object_ids, req->object_ids);
+    process_fetch_requests(conn, req->num_object_ids, req->object_requests);
     break;
   case PLASMA_FETCH_REMOTE:
     LOG_DEBUG("Processing fetch remote");
-    process_fetch_or_status_request(conn, req->object_ids[0], true);
+    DCHECK(req->num_object_ids == 1);
+    process_fetch_or_status_request(conn, req->object_requests[0].object_id,
+                                    true);
     break;
   case PLASMA_WAIT:
     LOG_DEBUG("Processing wait");
-    process_wait_request(conn, req->num_object_ids, req->object_ids,
+    process_wait_request(conn, req->num_object_ids, req->object_requests,
                          req->timeout, req->num_ready_objects);
     break;
   case PLASMA_WAIT1:
@@ -1426,7 +1432,9 @@ void process_message(event_loop *loop,
     break;
   case PLASMA_STATUS:
     LOG_DEBUG("Processing status");
-    process_fetch_or_status_request(conn, req->object_ids[0], false);
+    DCHECK(req->num_object_ids == 1);
+    process_fetch_or_status_request(conn, req->object_requests[0].object_id,
+                                    false);
     break;
   case PLASMA_SEAL: {
     LOG_DEBUG("Publishing to object table from DB client %d.",
@@ -1439,8 +1447,8 @@ void process_message(event_loop *loop,
         .fail_callback = NULL,
     };
     if (conn->manager_state->db) {
-      object_table_add(conn->manager_state->db, req->object_ids[0], &retry,
-                       NULL, NULL);
+      object_table_add(conn->manager_state->db,
+                       req->object_requests[0].object_id, &retry, NULL, NULL);
     }
   } break;
   case DISCONNECT_CLIENT: {

@@ -138,12 +138,12 @@ void process_fetch_request(client_connection *client_conn, object_id object_id);
  * @param client_conn The connection context for the client that made the
  *        request.
  * @param num_object_ids The number of object IDs requested.
- * @param object_ids[] The vector of object IDs requested.
+ * @param object_requests[] The object requests fetch is called on.
  * @return Void.
  */
 void process_fetch_requests(client_connection *client_conn,
                             int num_object_ids,
-                            object_id object_ids[]);
+                            object_request object_requests[]);
 
 /**
  * Process a wait request from a client.
@@ -151,7 +151,7 @@ void process_fetch_requests(client_connection *client_conn,
  * @param client_conn The connection context for the client that made the
  *        request.
  * @param num_object_ids Number of object IDs wait is called on.
- * @param object_ids Object IDs wait is called on.
+ * @param object_requests The object requests wait is called on.
  * @param timeout Wait will time out and return after this number of
  *        milliseconds.
  * @param num_returns Number of object IDs wait will return if it doesn't time
@@ -160,7 +160,7 @@ void process_fetch_requests(client_connection *client_conn,
  */
 void process_wait_request(client_connection *client_conn,
                           int num_object_ids,
-                          object_id object_ids[],
+                          object_request object_requests[],
                           uint64_t timeout,
                           int num_returns);
 
