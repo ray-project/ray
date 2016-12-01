@@ -26,6 +26,13 @@ extern PyTypeObject PyObjectIDType;
 
 extern PyTypeObject PyTaskType;
 
+/* Python module for pickling. */
+extern PyObject *pickle_module;
+extern PyObject *pickle_dumps;
+extern PyObject *pickle_loads;
+
+void init_pickle_module(void);
+
 int PyObjectToUniqueID(PyObject *object, object_id *objectid);
 
 PyObject *PyObjectID_make(object_id object_id);
