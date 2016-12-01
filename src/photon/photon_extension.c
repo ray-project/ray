@@ -125,6 +125,8 @@ PyMODINIT_FUNC initlibphoton(void) {
   m = Py_InitModule3("libphoton", photon_methods,
                      "A module for the local scheduler.");
 
+  init_pickle_module();
+
   Py_INCREF(&PyTaskType);
   PyModule_AddObject(m, "Task", (PyObject *) &PyTaskType);
 

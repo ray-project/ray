@@ -24,6 +24,8 @@ PyMODINIT_FUNC initcommon(void) {
   m = Py_InitModule3("common", common_methods,
                      "A module for common types. This is used for testing.");
 
+  init_pickle_module();
+
   Py_INCREF(&PyTaskType);
   PyModule_AddObject(m, "Task", (PyObject *) &PyTaskType);
 

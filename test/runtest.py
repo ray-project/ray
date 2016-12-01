@@ -50,11 +50,11 @@ PRIMITIVE_OBJECTS = [0, 0.0, 0.9, 0L, 1L << 62, "a", string.printable, "\u262F",
                      np.array(["hi", 3], dtype=object),
                      np.array([["hi", u"hi"], [1.3, 1L]])]
 
-COMPLEX_OBJECTS = [#[[[[[[[[[[[[]]]]]]]]]]]],
+COMPLEX_OBJECTS = [[[[[[[[[[[[[]]]]]]]]]]]],
                    {"obj{}".format(i): np.random.normal(size=[100, 100]) for i in range(10)},
                    #{(): {(): {(): {(): {(): {(): {(): {(): {(): {(): {(): {(): {}}}}}}}}}}}}},
-                   #((((((((((),),),),),),),),),),
-                   #{"a": {"b": {"c": {"d": {}}}}}
+                   ((((((((((),),),),),),),),),),
+                   {"a": {"b": {"c": {"d": {}}}}}
                    ]
 
 class Foo(object):
@@ -141,6 +141,28 @@ class SerializationTest(unittest.TestCase):
     # Check that exceptions are thrown when we serialize the recursive objects.
     for obj in recursive_objects:
       self.assertRaises(Exception, lambda : ray.put(obj))
+
+    ray.worker.cleanup()
+
+  def testPassingArgumentsByValue(self):
+    ray.init(start_ray_local=True, num_workers=1)
+
+    @ray.remote
+    def f(x):
+      return x
+
+    ray.register_class(Exception)
+    ray.register_class(CustomError)
+    ray.register_class(Point)
+    ray.register_class(Foo)
+    ray.register_class(Bar)
+    ray.register_class(Baz)
+    ray.register_class(NamedTupleExample)
+
+    # Check that we can pass arguments by value to remote functions and that
+    # they are uncorrupted.
+    for obj in RAY_TEST_OBJECTS:
+      assert_equal(obj, ray.get(f.remote(obj)))
 
     ray.worker.cleanup()
 

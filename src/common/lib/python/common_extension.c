@@ -1,6 +1,7 @@
 #include <Python.h>
 #include "node.h"
 
+#include "common.h"
 #include "common_extension.h"
 #include "task.h"
 #include "utarray.h"
@@ -8,7 +9,21 @@
 
 PyObject *CommonError;
 
-#define MARSHAL_VERSION 2
+/* Initialize pickle module. */
+
+PyObject *pickle_module = NULL;
+PyObject *pickle_loads = NULL;
+PyObject *pickle_dumps = NULL;
+PyObject *pickle_protocol = NULL;
+
+void init_pickle_module(void) {
+  /* For Python 3 this needs to be "_pickle" instead of "cPickle". */
+  pickle_module = PyImport_ImportModuleNoBlock("cPickle");
+  pickle_loads = PyString_FromString("loads");
+  pickle_dumps = PyString_FromString("dumps");
+  pickle_protocol = PyObject_GetAttrString(pickle_module, "HIGHEST_PROTOCOL");
+  CHECK(pickle_module != NULL);
+}
 
 /* Define the PyObjectID class. */
 
@@ -194,7 +209,10 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   for (size_t i = 0; i < size; ++i) {
     PyObject *arg = PyList_GetItem(arguments, i);
     if (!PyObject_IsInstance(arg, (PyObject *) &PyObjectIDType)) {
-      PyObject *data = PyMarshal_WriteObjectToString(arg, MARSHAL_VERSION);
+      CHECK(pickle_module != NULL);
+      CHECK(pickle_dumps != NULL);
+      PyObject *data = PyObject_CallMethodObjArgs(pickle_module, pickle_dumps,
+                                                  arg, pickle_protocol, NULL);
       value_data_bytes += PyString_Size(data);
       utarray_push_back(val_repr_ptrs, &data);
     }
@@ -248,10 +266,15 @@ static PyObject *PyTask_arguments(PyObject *self) {
       object_id object_id = task_arg_id(task, i);
       PyList_SetItem(arg_list, i, PyObjectID_make(object_id));
     } else {
-      PyObject *s =
-          PyMarshal_ReadObjectFromString((char *) task_arg_val(task, i),
-                                         (Py_ssize_t) task_arg_length(task, i));
-      PyList_SetItem(arg_list, i, s);
+      CHECK(pickle_module != NULL);
+      CHECK(pickle_loads != NULL);
+      PyObject *str =
+          PyString_FromStringAndSize((char *) task_arg_val(task, i),
+                                     (Py_ssize_t) task_arg_length(task, i));
+      PyObject *val =
+          PyObject_CallMethodObjArgs(pickle_module, pickle_loads, str, NULL);
+      Py_XDECREF(str);
+      PyList_SetItem(arg_list, i, val);
     }
   }
   return arg_list;
