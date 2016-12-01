@@ -813,8 +813,8 @@ void request_transfer(object_id object_id,
 
 bool is_object_local(plasma_manager_state *state, object_id object_id) {
   available_object *entry;
-  HASH_FIND(hh, state->local_available_objects, &object_id,
-            sizeof(object_id), entry);
+  HASH_FIND(hh, state->local_available_objects, &object_id, sizeof(object_id),
+            entry);
   return entry != NULL;
 }
 
