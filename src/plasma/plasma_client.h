@@ -78,8 +78,8 @@ int plasma_manager_connect(const char *addr, int port);
  * @param metadata_size The size in bytes of the metadata. If there is no
           metadata, this should be 0.
  * @param data The address of the newly created object will be written here.
- * @return true, if object was created, false, otherwise (e.g., if object
- *         has been already created).
+ * @return True, if object was created, false, otherwise (e.g., if object has
+ *         been already created).
  */
 bool plasma_create(plasma_connection *conn,
                    object_id object_id,
@@ -255,11 +255,11 @@ int get_manager_fd(plasma_connection *conn);
 typedef struct {
   /* The size in bytes of the data object. */
   int64_t data_size;
-  /* The address of the data object */
+  /* The address of the data object. */
   uint8_t *data;
-  /* The metadata size in bytes */
+  /* The metadata size in bytes. */
   int64_t metadata_size;
-  /* The address of the metadata */
+  /* The address of the metadata. */
   uint8_t *metadata;
 } object_buffer;
 
@@ -267,9 +267,9 @@ typedef struct {
  * Object information data structure.
  */
 typedef struct {
-  /** time when the object was created (sealed) */
+  /** The time when the object was created (sealed). */
   time_t last_access_time;
-  /** time when the object was accessed the last time */
+  /** The time when the object was last accessed. */
   time_t creation_date;
   uint64_t refcount;
 } object_info;
@@ -291,27 +291,27 @@ bool plasma_get_local(plasma_connection *conn,
 /**
  * Initiates the fetch (transfer) of an object from a remote Plasma Store.
  *
- * If object is stored in the local Plasma Store, tell the caller.
+ * If the object is stored in the local Plasma Store, tell the caller.
  *
- * If not, check whether the object is stored on a remote Plasma Store. In yes,
- * and either a transfer for the object has been scheduled or the object is in
- * transfer, return. Otherwise schedule a transfer for the object.
+ * If not, check whether the object is stored on a remote Plasma Store. If yes,
+ * and if a transfer for the object has either been scheduled or is in progress,
+ * then return. Otherwise schedule a transfer for the object.
  *
- * If object is available neither locally nor remotely, the client has to invoke
- * the local scheduler to (re)create the object.
+ * If the object is not available locally or remotely, the client has to tell
+ * local scheduler to (re)create the object.
  *
  * This function is non-blocking.
  *
  * @param conn The object containing the connection state.
  * @param object_id The ID of the object we want to transfer.
- * @return Status as returned by get_status() function. Status can take the
+ * @return Status as returned by the get_status() function. Status can take the
  *         following values.
- *         - PLASMA_CLIENT_LOCAL, if object is stored in the local Plasma Store.
- *           has been already scheduled by the Plasma Manager.
+ *         - PLASMA_CLIENT_LOCAL, if the object is stored in the local Plasma
+ *           Store.
  *         - PLASMA_CLIENT_TRANSFER, if the object is either currently being
- *           transferred or just scheduled.
- *         - PLASMA_CLIENT_REMOTE, if the object is stored at a remote
- *           Plasma Store.
+ *           transferred or the transfer has been scheduled.
+ *         - PLASMA_CLIENT_REMOTE, if the object is stored at a remote Plasma
+ *           Store.
  *         - PLASMA_CLIENT_DOES_NOT_EXIST, if the object doesn’t exist in the
  *           system.
  */
@@ -459,9 +459,9 @@ void plasma_client_multiget(plasma_connection *conn,
   * @param object_requests_dst Source object_requests array.
   * @return None.
   */
- void object_requests_copy(int num_object_requests,
-                           object_request object_requests_dst[],
-                           object_request object_requests_src[]);
+void object_requests_copy(int num_object_requests,
+                          object_request object_requests_dst[],
+                          object_request object_requests_src[]);
 
  /**
   * Given an object ID, get the corresponding object request
@@ -473,9 +473,9 @@ void plasma_client_multiget(plasma_connection *conn,
   *        contains the object (object_id).
   * @return Object request, if found; NULL, if not found.
   */
- object_request *object_requests_get_object(object_id object_id,
-                                            int num_object_requests,
-                                            object_request object_requests[]);
+object_request *object_requests_get_object(object_id object_id,
+                                           int num_object_requests,
+                                           object_request object_requests[]);
 
  /**
   * Initialize status of all object requests in an array.
@@ -487,9 +487,9 @@ void plasma_client_multiget(plasma_connection *conn,
   *        request in the array.
   * @return Void.
   */
- void object_requests_set_status_all(int num_object_requests,
-                                     object_request object_requests[],
-                                     int status);
+void object_requests_set_status_all(int num_object_requests,
+                                    object_request object_requests[],
+                                    int status);
 
 
 /**
@@ -510,7 +510,5 @@ void object_id_print(object_id object_id);
  */
 void object_requests_print(int num_object_requests,
                            object_request object_requests[]);
-
-
 
 #endif /* PLASMA_CLIENT_H */

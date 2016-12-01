@@ -72,9 +72,7 @@ TEST plasma_fetch_remote_tests(void) {
 
   /* Object with ID oid1 has been just inserted. On the next fetch we might
    * either find the object or not, depending on whether the Plasma Manager has
-   * received the notification from the Plasma Store or not when fetch is
-   * execture. */
-  //TODO: WHAT DOES THE ABOVE COMMENT SAY?
+   * received the notification from the Plasma Store or not. */
   status = plasma_fetch_remote(plasma_conn1, oid1);
   ASSERT((status == PLASMA_OBJECT_LOCAL) ||
          (status == PLASMA_OBJECT_DOES_NOT_EXIST));

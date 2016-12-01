@@ -578,7 +578,8 @@ int plasma_fetch_remote(plasma_connection *conn, object_id object_id) {
   CHECK(conn->manager_conn >= 0);
 
   plasma_request req = plasma_make_request(object_id);
-  CHECK(plasma_send_request(conn->manager_conn, PLASMA_FETCH_REMOTE, &req) >= 0);
+  CHECK(plasma_send_request(conn->manager_conn, PLASMA_FETCH_REMOTE, &req) >=
+        0);
 
   plasma_reply reply;
   int nbytes;
@@ -626,16 +627,17 @@ int plasma_wait_for_objects(plasma_connection *conn,
   CHECK(conn->manager_conn >= 0);
   CHECK(num_object_requests > 0);
 
-  plasma_request *req = plasma_alloc_request2(num_object_requests,
-                                              object_requests);
+  plasma_request *req =
+      plasma_alloc_request2(num_object_requests, object_requests);
   req->num_ready_objects = num_ready_objects;
   req->timeout = timeout_ms;
   CHECK(plasma_send_request(conn->manager_conn, PLASMA_WAIT1, req) >= 0);
   free(req);
 
   plasma_reply *reply = plasma_alloc_reply2(num_object_requests);
-  CHECK(plasma_receive_reply(
-      conn->manager_conn, plasma_reply_size2(num_object_requests), reply) >= 0);
+  CHECK(plasma_receive_reply(conn->manager_conn,
+                             plasma_reply_size2(num_object_requests),
+                             reply) >= 0);
   int num_objects_ready = 0;
   for (int i = 0; i < num_object_requests; ++i) {
     int type, status;

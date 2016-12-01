@@ -1317,9 +1317,8 @@ int send_client_object_status_reply(object_id object_id,
 
 int send_client_object_does_not_exist_reply(object_id object_id,
                                             client_connection *conn) {
-    return send_client_object_status_reply(object_id,
-                                           conn,
-                                           PLASMA_OBJECT_DOES_NOT_EXIST);
+  return send_client_object_status_reply(object_id, conn,
+                                         PLASMA_OBJECT_DOES_NOT_EXIST);
 }
 
 /* === END - ALTERNATE PLASMA CLIENT API === */
