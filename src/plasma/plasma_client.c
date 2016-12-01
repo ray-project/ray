@@ -837,7 +837,7 @@ void object_requests_copy(int num_object_requests,
   for (int i = 0; i < num_object_requests; ++i) {
     object_requests_dst[i].object_id = object_requests_src[i].object_id;
     object_requests_dst[i].type = object_requests_src[i].type;
-    object_requests_dst[i].status = object_requests_src[i].type;
+    object_requests_dst[i].status = object_requests_src[i].status;
   }
 }
 
