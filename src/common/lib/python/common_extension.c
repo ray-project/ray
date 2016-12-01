@@ -15,7 +15,7 @@ PyObject *pickle_module = NULL;
 PyObject *pickle_loads = NULL;
 PyObject *pickle_dumps = NULL;
 
-void init_pickle_module() {
+void init_pickle_module(void) {
   /* For Python 3 this needs to be "_pickle" instead of "cPickle". */
   pickle_module = PyImport_ImportModuleNoBlock("cPickle");
   pickle_loads = PyString_FromString("loads");

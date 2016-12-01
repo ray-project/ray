@@ -31,7 +31,7 @@ extern PyObject *pickle_module;
 extern PyObject *pickle_dumps;
 extern PyObject *pickle_loads;
 
-void init_pickle_module();
+void init_pickle_module(void);
 
 int PyObjectToUniqueID(PyObject *object, object_id *objectid);
 
