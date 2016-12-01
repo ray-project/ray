@@ -160,6 +160,11 @@ typedef struct {
   object_request object_requests[1];
 } plasma_request;
 
+enum plasma_error {
+  PLASMA_REPLY_OK = 0,
+  PLASMA_OBJECT_EXISTS
+};
+
 typedef struct {
   /** The object that is returned with this reply. */
   plasma_object object;
@@ -178,9 +183,7 @@ typedef struct {
   int num_object_ids;
   /** The object requests that this reply refers to. */
   object_request object_requests[1];
-/** Return error code. */
-#define PLASMA_REPLY_OK 0
-#define PLASMA_REPLY_OBJECT_ALREADY_EXISTS 1
+  /** Return error code of type plasma_error. */
   int error_code;
 } plasma_reply;
 

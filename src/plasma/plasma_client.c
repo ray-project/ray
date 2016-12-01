@@ -549,7 +549,6 @@ bool plasma_get_local(plasma_connection *conn,
                       object_id object_id,
                       object_buffer *object_buffer) {
   CHECK(conn != NULL);
-  CHECK(conn->manager_conn >= 0);
 
   plasma_request req = plasma_make_request(object_id);
   CHECK(plasma_send_request(conn->store_conn, PLASMA_GET_LOCAL, &req) >= 0);
@@ -588,17 +587,8 @@ int plasma_fetch_remote(plasma_connection *conn, object_id object_id) {
         0);
 
   plasma_reply reply;
-  int nbytes;
+  CHECK(plasma_receive_reply(conn->manager_conn, sizeof(reply), &reply) >= 0);
 
-  nbytes =
-      recv(conn->manager_conn, (uint8_t *) &reply, sizeof(reply), MSG_WAITALL);
-  if (nbytes < 0) {
-    LOG_ERROR("Error while waiting for manager response in fetch.");
-  } else if (nbytes == 0) {
-    LOG_ERROR("Error as Plasma Manager has closed the socket.");
-  } else {
-    CHECK(nbytes == sizeof(reply));
-  }
   return reply.object_status;
 }
 
@@ -610,16 +600,7 @@ int plasma_status(plasma_connection *conn, object_id object_id) {
   CHECK(plasma_send_request(conn->manager_conn, PLASMA_STATUS, &req) >= 0);
 
   plasma_reply reply;
-
-  int nbytes =
-      recv(conn->manager_conn, (uint8_t *) &reply, sizeof(reply), MSG_WAITALL);
-  if (nbytes < 0) {
-    LOG_ERROR("Error while waiting for manager response in fetch.");
-  } else if (nbytes == 0) {
-    LOG_ERROR("Error as Plasma Manager has closed the socket.");
-  } else {
-    CHECK(nbytes == sizeof(reply));
-  }
+  CHECK(plasma_receive_reply(conn->manager_conn, sizeof(reply), &reply) >= 0);
 
   return reply.object_status;
 }

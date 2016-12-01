@@ -36,20 +36,10 @@
 #include "state/db.h"
 #include "state/object_table.h"
 
-/* XXX (istoica): need to provide comments for the functions below */
-int send_client_object_status_reply(object_id object_id,
-                                    client_connection *conn,
-                                    int object_status);
-
-int send_client_object_does_not_exist_reply(object_id object_id,
-                                            client_connection *conn);
-
 void wait_object_lookup_callback(object_id object_id,
                                  int manager_count,
                                  const char *manager_vector[],
                                  void *context);
-
-int do_nothing(object_id object_id, client_connection *conn);
 
 /**
  * Process either the fetch or the status request.
