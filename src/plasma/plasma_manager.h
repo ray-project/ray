@@ -59,8 +59,7 @@ void destroy_plasma_manager_state(plasma_manager_state *state);
  *
  * @param loop This is the event loop of the plasma manager.
  * @param object_id The object_id of the object we will be sending.
- * @param addr The IP address of the plasma manager we are sending the object
- *             to.
+ * @param addr The IP address of the plasma manager to send the object to.
  * @param port The port of the plasma manager we are sending the object to.
  * @param conn The client_connection to the other plasma manager.
  * @return Void.

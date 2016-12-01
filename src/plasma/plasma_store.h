@@ -15,7 +15,7 @@ typedef struct plasma_store_state plasma_store_state;
  * @param object_id Object ID of the object to be created.
  * @param data_size Size in bytes of the object to be created.
  * @param metadata_size Size in bytes of the object metadata.
- * @return false, if object already existed, true, otherwise.
+ * @return False if the object already exists, otherwise true.
  */
 bool create_object(client *client_context,
                    object_id object_id,
