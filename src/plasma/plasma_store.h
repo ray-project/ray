@@ -15,9 +15,9 @@ typedef struct plasma_store_state plasma_store_state;
  * @param object_id Object ID of the object to be created.
  * @param data_size Size in bytes of the object to be created.
  * @param metadata_size Size in bytes of the object metadata.
- * @return Void.
+ * @return False if the object already exists, otherwise true.
  */
-void create_object(client *client_context,
+bool create_object(client *client_context,
                    object_id object_id,
                    int64_t data_size,
                    int64_t metadata_size,
@@ -40,6 +40,24 @@ int get_object(client *client_context,
                int conn,
                object_id object_id,
                plasma_object *result);
+
+/**
+ * Get an object from the local Plasma Store. This function is not blocking.
+ *
+ * Once a client gets an object it must release it when it is done with it.
+ * This function is indepontent. If a client calls repeatedly get_object_local()
+ * on the same object_id, the client needs to call release_object() only once.
+ *
+ * @param client_context The context of the client making this request.
+ * @param conn The client connection that requests the object.
+ * @param object_id Object ID of the object to be gotten.
+ * @return Return OBJECT_FOUND if object was found, and OBJECT_NOT_FOUND
+ *         otherwise.
+ */
+int get_object_local(client *client_context,
+                     int conn,
+                     object_id object_id,
+                     plasma_object *result);
 
 /**
  * Record the fact that a particular client is no longer using an object.

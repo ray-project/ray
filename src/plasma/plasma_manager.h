@@ -22,7 +22,7 @@
 
 typedef struct plasma_manager_state plasma_manager_state;
 typedef struct client_connection client_connection;
-typedef struct client_object_connection client_object_connection;
+typedef struct client_object_request client_object_request;
 
 /**
  * Initializes the plasma manager state. This connects the manager to the local
@@ -34,8 +34,8 @@ typedef struct client_object_connection client_object_connection;
  * @param store_socket_name The socket name used to connect to the local store.
  * @param manager_addr Our IP address.
  * @param manager_port The IP port that we listen on.
- * @param db_addr The IP address of the database to connect to. If this is
- *        NULL, then the manager will be initialized without a database
+ * @param db_addr The IP address of the database to connect to. If this is NULL,
+ *        then the manager will be initialized without a database
  *        connection.
  * @param db_port The IP port of the database to connect to.
  * @return A pointer to the initialized plasma manager state.
@@ -59,8 +59,7 @@ void destroy_plasma_manager_state(plasma_manager_state *state);
  *
  * @param loop This is the event loop of the plasma manager.
  * @param object_id The object_id of the object we will be sending.
- * @param addr The IP address of the plasma manager we are sending the object
- * to.
+ * @param addr The IP address of the plasma manager to send the object to.
  * @param port The port of the plasma manager we are sending the object to.
  * @param conn The client_connection to the other plasma manager.
  * @return Void.
@@ -138,12 +137,12 @@ void process_fetch_request(client_connection *client_conn, object_id object_id);
  * @param client_conn The connection context for the client that made the
  *        request.
  * @param num_object_ids The number of object IDs requested.
- * @param object_ids[] The vector of object IDs requested.
+ * @param object_requests[] The object requests fetch is called on.
  * @return Void.
  */
 void process_fetch_requests(client_connection *client_conn,
                             int num_object_ids,
-                            object_id object_ids[]);
+                            object_request object_requests[]);
 
 /**
  * Process a wait request from a client.
@@ -151,7 +150,7 @@ void process_fetch_requests(client_connection *client_conn,
  * @param client_conn The connection context for the client that made the
  *        request.
  * @param num_object_ids Number of object IDs wait is called on.
- * @param object_ids Object IDs wait is called on.
+ * @param object_requests The object requests wait is called on.
  * @param timeout Wait will time out and return after this number of
  *        milliseconds.
  * @param num_returns Number of object IDs wait will return if it doesn't time
@@ -160,7 +159,7 @@ void process_fetch_requests(client_connection *client_conn,
  */
 void process_wait_request(client_connection *client_conn,
                           int num_object_ids,
-                          object_id object_ids[],
+                          object_request object_requests[],
                           uint64_t timeout,
                           int num_returns);
 
@@ -188,7 +187,7 @@ void process_object_notification(event_loop *loop,
  * @param loop This is the event loop of the plasma manager.
  * @param data_sock This is the socket the other plasma manager is listening on.
  * @param context The client_connection to the other plasma manager, contains a
- *                queue of objects that will be sent.
+ *        queue of objects that will be sent.
  * @return Void.
  */
 void send_queued_request(event_loop *loop,
@@ -243,8 +242,8 @@ struct plasma_request_buffer {
  *        create.
  * @return A pointer to the newly created object context.
  */
-client_object_connection *add_object_connection(client_connection *client_conn,
-                                                object_id object_id);
+client_object_request *add_object_request(client_connection *client_conn,
+                                          object_id object_id);
 
 /**
  * Given an object ID and the managers it can be found on, start requesting a
@@ -272,8 +271,8 @@ void request_transfer(object_id object_id,
  * @param object_id The object ID whose context we want to delete.
  * @return Void.
  */
-void remove_object_connection(client_connection *client_conn,
-                              client_object_connection *object_conn);
+void remove_object_request(client_connection *client_conn,
+                           client_object_request *object_req);
 
 /**
  * Get a connection to the remote manager at the specified address. Creates a
@@ -326,5 +325,47 @@ event_loop *get_event_loop(plasma_manager_state *state);
  * @return A file descriptor for the socket.
  */
 int get_client_sock(client_connection *conn);
+
+/**
+ * Process a wait request from a client.
+ *
+ * @param client_conn The connection context for the client that made the
+ *        request.
+ * @param num_object_requests Number of object requests wait is called on.
+ * @param object_requests The array of bject requests wait is called on.
+ * @param timeout Wait will time out and return after this number of
+ *        milliseconds.
+ * @param num_returns Number of object requests that will be satsified before
+ *        wait will retunr, unless it timeouts.
+ * @return Void.
+ */
+void process_wait_request1(client_connection *client_conn,
+                           int num_object_requests,
+                           object_request object_requests[],
+                           uint64_t timeout,
+                           int num_ready_objects);
+
+/**
+ * Callback to be invoked when object_id entry is changed in the
+ * Object Table. We assume that the change means the object is available.
+ *
+ * @param object_id ID of the object becoming available locally or remotely.
+ * @param user_context This is the client connection on which the wait has been
+ *        called.
+ * @return Void.
+ */
+void wait_object_available_callback(object_id object_id, void *user_context);
+
+/**
+ * Object is available (sealed) in the local Object Store. This is part of
+ * executing wait operation.
+ *
+ * @param client_conn The client conection.
+ * @param user_context This is the client connection on which the wait has been
+ *        called.
+ * @return Void.
+ */
+void wait_process_object_available_local(client_connection *client_conn,
+                                         object_id object_id);
 
 #endif /* PLASMA_MANAGER_H */

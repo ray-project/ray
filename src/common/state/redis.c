@@ -402,7 +402,7 @@ void redis_object_table_subscribe_lookup(redisAsyncContext *c,
     if (reply->elements > 0) {
       CHECK(reply->element[0]->len == UNIQUE_ID_SIZE);
       /* Check that the reply corresponds to the right object ID. */
-      CHECK(strncmp(reply->element[0]->str, callback_data->id.id,
+      CHECK(strncmp(reply->element[0]->str, (char *) callback_data->id.id,
                     UNIQUE_ID_SIZE));
       object_table_subscribe_data *data = callback_data->data;
       if (data->object_available_callback) {

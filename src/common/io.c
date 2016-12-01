@@ -250,7 +250,7 @@ int read_bytes(int fd, uint8_t *cursor, size_t length) {
       if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
         continue;
       }
-      return -1;
+      return -1; /* Errno will be set. */
     } else if (0 == nbytes) {
       /* Encountered early EOF. */
       return -1;

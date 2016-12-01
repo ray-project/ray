@@ -32,6 +32,7 @@
 #include "fling.h"
 #include "malloc.h"
 #include "plasma_store.h"
+#include "plasma.h"
 
 void *dlmalloc(size_t);
 void dlfree(void *);
@@ -131,7 +132,7 @@ void add_client_to_object_clients(object_table_entry *entry,
 }
 
 /* Create a new object buffer in the hash table. */
-void create_object(client *client_context,
+bool create_object(client *client_context,
                    object_id obj_id,
                    int64_t data_size,
                    int64_t metadata_size,
@@ -142,7 +143,11 @@ void create_object(client *client_context,
   /* TODO(swang): Return these error to the client instead of exiting. */
   HASH_FIND(handle, plasma_state->plasma_store_info->objects, &obj_id,
             sizeof(obj_id), entry);
-  CHECKM(entry == NULL, "Cannot create object twice.");
+  if (entry != NULL) {
+    /* There is already an object with the same ID in the Plasma Store, so
+     * ignore this requst. */
+    return false;
+  }
   /* Tell the eviction policy how much space we need to create this object. */
   int64_t num_objects_to_evict;
   object_id *objects_to_evict;
@@ -167,7 +172,7 @@ void create_object(client *client_context,
   entry->fd = fd;
   entry->map_size = map_size;
   entry->offset = offset;
-  entry->state = OPEN;
+  entry->state = PLASMA_CREATED;
   utarray_new(entry->clients, &client_icd);
   HASH_ADD(handle, plasma_state->plasma_store_info->objects, object_id,
            sizeof(object_id), entry);
@@ -184,6 +189,7 @@ void create_object(client *client_context,
                  obj_id);
   /* Record that this client is using this object. */
   add_client_to_object_clients(entry, client_context);
+  return true;
 }
 
 /* Get an object from the hash table. */
@@ -195,7 +201,7 @@ int get_object(client *client_context,
   object_table_entry *entry;
   HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
             sizeof(object_id), entry);
-  if (entry && entry->state == SEALED) {
+  if (entry && entry->state == PLASMA_SEALED) {
     result->handle.store_fd = entry->fd;
     result->handle.mmap_size = entry->map_size;
     result->data_offset = entry->offset;
@@ -220,6 +226,30 @@ int get_object(client *client_context,
                sizeof(object_id), notify_entry);
     }
     utarray_push_back(notify_entry->waiting_clients, &client_context);
+  }
+  return OBJECT_NOT_FOUND;
+}
+
+/* Get an object from the local Plasma Store if exists. */
+int get_object_local(client *client_context,
+                     int conn,
+                     object_id object_id,
+                     plasma_object *result) {
+  plasma_store_state *plasma_state = client_context->plasma_state;
+  object_table_entry *entry;
+  HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
+            sizeof(object_id), entry);
+  if (entry && entry->state == PLASMA_SEALED) {
+    result->handle.store_fd = entry->fd;
+    result->handle.mmap_size = entry->map_size;
+    result->data_offset = entry->offset;
+    result->metadata_offset = entry->offset + entry->info.data_size;
+    result->data_size = entry->info.data_size;
+    result->metadata_size = entry->info.metadata_size;
+    /* If necessary, record that this client is using this object. In the case
+     * where entry == NULL, this will be called from seal_object. */
+    add_client_to_object_clients(entry, client_context);
+    return OBJECT_FOUND;
   }
   return OBJECT_NOT_FOUND;
 }
@@ -269,7 +299,8 @@ int contains_object(client *client_context, object_id object_id) {
   object_table_entry *entry;
   HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
             sizeof(object_id), entry);
-  return entry && (entry->state == SEALED) ? OBJECT_FOUND : OBJECT_NOT_FOUND;
+  return entry && (entry->state == PLASMA_SEALED) ? OBJECT_FOUND
+                                                  : OBJECT_NOT_FOUND;
 }
 
 /* Seal an object that has been created in the hash table. */
@@ -280,9 +311,9 @@ void seal_object(client *client_context, object_id object_id) {
   HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
             sizeof(object_id), entry);
   CHECK(entry != NULL);
-  CHECK(entry->state == OPEN);
+  CHECK(entry->state == PLASMA_CREATED);
   /* Set the state of object to SEALED. */
-  entry->state = SEALED;
+  entry->state = PLASMA_SEALED;
   /* Inform all subscribers that a new object has been sealed. */
   notification_queue *queue, *temp_queue;
   HASH_ITER(hh, plasma_state->pending_notifications, queue, temp_queue) {
@@ -329,7 +360,7 @@ void delete_object(plasma_store_state *plasma_state, object_id object_id) {
    * error. Maybe we should also support deleting objects that have been created
    * but not sealed. */
   CHECKM(entry != NULL, "To delete an object it must be in the object table.");
-  CHECKM(entry->state == SEALED,
+  CHECKM(entry->state == PLASMA_SEALED,
          "To delete an object it must have been sealed.");
   CHECKM(utarray_len(entry->clients) == 0,
          "To delete an object, there must be no clients currently using it.");
@@ -429,29 +460,54 @@ void process_message(event_loop *loop,
   /* Process the different types of requests. */
   switch (type) {
   case PLASMA_CREATE:
-    create_object(client_context, req->object_ids[0], req->data_size,
-                  req->metadata_size, &reply.object);
+    DCHECK(req->num_object_ids == 1);
+    if (create_object(client_context, req->object_requests[0].object_id,
+                      req->data_size, req->metadata_size, &reply.object)) {
+      reply.error_code = PLASMA_REPLY_OK;
+    } else {
+      reply.error_code = PLASMA_OBJECT_ALREADY_EXISTS;
+    }
     CHECK(plasma_send_reply(client_sock, &reply) >= 0);
     CHECK(send_fd(client_sock, reply.object.handle.store_fd) >= 0);
     break;
   case PLASMA_GET:
-    if (get_object(client_context, client_sock, req->object_ids[0],
+    DCHECK(req->num_object_ids == 1);
+    if (get_object(client_context, client_sock,
+                   req->object_requests[0].object_id,
                    &reply.object) == OBJECT_FOUND) {
       CHECK(plasma_send_reply(client_sock, &reply) >= 0);
       CHECK(send_fd(client_sock, reply.object.handle.store_fd) >= 0);
     }
     break;
+  case PLASMA_GET_LOCAL:
+    DCHECK(req->num_object_ids == 1);
+    if (get_object_local(client_context, client_sock,
+                         req->object_requests[0].object_id,
+                         &reply.object) == OBJECT_FOUND) {
+      reply.has_object = true;
+      CHECK(plasma_send_reply(client_sock, &reply) >= 0);
+      CHECK(send_fd(client_sock, reply.object.handle.store_fd) >= 0);
+    } else {
+      reply.has_object = false;
+      CHECK(plasma_send_reply(client_sock, &reply) >= 0);
+      CHECK(send_fd(client_sock, reply.object.handle.store_fd) >= 0);
+    }
+    break;
   case PLASMA_RELEASE:
-    release_object(client_context, req->object_ids[0]);
+    DCHECK(req->num_object_ids == 1);
+    release_object(client_context, req->object_requests[0].object_id);
     break;
   case PLASMA_CONTAINS:
-    if (contains_object(client_context, req->object_ids[0]) == OBJECT_FOUND) {
+    DCHECK(req->num_object_ids == 1);
+    if (contains_object(client_context, req->object_requests[0].object_id) ==
+        OBJECT_FOUND) {
       reply.has_object = 1;
     }
     CHECK(plasma_send_reply(client_sock, &reply) >= 0);
     break;
   case PLASMA_SEAL:
-    seal_object(client_context, req->object_ids[0]);
+    DCHECK(req->num_object_ids == 1);
+    seal_object(client_context, req->object_requests[0].object_id);
     break;
   case PLASMA_DELETE:
     /* TODO(rkn): In the future, we can use this method to give hints to the
