@@ -253,13 +253,13 @@ int get_manager_fd(plasma_connection *conn);
  * Object buffer data structure.
  */
 typedef struct {
-  /* The size in bytes of the data object. */
+  /** The size in bytes of the data object. */
   int64_t data_size;
-  /* The address of the data object. */
+  /** The address of the data object. */
   uint8_t *data;
-  /* The metadata size in bytes. */
+  /** The metadata size in bytes. */
   int64_t metadata_size;
-  /* The address of the metadata. */
+  /** The address of the metadata. */
   uint8_t *metadata;
 } object_buffer;
 
@@ -451,46 +451,45 @@ void plasma_client_multiget(plasma_connection *conn,
  * plasma.c file.
  */
 
- /**
-  * Copy an array of object requests into another one.
-  *
-  * @param num_object_requests Number of elements in the object_requests arrays.
-  * @param object_requests_dst Destination object_requests array.
-  * @param object_requests_dst Source object_requests array.
-  * @return None.
-  */
+/**
+ * Copy an array of object requests into another one.
+ *
+ * @param num_object_requests Number of elements in the object_requests arrays.
+ * @param object_requests_dst Destination object_requests array.
+ * @param object_requests_dst Source object_requests array.
+ * @return None.
+ */
 void object_requests_copy(int num_object_requests,
                           object_request object_requests_dst[],
                           object_request object_requests_src[]);
 
- /**
-  * Given an object ID, get the corresponding object request
-  * form an array of object requests.
-  *
-  * @param object_id Identifier of the requested object.
-  * @param num_object_requests Number of elements in the object requests array.
-  * @param object_requests The array of object requests which
-  *        contains the object (object_id).
-  * @return Object request, if found; NULL, if not found.
-  */
+/**
+ * Given an object ID, get the corresponding object request
+ * form an array of object requests.
+ *
+ * @param object_id Identifier of the requested object.
+ * @param num_object_requests Number of elements in the object requests array.
+ * @param object_requests The array of object requests which
+ *        contains the object (object_id).
+ * @return Object request, if found; NULL, if not found.
+ */
 object_request *object_requests_get_object(object_id object_id,
                                            int num_object_requests,
                                            object_request object_requests[]);
 
- /**
-  * Initialize status of all object requests in an array.
-  *
-  * @param num_object_requests Number of elements in the array of object
-  *        requests.
-  * @param object_requests Array of object requests.
-  * @param status Value with which we initialize the status of each object
-  *        request in the array.
-  * @return Void.
-  */
+/**
+ * Initialize status of all object requests in an array.
+ *
+ * @param num_object_requests Number of elements in the array of object
+ *        requests.
+ * @param object_requests Array of object requests.
+ * @param status Value with which we initialize the status of each object
+ *        request in the array.
+ * @return Void.
+ */
 void object_requests_set_status_all(int num_object_requests,
                                     object_request object_requests[],
                                     int status);
-
 
 /**
  * Print an object ID with bytes separated by ".".

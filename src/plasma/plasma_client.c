@@ -81,9 +81,9 @@ struct plasma_connection {
   int store_conn;
   /** File descriptor of the Unix domain socket that connects to the manager. */
   int manager_conn;
-  /** File descriptor of the Unix domain socket on which client receives
-   *  event notifications for the objects it subscribes for when these objects
-   *  are sealed either locally or remotely. */
+  /** File descriptor of the Unix domain socket on which client receives event
+   *  notifications for the objects it subscribes for when these objects are
+   *  sealed either locally or remotely. */
   int manager_conn_subscribe;
   /** Table of dlmalloc buffer files that have been memory mapped so far. This
    *  is a hash table mapping a file descriptor to a struct containing the
@@ -92,10 +92,10 @@ struct plasma_connection {
   /** A hash table of the object IDs that are currently being used by this
    * client. */
   object_in_use_entry *objects_in_use;
-  /** Object IDs of the last few release calls. This is used to delay
-   *  releasing objects to see if they can be reused by subsequent tasks so we
-   *  do not unneccessarily invalidate cpu caches. TODO(pcm): replace this with
-   *  a proper lru cache of size sizeof(L3 cache). */
+  /** Object IDs of the last few release calls. This is used to delay releasing
+   *  objects to see if they can be reused by subsequent tasks so we do not
+   *  unneccessarily invalidate cpu caches. TODO(pcm): replace this with a
+   *  proper lru cache of size sizeof(L3 cache). */
   UT_ringbuffer *release_history;
   /** Configuration options for the plasma client. */
   plasma_client_config config;
@@ -562,14 +562,12 @@ bool plasma_get_local(plasma_connection *conn,
 
     /* Increment the count of the number of instances of this object that this
      * client is using. A call to plasma_release is required to decrement this
-     * count.
-     */
+     * count. */
     increment_object_count(conn, object_id, object->handle.store_fd);
     return true;
   }
-  /** The object is either (1) not available in the local Plasma store, or
-   *  (2) it is not sealed yet
-   */
+  /* The object is either (1) not available in the local Plasma store, or (2) it
+   * is not sealed yet. */
   return false;
 }
 
@@ -805,7 +803,7 @@ void plasma_client_multiget(plasma_connection *conn,
     int n;
 
     /* Wait to get all objects in the system. The reason we call
-     * plasma_wait_for_objects() here instaed of iterating over
+     * plasma_wait_for_objects() here instead of iterating over
      * plasma_client_get() is to increase concurrency as plasma_client_get() is
      * blocking. */
     n = plasma_wait_for_objects(conn, num_object_ids, requests, num_object_ids,

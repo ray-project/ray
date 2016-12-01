@@ -17,13 +17,12 @@ TEST plasma_status_tests(void) {
   object_id oid1 = {
       {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};
 
-  printf("starting plasma_status_tests()...\n");
   /* Test for object non-existence. */
   int status = plasma_status(plasma_conn1, oid1);
   ASSERT(status == PLASMA_OBJECT_DOES_NOT_EXIST);
 
   /* Test for the object being in local Plasma store. */
-  /* First cerate object. */
+  /* First create object. */
   int64_t data_size = 100;
   uint8_t metadata[] = {5};
   int64_t metadata_size = sizeof(metadata);
@@ -62,7 +61,7 @@ TEST plasma_fetch_remote_tests(void) {
   ASSERT(status == PLASMA_OBJECT_DOES_NOT_EXIST);
 
   /* Test for the object being in local Plasma store. */
-  /* First cerate object. */
+  /* First create object. */
   int64_t data_size = 100;
   uint8_t metadata[] = {5};
   int64_t metadata_size = sizeof(metadata);

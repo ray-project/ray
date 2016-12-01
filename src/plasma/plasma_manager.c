@@ -689,7 +689,7 @@ void process_data_request(event_loop *loop,
                     NULL, metadata_size, &(buf->data));
   /* If success_create == true, a new object has been created.
    * If success_create == false the object creation has failed, possibly
-   * due an object with the same ID already existing in the Plasma Store. */
+   * due to an object with the same ID already existing in the Plasma Store. */
   if (success_create) {
     /* Add buffer where the fetched data is to be stored to
      * conn->transfer_queue. */

@@ -22,11 +22,11 @@ typedef struct {
   int64_t construct_duration;
 } plasma_object_info;
 
-/* Object was cerated but not sealed in the local Plasma store. */
+/* Object was created but not sealed in the local Plasma store. */
 #define PLASMA_OBJECT_CREATED 10
 /* Object is sealed and stored on the local Plasma Store. */
 #define PLASMA_OBJECT_SEALED 20
-#define PLASMA_OBJECT_LOCAL  PLASMA_OBJECT_SEALED
+#define PLASMA_OBJECT_LOCAL PLASMA_OBJECT_SEALED
 /* Object is stored on a remote Plasma store, and it is not stored on the local
  * Plasma Store. */
 #define PLASMA_OBJECT_REMOTE 30
@@ -38,16 +38,17 @@ typedef struct {
 #define PLASMA_OBJECT_ANYWHERE 70
 
 /**
- * Object rquest data structure. Used in the plasma_wait_for_objects() argument.
+ * Object request data structure. Used in the plasma_wait_for_objects()
+ * argument.
  */
 typedef struct {
   /** The ID of the requested object. If ID_NIL request any object. */
   object_id object_id;
   /** Request associated to the object. It can take one of the following values:
-   * - PLASMA_OBJECT_LOCAL: return if or when the object is available in the
-   *   local Plasma Store.
-   * - PLASMA_OBJECT_ANYWHWERE: return if or when the object is available in the
-   *   system (i.e., either in the local or a remote Plasma Store). */
+   *  - PLASMA_OBJECT_LOCAL: return if or when the object is available in the
+   *    local Plasma Store.
+   *  - PLASMA_OBJECT_ANYWHWERE: return if or when the object is available in
+   *    the system (i.e., either in the local or a remote Plasma Store). */
   int type;
   /** Object status. Same as the status returned by plasma_status() function
    *  call. This is filled in by plasma_wait_for_objects1():
@@ -109,13 +110,13 @@ enum plasma_message_type {
   PLASMA_TRANSFER,
   /** Header for sending data. */
   PLASMA_DATA,
-  /** Request a fetch of an object in another store. Unblocking call */
+  /** Request a fetch of an object in another store. Non-blocking call. */
   PLASMA_FETCH_REMOTE,
   /** Request a fetch of an object in another store. Blocking call. */
   PLASMA_FETCH,
-  /** Request status of an object, i.e., whether the object is stored in
-   * the local Plasma Store, in a remote Plasma Store, in transfer, or
-   * doesn't exist in the system */
+  /** Request status of an object, i.e., whether the object is stored in the
+   *  local Plasma Store, in a remote Plasma Store, in transfer, or doesn't
+   *  exist in the system. */
   PLASMA_STATUS,
   /** Wait until an object becomes available. */
   PLASMA_WAIT,
