@@ -343,8 +343,6 @@ void remove_object_request(client_connection *client_conn,
                 object_reqs);
   }
   LL_DELETE(object_reqs, object_req);
-  /* Free the object. */
-  free_client_object_request(object_req);
   /* remove_object_request() is not always called from the request's timer
    * handle, so we remove the request's timer explicitly here. If
    * remove_object_request() is called from the the request's timer handle, the
@@ -355,6 +353,8 @@ void remove_object_request(client_connection *client_conn,
     event_loop_remove_timer(client_conn->manager_state->loop,
                             object_req->timer);
   }
+  /* Free the object. */
+  free_client_object_request(object_req);
 }
 
 plasma_manager_state *init_plasma_manager_state(const char *store_socket_name,
