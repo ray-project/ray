@@ -17,7 +17,7 @@ TEST plasma_status_tests(void) {
   object_id oid1 = globally_unique_id();
 
   /* Test for object non-existence. */
-  int status = plasma_status(plasma_conn1, oid1);
+  object_status1 status = plasma_status(plasma_conn1, oid1);
   ASSERT(status == PLASMA_OBJECT_NONEXISTENT);
 
   /* Test for the object being in local Plasma store. */
@@ -52,7 +52,7 @@ TEST plasma_fetch_remote_tests(void) {
   object_id oid1 = globally_unique_id();
 
   /* Test for object non-existence. */
-  int status;
+  object_status1 status;
 
   /* No object in the system */
   status = plasma_fetch_remote(plasma_conn1, oid1);
@@ -118,7 +118,7 @@ TEST plasma_get_local_tests(void) {
   object_buffer obj_buffer;
 
   /* Test for object non-existence. */
-  int status = plasma_get_local(plasma_conn, oid, &obj_buffer);
+  object_status1 status = plasma_get_local(plasma_conn, oid, &obj_buffer);
   ASSERT(status == false);
 
   /* Test for the object being in local Plasma store. */

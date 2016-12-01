@@ -90,11 +90,11 @@ void request_transfer_from(client_connection *client_conn, object_id object_id);
  *              we request its status.
  * @return Status of object_id as defined in plasma.h
  */
-int request_fetch_or_status(object_id object_id,
-                            int manager_count,
-                            const char *manager_vector[],
-                            void *context,
-                            bool fetch);
+object_status1 request_fetch_or_status(object_id object_id,
+                                       int manager_count,
+                                       const char *manager_vector[],
+                                       void *context,
+                                       bool fetch);
 
 /**
  * Send requested object_id back to the Plasma Manager identified
@@ -1139,8 +1139,8 @@ void request_fetch_initiate(object_id object_id,
                             const char *manager_vector[],
                             void *context) {
   client_connection *client_conn = (client_connection *) context;
-  int status = request_fetch_or_status(object_id, manager_count, manager_vector,
-                                       context, true);
+  object_status1 status = request_fetch_or_status(
+      object_id, manager_count, manager_vector, context, true);
   plasma_reply reply = plasma_make_reply(object_id);
   reply.object_status = status;
   CHECK(plasma_send_reply(client_conn->fd, &reply) >= 0);
@@ -1166,18 +1166,18 @@ void request_status_done(object_id object_id,
                          const char *manager_vector[],
                          void *context) {
   client_connection *client_conn = (client_connection *) context;
-  int status = request_fetch_or_status(object_id, manager_count, manager_vector,
-                                       context, false);
+  object_status1 status = request_fetch_or_status(
+      object_id, manager_count, manager_vector, context, false);
   plasma_reply reply = plasma_make_reply(object_id);
   reply.object_status = status;
   CHECK(plasma_send_reply(client_conn->fd, &reply) >= 0);
 }
 
-int request_fetch_or_status(object_id object_id,
-                            int manager_count,
-                            const char *manager_vector[],
-                            void *context,
-                            bool fetch) {
+object_status1 request_fetch_or_status(object_id object_id,
+                                       int manager_count,
+                                       const char *manager_vector[],
+                                       void *context,
+                                       bool fetch) {
   client_connection *client_conn = (client_connection *) context;
   client_object_request *object_req =
       get_object_request(client_conn, object_id);

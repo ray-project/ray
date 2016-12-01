@@ -315,7 +315,8 @@ bool plasma_get_local(plasma_connection *conn,
  *         - PLASMA_CLIENT_DOES_NOT_EXIST, if the object doesn’t exist in the
  *           system.
  */
-int plasma_fetch_remote(plasma_connection *conn, object_id object_id);
+object_status1 plasma_fetch_remote(plasma_connection *conn,
+                                   object_id object_id);
 
 /**
  * Return the status of a given object. This function is similar to
@@ -335,7 +336,7 @@ int plasma_fetch_remote(plasma_connection *conn, object_id object_id);
  *         - PLASMA_CLIENT_DOES_NOT_EXIST, if the object doesn’t exist in the
  *           system.
  */
-int plasma_status(plasma_connection *conn, object_id object_id);
+object_status1 plasma_status(plasma_connection *conn, object_id object_id);
 
 /**
  * Return the information associated to a given object.
@@ -489,7 +490,7 @@ object_request *object_requests_get_object(object_id object_id,
  */
 void object_requests_set_status_all(int num_object_requests,
                                     object_request object_requests[],
-                                    int status);
+                                    object_status1 status);
 
 /**
  * Print an object ID with bytes separated by ".".

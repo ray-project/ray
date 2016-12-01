@@ -578,7 +578,8 @@ bool plasma_get_local(plasma_connection *conn,
   return false;
 }
 
-int plasma_fetch_remote(plasma_connection *conn, object_id object_id) {
+object_status1 plasma_fetch_remote(plasma_connection *conn,
+                                   object_id object_id) {
   CHECK(conn != NULL);
   CHECK(conn->manager_conn >= 0);
 
@@ -592,7 +593,7 @@ int plasma_fetch_remote(plasma_connection *conn, object_id object_id) {
   return reply.object_status;
 }
 
-int plasma_status(plasma_connection *conn, object_id object_id) {
+object_status1 plasma_status(plasma_connection *conn, object_id object_id) {
   CHECK(conn != NULL);
   CHECK(conn->manager_conn >= 0);
 
@@ -629,7 +630,8 @@ int plasma_wait_for_objects(plasma_connection *conn,
                              reply) >= 0);
   int num_objects_ready = 0;
   for (int i = 0; i < num_object_requests; ++i) {
-    int type, status;
+    object_request_type type;
+    object_status1 status;
     object_requests[i].object_id = reply->object_requests[i].object_id;
     type = reply->object_requests[i].type;
     object_requests[i].type = type;
@@ -837,7 +839,7 @@ void object_requests_copy(int num_object_requests,
   for (int i = 0; i < num_object_requests; ++i) {
     object_requests_dst[i].object_id = object_requests_src[i].object_id;
     object_requests_dst[i].type = object_requests_src[i].type;
-    object_requests_dst[i].status = object_requests_src[i].type;
+    object_requests_dst[i].status = object_requests_src[i].status;
   }
 }
 
@@ -854,7 +856,7 @@ object_request *object_requests_get_object(object_id object_id,
 
 void object_requests_set_status_all(int num_object_requests,
                                     object_request object_requests[],
-                                    int status) {
+                                    object_status1 status) {
   for (int i = 0; i < num_object_requests; ++i) {
     object_requests[i].status = status;
   }
