@@ -14,12 +14,14 @@ PyObject *CommonError;
 PyObject *pickle_module = NULL;
 PyObject *pickle_loads = NULL;
 PyObject *pickle_dumps = NULL;
+PyObject *pickle_protocol = NULL;
 
 void init_pickle_module(void) {
   /* For Python 3 this needs to be "_pickle" instead of "cPickle". */
   pickle_module = PyImport_ImportModuleNoBlock("cPickle");
   pickle_loads = PyString_FromString("loads");
   pickle_dumps = PyString_FromString("dumps");
+  pickle_protocol = PyObject_GetAttrString(pickle_module, "HIGHEST_PROTOCOL");
   CHECK(pickle_module != NULL);
 }
 
@@ -209,8 +211,8 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
     if (!PyObject_IsInstance(arg, (PyObject *) &PyObjectIDType)) {
       CHECK(pickle_module != NULL);
       CHECK(pickle_dumps != NULL);
-      PyObject *data =
-          PyObject_CallMethodObjArgs(pickle_module, pickle_dumps, arg, NULL);
+      PyObject *data = PyObject_CallMethodObjArgs(pickle_module, pickle_dumps,
+                                                  arg, pickle_protocol, NULL);
       value_data_bytes += PyString_Size(data);
       utarray_push_back(val_repr_ptrs, &data);
     }
