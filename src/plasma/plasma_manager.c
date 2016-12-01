@@ -916,12 +916,7 @@ void return_from_wait1(client_connection *client_conn) {
   CHECK(client_conn->is_wait);
   CHECK(client_conn->wait1);
 
-  int64_t size =
-      sizeof(plasma_reply) +
-      (client_conn->wait_reply->num_object_ids - 1) * sizeof(object_request);
-
-  int n = write(client_conn->fd, (uint8_t *) client_conn->wait_reply, size);
-  CHECK(n == size);
+  CHECK(plasma_send_reply(client_conn->fd, client_conn->wait_reply) >= 0);
   free(client_conn->wait_reply);
 
   /* Clean the remaining object connections. TODO(istoica): Check with Philipp.
