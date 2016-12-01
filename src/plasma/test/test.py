@@ -206,8 +206,8 @@ class TestPlasmaClient(unittest.TestCase):
     object_id3 = random_object_id()
     b2 = client.create(object_id2, 999)
     b3 = client.create(object_id3, 998)
-    del b3
     client.seal(object_id3)
+    del b3
     self.assertEqual(client.evict(1000), 998)
 
     object_id4 = random_object_id()
