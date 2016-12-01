@@ -9,6 +9,20 @@
 
 PyObject *CommonError;
 
+/* Initialize pickle module. */
+
+PyObject *pickle_module = NULL;
+PyObject *pickle_loads = NULL;
+PyObject *pickle_dumps = NULL;
+
+void init_pickle_module() {
+  /* For Python 3 this needs to be "_pickle" instead of "cPickle". */
+  pickle_module = PyImport_ImportModuleNoBlock("cPickle");
+  pickle_loads = PyString_FromString("loads");
+  pickle_dumps = PyString_FromString("dumps");
+  CHECK(pickle_module != NULL);
+}
+
 /* Define the PyObjectID class. */
 
 int PyObjectToUniqueID(PyObject *object, object_id *objectid) {
@@ -323,10 +337,6 @@ PyTypeObject PyTaskType = {
     0,                           /* tp_alloc */
     PyType_GenericNew,           /* tp_new */
 };
-
-PyObject *pickle_module = NULL;
-PyObject *pickle_loads = NULL;
-PyObject *pickle_dumps = NULL;
 
 /* Create a PyTask from a C struct. The resulting PyTask takes ownership of the
  * task_spec and will deallocate the task_spec in the PyTask destructor. */

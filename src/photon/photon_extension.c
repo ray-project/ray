@@ -125,11 +125,7 @@ PyMODINIT_FUNC initlibphoton(void) {
   m = Py_InitModule3("libphoton", photon_methods,
                      "A module for the local scheduler.");
 
-  /* For Python 3 this needs to be "_pickle" instead of "cPickle". */
-  pickle_module = PyImport_ImportModuleNoBlock("cPickle");
-  pickle_loads = PyString_FromString("loads");
-  pickle_dumps = PyString_FromString("dumps");
-  assert(pickle_module != NULL);
+  init_pickle_module();
 
   Py_INCREF(&PyTaskType);
   PyModule_AddObject(m, "Task", (PyObject *) &PyTaskType);
