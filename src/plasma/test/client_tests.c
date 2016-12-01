@@ -14,8 +14,7 @@ TEST plasma_status_tests(void) {
       "/tmp/store1", "/tmp/manager1", PLASMA_DEFAULT_RELEASE_DELAY);
   plasma_connection *plasma_conn2 = plasma_connect(
       "/tmp/store2", "/tmp/manager2", PLASMA_DEFAULT_RELEASE_DELAY);
-  object_id oid1 = {
-      {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};
+  object_id oid1 = globally_unique_id();
 
   /* Test for object non-existence. */
   int status = plasma_status(plasma_conn1, oid1);
@@ -50,8 +49,7 @@ TEST plasma_fetch_remote_tests(void) {
       "/tmp/store1", "/tmp/manager1", PLASMA_DEFAULT_RELEASE_DELAY);
   plasma_connection *plasma_conn2 = plasma_connect(
       "/tmp/store2", "/tmp/manager2", PLASMA_DEFAULT_RELEASE_DELAY);
-  object_id oid1 = {
-      {3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};
+  object_id oid1 = globally_unique_id();
 
   /* Test for object non-existence. */
   int status;
@@ -116,8 +114,7 @@ bool is_equal_data_123(uint8_t *data1, uint8_t *data2, uint64_t size) {
 TEST plasma_get_local_tests(void) {
   plasma_connection *plasma_conn = plasma_connect(
       "/tmp/store1", "/tmp/manager1", PLASMA_DEFAULT_RELEASE_DELAY);
-  object_id oid = {
-      {10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};
+  object_id oid = globally_unique_id();
   object_buffer obj_buffer;
 
   /* Test for object non-existence. */
@@ -150,10 +147,8 @@ TEST plasma_wait_for_objects_tests(void) {
       "/tmp/store1", "/tmp/manager1", PLASMA_DEFAULT_RELEASE_DELAY);
   plasma_connection *plasma_conn2 = plasma_connect(
       "/tmp/store2", "/tmp/manager2", PLASMA_DEFAULT_RELEASE_DELAY);
-  object_id oid1 = {
-      {21, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};
-  object_id oid2 = {
-      {22, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};
+  object_id oid1 = globally_unique_id();
+  object_id oid2 = globally_unique_id();
 #define NUM_OBJ_REQUEST 2
 #define WAIT_TIMEOUT_MS 1000
   object_request obj_requests[NUM_OBJ_REQUEST];
@@ -221,11 +216,8 @@ TEST plasma_get_tests(void) {
       "/tmp/store1", "/tmp/manager1", PLASMA_DEFAULT_RELEASE_DELAY);
   plasma_connection *plasma_conn2 = plasma_connect(
       "/tmp/store2", "/tmp/manager2", PLASMA_DEFAULT_RELEASE_DELAY);
-  object_id oid1 = {
-      {31, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};
-
-  object_id oid2 = {
-      {32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};
+  object_id oid1 = globally_unique_id();
+  object_id oid2 = globally_unique_id();
   object_buffer obj_buffer;
 
   int64_t data_size = 4;
@@ -258,10 +250,8 @@ TEST plasma_wait_tests(void) {
       "/tmp/store1", "/tmp/manager1", PLASMA_DEFAULT_RELEASE_DELAY);
   plasma_connection *plasma_conn2 = plasma_connect(
       "/tmp/store2", "/tmp/manager2", PLASMA_DEFAULT_RELEASE_DELAY);
-  object_id oid1 = {
-      {41, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};
-  object_id oid2 = {
-      {42, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};
+  object_id oid1 = globally_unique_id();
+  object_id oid2 = globally_unique_id();
   object_id obj_ids[NUM_OBJ_REQUEST];
   object_id return_obj_ids[NUM_OBJ_REQUEST];
 
@@ -335,10 +325,8 @@ TEST plasma_multiget_tests(void) {
       "/tmp/store1", "/tmp/manager1", PLASMA_DEFAULT_RELEASE_DELAY);
   plasma_connection *plasma_conn2 = plasma_connect(
       "/tmp/store2", "/tmp/manager2", PLASMA_DEFAULT_RELEASE_DELAY);
-  object_id oid1 = {
-      {51, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};
-  object_id oid2 = {
-      {52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};
+  object_id oid1 = globally_unique_id();
+  object_id oid2 = globally_unique_id();
   object_id obj_ids[NUM_OBJ_REQUEST];
   object_buffer obj_buffer[NUM_OBJ_REQUEST];
   int obj1_first = 1, obj2_first = 2;
