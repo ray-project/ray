@@ -149,4 +149,7 @@ typedef unique_id db_client_id;
  */
 bool db_client_ids_equal(db_client_id first_id, db_client_id second_id);
 
+#define MAX(x, y) ((x) >= (y) ? (x) : (y))
+#define MIN(x, y) ((x) <= (y) ? (x) : (y))
+
 #endif
