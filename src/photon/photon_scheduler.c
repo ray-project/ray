@@ -133,7 +133,14 @@ void process_plasma_notification(event_loop *loop,
   local_scheduler_state *s = context;
   /* Read the notification from Plasma. */
   object_id obj_id;
-  recv(client_sock, (char *) &obj_id, sizeof(obj_id), 0);
+  int error = read_bytes(client_sock, (uint8_t *) &obj_id, sizeof(obj_id));
+  if (error == -1) {
+    /* The store has closed the socket. */
+    LOG_DEBUG("The plasma store has closed the object notification socket.");
+    event_loop_remove_file(loop, client_sock);
+    close(client_sock);
+    return;
+  }
   handle_object_available(s->scheduler_info, s->scheduler_state, obj_id);
 }
 

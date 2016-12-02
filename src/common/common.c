@@ -6,6 +6,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#include "io.c"
+
 /* This is used to define the array of object IDs. */
 const UT_icd object_id_icd = {sizeof(object_id), NULL, NULL, NULL};
 
@@ -20,7 +22,7 @@ unique_id globally_unique_id(void) {
     LOG_ERROR("Could not generate random number");
   }
   unique_id result;
-  read(fd, &result.id[0], UNIQUE_ID_SIZE);
+  CHECK(read_bytes(fd, &result.id[0], UNIQUE_ID_SIZE) >= 0);
   close(fd);
   return result;
 }
