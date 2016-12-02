@@ -63,7 +63,7 @@
     void *buffer[255];                                                        \
     const int calls = backtrace(buffer, sizeof(buffer) / sizeof(void *));     \
     backtrace_symbols_fd(buffer, calls, 1);                                   \
-    exit(-1);                                                                 \
+    abort();                                                                  \
   } while (0)
 #else
 #define LOG_FATAL(M, ...)                                                     \
