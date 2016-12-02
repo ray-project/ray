@@ -1306,8 +1306,9 @@ void process_object_notification(event_loop *loop,
   int error = read_bytes(client_sock, (uint8_t *) &obj_id, sizeof(obj_id));
   if (error < 0) {
     /* The store has closed the socket. */
-    LOG_DEBUG("The plasma store has closed the object notification socket, or "
-              "some other error has occurred.");
+    LOG_DEBUG(
+        "The plasma store has closed the object notification socket, or some "
+        "other error has occurred.");
     event_loop_remove_file(loop, client_sock);
     close(client_sock);
     return;
