@@ -34,9 +34,7 @@ void pubsub_subscribe_done_callback(object_id object_id,
                                     int destination,
                                     void *user_context) {
   db_handle *db = user_context;
-  retry_info retry = {
-      .num_retries = 0, .timeout = 100, .fail_callback = NULL
-  };
+  retry_info retry = {.num_retries = 0, .timeout = 100, .fail_callback = NULL};
   pubsub_request_transfer(db, pubsub_object_id, source, pubsub_destination,
                           &retry, NULL, NULL);
 }
@@ -49,11 +47,9 @@ TEST pubsub_transfer_test(void) {
   db_handle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11236);
   db_attach(db, g_loop);
-  retry_info retry = {
-      .num_retries = 0, .timeout = 100, .fail_callback = NULL
-  };
-  pubsub_subscribe_transfer(db, 0, pubsub_transfer_test_callback,
-                            &retry, pubsub_subscribe_done_callback, db);
+  retry_info retry = {.num_retries = 0, .timeout = 100, .fail_callback = NULL};
+  pubsub_subscribe_transfer(db, 0, pubsub_transfer_test_callback, &retry,
+                            pubsub_subscribe_done_callback, db);
 
   event_loop_add_timer(g_loop, 750,
                        (event_loop_timer_handler) terminate_event_loop_callback,
@@ -78,11 +74,9 @@ void pubsub_subscribe_done_callback2(object_id object_id,
                                      int destination,
                                      void *user_context) {
   db_handle *db = user_context;
-  retry_info retry = {
-      .num_retries = 0, .timeout = 100, .fail_callback = NULL
-  };
-  pubsub_request_transfer(db, NIL_ID, 1, pubsub_destination,
-                          &retry, NULL, NULL);
+  retry_info retry = {.num_retries = 0, .timeout = 100, .fail_callback = NULL};
+  pubsub_request_transfer(db, NIL_ID, 1, pubsub_destination, &retry, NULL,
+                          NULL);
 }
 
 /* This test makes sure that the subscriber of a transfer doesn't get notified
@@ -90,13 +84,11 @@ void pubsub_subscribe_done_callback2(object_id object_id,
 TEST pubsub_transfer_test2(void) {
   g_loop = event_loop_create();
   db_handle *db =
-    db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11236);
+      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11236);
   db_attach(db, g_loop);
-  retry_info retry = {
-      .num_retries = 0, .timeout = 100, .fail_callback = NULL
-  };
-  pubsub_subscribe_transfer(db, 0, pubsub_transfer_test_callback2,
-                            &retry, pubsub_subscribe_done_callback2, db);
+  retry_info retry = {.num_retries = 0, .timeout = 100, .fail_callback = NULL};
+  pubsub_subscribe_transfer(db, 0, pubsub_transfer_test_callback2, &retry,
+                            pubsub_subscribe_done_callback2, db);
   event_loop_add_timer(g_loop, 750,
                        (event_loop_timer_handler) terminate_event_loop_callback,
                        NULL);

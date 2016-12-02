@@ -780,7 +780,8 @@ void redis_pubsub_subscribe_transfer_callback(redisAsyncContext *c,
   CHECK(endptr == payload->str + payload->len);
   transfer_data *data = callback_data->data;
   if (data->subscribe_callback) {
-    data->subscribe_callback(callback_data->id, data->source, destination, callback_data->user_context);
+    data->subscribe_callback(callback_data->id, data->source, destination,
+                             callback_data->user_context);
   }
 }
 
@@ -788,10 +789,10 @@ void redis_pubsub_subscribe_transfer(table_callback_data *callback_data) {
   db_handle *db = callback_data->db_handle;
   transfer_data *data = callback_data->data;
 
-  int status = redisAsyncCommand(
-      db->sub_context, redis_pubsub_subscribe_transfer_callback,
-      (void *) callback_data->timer_id, "PSUBSCRIBE transfer:*:%d",
-      data->source);
+  int status = redisAsyncCommand(db->sub_context,
+                                 redis_pubsub_subscribe_transfer_callback,
+                                 (void *) callback_data->timer_id,
+                                 "PSUBSCRIBE transfer:*:%d", data->source);
   REDIS_CHECK_ERROR(status, db->sub_context);
 }
 

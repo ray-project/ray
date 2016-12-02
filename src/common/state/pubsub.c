@@ -17,12 +17,13 @@ void pubsub_request_transfer(db_handle *db,
                       redis_pubsub_request_transfer, user_context);
 }
 
-void pubsub_subscribe_transfer(db_handle *db,
-                               int source,
-                               pubsub_subscribe_transfer_callback subscribe_callback,
-                               retry_info *retry,
-                               pubsub_transfer_callback done_callback,
-                               void *user_context) {
+void pubsub_subscribe_transfer(
+    db_handle *db,
+    int source,
+    pubsub_subscribe_transfer_callback subscribe_callback,
+    retry_info *retry,
+    pubsub_transfer_callback done_callback,
+    void *user_context) {
   transfer_data *data = malloc(sizeof(transfer_data));
   data->object_id = NIL_OBJECT_ID;
   data->source = source;
