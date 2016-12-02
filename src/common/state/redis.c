@@ -13,6 +13,7 @@
 #include "db.h"
 #include "db_client_table.h"
 #include "object_table.h"
+#include "pubsub.h"
 #include "task.h"
 #include "task_table.h"
 #include "event_loop.h"
@@ -44,6 +45,11 @@
     return;                                           \
   do {                                                \
   } while (0)
+
+#define REDIS_CHECK_ERROR(STATUS, CONTEXT)         \
+  if (((STATUS) == REDIS_ERR) || (CONTEXT)->err) { \
+    LOG_REDIS_DEBUG(CONTEXT, "error in" __func__); \
+  }
 
 db_handle *db_connect(const char *address,
                       int port,
@@ -212,10 +218,7 @@ void redis_object_table_add(table_callback_data *callback_data) {
                                  (void *) callback_data->timer_id,
                                  "SADD obj:%b %b", id.id, sizeof(id.id),
                                  (char *) db->client.id, sizeof(db->client.id));
-
-  if ((status == REDIS_ERR) || db->context->err) {
-    LOG_REDIS_DEBUG(db->context, "could not add object_table entry");
-  }
+  REDIS_CHECK_ERROR(status, db->context);
 }
 
 void redis_object_table_lookup(table_callback_data *callback_data) {
@@ -227,9 +230,7 @@ void redis_object_table_lookup(table_callback_data *callback_data) {
   int status = redisAsyncCommand(db->context, redis_object_table_get_entry,
                                  (void *) callback_data->timer_id,
                                  "SMEMBERS obj:%b", id.id, sizeof(id.id));
-  if ((status == REDIS_ERR) || db->context->err) {
-    LOG_REDIS_DEBUG(db->context, "error in object_table lookup");
-  }
+  REDIS_CHECK_ERROR(status, db->context);
 }
 
 void redis_result_table_add_callback(redisAsyncContext *c,
@@ -258,9 +259,7 @@ void redis_result_table_add(table_callback_data *callback_data) {
       db->context, redis_result_table_add_callback,
       (void *) callback_data->timer_id, "SET result:%b %b", id.id,
       sizeof(id.id), result_task_id->id, sizeof(result_task_id->id));
-  if ((status == REDIS_ERR) || db->context->err) {
-    LOG_REDIS_DEBUG(db->context, "Error in result table add");
-  }
+  REDIS_CHECK_ERROR(status, db->context);
 }
 
 void redis_result_table_lookup_task_callback(redisAsyncContext *c,
@@ -303,9 +302,7 @@ void redis_result_table_lookup_object_callback(redisAsyncContext *c,
         redisAsyncCommand(db->context, redis_result_table_lookup_task_callback,
                           (void *) callback_data->timer_id, "HGETALL task:%b",
                           result_task_id->id, sizeof(result_task_id->id));
-    if ((status == REDIS_ERR) || db->context->err) {
-      LOG_REDIS_DEBUG(db->context, "Could not look up result table entry");
-    }
+    REDIS_CHECK_ERROR(status, db->context);
   } else if (reply->type == REDIS_REPLY_NIL) {
     /* The object with the requested ID was not in the table. */
     LOG_INFO("Object's result not in table.");
@@ -328,9 +325,7 @@ void redis_result_table_lookup(table_callback_data *callback_data) {
   int status = redisAsyncCommand(
       db->context, redis_result_table_lookup_object_callback,
       (void *) callback_data->timer_id, "GET result:%b", id.id, sizeof(id.id));
-  if ((status == REDIS_ERR) || db->context->err) {
-    LOG_REDIS_DEBUG(db->context, "Error in result table lookup");
-  }
+  REDIS_CHECK_ERROR(status, db->context);
 }
 
 /**
@@ -468,10 +463,7 @@ void redis_object_table_subscribe(table_callback_data *callback_data) {
       db->sub_context, object_table_redis_subscribe_callback,
       (void *) callback_data->timer_id, "SUBSCRIBE __keyspace@0__:obj:%b sadd",
       id.id, sizeof(id.id));
-  if ((status == REDIS_ERR) || db->sub_context->err) {
-    LOG_REDIS_DEBUG(db->sub_context,
-                    "error in redis_object_table_subscribe_callback");
-  }
+  REDIS_CHECK_ERROR(status, db->sub_context);
 }
 
 /*
@@ -508,9 +500,7 @@ void redis_task_table_get_task(table_callback_data *callback_data) {
       redisAsyncCommand(db->context, redis_task_table_get_task_callback,
                         (void *) callback_data->timer_id, "HGETALL task:%b",
                         id.id, sizeof(id.id));
-  if ((status == REDIS_ERR) || db->context->err) {
-    LOG_REDIS_DEBUG(db->context, "Could not get task from task table");
-  }
+  REDIS_CHECK_ERROR(status, db->context);
 }
 
 void redis_task_table_publish(table_callback_data *callback_data,
@@ -561,9 +551,7 @@ void redis_task_table_publish(table_callback_data *callback_data,
           sizeof(id.id), state, (char *) node.id, sizeof(node.id),
           (char *) spec, task_spec_size(spec));
     }
-    if ((status = REDIS_ERR) || db->context->err) {
-      LOG_REDIS_DEBUG(db->context, "error setting task in task_table_add_task");
-    }
+    REDIS_CHECK_ERROR(status, db->context);
   }
 
   if (((bool *) callback_data->requests_info)[PUBLISH_INDEX] == false) {
@@ -572,11 +560,7 @@ void redis_task_table_publish(table_callback_data *callback_data,
         (void *) callback_data->timer_id, "PUBLISH task:%b:%d %b",
         (char *) node.id, sizeof(node.id), state, (char *) task,
         task_size(task));
-
-    if ((status == REDIS_ERR) || db->context->err) {
-      LOG_REDIS_DEBUG(db->context,
-                      "error publishing task in task_table_add_task");
-    }
+    REDIS_CHECK_ERROR(status, db->context);
   }
 }
 
@@ -629,12 +613,12 @@ void redis_task_table_subscribe_callback(redisAsyncContext *c,
   redisReply *reply = r;
 
   CHECK(reply->type == REDIS_REPLY_ARRAY);
-  /* If this condition is true, we got the initial message that acknowledged the
-   * subscription. */
   CHECK(reply->elements > 2);
   /* First entry is message type, then possibly the regex we psubscribed to,
    * then topic, then payload. */
   redisReply *payload = reply->element[reply->elements - 1];
+  /* If this condition is true, we got the initial message that acknowledged the
+   * subscription. */
   if (payload->str == NULL) {
     if (callback_data->done_callback) {
       task_table_done_callback done_callback = callback_data->done_callback;
@@ -674,9 +658,7 @@ void redis_task_table_subscribe(table_callback_data *callback_data) {
         (void *) callback_data->timer_id, "SUBSCRIBE task:%b:%d",
         (char *) node.id, sizeof(node.id), data->state_filter);
   }
-  if ((status == REDIS_ERR) || db->sub_context->err) {
-    LOG_REDIS_DEBUG(db->sub_context, "error in task_table_register_callback");
-  }
+  REDIS_CHECK_ERROR(status, db->sub_context);
 }
 
 /*
@@ -727,10 +709,90 @@ void redis_db_client_table_subscribe(table_callback_data *callback_data) {
   int status = redisAsyncCommand(
       db->sub_context, redis_db_client_table_subscribe_callback,
       (void *) callback_data->timer_id, "SUBSCRIBE db_clients");
-  if ((status == REDIS_ERR) || db->sub_context->err) {
-    LOG_REDIS_DEBUG(db->sub_context,
-                    "error in db_client_table_register_callback");
+  REDIS_CHECK_ERROR(status, db->sub_context);
+}
+
+/*
+ * === pubsub methods ===
+ */
+
+void redis_pubsub_request_transfer_callback(redisAsyncContext *c,
+                                            void *r,
+                                            void *privdata) {
+  LOG_DEBUG("Calling pubsub request transfer callback");
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
+
+  if (callback_data->done_callback) {
+    transfer_data *data = callback_data->data;
+    pubsub_transfer_callback done_callback = callback_data->done_callback;
+    done_callback(callback_data->id, data->source, data->destination,
+                  callback_data->user_context);
   }
+  destroy_timer_callback(db->loop, callback_data);
+}
+
+void redis_pubsub_request_transfer(table_callback_data *callback_data) {
+  db_handle *db = callback_data->db_handle;
+  transfer_data *data = callback_data->data;
+
+  /* The command PUBLISH transfer:object_id:source destination means that
+   * the object with object ID object_id shall be transfered from plasma
+   * manager source to plasma manager destination. */
+  int status = redisAsyncCommand(
+      db->context, redis_pubsub_request_transfer_callback,
+      (void *) callback_data->timer_id, "PUBLISH transfer:%b:%d %d",
+      (char *) &callback_data->id, sizeof(callback_data->id), data->source,
+      data->destination);
+  REDIS_CHECK_ERROR(status, db->context);
+}
+
+void redis_pubsub_subscribe_transfer_callback(redisAsyncContext *c,
+                                              void *r,
+                                              void *privdata) {
+  LOG_DEBUG("Calling pubsub subscribe transfer callback");
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
+  redisReply *reply = r;
+
+  CHECK(reply->type == REDIS_REPLY_ARRAY);
+  CHECK(reply->elements > 2);
+  /* First entry is message type, then possibly the regex we psubscribed to,
+   * then topic, then payload. */
+  redisReply *payload = reply->element[reply->elements - 1];
+  /* If this condition is true, we got the initial message that acknowledged the
+   * subscription. */
+  if (payload->str == NULL) {
+    if (callback_data->done_callback) {
+      transfer_data *data = callback_data->data;
+      pubsub_transfer_callback done_callback = callback_data->done_callback;
+      done_callback(callback_data->id, data->source, data->destination,
+                    callback_data->user_context);
+    }
+    /* Note that we do not destroy the callback data yet because the
+     * subscription callback needs this data. */
+    event_loop_remove_timer(db->loop, callback_data->timer_id);
+    return;
+  }
+  /* Otherwise, parse the payload and call the callback. */
+  errno = 0;
+  char *endptr;
+  long destination = strtol(payload->str, &endptr, 10);
+  CHECK(errno == 0);
+  CHECK(endptr == payload->str + payload->len);
+  transfer_data *data = callback_data->data;
+  if (data->subscribe_callback) {
+    data->subscribe_callback(callback_data->id, data->source, destination, callback_data->user_context);
+  }
+}
+
+void redis_pubsub_subscribe_transfer(table_callback_data *callback_data) {
+  db_handle *db = callback_data->db_handle;
+  transfer_data *data = callback_data->data;
+
+  int status = redisAsyncCommand(
+      db->sub_context, redis_pubsub_subscribe_transfer_callback,
+      (void *) callback_data->timer_id, "PSUBSCRIBE transfer:*:%d",
+      data->source);
+  REDIS_CHECK_ERROR(status, db->sub_context);
 }
 
 db_client_id get_db_client_id(db_handle *db) {
