@@ -6,7 +6,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#include "io.c"
+#include "io.h"
 
 /* This is used to define the array of object IDs. */
 const UT_icd object_id_icd = {sizeof(object_id), NULL, NULL, NULL};
