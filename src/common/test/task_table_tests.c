@@ -20,6 +20,7 @@ event_loop *g_loop;
 task_id lookup_nil_id;
 int lookup_nil_success = 0;
 const char *lookup_nil_context = "lookup_nil";
+
 void lookup_nil_fail_callback(unique_id id,
                               void *user_context,
                               void *user_data) {
@@ -61,7 +62,6 @@ TEST lookup_nil_test(void) {
 int add_success = 0;
 int lookup_success = 0;
 task *add_lookup_task;
-
 const char *add_lookup_context = "add_lookup";
 
 void add_lookup_fail_callback(unique_id id,
