@@ -220,7 +220,10 @@ TEST add_timeout_test(void) {
 const char *subscribe_timeout_context = "subscribe_timeout";
 int subscribe_failed = 0;
 
-void subscribe_done_callback(object_id object_id, void *user_context) {
+void subscribe_done_callback(object_id object_id,
+                             int manager_count,
+                             const char *manager_vector[],
+                             void *user_context) {
   /* The done callback should not be called. */
   CHECK(0);
 }
@@ -598,6 +601,8 @@ void subscribe_success_done_callback(object_id object_id, void *user_context) {
 }
 
 void subscribe_success_object_available_callback(object_id object_id,
+                                                 int manager_count,
+                                                 const char *manager_vector[],
                                                  void *user_context) {
   printf("first: %s\n", subscribe_success_context);
   printf("second: %s\n", user_context);
@@ -642,6 +647,8 @@ const char *subscribe_object_present_context = "subscribe_object_present";
 int subscribe_object_present_succeeded = 0;
 
 void subscribe_object_present_object_available_callback(object_id object_id,
+                                                        int manager_count,
+                                                        const char *manager_vector[],
                                                         void *user_context) {
   CHECK(user_context == (void *) subscribe_object_present_context);
   subscribe_object_present_succeeded = 1;
@@ -682,6 +689,8 @@ int subscribe_object_not_present_succeeded = 0;
 
 void subscribe_object_not_present_object_available_callback(
     object_id object_id,
+    int manager_count,
+    const char *manager_vector[],
     void *user_context) {
   CHECK(user_context == (void *) subscribe_object_not_present_context);
   subscribe_object_not_present_succeeded = 1;
@@ -721,6 +730,8 @@ int subscribe_object_available_later_succeeded = 0;
 
 void subscribe_object_available_later_object_available_callback(
     object_id object_id,
+    int manager_count,
+    const char *manager_vector[],
     void *user_context) {
   CHECK(user_context == (void *) subscribe_object_available_later_context);
   /* Make sure the callback is only called once. */
@@ -763,7 +774,8 @@ TEST subscribe_object_available_later_test(void) {
   db_disconnect(db);
   destroy_outstanding_callbacks(g_loop);
   event_loop_destroy(g_loop);
-  ASSERT(subscribe_object_available_later_succeeded == 1);
+  printf("XXX %d\n", subscribe_object_available_later_succeeded);
+  ASSERT_EQ(subscribe_object_available_later_succeeded, 1);
   PASS();
 }
 
@@ -780,13 +792,11 @@ SUITE(object_table_tests) {
   RUN_REDIS_TEST(lookup_late_test);
   RUN_REDIS_TEST(add_late_test);
   RUN_REDIS_TEST(subscribe_late_test);
-  */
   RUN_REDIS_TEST(subscribe_success_test);
-  /*
   RUN_REDIS_TEST(subscribe_object_present_test);
   RUN_REDIS_TEST(subscribe_object_not_present_test);
-  RUN_REDIS_TEST(subscribe_object_available_later_test);
   */
+  RUN_REDIS_TEST(subscribe_object_available_later_test);
 }
 
 GREATEST_MAIN_DEFS();

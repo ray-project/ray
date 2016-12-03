@@ -381,13 +381,12 @@ void redis_object_table_get_entry(redisAsyncContext *c,
     }
 
     if (callback_data->data != NULL) {
-      printf("IF1\n");
       /* This callback was called from a subscribe call. */
       object_table_subscribe_data *sub_data = callback_data->data;
       object_table_object_available_callback sub_callback =
           sub_data->object_available_callback;
-      if (sub_callback) {
-        printf("IF2\n");
+      printf("manager count is %d", manager_count);
+      if (sub_callback && manager_count > 0) {
         sub_callback(callback_data->id, manager_count, manager_vector,
                      sub_data->subscribe_context);
       }
@@ -417,6 +416,13 @@ void object_table_redis_subscribe_callback(redisAsyncContext *c,
   CHECK(reply->type == REDIS_REPLY_ARRAY);
   /* First entry is message type, second is topic, third is payload. */
   CHECK(reply->elements > 2);
+
+  if (reply->element[1]->str && strcmp(reply->element[1]->str, "sadd") == 0) {
+    object_table_done_callback done_callback = callback_data->done_callback;
+    if (done_callback) {
+      done_callback(callback_data->id, callback_data->user_context);
+    }
+  }
 
   /* Do a lookup for the actual data. */
   int status =
