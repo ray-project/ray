@@ -237,7 +237,6 @@ void redis_result_table_add_callback(redisAsyncContext *c,
     result_table_done_callback done_callback = callback_data->done_callback;
     done_callback(callback_data->id, callback_data->user_context);
   }
-  task_id *task_id = callback_data->data;
   destroy_timer_callback(db->loop, callback_data);
 }
 
