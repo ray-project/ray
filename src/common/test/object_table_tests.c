@@ -79,13 +79,12 @@ TEST new_object_test(void) {
       .timeout = 100,
       .fail_callback = new_object_fail_callback,
   };
-  task_table_add_task(db, new_object_task, &retry, new_object_task_callback,
-                      db);
+  task_table_add_task(db, copy_task(new_object_task), &retry,
+                      new_object_task_callback, db);
   event_loop_run(g_loop);
   db_disconnect(db);
   destroy_outstanding_callbacks(g_loop);
   event_loop_destroy(g_loop);
-  free_task(new_object_task);
   ASSERT(new_object_succeeded);
   ASSERT(!new_object_failed);
   PASS();

@@ -13,7 +13,7 @@ void task_table_get_task(db_handle *db_handle,
 }
 
 void task_table_add_task(db_handle *db_handle,
-                         task *task,
+                         OWNER task *task,
                          retry_info *retry,
                          task_table_done_callback done_callback,
                          void *user_context) {
@@ -22,7 +22,7 @@ void task_table_add_task(db_handle *db_handle,
 }
 
 void task_table_update(db_handle *db_handle,
-                       task *task,
+                       OWNER task *task,
                        retry_info *retry,
                        task_table_done_callback done_callback,
                        void *user_context) {
@@ -41,7 +41,6 @@ void task_table_subscribe(db_handle *db_handle,
                           void *user_context) {
   task_table_subscribe_data *sub_data =
       malloc(sizeof(task_table_subscribe_data));
-  utarray_push_back(db_handle->callback_freelist, &sub_data);
   sub_data->node = node;
   sub_data->state_filter = state_filter;
   sub_data->subscribe_callback = subscribe_callback;

@@ -285,6 +285,14 @@ typedef struct task_impl task;
  */
 task *alloc_task(task_spec *spec, scheduling_state state, node_id node);
 
+/**
+ * Create a copy of the task. Must be freed with free_task after use.
+ *
+ * @param other The task that will be copied.
+ * @returns Pointer to the copy of the task.
+ */
+task *copy_task(task *other);
+
 /** Size of task structure in bytes. */
 int64_t task_size(task *task);
 
