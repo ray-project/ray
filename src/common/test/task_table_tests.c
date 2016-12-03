@@ -92,11 +92,7 @@ void add_success_callback(task_id task_id, void *context) {
 }
 
 TEST add_lookup_test(void) {
-  task *copy_add_lookup_task;
   add_lookup_task = example_task();
-  copy_add_lookup_task = malloc(task_size(add_lookup_task));
-  CHECK(copy_add_lookup_task != NULL);
-  memcpy(copy_add_lookup_task, add_lookup_task, task_size(add_lookup_task));
   g_loop = event_loop_create();
   db_handle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 1234);
@@ -106,8 +102,8 @@ TEST add_lookup_test(void) {
       .timeout = 1000,
       .fail_callback = add_lookup_fail_callback,
   };
-  task_table_add_task(db, copy_add_lookup_task, &retry, add_success_callback,
-                      (void *) db);
+  task_table_add_task(db, copy_task(add_lookup_task), &retry,
+                      add_success_callback, (void *) db);
   /* Disconnect the database to see if the lookup times out. */
   event_loop_run(g_loop);
   db_disconnect(db);
