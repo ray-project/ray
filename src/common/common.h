@@ -97,13 +97,17 @@
  *  and is responsible for freeing it. */
 #define OWNER
 
+/** Structs that are passed over the wire should be annotated with this
+ *  attribute to make sure there is no padding. */
+#define SERIALIZABLE __attribute__((packed))
+
 #define UNIQUE_ID_SIZE 20
 
 #define UNIQUE_ID_EQ(id1, id2) (memcmp((id1).id, (id2).id, UNIQUE_ID_SIZE) == 0)
 
 #define IS_NIL_ID(id) UNIQUE_ID_EQ(id, NIL_ID)
 
-typedef struct { unsigned char id[UNIQUE_ID_SIZE]; } unique_id;
+typedef struct SERIALIZABLE { unsigned char id[UNIQUE_ID_SIZE]; } unique_id;
 
 extern const UT_icd object_id_icd;
 

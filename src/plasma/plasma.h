@@ -26,7 +26,7 @@ typedef struct {
  * Object request data structure. Used in the plasma_wait_for_objects()
  * argument.
  */
-typedef struct {
+typedef struct SERIALIZABLE {
   /** The ID of the requested object. If ID_NIL request any object. */
   object_id object_id;
   /** Request associated to the object. It can take one of the following values:
@@ -46,7 +46,7 @@ typedef struct {
 } object_request;
 
 /* Handle to access memory mapped file and map it into client address space. */
-typedef struct {
+typedef struct SERIALIZABLE {
   /** The file descriptor of the memory mapped file in the store. It is used as
    *  a unique identifier of the file in the client to look up the corresponding
    *  file descriptor on the client's side. */
@@ -55,7 +55,7 @@ typedef struct {
   int64_t mmap_size;
 } object_handle;
 
-typedef struct {
+typedef struct SERIALIZABE {
   /** Handle for memory mapped file the object is stored in. */
   object_handle handle;
   /** The offset in bytes in the memory mapped file of the data. */
@@ -139,7 +139,7 @@ enum plasma_message_type {
   PLASMA_WAIT1
 };
 
-typedef struct {
+typedef struct SERIALIZABLE {
   /** The size of the object's data. */
   int64_t data_size;
   /** The size of the object's metadata. */
@@ -169,7 +169,7 @@ typedef enum {
   PLASMA_OBJECT_ALREADY_EXISTS
 } plasma_error;
 
-typedef struct {
+typedef struct SERIALIZABLE {
   /** The object that is returned with this reply. */
   plasma_object object;
   /** TODO: document this. */
@@ -188,7 +188,7 @@ typedef struct {
   /** The object requests that this reply refers to. */
   object_request object_requests[1];
   /** Return error code. */
-  plasma_error error_code;
+  int error_code;
 } plasma_reply;
 
 /** This type is used by the Plasma store. It is here because it is exposed to
