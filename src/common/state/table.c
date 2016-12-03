@@ -51,7 +51,7 @@ void destroy_table_callback(table_callback_data *callback_data) {
   if (callback_data->requests_info)
     free(callback_data->requests_info);
 
-  if(callback_data->data) {
+  if (callback_data->data) {
     free(callback_data->data);
     callback_data->data = NULL;
   }

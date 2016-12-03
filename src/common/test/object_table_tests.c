@@ -72,6 +72,7 @@ TEST new_object_test(void) {
   new_object_task_spec = task_task_spec(new_object_task);
   new_object_task_id = task_spec_id(new_object_task_spec);
   copy_object_task = malloc(task_size(new_object_task));
+  CHECK(copy_object_task != NULL);
   memcpy(copy_object_task, new_object_task, task_size(new_object_task));
   g_loop = event_loop_create();
   db_handle *db =
