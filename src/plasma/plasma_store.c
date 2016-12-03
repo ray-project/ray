@@ -369,11 +369,7 @@ char *object_id_to_persist_path(object_id object_id) {
   size_t path_size = strlen(PERSIST_PATH) + 2 * UNIQUE_ID_SIZE + 1;
   char *file_path = malloc(path_size);
   strcpy(file_path, PERSIST_PATH);
-  for (int i = strlen(PERSIST_PATH); i < path_size - 1; i += 2) {
-    int j = (i - strlen(PERSIST_PATH)) / 2;
-    sprintf(&file_path[i], "%hhx", (unsigned int) (object_id.id[j] & 0xFF));
-  }
-  file_path[path_size - 1] = '\0';
+  sha1_to_hex(object_id.id, file_path + strlen(PERSIST_PATH));
   return file_path;
 }
 
