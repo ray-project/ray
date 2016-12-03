@@ -64,12 +64,15 @@ void new_object_task_callback(task_id task_id, void *user_context) {
 }
 
 TEST new_object_test(void) {
+  task *copy_object_task;
   new_object_failed = 0;
   new_object_succeeded = 0;
   new_object_id = globally_unique_id();
   new_object_task = example_task();
   new_object_task_spec = task_task_spec(new_object_task);
   new_object_task_id = task_spec_id(new_object_task_spec);
+  copy_object_task = malloc(task_size(new_object_task));
+  memcpy(copy_object_task, new_object_task, task_size(new_object_task));
   g_loop = event_loop_create();
   db_handle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 1234);
@@ -79,13 +82,12 @@ TEST new_object_test(void) {
       .timeout = 100,
       .fail_callback = new_object_fail_callback,
   };
-  task_table_add_task(db, new_object_task, &retry, new_object_task_callback,
+  task_table_add_task(db, copy_object_task, &retry, new_object_task_callback,
                       db);
   event_loop_run(g_loop);
   db_disconnect(db);
   destroy_outstanding_callbacks(g_loop);
   event_loop_destroy(g_loop);
-  free_task(new_object_task);
   ASSERT(new_object_succeeded);
   ASSERT(!new_object_failed);
   PASS();

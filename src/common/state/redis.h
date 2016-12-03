@@ -45,8 +45,6 @@ struct db_handle {
   /** Redis context for synchronous connections. This should only be used very
    *  rarely, it is not asynchronous. */
   redisContext *sync_context;
-  /** Data structure for callbacks that needs to be freed. */
-  UT_array *callback_freelist;
 };
 
 void redis_object_table_get_entry(redisAsyncContext *c,

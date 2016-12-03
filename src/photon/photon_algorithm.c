@@ -160,7 +160,6 @@ void give_task_to_global_scheduler(scheduler_info *info,
   task *task = alloc_task(spec, TASK_STATUS_WAITING, NIL_ID);
   DCHECK(info->db != NULL);
   task_table_add_task(info->db, task, (retry_info *) &photon_retry, NULL, NULL);
-  free_task(task);
 }
 
 void handle_task_submitted(scheduler_info *info,

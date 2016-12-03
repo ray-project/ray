@@ -29,7 +29,6 @@ void object_table_subscribe(
     void *user_context) {
   object_table_subscribe_data *sub_data =
       malloc(sizeof(object_table_subscribe_data));
-  utarray_push_back(db_handle->callback_freelist, &sub_data);
   sub_data->object_available_callback = object_available_callback;
   sub_data->subscribe_context = subscribe_context;
 

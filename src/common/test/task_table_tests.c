@@ -51,6 +51,7 @@ TEST lookup_nil_test(void) {
   /* Disconnect the database to see if the lookup times out. */
   event_loop_run(g_loop);
   db_disconnect(db);
+  destroy_outstanding_callbacks(g_loop);
   event_loop_destroy(g_loop);
   ASSERT(lookup_nil_success);
   PASS();
@@ -91,7 +92,9 @@ void add_success_callback(task_id task_id, void *context) {
 }
 
 TEST add_lookup_test(void) {
+  task *copy_add_lookup_task;
   add_lookup_task = example_task();
+  copy_add_lookup_task = malloc(task_size(add_lookup_task));
   g_loop = event_loop_create();
   db_handle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 1234);
@@ -101,11 +104,13 @@ TEST add_lookup_test(void) {
       .timeout = 1000,
       .fail_callback = add_lookup_fail_callback,
   };
-  task_table_add_task(db, add_lookup_task, &retry, add_success_callback,
+  int status = memcpy(copy_add_lookup_task, add_lookup_task, task_size(add_lookup_task));
+  task_table_add_task(db, copy_add_lookup_task, &retry, add_success_callback,
                       (void *) db);
   /* Disconnect the database to see if the lookup times out. */
   event_loop_run(g_loop);
   db_disconnect(db);
+  destroy_outstanding_callbacks(g_loop);
   event_loop_destroy(g_loop);
   ASSERT(add_success);
   ASSERT(lookup_success);
@@ -150,6 +155,7 @@ TEST subscribe_timeout_test(void) {
   aeProcessEvents(g_loop, AE_TIME_EVENTS);
   event_loop_run(g_loop);
   db_disconnect(db);
+  destroy_outstanding_callbacks(g_loop);
   event_loop_destroy(g_loop);
   ASSERT(subscribe_failed);
   PASS();
@@ -188,6 +194,7 @@ TEST publish_timeout_test(void) {
   aeProcessEvents(g_loop, AE_TIME_EVENTS);
   event_loop_run(g_loop);
   db_disconnect(db);
+  destroy_outstanding_callbacks(g_loop);
   event_loop_destroy(g_loop);
   ASSERT(publish_failed);
   PASS();
@@ -257,6 +264,7 @@ TEST subscribe_retry_test(void) {
                        NULL);
   event_loop_run(g_loop);
   db_disconnect(db);
+  destroy_outstanding_callbacks(g_loop);
   event_loop_destroy(g_loop);
   ASSERT(subscribe_retry_succeeded);
   PASS();
@@ -303,6 +311,7 @@ TEST publish_retry_test(void) {
                        NULL);
   event_loop_run(g_loop);
   db_disconnect(db);
+  destroy_outstanding_callbacks(g_loop);
   event_loop_destroy(g_loop);
   ASSERT(publish_retry_succeeded);
   PASS();
@@ -349,6 +358,7 @@ TEST subscribe_late_test(void) {
   aeProcessEvents(g_loop, AE_TIME_EVENTS);
   event_loop_run(g_loop);
   db_disconnect(db);
+  destroy_outstanding_callbacks(g_loop);
   event_loop_destroy(g_loop);
   ASSERT(subscribe_late_failed);
   PASS();
@@ -393,6 +403,7 @@ TEST publish_late_test(void) {
   aeProcessEvents(g_loop, AE_TIME_EVENTS);
   event_loop_run(g_loop);
   db_disconnect(db);
+  destroy_outstanding_callbacks(g_loop);
   event_loop_destroy(g_loop);
   ASSERT(publish_late_failed);
   PASS();
@@ -401,12 +412,12 @@ TEST publish_late_test(void) {
 SUITE(task_table_tests) {
   RUN_REDIS_TEST(lookup_nil_test);
   RUN_REDIS_TEST(add_lookup_test);
-  RUN_TEST(subscribe_timeout_test);
-  RUN_TEST(publish_timeout_test);
-  RUN_TEST(subscribe_retry_test);
-  RUN_TEST(publish_retry_test);
-  RUN_TEST(subscribe_late_test);
-  RUN_TEST(publish_late_test);
+  RUN_REDIS_TEST(subscribe_timeout_test);
+  RUN_REDIS_TEST(publish_timeout_test);
+  RUN_REDIS_TEST(subscribe_retry_test);
+  RUN_REDIS_TEST(publish_retry_test);
+  RUN_REDIS_TEST(subscribe_late_test);
+  RUN_REDIS_TEST(publish_late_test);
 }
 
 GREATEST_MAIN_DEFS();

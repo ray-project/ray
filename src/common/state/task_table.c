@@ -41,7 +41,6 @@ void task_table_subscribe(db_handle *db_handle,
                           void *user_context) {
   task_table_subscribe_data *sub_data =
       malloc(sizeof(task_table_subscribe_data));
-  utarray_push_back(db_handle->callback_freelist, &sub_data);
   sub_data->node = node;
   sub_data->state_filter = state_filter;
   sub_data->subscribe_callback = subscribe_callback;
