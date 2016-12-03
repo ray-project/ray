@@ -305,6 +305,14 @@ task *alloc_task(task_spec *spec, scheduling_state state, node_id node) {
   return result;
 }
 
+task *copy_task(task *other) {
+  int64_t size = task_size(other);
+  task *copy = malloc(size);
+  CHECK(copy != NULL);
+  memcpy(copy, other, size);
+  return copy;
+}
+
 task *alloc_nil_task(task_id task_id) {
   task_spec *nil_spec = alloc_nil_task_spec(task_id);
   task *nil_task = alloc_task(nil_spec, 0, NIL_ID);

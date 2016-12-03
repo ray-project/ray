@@ -122,7 +122,6 @@ void assign_task_to_worker(scheduler_info *info,
     } else {
       task_table_add_task(info->db, task, (retry_info *) &retry, NULL, NULL);
     }
-    free_task(task);
   }
 }
 

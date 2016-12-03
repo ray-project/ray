@@ -91,7 +91,6 @@ db_handle *db_connect(const char *address,
   db->client = client;
   db->db_client_cache = NULL;
   db->sync_context = context;
-  utarray_new(db->callback_freelist, &ut_ptr_icd);
 
   /* Establish async connection */
   db->context = redisAsyncConnect(address, port);
@@ -118,11 +117,6 @@ void db_disconnect(db_handle *db) {
     free(e);
   }
   free(db->client_type);
-  void **p = NULL;
-  while ((p = (void **) utarray_next(db->callback_freelist, p))) {
-    free(*p);
-  }
-  utarray_free(db->callback_freelist);
   free(db);
 }
 
@@ -243,8 +237,6 @@ void redis_result_table_add_callback(redisAsyncContext *c,
     result_table_done_callback done_callback = callback_data->done_callback;
     done_callback(callback_data->id, callback_data->user_context);
   }
-  task_id *task_id = callback_data->data;
-  free(task_id);
   destroy_timer_callback(db->loop, callback_data);
 }
 
@@ -283,7 +275,6 @@ void redis_result_table_lookup_task_callback(redisAsyncContext *c,
     done_callback(callback_data->id, task_reply, callback_data->user_context);
     free_task(task_reply);
   }
-  free(result_task_id);
   destroy_timer_callback(db->loop, callback_data);
 }
 

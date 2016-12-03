@@ -54,7 +54,7 @@ void task_table_get_task(db_handle *db,
  * @return Void.
  */
 void task_table_add_task(db_handle *db_handle,
-                         task *task,
+                         OWNER task *task,
                          retry_info *retry,
                          task_table_done_callback done_callback,
                          void *user_context);
@@ -77,7 +77,7 @@ void task_table_add_task(db_handle *db_handle,
  * @return Void.
  */
 void task_table_update(db_handle *db_handle,
-                       task *task,
+                       OWNER task *task,
                        retry_info *retry,
                        task_table_done_callback done_callback,
                        void *user_context);

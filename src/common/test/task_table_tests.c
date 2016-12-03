@@ -102,14 +102,13 @@ TEST add_lookup_test(void) {
       .timeout = 1000,
       .fail_callback = add_lookup_fail_callback,
   };
-  task_table_add_task(db, add_lookup_task, &retry, add_success_callback,
-                      (void *) db);
+  task_table_add_task(db, copy_task(add_lookup_task), &retry,
+                      add_success_callback, (void *) db);
   /* Disconnect the database to see if the lookup times out. */
   event_loop_run(g_loop);
   db_disconnect(db);
   destroy_outstanding_callbacks(g_loop);
   event_loop_destroy(g_loop);
-  free(add_lookup_task);
   ASSERT(add_success);
   ASSERT(lookup_success);
   PASS();
@@ -195,7 +194,6 @@ TEST publish_timeout_test(void) {
   destroy_outstanding_callbacks(g_loop);
   event_loop_destroy(g_loop);
   ASSERT(publish_failed);
-  free_task(task);
   PASS();
 }
 
@@ -313,7 +311,6 @@ TEST publish_retry_test(void) {
   destroy_outstanding_callbacks(g_loop);
   event_loop_destroy(g_loop);
   ASSERT(publish_retry_succeeded);
-  free_task(task);
   PASS();
 }
 
@@ -406,19 +403,18 @@ TEST publish_late_test(void) {
   destroy_outstanding_callbacks(g_loop);
   event_loop_destroy(g_loop);
   ASSERT(publish_late_failed);
-  free_task(task);
   PASS();
 }
 
 SUITE(task_table_tests) {
   RUN_REDIS_TEST(lookup_nil_test);
   RUN_REDIS_TEST(add_lookup_test);
-  RUN_TEST(subscribe_timeout_test);
-  RUN_TEST(publish_timeout_test);
-  RUN_TEST(subscribe_retry_test);
-  RUN_TEST(publish_retry_test);
-  RUN_TEST(subscribe_late_test);
-  RUN_TEST(publish_late_test);
+  RUN_REDIS_TEST(subscribe_timeout_test);
+  RUN_REDIS_TEST(publish_timeout_test);
+  RUN_REDIS_TEST(subscribe_retry_test);
+  RUN_REDIS_TEST(publish_retry_test);
+  RUN_REDIS_TEST(subscribe_late_test);
+  RUN_REDIS_TEST(publish_late_test);
 }
 
 GREATEST_MAIN_DEFS();

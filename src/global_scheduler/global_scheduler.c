@@ -23,7 +23,7 @@ void assign_task_to_local_scheduler(global_scheduler_state *state,
   retry_info retry = {
       .num_retries = 0, .timeout = 100, .fail_callback = NULL,
   };
-  task_table_update(state->db, task, &retry, NULL, NULL);
+  task_table_update(state->db, copy_task(task), &retry, NULL, NULL);
 }
 
 global_scheduler_state *init_global_scheduler(event_loop *loop,
