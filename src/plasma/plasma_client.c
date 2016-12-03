@@ -544,6 +544,18 @@ void plasma_fetch(plasma_connection *conn,
   }
 }
 
+void plasma_fetch2(plasma_connection *conn,
+                   int num_object_ids,
+                   object_id object_ids[]) {
+  CHECK(conn != NULL);
+  CHECK(conn->manager_conn >= 0);
+  plasma_request *req = plasma_alloc_request(num_object_ids);
+  for (int i = 0; i < num_object_ids; ++i) {
+    req->object_requests[i].object_id = object_ids[i];
+  }
+  CHECK(plasma_send_request(conn->manager_conn, PLASMA_FETCH2, req) >= 0);
+}
+
 int plasma_wait(plasma_connection *conn,
                 int num_object_ids,
                 object_id object_ids[],

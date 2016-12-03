@@ -170,6 +170,27 @@ PyObject *PyPlasma_fetch(PyObject *self, PyObject *args) {
   return success_list;
 }
 
+PyObject *PyPlasma_fetch2(PyObject *self, PyObject *args) {
+  plasma_connection *conn;
+  PyObject *object_id_list;
+  if (!PyArg_ParseTuple(args, "O&O", PyObjectToPlasmaConnection, &conn,
+                        &object_id_list)) {
+    return NULL;
+  }
+  if (!plasma_manager_is_connected(conn)) {
+    PyErr_SetString(PyExc_RuntimeError, "Not connected to the plasma manager");
+    return NULL;
+  }
+  Py_ssize_t n = PyList_Size(object_id_list);
+  object_id *object_ids = malloc(sizeof(object_id) * n);
+  for (int i = 0; i < n; ++i) {
+    PyObjectToUniqueID(PyList_GetItem(object_id_list, i), &object_ids[i]);
+  }
+  plasma_fetch2(conn, (int) n, object_ids);
+  free(object_ids);
+  Py_RETURN_NONE;
+}
+
 PyObject *PyPlasma_wait(PyObject *self, PyObject *args) {
   plasma_connection *conn;
   PyObject *object_id_list;
@@ -291,6 +312,8 @@ static PyMethodDef plasma_methods[] = {
     {"contains", PyPlasma_contains, METH_VARARGS,
      "Does the plasma store contain this plasma object?"},
     {"fetch", PyPlasma_fetch, METH_VARARGS,
+     "Fetch the object from another plasma manager instance."},
+    {"fetch2", PyPlasma_fetch2, METH_VARARGS,
      "Fetch the object from another plasma manager instance."},
     {"wait", PyPlasma_wait, METH_VARARGS,
      "Wait until num_returns objects in object_ids are ready."},

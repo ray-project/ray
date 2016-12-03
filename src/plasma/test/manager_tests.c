@@ -158,6 +158,7 @@ TEST request_transfer_test(void) {
   utstring_printf(addr, "127.0.0.1:%d", remote_mock->port);
   manager_vector[0] = utstring_body(addr);
   request_transfer(oid, 1, manager_vector, local_mock->client_conn);
+  free(manager_vector);
   event_loop_add_timer(local_mock->loop, MANAGER_TIMEOUT, test_done_handler,
                        local_mock->state);
   event_loop_run(local_mock->loop);
@@ -203,6 +204,7 @@ TEST request_transfer_retry_test(void) {
   utstring_printf(addr1, "127.0.0.1:%d", remote_mock2->port);
   manager_vector[1] = utstring_body(addr1);
   request_transfer(oid, 2, manager_vector, local_mock->client_conn);
+  free(manager_vector);
   event_loop_add_timer(local_mock->loop, MANAGER_TIMEOUT * 2, test_done_handler,
                        local_mock->state);
   event_loop_run(local_mock->loop);
@@ -245,6 +247,7 @@ TEST request_transfer_timeout_test(void) {
   utstring_printf(addr, "127.0.0.1:%d", remote_mock->port);
   manager_vector[0] = utstring_body(addr);
   request_transfer(oid, 1, manager_vector, local_mock->client_conn);
+  free(manager_vector);
   event_loop_add_timer(local_mock->loop, MANAGER_TIMEOUT * (NUM_RETRIES + 2),
                        test_done_handler, local_mock->state);
   event_loop_run(local_mock->loop);
