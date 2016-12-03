@@ -599,6 +599,8 @@ void subscribe_success_done_callback(object_id object_id, void *user_context) {
 
 void subscribe_success_object_available_callback(object_id object_id,
                                                  void *user_context) {
+  printf("first: %s\n", subscribe_success_context);
+  printf("second: %s\n", user_context);
   CHECK(user_context == (void *) subscribe_success_context);
   subscribe_success_succeeded = 1;
 }
@@ -766,6 +768,7 @@ TEST subscribe_object_available_later_test(void) {
 }
 
 SUITE(object_table_tests) {
+  /*
   RUN_REDIS_TEST(new_object_test);
   RUN_REDIS_TEST(new_object_no_task_test);
   RUN_REDIS_TEST(lookup_timeout_test);
@@ -777,10 +780,13 @@ SUITE(object_table_tests) {
   RUN_REDIS_TEST(lookup_late_test);
   RUN_REDIS_TEST(add_late_test);
   RUN_REDIS_TEST(subscribe_late_test);
+  */
   RUN_REDIS_TEST(subscribe_success_test);
+  /*
   RUN_REDIS_TEST(subscribe_object_present_test);
   RUN_REDIS_TEST(subscribe_object_not_present_test);
   RUN_REDIS_TEST(subscribe_object_available_later_test);
+  */
 }
 
 GREATEST_MAIN_DEFS();

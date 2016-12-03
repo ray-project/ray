@@ -380,45 +380,32 @@ void redis_object_table_get_entry(redisAsyncContext *c,
       redis_get_cached_db_client(db, managers[j], manager_vector + j);
     }
 
-    object_table_lookup_done_callback done_callback =
-        callback_data->done_callback;
-    done_callback(callback_data->id, manager_count, manager_vector,
-                  callback_data->user_context);
+    if (callback_data->data != NULL) {
+      printf("IF1\n");
+      /* This callback was called from a subscribe call. */
+      object_table_subscribe_data *sub_data = callback_data->data;
+      object_table_object_available_callback sub_callback =
+          sub_data->object_available_callback;
+      if (sub_callback) {
+        printf("IF2\n");
+        sub_callback(callback_data->id, manager_count, manager_vector,
+                     sub_data->subscribe_context);
+      }
+    } else {
+      /* This callback was called from a publish call. */
+      object_table_lookup_done_callback done_callback =
+          callback_data->done_callback;
+      if (done_callback) {
+        done_callback(callback_data->id, manager_count, manager_vector,
+                      callback_data->user_context);
+      }
+    }
     /* remove timer */
     destroy_timer_callback(callback_data->db_handle->loop, callback_data);
     free(managers);
   } else {
     LOG_FATAL("expected integer or string, received type %d", reply->type);
   }
-}
-
-void redis_object_table_subscribe_lookup(redisAsyncContext *c,
-                                         void *r,
-                                         void *privdata) {
-  REDIS_CALLBACK_HEADER(db, callback_data, r);
-  redisReply *reply = r;
-
-  if (reply->type == REDIS_REPLY_ARRAY) {
-    if (reply->elements > 0) {
-      CHECK(reply->element[0]->len == UNIQUE_ID_SIZE);
-      /* Check that the reply corresponds to the right object ID. */
-      CHECK(strncmp(reply->element[0]->str, (char *) callback_data->id.id,
-                    UNIQUE_ID_SIZE));
-      object_table_subscribe_data *data = callback_data->data;
-      if (data->object_available_callback) {
-        data->object_available_callback(callback_data->id,
-                                        data->subscribe_context);
-      }
-    }
-  } else {
-    LOG_FATAL("expected integer or string, received type %d", reply->type);
-  }
-
-  if (callback_data->done_callback) {
-    object_table_done_callback done_callback = callback_data->done_callback;
-    done_callback(callback_data->id, callback_data->user_context);
-  }
-  event_loop_remove_timer(db->loop, callback_data->timer_id);
 }
 
 void object_table_redis_subscribe_callback(redisAsyncContext *c,
@@ -430,32 +417,15 @@ void object_table_redis_subscribe_callback(redisAsyncContext *c,
   CHECK(reply->type == REDIS_REPLY_ARRAY);
   /* First entry is message type, second is topic, third is payload. */
   CHECK(reply->elements > 2);
-  /* If this condition is true, we got the initial message that acknowledged the
-   * subscription. */
-  bool is_add =
-      reply->element[1]->str && strcmp(reply->element[1]->str, "sadd") == 0;
-  if (is_add) {
-    /* Do a lookup to see if the key has been in redis before we started the
-     * subscription. */
-    int status =
-        redisAsyncCommand(db->context, redis_object_table_subscribe_lookup,
-                          (void *) callback_data->timer_id, "SMEMBERS obj:%b",
-                          callback_data->id.id, sizeof(callback_data->id.id));
-    if ((status == REDIS_ERR) || db->context->err) {
-      LOG_REDIS_ERROR(db->context,
-                      "error in redis_object_table_subscribe_callback");
-    }
-    return;
-  }
 
-  /* If the subscription is issued, parse the task and call the callback. */
-  if (strcmp(reply->element[0]->str, "message") == 0) {
-    object_table_subscribe_data *data = callback_data->data;
-
-    if (data->object_available_callback) {
-      data->object_available_callback(callback_data->id,
-                                      data->subscribe_context);
-    }
+  /* Do a lookup for the actual data. */
+  int status =
+    redisAsyncCommand(db->context, redis_object_table_get_entry,
+                      (void *) callback_data->timer_id, "SMEMBERS obj:%b",
+                      callback_data->id.id, sizeof(callback_data->id.id));
+  if ((status == REDIS_ERR) || db->context->err) {
+    LOG_REDIS_ERROR(db->context,
+                    "error in redis_object_table_subscribe_callback");
   }
 }
 
