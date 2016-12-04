@@ -34,6 +34,7 @@ void object_table_subscribe(
       malloc(sizeof(object_table_subscribe_data));
   sub_data->object_available_callback = object_available_callback;
   sub_data->subscribe_context = subscribe_context;
+  printf("XXX %s\n", sub_data->subscribe_context);
 
   init_table_callback(db_handle, object_id, __func__, sub_data, retry,
                       done_callback, redis_object_table_subscribe,

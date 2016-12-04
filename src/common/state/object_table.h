@@ -89,8 +89,7 @@ void object_table_remove(db_handle *db,
  */
 
 /* Callback called when object object_id is available. */
-typedef void (*object_table_object_available_callback)(object_id object_id,
-                                                       void *user_context);
+typedef object_table_lookup_done_callback object_table_object_available_callback;
 
 /**
  * Subcribing to new object available function.
