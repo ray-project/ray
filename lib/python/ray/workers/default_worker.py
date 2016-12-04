@@ -17,9 +17,9 @@ if __name__ == "__main__":
   args = parser.parse_args()
   address_info = {"node_ip_address": args.node_ip_address,
                   "redis_port": args.redis_port,
-                  "object_store_name": args.object_store_name,
-                  "object_store_manager_name": args.object_store_manager_name,
-                  "local_scheduler_name": args.local_scheduler_name}
+                  "object_store_names": [args.object_store_name],
+                  "object_store_manager_names": [args.object_store_manager_name],
+                  "local_scheduler_names": [args.local_scheduler_name]}
   ray.worker.connect(address_info, ray.WORKER_MODE)
 
   ray.worker.main_loop()
