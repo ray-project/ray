@@ -4,8 +4,6 @@
 #include "task.h"
 #include "event_loop.h"
 
-typedef struct local_scheduler_state local_scheduler_state;
-
 /**
  * Establish a connection to a new client.
  *
@@ -32,7 +30,7 @@ void new_client_connection(event_loop *loop,
  *        scheduler by the global scheduler and false otherwise.
  * @return Void.
  */
-void assign_task_to_worker(scheduler_info *info,
+void assign_task_to_worker(local_scheduler_state *state,
                            task_spec *task,
                            int worker_index,
                            bool from_global_scheduler);
