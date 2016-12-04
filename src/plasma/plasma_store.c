@@ -383,6 +383,11 @@ void persist_object(client *client_context, object_id object_id) {
             sizeof(object_id), entry);
   CHECKM(entry != NULL, "To persist an object it must exist.");
   CHECKM(entry->state == SEALED, "To persist an object it must be sealed.");
+  if(entry->is_persisted) {
+    /* Do not persist an object twice, 
+     * since objects must be sealed to be persisted. */
+    return;
+  }
   /* Check if the file containing the object already exists. */
   char *file_path = object_id_to_persist_path(object_id);
   /* Create the file if it does not exist and write object. */
