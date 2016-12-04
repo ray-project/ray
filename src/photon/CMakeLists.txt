@@ -76,6 +76,7 @@ include_directories("${CMAKE_SOURCE_DIR}/../")
 include_directories("${CMAKE_SOURCE_DIR}/../common/")
 include_directories("${CMAKE_SOURCE_DIR}/../common/thirdparty/")
 include_directories("${CMAKE_SOURCE_DIR}/../common/lib/python/")
+include_directories("${CMAKE_SOURCE_DIR}/../plasma/")
 
 add_library(photon SHARED
   photon_extension.c
