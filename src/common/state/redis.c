@@ -34,6 +34,7 @@
 #define REDIS_CALLBACK_HEADER(DB, CB_DATA, REPLY)     \
   if ((REPLY) == NULL) {                              \
     return;                                           \
+    printf("return after reply is NULL\n");           \
   }                                                   \
   db_handle *DB = c->data;                            \
   table_callback_data *CB_DATA =                      \
@@ -41,6 +42,7 @@
   if (CB_DATA == NULL)                                \
     /* the callback data structure has been           \
      * already freed; just ignore this reply */       \
+    printf("return after cb_data is NULL\n");         \
     return;                                           \
   do {                                                \
   } while (0)
@@ -128,8 +130,8 @@ void db_disconnect(db_handle *db) {
 
 void db_attach(db_handle *db, event_loop *loop) {
   db->loop = loop;
-  redisAeAttach(loop, db->context);
-  redisAeAttach(loop, db->sub_context);
+  CHECK(redisAeAttach(loop, db->context) == REDIS_OK);
+  CHECK(redisAeAttach(loop, db->sub_context) == REDIS_OK);
 }
 
 /**
@@ -344,6 +346,7 @@ void redis_result_table_lookup(table_callback_data *callback_data) {
 void redis_get_cached_db_client(db_handle *db,
                                 db_client_id db_client_id,
                                 const char **manager) {
+  printf("looking up clients\n");
   db_client_cache_entry *entry;
   HASH_FIND(hh, db->db_client_cache, &db_client_id, sizeof(db_client_id),
             entry);
@@ -373,6 +376,7 @@ void redis_object_table_get_entry(redisAsyncContext *c,
   int64_t manager_count = reply->elements;
 
   if (reply->type == REDIS_REPLY_ARRAY) {
+    printf("AAAA\n");
     const char **manager_vector = malloc(manager_count * sizeof(char *));
     for (int j = 0; j < reply->elements; ++j) {
       CHECK(reply->element[j]->type == REDIS_REPLY_STRING);
@@ -386,9 +390,15 @@ void redis_object_table_get_entry(redisAsyncContext *c,
       object_table_object_available_callback sub_callback =
           sub_data->object_available_callback;
       printf("manager count is %d", manager_count);
-      if (sub_callback && manager_count > 0) {
-        sub_callback(callback_data->id, manager_count, manager_vector,
-                     sub_data->subscribe_context);
+      if (manager_count > 0) {
+        if (sub_callback) {
+          sub_callback(callback_data->id, manager_count, manager_vector,
+                       sub_data->subscribe_context);
+        }
+        /* remove timer */
+        destroy_timer_callback(callback_data->db_handle->loop, callback_data);
+        printf("remove 2\n");
+        free(managers);
       }
     } else {
       /* This callback was called from a publish call. */
@@ -398,10 +408,11 @@ void redis_object_table_get_entry(redisAsyncContext *c,
         done_callback(callback_data->id, manager_count, manager_vector,
                       callback_data->user_context);
       }
+      /* remove timer */
+      destroy_timer_callback(callback_data->db_handle->loop, callback_data);
+      printf("remove 1\n");
+      free(managers);
     }
-    /* remove timer */
-    destroy_timer_callback(callback_data->db_handle->loop, callback_data);
-    free(managers);
   } else {
     LOG_FATAL("expected integer or string, received type %d", reply->type);
   }
@@ -410,6 +421,7 @@ void redis_object_table_get_entry(redisAsyncContext *c,
 void object_table_redis_subscribe_callback(redisAsyncContext *c,
                                            void *r,
                                            void *privdata) {
+  printf("AAA subscribe callback called\n");
   REDIS_CALLBACK_HEADER(db, callback_data, r);
   redisReply *reply = r;
 
@@ -417,7 +429,10 @@ void object_table_redis_subscribe_callback(redisAsyncContext *c,
   /* First entry is message type, second is topic, third is payload. */
   CHECK(reply->elements > 2);
 
+  printf("BBB subscribe callback called\n");
+
   if (reply->element[1]->str && strcmp(reply->element[1]->str, "sadd") == 0) {
+    printf("in sadd\n");
     object_table_done_callback done_callback = callback_data->done_callback;
     if (done_callback) {
       done_callback(callback_data->id, callback_data->user_context);
@@ -442,7 +457,7 @@ void redis_object_table_subscribe(table_callback_data *callback_data) {
   object_id id = callback_data->id;
   int status = redisAsyncCommand(
       db->sub_context, object_table_redis_subscribe_callback,
-      (void *) callback_data->timer_id, "SUBSCRIBE __keyspace@0__:obj:%b sadd",
+      (void *) callback_data->timer_id, "SUBSCRIBE __keyspace@0__:obj:%b",
       id.id, sizeof(id.id));
   if ((status == REDIS_ERR) || db->sub_context->err) {
     LOG_REDIS_DEBUG(db->sub_context,
