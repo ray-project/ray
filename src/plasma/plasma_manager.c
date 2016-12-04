@@ -618,9 +618,6 @@ void ignore_data_chunk(event_loop *loop,
   }
 
   free(buf->data);
-  if (buf->metadata) {
-    free(buf->metadata);
-  }
   free(buf);
   /* Switch to listening for requests from this socket, instead of reading
    * object data. */
@@ -752,12 +749,7 @@ void process_data_request(event_loop *loop,
      * for data and metadata, if needed. All memory associated with
      * buf/g_ignore_buf will be freed in ignore_data_chunkc(). */
     conn->ignore_buffer = buf;
-    buf->data = (uint8_t *) malloc(buf->data_size);
-    if (buf->metadata_size > 0) {
-      buf->metadata = (uint8_t *) malloc(buf->metadata_size);
-    } else {
-      buf->metadata = NULL;
-    }
+    buf->data = (uint8_t *) malloc(buf->data_size + buf->metadata_size);
     event_loop_add_file(loop, client_sock, EVENT_LOOP_READ, ignore_data_chunk,
                         conn);
   }
