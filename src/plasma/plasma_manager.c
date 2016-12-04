@@ -151,7 +151,8 @@ typedef struct {
   /** How many retries we have left for the request. Decremented on every
    *  timeout. */
   int num_retries;
-  /** Pointer to the array containing the manager locations of this object. */
+  /** Pointer to the array containing the manager locations of this object. This
+   *  struct owns and must free each entry. */
   char **manager_vector;
   /** The number of manager locations in the array manager_vector. */
   int manager_count;
