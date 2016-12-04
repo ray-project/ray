@@ -364,7 +364,10 @@ void redis_object_table_get_entry(redisAsyncContext *c,
   int64_t manager_count = reply->elements;
 
   if (reply->type == REDIS_REPLY_ARRAY) {
-    const char **manager_vector = malloc(manager_count * sizeof(char *));
+    const char **manager_vector = NULL;
+    if (manager_count > 0) {
+      manager_vector = malloc(manager_count * sizeof(char *));
+    }
     for (int j = 0; j < reply->elements; ++j) {
       CHECK(reply->element[j]->type == REDIS_REPLY_STRING);
       memcpy(managers[j].id, reply->element[j]->str, sizeof(managers[j].id));
@@ -377,10 +380,13 @@ void redis_object_table_get_entry(redisAsyncContext *c,
                   callback_data->user_context);
     /* remove timer */
     destroy_timer_callback(callback_data->db_handle->loop, callback_data);
-    free(managers);
+    if (manager_count > 0) {
+      free(manager_vector);
+    }
   } else {
     LOG_FATAL("expected integer or string, received type %d", reply->type);
   }
+  free(managers);
 }
 
 void redis_object_table_subscribe_lookup(redisAsyncContext *c,

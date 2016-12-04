@@ -191,6 +191,34 @@ void plasma_fetch(plasma_connection *conn,
                   int is_fetched[]);
 
 /**
+ * Attempt to initiate the transfer of some objects from remote Plasma Stores.
+ *
+ * For an object that is available in the local Plasma Store, this method will
+ * not do anything. For an object that is not available locally, it will check
+ * if the object are already being fetched. If so, it will not do anything. If
+ * not, it will query the object table for a list of Plasma Managers that have
+ * the object. If that list is non-empty, it will attempt to initiate transfers
+ * from one of those Plasma Managers. If the list is empty, it will set a
+ * callback to initiate a transfer when the list becomes non-empty.
+ *
+ * TODO(rkn): Setting the callback for when the list becomes non-empty is not
+ * implemented.
+ *
+ * This function is non-blocking.
+ *
+ * This method is idempotent in the sense that it is ok to call it multiple
+ * times.
+ *
+ * @param conn The object containing the connection state.
+ * @param num_object_ids The number of object IDs fetch is being called on.
+ * @param object_ids The IDs of the objects that fetch is being called on.
+ * @return Void.
+ */
+void plasma_fetch2(plasma_connection *conn,
+                   int num_object_ids,
+                   object_id object_ids[]);
+
+/**
  * Transfer local object to a different plasma manager.
  *
  * @param conn The object containing the connection state.

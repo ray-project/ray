@@ -37,13 +37,17 @@ def write_to_data_buffer(buff, length):
     for _ in range(100):
       buff[random.randint(0, length - 1)] = chr(random.randint(0, 255))
 
-def create_object(client, data_size, metadata_size, seal=True):
-  object_id = random_object_id()
+def create_object_with_id(client, object_id, data_size, metadata_size, seal=True):
   metadata = generate_metadata(metadata_size)
   memory_buffer = client.create(object_id, data_size, metadata)
   write_to_data_buffer(memory_buffer, data_size)
   if seal:
     client.seal(object_id)
+  return memory_buffer, metadata
+
+def create_object(client, data_size, metadata_size, seal=True):
+  object_id = random_object_id()
+  memory_buffer, metadata = create_object_with_id(client, object_id, data_size, metadata_size, seal=seal)
   return object_id, memory_buffer, metadata
 
 def assert_get_object_equal(unit_test, client1, client2, object_id, memory_buffer=None, metadata=None):
@@ -349,6 +353,90 @@ class TestPlasmaManager(unittest.TestCase):
     # Check that calling fetch with the same object ID fails.
     object_id = random_object_id()
     self.assertRaises(Exception, lambda : self.client1.fetch([object_id, object_id]))
+
+  def test_fetch2(self):
+    if self.redis_process is None:
+      print("Cannot test fetch without a running redis instance.")
+      self.assertTrue(False)
+    for _ in range(10):
+      # Create an object.
+      object_id1, memory_buffer1, metadata1 = create_object(self.client1, 2000, 2000)
+      self.client1.fetch2([object_id1])
+      self.assertEqual(self.client1.contains(object_id1), True)
+      self.assertEqual(self.client2.contains(object_id1), False)
+      # Fetch the object from the other plasma manager.
+      # TODO(rkn): Right now we must wait for the object table to be updated.
+      while not self.client2.contains(object_id1):
+        self.client2.fetch2([object_id1])
+      # Compare the two buffers.
+      assert_get_object_equal(self, self.client1, self.client2, object_id1,
+                              memory_buffer=memory_buffer1, metadata=metadata1)
+
+    # Test that we can call fetch on object IDs that don't exist yet.
+    object_id2 = random_object_id()
+    self.client1.fetch2([object_id2])
+    self.assertEqual(self.client1.contains(object_id2), False)
+    memory_buffer2, metadata2 = create_object_with_id(self.client2, object_id2, 2000, 2000)
+    # # Check that the object has been fetched.
+    # self.assertEqual(self.client1.contains(object_id2), True)
+    # Compare the two buffers.
+    # assert_get_object_equal(self, self.client1, self.client2, object_id2,
+    #                         memory_buffer=memory_buffer2, metadata=metadata2)
+
+    # Test calling the same fetch request a bunch of times.
+    object_id3 = random_object_id()
+    self.assertEqual(self.client1.contains(object_id3), False)
+    self.assertEqual(self.client2.contains(object_id3), False)
+    for _ in range(10):
+      self.client1.fetch2([object_id3])
+      self.client2.fetch2([object_id3])
+    memory_buffer3, metadata3 = create_object_with_id(self.client1, object_id3, 2000, 2000)
+    for _ in range(10):
+      self.client1.fetch2([object_id3])
+      self.client2.fetch2([object_id3])
+    #TODO(rkn): Right now we must wait for the object table to be updated.
+    while not self.client2.contains(object_id3):
+      self.client2.fetch2([object_id3])
+    assert_get_object_equal(self, self.client1, self.client2, object_id3,
+                            memory_buffer=memory_buffer3, metadata=metadata3)
+
+  def test_fetch2_multiple(self):
+    if self.redis_process is None:
+      print("Cannot test fetch without a running redis instance.")
+      self.assertTrue(False)
+    for _ in range(20):
+      # Create two objects and a third fake one that doesn't exist.
+      object_id1, memory_buffer1, metadata1 = create_object(self.client1, 2000, 2000)
+      missing_object_id = random_object_id()
+      object_id2, memory_buffer2, metadata2 = create_object(self.client1, 2000, 2000)
+      object_ids = [object_id1, missing_object_id, object_id2]
+      # Fetch the objects from the other plasma store. The second object ID
+      # should timeout since it does not exist.
+      # TODO(rkn): Right now we must wait for the object table to be updated.
+      while (not self.client2.contains(object_id1)) or (not self.client2.contains(object_id2)):
+        self.client2.fetch2(object_ids)
+      # Compare the buffers of the objects that do exist.
+      assert_get_object_equal(self, self.client1, self.client2, object_id1,
+                              memory_buffer=memory_buffer1, metadata=metadata1)
+      assert_get_object_equal(self, self.client1, self.client2, object_id2,
+                              memory_buffer=memory_buffer2, metadata=metadata2)
+      # Fetch in the other direction. The fake object still does not exist.
+      self.client1.fetch2(object_ids)
+      assert_get_object_equal(self, self.client2, self.client1, object_id1,
+                              memory_buffer=memory_buffer1, metadata=metadata1)
+      assert_get_object_equal(self, self.client2, self.client1, object_id2,
+                              memory_buffer=memory_buffer2, metadata=metadata2)
+
+    # Check that we can call fetch with duplicated object IDs.
+    object_id3 = random_object_id()
+    self.client1.fetch2([object_id3, object_id3])
+    object_id4, memory_buffer4, metadata4 = create_object(self.client1, 2000, 2000)
+    time.sleep(0.1)
+    # TODO(rkn): Right now we must wait for the object table to be updated.
+    while not self.client2.contains(object_id4):
+      self.client2.fetch2([object_id3, object_id3, object_id4, object_id4])
+    assert_get_object_equal(self, self.client2, self.client1, object_id4,
+                            memory_buffer=memory_buffer4, metadata=metadata4)
 
   def test_wait(self):
     # Test timeout.

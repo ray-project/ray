@@ -290,7 +290,6 @@ void lookup_retry_done_callback(object_id object_id,
                                 void *context) {
   CHECK(context == (void *) lookup_retry_context);
   lookup_retry_succeeded = 1;
-  free(manager_vector);
 }
 
 void lookup_retry_fail_callback(unique_id id,
