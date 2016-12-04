@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <stddef.h>
 #include <string.h>
+#include <stdbool.h>
 
 #include "common.h"
 
@@ -139,6 +140,8 @@ typedef struct {
   UT_array *clients;
   /** The state of the object, e.g., whether it is open or sealed. */
   object_state state;
+  /** Whether an object is persisted on disk or not. */
+  bool is_persisted;
 } object_table_entry;
 
 /** The plasma store information that is exposed to the eviction policy. */

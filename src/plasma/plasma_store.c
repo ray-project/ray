@@ -35,7 +35,7 @@
 #include "malloc.h"
 #include "plasma_store.h"
 
-const char *PERSIST_PATH = "/Users/belugajustin/Downloads/misaka/persisted/";
+const char *PERSIST_PATH = NULL;
 
 void *dlmalloc(size_t);
 void dlfree(void *);
@@ -177,6 +177,7 @@ void create_object(client *client_context,
   entry->map_size = map_size;
   entry->offset = offset;
   entry->state = OPEN;
+  entry->is_persisted = false; 
   utarray_new(entry->clients, &client_icd);
   HASH_ADD(handle, plasma_state->plasma_store_info->objects, object_id,
            sizeof(object_id), entry);
@@ -384,15 +385,15 @@ void persist_object(client *client_context, object_id object_id) {
   CHECKM(entry->state == SEALED, "To persist an object it must be sealed.");
   /* Check if the file containing the object already exists. */
   char *file_path = object_id_to_persist_path(object_id);
-  struct stat buffer;
-  //CHECKM(stat(file_path, &buffer) != 0, "Cannot persist an object twice"); 
-  //took out b/c exposing persistence to the user now
   /* Create the file if it does not exist and write object. */
-  int fd = open(file_path, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+  /* Opens file in write mode (O_WRONLY), creates it if not already present (O_CREAT),
+   * and if created creates such that Plasma has read and write permission */ 
+  int fd = open(file_path, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
   CHECKM(fd > 0, "Something went wrong while creating persistence file");
   write(fd, entry->pointer, entry->info.data_size + entry->info.metadata_size);
   close(fd);
   free(file_path);
+  entry->is_persisted = true; 
 }
 
 /* Read a persisted object from disk back into memory. */
@@ -583,7 +584,7 @@ void signal_handler(int signal) {
   }
 }
 
-void start_server(char *socket_name, int64_t system_memory) {
+void start_server(char *socket_name, int64_t system_memory, int64_t system_disk) {
   event_loop *loop = event_loop_create();
   plasma_store_state *state = init_plasma_store(loop, system_memory);
   int socket = bind_ipc_sock(socket_name, true);
@@ -597,11 +598,15 @@ int main(int argc, char *argv[]) {
   signal(SIGTERM, signal_handler);
   char *socket_name = NULL;
   int64_t system_memory = -1;
+  int64_t system_disk = -1;
   int c;
-  while ((c = getopt(argc, argv, "s:m:")) != -1) {
+  while ((c = getopt(argc, argv, "s:m:d:p:")) != -1) {
     switch (c) {
     case 's':
       socket_name = optarg;
+      break;
+    case 'p':
+      PERSIST_PATH = optarg;
       break;
     case 'm': {
       char extra;
@@ -609,6 +614,14 @@ int main(int argc, char *argv[]) {
       CHECK(scanned == 1);
       LOG_INFO("Allowing the Plasma store to use up to %.2fGB of memory.",
                ((double) system_memory) / 1000000000);
+      break;
+    }
+    case 'd': {
+      char extra;
+      int scanned = sscanf(optarg, "%" SCNd64 "%c", &system_disk, &extra);
+      CHECK(scanned == 1);
+      LOG_INFO("Allowing the Plasma store to use up to %.2fGB of disk.",
+               ((double) system_disk) / 1000000000);
       break;
     }
     default:
@@ -619,10 +632,18 @@ int main(int argc, char *argv[]) {
     LOG_ERR("please specify socket for incoming connections with -s switch");
     exit(-1);
   }
+  if (!PERSIST_PATH) {
+    LOG_ERR("please specify persist path with -p switch");
+    exit(-1);
+  }
   if (system_memory == -1) {
     LOG_ERR("please specify the amount of system memory with -m switch");
     exit(-1);
   }
+  if (system_disk == -1) {
+    LOG_ERR("please specify the amount of system disk with -d switch");
+    exit(-1);
+  }
   LOG_DEBUG("starting server listening on %s", socket_name);
-  start_server(socket_name, system_memory);
+  start_server(socket_name, system_memory, system_disk);
 }

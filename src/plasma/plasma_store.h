@@ -89,7 +89,21 @@ void remove_objects(plasma_store_state *plasma_state,
                     int64_t num_objects_to_evict,
                     object_id *objects_to_evict);
 
+/**
+ * Persists an object to disk via writing to a file 
+ *
+ * @param client_context The context of the client making this request.
+ * @param object_id Object ID of Object that will be persisted.
+ * @return Void
+ */
 void persist_object(client *client_context, object_id object_id);
+/**
+ * Reloads an object from disk if it exists, otherwise creates it. 
+ *
+ * @param client_context The context of the client making this request.
+ * @param object_id Object ID of Object that will be persisted.
+ * @return Void
+ */
 void get_persisted_object(client *client_context, object_id object_id);
 
 #endif /* PLASMA_STORE_H */
