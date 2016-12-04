@@ -47,7 +47,6 @@ void lookup_done_callback(object_id object_id,
              received_port2) != 2) {
     CHECK(0);
   }
-  free(manager_vector);
 }
 
 /* Entry added to database successfully. */
