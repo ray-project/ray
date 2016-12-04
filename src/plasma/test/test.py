@@ -361,20 +361,13 @@ class TestPlasmaManager(unittest.TestCase):
     for _ in range(10):
       # Create an object.
       object_id1, memory_buffer1, metadata1 = create_object(self.client1, 2000, 2000)
-      time.sleep(0.1)
-      self.assertEqual(self.client1.contains(object_id1), True)
-      self.assertEqual(self.client2.contains(object_id1), False)
-
       self.client1.fetch2([object_id1])
-      time.sleep(0.1)
       self.assertEqual(self.client1.contains(object_id1), True)
       self.assertEqual(self.client2.contains(object_id1), False)
-
-      self.client2.fetch2([object_id1])
-      time.sleep(0.1)
-      self.assertEqual(self.client1.contains(object_id1), True)
-      self.assertEqual(self.client2.contains(object_id1), True)
-
+      # Fetch the object from the other plasma manager.
+      # TODO(rkn): Right now we must wait for the object table to be updated.
+      while not self.client2.contains(object_id1):
+        self.client2.fetch2([object_id1])
       # Compare the two buffers.
       assert_get_object_equal(self, self.client1, self.client2, object_id1,
                               memory_buffer=memory_buffer1, metadata=metadata1)
@@ -383,9 +376,7 @@ class TestPlasmaManager(unittest.TestCase):
     object_id2 = random_object_id()
     self.client1.fetch2([object_id2])
     self.assertEqual(self.client1.contains(object_id2), False)
-    time.sleep(0.1)
     memory_buffer2, metadata2 = create_object_with_id(self.client2, object_id2, 2000, 2000)
-    time.sleep(0.1)
     # # Check that the object has been fetched.
     # self.assertEqual(self.client1.contains(object_id2), True)
     # Compare the two buffers.
@@ -403,6 +394,9 @@ class TestPlasmaManager(unittest.TestCase):
     for _ in range(10):
       self.client1.fetch2([object_id3])
       self.client2.fetch2([object_id3])
+    #TODO(rkn): Right now we must wait for the object table to be updated.
+    while not self.client2.contains(object_id3):
+      self.client2.fetch2([object_id3])
     assert_get_object_equal(self, self.client1, self.client2, object_id3,
                             memory_buffer=memory_buffer3, metadata=metadata3)
 
@@ -418,11 +412,9 @@ class TestPlasmaManager(unittest.TestCase):
       object_ids = [object_id1, missing_object_id, object_id2]
       # Fetch the objects from the other plasma store. The second object ID
       # should timeout since it does not exist.
-      # TODO(swang): This line is a hack! It makes sure that the entry will be
-      # in the object table once we call the fetch operation. Remove once
-      # retries are implemented by Ray common.
-      time.sleep(0.1)
-      self.client2.fetch2(object_ids)
+      # TODO(rkn): Right now we must wait for the object table to be updated.
+      while (not self.client2.contains(object_id1)) or (not self.client2.contains(object_id2)):
+        self.client2.fetch2(object_ids)
       # Compare the buffers of the objects that do exist.
       assert_get_object_equal(self, self.client1, self.client2, object_id1,
                               memory_buffer=memory_buffer1, metadata=metadata1)
@@ -440,7 +432,9 @@ class TestPlasmaManager(unittest.TestCase):
     self.client1.fetch2([object_id3, object_id3])
     object_id4, memory_buffer4, metadata4 = create_object(self.client1, 2000, 2000)
     time.sleep(0.1)
-    self.client2.fetch2([object_id3, object_id3, object_id4, object_id4])
+    # TODO(rkn): Right now we must wait for the object table to be updated.
+    while not self.client2.contains(object_id4):
+      self.client2.fetch2([object_id3, object_id3, object_id4, object_id4])
     assert_get_object_equal(self, self.client2, self.client1, object_id4,
                             memory_buffer=memory_buffer4, metadata=metadata4)
 
