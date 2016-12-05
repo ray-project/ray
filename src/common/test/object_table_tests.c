@@ -547,7 +547,10 @@ void subscribe_late_fail_callback(unique_id id,
   subscribe_late_failed = 1;
 }
 
-void subscribe_late_done_callback(object_id object_id, void *user_context) {
+void subscribe_late_done_callback(object_id object_id,
+                                  int manager_count,
+                                  const char *manager_vector[],
+                                  void *user_context) {
   /* This function should never be called. */
   CHECK(0);
 }
@@ -655,6 +658,7 @@ void subscribe_object_present_object_available_callback(
     void *user_context) {
   CHECK(user_context == (void *) subscribe_object_present_context);
   subscribe_object_present_succeeded = 1;
+  CHECK(manager_count == 1);
 }
 
 TEST subscribe_object_present_test(void) {
@@ -739,6 +743,7 @@ void subscribe_object_available_later_object_available_callback(
   CHECK(user_context == (void *) subscribe_object_available_later_context);
   /* Make sure the callback is only called once. */
   subscribe_object_available_later_succeeded += 1;
+  CHECK(manager_count == 1);
 }
 
 int64_t add_object_callback(event_loop *loop, int64_t timer_id, void *context) {

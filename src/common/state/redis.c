@@ -125,12 +125,14 @@ void db_disconnect(db_handle *db) {
 void db_attach(db_handle *db, event_loop *loop, bool reattach) {
   db->loop = loop;
   int err = redisAeAttach(loop, db->context);
-  if (!reattach && err != REDIS_OK) {
-    LOG_REDIS_ERROR(db->context, "failed to attach the event loop");
+  /* If the database is reattached in the tests, redis normally gives
+   * an error which we can safely ignore. */
+  if (!reattach) {
+    CHECKM(err == REDIS_OK, "failed to attach the event loop");
   }
   err = redisAeAttach(loop, db->sub_context);
-  if (!reattach && err != REDIS_OK) {
-    LOG_REDIS_ERROR(db->sub_context, "failed to attach the event loop");
+  if (!reattach) {
+    CHECKM(err == REDIS_OK, "failed to attach the event loop");
   }
 }
 
