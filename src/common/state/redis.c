@@ -381,6 +381,12 @@ void redis_object_table_get_entry(redisAsyncContext *c,
       memcpy(managers[j].id, reply->element[j]->str, sizeof(managers[j].id));
       redis_get_cached_db_client(db, managers[j], manager_vector + j);
     }
+    object_table_lookup_done_callback done_callback =
+            callback_data->done_callback;
+    if (done_callback) {
+        done_callback(callback_data->id, manager_count, manager_vector,
+                      callback_data->user_context);
+    }
 
     if (callback_data->data != NULL) {
       /* This callback was called from a subscribe call. */
@@ -400,11 +406,9 @@ void redis_object_table_get_entry(redisAsyncContext *c,
       /* For the lookup, remove timer and callback handler. */
       destroy_timer_callback(callback_data->db_handle->loop, callback_data);
     }
-    object_table_lookup_done_callback done_callback =
-        callback_data->done_callback;
-    if (done_callback) {
-      done_callback(callback_data->id, manager_count, manager_vector,
-                    callback_data->user_context);
+
+    if (manager_count > 0) {
+      free(manager_vector);
     }
   } else {
     LOG_FATAL("expected integer or string, received type %d", reply->type);
