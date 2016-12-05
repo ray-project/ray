@@ -31,7 +31,7 @@ global_scheduler_state *init_global_scheduler(event_loop *loop,
                                               int redis_port) {
   global_scheduler_state *state = malloc(sizeof(global_scheduler_state));
   state->db = db_connect(redis_addr, redis_port, "global_scheduler", "", -1);
-  db_attach(state->db, loop);
+  db_attach(state->db, loop, false);
   utarray_new(state->local_schedulers, &local_scheduler_icd);
   return state;
 }
