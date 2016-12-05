@@ -382,10 +382,10 @@ void redis_object_table_get_entry(redisAsyncContext *c,
       redis_get_cached_db_client(db, managers[j], manager_vector + j);
     }
     object_table_lookup_done_callback done_callback =
-            callback_data->done_callback;
+        callback_data->done_callback;
     if (done_callback) {
-        done_callback(callback_data->id, manager_count, manager_vector,
-                      callback_data->user_context);
+      done_callback(callback_data->id, manager_count, manager_vector,
+                    callback_data->user_context);
     }
 
     if (callback_data->data != NULL) {
@@ -400,7 +400,8 @@ void redis_object_table_get_entry(redisAsyncContext *c,
         }
       }
       /* For the subscribe, don't delete the callback, only the timer. */
-      event_loop_remove_timer(callback_data->db_handle->loop, callback_data->timer_id);
+      event_loop_remove_timer(callback_data->db_handle->loop,
+                              callback_data->timer_id);
     } else {
       /* This callback was called from a publish call. */
       /* For the lookup, remove timer and callback handler. */
@@ -428,9 +429,9 @@ void object_table_redis_subscribe_callback(redisAsyncContext *c,
 
   /* Do a lookup for the actual data. */
   int status =
-    redisAsyncCommand(db->context, redis_object_table_get_entry,
-                      (void *) callback_data->timer_id, "SMEMBERS obj:%b",
-                      callback_data->id.id, sizeof(callback_data->id.id));
+      redisAsyncCommand(db->context, redis_object_table_get_entry,
+                        (void *) callback_data->timer_id, "SMEMBERS obj:%b",
+                        callback_data->id.id, sizeof(callback_data->id.id));
   if ((status == REDIS_ERR) || db->context->err) {
     LOG_REDIS_ERROR(db->context,
                     "error in redis_object_table_subscribe_callback");

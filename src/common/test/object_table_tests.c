@@ -648,10 +648,11 @@ TEST subscribe_success_test(void) {
 const char *subscribe_object_present_context = "subscribe_object_present";
 int subscribe_object_present_succeeded = 0;
 
-void subscribe_object_present_object_available_callback(object_id object_id,
-                                                        int manager_count,
-                                                        const char *manager_vector[],
-                                                        void *user_context) {
+void subscribe_object_present_object_available_callback(
+    object_id object_id,
+    int manager_count,
+    const char *manager_vector[],
+    void *user_context) {
   CHECK(user_context == (void *) subscribe_object_present_context);
   subscribe_object_present_succeeded = 1;
 }
