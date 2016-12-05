@@ -50,11 +50,13 @@ class TestGlobalScheduler(unittest.TestCase):
     # Create a Redis client.
     self.redis_client = redis.StrictRedis(host=node_ip_address, port=redis_port)
     # Start the global scheduler.
-    self.p1 = global_scheduler.start_global_scheduler(redis_address, USE_VALGRIND)
+    self.p1 = global_scheduler.start_global_scheduler(redis_address, use_valgrind=USE_VALGRIND)
     # Start the Plasma store.
     plasma_store_name, self.p2 = plasma.start_plasma_store()
+    # Start the Plasma manager.
+    plasma_manager_name, self.p3, _ = plasma.start_plasma_manager(plasma_store_name, redis_address)
     # Start the local scheduler.
-    local_scheduler_name, self.p3 = photon.start_local_scheduler(plasma_store_name, redis_address=redis_address)
+    local_scheduler_name, self.p4 = photon.start_local_scheduler(plasma_store_name, plasma_manager_name=plasma_manager_name, redis_address=redis_address)
     # Connect to the scheduler.
     self.photon_client = photon.PhotonClient(local_scheduler_name)
 
@@ -68,16 +70,17 @@ class TestGlobalScheduler(unittest.TestCase):
       self.p1.kill()
     self.p2.kill()
     self.p3.kill()
+    self.p4.kill()
     # Kill Redis. In the event that we are using valgrind, this needs to happen
     # after we kill the global scheduler.
     self.redis_process.kill()
 
   def test_redis_contents(self):
-    # There should be two db clients, the global scheduler and the local
-    # scheduler.
-    self.assertEqual(len(self.redis_client.keys("db_clients*")), 2)
+    # There should be two db clients, the global scheduler, the local scheduler,
+    # and the plasma manager.
+    self.assertEqual(len(self.redis_client.keys("db_clients*")), 3)
     # There should not be anything else in Redis yet.
-    self.assertEqual(len(self.redis_client.keys("*")), 2)
+    self.assertEqual(len(self.redis_client.keys("*")), 3)
 
     # Submit a task to Redis.
     task = photon.Task(random_function_id(), [], 0, random_task_id(), 0)
