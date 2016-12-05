@@ -69,7 +69,11 @@ int create_buffer(int64_t size) {
     fd = -1;
   }
 #else
-  static char template[] = "/tmp/plasmaXXXXXX";
+#ifdef __linux__
+  static char template[] = "/dev/shm/plasmaXXXXXX";
+#else
+  static char template [] = "/tmp/plasmaXXXXXX";
+#endif
   char file_name[32];
   strncpy(file_name, template, 32);
   fd = mkstemp(file_name);
