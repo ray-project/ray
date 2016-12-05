@@ -111,12 +111,14 @@ def start_global_scheduler(redis_address, cleanup=True):
   if cleanup:
     all_processes.append(p)
 
-def start_local_scheduler(redis_address, plasma_store_name, cleanup=True):
+def start_local_scheduler(redis_address, plasma_store_name, plasma_manager_name, cleanup=True):
   """Start a local scheduler process.
 
   Args:
     redis_address (str): The address of the Redis instance.
     plasma_store_name (str): The name of the plasma store socket to connect to.
+    plasma_manager_name (str): The name of the plasma manager socket to connect
+      to.
     cleanup (bool): True if using Ray in local mode. If cleanup is true, then
       this process will be killed by serices.cleanup() when the Python process
       that imported services exits.
@@ -124,7 +126,7 @@ def start_local_scheduler(redis_address, plasma_store_name, cleanup=True):
   Return:
     The name of the local scheduler socket.
   """
-  local_scheduler_name, p = photon.start_local_scheduler(plasma_store_name, redis_address=redis_address, use_profiler=RUN_PHOTON_PROFILER)
+  local_scheduler_name, p = photon.start_local_scheduler(plasma_store_name, plasma_manager_name, redis_address=redis_address, use_profiler=RUN_PHOTON_PROFILER)
   if cleanup:
     all_processes.append(p)
   return local_scheduler_name
@@ -156,13 +158,16 @@ def start_objstore(node_ip_address, redis_address, cleanup=True):
 
   return plasma_store_name, plasma_manager_name, plasma_manager_port
 
-def start_worker(address_info, worker_path, cleanup=True):
+def start_worker(node_ip_address, object_store_name, object_store_manager_name, local_scheduler_name, redis_port, worker_path, cleanup=True):
   """This method starts a worker process.
 
   Args:
-    address_info (dict): This dictionary contains the node_ip_address,
-      redis_port, object_store_name, object_store_manager_name, and
-      local_scheduler_name.
+    node_ip_address (str): The IP address of the node that this worker is
+      running on.
+    object_store_name (str): The name of the object store.
+    object_store_manager_name (str): The name of the object store manager.
+    local_scheduler_name (str): The name of the local scheduler.
+    redis_port (int): The port that the Redis server is listening on.
     worker_path (str): The path of the source code which the worker process will
       run.
     cleanup (bool): True if using Ray in local mode. If cleanup is true, then
@@ -171,11 +176,11 @@ def start_worker(address_info, worker_path, cleanup=True):
   """
   command = ["python",
              worker_path,
-             "--node-ip-address=" + address_info["node_ip_address"],
-             "--object-store-name=" + address_info["object_store_name"],
-             "--object-store-manager-name=" + address_info["object_store_manager_name"],
-             "--local-scheduler-name=" + address_info["local_scheduler_name"],
-             "--redis-port=" + str(address_info["redis_port"])]
+             "--node-ip-address=" + node_ip_address,
+             "--object-store-name=" + object_store_name,
+             "--object-store-manager-name=" + object_store_manager_name,
+             "--local-scheduler-name=" + local_scheduler_name,
+             "--redis-port=" + str(redis_port)]
   p = subprocess.Popen(command)
   if cleanup:
     all_processes.append(p)
@@ -196,11 +201,13 @@ def start_webui(redis_port, cleanup=True):
   if cleanup:
     all_processes.append(p)
 
-def start_ray_local(node_ip_address="127.0.0.1", num_workers=0, worker_path=None):
+def start_ray_local(node_ip_address="127.0.0.1", num_workers=0, num_local_schedulers=1, worker_path=None):
   """Start Ray in local mode.
 
   Args:
     num_workers (int): The number of workers to start.
+    num_local_schedulers (int): The number of local schedulers to start. This is
+      also the number of plasma stores and plasma managers to start.
     worker_path (str): The path of the source code that will be run by the
       worker.
 
@@ -216,21 +223,34 @@ def start_ray_local(node_ip_address="127.0.0.1", num_workers=0, worker_path=None
   time.sleep(0.1)
   # Start the global scheduler.
   start_global_scheduler(redis_address, cleanup=True)
-  # Start Plasma.
-  object_store_name, object_store_manager_name, object_store_manager_port = start_objstore(node_ip_address, redis_address, cleanup=True)
-  time.sleep(0.1)
-  # Start the local scheduler.
-  local_scheduler_name = start_local_scheduler(redis_address, object_store_name, cleanup=True)
-  time.sleep(0.1)
+  object_store_names = []
+  object_store_manager_names = []
+  local_scheduler_names = []
+  for _ in range(num_local_schedulers):
+    # Start Plasma.
+    object_store_name, object_store_manager_name, object_store_manager_port = start_objstore(node_ip_address, redis_address, cleanup=True)
+    object_store_names.append(object_store_name)
+    object_store_manager_names.append(object_store_manager_name)
+    time.sleep(0.1)
+    # Start the local scheduler.
+    local_scheduler_name = start_local_scheduler(redis_address, object_store_name, object_store_manager_name, cleanup=True)
+    local_scheduler_names.append(local_scheduler_name)
+    time.sleep(0.1)
   # Aggregate the address information together.
   address_info = {"node_ip_address": node_ip_address,
                   "redis_port": redis_port,
-                  "object_store_name": object_store_name,
-                  "object_store_manager_name": object_store_manager_name,
-                  "local_scheduler_name": local_scheduler_name}
+                  "object_store_names": object_store_names,
+                  "object_store_manager_names": object_store_manager_names,
+                  "local_scheduler_names": local_scheduler_names}
   # Start the workers.
-  for _ in range(num_workers):
-    start_worker(address_info, worker_path, cleanup=True)
+  for i in range(num_workers):
+    start_worker(address_info["node_ip_address"],
+                 address_info["object_store_names"][i % num_local_schedulers],
+                 address_info["object_store_manager_names"][i % num_local_schedulers],
+                 address_info["local_scheduler_names"][i % num_local_schedulers],
+                 redis_port,
+                 worker_path,
+                 cleanup=True)
   # Return the addresses of the relevant processes.
   start_webui(redis_port)
   return address_info

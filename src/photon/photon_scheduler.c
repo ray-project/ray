@@ -23,21 +23,14 @@ UT_icd worker_icd = {sizeof(worker), NULL, NULL, NULL};
 
 UT_icd byte_icd = {sizeof(uint8_t), NULL, NULL, NULL};
 
-local_scheduler_state *init_local_scheduler(event_loop *loop,
-                                            const char *redis_addr,
-                                            int redis_port,
-                                            const char *plasma_socket_name) {
+local_scheduler_state *init_local_scheduler(
+    event_loop *loop,
+    const char *redis_addr,
+    int redis_port,
+    const char *plasma_store_socket_name,
+    const char *plasma_manager_socket_name) {
   local_scheduler_state *state = malloc(sizeof(local_scheduler_state));
   state->loop = loop;
-  /* Connect to Plasma. This method will retry if Plasma hasn't started yet.
-   * Pass in a NULL manager address and port. */
-  state->plasma_conn =
-      plasma_connect(plasma_socket_name, NULL, PLASMA_DEFAULT_RELEASE_DELAY);
-  /* Subscribe to notifications about sealed objects. */
-  int plasma_fd = plasma_subscribe(state->plasma_conn);
-  /* Add the callback that processes the notification to the event loop. */
-  event_loop_add_file(loop, plasma_fd, EVENT_LOOP_READ,
-                      process_plasma_notification, state);
   state->worker_index = NULL;
   /* Add scheduler info. */
   utarray_new(state->workers, &worker_icd);
@@ -48,6 +41,16 @@ local_scheduler_state *init_local_scheduler(event_loop *loop,
   } else {
     state->db = NULL;
   }
+  /* Connect to Plasma. This method will retry if Plasma hasn't started yet.
+   * Pass in a NULL manager address and port. */
+  state->plasma_conn =
+      plasma_connect(plasma_store_socket_name, plasma_manager_socket_name,
+                     PLASMA_DEFAULT_RELEASE_DELAY);
+  /* Subscribe to notifications about sealed objects. */
+  int plasma_fd = plasma_subscribe(state->plasma_conn);
+  /* Add the callback that processes the notification to the event loop. */
+  event_loop_add_file(loop, plasma_fd, EVENT_LOOP_READ,
+                      process_plasma_notification, state);
   /* Add scheduler state. */
   state->algorithm_state = make_scheduling_algorithm_state();
   utarray_new(state->input_buffer, &byte_icd);
@@ -187,11 +190,13 @@ void handle_task_scheduled_callback(task *original_task, void *user_context) {
 void start_server(const char *socket_name,
                   const char *redis_addr,
                   int redis_port,
-                  const char *plasma_socket_name) {
+                  const char *plasma_store_socket_name,
+                  const char *plasma_manager_socket_name) {
   int fd = bind_ipc_sock(socket_name, true);
   event_loop *loop = event_loop_create();
-  g_state =
-      init_local_scheduler(loop, redis_addr, redis_port, plasma_socket_name);
+  g_state = init_local_scheduler(loop, redis_addr, redis_port,
+                                 plasma_store_socket_name,
+                                 plasma_manager_socket_name);
 
   /* Register a callback for registering new clients. */
   event_loop_add_file(loop, fd, EVENT_LOOP_READ, new_client_connection,
@@ -221,9 +226,11 @@ int main(int argc, char *argv[]) {
   /* IP address and port of redis. */
   char *redis_addr_port = NULL;
   /* Socket name for the local Plasma store. */
-  char *plasma_socket_name = NULL;
+  char *plasma_store_socket_name = NULL;
+  /* Socket name for the local Plasma manager. */
+  char *plasma_manager_socket_name = NULL;
   int c;
-  while ((c = getopt(argc, argv, "s:r:p:")) != -1) {
+  while ((c = getopt(argc, argv, "s:r:p:m:")) != -1) {
     switch (c) {
     case 's':
       scheduler_socket_name = optarg;
@@ -232,7 +239,10 @@ int main(int argc, char *argv[]) {
       redis_addr_port = optarg;
       break;
     case 'p':
-      plasma_socket_name = optarg;
+      plasma_store_socket_name = optarg;
+      break;
+    case 'm':
+      plasma_manager_socket_name = optarg;
       break;
     default:
       LOG_FATAL("unknown option %c", c);
@@ -241,13 +251,20 @@ int main(int argc, char *argv[]) {
   if (!scheduler_socket_name) {
     LOG_FATAL("please specify socket for incoming connections with -s switch");
   }
-  if (!plasma_socket_name) {
-    LOG_FATAL("please specify socket for connecting to Plasma with -p switch");
+  if (!plasma_store_socket_name) {
+    LOG_FATAL(
+        "please specify socket for connecting to Plasma store with -p switch");
   }
   if (!redis_addr_port) {
     /* Start the local scheduler without connecting to Redis. In this case, all
      * submitted tasks will be queued and scheduled locally. */
-    start_server(scheduler_socket_name, NULL, -1, plasma_socket_name);
+    if (plasma_manager_socket_name) {
+      LOG_FATAL(
+          "if a plasma manager socket name is provided with the -m switch, "
+          "then a redis address must be provided with the -r switch");
+    }
+    start_server(scheduler_socket_name, NULL, -1, plasma_store_socket_name,
+                 NULL);
   } else {
     /* Parse the Redis address into an IP address and a port. */
     char redis_addr[16] = {0};
@@ -259,7 +276,12 @@ int main(int argc, char *argv[]) {
           "if a redis address is provided with the -r switch, it should be "
           "formatted like 127.0.0.1:6379");
     }
+    if (!plasma_manager_socket_name) {
+      LOG_FATAL(
+          "please specify socket for connecting to Plasma manager with -m "
+          "switch");
+    }
     start_server(scheduler_socket_name, &redis_addr[0], atoi(redis_port),
-                 plasma_socket_name);
+                 plasma_store_socket_name, plasma_manager_socket_name);
   }
 }
