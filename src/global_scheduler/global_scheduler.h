@@ -12,6 +12,8 @@ typedef struct {
   db_client_id id;
 } local_scheduler;
 
+typedef struct global_scheduler_policy_state global_scheduler_policy_state;
+
 typedef struct {
   /** The global scheduler event loop. */
   event_loop *loop;
@@ -19,6 +21,8 @@ typedef struct {
   db_handle *db;
   /** The local schedulers that are connected to Redis. */
   UT_array *local_schedulers;
+  /** The state managed by the scheduling policy. */
+  global_scheduler_policy_state *policy_state;
 } global_scheduler_state;
 
 void assign_task_to_local_scheduler(global_scheduler_state *state,
