@@ -33,17 +33,20 @@
 
 #define REDIS_CALLBACK_HEADER(DB, CB_DATA, REPLY)     \
   if ((REPLY) == NULL) {                              \
-    return;                                           \
     printf("return after reply is NULL\n");           \
+    return;                                           \
   }                                                   \
+  printf("tttt\n"); \
   db_handle *DB = c->data;                            \
   table_callback_data *CB_DATA =                      \
       outstanding_callbacks_find((int64_t) privdata); \
-  if (CB_DATA == NULL)                                \
+  if (CB_DATA == NULL) {                              \
     /* the callback data structure has been           \
      * already freed; just ignore this reply */       \
     printf("return after cb_data is NULL\n");         \
     return;                                           \
+  } \
+  printf("tttt2\n"); \
   do {                                                \
   } while (0)
 
@@ -395,11 +398,10 @@ void redis_object_table_get_entry(redisAsyncContext *c,
           sub_callback(callback_data->id, manager_count, manager_vector,
                        sub_data->subscribe_context);
         }
-        /* remove timer */
-        destroy_timer_callback(callback_data->db_handle->loop, callback_data);
-        printf("remove 2\n");
         free(managers);
       }
+      /* For the subscribe, don't delete the callback, only the timer. */
+      event_loop_remove_timer(callback_data->db_handle->loop, callback_data->timer_id);
     } else {
       /* This callback was called from a publish call. */
       object_table_lookup_done_callback done_callback =
@@ -408,11 +410,11 @@ void redis_object_table_get_entry(redisAsyncContext *c,
         done_callback(callback_data->id, manager_count, manager_vector,
                       callback_data->user_context);
       }
-      /* remove timer */
-      destroy_timer_callback(callback_data->db_handle->loop, callback_data);
-      printf("remove 1\n");
       free(managers);
+      /* For the lookup, remove timer and callback handler. */
+      destroy_timer_callback(callback_data->db_handle->loop, callback_data);
     }
+    printf("remove 1\n");
   } else {
     LOG_FATAL("expected integer or string, received type %d", reply->type);
   }
