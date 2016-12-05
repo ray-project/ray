@@ -69,8 +69,8 @@ TEST object_table_lookup_test(void) {
                               manager_port1);
   db_handle *db2 = db_connect("127.0.0.1", 6379, "plasma_manager", manager_addr,
                               manager_port2);
-  db_attach(db1, loop);
-  db_attach(db2, loop);
+  db_attach(db1, loop, false);
+  db_attach(db2, loop, false);
   unique_id id = globally_unique_id();
   retry_info retry = {
       .num_retries = NUM_RETRIES,
@@ -137,7 +137,7 @@ TEST task_table_test(void) {
   task_table_test_callback_called = 0;
   event_loop *loop = event_loop_create();
   db_handle *db = db_connect("127.0.0.1", 6379, "local_scheduler", "", -1);
-  db_attach(db, loop);
+  db_attach(db, loop, false);
   node_id node = globally_unique_id();
   task_spec *spec = example_task_spec();
   task_table_test_task = alloc_task(spec, TASK_STATUS_SCHEDULED, node);
@@ -169,7 +169,7 @@ void task_table_all_test_callback(task *task, void *user_data) {
 TEST task_table_all_test(void) {
   event_loop *loop = event_loop_create();
   db_handle *db = db_connect("127.0.0.1", 6379, "local_scheduler", "", -1);
-  db_attach(db, loop);
+  db_attach(db, loop, false);
   task_spec *spec = example_task_spec();
   /* Schedule two tasks on different nodes. */
   task *task1 = alloc_task(spec, TASK_STATUS_SCHEDULED, globally_unique_id());

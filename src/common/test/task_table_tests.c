@@ -40,7 +40,7 @@ TEST lookup_nil_test(void) {
   g_loop = event_loop_create();
   db_handle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 1234);
-  db_attach(db, g_loop);
+  db_attach(db, g_loop, false);
   retry_info retry = {
       .num_retries = 5,
       .timeout = 1000,
@@ -96,7 +96,7 @@ TEST add_lookup_test(void) {
   g_loop = event_loop_create();
   db_handle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 1234);
-  db_attach(db, g_loop);
+  db_attach(db, g_loop, false);
   retry_info retry = {
       .num_retries = 5,
       .timeout = 1000,
@@ -138,7 +138,7 @@ TEST subscribe_timeout_test(void) {
   g_loop = event_loop_create();
   db_handle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 1234);
-  db_attach(db, g_loop);
+  db_attach(db, g_loop, false);
   retry_info retry = {
       .num_retries = 5,
       .timeout = 100,
@@ -179,7 +179,7 @@ TEST publish_timeout_test(void) {
   g_loop = event_loop_create();
   db_handle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 1234);
-  db_attach(db, g_loop);
+  db_attach(db, g_loop, false);
   task *task = example_task();
   retry_info retry = {
       .num_retries = 5, .timeout = 100, .fail_callback = publish_fail_callback,
@@ -208,7 +208,7 @@ int64_t reconnect_db_callback(event_loop *loop,
   db->sub_context = redisAsyncConnect("127.0.0.1", 6379);
   db->sub_context->data = (void *) db;
   /* Re-attach the database to the event loop (the file descriptor changed). */
-  db_attach(db, loop);
+  db_attach(db, loop, true);
   return EVENT_LOOP_TIMER_DONE;
 }
 
@@ -241,7 +241,7 @@ TEST subscribe_retry_test(void) {
   g_loop = event_loop_create();
   db_handle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11235);
-  db_attach(db, g_loop);
+  db_attach(db, g_loop, false);
   retry_info retry = {
       .num_retries = 5,
       .timeout = 100,
@@ -288,7 +288,7 @@ TEST publish_retry_test(void) {
   g_loop = event_loop_create();
   db_handle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11235);
-  db_attach(db, g_loop);
+  db_attach(db, g_loop, false);
   task *task = example_task();
   retry_info retry = {
       .num_retries = 5,
@@ -337,7 +337,7 @@ TEST subscribe_late_test(void) {
   g_loop = event_loop_create();
   db_handle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11236);
-  db_attach(db, g_loop);
+  db_attach(db, g_loop, false);
   retry_info retry = {
       .num_retries = 0,
       .timeout = 0,
@@ -382,7 +382,7 @@ TEST publish_late_test(void) {
   g_loop = event_loop_create();
   db_handle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11236);
-  db_attach(db, g_loop);
+  db_attach(db, g_loop, false);
   task *task = example_task();
   retry_info retry = {
       .num_retries = 0,

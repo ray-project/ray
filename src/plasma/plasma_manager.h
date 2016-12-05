@@ -354,7 +354,10 @@ void process_wait_request1(client_connection *client_conn,
  *        called.
  * @return Void.
  */
-void wait_object_available_callback(object_id object_id, void *user_context);
+void wait_object_available_callback(object_id object_id,
+                                    int manager_count,
+                                    const char *manager_vector[],
+                                    void *user_context);
 
 /**
  * Object is available (sealed) in the local Object Store. This is part of
