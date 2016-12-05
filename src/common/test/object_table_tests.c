@@ -402,7 +402,10 @@ int64_t reconnect_sub_context_callback(event_loop *loop,
   return EVENT_LOOP_TIMER_DONE;
 }
 
-void subscribe_retry_done_callback(object_id object_id, void *user_context) {
+void subscribe_retry_done_callback(object_id object_id,
+                                   int manager_count,
+                                   const char *manager_vector[],
+                                   void *user_context) {
   CHECK(user_context == (void *) subscribe_retry_context);
   subscribe_retry_succeeded = 1;
 }
@@ -592,7 +595,10 @@ void subscribe_success_fail_callback(unique_id id,
   CHECK(0);
 }
 
-void subscribe_success_done_callback(object_id object_id, void *user_context) {
+void subscribe_success_done_callback(object_id object_id,
+                                     int manager_count,
+                                     const char *manager_vector[],
+                                     void *user_context) {
   retry_info retry = {
       .num_retries = 0, .timeout = 0, .fail_callback = NULL,
   };

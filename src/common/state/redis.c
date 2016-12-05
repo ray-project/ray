@@ -26,7 +26,8 @@
       LOG_FATAL("could not allocate redis context");       \
     }                                                      \
     if (_context->err) {                                   \
-      LOG_REDIS_ERROR(_context, M, ##__VA_ARGS__);         \
+      LOG_ERROR(M, ##__VA_ARGS__);                         \
+      LOG_REDIS_ERROR(_context, "");                       \
       exit(-1);                                            \
     }                                                      \
   } while (0)
@@ -410,17 +411,16 @@ void redis_object_table_get_entry(redisAsyncContext *c,
       event_loop_remove_timer(callback_data->db_handle->loop, callback_data->timer_id);
     } else {
       /* This callback was called from a publish call. */
-      object_table_lookup_done_callback done_callback =
-          callback_data->done_callback;
-      if (done_callback) {
-        done_callback(callback_data->id, manager_count, manager_vector,
-                      callback_data->user_context);
-      }
-      free(managers);
       /* For the lookup, remove timer and callback handler. */
       destroy_timer_callback(callback_data->db_handle->loop, callback_data);
     }
-    printf("remove 1\n");
+    object_table_lookup_done_callback done_callback =
+        callback_data->done_callback;
+    if (done_callback) {
+      done_callback(callback_data->id, manager_count, manager_vector,
+                    callback_data->user_context);
+    }
+    // free(managers);
   } else {
     LOG_FATAL("expected integer or string, received type %d", reply->type);
   }
@@ -438,14 +438,8 @@ void object_table_redis_subscribe_callback(redisAsyncContext *c,
   CHECK(reply->elements > 2);
 
   printf("BBB subscribe callback called\n");
-
-  if (reply->element[1]->str && strcmp(reply->element[1]->str, "sadd") == 0) {
-    printf("in sadd\n");
-    object_table_done_callback done_callback = callback_data->done_callback;
-    if (done_callback) {
-      done_callback(callback_data->id, callback_data->user_context);
-    }
-  }
+  
+  printf("%s", reply->element[1]->str);
 
   /* Do a lookup for the actual data. */
   int status =
