@@ -114,7 +114,7 @@ void object_table_subscribe(
     object_table_object_available_callback object_available_callback,
     void *subscribe_context,
     retry_info *retry,
-    object_table_done_callback done_callback,
+    object_table_lookup_done_callback done_callback,
     void *user_context);
 
 /* Data that is needed to register new object available callbacks with the state

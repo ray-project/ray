@@ -1229,9 +1229,7 @@ void wait_object_lookup_callback(object_id object_id,
                                  const char *manager_vector[],
                                  void *context) {
   if (manager_count > 0) {
-    wait_object_available_callback(object_id,
-                                   manager_count,
-                                   manager_vector,
+    wait_object_available_callback(object_id, manager_count, manager_vector,
                                    context);
   }
 }

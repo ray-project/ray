@@ -27,7 +27,7 @@ void object_table_subscribe(
     object_table_object_available_callback object_available_callback,
     void *subscribe_context,
     retry_info *retry,
-    object_table_done_callback done_callback,
+    object_table_lookup_done_callback done_callback,
     void *user_context) {
   CHECK(db_handle != NULL);
   object_table_subscribe_data *sub_data =
