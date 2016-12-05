@@ -37,7 +37,7 @@ local_scheduler_state *init_local_scheduler(
   /* Connect to Redis if a Redis address is provided. */
   if (redis_addr != NULL) {
     state->db = db_connect(redis_addr, redis_port, "photon", "", -1);
-    db_attach(state->db, loop);
+    db_attach(state->db, loop, false);
   } else {
     state->db = NULL;
   }

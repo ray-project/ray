@@ -408,7 +408,7 @@ plasma_manager_state *init_plasma_manager_state(const char *store_socket_name,
   if (db_addr) {
     state->db = db_connect(db_addr, db_port, "plasma_manager", manager_addr,
                            manager_port);
-    db_attach(state->db, state->loop);
+    db_attach(state->db, state->loop, false);
   } else {
     state->db = NULL;
     LOG_DEBUG("No db connection specified");
@@ -1223,16 +1223,23 @@ void process_wait_request1(client_connection *client_conn,
   }
 }
 
+/* TODO(pcm): unify with wait_object_available_callback. */
 void wait_object_lookup_callback(object_id object_id,
                                  int manager_count,
                                  const char *manager_vector[],
                                  void *context) {
   if (manager_count > 0) {
-    wait_object_available_callback(object_id, context);
+    wait_object_available_callback(object_id,
+                                   manager_count,
+                                   manager_vector,
+                                   context);
   }
 }
 
-void wait_object_available_callback(object_id object_id, void *user_context) {
+void wait_object_available_callback(object_id object_id,
+                                    int manager_count,
+                                    const char *manager_vector[],
+                                    void *user_context) {
   client_connection *client_conn = (client_connection *) user_context;
   CHECK(client_conn != NULL);
   plasma_manager_state *manager_state = client_conn->manager_state;
