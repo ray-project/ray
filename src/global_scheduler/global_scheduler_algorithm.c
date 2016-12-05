@@ -3,10 +3,15 @@
 
 #include "global_scheduler_algorithm.h"
 
+int64_t local_scheduler_round_robin_index = 0;
+
 void handle_task_waiting(global_scheduler_state *state, task *task) {
   if (utarray_len(state->local_schedulers) > 0) {
     local_scheduler *scheduler =
-        (local_scheduler *) utarray_eltptr(state->local_schedulers, 0);
+        (local_scheduler *) utarray_eltptr(state->local_schedulers,
+                                           local_scheduler_round_robin_index);
+    local_scheduler_round_robin_index += 1;
+    local_scheduler_round_robin_index %= utarray_len(state->local_schedulers);
     assign_task_to_local_scheduler(state, task, scheduler->id);
   } else {
     CHECKM(0, "We currently don't handle this case.");
