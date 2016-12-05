@@ -103,7 +103,7 @@ TEST async_redis_socket_test(void) {
 
   /* Start connection to Redis. */
   db_handle *db = db_connect("127.0.0.1", 6379, "", "", 0);
-  db_attach(db, loop);
+  db_attach(db, loop, false);
 
   /* Send a command to the Redis process. */
   int client_fd = connect_ipc_sock(socket_pathname);
@@ -177,7 +177,7 @@ TEST logging_test(void) {
 
   /* Start connection to Redis. */
   db_handle *conn = db_connect("127.0.0.1", 6379, "", "", 0);
-  db_attach(conn, loop);
+  db_attach(conn, loop, false);
 
   /* Send a command to the Redis process. */
   int client_fd = connect_ipc_sock(socket_pathname);
