@@ -392,7 +392,6 @@ void redis_object_table_get_entry(redisAsyncContext *c,
           sub_callback(callback_data->id, manager_count, manager_vector,
                        sub_data->subscribe_context);
         }
-        free(managers);
       }
       /* For the subscribe, don't delete the callback, only the timer. */
       event_loop_remove_timer(callback_data->db_handle->loop, callback_data->timer_id);
@@ -407,10 +406,10 @@ void redis_object_table_get_entry(redisAsyncContext *c,
       done_callback(callback_data->id, manager_count, manager_vector,
                     callback_data->user_context);
     }
-    // free(managers);
   } else {
     LOG_FATAL("expected integer or string, received type %d", reply->type);
   }
+  free(managers);
 }
 
 void object_table_redis_subscribe_callback(redisAsyncContext *c,
