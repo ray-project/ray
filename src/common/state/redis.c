@@ -131,10 +131,16 @@ void db_disconnect(db_handle *db) {
   free(db);
 }
 
-void db_attach(db_handle *db, event_loop *loop) {
+void db_attach(db_handle *db, event_loop *loop, bool reattach) {
   db->loop = loop;
-  CHECK(redisAeAttach(loop, db->context) == REDIS_OK);
-  CHECK(redisAeAttach(loop, db->sub_context) == REDIS_OK);
+  int err = redisAeAttach(loop, db->context);
+  if (!reattach && err != REDIS_OK) {
+    LOG_REDIS_ERROR(db->context, "failed to attach the event loop");
+  }
+  err = redisAeAttach(loop, db->sub_context);
+  if (!reattach && err != REDIS_OK) {
+    LOG_REDIS_ERROR(db->sub_context, "failed to attach the event loop");
+  }
 }
 
 /**

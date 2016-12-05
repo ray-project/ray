@@ -30,11 +30,13 @@ db_handle *db_connect(const char *db_address,
  * Attach global system store connection to an event loop. Callbacks from
  * queries to the global system store will trigger events in the event loop.
  *
- * @param db The database in question.
- * @param loop The event loop to attach to.
+ * @param db The handle to the database that is connected.
+ * @param loop The event loop the database gets connected to.
+ * @param reattach Can only be true in unit tests. If true, the database is
+ *        reattached to the loop.
  * @return Void.
  */
-void db_attach(db_handle *db, event_loop *loop);
+void db_attach(db_handle *db, event_loop *loop, bool reattach);
 
 /**
  * Disconnect from the global system store.
