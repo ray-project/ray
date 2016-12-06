@@ -929,7 +929,15 @@ void request_transfer2(object_id object_id,
    * callback gets called. */
   CHECK(fetch_req != NULL);
 
-  /* Pick a different manager to request a transfer from on every attempt. */
+  /* This method may be run multiple times, so if we are updating the manager
+   * vector, we need to free the previous manager vector. */
+  if (fetch_req->manager_count != 0) {
+    for (int i = 0; i < fetch_req->manager_count; ++i) {
+      free(fetch_req->manager_vector[i]);
+    }
+    free(fetch_req->manager_vector);
+  }
+  /* Update the manager vector. */
   fetch_req->manager_count = manager_count;
   fetch_req->manager_vector = malloc(manager_count * sizeof(char *));
   fetch_req->next_manager = 0;
