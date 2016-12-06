@@ -196,6 +196,7 @@ bool plasma_create(plasma_connection *conn,
   CHECKM(fd >= 0, "recv not successful");
   if (reply.error_code == PLASMA_OBJECT_ALREADY_EXISTS) {
     LOG_DEBUG("returned from plasma_create with error %d", reply.error_code);
+    close(fd);
     return false;
   }
   plasma_object *object = &reply.object;
@@ -630,6 +631,7 @@ bool plasma_get_local(plasma_connection *conn,
 
     if (!reply.has_object) {
       /* The object is not in our local store. */
+      close(fd);
       return false;
     }
     object = &reply.object;

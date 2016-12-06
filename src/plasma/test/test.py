@@ -121,6 +121,18 @@ class TestPlasmaClient(unittest.TestCase):
       for i in range(len(metadata)):
         self.assertEqual(metadata[i], metadata_buffer[i])
 
+  def test_create_existing(self):
+    # This test is partially used to test the code path in which we create an
+    # object with an ID that already exists
+    length = 100
+    for _ in range(1000):
+      object_id = random_object_id()
+      self.plasma_client.create(object_id, length, generate_metadata(length))
+      try:
+        val = self.plasma_client.create(object_id, length, generate_metadata(length))
+      except Exception:
+        pass
+
   def test_contains(self):
     fake_object_ids = [random_object_id() for _ in range(100)]
     real_object_ids = [random_object_id() for _ in range(100)]

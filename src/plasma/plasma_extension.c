@@ -65,9 +65,14 @@ PyObject *PyPlasma_create(PyObject *self, PyObject *args) {
     return NULL;
   }
   uint8_t *data;
-  plasma_create(conn, object_id, size,
-                (uint8_t *) PyByteArray_AsString(metadata),
-                PyByteArray_Size(metadata), &data);
+  bool created = plasma_create(conn, object_id, size,
+                               (uint8_t *) PyByteArray_AsString(metadata),
+                               PyByteArray_Size(metadata), &data);
+  if (!created) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "an object with this ID could not be created");
+    return NULL;
+  }
   return PyBuffer_FromReadWriteMemory((void *) data, (Py_ssize_t) size);
 }
 

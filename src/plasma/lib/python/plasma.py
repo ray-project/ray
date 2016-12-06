@@ -94,6 +94,9 @@ class PlasmaClient(object):
       size (int): The size in bytes of the created buffer.
       metadata (buffer): An optional buffer encoding whatever metadata the user
         wishes to encode.
+
+    Raises:
+      Exception: An exception is raised if the object could not be created.
     """
     # Turn the metadata into the right type.
     metadata = bytearray("") if metadata is None else metadata
