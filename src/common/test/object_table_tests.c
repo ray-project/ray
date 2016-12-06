@@ -146,7 +146,7 @@ int lookup_failed = 0;
 
 void lookup_done_callback(object_id object_id,
                           int manager_count,
-                          OWNER const char *manager_vector[],
+                          const char *manager_vector[],
                           void *context) {
   /* The done callback should not be called. */
   CHECK(0);
@@ -192,8 +192,6 @@ void add_fail_callback(unique_id id, void *user_context, void *user_data) {
   add_failed = 1;
   CHECK(user_context == (void *) add_timeout_context);
   event_loop_stop(g_loop);
-  unsigned char *object_hash = user_data;
-  free(object_hash);
 }
 
 TEST add_timeout_test(void) {
@@ -292,7 +290,7 @@ int lookup_retry_succeeded = 0;
 
 void lookup_retry_done_callback(object_id object_id,
                                 int manager_count,
-                                OWNER const char *manager_vector[],
+                                const char *manager_vector[],
                                 void *context) {
   CHECK(context == (void *) lookup_retry_context);
   lookup_retry_succeeded = 1;
@@ -385,13 +383,12 @@ TEST add_retry_test(void) {
 
 void add_lookup_done_callback(object_id object_id,
                               int manager_count,
-                              OWNER const char *manager_vector[],
+                              const char *manager_vector[],
                               void *context) {
   CHECK(context == (void *) lookup_retry_context);
   CHECK(manager_count == 1);
   CHECK(strcmp(manager_vector[0], "127.0.0.1:11235") == 0);
   lookup_retry_succeeded = 1;
-  free(manager_vector);
 }
 
 void add_lookup_callback(object_id object_id, void *user_context) {
@@ -410,7 +407,7 @@ TEST add_lookup_test(void) {
   lookup_retry_succeeded = 0;
   db_handle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11235);
-  db_attach(db, g_loop);
+  db_attach(db, g_loop, true);
   retry_info retry = {
       .num_retries = 5,
       .timeout = 100,
@@ -515,7 +512,7 @@ void lookup_late_fail_callback(unique_id id,
 
 void lookup_late_done_callback(object_id object_id,
                                int manager_count,
-                               OWNER const char *manager_vector[],
+                               const char *manager_vector[],
                                void *context) {
   /* This function should never be called. */
   CHECK(0);
@@ -556,8 +553,6 @@ int add_late_failed = 0;
 void add_late_fail_callback(unique_id id, void *user_context, void *user_data) {
   CHECK(user_context == (void *) add_late_context);
   add_late_failed = 1;
-  unsigned char *object_hash = user_data;
-  free(object_hash);
 }
 
 void add_late_done_callback(object_id object_id, void *user_context) {
@@ -726,7 +721,7 @@ TEST subscribe_object_present_test(void) {
   retry_info retry = {
       .num_retries = 0, .timeout = 100, .fail_callback = NULL,
   };
-  object_table_add(db, id, &retry, NULL, NULL);
+  object_table_add(db, id, (unsigned char *) NIL_DIGEST, &retry, NULL, NULL);
   object_table_subscribe(
       db, id, subscribe_object_present_object_available_callback,
       (void *) subscribe_object_present_context, &retry, NULL, (void *) db);
@@ -807,7 +802,8 @@ int64_t add_object_callback(event_loop *loop, int64_t timer_id, void *context) {
   retry_info retry = {
       .num_retries = 0, .timeout = 100, .fail_callback = NULL,
   };
-  object_table_add(db, NIL_ID, &retry, NULL, NULL);
+  object_table_add(db, NIL_ID, (unsigned char *) NIL_DIGEST, &retry, NULL,
+                   NULL);
   /* Reset the timer to this large value, so it doesn't trigger again. */
   return 10000;
 }
