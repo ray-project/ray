@@ -340,7 +340,6 @@ void redis_object_table_add_callback(redisAsyncContext *c,
       task_table_done_callback done_callback = callback_data->done_callback;
       done_callback(callback_data->id, callback_data->user_context);
     }
-    free(callback_data->data);
     destroy_timer_callback(db->loop, callback_data);
   }
   /* If there was an error executing the current command, this attempt was a
