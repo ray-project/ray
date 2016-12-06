@@ -147,7 +147,13 @@ def start_objstore(node_ip_address, redis_address, cleanup=True):
   """
   # Compute a fraction of the system memory for the Plasma store to use.
   system_memory = psutil.virtual_memory().total
-  plasma_store_memory = int(system_memory * 0.4)
+  if sys.platform == "linux" or sys.platform == "linux2":
+    # On linux we use /dev/shm, its size is half the size of the physical
+    # memory. To not overflow it, we set the plasma memory limit to 0.4 times
+    # the size of the physical memory.
+    plasma_store_memory = int(system_memory * 0.4)
+  else:
+    plasma_store_memory = int(system_memory * 0.75)
   # Start the Plasma store.
   plasma_store_name, p1 = plasma.start_plasma_store(plasma_store_memory=plasma_store_memory, use_profiler=RUN_PLASMA_STORE_PROFILER)
   # Start the plasma manager.
