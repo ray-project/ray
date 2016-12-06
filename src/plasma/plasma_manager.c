@@ -148,9 +148,6 @@ typedef struct {
   /** The ID for the timer that will time out the current request to the state
    *  database or another plasma manager. */
   int64_t timer;
-  /** How many retries we have left for the request. Decremented on every
-   *  timeout. */
-  int num_retries;
   /** Pointer to the array containing the manager locations of this object. This
    *  struct owns and must free each entry. */
   char **manager_vector;
@@ -381,7 +378,8 @@ void remove_fetch_request(plasma_manager_state *manager_state,
   HASH_DELETE(hh, manager_state->fetch_requests2, fetch_req);
   /* Remove the timer associated with this fetch request. */
   if (fetch_req->timer != -1) {
-    event_loop_remove_timer(manager_state->loop, fetch_req->timer);
+    CHECK(event_loop_remove_timer(manager_state->loop, fetch_req->timer) ==
+          AE_OK);
   }
   /* Free the fetch request and everything in it. */
   for (int i = 0; i < fetch_req->manager_count; ++i) {
@@ -845,16 +843,8 @@ int manager_timeout_handler(event_loop *loop, timer_id id, void *context) {
 int manager_timeout_handler2(event_loop *loop, timer_id id, void *context) {
   fetch_request2 *fetch_req = context;
   plasma_manager_state *manager_state = fetch_req->manager_state;
-  LOG_DEBUG("Timer went off, %d tries left", fetch_req->num_retries);
-  if (fetch_req->num_retries > 0) {
-    request_transfer_from2(manager_state, fetch_req->object_id);
-    fetch_req->num_retries--;
-    return MANAGER_TIMEOUT;
-  }
-  /* TODO(rkn): This shouldn't be fatal. Instead, it should do nothing. */
-  CHECK(0);
-  remove_fetch_request(manager_state, fetch_req);
-  return EVENT_LOOP_TIMER_DONE;
+  request_transfer_from2(manager_state, fetch_req->object_id);
+  return MANAGER_TIMEOUT;
 }
 
 bool is_object_local(plasma_manager_state *state, object_id object_id) {
@@ -919,6 +909,9 @@ void request_transfer2(object_id object_id,
                        const char *manager_vector[],
                        void *context) {
   plasma_manager_state *manager_state = (plasma_manager_state *) context;
+  /* This callback is called from object_table_subscribe, which guarantees that
+   * the manager vector contains at least one element. */
+  CHECK(manager_count >= 1);
   fetch_request2 *fetch_req;
   HASH_FIND(hh, manager_state->fetch_requests2, &object_id, sizeof(object_id),
             fetch_req);
@@ -936,12 +929,15 @@ void request_transfer2(object_id object_id,
    * callback gets called. */
   CHECK(fetch_req != NULL);
 
-  if (manager_count == 0) {
-    /* TODO(rkn): Figure out what to do in this case. */
-    remove_fetch_request(manager_state, fetch_req);
-    return;
+  /* This method may be run multiple times, so if we are updating the manager
+   * vector, we need to free the previous manager vector. */
+  if (fetch_req->manager_count != 0) {
+    for (int i = 0; i < fetch_req->manager_count; ++i) {
+      free(fetch_req->manager_vector[i]);
+    }
+    free(fetch_req->manager_vector);
   }
-  /* Pick a different manager to request a transfer from on every attempt. */
+  /* Update the manager vector. */
   fetch_req->manager_count = manager_count;
   fetch_req->manager_vector = malloc(manager_count * sizeof(char *));
   fetch_req->next_manager = 0;
@@ -955,9 +951,13 @@ void request_transfer2(object_id object_id,
   /* Wait for the object data for the default number of retries, which timeout
    * after a default interval. */
   request_transfer_from2(manager_state, object_id);
-  fetch_req->num_retries = NUM_RETRIES;
-  fetch_req->timer = event_loop_add_timer(manager_state->loop, MANAGER_TIMEOUT,
-                                          manager_timeout_handler2, fetch_req);
+  /* It is possible for this method to be called multiple times, but we only
+   * need to create a timer once. */
+  if (fetch_req->timer == -1) {
+    fetch_req->timer =
+        event_loop_add_timer(manager_state->loop, MANAGER_TIMEOUT,
+                             manager_timeout_handler2, fetch_req);
+  }
 }
 
 void process_fetch_request(client_connection *client_conn,
@@ -1041,8 +1041,8 @@ void process_fetch_requests2(client_connection *client_conn,
     retry.num_retries = NUM_RETRIES;
     retry.timeout = MANAGER_TIMEOUT;
     retry.fail_callback = fatal_table_callback;
-    object_table_lookup(manager_state->db, obj_id, &retry, request_transfer2,
-                        manager_state);
+    object_table_subscribe(manager_state->db, obj_id, request_transfer2,
+                           manager_state, &retry, NULL, NULL);
   }
 }
 
@@ -1520,6 +1520,7 @@ void process_object_notification(event_loop *loop,
   HASH_FIND(hh, state->fetch_requests2, &obj_id, sizeof(obj_id), fetch_req);
   if (fetch_req != NULL) {
     remove_fetch_request(state, fetch_req);
+    /* TODO(rkn): We also really should unsubscribe from the object table. */
   }
   /* Notify any clients who were waiting on a fetch to this object and tick
    * off objects we are waiting for. */

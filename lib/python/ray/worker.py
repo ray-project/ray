@@ -437,6 +437,7 @@ class Worker(object):
     Args:
       objectid (object_id.ObjectID): The object ID of the value to retrieve.
     """
+    self.plasma_client.fetch2([objectid.id()])
     buff = self.plasma_client.get(objectid.id())
     metadata = self.plasma_client.get_metadata(objectid.id())
     metadata_size = len(metadata)
