@@ -29,6 +29,11 @@
 #include "utringbuffer.h"
 #include "sha256.h"
 
+#define XXH_STATIC_LINKING_ONLY
+#include "xxhash.h"
+
+#define XXH64_DEFAULT_SEED 0
+
 /* Number of times we try connecting to a socket. */
 #define NUM_CONNECT_ATTEMPTS 50
 #define CONNECT_TIMEOUT 100
@@ -341,8 +346,8 @@ void plasma_compute_object_hash(plasma_connection *conn,
   /* If we don't have the object, return an empty digest. */
   int has_object;
   plasma_contains(conn, obj_id, &has_object);
+  memset(digest, 0, DIGEST_SIZE);
   if (!has_object) {
-    memset(digest, 0, DIGEST_SIZE);
     return;
   }
   /* Get the plasma object data. */
@@ -352,11 +357,13 @@ void plasma_compute_object_hash(plasma_connection *conn,
   uint8_t *metadata;
   plasma_get(conn, obj_id, &size, &data, &metadata_size, &metadata);
   /* Compute the hash. */
-  SHA256_CTX sha256_context;
-  sha256_init(&sha256_context);
-  sha256_update(&sha256_context, (unsigned char *) data, size);
-  sha256_update(&sha256_context, (unsigned char *) metadata, metadata_size);
-  sha256_final(&sha256_context, digest);
+  XXH64_state_t hash_state;
+  XXH64_reset(&hash_state, XXH64_DEFAULT_SEED);
+  XXH64_update(&hash_state, (unsigned char *) data, size);
+  XXH64_update(&hash_state, (unsigned char *) metadata, metadata_size);
+  uint64_t hash = XXH64_digest(&hash_state);
+  CHECK(DIGEST_SIZE >= sizeof(uint64_t));
+  memcpy(digest, &hash, sizeof(uint64_t));
   /* Release the plasma object. */
   plasma_release(conn, obj_id);
 }
