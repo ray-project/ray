@@ -33,12 +33,14 @@ global_scheduler_state *init_global_scheduler(event_loop *loop,
   state->db = db_connect(redis_addr, redis_port, "global_scheduler", "", -1);
   db_attach(state->db, loop, false);
   utarray_new(state->local_schedulers, &local_scheduler_icd);
+  state->policy_state = init_global_scheduler_policy();
   return state;
 }
 
 void free_global_scheduler(global_scheduler_state *state) {
   db_disconnect(state->db);
   utarray_free(state->local_schedulers);
+  destroy_global_scheduler_policy(state->policy_state);
   free(state);
 }
 
@@ -57,7 +59,7 @@ void signal_handler(int signal) {
 
 void process_task_waiting(task *task, void *user_context) {
   global_scheduler_state *state = (global_scheduler_state *) user_context;
-  handle_task_waiting(state, task);
+  handle_task_waiting(state, state->policy_state, task);
 }
 
 void process_new_db_client(db_client_id db_client_id,
@@ -65,7 +67,7 @@ void process_new_db_client(db_client_id db_client_id,
                            void *user_context) {
   global_scheduler_state *state = (global_scheduler_state *) user_context;
   if (strcmp(client_type, "photon") == 0) {
-    handle_new_local_scheduler(state, db_client_id);
+    handle_new_local_scheduler(state, state->policy_state, db_client_id);
   }
 }
 
