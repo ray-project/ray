@@ -943,8 +943,13 @@ void request_transfer2(object_id object_id,
   /* Wait for the object data for the default number of retries, which timeout
    * after a default interval. */
   request_transfer_from2(manager_state, object_id);
-  fetch_req->timer = event_loop_add_timer(manager_state->loop, MANAGER_TIMEOUT,
-                                          manager_timeout_handler2, fetch_req);
+  /* It is possible for this method to be called multiple times, but we only
+   * need to create a timer once. */
+  if (fetch_req->timer == -1) {
+    fetch_req->timer =
+        event_loop_add_timer(manager_state->loop, MANAGER_TIMEOUT,
+                             manager_timeout_handler2, fetch_req);
+  }
 }
 
 void process_fetch_request(client_connection *client_conn,
