@@ -7,7 +7,7 @@
 /* The duration that the local scheduler will wait before reinitiating a fetch
  * request for a missing task dependency. TODO(rkn): We may want this to be
  * adaptable based on the load on the local scheduler. */
-#define LOCAL_SCHEDULER_FETCH_TIMEOUT_MILLISECONDS 10
+#define LOCAL_SCHEDULER_FETCH_TIMEOUT_MILLISECONDS 1000
 
 /* ==== The scheduling algorithm ====
  *

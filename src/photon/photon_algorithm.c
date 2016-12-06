@@ -322,7 +322,7 @@ void handle_object_available(local_scheduler_state *state,
             fetch_req);
   if (fetch_req != NULL) {
     HASH_DELETE(hh, algorithm_state->fetch_requests, fetch_req);
-    event_loop_remove_timer(state->loop, fetch_req->timer);
+    CHECK(event_loop_remove_timer(state->loop, fetch_req->timer) == AE_OK);
     free(fetch_req);
   }
 }
