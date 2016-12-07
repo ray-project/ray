@@ -4,6 +4,22 @@
 /src/photon/build
 /src/common/build
 /src/common/thirdparty/redis
+/src/global_scheduler/build
+/numbuf/build
+/numbuf/thirdparty/arrow
+/numbuf/dist
+/webui/client/public
+/webui/node_modules
+
+# The files copied under lib/python should be ignored
+/lib/python/common
+/lib/python/global_scheduler
+/lib/python/photon
+/lib/python/plasma
+/lib/python/webui
+
+# Redis temporary files
+*dump.rdb
 
 # Python byte code files
 *.pyc
