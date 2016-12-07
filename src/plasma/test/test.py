@@ -585,7 +585,7 @@ class TestPlasmaManager(unittest.TestCase):
     self.client2.seal(object_id)
     # Give the second manager some time to complete the seal, then make sure it
     # exited.
-    time.sleep(0.2)
+    time.sleep(1.0)
     self.p5.poll()
     self.assertNotEqual(self.p5.returncode, None)
     self.processes_to_kill.remove(self.p5)
