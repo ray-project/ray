@@ -1497,7 +1497,6 @@ void process_object_notification(event_loop *loop,
                                  void *context,
                                  int events) {
   plasma_manager_state *state = context;
-  object_id obj_id;
   retry_info retry = {
       .num_retries = NUM_RETRIES,
       .timeout = MANAGER_TIMEOUT,
@@ -1532,7 +1531,10 @@ void process_object_notification(event_loop *loop,
   if (state->db) {
     /* TODO(swang): Log the error if we fail to add the object, and possibly
      * retry later? */
-    object_table_add(state->db, obj_id, &retry, NULL, NULL);
+    object_table_add(state->db,
+        objid_notification.obj_id,
+        objid_notification.data_size,
+        &retry, NULL, NULL);
   }
 
   /* If we were trying to fetch this object, finish up the fetch request. */
