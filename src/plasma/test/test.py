@@ -197,6 +197,40 @@ class TestPlasmaClient(unittest.TestCase):
     self.assertNotEqual(self.plasma_client.hash(object_id3),
                         self.plasma_client.hash(object_id4))
 
+  def test_many_hashes(self):
+    hashes = []
+    length = 2 ** 10
+
+    for i in range(256):
+      object_id = random_object_id()
+      memory_buffer = self.plasma_client.create(object_id, length)
+      for j in range(length):
+        memory_buffer[j] = chr(i)
+      self.plasma_client.seal(object_id)
+      hashes.append(self.plasma_client.hash(object_id))
+
+    # Create objects of varying length. Each pair has two bits different.
+    for i in range(length):
+      object_id = random_object_id()
+      memory_buffer = self.plasma_client.create(object_id, length)
+      for j in range(length):
+        memory_buffer[j] = chr(0)
+      memory_buffer[i] = chr(1)
+      self.plasma_client.seal(object_id)
+      hashes.append(self.plasma_client.hash(object_id))
+
+    # Create objects of varying length, all with value 0.
+    for i in range(length):
+      object_id = random_object_id()
+      memory_buffer = self.plasma_client.create(object_id, i)
+      for j in range(i):
+        memory_buffer[j] = chr(0)
+      self.plasma_client.seal(object_id)
+      hashes.append(self.plasma_client.hash(object_id))
+
+    # Check that all hashes were unique.
+    self.assertEqual(len(set(hashes)), 256 + length + length)
+
   # def test_individual_delete(self):
   #   length = 100
   #   # Create an object id string.
@@ -601,7 +635,7 @@ class TestPlasmaManager(unittest.TestCase):
     self.client2.seal(object_id)
     # Give the second manager some time to complete the seal, then make sure it
     # exited.
-    time.sleep(1.0)
+    time.sleep(2)
     self.p5.poll()
     self.assertNotEqual(self.p5.returncode, None)
     self.processes_to_kill.remove(self.p5)

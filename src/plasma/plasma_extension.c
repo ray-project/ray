@@ -85,14 +85,14 @@ PyObject *PyPlasma_hash(PyObject *self, PyObject *args) {
                         PyObjectToUniqueID, &object_id)) {
     return NULL;
   }
-  unsigned char digest[DIGEST_SIZE + 1];
-  plasma_compute_object_hash(conn, object_id, digest);
-  digest[DIGEST_SIZE] = '\0';
-  if (strcmp(digest, "") == 0) {
+  unsigned char digest[DIGEST_SIZE];
+  bool success = plasma_compute_object_hash(conn, object_id, digest);
+  if (success) {
+    PyObject *digest_string = PyString_FromStringAndSize(digest, DIGEST_SIZE);
+    return digest_string;
+  } else {
     Py_RETURN_NONE;
   }
-  PyObject *digest_string = PyString_FromString(digest);
-  return digest_string;
 }
 
 PyObject *PyPlasma_seal(PyObject *self, PyObject *args) {

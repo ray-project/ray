@@ -139,17 +139,15 @@ void plasma_contains(plasma_connection *conn,
                      int *has_object);
 
 /**
- * Compute the MD5 hash of an object in the object store.
+ * Compute the hash of an object in the object store.
  *
  * @param conn The object containing the connection state.
  * @param object_id The ID of the object we want to hash.
  * @param digest A pointer at which to return the hash digest of the object.
- *        The pointer must have at least DIGEST_SIZE bytes allocated. If
- *        the object store does not contain the object, the hash digest will be
- *        set to the null terminator.
- * @return Void.
+ *        The pointer must have at least DIGEST_SIZE bytes allocated.
+ * @return A boolean representing whether the hash operation succeeded.
  */
-void plasma_compute_object_hash(plasma_connection *conn,
+bool plasma_compute_object_hash(plasma_connection *conn,
                                 object_id object_id,
                                 unsigned char *digest);
 

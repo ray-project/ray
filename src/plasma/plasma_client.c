@@ -333,22 +333,31 @@ void plasma_release(plasma_connection *conn, object_id obj_id) {
 void plasma_contains(plasma_connection *conn,
                      object_id object_id,
                      int *has_object) {
-  plasma_request req = plasma_make_request(object_id);
-  CHECK(plasma_send_request(conn->store_conn, PLASMA_CONTAINS, &req) >= 0);
-  plasma_reply reply;
-  CHECK(plasma_receive_reply(conn->store_conn, sizeof(reply), &reply) >= 0);
-  *has_object = reply.has_object;
+  /* Check if we already have a reference to the object. */
+  object_in_use_entry *object_entry;
+  HASH_FIND(hh, conn->objects_in_use, &object_id, sizeof(object_id),
+            object_entry);
+  if (object_entry) {
+    *has_object = 1;
+  } else {
+    /* If we don't already have a reference to the object, check with the store
+     * to see if we have the object. */
+    plasma_request req = plasma_make_request(object_id);
+    CHECK(plasma_send_request(conn->store_conn, PLASMA_CONTAINS, &req) >= 0);
+    plasma_reply reply;
+    CHECK(plasma_receive_reply(conn->store_conn, sizeof(reply), &reply) >= 0);
+    *has_object = reply.has_object;
+  }
 }
 
-void plasma_compute_object_hash(plasma_connection *conn,
+bool plasma_compute_object_hash(plasma_connection *conn,
                                 object_id obj_id,
                                 unsigned char *digest) {
   /* If we don't have the object, return an empty digest. */
   int has_object;
   plasma_contains(conn, obj_id, &has_object);
-  memset(digest, 0, DIGEST_SIZE);
   if (!has_object) {
-    return;
+    return false;
   }
   /* Get the plasma object data. */
   int64_t size;
@@ -362,10 +371,11 @@ void plasma_compute_object_hash(plasma_connection *conn,
   XXH64_update(&hash_state, (unsigned char *) data, size);
   XXH64_update(&hash_state, (unsigned char *) metadata, metadata_size);
   uint64_t hash = XXH64_digest(&hash_state);
-  CHECK(DIGEST_SIZE >= sizeof(uint64_t));
-  memcpy(digest, &hash, sizeof(uint64_t));
+  DCHECK(DIGEST_SIZE >= sizeof(uint64_t));
+  memcpy(digest, &hash, DIGEST_SIZE);
   /* Release the plasma object. */
   plasma_release(conn, obj_id);
+  return true;
 }
 
 void plasma_seal(plasma_connection *conn, object_id object_id) {
