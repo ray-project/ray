@@ -211,6 +211,8 @@ typedef struct {
   UT_array *clients;
   /** The state of the object, e.g., whether it is open or sealed. */
   object_state state;
+  /** The digest of the object. Used to see if two objects are the same. */
+  unsigned char digest[DIGEST_SIZE];
 } object_table_entry;
 
 /** The plasma store information that is exposed to the eviction policy. */
@@ -223,7 +225,7 @@ typedef struct {
   /** The ID of the object. */
   object_id obj_id;
   /** The size of the object. */
-  int64_t data_size;
+  int64_t object_size;
   /** The digest of the object used, used to see if two objects are the same. */
   unsigned char digest[DIGEST_SIZE];
 } object_id_notification;

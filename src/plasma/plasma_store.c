@@ -306,7 +306,9 @@ int contains_object(client *client_context, object_id object_id) {
 }
 
 /* Seal an object that has been created in the hash table. */
-void seal_object(client *client_context, object_id object_id) {
+void seal_object(client *client_context,
+                 object_id object_id,
+                 unsigned char digest[]) {
   LOG_DEBUG("sealing object");  // TODO(pcm): add object_id here
   plasma_store_state *plasma_state = client_context->plasma_state;
   object_table_entry *entry;
@@ -316,6 +318,8 @@ void seal_object(client *client_context, object_id object_id) {
   CHECK(entry->state == PLASMA_CREATED);
   /* Set the state of object to SEALED. */
   entry->state = PLASMA_SEALED;
+  /* Set the object digest. */
+  memcpy(entry->digest, digest, DIGEST_SIZE);
   /* Inform all subscribers that a new object has been sealed. */
   notification_queue *queue, *temp_queue;
   HASH_ITER(hh, plasma_state->pending_notifications, queue, temp_queue) {
@@ -519,7 +523,7 @@ void process_message(event_loop *loop,
     break;
   case PLASMA_SEAL:
     DCHECK(req->num_object_ids == 1);
-    seal_object(client_context, req->object_requests[0].object_id);
+    seal_object(client_context, req->object_requests[0].object_id, req->digest);
     break;
   case PLASMA_DELETE:
     /* TODO(rkn): In the future, we can use this method to give hints to the
