@@ -148,6 +148,22 @@ if(FLATBUFFERS_VENDORED)
   add_dependencies(flatbuffers flatbuffers_ep)
 endif()
 
+set(FBS_SRC
+  "${CMAKE_SOURCE_DIR}/format/plasma_protocol.fbs")
+
+set(OUTPUT_DIR ${CMAKE_SOURCE_DIR}/format/)
+set(FBS_OUTPUT_FILES "${OUTPUT_DIR}/Message_generated.h")
+
+add_custom_command(
+  OUTPUT ${FBS_OUTPUT_FILES}
+  COMMAND ${FLATBUFFERS_COMPILER} -c -o ${OUTPUT_DIR} ${FBS_SRC}
+  DEPENDS ${FBS_DEPENDS}
+  COMMENT "Running flatc compiler on ${FBS_SRC}"
+  VERBATIM
+)
+
+add_custom_target(protocol_fbs DEPENDS ${FBS_OUTPUT_FILES})
+
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --std=c99 -D_XOPEN_SOURCE=500 -D_POSIX_C_SOURCE=200809L")
 
 if(UNIX AND NOT APPLE)
@@ -169,6 +185,15 @@ add_library(plasma SHARED
   plasma_client.c
   fling.c)
 
+include_directories("${FLATBUFFERS_INCLUDE_DIR}")
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static-libgcc -static-libstdc++")
+
+add_library(plasmaprotocol STATIC
+  plasma_protocol.cc)
+
+target_link_libraries(plasmaprotocol ${FLATBUFFERS_STATIC_LIB})
+
 get_filename_component(PYTHON_SHARED_LIBRARY ${PYTHON_LIBRARIES} NAME)
 if(APPLE)
   add_custom_command(TARGET plasma
@@ -176,5 +201,7 @@ if(APPLE)
 endif(APPLE)
 
 target_link_libraries(plasma ${COMMON_LIB} ${PYTHON_LIBRARIES})
+
+add_dependencies(plasma protocol_fbs)
 
 install(TARGETS plasma DESTINATION ${CMAKE_SOURCE_DIR}/lib/python)

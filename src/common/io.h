@@ -6,6 +6,8 @@
 
 #include "utarray.h"
 
+#define LOG_MESSAGE_VERSION 0
+
 enum common_message_type {
   /** Disconnect a client. */
   DISCONNECT_CLIENT,
@@ -25,8 +27,8 @@ int accept_client(int socket_fd);
 
 /* Reading and writing data. */
 
-int write_message(int fd, int64_t type, int64_t length, uint8_t *bytes);
-void read_message(int fd, int64_t *type, int64_t *length, uint8_t **bytes);
+int write_message(int fd, int64_t version, int64_t type, int64_t length, uint8_t *bytes);
+void read_message(int fd, int64_t version, int64_t *type, int64_t *length, uint8_t **bytes);
 int64_t read_buffer(int fd, int64_t *type, UT_array *buffer);
 
 void write_log_message(int fd, char *message);

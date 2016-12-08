@@ -1,0 +1,45 @@
+// Plasma protocol specification
+
+enum ProtocolVersion:short {
+  V0,
+}
+
+enum MessageType:int {
+  PlasmaCreateRequest,
+  PlasmaCreateReply,
+  PlasmaSealRequest,
+  PlasmaSealReply
+}
+
+// table MessageHeader {
+//   version: ProtocolVersion;
+//   message_type: MessageType;
+//   message_size: ulong;
+// }
+
+enum PlasmaError:int {
+  OK,
+  ObjectExists,
+  ObjectNonExistent
+}
+
+table PlasmaCreateRequest {
+  object_id: string;
+  data_size: ulong;
+  metadata_size: ulong;
+}
+
+struct PlasmaObject {
+  segment_index: int;
+  mmap_size: ulong;
+  data_offset: ulong;
+  data_size: ulong;
+  metadata_offset: ulong;
+  metadata_size: ulong;
+}
+
+table PlasmaCreateReply {
+  object_id: string;
+  plasma_object: PlasmaObject;
+  error: PlasmaError;
+}
