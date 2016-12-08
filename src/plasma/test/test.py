@@ -617,6 +617,10 @@ class TestPlasmaManager(unittest.TestCase):
     first put should succeed. The second put should cause the plasma manager to
     exit with a fatal error.
     """
+    if USE_VALGRIND:
+      # Don't run this test when we are using valgrind because when processes
+      # die without freeing up their state, valgrind complains.
+      return
     # Create and seal the first object.
     length = 1000
     object_id = random_object_id()
