@@ -392,7 +392,7 @@ void plasma_seal(plasma_connection *conn, object_id object_id) {
   plasma_request req = plasma_make_request(object_id);
   CHECK(plasma_send_request(conn->store_conn, PLASMA_SEAL, &req) >= 0);
   if (conn->manager_conn >= 0) {
-    plasma_compute_object_hash(conn, object_id, req.digest);
+    CHECK(plasma_compute_object_hash(conn, object_id, req.digest));
     CHECK(plasma_send_request(conn->manager_conn, PLASMA_SEAL, &req) >= 0);
   }
 }
