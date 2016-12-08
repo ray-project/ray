@@ -1497,6 +1497,11 @@ void process_object_notification(event_loop *loop,
                                  int events) {
   plasma_manager_state *state = context;
   object_id obj_id;
+  retry_info retry = {
+      .num_retries = NUM_RETRIES,
+      .timeout = MANAGER_TIMEOUT,
+      .fail_callback = NULL,
+  };
   /* Read the notification from Plasma. */
   int error = read_bytes(client_sock, (uint8_t *) &obj_id, sizeof(obj_id));
   if (error < 0) {
@@ -1515,6 +1520,14 @@ void process_object_notification(event_loop *loop,
   entry->object_id = obj_id;
   HASH_ADD(hh, state->local_available_objects, object_id, sizeof(object_id),
            entry);
+
+  /* Add this object to the (redis) object table. */
+  if (state->db) {
+    /* TODO(swang): Log the error if we fail to add the object, and possibly
+     * retry later? */
+    object_table_add(state->db, obj_id, &retry, NULL, NULL);
+  }
+
   /* If we were trying to fetch this object, finish up the fetch request. */
   fetch_request2 *fetch_req;
   HASH_FIND(hh, state->fetch_requests2, &obj_id, sizeof(obj_id), fetch_req);
@@ -1615,21 +1628,6 @@ void process_message(event_loop *loop,
     process_fetch_or_status_request(conn, req->object_requests[0].object_id,
                                     false);
     break;
-  case PLASMA_SEAL: {
-    LOG_DEBUG("Publishing to object table from DB client %d.",
-              get_client_id(conn->manager_state->db));
-    /* TODO(swang): Log the error if we fail to add the object, and possibly
-     * retry later? */
-    retry_info retry = {
-        .num_retries = NUM_RETRIES,
-        .timeout = MANAGER_TIMEOUT,
-        .fail_callback = NULL,
-    };
-    if (conn->manager_state->db) {
-      object_table_add(conn->manager_state->db,
-                       req->object_requests[0].object_id, &retry, NULL, NULL);
-    }
-  } break;
   case DISCONNECT_CLIENT: {
     LOG_INFO("Disconnecting client on fd %d", client_sock);
     /* TODO(swang): Check if this connection was to a plasma manager. If so,
