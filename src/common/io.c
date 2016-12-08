@@ -202,14 +202,19 @@ int write_bytes(int fd, uint8_t *cursor, size_t length) {
  * by read_message.
  *
  * @param fd The file descriptor to write to. It can be non-blocking.
+ * @param version The protocol version.
  * @param type The type of the message to send.
  * @param length The size in bytes of the bytes parameter.
  * @param bytes The address of the message to send.
  * @return int Whether there was an error while writing. 0 corresponds to
  *         success and -1 corresponds to an error (errno will be set).
  */
-int write_message(int fd, int64_t type, int64_t length, uint8_t *bytes) {
+int write_message(int fd, int64_t version, int64_t type, int64_t length, uint8_t *bytes) {
   int closed;
+  closed = write_bytes(fd, (uint8_t *) &version, sizeof(version));
+  if (closed) {
+    return closed;
+  }
   closed = write_bytes(fd, (uint8_t *) &type, sizeof(type));
   if (closed) {
     return closed;
@@ -270,6 +275,8 @@ int read_bytes(int fd, uint8_t *cursor, size_t length) {
  * @note The caller must free the memory.
  *
  * @param fd The file descriptor to read from. It can be non-blocking.
+ * @param version The version of the protocol that is used. The function will
+ *        fail if version do not agree.
  * @param type The type of the message that is read will be written at this
  *        address. If there was an error while reading, this will be
  *        DISCONNECT_CLIENT.
@@ -282,8 +289,14 @@ int read_bytes(int fd, uint8_t *cursor, size_t length) {
  *        reading, this will be NULL.
  * @return Void.
  */
-void read_message(int fd, int64_t *type, int64_t *length, uint8_t **bytes) {
-  int closed = read_bytes(fd, (uint8_t *) type, sizeof(*type));
+void read_message(int fd, int64_t expected_version, int64_t *type, int64_t *length, uint8_t **bytes) {
+  int64_t read_version;
+  int closed = read_bytes(fd, (uint8_t *) &read_version, sizeof(expected_version));
+  if (closed) {
+    goto disconnected;
+  }
+  CHECK(read_version == expected_version);
+  closed = read_bytes(fd, (uint8_t *) type, sizeof(*type));
   if (closed) {
     goto disconnected;
   }
@@ -351,7 +364,7 @@ disconnected:
 /* Write a null-terminated string to a file descriptor. */
 void write_log_message(int fd, char *message) {
   /* Account for the \0 at the end of the string. */
-  write_message(fd, LOG_MESSAGE, strlen(message) + 1, (uint8_t *) message);
+  write_message(fd, LOG_MESSAGE_VERSION, LOG_MESSAGE, strlen(message) + 1, (uint8_t *) message);
 }
 
 /* Reads a null-terminated string from the file descriptor that has been
@@ -361,7 +374,7 @@ char *read_log_message(int fd) {
   uint8_t *bytes;
   int64_t type;
   int64_t length;
-  read_message(fd, &type, &length, &bytes);
+  read_message(fd, LOG_MESSAGE_VERSION, &type, &length, &bytes);
   CHECK(type == LOG_MESSAGE);
   return (char *) bytes;
 }

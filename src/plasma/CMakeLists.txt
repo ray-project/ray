@@ -2,6 +2,13 @@ cmake_minimum_required(VERSION 2.8)
 
 project(plasma)
 
+include(ExternalProject)
+include(CMakeParseArguments)
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+
+set(FLATBUFFERS_VERSION "1.3.0")
+
 message(STATUS "Trying custom approach for finding Python.")
 # Start off by figuring out which Python executable to use.
 find_program(CUSTOM_PYTHON_EXECUTABLE python)
@@ -57,9 +64,107 @@ if(APPLE)
   SET(CMAKE_SHARED_LIBRARY_SUFFIX ".so")
 endif(APPLE)
 
+
 include_directories("${PYTHON_INCLUDE_DIRS}")
 
-set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} --std=c99 -D_XOPEN_SOURCE=500 -D_POSIX_C_SOURCE=200809L")
+############################################################
+# Dependencies
+############################################################
+function(ADD_THIRDPARTY_LIB LIB_NAME)
+  set(options)
+  set(one_value_args SHARED_LIB STATIC_LIB)
+  set(multi_value_args DEPS)
+  cmake_parse_arguments(ARG "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
+  if(ARG_UNPARSED_ARGUMENTS)
+    message(SEND_ERROR "Error: unrecognized arguments: ${ARG_UNPARSED_ARGUMENTS}")
+  endif()
+
+  if(ARG_STATIC_LIB AND ARG_SHARED_LIB)
+    if(NOT ARG_STATIC_LIB)
+      message(FATAL_ERROR "No static or shared library provided for ${LIB_NAME}")
+    endif()
+
+    SET(AUG_LIB_NAME "${LIB_NAME}_static")
+    add_library(${AUG_LIB_NAME} STATIC IMPORTED)
+    set_target_properties(${AUG_LIB_NAME}
+            PROPERTIES IMPORTED_LOCATION "${ARG_STATIC_LIB}")
+    message("Added static library dependency ${LIB_NAME}: ${ARG_STATIC_LIB}")
+
+    SET(AUG_LIB_NAME "${LIB_NAME}_shared")
+    add_library(${AUG_LIB_NAME} SHARED IMPORTED)
+    set_target_properties(${AUG_LIB_NAME}
+            PROPERTIES IMPORTED_LOCATION "${ARG_SHARED_LIB}")
+    message("Added shared library dependency ${LIB_NAME}: ${ARG_SHARED_LIB}")
+  elseif(ARG_STATIC_LIB)
+    add_library(${LIB_NAME} STATIC IMPORTED)
+    set_target_properties(${LIB_NAME}
+            PROPERTIES IMPORTED_LOCATION "${ARG_STATIC_LIB}")
+    message("Added static library dependency ${LIB_NAME}: ${ARG_STATIC_LIB}")
+  elseif(ARG_SHARED_LIB)
+    add_library(${LIB_NAME} SHARED IMPORTED)
+    set_target_properties(${LIB_NAME}
+            PROPERTIES IMPORTED_LOCATION "${ARG_SHARED_LIB}")
+    message("Added shared library dependency ${LIB_NAME}: ${ARG_SHARED_LIB}")
+  else()
+    message(FATAL_ERROR "No static or shared library provided for ${LIB_NAME}")
+  endif()
+
+  if(ARG_DEPS)
+    set_target_properties(${LIB_NAME}
+            PROPERTIES IMPORTED_LINK_INTERFACE_LIBRARIES "${ARG_DEPS}")
+  endif()
+endfunction()
+
+############################################################
+# Flatbuffers
+############################################################
+
+if("$ENV{FLATBUFFERS_HOME}" STREQUAL "")
+  set(FLATBUFFERS_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/flatbuffers_ep-prefix/src/flatbuffers_ep-install")
+  ExternalProject_Add(flatbuffers_ep
+    URL "https://github.com/google/flatbuffers/archive/v${FLATBUFFERS_VERSION}.tar.gz"
+    CMAKE_ARGS
+      "-DCMAKE_CXX_FLAGS=-fPIC"
+      "-DCMAKE_INSTALL_PREFIX:PATH=${FLATBUFFERS_PREFIX}"
+      "-DFLATBUFFERS_BUILD_TESTS=OFF")
+
+  set(FLATBUFFERS_INCLUDE_DIR "${FLATBUFFERS_PREFIX}/include")
+  set(FLATBUFFERS_STATIC_LIB "${FLATBUFFERS_PREFIX}/libflatbuffers.a")
+  set(FLATBUFFERS_COMPILER "${FLATBUFFERS_PREFIX}/bin/flatc")
+  set(FLATBUFFERS_VENDORED 1)
+else()
+  find_package(Flatbuffers REQUIRED)
+  set(FLATBUFFERS_VENDORED 0)
+endif()
+
+message(STATUS "Flatbuffers include dir: ${FLATBUFFERS_INCLUDE_DIR}")
+message(STATUS "Flatbuffers static library: ${FLATBUFFERS_STATIC_LIB}")
+message(STATUS "Flatbuffers compiler: ${FLATBUFFERS_COMPILER}")
+include_directories(SYSTEM ${FLATBUFFERS_INCLUDE_DIR})
+ADD_THIRDPARTY_LIB(flatbuffers
+  STATIC_LIB ${FLATBUFFERS_STATIC_LIB})
+
+if(FLATBUFFERS_VENDORED)
+  add_dependencies(flatbuffers flatbuffers_ep)
+endif()
+
+set(FBS_SRC
+  "${CMAKE_SOURCE_DIR}/format/plasma_protocol.fbs")
+
+set(OUTPUT_DIR ${CMAKE_SOURCE_DIR}/format/)
+set(FBS_OUTPUT_FILES "${OUTPUT_DIR}/Message_generated.h")
+
+add_custom_command(
+  OUTPUT ${FBS_OUTPUT_FILES}
+  COMMAND ${FLATBUFFERS_COMPILER} -c -o ${OUTPUT_DIR} ${FBS_SRC}
+  DEPENDS ${FBS_DEPENDS}
+  COMMENT "Running flatc compiler on ${FBS_SRC}"
+  VERBATIM
+)
+
+add_custom_target(protocol_fbs DEPENDS ${FBS_OUTPUT_FILES})
+
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --std=c99 -D_XOPEN_SOURCE=500 -D_POSIX_C_SOURCE=200809L")
 
 if(UNIX AND NOT APPLE)
   link_libraries(rt)
@@ -80,6 +185,15 @@ add_library(plasma SHARED
   plasma_client.c
   fling.c)
 
+include_directories("${FLATBUFFERS_INCLUDE_DIR}")
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static-libgcc -static-libstdc++")
+
+add_library(plasmaprotocol STATIC
+  plasma_protocol.cc)
+
+target_link_libraries(plasmaprotocol ${FLATBUFFERS_STATIC_LIB})
+
 get_filename_component(PYTHON_SHARED_LIBRARY ${PYTHON_LIBRARIES} NAME)
 if(APPLE)
   add_custom_command(TARGET plasma
@@ -87,5 +201,7 @@ if(APPLE)
 endif(APPLE)
 
 target_link_libraries(plasma ${COMMON_LIB} ${PYTHON_LIBRARIES})
+
+add_dependencies(plasma protocol_fbs)
 
 install(TARGETS plasma DESTINATION ${CMAKE_SOURCE_DIR}/lib/python)

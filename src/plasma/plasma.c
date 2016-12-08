@@ -5,6 +5,8 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include "plasma_protocol.h"
+
 plasma_request plasma_make_request(object_id object_id) {
   plasma_request request;
   memset(&request, 0, sizeof(request));
@@ -70,13 +72,13 @@ int plasma_receive_reply(int sock, int64_t reply_size, plasma_reply *reply) {
 int plasma_send_request(int sock, int64_t type, plasma_request *request) {
   DCHECK(request);
   int req_size = plasma_request_size(request->num_object_ids);
-  int error = write_message(sock, type, req_size, (uint8_t *) request);
+  int error = write_message(sock, PLASMA_PROTOCOL_VERSION, type, req_size, (uint8_t *) request);
   return error ? -1 : 0;
 }
 
 int plasma_receive_request(int sock, int64_t *type, plasma_request **request) {
   int64_t length;
-  read_message(sock, type, &length, (uint8_t **) request);
+  read_message(sock, PLASMA_PROTOCOL_VERSION, type, &length, (uint8_t **) request);
   if (*request == NULL) {
     return *type == DISCONNECT_CLIENT;
   }
