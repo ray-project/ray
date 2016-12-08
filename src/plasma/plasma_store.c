@@ -400,10 +400,21 @@ void send_notifications(event_loop *loop,
   for (int i = 0; i < utarray_len(queue->object_ids); ++i) {
     object_id *obj_id = (object_id *) utarray_eltptr(queue->object_ids, i);
     /* Attempt to send a notification about this object ID. */
-    int nbytes = send(client_sock, (char const *) obj_id, sizeof(*obj_id), 0);
+    object_table_entry *entry;
+    object_id_notification objid_notification;
+
+    HASH_FIND(handle, plasma_state->plasma_store_info->objects, obj_id,
+              sizeof(object_id), entry);
+    /* Populate and send object id notification. */
+    objid_notification.data_size = entry->info.data_size;
+    objid_notification.obj_id = *obj_id;
+    /* TODO: this data struct passing will be replaced with flatbuffers. */
+    int nbytes = send(client_sock, (char const *) &objid_notification,
+                      sizeof(objid_notification), 0);
     if (nbytes >= 0) {
-      CHECK(nbytes == sizeof(*obj_id));
-    } else if (nbytes == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+      CHECK(nbytes == sizeof(objid_notification));
+    } else if (nbytes == -1 &&
+               (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
       LOG_DEBUG(
           "The socket's send buffer is full, so we are caching this "
           "notification and will send it later.");
@@ -415,7 +426,8 @@ void send_notifications(event_loop *loop,
                           send_notifications, plasma_state);
       break;
     } else {
-      CHECKM(0, "This code should be unreachable.");
+      CHECKM(0, "send_notifications:send failed with rv=%d, errno=%d, errno=%s",
+             nbytes, errno, strerror(errno));
     }
     num_processed += 1;
   }

@@ -30,7 +30,7 @@ struct db_handle {
   char *client_type;
   /** Unique ID for this client. */
   db_client_id client;
-  /** Redis context for this global state store connection. */
+  /** Redis context for all non-subscribe connections. */
   redisAsyncContext *context;
   /** Redis context for "subscribe" communication. Yes, we need a separate one
    *  for that, see https://github.com/redis/hiredis/issues/55. */
@@ -164,6 +164,18 @@ void redis_task_table_publish_publish_callback(redisAsyncContext *c,
                                                void *privdata);
 
 /**
+ * Callback invoked when the reply from the object publish command is received.
+ *
+ * @param c Redis context.
+ * @param r Reply (not used).
+ * @param privdata Data associated to the callback.
+ * @return Void.
+ */
+void redis_object_info_publish_publish_callback(redisAsyncContext *c,
+                                                void *r,
+                                                void *privdata);
+
+/**
  * Subscribe to updates of the task table.
  *
  * @param callback_data Data structure containing redis connection and timeout
@@ -180,5 +192,14 @@ void redis_task_table_subscribe(table_callback_data *callback_data);
  * @return Void.
  */
 void redis_db_client_table_subscribe(table_callback_data *callback_data);
+
+/**
+ * Subscribe to updates from the object info pub/sub channel.
+ *
+ * @param callback_data Data structure containing redis connection and timeout
+ *        information.
+ * @return Void.
+ */
+void redis_object_info_subscribe(table_callback_data *callback_data);
 
 #endif /* REDIS_H */

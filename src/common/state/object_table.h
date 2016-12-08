@@ -6,6 +6,17 @@
 #include "db.h"
 #include "task.h"
 
+/**
+ * Different types of object table requests are enumerated here.
+ *  OBJECT_INDEX_MAX reflects the total number of possible object table requests
+ */
+enum {
+  OBJECT_INDEX_SET = 0,
+  OBJECT_INDEX_ADD,
+  OBJECT_INDEX_PUBLISH,
+  OBJECT_INDEX_MAX
+};
+
 /*
  *  ==== Lookup call and callback ====
  */
@@ -18,6 +29,18 @@ typedef void (*object_table_lookup_done_callback)(
     int manager_count,
     OWNER const char *manager_vector[],
     void *user_context);
+
+typedef void (*object_info_done_callback)(object_id object_id,
+                                          void *user_context);
+
+typedef void (*object_info_subscribe_callback)(object_id object_id,
+                                               int64_t object_size,
+                                               void *user_context);
+
+typedef struct {
+  object_info_subscribe_callback subscribe_callback;
+  void *subscribe_context;
+} object_info_subscribe_data;
 
 /**
  *  Return the list of nodes storing object_id in their plasma stores.
@@ -49,6 +72,7 @@ typedef void (*object_table_done_callback)(object_id object_id,
  *
  * @param db_handle Handle to db.
  * @param object_id Object unique identifier.
+ * @param data_size Object data size
  * @param retry Information about retrying the request to the database.
  * @param done_callback Callback to be called when lookup completes.
  * @param user_context User context to be passed in the callbacks.
@@ -56,6 +80,7 @@ typedef void (*object_table_done_callback)(object_id object_id,
  */
 void object_table_add(db_handle *db_handle,
                       object_id object_id,
+                      int64_t data_size,
                       retry_info *retry,
                       object_table_done_callback done_callback,
                       void *user_context);
@@ -116,6 +141,27 @@ void object_table_subscribe(
     retry_info *retry,
     object_table_lookup_done_callback done_callback,
     void *user_context);
+
+/**
+ * Subcribing to the object info pub/sub channel
+ *
+ * @param db_handle Handle to db.
+ * @param object_info_subscribe_callback callback triggered when pub/sub channel
+ *        is notified of a new object size.
+ * @param subscribe_context caller context which will be passed back in the
+ *        object_info_subscribe_callback.
+ * @param retry Information about retrying the request to the database.
+ * @param done_callback Callback to be called when subscription is installed.
+ * @param user_context User context to be passed into the done and fail
+ *        callbacks.
+ * @return Void.
+ */
+void object_info_subscribe(db_handle *db_handle,
+                           object_info_subscribe_callback subscribe_callback,
+                           void *subscribe_context,
+                           retry_info *retry,
+                           object_info_done_callback done_callback,
+                           void *user_context);
 
 /* Data that is needed to register new object available callbacks with the state
  * database. */
