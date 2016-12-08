@@ -317,7 +317,10 @@ void redis_object_table_add_callback(redisAsyncContext *c,
       if (memcmp(digest, reply->str, reply->len) != 0) {
         /* If our object hash doesn't match the one recorded in the table,
          * report the error back to the user and exit immediately. */
-        LOG_FATAL("Object hash collision while adding manager");
+        LOG_FATAL(
+            "Found objects with different value but same object ID, most "
+            "likely because a nondeterministic task was executed twice, either "
+            "for reconstruction or for speculation.");
       }
     }
     /* Add ourselves to the object's locations. */
