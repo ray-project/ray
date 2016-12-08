@@ -1519,8 +1519,7 @@ void process_object_notification(event_loop *loop,
   /* TODO(pcm): Where is this deallocated? */
   available_object *entry =
       (available_object *) malloc(sizeof(available_object));
-  memcpy(&entry->object_id, &objid_notification.obj_id,
-      sizeof(objid_notification.obj_id));
+  entry->object_id = objid_notification.obj_id;
   entry->data_size = objid_notification.data_size;
 
   HASH_ADD(hh,

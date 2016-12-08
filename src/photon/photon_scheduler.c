@@ -104,7 +104,7 @@ void process_plasma_notification(event_loop *loop,
                                  int events) {
   local_scheduler_state *s = context;
   /* Read the notification from Plasma. */
-  objectid_notification objid_notification;
+  object_id_notification objid_notification;
 
   int error = read_bytes(client_sock,
       (uint8_t *) &objid_notification, sizeof(objid_notification));
