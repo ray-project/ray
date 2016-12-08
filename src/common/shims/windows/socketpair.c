@@ -74,7 +74,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *   sockets must be closed with closesocket() regardless.
  */
 
-int dumb_socketpair(SOCKET socks[2]) {
+int dumb_socketpair(int socks[2], int make_overlapped) {
   union {
     struct sockaddr_in inaddr;
     struct sockaddr addr;
@@ -82,6 +82,7 @@ int dumb_socketpair(SOCKET socks[2]) {
   SOCKET listener;
   int e;
   socklen_t addrlen = sizeof(a.inaddr);
+  DWORD flags = (make_overlapped ? WSA_FLAG_OVERLAPPED : 0);
   int reuse = 1;
 
   if (socks == 0) {
@@ -116,7 +117,7 @@ int dumb_socketpair(SOCKET socks[2]) {
     if (listen(listener, 1) == SOCKET_ERROR)
       break;
 
-    socks[0] = FDAPI_WSASocket(AF_INET, SOCK_STREAM, 0, NULL, 0, 0);
+    socks[0] = FDAPI_WSASocket(AF_INET, SOCK_STREAM, 0, NULL, 0, flags);
     if (socks[0] == -1)
       break;
     if (connect(socks[0], &a.addr, sizeof(a.inaddr)) == SOCKET_ERROR)

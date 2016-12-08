@@ -1,13 +1,9 @@
 #ifndef MMAN_H
 #define MMAN_H
 
-#include <unistd.h>
+#include <Win32_Interop/win32fixes.h>
 
-#define MAP_SHARED 0x0010 /* share changes */
-#define MAP_FAILED ((void *) -1)
-#define PROT_READ 0x04  /* pages can be read */
-#define PROT_WRITE 0x02 /* pages can be written */
-#define PROT_EXEC 0x01  /* pages can be executed */
+#include <unistd.h>
 
 static void *mmap(void *addr,
                   size_t len,

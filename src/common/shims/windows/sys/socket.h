@@ -3,8 +3,12 @@
 
 typedef unsigned short sa_family_t;
 
-#include "../../src/Win32_Interop/Win32_FDAPI.h"
-#include "../../src/Win32_Interop/Win32_APIs.h"
+#include <Win32_Interop/Win32_Portability.h>
+#include <Win32_Interop/win32_types.h>
+#include <Win32_Interop/win32fixes.h>
+#include <Win32_Interop/win32_wsiocp2.h>
+#include <Win32_Interop/Win32_FDAPI.h>
+#include <Win32_Interop/Win32_APIs.h>
 
 #define cmsghdr _WSACMSGHDR
 #undef CMSG_DATA
@@ -28,9 +32,8 @@ typedef unsigned short sa_family_t;
 #define msg_controllen Control.len
 #define msg_flags dwFlags
 
-int dumb_socketpair(SOCKET socks[2]);
+int dumb_socketpair(int socks[2], int make_overlapped);
 ssize_t sendmsg(int sockfd, struct msghdr *msg, int flags);
 ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags);
-int socketpair(int domain, int type, int protocol, int sv[2]);
 
 #endif /* SOCKET_H */

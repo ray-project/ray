@@ -1,16 +1,5 @@
 #include <sys/socket.h>
 
-int socketpair(int domain, int type, int protocol, int sv[2]) {
-  if ((domain != AF_UNIX && domain != AF_INET) || type != SOCK_STREAM) {
-    return INVALID_SOCKET;
-  }
-  SOCKET sockets[2];
-  int r = dumb_socketpair(sockets);
-  sv[0] = (int) sockets[0];
-  sv[1] = (int) sockets[1];
-  return r;
-}
-
 #pragma comment(lib, "IPHlpAPI.lib")
 
 struct _MIB_TCPROW2 {
@@ -28,7 +17,7 @@ DECLSPEC_IMPORT ULONG WINAPI GetTcpTable2(struct _MIB_TCPTABLE2 *TcpTable,
                                           PULONG SizePointer,
                                           BOOL Order);
 
-static DWORD getsockpid(SOCKET client) {
+static DWORD getsockpid(int client) {
   /* http://stackoverflow.com/a/25431340 */
   DWORD pid = 0;
 
@@ -109,7 +98,7 @@ ssize_t sendmsg(int sockfd, struct msghdr *msg, int flags) {
         result = FDAPI_WSADuplicateSocket(*pfd, target_pid, &protocol_info);
       }
     }
-    if (result == 0) {
+    if (result != -1) {
       int const nbufs = msg->dwBufferCount + 1;
       WSABUF *const bufs =
           (struct _WSABUF *) _alloca(sizeof(*msg->lpBuffers) * nbufs);
@@ -120,26 +109,13 @@ ssize_t sendmsg(int sockfd, struct msghdr *msg, int flags) {
       DWORD nb;
       msg->lpBuffers = bufs;
       msg->dwBufferCount = nbufs;
-      GUID const wsaid_WSASendMsg = {
-          0xa441e712,
-          0x754f,
-          0x43ca,
-          {0x84, 0xa7, 0x0d, 0xee, 0x44, 0xcf, 0x60, 0x6d}};
-      typedef INT PASCAL WSASendMsg_t(
-          SOCKET s, LPWSAMSG lpMsg, DWORD dwFlags, LPDWORD lpNumberOfBytesSent,
-          LPWSAOVERLAPPED lpOverlapped,
-          LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine);
-      WSASendMsg_t *WSASendMsg = NULL;
-      result = FDAPI_WSAIoctl(sockfd, SIO_GET_EXTENSION_FUNCTION_POINTER,
-                              &wsaid_WSASendMsg, sizeof(wsaid_WSASendMsg),
-                              &WSASendMsg, sizeof(WSASendMsg), &nb, NULL, 0);
-      if (result == 0) {
-        result = (*WSASendMsg)(sockfd, msg, flags, &nb, NULL, NULL) == 0
-                     ? (ssize_t)(nb - sizeof(protocol_info))
-                     : 0;
+      result = FDAPI_WSASend(sockfd, bufs, nbufs, &nb, flags | msg->dwFlags,
+                             NULL, NULL);
+      if (result != -1) {
+        result = (ssize_t)(nb - sizeof(protocol_info));
       }
     }
-    if (result != 0 && target_process && !is_socket) {
+    if (result == -1 && target_process && !is_socket) {
       /* we failed to send the handle, and it needs cleaning up! */
       HANDLE duplicated_back = NULL;
       if (DuplicateHandle(target_process, *(HANDLE *) &protocol_info,
@@ -159,8 +135,7 @@ ssize_t sendmsg(int sockfd, struct msghdr *msg, int flags) {
 ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags) {
   int result = -1;
   struct cmsghdr *header = CMSG_FIRSTHDR(msg);
-  if (msg->msg_controllen &&
-      flags == 0 /* We can't send flags on Windows... */) {
+  if (msg->msg_controllen) {
     struct msghdr const old_msg = *msg;
     msg->msg_control = NULL;
     msg->msg_controllen = 0;
@@ -172,26 +147,27 @@ ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags) {
     bufs[0].len = sizeof(protocol_info);
     memcpy(&bufs[1], msg->lpBuffers,
            msg->dwBufferCount * sizeof(*msg->lpBuffers));
-    typedef INT PASCAL WSARecvMsg_t(
-        SOCKET s, LPWSAMSG lpMsg, LPDWORD lpNumberOfBytesRecvd,
-        LPWSAOVERLAPPED lpOverlapped,
-        LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine);
-    WSARecvMsg_t *WSARecvMsg = NULL;
     DWORD nb;
-    GUID const wsaid_WSARecvMsg = {
-        0xf689d7c8,
-        0x6f1f,
-        0x436b,
-        {0x8a, 0x53, 0xe5, 0x4f, 0xe3, 0x51, 0xc3, 0x22}};
-    result = FDAPI_WSAIoctl(sockfd, SIO_GET_EXTENSION_FUNCTION_POINTER,
-                            &wsaid_WSARecvMsg, sizeof(wsaid_WSARecvMsg),
-                            &WSARecvMsg, sizeof(WSARecvMsg), &nb, NULL, 0);
-    if (result == 0) {
-      result = (*WSARecvMsg)(sockfd, msg, &nb, NULL, NULL) == 0
-                   ? (ssize_t)(nb - sizeof(protocol_info))
-                   : 0;
+    DWORD dwFlags = msg->dwFlags | flags;
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET(sockfd, &fds);
+    /* Unfortunately FDAPI_SocketAttachIOCP() sets FIONBIO (non-blocking mode),
+       so we should wait...
+       TODO: BUG: We are assuming we won't need to loop here.
+       That's likely to be the case for what we care about, but not true in
+       general.
+    */
+    result = select(1, &fds, NULL, NULL, NULL);
+    if (result != -1) {
+      result = FDAPI_WSARecv(sockfd, bufs, nbufs, &nb, &dwFlags, NULL, NULL);
     }
-    if (result == 0) {
+    if (result != -1) {
+      result = (ssize_t)(nb - sizeof(protocol_info));
+    }
+    *msg = old_msg;
+    msg->dwFlags = dwFlags;
+    if (result != -1) {
       int *const pfd = (int *) CMSG_DATA(header);
       if (protocol_info.iSocketType == 0 && protocol_info.iProtocol == 0) {
         *pfd = *(int *) &protocol_info;
@@ -199,10 +175,10 @@ ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags) {
         *pfd = FDAPI_WSASocket(FROM_PROTOCOL_INFO, FROM_PROTOCOL_INFO,
                                FROM_PROTOCOL_INFO, &protocol_info, 0, 0);
       }
+      header->cmsg_len = CMSG_LEN(sizeof(int));
       header->cmsg_level = SOL_SOCKET;
       header->cmsg_type = SCM_RIGHTS;
     }
-    *msg = old_msg;
   }
   return result;
 }
