@@ -391,7 +391,7 @@ void plasma_seal(plasma_connection *conn, object_id object_id) {
   object_entry->is_sealed = true;
   /* Send the seal request to Plasma. */
   plasma_request req = plasma_make_request(object_id);
-  plasma_compute_object_hash(conn, object_id, req.digest);
+  CHECK(plasma_compute_object_hash(conn, object_id, req.digest));
   CHECK(plasma_send_request(conn->store_conn, PLASMA_SEAL, &req) >= 0);
 }
 
