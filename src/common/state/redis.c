@@ -32,6 +32,20 @@
     }                                                      \
   } while (0)
 
+/**
+ * A header for callbacks of a single Redis asynchronous command. The user must
+ * pass in the table operation's timer ID as the asynchronous command's
+ * privdata field when executing the asynchronous command. The user must define
+ * variable names for DB and CB_DATA. After this piece of code runs, DB
+ * will hold a reference to the database handle, CB_DATA will hold a reference
+ * to the callback data for this table operation. The user must pass in the
+ * redisReply pointer as the REPLY argument.
+ *
+ * This header also short-circuits the entire callback if: (1) there was no
+ * reply from Redis, or (2) the callback data for this table operation was
+ * already removed, meaning that the operation was already marked as succeeded
+ * or failed.
+ */
 #define REDIS_CALLBACK_HEADER(DB, CB_DATA, REPLY)     \
   if ((REPLY) == NULL) {                              \
     return;                                           \
@@ -45,6 +59,55 @@
     return;                                           \
   }                                                   \
   do {                                                \
+  } while (0)
+
+/**
+ * A data structure to track the status of a table operation attempt that spans
+ * multiple Redis commands. Each attempt at a table operation is associated
+ * with a unique redis_requests_info instance. To use this data structure, pass
+ * it as the `privdata` argument for the callback of each asynchronous Redis
+ * command.
+ */
+typedef struct {
+  /** The timer ID that uniquely identifies this table operation. All retry
+   *  attempts of a table operation share the same timer ID. */
+  int64_t timer_id;
+  /** The index of the next command to try for this operation. This may be
+   *  different across different attempts of the same table operation. */
+  int request_index;
+  /** Whether the current invocation of the callback was triggered by a reply
+   *  to an asynchronous Redis command. If not, then the callback was called
+   *  directly. */
+  bool is_redis_reply;
+} redis_requests_info;
+
+/**
+ * A header for callbacks similar to REDIS_CALLBACK_HEADER, but for operations
+ * that span multiple Redis commands. The differences are:
+ * - Instead of passing in the table operation's timer ID as the asynchronous
+ *   command callback's `privdata` argument, the user must pass a pointer to a
+ *   redis_requests_info instance.
+ * - The user must define an additional REQUEST_INFO variable name, which will
+ *   hold a reference to the redis_requests_info passed into the Redis
+ *   asynchronous command.
+ */
+#define REDIS_MULTI_CALLBACK_HEADER(DB, CB_DATA, REPLY, REQUEST_INFO) \
+  db_handle *DB = c->data;                                            \
+  redis_requests_info *REQUEST_INFO = privdata;                       \
+  DCHECK(REQUEST_INFO != NULL);                                       \
+  if ((REPLY) == NULL && REQUEST_INFO->is_redis_reply) {              \
+    free(REQUEST_INFO);                                               \
+    return;                                                           \
+  }                                                                   \
+  table_callback_data *CB_DATA =                                      \
+      outstanding_callbacks_find(REQUEST_INFO->timer_id);             \
+  if (CB_DATA == NULL) {                                              \
+    /* the callback data structure has been                           \
+     * already freed; just ignore this reply */                       \
+    free(privdata);                                                   \
+    return;                                                           \
+  }                                                                   \
+  do {                                                                \
   } while (0)
 
 db_handle *db_connect(const char *address,
@@ -167,6 +230,7 @@ task *parse_redis_task_table_entry(task_id id,
     char *key = redis_replies[i]->str;
     redisReply *value = redis_replies[i + 1];
     if (strcmp(key, "node") == 0) {
+      DCHECK(value->len == sizeof(node_id));
       memcpy(&node, value->str, value->len);
     } else if (strcmp(key, "state") == 0) {
       int scanned = sscanf(value->str, "%d", (int *) &state);
@@ -199,27 +263,102 @@ task *parse_redis_task_table_entry(task_id id,
 void redis_object_table_add_callback(redisAsyncContext *c,
                                      void *r,
                                      void *privdata) {
-  REDIS_CALLBACK_HEADER(db, callback_data, r);
+  LOG_DEBUG("Calling object table add callback");
+  REDIS_MULTI_CALLBACK_HEADER(db, callback_data, r, requests_info);
+  redisReply *reply = r;
+  object_id id = callback_data->id;
+  unsigned char *digest = callback_data->data;
 
-  if (callback_data->done_callback) {
-    task_table_done_callback done_callback = callback_data->done_callback;
-    done_callback(callback_data->id, callback_data->user_context);
+#define NUM_CHECK_AND_SET_COMMANDS 3
+#define CHECK_AND_SET_SETNX_INDEX 0
+#define CHECK_AND_SET_GET_INDEX 1
+#define CHECK_AND_SET_SADD_INDEX 2
+
+  /* Check that we're at a valid command index. */
+  int request_index = requests_info->request_index;
+  LOG_DEBUG("Object table add request index is %d", request_index);
+  CHECK(request_index <= NUM_CHECK_AND_SET_COMMANDS);
+  /* If we're on a valid command index, execute the current command and
+   * register a callback that will execute the next command by incrementing the
+   * request_index. */
+  int status = REDIS_OK;
+  ++requests_info->request_index;
+  if (request_index == CHECK_AND_SET_SETNX_INDEX) {
+    /* Atomically set the object hash and get the previous value to compare to
+     * our hash, if a previous value existed. */
+    requests_info->is_redis_reply = true;
+    status =
+        redisAsyncCommand(db->context, redis_object_table_add_callback,
+                          (void *) requests_info, "SETNX objhash:%b %b", id.id,
+                          sizeof(object_id), digest, (size_t) DIGEST_SIZE);
+  } else if (request_index == CHECK_AND_SET_GET_INDEX) {
+    /* If there was an object hash in the table previously, check that it's
+     * equal to ours. */
+    CHECKM(reply->type == REDIS_REPLY_INTEGER,
+           "Expected Redis integer, received type %d %s", reply->type,
+           reply->str);
+    CHECKM(reply->integer == 0 || reply->integer == 1,
+           "Expected 0 or 1 from REDIS, received %lld", reply->integer);
+    if (reply->integer == 1) {
+      requests_info->is_redis_reply = false;
+      redis_object_table_add_callback(c, reply, (void *) requests_info);
+    } else {
+      requests_info->is_redis_reply = true;
+      status = redisAsyncCommand(db->context, redis_object_table_add_callback,
+                                 (void *) requests_info, "GET objhash:%b",
+                                 id.id, sizeof(object_id));
+    }
+  } else if (request_index == CHECK_AND_SET_SADD_INDEX) {
+    if (requests_info->is_redis_reply) {
+      CHECKM(reply->type == REDIS_REPLY_STRING,
+             "Expected Redis string, received type %d %s", reply->type,
+             reply->str);
+      DCHECK(reply->len == DIGEST_SIZE);
+      if (memcmp(digest, reply->str, reply->len) != 0) {
+        /* If our object hash doesn't match the one recorded in the table,
+         * report the error back to the user and exit immediately. */
+        LOG_FATAL("Object hash collision while adding manager");
+      }
+    }
+    /* Add ourselves to the object's locations. */
+    requests_info->is_redis_reply = true;
+    status = redisAsyncCommand(db->context, redis_object_table_add_callback,
+                               (void *) requests_info, "SADD obj:%b %b", id.id,
+                               sizeof(id.id), (char *) db->client.id,
+                               sizeof(db->client.id));
+  } else {
+    /* We finished executing all the Redis commands for this attempt at the
+     * table operation. */
+    free(requests_info);
+    /* If the transaction failed, exit and let the table operation's timout
+     * handler handle it. */
+    if (reply->type == REDIS_REPLY_NIL) {
+      return;
+    }
+    /* Else, call the done callback and clean up the table state. */
+    if (callback_data->done_callback) {
+      task_table_done_callback done_callback = callback_data->done_callback;
+      done_callback(callback_data->id, callback_data->user_context);
+    }
+    destroy_timer_callback(db->loop, callback_data);
   }
-  destroy_timer_callback(db->loop, callback_data);
+  /* If there was an error executing the current command, this attempt was a
+   * failure, so clean up the request info. */
+  if ((status == REDIS_ERR) || db->context->err) {
+    LOG_REDIS_DEBUG(db->context, "could not add object_table entry");
+    free(requests_info);
+  }
 }
 
 void redis_object_table_add(table_callback_data *callback_data) {
   CHECK(callback_data);
+  LOG_DEBUG("Calling object table add");
+  redis_requests_info *requests_info = malloc(sizeof(redis_requests_info));
+  requests_info->timer_id = callback_data->timer_id;
+  requests_info->request_index = 0;
+  requests_info->is_redis_reply = false;
   db_handle *db = callback_data->db_handle;
-  object_id id = callback_data->id;
-  int status = redisAsyncCommand(db->context, redis_object_table_add_callback,
-                                 (void *) callback_data->timer_id,
-                                 "SADD obj:%b %b", id.id, sizeof(id.id),
-                                 (char *) db->client.id, sizeof(db->client.id));
-
-  if ((status == REDIS_ERR) || db->context->err) {
-    LOG_REDIS_DEBUG(db->context, "could not add object_table entry");
-  }
+  redis_object_table_add_callback(db->context, NULL, (void *) requests_info);
 }
 
 void redis_object_table_lookup(table_callback_data *callback_data) {
@@ -514,17 +653,17 @@ void redis_task_table_publish(table_callback_data *callback_data,
  * The first entry in the callback corresponds to RPUSH, and the second entry to
  * PUBLISH.
  */
-#define NUM_DB_REQUESTS 2
-#define PUSH_INDEX 0
-#define PUBLISH_INDEX 1
+#define NUM_PUBLISH_COMMANDS 2
+#define PUBLISH_PUSH_INDEX 0
+#define PUBLISH_PUBLISH_INDEX 1
   if (callback_data->requests_info == NULL) {
-    callback_data->requests_info = malloc(NUM_DB_REQUESTS * sizeof(bool));
-    for (int i = 0; i < NUM_DB_REQUESTS; i++) {
+    callback_data->requests_info = malloc(NUM_PUBLISH_COMMANDS * sizeof(bool));
+    for (int i = 0; i < NUM_PUBLISH_COMMANDS; i++) {
       ((bool *) callback_data->requests_info)[i] = false;
     }
   }
 
-  if (((bool *) callback_data->requests_info)[PUSH_INDEX] == false) {
+  if (((bool *) callback_data->requests_info)[PUBLISH_PUSH_INDEX] == false) {
     /* If the task has already been added to the task table, only update the
      * scheduling information fields. */
     int status = REDIS_OK;
@@ -547,7 +686,7 @@ void redis_task_table_publish(table_callback_data *callback_data,
     }
   }
 
-  if (((bool *) callback_data->requests_info)[PUBLISH_INDEX] == false) {
+  if (((bool *) callback_data->requests_info)[PUBLISH_PUBLISH_INDEX] == false) {
     int status = redisAsyncCommand(
         db->context, redis_task_table_publish_publish_callback,
         (void *) callback_data->timer_id, "PUBLISH task:%b:%d %b",
@@ -575,9 +714,9 @@ void redis_task_table_publish_push_callback(redisAsyncContext *c,
   LOG_DEBUG("Calling publish push callback");
   REDIS_CALLBACK_HEADER(db, callback_data, r);
   CHECK(callback_data->requests_info != NULL);
-  ((bool *) callback_data->requests_info)[PUSH_INDEX] = true;
+  ((bool *) callback_data->requests_info)[PUBLISH_PUSH_INDEX] = true;
 
-  if (((bool *) callback_data->requests_info)[PUBLISH_INDEX] == true) {
+  if (((bool *) callback_data->requests_info)[PUBLISH_PUBLISH_INDEX] == true) {
     if (callback_data->done_callback) {
       task_table_done_callback done_callback = callback_data->done_callback;
       done_callback(callback_data->id, callback_data->user_context);
@@ -592,9 +731,9 @@ void redis_task_table_publish_publish_callback(redisAsyncContext *c,
   LOG_DEBUG("Calling publish publish callback");
   REDIS_CALLBACK_HEADER(db, callback_data, r);
   CHECK(callback_data->requests_info != NULL);
-  ((bool *) callback_data->requests_info)[PUBLISH_INDEX] = true;
+  ((bool *) callback_data->requests_info)[PUBLISH_PUBLISH_INDEX] = true;
 
-  if (((bool *) callback_data->requests_info)[PUSH_INDEX] == true) {
+  if (((bool *) callback_data->requests_info)[PUBLISH_PUSH_INDEX] == true) {
     if (callback_data->done_callback) {
       task_table_done_callback done_callback = callback_data->done_callback;
       done_callback(callback_data->id, callback_data->user_context);

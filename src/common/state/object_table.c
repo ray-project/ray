@@ -13,11 +13,14 @@ void object_table_lookup(db_handle *db_handle,
 
 void object_table_add(db_handle *db_handle,
                       object_id object_id,
+                      unsigned char digest[],
                       retry_info *retry,
                       object_table_done_callback done_callback,
                       void *user_context) {
   CHECK(db_handle != NULL);
-  init_table_callback(db_handle, object_id, __func__, NULL, retry,
+  unsigned char *digest_copy = malloc(DIGEST_SIZE);
+  memcpy(digest_copy, digest, DIGEST_SIZE);
+  init_table_callback(db_handle, object_id, __func__, digest_copy, retry,
                       done_callback, redis_object_table_add, user_context);
 }
 

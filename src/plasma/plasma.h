@@ -158,6 +158,9 @@ typedef struct {
   int port;
   /** A number of bytes. This is used for eviction requests. */
   int64_t num_bytes;
+  /** A digest describing the object. This is used for detecting
+   *  nondeterministic tasks. */
+  unsigned char digest[DIGEST_SIZE];
   /** The number of object IDs that will be included in this request. */
   int num_object_ids;
   /** The object requests that the request is about. */

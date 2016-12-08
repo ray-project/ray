@@ -1627,7 +1627,8 @@ void process_message(event_loop *loop,
     };
     if (conn->manager_state->db) {
       object_table_add(conn->manager_state->db,
-                       req->object_requests[0].object_id, &retry, NULL, NULL);
+                       req->object_requests[0].object_id, req->digest, &retry,
+                       NULL, NULL);
     }
   } break;
   case DISCONNECT_CLIENT: {

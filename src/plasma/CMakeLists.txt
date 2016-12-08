@@ -57,7 +57,7 @@ if(APPLE)
   SET(CMAKE_SHARED_LIBRARY_SUFFIX ".so")
 endif(APPLE)
 
-include_directories("${PYTHON_INCLUDE_DIRS}")
+include_directories("${PYTHON_INCLUDE_DIRS}" thirdparty)
 
 set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} --std=c99 -D_XOPEN_SOURCE=500 -D_POSIX_C_SOURCE=200809L")
 
@@ -78,6 +78,7 @@ add_library(plasma SHARED
   plasma.c
   plasma_extension.c
   plasma_client.c
+  thirdparty/xxhash.c
   fling.c)
 
 get_filename_component(PYTHON_SHARED_LIBRARY ${PYTHON_LIBRARIES} NAME)
