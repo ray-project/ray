@@ -8,7 +8,7 @@
   <ItemDefinitionGroup>
     <ClCompile />
     <ClCompile>
-      <AdditionalIncludeDirectories>$(ProjectDir)..\src\plasma;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\src\common\state;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup />

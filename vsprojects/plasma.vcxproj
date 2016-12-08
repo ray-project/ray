@@ -19,36 +19,25 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\src\plasma\eviction_policy.c" />
-    <ClCompile Include="..\src\plasma\fling.c" />
-    <ClCompile Include="..\src\plasma\malloc.c" />
-    <ClCompile Include="..\src\plasma\plasma.c" />
-    <ClCompile Include="..\src\plasma\plasma_client.c" />
-    <ClCompile Include="..\src\plasma\thirdparty\xxhash.c" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="..\src\plasma\eviction_policy.h" />
-    <ClInclude Include="..\src\plasma\fling.h" />
-    <ClInclude Include="..\src\plasma\malloc.h" />
-    <ClInclude Include="..\src\plasma\plasma.h" />
-    <ClInclude Include="..\src\plasma\plasma_client.h" />
-    <ClInclude Include="..\src\plasma\thirdparty\xxhash.h" />
+    <ClCompile Include="..\src\plasma\plasma_extension.c" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="common.vcxproj">
       <Project>{c002f9f6-8447-4b95-aa18-fb781f4a7865}</Project>
-      <UseLibraryDependencyInputs>false</UseLibraryDependencyInputs>
+    </ProjectReference>
+    <ProjectReference Include="plasma_client.vcxproj">
+      <Project>{ddfcec30-7024-421a-979a-b1bf69cf464e}</Project>
     </ProjectReference>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{DDFCEC30-7024-421A-979A-B1BF69CF464E}</ProjectGuid>
+    <ProjectGuid>{2660A3B4-9D13-493d-A006-354897FBBD92}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Label="Configuration">
     <PlatformToolset>v140_xp</PlatformToolset>
-    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
   </PropertyGroup>
   <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <CharacterSet>Unicode</CharacterSet>
@@ -72,6 +61,22 @@
     <Import Project="plasma.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <TargetName>lib$(MSBuildProjectName)</TargetName>
+    <TargetExt>.pyd</TargetExt>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <TargetName>lib$(MSBuildProjectName)</TargetName>
+    <TargetExt>.pyd</TargetExt>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <TargetName>lib$(MSBuildProjectName)</TargetName>
+    <TargetExt>.pyd</TargetExt>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <TargetName>lib$(MSBuildProjectName)</TargetName>
+    <TargetExt>.pyd</TargetExt>
+  </PropertyGroup>
   <ItemDefinitionGroup>
     <Link>
       <SubSystem>Console</SubSystem>

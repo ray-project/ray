@@ -2,7 +2,7 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ImportGroup Label="PropertySheets" />
   <PropertyGroup Label="UserMacros">
-    <THIRD_PARTY>$(ProjectDir)..\src\common\thirdparty\</THIRD_PARTY>
+    <THIRD_PARTY>$(SolutionDir)src\common\thirdparty\</THIRD_PARTY>
   </PropertyGroup>
   <PropertyGroup>
     <OutDir>$(SolutionDir)build\$(Platform)\$(Configuration)\</OutDir>
@@ -17,9 +17,9 @@
   <ItemDefinitionGroup>
     <ClCompile>
       <AdditionalIncludeDirectories>$(ProjectDir)..\src;$(ProjectDir)..\src\$(MSBuildProjectName);$(ProjectDir)..\src\common;$(ProjectDir)..\src\common\lib\python;$(ProjectDir)..\src\common\shims\windows;$(PYTHONHOME)\Lib\site-packages\numpy\core\include;$(THIRD_PARTY)python\inc;$(THIRD_PARTY)redis-windows\src;$(THIRD_PARTY)redis-windows\deps;$(THIRD_PARTY)redis-windows\deps\hiredis;$(THIRD_PARTY)python\inc\Windows;$(THIRD_PARTY);$(ProjectDir)..\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>FDAPI_NOCRTREDEFS;USE_STATIC;_CRT_NONSTDC_NO_DEPRECATE;_CRT_OBSOLETE_NO_DEPRECATE;_CRT_SECURE_NO_WARNINGS;_SCL_SECURE_NO_WARNINGS;_WIN32_WINNT=0x0502;HAVE_ROUND;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>Py_NO_DEBUG;ARROW_UTIL_VISIBILITY_H=;ARROW_EXPORT=;ARROW_NO_EXPORT=;FDAPI_NOCRTREDEFS;USE_STATIC;_CRT_OBSOLETE_NO_DEPRECATE;_CRT_SECURE_NO_WARNINGS;_SCL_SECURE_NO_WARNINGS;_WIN32_WINNT=0x0502;HAVE_ROUND;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <DisableSpecificWarnings>4191;;4100;4371;4514;4571;4619;4668;4710;4820</DisableSpecificWarnings>
-      <AdditionalOptions>/we4013 /FS %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/we4013 /we4024 /we4133 /FS %(AdditionalOptions)</AdditionalOptions>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <MinimalRebuild>false</MinimalRebuild>
       <WarningLevel>Level4</WarningLevel>

@@ -5,7 +5,7 @@
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>55436dea-03b9-4955-aab9-6fec4f8bcb87</ProjectGuid>
     <ProjectHome>.</ProjectHome>
-    <StartupFile>..\scripts\shell.py</StartupFile>
+    <StartupFile>..\test\runtest.py</StartupFile>
     <SearchPath>
     </SearchPath>
     <WorkingDirectory>.</WorkingDirectory>
@@ -13,9 +13,9 @@
     <Name>shell</Name>
     <RootNamespace>shell</RootNamespace>
     <LaunchProvider>Standard Python launcher</LaunchProvider>
-    <EnableNativeCodeDebugging>False</EnableNativeCodeDebugging>
-    <Environment>PYTHONPATH=$(SolutionDir)build\x64\$(Configuration)\;$(SolutionDir)build\Win32\$(Configuration)\;$(MSBuildThisFileDirectory)..\lib\python\;$(MSBuildThisFileDirectory)..\scripts\;$(PYTHONPATH)
-PATH=$(SolutionDir)build\x64\$(Configuration)\;$(SolutionDir)build\Win32\$(Configuration)\;$(PATH)</Environment>
+    <EnableNativeCodeDebugging>True</EnableNativeCodeDebugging>
+    <Environment>PYTHONPATH=$(SolutionDir)build\x64\$(Configuration)\;$(SolutionDir)build\Win32\$(Configuration)\;$(MSBuildThisFileDirectory)..\src\photon\photon;$(MSBuildThisFileDirectory)..\numbuf;$(MSBuildThisFileDirectory)..\lib\python\;$(MSBuildThisFileDirectory)..\scripts\;$(PYTHONPATH)
+PATH=$(SolutionDir)build\x64\$(Configuration)\;$(SolutionDir)build\Win32\$(Configuration)\;$(SolutionDir)packages\redis-64.3.0.503\tools\;$(PATH)</Environment>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
     <DebugSymbols>true</DebugSymbols>
@@ -29,29 +29,11 @@ PATH=$(SolutionDir)build\x64\$(Configuration)\;$(SolutionDir)build\Win32\$(Confi
     <VisualStudioVersion Condition="'$(VisualStudioVersion)' == ''">10.0</VisualStudioVersion>
     <PtvsTargetsFile>$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets</PtvsTargetsFile>
   </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+    <OutputPath>bin\Release\</OutputPath>
+  </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\thirdparty\numbuf\vsprojects\numbuf.vcxproj">
-      <Name>numbuf</Name>
-      <Project>{609d1438-d42d-4cba-80a5-a1398c3bcc85}</Project>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="plasma.vcxproj">
-      <Name>plasma</Name>
-      <Project>{ddfcec30-7024-421a-979a-b1bf69cf464e}</Project>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="raylib.vcxproj">
-      <Name>raylib</Name>
-      <Project>{76be8e91-0f74-4276-a6a7-b279c6fea0d2}</Project>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="photon.vcxproj">
-      <Name>photon</Name>
-      <Project>{d4f50b21-7fde-41ce-87f5-2cf71178ef40}</Project>
-      <Private>False</Private>
-    </ProjectReference>
-  </ItemGroup>
-  <ItemGroup>
+    <Folder Include="lib\" />
     <Folder Include="ray\" />
     <Folder Include="tests\" />
     <Folder Include="scripts\" />
@@ -107,6 +89,15 @@ PATH=$(SolutionDir)build\x64\$(Configuration)\;$(SolutionDir)build\Win32\$(Confi
     </Compile>
     <Compile Include="..\test\test_functions.py">
       <Link>tests\test_functions.py</Link>
+    </Compile>
+    <Compile Include="..\src\global_scheduler\lib\python\global_scheduler_services.py">
+      <Link>lib\global_scheduler_services</Link>
+    </Compile>
+    <Compile Include="..\src\photon\photon\photon_services.py">
+      <Link>lib\photon_services.py</Link>
+    </Compile>
+    <Compile Include="..\src\plasma\lib\python\plasma.py">
+      <Link>lib\plasma.py</Link>
     </Compile>
   </ItemGroup>
   <Import Condition="Exists($(PtvsTargetsFile))" Project="$(PtvsTargetsFile)" />

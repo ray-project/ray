@@ -19,36 +19,22 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\src\plasma\eviction_policy.c" />
-    <ClCompile Include="..\src\plasma\fling.c" />
-    <ClCompile Include="..\src\plasma\malloc.c" />
-    <ClCompile Include="..\src\plasma\plasma.c" />
-    <ClCompile Include="..\src\plasma\plasma_client.c" />
-    <ClCompile Include="..\src\plasma\thirdparty\xxhash.c" />
+    <ClCompile Include="..\src\photon\photon_scheduler.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\src\plasma\eviction_policy.h" />
-    <ClInclude Include="..\src\plasma\fling.h" />
-    <ClInclude Include="..\src\plasma\malloc.h" />
-    <ClInclude Include="..\src\plasma\plasma.h" />
-    <ClInclude Include="..\src\plasma\plasma_client.h" />
-    <ClInclude Include="..\src\plasma\thirdparty\xxhash.h" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="common.vcxproj">
-      <Project>{c002f9f6-8447-4b95-aa18-fb781f4a7865}</Project>
-      <UseLibraryDependencyInputs>false</UseLibraryDependencyInputs>
+    <ProjectReference Include="photon_client.vcxproj">
+      <Project>{d4f50b21-7fde-41ce-87f5-2cf71178ef40}</Project>
     </ProjectReference>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{DDFCEC30-7024-421A-979A-B1BF69CF464E}</ProjectGuid>
+    <ProjectGuid>{1A993019-E145-4eda-84AA-B17E5F53BE0D}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Label="Configuration">
     <PlatformToolset>v140_xp</PlatformToolset>
-    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <ConfigurationType>Application</ConfigurationType>
   </PropertyGroup>
   <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <CharacterSet>Unicode</CharacterSet>
@@ -69,19 +55,14 @@
   </ImportGroup>
   <ImportGroup Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-    <Import Project="plasma.props" />
+    <Import Project="photon.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <ItemDefinitionGroup>
     <Link>
       <SubSystem>Console</SubSystem>
     </Link>
-    <ClCompile />
-    <ClCompile />
-    <ClCompile />
-    <ClCompile />
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
-  <ImportGroup Label="ExtensionTargets">
-  </ImportGroup>
+  <ImportGroup Label="ExtensionTargets" />
 </Project>

@@ -19,34 +19,22 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\src\photon\photon_algorithm.c" />
-    <ClCompile Include="..\src\photon\photon_client.c" />
     <ClCompile Include="..\src\photon\photon_extension.c" />
-    <ClCompile Include="..\src\photon\photon_scheduler.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\src\photon\photon.h" />
-    <ClInclude Include="..\src\photon\photon_algorithm.h" />
-    <ClInclude Include="..\src\photon\photon_client.h" />
-    <ClInclude Include="..\src\photon\photon_scheduler.h" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="common.vcxproj">
-      <Project>{c002f9f6-8447-4b95-aa18-fb781f4a7865}</Project>
-    </ProjectReference>
-    <ProjectReference Include="plasma_client.vcxproj">
-      <Project>{ddfcec30-7024-421a-979a-b1bf69cf464e}</Project>
+    <ProjectReference Include="photon_client.vcxproj">
+      <Project>{d4f50b21-7fde-41ce-87f5-2cf71178ef40}</Project>
     </ProjectReference>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{D4F50B21-7FDE-41CE-87F5-2CF71178EF40}</ProjectGuid>
+    <ProjectGuid>{6C6DC57A-5D2A-4c8c-8988-F159A8FA719E}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Label="Configuration">
     <PlatformToolset>v140_xp</PlatformToolset>
-    <ConfigurationType>Application</ConfigurationType>
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
   </PropertyGroup>
   <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <CharacterSet>Unicode</CharacterSet>
@@ -67,21 +55,25 @@
   </ImportGroup>
   <ImportGroup Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-    <Import Project="$(SolutionDir)vsprojects\base.props" Condition="exists('$(SolutionDir)vsprojects\base.props')" />
-  </ImportGroup>
-  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <Import Project="photon.props" />
-  </ImportGroup>
-  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <Import Project="photon.props" />
-  </ImportGroup>
-  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <Import Project="photon.props" />
-  </ImportGroup>
-  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Import Project="photon.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <TargetExt>.pyd</TargetExt>
+    <TargetName>lib$(MSBuildProjectName)</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <TargetExt>.pyd</TargetExt>
+    <TargetName>lib$(MSBuildProjectName)</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <TargetExt>.pyd</TargetExt>
+    <TargetName>lib$(MSBuildProjectName)</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <TargetExt>.pyd</TargetExt>
+    <TargetName>lib$(MSBuildProjectName)</TargetName>
+  </PropertyGroup>
   <ItemDefinitionGroup>
     <Link>
       <SubSystem>Console</SubSystem>

@@ -6,9 +6,8 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup />
   <ItemDefinitionGroup>
-    <ClCompile />
     <ClCompile>
-      <AdditionalIncludeDirectories>$(ProjectDir)..\src\plasma;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\src\plasma;$(ProjectDir)..\src\plasma\thirdparty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup />

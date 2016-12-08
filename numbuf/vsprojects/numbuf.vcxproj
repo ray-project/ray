@@ -24,8 +24,20 @@
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Label="Configuration">
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>v140_xp</PlatformToolset>
     <ConfigurationType>DynamicLibrary</ConfigurationType>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
@@ -43,7 +55,7 @@
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>
-      <AdditionalIncludeDirectories>$(THIRD_PARTY)arrow\cpp\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\cpp\src;$(ProjectDir)..\thirdparty\arrow\cpp\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -68,6 +80,9 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="$(THIRD_PARTY)arrow\vsprojects\arrow.vcxproj" Condition="exists('$(THIRD_PARTY)arrow\vsprojects\arrow.vcxproj')">
+      <Project>{10e7d8e8-0eeb-46ea-a58d-f9236b5960ad}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\thirdparty\arrow\vsprojects\arrow.vcxproj">
       <Project>{10e7d8e8-0eeb-46ea-a58d-f9236b5960ad}</Project>
     </ProjectReference>
   </ItemGroup>
