@@ -6,6 +6,13 @@
 #include "db.h"
 #include "task.h"
 
+enum {
+  OBJECT_INDEX_SET = 0,
+  OBJECT_INDEX_ADD,
+  OBJECT_INDEX_PUBLISH,
+  OBJECT_INDEX_MAX
+};
+
 /*
  *  ==== Lookup call and callback ====
  */

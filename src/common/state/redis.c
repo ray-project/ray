@@ -201,18 +201,41 @@ void redis_object_table_add_callback(redisAsyncContext *c,
                                      void *privdata) {
   REDIS_CALLBACK_HEADER(db, callback_data, r);
 
-  if (callback_data->done_callback) {
-    task_table_done_callback done_callback = callback_data->done_callback;
-    done_callback(callback_data->id, callback_data->user_context);
+  CHECK(callback_data->requests_info != NULL);
+  ((bool *) callback_data->requests_info)[OBJECT_INDEX_ADD] = true;
+
+  /* Check the other two events. */
+  if ((((bool *) callback_data->requests_info)[OBJECT_INDEX_PUBLISH] == true)
+      && (((bool *) callback_data->requests_info)[OBJECT_INDEX_SET] == true)) {
+
+    if (callback_data->done_callback) {
+      task_table_done_callback done_callback = callback_data->done_callback;
+      done_callback(callback_data->id, callback_data->user_context);
+    }
+    destroy_timer_callback(db->loop, callback_data);
+    /* TODO(atumanov): also deallocate callback_data->requests_info ?     */
   }
-  destroy_timer_callback(db->loop, callback_data);
 }
 
 void redis_object_table_set_callback(redisAsyncContext *c,
     void *r,
     void *privdata) {
-  /* Same callback as for the object table add */
-  redis_object_table_add_callback(c,r,privdata);
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
+
+  CHECK(callback_data->requests_info != NULL);
+  ((bool *) callback_data->requests_info)[OBJECT_INDEX_SET] = true;
+
+  /* Check the other two events. */
+  if ((((bool *) callback_data->requests_info)[OBJECT_INDEX_PUBLISH] == true)
+      && (((bool *) callback_data->requests_info)[OBJECT_INDEX_ADD] == true)) {
+
+    if (callback_data->done_callback) {
+      task_table_done_callback done_callback = callback_data->done_callback;
+      done_callback(callback_data->id, callback_data->user_context);
+    }
+    destroy_timer_callback(db->loop, callback_data);
+    /* TODO(atumanov): also deallocate callback_data->requests_info ?     */
+  }
 }
 
 
@@ -228,49 +251,48 @@ void redis_object_table_add(table_callback_data *callback_data) {
   db_handle *db = callback_data->db_handle;
   object_id id = callback_data->id;
   int64_t data_size = *((int64_t *)callback_data->data);
-  status = redisAsyncCommand(db->context, redis_object_table_add_callback,
-                                 (void *) callback_data->timer_id,
-                                 "SADD obj:%b %b", id.id, sizeof(id.id),
-                                 (char *) db->client.id, sizeof(db->client.id));
 
-  if ((status == REDIS_ERR) || db->context->err) {
-    LOG_REDIS_DEBUG(db->context, "could not add object_table entry to the set");
+  /* Need to keep track of 3 object table events asynchronously: add,set,publish.
+   * Timer can be removed only when all three callbacks fired.
+   */
+  if (callback_data->requests_info == NULL) {
+    callback_data->requests_info = malloc(OBJECT_INDEX_MAX * sizeof(bool));
+    for (int i = 0; i < OBJECT_INDEX_MAX; i++) {
+      ((bool *) callback_data->requests_info)[i] = false;
+    }
   }
-  status = redisAsyncCommand(
-      db->context, redis_object_table_set_callback,
-      (void *) callback_data->timer_id, "HMSET obj:%b size %d",
-      (char *) id.id, sizeof(id.id), data_size);
-  if ((status = REDIS_ERR) || db->context->err) {
-    LOG_REDIS_DEBUG(db->context, "error setting object size in object_table_add");
+
+  if (((bool *) callback_data->requests_info)[OBJECT_INDEX_ADD] == false) {
+    status = redisAsyncCommand(db->context, redis_object_table_add_callback,
+        (void *) callback_data->timer_id, "SADD obj:%b %b", id.id,
+        sizeof(id.id), (char *) db->client.id, sizeof(db->client.id));
+
+    if ((status == REDIS_ERR) || db->context->err) {
+      LOG_REDIS_DEBUG(db->context, "could not add object_table entry to the set");
+    }
   }
-  /* Publish to the object size channel. */
-  status = redisAsyncCommand(
-      db->sub_context, redis_object_info_publish_publish_callback,
-      (void *) callback_data->timer_id, "PUBLISH obj:info %b:%d",
-      id.id, sizeof(id.id), data_size);
-  if ((status == REDIS_ERR) || db->sub_context->err) {
-    LOG_REDIS_DEBUG(db->sub_context,
-                    "error in redis_object_info_publish");
+
+  if (((bool *) callback_data->requests_info)[OBJECT_INDEX_SET] == false) {
+    status = redisAsyncCommand(db->context, redis_object_table_set_callback,
+        (void *) callback_data->timer_id, "HMSET obj:%b size %d",
+        (char *) id.id, sizeof(id.id), data_size);
+    if ((status = REDIS_ERR) || db->context->err) {
+      LOG_REDIS_DEBUG(db->context, "error setting object size in object_table_add");
+    }
+  }
+
+  if (((bool *) callback_data->requests_info)[OBJECT_INDEX_PUBLISH] == false) {
+    /* Publish to the object size channel. */
+    status = redisAsyncCommand(db->sub_context,
+        redis_object_info_publish_publish_callback,
+        (void *) callback_data->timer_id, "PUBLISH obj:info %b:%d", id.id,
+        sizeof(id.id), data_size);
+    if ((status == REDIS_ERR) || db->sub_context->err) {
+      LOG_REDIS_DEBUG(db->sub_context,
+          "error in redis_object_info_publish");
+    }
   }
 } /* redis_object_table_add */
-
-#if 0
-void redis_object_table_set(table_callback_data *callback_data) {
-  CHECK(callback_data);
-  db_handle *db = callback_data->db_handle;
-  object_id id = callback_data->id;
-  int64_t *data = callback_data->data;
-  int64_t data_size = *data;
-  int status = REDIS_OK;
-  status = redisAsyncCommand(
-      db->context, redis_object_table_set_callback,
-      (void *) callback_data->timer_id, "HMSET obj:%b size %d",
-      (char *) id.id, sizeof(id.id), data_size);
-  if ((status = REDIS_ERR) || db->context->err) {
-    LOG_REDIS_DEBUG(db->context, "error setting object size in object_table_add");
-  }
-}
-#endif
 
 void redis_object_table_lookup(table_callback_data *callback_data) {
   CHECK(callback_data);
@@ -669,18 +691,21 @@ void redis_task_table_publish_publish_callback(redisAsyncContext *c,
 void redis_object_info_publish_publish_callback(redisAsyncContext *c,
                                                void *r,
                                                void *privdata) {
+
   /* Dummy callback that triggers a done_callback if it was registered. */
   LOG_DEBUG("Calling publish publish callback for object_info");
   REDIS_CALLBACK_HEADER(db, callback_data, r);
   CHECK(callback_data->requests_info != NULL);
-  ((bool *) callback_data->requests_info)[PUBLISH_INDEX] = true;
+  ((bool *) callback_data->requests_info)[OBJECT_INDEX_PUBLISH] = true;
 
-  if (((bool *) callback_data->requests_info)[PUSH_INDEX] == true) {
+  if ((((bool *) callback_data->requests_info)[OBJECT_INDEX_SET] == true)
+      && (((bool *) callback_data->requests_info)[OBJECT_INDEX_ADD] == true)) {
     if (callback_data->done_callback) {
       object_info_done_callback done_callback = callback_data->done_callback;
       done_callback(callback_data->id, callback_data->user_context);
     }
     destroy_timer_callback(db->loop, callback_data);
+    /* TODO(atumanov): also deallocate callback_data->requests_info ?     */
   }
 } /* redis_object_info_publish_publish_callback */
 
