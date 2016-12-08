@@ -156,7 +156,11 @@ TEST send_task(void) {
   task_args_add_ref(spec, globally_unique_id());
   finish_construct_task_spec(spec);
   int fd[2];
+#ifdef _WIN32
+  dumb_socketpair(fd, false);
+#else
   socketpair(AF_UNIX, SOCK_STREAM, 0, fd);
+#endif
   write_message(fd[0], SUBMIT_TASK, task_spec_size(spec), (uint8_t *) spec);
   int64_t type;
   int64_t length;

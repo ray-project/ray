@@ -9,6 +9,7 @@ import signal
 import string
 import subprocess
 import sys
+import tempfile
 import time
 
 # Ray modules
@@ -204,9 +205,11 @@ def start_webui(redis_port, cleanup=True):
       this process will be killed by services.cleanup() when the Python process
       that imported services exits. This is True by default.
   """
+  if sys.platform == "win32": return  # TODO(mehrdadn): make this work
   executable = "nodejs" if sys.platform == "linux" or sys.platform == "linux2" else "node"
   command = [executable, os.path.join(os.path.abspath(os.path.dirname(__file__)), "../webui/index.js"), str(redis_port)]
-  with open("/tmp/webui_out.txt", "wb") as out:
+
+  with open(os.path.join(tempfile.gettempdir(), "webui_out.txt"), "wb") as out:
     p = subprocess.Popen(command, stdout=out)
   if cleanup:
     all_processes.append(p)

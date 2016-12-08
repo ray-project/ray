@@ -297,7 +297,7 @@ PyObject *PyPlasma_subscribe(PyObject *self, PyObject *args) {
     return NULL;
   }
 
-  int sock = plasma_subscribe(conn);
+  int sock = plasma_subscribe(conn, false);
   return PyInt_FromLong(sock);
 }
 

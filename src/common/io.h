@@ -18,10 +18,28 @@ enum common_message_type {
 /* Helper functions for socket communication. */
 
 int bind_inet_sock(const int port, bool shall_listen);
-int bind_ipc_sock(const char *socket_pathname, bool shall_listen);
+
+/**
+ * Binds to a Unix domain streaming socket at the given
+ * pathname. Removes any existing file at the pathname.
+ *
+ * @param socket_pathname The pathname for the socket.
+ * @param shall_listen Are we also starting to listen on the socket?
+ * @param will_be_added_to_event_loop Is this socket used directly,
+ *        or is it going to be awaited via adding it to an event loop?
+ *        This choice cannot change dynamically and must be made here
+ *        on Windows.
+ *  NOTE: If you set this parameter, you will have to use a different
+ *        function for accepting/listening/connecting on Windows!
+ * @return A blocking file descriptor for the socket, or -1 if an error
+ *         occurs.
+ */
+int bind_ipc_sock(const char *socket_pathname,
+                  bool shall_listen,
+                  bool will_be_added_to_event_loop);
 int connect_ipc_sock(const char *socket_pathname);
 
-int accept_client(int socket_fd);
+int accept_client(int socket_fd, bool will_be_added_to_event_loop);
 
 /* Reading and writing data. */
 

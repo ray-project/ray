@@ -74,9 +74,18 @@ int bind_inet_sock(const int port, bool shall_listen) {
  * @return A blocking file descriptor for the socket, or -1 if an error
  *         occurs.
  */
-int bind_ipc_sock(const char *socket_pathname, bool shall_listen) {
+int bind_ipc_sock(const char *socket_pathname,
+                  bool shall_listen,
+                  bool will_be_added_to_event_loop) {
   struct sockaddr_un socket_address;
-  int socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+  int socket_fd;
+#ifdef WIN32_INTEROP_FDAPI_H
+  socket_fd =
+      FDAPI_WSASocket(AF_INET, SOCK_STREAM, 0, NULL, 0,
+                      will_be_added_to_event_loop ? WSA_FLAG_OVERLAPPED : 0);
+#else
+  socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+#endif
   if (socket_fd < 0) {
     LOG_ERROR("socket() failed for pathname %s.", socket_pathname);
     return -1;
@@ -89,8 +98,9 @@ int bind_ipc_sock(const char *socket_pathname, bool shall_listen) {
     close(socket_fd);
     return -1;
   }
-
+#ifndef WIN32
   unlink(socket_pathname);
+#endif
   memset(&socket_address, 0, sizeof(socket_address));
   socket_address.sun_family = AF_UNIX;
   if (strlen(socket_pathname) + 1 > sizeof(socket_address.sun_path)) {
@@ -107,10 +117,20 @@ int bind_ipc_sock(const char *socket_pathname, bool shall_listen) {
     close(socket_fd);
     return -1;
   }
-  if (shall_listen && listen(socket_fd, 5) == -1) {
-    LOG_ERROR("Could not listen to socket %s", socket_pathname);
-    close(socket_fd);
-    return -1;
+  int backlog = 5;
+  if (shall_listen) {
+    int result;
+#ifdef WIN32_INTEROP_FDAPI_H
+    result = (will_be_added_to_event_loop ? WSIOCP_Listen : listen)(socket_fd,
+                                                                    backlog);
+#else
+    result = listen(socket_fd, backlog);
+#endif
+    if (result == -1) {
+      LOG_ERROR("Could not listen to socket %s", socket_pathname);
+      close(socket_fd);
+      return -1;
+    }
   }
   return socket_fd;
 }
@@ -152,8 +172,14 @@ int connect_ipc_sock(const char *socket_pathname) {
  * Accept a new client connection on the given socket
  * descriptor. Returns a descriptor for the new socket.
  */
-int accept_client(int socket_fd) {
-  int client_fd = accept(socket_fd, NULL, NULL);
+int accept_client(int socket_fd, bool will_be_added_to_event_loop) {
+  int client_fd;
+#ifdef WIN32_INTEROP_WSIOCP2_H
+  client_fd = (will_be_added_to_event_loop ? WSIOCP_Accept : accept)(
+      socket_fd, NULL, NULL);
+#else
+  client_fd = accept(socket_fd, NULL, NULL);
+#endif
   if (client_fd < 0) {
     LOG_ERROR("Error reading from socket.");
     return -1;

@@ -474,7 +474,7 @@ plasma_manager_state *init_plasma_manager_state(const char *store_socket_name,
   /* Initialize an empty hash map for the cache of local available objects. */
   state->local_available_objects = NULL;
   /* Subscribe to notifications about sealed objects. */
-  int plasma_fd = plasma_subscribe(state->plasma_conn);
+  int plasma_fd = plasma_subscribe(state->plasma_conn, true);
   /* Add the callback that processes the notification to the event loop. */
   event_loop_add_file(state->loop, plasma_fd, EVENT_LOOP_READ,
                       process_object_notification, state);
@@ -1286,7 +1286,7 @@ client_connection *new_client_connection(event_loop *loop,
                                          int listener_sock,
                                          void *context,
                                          int events) {
-  int new_socket = accept_client(listener_sock);
+  int new_socket = accept_client(listener_sock, true);
   /* Create a new data connection context per client. */
   client_connection *conn = malloc(sizeof(client_connection));
   conn->manager_state = (plasma_manager_state *) context;
@@ -1325,7 +1325,7 @@ void start_server(const char *store_socket_name,
     exit(EXIT_COULD_NOT_BIND_PORT);
   }
 
-  int local_sock = bind_ipc_sock(manager_socket_name, false);
+  int local_sock = bind_ipc_sock(manager_socket_name, false, true);
   CHECKM(local_sock >= 0, "Unable to bind local manager socket");
 
   g_manager_state = init_plasma_manager_state(store_socket_name, master_addr,
@@ -1333,7 +1333,14 @@ void start_server(const char *store_socket_name,
   CHECK(g_manager_state);
 
   CHECK(listen(remote_sock, 5) != -1);
-  CHECK(listen(local_sock, 5) != -1);
+  int backlog = 5;
+  int result;
+#ifdef WIN32_INTEROP_WSIOCP2_H
+  result = WSIOCP_Listen(local_sock, backlog);
+#else
+  result = listen(local_sock, backlog);
+#endif
+  CHECK(result != -1);
 
   LOG_DEBUG("Started server connected to store %s, listening on port %d",
             store_socket_name, port);

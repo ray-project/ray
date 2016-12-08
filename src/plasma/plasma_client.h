@@ -233,7 +233,7 @@ void plasma_transfer(plasma_connection *conn,
  * @return The file descriptor that the client should use to read notifications
            from the object store about sealed objects.
  */
-int plasma_subscribe(plasma_connection *conn);
+int plasma_subscribe(plasma_connection *conn, int will_be_added_to_event_loop);
 
 /**
  * Get the file descriptor for the socket connection to the plasma manager.

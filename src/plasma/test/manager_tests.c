@@ -33,13 +33,14 @@ void wait_for_pollin(int fd) {
   CHECK(retval > 0);
 }
 
-UT_string *bind_ipc_sock_retry(int *fd) {
+UT_string *bind_ipc_sock_retry(int *fd, bool will_be_added_to_event_loop) {
   UT_string *socket_name = NULL;
   for (int num_retries = 0; num_retries < 5; ++num_retries) {
     LOG_INFO("trying to find plasma socket (attempt %d)", num_retries);
     utstring_renew(socket_name);
     utstring_printf(socket_name, "/tmp/plasma_socket_%d", rand());
-    *fd = bind_ipc_sock(utstring_body(socket_name), true);
+    *fd = bind_ipc_sock(utstring_body(socket_name), true,
+                        will_be_added_to_event_loop);
     if (*fd < 0) {
       /* Sleep for 100ms. */
       usleep(100000);
@@ -93,8 +94,9 @@ plasma_mock *init_plasma_mock(plasma_mock *remote_mock) {
   plasma_mock *mock = malloc(sizeof(plasma_mock));
   /* Start listening on all the ports and initiate the local plasma manager. */
   mock->port = bind_inet_sock_retry(&mock->manager_remote_fd);
-  UT_string *store_socket_name = bind_ipc_sock_retry(&mock->local_store);
-  UT_string *manager_socket_name = bind_ipc_sock_retry(&mock->manager_local_fd);
+  UT_string *store_socket_name = bind_ipc_sock_retry(&mock->local_store, false);
+  UT_string *manager_socket_name =
+      bind_ipc_sock_retry(&mock->manager_local_fd, false);
 
   CHECK(mock->manager_local_fd >= 0 && mock->local_store >= 0);
 

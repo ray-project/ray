@@ -1,6 +1,7 @@
 #include <getopt.h>
 #include <signal.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #include "common.h"
 #include "event_loop.h"

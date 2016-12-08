@@ -41,14 +41,14 @@ TEST redis_socket_test(void) {
   const char *socket_pathname = "redis-test-socket";
   redisContext *context = redisConnect("127.0.0.1", 6379);
   ASSERT(context != NULL);
-  int socket_fd = bind_ipc_sock(socket_pathname, true);
+  int socket_fd = bind_ipc_sock(socket_pathname, true, false);
   ASSERT(socket_fd >= 0);
 
   int client_fd = connect_ipc_sock(socket_pathname);
   ASSERT(client_fd >= 0);
   write_formatted_log_message(client_fd, test_set_format, test_key, test_value);
 
-  int server_fd = accept_client(socket_fd);
+  int server_fd = accept_client(socket_fd, false);
   char *cmd = read_log_message(server_fd);
   close(client_fd);
   close(server_fd);
@@ -79,7 +79,7 @@ void redis_accept_callback(event_loop *loop,
                            int socket_fd,
                            void *context,
                            int events) {
-  int accept_fd = accept_client(socket_fd);
+  int accept_fd = accept_client(socket_fd, true);
   CHECK(accept_fd >= 0);
   utarray_push_back(connections, &accept_fd);
   event_loop_add_file(loop, accept_fd, EVENT_LOOP_READ, redis_read_callback,
@@ -97,7 +97,7 @@ TEST async_redis_socket_test(void) {
 
   /* Start IPC channel. */
   const char *socket_pathname = "async-redis-test-socket";
-  int socket_fd = bind_ipc_sock(socket_pathname, true);
+  int socket_fd = bind_ipc_sock(socket_pathname, true, true);
   ASSERT(socket_fd >= 0);
   utarray_push_back(connections, &socket_fd);
 
@@ -158,7 +158,7 @@ void logging_accept_callback(event_loop *loop,
                              int socket_fd,
                              void *context,
                              int events) {
-  int accept_fd = accept_client(socket_fd);
+  int accept_fd = accept_client(socket_fd, true);
   CHECK(accept_fd >= 0);
   utarray_push_back(connections, &accept_fd);
   event_loop_add_file(loop, accept_fd, EVENT_LOOP_READ, logging_read_callback,
@@ -171,7 +171,7 @@ TEST logging_test(void) {
 
   /* Start IPC channel. */
   const char *socket_pathname = "logging-test-socket";
-  int socket_fd = bind_ipc_sock(socket_pathname, true);
+  int socket_fd = bind_ipc_sock(socket_pathname, true, true);
   ASSERT(socket_fd >= 0);
   utarray_push_back(connections, &socket_fd);
 

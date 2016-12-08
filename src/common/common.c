@@ -17,15 +17,26 @@ const unique_id NIL_ID = {{255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
 const unsigned char NIL_DIGEST[DIGEST_SIZE] = {0};
 
 unique_id globally_unique_id(void) {
+  unique_id result = {0};
+#ifdef __RTL_GENRANDOM
+  int success;
+  if (!RtlGenRandom) {
+    /* Quirk because this function is delay-loaded... */
+    replace_random();
+  }
+  if (!RtlGenRandom(&result.id[0], UNIQUE_ID_SIZE)) {
+    LOG_ERROR("Could not generate random number");
+  }
+#else
   /* Use /dev/urandom for "real" randomness. */
   int fd;
   int const flags = 0 /* for Windows compatibility */;
   if ((fd = open("/dev/urandom", O_RDONLY, flags)) == -1) {
     LOG_ERROR("Could not generate random number");
   }
-  unique_id result;
   CHECK(read_bytes(fd, &result.id[0], UNIQUE_ID_SIZE) >= 0);
   close(fd);
+#endif
   return result;
 }
 

@@ -569,7 +569,7 @@ void new_client_connection(event_loop *loop,
                            void *context,
                            int events) {
   plasma_store_state *plasma_state = context;
-  int new_socket = accept_client(listener_sock);
+  int new_socket = accept_client(listener_sock, true);
   /* Create a new client object. This will also be used as the context to use
    * for events on this client's socket. TODO(rkn): free this somewhere. */
   client *client_context = (client *) malloc(sizeof(client));
@@ -591,7 +591,7 @@ void signal_handler(int signal) {
 void start_server(char *socket_name, int64_t system_memory) {
   event_loop *loop = event_loop_create();
   plasma_store_state *state = init_plasma_store(loop, system_memory);
-  int socket = bind_ipc_sock(socket_name, true);
+  int socket = bind_ipc_sock(socket_name, true, true);
   CHECK(socket >= 0);
   event_loop_add_file(loop, socket, EVENT_LOOP_READ, new_client_connection,
                       state);

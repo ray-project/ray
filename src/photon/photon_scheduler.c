@@ -48,7 +48,7 @@ local_scheduler_state *init_local_scheduler(
       plasma_connect(plasma_store_socket_name, plasma_manager_socket_name,
                      PLASMA_DEFAULT_RELEASE_DELAY);
   /* Subscribe to notifications about sealed objects. */
-  int plasma_fd = plasma_subscribe(state->plasma_conn);
+  int plasma_fd = plasma_subscribe(state->plasma_conn, true);
   /* Add the callback that processes the notification to the event loop. */
   event_loop_add_file(loop, plasma_fd, EVENT_LOOP_READ,
                       process_plasma_notification, state);
@@ -160,7 +160,7 @@ void new_client_connection(event_loop *loop,
                            void *context,
                            int events) {
   local_scheduler_state *s = context;
-  int new_socket = accept_client(listener_sock);
+  int new_socket = accept_client(listener_sock, true);
   event_loop_add_file(loop, new_socket, EVENT_LOOP_READ, process_message, s);
   LOG_DEBUG("new connection with fd %d", new_socket);
   /* Add worker to list of workers. */
@@ -198,7 +198,7 @@ void start_server(const char *socket_name,
                   int redis_port,
                   const char *plasma_store_socket_name,
                   const char *plasma_manager_socket_name) {
-  int fd = bind_ipc_sock(socket_name, true);
+  int fd = bind_ipc_sock(socket_name, true, true);
   event_loop *loop = event_loop_create();
   g_state = init_local_scheduler(loop, redis_addr, redis_port,
                                  plasma_store_socket_name,
