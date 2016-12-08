@@ -348,9 +348,6 @@ void plasma_seal(plasma_connection *conn, object_id object_id) {
   /* Send the seal request to Plasma. */
   plasma_request req = plasma_make_request(object_id);
   CHECK(plasma_send_request(conn->store_conn, PLASMA_SEAL, &req) >= 0);
-  if (conn->manager_conn >= 0) {
-    CHECK(plasma_send_request(conn->manager_conn, PLASMA_SEAL, &req) >= 0);
-  }
 }
 
 void plasma_delete(plasma_connection *conn, object_id object_id) {
