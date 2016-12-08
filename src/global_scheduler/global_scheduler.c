@@ -72,9 +72,15 @@ void process_new_db_client(db_client_id db_client_id,
   }
 }
 
-/* object table subscribe callback
- * @param user_context: context that was passed to object_table_subscribe()
+/**
+ * Process notification about the new object location.
  *
+ * @param object_id : id of the object with new location
+ * @param manager_count: the count of new locations for this object
+ * @param manager_vector: the vector with new Plasma Manager locations
+ * @param user_context: user context passed to the object_table_subscribe()
+ *
+ * @return None
  */
 void process_new_object_manager(object_id object_id, int manager_count,
     OWNER const char *manager_vector[], void *user_context) {

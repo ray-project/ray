@@ -225,7 +225,7 @@ typedef struct {
 typedef struct {
   object_id obj_id;
   int64_t data_size;
-} objectid_notification;
+} object_id_notification;
 
 /**
  * Create a plasma request with one object ID on the stack.
