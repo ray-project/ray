@@ -1504,8 +1504,8 @@ void process_object_notification(event_loop *loop,
   };
   /* Read the notification from Plasma. */
   object_id_notification objid_notification;
-  int error = read_bytes(client_sock,
-      (uint8_t *) &objid_notification, sizeof(objid_notification));
+  int error = read_bytes(client_sock, (uint8_t *) &objid_notification,
+                         sizeof(objid_notification));
   if (error < 0) {
     /* The store has closed the socket. */
     LOG_DEBUG(
@@ -1522,25 +1522,21 @@ void process_object_notification(event_loop *loop,
   entry->object_id = objid_notification.obj_id;
   entry->data_size = objid_notification.data_size;
 
-  HASH_ADD(hh,
-      state->local_available_objects,
-      object_id, sizeof(entry->object_id), entry);
+  HASH_ADD(hh, state->local_available_objects, object_id,
+           sizeof(entry->object_id), entry);
 
   /* Add this object to the (redis) object table. */
   if (state->db) {
     /* TODO(swang): Log the error if we fail to add the object, and possibly
      * retry later? */
-    object_table_add(state->db,
-        objid_notification.obj_id,
-        objid_notification.data_size,
-        &retry, NULL, NULL);
+    object_table_add(state->db, objid_notification.obj_id,
+                     objid_notification.data_size, &retry, NULL, NULL);
   }
 
   /* If we were trying to fetch this object, finish up the fetch request. */
   fetch_request2 *fetch_req;
-  HASH_FIND(hh, state->fetch_requests2,
-            &objid_notification.obj_id, sizeof(objid_notification.obj_id),
-            fetch_req);
+  HASH_FIND(hh, state->fetch_requests2, &objid_notification.obj_id,
+            sizeof(objid_notification.obj_id), fetch_req);
   if (fetch_req != NULL) {
     remove_fetch_request(state, fetch_req);
     /* TODO(rkn): We also really should unsubscribe from the object table. */
@@ -1549,9 +1545,8 @@ void process_object_notification(event_loop *loop,
    * off objects we are waiting for. */
   client_object_request *object_req, *next;
   client_connection *client_conn;
-  HASH_FIND(fetch_hh, state->fetch_requests,
-            &objid_notification.obj_id, sizeof(object_id),
-            object_req);
+  HASH_FIND(fetch_hh, state->fetch_requests, &objid_notification.obj_id,
+            sizeof(object_id), object_req);
   plasma_reply reply = plasma_make_reply(objid_notification.obj_id);
   reply.has_object = 1;
   while (object_req) {
@@ -1564,7 +1559,8 @@ void process_object_notification(event_loop *loop,
       }
     } else {
       if (client_conn->wait1) {
-        wait_process_object_available_local(client_conn, objid_notification.obj_id);
+        wait_process_object_available_local(client_conn,
+                                            objid_notification.obj_id);
       } else {
         client_conn->num_return_objects -= 1;
         client_conn->wait_reply

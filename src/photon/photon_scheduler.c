@@ -106,8 +106,8 @@ void process_plasma_notification(event_loop *loop,
   /* Read the notification from Plasma. */
   object_id_notification objid_notification;
 
-  int error = read_bytes(client_sock,
-      (uint8_t *) &objid_notification, sizeof(objid_notification));
+  int error = read_bytes(client_sock, (uint8_t *) &objid_notification,
+                         sizeof(objid_notification));
   if (error < 0) {
     /* The store has closed the socket. */
     LOG_DEBUG(
@@ -121,7 +121,9 @@ void process_plasma_notification(event_loop *loop,
   handle_object_available(s, s->algorithm_state, objid_notification.obj_id);
 }
 
-void process_message(event_loop *loop, int client_sock, void *context,
+void process_message(event_loop *loop,
+                     int client_sock,
+                     void *context,
                      int events) {
   local_scheduler_state *s = context;
 
@@ -154,7 +156,9 @@ void process_message(event_loop *loop, int client_sock, void *context,
   }
 }
 
-void new_client_connection(event_loop *loop, int listener_sock, void *context,
+void new_client_connection(event_loop *loop,
+                           int listener_sock,
+                           void *context,
                            int events) {
   local_scheduler_state *s = context;
   int new_socket = accept_client(listener_sock);

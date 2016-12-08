@@ -43,21 +43,19 @@ void object_table_subscribe(
                       user_context);
 }
 
-void object_info_subscribe(
-    db_handle *db_handle,
-    object_info_subscribe_callback subscribe_callback,
-    void *subscribe_context,
-    retry_info *retry,
-    object_info_done_callback done_callback,
-    void *user_context) {
+void object_info_subscribe(db_handle *db_handle,
+                           object_info_subscribe_callback subscribe_callback,
+                           void *subscribe_context,
+                           retry_info *retry,
+                           object_info_done_callback done_callback,
+                           void *user_context) {
   object_info_subscribe_data *sub_data =
       malloc(sizeof(object_info_subscribe_data));
   sub_data->subscribe_callback = subscribe_callback;
   sub_data->subscribe_context = subscribe_context;
 
   init_table_callback(db_handle, NIL_OBJECT_ID, __func__, sub_data, retry,
-                      done_callback, redis_object_info_subscribe,
-                      user_context);
+                      done_callback, redis_object_info_subscribe, user_context);
 }
 
 void result_table_add(db_handle *db_handle,

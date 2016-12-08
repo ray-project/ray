@@ -82,18 +82,20 @@ void process_new_db_client(db_client_id db_client_id,
  *
  * @return None
  */
-void process_new_object_manager(object_id object_id, int manager_count,
-    OWNER const char *manager_vector[], void *user_context) {
+void process_new_object_manager(object_id object_id,
+                                int manager_count,
+                                OWNER const char *manager_vector[],
+                                void *user_context) {
   global_scheduler_state *state = (global_scheduler_state *) user_context;
-
 }
 
 /* object info subscribe callback */
-void process_new_object_info(object_id object_id, int64_t object_size,
-    void *user_context) {
+void process_new_object_info(object_id object_id,
+                             int64_t object_size,
+                             void *user_context) {
   global_scheduler_state *state = (global_scheduler_state *) user_context;
-  /* TODO(atumanov): add object size information to object hash table in state */
-
+  /* TODO(atumanov): add object size information to object hash table in state
+   */
 }
 
 void start_server(const char *redis_addr, int redis_port) {
@@ -116,10 +118,10 @@ void start_server(const char *redis_addr, int redis_port) {
                        NULL);
 
   object_table_subscribe(g_state->db, NIL_OBJECT_ID, process_new_object_manager,
-      (void *) g_state, &retry, NULL, NULL);
+                         (void *) g_state, &retry, NULL, NULL);
 
   object_info_subscribe(g_state->db, process_new_object_info, (void *) g_state,
-      &retry, NULL, NULL);
+                        &retry, NULL, NULL);
 
   /* Subscribe to notifications about new objects and object sizes. */
   /* Start the event loop. */

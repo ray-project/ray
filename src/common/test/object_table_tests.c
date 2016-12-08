@@ -611,13 +611,13 @@ void subscribe_success_done_callback(object_id object_id,
   retry_info retry = {
       .num_retries = 0, .timeout = 0, .fail_callback = NULL,
   };
-  object_table_add((db_handle *) user_context, object_id,
-      0, &retry, NULL, NULL);
+  object_table_add((db_handle *) user_context, object_id, 0, &retry, NULL,
+                   NULL);
   subscribe_success_done = 1;
 }
 
 void subscribe_objectinfo_done_callback(object_id object_id,
-                                     void *user_context) {
+                                        void *user_context) {
   retry_info retry = {
       .num_retries = 0, .timeout = 0, .fail_callback = NULL,
   };
@@ -625,7 +625,7 @@ void subscribe_objectinfo_done_callback(object_id object_id,
   CHECK(objectinfo_subscribe_context.subscribe_callback_done == 0);
 
   object_table_add((db_handle *) user_context, object_id,
-      objectinfo_subscribe_context.data_size, &retry, NULL, NULL);
+                   objectinfo_subscribe_context.data_size, &retry, NULL, NULL);
 
   objectinfo_subscribe_context.subscribe_callback_done = 1;
 }
@@ -638,8 +638,8 @@ void subscribe_success_object_available_callback(object_id object_id,
   subscribe_success_succeeded = 1;
 }
 void subscribe_success_objectinfo_available_callback(object_id object_id,
-                                                 int64_t object_size,
-                                                 void *user_context) {
+                                                     int64_t object_size,
+                                                     void *user_context) {
   LOG_DEBUG("[object avail] XXXreceived object size = %d XXX", object_size);
   CHECK(user_context == (void *) &objectinfo_subscribe_context);
   /* Check to make sure subscription done callback already fired */
@@ -694,8 +694,8 @@ TEST subscribe_objectinfo_success_test(void) {
   };
 
   object_info_subscribe(db, subscribe_success_objectinfo_available_callback,
-      (void *) &objectinfo_subscribe_context,
-      &retry, subscribe_objectinfo_done_callback, (void *)db);
+                        (void *) &objectinfo_subscribe_context, &retry,
+                        subscribe_objectinfo_done_callback, (void *) db);
 
   /* Install handler for terminating the event loop. */
   event_loop_add_timer(g_loop, 750,
@@ -736,7 +736,7 @@ TEST subscribe_object_present_test(void) {
   retry_info retry = {
       .num_retries = 0, .timeout = 100, .fail_callback = NULL,
   };
-  object_table_add(db, id, 0, &retry,  NULL, NULL);
+  object_table_add(db, id, 0, &retry, NULL, NULL);
   object_table_subscribe(
       db, id, subscribe_object_present_object_available_callback,
       (void *) subscribe_object_present_context, &retry, NULL, (void *) db);

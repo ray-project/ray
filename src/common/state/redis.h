@@ -172,8 +172,8 @@ void redis_task_table_publish_publish_callback(redisAsyncContext *c,
  * @return Void.
  */
 void redis_object_info_publish_publish_callback(redisAsyncContext *c,
-                                               void *r,
-                                               void *privdata);
+                                                void *r,
+                                                void *privdata);
 
 /**
  * Subscribe to updates of the task table.

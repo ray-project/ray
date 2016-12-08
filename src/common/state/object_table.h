@@ -31,7 +31,7 @@ typedef void (*object_table_lookup_done_callback)(
     void *user_context);
 
 typedef void (*object_info_done_callback)(object_id object_id,
-                                              void *user_context);
+                                          void *user_context);
 
 typedef void (*object_info_subscribe_callback)(object_id object_id,
                                                int64_t object_size,
@@ -156,13 +156,12 @@ void object_table_subscribe(
  *        callbacks.
  * @return Void.
  */
-void object_info_subscribe(
-    db_handle *db_handle,
-    object_info_subscribe_callback subscribe_callback,
-    void *subscribe_context,
-    retry_info *retry,
-    object_info_done_callback done_callback,
-    void *user_context);
+void object_info_subscribe(db_handle *db_handle,
+                           object_info_subscribe_callback subscribe_callback,
+                           void *subscribe_context,
+                           retry_info *retry,
+                           object_info_done_callback done_callback,
+                           void *user_context);
 
 /* Data that is needed to register new object available callbacks with the state
  * database. */

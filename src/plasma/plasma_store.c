@@ -410,11 +410,11 @@ void send_notifications(event_loop *loop,
     objid_notification.obj_id = *obj_id;
     /* TODO: this data struct passing will be replaced with flatbuffers. */
     int nbytes = send(client_sock, (char const *) &objid_notification,
-        sizeof(objid_notification), 0);
+                      sizeof(objid_notification), 0);
     if (nbytes >= 0) {
       CHECK(nbytes == sizeof(objid_notification));
     } else if (nbytes == -1 &&
-        (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
+               (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
       LOG_DEBUG(
           "The socket's send buffer is full, so we are caching this "
           "notification and will send it later.");
@@ -427,7 +427,7 @@ void send_notifications(event_loop *loop,
       break;
     } else {
       CHECKM(0, "send_notifications:send failed with rv=%d, errno=%d, errno=%s",
-          nbytes, errno, strerror(errno));
+             nbytes, errno, strerror(errno));
     }
     num_processed += 1;
   }
