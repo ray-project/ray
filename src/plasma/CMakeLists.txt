@@ -129,7 +129,7 @@ if("$ENV{FLATBUFFERS_HOME}" STREQUAL "")
       "-DFLATBUFFERS_BUILD_TESTS=OFF")
 
   set(FLATBUFFERS_INCLUDE_DIR "${FLATBUFFERS_PREFIX}/include")
-  set(FLATBUFFERS_STATIC_LIB "${FLATBUFFERS_PREFIX}/libflatbuffers.a")
+  set(FLATBUFFERS_STATIC_LIB "${FLATBUFFERS_PREFIX}/lib/libflatbuffers.a")
   set(FLATBUFFERS_COMPILER "${FLATBUFFERS_PREFIX}/bin/flatc")
   set(FLATBUFFERS_VENDORED 1)
 else()
@@ -180,19 +180,30 @@ include_directories("${CMAKE_SOURCE_DIR}/../common/thirdparty/")
 include_directories("${CMAKE_SOURCE_DIR}/../common/lib/python/")
 
 add_library(plasma SHARED
+  plasma_protocol.cc
   plasma.c
   plasma_extension.c
   plasma_client.c
   fling.c)
 
+target_link_libraries(plasma -Wl,--whole-archive ${FLATBUFFERS_STATIC_LIB} -Wl,--no-whole-archive)
+
 include_directories("${FLATBUFFERS_INCLUDE_DIR}")
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static-libgcc -static-libstdc++")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static-libgcc -static-libstdc++ -fPIC")
 
 add_library(plasmaprotocol STATIC
   plasma_protocol.cc)
 
 target_link_libraries(plasmaprotocol ${FLATBUFFERS_STATIC_LIB})
+
+add_library(plasma_client STATIC
+  plasma_protocol.cc
+  plasma.c
+  plasma_client.c
+  fling.c)
+
+target_link_libraries(plasma_client ${FLATBUFFERS_STATIC_LIB})
 
 get_filename_component(PYTHON_SHARED_LIBRARY ${PYTHON_LIBRARIES} NAME)
 if(APPLE)

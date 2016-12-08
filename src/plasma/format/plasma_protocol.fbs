@@ -6,7 +6,7 @@ enum ProtocolVersion:short {
 
 enum MessageType:int {
   // Create a new object.
-  PlasmaCreateRequest,
+  PlasmaCreateRequest = 1,
   PlasmaCreateReply,
   // Seal an object.
   PlasmaSealRequest,

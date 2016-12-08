@@ -51,7 +51,7 @@ TEST plasma_create_reply_test(void) {
   object1.metadata_offset = 2;
   object1.data_size = 3;
   object1.metadata_size = 4;
-  plasma_send_create_reply(fd, object_id1, &object1);
+  plasma_send_create_reply(fd, object_id1, &object1, 0);
   /* Go to the beginning of the file. */
   lseek(fd, 0, SEEK_SET);
   int64_t type;
@@ -61,7 +61,8 @@ TEST plasma_create_reply_test(void) {
   object_id object_id2;
   plasma_object object2;
   memset(&object2, 0, sizeof(object2));
-  plasma_read_create_reply(data, &object_id2, &object2);
+  int error_code;
+  plasma_read_create_reply(data, &object_id2, &object2, &error_code);
   ASSERT(object_ids_equal(object_id1, object_id2));
   ASSERT(memcmp(&object1, &object2, sizeof(object1)) == 0);
   free(data);

@@ -337,9 +337,15 @@ disconnected:
  *         include the bytes used to encode the type and length. If there was
  *         an error while reading, this will be 0.
  */
-int64_t read_buffer(int fd, int64_t *type, UT_array *buffer) {
+int64_t read_buffer(int fd, int64_t expected_version, int64_t *type, UT_array *buffer) {
+  int64_t read_version;
+  int closed = read_bytes(fd, (uint8_t *) &read_version, sizeof(expected_version));
+  if (closed) {
+    goto disconnected;
+  }
+  CHECK(read_version == expected_version);
   int64_t length;
-  int closed = read_bytes(fd, (uint8_t *) type, sizeof(*type));
+  closed = read_bytes(fd, (uint8_t *) type, sizeof(*type));
   if (closed) {
     goto disconnected;
   }

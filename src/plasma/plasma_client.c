@@ -23,6 +23,7 @@
 #include "common.h"
 #include "io.h"
 #include "plasma.h"
+#include "plasma_protocol.h"
 #include "plasma_client.h"
 #include "fling.h"
 #include "uthash.h"
@@ -178,7 +179,7 @@ void increment_object_count(plasma_connection *conn,
 }
 
 bool plasma_create(plasma_connection *conn,
-                   object_id object_id,
+                   object_id obj_id,
                    int64_t data_size,
                    uint8_t *metadata,
                    int64_t metadata_size,
@@ -186,37 +187,39 @@ bool plasma_create(plasma_connection *conn,
   LOG_DEBUG("called plasma_create on conn %d with size %" PRId64
             " and metadata size %" PRId64,
             conn->store_conn, data_size, metadata_size);
-  plasma_request req = plasma_make_request(object_id);
-  req.data_size = data_size;
-  req.metadata_size = metadata_size;
-  CHECK(plasma_send_request(conn->store_conn, PLASMA_CREATE, &req) >= 0);
-  plasma_reply reply;
-  CHECK(plasma_receive_reply(conn->store_conn, sizeof(reply), &reply) >= 0);
+  CHECK(plasma_send_create_request(conn->store_conn, obj_id, data_size, metadata_size) >= 0);
+  int64_t type;
+  int64_t length;
+  uint8_t *reply_data;
+  read_message(conn->store_conn, PLASMA_PROTOCOL_VERSION, &type, &length, &reply_data);
+  int error_code;
+  object_id id;
+  plasma_object object;
+  plasma_read_create_reply(reply_data, &id, &object, &error_code);
   int fd = recv_fd(conn->store_conn);
   CHECKM(fd >= 0, "recv not successful");
-  if (reply.error_code == PLASMA_OBJECT_ALREADY_EXISTS) {
-    LOG_DEBUG("returned from plasma_create with error %d", reply.error_code);
+  if (error_code == PLASMA_OBJECT_ALREADY_EXISTS) {
+    LOG_DEBUG("returned from plasma_create with error %d", error_code);
     return false;
   }
-  plasma_object *object = &reply.object;
-  CHECK(object->data_size == data_size);
-  CHECK(object->metadata_size == metadata_size);
+  CHECK(object.data_size == data_size);
+  CHECK(object.metadata_size == metadata_size);
   /* The metadata should come right after the data. */
-  CHECK(object->metadata_offset == object->data_offset + data_size);
-  *data = lookup_or_mmap(conn, fd, object->handle.store_fd,
-                         object->handle.mmap_size) +
-          object->data_offset;
+  CHECK(object.metadata_offset == object.data_offset + data_size);
+  *data = lookup_or_mmap(conn, fd, object.handle.store_fd,
+                         object.handle.mmap_size) +
+          object.data_offset;
   /* If plasma_create is being called from a transfer, then we will not copy the
    * metadata here. The metadata will be written along with the data streamed
    * from the transfer. */
   if (metadata != NULL) {
     /* Copy the metadata to the buffer. */
-    memcpy(*data + object->data_size, metadata, metadata_size);
+    memcpy(*data + object.data_size, metadata, metadata_size);
   }
   /* Increment the count of the number of instances of this object that this
    * client is using. A call to plasma_release is required to decrement this
    * count. Cache the reference to the object. */
-  increment_object_count(conn, object_id, object, false);
+  increment_object_count(conn, obj_id, &object, false);
   return true;
 }
 
