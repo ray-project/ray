@@ -589,6 +589,14 @@ const char *subscribe_success_context = "subscribe_success";
 int subscribe_success_done = 0;
 int subscribe_success_succeeded = 0;
 
+typedef struct {
+  char *subscribe_success_msg;
+  int64_t data_size;
+  int subscribe_succeeded;
+  int subscribe_callback_done;
+} objectinfo_subscribe_context_t;
+objectinfo_subscribe_context_t objectinfo_subscribe_context = {"foo", 42, 0, 0};
+
 void subscribe_success_fail_callback(unique_id id,
                                      void *user_context,
                                      void *user_data) {
@@ -608,12 +616,38 @@ void subscribe_success_done_callback(object_id object_id,
   subscribe_success_done = 1;
 }
 
+void subscribe_objectinfo_done_callback(object_id object_id,
+                                     void *user_context) {
+  retry_info retry = {
+      .num_retries = 0, .timeout = 0, .fail_callback = NULL,
+  };
+  CHECK(objectinfo_subscribe_context.subscribe_succeeded == 0);
+  CHECK(objectinfo_subscribe_context.subscribe_callback_done == 0);
+
+  object_table_add((db_handle *) user_context, object_id,
+      objectinfo_subscribe_context.data_size, &retry, NULL, NULL);
+
+  objectinfo_subscribe_context.subscribe_callback_done = 1;
+}
+
 void subscribe_success_object_available_callback(object_id object_id,
                                                  int manager_count,
                                                  const char *manager_vector[],
                                                  void *user_context) {
   CHECK(user_context == (void *) subscribe_success_context);
   subscribe_success_succeeded = 1;
+}
+void subscribe_success_objectinfo_available_callback(object_id object_id,
+                                                 int64_t object_size,
+                                                 void *user_context) {
+  LOG_DEBUG("[object avail] XXXreceived object size = %d XXX", object_size);
+  CHECK(user_context == (void *) &objectinfo_subscribe_context);
+  /* Check to make sure subscription done callback already fired */
+  CHECK(objectinfo_subscribe_context.subscribe_callback_done == 1);
+  CHECK(objectinfo_subscribe_context.subscribe_succeeded == 0);
+  CHECK(objectinfo_subscribe_context.data_size == object_size);
+
+  objectinfo_subscribe_context.subscribe_succeeded = 1; /* mark success */
 }
 
 TEST subscribe_success_test(void) {
@@ -644,6 +678,37 @@ TEST subscribe_success_test(void) {
 
   ASSERT(subscribe_success_done);
   ASSERT(subscribe_success_succeeded);
+  PASS();
+}
+
+TEST subscribe_objectinfo_success_test(void) {
+  g_loop = event_loop_create();
+  db_handle *db =
+      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11236);
+  db_attach(db, g_loop, false);
+
+  retry_info retry = {
+      .num_retries = 0,
+      .timeout = 100,
+      .fail_callback = subscribe_success_fail_callback,
+  };
+
+  object_info_subscribe(db, subscribe_success_objectinfo_available_callback,
+      (void *) &objectinfo_subscribe_context,
+      &retry, subscribe_objectinfo_done_callback, (void *)db);
+
+  /* Install handler for terminating the event loop. */
+  event_loop_add_timer(g_loop, 750,
+                       (event_loop_timer_handler) terminate_event_loop_callback,
+                       NULL);
+
+  event_loop_run(g_loop);
+  db_disconnect(db);
+  destroy_outstanding_callbacks(g_loop);
+  event_loop_destroy(g_loop);
+
+  ASSERT(objectinfo_subscribe_context.subscribe_succeeded == 1);
+  ASSERT(objectinfo_subscribe_context.subscribe_callback_done == 1);
   PASS();
 }
 
@@ -800,6 +865,7 @@ SUITE(object_table_tests) {
   RUN_REDIS_TEST(add_late_test);
   RUN_REDIS_TEST(subscribe_late_test);
   RUN_REDIS_TEST(subscribe_success_test);
+  RUN_REDIS_TEST(subscribe_objectinfo_success_test);
   RUN_REDIS_TEST(subscribe_object_present_test);
   RUN_REDIS_TEST(subscribe_object_not_present_test);
   RUN_REDIS_TEST(subscribe_object_available_later_test);
