@@ -22,6 +22,26 @@ typedef struct {
   int64_t construct_duration;
 } plasma_object_info;
 
+typedef enum {
+  /** Query for object in the local plasma store. */
+  PLASMA_QUERY_LOCAL = 1,
+  /** Query for object in the local plasma store or in a remote plasma store. */
+  PLASMA_QUERY_ANYWHERE
+} object_request_type;
+
+typedef enum {
+  /** Object is stored in the local Plasma Store. */
+  PLASMA_OBJECT_LOCAL = 1,
+  /** Object is stored on a remote Plasma store, and it is not stored on the
+   *  local Plasma Store. */
+  PLASMA_OBJECT_REMOTE,
+  /** Object is currently transferred from a remote Plasma store the the local
+   *  Plasma Store. */
+  PLASMA_OBJECT_IN_TRANSFER,
+  /** Object is not stored in the system. */
+  PLASMA_OBJECT_NONEXISTENT
+} object_status1;
+
 /**
  * Object request data structure. Used in the plasma_wait_for_objects()
  * argument.
@@ -34,7 +54,7 @@ typedef struct {
    *    local Plasma Store.
    *  - PLASMA_QUERY_ANYWHERE: return if or when the object is available in
    *    the system (i.e., either in the local or a remote Plasma Store). */
-  int type;
+  object_request_type type;
   /** Object status. Same as the status returned by plasma_status() function
    *  call. This is filled in by plasma_wait_for_objects1():
    *  - PLASMA_OBJECT_LOCAL: object is ready at the local Plasma Store.
@@ -42,7 +62,7 @@ typedef struct {
    *  - PLASMA_OBJECT_NONEXISTENT: object does not exist in the system.
    *  - PLASMA_CLIENT_IN_TRANSFER, if the object is currently being scheduled
    *    for being transferred or it is transferring. */
-  int status;
+  object_status1 status;
 } object_request;
 
 /* Handle to access memory mapped file and map it into client address space. */
@@ -81,26 +101,6 @@ typedef enum {
   /** The object was found. */
   OBJECT_FOUND = 1
 } object_status;
-
-typedef enum {
-  /** Object is stored in the local Plasma Store. */
-  PLASMA_OBJECT_LOCAL = 1,
-  /** Object is stored on a remote Plasma store, and it is not stored on the
-   *  local Plasma Store. */
-  PLASMA_OBJECT_REMOTE,
-  /** Object is currently transferred from a remote Plasma store the the local
-   *  Plasma Store. */
-  PLASMA_OBJECT_IN_TRANSFER,
-  /** Object is not stored in the system. */
-  PLASMA_OBJECT_NONEXISTENT
-} object_status1;
-
-typedef enum {
-  /** Query for object in the local plasma store. */
-  PLASMA_QUERY_LOCAL = 1,
-  /** Query for object in the local plasma store or in a remote plasma store. */
-  PLASMA_QUERY_ANYWHERE
-} object_request_type;
 
 enum plasma_message_type {
   /** Create a new object. */

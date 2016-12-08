@@ -90,11 +90,11 @@ void request_transfer_from(client_connection *client_conn, object_id object_id);
  *              we request its status.
  * @return Status of object_id as defined in plasma.h
  */
-int request_fetch_or_status(object_id object_id,
-                            int manager_count,
-                            const char *manager_vector[],
-                            void *context,
-                            bool fetch);
+object_status1 request_fetch_or_status(object_id object_id,
+                                       int manager_count,
+                                       const char *manager_vector[],
+                                       void *context,
+                                       bool fetch);
 
 /**
  * Send requested object_id back to the Plasma Manager identified
@@ -210,8 +210,8 @@ struct client_object_request {
   /** The number of manager locations in the array manager_vector. */
   int manager_count;
   /** The next manager we should try to contact. This is set to an index in
-   * manager_vector in the retry handler, in case the current attempt fails to
-   * contact a manager. */
+   *  manager_vector in the retry handler, in case the current attempt fails to
+   *  contact a manager. */
   int next_manager;
   /** Handle for the uthash table in the client connection
    *  context that keeps track of active object connection
@@ -230,9 +230,9 @@ struct client_connection {
   /** Current position in the buffer. */
   int64_t cursor;
   /** Buffer that this connection is reading from. If this is a connection to
-   *  write data to another plasma store, then it is a linked
-   *  list of buffers to write. */
-  /* TODO(swang): Split into two queues, data transfers and data requests. */
+   *  write data to another plasma store, then it is a linked list of buffers to
+   *  write. TODO(swang): Split into two queues, data transfers and data
+   *  requests.*/
   plasma_request_buffer *transfer_queue;
   /** Buffer used to receive transfers (data fetches) we want to ignore */
   plasma_request_buffer *ignore_buffer;
@@ -257,8 +257,8 @@ struct client_connection {
    *  this fetch or wait operation. */
   int num_return_objects;
   /** Fields specific to connections to plasma managers.  Key that uniquely
-   * identifies the plasma manager that we're connected to. We will use the
-   * string <address>:<port> as an identifier. */
+   *  identifies the plasma manager that we're connected to. We will use the
+   *  string <address>:<port> as an identifier. */
   char *ip_addr_port;
   /** Handle for the uthash table. */
   UT_hash_handle manager_hh;
@@ -285,13 +285,12 @@ void send_client_failure_reply(object_id object_id, client_connection *conn) {
 }
 
 /**
- * Get the context for the given object ID for the given client
- * connection, if there is one active.
+ * Get the context for the given object ID for the given client connection, if
+ * there is one active.
  *
  * @param client_conn The client connection context.
  * @param object_id The object ID whose context we want.
- * @return A pointer to the active object context, or NULL if
- *         there isn't one.
+ * @return A pointer to the active object context, or NULL if there isn't one.
  */
 client_object_request *get_object_request(client_connection *client_conn,
                                           object_id object_id) {
@@ -1336,8 +1335,8 @@ void request_fetch_initiate(object_id object_id,
                             const char *manager_vector[],
                             void *context) {
   client_connection *client_conn = (client_connection *) context;
-  int status = request_fetch_or_status(object_id, manager_count, manager_vector,
-                                       context, true);
+  object_status1 status = request_fetch_or_status(
+      object_id, manager_count, manager_vector, context, true);
   plasma_reply reply = plasma_make_reply(object_id);
   reply.object_status = status;
   CHECK(plasma_send_reply(client_conn->fd, &reply) >= 0);
@@ -1363,18 +1362,18 @@ void request_status_done(object_id object_id,
                          const char *manager_vector[],
                          void *context) {
   client_connection *client_conn = (client_connection *) context;
-  int status = request_fetch_or_status(object_id, manager_count, manager_vector,
-                                       context, false);
+  object_status1 status = request_fetch_or_status(
+      object_id, manager_count, manager_vector, context, false);
   plasma_reply reply = plasma_make_reply(object_id);
   reply.object_status = status;
   CHECK(plasma_send_reply(client_conn->fd, &reply) >= 0);
 }
 
-int request_fetch_or_status(object_id object_id,
-                            int manager_count,
-                            const char *manager_vector[],
-                            void *context,
-                            bool fetch) {
+object_status1 request_fetch_or_status(object_id object_id,
+                                       int manager_count,
+                                       const char *manager_vector[],
+                                       void *context,
+                                       bool fetch) {
   client_connection *client_conn = (client_connection *) context;
   client_object_request *object_req =
       get_object_request(client_conn, object_id);
@@ -1458,7 +1457,10 @@ void process_fetch_or_status_request(client_connection *client_conn,
   }
 
   /* Check whether a transfer request for this object is already pending. */
-  if (get_object_request(client_conn, object_id)) {
+  if (get_object_request(client_conn, object_id) != NULL) {
+    /* TODO(rkn): The fact that there is an active client object request for
+     * this object does not mean that a transfer request is pending. The object
+     * request could be a wait call. */
     plasma_reply reply = plasma_make_reply(object_id);
     reply.object_status = PLASMA_OBJECT_IN_TRANSFER;
     CHECK(plasma_send_reply(client_conn->fd, &reply) >= 0);
@@ -1479,6 +1481,8 @@ void process_fetch_or_status_request(client_connection *client_conn,
       .fail_callback = object_table_lookup_fail_callback,
   };
 
+  /* TODO(rkn): These cases have to be changed because this makes the fetch
+   * implementation blocking. */
   if (fetch) {
     /* Request a transfer from a plasma manager that has this object, if any. */
     object_table_lookup(client_conn->manager_state->db, object_id, &retry,
