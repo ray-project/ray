@@ -571,6 +571,12 @@ int plasma_wait(plasma_connection *conn,
   plasma_free_request(req);
   int64_t return_size = plasma_reply_size(num_returns);
   plasma_reply *reply = malloc(return_size);
+  int rv = plasma_receive_reply(conn->manager_conn, return_size, reply);
+  if (rv < 0) {
+    fprintf(stderr, "plasma_wait: failed with rv=%d, errno=%d, errno=%s\n",
+        rv, errno, strerror(errno));
+    abort();
+  }
   CHECK(plasma_receive_reply(conn->manager_conn, return_size, reply) >= 0);
   for (int i = 0; i < num_returns; ++i) {
     return_object_ids[i] = reply->object_requests[i].object_id;

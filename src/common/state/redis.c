@@ -208,19 +208,69 @@ void redis_object_table_add_callback(redisAsyncContext *c,
   destroy_timer_callback(db->loop, callback_data);
 }
 
+void redis_object_table_set_callback(redisAsyncContext *c,
+    void *r,
+    void *privdata) {
+  /* Same callback as for the object table add */
+  redis_object_table_add_callback(c,r,privdata);
+}
+
+
+
+/* redis_object_table_add will
+ * (a) add the client_id to the set of clients.
+ * (b) set the object size information in the object hash map
+ * (c) publish to the object size channel.
+ */
 void redis_object_table_add(table_callback_data *callback_data) {
   CHECK(callback_data);
+  int status = REDIS_OK;
   db_handle *db = callback_data->db_handle;
   object_id id = callback_data->id;
-  int status = redisAsyncCommand(db->context, redis_object_table_add_callback,
+  int64_t data_size = *((int64_t *)callback_data->data);
+  status = redisAsyncCommand(db->context, redis_object_table_add_callback,
                                  (void *) callback_data->timer_id,
                                  "SADD obj:%b %b", id.id, sizeof(id.id),
                                  (char *) db->client.id, sizeof(db->client.id));
 
   if ((status == REDIS_ERR) || db->context->err) {
-    LOG_REDIS_DEBUG(db->context, "could not add object_table entry");
+    LOG_REDIS_DEBUG(db->context, "could not add object_table entry to the set");
+  }
+  status = redisAsyncCommand(
+      db->context, redis_object_table_set_callback,
+      (void *) callback_data->timer_id, "HMSET obj:%b size %d",
+      (char *) id.id, sizeof(id.id), data_size);
+  if ((status = REDIS_ERR) || db->context->err) {
+    LOG_REDIS_DEBUG(db->context, "error setting object size in object_table_add");
+  }
+  /* Publish to the object size channel. */
+  status = redisAsyncCommand(
+      db->sub_context, redis_object_info_publish_publish_callback,
+      (void *) callback_data->timer_id, "PUBLISH obj:info %b:%d",
+      id.id, sizeof(id.id), data_size);
+  if ((status == REDIS_ERR) || db->sub_context->err) {
+    LOG_REDIS_DEBUG(db->sub_context,
+                    "error in redis_object_info_publish");
+  }
+} /* redis_object_table_add */
+
+#if 0
+void redis_object_table_set(table_callback_data *callback_data) {
+  CHECK(callback_data);
+  db_handle *db = callback_data->db_handle;
+  object_id id = callback_data->id;
+  int64_t *data = callback_data->data;
+  int64_t data_size = *data;
+  int status = REDIS_OK;
+  status = redisAsyncCommand(
+      db->context, redis_object_table_set_callback,
+      (void *) callback_data->timer_id, "HMSET obj:%b size %d",
+      (char *) id.id, sizeof(id.id), data_size);
+  if ((status = REDIS_ERR) || db->context->err) {
+    LOG_REDIS_DEBUG(db->context, "error setting object size in object_table_add");
   }
 }
+#endif
 
 void redis_object_table_lookup(table_callback_data *callback_data) {
   CHECK(callback_data);
@@ -445,10 +495,22 @@ void redis_object_table_subscribe(table_callback_data *callback_data) {
 
   /* subscribe to key notification associated to object id */
   object_id id = callback_data->id;
-  int status = redisAsyncCommand(
-      db->sub_context, object_table_redis_subscribe_callback,
-      (void *) callback_data->timer_id, "SUBSCRIBE __keyspace@0__:obj:%b",
-      id.id, sizeof(id.id));
+  int status = REDIS_OK;
+
+  if (IS_NIL_ID(id)) {
+    /* Subscribe to all object events. */
+    status = redisAsyncCommand(
+        db->sub_context,
+        object_table_redis_subscribe_callback,
+        (void *) callback_data->timer_id,
+        "PSUBSCRIBE __keyspace@0__:obj:*");
+  } else {
+    /* Subscribe to the specified object id. */
+    status = redisAsyncCommand(
+        db->sub_context, object_table_redis_subscribe_callback,
+        (void *) callback_data->timer_id, "SUBSCRIBE __keyspace@0__:obj:%b",
+        id.id, sizeof(id.id));
+  }
   if ((status == REDIS_ERR) || db->sub_context->err) {
     LOG_REDIS_DEBUG(db->sub_context,
                     "error in redis_object_table_subscribe_callback");
@@ -589,7 +651,7 @@ void redis_task_table_publish_push_callback(redisAsyncContext *c,
 void redis_task_table_publish_publish_callback(redisAsyncContext *c,
                                                void *r,
                                                void *privdata) {
-  LOG_DEBUG("Calling publish publish callback");
+  LOG_DEBUG("Calling publish publish callbac for task_table");
   REDIS_CALLBACK_HEADER(db, callback_data, r);
   CHECK(callback_data->requests_info != NULL);
   ((bool *) callback_data->requests_info)[PUBLISH_INDEX] = true;
@@ -602,6 +664,25 @@ void redis_task_table_publish_publish_callback(redisAsyncContext *c,
     destroy_timer_callback(db->loop, callback_data);
   }
 }
+
+
+void redis_object_info_publish_publish_callback(redisAsyncContext *c,
+                                               void *r,
+                                               void *privdata) {
+  /* Dummy callback that triggers a done_callback if it was registered. */
+  LOG_DEBUG("Calling publish publish callback for object_info");
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
+  CHECK(callback_data->requests_info != NULL);
+  ((bool *) callback_data->requests_info)[PUBLISH_INDEX] = true;
+
+  if (((bool *) callback_data->requests_info)[PUSH_INDEX] == true) {
+    if (callback_data->done_callback) {
+      object_info_done_callback done_callback = callback_data->done_callback;
+      done_callback(callback_data->id, callback_data->user_context);
+    }
+    destroy_timer_callback(db->loop, callback_data);
+  }
+} /* redis_object_info_publish_publish_callback */
 
 void redis_task_table_subscribe_callback(redisAsyncContext *c,
                                          void *r,
@@ -671,12 +752,13 @@ void redis_db_client_table_subscribe_callback(redisAsyncContext *c,
   redisReply *reply = r;
 
   CHECK(reply->type == REDIS_REPLY_ARRAY);
-  /* If this condition is true, we got the initial message that acknowledged the
-   * subscription. */
+
   CHECK(reply->elements > 2);
   /* First entry is message type, then possibly the regex we psubscribed to,
    * then topic, then payload. */
   redisReply *payload = reply->element[reply->elements - 1];
+  /* If this condition is true, we got the initial message that acknowledged the
+   * subscription. */
   if (payload->str == NULL) {
     if (callback_data->done_callback) {
       db_client_table_done_callback done_callback =
@@ -711,6 +793,60 @@ void redis_db_client_table_subscribe(table_callback_data *callback_data) {
   if ((status == REDIS_ERR) || db->sub_context->err) {
     LOG_REDIS_DEBUG(db->sub_context,
                     "error in db_client_table_register_callback");
+  }
+}
+
+void redis_object_info_subscribe_callback(redisAsyncContext *c,
+                                              void *r,
+                                              void *privdata) {
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
+  redisReply *reply = r;
+
+  CHECK(reply->type == REDIS_REPLY_ARRAY);
+
+  CHECK(reply->elements > 2);
+  /* First entry is message type, then possibly the regex we psubscribed to,
+   * then topic, then payload. */
+  redisReply *payload = reply->element[reply->elements - 1];
+  /* If this condition is true, we got the initial message that acknowledged the
+   * subscription. */
+  if (payload->str == NULL) {
+    if (callback_data->done_callback) {
+      db_client_table_done_callback done_callback =
+          callback_data->done_callback;
+      done_callback(callback_data->id, callback_data->user_context);
+    }
+    /* Note that we do not destroy the callback data yet because the
+     * subscription callback needs this data. */
+    event_loop_remove_timer(db->loop, callback_data->timer_id);
+    return;
+  }
+  /* Otherwise, parse the payload and call the callback. */
+  object_info_subscribe_data *data = callback_data->data;
+  object_id object_id;
+  memcpy(object_id.id, payload->str, sizeof(object_id.id));
+  /* payload->str shoudl be "object_id:object_size_int" */
+  printf("obj:info channel received message <%s>\n", payload->str);
+  /* We subtract 1 + sizeof(client.id) to compute the length of the
+   * client_type string, and we add 1 to null-terminate the string. */
+  int object_size_len = payload->len - sizeof(object_id) + 1 - 1;
+  char *object_size = malloc(object_size_len);
+  memcpy(object_size, &payload->str[1 + sizeof(object_id)], object_size_len);
+  if (data->subscribe_callback) {
+    data->subscribe_callback(object_id, strtol(object_size, NULL, 10),
+        data->subscribe_context);
+  }
+  free(object_size);
+} /* redis_object_info_subscribe_callback */
+
+void redis_object_info_subscribe(table_callback_data *callback_data) {
+  db_handle *db = callback_data->db_handle;
+  int status = redisAsyncCommand(
+      db->sub_context, redis_object_info_subscribe_callback,
+      (void *) callback_data->timer_id, "PSUBSCRIBE obj:info");
+  if ((status == REDIS_ERR) || db->sub_context->err) {
+    LOG_REDIS_DEBUG(db->sub_context,
+                    "error in object_info_register_callback");
   }
 }
 
