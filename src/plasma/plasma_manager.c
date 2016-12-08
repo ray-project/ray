@@ -1497,13 +1497,14 @@ void process_object_notification(event_loop *loop,
                                  int events) {
   plasma_manager_state *state = context;
   object_id obj_id;
+  plasma_object_info object_info;
   retry_info retry = {
       .num_retries = NUM_RETRIES,
       .timeout = MANAGER_TIMEOUT,
       .fail_callback = NULL,
   };
   /* Read the notification from Plasma. */
-  int error = read_bytes(client_sock, (uint8_t *) &obj_id, sizeof(obj_id));
+  int error = read_bytes(client_sock, (uint8_t *) &object_info, sizeof(object_info));
   if (error < 0) {
     /* The store has closed the socket. */
     LOG_DEBUG(
@@ -1513,6 +1514,7 @@ void process_object_notification(event_loop *loop,
     close(client_sock);
     return;
   }
+  obj_id = object_info.objid;
   /* Add object to locally available object. */
   /* TODO(pcm): Where is this deallocated? */
   available_object *entry =

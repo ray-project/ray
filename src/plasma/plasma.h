@@ -16,6 +16,7 @@
 #include "uthash.h"
 
 typedef struct {
+  object_id objid;
   int64_t data_size;
   int64_t metadata_size;
   int64_t create_time;
