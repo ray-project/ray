@@ -77,9 +77,6 @@ void redis_object_table_lookup(table_callback_data *callback_data);
  */
 void redis_object_table_add(table_callback_data *callback_data);
 
-/* TODO(atumanov): fill in documentation for the object table set function */
-void redis_object_table_set(table_callback_data *callback_data);
-
 /**
  * Subscribe to learn when a new object becomes available.
  *

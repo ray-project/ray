@@ -213,7 +213,6 @@ void redis_object_table_add_callback(redisAsyncContext *c,
       done_callback(callback_data->id, callback_data->user_context);
     }
     destroy_timer_callback(db->loop, callback_data);
-    /* TODO(atumanov): also deallocate callback_data->requests_info ?     */
   }
 }
 
@@ -234,7 +233,6 @@ void redis_object_table_set_callback(redisAsyncContext *c,
       done_callback(callback_data->id, callback_data->user_context);
     }
     destroy_timer_callback(db->loop, callback_data);
-    /* TODO(atumanov): also deallocate callback_data->requests_info ?     */
   }
 }
 
@@ -252,8 +250,8 @@ void redis_object_table_add(table_callback_data *callback_data) {
   object_id id = callback_data->id;
   int64_t data_size = *((int64_t *)callback_data->data);
 
-  /* Need to keep track of 3 object table events asynchronously: add,set,publish.
-   * Timer can be removed only when all three callbacks fired.
+  /* Need to keep track of 3 object table events asynchronously: add, set,
+   * publish. Timer can be removed only when all three callbacks fired.
    */
   if (callback_data->requests_info == NULL) {
     callback_data->requests_info = malloc(OBJECT_INDEX_MAX * sizeof(bool));
@@ -292,7 +290,7 @@ void redis_object_table_add(table_callback_data *callback_data) {
           "error in redis_object_info_publish");
     }
   }
-} /* redis_object_table_add */
+}
 
 void redis_object_table_lookup(table_callback_data *callback_data) {
   CHECK(callback_data);
@@ -673,7 +671,7 @@ void redis_task_table_publish_push_callback(redisAsyncContext *c,
 void redis_task_table_publish_publish_callback(redisAsyncContext *c,
                                                void *r,
                                                void *privdata) {
-  LOG_DEBUG("Calling publish publish callbac for task_table");
+  LOG_DEBUG("Calling publish publish callback for task_table");
   REDIS_CALLBACK_HEADER(db, callback_data, r);
   CHECK(callback_data->requests_info != NULL);
   ((bool *) callback_data->requests_info)[PUBLISH_INDEX] = true;
@@ -705,9 +703,8 @@ void redis_object_info_publish_publish_callback(redisAsyncContext *c,
       done_callback(callback_data->id, callback_data->user_context);
     }
     destroy_timer_callback(db->loop, callback_data);
-    /* TODO(atumanov): also deallocate callback_data->requests_info ?     */
   }
-} /* redis_object_info_publish_publish_callback */
+}
 
 void redis_task_table_subscribe_callback(redisAsyncContext *c,
                                          void *r,
@@ -850,19 +847,14 @@ void redis_object_info_subscribe_callback(redisAsyncContext *c,
   object_info_subscribe_data *data = callback_data->data;
   object_id object_id;
   memcpy(object_id.id, payload->str, sizeof(object_id.id));
-  /* payload->str shoudl be "object_id:object_size_int" */
-  printf("obj:info channel received message <%s>\n", payload->str);
-  /* We subtract 1 + sizeof(client.id) to compute the length of the
-   * client_type string, and we add 1 to null-terminate the string. */
-  int object_size_len = payload->len - sizeof(object_id) + 1 - 1;
-  char *object_size = malloc(object_size_len);
-  memcpy(object_size, &payload->str[1 + sizeof(object_id)], object_size_len);
+  /* payload->str should have the format: "object_id:object_size_int" */
+  LOG_DEBUG("obj:info channel received message <%s>", payload->str);
   if (data->subscribe_callback) {
-    data->subscribe_callback(object_id, strtol(object_size, NULL, 10),
+    data->subscribe_callback(object_id,
+        strtol(&payload->str[1 + sizeof(object_id)], NULL, 10),
         data->subscribe_context);
   }
-  free(object_size);
-} /* redis_object_info_subscribe_callback */
+}
 
 void redis_object_info_subscribe(table_callback_data *callback_data) {
   db_handle *db = callback_data->db_handle;

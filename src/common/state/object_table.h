@@ -6,6 +6,10 @@
 #include "db.h"
 #include "task.h"
 
+/**
+ * Different types of object table requests are enumerated here.
+ *  OBJECT_INDEX_MAX reflects the total number of possible object table requests
+ */
 enum {
   OBJECT_INDEX_SET = 0,
   OBJECT_INDEX_ADD,

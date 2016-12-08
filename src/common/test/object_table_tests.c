@@ -202,7 +202,7 @@ TEST add_timeout_test(void) {
   retry_info retry = {
       .num_retries = 5, .timeout = 100, .fail_callback = add_fail_callback,
   };
-  object_table_add(db, NIL_ID, (int64_t)0, &retry, add_done_callback,
+  object_table_add(db, NIL_ID, 0, &retry, add_done_callback,
                    (void *) add_timeout_context);
   /* Disconnect the database to see if the lookup times out. */
   close(db->context->c.fd);
@@ -358,7 +358,7 @@ TEST add_retry_test(void) {
       .timeout = 100,
       .fail_callback = add_retry_fail_callback,
   };
-  object_table_add(db, NIL_ID, (int64_t)0, &retry, add_retry_done_callback,
+  object_table_add(db, NIL_ID, 0, &retry, add_retry_done_callback,
                    (void *) add_retry_context);
   /* Disconnect the database to let the add time out the first time. */
   close(db->context->c.fd);
@@ -518,7 +518,7 @@ TEST add_late_test(void) {
   retry_info retry = {
       .num_retries = 0, .timeout = 0, .fail_callback = add_late_fail_callback,
   };
-  object_table_add(db, NIL_ID, (int64_t)0, &retry, add_late_done_callback,
+  object_table_add(db, NIL_ID, 0, &retry, add_late_done_callback,
                    (void *) add_late_context);
   /* Install handler for terminating the event loop. */
   event_loop_add_timer(g_loop, 750,
@@ -604,7 +604,7 @@ void subscribe_success_done_callback(object_id object_id,
       .num_retries = 0, .timeout = 0, .fail_callback = NULL,
   };
   object_table_add((db_handle *) user_context, object_id,
-      (int64_t)0, &retry, NULL, NULL);
+      0, &retry, NULL, NULL);
   subscribe_success_done = 1;
 }
 
@@ -671,7 +671,7 @@ TEST subscribe_object_present_test(void) {
   retry_info retry = {
       .num_retries = 0, .timeout = 100, .fail_callback = NULL,
   };
-  object_table_add(db, id, (int64_t)0, &retry,  NULL, NULL);
+  object_table_add(db, id, 0, &retry,  NULL, NULL);
   object_table_subscribe(
       db, id, subscribe_object_present_object_available_callback,
       (void *) subscribe_object_present_context, &retry, NULL, (void *) db);
@@ -752,7 +752,7 @@ int64_t add_object_callback(event_loop *loop, int64_t timer_id, void *context) {
   retry_info retry = {
       .num_retries = 0, .timeout = 100, .fail_callback = NULL,
   };
-  object_table_add(db, NIL_ID, (int64_t)0, &retry, NULL, NULL);
+  object_table_add(db, NIL_ID, 0, &retry, NULL, NULL);
   /* Reset the timer to this large value, so it doesn't trigger again. */
   return 10000;
 }
