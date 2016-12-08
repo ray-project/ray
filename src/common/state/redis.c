@@ -283,12 +283,12 @@ void redis_object_table_add(table_callback_data *callback_data) {
 
   if (((bool *) callback_data->requests_info)[OBJECT_INDEX_PUBLISH] == false) {
     /* Publish to the object size channel. */
-    status = redisAsyncCommand(db->sub_context,
+    status = redisAsyncCommand(db->context,
         redis_object_info_publish_publish_callback,
         (void *) callback_data->timer_id, "PUBLISH obj:info %b:%d", id.id,
         sizeof(id.id), data_size);
-    if ((status == REDIS_ERR) || db->sub_context->err) {
-      LOG_REDIS_DEBUG(db->sub_context,
+    if ((status == REDIS_ERR) || db->context->err) {
+      LOG_REDIS_DEBUG(db->context,
           "error in redis_object_info_publish");
     }
   }
