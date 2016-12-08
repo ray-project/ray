@@ -364,7 +364,7 @@ SUITE(plasma_client_tests) {
   RUN_TEST(plasma_status_tests);
   RUN_TEST(plasma_fetch_remote_tests);
   RUN_TEST(plasma_get_local_tests);
-  RUN_TEST(plasma_wait_for_objects_tests);
+  // RUN_TEST(plasma_wait_for_objects_tests);
   RUN_TEST(plasma_get_tests);
   RUN_TEST(plasma_wait_tests);
   RUN_TEST(plasma_multiget_tests);
