@@ -2,8 +2,8 @@
 
 #include <assert.h>
 #include <stdbool.h>
-
 #include <stdlib.h>
+#include <unistd.h>
 /* Including hiredis here is necessary on Windows for typedefs used in ae.h. */
 #include "hiredis/hiredis.h"
 #include "hiredis/adapters/ae.h"
@@ -119,9 +119,21 @@ db_handle *db_connect(const char *address,
   db_handle *db = malloc(sizeof(db_handle));
   /* Sync connection for initial handshake */
   redisReply *reply;
+  int connection_attempts = 0;
   redisContext *context = redisConnect(address, port);
-  CHECK_REDIS_CONNECT(redisContext, context, "could not connect to redis %s:%d",
-                      address, port);
+  while (context == NULL || context->err) {
+    if (connection_attempts >= REDIS_DB_CONNECT_RETRIES) {
+      break;
+    }
+    LOG_WARN("Failed to connect to Redis, retrying.");
+    /* Sleep for a little. */
+    usleep(REDIS_DB_CONNECT_WAIT_MS * 1000);
+    context = redisConnect(address, port);
+    connection_attempts += 1;
+  }
+  CHECK_REDIS_CONNECT(redisContext, context,
+                      "could not establish synchronous connection to redis "
+                      "%s:%d", address, port);
   /* Enable keyspace events. */
   reply = redisCommand(context, "CONFIG SET notify-keyspace-events AKE");
   CHECK(reply != NULL);
@@ -161,12 +173,14 @@ db_handle *db_connect(const char *address,
   /* Establish async connection */
   db->context = redisAsyncConnect(address, port);
   CHECK_REDIS_CONNECT(redisAsyncContext, db->context,
-                      "could not connect to redis %s:%d", address, port);
+                      "could not establish asynchronous connection to redis "
+                      "%s:%d", address, port);
   db->context->data = (void *) db;
   /* Establish async connection for subscription */
   db->sub_context = redisAsyncConnect(address, port);
   CHECK_REDIS_CONNECT(redisAsyncContext, db->sub_context,
-                      "could not connect to redis %s:%d", address, port);
+                      "could not establish asynchronous subscription "
+                      "connection to redis %s:%d", address, port);
   db->sub_context->data = (void *) db;
 
   return db;
