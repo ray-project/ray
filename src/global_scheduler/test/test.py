@@ -61,6 +61,13 @@ class TestGlobalScheduler(unittest.TestCase):
     self.photon_client = photon.PhotonClient(local_scheduler_name)
 
   def tearDown(self):
+    # Check that the processes are still alive.
+    self.assertEqual(self.p1.poll(), None)
+    self.assertEqual(self.p2.poll(), None)
+    self.assertEqual(self.p3.poll(), None)
+    self.assertEqual(self.p4.poll(), None)
+    self.assertEqual(self.redis_process.poll(), None)
+
     # Kill the global scheduler.
     if USE_VALGRIND:
       self.p1.send_signal(signal.SIGTERM)
