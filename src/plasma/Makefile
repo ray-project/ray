@@ -28,17 +28,17 @@ $(BUILD)/plasma_store: plasma_store.c plasma.h plasma.c plasma_protocol.c evicti
 $(BUILD)/plasma_manager: plasma_manager.c plasma.h plasma.c plasma_protocol.c plasma_client.c fling.h fling.c common
 	$(CC) $(CFLAGS) plasma_manager.c plasma.c plasma_protocol.c plasma_client.c fling.c ../common/build/libcommon.a ../common/build/flatcc-prefix/src/flatcc/lib/libflatcc.a ../common/thirdparty/hiredis/libhiredis.a -o $(BUILD)/plasma_manager
 
-$(BUILD)/plasma_client.so: plasma.h plasma.c plasma_client.c fling.h fling.c common
-	$(CC) $(CFLAGS) plasma.c plasma_client.c fling.c ../common/build/libcommon.a -fPIC -shared -o $(BUILD)/plasma_client.so
+$(BUILD)/plasma_client.so: plasma.h plasma.c plasma_protocol.c plasma_client.c fling.h fling.c common
+	$(CC) $(CFLAGS) plasma.c plasma_protocol.c plasma_client.c fling.c ../common/build/libcommon.a ../common/build/flatcc-prefix/src/flatcc/lib/libflatcc.a -fPIC -shared -o $(BUILD)/plasma_client.so
 
-$(BUILD)/libplasma_client.a: plasma.o plasma_client.o fling.o
+$(BUILD)/libplasma_client.a: plasma.o plasma_protocol.o plasma_client.o fling.o
 	ar rcs $@ $^
 
 $(BUILD)/example: plasma_client.c plasma.h plasma.c plasma_protocol.c example.c fling.h fling.c common
 	$(CC) $(CFLAGS) plasma_client.c plasma.c plasma_protocol.c example.c fling.c ../common/build/libcommon.a ../common/build/flatcc-prefix/src/flatcc/lib/libflatcc.a -o $(BUILD)/example
 
 common: FORCE
-	cd ../common; make; cd build; cmake ..; make
+	cd ../common; make; cd build; cmake ..; make; cd ../../plasma/build; cmake ..; make
 
 # Set the request timeout low and logging level at FATAL for testing purposes.
 test: CFLAGS += -DRAY_TIMEOUT=50 -DRAY_COMMON_LOG_LEVEL=4

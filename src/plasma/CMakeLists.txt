@@ -91,9 +91,12 @@ include_directories("${CMAKE_SOURCE_DIR}/../common/")
 include_directories("${CMAKE_SOURCE_DIR}/../common/thirdparty/")
 include_directories("${CMAKE_SOURCE_DIR}/../common/lib/python/")
 
+include_directories("${FLATBUFFERS_INCLUDE_DIR}")
+
 add_library(plasma SHARED
   plasma.c
   plasma_extension.c
+  plasma_protocol.c
   plasma_client.c
   fling.c)
 
@@ -105,6 +108,6 @@ if(APPLE)
                      POST_BUILD COMMAND ${CMAKE_INSTALL_NAME_TOOL} -change ${PYTHON_SHARED_LIBRARY} ${PYTHON_LIBRARIES} libplasma.so)
 endif(APPLE)
 
-target_link_libraries(plasma ${COMMON_LIB} ${PYTHON_LIBRARIES})
+target_link_libraries(plasma ${COMMON_LIB} ${PYTHON_LIBRARIES} ${FLATBUFFERS_STATIC_LIB})
 
 install(TARGETS plasma DESTINATION ${CMAKE_SOURCE_DIR}/lib/python)
