@@ -1528,7 +1528,7 @@ void process_object_notification(event_loop *loop,
   if (state->db) {
     /* TODO(swang): Log the error if we fail to add the object, and possibly
      * retry later? */
-    object_table_add(state->db, obj_id, obj_id_notification.digest, &retry,
+    object_table_add(state->db, obj_id, object_info.digest, &retry,
                      NULL, NULL);
   }
 

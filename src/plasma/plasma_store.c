@@ -319,7 +319,7 @@ void seal_object(client *client_context,
   /* Set the state of object to SEALED. */
   entry->state = PLASMA_SEALED;
   /* Set the object digest. */
-  memcpy(entry->digest, digest, DIGEST_SIZE);
+  memcpy(entry->info.digest, digest, DIGEST_SIZE);
   /* Inform all subscribers that a new object has been sealed. */
   notification_queue *queue, *temp_queue;
   HASH_ITER(hh, plasma_state->pending_notifications, queue, temp_queue) {
