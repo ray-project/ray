@@ -13,6 +13,7 @@
 #include "db.h"
 #include "db_client_table.h"
 #include "object_table.h"
+#include "object_info.h"
 #include "task.h"
 #include "task_table.h"
 #include "event_loop.h"
@@ -260,6 +261,15 @@ task *parse_redis_task_table_entry(task_id id,
  *  ==== object_table callbacks ====
  */
 
+enum {
+  OBJECT_TABLE_ADD_CHECK_HASH_INDEX = 0,
+  OBJECT_TABLE_ADD_GET_HASH_INDEX,
+  OBJECT_TABLE_ADD_REGISTER_MANAGER_INDEX,
+  OBJECT_TABLE_ADD_SET_SIZE_INDEX,
+  OBJECT_TABLE_ADD_PUBLISH_INDEX,
+  OBJECT_TABLE_ADD_MAX
+};
+
 void redis_object_table_add_callback(redisAsyncContext *c,
                                      void *r,
                                      void *privdata) {
@@ -267,31 +277,27 @@ void redis_object_table_add_callback(redisAsyncContext *c,
   REDIS_MULTI_CALLBACK_HEADER(db, callback_data, r, requests_info);
   redisReply *reply = r;
   object_id id = callback_data->id;
-  unsigned char *digest = callback_data->data;
 
-#define NUM_CHECK_AND_SET_COMMANDS 3
-#define CHECK_AND_SET_SETNX_INDEX 0
-#define CHECK_AND_SET_GET_INDEX 1
-#define CHECK_AND_SET_SADD_INDEX 2
+  object_info *info = callback_data->data;
 
   /* Check that we're at a valid command index. */
   int request_index = requests_info->request_index;
   LOG_DEBUG("Object table add request index is %d", request_index);
-  CHECK(request_index <= NUM_CHECK_AND_SET_COMMANDS);
+  CHECK(request_index <= OBJECT_TABLE_ADD_MAX);
   /* If we're on a valid command index, execute the current command and
    * register a callback that will execute the next command by incrementing the
    * request_index. */
   int status = REDIS_OK;
   ++requests_info->request_index;
-  if (request_index == CHECK_AND_SET_SETNX_INDEX) {
+  if (request_index == OBJECT_TABLE_ADD_CHECK_HASH_INDEX) {
     /* Atomically set the object hash and get the previous value to compare to
      * our hash, if a previous value existed. */
     requests_info->is_redis_reply = true;
-    status =
-        redisAsyncCommand(db->context, redis_object_table_add_callback,
-                          (void *) requests_info, "SETNX objhash:%b %b", id.id,
-                          sizeof(object_id), digest, (size_t) DIGEST_SIZE);
-  } else if (request_index == CHECK_AND_SET_GET_INDEX) {
+    status = redisAsyncCommand(db->context, redis_object_table_add_callback,
+                               (void *) requests_info, "SETNX objhash:%b %b",
+                               id.id, sizeof(object_id), info->digest,
+                               (size_t) DIGEST_SIZE);
+  } else if (request_index == OBJECT_TABLE_ADD_GET_HASH_INDEX) {
     /* If there was an object hash in the table previously, check that it's
      * equal to ours. */
     CHECKM(reply->type == REDIS_REPLY_INTEGER,
@@ -308,13 +314,13 @@ void redis_object_table_add_callback(redisAsyncContext *c,
                                  (void *) requests_info, "GET objhash:%b",
                                  id.id, sizeof(object_id));
     }
-  } else if (request_index == CHECK_AND_SET_SADD_INDEX) {
+  } else if (request_index == OBJECT_TABLE_ADD_REGISTER_MANAGER_INDEX) {
     if (requests_info->is_redis_reply) {
       CHECKM(reply->type == REDIS_REPLY_STRING,
              "Expected Redis string, received type %d %s", reply->type,
              reply->str);
       DCHECK(reply->len == DIGEST_SIZE);
-      if (memcmp(digest, reply->str, reply->len) != 0) {
+      if (memcmp(info->digest, reply->str, reply->len) != 0) {
         /* If our object hash doesn't match the one recorded in the table,
          * report the error back to the user and exit immediately. */
         LOG_FATAL(
@@ -329,6 +335,16 @@ void redis_object_table_add_callback(redisAsyncContext *c,
                                (void *) requests_info, "SADD obj:%b %b", id.id,
                                sizeof(id.id), (char *) db->client.id,
                                sizeof(db->client.id));
+  } else if (request_index == OBJECT_TABLE_ADD_SET_SIZE_INDEX) {
+    requests_info->is_redis_reply = true;
+    status = redisAsyncCommand(db->context, redis_object_table_add_callback,
+                               (void *) requests_info, "HMSET obj:%b size %d",
+                               (char *) id.id, sizeof(id.id), info->data_size);
+  } else if (request_index == OBJECT_TABLE_ADD_PUBLISH_INDEX) {
+    requests_info->is_redis_reply = true;
+    status = redisAsyncCommand(db->context, redis_object_table_add_callback,
+                               (void *) requests_info, "PUBLISH obj:info %b:%d",
+                               id.id, sizeof(id.id), info->data_size);
   } else {
     /* We finished executing all the Redis commands for this attempt at the
      * table operation. */
@@ -358,7 +374,7 @@ void redis_object_table_add(table_callback_data *callback_data) {
   LOG_DEBUG("Calling object table add");
   redis_requests_info *requests_info = malloc(sizeof(redis_requests_info));
   requests_info->timer_id = callback_data->timer_id;
-  requests_info->request_index = 0;
+  requests_info->request_index = OBJECT_TABLE_ADD_CHECK_HASH_INDEX;
   requests_info->is_redis_reply = false;
   db_handle *db = callback_data->db_handle;
   redis_object_table_add_callback(db->context, NULL, (void *) requests_info);
@@ -587,10 +603,20 @@ void redis_object_table_subscribe(table_callback_data *callback_data) {
 
   /* subscribe to key notification associated to object id */
   object_id id = callback_data->id;
-  int status = redisAsyncCommand(
-      db->sub_context, object_table_redis_subscribe_callback,
-      (void *) callback_data->timer_id, "SUBSCRIBE __keyspace@0__:obj:%b",
-      id.id, sizeof(id.id));
+  int status = REDIS_OK;
+
+  if (IS_NIL_ID(id)) {
+    /* Subscribe to all object events. */
+    status = redisAsyncCommand(
+        db->sub_context, object_table_redis_subscribe_callback,
+        (void *) callback_data->timer_id, "PSUBSCRIBE __keyspace@0__:obj:*");
+  } else {
+    /* Subscribe to the specified object id. */
+    status = redisAsyncCommand(
+        db->sub_context, object_table_redis_subscribe_callback,
+        (void *) callback_data->timer_id, "SUBSCRIBE __keyspace@0__:obj:%b",
+        id.id, sizeof(id.id));
+  }
   if ((status == REDIS_ERR) || db->sub_context->err) {
     LOG_REDIS_DEBUG(db->sub_context,
                     "error in redis_object_table_subscribe_callback");
@@ -752,12 +778,12 @@ void redis_task_table_subscribe_callback(redisAsyncContext *c,
   redisReply *reply = r;
 
   CHECK(reply->type == REDIS_REPLY_ARRAY);
-  /* If this condition is true, we got the initial message that acknowledged the
-   * subscription. */
   CHECK(reply->elements > 2);
   /* First entry is message type, then possibly the regex we psubscribed to,
    * then topic, then payload. */
   redisReply *payload = reply->element[reply->elements - 1];
+  /* If this condition is true, we got the initial message that acknowledged the
+   * subscription. */
   if (payload->str == NULL) {
     if (callback_data->done_callback) {
       task_table_done_callback done_callback = callback_data->done_callback;
@@ -813,12 +839,12 @@ void redis_db_client_table_subscribe_callback(redisAsyncContext *c,
   redisReply *reply = r;
 
   CHECK(reply->type == REDIS_REPLY_ARRAY);
-  /* If this condition is true, we got the initial message that acknowledged the
-   * subscription. */
   CHECK(reply->elements > 2);
   /* First entry is message type, then possibly the regex we psubscribed to,
    * then topic, then payload. */
   redisReply *payload = reply->element[reply->elements - 1];
+  /* If this condition is true, we got the initial message that acknowledged the
+   * subscription. */
   if (payload->str == NULL) {
     if (callback_data->done_callback) {
       db_client_table_done_callback done_callback =
@@ -853,6 +879,54 @@ void redis_db_client_table_subscribe(table_callback_data *callback_data) {
   if ((status == REDIS_ERR) || db->sub_context->err) {
     LOG_REDIS_DEBUG(db->sub_context,
                     "error in db_client_table_register_callback");
+  }
+}
+
+void redis_object_info_subscribe_callback(redisAsyncContext *c,
+                                          void *r,
+                                          void *privdata) {
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
+  redisReply *reply = r;
+
+  CHECK(reply->type == REDIS_REPLY_ARRAY);
+
+  CHECK(reply->elements > 2);
+  /* First entry is message type, then possibly the regex we psubscribed to,
+   * then topic, then payload. */
+  redisReply *payload = reply->element[reply->elements - 1];
+  /* If this condition is true, we got the initial message that acknowledged the
+   * subscription. */
+  if (payload->str == NULL) {
+    if (callback_data->done_callback) {
+      db_client_table_done_callback done_callback =
+          callback_data->done_callback;
+      done_callback(callback_data->id, callback_data->user_context);
+    }
+    /* Note that we do not destroy the callback data yet because the
+     * subscription callback needs this data. */
+    event_loop_remove_timer(db->loop, callback_data->timer_id);
+    return;
+  }
+  /* Otherwise, parse the payload and call the callback. */
+  object_info_subscribe_data *data = callback_data->data;
+  object_id object_id;
+  memcpy(object_id.id, payload->str, sizeof(object_id.id));
+  /* payload->str should have the format: "object_id:object_size_int" */
+  LOG_DEBUG("obj:info channel received message <%s>", payload->str);
+  if (data->subscribe_callback) {
+    data->subscribe_callback(
+        object_id, strtol(&payload->str[1 + sizeof(object_id)], NULL, 10),
+        data->subscribe_context);
+  }
+}
+
+void redis_object_info_subscribe(table_callback_data *callback_data) {
+  db_handle *db = callback_data->db_handle;
+  int status = redisAsyncCommand(
+      db->sub_context, redis_object_info_subscribe_callback,
+      (void *) callback_data->timer_id, "PSUBSCRIBE obj:info");
+  if ((status == REDIS_ERR) || db->sub_context->err) {
+    LOG_REDIS_DEBUG(db->sub_context, "error in object_info_register_callback");
   }
 }
 
