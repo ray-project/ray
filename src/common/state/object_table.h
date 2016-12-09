@@ -56,6 +56,7 @@ typedef void (*object_table_done_callback)(object_id object_id,
  */
 void object_table_add(db_handle *db_handle,
                       object_id object_id,
+                      unsigned char digest[],
                       retry_info *retry,
                       object_table_done_callback done_callback,
                       void *user_context);

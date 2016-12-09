@@ -73,9 +73,13 @@ void release_object(client *client_context, object_id object_id);
  *
  * @param client_context The context of the client making this request.
  * @param object_id Object ID of the object to be sealed.
+ * @param digest The digest of the object. This is used to tell if two objects
+ *        with the same object ID are the same.
  * @return Void.
  */
-void seal_object(client *client_context, object_id object_id);
+void seal_object(client *client_context,
+                 object_id object_id,
+                 unsigned char digest[]);
 
 /**
  * Check if the plasma store contains an object:

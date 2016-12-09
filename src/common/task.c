@@ -101,13 +101,13 @@ task_id compute_task_id(task_spec *spec) {
   }
   /* Compute a SHA256 hash of the task_spec. */
   SHA256_CTX ctx;
-  BYTE buff[SHA256_BLOCK_SIZE];
+  BYTE buff[DIGEST_SIZE];
   sha256_init(&ctx);
   sha256_update(&ctx, (BYTE *) spec, task_spec_size(spec));
   sha256_final(&ctx, buff);
   /* Create a task ID out of the hash. This will truncate the hash. */
   task_id task_id;
-  CHECK(sizeof(task_id) <= SHA256_BLOCK_SIZE);
+  CHECK(sizeof(task_id) <= DIGEST_SIZE);
   memcpy(&task_id.id, buff, sizeof(task_id.id));
   return task_id;
 }
