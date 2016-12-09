@@ -164,7 +164,9 @@ bool create_object(client *client_context,
   assert(fd != -1);
 
   entry = malloc(sizeof(object_table_entry));
+  memset(entry, 0, sizeof(object_table_entry));
   memcpy(&entry->object_id, &obj_id, sizeof(entry->object_id));
+  entry->info.obj_id = obj_id;
   entry->info.data_size = data_size;
   entry->info.metadata_size = metadata_size;
   entry->pointer = pointer;
@@ -399,11 +401,21 @@ void send_notifications(event_loop *loop,
    * possible. */
   for (int i = 0; i < utarray_len(queue->object_ids); ++i) {
     object_id *obj_id = (object_id *) utarray_eltptr(queue->object_ids, i);
+    object_table_entry *entry = NULL;
+    /* This object should already exist in plasma store state. */
+    HASH_FIND(handle, plasma_state->plasma_store_info->objects, obj_id,
+              sizeof(object_id), entry);
+    CHECK(entry != NULL);
+
+    object_info object_info = entry->info;
+
     /* Attempt to send a notification about this object ID. */
-    int nbytes = send(client_sock, (char const *) obj_id, sizeof(*obj_id), 0);
+    int nbytes =
+        send(client_sock, (char const *) &object_info, sizeof(object_info), 0);
     if (nbytes >= 0) {
-      CHECK(nbytes == sizeof(*obj_id));
-    } else if (nbytes == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+      CHECK(nbytes == sizeof(object_info));
+    } else if (nbytes == -1 &&
+               (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
       LOG_DEBUG(
           "The socket's send buffer is full, so we are caching this "
           "notification and will send it later.");

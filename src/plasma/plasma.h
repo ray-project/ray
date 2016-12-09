@@ -11,16 +11,10 @@
 #include <unistd.h> /* pid_t */
 
 #include "common.h"
+#include "object_info.h"
 
 #include "utarray.h"
 #include "uthash.h"
-
-typedef struct {
-  int64_t data_size;
-  int64_t metadata_size;
-  int64_t create_time;
-  int64_t construct_duration;
-} plasma_object_info;
 
 /**
  * Object request data structure. Used in the plasma_wait_for_objects()
@@ -199,7 +193,7 @@ typedef struct {
   /** Object id of this object. */
   object_id object_id;
   /** Object info like size, creation time and owner. */
-  plasma_object_info info;
+  object_info info;
   /** Memory mapped file containing the object. */
   int fd;
   /** Size of the underlying map. */

@@ -211,6 +211,7 @@ class PlasmaClient(object):
     """Subscribe to notifications about sealed objects."""
     fd = libplasma.subscribe(self.conn)
     self.notification_sock = socket.fromfd(fd, socket.AF_UNIX, socket.SOCK_STREAM)
+    self.notification_fd = fd
     # Make the socket non-blocking.
     self.notification_sock.setblocking(0)
 
@@ -221,13 +222,14 @@ class PlasmaClient(object):
     # Loop until we've read PLASMA_ID_SIZE bytes from the socket.
     while True:
       try:
-        message_data = self.notification_sock.recv(PLASMA_ID_SIZE)
+        rv = libplasma.receive_notification(self.notification_fd)
+        obj_id, data_size, metadata_size = rv
       except socket.error:
         time.sleep(0.001)
       else:
-        assert len(message_data) == PLASMA_ID_SIZE
+        assert len(obj_id) == PLASMA_ID_SIZE
         break
-    return message_data
+    return obj_id, data_size, metadata_size
 
 DEFAULT_PLASMA_STORE_MEMORY = 10 ** 9
 
