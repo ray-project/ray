@@ -1,6 +1,5 @@
 import os
 import random
-import socket
 import subprocess
 import time
 import libplasma
@@ -221,16 +220,10 @@ class PlasmaClient(object):
 
   def subscribe(self):
     """Subscribe to notifications about sealed objects."""
-    fd = libplasma.subscribe(self.conn)
-    self.notification_sock = socket.fromfd(fd, socket.AF_UNIX, socket.SOCK_STREAM)
-    self.notification_fd = fd
-    # Make the socket non-blocking.
-    self.notification_sock.setblocking(0)
+    self.notification_fd = libplasma.subscribe(self.conn)
 
   def get_next_notification(self):
     """Get the next notification from the notification socket."""
-    if not self.notification_sock:
-      raise Exception("To get notifications, first call subscribe.")
     return libplasma.receive_notification(self.notification_fd)
 
 DEFAULT_PLASMA_STORE_MEMORY = 10 ** 9
