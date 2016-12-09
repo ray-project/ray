@@ -164,6 +164,7 @@ bool create_object(client *client_context,
   assert(fd != -1);
 
   entry = malloc(sizeof(object_table_entry));
+  memset(entry, 0, sizeof(object_table_entry));
   memcpy(&entry->object_id, &obj_id, sizeof(entry->object_id));
   entry->info.obj_id = obj_id;
   entry->info.data_size = data_size;
