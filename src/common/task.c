@@ -20,7 +20,7 @@
  * i.e. with respect to the address &task_spec.args_and_returns[0] +
  * (task_spec->num_args + task_spec->num_returns) * sizeof(task_arg). */
 
-typedef struct {
+typedef struct SERIALIZABLE {
   /* Either ARG_BY_REF or ARG_BY_VAL. */
   int8_t type;
   union {
@@ -58,7 +58,7 @@ struct task_spec_impl {
   int64_t args_value_offset;
   /** Argument and return IDs as well as offsets for pass-by-value args. */
   task_arg args_and_returns[0];
-};
+} SERIALIZABE;
 
 /* The size of a task specification is given by the following expression. */
 #define TASK_SPEC_SIZE(NUM_ARGS, NUM_RETURNS, ARGS_VALUE_SIZE)           \
@@ -285,7 +285,7 @@ struct task_impl {
   scheduling_state state;
   node_id node;
   task_spec spec;
-};
+} SERIALIZABLE;
 
 bool node_ids_equal(node_id first_id, node_id second_id) {
   return UNIQUE_ID_EQ(first_id, second_id);
