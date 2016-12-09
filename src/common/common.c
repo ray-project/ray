@@ -14,6 +14,8 @@ const UT_icd object_id_icd = {sizeof(object_id), NULL, NULL, NULL};
 const unique_id NIL_ID = {{255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
                            255, 255, 255, 255, 255, 255, 255, 255, 255, 255}};
 
+const unsigned char NIL_DIGEST[DIGEST_SIZE] = {0};
+
 unique_id globally_unique_id(void) {
   /* Use /dev/urandom for "real" randomness. */
   int fd;

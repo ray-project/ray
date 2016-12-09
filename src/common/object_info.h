@@ -14,6 +14,7 @@ typedef struct {
   int64_t metadata_size;
   int64_t create_time;
   int64_t construct_duration;
+  unsigned char digest[DIGEST_SIZE];
 } object_info;
 
 #endif

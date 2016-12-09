@@ -12,18 +12,27 @@
 #endif
 
 #include "utarray.h"
+#include "sha256.h"
 
+/** Definitions for Ray logging levels. */
 #define RAY_COMMON_DEBUG 0
 #define RAY_COMMON_INFO 1
 #define RAY_COMMON_WARNING 2
 #define RAY_COMMON_ERROR 3
 #define RAY_COMMON_FATAL 4
 
-/* Default logging level is INFO. */
+/**
+ * RAY_COMMON_LOG_LEVEL should be defined to one of the above logging level
+ * integer values. Any logging statement in the code with a logging level
+ * greater than or equal to RAY_COMMON_LOG_LEVEL will be outputted to stderr.
+ * The default logging level is INFO. */
 #ifndef RAY_COMMON_LOG_LEVEL
 #define RAY_COMMON_LOG_LEVEL RAY_COMMON_INFO
 #endif
 
+/**
+ * Macros to enable each level of Ray logging statements depending on the
+ * current logging level. */
 #if (RAY_COMMON_LOG_LEVEL > RAY_COMMON_DEBUG)
 #define LOG_DEBUG(M, ...)
 #else
@@ -74,6 +83,7 @@
   } while (0)
 #endif
 
+/** Assertion definitions, with optional logging. */
 #define CHECKM(COND, M, ...)                                   \
   if (!(COND)) {                                               \
     LOG_FATAL("Check failure: %s \n" M, #COND, ##__VA_ARGS__); \
@@ -97,6 +107,7 @@
  *  and is responsible for freeing it. */
 #define OWNER
 
+/** Definitions for unique ID types. */
 #define UNIQUE_ID_SIZE 20
 
 #define UNIQUE_ID_EQ(id1, id2) (memcmp((id1).id, (id2).id, UNIQUE_ID_SIZE) == 0)
@@ -151,5 +162,10 @@ bool db_client_ids_equal(db_client_id first_id, db_client_id second_id);
 
 #define MAX(x, y) ((x) >= (y) ? (x) : (y))
 #define MIN(x, y) ((x) <= (y) ? (x) : (y))
+
+/** Definitions for computing hash digests. */
+#define DIGEST_SIZE SHA256_BLOCK_SIZE
+
+extern const unsigned char NIL_DIGEST[DIGEST_SIZE];
 
 #endif

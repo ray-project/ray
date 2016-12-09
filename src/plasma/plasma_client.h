@@ -139,6 +139,19 @@ void plasma_contains(plasma_connection *conn,
                      int *has_object);
 
 /**
+ * Compute the hash of an object in the object store.
+ *
+ * @param conn The object containing the connection state.
+ * @param object_id The ID of the object we want to hash.
+ * @param digest A pointer at which to return the hash digest of the object.
+ *        The pointer must have at least DIGEST_SIZE bytes allocated.
+ * @return A boolean representing whether the hash operation succeeded.
+ */
+bool plasma_compute_object_hash(plasma_connection *conn,
+                                object_id object_id,
+                                unsigned char *digest);
+
+/**
  * Seal an object in the object store. The object will be immutable after this
  * call.
  *
