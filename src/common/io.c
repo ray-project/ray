@@ -275,6 +275,7 @@ int read_bytes(int fd, uint8_t *cursor, size_t length) {
  * @note The caller must free the memory.
  *
  * @param fd The file descriptor to read from. It can be non-blocking.
+ * @param expected_version The protocol version we are expecting for thie message.
  * @param type The type of the message that is read will be written at this
  *        address. If there was an error while reading, this will be
  *        DISCONNECT_CLIENT.
@@ -287,8 +288,14 @@ int read_bytes(int fd, uint8_t *cursor, size_t length) {
  *        reading, this will be NULL.
  * @return Void.
  */
-void read_message(int fd, int64_t *type, int64_t *length, uint8_t **bytes) {
-  int closed = read_bytes(fd, (uint8_t *) type, sizeof(*type));
+void read_message(int fd, int64_t expected_version, int64_t *type, int64_t *length, uint8_t **bytes) {
+  int64_t read_version;
+  int closed = read_bytes(fd, (uint8_t *) &read_version, sizeof(expected_version));
+  if (closed) {
+    goto disconnected;
+  }
+  CHECK(read_version == expected_version);
+  closed = read_bytes(fd, (uint8_t *) type, sizeof(*type));
   if (closed) {
     goto disconnected;
   }
@@ -320,6 +327,7 @@ disconnected:
  * @note The caller must create and free the buffer.
  *
  * @param fd The file descriptor to read from. It can be non-blocking.
+ * @param expected_version The protocol version we are expecting for this message.
  * @param type The type of the message that is read will be written at this
  *        address. If there was an error while reading, this will be
  *        DISCONNECT_CLIENT.
@@ -329,9 +337,15 @@ disconnected:
  *         include the bytes used to encode the type and length. If there was
  *         an error while reading, this will be 0.
  */
-int64_t read_buffer(int fd, int64_t *type, UT_array *buffer) {
+int64_t read_buffer(int fd, int64_t expected_version, int64_t *type, UT_array *buffer) {
+  int64_t read_version;
+  int closed = read_bytes(fd, (uint8_t *) &read_version, sizeof(expected_version));
+  if (closed) {
+    goto disconnected;
+  }
+  CHECK(read_version == expected_version);
   int64_t length;
-  int closed = read_bytes(fd, (uint8_t *) type, sizeof(*type));
+  closed = read_bytes(fd, (uint8_t *) type, sizeof(*type));
   if (closed) {
     goto disconnected;
   }
@@ -356,7 +370,7 @@ disconnected:
 /* Write a null-terminated string to a file descriptor. */
 void write_log_message(int fd, char *message) {
   /* Account for the \0 at the end of the string. */
-  write_message(fd, LOG_MESSAGE, strlen(message) + 1, (uint8_t *) message);
+  write_message(fd, LOG_PROTOCOL_VERSION, LOG_MESSAGE, strlen(message) + 1, (uint8_t *) message);
 }
 
 /* Reads a null-terminated string from the file descriptor that has been
@@ -366,7 +380,7 @@ char *read_log_message(int fd) {
   uint8_t *bytes;
   int64_t type;
   int64_t length;
-  read_message(fd, &type, &length, &bytes);
+  read_message(fd, LOG_PROTOCOL_VERSION, &type, &length, &bytes);
   CHECK(type == LOG_MESSAGE);
   return (char *) bytes;
 }

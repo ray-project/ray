@@ -7,6 +7,8 @@
 #include "utarray.h"
 #include "uthash.h"
 
+#define PHOTON_PROTOCOL_VERSION 0x0000000000000000
+
 enum photon_message_type {
   /** Notify the local scheduler that a task has finished. */
   TASK_DONE = 64,

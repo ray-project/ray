@@ -6,6 +6,8 @@
 #include "common.h"
 #include "plasma.h"
 
+#include "format/plasma_reader.h"
+
 int plasma_send_create_request(int sock,
                                object_id object_id,
                                int64_t data_size,

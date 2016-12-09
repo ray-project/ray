@@ -157,11 +157,11 @@ TEST send_task(void) {
   finish_construct_task_spec(spec);
   int fd[2];
   socketpair(AF_UNIX, SOCK_STREAM, 0, fd);
-  write_message(fd[0], SUBMIT_TASK, task_spec_size(spec), (uint8_t *) spec);
+  write_message(fd[0], 0, SUBMIT_TASK, task_spec_size(spec), (uint8_t *) spec);
   int64_t type;
   int64_t length;
   uint8_t *message;
-  read_message(fd[1], &type, &length, &message);
+  read_message(fd[1], 0, &type, &length, &message);
   task_spec *result = (task_spec *) message;
   ASSERT(type == SUBMIT_TASK);
   ASSERT(memcmp(spec, result, task_spec_size(spec)) == 0);

@@ -31,6 +31,7 @@
 #include "utarray.h"
 #include "fling.h"
 #include "malloc.h"
+#include "plasma_protocol.h"
 #include "plasma_store.h"
 #include "plasma.h"
 
@@ -452,24 +453,28 @@ void process_message(event_loop *loop,
   client *client_context = context;
   plasma_store_state *state = client_context->plasma_state;
   int64_t type;
-  read_buffer(client_sock, &type, state->input_buffer);
+  read_buffer(client_sock, PLASMA_PROTOCOL_VERSION, &type, state->input_buffer);
   plasma_request *req = (plasma_request *) utarray_front(state->input_buffer);
 
   /* We're only sending a single object ID at a time for now. */
   plasma_reply reply = plasma_make_reply(NIL_OBJECT_ID);
   /* Process the different types of requests. */
   switch (type) {
-  case PLASMA_CREATE:
-    DCHECK(req->num_object_ids == 1);
-    if (create_object(client_context, req->object_requests[0].object_id,
-                      req->data_size, req->metadata_size, &reply.object)) {
-      reply.error_code = PLASMA_REPLY_OK;
+  case MessageType_PlasmaCreateRequest: {
+    object_id obj_id;
+    int64_t data_size;
+    int64_t metadata_size;
+    plasma_read_create_request(utarray_front(state->input_buffer), &obj_id, &data_size, &metadata_size);
+    plasma_object object;
+    int error_code;
+    if (create_object(client_context, obj_id, data_size, metadata_size, &object)) {
+      error_code = PLASMA_REPLY_OK;
     } else {
-      reply.error_code = PLASMA_OBJECT_ALREADY_EXISTS;
+      error_code = PLASMA_OBJECT_ALREADY_EXISTS;
     }
-    CHECK(plasma_send_reply(client_sock, &reply) >= 0);
-    CHECK(send_fd(client_sock, reply.object.handle.store_fd) >= 0);
-    break;
+    CHECK(plasma_send_create_reply(client_sock, obj_id, &object, error_code) >= 0);
+    CHECK(send_fd(client_sock, object.handle.store_fd) >= 0);
+  } break;
   case PLASMA_GET:
     DCHECK(req->num_object_ids == 1);
     if (get_object(client_context, client_sock,
