@@ -20,6 +20,11 @@
 #include "redis.h"
 #include "io.h"
 
+#ifndef _WIN32
+/* This function is actually not declared in standard POSIX, so declare it. */
+extern int usleep(useconds_t usec);
+#endif
+
 #define CHECK_REDIS_CONNECT(CONTEXT_TYPE, context, M, ...) \
   do {                                                     \
     CONTEXT_TYPE *_context = (context);                    \
