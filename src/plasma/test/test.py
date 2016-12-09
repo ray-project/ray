@@ -262,7 +262,7 @@ class TestPlasmaClient(unittest.TestCase):
         object_str = str(uuid.uuid4())
         object_str_len = random.randint(0,len(object_str))
         object_str = object_str[:object_str_len]
-        object_datasize = 1024#random.randint(1,1024)
+        object_datasize = random.randint(1,1024)
         object_metadata = bytearray(object_str)
         metadata_list.append(len(object_metadata))
         datasize_list.append(object_datasize)

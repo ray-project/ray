@@ -165,6 +165,7 @@ bool create_object(client *client_context,
 
   entry = malloc(sizeof(object_table_entry));
   memcpy(&entry->object_id, &obj_id, sizeof(entry->object_id));
+  entry->info.obj_id = obj_id;
   entry->info.data_size = data_size;
   entry->info.metadata_size = metadata_size;
   entry->pointer = pointer;
@@ -406,7 +407,6 @@ void send_notifications(event_loop *loop,
     CHECK(entry != NULL);
 
     object_info object_info = entry->info;
-    object_info.objid = entry->object_id; /* TODO: set this objid on create? */
 
     /* Attempt to send a notification about this object ID. */
     int nbytes = send(client_sock, (char const *) &object_info,

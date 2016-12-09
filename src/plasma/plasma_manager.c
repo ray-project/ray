@@ -1497,7 +1497,7 @@ void process_object_notification(event_loop *loop,
                                  int events) {
   plasma_manager_state *state = context;
   object_id obj_id;
-  plasma_object_info object_info;
+  object_info object_info;
   retry_info retry = {
       .num_retries = NUM_RETRIES,
       .timeout = MANAGER_TIMEOUT,
@@ -1514,7 +1514,7 @@ void process_object_notification(event_loop *loop,
     close(client_sock);
     return;
   }
-  obj_id = object_info.objid;
+  obj_id = object_info.obj_id;
   /* Add object to locally available object. */
   /* TODO(pcm): Where is this deallocated? */
   available_object *entry =

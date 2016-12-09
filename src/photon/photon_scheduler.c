@@ -9,6 +9,7 @@
 #include "common.h"
 #include "event_loop.h"
 #include "io.h"
+#include "object_info.h"
 #include "photon.h"
 #include "photon_algorithm.h"
 #include "photon_scheduler.h"
@@ -17,7 +18,6 @@
 #include "state/object_table.h"
 #include "utarray.h"
 #include "uthash.h"
-#include "object_info.h"
 
 UT_icd task_ptr_icd = {sizeof(task *), NULL, NULL, NULL};
 UT_icd worker_icd = {sizeof(worker), NULL, NULL, NULL};
@@ -105,7 +105,7 @@ void process_plasma_notification(event_loop *loop,
                                  int events) {
   local_scheduler_state *s = context;
   /* Read the notification from Plasma. */
-  plasma_object_info object_info;
+  object_info object_info;
   int error = read_bytes(client_sock, (uint8_t *) &object_info, sizeof(object_info));
   if (error < 0) {
     /* The store has closed the socket. */
@@ -116,7 +116,7 @@ void process_plasma_notification(event_loop *loop,
     close(client_sock);
     return;
   }
-  handle_object_available(s, s->algorithm_state, object_info.objid);
+  handle_object_available(s, s->algorithm_state, object_info.obj_id);
 }
 
 void process_message(event_loop *loop, int client_sock, void *context,

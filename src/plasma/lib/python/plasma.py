@@ -223,13 +223,13 @@ class PlasmaClient(object):
     while True:
       try:
         rv = libplasma.receive_notification(self.notification_fd)
-        objid,data_size,metadata_size = rv
+        obj_id, data_size, metadata_size = rv
       except socket.error:
         time.sleep(0.001)
       else:
-        assert len(objid) == PLASMA_ID_SIZE
+        assert len(obj_id) == PLASMA_ID_SIZE
         break
-    return (objid,data_size,metadata_size)
+    return obj_id, data_size, metadata_size
 
 DEFAULT_PLASMA_STORE_MEMORY = 10 ** 9
 
