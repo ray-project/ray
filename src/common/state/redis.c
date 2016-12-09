@@ -376,7 +376,7 @@ void redis_object_table_add(table_callback_data *callback_data) {
   LOG_DEBUG("Calling object table add");
   redis_requests_info *requests_info = malloc(sizeof(redis_requests_info));
   requests_info->timer_id = callback_data->timer_id;
-  requests_info->request_index = 0;
+  requests_info->request_index = OBJECT_TABLE_ADD_CHECK_HASH_INDEX;
   requests_info->is_redis_reply = false;
   db_handle *db = callback_data->db_handle;
   redis_object_table_add_callback(db->context, NULL, (void *) requests_info);
