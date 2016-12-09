@@ -1504,7 +1504,8 @@ void process_object_notification(event_loop *loop,
       .fail_callback = NULL,
   };
   /* Read the notification from Plasma. */
-  int error = read_bytes(client_sock, (uint8_t *) &object_info, sizeof(object_info));
+  int error =
+      read_bytes(client_sock, (uint8_t *) &object_info, sizeof(object_info));
   if (error < 0) {
     /* The store has closed the socket. */
     LOG_DEBUG(

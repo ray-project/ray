@@ -403,18 +403,18 @@ void send_notifications(event_loop *loop,
     object_table_entry *entry = NULL;
     /* This object should already exist in plasma store state. */
     HASH_FIND(handle, plasma_state->plasma_store_info->objects, obj_id,
-        sizeof(object_id), entry);
+              sizeof(object_id), entry);
     CHECK(entry != NULL);
 
     object_info object_info = entry->info;
 
     /* Attempt to send a notification about this object ID. */
-    int nbytes = send(client_sock, (char const *) &object_info,
-                      sizeof(object_info), 0);
+    int nbytes =
+        send(client_sock, (char const *) &object_info, sizeof(object_info), 0);
     if (nbytes >= 0) {
       CHECK(nbytes == sizeof(object_info));
     } else if (nbytes == -1 &&
-              (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
+               (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
       LOG_DEBUG(
           "The socket's send buffer is full, so we are caching this "
           "notification and will send it later.");

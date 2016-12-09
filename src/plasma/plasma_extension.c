@@ -321,8 +321,8 @@ PyObject *PyPlasma_receive_notification(PyObject *self, PyObject *args) {
   }
   /* Receive object notification from the plasma connection socket,
    * return a tuple of its fields: object_id, data_size, metadata_size. */
-  int nbytes = read_bytes(plasma_sock, (uint8_t *) &object_info,
-                          sizeof(object_info));
+  int nbytes =
+      read_bytes(plasma_sock, (uint8_t *) &object_info, sizeof(object_info));
 
   if (nbytes < 0) {
     PyErr_SetString(PyExc_RuntimeError,
@@ -332,7 +332,7 @@ PyObject *PyPlasma_receive_notification(PyObject *self, PyObject *args) {
   /* Construct a tuple from object_info and return. */
   PyObject *t = PyTuple_New(3);
   PyTuple_SetItem(t, 0, PyString_FromStringAndSize(
-                  (char *) object_info.obj_id.id, UNIQUE_ID_SIZE));
+                            (char *) object_info.obj_id.id, UNIQUE_ID_SIZE));
   PyTuple_SetItem(t, 1, PyInt_FromLong(object_info.data_size));
   PyTuple_SetItem(t, 2, PyInt_FromLong(object_info.metadata_size));
 
@@ -362,8 +362,8 @@ static PyMethodDef plasma_methods[] = {
      "Transfer object to another plasma manager."},
     {"subscribe", PyPlasma_subscribe, METH_VARARGS,
      "Subscribe to the plasma notification socket."},
-     {"receive_notification", PyPlasma_receive_notification, METH_VARARGS,
-      "Receive next notification from plasma notification socket."},
+    {"receive_notification", PyPlasma_receive_notification, METH_VARARGS,
+     "Receive next notification from plasma notification socket."},
     {NULL} /* Sentinel */
 };
 

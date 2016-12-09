@@ -291,7 +291,6 @@ typedef struct {
   uint8_t *metadata;
 } object_buffer;
 
-
 /**
  * Get specified object from the local Plasma Store. This function is
  * non-blocking.
