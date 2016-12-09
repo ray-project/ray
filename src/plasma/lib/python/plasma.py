@@ -231,17 +231,7 @@ class PlasmaClient(object):
     """Get the next notification from the notification socket."""
     if not self.notification_sock:
       raise Exception("To get notifications, first call subscribe.")
-    # Loop until we've read PLASMA_ID_SIZE bytes from the socket.
-    while True:
-      try:
-        rv = libplasma.receive_notification(self.notification_fd)
-        obj_id, data_size, metadata_size = rv
-      except socket.error:
-        time.sleep(0.001)
-      else:
-        assert len(obj_id) == PLASMA_ID_SIZE
-        break
-    return obj_id, data_size, metadata_size
+    return libplasma.receive_notification(self.notification_fd)
 
 DEFAULT_PLASMA_STORE_MEMORY = 10 ** 9
 
