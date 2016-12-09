@@ -81,6 +81,11 @@ int64_t table_timeout_handler(event_loop *loop,
     if (callback_data->retry.fail_callback) {
       callback_data->retry.fail_callback(
           callback_data->id, callback_data->user_context, callback_data->data);
+    } else {
+      /* If no fail callback was provided, throw a fatal error. */
+      CHECKM(0,
+             "A table operation failed to execute, and no fail callback was "
+             "provided.");
     }
     destroy_table_callback(callback_data);
     return EVENT_LOOP_TIMER_DONE;
