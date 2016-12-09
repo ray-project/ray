@@ -132,7 +132,9 @@ enum plasma_message_type {
   /** Wait until an object becomes available. */
   PLASMA_WAIT,
   /** Wait until an object becomes available. */
-  PLASMA_WAIT1
+  PLASMA_WAIT1,
+  /** Wait until an object becomes available. */
+  PLASMA_WAIT2
 };
 
 typedef struct {

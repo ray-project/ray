@@ -160,8 +160,8 @@ TEST plasma_wait_for_objects_tests(void) {
 
   struct timeval start, end;
   gettimeofday(&start, NULL);
-  int n = plasma_wait_for_objects(plasma_conn1, NUM_OBJ_REQUEST, obj_requests,
-                                  NUM_OBJ_REQUEST, WAIT_TIMEOUT_MS);
+  int n = plasma_wait_for_objects2(plasma_conn1, NUM_OBJ_REQUEST, obj_requests,
+                                   NUM_OBJ_REQUEST, WAIT_TIMEOUT_MS);
   ASSERT(n == 0);
   gettimeofday(&end, NULL);
   float diff_ms = (end.tv_sec - start.tv_sec);
@@ -178,30 +178,30 @@ TEST plasma_wait_for_objects_tests(void) {
   plasma_seal(plasma_conn1, oid1);
 
   sleep(1);
-  n = plasma_wait_for_objects(plasma_conn1, NUM_OBJ_REQUEST, obj_requests,
-                              NUM_OBJ_REQUEST, WAIT_TIMEOUT_MS);
+  n = plasma_wait_for_objects2(plasma_conn1, NUM_OBJ_REQUEST, obj_requests,
+                               NUM_OBJ_REQUEST, WAIT_TIMEOUT_MS);
   ASSERT(n == 1);
 
-  /* Create and insert an object in plasma_conn1. */
+  /* Create and insert an object in plasma_conn2. */
   plasma_create(plasma_conn2, oid2, data_size, metadata, metadata_size, &data);
   plasma_seal(plasma_conn2, oid2);
 
-  n = plasma_wait_for_objects(plasma_conn1, NUM_OBJ_REQUEST, obj_requests,
-                              NUM_OBJ_REQUEST, WAIT_TIMEOUT_MS);
+  n = plasma_wait_for_objects2(plasma_conn1, NUM_OBJ_REQUEST, obj_requests,
+                               NUM_OBJ_REQUEST, WAIT_TIMEOUT_MS);
   ASSERT(n == 2);
 
-  n = plasma_wait_for_objects(plasma_conn2, NUM_OBJ_REQUEST, obj_requests,
-                              NUM_OBJ_REQUEST, WAIT_TIMEOUT_MS);
+  n = plasma_wait_for_objects2(plasma_conn2, NUM_OBJ_REQUEST, obj_requests,
+                               NUM_OBJ_REQUEST, WAIT_TIMEOUT_MS);
   ASSERT(n == 2);
 
   obj_requests[0].type = PLASMA_QUERY_LOCAL;
   obj_requests[1].type = PLASMA_QUERY_LOCAL;
-  n = plasma_wait_for_objects(plasma_conn1, NUM_OBJ_REQUEST, obj_requests,
-                              NUM_OBJ_REQUEST, WAIT_TIMEOUT_MS);
+  n = plasma_wait_for_objects2(plasma_conn1, NUM_OBJ_REQUEST, obj_requests,
+                               NUM_OBJ_REQUEST, WAIT_TIMEOUT_MS);
   ASSERT(n == 1);
 
-  n = plasma_wait_for_objects(plasma_conn2, NUM_OBJ_REQUEST, obj_requests,
-                              NUM_OBJ_REQUEST, WAIT_TIMEOUT_MS);
+  n = plasma_wait_for_objects2(plasma_conn2, NUM_OBJ_REQUEST, obj_requests,
+                               NUM_OBJ_REQUEST, WAIT_TIMEOUT_MS);
   ASSERT(n == 1);
 
   sleep(1);
@@ -364,7 +364,7 @@ SUITE(plasma_client_tests) {
   RUN_TEST(plasma_status_tests);
   RUN_TEST(plasma_fetch_remote_tests);
   RUN_TEST(plasma_get_local_tests);
-  // RUN_TEST(plasma_wait_for_objects_tests);
+  RUN_TEST(plasma_wait_for_objects_tests);
   RUN_TEST(plasma_get_tests);
   RUN_TEST(plasma_wait_tests);
   RUN_TEST(plasma_multiget_tests);

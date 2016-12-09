@@ -554,19 +554,16 @@ class TestPlasmaManager(unittest.TestCase):
     self.client1.create(obj_id1, 1000)
     self.client1.seal(obj_id1)
     ready, waiting = self.client1.wait([obj_id1], timeout=100, num_returns=1)
-    self.assertEqual(len(ready), 1)
-    self.assertEqual(ready[0], obj_id1)
-    self.assertEqual(len(waiting), 0)
+    self.assertEqual(set(ready), set([obj_id1]))
+    self.assertEqual(waiting, [])
 
     # Test wait if only one object available and only one object waited for.
     obj_id2 = random_object_id()
     self.client1.create(obj_id2, 1000)
     # Don't seal.
     ready, waiting = self.client1.wait([obj_id2, obj_id1], timeout=100, num_returns=1)
-    self.assertEqual(len(ready), 1)
-    self.assertEqual(ready[0], obj_id1)
-    self.assertEqual(len(waiting), 1)
-    self.assertEqual(waiting[0], obj_id2)
+    self.assertEqual(set(ready), set([obj_id1]))
+    self.assertEqual(set(waiting), set([obj_id2]))
 
     # Test wait if object is sealed later.
     obj_id3 = random_object_id()
@@ -574,25 +571,51 @@ class TestPlasmaManager(unittest.TestCase):
     def finish():
       self.client2.create(obj_id3, 1000)
       self.client2.seal(obj_id3)
-      self.client2.transfer("127.0.0.1", self.port1, obj_id3)
 
     t = threading.Timer(0.1, finish)
     t.start()
     ready, waiting = self.client1.wait([obj_id3, obj_id2, obj_id1], timeout=1000, num_returns=2)
-    self.assertEqual(len(ready), 2)
-    self.assertTrue((ready[0] == obj_id1 and ready[1] == obj_id3) or (ready[0] == obj_id3 and ready[1] == obj_id1))
-    self.assertEqual(len(waiting), 1)
-    self.assertTrue(waiting[0] == obj_id2)
+    self.assertEqual(set(ready), set([obj_id1, obj_id3]))
+    self.assertEqual(set(waiting), set([obj_id2]))
 
     # Test if the appropriate number of objects is shown if some objects are not ready
-    ready, wait = self.client1.wait([obj_id3, obj_id2, obj_id1], 100, 3)
-    self.assertEqual(len(ready), 2)
-    self.assertTrue((ready[0] == obj_id1 and ready[1] == obj_id3) or (ready[0] == obj_id3 and ready[1] == obj_id1))
-    self.assertEqual(len(waiting), 1)
-    self.assertTrue(waiting[0] == obj_id2)
+    ready, waiting = self.client1.wait([obj_id3, obj_id2, obj_id1], 100, 3)
+    self.assertEqual(set(ready), set([obj_id1, obj_id3]))
+    self.assertEqual(set(waiting), set([obj_id2]))
 
     # Don't forget to seal obj_id2.
     self.client1.seal(obj_id2)
+
+    # Test calling wait a bunch of times.
+    object_ids = []
+    for i in range(50 * 51 / 2):
+      if i % 2 == 0:
+        object_id, _, _ = create_object(self.client1, 200, 200)
+      else:
+        object_id, _, _ = create_object(self.client2, 200, 200)
+      object_ids.append(object_id)
+    # Try waiting for all of the object IDs on the first client.
+    waiting = object_ids
+    retrieved = []
+    for i in range(1, 51):
+      ready, waiting = self.client1.wait(waiting, timeout=1000, num_returns=i)
+      self.assertEqual(len(ready), i)
+      retrieved += ready
+    self.assertEqual(set(retrieved), set(object_ids))
+    ready, waiting = self.client1.wait(object_ids, timeout=1000, num_returns=len(object_ids))
+    self.assertEqual(set(ready), set(object_ids))
+    self.assertEqual(waiting, [])
+    # Try waiting for all of the object IDs on the second client.
+    waiting = object_ids
+    retrieved = []
+    for i in range(1, 51):
+      ready, waiting = self.client2.wait(waiting, timeout=1000, num_returns=i)
+      self.assertEqual(len(ready), i)
+      retrieved += ready
+    self.assertEqual(set(retrieved), set(object_ids))
+    ready, waiting = self.client2.wait(object_ids, timeout=1000, num_returns=len(object_ids))
+    self.assertEqual(set(ready), set(object_ids))
+    self.assertEqual(waiting, [])
 
   def test_transfer(self):
     for _ in range(100):
