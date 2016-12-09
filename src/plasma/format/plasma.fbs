@@ -1,0 +1,63 @@
+// Plasma protocol specification
+
+enum ProtocolVersion:short {
+  V0,
+}
+
+enum MessageType:int {
+  // Create a new object.
+  PlasmaCreateRequest = 1,
+  PlasmaCreateReply,
+  // Seal an object.
+  PlasmaSealRequest,
+  PlasmaSealReply
+}
+
+// table MessageHeader {
+//   version: ProtocolVersion;
+//   message_type: MessageType;
+//   message_size: ulong;
+// }
+
+enum PlasmaError:int {
+  // No error
+  OK,
+  // Trying to create an object that already exists.
+  ObjectExists,
+  // Trying to access an object that doesn't exist.
+  ObjectNonExistent
+}
+
+table PlasmaCreateRequest {
+  // ID of the object to be created.
+  object_id: string;
+  // The size of the object's data in bytes.
+  data_size: ulong;
+  // The size of the object's metadata in bytes.
+  metadata_size: ulong;
+}
+
+struct PlasmaObject {
+  // Index of the memory segment (= memory mapped file) that
+  // this object is allocated in.
+  segment_index: int;
+  // Size in bytes of this segment (needed to call mmap).
+  mmap_size: ulong;
+  // The offset in bytes in the memory mapped file of the data.
+  data_offset: ulong;
+  // The size in bytes of the data.
+  data_size: ulong;
+  // The offset in bytes in the memory mapped file of the metadata.
+  metadata_offset: ulong;
+  // The size in bytes of the metadata.
+  metadata_size: ulong;
+}
+
+table PlasmaCreateReply {
+  // ID of the object that was created.
+  object_id: string;
+  // The object that is returned with this reply.
+  plasma_object: PlasmaObject;
+  // Error that occurred for this call.
+  error: PlasmaError;
+}
