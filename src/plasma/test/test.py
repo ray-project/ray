@@ -250,7 +250,6 @@ class TestPlasmaClient(unittest.TestCase):
     self.assertEqual(client.evict(2000), 996 + 995 + 994)
 
   def test_subscribe(self):
-    import uuid
     # Subscribe to notifications from the Plasma Store.
     sock = self.plasma_client.subscribe()
     for i in [1, 10, 100, 1000, 10000, 100000]:
