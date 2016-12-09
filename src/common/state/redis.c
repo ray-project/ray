@@ -260,15 +260,15 @@ task *parse_redis_task_table_entry(task_id id,
 /*
  *  ==== object_table callbacks ====
  */
- 
- enum {
-   OBJECT_TABLE_ADD_CHECK_HASH_INDEX = 0,
-   OBJECT_TABLE_ADD_GET_HASH_INDEX,
-   OBJECT_TABLE_ADD_REGISTER_MANAGER_INDEX,
-   OBJECT_TABLE_ADD_SET_SIZE_INDEX,
-   OBJECT_TABLE_ADD_PUBLISH_INDEX,
-   OBJECT_TABLE_ADD_MAX
- };
+
+enum {
+  OBJECT_TABLE_ADD_CHECK_HASH_INDEX = 0,
+  OBJECT_TABLE_ADD_GET_HASH_INDEX,
+  OBJECT_TABLE_ADD_REGISTER_MANAGER_INDEX,
+  OBJECT_TABLE_ADD_SET_SIZE_INDEX,
+  OBJECT_TABLE_ADD_PUBLISH_INDEX,
+  OBJECT_TABLE_ADD_MAX
+};
 
 void redis_object_table_add_callback(redisAsyncContext *c,
                                      void *r,
@@ -277,7 +277,7 @@ void redis_object_table_add_callback(redisAsyncContext *c,
   REDIS_MULTI_CALLBACK_HEADER(db, callback_data, r, requests_info);
   redisReply *reply = r;
   object_id id = callback_data->id;
-  
+
   object_info *info = callback_data->data;
 
   /* Check that we're at a valid command index. */
@@ -293,10 +293,10 @@ void redis_object_table_add_callback(redisAsyncContext *c,
     /* Atomically set the object hash and get the previous value to compare to
      * our hash, if a previous value existed. */
     requests_info->is_redis_reply = true;
-    status =
-        redisAsyncCommand(db->context, redis_object_table_add_callback,
-                          (void *) requests_info, "SETNX objhash:%b %b", id.id,
-                          sizeof(object_id), info->digest, (size_t) DIGEST_SIZE);
+    status = redisAsyncCommand(db->context, redis_object_table_add_callback,
+                               (void *) requests_info, "SETNX objhash:%b %b",
+                               id.id, sizeof(object_id), info->digest,
+                               (size_t) DIGEST_SIZE);
   } else if (request_index == OBJECT_TABLE_ADD_GET_HASH_INDEX) {
     /* If there was an object hash in the table previously, check that it's
      * equal to ours. */
@@ -338,15 +338,13 @@ void redis_object_table_add_callback(redisAsyncContext *c,
   } else if (request_index == OBJECT_TABLE_ADD_SET_SIZE_INDEX) {
     requests_info->is_redis_reply = true;
     status = redisAsyncCommand(db->context, redis_object_table_add_callback,
-                               (void *) requests_info,
-                               "HMSET obj:%b size %d", (char *) id.id,
-                               sizeof(id.id), info->data_size);
+                               (void *) requests_info, "HMSET obj:%b size %d",
+                               (char *) id.id, sizeof(id.id), info->data_size);
   } else if (request_index == OBJECT_TABLE_ADD_PUBLISH_INDEX) {
     requests_info->is_redis_reply = true;
-    status = redisAsyncCommand(
-        db->context, redis_object_table_add_callback,
-        (void *) requests_info, "PUBLISH obj:info %b:%d", id.id,
-        sizeof(id.id), info->data_size);
+    status = redisAsyncCommand(db->context, redis_object_table_add_callback,
+                               (void *) requests_info, "PUBLISH obj:info %b:%d",
+                               id.id, sizeof(id.id), info->data_size);
   } else {
     /* We finished executing all the Redis commands for this attempt at the
      * table operation. */
@@ -933,7 +931,6 @@ void redis_object_info_subscribe(table_callback_data *callback_data) {
     LOG_REDIS_DEBUG(db->sub_context, "error in object_info_register_callback");
   }
 }
-
 
 db_client_id get_db_client_id(db_handle *db) {
   CHECK(db != NULL);

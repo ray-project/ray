@@ -858,7 +858,8 @@ void subscribe_objectinfo_done_callback(object_id object_id,
   CHECK(objinfo_subscribe_context.subscribe_callback_done == 0);
 
   object_table_add((db_handle *) user_context, object_id,
-                   objinfo_subscribe_context.data_size, NIL_DIGEST, &retry, NULL, NULL);
+                   objinfo_subscribe_context.data_size, NIL_DIGEST, &retry,
+                   NULL, NULL);
 
   objinfo_subscribe_context.subscribe_callback_done = 1;
 }
