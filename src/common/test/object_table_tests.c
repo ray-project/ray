@@ -867,7 +867,6 @@ void subscribe_objectinfo_done_callback(object_id object_id,
 void subscribe_success_objectinfo_available_callback(object_id object_id,
                                                      int64_t object_size,
                                                      void *user_context) {
-  printf("[object avail] XXXreceived object size = %d XXX\n", object_size);
   CHECK(user_context == (void *) &objinfo_subscribe_context);
   /* Check to make sure subscription done callback already fired */
   CHECK(objinfo_subscribe_context.subscribe_callback_done == 1);

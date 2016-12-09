@@ -890,8 +890,6 @@ void redis_object_info_subscribe_callback(redisAsyncContext *c,
 
   CHECK(reply->type == REDIS_REPLY_ARRAY);
 
-  printf("sbcallback called\n");
-
   CHECK(reply->elements > 2);
   /* First entry is message type, then possibly the regex we psubscribed to,
    * then topic, then payload. */

@@ -136,8 +136,6 @@ void process_data_request(event_loop *loop,
 typedef struct {
   /** Object id of this object. */
   object_id object_id;
-  /** Size of this object in bytes. */
-  int64_t data_size;
   /** Handle for the uthash table. */
   UT_hash_handle hh;
 } available_object;
@@ -1523,7 +1521,6 @@ void process_object_notification(event_loop *loop,
   available_object *entry =
       (available_object *) malloc(sizeof(available_object));
   entry->object_id = obj_id;
-  entry->data_size = object_info.data_size;
   HASH_ADD(hh, state->local_available_objects, object_id, sizeof(object_id),
            entry);
 
