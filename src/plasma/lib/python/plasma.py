@@ -135,6 +135,18 @@ class PlasmaClient(object):
     """
     return libplasma.contains(self.conn, object_id)
 
+  def hash(self, object_id):
+    """Compute the hash of an object in the object store.
+
+    Args:
+      object_id (str): A string used to identify an object.
+
+    Returns:
+      A digest string object's SHA256 hash. If the object isn't in the object
+      store, the string will have length zero.
+    """
+    return libplasma.hash(self.conn, object_id)
+
   def seal(self, object_id):
     """Seal the buffer in the PlasmaStore for a particular object ID.
 
@@ -219,17 +231,7 @@ class PlasmaClient(object):
     """Get the next notification from the notification socket."""
     if not self.notification_sock:
       raise Exception("To get notifications, first call subscribe.")
-    # Loop until we've read PLASMA_ID_SIZE bytes from the socket.
-    while True:
-      try:
-        rv = libplasma.receive_notification(self.notification_fd)
-        obj_id, data_size, metadata_size = rv
-      except socket.error:
-        time.sleep(0.001)
-      else:
-        assert len(obj_id) == PLASMA_ID_SIZE
-        break
-    return obj_id, data_size, metadata_size
+    return libplasma.receive_notification(self.notification_fd)
 
 DEFAULT_PLASMA_STORE_MEMORY = 10 ** 9
 
