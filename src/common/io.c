@@ -202,14 +202,19 @@ int write_bytes(int fd, uint8_t *cursor, size_t length) {
  * by read_message.
  *
  * @param fd The file descriptor to write to. It can be non-blocking.
+ * @param version The protocol version.
  * @param type The type of the message to send.
  * @param length The size in bytes of the bytes parameter.
  * @param bytes The address of the message to send.
  * @return int Whether there was an error while writing. 0 corresponds to
  *         success and -1 corresponds to an error (errno will be set).
  */
-int write_message(int fd, int64_t type, int64_t length, uint8_t *bytes) {
+int write_message(int fd, int64_t version, int64_t type, int64_t length, uint8_t *bytes) {
   int closed;
+  closed = write_bytes(fd, (uint8_t *) &version, sizeof(version));
+  if (closed) {
+    return closed;
+  }
   closed = write_bytes(fd, (uint8_t *) &type, sizeof(type));
   if (closed) {
     return closed;

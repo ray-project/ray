@@ -19,6 +19,9 @@ $(BUILD)/manager_tests: test/manager_tests.c plasma.h plasma.c plasma_client.h p
 $(BUILD)/client_tests: test/client_tests.c plasma.h plasma.c plasma_client.h plasma_client.c plasma_manager.h plasma_manager.c fling.h fling.c common
 	$(CC) $(CFLAGS) $(TEST_CFLAGS) -o $@ test/client_tests.c plasma.c plasma_manager.c plasma_client.c fling.c ../common/build/libcommon.a ../common/thirdparty/hiredis/libhiredis.a
 
+$(BUILD)/serialization_tests: test/serialization_tests.c
+	$(CC) $(CFLAGS) $(TEST_CFLAGS) -o $@ test/serialization_tests.c
+
 $(BUILD)/plasma_store: plasma_store.c plasma.h plasma.c eviction_policy.c fling.h fling.c malloc.c malloc.h thirdparty/dlmalloc.c common
 	$(CC) $(CFLAGS) plasma_store.c plasma.c eviction_policy.c fling.c malloc.c ../common/build/libcommon.a -o $(BUILD)/plasma_store
 
@@ -40,7 +43,7 @@ common: FORCE
 # Set the request timeout low and logging level at FATAL for testing purposes.
 test: CFLAGS += -DRAY_TIMEOUT=50 -DRAY_COMMON_LOG_LEVEL=4
 # First, build and run all the unit tests.
-test: $(BUILD)/manager_tests $(BUILD)/client_tests FORCE
+test: $(BUILD)/manager_tests $(BUILD)/client_tests $(BUILD)/serialization_tests FORCE
 	./build/manager_tests
 	./test/run_client_tests.sh
 	cd ../common; make redis
