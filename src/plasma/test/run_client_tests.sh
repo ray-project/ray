@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+
+# Cause the script to exit if a single command fails.
+set -e
+
 ../common/thirdparty/redis/src/redis-server --loglevel warning &
 sleep 1
 # flush the redis server
