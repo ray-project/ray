@@ -77,9 +77,9 @@ TEST object_table_lookup_test(void) {
       .timeout = TIMEOUT,
       .fail_callback = timeout_callback,
   };
-  object_table_add(db1, id, (unsigned char *) NIL_DIGEST, &retry,
+  object_table_add(db1, id, 0, (unsigned char *) NIL_DIGEST, &retry,
                    add_done_callback, NULL);
-  object_table_add(db2, id, (unsigned char *) NIL_DIGEST, &retry,
+  object_table_add(db2, id, 0, (unsigned char *) NIL_DIGEST, &retry,
                    add_done_callback, NULL);
   event_loop_add_timer(loop, 200, (event_loop_timer_handler) timeout_handler,
                        NULL);

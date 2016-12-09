@@ -202,7 +202,7 @@ TEST add_timeout_test(void) {
   retry_info retry = {
       .num_retries = 5, .timeout = 100, .fail_callback = add_fail_callback,
   };
-  object_table_add(db, NIL_ID, (unsigned char *) NIL_DIGEST, &retry,
+  object_table_add(db, NIL_ID, 0, (unsigned char *) NIL_DIGEST, &retry,
                    add_done_callback, (void *) add_timeout_context);
   /* Disconnect the database to see if the lookup times out. */
   close(db->context->c.fd);
@@ -360,7 +360,7 @@ TEST add_retry_test(void) {
       .timeout = 100,
       .fail_callback = add_retry_fail_callback,
   };
-  object_table_add(db, NIL_ID, (unsigned char *) NIL_DIGEST, &retry,
+  object_table_add(db, NIL_ID, 0, (unsigned char *) NIL_DIGEST, &retry,
                    add_retry_done_callback, (void *) add_retry_context);
   /* Disconnect the database to let the add time out the first time. */
   close(db->context->c.fd);
@@ -413,7 +413,7 @@ TEST add_lookup_test(void) {
       .timeout = 100,
       .fail_callback = lookup_retry_fail_callback,
   };
-  object_table_add(db, NIL_ID, (unsigned char *) NIL_DIGEST, &retry,
+  object_table_add(db, NIL_ID, 0, (unsigned char *) NIL_DIGEST, &retry,
                    add_lookup_callback, (void *) db);
   /* Install handler for terminating the event loop. */
   event_loop_add_timer(g_loop, 750,
@@ -568,7 +568,7 @@ TEST add_late_test(void) {
   retry_info retry = {
       .num_retries = 0, .timeout = 0, .fail_callback = add_late_fail_callback,
   };
-  object_table_add(db, NIL_ID, (unsigned char *) NIL_DIGEST, &retry,
+  object_table_add(db, NIL_ID, 0, (unsigned char *) NIL_DIGEST, &retry,
                    add_late_done_callback, (void *) add_late_context);
   /* Install handler for terminating the event loop. */
   event_loop_add_timer(g_loop, 750,
@@ -653,7 +653,7 @@ void subscribe_success_done_callback(object_id object_id,
   retry_info retry = {
       .num_retries = 0, .timeout = 750, .fail_callback = NULL,
   };
-  object_table_add((db_handle *) user_context, object_id,
+  object_table_add((db_handle *) user_context, object_id, 0,
                    (unsigned char *) NIL_DIGEST, &retry, NULL, NULL);
   subscribe_success_done = 1;
 }
@@ -721,7 +721,7 @@ TEST subscribe_object_present_test(void) {
   retry_info retry = {
       .num_retries = 0, .timeout = 100, .fail_callback = NULL,
   };
-  object_table_add(db, id, (unsigned char *) NIL_DIGEST, &retry, NULL, NULL);
+  object_table_add(db, id, 0, (unsigned char *) NIL_DIGEST, &retry, NULL, NULL);
   object_table_subscribe(
       db, id, subscribe_object_present_object_available_callback,
       (void *) subscribe_object_present_context, &retry, NULL, (void *) db);
@@ -802,7 +802,7 @@ int64_t add_object_callback(event_loop *loop, int64_t timer_id, void *context) {
   retry_info retry = {
       .num_retries = 0, .timeout = 100, .fail_callback = NULL,
   };
-  object_table_add(db, NIL_ID, (unsigned char *) NIL_DIGEST, &retry, NULL,
+  object_table_add(db, NIL_ID, 0, (unsigned char *) NIL_DIGEST, &retry, NULL,
                    NULL);
   /* Reset the timer to this large value, so it doesn't trigger again. */
   return 10000;
@@ -838,6 +838,75 @@ TEST subscribe_object_available_later_test(void) {
   PASS();
 }
 
+/* Test if object size is correctly reported by the object_info callback. */
+
+typedef struct {
+  char *subscribe_success_msg;
+  int64_t data_size;
+  int subscribe_succeeded;
+  int subscribe_callback_done;
+} objectinfo_subscribe_context;
+
+objectinfo_subscribe_context objinfo_subscribe_context = {"foo", 42, 0, 0};
+
+void subscribe_objectinfo_done_callback(object_id object_id,
+                                        void *user_context) {
+  retry_info retry = {
+      .num_retries = 0, .timeout = 100, .fail_callback = NULL,
+  };
+  CHECK(objinfo_subscribe_context.subscribe_succeeded == 0);
+  CHECK(objinfo_subscribe_context.subscribe_callback_done == 0);
+
+  object_table_add((db_handle *) user_context, object_id,
+                   objinfo_subscribe_context.data_size, NIL_DIGEST, &retry, NULL, NULL);
+
+  objinfo_subscribe_context.subscribe_callback_done = 1;
+}
+
+void subscribe_success_objectinfo_available_callback(object_id object_id,
+                                                     int64_t object_size,
+                                                     void *user_context) {
+  printf("[object avail] XXXreceived object size = %d XXX\n", object_size);
+  CHECK(user_context == (void *) &objinfo_subscribe_context);
+  /* Check to make sure subscription done callback already fired */
+  CHECK(objinfo_subscribe_context.subscribe_callback_done == 1);
+  CHECK(objinfo_subscribe_context.subscribe_succeeded == 0);
+  CHECK(objinfo_subscribe_context.data_size == object_size);
+
+  objinfo_subscribe_context.subscribe_succeeded = 1; /* mark success */
+}
+
+TEST subscribe_objectinfo_success_test(void) {
+  g_loop = event_loop_create();
+  db_handle *db =
+      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11236);
+  db_attach(db, g_loop, false);
+
+  retry_info retry = {
+      .num_retries = 0,
+      .timeout = 100,
+      .fail_callback = subscribe_success_fail_callback,
+  };
+
+  object_info_subscribe(db, subscribe_success_objectinfo_available_callback,
+                        (void *) &objinfo_subscribe_context, &retry,
+                        subscribe_objectinfo_done_callback, (void *) db);
+
+  /* Install handler for terminating the event loop. */
+  event_loop_add_timer(g_loop, 1000,
+                       (event_loop_timer_handler) terminate_event_loop_callback,
+                       NULL);
+
+  event_loop_run(g_loop);
+  db_disconnect(db);
+  destroy_outstanding_callbacks(g_loop);
+  event_loop_destroy(g_loop);
+
+  ASSERT(objinfo_subscribe_context.subscribe_succeeded == 1);
+  ASSERT(objinfo_subscribe_context.subscribe_callback_done == 1);
+  PASS();
+}
+
 SUITE(object_table_tests) {
   RUN_REDIS_TEST(new_object_test);
   RUN_REDIS_TEST(new_object_no_task_test);
@@ -855,6 +924,7 @@ SUITE(object_table_tests) {
   RUN_REDIS_TEST(subscribe_object_present_test);
   RUN_REDIS_TEST(subscribe_object_not_present_test);
   RUN_REDIS_TEST(subscribe_object_available_later_test);
+  RUN_REDIS_TEST(subscribe_objectinfo_success_test);
 }
 
 GREATEST_MAIN_DEFS();
