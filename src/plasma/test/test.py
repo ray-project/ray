@@ -254,14 +254,18 @@ class TestPlasmaClient(unittest.TestCase):
     sock = self.plasma_client.subscribe()
     for i in [1, 10, 100, 1000, 10000, 100000]:
       object_ids = [random_object_id() for _ in range(i)]
-      for object_id in object_ids:
-        # Create an object and seal it to trigger a notification.
-        self.plasma_client.create(object_id, 1000)
-        self.plasma_client.seal(object_id)
+      metadata_sizes = [np.random.randint(1000) for _ in range(i)]
+      data_sizes = [np.random.randint(1000) for _ in range(i)]
+      for j in range(i):
+        self.plasma_client.create(object_ids[j], size=data_sizes[j], 
+                                  metadata=bytearray(np.random.bytes(metadata_sizes[j])))
+        self.plasma_client.seal(object_ids[j])
       # Check that we received notifications for all of the objects.
-      for object_id in object_ids:
-        message_data = self.plasma_client.get_next_notification()
-        self.assertEqual(object_id, message_data)
+      for j in range(i):
+        recv_objid, recv_dsize, recv_msize = self.plasma_client.get_next_notification()
+        self.assertEqual(object_ids[j], recv_objid)
+        self.assertEqual(data_sizes[j], recv_dsize)
+        self.assertEqual(metadata_sizes[j], recv_msize)
 
 class TestPlasmaManager(unittest.TestCase):
 
