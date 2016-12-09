@@ -210,8 +210,8 @@ struct client_object_request {
   /** The number of manager locations in the array manager_vector. */
   int manager_count;
   /** The next manager we should try to contact. This is set to an index in
-   * manager_vector in the retry handler, in case the current attempt fails to
-   * contact a manager. */
+   *  manager_vector in the retry handler, in case the current attempt fails to
+   *  contact a manager. */
   int next_manager;
   /** Handle for the uthash table in the client connection
    *  context that keeps track of active object connection
@@ -230,9 +230,9 @@ struct client_connection {
   /** Current position in the buffer. */
   int64_t cursor;
   /** Buffer that this connection is reading from. If this is a connection to
-   *  write data to another plasma store, then it is a linked
-   *  list of buffers to write. */
-  /* TODO(swang): Split into two queues, data transfers and data requests. */
+   *  write data to another plasma store, then it is a linked list of buffers to
+   *  write. TODO(swang): Split into two queues, data transfers and data
+   *  requests. */
   plasma_request_buffer *transfer_queue;
   /** Buffer used to receive transfers (data fetches) we want to ignore */
   plasma_request_buffer *ignore_buffer;
@@ -257,8 +257,8 @@ struct client_connection {
    *  this fetch or wait operation. */
   int num_return_objects;
   /** Fields specific to connections to plasma managers.  Key that uniquely
-   * identifies the plasma manager that we're connected to. We will use the
-   * string <address>:<port> as an identifier. */
+   *  identifies the plasma manager that we're connected to. We will use the
+   *  string <address>:<port> as an identifier. */
   char *ip_addr_port;
   /** Handle for the uthash table. */
   UT_hash_handle manager_hh;

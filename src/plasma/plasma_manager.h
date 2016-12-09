@@ -232,14 +232,12 @@ struct plasma_request_buffer {
 };
 
 /**
- * Create a new context for the given object ID with the given
- * client connection and register it with the manager's
- * outstanding fetch or wait requests and the client
- * connection's active object contexts.
+ * Create a new context for the given object ID with the given client connection
+ * and register it with the manager's outstanding fetch or wait requests and the
+ * client connection's active object contexts.
  *
  * @param client_conn The client connection context.
- * @param object_id The object ID whose context we want to
- *        create.
+ * @param object_id The object ID whose context we want to create.
  * @return A pointer to the newly created object context.
  */
 client_object_request *add_object_request(client_connection *client_conn,
