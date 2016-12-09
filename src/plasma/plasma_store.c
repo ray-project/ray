@@ -410,7 +410,7 @@ void send_notifications(event_loop *loop,
 
     /* Attempt to send a notification about this object ID. */
     int nbytes = send(client_sock, (char const *) &object_info,
-        sizeof(object_info), 0);
+                      sizeof(object_info), 0);
     if (nbytes >= 0) {
       CHECK(nbytes == sizeof(object_info));
     } else if (nbytes == -1 &&
