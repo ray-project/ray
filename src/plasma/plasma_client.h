@@ -291,16 +291,6 @@ typedef struct {
   uint8_t *metadata;
 } object_buffer;
 
-/**
- * Object information data structure.
- */
-typedef struct {
-  /** The time when the object was created (sealed). */
-  time_t last_access_time;
-  /** The time when the object was last accessed. */
-  time_t creation_date;
-  uint64_t refcount;
-} object_info;
 
 /**
  * Get specified object from the local Plasma Store. This function is

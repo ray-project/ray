@@ -2,6 +2,8 @@
 
 #include "common.h"
 #include "plasma_client.h"
+#include "object_info.h"
+#include "io.h"
 
 static int PyObjectToPlasmaConnection(PyObject *object,
                                       plasma_connection **conn) {
@@ -305,8 +307,37 @@ PyObject *PyPlasma_subscribe(PyObject *self, PyObject *args) {
   if (!PyArg_ParseTuple(args, "O&", PyObjectToPlasmaConnection, &conn)) {
     return NULL;
   }
+
   int sock = plasma_subscribe(conn);
   return PyInt_FromLong(sock);
+}
+
+PyObject *PyPlasma_receive_notification(PyObject *self, PyObject *args) {
+
+  int plasma_sock;
+  object_info object_info;
+
+  if (!PyArg_ParseTuple(args, "i", &plasma_sock)) {
+    return NULL;
+  }
+  /* receive object notification from the plasma connection socket,
+   * return a tuple of its fields: object_id, data_size, metadata_size
+   */
+  int nbytes = read_bytes(plasma_sock, (uint8_t *) &object_info, sizeof(object_info));
+
+  if (nbytes < 0) {
+    printf("failed to read from socket with nbytes=%d errno=%d, msg=%s\n",
+        nbytes, errno, strerror(errno));
+    PyErr_SetString(PyExc_RuntimeError, "Failed to read object notification from Plasma socket");
+    return NULL;
+  }
+  /* Construct a tuple from object_info and return */
+  PyObject *t = PyTuple_New(3);
+  PyTuple_SetItem(t, 0, PyString_FromStringAndSize((char *) object_info.objid.id, UNIQUE_ID_SIZE));
+  PyTuple_SetItem(t, 1, PyInt_FromLong(object_info.data_size));
+  PyTuple_SetItem(t, 2, PyInt_FromLong(object_info.metadata_size));
+
+  return t;
 }
 
 static PyMethodDef plasma_methods[] = {
@@ -332,6 +363,8 @@ static PyMethodDef plasma_methods[] = {
      "Transfer object to another plasma manager."},
     {"subscribe", PyPlasma_subscribe, METH_VARARGS,
      "Subscribe to the plasma notification socket."},
+     {"receive_notification", PyPlasma_receive_notification, METH_VARARGS,
+      "Receive next notification from plasma notification socket."},
     {NULL} /* Sentinel */
 };
 

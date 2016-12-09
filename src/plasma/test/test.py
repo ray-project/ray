@@ -250,18 +250,31 @@ class TestPlasmaClient(unittest.TestCase):
     self.assertEqual(client.evict(2000), 996 + 995 + 994)
 
   def test_subscribe(self):
+    import uuid
     # Subscribe to notifications from the Plasma Store.
     sock = self.plasma_client.subscribe()
     for i in [1, 10, 100, 1000, 10000, 100000]:
       object_ids = [random_object_id() for _ in range(i)]
       for object_id in object_ids:
         # Create an object and seal it to trigger a notification.
-        self.plasma_client.create(object_id, 1000)
+        object_str = str(uuid.uuid4())
+        object_str_len = random.randint(0,len(object_str))
+        object_str = object_str[:object_str_len]
+        object_datasize = 1024#random.randint(1,1024)
+        self.plasma_client.create(object_id, size=object_datasize, metadata=bytearray(object_str))
         self.plasma_client.seal(object_id)
       # Check that we received notifications for all of the objects.
       for object_id in object_ids:
-        message_data = self.plasma_client.get_next_notification()
-        self.assertEqual(object_id, message_data)
+        objid,data_size,metadata_size = self.plasma_client.get_next_notification()
+        print("object_id : expected=%s received=%s" %(object_id, objid))
+        print("data_size: expected=%d received = %d" %(object_datasize, data_size))
+        print("metadata_size: expected=%d received = %d" %(object_str_len, metadata_size))
+        self.assertEqual(object_id, objid)
+        self.assertEqual(data_size, object_datasize)
+        #self.assertGreaterEqual(metadata_size, 0, "Received object with metadata < 0")
+        self.assertEqual(len(object_str), metadata_size, 
+                         "Received object metadata size mismatch: received=%d expected=%d"
+                         %(metadata_size, len(object_str)))
 
 class TestPlasmaManager(unittest.TestCase):
 
