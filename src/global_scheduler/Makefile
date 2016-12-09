@@ -8,4 +8,5 @@ $(BUILD)/global_scheduler: global_scheduler.c global_scheduler_algorithm.c
 	$(CC) $(CFLAGS) -o $@ global_scheduler.c global_scheduler_algorithm.c ../common/build/libcommon.a ../common/thirdparty/hiredis/libhiredis.a
 
 clean:
+	rm -f *.o
 	rm -rf $(BUILD)/*
