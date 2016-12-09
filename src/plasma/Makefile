@@ -11,6 +11,7 @@ debug: all
 
 clean:
 	cd ../common; make clean
+	rm -f *.o
 	rm -rf $(BUILD)/*
 
 $(BUILD)/manager_tests: test/manager_tests.c plasma.h plasma.c plasma_client.h plasma_client.c thirdparty/xxhash.c plasma_manager.h plasma_manager.c fling.h fling.c common
