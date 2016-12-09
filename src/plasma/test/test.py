@@ -342,7 +342,7 @@ class TestPlasmaClient(unittest.TestCase):
       metadata_sizes = [np.random.randint(1000) for _ in range(i)]
       data_sizes = [np.random.randint(1000) for _ in range(i)]
       for j in range(i):
-        self.plasma_client.create(object_ids[j], size=data_sizes[j], 
+        self.plasma_client.create(object_ids[j], size=data_sizes[j],
                                   metadata=bytearray(np.random.bytes(metadata_sizes[j])))
         self.plasma_client.seal(object_ids[j])
       # Check that we received notifications for all of the objects.
@@ -639,10 +639,17 @@ class TestPlasmaManager(unittest.TestCase):
     self.client2.seal(object_id)
     # Give the second manager some time to complete the seal, then make sure it
     # exited.
-    time.sleep(2)
-    self.p5.poll()
+    time_left = 10
+    while time_left > 0:
+      self.p5.poll()
+      if self.p5.returncode != None:
+        self.processes_to_kill.remove(self.p5)
+        break
+      time_left -= 0.2
+      time.sleep(0.2)
+
+    print("Time waiting for plasma manager to fail = {:.2}".format(10 - time_left))
     self.assertNotEqual(self.p5.returncode, None)
-    self.processes_to_kill.remove(self.p5)
 
   def test_illegal_functionality(self):
     # Create an object id string.

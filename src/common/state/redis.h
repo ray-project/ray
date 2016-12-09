@@ -30,7 +30,7 @@ struct db_handle {
   char *client_type;
   /** Unique ID for this client. */
   db_client_id client;
-  /** Redis context for this global state store connection. */
+  /** Redis context for all non-subscribe connections. */
   redisAsyncContext *context;
   /** Redis context for "subscribe" communication. Yes, we need a separate one
    *  for that, see https://github.com/redis/hiredis/issues/55. */
@@ -180,5 +180,7 @@ void redis_task_table_subscribe(table_callback_data *callback_data);
  * @return Void.
  */
 void redis_db_client_table_subscribe(table_callback_data *callback_data);
+
+void redis_object_info_subscribe(table_callback_data *callback_data);
 
 #endif /* REDIS_H */
