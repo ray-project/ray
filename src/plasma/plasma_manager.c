@@ -411,21 +411,25 @@ void remove_object_request(client_connection *client_conn,
   free_client_object_request(object_req);
 }
 
+object_wait_requests **object_wait_requests_table_ptr_from_type(
+    plasma_manager_state *manager_state,
+    int type) {
+  /* We use different types of hash tables for different requests. */
+  if (type == PLASMA_QUERY_LOCAL) {
+    return &manager_state->object_wait_requests_local;
+  } else if (type == PLASMA_QUERY_ANYWHERE) {
+    return &manager_state->object_wait_requests_remote;
+  } else {
+    LOG_FATAL("This code should be unreachable.");
+  }
+}
+
 void add_wait_request_for_object(plasma_manager_state *manager_state,
                                  object_id object_id,
                                  int type,
                                  wait_request2 *wait_req) {
-  /* We use different types of hash tables for different requests. */
-  object_wait_requests **object_wait_requests_table_ptr;
-  if (type == PLASMA_QUERY_LOCAL) {
-    object_wait_requests_table_ptr = &manager_state->object_wait_requests_local;
-  } else if (type == PLASMA_QUERY_ANYWHERE) {
-    object_wait_requests_table_ptr =
-        &manager_state->object_wait_requests_remote;
-  } else {
-    /* This code should be unreachable. */
-    CHECK(0);
-  }
+  object_wait_requests **object_wait_requests_table_ptr =
+      object_wait_requests_table_ptr_from_type(manager_state, type);
   object_wait_requests *object_wait_reqs;
   HASH_FIND(hh, *object_wait_requests_table_ptr, &object_id, sizeof(object_id),
             object_wait_reqs);
@@ -448,17 +452,8 @@ void remove_wait_request_for_object(plasma_manager_state *manager_state,
                                     object_id object_id,
                                     int type,
                                     wait_request2 *wait_req) {
-  /* We use different types of hash tables for different requests. */
-  object_wait_requests **object_wait_requests_table_ptr;
-  if (type == PLASMA_QUERY_LOCAL) {
-    object_wait_requests_table_ptr = &manager_state->object_wait_requests_local;
-  } else if (type == PLASMA_QUERY_ANYWHERE) {
-    object_wait_requests_table_ptr =
-        &manager_state->object_wait_requests_remote;
-  } else {
-    /* This code should be unreachable. */
-    CHECK(0);
-  }
+  object_wait_requests **object_wait_requests_table_ptr =
+      object_wait_requests_table_ptr_from_type(manager_state, type);
   object_wait_requests *object_wait_reqs;
   HASH_FIND(hh, *object_wait_requests_table_ptr, &object_id, sizeof(object_id),
             object_wait_reqs);
@@ -515,18 +510,8 @@ void update_object_wait_requests(plasma_manager_state *manager_state,
                                  object_id obj_id,
                                  int type,
                                  int status) {
-  /* We use different types of hash tables for different requests. */
-  object_wait_requests **object_wait_requests_table_ptr;
-  if (type == PLASMA_QUERY_LOCAL) {
-    object_wait_requests_table_ptr = &manager_state->object_wait_requests_local;
-  } else if (type == PLASMA_QUERY_ANYWHERE) {
-    object_wait_requests_table_ptr =
-        &manager_state->object_wait_requests_remote;
-  } else {
-    /* This code should be unreachable. */
-    CHECK(0);
-  }
-
+  object_wait_requests **object_wait_requests_table_ptr =
+      object_wait_requests_table_ptr_from_type(manager_state, type);
   /* Update the in-progress wait requests in the specified table. */
   object_wait_requests *object_wait_reqs;
   HASH_FIND(hh, *object_wait_requests_table_ptr, &obj_id, sizeof(obj_id),

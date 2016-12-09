@@ -316,7 +316,6 @@ PyObject *PyPlasma_wait2(PyObject *self, PyObject *args) {
     PyObjectToUniqueID(PyList_GetItem(object_id_list, i),
                        &object_requests[i].object_id);
     object_requests[i].type = PLASMA_QUERY_ANYWHERE;
-    object_requests[i].type = PLASMA_QUERY_ANYWHERE;
   }
   /* Drop the global interpreter lock while we are waiting, so other threads can
    * run. */

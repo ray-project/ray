@@ -798,21 +798,21 @@ int plasma_wait_for_objects2(plasma_connection *conn,
     object_requests[i].object_id = reply->object_requests[i].object_id;
     object_requests[i].type = type;
     object_requests[i].status = status;
-    if (type == PLASMA_QUERY_LOCAL) {
+    switch (type) {
+    case PLASMA_QUERY_LOCAL:
       if (status == PLASMA_OBJECT_LOCAL) {
         num_objects_ready += 1;
       }
-    } else if (type == PLASMA_QUERY_ANYWHERE) {
+      break;
+    case PLASMA_QUERY_ANYWHERE:
       if (status == PLASMA_OBJECT_LOCAL || status == PLASMA_OBJECT_REMOTE) {
         num_objects_ready += 1;
-      } else if (status == PLASMA_OBJECT_NONEXISTENT) {
       } else {
-        /* This code should be unreachable. */
-        CHECK(0);
+        CHECK(status == PLASMA_OBJECT_NONEXISTENT);
       }
-    } else {
-      /* This code should be unreachable. */
-      CHECK(0);
+      break;
+    default:
+      LOG_FATAL("This code should be unreachable.");
     }
   }
   free(reply);

@@ -177,7 +177,6 @@ TEST plasma_wait_for_objects_tests(void) {
   plasma_create(plasma_conn1, oid1, data_size, metadata, metadata_size, &data);
   plasma_seal(plasma_conn1, oid1);
 
-  sleep(1);
   n = plasma_wait_for_objects2(plasma_conn1, NUM_OBJ_REQUEST, obj_requests,
                                NUM_OBJ_REQUEST, WAIT_TIMEOUT_MS);
   ASSERT(n == 1);
@@ -204,7 +203,6 @@ TEST plasma_wait_for_objects_tests(void) {
                                NUM_OBJ_REQUEST, WAIT_TIMEOUT_MS);
   ASSERT(n == 1);
 
-  sleep(1);
   plasma_disconnect(plasma_conn1);
   plasma_disconnect(plasma_conn2);
 
