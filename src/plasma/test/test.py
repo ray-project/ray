@@ -255,26 +255,34 @@ class TestPlasmaClient(unittest.TestCase):
     sock = self.plasma_client.subscribe()
     for i in [1, 10, 100, 1000, 10000, 100000]:
       object_ids = [random_object_id() for _ in range(i)]
+      metadata_list = []
+      datasize_list = []
       for object_id in object_ids:
         # Create an object and seal it to trigger a notification.
         object_str = str(uuid.uuid4())
         object_str_len = random.randint(0,len(object_str))
         object_str = object_str[:object_str_len]
         object_datasize = 1024#random.randint(1,1024)
-        self.plasma_client.create(object_id, size=object_datasize, metadata=bytearray(object_str))
+        object_metadata = bytearray(object_str)
+        metadata_list.append(len(object_metadata))
+        datasize_list.append(object_datasize)
+        self.plasma_client.create(object_id, size=object_datasize, metadata=object_metadata)
         self.plasma_client.seal(object_id)
       # Check that we received notifications for all of the objects.
-      for object_id in object_ids:
-        objid,data_size,metadata_size = self.plasma_client.get_next_notification()
-        print("object_id : expected=%s received=%s" %(object_id, objid))
-        print("data_size: expected=%d received = %d" %(object_datasize, data_size))
-        print("metadata_size: expected=%d received = %d" %(object_str_len, metadata_size))
-        self.assertEqual(object_id, objid)
-        self.assertEqual(data_size, object_datasize)
+      for i in range(len(object_ids)):
+        object_id = object_ids[i]
+        metadata_size = metadata_list[i]
+        datasize = datasize_list[i]
+        recv_objid,recv_dsize,recv_msize = self.plasma_client.get_next_notification()
+        #print("object_id : expected=%s received=%s" %(object_id, recv_objid))
+        #print("data_size: expected=%d received = %d" %(datasize, recv_dsize))
+        #print("metadata_size: expected=%d received = %d" %(metadata_size, recv_msize))
+        self.assertEqual(object_id, recv_objid)
+        self.assertEqual(datasize, recv_dsize)
         #self.assertGreaterEqual(metadata_size, 0, "Received object with metadata < 0")
-        self.assertEqual(len(object_str), metadata_size, 
-                         "Received object metadata size mismatch: received=%d expected=%d"
-                         %(metadata_size, len(object_str)))
+        self.assertEqual(metadata_size, recv_msize, 
+                         "Received object metadata size mismatch: expected=%d received=%d "
+                         %(metadata_size, recv_msize))
 
 class TestPlasmaManager(unittest.TestCase):
 

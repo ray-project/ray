@@ -223,7 +223,6 @@ class PlasmaClient(object):
     while True:
       try:
         rv = libplasma.receive_notification(self.notification_fd)
-        print "received from socket: "; print rv
         objid,data_size,metadata_size = rv
       except socket.error:
         time.sleep(0.001)

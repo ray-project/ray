@@ -406,7 +406,6 @@ void send_notifications(event_loop *loop,
     CHECK(entry != NULL);
 
     object_info object_info = entry->info;
-    //memcpy(&object_info, &entry->info, sizeof(object_info));
     object_info.objid = entry->object_id; /* TODO: set this objid on create? */
 
     /* Attempt to send a notification about this object ID. */
