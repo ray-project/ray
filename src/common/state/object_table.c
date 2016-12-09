@@ -1,5 +1,6 @@
 #include "object_table.h"
 #include "redis.h"
+#include "object_info.h"
 
 void object_table_lookup(db_handle *db_handle,
                          object_id object_id,
@@ -20,7 +21,7 @@ void object_table_add(db_handle *db_handle,
                       void *user_context) {
   CHECK(db_handle != NULL);
 
-  plasma_obj_info *info = malloc(sizeof(plasma_obj_info));
+  object_info *info = malloc(sizeof(object_info));
   info->data_size = data_size;
   memcpy(&info->digest[0], digest, DIGEST_SIZE);
   init_table_callback(db_handle, object_id, __func__, info, retry,

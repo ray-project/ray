@@ -13,6 +13,7 @@
 #include "db.h"
 #include "db_client_table.h"
 #include "object_table.h"
+#include "object_info.h"
 #include "task.h"
 #include "task_table.h"
 #include "event_loop.h"
@@ -277,7 +278,7 @@ void redis_object_table_add_callback(redisAsyncContext *c,
   redisReply *reply = r;
   object_id id = callback_data->id;
   
-  plasma_obj_info *info = callback_data->data;
+  object_info *info = callback_data->data;
 
   /* Check that we're at a valid command index. */
   int request_index = requests_info->request_index;

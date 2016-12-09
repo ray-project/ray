@@ -43,12 +43,6 @@ void object_table_lookup(db_handle *db_handle,
 typedef void (*object_table_done_callback)(object_id object_id,
                                            void *user_context);
 
-typedef struct {
-  object_id obj_id;
-  int64_t data_size;
-  unsigned char digest[DIGEST_SIZE];
-} plasma_obj_info;
-
 /**
  * Add the plasma manager that created the db_handle to the
  * list of plasma managers that have the object_id.
