@@ -181,4 +181,8 @@ void redis_task_table_subscribe(table_callback_data *callback_data);
  */
 void redis_db_client_table_subscribe(table_callback_data *callback_data);
 
+void redis_pubsub_subscribe_transfer(table_callback_data *callback_data);
+
+void redis_pubsub_request_transfer(table_callback_data *callback_data);
+
 #endif /* REDIS_H */
