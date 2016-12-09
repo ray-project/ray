@@ -138,7 +138,8 @@ db_handle *db_connect(const char *address,
   }
   CHECK_REDIS_CONNECT(redisContext, context,
                       "could not establish synchronous connection to redis "
-                      "%s:%d", address, port);
+                      "%s:%d",
+                      address, port);
   /* Enable keyspace events. */
   reply = redisCommand(context, "CONFIG SET notify-keyspace-events AKE");
   CHECK(reply != NULL);
@@ -179,13 +180,15 @@ db_handle *db_connect(const char *address,
   db->context = redisAsyncConnect(address, port);
   CHECK_REDIS_CONNECT(redisAsyncContext, db->context,
                       "could not establish asynchronous connection to redis "
-                      "%s:%d", address, port);
+                      "%s:%d",
+                      address, port);
   db->context->data = (void *) db;
   /* Establish async connection for subscription */
   db->sub_context = redisAsyncConnect(address, port);
   CHECK_REDIS_CONNECT(redisAsyncContext, db->sub_context,
                       "could not establish asynchronous subscription "
-                      "connection to redis %s:%d", address, port);
+                      "connection to redis %s:%d",
+                      address, port);
   db->sub_context->data = (void *) db;
 
   return db;
