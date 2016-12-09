@@ -37,6 +37,10 @@ class TestPhotonClient(unittest.TestCase):
     self.photon_client = photon.PhotonClient(scheduler_name)
 
   def tearDown(self):
+    # Check that the processes are still alive.
+    self.assertEqual(self.p1.poll(), None)
+    self.assertEqual(self.p2.poll(), None)
+
     # Kill Plasma.
     self.p1.kill()
     # Kill the local scheduler.

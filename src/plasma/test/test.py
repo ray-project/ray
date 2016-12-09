@@ -75,6 +75,8 @@ class TestPlasmaClient(unittest.TestCase):
     self.plasma_client2 = plasma.PlasmaClient(plasma_store_name, None, 0)
 
   def tearDown(self):
+    # Check that the Plasma store is still alive.
+    self.assertEqual(self.p.poll(), None)
     # Kill the plasma store process.
     if USE_VALGRIND:
       self.p.send_signal(signal.SIGTERM)
@@ -380,7 +382,11 @@ class TestPlasmaManager(unittest.TestCase):
     self.processes_to_kill = [self.p4, self.p5, self.p2, self.p3]
 
   def tearDown(self):
-    # Kill the PlasmaStore and PlasmaManager processes.
+    # Check that the processes are still alive.
+    for process in self.processes_to_kill:
+      self.assertEqual(process.poll(), None)
+
+    # Kill the Plasma store and Plasma manager processes.
     if USE_VALGRIND:
       time.sleep(1) # give processes opportunity to finish work
       for process in self.processes_to_kill:
@@ -641,8 +647,7 @@ class TestPlasmaManager(unittest.TestCase):
     # exited.
     time_left = 10
     while time_left > 0:
-      self.p5.poll()
-      if self.p5.returncode != None:
+      if self.p5.poll() != None:
         self.processes_to_kill.remove(self.p5)
         break
       time_left -= 0.2
