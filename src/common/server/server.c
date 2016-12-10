@@ -2,9 +2,11 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include "uthash.h"
 
 #define OBJECT_INFO_PREFIX "OI:"
 #define OBJECT_TABLE_PREFIX "OT:"
+#define SUBSCRIPTION_TABLE_PREFIX "ST:"
 
 /* The object table has the following format:
  * "obj:(object id)" "hash" (hash of the object)
@@ -70,13 +72,30 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, i
   /* Sets are not implemented yet, so we use ZSETs instead. */
   RedisModule_ZsetAdd(table_key, 0.0, manager, NULL);
   RedisModule_CloseKey(key);
-	RedisModule_CloseKey(table_key);
+  RedisModule_CloseKey(table_key);
   RedisModule_ReplyWithLongLong(ctx, RedisModule_GetSelectedDb(ctx));
   return REDISMODULE_OK;
 }
 
+/* This function will get back to the client when the object appears in the
+ * object table */
+int ObjectTableSubscribe_ReplyFunction(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+  return RedisModule_ReplyWithSimpleString(ctx,"Hello!");
+}
+
 int ObjectTableSubscribe_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-  
+  RedisModuleString *object_id = argv[1];
+  const char *object_id_value = RedisModule_StringPtrLen(object_id, NULL);
+  RedisModuleString *object_subscription_key = RedisModule_CreateStringPrintf(ctx, SUBSCRIPTION_TABLE_PREFIX "%s", object_id_value);
+
+  RedisModuleBlockedClient *blocker = RedisModule_BlockClient(ctx, ObjectTableSubscribe_ReplyFunction, NULL, NULL, 1000000000);
+  RedisModuleKey *subscription_key;
+  subscription_key = RedisModule_OpenKey(ctx, object_subscription_key, REDISMODULE_READ | REDISMODULE_WRITE);
+  /* Clean this up. */
+  RedisModuleString *blocker_pointer = RedisModule_CreateStringFromLongLong(ctx, (long long) blocker);
+  /* Sets are not implemented yet, so we use ZSETs instead. */
+  RedisModule_ZsetAdd(subscription_key, 0.0, blocker_pointer, NULL);
+  RedisModule_CloseKey(subscription_key);
 }
 
 /* This function must be present on each Redis module. It is used in order to

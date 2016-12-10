@@ -10,6 +10,8 @@ else
 	SHOBJ_LDFLAGS ?= -bundle -undefined dynamic_lookup
 endif
 
+SHOBJ_CFLAGS += -I../thirdparty
+
 .SUFFIXES: .c .so .xo .o
 
 all: server.so
