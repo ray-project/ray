@@ -41,17 +41,22 @@ TEST plasma_create_request_test(void) {
   PASS();
 }
 
+plasma_object random_plasma_object() {
+  plasma_object object;
+  memset(&object, 0, sizeof(object));
+  object.handle.store_fd = 7;
+	object.handle.mmap_size = 42;
+  object.data_offset = 1;
+  object.metadata_offset = 2;
+  object.data_size = 3;
+  object.metadata_size = 4;
+  return object;
+}
+
 TEST plasma_create_reply_test(void) {
   int fd = create_temp_file();
   object_id object_id1 = globally_unique_id();
-  plasma_object object1;
-  memset(&object1, 0, sizeof(object1));
-  object1.handle.store_fd = 7;
-	object1.handle.mmap_size = 42;
-  object1.data_offset = 1;
-  object1.metadata_offset = 2;
-  object1.data_size = 3;
-  object1.metadata_size = 4;
+  plasma_object object1 = random_plasma_object();
   plasma_send_create_reply(fd, object_id1, &object1, 0);
   /* Go to the beginning of the file. */
   lseek(fd, 0, SEEK_SET);
@@ -90,7 +95,8 @@ TEST plasma_get_local_request_test(void) {
   int64_t num_objects;
   object_id object_ids_return[2];
   plasma_read_get_local_request(data, object_ids_return, &num_objects);
-
+  ASSERT(object_ids_equal(object_ids[0], object_ids_return[0]));
+  ASSERT(object_ids_equal(object_ids[1], object_ids_return[1]));
   printf("DDDD====> num_objects = %lld\n", num_objects);
   free(data);
   close(fd);
@@ -98,11 +104,46 @@ TEST plasma_get_local_request_test(void) {
 }
 
 
+TEST plasma_get_local_reply_test(void) {
+  int fd = create_temp_file();
+  object_id object_ids[2];
+  object_ids[0] = globally_unique_id();
+  object_ids[1] = globally_unique_id();
+  plasma_object plasma_objects[2];
+  plasma_objects[0] = random_plasma_object();
+  plasma_objects[1] = random_plasma_object();
+  printf("AAAA====>\n");
+  plasma_send_get_local_reply(fd, object_ids, &plasma_objects[0], 2);
+  printf("BBBB====>\n");
+
+  // Go to the beginning of the file.
+  lseek(fd, 0, SEEK_SET);
+  int64_t type;
+  int64_t length;
+  uint8_t *data;
+  read_message(fd, PLASMA_PROTOCOL_VERSION, &type, &length, &data);
+  printf("CCCC====>  = %lld\n", length);
+  int64_t num_objects;
+  object_id object_ids_return[2];
+  plasma_object plasma_objects_return[2];
+  plasma_read_get_local_reply(data, &object_ids_return[0], &plasma_objects_return[0], &num_objects);
+  ASSERT(object_ids_equal(object_ids[0], object_ids_return[0]));
+  ASSERT(object_ids_equal(object_ids[1], object_ids_return[1]));
+  // printf("store is %d\n", plasma_objects[0].handle.store_fd))
+  // printf("store is %d\n", plasma_objects_return[0].handle.store_fd))
+  ASSERT(memcmp(&plasma_objects[0], &plasma_objects_return[0], sizeof(plasma_object)) == 0);
+  ASSERT(memcmp(&plasma_objects[1], &plasma_objects_return[1], sizeof(plasma_object)) == 0);
+  //printf("DDDD====> num_objects = %lld\n", num_objects);
+  free(data);
+  close(fd);
+  PASS();
+}
 
 SUITE(plasma_serialization_tests) {
   //RUN_TEST(plasma_create_request_test);
   //RUN_TEST(plasma_create_reply_test);
   RUN_TEST(plasma_get_local_request_test);
+  RUN_TEST(plasma_get_local_reply_test);
 }
 
 GREATEST_MAIN_DEFS();

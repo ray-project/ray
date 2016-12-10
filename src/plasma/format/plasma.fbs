@@ -30,6 +30,8 @@ enum PlasmaError:int {
   ObjectNonExistent
 }
 
+// Plasma store messages
+
 table PlasmaCreateRequest {
   // ID of the object to be created.
   object_id: string;
@@ -83,3 +85,5 @@ table PlasmaGetLocalReply {
   // elements in both object_ids and plasma_objects arrays.
   num_objects: int;
 }
+
+// Plasma manager messages

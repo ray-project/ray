@@ -36,4 +36,14 @@ void plasma_read_get_local_request(uint8_t *data,
                                    object_id object_ids[],
                                    int64_t *num_objects);
 
+int plasma_send_get_local_reply(int sock,
+                                object_id object_ids[],
+                                plasma_object plasma_objects[],
+                                int64_t num_objects);
+
+void plasma_read_get_local_reply(uint8_t *data,
+                                 object_id object_ids[],
+                                 plasma_object plasma_objects[],
+                                 int64_t *num_objects);
+
 #endif /* PLASMA_PROTOCOL */
