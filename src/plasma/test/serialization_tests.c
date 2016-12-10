@@ -38,6 +38,7 @@ TEST plasma_create_request_test(void) {
   ASSERT(object_ids_equal(object_id1, object_id2));
   free(data);
   close(fd);
+  PASS();
 }
 
 TEST plasma_create_reply_test(void) {
@@ -67,11 +68,41 @@ TEST plasma_create_reply_test(void) {
   ASSERT(memcmp(&object1, &object2, sizeof(object1)) == 0);
   free(data);
   close(fd);
+  PASS();
 }
 
+TEST plasma_get_local_request_test(void) {
+  int fd = create_temp_file();
+  object_id object_ids[2];
+  object_ids[0] = globally_unique_id();
+  object_ids[1] = globally_unique_id();
+  printf("AAAA====>\n");
+  plasma_send_get_local_request(fd, object_ids, 2);
+  printf("BBBB====>\n");
+
+  /* Go to the beginning of the file. */
+  lseek(fd, 0, SEEK_SET);
+  int64_t type;
+  int64_t length;
+  uint8_t *data;
+  read_message(fd, PLASMA_PROTOCOL_VERSION, &type, &length, &data);
+  printf("CCCC====>  = %lld\n", length);
+  int64_t num_objects;
+  object_id object_ids_return[2];
+  plasma_read_get_local_request(data, object_ids_return, &num_objects);
+
+  printf("DDDD====> num_objects = %lld\n", num_objects);
+  free(data);
+  close(fd);
+  PASS();
+}
+
+
+
 SUITE(plasma_serialization_tests) {
-  RUN_TEST(plasma_create_request_test);
-  RUN_TEST(plasma_create_reply_test);
+  //RUN_TEST(plasma_create_request_test);
+  //RUN_TEST(plasma_create_reply_test);
+  RUN_TEST(plasma_get_local_request_test);
 }
 
 GREATEST_MAIN_DEFS();

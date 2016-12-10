@@ -464,7 +464,7 @@ void process_message(event_loop *loop,
     object_id obj_id;
     int64_t data_size;
     int64_t metadata_size;
-    plasma_read_create_request(utarray_front(state->input_buffer), &obj_id, &data_size, &metadata_size);
+    plasma_read_create_request((uint8_t *)utarray_front(state->input_buffer), &obj_id, &data_size, &metadata_size);
     plasma_object object;
     int error_code;
     if (create_object(client_context, obj_id, data_size, metadata_size, &object)) {
