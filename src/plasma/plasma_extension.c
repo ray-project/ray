@@ -250,67 +250,6 @@ PyObject *PyPlasma_wait(PyObject *self, PyObject *args) {
     return NULL;
   }
 
-  object_id *object_ids = malloc(sizeof(object_id) * n);
-  for (int i = 0; i < n; ++i) {
-    PyObjectToUniqueID(PyList_GetItem(object_id_list, i), &object_ids[i]);
-  }
-  object_id *return_ids = malloc(sizeof(object_id) * num_returns);
-
-  /* Drop the global interpreter lock while we are waiting, so other threads can
-   * run. */
-  int num_return_objects;
-  Py_BEGIN_ALLOW_THREADS;
-  num_return_objects = plasma_wait(conn, (int) n, object_ids,
-                                   (uint64_t) timeout, num_returns, return_ids);
-  Py_END_ALLOW_THREADS;
-
-  PyObject *ready_ids = PyList_New(num_return_objects);
-  PyObject *waiting_ids = PySet_New(object_id_list);
-  for (int i = num_returns - num_return_objects; i < num_returns; ++i) {
-    PyObject *ready =
-        PyString_FromStringAndSize((char *) return_ids[i].id, UNIQUE_ID_SIZE);
-    PyList_SetItem(ready_ids, i - (num_returns - num_return_objects), ready);
-    PySet_Discard(waiting_ids, ready);
-  }
-  PyObject *t = PyTuple_New(2);
-  PyTuple_SetItem(t, 0, ready_ids);
-  PyTuple_SetItem(t, 1, waiting_ids);
-  return t;
-}
-
-PyObject *PyPlasma_wait2(PyObject *self, PyObject *args) {
-  plasma_connection *conn;
-  PyObject *object_id_list;
-  long long timeout;
-  int num_returns;
-  if (!PyArg_ParseTuple(args, "O&OLi", PyObjectToPlasmaConnection, &conn,
-                        &object_id_list, &timeout, &num_returns)) {
-    return NULL;
-  }
-  Py_ssize_t n = PyList_Size(object_id_list);
-
-  if (!plasma_manager_is_connected(conn)) {
-    PyErr_SetString(PyExc_RuntimeError, "Not connected to the plasma manager");
-    return NULL;
-  }
-  if (num_returns < 0) {
-    PyErr_SetString(PyExc_RuntimeError,
-                    "The argument num_returns cannot be less than zero.");
-    return NULL;
-  }
-  if (num_returns > n) {
-    PyErr_SetString(
-        PyExc_RuntimeError,
-        "The argument num_returns cannot be greater than len(object_ids)");
-    return NULL;
-  }
-  int64_t threshold = 1 << 30;
-  if (timeout > threshold) {
-    PyErr_SetString(PyExc_RuntimeError,
-                    "The argument timeout cannot be greater than 2 ** 30.");
-    return NULL;
-  }
-
   object_request *object_requests = malloc(sizeof(object_request) * n);
   for (int i = 0; i < n; ++i) {
     PyObjectToUniqueID(PyList_GetItem(object_id_list, i),
@@ -321,8 +260,8 @@ PyObject *PyPlasma_wait2(PyObject *self, PyObject *args) {
    * run. */
   int num_return_objects;
   Py_BEGIN_ALLOW_THREADS;
-  num_return_objects = plasma_wait_for_objects2(
-      conn, (int) n, object_requests, num_returns, (uint64_t) timeout);
+  num_return_objects = plasma_wait(conn, (int) n, object_requests, num_returns,
+                                   (uint64_t) timeout);
   Py_END_ALLOW_THREADS;
 
   int num_to_return = MIN(num_return_objects, num_returns);
@@ -446,7 +385,7 @@ static PyMethodDef plasma_methods[] = {
      "Fetch the object from another plasma manager instance."},
     {"fetch2", PyPlasma_fetch2, METH_VARARGS,
      "Fetch the object from another plasma manager instance."},
-    {"wait", PyPlasma_wait2, METH_VARARGS,
+    {"wait", PyPlasma_wait, METH_VARARGS,
      "Wait until num_returns objects in object_ids are ready."},
     {"evict", PyPlasma_evict, METH_VARARGS,
      "Evict some objects until we recover some number of bytes."},
