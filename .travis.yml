@@ -85,3 +85,4 @@ script:
   - python test/array_test.py
   - python test/failure_test.py
   - python test/microbenchmarks.py
+  - python test/stress_tests.py

@@ -66,6 +66,9 @@ def cleanup():
     print("Ray did not shut down properly.")
   all_processes = []
 
+def all_processes_alive():
+  return all([p.poll() is None for p in all_processes])
+
 def start_redis(num_retries=20, cleanup=True):
   """Start a Redis server.
 
