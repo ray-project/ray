@@ -149,7 +149,6 @@ int plasma_send_get_local_request(int sock,
   flatbuffers_string_vec_ref_t ids = object_ids_to_flatbuffer(&builder, object_ids, num_objects);
   PlasmaGetLocalRequest_object_ids_add(&builder, ids);
 
-  PlasmaGetLocalRequest_num_objects_add(&builder, num_objects);
   PlasmaGetLocalRequest_end_as_root(&builder);
   return finalize_buffer_and_send(&builder, sock, MessageType_PlasmaGetLocalRequest);
 }

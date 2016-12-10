@@ -4,7 +4,7 @@ project(common)
 
 include(ExternalProject)
 
-set(FLATCC_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/flatcc-prefix/src/flatcc/")
+set(FLATCC_PREFIX "${CMAKE_CURRENT_LIST_DIR}/build/flatcc-prefix/src/flatcc")
 
 ExternalProject_Add(flatcc
     URL "https://github.com/dvidelabs/flatcc/archive/v0.4.0.tar.gz"

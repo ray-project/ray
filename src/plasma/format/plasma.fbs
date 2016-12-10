@@ -69,8 +69,6 @@ table PlasmaCreateReply {
 table PlasmaGetLocalRequest {
   // IDs of the requested objects stored at local Plasma store.
   object_ids: [string];
-  // The size of the object's data in bytes.
-  num_objects: int;
 }
 
 table PlasmaGetLocalReply {
@@ -81,9 +79,7 @@ table PlasmaGetLocalReply {
   object_ids: [string];
   // Plasma object information, in the same order as their IDs.
   plasma_objects: [PlasmaObject];
-  // The number of objects being returned. This is the number
-  // elements in both object_ids and plasma_objects arrays.
-  num_objects: int;
+  // The number of elements in both object_ids and plasma_objects arrays must agree.
 }
 
 // Plasma manager messages
