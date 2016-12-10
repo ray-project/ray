@@ -391,10 +391,10 @@ int plasma_info(plasma_connection *conn,
  * @param object_requests Object event array. Each element contains a request
  *        for a particular object_id. The type of request is specified in the
  *        "type" field.
- *        - A PLASMA_OBJECT_LOCAL request is satisfied when object_id becomes
+ *        - A PLASMA_QUERY_LOCAL request is satisfied when object_id becomes
  *          available in the local Plasma Store. In this case, this function
  *          sets the "status" field to PLASMA_OBJECT_LOCAL.
- *        - A PLASMA_OBJECT_ANYWHERE request is satisfied when object_id becomes
+ *        - A PLASMA_QUERY_ANYWHERE request is satisfied when object_id becomes
  *          available either at the local Plasma Store or on a remote Plasma
  *          Store. In this case, the functions sets the "status" field to
  *          PLASMA_OBJECT_LOCAL or PLASMA_OBJECT_REMOTE.
@@ -413,6 +413,39 @@ int plasma_wait_for_objects(plasma_connection *conn,
                             object_request object_requests[],
                             int num_ready_objects,
                             uint64_t timeout_ms);
+
+/**
+ * Wait for (1) a specified number of objects to be available (sealed) in the
+ * local Plasma Store or in a remote Plasma Store, or (2) for a timeout to
+ * expire. This is a blocking call.
+ *
+ * @param conn The object containing the connection state.
+ * @param num_object_requests Size of the object_requests array.
+ * @param object_requests Object event array. Each element contains a request
+ *        for a particular object_id. The type of request is specified in the
+ *        "type" field.
+ *        - A PLASMA_QUERY_LOCAL request is satisfied when object_id becomes
+ *          available in the local Plasma Store. In this case, this function
+ *          sets the "status" field to PLASMA_OBJECT_LOCAL.
+ *        - A PLASMA_QUERY_ANYWHERE request is satisfied when object_id becomes
+ *          available either at the local Plasma Store or on a remote Plasma
+ *          Store. In this case, the functions sets the "status" field to
+ *          PLASMA_OBJECT_LOCAL or PLASMA_OBJECT_REMOTE.
+ * @param num_ready_objects The number of requests in object_requests array that
+ *        must be satisfied before the function returns, unless it timeouts.
+ *        The num_ready_objects should be no larger than num_object_requests.
+ * @param timeout_ms  Timeout value in milliseconds. If this timeout expires
+ *        before min_num_ready_objects of requests are satisfied, the function
+ *        returns.
+ * @return Number of satisfied requests in the object_requests list. If the
+ *         returned number is less than min_num_ready_objects this means that
+ *         timeout expired.
+ */
+int plasma_wait_for_objects2(plasma_connection *conn,
+                             int num_object_requests,
+                             object_request object_requests[],
+                             int num_ready_objects,
+                             uint64_t timeout_ms);
 
 /**
  * TODO: maybe move the plasma_client_* functions in another file.
