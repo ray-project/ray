@@ -7,6 +7,7 @@
 #include <sys/socket.h>
 
 #include "common.h"
+#include "test/test_common.h"
 #include "event_loop.h"
 #include "io.h"
 #include "utstring.h"
@@ -15,13 +16,9 @@
 #include "plasma_client.h"
 #include "plasma_manager.h"
 
-#ifndef _WIN32
-/* This function is actually not declared in standard POSIX, so declare it. */
-extern int usleep(useconds_t usec);
-#endif
-
 SUITE(plasma_manager_tests);
 
+const char *plasma_socket_name_format = "/tmp/plasma_socket_%d";
 const char *manager_addr = "127.0.0.1";
 object_id oid;
 
@@ -31,38 +28,6 @@ void wait_for_pollin(int fd) {
   poll_list[0].events = POLLIN;
   int retval = poll(poll_list, (unsigned long) 1, -1);
   CHECK(retval > 0);
-}
-
-UT_string *bind_ipc_sock_retry(int *fd) {
-  UT_string *socket_name = NULL;
-  for (int num_retries = 0; num_retries < 5; ++num_retries) {
-    LOG_INFO("trying to find plasma socket (attempt %d)", num_retries);
-    utstring_renew(socket_name);
-    utstring_printf(socket_name, "/tmp/plasma_socket_%d", rand());
-    *fd = bind_ipc_sock(utstring_body(socket_name), true);
-    if (*fd < 0) {
-      /* Sleep for 100ms. */
-      usleep(100000);
-      continue;
-    }
-    break;
-  }
-  return socket_name;
-}
-
-int bind_inet_sock_retry(int *fd) {
-  int port = -1;
-  for (int num_retries = 0; num_retries < 5; ++num_retries) {
-    port = 10000 + rand() % 40000;
-    *fd = bind_inet_sock(port, true);
-    if (*fd < 0) {
-      /* Sleep for 100ms. */
-      usleep(100000);
-      continue;
-    }
-    break;
-  }
-  return port;
 }
 
 int test_done_handler(event_loop *loop, timer_id id, void *context) {
@@ -93,8 +58,10 @@ plasma_mock *init_plasma_mock(plasma_mock *remote_mock) {
   plasma_mock *mock = malloc(sizeof(plasma_mock));
   /* Start listening on all the ports and initiate the local plasma manager. */
   mock->port = bind_inet_sock_retry(&mock->manager_remote_fd);
-  UT_string *store_socket_name = bind_ipc_sock_retry(&mock->local_store);
-  UT_string *manager_socket_name = bind_ipc_sock_retry(&mock->manager_local_fd);
+  UT_string *store_socket_name =
+      bind_ipc_sock_retry(plasma_socket_name_format, &mock->local_store);
+  UT_string *manager_socket_name =
+      bind_ipc_sock_retry(plasma_socket_name_format, &mock->manager_local_fd);
 
   CHECK(mock->manager_local_fd >= 0 && mock->local_store >= 0);
 

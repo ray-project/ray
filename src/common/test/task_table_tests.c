@@ -92,7 +92,7 @@ void add_success_callback(task_id task_id, void *context) {
 }
 
 TEST add_lookup_test(void) {
-  add_lookup_task = example_task();
+  add_lookup_task = example_task(1, 1, TASK_STATUS_WAITING);
   g_loop = event_loop_create();
   db_handle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 1234);
@@ -180,7 +180,7 @@ TEST publish_timeout_test(void) {
   db_handle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 1234);
   db_attach(db, g_loop, false);
-  task *task = example_task();
+  task *task = example_task(1, 1, TASK_STATUS_WAITING);
   retry_info retry = {
       .num_retries = 5, .timeout = 100, .fail_callback = publish_fail_callback,
   };
@@ -289,7 +289,7 @@ TEST publish_retry_test(void) {
   db_handle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11235);
   db_attach(db, g_loop, false);
-  task *task = example_task();
+  task *task = example_task(1, 1, TASK_STATUS_WAITING);
   retry_info retry = {
       .num_retries = 5,
       .timeout = 100,
@@ -383,7 +383,7 @@ TEST publish_late_test(void) {
   db_handle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11236);
   db_attach(db, g_loop, false);
-  task *task = example_task();
+  task *task = example_task(1, 1, TASK_STATUS_WAITING);
   retry_info retry = {
       .num_retries = 0,
       .timeout = 0,

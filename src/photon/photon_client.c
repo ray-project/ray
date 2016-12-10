@@ -33,6 +33,11 @@ void photon_task_done(photon_conn *conn) {
   write_message(conn->conn, TASK_DONE, 0, NULL);
 }
 
+void photon_reconstruct_object(photon_conn *conn, object_id object_id) {
+  write_message(conn->conn, RECONSTRUCT_OBJECT, sizeof(object_id),
+                (uint8_t *) &object_id);
+}
+
 void photon_disconnect(photon_conn *conn) {
   write_message(conn->conn, DISCONNECT_CLIENT, 0, NULL);
 }

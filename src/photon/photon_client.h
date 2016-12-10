@@ -48,6 +48,15 @@ task_spec *photon_get_task(photon_conn *conn);
 void photon_task_done(photon_conn *conn);
 
 /**
+ * Tell the local scheduler to reconstruct an object.
+ *
+ * @param conn The connection information.
+ * @param object_id The ID of the object to reconstruct.
+ * @return Void.
+ */
+void photon_reconstruct_object(photon_conn *conn, object_id object_id);
+
+/**
  * Disconnect from the local scheduler.
  *
  * @param conn The connection information.

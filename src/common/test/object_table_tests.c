@@ -67,7 +67,7 @@ TEST new_object_test(void) {
   new_object_failed = 0;
   new_object_succeeded = 0;
   new_object_id = globally_unique_id();
-  new_object_task = example_task();
+  new_object_task = example_task(1, 1, TASK_STATUS_WAITING);
   new_object_task_spec = task_task_spec(new_object_task);
   new_object_task_id = task_spec_id(new_object_task_spec);
   g_loop = event_loop_create();
