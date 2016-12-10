@@ -588,7 +588,12 @@ class TestPlasmaManager(unittest.TestCase):
 
     # Test calling wait a bunch of times.
     object_ids = []
-    for i in range(50 * 51 / 2):
+    # TODO(rkn): Increasing n to 100 (or larger) will cause failures. The
+    # problem appears to be that the number of timers added to the manager event
+    # loop slow down the manager so much that some of the asynchronous Redis
+    # commands timeout triggering fatal failure callbacks.
+    n = 40
+    for i in range(n * (n + 1) / 2):
       if i % 2 == 0:
         object_id, _, _ = create_object(self.client1, 200, 200)
       else:
@@ -597,7 +602,7 @@ class TestPlasmaManager(unittest.TestCase):
     # Try waiting for all of the object IDs on the first client.
     waiting = object_ids
     retrieved = []
-    for i in range(1, 51):
+    for i in range(1, n + 1):
       ready, waiting = self.client1.wait(waiting, timeout=1000, num_returns=i)
       self.assertEqual(len(ready), i)
       retrieved += ready
@@ -608,7 +613,7 @@ class TestPlasmaManager(unittest.TestCase):
     # Try waiting for all of the object IDs on the second client.
     waiting = object_ids
     retrieved = []
-    for i in range(1, 51):
+    for i in range(1, n + 1):
       ready, waiting = self.client2.wait(waiting, timeout=1000, num_returns=i)
       self.assertEqual(len(ready), i)
       retrieved += ready

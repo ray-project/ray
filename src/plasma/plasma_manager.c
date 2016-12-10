@@ -1469,7 +1469,14 @@ void process_wait_request2(client_connection *client_conn,
       retry_info retry;
       memset(&retry, 0, sizeof(retry));
       retry.num_retries = 0;
-      retry.timeout = MANAGER_TIMEOUT;
+      /* TODO(rkn): This timeout is excessive. However, the number of calls to
+       * object_table_subscribe here is also excessive. The issue may be the
+       * number of timers added to the manager event loop. Under heavy usage,
+       * this will trigger the fatal failure callback. The solution is probably
+       * to use Redis modules to write a special purpose command so that we only
+       * need to do a single call to Redis here (and hence create only a single
+       * timer). */
+      retry.timeout = 100000;
       retry.fail_callback = fatal_table_callback;
       object_table_subscribe(manager_state->db, obj_id, object_present_callback,
                              manager_state, &retry, NULL, NULL);
