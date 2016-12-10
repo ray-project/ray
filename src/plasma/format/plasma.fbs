@@ -10,7 +10,9 @@ enum MessageType:int {
   PlasmaCreateReply,
   // Seal an object.
   PlasmaSealRequest,
-  PlasmaSealReply
+  PlasmaSealReply,
+  PlasmaGetLocalRequest,
+  PlasmaGetLocalReply
 }
 
 // table MessageHeader {

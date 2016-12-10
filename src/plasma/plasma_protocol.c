@@ -88,19 +88,12 @@ int plasma_send_get_local_request(int sock,
   flatcc_builder_t builder;
   flatcc_builder_init(&builder);
   PlasmaGetLocalRequest_start_as_root(&builder);
-  /** Create vector object IDs */
-  flatbuffers_string_vec_start(&builder);
+
   for (int i = 0; i < num_objects; i++) {
-    printf("=========> %d\n", i);
-    flatbuffers_string_ref_t f = flatbuffers_string_create(&builder, (const char *) &object_ids[0].id[0],
-                                                           UNIQUE_ID_SIZE);
-    printf("==========> 1111 = %d/%d\n", f, UNIQUE_ID_SIZE);
-    flatbuffers_string_vec_append(&builder, &f, UNIQUE_ID_SIZE);
-    printf("==========> 2222\n");
+    flatbuffers_string_ref_t id = flatbuffers_string_create(&builder, (const char *) &object_ids[i].id[0], UNIQUE_ID_SIZE);
+    PlasmaGetLocalRequest_object_ids_add(&builder, id);
   }
-  printf("==========> 3333\n");
-  PlasmaGetLocalRequest_object_ids_add(&builder, flatbuffers_string_vec_end(&builder));
-  printf("==========> 4444\n");
+
   PlasmaGetLocalRequest_num_objects_add(&builder, num_objects);
   PlasmaGetLocalRequest_end_as_root(&builder);
   size_t size;
@@ -116,6 +109,7 @@ void plasma_read_get_local_request(uint8_t *data,
   CHECK(data);
   PlasmaGetLocalRequest_table_t req = PlasmaGetLocalRequest_as_root(data);
   *num_objects = PlasmaGetLocalRequest_num_objects(req);
+  flatbuffers_string_vec_t object_id_vec = PlasmaGetLocalRequest_object_ids(&builder)
   // *metadata_size = PlasmaCreateRequest_metadata_size(req);
   // flatbuffers_string_t id = PlasmaCreateRequest_object_id(req);
   // CHECK(flatbuffers_string_len(id) == UNIQUE_ID_SIZE);
