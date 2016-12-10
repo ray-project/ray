@@ -77,9 +77,7 @@ class TaskTests(unittest.TestCase):
     ray.worker.cleanup()
 
   def testWait(self):
-    # TODO(rkn): Use more local schedulers once the distributed wait
-    # implementation is in place.
-    for num_local_schedulers in [1]:
+    for num_local_schedulers in [1, 4]:
       for num_workers_per_scheduler in [4]:
         num_workers = num_local_schedulers * num_workers_per_scheduler
         ray.init(start_ray_local=True, num_workers=num_workers, num_local_schedulers=num_local_schedulers)
@@ -88,7 +86,7 @@ class TaskTests(unittest.TestCase):
         def f(x):
           return x
 
-        x_ids = [f.remote(i) for i in range(1000)]
+        x_ids = [f.remote(i) for i in range(100)]
         for i in range(len(x_ids)):
           ray.wait([x_ids[i]])
         for i in range(len(x_ids) - 1):
@@ -99,7 +97,7 @@ class TaskTests(unittest.TestCase):
           time.sleep(x)
 
         for i in range(1, 5):
-          x_ids = [g.remote(np.random.uniform(0, i)) for _ in range(4 * num_workers)]
+          x_ids = [g.remote(np.random.uniform(0, i)) for _ in range(2 * num_workers)]
           ray.wait(x_ids, num_returns=len(x_ids))
 
         self.assertTrue(ray.services.all_processes_alive())

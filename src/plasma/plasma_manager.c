@@ -162,6 +162,39 @@ typedef struct {
   UT_hash_handle hh;
 } fetch_request2;
 
+typedef struct {
+  /** The client connection that called wait. */
+  client_connection *client_conn;
+  /** The ID of the timer that will time out and cause this wait to return to
+   *  the client if it hasn't already returned. */
+  int64_t timer;
+  /** The number of objects in this wait request. */
+  int64_t num_object_requests;
+  /** The object requests for this wait request. Each object request has a
+   *  status field which is either PLASMA_QUERY_LOCAL or PLASMA_QUERY_ANYWHERE.
+   */
+  object_request *object_requests;
+  /** The minimum number of objects to wait for in this request. */
+  int64_t num_objects_to_wait_for;
+  /** The number of object requests in this wait request that are already
+   *  satisfied. */
+  int64_t num_satisfied;
+} wait_request2;
+
+/** This is used to define the utarray of wait requests in the
+ *  object_wait_requests struct. */
+UT_icd wait_request2_icd = {sizeof(wait_request2 *), NULL, NULL, NULL};
+
+typedef struct {
+  /** The ID of the object. This is used as a key in a hash table. */
+  object_id object_id;
+  /** An array of the wait requests involving this object ID. */
+  UT_array *wait_requests;
+  /** Handle for the uthash table in the manager state that keeps track of the
+   *  wait requests involving this object ID. */
+  UT_hash_handle hh;
+} object_wait_requests;
+
 struct plasma_manager_state {
   /** Event loop. */
   event_loop *loop;
@@ -183,6 +216,12 @@ struct plasma_manager_state {
   /** Hash table of outstanding fetch requests. The key is the object ID. The
    *  value is the data needed to perform the fetch. */
   fetch_request2 *fetch_requests2;
+  /** A hash table mapping object IDs to a vector of the wait requests that
+   *  are waiting for the object to arrive locally. */
+  object_wait_requests *object_wait_requests_local;
+  /** A hash table mapping object IDs to a vector of the wait requests that
+   *  are waiting for the object to be available somewhere in the system. */
+  object_wait_requests *object_wait_requests_remote;
   /** Initialize an empty hash map for the cache of local available object. */
   available_object *local_available_objects;
 };
@@ -372,6 +411,143 @@ void remove_object_request(client_connection *client_conn,
   free_client_object_request(object_req);
 }
 
+object_wait_requests **object_wait_requests_table_ptr_from_type(
+    plasma_manager_state *manager_state,
+    int type) {
+  /* We use different types of hash tables for different requests. */
+  if (type == PLASMA_QUERY_LOCAL) {
+    return &manager_state->object_wait_requests_local;
+  } else if (type == PLASMA_QUERY_ANYWHERE) {
+    return &manager_state->object_wait_requests_remote;
+  } else {
+    LOG_FATAL("This code should be unreachable.");
+  }
+}
+
+void add_wait_request_for_object(plasma_manager_state *manager_state,
+                                 object_id object_id,
+                                 int type,
+                                 wait_request2 *wait_req) {
+  object_wait_requests **object_wait_requests_table_ptr =
+      object_wait_requests_table_ptr_from_type(manager_state, type);
+  object_wait_requests *object_wait_reqs;
+  HASH_FIND(hh, *object_wait_requests_table_ptr, &object_id, sizeof(object_id),
+            object_wait_reqs);
+  /* If there are currently no wait requests involving this object ID, create a
+   * new object_wait_requests struct for this object ID and add it to the hash
+   * table. */
+  if (object_wait_reqs == NULL) {
+    object_wait_reqs = malloc(sizeof(object_wait_requests));
+    object_wait_reqs->object_id = object_id;
+    utarray_new(object_wait_reqs->wait_requests, &wait_request2_icd);
+    HASH_ADD(hh, *object_wait_requests_table_ptr, object_id,
+             sizeof(object_wait_reqs->object_id), object_wait_reqs);
+  }
+  /* Add this wait request to the vector of wait requests involving this object
+   * ID. */
+  utarray_push_back(object_wait_reqs->wait_requests, &wait_req);
+}
+
+void remove_wait_request_for_object(plasma_manager_state *manager_state,
+                                    object_id object_id,
+                                    int type,
+                                    wait_request2 *wait_req) {
+  object_wait_requests **object_wait_requests_table_ptr =
+      object_wait_requests_table_ptr_from_type(manager_state, type);
+  object_wait_requests *object_wait_reqs;
+  HASH_FIND(hh, *object_wait_requests_table_ptr, &object_id, sizeof(object_id),
+            object_wait_reqs);
+  /* If there is a vector of wait requests for this object ID, and if this
+   * vector contains the wait request, then remove the wait request from the
+   * vector. */
+  if (object_wait_reqs != NULL) {
+    for (int i = 0; i < utarray_len(object_wait_reqs->wait_requests); ++i) {
+      wait_request2 **wait_req_ptr =
+          (wait_request2 **) utarray_eltptr(object_wait_reqs->wait_requests, i);
+      if (*wait_req_ptr == wait_req) {
+        /* Remove the wait request from the array. */
+        utarray_erase(object_wait_reqs->wait_requests, i, 1);
+        break;
+      }
+    }
+    /* In principle, if there are no more wait requests involving this object
+     * ID, then we could remove the object_wait_reqs struct. */
+  }
+}
+
+void remove_wait_request2(plasma_manager_state *manager_state,
+                          wait_request2 *wait_req) {
+  if (wait_req->timer != -1) {
+    CHECK(event_loop_remove_timer(manager_state->loop, wait_req->timer) ==
+          AE_OK);
+  }
+  free(wait_req->object_requests);
+  free(wait_req);
+}
+
+void return_from_wait2(plasma_manager_state *manager_state,
+                       wait_request2 *wait_req) {
+  plasma_reply *reply = plasma_alloc_reply(wait_req->num_object_requests);
+  reply->num_object_ids = wait_req->num_object_requests;
+  for (int i = 0; i < wait_req->num_object_requests; ++i) {
+    reply->object_requests[i] = wait_req->object_requests[i];
+  }
+  /* Send the reply to the client. */
+  CHECK(plasma_send_reply(wait_req->client_conn->fd, reply) >= 0);
+  free(reply);
+  /* Remove the wait request from each of the relevant object_wait_requests hash
+   * tables if it is present there. */
+  for (int i = 0; i < wait_req->num_object_requests; ++i) {
+    remove_wait_request_for_object(manager_state,
+                                   wait_req->object_requests[i].object_id,
+                                   wait_req->object_requests[i].type, wait_req);
+  }
+  /* Remove the wait request. */
+  remove_wait_request2(manager_state, wait_req);
+}
+
+void update_object_wait_requests(plasma_manager_state *manager_state,
+                                 object_id obj_id,
+                                 int type,
+                                 int status) {
+  object_wait_requests **object_wait_requests_table_ptr =
+      object_wait_requests_table_ptr_from_type(manager_state, type);
+  /* Update the in-progress wait requests in the specified table. */
+  object_wait_requests *object_wait_reqs;
+  HASH_FIND(hh, *object_wait_requests_table_ptr, &obj_id, sizeof(obj_id),
+            object_wait_reqs);
+  if (object_wait_reqs != NULL) {
+    for (int i = 0; i < utarray_len(object_wait_reqs->wait_requests); ++i) {
+      wait_request2 **wait_req_ptr =
+          (wait_request2 **) utarray_eltptr(object_wait_reqs->wait_requests, i);
+      wait_request2 *wait_req = *wait_req_ptr;
+      wait_req->num_satisfied += 1;
+      /* Mark the object as present in the wait request. */
+      int j = 0;
+      for (; j < wait_req->num_object_requests; ++j) {
+        if (object_ids_equal(wait_req->object_requests[j].object_id, obj_id)) {
+          /* Check that this object is currently nonexistent. */
+          CHECK(wait_req->object_requests[j].status ==
+                PLASMA_OBJECT_NONEXISTENT);
+          wait_req->object_requests[j].status = status;
+          break;
+        }
+      }
+      /* Make sure that we actually marked an object as available.*/
+      CHECK(j != wait_req->num_object_requests);
+      /* If this wait request is done, reply to the client. */
+      if (wait_req->num_satisfied == wait_req->num_object_requests) {
+        return_from_wait2(manager_state, wait_req);
+      }
+    }
+    /* Remove the array of wait requests for this object, since no one should be
+     * waiting for this object anymore. */
+    HASH_DELETE(hh, *object_wait_requests_table_ptr, object_wait_reqs);
+    utarray_free(object_wait_reqs->wait_requests);
+    free(object_wait_reqs);
+  }
+}
+
 void remove_fetch_request(plasma_manager_state *manager_state,
                           fetch_request2 *fetch_req) {
   /* Remove the fetch request from the table of fetch requests. */
@@ -403,6 +579,8 @@ plasma_manager_state *init_plasma_manager_state(const char *store_socket_name,
   state->manager_connections = NULL;
   state->fetch_requests = NULL;
   state->fetch_requests2 = NULL;
+  state->object_wait_requests_local = NULL;
+  state->object_wait_requests_remote = NULL;
   if (db_addr) {
     state->db = db_connect(db_addr, db_port, "plasma_manager", manager_addr,
                            manager_port);
@@ -1038,7 +1216,7 @@ void process_fetch_requests2(client_connection *client_conn,
      * initially empty. */
     retry_info retry;
     memset(&retry, 0, sizeof(retry));
-    retry.num_retries = NUM_RETRIES;
+    retry.num_retries = 0;
     retry.timeout = MANAGER_TIMEOUT;
     retry.fail_callback = fatal_table_callback;
     object_table_subscribe(manager_state->db, obj_id, request_transfer2,
@@ -1123,6 +1301,12 @@ int wait_timeout_handler1(event_loop *loop, timer_id id, void *context) {
   client_connection *client_conn = context;
   CHECK(client_conn->timer_id == id);
   return_from_wait1(client_conn);
+  return EVENT_LOOP_TIMER_DONE;
+}
+
+int wait_timeout_handler2(event_loop *loop, timer_id id, void *context) {
+  wait_request2 *wait_req = context;
+  return_from_wait2(wait_req->client_conn->manager_state, wait_req);
   return EVENT_LOOP_TIMER_DONE;
 }
 
@@ -1221,6 +1405,97 @@ void process_wait_request1(client_connection *client_conn,
       }
     }
   }
+}
+
+void object_present_callback(object_id object_id,
+                             int manager_count,
+                             const char *manager_vector[],
+                             void *context) {
+  plasma_manager_state *manager_state = (plasma_manager_state *) context;
+  /* This callback is called from object_table_subscribe, which guarantees that
+   * the manager vector contains at least one element. */
+  CHECK(manager_count >= 1);
+
+  /* Update the in-progress remote wait requests. */
+  update_object_wait_requests(manager_state, object_id, PLASMA_QUERY_ANYWHERE,
+                              PLASMA_OBJECT_REMOTE);
+}
+
+void process_wait_request2(client_connection *client_conn,
+                           int num_object_requests,
+                           object_request object_requests[],
+                           uint64_t timeout_ms,
+                           int num_ready_objects) {
+  CHECK(client_conn != NULL);
+  plasma_manager_state *manager_state = client_conn->manager_state;
+
+  /* Create a wait request for this object. */
+  wait_request2 *wait_req = malloc(sizeof(wait_request2));
+  memset(wait_req, 0, sizeof(wait_request2));
+  wait_req->client_conn = client_conn;
+  wait_req->timer = -1;
+  wait_req->num_object_requests = num_object_requests;
+  wait_req->object_requests =
+      malloc(num_object_requests * sizeof(object_request));
+  for (int i = 0; i < num_object_requests; ++i) {
+    wait_req->object_requests[i].object_id = object_requests[i].object_id;
+    wait_req->object_requests[i].type = object_requests[i].type;
+    wait_req->object_requests[i].status = PLASMA_OBJECT_NONEXISTENT;
+  }
+  wait_req->num_objects_to_wait_for = num_ready_objects;
+  wait_req->num_satisfied = 0;
+
+  for (int i = 0; i < num_object_requests; ++i) {
+    object_id obj_id = object_requests[i].object_id;
+
+    /* Check if this object is already present locally. If so, mark the object
+     * as present. */
+    if (is_object_local(manager_state, obj_id)) {
+      wait_req->object_requests[i].status = PLASMA_OBJECT_LOCAL;
+      wait_req->num_satisfied += 1;
+      continue;
+    }
+
+    /* Add the wait request to the relevant data structures. */
+    add_wait_request_for_object(manager_state, obj_id,
+                                wait_req->object_requests[i].type, wait_req);
+
+    if (wait_req->object_requests[i].type == PLASMA_QUERY_LOCAL) {
+      /* TODO(rkn): If desired, we could issue a fetch command here to retrieve
+       * the object. */
+    } else if (wait_req->object_requests[i].type == PLASMA_QUERY_ANYWHERE) {
+      /* Subscribe to a notification for when the object is available somewhere
+       * in the system. */
+      retry_info retry;
+      memset(&retry, 0, sizeof(retry));
+      retry.num_retries = 0;
+      /* TODO(rkn): This timeout is excessive. However, the number of calls to
+       * object_table_subscribe here is also excessive. The issue may be the
+       * number of timers added to the manager event loop. Under heavy usage,
+       * this will trigger the fatal failure callback. The solution is probably
+       * to use Redis modules to write a special purpose command so that we only
+       * need to do a single call to Redis here (and hence create only a single
+       * timer). */
+      retry.timeout = 100000;
+      retry.fail_callback = fatal_table_callback;
+      object_table_subscribe(manager_state->db, obj_id, object_present_callback,
+                             manager_state, &retry, NULL, NULL);
+    } else {
+      /* This code should be unreachable. */
+      CHECK(0);
+    }
+  }
+
+  /* If enough of the wait requests have already been satisfied, return to the
+   * client. */
+  if (wait_req->num_satisfied >= wait_req->num_objects_to_wait_for) {
+    return_from_wait2(manager_state, wait_req);
+    return;
+  }
+
+  /* Set a timer that will cause the wait request to return to the client. */
+  wait_req->timer = event_loop_add_timer(manager_state->loop, timeout_ms,
+                                         wait_timeout_handler2, wait_req);
 }
 
 /* TODO(pcm): unify with wait_object_available_callback. */
@@ -1539,6 +1814,13 @@ void process_object_notification(event_loop *loop,
     remove_fetch_request(state, fetch_req);
     /* TODO(rkn): We also really should unsubscribe from the object table. */
   }
+
+  /* Update the in-progress local and remote wait requests. */
+  update_object_wait_requests(state, obj_id, PLASMA_QUERY_LOCAL,
+                              PLASMA_OBJECT_LOCAL);
+  update_object_wait_requests(state, obj_id, PLASMA_QUERY_ANYWHERE,
+                              PLASMA_OBJECT_LOCAL);
+
   /* Notify any clients who were waiting on a fetch to this object and tick
    * off objects we are waiting for. */
   client_object_request *object_req, *next;
@@ -1624,6 +1906,11 @@ void process_message(event_loop *loop,
   case PLASMA_WAIT1:
     LOG_DEBUG("Processing wait1");
     process_wait_request1(conn, req->num_object_ids, req->object_requests,
+                          req->timeout, req->num_ready_objects);
+    break;
+  case PLASMA_WAIT2:
+    LOG_DEBUG("Processing wait2");
+    process_wait_request2(conn, req->num_object_ids, req->object_requests,
                           req->timeout, req->num_ready_objects);
     break;
   case PLASMA_STATUS:

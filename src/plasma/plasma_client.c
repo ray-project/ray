@@ -765,6 +765,60 @@ int plasma_wait_for_objects(plasma_connection *conn,
   return num_objects_ready;
 }
 
+int plasma_wait_for_objects2(plasma_connection *conn,
+                             int num_object_requests,
+                             object_request object_requests[],
+                             int num_ready_objects,
+                             uint64_t timeout_ms) {
+  CHECK(conn != NULL);
+  CHECK(conn->manager_conn >= 0);
+  CHECK(num_object_requests > 0);
+  CHECK(num_ready_objects > 0);
+  CHECK(num_ready_objects <= num_object_requests);
+
+  plasma_request *req = plasma_alloc_request(num_object_requests);
+  for (int i = 0; i < num_object_requests; ++i) {
+    CHECK(object_requests[i].type == PLASMA_QUERY_LOCAL ||
+          object_requests[i].type == PLASMA_QUERY_ANYWHERE);
+    req->object_requests[i] = object_requests[i];
+  }
+  req->num_ready_objects = num_ready_objects;
+  req->timeout = timeout_ms;
+  CHECK(plasma_send_request(conn->manager_conn, PLASMA_WAIT2, req) >= 0);
+  free(req);
+
+  plasma_reply *reply = plasma_alloc_reply(num_object_requests);
+  CHECK(plasma_receive_reply(conn->manager_conn,
+                             plasma_reply_size(num_object_requests),
+                             reply) >= 0);
+  int num_objects_ready = 0;
+  for (int i = 0; i < num_object_requests; ++i) {
+    int type = reply->object_requests[i].type;
+    int status = reply->object_requests[i].status;
+    object_requests[i].object_id = reply->object_requests[i].object_id;
+    object_requests[i].type = type;
+    object_requests[i].status = status;
+    switch (type) {
+    case PLASMA_QUERY_LOCAL:
+      if (status == PLASMA_OBJECT_LOCAL) {
+        num_objects_ready += 1;
+      }
+      break;
+    case PLASMA_QUERY_ANYWHERE:
+      if (status == PLASMA_OBJECT_LOCAL || status == PLASMA_OBJECT_REMOTE) {
+        num_objects_ready += 1;
+      } else {
+        CHECK(status == PLASMA_OBJECT_NONEXISTENT);
+      }
+      break;
+    default:
+      LOG_FATAL("This code should be unreachable.");
+    }
+  }
+  free(reply);
+  return num_objects_ready;
+}
+
 /*
  *  TODO: maybe move the plasma_client_* functions in another file.
  *
