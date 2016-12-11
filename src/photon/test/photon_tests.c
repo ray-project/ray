@@ -107,9 +107,6 @@ TEST object_reconstruction_test(void) {
 
 TEST object_reconstruction_recursive_test(void) {
   photon_mock *photon = init_photon_mock();
-  event_loop_add_file(photon->loop, photon->plasma_incoming_fd, EVENT_LOOP_READ,
-                      process_plasma_notification,
-                      (void *) photon->photon_state);
   /* Create a chain of tasks, each one dependent on the one before it. Mark
    * each object as available so that tasks will run immediately. */
   const int NUM_TASKS = 10;
