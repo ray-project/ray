@@ -185,37 +185,15 @@ void plasma_delete(plasma_connection *conn, object_id object_id);
 int64_t plasma_evict(plasma_connection *conn, int64_t num_bytes);
 
 /**
- * Fetch objects from remote plasma stores that have the
- * objects stored.
- *
- * @param manager A file descriptor for the socket connection
- *        to the local manager.
- * @param object_id_count The number of object IDs requested.
- * @param object_ids[] The vector of object IDs requested. Length must be at
- *        least num_object_ids.
- * @param is_fetched[] The vector in which to return the success
- *        of each object's fetch operation, in the same order as
- *        object_ids. Length must be at least num_object_ids.
- * @return Void.
- */
-void plasma_fetch(plasma_connection *conn,
-                  int num_object_ids,
-                  object_id object_ids[],
-                  int is_fetched[]);
-
-/**
  * Attempt to initiate the transfer of some objects from remote Plasma Stores.
+ * This method does not guarantee that the fetched objects will arrive locally.
  *
  * For an object that is available in the local Plasma Store, this method will
  * not do anything. For an object that is not available locally, it will check
  * if the object are already being fetched. If so, it will not do anything. If
  * not, it will query the object table for a list of Plasma Managers that have
- * the object. If that list is non-empty, it will attempt to initiate transfers
- * from one of those Plasma Managers. If the list is empty, it will set a
- * callback to initiate a transfer when the list becomes non-empty.
- *
- * TODO(rkn): Setting the callback for when the list becomes non-empty is not
- * implemented.
+ * the object. The object table will return a non-empty list, and this Plasma
+ * Manager will attempt to initiate transfers from one of those Plasma Managers.
  *
  * This function is non-blocking.
  *
@@ -227,9 +205,9 @@ void plasma_fetch(plasma_connection *conn,
  * @param object_ids The IDs of the objects that fetch is being called on.
  * @return Void.
  */
-void plasma_fetch2(plasma_connection *conn,
-                   int num_object_ids,
-                   object_id object_ids[]);
+void plasma_fetch(plasma_connection *conn,
+                  int num_object_ids,
+                  object_id object_ids[]);
 
 /**
  * Transfer local object to a different plasma manager.
@@ -245,28 +223,6 @@ void plasma_transfer(plasma_connection *conn,
                      const char *addr,
                      int port,
                      object_id object_id);
-
-/**
- * Wait for objects to be created (right now, wait for local objects).
- *
- * @param conn The object containing the connection state.
- * @param num_object_ids Number of object IDs wait is called on.
- * @param object_ids Object IDs wait is called on.
- * @param timeout Wait will time out and return after this number of ms.
- * @param num_returns Number of object IDs wait will return if it doesn't time
- *        out.
- * @param return_object_ids Out parameter for the object IDs returned by wait.
- *        This is an array of size num_returns. If the number of objects that
- *        are ready when we time out, the objects will be stored in the last
- *        slots of the array and the number of objects is returned.
- * @return Number of objects that are actually ready.
- */
-int plasma_wait(plasma_connection *conn,
-                int num_object_ids,
-                object_id object_ids[],
-                uint64_t timeout,
-                int num_returns,
-                object_id return_object_ids[]);
 
 /**
  * Subscribe to notifications when objects are sealed in the object store.
@@ -287,8 +243,6 @@ int plasma_subscribe(plasma_connection *conn);
  *         connection to the manager, this is -1.
  */
 int get_manager_fd(plasma_connection *conn);
-
-/* === ALTERNATE PLASMA CLIENT API === */
 
 /**
  * Object buffer data structure.
@@ -319,38 +273,7 @@ bool plasma_get_local(plasma_connection *conn,
                       object_buffer *object_buffer);
 
 /**
- * Initiates the fetch (transfer) of an object from a remote Plasma Store.
- *
- * If the object is stored in the local Plasma Store, tell the caller.
- *
- * If not, check whether the object is stored on a remote Plasma Store. If yes,
- * and if a transfer for the object has either been scheduled or is in progress,
- * then return. Otherwise schedule a transfer for the object.
- *
- * If the object is not available locally or remotely, the client has to tell
- * local scheduler to (re)create the object.
- *
- * This function is non-blocking.
- *
- * @param conn The object containing the connection state.
- * @param object_id The ID of the object we want to transfer.
- * @return Status as returned by the get_status() function. Status can take the
- *         following values.
- *         - PLASMA_CLIENT_LOCAL, if the object is stored in the local Plasma
- *           Store.
- *         - PLASMA_CLIENT_TRANSFER, if the object is either currently being
- *           transferred or the transfer has been scheduled.
- *         - PLASMA_CLIENT_REMOTE, if the object is stored at a remote Plasma
- *           Store.
- *         - PLASMA_CLIENT_DOES_NOT_EXIST, if the object doesn’t exist in the
- *           system.
- */
-int plasma_fetch_remote(plasma_connection *conn, object_id object_id);
-
-/**
- * Return the status of a given object. This function is similar to
- * plasma_fetch_remote() with the only difference that plamsa_fetch_remote()
- * also schedules the obejct transfer, if not local.
+ * Return the status of a given object. This method may query the object table.
  *
  * @param conn The object containing the connection state.
  * @param object_id The ID of the object whose status we query.
@@ -393,7 +316,9 @@ int plasma_info(plasma_connection *conn,
  *        "type" field.
  *        - A PLASMA_QUERY_LOCAL request is satisfied when object_id becomes
  *          available in the local Plasma Store. In this case, this function
- *          sets the "status" field to PLASMA_OBJECT_LOCAL.
+ *          sets the "status" field to PLASMA_OBJECT_LOCAL. Note, if the status
+ *          is not PLASMA_OBJECT_LOCAL, it will be PLASMA_OBJECT_NONEXISTENT,
+ *          but it may exist elsewhere in the system.
  *        - A PLASMA_QUERY_ANYWHERE request is satisfied when object_id becomes
  *          available either at the local Plasma Store or on a remote Plasma
  *          Store. In this case, the functions sets the "status" field to
@@ -401,51 +326,18 @@ int plasma_info(plasma_connection *conn,
  * @param num_ready_objects The number of requests in object_requests array that
  *        must be satisfied before the function returns, unless it timeouts.
  *        The num_ready_objects should be no larger than num_object_requests.
- * @param timeout_ms  Timeout value in milliseconds. If this timeout expires
+ * @param timeout_ms Timeout value in milliseconds. If this timeout expires
  *        before min_num_ready_objects of requests are satisfied, the function
  *        returns.
  * @return Number of satisfied requests in the object_requests list. If the
  *         returned number is less than min_num_ready_objects this means that
  *         timeout expired.
  */
-int plasma_wait_for_objects(plasma_connection *conn,
-                            int num_object_requests,
-                            object_request object_requests[],
-                            int num_ready_objects,
-                            uint64_t timeout_ms);
-
-/**
- * Wait for (1) a specified number of objects to be available (sealed) in the
- * local Plasma Store or in a remote Plasma Store, or (2) for a timeout to
- * expire. This is a blocking call.
- *
- * @param conn The object containing the connection state.
- * @param num_object_requests Size of the object_requests array.
- * @param object_requests Object event array. Each element contains a request
- *        for a particular object_id. The type of request is specified in the
- *        "type" field.
- *        - A PLASMA_QUERY_LOCAL request is satisfied when object_id becomes
- *          available in the local Plasma Store. In this case, this function
- *          sets the "status" field to PLASMA_OBJECT_LOCAL.
- *        - A PLASMA_QUERY_ANYWHERE request is satisfied when object_id becomes
- *          available either at the local Plasma Store or on a remote Plasma
- *          Store. In this case, the functions sets the "status" field to
- *          PLASMA_OBJECT_LOCAL or PLASMA_OBJECT_REMOTE.
- * @param num_ready_objects The number of requests in object_requests array that
- *        must be satisfied before the function returns, unless it timeouts.
- *        The num_ready_objects should be no larger than num_object_requests.
- * @param timeout_ms  Timeout value in milliseconds. If this timeout expires
- *        before min_num_ready_objects of requests are satisfied, the function
- *        returns.
- * @return Number of satisfied requests in the object_requests list. If the
- *         returned number is less than min_num_ready_objects this means that
- *         timeout expired.
- */
-int plasma_wait_for_objects2(plasma_connection *conn,
-                             int num_object_requests,
-                             object_request object_requests[],
-                             int num_ready_objects,
-                             uint64_t timeout_ms);
+int plasma_wait(plasma_connection *conn,
+                int num_object_requests,
+                object_request object_requests[],
+                int num_ready_objects,
+                uint64_t timeout_ms);
 
 /**
  * TODO: maybe move the plasma_client_* functions in another file.
@@ -498,8 +390,8 @@ int plasma_client_wait(plasma_connection *conn,
  * @param num_object_ids The number of objects in the array to be returned.
  * @param object_ids The array of object IDs to be returned.
  * @param object_buffers The array of data structure where the information of
- *                       the return objects will be stored. The objects appear
- *                       in the same order as their IDs in the object_ids array,
+ *        the return objects will be stored. The objects appear in the same
+ *        order as their IDs in the object_ids array,
  * @return Void.
  */
 void plasma_client_multiget(plasma_connection *conn,

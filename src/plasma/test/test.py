@@ -404,82 +404,23 @@ class TestPlasmaManager(unittest.TestCase):
     if self.redis_process is None:
       print("Cannot test fetch without a running redis instance.")
       self.assertTrue(False)
-    for _ in range(100):
-      # Create an object.
-      object_id1, memory_buffer1, metadata1 = create_object(self.client1, 2000, 2000)
-      # Fetch the object from the other plasma store.
-      # TODO(swang): This line is a hack! It makes sure that the entry will be
-      # in the object table once we call the fetch operation. Remove once
-      # retries are implemented by Ray common.
-      time.sleep(0.1)
-      successes = self.client2.fetch([object_id1])
-      self.assertEqual(successes, [True])
-      # Compare the two buffers.
-      assert_get_object_equal(self, self.client1, self.client2, object_id1,
-                              memory_buffer=memory_buffer1, metadata=metadata1)
-      # Fetch in the other direction. These should return quickly because
-      # client1 already has the object.
-      successes = self.client1.fetch([object_id1])
-      self.assertEqual(successes, [True])
-      assert_get_object_equal(self, self.client2, self.client1, object_id1,
-                              memory_buffer=memory_buffer1, metadata=metadata1)
-
-  def test_fetch_multiple(self):
-    if self.redis_process is None:
-      print("Cannot test fetch without a running redis instance.")
-      self.assertTrue(False)
-    for _ in range(20):
-      # Create two objects and a third fake one that doesn't exist.
-      object_id1, memory_buffer1, metadata1 = create_object(self.client1, 2000, 2000)
-      missing_object_id = random_object_id()
-      object_id2, memory_buffer2, metadata2 = create_object(self.client1, 2000, 2000)
-      object_ids = [object_id1, missing_object_id, object_id2]
-      # Fetch the objects from the other plasma store. The second object ID
-      # should timeout since it does not exist.
-      # TODO(swang): This line is a hack! It makes sure that the entry will be
-      # in the object table once we call the fetch operation. Remove once
-      # retries are implemented by Ray common.
-      time.sleep(0.1)
-      successes = self.client2.fetch(object_ids)
-      self.assertEqual(successes, [True, False, True])
-      # Compare the buffers of the objects that do exist.
-      assert_get_object_equal(self, self.client1, self.client2, object_id1,
-                              memory_buffer=memory_buffer1, metadata=metadata1)
-      assert_get_object_equal(self, self.client1, self.client2, object_id2,
-                              memory_buffer=memory_buffer2, metadata=metadata2)
-      # Fetch in the other direction. The fake object still does not exist.
-      successes = self.client1.fetch(object_ids)
-      self.assertEqual(successes, [True, False, True])
-      assert_get_object_equal(self, self.client2, self.client1, object_id1,
-                              memory_buffer=memory_buffer1, metadata=metadata1)
-      assert_get_object_equal(self, self.client2, self.client1, object_id2,
-                              memory_buffer=memory_buffer2, metadata=metadata2)
-
-    # Check that calling fetch with the same object ID fails.
-    object_id = random_object_id()
-    self.assertRaises(Exception, lambda : self.client1.fetch([object_id, object_id]))
-
-  def test_fetch2(self):
-    if self.redis_process is None:
-      print("Cannot test fetch without a running redis instance.")
-      self.assertTrue(False)
     for _ in range(10):
       # Create an object.
       object_id1, memory_buffer1, metadata1 = create_object(self.client1, 2000, 2000)
-      self.client1.fetch2([object_id1])
+      self.client1.fetch([object_id1])
       self.assertEqual(self.client1.contains(object_id1), True)
       self.assertEqual(self.client2.contains(object_id1), False)
       # Fetch the object from the other plasma manager.
       # TODO(rkn): Right now we must wait for the object table to be updated.
       while not self.client2.contains(object_id1):
-        self.client2.fetch2([object_id1])
+        self.client2.fetch([object_id1])
       # Compare the two buffers.
       assert_get_object_equal(self, self.client1, self.client2, object_id1,
                               memory_buffer=memory_buffer1, metadata=metadata1)
 
     # Test that we can call fetch on object IDs that don't exist yet.
     object_id2 = random_object_id()
-    self.client1.fetch2([object_id2])
+    self.client1.fetch([object_id2])
     self.assertEqual(self.client1.contains(object_id2), False)
     memory_buffer2, metadata2 = create_object_with_id(self.client2, object_id2, 2000, 2000)
     # # Check that the object has been fetched.
@@ -493,19 +434,19 @@ class TestPlasmaManager(unittest.TestCase):
     self.assertEqual(self.client1.contains(object_id3), False)
     self.assertEqual(self.client2.contains(object_id3), False)
     for _ in range(10):
-      self.client1.fetch2([object_id3])
-      self.client2.fetch2([object_id3])
+      self.client1.fetch([object_id3])
+      self.client2.fetch([object_id3])
     memory_buffer3, metadata3 = create_object_with_id(self.client1, object_id3, 2000, 2000)
     for _ in range(10):
-      self.client1.fetch2([object_id3])
-      self.client2.fetch2([object_id3])
+      self.client1.fetch([object_id3])
+      self.client2.fetch([object_id3])
     #TODO(rkn): Right now we must wait for the object table to be updated.
     while not self.client2.contains(object_id3):
-      self.client2.fetch2([object_id3])
+      self.client2.fetch([object_id3])
     assert_get_object_equal(self, self.client1, self.client2, object_id3,
                             memory_buffer=memory_buffer3, metadata=metadata3)
 
-  def test_fetch2_multiple(self):
+  def test_fetch_multiple(self):
     if self.redis_process is None:
       print("Cannot test fetch without a running redis instance.")
       self.assertTrue(False)
@@ -519,14 +460,14 @@ class TestPlasmaManager(unittest.TestCase):
       # should timeout since it does not exist.
       # TODO(rkn): Right now we must wait for the object table to be updated.
       while (not self.client2.contains(object_id1)) or (not self.client2.contains(object_id2)):
-        self.client2.fetch2(object_ids)
+        self.client2.fetch(object_ids)
       # Compare the buffers of the objects that do exist.
       assert_get_object_equal(self, self.client1, self.client2, object_id1,
                               memory_buffer=memory_buffer1, metadata=metadata1)
       assert_get_object_equal(self, self.client1, self.client2, object_id2,
                               memory_buffer=memory_buffer2, metadata=metadata2)
       # Fetch in the other direction. The fake object still does not exist.
-      self.client1.fetch2(object_ids)
+      self.client1.fetch(object_ids)
       assert_get_object_equal(self, self.client2, self.client1, object_id1,
                               memory_buffer=memory_buffer1, metadata=metadata1)
       assert_get_object_equal(self, self.client2, self.client1, object_id2,
@@ -534,12 +475,12 @@ class TestPlasmaManager(unittest.TestCase):
 
     # Check that we can call fetch with duplicated object IDs.
     object_id3 = random_object_id()
-    self.client1.fetch2([object_id3, object_id3])
+    self.client1.fetch([object_id3, object_id3])
     object_id4, memory_buffer4, metadata4 = create_object(self.client1, 2000, 2000)
     time.sleep(0.1)
     # TODO(rkn): Right now we must wait for the object table to be updated.
     while not self.client2.contains(object_id4):
-      self.client2.fetch2([object_id3, object_id3, object_id4, object_id4])
+      self.client2.fetch([object_id3, object_id3, object_id4, object_id4])
     assert_get_object_equal(self, self.client2, self.client1, object_id4,
                             memory_buffer=memory_buffer4, metadata=metadata4)
 
@@ -673,16 +614,16 @@ class TestPlasmaManager(unittest.TestCase):
     self.client2.seal(object_id)
     # Give the second manager some time to complete the seal, then make sure it
     # exited.
-    time_left = 10
+    time_left = 100
     while time_left > 0:
       if self.p5.poll() != None:
         self.processes_to_kill.remove(self.p5)
         break
-      time_left -= 0.2
-      time.sleep(0.2)
+      time_left -= 0.1
+      time.sleep(0.1)
 
-    print("Time waiting for plasma manager to fail = {:.2}".format(10 - time_left))
-    self.assertNotEqual(self.p5.returncode, None)
+    print("Time waiting for plasma manager to fail = {:.2}".format(100 - time_left))
+    self.assertNotEqual(self.p5.poll(), None)
 
   def test_illegal_functionality(self):
     # Create an object id string.

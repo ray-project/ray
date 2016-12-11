@@ -123,7 +123,7 @@ bool can_run(scheduling_algorithm_state *algorithm_state, task_spec *task) {
 int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
   fetch_object_request *fetch_req = (fetch_object_request *) context;
   object_id object_ids[1] = {fetch_req->object_id};
-  plasma_fetch2(fetch_req->state->plasma_conn, 1, object_ids);
+  plasma_fetch(fetch_req->state->plasma_conn, 1, object_ids);
   return LOCAL_SCHEDULER_FETCH_TIMEOUT_MILLISECONDS;
 }
 
@@ -140,7 +140,7 @@ void fetch_missing_dependencies(local_scheduler_state *state,
       if (entry == NULL) {
         /* The object is not present locally, fetch the object. */
         object_id object_ids[1] = {obj_id};
-        plasma_fetch2(state->plasma_conn, 1, object_ids);
+        plasma_fetch(state->plasma_conn, 1, object_ids);
         /* Create a fetch request and add a timer to the event loop to ensure
          * that the fetch actually happens. */
         fetch_object_request *fetch_req = malloc(sizeof(fetch_object_request));

@@ -112,58 +112,6 @@ void process_data_chunk(event_loop *loop,
                         int events);
 
 /**
- * Process a fetch request. The fetch request tries:
- * 1) If there is no connection to the database, return faliure to the client.
- * 2) If the object is available locally, return success to the client.
- * 3) Query the database for plasma managers that the object might be on.
- * 4) Request a transfer from each of the managers that the object might be on
- *    until we receive the data, or until we timeout.
- * 5) Returns success or failure to the client depending on whether we received
- *    the data or not.
- *
- * @param client_conn The connection context for the client that made the
- *        request.
- * @param object_id The object ID requested.
- * @return Void.
- */
-void process_fetch_request(client_connection *client_conn, object_id object_id);
-
-/**
- * Process a fetch request for multiple objects. The success of each object
- * will be written back individually to the socket connected to the client that
- * made the request in a plasma_reply. See documentation for
- * process_fetch_request for the sequence of operations per object.
- *
- * @param client_conn The connection context for the client that made the
- *        request.
- * @param num_object_ids The number of object IDs requested.
- * @param object_requests[] The object requests fetch is called on.
- * @return Void.
- */
-void process_fetch_requests(client_connection *client_conn,
-                            int num_object_ids,
-                            object_request object_requests[]);
-
-/**
- * Process a wait request from a client.
- *
- * @param client_conn The connection context for the client that made the
- *        request.
- * @param num_object_ids Number of object IDs wait is called on.
- * @param object_requests The object requests wait is called on.
- * @param timeout Wait will time out and return after this number of
- *        milliseconds.
- * @param num_returns Number of object IDs wait will return if it doesn't time
- *        out.
- * @return Void.
- */
-void process_wait_request(client_connection *client_conn,
-                          int num_object_ids,
-                          object_request object_requests[],
-                          uint64_t timeout,
-                          int num_returns);
-
-/**
  * Callback that will be called when a new object becomes available.
  *
  * @param loop This is the event loop of the plasma manager.
@@ -232,36 +180,21 @@ struct plasma_request_buffer {
 };
 
 /**
- * Create a new context for the given object ID with the given
- * client connection and register it with the manager's
- * outstanding fetch or wait requests and the client
- * connection's active object contexts.
+ * Call the request_transfer method, which well attempt to get an object from
+ * a remote Plasma manager. If it is unable to get it from another Plasma
+ * manager, it will cycle through a list of Plasma managers that have the
+ * object.
  *
- * @param client_conn The client connection context.
- * @param object_id The object ID whose context we want to
- *        create.
- * @return A pointer to the newly created object context.
+ * @param object_id The object ID of the object to transfer.
+ * @param manager_count The number of managers that have the object.
+ * @param manager_vector The Plasma managers that have the object.
+ * @param context The plasma manager state.
+ * @return Void.
  */
-client_object_request *add_object_request(client_connection *client_conn,
-                                          object_id object_id);
-
-/**
- * Given an object ID and the managers it can be found on, start requesting a
- * transfer from the managers.
- *
- * @param object_id The object ID we want to request a transfer of.
- * @param manager_count The number of managers the object can be found on.
- * @param manager_vector A vector of the IP addresses of the managers that the
- *        object can be found on.
- * @param context The context for the connection to this client.
- *
- * Initializes a new context for this client and object. Managers are tried in
- * order until we receive the data or we timeout and run out of retries.
- */
-void request_transfer(object_id object_id,
-                      int manager_count,
-                      const char *manager_vector[],
-                      void *context);
+void call_request_transfer(object_id object_id,
+                           int manager_count,
+                           const char *manager_vector[],
+                           void *context);
 
 /**
  * Clean up and free an active object context. Deregister it from the
@@ -325,50 +258,5 @@ event_loop *get_event_loop(plasma_manager_state *state);
  * @return A file descriptor for the socket.
  */
 int get_client_sock(client_connection *conn);
-
-/**
- * Process a wait request from a client.
- *
- * @param client_conn The connection context for the client that made the
- *        request.
- * @param num_object_requests Number of object requests wait is called on.
- * @param object_requests The array of bject requests wait is called on.
- * @param timeout Wait will time out and return after this number of
- *        milliseconds.
- * @param num_returns Number of object requests that will be satsified before
- *        wait will retunr, unless it timeouts.
- * @return Void.
- */
-void process_wait_request1(client_connection *client_conn,
-                           int num_object_requests,
-                           object_request object_requests[],
-                           uint64_t timeout,
-                           int num_ready_objects);
-
-/**
- * Callback to be invoked when object_id entry is changed in the
- * Object Table. We assume that the change means the object is available.
- *
- * @param object_id ID of the object becoming available locally or remotely.
- * @param user_context This is the client connection on which the wait has been
- *        called.
- * @return Void.
- */
-void wait_object_available_callback(object_id object_id,
-                                    int manager_count,
-                                    const char *manager_vector[],
-                                    void *user_context);
-
-/**
- * Object is available (sealed) in the local Object Store. This is part of
- * executing wait operation.
- *
- * @param client_conn The client conection.
- * @param user_context This is the client connection on which the wait has been
- *        called.
- * @return Void.
- */
-void wait_process_object_available_local(client_connection *client_conn,
-                                         object_id object_id);
 
 #endif /* PLASMA_MANAGER_H */
