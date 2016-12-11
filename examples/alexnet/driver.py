@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import numpy as np
 import ray
 import os
@@ -28,7 +32,7 @@ if __name__ == "__main__":
   imagenet_bucket = s3_resource.Bucket(args.s3_bucket)
   objects = imagenet_bucket.objects.filter(Prefix=args.key_prefix)
   image_tar_files = [str(obj.key) for obj in objects.all()]
-  print "Images will be downloaded from {} files.".format(len(image_tar_files))
+  print("Images will be downloaded from {} files.".format(len(image_tar_files)))
 
   # Downloading the label file, and create a dictionary mapping the filenames of
   # the images to their labels.
@@ -38,7 +42,7 @@ if __name__ == "__main__":
   filename_label_pairs = [line.split(" ") for line in filename_label_str]
   filename_label_dict = dict([(os.path.basename(name), label) for name, label in filename_label_pairs])
   filename_label_dict_id = ray.put(filename_label_dict)
-  print "Labels extracted."
+  print("Labels extracted.")
 
   # Download the imagenet dataset.
   imagenet_data = alexnet.load_tarfiles_from_s3(args.s3_bucket, image_tar_files, [256, 256])
@@ -60,7 +64,7 @@ if __name__ == "__main__":
   # Initialize the network and optimizer weights. This is only run once on the
   # driver. We initialize the weights manually on the workers.
   sess.run(init_all_variables)
-  print "Initialized network weights."
+  print("Initialized network weights.")
 
   iteration = 0
   while True:
@@ -82,7 +86,7 @@ if __name__ == "__main__":
       gradient_ids.append(alexnet.compute_grad.remote(x_id, y_id, mean_id, weights_id))
 
     # Print the accuracy on a random training batch.
-    print "Iteration {}: accuracy = {:.3}%".format(iteration, 100 * ray.get(accuracy))
+    print("Iteration {}: accuracy = {:.3}%".format(iteration, 100 * ray.get(accuracy)))
 
     # Fetch the gradients. This blocks until the gradients have been computed.
     gradient_sets = ray.get(gradient_ids)

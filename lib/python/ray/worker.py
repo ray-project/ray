@@ -1,3 +1,5 @@
+from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
 
 import hashlib
@@ -16,10 +18,9 @@ import threading
 import string
 
 # Ray modules
-import config
-import pickling
-import serialization
-import services
+import ray.pickling as pickling
+import ray.serialization as serialization
+import ray.services as services
 import numbuf
 import photon
 import plasma

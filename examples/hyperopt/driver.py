@@ -1,5 +1,10 @@
 # Most of the tensorflow code is adapted from Tensorflow's tutorial on using CNNs to train MNIST
 # https://www.tensorflow.org/versions/r0.9/tutorials/mnist/pros/index.html#build-a-multilayer-convolutional-network
+
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import numpy as np
 import ray
 import argparse
@@ -24,7 +29,7 @@ if __name__ == "__main__":
   steps = args.steps
 
   # Load the mnist data and turn the data into remote objects.
-  print "Downloading the MNIST dataset. This may take a minute."
+  print("Downloading the MNIST dataset. This may take a minute.")
   mnist = input_data.read_data_sets("MNIST_data", one_hot=True)
   train_images = ray.put(mnist.train.images)
   train_labels = ray.put(mnist.train.labels)
@@ -65,20 +70,20 @@ if __name__ == "__main__":
     result_id = ready_ids[0]
     params = params_mapping[result_id]
     accuracy = ray.get(result_id)
-    print """We achieve accuracy {:.3}% with
+    print("""We achieve accuracy {:.3}% with
         learning_rate: {:.2}
         batch_size: {}
         dropout: {:.2}
         stddev: {:.2}
-      """.format(100 * accuracy, params["learning_rate"], params["batch_size"], params["dropout"], params["stddev"])
+      """.format(100 * accuracy, params["learning_rate"], params["batch_size"], params["dropout"], params["stddev"]))
     if accuracy > best_accuracy:
       best_params = params
       best_accuracy = accuracy
 
   # Record the best performing set of hyperparameters.
-  print """Best accuracy over {} trials was {:.3} with
+  print("""Best accuracy over {} trials was {:.3} with
         learning_rate: {:.2}
         batch_size: {}
         dropout: {:.2}
         stddev: {:.2}
-    """.format(trials, 100 * best_accuracy, best_params["learning_rate"], best_params["batch_size"], best_params["dropout"], best_params["stddev"])
+    """.format(trials, 100 * best_accuracy, best_params["learning_rate"], best_params["batch_size"], best_params["dropout"], best_params["stddev"]))

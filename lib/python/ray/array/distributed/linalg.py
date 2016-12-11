@@ -1,8 +1,12 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import numpy as np
 import ray.array.remote as ra
 import ray
 
-from core import *
+from .core import *
 
 __all__ = ["tsqr", "modified_lu", "tsqr_hr", "qr"]
 
@@ -68,7 +72,7 @@ def tsqr(a):
       else:
         lower = [a.shape[1], 0]
         upper = [2 * a.shape[1], BLOCK_SIZE]
-      ith_index /= 2
+      ith_index //= 2
       q_block_current = ra.dot.remote(q_block_current, ra.subarray.remote(q_tree[ith_index, j], lower, upper))
     q_result.objectids[i] = q_block_current
   r = current_rs[0]

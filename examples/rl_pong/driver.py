@@ -1,6 +1,10 @@
 # This code is copied and adapted from Andrej Karpathy's code for learning to
 # play Pong https://gist.github.com/karpathy/a4166c7fe253700972fcbc77e4ea32c5.
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import numpy as np
 import cPickle as pickle
 import ray
@@ -135,7 +139,7 @@ if __name__ == "__main__":
       reward_sum = ray.get(reward_sums[i])
       for k in model: grad_buffer[k] += grad[k] # accumulate grad over batch
       running_reward = reward_sum if running_reward is None else running_reward * 0.99 + reward_sum * 0.01
-      print "Batch {}. episode reward total was {}. running mean: {}".format(batch_num, reward_sum, running_reward)
+      print("Batch {}. episode reward total was {}. running mean: {}".format(batch_num, reward_sum, running_reward))
     for k, v in model.iteritems():
       g = grad_buffer[k] # gradient
       rmsprop_cache[k] = decay_rate * rmsprop_cache[k] + (1 - decay_rate) * g ** 2

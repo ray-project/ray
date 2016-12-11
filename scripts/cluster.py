@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import os
 import subprocess
 import socket
@@ -63,7 +67,7 @@ class RayCluster(object):
       raise Exception("Commands run over ssh must not contain the single quote character. This command does: {}".format(command))
     full_command = "ssh -o StrictHostKeyChecking=no -i {} {}@{} '{}'".format(self.key_file, self.username, node_ip_address, command)
     subprocess.call([full_command], shell=True)
-    print "Finished running command '{}' on {}@{}.".format(command, self.username, node_ip_address)
+    print("Finished running command '{}' on {}@{}.".format(command, self.username, node_ip_address))
 
   def _run_parallel_functions(self, functions, inputs):
     """Run functions in parallel.
@@ -117,7 +121,7 @@ class RayCluster(object):
       self._run_command_over_ssh(node_ip_address, command)
     inputs = zip(node_ip_addresses, commands)
     self._run_parallel_functions(len(self.node_ip_addresses) * [function], inputs)
-    print "Finished running commands {} on all nodes.".format(inputs)
+    print("Finished running commands {} on all nodes.".format(inputs))
 
   def install_ray(self):
     """Install Ray on every node in the cluster.
@@ -172,7 +176,7 @@ class RayCluster(object):
     self.run_command_over_ssh_on_all_nodes_in_parallel(start_workers_commands)
 
     setup_env_path = os.path.join(self.installation_directory, "ray/setup-env.sh")
-    print """
+    print("""
       The cluster has been started. You can attach to the cluster by sshing to the head node with the following command.
 
           ssh -i {} {}@{}
@@ -185,7 +189,7 @@ class RayCluster(object):
 
           import ray
           ray.init(node_ip_address="{}", scheduler_address="{}:10001")
-    """.format(self.key_file, self.username, self.node_ip_addresses[0], setup_env_path, self.node_private_ip_addresses[0], self.node_private_ip_addresses[0])
+    """.format(self.key_file, self.username, self.node_ip_addresses[0], setup_env_path, self.node_private_ip_addresses[0], self.node_private_ip_addresses[0]))
 
   def stop_ray(self):
     """Kill all of the processes in the Ray cluster.
@@ -317,7 +321,7 @@ if __name__ == "__main__":
   # will be expanded locally instead of remotely.
   echo_home_command = "ssh -o StrictHostKeyChecking=no -i {} {}@{} 'echo $HOME'".format(key_file, username, node_ip_addresses[0])
   installation_directory = subprocess.check_output(echo_home_command, shell=True).strip()
-  print "Using '{}' as the home directory on the cluster.".format(installation_directory)
+  print("Using '{}' as the home directory on the cluster.".format(installation_directory))
   # Create the Raycluster object.
   cluster = RayCluster(node_ip_addresses, node_private_ip_addresses, username, key_file, installation_directory)
   # Drop into an IPython shell.

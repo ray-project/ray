@@ -34,7 +34,7 @@ for _ in range(10):
 
 # Fetch the results of the tasks and print their average.
 estimate = np.mean(ray.get(result_ids))
-print "Pi is approximately {}.".format(estimate)
+print("Pi is approximately {}.".format(estimate))
 ```
 
 Within the for loop, each call to `estimate_pi.remote(100)` sends a message to
