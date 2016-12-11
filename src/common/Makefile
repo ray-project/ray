@@ -50,6 +50,7 @@ test: hiredis redis $(BUILD)/common_tests $(BUILD)/task_table_tests $(BUILD)/obj
 	./build/task_table_tests
 	./build/object_table_tests
 	./thirdparty/redis/src/redis-cli shutdown
+	cd redis_module && make && python runtest.py && cd ..
 
 valgrind: test
 	./thirdparty/redis/src/redis-server &

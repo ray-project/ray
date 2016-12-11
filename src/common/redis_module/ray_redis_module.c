@@ -1,18 +1,33 @@
 #include "redismodule.h"
 
 #include <string.h>
-#include <stdlib.h>
-#include "uthash.h"
+
+/**
+ * Various tables are maintained in redis:
+ *
+ * == OBJECT TABLE ==
+ *
+ * Consists of two parts:
+ * - The object location table, indexed by
+ *   OL:object_id, which is the set of plasma manager indices that
+ *   have access to the object.
+ * - The object info table, indexed by
+ *   OI:object_id, which is a hashmap with key "hash" for the hash of the object
+ *   and key "data_size" for the size of the object in bytes.
+ *
+ * == TASK TABLE ==
+ *
+ * TODO(pcm): Fill this out.
+ */
 
 #define OBJECT_INFO_PREFIX "OI:"
-#define OBJECT_TABLE_PREFIX "OT:"
-#define SUBSCRIPTION_TABLE_PREFIX "ST:"
+#define OBJECT_LOCATION_PREFIX "OL:"
+#define OBJECT_SUBSCRIBE_PREFIX "OS:"
 
 #define CHECK_ERROR(STATUS, MESSAGE)                   \
   if ((STATUS) == REDISMODULE_ERR) {                   \
     return RedisModule_ReplyWithError(ctx, (MESSAGE)); \
   }
-
 
 RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
                                 const char *prefix,
@@ -26,35 +41,39 @@ RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
   return key;
 }
 
-/* The object table has the following format:
- * "obj:(object id)" "hash" (hash of the object)
- * "obj:(object id)" "data_size" (size of the object)
- * "obj:(object id):set" (set of managers that have the object)
+/**
+ * Lookup an entry in the object table.
+ *
+ * This is called with the hiredis command
+ * RAY.OBJECT_TABLE_LOOKUP "(object id)"
+ *
+ * It returns a list of plasma manager IDs that are registered with the
+ * object table to have the object.
  */
-
 int ObjectTableLookup_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
   REDISMODULE_NOT_USED(argc);
-  RedisModuleKey *key = OpenPrefixedKey(ctx, OBJECT_TABLE_PREFIX, argv[1], REDISMODULE_READ);
+  RedisModuleKey *key = OpenPrefixedKey(ctx, OBJECT_LOCATION_PREFIX, argv[1], REDISMODULE_READ);
 
   CHECK_ERROR(RedisModule_ZsetFirstInScoreRange(key, REDISMODULE_NEGATIVE_INFINITE, REDISMODULE_POSITIVE_INFINITE, 1, 1),
               "Unable to initialize zset iterator");
 
   RedisModule_ReplyWithArray(ctx, REDISMODULE_POSTPONED_ARRAY_LEN);
   int num_results = 0;
-  int has_next;
   do {
     RedisModuleString *curr = RedisModule_ZsetRangeCurrentElement(key, NULL);
     RedisModule_ReplyWithString(ctx, curr);
-    has_next = RedisModule_ZsetRangeNext(key);
     num_results += 1;
-  } while (has_next);
+  } while (RedisModule_ZsetRangeNext(key));
   RedisModule_ReplySetArrayLength(ctx, num_results);
 
   return REDISMODULE_OK;
 }
 
-/* This is called like
- * ray.object_table_add "obj:(object id)" (data_size) "hash" [manager list]
+/**
+ * Add a new entry to the object table or update an existing one.
+ *
+ * This is called with the hiredis command
+ * RAY.OBJECT_TABLE_ADD "(object id)" (data_size) "(hash string)" (manager)
  */
 int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
   REDISMODULE_NOT_USED(argc);
@@ -82,10 +101,29 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, i
   RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "data_size", data_size, NULL);
 
   RedisModuleKey *table_key;
-  table_key = OpenPrefixedKey(ctx, OBJECT_TABLE_PREFIX, object_id, REDISMODULE_READ | REDISMODULE_WRITE);
+  table_key = OpenPrefixedKey(ctx, OBJECT_LOCATION_PREFIX, object_id, REDISMODULE_READ | REDISMODULE_WRITE);
 
   /* Sets are not implemented yet, so we use ZSETs instead. */
   RedisModule_ZsetAdd(table_key, 0.0, manager, NULL);
+
+  /* Inform subscribers. */
+  const char *MANAGERS = "MANAGERS";
+  RedisModuleString *publish = RedisModule_CreateString(ctx, MANAGERS, strlen(MANAGERS));
+  CHECK_ERROR(RedisModule_ZsetFirstInScoreRange(table_key, REDISMODULE_NEGATIVE_INFINITE, REDISMODULE_POSITIVE_INFINITE, 1, 1),
+              "Unable to initialize zset iterator");
+  do {
+    RedisModuleString *curr = RedisModule_ZsetRangeCurrentElement(table_key, NULL);
+    RedisModule_StringAppendBuffer(ctx, publish, " ", 1);
+    size_t size;
+    const char *val = RedisModule_StringPtrLen(curr, &size);
+    RedisModule_StringAppendBuffer(ctx, publish, val, size);
+  } while (RedisModule_ZsetRangeNext(table_key));
+
+  RedisModuleCallReply *reply;
+  reply = RedisModule_Call(ctx, "PUBLISH", "ss", object_id, publish);
+  RedisModule_FreeString(ctx, publish);
+
+  /* Clean up. */
   RedisModule_CloseKey(key);
   RedisModule_CloseKey(table_key);
   RedisModule_ReplyWithLongLong(ctx, RedisModule_GetSelectedDb(ctx));
@@ -134,8 +172,7 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
     return REDISMODULE_ERR;
   }
 
-  /* TODO(pcm): What is "readonly" about? */
-  if (RedisModule_CreateCommand(ctx, "ray.object_table_add", ObjectTableAdd_RedisCommand, "readonly", 0, 0, 0) == REDISMODULE_ERR) {
+  if (RedisModule_CreateCommand(ctx, "ray.object_table_add", ObjectTableAdd_RedisCommand, "write pubsub", 0, 0, 0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 

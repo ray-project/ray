@@ -14,14 +14,14 @@ SHOBJ_CFLAGS += -I../thirdparty
 
 .SUFFIXES: .c .so .xo .o
 
-all: server.so
+all: ray_redis_module.so
 
 .c.xo:
 	$(CC) -I. $(CFLAGS) $(SHOBJ_CFLAGS) -fPIC -c $< -o $@
 
-server.xo: redismodule.h
+ray_redis_module.xo: redismodule.h
 
-server.so: server.xo
+ray_redis_module.so: ray_redis_module.xo
 	$(LD) -o $@ $< $(SHOBJ_LDFLAGS) $(LIBS) -lc
 
 clean:
