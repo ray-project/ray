@@ -1,6 +1,7 @@
 from __future__ import print_function
 
 import os
+import random
 import subprocess
 import time
 import unittest
@@ -18,12 +19,12 @@ print("path to the redis module is {}".format(module_path))
 class TestGlobalStateStore(unittest.TestCase):
 
   def setUp(self):
-    redis_port = 6379
+    redis_port = random.randint(2000, 50000)
     self.redis_process = subprocess.Popen([redis_path,
                                            "--port", str(redis_port),
                                            "--loadmodule", module_path])
     time.sleep(0.5)
-    self.redis = redis.StrictRedis(host="localhost", port=6379, db=0)
+    self.redis = redis.StrictRedis(host="localhost", port=redis_port, db=0)
 
   def tearDown(self):
     self.redis_process.kill()
