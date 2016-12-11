@@ -190,5 +190,5 @@ for iteration in range(NUM_ITERS):
   # Print the current weights. They should converge to roughly to the values 0.1
   # and 0.3 used in generate_fake_x_y_data.
   if iteration % 20 == 0:
-    print "Iteration {}: weights are {}".format(iteration, weights)
+    print("Iteration {}: weights are {}".format(iteration, weights))
 ```

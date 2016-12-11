@@ -32,7 +32,7 @@ built in methods for loading the data.
 from tensorflow.examples.tutorials.mnist import input_data
 mnist = input_data.read_data_sets("MNIST_data/", one_hot=True)
 batch_size = 100
-num_batches = mnist.train.num_examples / batch_size
+num_batches = mnist.train.num_examples // batch_size
 batches = [mnist.train.next_batch(batch_size) for _ in range(num_batches)]
 ```
 

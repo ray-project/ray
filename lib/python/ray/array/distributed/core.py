@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import numpy as np
 import ray.array.remote as ra
 import ray
@@ -141,10 +145,10 @@ def blockwise_dot(*matrices):
   n = len(matrices)
   if n % 2 != 0:
     raise Exception("blockwise_dot expects an even number of arguments, but len(matrices) is {}.".format(n))
-  shape = (matrices[0].shape[0], matrices[n / 2].shape[1])
+  shape = (matrices[0].shape[0], matrices[n // 2].shape[1])
   result = np.zeros(shape)
-  for i in range(n / 2):
-    result += np.dot(matrices[i], matrices[n / 2 + i])
+  for i in range(n // 2):
+    result += np.dot(matrices[i], matrices[n // 2 + i])
   return result
 
 @ray.remote

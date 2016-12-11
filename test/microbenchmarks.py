@@ -1,9 +1,13 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import unittest
 import ray
 import time
 import numpy as np
 
-import test_functions
+import ray.test.test_functions as test_functions
 
 class MicroBenchmarkTest(unittest.TestCase):
 
@@ -20,11 +24,11 @@ class MicroBenchmarkTest(unittest.TestCase):
       elapsed_times.append(end_time - start_time)
     elapsed_times = np.sort(elapsed_times)
     average_elapsed_time = sum(elapsed_times) / 1000
-    print "Time required to submit an empty function call:"
-    print "    Average: {}".format(average_elapsed_time)
-    print "    90th percentile: {}".format(elapsed_times[900])
-    print "    99th percentile: {}".format(elapsed_times[990])
-    print "    worst:           {}".format(elapsed_times[999])
+    print("Time required to submit an empty function call:")
+    print("    Average: {}".format(average_elapsed_time))
+    print("    90th percentile: {}".format(elapsed_times[900]))
+    print("    99th percentile: {}".format(elapsed_times[990]))
+    print("    worst:           {}".format(elapsed_times[999]))
     # average_elapsed_time should be about 0.00038
 
     # measure the time required to submit a remote task to the scheduler (where the remote task returns one value)
@@ -36,11 +40,11 @@ class MicroBenchmarkTest(unittest.TestCase):
       elapsed_times.append(end_time - start_time)
     elapsed_times = np.sort(elapsed_times)
     average_elapsed_time = sum(elapsed_times) / 1000
-    print "Time required to submit a trivial function call:"
-    print "    Average: {}".format(average_elapsed_time)
-    print "    90th percentile: {}".format(elapsed_times[900])
-    print "    99th percentile: {}".format(elapsed_times[990])
-    print "    worst:           {}".format(elapsed_times[999])
+    print("Time required to submit a trivial function call:")
+    print("    Average: {}".format(average_elapsed_time))
+    print("    90th percentile: {}".format(elapsed_times[900]))
+    print("    99th percentile: {}".format(elapsed_times[990]))
+    print("    worst:           {}".format(elapsed_times[999]))
     # average_elapsed_time should be about 0.001
 
     # measure the time required to submit a remote task to the scheduler and get the result
@@ -53,11 +57,11 @@ class MicroBenchmarkTest(unittest.TestCase):
       elapsed_times.append(end_time - start_time)
     elapsed_times = np.sort(elapsed_times)
     average_elapsed_time = sum(elapsed_times) / 1000
-    print "Time required to submit a trivial function call and get the result:"
-    print "    Average: {}".format(average_elapsed_time)
-    print "    90th percentile: {}".format(elapsed_times[900])
-    print "    99th percentile: {}".format(elapsed_times[990])
-    print "    worst:           {}".format(elapsed_times[999])
+    print("Time required to submit a trivial function call and get the result:")
+    print("    Average: {}".format(average_elapsed_time))
+    print("    90th percentile: {}".format(elapsed_times[900]))
+    print("    99th percentile: {}".format(elapsed_times[990]))
+    print("    worst:           {}".format(elapsed_times[999]))
     # average_elapsed_time should be about 0.0013
 
     # measure the time required to do do a put
@@ -69,11 +73,11 @@ class MicroBenchmarkTest(unittest.TestCase):
       elapsed_times.append(end_time - start_time)
     elapsed_times = np.sort(elapsed_times)
     average_elapsed_time = sum(elapsed_times) / 1000
-    print "Time required to put an int:"
-    print "    Average: {}".format(average_elapsed_time)
-    print "    90th percentile: {}".format(elapsed_times[900])
-    print "    99th percentile: {}".format(elapsed_times[990])
-    print "    worst:           {}".format(elapsed_times[999])
+    print("Time required to put an int:")
+    print("    Average: {}".format(average_elapsed_time))
+    print("    90th percentile: {}".format(elapsed_times[900]))
+    print("    99th percentile: {}".format(elapsed_times[990]))
+    print("    worst:           {}".format(elapsed_times[999]))
     # average_elapsed_time should be about 0.00087
 
     ray.worker.cleanup()

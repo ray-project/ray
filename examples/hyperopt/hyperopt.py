@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import ray
 import numpy as np
 import tensorflow as tf
@@ -6,7 +10,7 @@ def get_batch(data, batch_index, batch_size):
   # This method currently drops data when num_data is not divisible by
   # batch_size.
   num_data = data.shape[0]
-  num_batches = num_data / batch_size
+  num_batches = num_data // batch_size
   batch_index %= num_batches
   return data[(batch_index * batch_size):((batch_index + 1) * batch_size)]
 

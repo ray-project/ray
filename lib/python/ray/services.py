@@ -1,3 +1,5 @@
+from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
 
 import psutil
@@ -10,7 +12,6 @@ import sys
 import time
 
 # Ray modules
-import config
 import photon
 import plasma
 import global_scheduler

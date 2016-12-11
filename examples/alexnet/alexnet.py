@@ -1,6 +1,10 @@
 # The code for AlexNet is copied and adapted from the TensorFlow repository
 # https://github.com/tensorflow/tensorflow/blob/master/tensorflow/models/image/alexnet/alexnet_benchmark.py.
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import ray
 import numpy as np
 import tarfile, io
@@ -390,7 +394,7 @@ def shuffle(batches):
   # Randomly permute the order of the batches.
   permuted_batches = np.random.permutation(batches)
   new_batches = []
-  for i in range(len(batches) / 2):
+  for i in range(len(batches) // 2):
     # Swap data between consecutive batches.
     shuffled_batch1, shuffled_batch2 = shuffle_pair(permuted_batches[2 * i], permuted_batches[2 * i + 1])
     new_batches += [shuffled_batch1, shuffled_batch2]

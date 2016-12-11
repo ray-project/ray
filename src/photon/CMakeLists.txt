@@ -6,17 +6,17 @@ message(STATUS "Trying custom approach for finding Python.")
 # Start off by figuring out which Python executable to use.
 find_program(CUSTOM_PYTHON_EXECUTABLE python)
 message(STATUS "Found Python program: ${CUSTOM_PYTHON_EXECUTABLE}")
-execute_process(COMMAND ${CUSTOM_PYTHON_EXECUTABLE} -c "import sys; print 'python' + sys.version[0:3]"
+execute_process(COMMAND ${CUSTOM_PYTHON_EXECUTABLE} -c "import sys; print('python' + sys.version[0:3])"
                 OUTPUT_VARIABLE PYTHON_LIBRARY_NAME OUTPUT_STRIP_TRAILING_WHITESPACE)
 message(STATUS "PYTHON_LIBRARY_NAME: " ${PYTHON_LIBRARY_NAME})
 # Now find the Python include directories.
-execute_process(COMMAND ${CUSTOM_PYTHON_EXECUTABLE} -c "from distutils.sysconfig import *; print get_python_inc()"
+execute_process(COMMAND ${CUSTOM_PYTHON_EXECUTABLE} -c "from distutils.sysconfig import *; print(get_python_inc())"
                 OUTPUT_VARIABLE PYTHON_INCLUDE_DIRS OUTPUT_STRIP_TRAILING_WHITESPACE)
 message(STATUS "PYTHON_INCLUDE_DIRS: " ${PYTHON_INCLUDE_DIRS})
 # Now find the Python libraries. We'll start by looking near the Python
 # executable. If that fails, then we'll look near the Python include
 # directories.
-execute_process(COMMAND ${CUSTOM_PYTHON_EXECUTABLE} -c "import sys; print sys.exec_prefix"
+execute_process(COMMAND ${CUSTOM_PYTHON_EXECUTABLE} -c "import sys; print(sys.exec_prefix)"
                 OUTPUT_VARIABLE PYTHON_PREFIX OUTPUT_STRIP_TRAILING_WHITESPACE)
 message(STATUS "PYTHON_PREFIX: " ${PYTHON_PREFIX})
 FIND_LIBRARY(PYTHON_LIBRARIES
