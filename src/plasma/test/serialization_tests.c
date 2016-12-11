@@ -134,11 +134,43 @@ TEST plasma_get_local_reply_test(void) {
   PASS();
 }
 
+TEST plasma_seal_request_test(void) {
+  int fd = create_temp_file();
+  object_id object_id1 = globally_unique_id();
+  plasma_send_seal_request(fd, object_id1);
+  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaSealRequest);
+  object_id object_id2;
+  plasma_read_seal_request(data, &object_id2);
+  ASSERT(object_ids_equal(object_id1, object_id2));
+  free(data);
+  close(fd);
+  PASS();
+}
+
+TEST plasma_seal_reply_test(void) {
+  int fd = create_temp_file();
+  object_id object_id1 = globally_unique_id();
+  uint8_t error1 = 5;
+  plasma_send_seal_reply(fd, object_id1, error1);
+  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaSealReply);
+  object_id object_id2;
+  uint8_t error2;
+  plasma_read_seal_reply(data, &object_id2, &error2);
+  ASSERT(object_ids_equal(object_id1, object_id2));
+  ASSERT(error1 == error2);
+  free(data);
+  close(fd);
+  PASS();
+}
+
+
 SUITE(plasma_serialization_tests) {
   RUN_TEST(plasma_create_request_test);
   RUN_TEST(plasma_create_reply_test);
   RUN_TEST(plasma_get_local_request_test);
   RUN_TEST(plasma_get_local_reply_test);
+  RUN_TEST(plasma_seal_request_test);
+  RUN_TEST(plasma_seal_reply_test);
 }
 
 GREATEST_MAIN_DEFS();

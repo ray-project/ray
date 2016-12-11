@@ -11,6 +11,10 @@ enum MessageType:int {
   // Seal an object.
   PlasmaSealRequest,
   PlasmaSealReply,
+  // Release an object.
+  PlasmaReleaseRequest,
+  PlasmaReleaseReply,
+  // Get an object stored on local Plasma store.
   PlasmaGetLocalRequest,
   PlasmaGetLocalReply
 }
@@ -81,5 +85,30 @@ table PlasmaGetLocalReply {
   plasma_objects: [PlasmaObject];
   // The number of elements in both object_ids and plasma_objects arrays must agree.
 }
+
+table PlasmaSealRequest {
+  // ID of the object in the local Plasma store to be released.
+  object_id: string;
+}
+
+table PlasmaSealReply {
+  // ID of the object.
+  object_id: string;
+  // Error.
+  error: byte;
+}
+
+table PlasmaReleaseRequest {
+  // ID of the object in the local Plasma store to be released.
+  object_id: string;
+}
+
+table PlasmaReleaseReply {
+  // ID of the object.
+  object_id: string;
+  // Error.
+  error: byte;
+}
+
 
 // Plasma manager messages

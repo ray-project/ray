@@ -46,4 +46,13 @@ void plasma_read_get_local_reply(uint8_t *data,
                                  plasma_object plasma_objects[],
                                  int64_t *num_objects);
 
+int plasma_send_seal_request(int sock, object_id object_id);
+
+void plasma_read_seal_request(uint8_t *data, object_id *object_id);
+
+int plasma_send_seal_reply(int sock, object_id object_id, uint8_t error);
+
+void plasma_read_seal_reply(uint8_t *data, object_id *object_id, uint8_t *error);
+
+
 #endif /* PLASMA_PROTOCOL */

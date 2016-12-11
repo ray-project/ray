@@ -214,3 +214,47 @@ void plasma_read_get_local_reply(uint8_t *data,
     plasma_objects[i].metadata_size = PlasmaObject_metadata_size(obj);
   }
 }
+
+/**
+ * Plasma seal messages.
+ */
+
+int plasma_send_seal_request(int sock,
+                             object_id object_id) {
+  flatcc_builder_t builder;
+  flatcc_builder_init(&builder);
+  PlasmaSealRequest_start_as_root(&builder);
+  PlasmaSealRequest_object_id_create(&builder, (const char *)&object_id.id[0], UNIQUE_ID_SIZE);
+  PlasmaSealRequest_end_as_root(&builder);
+  return finalize_buffer_and_send(&builder, sock, MessageType_PlasmaSealRequest);
+}
+
+void plasma_read_seal_request(uint8_t *data, object_id *object_id) {
+  CHECK(data);
+  PlasmaSealRequest_table_t req = PlasmaSealRequest_as_root(data);
+  flatbuffers_string_t id = PlasmaSealRequest_object_id(req);
+  CHECK(flatbuffers_string_len(id) == UNIQUE_ID_SIZE);
+  memcpy(&object_id->id[0], id, UNIQUE_ID_SIZE);
+}
+
+int plasma_send_seal_reply(int sock,
+                           object_id object_id,
+                           uint8_t error) {
+  flatcc_builder_t builder;
+  flatcc_builder_init(&builder);
+  PlasmaSealReply_start_as_root(&builder);
+  PlasmaSealReply_object_id_create(&builder, (const char *)&object_id.id[0], UNIQUE_ID_SIZE);
+  PlasmaSealReply_error_add(&builder, error);
+  PlasmaSealReply_end_as_root(&builder);
+  return finalize_buffer_and_send(&builder, sock, MessageType_PlasmaSealReply);
+}
+
+
+void plasma_read_seal_reply(uint8_t *data, object_id *object_id, uint8_t *error) {
+  CHECK(data);
+  PlasmaSealReply_table_t req = PlasmaSealReply_as_root(data);
+  flatbuffers_string_t id = PlasmaSealReply_object_id(req);
+  CHECK(flatbuffers_string_len(id) == UNIQUE_ID_SIZE);
+  memcpy(&object_id->id[0], id, UNIQUE_ID_SIZE);
+  *error = PlasmaSealReply_error(req);
+}
