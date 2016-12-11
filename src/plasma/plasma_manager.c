@@ -129,6 +129,26 @@ typedef struct {
   UT_hash_handle hh;
 } fetch_request;
 
+/**
+ * There are fundamentally two data structures used for handling wait requests.
+ * There is the "wait_request" struct and the "object_wait_requests" struct. A
+ * wait_request keeps track of all of the object IDs that a wait_request is
+ * waiting for. An object_wait_requests struct keeps track of all of the
+ * wait_request structs that are waiting for a particular object iD. The
+ * plasma_manager_state contains a hash table mapping object IDs to their
+ * coresponding object_wait_requests structs.
+ *
+ * These data structures are updated by several methods:
+ *   - add_wait_request_for_object adds a wait_request to the
+ *     object_wait_requests struct corresponding to a particular object ID. This
+ *     is called when a client calls plasma_wait.
+ *   - remove_wait_request_for_object removes a wait_request from an
+ *     object_wait_requests struct. When a wait request returns, this method is
+ *     called for all of the object IDs involved in that wait_request.
+ *   - update_object_wait_requests removes an object_wait_requests struct and
+ *     does some processing for each wait_request involved in that
+ *     object_wait_requests struct.
+ */
 typedef struct {
   /** The client connection that called wait. */
   client_connection *client_conn;
