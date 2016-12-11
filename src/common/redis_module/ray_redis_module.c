@@ -61,6 +61,11 @@ int ObjectTableLookup_RedisCommand(RedisModuleCtx *ctx,
   RedisModuleKey *key =
       OpenPrefixedKey(ctx, OBJECT_LOCATION_PREFIX, argv[1], REDISMODULE_READ);
 
+  int keytype = RedisModule_KeyType(key);
+  if (keytype == REDISMODULE_KEYTYPE_EMPTY) {
+    return RedisModule_ReplyWithArray(ctx, 0);
+  }
+
   CHECK_ERROR(
       RedisModule_ZsetFirstInScoreRange(key, REDISMODULE_NEGATIVE_INFINITE,
                                         REDISMODULE_POSITIVE_INFINITE, 1, 1),
@@ -158,6 +163,9 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
   RedisModuleCallReply *reply;
   reply = RedisModule_Call(ctx, "PUBLISH", "ss", object_id, publish);
   RedisModule_FreeString(ctx, publish);
+  if (reply == NULL) {
+    return RedisModule_ReplyWithError(ctx, "PUBLISH no successesful");
+  }
 
   /* Clean up. */
   RedisModule_CloseKey(key);
@@ -219,8 +227,17 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
   RedisModuleString *object_id = argv[1];
   RedisModuleKey *key;
   key = OpenPrefixedKey(ctx, OBJECT_INFO_PREFIX, object_id, REDISMODULE_READ);
+
+  int keytype = RedisModule_KeyType(key);
+  if (keytype == REDISMODULE_KEYTYPE_EMPTY) {
+    return RedisModule_ReplyWithStringBuffer(ctx, "", 0);
+  }
+
   RedisModuleString *task_id;
   RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "task", &task_id, NULL);
+  if (task_id == NULL) {
+    return RedisModule_ReplyWithStringBuffer(ctx, "", 0);
+  }
   RedisModule_ReplyWithString(ctx, task_id);
 
   /* Clean up. */

@@ -11,15 +11,17 @@ redis_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../thirdp
 if not os.path.exists(redis_path):
   raise Exception("You do not have the redis-server binary. Run `make test` in the plasma directory to get it.")
 
+# Absolute path of the ray redis module.
+module_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "ray_redis_module.so")
+print("path to the redis module is {}".format(module_path))
+
 class TestGlobalStateStore(unittest.TestCase):
 
   def setUp(self):
     redis_port = 6379
-    with open(os.devnull, "w") as FNULL:
-      self.redis_process = subprocess.Popen([redis_path,
-                                             "--port", str(redis_port),
-                                             "--loadmodule", "./ray_redis_module.so"],
-                                             stdout=FNULL)
+    self.redis_process = subprocess.Popen([redis_path,
+                                           "--port", str(redis_port),
+                                           "--loadmodule", module_path])
     time.sleep(0.5)
     self.redis = redis.StrictRedis(host="localhost", port=6379, db=0)
 
@@ -34,7 +36,7 @@ class TestGlobalStateStore(unittest.TestCase):
     with self.assertRaises(redis.ResponseError):
       self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "hello")
     with self.assertRaises(redis.ResponseError):
-      self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id2", "1", "hash2", "manager_id1")
+      self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id2", "a1", "hash2", "manager_id1")
     with self.assertRaises(redis.ResponseError):
       self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id2", 1, "hash2", "manager_id1", "extra argument")
     # Check that Redis returns an error when RAY.OBJECT_TABLE_ADD adds an object
@@ -53,7 +55,7 @@ class TestGlobalStateStore(unittest.TestCase):
     # Try calling RAY.OBJECT_TABLE_LOOKUP with an object ID that has not been
     # added yet.
     response = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP", "object_id1")
-    self.assertEqual(set(response), {})
+    self.assertEqual(set(response), set([]))
     # Add some managers and try again.
     self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id1")
     self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id2")
@@ -63,6 +65,13 @@ class TestGlobalStateStore(unittest.TestCase):
     self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id2")
     response = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP", "object_id1")
     self.assertEqual(set(response), {"manager_id1", "manager_id2"})
+
+  def testResultTableAddAndLookup(self):
+    response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id1")
+    self.assertEqual(set(response), set([]))
+    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id1")
+    response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id1")
+    self.assertEqual(set(response), set([]))
 
   def testObjectTableSubscribe(self):
     p = self.redis.pubsub()
