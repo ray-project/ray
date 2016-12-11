@@ -72,6 +72,12 @@ class TestGlobalStateStore(unittest.TestCase):
     self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id1")
     response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id1")
     self.assertEqual(set(response), set([]))
+    self.redis.execute_command("RAY.RESULT_TABLE_ADD", "object_id1", "task data")
+    response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id1")
+    self.assertEqual(response, "task data")
+    self.redis.execute_command("RAY.RESULT_TABLE_ADD", "object_id2", "task data 2")
+    response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id2")
+    self.assertEqual(response, "task data 2")
 
   def testObjectTableSubscribe(self):
     p = self.redis.pubsub()
