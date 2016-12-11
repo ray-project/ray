@@ -157,9 +157,7 @@ TEST request_transfer_test(void) {
   utstring_new(addr);
   utstring_printf(addr, "127.0.0.1:%d", remote_mock->port);
   manager_vector[0] = utstring_body(addr);
-  printf("AAA\n");
-  call_request_transfer2(oid, 1, manager_vector, local_mock->client_conn);
-  printf("BBB\n");
+  call_request_transfer(oid, 1, manager_vector, local_mock->state);
   free(manager_vector);
   event_loop_add_timer(local_mock->loop, MANAGER_TIMEOUT, test_done_handler,
                        local_mock->state);
@@ -205,7 +203,7 @@ TEST request_transfer_retry_test(void) {
   utstring_new(addr1);
   utstring_printf(addr1, "127.0.0.1:%d", remote_mock2->port);
   manager_vector[1] = utstring_body(addr1);
-  call_request_transfer2(oid, 2, manager_vector, local_mock->client_conn);
+  call_request_transfer(oid, 2, manager_vector, local_mock->state);
   free(manager_vector);
   event_loop_add_timer(local_mock->loop, MANAGER_TIMEOUT * 2, test_done_handler,
                        local_mock->state);
@@ -225,45 +223,6 @@ TEST request_transfer_retry_test(void) {
   free(req);
   destroy_plasma_mock(remote_mock2);
   destroy_plasma_mock(remote_mock1);
-  destroy_plasma_mock(local_mock);
-  PASS();
-}
-
-/**
- * This test checks correct behavior of request_transfer in a failure scenario.
- * Specifically, when one plasma manager calls request_transfer, and the remote
- * manager that holds the object is unreachable, the client should receive the
- * failure message after all the retries have timed out.
- * - Buffer a transfer request for the remote manager.
- * - Start and stop the event loop after NUM_RETRIES timeouts to make sure that
- *   we trigger all the retries.
- * - Expect to see a response on the plasma client saying that the object
- *   wasn't fetched.
- */
-TEST request_transfer_timeout_test(void) {
-  plasma_mock *local_mock = init_plasma_mock(NULL);
-  plasma_mock *remote_mock = init_plasma_mock(local_mock);
-  const char **manager_vector = malloc(sizeof(char *));
-  UT_string *addr = NULL;
-  utstring_new(addr);
-  utstring_printf(addr, "127.0.0.1:%d", remote_mock->port);
-  manager_vector[0] = utstring_body(addr);
-  call_request_transfer2(oid, 1, manager_vector, local_mock->client_conn);
-  free(manager_vector);
-  event_loop_add_timer(local_mock->loop, MANAGER_TIMEOUT * (NUM_RETRIES + 2),
-                       test_done_handler, local_mock->state);
-  event_loop_run(local_mock->loop);
-
-  plasma_reply reply;
-  int manager_fd = get_manager_fd(local_mock->plasma_conn);
-  int nbytes = recv(manager_fd, (uint8_t *) &reply, sizeof(reply), MSG_WAITALL);
-  ASSERT_EQ(nbytes, sizeof(reply));
-  ASSERT_EQ(reply.num_object_ids, 1);
-  ASSERT(object_ids_equal(oid, reply.object_requests[0].object_id));
-  ASSERT_EQ(reply.has_object, 0);
-  /* Clean up. */
-  utstring_free(addr);
-  destroy_plasma_mock(remote_mock);
   destroy_plasma_mock(local_mock);
   PASS();
 }
@@ -319,7 +278,6 @@ SUITE(plasma_manager_tests) {
   memset(&oid, 1, sizeof(oid));
   RUN_TEST(request_transfer_test);
   RUN_TEST(request_transfer_retry_test);
-  RUN_TEST(request_transfer_timeout_test);
   RUN_TEST(read_write_object_chunk_test);
 }
 

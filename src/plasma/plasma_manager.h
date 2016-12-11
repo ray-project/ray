@@ -180,6 +180,23 @@ struct plasma_request_buffer {
 };
 
 /**
+ * Call the request_transfer method, which well attempt to get an object from
+ * a remote Plasma manager. If it is unable to get it from another Plasma
+ * manager, it will cycle through a list of Plasma managers that have the
+ * object.
+ *
+ * @param object_id The object ID of the object to transfer.
+ * @param manager_count The number of managers that have the object.
+ * @param manager_vector The Plasma managers that have the object.
+ * @param context The plasma manager state.
+ * @return Void.
+ */
+void call_request_transfer(object_id object_id,
+                           int manager_count,
+                           const char *manager_vector[],
+                           void *context);
+
+/**
  * Clean up and free an active object context. Deregister it from the
  * associated client connection and from the manager state.
  *

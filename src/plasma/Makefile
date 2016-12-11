@@ -41,15 +41,14 @@ common: FORCE
 # Set the request timeout low and logging level at FATAL for testing purposes.
 test: CFLAGS += -DRAY_TIMEOUT=50 -DRAY_COMMON_LOG_LEVEL=4
 # First, build and run all the unit tests.
-#test: $(BUILD)/manager_tests $(BUILD)/client_tests FORCE
-test: $(BUILD)/client_tests FORCE
-	#./build/manager_tests
+test: $(BUILD)/manager_tests $(BUILD)/client_tests FORCE
+	./build/manager_tests
 	./test/run_client_tests.sh
 	cd ../common; make redis
 # Next, build all the executables for Python testing.
 test: all
 
 valgrind: test
-	#valgrind --leak-check=full --error-exitcode=1 ./build/manager_tests
+	valgrind --leak-check=full --error-exitcode=1 ./build/manager_tests
 
 FORCE:

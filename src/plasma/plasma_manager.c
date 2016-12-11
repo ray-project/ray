@@ -423,6 +423,17 @@ void update_object_wait_requests(plasma_manager_state *manager_state,
   }
 }
 
+fetch_request *create_fetch_request(plasma_manager_state *manager_state,
+                                    object_id object_id) {
+  fetch_request *fetch_req = malloc(sizeof(fetch_request));
+  fetch_req->manager_state = manager_state;
+  fetch_req->object_id = object_id;
+  fetch_req->timer = -1;
+  fetch_req->manager_count = 0;
+  fetch_req->manager_vector = NULL;
+  return fetch_req;
+}
+
 void remove_fetch_request(plasma_manager_state *manager_state,
                           fetch_request *fetch_req) {
   /* Remove the fetch request from the table of fetch requests. */
@@ -905,6 +916,24 @@ void request_transfer(object_id object_id,
   }
 }
 
+/* This method is only called from the tests. */
+void call_request_transfer(object_id object_id,
+                           int manager_count,
+                           const char *manager_vector[],
+                           void *context) {
+  plasma_manager_state *manager_state = (plasma_manager_state *) context;
+  fetch_request *fetch_req;
+  /* Check that there isn't already a fetch request for this object. */
+  HASH_FIND(hh, manager_state->fetch_requests, &object_id, sizeof(object_id),
+            fetch_req);
+  CHECK(fetch_req == NULL);
+  /* Create a fetch request. */
+  fetch_req = create_fetch_request(manager_state, object_id);
+  HASH_ADD(hh, manager_state->fetch_requests, object_id,
+           sizeof(fetch_req->object_id), fetch_req);
+  request_transfer(object_id, manager_count, manager_vector, context);
+}
+
 void fatal_table_callback(object_id id, void *user_context, void *user_data) {
   CHECK(0);
 }
@@ -963,12 +992,7 @@ void process_fetch_requests(client_connection *client_conn,
 
     /* Add an entry to the fetch requests data structure to indidate that the
      * object is being fetched. */
-    entry = malloc(sizeof(fetch_request));
-    entry->manager_state = manager_state;
-    entry->object_id = obj_id;
-    entry->timer = -1;
-    entry->manager_count = 0;
-    entry->manager_vector = NULL;
+    entry = create_fetch_request(manager_state, obj_id);
     HASH_ADD(hh, manager_state->fetch_requests, object_id,
              sizeof(entry->object_id), entry);
 
