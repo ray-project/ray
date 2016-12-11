@@ -107,7 +107,7 @@ table PlasmaReleaseReply {
   // ID of the object.
   object_id: string;
   // Error.
-  error: byte;
+  error: int;
 }
 
 

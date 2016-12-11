@@ -239,7 +239,7 @@ void plasma_read_seal_request(uint8_t *data, object_id *object_id) {
 
 int plasma_send_seal_reply(int sock,
                            object_id object_id,
-                           uint8_t error) {
+                           int error) {
   flatcc_builder_t builder;
   flatcc_builder_init(&builder);
   PlasmaSealReply_start_as_root(&builder);
@@ -250,7 +250,7 @@ int plasma_send_seal_reply(int sock,
 }
 
 
-void plasma_read_seal_reply(uint8_t *data, object_id *object_id, uint8_t *error) {
+void plasma_read_seal_reply(uint8_t *data, object_id *object_id, int *error) {
   CHECK(data);
   PlasmaSealReply_table_t req = PlasmaSealReply_as_root(data);
   flatbuffers_string_t id = PlasmaSealReply_object_id(req);

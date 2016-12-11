@@ -50,9 +50,9 @@ int plasma_send_seal_request(int sock, object_id object_id);
 
 void plasma_read_seal_request(uint8_t *data, object_id *object_id);
 
-int plasma_send_seal_reply(int sock, object_id object_id, uint8_t error);
+int plasma_send_seal_reply(int sock, object_id object_id, int error);
 
-void plasma_read_seal_reply(uint8_t *data, object_id *object_id, uint8_t *error);
+void plasma_read_seal_reply(uint8_t *data, object_id *object_id, int *error);
 
 
 #endif /* PLASMA_PROTOCOL */
