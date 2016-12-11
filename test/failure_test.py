@@ -1,8 +1,12 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import unittest
 import ray
 import time
 
-import test_functions
+import ray.test.test_functions as test_functions
 
 def wait_for_errors(error_type, num_errors, timeout=10):
   start_time = time.time()

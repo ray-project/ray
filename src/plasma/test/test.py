@@ -1,3 +1,5 @@
+from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
 
 import numpy as np
@@ -534,7 +536,7 @@ class TestPlasmaManager(unittest.TestCase):
     # loop slow down the manager so much that some of the asynchronous Redis
     # commands timeout triggering fatal failure callbacks.
     n = 40
-    for i in range(n * (n + 1) / 2):
+    for i in range(n * (n + 1) // 2):
       if i % 2 == 0:
         object_id, _, _ = create_object(self.client1, 200, 200)
       else:

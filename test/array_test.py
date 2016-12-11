@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import unittest
 import ray
 import numpy as np
@@ -130,7 +134,7 @@ class DistributedArrayTest(unittest.TestCase):
 
     # test da.linalg.modified_lu
     def test_modified_lu(d1, d2):
-      print "testing dist_modified_lu with d1 = " + str(d1) + ", d2 = " + str(d2)
+      print("testing dist_modified_lu with d1 = " + str(d1) + ", d2 = " + str(d2))
       assert d1 >= d2
       k = min(d1, d2)
       m = ra.random.normal.remote([d1, d2])
@@ -153,7 +157,7 @@ class DistributedArrayTest(unittest.TestCase):
 
     # test dist_tsqr_hr
     def test_dist_tsqr_hr(d1, d2):
-      print "testing dist_tsqr_hr with d1 = " + str(d1) + ", d2 = " + str(d2)
+      print("testing dist_tsqr_hr with d1 = " + str(d1) + ", d2 = " + str(d2))
       a = da.random.normal.remote([d1, d2])
       y, t, y_top, r = da.linalg.tsqr_hr.remote(a)
       a_val = ray.get(da.assemble.remote(a))
@@ -171,7 +175,7 @@ class DistributedArrayTest(unittest.TestCase):
       test_dist_tsqr_hr(d1, d2)
 
     def test_dist_qr(d1, d2):
-      print "testing qr with d1 = {}, and d2 = {}.".format(d1, d2)
+      print("testing qr with d1 = {}, and d2 = {}.".format(d1, d2))
       a = da.random.normal.remote([d1, d2])
       K = min(d1, d2)
       q, r = da.linalg.qr.remote(a)

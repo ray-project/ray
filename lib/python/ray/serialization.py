@@ -1,8 +1,11 @@
+from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import pickling
 import numbuf
+
+import ray.pickling as pickling
 
 def check_serializable(cls):
   """Throws an exception if Ray cannot serialize this class efficiently.

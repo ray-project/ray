@@ -148,7 +148,7 @@ while len(remaining_ids) > 0:
   ready_ids, remaining_ids = ray.wait(remaining_ids, num_returns=1)
   # Get the accuracy corresponding to the ready object ID.
   accuracy = ray.get(ready_ids[0])
-  print "Accuracy {}".format(accuracy)
+  print("Accuracy {}".format(accuracy))
 ```
 
 Note that the above example does not associate the accuracy with the parameters

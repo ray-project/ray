@@ -1,3 +1,5 @@
+from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
 
 import unittest
@@ -8,7 +10,7 @@ import string
 import sys
 from collections import namedtuple
 
-import test_functions
+import ray.test.test_functions as test_functions
 import ray.array.remote as ra
 import ray.array.distributed as da
 
