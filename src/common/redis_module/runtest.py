@@ -21,31 +21,58 @@ class TestGlobalStateStore(unittest.TestCase):
                                              "--loadmodule", "ray_redis_module.so"],
                                              stdout=FNULL)
     time.sleep(0.1)
-    self.redis = redis.StrictRedis(host='localhost', port=6379, db=0)
+    self.redis = redis.StrictRedis(host="localhost", port=6379, db=0)
 
   def tearDown(self):
     self.redis_process.kill()
 
   def testInvalidObjectTableAdd(self):
-    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "hello", 1, "this is a hash", 1)
+    # Check that Redis returns an error when RAY.OBJECT_TABLE_ADD is called with
+    # the wrong arguments.
     with self.assertRaises(redis.ResponseError):
-      self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "hello", 1, "this is another hash", 2)
+      self.redis.execute_command("RAY.OBJECT_TABLE_ADD")
+    with self.assertRaises(redis.ResponseError):
+      self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "hello")
+    with self.assertRaises(redis.ResponseError):
+      self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id2", "1", "hash2", "manager_id1")
+    with self.assertRaises(redis.ResponseError):
+      self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id2", 1, "hash2", "manager_id1", "extra argument")
+    # Check that Redis returns an error when RAY.OBJECT_TABLE_ADD adds an object
+    # ID that is already present with a different hash.
+    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id1")
+    with self.assertRaises(redis.ResponseError):
+      self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash2", "manager_id1")
+    # Check that it is fine if we add the same object ID multiple times with the
+    # same hash.
+    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id1")
+    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id1")
+    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id2")
+    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 2, "hash1", "manager_id2")
 
   def testObjectTableAddAndLookup(self):
-    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "world", 1, "hash 1", 42)
-    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "world", 1, "hash 1", 43)
-    response = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP", "world")
-    self.assertEqual(set(response), {"42", "43"})
+    # Try calling RAY.OBJECT_TABLE_LOOKUP with an object ID that has not been
+    # added yet.
+    response = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP", "object_id1")
+    self.assertEqual(set(response), {})
+    # Add some managers and try again.
+    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id1")
+    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id2")
+    response = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP", "object_id1")
+    self.assertEqual(set(response), {"manager_id1", "manager_id2"})
+    # Add a manager that already exists again and try again.
+    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id2")
+    response = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP", "object_id1")
+    self.assertEqual(set(response), {"manager_id1", "manager_id2"})
 
   def testObjectTableSubscribe(self):
     p = self.redis.pubsub()
-    # Subscribe to object ID "berkeley"
-    p.subscribe("berkeley")
-    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "berkeley", 1, "hash 2", 42)
-    # First the acknowledgement message
-    self.assertEqual(p.get_message()['data'], 1)
-    # And then the actual data
-    self.assertEqual(p.get_message()['data'], "MANAGERS 42")
+    # Subscribe to an object ID.
+    p.subscribe("object_id1")
+    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id1")
+    # Receive the acknowledgement message.
+    self.assertEqual(p.get_message()["data"], 1)
+    # Receive the actual data.
+    self.assertEqual(p.get_message()["data"], "MANAGERS manager_id1")
 
 if __name__ == "__main__":
   unittest.main(verbosity=2)
