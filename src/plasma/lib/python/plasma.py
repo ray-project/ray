@@ -188,20 +188,12 @@ class PlasmaClient(object):
     return libplasma.transfer(self.conn, object_id, addr, port)
 
   def fetch(self, object_ids):
-    """Fetch the object with id object_id from another plasma manager instance.
-
-    Args:
-      object_id (str): A string used to identify an object.
-    """
-    return libplasma.fetch(self.conn, object_ids)
-
-  def fetch2(self, object_ids):
     """Fetch the objects with the given IDs from other plasma manager instances.
 
     Args:
       object_ids (List[str]): A list of strings used to identify the objects.
     """
-    return libplasma.fetch2(self.conn, object_ids)
+    return libplasma.fetch(self.conn, object_ids)
 
   def wait(self, object_ids, timeout=PLASMA_WAIT_TIMEOUT, num_returns=1):
     """Wait until num_returns objects in object_ids are ready.

@@ -552,51 +552,14 @@ void plasma_transfer(plasma_connection *conn,
 
 void plasma_fetch(plasma_connection *conn,
                   int num_object_ids,
-                  object_id object_ids[],
-                  int is_fetched[]) {
-  CHECK(conn->manager_conn >= 0);
-  /* Make sure that there are no duplicated object IDs. TODO(rkn): we should
-   * allow this case in the future. */
-  CHECK(plasma_object_ids_distinct(num_object_ids, object_ids));
-  plasma_request *req = plasma_alloc_request(num_object_ids);
-  for (int i = 0; i < num_object_ids; ++i) {
-    req->object_requests[i].object_id = object_ids[i];
-  }
-  LOG_DEBUG("Requesting fetch");
-  CHECK(plasma_send_request(conn->manager_conn, PLASMA_FETCH, req) >= 0);
-  free(req);
-
-  plasma_reply reply;
-  int success;
-  for (int received = 0; received < num_object_ids; ++received) {
-    CHECK(plasma_receive_reply(conn->manager_conn, sizeof(reply), &reply) >= 0);
-    CHECK(reply.num_object_ids == 1);
-    success = reply.has_object;
-    /* Update the correct index in is_fetched. */
-    int i = 0;
-    for (; i < num_object_ids; ++i) {
-      if (object_ids_equal(object_ids[i], reply.object_requests[0].object_id) &&
-          !is_fetched[i]) {
-        is_fetched[i] = success;
-        break;
-      }
-    }
-    CHECKM(i != num_object_ids,
-           "Received an unexpected object ID from manager during fetch or the "
-           "object ID was received multiple times.");
-  }
-}
-
-void plasma_fetch2(plasma_connection *conn,
-                   int num_object_ids,
-                   object_id object_ids[]) {
+                  object_id object_ids[]) {
   CHECK(conn != NULL);
   CHECK(conn->manager_conn >= 0);
   plasma_request *req = plasma_alloc_request(num_object_ids);
   for (int i = 0; i < num_object_ids; ++i) {
     req->object_requests[i].object_id = object_ids[i];
   }
-  CHECK(plasma_send_request(conn->manager_conn, PLASMA_FETCH2, req) >= 0);
+  CHECK(plasma_send_request(conn->manager_conn, PLASMA_FETCH, req) >= 0);
 }
 
 int get_manager_fd(plasma_connection *conn) {
@@ -664,20 +627,6 @@ bool plasma_get_local(plasma_connection *conn,
    * count. Cache the reference to the object. */
   increment_object_count(conn, object_id, object, true);
   return true;
-}
-
-int plasma_fetch_remote(plasma_connection *conn, object_id object_id) {
-  CHECK(conn != NULL);
-  CHECK(conn->manager_conn >= 0);
-
-  plasma_request req = plasma_make_request(object_id);
-  CHECK(plasma_send_request(conn->manager_conn, PLASMA_FETCH_REMOTE, &req) >=
-        0);
-
-  plasma_reply reply;
-  CHECK(plasma_receive_reply(conn->manager_conn, sizeof(reply), &reply) >= 0);
-
-  return reply.object_status;
 }
 
 int plasma_status(plasma_connection *conn, object_id object_id) {
@@ -755,35 +704,37 @@ int plasma_wait(plasma_connection *conn,
  */
 
 void plasma_client_get(plasma_connection *conn,
-                       object_id object_id,
+                       object_id obj_id,
                        object_buffer *object_buffer) {
   CHECK(conn != NULL);
   CHECK(conn->manager_conn >= 0);
 
   object_request request;
-  request.object_id = object_id;
+  request.object_id = obj_id;
 
   while (true) {
-    if (plasma_get_local(conn, object_id, object_buffer)) {
+    if (plasma_get_local(conn, obj_id, object_buffer)) {
       /* Object is in the local Plasma Store, and it is sealed. */
       return;
     }
 
-    switch (plasma_fetch_remote(conn, object_id)) {
+    object_id object_ids[1] = {obj_id};
+    plasma_fetch(conn, 1, object_ids);
+    switch (plasma_status(conn, obj_id)) {
     case PLASMA_OBJECT_LOCAL:
       /* Object has finished being transfered just after calling
        * plasma_get_local(), and it is now in the local Plasma Store. Loop again
        * to call plasma_get_local() and eventually return. */
       continue;
     case PLASMA_OBJECT_REMOTE:
-      /* A fetch request has been already scheduled for object_id, so wait for
+      /* A fetch request has been already scheduled for obj_id, so wait for
        * it to complete. */
       request.type = PLASMA_QUERY_LOCAL;
       break;
     case PLASMA_OBJECT_NONEXISTENT:
       /* Object doesn’t exist in the system so ask local scheduler to create it.
        */
-      /* TODO: scheduler_create_object(object_id); */
+      /* TODO: scheduler_create_object(obj_id); */
       /* Wait for the object to be (re)constructed and sealed either in the
        * local Plasma Store or remotely. */
       request.type = PLASMA_QUERY_ANYWHERE;
@@ -793,9 +744,9 @@ void plasma_client_get(plasma_connection *conn,
     }
 
 /*
- * Wait for object_id to (1) be transferred and sealed in the local
+ * Wait for obj_id to (1) be transferred and sealed in the local
  * Plasma Store, if available remotely, or (2) be (re)constructued either
- * locally or remotely, if object_id didn't exist in the system.
+ * locally or remotely, if obj_id didn't exist in the system.
  * - if timeout, next iteration will retry plasma_fetch() or
  *   scheduler_create_object()
  * - if request.status == PLASMA_OBJECT_LOCAL, next iteration
@@ -890,7 +841,7 @@ void plasma_client_multiget(plasma_connection *conn,
     int n;
 
     /* Issue a fetch command so the object IDs end up locally. */
-    plasma_fetch2(conn, num_object_ids, object_ids);
+    plasma_fetch(conn, num_object_ids, object_ids);
 
     /* Wait to get all objects in the system. The reason we call plasma_wait()
      * here instead of iterating over plasma_client_get() is to increase

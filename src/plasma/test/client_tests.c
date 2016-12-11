@@ -44,7 +44,7 @@ TEST plasma_status_tests(void) {
   PASS();
 }
 
-TEST plasma_fetch_remote_tests(void) {
+TEST plasma_fetch_tests(void) {
   plasma_connection *plasma_conn1 = plasma_connect(
       "/tmp/store1", "/tmp/manager1", PLASMA_DEFAULT_RELEASE_DELAY);
   plasma_connection *plasma_conn2 = plasma_connect(
@@ -55,7 +55,7 @@ TEST plasma_fetch_remote_tests(void) {
   int status;
 
   /* No object in the system */
-  status = plasma_fetch_remote(plasma_conn1, oid1);
+  status = plasma_status(plasma_conn1, oid1);
   ASSERT(status == PLASMA_OBJECT_NONEXISTENT);
 
   /* Test for the object being in local Plasma store. */
@@ -70,23 +70,26 @@ TEST plasma_fetch_remote_tests(void) {
   /* Object with ID oid1 has been just inserted. On the next fetch we might
    * either find the object or not, depending on whether the Plasma Manager has
    * received the notification from the Plasma Store or not. */
-  status = plasma_fetch_remote(plasma_conn1, oid1);
+  object_id oid_array1[1] = {oid1};
+  plasma_fetch(plasma_conn1, 1, oid_array1);
+  status = plasma_status(plasma_conn1, oid1);
   ASSERT((status == PLASMA_OBJECT_LOCAL) ||
          (status == PLASMA_OBJECT_NONEXISTENT));
 
   /* Sleep to make sure Plasma Manager got the notification. */
   sleep(1);
-  status = plasma_fetch_remote(plasma_conn1, oid1);
+  status = plasma_status(plasma_conn1, oid1);
   ASSERT(status == PLASMA_OBJECT_LOCAL);
 
   /* Test for object being remote. */
-  status = plasma_fetch_remote(plasma_conn2, oid1);
+  status = plasma_status(plasma_conn2, oid1);
   ASSERT(status == PLASMA_OBJECT_REMOTE);
 
   /* Sleep to make sure the object has been fetched and it is now stored in the
    * local Plasma Store. */
+  plasma_fetch(plasma_conn2, 1, oid_array1);
   sleep(1);
-  status = plasma_fetch_remote(plasma_conn2, oid1);
+  status = plasma_status(plasma_conn2, oid1);
   ASSERT(status == PLASMA_OBJECT_LOCAL);
 
   sleep(1);
@@ -360,7 +363,7 @@ TEST plasma_multiget_tests(void) {
 
 SUITE(plasma_client_tests) {
   RUN_TEST(plasma_status_tests);
-  RUN_TEST(plasma_fetch_remote_tests);
+  RUN_TEST(plasma_fetch_tests);
   RUN_TEST(plasma_get_local_tests);
   RUN_TEST(plasma_wait_for_objects_tests);
   RUN_TEST(plasma_get_tests);

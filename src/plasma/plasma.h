@@ -120,11 +120,7 @@ enum plasma_message_type {
   /** Header for sending data. */
   PLASMA_DATA,
   /** Request a fetch of an object in another store. Non-blocking call. */
-  PLASMA_FETCH_REMOTE,
-  /** Request a fetch of an object in another store. Blocking call. */
   PLASMA_FETCH,
-  /** Request a fetch of an object in another store. Non-blocking call. */
-  PLASMA_FETCH2,
   /** Request status of an object, i.e., whether the object is stored in the
    *  local Plasma Store, in a remote Plasma Store, in transfer, or doesn't
    *  exist in the system. */

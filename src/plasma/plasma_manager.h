@@ -112,39 +112,6 @@ void process_data_chunk(event_loop *loop,
                         int events);
 
 /**
- * Process a fetch request. The fetch request tries:
- * 1) If there is no connection to the database, return faliure to the client.
- * 2) If the object is available locally, return success to the client.
- * 3) Query the database for plasma managers that the object might be on.
- * 4) Request a transfer from each of the managers that the object might be on
- *    until we receive the data, or until we timeout.
- * 5) Returns success or failure to the client depending on whether we received
- *    the data or not.
- *
- * @param client_conn The connection context for the client that made the
- *        request.
- * @param object_id The object ID requested.
- * @return Void.
- */
-void process_fetch_request(client_connection *client_conn, object_id object_id);
-
-/**
- * Process a fetch request for multiple objects. The success of each object
- * will be written back individually to the socket connected to the client that
- * made the request in a plasma_reply. See documentation for
- * process_fetch_request for the sequence of operations per object.
- *
- * @param client_conn The connection context for the client that made the
- *        request.
- * @param num_object_ids The number of object IDs requested.
- * @param object_requests[] The object requests fetch is called on.
- * @return Void.
- */
-void process_fetch_requests(client_connection *client_conn,
-                            int num_object_ids,
-                            object_request object_requests[]);
-
-/**
  * Callback that will be called when a new object becomes available.
  *
  * @param loop This is the event loop of the plasma manager.
@@ -211,38 +178,6 @@ struct plasma_request_buffer {
    * not if we are receiving data. */
   plasma_request_buffer *next;
 };
-
-/**
- * Create a new context for the given object ID with the given
- * client connection and register it with the manager's
- * outstanding fetch or wait requests and the client
- * connection's active object contexts.
- *
- * @param client_conn The client connection context.
- * @param object_id The object ID whose context we want to
- *        create.
- * @return A pointer to the newly created object context.
- */
-client_object_request *add_object_request(client_connection *client_conn,
-                                          object_id object_id);
-
-/**
- * Given an object ID and the managers it can be found on, start requesting a
- * transfer from the managers.
- *
- * @param object_id The object ID we want to request a transfer of.
- * @param manager_count The number of managers the object can be found on.
- * @param manager_vector A vector of the IP addresses of the managers that the
- *        object can be found on.
- * @param context The context for the connection to this client.
- *
- * Initializes a new context for this client and object. Managers are tried in
- * order until we receive the data or we timeout and run out of retries.
- */
-void request_transfer(object_id object_id,
-                      int manager_count,
-                      const char *manager_vector[],
-                      void *context);
 
 /**
  * Clean up and free an active object context. Deregister it from the

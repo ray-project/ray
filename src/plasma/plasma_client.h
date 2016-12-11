@@ -185,37 +185,15 @@ void plasma_delete(plasma_connection *conn, object_id object_id);
 int64_t plasma_evict(plasma_connection *conn, int64_t num_bytes);
 
 /**
- * Fetch objects from remote plasma stores that have the
- * objects stored.
- *
- * @param manager A file descriptor for the socket connection
- *        to the local manager.
- * @param object_id_count The number of object IDs requested.
- * @param object_ids[] The vector of object IDs requested. Length must be at
- *        least num_object_ids.
- * @param is_fetched[] The vector in which to return the success
- *        of each object's fetch operation, in the same order as
- *        object_ids. Length must be at least num_object_ids.
- * @return Void.
- */
-void plasma_fetch(plasma_connection *conn,
-                  int num_object_ids,
-                  object_id object_ids[],
-                  int is_fetched[]);
-
-/**
  * Attempt to initiate the transfer of some objects from remote Plasma Stores.
+ * This method does not guarantee that the fetched objects will arrive locally.
  *
  * For an object that is available in the local Plasma Store, this method will
  * not do anything. For an object that is not available locally, it will check
  * if the object are already being fetched. If so, it will not do anything. If
  * not, it will query the object table for a list of Plasma Managers that have
- * the object. If that list is non-empty, it will attempt to initiate transfers
- * from one of those Plasma Managers. If the list is empty, it will set a
- * callback to initiate a transfer when the list becomes non-empty.
- *
- * TODO(rkn): Setting the callback for when the list becomes non-empty is not
- * implemented.
+ * the object. The object table will return a non-empty list, and this Plasma
+ * Manager will attempt to initiate transfers from one of those Plasma Managers.
  *
  * This function is non-blocking.
  *
@@ -227,9 +205,9 @@ void plasma_fetch(plasma_connection *conn,
  * @param object_ids The IDs of the objects that fetch is being called on.
  * @return Void.
  */
-void plasma_fetch2(plasma_connection *conn,
-                   int num_object_ids,
-                   object_id object_ids[]);
+void plasma_fetch(plasma_connection *conn,
+                  int num_object_ids,
+                  object_id object_ids[]);
 
 /**
  * Transfer local object to a different plasma manager.
@@ -297,38 +275,7 @@ bool plasma_get_local(plasma_connection *conn,
                       object_buffer *object_buffer);
 
 /**
- * Initiates the fetch (transfer) of an object from a remote Plasma Store.
- *
- * If the object is stored in the local Plasma Store, tell the caller.
- *
- * If not, check whether the object is stored on a remote Plasma Store. If yes,
- * and if a transfer for the object has either been scheduled or is in progress,
- * then return. Otherwise schedule a transfer for the object.
- *
- * If the object is not available locally or remotely, the client has to tell
- * local scheduler to (re)create the object.
- *
- * This function is non-blocking.
- *
- * @param conn The object containing the connection state.
- * @param object_id The ID of the object we want to transfer.
- * @return Status as returned by the get_status() function. Status can take the
- *         following values.
- *         - PLASMA_CLIENT_LOCAL, if the object is stored in the local Plasma
- *           Store.
- *         - PLASMA_CLIENT_TRANSFER, if the object is either currently being
- *           transferred or the transfer has been scheduled.
- *         - PLASMA_CLIENT_REMOTE, if the object is stored at a remote Plasma
- *           Store.
- *         - PLASMA_CLIENT_DOES_NOT_EXIST, if the object doesn’t exist in the
- *           system.
- */
-int plasma_fetch_remote(plasma_connection *conn, object_id object_id);
-
-/**
- * Return the status of a given object. This function is similar to
- * plasma_fetch_remote() with the only difference that plamsa_fetch_remote()
- * also schedules the obejct transfer, if not local.
+ * Return the status of a given object. This method may query the object table.
  *
  * @param conn The object containing the connection state.
  * @param object_id The ID of the object whose status we query.
