@@ -5,6 +5,7 @@
 #include <poll.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/wait.h>
 
 #include "common.h"
 #include "test/test_common.h"
@@ -22,6 +23,11 @@ SUITE(photon_tests);
 
 const char *plasma_socket_name_format = "/tmp/plasma_socket_%d";
 const char *photon_socket_name_format = "/tmp/photon_socket_%d";
+
+int64_t timeout_handler(event_loop *loop, int64_t id, void *context) {
+  event_loop_stop(loop);
+  return EVENT_LOOP_TIMER_DONE;
+}
 
 typedef struct {
   /* A socket to mock the Plasma store. */
@@ -71,24 +77,32 @@ void destroy_photon_mock(photon_mock *mock) {
 
 TEST object_reconstruction_test(void) {
   photon_mock *photon = init_photon_mock();
-  /* Run the event loop in a separate process. */
   pid_t pid = fork();
   if (pid == 0) {
+    /* Create a task with zero dependencies and one return value. */
+    task_spec *spec = example_task_spec(0, 1);
+    /* Make sure we receive the task twice. First from the initial submission,
+     * and second from the reconstruct request. */
+    photon_submit(photon->conn, spec);
+    object_id return_id = task_return(spec, 0);
+    photon_reconstruct_object(photon->conn, return_id);
+    task_spec *task_assigned = photon_get_task(photon->conn);
+    ASSERT_EQ(memcmp(task_assigned, spec, task_spec_size(spec)), 0);
+    task_spec *reconstruct_task = photon_get_task(photon->conn);
+    ASSERT_EQ(memcmp(reconstruct_task, spec, task_spec_size(spec)), 0);
+    exit(0);
+  } else {
+    /* Run the event loop. NOTE: OSX appears to require the parent process to
+     * listen for events on the open file descriptors. */
+    event_loop_add_timer(photon->loop, 1000,
+                         (event_loop_timer_handler) timeout_handler, NULL);
     event_loop_run(photon->loop);
+    /* Wait for the child process to exit before considering the test case
+     * passed. */
+    wait(NULL);
+    destroy_photon_mock(photon);
+    PASS();
   }
-  /* Create a task with zero dependencies and one return value. */
-  task_spec *spec = example_task_spec(0, 1);
-  /* Make sure we receive the task twice. First from the initial submission,
-   * and second from the reconstruct request. */
-  photon_submit(photon->conn, spec);
-  object_id return_id = task_return(spec, 0);
-  photon_reconstruct_object(photon->conn, return_id);
-  task_spec *task_assigned = photon_get_task(photon->conn);
-  ASSERT_EQ(memcmp(task_assigned, spec, task_spec_size(spec)), 0);
-  task_spec *reconstruct_task = photon_get_task(photon->conn);
-  ASSERT_EQ(memcmp(reconstruct_task, spec, task_spec_size(spec)), 0);
-  destroy_photon_mock(photon);
-  PASS();
 }
 
 TEST object_reconstruction_recursive_test(void) {
@@ -107,42 +121,49 @@ TEST object_reconstruction_recursive_test(void) {
                             photon->photon_state->algorithm_state, arg_id);
     specs[i] = example_task_spec_with_args(1, 1, &arg_id);
   }
-  /* Run the event loop in a separate process. */
   pid_t pid = fork();
   if (pid == 0) {
-    event_loop_run(photon->loop);
-  }
-  /* Submit the tasks, and make sure each one gets assigned to a worker. */
-  for (int i = 0; i < NUM_TASKS; ++i) {
-    photon_submit(photon->conn, specs[i]);
-  }
-  /* Make sure we receive each task from the initial submission. */
-  for (int i = 0; i < NUM_TASKS; ++i) {
-    task_spec *task_assigned = photon_get_task(photon->conn);
-    ASSERT_EQ(memcmp(task_assigned, specs[i], task_spec_size(task_assigned)),
-              0);
-  }
-  /* Request reconstruction of the last return object. */
-  object_id return_id = task_return(specs[9], 0);
-  photon_reconstruct_object(photon->conn, return_id);
-  /* Check that the workers receive all tasks in the final return object's
-   * lineage during reconstruction. */
-  for (int i = 0; i < NUM_TASKS; ++i) {
-    task_spec *task_assigned = photon_get_task(photon->conn);
-    bool found = false;
-    for (int j = 0; j < NUM_TASKS; ++j) {
-      if (specs[j] == NULL) {
-        continue;
-      }
-      if (memcmp(task_assigned, specs[j], task_spec_size(task_assigned)) == 0) {
-        found = true;
-        specs[j] = NULL;
-      }
+    /* Submit the tasks, and make sure each one gets assigned to a worker. */
+    for (int i = 0; i < NUM_TASKS; ++i) {
+      photon_submit(photon->conn, specs[i]);
     }
-    ASSERT(found);
+    /* Make sure we receive each task from the initial submission. */
+    for (int i = 0; i < NUM_TASKS; ++i) {
+      task_spec *task_assigned = photon_get_task(photon->conn);
+      ASSERT_EQ(memcmp(task_assigned, specs[i], task_spec_size(task_assigned)),
+                0);
+    }
+    /* Request reconstruction of the last return object. */
+    object_id return_id = task_return(specs[9], 0);
+    photon_reconstruct_object(photon->conn, return_id);
+    /* Check that the workers receive all tasks in the final return object's
+     * lineage during reconstruction. */
+    for (int i = 0; i < NUM_TASKS; ++i) {
+      task_spec *task_assigned = photon_get_task(photon->conn);
+      bool found = false;
+      for (int j = 0; j < NUM_TASKS; ++j) {
+        if (specs[j] == NULL) {
+          continue;
+        }
+        if (memcmp(task_assigned, specs[j], task_spec_size(task_assigned)) ==
+            0) {
+          found = true;
+          specs[j] = NULL;
+        }
+      }
+      ASSERT(found);
+    }
+    exit(0);
+  } else {
+    /* Run the event loop. NOTE: OSX appears to require the parent process to
+     * listen for events on the open file descriptors. */
+    event_loop_add_timer(photon->loop, 1000,
+                         (event_loop_timer_handler) timeout_handler, NULL);
+    event_loop_run(photon->loop);
+    wait(NULL);
+    destroy_photon_mock(photon);
+    PASS();
   }
-  destroy_photon_mock(photon);
-  PASS();
 }
 
 SUITE(photon_tests) {
