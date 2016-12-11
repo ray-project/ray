@@ -31,11 +31,12 @@
 
 RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
                                 const char *prefix,
-                                RedisModuleString* keyname,
+                                RedisModuleString *keyname,
                                 int mode) {
   size_t length;
   const char *value = RedisModule_StringPtrLen(keyname, &length);
-  RedisModuleString *prefixed_keyname = RedisModule_CreateStringPrintf(ctx, "%s%*.*s", prefix, length, length, value);
+  RedisModuleString *prefixed_keyname = RedisModule_CreateStringPrintf(
+      ctx, "%s%*.*s", prefix, length, length, value);
   RedisModuleKey *key = RedisModule_OpenKey(ctx, prefixed_keyname, mode);
   RedisModule_FreeString(ctx, prefixed_keyname);
   return key;
@@ -50,15 +51,20 @@ RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
  * It returns a list of plasma manager IDs that are registered with the
  * object table to have the object.
  */
-int ObjectTableLookup_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+int ObjectTableLookup_RedisCommand(RedisModuleCtx *ctx,
+                                   RedisModuleString **argv,
+                                   int argc) {
   if (argc != 2) {
     return RedisModule_WrongArity(ctx);
   }
 
-  RedisModuleKey *key = OpenPrefixedKey(ctx, OBJECT_LOCATION_PREFIX, argv[1], REDISMODULE_READ);
+  RedisModuleKey *key =
+      OpenPrefixedKey(ctx, OBJECT_LOCATION_PREFIX, argv[1], REDISMODULE_READ);
 
-  CHECK_ERROR(RedisModule_ZsetFirstInScoreRange(key, REDISMODULE_NEGATIVE_INFINITE, REDISMODULE_POSITIVE_INFINITE, 1, 1),
-              "Unable to initialize zset iterator");
+  CHECK_ERROR(
+      RedisModule_ZsetFirstInScoreRange(key, REDISMODULE_NEGATIVE_INFINITE,
+                                        REDISMODULE_POSITIVE_INFINITE, 1, 1),
+      "Unable to initialize zset iterator");
 
   RedisModule_ReplyWithArray(ctx, REDISMODULE_POSTPONED_ARRAY_LEN);
   int num_results = 0;
@@ -87,7 +93,9 @@ int ObjectTableLookup_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv
            "hash mismatch" if the same object_id is already present with
            a different hash value.
  */
-int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
+                                RedisModuleString **argv,
+                                int argc) {
   if (argc != 5) {
     return RedisModule_WrongArity(ctx);
   }
@@ -98,18 +106,21 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, i
   RedisModuleString *manager = argv[4];
 
   long long data_size_value;
-  if (RedisModule_StringToLongLong(data_size, &data_size_value) != REDISMODULE_OK) {
+  if (RedisModule_StringToLongLong(data_size, &data_size_value) !=
+      REDISMODULE_OK) {
     return RedisModule_ReplyWithError(ctx, "data_size must be integer");
   }
 
   RedisModuleKey *key;
-  key = OpenPrefixedKey(ctx, OBJECT_INFO_PREFIX, object_id, REDISMODULE_READ | REDISMODULE_WRITE);
+  key = OpenPrefixedKey(ctx, OBJECT_INFO_PREFIX, object_id,
+                        REDISMODULE_READ | REDISMODULE_WRITE);
 
   int keytype = RedisModule_KeyType(key);
   /* Check if this object was already registered and if the hashes agree. */
   if (keytype != REDISMODULE_KEYTYPE_EMPTY) {
     RedisModuleString *existing_hash;
-    RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "hash", &existing_hash, NULL);
+    RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "hash", &existing_hash,
+                        NULL);
     if (RedisModule_StringCompare(existing_hash, new_hash) != 0) {
       RedisModule_CloseKey(key);
       return RedisModule_ReplyWithError(ctx, "hash mismatch");
@@ -117,21 +128,27 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, i
   }
 
   RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "hash", new_hash, NULL);
-  RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "data_size", data_size, NULL);
+  RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "data_size", data_size,
+                      NULL);
 
   RedisModuleKey *table_key;
-  table_key = OpenPrefixedKey(ctx, OBJECT_LOCATION_PREFIX, object_id, REDISMODULE_READ | REDISMODULE_WRITE);
+  table_key = OpenPrefixedKey(ctx, OBJECT_LOCATION_PREFIX, object_id,
+                              REDISMODULE_READ | REDISMODULE_WRITE);
 
   /* Sets are not implemented yet, so we use ZSETs instead. */
   RedisModule_ZsetAdd(table_key, 0.0, manager, NULL);
 
   /* Inform subscribers. */
   const char *MANAGERS = "MANAGERS";
-  RedisModuleString *publish = RedisModule_CreateString(ctx, MANAGERS, strlen(MANAGERS));
-  CHECK_ERROR(RedisModule_ZsetFirstInScoreRange(table_key, REDISMODULE_NEGATIVE_INFINITE, REDISMODULE_POSITIVE_INFINITE, 1, 1),
+  RedisModuleString *publish =
+      RedisModule_CreateString(ctx, MANAGERS, strlen(MANAGERS));
+  CHECK_ERROR(RedisModule_ZsetFirstInScoreRange(
+                  table_key, REDISMODULE_NEGATIVE_INFINITE,
+                  REDISMODULE_POSITIVE_INFINITE, 1, 1),
               "Unable to initialize zset iterator");
   do {
-    RedisModuleString *curr = RedisModule_ZsetRangeCurrentElement(table_key, NULL);
+    RedisModuleString *curr =
+        RedisModule_ZsetRangeCurrentElement(table_key, NULL);
     RedisModule_StringAppendBuffer(ctx, publish, " ", 1);
     size_t size;
     const char *val = RedisModule_StringPtrLen(curr, &size);
@@ -150,28 +167,36 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, i
   return REDISMODULE_OK;
 }
 
-int ObjectTableSubscribe_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+int ObjectTableSubscribe_RedisCommand(RedisModuleCtx *ctx,
+                                      RedisModuleString **argv,
+                                      int argc) {
   REDISMODULE_NOT_USED(ctx);
   REDISMODULE_NOT_USED(argv);
   REDISMODULE_NOT_USED(argc);
   return REDISMODULE_OK;
 }
 
-int ObjectInfoSubscribe_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+int ObjectInfoSubscribe_RedisCommand(RedisModuleCtx *ctx,
+                                     RedisModuleString **argv,
+                                     int argc) {
   REDISMODULE_NOT_USED(ctx);
   REDISMODULE_NOT_USED(argv);
   REDISMODULE_NOT_USED(argc);
   return REDISMODULE_OK;
 }
 
-int ResultTableAdd_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+int ResultTableAdd_RedisCommand(RedisModuleCtx *ctx,
+                                RedisModuleString **argv,
+                                int argc) {
   REDISMODULE_NOT_USED(ctx);
   REDISMODULE_NOT_USED(argv);
   REDISMODULE_NOT_USED(argc);
   return REDISMODULE_OK;
 }
 
-int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
+                                   RedisModuleString **argv,
+                                   int argc) {
   REDISMODULE_NOT_USED(ctx);
   REDISMODULE_NOT_USED(argv);
   REDISMODULE_NOT_USED(argc);
@@ -180,35 +205,50 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv
 
 /* This function must be present on each Redis module. It is used in order to
  * register the commands into the Redis server. */
-int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+int RedisModule_OnLoad(RedisModuleCtx *ctx,
+                       RedisModuleString **argv,
+                       int argc) {
   REDISMODULE_NOT_USED(argv);
   REDISMODULE_NOT_USED(argc);
 
-  if (RedisModule_Init(ctx, "ray", 1, REDISMODULE_APIVER_1) == REDISMODULE_ERR) {
+  if (RedisModule_Init(ctx, "ray", 1, REDISMODULE_APIVER_1) ==
+      REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 
-  if (RedisModule_CreateCommand(ctx, "ray.object_table_lookup", ObjectTableLookup_RedisCommand, "readonly", 0, 0, 0) == REDISMODULE_ERR) {
+  if (RedisModule_CreateCommand(ctx, "ray.object_table_lookup",
+                                ObjectTableLookup_RedisCommand, "readonly", 0,
+                                0, 0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 
-  if (RedisModule_CreateCommand(ctx, "ray.object_table_add", ObjectTableAdd_RedisCommand, "write pubsub", 0, 0, 0) == REDISMODULE_ERR) {
+  if (RedisModule_CreateCommand(ctx, "ray.object_table_add",
+                                ObjectTableAdd_RedisCommand, "write pubsub", 0,
+                                0, 0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 
-  if (RedisModule_CreateCommand(ctx, "ray.object_table_subscribe", ObjectTableSubscribe_RedisCommand, "pubsub", 0, 0, 0) == REDISMODULE_ERR) {
+  if (RedisModule_CreateCommand(ctx, "ray.object_table_subscribe",
+                                ObjectTableSubscribe_RedisCommand, "pubsub", 0,
+                                0, 0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 
-  if (RedisModule_CreateCommand(ctx, "ray.object_info_subscribe", ObjectInfoSubscribe_RedisCommand, "pubsub", 0, 0, 0) == REDISMODULE_ERR) {
+  if (RedisModule_CreateCommand(ctx, "ray.object_info_subscribe",
+                                ObjectInfoSubscribe_RedisCommand, "pubsub", 0,
+                                0, 0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 
-  if (RedisModule_CreateCommand(ctx, "ray.result_table_add", ResultTableAdd_RedisCommand, "write", 0, 0, 0) == REDISMODULE_ERR) {
+  if (RedisModule_CreateCommand(ctx, "ray.result_table_add",
+                                ResultTableAdd_RedisCommand, "write", 0, 0,
+                                0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 
-  if (RedisModule_CreateCommand(ctx, "ray.result_table_lookup", ResultTableLookup_RedisCommand, "readonly", 0, 0, 0) == REDISMODULE_ERR) {
+  if (RedisModule_CreateCommand(ctx, "ray.result_table_lookup",
+                                ResultTableLookup_RedisCommand, "readonly", 0,
+                                0, 0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 

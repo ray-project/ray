@@ -20,7 +20,7 @@ class TestGlobalStateStore(unittest.TestCase):
                                              "--port", str(redis_port),
                                              "--loadmodule", "ray_redis_module.so"],
                                              stdout=FNULL)
-    time.sleep(0.1)
+    time.sleep(0.5)
     self.redis = redis.StrictRedis(host="localhost", port=6379, db=0)
 
   def tearDown(self):
