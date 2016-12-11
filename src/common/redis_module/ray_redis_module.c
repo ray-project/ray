@@ -51,7 +51,10 @@ RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
  * object table to have the object.
  */
 int ObjectTableLookup_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-  REDISMODULE_NOT_USED(argc);
+  if (argc != 2) {
+    return RedisModule_WrongArity(ctx);
+  }
+
   RedisModuleKey *key = OpenPrefixedKey(ctx, OBJECT_LOCATION_PREFIX, argv[1], REDISMODULE_READ);
 
   CHECK_ERROR(RedisModule_ZsetFirstInScoreRange(key, REDISMODULE_NEGATIVE_INFINITE, REDISMODULE_POSITIVE_INFINITE, 1, 1),
@@ -74,14 +77,30 @@ int ObjectTableLookup_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv
  *
  * This is called with the hiredis command
  * RAY.OBJECT_TABLE_ADD "(object id)" (data_size) "(hash string)" (manager)
+ *
+ * @param object_id A string representing the object.
+ * @param data_size An integer which is the object size in bytes.
+ * @param hash_string A string which is a hash of the object.
+ * @param manager A string which represents the plasma manager that holds the
+ *        object. This is typically an integer.
+ * @return OK if the operation was successesful and an error with string
+           "hash mismatch" if the same object_id is already present with
+           a different hash value.
  */
 int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-  REDISMODULE_NOT_USED(argc);
+  if (argc != 5) {
+    return RedisModule_WrongArity(ctx);
+  }
 
   RedisModuleString *object_id = argv[1];
   RedisModuleString *data_size = argv[2];
   RedisModuleString *new_hash = argv[3];
   RedisModuleString *manager = argv[4];
+
+  long long data_size_value;
+  if (RedisModule_StringToLongLong(data_size, &data_size_value) != REDISMODULE_OK) {
+    return RedisModule_ReplyWithError(ctx, "data_size must be integer");
+  }
 
   RedisModuleKey *key;
   key = OpenPrefixedKey(ctx, OBJECT_INFO_PREFIX, object_id, REDISMODULE_READ | REDISMODULE_WRITE);
@@ -93,7 +112,7 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, i
     RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "hash", &existing_hash, NULL);
     if (RedisModule_StringCompare(existing_hash, new_hash) != 0) {
       RedisModule_CloseKey(key);
-      return RedisModule_ReplyWithError(ctx, "object with this id already present with different hash");
+      return RedisModule_ReplyWithError(ctx, "hash mismatch");
     }
   }
 
@@ -126,7 +145,8 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, i
   /* Clean up. */
   RedisModule_CloseKey(key);
   RedisModule_CloseKey(table_key);
-  RedisModule_ReplyWithLongLong(ctx, RedisModule_GetSelectedDb(ctx));
+
+  RedisModule_ReplyWithSimpleString(ctx, "OK");
   return REDISMODULE_OK;
 }
 
