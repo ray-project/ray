@@ -18,7 +18,7 @@ class TestGlobalStateStore(unittest.TestCase):
     with open(os.devnull, "w") as FNULL:
       self.redis_process = subprocess.Popen([redis_path,
                                              "--port", str(redis_port),
-                                             "--loadmodule", "ray_redis_module.so"],
+                                             "--loadmodule", "./ray_redis_module.so"],
                                              stdout=FNULL)
     time.sleep(0.5)
     self.redis = redis.StrictRedis(host="localhost", port=6379, db=0)
