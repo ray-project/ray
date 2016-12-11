@@ -909,6 +909,38 @@ void fatal_table_callback(object_id id, void *user_context, void *user_data) {
   CHECK(0);
 }
 
+void object_present_callback(object_id object_id,
+                             int manager_count,
+                             const char *manager_vector[],
+                             void *context) {
+  plasma_manager_state *manager_state = (plasma_manager_state *) context;
+  /* This callback is called from object_table_subscribe, which guarantees that
+   * the manager vector contains at least one element. */
+  CHECK(manager_count >= 1);
+
+  /* Update the in-progress remote wait requests. */
+  update_object_wait_requests(manager_state, object_id, PLASMA_QUERY_ANYWHERE,
+                              PLASMA_OBJECT_REMOTE);
+}
+
+/* This callback is used by both fetch and wait. Therefore, it may have to
+ * handle outstanding fetch and wait requests. */
+void object_table_subscribe_callback(object_id object_id,
+                                     int manager_count,
+                                     const char *manager_vector[],
+                                     void *context) {
+  plasma_manager_state *manager_state = (plasma_manager_state *) context;
+  /* Run the callback for fetch requests if there is a fetch request. */
+  fetch_request *fetch_req;
+  HASH_FIND(hh, manager_state->fetch_requests, &object_id, sizeof(object_id),
+            fetch_req);
+  if (fetch_req != NULL) {
+    request_transfer(object_id, manager_count, manager_vector, context);
+  }
+  /* Run the callback for wait requests. */
+  object_present_callback(object_id, manager_count, manager_vector, context);
+}
+
 void process_fetch_requests(client_connection *client_conn,
                             int num_object_ids,
                             object_request object_requests[]) {
@@ -950,8 +982,9 @@ void process_fetch_requests(client_connection *client_conn,
     retry.num_retries = 0;
     retry.timeout = MANAGER_TIMEOUT;
     retry.fail_callback = fatal_table_callback;
-    object_table_subscribe(manager_state->db, obj_id, request_transfer,
-                           manager_state, &retry, NULL, NULL);
+    object_table_subscribe(manager_state->db, obj_id,
+                           object_table_subscribe_callback, manager_state,
+                           &retry, NULL, NULL);
   }
 }
 
@@ -961,20 +994,6 @@ int wait_timeout_handler(event_loop *loop, timer_id id, void *context) {
   wait_request *wait_req = context;
   return_from_wait(wait_req->client_conn->manager_state, wait_req);
   return EVENT_LOOP_TIMER_DONE;
-}
-
-void object_present_callback(object_id object_id,
-                             int manager_count,
-                             const char *manager_vector[],
-                             void *context) {
-  plasma_manager_state *manager_state = (plasma_manager_state *) context;
-  /* This callback is called from object_table_subscribe, which guarantees that
-   * the manager vector contains at least one element. */
-  CHECK(manager_count >= 1);
-
-  /* Update the in-progress remote wait requests. */
-  update_object_wait_requests(manager_state, object_id, PLASMA_QUERY_ANYWHERE,
-                              PLASMA_OBJECT_REMOTE);
 }
 
 void process_wait_request(client_connection *client_conn,
@@ -1034,8 +1053,9 @@ void process_wait_request(client_connection *client_conn,
        * timer). */
       retry.timeout = 100000;
       retry.fail_callback = fatal_table_callback;
-      object_table_subscribe(manager_state->db, obj_id, object_present_callback,
-                             manager_state, &retry, NULL, NULL);
+      object_table_subscribe(manager_state->db, obj_id,
+                             object_table_subscribe_callback, manager_state,
+                             &retry, NULL, NULL);
     } else {
       /* This code should be unreachable. */
       CHECK(0);
