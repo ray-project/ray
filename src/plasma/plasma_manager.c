@@ -243,12 +243,6 @@ struct client_connection {
   int fd;
   /** Timer id for timing out wait (or fetch). */
   int64_t timer_id;
-  /** True if this client is in a "wait" and false if it is in a "fetch". */
-  bool is_wait;
-  /** True if we use new version of wait. */
-  bool wait1;
-  /** True if we use the new version of fetch. */
-  bool fetch1;
   /** If this client is processing a wait, this contains the object ids that
    *  are already available. */
   plasma_reply *wait_reply;
@@ -265,26 +259,6 @@ struct client_connection {
   /** Handle for the uthash table. */
   UT_hash_handle manager_hh;
 };
-
-void free_client_object_request(client_object_request *object_req) {
-  for (int i = 0; i < object_req->manager_count; ++i) {
-    free(object_req->manager_vector[i]);
-  }
-  free(object_req->manager_vector);
-  free(object_req);
-}
-
-void send_client_reply(client_connection *conn, plasma_reply *reply) {
-  CHECK(conn->num_return_objects >= 0);
-  --conn->num_return_objects;
-  CHECK(plasma_send_reply(conn->fd, reply) >= 0);
-}
-
-void send_client_failure_reply(object_id object_id, client_connection *conn) {
-  plasma_reply reply = plasma_make_reply(object_id);
-  reply.has_object = 0;
-  send_client_reply(conn, &reply);
-}
 
 object_wait_requests **object_wait_requests_table_ptr_from_type(
     plasma_manager_state *manager_state,
@@ -1012,8 +986,6 @@ void process_fetch_requests(client_connection *client_conn,
   }
 }
 
-/** === START - ALTERNATE PLASMA CLIENT API === */
-
 int wait_timeout_handler(event_loop *loop, timer_id id, void *context) {
   wait_request *wait_req = context;
   return_from_wait(wait_req->client_conn->manager_state, wait_req);
@@ -1152,8 +1124,6 @@ void object_table_lookup_fail_callback(object_id object_id,
 
 void process_status_request(client_connection *client_conn,
                             object_id object_id) {
-  client_conn->is_wait = false;
-  client_conn->fetch1 = true;
   client_conn->wait_reply = NULL;
 
   /* Return success immediately if we already have this object. */
@@ -1181,8 +1151,6 @@ void process_status_request(client_connection *client_conn,
   object_table_lookup(client_conn->manager_state->db, object_id, &retry,
                       request_status_done, client_conn);
 }
-
-/* === END - ALTERNATE PLASMA CLIENT API === */
 
 void process_object_notification(event_loop *loop,
                                  int client_sock,

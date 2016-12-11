@@ -244,8 +244,6 @@ int plasma_subscribe(plasma_connection *conn);
  */
 int get_manager_fd(plasma_connection *conn);
 
-/* === ALTERNATE PLASMA CLIENT API === */
-
 /**
  * Object buffer data structure.
  */

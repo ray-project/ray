@@ -566,20 +566,6 @@ int get_manager_fd(plasma_connection *conn) {
   return conn->manager_conn;
 }
 
-/** === ALTERNATE PLASMA CLIENT API ===
-
- * This API simplifies the previous one in two ways. First if factors out
- * object (re)construction from the Plasma Manager. Second, except for
- * plasma_wait() all other functions are non-blocking.
- *
- * TODO:
- * - plasma_info() not implemented yet, but not needed at this point.
- * - assume new implementation of object_table_subscribe() which returns
- *   if object is in the Local Store (check with jpm).
- * - need to phase out old API and drope *1 from the names of the functions
- *   once the old ones are dropped.
- */
-
 bool plasma_get_local(plasma_connection *conn,
                       object_id object_id,
                       object_buffer *object_buffer) {
