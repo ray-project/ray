@@ -188,18 +188,45 @@ int ObjectInfoSubscribe_RedisCommand(RedisModuleCtx *ctx,
 int ResultTableAdd_RedisCommand(RedisModuleCtx *ctx,
                                 RedisModuleString **argv,
                                 int argc) {
-  REDISMODULE_NOT_USED(ctx);
-  REDISMODULE_NOT_USED(argv);
-  REDISMODULE_NOT_USED(argc);
+  /* Usage is RAY.RESULT_TABLE_ADD <object_id> <task_id>. */
+  if (argc != 3) {
+    return RedisModule_WrongArity(ctx);
+  }
+
+  /* Set the task ID under field "task" in the object info table. */
+  RedisModuleString *object_id = argv[1];
+  RedisModuleString *task_id = argv[2];
+  RedisModuleKey *key;
+  key = OpenPrefixedKey(ctx, OBJECT_INFO_PREFIX, object_id, REDISMODULE_WRITE);
+  RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "task", task_id, NULL);
+
+  /* Clean up. */
+  RedisModule_CloseKey(key);
+  RedisModule_ReplyWithSimpleString(ctx, "OK");
+
   return REDISMODULE_OK;
 }
 
 int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
                                    RedisModuleString **argv,
                                    int argc) {
-  REDISMODULE_NOT_USED(ctx);
-  REDISMODULE_NOT_USED(argv);
-  REDISMODULE_NOT_USED(argc);
+  /* Usage is RAY.RESULT_TABLE_LOOKUP <object_id>. */
+  if (argc != 2) {
+    return RedisModule_WrongArity(ctx);
+  }
+
+  /* Get the task ID under field "task" in the object info table. */
+  RedisModuleString *object_id = argv[1];
+  RedisModuleKey *key;
+  key = OpenPrefixedKey(ctx, OBJECT_INFO_PREFIX, object_id, REDISMODULE_READ);
+  RedisModuleString *task_id;
+  RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "task", &task_id, NULL);
+  RedisModule_ReplyWithString(ctx, task_id);
+
+  /* Clean up. */
+  RedisModule_FreeString(ctx, task_id);
+  RedisModule_CloseKey(key);
+
   return REDISMODULE_OK;
 }
 
