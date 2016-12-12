@@ -487,6 +487,32 @@ TEST plasma_transfer_reply_header_test(void) {
   PASS();
 }
 
+TEST plasma_subscribe_request_test(void) {
+  int fd = create_temp_file();
+  /* test for sending an empty list */
+  plasma_send_subscribe_request(fd, NULL, 0);
+  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaSubscribeRequest);
+  int64_t num_objects;
+  object_id *object_ids_return;
+  plasma_read_subscribe_request(data, &object_ids_return, &num_objects);
+  ASSERT(num_objects == 0);
+  free(data);
+  close(fd);
+  /* test for sending a non-empty list */
+  fd = create_temp_file();
+  object_id object_ids[2];
+  object_ids[0] = globally_unique_id();
+  object_ids[1] = globally_unique_id();
+  plasma_send_subscribe_request(fd, object_ids, 2);
+  data = read_message_from_file(fd, MessageType_PlasmaSubscribeRequest);
+  plasma_read_subscribe_request(data, &object_ids_return, &num_objects);
+  ASSERT(object_ids_equal(object_ids[0], object_ids_return[0]));
+  ASSERT(object_ids_equal(object_ids[1], object_ids_return[1]));
+  free(object_ids_return);
+  free(data);
+  close(fd);
+  PASS();
+}
 
 
 SUITE(plasma_serialization_tests) {
@@ -512,6 +538,7 @@ SUITE(plasma_serialization_tests) {
   RUN_TEST(plasma_wait_reply_test);
   RUN_TEST(plasma_transfer_request_test);
   RUN_TEST(plasma_transfer_reply_header_test);
+  RUN_TEST(plasma_subscribe_request_test);
 }
 
 GREATEST_MAIN_DEFS();
