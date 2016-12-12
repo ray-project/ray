@@ -46,7 +46,7 @@ RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
  *
  * This is called from a client with the command:
  *
- *     RAY.OBJECT_TABLE_LOOKUP "(object id)"
+ *     RAY.OBJECT_TABLE_LOOKUP <object id>
  *
  * @param object_id A string representing the object ID.
  * @return A list of plasma manager IDs that are listed in the object table as
@@ -89,14 +89,14 @@ int ObjectTableLookup_RedisCommand(RedisModuleCtx *ctx,
  *
  * This is called from a client with the command:
  *
- *     RAY.OBJECT_TABLE_ADD "(object id)" (data_size) "(hash string)" (manager)
+ *     RAY.OBJECT_TABLE_ADD <object id> <data size> <hash string> <manager id>
  *
  * @param object_id A string representing the object ID.
  * @param data_size An integer which is the object size in bytes.
  * @param hash_string A string which is a hash of the object.
  * @param manager A string which represents the manager ID of the plasma manager
  *        that has the object.
- * @return OK if the operation was successesful and an error with string
+ * @return OK if the operation was successful and an error with string
  *         "hash mismatch" if the same object_id is already present with a
  *         different hash value.
  */
@@ -166,7 +166,7 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
   reply = RedisModule_Call(ctx, "PUBLISH", "ss", object_id, publish);
   RedisModule_FreeString(ctx, publish);
   if (reply == NULL) {
-    return RedisModule_ReplyWithError(ctx, "PUBLISH no successesful");
+    return RedisModule_ReplyWithError(ctx, "PUBLISH unsuccessful");
   }
 
   /* Clean up. */
@@ -195,10 +195,21 @@ int ObjectInfoSubscribe_RedisCommand(RedisModuleCtx *ctx,
   return REDISMODULE_OK;
 }
 
+/**
+ * Add a new entry to the result table or update an existing one.
+ *
+ * This is called from a client with the command:
+ *
+ *     RAY.RESULT_TABLE_ADD <object id> <task id>
+ *
+ * @param object_id A string representing the object ID.
+ * @param task_id A string representing the task ID of the task that produced
+ *        the object.
+ * @return OK if the operation was successful.
+ */
 int ResultTableAdd_RedisCommand(RedisModuleCtx *ctx,
                                 RedisModuleString **argv,
                                 int argc) {
-  /* Usage is RAY.RESULT_TABLE_ADD <object_id> <task_id>. */
   if (argc != 3) {
     return RedisModule_WrongArity(ctx);
   }
@@ -206,6 +217,7 @@ int ResultTableAdd_RedisCommand(RedisModuleCtx *ctx,
   /* Set the task ID under field "task" in the object info table. */
   RedisModuleString *object_id = argv[1];
   RedisModuleString *task_id = argv[2];
+
   RedisModuleKey *key;
   key = OpenPrefixedKey(ctx, OBJECT_INFO_PREFIX, object_id, REDISMODULE_WRITE);
   RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "task", task_id, NULL);
@@ -217,16 +229,27 @@ int ResultTableAdd_RedisCommand(RedisModuleCtx *ctx,
   return REDISMODULE_OK;
 }
 
+/**
+ * Add a new entry to the result table or update an existing one.
+ *
+ * This is called from a client with the command:
+ *
+ *     RAY.RESULT_TABLE_LOOKUP <object id>
+ *
+ * @param object_id A string representing the object ID.
+ * @return An empty string if the object ID is not in the result table and the
+ *         task ID of the task that created the object ID otherwise.
+ */
 int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
                                    RedisModuleString **argv,
                                    int argc) {
-  /* Usage is RAY.RESULT_TABLE_LOOKUP <object_id>. */
   if (argc != 2) {
     return RedisModule_WrongArity(ctx);
   }
 
   /* Get the task ID under field "task" in the object info table. */
   RedisModuleString *object_id = argv[1];
+
   RedisModuleKey *key;
   key = OpenPrefixedKey(ctx, OBJECT_INFO_PREFIX, object_id, REDISMODULE_READ);
 

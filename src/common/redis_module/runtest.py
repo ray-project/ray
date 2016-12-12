@@ -69,19 +69,6 @@ class TestGlobalStateStore(unittest.TestCase):
     response = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP", "object_id1")
     self.assertEqual(set(response), {"manager_id1", "manager_id2"})
 
-  def testResultTableAddAndLookup(self):
-    response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id1")
-    self.assertEqual(set(response), set([]))
-    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id1")
-    response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id1")
-    self.assertEqual(set(response), set([]))
-    self.redis.execute_command("RAY.RESULT_TABLE_ADD", "object_id1", "task data")
-    response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id1")
-    self.assertEqual(response, "task data")
-    self.redis.execute_command("RAY.RESULT_TABLE_ADD", "object_id2", "task data 2")
-    response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id2")
-    self.assertEqual(response, "task data 2")
-
   def testObjectTableSubscribe(self):
     p = self.redis.pubsub()
     # Subscribe to an object ID.
@@ -91,6 +78,19 @@ class TestGlobalStateStore(unittest.TestCase):
     self.assertEqual(p.get_message()["data"], 1)
     # Receive the actual data.
     self.assertEqual(p.get_message()["data"], "MANAGERS manager_id1")
+
+  def testResultTableAddAndLookup(self):
+    response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id1")
+    self.assertEqual(set(response), set([]))
+    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id1")
+    response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id1")
+    self.assertEqual(set(response), set([]))
+    self.redis.execute_command("RAY.RESULT_TABLE_ADD", "object_id1", "task_id1")
+    response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id1")
+    self.assertEqual(response, "task_id1")
+    self.redis.execute_command("RAY.RESULT_TABLE_ADD", "object_id2", "task_id2")
+    response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id2")
+    self.assertEqual(response, "task_id2")
 
 if __name__ == "__main__":
   unittest.main(verbosity=2)
