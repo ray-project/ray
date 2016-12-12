@@ -95,9 +95,11 @@ TEST object_reconstruction_test(void) {
     ASSERT_EQ(memcmp(task_assigned, spec, task_spec_size(spec)), 0);
     task_spec *reconstruct_task = photon_get_task(photon->conn);
     ASSERT_EQ(memcmp(reconstruct_task, spec, task_spec_size(spec)), 0);
+    /* Clean up. */
     free_task_spec(spec);
     free_task_spec(task_assigned);
     free_task_spec(reconstruct_task);
+    destroy_photon_mock(photon);
     exit(0);
   } else {
     /* Run the event loop. NOTE: OSX appears to require the parent process to
@@ -106,7 +108,7 @@ TEST object_reconstruction_test(void) {
                          (event_loop_timer_handler) timeout_handler, NULL);
     event_loop_run(photon->loop);
     /* Wait for the child process to exit before considering the test case
-     * passed. */
+     * passed. Then, clean up. */
     wait(NULL);
     destroy_photon_mock(photon);
     PASS();
@@ -137,6 +139,7 @@ TEST object_reconstruction_recursive_test(void) {
       task_spec *task_assigned = photon_get_task(photon->conn);
       ASSERT_EQ(memcmp(task_assigned, specs[i], task_spec_size(task_assigned)),
                 0);
+      free_task_spec(task_assigned);
     }
     /* Request reconstruction of the last return object. */
     object_id return_id = task_return(specs[9], 0);
@@ -153,11 +156,14 @@ TEST object_reconstruction_recursive_test(void) {
         if (memcmp(task_assigned, specs[j], task_spec_size(task_assigned)) ==
             0) {
           found = true;
+          free_task_spec(specs[j]);
           specs[j] = NULL;
         }
       }
+      free_task_spec(task_assigned);
       ASSERT(found);
     }
+    destroy_photon_mock(photon);
     exit(0);
   } else {
     /* Run the event loop. NOTE: OSX appears to require the parent process to
@@ -165,7 +171,12 @@ TEST object_reconstruction_recursive_test(void) {
     event_loop_add_timer(photon->loop, 1000,
                          (event_loop_timer_handler) timeout_handler, NULL);
     event_loop_run(photon->loop);
+    /* Wait for the child process to exit before considering the test case
+     * passed. Then, clean up. */
     wait(NULL);
+    for (int i = 0; i < NUM_TASKS; ++i) {
+      free_task_spec(specs[i]);
+    }
     destroy_photon_mock(photon);
     PASS();
   }
