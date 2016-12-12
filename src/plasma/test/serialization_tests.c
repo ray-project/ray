@@ -514,6 +514,20 @@ TEST plasma_subscribe_request_test(void) {
   PASS();
 }
 
+TEST plasma_subscribe_reply_test(void) {
+  int fd = create_temp_file();
+  /* test for sending an empty list */
+  int file_descriptor = 10;
+  plasma_send_subscribe_reply(fd, file_descriptor);
+  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaSubscribeReply);
+  int file_descriptor_read;
+  plasma_read_subscribe_reply(data, &file_descriptor_read);
+  ASSERT(file_descriptor == file_descriptor_read);
+  free(data);
+  close(fd);
+  PASS();
+}
+
 
 SUITE(plasma_serialization_tests) {
   RUN_TEST(data_int_message_test);
@@ -539,6 +553,7 @@ SUITE(plasma_serialization_tests) {
   RUN_TEST(plasma_transfer_request_test);
   RUN_TEST(plasma_transfer_reply_header_test);
   RUN_TEST(plasma_subscribe_request_test);
+  RUN_TEST(plasma_subscribe_reply_test);
 }
 
 GREATEST_MAIN_DEFS();
