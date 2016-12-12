@@ -53,6 +53,7 @@ enum PlasmaError:int {
   ObjectNonExistent
 }
 
+
 // Plasma store messages
 
 table PlasmaCreateRequest {
@@ -89,6 +90,16 @@ table PlasmaCreateReply {
   error: PlasmaError;
 }
 
+// This is used by the following messages:
+//  - PlasmaSubscribeReply
+//  - PlasmaUnsubscribeRequest
+//  - PlasmaUnsibscribeReply
+
+table DataInt {
+  // Value to be sent.
+  value: int;
+}
+
 // This is the format of the following messages
 // - PlasmaSealRequest
 // - PlasmaReleaseRequest
@@ -120,6 +131,15 @@ table ObjectIds {
   // IDs of the requested objects stored at local Plasma store.
   object_ids: [string];
 }
+
+// This is the format of the following messages
+// - PlasmaWaitReply
+
+table ObjectRequests {
+  // Array of object requests being returned.
+  object_requests: [ObjectRequest];
+}
+
 
 table PlasmaGetLocalRequest {
   // IDs of the requested objects stored at local Plasma store.
@@ -166,14 +186,9 @@ table PlasmaWaitRequest {
   timeout: long;
 }
 
-table PlasmaWaitReply {
-  // Array of object requests being returned.
-  object_requests: [ObjectRequest];
-  // Number of objects expected to be returned, if available.
-  num_ready_objects: int;
-}
-
-table DataInt {
-  // Value to be sent.
-  value: int;
+table PlasmaTransferRequest{
+  // ID of the object.
+  object_id: string;
+  // Information associated to the object, e.g., error, status
+  info: int;
 }

@@ -88,12 +88,11 @@ int send_object_ids(int sock,
  * Read the payload of a message which contains an array of object ids.
  *
  * @param data Message payload.
- * @param object_ids_ptr Array of pointers of object IDs are written.
+ * @param object_ids_ptr Array of pointers of object IDs being returned.
  *                       This array is allocated by the function so it must be feed by the caller.
  *                       The reason of why this is allocated by this function instead of the caller
  *                       is because the caller doesn't know the size of the array.
- * @param num_objects Number of objects in the array.
- *
+ * @param num_objects Number of objects in the array being returned (in the array). *
  * @return Void.
  */
 void read_object_ids(uint8_t *data,
@@ -130,8 +129,32 @@ int send_object_ids_and_infos(int sock,
  */
 void read_object_ids_and_infos(uint8_t *data,
                                object_id** object_ids_ptr,
-                               int32_t object_infos[],
+                               int32_t** object_infos_ptr,
                                int64_t *num_objects);
+
+/**
+ * Send a message of a given type containing an array of object requests.
+ *
+ * @param sock Socket on which the message is sent.
+ * @param message_type Message type.
+ * @param object_requests Array of object requests to be sent
+ * @param num_objects Number of object requests to be sent.
+ * @return Propagate finalize_buffer_and_send()return value.
+ */
+int send_object_requests(int sock, int message_type, object_request object_requests[], int num_requests);
+
+/**
+ * Read the payload of a message which contains an array of object requests.
+ *
+ * @param data Message payload.
+ * @param object_requests_ptr Array of pointers of object requests being returned.
+ *                            This array is allocated by the function so it must be feed by the caller.
+ *                            The reason of why this is allocated by this function instead of the caller
+ *                            is because the caller doesn't know the size of the array.
+ * @param num_requests Number of object requests in the array (being returned). *
+ * @return Void.
+ */
+void read_object_requests(uint8_t *data, object_request **object_requests_ptr, int *num_requests);
 
 /**
  * Plasma Create message functions.
@@ -245,8 +268,8 @@ void plasma_read_get_local_reply(uint8_t *data,
 #define plasma_send_fetch_remote_reply(sock, object_ids, object_infos, num_objects) \
   send_object_ids_and_infos(sock, MessageType_PlasmaFetchRemoteReply, object_ids, object_infos, num_objects)
 
-#define plasma_read_fetch_remote_reply(data, object_ids_ptr, object_infos, num_objects) \
-  read_object_ids_and_infos(data, object_ids_ptr, object_infos, num_objects)
+#define plasma_read_fetch_remote_reply(data, object_ids_ptr, object_infos_ptr, num_objects) \
+  read_object_ids_and_infos(data, object_ids_ptr, object_infos_ptr, num_objects)
 
 /**
  * Plasma Fetch Remote No Reply message functions.
@@ -270,6 +293,14 @@ int plasma_send_wait_request(int sock,
 void plasma_read_wait_request(uint8_t *data,
                               object_request object_requests[],
                               int *num_ready_objects);
+
+#define plasma_send_wait_reply(sock, object_requests, num_requests) \
+  send_object_requests(sock, MessageType_PlasmaWaitReply, object_requests, num_requests);
+
+
+#define plasma_read_wait_reply(data, object_requests_ptr, num_requests) \
+  read_object_requests(data, object_requests_ptr, num_requests);
+
 
 /**
  * Plasma Subscribe message functions.
@@ -303,6 +334,7 @@ void plasma_read_wait_request(uint8_t *data,
 
 #define plasma_read_unsubscribe_reply(data, error) \
   read_data_int(data, error)
+
 
 
 #endif /* PLASMA_PROTOCOL */

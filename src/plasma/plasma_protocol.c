@@ -189,7 +189,7 @@ int send_object_ids_and_infos(int sock,
 
 void read_object_ids_and_infos(uint8_t *data,
                                object_id** object_ids_ptr,
-                               int32_t object_infos[],
+                               int32_t **object_infos_ptr,
                                int64_t *num_objects) {
   CHECK(data);
   ObjectIdsAndInfos_table_t req = ObjectIdsAndInfos_as_root(data);
@@ -199,8 +199,45 @@ void read_object_ids_and_infos(uint8_t *data,
   // Get info associated to the object IDs.
   flatbuffers_int32_vec_t object_info_vector = ObjectIdsAndInfos_object_infos(req);
   assert((*num_objects) == flatbuffers_int32_vec_len(object_info_vector));
+  *object_infos_ptr = calloc(*num_objects, sizeof(int32_t));
+  assert(object_infos_ptr);
   for (int i = 0; i < *num_objects; ++i) {
-    object_infos[i] = flatbuffers_int32_vec_at(object_info_vector, i);
+    (*object_infos_ptr)[i] = flatbuffers_int32_vec_at(object_info_vector, i);
+  }
+}
+
+int send_object_requests(int sock, int message_type, object_request object_requests[], int num_requests) {
+  flatcc_builder_t builder;
+  flatcc_builder_init(&builder);
+  ObjectRequests_start_as_root(&builder);
+
+  ObjectRequest_vec_start(&builder);
+  for (int i = 0; i < num_requests; ++i) {
+    flatbuffers_string_ref_t id =
+            flatbuffers_string_create(&builder, (const char *) &object_requests[i].object_id.id[0], UNIQUE_ID_SIZE);
+    ObjectRequest_vec_push_create(&builder, id, (int32_t)object_requests[i].type, (int32_t)object_requests[i].status);
+  }
+  ObjectRequest_vec_ref_t objreq_vec = ObjectRequest_vec_end(&builder);
+  ObjectRequests_object_requests_add(&builder, objreq_vec);
+  ObjectRequests_end_as_root(&builder);
+  return finalize_buffer_and_send(&builder, sock, message_type);
+}
+
+void read_object_requests(uint8_t *data,
+                          object_request **object_requests_ptr,
+                          int *num_requests) {
+  CHECK(data);
+  ObjectRequests_table_t req = ObjectRequests_as_root(data);
+  ObjectRequest_vec_t objreq_vec = ObjectRequests_object_requests(req);
+  // TODO (ion): This is risky, maybe num_ready_objects should contain length of object_request object_requests?
+  *num_requests = ObjectRequest_vec_len(objreq_vec);
+  *object_requests_ptr = calloc(*num_requests, sizeof(object_request));
+  object_request *object_requests = *object_requests_ptr;
+  for (int i = 0; i < *num_requests; i++) {
+    ObjectRequest_table_t objreq = ObjectRequest_vec_at(objreq_vec, i);
+    memcpy(&object_requests[i].object_id.id[0], ObjectRequest_id(objreq), UNIQUE_ID_SIZE);
+    object_requests[i].type = ObjectRequest_type(objreq);
+    object_requests[i].status = ObjectRequest_status(objreq);
   }
 }
 
@@ -368,3 +405,8 @@ void plasma_read_wait_request(uint8_t *data,
     object_requests[i].status = ObjectRequest_status(objreq);
   }
 }
+
+
+
+
+
