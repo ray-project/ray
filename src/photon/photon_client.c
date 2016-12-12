@@ -10,6 +10,11 @@ photon_conn *photon_connect(const char *photon_socket) {
   return result;
 }
 
+void photon_disconnect(photon_conn *conn) {
+  close(conn->conn);
+  free(conn);
+}
+
 void photon_submit(photon_conn *conn, task_spec *task) {
   write_message(conn->conn, SUBMIT_TASK, task_spec_size(task),
                 (uint8_t *) task);
@@ -36,10 +41,6 @@ void photon_task_done(photon_conn *conn) {
 void photon_reconstruct_object(photon_conn *conn, object_id object_id) {
   write_message(conn->conn, RECONSTRUCT_OBJECT, sizeof(object_id),
                 (uint8_t *) &object_id);
-}
-
-void photon_disconnect(photon_conn *conn) {
-  write_message(conn->conn, DISCONNECT_CLIENT, 0, NULL);
 }
 
 void photon_log_message(photon_conn *conn) {

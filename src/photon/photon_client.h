@@ -13,10 +13,20 @@ typedef struct {
  * Connect to the local scheduler.
  *
  * @param photon_socket The name of the socket to use to connect to the local
-          scheduler.
+ *        scheduler.
  * @return The connection information.
  */
 photon_conn *photon_connect(const char *photon_socket);
+
+/**
+ * Disconnect from the local scheduler.
+ *
+ * @param conn Photon connection information returned by photon_connect.
+ *
+ * @return Void.
+ */
+void photon_disconnect(photon_conn *conn);
+ 
 
 /**
  * Submit a task to the local scheduler.
@@ -55,14 +65,6 @@ void photon_task_done(photon_conn *conn);
  * @return Void.
  */
 void photon_reconstruct_object(photon_conn *conn, object_id object_id);
-
-/**
- * Disconnect from the local scheduler.
- *
- * @param conn The connection information.
- * @return Void.
- */
-void photon_disconnect(photon_conn *conn);
 
 /**
  * Send a log message to the local scheduler.

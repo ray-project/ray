@@ -69,7 +69,7 @@ photon_mock *init_photon_mock() {
 }
 
 void destroy_photon_mock(photon_mock *mock) {
-  free(mock->conn);
+  photon_disconnect(mock->conn);
   close(mock->photon_fd);
   close(mock->plasma_fd);
   free_local_scheduler(mock->photon_state);
