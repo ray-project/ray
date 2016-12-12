@@ -30,6 +30,12 @@ enum MessageType:int {
   // Wait for objects to be ready either from local or remote Plasma stores.
   PlasmaWaitRequest,
   PlasmaWaitReply,
+  // Subscribe to a list of objects or to all objects.
+  PlasmaSubscribeRequest,
+  PlasmaSubscribeReply,
+  // Unsubscribe.
+  PlasmaUnsubscribeRequest,
+  PlasmaUnsubscribeReply,
 }
 
 // table MessageHeader {

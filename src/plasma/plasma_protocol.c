@@ -47,6 +47,10 @@ void object_ids_from_flatbuffer(flatbuffers_string_vec_t object_id_vector,
                                 OUT object_id **object_ids_ptr,
                                 OUT int64_t *num_objects) {
   *num_objects = flatbuffers_string_vec_len(object_id_vector);
+  if (*num_objects == 0) {
+    *object_ids_ptr = NULL;
+    *num_objects = 0;
+  }
   *object_ids_ptr = malloc((*num_objects) * sizeof(object_id));
   object_id *object_ids = *object_ids_ptr;
   for (int i = 0; i < *num_objects; i++) {

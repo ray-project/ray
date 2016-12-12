@@ -8,6 +8,26 @@
 
 #include "format/plasma_reader.h"
 
+
+/**
+ * Send a message containing an integre value.
+ *
+ * @param sock Socket on which the message is sent.
+ * @param message_type Message type.
+ * @param value Value to be sent.
+ * @return Propagate finalize_buffer_and_send()return value.
+ */
+int send_data_int(int sock, int message_type, int value);
+
+/**
+ * Read the payload of a message which contains only object id.
+ *
+ * @param data Message payload.
+ * @param value Value to be read from the payload.
+ * @return Void.
+ */
+void read_data_int(uint8_t *data, int *value);
+
 /**
  * Send a message of a given type containing just an object id.
  *
@@ -251,9 +271,38 @@ void plasma_read_wait_request(uint8_t *data,
                               object_request object_requests[],
                               int *num_ready_objects);
 
+/**
+ * Plasma Subscribe message functions.
+ */
 
-int send_data_int(int sock, int message_type, int value);
+/** If num_objects == 0, subscribe to everything */
+#define plasma_send_subscribe_request(sock, object_ids, num_objects) \
+  send_object_ids(sock, MessageType_PlasmaSubscribeRequest, object_ids, num_objects)
 
-void read_data_int(uint8_t *data, int *value);
+#define plasma_read_subscribe_request(data, object_ids_ptr, num_objects) \
+  read_object_ids(data, object_ids_ptr, num_objects)
+
+#define plasma_send_subscribe_reply(sock, file_descriptor) \
+  send_data_int(sock, MessageType_PlasmaSubscribeReply, file_descriptor)
+
+#define plasma_read_subscribe_reply(data, file_descriptor) \
+  read_data_int(data, file_descriptor)
+
+/**
+ * Plasma Unsubscribe message functions.
+ */
+
+#define plasma_send_unsubscribe_request(sock, file_descriptor) \
+  send_data_int(sock, MessageType_PlasmaUnsubscribeRequest, file_descriptor)
+
+#define plasma_read_unsubscribe_request(data, file_descriptor) \
+  read_data_int(data, file_descriptor)
+
+#define plasma_send_unsubscribe_reply(sock, error) \
+  send_data_int(sock, MessageType_PlasmaUnsubscribeReply, error)
+
+#define plasma_read_unsubscribe_reply(data, error) \
+  read_data_int(data, error)
+
 
 #endif /* PLASMA_PROTOCOL */
