@@ -7,13 +7,12 @@
  *
  * == OBJECT TABLE ==
  *
- * Consists of two parts:
- * - The object location table, indexed by
- *   OL:object_id, which is the set of plasma manager indices that
- *   have access to the object.
- * - The object info table, indexed by
- *   OI:object_id, which is a hashmap with key "hash" for the hash of the object
- *   and key "data_size" for the size of the object in bytes.
+ * This consists of two parts:
+ * - The object location table, indexed by OL:object_id, which is the set of
+ *   plasma manager indices that have access to the object.
+ * - The object info table, indexed by OI:object_id, which is a hashmap with key
+ *   "hash" for the hash of the object and key "data_size" for the size of the
+ *   object in bytes.
  *
  * == TASK TABLE ==
  *
@@ -45,11 +44,13 @@ RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
 /**
  * Lookup an entry in the object table.
  *
- * This is called with the hiredis command
- * RAY.OBJECT_TABLE_LOOKUP "(object id)"
+ * This is called from a client with the command:
  *
- * It returns a list of plasma manager IDs that are registered with the
- * object table to have the object.
+ *     RAY.OBJECT_TABLE_LOOKUP "(object id)"
+ *
+ * @param object_id A string representing the object ID.
+ * @return A list of plasma manager IDs that are listed in the object table as
+ *         having the object.
  */
 int ObjectTableLookup_RedisCommand(RedisModuleCtx *ctx,
                                    RedisModuleString **argv,
@@ -86,17 +87,18 @@ int ObjectTableLookup_RedisCommand(RedisModuleCtx *ctx,
 /**
  * Add a new entry to the object table or update an existing one.
  *
- * This is called with the hiredis command
- * RAY.OBJECT_TABLE_ADD "(object id)" (data_size) "(hash string)" (manager)
+ * This is called from a client with the command:
  *
- * @param object_id A string representing the object.
+ *     RAY.OBJECT_TABLE_ADD "(object id)" (data_size) "(hash string)" (manager)
+ *
+ * @param object_id A string representing the object ID.
  * @param data_size An integer which is the object size in bytes.
  * @param hash_string A string which is a hash of the object.
- * @param manager A string which represents the plasma manager that holds the
- *        object. This is typically an integer.
+ * @param manager A string which represents the manager ID of the plasma manager
+ *        that has the object.
  * @return OK if the operation was successesful and an error with string
-           "hash mismatch" if the same object_id is already present with
-           a different hash value.
+ *         "hash mismatch" if the same object_id is already present with a
+ *         different hash value.
  */
 int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
                                 RedisModuleString **argv,

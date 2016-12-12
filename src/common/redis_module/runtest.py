@@ -1,3 +1,5 @@
+from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
 
 import os
@@ -37,7 +39,7 @@ class TestGlobalStateStore(unittest.TestCase):
     with self.assertRaises(redis.ResponseError):
       self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "hello")
     with self.assertRaises(redis.ResponseError):
-      self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id2", "a1", "hash2", "manager_id1")
+      self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id2", "one", "hash2", "manager_id1")
     with self.assertRaises(redis.ResponseError):
       self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id2", 1, "hash2", "manager_id1", "extra argument")
     # Check that Redis returns an error when RAY.OBJECT_TABLE_ADD adds an object
