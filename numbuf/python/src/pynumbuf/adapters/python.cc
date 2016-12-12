@@ -16,6 +16,10 @@ extern PyObject* numbuf_deserialize_callback;
 
 namespace numbuf {
 
+#if PY_MAJOR_VERSION >= 3
+#define PyInt_FromLong PyLong_FromLong
+#endif
+
 Status get_value(
     ArrayPtr arr, int32_t index, int32_t type, PyObject* base, PyObject** result) {
   switch (arr->type()->type) {
@@ -30,7 +34,7 @@ Status get_value(
       int32_t nchars;
       const uint8_t* str =
           std::static_pointer_cast<BinaryArray>(arr)->GetValue(index, &nchars);
-      *result = PyString_FromStringAndSize(reinterpret_cast<const char*>(str), nchars);
+      *result = PyBytes_FromStringAndSize(reinterpret_cast<const char*>(str), nchars);
       return Status::OK();
     }
     case Type::STRING: {
@@ -82,24 +86,25 @@ Status append(PyObject* elem, SequenceBuilder& builder, std::vector<PyObject*>& 
     int64_t data = PyLong_AsLongLongAndOverflow(elem, &overflow);
     RETURN_NOT_OK(builder.AppendInt64(data));
     if (overflow) { return Status::NotImplemented("long overflow"); }
+#if PY_MAJOR_VERSION < 3
   } else if (PyInt_Check(elem)) {
     RETURN_NOT_OK(builder.AppendInt64(static_cast<int64_t>(PyInt_AS_LONG(elem))));
-  } else if (PyString_Check(elem)) {
-    auto data = reinterpret_cast<uint8_t*>(PyString_AS_STRING(elem));
-    auto size = PyString_GET_SIZE(elem);
+#endif
+  } else if (PyBytes_Check(elem)) {
+    auto data = reinterpret_cast<uint8_t*>(PyBytes_AS_STRING(elem));
+    auto size = PyBytes_GET_SIZE(elem);
     RETURN_NOT_OK(builder.AppendBytes(data, size));
   } else if (PyUnicode_Check(elem)) {
     Py_ssize_t size;
 #if PY_MAJOR_VERSION >= 3
-    char* data =
-        PyUnicode_AsUTF8AndSize(elem, &size);  // TODO(pcm): Check if this is correct
+    char* data = PyUnicode_AsUTF8AndSize(elem, &size);
 #else
     PyObject* str = PyUnicode_AsUTF8String(elem);
     char* data = PyString_AS_STRING(str);
     size = PyString_GET_SIZE(str);
+    Py_XDECREF(str);
 #endif
     Status s = builder.AppendString(data, size);
-    Py_XDECREF(str);
     RETURN_NOT_OK(s);
   } else if (PyList_Check(elem)) {
     builder.AppendList(PyList_Size(elem));
@@ -119,7 +124,7 @@ Status append(PyObject* elem, SequenceBuilder& builder, std::vector<PyObject*>& 
   } else {
     if (!numbuf_serialize_callback) {
       std::stringstream ss;
-      ss << "data type of " << PyString_AS_STRING(PyObject_Repr(elem))
+      ss << "data type of " << PyBytes_AS_STRING(PyObject_Repr(elem))
          << " not recognized and custom serialization handler not registered";
       return Status::NotImplemented(ss.str());
     } else {
@@ -246,7 +251,7 @@ Status SerializeDict(
   // This block is used to decrement the reference counts of the results
   // returned by the serialization callback, which is called in SerializeArray
   // in numpy.cc as well as in DeserializeDict and in append in this file.
-  static PyObject* py_type = PyString_FromString("_pytype_");
+  static PyObject* py_type = PyUnicode_FromString("_pytype_");
   for (const auto& dict : dicts) {
     if (PyDict_Contains(dict, py_type)) {
       // If the dictionary contains the key "_pytype_", then the user has to
@@ -273,7 +278,7 @@ Status DeserializeDict(std::shared_ptr<Array> array, int32_t start_idx, int32_t 
   }
   Py_XDECREF(keys);  // PyList_GetItem(keys, ...) incremented the reference count
   Py_XDECREF(vals);  // PyList_GetItem(vals, ...) incremented the reference count
-  static PyObject* py_type = PyString_FromString("_pytype_");
+  static PyObject* py_type = PyUnicode_FromString("_pytype_");
   if (PyDict_Contains(result, py_type) && numbuf_deserialize_callback) {
     PyObject* arglist = Py_BuildValue("(O)", result);
     // The result of the call to PyObject_CallObject will be passed to Python

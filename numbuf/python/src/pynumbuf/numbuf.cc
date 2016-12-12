@@ -1,3 +1,4 @@
+#include "bytesobject.h"
 #include <Python.h>
 #include <arrow/api.h>
 #include <arrow/ipc/adapter.h>
@@ -72,7 +73,7 @@ static PyObject* serialize_list(PyObject* self, PyObject* args) {
 
     PyObject* r = PyTuple_New(3);
     PyTuple_SetItem(r, 0, PyByteArray_FromStringAndSize(ptr, buffer->size()));
-    PyTuple_SetItem(r, 1, PyInt_FromLong(size));
+    PyTuple_SetItem(r, 1, PyLong_FromLong(size));
     PyTuple_SetItem(r, 2,
         PyCapsule_New(reinterpret_cast<void*>(batch), "arrow", &ArrowCapsule_Destructor));
     return r;
@@ -95,7 +96,7 @@ static PyObject* write_to_buffer(PyObject* self, PyObject* args) {
   int64_t header_end_offset;
   ARROW_CHECK_OK(ipc::WriteRecordBatch((*batch)->columns(), (*batch)->num_rows(),
       target.get(), &body_end_offset, &header_end_offset));
-  return PyInt_FromLong(header_end_offset);
+  return PyLong_FromLong(header_end_offset);
 }
 
 /* Documented in doc/numbuf.rst in ray-core */
@@ -180,13 +181,54 @@ static PyMethodDef NumbufMethods[] = {
         "set serialization and deserialization callbacks"},
     {NULL, NULL, 0, NULL}};
 
-PyMODINIT_FUNC initlibnumbuf(void) {
-  PyObject* m;
-  m = Py_InitModule3("libnumbuf", NumbufMethods, "Python C Extension for Numbuf");
+// clang-format off
+#if PY_MAJOR_VERSION >= 3
+static struct PyModuleDef moduledef = {
+    PyModuleDef_HEAD_INIT,
+    "libnumbuf",                     /* m_name */
+    "Python C Extension for Numbuf", /* m_doc */
+    0,                               /* m_size */
+    NumbufMethods,                   /* m_methods */
+    NULL,                            /* m_reload */
+    NULL,                            /* m_traverse */
+    NULL,                            /* m_clear */
+    NULL,                            /* m_free */
+};
+#endif
+// clang-format on
+
+#if PY_MAJOR_VERSION >= 3
+#define INITERROR return NULL
+#else
+#define INITERROR return
+#endif
+
+#ifndef PyMODINIT_FUNC /* declarations for DLL import/export */
+#define PyMODINIT_FUNC void
+#endif
+
+#if PY_MAJOR_VERSION >= 3
+#define MOD_INIT(name) PyMODINIT_FUNC PyInit_##name(void)
+#else
+#define MOD_INIT(name) PyMODINIT_FUNC init##name(void)
+#endif
+
+MOD_INIT(libnumbuf) {
+#if PY_MAJOR_VERSION >= 3
+  PyObject* m = PyModule_Create(&moduledef);
+#else
+  PyObject* m =
+      Py_InitModule3("libnumbuf", NumbufMethods, "Python C Extension for Numbuf");
+#endif
+
   char numbuf_error[] = "numbuf.error";
   NumbufError = PyErr_NewException(numbuf_error, NULL, NULL);
   Py_INCREF(NumbufError);
   PyModule_AddObject(m, "numbuf_error", NumbufError);
   import_array();
+
+#if PY_MAJOR_VERSION >= 3
+  return m;
+#endif
 }
 }
