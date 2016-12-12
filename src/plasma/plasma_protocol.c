@@ -363,7 +363,7 @@ void plasma_read_wait_request(uint8_t *data,
   *num_ready_objects = ObjectRequest_vec_len(objreq_vec);
   for (int i = 0; i < *num_ready_objects; i++) {
     ObjectRequest_table_t objreq = ObjectRequest_vec_at(objreq_vec, i);
-    memcpy(&object_requests[i].object_id.id[0], ObjectRequest_vec_at(objreq_vec, i), UNIQUE_ID_SIZE);
+    memcpy(&object_requests[i].object_id.id[0], ObjectRequest_id(objreq), UNIQUE_ID_SIZE);
     object_requests[i].type = ObjectRequest_type(objreq);
     object_requests[i].status = ObjectRequest_status(objreq);
   }
