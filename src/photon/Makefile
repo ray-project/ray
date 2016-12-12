@@ -26,11 +26,10 @@ clean:
 test: CFLAGS += -DRAY_TIMEOUT=50 -DRAY_COMMON_LOG_LEVEL=4
 test: $(BUILD)/photon_tests FORCE
 	../common/thirdparty/redis/src/redis-server &
-	sleep 1s
-	./build/photon_tests
-	../common/thirdparty/redis/src/redis-cli shutdown
+	sleep 0.5s && ./build/photon_tests && ../common/thirdparty/redis/src/redis-cli shutdown
 
 valgrind: test
-	valgrind --leak-check=full --error-exitcode=1 ./build/photon_tests
+	../common/thirdparty/redis/src/redis-server &
+	sleep 0.5s && valgrind --leak-check=full --error-exitcode=1 ./build/photon_tests && ../common/thirdparty/redis/src/redis-cli shutdown
 
 FORCE:

@@ -65,6 +65,9 @@ photon_mock *init_photon_mock() {
                         (void *) mock->photon_state, 0);
   worker *w = (worker *) utarray_front(mock->photon_state->workers);
   mock->client_sock = w->sock;
+  utstring_free(plasma_manager_socket_name);
+  utstring_free(plasma_store_socket_name);
+  utstring_free(photon_socket_name);
   return mock;
 }
 
@@ -72,7 +75,9 @@ void destroy_photon_mock(photon_mock *mock) {
   photon_disconnect(mock->conn);
   close(mock->photon_fd);
   close(mock->plasma_fd);
+  /* This also frees mock->loop. */
   free_local_scheduler(mock->photon_state);
+  free(mock);
 }
 
 TEST object_reconstruction_test(void) {
@@ -90,6 +95,9 @@ TEST object_reconstruction_test(void) {
     ASSERT_EQ(memcmp(task_assigned, spec, task_spec_size(spec)), 0);
     task_spec *reconstruct_task = photon_get_task(photon->conn);
     ASSERT_EQ(memcmp(reconstruct_task, spec, task_spec_size(spec)), 0);
+    free_task_spec(spec);
+    free_task_spec(task_assigned);
+    free_task_spec(reconstruct_task);
     exit(0);
   } else {
     /* Run the event loop. NOTE: OSX appears to require the parent process to
