@@ -335,6 +335,26 @@ void plasma_read_wait_request(uint8_t *data,
 #define plasma_read_unsubscribe_reply(data, error) \
   read_data_int(data, error)
 
+int plasma_send_transfer_request(int sock,
+                                 int message_type,
+                                 object_id object_id,
+                                 uint8_t addr[IPv4_ADDR_LEN],
+                                 int port);
 
+void plasma_read_transfer_request(uint8_t *data,
+                                  object_id *object_id,
+                                  uint8_t *addr,
+                                  int *port);
+
+int plasma_send_transfer_reply_header(int sock,
+                                      int message_type,
+                                      object_id object_id,
+                                      int64_t data_size,
+                                      int64_t metadata_size);
+
+void plasma_read_transfer_reply_header(uint8_t *data,
+                                       object_id *object_id,
+                                       int64_t *data_size,
+                                       int64_t *metadata_size);
 
 #endif /* PLASMA_PROTOCOL */

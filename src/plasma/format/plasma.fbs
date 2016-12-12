@@ -36,6 +36,10 @@ enum MessageType:int {
   // Unsubscribe.
   PlasmaUnsubscribeRequest,
   PlasmaUnsubscribeReply,
+  // Request the transfer of an object, and get the header of
+  // the reply specifying the object size and the object's metadata size.
+  PlasmaTransferRequest,
+  PlasmaTransferReplyHeader,
 }
 
 // table MessageHeader {
@@ -189,6 +193,19 @@ table PlasmaWaitRequest {
 table PlasmaTransferRequest{
   // ID of the object.
   object_id: string;
-  // Information associated to the object, e.g., error, status
-  info: int;
+  // IP address.
+  address: [byte];
+  // Port number.
+  port: int;
 }
+
+table PlasmaTransferReplyHeader{
+  // ID of the object.
+  object_id: string;
+  // The size in bytes of the data.
+  data_size: ulong;
+  // The size in bytes of the metadata.
+  metadata_size: ulong;
+}
+
+

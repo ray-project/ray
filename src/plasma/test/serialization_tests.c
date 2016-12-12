@@ -444,6 +444,50 @@ TEST plasma_wait_reply_test(void) {
   PASS();
 }
 
+TEST plasma_transfer_request_test(void) {
+  int fd = create_temp_file();
+  object_id object_id_send = globally_unique_id();
+  uint8_t addr[IPv4_ADDR_LEN] = {1, 2, 3, 4};
+  int port = 1001;
+  plasma_send_transfer_request(fd, MessageType_PlasmaTransferRequest, object_id_send, addr, port);
+  // Read message.
+  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaTransferRequest);
+  object_id object_id_read;
+  uint8_t addr_read[IPv4_ADDR_LEN];
+  int port_read;
+  plasma_read_transfer_request(data, &object_id_read, addr_read, &port_read);
+  ASSERT(object_ids_equal(object_id_send, object_id_read));
+  for (int i = 0; i < IPv4_ADDR_LEN; i++) {
+    ASSERT(addr[i] == addr_read[i]);
+  }
+  ASSERT(port == port_read);
+  free(data);
+  close(fd);
+  PASS();
+}
+
+TEST plasma_transfer_reply_header_test(void) {
+  int fd = create_temp_file();
+  object_id object_id_send = globally_unique_id();
+  int64_t data_size = random();
+  int64_t metadata_size = random();
+  plasma_send_transfer_reply_header(fd, MessageType_PlasmaTransferReplyHeader,
+                                    object_id_send, data_size, metadata_size);
+  // Read message.
+  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaTransferReplyHeader);
+  object_id object_id_read;
+  int64_t data_size_read;
+  int64_t metadata_size_read;
+  plasma_read_transfer_reply_header(data, &object_id_read, &data_size_read, &metadata_size_read);
+  ASSERT(object_ids_equal(object_id_send, object_id_read));
+  ASSERT(data_size == data_size_read);
+  ASSERT(metadata_size == metadata_size_read);
+  free(data);
+  close(fd);
+  PASS();
+}
+
+
 
 SUITE(plasma_serialization_tests) {
   RUN_TEST(data_int_message_test);
@@ -466,6 +510,8 @@ SUITE(plasma_serialization_tests) {
   RUN_TEST(plasma_fetch_remote_reply_test);
   RUN_TEST(plasma_wait_request_test);
   RUN_TEST(plasma_wait_reply_test);
+  RUN_TEST(plasma_transfer_request_test);
+  RUN_TEST(plasma_transfer_reply_header_test);
 }
 
 GREATEST_MAIN_DEFS();

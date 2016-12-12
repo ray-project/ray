@@ -15,6 +15,8 @@
 #include "utarray.h"
 #include "uthash.h"
 
+#define IPv4_ADDR_LEN 4
+
 typedef struct {
   int64_t data_size;
   int64_t metadata_size;

@@ -406,6 +406,82 @@ void plasma_read_wait_request(uint8_t *data,
   }
 }
 
+/**
+* Plasma wait messages.
+*/
+
+int plasma_send_transfer_request(int sock,
+                                 int message_type,
+                                 object_id object_id,
+                                 uint8_t addr[IPv4_ADDR_LEN],
+                                 int port) {
+  flatcc_builder_t builder;
+  flatcc_builder_init(&builder);
+  PlasmaTransferRequest_start_as_root(&builder);
+  /* Add object ID */
+  PlasmaTransferRequest_object_id_create(&builder, (const char *)&object_id.id[0], UNIQUE_ID_SIZE);
+  /* Add address. */
+  flatbuffers_uint8_vec_ref_t address_vec = flatbuffers_uint8_vec_create(&builder, addr, IPv4_ADDR_LEN);
+  PlasmaTransferRequest_address_add(&builder, address_vec);
+  /* Add port. */
+  PlasmaTransferRequest_port_add(&builder, port);
+  PlasmaTransferRequest_end_as_root(&builder);
+  return finalize_buffer_and_send(&builder, sock, message_type);
+}
+
+void plasma_read_transfer_request(uint8_t *data,
+                                  object_id *object_id,
+                                  uint8_t *addr,
+                                  int *port) {
+  CHECK(data);
+  PlasmaTransferRequest_table_t req = PlasmaTransferRequest_as_root(data);
+  /* Read object ID. */
+  flatbuffers_string_t id = PlasmaTransferRequest_object_id(req);
+  CHECK(flatbuffers_string_len(id) == UNIQUE_ID_SIZE);
+  memcpy(&object_id->id[0], id, UNIQUE_ID_SIZE);
+  /* Read address. */
+  flatbuffers_uint8_vec_t address_vec = PlasmaTransferRequest_address(req);
+  assert(flatbuffers_uint8_vec_len(address_vec) == IPv4_ADDR_LEN);
+  for (int i = 0; i < IPv4_ADDR_LEN; ++i) {
+    addr[i] = flatbuffers_uint8_vec_at(address_vec, i);
+  }
+  /* Read port */
+  *port = PlasmaTransferRequest_port(req);
+}
+
+int plasma_send_transfer_reply_header(int sock,
+                                      int message_type,
+                                      object_id object_id,
+                                      int64_t data_size,
+                                      int64_t metadata_size) {
+  flatcc_builder_t builder;
+  flatcc_builder_init(&builder);
+  PlasmaTransferReplyHeader_start_as_root(&builder);
+  /* Add object ID */
+  PlasmaTransferReplyHeader_object_id_create(&builder, (const char *)&object_id.id[0], UNIQUE_ID_SIZE);
+  /* Add data_size. */
+  PlasmaTransferReplyHeader_data_size_add(&builder, data_size);
+  /* Add metadata_size. */
+  PlasmaTransferReplyHeader_metadata_size_add(&builder, metadata_size);
+  PlasmaTransferReplyHeader_end_as_root(&builder);
+  return finalize_buffer_and_send(&builder, sock, message_type);
+}
+
+void plasma_read_transfer_reply_header(uint8_t *data,
+                                       object_id *object_id,
+                                       int64_t *data_size,
+                                       int64_t *metadata_size) {
+  CHECK(data);
+  PlasmaTransferReplyHeader_table_t req = PlasmaTransferReplyHeader_as_root(data);
+  /* Read object ID. */
+  flatbuffers_string_t id = PlasmaTransferReplyHeader_object_id(req);
+  CHECK(flatbuffers_string_len(id) == UNIQUE_ID_SIZE);
+  memcpy(&object_id->id[0], id, UNIQUE_ID_SIZE);
+  /* Read data size. */
+  *data_size = PlasmaTransferReplyHeader_data_size(req);
+  /* Read metadata size. */
+  *metadata_size = PlasmaTransferReplyHeader_metadata_size(req);
+}
 
 
 
