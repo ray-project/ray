@@ -18,12 +18,19 @@ PyObject *pickle_dumps = NULL;
 PyObject *pickle_protocol = NULL;
 
 void init_pickle_module(void) {
-  /* For Python 3 this needs to be "_pickle" instead of "cPickle". */
+#if PY_MAJOR_VERSION >= 3
+  pickle_module = PyImport_ImportModule("pickle");
+#else
   pickle_module = PyImport_ImportModuleNoBlock("cPickle");
-  pickle_loads = PyBytes_FromString("loads");
-  pickle_dumps = PyBytes_FromString("dumps");
-  pickle_protocol = PyObject_GetAttrString(pickle_module, "HIGHEST_PROTOCOL");
+#endif
   CHECK(pickle_module != NULL);
+  CHECK(PyObject_HasAttrString(pickle_module, "loads"));
+  CHECK(PyObject_HasAttrString(pickle_module, "dumps"));
+  CHECK(PyObject_HasAttrString(pickle_module, "HIGHEST_PROTOCOL"));
+  pickle_loads = PyUnicode_FromString("loads");
+  pickle_dumps = PyUnicode_FromString("dumps");
+  pickle_protocol = PyObject_GetAttrString(pickle_module, "HIGHEST_PROTOCOL");
+  CHECK(pickle_protocol != NULL);
 }
 
 /* Define the PyObjectID class. */

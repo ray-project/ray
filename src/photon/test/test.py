@@ -74,7 +74,7 @@ class TestPhotonClient(unittest.TestCase):
       10 * ["a"],
       100 * ["a"],
       1000 * ["a"],
-      [1, 1.3, 2L, 1L << 100, "hi", u"hi", [1, 2]],
+      [1, 1.3, 1 << 100, "hi", u"hi", [1, 2]],
       object_ids[:1],
       object_ids[:2],
       object_ids[:3],
