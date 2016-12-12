@@ -7,6 +7,7 @@
 #include "plasma_protocol.h"
 #include "common.h"
 #include "io.h"
+#include "../plasma.h"
 
 SUITE(plasma_serialization_tests);
 
@@ -72,6 +73,84 @@ plasma_object random_plasma_object() {
   object.metadata_size = random + 4;
   return object;
 }
+
+TEST object_id_message_test(void) {
+  int fd = create_temp_file();
+  object_id object_id_sent = globally_unique_id();
+  int message_type = 10;
+  send_object_id(fd, message_type, object_id_sent);
+  uint8_t *data = read_message_from_file(fd, message_type);
+  object_id object_id_read;
+  read_object_id(data, &object_id_read);
+  ASSERT(object_ids_equal(object_id_sent, object_id_read));
+  free(data);
+  close(fd);
+  PASS();
+}
+
+TEST object_id_and_info_message_test(void) {
+  int fd = create_temp_file();
+  object_id object_id_sent = globally_unique_id();
+  int message_type = 11;
+  int info_sent = 5;
+  send_object_id_and_info(fd, message_type, object_id_sent, info_sent);
+  // Read message.
+  uint8_t *data = read_message_from_file(fd, message_type);
+  object_id object_id_read;
+  int info_read;
+  read_object_id_and_info(data, &object_id_read, &info_read);
+  ASSERT(object_ids_equal(object_id_sent, object_id_read));
+  ASSERT(info_sent == info_read);
+  free(data);
+  close(fd);
+  PASS();
+}
+
+TEST object_ids_message_test(void) {
+  int fd = create_temp_file();
+  object_id object_ids[2];
+  object_ids[0] = globally_unique_id();
+  object_ids[1] = globally_unique_id();
+  int message_type =15;
+  send_object_ids(fd, message_type, object_ids, 2);
+  uint8_t *data = read_message_from_file(fd, message_type);
+  int64_t num_objects;
+  object_id *object_ids_read;
+  read_object_ids(data, &object_ids_read, &num_objects);
+  ASSERT(object_ids_equal(object_ids[0], object_ids_read[0]));
+  ASSERT(object_ids_equal(object_ids[1], object_ids_read[1]));
+  free(object_ids_read);
+  free(data);
+  close(fd);
+  PASS();
+}
+
+TEST object_ids_and_infos_message_test(void) {
+  int fd = create_temp_file();
+  object_id object_ids[2];
+  object_ids[0] = globally_unique_id();
+  object_ids[1] = globally_unique_id();
+  int32_t object_infos[2];
+  object_infos[0] = 5;
+  object_infos[1] = 11;
+  send_object_ids_and_infos(fd, MessageType_PlasmaGetLocalReply, object_ids, object_infos, 2);
+  //
+  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaGetLocalReply);
+  int64_t num_objects;
+  object_id *object_ids_read;
+  int32_t object_infos_read[2];
+  read_object_ids_and_infos(data, &object_ids_read, &object_infos_read[0], &num_objects);
+  ASSERT(object_ids_equal(object_ids[0], object_ids_read[0]));
+  ASSERT(object_ids_equal(object_ids[1], object_ids_read[1]));
+  ASSERT(object_infos[0] == object_infos_read[0]);
+  ASSERT(object_infos[1] == object_infos_read[1]);
+  free(object_ids_read);
+  free(data);
+  close(fd);
+  PASS();
+}
+
+
 
 TEST plasma_create_reply_test(void) {
   int fd = create_temp_file();
@@ -163,14 +242,156 @@ TEST plasma_seal_reply_test(void) {
   PASS();
 }
 
+TEST plasma_release_request_test(void) {
+  int fd = create_temp_file();
+  object_id object_id1 = globally_unique_id();
+  plasma_send_release_request(fd, object_id1);
+  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaReleaseRequest);
+  object_id object_id2;
+  plasma_read_release_request(data, &object_id2);
+  ASSERT(object_ids_equal(object_id1, object_id2));
+  free(data);
+  close(fd);
+  PASS();
+}
+
+TEST plasma_release_reply_test(void) {
+  int fd = create_temp_file();
+  object_id object_id1 = globally_unique_id();
+  int error1 = 5;
+  plasma_send_release_reply(fd, object_id1, error1);
+  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaReleaseReply);
+  object_id object_id2;
+  int error2;
+  plasma_read_release_reply(data, &object_id2, &error2);
+  ASSERT(object_ids_equal(object_id1, object_id2));
+  ASSERT(error1 == error2);
+  free(data);
+  close(fd);
+  PASS();
+}
+
+TEST plasma_delete_request_test(void) {
+  int fd = create_temp_file();
+  object_id object_id1 = globally_unique_id();
+  plasma_send_delete_request(fd, object_id1);
+  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaDeleteRequest);
+  object_id object_id2;
+  plasma_read_delete_request(data, &object_id2);
+  ASSERT(object_ids_equal(object_id1, object_id2));
+  free(data);
+  close(fd);
+  PASS();
+}
+
+TEST plasma_delete_reply_test(void) {
+  int fd = create_temp_file();
+  object_id object_id1 = globally_unique_id();
+  int error1 = 5;
+  plasma_send_delete_reply(fd, object_id1, error1);
+  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaDeleteReply);
+  object_id object_id2;
+  int error2;
+  plasma_read_delete_reply(data, &object_id2, &error2);
+  ASSERT(object_ids_equal(object_id1, object_id2));
+  ASSERT(error1 == error2);
+  free(data);
+  close(fd);
+  PASS();
+}
+
+//-----
+
+TEST plasma_fetch_remote_request_test(void) {
+  int fd = create_temp_file();
+  object_id object_ids[2];
+  object_ids[0] = globally_unique_id();
+  object_ids[1] = globally_unique_id();
+  plasma_send_fetch_remote_request(fd, object_ids, 2);
+  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaFetchRemoteRequest);
+  int64_t num_objects;
+  object_id *object_ids_read;
+  plasma_read_fetch_remote_request(data, &object_ids_read, &num_objects);
+  ASSERT(object_ids_equal(object_ids[0], object_ids_read[0]));
+  ASSERT(object_ids_equal(object_ids[1], object_ids_read[1]));
+  free(object_ids_read);
+  free(data);
+  close(fd);
+  PASS();
+}
+
+TEST plasma_fetch_remote_reply_test(void) {
+  int fd = create_temp_file();
+  object_id object_ids[2];
+  object_ids[0] = globally_unique_id();
+  object_ids[1] = globally_unique_id();
+  int32_t object_statuses[2];
+  object_statuses[0] = 5;
+  object_statuses[1] = 11;
+  plasma_send_fetch_remote_reply(fd, object_ids, object_statuses, 2);
+  /* Read message back. */
+  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaFetchRemoteReply);
+  int64_t num_objects;
+  object_id *object_ids_read;
+  int32_t object_statuses_read[2];
+  plasma_read_fetch_remote_reply(data, &object_ids_read, &object_statuses_read[0], &num_objects);
+  ASSERT(object_ids_equal(object_ids[0], object_ids_read[0]));
+  ASSERT(object_ids_equal(object_ids[1], object_ids_read[1]));
+  ASSERT(object_statuses[0] == object_statuses_read[0]);
+  ASSERT(object_statuses[1] == object_statuses_read[1]);
+  free(object_ids_read);
+  free(data);
+  close(fd);
+  PASS();
+}
+
+TEST plasma_wait_request_test(void) {
+  int fd = create_temp_file();
+  object_request object_requests[2];
+  object_requests[0].object_id = globally_unique_id();
+  object_requests[0].type = PLASMA_QUERY_ANYWHERE;
+  object_requests[0].status = PLASMA_OBJECT_LOCAL;
+  object_requests[1].object_id = globally_unique_id();
+  object_requests[1].type = PLASMA_QUERY_LOCAL;
+  object_requests[1].status = PLASMA_OBJECT_NONEXISTENT;
+  int num_ready_objects = 1;
+  int timeout_ms = 1000;
+  plasma_send_wait_request(fd, object_requests, 2, num_ready_objects, timeout_ms);
+  /* Read message back. */
+  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaWaitRequest);
+  object_request object_requests_read[2];
+  int num_ready_objects_read;
+  plasma_read_wait_request(data, &object_requests_read[0], &num_ready_objects_read);
+  ASSERT(object_ids_equal(object_requests[0].object_id, object_requests_read[0].object_id));
+  ASSERT(object_ids_equal(object_requests[1].object_id, object_requests_read[1].object_id));
+  ASSERT(object_requests[0].type == object_requests_read[0].type);
+  ASSERT(object_requests[1].type == object_requests_read[1].type);
+  ASSERT(object_requests[0].status == object_requests_read[0].status);
+  ASSERT(object_requests[1].status == object_requests_read[1].status);
+  free(data);
+  close(fd);
+  PASS();
+}
+
 
 SUITE(plasma_serialization_tests) {
+  RUN_TEST(object_id_message_test);
+  RUN_TEST(object_id_and_info_message_test);
+  RUN_TEST(object_ids_message_test);
+  RUN_TEST(object_ids_and_infos_message_test);
   RUN_TEST(plasma_create_request_test);
   RUN_TEST(plasma_create_reply_test);
   RUN_TEST(plasma_get_local_request_test);
   RUN_TEST(plasma_get_local_reply_test);
   RUN_TEST(plasma_seal_request_test);
   RUN_TEST(plasma_seal_reply_test);
+  RUN_TEST(plasma_release_request_test);
+  RUN_TEST(plasma_release_reply_test);
+  RUN_TEST(plasma_delete_request_test);
+  RUN_TEST(plasma_delete_reply_test);
+  RUN_TEST(plasma_fetch_remote_request_test);
+  RUN_TEST(plasma_fetch_remote_reply_test);
+  RUN_TEST(plasma_wait_request_test);
 }
 
 GREATEST_MAIN_DEFS();

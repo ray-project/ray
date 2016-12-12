@@ -1,8 +1,10 @@
-#include "plasma_protocol.h"
+#include <assert.h>
 
+#include "plasma_protocol.h"
 #include "io.h"
 
 #include "format/plasma_builder.h"
+#include "plasma.h"
 
 #define FLATBUFFER_BUILDER_DEFAULT_SIZE 1024
 
@@ -72,6 +74,113 @@ int finalize_buffer_and_send(flatcc_builder_t *B, int fd, int message_type) {
   return r;
 }
 
+/**
+ * Functions to send and read an object id.
+ */
+
+int send_object_id(int sock, int message_type, object_id object_id) {
+  flatcc_builder_t builder;
+  flatcc_builder_init(&builder);
+  ObjectId_start_as_root(&builder);
+  ObjectId_object_id_create(&builder, (const char *)&object_id.id[0], UNIQUE_ID_SIZE);
+  ObjectId_end_as_root(&builder);
+  return finalize_buffer_and_send(&builder, sock, message_type);
+}
+
+void read_object_id(uint8_t *data, object_id *object_id) {
+  CHECK(data);
+  ObjectId_table_t req = ObjectId_as_root(data);
+  flatbuffers_string_t id = ObjectId_object_id(req);
+  CHECK(flatbuffers_string_len(id) == UNIQUE_ID_SIZE);
+  memcpy(&object_id->id[0], id, UNIQUE_ID_SIZE);
+}
+
+/**
+ * Functions to send and read an object id and its associated information.
+ */
+
+int send_object_id_and_info(int sock, int message_type, object_id object_id, int object_info) {
+  flatcc_builder_t builder;
+  flatcc_builder_init(&builder);
+  ObjectIdAndInfo_start_as_root(&builder);
+  ObjectIdAndInfo_object_id_create(&builder, (const char *)&object_id.id[0], UNIQUE_ID_SIZE);
+  ObjectIdAndInfo_info_add(&builder, object_info);
+  ObjectIdAndInfo_end_as_root(&builder);
+  return finalize_buffer_and_send(&builder, sock, message_type);
+}
+
+void read_object_id_and_info(uint8_t *data, object_id *object_id, int *object_info) {
+  CHECK(data);
+  ObjectIdAndInfo_table_t req = ObjectIdAndInfo_as_root(data);
+  flatbuffers_string_t id = ObjectIdAndInfo_object_id(req);
+  CHECK(flatbuffers_string_len(id) == UNIQUE_ID_SIZE);
+  memcpy(&object_id->id[0], id, UNIQUE_ID_SIZE);
+  *object_info = ObjectIdAndInfo_info(req);
+}
+
+/**
+ * Functions to send and read an array of object ids.
+ */
+
+int send_object_ids(int sock,
+                    int message_type,
+                    object_id object_ids[],
+                    int64_t num_objects) {
+  flatcc_builder_t builder;
+  flatcc_builder_init(&builder);
+  ObjectIds_start_as_root(&builder);
+
+  flatbuffers_string_vec_ref_t ids = object_ids_to_flatbuffer(&builder, object_ids, num_objects);
+  ObjectIds_object_ids_add(&builder, ids);
+
+  ObjectIds_end_as_root(&builder);
+  return finalize_buffer_and_send(&builder, sock, message_type);
+}
+
+void read_object_ids(uint8_t *data,
+                     object_id** object_ids_ptr,
+                     int64_t *num_objects) {
+  CHECK(data);
+  ObjectIds_table_t req = ObjectIds_as_root(data);
+  flatbuffers_string_vec_t object_id_vector = ObjectIds_object_ids(req);
+  object_ids_from_flatbuffer(object_id_vector, object_ids_ptr, num_objects);
+}
+
+int send_object_ids_and_infos(int sock,
+                              int message_type,
+                              object_id object_ids[],
+                              int32_t object_infos[],
+                              int64_t num_objects) {
+  flatcc_builder_t builder;
+  flatcc_builder_init(&builder);
+  ObjectIdsAndInfos_start_as_root(&builder);
+  // Add object IDs.
+  flatbuffers_string_vec_ref_t ids = object_ids_to_flatbuffer(&builder, object_ids, num_objects);
+  ObjectIdsAndInfos_object_ids_add(&builder, ids);
+  // Add info for each object.
+  flatbuffers_int32_vec_ref_t object_info_vector = flatbuffers_int32_vec_create(&builder, object_infos, num_objects);
+  ObjectIdsAndInfos_object_infos_add(&builder, object_info_vector);
+  ObjectIdsAndInfos_end_as_root(&builder);
+  return finalize_buffer_and_send(&builder, sock, message_type);
+}
+
+void read_object_ids_and_infos(uint8_t *data,
+                               object_id** object_ids_ptr,
+                               int32_t object_infos[],
+                               int64_t *num_objects) {
+  CHECK(data);
+  ObjectIdsAndInfos_table_t req = ObjectIdsAndInfos_as_root(data);
+  // Get object IDs and number of object IDs.
+  flatbuffers_string_vec_t object_id_vector = ObjectIdsAndInfos_object_ids(req);
+  object_ids_from_flatbuffer(object_id_vector, object_ids_ptr, num_objects);
+  // Get info associated to the object IDs.
+  flatbuffers_int32_vec_t object_info_vector = ObjectIdsAndInfos_object_infos(req);
+  assert((*num_objects) == flatbuffers_int32_vec_len(object_info_vector));
+  for (int i = 0; i < *num_objects; ++i) {
+    object_infos[i] = flatbuffers_int32_vec_at(object_info_vector, i);
+  }
+}
+
 int plasma_send_create_request(int sock,
                                object_id object_id,
                                int64_t data_size,
@@ -139,29 +248,6 @@ void plasma_read_create_reply(uint8_t *data,
   *error_code = PlasmaCreateReply_error(rep);
 }
 
-int plasma_send_get_local_request(int sock,
-                                  object_id object_ids[],
-                                  int64_t num_objects) {
-  flatcc_builder_t builder;
-  flatcc_builder_init(&builder);
-  PlasmaGetLocalRequest_start_as_root(&builder);
-
-  flatbuffers_string_vec_ref_t ids = object_ids_to_flatbuffer(&builder, object_ids, num_objects);
-  PlasmaGetLocalRequest_object_ids_add(&builder, ids);
-
-  PlasmaGetLocalRequest_end_as_root(&builder);
-  return finalize_buffer_and_send(&builder, sock, MessageType_PlasmaGetLocalRequest);
-}
-
-void plasma_read_get_local_request(uint8_t *data,
-                                   object_id** object_ids_ptr,
-                                   int64_t *num_objects) {
-  CHECK(data);
-  PlasmaGetLocalRequest_table_t req = PlasmaGetLocalRequest_as_root(data);
-  flatbuffers_string_vec_t object_id_vector = PlasmaGetLocalRequest_object_ids(req);
-  object_ids_from_flatbuffer(object_id_vector, object_ids_ptr, num_objects);
-}
-
 int plasma_send_get_local_reply(int sock,
                                 object_id object_ids[],
                                 plasma_object plasma_objects[],
@@ -188,7 +274,7 @@ int plasma_send_get_local_reply(int sock,
   }
   PlasmaObject_vec_ref_t object_vec = PlasmaObject_vec_end(&builder);
   PlasmaGetLocalReply_plasma_objects_add(&builder, object_vec);
-  PlasmaGetLocalRequest_end_as_root(&builder);
+  PlasmaGetLocalReply_end_as_root(&builder);
   return finalize_buffer_and_send(&builder, sock, MessageType_PlasmaGetLocalReply);
 }
 
@@ -200,7 +286,7 @@ void plasma_read_get_local_reply(uint8_t *data,
   PlasmaGetLocalReply_table_t req = PlasmaGetLocalReply_as_root(data);
   flatbuffers_string_vec_t object_id_vector = PlasmaGetLocalReply_object_ids(req);
   object_ids_from_flatbuffer(object_id_vector, object_ids_ptr, num_objects);
-  
+
   memset(plasma_objects, 0, sizeof(plasma_object) * (*num_objects));
   PlasmaObject_vec_t plasma_objects_vector = PlasmaGetLocalReply_plasma_objects(req);
 
@@ -216,45 +302,46 @@ void plasma_read_get_local_reply(uint8_t *data,
 }
 
 /**
- * Plasma seal messages.
+ *
+ * Plasma wait messages.
  */
 
-int plasma_send_seal_request(int sock,
-                             object_id object_id) {
+int plasma_send_wait_request(int sock,
+                             object_request object_requests[],
+                             int num_requests,
+                             int num_ready_objects,
+                             int64_t timeout_ms) {
   flatcc_builder_t builder;
   flatcc_builder_init(&builder);
-  PlasmaSealRequest_start_as_root(&builder);
-  PlasmaSealRequest_object_id_create(&builder, (const char *)&object_id.id[0], UNIQUE_ID_SIZE);
-  PlasmaSealRequest_end_as_root(&builder);
-  return finalize_buffer_and_send(&builder, sock, MessageType_PlasmaSealRequest);
+  PlasmaWaitRequest_as_root(&builder);
+
+  ObjectRequest_vec_start(&builder);
+  for (int i = 0; i < num_requests; ++i) {
+    flatbuffers_string_ref_t id =
+      flatbuffers_string_create(&builder, (const char *) &object_requests[i].object_id.id[0], UNIQUE_ID_SIZE);
+    ObjectRequest_vec_push_create(&builder, id, (int32_t)object_requests[i].type, (int32_t)object_requests[i].status);
+  }
+  ObjectRequest_vec_ref_t objreq_vec = ObjectRequest_vec_end(&builder);
+  PlasmaWaitRequest_object_requests_add(&builder, objreq_vec);
+  PlasmaWaitRequest_num_ready_objects_add(&builder, num_ready_objects);
+  PlasmaWaitRequest_timeout_add(&builder, timeout_ms);
+  PlasmaWaitRequest_end_as_root(&builder);
+  return finalize_buffer_and_send(&builder, sock, MessageType_PlasmaWaitRequest);
 }
 
-void plasma_read_seal_request(uint8_t *data, object_id *object_id) {
+
+void plasma_read_wait_request(uint8_t *data,
+                              object_request object_requests[],
+                              int *num_ready_objects) {
   CHECK(data);
-  PlasmaSealRequest_table_t req = PlasmaSealRequest_as_root(data);
-  flatbuffers_string_t id = PlasmaSealRequest_object_id(req);
-  CHECK(flatbuffers_string_len(id) == UNIQUE_ID_SIZE);
-  memcpy(&object_id->id[0], id, UNIQUE_ID_SIZE);
-}
-
-int plasma_send_seal_reply(int sock,
-                           object_id object_id,
-                           int error) {
-  flatcc_builder_t builder;
-  flatcc_builder_init(&builder);
-  PlasmaSealReply_start_as_root(&builder);
-  PlasmaSealReply_object_id_create(&builder, (const char *)&object_id.id[0], UNIQUE_ID_SIZE);
-  PlasmaSealReply_error_add(&builder, error);
-  PlasmaSealReply_end_as_root(&builder);
-  return finalize_buffer_and_send(&builder, sock, MessageType_PlasmaSealReply);
-}
-
-
-void plasma_read_seal_reply(uint8_t *data, object_id *object_id, int *error) {
-  CHECK(data);
-  PlasmaSealReply_table_t req = PlasmaSealReply_as_root(data);
-  flatbuffers_string_t id = PlasmaSealReply_object_id(req);
-  CHECK(flatbuffers_string_len(id) == UNIQUE_ID_SIZE);
-  memcpy(&object_id->id[0], id, UNIQUE_ID_SIZE);
-  *error = PlasmaSealReply_error(req);
+  PlasmaWaitRequest_table_t req = PlasmaWaitRequest_as_root(data);
+  ObjectRequest_vec_t objreq_vec = PlasmaWaitRequest_object_requests(req);
+  // TODO (ion): This is risky, maybe num_ready_objects should contain length of object_request object_requests?
+  *num_ready_objects = ObjectRequest_vec_len(objreq_vec);
+  for (int i = 0; i < *num_ready_objects; i++) {
+    ObjectRequest_table_t objreq = ObjectRequest_vec_at(objreq_vec, i);
+    memcpy(&object_requests[i].object_id.id[0], ObjectRequest_vec_at(objreq_vec, i), UNIQUE_ID_SIZE);
+    object_requests[i].type = ObjectRequest_type(objreq);
+    object_requests[i].status = ObjectRequest_status(objreq);
+  }
 }

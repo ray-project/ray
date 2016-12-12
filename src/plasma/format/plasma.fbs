@@ -14,9 +14,22 @@ enum MessageType:int {
   // Release an object.
   PlasmaReleaseRequest,
   PlasmaReleaseReply,
+  // Delete an object.
+  PlasmaDeleteRequest,
+  PlasmaDeleteReply,
   // Get an object stored on local Plasma store.
   PlasmaGetLocalRequest,
-  PlasmaGetLocalReply
+  PlasmaGetLocalReply,
+  // Evict a list of objects.
+  PlasmaEvictRequest,
+  // Fetch objects from remote Plasma stores.
+  PlasmaFetchRemoteRequest,
+  PlasmaFetchRemoteReply,
+  // Fetch objects from remote Plasma stores and don't wait for reply.
+  PlasmaFetchRemoteNoReplyRequest,
+  // Wait for objects to be ready either from local or remote Plasma stores.
+  PlasmaWaitRequest,
+  PlasmaWaitReply,
 }
 
 // table MessageHeader {
@@ -70,6 +83,38 @@ table PlasmaCreateReply {
   error: PlasmaError;
 }
 
+// This is the format of the following messages
+// - PlasmaSealRequest
+// - PlasmaReleaseRequest
+// - PlasmaDeleteRequest
+
+table ObjectId {
+  // ID of the object in the local Plasma store to be released.
+  object_id: string;
+}
+
+// This is the format of the following messages
+// - PlasmaSealReply
+// - PlasmaReleaseReply
+// - PlasmaDeleteReply
+
+table ObjectIdAndInfo {
+  // ID of the object.
+  object_id: string;
+  // Information associated to the object, e.g., error, status
+  info: int;
+}
+
+// This is the format of the following messages
+// - PlasmaGetLocalRequest
+// - PlasmaStatusRequest
+// - PlasmaEvictRequest
+
+table ObjectIds {
+  // IDs of the requested objects stored at local Plasma store.
+  object_ids: [string];
+}
+
 table PlasmaGetLocalRequest {
   // IDs of the requested objects stored at local Plasma store.
   object_ids: [string];
@@ -86,29 +131,40 @@ table PlasmaGetLocalReply {
   // The number of elements in both object_ids and plasma_objects arrays must agree.
 }
 
-table PlasmaSealRequest {
-  // ID of the object in the local Plasma store to be released.
-  object_id: string;
+table ObjectIdsAndInfos {
+  // IDs of the objects being returned.
+  object_ids: [string];
+  // Array containing the information of each object ID in object_ids.
+  object_infos: [int];
+  // The number of elements in both object_ids and object_infos arrays must agree, i.e.,
+  // object_infos[i] is the information associated with object_ids[i].
 }
 
-table PlasmaSealReply {
+table ObjectRequest {
   // ID of the object.
-  object_id: string;
-  // Error.
-  error: byte;
+  id: string;
+  // The type of the object. This specifies whether we
+  // will be waiting for an object store in the local or
+  // global Plasma store.
+  type: int;
+  // The object status. This specifies where the object is stored.
+  status: int;
 }
 
-table PlasmaReleaseRequest {
-  // ID of the object in the local Plasma store to be released.
-  object_id: string;
+table PlasmaWaitRequest {
+  // Array of object requests whose status we are asking for.
+  object_requests: [ObjectRequest];
+  // Number of objects expected to be returned, if available.
+  num_ready_objects: int;
+  // timeout
+  timeout: long;
 }
 
-table PlasmaReleaseReply {
-  // ID of the object.
-  object_id: string;
-  // Error.
-  error: int;
+table PlasmaWaitReply {
+  // Array of object requests being returned.
+  object_requests: [ObjectRequest];
+  // Number of objects expected to be returned, if available.
+  num_ready_objects: int;
 }
 
 
-// Plasma manager messages
