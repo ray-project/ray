@@ -14,6 +14,7 @@ common: FORCE
 	cd ../common; make
 
 clean:
+	cd ../common; make clean
 	rm -rf $(BUILD)/*
 	rm -f *.o
 
