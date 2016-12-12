@@ -89,4 +89,4 @@ endif(APPLE)
 
 target_link_libraries(plasma ${COMMON_LIB} ${PYTHON_LIBRARIES})
 
-install(TARGETS plasma DESTINATION ${CMAKE_SOURCE_DIR}/lib/python)
+install(TARGETS plasma DESTINATION ${CMAKE_SOURCE_DIR}/plasma)
