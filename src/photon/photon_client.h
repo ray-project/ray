@@ -26,7 +26,6 @@ photon_conn *photon_connect(const char *photon_socket);
  * @return Void.
  */
 void photon_disconnect(photon_conn *conn);
- 
 
 /**
  * Submit a task to the local scheduler.
