@@ -252,5 +252,8 @@ void plasma_read_wait_request(uint8_t *data,
                               int *num_ready_objects);
 
 
+int send_data_int(int sock, int message_type, int value);
+
+void read_data_int(uint8_t *data, int *value);
 
 #endif /* PLASMA_PROTOCOL */

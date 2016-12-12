@@ -167,4 +167,7 @@ table PlasmaWaitReply {
   num_ready_objects: int;
 }
 
-
+table DataInt {
+  // Value to be sent.
+  value: int;
+}

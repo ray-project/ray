@@ -75,6 +75,25 @@ int finalize_buffer_and_send(flatcc_builder_t *B, int fd, int message_type) {
 }
 
 /**
+ * Functions to send and read an itegere.
+ */
+
+int send_data_int(int sock, int message_type, int value) {
+  flatcc_builder_t builder;
+  flatcc_builder_init(&builder);
+  DataInt_start_as_root(&builder);
+  DataInt_value_add(&builder, value);
+  DataInt_end_as_root(&builder);
+  return finalize_buffer_and_send(&builder, sock, message_type);
+}
+
+void read_data_int(uint8_t *data, int *value) {
+  CHECK(data);
+  DataInt_table_t req = DataInt_as_root(data);
+  *value = DataInt_value(req);
+}
+
+/**
  * Functions to send and read an object id.
  */
 
@@ -313,7 +332,7 @@ int plasma_send_wait_request(int sock,
                              int64_t timeout_ms) {
   flatcc_builder_t builder;
   flatcc_builder_init(&builder);
-  PlasmaWaitRequest_as_root(&builder);
+  PlasmaWaitRequest_start_as_root(&builder);
 
   ObjectRequest_vec_start(&builder);
   for (int i = 0; i < num_requests; ++i) {

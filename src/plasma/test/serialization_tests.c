@@ -151,7 +151,6 @@ TEST object_ids_and_infos_message_test(void) {
 }
 
 
-
 TEST plasma_create_reply_test(void) {
   int fd = create_temp_file();
   object_id object_id1 = globally_unique_id();
@@ -300,7 +299,6 @@ TEST plasma_delete_reply_test(void) {
   PASS();
 }
 
-//-----
 
 TEST plasma_fetch_remote_request_test(void) {
   int fd = create_temp_file();
@@ -374,7 +372,24 @@ TEST plasma_wait_request_test(void) {
 }
 
 
+TEST data_int_message_test(void) {
+  int fd = create_temp_file();
+  int value = 5;
+  int message_type = 12;
+  send_data_int(fd, message_type, value);
+  // Read message.
+  uint8_t *data = read_message_from_file(fd, message_type);
+  int value_read;
+  read_data_int(data, &value_read);
+  ASSERT(value == value_read);
+  free(data);
+  close(fd);
+  PASS();
+}
+
+
 SUITE(plasma_serialization_tests) {
+  RUN_TEST(data_int_message_test);
   RUN_TEST(object_id_message_test);
   RUN_TEST(object_id_and_info_message_test);
   RUN_TEST(object_ids_message_test);
