@@ -30,6 +30,7 @@ local_scheduler_state *init_local_scheduler(
     int redis_port,
     const char *plasma_store_socket_name,
     const char *plasma_manager_socket_name,
+    const char *plasma_manager_address,
     bool global_scheduler_exists) {
   local_scheduler_state *state = malloc(sizeof(local_scheduler_state));
   state->loop = loop;
@@ -38,7 +39,8 @@ local_scheduler_state *init_local_scheduler(
   utarray_new(state->workers, &worker_icd);
   /* Connect to Redis if a Redis address is provided. */
   if (redis_addr != NULL) {
-    state->db = db_connect(redis_addr, redis_port, "photon", "", -1);
+    state->db = db_connect_extended(redis_addr, redis_port, "photon", "", -1,
+                                    plasma_manager_address);
     db_attach(state->db, loop, false);
   } else {
     state->db = NULL;
@@ -263,12 +265,13 @@ void start_server(const char *socket_name,
                   int redis_port,
                   const char *plasma_store_socket_name,
                   const char *plasma_manager_socket_name,
+                  const char *plasma_manager_address,
                   bool global_scheduler_exists) {
   int fd = bind_ipc_sock(socket_name, true);
   event_loop *loop = event_loop_create();
   g_state = init_local_scheduler(
       loop, redis_addr, redis_port, plasma_store_socket_name,
-      plasma_manager_socket_name, global_scheduler_exists);
+      plasma_manager_socket_name, plasma_manager_address, global_scheduler_exists);
 
   /* Register a callback for registering new clients. */
   event_loop_add_file(loop, fd, EVENT_LOOP_READ, new_client_connection,
@@ -304,9 +307,11 @@ int main(int argc, char *argv[]) {
   char *plasma_store_socket_name = NULL;
   /* Socket name for the local Plasma manager. */
   char *plasma_manager_socket_name = NULL;
+  /* Address for the plasma manager associated with this Photon instance. */
+  char *plasma_manager_address = "";
   int c;
   bool global_scheduler_exists = true;
-  while ((c = getopt(argc, argv, "s:r:p:m:g:")) != -1) {
+  while ((c = getopt(argc, argv, "s:r:p:m:ga:")) != -1) {
     switch (c) {
     case 's':
       scheduler_socket_name = optarg;
@@ -322,6 +327,9 @@ int main(int argc, char *argv[]) {
       break;
     case 'g':
       global_scheduler_exists = false;
+      break;
+    case 'a':
+      plasma_manager_address = optarg;
       break;
     default:
       LOG_FATAL("unknown option %c", c);
@@ -343,7 +351,7 @@ int main(int argc, char *argv[]) {
           "then a redis address must be provided with the -r switch");
     }
     start_server(scheduler_socket_name, NULL, -1, plasma_store_socket_name,
-                 NULL, global_scheduler_exists);
+                 NULL, plasma_manager_address, global_scheduler_exists);
   } else {
     /* Parse the Redis address into an IP address and a port. */
     char redis_addr[16] = {0};
@@ -362,6 +370,7 @@ int main(int argc, char *argv[]) {
     }
     start_server(scheduler_socket_name, &redis_addr[0], atoi(redis_port),
                  plasma_store_socket_name, plasma_manager_socket_name,
+                 plasma_manager_address,
                  global_scheduler_exists);
   }
 }

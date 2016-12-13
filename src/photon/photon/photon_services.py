@@ -10,7 +10,7 @@ import time
 def random_name():
   return str(random.randint(0, 99999999))
 
-def start_local_scheduler(plasma_store_name, plasma_manager_name=None, redis_address=None, use_valgrind=False, use_profiler=False):
+def start_local_scheduler(plasma_store_name, plasma_manager_name=None, redis_address=None, use_valgrind=False, plasma_address=None, use_profiler=False):
   """Start a local scheduler process.
 
   Args:
@@ -40,6 +40,8 @@ def start_local_scheduler(plasma_store_name, plasma_manager_name=None, redis_add
     command += ["-m", plasma_manager_name]
   if redis_address is not None:
     command += ["-r", redis_address]
+  if plasma_address is not None:
+    command += ["-a", plasma_address]
   if use_valgrind:
     pid = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + command)
     time.sleep(1.0)

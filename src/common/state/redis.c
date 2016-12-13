@@ -134,6 +134,16 @@ db_handle *db_connect(const char *address,
                       const char *client_type,
                       const char *client_addr,
                       int client_port) {
+  return db_connect_extended(address, port, client_type, client_addr,
+                             client_port, ":");
+}
+
+db_handle *db_connect_extended(const char *address,
+                               int port,
+                               const char *client_type,
+                               const char *client_addr,
+                               int client_port,
+                               const char *aux_address) {
   db_handle *db = malloc(sizeof(db_handle));
   /* Sync connection for initial handshake */
   redisReply *reply;
@@ -155,7 +165,7 @@ db_handle *db_connect(const char *address,
                       address, port);
   /* Enable keyspace events. */
   reply = redisCommand(context, "CONFIG SET notify-keyspace-events AKE");
-  CHECK(reply != NULL);
+  CHECKM(reply != NULL, "db_connect failed on CONFIG SET");
   freeReplyObject(reply);
   /* Add new client using optimistic locking. */
   db_client_id client = globally_unique_id();
@@ -166,16 +176,29 @@ db_handle *db_connect(const char *address,
     freeReplyObject(reply);
     reply = redisCommand(context, "MULTI");
     freeReplyObject(reply);
-    reply = redisCommand(
-        context,
-        "HMSET db_clients:%b client_type %s address %s:%d db_client_id %b",
-        (char *) client.id, sizeof(client.id), client_type, client_addr,
-        client_port, (char *) client.id, sizeof(client.id));
+    reply = redisCommand(context,
+                         "HMSET db_clients:%b client_type %s address %s:%d "
+                         "db_client_id %b aux_address %s",
+                         (char *) client.id, sizeof(client.id), client_type,
+                         client_addr, client_port, (char *) client.id,
+                         sizeof(client.id), aux_address);
+    CHECKM(reply != NULL, "db_connect failed on HMSET");
     freeReplyObject(reply);
-    reply = redisCommand(context, "PUBLISH db_clients %b:%s",
-                         (char *) client.id, sizeof(client.id), client_type);
-    freeReplyObject(reply);
+
+    {
+      UT_string *tmpbuf;
+      utstring_new(tmpbuf);
+      utstring_printf(tmpbuf, "%s %s", client_type, aux_address);
+      reply =
+          redisCommand(context, "PUBLISH db_clients %b:%s", (char *) client.id,
+                       sizeof(client.id), utstring_body(tmpbuf));
+      CHECKM(reply != NULL, "db_connect failed on PUBLISH");
+      freeReplyObject(reply);
+      utstring_free(tmpbuf);
+    }
+
     reply = redisCommand(context, "EXEC");
+    CHECKM(reply != NULL, "db_connect failed on EXEC");
     CHECK(reply);
     if (reply->type != REDIS_REPLY_NIL) {
       freeReplyObject(reply);
@@ -550,7 +573,8 @@ void redis_get_cached_db_client(db_handle *db,
     redisReply *reply =
         redisCommand(db->sync_context, "HGET db_clients:%b address",
                      (char *) db_client_id.id, sizeof(db_client_id.id));
-    CHECK(reply->type == REDIS_REPLY_STRING);
+    CHECKM(reply->type == REDIS_REPLY_STRING, "REDIS reply type=%d",
+           reply->type);
     entry = malloc(sizeof(db_client_cache_entry));
     entry->db_client_id = db_client_id;
     entry->addr = strdup(reply->str);
@@ -963,11 +987,21 @@ void redis_db_client_table_subscribe_callback(redisAsyncContext *c,
    * client_type string, and we add 1 to null-terminate the string. */
   int client_type_length = payload->len - 1 - sizeof(client.id) + 1;
   char *client_type = malloc(client_type_length);
-  memcpy(client_type, &payload->str[1 + sizeof(client.id)], client_type_length);
+  char *aux_address = malloc(client_type_length);
+  memset(aux_address, 0, client_type_length);
+  /* Published message format: <client_id:client_type aux_addr> */
+  int rv = sscanf(&payload->str[1 + sizeof(client.id)], "%s %s", client_type,
+                  aux_address);
+  CHECKM(rv == 2,
+         "redis_db_client_table_subscribe_callback: expected 2 parsed args, "
+         "Got %d instead.",
+         rv);
   if (data->subscribe_callback) {
-    data->subscribe_callback(client, client_type, data->subscribe_context);
+    data->subscribe_callback(client, client_type, aux_address,
+                             data->subscribe_context);
   }
   free(client_type);
+  free(aux_address);
 }
 
 void redis_db_client_table_subscribe(table_callback_data *callback_data) {
