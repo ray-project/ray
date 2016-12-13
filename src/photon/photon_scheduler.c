@@ -153,11 +153,10 @@ void reconstruct_object_task_lookup_callback(object_id reconstruct_object_id,
   handle_task_submitted(state, state->algorithm_state, spec);
 }
 
-void reconstruct_object_object_lookup_callback(
-    object_id reconstruct_object_id,
-    int manager_count,
-    const char *manager_vector[],
-    void *user_context) {
+void reconstruct_object_object_lookup_callback(object_id reconstruct_object_id,
+                                               int manager_count,
+                                               const char *manager_vector[],
+                                               void *user_context) {
   /* Only continue reconstruction if we find that the object doesn't exist on
    * any nodes. NOTE: This codepath is not responsible for checking if the
    * object table entry is up-to-date. */
@@ -269,9 +268,10 @@ void start_server(const char *socket_name,
                   bool global_scheduler_exists) {
   int fd = bind_ipc_sock(socket_name, true);
   event_loop *loop = event_loop_create();
-  g_state = init_local_scheduler(
-      loop, redis_addr, redis_port, plasma_store_socket_name,
-      plasma_manager_socket_name, plasma_manager_address, global_scheduler_exists);
+  g_state =
+      init_local_scheduler(loop, redis_addr, redis_port,
+                           plasma_store_socket_name, plasma_manager_socket_name,
+                           plasma_manager_address, global_scheduler_exists);
 
   /* Register a callback for registering new clients. */
   event_loop_add_file(loop, fd, EVENT_LOOP_READ, new_client_connection,
@@ -370,8 +370,7 @@ int main(int argc, char *argv[]) {
     }
     start_server(scheduler_socket_name, &redis_addr[0], atoi(redis_port),
                  plasma_store_socket_name, plasma_manager_socket_name,
-                 plasma_manager_address,
-                 global_scheduler_exists);
+                 plasma_manager_address, global_scheduler_exists);
   }
 }
 #endif
