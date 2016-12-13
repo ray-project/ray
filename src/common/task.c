@@ -112,7 +112,10 @@ task_id compute_task_id(task_spec *spec) {
   return task_id;
 }
 
-object_id compute_return_id(task_id task_id, int64_t return_index) {
+object_id task_compute_return_id(task_id task_id, int64_t return_index) {
+  /* Here, return_indices need to be >= 0, so we can use negative
+   * indices for put. */
+  DCHECK(return_index >= 0);
   /* TODO(rkn): This line requires object and task IDs to be the same size. */
   object_id return_id = task_id;
   int64_t *first_bytes = (int64_t *) &return_id;
@@ -120,6 +123,17 @@ object_id compute_return_id(task_id task_id, int64_t return_index) {
    * the first return ID is not the same as the task ID. */
   *first_bytes = *first_bytes ^ (return_index + 1);
   return return_id;
+}
+
+object_id task_compute_put_id(task_id task_id, int64_t put_index) {
+  DCHECK(put_index >= 0);
+  /* TODO(pcm): This line requires object and task IDs to be the same size. */
+  object_id put_id = task_id;
+  int64_t *first_bytes = (int64_t *) &put_id;
+  /* XOR the first bytes of the object ID with the return index. We add one so
+   * the first return ID is not the same as the task ID. */
+  *first_bytes = *first_bytes ^ (-put_index - 1);
+  return put_id;
 }
 
 task_spec *start_construct_task_spec(task_id parent_task_id,
@@ -151,7 +165,7 @@ void finish_construct_task_spec(task_spec *spec) {
   spec->task_id = compute_task_id(spec);
   /* Set the object IDs for the return values. */
   for (int64_t i = 0; i < spec->num_returns; ++i) {
-    *task_return_ptr(spec, i) = compute_return_id(spec->task_id, i);
+    *task_return_ptr(spec, i) = task_compute_return_id(spec->task_id, i);
   }
 }
 
