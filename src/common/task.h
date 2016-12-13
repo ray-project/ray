@@ -221,6 +221,15 @@ int64_t task_args_add_val(task_spec *spec, uint8_t *data, int64_t length);
 object_id task_return(task_spec *spec, int64_t return_index);
 
 /**
+ * Compute the object id associated to a put call.
+ *
+ * @param task_id The task id of the parent task that called the put.
+ * @param put_index The number of put calls in this task so far.
+ * @return The object ID for the object that was put.
+ */
+object_id task_compute_put_id(task_id task_id, int64_t put_index);
+
+/**
  * Free a task_spec.
  *
  * @param The task_spec in question.
