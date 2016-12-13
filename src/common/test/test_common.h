@@ -1,6 +1,8 @@
 #ifndef TEST_COMMON_H
 #define TEST_COMMON_H
 
+#include <unistd.h>
+
 #include "io.h"
 #include "hiredis/hiredis.h"
 #include "utstring.h"
