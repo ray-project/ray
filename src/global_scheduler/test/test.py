@@ -101,7 +101,7 @@ class TestGlobalScheduler(unittest.TestCase):
       self.assertLessEqual(len(task_entries), 1)
       if len(task_entries) == 1:
         task_contents = self.redis_client.hgetall(task_entries[0])
-        task_status = int(task_contents["state"])
+        task_status = int(task_contents[b"state"])
         self.assertTrue(task_status in [TASK_STATUS_WAITING, TASK_STATUS_SCHEDULED])
         if task_status == TASK_STATUS_SCHEDULED:
           break
@@ -119,7 +119,7 @@ class TestGlobalScheduler(unittest.TestCase):
       self.assertLessEqual(len(task_entries), num_tasks + 1)
       if len(task_entries) == num_tasks + 1:
         task_contents = [self.redis_client.hgetall(task_entries[i]) for i in range(len(task_entries))]
-        task_statuses = [int(contents["state"]) for contents in task_contents]
+        task_statuses = [int(contents[b"state"]) for contents in task_contents]
         self.assertTrue(all([status in [TASK_STATUS_WAITING, TASK_STATUS_SCHEDULED] for status in task_statuses]))
         if all([status == TASK_STATUS_SCHEDULED for status in task_statuses]):
           break

@@ -6,6 +6,7 @@ import unittest
 import numbuf
 import numpy as np
 from numpy.testing import assert_equal
+import sys
 
 TEST_OBJECTS = [{(1,2) : 1}, {() : 2}, [1, "hello", 3.0], 42, 43, "hello world",
                 u"x", u"\u262F", 42.0,
@@ -17,6 +18,9 @@ TEST_OBJECTS = [{(1,2) : 1}, {() : 2}, [1, "hello", 3.0], 42, 43, "hello world",
                 np.int8(3), np.int32(4), np.int64(5),
                 np.uint8(3), np.uint32(4), np.uint64(5),
                 np.float32(1.0), np.float64(1.0)]
+
+if sys.version_info < (3, 0):
+  TEST_OBJECTS += [long(42), long(1 << 62)]
 
 class SerializationTests(unittest.TestCase):
 

@@ -137,8 +137,6 @@ def deserialize(serialized_obj):
       obj = cls.__new__(cls)
       serialized_obj.pop("_pytype_")
       obj.__dict__.update(serialized_obj)
-
-
   return obj
 
 # Register the callbacks with numbuf.

@@ -582,15 +582,15 @@ def error_info(worker=global_worker):
   """Return information about failed tasks."""
   check_main_thread()
   check_connected(worker)
-  result = {"TaskError": [],
-            "RemoteFunctionImportError": [],
-            "ReusableVariableImportError": [],
-            "ReusableVariableReinitializeError": [],
-            "FunctionToRunError": []
+  result = {b"TaskError": [],
+            b"RemoteFunctionImportError": [],
+            b"ReusableVariableImportError": [],
+            b"ReusableVariableReinitializeError": [],
+            b"FunctionToRunError": []
             }
   error_keys = worker.redis_client.lrange("ErrorKeys", 0, -1)
   for error_key in error_keys:
-    error_type = error_key.split(":", 1)[0]
+    error_type = error_key.split(b":", 1)[0]
     error_contents = worker.redis_client.hgetall(error_key)
     result[error_type].append(error_contents)
 
@@ -740,7 +740,6 @@ def fetch_and_register_remote_function(key, worker=global_worker):
     # TODO(rkn): Why is the below line necessary?
     function.__module__ = module
     function_name = "{}.{}".format(function.__module__, function.__name__)
-
     worker.functions[function_id.id()] = remote(num_return_vals=num_return_vals, function_id=function_id)(function)
     worker.function_names[function_id.id()] = function_name
     worker.num_return_vals[function_id.id()] = num_return_vals

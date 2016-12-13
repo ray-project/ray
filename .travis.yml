@@ -30,7 +30,7 @@ matrix:
         - .travis/check-git-clang-format-output.sh
     - os: linux
       dist: trusty
-      env: VALGRIND=1
+      env: VALGRIND=1 PYTHON=2.7
       before_install:
         - sudo apt-get update -qq
         - sudo apt-get install -qq valgrind
@@ -49,9 +49,12 @@ matrix:
 
 install:
   - ./.travis/install-dependencies.sh
+  - ./.travis/run-c-tests.sh
   - ./.travis/install-ray.sh
 
 script:
+  - if [[ "$PYTHON" == "3.5" ]]; then export PATH="$HOME/miniconda/bin:$PATH"; fi
+
   - python numbuf/python/test/runtest.py
 
   - python src/common/test/test.py
