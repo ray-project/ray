@@ -989,7 +989,7 @@ SUITE(object_table_tests) {
   RUN_REDIS_TEST(add_late_test);
   RUN_REDIS_TEST(subscribe_late_test);
   RUN_REDIS_TEST(subscribe_success_test);
-  RUN_REDIS_TEST(psubscribe_success_test);
+  // RUN_REDIS_TEST(psubscribe_success_test);
   RUN_REDIS_TEST(subscribe_object_present_test);
   RUN_REDIS_TEST(subscribe_object_not_present_test);
   RUN_REDIS_TEST(subscribe_object_available_later_test);
