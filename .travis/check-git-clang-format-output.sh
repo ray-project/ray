@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e -x
+
 if [ "$TRAVIS_PULL_REQUEST" == "false" ] ; then
   # Not in a pull request, so compare against parent commit
   base_commit="HEAD^"

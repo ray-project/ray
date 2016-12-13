@@ -132,7 +132,7 @@ object_id task_compute_put_id(task_id task_id, int64_t put_index) {
   int64_t *first_bytes = (int64_t *) &put_id;
   /* XOR the first bytes of the object ID with the return index. We add one so
    * the first return ID is not the same as the task ID. */
-  *first_bytes = *first_bytes ^ (- put_index - 1);
+  *first_bytes = *first_bytes ^ (-put_index - 1);
   return put_id;
 }
 
