@@ -2,6 +2,8 @@
 
 #include <string.h>
 
+#include "task.h"
+
 /**
  * Various tables are maintained in redis:
  *
@@ -22,11 +24,24 @@
 #define OBJECT_INFO_PREFIX "OI:"
 #define OBJECT_LOCATION_PREFIX "OL:"
 #define OBJECT_SUBSCRIBE_PREFIX "OS:"
+#define TASK_PREFIX "T:"
 
 #define CHECK_ERROR(STATUS, MESSAGE)                   \
   if ((STATUS) == REDISMODULE_ERR) {                   \
     return RedisModule_ReplyWithError(ctx, (MESSAGE)); \
   }
+
+RedisModuleKey *OpenPrefixedString(RedisModuleCtx *ctx,
+                                   const char *prefix,
+                                   const char *keyname,
+                                   size_t keylength,
+                                   int mode) {
+  RedisModuleString *prefixed_keyname = RedisModule_CreateStringPrintf(
+      ctx, "%s%*.*s", prefix, keylength, keylength, keyname);
+  RedisModuleKey *key = RedisModule_OpenKey(ctx, prefixed_keyname, mode);
+  RedisModule_FreeString(ctx, prefixed_keyname);
+  return key;
+}
 
 RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
                                 const char *prefix,
@@ -34,11 +49,7 @@ RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
                                 int mode) {
   size_t length;
   const char *value = RedisModule_StringPtrLen(keyname, &length);
-  RedisModuleString *prefixed_keyname = RedisModule_CreateStringPrintf(
-      ctx, "%s%*.*s", prefix, length, length, value);
-  RedisModuleKey *key = RedisModule_OpenKey(ctx, prefixed_keyname, mode);
-  RedisModule_FreeString(ctx, prefixed_keyname);
-  return key;
+  return OpenPrefixedString(ctx, prefix, value, length, mode);
 }
 
 /**
@@ -230,7 +241,7 @@ int ResultTableAdd_RedisCommand(RedisModuleCtx *ctx,
 }
 
 /**
- * Add a new entry to the result table or update an existing one.
+ * Lookup an entry in the result table.
  *
  * This is called from a client with the command:
  *
@@ -269,6 +280,151 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
   RedisModule_FreeString(ctx, task_id);
   RedisModule_CloseKey(key);
 
+  return REDISMODULE_OK;
+}
+
+int TaskTableWrite_RedisCommand(RedisModuleCtx *ctx,
+                                RedisModuleString *task_arg,
+                                bool task_added) {
+  size_t length;
+  const char *task_string = RedisModule_StringPtrLen(task_arg, &length);
+  task *task_instance = (task *) task_string;
+  CHECK((size_t) task_size(task_instance) == length);
+  task_id id = task_task_id(task_instance);
+  scheduling_state state = task_state(task_instance);
+  node_id node = task_node(task_instance);
+  task_spec *spec = task_task_spec(task_instance);
+
+  RedisModuleKey *key = OpenPrefixedString(ctx, TASK_PREFIX, (const char *) &id,
+                                           sizeof(task_id), REDISMODULE_WRITE);
+
+  RedisModuleString *state_string =
+      RedisModule_CreateStringPrintf(ctx, "%d", state);
+  RedisModuleString *node_string = RedisModule_CreateStringPrintf(
+      ctx, "%*.*s", sizeof(node_id), sizeof(node_id), &node);
+
+  if (task_added) {
+    RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "state", state_string,
+                        "node", node_string, NULL);
+  } else {
+    RedisModuleString *spec_string = RedisModule_CreateStringPrintf(
+        ctx, "%*.*s", task_spec_size(spec), task_spec_size(spec), spec);
+    RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "state", state_string,
+                        "node", node_string, "spec", spec_string, NULL);
+    RedisModule_FreeString(ctx, spec_string);
+  }
+
+  RedisModule_FreeString(ctx, node_string);
+  RedisModule_FreeString(ctx, state_string);
+  RedisModule_CloseKey(key);
+
+  RedisModule_ReplyWithSimpleString(ctx, "ok");
+
+  return REDISMODULE_OK;
+}
+
+/**
+ * Add a new entry to the task table.
+ *
+ * This is called from a client with the command:
+ *
+ *     RAY.task_table_add_task <task string>
+ *
+ * @param task_string A string which is the task instance.
+ * @return OK if the operation was successful.
+ */
+int TaskTableAddTask_RedisCommand(RedisModuleCtx *ctx,
+                                  RedisModuleString **argv,
+                                  int argc) {
+  if (argc != 2) {
+    return RedisModule_WrongArity(ctx);
+  }
+
+  RedisModuleString *task_arg = argv[1];
+  return TaskTableWrite_RedisCommand(ctx, task_arg, false);
+}
+
+/**
+ * Update an entry in the task table.
+ *
+ * This is called from a client with the command:
+ *
+ *     RAY.task_table_add_task <task string>
+ *
+ * @param task_string A string which is the task instance.
+ * @return OK if the operation was successful.
+ */
+int TaskTableUpdate_RedisCommand(RedisModuleCtx *ctx,
+                                 RedisModuleString **argv,
+                                 int argc) {
+  if (argc != 2) {
+    return RedisModule_WrongArity(ctx);
+  }
+
+  RedisModuleString *task_arg = argv[1];
+  return TaskTableWrite_RedisCommand(ctx, task_arg, true);
+}
+
+/**
+ * Get an entry from the task table.
+ *
+ * This is called from a client with the command:
+ *
+ *     RAY.task_table_get_task <task ID>
+ *
+ * @param task_id A string of the task ID to look up.
+ * @return An array of strings representing the task fields in the following
+ *         order: 1) scheduling state 2) associated node ID, if any 3) the task
+ *         specification, which can be casted to a task_spec. If the task ID is
+ *         not in the table, returns nil.
+ */
+int TaskTableGetTask_RedisCommand(RedisModuleCtx *ctx,
+                                  RedisModuleString **argv,
+                                  int argc) {
+  if (argc != 2) {
+    return RedisModule_WrongArity(ctx);
+  }
+
+  RedisModuleKey *key =
+      OpenPrefixedKey(ctx, TASK_PREFIX, argv[1], REDISMODULE_READ);
+
+  int keytype = RedisModule_KeyType(key);
+  if (keytype != REDISMODULE_KEYTYPE_EMPTY) {
+    /* If the key exists, look up the fields and return them in an array. */
+    RedisModuleString *state, *node, *task_spec;
+    RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "state", &state, "node",
+                        &node, "task_spec", &task_spec, NULL);
+    if (state == NULL || node == NULL || task_spec == NULL) {
+      /* We must have either all fields or no fields. */
+      return RedisModule_ReplyWithError(
+          ctx, "Missing fields in the task table entry");
+    }
+
+    RedisModule_ReplyWithArray(ctx, 3);
+    RedisModule_ReplyWithString(ctx, state);
+    RedisModule_ReplyWithString(ctx, node);
+    RedisModule_ReplyWithString(ctx, task_spec);
+
+    RedisModule_FreeString(ctx, task_spec);
+    RedisModule_FreeString(ctx, node);
+    RedisModule_FreeString(ctx, state);
+  } else {
+    /* If the key does not exist, return nil. */
+    RedisModule_ReplyWithNull(ctx);
+  }
+
+  RedisModule_CloseKey(key);
+
+  return REDISMODULE_OK;
+}
+
+int TaskTableSubscribe_RedisCommand(RedisModuleCtx *ctx,
+                                    RedisModuleString **argv,
+                                    int argc) {
+  /* TODO(swang): Implement this. */
+  REDISMODULE_NOT_USED(ctx);
+  REDISMODULE_NOT_USED(argv);
+  REDISMODULE_NOT_USED(argc);
   return REDISMODULE_OK;
 }
 
@@ -318,6 +474,30 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx,
   if (RedisModule_CreateCommand(ctx, "ray.result_table_lookup",
                                 ResultTableLookup_RedisCommand, "readonly", 0,
                                 0, 0) == REDISMODULE_ERR) {
+    return REDISMODULE_ERR;
+  }
+
+  if (RedisModule_CreateCommand(ctx, "ray.task_table_add_task",
+                                TaskTableAddTask_RedisCommand, "write pubsub",
+                                0, 0, 0) == REDISMODULE_ERR) {
+    return REDISMODULE_ERR;
+  }
+
+  if (RedisModule_CreateCommand(ctx, "ray.task_table_update",
+                                TaskTableUpdate_RedisCommand, "write pubsub", 0,
+                                0, 0) == REDISMODULE_ERR) {
+    return REDISMODULE_ERR;
+  }
+
+  if (RedisModule_CreateCommand(ctx, "ray.task_table_get_task",
+                                TaskTableGetTask_RedisCommand, "readonly", 0, 0,
+                                0) == REDISMODULE_ERR) {
+    return REDISMODULE_ERR;
+  }
+
+  if (RedisModule_CreateCommand(ctx, "ray.task_table_subscribe",
+                                TaskTableSubscribe_RedisCommand, "pubsub", 0, 0,
+                                0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 

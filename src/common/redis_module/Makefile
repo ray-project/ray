@@ -17,12 +17,12 @@ SHOBJ_CFLAGS += -I../thirdparty
 all: ray_redis_module.so
 
 .c.xo:
-	$(CC) -I. $(CFLAGS) $(SHOBJ_CFLAGS) -fPIC -c $< -o $@
+	$(CC) -I. -I.. $(CFLAGS) $(SHOBJ_CFLAGS) -fPIC -c $< -o $@
 
 ray_redis_module.xo: redismodule.h
 
-ray_redis_module.so: ray_redis_module.xo
-	$(LD) -o $@ $< $(SHOBJ_LDFLAGS) $(LIBS) -lc
+ray_redis_module.so: ray_redis_module.xo ../build/libcommon.a
+	$(LD) -o $@ $< ../build/libcommon.a $(SHOBJ_LDFLAGS) $(LIBS) -lc
 
 clean:
 	rm -rf *.xo *.so
