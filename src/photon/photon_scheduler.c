@@ -154,7 +154,7 @@ void reconstruct_object_task_lookup_callback(object_id reconstruct_object_id,
 void reconstruct_object_object_lookup_callback(
     object_id reconstruct_object_id,
     int manager_count,
-    OWNER const char *manager_vector[],
+    const char *manager_vector[],
     void *user_context) {
   /* Only continue reconstruction if we find that the object doesn't exist on
    * any nodes. NOTE: This codepath is not responsible for checking if the
