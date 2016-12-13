@@ -149,6 +149,11 @@ db_handle *db_connect_extended(const char *address,
   redisReply *reply;
   int connection_attempts = 0;
   redisContext *context = redisConnect(address, port);
+  /* Sanity check aux_address. */
+  if (aux_address == NULL || strlen(aux_address) == 0) {
+    LOG_WARN("db_connect: received empty aux_address, replacing with ':'");
+    aux_address = ":";
+  }
   while (context == NULL || context->err) {
     if (connection_attempts >= REDIS_DB_CONNECT_RETRIES) {
       break;

@@ -308,7 +308,7 @@ int main(int argc, char *argv[]) {
   /* Socket name for the local Plasma manager. */
   char *plasma_manager_socket_name = NULL;
   /* Address for the plasma manager associated with this Photon instance. */
-  char *plasma_manager_address = "";
+  char *plasma_manager_address = NULL;
   int c;
   bool global_scheduler_exists = true;
   while ((c = getopt(argc, argv, "s:r:p:m:ga:")) != -1) {
