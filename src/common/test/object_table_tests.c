@@ -638,6 +638,7 @@ TEST subscribe_late_test(void) {
 const char *subscribe_success_context = "subscribe_success";
 int subscribe_success_done = 0;
 int subscribe_success_succeeded = 0;
+object_id subscribe_id;
 
 void subscribe_success_fail_callback(unique_id id,
                                      void *user_context,
@@ -650,6 +651,7 @@ void subscribe_success_done_callback(object_id object_id,
                                      int manager_count,
                                      const char *manager_vector[],
                                      void *user_context) {
+  CHECK(object_ids_equal(object_id, subscribe_id));
   retry_info retry = {
       .num_retries = 0, .timeout = 750, .fail_callback = NULL,
   };
@@ -663,6 +665,8 @@ void subscribe_success_object_available_callback(object_id object_id,
                                                  const char *manager_vector[],
                                                  void *user_context) {
   CHECK(user_context == (void *) subscribe_success_context);
+  CHECK(object_ids_equal(object_id, subscribe_id));
+  CHECK(manager_count == 1);
   subscribe_success_succeeded = 1;
 }
 
@@ -671,14 +675,15 @@ TEST subscribe_success_test(void) {
   db_handle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11236);
   db_attach(db, g_loop, false);
-  unique_id id = globally_unique_id();
+  subscribe_id = globally_unique_id();
 
   retry_info retry = {
       .num_retries = 0,
       .timeout = 100,
       .fail_callback = subscribe_success_fail_callback,
   };
-  object_table_subscribe(db, id, subscribe_success_object_available_callback,
+  object_table_subscribe(db, subscribe_id,
+                         subscribe_success_object_available_callback,
                          (void *) subscribe_success_context, &retry,
                          subscribe_success_done_callback, (void *) db);
 
@@ -694,6 +699,68 @@ TEST subscribe_success_test(void) {
 
   ASSERT(subscribe_success_done);
   ASSERT(subscribe_success_succeeded);
+  PASS();
+}
+
+/* === Test psubscribe object available succeed === */
+
+const char *psubscribe_success_context = "psubscribe_success";
+int psubscribe_success_done = 0;
+int psubscribe_success_succeeded = 0;
+object_id psubscribe_id;
+
+void psubscribe_success_done_callback(object_id callback_object_id,
+                                      int manager_count,
+                                      const char *manager_vector[],
+                                      void *user_context) {
+  CHECK(IS_NIL_ID(callback_object_id));
+  retry_info retry = {
+      .num_retries = 0, .timeout = 750, .fail_callback = NULL,
+  };
+  object_table_add((db_handle *) user_context, psubscribe_id, 0,
+                   (unsigned char *) NIL_DIGEST, &retry, NULL, NULL);
+  psubscribe_success_done = 1;
+}
+
+void psubscribe_success_object_available_callback(object_id object_id,
+                                                  int manager_count,
+                                                  const char *manager_vector[],
+                                                  void *user_context) {
+  CHECK(user_context == (void *) psubscribe_success_context);
+  CHECK(object_ids_equal(object_id, psubscribe_id));
+  CHECK(manager_count == 1);
+  psubscribe_success_succeeded = 1;
+}
+
+TEST psubscribe_success_test(void) {
+  g_loop = event_loop_create();
+  db_handle *db =
+      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11236);
+  db_attach(db, g_loop, false);
+  psubscribe_id = globally_unique_id();
+
+  retry_info retry = {
+      .num_retries = 0,
+      .timeout = 100,
+      .fail_callback = subscribe_success_fail_callback,
+  };
+  object_table_subscribe(db, NIL_ID,
+                         psubscribe_success_object_available_callback,
+                         (void *) psubscribe_success_context, &retry,
+                         psubscribe_success_done_callback, (void *) db);
+
+  /* Install handler for terminating the event loop. */
+  event_loop_add_timer(g_loop, 750,
+                       (event_loop_timer_handler) terminate_event_loop_callback,
+                       NULL);
+
+  event_loop_run(g_loop);
+  db_disconnect(db);
+  destroy_outstanding_callbacks(g_loop);
+  event_loop_destroy(g_loop);
+
+  ASSERT(psubscribe_success_done);
+  ASSERT(psubscribe_success_succeeded);
   PASS();
 }
 
@@ -802,8 +869,8 @@ int64_t add_object_callback(event_loop *loop, int64_t timer_id, void *context) {
   retry_info retry = {
       .num_retries = 0, .timeout = 100, .fail_callback = NULL,
   };
-  object_table_add(db, NIL_ID, 0, (unsigned char *) NIL_DIGEST, &retry, NULL,
-                   NULL);
+  object_id id = globally_unique_id();
+  object_table_add(db, id, 0, (unsigned char *) NIL_DIGEST, &retry, NULL, NULL);
   /* Reset the timer to this large value, so it doesn't trigger again. */
   return 10000;
 }
@@ -858,8 +925,8 @@ void subscribe_object_info_done_callback(object_id object_id,
   CHECK(obj_info_subscribe_context.subscribe_callback_done == 0);
 
   object_table_add((db_handle *) user_context, object_id,
-                   obj_info_subscribe_context.data_size, NIL_DIGEST, &retry,
-                   NULL, NULL);
+                   obj_info_subscribe_context.data_size,
+                   (unsigned char *) NIL_DIGEST, &retry, NULL, NULL);
 
   obj_info_subscribe_context.subscribe_callback_done = 1;
 }

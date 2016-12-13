@@ -604,16 +604,74 @@ void object_table_redis_subscribe_callback(redisAsyncContext *c,
                                            void *privdata) {
   REDIS_CALLBACK_HEADER(db, callback_data, r);
   redisReply *reply = r;
-
   CHECK(reply->type == REDIS_REPLY_ARRAY);
-  /* First entry is message type, second is topic, third is payload. */
   CHECK(reply->elements > 2);
 
+  /* Parse the message. First entry is message type, either "subscribe",
+   * "psubscribe", "message" or "pmessage". If the message type was "pmessage",
+   * there is an additional next message that is the pattern that the client
+   * PSUBSCRIBEd to. The next message is the topic published to. The final
+   * message is always the payload. */
+  object_id id = NIL_ID;
+  redisReply *message_type = reply->element[0];
+  if (strcmp(message_type->str, "message") == 0) {
+    /* A SUBSCRIBE notification. Take the object ID from the original table
+     * operation call. */
+    DCHECK(!IS_NIL_ID(callback_data->id));
+    DCHECK(reply->elements == 3);
+    id = callback_data->id;
+  } else if (strcmp(message_type->str, "pmessage") == 0) {
+    /* A PSUBSCRIBE notification. Parse the object ID from the keyspace. */
+    /* TODO(swang): Somehow we have to pass this object ID to
+     * redis_object_table_get_entry's callback. */
+    DCHECK(IS_NIL_ID(callback_data->id));
+    DCHECK(reply->elements == 4);
+    redisReply *keyspace = reply->element[2];
+    char format[32];
+    snprintf(format, 32, "__keyspace@0__:obj:%%%ldc", sizeof(object_id));
+    int scanned = sscanf(keyspace->str, format, &id);
+    DCHECK(scanned == 1);
+  } else if (strcmp(message_type->str, "subscribe") == 0) {
+    /* The reply for the initial SUBSCRIBE. */
+    DCHECK(reply->elements == 3);
+    redisReply *status = reply->element[reply->elements - 1];
+    if (status->integer != 1) {
+      /* The initial subscription call was not successful, so exit now. */
+      LOG_REDIS_ERROR(db->context, "Unable to complete object table subscribe");
+      return;
+    }
+    /* Take the object ID from the original table operation call. */
+    id = callback_data->id;
+  } else if (strcmp(message_type->str, "psubscribe") == 0) {
+    /* The reply for the initial PSUBSCRIBE. */
+    DCHECK(reply->elements == 3);
+    redisReply *status = reply->element[reply->elements - 1];
+    if (status->integer == 0) {
+      /* The initial subscription call was not successful, so exit now. */
+      LOG_REDIS_ERROR(db->context,
+                      "Unable to complete object table psubscribe");
+    }
+    /* If the initial PSUBSCRIBE was successful, call the done callback with a
+     * NIL object ID to notify the client, and clean up the timer. */
+    object_table_lookup_done_callback done_callback =
+        callback_data->done_callback;
+    if (done_callback) {
+      done_callback(NIL_ID, 0, NULL, callback_data->user_context);
+    }
+    event_loop_remove_timer(callback_data->db_handle->loop,
+                            callback_data->timer_id);
+    /* For PSUBSCRIBEs, always return before doing the lookup for the data,
+     * since we don't know what key to lookup yet. */
+    return;
+  } else {
+    LOG_FATAL("Unexpected reply type from object table subscribe");
+  }
+
   /* Do a lookup for the actual data. */
-  int status =
-      redisAsyncCommand(db->context, redis_object_table_get_entry,
-                        (void *) callback_data->timer_id, "SMEMBERS obj:%b",
-                        callback_data->id.id, sizeof(callback_data->id.id));
+  CHECK(!IS_NIL_ID(id));
+  int status = redisAsyncCommand(db->context, redis_object_table_get_entry,
+                                 (void *) callback_data->timer_id,
+                                 "SMEMBERS obj:%b", id.id, sizeof(id));
   if ((status == REDIS_ERR) || db->context->err) {
     LOG_REDIS_ERROR(db->context,
                     "error in redis_object_table_subscribe_callback");
