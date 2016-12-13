@@ -56,9 +56,10 @@ class TestGlobalScheduler(unittest.TestCase):
     # Start the Plasma store.
     plasma_store_name, self.p2 = plasma.start_plasma_store()
     # Start the Plasma manager.
-    plasma_manager_name, self.p3, _ = plasma.start_plasma_manager(plasma_store_name, redis_address)
+    plasma_manager_name, self.p3, plasma_manager_port = plasma.start_plasma_manager(plasma_store_name, redis_address)
+    plasma_address = "{}:{}".format(node_ip_address, plasma_manager_port)
     # Start the local scheduler.
-    local_scheduler_name, self.p4 = photon.start_local_scheduler(plasma_store_name, plasma_manager_name=plasma_manager_name, redis_address=redis_address)
+    local_scheduler_name, self.p4 = photon.start_local_scheduler(plasma_store_name, plasma_manager_name=plasma_manager_name, plasma_address=plasma_address, redis_address=redis_address)
     # Connect to the scheduler.
     self.photon_client = photon.PhotonClient(local_scheduler_name)
 
