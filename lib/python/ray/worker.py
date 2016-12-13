@@ -862,6 +862,7 @@ def connect(address_info, mode=WORKER_MODE, worker=global_worker):
   if mode in [SCRIPT_MODE, SILENT_MODE]:
     worker.current_task_id = photon.ObjectID("".join(chr(i) for i in range(20)))
     worker.task_index = 0
+    worker.put_index = 0
   # If this is a worker, then start a thread to import exports from the driver.
   if mode == WORKER_MODE:
     t = threading.Thread(target=import_thread, args=(worker,))
@@ -998,9 +999,10 @@ def put(value, worker=global_worker):
   check_connected(worker)
   if worker.mode == PYTHON_MODE:
     return value # In PYTHON_MODE, ray.put is the identity operation
-  objectid = random_object_id()
-  worker.put_object(objectid, value)
-  return objectid
+  object_id = photon.compute_put_id(worker.current_task_id, worker.put_index)
+  worker.put_object(object_id, value)
+  worker.put_index += 1
+  return object_id
 
 def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
   """Return a list of IDs that are ready and a list of IDs that are not ready.
@@ -1075,6 +1077,7 @@ def main_loop(worker=global_worker):
     """
     worker.current_task_id = task.task_id()
     worker.task_index = 0
+    worker.put_index = 0
     function_id = task.function_id()
     args = task.arguments()
     return_object_ids = task.returns()

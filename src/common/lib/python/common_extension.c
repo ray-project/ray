@@ -258,9 +258,9 @@ static PyObject *PyTask_task_id(PyObject *self) {
 }
 
 static PyObject *PyTask_arguments(PyObject *self) {
-  int64_t num_args = task_num_args(((PyTask *) self)->spec);
-  PyObject *arg_list = PyList_New((Py_ssize_t) num_args);
   task_spec *task = ((PyTask *) self)->spec;
+  int64_t num_args = task_num_args(task);
+  PyObject *arg_list = PyList_New((Py_ssize_t) num_args);
   for (int i = 0; i < num_args; ++i) {
     if (task_arg_type(task, i) == ARG_BY_REF) {
       object_id object_id = task_arg_id(task, i);
@@ -281,9 +281,9 @@ static PyObject *PyTask_arguments(PyObject *self) {
 }
 
 static PyObject *PyTask_returns(PyObject *self) {
-  int64_t num_returns = task_num_returns(((PyTask *) self)->spec);
-  PyObject *return_id_list = PyList_New((Py_ssize_t) num_returns);
   task_spec *task = ((PyTask *) self)->spec;
+  int64_t num_returns = task_num_returns(task);
+  PyObject *return_id_list = PyList_New((Py_ssize_t) num_returns);
   for (int i = 0; i < num_returns; ++i) {
     object_id object_id = task_return(task, i);
     PyList_SetItem(return_id_list, i, PyObjectID_make(object_id));
@@ -430,4 +430,15 @@ PyObject *check_simple_value(PyObject *self, PyObject *args) {
     Py_RETURN_TRUE;
   }
   Py_RETURN_FALSE;
+}
+
+PyObject *compute_put_id(PyObject *self, PyObject *args) {
+  int put_index;
+  task_id task_id;
+  if (!PyArg_ParseTuple(args, "O&i", &PyObjectToUniqueID, &task_id,
+                        &put_index)) {
+    return NULL;
+  }
+  object_id put_id = task_compute_put_id(task_id, put_index);
+  return PyObjectID_make(put_id);
 }

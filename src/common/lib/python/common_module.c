@@ -5,6 +5,8 @@
 static PyMethodDef common_methods[] = {
     {"check_simple_value", check_simple_value, METH_VARARGS,
      "Should the object be passed by value?"},
+    {"compute_put_id", compute_put_id, METH_VARARGS,
+     "Return the object ID for a put call within a task."},
     {NULL} /* Sentinel */
 };
 
