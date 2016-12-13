@@ -6,19 +6,18 @@ matrix:
   include:
     - os: linux
       dist: trusty
-      python: "2.7"
+      env: PYTHON=2.7
     - os: linux
       dist: trusty
-      python: "3.5"
+      env: PYTHON=3.5
     - os: osx
       osx_image: xcode7
-      python: "2.7"
+      env: PYTHON=2.7
     - os: osx
       osx_image: xcode7
-      python: "3.5"
+      env: PYTHON=3.5
     - os: linux
       dist: trusty
-      python: "2.7"
       env: LINT=1
       before_install:
         # In case we ever want to use a different version of clang-format:
@@ -31,7 +30,6 @@ matrix:
         - .travis/check-git-clang-format-output.sh
     - os: linux
       dist: trusty
-      python: "2.7"
       env: VALGRIND=1
       before_install:
         - sudo apt-get update -qq
@@ -50,32 +48,8 @@ matrix:
         - python src/global_scheduler/test/test.py valgrind
 
 install:
-  - ./install-dependencies.sh
-  - ./build.sh
-
-  - cd src/common
-  - make test
-  - cd ../..
-
-  - cd src/plasma
-  - make test
-  - cd ../..
-
-  - cd src/photon
-  - make test
-  - cd ../..
-
-  - cd numbuf
-  - sudo python setup.py install
-  - cd ..
-
-  - cd src/common/lib/python
-  - sudo python setup.py install
-  - cd ../../../..
-
-  - cd lib/python
-  - sudo python setup.py install
-  - cd ../..
+  - ./.travis/install-dependencies.sh
+  - ./.travis/install-ray.sh
 
 script:
   - python numbuf/python/test/runtest.py
