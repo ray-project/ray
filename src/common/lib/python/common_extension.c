@@ -128,7 +128,7 @@ static PyObject *PyObjectID_repr(PyObjectID *self) {
   UT_string *repr;
   utstring_new(repr);
   utstring_printf(repr, "ObjectID(%s)", hex_id);
-  PyObject *result = PyBytes_FromString(utstring_body(repr));
+  PyObject *result = PyUnicode_FromString(utstring_body(repr));
   utstring_free(repr);
   return result;
 }

@@ -100,12 +100,14 @@ def serialize(obj):
   elif class_id in custom_serializers.keys():
     serialized_obj = {"data": custom_serializers[class_id](obj)}
   else:
-    if not hasattr(obj, "__dict__"):
-      raise Exception("We do not know how to serialize the object '{}'".format(obj))
-    serialized_obj = obj.__dict__
+    # Handle the namedtuple case.
     if is_named_tuple(type(obj)):
-      # Handle the namedtuple case.
+      serialized_obj = {}
       serialized_obj["_ray_getnewargs_"] = obj.__getnewargs__()
+    elif hasattr(obj, "__dict__"):
+      serialized_obj = obj.__dict__
+    else:
+      raise Exception("We do not know how to serialize the object '{}'".format(obj))
   result = dict(serialized_obj, **{"_pytype_": class_id})
   return result
 
@@ -131,11 +133,12 @@ def deserialize(serialized_obj):
     # In this case, serialized_obj should just be the __dict__ field.
     if "_ray_getnewargs_" in serialized_obj:
       obj = cls.__new__(cls, *serialized_obj["_ray_getnewargs_"])
-      serialized_obj.pop("_ray_getnewargs_")
     else:
       obj = cls.__new__(cls)
-    serialized_obj.pop("_pytype_")
-    obj.__dict__.update(serialized_obj)
+      serialized_obj.pop("_pytype_")
+      obj.__dict__.update(serialized_obj)
+
+
   return obj
 
 # Register the callbacks with numbuf.

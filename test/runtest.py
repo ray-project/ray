@@ -10,6 +10,9 @@ import string
 import sys
 from collections import namedtuple
 
+if sys.version_info >= (3, 0):
+  from importlib import reload
+
 import ray.test.test_functions as test_functions
 import ray.array.remote as ra
 import ray.array.distributed as da
@@ -24,7 +27,7 @@ def assert_equal(obj1, obj2):
       np.testing.assert_equal(obj1, obj2)
   elif hasattr(obj1, "__dict__") and hasattr(obj2, "__dict__"):
     special_keys = ["_pytype_"]
-    assert set(obj1.__dict__.keys() + special_keys) == set(obj2.__dict__.keys() + special_keys), "Objects {} and {} are different.".format(obj1, obj2)
+    assert set(list(obj1.__dict__.keys()) + special_keys) == set(list(obj2.__dict__.keys()) + special_keys), "Objects {} and {} are different.".format(obj1, obj2)
     for key in obj1.__dict__.keys():
       if key not in special_keys:
         assert_equal(obj1.__dict__[key], obj2.__dict__[key])
@@ -40,17 +43,25 @@ def assert_equal(obj1, obj2):
     assert len(obj1) == len(obj2), "Objects {} and {} are tuples with different lengths.".format(obj1, obj2)
     for i in range(len(obj1)):
       assert_equal(obj1[i], obj2[i])
+  elif ray.serialization.is_named_tuple(type(obj1)) or ray.serialization.is_named_tuple(type(obj2)):
+    assert len(obj1) == len(obj2), "Objects {} and {} are named tuples with different lengths.".format(obj1, obj2)
+    for i in range(len(obj1)):
+      assert_equal(obj1[i], obj2[i])
   else:
     assert obj1 == obj2, "Objects {} and {} are different.".format(obj1, obj2)
 
-PRIMITIVE_OBJECTS = [0, 0.0, 0.9, 0L, 1L << 62, "a", string.printable, "\u262F",
+if sys.version_info >= (3, 0):
+  long_extras = [0, np.array([["hi", u"hi"], [1.3, 1]])]
+else:
+  long_extras = [long(0), np.array([["hi", u"hi"], [1.3, long(1)]])]
+
+PRIMITIVE_OBJECTS = [0, 0.0, 0.9, 1 << 62, "a", string.printable, "\u262F",
                      u"hello world", u"\xff\xfe\x9c\x001\x000\x00", None, True,
                      False, [], (), {}, np.int8(3), np.int32(4), np.int64(5),
                      np.uint8(3), np.uint32(4), np.uint64(5), np.float32(1.9),
                      np.float64(1.9), np.zeros([100, 100]),
                      np.random.normal(size=[100, 100]), np.array(["hi", 3]),
-                     np.array(["hi", 3], dtype=object),
-                     np.array([["hi", u"hi"], [1.3, 1L]])]
+                     np.array(["hi", 3], dtype=object)] + long_extras
 
 COMPLEX_OBJECTS = [[[[[[[[[[[[[]]]]]]]]]]]],
                    {"obj{}".format(i): np.random.normal(size=[100, 100]) for i in range(10)},
@@ -299,7 +310,7 @@ class APITest(unittest.TestCase):
         print("Still using old definition of f, trying again.")
 
     # Test that we can close over plain old data.
-    data = [np.zeros([3, 5]), (1, 2, "a"), [0.0, 1.0, 2L], 2L, {"a": np.zeros(3)}]
+    data = [np.zeros([3, 5]), (1, 2, "a"), [0.0, 1.0, 1 << 62], 1 << 60, {"a": np.zeros(3)}]
     @ray.remote
     def g():
       return data
@@ -334,7 +345,7 @@ class APITest(unittest.TestCase):
   def testGetMultiple(self):
     ray.init(start_ray_local=True, num_workers=0)
     object_ids = [ray.put(i) for i in range(10)]
-    self.assertEqual(ray.get(object_ids), range(10))
+    self.assertEqual(ray.get(object_ids), list(range(10)))
     ray.worker.cleanup()
 
   def testWait(self):

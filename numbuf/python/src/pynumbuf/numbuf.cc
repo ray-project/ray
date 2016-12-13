@@ -1,10 +1,11 @@
-#include "bytesobject.h"
 #include <Python.h>
 #include <arrow/api.h>
 #include <arrow/ipc/adapter.h>
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #define PY_ARRAY_UNIQUE_SYMBOL NUMBUF_ARRAY_API
 #include <numpy/arrayobject.h>
+
+#include "bytesobject.h"
 
 #include <iostream>
 
@@ -101,15 +102,17 @@ static PyObject* write_to_buffer(PyObject* self, PyObject* args) {
 
 /* Documented in doc/numbuf.rst in ray-core */
 static PyObject* read_from_buffer(PyObject* self, PyObject* args) {
-  PyObject* memoryview;
-  PyObject* metadata;
+  PyObject* data_memoryview;
+  PyObject* metadata_memoryview;
   int64_t metadata_offset;
-  if (!PyArg_ParseTuple(args, "OOL", &memoryview, &metadata, &metadata_offset)) {
+  if (!PyArg_ParseTuple(
+          args, "OOL", &data_memoryview, &metadata_memoryview, &metadata_offset)) {
     return NULL;
   }
 
-  auto ptr = reinterpret_cast<uint8_t*>(PyByteArray_AsString(metadata));
-  auto schema_buffer = std::make_shared<Buffer>(ptr, PyByteArray_Size(metadata));
+  Py_buffer* metadata_buffer = PyMemoryView_GET_BUFFER(metadata_memoryview);
+  auto ptr = reinterpret_cast<uint8_t*>(metadata_buffer->buf);
+  auto schema_buffer = std::make_shared<Buffer>(ptr, metadata_buffer->len);
   std::shared_ptr<ipc::Message> message;
   ARROW_CHECK_OK(ipc::Message::Open(schema_buffer, &message));
   DCHECK_EQ(ipc::Message::SCHEMA, message->type());
@@ -117,7 +120,7 @@ static PyObject* read_from_buffer(PyObject* self, PyObject* args) {
   std::shared_ptr<Schema> schema;
   ARROW_CHECK_OK(schema_msg->GetSchema(&schema));
 
-  Py_buffer* buffer = PyMemoryView_GET_BUFFER(memoryview);
+  Py_buffer* buffer = PyMemoryView_GET_BUFFER(data_memoryview);
   auto source = std::make_shared<FixedBufferStream>(
       reinterpret_cast<uint8_t*>(buffer->buf), buffer->len);
   std::shared_ptr<arrow::ipc::RecordBatchReader> reader;

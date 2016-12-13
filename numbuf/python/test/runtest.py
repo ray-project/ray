@@ -110,7 +110,7 @@ class SerializationTests(unittest.TestCase):
       size = size + 4096 # INITIAL_METADATA_SIZE in arrow
       buff = np.zeros(size, dtype="uint8")
       metadata_offset = numbuf.write_to_buffer(batch, memoryview(buff))
-      array = numbuf.read_from_buffer(memoryview(buff), schema, metadata_offset)
+      array = numbuf.read_from_buffer(memoryview(buff), memoryview(schema), metadata_offset)
       result = numbuf.deserialize_list(array)
       assert_equal(result[0], obj)
 
