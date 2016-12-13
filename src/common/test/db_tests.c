@@ -141,7 +141,7 @@ TEST task_table_test(void) {
   db_handle *db = db_connect("127.0.0.1", 6379, "local_scheduler", "", -1);
   db_attach(db, loop, false);
   node_id node = globally_unique_id();
-  task_spec *spec = example_task_spec();
+  task_spec *spec = example_task_spec(1, 1);
   task_table_test_task = alloc_task(spec, TASK_STATUS_SCHEDULED, node);
   free_task_spec(spec);
   retry_info retry = {
@@ -172,7 +172,7 @@ TEST task_table_all_test(void) {
   event_loop *loop = event_loop_create();
   db_handle *db = db_connect("127.0.0.1", 6379, "local_scheduler", "", -1);
   db_attach(db, loop, false);
-  task_spec *spec = example_task_spec();
+  task_spec *spec = example_task_spec(1, 1);
   /* Schedule two tasks on different nodes. */
   task *task1 = alloc_task(spec, TASK_STATUS_SCHEDULED, globally_unique_id());
   task *task2 = alloc_task(spec, TASK_STATUS_SCHEDULED, globally_unique_id());

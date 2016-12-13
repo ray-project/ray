@@ -244,7 +244,7 @@ def start_plasma_store(plasma_store_memory=DEFAULT_PLASMA_STORE_MEMORY, use_valg
   if use_valgrind and use_profiler:
     raise Exception("Cannot use valgrind and profiler at the same time.")
   plasma_store_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../build/plasma_store")
-  plasma_store_name = "/tmp/scheduler{}".format(random_name())
+  plasma_store_name = "/tmp/plasma_store{}".format(random_name())
   command = [plasma_store_executable, "-s", plasma_store_name, "-m", str(plasma_store_memory)]
   if use_valgrind:
     pid = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + command)
@@ -274,7 +274,7 @@ def start_plasma_manager(store_name, redis_address, num_retries=20, use_valgrind
     Exception: An exception is raised if the manager could not be started.
   """
   plasma_manager_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../build/plasma_manager")
-  plasma_manager_name = "/tmp/scheduler{}".format(random_name())
+  plasma_manager_name = "/tmp/plasma_manager{}".format(random_name())
   port = None
   process = None
   counter = 0

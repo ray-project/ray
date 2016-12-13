@@ -2,10 +2,18 @@
 #define PHOTON_H
 
 #include "common/task.h"
+#include "common/state/table.h"
 #include "common/state/db.h"
 #include "plasma_client.h"
 #include "utarray.h"
 #include "uthash.h"
+
+/* Retry values for state table operations. For now, only try each command once
+ * and give it one second to succeed. */
+/* TODO(swang): We should set retry values in a config file somewhere. */
+static const retry_info photon_retry = {.num_retries = 0,
+                                        .timeout = 1000,
+                                        .fail_callback = NULL};
 
 enum photon_message_type {
   /** Notify the local scheduler that a task has finished. */
@@ -15,6 +23,8 @@ enum photon_message_type {
   /** This is sent from the local scheduler to a worker to tell the worker to
    *  execute a task. */
   EXECUTE_TASK,
+  /** Reconstruct a possibly lost object. */
+  RECONSTRUCT_OBJECT,
 };
 
 // clang-format off
@@ -53,6 +63,8 @@ typedef struct {
   UT_array *workers;
   /** The handle to the database. */
   db_handle *db;
+  /** Whether there is a global scheduler. */
+  bool global_scheduler_exists;
   /** The Plasma client. */
   plasma_connection *plasma_conn;
   /** State for the scheduling algorithm. */

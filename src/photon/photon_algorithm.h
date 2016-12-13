@@ -82,4 +82,15 @@ void handle_worker_available(local_scheduler_state *state,
                              scheduling_algorithm_state *algorithm_state,
                              int worker_index);
 
+/** The following methods are for testing purposes only. */
+#ifdef PHOTON_TEST
+/**
+ * Get the number of tasks currently queued locally.
+ *
+ * @param algorithm_state State maintained by the scheduling algorithm.
+ * @return The number of tasks queued locally.
+ */
+int num_tasks_in_queue(scheduling_algorithm_state *algorithm_state);
+#endif
+
 #endif /* PHOTON_ALGORITHM_H */
