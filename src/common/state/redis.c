@@ -660,25 +660,11 @@ void object_table_redis_subscribe_callback(redisAsyncContext *c,
   } else if (strcmp(message_type->str, "subscribe") == 0) {
     /* The reply for the initial SUBSCRIBE. */
     DCHECK(reply->elements == 3);
-
-    /* Check that the initial subscription was successful. */
-    redisReply *status = reply->element[reply->elements - 1];
-    if (status->integer != 1) {
-      LOG_REDIS_ERROR(db->context, "Unable to complete object table subscribe");
-      return;
-    }
     /* Take the object ID from the original table operation call. */
     id = callback_data->id;
   } else if (strcmp(message_type->str, "psubscribe") == 0) {
     /* The reply for the initial PSUBSCRIBE. */
     DCHECK(reply->elements == 3);
-
-    /* Check that the initial subscription was successful. */
-    redisReply *status = reply->element[reply->elements - 1];
-    if (status->integer == 0) {
-      LOG_REDIS_ERROR(db->context,
-                      "Unable to complete object table psubscribe");
-    }
     /* If the initial PSUBSCRIBE was successful, call the done callback with a
      * NIL object ID to notify the client, and clean up the timer. */
     object_table_lookup_done_callback done_callback =
