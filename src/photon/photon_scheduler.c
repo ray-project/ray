@@ -127,7 +127,6 @@ void reconstruct_object_task_lookup_callback(object_id reconstruct_object_id,
                                              task *task,
                                              void *user_context) {
   /* Recursively resubmit the task and its task lineage to the scheduler. */
-  /* TODO: recursive, note about fetching inputs, result_table_add for puts. */
   CHECKM(task != NULL,
          "No task information found for object during reconstruction");
   local_scheduler_state *state = user_context;
@@ -167,7 +166,6 @@ void reconstruct_object_object_lookup_callback(
         state->db, reconstruct_object_id, (retry_info *) &photon_retry,
         reconstruct_object_task_lookup_callback, (void *) state);
   }
-  free(manager_vector);
 }
 
 void reconstruct_object(local_scheduler_state *state,

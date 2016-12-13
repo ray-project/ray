@@ -51,8 +51,10 @@ void process_plasma_notification(event_loop *loop,
                                  int events);
 
 /**
- * Reconstruct an object. This triggers a single reexecution of the task that
- * originally created the object, even if the object does exist on some node.
+ * Reconstruct an object. If the object does not exist on any nodes, according
+ * to the state tables, and if the object is not already being reconstructed,
+ * this triggers a single reexecution of the task that originally created the
+ * object.
  *
  * @param state The local scheduler state.
  * @param object_id The ID of the object to reconstruct.

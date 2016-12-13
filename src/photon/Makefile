@@ -30,6 +30,6 @@ test: $(BUILD)/photon_tests FORCE
 
 valgrind: test
 	../common/thirdparty/redis/src/redis-server &
-	sleep 0.5s && valgrind --leak-check=full --error-exitcode=1 ./build/photon_tests && ../common/thirdparty/redis/src/redis-cli shutdown
+	sleep 0.5s && valgrind --leak-check=full --show-leak-kinds=all --error-exitcode=1 ./build/photon_tests && ../common/thirdparty/redis/src/redis-cli shutdown
 
 FORCE:

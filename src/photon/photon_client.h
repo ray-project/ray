@@ -22,7 +22,6 @@ photon_conn *photon_connect(const char *photon_socket);
  * Disconnect from the local scheduler.
  *
  * @param conn Photon connection information returned by photon_connect.
- *
  * @return Void.
  */
 void photon_disconnect(photon_conn *conn);

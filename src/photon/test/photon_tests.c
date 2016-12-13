@@ -13,6 +13,7 @@
 #include "io.h"
 #include "utstring.h"
 #include "task.h"
+#include "state/object_table.h"
 
 #include "photon.h"
 #include "photon_scheduler.h"
@@ -30,15 +31,16 @@ int64_t timeout_handler(event_loop *loop, int64_t id, void *context) {
 }
 
 typedef struct {
-  /* A socket to mock the Plasma store. */
+  /** A socket to mock the Plasma store. */
   int plasma_fd;
-  int plasma_incoming_fd;
-  /* Photon's socket for IPC requests. */
+  /** Photon's socket for IPC requests. */
   int photon_fd;
+  /** Photon's local scheduler state. */
   local_scheduler_state *photon_state;
+  /** Photon's event loop. */
   event_loop *loop;
+  /** A Photon client connection. */
   photon_conn *conn;
-  int client_sock;
 } photon_mock;
 
 photon_mock *init_photon_mock() {
@@ -63,8 +65,6 @@ photon_mock *init_photon_mock() {
   mock->conn = photon_connect(utstring_body(photon_socket_name));
   new_client_connection(mock->loop, mock->photon_fd,
                         (void *) mock->photon_state, 0);
-  worker *w = (worker *) utarray_front(mock->photon_state->workers);
-  mock->client_sock = w->sock;
   utstring_free(plasma_manager_socket_name);
   utstring_free(plasma_store_socket_name);
   utstring_free(photon_socket_name);
@@ -80,6 +80,11 @@ void destroy_photon_mock(photon_mock *mock) {
   free(mock);
 }
 
+/**
+ * Test that object reconstruction gets called. If a task gets submitted,
+ * assigned to a worker, and then reconstruction is triggered for its return
+ * value, the task should get assigned to a worker again.
+ */
 TEST object_reconstruction_test(void) {
   photon_mock *photon = init_photon_mock();
   pid_t pid = fork();
@@ -89,16 +94,16 @@ TEST object_reconstruction_test(void) {
     /* Make sure we receive the task twice. First from the initial submission,
      * and second from the reconstruct request. */
     photon_submit(photon->conn, spec);
-    object_id return_id = task_return(spec, 0);
-    photon_reconstruct_object(photon->conn, return_id);
     task_spec *task_assigned = photon_get_task(photon->conn);
     ASSERT_EQ(memcmp(task_assigned, spec, task_spec_size(spec)), 0);
+    object_id return_id = task_return(spec, 0);
+    photon_reconstruct_object(photon->conn, return_id);
     task_spec *reconstruct_task = photon_get_task(photon->conn);
     ASSERT_EQ(memcmp(reconstruct_task, spec, task_spec_size(spec)), 0);
     /* Clean up. */
-    free_task_spec(spec);
-    free_task_spec(task_assigned);
     free_task_spec(reconstruct_task);
+    free_task_spec(task_assigned);
+    free_task_spec(spec);
     destroy_photon_mock(photon);
     exit(0);
   } else {
@@ -107,14 +112,20 @@ TEST object_reconstruction_test(void) {
     event_loop_add_timer(photon->loop, 1000,
                          (event_loop_timer_handler) timeout_handler, NULL);
     event_loop_run(photon->loop);
-    /* Wait for the child process to exit before considering the test case
-     * passed. Then, clean up. */
+    /* Wait for the child process to exit and check that there are no tasks
+     * left in the local scheduler's task queue. Then, clean up. */
     wait(NULL);
+    ASSERT_EQ(num_tasks_in_queue(photon->photon_state->algorithm_state), 0);
     destroy_photon_mock(photon);
     PASS();
   }
 }
 
+/**
+ * Test that object reconstruction gets recursively called. In a chain of
+ * tasks, if all inputs are lost, then reconstruction of the final object
+ * should trigger reconstruction of all previous tasks in the lineage.
+ */
 TEST object_reconstruction_recursive_test(void) {
   photon_mock *photon = init_photon_mock();
   /* Create a chain of tasks, each one dependent on the one before it. Mark
@@ -142,7 +153,7 @@ TEST object_reconstruction_recursive_test(void) {
       free_task_spec(task_assigned);
     }
     /* Request reconstruction of the last return object. */
-    object_id return_id = task_return(specs[9], 0);
+    object_id return_id = task_return(specs[NUM_TASKS - 1], 0);
     photon_reconstruct_object(photon->conn, return_id);
     /* Check that the workers receive all tasks in the final return object's
      * lineage during reconstruction. */
@@ -171,9 +182,10 @@ TEST object_reconstruction_recursive_test(void) {
     event_loop_add_timer(photon->loop, 1000,
                          (event_loop_timer_handler) timeout_handler, NULL);
     event_loop_run(photon->loop);
-    /* Wait for the child process to exit before considering the test case
-     * passed. Then, clean up. */
+    /* Wait for the child process to exit and check that there are no tasks
+     * left in the local scheduler's task queue. Then, clean up. */
     wait(NULL);
+    ASSERT_EQ(num_tasks_in_queue(photon->photon_state->algorithm_state), 0);
     for (int i = 0; i < NUM_TASKS; ++i) {
       free_task_spec(specs[i]);
     }
@@ -182,9 +194,63 @@ TEST object_reconstruction_recursive_test(void) {
   }
 }
 
+/**
+ * Test that object reconstruction gets suppressed when there is a location
+ * listed for the object in the object table.
+ */
+task_spec *object_reconstruction_suppression_spec;
+
+void object_reconstruction_suppression_callback(object_id object_id,
+                                                void *user_context) {
+  /* Submit the task after adding the object to the object table. */
+  photon_mock *photon = user_context;
+  photon_submit(photon->conn, object_reconstruction_suppression_spec);
+}
+
+TEST object_reconstruction_suppression_test(void) {
+  photon_mock *photon = init_photon_mock();
+  object_reconstruction_suppression_spec = example_task_spec(0, 1);
+  object_id return_id = task_return(object_reconstruction_suppression_spec, 0);
+  pid_t pid = fork();
+  if (pid == 0) {
+    /* Make sure we receive the task once. This will block until the
+     * object_table_add callback completes. */
+    task_spec *task_assigned = photon_get_task(photon->conn);
+    ASSERT_EQ(memcmp(task_assigned, object_reconstruction_suppression_spec,
+                     task_spec_size(object_reconstruction_suppression_spec)),
+              0);
+    /* Trigger a reconstruction. We will check that no tasks get queued as a
+     * result of this line in the event loop process. */
+    photon_reconstruct_object(photon->conn, return_id);
+    /* Clean up. */
+    free_task_spec(task_assigned);
+    free_task_spec(object_reconstruction_suppression_spec);
+    destroy_photon_mock(photon);
+    exit(0);
+  } else {
+    object_table_add(photon->photon_state->db, return_id, 1,
+                     (unsigned char *) NIL_DIGEST, (retry_info *) &photon_retry,
+                     object_reconstruction_suppression_callback,
+                     (void *) photon);
+    /* Run the event loop. NOTE: OSX appears to require the parent process to
+     * listen for events on the open file descriptors. */
+    event_loop_add_timer(photon->loop, 1000,
+                         (event_loop_timer_handler) timeout_handler, NULL);
+    event_loop_run(photon->loop);
+    /* Wait for the child process to exit and check that there are no tasks
+     * left in the local scheduler's task queue. Then, clean up. */
+    wait(NULL);
+    ASSERT_EQ(num_tasks_in_queue(photon->photon_state->algorithm_state), 0);
+    free_task_spec(object_reconstruction_suppression_spec);
+    destroy_photon_mock(photon);
+    PASS();
+  }
+}
+
 SUITE(photon_tests) {
   RUN_REDIS_TEST(object_reconstruction_test);
   RUN_REDIS_TEST(object_reconstruction_recursive_test);
+  RUN_REDIS_TEST(object_reconstruction_suppression_test);
 }
 
 GREATEST_MAIN_DEFS();

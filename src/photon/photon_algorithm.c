@@ -336,3 +336,10 @@ void handle_object_available(local_scheduler_state *state,
     free(fetch_req);
   }
 }
+
+int num_tasks_in_queue(scheduling_algorithm_state *algorithm_state) {
+  task_queue_entry *elt;
+  int count;
+  DL_COUNT(algorithm_state->task_queue, elt, count);
+  return count;
+}
