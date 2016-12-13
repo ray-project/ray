@@ -5,11 +5,9 @@
 #include "utlist.h"
 
 #include "state/task_table.h"
+#include "state/object_table.h"
 #include "photon.h"
 #include "photon_scheduler.h"
-
-/* TODO(swang): We should set retry values in a config file somewhere. */
-const retry_info photon_retry = {0, 1000, NULL};
 
 typedef struct task_queue_entry {
   /** The task that is queued. */
@@ -224,6 +222,7 @@ void give_task_to_global_scheduler(local_scheduler_state *state,
                                    task_spec *spec,
                                    bool from_global_scheduler) {
   /* Pass on the task to the global scheduler. */
+  DCHECK(state->global_scheduler_exists);
   DCHECK(!from_global_scheduler);
   task *task = alloc_task(spec, TASK_STATUS_WAITING, NIL_ID);
   DCHECK(state->db != NULL);
@@ -242,10 +241,20 @@ void handle_task_submitted(local_scheduler_state *state,
   if ((utarray_len(algorithm_state->available_workers) > 0) &&
       can_run(algorithm_state, spec)) {
     run_task_immediately(state, algorithm_state, spec, false);
-  } else if (state->db == NULL) {
+  } else if (state->db == NULL || !state->global_scheduler_exists) {
     queue_task_locally(state, algorithm_state, spec, false);
   } else {
     give_task_to_global_scheduler(state, algorithm_state, spec, false);
+  }
+  /* Update the result table, which holds mappings of object ID -> ID of the
+   * task that created it. */
+  if (state->db != NULL) {
+    task_id task_id = task_spec_id(spec);
+    for (int64_t i = 0; i < task_num_returns(spec); ++i) {
+      object_id return_id = task_return(spec, i);
+      result_table_add(state->db, return_id, task_id,
+                       (retry_info *) &photon_retry, NULL, NULL);
+    }
   }
 }
 
@@ -256,6 +265,7 @@ void handle_task_scheduled(local_scheduler_state *state,
    * the global scheduler, so we can safely assert that there is a connection
    * to the database. */
   DCHECK(state->db != NULL);
+  DCHECK(state->global_scheduler_exists);
   /* Initiate fetch calls for any dependencies that are not present locally. */
   fetch_missing_dependencies(state, algorithm_state, spec);
   /* If this task's dependencies are available locally, and if there is an
@@ -325,4 +335,11 @@ void handle_object_available(local_scheduler_state *state,
     CHECK(event_loop_remove_timer(state->loop, fetch_req->timer) == AE_OK);
     free(fetch_req);
   }
+}
+
+int num_tasks_in_queue(scheduling_algorithm_state *algorithm_state) {
+  task_queue_entry *elt;
+  int count;
+  DL_COUNT(algorithm_state->task_queue, elt, count);
+  return count;
 }

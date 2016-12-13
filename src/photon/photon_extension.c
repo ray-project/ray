@@ -51,11 +51,24 @@ static PyObject *PyPhotonClient_get_task(PyObject *self) {
 }
 // clang-format on
 
+static PyObject *PyPhotonClient_reconstruct_object(PyObject *self,
+                                                   PyObject *args) {
+  object_id object_id;
+  if (!PyArg_ParseTuple(args, "O&", &PyObjectToUniqueID, &object_id)) {
+    return NULL;
+  }
+  photon_reconstruct_object(((PyPhotonClient *) self)->photon_connection,
+                            object_id);
+  Py_RETURN_NONE;
+}
+
 static PyMethodDef PyPhotonClient_methods[] = {
     {"submit", (PyCFunction) PyPhotonClient_submit, METH_VARARGS,
      "Submit a task to the local scheduler."},
     {"get_task", (PyCFunction) PyPhotonClient_get_task, METH_NOARGS,
      "Get a task from the local scheduler."},
+    {"reconstruct_object", (PyCFunction) PyPhotonClient_reconstruct_object,
+     METH_VARARGS, "Ask the local scheduler to reconstruct an object."},
     {NULL} /* Sentinel */
 };
 

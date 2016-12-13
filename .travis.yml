@@ -61,6 +61,10 @@ install:
   - make test
   - cd ../..
 
+  - cd src/photon
+  - make test
+  - cd ../..
+
   - cd numbuf
   - sudo python setup.py install
   - cd ..

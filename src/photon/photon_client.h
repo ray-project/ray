@@ -13,10 +13,18 @@ typedef struct {
  * Connect to the local scheduler.
  *
  * @param photon_socket The name of the socket to use to connect to the local
-          scheduler.
+ *        scheduler.
  * @return The connection information.
  */
 photon_conn *photon_connect(const char *photon_socket);
+
+/**
+ * Disconnect from the local scheduler.
+ *
+ * @param conn Photon connection information returned by photon_connect.
+ * @return Void.
+ */
+void photon_disconnect(photon_conn *conn);
 
 /**
  * Submit a task to the local scheduler.
@@ -48,12 +56,13 @@ task_spec *photon_get_task(photon_conn *conn);
 void photon_task_done(photon_conn *conn);
 
 /**
- * Disconnect from the local scheduler.
+ * Tell the local scheduler to reconstruct an object.
  *
  * @param conn The connection information.
+ * @param object_id The ID of the object to reconstruct.
  * @return Void.
  */
-void photon_disconnect(photon_conn *conn);
+void photon_reconstruct_object(photon_conn *conn, object_id object_id);
 
 /**
  * Send a log message to the local scheduler.
