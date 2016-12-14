@@ -5,6 +5,7 @@
 
 #include "state/db.h"
 #include "utarray.h"
+#include "uthash.h"
 
 /** Contains all information that is associated with a local scheduler. */
 typedef struct {
@@ -15,6 +16,12 @@ typedef struct {
 typedef struct global_scheduler_policy_state global_scheduler_policy_state;
 
 typedef struct {
+  char *aux_address; /* Key */
+  db_client_id photon_db_client_id;
+  UT_hash_handle hh;
+} aux_address_entry;
+
+typedef struct {
   /** The global scheduler event loop. */
   event_loop *loop;
   /** The global state store database. */
@@ -23,6 +30,7 @@ typedef struct {
   UT_array *local_schedulers;
   /** The state managed by the scheduling policy. */
   global_scheduler_policy_state *policy_state;
+  aux_address_entry *plasma_photon_map;
 } global_scheduler_state;
 
 void assign_task_to_local_scheduler(global_scheduler_state *state,

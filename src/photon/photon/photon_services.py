@@ -10,7 +10,7 @@ import time
 def random_name():
   return str(random.randint(0, 99999999))
 
-def start_local_scheduler(plasma_store_name, plasma_manager_name=None, redis_address=None, use_valgrind=False, use_profiler=False):
+def start_local_scheduler(plasma_store_name, plasma_manager_name=None, plasma_address=None, redis_address=None, use_valgrind=False, use_profiler=False):
   """Start a local scheduler process.
 
   Args:
@@ -18,6 +18,9 @@ def start_local_scheduler(plasma_store_name, plasma_manager_name=None, redis_add
     plasma_manager_name (str): The name of the plasma manager to connect to.
       This does not need to be provided, but if it is, then the Redis address
       must be provided as well.
+    plasma_address (str): The address of the plasma manager to connect to. This
+      is only used by the global scheduler to figure out which plasma managers
+      are connected to which local schedulers.
     redis_address (str): The address of the Redis instance to connect to. If
       this is not provided, then the local scheduler will not connect to Redis.
     use_valgrind (bool): True if the local scheduler should be started inside of
@@ -40,6 +43,8 @@ def start_local_scheduler(plasma_store_name, plasma_manager_name=None, redis_add
     command += ["-m", plasma_manager_name]
   if redis_address is not None:
     command += ["-r", redis_address]
+  if plasma_address is not None:
+    command += ["-a", plasma_address]
   if use_valgrind:
     pid = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + command)
     time.sleep(1.0)
