@@ -30,6 +30,8 @@ global_scheduler_state *init_global_scheduler(event_loop *loop,
                                               const char *redis_addr,
                                               int redis_port) {
   global_scheduler_state *state = malloc(sizeof(global_scheduler_state));
+  /* Must initialize state to 0. Sets hashmap head(s) to NULL. */
+  memset(state, 0, sizeof(global_scheduler_state));
   state->db = db_connect(redis_addr, redis_port, "global_scheduler", "", -1);
   db_attach(state->db, loop, false);
   utarray_new(state->local_schedulers, &local_scheduler_icd);
@@ -38,9 +40,18 @@ global_scheduler_state *init_global_scheduler(event_loop *loop,
 }
 
 void free_global_scheduler(global_scheduler_state *state) {
+  aux_address_entry *entry, *tmp;
+
   db_disconnect(state->db);
   utarray_free(state->local_schedulers);
   destroy_global_scheduler_policy(state->policy_state);
+  /* delete the plasma 2 photon association map */
+  HASH_ITER(hh, state->plasma_photon_map, entry, tmp) {
+    HASH_DELETE(hh, state->plasma_photon_map, entry);
+    /* Now deallocate hash table entry. */
+    free(entry->aux_address);
+    free(entry);
+  }
   free(state);
 }
 
@@ -62,11 +73,23 @@ void process_task_waiting(task *task, void *user_context) {
   handle_task_waiting(state, state->policy_state, task);
 }
 
+/**
+ * Process a notification about a new DB client connecting to Redis.
+ * @param aux_address: an ip:port pair for the plasma manager associated with
+ * this db client.
+ */
 void process_new_db_client(db_client_id db_client_id,
                            const char *client_type,
+                           const char *aux_address,
                            void *user_context) {
   global_scheduler_state *state = (global_scheduler_state *) user_context;
-  if (strcmp(client_type, "photon") == 0) {
+  if (strncmp(client_type, "photon", strlen("photon")) == 0) {
+    /* Add plasma_manager ip:port -> photon_db_client_id association to state.
+     */
+    aux_address_entry *plasma_photon_entry = malloc(sizeof(aux_address_entry));
+    plasma_photon_entry->aux_address = strdup(aux_address);
+    plasma_photon_entry->photon_db_client_id = db_client_id;
+    HASH_ADD_STR(state->plasma_photon_map, aux_address, plasma_photon_entry);
     handle_new_local_scheduler(state, state->policy_state, db_client_id);
   }
 }

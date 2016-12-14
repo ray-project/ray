@@ -70,6 +70,7 @@ local_scheduler_state *init_local_scheduler(
     int redis_port,
     const char *plasma_manager_socket_name,
     const char *plasma_store_socket_name,
+    const char *plasma_manager_address,
     bool global_scheduler_exists);
 
 void free_local_scheduler(local_scheduler_state *state);

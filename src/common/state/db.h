@@ -25,7 +25,12 @@ db_handle *db_connect(const char *db_address,
                       const char *client_type,
                       const char *client_addr,
                       int client_port);
-
+db_handle *db_connect_extended(const char *db_address,
+                               int db_port,
+                               const char *client_type,
+                               const char *client_addr,
+                               int client_port,
+                               const char *aux_address);
 /**
  * Attach global system store connection to an event loop. Callbacks from
  * queries to the global system store will trigger events in the event loop.
