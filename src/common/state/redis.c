@@ -602,6 +602,8 @@ void redis_object_table_get_entry(redisAsyncContext *c,
       object_table_object_available_callback sub_callback =
           sub_data->object_available_callback;
       if (manager_count > 0) {
+        /* TODO(swang): For global scheduler subscriptions, we should be
+         * calling this even when the manager_count is 0. */
         if (sub_callback) {
           sub_callback(id, manager_count, manager_vector,
                        sub_data->subscribe_context);
