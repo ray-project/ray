@@ -5,6 +5,7 @@ from __future__ import print_function
 import os
 import random
 import subprocess
+import sys
 import time
 
 from . import libplasma
@@ -42,13 +43,18 @@ class PlasmaBuffer(object):
 
   def __getitem__(self, index):
     """Read from the PlasmaBuffer as if it were just a regular buffer."""
-    return self.buffer[index]
+    value = self.buffer[index]
+    if sys.version_info >= (3, 0) and not isinstance(index, slice):
+      value = chr(value)
+    return value
 
   def __setitem__(self, index, value):
     """Write to the PlasmaBuffer as if it were just a regular buffer.
 
     This should fail because the buffer should be read only.
     """
+    if sys.version_info >= (3, 0) and not isinstance(index, slice):
+      value = ord(value)
     self.buffer[index] = value
 
   def __len__(self):
@@ -103,7 +109,7 @@ class PlasmaClient(object):
       Exception: An exception is raised if the object could not be created.
     """
     # Turn the metadata into the right type.
-    metadata = bytearray("") if metadata is None else metadata
+    metadata = bytearray(b"") if metadata is None else metadata
     buff = libplasma.create(self.conn, object_id, size, metadata)
     return PlasmaBuffer(buff, object_id, self)
 
@@ -243,7 +249,7 @@ def start_plasma_store(plasma_store_memory=DEFAULT_PLASMA_STORE_MEMORY, use_valg
   """
   if use_valgrind and use_profiler:
     raise Exception("Cannot use valgrind and profiler at the same time.")
-  plasma_store_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../build/plasma_store")
+  plasma_store_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "plasma_store")
   plasma_store_name = "/tmp/plasma_store{}".format(random_name())
   command = [plasma_store_executable, "-s", plasma_store_name, "-m", str(plasma_store_memory)]
   if use_valgrind:
@@ -273,7 +279,7 @@ def start_plasma_manager(store_name, redis_address, num_retries=20, use_valgrind
   Raises:
     Exception: An exception is raised if the manager could not be started.
   """
-  plasma_manager_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../build/plasma_manager")
+  plasma_manager_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "plasma_manager")
   plasma_manager_name = "/tmp/plasma_manager{}".format(random_name())
   port = None
   process = None

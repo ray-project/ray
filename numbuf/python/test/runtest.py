@@ -6,10 +6,11 @@ import unittest
 import numbuf
 import numpy as np
 from numpy.testing import assert_equal
+import sys
 
-TEST_OBJECTS = [{(1,2) : 1}, {() : 2}, [1, "hello", 3.0], 42, 43L, "hello world",
+TEST_OBJECTS = [{(1,2) : 1}, {() : 2}, [1, "hello", 3.0], 42, 43, "hello world",
                 u"x", u"\u262F", 42.0,
-                1L << 62, (1.0, "hi"),
+                1 << 62, (1.0, "hi"),
                 None, (None, None), ("hello", None),
                 True, False, (True, False), "hello",
                 {True: "hello", False: "world"},
@@ -17,6 +18,9 @@ TEST_OBJECTS = [{(1,2) : 1}, {() : 2}, [1, "hello", 3.0], 42, 43L, "hello world"
                 np.int8(3), np.int32(4), np.int64(5),
                 np.uint8(3), np.uint32(4), np.uint64(5),
                 np.float32(1.0), np.float64(1.0)]
+
+if sys.version_info < (3, 0):
+  TEST_OBJECTS += [long(42), long(1 << 62)]
 
 class SerializationTests(unittest.TestCase):
 
@@ -110,7 +114,7 @@ class SerializationTests(unittest.TestCase):
       size = size + 4096 # INITIAL_METADATA_SIZE in arrow
       buff = np.zeros(size, dtype="uint8")
       metadata_offset = numbuf.write_to_buffer(batch, memoryview(buff))
-      array = numbuf.read_from_buffer(memoryview(buff), schema, metadata_offset)
+      array = numbuf.read_from_buffer(memoryview(buff), memoryview(schema), metadata_offset)
       result = numbuf.deserialize_list(array)
       assert_equal(result[0], obj)
 

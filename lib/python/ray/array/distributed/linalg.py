@@ -154,7 +154,7 @@ def qr(a):
   Ts = []
 
   for i in range(min(a.num_blocks[0], a.num_blocks[1])): # this differs from the paper, which says "for i in range(a.num_blocks[1])", but that doesn't seem to make any sense when a.num_blocks[1] > a.num_blocks[0]
-    sub_dist_array = subblocks.remote(a_work, range(i, a_work.num_blocks[0]), [i])
+    sub_dist_array = subblocks.remote(a_work, list(range(i, a_work.num_blocks[0])), [i])
     y, t, _, R = tsqr_hr.remote(sub_dist_array)
     y_val = ray.get(y)
 

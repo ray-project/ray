@@ -41,10 +41,10 @@ pushd "$PLASMA_DIR"
     make install
   popd
 popd
-cp "$PLASMA_DIR/build/plasma_store" "$PYTHON_PLASMA_DIR/build/"
-cp "$PLASMA_DIR/build/plasma_manager" "$PYTHON_PLASMA_DIR/build/"
-cp "$PLASMA_DIR/lib/python/plasma.py" "$PYTHON_PLASMA_DIR/lib/python/"
-cp "$PLASMA_DIR/lib/python/libplasma.so" "$PYTHON_PLASMA_DIR/lib/python/"
+cp "$PLASMA_DIR/build/plasma_store" "$PYTHON_PLASMA_DIR/"
+cp "$PLASMA_DIR/build/plasma_manager" "$PYTHON_PLASMA_DIR/"
+cp "$PLASMA_DIR/plasma/plasma.py" "$PYTHON_PLASMA_DIR/"
+cp "$PLASMA_DIR/plasma/libplasma.so" "$PYTHON_PLASMA_DIR/"
 
 pushd "$PHOTON_DIR"
   make clean

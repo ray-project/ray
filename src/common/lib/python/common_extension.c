@@ -1,4 +1,5 @@
 #include <Python.h>
+#include "bytesobject.h"
 #include "node.h"
 
 #include "common.h"
@@ -17,12 +18,19 @@ PyObject *pickle_dumps = NULL;
 PyObject *pickle_protocol = NULL;
 
 void init_pickle_module(void) {
-  /* For Python 3 this needs to be "_pickle" instead of "cPickle". */
+#if PY_MAJOR_VERSION >= 3
+  pickle_module = PyImport_ImportModule("pickle");
+#else
   pickle_module = PyImport_ImportModuleNoBlock("cPickle");
-  pickle_loads = PyString_FromString("loads");
-  pickle_dumps = PyString_FromString("dumps");
-  pickle_protocol = PyObject_GetAttrString(pickle_module, "HIGHEST_PROTOCOL");
+#endif
   CHECK(pickle_module != NULL);
+  CHECK(PyObject_HasAttrString(pickle_module, "loads"));
+  CHECK(PyObject_HasAttrString(pickle_module, "dumps"));
+  CHECK(PyObject_HasAttrString(pickle_module, "HIGHEST_PROTOCOL"));
+  pickle_loads = PyUnicode_FromString("loads");
+  pickle_dumps = PyUnicode_FromString("dumps");
+  pickle_protocol = PyObject_GetAttrString(pickle_module, "HIGHEST_PROTOCOL");
+  CHECK(pickle_protocol != NULL);
 }
 
 /* Define the PyObjectID class. */
@@ -62,8 +70,8 @@ PyObject *PyObjectID_make(object_id object_id) {
 
 static PyObject *PyObjectID_id(PyObject *self) {
   PyObjectID *s = (PyObjectID *) self;
-  return PyString_FromStringAndSize((char *) &s->object_id.id[0],
-                                    sizeof(s->object_id.id));
+  return PyBytes_FromStringAndSize((char *) &s->object_id.id[0],
+                                   sizeof(s->object_id.id));
 }
 
 static PyObject *PyObjectID_richcompare(PyObjectID *self,
@@ -106,7 +114,7 @@ static PyObject *PyObjectID_richcompare(PyObjectID *self,
 static long PyObjectID_hash(PyObjectID *self) {
   PyObject *tuple = PyTuple_New(UNIQUE_ID_SIZE);
   for (int i = 0; i < UNIQUE_ID_SIZE; ++i) {
-    PyTuple_SetItem(tuple, i, PyInt_FromLong(self->object_id.id[i]));
+    PyTuple_SetItem(tuple, i, PyLong_FromLong(self->object_id.id[i]));
   }
   long hash = PyObject_Hash(tuple);
   Py_XDECREF(tuple);
@@ -120,7 +128,7 @@ static PyObject *PyObjectID_repr(PyObjectID *self) {
   UT_string *repr;
   utstring_new(repr);
   utstring_printf(repr, "ObjectID(%s)", hex_id);
-  PyObject *result = PyString_FromString(utstring_body(repr));
+  PyObject *result = PyUnicode_FromString(utstring_body(repr));
   utstring_free(repr);
   return result;
 }
@@ -144,7 +152,7 @@ static PyMemberDef PyObjectID_members[] = {
 };
 
 PyTypeObject PyObjectIDType = {
-    PyObject_HEAD_INIT(NULL) 0,           /* ob_size */
+    PyVarObject_HEAD_INIT(NULL, 0)        /* ob_size */
     "common.ObjectID",                    /* tp_name */
     sizeof(PyObjectID),                   /* tp_basicsize */
     0,                                    /* tp_itemsize */
@@ -203,17 +211,17 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
                         &parent_task_id, &parent_counter)) {
     return -1;
   }
-  size_t size = PyList_Size(arguments);
+  Py_ssize_t size = PyList_Size(arguments);
   /* Determine the size of pass by value data in bytes. */
-  size_t value_data_bytes = 0;
-  for (size_t i = 0; i < size; ++i) {
+  Py_ssize_t value_data_bytes = 0;
+  for (Py_ssize_t i = 0; i < size; ++i) {
     PyObject *arg = PyList_GetItem(arguments, i);
     if (!PyObject_IsInstance(arg, (PyObject *) &PyObjectIDType)) {
       CHECK(pickle_module != NULL);
       CHECK(pickle_dumps != NULL);
       PyObject *data = PyObject_CallMethodObjArgs(pickle_module, pickle_dumps,
                                                   arg, pickle_protocol, NULL);
-      value_data_bytes += PyString_Size(data);
+      value_data_bytes += PyBytes_Size(data);
       utarray_push_back(val_repr_ptrs, &data);
     }
   }
@@ -223,15 +231,17 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
       start_construct_task_spec(parent_task_id, parent_counter, function_id,
                                 size, num_returns, value_data_bytes);
   /* Add the task arguments. */
-  for (size_t i = 0; i < size; ++i) {
+  for (Py_ssize_t i = 0; i < size; ++i) {
     PyObject *arg = PyList_GetItem(arguments, i);
     if (PyObject_IsInstance(arg, (PyObject *) &PyObjectIDType)) {
       task_args_add_ref(self->spec, ((PyObjectID *) arg)->object_id);
     } else {
-      PyObject *data =
-          *((PyObject **) utarray_eltptr(val_repr_ptrs, val_repr_index));
-      task_args_add_val(self->spec, (uint8_t *) PyString_AS_STRING(data),
-                        PyString_GET_SIZE(data));
+      /* We do this check because we cast a signed int to an unsigned int. */
+      CHECK(val_repr_index >= 0);
+      PyObject *data = *((PyObject **) utarray_eltptr(
+          val_repr_ptrs, (uint64_t) val_repr_index));
+      task_args_add_val(self->spec, (uint8_t *) PyBytes_AS_STRING(data),
+                        PyBytes_GET_SIZE(data));
       Py_DECREF(data);
       val_repr_index += 1;
     }
@@ -269,8 +279,8 @@ static PyObject *PyTask_arguments(PyObject *self) {
       CHECK(pickle_module != NULL);
       CHECK(pickle_loads != NULL);
       PyObject *str =
-          PyString_FromStringAndSize((char *) task_arg_val(task, i),
-                                     (Py_ssize_t) task_arg_length(task, i));
+          PyBytes_FromStringAndSize((char *) task_arg_val(task, i),
+                                    (Py_ssize_t) task_arg_length(task, i));
       PyObject *val =
           PyObject_CallMethodObjArgs(pickle_module, pickle_loads, str, NULL);
       Py_XDECREF(str);
@@ -304,44 +314,44 @@ static PyMethodDef PyTask_methods[] = {
 };
 
 PyTypeObject PyTaskType = {
-    PyObject_HEAD_INIT(NULL) 0,  /* ob_size */
-    "task.Task",                 /* tp_name */
-    sizeof(PyTask),              /* tp_basicsize */
-    0,                           /* tp_itemsize */
-    (destructor) PyTask_dealloc, /* tp_dealloc */
-    0,                           /* tp_print */
-    0,                           /* tp_getattr */
-    0,                           /* tp_setattr */
-    0,                           /* tp_compare */
-    0,                           /* tp_repr */
-    0,                           /* tp_as_number */
-    0,                           /* tp_as_sequence */
-    0,                           /* tp_as_mapping */
-    0,                           /* tp_hash */
-    0,                           /* tp_call */
-    0,                           /* tp_str */
-    0,                           /* tp_getattro */
-    0,                           /* tp_setattro */
-    0,                           /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT,          /* tp_flags */
-    "Task object",               /* tp_doc */
-    0,                           /* tp_traverse */
-    0,                           /* tp_clear */
-    0,                           /* tp_richcompare */
-    0,                           /* tp_weaklistoffset */
-    0,                           /* tp_iter */
-    0,                           /* tp_iternext */
-    PyTask_methods,              /* tp_methods */
-    0,                           /* tp_members */
-    0,                           /* tp_getset */
-    0,                           /* tp_base */
-    0,                           /* tp_dict */
-    0,                           /* tp_descr_get */
-    0,                           /* tp_descr_set */
-    0,                           /* tp_dictoffset */
-    (initproc) PyTask_init,      /* tp_init */
-    0,                           /* tp_alloc */
-    PyType_GenericNew,           /* tp_new */
+    PyVarObject_HEAD_INIT(NULL, 0) /* ob_size */
+    "task.Task",                   /* tp_name */
+    sizeof(PyTask),                /* tp_basicsize */
+    0,                             /* tp_itemsize */
+    (destructor) PyTask_dealloc,   /* tp_dealloc */
+    0,                             /* tp_print */
+    0,                             /* tp_getattr */
+    0,                             /* tp_setattr */
+    0,                             /* tp_compare */
+    0,                             /* tp_repr */
+    0,                             /* tp_as_number */
+    0,                             /* tp_as_sequence */
+    0,                             /* tp_as_mapping */
+    0,                             /* tp_hash */
+    0,                             /* tp_call */
+    0,                             /* tp_str */
+    0,                             /* tp_getattro */
+    0,                             /* tp_setattro */
+    0,                             /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,            /* tp_flags */
+    "Task object",                 /* tp_doc */
+    0,                             /* tp_traverse */
+    0,                             /* tp_clear */
+    0,                             /* tp_richcompare */
+    0,                             /* tp_weaklistoffset */
+    0,                             /* tp_iter */
+    0,                             /* tp_iternext */
+    PyTask_methods,                /* tp_methods */
+    0,                             /* tp_members */
+    0,                             /* tp_getset */
+    0,                             /* tp_base */
+    0,                             /* tp_dict */
+    0,                             /* tp_descr_get */
+    0,                             /* tp_descr_set */
+    0,                             /* tp_dictoffset */
+    (initproc) PyTask_init,        /* tp_init */
+    0,                             /* tp_alloc */
+    PyType_GenericNew,             /* tp_new */
 };
 
 /* Create a PyTask from a C struct. The resulting PyTask takes ownership of the
@@ -357,6 +367,10 @@ PyObject *PyTask_make(task_spec *task_spec) {
 
 #define SIZE_LIMIT 100
 #define NUM_ELEMENTS_LIMIT 1000
+
+#if PY_MAJOR_VERSION >= 3
+#define PyInt_Check PyLong_Check
+#endif
 
 /**
  * This method checks if a Python object is sufficiently simple that it can be
@@ -382,8 +396,8 @@ int is_simple_value(PyObject *value, int *num_elements_contained) {
       value == Py_True || PyFloat_Check(value) || value == Py_None) {
     return 1;
   }
-  if (PyString_CheckExact(value)) {
-    *num_elements_contained += PyString_Size(value);
+  if (PyBytes_CheckExact(value)) {
+    *num_elements_contained += PyBytes_Size(value);
     return (*num_elements_contained < NUM_ELEMENTS_LIMIT);
   }
   if (PyUnicode_CheckExact(value)) {
@@ -391,7 +405,7 @@ int is_simple_value(PyObject *value, int *num_elements_contained) {
     return (*num_elements_contained < NUM_ELEMENTS_LIMIT);
   }
   if (PyList_CheckExact(value) && PyList_Size(value) < SIZE_LIMIT) {
-    for (size_t i = 0; i < PyList_Size(value); ++i) {
+    for (Py_ssize_t i = 0; i < PyList_Size(value); ++i) {
       if (!is_simple_value(PyList_GetItem(value, i), num_elements_contained)) {
         return 0;
       }
@@ -410,7 +424,7 @@ int is_simple_value(PyObject *value, int *num_elements_contained) {
     return (*num_elements_contained < NUM_ELEMENTS_LIMIT);
   }
   if (PyTuple_CheckExact(value) && PyTuple_Size(value) < SIZE_LIMIT) {
-    for (size_t i = 0; i < PyTuple_Size(value); ++i) {
+    for (Py_ssize_t i = 0; i < PyTuple_Size(value); ++i) {
       if (!is_simple_value(PyTuple_GetItem(value, i), num_elements_contained)) {
         return 0;
       }
