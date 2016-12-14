@@ -4,7 +4,11 @@ from __future__ import print_function
 
 import unittest
 import ray
+import sys
 import time
+
+if sys.version_info >= (3, 0):
+  from importlib import reload
 
 import ray.test.test_functions as test_functions
 
@@ -23,9 +27,9 @@ class FailureTest(unittest.TestCase):
     ray.init(start_ray_local=True, num_workers=1, driver_mode=ray.SILENT_MODE)
 
     test_functions.test_unknown_type.remote()
-    wait_for_errors("TaskError", 1)
+    wait_for_errors(b"TaskError", 1)
     error_info = ray.error_info()
-    self.assertEqual(len(error_info["TaskError"]), 1)
+    self.assertEqual(len(error_info[b"TaskError"]), 1)
 
     ray.worker.cleanup()
 
@@ -57,17 +61,17 @@ class TaskStatusTest(unittest.TestCase):
 
     test_functions.throw_exception_fct1.remote()
     test_functions.throw_exception_fct1.remote()
-    wait_for_errors("TaskError", 2)
+    wait_for_errors(b"TaskError", 2)
     result = ray.error_info()
-    self.assertEqual(len(result["TaskError"]), 2)
-    for task in result["TaskError"]:
-      self.assertTrue("Test function 1 intentionally failed." in task.get("message"))
+    self.assertEqual(len(result[b"TaskError"]), 2)
+    for task in result[b"TaskError"]:
+      self.assertTrue(b"Test function 1 intentionally failed." in task.get(b"message"))
 
     x = test_functions.throw_exception_fct2.remote()
     try:
       ray.get(x)
     except Exception as e:
-      self.assertTrue("Test function 2 intentionally failed."in str(e))
+      self.assertTrue("Test function 2 intentionally failed." in str(e))
     else:
       self.assertTrue(False) # ray.get should throw an exception
 
@@ -76,7 +80,7 @@ class TaskStatusTest(unittest.TestCase):
       try:
         ray.get(ref)
       except Exception as e:
-        self.assertTrue("Test function 3 intentionally failed."in str(e))
+        self.assertTrue("Test function 3 intentionally failed." in str(e))
       else:
         self.assertTrue(False) # ray.get should throw an exception
 
@@ -100,8 +104,8 @@ class TaskStatusTest(unittest.TestCase):
       def __call__(self):
         return
     ray.remote(Foo())
-    wait_for_errors("RemoteFunctionImportError", 1)
-    self.assertTrue("There is a problem here." in ray.error_info()["RemoteFunctionImportError"][0]["message"])
+    wait_for_errors(b"RemoteFunctionImportError", 1)
+    self.assertTrue(b"There is a problem here." in ray.error_info()[b"RemoteFunctionImportError"][0][b"message"])
 
     ray.worker.cleanup()
 
@@ -115,9 +119,9 @@ class TaskStatusTest(unittest.TestCase):
         raise Exception("The initializer failed.")
       return 0
     ray.reusables.foo = ray.Reusable(initializer)
-    wait_for_errors("ReusableVariableImportError", 1)
+    wait_for_errors(b"ReusableVariableImportError", 1)
     # Check that the error message is in the task info.
-    self.assertTrue("The initializer failed." in ray.error_info()["ReusableVariableImportError"][0]["message"])
+    self.assertTrue(b"The initializer failed." in ray.error_info()[b"ReusableVariableImportError"][0][b"message"])
 
     ray.worker.cleanup()
 
@@ -133,9 +137,9 @@ class TaskStatusTest(unittest.TestCase):
     def use_foo():
       ray.reusables.foo
     use_foo.remote()
-    wait_for_errors("ReusableVariableReinitializeError", 1)
+    wait_for_errors(b"ReusableVariableReinitializeError", 1)
     # Check that the error message is in the task info.
-    self.assertTrue("The reinitializer failed." in ray.error_info()["ReusableVariableReinitializeError"][0]["message"])
+    self.assertTrue(b"The reinitializer failed." in ray.error_info()[b"ReusableVariableReinitializeError"][0][b"message"])
 
     ray.worker.cleanup()
 
@@ -146,11 +150,11 @@ class TaskStatusTest(unittest.TestCase):
       if ray.worker.global_worker.mode == ray.WORKER_MODE:
         raise Exception("Function to run failed.")
     ray.worker.global_worker.run_function_on_all_workers(f)
-    wait_for_errors("FunctionToRunError", 2)
+    wait_for_errors(b"FunctionToRunError", 2)
     # Check that the error message is in the task info.
-    self.assertEqual(len(ray.error_info()["FunctionToRunError"]), 2)
-    self.assertTrue("Function to run failed." in ray.error_info()["FunctionToRunError"][0]["message"])
-    self.assertTrue("Function to run failed." in ray.error_info()["FunctionToRunError"][1]["message"])
+    self.assertEqual(len(ray.error_info()[b"FunctionToRunError"]), 2)
+    self.assertTrue(b"Function to run failed." in ray.error_info()[b"FunctionToRunError"][0][b"message"])
+    self.assertTrue(b"Function to run failed." in ray.error_info()[b"FunctionToRunError"][1][b"message"])
 
     ray.worker.cleanup()
 

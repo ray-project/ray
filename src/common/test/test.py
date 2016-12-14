@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import numpy as np
 import pickle
+import sys
 import unittest
 
 import common
@@ -20,9 +21,12 @@ def random_task_id():
   return common.ObjectID(np.random.bytes(ID_SIZE))
 
 BASE_SIMPLE_OBJECTS = [
-  0, 1, 100000, 0L, 1L, 100000L, 1L << 100, 0.0, 0.5, 0.9, 100000.1, (), [], {},
+  0, 1, 100000,  0.0, 0.5, 0.9, 100000.1, (), [], {},
   "", 990 * "h", u"", 990 * u"h"
 ]
+
+if sys.version_info < (3, 0):
+  BASE_SIMPLE_OBJECTS += [long(0), long(1), long(100000), long(1 << 100)]
 
 LIST_SIMPLE_OBJECTS = [[obj] for obj in BASE_SIMPLE_OBJECTS]
 TUPLE_SIMPLE_OBJECTS = [(obj,) for obj in BASE_SIMPLE_OBJECTS]
@@ -85,16 +89,17 @@ class TestObjectID(unittest.TestCase):
     self.assertRaises(Exception, lambda : pickling.dumps(h))
 
   def test_equality_comparisons(self):
-    x1 = common.ObjectID(ID_SIZE * "a")
-    x2 = common.ObjectID(ID_SIZE * "a")
-    y1 = common.ObjectID(ID_SIZE * "b")
-    y2 = common.ObjectID(ID_SIZE * "b")
+    x1 = common.ObjectID(ID_SIZE * b"a")
+    x2 = common.ObjectID(ID_SIZE * b"a")
+    y1 = common.ObjectID(ID_SIZE * b"b")
+    y2 = common.ObjectID(ID_SIZE * b"b")
     self.assertEqual(x1, x2)
     self.assertEqual(y1, y2)
     self.assertNotEqual(x1, y1)
 
-    object_ids1 = [common.ObjectID(ID_SIZE * chr(i)) for i in range(256)]
-    object_ids2 = [common.ObjectID(ID_SIZE * chr(i)) for i in range(256)]
+    random_strings = [np.random.bytes(ID_SIZE) for _ in range(256)]
+    object_ids1 = [common.ObjectID(random_strings[i]) for i in range(256)]
+    object_ids2 = [common.ObjectID(random_strings[i]) for i in range(256)]
     self.assertEqual(len(set(object_ids1)), 256)
     self.assertEqual(len(set(object_ids1 + object_ids2)), 256)
     self.assertEqual(set(object_ids1), set(object_ids2))
@@ -122,7 +127,7 @@ class TestTask(unittest.TestCase):
       10 * ["a"],
       100 * ["a"],
       1000 * ["a"],
-      [1, 1.3, 2L, 1L << 100, "hi", u"hi", [1, 2]],
+      [1, 1.3, 2, 1 << 100, "hi", u"hi", [1, 2]],
       object_ids[:1],
       object_ids[:2],
       object_ids[:3],

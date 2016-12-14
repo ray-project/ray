@@ -5,6 +5,8 @@
 #define PY_ARRAY_UNIQUE_SYMBOL NUMBUF_ARRAY_API
 #include <numpy/arrayobject.h>
 
+#include "bytesobject.h"
+
 #include <iostream>
 
 #include <arrow/ipc/metadata.h>
@@ -72,7 +74,7 @@ static PyObject* serialize_list(PyObject* self, PyObject* args) {
 
     PyObject* r = PyTuple_New(3);
     PyTuple_SetItem(r, 0, PyByteArray_FromStringAndSize(ptr, buffer->size()));
-    PyTuple_SetItem(r, 1, PyInt_FromLong(size));
+    PyTuple_SetItem(r, 1, PyLong_FromLong(size));
     PyTuple_SetItem(r, 2,
         PyCapsule_New(reinterpret_cast<void*>(batch), "arrow", &ArrowCapsule_Destructor));
     return r;
@@ -95,20 +97,22 @@ static PyObject* write_to_buffer(PyObject* self, PyObject* args) {
   int64_t header_end_offset;
   ARROW_CHECK_OK(ipc::WriteRecordBatch((*batch)->columns(), (*batch)->num_rows(),
       target.get(), &body_end_offset, &header_end_offset));
-  return PyInt_FromLong(header_end_offset);
+  return PyLong_FromLong(header_end_offset);
 }
 
 /* Documented in doc/numbuf.rst in ray-core */
 static PyObject* read_from_buffer(PyObject* self, PyObject* args) {
-  PyObject* memoryview;
-  PyObject* metadata;
+  PyObject* data_memoryview;
+  PyObject* metadata_memoryview;
   int64_t metadata_offset;
-  if (!PyArg_ParseTuple(args, "OOL", &memoryview, &metadata, &metadata_offset)) {
+  if (!PyArg_ParseTuple(
+          args, "OOL", &data_memoryview, &metadata_memoryview, &metadata_offset)) {
     return NULL;
   }
 
-  auto ptr = reinterpret_cast<uint8_t*>(PyByteArray_AsString(metadata));
-  auto schema_buffer = std::make_shared<Buffer>(ptr, PyByteArray_Size(metadata));
+  Py_buffer* metadata_buffer = PyMemoryView_GET_BUFFER(metadata_memoryview);
+  auto ptr = reinterpret_cast<uint8_t*>(metadata_buffer->buf);
+  auto schema_buffer = std::make_shared<Buffer>(ptr, metadata_buffer->len);
   std::shared_ptr<ipc::Message> message;
   ARROW_CHECK_OK(ipc::Message::Open(schema_buffer, &message));
   DCHECK_EQ(ipc::Message::SCHEMA, message->type());
@@ -116,7 +120,7 @@ static PyObject* read_from_buffer(PyObject* self, PyObject* args) {
   std::shared_ptr<Schema> schema;
   ARROW_CHECK_OK(schema_msg->GetSchema(&schema));
 
-  Py_buffer* buffer = PyMemoryView_GET_BUFFER(memoryview);
+  Py_buffer* buffer = PyMemoryView_GET_BUFFER(data_memoryview);
   auto source = std::make_shared<FixedBufferStream>(
       reinterpret_cast<uint8_t*>(buffer->buf), buffer->len);
   std::shared_ptr<arrow::ipc::RecordBatchReader> reader;
@@ -180,13 +184,54 @@ static PyMethodDef NumbufMethods[] = {
         "set serialization and deserialization callbacks"},
     {NULL, NULL, 0, NULL}};
 
-PyMODINIT_FUNC initlibnumbuf(void) {
-  PyObject* m;
-  m = Py_InitModule3("libnumbuf", NumbufMethods, "Python C Extension for Numbuf");
+// clang-format off
+#if PY_MAJOR_VERSION >= 3
+static struct PyModuleDef moduledef = {
+    PyModuleDef_HEAD_INIT,
+    "libnumbuf",                     /* m_name */
+    "Python C Extension for Numbuf", /* m_doc */
+    0,                               /* m_size */
+    NumbufMethods,                   /* m_methods */
+    NULL,                            /* m_reload */
+    NULL,                            /* m_traverse */
+    NULL,                            /* m_clear */
+    NULL,                            /* m_free */
+};
+#endif
+// clang-format on
+
+#if PY_MAJOR_VERSION >= 3
+#define INITERROR return NULL
+#else
+#define INITERROR return
+#endif
+
+#ifndef PyMODINIT_FUNC /* declarations for DLL import/export */
+#define PyMODINIT_FUNC void
+#endif
+
+#if PY_MAJOR_VERSION >= 3
+#define MOD_INIT(name) PyMODINIT_FUNC PyInit_##name(void)
+#else
+#define MOD_INIT(name) PyMODINIT_FUNC init##name(void)
+#endif
+
+MOD_INIT(libnumbuf) {
+#if PY_MAJOR_VERSION >= 3
+  PyObject* m = PyModule_Create(&moduledef);
+#else
+  PyObject* m =
+      Py_InitModule3("libnumbuf", NumbufMethods, "Python C Extension for Numbuf");
+#endif
+
   char numbuf_error[] = "numbuf.error";
   NumbufError = PyErr_NewException(numbuf_error, NULL, NULL);
   Py_INCREF(NumbufError);
   PyModule_AddObject(m, "numbuf_error", NumbufError);
   import_array();
+
+#if PY_MAJOR_VERSION >= 3
+  return m;
+#endif
 }
 }

@@ -10,21 +10,53 @@ static PyMethodDef common_methods[] = {
     {NULL} /* Sentinel */
 };
 
+#if PY_MAJOR_VERSION >= 3
+static struct PyModuleDef moduledef = {
+    PyModuleDef_HEAD_INIT,
+    "common",                                               /* m_name */
+    "A module for common types. This is used for testing.", /* m_doc */
+    0,                                                      /* m_size */
+    common_methods,                                         /* m_methods */
+    NULL,                                                   /* m_reload */
+    NULL,                                                   /* m_traverse */
+    NULL,                                                   /* m_clear */
+    NULL,                                                   /* m_free */
+};
+#endif
+
+#if PY_MAJOR_VERSION >= 3
+#define INITERROR return NULL
+#else
+#define INITERROR return
+#endif
+
 #ifndef PyMODINIT_FUNC /* declarations for DLL import/export */
 #define PyMODINIT_FUNC void
 #endif
 
-PyMODINIT_FUNC initcommon(void) {
+#if PY_MAJOR_VERSION >= 3
+#define MOD_INIT(name) PyMODINIT_FUNC PyInit_##name(void)
+#else
+#define MOD_INIT(name) PyMODINIT_FUNC init##name(void)
+#endif
+
+MOD_INIT(common) {
   PyObject *m;
 
-  if (PyType_Ready(&PyTaskType) < 0)
-    return;
+  if (PyType_Ready(&PyTaskType) < 0) {
+    INITERROR;
+  }
 
-  if (PyType_Ready(&PyObjectIDType) < 0)
-    return;
+  if (PyType_Ready(&PyObjectIDType) < 0) {
+    INITERROR;
+  }
 
+#if PY_MAJOR_VERSION >= 3
+  m = PyModule_Create(&moduledef);
+#else
   m = Py_InitModule3("common", common_methods,
                      "A module for common types. This is used for testing.");
+#endif
 
   init_pickle_module();
 
@@ -38,4 +70,8 @@ PyMODINIT_FUNC initcommon(void) {
   CommonError = PyErr_NewException(common_error, NULL, NULL);
   Py_INCREF(CommonError);
   PyModule_AddObject(m, "common_error", CommonError);
+
+#if PY_MAJOR_VERSION >= 3
+  return m;
+#endif
 }
