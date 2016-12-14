@@ -4,8 +4,12 @@ from __future__ import print_function
 
 import unittest
 import ray
+import sys
 import time
 import numpy as np
+
+if sys.version_info >= (3, 0):
+  from importlib import reload
 
 import ray.test.test_functions as test_functions
 

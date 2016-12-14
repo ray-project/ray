@@ -24,13 +24,13 @@ def random_object_id():
   return np.random.bytes(20)
 
 def generate_metadata(length):
-  metadata = length * ["\x00"]
+  metadata_buffer = bytearray(length)
   if length > 0:
-    metadata[0] = chr(random.randint(0, 255))
-    metadata[-1] = chr(random.randint(0, 255))
+    metadata_buffer[0] = random.randint(0, 255)
+    metadata_buffer[-1] = random.randint(0, 255)
     for _ in range(100):
-      metadata[random.randint(0, length - 1)] = chr(random.randint(0, 255))
-  return bytearray("".join(metadata))
+      metadata_buffer[random.randint(0, length - 1)] = random.randint(0, 255)
+  return metadata_buffer
 
 def write_to_data_buffer(buff, length):
   if length > 0:
@@ -123,7 +123,7 @@ class TestPlasmaClient(unittest.TestCase):
       metadata_buffer = self.plasma_client.get_metadata(object_id)
       self.assertEqual(len(metadata), len(metadata_buffer))
       for i in range(len(metadata)):
-        self.assertEqual(metadata[i], metadata_buffer[i])
+        self.assertEqual(chr(metadata[i]), metadata_buffer[i])
 
   def test_create_existing(self):
     # This test is partially used to test the code path in which we create an

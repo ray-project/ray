@@ -7,6 +7,10 @@ import ray
 import numpy as np
 import time
 from numpy.testing import assert_equal, assert_almost_equal
+import sys
+
+if sys.version_info >= (3, 0):
+  from importlib import reload
 
 import ray.array.remote as ra
 import ray.array.distributed as da

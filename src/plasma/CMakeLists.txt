@@ -19,8 +19,9 @@ message(STATUS "PYTHON_INCLUDE_DIRS: " ${PYTHON_INCLUDE_DIRS})
 execute_process(COMMAND ${CUSTOM_PYTHON_EXECUTABLE} -c "import sys; print(sys.exec_prefix)"
                 OUTPUT_VARIABLE PYTHON_PREFIX OUTPUT_STRIP_TRAILING_WHITESPACE)
 message(STATUS "PYTHON_PREFIX: " ${PYTHON_PREFIX})
+# The name ending in "m" is for miniconda.
 FIND_LIBRARY(PYTHON_LIBRARIES
-             NAMES ${PYTHON_LIBRARY_NAME}
+             NAMES "${PYTHON_LIBRARY_NAME}" "${PYTHON_LIBRARY_NAME}m"
              HINTS "${PYTHON_PREFIX}"
              PATH_SUFFIXES "lib" "libs"
              NO_DEFAULT_PATH)
@@ -29,8 +30,9 @@ message(STATUS "PYTHON_LIBRARIES: " ${PYTHON_LIBRARIES})
 # the Python include directories.
 if(NOT PYTHON_LIBRARIES)
   message(STATUS "Failed to find PYTHON_LIBRARIES near the Python executable, so now looking near the Python include directories.")
+  # The name ending in "m" is for miniconda.
   FIND_LIBRARY(PYTHON_LIBRARIES
-               NAMES ${PYTHON_LIBRARY_NAME}
+               NAMES "${PYTHON_LIBRARY_NAME}" "${PYTHON_LIBRARY_NAME}m"
                HINTS "${PYTHON_INCLUDE_DIRS}/../.."
                PATH_SUFFIXES "lib" "libs"
                NO_DEFAULT_PATH)
@@ -89,4 +91,4 @@ endif(APPLE)
 
 target_link_libraries(plasma ${COMMON_LIB} ${PYTHON_LIBRARIES})
 
-install(TARGETS plasma DESTINATION ${CMAKE_SOURCE_DIR}/lib/python)
+install(TARGETS plasma DESTINATION ${CMAKE_SOURCE_DIR}/plasma)

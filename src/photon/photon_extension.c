@@ -73,7 +73,7 @@ static PyMethodDef PyPhotonClient_methods[] = {
 };
 
 static PyTypeObject PyPhotonClientType = {
-    PyObject_HEAD_INIT(NULL) 0,          /* ob_size */
+    PyVarObject_HEAD_INIT(NULL, 0)       /* ob_size */
     "photon.PhotonClient",               /* tp_name */
     sizeof(PyPhotonClient),              /* tp_basicsize */
     0,                                   /* tp_itemsize */
@@ -121,24 +121,55 @@ static PyMethodDef photon_methods[] = {
     {NULL} /* Sentinel */
 };
 
+#if PY_MAJOR_VERSION >= 3
+static struct PyModuleDef moduledef = {
+    PyModuleDef_HEAD_INIT,
+    "libphoton",                         /* m_name */
+    "A module for the local scheduler.", /* m_doc */
+    0,                                   /* m_size */
+    photon_methods,                      /* m_methods */
+    NULL,                                /* m_reload */
+    NULL,                                /* m_traverse */
+    NULL,                                /* m_clear */
+    NULL,                                /* m_free */
+};
+#endif
+
+#if PY_MAJOR_VERSION >= 3
+#define INITERROR return NULL
+#else
+#define INITERROR return
+#endif
+
 #ifndef PyMODINIT_FUNC /* declarations for DLL import/export */
 #define PyMODINIT_FUNC void
 #endif
 
-PyMODINIT_FUNC initlibphoton(void) {
-  PyObject *m;
+#if PY_MAJOR_VERSION >= 3
+#define MOD_INIT(name) PyMODINIT_FUNC PyInit_##name(void)
+#else
+#define MOD_INIT(name) PyMODINIT_FUNC init##name(void)
+#endif
 
-  if (PyType_Ready(&PyTaskType) < 0)
-    return;
+MOD_INIT(libphoton) {
+  if (PyType_Ready(&PyTaskType) < 0) {
+    INITERROR;
+  }
 
-  if (PyType_Ready(&PyObjectIDType) < 0)
-    return;
+  if (PyType_Ready(&PyObjectIDType) < 0) {
+    INITERROR;
+  }
 
-  if (PyType_Ready(&PyPhotonClientType) < 0)
-    return;
+  if (PyType_Ready(&PyPhotonClientType) < 0) {
+    INITERROR;
+  }
 
-  m = Py_InitModule3("libphoton", photon_methods,
-                     "A module for the local scheduler.");
+#if PY_MAJOR_VERSION >= 3
+  PyObject *m = PyModule_Create(&moduledef);
+#else
+  PyObject *m = Py_InitModule3("libphoton", photon_methods,
+                               "A module for the local scheduler.");
+#endif
 
   init_pickle_module();
 
@@ -155,4 +186,8 @@ PyMODINIT_FUNC initlibphoton(void) {
   PhotonError = PyErr_NewException(photon_error, NULL, NULL);
   Py_INCREF(PhotonError);
   PyModule_AddObject(m, "photon_error", PhotonError);
+
+#if PY_MAJOR_VERSION >= 3
+  return m;
+#endif
 }

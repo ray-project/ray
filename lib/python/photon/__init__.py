@@ -1,1 +1,1 @@
-from photon import *
+from .photon import *
