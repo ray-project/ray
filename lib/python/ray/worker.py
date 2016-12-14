@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import cloudpickle
 import hashlib
 import os
 import sys
@@ -521,7 +520,7 @@ class Worker(object):
       function_to_run_id = random_string()
       key = "FunctionsToRun:{}".format(function_to_run_id)
       self.redis_client.hmset(key, {"function_id": function_to_run_id,
-                                    "function": cloudpickle.dumps(function)})
+                                    "function": pickling.dumps(function)})
       self.redis_client.rpush("Exports", key)
       self.driver_export_counter += 1
 
