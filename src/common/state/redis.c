@@ -604,6 +604,7 @@ void redis_object_table_get_entry(redisAsyncContext *c,
   REDIS_CALLBACK_HEADER(db, callback_data, r);
   redisReply *reply = r;
 
+  LOG_DEBUG("Object table get entry callback");
   db_client_id *managers = malloc(reply->elements * sizeof(db_client_id));
   int64_t manager_count = reply->elements;
 
@@ -630,6 +631,8 @@ void redis_object_table_get_entry(redisAsyncContext *c,
       object_table_object_available_callback sub_callback =
           sub_data->object_available_callback;
       if (manager_count > 0) {
+        /* TODO(swang): For global scheduler subscriptions, we should be
+         * calling this even when the manager_count is 0. */
         if (sub_callback) {
           sub_callback(id, manager_count, manager_vector,
                        sub_data->subscribe_context);
@@ -651,6 +654,7 @@ void redis_object_table_get_entry(redisAsyncContext *c,
     LOG_FATAL("expected integer or string, received type %d", reply->type);
   }
   free(managers);
+  LOG_DEBUG("Object table get entry finishing");
 }
 
 void object_table_redis_subscribe_callback(redisAsyncContext *c,
@@ -668,6 +672,7 @@ void object_table_redis_subscribe_callback(redisAsyncContext *c,
    * message is always the payload. */
   object_id id = NIL_ID;
   redisReply *message_type = reply->element[0];
+  LOG_DEBUG("Object table subscribe callback, message %s", message_type->str);
   if (strcmp(message_type->str, "message") == 0) {
     /* A SUBSCRIBE notification. */
     DCHECK(!IS_NIL_ID(callback_data->id));
@@ -682,10 +687,9 @@ void object_table_redis_subscribe_callback(redisAsyncContext *c,
 
     /* Parse the object ID from the keyspace. */
     redisReply *keyspace = reply->element[2];
-    char format[32];
-    snprintf(format, 32, "__keyspace@0__:obj:%%%ldc", sizeof(object_id));
-    int scanned = sscanf(keyspace->str, format, &id);
-    DCHECK(scanned == 1);
+    size_t prefix_length = strlen("__keyspace@0__:obj:");
+    DCHECK(keyspace->len == prefix_length + sizeof(object_id));
+    memcpy(&id, keyspace->str + prefix_length, sizeof(object_id));
   } else if (strcmp(message_type->str, "subscribe") == 0) {
     /* The reply for the initial SUBSCRIBE. */
     DCHECK(reply->elements == 3);
