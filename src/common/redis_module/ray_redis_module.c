@@ -19,6 +19,8 @@
  * TODO(pcm): Fill this out.
  */
 
+#define REDIS_CLIENT_PREFIX "RC:"
+#define DB_CLIENT_PREFIX "CL:"
 #define OBJECT_INFO_PREFIX "OI:"
 #define OBJECT_LOCATION_PREFIX "OL:"
 #define OBJECT_SUBSCRIBE_PREFIX "OS:"
@@ -39,6 +41,59 @@ RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
   RedisModuleKey *key = RedisModule_OpenKey(ctx, prefixed_keyname, mode);
   RedisModule_FreeString(ctx, prefixed_keyname);
   return key;
+}
+
+/**
+ * Register a client with Redis. This is called from a client with the command:
+ *
+ *     RAY.CONNECT <client type> <address> <ray client id> <aux address>
+ *
+ * @param client_type The type of the client (e.g., plasma_manager).
+ * @param address The address of the client.
+ * @param ray_client_id The db client ID of the client.
+ * @param aux_address An auxiliary address. This is currently just used by the
+ *        local scheduler to record the address of the plasma manager that it is
+ *        connected to.
+ * @return OK if the operation was successful.
+ */
+int Connect_RedisCommand(RedisModuleCtx *ctx,
+                         RedisModuleString **argv,
+                         int argc) {
+  if (argc != 5) {
+    return RedisModule_WrongArity(ctx);
+  }
+
+  RedisModuleString *client_type = argv[1];
+  RedisModuleString *address = argv[2];
+  RedisModuleString *ray_client_id = argv[3];
+  RedisModuleString *aux_address = argv[4];
+
+  /* Redis keeps track of a mapping from the redis client ID to the Ray db
+   * client ID. This allows Redis to lookup the Ray db client ID of the client
+   * that is making a request. */
+  unsigned long long redis_client_id = RedisModule_GetClientId(ctx);
+  RedisModuleString *redis_client_id_str =
+      RedisModule_CreateStringFromLongLong(ctx, redis_client_id);
+  RedisModuleKey *redis_client_id_key = OpenPrefixedKey(
+      ctx, REDIS_CLIENT_PREFIX, redis_client_id_str, REDISMODULE_WRITE);
+
+  RedisModule_FreeString(ctx, redis_client_id_str);
+  CHECK_ERROR(RedisModule_StringSet(redis_client_id_key, ray_client_id),
+              "Unable to set Redis client ID key.");
+  /* Clean up. */
+  RedisModule_CloseKey(redis_client_id_key);
+
+  /* Add this client to the Ray db client table. */
+  RedisModuleKey *db_client_table_key =
+      OpenPrefixedKey(ctx, DB_CLIENT_PREFIX, ray_client_id, REDISMODULE_WRITE);
+  RedisModule_HashSet(db_client_table_key, REDISMODULE_HASH_CFIELDS,
+                      "client_type", client_type, "address", address,
+                      "aux_address", aux_address, NULL);
+  /* Clean up. */
+  RedisModule_CloseKey(db_client_table_key);
+
+  RedisModule_ReplyWithSimpleString(ctx, "OK");
+  return REDISMODULE_OK;
 }
 
 /**
@@ -80,6 +135,9 @@ int ObjectTableLookup_RedisCommand(RedisModuleCtx *ctx,
     num_results += 1;
   } while (RedisModule_ZsetRangeNext(key));
   RedisModule_ReplySetArrayLength(ctx, num_results);
+
+  /* Clean up. */
+  RedisModule_CloseKey(key);
 
   return REDISMODULE_OK;
 }
@@ -282,6 +340,11 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx,
 
   if (RedisModule_Init(ctx, "ray", 1, REDISMODULE_APIVER_1) ==
       REDISMODULE_ERR) {
+    return REDISMODULE_ERR;
+  }
+
+  if (RedisModule_CreateCommand(ctx, "ray.connect", Connect_RedisCommand,
+                                "write", 0, 0, 0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 
