@@ -174,43 +174,14 @@ db_handle *db_connect_extended(const char *address,
   freeReplyObject(reply);
   /* Add new client using optimistic locking. */
   db_client_id client = globally_unique_id();
-  while (true) {
-    reply = redisCommand(context, "WATCH %s", client_type);
-    freeReplyObject(reply);
-    reply = redisCommand(context, "HLEN %s", client_type);
-    freeReplyObject(reply);
-    reply = redisCommand(context, "MULTI");
-    freeReplyObject(reply);
-    reply = redisCommand(context,
-                         "HMSET db_clients:%b client_type %s address %s:%d "
-                         "db_client_id %b aux_address %s",
-                         (char *) client.id, sizeof(client.id), client_type,
-                         client_addr, client_port, (char *) client.id,
-                         sizeof(client.id), aux_address);
-    CHECKM(reply != NULL, "db_connect failed on HMSET");
-    freeReplyObject(reply);
 
-    {
-      UT_string *tmpbuf;
-      utstring_new(tmpbuf);
-      utstring_printf(tmpbuf, "%s %s", client_type, aux_address);
-      reply =
-          redisCommand(context, "PUBLISH db_clients %b:%s", (char *) client.id,
-                       sizeof(client.id), utstring_body(tmpbuf));
-      CHECKM(reply != NULL, "db_connect failed on PUBLISH");
-      freeReplyObject(reply);
-      utstring_free(tmpbuf);
-    }
-
-    reply = redisCommand(context, "EXEC");
-    CHECKM(reply != NULL, "db_connect failed on EXEC");
-    CHECK(reply);
-    if (reply->type != REDIS_REPLY_NIL) {
-      freeReplyObject(reply);
-      break;
-    }
-    freeReplyObject(reply);
-  }
+  /* Register this client with Redis. RAY.CONNECT is a custom Redis command that
+   * we've defined. */
+  reply = redisCommand(context, "RAY.CONNECT %s %s:%d %b %s", client_type,
+                       client_addr, client_port, (char *) client.id,
+                       sizeof(client.id), aux_address);
+  CHECKM(reply != NULL, "db_connect failed on RAY.CONNECT");
+  freeReplyObject(reply);
 
   db->client_type = strdup(client_type);
   db->client = client;
@@ -576,7 +547,7 @@ void redis_get_cached_db_client(db_handle *db,
   if (!entry) {
     /* This is a very rare case. It should happen at most once per db client. */
     redisReply *reply =
-        redisCommand(db->sync_context, "HGET db_clients:%b address",
+        redisCommand(db->sync_context, "RAY.GET_CLIENT_ADDRESS %b",
                      (char *) db_client_id.id, sizeof(db_client_id.id));
     CHECKM(reply->type == REDIS_REPLY_STRING, "REDIS reply type=%d",
            reply->type);

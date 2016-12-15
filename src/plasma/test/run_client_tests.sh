@@ -3,7 +3,7 @@
 # Cause the script to exit if a single command fails.
 set -e
 
-../common/thirdparty/redis/src/redis-server --loglevel warning &
+../common/thirdparty/redis/src/redis-server --loglevel warning --loadmodule ../common/redis_module/ray_redis_module.so &
 sleep 1
 # flush the redis server
 ../common/thirdparty/redis/src/redis-cli flushall &

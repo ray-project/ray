@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -g -Wall -Wextra -Werror=implicit-function-declaration -Wno-typedef-redefinition -Wno-sign-compare -Wno-unused-parameter -Wno-type-limits -Wno-missing-field-initializers --std=c99 -D_XOPEN_SOURCE=500 -D_POSIX_C_SOURCE=200809L -fPIC -I. -Ithirdparty -Ithirdparty/ae
 BUILD = build
 
-all: hiredis redis $(BUILD)/libcommon.a
+all: hiredis redis redismodule $(BUILD)/libcommon.a
 
 $(BUILD)/libcommon.a: event_loop.o common.o task.o io.o net.o state/redis.o state/table.o state/object_table.o state/task_table.o state/db_client_table.o thirdparty/ae/ae.o thirdparty/sha256.o
 	ar rcs $@ $^
@@ -31,6 +31,7 @@ $(BUILD)/redis_tests: hiredis test/redis_tests.c $(BUILD)/libcommon.a logging.h
 clean:
 	rm -f *.o state/*.o test/*.o thirdparty/ae/*.o
 	rm -rf $(BUILD)/*
+	cd redis_module; make clean
 
 redis:
 	cd thirdparty ; bash ./build-redis.sh
@@ -38,9 +39,12 @@ redis:
 hiredis:
 	cd thirdparty/hiredis ; make
 
+redismodule:
+	cd redis_module && make && cd ..
+
 test: CFLAGS += -DRAY_COMMON_LOG_LEVEL=4
-test: hiredis redis $(BUILD)/common_tests $(BUILD)/task_table_tests $(BUILD)/object_table_tests $(BUILD)/db_tests $(BUILD)/io_tests $(BUILD)/task_tests $(BUILD)/redis_tests FORCE
-	./thirdparty/redis/src/redis-server &
+test: hiredis redis redismodule $(BUILD)/common_tests $(BUILD)/task_table_tests $(BUILD)/object_table_tests $(BUILD)/db_tests $(BUILD)/io_tests $(BUILD)/task_tests $(BUILD)/redis_tests FORCE
+	./thirdparty/redis/src/redis-server --loadmodule ./redis_module/ray_redis_module.so &
 	sleep 1s
 	./build/common_tests
 	./build/db_tests
@@ -50,10 +54,10 @@ test: hiredis redis $(BUILD)/common_tests $(BUILD)/task_table_tests $(BUILD)/obj
 	./build/task_table_tests
 	./build/object_table_tests
 	./thirdparty/redis/src/redis-cli shutdown
-	cd redis_module && make && sleep 1 && python runtest.py && cd ..
+	python ./redis_module/runtest.py
 
 valgrind: test
-	./thirdparty/redis/src/redis-server &
+	./thirdparty/redis/src/redis-server --loadmodule redis_module/ray_redis_module.so &
 	sleep 1s
 	valgrind --leak-check=full --error-exitcode=1 ./build/common_tests
 	valgrind --leak-check=full --error-exitcode=1 ./build/db_tests

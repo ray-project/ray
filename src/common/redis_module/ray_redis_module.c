@@ -19,6 +19,7 @@
  * TODO(pcm): Fill this out.
  */
 
+#define DB_CLIENT_PREFIX "CL:"
 #define OBJECT_INFO_PREFIX "OI:"
 #define OBJECT_LOCATION_PREFIX "OL:"
 #define OBJECT_SUBSCRIBE_PREFIX "OS:"
@@ -39,6 +40,117 @@ RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
   RedisModuleKey *key = RedisModule_OpenKey(ctx, prefixed_keyname, mode);
   RedisModule_FreeString(ctx, prefixed_keyname);
   return key;
+}
+
+/**
+ * Register a client with Redis. This is called from a client with the command:
+ *
+ *     RAY.CONNECT <client type> <address> <ray client id> <aux address>
+ *
+ * @param client_type The type of the client (e.g., plasma_manager).
+ * @param address The address of the client.
+ * @param ray_client_id The db client ID of the client.
+ * @param aux_address An auxiliary address. This is currently just used by the
+ *        local scheduler to record the address of the plasma manager that it is
+ *        connected to.
+ * @return OK if the operation was successful.
+ */
+int Connect_RedisCommand(RedisModuleCtx *ctx,
+                         RedisModuleString **argv,
+                         int argc) {
+  if (argc != 5) {
+    return RedisModule_WrongArity(ctx);
+  }
+
+  RedisModuleString *client_type = argv[1];
+  RedisModuleString *address = argv[2];
+  RedisModuleString *ray_client_id = argv[3];
+  RedisModuleString *aux_address = argv[4];
+
+  /* Add this client to the Ray db client table. */
+  RedisModuleKey *db_client_table_key =
+      OpenPrefixedKey(ctx, DB_CLIENT_PREFIX, ray_client_id, REDISMODULE_WRITE);
+  RedisModule_HashSet(db_client_table_key, REDISMODULE_HASH_CFIELDS,
+                      "client_type", client_type, "address", address,
+                      "aux_address", aux_address, NULL);
+  /* Clean up. */
+  RedisModule_CloseKey(db_client_table_key);
+
+  /* Construct strings to publish on the db client channel. */
+  RedisModuleString *channel_name =
+      RedisModule_CreateString(ctx, "db_clients", strlen("db_clients"));
+  RedisModuleString *client_info =
+      RedisModule_CreateStringFromString(ctx, ray_client_id);
+  RedisModule_StringAppendBuffer(ctx, client_info, ":", strlen(":"));
+  /* Append the client type. */
+  size_t client_type_size;
+  const char *client_type_str =
+      RedisModule_StringPtrLen(client_type, &client_type_size);
+  RedisModule_StringAppendBuffer(ctx, client_info, client_type_str,
+                                 client_type_size);
+  /* Append a space. */
+  RedisModule_StringAppendBuffer(ctx, client_info, " ", strlen(" "));
+  /* Append the aux address. */
+  size_t aux_address_size;
+  const char *aux_address_str =
+      RedisModule_StringPtrLen(aux_address, &aux_address_size);
+  RedisModule_StringAppendBuffer(ctx, client_info, aux_address_str,
+                                 aux_address_size);
+  /* Publish the client info on the db client channel. */
+  RedisModuleCallReply *reply;
+  reply = RedisModule_Call(ctx, "PUBLISH", "ss", channel_name, client_info);
+  RedisModule_FreeString(ctx, channel_name);
+  RedisModule_FreeString(ctx, client_info);
+  if (reply == NULL) {
+    return RedisModule_ReplyWithError(ctx, "PUBLISH unsuccessful");
+  }
+
+  RedisModule_ReplyWithSimpleString(ctx, "OK");
+  return REDISMODULE_OK;
+}
+
+/**
+ * Get the address of a client from its db client ID. This is called from a
+ * client with the command:
+ *
+ *     RAY.GET_CLIENT_ADDRESS <ray client id>
+ *
+ * @param ray_client_id The db client ID of the client.
+ * @return The address of the client if the operation was successful.
+ */
+int GetClientAddress_RedisCommand(RedisModuleCtx *ctx,
+                                  RedisModuleString **argv,
+                                  int argc) {
+  if (argc != 2) {
+    return RedisModule_WrongArity(ctx);
+  }
+
+  RedisModuleString *ray_client_id = argv[1];
+  /* Get the request client address from the db client table. */
+  RedisModuleKey *db_client_table_key =
+      OpenPrefixedKey(ctx, DB_CLIENT_PREFIX, ray_client_id, REDISMODULE_READ);
+  if (db_client_table_key == NULL) {
+    /* There is no client with this ID. */
+    RedisModule_CloseKey(db_client_table_key);
+    return RedisModule_ReplyWithError(ctx, "invalid client ID");
+  }
+  RedisModuleString *address;
+  RedisModule_HashGet(db_client_table_key, REDISMODULE_HASH_CFIELDS, "address",
+                      &address, NULL);
+  if (address == NULL) {
+    /* The key did not exist. This should not happen. */
+    RedisModule_CloseKey(db_client_table_key);
+    return RedisModule_ReplyWithError(
+        ctx, "Client does not have an address field. This shouldn't happen.");
+  }
+
+  RedisModule_ReplyWithString(ctx, address);
+
+  /* Cleanup. */
+  RedisModule_CloseKey(db_client_table_key);
+  RedisModule_FreeString(ctx, address);
+
+  return REDISMODULE_OK;
 }
 
 /**
@@ -80,6 +192,9 @@ int ObjectTableLookup_RedisCommand(RedisModuleCtx *ctx,
     num_results += 1;
   } while (RedisModule_ZsetRangeNext(key));
   RedisModule_ReplySetArrayLength(ctx, num_results);
+
+  /* Clean up. */
+  RedisModule_CloseKey(key);
 
   return REDISMODULE_OK;
 }
@@ -282,6 +397,17 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx,
 
   if (RedisModule_Init(ctx, "ray", 1, REDISMODULE_APIVER_1) ==
       REDISMODULE_ERR) {
+    return REDISMODULE_ERR;
+  }
+
+  if (RedisModule_CreateCommand(ctx, "ray.connect", Connect_RedisCommand,
+                                "write", 0, 0, 0) == REDISMODULE_ERR) {
+    return REDISMODULE_ERR;
+  }
+
+  if (RedisModule_CreateCommand(ctx, "ray.get_client_address",
+                                GetClientAddress_RedisCommand, "write", 0, 0,
+                                0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 

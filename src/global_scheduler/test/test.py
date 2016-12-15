@@ -44,10 +44,13 @@ class TestGlobalScheduler(unittest.TestCase):
   def setUp(self):
     # Start a Redis server.
     redis_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../common/thirdparty/redis/src/redis-server")
+    redis_module = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../common/redis_module/ray_redis_module.so")
+    assert os.path.isfile(redis_path)
+    assert os.path.isfile(redis_module)
     node_ip_address = "127.0.0.1"
     redis_port = new_port()
     redis_address = "{}:{}".format(node_ip_address, redis_port)
-    self.redis_process = subprocess.Popen([redis_path, "--port", str(redis_port), "--loglevel", "warning"])
+    self.redis_process = subprocess.Popen([redis_path, "--port", str(redis_port), "--loglevel", "warning", "--loadmodule", redis_module])
     time.sleep(0.1)
     # Create a Redis client.
     self.redis_client = redis.StrictRedis(host=node_ip_address, port=redis_port)
@@ -86,9 +89,12 @@ class TestGlobalScheduler(unittest.TestCase):
     self.redis_process.kill()
 
   def test_redis_contents(self):
-    # There should be two db clients, the global scheduler, the local scheduler,
-    # and the plasma manager.
-    self.assertEqual(len(self.redis_client.keys("db_clients*")), 3)
+    # DB_CLIENT_PREFIX is an implementation detail of ray_redis_module.c, so
+    # this must be kept in sync with that file.
+    DB_CLIENT_PREFIX = "CL:"
+    # There should be three db clients, the global scheduler, the local
+    # scheduler, and the plasma manager.
+    self.assertEqual(len(self.redis_client.keys("{}*".format(DB_CLIENT_PREFIX))), 3)
     # There should not be anything else in Redis yet.
     self.assertEqual(len(self.redis_client.keys("*")), 3)
 
