@@ -22,7 +22,7 @@
 #define OBJECT_INFO_PREFIX "OI:"
 #define OBJECT_LOCATION_PREFIX "OL:"
 #define OBJECT_SUBSCRIBE_PREFIX "OS:"
-#define TASK_PREFIX "T:"
+#define TASK_PREFIX "TT:"
 
 #define CHECK_ERROR(STATUS, MESSAGE)                   \
   if ((STATUS) == REDISMODULE_ERR) {                   \
@@ -119,6 +119,7 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
     return RedisModule_ReplyWithError(ctx, "data_size must be integer");
   }
 
+  /* Set the fields in the object info table. */
   RedisModuleKey *key;
   key = OpenPrefixedKey(ctx, OBJECT_INFO_PREFIX, object_id,
                         REDISMODULE_READ | REDISMODULE_WRITE);
@@ -138,15 +139,27 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
   RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "hash", new_hash, NULL);
   RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "data_size", data_size,
                       NULL);
+  RedisModule_CloseKey(key);
 
+  /* Add the location in the object location table. */
   RedisModuleKey *table_key;
   table_key = OpenPrefixedKey(ctx, OBJECT_LOCATION_PREFIX, object_id,
                               REDISMODULE_READ | REDISMODULE_WRITE);
 
   /* Sets are not implemented yet, so we use ZSETs instead. */
   RedisModule_ZsetAdd(table_key, 0.0, manager, NULL);
+  RedisModule_CloseKey(table_key);
 
-  /* Inform subscribers. */
+  /* Build the PUBLISH topic and message for object table subscribers. The
+   * topic is a string in the format "OBJECT_LOCATION_PREFIX:<object ID>". The
+   * message is a string in the format: "<manager ID> <manager ID> ... <manager
+   * ID>". */
+  RedisModuleString *publish_topic =
+      RedisModule_CreateStringPrintf(ctx, "%s", OBJECT_LOCATION_PREFIX);
+  size_t length;
+  const char *object_id_string = RedisModule_StringPtrLen(object_id, &length);
+  RedisModule_StringAppendBuffer(ctx, publish_topic, object_id_string, length);
+  /* Add the managers to the publish message. */
   const char *MANAGERS = "MANAGERS";
   RedisModuleString *publish =
       RedisModule_CreateString(ctx, MANAGERS, strlen(MANAGERS));
@@ -163,16 +176,13 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
     RedisModule_StringAppendBuffer(ctx, publish, val, size);
   } while (RedisModule_ZsetRangeNext(table_key));
 
-  RedisModuleCallReply *reply;
-  reply = RedisModule_Call(ctx, "PUBLISH", "ss", object_id, publish);
+  RedisModuleCallReply *reply =
+      RedisModule_Call(ctx, "PUBLISH", "ss", publish_topic, publish);
   RedisModule_FreeString(ctx, publish);
+  RedisModule_FreeString(ctx, publish_topic);
   if (reply == NULL) {
     return RedisModule_ReplyWithError(ctx, "PUBLISH unsuccessful");
   }
-
-  /* Clean up. */
-  RedisModule_CloseKey(key);
-  RedisModule_CloseKey(table_key);
 
   RedisModule_ReplyWithSimpleString(ctx, "OK");
   return REDISMODULE_OK;
@@ -273,61 +283,79 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
   return REDISMODULE_OK;
 }
 
-int TaskTableWrite_RedisCommand(RedisModuleCtx *ctx,
-                                RedisModuleString *task_id,
-                                RedisModuleString *state,
-                                RedisModuleString *node_id,
-                                RedisModuleString *spec) {
-  size_t length;
-  const char *task_id_string = RedisModule_StringPtrLen(task_id, &length);
-  RedisModuleString *prefixed_keyname = RedisModule_CreateStringPrintf(
-      ctx, "%s%*.*s", TASK_PREFIX, length, length, task_id_string);
-  RedisModuleKey *key =
-      RedisModule_OpenKey(ctx, prefixed_keyname, REDISMODULE_WRITE);
-
-  /* Pad the state integer to a fixed-width integer. */
+int TaskTableWrite(RedisModuleCtx *ctx,
+                   RedisModuleString *task_id,
+                   RedisModuleString *state,
+                   RedisModuleString *node_id,
+                   RedisModuleString *task_spec) {
+  /* Pad the state integer to a fixed-width integer, and make sure it has width
+   * less than or equal to 2. */
   long long state_integer;
   int status = RedisModule_StringToLongLong(state, &state_integer);
   if (status != REDISMODULE_OK) {
     return RedisModule_ReplyWithError(
         ctx, "Invalid scheduling state (must be an integer)");
   }
-  state = RedisModule_CreateStringPrintf(ctx, "%1d", state_integer);
+  state = RedisModule_CreateStringPrintf(ctx, "%2d", state_integer);
+  size_t length;
+  RedisModule_StringPtrLen(state, &length);
+  if (length != 2) {
+    return RedisModule_ReplyWithError(
+        ctx, "Invalid scheduling state width (must have width 2)");
+  }
 
-  /* Add the task to the task table. */
-  if (spec == NULL) {
+  /* Add the task to the task table. If no spec was provided, get the existing
+   * spec out of the task table so we can publish it. */
+  RedisModuleKey *key =
+      OpenPrefixedKey(ctx, TASK_PREFIX, task_id, REDISMODULE_WRITE);
+  if (task_spec == NULL) {
     RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "state", state, "node",
                         node_id, NULL);
+    RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "task_spec", &task_spec,
+                        NULL);
+    if (task_spec == NULL) {
+      return RedisModule_ReplyWithError(
+          ctx, "Cannot update a task that doesn't exist yet");
+    }
   } else {
     RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "state", state, "node",
-                        node_id, "spec", spec, NULL);
+                        node_id, "task_spec", task_spec, NULL);
   }
+  RedisModule_CloseKey(key);
 
-  /* Build the PUBLISH message for task table subscribers. This is a string in
-   * the format: "<task ID> <state> <node ID> <task specification>". */
+  /* Build the PUBLISH topic and message for task table subscribers. The topic
+   * is a string in the format "TASK_PREFIX:<state>:<node ID>". The
+   * message is a string in the format: "<task ID> <state> <node ID> <task
+   * specification>". */
   const char *publish_field;
+  RedisModuleString *publish_topic =
+      RedisModule_CreateStringPrintf(ctx, "%s", TASK_PREFIX);
+  RedisModuleString *publish_message =
+      RedisModule_CreateStringFromString(ctx, task_id);
+  /* Append the scheduling state. */
   publish_field = RedisModule_StringPtrLen(state, &length);
-  if (length != 1) {
-    return RedisModule_ReplyWithError(ctx, "Invalid scheduling state width (must have width 1)");
-  }
-  RedisModule_StringAppendBuffer(ctx, task_id, " ", 1);
-  RedisModule_StringAppendBuffer(ctx, task_id, publish_field, length);
+  RedisModule_StringAppendBuffer(ctx, publish_topic, publish_field, length);
+  RedisModule_StringAppendBuffer(ctx, publish_message, " ", strlen(" "));
+  RedisModule_StringAppendBuffer(ctx, publish_message, publish_field, length);
+  /* Append the node ID. */
   publish_field = RedisModule_StringPtrLen(node_id, &length);
-  RedisModule_StringAppendBuffer(ctx, task_id, " ", 1);
-  RedisModule_StringAppendBuffer(ctx, task_id, publish_field, length);
-  if (spec != NULL) {
-    publish_field = RedisModule_StringPtrLen(spec, &length);
-    RedisModule_StringAppendBuffer(ctx, task_id, " ", 1);
-    RedisModule_StringAppendBuffer(ctx, task_id, publish_field, length);
-  }
+  RedisModule_StringAppendBuffer(ctx, publish_topic, ":", strlen(":"));
+  RedisModule_StringAppendBuffer(ctx, publish_topic, publish_field, length);
+  RedisModule_StringAppendBuffer(ctx, publish_message, " ", strlen(" "));
+  RedisModule_StringAppendBuffer(ctx, publish_message, publish_field, length);
+  /* Append the task specification. */
+  publish_field = RedisModule_StringPtrLen(task_spec, &length);
+  RedisModule_StringAppendBuffer(ctx, publish_message, " ", strlen(" "));
+  RedisModule_StringAppendBuffer(ctx, publish_message, publish_field, length);
 
   RedisModuleCallReply *reply =
-      RedisModule_Call(ctx, "PUBLISH", "ss", prefixed_keyname, task_id);
+      RedisModule_Call(ctx, "PUBLISH", "ss", publish_topic, publish_message);
   if (reply == NULL) {
     return RedisModule_ReplyWithError(ctx, "PUBLISH unsuccessful");
   }
 
-  RedisModule_CloseKey(key);
+  RedisModule_FreeString(ctx, publish_message);
+  RedisModule_FreeString(ctx, publish_topic);
   RedisModule_ReplyWithSimpleString(ctx, "ok");
 
   return REDISMODULE_OK;
@@ -343,7 +371,10 @@ int TaskTableWrite_RedisCommand(RedisModuleCtx *ctx,
  *
  * @param task_id A string that is the ID of the task.
  * @param state A string that is the current scheduling state (a
- *        scheduling_state enum instance).
+ *        scheduling_state enum instance). The string's value must be an
+ *        integer with width less than or equal to 2. If the width is less than
+ *        2, the string will be left-padded with spaces before being added to
+ *        the table entry.
  * @param node_id A string that is the ID of the associated node, if any.
  * @param task_spec A string that is the specification of the task, which can
  *        be cast to a `task_spec`.
@@ -356,7 +387,7 @@ int TaskTableAddTask_RedisCommand(RedisModuleCtx *ctx,
     return RedisModule_WrongArity(ctx);
   }
 
-  return TaskTableWrite_RedisCommand(ctx, argv[1], argv[2], argv[3], argv[4]);
+  return TaskTableWrite(ctx, argv[1], argv[2], argv[3], argv[4]);
 }
 
 /**
@@ -367,7 +398,13 @@ int TaskTableAddTask_RedisCommand(RedisModuleCtx *ctx,
  *
  *     RAY.task_table_update_task <task ID> <state> <node ID>
  *
- * @param task_string A string which is the task instance.
+ * @param task_id A string that is the ID of the task.
+ * @param state A string that is the current scheduling state (a
+ *        scheduling_state enum instance). The string's value must be an
+ *        integer with width less than or equal to 2. If the width is less than
+ *        2, the string will be left-padded with spaces before being added to
+ *        the table entry.
+ * @param node_id A string that is the ID of the associated node, if any.
  * @return OK if the operation was successful.
  */
 int TaskTableUpdate_RedisCommand(RedisModuleCtx *ctx,
@@ -377,7 +414,7 @@ int TaskTableUpdate_RedisCommand(RedisModuleCtx *ctx,
     return RedisModule_WrongArity(ctx);
   }
 
-  return TaskTableWrite_RedisCommand(ctx, argv[1], argv[2], argv[3], NULL);
+  return TaskTableWrite(ctx, argv[1], argv[2], argv[3], NULL);
 }
 
 /**
@@ -406,9 +443,9 @@ int TaskTableGetTask_RedisCommand(RedisModuleCtx *ctx,
   int keytype = RedisModule_KeyType(key);
   if (keytype != REDISMODULE_KEYTYPE_EMPTY) {
     /* If the key exists, look up the fields and return them in an array. */
-    RedisModuleString *state, *node, *task_spec;
+    RedisModuleString *state = NULL, *node = NULL, *task_spec = NULL;
     RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "state", &state, "node",
-                        &node, "spec", &task_spec, NULL);
+                        &node, "task_spec", &task_spec, NULL);
     if (state == NULL || node == NULL || task_spec == NULL) {
       /* We must have either all fields or no fields. */
       return RedisModule_ReplyWithError(
@@ -418,11 +455,11 @@ int TaskTableGetTask_RedisCommand(RedisModuleCtx *ctx,
     size_t state_length;
     const char *state_string = RedisModule_StringPtrLen(state, &state_length);
     int state_integer;
-    int scanned = sscanf(state_string, "%1d", &state_integer);
-    if (scanned != 1 || state_length != 1) {
+    int scanned = sscanf(state_string, "%2d", &state_integer);
+    if (scanned != 1 || state_length != 2) {
       return RedisModule_ReplyWithError(ctx,
                                         "Found invalid scheduling state (must "
-                                        "be an integer of width 1");
+                                        "be an integer of width 2");
     }
 
     RedisModule_ReplyWithArray(ctx, 3);

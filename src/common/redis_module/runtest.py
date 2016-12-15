@@ -72,7 +72,7 @@ class TestGlobalStateStore(unittest.TestCase):
   def testObjectTableSubscribe(self):
     p = self.redis.pubsub()
     # Subscribe to an object ID.
-    p.subscribe("object_id1")
+    p.psubscribe("OL:*")
     self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id1")
     # Receive the acknowledgement message.
     self.assertEqual(p.get_message()["data"], 1)
@@ -107,8 +107,12 @@ class TestGlobalStateStore(unittest.TestCase):
                                  "invalid_state", "node_id", "task_spec")
     with self.assertRaises(redis.ResponseError):
       # Scheduling states with invalid width should not be added.
-      self.redis.execute_command("RAY.TASK_TABLE_ADD", "task_id", 10,
+      self.redis.execute_command("RAY.TASK_TABLE_ADD", "task_id", 101,
                                  "node_id", "task_spec")
+    with self.assertRaises(redis.ResponseError):
+      # Should not be able to update a non-existent task.
+      self.redis.execute_command("RAY.TASK_TABLE_UPDATE", "task_id", 10,
+                                 "node_id")
 
   def testTaskTableAddAndLookup(self):
     # Check that task table adds, updates, and lookups work correctly.
@@ -122,6 +126,25 @@ class TestGlobalStateStore(unittest.TestCase):
     self.redis.execute_command("RAY.TASK_TABLE_UPDATE", "task_id", *task_args[:2])
     response = self.redis.execute_command("RAY.TASK_TABLE_GET", "task_id")
     self.assertEqual(response, task_args)
+
+  def testTaskTableSubscribe(self):
+    p = self.redis.pubsub()
+    # Subscribe to the task table.
+    p.psubscribe("TT:*:*")
+    p.psubscribe("TT: 1:*")
+    p.psubscribe("TT:*:node_id")
+    task_args = ["task_id", 1, "node_id", "task_spec"]
+    self.redis.execute_command("RAY.TASK_TABLE_ADD", *task_args)
+    # Receive the acknowledgement message.
+    self.assertEqual(p.get_message()["data"], 1)
+    self.assertEqual(p.get_message()["data"], 2)
+    self.assertEqual(p.get_message()["data"], 3)
+    # Receive the actual data.
+    for i in range(3):
+        message = p.get_message()["data"]
+        message = message.split()
+        message[1] = int(message[1])
+        self.assertEqual(message, task_args)
 
 if __name__ == "__main__":
   unittest.main(verbosity=2)
