@@ -19,7 +19,6 @@
  * TODO(pcm): Fill this out.
  */
 
-#define REDIS_CLIENT_PREFIX "RC:"
 #define DB_CLIENT_PREFIX "CL:"
 #define OBJECT_INFO_PREFIX "OI:"
 #define OBJECT_LOCATION_PREFIX "OL:"
@@ -67,21 +66,6 @@ int Connect_RedisCommand(RedisModuleCtx *ctx,
   RedisModuleString *address = argv[2];
   RedisModuleString *ray_client_id = argv[3];
   RedisModuleString *aux_address = argv[4];
-
-  /* Redis keeps track of a mapping from the redis client ID to the Ray db
-   * client ID. This allows Redis to lookup the Ray db client ID of the client
-   * that is making a request. */
-  unsigned long long redis_client_id = RedisModule_GetClientId(ctx);
-  RedisModuleString *redis_client_id_str =
-      RedisModule_CreateStringFromLongLong(ctx, redis_client_id);
-  RedisModuleKey *redis_client_id_key = OpenPrefixedKey(
-      ctx, REDIS_CLIENT_PREFIX, redis_client_id_str, REDISMODULE_WRITE);
-
-  RedisModule_FreeString(ctx, redis_client_id_str);
-  CHECK_ERROR(RedisModule_StringSet(redis_client_id_key, ray_client_id),
-              "Unable to set Redis client ID key.");
-  /* Clean up. */
-  RedisModule_CloseKey(redis_client_id_key);
 
   /* Add this client to the Ray db client table. */
   RedisModuleKey *db_client_table_key =
