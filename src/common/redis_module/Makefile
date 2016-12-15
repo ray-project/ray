@@ -21,8 +21,8 @@ all: ray_redis_module.so
 
 ray_redis_module.xo: redismodule.h
 
-ray_redis_module.so: ray_redis_module.xo ../build/libcommon.a
-	$(LD) -o $@ $< ../build/libcommon.a $(SHOBJ_LDFLAGS) $(LIBS) -lc
+ray_redis_module.so: ray_redis_module.xo
+	$(LD) -o $@ $< $(SHOBJ_LDFLAGS) $(LIBS) -lc
 
 clean:
 	rm -rf *.xo *.so

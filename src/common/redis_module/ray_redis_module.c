@@ -2,8 +2,6 @@
 
 #include <string.h>
 
-#include "task.h"
-
 /**
  * Various tables are maintained in redis:
  *
@@ -31,25 +29,17 @@
     return RedisModule_ReplyWithError(ctx, (MESSAGE)); \
   }
 
-RedisModuleKey *OpenPrefixedString(RedisModuleCtx *ctx,
-                                   const char *prefix,
-                                   const char *keyname,
-                                   size_t keylength,
-                                   int mode) {
-  RedisModuleString *prefixed_keyname = RedisModule_CreateStringPrintf(
-      ctx, "%s%*.*s", prefix, keylength, keylength, keyname);
-  RedisModuleKey *key = RedisModule_OpenKey(ctx, prefixed_keyname, mode);
-  RedisModule_FreeString(ctx, prefixed_keyname);
-  return key;
-}
-
 RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
                                 const char *prefix,
                                 RedisModuleString *keyname,
                                 int mode) {
   size_t length;
   const char *value = RedisModule_StringPtrLen(keyname, &length);
-  return OpenPrefixedString(ctx, prefix, value, length, mode);
+  RedisModuleString *prefixed_keyname = RedisModule_CreateStringPrintf(
+      ctx, "%s%*.*s", prefix, length, length, value);
+  RedisModuleKey *key = RedisModule_OpenKey(ctx, prefixed_keyname, mode);
+  RedisModule_FreeString(ctx, prefixed_keyname);
+  return key;
 }
 
 /**
@@ -284,40 +274,57 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
 }
 
 int TaskTableWrite_RedisCommand(RedisModuleCtx *ctx,
-                                RedisModuleString *task_arg,
-                                bool task_added) {
+                                RedisModuleString *task_id,
+                                RedisModuleString *state,
+                                RedisModuleString *node_id,
+                                RedisModuleString *spec) {
   size_t length;
-  const char *task_string = RedisModule_StringPtrLen(task_arg, &length);
-  task *task_instance = (task *) task_string;
-  CHECK((size_t) task_size(task_instance) == length);
-  task_id id = task_task_id(task_instance);
-  scheduling_state state = task_state(task_instance);
-  node_id node = task_node(task_instance);
-  task_spec *spec = task_task_spec(task_instance);
+  const char *task_id_string = RedisModule_StringPtrLen(task_id, &length);
+  RedisModuleString *prefixed_keyname = RedisModule_CreateStringPrintf(
+      ctx, "%s%*.*s", TASK_PREFIX, length, length, task_id_string);
+  RedisModuleKey *key =
+      RedisModule_OpenKey(ctx, prefixed_keyname, REDISMODULE_WRITE);
 
-  RedisModuleKey *key = OpenPrefixedString(ctx, TASK_PREFIX, (const char *) &id,
-                                           sizeof(task_id), REDISMODULE_WRITE);
+  /* Pad the state integer to a fixed-width integer. */
+  long long state_integer;
+  int status = RedisModule_StringToLongLong(state, &state_integer);
+  if (status != REDISMODULE_OK) {
+    return RedisModule_ReplyWithError(
+        ctx, "Invalid scheduling state (must be an integer)");
+  }
+  state = RedisModule_CreateStringPrintf(ctx, "%04d", state_integer);
 
-  RedisModuleString *state_string =
-      RedisModule_CreateStringPrintf(ctx, "%d", state);
-  RedisModuleString *node_string = RedisModule_CreateStringPrintf(
-      ctx, "%*.*s", sizeof(node_id), sizeof(node_id), &node);
-
-  if (task_added) {
-    RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "state", state_string,
-                        "node", node_string, NULL);
+  /* Add the task to the task table. */
+  if (spec == NULL) {
+    RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "state", state, "node",
+                        node_id, NULL);
   } else {
-    RedisModuleString *spec_string = RedisModule_CreateStringPrintf(
-        ctx, "%*.*s", task_spec_size(spec), task_spec_size(spec), spec);
-    RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "state", state_string,
-                        "node", node_string, "spec", spec_string, NULL);
-    RedisModule_FreeString(ctx, spec_string);
+    RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "state", state, "node",
+                        node_id, "spec", spec, NULL);
   }
 
-  RedisModule_FreeString(ctx, node_string);
-  RedisModule_FreeString(ctx, state_string);
-  RedisModule_CloseKey(key);
+  /* Build the PUBLISH message for task table subscribers. This is a string in
+   * the format: "<task ID> <state> <node ID> <task specification>". */
+  const char *publish_field;
+  publish_field = RedisModule_StringPtrLen(state, &length);
+  RedisModule_StringAppendBuffer(ctx, task_id, " ", 1);
+  RedisModule_StringAppendBuffer(ctx, task_id, publish_field, length);
+  publish_field = RedisModule_StringPtrLen(node_id, &length);
+  RedisModule_StringAppendBuffer(ctx, task_id, " ", 1);
+  RedisModule_StringAppendBuffer(ctx, task_id, publish_field, length);
+  if (spec != NULL) {
+    publish_field = RedisModule_StringPtrLen(spec, &length);
+    RedisModule_StringAppendBuffer(ctx, task_id, " ", 1);
+    RedisModule_StringAppendBuffer(ctx, task_id, publish_field, length);
+  }
 
+  RedisModuleCallReply *reply =
+      RedisModule_Call(ctx, "PUBLISH", "ss", prefixed_keyname, task_id);
+  if (reply == NULL) {
+    return RedisModule_ReplyWithError(ctx, "PUBLISH unsuccessful");
+  }
+
+  RedisModule_CloseKey(key);
   RedisModule_ReplyWithSimpleString(ctx, "ok");
 
   return REDISMODULE_OK;
@@ -328,20 +335,25 @@ int TaskTableWrite_RedisCommand(RedisModuleCtx *ctx,
  *
  * This is called from a client with the command:
  *
- *     RAY.task_table_add_task <task string>
+ *     RAY.task_table_add_task <task ID> <state> <node ID>
+ *                             <task spec>
  *
- * @param task_string A string which is the task instance.
+ * @param task_id A string that is the ID of the task.
+ * @param state A string that is the current scheduling state (a
+ *        scheduling_state enum instance).
+ * @param node_id A string that is the ID of the associated node, if any.
+ * @param task_spec A string that is the specification of the task, which can
+ *        be cast to a `task_spec`.
  * @return OK if the operation was successful.
  */
 int TaskTableAddTask_RedisCommand(RedisModuleCtx *ctx,
                                   RedisModuleString **argv,
                                   int argc) {
-  if (argc != 2) {
+  if (argc != 5) {
     return RedisModule_WrongArity(ctx);
   }
 
-  RedisModuleString *task_arg = argv[1];
-  return TaskTableWrite_RedisCommand(ctx, task_arg, false);
+  return TaskTableWrite_RedisCommand(ctx, argv[1], argv[2], argv[3], argv[4]);
 }
 
 /**
@@ -349,7 +361,7 @@ int TaskTableAddTask_RedisCommand(RedisModuleCtx *ctx,
  *
  * This is called from a client with the command:
  *
- *     RAY.task_table_add_task <task string>
+ *     RAY.task_table_update_task <task ID> <state> <node ID>
  *
  * @param task_string A string which is the task instance.
  * @return OK if the operation was successful.
@@ -357,12 +369,11 @@ int TaskTableAddTask_RedisCommand(RedisModuleCtx *ctx,
 int TaskTableUpdate_RedisCommand(RedisModuleCtx *ctx,
                                  RedisModuleString **argv,
                                  int argc) {
-  if (argc != 2) {
+  if (argc != 4) {
     return RedisModule_WrongArity(ctx);
   }
 
-  RedisModuleString *task_arg = argv[1];
-  return TaskTableWrite_RedisCommand(ctx, task_arg, true);
+  return TaskTableWrite_RedisCommand(ctx, argv[1], argv[2], argv[3], NULL);
 }
 
 /**
@@ -374,9 +385,9 @@ int TaskTableUpdate_RedisCommand(RedisModuleCtx *ctx,
  *
  * @param task_id A string of the task ID to look up.
  * @return An array of strings representing the task fields in the following
- *         order: 1) scheduling state 2) associated node ID, if any 3) the task
- *         specification, which can be casted to a task_spec. If the task ID is
- *         not in the table, returns nil.
+ *         order: 1) (integer) scheduling state 2) (string) associated node ID,
+ *         if any 3) (string) the task specification, which can be casted to a
+ *         task_spec. If the task ID is not in the table, returns nil.
  */
 int TaskTableGetTask_RedisCommand(RedisModuleCtx *ctx,
                                   RedisModuleString **argv,
@@ -393,15 +404,26 @@ int TaskTableGetTask_RedisCommand(RedisModuleCtx *ctx,
     /* If the key exists, look up the fields and return them in an array. */
     RedisModuleString *state, *node, *task_spec;
     RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "state", &state, "node",
-                        &node, "task_spec", &task_spec, NULL);
+                        &node, "spec", &task_spec, NULL);
     if (state == NULL || node == NULL || task_spec == NULL) {
       /* We must have either all fields or no fields. */
       return RedisModule_ReplyWithError(
           ctx, "Missing fields in the task table entry");
     }
 
+    size_t state_length;
+    const char *state_string = RedisModule_StringPtrLen(state, &state_length);
+    int state_integer;
+    int scanned = sscanf(state_string, "%4d", &state_integer);
+    if (scanned != 1 || state_length != 4) {
+      return RedisModule_ReplyWithError(ctx,
+                                        "Found invalid scheduling state (must "
+                                        "be a fixed-width integer of length "
+                                        "4)");
+    }
+
     RedisModule_ReplyWithArray(ctx, 3);
-    RedisModule_ReplyWithString(ctx, state);
+    RedisModule_ReplyWithLongLong(ctx, state_integer);
     RedisModule_ReplyWithString(ctx, node);
     RedisModule_ReplyWithString(ctx, task_spec);
 
