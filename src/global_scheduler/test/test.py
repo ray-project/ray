@@ -89,9 +89,12 @@ class TestGlobalScheduler(unittest.TestCase):
     self.redis_process.kill()
 
   def test_redis_contents(self):
-    # There should be two db clients, the global scheduler, the local scheduler,
-    # and the plasma manager.
-    self.assertEqual(len(self.redis_client.keys("db_clients*")), 3)
+    # DB_CLIENT_PREFIX is an implementation detail of ray_redis_module.c, so
+    # this must be kept in sync with that file.
+    DB_CLIENT_PREFIX = "CL:"
+    # There should be three db clients, the global scheduler, the local
+    # scheduler, and the plasma manager.
+    self.assertEqual(len(self.redis_client.keys("{}*".format(DB_CLIENT_PREFIX))), 3)
     # There should not be anything else in Redis yet.
     self.assertEqual(len(self.redis_client.keys("*")), 3)
 

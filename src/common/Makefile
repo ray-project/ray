@@ -43,8 +43,8 @@ redismodule:
 	cd redis_module && make && cd ..
 
 test: CFLAGS += -DRAY_COMMON_LOG_LEVEL=4
-test: hiredis redis redis_module $(BUILD)/common_tests $(BUILD)/task_table_tests $(BUILD)/object_table_tests $(BUILD)/db_tests $(BUILD)/io_tests $(BUILD)/task_tests $(BUILD)/redis_tests FORCE
-	./thirdparty/redis/src/redis-server --loadmodule redis_module/ray_redis_module.so &
+test: hiredis redis redismodule $(BUILD)/common_tests $(BUILD)/task_table_tests $(BUILD)/object_table_tests $(BUILD)/db_tests $(BUILD)/io_tests $(BUILD)/task_tests $(BUILD)/redis_tests FORCE
+	./thirdparty/redis/src/redis-server --loadmodule ./redis_module/ray_redis_module.so &
 	sleep 1s
 	./build/common_tests
 	./build/db_tests

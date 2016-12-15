@@ -177,9 +177,9 @@ db_handle *db_connect_extended(const char *address,
 
   /* Register this client with Redis. RAY.CONNECT is a custom Redis command that
    * we've defined. */
-  reply =
-      redisCommand(context, "RAY.CONNECT %s %s %b %s", client_type, client_addr,
-                   (char *) client.id, sizeof(client.id), aux_address);
+  reply = redisCommand(context, "RAY.CONNECT %s %s:%d %b %s", client_type,
+                       client_addr, client_port, (char *) client.id,
+                       sizeof(client.id), aux_address);
   CHECKM(reply != NULL, "db_connect failed on RAY.CONNECT");
   freeReplyObject(reply);
 
@@ -547,7 +547,7 @@ void redis_get_cached_db_client(db_handle *db,
   if (!entry) {
     /* This is a very rare case. It should happen at most once per db client. */
     redisReply *reply =
-        redisCommand(db->sync_context, "HGET db_clients:%b address",
+        redisCommand(db->sync_context, "RAY.GET_CLIENT_ADDRESS %b",
                      (char *) db_client_id.id, sizeof(db_client_id.id));
     CHECKM(reply->type == REDIS_REPLY_STRING, "REDIS reply type=%d",
            reply->type);
