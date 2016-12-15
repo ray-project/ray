@@ -89,18 +89,12 @@ void assign_task_to_worker(local_scheduler_state *state,
   write_message(w->sock, EXECUTE_TASK, task_spec_size(spec), (uint8_t *) spec);
   /* Update the global task table. */
   if (state->db != NULL) {
-    retry_info retry;
-    memset(&retry, 0, sizeof(retry));
-    retry.num_retries = 0;
-    retry.timeout = 100;
-    retry.fail_callback = NULL;
     task *task =
         alloc_task(spec, TASK_STATUS_RUNNING, get_db_client_id(state->db));
-    if (from_global_scheduler) {
-      task_table_update(state->db, task, (retry_info *) &retry, NULL, NULL);
-    } else {
-      task_table_add_task(state->db, task, (retry_info *) &retry, NULL, NULL);
-    }
+    task_table_update(state->db, task, (retry_info *) &photon_retry, NULL,
+                      NULL);
+    /* Record which task this worker is executing. */
+    w->task_in_progress = copy_task(task);
   }
 }
 
@@ -142,11 +136,11 @@ void reconstruct_object_task_lookup_callback(object_id reconstruct_object_id,
    * reconstruction operation. NOTE: This codepath is not responsible for
    * detecting failure of the other reconstruction, or updating the
    * scheduling_state accordingly. */
-  /* TODO(swang): Once we add code to modify the task table properly, this
-   * should also include TASK_STATUS_RUNNING. */
   scheduling_state task_status = task_state(task);
   if (task_status == TASK_STATUS_WAITING ||
-      task_status == TASK_STATUS_SCHEDULED) {
+      task_status == TASK_STATUS_SCHEDULED ||
+      task_status == TASK_STATUS_RUNNING) {
+    LOG_DEBUG("Task to reconstruct had scheduling state %d", task_status);
     return;
   }
   /* Recursively reconstruct the task's inputs, if necessary. */
