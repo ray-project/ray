@@ -97,6 +97,50 @@ int Connect_RedisCommand(RedisModuleCtx *ctx,
 }
 
 /**
+ * Get the address of a client from its db client ID. This is called from a
+ * client with the command:
+ *
+ *     RAY.GET_CLIENT_ADDRESS <ray client id>
+ *
+ * @param ray_client_id The db client ID of the client.
+ * @return The address of the client if the operation was successful.
+ */
+int GetClientAddress_RedisCommand(RedisModuleCtx *ctx,
+                                  RedisModuleString **argv,
+                                  int argc) {
+  if (argc != 2) {
+    return RedisModule_WrongArity(ctx);
+  }
+
+  RedisModuleString *ray_client_id = argv[1];
+  /* Get the request client address from the db client table. */
+  RedisModuleKey *db_client_table_key =
+      OpenPrefixedKey(ctx, DB_CLIENT_PREFIX, ray_client_id, REDISMODULE_READ);
+  if (db_client_table_key == NULL) {
+    /* There is no client with this ID. */
+    RedisModule_CloseKey(db_client_table_key);
+    return RedisModule_ReplyWithError(ctx, "invalid client ID");
+  }
+  RedisModuleString *address;
+  RedisModule_HashGet(db_client_table_key, REDISMODULE_HASH_CFIELDS, "address",
+                      &address, NULL);
+  if (address == NULL) {
+    /* The key did not exist. This should not happen. */
+    RedisModule_CloseKey(db_client_table_key);
+    return RedisModule_ReplyWithError(
+        ctx, "Client does not have an address field. This shouldn't happen.");
+  }
+
+  RedisModule_ReplyWithString(ctx, address);
+
+  /* Cleanup. */
+  RedisModule_CloseKey(db_client_table_key);
+  RedisModule_FreeString(ctx, address);
+
+  return REDISMODULE_OK;
+}
+
+/**
  * Lookup an entry in the object table.
  *
  * This is called from a client with the command:
@@ -345,6 +389,12 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx,
 
   if (RedisModule_CreateCommand(ctx, "ray.connect", Connect_RedisCommand,
                                 "write", 0, 0, 0) == REDISMODULE_ERR) {
+    return REDISMODULE_ERR;
+  }
+
+  if (RedisModule_CreateCommand(ctx, "ray.get_client_address",
+                                GetClientAddress_RedisCommand, "write", 0, 0,
+                                0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 
