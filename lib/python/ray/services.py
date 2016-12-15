@@ -86,12 +86,15 @@ def start_redis(num_retries=20, cleanup=True):
     Exception: An exception is raised if Redis could not be started.
   """
   redis_filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../common/thirdparty/redis/src/redis-server")
+  redis_module = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../common/redis_module/ray_redis_module.so")
+  assert os.path.isfile(redis_filepath)
+  assert os.path.isfile(redis_module)
   counter = 0
   while counter < num_retries:
     if counter > 0:
       print("Redis failed to start, retrying now.")
     port = new_port()
-    p = subprocess.Popen([redis_filepath, "--port", str(port), "--loglevel", "warning"])
+    p = subprocess.Popen([redis_filepath, "--port", str(port), "--loglevel", "warning", "--loadmodule", redis_module])
     time.sleep(0.1)
     # Check if Redis successfully started (or at least if it the executable did
     # not exit within 0.1 seconds).

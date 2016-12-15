@@ -61,11 +61,6 @@ def assert_get_object_equal(unit_test, client1, client2, object_id, memory_buffe
   unit_test.assertEqual(client1.get_metadata(object_id)[:],
                         client2.get_metadata(object_id)[:])
 
-# Check if the redis-server binary is present.
-redis_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../common/thirdparty/redis/src/redis-server")
-if not os.path.exists(redis_path):
-  raise Exception("You do not have the redis-server binary. Run `make test` in the plasma directory to get it.")
-
 class TestPlasmaClient(unittest.TestCase):
 
   def setUp(self):
@@ -364,10 +359,14 @@ class TestPlasmaManager(unittest.TestCase):
     store_name2, self.p3 = plasma.start_plasma_store(use_valgrind=USE_VALGRIND)
     # Start a Redis server.
     redis_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../common/thirdparty/redis/src/redis-server")
+    redis_module = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../common/redis_module/ray_redis_module.so")
+    assert os.path.isfile(redis_path)
+    assert os.path.isfile(redis_module)
     redis_port = 6379
     with open(os.devnull, "w") as FNULL:
       self.redis_process = subprocess.Popen([redis_path,
-                                             "--port", str(redis_port)],
+                                             "--port", str(redis_port),
+                                             "--loadmodule", redis_module],
                                              stdout=FNULL)
     time.sleep(0.1)
     # Start two PlasmaManagers.

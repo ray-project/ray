@@ -32,6 +32,7 @@ pushd "$COMMON_DIR"
   make
 popd
 cp "$COMMON_DIR/thirdparty/redis/src/redis-server" "$PYTHON_COMMON_DIR/thirdparty/redis/src/"
+cp "$COMMON_DIR/redis_module/ray_redis_module.so" "$PYTHON_COMMON_DIR/redis_module/ray_redis_module.so"
 
 pushd "$PLASMA_DIR"
   make clean

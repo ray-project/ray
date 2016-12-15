@@ -92,6 +92,31 @@ int Connect_RedisCommand(RedisModuleCtx *ctx,
   /* Clean up. */
   RedisModule_CloseKey(db_client_table_key);
 
+  /* Construct strings to publish on the db client channel. */
+  RedisModuleString *channel_name =
+      RedisModule_CreateString(ctx, "db_clients", strlen("db_clients"));
+  RedisModuleString *client_info =
+      RedisModule_CreateStringFromString(ctx, ray_client_id);
+  RedisModule_StringAppendBuffer(ctx, client_info, ":", strlen(":"));
+  /* Append the client type. */
+  size_t client_type_size;
+  const char *client_type_str = RedisModule_StringPtrLen(client_type, &client_type_size);
+  RedisModule_StringAppendBuffer(ctx, client_info, client_type_str, client_type_size);
+  /* Append a space. */
+  RedisModule_StringAppendBuffer(ctx, client_info, " ", strlen(" "));
+  /* Append the aux address. */
+  size_t aux_address_size;
+  const char *aux_address_str = RedisModule_StringPtrLen(aux_address, &aux_address_size);
+  RedisModule_StringAppendBuffer(ctx, client_info, aux_address_str, aux_address_size);
+  /* Publish the client info on the db client channel. */
+  RedisModuleCallReply *reply;
+  reply = RedisModule_Call(ctx, "PUBLISH", "ss", channel_name, client_info);
+  RedisModule_FreeString(ctx, channel_name);
+  RedisModule_FreeString(ctx, client_info);
+  if (reply == NULL) {
+    return RedisModule_ReplyWithError(ctx, "PUBLISH unsuccessful");
+  }
+
   RedisModule_ReplyWithSimpleString(ctx, "OK");
   return REDISMODULE_OK;
 }

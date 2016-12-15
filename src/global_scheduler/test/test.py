@@ -44,10 +44,13 @@ class TestGlobalScheduler(unittest.TestCase):
   def setUp(self):
     # Start a Redis server.
     redis_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../common/thirdparty/redis/src/redis-server")
+    redis_module = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../common/redis_module/ray_redis_module.so")
+    assert os.path.isfile(redis_path)
+    assert os.path.isfile(redis_module)
     node_ip_address = "127.0.0.1"
     redis_port = new_port()
     redis_address = "{}:{}".format(node_ip_address, redis_port)
-    self.redis_process = subprocess.Popen([redis_path, "--port", str(redis_port), "--loglevel", "warning"])
+    self.redis_process = subprocess.Popen([redis_path, "--port", str(redis_port), "--loglevel", "warning", "--loadmodule", redis_module])
     time.sleep(0.1)
     # Create a Redis client.
     self.redis_client = redis.StrictRedis(host=node_ip_address, port=redis_port)
