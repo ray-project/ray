@@ -292,7 +292,7 @@ int TaskTableWrite_RedisCommand(RedisModuleCtx *ctx,
     return RedisModule_ReplyWithError(
         ctx, "Invalid scheduling state (must be an integer)");
   }
-  state = RedisModule_CreateStringPrintf(ctx, "%04d", state_integer);
+  state = RedisModule_CreateStringPrintf(ctx, "%1d", state_integer);
 
   /* Add the task to the task table. */
   if (spec == NULL) {
@@ -307,6 +307,9 @@ int TaskTableWrite_RedisCommand(RedisModuleCtx *ctx,
    * the format: "<task ID> <state> <node ID> <task specification>". */
   const char *publish_field;
   publish_field = RedisModule_StringPtrLen(state, &length);
+  if (length != 1) {
+    return RedisModule_ReplyWithError(ctx, "Invalid scheduling state width (must have width 1)");
+  }
   RedisModule_StringAppendBuffer(ctx, task_id, " ", 1);
   RedisModule_StringAppendBuffer(ctx, task_id, publish_field, length);
   publish_field = RedisModule_StringPtrLen(node_id, &length);
@@ -414,12 +417,11 @@ int TaskTableGetTask_RedisCommand(RedisModuleCtx *ctx,
     size_t state_length;
     const char *state_string = RedisModule_StringPtrLen(state, &state_length);
     int state_integer;
-    int scanned = sscanf(state_string, "%4d", &state_integer);
-    if (scanned != 1 || state_length != 4) {
+    int scanned = sscanf(state_string, "%1d", &state_integer);
+    if (scanned != 1 || state_length != 1) {
       return RedisModule_ReplyWithError(ctx,
                                         "Found invalid scheduling state (must "
-                                        "be a fixed-width integer of length "
-                                        "4)");
+                                        "be an integer of width 1");
     }
 
     RedisModule_ReplyWithArray(ctx, 3);
