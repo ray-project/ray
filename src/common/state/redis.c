@@ -177,9 +177,9 @@ db_handle *db_connect_extended(const char *address,
 
   /* Register this client with Redis. RAY.CONNECT is a custom Redis command that
    * we've defined. */
-  reply = redisCommand(context, "RAY.CONNECT %s %s %b %s", client_type,
-                       client_addr, (char *) client.id, sizeof(client.id),
-                       aux_address);
+  reply =
+      redisCommand(context, "RAY.CONNECT %s %s %b %s", client_type, client_addr,
+                   (char *) client.id, sizeof(client.id), aux_address);
   CHECKM(reply != NULL, "db_connect failed on RAY.CONNECT");
   freeReplyObject(reply);
 
