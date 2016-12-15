@@ -334,12 +334,12 @@ int TaskTableWrite_RedisCommand(RedisModuleCtx *ctx,
 }
 
 /**
- * Add a new entry to the task table.
+ * Add a new entry to the task table. This will overwrite any existing entry
+ * with the same task ID.
  *
  * This is called from a client with the command:
  *
- *     RAY.task_table_add_task <task ID> <state> <node ID>
- *                             <task spec>
+ *     RAY.task_table_add <task ID> <state> <node ID> <task spec>
  *
  * @param task_id A string that is the ID of the task.
  * @param state A string that is the current scheduling state (a
@@ -360,7 +360,8 @@ int TaskTableAddTask_RedisCommand(RedisModuleCtx *ctx,
 }
 
 /**
- * Update an entry in the task table.
+ * Update an entry in the task table. This does not update the task
+ * specification in the table.
  *
  * This is called from a client with the command:
  *
@@ -384,7 +385,7 @@ int TaskTableUpdate_RedisCommand(RedisModuleCtx *ctx,
  *
  * This is called from a client with the command:
  *
- *     RAY.task_table_get_task <task ID>
+ *     RAY.task_table_get <task ID>
  *
  * @param task_id A string of the task ID to look up.
  * @return An array of strings representing the task fields in the following
@@ -501,7 +502,7 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx,
     return REDISMODULE_ERR;
   }
 
-  if (RedisModule_CreateCommand(ctx, "ray.task_table_add_task",
+  if (RedisModule_CreateCommand(ctx, "ray.task_table_add",
                                 TaskTableAddTask_RedisCommand, "write pubsub",
                                 0, 0, 0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
@@ -513,7 +514,7 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx,
     return REDISMODULE_ERR;
   }
 
-  if (RedisModule_CreateCommand(ctx, "ray.task_table_get_task",
+  if (RedisModule_CreateCommand(ctx, "ray.task_table_get",
                                 TaskTableGetTask_RedisCommand, "readonly", 0, 0,
                                 0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;

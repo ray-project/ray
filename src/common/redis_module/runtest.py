@@ -92,5 +92,36 @@ class TestGlobalStateStore(unittest.TestCase):
     response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id2")
     self.assertEqual(response, "task_id2")
 
+  def testInvalidTaskTableAdd(self):
+    # Check that Redis returns an error when RAY.TASK_TABLE_ADD is called with
+    # the wrong arguments.
+    with self.assertRaises(redis.ResponseError):
+      self.redis.execute_command("RAY.TASK_TABLE_ADD")
+    with self.assertRaises(redis.ResponseError):
+      self.redis.execute_command("RAY.TASK_TABLE_ADD", "hello")
+    with self.assertRaises(redis.ResponseError):
+      self.redis.execute_command("RAY.TASK_TABLE_ADD", "task_id", 3, "node_id")
+    with self.assertRaises(redis.ResponseError):
+      # Non-integer scheduling states should not be added.
+      self.redis.execute_command("RAY.TASK_TABLE_ADD", "task_id",
+                                 "invalid_state", "node_id", "task_spec")
+    with self.assertRaises(redis.ResponseError):
+      # Scheduling states with invalid width should not be added.
+      self.redis.execute_command("RAY.TASK_TABLE_ADD", "task_id", 10,
+                                 "node_id", "task_spec")
+
+  def testTaskTableAddAndLookup(self):
+    # Check that task table adds, updates, and lookups work correctly.
+    task_args = [1, "node_id", "task_spec"]
+    response = self.redis.execute_command("RAY.TASK_TABLE_ADD", "task_id",
+                                          *task_args)
+    response = self.redis.execute_command("RAY.TASK_TABLE_GET", "task_id")
+    self.assertEqual(response, task_args)
+
+    task_args[0] = 2
+    self.redis.execute_command("RAY.TASK_TABLE_UPDATE", "task_id", *task_args[:2])
+    response = self.redis.execute_command("RAY.TASK_TABLE_GET", "task_id")
+    self.assertEqual(response, task_args)
+
 if __name__ == "__main__":
   unittest.main(verbosity=2)
