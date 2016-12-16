@@ -18,6 +18,11 @@ if not os.path.exists(redis_path):
 module_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "ray_redis_module.so")
 print("path to the redis module is {}".format(module_path))
 
+OBJECT_INFO_PREFIX = "OI:"
+OBJECT_LOCATION_PREFIX = "OL:"
+OBJECT_SUBSCRIBE_PREFIX = "OS:"
+TASK_PREFIX = "TT:"
+
 class TestGlobalStateStore(unittest.TestCase):
 
   def setUp(self):
@@ -72,7 +77,7 @@ class TestGlobalStateStore(unittest.TestCase):
   def testObjectTableSubscribe(self):
     p = self.redis.pubsub()
     # Subscribe to an object ID.
-    p.subscribe("object_id1")
+    p.psubscribe("{0}*".format(OBJECT_LOCATION_PREFIX))
     self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id1")
     # Receive the acknowledgement message.
     self.assertEqual(p.get_message()["data"], 1)
@@ -91,6 +96,62 @@ class TestGlobalStateStore(unittest.TestCase):
     self.redis.execute_command("RAY.RESULT_TABLE_ADD", "object_id2", "task_id2")
     response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id2")
     self.assertEqual(response, b"task_id2")
+
+  def testInvalidTaskTableAdd(self):
+    # Check that Redis returns an error when RAY.TASK_TABLE_ADD is called with
+    # the wrong arguments.
+    with self.assertRaises(redis.ResponseError):
+      self.redis.execute_command("RAY.TASK_TABLE_ADD")
+    with self.assertRaises(redis.ResponseError):
+      self.redis.execute_command("RAY.TASK_TABLE_ADD", "hello")
+    with self.assertRaises(redis.ResponseError):
+      self.redis.execute_command("RAY.TASK_TABLE_ADD", "task_id", 3, "node_id")
+    with self.assertRaises(redis.ResponseError):
+      # Non-integer scheduling states should not be added.
+      self.redis.execute_command("RAY.TASK_TABLE_ADD", "task_id",
+                                 "invalid_state", "node_id", "task_spec")
+    with self.assertRaises(redis.ResponseError):
+      # Scheduling states with invalid width should not be added.
+      self.redis.execute_command("RAY.TASK_TABLE_ADD", "task_id", 101,
+                                 "node_id", "task_spec")
+    with self.assertRaises(redis.ResponseError):
+      # Should not be able to update a non-existent task.
+      self.redis.execute_command("RAY.TASK_TABLE_UPDATE", "task_id", 10,
+                                 "node_id")
+
+  def testTaskTableAddAndLookup(self):
+    # Check that task table adds, updates, and lookups work correctly.
+    task_args = [1, "node_id", "task_spec"]
+    response = self.redis.execute_command("RAY.TASK_TABLE_ADD", "task_id",
+                                          *task_args)
+    response = self.redis.execute_command("RAY.TASK_TABLE_GET", "task_id")
+    self.assertEqual(response, task_args)
+
+    task_args[0] = 2
+    self.redis.execute_command("RAY.TASK_TABLE_UPDATE", "task_id", *task_args[:2])
+    response = self.redis.execute_command("RAY.TASK_TABLE_GET", "task_id")
+    self.assertEqual(response, task_args)
+
+  def testTaskTableSubscribe(self):
+    scheduling_state = 1
+    node_id = "node_id"
+    # Subscribe to the task table.
+    p = self.redis.pubsub()
+    p.psubscribe("{prefix}*:*".format(prefix=TASK_PREFIX))
+    p.psubscribe("{prefix}*:{state: >2}".format(prefix=TASK_PREFIX, state=scheduling_state))
+    p.psubscribe("{prefix}{node}:*".format(prefix=TASK_PREFIX, node=node_id))
+    task_args = ["task_id", scheduling_state, node_id, "task_spec"]
+    self.redis.execute_command("RAY.TASK_TABLE_ADD", *task_args)
+    # Receive the acknowledgement message.
+    self.assertEqual(p.get_message()["data"], 1)
+    self.assertEqual(p.get_message()["data"], 2)
+    self.assertEqual(p.get_message()["data"], 3)
+    # Receive the actual data.
+    for i in range(3):
+        message = p.get_message()["data"]
+        message = message.split()
+        message[1] = int(message[1])
+        self.assertEqual(message, task_args)
 
 if __name__ == "__main__":
   unittest.main(verbosity=2)
