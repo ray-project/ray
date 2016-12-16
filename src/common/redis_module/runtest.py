@@ -18,6 +18,11 @@ if not os.path.exists(redis_path):
 module_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "ray_redis_module.so")
 print("path to the redis module is {}".format(module_path))
 
+OBJECT_INFO_PREFIX = "OI:"
+OBJECT_LOCATION_PREFIX = "OL:"
+OBJECT_SUBSCRIBE_PREFIX = "OS:"
+TASK_PREFIX = "TT:"
+
 class TestGlobalStateStore(unittest.TestCase):
 
   def setUp(self):
@@ -72,7 +77,7 @@ class TestGlobalStateStore(unittest.TestCase):
   def testObjectTableSubscribe(self):
     p = self.redis.pubsub()
     # Subscribe to an object ID.
-    p.psubscribe("OL:*")
+    p.psubscribe("{0}*".format(OBJECT_LOCATION_PREFIX))
     self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id1")
     # Receive the acknowledgement message.
     self.assertEqual(p.get_message()["data"], 1)
@@ -128,12 +133,14 @@ class TestGlobalStateStore(unittest.TestCase):
     self.assertEqual(response, task_args)
 
   def testTaskTableSubscribe(self):
-    p = self.redis.pubsub()
+    scheduling_state = 1
+    node_id = "node_id"
     # Subscribe to the task table.
-    p.psubscribe("TT:*:*")
-    p.psubscribe("TT:*: 1")
-    p.psubscribe("TT:node_id:*")
-    task_args = ["task_id", 1, "node_id", "task_spec"]
+    p = self.redis.pubsub()
+    p.psubscribe("{prefix}*:*".format(prefix=TASK_PREFIX))
+    p.psubscribe("{prefix}*:{state: >2}".format(prefix=TASK_PREFIX, state=scheduling_state))
+    p.psubscribe("{prefix}{node}:*".format(prefix=TASK_PREFIX, node=node_id))
+    task_args = ["task_id", scheduling_state, node_id, "task_spec"]
     self.redis.execute_command("RAY.TASK_TABLE_ADD", *task_args)
     # Receive the acknowledgement message.
     self.assertEqual(p.get_message()["data"], 1)
