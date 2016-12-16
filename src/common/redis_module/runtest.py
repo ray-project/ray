@@ -121,26 +121,26 @@ class TestGlobalStateStore(unittest.TestCase):
 
   def testTaskTableAddAndLookup(self):
     # Check that task table adds, updates, and lookups work correctly.
-    task_args = [1, "node_id", "task_spec"]
-    response = self.redis.execute_command("RAY.TASK_TABLE_ADD", "task_id",
+    task_args = [1, b"node_id", b"task_spec"]
+    response = self.redis.execute_command("RAY.TASK_TABLE_ADD", b"task_id",
                                           *task_args)
-    response = self.redis.execute_command("RAY.TASK_TABLE_GET", "task_id")
+    response = self.redis.execute_command("RAY.TASK_TABLE_GET", b"task_id")
     self.assertEqual(response, task_args)
 
     task_args[0] = 2
-    self.redis.execute_command("RAY.TASK_TABLE_UPDATE", "task_id", *task_args[:2])
-    response = self.redis.execute_command("RAY.TASK_TABLE_GET", "task_id")
+    self.redis.execute_command("RAY.TASK_TABLE_UPDATE", b"task_id", *task_args[:2])
+    response = self.redis.execute_command("RAY.TASK_TABLE_GET", b"task_id")
     self.assertEqual(response, task_args)
 
   def testTaskTableSubscribe(self):
     scheduling_state = 1
-    node_id = "node_id"
+    node_id = b"node_id"
     # Subscribe to the task table.
     p = self.redis.pubsub()
     p.psubscribe("{prefix}*:*".format(prefix=TASK_PREFIX))
     p.psubscribe("{prefix}*:{state: >2}".format(prefix=TASK_PREFIX, state=scheduling_state))
     p.psubscribe("{prefix}{node}:*".format(prefix=TASK_PREFIX, node=node_id))
-    task_args = ["task_id", scheduling_state, node_id, "task_spec"]
+    task_args = [b"task_id", scheduling_state, node_id, b"task_spec"]
     self.redis.execute_command("RAY.TASK_TABLE_ADD", *task_args)
     # Receive the acknowledgement message.
     self.assertEqual(p.get_message()["data"], 1)
