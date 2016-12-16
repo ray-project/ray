@@ -82,6 +82,27 @@ void redis_object_table_lookup(table_callback_data *callback_data);
 void redis_object_table_add(table_callback_data *callback_data);
 
 /**
+ * Create a client-specific channel for receiving notifications from the object
+ * table.
+ *
+ * @param callback_data Data structure containing redis connection and timeout
+ *        information.
+ * @return Void.
+ */
+void redis_object_table_subscribe_to_notifications(
+    table_callback_data *callback_data);
+
+/**
+ * Request notifications about when certain objects become available.
+ *
+ * @param callback_data Data structure containing redis connection and timeout
+ *        information.
+ * @return Void.
+ */
+void redis_object_table_request_notifications(
+    table_callback_data *callback_data);
+
+/**
  * Subscribe to learn when a new object becomes available.
  *
  * @param callback_data Data structure containing redis connection and timeout

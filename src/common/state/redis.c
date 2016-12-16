@@ -726,6 +726,179 @@ void redis_object_table_subscribe(table_callback_data *callback_data) {
   }
 }
 
+/**
+ * This will parse a payload string published on the object notification
+ * channel. The string must have the format:
+ *
+ *    <object id> MANAGERS <manager id1> <manager id2> ...
+ *
+ * where there may be any positive number of manager IDs.
+ *
+ * @param db The db handle.
+ * @param payload The payload string.
+ * @param length The length of the string.
+ * @param manager_count This method will write the number of managers at this
+ *        address.
+ * @param manager_vector This method will allocate an array of pointers to
+ *        manager addresses and write the address of the array at this address.
+ *        The caller is responsible for freeing this array.
+ * @return The object ID that the notification is about.
+ */
+object_id parse_subscribe_to_notifications_payload(db_handle *db,
+                                                   char *payload,
+                                                   int length,
+                                                   int *manager_count,
+                                                   const char ***manager_vector) {
+  int num_managers = (length - sizeof(object_id) - 1 - strlen("MANAGERS")) / (1 + sizeof(db_client_id));
+  CHECK(length == sizeof(object_id) + 1 + strlen("MANAGERS") + num_managers * (1 + sizeof(db_client_id)));
+  CHECK(num_managers > 0);
+  object_id obj_id;
+  /* Track our current offset in the payload. */
+  int offset = 0;
+  /* Parse the object ID. */
+  memcpy(&obj_id.id, &payload[offset], sizeof(obj_id.id));
+  offset += sizeof(obj_id.id);
+  /* The next part of the payload is the string " MANAGERS". */
+  char *managers_str = " MANAGERS";
+  CHECK(memcmp(&payload[offset], managers_str, strlen(managers_str)) == 0);
+  offset += strlen(managers_str);
+  /* Parse the managers. */
+  const char **managers = malloc(num_managers * sizeof(char *));
+  for (int i = 0; i < num_managers; ++i) {
+    /* First there is a space. */
+    CHECK(memcmp(&payload[offset], " ", strlen(" ")) == 0);
+    offset += strlen(" ");
+    /* Get the manager ID. */
+    db_client_id manager_id;
+    memcpy(&manager_id.id, &payload[offset], sizeof(manager_id.id));
+    offset += sizeof(manager_id.id);
+    /* Write the address of the corresponding manager to the returned array. */
+    redis_get_cached_db_client(db, manager_id, &managers[i]);
+  }
+  CHECK(offset == length);
+  /* Return the manager array and the object ID. */
+  *manager_count = num_managers;
+  *manager_vector = managers;
+  return obj_id;
+}
+
+void object_table_redis_subscribe_to_notifications_callback(
+    redisAsyncContext *c,
+    void *r,
+    void *privdata) {
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
+
+  /* Replies to the SUBSCRIBE command have 3 elements. There are two
+   * possibilities. Either the reply is the initial acknowledgment of the
+   * subscribe command, or it is a message. If it is the initial acknowledgment,
+   * then
+   *     - reply->element[0]->str is "subscribe"
+   *     - reply->element[1]->str is the name of the channel
+   *     - reply->emement[2]->str is null.
+   * If it is an actual message, then
+   *     - reply->element[0]->str is "message"
+   *     - reply->element[1]->str is the name of the channel
+   *     - reply->emement[2]->str is the contents of the message.
+   */
+  redisReply *reply = r;
+  CHECK(reply->type == REDIS_REPLY_ARRAY);
+  CHECK(reply->elements == 3);
+  redisReply *message_type = reply->element[0];
+  LOG_DEBUG("Object table subscribe to notifications callback, message %s",
+            message_type->str);
+
+  if (strcmp(message_type->str, "message") == 0) {
+    /* Handle an object notification. */
+    int manager_count;
+    const char **manager_vector;
+    object_id obj_id = parse_subscribe_to_notifications_payload(
+        db, reply->element[2]->str, reply->element[2]->len, &manager_count,
+        &manager_vector);
+    /* Call the subscribe callback. */
+    object_table_subscribe_data *data = callback_data->data;
+    if (data->object_available_callback) {
+      data->object_available_callback(obj_id, manager_count, manager_vector,
+                                      data->subscribe_context);
+    }
+    free(manager_vector);
+  } else if (strcmp(message_type->str, "subscribe") == 0) {
+    /* The reply for the initial SUBSCRIBE command. */
+    /* If the initial SUBSCRIBE was successful, clean up the timer. */
+    CHECK(callback_data->done_callback == NULL);
+    event_loop_remove_timer(callback_data->db_handle->loop,
+                            callback_data->timer_id);
+  } else {
+    LOG_FATAL(
+        "Unexpected reply type from object table subscribe to notifications.");
+  }
+}
+
+void redis_object_table_subscribe_to_notifications(
+    table_callback_data *callback_data) {
+  db_handle *db = callback_data->db_handle;
+  /* Subscribe to notifications from the object table. This uses the client ID
+   * as the channel name so this channel is specific to this client. TODO(rkn):
+   * The channel name should probably be the client ID with some prefix. */
+  int status = redisAsyncCommand(
+      db->sub_context, object_table_redis_subscribe_to_notifications_callback,
+      (void *) callback_data->timer_id, "SUBSCRIBE %b", db->client.id,
+      sizeof(db->client.id));
+  if ((status == REDIS_ERR) || db->sub_context->err) {
+    LOG_REDIS_DEBUG(db->sub_context,
+                    "error in redis_object_table_subscribe_to_notifications");
+  }
+}
+
+void generic_redis_callback(
+    redisAsyncContext *c,
+    void *r,
+    void *privdata) {
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
+
+  /* Do some minimal checking. */
+  redisReply *reply = r;
+  CHECK(strcmp(reply->str, "OK") == 0);
+  CHECK(callback_data->done_callback == NULL);
+  /* Clean up the timer. */
+  event_loop_remove_timer(db->loop, callback_data->timer_id);
+}
+
+void redis_object_table_request_notifications(
+    table_callback_data *callback_data) {
+  db_handle *db = callback_data->db_handle;
+
+  object_table_request_notifications_data *request_data = callback_data->data;
+  int num_object_ids = request_data->num_object_ids;
+  object_id *object_ids = request_data->object_ids;
+
+  /* Create the arguments for the Redis command. */
+  int num_args = 1 + 1 + num_object_ids;
+  const char **argv = malloc(sizeof(char *) * num_args);
+  size_t *argvlen = malloc(sizeof(size_t) * num_args);
+  /* Set the command name argument. */
+  argv[0] = "RAY.OBJECT_TABLE_REQUEST_NOTIFICATIONS";
+  argvlen[0] = strlen(argv[0]);
+  /* Set the client ID argument. */
+  argv[1] = (char *) db->client.id;
+  argvlen[1] = sizeof(db->client.id);
+  /* Set the object ID arguments. */
+  for (int i = 0; i < num_object_ids; ++i) {
+    argv[2 + i] = (char *) object_ids[i].id;
+    argvlen[2 + i] = sizeof(object_ids[i].id);
+  }
+
+  int status = redisAsyncCommandArgv(db->context, generic_redis_callback,
+                                     (void *) callback_data->timer_id, num_args,
+                                     argv, argvlen);
+  free(argv);
+  free(argvlen);
+
+  if ((status == REDIS_ERR) || db->context->err) {
+    LOG_REDIS_DEBUG(db->context,
+                    "error in redis_object_table_subscribe_to_notifications");
+  }
+}
+
 /*
  *  ==== task_table callbacks ====
  */

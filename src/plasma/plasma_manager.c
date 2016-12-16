@@ -968,6 +968,12 @@ void process_fetch_requests(client_connection *client_conn,
                             int num_object_ids,
                             object_request object_requests[]) {
   plasma_manager_state *manager_state = client_conn->manager_state;
+
+  int num_object_ids_to_request = 0;
+  /* This is allocating more space than necessary, but we do not know the exact
+   * number of object IDs to request notifications for yet. */
+  object_id *object_ids_to_request = malloc(num_object_ids * sizeof(object_id));
+
   for (int i = 0; i < num_object_ids; ++i) {
     object_id obj_id = object_requests[i].object_id;
 
@@ -989,21 +995,26 @@ void process_fetch_requests(client_connection *client_conn,
     entry = create_fetch_request(manager_state, obj_id);
     HASH_ADD(hh, manager_state->fetch_requests, object_id,
              sizeof(entry->object_id), entry);
-
-    /* Get a list of Plasma Managers that have this object from the object
-     * table. If the list of Plasma Managers is non-empty, the callback should
-     * initiate a transfer. */
-    /* TODO(rkn): Make sure this also handles the case where the list is
-     * initially empty. */
+    /* Add this object ID to the list of object IDs to request notifications for
+     * from the object table. */
+    object_ids_to_request[num_object_ids_to_request] = obj_id;
+    num_object_ids_to_request += 1;
+  }
+  if (num_object_ids_to_request > 0) {
+    /* Request notifications from the object table when these object IDs become
+     * available. The notifications will call the callback that was passed to
+     * object_table_subscribe_to_notifications, which will initiate a transfer
+     * of the object to this plasma manager. */
     retry_info retry;
     memset(&retry, 0, sizeof(retry));
     retry.num_retries = 0;
     retry.timeout = MANAGER_TIMEOUT;
     retry.fail_callback = fatal_table_callback;
-    object_table_subscribe(manager_state->db, obj_id,
-                           object_table_subscribe_callback, manager_state,
-                           &retry, NULL, NULL);
+    object_table_request_notifications(manager_state->db,
+                                       num_object_ids_to_request,
+                                       object_ids_to_request, &retry);
   }
+  free(object_ids_to_request);
 }
 
 int wait_timeout_handler(event_loop *loop, timer_id id, void *context) {
@@ -1036,6 +1047,12 @@ void process_wait_request(client_connection *client_conn,
   wait_req->num_objects_to_wait_for = num_ready_objects;
   wait_req->num_satisfied = 0;
 
+  int num_object_ids_to_request = 0;
+  /* This is allocating more space than necessary, but we do not know the exact
+   * number of object IDs to request notifications for yet. */
+  object_id *object_ids_to_request =
+      malloc(num_object_requests * sizeof(object_id));
+
   for (int i = 0; i < num_object_requests; ++i) {
     object_id obj_id = object_requests[i].object_id;
 
@@ -1055,23 +1072,10 @@ void process_wait_request(client_connection *client_conn,
       /* TODO(rkn): If desired, we could issue a fetch command here to retrieve
        * the object. */
     } else if (wait_req->object_requests[i].type == PLASMA_QUERY_ANYWHERE) {
-      /* Subscribe to a notification for when the object is available somewhere
-       * in the system. */
-      retry_info retry;
-      memset(&retry, 0, sizeof(retry));
-      retry.num_retries = 0;
-      /* TODO(rkn): This timeout is excessive. However, the number of calls to
-       * object_table_subscribe here is also excessive. The issue may be the
-       * number of timers added to the manager event loop. Under heavy usage,
-       * this will trigger the fatal failure callback. The solution is probably
-       * to use Redis modules to write a special purpose command so that we only
-       * need to do a single call to Redis here (and hence create only a single
-       * timer). */
-      retry.timeout = 100000;
-      retry.fail_callback = fatal_table_callback;
-      object_table_subscribe(manager_state->db, obj_id,
-                             object_table_subscribe_callback, manager_state,
-                             &retry, NULL, NULL);
+      /* Add this object ID to the list of object IDs to request notifications
+       * for from the object table. */
+      object_ids_to_request[num_object_ids_to_request] = obj_id;
+      num_object_ids_to_request += 1;
     } else {
       /* This code should be unreachable. */
       CHECK(0);
@@ -1082,12 +1086,27 @@ void process_wait_request(client_connection *client_conn,
    * client. */
   if (wait_req->num_satisfied >= wait_req->num_objects_to_wait_for) {
     return_from_wait(manager_state, wait_req);
-    return;
-  }
+  } else {
+    if (num_object_ids_to_request > 0) {
+      /* Request notifications from the object table when these object IDs become
+       * available. The notifications will call the callback that was passed to
+       * object_table_subscribe_to_notifications, which will update the wait
+       * request. */
+      retry_info retry;
+      memset(&retry, 0, sizeof(retry));
+      retry.num_retries = 0;
+      retry.timeout = MANAGER_TIMEOUT;
+      retry.fail_callback = fatal_table_callback;
+      object_table_request_notifications(manager_state->db,
+                                         num_object_ids_to_request,
+                                         object_ids_to_request, &retry);
+    }
 
-  /* Set a timer that will cause the wait request to return to the client. */
-  wait_req->timer = event_loop_add_timer(manager_state->loop, timeout_ms,
-                                         wait_timeout_handler, wait_req);
+    /* Set a timer that will cause the wait request to return to the client. */
+    wait_req->timer = event_loop_add_timer(manager_state->loop, timeout_ms,
+                                           wait_timeout_handler, wait_req);
+  }
+  free(object_ids_to_request);
 }
 
 /**
@@ -1341,6 +1360,12 @@ void start_server(const char *store_socket_name,
                       handle_new_client, g_manager_state);
   event_loop_add_file(g_manager_state->loop, remote_sock, EVENT_LOOP_READ,
                       handle_new_client, g_manager_state);
+  /* Set up a client-specific channel to receive notifications from the object
+   * table. */
+  object_table_subscribe_to_notifications(
+      g_manager_state->db, object_table_subscribe_callback, g_manager_state,
+      NULL, NULL, NULL);
+  /* Run the event loop. */
   event_loop_run(g_manager_state->loop);
 }
 
