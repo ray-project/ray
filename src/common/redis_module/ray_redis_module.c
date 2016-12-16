@@ -29,14 +29,22 @@
     return RedisModule_ReplyWithError(ctx, (MESSAGE)); \
   }
 
-RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
-                                const char *prefix,
-                                RedisModuleString *keyname,
-                                int mode) {
+RedisModuleString *CreatePrefixedString(RedisModuleCtx *ctx,
+                                        const char *prefix,
+                                        RedisModuleString *keyname) {
   size_t length;
   const char *value = RedisModule_StringPtrLen(keyname, &length);
   RedisModuleString *prefixed_keyname = RedisModule_CreateStringPrintf(
       ctx, "%s%*.*s", prefix, length, length, value);
+  return prefixed_keyname;
+}
+
+RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
+                                const char *prefix,
+                                RedisModuleString *keyname,
+                                int mode) {
+  RedisModuleString *prefixed_keyname =
+      CreatePrefixedString(ctx, prefix, keyname);
   RedisModuleKey *key = RedisModule_OpenKey(ctx, prefixed_keyname, mode);
   RedisModule_FreeString(ctx, prefixed_keyname);
   return key;
@@ -148,18 +156,13 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
 
   /* Sets are not implemented yet, so we use ZSETs instead. */
   RedisModule_ZsetAdd(table_key, 0.0, manager, NULL);
-  RedisModule_CloseKey(table_key);
 
   /* Build the PUBLISH topic and message for object table subscribers. The
    * topic is a string in the format "OBJECT_LOCATION_PREFIX:<object ID>". The
    * message is a string in the format: "<manager ID> <manager ID> ... <manager
    * ID>". */
   RedisModuleString *publish_topic =
-      RedisModule_CreateStringPrintf(ctx, "%s", OBJECT_LOCATION_PREFIX);
-  size_t length;
-  const char *object_id_string = RedisModule_StringPtrLen(object_id, &length);
-  RedisModule_StringAppendBuffer(ctx, publish_topic, object_id_string, length);
-  /* Add the managers to the publish message. */
+      CreatePrefixedString(ctx, OBJECT_LOCATION_PREFIX, object_id);
   const char *MANAGERS = "MANAGERS";
   RedisModuleString *publish =
       RedisModule_CreateString(ctx, MANAGERS, strlen(MANAGERS));
@@ -180,6 +183,7 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
       RedisModule_Call(ctx, "PUBLISH", "ss", publish_topic, publish);
   RedisModule_FreeString(ctx, publish);
   RedisModule_FreeString(ctx, publish_topic);
+  RedisModule_CloseKey(table_key);
   if (reply == NULL) {
     return RedisModule_ReplyWithError(ctx, "PUBLISH unsuccessful");
   }
@@ -324,23 +328,24 @@ int TaskTableWrite(RedisModuleCtx *ctx,
   RedisModule_CloseKey(key);
 
   /* Build the PUBLISH topic and message for task table subscribers. The topic
-   * is a string in the format "TASK_PREFIX:<state>:<node ID>". The
+   * is a string in the format "TASK_PREFIX:<node ID>:<state>". The
    * message is a string in the format: "<task ID> <state> <node ID> <task
    * specification>". */
-  const char *publish_field;
   RedisModuleString *publish_topic =
-      RedisModule_CreateStringPrintf(ctx, "%s", TASK_PREFIX);
+      CreatePrefixedString(ctx, TASK_PREFIX, node_id);
+  RedisModule_StringAppendBuffer(ctx, publish_topic, ":", strlen(":"));
+  const char *state_string = RedisModule_StringPtrLen(state, &length);
+  RedisModule_StringAppendBuffer(ctx, publish_topic, state_string, length);
+  /* Append the fields to the PUBLISH message. */
   RedisModuleString *publish_message =
       RedisModule_CreateStringFromString(ctx, task_id);
+  const char *publish_field;
   /* Append the scheduling state. */
-  publish_field = RedisModule_StringPtrLen(state, &length);
-  RedisModule_StringAppendBuffer(ctx, publish_topic, publish_field, length);
+  publish_field = state_string;
   RedisModule_StringAppendBuffer(ctx, publish_message, " ", strlen(" "));
   RedisModule_StringAppendBuffer(ctx, publish_message, publish_field, length);
   /* Append the node ID. */
   publish_field = RedisModule_StringPtrLen(node_id, &length);
-  RedisModule_StringAppendBuffer(ctx, publish_topic, ":", strlen(":"));
-  RedisModule_StringAppendBuffer(ctx, publish_topic, publish_field, length);
   RedisModule_StringAppendBuffer(ctx, publish_message, " ", strlen(" "));
   RedisModule_StringAppendBuffer(ctx, publish_message, publish_field, length);
   /* Append the task specification. */
@@ -371,10 +376,10 @@ int TaskTableWrite(RedisModuleCtx *ctx,
  *
  * @param task_id A string that is the ID of the task.
  * @param state A string that is the current scheduling state (a
- *        scheduling_state enum instance). The string's value must be an
- *        integer with width less than or equal to 2. If the width is less than
- *        2, the string will be left-padded with spaces before being added to
- *        the table entry.
+ *        scheduling_state enum instance). The string's value must be a
+ *        nonnegative integer less than 100, so that it has width at most 2. If
+ *        less than 2, the value will be left-padded with spaces to a width of
+ *        2.
  * @param node_id A string that is the ID of the associated node, if any.
  * @param task_spec A string that is the specification of the task, which can
  *        be cast to a `task_spec`.
@@ -400,10 +405,10 @@ int TaskTableAddTask_RedisCommand(RedisModuleCtx *ctx,
  *
  * @param task_id A string that is the ID of the task.
  * @param state A string that is the current scheduling state (a
- *        scheduling_state enum instance). The string's value must be an
- *        integer with width less than or equal to 2. If the width is less than
- *        2, the string will be left-padded with spaces before being added to
- *        the table entry.
+ *        scheduling_state enum instance). The string's value must be a
+ *        nonnegative integer less than 100, so that it has width at most 2. If
+ *        less than 2, the value will be left-padded with spaces to a width of
+ *        2.
  * @param node_id A string that is the ID of the associated node, if any.
  * @return OK if the operation was successful.
  */

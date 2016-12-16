@@ -131,8 +131,8 @@ class TestGlobalStateStore(unittest.TestCase):
     p = self.redis.pubsub()
     # Subscribe to the task table.
     p.psubscribe("TT:*:*")
-    p.psubscribe("TT: 1:*")
-    p.psubscribe("TT:*:node_id")
+    p.psubscribe("TT:*: 1")
+    p.psubscribe("TT:node_id:*")
     task_args = ["task_id", 1, "node_id", "task_spec"]
     self.redis.execute_command("RAY.TASK_TABLE_ADD", *task_args)
     # Receive the acknowledgement message.
