@@ -134,13 +134,13 @@ class TestGlobalStateStore(unittest.TestCase):
 
   def testTaskTableSubscribe(self):
     scheduling_state = 1
-    node_id = b"node_id"
+    node_id = "node_id"
     # Subscribe to the task table.
     p = self.redis.pubsub()
     p.psubscribe("{prefix}*:*".format(prefix=TASK_PREFIX))
     p.psubscribe("{prefix}*:{state: >2}".format(prefix=TASK_PREFIX, state=scheduling_state))
     p.psubscribe("{prefix}{node}:*".format(prefix=TASK_PREFIX, node=node_id))
-    task_args = [b"task_id", scheduling_state, node_id, b"task_spec"]
+    task_args = [b"task_id", scheduling_state, bytes(node_id), b"task_spec"]
     self.redis.execute_command("RAY.TASK_TABLE_ADD", *task_args)
     # Receive the acknowledgement message.
     self.assertEqual(p.get_message()["data"], 1)
