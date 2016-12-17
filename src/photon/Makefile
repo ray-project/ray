@@ -6,16 +6,16 @@ BUILD = build
 all: $(BUILD)/photon_scheduler $(BUILD)/photon_client.a
 
 $(BUILD)/photon_tests: test/photon_tests.c photon.h photon_scheduler.h photon_scheduler.c photon_algorithm.h photon_algorithm.c photon_client.h photon_client.c common
-	$(CC) $(CFLAGS) $(TEST_CFLAGS) -o $@ test/photon_tests.c photon_scheduler.c photon_algorithm.c photon_client.c ../common/build/libcommon.a ../common/thirdparty/hiredis/libhiredis.a -I../common/thirdparty/ -I../common/ ../plasma/build/libplasma_client.a -I../plasma/
+	$(CC) $(CFLAGS) $(TEST_CFLAGS) -o $@ test/photon_tests.c photon_scheduler.c photon_algorithm.c photon_client.c ../common/build/libcommon.a ../common/thirdparty/hiredis/libhiredis.a -I../common/thirdparty/ -I../common/ ../plasma/build/libplasma_client.a ../common/build/flatcc-prefix/src/flatcc/lib/libflatcc.a -I../plasma/
 
 $(BUILD)/photon_client.a: photon_client.o
 	ar rcs $(BUILD)/photon_client.a photon_client.o
 
 $(BUILD)/photon_scheduler: photon.h photon_scheduler.c photon_algorithm.c common
-	$(CC) $(CFLAGS) -o $@ photon_scheduler.c photon_algorithm.c ../common/build/libcommon.a ../common/thirdparty/hiredis/libhiredis.a -I../common/thirdparty/ -I../common/ ../plasma/build/libplasma_client.a
+	$(CC) $(CFLAGS) -o $@ photon_scheduler.c photon_algorithm.c ../common/build/libcommon.a ../common/thirdparty/hiredis/libhiredis.a -I../common/thirdparty/ -I../common/ ../plasma/build/libplasma_client.a ../common/build/flatcc-prefix/src/flatcc/lib/libflatcc.a
 
 common: FORCE
-	cd ../common; make
+	cd ../common; make; cd build; cmake ..; make
 
 clean:
 	cd ../common; make clean

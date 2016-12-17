@@ -31,6 +31,7 @@
 #include "net.h"
 #include "event_loop.h"
 #include "plasma.h"
+#include "plasma_protocol.h"
 #include "plasma_client.h"
 #include "plasma_manager.h"
 #include "state/db.h"
@@ -980,7 +981,7 @@ void object_table_subscribe_callback(object_id object_id,
 
 void process_fetch_requests(client_connection *client_conn,
                             int num_object_ids,
-                            object_request object_requests[]) {
+                            object_id object_ids[]) {
   plasma_manager_state *manager_state = client_conn->manager_state;
 
   int num_object_ids_to_request = 0;
@@ -989,7 +990,7 @@ void process_fetch_requests(client_connection *client_conn,
   object_id *object_ids_to_request = malloc(num_object_ids * sizeof(object_id));
 
   for (int i = 0; i < num_object_ids; ++i) {
-    object_id obj_id = object_requests[i].object_id;
+    object_id obj_id = object_ids[i];
 
     /* Check if this object is already present locally. If so, do nothing. */
     if (is_object_local(manager_state, obj_id)) {
@@ -1268,9 +1269,12 @@ void process_message(event_loop *loop,
                      int events) {
   client_connection *conn = (client_connection *) context;
 
+  int64_t length;
   int64_t type;
-  plasma_request *req;
-  CHECK(plasma_receive_request(client_sock, &type, &req) >= 0);
+  uint8_t *data;
+  read_message(client_sock, PLASMA_PROTOCOL_VERSION, &type, &length, &data);
+
+  plasma_request *req = (plasma_request *) data;
 
   switch (type) {
   case PLASMA_TRANSFER:
@@ -1285,15 +1289,23 @@ void process_message(event_loop *loop,
     process_data_request(loop, client_sock, req->object_requests[0].object_id,
                          req->data_size, req->metadata_size, conn);
     break;
-  case PLASMA_FETCH:
-    LOG_DEBUG("Processing fetch remote");
-    process_fetch_requests(conn, req->num_object_ids, req->object_requests);
-    break;
-  case PLASMA_WAIT:
+  case MessageType_PlasmaFetchRequest: {
+      LOG_DEBUG("Processing fetch remote");
+      int64_t num_objects;
+      object_id *object_ids_to_fetch;
+      plasma_read_FetchRequest(data, &object_ids_to_fetch, &num_objects);
+      process_fetch_requests(conn, num_objects, object_ids_to_fetch);
+    } break;
+  case MessageType_PlasmaWaitRequest: {
     LOG_DEBUG("Processing wait");
-    process_wait_request(conn, req->num_object_ids, req->object_requests,
-                         req->timeout, req->num_ready_objects);
-    break;
+    int num_object_ids = plasma_read_WaitRequest_num_object_ids(data);
+    int64_t timeout_ms;
+    int num_ready_objects;
+    object_request object_requests[num_object_ids];
+    plasma_read_WaitRequest(data, &object_requests[0], num_object_ids, &timeout_ms, &num_ready_objects);
+    process_wait_request(conn, num_object_ids, &object_requests[0],
+                         timeout_ms, num_ready_objects);
+    } break;
   case PLASMA_STATUS:
     LOG_DEBUG("Processing status");
     DCHECK(req->num_object_ids == 1);

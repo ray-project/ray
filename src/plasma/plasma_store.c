@@ -31,6 +31,7 @@
 #include "utarray.h"
 #include "fling.h"
 #include "malloc.h"
+#include "plasma_protocol.h"
 #include "plasma_store.h"
 #include "plasma.h"
 
@@ -85,6 +86,8 @@ struct plasma_store_state {
   /** Input buffer. This is allocated only once to avoid mallocs for every
    *  call to process_message. */
   UT_array *input_buffer;
+  /** Buffer that holds memory for serializing plasma protocol messages. */
+  protocol_builder *builder;
 };
 
 UT_icd byte_icd = {sizeof(uint8_t), NULL, NULL, NULL};
@@ -100,6 +103,7 @@ plasma_store_state *init_plasma_store(event_loop *loop, int64_t system_memory) {
   /* Initialize the eviction state. */
   state->eviction_state = make_eviction_state(system_memory);
   utarray_new(state->input_buffer, &byte_icd);
+  state->builder = make_protocol_builder();
   return state;
 }
 
@@ -333,20 +337,20 @@ void seal_object(client *client_context,
   HASH_FIND(handle, plasma_state->objects_notify, &object_id, sizeof(object_id),
             notify_entry);
   if (notify_entry) {
-    plasma_reply reply = plasma_make_reply(NIL_OBJECT_ID);
-    plasma_object *result = &reply.object;
-    result->handle.store_fd = entry->fd;
-    result->handle.mmap_size = entry->map_size;
-    result->data_offset = entry->offset;
-    result->metadata_offset = entry->offset + entry->info.data_size;
-    result->data_size = entry->info.data_size;
-    result->metadata_size = entry->info.metadata_size;
+    plasma_object object;
+    object.handle.store_fd = entry->fd;
+    object.handle.mmap_size = entry->map_size;
+    object.data_offset = entry->offset;
+    object.metadata_offset = entry->offset + entry->info.data_size;
+    object.data_size = entry->info.data_size;
+    object.metadata_size = entry->info.metadata_size;
     HASH_DELETE(handle, plasma_state->objects_notify, notify_entry);
     /* Send notifications to the clients that were waiting for this object. */
     for (int i = 0; i < utarray_len(notify_entry->waiting_clients); ++i) {
       client **c = (client **) utarray_eltptr(notify_entry->waiting_clients, i);
-      CHECK(plasma_send_reply((*c)->sock, &reply) >= 0);
-      CHECK(send_fd((*c)->sock, reply.object.handle.store_fd) >= 0);
+      CHECK(plasma_send_GetReply((*c)->sock, plasma_state->builder, &object_id, &object, 1) >= 0);
+      // CHECK(plasma_send_reply((*c)->sock, &reply) >= 0);
+      CHECK(send_fd((*c)->sock, object.handle.store_fd) >= 0);
       /* Record that the client is using this object. */
       add_client_to_object_clients(entry, *c);
     }
@@ -468,33 +472,45 @@ void process_message(event_loop *loop,
   client *client_context = context;
   plasma_store_state *state = client_context->plasma_state;
   int64_t type;
-  read_buffer(client_sock, &type, state->input_buffer);
+  read_buffer(client_sock, PLASMA_PROTOCOL_VERSION, &type, state->input_buffer);
   plasma_request *req = (plasma_request *) utarray_front(state->input_buffer);
 
   /* We're only sending a single object ID at a time for now. */
   plasma_reply reply = plasma_make_reply(NIL_OBJECT_ID);
+
+  uint8_t *input = (uint8_t *) utarray_front(state->input_buffer);
+  object_id object_ids[1];
+  int64_t num_objects;
+  plasma_object objects[1];
+  int error;
+
+  flatcc_builder_reset(state->builder);
+
   /* Process the different types of requests. */
   switch (type) {
-  case PLASMA_CREATE:
-    DCHECK(req->num_object_ids == 1);
-    if (create_object(client_context, req->object_requests[0].object_id,
-                      req->data_size, req->metadata_size, &reply.object)) {
-      reply.error_code = PLASMA_REPLY_OK;
+  case MessageType_PlasmaCreateRequest: {
+    int64_t data_size;
+    int64_t metadata_size;
+    plasma_read_CreateRequest(input, &object_ids[0], &data_size, &metadata_size);
+    if (create_object(client_context, object_ids[0], data_size, metadata_size, &objects[0])) {
+      error = PlasmaError_OK;
     } else {
-      reply.error_code = PLASMA_OBJECT_ALREADY_EXISTS;
+      error = PlasmaError_ObjectExists;
     }
-    CHECK(plasma_send_reply(client_sock, &reply) >= 0);
-    CHECK(send_fd(client_sock, reply.object.handle.store_fd) >= 0);
-    break;
-  case PLASMA_GET:
-    DCHECK(req->num_object_ids == 1);
-    if (get_object(client_context, client_sock,
-                   req->object_requests[0].object_id,
-                   &reply.object) == OBJECT_FOUND) {
-      CHECK(plasma_send_reply(client_sock, &reply) >= 0);
-      CHECK(send_fd(client_sock, reply.object.handle.store_fd) >= 0);
+    CHECK(plasma_send_CreateReply(client_sock, state->builder, object_ids[0], &objects[0], error) >= 0);
+    CHECK(send_fd(client_sock, objects[0].handle.store_fd) >= 0);
+  } break;
+  case MessageType_PlasmaGetRequest: {
+    object_id *gotten_object_ids;
+    plasma_read_GetRequest(input, &gotten_object_ids, &num_objects);
+    DCHECK(num_objects == 1);
+    memcpy(&object_ids[0], gotten_object_ids, UNIQUE_ID_SIZE);
+    free(gotten_object_ids);
+    if (get_object(client_context, client_sock, object_ids[0], &objects[0]) == OBJECT_FOUND) {
+      CHECK(plasma_send_GetReply(client_sock, state->builder, object_ids, objects, 1) >= 0);
+      CHECK(send_fd(client_sock, objects[0].handle.store_fd) >= 0);
     }
-    break;
+    } break;
   case PLASMA_GET_LOCAL:
     DCHECK(req->num_object_ids == 1);
     if (get_object_local(client_context, client_sock,
@@ -509,9 +525,9 @@ void process_message(event_loop *loop,
       CHECK(send_fd(client_sock, reply.object.handle.store_fd) >= 0);
     }
     break;
-  case PLASMA_RELEASE:
-    DCHECK(req->num_object_ids == 1);
-    release_object(client_context, req->object_requests[0].object_id);
+  case MessageType_PlasmaReleaseRequest:
+    plasma_read_ReleaseRequest(input, &object_ids[0]);
+    release_object(client_context, object_ids[0]);
     break;
   case PLASMA_CONTAINS:
     DCHECK(req->num_object_ids == 1);
@@ -521,29 +537,30 @@ void process_message(event_loop *loop,
     }
     CHECK(plasma_send_reply(client_sock, &reply) >= 0);
     break;
-  case PLASMA_SEAL:
-    DCHECK(req->num_object_ids == 1);
-    seal_object(client_context, req->object_requests[0].object_id, req->digest);
-    break;
+  case MessageType_PlasmaSealRequest: {
+    unsigned char digest[DIGEST_SIZE];
+    plasma_read_SealRequest(input, &object_ids[0], &digest[0]);
+    seal_object(client_context, object_ids[0], &digest[0]);
+    } break;
   case PLASMA_DELETE:
     /* TODO(rkn): In the future, we can use this method to give hints to the
      * eviction policy about when an object will no longer be needed. */
     break;
-  case PLASMA_EVICT: {
+  case MessageType_PlasmaEvictRequest: {
     /* This code path should only be used for testing. */
+    int64_t num_bytes;
+    plasma_read_EvictRequest(input, &num_bytes);
     int64_t num_objects_to_evict;
     object_id *objects_to_evict;
     int64_t num_bytes_evicted = choose_objects_to_evict(
         client_context->plasma_state->eviction_state,
-        client_context->plasma_state->plasma_store_info, req->num_bytes,
+        client_context->plasma_state->plasma_store_info, num_bytes,
         &num_objects_to_evict, &objects_to_evict);
     remove_objects(client_context->plasma_state, num_objects_to_evict,
                    objects_to_evict);
-    reply.num_bytes = num_bytes_evicted;
-    CHECK(plasma_send_reply(client_sock, &reply) >= 0);
-    break;
-  }
-  case PLASMA_SUBSCRIBE:
+    CHECK(plasma_send_EvictReply(client_sock, state->builder, num_bytes_evicted) >= 0);
+  } break;
+  case MessageType_PlasmaSubscribeRequest:
     subscribe_to_updates(client_context, client_sock);
     break;
   case DISCONNECT_CLIENT: {
