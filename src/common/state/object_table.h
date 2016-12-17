@@ -144,32 +144,8 @@ typedef struct {
   object_id object_ids[0];
 } object_table_request_notifications_data;
 
-/**
- * Subcribing to new object available function.
- *
- * @param db_handle Handle to db.
- * @param object_id Object unique identifier.
- * @param object_available_callback callback to be called when new object
- *        becomes available.
- * @param subscribe_context caller context which will be passed back in the
- *        object_available_callback.
- * @param retry Information about retrying the request to the database.
- * @param done_callback Callback to be called when subscription is installed.
- * @param user_context User context to be passed into the done and fail
- *        callbacks.
- * @return Void.
- */
-void object_table_subscribe(
-    db_handle *db,
-    object_id object_id,
-    object_table_object_available_callback object_available_callback,
-    void *subscribe_context,
-    retry_info *retry,
-    object_table_lookup_done_callback done_callback,
-    void *user_context);
-
-/* Data that is needed to register new object available callbacks with the state
- * database. */
+/** Data that is needed to register new object available callbacks with the
+ *  state database. */
 typedef struct {
   object_table_object_available_callback object_available_callback;
   void *subscribe_context;

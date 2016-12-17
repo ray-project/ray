@@ -59,25 +59,6 @@ void object_table_request_notifications(db_handle *db_handle,
                       redis_object_table_request_notifications, NULL);
 }
 
-void object_table_subscribe(
-    db_handle *db_handle,
-    object_id object_id,
-    object_table_object_available_callback object_available_callback,
-    void *subscribe_context,
-    retry_info *retry,
-    object_table_lookup_done_callback done_callback,
-    void *user_context) {
-  CHECK(db_handle != NULL);
-  object_table_subscribe_data *sub_data =
-      malloc(sizeof(object_table_subscribe_data));
-  sub_data->object_available_callback = object_available_callback;
-  sub_data->subscribe_context = subscribe_context;
-
-  init_table_callback(db_handle, object_id, __func__, sub_data, retry,
-                      done_callback, redis_object_table_subscribe,
-                      user_context);
-}
-
 void object_info_subscribe(db_handle *db_handle,
                            object_info_subscribe_callback subscribe_callback,
                            void *subscribe_context,

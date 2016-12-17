@@ -304,18 +304,18 @@ void redis_object_table_add_callback(
   /* Do some minimal checking. */
   redisReply *reply = r;
   if (strcmp(reply->str, "hash mismatch") == 0) {
-    /* If our object hash doesn't match the one recorded in the table,
-     * report the error back to the user and exit immediately. */
+    /* If our object hash doesn't match the one recorded in the table, report
+     * the error back to the user and exit immediately. */
     LOG_FATAL(
-        "Found objects with different value but same object ID, most "
-        "likely because a nondeterministic task was executed twice, either "
-        "for reconstruction or for speculation.");
+        "Found objects with different value but same object ID, most likely "
+        "because a nondeterministic task was executed twice, either for "
+        "reconstruction or for speculation.");
   }
   CHECK(reply->type != REDIS_REPLY_ERROR);
   CHECK(strcmp(reply->str, "OK") == 0);
   CHECK(callback_data->done_callback == NULL);
-  /* Clean up the timer. */
-  event_loop_remove_timer(db->loop, callback_data->timer_id);
+  /* Clean up the timer and callback. */
+  destroy_timer_callback(db->loop, callback_data);
 }
 
 void redis_object_table_add(table_callback_data *callback_data) {
@@ -333,8 +333,7 @@ void redis_object_table_add(table_callback_data *callback_data) {
       db->client.id, sizeof(db->client.id));
 
   if ((status == REDIS_ERR) || db->context->err) {
-    LOG_REDIS_DEBUG(db->context,
-                    "error in redis_object_table_subscribe_to_notifications");
+    LOG_REDIS_DEBUG(db->context, "error in redis_object_table_add");
   }
 }
 
@@ -342,15 +341,20 @@ void redis_object_table_lookup(table_callback_data *callback_data) {
   CHECK(callback_data);
   db_handle *db = callback_data->db_handle;
 
-  /* Call redis asynchronously */
-  object_id id = callback_data->id;
-  object_table_get_entry_info *context =
-      malloc(sizeof(object_table_get_entry_info));
-  context->timer_id = callback_data->timer_id;
-  context->object_id = id;
-  int status = redisAsyncCommand(db->context, redis_object_table_get_entry,
-                                 (void *) context, "SMEMBERS obj:%b", id.id,
-                                 sizeof(id.id));
+  object_id obj_id = callback_data->id;
+  // object_table_get_entry_info *context =
+  //     malloc(sizeof(object_table_get_entry_info));
+  // context->timer_id = callback_data->timer_id;
+  // context->object_id = id;
+
+  int status = redisAsyncCommand(db->context,
+                                 redis_object_table_lookup_callback,
+                                 (void *) callback_data->timer_id,
+                                 "RAY.OBJECT_TABLE_LOOKUP %b", obj_id.id,
+                                 sizeof(obj_id.id));
+  // int status = redisAsyncCommand(db->context, redis_object_table_get_entry,
+  //                                (void *) context, "SMEMBERS obj:%b", id.id,
+  //                                sizeof(id.id));
   if ((status == REDIS_ERR) || db->context->err) {
     LOG_REDIS_DEBUG(db->context, "error in object_table lookup");
   }
@@ -485,168 +489,41 @@ void redis_get_cached_db_client(db_handle *db,
   *manager = entry->addr;
 }
 
-void redis_object_table_get_entry(redisAsyncContext *c,
-                                  void *r,
-                                  void *privdata) {
-  /* TODO(swang): This is a hack to pass the callback the original object ID
-   * argument. Remove once we're ready to integrate the Redis module
-   * implementation. */
-  object_table_get_entry_info *context = privdata;
-  privdata = (void *) context->timer_id;
-  object_id id = context->object_id;
-  free(context);
-
+void redis_object_table_lookup_callback(redisAsyncContext *c,
+                                        void *r,
+                                        void *privdata) {
   REDIS_CALLBACK_HEADER(db, callback_data, r);
   redisReply *reply = r;
 
-  LOG_DEBUG("Object table get entry callback");
-  db_client_id *managers = malloc(reply->elements * sizeof(db_client_id));
-  int64_t manager_count = reply->elements;
+  object_id obj_id = callback_data->id;
 
-  if (reply->type == REDIS_REPLY_ARRAY) {
-    const char **manager_vector = NULL;
-    if (manager_count > 0) {
-      manager_vector = malloc(manager_count * sizeof(char *));
-    }
-    for (int j = 0; j < reply->elements; ++j) {
-      CHECK(reply->element[j]->type == REDIS_REPLY_STRING);
-      memcpy(managers[j].id, reply->element[j]->str, sizeof(managers[j].id));
-      redis_get_cached_db_client(db, managers[j], manager_vector + j);
-    }
-    object_table_lookup_done_callback done_callback =
-        callback_data->done_callback;
-    if (done_callback) {
-      done_callback(id, manager_count, manager_vector,
-                    callback_data->user_context);
-    }
-
-    if (callback_data->data != NULL) {
-      /* This callback was called from a subscribe call. */
-      object_table_subscribe_data *sub_data = callback_data->data;
-      object_table_object_available_callback sub_callback =
-          sub_data->object_available_callback;
-      if (manager_count > 0) {
-        /* TODO(swang): For global scheduler subscriptions, we should be
-         * calling this even when the manager_count is 0. */
-        if (sub_callback) {
-          sub_callback(id, manager_count, manager_vector,
-                       sub_data->subscribe_context);
-        }
-      }
-      /* For the subscribe, don't delete the callback, only the timer. */
-      event_loop_remove_timer(callback_data->db_handle->loop,
-                              callback_data->timer_id);
-    } else {
-      /* This callback was called from a publish call. */
-      /* For the lookup, remove timer and callback handler. */
-      destroy_timer_callback(callback_data->db_handle->loop, callback_data);
-    }
-
-    if (manager_count > 0) {
-      free(manager_vector);
-    }
-  } else {
-    LOG_FATAL("expected integer or string, received type %d", reply->type);
-  }
-  free(managers);
-  LOG_DEBUG("Object table get entry finishing");
-}
-
-void object_table_redis_subscribe_callback(redisAsyncContext *c,
-                                           void *r,
-                                           void *privdata) {
-  REDIS_CALLBACK_HEADER(db, callback_data, r);
-  redisReply *reply = r;
+  LOG_DEBUG("Object table lookup callback");
   CHECK(reply->type == REDIS_REPLY_ARRAY);
-  CHECK(reply->elements > 2);
 
-  /* Parse the message. First entry is message type, either "subscribe",
-   * "psubscribe", "message" or "pmessage". If the message type was "pmessage",
-   * there is an additional next message that is the pattern that the client
-   * PSUBSCRIBEd to. The next message is the topic published to. The final
-   * message is always the payload. */
-  object_id id = NIL_ID;
-  redisReply *message_type = reply->element[0];
-  LOG_DEBUG("Object table subscribe callback, message %s", message_type->str);
-  if (strcmp(message_type->str, "message") == 0) {
-    /* A SUBSCRIBE notification. */
-    DCHECK(!IS_NIL_ID(callback_data->id));
-    DCHECK(reply->elements == 3);
-
-    /* Take the object ID from the original table operation call. */
-    id = callback_data->id;
-  } else if (strcmp(message_type->str, "pmessage") == 0) {
-    /* A PSUBSCRIBE notification. */
-    DCHECK(IS_NIL_ID(callback_data->id));
-    DCHECK(reply->elements == 4);
-
-    /* Parse the object ID from the keyspace. */
-    redisReply *keyspace = reply->element[2];
-    size_t prefix_length = strlen("__keyspace@0__:obj:");
-    DCHECK(keyspace->len == prefix_length + sizeof(object_id));
-    memcpy(&id, keyspace->str + prefix_length, sizeof(object_id));
-  } else if (strcmp(message_type->str, "subscribe") == 0) {
-    /* The reply for the initial SUBSCRIBE. */
-    DCHECK(reply->elements == 3);
-    /* Take the object ID from the original table operation call. */
-    id = callback_data->id;
-  } else if (strcmp(message_type->str, "psubscribe") == 0) {
-    /* The reply for the initial PSUBSCRIBE. */
-    DCHECK(reply->elements == 3);
-    /* If the initial PSUBSCRIBE was successful, call the done callback with a
-     * NIL object ID to notify the client, and clean up the timer. */
-    object_table_lookup_done_callback done_callback =
-        callback_data->done_callback;
-    if (done_callback) {
-      done_callback(NIL_ID, 0, NULL, callback_data->user_context);
-    }
-    event_loop_remove_timer(callback_data->db_handle->loop,
-                            callback_data->timer_id);
-    callback_data->done_callback = NULL;
-    /* For PSUBSCRIBEs, always return before doing the lookup for the data,
-     * since we don't know what key to lookup yet. */
-    return;
-  } else {
-    LOG_FATAL("Unexpected reply type from object table subscribe");
+  int64_t manager_count = reply->elements;
+  db_client_id *managers = NULL;
+  const char **manager_vector = NULL;
+  if (manager_count > 0) {
+    managers = malloc(reply->elements * sizeof(db_client_id));
+    manager_vector = malloc(manager_count * sizeof(char *));
+  }
+  for (int j = 0; j < reply->elements; ++j) {
+    CHECK(reply->element[j]->type == REDIS_REPLY_STRING);
+    memcpy(managers[j].id, reply->element[j]->str, sizeof(managers[j].id));
+    redis_get_cached_db_client(db, managers[j], manager_vector + j);
+  }
+  object_table_lookup_done_callback done_callback =
+      callback_data->done_callback;
+  if (done_callback) {
+    done_callback(obj_id, manager_count, manager_vector,
+                  callback_data->user_context);
   }
 
-  /* Do a lookup for the actual data. */
-  CHECK(!IS_NIL_ID(id));
-  object_table_get_entry_info *context =
-      malloc(sizeof(object_table_get_entry_info));
-  context->timer_id = callback_data->timer_id;
-  context->object_id = id;
-  int status =
-      redisAsyncCommand(db->context, redis_object_table_get_entry,
-                        (void *) context, "SMEMBERS obj:%b", id.id, sizeof(id));
-  if ((status == REDIS_ERR) || db->context->err) {
-    LOG_REDIS_ERROR(db->context,
-                    "error in redis_object_table_subscribe_callback");
-  }
-}
-
-void redis_object_table_subscribe(table_callback_data *callback_data) {
-  db_handle *db = callback_data->db_handle;
-
-  /* subscribe to key notification associated to object id */
-  object_id id = callback_data->id;
-  int status = REDIS_OK;
-
-  if (IS_NIL_ID(id)) {
-    /* Subscribe to all object events. */
-    status = redisAsyncCommand(
-        db->sub_context, object_table_redis_subscribe_callback,
-        (void *) callback_data->timer_id, "PSUBSCRIBE __keyspace@0__:obj:*");
-  } else {
-    /* Subscribe to the specified object id. */
-    status = redisAsyncCommand(
-        db->sub_context, object_table_redis_subscribe_callback,
-        (void *) callback_data->timer_id, "SUBSCRIBE __keyspace@0__:obj:%b",
-        id.id, sizeof(id.id));
-  }
-  if ((status == REDIS_ERR) || db->sub_context->err) {
-    LOG_REDIS_DEBUG(db->sub_context,
-                    "error in redis_object_table_subscribe_callback");
+  /* Clean up timer and callback. */
+  destroy_timer_callback(callback_data->db_handle->loop, callback_data);
+  if (manager_count > 0) {
+    free(managers);
+    free(manager_vector);
   }
 }
 
@@ -783,8 +660,8 @@ void generic_redis_callback(
   redisReply *reply = r;
   CHECK(strcmp(reply->str, "OK") == 0);
   CHECK(callback_data->done_callback == NULL);
-  /* Clean up the timer. */
-  event_loop_remove_timer(db->loop, callback_data->timer_id);
+  /* Clean up the timer and callback. */
+  destroy_timer_callback(db->loop, callback_data);
 }
 
 void redis_object_table_request_notifications(
