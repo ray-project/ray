@@ -121,7 +121,7 @@ class TestGlobalStateStore(unittest.TestCase):
 
   def testTaskTableAddAndLookup(self):
     # Check that task table adds, updates, and lookups work correctly.
-    task_args = [1, "node_id", "task_spec"]
+    task_args = [1, b"node_id", b"task_spec"]
     response = self.redis.execute_command("RAY.TASK_TABLE_ADD", "task_id",
                                           *task_args)
     response = self.redis.execute_command("RAY.TASK_TABLE_GET", "task_id")
@@ -140,7 +140,7 @@ class TestGlobalStateStore(unittest.TestCase):
     p.psubscribe("{prefix}*:*".format(prefix=TASK_PREFIX))
     p.psubscribe("{prefix}*:{state: >2}".format(prefix=TASK_PREFIX, state=scheduling_state))
     p.psubscribe("{prefix}{node}:*".format(prefix=TASK_PREFIX, node=node_id))
-    task_args = ["task_id", scheduling_state, node_id, "task_spec"]
+    task_args = [b"task_id", scheduling_state, node_id.encode("ascii"), b"task_spec"]
     self.redis.execute_command("RAY.TASK_TABLE_ADD", *task_args)
     # Receive the acknowledgement message.
     self.assertEqual(p.get_message()["data"], 1)
