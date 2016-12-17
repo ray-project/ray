@@ -1228,7 +1228,8 @@ void process_object_notification(event_loop *loop,
   if (state->db) {
     /* TODO(swang): Log the error if we fail to add the object, and possibly
      * retry later? */
-    object_table_add(state->db, obj_id, object_info.data_size,
+    object_table_add(state->db, obj_id,
+                     object_info.data_size + object_info.metadata_size,
                      object_info.digest, &retry, NULL, NULL);
   }
 
@@ -1364,7 +1365,7 @@ void start_server(const char *store_socket_name,
    * table. */
   object_table_subscribe_to_notifications(
       g_manager_state->db, object_table_subscribe_callback, g_manager_state,
-      NULL, NULL, NULL);
+      NULL);
   /* Run the event loop. */
   event_loop_run(g_manager_state->loop);
 }

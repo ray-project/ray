@@ -57,11 +57,17 @@ typedef void (*object_table_done_callback)(object_id object_id,
  */
 void object_table_add(db_handle *db_handle,
                       object_id object_id,
-                      int64_t data_size,
+                      int64_t object_size,
                       unsigned char digest[],
                       retry_info *retry,
                       object_table_done_callback done_callback,
                       void *user_context);
+
+/** Data that is needed to add new objects to the object table. */
+typedef struct {
+  int64_t object_size;
+  unsigned char digest[DIGEST_SIZE];
+} object_table_add_data;
 
 /*
  *  ==== Remove object call and callback ====
@@ -109,12 +115,10 @@ typedef object_table_lookup_done_callback
  * @return Void.
  */
 void object_table_subscribe_to_notifications(
-    db_handle *db,
+    db_handle *db_handle,
     object_table_object_available_callback object_available_callback,
     void *subscribe_context,
-    retry_info *retry,
-    object_table_lookup_done_callback done_callback,
-    void *user_context);
+    retry_info *retry);
 
 /**
  * Request notifications about the availability of some objects from the object
