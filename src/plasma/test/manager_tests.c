@@ -15,6 +15,7 @@
 #include "plasma.h"
 #include "plasma_client.h"
 #include "plasma_manager.h"
+#include "plasma_protocol.h"
 
 SUITE(plasma_manager_tests);
 
@@ -133,7 +134,7 @@ TEST request_transfer_test(void) {
   int64_t length;
   plasma_request *req;
   int read_fd = get_client_sock(remote_mock->read_conn);
-  read_message(read_fd, &type, &length, (uint8_t **) &req);
+  read_message(read_fd, PLASMA_PROTOCOL_VERSION, &type, &length, (uint8_t **) &req);
   ASSERT(type == PLASMA_TRANSFER);
   ASSERT(req->num_object_ids == 1);
   ASSERT(object_ids_equal(oid, req->object_requests[0].object_id));
@@ -180,7 +181,7 @@ TEST request_transfer_retry_test(void) {
   int64_t length;
   plasma_request *req;
   int read_fd = get_client_sock(remote_mock2->read_conn);
-  read_message(read_fd, &type, &length, (uint8_t **) &req);
+  read_message(read_fd, PLASMA_PROTOCOL_VERSION, &type, &length, (uint8_t **) &req);
   ASSERT(type == PLASMA_TRANSFER);
   ASSERT(req->num_object_ids == 1);
   ASSERT(object_ids_equal(oid, req->object_requests[0].object_id));

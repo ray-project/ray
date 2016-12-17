@@ -23,6 +23,7 @@
 #include "common.h"
 #include "io.h"
 #include "plasma.h"
+#include "plasma_protocol.h"
 #include "plasma_client.h"
 #include "fling.h"
 #include "uthash.h"
@@ -93,6 +94,8 @@ struct plasma_connection {
    *  notifications for the objects it subscribes for when these objects are
    *  sealed either locally or remotely. */
   int manager_conn_subscribe;
+  /** Buffer that holds memory for serializing plasma protocol messages. */
+  protocol_builder *builder;
   /** Table of dlmalloc buffer files that have been memory mapped so far. This
    *  is a hash table mapping a file descriptor to a struct containing the
    *  address of the corresponding memory-mapped file. */
@@ -184,7 +187,7 @@ void increment_object_count(plasma_connection *conn,
 }
 
 bool plasma_create(plasma_connection *conn,
-                   object_id object_id,
+                   object_id obj_id,
                    int64_t data_size,
                    uint8_t *metadata,
                    int64_t metadata_size,
@@ -192,52 +195,55 @@ bool plasma_create(plasma_connection *conn,
   LOG_DEBUG("called plasma_create on conn %d with size %" PRId64
             " and metadata size %" PRId64,
             conn->store_conn, data_size, metadata_size);
-  plasma_request req = plasma_make_request(object_id);
-  req.data_size = data_size;
-  req.metadata_size = metadata_size;
-  CHECK(plasma_send_request(conn->store_conn, PLASMA_CREATE, &req) >= 0);
-  plasma_reply reply;
-  CHECK(plasma_receive_reply(conn->store_conn, sizeof(reply), &reply) >= 0);
+  CHECK(plasma_send_CreateRequest(conn->store_conn, conn->builder, obj_id, data_size, metadata_size) >= 0);
+  int64_t type;
+  int64_t length;
+  uint8_t *reply_data;
+  read_message(conn->store_conn, PLASMA_PROTOCOL_VERSION, &type, &length, &reply_data);
+  int error_code;
+  object_id id;
+  plasma_object object;
+  plasma_read_CreateReply(reply_data, &id, &object, &error_code);
+  free(reply_data);
   int fd = recv_fd(conn->store_conn);
   CHECKM(fd >= 0, "recv not successful");
-  if (reply.error_code == PLASMA_OBJECT_ALREADY_EXISTS) {
-    LOG_DEBUG("returned from plasma_create with error %d", reply.error_code);
-    close(fd);
+  if (error_code == PlasmaError_ObjectExists) {
+    LOG_DEBUG("returned from plasma_create with error %d", error_code);
     return false;
   }
-  plasma_object *object = &reply.object;
-  CHECK(object->data_size == data_size);
-  CHECK(object->metadata_size == metadata_size);
+  CHECK(object.data_size == data_size);
+  CHECK(object.metadata_size == metadata_size);
   /* The metadata should come right after the data. */
-  CHECK(object->metadata_offset == object->data_offset + data_size);
-  *data = lookup_or_mmap(conn, fd, object->handle.store_fd,
-                         object->handle.mmap_size) +
-          object->data_offset;
+  CHECK(object.metadata_offset == object.data_offset + data_size);
+  *data = lookup_or_mmap(conn, fd, object.handle.store_fd,
+                         object.handle.mmap_size) +
+          object.data_offset;
   /* If plasma_create is being called from a transfer, then we will not copy the
    * metadata here. The metadata will be written along with the data streamed
    * from the transfer. */
   if (metadata != NULL) {
     /* Copy the metadata to the buffer. */
-    memcpy(*data + object->data_size, metadata, metadata_size);
+    memcpy(*data + object.data_size, metadata, metadata_size);
   }
   /* Increment the count of the number of instances of this object that this
    * client is using. A call to plasma_release is required to decrement this
    * count. Cache the reference to the object. */
-  increment_object_count(conn, object_id, object, false);
+  increment_object_count(conn, obj_id, &object, false);
   return true;
 }
 
 /* This method is used to get both the data and the metadata. */
 void plasma_get(plasma_connection *conn,
-                object_id object_id,
+                object_id obj_id,
                 int64_t *size,
                 uint8_t **data,
                 int64_t *metadata_size,
                 uint8_t **metadata) {
   /* Check if we already have a reference to the object. */
   object_in_use_entry *object_entry;
-  HASH_FIND(hh, conn->objects_in_use, &object_id, sizeof(object_id),
+  HASH_FIND(hh, conn->objects_in_use, &obj_id, sizeof(object_id),
             object_entry);
+  plasma_object object_data;
   plasma_object *object;
   if (object_entry) {
     /* If we have already have a reference to the object, use it to get the
@@ -250,13 +256,21 @@ void plasma_get(plasma_connection *conn,
     *data = lookup_mmapped_file(conn, object->handle.store_fd);
   } else {
     /* Else, request a reference to the object data from the plasma store. */
-    plasma_request req = plasma_make_request(object_id);
-    CHECK(plasma_send_request(conn->store_conn, PLASMA_GET, &req) >= 0);
-    plasma_reply reply;
-    CHECK(plasma_receive_reply(conn->store_conn, sizeof(reply), &reply) >= 0);
+    CHECK(plasma_send_GetRequest(conn->store_conn, conn->builder, &obj_id, 1) >= 0);
+    int64_t type;
+    int64_t length;
+    uint8_t *reply_data;
+    read_message(conn->store_conn, PLASMA_PROTOCOL_VERSION, &type, &length, &reply_data);
+    object_id* gotten_object_id;
+    int64_t num_objects;
+    plasma_read_GetReply(reply_data, &gotten_object_id, &object_data, &num_objects);
+    free(reply_data);
+    DCHECK(num_objects == 1);
+    DCHECK(memcmp(gotten_object_id, &obj_id, UNIQUE_ID_SIZE) == 0);
+    free(gotten_object_id);
     int fd = recv_fd(conn->store_conn);
     CHECK(fd >= 0);
-    object = &reply.object;
+    object = &object_data;
     *data = lookup_or_mmap(conn, fd, object->handle.store_fd,
                            object->handle.mmap_size);
   }
@@ -271,7 +285,7 @@ void plasma_get(plasma_connection *conn,
   /* Increment the count of the number of instances of this object that this
    * client is using. A call to plasma_release is required to decrement this
    * count. Cache the reference to the object. */
-  increment_object_count(conn, object_id, object, true);
+  increment_object_count(conn, obj_id, object, true);
 }
 
 void plasma_perform_release(plasma_connection *conn, object_id object_id) {
@@ -303,8 +317,7 @@ void plasma_perform_release(plasma_connection *conn, object_id object_id) {
       free(entry);
     }
     /* Tell the store that the client no longer needs the object. */
-    plasma_request req = plasma_make_request(object_id);
-    CHECK(plasma_send_request(conn->store_conn, PLASMA_RELEASE, &req) >= 0);
+    CHECK(plasma_send_ReleaseRequest(conn->store_conn, conn->builder, object_id) >= 0);
     /* Remove the entry from the hash table of objects currently in use. */
     HASH_DELETE(hh, conn->objects_in_use, object_entry);
     free(object_entry);
@@ -390,9 +403,9 @@ void plasma_seal(plasma_connection *conn, object_id object_id) {
          "Plasma client called seal an already sealed object");
   object_entry->is_sealed = true;
   /* Send the seal request to Plasma. */
-  plasma_request req = plasma_make_request(object_id);
-  CHECK(plasma_compute_object_hash(conn, object_id, req.digest));
-  CHECK(plasma_send_request(conn->store_conn, PLASMA_SEAL, &req) >= 0);
+  unsigned char digest[DIGEST_SIZE];
+  CHECK(plasma_compute_object_hash(conn, object_id, &digest[0]));
+  CHECK(plasma_send_SealRequest(conn->store_conn, conn->builder, object_id, &digest[0]) >= 0);
 }
 
 void plasma_delete(plasma_connection *conn, object_id object_id) {
@@ -402,14 +415,15 @@ void plasma_delete(plasma_connection *conn, object_id object_id) {
 
 int64_t plasma_evict(plasma_connection *conn, int64_t num_bytes) {
   /* Send a request to the store to evict objects. */
-  plasma_request req;
-  memset(&req, 0, sizeof(req));
-  req.num_bytes = num_bytes;
-  CHECK(plasma_send_request(conn->store_conn, PLASMA_EVICT, &req) >= 0);
+  CHECK(plasma_send_EvictRequest(conn->store_conn, conn->builder, num_bytes) >= 0);
   /* Wait for a response with the number of bytes actually evicted. */
-  plasma_reply reply;
-  CHECK(plasma_receive_reply(conn->store_conn, sizeof(reply), &reply) >= 0);
-  return reply.num_bytes;
+  int64_t type;
+  int64_t length;
+  uint8_t *reply_data;
+  read_message(conn->store_conn, PLASMA_PROTOCOL_VERSION, &type, &length, &reply_data);
+  int64_t num_bytes_evicted;
+  plasma_read_EvictReply(reply_data, &num_bytes_evicted);
+  return num_bytes_evicted;
 }
 
 int plasma_subscribe(plasma_connection *conn) {
@@ -423,8 +437,7 @@ int plasma_subscribe(plasma_connection *conn) {
   int flags = fcntl(fd[1], F_GETFL, 0);
   CHECK(fcntl(fd[1], F_SETFL, flags | O_NONBLOCK) == 0);
   /* Tell the Plasma store about the subscription. */
-  plasma_request req = {0};
-  CHECK(plasma_send_request(conn->store_conn, PLASMA_SUBSCRIBE, &req) >= 0);
+  CHECK(plasma_send_SubscribeRequest(conn->store_conn, conn->builder) >= 0);
   /* Send the file descriptor that the Plasma store should use to push
    * notifications about sealed objects to this client. */
   CHECK(send_fd(conn->store_conn, fd[1]) >= 0);
@@ -467,6 +480,7 @@ plasma_connection *plasma_connect(const char *store_socket_name,
   } else {
     result->manager_conn = -1;
   }
+  result->builder = make_protocol_builder();
   result->mmap_table = NULL;
   result->objects_in_use = NULL;
   result->config.release_delay = release_delay;
@@ -479,6 +493,7 @@ void plasma_disconnect(plasma_connection *conn) {
   while ((id = (object_id *) utringbuffer_next(conn->release_history, id))) {
     plasma_perform_release(conn, *id);
   }
+  free_protocol_builder(conn->builder);
   utringbuffer_free(conn->release_history);
   close(conn->store_conn);
   if (conn->manager_conn >= 0) {
@@ -555,11 +570,7 @@ void plasma_fetch(plasma_connection *conn,
                   object_id object_ids[]) {
   CHECK(conn != NULL);
   CHECK(conn->manager_conn >= 0);
-  plasma_request *req = plasma_alloc_request(num_object_ids);
-  for (int i = 0; i < num_object_ids; ++i) {
-    req->object_requests[i].object_id = object_ids[i];
-  }
-  CHECK(plasma_send_request(conn->manager_conn, PLASMA_FETCH, req) >= 0);
+  CHECK(plasma_send_FetchRequest(conn->manager_conn, conn->builder, object_ids, num_object_ids) >= 0);
 }
 
 int get_manager_fd(plasma_connection *conn) {
@@ -639,16 +650,12 @@ int plasma_wait(plasma_connection *conn,
   CHECK(num_ready_objects > 0);
   CHECK(num_ready_objects <= num_object_requests);
 
-  plasma_request *req = plasma_alloc_request(num_object_requests);
   for (int i = 0; i < num_object_requests; ++i) {
     CHECK(object_requests[i].type == PLASMA_QUERY_LOCAL ||
           object_requests[i].type == PLASMA_QUERY_ANYWHERE);
-    req->object_requests[i] = object_requests[i];
   }
-  req->num_ready_objects = num_ready_objects;
-  req->timeout = timeout_ms;
-  CHECK(plasma_send_request(conn->manager_conn, PLASMA_WAIT, req) >= 0);
-  free(req);
+  
+  CHECK(plasma_send_WaitRequest(conn->manager_conn, conn->builder, object_requests, num_object_requests, num_ready_objects, timeout_ms) >= 0);
 
   plasma_reply *reply = plasma_alloc_reply(num_object_requests);
   CHECK(plasma_receive_reply(conn->manager_conn,
