@@ -624,7 +624,8 @@ void object_table_redis_subscribe_to_notifications_callback(
     free(manager_vector);
   } else if (strcmp(message_type->str, "subscribe") == 0) {
     /* The reply for the initial SUBSCRIBE command. */
-    /* If the initial SUBSCRIBE was successful, clean up the timer. */
+    /* If the initial SUBSCRIBE was successful, clean up the timer, but don't
+     * destroy the callback data. */
     CHECK(callback_data->done_callback == NULL);
     event_loop_remove_timer(callback_data->db_handle->loop,
                             callback_data->timer_id);
@@ -787,7 +788,7 @@ void redis_task_table_publish(table_callback_data *callback_data,
           sizeof(id.id), state, (char *) node.id, sizeof(node.id),
           (char *) spec, task_spec_size(spec));
     }
-    if ((status = REDIS_ERR) || db->context->err) {
+    if ((status == REDIS_ERR) || db->context->err) {
       LOG_REDIS_DEBUG(db->context, "error setting task in task_table_add_task");
     }
   }

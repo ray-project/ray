@@ -718,6 +718,9 @@ void process_transfer_request(event_loop *loop,
    * forever if we don't end up sealing this object. */
   /* The corresponding call to plasma_release will happen in
    * write_object_chunk. */
+  int has_obj;
+  plasma_contains(conn->manager_state->plasma_conn, object_id, &has_obj);
+  DCHECK(has_obj);
   plasma_get(conn->manager_state->plasma_conn, object_id, &data_size, &data,
              &metadata_size, &metadata);
   assert(metadata == data + data_size);
@@ -822,6 +825,17 @@ void request_transfer_from(plasma_manager_state *manager_state,
 
   client_connection *manager_conn =
       get_manager_connection(manager_state, addr, port);
+
+  /* Check that this manager isn't trying to request an object from itself.
+   * TODO(rkn): Later this should not be fatal. */
+  uint8_t temp_addr[4];
+  sscanf(addr, "%hhu.%hhu.%hhu.%hhu", &temp_addr[0], &temp_addr[1],
+       &temp_addr[2], &temp_addr[3]);
+  if (memcmp(temp_addr, manager_state->addr, 4) == 0 &&
+      port == manager_state->port)  {
+    LOG_FATAL("This manager is attempting to request a transfer from itself.");
+  }
+
   plasma_request_buffer *transfer_request =
       malloc(sizeof(plasma_request_buffer));
   transfer_request->type = PLASMA_TRANSFER;
@@ -1260,6 +1274,7 @@ void process_message(event_loop *loop,
 
   switch (type) {
   case PLASMA_TRANSFER:
+    LOG_DEBUG("Processing plasma transfer request.");
     DCHECK(req->num_object_ids == 1);
     process_transfer_request(loop, req->object_requests[0].object_id, req->addr,
                              req->port, conn);
