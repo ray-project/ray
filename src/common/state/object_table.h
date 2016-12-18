@@ -110,7 +110,7 @@ typedef object_table_lookup_done_callback
  * @param object_available_callback Callback to be called when new object
  *        becomes available.
  * @param subscribe_context Caller context which will be passed to the
- *        object_available_callback. //TODO SHOULD THIS BE PASSED TO DONE AND FAIL CALLBACKS?
+ *        object_available_callback.
  * @param retry Information about retrying the request to the database.
  * @return Void.
  */

@@ -213,7 +213,6 @@ int ObjectTableLookup_RedisCommand(RedisModuleCtx *ctx,
   return REDISMODULE_OK;
 }
 
-//NAMING CONVENTION FOR HELPER METHODS?
 /**
  * Publish a notification to a client's object notification channel if at least
  * one manager is listed as having the object in the object table.
@@ -225,10 +224,10 @@ int ObjectTableLookup_RedisCommand(RedisModuleCtx *ctx,
  *        the object ID of interest.
  * @return True if the publish was successful and false otherwise.
  */
-bool publish_object_notification(RedisModuleCtx *ctx,
-                                 RedisModuleString *client_id,
-                                 RedisModuleString *object_id,
-                                 RedisModuleKey *key) {
+bool PublishObjectNotification(RedisModuleCtx *ctx,
+                               RedisModuleString *client_id,
+                               RedisModuleString *object_id,
+                               RedisModuleKey *key) {
   /* Create a string formatted as "<object id> MANAGERS <manager id1>
    * <manager id2> ..." */
   RedisModuleString *manager_list =
@@ -240,15 +239,14 @@ bool publish_object_notification(RedisModuleCtx *ctx,
   RedisModule_StringAppendBuffer(ctx, manager_list, "MANAGERS",
                                  strlen("MANAGERS"));
 
-  CHECK_ERROR(RedisModule_ZsetFirstInScoreRange(
-                  key, REDISMODULE_NEGATIVE_INFINITE,
-                  REDISMODULE_POSITIVE_INFINITE, 1, 1),
-              "Unable to initialize zset iterator");
+  CHECK_ERROR(
+      RedisModule_ZsetFirstInScoreRange(key, REDISMODULE_NEGATIVE_INFINITE,
+                                        REDISMODULE_POSITIVE_INFINITE, 1, 1),
+      "Unable to initialize zset iterator");
 
   /* Loop over the managers in the object table for this object ID. */
   do {
-    RedisModuleString *curr =
-        RedisModule_ZsetRangeCurrentElement(key, NULL);
+    RedisModuleString *curr = RedisModule_ZsetRangeCurrentElement(key, NULL);
     RedisModule_StringAppendBuffer(ctx, manager_list, " ", 1);
     size_t size;
     const char *val = RedisModule_StringPtrLen(curr, &size);
@@ -337,30 +335,32 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
       OpenPrefixedKey(ctx, OBJECT_NOTIFICATION_PREFIX, object_id,
                       REDISMODULE_READ | REDISMODULE_WRITE);
   /* If the zset exists, initialize the key to iterate over the zset. */
-  int object_notification_keytype = RedisModule_KeyType(object_notification_key);
+  int object_notification_keytype =
+      RedisModule_KeyType(object_notification_key);
   if (object_notification_keytype != REDISMODULE_KEYTYPE_EMPTY) {
-    CHECK_ERROR(
-        RedisModule_ZsetFirstInScoreRange(object_notification_key,
-                                          REDISMODULE_NEGATIVE_INFINITE,
-                                          REDISMODULE_POSITIVE_INFINITE, 1, 1),
-        "Unable to initialize zset iterator");
+    CHECK_ERROR(RedisModule_ZsetFirstInScoreRange(
+                    object_notification_key, REDISMODULE_NEGATIVE_INFINITE,
+                    REDISMODULE_POSITIVE_INFINITE, 1, 1),
+                "Unable to initialize zset iterator");
     /* Iterate over the list of clients that requested notifiations about the
      * availability of this object, and publish notifications to their object
      * notification channels. */
     do {
-      RedisModuleString *client_id = RedisModule_ZsetRangeCurrentElement(object_notification_key, NULL);
+      RedisModuleString *client_id =
+          RedisModule_ZsetRangeCurrentElement(object_notification_key, NULL);
       /* TODO(rkn): Some computation could be saved by batching the string
-       * constructions in the multiple calls to publish_object_notification
+       * constructions in the multiple calls to PublishObjectNotification
        * together. */
-      bool success = publish_object_notification(ctx, client_id, object_id, table_key);
+      bool success =
+          PublishObjectNotification(ctx, client_id, object_id, table_key);
       if (!success) {
         /* The publish failed somehow. */
-        //CLEANUP STUFF CLOSE KEYS ETC
+        RedisModule_CloseKey(object_notification_key);
         return RedisModule_ReplyWithError(ctx, "PUBLISH unsuccessful");
       }
     } while (RedisModule_ZsetRangeNext(object_notification_key));
-    /* Now that the clients have been notified, remove the zset of clients waiting
-     * for notifications. */
+    /* Now that the clients have been notified, remove the zset of clients
+     * waiting for notifications. */
     CHECK_ERROR(RedisModule_DeleteKey(object_notification_key),
                 "Unable to delete zset key.");
     RedisModule_CloseKey(object_notification_key);
@@ -421,11 +421,10 @@ int ObjectTableRequestNotifications_RedisCommand(RedisModuleCtx *ctx,
       RedisModule_CloseKey(object_notification_key);
     } else {
       /* Publish a notification to the client's object notification channel. */
-      bool success =
-          publish_object_notification(ctx, client_id, object_id, key);
+      bool success = PublishObjectNotification(ctx, client_id, object_id, key);
       if (!success) {
         /* The publish failed somehow. */
-        //CLEANUP STUFF CLOSE KEYS ETC
+        RedisModule_CloseKey(key);
         return RedisModule_ReplyWithError(ctx, "PUBLISH unsuccessful");
       }
     }

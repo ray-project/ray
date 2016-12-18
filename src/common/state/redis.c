@@ -295,10 +295,9 @@ task *parse_redis_task_table_entry(task_id id,
  *  ==== object_table callbacks ====
  */
 
-void redis_object_table_add_callback(
-    redisAsyncContext *c,
-    void *r,
-    void *privdata) {
+void redis_object_table_add_callback(redisAsyncContext *c,
+                                     void *r,
+                                     void *privdata) {
   REDIS_CALLBACK_HEADER(db, callback_data, r);
 
   /* Do some minimal checking. */
@@ -347,14 +346,10 @@ void redis_object_table_lookup(table_callback_data *callback_data) {
   // context->timer_id = callback_data->timer_id;
   // context->object_id = id;
 
-  int status = redisAsyncCommand(db->context,
-                                 redis_object_table_lookup_callback,
-                                 (void *) callback_data->timer_id,
-                                 "RAY.OBJECT_TABLE_LOOKUP %b", obj_id.id,
-                                 sizeof(obj_id.id));
-  // int status = redisAsyncCommand(db->context, redis_object_table_get_entry,
-  //                                (void *) context, "SMEMBERS obj:%b", id.id,
-  //                                sizeof(id.id));
+  int status = redisAsyncCommand(
+      db->context, redis_object_table_lookup_callback,
+      (void *) callback_data->timer_id, "RAY.OBJECT_TABLE_LOOKUP %b", obj_id.id,
+      sizeof(obj_id.id));
   if ((status == REDIS_ERR) || db->context->err) {
     LOG_REDIS_DEBUG(db->context, "error in object_table lookup");
   }
@@ -545,13 +540,17 @@ void redis_object_table_lookup_callback(redisAsyncContext *c,
  *        The caller is responsible for freeing this array.
  * @return The object ID that the notification is about.
  */
-object_id parse_subscribe_to_notifications_payload(db_handle *db,
-                                                   char *payload,
-                                                   int length,
-                                                   int *manager_count,
-                                                   const char ***manager_vector) {
-  int num_managers = (length - sizeof(object_id) - 1 - strlen("MANAGERS")) / (1 + sizeof(db_client_id));
-  CHECK(length == sizeof(object_id) + 1 + strlen("MANAGERS") + num_managers * (1 + sizeof(db_client_id)));
+object_id parse_subscribe_to_notifications_payload(
+    db_handle *db,
+    char *payload,
+    int length,
+    int *manager_count,
+    const char ***manager_vector) {
+  int num_managers = (length - sizeof(object_id) - 1 - strlen("MANAGERS")) /
+                     (1 + sizeof(db_client_id));
+  CHECK(length ==
+        sizeof(object_id) + 1 + strlen("MANAGERS") +
+            num_managers * (1 + sizeof(db_client_id)));
   CHECK(num_managers > 0);
   object_id obj_id;
   /* Track our current offset in the payload. */
@@ -651,10 +650,9 @@ void redis_object_table_subscribe_to_notifications(
   }
 }
 
-void generic_redis_callback(
-    redisAsyncContext *c,
-    void *r,
-    void *privdata) {
+void redis_object_table_request_notifications_callback(redisAsyncContext *c,
+                                                       void *r,
+                                                       void *privdata) {
   REDIS_CALLBACK_HEADER(db, callback_data, r);
 
   /* Do some minimal checking. */
@@ -689,9 +687,9 @@ void redis_object_table_request_notifications(
     argvlen[2 + i] = sizeof(object_ids[i].id);
   }
 
-  int status = redisAsyncCommandArgv(db->context, generic_redis_callback,
-                                     (void *) callback_data->timer_id, num_args,
-                                     argv, argvlen);
+  int status = redisAsyncCommandArgv(
+      db->context, redis_object_table_request_notifications_callback,
+      (void *) callback_data->timer_id, num_args, argv, argvlen);
   free(argv);
   free(argvlen);
 

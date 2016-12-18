@@ -49,9 +49,9 @@ void object_table_request_notifications(db_handle *db_handle,
                                         retry_info *retry) {
   CHECK(db_handle != NULL);
   CHECK(num_object_ids > 0);
-  object_table_request_notifications_data *data = malloc(
-      sizeof(object_table_request_notifications_data) +
-      num_object_ids * sizeof(object_id));
+  object_table_request_notifications_data *data =
+      malloc(sizeof(object_table_request_notifications_data) +
+             num_object_ids * sizeof(object_id));
   data->num_object_ids = num_object_ids;
   memcpy(data->object_ids, object_ids, num_object_ids * sizeof(object_id));
 

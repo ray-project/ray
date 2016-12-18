@@ -830,9 +830,9 @@ void request_transfer_from(plasma_manager_state *manager_state,
    * TODO(rkn): Later this should not be fatal. */
   uint8_t temp_addr[4];
   sscanf(addr, "%hhu.%hhu.%hhu.%hhu", &temp_addr[0], &temp_addr[1],
-       &temp_addr[2], &temp_addr[3]);
+         &temp_addr[2], &temp_addr[3]);
   if (memcmp(temp_addr, manager_state->addr, 4) == 0 &&
-      port == manager_state->port)  {
+      port == manager_state->port) {
     LOG_FATAL("This manager is attempting to request a transfer from itself.");
   }
 
@@ -1102,10 +1102,10 @@ void process_wait_request(client_connection *client_conn,
     return_from_wait(manager_state, wait_req);
   } else {
     if (num_object_ids_to_request > 0) {
-      /* Request notifications from the object table when these object IDs become
-       * available. The notifications will call the callback that was passed to
-       * object_table_subscribe_to_notifications, which will update the wait
-       * request. */
+      /* Request notifications from the object table when these object IDs
+       * become available. The notifications will call the callback that was
+       * passed to object_table_subscribe_to_notifications, which will update
+       * the wait request. */
       retry_info retry;
       memset(&retry, 0, sizeof(retry));
       retry.num_retries = 0;
@@ -1378,9 +1378,9 @@ void start_server(const char *store_socket_name,
                       handle_new_client, g_manager_state);
   /* Set up a client-specific channel to receive notifications from the object
    * table. */
-  object_table_subscribe_to_notifications(
-      g_manager_state->db, object_table_subscribe_callback, g_manager_state,
-      NULL);
+  object_table_subscribe_to_notifications(g_manager_state->db,
+                                          object_table_subscribe_callback,
+                                          g_manager_state, NULL);
   /* Run the event loop. */
   event_loop_run(g_manager_state->loop);
 }
