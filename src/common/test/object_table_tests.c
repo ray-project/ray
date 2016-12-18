@@ -216,7 +216,6 @@ TEST add_timeout_test(void) {
 
 /* === Test subscribe timeout === */
 
-const char *subscribe_timeout_context = "subscribe_timeout";
 int subscribe_failed = 0;
 
 void subscribe_done_callback(object_id object_id,
@@ -231,7 +230,6 @@ void subscribe_fail_callback(unique_id id,
                              void *user_context,
                              void *user_data) {
   subscribe_failed = 1;
-  CHECK(user_context == (void *) subscribe_timeout_context);
   event_loop_stop(g_loop);
 }
 
@@ -245,9 +243,8 @@ TEST subscribe_timeout_test(void) {
       .timeout = 100,
       .fail_callback = subscribe_fail_callback,
   };
-  object_table_subscribe(db, NIL_ID, NULL, NULL, &retry,
-                         subscribe_done_callback,
-                         (void *) subscribe_timeout_context);
+  object_table_subscribe_to_notifications(db, subscribe_done_callback, NULL,
+                                          &retry, NULL, NULL);
   /* Disconnect the database to see if the lookup times out. */
   close(db->sub_context->c.fd);
   event_loop_run(g_loop);
@@ -475,9 +472,9 @@ TEST subscribe_retry_test(void) {
       .timeout = 100,
       .fail_callback = subscribe_retry_fail_callback,
   };
-  object_table_subscribe(db, NIL_ID, NULL, NULL, &retry,
-                         subscribe_retry_done_callback,
-                         (void *) subscribe_retry_context);
+  object_table_subscribe_to_notifications(db, NULL, NULL, &retry,
+                                          subscribe_retry_done_callback,
+                                          (void *) subscribe_retry_context);
   /* Disconnect the database to let the subscribe times out the first time. */
   close(db->sub_context->c.fd);
   /* Install handler for reconnecting the database. */
@@ -615,9 +612,9 @@ TEST subscribe_late_test(void) {
       .timeout = 0,
       .fail_callback = subscribe_late_fail_callback,
   };
-  object_table_subscribe(db, NIL_ID, NULL, NULL, &retry,
-                         subscribe_late_done_callback,
-                         (void *) subscribe_late_context);
+  object_table_subscribe_to_notifications(db, NULL, NULL, &retry,
+                                          subscribe_late_done_callback,
+                                          (void *) subscribe_late_context);
   /* Install handler for terminating the event loop. */
   event_loop_add_timer(g_loop, 750,
                        (event_loop_timer_handler) terminate_event_loop_callback,
@@ -651,11 +648,10 @@ void subscribe_success_done_callback(object_id object_id,
                                      int manager_count,
                                      const char *manager_vector[],
                                      void *user_context) {
-  CHECK(object_ids_equal(object_id, subscribe_id));
   retry_info retry = {
       .num_retries = 0, .timeout = 750, .fail_callback = NULL,
   };
-  object_table_add((db_handle *) user_context, object_id, 0,
+  object_table_add((db_handle *) user_context, subscribe_id, 0,
                    (unsigned char *) NIL_DIGEST, &retry, NULL, NULL);
   subscribe_success_done = 1;
 }
@@ -682,10 +678,13 @@ TEST subscribe_success_test(void) {
       .timeout = 100,
       .fail_callback = subscribe_success_fail_callback,
   };
-  object_table_subscribe(db, subscribe_id,
-                         subscribe_success_object_available_callback,
-                         (void *) subscribe_success_context, &retry,
-                         subscribe_success_done_callback, (void *) db);
+  object_table_subscribe_to_notifications(
+      db, subscribe_success_object_available_callback,
+      (void *) subscribe_success_context, &retry,
+      subscribe_success_done_callback, (void *) db);
+
+  object_id object_ids[1] = {subscribe_id};
+  object_table_request_notifications(db, 1, object_ids, &retry);
 
   /* Install handler for terminating the event loop. */
   event_loop_add_timer(g_loop, 750,
@@ -699,68 +698,6 @@ TEST subscribe_success_test(void) {
 
   ASSERT(subscribe_success_done);
   ASSERT(subscribe_success_succeeded);
-  PASS();
-}
-
-/* === Test psubscribe object available succeed === */
-
-const char *psubscribe_success_context = "psubscribe_success";
-int psubscribe_success_done = 0;
-int psubscribe_success_succeeded = 0;
-object_id psubscribe_id;
-
-void psubscribe_success_done_callback(object_id callback_object_id,
-                                      int manager_count,
-                                      const char *manager_vector[],
-                                      void *user_context) {
-  CHECK(IS_NIL_ID(callback_object_id));
-  retry_info retry = {
-      .num_retries = 0, .timeout = 750, .fail_callback = NULL,
-  };
-  object_table_add((db_handle *) user_context, psubscribe_id, 0,
-                   (unsigned char *) NIL_DIGEST, &retry, NULL, NULL);
-  psubscribe_success_done = 1;
-}
-
-void psubscribe_success_object_available_callback(object_id object_id,
-                                                  int manager_count,
-                                                  const char *manager_vector[],
-                                                  void *user_context) {
-  CHECK(user_context == (void *) psubscribe_success_context);
-  CHECK(object_ids_equal(object_id, psubscribe_id));
-  CHECK(manager_count == 1);
-  psubscribe_success_succeeded = 1;
-}
-
-TEST psubscribe_success_test(void) {
-  g_loop = event_loop_create();
-  db_handle *db =
-      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11236);
-  db_attach(db, g_loop, false);
-  psubscribe_id = globally_unique_id();
-
-  retry_info retry = {
-      .num_retries = 0,
-      .timeout = 100,
-      .fail_callback = subscribe_success_fail_callback,
-  };
-  object_table_subscribe(db, NIL_ID,
-                         psubscribe_success_object_available_callback,
-                         (void *) psubscribe_success_context, &retry,
-                         psubscribe_success_done_callback, (void *) db);
-
-  /* Install handler for terminating the event loop. */
-  event_loop_add_timer(g_loop, 750,
-                       (event_loop_timer_handler) terminate_event_loop_callback,
-                       NULL);
-
-  event_loop_run(g_loop);
-  db_disconnect(db);
-  destroy_outstanding_callbacks(g_loop);
-  event_loop_destroy(g_loop);
-
-  ASSERT(psubscribe_success_done);
-  ASSERT(psubscribe_success_succeeded);
   PASS();
 }
 
@@ -779,6 +716,11 @@ void subscribe_object_present_object_available_callback(
   CHECK(manager_count == 1);
 }
 
+void fatal_fail_callback(unique_id id, void *user_context, void *user_data) {
+  /* This function should never be called. */
+  CHECK(0);
+}
+
 TEST subscribe_object_present_test(void) {
   g_loop = event_loop_create();
   db_handle *db =
@@ -786,19 +728,28 @@ TEST subscribe_object_present_test(void) {
   db_attach(db, g_loop, false);
   unique_id id = globally_unique_id();
   retry_info retry = {
-      .num_retries = 0, .timeout = 100, .fail_callback = NULL,
+      .num_retries = 0, .timeout = 100, .fail_callback = fatal_fail_callback,
   };
   object_table_add(db, id, 0, (unsigned char *) NIL_DIGEST, &retry, NULL, NULL);
-  object_table_subscribe(
-      db, id, subscribe_object_present_object_available_callback,
+  object_table_subscribe_to_notifications(
+      db, subscribe_object_present_object_available_callback,
       (void *) subscribe_object_present_context, &retry, NULL, (void *) db);
-
   /* Install handler for terminating the event loop. */
   event_loop_add_timer(g_loop, 750,
                        (event_loop_timer_handler) terminate_event_loop_callback,
                        NULL);
-
+  /* Run the event loop to create do the add and subscribe. */
   event_loop_run(g_loop);
+
+  object_id object_ids[1] = {id};
+  object_table_request_notifications(db, 1, object_ids, &retry);
+  /* Install handler for terminating the event loop. */
+  event_loop_add_timer(g_loop, 750,
+                       (event_loop_timer_handler) terminate_event_loop_callback,
+                       NULL);
+  /* Run the event loop to do the request notifications. */
+  event_loop_run(g_loop);
+
   db_disconnect(db);
   destroy_outstanding_callbacks(g_loop);
   event_loop_destroy(g_loop);
@@ -810,15 +761,14 @@ TEST subscribe_object_present_test(void) {
 
 const char *subscribe_object_not_present_context =
     "subscribe_object_not_present";
-int subscribe_object_not_present_succeeded = 0;
 
 void subscribe_object_not_present_object_available_callback(
     object_id object_id,
     int manager_count,
     const char *manager_vector[],
     void *user_context) {
-  CHECK(user_context == (void *) subscribe_object_not_present_context);
-  subscribe_object_not_present_succeeded = 1;
+  /* This should not be called. */
+  CHECK(0);
 }
 
 TEST subscribe_object_not_present_test(void) {
@@ -830,20 +780,28 @@ TEST subscribe_object_not_present_test(void) {
   retry_info retry = {
       .num_retries = 0, .timeout = 100, .fail_callback = NULL,
   };
-  object_table_subscribe(
-      db, id, subscribe_object_not_present_object_available_callback,
+  object_table_subscribe_to_notifications(
+      db, subscribe_object_not_present_object_available_callback,
       (void *) subscribe_object_not_present_context, &retry, NULL, (void *) db);
-
   /* Install handler for terminating the event loop. */
   event_loop_add_timer(g_loop, 750,
                        (event_loop_timer_handler) terminate_event_loop_callback,
                        NULL);
-
+  /* Run the event loop to do the subscribe. */
   event_loop_run(g_loop);
+
+  object_id object_ids[1] = {id};
+  object_table_request_notifications(db, 1, object_ids, &retry);
+  /* Install handler for terminating the event loop. */
+  event_loop_add_timer(g_loop, 750,
+                       (event_loop_timer_handler) terminate_event_loop_callback,
+                       NULL);
+  /* Run the event loop to do the request notifications. */
+  event_loop_run(g_loop);
+
   db_disconnect(db);
   destroy_outstanding_callbacks(g_loop);
   event_loop_destroy(g_loop);
-  ASSERT(subscribe_object_not_present_succeeded == 0);
   PASS();
 }
 
@@ -864,40 +822,44 @@ void subscribe_object_available_later_object_available_callback(
   CHECK(manager_count == 1);
 }
 
-int64_t add_object_callback(event_loop *loop, int64_t timer_id, void *context) {
-  db_handle *db = (db_handle *) context;
-  retry_info retry = {
-      .num_retries = 0, .timeout = 100, .fail_callback = NULL,
-  };
-  object_id id = globally_unique_id();
-  object_table_add(db, id, 0, (unsigned char *) NIL_DIGEST, &retry, NULL, NULL);
-  /* Reset the timer to this large value, so it doesn't trigger again. */
-  return 10000;
-}
-
 TEST subscribe_object_available_later_test(void) {
   g_loop = event_loop_create();
   db_handle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11236);
   db_attach(db, g_loop, false);
-  unique_id id = NIL_ID;
+  unique_id id = globally_unique_id();
   retry_info retry = {
       .num_retries = 0, .timeout = 100, .fail_callback = NULL,
   };
-  object_table_subscribe(
-      db, id, subscribe_object_available_later_object_available_callback,
+  object_table_subscribe_to_notifications(
+      db, subscribe_object_available_later_object_available_callback,
       (void *) subscribe_object_available_later_context, &retry, NULL,
       (void *) db);
-
-  event_loop_add_timer(g_loop, 300,
-                       (event_loop_timer_handler) add_object_callback, db);
-
   /* Install handler for terminating the event loop. */
   event_loop_add_timer(g_loop, 750,
                        (event_loop_timer_handler) terminate_event_loop_callback,
                        NULL);
-
+  /* Run the event loop to do the subscribe. */
   event_loop_run(g_loop);
+
+  object_id object_ids[1] = {id};
+  object_table_request_notifications(db, 1, object_ids, &retry);
+  /* Install handler for terminating the event loop. */
+  event_loop_add_timer(g_loop, 750,
+                       (event_loop_timer_handler) terminate_event_loop_callback,
+                       NULL);
+  /* Run the event loop to do the request notifications. */
+  event_loop_run(g_loop);
+
+  ASSERT_EQ(subscribe_object_available_later_succeeded, 0);
+  object_table_add(db, id, 0, (unsigned char *) NIL_DIGEST, &retry, NULL, NULL);
+  /* Install handler for terminating the event loop. */
+  event_loop_add_timer(g_loop, 750,
+                       (event_loop_timer_handler) terminate_event_loop_callback,
+                       NULL);
+  /* Run the event loop to do the object table add. */
+  event_loop_run(g_loop);
+
   db_disconnect(db);
   destroy_outstanding_callbacks(g_loop);
   event_loop_destroy(g_loop);
@@ -989,11 +951,10 @@ SUITE(object_table_tests) {
   RUN_REDIS_TEST(add_late_test);
   RUN_REDIS_TEST(subscribe_late_test);
   RUN_REDIS_TEST(subscribe_success_test);
-  RUN_REDIS_TEST(psubscribe_success_test);
   RUN_REDIS_TEST(subscribe_object_present_test);
   RUN_REDIS_TEST(subscribe_object_not_present_test);
   RUN_REDIS_TEST(subscribe_object_available_later_test);
-  RUN_REDIS_TEST(subscribe_object_info_success_test);
+  // RUN_REDIS_TEST(subscribe_object_info_success_test);
 }
 
 GREATEST_MAIN_DEFS();

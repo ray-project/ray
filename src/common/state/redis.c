@@ -312,7 +312,11 @@ void redis_object_table_add_callback(redisAsyncContext *c,
   }
   CHECK(reply->type != REDIS_REPLY_ERROR);
   CHECK(strcmp(reply->str, "OK") == 0);
-  CHECK(callback_data->done_callback == NULL);
+  /* Call the done callback if there is one. */
+  if (callback_data->done_callback != NULL) {
+    task_table_done_callback done_callback = callback_data->done_callback;
+    done_callback(callback_data->id, callback_data->user_context);
+  }
   /* Clean up the timer and callback. */
   destroy_timer_callback(db->loop, callback_data);
 }
@@ -623,9 +627,15 @@ void object_table_redis_subscribe_to_notifications_callback(
     free(manager_vector);
   } else if (strcmp(message_type->str, "subscribe") == 0) {
     /* The reply for the initial SUBSCRIBE command. */
+    /* Call the done callback if there is one. This code path should only be
+     * used in the tests. */
+    if (callback_data->done_callback != NULL) {
+      object_table_lookup_done_callback done_callback =
+          callback_data->done_callback;
+      done_callback(NIL_ID, 0, NULL, callback_data->user_context);
+    }
     /* If the initial SUBSCRIBE was successful, clean up the timer, but don't
      * destroy the callback data. */
-    CHECK(callback_data->done_callback == NULL);
     event_loop_remove_timer(callback_data->db_handle->loop,
                             callback_data->timer_id);
   } else {

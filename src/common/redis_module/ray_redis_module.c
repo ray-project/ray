@@ -24,7 +24,6 @@
 #define OBJECT_INFO_PREFIX "OI:"
 #define OBJECT_LOCATION_PREFIX "OL:"
 #define OBJECT_NOTIFICATION_PREFIX "ON:"
-#define OBJECT_SUBSCRIBE_PREFIX "OS:"
 #define TASK_PREFIX "TT:"
 
 #define CHECK_ERROR(STATUS, MESSAGE)                   \
@@ -436,15 +435,6 @@ int ObjectTableRequestNotifications_RedisCommand(RedisModuleCtx *ctx,
   return REDISMODULE_OK;
 }
 
-int ObjectTableSubscribe_RedisCommand(RedisModuleCtx *ctx,
-                                      RedisModuleString **argv,
-                                      int argc) {
-  REDISMODULE_NOT_USED(ctx);
-  REDISMODULE_NOT_USED(argv);
-  REDISMODULE_NOT_USED(argc);
-  return REDISMODULE_OK;
-}
-
 int ObjectInfoSubscribe_RedisCommand(RedisModuleCtx *ctx,
                                      RedisModuleString **argv,
                                      int argc) {
@@ -778,12 +768,6 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx,
   if (RedisModule_CreateCommand(ctx, "ray.object_table_request_notifications",
                                 ObjectTableRequestNotifications_RedisCommand,
                                 "write pubsub", 0, 0, 0) == REDISMODULE_ERR) {
-    return REDISMODULE_ERR;
-  }
-
-  if (RedisModule_CreateCommand(ctx, "ray.object_table_subscribe",
-                                ObjectTableSubscribe_RedisCommand, "pubsub", 0,
-                                0, 0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 

@@ -32,15 +32,19 @@ void object_table_subscribe_to_notifications(
     db_handle *db_handle,
     object_table_object_available_callback object_available_callback,
     void *subscribe_context,
-    retry_info *retry) {
+    retry_info *retry,
+    object_table_lookup_done_callback done_callback,
+    void *user_context) {
   CHECK(db_handle != NULL);
   object_table_subscribe_data *sub_data =
       malloc(sizeof(object_table_subscribe_data));
   sub_data->object_available_callback = object_available_callback;
   sub_data->subscribe_context = subscribe_context;
 
-  init_table_callback(db_handle, NIL_OBJECT_ID, __func__, sub_data, retry, NULL,
-                      redis_object_table_subscribe_to_notifications, NULL);
+  init_table_callback(db_handle, NIL_OBJECT_ID, __func__, sub_data, retry,
+                      done_callback,
+                      redis_object_table_subscribe_to_notifications,
+                      user_context);
 }
 
 void object_table_request_notifications(db_handle *db_handle,

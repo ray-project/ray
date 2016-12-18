@@ -112,13 +112,19 @@ typedef object_table_lookup_done_callback
  * @param subscribe_context Caller context which will be passed to the
  *        object_available_callback.
  * @param retry Information about retrying the request to the database.
+ * @param done_callback Callback to be called when subscription is installed.
+ *        This is only used for the tests.
+ * @param user_context User context to be passed into the done callback. This is
+ *        only used for the tests.
  * @return Void.
  */
 void object_table_subscribe_to_notifications(
     db_handle *db_handle,
     object_table_object_available_callback object_available_callback,
     void *subscribe_context,
-    retry_info *retry);
+    retry_info *retry,
+    object_table_lookup_done_callback done_callback,
+    void *user_context);
 
 /**
  * Request notifications about the availability of some objects from the object

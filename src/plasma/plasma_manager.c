@@ -1380,7 +1380,7 @@ void start_server(const char *store_socket_name,
    * table. */
   object_table_subscribe_to_notifications(g_manager_state->db,
                                           object_table_subscribe_callback,
-                                          g_manager_state, NULL);
+                                          g_manager_state, NULL, NULL, NULL);
   /* Run the event loop. */
   event_loop_run(g_manager_state->loop);
 }
