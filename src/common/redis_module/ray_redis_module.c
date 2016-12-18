@@ -35,8 +35,11 @@ RedisModuleString *CreatePrefixedString(RedisModuleCtx *ctx,
                                         RedisModuleString *keyname) {
   size_t length;
   const char *value = RedisModule_StringPtrLen(keyname, &length);
-  RedisModuleString *prefixed_keyname = RedisModule_CreateStringPrintf(
-      ctx, "%s%*.*s", prefix, length, length, value);
+  RedisModuleString *prefixed_keyname =
+      RedisModule_CreateString(ctx, prefix, strlen(prefix));
+  /* Using RedisModule_CreateStringPrintf in the past did not handle NULL
+   * characters properly. */
+  RedisModule_StringAppendBuffer(ctx, prefixed_keyname, value, length);
   return prefixed_keyname;
 }
 
