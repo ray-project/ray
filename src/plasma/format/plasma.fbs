@@ -16,6 +16,8 @@ enum MessageType:int {
   // Delete an object.
   PlasmaDeleteRequest,
   PlasmaDeleteReply,
+  // Get status of an object.
+  PlasmaStatusRequest,
   // Make room for new objects in the plasma store.
   PlasmaEvictRequest,
   PlasmaEvictReply,

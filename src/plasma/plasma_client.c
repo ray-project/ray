@@ -196,10 +196,7 @@ bool plasma_create(plasma_connection *conn,
             " and metadata size %" PRId64,
             conn->store_conn, data_size, metadata_size);
   CHECK(plasma_send_CreateRequest(conn->store_conn, conn->builder, obj_id, data_size, metadata_size) >= 0);
-  int64_t type;
-  int64_t length;
-  uint8_t *reply_data;
-  read_message(conn->store_conn, PLASMA_PROTOCOL_VERSION, &type, &length, &reply_data);
+  uint8_t *reply_data = plasma_receive(conn->store_conn, MessageType_PlasmaCreateReply);
   int error_code;
   object_id id;
   plasma_object object;
@@ -257,10 +254,7 @@ void plasma_get(plasma_connection *conn,
   } else {
     /* Else, request a reference to the object data from the plasma store. */
     CHECK(plasma_send_GetRequest(conn->store_conn, conn->builder, &obj_id, 1) >= 0);
-    int64_t type;
-    int64_t length;
-    uint8_t *reply_data;
-    read_message(conn->store_conn, PLASMA_PROTOCOL_VERSION, &type, &length, &reply_data);
+    uint8_t *reply_data = plasma_receive(conn->store_conn, MessageType_PlasmaGetReply);
     object_id* gotten_object_id;
     int64_t num_objects;
     plasma_read_GetReply(reply_data, &gotten_object_id, &object_data, &num_objects);
@@ -630,8 +624,7 @@ int plasma_status(plasma_connection *conn, object_id object_id) {
   CHECK(conn != NULL);
   CHECK(conn->manager_conn >= 0);
 
-  plasma_request req = plasma_make_request(object_id);
-  CHECK(plasma_send_request(conn->manager_conn, PLASMA_STATUS, &req) >= 0);
+  plasma_send_StatusRequest(conn->manager_conn, conn->builder, &object_id, 1);
 
   plasma_reply reply;
   CHECK(plasma_receive_reply(conn->manager_conn, sizeof(reply), &reply) >= 0);

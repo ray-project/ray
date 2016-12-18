@@ -20,6 +20,10 @@ protocol_builder *make_protocol_builder(void);
 
 void free_protocol_builder(protocol_builder *builder);
 
+/* Plasma receive message. */
+
+uint8_t *plasma_receive(int sock, int64_t message_type);
+
 /* PlasmaCreate message functions. */
 
 int plasma_send_CreateRequest(int sock,
@@ -95,6 +99,14 @@ void plasma_read_DeleteRequest(uint8_t *data, object_id *object_id);
 int plasma_send_DeleteReply(int sock, protocol_builder *B, object_id object_id, int error);
 
 void plasma_read_DeleteReply(uint8_t *data, object_id *object_id, int *error);
+
+/* Plasma Status message functions. */
+
+int plasma_send_StatusRequest(int sock, protocol_builder *B, object_id object_ids[], int64_t num_objects);
+
+int64_t plasma_read_StatusRequest_num_objects(uint8_t *data);
+
+void plasma_read_StatusRequest(uint8_t *data, object_id object_ids[], int64_t num_objects);
 
 /* Plasma Evict message functions (no reply so far). */
 

@@ -1271,11 +1271,14 @@ void process_message(event_loop *loop,
     process_wait_request(conn, num_object_ids, &object_requests[0],
                          timeout_ms, num_ready_objects);
     } break;
-  case PLASMA_STATUS:
-    LOG_DEBUG("Processing status");
-    DCHECK(req->num_object_ids == 1);
-    process_status_request(conn, req->object_requests[0].object_id);
-    break;
+  case MessageType_PlasmaStatusRequest: {
+      LOG_DEBUG("Processing status");
+      int64_t num_objects = plasma_read_StatusRequest_num_objects(data);
+      CHECK(num_objects == 1);
+      object_id object_id;
+      plasma_read_StatusRequest(data, &object_id, 1);
+      process_status_request(conn, object_id);
+    } break;
   case DISCONNECT_CLIENT: {
     LOG_INFO("Disconnecting client on fd %d", client_sock);
     /* TODO(swang): Check if this connection was to a plasma manager. If so,

@@ -67,6 +67,15 @@ void object_ids_from_flatbuffer(flatbuffers_string_vec_t object_id_vector,
   }
 }
 
+void object_ids_from_flatbuffer2(flatbuffers_string_vec_t object_id_vector,
+                                 object_id object_ids[],
+                                 int64_t num_objects) {
+  CHECK(flatbuffers_string_vec_len(object_id_vector) == num_objects);
+  for (int64_t i = 0; i < num_objects; ++i) {
+    memcpy(&object_ids[i].id[0], flatbuffers_string_vec_at(object_id_vector, i), UNIQUE_ID_SIZE);
+  }
+}
+
 /**
  * Finalize the flatbuffers and write a message with the result to a
  * file descriptor.
@@ -85,6 +94,15 @@ int finalize_buffer_and_send(flatcc_builder_t *B, int fd, int message_type) {
   free(buff);
   flatcc_builder_reset(B);
   return r;
+}
+
+uint8_t *plasma_receive(int sock, int64_t message_type) {
+  int64_t type;
+  int64_t length;
+  uint8_t *reply_data;
+  read_message(sock, PLASMA_PROTOCOL_VERSION, &type, &length, &reply_data);
+  CHECK(type == message_type);
+  return reply_data;
 }
 
 int plasma_send_CreateRequest(int sock,
@@ -227,6 +245,42 @@ DEFINE_SIMPLE_SEND_REQUEST(DeleteRequest);
 DEFINE_SIMPLE_READ_REQUEST(DeleteRequest);
 DEFINE_SIMPLE_SEND_REPLY(DeleteReply);
 DEFINE_SIMPLE_READ_REPLY(DeleteReply);
+
+/* Plasma status message. */
+
+int plasma_send_StatusRequest(int sock, protocol_builder *B, object_id object_ids[], int64_t num_objects) {
+  PlasmaStatusRequest_start_as_root(B);
+  PlasmaStatusRequest_object_ids_add(B, object_ids_to_flatbuffer(B, object_ids, num_objects));
+  PlasmaStatusRequest_end_as_root(B);
+  return finalize_buffer_and_send(B, sock, MessageType_PlasmaStatusRequest);
+}
+
+int64_t plasma_read_StatusRequest_num_objects(uint8_t *data) {
+  DCHECK(data);
+  PlasmaGetRequest_table_t req = PlasmaGetRequest_as_root(data);
+  return flatbuffers_string_vec_len(PlasmaGetRequest_object_ids(req));
+}
+
+void plasma_read_StatusRequest(uint8_t *data, object_id object_ids[], int64_t num_objects) {
+  DCHECK(data);
+  PlasmaStatusRequest_table_t req = PlasmaStatusRequest_as_root(data);
+  object_ids_from_flatbuffer2(PlasmaStatusRequest_object_ids(req), object_ids, num_objects);
+}
+
+/* Plasma get message. */
+
+/*
+void plasma_read_GetRequest(uint8_t *data,
+                            object_id** object_ids_ptr,
+                            int64_t *num_objects) {
+  DCHECK(data);
+  PlasmaGetRequest_table_t req = PlasmaGetRequest_as_root(data);
+  flatbuffers_string_vec_t object_id_vector = PlasmaGetRequest_object_ids(req);
+  object_ids_from_flatbuffer(object_id_vector, object_ids_ptr, num_objects);
+}
+*/
+
+/* Plasma evict message. */
 
 int plasma_send_EvictRequest(int sock,
                                protocol_builder *B,
