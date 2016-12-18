@@ -228,6 +228,40 @@ TEST plasma_delete_reply_test(void) {
   PASS();
 }
 
+TEST plasma_status_request_test(void) {
+  int fd = create_temp_file();
+  object_id object_ids[2];
+  object_ids[0] = globally_unique_id();
+  object_ids[1] = globally_unique_id();
+  plasma_send_StatusRequest(fd, g_B, object_ids, 2);
+  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaStatusRequest);
+  int64_t num_objects = plasma_read_StatusRequest_num_objects(data);
+  object_id object_ids_read[num_objects];
+  plasma_read_StatusRequest(data, object_ids_read, num_objects);
+  ASSERT(object_ids_equal(object_ids[0], object_ids_read[0]));
+  ASSERT(object_ids_equal(object_ids[1], object_ids_read[1]));
+  PASS();
+}
+
+TEST plasma_status_reply_test(void) {
+  int fd = create_temp_file();
+  object_id object_ids[2];
+  object_ids[0] = globally_unique_id();
+  object_ids[1] = globally_unique_id();
+  int object_statuses[2] = {42, 43};
+  plasma_send_StatusReply(fd, g_B, object_ids, object_statuses, 2);
+  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaStatusReply);
+  int64_t num_objects = plasma_read_StatusReply_num_objects(data);
+  object_id object_ids_read[num_objects];
+  int object_statuses_read[num_objects];
+  plasma_read_StatusReply(data, object_ids_read, object_statuses_read, num_objects);
+  ASSERT(object_ids_equal(object_ids[0], object_ids_read[0]));
+  ASSERT(object_ids_equal(object_ids[1], object_ids_read[1]));
+  ASSERT_EQ(object_statuses[0], object_statuses_read[0]);
+  ASSERT_EQ(object_statuses[1], object_statuses_read[1]);
+  PASS();
+}
+
 TEST plasma_evict_request_test(void) {
   int fd = create_temp_file();
   int64_t num_bytes = 111;
@@ -324,7 +358,6 @@ TEST plasma_wait_reply_test(void) {
   PASS();
 }
 
-
 SUITE(plasma_serialization_tests) {
   RUN_TEST(plasma_create_request_test);
   RUN_TEST(plasma_create_reply_test);
@@ -336,6 +369,8 @@ SUITE(plasma_serialization_tests) {
   RUN_TEST(plasma_release_reply_test);
   RUN_TEST(plasma_delete_request_test);
   RUN_TEST(plasma_delete_reply_test);
+  RUN_TEST(plasma_status_request_test);
+  RUN_TEST(plasma_status_reply_test);
   RUN_TEST(plasma_evict_request_test);
   RUN_TEST(plasma_evict_reply_test);
   RUN_TEST(plasma_fetch_request_test);

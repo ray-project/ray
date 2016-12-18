@@ -108,6 +108,12 @@ int64_t plasma_read_StatusRequest_num_objects(uint8_t *data);
 
 void plasma_read_StatusRequest(uint8_t *data, object_id object_ids[], int64_t num_objects);
 
+int plasma_send_StatusReply(int sock, protocol_builder *B, object_id object_ids[], int object_status[], int64_t num_objects);
+
+int64_t plasma_read_StatusReply_num_objects(uint8_t *data);
+
+void plasma_read_StatusReply(uint8_t *data, object_id object_ids[], int object_status[], int64_t num_objects);
+
 /* Plasma Evict message functions (no reply so far). */
 
 int plasma_send_EvictRequest(int sock, protocol_builder *B, int64_t num_bytes);
