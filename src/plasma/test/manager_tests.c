@@ -114,8 +114,8 @@ void destroy_plasma_mock(plasma_mock *mock) {
  * - Buffer a transfer request for the remote manager.
  * - Start and stop the event loop to make sure that we send the buffered
  *   request.
- * - Expect to see a PLASMA_TRANSFER message on the remote manager with the
- *   correct object ID.
+ * - Expect to see a MessageType_PlasmaDataRequest message on the remote manager
+ *   with the correct object ID.
  */
 TEST request_transfer_test(void) {
   plasma_mock *local_mock = init_plasma_mock(NULL);
@@ -130,17 +130,17 @@ TEST request_transfer_test(void) {
   event_loop_add_timer(local_mock->loop, MANAGER_TIMEOUT, test_done_handler,
                        local_mock->state);
   event_loop_run(local_mock->loop);
-  int64_t type;
-  int64_t length;
-  plasma_request *req;
   int read_fd = get_client_sock(remote_mock->read_conn);
-  read_message(read_fd, PLASMA_PROTOCOL_VERSION, &type, &length, (uint8_t **) &req);
-  ASSERT(type == PLASMA_TRANSFER);
-  ASSERT(req->num_object_ids == 1);
-  ASSERT(object_ids_equal(oid, req->object_requests[0].object_id));
+  uint8_t *request_data = plasma_receive(read_fd, MessageType_PlasmaDataRequest);
+  object_id oid2;
+  char *address;
+  int port;
+  plasma_read_DataRequest(request_data, &oid2, &address, &port);
+  ASSERT(object_ids_equal(oid, oid2));
+  free(address);
   /* Clean up. */
   utstring_free(addr);
-  free(req);
+  free(request_data);
   destroy_plasma_mock(remote_mock);
   destroy_plasma_mock(local_mock);
   PASS();
@@ -155,8 +155,8 @@ TEST request_transfer_test(void) {
  * - Buffer a transfer request for the remote managers.
  * - Start and stop the event loop after a timeout to make sure that we
  *   trigger the timeout on the first manager.
- * - Expect to see a PLASMA_TRANSFER message on the second remote manager
- *   with the correct object ID.
+ * - Expect to see a MessageType_PlasmaDataRequest message on the second remote
+ *   manager with the correct object ID.
  */
 TEST request_transfer_retry_test(void) {
   plasma_mock *local_mock = init_plasma_mock(NULL);
@@ -177,18 +177,18 @@ TEST request_transfer_retry_test(void) {
                        local_mock->state);
   event_loop_run(local_mock->loop);
 
-  int64_t type;
-  int64_t length;
-  plasma_request *req;
   int read_fd = get_client_sock(remote_mock2->read_conn);
-  read_message(read_fd, PLASMA_PROTOCOL_VERSION, &type, &length, (uint8_t **) &req);
-  ASSERT(type == PLASMA_TRANSFER);
-  ASSERT(req->num_object_ids == 1);
-  ASSERT(object_ids_equal(oid, req->object_requests[0].object_id));
+  uint8_t *request_data = plasma_receive(read_fd, MessageType_PlasmaDataRequest);
+  object_id oid2;
+  char *address;
+  int port;
+  plasma_read_DataRequest(request_data, &oid2, &address, &port);
+  free(address);
+  ASSERT(object_ids_equal(oid, oid2));
   /* Clean up. */
   utstring_free(addr0);
   utstring_free(addr1);
-  free(req);
+  free(request_data);
   destroy_plasma_mock(remote_mock2);
   destroy_plasma_mock(remote_mock1);
   destroy_plasma_mock(local_mock);

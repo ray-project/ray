@@ -196,21 +196,18 @@ bool plasma_create(plasma_connection *conn,
             " and metadata size %" PRId64,
             conn->store_conn, data_size, metadata_size);
   CHECK(plasma_send_CreateRequest(conn->store_conn, conn->builder, obj_id, data_size, metadata_size) >= 0);
-  int64_t type;
-  int64_t length;
-  uint8_t *reply_data;
-  read_message(conn->store_conn, PLASMA_PROTOCOL_VERSION, &type, &length, &reply_data);
-  int error_code;
+  uint8_t *reply_data = plasma_receive(conn->store_conn, MessageType_PlasmaCreateReply);
+  int error;
   object_id id;
   plasma_object object;
-  plasma_read_CreateReply(reply_data, &id, &object, &error_code);
+  plasma_read_CreateReply(reply_data, &id, &object, &error);
   free(reply_data);
-  int fd = recv_fd(conn->store_conn);
-  CHECKM(fd >= 0, "recv not successful");
-  if (error_code == PlasmaError_ObjectExists) {
-    LOG_DEBUG("returned from plasma_create with error %d", error_code);
+  if (error == PlasmaError_ObjectExists) {
+    LOG_DEBUG("returned from plasma_create with error %d", error);
     return false;
   }
+  int fd = recv_fd(conn->store_conn);
+  CHECKM(fd >= 0, "recv not successful");
   CHECK(object.data_size == data_size);
   CHECK(object.metadata_size == metadata_size);
   /* The metadata should come right after the data. */
@@ -257,10 +254,7 @@ void plasma_get(plasma_connection *conn,
   } else {
     /* Else, request a reference to the object data from the plasma store. */
     CHECK(plasma_send_GetRequest(conn->store_conn, conn->builder, &obj_id, 1) >= 0);
-    int64_t type;
-    int64_t length;
-    uint8_t *reply_data;
-    read_message(conn->store_conn, PLASMA_PROTOCOL_VERSION, &type, &length, &reply_data);
+    uint8_t *reply_data = plasma_receive(conn->store_conn, MessageType_PlasmaGetReply);
     object_id* gotten_object_id;
     int64_t num_objects;
     plasma_read_GetReply(reply_data, &gotten_object_id, &object_data, &num_objects);
@@ -344,22 +338,21 @@ void plasma_release(plasma_connection *conn, object_id obj_id) {
 
 /* This method is used to query whether the plasma store contains an object. */
 void plasma_contains(plasma_connection *conn,
-                     object_id object_id,
+                     object_id obj_id,
                      int *has_object) {
   /* Check if we already have a reference to the object. */
   object_in_use_entry *object_entry;
-  HASH_FIND(hh, conn->objects_in_use, &object_id, sizeof(object_id),
+  HASH_FIND(hh, conn->objects_in_use, &obj_id, sizeof(obj_id),
             object_entry);
   if (object_entry) {
     *has_object = 1;
   } else {
     /* If we don't already have a reference to the object, check with the store
      * to see if we have the object. */
-    plasma_request req = plasma_make_request(object_id);
-    CHECK(plasma_send_request(conn->store_conn, PLASMA_CONTAINS, &req) >= 0);
-    plasma_reply reply;
-    CHECK(plasma_receive_reply(conn->store_conn, sizeof(reply), &reply) >= 0);
-    *has_object = reply.has_object;
+    plasma_send_ContainsRequest(conn->store_conn, conn->builder, obj_id);
+    uint8_t *reply_data = plasma_receive(conn->manager_conn, MessageType_PlasmaContainsReply);
+    object_id object_id2;
+    plasma_read_ContainsReply(reply_data, &object_id2, has_object);
   }
 }
 
@@ -551,18 +544,10 @@ int plasma_manager_connect(const char *ip_addr, int port) {
 }
 
 void plasma_transfer(plasma_connection *conn,
-                     const char *addr,
+                     const char *address,
                      int port,
                      object_id object_id) {
-  plasma_request req = plasma_make_request(object_id);
-  req.port = port;
-  char *end = NULL;
-  for (int i = 0; i < 4; ++i) {
-    req.addr[i] = strtol(end ? end : addr, &end, 10);
-    /* skip the '.' */
-    end += 1;
-  }
-  CHECK(plasma_send_request(conn->manager_conn, PLASMA_TRANSFER, &req) >= 0);
+  CHECK(plasma_send_DataRequest(conn->manager_conn, conn->builder, object_id, address, port) >= 0);
 }
 
 void plasma_fetch(plasma_connection *conn,
@@ -630,13 +615,11 @@ int plasma_status(plasma_connection *conn, object_id object_id) {
   CHECK(conn != NULL);
   CHECK(conn->manager_conn >= 0);
 
-  plasma_request req = plasma_make_request(object_id);
-  CHECK(plasma_send_request(conn->manager_conn, PLASMA_STATUS, &req) >= 0);
-
-  plasma_reply reply;
-  CHECK(plasma_receive_reply(conn->manager_conn, sizeof(reply), &reply) >= 0);
-
-  return reply.object_status;
+  plasma_send_StatusRequest(conn->manager_conn, conn->builder, &object_id, 1);
+  uint8_t *reply_data = plasma_receive(conn->manager_conn, MessageType_PlasmaStatusReply);
+  int object_status;
+  plasma_read_StatusReply(reply_data, &object_id, &object_status, 1);
+  return object_status;
 }
 
 int plasma_wait(plasma_connection *conn,
@@ -654,7 +637,7 @@ int plasma_wait(plasma_connection *conn,
     CHECK(object_requests[i].type == PLASMA_QUERY_LOCAL ||
           object_requests[i].type == PLASMA_QUERY_ANYWHERE);
   }
-  
+
   CHECK(plasma_send_WaitRequest(conn->manager_conn, conn->builder, object_requests, num_object_requests, num_ready_objects, timeout_ms) >= 0);
 
   plasma_reply *reply = plasma_alloc_reply(num_object_requests);

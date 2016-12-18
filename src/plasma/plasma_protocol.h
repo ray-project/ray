@@ -20,6 +20,10 @@ protocol_builder *make_protocol_builder(void);
 
 void free_protocol_builder(protocol_builder *builder);
 
+/* Plasma receive message. */
+
+uint8_t *plasma_receive(int sock, int64_t message_type);
+
 /* PlasmaCreate message functions. */
 
 int plasma_send_CreateRequest(int sock,
@@ -96,6 +100,30 @@ int plasma_send_DeleteReply(int sock, protocol_builder *B, object_id object_id, 
 
 void plasma_read_DeleteReply(uint8_t *data, object_id *object_id, int *error);
 
+/* Plasma Status message functions. */
+
+int plasma_send_StatusRequest(int sock, protocol_builder *B, object_id object_ids[], int64_t num_objects);
+
+int64_t plasma_read_StatusRequest_num_objects(uint8_t *data);
+
+void plasma_read_StatusRequest(uint8_t *data, object_id object_ids[], int64_t num_objects);
+
+int plasma_send_StatusReply(int sock, protocol_builder *B, object_id object_ids[], int object_status[], int64_t num_objects);
+
+int64_t plasma_read_StatusReply_num_objects(uint8_t *data);
+
+void plasma_read_StatusReply(uint8_t *data, object_id object_ids[], int object_status[], int64_t num_objects);
+
+/* Plasma Constains message functions. */
+
+int plasma_send_ContainsRequest(int sock, protocol_builder *B, object_id object_id);
+
+void plasma_read_ContainsRequest(uint8_t *data, object_id *object_id);
+
+int plasma_send_ContainsReply(int sock, protocol_builder *B, object_id object_id, int has_object);
+
+void plasma_read_ContainsReply(uint8_t *data, object_id *object_id, int *has_object);
+
 /* Plasma Evict message functions (no reply so far). */
 
 int plasma_send_EvictRequest(int sock, protocol_builder *B, int64_t num_bytes);
@@ -146,5 +174,29 @@ void plasma_read_WaitReply(uint8_t *data,
 /* Plasma Subscribe message functions. */
 
 int plasma_send_SubscribeRequest(int sock, protocol_builder* B);
+
+/* Plasma Data message functions. */
+
+int plasma_send_DataRequest(int sock,
+                            protocol_builder *B,
+                            object_id object_id,
+                            const char *address,
+                            int port);
+
+void plasma_read_DataRequest(uint8_t *data,
+                             object_id *object_id,
+                             char **address,
+                             int *port);
+
+int plasma_send_DataReply(int sock,
+                          protocol_builder *B,
+                          object_id object_id,
+                          int64_t object_size,
+                          int64_t metadata_size);
+
+void plasma_read_DataReply(uint8_t *data,
+                           object_id *object_id,
+                           int64_t *object_size,
+                           int64_t *metadata_size);
 
 #endif /* PLASMA_PROTOCOL */
