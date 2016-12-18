@@ -30,7 +30,7 @@ int create_temp_file() {
  *
  * @param fd File descriptor of the file.
  * @param message type Message type that we expect in the file.
- * 
+ *
  * @return Pointer to the content of the message. Needs to be freed by the caller.
  */
 uint8_t *read_message_from_file(int fd, int message_type) {
@@ -228,6 +228,40 @@ TEST plasma_delete_reply_test(void) {
   PASS();
 }
 
+TEST plasma_status_request_test(void) {
+  int fd = create_temp_file();
+  object_id object_ids[2];
+  object_ids[0] = globally_unique_id();
+  object_ids[1] = globally_unique_id();
+  plasma_send_StatusRequest(fd, g_B, object_ids, 2);
+  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaStatusRequest);
+  int64_t num_objects = plasma_read_StatusRequest_num_objects(data);
+  object_id object_ids_read[num_objects];
+  plasma_read_StatusRequest(data, object_ids_read, num_objects);
+  ASSERT(object_ids_equal(object_ids[0], object_ids_read[0]));
+  ASSERT(object_ids_equal(object_ids[1], object_ids_read[1]));
+  PASS();
+}
+
+TEST plasma_status_reply_test(void) {
+  int fd = create_temp_file();
+  object_id object_ids[2];
+  object_ids[0] = globally_unique_id();
+  object_ids[1] = globally_unique_id();
+  int object_statuses[2] = {42, 43};
+  plasma_send_StatusReply(fd, g_B, object_ids, object_statuses, 2);
+  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaStatusReply);
+  int64_t num_objects = plasma_read_StatusReply_num_objects(data);
+  object_id object_ids_read[num_objects];
+  int object_statuses_read[num_objects];
+  plasma_read_StatusReply(data, object_ids_read, object_statuses_read, num_objects);
+  ASSERT(object_ids_equal(object_ids[0], object_ids_read[0]));
+  ASSERT(object_ids_equal(object_ids[1], object_ids_read[1]));
+  ASSERT_EQ(object_statuses[0], object_statuses_read[0]);
+  ASSERT_EQ(object_statuses[1], object_statuses_read[1]);
+  PASS();
+}
+
 TEST plasma_evict_request_test(void) {
   int fd = create_temp_file();
   int64_t num_bytes = 111;
@@ -324,6 +358,43 @@ TEST plasma_wait_reply_test(void) {
   PASS();
 }
 
+TEST plasma_data_request_test(void) {
+  int fd = create_temp_file();
+  object_id object_id1 = globally_unique_id();
+  const char *address1 = "address1";
+  int port1 = 12345;
+  plasma_send_DataRequest(fd, g_B, object_id1, address1, port1);
+  /* Reading message back. */
+  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaDataRequest);
+  object_id object_id2;
+  char *address2;
+  int port2;
+  plasma_read_DataRequest(data, &object_id2, &address2, &port2);
+  ASSERT(object_ids_equal(object_id1, object_id2));
+  ASSERT(strcmp(address1, address2) == 0);
+  ASSERT(port1 == port2);
+  free(address2);
+  close(fd);
+  PASS();
+}
+
+TEST plasma_data_reply_test(void) {
+  int fd = create_temp_file();
+  object_id object_id1 = globally_unique_id();
+  int64_t object_size1 = 146;
+  int64_t metadata_size1 = 198;
+  plasma_send_DataReply(fd, g_B, object_id1, object_size1, metadata_size1);
+  /* Reading message back. */
+  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaDataReply);
+  object_id object_id2;
+  int64_t object_size2;
+  int64_t metadata_size2;
+  plasma_read_DataReply(data, &object_id2, &object_size2, &metadata_size2);
+  ASSERT(object_ids_equal(object_id1, object_id2));
+  ASSERT(object_size1 == object_size2);
+  ASSERT(metadata_size1 == metadata_size2);
+  PASS();
+}
 
 SUITE(plasma_serialization_tests) {
   RUN_TEST(plasma_create_request_test);
@@ -336,11 +407,15 @@ SUITE(plasma_serialization_tests) {
   RUN_TEST(plasma_release_reply_test);
   RUN_TEST(plasma_delete_request_test);
   RUN_TEST(plasma_delete_reply_test);
+  RUN_TEST(plasma_status_request_test);
+  RUN_TEST(plasma_status_reply_test);
   RUN_TEST(plasma_evict_request_test);
   RUN_TEST(plasma_evict_reply_test);
   RUN_TEST(plasma_fetch_request_test);
   RUN_TEST(plasma_wait_request_test);
   RUN_TEST(plasma_wait_reply_test);
+  RUN_TEST(plasma_data_request_test);
+  RUN_TEST(plasma_data_reply_test);
 }
 
 GREATEST_MAIN_DEFS();

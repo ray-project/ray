@@ -16,6 +16,12 @@ enum MessageType:int {
   // Delete an object.
   PlasmaDeleteRequest,
   PlasmaDeleteReply,
+  // Get status of an object.
+  PlasmaStatusRequest,
+  PlasmaStatusReply,
+  // See if the store contains an object (will be deprecated).
+  PlasmaContainsRequest,
+  PlasmaContainsReply,
   // Make room for new objects in the plasma store.
   PlasmaEvictRequest,
   PlasmaEvictReply,
@@ -28,6 +34,9 @@ enum MessageType:int {
   PlasmaSubscribeRequest,
   // Unsubscribe.
   PlasmaUnsubscribeRequest,
+  // Sending and receiving data.
+  PlasmaDataRequest,
+  PlasmaDataReply
 }
 
 enum PlasmaError:int {
@@ -148,6 +157,22 @@ table PlasmaStatusReply {
   status: [ObjectStatus];
 }
 
+// PlasmaContains is a subset of PlasmaStatus which does not
+// involve the plasma manager, only the store. We should consider
+// unifying them in the future and deprecating PlasmaContains.
+
+table PlasmaContainsRequest {
+  // ID of the object we are querying.
+  object_id: string;
+}
+
+table PlasmaContainsReply {
+  // ID of the object we are querying.
+  object_id: string;
+  // 1 if the object is in the store and 0 otherwise.
+  has_object: int;
+}
+
 table PlasmaEvictRequest {
   // Number of bytes that shall be freed.
   num_bytes: ulong;
@@ -196,4 +221,22 @@ table PlasmaWaitReply {
 }
 
 table PlasmaSubscribeRequest {
+}
+
+table PlasmaDataRequest {
+  // ID of the object that is requested.
+  object_id: string;
+  // The host address where the data shall be sent to.
+  address: string;
+  // The port of the manager the data shall be sent to.
+  port: int;
+}
+
+table PlasmaDataReply {
+  // ID of the object that will be sent.
+  object_id: string;
+  // Size of the object data in bytes.
+  object_size: ulong;
+  // Size of the metadata in bytes.
+  metadata_size: ulong;
 }

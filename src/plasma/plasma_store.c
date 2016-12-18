@@ -498,7 +498,9 @@ void process_message(event_loop *loop,
       error = PlasmaError_ObjectExists;
     }
     CHECK(plasma_send_CreateReply(client_sock, state->builder, object_ids[0], &objects[0], error) >= 0);
-    CHECK(send_fd(client_sock, objects[0].handle.store_fd) >= 0);
+    if (error == PlasmaError_OK) {
+      CHECK(send_fd(client_sock, objects[0].handle.store_fd) >= 0);
+    }
   } break;
   case MessageType_PlasmaGetRequest: {
     object_id *gotten_object_ids;
@@ -529,13 +531,13 @@ void process_message(event_loop *loop,
     plasma_read_ReleaseRequest(input, &object_ids[0]);
     release_object(client_context, object_ids[0]);
     break;
-  case PLASMA_CONTAINS:
-    DCHECK(req->num_object_ids == 1);
-    if (contains_object(client_context, req->object_requests[0].object_id) ==
-        OBJECT_FOUND) {
-      reply.has_object = 1;
+  case MessageType_PlasmaContainsRequest:
+    plasma_read_ContainsRequest(input, &object_ids[0]);
+    if (contains_object(client_context, object_ids[0]) == OBJECT_FOUND) {
+      CHECK(plasma_send_ContainsReply(client_sock, state->builder, object_ids[0], 1) >= 0);
+    } else {
+      CHECK(plasma_send_ContainsReply(client_sock, state->builder, object_ids[0], 0) >= 0);
     }
-    CHECK(plasma_send_reply(client_sock, &reply) >= 0);
     break;
   case MessageType_PlasmaSealRequest: {
     unsigned char digest[DIGEST_SIZE];
