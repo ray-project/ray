@@ -498,7 +498,9 @@ void process_message(event_loop *loop,
       error = PlasmaError_ObjectExists;
     }
     CHECK(plasma_send_CreateReply(client_sock, state->builder, object_ids[0], &objects[0], error) >= 0);
-    CHECK(send_fd(client_sock, objects[0].handle.store_fd) >= 0);
+    if (error == PlasmaError_OK) {
+      CHECK(send_fd(client_sock, objects[0].handle.store_fd) >= 0);
+    }
   } break;
   case MessageType_PlasmaGetRequest: {
     object_id *gotten_object_ids;

@@ -30,7 +30,7 @@ int create_temp_file() {
  *
  * @param fd File descriptor of the file.
  * @param message type Message type that we expect in the file.
- * 
+ *
  * @return Pointer to the content of the message. Needs to be freed by the caller.
  */
 uint8_t *read_message_from_file(int fd, int message_type) {
@@ -358,6 +358,44 @@ TEST plasma_wait_reply_test(void) {
   PASS();
 }
 
+TEST plasma_data_request_test(void) {
+  int fd = create_temp_file();
+  object_id object_id1 = globally_unique_id();
+  const char *address1 = "address1";
+  int port1 = 12345;
+  plasma_send_DataRequest(fd, g_B, object_id1, address1, port1);
+  /* Reading message back. */
+  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaDataRequest);
+  object_id object_id2;
+  char *address2;
+  int port2;
+  plasma_read_DataRequest(data, g_B, &object_id2, &address2, &port2);
+  ASSERT(object_ids_equal(object_id1, object_id2));
+  ASSERT(strcmp(address1, address2) == 0);
+  ASSERT(port1 == port2);
+  free(address2);
+  close(fd);
+  PASS();
+}
+
+TEST plasma_data_reply_test(void) {
+  int fd = create_temp_file();
+  object_id object_id1 = globally_unique_id();
+  int64_t object_size1 = 146;
+  int64_t metadata_size1 = 198;
+  plasma_send_DataReply(fd, g_B, object_id1, object_size1, metadata_size1);
+  /* Reading message back. */
+  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaDataReply);
+  object_id object_id2;
+  int64_t object_size2;
+  int64_t metadata_size2;
+  plasma_read_DataReply(data, g_B, &object_id2, &object_size2, &metadata_size2);
+  ASSERT(object_ids_equal(object_id1, object_id2));
+  ASSERT(object_size1 == object_size2);
+  ASSERT(metadata_size1 == metadata_size2);
+  PASS();
+}
+
 SUITE(plasma_serialization_tests) {
   RUN_TEST(plasma_create_request_test);
   RUN_TEST(plasma_create_reply_test);
@@ -376,6 +414,8 @@ SUITE(plasma_serialization_tests) {
   RUN_TEST(plasma_fetch_request_test);
   RUN_TEST(plasma_wait_request_test);
   RUN_TEST(plasma_wait_reply_test);
+  RUN_TEST(plasma_data_request_test);
+  RUN_TEST(plasma_data_reply_test);
 }
 
 GREATEST_MAIN_DEFS();

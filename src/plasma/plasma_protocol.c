@@ -43,7 +43,7 @@ flatbuffers_string_vec_ref_t object_ids_to_flatbuffer(flatcc_builder_t *B,
 
 /**
  * Reads an array of object IDs from a flatbuffer vector.
- * 
+ *
  * @param object_id_vector Flatbuffer vector containing object IDs.
  * @param object_ids_ptr Pointer to array that will contain the object IDs. The
  *                       array is allocated by this function and must be freed
@@ -536,5 +536,38 @@ void plasma_read_DataRequest(uint8_t *data,
                              object_id *object_id,
                              char **address,
                              int *port) {
-  
+  DCHECK(data);
+  PlasmaDataRequest_table_t req = PlasmaDataRequest_as_root(data);
+  flatbuffers_string_t id = PlasmaDataRequest_object_id(req);
+  DCHECK(flatbuffers_string_len(id) == UNIQUE_ID_SIZE);
+  memcpy(&object_id->id[0], id, UNIQUE_ID_SIZE);
+  *address = strdup(PlasmaDataRequest_address(req));
+  *port = PlasmaDataRequest_port(req);
+}
+
+int plasma_send_DataReply(int sock,
+                          protocol_builder *B,
+                          object_id object_id,
+                          int64_t object_size,
+                          int64_t metadata_size) {
+  PlasmaDataReply_start_as_root(B);
+  PlasmaDataReply_object_id_create(B, (const char *)&object_id.id[0], UNIQUE_ID_SIZE);
+  PlasmaDataReply_object_size_add(B, object_size);
+  PlasmaDataReply_metadata_size_add(B, metadata_size);
+  PlasmaDataRequest_end_as_root(B);
+  return finalize_buffer_and_send(B, sock, MessageType_PlasmaDataReply);
+}
+
+void plasma_read_DataReply(uint8_t *data,
+                           protocol_builder *B,
+                           object_id *object_id,
+                           int64_t *object_size,
+                           int64_t *metadata_size) {
+  DCHECK(data);
+  PlasmaDataReply_table_t rep = PlasmaDataReply_as_root(data);
+  flatbuffers_string_t id = PlasmaDataReply_object_id(rep);
+  DCHECK(flatbuffers_string_len(id) == UNIQUE_ID_SIZE);
+  memcpy(&object_id->id[0], id, UNIQUE_ID_SIZE);
+  *object_size = PlasmaDataReply_object_size(rep);
+  *metadata_size = PlasmaDataReply_metadata_size(rep);
 }

@@ -197,17 +197,17 @@ bool plasma_create(plasma_connection *conn,
             conn->store_conn, data_size, metadata_size);
   CHECK(plasma_send_CreateRequest(conn->store_conn, conn->builder, obj_id, data_size, metadata_size) >= 0);
   uint8_t *reply_data = plasma_receive(conn->store_conn, MessageType_PlasmaCreateReply);
-  int error_code;
+  int error;
   object_id id;
   plasma_object object;
-  plasma_read_CreateReply(reply_data, &id, &object, &error_code);
+  plasma_read_CreateReply(reply_data, &id, &object, &error);
   free(reply_data);
-  int fd = recv_fd(conn->store_conn);
-  CHECKM(fd >= 0, "recv not successful");
-  if (error_code == PlasmaError_ObjectExists) {
-    LOG_DEBUG("returned from plasma_create with error %d", error_code);
+  if (error == PlasmaError_ObjectExists) {
+    LOG_DEBUG("returned from plasma_create with error %d", error);
     return false;
   }
+  int fd = recv_fd(conn->store_conn);
+  CHECKM(fd >= 0, "recv not successful");
   CHECK(object.data_size == data_size);
   CHECK(object.metadata_size == metadata_size);
   /* The metadata should come right after the data. */
@@ -646,7 +646,7 @@ int plasma_wait(plasma_connection *conn,
     CHECK(object_requests[i].type == PLASMA_QUERY_LOCAL ||
           object_requests[i].type == PLASMA_QUERY_ANYWHERE);
   }
-  
+
   CHECK(plasma_send_WaitRequest(conn->manager_conn, conn->builder, object_requests, num_object_requests, num_ready_objects, timeout_ms) >= 0);
 
   plasma_reply *reply = plasma_alloc_reply(num_object_requests);

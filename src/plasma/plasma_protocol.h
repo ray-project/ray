@@ -179,4 +179,16 @@ void plasma_read_DataRequest(uint8_t *data,
                              char **address,
                              int *port);
 
+int plasma_send_DataReply(int sock,
+                          protocol_builder *B,
+                          object_id object_id,
+                          int64_t object_size,
+                          int64_t metadata_size);
+
+void plasma_read_DataReply(uint8_t *data,
+                           protocol_builder *B,
+                           object_id *object_id,
+                           int64_t *object_size,
+                           int64_t *metadata_size);
+
 #endif /* PLASMA_PROTOCOL */
