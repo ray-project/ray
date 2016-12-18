@@ -517,3 +517,24 @@ int plasma_send_SubscribeRequest(int sock, protocol_builder* B) {
   PlasmaSubscribeRequest_end_as_root(B);
   return finalize_buffer_and_send(B, sock, MessageType_PlasmaSubscribeRequest);
 }
+
+int plasma_send_DataRequest(int sock,
+                            protocol_builder *B,
+                            object_id object_id,
+                            const char *address,
+                            int port) {
+  PlasmaDataRequest_start_as_root(B);
+  PlasmaDataRequest_object_id_create(B, (const char *)&object_id.id[0], UNIQUE_ID_SIZE);
+  PlasmaDataRequest_address_create(B, address, strlen(address));
+  PlasmaDataRequest_port_add(B, port);
+  PlasmaDataRequest_end_as_root(B);
+  return finalize_buffer_and_send(B, sock, MessageType_PlasmaDataRequest);
+}
+
+void plasma_read_DataRequest(uint8_t *data,
+                             protocol_builder *B,
+                             object_id *object_id,
+                             char **address,
+                             int *port) {
+  
+}

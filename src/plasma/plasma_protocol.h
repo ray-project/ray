@@ -165,4 +165,18 @@ void plasma_read_WaitReply(uint8_t *data,
 
 int plasma_send_SubscribeRequest(int sock, protocol_builder* B);
 
+/* Plasma Data message functions. */
+
+int plasma_send_DataRequest(int sock,
+                            protocol_builder *B,
+                            object_id object_id,
+                            const char *address,
+                            int port);
+
+void plasma_read_DataRequest(uint8_t *data,
+                             protocol_builder *B,
+                             object_id *object_id,
+                             char **address,
+                             int *port);
+
 #endif /* PLASMA_PROTOCOL */

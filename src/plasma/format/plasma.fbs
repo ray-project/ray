@@ -31,6 +31,9 @@ enum MessageType:int {
   PlasmaSubscribeRequest,
   // Unsubscribe.
   PlasmaUnsubscribeRequest,
+  // Sending and receiving data.
+  PlasmaDataRequest,
+  PlasmaDataReply
 }
 
 enum PlasmaError:int {
@@ -199,4 +202,22 @@ table PlasmaWaitReply {
 }
 
 table PlasmaSubscribeRequest {
+}
+
+table PlasmaDataRequest {
+  // ID of the object that is requested.
+  object_id: string;
+  // The host address where the data shall be sent to.
+  address: string;
+  // The port of the manager the data shall be sent to.
+  port: int;
+}
+
+table PlasmaDataReply {
+  // ID of the object that will be sent.
+  object_id: string;
+  // Size of the object data in bytes.
+  object_size: ulong;
+  // Size of the metadata in bytes.
+  metadata_size: ulong;
 }
