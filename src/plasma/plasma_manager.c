@@ -208,6 +208,8 @@ struct plasma_manager_state {
   object_wait_requests *object_wait_requests_remote;
   /** Initialize an empty hash map for the cache of local available object. */
   available_object *local_available_objects;
+  /** Buffer that holds memory for serializing plasma protocol messages. */
+  protocol_builder *builder;
 };
 
 plasma_manager_state *g_manager_state = NULL;
@@ -479,6 +481,7 @@ plasma_manager_state *init_plasma_manager_state(const char *store_socket_name,
   /* Add the callback that processes the notification to the event loop. */
   event_loop_add_file(state->loop, plasma_fd, EVENT_LOOP_READ,
                       process_object_notification, state);
+  state->builder = make_protocol_builder();
   return state;
 }
 
@@ -506,6 +509,7 @@ void destroy_plasma_manager_state(plasma_manager_state *state) {
 
   plasma_disconnect(state->plasma_conn);
   event_loop_destroy(state->loop);
+  free_protocol_builder(state->builder);
   free(state);
 }
 
@@ -1113,9 +1117,7 @@ void request_status_done(object_id object_id,
   client_connection *client_conn = (client_connection *) context;
   int status =
       request_status(object_id, manager_count, manager_vector, context);
-  plasma_reply reply = plasma_make_reply(object_id);
-  reply.object_status = status;
-  CHECK(plasma_send_reply(client_conn->fd, &reply) >= 0);
+  CHECK(plasma_send_StatusReply(client_conn->fd, client_conn->manager_state->builder, &object_id, &status, 1) >= 0);
 }
 
 int request_status(object_id object_id,
@@ -1149,16 +1151,14 @@ void process_status_request(client_connection *client_conn,
 
   /* Return success immediately if we already have this object. */
   if (is_object_local(client_conn->manager_state, object_id)) {
-    plasma_reply reply = plasma_make_reply(object_id);
-    reply.object_status = PLASMA_OBJECT_LOCAL;
-    CHECK(plasma_send_reply(client_conn->fd, &reply) >= 0);
+    int status = PLASMA_OBJECT_LOCAL;
+    CHECK(plasma_send_StatusReply(client_conn->fd, client_conn->manager_state->builder, &object_id, &status, 1) >= 0);
     return;
   }
 
   if (client_conn->manager_state->db == NULL) {
-    plasma_reply reply = plasma_make_reply(object_id);
-    reply.object_status = PLASMA_OBJECT_NONEXISTENT;
-    CHECK(plasma_send_reply(client_conn->fd, &reply) >= 0);
+    int status = PLASMA_OBJECT_NONEXISTENT;
+    CHECK(plasma_send_StatusReply(client_conn->fd, client_conn->manager_state->builder, &object_id, &status, 1) >= 0);
     return;
   }
 

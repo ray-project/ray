@@ -625,11 +625,10 @@ int plasma_status(plasma_connection *conn, object_id object_id) {
   CHECK(conn->manager_conn >= 0);
 
   plasma_send_StatusRequest(conn->manager_conn, conn->builder, &object_id, 1);
-
-  plasma_reply reply;
-  CHECK(plasma_receive_reply(conn->manager_conn, sizeof(reply), &reply) >= 0);
-
-  return reply.object_status;
+  uint8_t *reply_data = plasma_receive(conn->manager_conn, MessageType_PlasmaStatusReply);
+  int object_status;
+  plasma_read_StatusReply(reply_data, &object_id, &object_status, 1);
+  return object_status;
 }
 
 int plasma_wait(plasma_connection *conn,
