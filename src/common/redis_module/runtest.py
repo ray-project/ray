@@ -73,6 +73,16 @@ class TestGlobalStateStore(unittest.TestCase):
     self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id2")
     response = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP", "object_id1")
     self.assertEqual(set(response), {b"manager_id1", b"manager_id2"})
+    # Check that we properly handle NULL characters. In the past, NULL
+    # characters were handled improperly causing a "hash mismatch" error if two
+    # object IDs that agreed up to the NULL character were inserted with
+    # different hashes.
+    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "\x00object_id3", 1, "hash1", "manager_id1")
+    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "\x00object_id4", 1, "hash2", "manager_id1")
+    # Check that NULL characters in the hash are handled properly.
+    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id3", 1, "\x00hash1", "manager_id1")
+    with self.assertRaises(redis.ResponseError):
+      self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id3", 1, "\x00hash2", "manager_id1")
 
   def testObjectTableSubscribe(self):
     p = self.redis.pubsub()
