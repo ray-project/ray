@@ -365,6 +365,49 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
     RedisModule_CloseKey(object_notification_key);
   }
 
+  RedisModule_CloseKey(table_key);
+  RedisModule_ReplyWithSimpleString(ctx, "OK");
+  return REDISMODULE_OK;
+}
+
+/**
+ * Remove a manager from a location entry in the object table.
+ *
+ * This is called from a client with the command:
+ *
+ *     RAY.OBJECT_TABLE_REMOVE <object id> <manager id>
+ *
+ * @param object_id A string representing the object ID.
+ * @param manager A string which represents the manager ID of the plasma manager
+ *        to remove.
+ * @return OK if the operation was successful or an error with string
+ *         "Object not found" if the entry for the object_id doesn't exist. The
+ *         operation is counted as a success if the manager was not in the
+ *         entry.
+ */
+int ObjectTableRemove_RedisCommand(RedisModuleCtx *ctx,
+                                   RedisModuleString **argv,
+                                   int argc) {
+  if (argc != 3) {
+    return RedisModule_WrongArity(ctx);
+  }
+
+  RedisModuleString *object_id = argv[1];
+  RedisModuleString *manager = argv[2];
+
+  /* Remove the location from the object location table. */
+  RedisModuleKey *table_key;
+  table_key = OpenPrefixedKey(ctx, OBJECT_LOCATION_PREFIX, object_id,
+                              REDISMODULE_READ | REDISMODULE_WRITE);
+  int keytype = RedisModule_KeyType(table_key);
+  if (keytype == REDISMODULE_KEYTYPE_EMPTY) {
+    RedisModule_CloseKey(table_key);
+    return RedisModule_ReplyWithError(ctx, "Object not found");
+  }
+
+  RedisModule_ZsetRem(table_key, manager, NULL);
+  RedisModule_CloseKey(table_key);
+
   RedisModule_ReplyWithSimpleString(ctx, "OK");
   return REDISMODULE_OK;
 }
@@ -762,6 +805,12 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx,
   if (RedisModule_CreateCommand(ctx, "ray.object_table_add",
                                 ObjectTableAdd_RedisCommand, "write pubsub", 0,
                                 0, 0) == REDISMODULE_ERR) {
+    return REDISMODULE_ERR;
+  }
+
+  if (RedisModule_CreateCommand(ctx, "ray.object_table_remove",
+                                ObjectTableRemove_RedisCommand, "write", 0, 0,
+                                0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 
