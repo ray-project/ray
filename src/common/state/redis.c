@@ -655,8 +655,8 @@ void redis_object_table_subscribe_to_notifications(
    * The channel name should probably be the client ID with some prefix. */
   int status = redisAsyncCommand(
       db->sub_context, object_table_redis_subscribe_to_notifications_callback,
-      (void *) callback_data->timer_id, "SUBSCRIBE %s%b",
-      object_channel_prefix, db->client.id, sizeof(db->client.id));
+      (void *) callback_data->timer_id, "SUBSCRIBE %s%b", object_channel_prefix,
+      db->client.id, sizeof(db->client.id));
   if ((status == REDIS_ERR) || db->sub_context->err) {
     LOG_REDIS_DEBUG(db->sub_context,
                     "error in redis_object_table_subscribe_to_notifications");

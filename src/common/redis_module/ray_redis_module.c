@@ -259,8 +259,7 @@ bool PublishObjectNotification(RedisModuleCtx *ctx,
   RedisModuleString *channel_name =
       CreatePrefixedString(ctx, OBJECT_CHANNEL_PREFIX, client_id);
   RedisModuleCallReply *reply;
-  reply = RedisModule_Call(ctx, "PUBLISH", "ss", channel_name,
-                           manager_list);
+  reply = RedisModule_Call(ctx, "PUBLISH", "ss", channel_name, manager_list);
   RedisModule_FreeString(ctx, channel_name);
   RedisModule_FreeString(ctx, manager_list);
   if (reply == NULL) {
