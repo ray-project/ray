@@ -232,13 +232,9 @@ bool PublishObjectNotification(RedisModuleCtx *ctx,
   /* Create a string formatted as "<object id> MANAGERS <manager id1>
    * <manager id2> ..." */
   RedisModuleString *manager_list =
-      RedisModule_CreateString(ctx, "", strlen(""));
-  size_t size;
-  const char *val = RedisModule_StringPtrLen(object_id, &size);
-  RedisModule_StringAppendBuffer(ctx, manager_list, val, size);
-  RedisModule_StringAppendBuffer(ctx, manager_list, " ", 1);
-  RedisModule_StringAppendBuffer(ctx, manager_list, "MANAGERS",
-                                 strlen("MANAGERS"));
+      RedisModule_CreateStringFromString(ctx, object_id);
+  RedisModule_StringAppendBuffer(ctx, manager_list, " MANAGERS",
+                                 strlen(" MANAGERS"));
 
   CHECK_ERROR(
       RedisModule_ZsetFirstInScoreRange(key, REDISMODULE_NEGATIVE_INFINITE,
