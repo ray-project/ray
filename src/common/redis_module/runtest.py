@@ -22,6 +22,7 @@ OBJECT_INFO_PREFIX = "OI:"
 OBJECT_LOCATION_PREFIX = "OL:"
 OBJECT_SUBSCRIBE_PREFIX = "OS:"
 TASK_PREFIX = "TT:"
+OBJECT_CHANNEL_PREFIX = "OC:"
 
 class TestGlobalStateStore(unittest.TestCase):
 
@@ -30,7 +31,7 @@ class TestGlobalStateStore(unittest.TestCase):
     self.redis_process = subprocess.Popen([redis_path,
                                            "--port", str(redis_port),
                                            "--loadmodule", module_path])
-    time.sleep(0.5)
+    time.sleep(1.5)
     self.redis = redis.StrictRedis(host="localhost", port=redis_port, db=0)
 
   def tearDown(self):
@@ -84,15 +85,29 @@ class TestGlobalStateStore(unittest.TestCase):
     with self.assertRaises(redis.ResponseError):
       self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id3", 1, "\x00hash2", "manager_id1")
 
-  def testObjectTableSubscribe(self):
+  def testObjectTableSubscribeToNotifications(self):
     p = self.redis.pubsub()
     # Subscribe to an object ID.
-    p.psubscribe("{0}*".format(OBJECT_LOCATION_PREFIX))
-    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id1")
+    p.psubscribe("{}manager_id1".format(OBJECT_CHANNEL_PREFIX))
+    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id2")
     # Receive the acknowledgement message.
     self.assertEqual(p.get_message()["data"], 1)
-    # Receive the actual data.
-    self.assertEqual(p.get_message()["data"], b"MANAGERS manager_id1")
+    # Request a notification and receive the data.
+    self.redis.execute_command("RAY.OBJECT_TABLE_REQUEST_NOTIFICATIONS", "manager_id1", "object_id1")
+    self.assertEqual(p.get_message()["data"], b"object_id1 MANAGERS manager_id2")
+    # Request a notification for an object that isn't there. Then add the object
+    # and receive the data. Only the first call to RAY.OBJECT_TABLE_ADD should
+    # trigger notifications.
+    self.redis.execute_command("RAY.OBJECT_TABLE_REQUEST_NOTIFICATIONS", "manager_id1", "object_id2", "object_id3")
+    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id3", 1, "hash1", "manager_id1")
+    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id3", 1, "hash1", "manager_id2")
+    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id3", 1, "hash1", "manager_id3")
+    self.assertEqual(p.get_message()["data"], b"object_id3 MANAGERS manager_id1")
+    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id2", 1, "hash1", "manager_id3")
+    self.assertEqual(p.get_message()["data"], b"object_id2 MANAGERS manager_id3")
+    # Request notifications for object_id3 again.
+    self.redis.execute_command("RAY.OBJECT_TABLE_REQUEST_NOTIFICATIONS", "manager_id1", "object_id3")
+    self.assertEqual(p.get_message()["data"], b"object_id3 MANAGERS manager_id1 manager_id2 manager_id3")
 
   def testResultTableAddAndLookup(self):
     response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id1")

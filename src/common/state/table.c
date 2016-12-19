@@ -3,6 +3,17 @@
 #include <inttypes.h>
 #include "redis.h"
 
+void default_table_failure_callback(object_id id,
+                                    void *user_context,
+                                    void *user_data) {
+  CHECKM(0, "default_table_failure_callback was called.");
+}
+
+static const retry_info default_retry = {
+    .num_retries = 0,
+    .timeout = 1000,
+    .fail_callback = default_table_failure_callback};
+
 table_callback_data *init_table_callback(db_handle *db_handle,
                                          unique_id id,
                                          const char *label,
@@ -13,6 +24,10 @@ table_callback_data *init_table_callback(db_handle *db_handle,
                                          void *user_context) {
   CHECK(db_handle);
   CHECK(db_handle->loop);
+  /* If no retry info is provided, use the default retry info. */
+  if (retry == NULL) {
+    retry = (retry_info *) &default_retry;
+  }
   CHECK(retry);
   /* Allocate and initialize callback data structure for object table */
   table_callback_data *callback_data = malloc(sizeof(table_callback_data));

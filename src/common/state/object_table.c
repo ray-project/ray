@@ -14,23 +14,22 @@ void object_table_lookup(db_handle *db_handle,
 
 void object_table_add(db_handle *db_handle,
                       object_id object_id,
-                      int64_t data_size,
+                      int64_t object_size,
                       unsigned char digest[],
                       retry_info *retry,
                       object_table_done_callback done_callback,
                       void *user_context) {
   CHECK(db_handle != NULL);
 
-  object_info *info = malloc(sizeof(object_info));
-  info->data_size = data_size;
+  object_table_add_data *info = malloc(sizeof(object_table_add_data));
+  info->object_size = object_size;
   memcpy(&info->digest[0], digest, DIGEST_SIZE);
   init_table_callback(db_handle, object_id, __func__, info, retry,
                       done_callback, redis_object_table_add, user_context);
 }
 
-void object_table_subscribe(
+void object_table_subscribe_to_notifications(
     db_handle *db_handle,
-    object_id object_id,
     object_table_object_available_callback object_available_callback,
     void *subscribe_context,
     retry_info *retry,
@@ -42,9 +41,25 @@ void object_table_subscribe(
   sub_data->object_available_callback = object_available_callback;
   sub_data->subscribe_context = subscribe_context;
 
-  init_table_callback(db_handle, object_id, __func__, sub_data, retry,
-                      done_callback, redis_object_table_subscribe,
-                      user_context);
+  init_table_callback(
+      db_handle, NIL_OBJECT_ID, __func__, sub_data, retry, done_callback,
+      redis_object_table_subscribe_to_notifications, user_context);
+}
+
+void object_table_request_notifications(db_handle *db_handle,
+                                        int num_object_ids,
+                                        object_id object_ids[],
+                                        retry_info *retry) {
+  CHECK(db_handle != NULL);
+  CHECK(num_object_ids > 0);
+  object_table_request_notifications_data *data =
+      malloc(sizeof(object_table_request_notifications_data) +
+             num_object_ids * sizeof(object_id));
+  data->num_object_ids = num_object_ids;
+  memcpy(data->object_ids, object_ids, num_object_ids * sizeof(object_id));
+
+  init_table_callback(db_handle, NIL_OBJECT_ID, __func__, data, retry, NULL,
+                      redis_object_table_request_notifications, NULL);
 }
 
 void object_info_subscribe(db_handle *db_handle,
