@@ -314,7 +314,7 @@ void redis_object_table_add_callback(redisAsyncContext *c,
   CHECK(strcmp(reply->str, "OK") == 0);
   /* Call the done callback if there is one. */
   if (callback_data->done_callback != NULL) {
-    task_table_done_callback done_callback = callback_data->done_callback;
+    object_table_done_callback done_callback = callback_data->done_callback;
     done_callback(callback_data->id, callback_data->user_context);
   }
   /* Clean up the timer and callback. */
@@ -334,6 +334,49 @@ void redis_object_table_add(table_callback_data *callback_data) {
       (void *) callback_data->timer_id, "RAY.OBJECT_TABLE_ADD %b %ld %b %b",
       obj_id.id, sizeof(obj_id.id), object_size, digest, (size_t) DIGEST_SIZE,
       db->client.id, sizeof(db->client.id));
+
+  if ((status == REDIS_ERR) || db->context->err) {
+    LOG_REDIS_DEBUG(db->context, "error in redis_object_table_add");
+  }
+}
+
+void redis_object_table_remove_callback(redisAsyncContext *c,
+                                        void *r,
+                                        void *privdata) {
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
+
+  /* Do some minimal checking. */
+  redisReply *reply = r;
+  if (strcmp(reply->str, "object not found") == 0) {
+    /* If our object entry was not in the table, it's probably a race
+     * condition with an object_table_add. */
+    return;
+  }
+  CHECK(reply->type != REDIS_REPLY_ERROR);
+  CHECK(strcmp(reply->str, "OK") == 0);
+  /* Call the done callback if there is one. */
+  if (callback_data->done_callback != NULL) {
+    object_table_done_callback done_callback = callback_data->done_callback;
+    done_callback(callback_data->id, callback_data->user_context);
+  }
+  /* Clean up the timer and callback. */
+  destroy_timer_callback(db->loop, callback_data);
+}
+
+void redis_object_table_remove(table_callback_data *callback_data) {
+  db_handle *db = callback_data->db_handle;
+
+  object_id obj_id = callback_data->id;
+  /* If the caller provided a manager ID to delete, use it. Otherwise, use our
+   * own client ID as the ID to delete. */
+  db_client_id *client_id = callback_data->data;
+  if (client_id == NULL) {
+    client_id = &db->client;
+  }
+  int status = redisAsyncCommand(
+      db->context, redis_object_table_remove_callback,
+      (void *) callback_data->timer_id, "RAY.OBJECT_TABLE_REMOVE %b %b",
+      obj_id.id, sizeof(obj_id.id), client_id->id, sizeof(client_id->id));
 
   if ((status == REDIS_ERR) || db->context->err) {
     LOG_REDIS_DEBUG(db->context, "error in redis_object_table_add");

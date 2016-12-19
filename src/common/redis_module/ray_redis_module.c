@@ -382,9 +382,9 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
  * @param manager A string which represents the manager ID of the plasma manager
  *        to remove.
  * @return OK if the operation was successful or an error with string
- *         "Object not found" if the entry for the object_id doesn't exist. The
- *         operation is counted as a success if the manager was not in the
- *         entry.
+ *         "object not found" if the entry for the object_id doesn't exist. The
+ *         operation is counted as a success if the manager was already not in
+ *         the entry.
  */
 int ObjectTableRemove_RedisCommand(RedisModuleCtx *ctx,
                                    RedisModuleString **argv,
@@ -403,7 +403,7 @@ int ObjectTableRemove_RedisCommand(RedisModuleCtx *ctx,
   int keytype = RedisModule_KeyType(table_key);
   if (keytype == REDISMODULE_KEYTYPE_EMPTY) {
     RedisModule_CloseKey(table_key);
-    return RedisModule_ReplyWithError(ctx, "Object not found");
+    return RedisModule_ReplyWithError(ctx, "object not found");
   }
 
   RedisModule_ZsetRem(table_key, manager, NULL);

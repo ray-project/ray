@@ -78,20 +78,20 @@ typedef struct {
  *
  * @param db_handle Handle to db.
  * @param object_id Object unique identifier.
+ * @param client_id A pointer to the database client ID to remove. If this is
+ *        set to NULL, then the client ID associated with db_handle will be
+ *        removed.
  * @param retry Information about retrying the request to the database.
  * @param done_callback Callback to be called when lookup completes.
  * @param user_context User context to be passed in the callbacks.
  * @return Void.
  */
-/*
-void object_table_remove(db_handle *db,
+void object_table_remove(db_handle *db_handle,
                          object_id object_id,
-                         lookup_callback callback,
-                         void *context);
+                         db_client_id *client_id,
                          retry_info *retry,
                          object_table_done_callback done_callback,
                          void *user_context);
-*/
 
 /*
  *  ==== Subscribe to be announced when new object available ====
