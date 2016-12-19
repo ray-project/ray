@@ -5,6 +5,7 @@ from __future__ import print_function
 import psutil
 import os
 import random
+import redis
 import signal
 import string
 import subprocess
@@ -101,9 +102,20 @@ def start_redis(num_retries=20, cleanup=True):
     if p.poll() is None:
       if cleanup:
         all_processes.append(p)
-      return port
+      break
     counter += 1
-  raise Exception("Couldn't start Redis.")
+  if counter == num_retries:
+    raise Exception("Couldn't start Redis.")
+
+  # Create a Redis client just for configuring Redis.
+  redis_client = redis.StrictRedis(host="127.0.0.1", port=port)
+  # Configure Redis to generate keyspace notifications. TODO(rkn): Change this
+  # to only generate notifications for the export keys.
+  redis_client.config_set("notify-keyspace-events", "Kl")
+  # Configure Redis to not run in protected mode so that processes on other
+  # hosts can connect to it. TODO(rkn): Do this in a more secure way.
+  redis_client.config_set("protected-mode", "no")
+  return port
 
 def start_global_scheduler(redis_address, cleanup=True):
   """Start a global scheduler process.

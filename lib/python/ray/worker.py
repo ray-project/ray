@@ -879,7 +879,6 @@ def connect(address_info, mode=WORKER_MODE, worker=global_worker):
   # Create a Redis client.
   redis_host, redis_port = address_info["redis_address"].split(":")
   worker.redis_client = redis.StrictRedis(host=redis_host, port=int(redis_port))
-  worker.redis_client.config_set("notify-keyspace-events", "AKE")
   worker.lock = threading.Lock()
   # Create an object store client.
   worker.plasma_client = plasma.PlasmaClient(address_info["object_store_names"][0], address_info["object_store_manager_names"][0])
