@@ -1,4 +1,5 @@
 BasedOnStyle: Chromium
+ColumnLimit: 80
 DerivePointerAlignment: false
 IndentCaseLabels: false
 PointerAlignment: Right

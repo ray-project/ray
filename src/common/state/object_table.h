@@ -57,11 +57,17 @@ typedef void (*object_table_done_callback)(object_id object_id,
  */
 void object_table_add(db_handle *db_handle,
                       object_id object_id,
-                      int64_t data_size,
+                      int64_t object_size,
                       unsigned char digest[],
                       retry_info *retry,
                       object_table_done_callback done_callback,
                       void *user_context);
+
+/** Data that is needed to add new objects to the object table. */
+typedef struct {
+  int64_t object_size;
+  unsigned char digest[DIGEST_SIZE];
+} object_table_add_data;
 
 /*
  *  ==== Remove object call and callback ====
@@ -96,32 +102,56 @@ typedef object_table_lookup_done_callback
     object_table_object_available_callback;
 
 /**
- * Subcribing to new object available function.
+ * Set up a client-specific channel for receiving notifications about available
+ * objects from the object table. The callback will be called once per
+ * notification received on this channel.
  *
  * @param db_handle Handle to db.
- * @param object_id Object unique identifier.
- * @param object_available_callback callback to be called when new object
+ * @param object_available_callback Callback to be called when new object
  *        becomes available.
- * @param subscribe_context caller context which will be passed back in the
+ * @param subscribe_context Caller context which will be passed to the
  *        object_available_callback.
  * @param retry Information about retrying the request to the database.
  * @param done_callback Callback to be called when subscription is installed.
- * @param user_context User context to be passed into the done and fail
- *        callbacks.
+ *        This is only used for the tests.
+ * @param user_context User context to be passed into the done callback. This is
+ *        only used for the tests.
  * @return Void.
  */
-
-void object_table_subscribe(
-    db_handle *db,
-    object_id object_id,
+void object_table_subscribe_to_notifications(
+    db_handle *db_handle,
     object_table_object_available_callback object_available_callback,
     void *subscribe_context,
     retry_info *retry,
     object_table_lookup_done_callback done_callback,
     void *user_context);
 
-/* Data that is needed to register new object available callbacks with the state
- * database. */
+/**
+ * Request notifications about the availability of some objects from the object
+ * table. The notifications will be published to this client's object
+ * notification channel, which was set up by the method
+ * object_table_subscribe_to_notifications.
+ *
+ * @param db_handle Handle to db.
+ * @param object_ids The object IDs to receive notifications about.
+ * @param retry Information about retrying the request to the database.
+ * @return Void.
+ */
+void object_table_request_notifications(db_handle *db,
+                                        int num_object_ids,
+                                        object_id object_ids[],
+                                        retry_info *retry);
+
+/** Data that is needed to run object_request_notifications requests. */
+typedef struct {
+  /** The number of object IDs. */
+  int num_object_ids;
+  /** This field is used to store a variable number of object IDs. */
+  object_id object_ids[0];
+} object_table_request_notifications_data;
+
+/** Data that is needed to register new object available callbacks with the
+ *  state database. */
 typedef struct {
   object_table_object_available_callback object_available_callback;
   void *subscribe_context;

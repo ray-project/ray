@@ -82,13 +82,25 @@ void redis_object_table_lookup(table_callback_data *callback_data);
 void redis_object_table_add(table_callback_data *callback_data);
 
 /**
- * Subscribe to learn when a new object becomes available.
+ * Create a client-specific channel for receiving notifications from the object
+ * table.
  *
  * @param callback_data Data structure containing redis connection and timeout
  *        information.
  * @return Void.
  */
-void redis_object_table_subscribe(table_callback_data *callback_data);
+void redis_object_table_subscribe_to_notifications(
+    table_callback_data *callback_data);
+
+/**
+ * Request notifications about when certain objects become available.
+ *
+ * @param callback_data Data structure containing redis connection and timeout
+ *        information.
+ * @return Void.
+ */
+void redis_object_table_request_notifications(
+    table_callback_data *callback_data);
 
 /**
  * Add a new object to the object table in redis.
@@ -108,6 +120,19 @@ void redis_result_table_add(table_callback_data *callback_data);
  * @return Void.
  */
 void redis_result_table_lookup(table_callback_data *callback_data);
+
+/**
+ * Callback invoked when the reply from the object table lookup command is
+ * received.
+ *
+ * @param c Redis context.
+ * @param r Reply.
+ * @param privdata Data associated to the callback.
+ * @return Void.
+ */
+void redis_object_table_lookup_callback(redisAsyncContext *c,
+                                        void *r,
+                                        void *privdata);
 
 /*
  * ==== Redis task table function =====
@@ -150,7 +175,6 @@ void redis_task_table_update(table_callback_data *callback_data);
  * @param privdata Data associated to the callback.
  * @return Void.
  */
-
 void redis_task_table_publish_push_callback(redisAsyncContext *c,
                                             void *r,
                                             void *privdata);
