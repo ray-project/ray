@@ -16,6 +16,8 @@
 #include "utarray.h"
 #include "uthash.h"
 
+#define IPv4_ADDR_LEN 4
+
 /**
  * Object request data structure. Used in the plasma_wait_for_objects()
  * argument.
