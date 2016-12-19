@@ -15,8 +15,6 @@ static const retry_info photon_retry = {.num_retries = 0,
                                         .timeout = 1000,
                                         .fail_callback = NULL};
 
-#define PHOTON_PROTOCOL_VERSION 0x0000000000000000
-
 enum photon_message_type {
   /** Notify the local scheduler that a task has finished. */
   TASK_DONE = 64,

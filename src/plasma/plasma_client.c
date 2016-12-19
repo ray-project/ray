@@ -260,7 +260,7 @@ void plasma_get(plasma_connection *conn,
     plasma_read_GetReply(reply_data, &gotten_object_id, &object_data, &num_objects);
     free(reply_data);
     DCHECK(num_objects == 1);
-    DCHECK(memcmp(gotten_object_id, &obj_id, UNIQUE_ID_SIZE) == 0);
+    DCHECK(memcmp(gotten_object_id, &obj_id, sizeof(obj_id)) == 0);
     free(gotten_object_id);
     int fd = recv_fd(conn->store_conn);
     CHECK(fd >= 0);
@@ -413,7 +413,7 @@ int64_t plasma_evict(plasma_connection *conn, int64_t num_bytes) {
   int64_t type;
   int64_t length;
   uint8_t *reply_data;
-  read_message(conn->store_conn, PLASMA_PROTOCOL_VERSION, &type, &length, &reply_data);
+  read_message(conn->store_conn, &type, &length, &reply_data);
   int64_t num_bytes_evicted;
   plasma_read_EvictReply(reply_data, &num_bytes_evicted);
   return num_bytes_evicted;

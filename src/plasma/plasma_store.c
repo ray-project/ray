@@ -472,7 +472,7 @@ void process_message(event_loop *loop,
   client *client_context = context;
   plasma_store_state *state = client_context->plasma_state;
   int64_t type;
-  read_buffer(client_sock, PLASMA_PROTOCOL_VERSION, &type, state->input_buffer);
+  read_buffer(client_sock, &type, state->input_buffer);
   plasma_request *req = (plasma_request *) utarray_front(state->input_buffer);
 
   /* We're only sending a single object ID at a time for now. */
@@ -506,7 +506,7 @@ void process_message(event_loop *loop,
     object_id *gotten_object_ids;
     plasma_read_GetRequest(input, &gotten_object_ids, &num_objects);
     DCHECK(num_objects == 1);
-    memcpy(&object_ids[0], gotten_object_ids, UNIQUE_ID_SIZE);
+    memcpy(&object_ids[0], gotten_object_ids, sizeof(object_ids[0]));
     free(gotten_object_ids);
     if (get_object(client_context, client_sock, object_ids[0], &objects[0]) == OBJECT_FOUND) {
       CHECK(plasma_send_GetReply(client_sock, state->builder, object_ids, objects, 1) >= 0);

@@ -86,7 +86,7 @@ void assign_task_to_worker(local_scheduler_state *state,
                            bool from_global_scheduler) {
   CHECK(worker_index < utarray_len(state->workers));
   worker *w = (worker *) utarray_eltptr(state->workers, worker_index);
-  write_message(w->sock, 0, EXECUTE_TASK, task_spec_size(spec), (uint8_t *) spec);
+  write_message(w->sock, EXECUTE_TASK, task_spec_size(spec), (uint8_t *) spec);
   /* Update the global task table. */
   if (state->db != NULL) {
     retry_info retry;
@@ -188,7 +188,7 @@ void process_message(event_loop *loop,
   local_scheduler_state *state = context;
 
   int64_t type;
-  read_buffer(client_sock, 0, &type, state->input_buffer);
+  read_buffer(client_sock, &type, state->input_buffer);
 
   LOG_DEBUG("New event of type %" PRId64, type);
 
