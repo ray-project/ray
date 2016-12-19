@@ -650,13 +650,26 @@ void redis_object_table_subscribe_to_notifications(
   /* The object channel prefix must match the value defined in
    * src/common/redismodule/ray_redis_module.c. */
   const char *object_channel_prefix = "OC:";
+  const char *object_channel_bcast = "BCAST";
+  int status = REDIS_OK;
   /* Subscribe to notifications from the object table. This uses the client ID
    * as the channel name so this channel is specific to this client. TODO(rkn):
    * The channel name should probably be the client ID with some prefix. */
-  int status = redisAsyncCommand(
+  CHECKM(callback_data->data != NULL,
+         "Object table subscribe data passed as NULL.");
+  if (((object_table_subscribe_data *)(callback_data->data))->subscribe_all) {
+    /* Subscribe to the object broadcast channel. */
+    status = redisAsyncCommand(
+       db->sub_context, object_table_redis_subscribe_to_notifications_callback,
+       (void *) callback_data->timer_id, "SUBSCRIBE %s%s", object_channel_prefix,
+       object_channel_bcast);
+  } else {
+   status = redisAsyncCommand(
       db->sub_context, object_table_redis_subscribe_to_notifications_callback,
       (void *) callback_data->timer_id, "SUBSCRIBE %s%b", object_channel_prefix,
       db->client.id, sizeof(db->client.id));
+  }
+
   if ((status == REDIS_ERR) || db->sub_context->err) {
     LOG_REDIS_DEBUG(db->sub_context,
                     "error in redis_object_table_subscribe_to_notifications");

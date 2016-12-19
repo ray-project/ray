@@ -120,6 +120,7 @@ typedef object_table_lookup_done_callback
  */
 void object_table_subscribe_to_notifications(
     db_handle *db_handle,
+    bool subscribe_all,
     object_table_object_available_callback object_available_callback,
     void *subscribe_context,
     retry_info *retry,
@@ -153,6 +154,7 @@ typedef struct {
 /** Data that is needed to register new object available callbacks with the
  *  state database. */
 typedef struct {
+  bool subscribe_all;
   object_table_object_available_callback object_available_callback;
   void *subscribe_context;
 } object_table_subscribe_data;

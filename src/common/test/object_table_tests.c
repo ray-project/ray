@@ -243,7 +243,7 @@ TEST subscribe_timeout_test(void) {
       .timeout = 100,
       .fail_callback = subscribe_fail_callback,
   };
-  object_table_subscribe_to_notifications(db, subscribe_done_callback, NULL,
+  object_table_subscribe_to_notifications(db, false, subscribe_done_callback, NULL,
                                           &retry, NULL, NULL);
   /* Disconnect the database to see if the lookup times out. */
   close(db->sub_context->c.fd);
@@ -472,7 +472,7 @@ TEST subscribe_retry_test(void) {
       .timeout = 100,
       .fail_callback = subscribe_retry_fail_callback,
   };
-  object_table_subscribe_to_notifications(db, NULL, NULL, &retry,
+  object_table_subscribe_to_notifications(db, false, NULL, NULL, &retry,
                                           subscribe_retry_done_callback,
                                           (void *) subscribe_retry_context);
   /* Disconnect the database to let the subscribe times out the first time. */
@@ -612,7 +612,7 @@ TEST subscribe_late_test(void) {
       .timeout = 0,
       .fail_callback = subscribe_late_fail_callback,
   };
-  object_table_subscribe_to_notifications(db, NULL, NULL, &retry,
+  object_table_subscribe_to_notifications(db, false, NULL, NULL, &retry,
                                           subscribe_late_done_callback,
                                           (void *) subscribe_late_context);
   /* Install handler for terminating the event loop. */
@@ -679,7 +679,7 @@ TEST subscribe_success_test(void) {
       .fail_callback = subscribe_success_fail_callback,
   };
   object_table_subscribe_to_notifications(
-      db, subscribe_success_object_available_callback,
+      db, false, subscribe_success_object_available_callback,
       (void *) subscribe_success_context, &retry,
       subscribe_success_done_callback, (void *) db);
 
@@ -732,7 +732,7 @@ TEST subscribe_object_present_test(void) {
   };
   object_table_add(db, id, 0, (unsigned char *) NIL_DIGEST, &retry, NULL, NULL);
   object_table_subscribe_to_notifications(
-      db, subscribe_object_present_object_available_callback,
+      db, false, subscribe_object_present_object_available_callback,
       (void *) subscribe_object_present_context, &retry, NULL, (void *) db);
   /* Install handler for terminating the event loop. */
   event_loop_add_timer(g_loop, 750,
@@ -781,7 +781,7 @@ TEST subscribe_object_not_present_test(void) {
       .num_retries = 0, .timeout = 100, .fail_callback = NULL,
   };
   object_table_subscribe_to_notifications(
-      db, subscribe_object_not_present_object_available_callback,
+      db, false, subscribe_object_not_present_object_available_callback,
       (void *) subscribe_object_not_present_context, &retry, NULL, (void *) db);
   /* Install handler for terminating the event loop. */
   event_loop_add_timer(g_loop, 750,
@@ -832,7 +832,7 @@ TEST subscribe_object_available_later_test(void) {
       .num_retries = 0, .timeout = 100, .fail_callback = NULL,
   };
   object_table_subscribe_to_notifications(
-      db, subscribe_object_available_later_object_available_callback,
+      db, false, subscribe_object_available_later_object_available_callback,
       (void *) subscribe_object_available_later_context, &retry, NULL,
       (void *) db);
   /* Install handler for terminating the event loop. */
@@ -864,6 +864,54 @@ TEST subscribe_object_available_later_test(void) {
   destroy_outstanding_callbacks(g_loop);
   event_loop_destroy(g_loop);
   ASSERT_EQ(subscribe_object_available_later_succeeded, 1);
+  /* Reset the global variable before exiting this unit test. */
+  subscribe_object_available_later_succeeded = 0;
+  PASS();
+}
+
+TEST subscribe_object_available_subscribe_all(void) {
+  g_loop = event_loop_create();
+  db_handle *db =
+      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11236);
+  db_attach(db, g_loop, false);
+  unique_id id = globally_unique_id();
+  retry_info retry = {
+      .num_retries = 0, .timeout = 100, .fail_callback = NULL,
+  };
+  object_table_subscribe_to_notifications(
+      db, true,
+      subscribe_object_available_later_object_available_callback,
+      (void *) subscribe_object_available_later_context, &retry, NULL,
+      (void *) db);
+  /* Install handler for terminating the event loop. */
+  event_loop_add_timer(g_loop, 750,
+                       (event_loop_timer_handler) terminate_event_loop_callback,
+                       NULL);
+  /* Run the event loop to do the subscribe. */
+  event_loop_run(g_loop);
+
+  /* At this point we don't expect any object notifications received. */
+  ASSERT_EQ(subscribe_object_available_later_succeeded, 0);
+  object_table_add(db, id, 0, (unsigned char *) NIL_DIGEST, &retry, NULL, NULL);
+  /* Install handler to terminate event loop after 750ms */
+  event_loop_add_timer(g_loop, 750,
+                       (event_loop_timer_handler) terminate_event_loop_callback,
+                       NULL);
+  /* Run the event loop to do the object table add. */
+  event_loop_run(g_loop);
+  /* At this point we assume that object table add completed. */
+
+  db_disconnect(db);
+  destroy_outstanding_callbacks(g_loop);
+  event_loop_destroy(g_loop);
+  /* Assert that the object table add completed and notification callback fired.
+   */
+  printf("subscribe_all object info test: callback fired: %d times\n",
+         subscribe_object_available_later_succeeded);
+  fflush(stdout);
+  ASSERT_EQ(subscribe_object_available_later_succeeded, 1);
+  /* Reset the global variable before exiting this unit test. */
+  subscribe_object_available_later_succeeded = 0;
   PASS();
 }
 
@@ -954,6 +1002,7 @@ SUITE(object_table_tests) {
   RUN_REDIS_TEST(subscribe_object_present_test);
   RUN_REDIS_TEST(subscribe_object_not_present_test);
   RUN_REDIS_TEST(subscribe_object_available_later_test);
+  RUN_REDIS_TEST(subscribe_object_available_subscribe_all);
   // RUN_REDIS_TEST(subscribe_object_info_success_test);
 }
 

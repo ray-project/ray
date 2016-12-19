@@ -25,6 +25,7 @@
 #define OBJECT_LOCATION_PREFIX "OL:"
 #define OBJECT_NOTIFICATION_PREFIX "ON:"
 #define TASK_PREFIX "TT:"
+#define OBJECT_BCAST "BCAST"
 
 #define OBJECT_CHANNEL_PREFIX "OC:"
 
@@ -231,6 +232,7 @@ bool PublishObjectNotification(RedisModuleCtx *ctx,
                                RedisModuleKey *key) {
   /* Create a string formatted as "<object id> MANAGERS <manager id1>
    * <manager id2> ..." */
+  printf("PublishObjectNotification got called for client_id = \n");
   RedisModuleString *manager_list =
       RedisModule_CreateStringFromString(ctx, object_id);
   RedisModule_StringAppendBuffer(ctx, manager_list, " MANAGERS",
@@ -283,6 +285,7 @@ bool PublishObjectNotification(RedisModuleCtx *ctx,
 int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
                                 RedisModuleString **argv,
                                 int argc) {
+  printf("ObjectTableAdd_RedisCommand got called with argc=%d\n", argc);
   if (argc != 5) {
     return RedisModule_WrongArity(ctx);
   }
@@ -328,6 +331,17 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
   /* Sets are not implemented yet, so we use ZSETs instead. */
   RedisModule_ZsetAdd(table_key, 0.0, manager, NULL);
 
+
+  RedisModuleString *bcast_client_str =
+      RedisModule_CreateString(ctx, OBJECT_BCAST, strlen(OBJECT_BCAST));
+  bool success =
+      PublishObjectNotification(ctx, bcast_client_str, object_id, table_key);
+  if (!success) {
+    /* The publish failed somehow. */
+    return RedisModule_ReplyWithError(ctx, "PUBLISH BCAST unsuccessful");
+  }
+  RedisModule_FreeString(ctx, bcast_client_str);
+
   /* Get the zset of clients that requested a notification about the
    * availability of this object. */
   RedisModuleKey *object_notification_key =
@@ -344,6 +358,9 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
     /* Iterate over the list of clients that requested notifiations about the
      * availability of this object, and publish notifications to their object
      * notification channels. */
+
+
+
     do {
       RedisModuleString *client_id =
           RedisModule_ZsetRangeCurrentElement(object_notification_key, NULL);

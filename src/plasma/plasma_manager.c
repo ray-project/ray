@@ -1379,6 +1379,7 @@ void start_server(const char *store_socket_name,
   /* Set up a client-specific channel to receive notifications from the object
    * table. */
   object_table_subscribe_to_notifications(g_manager_state->db,
+                                          false,
                                           object_table_subscribe_callback,
                                           g_manager_state, NULL, NULL, NULL);
   /* Run the event loop. */
