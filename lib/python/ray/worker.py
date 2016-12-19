@@ -877,7 +877,8 @@ def connect(address_info, mode=WORKER_MODE, worker=global_worker):
   if mode == PYTHON_MODE:
     return
   # Create a Redis client.
-  worker.redis_client = redis.StrictRedis(host=address_info["node_ip_address"], port=address_info["redis_port"])
+  redis_host, redis_port = address_info["redis_address"].split(":")
+  worker.redis_client = redis.StrictRedis(host=redis_host, port=int(redis_port))
   worker.redis_client.config_set("notify-keyspace-events", "AKE")
   worker.lock = threading.Lock()
   # Create an object store client.

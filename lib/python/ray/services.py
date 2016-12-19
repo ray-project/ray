@@ -173,7 +173,7 @@ def start_objstore(node_ip_address, redis_address, cleanup=True):
 
   return plasma_store_name, plasma_manager_name, plasma_manager_port
 
-def start_worker(node_ip_address, object_store_name, object_store_manager_name, local_scheduler_name, redis_port, worker_path, cleanup=True):
+def start_worker(node_ip_address, object_store_name, object_store_manager_name, local_scheduler_name, redis_address, worker_path, cleanup=True):
   """This method starts a worker process.
 
   Args:
@@ -182,7 +182,7 @@ def start_worker(node_ip_address, object_store_name, object_store_manager_name, 
     object_store_name (str): The name of the object store.
     object_store_manager_name (str): The name of the object store manager.
     local_scheduler_name (str): The name of the local scheduler.
-    redis_port (int): The port that the Redis server is listening on.
+    redis_address (int): The address that the Redis server is listening on.
     worker_path (str): The path of the source code which the worker process will
       run.
     cleanup (bool): True if using Ray in local mode. If cleanup is true, then
@@ -195,7 +195,7 @@ def start_worker(node_ip_address, object_store_name, object_store_manager_name, 
              "--object-store-name=" + object_store_name,
              "--object-store-manager-name=" + object_store_manager_name,
              "--local-scheduler-name=" + local_scheduler_name,
-             "--redis-port=" + str(redis_port)]
+             "--redis-address=" + str(redis_address)]
   p = subprocess.Popen(command)
   if cleanup:
     all_processes.append(p)
@@ -254,7 +254,7 @@ def start_ray_local(node_ip_address="127.0.0.1", num_workers=0, num_local_schedu
     time.sleep(0.1)
   # Aggregate the address information together.
   address_info = {"node_ip_address": node_ip_address,
-                  "redis_port": redis_port,
+                  "redis_address": redis_address,
                   "object_store_names": object_store_names,
                   "object_store_manager_names": object_store_manager_names,
                   "local_scheduler_names": local_scheduler_names}
@@ -264,7 +264,7 @@ def start_ray_local(node_ip_address="127.0.0.1", num_workers=0, num_local_schedu
                  address_info["object_store_names"][i % num_local_schedulers],
                  address_info["object_store_manager_names"][i % num_local_schedulers],
                  address_info["local_scheduler_names"][i % num_local_schedulers],
-                 redis_port,
+                 redis_address,
                  worker_path,
                  cleanup=True)
   # Return the addresses of the relevant processes.
