@@ -23,7 +23,7 @@ TEST ipc_socket_test(void) {
     socket_fd = connect_ipc_sock(socket_pathname);
     ASSERT(socket_fd >= 0);
     write_log_message(socket_fd, test_string);
-    write_message(socket_fd, LOG_PROTOCOL_VERSION, LOG_MESSAGE, strlen(test_bytes),
+    write_message(socket_fd, LOG_MESSAGE, strlen(test_bytes),
                   (uint8_t *) test_bytes);
     close(socket_fd);
     exit(0);
@@ -37,7 +37,7 @@ TEST ipc_socket_test(void) {
     int64_t type;
     int64_t len;
     uint8_t *bytes;
-    read_message(client_fd, LOG_PROTOCOL_VERSION, &type, &len, &bytes);
+    read_message(client_fd, &type, &len, &bytes);
     ASSERT(type == LOG_MESSAGE);
     ASSERT(memcmp(test_bytes, bytes, len) == 0);
     free(bytes);
@@ -67,7 +67,7 @@ TEST long_ipc_socket_test(void) {
     socket_fd = connect_ipc_sock(socket_pathname);
     ASSERT(socket_fd >= 0);
     write_log_message(socket_fd, utstring_body(test_string));
-    write_message(socket_fd, LOG_PROTOCOL_VERSION, LOG_MESSAGE, strlen(test_bytes),
+    write_message(socket_fd, LOG_MESSAGE, strlen(test_bytes),
                   (uint8_t *) test_bytes);
     close(socket_fd);
     exit(0);
@@ -81,7 +81,7 @@ TEST long_ipc_socket_test(void) {
     int64_t type;
     int64_t len;
     uint8_t *bytes;
-    read_message(client_fd, LOG_PROTOCOL_VERSION, &type, &len, &bytes);
+    read_message(client_fd, &type, &len, &bytes);
     ASSERT(type == LOG_MESSAGE);
     ASSERT(memcmp(test_bytes, bytes, len) == 0);
     free(bytes);

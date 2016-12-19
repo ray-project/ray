@@ -1,8 +1,6 @@
 #ifndef PLASMA_PROTOCOL_H
 #define PLASMA_PROTOCOL_H
 
-#define PLASMA_PROTOCOL_VERSION 0x0000000000000000
-
 #include "common.h"
 #include "plasma.h"
 

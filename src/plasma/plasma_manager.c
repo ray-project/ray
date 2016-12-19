@@ -1229,7 +1229,7 @@ void process_message(event_loop *loop,
   int64_t length;
   int64_t type;
   uint8_t *data;
-  read_message(client_sock, PLASMA_PROTOCOL_VERSION, &type, &length, &data);
+  read_message(client_sock, &type, &length, &data);
 
   switch (type) {
   case MessageType_PlasmaDataRequest: {

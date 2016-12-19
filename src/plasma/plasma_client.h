@@ -202,11 +202,6 @@ int64_t plasma_evict(plasma_connection *conn, int64_t num_bytes);
  *
  * @param conn The object containing the connection state.
  * @param num_object_ids The number of object IDs fetch is being called on.
- * This method is idempotent in the sense that it is ok to call it multiple
- * times.
- *
- * @param conn The object containing the connection state.
- * @param num_object_ids The number of object IDs fetch is being called on.
  * @param object_ids The IDs of the objects that fetch is being called on.
  * @return Void.
  */
