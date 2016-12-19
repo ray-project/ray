@@ -85,6 +85,34 @@ class TestGlobalStateStore(unittest.TestCase):
     with self.assertRaises(redis.ResponseError):
       self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id3", 1, "\x00hash2", "manager_id1")
 
+  def testObjectTableAddAndRemove(self):
+    # Try removing a manager from an object ID that has not been added yet.
+    with self.assertRaises(redis.ResponseError):
+      self.redis.execute_command("RAY.OBJECT_TABLE_REMOVE", "object_id1", "manager_id1")
+    # Try calling RAY.OBJECT_TABLE_LOOKUP with an object ID that has not been
+    # added yet.
+    response = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP", "object_id1")
+    self.assertEqual(set(response), set([]))
+    # Add some managers and try again.
+    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id1")
+    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id2")
+    response = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP", "object_id1")
+    self.assertEqual(set(response), {b"manager_id1", b"manager_id2"})
+    # Add a manager that already exists again and try again.
+    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id2")
+    response = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP", "object_id1")
+    self.assertEqual(set(response), {b"manager_id1", b"manager_id2"})
+    # Remove the managers and check that we're back to an empty set.
+    self.redis.execute_command("RAY.OBJECT_TABLE_REMOVE", "object_id1", "manager_id1")
+    response = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP", "object_id1")
+    self.assertEqual(set(response), {b"manager_id2"})
+    self.redis.execute_command("RAY.OBJECT_TABLE_REMOVE", "object_id1", "manager_id1")
+    response = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP", "object_id1")
+    self.assertEqual(set(response), {b"manager_id2"})
+    self.redis.execute_command("RAY.OBJECT_TABLE_REMOVE", "object_id1", "manager_id2")
+    response = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP", "object_id1")
+    self.assertEqual(set(response), set())
+
   def testObjectTableSubscribeToNotifications(self):
     p = self.redis.pubsub()
     # Subscribe to an object ID.

@@ -190,7 +190,8 @@ int ObjectTableLookup_RedisCommand(RedisModuleCtx *ctx,
       OpenPrefixedKey(ctx, OBJECT_LOCATION_PREFIX, argv[1], REDISMODULE_READ);
 
   int keytype = RedisModule_KeyType(key);
-  if (keytype == REDISMODULE_KEYTYPE_EMPTY) {
+  if (keytype == REDISMODULE_KEYTYPE_EMPTY ||
+      RedisModule_ValueLength(key) == 0) {
     return RedisModule_ReplyWithArray(ctx, 0);
   }
 
