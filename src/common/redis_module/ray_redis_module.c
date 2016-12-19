@@ -26,6 +26,8 @@
 #define OBJECT_NOTIFICATION_PREFIX "ON:"
 #define TASK_PREFIX "TT:"
 
+#define OBJECT_CHANNEL_PREFIX "OC:"
+
 #define CHECK_ERROR(STATUS, MESSAGE)                   \
   if ((STATUS) == REDISMODULE_ERR) {                   \
     return RedisModule_ReplyWithError(ctx, (MESSAGE)); \
@@ -254,13 +256,16 @@ bool PublishObjectNotification(RedisModuleCtx *ctx,
 
   /* Publish the notification to the clients notification channel.
    * TODO(rkn): These notifications could be batched together. */
+  RedisModuleString *channel_name =
+      CreatePrefixedString(ctx, OBJECT_CHANNEL_PREFIX, client_id);
   RedisModuleCallReply *reply;
-  reply = RedisModule_Call(ctx, "PUBLISH", "ss", client_id, manager_list);
+  reply = RedisModule_Call(ctx, "PUBLISH", "ss", channel_name,
+                           manager_list);
+  RedisModule_FreeString(ctx, channel_name);
+  RedisModule_FreeString(ctx, manager_list);
   if (reply == NULL) {
     return false;
   }
-  /* Clean up. */
-  RedisModule_FreeString(ctx, manager_list);
   return true;
 }
 

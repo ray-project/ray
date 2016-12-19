@@ -22,6 +22,7 @@ OBJECT_INFO_PREFIX = "OI:"
 OBJECT_LOCATION_PREFIX = "OL:"
 OBJECT_SUBSCRIBE_PREFIX = "OS:"
 TASK_PREFIX = "TT:"
+OBJECT_CHANNEL_PREFIX = "OC:"
 
 class TestGlobalStateStore(unittest.TestCase):
 
@@ -87,7 +88,7 @@ class TestGlobalStateStore(unittest.TestCase):
   def testObjectTableSubscribeToNotifications(self):
     p = self.redis.pubsub()
     # Subscribe to an object ID.
-    p.psubscribe("manager_id1")
+    p.psubscribe("{}manager_id1".format(OBJECT_CHANNEL_PREFIX))
     self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id2")
     # Receive the acknowledgement message.
     self.assertEqual(p.get_message()["data"], 1)
