@@ -478,6 +478,7 @@ void process_message(event_loop *loop,
   object_id object_ids[1];
   int64_t num_objects;
   plasma_object objects[1];
+  memset(&objects[0], 0, sizeof(objects));
   int error;
 
   flatcc_builder_reset(state->builder);

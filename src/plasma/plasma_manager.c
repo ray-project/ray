@@ -1307,6 +1307,7 @@ void process_message(event_loop *loop,
   default:
     LOG_FATAL("invalid request %" PRId64, type);
   }
+  free(data);
 }
 
 /* TODO(pcm): Split this into two methods: new_worker_connection
