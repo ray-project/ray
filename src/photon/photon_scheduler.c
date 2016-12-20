@@ -122,7 +122,12 @@ void process_plasma_notification(event_loop *loop,
     close(client_sock);
     return;
   }
-  handle_object_available(state, state->algorithm_state, object_info.obj_id);
+
+  if (object_info.is_deletion) {
+    handle_object_removed(state, object_info.obj_id);
+  } else {
+    handle_object_available(state, state->algorithm_state, object_info.obj_id);
+  }
 }
 
 void reconstruct_object_task_lookup_callback(object_id reconstruct_object_id,

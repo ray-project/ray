@@ -28,6 +28,23 @@ void object_table_add(db_handle *db_handle,
                       done_callback, redis_object_table_add, user_context);
 }
 
+void object_table_remove(db_handle *db_handle,
+                         object_id object_id,
+                         db_client_id *client_id,
+                         retry_info *retry,
+                         object_table_done_callback done_callback,
+                         void *user_context) {
+  CHECK(db_handle != NULL);
+  /* Copy the client ID, if one was provided. */
+  db_client_id *client_id_copy = NULL;
+  if (client_id != NULL) {
+    client_id_copy = malloc(sizeof(db_client_id));
+    *client_id_copy = *client_id;
+  }
+  init_table_callback(db_handle, object_id, __func__, client_id_copy, retry,
+                      done_callback, redis_object_table_remove, user_context);
+}
+
 void object_table_subscribe_to_notifications(
     db_handle *db_handle,
     bool subscribe_all,

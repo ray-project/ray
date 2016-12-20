@@ -71,6 +71,15 @@ void handle_object_available(local_scheduler_state *state,
                              object_id object_id);
 
 /**
+ * This function is called if an object is removed from the local plasma store.
+ *
+ * @param state The state of the local scheduler.
+ * @param object_id ID of the object that was removed.
+ * @return Void.
+ */
+void handle_object_removed(local_scheduler_state *state, object_id object_id);
+
+/**
  * This function is called when a new worker becomes available
  *
  * @param state The state of the local scheduler.

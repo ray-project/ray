@@ -425,6 +425,63 @@ TEST add_lookup_test(void) {
   PASS();
 }
 
+/* === Test add, remove, then lookup === */
+void add_remove_lookup_done_callback(object_id object_id,
+                                     int manager_count,
+                                     const char *manager_vector[],
+                                     void *context) {
+  CHECK(context == (void *) lookup_retry_context);
+  CHECK(manager_count == 0);
+  lookup_retry_succeeded = 1;
+}
+
+void add_remove_lookup_callback(object_id object_id, void *user_context) {
+  db_handle *db = user_context;
+  retry_info retry = {
+      .num_retries = 5,
+      .timeout = 100,
+      .fail_callback = lookup_retry_fail_callback,
+  };
+  object_table_lookup(db, NIL_ID, &retry, add_remove_lookup_done_callback,
+                      (void *) lookup_retry_context);
+}
+
+void add_remove_callback(object_id object_id, void *user_context) {
+  db_handle *db = user_context;
+  retry_info retry = {
+      .num_retries = 5,
+      .timeout = 100,
+      .fail_callback = lookup_retry_fail_callback,
+  };
+  object_table_remove(db, NIL_ID, NULL, &retry, add_remove_lookup_callback,
+                      (void *) db);
+}
+
+TEST add_remove_lookup_test(void) {
+  g_loop = event_loop_create();
+  lookup_retry_succeeded = 0;
+  db_handle *db =
+      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11235);
+  db_attach(db, g_loop, true);
+  retry_info retry = {
+      .num_retries = 5,
+      .timeout = 100,
+      .fail_callback = lookup_retry_fail_callback,
+  };
+  object_table_add(db, NIL_ID, 0, (unsigned char *) NIL_DIGEST, &retry,
+                   add_remove_callback, (void *) db);
+  /* Install handler for terminating the event loop. */
+  event_loop_add_timer(g_loop, 750,
+                       (event_loop_timer_handler) terminate_event_loop_callback,
+                       NULL);
+  event_loop_run(g_loop);
+  db_disconnect(db);
+  destroy_outstanding_callbacks(g_loop);
+  event_loop_destroy(g_loop);
+  ASSERT(lookup_retry_succeeded);
+  PASS();
+}
+
 /* === Test subscribe retry === */
 
 const char *subscribe_retry_context = "subscribe_retry";
@@ -1023,6 +1080,7 @@ SUITE(object_table_tests) {
   RUN_REDIS_TEST(lookup_retry_test);
   RUN_REDIS_TEST(add_retry_test);
   RUN_REDIS_TEST(add_lookup_test);
+  RUN_REDIS_TEST(add_remove_lookup_test);
   RUN_REDIS_TEST(subscribe_retry_test);
   RUN_REDIS_TEST(lookup_late_test);
   RUN_REDIS_TEST(add_late_test);

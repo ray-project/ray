@@ -101,6 +101,40 @@ class TestGlobalStateStore(unittest.TestCase):
     with self.assertRaises(redis.ResponseError):
       self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id3", 1, "\x00hash2", "manager_id1")
 
+  def testObjectTableAddAndRemove(self):
+    # Try removing a manager from an object ID that has not been added yet.
+    with self.assertRaises(redis.ResponseError):
+      self.redis.execute_command("RAY.OBJECT_TABLE_REMOVE", "object_id1", "manager_id1")
+    # Try calling RAY.OBJECT_TABLE_LOOKUP with an object ID that has not been
+    # added yet.
+    response = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP", "object_id1")
+    self.assertEqual(set(response), set([]))
+    # Add some managers and try again.
+    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id1")
+    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id2")
+    response = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP", "object_id1")
+    self.assertEqual(set(response), {b"manager_id1", b"manager_id2"})
+    # Remove a manager that doesn't exist, and make sure we still have the same set.
+    self.redis.execute_command("RAY.OBJECT_TABLE_REMOVE", "object_id1", "manager_id3")
+    response = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP", "object_id1")
+    self.assertEqual(set(response), {b"manager_id1", b"manager_id2"})
+    # Remove a manager that does exist. Make sure it gets removed the first
+    # time and does nothing the second time.
+    self.redis.execute_command("RAY.OBJECT_TABLE_REMOVE", "object_id1", "manager_id1")
+    response = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP", "object_id1")
+    self.assertEqual(set(response), {b"manager_id2"})
+    self.redis.execute_command("RAY.OBJECT_TABLE_REMOVE", "object_id1", "manager_id1")
+    response = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP", "object_id1")
+    self.assertEqual(set(response), {b"manager_id2"})
+    # Remove the last manager, and make sure we have an empty set.
+    self.redis.execute_command("RAY.OBJECT_TABLE_REMOVE", "object_id1", "manager_id2")
+    response = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP", "object_id1")
+    self.assertEqual(set(response), set())
+    # Remove a manager from an empty set, and make sure we still have an empty set.
+    self.redis.execute_command("RAY.OBJECT_TABLE_REMOVE", "object_id1", "manager_id3")
+    response = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP", "object_id1")
+    self.assertEqual(set(response), set())
+
   def testObjectTableSubscribeToNotifications(self):
     data_size = 0xf1f0
     p = self.redis.pubsub()
