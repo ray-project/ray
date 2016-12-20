@@ -647,7 +647,7 @@ def get_address_info_from_redis(redis_address, node_ip_address):
                  "local_scheduler_socket_name": local_schedulers[0][b"local_scheduler_socket_name"]}
   return client_info
 
-def init(start_ray_local=False, num_workers=None, num_local_schedulers=1, driver_mode=SCRIPT_MODE):
+def init(node_ip_address="127.0.0.1", start_ray_local=False, num_workers=None, num_local_schedulers=1, driver_mode=SCRIPT_MODE):
   """Either connect to an existing Ray cluster or start one and connect to it.
 
   This method handles two cases. Either a Ray cluster already exists and we
@@ -685,7 +685,7 @@ def init(start_ray_local=False, num_workers=None, num_local_schedulers=1, driver
     num_workers = 1 if num_workers is None else num_workers
     # Start the scheduler, object store, and some workers. These will be killed
     # by the call to cleanup(), which happens when the Python script exits.
-    address_info = services.start_ray_local(num_workers=num_workers, num_local_schedulers=num_local_schedulers)
+    address_info = services.start_ray_local(node_ip_address=node_ip_address, num_workers=num_workers, num_local_schedulers=num_local_schedulers)
   else:
     raise Exception("This mode is currently not enabled.")
   # Connect this driver to Redis, the object store, and the local scheduler. The

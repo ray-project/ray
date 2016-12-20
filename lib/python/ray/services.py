@@ -228,10 +228,59 @@ def start_webui(redis_port, cleanup=True):
   if cleanup:
     all_processes.append(p)
 
+def start_ray_node(node_ip_address, redis_address, num_workers=0, num_local_schedulers=1, worker_path=None):
+  """Start the Ray processes for a single node.
+
+  This assumes that the Ray processes on some master node have already been
+  started.
+
+  Args:
+    node_ip_address (str): The IP address of this node.
+    redis_address (str): The address of the Redis server.
+    num_workers (int): The number of workers to start.
+    num_local_schedulers (int): The number of local schedulers to start. This is
+      also the number of plasma stores and plasma managers to start.
+    worker_path (str): The path of the source code that will be run by the
+      worker.
+  """
+  if worker_path is None:
+    worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "workers/default_worker.py")
+  object_store_names = []
+  object_store_manager_names = []
+  local_scheduler_names = []
+  for _ in range(num_local_schedulers):
+    # Start Plasma.
+    object_store_name, object_store_manager_name, object_store_manager_port = start_objstore(node_ip_address, redis_address, cleanup=True)
+    object_store_names.append(object_store_name)
+    object_store_manager_names.append(object_store_manager_name)
+    time.sleep(0.1)
+    # Start the local scheduler.
+    plasma_address = "{}:{}".format(node_ip_address, object_store_manager_port)
+    local_scheduler_name = start_local_scheduler(redis_address, object_store_name, object_store_manager_name, plasma_address=plasma_address, cleanup=True)
+    local_scheduler_names.append(local_scheduler_name)
+    time.sleep(0.1)
+  # Aggregate the address information together.
+  address_info = {"node_ip_address": node_ip_address,
+                  "object_store_names": object_store_names,
+                  "object_store_manager_names": object_store_manager_names,
+                  "local_scheduler_names": local_scheduler_names}
+  # Start the workers.
+  for i in range(num_workers):
+    start_worker(address_info["node_ip_address"],
+                 address_info["object_store_names"][i % num_local_schedulers],
+                 address_info["object_store_manager_names"][i % num_local_schedulers],
+                 address_info["local_scheduler_names"][i % num_local_schedulers],
+                 redis_address,
+                 worker_path,
+                 cleanup=True)
+  # Return the addresses of the relevant processes.
+  return address_info
+
 def start_ray_local(node_ip_address="127.0.0.1", num_workers=0, num_local_schedulers=1, worker_path=None):
   """Start Ray in local mode.
 
   Args:
+    node_ip_address (str): The IP address of this node.
     num_workers (int): The number of workers to start.
     num_local_schedulers (int): The number of local schedulers to start. This is
       also the number of plasma stores and plasma managers to start.
