@@ -379,7 +379,7 @@ void redis_object_table_remove(table_callback_data *callback_data) {
       obj_id.id, sizeof(obj_id.id), client_id->id, sizeof(client_id->id));
 
   if ((status == REDIS_ERR) || db->context->err) {
-    LOG_REDIS_DEBUG(db->context, "error in redis_object_table_add");
+    LOG_REDIS_DEBUG(db->context, "error in redis_object_table_remove");
   }
 }
 

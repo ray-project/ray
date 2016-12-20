@@ -422,10 +422,10 @@ void send_notifications(event_loop *loop,
     if (entry == NULL) {
       memset(&object_info, 0, sizeof(object_info));
       object_info.obj_id = *obj_id;
-      object_info.is_deletion = 1;
+      object_info.is_deletion = true;
     } else {
       object_info = entry->info;
-      CHECK(object_info.is_deletion == 0);
+      object_info.is_deletion = false;
     }
 
     /* Attempt to send a notification about this object ID. */

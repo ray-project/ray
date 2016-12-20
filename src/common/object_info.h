@@ -15,7 +15,7 @@ typedef struct {
   int64_t create_time;
   int64_t construct_duration;
   unsigned char digest[DIGEST_SIZE];
-  int is_deletion;
+  bool is_deletion;
 } object_info;
 
 #endif

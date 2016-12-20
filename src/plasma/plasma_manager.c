@@ -1209,8 +1209,7 @@ void process_delete_object_notification(plasma_manager_state *state,
                                         object_info object_info) {
   object_id obj_id = object_info.obj_id;
   available_object *entry;
-  HASH_FIND(hh, state->local_available_objects, &obj_id, sizeof(object_id),
-            entry);
+  HASH_FIND(hh, state->local_available_objects, &obj_id, sizeof(obj_id), entry);
   if (entry != NULL) {
     HASH_DELETE(hh, state->local_available_objects, entry);
   }
