@@ -263,12 +263,13 @@ def start_plasma_store(plasma_store_memory=DEFAULT_PLASMA_STORE_MEMORY, use_valg
     time.sleep(0.1)
   return plasma_store_name, pid
 
-def start_plasma_manager(store_name, redis_address, num_retries=20, use_valgrind=False, run_profiler=False):
+def start_plasma_manager(store_name, redis_address, node_ip_address="127.0.0.1", num_retries=20, use_valgrind=False, run_profiler=False):
   """Start a plasma manager and return the ports it listens on.
 
   Args:
     store_name (str): The name of the plasma store socket.
     redis_address (str): The address of the Redis server.
+    node_ip_address (str): The IP address of the node.
     use_valgrind (bool): True if the Plasma manager should be started inside of
       valgrind and False otherwise.
 
@@ -291,7 +292,7 @@ def start_plasma_manager(store_name, redis_address, num_retries=20, use_valgrind
     command = [plasma_manager_executable,
                "-s", store_name,
                "-m", plasma_manager_name,
-               "-h", "127.0.0.1",
+               "-h", node_ip_address,
                "-p", str(port),
                "-r", redis_address]
     if use_valgrind:

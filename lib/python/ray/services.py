@@ -156,7 +156,7 @@ def start_objstore(node_ip_address, redis_address, cleanup=True):
   """This method starts an object store process.
 
   Args:
-    node_ip_address (str): The ip address of the node running the object store.
+    node_ip_address (str): The IP address of the node running the object store.
     redis_address (str): The address of the Redis instance to connect to.
     cleanup (bool): True if using Ray in local mode. If cleanup is true, then
       this process will be killed by serices.cleanup() when the Python process
@@ -178,7 +178,7 @@ def start_objstore(node_ip_address, redis_address, cleanup=True):
   # Start the Plasma store.
   plasma_store_name, p1 = plasma.start_plasma_store(plasma_store_memory=plasma_store_memory, use_profiler=RUN_PLASMA_STORE_PROFILER)
   # Start the plasma manager.
-  plasma_manager_name, p2, plasma_manager_port = plasma.start_plasma_manager(plasma_store_name, redis_address, run_profiler=RUN_PLASMA_MANAGER_PROFILER)
+  plasma_manager_name, p2, plasma_manager_port = plasma.start_plasma_manager(plasma_store_name, redis_address, node_ip_address=node_ip_address, run_profiler=RUN_PLASMA_MANAGER_PROFILER)
   if cleanup:
     all_processes.append(p1)
     all_processes.append(p2)
