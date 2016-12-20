@@ -647,8 +647,8 @@ void plasma_read_WaitReply(uint8_t *data,
   DCHECK(data);
   PlasmaWaitReply_table_t req = PlasmaWaitReply_as_root(data);
   ObjectReply_vec_t objreq_vec = PlasmaWaitReply_object_requests(req);
-  // TODO (ion): This is risky, maybe num_ready_objects should contain length of
-  // object_request object_requests?
+  /* TODO (ion): This is risky, maybe num_ready_objects should contain length of
+   * object_request object_requests? */
   *num_ready_objects = ObjectReply_vec_len(objreq_vec);
   for (int i = 0; i < *num_ready_objects; i++) {
     ObjectReply_table_t objreq = ObjectReply_vec_at(objreq_vec, i);

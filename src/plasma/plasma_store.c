@@ -350,7 +350,6 @@ void seal_object(client *client_context,
       client **c = (client **) utarray_eltptr(notify_entry->waiting_clients, i);
       CHECK(plasma_send_GetReply((*c)->sock, plasma_state->builder, &object_id,
                                  &object, 1) >= 0);
-      // CHECK(plasma_send_reply((*c)->sock, &reply) >= 0);
       CHECK(send_fd((*c)->sock, object.handle.store_fd) >= 0);
       /* Record that the client is using this object. */
       add_client_to_object_clients(entry, *c);

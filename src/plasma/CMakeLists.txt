@@ -74,12 +74,11 @@ set(OUTPUT_DIR ${CMAKE_SOURCE_DIR}/format/)
 add_custom_target(gen_plasma_fbs ALL)
 
 add_custom_command(
- TARGET gen_plasma_fbs
- COMMAND ${FLATBUFFERS_COMPILER} -a -c -o ${OUTPUT_DIR} ${PLASMA_FBS_SRC}
- DEPENDS ${FBS_DEPENDS}
- COMMENT "Running flatc compiler on ${PLASMA_FBS_SRC}"
- VERBATIM
-)
+  TARGET gen_plasma_fbs
+  COMMAND ${FLATBUFFERS_COMPILER} -a -c -o ${OUTPUT_DIR} ${PLASMA_FBS_SRC}
+  DEPENDS ${FBS_DEPENDS}
+  COMMENT "Running flatc compiler on ${PLASMA_FBS_SRC}"
+  VERBATIM)
 
 if(UNIX AND NOT APPLE)
   link_libraries(rt)
