@@ -548,13 +548,16 @@ object_id parse_subscribe_to_notifications_payload(
     db_handle *db,
     char *payload,
     int length,
+    int64_t *data_size,
     int *manager_count,
     const char ***manager_vector) {
-  int num_managers = (length - sizeof(object_id) - 1 - strlen("MANAGERS")) /
+  long long data_size_value = 0;
+  int num_managers = (length - sizeof(object_id) - 1 - sizeof(data_size_value) -
+                      1 - strlen("MANAGERS")) /
                      (1 + sizeof(db_client_id));
   CHECK(length ==
-        sizeof(object_id) + 1 + strlen("MANAGERS") +
-            num_managers * (1 + sizeof(db_client_id)));
+        sizeof(object_id) + 1 + sizeof(data_size_value) + 1 +
+            strlen("MANAGERS") + num_managers * (1 + sizeof(db_client_id)));
   CHECK(num_managers > 0);
   object_id obj_id;
   /* Track our current offset in the payload. */
@@ -562,7 +565,14 @@ object_id parse_subscribe_to_notifications_payload(
   /* Parse the object ID. */
   memcpy(&obj_id.id, &payload[offset], sizeof(obj_id.id));
   offset += sizeof(obj_id.id);
-  /* The next part of the payload is the string " MANAGERS". */
+  /* The next part of the payload is a space. */
+  char *space_str = " ";
+  CHECK(memcmp(&payload[offset], space_str, strlen(space_str)) == 0);
+  offset += strlen(space_str);
+  /* The next part of the payload is binary data_size. */
+  memcpy(&data_size_value, &payload[offset], sizeof(data_size_value));
+  offset += sizeof(data_size_value);
+  /* The next part of the payload is the string " MANAGERS" with leading ' '. */
   char *managers_str = " MANAGERS";
   CHECK(memcmp(&payload[offset], managers_str, strlen(managers_str)) == 0);
   offset += strlen(managers_str);
@@ -583,6 +593,7 @@ object_id parse_subscribe_to_notifications_payload(
   /* Return the manager array and the object ID. */
   *manager_count = num_managers;
   *manager_vector = managers;
+  *data_size = data_size_value;
   return obj_id;
 }
 
@@ -613,16 +624,17 @@ void object_table_redis_subscribe_to_notifications_callback(
 
   if (strcmp(message_type->str, "message") == 0) {
     /* Handle an object notification. */
+    int64_t data_size = 0;
     int manager_count;
     const char **manager_vector;
     object_id obj_id = parse_subscribe_to_notifications_payload(
-        db, reply->element[2]->str, reply->element[2]->len, &manager_count,
-        &manager_vector);
+        db, reply->element[2]->str, reply->element[2]->len, &data_size,
+        &manager_count, &manager_vector);
     /* Call the subscribe callback. */
     object_table_subscribe_data *data = callback_data->data;
     if (data->object_available_callback) {
-      data->object_available_callback(obj_id, manager_count, manager_vector,
-                                      data->subscribe_context);
+      data->object_available_callback(obj_id, data_size, manager_count,
+                                      manager_vector, data->subscribe_context);
     }
     free(manager_vector);
   } else if (strcmp(message_type->str, "subscribe") == 0) {
@@ -650,13 +662,26 @@ void redis_object_table_subscribe_to_notifications(
   /* The object channel prefix must match the value defined in
    * src/common/redismodule/ray_redis_module.c. */
   const char *object_channel_prefix = "OC:";
+  const char *object_channel_bcast = "BCAST";
+  int status = REDIS_OK;
   /* Subscribe to notifications from the object table. This uses the client ID
    * as the channel name so this channel is specific to this client. TODO(rkn):
    * The channel name should probably be the client ID with some prefix. */
-  int status = redisAsyncCommand(
-      db->sub_context, object_table_redis_subscribe_to_notifications_callback,
-      (void *) callback_data->timer_id, "SUBSCRIBE %s%b", object_channel_prefix,
-      db->client.id, sizeof(db->client.id));
+  CHECKM(callback_data->data != NULL,
+         "Object table subscribe data passed as NULL.");
+  if (((object_table_subscribe_data *) (callback_data->data))->subscribe_all) {
+    /* Subscribe to the object broadcast channel. */
+    status = redisAsyncCommand(
+        db->sub_context, object_table_redis_subscribe_to_notifications_callback,
+        (void *) callback_data->timer_id, "SUBSCRIBE %s%s",
+        object_channel_prefix, object_channel_bcast);
+  } else {
+    status = redisAsyncCommand(
+        db->sub_context, object_table_redis_subscribe_to_notifications_callback,
+        (void *) callback_data->timer_id, "SUBSCRIBE %s%b",
+        object_channel_prefix, db->client.id, sizeof(db->client.id));
+  }
+
   if ((status == REDIS_ERR) || db->sub_context->err) {
     LOG_REDIS_DEBUG(db->sub_context,
                     "error in redis_object_table_subscribe_to_notifications");

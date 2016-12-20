@@ -963,6 +963,7 @@ void object_present_callback(object_id object_id,
 /* This callback is used by both fetch and wait. Therefore, it may have to
  * handle outstanding fetch and wait requests. */
 void object_table_subscribe_callback(object_id object_id,
+                                     int64_t data_size,
                                      int manager_count,
                                      const char *manager_vector[],
                                      void *context) {
@@ -1378,7 +1379,7 @@ void start_server(const char *store_socket_name,
                       handle_new_client, g_manager_state);
   /* Set up a client-specific channel to receive notifications from the object
    * table. */
-  object_table_subscribe_to_notifications(g_manager_state->db,
+  object_table_subscribe_to_notifications(g_manager_state->db, false,
                                           object_table_subscribe_callback,
                                           g_manager_state, NULL, NULL, NULL);
   /* Run the event loop. */
