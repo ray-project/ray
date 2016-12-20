@@ -351,6 +351,36 @@ class TestPlasmaClient(unittest.TestCase):
         self.assertEqual(data_sizes[j], recv_dsize)
         self.assertEqual(metadata_sizes[j], recv_msize)
 
+  def test_subscribe_deletions(self):
+    # Subscribe to notifications from the Plasma Store. We use plasma_client2
+    # to make sure that all used objects will get evicted properly.
+    sock = self.plasma_client2.subscribe()
+    for i in [1, 10, 100, 1000, 10000, 100000]:
+      object_ids = [random_object_id() for _ in range(i)]
+      metadata_sizes = [np.random.randint(1000) for _ in range(i)]
+      data_sizes = [np.random.randint(1000) for _ in range(i)]
+      for j in range(i):
+        x = self.plasma_client2.create(object_ids[j], size=data_sizes[j],
+                                  metadata=bytearray(np.random.bytes(metadata_sizes[j])))
+        self.plasma_client2.seal(object_ids[j])
+      del x
+      # Check that we received notifications for creating all of the objects.
+      for j in range(i):
+        recv_objid, recv_dsize, recv_msize = self.plasma_client2.get_next_notification()
+        self.assertEqual(object_ids[j], recv_objid)
+        self.assertEqual(data_sizes[j], recv_dsize)
+        self.assertEqual(metadata_sizes[j], recv_msize)
+
+      # Check that we receive notifications for deleting all objects, as we
+      # evict them.
+      for j in range(i):
+        self.assertEqual(self.plasma_client2.evict(1), data_sizes[j] + metadata_sizes[j])
+        recv_objid, recv_dsize, recv_msize = self.plasma_client2.get_next_notification()
+        self.assertEqual(object_ids[j], recv_objid)
+        self.assertEqual(-1, recv_dsize)
+        self.assertEqual(-1, recv_msize)
+
+
 class TestPlasmaManager(unittest.TestCase):
 
   def setUp(self):

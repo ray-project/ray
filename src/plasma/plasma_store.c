@@ -421,6 +421,7 @@ void send_notifications(event_loop *loop,
     object_info object_info;
     if (entry == NULL) {
       memset(&object_info, 0, sizeof(object_info));
+      object_info.obj_id = *obj_id;
       object_info.is_deletion = 1;
     } else {
       object_info = entry->info;
