@@ -244,8 +244,8 @@ TEST subscribe_timeout_test(void) {
       .timeout = 100,
       .fail_callback = subscribe_fail_callback,
   };
-  object_table_subscribe_to_notifications(db, false, subscribe_done_callback, NULL,
-                                          &retry, NULL, NULL);
+  object_table_subscribe_to_notifications(db, false, subscribe_done_callback,
+                                          NULL, &retry, NULL, NULL);
   /* Disconnect the database to see if the lookup times out. */
   close(db->sub_context->c.fd);
   event_loop_run(g_loop);
@@ -732,10 +732,9 @@ void fatal_fail_callback(unique_id id, void *user_context, void *user_data) {
 }
 
 TEST subscribe_object_present_test(void) {
-
   int64_t data_size = 0xF1F0;
   subscribe_object_present_context_t myctx = {subscribe_object_present_str,
-      data_size};
+                                              data_size};
 
   g_loop = event_loop_create();
   db_handle *db =
@@ -897,8 +896,7 @@ TEST subscribe_object_available_subscribe_all(void) {
       .num_retries = 0, .timeout = 100, .fail_callback = NULL,
   };
   object_table_subscribe_to_notifications(
-      db, true,
-      subscribe_object_available_later_object_available_callback,
+      db, true, subscribe_object_available_later_object_available_callback,
       (void *) subscribe_object_available_later_context, &retry, NULL,
       (void *) db);
   /* Install handler for terminating the event loop. */
