@@ -5,6 +5,7 @@ from __future__ import print_function
 import os
 import random
 import subprocess
+import sys
 import time
 import unittest
 import redis
@@ -24,6 +25,20 @@ OBJECT_SUBSCRIBE_PREFIX = "OS:"
 TASK_PREFIX = "TT:"
 OBJECT_CHANNEL_PREFIX = "OC:"
 
+def integerToAsciiHex(num, numbytes):
+  retstr = b""
+  # Support 32 and 64 bit architecture.
+  assert(numbytes == 4 or numbytes == 8)
+  for i in range(numbytes):
+    curbyte = num & 0xff
+    if sys.version_info >= (3, 0):
+      retstr += bytes([curbyte])
+    else:
+      retstr += chr(curbyte)
+    num = num >> 8
+
+  return retstr
+
 class TestGlobalStateStore(unittest.TestCase):
 
   def setUp(self):
@@ -36,6 +51,7 @@ class TestGlobalStateStore(unittest.TestCase):
 
   def tearDown(self):
     self.redis_process.kill()
+
 
   def testInvalidObjectTableAdd(self):
     # Check that Redis returns an error when RAY.OBJECT_TABLE_ADD is called with
@@ -86,28 +102,33 @@ class TestGlobalStateStore(unittest.TestCase):
       self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id3", 1, "\x00hash2", "manager_id1")
 
   def testObjectTableSubscribeToNotifications(self):
+    data_size = 0xf1f0
     p = self.redis.pubsub()
     # Subscribe to an object ID.
     p.psubscribe("{}manager_id1".format(OBJECT_CHANNEL_PREFIX))
-    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id2")
+    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", data_size, "hash1", "manager_id2")
     # Receive the acknowledgement message.
     self.assertEqual(p.get_message()["data"], 1)
     # Request a notification and receive the data.
     self.redis.execute_command("RAY.OBJECT_TABLE_REQUEST_NOTIFICATIONS", "manager_id1", "object_id1")
-    self.assertEqual(p.get_message()["data"], b"object_id1 MANAGERS manager_id2")
+    self.assertEqual(p.get_message()["data"], b"object_id1 %s MANAGERS manager_id2"\
+                     %integerToAsciiHex(data_size, 8))
     # Request a notification for an object that isn't there. Then add the object
     # and receive the data. Only the first call to RAY.OBJECT_TABLE_ADD should
     # trigger notifications.
     self.redis.execute_command("RAY.OBJECT_TABLE_REQUEST_NOTIFICATIONS", "manager_id1", "object_id2", "object_id3")
-    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id3", 1, "hash1", "manager_id1")
-    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id3", 1, "hash1", "manager_id2")
-    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id3", 1, "hash1", "manager_id3")
-    self.assertEqual(p.get_message()["data"], b"object_id3 MANAGERS manager_id1")
-    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id2", 1, "hash1", "manager_id3")
-    self.assertEqual(p.get_message()["data"], b"object_id2 MANAGERS manager_id3")
+    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id3", data_size, "hash1", "manager_id1")
+    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id3", data_size, "hash1", "manager_id2")
+    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id3", data_size, "hash1", "manager_id3")
+    self.assertEqual(p.get_message()["data"], b"object_id3 %s MANAGERS manager_id1"\
+                     %integerToAsciiHex(data_size, 8))
+    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id2", data_size, "hash1", "manager_id3")
+    self.assertEqual(p.get_message()["data"], b"object_id2 %s MANAGERS manager_id3"\
+                     %integerToAsciiHex(data_size, 8))
     # Request notifications for object_id3 again.
     self.redis.execute_command("RAY.OBJECT_TABLE_REQUEST_NOTIFICATIONS", "manager_id1", "object_id3")
-    self.assertEqual(p.get_message()["data"], b"object_id3 MANAGERS manager_id1 manager_id2 manager_id3")
+    self.assertEqual(p.get_message()["data"], b"object_id3 %s MANAGERS manager_id1 manager_id2 manager_id3"\
+                     %integerToAsciiHex(data_size, 8))
 
   def testResultTableAddAndLookup(self):
     response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id1")

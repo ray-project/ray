@@ -30,6 +30,7 @@ void object_table_add(db_handle *db_handle,
 
 void object_table_subscribe_to_notifications(
     db_handle *db_handle,
+    bool subscribe_all,
     object_table_object_available_callback object_available_callback,
     void *subscribe_context,
     retry_info *retry,
@@ -40,6 +41,7 @@ void object_table_subscribe_to_notifications(
       malloc(sizeof(object_table_subscribe_data));
   sub_data->object_available_callback = object_available_callback;
   sub_data->subscribe_context = subscribe_context;
+  sub_data->subscribe_all = subscribe_all;
 
   init_table_callback(
       db_handle, NIL_OBJECT_ID, __func__, sub_data, retry, done_callback,
