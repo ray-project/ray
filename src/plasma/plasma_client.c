@@ -346,7 +346,7 @@ void plasma_contains(plasma_connection *conn,
     /* If we don't already have a reference to the object, check with the store
      * to see if we have the object. */
     plasma_send_ContainsRequest(conn->store_conn, conn->builder, obj_id);
-    uint8_t *reply_data = plasma_receive(conn->manager_conn, MessageType_PlasmaContainsReply);
+    uint8_t *reply_data = plasma_receive(conn->store_conn, MessageType_PlasmaContainsReply);
     object_id object_id2;
     plasma_read_ContainsReply(reply_data, &object_id2, has_object);
   }
