@@ -552,12 +552,12 @@ object_id parse_subscribe_to_notifications_payload(
     int *manager_count,
     const char ***manager_vector) {
   long long data_size_value = 0;
-  int num_managers = (length - sizeof(object_id) - sizeof(data_size_value) - 1 -
-                      strlen("MANAGERS")) /
+  int num_managers = (length - sizeof(object_id) - 1 - sizeof(data_size_value) -
+                      1 - strlen("MANAGERS")) /
                      (1 + sizeof(db_client_id));
   CHECK(length ==
-        sizeof(object_id) + sizeof(data_size_value) + 1 + strlen("MANAGERS") +
-            num_managers * (1 + sizeof(db_client_id)));
+        sizeof(object_id) + 1 + sizeof(data_size_value) + 1 +
+            strlen("MANAGERS") + num_managers * (1 + sizeof(db_client_id)));
   CHECK(num_managers > 0);
   object_id obj_id;
   /* Track our current offset in the payload. */
