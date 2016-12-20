@@ -419,7 +419,15 @@ class Worker(object):
     # Serialize and put the object in the object store.
     schema, size, serialized = numbuf_serialize(value)
     size = size + 4096 * 4 + 8 # The last 8 bytes are for the metadata offset. This is temporary.
-    buff = self.plasma_client.create(objectid.id(), size, bytearray(schema))
+    try:
+      buff = self.plasma_client.create(objectid.id(), size, bytearray(schema))
+    except RuntimeError as e:
+      if e.args != ("an object with this ID could not be created",):
+        raise
+      # The object already exists in the object store, so there is no need to
+      # add it again.
+      print("This object already exists in the object store.")
+      return
     data = np.frombuffer(buff.buffer, dtype="byte")[8:]
     metadata_offset = numbuf.write_to_buffer(serialized, memoryview(data))
     np.frombuffer(buff.buffer, dtype="int64", count=1)[0] = metadata_offset
