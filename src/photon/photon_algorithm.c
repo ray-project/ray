@@ -288,15 +288,9 @@ void handle_task_scheduled(local_scheduler_state *state,
 void handle_worker_available(local_scheduler_state *state,
                              scheduling_algorithm_state *algorithm_state,
                              int worker_index) {
-  /* Update the task table with the completed task. */
   worker *available_worker =
       (worker *) utarray_eltptr(state->workers, worker_index);
-  if (state->db != NULL && available_worker->task_in_progress != NULL) {
-    task_set_state(available_worker->task_in_progress, TASK_STATUS_DONE);
-    task_table_update(state->db, available_worker->task_in_progress,
-                      (retry_info *) &photon_retry, NULL, NULL);
-    available_worker->task_in_progress = NULL;
-  }
+  CHECK(available_worker->task_in_progress == NULL);
   /* Try to schedule another task to the worker. */
   int scheduled_task =
       find_and_schedule_task_if_possible(state, algorithm_state, worker_index);

@@ -93,7 +93,9 @@ void assign_task_to_worker(local_scheduler_state *state,
         alloc_task(spec, TASK_STATUS_RUNNING, get_db_client_id(state->db));
     task_table_update(state->db, task, (retry_info *) &photon_retry, NULL,
                       NULL);
-    /* Record which task this worker is executing. */
+    /* Record which task this worker is executing. This will be freed in
+     * process_message when the worker sends a GET_TASK message to the local
+     * scheduler. */
     w->task_in_progress = copy_task(task);
   }
 }
@@ -201,6 +203,19 @@ void process_message(event_loop *loop,
   case GET_TASK: {
     worker_index *wi;
     HASH_FIND_INT(state->worker_index, &client_sock, wi);
+    /* Update the task table with the completed task. */
+    worker *available_worker =
+        (worker *) utarray_eltptr(state->workers, wi->worker_index);
+    if (state->db != NULL && available_worker->task_in_progress != NULL) {
+      task_set_state(available_worker->task_in_progress, TASK_STATUS_DONE);
+      task_table_update(state->db, available_worker->task_in_progress,
+                        (retry_info *) &photon_retry, NULL, NULL);
+      /* The call to task_table_update takes ownership of the task_in_progress,
+       * so we set the pointer to NULL so it is not used. */
+      available_worker->task_in_progress = NULL;
+    }
+    /* Let the scheduling algorithm process the fact that there is an available
+     * worker. */
     handle_worker_available(state, state->algorithm_state, wi->worker_index);
   } break;
   case RECONSTRUCT_OBJECT: {
