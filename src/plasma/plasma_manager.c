@@ -357,7 +357,9 @@ void remove_wait_request(plasma_manager_state *manager_state,
 void return_from_wait(plasma_manager_state *manager_state,
                       wait_request *wait_req) {
   /* Send the reply to the client. */
-  CHECK(plasma_send_WaitReply(wait_req->client_conn->fd, manager_state->builder, wait_req->object_requests, wait_req->num_object_requests) >= 0);
+  CHECK(plasma_send_WaitReply(wait_req->client_conn->fd, manager_state->builder,
+                              wait_req->object_requests,
+                              wait_req->num_object_requests) >= 0);
   /* Remove the wait request from each of the relevant object_wait_requests hash
    * tables if it is present there. */
   for (int i = 0; i < wait_req->num_object_requests; ++i) {
@@ -562,14 +564,16 @@ void send_queued_request(event_loop *loop,
   plasma_request_buffer *buf = conn->transfer_queue;
   switch (buf->type) {
   case MessageType_PlasmaDataRequest:
-    CHECK(plasma_send_DataRequest(conn->fd, state->builder, buf->object_id, state->addr, state->port) >= 0);
+    CHECK(plasma_send_DataRequest(conn->fd, state->builder, buf->object_id,
+                                  state->addr, state->port) >= 0);
     break;
   case MessageType_PlasmaDataReply:
     LOG_DEBUG("Transferring object to manager");
     if (conn->cursor == 0) {
       /* If the cursor is zero, we haven't sent any requests for this object
        * yet, so send the initial data request. */
-      CHECK(plasma_send_DataReply(conn->fd, state->builder, buf->object_id, buf->data_size, buf->metadata_size) >= 0);
+      CHECK(plasma_send_DataReply(conn->fd, state->builder, buf->object_id,
+                                  buf->data_size, buf->metadata_size) >= 0);
     }
     write_object_chunk(conn, buf);
     break;
@@ -697,7 +701,7 @@ client_connection *get_manager_connection(plasma_manager_state *state,
 
 void process_transfer_request(event_loop *loop,
                               object_id object_id,
-                              const char* addr,
+                              const char *addr,
                               int port,
                               client_connection *conn) {
   uint8_t *data;
@@ -1131,7 +1135,9 @@ void request_status_done(object_id object_id,
   client_connection *client_conn = (client_connection *) context;
   int status =
       request_status(object_id, manager_count, manager_vector, context);
-  CHECK(plasma_send_StatusReply(client_conn->fd, client_conn->manager_state->builder, &object_id, &status, 1) >= 0);
+  CHECK(plasma_send_StatusReply(client_conn->fd,
+                                client_conn->manager_state->builder, &object_id,
+                                &status, 1) >= 0);
 }
 
 int request_status(object_id object_id,
@@ -1164,13 +1170,17 @@ void process_status_request(client_connection *client_conn,
   /* Return success immediately if we already have this object. */
   if (is_object_local(client_conn->manager_state, object_id)) {
     int status = ObjectStatus_Local;
-    CHECK(plasma_send_StatusReply(client_conn->fd, client_conn->manager_state->builder, &object_id, &status, 1) >= 0);
+    CHECK(plasma_send_StatusReply(client_conn->fd,
+                                  client_conn->manager_state->builder,
+                                  &object_id, &status, 1) >= 0);
     return;
   }
 
   if (client_conn->manager_state->db == NULL) {
     int status = ObjectStatus_Nonexistent;
-    CHECK(plasma_send_StatusReply(client_conn->fd, client_conn->manager_state->builder, &object_id, &status, 1) >= 0);
+    CHECK(plasma_send_StatusReply(client_conn->fd,
+                                  client_conn->manager_state->builder,
+                                  &object_id, &status, 1) >= 0);
     return;
   }
 
@@ -1269,14 +1279,15 @@ void process_message(event_loop *loop,
     int64_t object_size;
     int64_t metadata_size;
     plasma_read_DataReply(data, &object_id, &object_size, &metadata_size);
-    process_data_request(loop, client_sock, object_id, object_size, metadata_size, conn);
+    process_data_request(loop, client_sock, object_id, object_size,
+                         metadata_size, conn);
   } break;
   case MessageType_PlasmaFetchRequest: {
-      LOG_DEBUG("Processing fetch remote");
-      int64_t num_objects = plasma_read_FetchRequest_num_objects(data);
-      object_id object_ids_to_fetch[num_objects];
-      plasma_read_FetchRequest(data, object_ids_to_fetch, num_objects);
-      process_fetch_requests(conn, num_objects, &object_ids_to_fetch[0]);
+    LOG_DEBUG("Processing fetch remote");
+    int64_t num_objects = plasma_read_FetchRequest_num_objects(data);
+    object_id object_ids_to_fetch[num_objects];
+    plasma_read_FetchRequest(data, object_ids_to_fetch, num_objects);
+    process_fetch_requests(conn, num_objects, &object_ids_to_fetch[0]);
   } break;
   case MessageType_PlasmaWaitRequest: {
     LOG_DEBUG("Processing wait");
@@ -1284,17 +1295,18 @@ void process_message(event_loop *loop,
     int64_t timeout_ms;
     int num_ready_objects;
     object_request object_requests[num_object_ids];
-    plasma_read_WaitRequest(data, &object_requests[0], num_object_ids, &timeout_ms, &num_ready_objects);
-    process_wait_request(conn, num_object_ids, &object_requests[0],
-                         timeout_ms, num_ready_objects);
+    plasma_read_WaitRequest(data, &object_requests[0], num_object_ids,
+                            &timeout_ms, &num_ready_objects);
+    process_wait_request(conn, num_object_ids, &object_requests[0], timeout_ms,
+                         num_ready_objects);
   } break;
   case MessageType_PlasmaStatusRequest: {
-      LOG_DEBUG("Processing status");
-      object_id object_id;
-      int64_t num_objects = plasma_read_StatusRequest_num_objects(data);
-      CHECK(num_objects == 1);
-      plasma_read_StatusRequest(data, &object_id, 1);
-      process_status_request(conn, object_id);
+    LOG_DEBUG("Processing status");
+    object_id object_id;
+    int64_t num_objects = plasma_read_StatusRequest_num_objects(data);
+    CHECK(num_objects == 1);
+    plasma_read_StatusRequest(data, &object_id, 1);
+    process_status_request(conn, object_id);
   } break;
   case DISCONNECT_CLIENT: {
     LOG_INFO("Disconnecting client on fd %d", client_sock);

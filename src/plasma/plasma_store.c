@@ -348,7 +348,8 @@ void seal_object(client *client_context,
     /* Send notifications to the clients that were waiting for this object. */
     for (int i = 0; i < utarray_len(notify_entry->waiting_clients); ++i) {
       client **c = (client **) utarray_eltptr(notify_entry->waiting_clients, i);
-      CHECK(plasma_send_GetReply((*c)->sock, plasma_state->builder, &object_id, &object, 1) >= 0);
+      CHECK(plasma_send_GetReply((*c)->sock, plasma_state->builder, &object_id,
+                                 &object, 1) >= 0);
       // CHECK(plasma_send_reply((*c)->sock, &reply) >= 0);
       CHECK(send_fd((*c)->sock, object.handle.store_fd) >= 0);
       /* Record that the client is using this object. */
@@ -488,33 +489,41 @@ void process_message(event_loop *loop,
   case MessageType_PlasmaCreateRequest: {
     int64_t data_size;
     int64_t metadata_size;
-    plasma_read_CreateRequest(input, &object_ids[0], &data_size, &metadata_size);
-    if (create_object(client_context, object_ids[0], data_size, metadata_size, &objects[0])) {
+    plasma_read_CreateRequest(input, &object_ids[0], &data_size,
+                              &metadata_size);
+    if (create_object(client_context, object_ids[0], data_size, metadata_size,
+                      &objects[0])) {
       error = PlasmaError_OK;
     } else {
       error = PlasmaError_ObjectExists;
     }
-    CHECK(plasma_send_CreateReply(client_sock, state->builder, object_ids[0], &objects[0], error) >= 0);
+    CHECK(plasma_send_CreateReply(client_sock, state->builder, object_ids[0],
+                                  &objects[0], error) >= 0);
     if (error == PlasmaError_OK) {
       CHECK(send_fd(client_sock, objects[0].handle.store_fd) >= 0);
     }
   } break;
   case MessageType_PlasmaGetRequest: {
     plasma_read_GetRequest(input, object_ids, 1);
-    if (get_object(client_context, client_sock, object_ids[0], &objects[0]) == OBJECT_FOUND) {
-      CHECK(plasma_send_GetReply(client_sock, state->builder, object_ids, objects, 1) >= 0);
+    if (get_object(client_context, client_sock, object_ids[0], &objects[0]) ==
+        OBJECT_FOUND) {
+      CHECK(plasma_send_GetReply(client_sock, state->builder, object_ids,
+                                 objects, 1) >= 0);
       CHECK(send_fd(client_sock, objects[0].handle.store_fd) >= 0);
     }
   } break;
   case MessageType_PlasmaGetLocalRequest: {
     plasma_read_GetLocalRequest(input, &object_ids[0], 1);
-    if (get_object_local(client_context, client_sock, object_ids[0], &objects[0]) == OBJECT_FOUND) {
+    if (get_object_local(client_context, client_sock, object_ids[0],
+                         &objects[0]) == OBJECT_FOUND) {
       int has_object = 1;
-      CHECK(plasma_send_GetLocalReply(client_sock, state->builder, object_ids, objects, &has_object, 1) >= 0);
+      CHECK(plasma_send_GetLocalReply(client_sock, state->builder, object_ids,
+                                      objects, &has_object, 1) >= 0);
       CHECK(send_fd(client_sock, objects[0].handle.store_fd) >= 0);
     } else {
       int has_object = 0;
-      CHECK(plasma_send_GetLocalReply(client_sock, state->builder, object_ids, objects, &has_object, 1) >= 0);
+      CHECK(plasma_send_GetLocalReply(client_sock, state->builder, object_ids,
+                                      objects, &has_object, 1) >= 0);
     }
   } break;
   case MessageType_PlasmaReleaseRequest:
@@ -524,16 +533,18 @@ void process_message(event_loop *loop,
   case MessageType_PlasmaContainsRequest:
     plasma_read_ContainsRequest(input, &object_ids[0]);
     if (contains_object(client_context, object_ids[0]) == OBJECT_FOUND) {
-      CHECK(plasma_send_ContainsReply(client_sock, state->builder, object_ids[0], 1) >= 0);
+      CHECK(plasma_send_ContainsReply(client_sock, state->builder,
+                                      object_ids[0], 1) >= 0);
     } else {
-      CHECK(plasma_send_ContainsReply(client_sock, state->builder, object_ids[0], 0) >= 0);
+      CHECK(plasma_send_ContainsReply(client_sock, state->builder,
+                                      object_ids[0], 0) >= 0);
     }
     break;
   case MessageType_PlasmaSealRequest: {
     unsigned char digest[DIGEST_SIZE];
     plasma_read_SealRequest(input, &object_ids[0], &digest[0]);
     seal_object(client_context, object_ids[0], &digest[0]);
-    } break;
+  } break;
   case MessageType_PlasmaEvictRequest: {
     /* This code path should only be used for testing. */
     int64_t num_bytes;
@@ -546,7 +557,8 @@ void process_message(event_loop *loop,
         &num_objects_to_evict, &objects_to_evict);
     remove_objects(client_context->plasma_state, num_objects_to_evict,
                    objects_to_evict);
-    CHECK(plasma_send_EvictReply(client_sock, state->builder, num_bytes_evicted) >= 0);
+    CHECK(plasma_send_EvictReply(client_sock, state->builder,
+                                 num_bytes_evicted) >= 0);
   } break;
   case MessageType_PlasmaSubscribeRequest:
     subscribe_to_updates(client_context, client_sock);

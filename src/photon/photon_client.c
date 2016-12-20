@@ -29,7 +29,7 @@ task_spec *photon_get_task(photon_conn *conn) {
    * scheduler gives this client a task. */
   read_message(conn->conn, &type, &length, &message);
   CHECK(type == EXECUTE_TASK);
-  task_spec *task = (task_spec *)message;
+  task_spec *task = (task_spec *) message;
   CHECK(length == task_spec_size(task));
   return task;
 }
@@ -39,8 +39,8 @@ void photon_task_done(photon_conn *conn) {
 }
 
 void photon_reconstruct_object(photon_conn *conn, object_id object_id) {
-  write_message(conn->conn, RECONSTRUCT_OBJECT,
-                sizeof(object_id), (uint8_t *) &object_id);
+  write_message(conn->conn, RECONSTRUCT_OBJECT, sizeof(object_id),
+                (uint8_t *) &object_id);
 }
 
 void photon_log_message(photon_conn *conn) {

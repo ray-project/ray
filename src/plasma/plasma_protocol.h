@@ -48,11 +48,19 @@ void plasma_read_CreateReply(uint8_t *data,
 
 /* Plasma Seal message functions. */
 
-int plasma_send_SealRequest(int sock, protocol_builder *B, object_id object_id, unsigned char *digest);
+int plasma_send_SealRequest(int sock,
+                            protocol_builder *B,
+                            object_id object_id,
+                            unsigned char *digest);
 
-void plasma_read_SealRequest(uint8_t *data, OUT object_id *object_id, OUT unsigned char *digest);
+void plasma_read_SealRequest(uint8_t *data,
+                             OUT object_id *object_id,
+                             OUT unsigned char *digest);
 
-int plasma_send_SealReply(int sock, protocol_builder *B, object_id object_id, int error);
+int plasma_send_SealReply(int sock,
+                          protocol_builder *B,
+                          object_id object_id,
+                          int error);
 
 void plasma_read_SealReply(uint8_t *data, object_id *object_id, int *error);
 
@@ -108,47 +116,76 @@ void plasma_read_GetLocalReply(uint8_t *data,
 
 /* Plasma Release message functions. */
 
-int plasma_send_ReleaseRequest(int sock, protocol_builder *B, object_id object_id);
+int plasma_send_ReleaseRequest(int sock,
+                               protocol_builder *B,
+                               object_id object_id);
 
 void plasma_read_ReleaseRequest(uint8_t *data, object_id *object_id);
 
-int plasma_send_ReleaseReply(int sock, protocol_builder *B, object_id object_id, int error);
+int plasma_send_ReleaseReply(int sock,
+                             protocol_builder *B,
+                             object_id object_id,
+                             int error);
 
 void plasma_read_ReleaseReply(uint8_t *data, object_id *object_id, int *error);
 
 /* Plasma Delete message functions. */
 
-int plasma_send_DeleteRequest(int sock, protocol_builder *B, object_id object_id);
+int plasma_send_DeleteRequest(int sock,
+                              protocol_builder *B,
+                              object_id object_id);
 
 void plasma_read_DeleteRequest(uint8_t *data, object_id *object_id);
 
-int plasma_send_DeleteReply(int sock, protocol_builder *B, object_id object_id, int error);
+int plasma_send_DeleteReply(int sock,
+                            protocol_builder *B,
+                            object_id object_id,
+                            int error);
 
 void plasma_read_DeleteReply(uint8_t *data, object_id *object_id, int *error);
 
 /* Plasma Status message functions. */
 
-int plasma_send_StatusRequest(int sock, protocol_builder *B, object_id object_ids[], int64_t num_objects);
+int plasma_send_StatusRequest(int sock,
+                              protocol_builder *B,
+                              object_id object_ids[],
+                              int64_t num_objects);
 
 int64_t plasma_read_StatusRequest_num_objects(uint8_t *data);
 
-void plasma_read_StatusRequest(uint8_t *data, object_id object_ids[], int64_t num_objects);
+void plasma_read_StatusRequest(uint8_t *data,
+                               object_id object_ids[],
+                               int64_t num_objects);
 
-int plasma_send_StatusReply(int sock, protocol_builder *B, object_id object_ids[], int object_status[], int64_t num_objects);
+int plasma_send_StatusReply(int sock,
+                            protocol_builder *B,
+                            object_id object_ids[],
+                            int object_status[],
+                            int64_t num_objects);
 
 int64_t plasma_read_StatusReply_num_objects(uint8_t *data);
 
-void plasma_read_StatusReply(uint8_t *data, object_id object_ids[], int object_status[], int64_t num_objects);
+void plasma_read_StatusReply(uint8_t *data,
+                             object_id object_ids[],
+                             int object_status[],
+                             int64_t num_objects);
 
 /* Plasma Constains message functions. */
 
-int plasma_send_ContainsRequest(int sock, protocol_builder *B, object_id object_id);
+int plasma_send_ContainsRequest(int sock,
+                                protocol_builder *B,
+                                object_id object_id);
 
 void plasma_read_ContainsRequest(uint8_t *data, object_id *object_id);
 
-int plasma_send_ContainsReply(int sock, protocol_builder *B, object_id object_id, int has_object);
+int plasma_send_ContainsReply(int sock,
+                              protocol_builder *B,
+                              object_id object_id,
+                              int has_object);
 
-void plasma_read_ContainsReply(uint8_t *data, object_id *object_id, int *has_object);
+void plasma_read_ContainsReply(uint8_t *data,
+                               object_id *object_id,
+                               int *has_object);
 
 /* Plasma Evict message functions (no reply so far). */
 
@@ -163,9 +200,9 @@ void plasma_read_EvictReply(uint8_t *data, int64_t *num_bytes);
 /* Plasma Fetch Remote message functions. */
 
 int plasma_send_FetchRequest(int sock,
-                           protocol_builder *B,
-                           object_id object_ids[],
-                           int64_t num_objects);
+                             protocol_builder *B,
+                             object_id object_ids[],
+                             int64_t num_objects);
 
 int64_t plasma_read_FetchRequest_num_objects(uint8_t *data);
 
@@ -201,7 +238,7 @@ void plasma_read_WaitReply(uint8_t *data,
 
 /* Plasma Subscribe message functions. */
 
-int plasma_send_SubscribeRequest(int sock, protocol_builder* B);
+int plasma_send_SubscribeRequest(int sock, protocol_builder *B);
 
 /* Plasma Data message functions. */
 

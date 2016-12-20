@@ -131,7 +131,8 @@ TEST request_transfer_test(void) {
                        local_mock->state);
   event_loop_run(local_mock->loop);
   int read_fd = get_client_sock(remote_mock->read_conn);
-  uint8_t *request_data = plasma_receive(read_fd, MessageType_PlasmaDataRequest);
+  uint8_t *request_data =
+      plasma_receive(read_fd, MessageType_PlasmaDataRequest);
   object_id oid2;
   char *address;
   int port;
@@ -178,7 +179,8 @@ TEST request_transfer_retry_test(void) {
   event_loop_run(local_mock->loop);
 
   int read_fd = get_client_sock(remote_mock2->read_conn);
-  uint8_t *request_data = plasma_receive(read_fd, MessageType_PlasmaDataRequest);
+  uint8_t *request_data =
+      plasma_receive(read_fd, MessageType_PlasmaDataRequest);
   object_id oid2;
   char *address;
   int port;
