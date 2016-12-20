@@ -19,6 +19,14 @@ typedef void (*object_table_lookup_done_callback)(
     OWNER const char *manager_vector[],
     void *user_context);
 
+/* Callback called when object object_id is available. */
+typedef void (*object_table_object_available_callback)(
+    object_id object_id,
+    int64_t data_size,
+    int manager_count,
+    OWNER const char *manager_vector[],
+    void *user_context);
+
 /**
  *  Return the list of nodes storing object_id in their plasma stores.
  *
@@ -96,10 +104,6 @@ void object_table_remove(db_handle *db,
 /*
  *  ==== Subscribe to be announced when new object available ====
  */
-
-/* Callback called when object object_id is available. */
-typedef object_table_lookup_done_callback
-    object_table_object_available_callback;
 
 /**
  * Set up a client-specific channel for receiving notifications about available

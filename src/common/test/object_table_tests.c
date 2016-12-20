@@ -219,6 +219,7 @@ TEST add_timeout_test(void) {
 int subscribe_failed = 0;
 
 void subscribe_done_callback(object_id object_id,
+                             int64_t data_size,
                              int manager_count,
                              const char *manager_vector[],
                              void *user_context) {
@@ -657,6 +658,7 @@ void subscribe_success_done_callback(object_id object_id,
 }
 
 void subscribe_success_object_available_callback(object_id object_id,
+                                                 int64_t data_size,
                                                  int manager_count,
                                                  const char *manager_vector[],
                                                  void *user_context) {
@@ -708,6 +710,7 @@ int subscribe_object_present_succeeded = 0;
 
 void subscribe_object_present_object_available_callback(
     object_id object_id,
+    int64_t data_size,
     int manager_count,
     const char *manager_vector[],
     void *user_context) {
@@ -764,6 +767,7 @@ const char *subscribe_object_not_present_context =
 
 void subscribe_object_not_present_object_available_callback(
     object_id object_id,
+    int64_t data_size,
     int manager_count,
     const char *manager_vector[],
     void *user_context) {
@@ -813,6 +817,7 @@ int subscribe_object_available_later_succeeded = 0;
 
 void subscribe_object_available_later_object_available_callback(
     object_id object_id,
+    int64_t data_size,
     int manager_count,
     const char *manager_vector[],
     void *user_context) {

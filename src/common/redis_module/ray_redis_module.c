@@ -229,12 +229,22 @@ int ObjectTableLookup_RedisCommand(RedisModuleCtx *ctx,
 bool PublishObjectNotification(RedisModuleCtx *ctx,
                                RedisModuleString *client_id,
                                RedisModuleString *object_id,
+                               RedisModuleString *data_size,
                                RedisModuleKey *key) {
   /* Create a string formatted as "<object id> MANAGERS <manager id1>
    * <manager id2> ..." */
-  printf("PublishObjectNotification got called for client_id = \n");
   RedisModuleString *manager_list =
       RedisModule_CreateStringFromString(ctx, object_id);
+  long long data_size_value;
+  if (RedisModule_StringToLongLong(data_size, &data_size_value) !=
+      REDISMODULE_OK) {
+    return RedisModule_ReplyWithError(ctx, "data_size must be integer");
+  }
+  printf("data size value from redismodule: %lld \n", data_size_value);
+  /* Append binary data size for this object. */
+  RedisModule_StringAppendBuffer(ctx, manager_list, &data_size_value,
+                                 sizeof(data_size_value));
+
   RedisModule_StringAppendBuffer(ctx, manager_list, " MANAGERS",
                                  strlen(" MANAGERS"));
 
@@ -335,7 +345,7 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
   RedisModuleString *bcast_client_str =
       RedisModule_CreateString(ctx, OBJECT_BCAST, strlen(OBJECT_BCAST));
   bool success =
-      PublishObjectNotification(ctx, bcast_client_str, object_id, table_key);
+      PublishObjectNotification(ctx, bcast_client_str, object_id, data_size, table_key);
   if (!success) {
     /* The publish failed somehow. */
     return RedisModule_ReplyWithError(ctx, "PUBLISH BCAST unsuccessful");
@@ -359,8 +369,6 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
      * availability of this object, and publish notifications to their object
      * notification channels. */
 
-
-
     do {
       RedisModuleString *client_id =
           RedisModule_ZsetRangeCurrentElement(object_notification_key, NULL);
@@ -368,7 +376,8 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
        * constructions in the multiple calls to PublishObjectNotification
        * together. */
       bool success =
-          PublishObjectNotification(ctx, client_id, object_id, table_key);
+          PublishObjectNotification(ctx, client_id, object_id, data_size,
+              table_key);
       if (!success) {
         /* The publish failed somehow. */
         RedisModule_CloseKey(object_notification_key);
@@ -437,7 +446,23 @@ int ObjectTableRequestNotifications_RedisCommand(RedisModuleCtx *ctx,
       RedisModule_CloseKey(object_notification_key);
     } else {
       /* Publish a notification to the client's object notification channel. */
-      bool success = PublishObjectNotification(ctx, client_id, object_id, key);
+      /* Extract the data_size first. XXX */
+      RedisModuleKey *object_info_key;
+      object_info_key = OpenPrefixedKey(ctx, OBJECT_INFO_PREFIX, object_id,
+          REDISMODULE_READ);
+      int keytype = RedisModule_KeyType(key);
+      if (keytype == REDISMODULE_KEYTYPE_EMPTY) {
+        RedisModule_CloseKey(object_info_key);
+        RedisModule_CloseKey(key);
+        return RedisModule_ReplyWithError(ctx, "requested object not found");
+      }
+      RedisModuleString *existing_data_size;
+      RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "data_size",
+          &existing_data_size, NULL);
+      RedisModule_CloseKey(object_info_key); /* No longer needed. */
+
+      bool success = PublishObjectNotification(ctx, client_id, object_id,
+          existing_data_size, key);
       if (!success) {
         /* The publish failed somehow. */
         RedisModule_CloseKey(key);
