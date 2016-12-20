@@ -859,8 +859,7 @@ TEST subscribe_object_available_later_test(void) {
   };
   object_table_subscribe_to_notifications(
       db, false, subscribe_object_available_later_object_available_callback,
-      (void *) myctx, &retry, NULL,
-      (void *) db);
+      (void *) myctx, &retry, NULL, (void *) db);
   /* Install handler for terminating the event loop. */
   event_loop_add_timer(g_loop, 750,
                        (event_loop_timer_handler) terminate_event_loop_callback,
@@ -878,7 +877,8 @@ TEST subscribe_object_available_later_test(void) {
   event_loop_run(g_loop);
 
   ASSERT_EQ(subscribe_object_available_later_succeeded, 0);
-  object_table_add(db, id, data_size, (unsigned char *) NIL_DIGEST, &retry, NULL, NULL);
+  object_table_add(db, id, data_size, (unsigned char *) NIL_DIGEST, &retry,
+                   NULL, NULL);
   /* Install handler for terminating the event loop. */
   event_loop_add_timer(g_loop, 750,
                        (event_loop_timer_handler) terminate_event_loop_callback,
@@ -898,8 +898,8 @@ TEST subscribe_object_available_later_test(void) {
 
 TEST subscribe_object_available_subscribe_all(void) {
   int64_t data_size = 0xF1F0;
-  subscribe_object_present_context_t myctx = {subscribe_object_available_later_context,
-                                              data_size};
+  subscribe_object_present_context_t myctx = {
+      subscribe_object_available_later_context, data_size};
   g_loop = event_loop_create();
   db_handle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11236);
@@ -910,8 +910,7 @@ TEST subscribe_object_available_subscribe_all(void) {
   };
   object_table_subscribe_to_notifications(
       db, true, subscribe_object_available_later_object_available_callback,
-      (void *) &myctx, &retry, NULL,
-      (void *) db);
+      (void *) &myctx, &retry, NULL, (void *) db);
   /* Install handler for terminating the event loop. */
   event_loop_add_timer(g_loop, 750,
                        (event_loop_timer_handler) terminate_event_loop_callback,
@@ -921,7 +920,8 @@ TEST subscribe_object_available_subscribe_all(void) {
 
   /* At this point we don't expect any object notifications received. */
   ASSERT_EQ(subscribe_object_available_later_succeeded, 0);
-  object_table_add(db, id, data_size, (unsigned char *) NIL_DIGEST, &retry, NULL, NULL);
+  object_table_add(db, id, data_size, (unsigned char *) NIL_DIGEST, &retry,
+                   NULL, NULL);
   /* Install handler to terminate event loop after 750ms. */
   event_loop_add_timer(g_loop, 750,
                        (event_loop_timer_handler) terminate_event_loop_callback,
