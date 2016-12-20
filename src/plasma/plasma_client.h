@@ -316,13 +316,13 @@ int plasma_info(plasma_connection *conn,
  *        "type" field.
  *        - A PLASMA_QUERY_LOCAL request is satisfied when object_id becomes
  *          available in the local Plasma Store. In this case, this function
- *          sets the "status" field to PLASMA_OBJECT_LOCAL. Note, if the status
- *          is not PLASMA_OBJECT_LOCAL, it will be PLASMA_OBJECT_NONEXISTENT,
+ *          sets the "status" field to ObjectStatus_Local. Note, if the status
+ *          is not ObjectStatus_Local, it will be ObjectStatus_Nonexistent,
  *          but it may exist elsewhere in the system.
  *        - A PLASMA_QUERY_ANYWHERE request is satisfied when object_id becomes
  *          available either at the local Plasma Store or on a remote Plasma
  *          Store. In this case, the functions sets the "status" field to
- *          PLASMA_OBJECT_LOCAL or PLASMA_OBJECT_REMOTE.
+ *          ObjectStatus_Local or ObjectStatus_Remote.
  * @param num_ready_objects The number of requests in object_requests array that
  *        must be satisfied before the function returns, unless it timeouts.
  *        The num_ready_objects should be no larger than num_object_requests.
