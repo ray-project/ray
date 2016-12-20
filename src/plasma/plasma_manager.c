@@ -1212,6 +1212,7 @@ void process_delete_object_notification(plasma_manager_state *state,
   HASH_FIND(hh, state->local_available_objects, &obj_id, sizeof(obj_id), entry);
   if (entry != NULL) {
     HASH_DELETE(hh, state->local_available_objects, entry);
+    free(entry);
   }
 
   /* Remove this object from the (redis) object table. */
@@ -1287,7 +1288,6 @@ void process_object_notification(event_loop *loop,
     return;
   }
   /* Add object to locally available object. */
-  /* TODO(pcm): Where is this deallocated? */
   if (object_info.is_deletion) {
     process_delete_object_notification(state, object_info);
   } else {
