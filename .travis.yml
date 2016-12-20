@@ -34,7 +34,9 @@ matrix:
       before_install:
         - sudo apt-get update -qq
         - sudo apt-get install -qq valgrind
-      script:
+      install:
+        - ./.travis/install-dependencies.sh
+
         - cd src/common
         - make valgrind
         - cd ../..
@@ -43,6 +45,8 @@ matrix:
         - make valgrind
         - cd ../..
 
+        - ./.travis/install-ray.sh
+      script:
         - python src/plasma/test/test.py valgrind
         - python src/photon/test/test.py valgrind
         - python src/global_scheduler/test/test.py valgrind

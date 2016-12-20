@@ -5,6 +5,7 @@
 #include <sys/time.h>
 
 #include "plasma.h"
+#include "plasma_protocol.h"
 #include "plasma_client.h"
 
 SUITE(plasma_client_tests);
@@ -18,7 +19,7 @@ TEST plasma_status_tests(void) {
 
   /* Test for object non-existence. */
   int status = plasma_status(plasma_conn1, oid1);
-  ASSERT(status == PLASMA_OBJECT_NONEXISTENT);
+  ASSERT(status == ObjectStatus_Nonexistent);
 
   /* Test for the object being in local Plasma store. */
   /* First create object. */
@@ -32,11 +33,11 @@ TEST plasma_status_tests(void) {
    */
   sleep(1);
   status = plasma_status(plasma_conn1, oid1);
-  ASSERT(status == PLASMA_OBJECT_LOCAL);
+  ASSERT(status == ObjectStatus_Local);
 
   /* Test for object being remote. */
   status = plasma_status(plasma_conn2, oid1);
-  ASSERT(status == PLASMA_OBJECT_REMOTE);
+  ASSERT(status == ObjectStatus_Remote);
 
   plasma_disconnect(plasma_conn1);
   plasma_disconnect(plasma_conn2);
@@ -56,7 +57,7 @@ TEST plasma_fetch_tests(void) {
 
   /* No object in the system */
   status = plasma_status(plasma_conn1, oid1);
-  ASSERT(status == PLASMA_OBJECT_NONEXISTENT);
+  ASSERT(status == ObjectStatus_Nonexistent);
 
   /* Test for the object being in local Plasma store. */
   /* First create object. */
@@ -73,24 +74,24 @@ TEST plasma_fetch_tests(void) {
   object_id oid_array1[1] = {oid1};
   plasma_fetch(plasma_conn1, 1, oid_array1);
   status = plasma_status(plasma_conn1, oid1);
-  ASSERT((status == PLASMA_OBJECT_LOCAL) ||
-         (status == PLASMA_OBJECT_NONEXISTENT));
+  ASSERT((status == ObjectStatus_Local) ||
+         (status == ObjectStatus_Nonexistent));
 
   /* Sleep to make sure Plasma Manager got the notification. */
   sleep(1);
   status = plasma_status(plasma_conn1, oid1);
-  ASSERT(status == PLASMA_OBJECT_LOCAL);
+  ASSERT(status == ObjectStatus_Local);
 
   /* Test for object being remote. */
   status = plasma_status(plasma_conn2, oid1);
-  ASSERT(status == PLASMA_OBJECT_REMOTE);
+  ASSERT(status == ObjectStatus_Remote);
 
   /* Sleep to make sure the object has been fetched and it is now stored in the
    * local Plasma Store. */
   plasma_fetch(plasma_conn2, 1, oid_array1);
   sleep(1);
   status = plasma_status(plasma_conn2, oid1);
-  ASSERT(status == PLASMA_OBJECT_LOCAL);
+  ASSERT(status == ObjectStatus_Local);
 
   sleep(1);
   plasma_disconnect(plasma_conn1);

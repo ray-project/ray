@@ -29,7 +29,7 @@ task_spec *photon_get_task(photon_conn *conn) {
    * scheduler gives this client a task. */
   read_message(conn->conn, &type, &length, &message);
   CHECK(type == EXECUTE_TASK);
-  task_spec *task = (task_spec *)message;
+  task_spec *task = (task_spec *) message;
   CHECK(length == task_spec_size(task));
   return task;
 }
