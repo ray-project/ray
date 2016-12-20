@@ -51,21 +51,6 @@ flatbuffers_string_vec_ref_t object_ids_to_flatbuffer(flatcc_builder_t *B,
  * @return Void.
  */
 void object_ids_from_flatbuffer(flatbuffers_string_vec_t object_id_vector,
-                                OUT object_id **object_ids_ptr,
-                                OUT int64_t *num_objects) {
-  *num_objects = flatbuffers_string_vec_len(object_id_vector);
-  if (*num_objects == 0) {
-    *object_ids_ptr = NULL;
-    *num_objects = 0;
-  }
-  *object_ids_ptr = malloc((*num_objects) * sizeof(object_id));
-  object_id *object_ids = *object_ids_ptr;
-  for (int i = 0; i < *num_objects; i++) {
-    memcpy(&object_ids[i].id[0], flatbuffers_string_vec_at(object_id_vector, i), sizeof(object_ids[i].id));
-  }
-}
-
-void object_ids_from_flatbuffer2(flatbuffers_string_vec_t object_id_vector,
                                  object_id object_ids[],
                                  int64_t num_objects) {
   CHECK(flatbuffers_string_vec_len(object_id_vector) == num_objects);
@@ -98,7 +83,7 @@ uint8_t *plasma_receive(int sock, int64_t message_type) {
   int64_t length;
   uint8_t *reply_data;
   read_message(sock, &type, &length, &reply_data);
-  CHECK(type == message_type);
+  CHECKM(type == message_type, "type = %" PRId64 ", message_type = %" PRId64, type, message_type);
   return reply_data;
 }
 
@@ -261,7 +246,7 @@ int64_t plasma_read_StatusRequest_num_objects(uint8_t *data) {
 void plasma_read_StatusRequest(uint8_t *data, object_id object_ids[], int64_t num_objects) {
   DCHECK(data);
   PlasmaStatusRequest_table_t req = PlasmaStatusRequest_as_root(data);
-  object_ids_from_flatbuffer2(PlasmaStatusRequest_object_ids(req), object_ids, num_objects);
+  object_ids_from_flatbuffer(PlasmaStatusRequest_object_ids(req), object_ids, num_objects);
 }
 
 int plasma_send_StatusReply(int sock, protocol_builder *B, object_id object_ids[], int object_status[], int64_t num_objects) {
@@ -285,7 +270,7 @@ int64_t plasma_read_StatusReply_num_objects(uint8_t *data) {
 void plasma_read_StatusReply(uint8_t *data, object_id object_ids[], int object_status[], int64_t num_objects) {
   DCHECK(data);
   PlasmaStatusReply_table_t rep = PlasmaStatusReply_as_root(data);
-  object_ids_from_flatbuffer2(PlasmaStatusReply_object_ids(rep), object_ids, num_objects);
+  object_ids_from_flatbuffer(PlasmaStatusReply_object_ids(rep), object_ids, num_objects);
   for (int64_t i = 0; i < num_objects; ++i) {
     object_status[i] = flatbuffers_int32_vec_at(PlasmaStatusReply_status(rep), i);
   }
@@ -325,19 +310,6 @@ void plasma_read_ContainsReply(uint8_t *data, object_id *object_id, int *has_obj
   *has_object = PlasmaContainsReply_has_object(rep);
 }
 
-/* Plasma get message. */
-
-/*
-void plasma_read_GetRequest(uint8_t *data,
-                            object_id** object_ids_ptr,
-                            int64_t *num_objects) {
-  DCHECK(data);
-  PlasmaGetRequest_table_t req = PlasmaGetRequest_as_root(data);
-  flatbuffers_string_vec_t object_id_vector = PlasmaGetRequest_object_ids(req);
-  object_ids_from_flatbuffer(object_id_vector, object_ids_ptr, num_objects);
-}
-*/
-
 /* Plasma evict message. */
 
 int plasma_send_EvictRequest(int sock,
@@ -370,6 +342,8 @@ void plasma_read_EvictReply(uint8_t *data, int64_t *num_bytes) {
   *num_bytes = PlasmaEvictReply_num_bytes(req);
 }
 
+/* Plasma Get message. */
+
 int plasma_send_GetRequest(int sock,
                            protocol_builder *B,
                            object_id object_ids[],
@@ -380,13 +354,19 @@ int plasma_send_GetRequest(int sock,
   return finalize_buffer_and_send(B, sock, MessageType_PlasmaGetRequest);
 }
 
+int64_t plasma_read_GetRequest_num_objects(uint8_t *data) {
+  DCHECK(data);
+  PlasmaGetRequest_table_t req = PlasmaGetRequest_as_root(data);
+  return flatbuffers_string_vec_len(PlasmaGetRequest_object_ids(req));
+}
+
 void plasma_read_GetRequest(uint8_t *data,
-                            object_id** object_ids_ptr,
-                            int64_t *num_objects) {
+                            object_id object_ids[],
+                            int64_t num_objects) {
   DCHECK(data);
   PlasmaGetRequest_table_t req = PlasmaGetRequest_as_root(data);
   flatbuffers_string_vec_t object_id_vector = PlasmaGetRequest_object_ids(req);
-  object_ids_from_flatbuffer(object_id_vector, object_ids_ptr, num_objects);
+  object_ids_from_flatbuffer(object_id_vector, object_ids, num_objects);
 }
 
 int plasma_send_GetReply(int sock,
@@ -419,18 +399,18 @@ int plasma_send_GetReply(int sock,
 }
 
 void plasma_read_GetReply(uint8_t *data,
-                         object_id** object_ids_ptr,
+                         object_id object_ids[],
                          plasma_object plasma_objects[],
-                         int64_t *num_objects) {
+                         int64_t num_objects) {
   CHECK(data);
   PlasmaGetReply_table_t req = PlasmaGetReply_as_root(data);
   flatbuffers_string_vec_t object_id_vector = PlasmaGetReply_object_ids(req);
-  object_ids_from_flatbuffer(object_id_vector, object_ids_ptr, num_objects);
+  object_ids_from_flatbuffer(object_id_vector, object_ids, num_objects);
 
-  memset(plasma_objects, 0, sizeof(plasma_object) * (*num_objects));
+  memset(plasma_objects, 0, sizeof(plasma_object) * num_objects);
   PlasmaObject_vec_t plasma_objects_vector = PlasmaGetReply_plasma_objects(req);
 
-  for (int i = 0; i < *num_objects; ++i) {
+  for (int i = 0; i < num_objects; ++i) {
     PlasmaObject_struct_t obj = PlasmaObject_vec_at(plasma_objects_vector, i);
     plasma_objects[i].handle.store_fd = PlasmaObject_segment_index(obj);
     plasma_objects[i].handle.mmap_size = PlasmaObject_mmap_size(obj);
@@ -438,6 +418,94 @@ void plasma_read_GetReply(uint8_t *data,
     plasma_objects[i].data_size = PlasmaObject_data_size(obj);
     plasma_objects[i].metadata_offset = PlasmaObject_metadata_offset(obj);
     plasma_objects[i].metadata_size = PlasmaObject_metadata_size(obj);
+  }
+}
+
+/* Plasma get local messages. */
+
+int plasma_send_GetLocalRequest(int sock,
+                                protocol_builder *B,
+                                object_id object_ids[],
+                                int64_t num_objects) {
+  PlasmaGetLocalRequest_start_as_root(B);
+  PlasmaGetLocalRequest_object_ids_add(B, object_ids_to_flatbuffer(B, object_ids, num_objects));
+  PlasmaGetLocalRequest_end_as_root(B);
+  return finalize_buffer_and_send(B, sock, MessageType_PlasmaGetLocalRequest);
+}
+
+int64_t plasma_read_GetLocalRequest_num_objects(uint8_t *data) {
+  DCHECK(data);
+  PlasmaGetLocalRequest_table_t req = PlasmaGetLocalRequest_as_root(data);
+  return flatbuffers_string_vec_len(PlasmaGetLocalRequest_object_ids(req));
+}
+
+void plasma_read_GetLocalRequest(uint8_t *data,
+                                 object_id object_ids[],
+                                 int64_t num_objects) {
+  DCHECK(data);
+  PlasmaGetLocalRequest_table_t req = PlasmaGetLocalRequest_as_root(data);
+  flatbuffers_string_vec_t object_id_vector = PlasmaGetLocalRequest_object_ids(req);
+  object_ids_from_flatbuffer(object_id_vector, object_ids, num_objects);
+}
+
+int plasma_send_GetLocalReply(int sock,
+                              protocol_builder *B,
+                              object_id object_ids[],
+                              plasma_object plasma_objects[],
+                              int has_object[],
+                              int64_t num_objects) {
+  PlasmaGetLocalReply_start_as_root(B);
+
+  flatbuffers_string_vec_ref_t ids = object_ids_to_flatbuffer(B, object_ids, num_objects);
+  PlasmaGetLocalReply_object_ids_add(B, ids);
+
+  PlasmaObject_vec_start(B);
+  for (int i = 0; i < num_objects; ++i) {
+    plasma_object obj = plasma_objects[i];
+    PlasmaObject_t plasma_obj;
+    memset(&plasma_obj, 0, sizeof(PlasmaObject_t));
+    plasma_obj.segment_index = obj.handle.store_fd;
+    plasma_obj.mmap_size = obj.handle.mmap_size;
+    plasma_obj.data_offset = obj.data_offset;
+    plasma_obj.data_size = obj.data_size;
+    plasma_obj.metadata_offset = obj.metadata_offset;
+    plasma_obj.metadata_size = obj.metadata_size;
+    PlasmaObject_vec_push(B, &plasma_obj);
+  }
+  PlasmaObject_vec_ref_t object_vec = PlasmaObject_vec_end(B);
+  PlasmaGetLocalReply_plasma_objects_add(B, object_vec);
+  
+  flatbuffers_int32_vec_start(B);
+  for (int64_t i = 0; i < num_objects; ++i) {
+    flatbuffers_int32_vec_push(B, &has_object[i]);
+  }
+  PlasmaGetLocalReply_has_object_add(B, flatbuffers_int32_vec_end(B));
+  PlasmaGetLocalReply_end_as_root(B);
+  return finalize_buffer_and_send(B, sock, MessageType_PlasmaGetLocalReply);
+}
+
+void plasma_read_GetLocalReply(uint8_t *data,
+                               object_id object_ids[],
+                               plasma_object plasma_objects[],
+                               int has_object[],
+                               int64_t num_objects) {
+  CHECK(data);
+  PlasmaGetLocalReply_table_t req = PlasmaGetLocalReply_as_root(data);
+  flatbuffers_string_vec_t object_id_vector = PlasmaGetLocalReply_object_ids(req);
+  object_ids_from_flatbuffer(object_id_vector, object_ids, num_objects);
+
+  memset(plasma_objects, 0, sizeof(plasma_object) * num_objects);
+  PlasmaObject_vec_t plasma_objects_vector = PlasmaGetLocalReply_plasma_objects(req);
+
+  for (int i = 0; i < num_objects; ++i) {
+    PlasmaObject_struct_t obj = PlasmaObject_vec_at(plasma_objects_vector, i);
+    plasma_objects[i].handle.store_fd = PlasmaObject_segment_index(obj);
+    plasma_objects[i].handle.mmap_size = PlasmaObject_mmap_size(obj);
+    plasma_objects[i].data_offset = PlasmaObject_data_offset(obj);
+    plasma_objects[i].data_size = PlasmaObject_data_size(obj);
+    plasma_objects[i].metadata_offset = PlasmaObject_metadata_offset(obj);
+    plasma_objects[i].metadata_size = PlasmaObject_metadata_size(obj);
+    has_object[i] = flatbuffers_int32_vec_at(PlasmaGetLocalReply_has_object(req), i);
   }
 }
 
@@ -453,13 +521,19 @@ int plasma_send_FetchRequest(int sock,
   return finalize_buffer_and_send(B, sock, MessageType_PlasmaFetchRequest);
 }
 
+int64_t plasma_read_FetchRequest_num_objects(uint8_t *data) {
+  DCHECK(data);
+  PlasmaFetchRequest_table_t req = PlasmaFetchRequest_as_root(data);
+  return ObjectRequest_vec_len(PlasmaFetchRequest_object_ids(req));
+}
+
 void plasma_read_FetchRequest(uint8_t *data,
-                            object_id** object_ids_ptr,
-                            int64_t *num_objects) {
+                            object_id object_ids[],
+                            int64_t num_objects) {
   DCHECK(data);
   PlasmaFetchRequest_table_t req = PlasmaFetchRequest_as_root(data);
   flatbuffers_string_vec_t object_id_vector = PlasmaFetchRequest_object_ids(req);
-  object_ids_from_flatbuffer(object_id_vector, object_ids_ptr, num_objects);
+  object_ids_from_flatbuffer(object_id_vector, object_ids, num_objects);
 }
 
 /* Plasma wait messages. */

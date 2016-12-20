@@ -473,10 +473,6 @@ void process_message(event_loop *loop,
   plasma_store_state *state = client_context->plasma_state;
   int64_t type;
   read_buffer(client_sock, &type, state->input_buffer);
-  plasma_request *req = (plasma_request *) utarray_front(state->input_buffer);
-
-  /* We're only sending a single object ID at a time for now. */
-  plasma_reply reply = plasma_make_reply(NIL_OBJECT_ID);
 
   uint8_t *input = (uint8_t *) utarray_front(state->input_buffer);
   object_id object_ids[1];
@@ -503,30 +499,23 @@ void process_message(event_loop *loop,
     }
   } break;
   case MessageType_PlasmaGetRequest: {
-    object_id *gotten_object_ids;
-    plasma_read_GetRequest(input, &gotten_object_ids, &num_objects);
-    DCHECK(num_objects == 1);
-    memcpy(&object_ids[0], gotten_object_ids, sizeof(object_ids[0]));
-    free(gotten_object_ids);
+    plasma_read_GetRequest(input, object_ids, 1);
     if (get_object(client_context, client_sock, object_ids[0], &objects[0]) == OBJECT_FOUND) {
       CHECK(plasma_send_GetReply(client_sock, state->builder, object_ids, objects, 1) >= 0);
       CHECK(send_fd(client_sock, objects[0].handle.store_fd) >= 0);
     }
-    } break;
-  case PLASMA_GET_LOCAL:
-    DCHECK(req->num_object_ids == 1);
-    if (get_object_local(client_context, client_sock,
-                         req->object_requests[0].object_id,
-                         &reply.object) == OBJECT_FOUND) {
-      reply.has_object = true;
-      CHECK(plasma_send_reply(client_sock, &reply) >= 0);
-      CHECK(send_fd(client_sock, reply.object.handle.store_fd) >= 0);
+  } break;
+  case MessageType_PlasmaGetLocalRequest: {
+    plasma_read_GetLocalRequest(input, &object_ids[0], 1);
+    if (get_object_local(client_context, client_sock, object_ids[0], &objects[0]) == OBJECT_FOUND) {
+      int has_object = 1;
+      CHECK(plasma_send_GetLocalReply(client_sock, state->builder, object_ids, objects, &has_object, 1) >= 0);
+      CHECK(send_fd(client_sock, objects[0].handle.store_fd) >= 0);
     } else {
-      reply.has_object = false;
-      CHECK(plasma_send_reply(client_sock, &reply) >= 0);
-      CHECK(send_fd(client_sock, reply.object.handle.store_fd) >= 0);
+      int has_object = 0;
+      CHECK(plasma_send_GetLocalReply(client_sock, state->builder, object_ids, objects, &has_object, 1) >= 0);
     }
-    break;
+  } break;
   case MessageType_PlasmaReleaseRequest:
     plasma_read_ReleaseRequest(input, &object_ids[0]);
     release_object(client_context, object_ids[0]);
@@ -544,10 +533,6 @@ void process_message(event_loop *loop,
     plasma_read_SealRequest(input, &object_ids[0], &digest[0]);
     seal_object(client_context, object_ids[0], &digest[0]);
     } break;
-  case PLASMA_DELETE:
-    /* TODO(rkn): In the future, we can use this method to give hints to the
-     * eviction policy about when an object will no longer be needed. */
-    break;
   case MessageType_PlasmaEvictRequest: {
     /* This code path should only be used for testing. */
     int64_t num_bytes;

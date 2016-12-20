@@ -22,7 +22,7 @@ void free_protocol_builder(protocol_builder *builder);
 
 uint8_t *plasma_receive(int sock, int64_t message_type);
 
-/* PlasmaCreate message functions. */
+/* Plasma Create message functions. */
 
 int plasma_send_CreateRequest(int sock,
                               protocol_builder *B,
@@ -63,9 +63,11 @@ int plasma_send_GetRequest(int sock,
                            object_id object_ids[],
                            int64_t num_objects);
 
+int64_t plasma_read_GetRequest_num_objects(uint8_t *data);
+
 void plasma_read_GetRequest(uint8_t *data,
-                            object_id** object_ids_ptr,
-                            int64_t *num_objects);
+                            object_id object_ids[],
+                            int64_t num_objects);
 
 int plasma_send_GetReply(int sock,
                          protocol_builder *B,
@@ -74,9 +76,35 @@ int plasma_send_GetReply(int sock,
                          int64_t num_objects);
 
 void plasma_read_GetReply(uint8_t *data,
-                          object_id** object_ids_ptr,
+                          object_id object_ids[],
                           plasma_object plasma_objects[],
-                          int64_t *num_objects);
+                          int64_t num_objects);
+
+/* Plasma Get local message functions. */
+
+int plasma_send_GetLocalRequest(int sock,
+                                protocol_builder *B,
+                                object_id object_ids[],
+                                int64_t num_objects);
+
+int64_t plasma_read_GetLocalRequest_num_objects(uint8_t *data);
+
+void plasma_read_GetLocalRequest(uint8_t *data,
+                                 object_id object_ids[],
+                                 int64_t num_objects);
+
+int plasma_send_GetLocalReply(int sock,
+                              protocol_builder *B,
+                              object_id object_ids[],
+                              plasma_object plasma_objects[],
+                              int has_object[],
+                              int64_t num_objects);
+
+void plasma_read_GetLocalReply(uint8_t *data,
+                               object_id object_ids[],
+                               plasma_object plasma_objects[],
+                               int has_object[],
+                               int64_t num_objects);
 
 /* Plasma Release message functions. */
 
@@ -139,9 +167,11 @@ int plasma_send_FetchRequest(int sock,
                            object_id object_ids[],
                            int64_t num_objects);
 
+int64_t plasma_read_FetchRequest_num_objects(uint8_t *data);
+
 void plasma_read_FetchRequest(uint8_t *data,
-                              object_id** object_ids_ptr,
-                              int64_t *num_objects);
+                              object_id object_ids[],
+                              int64_t num_objects);
 
 /* Plasma Wait message functions. */
 
