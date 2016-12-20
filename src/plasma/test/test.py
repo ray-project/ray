@@ -351,6 +351,63 @@ class TestPlasmaClient(unittest.TestCase):
         self.assertEqual(data_sizes[j], recv_dsize)
         self.assertEqual(metadata_sizes[j], recv_msize)
 
+  def test_subscribe_deletions(self):
+    # Subscribe to notifications from the Plasma Store. We use plasma_client2
+    # to make sure that all used objects will get evicted properly.
+    sock = self.plasma_client2.subscribe()
+    for i in [1, 10, 100, 1000, 10000, 100000]:
+      object_ids = [random_object_id() for _ in range(i)]
+      # Add 1 to the sizes to make sure we have nonzero object sizes.
+      metadata_sizes = [np.random.randint(1000) + 1 for _ in range(i)]
+      data_sizes = [np.random.randint(1000) + 1 for _ in range(i)]
+      for j in range(i):
+        x = self.plasma_client2.create(object_ids[j], size=data_sizes[j],
+                                  metadata=bytearray(np.random.bytes(metadata_sizes[j])))
+        self.plasma_client2.seal(object_ids[j])
+      del x
+      # Check that we received notifications for creating all of the objects.
+      for j in range(i):
+        recv_objid, recv_dsize, recv_msize = self.plasma_client2.get_next_notification()
+        self.assertEqual(object_ids[j], recv_objid)
+        self.assertEqual(data_sizes[j], recv_dsize)
+        self.assertEqual(metadata_sizes[j], recv_msize)
+
+      # Check that we receive notifications for deleting all objects, as we
+      # evict them.
+      for j in range(i):
+        self.assertEqual(self.plasma_client2.evict(1), data_sizes[j] + metadata_sizes[j])
+        recv_objid, recv_dsize, recv_msize = self.plasma_client2.get_next_notification()
+        self.assertEqual(object_ids[j], recv_objid)
+        self.assertEqual(-1, recv_dsize)
+        self.assertEqual(-1, recv_msize)
+
+    # Test multiple deletion notifications. The first 9 object IDs have size 0,
+    # and the last has a nonzero size. When Plasma evicts 1 byte, it will evict
+    # all objects, so we should receive deletion notifications for each.
+    num_object_ids = 10
+    object_ids = [random_object_id() for _ in range(num_object_ids)]
+    metadata_sizes = [0] * (num_object_ids - 1)
+    data_sizes = [0] * (num_object_ids - 1)
+    metadata_sizes.append(np.random.randint(1000))
+    data_sizes.append(np.random.randint(1000))
+    for i in range(num_object_ids):
+      x = self.plasma_client2.create(object_ids[i], size=data_sizes[i],
+                                metadata=bytearray(np.random.bytes(metadata_sizes[i])))
+      self.plasma_client2.seal(object_ids[i])
+    del x
+    for i in range(num_object_ids):
+      recv_objid, recv_dsize, recv_msize = self.plasma_client2.get_next_notification()
+      self.assertEqual(object_ids[i], recv_objid)
+      self.assertEqual(data_sizes[i], recv_dsize)
+      self.assertEqual(metadata_sizes[i], recv_msize)
+    self.assertEqual(self.plasma_client2.evict(1), data_sizes[-1] + metadata_sizes[-1])
+    for i in range(num_object_ids):
+      recv_objid, recv_dsize, recv_msize = self.plasma_client2.get_next_notification()
+      self.assertEqual(object_ids[i], recv_objid)
+      self.assertEqual(-1, recv_dsize)
+      self.assertEqual(-1, recv_msize)
+
+
 class TestPlasmaManager(unittest.TestCase):
 
   def setUp(self):

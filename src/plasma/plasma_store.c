@@ -103,6 +103,8 @@ plasma_store_state *init_plasma_store(event_loop *loop, int64_t system_memory) {
   return state;
 }
 
+void push_notification(plasma_store_state *state, object_id object_id);
+
 /* If this client is not already using the object, add the client to the
  * object's list of clients, otherwise do nothing. */
 void add_client_to_object_clients(object_table_entry *entry,
@@ -321,12 +323,7 @@ void seal_object(client *client_context,
   /* Set the object digest. */
   memcpy(entry->info.digest, digest, DIGEST_SIZE);
   /* Inform all subscribers that a new object has been sealed. */
-  notification_queue *queue, *temp_queue;
-  HASH_ITER(hh, plasma_state->pending_notifications, queue, temp_queue) {
-    utarray_push_back(queue->object_ids, &object_id);
-    send_notifications(plasma_state->loop, queue->subscriber_fd, plasma_state,
-                       0);
-  }
+  push_notification(plasma_state, object_id);
 
   /* Inform processes getting this object that the object is ready now. */
   object_notify_entry *notify_entry;
@@ -375,6 +372,8 @@ void delete_object(plasma_store_state *plasma_state, object_id object_id) {
   dlfree(pointer);
   utarray_free(entry->clients);
   free(entry);
+  /* Inform all subscribers that the object has been deleted. */
+  push_notification(plasma_state, object_id);
 }
 
 void remove_objects(plasma_store_state *plasma_state,
@@ -387,6 +386,15 @@ void remove_objects(plasma_store_state *plasma_state,
     /* Free the array of objects to evict. This array was originally allocated
      * by the eviction policy. */
     free(objects_to_evict);
+  }
+}
+
+void push_notification(plasma_store_state *plasma_state, object_id object_id) {
+  notification_queue *queue, *temp_queue;
+  HASH_ITER(hh, plasma_state->pending_notifications, queue, temp_queue) {
+    utarray_push_back(queue->object_ids, &object_id);
+    send_notifications(plasma_state->loop, queue->subscriber_fd, plasma_state,
+                       0);
   }
 }
 
@@ -409,9 +417,16 @@ void send_notifications(event_loop *loop,
     /* This object should already exist in plasma store state. */
     HASH_FIND(handle, plasma_state->plasma_store_info->objects, obj_id,
               sizeof(object_id), entry);
-    CHECK(entry != NULL);
 
-    object_info object_info = entry->info;
+    object_info object_info;
+    if (entry == NULL) {
+      memset(&object_info, 0, sizeof(object_info));
+      object_info.obj_id = *obj_id;
+      object_info.is_deletion = true;
+    } else {
+      object_info = entry->info;
+      object_info.is_deletion = false;
+    }
 
     /* Attempt to send a notification about this object ID. */
     int nbytes =

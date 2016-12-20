@@ -328,8 +328,10 @@ PyObject *PyPlasma_receive_notification(PyObject *self, PyObject *args) {
   if (!PyArg_ParseTuple(args, "i", &plasma_sock)) {
     return NULL;
   }
-  /* Receive object notification from the plasma connection socket,
-   * return a tuple of its fields: object_id, data_size, metadata_size. */
+  /* Receive object notification from the plasma connection socket. If the
+   * object was added, return a tuple of its fields: object_id, data_size,
+   * metadata_size. If the object was deleted, data_size and metadata_size will
+   * be set to -1. */
   int nbytes =
       read_bytes(plasma_sock, (uint8_t *) &object_info, sizeof(object_info));
 
@@ -342,8 +344,13 @@ PyObject *PyPlasma_receive_notification(PyObject *self, PyObject *args) {
   PyObject *t = PyTuple_New(3);
   PyTuple_SetItem(t, 0, PyBytes_FromStringAndSize(
                             (char *) object_info.obj_id.id, UNIQUE_ID_SIZE));
-  PyTuple_SetItem(t, 1, PyLong_FromLong(object_info.data_size));
-  PyTuple_SetItem(t, 2, PyLong_FromLong(object_info.metadata_size));
+  if (object_info.is_deletion) {
+    PyTuple_SetItem(t, 1, PyLong_FromLong(-1));
+    PyTuple_SetItem(t, 2, PyLong_FromLong(-1));
+  } else {
+    PyTuple_SetItem(t, 1, PyLong_FromLong(object_info.data_size));
+    PyTuple_SetItem(t, 2, PyLong_FromLong(object_info.metadata_size));
+  }
 
   return t;
 }
