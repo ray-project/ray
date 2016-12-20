@@ -242,7 +242,7 @@ bool PublishObjectNotification(RedisModuleCtx *ctx,
   }
   printf("data size value from redismodule: %lld \n", data_size_value);
   /* Append binary data size for this object. */
-  RedisModule_StringAppendBuffer(ctx, manager_list, &data_size_value,
+  RedisModule_StringAppendBuffer(ctx, manager_list, (const char *)&data_size_value,
                                  sizeof(data_size_value));
 
   RedisModule_StringAppendBuffer(ctx, manager_list, " MANAGERS",
@@ -457,7 +457,7 @@ int ObjectTableRequestNotifications_RedisCommand(RedisModuleCtx *ctx,
         return RedisModule_ReplyWithError(ctx, "requested object not found");
       }
       RedisModuleString *existing_data_size;
-      RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "data_size",
+      RedisModule_HashGet(object_info_key, REDISMODULE_HASH_CFIELDS, "data_size",
           &existing_data_size, NULL);
       RedisModule_CloseKey(object_info_key); /* No longer needed. */
 
