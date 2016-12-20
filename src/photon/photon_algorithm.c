@@ -238,6 +238,7 @@ void handle_task_submitted(local_scheduler_state *state,
    * cannot assign the task to a worker immediately, we either queue the task in
    * the local task queue or we pass the task to the global scheduler. For now,
    * we pass the task along to the global scheduler if there is one. */
+//#if 0
   if ((utarray_len(algorithm_state->available_workers) > 0) &&
       can_run(algorithm_state, spec)) {
     run_task_immediately(state, algorithm_state, spec, false);
@@ -246,6 +247,8 @@ void handle_task_submitted(local_scheduler_state *state,
   } else {
     give_task_to_global_scheduler(state, algorithm_state, spec, false);
   }
+//#endif
+//  give_task_to_global_scheduler(state, algorithm_state, spec, false);
   /* Update the result table, which holds mappings of object ID -> ID of the
    * task that created it. */
   if (state->db != NULL) {

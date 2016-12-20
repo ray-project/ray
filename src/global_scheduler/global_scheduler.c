@@ -72,6 +72,7 @@ void signal_handler(int signal) {
 
 void process_task_waiting(task *task, void *user_context) {
   global_scheduler_state *state = (global_scheduler_state *) user_context;
+  printf("[GS]: process TASKWAIT task is called\n");
   handle_task_waiting(state, state->policy_state, task);
 }
 
@@ -114,25 +115,28 @@ void process_new_db_client(db_client_id db_client_id,
 }
 
 /**
- * Process notification about the new object location.
+ * Process notification about the new object information.
  *
  * @param object_id : id of the object with new location
+ * @param data_size: object size
  * @param manager_count: the count of new locations for this object
  * @param manager_vector: the vector with new Plasma Manager locations
  * @param user_context: user context passed to the object_table_subscribe()
  *
  * @return None
  */
-void process_new_object_manager(
+void object_table_subscribe_callback(
     object_id object_id,
+    int64_t data_size,
     int manager_count,
     OWNER const char *manager_vector[],
     void *user_context) {
   /* Extract global scheduler state from the callback context. */
   global_scheduler_state *state = (global_scheduler_state *) user_context;
 
-  printf("[GS]: new object manager, object id: ");
+  printf("[GS]: NEW OBJECT INFO AVAILABLE FOR OBJECT= ");
   object_id_print(object_id);
+  fflush(stdout);
   printf("Managers<%d>:\n", manager_count);
   for (int i = 0; i < manager_count; i++) {
     printf("%s\n", manager_vector[i]);
@@ -148,7 +152,7 @@ void process_new_object_manager(
     memset(obj_info_entry, 0, sizeof(scheduler_object_info));
 
     obj_info_entry->object_id = object_id;
-    obj_info_entry->data_size = 0; /* Not known at this time, set elsewhere. */
+    obj_info_entry->data_size = data_size;
 
     HASH_ADD(hh, state->scheduler_object_info_table, object_id,
              sizeof(obj_info_entry->object_id), obj_info_entry);
@@ -174,6 +178,7 @@ void process_new_object_manager(
 
 }
 
+#if 0
 void process_new_object_info(object_id object_id, int64_t object_size,
                              void *user_context) {
 
@@ -203,6 +208,7 @@ void process_new_object_info(object_id object_id, int64_t object_size,
     /* Object already exists in the table -- updated its size information. */
   obj_info_entry->data_size = object_size;
 }
+#endif
 
 void start_server(const char *redis_addr, int redis_port) {
   event_loop *loop = event_loop_create();
@@ -223,11 +229,18 @@ void start_server(const char *redis_addr, int redis_port) {
                        process_task_waiting, (void *) g_state, &retry, NULL,
                        NULL);
 
+  /*
   object_table_subscribe(g_state->db, NIL_OBJECT_ID, process_new_object_manager,
                          (void *)g_state, &retry, NULL, NULL);
 
   object_info_subscribe(g_state->db, process_new_object_info, (void *) g_state,
                         &retry, NULL, NULL);
+  */
+
+  object_table_subscribe_to_notifications(g_state->db,
+                                          true,
+                                          object_table_subscribe_callback,
+                                          g_state, &retry, NULL, NULL);
   /* Start the event loop. */
   event_loop_run(loop);
 }

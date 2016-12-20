@@ -49,7 +49,7 @@ class TestGlobalScheduler(unittest.TestCase):
     assert os.path.isfile(redis_path)
     assert os.path.isfile(redis_module)
     node_ip_address = "127.0.0.1"
-    redis_port = new_port()
+    redis_port = 6379#new_port()
     redis_address = "{}:{}".format(node_ip_address, redis_port)
     self.redis_process = subprocess.Popen([redis_path, "--port", str(redis_port), "--loglevel", "warning", "--loadmodule", redis_module])
     time.sleep(0.1)
@@ -60,11 +60,15 @@ class TestGlobalScheduler(unittest.TestCase):
     # Start the Plasma store.
     plasma_store_name, self.p2 = plasma.start_plasma_store()
     # Start the Plasma manager.
-    plasma_manager_name, self.p3, plasma_manager_port = plasma.start_plasma_manager(plasma_store_name, redis_address)
-    plasma_address = "{}:{}".format(node_ip_address, plasma_manager_port)
-    print("plasma_address={}".format(plasma_address))
+    self.plasma_manager_name, self.p3, plasma_manager_port = plasma.start_plasma_manager(plasma_store_name, redis_address)
+    self.plasma_address = "{}:{}".format(node_ip_address, plasma_manager_port)
+    print("plasma_address={}".format(self.plasma_address))
     # Start the local scheduler.
-    local_scheduler_name, self.p4 = photon.start_local_scheduler(plasma_store_name, plasma_manager_name=plasma_manager_name, plasma_address=plasma_address, redis_address=redis_address)
+    local_scheduler_name, self.p4 = photon.start_local_scheduler(
+        plasma_store_name, 
+        plasma_manager_name=self.plasma_manager_name, 
+        plasma_address=self.plasma_address, 
+        redis_address=redis_address)
     # Connect to the scheduler.
     self.photon_client = photon.PhotonClient(local_scheduler_name)
 
@@ -74,7 +78,7 @@ class TestGlobalScheduler(unittest.TestCase):
     self.assertEqual(self.p2.poll(), None)
     self.assertEqual(self.p3.poll(), None)
     self.assertEqual(self.p4.poll(), None)
-    self.assertEqual(self.redis_process.poll(), None)
+    #self.assertEqual(self.redis_process.poll(), None)
 
     # Kill the global scheduler.
     if USE_VALGRIND:
@@ -97,6 +101,18 @@ class TestGlobalScheduler(unittest.TestCase):
     # There should be three db clients, the global scheduler, the local
     # scheduler, and the plasma manager.
     self.assertEqual(len(self.redis_client.keys("{}*".format(DB_CLIENT_PREFIX))), 3)
+    db_client_id = None
+    cli_lst = self.redis_client.keys("{}*".format(DB_CLIENT_PREFIX))
+    for client_id in cli_lst:
+        rediscmdstr = b'HGET {} client_type'.format(client_id)
+        print(rediscmdstr)
+        #response = self.redis_client.execute_command(rediscmdstr)
+        response = self.redis_client.hget(client_id, b'client_type')
+        if response == "plasma_manager":
+            db_client_id = client_id
+    assert(db_client_id != None)
+    assert(db_client_id.startswith("CL:"))
+    db_client_id = db_client_id[len('CL:'):] #remove the CL: prefix
     args_list = [
       [],
 #       #{},
@@ -128,6 +144,14 @@ class TestGlobalScheduler(unittest.TestCase):
     num_return_vals = [0,1,2,3,5,10]
     # There should not be anything else in Redis yet.
     self.assertEqual(len(self.redis_client.keys("*")), 3)
+    #insert the object into Redis
+    data_size = 0xf1f0
+    #print("sleeping for 20 seconds....")
+    #time.sleep(20)
+    foo = random_object_id()
+    object_dep = args_list[1][0].id()
+    #self.redis_client.execute_command("RAY.OBJECT_TABLE_ADD", object_dep, data_size, "hash1", self.plasma_address)
+    self.redis_client.execute_command("RAY.OBJECT_TABLE_ADD", object_dep, data_size, "hash1", db_client_id)
 
     # Submit a task to Redis.
     task = photon.Task(random_function_id(), args_list[1], num_return_vals[0], random_task_id(), 0)
@@ -144,9 +168,11 @@ class TestGlobalScheduler(unittest.TestCase):
         self.assertTrue(task_status in [TASK_STATUS_WAITING, TASK_STATUS_SCHEDULED])
         if task_status == TASK_STATUS_SCHEDULED:
           break
+        else:
+            print(task_status)
       print("The task has not been scheduled yet, trying again.")
       num_retries -= 1
-      time.sleep(0.2)
+      time.sleep(1)
 
     if num_retries <= 0 and task_status != TASK_STATUS_SCHEDULED:
         #failed to submit and schedule a single task -- bail
@@ -159,7 +185,8 @@ class TestGlobalScheduler(unittest.TestCase):
       self.photon_client.submit(task)
     # Check that there are the correct number of tasks in Redis and that they
     # all get assigned to the local scheduler.
-    while True:
+    num_retries = 10
+    while num_retries > 0:
       task_entries = self.redis_client.keys("task*")
       self.assertLessEqual(len(task_entries), num_tasks + 1)
       if len(task_entries) == num_tasks + 1:
@@ -169,6 +196,8 @@ class TestGlobalScheduler(unittest.TestCase):
         if all([status == TASK_STATUS_SCHEDULED for status in task_statuses]):
           break
       print("The tasks have not been scheduled yet, trying again.")
+      num_retries -= 1
+      time.sleep(1)
 
 if __name__ == "__main__":
   if len(sys.argv) > 1:

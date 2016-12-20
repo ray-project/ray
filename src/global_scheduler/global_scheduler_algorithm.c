@@ -38,23 +38,19 @@ void handle_task_waiting(global_scheduler_state *state,
 
   task_spec *task_spec = task_task_spec(task);
   CHECKM(task_spec != NULL, "task wait handler encounted a task with NULL spec");
-  printf("TASKWAIT: starting to iterate %lld task args\n", task_num_args(task_spec));
+  printf("[GS] TASKWAIT: starting to iterate %lld task args\n", task_num_args(task_spec));
   /* local hash table to keep track of aggregate object sizes per local sched.
    */
+  handle_task_nodep(state, policy_state, task);
+  return;
   struct object_size_entry {
     const char *object_location;
     int64_t total_object_size;
     UT_hash_handle hh;
   } *tmp, *s = NULL, *object_size_table = NULL;
 
-  /* Handle tasks with no dependencies. */
-  if (task_num_args(task_spec) <= 0) {
-    handle_task_nodep(state, policy_state, task);
-    return;
-  }
-
   /* If none of the args are passed by reference, handle task as having no dep.*/
-
+  bool args_by_ref = false;
   for (int i = 0; i < task_num_args(task_spec); i++) {
     /* Object ids are only available for args by references.
      * Args by value are serialized into the task_spec itself.
@@ -63,6 +59,7 @@ void handle_task_waiting(global_scheduler_state *state,
     if (task_arg_type(task_spec, i) != ARG_BY_REF) {
       continue;
     }
+    args_by_ref = true;
     object_id obj_id = task_arg_id(task_spec, i);
     /* Given this object id, look it up.
      */
@@ -75,6 +72,8 @@ void handle_task_waiting(global_scheduler_state *state,
       printf("[GS] Processing task with object id not known to global scheduler\n");
       continue;
     }
+    printf("[GS] found object id, data_size=%lld \n", obj_info_entry->data_size);
+    object_id_print(obj_info_entry->object_id);
     /* Object is known to the scheduler. For each of its locations, add size.
      */
     int64_t object_size = obj_info_entry->data_size;
@@ -103,6 +102,13 @@ void handle_task_waiting(global_scheduler_state *state,
       s->total_object_size += object_size;
     } /* end for each object's location */
   } /* end for each task's object */
+
+  if (!args_by_ref) {
+    /* All args were by value or no args at all. Fall back to simple policy. */
+    printf("[GS]: fall back to simple policy\n");
+    handle_task_nodep(state, policy_state, task);
+    return;
+  }
 
   /* pick maximum object_size and assign task to that scheduler.
    */
