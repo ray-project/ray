@@ -704,8 +704,12 @@ TEST subscribe_success_test(void) {
 }
 
 /* Test if subscribe succeeds if the object is already present. */
+typedef struct {
+  char *teststr;
+  int64_t data_size;
+} subscribe_object_present_context_t;
 
-const char *subscribe_object_present_context = "subscribe_object_present";
+const char *subscribe_object_present_str = "subscribe_object_present";
 int subscribe_object_present_succeeded = 0;
 
 void subscribe_object_present_object_available_callback(
@@ -714,7 +718,10 @@ void subscribe_object_present_object_available_callback(
     int manager_count,
     const char *manager_vector[],
     void *user_context) {
-  CHECK(user_context == (void *) subscribe_object_present_context);
+  subscribe_object_present_context_t *ctx =
+      (subscribe_object_present_context_t *) user_context;
+  CHECK(ctx->data_size == data_size);
+  CHECK(strcmp(subscribe_object_present_str, ctx->teststr) == 0);
   subscribe_object_present_succeeded = 1;
   CHECK(manager_count == 1);
 }
@@ -725,6 +732,11 @@ void fatal_fail_callback(unique_id id, void *user_context, void *user_data) {
 }
 
 TEST subscribe_object_present_test(void) {
+
+  int64_t data_size = 0xF1F0;
+  subscribe_object_present_context_t myctx = {subscribe_object_present_str,
+      data_size};
+
   g_loop = event_loop_create();
   db_handle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11236);
@@ -733,10 +745,11 @@ TEST subscribe_object_present_test(void) {
   retry_info retry = {
       .num_retries = 0, .timeout = 100, .fail_callback = fatal_fail_callback,
   };
-  object_table_add(db, id, 0, (unsigned char *) NIL_DIGEST, &retry, NULL, NULL);
+  object_table_add(db, id, data_size, (unsigned char *) NIL_DIGEST, &retry,
+                   NULL, NULL);
   object_table_subscribe_to_notifications(
       db, false, subscribe_object_present_object_available_callback,
-      (void *) subscribe_object_present_context, &retry, NULL, (void *) db);
+      (void *) &myctx, &retry, NULL, (void *) db);
   /* Install handler for terminating the event loop. */
   event_loop_add_timer(g_loop, 750,
                        (event_loop_timer_handler) terminate_event_loop_callback,
