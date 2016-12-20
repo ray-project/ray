@@ -31,6 +31,8 @@ enum photon_message_type {
 /** Contains all information that is associated to a worker. */
 typedef struct {
   int sock;
+  /** A pointer to a task object, to update the task table. */
+  task *task_in_progress;
 } worker;
 // clang-format on
 

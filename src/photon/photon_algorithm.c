@@ -215,6 +215,12 @@ void queue_task_locally(local_scheduler_state *state,
   memcpy(elt->spec, spec, task_spec_size(spec));
   elt->from_global_scheduler = from_global_scheduler;
   DL_APPEND(algorithm_state->task_queue, elt);
+  if (!from_global_scheduler && state->db != NULL) {
+    task *task =
+        alloc_task(spec, TASK_STATUS_SCHEDULED, get_db_client_id(state->db));
+    task_table_add_task(state->db, task, (retry_info *) &photon_retry, NULL,
+                        NULL);
+  }
 }
 
 void give_task_to_global_scheduler(local_scheduler_state *state,
@@ -282,6 +288,10 @@ void handle_task_scheduled(local_scheduler_state *state,
 void handle_worker_available(local_scheduler_state *state,
                              scheduling_algorithm_state *algorithm_state,
                              int worker_index) {
+  worker *available_worker =
+      (worker *) utarray_eltptr(state->workers, worker_index);
+  CHECK(available_worker->task_in_progress == NULL);
+  /* Try to schedule another task to the worker. */
   int scheduled_task =
       find_and_schedule_task_if_possible(state, algorithm_state, worker_index);
   /* If we couldn't find a task to schedule, add the worker to the queue of
