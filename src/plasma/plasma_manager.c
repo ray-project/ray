@@ -1205,33 +1205,35 @@ void process_status_request(client_connection *client_conn,
                       request_status_done, client_conn);
 }
 
-void process_object_notification(event_loop *loop,
-                                 int client_sock,
-                                 void *context,
-                                 int events) {
-  plasma_manager_state *state = context;
-  object_id obj_id;
-  object_info object_info;
-  retry_info retry = {
-      .num_retries = NUM_RETRIES,
-      .timeout = MANAGER_TIMEOUT,
-      .fail_callback = NULL,
-  };
-  /* Read the notification from Plasma. */
-  int error =
-      read_bytes(client_sock, (uint8_t *) &object_info, sizeof(object_info));
-  if (error < 0) {
-    /* The store has closed the socket. */
-    LOG_DEBUG(
-        "The plasma store has closed the object notification socket, or some "
-        "other error has occurred.");
-    event_loop_remove_file(loop, client_sock);
-    close(client_sock);
-    return;
+void process_delete_object_notification(plasma_manager_state *state,
+                                        object_info object_info) {
+  object_id obj_id = object_info.obj_id;
+  available_object *entry;
+  HASH_FIND(hh, state->local_available_objects, &obj_id, sizeof(object_id),
+            entry);
+  if (entry != NULL) {
+    HASH_DELETE(hh, state->local_available_objects, entry);
   }
-  obj_id = object_info.obj_id;
-  /* Add object to locally available object. */
-  /* TODO(pcm): Where is this deallocated? */
+
+  /* Remove this object from the (redis) object table. */
+  if (state->db) {
+    retry_info retry = {
+        .num_retries = NUM_RETRIES,
+        .timeout = MANAGER_TIMEOUT,
+        .fail_callback = NULL,
+    };
+    object_table_remove(state->db, obj_id, NULL, &retry, NULL, NULL);
+  }
+
+  /* NOTE: There could be pending wait requests for this object that will now
+   * return when the object is not actually available. For simplicity, we allow
+   * this scenario rather than try to keep the wait request statuses exactly
+   * up-to-date. */
+}
+
+void process_add_object_notification(plasma_manager_state *state,
+                                     object_info object_info) {
+  object_id obj_id = object_info.obj_id;
   available_object *entry =
       (available_object *) malloc(sizeof(available_object));
   entry->object_id = obj_id;
@@ -1242,6 +1244,11 @@ void process_object_notification(event_loop *loop,
   if (state->db) {
     /* TODO(swang): Log the error if we fail to add the object, and possibly
      * retry later? */
+    retry_info retry = {
+        .num_retries = NUM_RETRIES,
+        .timeout = MANAGER_TIMEOUT,
+        .fail_callback = NULL,
+    };
     object_table_add(state->db, obj_id,
                      object_info.data_size + object_info.metadata_size,
                      object_info.digest, &retry, NULL, NULL);
@@ -1260,6 +1267,33 @@ void process_object_notification(event_loop *loop,
                               PLASMA_OBJECT_LOCAL);
   update_object_wait_requests(state, obj_id, PLASMA_QUERY_ANYWHERE,
                               PLASMA_OBJECT_LOCAL);
+}
+
+void process_object_notification(event_loop *loop,
+                                 int client_sock,
+                                 void *context,
+                                 int events) {
+  plasma_manager_state *state = context;
+  object_info object_info;
+  /* Read the notification from Plasma. */
+  int error =
+      read_bytes(client_sock, (uint8_t *) &object_info, sizeof(object_info));
+  if (error < 0) {
+    /* The store has closed the socket. */
+    LOG_DEBUG(
+        "The plasma store has closed the object notification socket, or some "
+        "other error has occurred.");
+    event_loop_remove_file(loop, client_sock);
+    close(client_sock);
+    return;
+  }
+  /* Add object to locally available object. */
+  /* TODO(pcm): Where is this deallocated? */
+  if (object_info.is_deletion) {
+    process_delete_object_notification(state, object_info);
+  } else {
+    process_add_object_notification(state, object_info);
+  }
 }
 
 void process_message(event_loop *loop,

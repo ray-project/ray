@@ -337,6 +337,16 @@ void handle_object_available(local_scheduler_state *state,
   }
 }
 
+void handle_object_removed(local_scheduler_state *state, object_id object_id) {
+  scheduling_algorithm_state *algorithm_state = state->algorithm_state;
+  available_object *entry;
+  HASH_FIND(handle, algorithm_state->local_objects, &object_id,
+            sizeof(object_id), entry);
+  if (entry != NULL) {
+    HASH_DELETE(handle, algorithm_state->local_objects, entry);
+  }
+}
+
 int num_tasks_in_queue(scheduling_algorithm_state *algorithm_state) {
   task_queue_entry *elt;
   int count;

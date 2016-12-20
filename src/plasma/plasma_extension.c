@@ -328,8 +328,9 @@ PyObject *PyPlasma_receive_notification(PyObject *self, PyObject *args) {
   if (!PyArg_ParseTuple(args, "i", &plasma_sock)) {
     return NULL;
   }
-  /* Receive object notification from the plasma connection socket,
-   * return a tuple of its fields: object_id, data_size, metadata_size. */
+  /* Receive object notification from the plasma connection socket. If the
+   * object was added, return a tuple of its fields: object_id, data_size,
+   * metadata_size. If the object was deleted, return None. */
   int nbytes =
       read_bytes(plasma_sock, (uint8_t *) &object_info, sizeof(object_info));
 
@@ -337,6 +338,9 @@ PyObject *PyPlasma_receive_notification(PyObject *self, PyObject *args) {
     PyErr_SetString(PyExc_RuntimeError,
                     "Failed to read object notification from Plasma socket");
     return NULL;
+  }
+  if (object_info.is_deletion) {
+    Py_RETURN_NONE;
   }
   /* Construct a tuple from object_info and return. */
   PyObject *t = PyTuple_New(3);
