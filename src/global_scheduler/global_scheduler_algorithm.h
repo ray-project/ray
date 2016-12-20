@@ -13,6 +13,12 @@
  *
  */
 
+typedef enum {
+  SCHED_ROUND_ROBIN = 1,
+  SCHED_TRANSFER_AWARE = 2,
+  SCHED_POLICY_MAX
+} global_scheduler_policy_t;
+
 /** The state managed by the global scheduling policy. */
 struct global_scheduler_policy_state {
   /** The index of the next local scheduler to assign a task to. */

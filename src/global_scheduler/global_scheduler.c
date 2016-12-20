@@ -7,7 +7,9 @@
 #include "global_scheduler.h"
 #include "global_scheduler_algorithm.h"
 #include "net.h"
+#include "object_info.h"
 #include "state/db_client_table.h"
+#include "state/object_table.h"
 #include "state/table.h"
 #include "state/task_table.h"
 
@@ -83,15 +85,123 @@ void process_new_db_client(db_client_id db_client_id,
                            const char *aux_address,
                            void *user_context) {
   global_scheduler_state *state = (global_scheduler_state *) user_context;
+
   if (strncmp(client_type, "photon", strlen("photon")) == 0) {
     /* Add plasma_manager ip:port -> photon_db_client_id association to state.
      */
-    aux_address_entry *plasma_photon_entry = malloc(sizeof(aux_address_entry));
+    aux_address_entry *plasma_photon_entry = calloc(1, sizeof(aux_address_entry));
     plasma_photon_entry->aux_address = strdup(aux_address);
     plasma_photon_entry->photon_db_client_id = db_client_id;
-    HASH_ADD_STR(state->plasma_photon_map, aux_address, plasma_photon_entry);
+    HASH_ADD_KEYPTR(hh, state->plasma_photon_map,
+                    plasma_photon_entry->aux_address,
+                    strlen(plasma_photon_entry->aux_address),
+                    plasma_photon_entry);
+
+    {
+      /* print the photon 2 plasma association map so far */
+      aux_address_entry *entry, *tmp;
+      printf("[GS] P2P hash map so far: \n");
+      HASH_ITER(hh, state->plasma_photon_map, entry, tmp) {
+        printf("%s\n\t", entry->aux_address); /* Key (plasma mgr address) */
+        object_id_print(entry->photon_db_client_id);
+
+      }
+    }
+
+    /* add new local scheduler to the state. */
     handle_new_local_scheduler(state, state->policy_state, db_client_id);
   }
+}
+
+/**
+ * Process notification about the new object location.
+ *
+ * @param object_id : id of the object with new location
+ * @param manager_count: the count of new locations for this object
+ * @param manager_vector: the vector with new Plasma Manager locations
+ * @param user_context: user context passed to the object_table_subscribe()
+ *
+ * @return None
+ */
+void process_new_object_manager(
+    object_id object_id,
+    int manager_count,
+    OWNER const char *manager_vector[],
+    void *user_context) {
+  /* Extract global scheduler state from the callback context. */
+  global_scheduler_state *state = (global_scheduler_state *) user_context;
+
+  printf("[GS]: new object manager, object id: ");
+  object_id_print(object_id);
+  printf("Managers<%d>:\n", manager_count);
+  for (int i = 0; i < manager_count; i++) {
+    printf("%s\n", manager_vector[i]);
+  }
+  scheduler_object_info *obj_info_entry = NULL;
+
+  HASH_FIND(hh, state->scheduler_object_info_table, &object_id,
+            sizeof(object_id), obj_info_entry);
+
+  if (obj_info_entry == NULL) {
+    /** Construct a new object info hash table entry. */
+    obj_info_entry = malloc(sizeof(scheduler_object_info));
+    memset(obj_info_entry, 0, sizeof(scheduler_object_info));
+
+    obj_info_entry->object_id = object_id;
+    obj_info_entry->data_size = 0; /* Not known at this time, set elsewhere. */
+
+    HASH_ADD(hh, state->scheduler_object_info_table, object_id,
+             sizeof(obj_info_entry->object_id), obj_info_entry);
+    printf("[GS] new object added to object_info_table with id=\n\t");
+    object_id_print(object_id);
+    printf("\tmanager location: ");
+    for (int i=0; i<manager_count; i++) {
+      printf("%s\t", manager_vector[i]);
+    }
+    printf("\n");
+  }
+
+  /* In all cases, replace the object location vector on each callback. */
+  if (obj_info_entry->object_locations != NULL) {
+    utarray_free(obj_info_entry->object_locations);
+    obj_info_entry->object_locations = NULL;
+  }
+
+  utarray_new(obj_info_entry->object_locations, &ut_str_icd);
+  for (int i = 0; i < manager_count; i++) {
+    utarray_push_back(obj_info_entry->object_locations, manager_vector[i]);
+  }
+
+}
+
+void process_new_object_info(object_id object_id, int64_t object_size,
+                             void *user_context) {
+
+  global_scheduler_state *state = (global_scheduler_state *) user_context;
+
+  printf("[OBJECTINFO]: new object info: object_size=%lld for object_id=",
+         object_size);
+  fflush(stdout);
+  object_id_print(object_id);
+  /* just look up the object_id in scheduler_object_info_table.
+   * if found, add size info. Else create new hash table entry and just put
+   * the size in there.
+   */
+  scheduler_object_info *obj_info_entry = NULL;
+  HASH_FIND(hh, state->scheduler_object_info_table, &object_id, sizeof(object_id),
+            obj_info_entry);
+  if (obj_info_entry == NULL) {
+    /* Create new object entry in the scheduler object info hash table. */
+    obj_info_entry = calloc(1, sizeof(scheduler_object_info));
+    //memset(obj_info_entry, 0, sizeof(scheduler_object_info));
+    obj_info_entry->object_id = object_id;
+    /* Don't allocate the object location vector here -- replaced in another
+     * callback. */
+    HASH_ADD(hh, state->scheduler_object_info_table, object_id,
+             sizeof(object_id), obj_info_entry);
+  }
+    /* Object already exists in the table -- updated its size information. */
+  obj_info_entry->data_size = object_size;
 }
 
 void start_server(const char *redis_addr, int redis_port) {
@@ -112,6 +222,12 @@ void start_server(const char *redis_addr, int redis_port) {
   task_table_subscribe(g_state->db, NIL_ID, TASK_STATUS_WAITING,
                        process_task_waiting, (void *) g_state, &retry, NULL,
                        NULL);
+
+  object_table_subscribe(g_state->db, NIL_OBJECT_ID, process_new_object_manager,
+                         (void *)g_state, &retry, NULL, NULL);
+
+  object_info_subscribe(g_state->db, process_new_object_info, (void *) g_state,
+                        &retry, NULL, NULL);
   /* Start the event loop. */
   event_loop_run(loop);
 }

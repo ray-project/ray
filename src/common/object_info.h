@@ -17,4 +17,6 @@ typedef struct {
   unsigned char digest[DIGEST_SIZE];
 } object_info;
 
+void object_id_print(object_id obj_id);
+
 #endif

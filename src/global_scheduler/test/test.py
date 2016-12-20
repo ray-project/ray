@@ -29,6 +29,7 @@ TASK_STATUS_DONE = 8
 
 def random_object_id():
   return photon.ObjectID(np.random.bytes(ID_SIZE))
+object_ids = [random_object_id() for i in range(256)]
 
 def random_task_id():
   return photon.ObjectID(np.random.bytes(ID_SIZE))
@@ -61,6 +62,7 @@ class TestGlobalScheduler(unittest.TestCase):
     # Start the Plasma manager.
     plasma_manager_name, self.p3, plasma_manager_port = plasma.start_plasma_manager(plasma_store_name, redis_address)
     plasma_address = "{}:{}".format(node_ip_address, plasma_manager_port)
+    print("plasma_address={}".format(plasma_address))
     # Start the local scheduler.
     local_scheduler_name, self.p4 = photon.start_local_scheduler(plasma_store_name, plasma_manager_name=plasma_manager_name, plasma_address=plasma_address, redis_address=redis_address)
     # Connect to the scheduler.
@@ -95,15 +97,45 @@ class TestGlobalScheduler(unittest.TestCase):
     # There should be three db clients, the global scheduler, the local
     # scheduler, and the plasma manager.
     self.assertEqual(len(self.redis_client.keys("{}*".format(DB_CLIENT_PREFIX))), 3)
+    args_list = [
+      [],
+#       #{},
+#       #(),
+#       1 * [1],
+#       10 * [1],
+#       100 * [1],
+#       1000 * [1],
+#       1 * ["a"],
+#       10 * ["a"],
+#       100 * ["a"],
+#       1000 * ["a"],
+#       [1, 1.3, 1 << 100, "hi", u"hi", [1, 2]],
+      object_ids[:1],
+#       object_ids[:2],
+#       object_ids[:3],
+#       object_ids[:4],
+#       object_ids[:5],
+#       object_ids[:10],
+#       object_ids[:100],
+#       object_ids[:256],
+#       [1, object_ids[0]],
+#       [object_ids[0], "a"],
+#       [1, object_ids[0], "a"],
+#       [object_ids[0], 1, object_ids[1], "a"],
+#       object_ids[:3] + [1, "hi", 2.3] + object_ids[:5],
+#       object_ids + 100 * ["a"] + object_ids
+    ]
+    num_return_vals = [0,1,2,3,5,10]
     # There should not be anything else in Redis yet.
     self.assertEqual(len(self.redis_client.keys("*")), 3)
 
     # Submit a task to Redis.
-    task = photon.Task(random_function_id(), [], 0, random_task_id(), 0)
+    task = photon.Task(random_function_id(), args_list[1], num_return_vals[0], random_task_id(), 0)
     self.photon_client.submit(task)
     # There should now be a task in Redis, and it should get assigned to the
     # local scheduler
-    while True:
+    num_retries = 10
+    while num_retries > 0:
       task_entries = self.redis_client.keys("task*")
       self.assertLessEqual(len(task_entries), 1)
       if len(task_entries) == 1:
@@ -113,11 +145,17 @@ class TestGlobalScheduler(unittest.TestCase):
         if task_status == TASK_STATUS_SCHEDULED:
           break
       print("The task has not been scheduled yet, trying again.")
+      num_retries -= 1
+      time.sleep(0.2)
+
+    if num_retries <= 0 and task_status != TASK_STATUS_SCHEDULED:
+        #failed to submit and schedule a single task -- bail
+        sys.exit(1)
 
     # Submit a bunch of tasks to Redis.
     num_tasks = 1000
     for _ in range(num_tasks):
-      task = photon.Task(random_function_id(), [], 0, random_task_id(), 0)
+      task = photon.Task(random_function_id(), args_list[1], num_return_vals[0], random_task_id(), 0)
       self.photon_client.submit(task)
     # Check that there are the correct number of tasks in Redis and that they
     # all get assigned to the local scheduler.
