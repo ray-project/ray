@@ -18,7 +18,7 @@ protocol_builder *g_B;
  *
  * @return File descriptor of the file.
  */
-int create_temp_file() {
+int create_temp_file(void) {
   static char template[] = "/tmp/tempfileXXXXXX";
   char file_name[32];
   strncpy(file_name, template, 32);
@@ -44,7 +44,7 @@ uint8_t *read_message_from_file(int fd, int message_type) {
   return data;
 }
 
-plasma_object random_plasma_object() {
+plasma_object random_plasma_object(void) {
   int random = rand();
   plasma_object object;
   memset(&object, 0, sizeof(object));
