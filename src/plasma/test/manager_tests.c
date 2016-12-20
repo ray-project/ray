@@ -210,7 +210,7 @@ TEST read_write_object_chunk_test(void) {
   const int data_size = strlen(data) + 1;
   const int metadata_size = 0;
   plasma_request_buffer remote_buf = {
-      .type = PLASMA_DATA,
+      .type = MessageType_PlasmaDataReply,
       .object_id = oid,
       .data = (uint8_t *) data,
       .data_size = data_size,

@@ -3,6 +3,7 @@
 
 #include "common.h"
 #include "io.h"
+#include "plasma_protocol.h"
 #include "plasma_client.h"
 #include "object_info.h"
 
@@ -250,8 +251,8 @@ PyObject *PyPlasma_wait(PyObject *self, PyObject *args) {
     if (num_returned == num_to_return) {
       break;
     }
-    if (object_requests[i].status == PLASMA_OBJECT_LOCAL ||
-        object_requests[i].status == PLASMA_OBJECT_REMOTE) {
+    if (object_requests[i].status == ObjectStatus_Local ||
+        object_requests[i].status == ObjectStatus_Remote) {
       PyObject *ready =
           PyBytes_FromStringAndSize((char *) object_requests[i].object_id.id,
                                     sizeof(object_requests[i].object_id));
@@ -259,7 +260,7 @@ PyObject *PyPlasma_wait(PyObject *self, PyObject *args) {
       PySet_Discard(waiting_ids, ready);
       num_returned += 1;
     } else {
-      CHECK(object_requests[i].status == PLASMA_OBJECT_NONEXISTENT);
+      CHECK(object_requests[i].status == ObjectStatus_Nonexistent);
     }
   }
   CHECK(num_returned == num_to_return);
