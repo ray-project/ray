@@ -909,7 +909,7 @@ TEST subscribe_object_available_subscribe_all(void) {
   /* At this point we don't expect any object notifications received. */
   ASSERT_EQ(subscribe_object_available_later_succeeded, 0);
   object_table_add(db, id, 0, (unsigned char *) NIL_DIGEST, &retry, NULL, NULL);
-  /* Install handler to terminate event loop after 750ms */
+  /* Install handler to terminate event loop after 750ms. */
   event_loop_add_timer(g_loop, 750,
                        (event_loop_timer_handler) terminate_event_loop_callback,
                        NULL);

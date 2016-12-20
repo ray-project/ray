@@ -565,10 +565,14 @@ object_id parse_subscribe_to_notifications_payload(
   /* Parse the object ID. */
   memcpy(&obj_id.id, &payload[offset], sizeof(obj_id.id));
   offset += sizeof(obj_id.id);
-  /* The next part of the payload is binary data_size */
+  /* The next part of the payload is a space. */
+  char *space_str = " ";
+  CHECK(memcmp(&payload[offset], space_str, strlen(space_str)) == 0);
+  offset += strlen(space_str);
+  /* The next part of the payload is binary data_size. */
   memcpy(&data_size_value, &payload[offset], sizeof(data_size_value));
   offset += sizeof(data_size_value);
-  /* The next part of the payload is the string " MANAGERS" with leading ' ' */
+  /* The next part of the payload is the string " MANAGERS" with leading ' '. */
   char *managers_str = " MANAGERS";
   CHECK(memcmp(&payload[offset], managers_str, strlen(managers_str)) == 0);
   offset += strlen(managers_str);

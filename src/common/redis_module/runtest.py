@@ -5,6 +5,7 @@ from __future__ import print_function
 import os
 import random
 import subprocess
+import sys
 import time
 import unittest
 import redis
@@ -25,13 +26,16 @@ TASK_PREFIX = "TT:"
 OBJECT_CHANNEL_PREFIX = "OC:"
 
 def integerToAsciiHex(num, numbytes):
-  retstr = ""
-  #support 32 and 64 bit architecture
+  retstr = b""
+  # Support 32 and 64 bit architecture.
   assert(numbytes == 4 or numbytes == 8)
   for i in range(numbytes):
-      curbyte = num & 0xff
+    curbyte = num & 0xff
+    if sys.version_info >= (3, 0):
+      retstr += bytes([curbyte])
+    else:
       retstr += chr(curbyte)
-      num = num >> 8
+    num = num >> 8
 
   return retstr
 
@@ -107,7 +111,7 @@ class TestGlobalStateStore(unittest.TestCase):
     self.assertEqual(p.get_message()["data"], 1)
     # Request a notification and receive the data.
     self.redis.execute_command("RAY.OBJECT_TABLE_REQUEST_NOTIFICATIONS", "manager_id1", "object_id1")
-    self.assertEqual(p.get_message()["data"], b"object_id1%s MANAGERS manager_id2"\
+    self.assertEqual(p.get_message()["data"], b"object_id1 %s MANAGERS manager_id2"\
                      %integerToAsciiHex(data_size, 8))
     # Request a notification for an object that isn't there. Then add the object
     # and receive the data. Only the first call to RAY.OBJECT_TABLE_ADD should
@@ -116,14 +120,14 @@ class TestGlobalStateStore(unittest.TestCase):
     self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id3", data_size, "hash1", "manager_id1")
     self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id3", data_size, "hash1", "manager_id2")
     self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id3", data_size, "hash1", "manager_id3")
-    self.assertEqual(p.get_message()["data"], b"object_id3%s MANAGERS manager_id1"\
+    self.assertEqual(p.get_message()["data"], b"object_id3 %s MANAGERS manager_id1"\
                      %integerToAsciiHex(data_size, 8))
     self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id2", data_size, "hash1", "manager_id3")
-    self.assertEqual(p.get_message()["data"], b"object_id2%s MANAGERS manager_id3"\
+    self.assertEqual(p.get_message()["data"], b"object_id2 %s MANAGERS manager_id3"\
                      %integerToAsciiHex(data_size, 8))
     # Request notifications for object_id3 again.
     self.redis.execute_command("RAY.OBJECT_TABLE_REQUEST_NOTIFICATIONS", "manager_id1", "object_id3")
-    self.assertEqual(p.get_message()["data"], b"object_id3%s MANAGERS manager_id1 manager_id2 manager_id3"\
+    self.assertEqual(p.get_message()["data"], b"object_id3 %s MANAGERS manager_id1 manager_id2 manager_id3"\
                      %integerToAsciiHex(data_size, 8))
 
   def testResultTableAddAndLookup(self):

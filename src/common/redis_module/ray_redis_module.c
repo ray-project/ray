@@ -240,6 +240,10 @@ bool PublishObjectNotification(RedisModuleCtx *ctx,
       REDISMODULE_OK) {
     return RedisModule_ReplyWithError(ctx, "data_size must be integer");
   }
+
+  /* Add a space to the payload for human readability. */
+  RedisModule_StringAppendBuffer(ctx, manager_list, " ", strlen(" "));
+
   /* Append binary data size for this object. */
   RedisModule_StringAppendBuffer(ctx, manager_list,
                                  (const char *) &data_size_value,
@@ -443,7 +447,7 @@ int ObjectTableRequestNotifications_RedisCommand(RedisModuleCtx *ctx,
       RedisModule_CloseKey(object_notification_key);
     } else {
       /* Publish a notification to the client's object notification channel. */
-      /* Extract the data_size first. XXX */
+      /* Extract the data_size first. */
       RedisModuleKey *object_info_key;
       object_info_key =
           OpenPrefixedKey(ctx, OBJECT_INFO_PREFIX, object_id, REDISMODULE_READ);
