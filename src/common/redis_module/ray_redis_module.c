@@ -240,7 +240,6 @@ bool PublishObjectNotification(RedisModuleCtx *ctx,
       REDISMODULE_OK) {
     return RedisModule_ReplyWithError(ctx, "data_size must be integer");
   }
-  printf("data size value from redismodule: %lld \n", data_size_value);
   /* Append binary data size for this object. */
   RedisModule_StringAppendBuffer(ctx, manager_list, (const char *)&data_size_value,
                                  sizeof(data_size_value));
@@ -295,7 +294,6 @@ bool PublishObjectNotification(RedisModuleCtx *ctx,
 int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
                                 RedisModuleString **argv,
                                 int argc) {
-  printf("ObjectTableAdd_RedisCommand got called with argc=%d\n", argc);
   if (argc != 5) {
     return RedisModule_WrongArity(ctx);
   }

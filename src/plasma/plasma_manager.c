@@ -963,6 +963,7 @@ void object_present_callback(object_id object_id,
 /* This callback is used by both fetch and wait. Therefore, it may have to
  * handle outstanding fetch and wait requests. */
 void object_table_subscribe_callback(object_id object_id,
+                                     int64_t data_size,
                                      int manager_count,
                                      const char *manager_vector[],
                                      void *context) {

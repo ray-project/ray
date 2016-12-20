@@ -554,7 +554,6 @@ object_id parse_subscribe_to_notifications_payload(
   long long data_size_value = 0;
   int num_managers = (length - sizeof(object_id) - sizeof(data_size_value) - 1 - strlen("MANAGERS")) /
                      (1 + sizeof(db_client_id));
-  printf("payload notification subscription called! \n");
   CHECK(length ==
         sizeof(object_id) + sizeof(data_size_value) + 1 + strlen("MANAGERS") +
             num_managers * (1 + sizeof(db_client_id)));
@@ -568,7 +567,6 @@ object_id parse_subscribe_to_notifications_payload(
   /* The next part of the payload is binary data_size */
   memcpy(&data_size_value, &payload[offset], sizeof(data_size_value));
   offset += sizeof(data_size_value);
-  printf("object_info: data size read: %lld\n", data_size_value);
   /* The next part of the payload is the string " MANAGERS" with leading ' ' */
   char *managers_str = " MANAGERS";
   CHECK(memcmp(&payload[offset], managers_str, strlen(managers_str)) == 0);
