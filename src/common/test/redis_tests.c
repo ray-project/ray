@@ -102,8 +102,8 @@ TEST async_redis_socket_test(void) {
   utarray_push_back(connections, &socket_fd);
 
   /* Start connection to Redis. */
-  db_handle *db = db_connect("127.0.0.1", 6379, "test_process", "127.0.0.1", 0,
-                             NULL);
+  db_handle *db =
+      db_connect("127.0.0.1", 6379, "test_process", "127.0.0.1", 0, NULL);
   db_attach(db, loop, false);
 
   /* Send a command to the Redis process. */
@@ -177,8 +177,8 @@ TEST logging_test(void) {
   utarray_push_back(connections, &socket_fd);
 
   /* Start connection to Redis. */
-  db_handle *conn = db_connect("127.0.0.1", 6379, "test_process", "127.0.0.1",
-                               0, NULL);
+  db_handle *conn =
+      db_connect("127.0.0.1", 6379, "test_process", "127.0.0.1", 0, NULL);
   db_attach(conn, loop, false);
 
   /* Send a command to the Redis process. */

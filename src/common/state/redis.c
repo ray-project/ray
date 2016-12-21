@@ -196,6 +196,8 @@ db_handle *db_connect(const char *db_address,
   CHECK(reply->type != REDIS_REPLY_ERROR);
   CHECK(strcmp(reply->str, "OK") == 0);
   freeReplyObject(reply);
+  free(argv);
+  free(argvlen);
 
   db->client_type = strdup(client_type);
   db->client = client;
