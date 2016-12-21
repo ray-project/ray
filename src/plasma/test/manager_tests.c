@@ -5,6 +5,7 @@
 #include <poll.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <fcntl.h>
 
 #include "common.h"
 #include "test/test_common.h"
@@ -244,11 +245,55 @@ TEST read_write_object_chunk_test(void) {
   PASS();
 }
 
+TEST object_notifications_test(void) {
+  plasma_mock *local_mock = init_plasma_mock(NULL);
+  /* Open a non-blocking socket pair to mock the object notifications from the
+   * plasma store. */
+  int fd[2];
+  socketpair(AF_UNIX, SOCK_STREAM, 0, fd);
+  int flags = fcntl(fd[1], F_GETFL, 0);
+  CHECK(fcntl(fd[1], F_SETFL, flags | O_NONBLOCK) == 0);
+
+  object_id oid = globally_unique_id();
+  object_info info = {.obj_id = oid,
+                      .data_size = 10,
+                      .metadata_size = 1,
+                      .create_time = 0,
+                      .construct_duration = 0,
+                      .digest = {0},
+                      .is_deletion = false};
+
+  /* Check that the object is not local at first. */
+  bool is_local = is_object_local(local_mock->state, oid);
+  ASSERT(!is_local);
+
+  /* Check that the object is local after receiving an object notification. */
+  send(fd[1], (char const *) &info, sizeof(info), 0);
+  process_object_notification(local_mock->loop, fd[0], local_mock->state, 0);
+  is_local = is_object_local(local_mock->state, oid);
+  ASSERT(is_local);
+
+  /* Check that the object is not local after receiving a notification about
+   * the object deletion. */
+  info.is_deletion = true;
+  send(fd[1], (char const *) &info, sizeof(info), 0);
+  process_object_notification(local_mock->loop, fd[0], local_mock->state, 0);
+  is_local = is_object_local(local_mock->state, oid);
+  ASSERT(!is_local);
+
+  /* Clean up. */
+  close(fd[0]);
+  close(fd[1]);
+  destroy_plasma_mock(local_mock);
+  PASS();
+}
+
 SUITE(plasma_manager_tests) {
   memset(&oid, 1, sizeof(oid));
   RUN_TEST(request_transfer_test);
   RUN_TEST(request_transfer_retry_test);
   RUN_TEST(read_write_object_chunk_test);
+  RUN_TEST(object_notifications_test);
 }
 
 GREATEST_MAIN_DEFS();

@@ -261,4 +261,14 @@ event_loop *get_event_loop(plasma_manager_state *state);
  */
 int get_client_sock(client_connection *conn);
 
+/**
+ * Return whether or not the object is local.
+ *
+ * @param state The state of the plasma manager.
+ * @param object_id The ID of the object we want to find.
+ * @return A bool that is true if the requested object is local and false
+ *         otherwise.
+ */
+bool is_object_local(plasma_manager_state *state, object_id object_id);
+
 #endif /* PLASMA_MANAGER_H */
