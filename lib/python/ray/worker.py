@@ -617,6 +617,36 @@ def initialize_numbuf(worker=global_worker):
     register_class(RayGetError)
     register_class(RayGetArgumentError)
 
+def get_address_info_from_redis(redis_address, node_ip_address):
+  redis_host, redis_port = redis_address.split(":")
+  # For this command to work, some other client (on the same machine as Redis)
+  # must have run "CONFIG SET protected-mode no".
+  redis_client = redis.StrictRedis(host=redis_host, port=int(redis_port))
+  # The client table prefix must be kept in sync with the file
+  # "src/common/redis_module/ray_redis_module.so" where it is defined.
+  REDIS_CLIENT_TABLE_PREFIX = "CL:"
+  client_keys = redis_client.keys("{}*".format(REDIS_CLIENT_TABLE_PREFIX))
+  # Filter to clients on the same node and do some basic checking.
+  plasma_managers = []
+  local_schedulers = []
+  for key in client_keys:
+    info = redis_client.hgetall(key)
+    assert b"ray_client_id" in info
+    assert b"node_ip_address" in info
+    assert b"client_type" in info
+    if info[b"node_ip_address"].decode("ascii") == node_ip_address:
+      if info[b"client_type"].decode("ascii") == "plasma_manager":
+        plasma_managers.append(info)
+      elif info[b"client_type"].decode("ascii") == "photon":
+        local_schedulers.append(info)
+  # Make sure that we got at one plasma manager and local scheduler.
+  assert len(plasma_managers) == 1
+  assert len(local_schedulers) == 1
+  client_info = {"store_socket_name": plasma_managers[0][b"store_socket_name"],
+                 "manager_socket_name": plasma_managers[0][b"manager_socket_name"],
+                 "local_scheduler_socket_name": local_schedulers[0][b"local_scheduler_socket_name"]}
+  return client_info
+
 def init(start_ray_local=False, num_workers=None, num_local_schedulers=1, driver_mode=SCRIPT_MODE):
   """Either connect to an existing Ray cluster or start one and connect to it.
 

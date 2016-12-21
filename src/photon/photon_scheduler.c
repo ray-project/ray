@@ -29,6 +29,7 @@ local_scheduler_state *init_local_scheduler(
     event_loop *loop,
     const char *redis_addr,
     int redis_port,
+    const char *local_scheduler_socket_name,
     const char *plasma_store_socket_name,
     const char *plasma_manager_socket_name,
     const char *plasma_manager_address,
@@ -40,19 +41,24 @@ local_scheduler_state *init_local_scheduler(
   utarray_new(state->workers, &worker_icd);
   /* Connect to Redis if a Redis address is provided. */
   if (redis_addr != NULL) {
-    int num_args = 0;
+    int num_args;
     const char **db_connect_args = NULL;
     if (plasma_manager_address != NULL) {
+      num_args = 4;
+      db_connect_args = malloc(sizeof(char *) * num_args);
+      db_connect_args[0] = "local_scheduler_socket_name";
+      db_connect_args[1] = local_scheduler_socket_name;
+      db_connect_args[2] = "aux_address";
+      db_connect_args[3] = plasma_manager_address;
+    } else {
       num_args = 2;
       db_connect_args = malloc(sizeof(char *) * num_args);
-      db_connect_args[0] = "aux_address";
-      db_connect_args[1] = plasma_manager_address;
+      db_connect_args[0] = "local_scheduler_socket_name";
+      db_connect_args[1] = local_scheduler_socket_name;
     }
     state->db = db_connect(redis_addr, redis_port, "photon", node_ip_address,
                            num_args, db_connect_args);
-    if (num_args != 0) {
-      free(db_connect_args);
-    };
+    free(db_connect_args);
     db_attach(state->db, loop, false);
   } else {
     state->db = NULL;
@@ -297,8 +303,9 @@ void start_server(const char *node_ip_address,
   event_loop *loop = event_loop_create();
   g_state =
       init_local_scheduler(node_ip_address, loop, redis_addr, redis_port,
-                           plasma_store_socket_name, plasma_manager_socket_name,
-                           plasma_manager_address, global_scheduler_exists);
+                           socket_name, plasma_store_socket_name,
+                           plasma_manager_socket_name, plasma_manager_address,
+                           global_scheduler_exists);
 
   /* Register a callback for registering new clients. */
   event_loop_add_file(loop, fd, EVENT_LOOP_READ, new_client_connection,
