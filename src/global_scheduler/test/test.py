@@ -27,9 +27,12 @@ TASK_STATUS_SCHEDULED = 2
 TASK_STATUS_RUNNING = 4
 TASK_STATUS_DONE = 8
 
+# def random_object_id():
+#   return photon.ObjectID(np.random.bytes(ID_SIZE))
+# object_ids = [random_object_id() for i in range(256)]
+
 def random_object_id():
-  return photon.ObjectID(np.random.bytes(ID_SIZE))
-object_ids = [random_object_id() for i in range(256)]
+  return np.random.bytes(ID_SIZE)
 
 def random_task_id():
   return photon.ObjectID(np.random.bytes(ID_SIZE))
@@ -40,6 +43,36 @@ def random_function_id():
 def new_port():
   return random.randint(10000, 65535)
 
+def generate_metadata(length):
+  metadata_buffer = bytearray(length)
+  if length > 0:
+    metadata_buffer[0] = random.randint(0, 255)
+    metadata_buffer[-1] = random.randint(0, 255)
+    for _ in range(100):
+      metadata_buffer[random.randint(0, length - 1)] = random.randint(0, 255)
+  return metadata_buffer
+
+def write_to_data_buffer(buff, length):
+  if length > 0:
+    buff[0] = chr(random.randint(0, 255))
+    buff[-1] = chr(random.randint(0, 255))
+    for _ in range(100):
+      buff[random.randint(0, length - 1)] = chr(random.randint(0, 255))
+
+def create_object_with_id(client, object_id, data_size, metadata_size, seal=True):
+  metadata = generate_metadata(metadata_size)
+  memory_buffer = client.create(object_id, data_size, metadata)
+  write_to_data_buffer(memory_buffer, data_size)
+  if seal:
+    client.seal(object_id)
+  return memory_buffer, metadata
+
+def create_object(client, data_size, metadata_size, seal=True):
+  object_id = random_object_id()
+  memory_buffer, metadata = create_object_with_id(client, object_id, data_size, metadata_size, seal=seal)
+  return object_id, memory_buffer, metadata
+
+
 class TestGlobalScheduler(unittest.TestCase):
 
   def setUp(self):
@@ -49,8 +82,8 @@ class TestGlobalScheduler(unittest.TestCase):
     assert os.path.isfile(redis_path)
     assert os.path.isfile(redis_module)
     node_ip_address = "127.0.0.1"
-    #redis_port = new_port() #default_port=6379
-    redis_port = 6379
+    redis_port = new_port()
+    #redis_port = 6379 #default_port=6379
     redis_address = "{}:{}".format(node_ip_address, redis_port)
     self.redis_process = subprocess.Popen([redis_path, "--port", str(redis_port), "--loglevel", "warning", "--loadmodule", redis_module])
     time.sleep(0.1)
@@ -63,13 +96,14 @@ class TestGlobalScheduler(unittest.TestCase):
     # Start the Plasma store.
     plasma_store_name, self.p2 = plasma.start_plasma_store()
     # Start the Plasma manager.
-    self.plasma_manager_name, self.p3, plasma_manager_port = plasma.start_plasma_manager(plasma_store_name, redis_address)
+    plasma_manager_name, self.p3, plasma_manager_port = plasma.start_plasma_manager(plasma_store_name, redis_address)
     self.plasma_address = "{}:{}".format(node_ip_address, plasma_manager_port)
+    self.plasmaclient = plasma.PlasmaClient(plasma_store_name, plasma_manager_name)
     print("plasma_address={}".format(self.plasma_address))
     # Start the local scheduler.
     local_scheduler_name, self.p4 = photon.start_local_scheduler(
         plasma_store_name, 
-        plasma_manager_name=self.plasma_manager_name, 
+        plasma_manager_name=plasma_manager_name, 
         plasma_address=self.plasma_address, 
         redis_address=redis_address)
     # Connect to the scheduler.
@@ -97,7 +131,7 @@ class TestGlobalScheduler(unittest.TestCase):
     # after we kill the global scheduler.
     self.redis_process.kill()
 
-  def test_redis_contents(self):
+  def test_integration(self):
     # DB_CLIENT_PREFIX is an implementation detail of ray_redis_module.c, so
     # this must be kept in sync with that file.
     DB_CLIENT_PREFIX = "CL:"
@@ -115,51 +149,24 @@ class TestGlobalScheduler(unittest.TestCase):
     assert(db_client_id != None)
     assert(db_client_id.startswith("CL:"))
     db_client_id = db_client_id[len('CL:'):] #remove the CL: prefix
-    args_list = [
-      [],
-#       #{},
-#       #(),
-#       1 * [1],
-#       10 * [1],
-#       100 * [1],
-#       1000 * [1],
-#       1 * ["a"],
-#       10 * ["a"],
-#       100 * ["a"],
-#       1000 * ["a"],
-#       [1, 1.3, 1 << 100, "hi", u"hi", [1, 2]],
-      object_ids[:1],
-#       object_ids[:2],
-#       object_ids[:3],
-#       object_ids[:4],
-#       object_ids[:5],
-#       object_ids[:10],
-#       object_ids[:100],
-#       object_ids[:256],
-#       [1, object_ids[0]],
-#       [object_ids[0], "a"],
-#       [1, object_ids[0], "a"],
-#       [object_ids[0], 1, object_ids[1], "a"],
-#       object_ids[:3] + [1, "hi", 2.3] + object_ids[:5],
-#       object_ids + 100 * ["a"] + object_ids
-    ]
+
     num_return_vals = [0,1,2,3,5,10]
     # There should not be anything else in Redis yet.
     self.assertEqual(len(self.redis_client.keys("*")), 3)
     #insert the object into Redis
     data_size = 0xf1f0
+    metadata_size = 0x40
     #print("sleeping for 20 seconds....")
     #time.sleep(20)
-    foo = random_object_id()
-    object_dep = args_list[1][0].id()
-    self.redis_client.execute_command("RAY.OBJECT_TABLE_ADD", object_dep, data_size, "hash1", db_client_id)
+    object_dep, memory_buffer, metadata = create_object(self.plasmaclient, data_size, metadata_size, seal=True)
+    #self.redis_client.execute_command("RAY.OBJECT_TABLE_ADD", object_dep, data_size, "hash1", db_client_id)
 
     #sleep before submitting task to photon
-    time.sleep(1)
+    time.sleep(0.1)
     # Submit a task to Redis.
-    task = photon.Task(random_function_id(), args_list[1], num_return_vals[0], random_task_id(), 0)
+    task = photon.Task(random_function_id(), [object_dep], num_return_vals[0], random_task_id(), 0)
     self.photon_client.submit(task)
-    time.sleep(5)
+    time.sleep(0.1)
     # There should now be a task in Redis, and it should get assigned to the
     # local scheduler
     num_retries = 10
@@ -184,9 +191,13 @@ class TestGlobalScheduler(unittest.TestCase):
         sys.exit(1)
 
     # Submit a bunch of tasks to Redis.
-    num_tasks = 10
+    num_tasks = 1000
     for _ in range(num_tasks):
-      task = photon.Task(random_function_id(), args_list[1], num_return_vals[0], random_task_id(), 0)
+      #create a new object for each task
+      data_size = np.random.randint(1<<20) #upto 1MB
+      metadata_size = np.random.randint(1<<10) #upto 1KB
+      object_dep, memory_buffer, metadata = create_object(self.plasmaclient, data_size, metadata_size, seal=True)
+      task = photon.Task(random_function_id(), [object_dep], num_return_vals[0], random_task_id(), 0)
       self.photon_client.submit(task)
     # Check that there are the correct number of tasks in Redis and that they
     # all get assigned to the local scheduler.
