@@ -12,25 +12,22 @@ typedef struct db_handle db_handle;
  * @param db_address The hostname to use to connect to the database.
  * @param db_port The port to use to connect to the database.
  * @param client_type The type of this client.
- * @param client_addr The hostname of the client that is connecting. If not
- *        relevant, set this to the empty string.
- * @param client_port The port of the client that is connecting. If not
- *        relevant, set this to -1.
+ * @param node_ip_address The hostname of the client that is connecting.
+ * @param num_args The number of extra arguments that should be supplied. This
+ *        should be an even number.
+ * @param args An array of extra arguments strings. They should alternate
+ *        between the name of the argument and the value of the argument. For
+ *        examples: "port", "1234", "socket_name", "/tmp/s1".
  * @return This returns a handle to the database, which must be freed with
  *         db_disconnect after use.
  */
-
 db_handle *db_connect(const char *db_address,
                       int db_port,
                       const char *client_type,
-                      const char *client_addr,
-                      int client_port);
-db_handle *db_connect_extended(const char *db_address,
-                               int db_port,
-                               const char *client_type,
-                               const char *client_addr,
-                               int client_port,
-                               const char *aux_address);
+                      const char *node_ip_address,
+                      int num_args,
+                      const char **args);
+
 /**
  * Attach global system store connection to an event loop. Callbacks from
  * queries to the global system store will trigger events in the event loop.

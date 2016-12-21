@@ -27,15 +27,28 @@ PYTHON_PLASMA_DIR="$PYTHON_DIR/plasma"
 PYTHON_PHOTON_DIR="$PYTHON_DIR/photon"
 PYTHON_GLOBAL_SCHEDULER_DIR="$PYTHON_DIR/global_scheduler"
 
+# First clean up old build files.
 pushd "$COMMON_DIR"
   make clean
+popd
+pushd "$PLASMA_DIR"
+  make clean
+popd
+pushd "$PHOTON_DIR"
+  make clean
+popd
+pushd "$GLOBAL_SCHEDULER_DIR"
+  make clean
+popd
+
+# Now build everything.
+pushd "$COMMON_DIR"
   make
 popd
 cp "$COMMON_DIR/thirdparty/redis/src/redis-server" "$PYTHON_COMMON_DIR/thirdparty/redis/src/"
 cp "$COMMON_DIR/redis_module/ray_redis_module.so" "$PYTHON_COMMON_DIR/redis_module/ray_redis_module.so"
 
 pushd "$PLASMA_DIR"
-  make clean
   make
   pushd "$PLASMA_DIR/build"
     cmake ..
@@ -48,7 +61,6 @@ cp "$PLASMA_DIR/plasma/plasma.py" "$PYTHON_PLASMA_DIR/"
 cp "$PLASMA_DIR/plasma/libplasma.so" "$PYTHON_PLASMA_DIR/"
 
 pushd "$PHOTON_DIR"
-  make clean
   make
   pushd "$PHOTON_DIR/build"
     cmake ..
@@ -60,7 +72,6 @@ cp "$PHOTON_DIR/photon/libphoton.so" "$PYTHON_PHOTON_DIR/photon/"
 cp "$PHOTON_DIR/photon/photon_services.py" "$PYTHON_PHOTON_DIR/photon/"
 
 pushd "$GLOBAL_SCHEDULER_DIR"
-  make clean
   make
 popd
 cp "$GLOBAL_SCHEDULER_DIR/build/global_scheduler" "$PYTHON_GLOBAL_SCHEDULER_DIR/build/"

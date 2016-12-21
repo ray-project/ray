@@ -32,6 +32,7 @@ typedef struct client_object_request client_object_request;
  * function.
  *
  * @param store_socket_name The socket name used to connect to the local store.
+ * @param manager_socket_name The socket name used to connect to the manager.
  * @param manager_addr Our IP address.
  * @param manager_port The IP port that we listen on.
  * @param db_addr The IP address of the database to connect to. If this is NULL,
@@ -41,6 +42,7 @@ typedef struct client_object_request client_object_request;
  * @return A pointer to the initialized plasma manager state.
  */
 plasma_manager_state *init_plasma_manager_state(const char *store_socket_name,
+                                                const char *manager_socket_name,
                                                 const char *manager_addr,
                                                 int manager_port,
                                                 const char *db_addr,

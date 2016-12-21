@@ -32,7 +32,8 @@ global_scheduler_state *init_global_scheduler(event_loop *loop,
   global_scheduler_state *state = malloc(sizeof(global_scheduler_state));
   /* Must initialize state to 0. Sets hashmap head(s) to NULL. */
   memset(state, 0, sizeof(global_scheduler_state));
-  state->db = db_connect(redis_addr, redis_port, "global_scheduler", "", -1);
+  state->db = db_connect(redis_addr, redis_port, "global_scheduler", ":", 0,
+                         NULL);
   db_attach(state->db, loop, false);
   utarray_new(state->local_schedulers, &local_scheduler_icd);
   state->policy_state = init_global_scheduler_policy();

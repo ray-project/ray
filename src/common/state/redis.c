@@ -129,31 +129,23 @@ typedef struct {
   object_id object_id;
 } object_table_get_entry_info;
 
-db_handle *db_connect(const char *address,
-                      int port,
+db_handle *db_connect(const char *db_address,
+                      int db_port,
                       const char *client_type,
-                      const char *client_addr,
-                      int client_port) {
-  return db_connect_extended(address, port, client_type, client_addr,
-                             client_port, ":");
-}
+                      const char *node_ip_address,
+                      int num_args,
+                      const char **args) {
+  /* Check that the number of args is even. These args will be passed to the
+   * RAY.CONNET Redis command, which takes arguments in pairs. */
+  if (num_args % 2 != 0) {
+    LOG_FATAL("The number of extra args must be divisible by two.");
+  }
 
-db_handle *db_connect_extended(const char *address,
-                               int port,
-                               const char *client_type,
-                               const char *client_addr,
-                               int client_port,
-                               const char *aux_address) {
   db_handle *db = malloc(sizeof(db_handle));
   /* Sync connection for initial handshake */
   redisReply *reply;
   int connection_attempts = 0;
-  redisContext *context = redisConnect(address, port);
-  /* Sanity check aux_address. */
-  if (aux_address == NULL || strlen(aux_address) == 0) {
-    LOG_WARN("db_connect: received empty aux_address, replacing with ':'");
-    aux_address = ":";
-  }
+  redisContext *context = redisConnect(db_address, db_port);
   while (context == NULL || context->err) {
     if (connection_attempts >= REDIS_DB_CONNECT_RETRIES) {
       break;
@@ -161,13 +153,13 @@ db_handle *db_connect_extended(const char *address,
     LOG_WARN("Failed to connect to Redis, retrying.");
     /* Sleep for a little. */
     usleep(REDIS_DB_CONNECT_WAIT_MS * 1000);
-    context = redisConnect(address, port);
+    context = redisConnect(db_address, db_port);
     connection_attempts += 1;
   }
   CHECK_REDIS_CONNECT(redisContext, context,
                       "could not establish synchronous connection to redis "
                       "%s:%d",
-                      address, port);
+                      db_address, db_port);
   /* Enable keyspace events. */
   reply = redisCommand(context, "CONFIG SET notify-keyspace-events AKE");
   CHECKM(reply != NULL, "db_connect failed on CONFIG SET");
@@ -175,12 +167,34 @@ db_handle *db_connect_extended(const char *address,
   /* Add new client using optimistic locking. */
   db_client_id client = globally_unique_id();
 
+  /* Construct the argument arrays for RAY.CONNECT. */
+  int argc = num_args + 4;
+  const char **argv = malloc(sizeof(char *) * argc);
+  size_t *argvlen = malloc(sizeof(size_t) * argc);
+  /* Set the command name argument. */
+  argv[0] = "RAY.CONNECT";
+  argvlen[0] = strlen(argv[0]);
+  /* Set the client ID argument. */
+  argv[1] = (char *) client.id;
+  argvlen[1] = sizeof(db->client.id);
+  /* Set the node IP address argument. */
+  argv[2] = node_ip_address;
+  argvlen[2] = strlen(node_ip_address);
+  /* Set the client type argument. */
+  argv[3] = client_type;
+  argvlen[3] = strlen(client_type);
+  /* Set the remaining arguments. */
+  for (int i = 0; i < num_args; ++i) {
+    argv[4 + i] = args[i];
+    argvlen[4 + i] = strlen(args[i]);
+  }
+
   /* Register this client with Redis. RAY.CONNECT is a custom Redis command that
    * we've defined. */
-  reply = redisCommand(context, "RAY.CONNECT %s %s:%d %b %s", client_type,
-                       client_addr, client_port, (char *) client.id,
-                       sizeof(client.id), aux_address);
+  reply = redisCommandArgv(context, argc, argv, argvlen);
   CHECKM(reply != NULL, "db_connect failed on RAY.CONNECT");
+  CHECK(reply->type != REDIS_REPLY_ERROR);
+  CHECK(strcmp(reply->str, "OK") == 0);
   freeReplyObject(reply);
 
   db->client_type = strdup(client_type);
@@ -189,18 +203,18 @@ db_handle *db_connect_extended(const char *address,
   db->sync_context = context;
 
   /* Establish async connection */
-  db->context = redisAsyncConnect(address, port);
+  db->context = redisAsyncConnect(db_address, db_port);
   CHECK_REDIS_CONNECT(redisAsyncContext, db->context,
                       "could not establish asynchronous connection to redis "
                       "%s:%d",
-                      address, port);
+                      db_address, db_port);
   db->context->data = (void *) db;
   /* Establish async connection for subscription */
-  db->sub_context = redisAsyncConnect(address, port);
+  db->sub_context = redisAsyncConnect(db_address, db_port);
   CHECK_REDIS_CONNECT(redisAsyncContext, db->sub_context,
                       "could not establish asynchronous subscription "
                       "connection to redis %s:%d",
-                      address, port);
+                      db_address, db_port);
   db->sub_context->data = (void *) db;
 
   return db;
