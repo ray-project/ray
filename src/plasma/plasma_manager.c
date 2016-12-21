@@ -444,6 +444,7 @@ void remove_fetch_request(plasma_manager_state *manager_state,
 }
 
 plasma_manager_state *init_plasma_manager_state(const char *store_socket_name,
+                                                const char *manager_socket_name,
                                                 const char *manager_addr,
                                                 int manager_port,
                                                 const char *db_addr,
@@ -457,8 +458,23 @@ plasma_manager_state *init_plasma_manager_state(const char *store_socket_name,
   state->object_wait_requests_local = NULL;
   state->object_wait_requests_remote = NULL;
   if (db_addr) {
+    /* Get the manager port as a string. */
+    UT_string *manager_address_str;
+    utstring_new(manager_address_str);
+    utstring_printf(manager_address_str, "%s:%d", manager_addr, manager_port);
+
+    int num_args = 6;
+    const char **db_connect_args = malloc(sizeof(char *) * num_args);
+    db_connect_args[0] = "store_socket_name";
+    db_connect_args[1] = store_socket_name;
+    db_connect_args[2] = "manager_socket_name";
+    db_connect_args[3] = manager_socket_name;
+    db_connect_args[4] = "address";
+    db_connect_args[5] = utstring_body(manager_address_str);
     state->db = db_connect(db_addr, db_port, "plasma_manager", manager_addr,
-                           manager_port);
+                           num_args, db_connect_args);
+    utstring_free(manager_address_str);
+    free(db_connect_args);
     db_attach(state->db, state->loop, false);
   } else {
     state->db = NULL;
@@ -1405,8 +1421,9 @@ void start_server(const char *store_socket_name,
   int local_sock = bind_ipc_sock(manager_socket_name, false);
   CHECKM(local_sock >= 0, "Unable to bind local manager socket");
 
-  g_manager_state = init_plasma_manager_state(store_socket_name, master_addr,
-                                              port, db_addr, db_port);
+  g_manager_state =
+      init_plasma_manager_state(store_socket_name, manager_socket_name,
+                                master_addr, port, db_addr, db_port);
   CHECK(g_manager_state);
 
   CHECK(listen(remote_sock, 5) != -1);
