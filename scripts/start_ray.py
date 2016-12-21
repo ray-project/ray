@@ -15,12 +15,14 @@ parser.add_argument("--head", action="store_true", help="provide this argument f
 if __name__ == "__main__":
   args = parser.parse_args()
   if args.head:
+    # Start Ray on the head node.
     if args.redis_address is not None:
       raise Exception("If --head is passed in, a Redis server will be started, so a Redis address should not be provided.")
     address_info = services.start_ray_local(node_ip_address=args.node_ip_address,
                                             num_workers=args.num_workers,
                                             cleanup=False)
   else:
+    # Start Ray on a non-head node.
     if args.redis_address is None:
       raise Exception("If --head is not passed in, --redis-address must be provided.")
     address_info = services.start_ray_node(node_ip_address=args.node_ip_address,
