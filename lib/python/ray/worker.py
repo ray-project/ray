@@ -652,12 +652,12 @@ def get_address_info_from_redis(redis_address, node_ip_address):
   assert len(local_schedulers) == 1
   client_info = {"node_ip_address": node_ip_address,
                  "redis_address": redis_address,
-                 "store_socket_name": plasma_managers[0][b"store_socket_name"],
-                 "manager_socket_name": plasma_managers[0][b"manager_socket_name"],
-                 "local_scheduler_socket_name": local_schedulers[0][b"local_scheduler_socket_name"]}
+                 "store_socket_name": plasma_managers[0][b"store_socket_name"].decode("ascii"),
+                 "manager_socket_name": plasma_managers[0][b"manager_socket_name"].decode("ascii"),
+                 "local_scheduler_socket_name": local_schedulers[0][b"local_scheduler_socket_name"].decode("ascii")}
   return client_info
 
-def init(node_ip_address="127.0.0.1", redis_address=None, start_ray_local=False, num_workers=None, num_local_schedulers=1, driver_mode=SCRIPT_MODE):
+def init(node_ip_address="127.0.0.1", redis_address=None, start_ray_local=False, num_workers=None, num_local_schedulers=None, driver_mode=SCRIPT_MODE):
   """Either connect to an existing Ray cluster or start one and connect to it.
 
   This method handles two cases. Either a Ray cluster already exists and we
@@ -701,6 +701,8 @@ def init(node_ip_address="127.0.0.1", redis_address=None, start_ray_local=False,
     node_ip_address = "127.0.0.1" if node_ip_address is None else node_ip_address
     # Use 1 worker if num_workers is not provided.
     num_workers = 1 if num_workers is None else num_workers
+    # Use 1 local scheduler if num_local_schedulers is not provided.
+    num_local_schedulers = 1 if num_local_schedulers is None else num_local_schedulers
     # Start the scheduler, object store, and some workers. These will be killed
     # by the call to cleanup(), which happens when the Python script exits.
     address_info = services.start_ray_local(node_ip_address=node_ip_address, num_workers=num_workers, num_local_schedulers=num_local_schedulers)

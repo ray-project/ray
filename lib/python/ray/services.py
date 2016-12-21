@@ -260,7 +260,7 @@ def start_ray_node(node_ip_address, redis_address, num_workers=0, num_local_sche
     time.sleep(0.1)
     # Start the local scheduler.
     plasma_address = "{}:{}".format(node_ip_address, object_store_manager_port)
-    local_scheduler_name = start_local_scheduler(redis_address, object_store_name, object_store_manager_name, plasma_address=plasma_address, cleanup=cleanup)
+    local_scheduler_name = start_local_scheduler(redis_address, node_ip_address, object_store_name, object_store_manager_name, plasma_address=plasma_address, cleanup=cleanup)
     local_scheduler_names.append(local_scheduler_name)
     time.sleep(0.1)
   # Aggregate the address information together.
