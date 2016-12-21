@@ -40,13 +40,19 @@ local_scheduler_state *init_local_scheduler(
   utarray_new(state->workers, &worker_icd);
   /* Connect to Redis if a Redis address is provided. */
   if (redis_addr != NULL) {
-    int num_args = 2;
-    const char **db_connect_args = malloc(sizeof(char *) * num_args);
-    db_connect_args[0] = "aux_address";
-    db_connect_args[1] = plasma_manager_address;
+    int num_args = 0;
+    const char **db_connect_args = NULL;
+    if (plasma_manager_address != NULL) {
+      num_args = 2;
+      db_connect_args = malloc(sizeof(char *) * num_args);
+      db_connect_args[0] = "aux_address";
+      db_connect_args[1] = plasma_manager_address;
+    }
     state->db = db_connect(redis_addr, redis_port, "photon", node_ip_address,
                            num_args, db_connect_args);
-    free(db_connect_args);
+    if (num_args != 0) {
+      free(db_connect_args);
+    };
     db_attach(state->db, loop, false);
   } else {
     state->db = NULL;

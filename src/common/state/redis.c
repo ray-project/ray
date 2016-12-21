@@ -185,6 +185,10 @@ db_handle *db_connect(const char *db_address,
   argvlen[3] = strlen(client_type);
   /* Set the remaining arguments. */
   for (int i = 0; i < num_args; ++i) {
+    if (args[i] == NULL) {
+      LOG_FATAL(
+          "Element %d of the args array passed to db_connect was NULL.", i);
+    }
     argv[4 + i] = args[i];
     argvlen[4 + i] = strlen(args[i]);
   }
@@ -535,8 +539,8 @@ void redis_get_cached_db_client(db_handle *db,
     redisReply *reply =
         redisCommand(db->sync_context, "RAY.GET_CLIENT_ADDRESS %b",
                      (char *) db_client_id.id, sizeof(db_client_id.id));
-    CHECKM(reply->type == REDIS_REPLY_STRING, "REDIS reply type=%d",
-           reply->type);
+    CHECKM(reply->type == REDIS_REPLY_STRING, "REDIS reply type=%d, str=%s",
+           reply->type, reply->str);
     entry = malloc(sizeof(db_client_cache_entry));
     entry->db_client_id = db_client_id;
     entry->addr = strdup(reply->str);
