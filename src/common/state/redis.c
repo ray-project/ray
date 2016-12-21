@@ -136,7 +136,7 @@ db_handle *db_connect(const char *db_address,
                       int num_args,
                       const char **args) {
   /* Check that the number of args is even. These args will be passed to the
-   * RAY.CONNET Redis command, which takes arguments in pairs. */
+   * RAY.CONNECT Redis command, which takes arguments in pairs. */
   if (num_args % 2 != 0) {
     LOG_FATAL("The number of extra args must be divisible by two.");
   }
