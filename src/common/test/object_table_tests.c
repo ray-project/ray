@@ -404,13 +404,9 @@ TEST add_lookup_test(void) {
   g_loop = event_loop_create();
   lookup_retry_succeeded = 0;
   /* Construct the arguments to db_connect. */
-  int num_args = 2;
-  const char **db_connect_args = malloc(sizeof(char *) * num_args);
-  db_connect_args[0] = "address";
-  db_connect_args[1] = "127.0.0.1:11235";
+  const char *db_connect_args[] = {"address", "127.0.0.1:11235"};
   db_handle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1",
-                             num_args, db_connect_args);
-  free(db_connect_args);
+                             2, db_connect_args);
   db_attach(db, g_loop, true);
   retry_info retry = {
       .num_retries = 5,
@@ -735,13 +731,9 @@ TEST subscribe_success_test(void) {
   g_loop = event_loop_create();
 
   /* Construct the arguments to db_connect. */
-  int num_args = 2;
-  const char **db_connect_args = malloc(sizeof(char *) * num_args);
-  db_connect_args[0] = "address";
-  db_connect_args[1] = "127.0.0.1:11236";
+  const char *db_connect_args[] = {"address", "127.0.0.1:11236"};
   db_handle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1",
-                             num_args, db_connect_args);
-  free(db_connect_args);
+                             2, db_connect_args);
   db_attach(db, g_loop, false);
   subscribe_id = globally_unique_id();
 
@@ -808,13 +800,9 @@ TEST subscribe_object_present_test(void) {
 
   g_loop = event_loop_create();
   /* Construct the arguments to db_connect. */
-  int num_args = 2;
-  const char **db_connect_args = malloc(sizeof(char *) * num_args);
-  db_connect_args[0] = "address";
-  db_connect_args[1] = "127.0.0.1:11236";
+  const char *db_connect_args[] = {"address", "127.0.0.1:11236"};
   db_handle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1",
-                             num_args, db_connect_args);
-  free(db_connect_args);
+                             2, db_connect_args);
   db_attach(db, g_loop, false);
   unique_id id = globally_unique_id();
   retry_info retry = {
@@ -927,13 +915,9 @@ TEST subscribe_object_available_later_test(void) {
 
   g_loop = event_loop_create();
   /* Construct the arguments to db_connect. */
-  int num_args = 2;
-  const char **db_connect_args = malloc(sizeof(char *) * num_args);
-  db_connect_args[0] = "address";
-  db_connect_args[1] = "127.0.0.1:11236";
+  const char *db_connect_args[] = {"address", "127.0.0.1:11236"};
   db_handle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1",
-                             num_args, db_connect_args);
-  free(db_connect_args);
+                             2, db_connect_args);
   db_attach(db, g_loop, false);
   unique_id id = globally_unique_id();
   retry_info retry = {
@@ -984,13 +968,9 @@ TEST subscribe_object_available_subscribe_all(void) {
       subscribe_object_available_later_context, data_size};
   g_loop = event_loop_create();
   /* Construct the arguments to db_connect. */
-  int num_args = 2;
-  const char **db_connect_args = malloc(sizeof(char *) * num_args);
-  db_connect_args[0] = "address";
-  db_connect_args[1] = "127.0.0.1:11236";
+  const char *db_connect_args[] = {"address", "127.0.0.1:11236"};
   db_handle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1",
-                             num_args, db_connect_args);
-  free(db_connect_args);
+                             2, db_connect_args);
   db_attach(db, g_loop, false);
   unique_id id = globally_unique_id();
   retry_info retry = {

@@ -186,8 +186,8 @@ db_handle *db_connect(const char *db_address,
   /* Set the remaining arguments. */
   for (int i = 0; i < num_args; ++i) {
     if (args[i] == NULL) {
-      LOG_FATAL(
-          "Element %d of the args array passed to db_connect was NULL.", i);
+      LOG_FATAL("Element %d of the args array passed to db_connect was NULL.",
+                i);
     }
     argv[4 + i] = args[i];
     argvlen[4 + i] = strlen(args[i]);

@@ -229,17 +229,13 @@ TEST object_reconstruction_suppression_test(void) {
     exit(0);
   } else {
     /* Connect a plasma manager client so we can call object_table_add. */
-    int num_args = 2;
-    const char **db_connect_args = malloc(sizeof(char *) * num_args);
-    db_connect_args[0] = "address";
-    db_connect_args[1] = "127.0.0.1:12346";
-    db_handle *db = db_connect("127.0.0.1", 6379, "plasma_manager",
-                               "127.0.0.1", num_args, db_connect_args);
-    free(db_connect_args);
+    const char *db_connect_args[] = {"address", "127.0.0.1:12346"};
+    db_handle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1",
+                               2, db_connect_args);
     db_attach(db, photon->loop, false);
     /* Add the object to the object table. */
-    object_table_add(db, return_id, 1,
-                     (unsigned char *) NIL_DIGEST, (retry_info *) &photon_retry,
+    object_table_add(db, return_id, 1, (unsigned char *) NIL_DIGEST,
+                     (retry_info *) &photon_retry,
                      object_reconstruction_suppression_callback,
                      (void *) photon);
     /* Run the event loop. NOTE: OSX appears to require the parent process to

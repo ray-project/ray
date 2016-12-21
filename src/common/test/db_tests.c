@@ -67,22 +67,14 @@ int64_t timeout_handler(event_loop *loop, int64_t id, void *context) {
 
 TEST object_table_lookup_test(void) {
   event_loop *loop = event_loop_create();
-  int num_args1 = 2;
-  const char **db_connect_args1 = malloc(sizeof(char *) * num_args1);
-  db_connect_args1[0] = "address";
   /* This uses manager_port1. */
-  db_connect_args1[1] = "127.0.0.1:12345";
+  const char *db_connect_args1[] = {"address", "127.0.0.1:12345"};
   db_handle *db1 = db_connect("127.0.0.1", 6379, "plasma_manager", manager_addr,
-                              num_args1, db_connect_args1);
-  free(db_connect_args1);
-  int num_args2 = 2;
-  const char **db_connect_args2 = malloc(sizeof(char *) * num_args2);
-  db_connect_args2[0] = "address";
+                              2, db_connect_args1);
   /* This uses manager_port2. */
-  db_connect_args2[1] = "127.0.0.1:12346";
+  const char *db_connect_args2[] = {"address", "127.0.0.1:12346"};
   db_handle *db2 = db_connect("127.0.0.1", 6379, "plasma_manager", manager_addr,
-                              num_args2, db_connect_args2);
-  free(db_connect_args2);
+                              2, db_connect_args2);
   db_attach(db1, loop, false);
   db_attach(db2, loop, false);
   unique_id id = globally_unique_id();
