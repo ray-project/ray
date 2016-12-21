@@ -363,6 +363,7 @@ void handle_object_removed(local_scheduler_state *state, object_id object_id) {
             sizeof(object_id), entry);
   if (entry != NULL) {
     HASH_DELETE(handle, algorithm_state->local_objects, entry);
+    free(entry);
   }
 }
 
