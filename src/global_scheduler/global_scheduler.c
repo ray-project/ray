@@ -20,11 +20,13 @@ UT_icd local_scheduler_icd = {sizeof(local_scheduler), NULL, NULL, NULL};
 void assign_task_to_local_scheduler(global_scheduler_state *state,
                                     task *task,
                                     node_id node_id) {
+  LOG_INFO("assigning task to node_id=%s\n", node_id.id);
   task_set_state(task, TASK_STATUS_SCHEDULED);
   task_set_node(task, node_id);
   retry_info retry = {
       .num_retries = 0, .timeout = 100, .fail_callback = NULL,
   };
+  LOG_INFO("issuing a task table update\n");
   task_table_update(state->db, copy_task(task), &retry, NULL, NULL);
 }
 
@@ -72,7 +74,7 @@ void signal_handler(int signal) {
 
 void process_task_waiting(task *task, void *user_context) {
   global_scheduler_state *state = (global_scheduler_state *) user_context;
-  printf("[GS]: process TASKWAIT task is called\n");
+  printf("[GS]: task table callback is called \n");
   handle_task_waiting(state, state->policy_state, task);
 }
 
@@ -87,6 +89,8 @@ void process_new_db_client(db_client_id db_client_id,
                            void *user_context) {
   global_scheduler_state *state = (global_scheduler_state *) user_context;
 
+  printf("[GS] db client table callback for db client=\n\t");
+  object_id_print(db_client_id);
   if (strncmp(client_type, "photon", strlen("photon")) == 0) {
     /* Add plasma_manager ip:port -> photon_db_client_id association to state.
      */
@@ -134,7 +138,7 @@ void object_table_subscribe_callback(
   /* Extract global scheduler state from the callback context. */
   global_scheduler_state *state = (global_scheduler_state *) user_context;
 
-  printf("[GS]: NEW OBJECT INFO AVAILABLE FOR OBJECT= ");
+  printf("[GS]: object table subscribe callback for OBJECT= ");
   object_id_print(object_id);
   fflush(stdout);
   printf("Managers<%d>:\n", manager_count);
@@ -173,7 +177,7 @@ void object_table_subscribe_callback(
 
   utarray_new(obj_info_entry->object_locations, &ut_str_icd);
   for (int i = 0; i < manager_count; i++) {
-    utarray_push_back(obj_info_entry->object_locations, manager_vector[i]);
+    utarray_push_back(obj_info_entry->object_locations, &manager_vector[i]);
   }
 
 }

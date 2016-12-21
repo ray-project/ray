@@ -49,14 +49,17 @@ class TestGlobalScheduler(unittest.TestCase):
     assert os.path.isfile(redis_path)
     assert os.path.isfile(redis_module)
     node_ip_address = "127.0.0.1"
-    redis_port = 6379#new_port()
+    #redis_port = new_port() #default_port=6379
+    redis_port = 6379
     redis_address = "{}:{}".format(node_ip_address, redis_port)
     self.redis_process = subprocess.Popen([redis_path, "--port", str(redis_port), "--loglevel", "warning", "--loadmodule", redis_module])
     time.sleep(0.1)
     # Create a Redis client.
     self.redis_client = redis.StrictRedis(host=node_ip_address, port=redis_port)
+    #time.sleep(0.5)
     # Start the global scheduler.
     self.p1 = global_scheduler.start_global_scheduler(redis_address, use_valgrind=USE_VALGRIND)
+    #time.sleep(0.5)
     # Start the Plasma store.
     plasma_store_name, self.p2 = plasma.start_plasma_store()
     # Start the Plasma manager.
@@ -105,11 +108,10 @@ class TestGlobalScheduler(unittest.TestCase):
     cli_lst = self.redis_client.keys("{}*".format(DB_CLIENT_PREFIX))
     for client_id in cli_lst:
         rediscmdstr = b'HGET {} client_type'.format(client_id)
-        print(rediscmdstr)
-        #response = self.redis_client.execute_command(rediscmdstr)
         response = self.redis_client.hget(client_id, b'client_type')
         if response == "plasma_manager":
             db_client_id = client_id
+
     assert(db_client_id != None)
     assert(db_client_id.startswith("CL:"))
     db_client_id = db_client_id[len('CL:'):] #remove the CL: prefix
@@ -150,12 +152,14 @@ class TestGlobalScheduler(unittest.TestCase):
     #time.sleep(20)
     foo = random_object_id()
     object_dep = args_list[1][0].id()
-    #self.redis_client.execute_command("RAY.OBJECT_TABLE_ADD", object_dep, data_size, "hash1", self.plasma_address)
     self.redis_client.execute_command("RAY.OBJECT_TABLE_ADD", object_dep, data_size, "hash1", db_client_id)
 
+    #sleep before submitting task to photon
+    time.sleep(1)
     # Submit a task to Redis.
     task = photon.Task(random_function_id(), args_list[1], num_return_vals[0], random_task_id(), 0)
     self.photon_client.submit(task)
+    time.sleep(5)
     # There should now be a task in Redis, and it should get assigned to the
     # local scheduler
     num_retries = 10
@@ -176,10 +180,11 @@ class TestGlobalScheduler(unittest.TestCase):
 
     if num_retries <= 0 and task_status != TASK_STATUS_SCHEDULED:
         #failed to submit and schedule a single task -- bail
+        self.tearDown()
         sys.exit(1)
 
     # Submit a bunch of tasks to Redis.
-    num_tasks = 1000
+    num_tasks = 10
     for _ in range(num_tasks):
       task = photon.Task(random_function_id(), args_list[1], num_return_vals[0], random_task_id(), 0)
       self.photon_client.submit(task)
@@ -197,7 +202,12 @@ class TestGlobalScheduler(unittest.TestCase):
           break
       print("The tasks have not been scheduled yet, trying again.")
       num_retries -= 1
-      time.sleep(1)
+      time.sleep(.1)
+
+    if num_retries <= 0 and task_status != TASK_STATUS_SCHEDULED:
+        #failed to submit and schedule a single task -- bail
+        self.tearDown()
+        sys.exit(2)
 
 if __name__ == "__main__":
   if len(sys.argv) > 1:

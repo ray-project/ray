@@ -41,8 +41,6 @@ void handle_task_waiting(global_scheduler_state *state,
   printf("[GS] TASKWAIT: starting to iterate %lld task args\n", task_num_args(task_spec));
   /* local hash table to keep track of aggregate object sizes per local sched.
    */
-  handle_task_nodep(state, policy_state, task);
-  return;
   struct object_size_entry {
     const char *object_location;
     int64_t total_object_size;
@@ -124,17 +122,22 @@ void handle_task_waiting(global_scheduler_state *state,
   aux_address_entry *aux_entry = NULL;
   db_client_id photon_id = NIL_ID;
   if (max_object_location != NULL) {
-    printf("max object size location found!");
+    printf("max object size location found!\n");
     LOG_INFO("max object size location found : %s\n", max_object_location);
     /* Lookup association of plasma location to photon */
     HASH_FIND_STR(state->plasma_photon_map, max_object_location, aux_entry);
     if (aux_entry) {
+      LOG_INFO("found photon db client association for plasma ip:port=%s\n",
+          aux_entry->aux_address);
       /* plasma to photon db client id association found, get photon id */
       photon_id = aux_entry->photon_db_client_id;
+    } else {
+      LOG_ERROR("photon db client association not found for plasma ip:port=%s",
+          max_object_location);
     }
   }
 
-  printf("[GS] photon ID found = "); object_id_print(photon_id);
+  LOG_INFO("[GS] photon ID found = "); object_id_print(photon_id);
   CHECKM(!IS_NIL_ID(photon_id),
          "GS failed to find an LS: num_args=%lld num_returns=%lld\n",
          task_num_args(task_spec),
@@ -148,6 +151,7 @@ void handle_task_waiting(global_scheduler_state *state,
     /* NOTE: do not free externally stored s->object_location */
     free(s);
   }
+  LOG_INFO("task waiting callback done\n");
 }
 
 void handle_object_available(global_scheduler_state *state,

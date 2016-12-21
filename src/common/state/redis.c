@@ -562,21 +562,11 @@ object_id parse_subscribe_to_notifications_payload(
   char *bufptr = buf;
   memset(buf, 0, sizeof(buf) );
 
-  printf(buf, "XXX: num_managers = %d, length=%d , rval = %lld\n", num_managers,
-         length, rval);
-  printf(buf, "XXX: payload=<");
-  bufptr = buf;
-  for (int i=0; i < length; i++, bufptr+=3) {
-    sprintf(bufptr, "%02x ", (uint8_t)payload[i]);
-  }
-  printf("%s\n", buf);
-  printf(">\n");
-
-  fflush(stdout);
   CHECKM(length ==
         sizeof(object_id) + 1 + sizeof(data_size_value) + 1 +
             strlen("MANAGERS") + num_managers * (1 + sizeof(db_client_id)),
-            "length mismatch with debugstr=%s", buf);
+            "length mismatch: num_managers=%d, length=%d, rval=%lld",
+            num_managers, length, rval);
   CHECK(num_managers > 0);
   object_id obj_id;
   /* Track our current offset in the payload. */
@@ -907,9 +897,7 @@ void redis_task_table_publish_publish_callback(redisAsyncContext *c,
 void redis_task_table_subscribe_callback(redisAsyncContext *c,
                                          void *r,
                                          void *privdata) {
-  printf("XXX REDIS TASK SUBSCRIBE CALLBACK\n");
   REDIS_CALLBACK_HEADER(db, callback_data, r);
-  printf("XXX REDIS TASK SUBSCRIBE CALLBACK after\n");
   redisReply *reply = r;
 
   CHECK(reply->type == REDIS_REPLY_ARRAY);
@@ -920,7 +908,6 @@ void redis_task_table_subscribe_callback(redisAsyncContext *c,
   /* If this condition is true, we got the initial message that acknowledged the
    * subscription. */
   if (payload->str == NULL) {
-    printf("XXX REDIS TASK SUBSCRIBE CALLBACK 3\n");
     if (callback_data->done_callback) {
       task_table_done_callback done_callback = callback_data->done_callback;
       done_callback(callback_data->id, callback_data->user_context);
@@ -935,10 +922,8 @@ void redis_task_table_subscribe_callback(redisAsyncContext *c,
 
   task *task = malloc(payload->len);
   memcpy(task, payload->str, payload->len);
-  printf("XXX REDIS TASK SUBSCRIBE CALLBACK 4\n");
   if (data->subscribe_callback) {
     data->subscribe_callback(task, data->subscribe_context);
-    printf("XXX REDIS TASK SUBSCRIBE CALLBACK 5\n");
   }
   free_task(task);
 }
