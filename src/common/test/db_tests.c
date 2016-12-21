@@ -12,6 +12,8 @@
 #include "state/redis.h"
 #include "task.h"
 
+#include "utstring.h"
+
 SUITE(db_tests);
 
 /* Retry 10 times with an 100ms timeout. */
@@ -65,10 +67,22 @@ int64_t timeout_handler(event_loop *loop, int64_t id, void *context) {
 
 TEST object_table_lookup_test(void) {
   event_loop *loop = event_loop_create();
+  int num_args1 = 2;
+  const char **db_connect_args1 = malloc(sizeof(char *) * num_args1);
+  db_connect_args1[0] = "address";
+  /* This uses manager_port1. */
+  db_connect_args1[1] = "127.0.0.1:12345";
   db_handle *db1 = db_connect("127.0.0.1", 6379, "plasma_manager", manager_addr,
-                              manager_port1);
+                              num_args1, db_connect_args1);
+  free(db_connect_args1);
+  int num_args2 = 2;
+  const char **db_connect_args2 = malloc(sizeof(char *) * num_args2);
+  db_connect_args2[0] = "address";
+  /* This uses manager_port2. */
+  db_connect_args2[1] = "127.0.0.1:12346";
   db_handle *db2 = db_connect("127.0.0.1", 6379, "plasma_manager", manager_addr,
-                              manager_port2);
+                              num_args2, db_connect_args2);
+  free(db_connect_args2);
   db_attach(db1, loop, false);
   db_attach(db2, loop, false);
   unique_id id = globally_unique_id();
@@ -138,7 +152,8 @@ void task_table_test_callback(task *callback_task, void *user_data) {
 TEST task_table_test(void) {
   task_table_test_callback_called = 0;
   event_loop *loop = event_loop_create();
-  db_handle *db = db_connect("127.0.0.1", 6379, "local_scheduler", "", -1);
+  db_handle *db = db_connect("127.0.0.1", 6379, "local_scheduler", "127.0.0.1",
+                             0, NULL);
   db_attach(db, loop, false);
   node_id node = globally_unique_id();
   task_spec *spec = example_task_spec(1, 1);
@@ -170,7 +185,8 @@ void task_table_all_test_callback(task *task, void *user_data) {
 
 TEST task_table_all_test(void) {
   event_loop *loop = event_loop_create();
-  db_handle *db = db_connect("127.0.0.1", 6379, "local_scheduler", "", -1);
+  db_handle *db = db_connect("127.0.0.1", 6379, "local_scheduler", "127.0.0.1",
+                             0, NULL);
   db_attach(db, loop, false);
   task_spec *spec = example_task_spec(1, 1);
   /* Schedule two tasks on different nodes. */
@@ -204,8 +220,7 @@ TEST unique_client_id_test(void) {
   db_client_id ids[num_conns];
   db_handle *db;
   for (int i = 0; i < num_conns; ++i) {
-    db = db_connect("127.0.0.1", 6379, "plasma_manager", manager_addr,
-                    manager_port1);
+    db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
     ids[i] = get_db_client_id(db);
     db_disconnect(db);
   }

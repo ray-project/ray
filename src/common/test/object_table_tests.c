@@ -72,7 +72,7 @@ TEST new_object_test(void) {
   new_object_task_id = task_spec_id(new_object_task_spec);
   g_loop = event_loop_create();
   db_handle *db =
-      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 1234);
+      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   retry_info retry = {
       .num_retries = 5,
@@ -119,7 +119,7 @@ TEST new_object_no_task_test(void) {
   new_object_task_id = globally_unique_id();
   g_loop = event_loop_create();
   db_handle *db =
-      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 1234);
+      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   retry_info retry = {
       .num_retries = 5,
@@ -161,7 +161,7 @@ void lookup_fail_callback(unique_id id, void *user_context, void *user_data) {
 TEST lookup_timeout_test(void) {
   g_loop = event_loop_create();
   db_handle *db =
-      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 1234);
+      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   retry_info retry = {
       .num_retries = 5, .timeout = 100, .fail_callback = lookup_fail_callback,
@@ -197,7 +197,7 @@ void add_fail_callback(unique_id id, void *user_context, void *user_data) {
 TEST add_timeout_test(void) {
   g_loop = event_loop_create();
   db_handle *db =
-      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 1234);
+      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   retry_info retry = {
       .num_retries = 5, .timeout = 100, .fail_callback = add_fail_callback,
@@ -237,7 +237,7 @@ void subscribe_fail_callback(unique_id id,
 TEST subscribe_timeout_test(void) {
   g_loop = event_loop_create();
   db_handle *db =
-      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 1234);
+      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   retry_info retry = {
       .num_retries = 5,
@@ -305,7 +305,7 @@ TEST lookup_retry_test(void) {
   g_loop = event_loop_create();
   lookup_retry_succeeded = 0;
   db_handle *db =
-      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11235);
+      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   retry_info retry = {
       .num_retries = 5,
@@ -351,7 +351,7 @@ void add_retry_fail_callback(unique_id id,
 TEST add_retry_test(void) {
   g_loop = event_loop_create();
   db_handle *db =
-      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11235);
+      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   retry_info retry = {
       .num_retries = 5,
@@ -403,8 +403,14 @@ void add_lookup_callback(object_id object_id, void *user_context) {
 TEST add_lookup_test(void) {
   g_loop = event_loop_create();
   lookup_retry_succeeded = 0;
-  db_handle *db =
-      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11235);
+  /* Construct the arguments to db_connect. */
+  int num_args = 2;
+  const char **db_connect_args = malloc(sizeof(char *) * num_args);
+  db_connect_args[0] = "address";
+  db_connect_args[1] = "127.0.0.1:11235";
+  db_handle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1",
+                             num_args, db_connect_args);
+  free(db_connect_args);
   db_attach(db, g_loop, true);
   retry_info retry = {
       .num_retries = 5,
@@ -461,7 +467,7 @@ TEST add_remove_lookup_test(void) {
   g_loop = event_loop_create();
   lookup_retry_succeeded = 0;
   db_handle *db =
-      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11235);
+      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, true);
   retry_info retry = {
       .num_retries = 5,
@@ -523,7 +529,7 @@ void subscribe_retry_fail_callback(unique_id id,
 TEST subscribe_retry_test(void) {
   g_loop = event_loop_create();
   db_handle *db =
-      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11235);
+      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   retry_info retry = {
       .num_retries = 5,
@@ -576,7 +582,7 @@ void lookup_late_done_callback(object_id object_id,
 TEST lookup_late_test(void) {
   g_loop = event_loop_create();
   db_handle *db =
-      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11236);
+      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   retry_info retry = {
       .num_retries = 0,
@@ -618,7 +624,7 @@ void add_late_done_callback(object_id object_id, void *user_context) {
 TEST add_late_test(void) {
   g_loop = event_loop_create();
   db_handle *db =
-      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11236);
+      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   retry_info retry = {
       .num_retries = 0, .timeout = 0, .fail_callback = add_late_fail_callback,
@@ -663,7 +669,7 @@ void subscribe_late_done_callback(object_id object_id,
 TEST subscribe_late_test(void) {
   g_loop = event_loop_create();
   db_handle *db =
-      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11236);
+      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   retry_info retry = {
       .num_retries = 0,
@@ -727,8 +733,15 @@ void subscribe_success_object_available_callback(object_id object_id,
 
 TEST subscribe_success_test(void) {
   g_loop = event_loop_create();
-  db_handle *db =
-      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11236);
+
+  /* Construct the arguments to db_connect. */
+  int num_args = 2;
+  const char **db_connect_args = malloc(sizeof(char *) * num_args);
+  db_connect_args[0] = "address";
+  db_connect_args[1] = "127.0.0.1:11236";
+  db_handle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1",
+                             num_args, db_connect_args);
+  free(db_connect_args);
   db_attach(db, g_loop, false);
   subscribe_id = globally_unique_id();
 
@@ -794,8 +807,14 @@ TEST subscribe_object_present_test(void) {
                                               data_size};
 
   g_loop = event_loop_create();
-  db_handle *db =
-      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11236);
+  /* Construct the arguments to db_connect. */
+  int num_args = 2;
+  const char **db_connect_args = malloc(sizeof(char *) * num_args);
+  db_connect_args[0] = "address";
+  db_connect_args[1] = "127.0.0.1:11236";
+  db_handle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1",
+                             num_args, db_connect_args);
+  free(db_connect_args);
   db_attach(db, g_loop, false);
   unique_id id = globally_unique_id();
   retry_info retry = {
@@ -847,7 +866,7 @@ void subscribe_object_not_present_object_available_callback(
 TEST subscribe_object_not_present_test(void) {
   g_loop = event_loop_create();
   db_handle *db =
-      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11236);
+      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   unique_id id = globally_unique_id();
   retry_info retry = {
@@ -907,8 +926,14 @@ TEST subscribe_object_available_later_test(void) {
   myctx->data_size = data_size;
 
   g_loop = event_loop_create();
-  db_handle *db =
-      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11236);
+  /* Construct the arguments to db_connect. */
+  int num_args = 2;
+  const char **db_connect_args = malloc(sizeof(char *) * num_args);
+  db_connect_args[0] = "address";
+  db_connect_args[1] = "127.0.0.1:11236";
+  db_handle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1",
+                             num_args, db_connect_args);
+  free(db_connect_args);
   db_attach(db, g_loop, false);
   unique_id id = globally_unique_id();
   retry_info retry = {
@@ -958,8 +983,14 @@ TEST subscribe_object_available_subscribe_all(void) {
   subscribe_object_present_context_t myctx = {
       subscribe_object_available_later_context, data_size};
   g_loop = event_loop_create();
-  db_handle *db =
-      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11236);
+  /* Construct the arguments to db_connect. */
+  int num_args = 2;
+  const char **db_connect_args = malloc(sizeof(char *) * num_args);
+  db_connect_args[0] = "address";
+  db_connect_args[1] = "127.0.0.1:11236";
+  db_handle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1",
+                             num_args, db_connect_args);
+  free(db_connect_args);
   db_attach(db, g_loop, false);
   unique_id id = globally_unique_id();
   retry_info retry = {
@@ -1001,76 +1032,6 @@ TEST subscribe_object_available_subscribe_all(void) {
   PASS();
 }
 
-/* Test if object size is correctly reported by the object_info callback. */
-
-typedef struct {
-  char *subscribe_success_msg;
-  int64_t data_size;
-  int subscribe_succeeded;
-  int subscribe_callback_done;
-} object_info_subscribe_context;
-
-object_info_subscribe_context obj_info_subscribe_context = {"foo", 42, 0, 0};
-
-void subscribe_object_info_done_callback(object_id object_id,
-                                         void *user_context) {
-  retry_info retry = {
-      .num_retries = 0, .timeout = 100, .fail_callback = NULL,
-  };
-  CHECK(obj_info_subscribe_context.subscribe_succeeded == 0);
-  CHECK(obj_info_subscribe_context.subscribe_callback_done == 0);
-
-  object_table_add((db_handle *) user_context, object_id,
-                   obj_info_subscribe_context.data_size,
-                   (unsigned char *) NIL_DIGEST, &retry, NULL, NULL);
-
-  obj_info_subscribe_context.subscribe_callback_done = 1;
-}
-
-void subscribe_success_object_info_available_callback(object_id object_id,
-                                                      int64_t object_size,
-                                                      void *user_context) {
-  CHECK(user_context == (void *) &obj_info_subscribe_context);
-  /* Check to make sure subscription done callback already fired. */
-  CHECK(obj_info_subscribe_context.subscribe_callback_done == 1);
-  CHECK(obj_info_subscribe_context.subscribe_succeeded == 0);
-  CHECK(obj_info_subscribe_context.data_size == object_size);
-
-  /* Mark success. */
-  obj_info_subscribe_context.subscribe_succeeded = 1;
-}
-
-TEST subscribe_object_info_success_test(void) {
-  g_loop = event_loop_create();
-  db_handle *db =
-      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 11236);
-  db_attach(db, g_loop, false);
-
-  retry_info retry = {
-      .num_retries = 0,
-      .timeout = 100,
-      .fail_callback = subscribe_success_fail_callback,
-  };
-
-  object_info_subscribe(db, subscribe_success_object_info_available_callback,
-                        (void *) &obj_info_subscribe_context, &retry,
-                        subscribe_object_info_done_callback, (void *) db);
-
-  /* Install handler for terminating the event loop. */
-  event_loop_add_timer(g_loop, 1000,
-                       (event_loop_timer_handler) terminate_event_loop_callback,
-                       NULL);
-
-  event_loop_run(g_loop);
-  db_disconnect(db);
-  destroy_outstanding_callbacks(g_loop);
-  event_loop_destroy(g_loop);
-
-  ASSERT(obj_info_subscribe_context.subscribe_succeeded == 1);
-  ASSERT(obj_info_subscribe_context.subscribe_callback_done == 1);
-  PASS();
-}
-
 SUITE(object_table_tests) {
   RUN_REDIS_TEST(new_object_test);
   RUN_REDIS_TEST(new_object_no_task_test);
@@ -1090,7 +1051,6 @@ SUITE(object_table_tests) {
   RUN_REDIS_TEST(subscribe_object_not_present_test);
   RUN_REDIS_TEST(subscribe_object_available_later_test);
   RUN_REDIS_TEST(subscribe_object_available_subscribe_all);
-  // RUN_REDIS_TEST(subscribe_object_info_success_test);
 }
 
 GREATEST_MAIN_DEFS();
