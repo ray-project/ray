@@ -458,11 +458,10 @@ plasma_manager_state *init_plasma_manager_state(const char *store_socket_name,
   state->object_wait_requests_local = NULL;
   state->object_wait_requests_remote = NULL;
   if (db_addr) {
-
     /* Get the manager port as a string. */
     UT_string *manager_address_str;
     utstring_new(manager_address_str);
-    utstring_printf(manager_address_str,"%s:%d", manager_addr, manager_port);
+    utstring_printf(manager_address_str, "%s:%d", manager_addr, manager_port);
 
     int num_args = 6;
     const char **db_connect_args = malloc(sizeof(char *) * num_args);

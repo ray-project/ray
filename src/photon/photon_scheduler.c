@@ -40,7 +40,6 @@ local_scheduler_state *init_local_scheduler(
   utarray_new(state->workers, &worker_icd);
   /* Connect to Redis if a Redis address is provided. */
   if (redis_addr != NULL) {
-
     int num_args = 2;
     const char **db_connect_args = malloc(sizeof(char *) * num_args);
     db_connect_args[0] = "aux_address";
