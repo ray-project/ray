@@ -15,11 +15,10 @@ parser.add_argument("--local-scheduler-name", required=True, type=str, help="the
 
 if __name__ == "__main__":
   args = parser.parse_args()
-  address_info = {"node_ip_address": args.node_ip_address,
-                  "redis_address": args.redis_address,
-                  "object_store_names": [args.object_store_name],
-                  "object_store_manager_names": [args.object_store_manager_name],
-                  "local_scheduler_names": [args.local_scheduler_name]}
-  ray.worker.connect(address_info, ray.WORKER_MODE)
+  info = {"redis_address": args.redis_address,
+          "store_socket_name": args.object_store_name,
+          "manager_socket_name": args.object_store_manager_name,
+          "local_scheduler_socket_name": args.local_scheduler_name}
+  ray.worker.connect(info, ray.WORKER_MODE)
 
   ray.worker.main_loop()
