@@ -67,6 +67,7 @@ plasma_mock *init_plasma_mock(plasma_mock *remote_mock) {
   CHECK(mock->manager_local_fd >= 0 && mock->local_store >= 0);
 
   mock->state = init_plasma_manager_state(utstring_body(store_socket_name),
+                                          utstring_body(manager_socket_name),
                                           manager_addr, mock->port, NULL, 0);
   mock->loop = get_event_loop(mock->state);
   /* Accept a connection from the local manager on the remote manager. */

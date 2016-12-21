@@ -65,6 +65,7 @@ void reconstruct_object(local_scheduler_state *state, object_id object_id);
 /** The following methods are for testing purposes only. */
 #ifdef PHOTON_TEST
 local_scheduler_state *init_local_scheduler(
+    const char *node_ip_address,
     event_loop *loop,
     const char *redis_addr,
     int redis_port,

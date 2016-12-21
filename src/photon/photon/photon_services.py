@@ -10,7 +10,7 @@ import time
 def random_name():
   return str(random.randint(0, 99999999))
 
-def start_local_scheduler(plasma_store_name, plasma_manager_name=None, plasma_address=None, redis_address=None, use_valgrind=False, use_profiler=False):
+def start_local_scheduler(plasma_store_name, plasma_manager_name=None, plasma_address=None, node_ip_address="127.0.0.1", redis_address=None, use_valgrind=False, use_profiler=False):
   """Start a local scheduler process.
 
   Args:
@@ -21,6 +21,8 @@ def start_local_scheduler(plasma_store_name, plasma_manager_name=None, plasma_ad
     plasma_address (str): The address of the plasma manager to connect to. This
       is only used by the global scheduler to figure out which plasma managers
       are connected to which local schedulers.
+    node_ip_address (str): The address of the node that this local scheduler is
+      running on.
     redis_address (str): The address of the Redis instance to connect to. If
       this is not provided, then the local scheduler will not connect to Redis.
     use_valgrind (bool): True if the local scheduler should be started inside of
@@ -38,7 +40,7 @@ def start_local_scheduler(plasma_store_name, plasma_manager_name=None, plasma_ad
     raise Exception("Cannot use valgrind and profiler at the same time.")
   local_scheduler_executable = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../build/photon_scheduler")
   local_scheduler_name = "/tmp/scheduler{}".format(random_name())
-  command = [local_scheduler_executable, "-s", local_scheduler_name, "-p", plasma_store_name]
+  command = [local_scheduler_executable, "-s", local_scheduler_name, "-p", plasma_store_name, "-h", node_ip_address]
   if plasma_manager_name is not None:
     command += ["-m", plasma_manager_name]
   if redis_address is not None:

@@ -58,7 +58,7 @@ photon_mock *init_photon_mock() {
       bind_ipc_sock_retry(photon_socket_name_format, &mock->photon_fd);
   CHECK(mock->plasma_fd >= 0 && mock->photon_fd >= 0);
   mock->photon_state = init_local_scheduler(
-      mock->loop, redis_addr, redis_port,
+      "127.0.0.1", mock->loop, redis_addr, redis_port,
       utstring_body(plasma_manager_socket_name),
       utstring_body(plasma_store_socket_name), NULL, false);
   /* Connect a Photon client. */
@@ -228,8 +228,14 @@ TEST object_reconstruction_suppression_test(void) {
     destroy_photon_mock(photon);
     exit(0);
   } else {
-    object_table_add(photon->photon_state->db, return_id, 1,
-                     (unsigned char *) NIL_DIGEST, (retry_info *) &photon_retry,
+    /* Connect a plasma manager client so we can call object_table_add. */
+    const char *db_connect_args[] = {"address", "127.0.0.1:12346"};
+    db_handle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1",
+                               2, db_connect_args);
+    db_attach(db, photon->loop, false);
+    /* Add the object to the object table. */
+    object_table_add(db, return_id, 1, (unsigned char *) NIL_DIGEST,
+                     (retry_info *) &photon_retry,
                      object_reconstruction_suppression_callback,
                      (void *) photon);
     /* Run the event loop. NOTE: OSX appears to require the parent process to
@@ -242,6 +248,7 @@ TEST object_reconstruction_suppression_test(void) {
     wait(NULL);
     ASSERT_EQ(num_tasks_in_queue(photon->photon_state->algorithm_state), 0);
     free_task_spec(object_reconstruction_suppression_spec);
+    db_disconnect(db);
     destroy_photon_mock(photon);
     PASS();
   }

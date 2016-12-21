@@ -74,22 +74,40 @@ RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
 int Connect_RedisCommand(RedisModuleCtx *ctx,
                          RedisModuleString **argv,
                          int argc) {
-  if (argc != 5) {
+  if (argc < 4) {
+    return RedisModule_WrongArity(ctx);
+  }
+  if (argc % 2 != 0) {
     return RedisModule_WrongArity(ctx);
   }
 
-  RedisModuleString *client_type = argv[1];
-  RedisModuleString *address = argv[2];
-  RedisModuleString *ray_client_id = argv[3];
-  RedisModuleString *aux_address = argv[4];
+  RedisModuleString *ray_client_id = argv[1];
+  RedisModuleString *node_ip_address = argv[2];
+  RedisModuleString *client_type = argv[3];
 
   /* Add this client to the Ray db client table. */
   RedisModuleKey *db_client_table_key =
       OpenPrefixedKey(ctx, DB_CLIENT_PREFIX, ray_client_id, REDISMODULE_WRITE);
+
+  /* This will be used to construct a publish message. */
+  RedisModuleString *aux_address = NULL;
+  RedisModuleString *aux_address_key =
+      RedisModule_CreateString(ctx, "aux_address", strlen("aux_address"));
+
   RedisModule_HashSet(db_client_table_key, REDISMODULE_HASH_CFIELDS,
-                      "client_type", client_type, "address", address,
-                      "aux_address", aux_address, NULL);
+                      "node_ip_address", node_ip_address, NULL);
+
+  for (int i = 4; i < argc; i += 2) {
+    RedisModuleString *key = argv[i];
+    RedisModuleString *value = argv[i + 1];
+    RedisModule_HashSet(db_client_table_key, REDISMODULE_HASH_NONE, key, value,
+                        NULL);
+    if (RedisModule_StringCompare(key, aux_address_key) == 0) {
+      aux_address = value;
+    }
+  }
   /* Clean up. */
+  RedisModule_FreeString(ctx, aux_address_key);
   RedisModule_CloseKey(db_client_table_key);
 
   /* Construct strings to publish on the db client channel. */
@@ -107,11 +125,15 @@ int Connect_RedisCommand(RedisModuleCtx *ctx,
   /* Append a space. */
   RedisModule_StringAppendBuffer(ctx, client_info, " ", strlen(" "));
   /* Append the aux address. */
-  size_t aux_address_size;
-  const char *aux_address_str =
-      RedisModule_StringPtrLen(aux_address, &aux_address_size);
-  RedisModule_StringAppendBuffer(ctx, client_info, aux_address_str,
-                                 aux_address_size);
+  if (aux_address == NULL) {
+    RedisModule_StringAppendBuffer(ctx, client_info, ":", strlen(":"));
+  } else {
+    size_t aux_address_size;
+    const char *aux_address_str =
+        RedisModule_StringPtrLen(aux_address, &aux_address_size);
+    RedisModule_StringAppendBuffer(ctx, client_info, aux_address_str,
+                                   aux_address_size);
+  }
   /* Publish the client info on the db client channel. */
   RedisModuleCallReply *reply;
   reply = RedisModule_Call(ctx, "PUBLISH", "ss", channel_name, client_info);

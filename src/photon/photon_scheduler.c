@@ -25,6 +25,7 @@ UT_icd worker_icd = {sizeof(worker), NULL, NULL, NULL};
 UT_icd byte_icd = {sizeof(uint8_t), NULL, NULL, NULL};
 
 local_scheduler_state *init_local_scheduler(
+    const char *node_ip_address,
     event_loop *loop,
     const char *redis_addr,
     int redis_port,
@@ -39,8 +40,19 @@ local_scheduler_state *init_local_scheduler(
   utarray_new(state->workers, &worker_icd);
   /* Connect to Redis if a Redis address is provided. */
   if (redis_addr != NULL) {
-    state->db = db_connect_extended(redis_addr, redis_port, "photon", "", -1,
-                                    plasma_manager_address);
+    int num_args = 0;
+    const char **db_connect_args = NULL;
+    if (plasma_manager_address != NULL) {
+      num_args = 2;
+      db_connect_args = malloc(sizeof(char *) * num_args);
+      db_connect_args[0] = "aux_address";
+      db_connect_args[1] = plasma_manager_address;
+    }
+    state->db = db_connect(redis_addr, redis_port, "photon", node_ip_address,
+                           num_args, db_connect_args);
+    if (num_args != 0) {
+      free(db_connect_args);
+    };
     db_attach(state->db, loop, false);
   } else {
     state->db = NULL;
@@ -273,7 +285,8 @@ void handle_task_scheduled_callback(task *original_task, void *user_context) {
                         task_task_spec(original_task));
 }
 
-void start_server(const char *socket_name,
+void start_server(const char *node_ip_address,
+                  const char *socket_name,
                   const char *redis_addr,
                   int redis_port,
                   const char *plasma_store_socket_name,
@@ -283,7 +296,7 @@ void start_server(const char *socket_name,
   int fd = bind_ipc_sock(socket_name, true);
   event_loop *loop = event_loop_create();
   g_state =
-      init_local_scheduler(loop, redis_addr, redis_port,
+      init_local_scheduler(node_ip_address, loop, redis_addr, redis_port,
                            plasma_store_socket_name, plasma_manager_socket_name,
                            plasma_manager_address, global_scheduler_exists);
 
@@ -323,9 +336,11 @@ int main(int argc, char *argv[]) {
   char *plasma_manager_socket_name = NULL;
   /* Address for the plasma manager associated with this Photon instance. */
   char *plasma_manager_address = NULL;
+  /* The IP address of the node that this local scheduler is running on. */
+  char *node_ip_address = NULL;
   int c;
   bool global_scheduler_exists = true;
-  while ((c = getopt(argc, argv, "s:r:p:m:ga:")) != -1) {
+  while ((c = getopt(argc, argv, "s:r:p:m:ga:h:")) != -1) {
     switch (c) {
     case 's':
       scheduler_socket_name = optarg;
@@ -345,6 +360,9 @@ int main(int argc, char *argv[]) {
     case 'a':
       plasma_manager_address = optarg;
       break;
+    case 'h':
+      node_ip_address = optarg;
+      break;
     default:
       LOG_FATAL("unknown option %c", c);
     }
@@ -356,6 +374,9 @@ int main(int argc, char *argv[]) {
     LOG_FATAL(
         "please specify socket for connecting to Plasma store with -p switch");
   }
+  if (!node_ip_address) {
+    LOG_FATAL("please specify the node IP address with -p switch");
+  }
   if (!redis_addr_port) {
     /* Start the local scheduler without connecting to Redis. In this case, all
      * submitted tasks will be queued and scheduled locally. */
@@ -364,8 +385,9 @@ int main(int argc, char *argv[]) {
           "if a plasma manager socket name is provided with the -m switch, "
           "then a redis address must be provided with the -r switch");
     }
-    start_server(scheduler_socket_name, NULL, -1, plasma_store_socket_name,
-                 NULL, plasma_manager_address, global_scheduler_exists);
+    start_server(node_ip_address, scheduler_socket_name, NULL, -1,
+                 plasma_store_socket_name, NULL, plasma_manager_address,
+                 global_scheduler_exists);
   } else {
     /* Parse the Redis address into an IP address and a port. */
     char redis_addr[16] = {0};
@@ -382,9 +404,10 @@ int main(int argc, char *argv[]) {
           "please specify socket for connecting to Plasma manager with -m "
           "switch");
     }
-    start_server(scheduler_socket_name, &redis_addr[0], atoi(redis_port),
-                 plasma_store_socket_name, plasma_manager_socket_name,
-                 plasma_manager_address, global_scheduler_exists);
+    start_server(node_ip_address, scheduler_socket_name, &redis_addr[0],
+                 atoi(redis_port), plasma_store_socket_name,
+                 plasma_manager_socket_name, plasma_manager_address,
+                 global_scheduler_exists);
   }
 }
 #endif
