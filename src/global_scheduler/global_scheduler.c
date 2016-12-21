@@ -233,14 +233,6 @@ void start_server(const char *redis_addr, int redis_port) {
                        process_task_waiting, (void *) g_state, &retry, NULL,
                        NULL);
 
-  /*
-  object_table_subscribe(g_state->db, NIL_OBJECT_ID, process_new_object_manager,
-                         (void *)g_state, &retry, NULL, NULL);
-
-  object_info_subscribe(g_state->db, process_new_object_info, (void *) g_state,
-                        &retry, NULL, NULL);
-  */
-
   object_table_subscribe_to_notifications(g_state->db,
                                           true,
                                           object_table_subscribe_callback,
