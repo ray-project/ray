@@ -58,6 +58,7 @@ popd
 cp "$PLASMA_DIR/build/plasma_store" "$PYTHON_PLASMA_DIR/"
 cp "$PLASMA_DIR/build/plasma_manager" "$PYTHON_PLASMA_DIR/"
 cp "$PLASMA_DIR/plasma/plasma.py" "$PYTHON_PLASMA_DIR/"
+cp "$PLASMA_DIR/plasma/utils.py" "$PYTHON_PLASMA_DIR/"
 cp "$PLASMA_DIR/plasma/libplasma.so" "$PYTHON_PLASMA_DIR/"
 
 pushd "$PHOTON_DIR"

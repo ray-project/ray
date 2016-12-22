@@ -882,24 +882,3 @@ void object_requests_set_status_all(int num_object_requests,
     object_requests[i].status = status;
   }
 }
-
-void object_id_print(object_id obj_id) {
-  for (int i = 0; i < sizeof(object_id); ++i) {
-    printf("%u.", obj_id.id[i]);
-    if (i < sizeof(object_id) - 1) {
-      printf(".");
-    }
-  }
-}
-
-void object_requests_print(int num_object_requests,
-                           object_request object_requests[]) {
-  for (int i = 0; i < num_object_requests; ++i) {
-    printf("[");
-    for (int j = 0; j < sizeof(object_id); ++j) {
-      object_id_print(object_requests[i].object_id);
-    }
-    printf(" | %d | %d], ", object_requests[i].type, object_requests[i].status);
-  }
-  printf("\n");
-}
