@@ -118,7 +118,7 @@ void process_new_db_client(db_client_id db_client_id,
     {
       /* Print the photon to plasma association map so far. */
       aux_address_entry *entry, *tmp;
-      LOG_DEBUG("[GS] P2P hash map so far:");
+      LOG_DEBUG("Photon to Plasma hash map so far:");
       HASH_ITER(hh, state->plasma_photon_map, entry, tmp) {
         LOG_DEBUG("%s -> %s", entry->aux_address,
                   object_id_to_string(entry->photon_db_client_id, id_string,
