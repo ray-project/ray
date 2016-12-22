@@ -122,9 +122,8 @@ static long PyObjectID_hash(PyObjectID *self) {
 }
 
 static PyObject *PyObjectID_repr(PyObjectID *self) {
-  enum { hex_length = 2 * UNIQUE_ID_SIZE + 1 };
-  char hex_id[hex_length];
-  sha1_to_hex(self->object_id.id, hex_id);
+  char hex_id[ID_STRING_SIZE];
+  object_id_to_string(self->object_id, hex_id, ID_STRING_SIZE);
   UT_string *repr;
   utstring_new(repr);
   utstring_printf(repr, "ObjectID(%s)", hex_id);

@@ -41,16 +41,17 @@ bool db_client_ids_equal(db_client_id first_id, db_client_id second_id) {
   return UNIQUE_ID_EQ(first_id, second_id);
 }
 
-char *sha1_to_hex(const unsigned char *sha1, char *buffer) {
+char *object_id_to_string(object_id obj_id, char *id_string, int id_length) {
+  CHECK(id_length >= ID_STRING_SIZE);
   static const char hex[] = "0123456789abcdef";
-  char *buf = buffer;
+  char *buf = id_string;
 
   for (int i = 0; i < UNIQUE_ID_SIZE; i++) {
-    unsigned int val = *sha1++;
+    unsigned int val = obj_id.id[i];
     *buf++ = hex[val >> 4];
     *buf++ = hex[val & 0xf];
   }
   *buf = '\0';
 
-  return buffer;
+  return id_string;
 }

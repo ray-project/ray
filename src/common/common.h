@@ -30,6 +30,8 @@
 #define RAY_COMMON_LOG_LEVEL RAY_COMMON_INFO
 #endif
 
+#define UNUSED(x) ((void) (x))
+
 /**
  * Macros to enable each level of Ray logging statements depending on the
  * current logging level. */
@@ -123,14 +125,24 @@ extern const unique_id NIL_ID;
 /* Generate a globally unique ID. */
 unique_id globally_unique_id(void);
 
-/* Convert a 20 byte sha1 hash to a hexdecimal string. This function assumes
- * that buffer points to an already allocated char array of size 2 *
- * UNIQUE_ID_SIZE + 1 */
-char *sha1_to_hex(const unsigned char *sha1, char *buffer);
-
 #define NIL_OBJECT_ID NIL_ID
 
 typedef unique_id object_id;
+
+#define ID_STRING_SIZE (2 * UNIQUE_ID_SIZE + 1)
+
+/**
+ * Convert an object ID to a hexdecimal string. This function assumes that
+ * buffer points to an already allocated char array of size ID_STRING_SIZE. And
+ * it writes a null-terminated hex-formatted string to id_string.
+ *
+ * @param obj_id The object ID to convert to a string.
+ * @param id_string A buffer to write the string to. It is assumed that this is
+ *        managed by the caller and is sufficiently long to store the object ID
+ *        string.
+ * @param id_length The length of the id_string buffer.
+ */
+char *object_id_to_string(object_id obj_id, char *id_string, int id_length);
 
 /**
  * Compare two object IDs.

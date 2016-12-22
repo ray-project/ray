@@ -446,23 +446,4 @@ void object_requests_set_status_all(int num_object_requests,
                                     object_request object_requests[],
                                     int status);
 
-/**
- * Print an object ID with bytes separated by ".".
- *
- * @param object_id Object ID to be printed.
- * @return Void.
- */
-void object_id_print(object_id object_id);
-
-/**
- * Print all object requests in an array (for debugging purposes).
- *
- * @param num_object_requests Number of elements in the array of object
- *        requests.
- * @param object_requests Array of object requests.
- * @return Void.
- */
-void object_requests_print(int num_object_requests,
-                           object_request object_requests[]);
-
 #endif /* PLASMA_CLIENT_H */

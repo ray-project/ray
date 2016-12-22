@@ -276,19 +276,20 @@ void free_task_spec(task_spec *spec) {
 void print_task(task_spec *spec, UT_string *output) {
   /* For converting an id to hex, which has double the number
    * of bytes compared to the id (+ 1 byte for '\0'). */
-  static char hex[2 * UNIQUE_ID_SIZE + 1];
+  static char hex[ID_STRING_SIZE];
   /* Print function id. */
-  sha1_to_hex(&task_function(spec).id[0], &hex[0]);
+  object_id_to_string((object_id) task_function(spec), &hex[0], ID_STRING_SIZE);
   utstring_printf(output, "fun %s ", &hex[0]);
   /* Print arguments. */
   for (int i = 0; i < task_num_args(spec); ++i) {
-    sha1_to_hex(&task_arg_id(spec, i).id[0], &hex[0]);
+    object_id_to_string((object_id) task_arg_id(spec, i), &hex[0],
+                        ID_STRING_SIZE);
     utstring_printf(output, " id:%d %s", i, &hex[0]);
   }
   /* Print return ids. */
   for (int i = 0; i < task_num_returns(spec); ++i) {
-    object_id object_id = task_return(spec, i);
-    sha1_to_hex(&object_id.id[0], &hex[0]);
+    object_id obj_id = task_return(spec, i);
+    object_id_to_string((object_id) obj_id, &hex[0], ID_STRING_SIZE);
     utstring_printf(output, " ret:%d %s", i, &hex[0]);
   }
 }
