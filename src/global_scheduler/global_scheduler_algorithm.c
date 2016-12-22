@@ -129,16 +129,16 @@ db_client_id get_photon_id(global_scheduler_state *state,
 
   /* Check to make sure this photon_db_client_id matches one of the
    * schedulers. */
-  local_scheduler *local_scheduler_ptr;
-  for (int i = 0; i < utarray_len(state->local_schedulers); ++i) {
-    local_scheduler_ptr =
+  int i;
+  for (i = 0; i < utarray_len(state->local_schedulers); ++i) {
+    local_scheduler *local_scheduler_ptr =
         (local_scheduler *) utarray_eltptr(state->local_schedulers, i);
     if (memcmp(&local_scheduler_ptr->id, &photon_id, sizeof(photon_id)) == 0) {
       LOG_DEBUG("photon_id matched cached local scheduler entry.");
       break;
     }
   }
-  if (!local_scheduler_ptr) {
+  if (i == utarray_len(state->local_schedulers)) {
     LOG_WARN("photon_id didn't match any cached local scheduler entries");
   }
   return photon_id;
