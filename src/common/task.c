@@ -289,7 +289,7 @@ void print_task(task_spec *spec, UT_string *output) {
   /* Print return ids. */
   for (int i = 0; i < task_num_returns(spec); ++i) {
     object_id obj_id = task_return(spec, i);
-    object_id_to_string((object_id) obj_id, &hex[0], ID_STRING_SIZE);
+    object_id_to_string(obj_id, &hex[0], ID_STRING_SIZE);
     utstring_printf(output, " ret:%d %s", i, &hex[0]);
   }
 }

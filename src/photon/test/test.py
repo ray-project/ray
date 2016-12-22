@@ -49,7 +49,8 @@ class TestPhotonClient(unittest.TestCase):
     if USE_VALGRIND:
       self.p2.send_signal(signal.SIGTERM)
       self.p2.wait()
-      os._exit(self.p2.returncode)
+      if self.p2.returncode != 0:
+        os._exit(-1)
     else:
       self.p2.kill()
 

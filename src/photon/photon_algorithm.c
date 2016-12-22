@@ -246,7 +246,6 @@ void handle_task_submitted(local_scheduler_state *state,
   } else {
     give_task_to_global_scheduler(state, algorithm_state, spec, false);
   }
-
   /* Update the result table, which holds mappings of object ID -> ID of the
    * task that created it. */
   if (state->db != NULL) {

@@ -11,19 +11,24 @@
 typedef struct {
   /** The ID of the local scheduler in Redis. */
   db_client_id id;
+  /** The number of tasks sent from the local scheduler to the global
+   *  scheduler. */
   int64_t num_tasks_sent;
 } local_scheduler;
 
 typedef struct global_scheduler_policy_state global_scheduler_policy_state;
 
 /**
- * scheduler_object_info defines a hash table mapping the object ID of
+ * This defines a hash table used to cache information about different objects.
  */
 typedef struct {
+  /** The object ID in question. */
   object_id object_id;
+  /** The size in bytes of the object. */
   int64_t data_size;
-  /** an array of object locations for this object. */
+  /** An array of object locations for this object. */
   UT_array *object_locations;
+  /** Handle for the uthash table. */
   UT_hash_handle hh;
 } scheduler_object_info;
 

@@ -116,7 +116,7 @@ void process_new_db_client(db_client_id db_client_id,
         strlen(plasma_photon_entry->aux_address), plasma_photon_entry);
 
     {
-      /* print the photon 2 plasma association map so far */
+      /* Print the photon to plasma association map so far. */
       aux_address_entry *entry, *tmp;
       LOG_DEBUG("[GS] P2P hash map so far:");
       HASH_ITER(hh, state->plasma_photon_map, entry, tmp) {
@@ -126,7 +126,7 @@ void process_new_db_client(db_client_id db_client_id,
       }
     }
 
-    /* add new local scheduler to the state. */
+    /* Add new local scheduler to the state. */
     handle_new_local_scheduler(state, state->policy_state, db_client_id);
   }
 }
@@ -134,12 +134,12 @@ void process_new_db_client(db_client_id db_client_id,
 /**
  * Process notification about the new object information.
  *
- * @param object_id : id of the object with new location
- * @param data_size: object size
- * @param manager_count: the count of new locations for this object
- * @param manager_vector: the vector with new Plasma Manager locations
- * @param user_context: user context passed to the object_table_subscribe()
- * @return None
+ * @param object_id ID of the object that the notification is about.
+ * @param data_size The object size.
+ * @param manager_count The number of locations for this object.
+ * @param manager_vector The vector of Plasma Manager locations.
+ * @param user_context The user context.
+ * @return Void.
  */
 void object_table_subscribe_callback(object_id object_id,
                                      int64_t data_size,
