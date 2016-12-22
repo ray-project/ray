@@ -111,7 +111,7 @@ class TestGlobalScheduler(unittest.TestCase):
     client_list = self.redis_client.keys("{}*".format(DB_CLIENT_PREFIX))
     for client_id in client_list:
       response = self.redis_client.hget(client_id, b"client_type")
-      if response == "plasma_manager":
+      if response == b"plasma_manager":
         db_client_id = client_id
         break
 
@@ -128,8 +128,8 @@ class TestGlobalScheduler(unittest.TestCase):
     self.assertEqual(len(self.redis_client.keys("{}*".format(DB_CLIENT_PREFIX))), 3)
     db_client_id = self.get_plasma_manager_id()
     assert(db_client_id != None)
-    assert(db_client_id.startswith("CL:"))
-    db_client_id = db_client_id[len("CL:"):] # Remove the CL: prefix.
+    assert(db_client_id.startswith(b"CL:"))
+    db_client_id = db_client_id[len(b"CL:"):] # Remove the CL: prefix.
 
   def test_integration_single_task(self):
     # There should be three db clients, the global scheduler, the local
