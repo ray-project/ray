@@ -160,11 +160,19 @@ db_handle *db_connect(const char *db_address,
                       "could not establish synchronous connection to redis "
                       "%s:%d",
                       db_address, db_port);
-  /* Enable keyspace events. */
-  reply = redisCommand(context, "CONFIG SET notify-keyspace-events AKE");
+  /* Configure Redis to generate keyspace notifications for list events. This
+   * should only need to be done once (by whoever started Redis), but since
+   * Redis may be started in multiple places (e.g., for testing or when starting
+   * processes by hand), it is easier to do it multiple times. */
+  reply = redisCommand(context, "CONFIG SET notify-keyspace-events Kl");
   CHECKM(reply != NULL, "db_connect failed on CONFIG SET");
   freeReplyObject(reply);
-  /* Add new client using optimistic locking. */
+  /* Also configure Redis to not run in protected mode, so clients on other
+   * hosts can connect to it. */
+  reply = redisCommand(context, "CONFIG SET protected-mode no");
+  CHECKM(reply != NULL, "db_connect failed on CONFIG SET");
+  freeReplyObject(reply);
+  /* Create a client ID for this client. */
   db_client_id client = globally_unique_id();
 
   /* Construct the argument arrays for RAY.CONNECT. */

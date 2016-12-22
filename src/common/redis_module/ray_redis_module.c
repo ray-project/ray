@@ -61,14 +61,25 @@ RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
 /**
  * Register a client with Redis. This is called from a client with the command:
  *
- *     RAY.CONNECT <client type> <address> <ray client id> <aux address>
+ *     RAY.CONNECT <ray client id> <node ip address> <client type> <field 1>
+ *         <value 1> <field 2> <value 2> ...
  *
- * @param client_type The type of the client (e.g., plasma_manager).
- * @param address The address of the client.
+ * The command can take an arbitrary number of pairs of field names and keys,
+ * and these will be stored in a hashmap associated with this client. Several
+ * fields are singled out for special treatment:
+ *
+ *     address: This is provided by plasma managers and it should be an address
+ *         like "127.0.0.1:1234". It is returned by RAY.GET_CLIENT_ADDRESS so
+ *         that other plasma managers know how to fetch objects.
+ *     aux_address: This is provided by local schedulers and should be the
+ *         address of the plasma manager that the local scheduler is connected
+ *         to. This is published to the "db_clients" channel by the RAY.CONNECT
+ *         command and is used by the global scheduler to determine which plasma
+ *         managers and local schedulers are connected.
+ *
  * @param ray_client_id The db client ID of the client.
- * @param aux_address An auxiliary address. This is currently just used by the
- *        local scheduler to record the address of the plasma manager that it is
- *        connected to.
+ * @param node_ip_address The IP address of the node the client is on.
+ * @param client_type The type of the client (e.g., plasma_manager).
  * @return OK if the operation was successful.
  */
 int Connect_RedisCommand(RedisModuleCtx *ctx,
@@ -95,7 +106,8 @@ int Connect_RedisCommand(RedisModuleCtx *ctx,
       RedisModule_CreateString(ctx, "aux_address", strlen("aux_address"));
 
   RedisModule_HashSet(db_client_table_key, REDISMODULE_HASH_CFIELDS,
-                      "node_ip_address", node_ip_address, NULL);
+                      "ray_client_id", ray_client_id, "node_ip_address",
+                      node_ip_address, "client_type", client_type, NULL);
 
   for (int i = 4; i < argc; i += 2) {
     RedisModuleString *key = argv[i];
