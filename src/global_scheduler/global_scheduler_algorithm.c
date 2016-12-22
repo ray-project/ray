@@ -59,7 +59,8 @@ object_size_entry *create_object_size_hashmap(global_scheduler_state *state,
       continue;
     }
     objects_found = true;
-    LOG_DEBUG("[GS] found object id, data_size=%lld", obj_info_entry->data_size);
+    LOG_DEBUG("[GS] found object id, data_size=%" PRId64,
+              obj_info_entry->data_size);
     /* Object is known to the scheduler. For each of its locations, add size. */
     int64_t object_size = obj_info_entry->data_size;
     char **p = NULL;
@@ -179,7 +180,7 @@ void handle_task_waiting(global_scheduler_state *state,
 
   db_client_id photon_id = get_photon_id(state, max_object_location);
   CHECKM(!IS_NIL_ID(photon_id),
-         "GS failed to find an LS: num_args=%lld num_returns=%lld\n",
+         "Failed to find an LS: num_args=%" PRId64 " num_returns=%" PRId64 "\n",
          task_num_args(task_spec),
          task_num_returns(task_spec));
 
