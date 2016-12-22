@@ -110,7 +110,6 @@ class TestGlobalScheduler(unittest.TestCase):
 
     client_list = self.redis_client.keys("{}*".format(DB_CLIENT_PREFIX))
     for client_id in client_list:
-      rediscmdstr = b"HGET {} client_type".format(client_id)
       response = self.redis_client.hget(client_id, b"client_type")
       if response == "plasma_manager":
         db_client_id = client_id
