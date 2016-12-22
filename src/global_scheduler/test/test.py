@@ -27,6 +27,10 @@ TASK_STATUS_SCHEDULED = 2
 TASK_STATUS_RUNNING = 4
 TASK_STATUS_DONE = 8
 
+# DB_CLIENT_PREFIX is an implementation detail of ray_redis_module.c, so
+# this must be kept in sync with that file.
+DB_CLIENT_PREFIX = "CL:"
+
 # def random_object_id():
 #   return photon.ObjectID(np.random.bytes(ID_SIZE))
 # object_ids = [random_object_id() for i in range(256)]
@@ -99,7 +103,6 @@ class TestGlobalScheduler(unittest.TestCase):
     plasma_manager_name, self.p3, plasma_manager_port = plasma.start_plasma_manager(plasma_store_name, redis_address)
     self.plasma_address = "{}:{}".format(node_ip_address, plasma_manager_port)
     self.plasmaclient = plasma.PlasmaClient(plasma_store_name, plasma_manager_name)
-    print("plasma_address={}".format(self.plasma_address))
     # Start the local scheduler.
     local_scheduler_name, self.p4 = photon.start_local_scheduler(
         plasma_store_name, 
@@ -131,24 +134,46 @@ class TestGlobalScheduler(unittest.TestCase):
     # after we kill the global scheduler.
     self.redis_process.kill()
 
-  def test_integration(self):
-    # DB_CLIENT_PREFIX is an implementation detail of ray_redis_module.c, so
-    # this must be kept in sync with that file.
-    DB_CLIENT_PREFIX = "CL:"
-    # There should be three db clients, the global scheduler, the local
-    # scheduler, and the plasma manager.
-    self.assertEqual(len(self.redis_client.keys("{}*".format(DB_CLIENT_PREFIX))), 3)
+  def get_plasmamgr_id(self):
+    ''' iterates over all the client table keys, gets the db_client_id for the client
+        with client_type matching plasma_manager. Strips the client table prefix.
+        Returns None if plasma_manager client not found.
+        Note that it returns db_client id for the first encountered plasma manager.
+        TODO(atumanov): write a separate function to get all plasma manager client IDs
+    '''
     db_client_id = None
+
     cli_lst = self.redis_client.keys("{}*".format(DB_CLIENT_PREFIX))
     for client_id in cli_lst:
         rediscmdstr = b'HGET {} client_type'.format(client_id)
         response = self.redis_client.hget(client_id, b'client_type')
         if response == "plasma_manager":
             db_client_id = client_id
+            break
 
+    return db_client_id
+
+  def test_redisonly_singletask(self):
+    ''' tests global scheduler functionality by interaction with Redis
+        and checking task state transitions in Redis only
+        TODO(atumanov): implement
+    '''
+    # Check precondition for this test:
+    # There should be three db clients, the global scheduler, the local
+    # scheduler, and the plasma manager.
+    self.assertEqual(len(self.redis_client.keys("{}*".format(DB_CLIENT_PREFIX))), 3)
+    db_client_id = self.get_plasmamgr_id()
     assert(db_client_id != None)
     assert(db_client_id.startswith("CL:"))
     db_client_id = db_client_id[len('CL:'):] #remove the CL: prefix
+
+    #self.redis_client.execute_command("RAY.OBJECT_TABLE_ADD", object_dep, data_size, "hash1", db_client_id)
+
+  def test_integration_singletask(self):
+
+    # There should be three db clients, the global scheduler, the local
+    # scheduler, and the plasma manager.
+    self.assertEqual(len(self.redis_client.keys("{}*".format(DB_CLIENT_PREFIX))), 3)
 
     num_return_vals = [0,1,2,3,5,10]
     # There should not be anything else in Redis yet.
@@ -156,10 +181,7 @@ class TestGlobalScheduler(unittest.TestCase):
     #insert the object into Redis
     data_size = 0xf1f0
     metadata_size = 0x40
-    #print("sleeping for 20 seconds....")
-    #time.sleep(20)
     object_dep, memory_buffer, metadata = create_object(self.plasmaclient, data_size, metadata_size, seal=True)
-    #self.redis_client.execute_command("RAY.OBJECT_TABLE_ADD", object_dep, data_size, "hash1", db_client_id)
 
     #sleep before submitting task to photon
     time.sleep(0.1)
@@ -190,6 +212,13 @@ class TestGlobalScheduler(unittest.TestCase):
         self.tearDown()
         sys.exit(1)
 
+  def test_integration_manytasks(self):
+
+    # There should be three db clients, the global scheduler, the local
+    # scheduler, and the plasma manager.
+    self.assertEqual(len(self.redis_client.keys("{}*".format(DB_CLIENT_PREFIX))), 3)
+    num_return_vals = [0,1,2,3,5,10]
+
     # Submit a bunch of tasks to Redis.
     num_tasks = 1000
     for _ in range(num_tasks):
@@ -202,21 +231,27 @@ class TestGlobalScheduler(unittest.TestCase):
     # Check that there are the correct number of tasks in Redis and that they
     # all get assigned to the local scheduler.
     num_retries = 10
+    num_tasks_done = 0
     while num_retries > 0:
       task_entries = self.redis_client.keys("task*")
-      self.assertLessEqual(len(task_entries), num_tasks + 1)
-      if len(task_entries) == num_tasks + 1:
+      self.assertLessEqual(len(task_entries), num_tasks)
+      #first, check if all tasks made it to Redis
+      if len(task_entries) == num_tasks:
         task_contents = [self.redis_client.hgetall(task_entries[i]) for i in range(len(task_entries))]
         task_statuses = [int(contents[b"state"]) for contents in task_contents]
         self.assertTrue(all([status in [TASK_STATUS_WAITING, TASK_STATUS_SCHEDULED] for status in task_statuses]))
+        num_tasks_done = task_statuses.count(TASK_STATUS_SCHEDULED)
+        num_tasks_waiting = task_statuses.count(TASK_STATUS_WAITING)
+        print("tasks in Redis = {}, tasks waiting = {}, tasks scheduled = {}, retries left = {}"
+              .format(len(task_entries), num_tasks_waiting, num_tasks_done, num_retries))
         if all([status == TASK_STATUS_SCHEDULED for status in task_statuses]):
+          #we're done : pass
           break
-      print("The tasks have not been scheduled yet, trying again.")
       num_retries -= 1
       time.sleep(.1)
 
-    if num_retries <= 0 and task_status != TASK_STATUS_SCHEDULED:
-        #failed to submit and schedule a single task -- bail
+    if num_tasks_done != num_tasks:
+        # at least one of the tasks failed to schedule
         self.tearDown()
         sys.exit(2)
 
