@@ -902,6 +902,12 @@ def connect(info, mode=WORKER_MODE, worker=global_worker):
       and SILENT_MODE.
   """
   check_main_thread()
+  # Do some basic checking to make sure we didn't call ray.init twice.
+  assert not worker.connected, "Perhaps you called ray.init twice by accident?"
+  assert worker.cached_functions_to_run is not None, "Perhaps you called ray.init twice by accident?"
+  assert worker.cached_remote_functions is not None, "Perhaps you called ray.init twice by accident?"
+  assert reusables._cached_reusables is not None, "Perhaps you called ray.init twice by accident?"
+  # Initialize some fields.
   worker.worker_id = random_string()
   worker.connected = True
   worker.set_mode(mode)
