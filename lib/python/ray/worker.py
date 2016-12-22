@@ -660,10 +660,12 @@ def get_address_info_from_redis_helper(redis_address, node_ip_address):
 
 def get_address_info_from_redis(redis_address, node_ip_address, num_retries=10):
   counter = 0
-  while counter < num_retries:
+  while True:
     try:
       return get_address_info_from_redis_helper(redis_address, node_ip_address)
     except Exception as e:
+      if counter == num_retries:
+        raise
       # Some of the information may not be in Redis yet, so wait a little bit.
       print("Some processes that the driver needs to connect to have not registered with Redis, so retrying.")
       time.sleep(1)
