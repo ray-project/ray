@@ -53,13 +53,21 @@ void free_global_scheduler(global_scheduler_state *state) {
   db_disconnect(state->db);
   utarray_free(state->local_schedulers);
   destroy_global_scheduler_policy(state->policy_state);
-  /* delete the plasma 2 photon association map */
+  /* Delete the plasma 2 photon association map. */
   HASH_ITER(hh, state->plasma_photon_map, entry, tmp) {
     HASH_DELETE(hh, state->plasma_photon_map, entry);
     /* Now deallocate hash table entry. */
     free(entry->aux_address);
     free(entry);
   }
+  /* Free the scheduler object info table. */
+  scheduler_object_info *object_entry, *tmp_entry;
+  HASH_ITER(hh, state->scheduler_object_info_table, object_entry, tmp_entry) {
+    HASH_DELETE(hh, state->scheduler_object_info_table, object_entry);
+    utarray_free(object_entry->object_locations);
+    free(object_entry);
+  }
+  /* Free the global scheduler state. */
   free(state);
 }
 
@@ -130,7 +138,6 @@ void process_new_db_client(db_client_id db_client_id,
  * @param manager_count: the count of new locations for this object
  * @param manager_vector: the vector with new Plasma Manager locations
  * @param user_context: user context passed to the object_table_subscribe()
- *
  * @return None
  */
 void object_table_subscribe_callback(
@@ -155,7 +162,7 @@ void object_table_subscribe_callback(
             sizeof(object_id), obj_info_entry);
 
   if (obj_info_entry == NULL) {
-    /** Construct a new object info hash table entry. */
+    /* Construct a new object info hash table entry. */
     obj_info_entry = malloc(sizeof(scheduler_object_info));
     memset(obj_info_entry, 0, sizeof(scheduler_object_info));
 
