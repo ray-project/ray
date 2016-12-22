@@ -669,7 +669,7 @@ def get_address_info_from_redis(redis_address, node_ip_address, num_retries=10):
       time.sleep(1)
     counter += 1
 
-def init(node_ip_address="127.0.0.1", redis_address=None, start_ray_local=False, num_workers=None, num_local_schedulers=None, driver_mode=SCRIPT_MODE):
+def init(node_ip_address="127.0.0.1", redis_address=None, start_ray_local=False, object_id_seed=None, num_workers=None, num_local_schedulers=None, driver_mode=SCRIPT_MODE):
   """Either connect to an existing Ray cluster or start one and connect to it.
 
   This method handles two cases. Either a Ray cluster already exists and we
@@ -684,6 +684,10 @@ def init(node_ip_address="127.0.0.1", redis_address=None, start_ray_local=False,
       scheduler, a local scheduler, a plasma store, a plasma manager, and some
       workers. It will also kill these processes when Python exits. If False,
       this will attach to an existing Ray cluster.
+    object_id_seed (int): Used to seed the deterministic generation of object
+      IDs. The same value can be used across multiple runs of the same job in
+      order to generate the object IDs in a consistent manner. However, the same
+      ID should not be used for different jobs.
     num_workers (int): The number of workers to start. This is only provided if
       start_ray_local is True.
     num_local_schedulers (int): The number of local schedulers to start. This is
@@ -737,7 +741,7 @@ def init(node_ip_address="127.0.0.1", redis_address=None, start_ray_local=False,
   # Connect this driver to Redis, the object store, and the local scheduler. The
   # corresponing call to disconnect will happen in the call to cleanup() when
   # the Python script exits.
-  connect(info, driver_mode, worker=global_worker)
+  connect(info, object_id_seed=object_id_seed, mode=driver_mode, worker=global_worker)
   return info
 
 def cleanup(worker=global_worker):
@@ -904,7 +908,7 @@ def import_thread(worker):
         worker.redis_client.hincrby(worker_info_key, "export_counter", 1)
         worker.worker_import_counter += 1
 
-def connect(info, mode=WORKER_MODE, worker=global_worker):
+def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker):
   """Connect this worker to the local scheduler, to Plasma, and to Redis.
 
   Args:
@@ -943,10 +947,22 @@ def connect(info, mode=WORKER_MODE, worker=global_worker):
     worker.redis_client.rpush("Workers", worker.worker_id)
   else:
     raise Exception("This code should be unreachable.")
-  # If this is a driver, set the current task ID to a specific fixed value and
-  # set the task index to 0.
+  # If this is a driver, set the current task ID and set the task index to 0.
   if mode in [SCRIPT_MODE, SILENT_MODE]:
-    worker.current_task_id = photon.ObjectID("".join(chr(i) for i in range(20)))
+    # If the user provided an object_id_seed, then set the current task ID
+    # deterministically based on that seed (without altering the state of the
+    # user's random number generator). Otherwise, set the current task ID
+    # randomly to avoid object ID collisions.
+    numpy_state = np.random.get_state()
+    if object_id_seed is not None:
+      np.random.seed(object_id_seed)
+    else:
+      # Try to use true randomness.
+      np.random.seed(None)
+    worker.current_task_id = photon.ObjectID(np.random.bytes(20))
+    # Reset the state of the numpy random number generator.
+    np.random.set_state(numpy_state)
+    # Set other fields needed for computing task IDs.
     worker.task_index = 0
     worker.put_index = 0
   # If this is a worker, then start a thread to import exports from the driver.
