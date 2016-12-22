@@ -19,13 +19,13 @@ void object_id_print(object_id obj_id) {
  * @param obj_id object id
  * @return dot-delimited hex string representation of the object id.
  */
-char * object_id_tostring(object_id obj_id, char *outstr, int outstrlen) {
+char *object_id_tostring(object_id obj_id, char *outstr, int outstrlen) {
   int offset = 0;
   if (outstrlen < 3*sizeof(obj_id)) {
     /*  need 3 characters per byte. */
     return NULL;
   }
-  memset(outstr, 0, 2*sizeof(obj_id)); /* This should null terminate it. */
+  memset(outstr, 0, outstrlen); /* This should null terminate it. */
   for (int i = 0; i < sizeof(object_id); ++i) {
     sprintf(outstr + offset, "%02x", (uint8_t) obj_id.id[i]);
     offset += 2;

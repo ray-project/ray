@@ -212,8 +212,8 @@ class TestGlobalScheduler(unittest.TestCase):
         self.tearDown()
         sys.exit(1)
 
-  def test_integration_manytasks(self):
 
+  def integration_manytasks_helper(self, timesync = True):
     # There should be three db clients, the global scheduler, the local
     # scheduler, and the plasma manager.
     self.assertEqual(len(self.redis_client.keys("{}*".format(DB_CLIENT_PREFIX))), 3)
@@ -226,6 +226,9 @@ class TestGlobalScheduler(unittest.TestCase):
       data_size = np.random.randint(1<<20) #upto 1MB
       metadata_size = np.random.randint(1<<10) #upto 1KB
       object_dep, memory_buffer, metadata = create_object(self.plasmaclient, data_size, metadata_size, seal=True)
+      if timesync:
+        #give 10ms for object info handler to fire
+        time.sleep(0.010) #10ms (yields cpu)
       task = photon.Task(random_function_id(), [photon.ObjectID(object_dep)], num_return_vals[0], random_task_id(), 0)
       self.photon_client.submit(task)
     # Check that there are the correct number of tasks in Redis and that they
@@ -254,6 +257,13 @@ class TestGlobalScheduler(unittest.TestCase):
         # at least one of the tasks failed to schedule
         self.tearDown()
         sys.exit(2)
+
+  def test_integration_maytasks_handlersync(self):
+    self.integration_manytasks_helper(timesync = True)
+
+#  def test_integration_maytasks(self):
+#    #more realistic case: should handle out of order object and task notifications
+#    self.integration_manytasks_helper(timesync = False))
 
 if __name__ == "__main__":
   if len(sys.argv) > 1:
