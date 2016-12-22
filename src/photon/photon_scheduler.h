@@ -69,6 +69,7 @@ local_scheduler_state *init_local_scheduler(
     event_loop *loop,
     const char *redis_addr,
     int redis_port,
+    const char *local_scheduler_socket_name,
     const char *plasma_manager_socket_name,
     const char *plasma_store_socket_name,
     const char *plasma_manager_address,
