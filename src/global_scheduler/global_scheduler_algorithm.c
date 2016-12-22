@@ -33,12 +33,10 @@ void handle_task_roundrobin(global_scheduler_state *state,
 }
 
 object_size_entry *create_object_size_hashmap(global_scheduler_state *state,
-                                              task_spec *task_spec) {
+                                              task_spec *task_spec,
+                                              bool *has_args_by_ref) {
   object_size_entry *s = NULL, *object_size_table = NULL;
 
-  /* If none of the args are passed by reference, handle task as having no dep.*/
-  bool args_by_ref = false;
-  bool objects_found = false;
   for (int i = 0; i < task_num_args(task_spec); i++) {
     /* Object ids are only available for args by references.
      * Args by value are serialized into the task_spec itself.
@@ -47,7 +45,7 @@ object_size_entry *create_object_size_hashmap(global_scheduler_state *state,
     if (task_arg_type(task_spec, i) != ARG_BY_REF) {
       continue;
     }
-    args_by_ref = true;
+    *has_args_by_ref = true;
     object_id obj_id = task_arg_id(task_spec, i);
     /* Look up this object id in GS' object cache. */
     scheduler_object_info *obj_info_entry = NULL;
@@ -58,14 +56,13 @@ object_size_entry *create_object_size_hashmap(global_scheduler_state *state,
       LOG_WARN("Processing task with object id not known to global scheduler");
       continue;
     }
-    objects_found = true;
-    LOG_DEBUG("[GS] found object id, data_size=%" PRId64,
+    LOG_DEBUG("[GS] found object id, data_size = %" PRId64,
               obj_info_entry->data_size);
     /* Object is known to the scheduler. For each of its locations, add size. */
     int64_t object_size = obj_info_entry->data_size;
     char **p = NULL;
     char id_string[ID_STRING_SIZE];
-    LOG_DEBUG("locations for an arg_by_ref objid=%s",
+    LOG_DEBUG("locations for an arg_by_ref objid = %s",
              object_id_to_string(obj_id, id_string, ID_STRING_SIZE));
     UNUSED(id_string);
     for (p = (char **)utarray_front(obj_info_entry->object_locations);
@@ -111,7 +108,7 @@ db_client_id get_photon_id(global_scheduler_state *state,
     /* Lookup association of plasma location to photon */
     HASH_FIND_STR(state->plasma_photon_map, plasma_location, aux_entry);
     if (aux_entry) {
-      LOG_DEBUG("found photon db client association for plasma ip:port=%s",
+      LOG_DEBUG("found photon db client association for plasma ip:port = %s",
           aux_entry->aux_address);
       /* plasma to photon db client id association found, get photon id */
       photon_id = aux_entry->photon_db_client_id;
@@ -154,14 +151,20 @@ void handle_task_waiting(global_scheduler_state *state,
   /* local hash table to keep track of aggregate object sizes per local sched.
    */
   object_size_entry *tmp, *s = NULL, *object_size_table = NULL;
+  bool has_args_by_ref = false;
 
-  object_size_table = create_object_size_hashmap(state, task_spec);
+  object_size_table = create_object_size_hashmap(state, task_spec,
+      &has_args_by_ref);
+
   if (!object_size_table) {
-    /* TODO(atumanov): would be great to differentiate the two reasons. */
     char id_string[ID_STRING_SIZE];
-    LOG_DEBUG("Using simple policy. Reasons: (a) args by value or absent, "
-             "(b) no arg_by_ref objects found in GS cache for task = %s ",
-            object_id_to_string(task_task_id(task), id_string, ID_STRING_SIZE));
+    if (has_args_by_ref) {
+      LOG_DEBUG("Using simple policy. Didn't find objects in GS cache for task = %s",
+                object_id_to_string(task_task_id(task), id_string, ID_STRING_SIZE));
+      /* TODO(future): wait for object notification and try again. */
+    } else {
+      LOG_DEBUG("Using simple policy. No arguments passed by reference.");
+    }
     UNUSED(id_string);
     handle_task_roundrobin(state, policy_state, task);
     return;

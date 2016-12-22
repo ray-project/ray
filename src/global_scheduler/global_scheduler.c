@@ -21,7 +21,7 @@ void assign_task_to_local_scheduler(global_scheduler_state *state,
                                     task *task,
                                     node_id node_id) {
   char id_string[ID_STRING_SIZE];
-  LOG_DEBUG("assigning task to node_id=%s",
+  LOG_DEBUG("assigning task to node_id = %s",
            object_id_to_string(node_id, id_string, ID_STRING_SIZE));
   task_set_state(task, TASK_STATUS_SCHEDULED);
   task_set_node(task, node_id);
@@ -93,7 +93,7 @@ void process_new_db_client(db_client_id db_client_id,
                            void *user_context) {
   global_scheduler_state *state = (global_scheduler_state *) user_context;
   char id_string[ID_STRING_SIZE];
-  LOG_DEBUG("db client table callback for db client=%s",
+  LOG_DEBUG("db client table callback for db client = %s",
            object_id_to_string(db_client_id, id_string, ID_STRING_SIZE));
   UNUSED(id_string);
   if (strncmp(client_type, "photon", strlen("photon")) == 0) {
@@ -142,7 +142,7 @@ void object_table_subscribe_callback(
   /* Extract global scheduler state from the callback context. */
   global_scheduler_state *state = (global_scheduler_state *) user_context;
   char id_string[ID_STRING_SIZE];
-  LOG_DEBUG("object table subscribe callback for OBJECT= %s",
+  LOG_DEBUG("object table subscribe callback for OBJECT = %s",
            object_id_to_string(object_id, id_string, ID_STRING_SIZE));
   UNUSED(id_string);
   LOG_DEBUG("\tManagers<%d>:", manager_count);
@@ -164,7 +164,7 @@ void object_table_subscribe_callback(
 
     HASH_ADD(hh, state->scheduler_object_info_table, object_id,
              sizeof(obj_info_entry->object_id), obj_info_entry);
-    LOG_DEBUG("New object added to object_info_table with id=%s",
+    LOG_DEBUG("New object added to object_info_table with id = %s",
              object_id_to_string(object_id, id_string, ID_STRING_SIZE));
     LOG_DEBUG("\tmanager locations:");
     for (int i=0; i<manager_count; i++) {
