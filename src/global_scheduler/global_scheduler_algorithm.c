@@ -61,19 +61,19 @@ object_size_entry *create_object_size_hashmap(global_scheduler_state *state,
       continue;
     }
     objects_found = true;
-    LOG_INFO("[GS] found object id, data_size=%lld", obj_info_entry->data_size);
+    LOG_DEBUG("[GS] found object id, data_size=%lld", obj_info_entry->data_size);
     object_id_print(obj_info_entry->object_id);
     /* Object is known to the scheduler. For each of its locations, add size. */
     int64_t object_size = obj_info_entry->data_size;
     char **p = NULL;
-    LOG_INFO("locations for an arg_by_ref objid=%s",
+    LOG_DEBUG("locations for an arg_by_ref objid=%s",
              object_id_tostring(obj_id, id_string, id_length));
     for (p = (char **)utarray_front(obj_info_entry->object_locations);
         p != NULL;
         p = (char **)utarray_next(obj_info_entry->object_locations, p)) {
       const char *object_location = *p;
 
-      LOG_INFO("\tobject location: %s", object_location);
+      LOG_DEBUG("\tobject location: %s", object_location);
 
       /* look up this location in the local object size hash table */
       HASH_FIND_STR(object_size_table, object_location, s);
@@ -109,11 +109,11 @@ db_client_id get_photon_id(global_scheduler_state *state,
   char id_string[3*sizeof(unique_id)];
   int id_length = sizeof(id_string);
   if (plasma_location != NULL) {
-    LOG_INFO("max object size location found : %s", plasma_location);
+    LOG_DEBUG("max object size location found : %s", plasma_location);
     /* Lookup association of plasma location to photon */
     HASH_FIND_STR(state->plasma_photon_map, plasma_location, aux_entry);
     if (aux_entry) {
-      LOG_INFO("found photon db client association for plasma ip:port=%s",
+      LOG_DEBUG("found photon db client association for plasma ip:port=%s",
           aux_entry->aux_address);
       /* plasma to photon db client id association found, get photon id */
       photon_id = aux_entry->photon_db_client_id;
@@ -123,7 +123,7 @@ db_client_id get_photon_id(global_scheduler_state *state,
     }
   }
 
-  LOG_INFO("photon ID found = %s",
+  LOG_DEBUG("photon ID found = %s",
            object_id_tostring(photon_id, id_string, id_length));
 
   if (IS_NIL_ID(photon_id)) {
@@ -136,7 +136,7 @@ db_client_id get_photon_id(global_scheduler_state *state,
       lsptr != NULL;
       lsptr = (local_scheduler *)utarray_next(state->local_schedulers, lsptr)) {
     if (memcmp(&lsptr->id, &photon_id, sizeof(photon_id)) == 0) {
-      LOG_INFO("photon_id matched cached local scheduler entry.");
+      LOG_DEBUG("photon_id matched cached local scheduler entry.");
       break;
     }
   }
@@ -165,7 +165,7 @@ void handle_task_waiting(global_scheduler_state *state,
     return;
   }
 
-  LOG_INFO("using transfer-aware policy");
+  LOG_DEBUG("Using transfer-aware policy");
   /* pick maximum object_size and assign task to that scheduler. */
   int64_t max_object_size = 0;
   const char * max_object_location = NULL;

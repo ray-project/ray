@@ -22,14 +22,14 @@ void assign_task_to_local_scheduler(global_scheduler_state *state,
                                     node_id node_id) {
   char id_string[3*sizeof(object_id)];
   int id_length = sizeof(id_string);
-  LOG_INFO("assigning task to node_id=%s",
+  LOG_DEBUG("assigning task to node_id=%s",
            object_id_tostring(node_id, id_string, id_length));
   task_set_state(task, TASK_STATUS_SCHEDULED);
   task_set_node(task, node_id);
   retry_info retry = {
       .num_retries = 0, .timeout = 100, .fail_callback = NULL,
   };
-  LOG_INFO("Issuing a task table update for task = %s",
+  LOG_DEBUG("Issuing a task table update for task = %s",
            object_id_tostring(task_task_id(task), id_string, id_length));
   task_table_update(state->db, copy_task(task), &retry, NULL, NULL);
 }
@@ -78,7 +78,7 @@ void signal_handler(int signal) {
 
 void process_task_waiting(task *task, void *user_context) {
   global_scheduler_state *state = (global_scheduler_state *) user_context;
-  LOG_INFO("Task waiting callback is called.");
+  LOG_DEBUG("Task waiting callback is called.");
   handle_task_waiting(state, state->policy_state, task);
 }
 
@@ -94,7 +94,7 @@ void process_new_db_client(db_client_id db_client_id,
   global_scheduler_state *state = (global_scheduler_state *) user_context;
   char id_string[3*sizeof(unique_id)];
   int id_length = sizeof(id_string);
-  LOG_INFO("db client table callback for db client=%s",
+  LOG_DEBUG("db client table callback for db client=%s",
            object_id_tostring(db_client_id, id_string, id_length));
   if (strncmp(client_type, "photon", strlen("photon")) == 0) {
     /* Add plasma_manager ip:port -> photon_db_client_id association to state.
@@ -110,9 +110,9 @@ void process_new_db_client(db_client_id db_client_id,
     {
       /* print the photon 2 plasma association map so far */
       aux_address_entry *entry, *tmp;
-      LOG_INFO("[GS] P2P hash map so far:");
+      LOG_DEBUG("[GS] P2P hash map so far:");
       HASH_ITER(hh, state->plasma_photon_map, entry, tmp) {
-        LOG_INFO("%s -> %s", entry->aux_address,
+        LOG_DEBUG("%s -> %s", entry->aux_address,
             object_id_tostring(entry->photon_db_client_id, id_string, id_length));
       }
     }
@@ -144,11 +144,11 @@ void object_table_subscribe_callback(
   char id_string[3*sizeof(unique_id)];
   int id_length = sizeof(id_string);
 
-  LOG_INFO("object table subscribe callback for OBJECT= %s",
+  LOG_DEBUG("object table subscribe callback for OBJECT= %s",
            object_id_tostring(object_id, id_string, id_length));
-  LOG_INFO("\tManagers<%d>:", manager_count);
+  LOG_DEBUG("\tManagers<%d>:", manager_count);
   for (int i = 0; i < manager_count; i++) {
-    LOG_INFO("\t\t%s", manager_vector[i]);
+    LOG_DEBUG("\t\t%s", manager_vector[i]);
   }
   scheduler_object_info *obj_info_entry = NULL;
 
@@ -165,11 +165,11 @@ void object_table_subscribe_callback(
 
     HASH_ADD(hh, state->scheduler_object_info_table, object_id,
              sizeof(obj_info_entry->object_id), obj_info_entry);
-    LOG_INFO("New object added to object_info_table with id=%s",
+    LOG_DEBUG("New object added to object_info_table with id=%s",
              object_id_tostring(object_id, id_string, id_length));
-    LOG_INFO("\tmanager locations:");
+    LOG_DEBUG("\tmanager locations:");
     for (int i=0; i<manager_count; i++) {
-      LOG_INFO("\t\t%s", manager_vector[i]);
+      LOG_DEBUG("\t\t%s", manager_vector[i]);
     }
   }
 
