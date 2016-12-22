@@ -85,7 +85,8 @@ class TestGlobalScheduler(unittest.TestCase):
     if USE_VALGRIND:
       self.p1.send_signal(signal.SIGTERM)
       self.p1.wait()
-      os._exit(self.p1.returncode)
+      if self.p1.returncode != 0:
+        os._exit(-1)
     else:
       self.p1.kill()
     self.p2.kill()
