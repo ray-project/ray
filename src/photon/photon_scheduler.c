@@ -301,11 +301,10 @@ void start_server(const char *node_ip_address,
                   bool global_scheduler_exists) {
   int fd = bind_ipc_sock(socket_name, true);
   event_loop *loop = event_loop_create();
-  g_state =
-      init_local_scheduler(node_ip_address, loop, redis_addr, redis_port,
-                           socket_name, plasma_store_socket_name,
-                           plasma_manager_socket_name, plasma_manager_address,
-                           global_scheduler_exists);
+  g_state = init_local_scheduler(
+      node_ip_address, loop, redis_addr, redis_port, socket_name,
+      plasma_store_socket_name, plasma_manager_socket_name,
+      plasma_manager_address, global_scheduler_exists);
 
   /* Register a callback for registering new clients. */
   event_loop_add_file(loop, fd, EVENT_LOOP_READ, new_client_connection,

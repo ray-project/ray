@@ -425,7 +425,8 @@ class Worker(object):
       if e.args != ("an object with this ID could not be created",):
         raise
       # The object already exists in the object store, so there is no need to
-      # add it again.
+      # add it again. TODO(rkn): We need to compare the hashes and make sure
+      # that the objects are in fact the same.
       print("This object already exists in the object store.")
       return
     data = np.frombuffer(buff.buffer, dtype="byte")[8:]
@@ -625,13 +626,13 @@ def initialize_numbuf(worker=global_worker):
     register_class(RayGetError)
     register_class(RayGetArgumentError)
 
-def get_address_info_from_redis(redis_address, node_ip_address):
+def get_address_info_from_redis_helper(redis_address, node_ip_address):
   redis_host, redis_port = redis_address.split(":")
   # For this command to work, some other client (on the same machine as Redis)
   # must have run "CONFIG SET protected-mode no".
   redis_client = redis.StrictRedis(host=redis_host, port=int(redis_port))
   # The client table prefix must be kept in sync with the file
-  # "src/common/redis_module/ray_redis_module.so" where it is defined.
+  # "src/common/redis_module/ray_redis_module.c" where it is defined.
   REDIS_CLIENT_TABLE_PREFIX = "CL:"
   client_keys = redis_client.keys("{}*".format(REDIS_CLIENT_TABLE_PREFIX))
   # Filter to clients on the same node and do some basic checking.
@@ -656,6 +657,17 @@ def get_address_info_from_redis(redis_address, node_ip_address):
                  "manager_socket_name": plasma_managers[0][b"manager_socket_name"].decode("ascii"),
                  "local_scheduler_socket_name": local_schedulers[0][b"local_scheduler_socket_name"].decode("ascii")}
   return client_info
+
+def get_address_info_from_redis(redis_address, node_ip_address, num_retries=10):
+  counter = 0
+  while counter < num_retries:
+    try:
+      return get_address_info_from_redis_helper(redis_address, node_ip_address)
+    except Exception as e:
+      # Some of the information may not be in Redis yet, so wait a little bit.
+      print("Some processes that the driver needs to connect to have not registered with Redis, so retrying.")
+      time.sleep(1)
+    counter += 1
 
 def init(node_ip_address="127.0.0.1", redis_address=None, start_ray_local=False, num_workers=None, num_local_schedulers=None, driver_mode=SCRIPT_MODE):
   """Either connect to an existing Ray cluster or start one and connect to it.
@@ -903,10 +915,11 @@ def connect(info, mode=WORKER_MODE, worker=global_worker):
   """
   check_main_thread()
   # Do some basic checking to make sure we didn't call ray.init twice.
-  assert not worker.connected, "Perhaps you called ray.init twice by accident?"
-  assert worker.cached_functions_to_run is not None, "Perhaps you called ray.init twice by accident?"
-  assert worker.cached_remote_functions is not None, "Perhaps you called ray.init twice by accident?"
-  assert reusables._cached_reusables is not None, "Perhaps you called ray.init twice by accident?"
+  error_message = "Perhaps you called ray.init twice by accident?"
+  assert not worker.connected, error_message
+  assert worker.cached_functions_to_run is not None, error_message
+  assert worker.cached_remote_functions is not None, error_message
+  assert reusables._cached_reusables is not None, error_message
   # Initialize some fields.
   worker.worker_id = random_string()
   worker.connected = True
