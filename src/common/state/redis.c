@@ -562,7 +562,7 @@ object_id parse_subscribe_to_notifications_payload(
   CHECKM(length ==
         sizeof(object_id) + 1 + sizeof(data_size_value) + 1 +
             strlen("MANAGERS") + num_managers * (1 + sizeof(db_client_id)),
-            "length mismatch: num_managers=%d, length=%d, rval=%lld",
+            "length mismatch: num_managers = %d, length = %d, rval = %" PRId64,
             num_managers, length, rval);
   CHECK(num_managers > 0);
   object_id obj_id;
