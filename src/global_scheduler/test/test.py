@@ -261,9 +261,9 @@ class TestGlobalScheduler(unittest.TestCase):
   def test_integration_maytasks_handlersync(self):
     self.integration_manytasks_helper(timesync = True)
 
-#  def test_integration_maytasks(self):
-#    #more realistic case: should handle out of order object and task notifications
-#    self.integration_manytasks_helper(timesync = False))
+  def test_integration_maytasks(self):
+    #more realistic case: should handle out of order object and task notifications
+    self.integration_manytasks_helper(timesync = False)
 
 if __name__ == "__main__":
   if len(sys.argv) > 1:

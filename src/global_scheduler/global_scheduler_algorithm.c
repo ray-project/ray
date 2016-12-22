@@ -50,6 +50,7 @@ void handle_task_waiting(global_scheduler_state *state,
 
   /* If none of the args are passed by reference, handle task as having no dep.*/
   bool args_by_ref = false;
+  bool objects_found = false;
   for (int i = 0; i < task_num_args(task_spec); i++) {
     /* Object ids are only available for args by references.
      * Args by value are serialized into the task_spec itself.
@@ -67,22 +68,22 @@ void handle_task_waiting(global_scheduler_state *state,
     if (obj_info_entry == NULL) {
       /* Global scheduler doesn't know anything about this obj_id, warn, skip.*/
       LOG_WARN("Processing task with object id not known to global scheduler");
-      printf("[GS] Processing task with object id not known to global scheduler\n");
       continue;
     }
+    objects_found = true;
     LOG_INFO("[GS] found object id, data_size=%lld", obj_info_entry->data_size);
     object_id_print(obj_info_entry->object_id);
     /* Object is known to the scheduler. For each of its locations, add size. */
     int64_t object_size = obj_info_entry->data_size;
     char **p = NULL;
-    printf("printing all locations for an arg_by_ref ");object_id_print(obj_id);
-    fflush(stdout);
+    LOG_INFO("locations for an arg_by_ref objid=%s",
+             object_id_tostring(obj_id, objidstr, objidlen));
     for (p = (char **)utarray_front(obj_info_entry->object_locations);
         p != NULL;
         p = (char **)utarray_next(obj_info_entry->object_locations, p)) {
       const char *object_location = *p;
 
-      printf("\tobject location: %s\n", object_location);
+      LOG_INFO("\tobject location: %s", object_location);
 
       /* look up this location in the local object size hash table */
       HASH_FIND_STR(object_size_table, object_location, s);
@@ -105,7 +106,17 @@ void handle_task_waiting(global_scheduler_state *state,
     return;
   }
 
-  LOG_INFO("[GS]: Args by ref present: using transfer-aware policy");
+  if (!objects_found) {
+    /* This task had args by ref, but none of its dependencies were found
+     * in cache */
+    LOG_WARN("No arg_by_ref objects found in GS cache for task = %s ",
+        object_id_tostring(task_task_id(task), objidstr, objidlen));
+    LOG_WARN("using simple policy");
+    handle_task_nodep(state, policy_state, task);
+    return;
+  }
+
+  LOG_INFO("using transfer-aware policy");
   /* pick maximum object_size and assign task to that scheduler. */
   int64_t max_object_size = 0;
   const char * max_object_location = NULL;
