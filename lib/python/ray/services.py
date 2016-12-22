@@ -115,6 +115,22 @@ def start_redis(num_retries=20, cleanup=True, redirect_output=False):
 
   # Create a Redis client just for configuring Redis.
   redis_client = redis.StrictRedis(host="127.0.0.1", port=port)
+
+  # Wait for the Redis server to start.
+  counter = 0
+  while counter < num_retries:
+    try:
+      # Run some random command and see if it worked.
+      redis_client.client_list()
+    except redis.ConnectionError as e:
+      # Wait a little bit.
+      time.sleep(1)
+      counter += 1
+    else:
+      break
+  if counter == num_retries:
+    raise Exception("The Redis server did not start properly.")
+
   # Configure Redis to generate keyspace notifications. TODO(rkn): Change this
   # to only generate notifications for the export keys.
   redis_client.config_set("notify-keyspace-events", "Kl")
