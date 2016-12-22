@@ -130,7 +130,6 @@ void handle_task_waiting(global_scheduler_state *state,
   aux_address_entry *aux_entry = NULL;
   db_client_id photon_id = NIL_ID;
   if (max_object_location != NULL) {
-    printf("max object size location found!\n");
     LOG_INFO("max object size location found : %s", max_object_location);
     /* Lookup association of plasma location to photon */
     HASH_FIND_STR(state->plasma_photon_map, max_object_location, aux_entry);
@@ -152,17 +151,19 @@ void handle_task_waiting(global_scheduler_state *state,
          task_num_args(task_spec),
          task_num_returns(task_spec));
 
-  /* check to make sure this photon_db_client_id matches one of the schedulers*/
-  local_scheduler *ptr = NULL;
-  for (ptr = (local_scheduler *) utarray_front(state->local_schedulers);
-      ptr != NULL;
-      ptr = (local_scheduler *)utarray_next(state->local_schedulers, ptr)) {
-    fprintf(stderr, "[GS]: local scheduler: "); object_id_print(ptr->id);
-    fprintf(stderr, "\n");
-    if (memcmp(&ptr->id, &photon_id, sizeof(photon_id)) == 0) {
-      /* we're good , break */
+  /* Check to make sure this photon_db_client_id matches one of the schedulers*/
+  local_scheduler *lsptr = NULL;
+  for (lsptr = (local_scheduler *) utarray_front(state->local_schedulers);
+      lsptr != NULL;
+      lsptr = (local_scheduler *)utarray_next(state->local_schedulers, lsptr)) {
+    if (memcmp(&lsptr->id, &photon_id, sizeof(photon_id)) == 0) {
       LOG_INFO("photon_id matched cached local scheduler entry");
+      break;
     }
+  }
+  if (!lsptr) {
+    // TODO(atumanov): add this photon_id to local scheduler list?
+    LOG_WARN("photon_id didn't match any cached local scheduler entries");
   }
   LOG_INFO("photon id found = %s",
            object_id_tostring(photon_id, objidstr, objidlen));
@@ -175,7 +176,7 @@ void handle_task_waiting(global_scheduler_state *state,
     /* NOTE: do not free externally stored s->object_location */
     free(s);
   }
-  LOG_INFO("task waiting callback done");
+  LOG_INFO("Task waiting callback done");
 }
 
 void handle_object_available(global_scheduler_state *state,
