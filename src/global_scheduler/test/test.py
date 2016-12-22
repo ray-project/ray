@@ -186,7 +186,7 @@ class TestGlobalScheduler(unittest.TestCase):
     #sleep before submitting task to photon
     time.sleep(0.1)
     # Submit a task to Redis.
-    task = photon.Task(random_function_id(), [object_dep], num_return_vals[0], random_task_id(), 0)
+    task = photon.Task(random_function_id(), [photon.ObjectID(object_dep)], num_return_vals[0], random_task_id(), 0)
     self.photon_client.submit(task)
     time.sleep(0.1)
     # There should now be a task in Redis, and it should get assigned to the
@@ -226,7 +226,7 @@ class TestGlobalScheduler(unittest.TestCase):
       data_size = np.random.randint(1<<20) #upto 1MB
       metadata_size = np.random.randint(1<<10) #upto 1KB
       object_dep, memory_buffer, metadata = create_object(self.plasmaclient, data_size, metadata_size, seal=True)
-      task = photon.Task(random_function_id(), [object_dep], num_return_vals[0], random_task_id(), 0)
+      task = photon.Task(random_function_id(), [photon.ObjectID(object_dep)], num_return_vals[0], random_task_id(), 0)
       self.photon_client.submit(task)
     # Check that there are the correct number of tasks in Redis and that they
     # all get assigned to the local scheduler.

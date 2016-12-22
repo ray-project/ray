@@ -37,6 +37,8 @@ void handle_task_waiting(global_scheduler_state *state,
                          task *task) {
 
   task_spec *task_spec = task_task_spec(task);
+  char objidstr[3*sizeof(unique_id)];
+  int objidlen = sizeof(objidstr);
   CHECKM(task_spec != NULL, "task wait handler encounted a task with NULL spec");
   /* local hash table to keep track of aggregate object sizes per local sched.
    */
@@ -58,8 +60,7 @@ void handle_task_waiting(global_scheduler_state *state,
     }
     args_by_ref = true;
     object_id obj_id = task_arg_id(task_spec, i);
-    /* Given this object id, look it up.
-     */
+    /* Look up this object id in GS' object cache. */
     scheduler_object_info *obj_info_entry = NULL;
     HASH_FIND(hh, state->scheduler_object_info_table, &obj_id, sizeof(obj_id),
         obj_info_entry);
@@ -69,10 +70,9 @@ void handle_task_waiting(global_scheduler_state *state,
       printf("[GS] Processing task with object id not known to global scheduler\n");
       continue;
     }
-    printf("[GS] found object id, data_size=%lld \n", obj_info_entry->data_size);
+    LOG_INFO("[GS] found object id, data_size=%lld", obj_info_entry->data_size);
     object_id_print(obj_info_entry->object_id);
-    /* Object is known to the scheduler. For each of its locations, add size.
-     */
+    /* Object is known to the scheduler. For each of its locations, add size. */
     int64_t object_size = obj_info_entry->data_size;
     char **p = NULL;
     printf("printing all locations for an arg_by_ref ");object_id_print(obj_id);
@@ -100,11 +100,12 @@ void handle_task_waiting(global_scheduler_state *state,
 
   if (!args_by_ref) {
     /* All args were by value or no args at all. Fall back to simple policy. */
-    LOG_INFO("[GS]: Args by value or absent: fall back to simple policy");
+    LOG_INFO("[GS]: Args by value or absent: using simple policy");
     handle_task_nodep(state, policy_state, task);
     return;
   }
 
+  LOG_INFO("[GS]: Args by ref present: using transfer-aware policy");
   /* pick maximum object_size and assign task to that scheduler. */
   int64_t max_object_size = 0;
   const char * max_object_location = NULL;
@@ -119,11 +120,11 @@ void handle_task_waiting(global_scheduler_state *state,
   db_client_id photon_id = NIL_ID;
   if (max_object_location != NULL) {
     printf("max object size location found!\n");
-    LOG_INFO("max object size location found : %s\n", max_object_location);
+    LOG_INFO("max object size location found : %s", max_object_location);
     /* Lookup association of plasma location to photon */
     HASH_FIND_STR(state->plasma_photon_map, max_object_location, aux_entry);
     if (aux_entry) {
-      LOG_INFO("found photon db client association for plasma ip:port=%s\n",
+      LOG_INFO("found photon db client association for plasma ip:port=%s",
           aux_entry->aux_address);
       /* plasma to photon db client id association found, get photon id */
       photon_id = aux_entry->photon_db_client_id;
@@ -133,7 +134,8 @@ void handle_task_waiting(global_scheduler_state *state,
     }
   }
 
-  LOG_INFO("[GS] photon ID found = "); object_id_print(photon_id);
+  LOG_INFO("photon ID found = %s",
+           object_id_tostring(photon_id, objidstr, objidlen));
   CHECKM(!IS_NIL_ID(photon_id),
          "GS failed to find an LS: num_args=%lld num_returns=%lld\n",
          task_num_args(task_spec),
@@ -148,12 +150,11 @@ void handle_task_waiting(global_scheduler_state *state,
     fprintf(stderr, "\n");
     if (memcmp(&ptr->id, &photon_id, sizeof(photon_id)) == 0) {
       /* we're good , break */
-      LOG_INFO("photon_id matched cached local scheduler entry\n");
+      LOG_INFO("photon_id matched cached local scheduler entry");
     }
   }
-  fprintf(stderr, "photon id found=\n"); object_id_print(photon_id);
-  fprintf(stderr, "\n");
-  fflush(stderr);
+  LOG_INFO("photon id found = %s",
+           object_id_tostring(photon_id, objidstr, objidlen));
 
   assign_task_to_local_scheduler(state, task, photon_id);
 
@@ -163,7 +164,7 @@ void handle_task_waiting(global_scheduler_state *state,
     /* NOTE: do not free externally stored s->object_location */
     free(s);
   }
-  LOG_INFO("task waiting callback done\n");
+  LOG_INFO("task waiting callback done");
 }
 
 void handle_object_available(global_scheduler_state *state,
