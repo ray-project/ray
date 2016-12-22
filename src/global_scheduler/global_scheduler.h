@@ -27,7 +27,6 @@ typedef struct {
   UT_hash_handle hh;
 } scheduler_object_info;
 
-
 typedef struct {
   char *aux_address; /* Key */
   db_client_id photon_db_client_id;

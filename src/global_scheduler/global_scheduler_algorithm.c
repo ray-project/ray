@@ -19,7 +19,6 @@ void destroy_global_scheduler_policy(
 void handle_task_roundrobin(global_scheduler_state *state,
                             global_scheduler_policy_state *policy_state,
                             task *task) {
-
   if (utarray_len(state->local_schedulers) > 0) {
     local_scheduler *scheduler = (local_scheduler *) utarray_eltptr(
         state->local_schedulers, policy_state->round_robin_index);
@@ -50,7 +49,7 @@ object_size_entry *create_object_size_hashmap(global_scheduler_state *state,
     /* Look up this object id in GS' object cache. */
     scheduler_object_info *obj_info_entry = NULL;
     HASH_FIND(hh, state->scheduler_object_info_table, &obj_id, sizeof(obj_id),
-        obj_info_entry);
+              obj_info_entry);
     if (obj_info_entry == NULL) {
       /* Global scheduler doesn't know anything about this obj_id, warn, skip.*/
       LOG_WARN("Processing task with object id not known to global scheduler");
@@ -63,11 +62,11 @@ object_size_entry *create_object_size_hashmap(global_scheduler_state *state,
     char **p = NULL;
     char id_string[ID_STRING_SIZE];
     LOG_DEBUG("locations for an arg_by_ref objid = %s",
-             object_id_to_string(obj_id, id_string, ID_STRING_SIZE));
+              object_id_to_string(obj_id, id_string, ID_STRING_SIZE));
     UNUSED(id_string);
-    for (p = (char **)utarray_front(obj_info_entry->object_locations);
-        p != NULL;
-        p = (char **)utarray_next(obj_info_entry->object_locations, p)) {
+    for (p = (char **) utarray_front(obj_info_entry->object_locations);
+         p != NULL;
+         p = (char **) utarray_next(obj_info_entry->object_locations, p)) {
       const char *object_location = *p;
 
       LOG_DEBUG("\tobject location: %s", object_location);
@@ -79,12 +78,12 @@ object_size_entry *create_object_size_hashmap(global_scheduler_state *state,
         s = calloc(1, sizeof(object_size_entry));
         s->object_location = object_location;
         HASH_ADD_KEYPTR(hh, object_size_table, s->object_location,
-            strlen(s->object_location), s);
+                        strlen(s->object_location), s);
       }
       /* At this point the object location exists in our hash table. */
       s->total_object_size += object_size;
     } /* end for each object's location */
-  } /* end for each task's object */
+  }   /* end for each task's object */
 
   return object_size_table;
 }
@@ -109,18 +108,18 @@ db_client_id get_photon_id(global_scheduler_state *state,
     HASH_FIND_STR(state->plasma_photon_map, plasma_location, aux_entry);
     if (aux_entry) {
       LOG_DEBUG("found photon db client association for plasma ip:port = %s",
-          aux_entry->aux_address);
+                aux_entry->aux_address);
       /* plasma to photon db client id association found, get photon id */
       photon_id = aux_entry->photon_db_client_id;
     } else {
       LOG_ERROR("photon db client association not found for plasma ip:port=%s",
-          plasma_location);
+                plasma_location);
     }
   }
 
   char id_string[ID_STRING_SIZE];
   LOG_DEBUG("photon ID found = %s",
-           object_id_to_string(photon_id, id_string, ID_STRING_SIZE));
+            object_id_to_string(photon_id, id_string, ID_STRING_SIZE));
   UNUSED(id_string);
 
   if (IS_NIL_ID(photon_id)) {
@@ -130,8 +129,8 @@ db_client_id get_photon_id(global_scheduler_state *state,
   /* Check to make sure this photon_db_client_id matches one of the schedulers*/
   local_scheduler *lsptr = NULL;
   for (lsptr = (local_scheduler *) utarray_front(state->local_schedulers);
-      lsptr != NULL;
-      lsptr = (local_scheduler *)utarray_next(state->local_schedulers, lsptr)) {
+       lsptr != NULL; lsptr = (local_scheduler *) utarray_next(
+                          state->local_schedulers, lsptr)) {
     if (memcmp(&lsptr->id, &photon_id, sizeof(photon_id)) == 0) {
       LOG_DEBUG("photon_id matched cached local scheduler entry.");
       break;
@@ -147,20 +146,22 @@ void handle_task_waiting(global_scheduler_state *state,
                          global_scheduler_policy_state *policy_state,
                          task *task) {
   task_spec *task_spec = task_task_spec(task);
-  CHECKM(task_spec != NULL, "task wait handler encounted a task with NULL spec");
+  CHECKM(task_spec != NULL,
+         "task wait handler encounted a task with NULL spec");
   /* local hash table to keep track of aggregate object sizes per local sched.
    */
   object_size_entry *tmp, *s = NULL, *object_size_table = NULL;
   bool has_args_by_ref = false;
 
-  object_size_table = create_object_size_hashmap(state, task_spec,
-      &has_args_by_ref);
+  object_size_table =
+      create_object_size_hashmap(state, task_spec, &has_args_by_ref);
 
   if (!object_size_table) {
     char id_string[ID_STRING_SIZE];
     if (has_args_by_ref) {
-      LOG_DEBUG("Using simple policy. Didn't find objects in GS cache for task = %s",
-                object_id_to_string(task_task_id(task), id_string, ID_STRING_SIZE));
+      LOG_DEBUG(
+          "Using simple policy. Didn't find objects in GS cache for task = %s",
+          object_id_to_string(task_task_id(task), id_string, ID_STRING_SIZE));
       /* TODO(future): wait for object notification and try again. */
     } else {
       LOG_DEBUG("Using simple policy. No arguments passed by reference.");
@@ -173,7 +174,7 @@ void handle_task_waiting(global_scheduler_state *state,
   LOG_DEBUG("Using transfer-aware policy");
   /* pick maximum object_size and assign task to that scheduler. */
   int64_t max_object_size = 0;
-  const char * max_object_location = NULL;
+  const char *max_object_location = NULL;
   HASH_ITER(hh, object_size_table, s, tmp) {
     if (s->total_object_size > max_object_size) {
       max_object_size = s->total_object_size;
@@ -184,8 +185,7 @@ void handle_task_waiting(global_scheduler_state *state,
   db_client_id photon_id = get_photon_id(state, max_object_location);
   CHECKM(!IS_NIL_ID(photon_id),
          "Failed to find an LS: num_args=%" PRId64 " num_returns=%" PRId64 "\n",
-         task_num_args(task_spec),
-         task_num_returns(task_spec));
+         task_num_args(task_spec), task_num_returns(task_spec));
 
   assign_task_to_local_scheduler(state, task, photon_id);
   free_object_size_hashmap(object_size_table);
