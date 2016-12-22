@@ -11,7 +11,7 @@
 typedef struct {
   /** The ID of the local scheduler in Redis. */
   db_client_id id;
-  /** The number of tasks sent from the local scheduler to the global
+  /** The number of tasks sent from the global scheduler to this local
    *  scheduler. */
   int64_t num_tasks_sent;
 } local_scheduler;
