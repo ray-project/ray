@@ -185,8 +185,8 @@ void handle_task_waiting(global_scheduler_state *state,
   }
 
   db_client_id photon_id = get_photon_id(state, max_object_location);
-  CHECKM(!IS_NIL_ID(photon_id),
-         "Failed to find an LS: num_args=%" PRId64 " num_returns=%" PRId64 "\n",
+  CHECKM(!IS_NIL_ID(photon_id), "Failed to find an LS: num_args = %" PRId64
+                                " num_returns = %" PRId64 "\n",
          task_num_args(task_spec), task_num_returns(task_spec));
 
   assign_task_to_local_scheduler(state, task, photon_id);
