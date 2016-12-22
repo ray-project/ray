@@ -5,9 +5,9 @@
 SUITE(common_tests);
 
 TEST sha1_test(void) {
-  static char hex[2 * UNIQUE_ID_SIZE + 1];
+  static char hex[ID_STRING_SIZE];
   unique_id uid = globally_unique_id();
-  sha1_to_hex(&uid.id[0], &hex[0]);
+  object_id_to_string((object_id) uid, &hex[0], ID_STRING_SIZE);
   PASS();
 }
 
