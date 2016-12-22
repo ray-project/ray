@@ -16,9 +16,9 @@ void destroy_global_scheduler_policy(
   free(policy_state);
 }
 
-void handle_task_nodep(global_scheduler_state *state,
-                       global_scheduler_policy_state *policy_state,
-                       task *task) {
+void handle_task_roundrobin(global_scheduler_state *state,
+                            global_scheduler_policy_state *policy_state,
+                            task *task) {
 
   if (utarray_len(state->local_schedulers) > 0) {
     local_scheduler *scheduler = (local_scheduler *) utarray_eltptr(
@@ -35,8 +35,8 @@ void handle_task_nodep(global_scheduler_state *state,
 object_size_entry *create_object_size_hashmap(global_scheduler_state *state,
                                               task_spec *task_spec) {
   object_size_entry *s = NULL, *object_size_table = NULL;
-  char objidstr[3*sizeof(unique_id)];
-  int objidlen = sizeof(objidstr);
+  char id_string[3*sizeof(unique_id)];
+  int id_length = sizeof(id_string);
 
   /* If none of the args are passed by reference, handle task as having no dep.*/
   bool args_by_ref = false;
@@ -67,7 +67,7 @@ object_size_entry *create_object_size_hashmap(global_scheduler_state *state,
     int64_t object_size = obj_info_entry->data_size;
     char **p = NULL;
     LOG_INFO("locations for an arg_by_ref objid=%s",
-             object_id_tostring(obj_id, objidstr, objidlen));
+             object_id_tostring(obj_id, id_string, id_length));
     for (p = (char **)utarray_front(obj_info_entry->object_locations);
         p != NULL;
         p = (char **)utarray_next(obj_info_entry->object_locations, p)) {
@@ -106,8 +106,8 @@ db_client_id get_photon_id(global_scheduler_state *state,
                            const char *plasma_location) {
   aux_address_entry *aux_entry = NULL;
   db_client_id photon_id = NIL_ID;
-  char objidstr[3*sizeof(unique_id)];
-  int objidlen = sizeof(objidstr);
+  char id_string[3*sizeof(unique_id)];
+  int id_length = sizeof(id_string);
   if (plasma_location != NULL) {
     LOG_INFO("max object size location found : %s", plasma_location);
     /* Lookup association of plasma location to photon */
@@ -124,7 +124,7 @@ db_client_id get_photon_id(global_scheduler_state *state,
   }
 
   LOG_INFO("photon ID found = %s",
-           object_id_tostring(photon_id, objidstr, objidlen));
+           object_id_tostring(photon_id, id_string, id_length));
 
   if (IS_NIL_ID(photon_id)) {
     return photon_id;
@@ -160,8 +160,8 @@ void handle_task_waiting(global_scheduler_state *state,
     /* TODO(atumanov): would be great to differentiate the two reasons. */
     LOG_DEBUG("Using simple policy. Reasons: (a) args by value or absent, "
              "(b) no arg_by_ref objects found in GS cache for task = %s ",
-            object_id_tostring(task_task_id(task), objidstr, objidlen));
-    handle_task_nodep(state, policy_state, task);
+            object_id_tostring(task_task_id(task), id_string, id_length));
+    handle_task_roundrobin(state, policy_state, task);
     return;
   }
 

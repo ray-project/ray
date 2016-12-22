@@ -14,10 +14,10 @@
  */
 
 typedef enum {
-  SCHED_ROUND_ROBIN = 1,
-  SCHED_TRANSFER_AWARE = 2,
-  SCHED_POLICY_MAX
-} global_scheduler_policy_t;
+  SCHED_ALGORITHM_ROUND_ROBIN = 1,
+  SCHED_ALGORITHM_TRANSFER_AWARE = 2,
+  SCHED_ALGORITHM_MAX
+} global_scheduler_algorithm;
 
 /** The state managed by the global scheduling policy. */
 struct global_scheduler_policy_state {

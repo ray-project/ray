@@ -558,9 +558,6 @@ object_id parse_subscribe_to_notifications_payload(
 
   int64_t rval = sizeof(object_id) + 1 + sizeof(data_size_value) + 1 +
       strlen("MANAGERS") + num_managers * (1 + sizeof(db_client_id));
-  char buf[1024];
-  char *bufptr = buf;
-  memset(buf, 0, sizeof(buf) );
 
   CHECKM(length ==
         sizeof(object_id) + 1 + sizeof(data_size_value) + 1 +
