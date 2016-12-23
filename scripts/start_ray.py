@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import argparse
 import redis
-import socket
 
 import ray.services as services
 
@@ -30,17 +29,6 @@ def check_no_existing_redis_clients(node_ip_address, redis_address):
     if info[b"node_ip_address"].decode("ascii") == node_ip_address:
       raise Exception("This Redis instance is already connected to clients with this IP address.")
 
-def get_head_node_ip_address():
-  s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-  s.connect(("8.8.8.8", 53))
-  return s.getsockname()[0]
-
-def get_node_ip_address(redis_address):
-  redis_host, redis_port = redis_address.split(":")
-  s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-  s.connect((redis_host, int(redis_port)))
-  return s.getsockname()[0]
-
 if __name__ == "__main__":
   args = parser.parse_args()
 
@@ -54,7 +42,7 @@ if __name__ == "__main__":
     if args.redis_address is not None:
       raise Exception("If --head is passed in, a Redis server will be started, so a Redis address should not be provided.")
     if args.node_ip_address is None:
-      node_ip_address = get_head_node_ip_address()
+      node_ip_address = services.get_head_node_ip_address()
     else:
       node_ip_address = args.node_ip_address
     print("Using IP address {} for this node.".format(node_ip_address))
@@ -72,7 +60,7 @@ if __name__ == "__main__":
     services.wait_for_redis_to_start(redis_host, int(redis_port))
     # Get the node IP address if one is not provided by connecting with Redis.
     if args.node_ip_address is None:
-      node_ip_address = get_node_ip_address(args.redis_address)
+      node_ip_address = services.get_node_ip_address(args.redis_address)
     else:
       node_ip_addess = args.node_ip_address
     print("Using IP address {} for this node.".format(node_ip_address))

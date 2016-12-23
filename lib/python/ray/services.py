@@ -7,6 +7,7 @@ import os
 import random
 import redis
 import signal
+import socket
 import string
 import subprocess
 import sys
@@ -71,6 +72,17 @@ def cleanup():
 
 def all_processes_alive():
   return all([p.poll() is None for p in all_processes])
+
+def get_head_node_ip_address():
+  s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+  s.connect(("8.8.8.8", 53))
+  return s.getsockname()[0]
+
+def get_node_ip_address(redis_address):
+  redis_host, redis_port = redis_address.split(":")
+  s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+  s.connect((redis_host, int(redis_port)))
+  return s.getsockname()[0]
 
 def wait_for_redis_to_start(redis_host, redis_port, num_retries=5):
   """Wait for a Redis server to be available.
