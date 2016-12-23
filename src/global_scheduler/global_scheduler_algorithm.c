@@ -51,9 +51,9 @@ object_size_entry *create_object_size_hashmap(global_scheduler_state *state,
     HASH_FIND(hh, state->scheduler_object_info_table, &obj_id, sizeof(obj_id),
               obj_info_entry);
     if (obj_info_entry == NULL) {
-      /* Global scheduler doesn't know anything about this object ID, so log a
-       * warning and skipt it. */
-      LOG_WARN("Processing task with object ID not known to global scheduler");
+      /* Global scheduler doesn't know anything about this object ID, so skip
+       * it. */
+      LOG_DEBUG("Processing task with object ID not known to global scheduler");
       continue;
     }
     LOG_DEBUG("[GS] found object id, data_size = %" PRId64,

@@ -342,8 +342,10 @@ def start_ray_local(node_ip_address="127.0.0.1", num_workers=0, num_local_schedu
   """
   if worker_path is None:
     worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "workers/default_worker.py")
-  # Start Redis.
-  redis_port = start_redis(cleanup=cleanup, redirect_output=redirect_output)
+  # Start Redis. TODO(rkn): We are suppressing the output of Redis because on
+  # Linux it prints a bunch of warning messages when it starts up. Instead of
+  # suppressing the output, we should address the warnings.
+  redis_port = start_redis(cleanup=cleanup, redirect_output=True)
   redis_address = address(node_ip_address, redis_port)
   time.sleep(0.1)
   # Start the global scheduler.
