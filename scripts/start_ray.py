@@ -8,7 +8,7 @@ import redis
 import ray.services as services
 
 parser = argparse.ArgumentParser(description="Parse addresses for the worker to connect to.")
-parser.add_argument("--node-ip-address", required=True, type=str, help="the ip address of the worker's node")
+parser.add_argument("--node-ip-address", required=False, type=str, help="the IP address of the worker's node")
 parser.add_argument("--redis-address", required=False, type=str, help="the address to use for Redis")
 parser.add_argument("--num-workers", default=10, required=False, type=int, help="the number of workers to start on this node")
 parser.add_argument("--head", action="store_true", help="provide this argument for the head node")
@@ -41,7 +41,13 @@ if __name__ == "__main__":
     # Start Ray on the head node.
     if args.redis_address is not None:
       raise Exception("If --head is passed in, a Redis server will be started, so a Redis address should not be provided.")
-    address_info = services.start_ray_local(node_ip_address=args.node_ip_address,
+    # Get the node IP address if one is not provided.
+    if args.node_ip_address is None:
+      node_ip_address = services.get_node_ip_address()
+    else:
+      node_ip_address = args.node_ip_address
+    print("Using IP address {} for this node.".format(node_ip_address))
+    address_info = services.start_ray_local(node_ip_address=node_ip_address,
                                             num_workers=args.num_workers,
                                             cleanup=False,
                                             redirect_output=True)
@@ -53,11 +59,17 @@ if __name__ == "__main__":
     # Wait for the Redis server to be started. And throw an exception if we
     # can't connect to it.
     services.wait_for_redis_to_start(redis_host, int(redis_port))
+    # Get the node IP address if one is not provided.
+    if args.node_ip_address is None:
+      node_ip_address = services.get_node_ip_address(args.redis_address)
+    else:
+      node_ip_addess = args.node_ip_address
+    print("Using IP address {} for this node.".format(node_ip_address))
     # Check that there aren't already Redis clients with the same IP address
     # connected with this Redis instance. This raises an exception if the Redis
     # server already has clients on this node.
-    check_no_existing_redis_clients(args.node_ip_address, args.redis_address)
-    address_info = services.start_ray_node(node_ip_address=args.node_ip_address,
+    check_no_existing_redis_clients(node_ip_address, args.redis_address)
+    address_info = services.start_ray_node(node_ip_address=node_ip_address,
                                            redis_address=args.redis_address,
                                            num_workers=args.num_workers,
                                            cleanup=False,
