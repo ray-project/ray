@@ -658,7 +658,7 @@ def get_address_info_from_redis_helper(redis_address, node_ip_address):
                  "local_scheduler_socket_name": local_schedulers[0][b"local_scheduler_socket_name"].decode("ascii")}
   return client_info
 
-def get_address_info_from_redis(redis_address, node_ip_address, num_retries=10):
+def get_address_info_from_redis(redis_address, node_ip_address, num_retries=5):
   counter = 0
   while True:
     try:

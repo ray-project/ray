@@ -72,6 +72,38 @@ def cleanup():
 def all_processes_alive():
   return all([p.poll() is None for p in all_processes])
 
+def wait_for_redis_to_start(redis_host, redis_port, num_retries=5):
+  """Wait for a Redis server to be available.
+
+  This is accomplished by creating a Redis client and sending a random command
+  to the server until the command gets through.
+
+  Args:
+    redis_host (str): The IP address of the redis server.
+    redis_port (int): The port of the redis server.
+    num_retries (int): The number of times to try connecting with redis. The
+      client will sleep for one second between attempts.
+
+  Raises:
+    Exception: An exception is raised if we could not connect with Redis.
+  """
+  redis_client = redis.StrictRedis(host=redis_host, port=redis_port)
+  # Wait for the Redis server to start.
+  counter = 0
+  while counter < num_retries:
+    try:
+      # Run some random command and see if it worked.
+      redis_client.client_list()
+    except redis.ConnectionError as e:
+      # Wait a little bit.
+      time.sleep(1)
+      print("Failed to connect to the redis server, retrying.")
+      counter += 1
+    else:
+      break
+  if counter == num_retries:
+    raise Exception("Unable to connect to Redis. If the Redis instance is on a different machine, check that your firewall is configured properly.")
+
 def start_redis(num_retries=20, cleanup=True, redirect_output=False):
   """Start a Redis server.
 
@@ -115,22 +147,8 @@ def start_redis(num_retries=20, cleanup=True, redirect_output=False):
 
   # Create a Redis client just for configuring Redis.
   redis_client = redis.StrictRedis(host="127.0.0.1", port=port)
-
   # Wait for the Redis server to start.
-  counter = 0
-  while counter < num_retries:
-    try:
-      # Run some random command and see if it worked.
-      redis_client.client_list()
-    except redis.ConnectionError as e:
-      # Wait a little bit.
-      time.sleep(1)
-      counter += 1
-    else:
-      break
-  if counter == num_retries:
-    raise Exception("The Redis server did not start properly.")
-
+  wait_for_redis_to_start("127.0.0.1", port)
   # Configure Redis to generate keyspace notifications. TODO(rkn): Change this
   # to only generate notifications for the export keys.
   redis_client.config_set("notify-keyspace-events", "Kl")
