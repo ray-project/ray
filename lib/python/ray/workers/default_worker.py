@@ -21,7 +21,8 @@ def random_string():
 
 if __name__ == "__main__":
   args = parser.parse_args()
-  info = {"redis_address": args.redis_address,
+  info = {"node_ip_address": args.node_ip_address,
+          "redis_address": args.redis_address,
           "store_socket_name": args.object_store_name,
           "manager_socket_name": args.object_store_manager_name,
           "local_scheduler_socket_name": args.local_scheduler_name}
