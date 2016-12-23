@@ -15,6 +15,7 @@ import atexit
 import random
 import redis
 import threading
+import socket
 import string
 
 # Ray modules
@@ -674,7 +675,13 @@ def get_address_info_from_redis(redis_address, node_ip_address, num_retries=5):
       time.sleep(1)
     counter += 1
 
-def init(node_ip_address="127.0.0.1", redis_address=None, start_ray_local=False, object_id_seed=None, num_workers=None, num_local_schedulers=None, driver_mode=SCRIPT_MODE):
+def get_node_ip_address(redis_address):
+  redis_host, redis_port = redis_address.split(":")
+  s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+  s.connect((redis_host, int(redis_port)))
+  return s.getsockname()[0]
+
+def init(node_ip_address=None, redis_address=None, start_ray_local=False, object_id_seed=None, num_workers=None, num_local_schedulers=None, driver_mode=SCRIPT_MODE):
   """Either connect to an existing Ray cluster or start one and connect to it.
 
   This method handles two cases. Either a Ray cluster already exists and we
@@ -735,12 +742,13 @@ def init(node_ip_address="127.0.0.1", redis_address=None, start_ray_local=False,
   else:
     if redis_address is None:
       raise Exception("If start_ray_local=False, then redis_address must be provided.")
-    if node_ip_address is None:
-      raise Exception("If start_ray_local=False, then node_ip_address must be provided.")
     if num_workers is not None:
       raise Exception("If start_ray_local=False, then num_workers must not be provided.")
     if num_local_schedulers is not None:
       raise Exception("If start_ray_local=False, then num_local_schedulers must not be provided.")
+    # Get the node IP address by connecting to Redis if one is not provided.
+    if node_ip_address is None:
+      node_ip_address = get_node_ip_address(redis_address)
     # Get the address info of the processes to connect to from Redis.
     info = get_address_info_from_redis(redis_address, node_ip_address)
   # Connect this driver to Redis, the object store, and the local scheduler. The
