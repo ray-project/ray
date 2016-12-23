@@ -739,7 +739,7 @@ def init(node_ip_address=None, redis_address=None, start_ray_local=False, object
       raise Exception("If start_ray_local=False, then num_workers must not be provided.")
     if num_local_schedulers is not None:
       raise Exception("If start_ray_local=False, then num_local_schedulers must not be provided.")
-    # Get the node IP address by connecting to Redis if one is not provided.
+    # Get the node IP address if one is not provided.
     if node_ip_address is None:
       node_ip_address = services.get_node_ip_address(redis_address)
     # Get the address info of the processes to connect to from Redis.

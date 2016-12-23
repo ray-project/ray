@@ -41,8 +41,9 @@ if __name__ == "__main__":
     # Start Ray on the head node.
     if args.redis_address is not None:
       raise Exception("If --head is passed in, a Redis server will be started, so a Redis address should not be provided.")
+    # Get the node IP address if one is not provided.
     if args.node_ip_address is None:
-      node_ip_address = services.get_head_node_ip_address()
+      node_ip_address = services.get_node_ip_address()
     else:
       node_ip_address = args.node_ip_address
     print("Using IP address {} for this node.".format(node_ip_address))
@@ -58,7 +59,7 @@ if __name__ == "__main__":
     # Wait for the Redis server to be started. And throw an exception if we
     # can't connect to it.
     services.wait_for_redis_to_start(redis_host, int(redis_port))
-    # Get the node IP address if one is not provided by connecting with Redis.
+    # Get the node IP address if one is not provided.
     if args.node_ip_address is None:
       node_ip_address = services.get_node_ip_address(args.redis_address)
     else:
