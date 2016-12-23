@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import io
 import os
 import tarfile
@@ -15,7 +19,6 @@ def tarred_directory_as_bytes(source_dir):
     A byte string representing the tarred file.
   """
   # Get a BytesIO object.
-  import io
   string_file = io.BytesIO()
   # Create an in-memory tarfile of the source directory.
   with tarfile.open(mode="w:gz", fileobj=string_file) as tar:
@@ -59,7 +62,7 @@ def copy_directory(source_dir, target_dir=None):
   target_dir = os.path.abspath(target_dir)
   source_basename = os.path.basename(source_dir)
   target_basename = os.path.basename(target_dir)
-  if not source_basename == target_basename:
+  if source_basename != target_basename:
     raise Exception("The source_dir and target_dir must have the same base name, {} != {}".format(source_basename, target_basename))
   tarred_bytes = tarred_directory_as_bytes(source_dir)
   def f(worker_info):

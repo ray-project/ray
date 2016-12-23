@@ -7,6 +7,7 @@ import unittest
 import ray
 import numpy as np
 import time
+import shutil
 import string
 import sys
 from collections import namedtuple
@@ -692,18 +693,10 @@ class UtilsTest(unittest.TestCase):
     target_file = os.path.join(target_dir, "file.txt")
 
     def remove_temporary_files():
-      if os.path.exists(source_file):
-        os.remove(source_file)
-      if os.path.exists(source_dir):
-        os.rmdir(source_dir)
       if os.path.exists(temp_dir1):
-        os.rmdir(temp_dir1)
-      if os.path.exists(target_file):
-        os.remove(target_file)
-      if os.path.exists(target_dir):
-        os.rmdir(target_dir)
+        shutil.rmtree(temp_dir1)
       if os.path.exists(temp_dir2):
-        os.rmdir(temp_dir2)
+        shutil.rmtree(temp_dir2)
 
     # Remove the relevant files if they are left over from a previous run of
     # this test.
