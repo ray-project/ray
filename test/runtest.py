@@ -410,16 +410,16 @@ class APITest(unittest.TestCase):
 
   def testCachingFunctionsToRun(self):
     # Test that we export functions to run on all workers before the driver is connected.
-    def f(worker):
+    def f(worker_info):
       sys.path.append(1)
     ray.worker.global_worker.run_function_on_all_workers(f)
-    def f(worker):
+    def f(worker_info):
       sys.path.append(2)
     ray.worker.global_worker.run_function_on_all_workers(f)
-    def g(worker):
+    def g(worker_info):
       sys.path.append(3)
     ray.worker.global_worker.run_function_on_all_workers(g)
-    def f(worker):
+    def f(worker_info):
       sys.path.append(4)
     ray.worker.global_worker.run_function_on_all_workers(f)
 
@@ -436,7 +436,7 @@ class APITest(unittest.TestCase):
     self.assertEqual(ray.get(res2), (1, 2, 3, 4))
 
     # Clean up the path on the workers.
-    def f(worker):
+    def f(worker_info):
       sys.path.pop()
       sys.path.pop()
       sys.path.pop()
@@ -448,14 +448,14 @@ class APITest(unittest.TestCase):
   def testRunningFunctionOnAllWorkers(self):
     ray.init(start_ray_local=True, num_workers=1)
 
-    def f(worker):
+    def f(worker_info):
       sys.path.append("fake_directory")
     ray.worker.global_worker.run_function_on_all_workers(f)
     @ray.remote
     def get_path1():
       return sys.path
     self.assertEqual("fake_directory", ray.get(get_path1.remote())[-1])
-    def f(worker):
+    def f(worker_info):
       sys.path.pop(-1)
     ray.worker.global_worker.run_function_on_all_workers(f)
     # Create a second remote function to guarantee that when we call
@@ -465,6 +465,33 @@ class APITest(unittest.TestCase):
     def get_path2():
       return sys.path
     self.assertTrue("fake_directory" not in ray.get(get_path2.remote()))
+
+    ray.worker.cleanup()
+
+  def testPassingInfoToAllWorkers(self):
+    ray.init(start_ray_local=True, num_workers=10)
+
+    def f(worker_info):
+      sys.path.append(worker_info)
+    ray.worker.global_worker.run_function_on_all_workers(f)
+    @ray.remote
+    def get_path():
+      time.sleep(1)
+      return sys.path
+    # Retrieve the values that we stored in the worker paths.
+    paths = ray.get([get_path.remote() for _ in range(10)])
+    # Add the driver's path to the list.
+    paths.append(sys.path)
+    worker_infos = [path[-1] for path in paths]
+    for worker_info in worker_infos:
+      self.assertEqual(list(worker_info.keys()), ["counter"])
+    counters = [worker_info["counter"] for worker_info in worker_infos]
+    # We use range(11) because the driver also runs the function.
+    self.assertEqual(set(counters), set(range(11)))
+    # Clean up the worker paths.
+    def f(worker_info):
+      sys.path.pop(-1)
+    ray.worker.global_worker.run_function_on_all_workers(f)
 
     ray.worker.cleanup()
 
