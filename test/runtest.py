@@ -2,10 +2,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import unittest
 import ray
 import numpy as np
 import time
+import shutil
 import string
 import sys
 from collections import namedtuple
@@ -670,6 +672,54 @@ class ReusablesTest(unittest.TestCase):
     self.assertEqual(foo, [2, 3])
     foo = ray.reusables.foo
     self.assertEqual(foo, [2, 3])
+
+    ray.worker.cleanup()
+
+class UtilsTest(unittest.TestCase):
+
+  def testCopyingDirectory(self):
+    # The functionality being tested here is really multi-node functionality,
+    # but this test just uses a single node.
+
+    ray.init(start_ray_local=True, num_workers=1)
+
+    source_text = "hello world"
+
+    temp_dir1 = os.path.join(os.path.dirname(__file__), "temp_dir1")
+    source_dir = os.path.join(temp_dir1, "dir")
+    source_file = os.path.join(source_dir, "file.txt")
+    temp_dir2 = os.path.join(os.path.dirname(__file__), "temp_dir2")
+    target_dir = os.path.join(temp_dir2, "dir")
+    target_file = os.path.join(target_dir, "file.txt")
+
+    def remove_temporary_files():
+      if os.path.exists(temp_dir1):
+        shutil.rmtree(temp_dir1)
+      if os.path.exists(temp_dir2):
+        shutil.rmtree(temp_dir2)
+
+    # Remove the relevant files if they are left over from a previous run of
+    # this test.
+    remove_temporary_files()
+
+    # Create the source files.
+    os.mkdir(temp_dir1)
+    os.mkdir(source_dir)
+    with open(source_file, "w") as f:
+      f.write(source_text)
+
+    # Copy the source directory to the target directory.
+    ray.experimental.copy_directory(source_dir, target_dir)
+    time.sleep(0.5)
+
+    # Check that the target files exist and are the same as the source files.
+    self.assertTrue(os.path.exists(target_dir))
+    self.assertTrue(os.path.exists(target_file))
+    with open(target_file, "r") as f:
+      self.assertEqual(f.read(), source_text)
+
+    # Remove the relevant files to clean up.
+    remove_temporary_files()
 
     ray.worker.cleanup()
 
