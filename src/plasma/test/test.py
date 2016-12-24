@@ -590,6 +590,19 @@ class TestPlasmaManager(unittest.TestCase):
     self.assertEqual(set(ready), set(object_ids))
     self.assertEqual(waiting, [])
 
+    # Make sure that wait returns when the requested number of object IDs are
+    # available and does not wait for all object IDs to be available.
+    object_ids = [random_object_id() for _ in range(10)]
+    object_ids_perm = np.random.permutation(object_ids)
+    for i in range(10):
+      if i % 2 == 0:
+        create_object_with_id(self.client1, object_ids_perm[i], 2000, 2000)
+      else:
+        create_object_with_id(self.client2, object_ids_perm[i], 2000, 2000)
+      ready, waiting = self.client1.wait(object_ids, num_returns=(i + 1))
+      self.assertEqual(set(ready), set(object_ids_perm[:(i + 1)]))
+      self.assertEqual(set(waiting), set(object_ids_perm[(i + 1):]))
+
   def test_transfer(self):
     for _ in range(100):
       # Create an object.

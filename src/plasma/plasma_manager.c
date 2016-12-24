@@ -401,7 +401,7 @@ void update_object_wait_requests(plasma_manager_state *manager_state,
       /* Make sure that we actually marked an object as available.*/
       CHECK(j != wait_req->num_object_requests);
       /* If this wait request is done, reply to the client. */
-      if (wait_req->num_satisfied == wait_req->num_object_requests) {
+      if (wait_req->num_satisfied == wait_req->num_objects_to_wait_for) {
         return_from_wait(manager_state, wait_req);
       }
     }
