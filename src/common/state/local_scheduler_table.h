@@ -5,7 +5,6 @@
 #include "table.h"
 
 typedef struct {
-  db_client_id db_client_id;
   int task_queue_length;
   int available_workers;
 } local_scheduler_info;

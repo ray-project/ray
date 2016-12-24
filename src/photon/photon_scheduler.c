@@ -338,8 +338,10 @@ void start_server(const char *node_ip_address,
   /* Create a timer for publishing information about the load on the local
    * scheduler to the local scheduler table. This message also serves as a
    * heartbeat. */
-  event_loop_add_timer(loop, LOCAL_SCHEDULER_HEARTBEAT_TIMEOUT_MILLISECONDS,
-                       heartbeat_handler, g_state);
+  if (g_state->db != NULL) {
+    event_loop_add_timer(loop, LOCAL_SCHEDULER_HEARTBEAT_TIMEOUT_MILLISECONDS,
+                         heartbeat_handler, g_state);
+  }
   /* Run event loop. */
   event_loop_run(loop);
 }
