@@ -1274,19 +1274,22 @@ def main_loop(worker=global_worker):
     After the task executes, the worker resets any reusable variables that were
     accessed by the task.
     """
-    worker.current_task_id = task.task_id()
-    worker.task_index = 0
-    worker.put_index = 0
-    function_id = task.function_id()
-    args = task.arguments()
-    return_object_ids = task.returns()
-    function_name = worker.function_names[function_id.id()]
     try:
-      arguments = get_arguments_for_execution(worker.functions[function_id.id()], args, worker) # get args from objstore
-      outputs = worker.functions[function_id.id()].executor(arguments) # execute the function
+      worker.current_task_id = task.task_id()
+      worker.task_index = 0
+      worker.put_index = 0
+      function_id = task.function_id()
+      args = task.arguments()
+      return_object_ids = task.returns()
+      function_name = worker.function_names[function_id.id()]
+      # Get task arguments from the object store.
+      arguments = get_arguments_for_execution(worker.functions[function_id.id()], args, worker)
+      # Execute the task.
+      outputs = worker.functions[function_id.id()].executor(arguments)
+      # Store the outputs in the local object store.
       if len(return_object_ids) == 1:
         outputs = (outputs,)
-      store_outputs_in_objstore(return_object_ids, outputs, worker) # store output in local object store
+      store_outputs_in_objstore(return_object_ids, outputs, worker)
     except Exception as e:
       # We determine whether the exception was caused by the call to
       # get_arguments_for_execution or by the execution of the remote function
