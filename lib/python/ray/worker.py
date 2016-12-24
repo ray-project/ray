@@ -1232,7 +1232,7 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
   remaining_ids = [photon.ObjectID(object_id) for object_id in remaining_ids]
   return ready_ids, remaining_ids
 
-def format_error_message(exception_message):
+def format_error_message(exception_message, task_exception=False):
   """Improve the formatting of an exception thrown by a remote function.
 
   This method takes a traceback from an exception and makes it nicer by
@@ -1246,9 +1246,11 @@ def format_error_message(exception_message):
     A string of the formatted exception message.
   """
   lines = exception_message.split("\n")
-  # Remove lines 1, 2, 3, and 4, which are always the same, they just contain
-  # information about the main loop.
-  lines = lines[0:1] + lines[5:]
+  if task_exception:
+    # For errors that occur inside of tasks, remove lines 1, 2, 3, and 4,
+    # which are always the same, they just contain information about the main
+    # loop.
+    lines = lines[0:1] + lines[5:]
   return "\n".join(lines)
 
 def main_loop(worker=global_worker):
@@ -1286,10 +1288,20 @@ def main_loop(worker=global_worker):
         outputs = (outputs,)
       store_outputs_in_objstore(return_object_ids, outputs, worker) # store output in local object store
     except Exception as e:
-      # If the task threw an exception, then record the traceback. We determine
-      # whether the exception was thrown in the task execution by whether the
-      # variable "arguments" is defined.
-      traceback_str = format_error_message(traceback.format_exc()) if "arguments" in locals() else None
+      # We determine whether the exception was caused by the call to
+      # get_arguments_for_execution or by the execution of the remote function
+      # or by the call to store_outputs_in_objstore. Depending on which case
+      # occurred, we format the error message differently.
+      # whether the variables "arguments" and "outputs" are defined.
+      if "arguments" in locals() and "outputs" not in locals():
+        # The error occurred during the task execution.
+        traceback_str = format_error_message(traceback.format_exc(), task_exception=True)
+      elif "arguments" in locals() and "outputs" in locals():
+        # The error occurred after the task executed.
+        traceback_str = format_error_message(traceback.format_exc())
+      else:
+        # The error occurred before the task execution.
+        traceback_str = None
       failure_object = RayTaskError(function_name, e, traceback_str)
       failure_objects = [failure_object for _ in range(len(return_object_ids))]
       store_outputs_in_objstore(return_object_ids, failure_objects, worker)
@@ -1297,7 +1309,7 @@ def main_loop(worker=global_worker):
       error_key = "TaskError:{}".format(random_string())
       worker.redis_client.hmset(error_key, {"function_id": function_id.id(),
                                             "function_name": function_name,
-                                            "message": traceback_str})
+                                            "message": str(failure_object)})
       worker.redis_client.rpush("ErrorKeys", error_key)
     try:
       # Reinitialize the values of reusable variables that were used in the task
