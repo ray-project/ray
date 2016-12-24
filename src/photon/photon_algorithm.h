@@ -3,6 +3,7 @@
 
 #include "photon.h"
 #include "common/task.h"
+#include "state/local_scheduler_table.h"
 
 /* The duration that the local scheduler will wait before reinitiating a fetch
  * request for a missing task dependency. TODO(rkn): We may want this to be
@@ -32,6 +33,13 @@ scheduling_algorithm_state *make_scheduling_algorithm_state(void);
  */
 void free_scheduling_algorithm_state(
     scheduling_algorithm_state *algorithm_state);
+
+/**
+ *
+ */
+void provide_scheduler_info(local_scheduler_state *state,
+                            scheduling_algorithm_state *algorithm_state,
+                            local_scheduler_info *info);
 
 /**
  * This function will be called when a new task is submitted by a worker for

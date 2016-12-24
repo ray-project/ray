@@ -9,6 +9,7 @@
 #include "net.h"
 #include "object_info.h"
 #include "state/db_client_table.h"
+#include "state/local_scheduler_table.h"
 #include "state/object_table.h"
 #include "state/table.h"
 #include "state/task_table.h"
@@ -192,6 +193,21 @@ void object_table_subscribe_callback(object_id object_id,
   }
 }
 
+void local_scheduler_table_handler(db_client_id client_id,
+                                   local_scheduler_info info,
+                                   void *user_context) {
+  /* Extract global scheduler state from the callback context. */
+  global_scheduler_state *state = (global_scheduler_state *) user_context;
+  UNUSED(state);
+  char id_string[ID_STRING_SIZE];
+  LOG_DEBUG(
+      "Local scheduler heartbeat from db_client_id %s",
+      object_id_to_string((object_id) client_id, id_string, ID_STRING_SIZE));
+  UNUSED(id_string);
+  LOG_DEBUG("Task queue length is %d", info.task_queue_length);
+  LOG_DEBUG("Num available workers is %d", info.available_workers);
+}
+
 void start_server(const char *redis_addr, int redis_port) {
   event_loop *loop = event_loop_create();
   g_state = init_global_scheduler(loop, redis_addr, redis_port);
@@ -214,6 +230,11 @@ void start_server(const char *redis_addr, int redis_port) {
   object_table_subscribe_to_notifications(g_state->db, true,
                                           object_table_subscribe_callback,
                                           g_state, &retry, NULL, NULL);
+  /* Subscribe to notifications from local schedulers. These notifications serve
+   * as heartbeats and contain informaion about the load on the local
+   * schedulers. */
+  local_scheduler_table_subscribe(g_state->db, local_scheduler_table_handler,
+                                  g_state, NULL);
   /* Start the event loop. */
   event_loop_run(loop);
 }

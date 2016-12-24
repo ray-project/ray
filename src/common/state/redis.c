@@ -12,6 +12,7 @@
 #include "common.h"
 #include "db.h"
 #include "db_client_table.h"
+#include "local_scheduler_table.h"
 #include "object_table.h"
 #include "object_info.h"
 #include "task.h"
@@ -1078,6 +1079,83 @@ void redis_db_client_table_subscribe(table_callback_data *callback_data) {
   if ((status == REDIS_ERR) || db->sub_context->err) {
     LOG_REDIS_DEBUG(db->sub_context,
                     "error in db_client_table_register_callback");
+  }
+}
+
+void redis_local_scheduler_table_subscribe_callback(redisAsyncContext *c,
+                                                    void *r,
+                                                    void *privdata) {
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
+
+  redisReply *reply = r;
+  CHECK(reply->type == REDIS_REPLY_ARRAY);
+  CHECK(reply->elements == 3);
+  redisReply *message_type = reply->element[0];
+  LOG_DEBUG("Local scheduer table subscribe callback, message %s",
+            message_type->str);
+
+  if (strcmp(message_type->str, "message") == 0) {
+    /* Handle a local scheduler heartbeat. Parse the payload and call the
+     * subscribe callback. */
+    redisReply *payload = reply->element[2];
+    local_scheduler_table_subscribe_data *data = callback_data->data;
+    db_client_id client_id;
+    local_scheduler_info info;
+    /* The payload should be the concatenation of these two structs. */
+    CHECK(sizeof(client_id) + sizeof(info) == payload->len);
+    memcpy(&client_id, payload->str, sizeof(client_id));
+    memcpy(&info, payload->str + sizeof(client_id), sizeof(info));
+    if (data->subscribe_callback) {
+      data->subscribe_callback(client_id, info, data->subscribe_context);
+    }
+  } else if (strcmp(message_type->str, "subscribe") == 0) {
+    /* The reply for the initial SUBSCRIBE command. */
+    CHECK(callback_data->done_callback == NULL);
+    /* If the initial SUBSCRIBE was successful, clean up the timer, but don't
+     * destroy the callback data. */
+    event_loop_remove_timer(db->loop, callback_data->timer_id);
+
+  } else {
+    LOG_FATAL("Unexpected reply type from local scheduler subscribe.");
+  }
+}
+
+void redis_local_scheduler_table_subscribe(table_callback_data *callback_data) {
+  db_handle *db = callback_data->db_handle;
+  int status = redisAsyncCommand(
+      db->sub_context, redis_local_scheduler_table_subscribe_callback,
+      (void *) callback_data->timer_id, "SUBSCRIBE local_schedulers");
+  if ((status == REDIS_ERR) || db->sub_context->err) {
+    LOG_REDIS_DEBUG(db->sub_context,
+                    "error in redis_local_scheduler_table_subscribe");
+  }
+}
+
+void redis_local_scheduler_table_send_info_callback(redisAsyncContext *c,
+                                                    void *r,
+                                                    void *privdata) {
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
+
+  redisReply *reply = r;
+  CHECK(reply->type == REDIS_REPLY_INTEGER);
+  LOG_DEBUG("%lld subscribers received this publish.\n", reply->integer);
+  printf("XXX %lld subscribers received this publish.\n", reply->integer);
+
+  CHECK(callback_data->done_callback == NULL);
+  /* Clean up the timer and callback. */
+  destroy_timer_callback(db->loop, callback_data);
+}
+
+void redis_local_scheduler_table_send_info(table_callback_data *callback_data) {
+  db_handle *db = callback_data->db_handle;
+  local_scheduler_table_send_info_data *data = callback_data->data;
+  int status = redisAsyncCommand(
+      db->context, redis_local_scheduler_table_send_info_callback,
+      (void *) callback_data->timer_id, "PUBLISH local_schedulers %b%b",
+      db->client.id, sizeof(db->client.id), &data->info, sizeof(data->info));
+  if ((status == REDIS_ERR) || db->context->err) {
+    LOG_REDIS_DEBUG(db->context,
+                    "error in redis_local_scheduler_table_send_info");
   }
 }
 
