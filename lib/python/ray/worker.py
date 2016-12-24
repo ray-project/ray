@@ -1232,6 +1232,34 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
   remaining_ids = [photon.ObjectID(object_id) for object_id in remaining_ids]
   return ready_ids, remaining_ids
 
+def wait_for_valid_import_counter(function_id, timeout=5, worker=global_worker):
+  """Wait until this worker has imported enough to execute the function.
+
+  This method will simply loop until the import thread has imported enough of
+  the exports to execute the function. If we spend too long in this loop, that
+  may indicate a problem somewhere and we will push an error message to the
+  user.
+
+  Args:
+    function_id (str): The ID of the function that we want to execute.
+  """
+  start_time = time.time()
+  # Keep track of the number of warnings that we've sent to the user so far so
+  # we can decrease the frequency with which we send them.
+  num_warnings_sent = 0
+  while True:
+    with worker.lock:
+      if function_id.id() in worker.functions and (worker.function_export_counters[function_id.id()] <= worker.worker_import_counter):
+        break
+    if time.time() - start_time > timeout * (num_warnings_sent + 1):
+      if function_id.id() not in worker.functions:
+        warning_message = "This worker does not have the function with ID {} registered. You may have to restart Ray.".format(function_id.id())
+      else:
+        warning_message = "This worker's import counter is too small. The relevant quantities are function_id.id() = {}, worker.function_export_counters[function_id.id()] = {}, worker.worker_import_counter = {}. You may have to restart Ray.".format(function_id.id(), worker.function_export_counters[function_id.id()], worker.worker_import_counter)
+      push_warning_to_user(warning_message, worker=worker)
+      num_warnings_sent += 1
+    time.sleep(0.001)
+
 def format_error_message(exception_message, task_exception=False):
   """Improve the formatting of an exception thrown by a remote function.
 
@@ -1335,14 +1363,20 @@ def main_loop(worker=global_worker):
     function_id = task.function_id()
     # Check that the number of imports we have is at least as great as the
     # export counter for the task. If not, wait until we have imported enough.
-    while True:
-      with worker.lock:
-        if function_id.id() in worker.functions and (worker.function_export_counters[function_id.id()] <= worker.worker_import_counter):
-          break
-      time.sleep(0.001)
+    # We will push warnings to the user if we spend too long in this loop.
+    wait_for_valid_import_counter(function_id, worker=worker)
     # Execute the task.
+    # TODO(rkn): Consider acquiring this lock with a timeout and pushing a
+    # warning to the user if we are waiting too long to acquire the lock because
+    # that may indicate that the system is hanging, and it'd be good to know
+    # where the system is hanging.
     with worker.lock:
       process_task(task)
+
+def push_warning_to_user(message, worker=global_worker):
+  error_key = "GenericWarning:{}".format(random_string())
+  worker.redis_client.hmset(error_key, {"message": message})
+  worker.redis_client.rpush("ErrorKeys", error_key)
 
 def _submit_task(function_id, func_name, args, worker=global_worker):
   """This is a wrapper around worker.submit_task.
