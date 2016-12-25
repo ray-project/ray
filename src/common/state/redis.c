@@ -1138,7 +1138,7 @@ void redis_local_scheduler_table_send_info_callback(redisAsyncContext *c,
 
   redisReply *reply = r;
   CHECK(reply->type == REDIS_REPLY_INTEGER);
-  LOG_DEBUG("%lld subscribers received this publish.\n", reply->integer);
+  LOG_DEBUG("%" PRId64 " subscribers received this publish.\n", reply->integer);
 
   CHECK(callback_data->done_callback == NULL);
   /* Clean up the timer and callback. */
