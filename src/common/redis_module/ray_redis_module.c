@@ -336,9 +336,13 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
     RedisModuleString *existing_hash;
     RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "hash", &existing_hash,
                         NULL);
-    if (RedisModule_StringCompare(existing_hash, new_hash) != 0) {
-      RedisModule_CloseKey(key);
-      return RedisModule_ReplyWithError(ctx, "hash mismatch");
+    /* The existing hash may be NULL even if the key is present because a call
+     * to RAY.RESULT_TABLE_ADD may create the key. */
+    if (existing_hash != NULL) {
+      if (RedisModule_StringCompare(existing_hash, new_hash) != 0) {
+        RedisModule_CloseKey(key);
+        return RedisModule_ReplyWithError(ctx, "hash mismatch");
+      }
     }
   }
 
@@ -614,7 +618,7 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
 
   RedisModuleKey *task_key =
       OpenPrefixedKey(ctx, TASK_PREFIX, task_id, REDISMODULE_READ);
-  int task_keytype = RedisModule_KeyType(key);
+  int task_keytype = RedisModule_KeyType(task_key);
   if (task_keytype == REDISMODULE_KEYTYPE_EMPTY) {
     return RedisModule_ReplyWithNull(ctx);
   }

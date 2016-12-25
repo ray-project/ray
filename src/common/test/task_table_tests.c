@@ -184,8 +184,8 @@ TEST publish_timeout_test(void) {
   retry_info retry = {
       .num_retries = 5, .timeout = 100, .fail_callback = publish_fail_callback,
   };
-  task_table_update(db, task, &retry, publish_done_callback,
-                    (void *) publish_timeout_context);
+  task_table_add_task(db, task, &retry, publish_done_callback,
+                      (void *) publish_timeout_context);
   /* Disconnect the database to see if the publish times out. */
   close(db->context->c.fd);
   aeProcessEvents(g_loop, AE_TIME_EVENTS);
@@ -295,8 +295,8 @@ TEST publish_retry_test(void) {
       .timeout = 100,
       .fail_callback = publish_retry_fail_callback,
   };
-  task_table_update(db, task, &retry, publish_retry_done_callback,
-                    (void *) publish_retry_context);
+  task_table_add_task(db, task, &retry, publish_retry_done_callback,
+                      (void *) publish_retry_context);
   /* Disconnect the database to see if the publish times out. */
   close(db->sub_context->c.fd);
   /* Install handler for reconnecting the database. */
@@ -389,8 +389,8 @@ TEST publish_late_test(void) {
       .timeout = 0,
       .fail_callback = publish_late_fail_callback,
   };
-  task_table_update(db, task, &retry, publish_late_done_callback,
-                    (void *) publish_late_context);
+  task_table_add_task(db, task, &retry, publish_late_done_callback,
+                      (void *) publish_late_context);
   /* Install handler for terminating the event loop. */
   event_loop_add_timer(g_loop, 750,
                        (event_loop_timer_handler) terminate_event_loop_callback,

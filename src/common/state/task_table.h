@@ -24,7 +24,8 @@
 /* Callback called when a task table write operation completes. */
 typedef void (*task_table_done_callback)(task_id task_id, void *user_context);
 
-/* Callback called when a task table read operation completes. */
+/* Callback called when a task table read operation completes. If the task ID
+ * was not in the task table, then the task pointer will be NULL. */
 typedef void (*task_table_get_callback)(task *task, void *user_context);
 
 /**

@@ -127,7 +127,8 @@ int64_t task_table_delayed_add_task(event_loop *loop,
       .timeout = TIMEOUT,
       .fail_callback = task_table_test_fail_callback,
   };
-  task_table_add_task(db, task_table_test_task, &retry, NULL, (void *) loop);
+  task_table_add_task(db, copy_task(task_table_test_task), &retry, NULL,
+                      (void *) loop);
   return EVENT_LOOP_TIMER_DONE;
 }
 
@@ -162,6 +163,7 @@ TEST task_table_test(void) {
   event_loop_add_timer(
       loop, 200, (event_loop_timer_handler) task_table_delayed_add_task, db);
   event_loop_run(loop);
+  free_task(task_table_test_task);
   db_disconnect(db);
   destroy_outstanding_callbacks(loop);
   event_loop_destroy(loop);
@@ -193,8 +195,8 @@ TEST task_table_all_test(void) {
                        NULL);
   event_loop_run(loop);
   /* TODO(pcm): Get rid of this sleep once the robust pubsub is implemented. */
-  task_table_update(db, task1, &retry, NULL, NULL);
-  task_table_update(db, task2, &retry, NULL, NULL);
+  task_table_add_task(db, task1, &retry, NULL, NULL);
+  task_table_add_task(db, task2, &retry, NULL, NULL);
   event_loop_add_timer(loop, 200, (event_loop_timer_handler) timeout_handler,
                        NULL);
   event_loop_run(loop);
