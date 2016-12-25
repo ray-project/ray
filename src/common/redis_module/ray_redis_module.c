@@ -601,17 +601,57 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
 
   int keytype = RedisModule_KeyType(key);
   if (keytype == REDISMODULE_KEYTYPE_EMPTY) {
-    return RedisModule_ReplyWithStringBuffer(ctx, "", 0);
+    return RedisModule_ReplyWithNull(ctx);
   }
 
   RedisModuleString *task_id;
   RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "task", &task_id, NULL);
   if (task_id == NULL) {
-    return RedisModule_ReplyWithStringBuffer(ctx, "", 0);
+    return RedisModule_ReplyWithNull(ctx);
   }
-  RedisModule_ReplyWithString(ctx, task_id);
+
+  /* Get the task spec from the task ID. */
+
+  RedisModuleKey *task_key =
+      OpenPrefixedKey(ctx, TASK_PREFIX, task_id, REDISMODULE_READ);
+  int task_keytype = RedisModule_KeyType(key);
+  if (task_keytype == REDISMODULE_KEYTYPE_EMPTY) {
+    return RedisModule_ReplyWithNull(ctx);
+  }
+
+  RedisModuleString *state = NULL;
+  RedisModuleString *local_scheduler_id = NULL;
+  RedisModuleString *task_spec = NULL;
+  RedisModule_HashGet(task_key, REDISMODULE_HASH_CFIELDS, "state", &state, "node",
+                      &local_scheduler_id, "task_spec", &task_spec, NULL);
+  if (state == NULL || local_scheduler_id == NULL || task_spec == NULL) {
+    /* We must have either all fields or no fields. */
+    return RedisModule_ReplyWithError(
+        ctx, "Missing fields in the task table entry");
+  }
+
+  /* Get the scheduling state as an integer from the string. */
+  size_t state_length;
+  const char *state_string = RedisModule_StringPtrLen(state, &state_length);
+  int state_integer;
+  int scanned = sscanf(state_string, "%2d", &state_integer);
+  if (scanned != 1 || state_length != 2) {
+    return RedisModule_ReplyWithError(ctx,
+                                      "Found invalid scheduling state (must "
+                                      "be an integer of width 2");
+  }
+
+  RedisModule_ReplyWithArray(ctx, 3);
+  RedisModule_ReplyWithLongLong(ctx, state_integer);
+  RedisModule_ReplyWithString(ctx, local_scheduler_id);
+  RedisModule_ReplyWithString(ctx, task_spec);
+
+  RedisModule_FreeString(ctx, state);
+  RedisModule_FreeString(ctx, local_scheduler_id);
+  RedisModule_FreeString(ctx, task_spec);
 
   /* Clean up. */
+  RedisModule_CloseKey(task_key);
   RedisModule_FreeString(ctx, task_id);
   RedisModule_CloseKey(key);
 
