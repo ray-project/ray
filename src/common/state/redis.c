@@ -821,144 +821,166 @@ void redis_task_table_get_task_callback(redisAsyncContext *c,
                                         void *r,
                                         void *privdata) {
   REDIS_CALLBACK_HEADER(db, callback_data, r);
+
+  /* Do some minimal checking. */
   redisReply *reply = r;
-  /* Check that we received a Redis hashmap. */
-  if (reply->type != REDIS_REPLY_ARRAY) {
-    LOG_FATAL("Expected Redis array, received type %d %s", reply->type,
-              reply->str);
-  }
-  /* If the user registered a success callback, construct the task object from
-   * the Redis reply and call the callback. */
-  if (callback_data->done_callback) {
+
+  /* Check that the reply is as expected. The 0th element is the scheduling
+   * state. The 1st element is the db_client_id of the associated local
+   * scheduler, and the 2nd element is the task_spec. */
+  CHECK(reply->type == REDIS_REPLY_ARRAY);
+  CHECK(reply->elements == 3);
+  CHECK(reply->element[0]->type == REDIS_REPLY_INTEGER);
+  CHECK(reply->element[1]->type == REDIS_REPLY_STRING);
+  CHECK(reply->element[2]->type == REDIS_REPLY_STRING);
+
+  /* Parse the scheduling state. */
+  long long state = reply->element[0]->integer;
+  /* Parse the local scheduler db_client_id. */
+  db_client_id local_scheduler_id;
+  memcpy(local_scheduler_id.id, reply->element[1]->str, reply->element[1]->len);
+  /* Parse the task spec. */
+  task_spec *spec = malloc(reply->element[2]->len);
+  memcpy(spec, reply->element[2]->str, reply->element[2]->len);
+  CHECK(task_spec_size(spec) == reply->element[2]->len);
+
+  /* Call the done callback if there is one. */
+  if (callback_data->done_callback != NULL) {
     task_table_get_callback done_callback = callback_data->done_callback;
-    task *task_reply = parse_redis_task_table_entry(
-        callback_data->id, reply->elements, reply->element);
-    done_callback(task_reply, callback_data->user_context);
-    free_task(task_reply);
+    task *task = alloc_task(spec, state, local_scheduler_id);
+    done_callback(task, callback_data->user_context);
+    free_task(task);
   }
+  free_task_spec(spec);
+  /* Clean up the timer and callback. */
   destroy_timer_callback(db->loop, callback_data);
 }
 
 void redis_task_table_get_task(table_callback_data *callback_data) {
-  CHECK(callback_data);
   db_handle *db = callback_data->db_handle;
-  task_id id = callback_data->id;
+  CHECK(callback_data->data == NULL);
+  task_id task_id = callback_data->id;
+
   int status =
       redisAsyncCommand(db->context, redis_task_table_get_task_callback,
-                        (void *) callback_data->timer_id, "HGETALL task:%b",
-                        id.id, sizeof(id.id));
+      (void *) callback_data->timer_id, "RAY.TASK_TABLE_GET %b", task_id.id,
+      sizeof(task_id.id));
   if ((status == REDIS_ERR) || db->context->err) {
-    LOG_REDIS_DEBUG(db->context, "Could not get task from task table");
+    LOG_REDIS_DEBUG(db->context, "error in redis_task_table_get_task");
   }
 }
 
-void redis_task_table_publish(table_callback_data *callback_data,
-                              bool task_added) {
-  db_handle *db = callback_data->db_handle;
-  task *task = callback_data->data;
-  task_id id = task_task_id(task);
-  node_id node = task_node(task);
-  scheduling_state state = task_state(task);
-  task_spec *spec = task_task_spec(task);
+void redis_task_table_add_task_callback(redisAsyncContext *c,
+                                        void *r,
+                                        void *privdata) {
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
 
-  LOG_DEBUG("Called log_publish callback");
-
-/* Check whether the vector (requests_info) indicating the status of the
- * requests has been allocated.
- * If was not allocate it, allocate it and initialize it.
- * This vector has an entry for each redis command, and it stores true if a
- * reply for that command
- * has been received, and false otherwise.
- * The first entry in the callback corresponds to RPUSH, and the second entry to
- * PUBLISH.
- */
-#define NUM_PUBLISH_COMMANDS 2
-#define PUBLISH_PUSH_INDEX 0
-#define PUBLISH_PUBLISH_INDEX 1
-  if (callback_data->requests_info == NULL) {
-    callback_data->requests_info = malloc(NUM_PUBLISH_COMMANDS * sizeof(bool));
-    for (int i = 0; i < NUM_PUBLISH_COMMANDS; i++) {
-      ((bool *) callback_data->requests_info)[i] = false;
-    }
+  /* Do some minimal checking. */
+  redisReply *reply = r;
+  CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
+  /* Call the done callback if there is one. */
+  if (callback_data->done_callback != NULL) {
+    task_table_done_callback done_callback = callback_data->done_callback;
+    done_callback(callback_data->id, callback_data->user_context);
   }
-
-  if (((bool *) callback_data->requests_info)[PUBLISH_PUSH_INDEX] == false) {
-    /* If the task has already been added to the task table, only update the
-     * scheduling information fields. */
-    int status = REDIS_OK;
-    if (task_added) {
-      status = redisAsyncCommand(
-          db->context, redis_task_table_publish_push_callback,
-          (void *) callback_data->timer_id, "HMSET task:%b state %d node %b",
-          (char *) id.id, sizeof(id.id), state, (char *) node.id,
-          sizeof(node.id));
-    } else {
-      status = redisAsyncCommand(
-          db->context, redis_task_table_publish_push_callback,
-          (void *) callback_data->timer_id,
-          "HMSET task:%b state %d node %b task_spec %b", (char *) id.id,
-          sizeof(id.id), state, (char *) node.id, sizeof(node.id),
-          (char *) spec, task_spec_size(spec));
-    }
-    if ((status == REDIS_ERR) || db->context->err) {
-      LOG_REDIS_DEBUG(db->context, "error setting task in task_table_add_task");
-    }
-  }
-
-  if (((bool *) callback_data->requests_info)[PUBLISH_PUBLISH_INDEX] == false) {
-    int status = redisAsyncCommand(
-        db->context, redis_task_table_publish_publish_callback,
-        (void *) callback_data->timer_id, "PUBLISH task:%b:%d %b",
-        (char *) node.id, sizeof(node.id), state, (char *) task,
-        task_size(task));
-
-    if ((status == REDIS_ERR) || db->context->err) {
-      LOG_REDIS_DEBUG(db->context,
-                      "error publishing task in task_table_add_task");
-    }
-  }
+  /* Clean up the timer and callback. */
+  destroy_timer_callback(db->loop, callback_data);
 }
 
 void redis_task_table_add_task(table_callback_data *callback_data) {
-  redis_task_table_publish(callback_data, false);
+  db_handle *db = callback_data->db_handle;
+  task *task = callback_data->data;
+  task_id task_id = task_task_id(task);
+  db_client_id local_scheduler_id = task_node(task);
+  scheduling_state state = task_state(task);
+  task_spec *spec = task_task_spec(task);
+
+  CHECKM(task != NULL, "NULL task passed to redis_task_table_add_task.");
+  int status =
+      redisAsyncCommand(db->context, redis_task_table_add_task_callback,
+      (void *) callback_data->timer_id, "RAY.TASK_TABLE_ADD %b %d %b %b",
+      task_id.id, sizeof(task_id.id), state, local_scheduler_id.id,
+      sizeof(local_scheduler_id.id), spec, task_spec_size(spec));
+  if ((status == REDIS_ERR) || db->context->err) {
+    LOG_REDIS_DEBUG(db->context, "error in redis_task_table_add_task");
+  }
+}
+
+void redis_task_table_update_callback(redisAsyncContext *c,
+                                      void *r,
+                                      void *privdata) {
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
+
+  /* Do some minimal checking. */
+  redisReply *reply = r;
+  CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
+  /* Call the done callback if there is one. */
+  if (callback_data->done_callback != NULL) {
+    task_table_done_callback done_callback = callback_data->done_callback;
+    done_callback(callback_data->id, callback_data->user_context);
+  }
+  /* Clean up the timer and callback. */
+  destroy_timer_callback(db->loop, callback_data);
 }
 
 void redis_task_table_update(table_callback_data *callback_data) {
-  redis_task_table_publish(callback_data, true);
-}
+  db_handle *db = callback_data->db_handle;
+  task *task = callback_data->data;
+  task_id task_id = task_task_id(task);
+  db_client_id local_scheduler_id = task_node(task);
+  scheduling_state state = task_state(task);
 
-void redis_task_table_publish_push_callback(redisAsyncContext *c,
-                                            void *r,
-                                            void *privdata) {
-  LOG_DEBUG("Calling publish push callback");
-  REDIS_CALLBACK_HEADER(db, callback_data, r);
-  CHECK(callback_data->requests_info != NULL);
-  ((bool *) callback_data->requests_info)[PUBLISH_PUSH_INDEX] = true;
-
-  if (((bool *) callback_data->requests_info)[PUBLISH_PUBLISH_INDEX] == true) {
-    if (callback_data->done_callback) {
-      task_table_done_callback done_callback = callback_data->done_callback;
-      done_callback(callback_data->id, callback_data->user_context);
-    }
-    destroy_timer_callback(db->loop, callback_data);
+  CHECKM(task != NULL, "NULL task passed to redis_task_table_update.");
+  int status =
+      redisAsyncCommand(db->context, redis_task_table_update_callback,
+      (void *) callback_data->timer_id, "RAY.TASK_TABLE_UPDATE %b %d %b",
+      task_id.id, sizeof(task_id.id), state, local_scheduler_id.id,
+      sizeof(local_scheduler_id.id));
+  if ((status == REDIS_ERR) || db->context->err) {
+    LOG_REDIS_DEBUG(db->context, "error in redis_task_table_update");
   }
 }
 
-void redis_task_table_publish_publish_callback(redisAsyncContext *c,
-                                               void *r,
-                                               void *privdata) {
-  LOG_DEBUG("Calling publish publish callback");
-  REDIS_CALLBACK_HEADER(db, callback_data, r);
-  CHECK(callback_data->requests_info != NULL);
-  ((bool *) callback_data->requests_info)[PUBLISH_PUBLISH_INDEX] = true;
-
-  if (((bool *) callback_data->requests_info)[PUBLISH_PUSH_INDEX] == true) {
-    if (callback_data->done_callback) {
-      task_table_done_callback done_callback = callback_data->done_callback;
-      done_callback(callback_data->id, callback_data->user_context);
-    }
-    destroy_timer_callback(db->loop, callback_data);
-  }
+/* The format of the payload is described in ray_redis_module.c and is
+ * "<task ID> <state> <node ID> <task specification>". */
+void parse_task_table_subscribe_callback(char *payload,
+                                         int length,
+                                         task_id *task_id,
+                                         int *state,
+                                         db_client_id *local_scheduler_id,
+                                         task_spec **spec) {
+  /* Note that the state is padded with spaces to consist of precisely two
+   * characters. */
+  int task_spec_payload_size = length - sizeof(*task_id) - 1 - 2 - 1 -
+                               sizeof(*local_scheduler_id) - 1;
+  int offset = 0;
+  /* Read in the task ID. */
+  memcpy(task_id, &payload[offset], sizeof(*task_id));
+  offset += sizeof(*task_id);
+  /* Read in a space. */
+  char *space_str = " ";
+  CHECK(memcmp(space_str, &payload[offset], strlen(space_str)) == 0);
+  offset += strlen(space_str);
+  /* Read in the state by first creating a null-terminated version. */
+  char state_str[3];
+  state_str[0] = payload[offset];
+  state_str[1] = payload[offset + 1];
+  state_str[2] = '\0';
+  *state = atoi(state_str);
+  offset += 2;
+  /* Read in a space. */
+  CHECK(memcmp(space_str, &payload[offset], strlen(space_str)) == 0);
+  offset += strlen(space_str);
+  /* Read in the local scheduler ID. */
+  memcpy(local_scheduler_id, &payload[offset], sizeof(*local_scheduler_id));
+  offset += sizeof(*local_scheduler_id);
+  /* Read in a space. */
+  CHECK(memcmp(space_str, &payload[offset], strlen(space_str)) == 0);
+  offset += strlen(space_str);
+  /* Read in the task spec. */
+  *spec = malloc(task_spec_payload_size);
+  memcpy(*spec, &payload[offset], task_spec_payload_size);
+  CHECK(task_spec_size(*spec) == task_spec_payload_size);
 }
 
 void redis_task_table_subscribe_callback(redisAsyncContext *c,
@@ -968,53 +990,76 @@ void redis_task_table_subscribe_callback(redisAsyncContext *c,
   redisReply *reply = r;
 
   CHECK(reply->type == REDIS_REPLY_ARRAY);
-  CHECK(reply->elements > 2);
-  /* First entry is message type, then possibly the regex we psubscribed to,
-   * then topic, then payload. */
+  /* The number of elements is 3 for a reply to SUBSCRIBE, and 4  for a reply to
+   * PSUBSCRIBE. */
+  CHECKM(reply->elements == 3 || reply->elements == 4,
+         "reply->elements is %zu", reply->elements);
+  /* The first element is the message type and the last entry is the payload.
+   * The middle one or middle two elements describe the channel that was
+   * published on. */
+  redisReply *message_type = reply->element[0];
   redisReply *payload = reply->element[reply->elements - 1];
-  /* If this condition is true, we got the initial message that acknowledged the
-   * subscription. */
-  if (payload->str == NULL) {
-    if (callback_data->done_callback) {
+  if (strcmp(message_type->str, "message") == 0 ||
+      strcmp(message_type->str, "pmessage") == 0) {
+    /* Handle a task table event. Parse the payload and call the callback. */
+    task_table_subscribe_data *data = callback_data->data;
+    /* Read out the information from the payload. */
+    task_id task_id;
+    int state;
+    db_client_id local_scheduler_id;
+    task_spec *spec;
+    parse_task_table_subscribe_callback(payload->str, payload->len, &task_id,
+                                        &state, &local_scheduler_id, &spec);
+    task *task = alloc_task(spec, state, local_scheduler_id);
+    free(spec);
+    /* Call the subscribe callback if there is one. */
+    if (data->subscribe_callback != NULL) {
+      data->subscribe_callback(task, data->subscribe_context);
+    }
+    free_task(task);
+  } else if (strcmp(message_type->str, "subscribe") == 0 ||
+             strcmp(message_type->str, "psubscribe") == 0) {
+    /* If this condition is true, we got the initial message that acknowledged
+     * the subscription. */
+    if (callback_data->done_callback != NULL) {
       task_table_done_callback done_callback = callback_data->done_callback;
       done_callback(callback_data->id, callback_data->user_context);
     }
     /* Note that we do not destroy the callback data yet because the
      * subscription callback needs this data. */
     event_loop_remove_timer(db->loop, callback_data->timer_id);
-    return;
+  } else {
+    LOG_FATAL(
+        "Unexpected reply type from task table subscribe. Message type is %s.",
+        message_type->str);
   }
-  /* Otherwise, parse the task and call the callback. */
-  task_table_subscribe_data *data = callback_data->data;
-
-  task *task = malloc(payload->len);
-  memcpy(task, payload->str, payload->len);
-  if (data->subscribe_callback) {
-    data->subscribe_callback(task, data->subscribe_context);
-  }
-  free_task(task);
 }
 
 void redis_task_table_subscribe(table_callback_data *callback_data) {
   db_handle *db = callback_data->db_handle;
   task_table_subscribe_data *data = callback_data->data;
-  int status = REDIS_OK;
-  if (IS_NIL_ID(data->node)) {
+  /* TASK_CHANNEL_PREFIX is defined in ray_redis_module.c and must be kept in
+   * sync with that file. */
+  char *TASK_CHANNEL_PREFIX = "TT:";
+  int status;
+  if (IS_NIL_ID(data->local_scheduler_id)) {
     /* TODO(swang): Implement the state_filter by translating the bitmask into
      * a Redis key-matching pattern. */
     status =
         redisAsyncCommand(db->sub_context, redis_task_table_subscribe_callback,
                           (void *) callback_data->timer_id,
-                          "PSUBSCRIBE task:*:%d", data->state_filter);
+                          "PSUBSCRIBE %s*:%2d", TASK_CHANNEL_PREFIX,
+                          data->state_filter);
   } else {
-    node_id node = data->node;
+    db_client_id local_scheduler_id = data->local_scheduler_id;
     status = redisAsyncCommand(
         db->sub_context, redis_task_table_subscribe_callback,
-        (void *) callback_data->timer_id, "SUBSCRIBE task:%b:%d",
-        (char *) node.id, sizeof(node.id), data->state_filter);
+        (void *) callback_data->timer_id, "SUBSCRIBE %s%b:%2d",
+        TASK_CHANNEL_PREFIX, (char *) local_scheduler_id.id,
+        sizeof(local_scheduler_id.id), data->state_filter);
   }
   if ((status == REDIS_ERR) || db->sub_context->err) {
-    LOG_REDIS_DEBUG(db->sub_context, "error in task_table_register_callback");
+    LOG_REDIS_DEBUG(db->sub_context, "error in redis_task_table_subscribe");
   }
 }
 

@@ -675,7 +675,7 @@ int TaskTableWrite(RedisModuleCtx *ctx,
 
   RedisModule_FreeString(ctx, publish_message);
   RedisModule_FreeString(ctx, publish_topic);
-  RedisModule_ReplyWithSimpleString(ctx, "ok");
+  RedisModule_ReplyWithSimpleString(ctx, "OK");
 
   return REDISMODULE_OK;
 }
@@ -686,7 +686,7 @@ int TaskTableWrite(RedisModuleCtx *ctx,
  *
  * This is called from a client with the command:
  *
- *     RAY.task_table_add <task ID> <state> <node ID> <task spec>
+ *     RAY.TASK_TABLE_ADD <task ID> <state> <local scheduler ID> <task spec>
  *
  * @param task_id A string that is the ID of the task.
  * @param state A string that is the current scheduling state (a
@@ -694,7 +694,8 @@ int TaskTableWrite(RedisModuleCtx *ctx,
  *        nonnegative integer less than 100, so that it has width at most 2. If
  *        less than 2, the value will be left-padded with spaces to a width of
  *        2.
- * @param node_id A string that is the ID of the associated node, if any.
+ * @param local_scheduler_id A string that is the ray client ID of the
+ *        associated local scheduler, if any.
  * @param task_spec A string that is the specification of the task, which can
  *        be cast to a `task_spec`.
  * @return OK if the operation was successful.
@@ -715,7 +716,7 @@ int TaskTableAddTask_RedisCommand(RedisModuleCtx *ctx,
  *
  * This is called from a client with the command:
  *
- *     RAY.task_table_update_task <task ID> <state> <node ID>
+ *     RAY.TASK_TABLE_UPDATE <task ID> <state> <local scheduler ID>
  *
  * @param task_id A string that is the ID of the task.
  * @param state A string that is the current scheduling state (a
@@ -723,7 +724,8 @@ int TaskTableAddTask_RedisCommand(RedisModuleCtx *ctx,
  *        nonnegative integer less than 100, so that it has width at most 2. If
  *        less than 2, the value will be left-padded with spaces to a width of
  *        2.
- * @param node_id A string that is the ID of the associated node, if any.
+ * @param ray_client_id A string that is the ray client ID of the associated
+ *        local scheduler, if any.
  * @return OK if the operation was successful.
  */
 int TaskTableUpdate_RedisCommand(RedisModuleCtx *ctx,
@@ -741,7 +743,7 @@ int TaskTableUpdate_RedisCommand(RedisModuleCtx *ctx,
  *
  * This is called from a client with the command:
  *
- *     RAY.task_table_get <task ID>
+ *     RAY.TASK_TABLE_GET <task ID>
  *
  * @param task_id A string of the task ID to look up.
  * @return An array of strings representing the task fields in the following
