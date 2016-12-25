@@ -4,6 +4,9 @@
 #include "task.h"
 #include "event_loop.h"
 
+/* The duration between local scheduler heartbeats. */
+#define LOCAL_SCHEDULER_HEARTBEAT_TIMEOUT_MILLISECONDS 1000
+
 /**
  * Establish a connection to a new client.
  *

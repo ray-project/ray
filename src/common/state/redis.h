@@ -218,6 +218,24 @@ void redis_task_table_subscribe(table_callback_data *callback_data);
  */
 void redis_db_client_table_subscribe(table_callback_data *callback_data);
 
+/**
+ * Subscribe to updates from the local scheduler table.
+ *
+ * @param callback_data Data structure containing redis connection and timeout
+ *        information.
+ * @return Void.
+ */
+void redis_local_scheduler_table_subscribe(table_callback_data *callback_data);
+
+/**
+ * Publish an update to the local scheduler table.
+ *
+ * @param callback_data Data structure containing redis connection and timeout
+ *        information.
+ * @return Void.
+ */
+void redis_local_scheduler_table_send_info(table_callback_data *callback_data);
+
 void redis_object_info_subscribe(table_callback_data *callback_data);
 
 #endif /* REDIS_H */
