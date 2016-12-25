@@ -45,6 +45,7 @@ class TestGlobalStateStore(unittest.TestCase):
     redis_port = random.randint(2000, 50000)
     self.redis_process = subprocess.Popen([redis_path,
                                            "--port", str(redis_port),
+                                           "--loglevel", "warning",
                                            "--loadmodule", module_path])
     time.sleep(1.5)
     self.redis = redis.StrictRedis(host="localhost", port=redis_port, db=0)

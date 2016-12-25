@@ -98,7 +98,7 @@ typedef void (*task_table_subscribe_callback)(task *task, void *user_context);
  * Register a callback for a task event. An event is any update of a task in
  * the task table, produced by task_table_add_task or task_table_add_task.
  * Events include changes to the task's scheduling state or changes to the
- * task's node location.
+ * task's local scheduler ID.
  *
  * @param db_handle Database handle.
  * @param subscribe_callback Callback that will be called when the task table is
@@ -107,7 +107,7 @@ typedef void (*task_table_subscribe_callback)(task *task, void *user_context);
  *        subscribe_callback.
  * @param local_scheduler_id The db_client_id of the local scheduler whose
  *        events we want to listen to. If you want to subscribe to updates from
- *        all nodes, pass in NIL_ID.
+ *        all local schedulers, pass in NIL_ID.
  * @param state_filter Flags for events we want to listen to. If you want
  *        to listen to all events, use state_filter = TASK_WAITING |
  *        TASK_SCHEDULED | TASK_RUNNING | TASK_DONE.

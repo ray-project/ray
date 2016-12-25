@@ -54,6 +54,6 @@ typedef struct {
 
 void assign_task_to_local_scheduler(global_scheduler_state *state,
                                     task *task,
-                                    node_id node_id);
+                                    db_client_id local_scheduler_id);
 
 #endif /* GLOBAL_SCHEDULER_H */

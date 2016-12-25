@@ -148,16 +148,17 @@ TEST task_table_test(void) {
   db_handle *db =
       db_connect("127.0.0.1", 6379, "local_scheduler", "127.0.0.1", 0, NULL);
   db_attach(db, loop, false);
-  node_id node = globally_unique_id();
+  db_client_id local_scheduler_id = globally_unique_id();
   task_spec *spec = example_task_spec(1, 1);
-  task_table_test_task = alloc_task(spec, TASK_STATUS_SCHEDULED, node);
+  task_table_test_task = alloc_task(spec, TASK_STATUS_SCHEDULED,
+                                    local_scheduler_id);
   free_task_spec(spec);
   retry_info retry = {
       .num_retries = NUM_RETRIES,
       .timeout = TIMEOUT,
       .fail_callback = task_table_test_fail_callback,
   };
-  task_table_subscribe(db, node, TASK_STATUS_SCHEDULED,
+  task_table_subscribe(db, local_scheduler_id, TASK_STATUS_SCHEDULED,
                        task_table_test_callback, (void *) loop, &retry, NULL,
                        (void *) loop);
   event_loop_add_timer(
@@ -183,7 +184,7 @@ TEST task_table_all_test(void) {
       db_connect("127.0.0.1", 6379, "local_scheduler", "127.0.0.1", 0, NULL);
   db_attach(db, loop, false);
   task_spec *spec = example_task_spec(1, 1);
-  /* Schedule two tasks on different nodes. */
+  /* Schedule two tasks on different local local schedulers. */
   task *task1 = alloc_task(spec, TASK_STATUS_SCHEDULED, globally_unique_id());
   task *task2 = alloc_task(spec, TASK_STATUS_SCHEDULED, globally_unique_id());
   retry_info retry = {

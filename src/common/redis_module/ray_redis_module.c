@@ -201,8 +201,7 @@ int ObjectTableLookup_RedisCommand(RedisModuleCtx *ctx,
   RedisModuleKey *key =
       OpenPrefixedKey(ctx, OBJECT_LOCATION_PREFIX, argv[1], REDISMODULE_READ);
 
-  int keytype = RedisModule_KeyType(key);
-  if (keytype == REDISMODULE_KEYTYPE_EMPTY ||
+  if (RedisModule_KeyType(key) == REDISMODULE_KEYTYPE_EMPTY ||
       RedisModule_ValueLength(key) == 0) {
     return RedisModule_ReplyWithArray(ctx, 0);
   }
@@ -330,14 +329,13 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
   key = OpenPrefixedKey(ctx, OBJECT_INFO_PREFIX, object_id,
                         REDISMODULE_READ | REDISMODULE_WRITE);
 
-  int keytype = RedisModule_KeyType(key);
   /* Check if this object was already registered and if the hashes agree. */
-  if (keytype != REDISMODULE_KEYTYPE_EMPTY) {
+  if (RedisModule_KeyType(key) != REDISMODULE_KEYTYPE_EMPTY) {
     RedisModuleString *existing_hash;
     RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "hash", &existing_hash,
                         NULL);
     /* The existing hash may be NULL even if the key is present because a call
-     * to RAY.RESULT_TABLE_ADD may create the key. */
+     * to RAY.RESULT_TABLE_ADD may have already created the key. */
     if (existing_hash != NULL) {
       if (RedisModule_StringCompare(existing_hash, new_hash) != 0) {
         RedisModule_CloseKey(key);
@@ -375,9 +373,8 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
       OpenPrefixedKey(ctx, OBJECT_NOTIFICATION_PREFIX, object_id,
                       REDISMODULE_READ | REDISMODULE_WRITE);
   /* If the zset exists, initialize the key to iterate over the zset. */
-  int object_notification_keytype =
-      RedisModule_KeyType(object_notification_key);
-  if (object_notification_keytype != REDISMODULE_KEYTYPE_EMPTY) {
+  if (RedisModule_KeyType(object_notification_key) !=
+      REDISMODULE_KEYTYPE_EMPTY) {
     CHECK_ERROR(RedisModule_ZsetFirstInScoreRange(
                     object_notification_key, REDISMODULE_NEGATIVE_INFINITE,
                     REDISMODULE_POSITIVE_INFINITE, 1, 1),
@@ -441,8 +438,7 @@ int ObjectTableRemove_RedisCommand(RedisModuleCtx *ctx,
   RedisModuleKey *table_key;
   table_key = OpenPrefixedKey(ctx, OBJECT_LOCATION_PREFIX, object_id,
                               REDISMODULE_READ | REDISMODULE_WRITE);
-  int keytype = RedisModule_KeyType(table_key);
-  if (keytype == REDISMODULE_KEYTYPE_EMPTY) {
+  if (RedisModule_KeyType(table_key) == REDISMODULE_KEYTYPE_EMPTY) {
     RedisModule_CloseKey(table_key);
     return RedisModule_ReplyWithError(ctx, "object not found");
   }
@@ -489,8 +485,7 @@ int ObjectTableRequestNotifications_RedisCommand(RedisModuleCtx *ctx,
     RedisModuleString *object_id = argv[i];
     RedisModuleKey *key = OpenPrefixedKey(ctx, OBJECT_LOCATION_PREFIX,
                                           object_id, REDISMODULE_READ);
-    int keytype = RedisModule_KeyType(key);
-    if (keytype == REDISMODULE_KEYTYPE_EMPTY ||
+    if (RedisModule_KeyType(key) == REDISMODULE_KEYTYPE_EMPTY ||
         RedisModule_ValueLength(key) == 0) {
       /* This object ID is currently not present, so make a note that this
        * client should be notified when this object ID becomes available. */
@@ -509,8 +504,7 @@ int ObjectTableRequestNotifications_RedisCommand(RedisModuleCtx *ctx,
       RedisModuleKey *object_info_key;
       object_info_key =
           OpenPrefixedKey(ctx, OBJECT_INFO_PREFIX, object_id, REDISMODULE_READ);
-      int keytype = RedisModule_KeyType(key);
-      if (keytype == REDISMODULE_KEYTYPE_EMPTY) {
+      if (RedisModule_KeyType(key) == REDISMODULE_KEYTYPE_EMPTY) {
         RedisModule_CloseKey(object_info_key);
         RedisModule_CloseKey(key);
         return RedisModule_ReplyWithError(ctx, "requested object not found");
@@ -587,8 +581,10 @@ int ResultTableAdd_RedisCommand(RedisModuleCtx *ctx,
  *     RAY.RESULT_TABLE_LOOKUP <object id>
  *
  * @param object_id A string representing the object ID.
- * @return An empty string if the object ID is not in the result table and the
- *         task ID of the task that created the object ID otherwise.
+ * @return NIL if the object ID is not in the result table or if the
+ *         corresponding task ID is not in the task table. Otherwise, this
+ *         returns an array of the scheduling state, the local scheduler ID, and
+ *         the task spec for the task corresponding to this object ID.
  */
 int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
                                    RedisModuleString **argv,
@@ -603,8 +599,7 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
   RedisModuleKey *key;
   key = OpenPrefixedKey(ctx, OBJECT_INFO_PREFIX, object_id, REDISMODULE_READ);
 
-  int keytype = RedisModule_KeyType(key);
-  if (keytype == REDISMODULE_KEYTYPE_EMPTY) {
+  if (RedisModule_KeyType(key) == REDISMODULE_KEYTYPE_EMPTY) {
     return RedisModule_ReplyWithNull(ctx);
   }
 
@@ -618,20 +613,20 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
 
   RedisModuleKey *task_key =
       OpenPrefixedKey(ctx, TASK_PREFIX, task_id, REDISMODULE_READ);
-  int task_keytype = RedisModule_KeyType(task_key);
-  if (task_keytype == REDISMODULE_KEYTYPE_EMPTY) {
+  if (RedisModule_KeyType(task_key) == REDISMODULE_KEYTYPE_EMPTY) {
     return RedisModule_ReplyWithNull(ctx);
   }
 
   RedisModuleString *state = NULL;
   RedisModuleString *local_scheduler_id = NULL;
   RedisModuleString *task_spec = NULL;
-  RedisModule_HashGet(task_key, REDISMODULE_HASH_CFIELDS, "state", &state, "node",
-                      &local_scheduler_id, "task_spec", &task_spec, NULL);
+  RedisModule_HashGet(task_key, REDISMODULE_HASH_CFIELDS, "state", &state,
+                      "node", &local_scheduler_id, "task_spec", &task_spec,
+                      NULL);
   if (state == NULL || local_scheduler_id == NULL || task_spec == NULL) {
     /* We must have either all fields or no fields. */
-    return RedisModule_ReplyWithError(
-        ctx, "Missing fields in the task table entry");
+    return RedisModule_ReplyWithError(ctx,
+                                      "Missing fields in the task table entry");
   }
 
   /* Get the scheduling state as an integer from the string. */
@@ -805,8 +800,7 @@ int TaskTableGetTask_RedisCommand(RedisModuleCtx *ctx,
   RedisModuleKey *key =
       OpenPrefixedKey(ctx, TASK_PREFIX, argv[1], REDISMODULE_READ);
 
-  int keytype = RedisModule_KeyType(key);
-  if (keytype != REDISMODULE_KEYTYPE_EMPTY) {
+  if (RedisModule_KeyType(key) != REDISMODULE_KEYTYPE_EMPTY) {
     /* If the key exists, look up the fields and return them in an array. */
     RedisModuleString *state = NULL, *node = NULL, *task_spec = NULL;
     RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "state", &state, "node",
