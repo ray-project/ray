@@ -291,6 +291,18 @@ void handle_task_scheduled_callback(task *original_task, void *user_context) {
                         task_task_spec(original_task));
 }
 
+int heartbeat_handler(event_loop *loop, timer_id id, void *context) {
+  local_scheduler_state *state = context;
+  scheduling_algorithm_state *algorithm_state = state->algorithm_state;
+  local_scheduler_info info;
+  /* Ask the scheduling algorithm to fill out the scheduler info struct. */
+  provide_scheduler_info(state, algorithm_state, &info);
+  /* Publish the heartbeat to all subscribers of the local scheduler table. */
+  local_scheduler_table_send_info(state->db, &info, NULL);
+  /* Reset the timer. */
+  return LOCAL_SCHEDULER_HEARTBEAT_TIMEOUT_MILLISECONDS;
+}
+
 void start_server(const char *node_ip_address,
                   const char *socket_name,
                   const char *redis_addr,
@@ -322,6 +334,13 @@ void start_server(const char *node_ip_address,
     task_table_subscribe(g_state->db, get_db_client_id(g_state->db),
                          TASK_STATUS_SCHEDULED, handle_task_scheduled_callback,
                          NULL, &retry, NULL, NULL);
+  }
+  /* Create a timer for publishing information about the load on the local
+   * scheduler to the local scheduler table. This message also serves as a
+   * heartbeat. */
+  if (g_state->db != NULL) {
+    event_loop_add_timer(loop, LOCAL_SCHEDULER_HEARTBEAT_TIMEOUT_MILLISECONDS,
+                         heartbeat_handler, g_state);
   }
   /* Run event loop. */
   event_loop_run(loop);

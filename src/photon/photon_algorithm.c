@@ -5,6 +5,7 @@
 #include "utlist.h"
 
 #include "state/task_table.h"
+#include "state/local_scheduler_table.h"
 #include "state/object_table.h"
 #include "photon.h"
 #include "photon_scheduler.h"
@@ -88,6 +89,14 @@ void free_scheduling_algorithm_state(
     free(fetch_elt);
   }
   free(algorithm_state);
+}
+
+void provide_scheduler_info(local_scheduler_state *state,
+                            scheduling_algorithm_state *algorithm_state,
+                            local_scheduler_info *info) {
+  task_queue_entry *elt;
+  DL_COUNT(algorithm_state->task_queue, elt, info->task_queue_length);
+  info->available_workers = utarray_len(algorithm_state->available_workers);
 }
 
 /**
