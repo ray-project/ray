@@ -116,9 +116,11 @@ int Connect_RedisCommand(RedisModuleCtx *ctx,
       RedisModule_CreateString(ctx, "db_clients", strlen("db_clients"));
   RedisModuleString *client_info;
   if (aux_address) {
-    client_info = RedisString_Format(ctx, "%S:%S %S", ray_client_id, client_type, aux_address);
+    client_info = RedisString_Format(ctx, "%S:%S %S", ray_client_id,
+                                     client_type, aux_address);
   } else {
-    client_info = RedisString_Format(ctx, "%S:%S :", ray_client_id, client_type);
+    client_info =
+        RedisString_Format(ctx, "%S:%S :", ray_client_id, client_type);
   }
 
   /* Publish the client info on the db client channel. */
@@ -243,16 +245,14 @@ bool PublishObjectNotification(RedisModuleCtx *ctx,
                                RedisModuleKey *key) {
   /* Create a string formatted as "<object id> MANAGERS <size> <manager id1>
    * <manager id2> ..." */
-  RedisModuleString *manager_list =
-      RedisModule_CreateStringFromString(ctx, object_id);
   long long data_size_value;
   if (RedisModule_StringToLongLong(data_size, &data_size_value) !=
       REDISMODULE_OK) {
     return RedisModule_ReplyWithError(ctx, "data_size must be integer");
   }
 
-  /* Add a space to the payload for human readability. */
-  RedisModule_StringAppendBuffer(ctx, manager_list, " ", strlen(" "));
+  RedisModuleString *manager_list =
+      RedisString_Format(ctx, "%S ", object_id);
 
   /* Append binary data size for this object. */
   /* TODO(pcm): Replace by a formatted fix length version of the size. */
@@ -319,10 +319,6 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
   RedisModuleString *data_size = argv[2];
   RedisModuleString *new_hash = argv[3];
   RedisModuleString *manager = argv[4];
-  
-  RedisModuleString *res = RedisString_Format(ctx, "%s:%S", "prefix", argv[1]);
-  const char *s = RedisModule_StringPtrLen(res, NULL);
-  printf("string is <%s>\n", s);
 
   long long data_size_value;
   if (RedisModule_StringToLongLong(data_size, &data_size_value) !=
@@ -669,8 +665,8 @@ int TaskTableWrite(RedisModuleCtx *ctx,
    * specification>". */
   RedisModuleString *publish_topic =
       RedisString_Format(ctx, "%s%S:%S", TASK_PREFIX, node_id, state);
-  RedisModuleString *publish_message =
-      RedisString_Format(ctx, "%S %S %S %S", task_id, state, node_id, task_spec);
+  RedisModuleString *publish_message = RedisString_Format(
+      ctx, "%S %S %S %S", task_id, state, node_id, task_spec);
   
   RedisModuleCallReply *reply =
       RedisModule_Call(ctx, "PUBLISH", "ss", publish_topic, publish_message);
