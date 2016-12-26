@@ -735,12 +735,13 @@ int TaskTableWrite(RedisModuleCtx *ctx,
    * specification>". */
   RedisModuleString *publish_topic =
       RedisString_Format(ctx, "%s%S:%S", TASK_PREFIX, node_id, state);
+  RedisModuleString *publish_message;
   if (task_spec != NULL) {
-    RedisModuleString *publish_message = RedisString_Format(
-        ctx, "%S %S %S %S", task_id, state, node_id, task_spec);
+    publish_message = RedisString_Format(ctx, "%S %S %S %S", task_id, state,
+                                         node_id, task_spec);
   } else {
-    RedisModuleString *publish_message = RedisString_Format(
-        ctx, "%S %S %S %S", task_id, state, node_id, existing_task_spec);
+    publish_message = RedisString_Format(ctx, "%S %S %S %S", task_id, state,
+                                         node_id, existing_task_spec);
   }
 
   RedisModuleCallReply *reply =
@@ -843,16 +844,6 @@ int TaskTableGet_RedisCommand(RedisModuleCtx *ctx,
   return ReplyWithTask(ctx, argv[1]);
 }
 
-int TaskTableSubscribe_RedisCommand(RedisModuleCtx *ctx,
-                                    RedisModuleString **argv,
-                                    int argc) {
-  /* TODO(swang): Implement this. */
-  REDISMODULE_NOT_USED(ctx);
-  REDISMODULE_NOT_USED(argv);
-  REDISMODULE_NOT_USED(argc);
-  return REDISMODULE_OK;
-}
-
 /* This function must be present on each Redis module. It is used in order to
  * register the commands into the Redis server. */
 int RedisModule_OnLoad(RedisModuleCtx *ctx,
@@ -933,12 +924,6 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx,
 
   if (RedisModule_CreateCommand(ctx, "ray.task_table_get",
                                 TaskTableGet_RedisCommand, "readonly", 0, 0,
-                                0) == REDISMODULE_ERR) {
-    return REDISMODULE_ERR;
-  }
-
-  if (RedisModule_CreateCommand(ctx, "ray.task_table_subscribe",
-                                TaskTableSubscribe_RedisCommand, "pubsub", 0, 0,
                                 0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }

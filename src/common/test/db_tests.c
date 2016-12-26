@@ -150,8 +150,8 @@ TEST task_table_test(void) {
   db_attach(db, loop, false);
   db_client_id local_scheduler_id = globally_unique_id();
   task_spec *spec = example_task_spec(1, 1);
-  task_table_test_task = alloc_task(spec, TASK_STATUS_SCHEDULED,
-                                    local_scheduler_id);
+  task_table_test_task =
+      alloc_task(spec, TASK_STATUS_SCHEDULED, local_scheduler_id);
   free_task_spec(spec);
   retry_info retry = {
       .num_retries = NUM_RETRIES,
