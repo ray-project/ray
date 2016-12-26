@@ -108,6 +108,10 @@ struct plasma_connection {
    *  unneccessarily invalidate cpu caches. TODO(pcm): replace this with a
    *  proper lru cache of size sizeof(L3 cache). */
   UT_ringbuffer *release_history;
+  /** The number of bytes in the combined objects that are held in the release
+   *  history ring buffer. If this is too large then the client starts releasing
+   *  objects. */
+  int64_t cached_object_bytes;
   /** Configuration options for the plasma client. */
   plasma_client_config config;
   /** The amount of memory available to the Plasma store. The client needs this
@@ -324,21 +328,48 @@ void plasma_perform_release(plasma_connection *conn, object_id object_id) {
   }
 }
 
+/**
+ * Return the size in bytes (data plus meteadata) of an object that is currently
+ * in use by this client.
+ *
+ * @param conn The plasma connection.
+ * @param obj_id The object ID in question.
+ * @return The total size in bytes of the object.
+ */
+int64_t object_size(plasma_connection *conn, object_id obj_id) {
+  object_in_use_entry *object_entry;
+  HASH_FIND(hh, conn->objects_in_use, &obj_id, sizeof(obj_id), object_entry);
+  CHECK(object_entry != NULL);
+  return object_entry->object.data_size + object_entry->object.metadata_size;
+}
+
 void plasma_release(plasma_connection *conn, object_id obj_id) {
   /* If no ringbuffer is used, don't delay the release. */
   if (conn->config.release_delay == 0) {
     plasma_perform_release(conn, obj_id);
-  } else if (!utringbuffer_full(conn->release_history)) {
-    /* Delay the release by storing new releases into a ringbuffer and only
-     * popping them off and actually releasing if the buffer is full. This is
-     * so consecutive tasks don't release and map again objects and invalidate
-     * the cpu cache this way. */
-    utringbuffer_push_back(conn->release_history, &obj_id);
   } else {
-    object_id object_id_to_release =
-        *(object_id *) utringbuffer_front(conn->release_history);
+    /* The ring buffer is full, so release an object and update the cached
+     * object bytes. */
+    if (utringbuffer_full(conn->release_history)) {
+      object_id object_id_to_release =
+          *(object_id *) utringbuffer_front(conn->release_history);
+      conn->cached_object_bytes -= object_size(conn, object_id_to_release);
+      plasma_perform_release(conn, object_id_to_release);
+    }
+    /* Add the new object to the ring buffer and update the cached object bytes.
+     */
     utringbuffer_push_back(conn->release_history, &obj_id);
-    plasma_perform_release(conn, object_id_to_release);
+    conn->cached_object_bytes += object_size(conn, obj_id);
+    /* If there are too many bytes held in the objects in the ring buffer,
+     * release objects until that is no longer the case. */
+    while (conn->cached_object_bytes > MIN(L3_CACHE_SIZE_BYTES,
+                                           conn->store_capacity)) {
+      DCHECK(!utringbuffer_empty(conn->release_history));
+      object_id object_id_to_release =
+          *(object_id *) utringbuffer_front(conn->release_history);
+      conn->cached_object_bytes -= object_size(conn, object_id_to_release);
+      plasma_perform_release(conn, object_id_to_release);
+    }
   }
 }
 
@@ -488,6 +519,7 @@ plasma_connection *plasma_connect(const char *store_socket_name,
   result->objects_in_use = NULL;
   result->config.release_delay = release_delay;
   utringbuffer_new(result->release_history, release_delay, &object_id_icd);
+  result->cached_object_bytes = 0;
   /* Send a ConnectRequest to the store to get its memory capacity. */
   plasma_send_ConnectRequest(result->store_conn, result->builder);
   uint8_t *reply_data =
