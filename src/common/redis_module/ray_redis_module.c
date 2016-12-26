@@ -251,8 +251,7 @@ bool PublishObjectNotification(RedisModuleCtx *ctx,
     return RedisModule_ReplyWithError(ctx, "data_size must be integer");
   }
 
-  RedisModuleString *manager_list =
-      RedisString_Format(ctx, "%S ", object_id);
+  RedisModuleString *manager_list = RedisString_Format(ctx, "%S ", object_id);
 
   /* Append binary data size for this object. */
   /* TODO(pcm): Replace by a formatted fix length version of the size. */
@@ -667,7 +666,7 @@ int TaskTableWrite(RedisModuleCtx *ctx,
       RedisString_Format(ctx, "%s%S:%S", TASK_PREFIX, node_id, state);
   RedisModuleString *publish_message = RedisString_Format(
       ctx, "%S %S %S %S", task_id, state, node_id, task_spec);
-  
+
   RedisModuleCallReply *reply =
       RedisModule_Call(ctx, "PUBLISH", "ss", publish_topic, publish_message);
   if (reply == NULL) {

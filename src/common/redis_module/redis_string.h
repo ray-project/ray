@@ -56,5 +56,6 @@ RedisModuleString *RedisString_Format(RedisModuleCtx *ctx,
     }
     f += 1;
   }
+  va_end(ap);
   return result;
 }
