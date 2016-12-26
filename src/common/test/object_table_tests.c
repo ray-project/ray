@@ -101,7 +101,7 @@ void new_object_no_task_lookup_callback(object_id object_id,
 }
 
 void new_object_no_task_callback(object_id object_id, void *user_context) {
-  CHECK(node_ids_equal(object_id, new_object_id));
+  CHECK(object_ids_equal(object_id, new_object_id));
   retry_info retry = {
       .num_retries = 5,
       .timeout = 100,

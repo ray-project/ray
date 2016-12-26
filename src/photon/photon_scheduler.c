@@ -109,8 +109,13 @@ void assign_task_to_worker(local_scheduler_state *state,
   if (state->db != NULL) {
     task *task =
         alloc_task(spec, TASK_STATUS_RUNNING, get_db_client_id(state->db));
-    task_table_update(state->db, task, (retry_info *) &photon_retry, NULL,
-                      NULL);
+    if (from_global_scheduler) {
+      task_table_update(state->db, task, (retry_info *) &photon_retry, NULL,
+                        NULL);
+    } else {
+      task_table_add_task(state->db, task, (retry_info *) &photon_retry, NULL,
+                          NULL);
+    }
     /* Record which task this worker is executing. This will be freed in
      * process_message when the worker sends a GET_TASK message to the local
      * scheduler. */

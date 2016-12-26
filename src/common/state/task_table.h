@@ -6,21 +6,26 @@
 #include "task.h"
 
 /**
- * The task table is a message bus that is used for all communication between
- * local and global schedulers (and also persisted to the state database).
- * Here are examples of events that are recorded by the task table:
+ * The task table is a message bus that is used for communication between local
+ * and global schedulers (and also persisted to the state database). Here are
+ * examples of events that are recorded by the task table:
  *
- * 1) local scheduler writes when it submits a task to the global scheduler;
- * 2) global scheduler reads it to get the task submitted by local schedulers;
- * 3) global scheduler writes it when assigning the task to a local scheduler;
- * 4) local scheduler reads it to get its tasks assigned by global scheduler;
- * 5) local scheduler writes it when a task finishes execution;
- * 6) global scheduler reads it to get the tasks that have finished; */
+ * 1) Local schedulers write to it when submitting a task to the global
+ *    scheduler.
+ * 2) The global scheduler subscribes to updates to the task table to get tasks
+ *    submitted by local schedulers.
+ * 3) The global scheduler writes to it when assigning a task to a local
+ *    scheduler.
+ * 4) Local schedulers subscribe to updates to the task table to get tasks
+ *    assigned to them by the global scheduler.
+ * 5) Local schedulers write to it when a task finishes execution.
+ */
 
 /* Callback called when a task table write operation completes. */
 typedef void (*task_table_done_callback)(task_id task_id, void *user_context);
 
-/* Callback called when a task table read operation completes. */
+/* Callback called when a task table read operation completes. If the task ID
+ * was not in the task table, then the task pointer will be NULL. */
 typedef void (*task_table_get_callback)(task *task, void *user_context);
 
 /**
@@ -41,9 +46,9 @@ void task_table_get_task(db_handle *db,
                          void *user_context);
 
 /**
- * Add a task entry, including task spec and scheduling information, to the
- * task table. This will overwrite any task already in the task table with the
- * same task ID.
+ * Add a task entry, including task spec and scheduling information, to the task
+ * table. This will overwrite any task already in the task table with the same
+ * task ID.
  *
  * @param db_handle Database handle.
  * @param task The task entry to add to the table.
@@ -93,15 +98,16 @@ typedef void (*task_table_subscribe_callback)(task *task, void *user_context);
  * Register a callback for a task event. An event is any update of a task in
  * the task table, produced by task_table_add_task or task_table_add_task.
  * Events include changes to the task's scheduling state or changes to the
- * task's node location.
+ * task's local scheduler ID.
  *
  * @param db_handle Database handle.
  * @param subscribe_callback Callback that will be called when the task table is
  *        updated.
  * @param subscribe_context Context that will be passed into the
  *        subscribe_callback.
- * @param node Node whose events we want to listen to. If you want to register
- *        to updates from all nodes, set node = NIL_ID.
+ * @param local_scheduler_id The db_client_id of the local scheduler whose
+ *        events we want to listen to. If you want to subscribe to updates from
+ *        all local schedulers, pass in NIL_ID.
  * @param state_filter Flags for events we want to listen to. If you want
  *        to listen to all events, use state_filter = TASK_WAITING |
  *        TASK_SCHEDULED | TASK_RUNNING | TASK_DONE.
@@ -112,7 +118,7 @@ typedef void (*task_table_subscribe_callback)(task *task, void *user_context);
  * @return Void.
  */
 void task_table_subscribe(db_handle *db_handle,
-                          node_id node,
+                          db_client_id local_scheduler_id,
                           scheduling_state state_filter,
                           task_table_subscribe_callback subscribe_callback,
                           void *subscribe_context,
@@ -123,7 +129,7 @@ void task_table_subscribe(db_handle *db_handle,
 /* Data that is needed to register task table subscribe callbacks with the state
  * database. */
 typedef struct {
-  node_id node;
+  db_client_id local_scheduler_id;
   scheduling_state state_filter;
   task_table_subscribe_callback subscribe_callback;
   void *subscribe_context;

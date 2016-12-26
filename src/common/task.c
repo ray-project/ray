@@ -298,24 +298,18 @@ void print_task(task_spec *spec, UT_string *output) {
 
 struct task_impl {
   scheduling_state state;
-  node_id node;
+  db_client_id local_scheduler_id;
   task_spec spec;
 };
 
-bool node_ids_equal(node_id first_id, node_id second_id) {
-  return UNIQUE_ID_EQ(first_id, second_id);
-}
-
-bool node_id_is_nil(node_id id) {
-  return node_ids_equal(id, NIL_NODE_ID);
-}
-
-task *alloc_task(task_spec *spec, scheduling_state state, node_id node) {
+task *alloc_task(task_spec *spec,
+                 scheduling_state state,
+                 db_client_id local_scheduler_id) {
   int64_t size = sizeof(task) - sizeof(task_spec) + task_spec_size(spec);
   task *result = malloc(size);
   memset(result, 0, size);
   result->state = state;
-  result->node = node;
+  result->local_scheduler_id = local_scheduler_id;
   memcpy(&result->spec, spec, task_spec_size(spec));
   return result;
 }
@@ -347,12 +341,12 @@ void task_set_state(task *task, scheduling_state state) {
   task->state = state;
 }
 
-node_id task_node(task *task) {
-  return task->node;
+db_client_id task_local_scheduler(task *task) {
+  return task->local_scheduler_id;
 }
 
-void task_set_node(task *task, node_id node) {
-  task->node = node;
+void task_set_local_scheduler(task *task, db_client_id local_scheduler_id) {
+  task->local_scheduler_id = local_scheduler_id;
 }
 
 task_spec *task_task_spec(task *task) {

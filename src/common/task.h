@@ -16,7 +16,6 @@
 
 #define NIL_TASK_ID NIL_ID
 #define NIL_FUNCTION_ID NIL_ID
-#define NIL_NODE_ID NIL_ID
 
 typedef unique_id function_id;
 
@@ -27,9 +26,6 @@ typedef unique_id task_id;
 /** The task instance ID is a globally unique ID generated which identifies this
  *  particular execution of the task. */
 typedef unique_id task_iid;
-
-/** The node id is an identifier for the node the task is scheduled on. */
-typedef unique_id node_id;
 
 /**
  * ==== Task specifications ====
@@ -248,9 +244,9 @@ void print_task(task_spec *spec, UT_string *output);
 
 /**
  * ==== Task ====
- * Contains information about a scheduled task: The task iid,
- * the task specification and the task status (WAITING, SCHEDULED,
- * RUNNING, DONE) and which node the task is scheduled on.
+ * Contains information about a scheduled task: The task specification, the task
+ * schedulign state (WAITING, SCHEDULED, RUNNING, DONE), and which local
+ * scheduler the task is scheduled on.
  */
 
 /** The scheduling_state can be used as a flag when we are listening
@@ -262,27 +258,9 @@ typedef enum {
   TASK_STATUS_DONE = 8
 } scheduling_state;
 
-/**
- * Compare two node IDs.
- *
- * @param first_id The first node ID to compare.
- * @param second_id The first node ID to compare.
- * @return True if the node IDs are the same and false
- *         otherwise.
- */
-bool node_ids_equal(node_id first_id, node_id second_id);
-
-/**
- * Compare a node ID to the nil ID.
- *
- * @param id The node ID to compare to nil.
- * @return True if the node ID is equal to nil.
- */
-bool node_id_is_nil(node_id id);
-
-/** A task is an execution of a task specification.  It has a state of
- *  execution (see scheduling_state) and a node it is scheduled on or running
- *  on. */
+/** A task is an execution of a task specification.  It has a state of execution
+ * (see scheduling_state) and the ID of the local scheduler it is scheduled on
+ * or running on. */
 typedef struct task_impl task;
 
 /**
@@ -290,9 +268,12 @@ typedef struct task_impl task;
  *
  * @param spec The task spec for the new task.
  * @param state The scheduling state for the new task.
- * @param node The ID of the node that the task is scheduled on, if any.
+ * @param local_scheduler_id The ID of the local scheduler that the task is
+ *        scheduled on, if any.
  */
-task *alloc_task(task_spec *spec, scheduling_state state, node_id node);
+task *alloc_task(task_spec *spec,
+                 scheduling_state state,
+                 db_client_id local_scheduler_id);
 
 /**
  * Create a copy of the task. Must be freed with free_task after use.
@@ -311,11 +292,11 @@ scheduling_state task_state(task *task);
 /** Update the schedule state of the task. */
 void task_set_state(task *task, scheduling_state state);
 
-/** Node this task has been assigned to or is running on. */
-node_id task_node(task *task);
+/** Local scheduler this task has been assigned to or is running on. */
+db_client_id task_local_scheduler(task *task);
 
-/** Set the node for this task. */
-void task_set_node(task *task, node_id node);
+/** Set the local scheduler ID for this task. */
+void task_set_local_scheduler(task *task, db_client_id local_scheduler_id);
 
 /** Task specification of this task. */
 task_spec *task_task_spec(task *task);
@@ -333,7 +314,7 @@ void free_task(task *task);
 
 typedef struct {
   scheduling_state state;
-  node_id node;
+  db_client_id local_scheduler_id;
 } task_update;
 
 #endif
