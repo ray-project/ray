@@ -592,8 +592,9 @@ class TestPlasmaManager(unittest.TestCase):
 
     # Make sure that wait returns when the requested number of object IDs are
     # available and does not wait for all object IDs to be available.
-    object_ids = [random_object_id() for _ in range(10)]
-    object_ids_perm = np.random.permutation(object_ids)
+    object_ids = [random_object_id() for _ in range(9)] + [20 * b'\x00']
+    object_ids_perm = object_ids[:]
+    random.shuffle(object_ids_perm)
     for i in range(10):
       if i % 2 == 0:
         create_object_with_id(self.client1, object_ids_perm[i], 2000, 2000)
