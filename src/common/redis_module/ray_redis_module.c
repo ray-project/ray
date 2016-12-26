@@ -3,6 +3,8 @@
 #include <stdbool.h>
 #include <string.h>
 
+#include "redis_string.h"
+
 /**
  * Various tables are maintained in redis:
  *
@@ -34,25 +36,12 @@
     return RedisModule_ReplyWithError(ctx, (MESSAGE)); \
   }
 
-RedisModuleString *CreatePrefixedString(RedisModuleCtx *ctx,
-                                        const char *prefix,
-                                        RedisModuleString *keyname) {
-  size_t length;
-  const char *value = RedisModule_StringPtrLen(keyname, &length);
-  RedisModuleString *prefixed_keyname =
-      RedisModule_CreateString(ctx, prefix, strlen(prefix));
-  /* Using RedisModule_CreateStringPrintf in the past did not handle NULL
-   * characters properly. */
-  RedisModule_StringAppendBuffer(ctx, prefixed_keyname, value, length);
-  return prefixed_keyname;
-}
-
 RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
                                 const char *prefix,
                                 RedisModuleString *keyname,
                                 int mode) {
   RedisModuleString *prefixed_keyname =
-      CreatePrefixedString(ctx, prefix, keyname);
+      RedisString_Format(ctx, "%s%S", prefix, keyname);
   RedisModuleKey *key = RedisModule_OpenKey(ctx, prefixed_keyname, mode);
   RedisModule_FreeString(ctx, prefixed_keyname);
   return key;
@@ -125,27 +114,15 @@ int Connect_RedisCommand(RedisModuleCtx *ctx,
   /* Construct strings to publish on the db client channel. */
   RedisModuleString *channel_name =
       RedisModule_CreateString(ctx, "db_clients", strlen("db_clients"));
-  RedisModuleString *client_info =
-      RedisModule_CreateStringFromString(ctx, ray_client_id);
-  RedisModule_StringAppendBuffer(ctx, client_info, ":", strlen(":"));
-  /* Append the client type. */
-  size_t client_type_size;
-  const char *client_type_str =
-      RedisModule_StringPtrLen(client_type, &client_type_size);
-  RedisModule_StringAppendBuffer(ctx, client_info, client_type_str,
-                                 client_type_size);
-  /* Append a space. */
-  RedisModule_StringAppendBuffer(ctx, client_info, " ", strlen(" "));
-  /* Append the aux address. */
-  if (aux_address == NULL) {
-    RedisModule_StringAppendBuffer(ctx, client_info, ":", strlen(":"));
+  RedisModuleString *client_info;
+  if (aux_address) {
+    client_info = RedisString_Format(ctx, "%S:%S %S", ray_client_id,
+                                     client_type, aux_address);
   } else {
-    size_t aux_address_size;
-    const char *aux_address_str =
-        RedisModule_StringPtrLen(aux_address, &aux_address_size);
-    RedisModule_StringAppendBuffer(ctx, client_info, aux_address_str,
-                                   aux_address_size);
+    client_info =
+        RedisString_Format(ctx, "%S:%S :", ray_client_id, client_type);
   }
+
   /* Publish the client info on the db client channel. */
   RedisModuleCallReply *reply;
   reply = RedisModule_Call(ctx, "PUBLISH", "ss", channel_name, client_info);
@@ -266,20 +243,18 @@ bool PublishObjectNotification(RedisModuleCtx *ctx,
                                RedisModuleString *object_id,
                                RedisModuleString *data_size,
                                RedisModuleKey *key) {
-  /* Create a string formatted as "<object id> MANAGERS <manager id1>
+  /* Create a string formatted as "<object id> MANAGERS <size> <manager id1>
    * <manager id2> ..." */
-  RedisModuleString *manager_list =
-      RedisModule_CreateStringFromString(ctx, object_id);
   long long data_size_value;
   if (RedisModule_StringToLongLong(data_size, &data_size_value) !=
       REDISMODULE_OK) {
     return RedisModule_ReplyWithError(ctx, "data_size must be integer");
   }
 
-  /* Add a space to the payload for human readability. */
-  RedisModule_StringAppendBuffer(ctx, manager_list, " ", strlen(" "));
+  RedisModuleString *manager_list = RedisString_Format(ctx, "%S ", object_id);
 
   /* Append binary data size for this object. */
+  /* TODO(pcm): Replace by a formatted fix length version of the size. */
   RedisModule_StringAppendBuffer(ctx, manager_list,
                                  (const char *) &data_size_value,
                                  sizeof(data_size_value));
@@ -304,7 +279,8 @@ bool PublishObjectNotification(RedisModuleCtx *ctx,
   /* Publish the notification to the clients notification channel.
    * TODO(rkn): These notifications could be batched together. */
   RedisModuleString *channel_name =
-      CreatePrefixedString(ctx, OBJECT_CHANNEL_PREFIX, client_id);
+      RedisString_Format(ctx, "%s%S", OBJECT_CHANNEL_PREFIX, client_id);
+
   RedisModuleCallReply *reply;
   reply = RedisModule_Call(ctx, "PUBLISH", "ss", channel_name, manager_list);
   RedisModule_FreeString(ctx, channel_name);
@@ -687,26 +663,9 @@ int TaskTableWrite(RedisModuleCtx *ctx,
    * message is a string in the format: "<task ID> <state> <node ID> <task
    * specification>". */
   RedisModuleString *publish_topic =
-      CreatePrefixedString(ctx, TASK_PREFIX, node_id);
-  RedisModule_StringAppendBuffer(ctx, publish_topic, ":", strlen(":"));
-  const char *state_string = RedisModule_StringPtrLen(state, &length);
-  RedisModule_StringAppendBuffer(ctx, publish_topic, state_string, length);
-  /* Append the fields to the PUBLISH message. */
-  RedisModuleString *publish_message =
-      RedisModule_CreateStringFromString(ctx, task_id);
-  const char *publish_field;
-  /* Append the scheduling state. */
-  publish_field = state_string;
-  RedisModule_StringAppendBuffer(ctx, publish_message, " ", strlen(" "));
-  RedisModule_StringAppendBuffer(ctx, publish_message, publish_field, length);
-  /* Append the node ID. */
-  publish_field = RedisModule_StringPtrLen(node_id, &length);
-  RedisModule_StringAppendBuffer(ctx, publish_message, " ", strlen(" "));
-  RedisModule_StringAppendBuffer(ctx, publish_message, publish_field, length);
-  /* Append the task specification. */
-  publish_field = RedisModule_StringPtrLen(task_spec, &length);
-  RedisModule_StringAppendBuffer(ctx, publish_message, " ", strlen(" "));
-  RedisModule_StringAppendBuffer(ctx, publish_message, publish_field, length);
+      RedisString_Format(ctx, "%s%S:%S", TASK_PREFIX, node_id, state);
+  RedisModuleString *publish_message = RedisString_Format(
+      ctx, "%S %S %S %S", task_id, state, node_id, task_spec);
 
   RedisModuleCallReply *reply =
       RedisModule_Call(ctx, "PUBLISH", "ss", publish_topic, publish_message);
