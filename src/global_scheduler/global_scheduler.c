@@ -20,12 +20,12 @@ UT_icd local_scheduler_icd = {sizeof(local_scheduler), NULL, NULL, NULL};
 
 void assign_task_to_local_scheduler(global_scheduler_state *state,
                                     task *task,
-                                    node_id node_id) {
+                                    db_client_id local_scheduler_id) {
   char id_string[ID_STRING_SIZE];
-  LOG_DEBUG("assigning task to node_id = %s",
-            object_id_to_string(node_id, id_string, ID_STRING_SIZE));
+  LOG_DEBUG("assigning task to local_scheduler_id = %s",
+            object_id_to_string(local_scheduler_id, id_string, ID_STRING_SIZE));
   task_set_state(task, TASK_STATUS_SCHEDULED);
-  task_set_node(task, node_id);
+  task_set_local_scheduler(task, local_scheduler_id);
   retry_info retry = {
       .num_retries = 0, .timeout = 100, .fail_callback = NULL,
   };

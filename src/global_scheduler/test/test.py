@@ -28,9 +28,10 @@ TASK_STATUS_SCHEDULED = 2
 TASK_STATUS_RUNNING = 4
 TASK_STATUS_DONE = 8
 
-# DB_CLIENT_PREFIX is an implementation detail of ray_redis_module.c, so this
+# These constants are an implementation detail of ray_redis_module.c, so this
 # must be kept in sync with that file.
 DB_CLIENT_PREFIX = "CL:"
+TASK_PREFIX = "TT:"
 
 def random_task_id():
   return photon.ObjectID(np.random.bytes(ID_SIZE))
@@ -155,7 +156,7 @@ class TestGlobalScheduler(unittest.TestCase):
     # local scheduler
     num_retries = 10
     while num_retries > 0:
-      task_entries = self.redis_client.keys("task*")
+      task_entries = self.redis_client.keys("{}*".format(TASK_PREFIX))
       self.assertLessEqual(len(task_entries), 1)
       if len(task_entries) == 1:
         task_contents = self.redis_client.hgetall(task_entries[0])
@@ -197,7 +198,7 @@ class TestGlobalScheduler(unittest.TestCase):
     num_retries = 10
     num_tasks_done = 0
     while num_retries > 0:
-      task_entries = self.redis_client.keys("task*")
+      task_entries = self.redis_client.keys("{}*".format(TASK_PREFIX))
       self.assertLessEqual(len(task_entries), num_tasks)
       # First, check if all tasks made it to Redis.
       if len(task_entries) == num_tasks:

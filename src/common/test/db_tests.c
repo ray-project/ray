@@ -127,7 +127,8 @@ int64_t task_table_delayed_add_task(event_loop *loop,
       .timeout = TIMEOUT,
       .fail_callback = task_table_test_fail_callback,
   };
-  task_table_add_task(db, task_table_test_task, &retry, NULL, (void *) loop);
+  task_table_add_task(db, copy_task(task_table_test_task), &retry, NULL,
+                      (void *) loop);
   return EVENT_LOOP_TIMER_DONE;
 }
 
@@ -147,21 +148,23 @@ TEST task_table_test(void) {
   db_handle *db =
       db_connect("127.0.0.1", 6379, "local_scheduler", "127.0.0.1", 0, NULL);
   db_attach(db, loop, false);
-  node_id node = globally_unique_id();
+  db_client_id local_scheduler_id = globally_unique_id();
   task_spec *spec = example_task_spec(1, 1);
-  task_table_test_task = alloc_task(spec, TASK_STATUS_SCHEDULED, node);
+  task_table_test_task =
+      alloc_task(spec, TASK_STATUS_SCHEDULED, local_scheduler_id);
   free_task_spec(spec);
   retry_info retry = {
       .num_retries = NUM_RETRIES,
       .timeout = TIMEOUT,
       .fail_callback = task_table_test_fail_callback,
   };
-  task_table_subscribe(db, node, TASK_STATUS_SCHEDULED,
+  task_table_subscribe(db, local_scheduler_id, TASK_STATUS_SCHEDULED,
                        task_table_test_callback, (void *) loop, &retry, NULL,
                        (void *) loop);
   event_loop_add_timer(
       loop, 200, (event_loop_timer_handler) task_table_delayed_add_task, db);
   event_loop_run(loop);
+  free_task(task_table_test_task);
   db_disconnect(db);
   destroy_outstanding_callbacks(loop);
   event_loop_destroy(loop);
@@ -181,7 +184,7 @@ TEST task_table_all_test(void) {
       db_connect("127.0.0.1", 6379, "local_scheduler", "127.0.0.1", 0, NULL);
   db_attach(db, loop, false);
   task_spec *spec = example_task_spec(1, 1);
-  /* Schedule two tasks on different nodes. */
+  /* Schedule two tasks on different local local schedulers. */
   task *task1 = alloc_task(spec, TASK_STATUS_SCHEDULED, globally_unique_id());
   task *task2 = alloc_task(spec, TASK_STATUS_SCHEDULED, globally_unique_id());
   retry_info retry = {
@@ -193,8 +196,8 @@ TEST task_table_all_test(void) {
                        NULL);
   event_loop_run(loop);
   /* TODO(pcm): Get rid of this sleep once the robust pubsub is implemented. */
-  task_table_update(db, task1, &retry, NULL, NULL);
-  task_table_update(db, task2, &retry, NULL, NULL);
+  task_table_add_task(db, task1, &retry, NULL, NULL);
+  task_table_add_task(db, task2, &retry, NULL, NULL);
   event_loop_add_timer(loop, 200, (event_loop_timer_handler) timeout_handler,
                        NULL);
   event_loop_run(loop);
