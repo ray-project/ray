@@ -110,6 +110,11 @@ struct plasma_connection {
   UT_ringbuffer *release_history;
   /** Configuration options for the plasma client. */
   plasma_client_config config;
+  /** The amount of memory available to the Plasma store. The client needs this
+   *  information to make sure that it does not delay in releasing so much
+   *  memory that the store is unable to evict enough objects to free up space.
+   */
+  int64_t store_capacity;
 };
 
 /* If the file descriptor fd has been mmapped in this client process before,
@@ -483,6 +488,12 @@ plasma_connection *plasma_connect(const char *store_socket_name,
   result->objects_in_use = NULL;
   result->config.release_delay = release_delay;
   utringbuffer_new(result->release_history, release_delay, &object_id_icd);
+  /* Send a ConnectRequest to the store to get its memory capacity. */
+  plasma_send_ConnectRequest(result->store_conn, result->builder);
+  uint8_t *reply_data =
+      plasma_receive(result->store_conn, MessageType_PlasmaConnectReply);
+  plasma_read_ConnectReply(reply_data, &result->store_capacity);
+  free(reply_data);
   return result;
 }
 

@@ -26,10 +26,18 @@ clean:
 test: CFLAGS += -DRAY_TIMEOUT=50 -DRAY_COMMON_LOG_LEVEL=4
 test: $(BUILD)/photon_tests FORCE
 	../common/thirdparty/redis/src/redis-server --loadmodule ../common/redis_module/ray_redis_module.so &
-	sleep 0.5s && ./build/photon_tests && ../common/thirdparty/redis/src/redis-cli shutdown
+	../plasma/build/plasma_store -s /tmp/s1 -m 100000000 &
+	sleep 0.5s
+	./build/photon_tests
+	../common/thirdparty/redis/src/redis-cli shutdown
+	killall plasma_store
 
 valgrind: test
 	../common/thirdparty/redis/src/redis-server --loadmodule ../common/redis_module/ray_redis_module.so &
-	sleep 0.5s && valgrind --leak-check=full --show-leak-kinds=all --error-exitcode=1 ./build/photon_tests && ../common/thirdparty/redis/src/redis-cli shutdown
+	../plasma/build/plasma_store -s /tmp/s1 -m 100000000 &
+	sleep 0.5s
+	valgrind --leak-check=full --show-leak-kinds=all --error-exitcode=1 ./build/photon_tests
+	../common/thirdparty/redis/src/redis-cli shutdown
+	killall plasma_store
 
 FORCE:

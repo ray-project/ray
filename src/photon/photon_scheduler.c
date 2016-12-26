@@ -63,8 +63,7 @@ local_scheduler_state *init_local_scheduler(
   } else {
     state->db = NULL;
   }
-  /* Connect to Plasma. This method will retry if Plasma hasn't started yet.
-   * Pass in a NULL manager address and port. */
+  /* Connect to Plasma. This method will retry if Plasma hasn't started yet. */
   state->plasma_conn =
       plasma_connect(plasma_store_socket_name, plasma_manager_socket_name,
                      PLASMA_DEFAULT_RELEASE_DELAY);

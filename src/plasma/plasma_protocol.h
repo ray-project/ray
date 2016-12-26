@@ -187,6 +187,18 @@ void plasma_read_ContainsReply(uint8_t *data,
                                object_id *object_id,
                                int *has_object);
 
+/* Plasma Connect message functions. */
+
+int plasma_send_ConnectRequest(int sock, protocol_builder *B);
+
+void plasma_read_ConnectRequest(uint8_t *data);
+
+int plasma_send_ConnectReply(int sock,
+                             protocol_builder *B,
+                             int64_t memory_capacity);
+
+void plasma_read_ConnectReply(uint8_t *data, int64_t *memory_capacity);
+
 /* Plasma Evict message functions (no reply so far). */
 
 int plasma_send_EvictRequest(int sock, protocol_builder *B, int64_t num_bytes);
