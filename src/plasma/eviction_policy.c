@@ -165,7 +165,7 @@ void require_space(eviction_state *eviction_state,
   if (required_space > 0) {
     /* Try to free up at least as much space as we need right now but ideally
      * up to 20% of the total capacity. */
-    int64_t space_to_free = MAX(size, eviction_state->memory_capacity / 5);
+    int64_t space_to_free = MAX(size, plasma_store_info->memory_capacity / 5);
     LOG_DEBUG("not enough space to create this object, so evicting objects");
     /* Choose some objects to evict, and update the return pointers. */
     int64_t num_bytes_evicted = choose_objects_to_evict(

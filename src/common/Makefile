@@ -44,7 +44,7 @@ redismodule:
 
 test: CFLAGS += -DRAY_COMMON_LOG_LEVEL=4
 test: hiredis redis redismodule $(BUILD)/common_tests $(BUILD)/task_table_tests $(BUILD)/object_table_tests $(BUILD)/db_tests $(BUILD)/io_tests $(BUILD)/task_tests $(BUILD)/redis_tests FORCE
-	./thirdparty/redis/src/redis-server --loadmodule ./redis_module/ray_redis_module.so &
+	./thirdparty/redis/src/redis-server --loglevel warning --loadmodule ./redis_module/ray_redis_module.so &
 	sleep 1s
 	./build/common_tests
 	./build/db_tests
@@ -57,7 +57,7 @@ test: hiredis redis redismodule $(BUILD)/common_tests $(BUILD)/task_table_tests 
 	python ./redis_module/runtest.py
 
 valgrind: test
-	./thirdparty/redis/src/redis-server --loadmodule redis_module/ray_redis_module.so &
+	./thirdparty/redis/src/redis-server --loglevel warning --loadmodule redis_module/ray_redis_module.so &
 	sleep 1s
 	valgrind --leak-check=full --error-exitcode=1 ./build/common_tests
 	valgrind --leak-check=full --error-exitcode=1 ./build/db_tests

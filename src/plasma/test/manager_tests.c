@@ -19,8 +19,8 @@
 
 SUITE(plasma_manager_tests);
 
-const char *plasma_store_socket_name = "/tmp/s1";
-const char *plasma_socket_name_format = "/tmp/plasma_socket_%d";
+const char *plasma_store_socket_name = "/tmp/plasma_store_socket_1";
+const char *plasma_manager_socket_name_format = "/tmp/plasma_manager_socket_%d";
 const char *manager_addr = "127.0.0.1";
 object_id oid;
 
@@ -61,8 +61,8 @@ plasma_mock *init_plasma_mock(plasma_mock *remote_mock) {
   /* Start listening on all the ports and initiate the local plasma manager. */
   mock->port = bind_inet_sock_retry(&mock->manager_remote_fd);
   mock->local_store = socket_connect_retry(plasma_store_socket_name, 5, 100);
-  UT_string *manager_socket_name =
-      bind_ipc_sock_retry(plasma_socket_name_format, &mock->manager_local_fd);
+  UT_string *manager_socket_name = bind_ipc_sock_retry(
+      plasma_manager_socket_name_format, &mock->manager_local_fd);
 
   CHECK(mock->manager_local_fd >= 0 && mock->local_store >= 0);
 

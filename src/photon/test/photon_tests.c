@@ -22,8 +22,8 @@
 
 SUITE(photon_tests);
 
-const char *plasma_store_socket_name = "/tmp/s1";
-const char *plasma_socket_name_format = "/tmp/plasma_socket_%d";
+const char *plasma_store_socket_name = "/tmp/plasma_store_socket_1";
+const char *plasma_manager_socket_name_format = "/tmp/plasma_manager_socket_%d";
 const char *photon_socket_name_format = "/tmp/photon_socket_%d";
 
 int64_t timeout_handler(event_loop *loop, int64_t id, void *context) {
@@ -54,7 +54,7 @@ photon_mock *init_photon_mock() {
   /* TODO(rkn): Why are we reusing mock->plasma_fd for both the store and the
    * manager? */
   UT_string *plasma_manager_socket_name =
-      bind_ipc_sock_retry(plasma_socket_name_format, &mock->plasma_fd);
+      bind_ipc_sock_retry(plasma_manager_socket_name_format, &mock->plasma_fd);
   mock->plasma_fd = socket_connect_retry(plasma_store_socket_name, 5, 100);
   UT_string *photon_socket_name =
       bind_ipc_sock_retry(photon_socket_name_format, &mock->photon_fd);

@@ -129,7 +129,7 @@ struct plasma_connection {
   /** The number of bytes in the combined objects that are held in the release
    *  history doubly-linked list. If this is too large then the client starts
    *  releasing objects. */
-  int64_t cached_object_bytes;
+  int64_t in_use_object_bytes;
   /** Configuration options for the plasma client. */
   plasma_client_config config;
   /** The amount of memory available to the Plasma store. The client needs this
@@ -203,8 +203,8 @@ void increment_object_count(plasma_connection *conn,
     HASH_FIND_INT(conn->mmap_table, &object->handle.store_fd, entry);
     CHECK(entry != NULL);
     CHECK(entry->count >= 0);
-    /* Update the cached_object_bytes. */
-    conn->cached_object_bytes +=
+    /* Update the in_use_object_bytes. */
+    conn->in_use_object_bytes +=
         (object_entry->object.data_size + object_entry->object.metadata_size);
     entry->count += 1;
   } else {
@@ -359,10 +359,10 @@ void plasma_perform_release(plasma_connection *conn, object_id object_id) {
     /* Tell the store that the client no longer needs the object. */
     CHECK(plasma_send_ReleaseRequest(conn->store_conn, conn->builder,
                                      object_id) >= 0);
-    /* Update the cached_object_bytes. */
-    conn->cached_object_bytes -=
+    /* Update the in_use_object_bytes. */
+    conn->in_use_object_bytes -=
         (object_entry->object.data_size + object_entry->object.metadata_size);
-    DCHECK(conn->cached_object_bytes >= 0);
+    DCHECK(conn->in_use_object_bytes >= 0);
     /* Remove the entry from the hash table of objects currently in use. */
     HASH_DELETE(hh, conn->objects_in_use, object_entry);
     free(object_entry);
@@ -386,7 +386,7 @@ void plasma_release(plasma_connection *conn, object_id obj_id) {
    * the release_history list, then release some objects. TODO(rkn): Checking
    * that conn->release_history_first_entry != NULL may be relying on an
    * implementation detail that may or may not work as expected. */
-  while ((conn->cached_object_bytes >
+  while ((conn->in_use_object_bytes >
               MIN(L3_CACHE_SIZE_BYTES, conn->store_capacity / 1000) ||
           conn->release_history_length > conn->config.release_delay) &&
          conn->release_history_length > 0) {
@@ -562,7 +562,7 @@ plasma_connection *plasma_connect(const char *store_socket_name,
   result->release_history = NULL;
   result->release_history_first_entry = NULL;
   result->release_history_length = 0;
-  result->cached_object_bytes = 0;
+  result->in_use_object_bytes = 0;
   /* Send a ConnectRequest to the store to get its memory capacity. */
   plasma_send_ConnectRequest(result->store_conn, result->builder);
   uint8_t *reply_data =
@@ -587,17 +587,12 @@ void plasma_disconnect(plasma_connection *conn) {
     object_id object_id_to_release = current_entry->object_id;
     int count = current_entry->count;
     for (int i = 0; i < count; ++i) {
-      plasma_release(conn, object_id_to_release);
+      plasma_perform_release(conn, object_id_to_release);
     }
   }
-  /* Perform all pending releases again to flush out the queue again. */
-  DL_FOREACH_SAFE(conn->release_history, element, temp) {
-    plasma_perform_release(conn, element->object_id);
-    DL_DELETE(conn->release_history, element);
-    free(element);
-  }
   /* Check that we've successfully released everything. */
-  CHECK(conn->cached_object_bytes == 0);
+  CHECKM(conn->in_use_object_bytes == 0, "conn->in_use_object_bytes = %" PRId64,
+         conn->in_use_object_bytes);
   free_protocol_builder(conn->builder);
   close(conn->store_conn);
   if (conn->manager_conn >= 0) {
