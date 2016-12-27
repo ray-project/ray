@@ -181,8 +181,14 @@ void reconstruct_object_task_lookup_callback(object_id reconstruct_object_id,
                                              task *task,
                                              void *user_context) {
   /* Recursively resubmit the task and its task lineage to the scheduler. */
-  CHECKM(task != NULL,
-         "No task information found for object during reconstruction");
+  /* TODO(swang): The following check will fail if an object was created by a
+   * put. Once we're able to reconstruct those objects as well, uncomment the
+   * check and remove the if-check and exit. */
+  /* CHECKM(task != NULL,
+         "No task information found for object during reconstruction"); */
+  if (task == NULL) {
+    return;
+  }
   local_scheduler_state *state = user_context;
   /* If the task's scheduling state is pending completion, assume that
    * reconstruction is already being taken care of and cancel this
@@ -197,9 +203,12 @@ void reconstruct_object_task_lookup_callback(object_id reconstruct_object_id,
   /* Recursively reconstruct the task's inputs, if necessary. */
   task_spec *spec = task_task_spec(task);
   for (int64_t i = 0; i < task_num_args(spec); ++i) {
-    object_id arg_id = task_arg_id(spec, i);
-    reconstruct_object(state, arg_id);
+    if (task_arg_type(spec, i) == ARG_BY_REF) {
+      object_id arg_id = task_arg_id(spec, i);
+      reconstruct_object(state, arg_id);
+    }
   }
+
   handle_task_submitted(state, state->algorithm_state, spec);
 }
 
@@ -207,6 +216,7 @@ void reconstruct_object_object_lookup_callback(object_id reconstruct_object_id,
                                                int manager_count,
                                                const char *manager_vector[],
                                                void *user_context) {
+  LOG_DEBUG("Manager count was %d", manager_count);
   /* Only continue reconstruction if we find that the object doesn't exist on
    * any nodes. NOTE: This codepath is not responsible for checking if the
    * object table entry is up-to-date. */

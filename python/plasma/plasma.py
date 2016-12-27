@@ -129,6 +129,10 @@ class PlasmaClient(object):
       metadata (buffer): An optional buffer encoding whatever metadata the user
         wishes to encode.
 
+    Returns:
+      A buffer for the object created. If the object wasn't able to be created
+      because it already exists locally, returns None.
+
     Raises:
       plasma_object_exists_error: This exception is raised if the object could
         not be created because there already is an object with the same ID in
@@ -151,7 +155,8 @@ class PlasmaClient(object):
     Args:
       object_ids (List[str]): A list of strings used to identify some objects.
       timeout_ms (int): The number of milliseconds that the get call should
-        block before timing out and returning.
+        block before timing out and returning. Pass -1 if the call should block
+        and 0 if the call should return immediately.
     """
     results = libplasma.get(self.conn, object_ids, timeout_ms)
     assert len(object_ids) == len(results)
@@ -172,7 +177,8 @@ class PlasmaClient(object):
     Args:
       object_ids (List[str]): A list of strings used to identify some objects.
       timeout_ms (int): The number of milliseconds that the get call should
-        block before timing out and returning.
+        block before timing out and returning. Pass -1 if the call should block
+        and 0 if the call should return immediately.
     """
     results = libplasma.get(self.conn, object_ids, timeout_ms)
     assert len(object_ids) == len(results)

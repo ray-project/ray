@@ -577,6 +577,14 @@ int num_waiting_tasks(scheduling_algorithm_state *algorithm_state) {
   return count;
 }
 
+bool object_is_local(local_scheduler_state *state, object_id object_id) {
+  scheduling_algorithm_state *algorithm_state = state->algorithm_state;
+  available_object *entry;
+  HASH_FIND(handle, algorithm_state->local_objects, &object_id,
+            sizeof(object_id), entry);
+  return entry != NULL;
+}
+
 int num_dispatch_tasks(scheduling_algorithm_state *algorithm_state) {
   task_queue_entry *elt;
   int count;

@@ -101,6 +101,21 @@ TEST object_reconstruction_test(void) {
   photon_mock *photon = init_photon_mock(true);
   /* Create a task with zero dependencies and one return value. */
   task_spec *spec = example_task_spec(0, 1);
+  object_id return_id = task_return(spec, 0);
+
+  /* Add an empty object table entry for the object we want to reconstruct, to
+   * simulate it having been created and evicted. */
+  const char *client_id = "clientid";
+  redisContext *context = redisConnect("127.0.0.1", 6379);
+  redisReply *reply = redisCommand(context, "RAY.OBJECT_TABLE_ADD %b %ld %b %s",
+                                   return_id.id, sizeof(return_id.id), 1,
+                                   NIL_DIGEST, (size_t) DIGEST_SIZE, client_id);
+  freeReplyObject(reply);
+  reply = redisCommand(context, "RAY.OBJECT_TABLE_REMOVE %b %s", return_id.id,
+                       sizeof(return_id.id), client_id);
+  freeReplyObject(reply);
+  redisFree(context);
+
   pid_t pid = fork();
   if (pid == 0) {
     /* Make sure we receive the task twice. First from the initial submission,
@@ -163,6 +178,23 @@ TEST object_reconstruction_recursive_test(void) {
                             photon->photon_state->algorithm_state, arg_id);
     specs[i] = example_task_spec_with_args(1, 1, &arg_id);
   }
+
+  /* Add an empty object table entry for each object we want to reconstruct, to
+   * simulate their having been created and evicted. */
+  const char *client_id = "clientid";
+  redisContext *context = redisConnect("127.0.0.1", 6379);
+  for (int i = 0; i < NUM_TASKS; ++i) {
+    object_id return_id = task_return(specs[i], 0);
+    redisReply *reply = redisCommand(
+        context, "RAY.OBJECT_TABLE_ADD %b %ld %b %s", return_id.id,
+        sizeof(return_id.id), 1, NIL_DIGEST, (size_t) DIGEST_SIZE, client_id);
+    freeReplyObject(reply);
+    reply = redisCommand(context, "RAY.OBJECT_TABLE_REMOVE %b %s", return_id.id,
+                         sizeof(return_id.id), client_id);
+    freeReplyObject(reply);
+  }
+  redisFree(context);
+
   pid_t pid = fork();
   if (pid == 0) {
     /* Submit the tasks, and make sure each one gets assigned to a worker. */
@@ -209,7 +241,8 @@ TEST object_reconstruction_recursive_test(void) {
                                  get_db_client_id(photon->photon_state->db));
     task_table_add_task(photon->photon_state->db, last_task,
                         (retry_info *) &photon_retry, NULL, NULL);
-    /* Trigger reconstruction, and run the event loop again. */
+    /* Trigger reconstruction for the last object, and run the event loop
+     * again. */
     object_id return_id = task_return(specs[NUM_TASKS - 1], 0);
     photon_reconstruct_object(photon->conn, return_id);
     event_loop_add_timer(photon->loop, 500,

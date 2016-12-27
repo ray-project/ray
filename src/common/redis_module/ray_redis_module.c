@@ -188,8 +188,9 @@ int GetClientAddress_RedisCommand(RedisModuleCtx *ctx,
  *     RAY.OBJECT_TABLE_LOOKUP <object id>
  *
  * @param object_id A string representing the object ID.
- * @return A list of plasma manager IDs that are listed in the object table as
- *         having the object.
+ * @return A list, possibly empty, of plasma manager IDs that are listed in the
+ *         object table as having the object. If there was no entry found in
+ *         the object table, returns nil.
  */
 int ObjectTableLookup_RedisCommand(RedisModuleCtx *ctx,
                                    RedisModuleString **argv,
@@ -201,8 +202,12 @@ int ObjectTableLookup_RedisCommand(RedisModuleCtx *ctx,
   RedisModuleKey *key =
       OpenPrefixedKey(ctx, OBJECT_LOCATION_PREFIX, argv[1], REDISMODULE_READ);
 
-  if (RedisModule_KeyType(key) == REDISMODULE_KEYTYPE_EMPTY ||
-      RedisModule_ValueLength(key) == 0) {
+  if (RedisModule_KeyType(key) == REDISMODULE_KEYTYPE_EMPTY) {
+    /* Return nil if no entry was found. */
+    return RedisModule_ReplyWithNull(ctx);
+  }
+  if (RedisModule_ValueLength(key) == 0) {
+    /* Return empty list if there are no managers. */
     return RedisModule_ReplyWithArray(ctx, 0);
   }
 

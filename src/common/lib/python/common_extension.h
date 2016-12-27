@@ -33,6 +33,8 @@ extern PyObject *pickle_loads;
 
 void init_pickle_module(void);
 
+int PyStringToUniqueID(PyObject *object, object_id *object_id);
+
 int PyObjectToUniqueID(PyObject *object, object_id *objectid);
 
 PyObject *PyObjectID_make(object_id object_id);

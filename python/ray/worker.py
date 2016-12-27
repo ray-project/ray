@@ -39,6 +39,10 @@ ERROR_KEY_PREFIX = b"Error:"
 DRIVER_ID_LENGTH = 20
 ERROR_ID_LENGTH = 20
 
+# When performing ray.get, wait 1 second before attemping to reconstruct and
+# fetch the object again.
+GET_TIMEOUT = 1000
+
 def random_string():
   return np.random.bytes(20)
 
@@ -427,7 +431,7 @@ class Worker(object):
       # that the objects are in fact the same. We also should return an error
       # code to the caller instead of printing a message.
       print("This object already exists in the object store.")
-      return
+
     global contained_objectids
     # Optionally do something with the contained_objectids here.
     contained_objectids = []
@@ -443,13 +447,22 @@ class Worker(object):
         values should be retrieved.
     """
     self.plasma_client.fetch([object_id.id() for object_id in object_ids])
-    # We currently pass in a timeout of one second.
+
+    # Get the objects. We initially try to get the object immediately.
     unready_ids = object_ids
+    timeout = 0
     while len(unready_ids) > 0:
-      results = numbuf.retrieve_list([object_id.id() for object_id in object_ids], self.plasma_client.conn, 1000)
+      results = numbuf.retrieve_list(
+          [object_id.id() for object_id in object_ids],
+          self.plasma_client.conn,
+          timeout)
       unready_ids = [object_id for (object_id, val) in results if val is None]
-      # This would be a natural place to issue a command to reconstruct some of
-      # the objects.
+      # For objects that aren't ready yet, request a reconstruction, and wait
+      # GET_TIMEOUT milliseconds before trying again.
+      for unready_id in unready_ids:
+        self.photon_client.reconstruct_object(unready_id)
+      timeout = GET_TIMEOUT
+
     # Unwrap the object from the list (it was wrapped put_object).
     assert len(results) == len(object_ids)
     for i in range(len(results)):

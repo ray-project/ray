@@ -193,6 +193,7 @@ static PyObject* register_callbacks(PyObject* self, PyObject* args) {
 
 #ifdef HAS_PLASMA
 
+#include "common_extension.h"
 #include "plasma_extension.h"
 
 /**
@@ -297,9 +298,12 @@ static PyObject* store_list(PyObject* self, PyObject* args) {
  * Python objects from the plasma data according to the schema and
  * returns the object.
  *
- * @param args The first argument is a list of object IDs of the lists to be
- *        retrieved and the second argument is the connection to the plasma
- *        store.
+ * @param args The arguments are, in order:
+ *        1) A list of object IDs of the lists to be retrieved.
+ *        2) The connection to the plasma store.
+ *        3) A timeout in milliseconds that the call should return by. This is
+ *           -1 if the call should block forever, or 0 if the call should
+ *           return immediately.
  * @return A list of tuples, where the first element in the tuple is the object
  *         ID (appearing in the same order as in the argument to the method),
  *         and the second element in the tuple is the retrieved list (or None)

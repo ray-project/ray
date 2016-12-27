@@ -81,7 +81,7 @@ class TestGlobalStateStore(unittest.TestCase):
     # Try calling RAY.OBJECT_TABLE_LOOKUP with an object ID that has not been
     # added yet.
     response = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP", "object_id1")
-    self.assertEqual(set(response), set([]))
+    self.assertEqual(response, None)
     # Add some managers and try again.
     self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id1")
     self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id2")
@@ -109,7 +109,7 @@ class TestGlobalStateStore(unittest.TestCase):
     # Try calling RAY.OBJECT_TABLE_LOOKUP with an object ID that has not been
     # added yet.
     response = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP", "object_id1")
-    self.assertEqual(set(response), set([]))
+    self.assertEqual(response, None)
     # Add some managers and try again.
     self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id1")
     self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id2")
@@ -131,7 +131,7 @@ class TestGlobalStateStore(unittest.TestCase):
     self.redis.execute_command("RAY.OBJECT_TABLE_REMOVE", "object_id1", "manager_id2")
     response = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP", "object_id1")
     self.assertEqual(set(response), set())
-    # Remove a manager from an empty set, and make sure we still have an empty set.
+    # Remove a manager from an empty set, and make sure we now have an empty set.
     self.redis.execute_command("RAY.OBJECT_TABLE_REMOVE", "object_id1", "manager_id3")
     response = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP", "object_id1")
     self.assertEqual(set(response), set())

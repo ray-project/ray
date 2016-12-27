@@ -465,24 +465,33 @@ void redis_object_table_lookup_callback(redisAsyncContext *c,
                                         void *privdata) {
   REDIS_CALLBACK_HEADER(db, callback_data, r);
   redisReply *reply = r;
+  LOG_DEBUG("Object table lookup callback");
+  CHECK(reply->type == REDIS_REPLY_NIL || reply->type == REDIS_REPLY_ARRAY);
 
   object_id obj_id = callback_data->id;
-
-  LOG_DEBUG("Object table lookup callback");
-  CHECK(reply->type == REDIS_REPLY_ARRAY);
-
-  int64_t manager_count = reply->elements;
+  int64_t manager_count = 0;
   db_client_id *managers = NULL;
   const char **manager_vector = NULL;
-  if (manager_count > 0) {
-    managers = malloc(reply->elements * sizeof(db_client_id));
-    manager_vector = malloc(manager_count * sizeof(char *));
+
+  /* Parse the Redis reply. */
+  if (reply->type == REDIS_REPLY_NIL) {
+    /* The object entry did not exist. */
+    manager_count = -1;
+  } else if (reply->type == REDIS_REPLY_ARRAY) {
+    manager_count = reply->elements;
+    if (manager_count > 0) {
+      managers = malloc(reply->elements * sizeof(db_client_id));
+      manager_vector = malloc(manager_count * sizeof(char *));
+    }
+    for (int j = 0; j < reply->elements; ++j) {
+      CHECK(reply->element[j]->type == REDIS_REPLY_STRING);
+      memcpy(managers[j].id, reply->element[j]->str, sizeof(managers[j].id));
+      redis_get_cached_db_client(db, managers[j], manager_vector + j);
+    }
+  } else {
+    LOG_FATAL("Unexpected reply type from object table lookup.");
   }
-  for (int j = 0; j < reply->elements; ++j) {
-    CHECK(reply->element[j]->type == REDIS_REPLY_STRING);
-    memcpy(managers[j].id, reply->element[j]->str, sizeof(managers[j].id));
-    redis_get_cached_db_client(db, managers[j], manager_vector + j);
-  }
+
   object_table_lookup_done_callback done_callback =
       callback_data->done_callback;
   if (done_callback) {

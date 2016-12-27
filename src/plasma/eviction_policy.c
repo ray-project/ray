@@ -172,7 +172,6 @@ bool require_space(eviction_state *eviction_state,
     num_bytes_evicted = choose_objects_to_evict(
         eviction_state, plasma_store_info, space_to_free, num_objects_to_evict,
         objects_to_evict);
-    printf("Evicted %" PRId64 " bytes.\n", num_bytes_evicted);
     LOG_INFO(
         "There is not enough space to create this object, so evicting "
         "%" PRId64 " objects to free up %" PRId64 " bytes.\n",
