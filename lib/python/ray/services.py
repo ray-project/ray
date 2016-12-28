@@ -45,7 +45,7 @@ def get_port(address):
   try:
     port = int(address.split(":")[1])
   except:
-    port = -1
+    raise Exception("Unable to parse port from address {}".format(address))
   return port
 
 def new_port():
@@ -327,6 +327,7 @@ def start_ray_processes(address_info=None,
                         worker_path=None,
                         cleanup=True,
                         redirect_output=False,
+                        include_global_scheduler=False,
                         include_webui=True):
   """Helper method to start Ray processes.
 
@@ -339,8 +340,8 @@ def start_ray_processes(address_info=None,
     num_local_schedulers (int): The total number of local schedulers required.
       This is also the total number of object stores required. This method will
       start new instances of local schedulers and object stores until there are
-      at least num_local_schedulers existing instances of each, including ones
-      already registered with the given address_info.
+      num_local_schedulers existing instances of each, including ones already
+      registered with the given address_info.
     worker_path (str): The path of the source code that will be run by the
       worker.
     cleanup (bool): If cleanup is true, then the processes started here will be
@@ -348,12 +349,14 @@ def start_ray_processes(address_info=None,
       method exits.
     redirect_output (bool): True if stdout and stderr should be redirected to
       /dev/null.
+    include_global_scheduler (bool): If include_global_scheduler is True, then
+      start a global scheduler process.
     include_webui (bool): If include_webui is True, then start a Web UI
     process.
 
   Returns:
     A dictionary of the address information for the processes that were
-    started.
+      started.
   """
   if address_info is None:
     address_info = {}
@@ -374,9 +377,10 @@ def start_ray_processes(address_info=None,
     time.sleep(0.1)
   redis_port = get_port(redis_address)
 
-  # Start the global scheduler.
-  start_global_scheduler(redis_address, cleanup=cleanup,
-                         redirect_output=redirect_output)
+  # Start the global scheduler, if necessary.
+  if include_global_scheduler:
+    start_global_scheduler(redis_address, cleanup=cleanup,
+                           redirect_output=redirect_output)
 
   # Initialize with existing services.
   if "object_store_addresses" not in address_info:
@@ -412,6 +416,11 @@ def start_ray_processes(address_info=None,
     local_scheduler_socket_names.append(local_scheduler_name)
     time.sleep(0.1)
 
+  # Make sure that we have exactly num_local_schedulers instances of object
+  # stores and local schedulers.
+  assert len(object_store_addresses) == num_local_schedulers
+  assert len(local_scheduler_socket_names) == num_local_schedulers
+
   # Start the workers.
   for i in range(num_workers):
     object_store_address = object_store_addresses[i % num_local_schedulers]
@@ -425,6 +434,7 @@ def start_ray_processes(address_info=None,
                  cleanup=cleanup,
                  redirect_output=redirect_output)
 
+  # Start the web UI, if necessary.
   if include_webui:
     start_webui(redis_port, cleanup=cleanup, redirect_output=redirect_output)
 
@@ -459,7 +469,7 @@ def start_ray_node(node_ip_address,
 
   Returns:
     A dictionary of the address information for the processes that were
-    started.
+      started.
   """
   address_info = {
       "redis_address": redis_address,
@@ -504,7 +514,7 @@ def start_ray_local(address_info=None,
 
   Returns:
     A dictionary of the address information for the processes that were
-    started.
+      started.
   """
   return start_ray_processes(address_info=address_info,
                              node_ip_address=node_ip_address,
@@ -513,4 +523,5 @@ def start_ray_local(address_info=None,
                              worker_path=worker_path,
                              cleanup=cleanup,
                              redirect_output=redirect_output,
+                             include_global_scheduler=True,
                              include_webui=True)

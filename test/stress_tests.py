@@ -13,7 +13,8 @@ class TaskTests(unittest.TestCase):
     for num_local_schedulers in [1, 4]:
       for num_workers_per_scheduler in [4]:
         num_workers = num_local_schedulers * num_workers_per_scheduler
-        ray.init(start_ray_local=True, num_workers=num_workers, num_local_schedulers=num_local_schedulers)
+        ray.worker._init(start_ray_local=True, num_workers=num_workers,
+                         num_local_schedulers=num_local_schedulers)
 
         @ray.remote
         def f(x):
@@ -38,7 +39,8 @@ class TaskTests(unittest.TestCase):
     for num_local_schedulers in [1, 4]:
       for num_workers_per_scheduler in [4]:
         num_workers = num_local_schedulers * num_workers_per_scheduler
-        ray.init(start_ray_local=True, num_workers=num_workers, num_local_schedulers=num_local_schedulers)
+        ray.worker._init(start_ray_local=True, num_workers=num_workers,
+                         num_local_schedulers=num_local_schedulers)
 
         @ray.remote
         def f(x):
@@ -82,7 +84,8 @@ class TaskTests(unittest.TestCase):
     for num_local_schedulers in [1, 4]:
       for num_workers_per_scheduler in [4]:
         num_workers = num_local_schedulers * num_workers_per_scheduler
-        ray.init(start_ray_local=True, num_workers=num_workers, num_local_schedulers=num_local_schedulers)
+        ray.worker._init(start_ray_local=True, num_workers=num_workers,
+                         num_local_schedulers=num_local_schedulers)
 
         @ray.remote
         def f(x):

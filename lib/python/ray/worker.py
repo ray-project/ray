@@ -658,10 +658,7 @@ def get_address_info_from_redis_helper(redis_address, node_ip_address):
   object_store_addresses = []
   for manager in plasma_managers:
     address = manager[b"address"].decode("ascii")
-    try:
-      port = int(address.split(":")[1])
-    except:
-      port = -1
+    port = services.get_port(address)
     object_store_addresses.append(
         services.ObjectStoreAddress(
           name=manager[b"store_socket_name"].decode("ascii"),
@@ -694,8 +691,7 @@ def get_address_info_from_redis(redis_address, node_ip_address, num_retries=5):
 def _init(address_info=None, start_ray_local=False, object_id_seed=None,
           num_workers=None, num_local_schedulers=None,
           driver_mode=SCRIPT_MODE):
-  """Helper method to either connect to an existing Ray cluster or start one
-  and connect to it.
+  """Helper method to connect to an existing Ray cluster or start a new one.
 
   This method handles two cases. Either a Ray cluster already exists and we
   just attach this driver to it, or we start all of the processes associated
@@ -798,7 +794,8 @@ def _init(address_info=None, start_ray_local=False, object_id_seed=None,
   connect(driver_address_info, object_id_seed=object_id_seed, mode=driver_mode, worker=global_worker)
   return address_info
 
-def init(node_ip_address=None, redis_address=None, start_ray_local=False, object_id_seed=None, num_workers=None, num_local_schedulers=None, driver_mode=SCRIPT_MODE):
+def init(node_ip_address=None, redis_address=None, start_ray_local=False,
+         object_id_seed=None, num_workers=None, driver_mode=SCRIPT_MODE):
   """Either connect to an existing Ray cluster or start one and connect to it.
 
   This method handles two cases. Either a Ray cluster already exists and we
@@ -819,8 +816,6 @@ def init(node_ip_address=None, redis_address=None, start_ray_local=False, object
       ID should not be used for different jobs.
     num_workers (int): The number of workers to start. This is only provided if
       start_ray_local is True.
-    num_local_schedulers (int): The number of local schedulers to start. This is
-      only provided if start_ray_local is True.
     driver_mode (bool): The mode in which to start the driver. This should be
       one of ray.SCRIPT_MODE, ray.PYTHON_MODE, and ray.SILENT_MODE.
 
@@ -837,7 +832,6 @@ def init(node_ip_address=None, redis_address=None, start_ray_local=False, object
       }
   return _init(address_info=info,
                start_ray_local=start_ray_local, num_workers=num_workers,
-               num_local_schedulers=num_local_schedulers,
                driver_mode=driver_mode)
 
 def cleanup(worker=global_worker):
