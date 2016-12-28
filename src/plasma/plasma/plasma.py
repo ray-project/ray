@@ -43,6 +43,11 @@ class PlasmaBuffer(object):
 
   def __getitem__(self, index):
     """Read from the PlasmaBuffer as if it were just a regular buffer."""
+    # We currently don't allow slicing plasma buffers. We should handle this
+    # better, but it requires some care because the slice may be backed by the
+    # same memory in the object store, but the original plasma buffer may go out
+    # of scope causing the memory to no longer be accessible.
+    assert not isinstance(index, slice)
     value = self.buffer[index]
     if sys.version_info >= (3, 0) and not isinstance(index, slice):
       value = chr(value)
@@ -53,6 +58,11 @@ class PlasmaBuffer(object):
 
     This should fail because the buffer should be read only.
     """
+    # We currently don't allow slicing plasma buffers. We should handle this
+    # better, but it requires some care because the slice may be backed by the
+    # same memory in the object store, but the original plasma buffer may go out
+    # of scope causing the memory to no longer be accessible.
+    assert not isinstance(index, slice)
     if sys.version_info >= (3, 0) and not isinstance(index, slice):
       value = ord(value)
     self.buffer[index] = value
@@ -60,6 +70,18 @@ class PlasmaBuffer(object):
   def __len__(self):
     """Return the length of the buffer."""
     return len(self.buffer)
+
+def buffers_equal(buff1, buff2):
+  """Compare two buffers. These buffers may be PlasmaBuffer objects.
+
+  This method should only be used in the tests. We implement a special helper
+  method for doing this because doing comparisons by slicing is much faster, but
+  we don't want to expose slicing of PlasmaBuffer objects because it currently
+  is not safe.
+  """
+  buff1_to_compare = buff1.buffer if isinstance(buff1, PlasmaBuffer) else buff1
+  buff2_to_compare = buff2.buffer if isinstance(buff2, PlasmaBuffer) else buff2
+  return buff1_to_compare[:] == buff2_to_compare[:]
 
 class PlasmaClient(object):
   """The PlasmaClient is used to interface with a plasma store and a plasma manager.

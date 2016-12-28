@@ -112,6 +112,9 @@ typedef struct {
 typedef struct {
   /** Objects that are in the Plasma store. */
   object_table_entry *objects;
+  /** The amount of memory (in bytes) that we allow to be allocated in the
+   *  store. */
+  int64_t memory_capacity;
 } plasma_store_info;
 
 typedef struct {

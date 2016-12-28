@@ -7,6 +7,8 @@
 #include "plasma.h"
 
 #define PLASMA_DEFAULT_RELEASE_DELAY 64
+/* Use 100MB as an overestimate of the L3 cache size. */
+#define L3_CACHE_SIZE_BYTES 100000000
 
 typedef struct plasma_connection plasma_connection;
 

@@ -22,13 +22,22 @@ USE_VALGRIND = False
 PLASMA_STORE_MEMORY = 1000000000
 
 def assert_get_object_equal(unit_test, client1, client2, object_id, memory_buffer=None, metadata=None):
+  client1_buff = client1.get(object_id)
+  client2_buff = client2.get(object_id)
+  client1_metadata = client1.get_metadata(object_id)
+  client2_metadata = client2.get_metadata(object_id)
+  unit_test.assertEqual(len(client1_buff), len(client2_buff))
+  unit_test.assertEqual(len(client1_metadata), len(client2_metadata))
+  # Check that the buffers from the two clients are the same.
+  unit_test.assertTrue(plasma.buffers_equal(client1_buff, client2_buff))
+  # Check that the metadata buffers from the two clients are the same.
+  unit_test.assertTrue(plasma.buffers_equal(client1_metadata, client2_metadata))
+  # If a reference buffer was provided, check that it is the same as well.
   if memory_buffer is not None:
-    unit_test.assertEqual(memory_buffer[:], client2.get(object_id)[:])
+    unit_test.assertTrue(plasma.buffers_equal(memory_buffer, client1_buff))
+  # If reference metadata was provided, check that it is the same as well.
   if metadata is not None:
-    unit_test.assertEqual(metadata[:], client2.get_metadata(object_id)[:])
-  unit_test.assertEqual(client1.get(object_id)[:], client2.get(object_id)[:])
-  unit_test.assertEqual(client1.get_metadata(object_id)[:],
-                        client2.get_metadata(object_id)[:])
+    unit_test.assertTrue(plasma.buffers_equal(metadata, client1_metadata))
 
 class TestPlasmaClient(unittest.TestCase):
 

@@ -341,6 +341,34 @@ void plasma_read_ContainsReply(uint8_t *data,
   *has_object = PlasmaContainsReply_has_object(rep);
 }
 
+/* Plasma connect message. */
+
+int plasma_send_ConnectRequest(int sock, protocol_builder *B) {
+  PlasmaConnectRequest_start_as_root(B);
+  PlasmaConnectRequest_end_as_root(B);
+  return finalize_buffer_and_send(B, sock, MessageType_PlasmaConnectRequest);
+}
+
+void plasma_read_ConnectRequest(uint8_t *data) {
+  DCHECK(data);
+  PlasmaConnectRequest_table_t req = PlasmaConnectRequest_as_root(data);
+}
+
+int plasma_send_ConnectReply(int sock,
+                             protocol_builder *B,
+                             int64_t memory_capacity) {
+  PlasmaConnectReply_start_as_root(B);
+  PlasmaConnectReply_memory_capacity_add(B, memory_capacity);
+  PlasmaConnectReply_end_as_root(B);
+  return finalize_buffer_and_send(B, sock, MessageType_PlasmaConnectReply);
+}
+
+void plasma_read_ConnectReply(uint8_t *data, int64_t *memory_capacity) {
+  DCHECK(data);
+  PlasmaConnectReply_table_t rep = PlasmaConnectReply_as_root(data);
+  *memory_capacity = PlasmaConnectReply_memory_capacity(rep);
+}
+
 /* Plasma evict message. */
 
 int plasma_send_EvictRequest(int sock, protocol_builder *B, int64_t num_bytes) {

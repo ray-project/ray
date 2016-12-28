@@ -25,6 +25,9 @@ enum MessageType:int {
   // See if the store contains an object (will be deprecated).
   PlasmaContainsRequest,
   PlasmaContainsReply,
+  // Get information for a newly connecting client.
+  PlasmaConnectRequest,
+  PlasmaConnectReply,
   // Make room for new objects in the plasma store.
   PlasmaEvictRequest,
   PlasmaEvictReply,
@@ -195,6 +198,18 @@ table PlasmaContainsReply {
   object_id: string;
   // 1 if the object is in the store and 0 otherwise.
   has_object: int;
+}
+
+// PlasmaConnect is used by a plasma client the first time it connects with the
+// store. This is not really necessary, but is used to get some information
+// about the store such as its memory capacity.
+
+table PlasmaConnectRequest {
+}
+
+table PlasmaConnectReply {
+  // The memory capacity of the store.
+  memory_capacity: long;
 }
 
 table PlasmaEvictRequest {

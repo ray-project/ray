@@ -20,7 +20,7 @@ typedef struct eviction_state eviction_state;
  *        store.
  * @return The internal state of the eviction policy.
  */
-eviction_state *make_eviction_state(int64_t system_memory);
+eviction_state *make_eviction_state(void);
 
 /**
  * Free the eviction policy state.

@@ -22,7 +22,8 @@
 
 SUITE(photon_tests);
 
-const char *plasma_socket_name_format = "/tmp/plasma_socket_%d";
+const char *plasma_store_socket_name = "/tmp/plasma_store_socket_1";
+const char *plasma_manager_socket_name_format = "/tmp/plasma_manager_socket_%d";
 const char *photon_socket_name_format = "/tmp/photon_socket_%d";
 
 int64_t timeout_handler(event_loop *loop, int64_t id, void *context) {
@@ -50,24 +51,23 @@ photon_mock *init_photon_mock() {
   memset(mock, 0, sizeof(photon_mock));
   mock->loop = event_loop_create();
   /* Bind to the Photon port and initialize the Photon scheduler. */
+  /* TODO(rkn): Why are we reusing mock->plasma_fd for both the store and the
+   * manager? */
   UT_string *plasma_manager_socket_name =
-      bind_ipc_sock_retry(plasma_socket_name_format, &mock->plasma_fd);
-  UT_string *plasma_store_socket_name =
-      bind_ipc_sock_retry(plasma_socket_name_format, &mock->plasma_fd);
+      bind_ipc_sock_retry(plasma_manager_socket_name_format, &mock->plasma_fd);
+  mock->plasma_fd = socket_connect_retry(plasma_store_socket_name, 5, 100);
   UT_string *photon_socket_name =
       bind_ipc_sock_retry(photon_socket_name_format, &mock->photon_fd);
   CHECK(mock->plasma_fd >= 0 && mock->photon_fd >= 0);
   mock->photon_state = init_local_scheduler(
       "127.0.0.1", mock->loop, redis_addr, redis_port,
-      utstring_body(photon_socket_name),
-      utstring_body(plasma_manager_socket_name),
-      utstring_body(plasma_store_socket_name), NULL, false);
+      utstring_body(photon_socket_name), plasma_store_socket_name,
+      utstring_body(plasma_manager_socket_name), NULL, false);
   /* Connect a Photon client. */
   mock->conn = photon_connect(utstring_body(photon_socket_name));
   new_client_connection(mock->loop, mock->photon_fd,
                         (void *) mock->photon_state, 0);
   utstring_free(plasma_manager_socket_name);
-  utstring_free(plasma_store_socket_name);
   utstring_free(photon_socket_name);
   return mock;
 }
