@@ -216,12 +216,12 @@ void increment_object_count(plasma_connection *conn,
   object_entry->count += 1;
 }
 
-bool plasma_create(plasma_connection *conn,
-                   object_id obj_id,
-                   int64_t data_size,
-                   uint8_t *metadata,
-                   int64_t metadata_size,
-                   uint8_t **data) {
+int plasma_create(plasma_connection *conn,
+                  object_id obj_id,
+                  int64_t data_size,
+                  uint8_t *metadata,
+                  int64_t metadata_size,
+                  uint8_t **data) {
   LOG_DEBUG("called plasma_create on conn %d with size %" PRId64
             " and metadata size %" PRId64,
             conn->store_conn, data_size, metadata_size);
@@ -234,10 +234,14 @@ bool plasma_create(plasma_connection *conn,
   plasma_object object;
   plasma_read_CreateReply(reply_data, &id, &object, &error);
   free(reply_data);
-  if (error == PlasmaError_ObjectExists) {
+  if (error != PlasmaError_OK) {
     LOG_DEBUG("returned from plasma_create with error %d", error);
-    return false;
+    CHECK(error == PlasmaError_OutOfMemory ||
+          error == PlasmaError_ObjectExists);
+    return error;
   }
+  /* If the CreateReply included an error, then the store will not send a file
+   * descriptor. */
   int fd = recv_fd(conn->store_conn);
   CHECKM(fd >= 0, "recv not successful");
   CHECK(object.data_size == data_size);
@@ -263,7 +267,7 @@ bool plasma_create(plasma_connection *conn,
    * returned by plasma_create goes out of scope, the object does not get
    * released before the call to plasma_seal happens. */
   increment_object_count(conn, obj_id, &object, false);
-  return true;
+  return PlasmaError_OK;
 }
 
 /* This method is used to get both the data and the metadata. */

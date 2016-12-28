@@ -7,6 +7,9 @@
 #include "plasma_client.h"
 #include "object_info.h"
 
+PyObject *PlasmaOutOfMemoryError;
+PyObject *PlasmaObjectExistsError;
+
 static int PyObjectToPlasmaConnection(PyObject *object,
                                       plasma_connection **conn) {
   if (PyCapsule_IsValid(object, "plasma")) {
@@ -69,14 +72,22 @@ PyObject *PyPlasma_create(PyObject *self, PyObject *args) {
     return NULL;
   }
   uint8_t *data;
-  bool created = plasma_create(conn, object_id, size,
-                               (uint8_t *) PyByteArray_AsString(metadata),
-                               PyByteArray_Size(metadata), &data);
-  if (!created) {
-    PyErr_SetString(PyExc_RuntimeError,
-                    "an object with this ID could not be created");
+  int error_code = plasma_create(conn, object_id, size,
+                                 (uint8_t *) PyByteArray_AsString(metadata),
+                                 PyByteArray_Size(metadata), &data);
+  if (error_code == PlasmaError_ObjectExists) {
+    PyErr_SetString(PlasmaObjectExistsError,
+                    "An object with this ID already exists in the plasma "
+                    "store.");
     return NULL;
   }
+  if (error_code == PlasmaError_OutOfMemory) {
+    PyErr_SetString(PlasmaOutOfMemoryError,
+                    "The plasma store ran out of memory and could not create "
+                    "this object.");
+    return NULL;
+  }
+  CHECK(error_code == PlasmaError_OK);
 
 #if PY_MAJOR_VERSION >= 3
   return PyMemoryView_FromMemory((void *) data, (Py_ssize_t) size, PyBUF_WRITE);
@@ -421,6 +432,19 @@ MOD_INIT(libplasma) {
   PyObject *m = Py_InitModule3("libplasma", plasma_methods,
                                "A Python client library for plasma.");
 #endif
+
+  /* Create a custom exception for when an object ID is reused. */
+  char plasma_object_exists_error[] = "plasma_object_exists.error";
+  PlasmaObjectExistsError =
+      PyErr_NewException(plasma_object_exists_error, NULL, NULL);
+  Py_INCREF(PlasmaObjectExistsError);
+  PyModule_AddObject(m, "plasma_object_exists_error", PlasmaObjectExistsError);
+  /* Create a custom exception for when the plasma store is out of memory. */
+  char plasma_out_of_memory_error[] = "plasma_out_of_memory.error";
+  PlasmaOutOfMemoryError =
+      PyErr_NewException(plasma_out_of_memory_error, NULL, NULL);
+  Py_INCREF(PlasmaOutOfMemoryError);
+  PyModule_AddObject(m, "plasma_out_of_memory_error", PlasmaOutOfMemoryError);
 
 #if PY_MAJOR_VERSION >= 3
   return m;
