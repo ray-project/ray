@@ -728,9 +728,20 @@ void process_transfer_request(event_loop *loop,
    * forever if we don't end up sealing this object. */
   /* The corresponding call to plasma_release will happen in
    * write_object_chunk. */
+  /* TODO(rkn): The manager currently will block here if the object is not
+   * present in the store. This is completely unacceptable. The manager should
+   * do a non-blocking get call on the store, and if the object isn't there then
+   * perhaps the manager should initiate the transfer when it receives a
+   * notification from the store that the object is present. */
   int has_obj;
-  plasma_contains(conn->manager_state->plasma_conn, object_id, &has_obj);
-  DCHECK(has_obj);
+  int counter = 0;
+  do {
+    plasma_contains(conn->manager_state->plasma_conn, object_id, &has_obj);
+    if (counter > 0) {
+      LOG_WARN("Blocking in the plasma manager.");
+    }
+    counter += 1;
+  } while(!has_obj);
   plasma_get(conn->manager_state->plasma_conn, object_id, &data_size, &data,
              &metadata_size, &metadata);
   assert(metadata == data + data_size);
