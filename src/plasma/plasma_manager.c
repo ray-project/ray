@@ -741,7 +741,7 @@ void process_transfer_request(event_loop *loop,
       LOG_WARN("Blocking in the plasma manager.");
     }
     counter += 1;
-  } while(!has_obj);
+  } while (!has_obj);
   plasma_get(conn->manager_state->plasma_conn, object_id, &data_size, &data,
              &metadata_size, &metadata);
   assert(metadata == data + data_size);
