@@ -387,7 +387,7 @@ void plasma_release(plasma_connection *conn, object_id obj_id) {
    * that conn->release_history_first_entry != NULL may be relying on an
    * implementation detail that may or may not work as expected. */
   while ((conn->in_use_object_bytes >
-              MIN(L3_CACHE_SIZE_BYTES, conn->store_capacity / 1000) ||
+              MIN(L3_CACHE_SIZE_BYTES, conn->store_capacity / 100) ||
           conn->release_history_length > conn->config.release_delay) &&
          conn->release_history_length > 0) {
     DCHECK(conn->release_history_first_entry != NULL);
