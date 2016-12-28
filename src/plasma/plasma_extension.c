@@ -69,14 +69,22 @@ PyObject *PyPlasma_create(PyObject *self, PyObject *args) {
     return NULL;
   }
   uint8_t *data;
-  bool created = plasma_create(conn, object_id, size,
-                               (uint8_t *) PyByteArray_AsString(metadata),
-                               PyByteArray_Size(metadata), &data);
-  if (!created) {
+  int error_code = plasma_create(conn, object_id, size,
+                                 (uint8_t *) PyByteArray_AsString(metadata),
+                                 PyByteArray_Size(metadata), &data);
+  if (error_code == PlasmaError_ObjectExists) {
     PyErr_SetString(PyExc_RuntimeError,
-                    "an object with this ID could not be created");
+                    "An object with this ID already exists in the plasma "
+                    "store.");
     return NULL;
   }
+  if (error_code == PlasmaError_OutOfMemory) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "The plasma store ran out of memory and could not create "
+                    "this object.");
+    return NULL;
+  }
+  CHECK(error_code == PlasmaError_OK);
 
 #if PY_MAJOR_VERSION >= 3
   return PyMemoryView_FromMemory((void *) data, (Py_ssize_t) size, PyBUF_WRITE);

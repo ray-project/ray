@@ -63,9 +63,9 @@ void object_created(eviction_state *eviction_state,
  *        stored at this address. If the number of objects chosen is greater
  *        than 0, then the caller needs to free that array. If it equals 0, then
  *        the array will be NULL.
- * @return Void.
+ * @return True if enough space can be freed and false otherwise.
  */
-void require_space(eviction_state *eviction_state,
+bool require_space(eviction_state *eviction_state,
                    plasma_store_info *plasma_store_info,
                    int64_t size,
                    int64_t *num_objects_to_evict,

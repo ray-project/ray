@@ -80,15 +80,21 @@ int plasma_manager_connect(const char *addr, int port);
  * @param metadata_size The size in bytes of the metadata. If there is no
           metadata, this should be 0.
  * @param data The address of the newly created object will be written here.
- * @return True, if object was created, false, otherwise (e.g., if object has
- *         been already created).
+ * @return One of the following error codes:
+ *         - PlasmaError_OK, if the object was created successfully.
+ *         - PlasmaError_ObjectExists, if an object with this ID is already
+ *           present in the store. In this case, the client should not call
+ *           plasma_release.
+ *         - PlasmaError_OutOfMemory, if the store is out of memory and cannot
+ *           create the object. In this case, the client should not call
+ *           plasma_release.
  */
-bool plasma_create(plasma_connection *conn,
-                   object_id object_id,
-                   int64_t size,
-                   uint8_t *metadata,
-                   int64_t metadata_size,
-                   uint8_t **data);
+int plasma_create(plasma_connection *conn,
+                  object_id object_id,
+                  int64_t size,
+                  uint8_t *metadata,
+                  int64_t metadata_size,
+                  uint8_t **data);
 
 /**
  * Get an object from the Plasma Store. This function will block until the

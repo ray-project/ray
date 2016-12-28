@@ -139,11 +139,11 @@ void add_client_to_object_clients(object_table_entry *entry,
 }
 
 /* Create a new object buffer in the hash table. */
-bool create_object(client *client_context,
-                   object_id obj_id,
-                   int64_t data_size,
-                   int64_t metadata_size,
-                   plasma_object *result) {
+int create_object(client *client_context,
+                  object_id obj_id,
+                  int64_t data_size,
+                  int64_t metadata_size,
+                  plasma_object *result) {
   LOG_DEBUG("creating object"); /* TODO(pcm): add object_id here */
   plasma_store_state *plasma_state = client_context->plasma_state;
   object_table_entry *entry;
@@ -153,15 +153,20 @@ bool create_object(client *client_context,
   if (entry != NULL) {
     /* There is already an object with the same ID in the Plasma Store, so
      * ignore this requst. */
-    return false;
+    return PlasmaError_ObjectExists;
   }
   /* Tell the eviction policy how much space we need to create this object. */
   int64_t num_objects_to_evict;
   object_id *objects_to_evict;
-  require_space(plasma_state->eviction_state, plasma_state->plasma_store_info,
-                data_size + metadata_size, &num_objects_to_evict,
-                &objects_to_evict);
+  bool success = require_space(
+      plasma_state->eviction_state, plasma_state->plasma_store_info,
+      data_size + metadata_size, &num_objects_to_evict, &objects_to_evict);
   remove_objects(plasma_state, num_objects_to_evict, objects_to_evict);
+  /* Return an error to the client if not enough space could be freed to create
+   * the object. */
+  if (!success) {
+    return PlasmaError_OutOfMemory;
+  }
   /* Allocate space for the new object */
   uint8_t *pointer = dlmalloc(data_size + metadata_size);
   int fd;
@@ -198,7 +203,7 @@ bool create_object(client *client_context,
                  obj_id);
   /* Record that this client is using this object. */
   add_client_to_object_clients(entry, client_context);
-  return true;
+  return PlasmaError_OK;
 }
 
 /* Get an object from the hash table. */
@@ -506,15 +511,11 @@ void process_message(event_loop *loop,
     int64_t metadata_size;
     plasma_read_CreateRequest(input, &object_ids[0], &data_size,
                               &metadata_size);
-    if (create_object(client_context, object_ids[0], data_size, metadata_size,
-                      &objects[0])) {
-      error = PlasmaError_OK;
-    } else {
-      error = PlasmaError_ObjectExists;
-    }
+    int error_code = create_object(client_context, object_ids[0], data_size,
+                                   metadata_size, &objects[0]);
     CHECK(plasma_send_CreateReply(client_sock, state->builder, object_ids[0],
-                                  &objects[0], error) >= 0);
-    if (error == PlasmaError_OK) {
+                                  &objects[0], error_code) >= 0);
+    if (error_code == PlasmaError_OK) {
       CHECK(send_fd(client_sock, objects[0].handle.store_fd) >= 0);
     }
   } break;

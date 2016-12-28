@@ -792,13 +792,12 @@ void process_data_request(event_loop *loop,
 
   /* The corresponding call to plasma_release should happen in
    * process_data_chunk. */
-  bool success_create =
-      plasma_create(conn->manager_state->plasma_conn, object_id, data_size,
-                    NULL, metadata_size, &(buf->data));
+  int error_code = plasma_create(conn->manager_state->plasma_conn, object_id,
+                                 data_size, NULL, metadata_size, &(buf->data));
   /* If success_create == true, a new object has been created.
    * If success_create == false the object creation has failed, possibly
    * due to an object with the same ID already existing in the Plasma Store. */
-  if (success_create) {
+  if (error_code == PlasmaError_OK) {
     /* Add buffer where the fetched data is to be stored to
      * conn->transfer_queue. */
     LL_APPEND(conn->transfer_queue, buf);
@@ -808,7 +807,7 @@ void process_data_request(event_loop *loop,
   /* Switch to reading the data from this socket, instead of listening for
    * other requests. */
   event_loop_remove_file(loop, client_sock);
-  if (success_create) {
+  if (error_code == PlasmaError_OK) {
     event_loop_add_file(loop, client_sock, EVENT_LOOP_READ, process_data_chunk,
                         conn);
   } else {

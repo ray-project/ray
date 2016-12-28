@@ -422,13 +422,18 @@ class Worker(object):
     try:
       buff = self.plasma_client.create(objectid.id(), size, bytearray(schema))
     except RuntimeError as e:
-      if e.args != ("an object with this ID could not be created",):
-        raise
-      # The object already exists in the object store, so there is no need to
-      # add it again. TODO(rkn): We need to compare the hashes and make sure
-      # that the objects are in fact the same.
-      print("This object already exists in the object store.")
-      return
+      if e.args == ("An object with this ID already exists in the plasma store.",):
+        # The object already exists in the object store, so there is no need to
+        # add it again. TODO(rkn): We need to compare the hashes and make sure
+        # that the objects are in fact the same.
+        print("This object already exists in the object store.")
+        return
+      if e.args == ("The plasma store ran out of memory and could not create this object.",):
+        # The object store was not able to evict enough objects to create room
+        # for this object.
+        raise Exception("There is not enough free space in the object store for this object.")
+      # Some other exception that we didn't anticipate has been raised.
+      raise
     data = np.frombuffer(buff.buffer, dtype="byte")[8:]
     metadata_offset = numbuf.write_to_buffer(serialized, memoryview(data))
     np.frombuffer(buff.buffer, dtype="int64", count=1)[0] = metadata_offset
