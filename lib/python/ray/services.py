@@ -396,9 +396,9 @@ def start_ray_processes(address_info=None,
     time.sleep(0.1)
 
   # Start any local schedulers that do not yet exist.
-  for i in range(num_local_schedulers - len(local_scheduler_socket_names)):
+  for i in range(len(local_scheduler_socket_names), num_local_schedulers):
     # Connect the local scheduler to the object store at the same index.
-    object_store_address = object_store_addresses[i + len(local_scheduler_socket_names)]
+    object_store_address = object_store_addresses[i]
     plasma_address = "{}:{}".format(node_ip_address,
                                     object_store_address.manager_port)
     # Start the local scheduler.
