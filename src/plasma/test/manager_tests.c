@@ -19,7 +19,8 @@
 
 SUITE(plasma_manager_tests);
 
-const char *plasma_socket_name_format = "/tmp/plasma_socket_%d";
+const char *plasma_store_socket_name = "/tmp/plasma_store_socket_1";
+const char *plasma_manager_socket_name_format = "/tmp/plasma_manager_socket_%d";
 const char *manager_addr = "127.0.0.1";
 object_id oid;
 
@@ -59,14 +60,13 @@ plasma_mock *init_plasma_mock(plasma_mock *remote_mock) {
   plasma_mock *mock = malloc(sizeof(plasma_mock));
   /* Start listening on all the ports and initiate the local plasma manager. */
   mock->port = bind_inet_sock_retry(&mock->manager_remote_fd);
-  UT_string *store_socket_name =
-      bind_ipc_sock_retry(plasma_socket_name_format, &mock->local_store);
-  UT_string *manager_socket_name =
-      bind_ipc_sock_retry(plasma_socket_name_format, &mock->manager_local_fd);
+  mock->local_store = socket_connect_retry(plasma_store_socket_name, 5, 100);
+  UT_string *manager_socket_name = bind_ipc_sock_retry(
+      plasma_manager_socket_name_format, &mock->manager_local_fd);
 
   CHECK(mock->manager_local_fd >= 0 && mock->local_store >= 0);
 
-  mock->state = init_plasma_manager_state(utstring_body(store_socket_name),
+  mock->state = init_plasma_manager_state(plasma_store_socket_name,
                                           utstring_body(manager_socket_name),
                                           manager_addr, mock->port, NULL, 0);
   mock->loop = get_event_loop(mock->state);
@@ -84,12 +84,11 @@ plasma_mock *init_plasma_mock(plasma_mock *remote_mock) {
   }
   /* Connect a new client to the local plasma manager and mock a request to an
    * object. */
-  mock->plasma_conn = plasma_connect(utstring_body(store_socket_name),
+  mock->plasma_conn = plasma_connect(plasma_store_socket_name,
                                      utstring_body(manager_socket_name), 0);
   wait_for_pollin(mock->manager_local_fd);
   mock->client_conn =
       new_client_connection(mock->loop, mock->manager_local_fd, mock->state, 0);
-  utstring_free(store_socket_name);
   utstring_free(manager_socket_name);
   return mock;
 }

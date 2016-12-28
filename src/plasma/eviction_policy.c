@@ -27,9 +27,6 @@ typedef struct {
 
 /** The part of the Plasma state that is maintained by the eviction policy. */
 struct eviction_state {
-  /** The amount of memory (in bytes) that we allow to be allocated in the
-   *  store. */
-  int64_t memory_capacity;
   /** The amount of memory (in bytes) currently being used. */
   int64_t memory_used;
   /** A doubly-linked list of the released objects in order from least recently
@@ -44,10 +41,8 @@ struct eviction_state {
  * released_objects type. */
 UT_icd released_objects_entry_icd = {sizeof(object_id), NULL, NULL, NULL};
 
-eviction_state *make_eviction_state(int64_t system_memory) {
+eviction_state *make_eviction_state(void) {
   eviction_state *state = malloc(sizeof(eviction_state));
-  /* Find the amount of available memory on the machine. */
-  state->memory_capacity = system_memory;
   state->memory_used = 0;
   state->released_objects = NULL;
   state->released_object_table = NULL;
@@ -166,11 +161,11 @@ void require_space(eviction_state *eviction_state,
                    object_id **objects_to_evict) {
   /* Check if there is enough space to create the object. */
   int64_t required_space =
-      eviction_state->memory_used + size - eviction_state->memory_capacity;
+      eviction_state->memory_used + size - plasma_store_info->memory_capacity;
   if (required_space > 0) {
     /* Try to free up at least as much space as we need right now but ideally
      * up to 20% of the total capacity. */
-    int64_t space_to_free = MAX(size, eviction_state->memory_capacity / 5);
+    int64_t space_to_free = MAX(size, plasma_store_info->memory_capacity / 5);
     LOG_DEBUG("not enough space to create this object, so evicting objects");
     /* Choose some objects to evict, and update the return pointers. */
     int64_t num_bytes_evicted = choose_objects_to_evict(

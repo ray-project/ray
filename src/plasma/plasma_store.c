@@ -100,8 +100,9 @@ plasma_store_state *init_plasma_store(event_loop *loop, int64_t system_memory) {
   /* Initialize the plasma store info. */
   state->plasma_store_info = malloc(sizeof(plasma_store_info));
   state->plasma_store_info->objects = NULL;
+  state->plasma_store_info->memory_capacity = system_memory;
   /* Initialize the eviction state. */
-  state->eviction_state = make_eviction_state(system_memory);
+  state->eviction_state = make_eviction_state();
   utarray_new(state->input_buffer, &byte_icd);
   state->builder = make_protocol_builder();
   return state;
@@ -576,6 +577,11 @@ void process_message(event_loop *loop,
   } break;
   case MessageType_PlasmaSubscribeRequest:
     subscribe_to_updates(client_context, client_sock);
+    break;
+  case MessageType_PlasmaConnectRequest:
+    CHECK(plasma_send_ConnectReply(client_sock, state->builder,
+                                   state->plasma_store_info->memory_capacity) >=
+          0);
     break;
   case DISCONNECT_CLIENT: {
     LOG_DEBUG("Disconnecting client on fd %d", client_sock);

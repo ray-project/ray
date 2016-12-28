@@ -27,7 +27,7 @@
 #include "plasma_client.h"
 #include "fling.h"
 #include "uthash.h"
-#include "utringbuffer.h"
+#include "utlist.h"
 #include "sha256.h"
 
 #define XXH_STATIC_LINKING_ONLY
@@ -83,6 +83,17 @@ typedef struct {
   int release_delay;
 } plasma_client_config;
 
+/** An element representing a pending release call in a doubly-linked list. This
+ *  is used to implement the delayed release mechanism. */
+typedef struct pending_release {
+  /** The object_id of the released object. */
+  object_id object_id;
+  /** Needed for the doubly-linked list macros. */
+  struct pending_release *prev;
+  /** Needed for the doubly-linked list macros. */
+  struct pending_release *next;
+} pending_release;
+
 /** Information about a connection between a Plasma Client and Plasma Store.
  *  This is used to avoid mapping the same files into memory multiple times. */
 struct plasma_connection {
@@ -103,13 +114,29 @@ struct plasma_connection {
   /** A hash table of the object IDs that are currently being used by this
    * client. */
   object_in_use_entry *objects_in_use;
-  /** Object IDs of the last few release calls. This is used to delay releasing
-   *  objects to see if they can be reused by subsequent tasks so we do not
-   *  unneccessarily invalidate cpu caches. TODO(pcm): replace this with a
-   *  proper lru cache of size sizeof(L3 cache). */
-  UT_ringbuffer *release_history;
+  /** Object IDs of the last few release calls. This is a doubly-linked list and
+   *  is used to delay releasing objects to see if they can be reused by
+   *  subsequent tasks so we do not unneccessarily invalidate cpu caches.
+   *  TODO(pcm): replace this with a proper lru cache using the size of the L3
+   *  cache. */
+  pending_release *release_history;
+  /** This is the first element in the release_history doubly-linked list. It is
+   *  an implementation detail used so we can pop from the front of the list. */
+  pending_release *release_history_first_entry;
+  /** The length of the release_history doubly-linked list. This is an
+   *  implementation detail. */
+  int release_history_length;
+  /** The number of bytes in the combined objects that are held in the release
+   *  history doubly-linked list. If this is too large then the client starts
+   *  releasing objects. */
+  int64_t in_use_object_bytes;
   /** Configuration options for the plasma client. */
   plasma_client_config config;
+  /** The amount of memory available to the Plasma store. The client needs this
+   *  information to make sure that it does not delay in releasing so much
+   *  memory that the store is unable to evict enough objects to free up space.
+   */
+  int64_t store_capacity;
 };
 
 /* If the file descriptor fd has been mmapped in this client process before,
@@ -176,6 +203,9 @@ void increment_object_count(plasma_connection *conn,
     HASH_FIND_INT(conn->mmap_table, &object->handle.store_fd, entry);
     CHECK(entry != NULL);
     CHECK(entry->count >= 0);
+    /* Update the in_use_object_bytes. */
+    conn->in_use_object_bytes +=
+        (object_entry->object.data_size + object_entry->object.metadata_size);
     entry->count += 1;
   } else {
     CHECK(object_entry->count > 0);
@@ -227,6 +257,11 @@ bool plasma_create(plasma_connection *conn,
   /* Increment the count of the number of instances of this object that this
    * client is using. A call to plasma_release is required to decrement this
    * count. Cache the reference to the object. */
+  increment_object_count(conn, obj_id, &object, false);
+  /* We increment the count a second time (and the corresponding decrement will
+   * happen in a plasma_release call in plasma_seal) so even if the buffer
+   * returned by plasma_create goes out of scope, the object does not get
+   * released before the call to plasma_seal happens. */
   increment_object_count(conn, obj_id, &object, false);
   return true;
 }
@@ -282,6 +317,17 @@ void plasma_get(plasma_connection *conn,
   increment_object_count(conn, obj_id, object, true);
 }
 
+/**
+ * This is a helper method for implementing plasma_release. We maintain a buffer
+ * of release calls and only perform them once the buffer becomes full (as
+ * judged by the aggregate sizes of the objects). There may be multiple release
+ * calls for the same object ID in the buffer. In this case, the first release
+ * calls will not do anything. The client will only send a message to the store
+ * releasing the object when the client is truly done with the object.
+ *
+ * @param conn The plasma connection.
+ * @param object_id The object ID to attempt to release.
+ */
 void plasma_perform_release(plasma_connection *conn, object_id object_id) {
   /* Decrement the count of the number of instances of this object that are
    * being used by this client. The corresponding increment should have happened
@@ -313,6 +359,10 @@ void plasma_perform_release(plasma_connection *conn, object_id object_id) {
     /* Tell the store that the client no longer needs the object. */
     CHECK(plasma_send_ReleaseRequest(conn->store_conn, conn->builder,
                                      object_id) >= 0);
+    /* Update the in_use_object_bytes. */
+    conn->in_use_object_bytes -=
+        (object_entry->object.data_size + object_entry->object.metadata_size);
+    DCHECK(conn->in_use_object_bytes >= 0);
     /* Remove the entry from the hash table of objects currently in use. */
     HASH_DELETE(hh, conn->objects_in_use, object_entry);
     free(object_entry);
@@ -320,20 +370,40 @@ void plasma_perform_release(plasma_connection *conn, object_id object_id) {
 }
 
 void plasma_release(plasma_connection *conn, object_id obj_id) {
-  /* If no ringbuffer is used, don't delay the release. */
-  if (conn->config.release_delay == 0) {
-    plasma_perform_release(conn, obj_id);
-  } else if (!utringbuffer_full(conn->release_history)) {
-    /* Delay the release by storing new releases into a ringbuffer and only
-     * popping them off and actually releasing if the buffer is full. This is
-     * so consecutive tasks don't release and map again objects and invalidate
-     * the cpu cache this way. */
-    utringbuffer_push_back(conn->release_history, &obj_id);
-  } else {
-    object_id object_id_to_release =
-        *(object_id *) utringbuffer_front(conn->release_history);
-    utringbuffer_push_back(conn->release_history, &obj_id);
-    plasma_perform_release(conn, object_id_to_release);
+  /* Add the new object to the release history. The corresponding call to free
+   * will occur in plasma_perform_release or in plasma_disconnect. */
+  pending_release *pending_release_entry = malloc(sizeof(pending_release));
+  pending_release_entry->object_id = obj_id;
+  DL_APPEND(conn->release_history, pending_release_entry);
+  conn->release_history_length += 1;
+  /* If the doubly-linked list was previously empty, update the pointer to the
+   * first element of the doubly-linked list. */
+  if (conn->release_history_first_entry == NULL) {
+    conn->release_history_first_entry = pending_release_entry;
+  }
+  /* If there are too many bytes in use by the client or if there are too many
+   * pending release calls, and there are at least some pending release calls in
+   * the release_history list, then release some objects. TODO(rkn): Checking
+   * that conn->release_history_first_entry != NULL may be relying on an
+   * implementation detail that may or may not work as expected. */
+  while ((conn->in_use_object_bytes >
+              MIN(L3_CACHE_SIZE_BYTES, conn->store_capacity / 100) ||
+          conn->release_history_length > conn->config.release_delay) &&
+         conn->release_history_length > 0) {
+    DCHECK(conn->release_history_first_entry != NULL);
+    /* Perform a release for the object ID for the first pending release. */
+    plasma_perform_release(conn, conn->release_history_first_entry->object_id);
+    /* Remove the first entry from the doubly-linked list. */
+    pending_release *new_first_entry = conn->release_history_first_entry->next;
+    DL_DELETE(conn->release_history, conn->release_history_first_entry);
+    free(conn->release_history_first_entry);
+    /* Update the first element in the doubly linked list. */
+    conn->release_history_first_entry = new_first_entry;
+    conn->release_history_length -= 1;
+    DCHECK(conn->release_history_length >= 0);
+  }
+  if (conn->release_history_length == 0) {
+    DCHECK(conn->release_history_first_entry == NULL);
   }
 }
 
@@ -402,6 +472,11 @@ void plasma_seal(plasma_connection *conn, object_id object_id) {
   CHECK(plasma_compute_object_hash(conn, object_id, &digest[0]));
   CHECK(plasma_send_SealRequest(conn->store_conn, conn->builder, object_id,
                                 &digest[0]) >= 0);
+  /* We call plasma_release to decrement the number of instances of this object
+   * that are currently being used by this client. The corresponding increment
+   * happened in plasma_create and was used to ensure that the object was not
+   * released before the call to plasma_seal. */
+  plasma_release(conn, object_id);
 }
 
 void plasma_delete(plasma_connection *conn, object_id object_id) {
@@ -482,17 +557,43 @@ plasma_connection *plasma_connect(const char *store_socket_name,
   result->mmap_table = NULL;
   result->objects_in_use = NULL;
   result->config.release_delay = release_delay;
-  utringbuffer_new(result->release_history, release_delay, &object_id_icd);
+  /* Initialize the release history doubly-linked list to NULL and also
+   * initialize other implementation details of the release history. */
+  result->release_history = NULL;
+  result->release_history_first_entry = NULL;
+  result->release_history_length = 0;
+  result->in_use_object_bytes = 0;
+  /* Send a ConnectRequest to the store to get its memory capacity. */
+  plasma_send_ConnectRequest(result->store_conn, result->builder);
+  uint8_t *reply_data =
+      plasma_receive(result->store_conn, MessageType_PlasmaConnectReply);
+  plasma_read_ConnectReply(reply_data, &result->store_capacity);
+  free(reply_data);
   return result;
 }
 
 void plasma_disconnect(plasma_connection *conn) {
-  object_id *id = NULL;
-  while ((id = (object_id *) utringbuffer_next(conn->release_history, id))) {
-    plasma_perform_release(conn, *id);
+  /* Perform the pending release calls to flush out the queue so that the counts
+   * in the objects_in_use table are accurate. */
+  pending_release *element, *temp;
+  DL_FOREACH_SAFE(conn->release_history, element, temp) {
+    plasma_perform_release(conn, element->object_id);
+    DL_DELETE(conn->release_history, element);
+    free(element);
   }
+  /* Loop over the objects in use table and release all remaining objects. */
+  object_in_use_entry *current_entry, *temp_entry;
+  HASH_ITER(hh, conn->objects_in_use, current_entry, temp_entry) {
+    object_id object_id_to_release = current_entry->object_id;
+    int count = current_entry->count;
+    for (int i = 0; i < count; ++i) {
+      plasma_perform_release(conn, object_id_to_release);
+    }
+  }
+  /* Check that we've successfully released everything. */
+  CHECKM(conn->in_use_object_bytes == 0, "conn->in_use_object_bytes = %" PRId64,
+         conn->in_use_object_bytes);
   free_protocol_builder(conn->builder);
-  utringbuffer_free(conn->release_history);
   close(conn->store_conn);
   if (conn->manager_conn >= 0) {
     close(conn->manager_conn);

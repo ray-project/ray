@@ -46,7 +46,10 @@ common: FORCE
 test: CFLAGS += -DRAY_TIMEOUT=50 -DRAY_COMMON_LOG_LEVEL=4
 # First, build and run all the unit tests.
 test: $(BUILD)/manager_tests $(BUILD)/client_tests $(BUILD)/serialization_tests FORCE
+	./build/plasma_store -s /tmp/plasma_store_socket_1 -m 0 &
+	sleep 1
 	./build/manager_tests
+	killall plasma_store
 	./build/serialization_tests
 	./test/run_client_tests.sh
 	cd ../common; make redis
@@ -54,7 +57,10 @@ test: $(BUILD)/manager_tests $(BUILD)/client_tests $(BUILD)/serialization_tests 
 test: all
 
 valgrind: test
+	./build/plasma_store -s /tmp/plasma_store_socket_1 -m 0 &
+	sleep 1
 	valgrind --leak-check=full --error-exitcode=1 ./build/manager_tests
+	killall plasma_store
 	valgrind --leak-check=full --error-exitcode=1 ./build/serialization_tests
 
 FORCE:
