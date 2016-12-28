@@ -9,6 +9,8 @@ import sys
 import time
 
 from . import libplasma
+from .libplasma import plasma_object_exists_error
+from .libplasma import plasma_out_of_memory_error
 
 PLASMA_ID_SIZE = 20
 PLASMA_WAIT_TIMEOUT = 2 ** 30
@@ -128,7 +130,12 @@ class PlasmaClient(object):
         wishes to encode.
 
     Raises:
-      Exception: An exception is raised if the object could not be created.
+      plasma_object_exists_error: This exception is raised if the object could
+        not be created because there already is an object with the same ID in
+        the plasma store.
+      plasma_out_of_memory_error: This exception is raised if the object could
+        not be created because the plasma store is unable to evict enough
+        objects to create room for it.
     """
     # Turn the metadata into the right type.
     metadata = bytearray(b"") if metadata is None else metadata

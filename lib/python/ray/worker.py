@@ -421,12 +421,11 @@ class Worker(object):
     size = size + 4096 * 4 + 8 # The last 8 bytes are for the metadata offset. This is temporary.
     try:
       buff = self.plasma_client.create(objectid.id(), size, bytearray(schema))
-    except RuntimeError as e:
-      if e.args != ("an object with this ID could not be created",):
-        raise
+    except plasma.plasma_object_exists_error as e:
       # The object already exists in the object store, so there is no need to
       # add it again. TODO(rkn): We need to compare the hashes and make sure
-      # that the objects are in fact the same.
+      # that the objects are in fact the same. We also should return an error
+      # code to the caller instead of printing a message.
       print("This object already exists in the object store.")
       return
     data = np.frombuffer(buff.buffer, dtype="byte")[8:]

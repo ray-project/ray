@@ -154,7 +154,7 @@ void object_created(eviction_state *eviction_state,
   add_object_to_lru_cache(eviction_state, obj_id);
 }
 
-void require_space(eviction_state *eviction_state,
+bool require_space(eviction_state *eviction_state,
                    plasma_store_info *plasma_store_info,
                    int64_t size,
                    int64_t *num_objects_to_evict,
@@ -162,13 +162,14 @@ void require_space(eviction_state *eviction_state,
   /* Check if there is enough space to create the object. */
   int64_t required_space =
       eviction_state->memory_used + size - plasma_store_info->memory_capacity;
+  int64_t num_bytes_evicted;
   if (required_space > 0) {
     /* Try to free up at least as much space as we need right now but ideally
      * up to 20% of the total capacity. */
     int64_t space_to_free = MAX(size, plasma_store_info->memory_capacity / 5);
     LOG_DEBUG("not enough space to create this object, so evicting objects");
     /* Choose some objects to evict, and update the return pointers. */
-    int64_t num_bytes_evicted = choose_objects_to_evict(
+    num_bytes_evicted = choose_objects_to_evict(
         eviction_state, plasma_store_info, space_to_free, num_objects_to_evict,
         objects_to_evict);
     printf("Evicted %" PRId64 " bytes.\n", num_bytes_evicted);
@@ -176,12 +177,17 @@ void require_space(eviction_state *eviction_state,
         "There is not enough space to create this object, so evicting "
         "%" PRId64 " objects to free up %" PRId64 " bytes.\n",
         *num_objects_to_evict, num_bytes_evicted);
-    CHECK(num_bytes_evicted >= required_space);
   } else {
+    num_bytes_evicted = 0;
     *num_objects_to_evict = 0;
     *objects_to_evict = NULL;
   }
-  eviction_state->memory_used += size;
+  if (num_bytes_evicted >= required_space) {
+    /* We only increment the space used if there is enough space to create the
+     * object. */
+    eviction_state->memory_used += size;
+  }
+  return num_bytes_evicted >= required_space;
 }
 
 void begin_object_access(eviction_state *eviction_state,
