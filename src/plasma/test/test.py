@@ -107,8 +107,8 @@ class TestPlasmaClient(unittest.TestCase):
       self.plasma_client.create(object_id, length, generate_metadata(length))
       try:
         val = self.plasma_client.create(object_id, length, generate_metadata(length))
-      except Exception as e:
-        self.assertEqual(e.args, ("An object with this ID already exists in the plasma store.",))
+      except plasma.plasma_object_exists_error as e:
+        pass
       else:
         self.assertTrue(False)
 
@@ -119,8 +119,8 @@ class TestPlasmaClient(unittest.TestCase):
       partial_size = np.random.randint(size)
       try:
         _, memory_buffer, _ = create_object(unit_test.plasma_client, partial_size, size - partial_size)
-      except Exception as e:
-        unit_test.assertEqual(e.args, ("The plasma store ran out of memory and could not create this object.",))
+      except plasma.plasma_out_of_memory_error as e:
+        pass
       else:
         # For some reason the above didn't throw an exception, so fail.
         unit_test.assertTrue(False)
