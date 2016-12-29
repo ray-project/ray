@@ -858,6 +858,10 @@ def print_error_messages(worker):
   This runs in a separate thread on the driver and prints error messages in the
   background.
   """
+  # TODO(rkn): All error messages should have a "component" field indicating
+  # which process the error came from (e.g., a worker or a plasma store).
+  # Currently all error messages come from workers.
+
   helpful_message = """
 You can inspect errors by running
 
