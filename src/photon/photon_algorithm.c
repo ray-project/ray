@@ -95,6 +95,7 @@ void provide_scheduler_info(local_scheduler_state *state,
                             scheduling_algorithm_state *algorithm_state,
                             local_scheduler_info *info) {
   task_queue_entry *elt;
+  info->total_num_workers = utarray_len(state->workers);
   DL_COUNT(algorithm_state->task_queue, elt, info->task_queue_length);
   info->available_workers = utarray_len(algorithm_state->available_workers);
 }

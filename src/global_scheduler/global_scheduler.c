@@ -33,6 +33,14 @@ void assign_task_to_local_scheduler(global_scheduler_state *state,
             object_id_to_string(task_task_id(task), id_string, ID_STRING_SIZE));
   UNUSED(id_string);
   task_table_update(state->db, copy_task(task), &retry, NULL, NULL);
+
+  /* TODO(rkn): We should probably pass around local_scheduler struct pointers
+   * instead of db_client_id objects. */
+  /* Update the local scheduler info. */
+  local_scheduler *local_scheduler =
+      get_local_scheduler(state, local_scheduler_id);
+  local_scheduler->num_tasks_sent += 1;
+  local_scheduler->num_recent_tasks_sent += 1;
 }
 
 global_scheduler_state *init_global_scheduler(event_loop *loop,
@@ -86,6 +94,20 @@ void signal_handler(int signal) {
 
 /* End of the cleanup code. */
 
+local_scheduler *get_local_scheduler(global_scheduler_state *state,
+                                     db_client_id photon_id) {
+  local_scheduler *local_scheduler_ptr;
+  for (int i = 0; i < utarray_len(state->local_schedulers); ++i) {
+    local_scheduler_ptr =
+        (local_scheduler *) utarray_eltptr(state->local_schedulers, i);
+    if (db_client_ids_equal(local_scheduler_ptr->id, photon_id)) {
+      LOG_DEBUG("photon_id matched cached local scheduler entry.");
+      return local_scheduler_ptr;
+    }
+  }
+  return NULL;
+}
+
 void process_task_waiting(task *task, void *user_context) {
   global_scheduler_state *state = (global_scheduler_state *) user_context;
   LOG_DEBUG("Task waiting callback is called.");
@@ -129,6 +151,15 @@ void process_new_db_client(db_client_id db_client_id,
     }
 
     /* Add new local scheduler to the state. */
+    local_scheduler local_scheduler;
+    local_scheduler.id = db_client_id;
+    local_scheduler.num_tasks_sent = 0;
+    local_scheduler.num_recent_tasks_sent = 0;
+    local_scheduler.info.task_queue_length = 0;
+    local_scheduler.info.available_workers = 0;
+    utarray_push_back(state->local_schedulers, &local_scheduler);
+
+    /* Allow the scheduling algorithm to process this event. */
     handle_new_local_scheduler(state, state->policy_state, db_client_id);
   }
 }
@@ -204,8 +235,18 @@ void local_scheduler_table_handler(db_client_id client_id,
       "Local scheduler heartbeat from db_client_id %s",
       object_id_to_string((object_id) client_id, id_string, ID_STRING_SIZE));
   UNUSED(id_string);
-  LOG_DEBUG("Task queue length is %d", info.task_queue_length);
-  LOG_DEBUG("Num available workers is %d", info.available_workers);
+  LOG_DEBUG(
+      "total workers = %d, task queue length = %d, available workers = %d",
+      info.num_total_workers, info.task_queue_length, info.available_workers);
+  /* Update the local scheduler info struct. */
+  local_scheduler *local_scheduler_ptr = get_local_scheduler(state, client_id);
+  if (local_scheduler_ptr != NULL) {
+    /* Reset the number of tasks sent since the last heartbeat. */
+    local_scheduler_ptr->num_recent_tasks_sent = 0;
+    local_scheduler_ptr->info = info;
+  } else {
+    LOG_WARN("client_id didn't match any cached local scheduler entries");
+  }
 }
 
 void start_server(const char *redis_addr, int redis_port) {
