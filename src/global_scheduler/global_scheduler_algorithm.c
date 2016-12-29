@@ -1,3 +1,5 @@
+#include <limits.h>
+
 #include "object_info.h"
 #include "task.h"
 #include "task_table.h"
@@ -16,19 +18,44 @@ void destroy_global_scheduler_policy(
   free(policy_state);
 }
 
+/**
+ * This is a helper method that assigns a task to the next local scheduler in a
+ * round robin fashion.
+ */
 void handle_task_round_robin(global_scheduler_state *state,
                              global_scheduler_policy_state *policy_state,
                              task *task) {
-  if (utarray_len(state->local_schedulers) > 0) {
-    local_scheduler *scheduler = (local_scheduler *) utarray_eltptr(
-        state->local_schedulers, policy_state->round_robin_index);
-    scheduler->num_tasks_sent++;
-    policy_state->round_robin_index += 1;
-    policy_state->round_robin_index %= utarray_len(state->local_schedulers);
-    assign_task_to_local_scheduler(state, task, scheduler->id);
-  } else {
-    CHECKM(0, "No local schedulers. We currently don't handle this case.");
+  CHECKM(utarray_len(state->local_schedulers) > 0,
+         "No local schedulers. We currently don't handle this case.")
+  local_scheduler *scheduler = (local_scheduler *) utarray_eltptr(
+      state->local_schedulers, policy_state->round_robin_index);
+  scheduler->num_tasks_sent++;
+  policy_state->round_robin_index += 1;
+  policy_state->round_robin_index %= utarray_len(state->local_schedulers);
+  assign_task_to_local_scheduler(state, task, scheduler->id);
+}
+
+/**
+ * This is a helper method that assigns a task to the local scheduler with the
+ * minimal load.
+ */
+void handle_task_minimum_load(global_scheduler_state *state,
+                              global_scheduler_policy_state *policy_state,
+                              task *task) {
+  CHECKM(utarray_len(state->local_schedulers) > 0,
+         "No local schedulers. We currently don't handle this case.")
+  int current_minimal_load = INT_MAX;
+  local_scheduler *current_local_scheduler_ptr = NULL;
+  for (int i = 0; i < utarray_len(state->local_schedulers); ++i) {
+    local_scheduler *local_scheduler_ptr =
+        (local_scheduler *) utarray_eltptr(state->local_schedulers, i);
+    int load = local_scheduler_ptr->info.task_queue_length;
+    if (load <= current_minimal_load) {
+      current_local_scheduler_ptr = local_scheduler_ptr;
+    }
   }
+  DCHECK(current_local_scheduler_ptr != NULL);
+  assign_task_to_local_scheduler(state, task, current_local_scheduler_ptr->id);
 }
 
 object_size_entry *create_object_size_hashmap(global_scheduler_state *state,
@@ -129,16 +156,8 @@ db_client_id get_photon_id(global_scheduler_state *state,
 
   /* Check to make sure this photon_db_client_id matches one of the
    * schedulers. */
-  int i;
-  for (i = 0; i < utarray_len(state->local_schedulers); ++i) {
-    local_scheduler *local_scheduler_ptr =
-        (local_scheduler *) utarray_eltptr(state->local_schedulers, i);
-    if (memcmp(&local_scheduler_ptr->id, &photon_id, sizeof(photon_id)) == 0) {
-      LOG_DEBUG("photon_id matched cached local scheduler entry.");
-      break;
-    }
-  }
-  if (i == utarray_len(state->local_schedulers)) {
+  local_scheduler *local_scheduler_ptr = get_local_scheduler(state, photon_id);
+  if (local_scheduler_ptr == NULL) {
     LOG_WARN("photon_id didn't match any cached local scheduler entries");
   }
   return photon_id;
@@ -189,7 +208,18 @@ void handle_task_waiting(global_scheduler_state *state,
                                 " num_returns = %" PRId64 "\n",
          task_num_args(task_spec), task_num_returns(task_spec));
 
-  assign_task_to_local_scheduler(state, task, photon_id);
+  /* Get the local scheduler for this photon ID. */
+  local_scheduler *local_scheduler_ptr = get_local_scheduler(state, photon_id);
+  CHECK(local_scheduler_ptr != NULL);
+  /* If this local scheduler has enough capacity, assign the task to this local
+   * scheduler. Otherwise assign the task to the global scheduler with the
+   * minimal load. */
+  if (local_scheduler_ptr->info.available_workers > 0 &&
+      local_scheduler_ptr->info.task_queue_length < 10) {
+    assign_task_to_local_scheduler(state, task, photon_id);
+  } else {
+    handle_task_minimum_load(state, policy_state, task);
+  }
   free_object_size_hashmap(object_size_table);
 }
 
@@ -208,9 +238,5 @@ void handle_local_scheduler_heartbeat(
 void handle_new_local_scheduler(global_scheduler_state *state,
                                 global_scheduler_policy_state *policy_state,
                                 db_client_id db_client_id) {
-  local_scheduler local_scheduler;
-  memset(&local_scheduler, 0, sizeof(local_scheduler));
-  local_scheduler.id = db_client_id;
-  local_scheduler.num_tasks_sent = 0;
-  utarray_push_back(state->local_schedulers, &local_scheduler);
+  /* Do nothing for now. */
 }
