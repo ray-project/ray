@@ -100,7 +100,7 @@ local_scheduler *get_local_scheduler(global_scheduler_state *state,
   for (int i = 0; i < utarray_len(state->local_schedulers); ++i) {
     local_scheduler_ptr =
         (local_scheduler *) utarray_eltptr(state->local_schedulers, i);
-    if (memcmp(&local_scheduler_ptr->id, &photon_id, sizeof(photon_id)) == 0) {
+    if (db_client_ids_equal(local_scheduler_ptr->id, photon_id)) {
       LOG_DEBUG("photon_id matched cached local scheduler entry.");
       return local_scheduler_ptr;
     }
@@ -152,7 +152,6 @@ void process_new_db_client(db_client_id db_client_id,
 
     /* Add new local scheduler to the state. */
     local_scheduler local_scheduler;
-    memset(&local_scheduler, 0, sizeof(local_scheduler));
     local_scheduler.id = db_client_id;
     local_scheduler.num_tasks_sent = 0;
     local_scheduler.num_recent_tasks_sent = 0;
