@@ -596,7 +596,8 @@ def error_info(worker=global_worker):
             b"RemoteFunctionImportError": [],
             b"ReusableVariableImportError": [],
             b"ReusableVariableReinitializeError": [],
-            b"FunctionToRunError": []
+            b"FunctionToRunError": [],
+            b"GenericWarning": [],
             }
   error_keys = worker.redis_client.lrange("ErrorKeys", 0, -1)
   for error_key in error_keys:
@@ -857,6 +858,16 @@ def print_error_messages(worker):
   This runs in a separate thread on the driver and prints error messages in the
   background.
   """
+  helpful_message = """
+You can inspect errors by running
+
+    ray.error_info()
+
+If this driver is hanging, start a new one with
+
+    ray.init(redis_address="{}")
+""".format(worker.redis_address)
+
   worker.error_message_pubsub_client = worker.redis_client.pubsub()
   # Exports that are published after the call to
   # error_message_pubsub_client.psubscribe and before the call to
@@ -870,6 +881,7 @@ def print_error_messages(worker):
     for error_key in error_keys:
       error_message = worker.redis_client.hget(error_key, "message").decode("ascii")
       print(error_message)
+      print(helpful_message)
       num_errors_printed += 1
 
   try:
@@ -878,6 +890,7 @@ def print_error_messages(worker):
         for error_key in worker.redis_client.lrange("ErrorKeys", num_errors_printed, -1):
           error_message = worker.redis_client.hget(error_key, "message").decode("ascii")
           print(error_message)
+          print(helpful_message)
           num_errors_printed += 1
   except redis.ConnectionError:
     # When Redis terminates the listen call will throw a ConnectionError, which
@@ -1027,6 +1040,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker):
     return
   # Set the node IP address.
   worker.node_ip_address = info["node_ip_address"]
+  worker.redis_address = info["redis_address"]
   # Create a Redis client.
   redis_host, redis_port = info["redis_address"].split(":")
   worker.redis_client = redis.StrictRedis(host=redis_host, port=int(redis_port))
@@ -1244,8 +1258,8 @@ def wait_for_valid_import_counter(function_id, timeout=5, worker=global_worker):
     function_id (str): The ID of the function that we want to execute.
   """
   start_time = time.time()
-  # Keep track of the number of warnings that we've sent to the user so far so
-  # we can decrease the frequency with which we send them.
+  # Only send the warning once.
+  warning_sent = False
   num_warnings_sent = 0
   while True:
     with worker.lock:
@@ -1253,11 +1267,12 @@ def wait_for_valid_import_counter(function_id, timeout=5, worker=global_worker):
         break
     if time.time() - start_time > timeout * (num_warnings_sent + 1):
       if function_id.id() not in worker.functions:
-        warning_message = "This worker does not have the function with ID {} registered. You may have to restart Ray.".format(function_id.id())
+        warning_message = "This worker was asked to execute a function that it does not have registered. You may have to restart Ray."
       else:
-        warning_message = "This worker's import counter is too small. The relevant quantities are function_id.id() = {}, worker.function_export_counters[function_id.id()] = {}, worker.worker_import_counter = {}. You may have to restart Ray.".format(function_id.id(), worker.function_export_counters[function_id.id()], worker.worker_import_counter)
-      push_warning_to_user(warning_message, worker=worker)
-      num_warnings_sent += 1
+        warning_message = "This worker's import counter is too small."
+      if not warning_sent:
+        push_warning_to_user(warning_message, worker=worker)
+      warning_sent = True
     time.sleep(0.001)
 
 def format_error_message(exception_message, task_exception=False):
