@@ -14,6 +14,7 @@
 #include "utstring.h"
 #include "task.h"
 #include "state/object_table.h"
+#include "state/task_table.h"
 
 #include "photon.h"
 #include "photon_scheduler.h"
@@ -98,17 +99,15 @@ void reset_worker(photon_mock *mock, int worker_index) {
  */
 TEST object_reconstruction_test(void) {
   photon_mock *photon = init_photon_mock(true);
+  /* Create a task with zero dependencies and one return value. */
+  task_spec *spec = example_task_spec(0, 1);
   pid_t pid = fork();
   if (pid == 0) {
-    /* Create a task with zero dependencies and one return value. */
-    task_spec *spec = example_task_spec(0, 1);
     /* Make sure we receive the task twice. First from the initial submission,
      * and second from the reconstruct request. */
     photon_submit(photon->conn, spec);
     task_spec *task_assigned = photon_get_task(photon->conn);
     ASSERT_EQ(memcmp(task_assigned, spec, task_spec_size(spec)), 0);
-    object_id return_id = task_return(spec, 0);
-    photon_reconstruct_object(photon->conn, return_id);
     task_spec *reconstruct_task = photon_get_task(photon->conn);
     ASSERT_EQ(memcmp(reconstruct_task, spec, task_spec_size(spec)), 0);
     /* Clean up. */
@@ -120,12 +119,25 @@ TEST object_reconstruction_test(void) {
   } else {
     /* Run the event loop. NOTE: OSX appears to require the parent process to
      * listen for events on the open file descriptors. */
-    event_loop_add_timer(photon->loop, 1000,
+    event_loop_add_timer(photon->loop, 500,
+                         (event_loop_timer_handler) timeout_handler, NULL);
+    event_loop_run(photon->loop);
+    /* Set the task's status to TASK_STATUS_DONE to prevent the race condition
+     * that would suppress object reconstruction. */
+    task *task = alloc_task(spec, TASK_STATUS_DONE,
+                            get_db_client_id(photon->photon_state->db));
+    task_table_add_task(photon->photon_state->db, task,
+                        (retry_info *) &photon_retry, NULL, NULL);
+    /* Trigger reconstruction, and run the event loop again. */
+    object_id return_id = task_return(spec, 0);
+    photon_reconstruct_object(photon->conn, return_id);
+    event_loop_add_timer(photon->loop, 500,
                          (event_loop_timer_handler) timeout_handler, NULL);
     event_loop_run(photon->loop);
     /* Wait for the child process to exit and check that there are no tasks
      * left in the local scheduler's task queue. Then, clean up. */
     wait(NULL);
+    free_task_spec(spec);
     ASSERT_EQ(num_tasks_in_queue(photon->photon_state->algorithm_state), 0);
     destroy_photon_mock(photon);
     PASS();
@@ -163,9 +175,6 @@ TEST object_reconstruction_recursive_test(void) {
                 0);
       free_task_spec(task_assigned);
     }
-    /* Request reconstruction of the last return object. */
-    object_id return_id = task_return(specs[NUM_TASKS - 1], 0);
-    photon_reconstruct_object(photon->conn, return_id);
     /* Check that the workers receive all tasks in the final return object's
      * lineage during reconstruction. */
     for (int i = 0; i < NUM_TASKS; ++i) {
@@ -190,7 +199,19 @@ TEST object_reconstruction_recursive_test(void) {
   } else {
     /* Run the event loop. NOTE: OSX appears to require the parent process to
      * listen for events on the open file descriptors. */
-    event_loop_add_timer(photon->loop, 1000,
+    event_loop_add_timer(photon->loop, 500,
+                         (event_loop_timer_handler) timeout_handler, NULL);
+    event_loop_run(photon->loop);
+    /* Set the final task's status to TASK_STATUS_DONE to prevent the race
+     * condition that would suppress object reconstruction. */
+    task *last_task = alloc_task(specs[NUM_TASKS - 1], TASK_STATUS_DONE,
+                                 get_db_client_id(photon->photon_state->db));
+    task_table_add_task(photon->photon_state->db, last_task,
+                        (retry_info *) &photon_retry, NULL, NULL);
+    /* Trigger reconstruction, and run the event loop again. */
+    object_id return_id = task_return(specs[NUM_TASKS - 1], 0);
+    photon_reconstruct_object(photon->conn, return_id);
+    event_loop_add_timer(photon->loop, 500,
                          (event_loop_timer_handler) timeout_handler, NULL);
     event_loop_run(photon->loop);
     /* Wait for the child process to exit and check that there are no tasks
