@@ -29,7 +29,6 @@ void handle_task_round_robin(global_scheduler_state *state,
          "No local schedulers. We currently don't handle this case.")
   local_scheduler *scheduler = (local_scheduler *) utarray_eltptr(
       state->local_schedulers, policy_state->round_robin_index);
-  scheduler->num_tasks_sent++;
   policy_state->round_robin_index += 1;
   policy_state->round_robin_index %= utarray_len(state->local_schedulers);
   assign_task_to_local_scheduler(state, task, scheduler->id);
@@ -44,13 +43,15 @@ void handle_task_minimum_load(global_scheduler_state *state,
                               task *task) {
   CHECKM(utarray_len(state->local_schedulers) > 0,
          "No local schedulers. We currently don't handle this case.")
-  int current_minimal_load = INT_MAX;
+  int current_minimal_load_estimate = INT_MAX;
   local_scheduler *current_local_scheduler_ptr = NULL;
   for (int i = 0; i < utarray_len(state->local_schedulers); ++i) {
     local_scheduler *local_scheduler_ptr =
         (local_scheduler *) utarray_eltptr(state->local_schedulers, i);
-    int load = local_scheduler_ptr->info.task_queue_length;
-    if (load <= current_minimal_load) {
+    int load_estimate = local_scheduler_ptr->info.task_queue_length +
+                        local_scheduler_ptr->num_recent_tasks_sent;
+    if (load_estimate <= current_minimal_load_estimate) {
+      current_minimal_load_estimate = load_estimate;
       current_local_scheduler_ptr = local_scheduler_ptr;
     }
   }
@@ -214,8 +215,10 @@ void handle_task_waiting(global_scheduler_state *state,
   /* If this local scheduler has enough capacity, assign the task to this local
    * scheduler. Otherwise assign the task to the global scheduler with the
    * minimal load. */
+  int64_t load_estimate = local_scheduler_ptr->info.task_queue_length +
+                          local_scheduler_ptr->num_recent_tasks_sent;
   if (local_scheduler_ptr->info.available_workers > 0 &&
-      local_scheduler_ptr->info.task_queue_length < 10) {
+      load_estimate < local_scheduler_ptr->info.total_num_workers) {
     assign_task_to_local_scheduler(state, task, photon_id);
   } else {
     handle_task_minimum_load(state, policy_state, task);

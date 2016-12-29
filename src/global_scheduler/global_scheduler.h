@@ -15,6 +15,9 @@ typedef struct {
   /** The number of tasks sent from the global scheduler to this local
    *  scheduler. */
   int64_t num_tasks_sent;
+  /** The number of tasks sent from the global scheduler to this local scheduler
+   *  since the last heartbeat arrived. */
+  int64_t num_recent_tasks_sent;
   /** The latest information about the local scheduler capacity. This is updated
    *  every time a new local scheduler heartbeat arrives. */
   local_scheduler_info info;

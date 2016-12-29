@@ -33,6 +33,14 @@ void assign_task_to_local_scheduler(global_scheduler_state *state,
             object_id_to_string(task_task_id(task), id_string, ID_STRING_SIZE));
   UNUSED(id_string);
   task_table_update(state->db, copy_task(task), &retry, NULL, NULL);
+
+  /* TODO(rkn): We should probably pass around local_scheduler struct pointers
+   * instead of db_client_id objects. */
+  /* Update the local scheduler info. */
+  local_scheduler *local_scheduler =
+      get_local_scheduler(state, local_scheduler_id);
+  local_scheduler->num_tasks_sent += 1;
+  local_scheduler->num_recent_tasks_sent += 1;
 }
 
 global_scheduler_state *init_global_scheduler(event_loop *loop,
@@ -147,6 +155,7 @@ void process_new_db_client(db_client_id db_client_id,
     memset(&local_scheduler, 0, sizeof(local_scheduler));
     local_scheduler.id = db_client_id;
     local_scheduler.num_tasks_sent = 0;
+    local_scheduler.num_recent_tasks_sent = 0;
     local_scheduler.info.task_queue_length = 0;
     local_scheduler.info.available_workers = 0;
     utarray_push_back(state->local_schedulers, &local_scheduler);
@@ -227,12 +236,14 @@ void local_scheduler_table_handler(db_client_id client_id,
       "Local scheduler heartbeat from db_client_id %s",
       object_id_to_string((object_id) client_id, id_string, ID_STRING_SIZE));
   UNUSED(id_string);
-  LOG_DEBUG("Task queue length is %d", info.task_queue_length);
-  LOG_DEBUG("Num available workers is %d", info.available_workers);
-
+  LOG_DEBUG(
+      "total workers = %d, task queue length = %d, available workers = %d",
+      info.num_total_workers, info.task_queue_length, info.available_workers);
   /* Update the local scheduler info struct. */
   local_scheduler *local_scheduler_ptr = get_local_scheduler(state, client_id);
   if (local_scheduler_ptr != NULL) {
+    /* Reset the number of tasks sent since the last heartbeat. */
+    local_scheduler_ptr->num_recent_tasks_sent = 0;
     local_scheduler_ptr->info = info;
   } else {
     LOG_WARN("client_id didn't match any cached local scheduler entries");

@@ -4,8 +4,15 @@
 #include "db.h"
 #include "table.h"
 
+/** This struct is sent with heartbeat messages from the local scheduler to the
+ *  global scheduler, and it contains information about the load on the local
+ *  scheduler. */
 typedef struct {
+  /** The total number of workers that are connected to this local scheduler. */
+  int total_num_workers;
+  /** The number of tasks queued in this local scheduler. */
   int task_queue_length;
+  /** The number of workers that are available and waiting for tasks. */
   int available_workers;
 } local_scheduler_info;
 
