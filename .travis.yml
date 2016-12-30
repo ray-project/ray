@@ -45,6 +45,10 @@ matrix:
         - make valgrind
         - cd ../..
 
+        - cd src/photon
+        - make valgrind
+        - cd ../..
+
         - ./.travis/install-ray.sh
       script:
         - python src/plasma/test/test.py valgrind

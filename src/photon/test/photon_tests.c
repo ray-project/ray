@@ -14,6 +14,7 @@
 #include "utstring.h"
 #include "task.h"
 #include "state/object_table.h"
+#include "state/task_table.h"
 
 #include "photon.h"
 #include "photon_scheduler.h"
@@ -44,9 +45,13 @@ typedef struct {
   photon_conn *conn;
 } photon_mock;
 
-photon_mock *init_photon_mock() {
-  const char *redis_addr = "127.0.0.1";
-  int redis_port = 6379;
+photon_mock *init_photon_mock(bool connect_to_redis) {
+  const char *redis_addr = NULL;
+  int redis_port = -1;
+  if (connect_to_redis) {
+    redis_addr = "127.0.0.1";
+    redis_port = 6379;
+  }
   photon_mock *mock = malloc(sizeof(photon_mock));
   memset(mock, 0, sizeof(photon_mock));
   mock->loop = event_loop_create();
@@ -81,24 +86,28 @@ void destroy_photon_mock(photon_mock *mock) {
   free(mock);
 }
 
+void reset_worker(photon_mock *mock, int worker_index) {
+  worker *available_worker =
+      (worker *) utarray_eltptr(mock->photon_state->workers, worker_index);
+  available_worker->task_in_progress = NULL;
+}
+
 /**
  * Test that object reconstruction gets called. If a task gets submitted,
  * assigned to a worker, and then reconstruction is triggered for its return
  * value, the task should get assigned to a worker again.
  */
 TEST object_reconstruction_test(void) {
-  photon_mock *photon = init_photon_mock();
+  photon_mock *photon = init_photon_mock(true);
+  /* Create a task with zero dependencies and one return value. */
+  task_spec *spec = example_task_spec(0, 1);
   pid_t pid = fork();
   if (pid == 0) {
-    /* Create a task with zero dependencies and one return value. */
-    task_spec *spec = example_task_spec(0, 1);
     /* Make sure we receive the task twice. First from the initial submission,
      * and second from the reconstruct request. */
     photon_submit(photon->conn, spec);
     task_spec *task_assigned = photon_get_task(photon->conn);
     ASSERT_EQ(memcmp(task_assigned, spec, task_spec_size(spec)), 0);
-    object_id return_id = task_return(spec, 0);
-    photon_reconstruct_object(photon->conn, return_id);
     task_spec *reconstruct_task = photon_get_task(photon->conn);
     ASSERT_EQ(memcmp(reconstruct_task, spec, task_spec_size(spec)), 0);
     /* Clean up. */
@@ -110,12 +119,25 @@ TEST object_reconstruction_test(void) {
   } else {
     /* Run the event loop. NOTE: OSX appears to require the parent process to
      * listen for events on the open file descriptors. */
-    event_loop_add_timer(photon->loop, 1000,
+    event_loop_add_timer(photon->loop, 500,
+                         (event_loop_timer_handler) timeout_handler, NULL);
+    event_loop_run(photon->loop);
+    /* Set the task's status to TASK_STATUS_DONE to prevent the race condition
+     * that would suppress object reconstruction. */
+    task *task = alloc_task(spec, TASK_STATUS_DONE,
+                            get_db_client_id(photon->photon_state->db));
+    task_table_add_task(photon->photon_state->db, task,
+                        (retry_info *) &photon_retry, NULL, NULL);
+    /* Trigger reconstruction, and run the event loop again. */
+    object_id return_id = task_return(spec, 0);
+    photon_reconstruct_object(photon->conn, return_id);
+    event_loop_add_timer(photon->loop, 500,
                          (event_loop_timer_handler) timeout_handler, NULL);
     event_loop_run(photon->loop);
     /* Wait for the child process to exit and check that there are no tasks
      * left in the local scheduler's task queue. Then, clean up. */
     wait(NULL);
+    free_task_spec(spec);
     ASSERT_EQ(num_tasks_in_queue(photon->photon_state->algorithm_state), 0);
     destroy_photon_mock(photon);
     PASS();
@@ -128,7 +150,7 @@ TEST object_reconstruction_test(void) {
  * should trigger reconstruction of all previous tasks in the lineage.
  */
 TEST object_reconstruction_recursive_test(void) {
-  photon_mock *photon = init_photon_mock();
+  photon_mock *photon = init_photon_mock(true);
   /* Create a chain of tasks, each one dependent on the one before it. Mark
    * each object as available so that tasks will run immediately. */
   const int NUM_TASKS = 10;
@@ -153,9 +175,6 @@ TEST object_reconstruction_recursive_test(void) {
                 0);
       free_task_spec(task_assigned);
     }
-    /* Request reconstruction of the last return object. */
-    object_id return_id = task_return(specs[NUM_TASKS - 1], 0);
-    photon_reconstruct_object(photon->conn, return_id);
     /* Check that the workers receive all tasks in the final return object's
      * lineage during reconstruction. */
     for (int i = 0; i < NUM_TASKS; ++i) {
@@ -180,7 +199,19 @@ TEST object_reconstruction_recursive_test(void) {
   } else {
     /* Run the event loop. NOTE: OSX appears to require the parent process to
      * listen for events on the open file descriptors. */
-    event_loop_add_timer(photon->loop, 1000,
+    event_loop_add_timer(photon->loop, 500,
+                         (event_loop_timer_handler) timeout_handler, NULL);
+    event_loop_run(photon->loop);
+    /* Set the final task's status to TASK_STATUS_DONE to prevent the race
+     * condition that would suppress object reconstruction. */
+    task *last_task = alloc_task(specs[NUM_TASKS - 1], TASK_STATUS_DONE,
+                                 get_db_client_id(photon->photon_state->db));
+    task_table_add_task(photon->photon_state->db, last_task,
+                        (retry_info *) &photon_retry, NULL, NULL);
+    /* Trigger reconstruction, and run the event loop again. */
+    object_id return_id = task_return(specs[NUM_TASKS - 1], 0);
+    photon_reconstruct_object(photon->conn, return_id);
+    event_loop_add_timer(photon->loop, 500,
                          (event_loop_timer_handler) timeout_handler, NULL);
     event_loop_run(photon->loop);
     /* Wait for the child process to exit and check that there are no tasks
@@ -209,7 +240,7 @@ void object_reconstruction_suppression_callback(object_id object_id,
 }
 
 TEST object_reconstruction_suppression_test(void) {
-  photon_mock *photon = init_photon_mock();
+  photon_mock *photon = init_photon_mock(true);
   object_reconstruction_suppression_spec = example_task_spec(0, 1);
   object_id return_id = task_return(object_reconstruction_suppression_spec, 0);
   pid_t pid = fork();
@@ -255,10 +286,54 @@ TEST object_reconstruction_suppression_test(void) {
   }
 }
 
+TEST object_notifications_test(void) {
+  photon_mock *photon = init_photon_mock(false);
+  local_scheduler_state *state = photon->photon_state;
+  scheduling_algorithm_state *algorithm_state = state->algorithm_state;
+  int worker_index = 0;
+  task_spec *spec = example_task_spec(1, 1);
+  object_id oid = task_arg_id(spec, 0);
+
+  /* Check that the task gets queued if the task is submitted and a worker is
+   * available, but the input is not. Once the input is available, the task
+   * gets assigned. */
+  handle_task_submitted(state, algorithm_state, spec);
+  handle_worker_available(state, algorithm_state, worker_index);
+  ASSERT_EQ(num_tasks_in_queue(algorithm_state), 1);
+  handle_object_available(state, algorithm_state, oid);
+  ASSERT_EQ(num_tasks_in_queue(algorithm_state), 0);
+  reset_worker(photon, worker_index);
+
+  /* Check that the task gets queued if the task is submitted and the input is
+   * available, but no worker is available yet. Once a worker is available, the
+   * task gets assigned. */
+  handle_task_submitted(state, algorithm_state, spec);
+  ASSERT_EQ(num_tasks_in_queue(algorithm_state), 1);
+  handle_worker_available(state, algorithm_state, worker_index);
+  ASSERT_EQ(num_tasks_in_queue(algorithm_state), 0);
+  reset_worker(photon, worker_index);
+
+  /* If an object gets removed, check the first scenario again, where the task
+   * gets queued if the task is submitted and a worker is available, but the
+   * input is not. Once the input is made available again, the task gets
+   * assigned. */
+  handle_object_removed(state, oid);
+  handle_task_submitted(state, algorithm_state, spec);
+  handle_worker_available(state, algorithm_state, worker_index);
+  ASSERT_EQ(num_tasks_in_queue(algorithm_state), 1);
+  handle_object_available(state, algorithm_state, oid);
+  ASSERT_EQ(num_tasks_in_queue(algorithm_state), 0);
+
+  free_task_spec(spec);
+  destroy_photon_mock(photon);
+  PASS();
+}
+
 SUITE(photon_tests) {
   RUN_REDIS_TEST(object_reconstruction_test);
   RUN_REDIS_TEST(object_reconstruction_recursive_test);
   RUN_REDIS_TEST(object_reconstruction_suppression_test);
+  RUN_TEST(object_notifications_test);
 }
 
 GREATEST_MAIN_DEFS();
