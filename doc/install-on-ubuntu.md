@@ -1,6 +1,6 @@
 # Installation on Ubuntu
 
-Ray should work with Python 2. We have tested Ray on Ubuntu 14.04
+Ray should work with Python 2 and Python 3. We have tested Ray on Ubuntu 14.04
 and Ubuntu 16.04
 
 ## Dependencies
@@ -19,18 +19,19 @@ pip install --upgrade --verbose "git+git://github.com/ray-project/ray.git#egg=nu
 
 # Install Ray
 
-Ray can be installed with pip as follows.
-
-```
-pip install --upgrade --verbose "git+git://github.com/ray-project/ray.git#egg=ray&subdirectory=lib/python"
-```
-
-Alternatively, Ray can be built from the repository as follows.
+Ray can be built from the repository as follows.
 
 ```
 git clone https://github.com/ray-project/ray.git
 cd lib/python
 python setup.py install
+```
+
+Alternatively, Ray can be installed with pip as follows. However, this is
+slightly less likely to succeed.
+
+```
+pip install --upgrade --verbose "git+git://github.com/ray-project/ray.git#egg=ray&subdirectory=lib/python"
 ```
 
 ## Test if the installation succeeded
