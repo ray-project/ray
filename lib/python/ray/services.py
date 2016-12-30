@@ -327,8 +327,7 @@ def start_ray_processes(address_info=None,
                         worker_path=None,
                         cleanup=True,
                         redirect_output=False,
-                        include_global_scheduler=False,
-                        include_webui=True):
+                        include_global_scheduler=False):
   """Helper method to start Ray processes.
 
   Args:
@@ -351,8 +350,6 @@ def start_ray_processes(address_info=None,
       /dev/null.
     include_global_scheduler (bool): If include_global_scheduler is True, then
       start a global scheduler process.
-    include_webui (bool): If include_webui is True, then start a Web UI
-    process.
 
   Returns:
     A dictionary of the address information for the processes that were
@@ -434,10 +431,6 @@ def start_ray_processes(address_info=None,
                  cleanup=cleanup,
                  redirect_output=redirect_output)
 
-  # Start the web UI, if necessary.
-  if include_webui:
-    start_webui(redis_port, cleanup=cleanup, redirect_output=redirect_output)
-
   # Return the addresses of the relevant processes.
   return address_info
 
@@ -480,8 +473,7 @@ def start_ray_node(node_ip_address,
                              num_local_schedulers=num_local_schedulers,
                              worker_path=worker_path,
                              cleanup=cleanup,
-                             redirect_output=redirect_output,
-                             include_webui=False)
+                             redirect_output=redirect_output)
 
 def start_ray_local(address_info=None,
                     node_ip_address="127.0.0.1",
@@ -489,8 +481,7 @@ def start_ray_local(address_info=None,
                     num_local_schedulers=1,
                     worker_path=None,
                     cleanup=True,
-                    redirect_output=False,
-                    include_webui=True):
+                    redirect_output=False):
   """Start Ray in local mode.
 
   Args:
@@ -523,5 +514,4 @@ def start_ray_local(address_info=None,
                              worker_path=worker_path,
                              cleanup=cleanup,
                              redirect_output=redirect_output,
-                             include_global_scheduler=True,
-                             include_webui=True)
+                             include_global_scheduler=True)
