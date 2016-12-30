@@ -50,6 +50,7 @@ estimate of pi (waiting until the computation has finished if necessary).
 ## Next Steps
 
 - Installation on [Ubuntu](doc/install-on-ubuntu.md), [Mac OS X](doc/install-on-macosx.md)
+  - [Troubleshooting](doc/installation-troubleshooting.md)
 - [Tutorial](doc/tutorial.md)
 - Documentation
   - [Serialization in the Object Store](doc/serialization.md)
