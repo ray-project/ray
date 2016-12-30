@@ -85,12 +85,22 @@ void free_local_scheduler(local_scheduler_state *state) {
     db_disconnect(state->db);
   }
   plasma_disconnect(state->plasma_conn);
+
   worker_index *current_worker_index, *temp_worker_index;
   HASH_ITER(hh, state->worker_index, current_worker_index, temp_worker_index) {
     HASH_DEL(state->worker_index, current_worker_index);
     free(current_worker_index);
   }
+
+  worker *w;
+  for (w = (worker *) utarray_front(state->workers); w != NULL;
+       w = (worker *) utarray_next(state->workers, w)) {
+    if (w->task_in_progress) {
+      free_task(w->task_in_progress);
+    }
+  }
   utarray_free(state->workers);
+
   free_scheduling_algorithm_state(state->algorithm_state);
   utarray_free(state->input_buffer);
   event_loop_destroy(state->loop);
