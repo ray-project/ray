@@ -10,7 +10,7 @@ To install Ray, first install the following dependencies. We recommend using
 
 ```
 sudo apt-get update
-sudo apt-get install -y cmake build-essential autoconf curl libtool python-dev python-pip libboost-all-dev unzip nodejs npm  # If you're using Anaconda, then python-dev and python-pip are unnecessary.
+sudo apt-get install -y cmake build-essential autoconf curl libtool python-dev python-pip libboost-all-dev unzip  # If you're using Anaconda, then python-dev and python-pip are unnecessary.
 
 pip install numpy funcsigs colorama psutil redis
 pip install --upgrade git+git://github.com/cloudpipe/cloudpickle.git@0d225a4695f1f65ae1cbb2e0bbc145e10167cce4  # We use the latest version of cloudpickle because it can serialize named tuples.
