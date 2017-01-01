@@ -2,9 +2,11 @@
 # for end users.
 
 FROM ubuntu:xenial
-RUN apt-get update
-RUN apt-get install -y vim git wget
-RUN apt-get install -y cmake build-essential autoconf curl libtool libboost-all-dev unzip
+RUN apt-get update \
+    && apt-get install -y vim git wget \
+    && apt-get install -y cmake build-essential autoconf curl libtool libboost-all-dev unzip \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 RUN echo 'export PATH=/opt/conda/bin:$PATH' > /etc/profile.d/conda.sh && \
      wget --quiet 'https://repo.continuum.io/archive/Anaconda2-4.2.0-Linux-x86_64.sh' -O /tmp/anaconda.sh && \
      /bin/bash /tmp/anaconda.sh -b -p /opt/conda && \
