@@ -13,7 +13,17 @@ If you are using Anaconda, try fixing this problem by running:
 try:
   from numbuf.libnumbuf import *
 except ImportError as e:
-  if not hasattr(e, "msg") or not isinstance(e.msg, str) or not "GLIBCXX" in e.msg:
-    raise
-  e.msg += helpful_message
+  if hasattr(e, "msg") and isinstance(e.msg, str) and "GLIBCXX" in e.msg:
+    # This code path should be taken with Python 3.
+    e.msg += helpful_message
+  elif hasattr(e, "message") and isinstance(e.message, str) and "GLIBCXX" in e.message:
+    # This code path should be taken with Python 2.
+    if hasattr(e, "args") and isinstance(e.args, tuple) and len(e.args) == 1 and isinstance(e.args[0], str):
+      e.args = (e.args[0] + helpful_message,)
+    else:
+      if not hasattr(e, "args"):
+        e.args = ()
+      elif not isinstance(e.args, tuple):
+        e.args = (e.args,)
+      e.args += (helpful_message,)
   raise
