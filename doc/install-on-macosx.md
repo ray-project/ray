@@ -9,7 +9,7 @@ To install Ray, first install the following dependencies. We recommend using
 
 ```
 brew update
-brew install cmake automake autoconf libtool boost
+brew install cmake automake autoconf libtool boost wget
 sudo easy_install pip  # If you're using Anaconda, then this is unnecessary.
 
 pip install numpy funcsigs colorama psutil redis --ignore-installed six
