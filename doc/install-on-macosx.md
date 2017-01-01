@@ -23,8 +23,8 @@ Ray can be built from the repository as follows.
 
 ```
 git clone https://github.com/ray-project/ray.git
-cd lib/python
-python setup.py install
+cd ray/lib/python
+python setup.py install --user
 ```
 
 Alternatively, Ray can be installed with pip as follows. However, this is
