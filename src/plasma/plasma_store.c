@@ -667,13 +667,23 @@ int main(int argc, char *argv[]) {
     LOG_FATAL("please specify the amount of system memory with -m switch");
   }
 #ifdef __linux__
+  /* On Linux, check that the amount of memory available in /dev/shm is large
+   * enough to accommodate the request. If it isn't, then fail. */
   int shm_fd = open("/dev/shm", O_RDONLY);
   struct statvfs shm_vfs_stats;
   fstatvfs(shm_fd, &shm_vfs_stats);
+  /* The value shm_vfs_stats.f_bsize is the block size, and the value
+   * shm_vfs_stats.f_bavail is the number of available blocks. */
   int64_t shm_mem_avail = shm_vfs_stats.f_bsize * shm_vfs_stats.f_bavail;
   close(shm_fd);
   if (system_memory > shm_mem_avail) {
-    LOG_FATAL("system memory request exceeds memory available in /dev/shm");
+    LOG_FATAL(
+        "System memory request exceeds memory available in /dev/shm. The "
+        "request is for %" PRId64 " bytes, and the amount available is %" PRId64
+        " bytes. You may be able to free up space by deleting files in "
+        "/dev/shm. If you are inside a Docker container, you may need to pass "
+        "an argument with the flag '--shm-size' to 'docker run'.",
+        system_memory, shm_mem_avail);
   }
 #endif
   LOG_DEBUG("starting server listening on %s", socket_name);
