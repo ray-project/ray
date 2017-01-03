@@ -13,8 +13,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
+#include <sys/statvfs.h>
 #include <sys/types.h>
 #include <sys/un.h>
 #include <getopt.h>
@@ -664,6 +666,16 @@ int main(int argc, char *argv[]) {
   if (system_memory == -1) {
     LOG_FATAL("please specify the amount of system memory with -m switch");
   }
+#ifdef __linux__
+  int shm_fd = open("/dev/shm", O_RDONLY);
+  struct statvfs shm_vfs_stats;
+  fstatvfs(shm_fd, &shm_vfs_stats);
+  int64_t shm_mem_avail = shm_vfs_stats.f_bsize * shm_vfs_stats.f_bavail;
+  close(shm_fd);
+  if (system_memory > shm_mem_avail) {
+    LOG_FATAL("system memory request exceeds memory available in /dev/shm");
+  }
+#endif
   LOG_DEBUG("starting server listening on %s", socket_name);
   start_server(socket_name, system_memory);
 }
