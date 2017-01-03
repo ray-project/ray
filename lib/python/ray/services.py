@@ -254,6 +254,16 @@ def start_objstore(node_ip_address, redis_address, cleanup=True, redirect_output
       # memory. To not overflow it, we set the plasma memory limit to 0.4 times
       # the size of the physical memory.
       objstore_memory = int(system_memory * 0.4)
+      # We compare the requested memory size to the memory available
+      shm_fd = os.open('/dev/shm', os.O_RDONLY)
+      try:
+        shm_fs_stats = os.fstatvfs(shm_fd)
+        shm_avail = shm_fs_stats.f_bsize * shm_fs_stats.f_bavail
+        if objstore_memory > shm_avail:
+          print('/dev/shm has on {} bytes available, reducing object store memory'.format(shm_avail))
+          objstore_memory = shm_avail
+      finally:
+        os.close(shm_fd)
     else:
       objstore_memory = int(system_memory * 0.75)
   # Start the Plasma store.
