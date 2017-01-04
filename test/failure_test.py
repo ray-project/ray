@@ -103,9 +103,14 @@ class TaskStatusTest(unittest.TestCase):
         return reducer, ()
       def __call__(self):
         return
-    ray.remote(Foo())
-    wait_for_errors(b"RemoteFunctionImportError", 1)
+    f = ray.remote(Foo())
+    wait_for_errors(b"RemoteFunctionImportError", 2)
     self.assertTrue(b"There is a problem here." in ray.error_info()[b"RemoteFunctionImportError"][0][b"message"])
+
+    # Check that if we try to call the function it throws an exception and does
+    # not hang.
+    for _ in range(10):
+      self.assertRaises(Exception, lambda : ray.get(f.remote()))
 
     ray.worker.cleanup()
 
@@ -119,9 +124,11 @@ class TaskStatusTest(unittest.TestCase):
         raise Exception("The initializer failed.")
       return 0
     ray.reusables.foo = ray.Reusable(initializer)
-    wait_for_errors(b"ReusableVariableImportError", 1)
+    wait_for_errors(b"ReusableVariableImportError", 2)
     # Check that the error message is in the task info.
     self.assertTrue(b"The initializer failed." in ray.error_info()[b"ReusableVariableImportError"][0][b"message"])
+
+    # Check that if we call the function it fails and does not hang.
 
     ray.worker.cleanup()
 
