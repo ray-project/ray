@@ -128,8 +128,6 @@ class TaskStatusTest(unittest.TestCase):
     # Check that the error message is in the task info.
     self.assertTrue(b"The initializer failed." in ray.error_info()[b"ReusableVariableImportError"][0][b"message"])
 
-    # Check that if we call the function it fails and does not hang.
-
     ray.worker.cleanup()
 
   def testFailReinitializingVariable(self):
