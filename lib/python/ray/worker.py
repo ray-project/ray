@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
 import hashlib
 import os
 import sys
@@ -29,6 +30,38 @@ SCRIPT_MODE = 0
 WORKER_MODE = 1
 PYTHON_MODE = 2
 SILENT_MODE = 3
+
+RAY_BEGIN_GET_EVENT = 0
+RAY_END_GET_EVENT = 1
+RAY_BEGIN_WAIT_EVENT = 2
+RAY_END_WAIT_EVENT = 3
+RAY_BEGIN_TASK_EVENT = 4
+RAY_END_TASK_EVENT = 5
+RAY_BEGIN_SUBMIT_EVENT = 6
+RAY_END_SUBMIT_EVENT = 7
+RAY_BEGIN_PUT_EVENT = 8
+RAY_END_PUT_EVENT = 9
+RAY_BEGIN_GET_TASK_EVENT = 10
+RAY_END_GET_TASK_EVENT = 11
+RAY_BEGIN_IMPORT_COUNTER_EVENT = 12
+RAY_END_IMPORT_COUNTER_EVENT = 13
+RAY_BEGIN_IMPORT_REMOTE_FUNCTION_EVENT = 14
+RAY_END_IMPORT_REMOTE_FUNCTION_EVENT = 15
+RAY_BEGIN_IMPORT_REUSABLE_VARIABLE_EVENT = 16
+RAY_END_IMPORT_REUSABLE_VARIABLE_EVENT = 17
+RAY_BEGIN_IMPORT_FUNCTION_TO_RUN_EVENT = 18
+RAY_END_IMPORT_FUNCTION_TO_RUN_EVENT = 19
+RAY_BEGIN_REINITIALIZE_REUSABLE_VARIABLE_EVENT = 20
+RAY_END_REINITIALIZE_REUSABLE_VARIABLE_EVENT = 21
+RAY_BEGIN_ACQUIRE_WORKER_LOCK_EVENT = 22
+RAY_END_ACQUIRE_WORKER_LOCK_EVENT = 23
+
+RAY_BEGIN_TASK_GET_ARGUMENTS_EVENT = 24
+RAY_END_TASK_GET_ARGUMENTS_EVENT = 25
+RAY_BEGIN_TASK_EXECUTE_FUNCTION_EVENT = 26
+RAY_END_TASK_EXECUTE_FUNCTION_EVENT = 27
+RAY_BEGIN_TASK_STORE_OUTPUTS_EVENT = 28
+RAY_END_TASK_STORE_OUTPUTS_EVENT = 29
 
 def random_string():
   return np.random.bytes(20)
@@ -476,28 +509,36 @@ class Worker(object):
         be object IDs or they can be values. If they are values, they
         must be serializable objecs.
     """
-    check_main_thread()
-    # Put large or complex arguments that are passed by value in the object
-    # store first.
-    args_for_photon = []
-    for arg in args:
-      if isinstance(arg, photon.ObjectID):
-        args_for_photon.append(arg)
-      elif photon.check_simple_value(arg):
-        args_for_photon.append(arg)
-      else:
-        args_for_photon.append(put(arg))
+    log(event_type=RAY_BEGIN_SUBMIT_EVENT, worker=self)
 
-    # Submit the task to Photon.
-    task = photon.Task(photon.ObjectID(function_id.id()),
-                       args_for_photon,
-                       self.num_return_vals[function_id.id()],
-                       self.current_task_id,
-                       self.task_index)
-    # Increment the worker's task index to track how many tasks have been
-    # submitted by the current task so far.
-    self.task_index += 1
-    self.photon_client.submit(task)
+    try:
+      check_main_thread()
+      # Put large or complex arguments that are passed by value in the object
+      # store first.
+      args_for_photon = []
+      for arg in args:
+        if isinstance(arg, photon.ObjectID):
+          args_for_photon.append(arg)
+        elif photon.check_simple_value(arg):
+          args_for_photon.append(arg)
+        else:
+          args_for_photon.append(put(arg))
+
+      # Submit the task to Photon.
+      task = photon.Task(photon.ObjectID(function_id.id()),
+                         args_for_photon,
+                         self.num_return_vals[function_id.id()],
+                         self.current_task_id,
+                         self.task_index)
+      # Increment the worker's task index to track how many tasks have been
+      # submitted by the current task so far.
+      self.task_index += 1
+      self.photon_client.submit(task)
+    except Exception as e:
+      log(event_type=RAY_END_SUBMIT_EVENT, contents=e, worker=self)
+      raise
+    else:
+      log(event_type=RAY_END_SUBMIT_EVENT, worker=self)
 
     return task.returns()
 
@@ -1014,11 +1055,17 @@ def import_thread(worker):
       for i in range(worker.worker_import_counter, num_imports):
         key = worker.redis_client.lindex("Exports", i)
         if key.startswith(b"RemoteFunction"):
+          log(event_type=RAY_BEGIN_IMPORT_REMOTE_FUNCTION_EVENT, worker=worker)
           fetch_and_register_remote_function(key, worker=worker)
+          log(event_type=RAY_END_IMPORT_REMOTE_FUNCTION_EVENT, worker=worker)
         elif key.startswith(b"ReusableVariables"):
+          log(event_type=RAY_BEGIN_IMPORT_REUSABLE_VARIABLE_EVENT, worker=worker)
           fetch_and_register_reusable_variable(key, worker=worker)
+          log(event_type=RAY_END_IMPORT_REUSABLE_VARIABLE_EVENT, worker=worker)
         elif key.startswith(b"FunctionsToRun"):
+          log(event_type=RAY_BEGIN_IMPORT_FUNCTION_TO_RUN_EVENT, worker=worker)
           fetch_and_execute_function_to_run(key, worker=worker)
+          log(event_type=RAY_END_IMPORT_FUNCTION_TO_RUN_EVENT, worker=worker)
         else:
           raise Exception("This code should be unreachable.")
         worker.redis_client.hincrby(worker_info_key, "export_counter", 1)
@@ -1044,6 +1091,10 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker):
   worker.worker_id = random_string()
   worker.connected = True
   worker.set_mode(mode)
+  # The worker.events field is used to aggregate logging information and display
+  # it in the web UI. Note that Python lists are thread safe, which is important
+  # because we will append to this field from multiple threads.
+  worker.events = []
   # If running Ray in PYTHON_MODE, there is no need to create call create_worker
   # or to start the worker service.
   if mode == PYTHON_MODE:
@@ -1061,9 +1112,9 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker):
   worker.photon_client = photon.PhotonClient(info["local_scheduler_socket_name"])
   # Register the worker with Redis.
   if mode in [SCRIPT_MODE, SILENT_MODE]:
-    worker.redis_client.rpush("Drivers", worker.worker_id)
+    worker.redis_client.hmset(b"Drivers" + worker.worker_id, {"node_ip_address": worker.node_ip_address})
   elif mode == WORKER_MODE:
-    worker.redis_client.rpush("Workers", worker.worker_id)
+    worker.redis_client.hmset(b"Workers" + worker.worker_id, {"node_ip_address": worker.node_ip_address})
   else:
     raise Exception("This code should be unreachable.")
   # If this is a driver, set the current task ID and set the task index to 0.
@@ -1175,6 +1226,25 @@ def register_class(cls, pickle=False, worker=global_worker):
     serialization.add_class_to_whitelist(cls, pickle=pickle)
   worker.run_function_on_all_workers(register_class_for_serialization)
 
+def log(event_type=None, contents=None, worker=global_worker):
+  """Log an event to the global state store.
+
+  This adds the event to a buffer of events locally. The buffer can be flushed
+  and written to the global state store by calling flush_log().
+
+  Args:
+    event_type (str): The type of the event.
+    contents: More general data to store with the event.
+  """
+  worker.events.append((time.time(), event_type, contents))
+
+def flush_log(worker=global_worker):
+  """Send the logged worker events to the global state store."""
+  worker_id_hex = repr(worker.worker_id)[9:-1]
+  task_id_hex = repr(worker.current_task_id.id())[9:-1]
+  worker.redis_client.rpush("event_log:" + worker_id_hex + ":" + task_id_hex, json.dumps(worker.events))
+  worker.events = []
+
 def get(objectid, worker=global_worker):
   """Get a remote object or a list of remote objects from the object store.
 
@@ -1190,22 +1260,35 @@ def get(objectid, worker=global_worker):
   Returns:
     A Python object or a list of Python objects.
   """
-  check_main_thread()
-  check_connected(worker)
-  if worker.mode == PYTHON_MODE:
-    return objectid # In PYTHON_MODE, ray.get is the identity operation (the input will actually be a value not an objectid)
-  if isinstance(objectid, list):
-    values = [worker.get_object(x) for x in objectid]
-    for i, value in enumerate(values):
+  log(event_type=RAY_BEGIN_GET_EVENT, worker=worker)
+
+  try:
+    check_main_thread()
+    check_connected(worker)
+
+    if worker.mode == PYTHON_MODE:
+      # In PYTHON_MODE, ray.get is the identity operation (the input will actually be a value not an objectid)
+      values = objectid
+    elif isinstance(objectid, list):
+      values = [worker.get_object(x) for x in objectid]
+      for i, value in enumerate(values):
+        if isinstance(value, RayTaskError):
+          raise RayGetError(objectid[i], value)
+    else:
+      value = worker.get_object(objectid)
       if isinstance(value, RayTaskError):
-        raise RayGetError(objectid[i], value)
-    return values
-  value = worker.get_object(objectid)
-  if isinstance(value, RayTaskError):
-    # If the result is a RayTaskError, then the task that created this object
-    # failed, and we should propagate the error message here.
-    raise RayGetError(objectid, value)
-  return value
+        # If the result is a RayTaskError, then the task that created this object
+        # failed, and we should propagate the error message here.
+        raise RayGetError(objectid, value)
+      values = value
+  except Exception as e:
+    # Log the event and reraise the exception.
+    log(event_type=RAY_END_GET_EVENT, contents=e, worker=worker)
+    raise
+  else:
+    log(event_type=RAY_END_GET_EVENT, worker=worker)
+
+  return values
 
 def put(value, worker=global_worker):
   """Store an object in the object store.
@@ -1216,13 +1299,24 @@ def put(value, worker=global_worker):
   Returns:
     The object ID assigned to this value.
   """
-  check_main_thread()
-  check_connected(worker)
-  if worker.mode == PYTHON_MODE:
-    return value # In PYTHON_MODE, ray.put is the identity operation
-  object_id = photon.compute_put_id(worker.current_task_id, worker.put_index)
-  worker.put_object(object_id, value)
-  worker.put_index += 1
+  log(event_type=RAY_BEGIN_PUT_EVENT, worker=worker)
+  try:
+    check_main_thread()
+    check_connected(worker)
+
+    if worker.mode == PYTHON_MODE:
+      # In PYTHON_MODE, ray.put is the identity operation
+      object_id = value
+    else:
+      object_id = photon.compute_put_id(worker.current_task_id, worker.put_index)
+      worker.put_object(object_id, value)
+      worker.put_index += 1
+  except Exception as e:
+    log(event_type=RAY_END_PUT_EVENT, contents=e, worker=worker)
+    raise
+  else:
+    log(event_type=RAY_END_PUT_EVENT, worker=worker)
+
   return object_id
 
 def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
@@ -1247,13 +1341,20 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
   Returns:
     A list of object IDs that are ready and a list of the remaining object IDs.
   """
-  check_main_thread()
-  check_connected(worker)
-  object_id_strs = [object_id.id() for object_id in object_ids]
-  timeout = timeout if timeout is not None else 2 ** 30
-  ready_ids, remaining_ids = worker.plasma_client.wait(object_id_strs, timeout, num_returns)
-  ready_ids = [photon.ObjectID(object_id) for object_id in ready_ids]
-  remaining_ids = [photon.ObjectID(object_id) for object_id in remaining_ids]
+  log(event_type=RAY_BEGIN_WAIT_EVENT, worker=worker)
+  try:
+    check_main_thread()
+    check_connected(worker)
+    object_id_strs = [object_id.id() for object_id in object_ids]
+    timeout = timeout if timeout is not None else 2 ** 30
+    ready_ids, remaining_ids = worker.plasma_client.wait(object_id_strs, timeout, num_returns)
+    ready_ids = [photon.ObjectID(object_id) for object_id in ready_ids]
+    remaining_ids = [photon.ObjectID(object_id) for object_id in remaining_ids]
+  except Exception as e:
+    log(event_type=RAY_END_WAIT_EVENT, contents=e, worker=worker)
+    raise
+  else:
+    log(event_type=RAY_END_WAIT_EVENT, worker=worker)
   return ready_ids, remaining_ids
 
 def wait_for_valid_import_counter(function_id, timeout=5, worker=global_worker):
@@ -1335,14 +1436,23 @@ def main_loop(worker=global_worker):
       args = task.arguments()
       return_object_ids = task.returns()
       function_name = worker.function_names[function_id.id()]
+
       # Get task arguments from the object store.
+      log(event_type=RAY_BEGIN_TASK_GET_ARGUMENTS_EVENT, worker=worker)
       arguments = get_arguments_for_execution(worker.functions[function_id.id()], args, worker)
+      log(event_type=RAY_END_TASK_GET_ARGUMENTS_EVENT, worker=worker)
+
       # Execute the task.
+      log(event_type=RAY_BEGIN_TASK_EXECUTE_FUNCTION_EVENT, worker=worker)
       outputs = worker.functions[function_id.id()].executor(arguments)
+      log(event_type=RAY_END_TASK_EXECUTE_FUNCTION_EVENT, worker=worker)
+
       # Store the outputs in the local object store.
       if len(return_object_ids) == 1:
         outputs = (outputs,)
+      log(event_type=RAY_BEGIN_TASK_STORE_OUTPUTS_EVENT, worker=worker)
       store_outputs_in_objstore(return_object_ids, outputs, worker)
+      log(event_type=RAY_END_TASK_STORE_OUTPUTS_EVENT, worker=worker)
     except Exception as e:
       # We determine whether the exception was caused by the call to
       # get_arguments_for_execution or by the execution of the remote function
@@ -1370,7 +1480,9 @@ def main_loop(worker=global_worker):
     try:
       # Reinitialize the values of reusable variables that were used in the task
       # above so that changes made to their state do not affect other tasks.
+      log(event_type=RAY_BEGIN_REINITIALIZE_REUSABLE_VARIABLE_EVENT, worker=worker)
       reusables._reinitialize()
+      log(event_type=RAY_END_REINITIALIZE_REUSABLE_VARIABLE_EVENT, worker=worker)
     except Exception as e:
       # The attempt to reinitialize the reusable variables threw an exception.
       # We record the traceback and notify the scheduler.
@@ -1384,19 +1496,36 @@ def main_loop(worker=global_worker):
 
   check_main_thread()
   while True:
+    log(event_type=RAY_BEGIN_GET_TASK_EVENT, worker=worker)
     task = worker.photon_client.get_task()
+    log(event_type=RAY_END_GET_TASK_EVENT, worker=worker)
+
     function_id = task.function_id()
     # Check that the number of imports we have is at least as great as the
     # export counter for the task. If not, wait until we have imported enough.
     # We will push warnings to the user if we spend too long in this loop.
+    log(event_type=RAY_BEGIN_IMPORT_COUNTER_EVENT, worker=worker)
     wait_for_valid_import_counter(function_id, worker=worker)
+    log(event_type=RAY_END_IMPORT_COUNTER_EVENT, worker=worker)
+
     # Execute the task.
     # TODO(rkn): Consider acquiring this lock with a timeout and pushing a
     # warning to the user if we are waiting too long to acquire the lock because
     # that may indicate that the system is hanging, and it'd be good to know
     # where the system is hanging.
+    log(event_type=RAY_BEGIN_ACQUIRE_WORKER_LOCK_EVENT, worker=worker)
     with worker.lock:
-      process_task(task)
+      log(event_type=RAY_END_ACQUIRE_WORKER_LOCK_EVENT, worker=worker)
+
+      log(event_type=RAY_BEGIN_TASK_EVENT,
+          contents={"function_name": worker.function_names[function_id.id()],
+                    "task_id": repr(task.task_id())[9:-1]},
+          worker=worker)
+      times = process_task(task)
+      log(event_type=RAY_END_TASK_EVENT, worker=worker)
+
+    # Push all of the log events to the global state store.
+    flush_log()
 
 def push_warning_to_user(message, worker=global_worker):
   error_key = "GenericWarning:{}".format(random_string())
