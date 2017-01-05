@@ -1242,7 +1242,7 @@ def flush_log(worker=global_worker):
   """Send the logged worker events to the global state store."""
   worker_id_hex = repr(worker.worker_id)[9:-1]
   task_id_hex = repr(worker.current_task_id.id())[9:-1]
-  worker.redis_client.rpush("event_log:" + worker_id_hex + ":" + task_id_hex, json.dumps(worker.events))
+  worker.photon_client.log_event("event_log:" + worker_id_hex + ":" + task_id_hex, json.dumps(worker.events))
   worker.events = []
 
 def get(objectid, worker=global_worker):

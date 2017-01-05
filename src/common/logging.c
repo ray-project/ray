@@ -82,3 +82,16 @@ void ray_log(ray_logger *logger,
   utstring_free(formatted_message);
   utstring_free(timestamp);
 }
+
+void ray_log_event(db_handle *db,
+                   uint8_t *key_name,
+                   int64_t key_name_length,
+                   uint8_t *payload,
+                   int64_t payload_length) {
+  int status =
+      redisAsyncCommand(db->context, NULL, NULL, "RPUSH %b %b", key_name,
+                        key_name_length, payload, payload_length);
+  if ((status == REDIS_ERR) || db->context->err) {
+    LOG_REDIS_DEBUG(db->context, "error while logging message to event log");
+  }
+}

@@ -36,6 +36,22 @@ void photon_disconnect(photon_conn *conn);
 void photon_submit(photon_conn *conn, task_spec *task);
 
 /**
+ * Log an event to the event log. This will call RPUSH key_name payload.
+ *
+ * @param conn The connection information.
+ * @param key_name The key to append the payload to.
+ * @param key_name_length The length of the key.
+ * @param payload The payload to append.
+ * @param The length of the payload.
+ * @return Void.
+ */
+void photon_log_event(photon_conn *conn,
+                      uint8_t *key_name,
+                      int64_t key_name_length,
+                      uint8_t *payload,
+                      int64_t payload_length);
+
+/**
  * Get next task for this client. This will block until the scheduler assigns
  * a task to this worker. This allocates and returns a task, and so the task
  * must be freed by the caller.

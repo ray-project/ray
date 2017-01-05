@@ -9,6 +9,7 @@
 #include "common.h"
 #include "event_loop.h"
 #include "io.h"
+#include "logging.h"
 #include "object_info.h"
 #include "photon.h"
 #include "photon_scheduler.h"
@@ -221,7 +222,7 @@ void process_message(event_loop *loop,
   local_scheduler_state *state = context;
 
   int64_t type;
-  read_buffer(client_sock, &type, state->input_buffer);
+  int64_t length = read_buffer(client_sock, &type, state->input_buffer);
 
   LOG_DEBUG("New event of type %" PRId64, type);
 
@@ -231,6 +232,30 @@ void process_message(event_loop *loop,
     handle_task_submitted(state, state->algorithm_state, spec);
   } break;
   case TASK_DONE: {
+  } break;
+  case EVENT_LOG_MESSAGE: {
+    /* Parse the message. */
+    uint8_t *message = (uint8_t *) utarray_front(state->input_buffer);
+    int64_t offset = 0;
+    int64_t key_name_length;
+    memcpy(&key_name_length, &message[offset], sizeof(key_name_length));
+    offset += sizeof(key_name_length);
+    int64_t payload_length;
+    memcpy(&payload_length, &message[offset], sizeof(payload_length));
+    offset += sizeof(payload_length);
+    uint8_t *key_name = malloc(key_name_length);
+    memcpy(key_name, &message[offset], key_name_length);
+    offset += key_name_length;
+    uint8_t *payload = malloc(payload_length);
+    memcpy(payload, &message[offset], payload_length);
+    offset += payload_length;
+    CHECK(offset == length);
+    if (state->db != NULL) {
+      ray_log_event(state->db, key_name, key_name_length, payload,
+                    payload_length);
+    }
+    free(key_name);
+    free(payload);
   } break;
   case GET_TASK: {
     worker_index *wi;

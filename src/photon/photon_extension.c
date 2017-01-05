@@ -62,6 +62,21 @@ static PyObject *PyPhotonClient_reconstruct_object(PyObject *self,
   Py_RETURN_NONE;
 }
 
+static PyObject *PyPhotonClient_log_event(PyObject *self, PyObject *args) {
+  const char *key_name;
+  int key_name_length;
+  const char *payload;
+  int payload_length;
+  if (!PyArg_ParseTuple(args, "s#s#", &key_name, &key_name_length, &payload,
+                        &payload_length)) {
+    return NULL;
+  }
+  photon_log_event(((PyPhotonClient *) self)->photon_connection,
+                   (uint8_t *) key_name, key_name_length, (uint8_t *) payload,
+                   payload_length);
+  Py_RETURN_NONE;
+}
+
 static PyMethodDef PyPhotonClient_methods[] = {
     {"submit", (PyCFunction) PyPhotonClient_submit, METH_VARARGS,
      "Submit a task to the local scheduler."},
@@ -69,6 +84,8 @@ static PyMethodDef PyPhotonClient_methods[] = {
      "Get a task from the local scheduler."},
     {"reconstruct_object", (PyCFunction) PyPhotonClient_reconstruct_object,
      METH_VARARGS, "Ask the local scheduler to reconstruct an object."},
+    {"log_event", (PyCFunction) PyPhotonClient_log_event, METH_VARARGS,
+     "Log an event to the event log through the local scheduler."},
     {NULL} /* Sentinel */
 };
 
