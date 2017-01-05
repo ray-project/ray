@@ -1498,9 +1498,9 @@ def main_loop(worker=global_worker):
     # warning to the user if we are waiting too long to acquire the lock because
     # that may indicate that the system is hanging, and it'd be good to know
     # where the system is hanging.
-    log(event_type="ray:acquire_lock", kind="start", worker=worker)
+    log(event_type="ray:acquire_lock", kind=LOG_SPAN_START, worker=worker)
     with worker.lock:
-      log(event_type="ray:acquire_lock", kind="end", worker=worker)
+      log(event_type="ray:acquire_lock", kind=LOG_SPAN_END, worker=worker)
 
       contents = {"function_name": worker.function_names[function_id.id()],
                   "task_id": task.task_id().hex()}
