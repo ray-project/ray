@@ -1277,21 +1277,20 @@ def get(objectid, worker=global_worker):
 
     if worker.mode == PYTHON_MODE:
       # In PYTHON_MODE, ray.get is the identity operation (the input will actually be a value not an objectid)
-      values = objectid
-    elif isinstance(objectid, list):
+      return objectid
+    if isinstance(objectid, list):
       values = [worker.get_object(x) for x in objectid]
       for i, value in enumerate(values):
         if isinstance(value, RayTaskError):
           raise RayGetError(objectid[i], value)
+      return values
     else:
       value = worker.get_object(objectid)
       if isinstance(value, RayTaskError):
         # If the result is a RayTaskError, then the task that created this object
         # failed, and we should propagate the error message here.
         raise RayGetError(objectid, value)
-      values = value
-
-    return values
+      return value
 
 def put(value, worker=global_worker):
   """Store an object in the object store.
@@ -1308,12 +1307,10 @@ def put(value, worker=global_worker):
 
     if worker.mode == PYTHON_MODE:
       # In PYTHON_MODE, ray.put is the identity operation
-      object_id = value
-    else:
-      object_id = photon.compute_put_id(worker.current_task_id, worker.put_index)
-      worker.put_object(object_id, value)
-      worker.put_index += 1
-
+      return value
+    object_id = photon.compute_put_id(worker.current_task_id, worker.put_index)
+    worker.put_object(object_id, value)
+    worker.put_index += 1
     return object_id
 
 def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
