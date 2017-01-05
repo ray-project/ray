@@ -1061,9 +1061,9 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker):
   worker.photon_client = photon.PhotonClient(info["local_scheduler_socket_name"])
   # Register the worker with Redis.
   if mode in [SCRIPT_MODE, SILENT_MODE]:
-    worker.redis_client.rpush("Drivers", worker.worker_id)
+    worker.redis_client.rpush("Drivers:", worker.worker_id)
   elif mode == WORKER_MODE:
-    worker.redis_client.rpush("Workers", worker.worker_id)
+    worker.redis_client.rpush("Workers:", worker.worker_id)
   else:
     raise Exception("This code should be unreachable.")
   # If this is a driver, set the current task ID and set the task index to 0.
