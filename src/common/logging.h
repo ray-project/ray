@@ -42,16 +42,16 @@ void ray_log(ray_logger *logger,
  * Log an event to the event log.
  *
  * @param db The database handle.
- * @param key_name The key in Redis to append the payload to.
- * @param key_name_length The length of the key.
- * @param payload The payload to append to the list in Redis.
- * @param payload_length The length of the payload.
+ * @param key The key in Redis to store the event in.
+ * @param key_length The length of the key.
+ * @param value The value to log.
+ * @param value_length The length of the value.
  * @return Void.
  */
 void ray_log_event(db_handle *db,
-                   uint8_t *key_name,
-                   int64_t key_name_length,
-                   uint8_t *payload,
-                   int64_t payload_length);
+                   uint8_t *key,
+                   int64_t key_length,
+                   uint8_t *value,
+                   int64_t value_length);
 
 #endif /* LOGGING_H */

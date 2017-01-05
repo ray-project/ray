@@ -234,28 +234,28 @@ void process_message(event_loop *loop,
   case TASK_DONE: {
   } break;
   case EVENT_LOG_MESSAGE: {
-    /* Parse the message. */
+    /* Parse the message. TODO(rkn): Redo this using flatbuffers to serialize
+     * the message. */
     uint8_t *message = (uint8_t *) utarray_front(state->input_buffer);
     int64_t offset = 0;
-    int64_t key_name_length;
-    memcpy(&key_name_length, &message[offset], sizeof(key_name_length));
-    offset += sizeof(key_name_length);
-    int64_t payload_length;
-    memcpy(&payload_length, &message[offset], sizeof(payload_length));
-    offset += sizeof(payload_length);
-    uint8_t *key_name = malloc(key_name_length);
-    memcpy(key_name, &message[offset], key_name_length);
-    offset += key_name_length;
-    uint8_t *payload = malloc(payload_length);
-    memcpy(payload, &message[offset], payload_length);
-    offset += payload_length;
+    int64_t key_length;
+    memcpy(&key_length, &message[offset], sizeof(key_length));
+    offset += sizeof(key_length);
+    int64_t value_length;
+    memcpy(&value_length, &message[offset], sizeof(value_length));
+    offset += sizeof(value_length);
+    uint8_t *key = malloc(key_length);
+    memcpy(key, &message[offset], key_length);
+    offset += key_length;
+    uint8_t *value = malloc(value_length);
+    memcpy(value, &message[offset], value_length);
+    offset += value_length;
     CHECK(offset == length);
     if (state->db != NULL) {
-      ray_log_event(state->db, key_name, key_name_length, payload,
-                    payload_length);
+      ray_log_event(state->db, key, key_length, value, value_length);
     }
-    free(key_name);
-    free(payload);
+    free(key);
+    free(value);
   } break;
   case GET_TASK: {
     worker_index *wi;

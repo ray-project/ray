@@ -63,17 +63,17 @@ static PyObject *PyPhotonClient_reconstruct_object(PyObject *self,
 }
 
 static PyObject *PyPhotonClient_log_event(PyObject *self, PyObject *args) {
-  const char *key_name;
-  int key_name_length;
-  const char *payload;
-  int payload_length;
-  if (!PyArg_ParseTuple(args, "s#s#", &key_name, &key_name_length, &payload,
-                        &payload_length)) {
+  const char *key;
+  int key_length;
+  const char *value;
+  int value_length;
+  if (!PyArg_ParseTuple(args, "s#s#", &key, &key_length, &value,
+                        &value_length)) {
     return NULL;
   }
   photon_log_event(((PyPhotonClient *) self)->photon_connection,
-                   (uint8_t *) key_name, key_name_length, (uint8_t *) payload,
-                   payload_length);
+                   (uint8_t *) key, key_length, (uint8_t *) value,
+                   value_length);
   Py_RETURN_NONE;
 }
 

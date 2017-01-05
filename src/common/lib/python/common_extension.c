@@ -74,6 +74,14 @@ static PyObject *PyObjectID_id(PyObject *self) {
                                    sizeof(s->object_id.id));
 }
 
+static PyObject *PyObjectID_hex(PyObject *self) {
+  PyObjectID *s = (PyObjectID *) self;
+  char hex_id[ID_STRING_SIZE];
+  object_id_to_string(s->object_id, hex_id, ID_STRING_SIZE);
+  PyObject *result = PyUnicode_FromString(hex_id);
+  return result;
+}
+
 static PyObject *PyObjectID_richcompare(PyObjectID *self,
                                         PyObject *other,
                                         int op) {
@@ -140,6 +148,8 @@ static PyObject *PyObjectID___reduce__(PyObjectID *self) {
 static PyMethodDef PyObjectID_methods[] = {
     {"id", (PyCFunction) PyObjectID_id, METH_NOARGS,
      "Return the hash associated with this ObjectID"},
+    {"hex", (PyCFunction) PyObjectID_hex, METH_NOARGS,
+     "Return the object ID as a string in hex."},
     {"__reduce__", (PyCFunction) PyObjectID___reduce__, METH_NOARGS,
      "Say how to pickle this ObjectID. This raises an exception to prevent"
      "object IDs from being serialized."},
