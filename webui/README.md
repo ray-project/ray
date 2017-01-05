@@ -1,42 +1,29 @@
-# Polymer App Toolbox - Starter Kit
+# The Ray Web UI
 
-[![Build Status](https://travis-ci.org/PolymerElements/polymer-starter-kit.svg?branch=master)](https://travis-ci.org/PolymerElements/polymer-starter-kit)
+This is Ray's Web UI. It consists of two components:
 
-This template is a starting point for building apps using a drawer-based
-layout. The layout is provided by `app-layout` elements.
+* The **frontend** is a [Polymer](https://www.polymer-project.org/1.0/) app that
+  uses [google-charts](https://elements.polymer-project.org/elements/google-chart)
+  for visualization.
+* The **backend** is a Python 3 websocket server (see `backend/ray_ui.py`) that
+  connects to redis and potentially Ray.
 
-This template, along with the `polymer-cli` toolchain, also demonstrates use
-of the "PRPL pattern" This pattern allows fast first delivery and interaction with
-the content at the initial route requested by the user, along with fast subsequent
-navigation by pre-caching the remaining components required by the app and
-progressively loading them on-demand as the user navigates through the app.
-
-The PRPL pattern, in a nutshell:
-
-* **Push** components required for the initial route
-* **Render** initial route ASAP
-* **Pre-cache** components for remaining routes
-* **Lazy-load** and progressively upgrade next routes on-demand
-
-### Migrating from Polymer Starter Kit v1?
-
-[Check out our blog post that covers what's changed in PSK2 and how to migrate!](https://www.polymer-project.org/1.0/blog/2016-08-18-polymer-starter-kit-or-polymer-cli.html)
-
-### Setup
-
-##### Prerequisites
+### Prerequisites
 
 Install [polymer-cli](https://github.com/Polymer/polymer-cli):
 
     npm install -g polymer-cli
 
-##### Initialize project from template
+### Start the backend
 
-    mkdir my-app
-    cd my-app
-    polymer init starter-kit
+First start Ray and note down the address of the redis server. Then run
 
-### Start the development server
+    cd webui/backend
+    python ray_ui.py --redis-address 127.0.0.1:6379 --port 8888
+
+where you substitute your redis address appropriately.
+
+### Start the frontend development server
 
 This command serves the app at `http://localhost:8080` and provides basic URL
 routing for the app:
