@@ -11,7 +11,7 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
 <link rel="import" href="../bower_components/polymer/polymer.html">
 <link rel="import" href="shared-styles.html">
 
-<dom-module id="ray-view2">
+<dom-module id="ray-tasks">
   <template>
     <style include="shared-styles">
       :host {
@@ -22,16 +22,34 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
     </style>
 
     <div class="card">
-      <div class="circle">2</div>
-      <h1>View Two</h1>
-      <p>Ea duis bonorum nec, falli paulo aliquid ei eum.</p>
-      <p>Id nam odio natum malorum, tibique copiosae expetenda mel ea.Detracto suavitate repudiandae no eum. Id adhuc minim soluta nam.Id nam odio natum malorum, tibique copiosae expetenda mel ea.</p>
+      <h1>Tasks</h1>
+      <vaadin-grid id="tasks">
+        <table>
+          <colgroup>
+            <col name="task_id" sortable="" sort-direction="desc"/>
+            <col name="state" sortable="" sort-direction="desc"/>
+            <col name="node_id" sortable="" sort-direction="desc"/>
+          </colgroup>
+        </table>
+      </vaadin-grid>
     </div>
   </template>
 
   <script>
+    var backend_address = "ws://127.0.0.1:8888";
     Polymer({
-      is: 'ray-view2',
+      is: 'ray-tasks',
+      ready: function() {
+        var taskSocket = new WebSocket(backend_address);
+        var tasks = Polymer.dom(this.root).querySelector("#tasks");
+
+        taskSocket.onopen = function() {
+          taskSocket.send(JSON.stringify({"command": "get-tasks"}));
+        }
+        taskSocket.onmessage = function(answer) {
+          tasks.items = JSON.parse(answer.data);
+        }
+      }
     });
   </script>
 </dom-module>

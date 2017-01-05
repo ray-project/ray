@@ -23,6 +23,25 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
 
     <div class="card">
       <h1>Overview</h1>
+      <h2>Clients</h2>
+      <vaadin-grid id="clients">
+        <table>
+          <colgroup>
+            <col name="client_type" sortable="" sort-direction="desc"/>
+            <col name="client" sortable="" sort-direction="desc"/>
+            <col name="node_ip_address" sortable="" sort-direction="desc"/>
+          </colgroup>
+        </table>
+      </vaadin-grid>
+      <h2>Workers</h2>
+      <vaadin-grid id="workers">
+        <table>
+          <colgroup>
+            <col name="worker" sortable="" sort-direction="desc"/>
+            <col name="export_counter" sortable="" sort-direction="desc"/>
+          </colgroup>
+        </table>
+      </vaadin-grid>
     </div>
   </template>
 
@@ -31,12 +50,24 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
     Polymer({
       is: 'ray-overview',
       ready: function() {
-        var socket = new WebSocket(backend_address);
-        socket.onopen = function() {
-          socket.send(JSON.stringify({"command": "get-workers"}));
+        var workerSocket = new WebSocket(backend_address);
+        var workers = Polymer.dom(this.root).querySelector("#workers");
+        workerSocket.onopen = function() {
+          workerSocket.send(JSON.stringify({"command": "get-workers"}));
         }
-        socket.onmessage = function(answer) {
-          console.log(answer);
+        workerSocket.onmessage = function(answer) {
+          workers.items = JSON.parse(answer.data);
+        }
+
+        var clientSocket = new WebSocket(backend_address);
+        var clients = Polymer.dom(this.root).querySelector("#clients");
+        clientSocket.onopen = function() {
+          clientSocket.send(JSON.stringify({"command": "get-clients"}));
+        }
+        clientSocket.onmessage = function(answer) {
+          var result = JSON.parse(answer.data);
+          console.dir(result);
+          clients.items = result;
         }
       }
     });

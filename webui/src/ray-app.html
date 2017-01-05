@@ -71,8 +71,9 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
         <app-toolbar>Menu</app-toolbar>
         <iron-selector selected="[[page]]" attr-for-selected="name" class="drawer-list" role="navigation">
           <a name="overview" href="/overview">Overview</a>
-          <a name="view2" href="/view2">View Two</a>
-          <a name="view3" href="/view3">View Three</a>
+          <a name="objects" href="/objects">Objects</a>
+          <a name="tasks" href="/tasks">Tasks</a>
+          <a name="events" href="/events">Events</a>
         </iron-selector>
       </app-drawer>
 
@@ -82,7 +83,7 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
         <app-header condenses reveals effects="waterfall">
           <app-toolbar>
             <paper-icon-button icon="ray-icons:menu" drawer-toggle></paper-icon-button>
-            <div main-title>Ray App</div>
+            <div main-title>Ray UI</div>
           </app-toolbar>
         </app-header>
 
@@ -92,8 +93,9 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
             fallback-selection="view404"
             role="main">
           <ray-overview name="overview"></ray-overview>
-          <ray-view2 name="view2"></ray-view2>
-          <ray-view3 name="view3"></ray-view3>
+          <ray-objects name="objects"></ray-objects>
+          <ray-tasks name="tasks"></ray-tasks>
+          <ray-events name="events"></ray-events>
           <ray-view404 name="view404"></ray-view404>
         </iron-pages>
       </app-header-layout>
