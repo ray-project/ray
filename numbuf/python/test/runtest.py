@@ -118,5 +118,13 @@ class SerializationTests(unittest.TestCase):
       result = numbuf.deserialize_list(array)
       assert_equal(result[0], obj)
 
+  def testObjectArrayImmutable(self):
+    obj = np.zeros([10])
+    schema, size, serialized = numbuf.serialize_list([obj])
+    result = numbuf.deserialize_list(serialized)
+    assert_equal(result[0], obj)
+    with self.assertRaises(ValueError):
+      result[0][0] = 1
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
