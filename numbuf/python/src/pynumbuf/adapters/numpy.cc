@@ -27,8 +27,7 @@ namespace numbuf {
         num_dims, dim.data(), NPY_##TYPE, reinterpret_cast<void*>(data));         \
     if (base != Py_None) { PyArray_SetBaseObject((PyArrayObject*)*out, base); }   \
     Py_XINCREF(base);                                                             \
-  }                                                                               \
-    return Status::OK();
+  } break;
 
 Status DeserializeArray(
     std::shared_ptr<Array> array, int32_t offset, PyObject* base, PyObject** out) {
@@ -57,6 +56,11 @@ Status DeserializeArray(
     default:
       DCHECK(false) << "arrow type not recognized: " << content->value_type()->type;
   }
+  /* Mark the array as immutable. */
+  PyObject* flags = PyObject_GetAttrString(*out, "flags");
+  DCHECK(flags != NULL) << "Could not mark Numpy array immutable";
+  int flag_set = PyObject_SetAttrString(flags, "writeable", Py_False);
+  DCHECK(flag_set == 0) << "Could not mark Numpy array immutable";
   return Status::OK();
 }
 
