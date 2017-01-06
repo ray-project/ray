@@ -123,11 +123,8 @@ class SerializationTests(unittest.TestCase):
     schema, size, serialized = numbuf.serialize_list([obj])
     result = numbuf.deserialize_list(serialized)
     assert_equal(result[0], obj)
-    try:
+    with self.assertRaises(ValueError):
       result[0][0] = 1
-      self.assertTrue(False)
-    except ValueError:
-      pass
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
