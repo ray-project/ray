@@ -6,30 +6,41 @@ This is Ray's Web UI. It consists of two components:
   uses [google-charts](https://elements.polymer-project.org/elements/google-chart)
   for visualization.
 * The **backend** is a Python 3 websocket server (see `backend/ray_ui.py`) that
-  connects to redis and potentially Ray.
+  connects to Redis and potentially Ray.
 
 ### Prerequisites
 
+The Ray Web UI requires Python 3.
+
 Install [polymer-cli](https://github.com/Polymer/polymer-cli):
 
+    pip install aioredis websockets
     npm install -g polymer-cli
+
+### Setup
+
+The following must be done once.
+
+    cd webui
+    bower install
 
 ### Start the backend
 
-First start Ray and note down the address of the redis server. Then run
+First start Ray and note down the address of the Redis server. Then run
 
     cd webui/backend
     python ray_ui.py --redis-address 127.0.0.1:6379 --port 8888
 
-where you substitute your redis address appropriately.
+where you substitute your Redis address appropriately.
 
 ### Start the frontend development server
 
-This command serves the app at `http://localhost:8080` and provides basic URL
-routing for the app:
+To start the front end, run the following.
 
+    cd webui
     polymer serve --open
 
+The web UI can then be accessed at `http://localhost:8080`.
 
 ### Build
 
@@ -60,16 +71,16 @@ generated using fragment bundling:
 ### Run tests
 
 This command will run
-[Web Component Tester](https://github.com/Polymer/web-component-tester) against the
-browsers currently installed on your machine.
+[Web Component Tester](https://github.com/Polymer/web-component-tester) against
+the browsers currently installed on your machine.
 
     polymer test
 
 ### Adding a new view
 
-You can extend the app by adding more views that will be demand-loaded
-e.g. based on the route, or to progressively render non-critical sections
-of the application.  Each new demand-loaded fragment should be added to the
-list of `fragments` in the included `polymer.json` file.  This will ensure
-those components and their dependencies are added to the list of pre-cached
-components (and will have bundles created in the fallback `bundled` build).
+You can extend the app by adding more views that will be demand-loaded e.g.
+based on the route, or to progressively render non-critical sections of the
+application.  Each new demand-loaded fragment should be added to the list of
+`fragments` in the included `polymer.json` file.  This will ensure those
+components and their dependencies are added to the list of pre-cached components
+(and will have bundles created in the fallback `bundled` build).
