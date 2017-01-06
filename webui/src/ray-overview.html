@@ -1,0 +1,75 @@
+<!--
+@license
+Copyright (c) 2016 The Polymer Project Authors. All rights reserved.
+This code may only be used under the BSD style license found at http://polymer.github.io/LICENSE.txt
+The complete set of authors may be found at http://polymer.github.io/AUTHORS.txt
+The complete set of contributors may be found at http://polymer.github.io/CONTRIBUTORS.txt
+Code distributed by Google as part of the polymer project is also
+subject to an additional IP rights grant found at http://polymer.github.io/PATENTS.txt
+-->
+
+<link rel="import" href="../bower_components/polymer/polymer.html">
+<link rel="import" href="shared-styles.html">
+
+<dom-module id="ray-overview">
+  <template>
+    <style include="shared-styles">
+      :host {
+        display: block;
+
+        padding: 10px;
+      }
+    </style>
+
+    <div class="card">
+      <h1>Overview</h1>
+      <h2>Clients</h2>
+      <vaadin-grid id="clients">
+        <table>
+          <colgroup>
+            <col name="client_type" sortable="" sort-direction="desc"/>
+            <col name="client" sortable="" sort-direction="desc"/>
+            <col name="node_ip_address" sortable="" sort-direction="desc"/>
+          </colgroup>
+        </table>
+      </vaadin-grid>
+      <h2>Workers</h2>
+      <vaadin-grid id="workers">
+        <table>
+          <colgroup>
+            <col name="worker" sortable="" sort-direction="desc"/>
+            <col name="export_counter" sortable="" sort-direction="desc"/>
+          </colgroup>
+        </table>
+      </vaadin-grid>
+    </div>
+  </template>
+
+  <script>
+    var backend_address = "ws://127.0.0.1:8888";
+    Polymer({
+      is: 'ray-overview',
+      ready: function() {
+        var workerSocket = new WebSocket(backend_address);
+        var workers = Polymer.dom(this.root).querySelector("#workers");
+        workerSocket.onopen = function() {
+          workerSocket.send(JSON.stringify({"command": "get-workers"}));
+        }
+        workerSocket.onmessage = function(answer) {
+          workers.items = JSON.parse(answer.data);
+        }
+
+        var clientSocket = new WebSocket(backend_address);
+        var clients = Polymer.dom(this.root).querySelector("#clients");
+        clientSocket.onopen = function() {
+          clientSocket.send(JSON.stringify({"command": "get-clients"}));
+        }
+        clientSocket.onmessage = function(answer) {
+          var result = JSON.parse(answer.data);
+          console.dir(result);
+          clients.items = result;
+        }
+      }
+    });
+  </script>
+</dom-module>
