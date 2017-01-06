@@ -1,0 +1,81 @@
+<!--
+@license
+Copyright (c) 2016 The Polymer Project Authors. All rights reserved.
+This code may only be used under the BSD style license found at http://polymer.github.io/LICENSE.txt
+The complete set of authors may be found at http://polymer.github.io/AUTHORS.txt
+The complete set of contributors may be found at http://polymer.github.io/CONTRIBUTORS.txt
+Code distributed by Google as part of the polymer project is also
+subject to an additional IP rights grant found at http://polymer.github.io/PATENTS.txt
+-->
+
+<link rel="import" href="../bower_components/polymer/polymer.html">
+<link rel="import" href="shared-styles.html">
+
+<dom-module id="ray-timeline">
+  <template>
+    <style include="shared-styles">
+      :host {
+        display: block;
+
+        padding: 10px;
+      }
+      google-chart {
+        height: 600px;
+        width: 95%;
+      }
+    </style>
+
+    <div class="card">
+      <h1>Ray Timeline</h1>
+      <figure id="timeline-container"></figure>
+    </div>
+  </template>
+
+  <script>
+    var redis_address = "ws://127.0.0.1:8888";
+
+    Polymer({
+      is: 'ray-timeline',
+      ready: function() {
+        var loader = document.createElement('google-chart-loader');
+        var timelineContainer = Polymer.dom(this.root).querySelector('figure#timeline-container');
+        var timelineChart = document.createElement('google-chart');
+        timelineChart.setAttribute('type', 'timeline');
+        timelineChart.options = {
+          height: 400,
+          gantt: {
+            trackHeight: 30
+          }
+        };
+        timelineContainer.appendChild(timelineChart);
+
+        loader.dataTable().then(function(table) {
+          table.addColumn({ type: 'string', id: 'Worker' });
+          table.addColumn({ type: 'string', id: 'Task'});
+          table.addColumn({ type: 'date', id: 'Start' });
+          table.addColumn({ type: 'date', id: 'End' });
+
+          var socket = new WebSocket(redis_address);
+
+          socket.onopen = function() {
+            socket.send(JSON.stringify({"command": "get-timeline"}));
+          }
+
+          socket.onmessage = function(messageEvent) {
+            var tasks = JSON.parse(messageEvent.data);
+            for (var key in tasks) {
+              for (var index in tasks[key]) {
+                var task = tasks[key][index];
+                var d1 = new Date(task["start_task"] * 1000 * 1000);
+                var d2 = new Date(task["end_task"] * 1000 * 1000);
+                table.addRows([[key, task["task_id"], d1, d2]]);
+              }
+            }
+            console.dir(table);
+            timelineChart.data = table;
+          }
+        });
+      }
+    });
+  </script>
+</dom-module>
