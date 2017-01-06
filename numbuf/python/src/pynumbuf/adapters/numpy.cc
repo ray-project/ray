@@ -27,8 +27,7 @@ namespace numbuf {
         num_dims, dim.data(), NPY_##TYPE, reinterpret_cast<void*>(data));         \
     if (base != Py_None) { PyArray_SetBaseObject((PyArrayObject*)*out, base); }   \
     Py_XINCREF(base);                                                             \
-    break;                                                                        \
-  }
+  } break;
 
 Status DeserializeArray(
     std::shared_ptr<Array> array, int32_t offset, PyObject* base, PyObject** out) {
