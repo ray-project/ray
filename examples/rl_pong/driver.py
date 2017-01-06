@@ -6,7 +6,6 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import cPickle as pickle
 import ray
 
 import gym
@@ -50,7 +49,7 @@ def discount_rewards(r):
   """take 1D float array of rewards and compute discounted reward"""
   discounted_r = np.zeros_like(r)
   running_add = 0
-  for t in reversed(xrange(0, r.size)):
+  for t in reversed(range(0, r.size)):
     if r[t] != 0: running_add = 0 # reset the sum, since this was a game boundary (pong specific!)
     running_add = running_add * gamma + r[t]
     discounted_r[t] = running_add
@@ -117,14 +116,11 @@ if __name__ == "__main__":
   # Run the reinforcement learning
   running_reward = None
   batch_num = 1
-  if resume:
-    model = pickle.load(open("save.p", "rb"))
-  else:
-    model = {}
-    model["W1"] = np.random.randn(H, D) / np.sqrt(D) # "Xavier" initialization
-    model["W2"] = np.random.randn(H) / np.sqrt(H)
-  grad_buffer = {k: np.zeros_like(v) for k, v in model.iteritems()} # update buffers that add up gradients over a batch
-  rmsprop_cache = {k: np.zeros_like(v) for k, v in model.iteritems()} # rmsprop memory
+  model = {}
+  model["W1"] = np.random.randn(H, D) / np.sqrt(D) # "Xavier" initialization
+  model["W2"] = np.random.randn(H) / np.sqrt(H)
+  grad_buffer = {k: np.zeros_like(v) for k, v in model.items()} # update buffers that add up gradients over a batch
+  rmsprop_cache = {k: np.zeros_like(v) for k, v in model.items()} # rmsprop memory
 
   while True:
     model_id = ray.put(model)
@@ -140,10 +136,9 @@ if __name__ == "__main__":
       for k in model: grad_buffer[k] += grad[k] # accumulate grad over batch
       running_reward = reward_sum if running_reward is None else running_reward * 0.99 + reward_sum * 0.01
       print("Batch {}. episode reward total was {}. running mean: {}".format(batch_num, reward_sum, running_reward))
-    for k, v in model.iteritems():
+    for k, v in model.items():
       g = grad_buffer[k] # gradient
       rmsprop_cache[k] = decay_rate * rmsprop_cache[k] + (1 - decay_rate) * g ** 2
       model[k] += learning_rate * g / (np.sqrt(rmsprop_cache[k]) + 1e-5)
       grad_buffer[k] = np.zeros_like(v) # reset batch gradient buffer
     batch_num += 1
-    if batch_num % 10 == 0: pickle.dump(model, open("save.p", "wb"))
