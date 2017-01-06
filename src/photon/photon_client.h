@@ -36,6 +36,25 @@ void photon_disconnect(photon_conn *conn);
 void photon_submit(photon_conn *conn, task_spec *task);
 
 /**
+ * Log an event to the event log. This will call RPUSH key value. We use RPUSH
+ * instead of SET so that it is possible to flush the log multiple times with
+ * the same key (for example the key might be shared across logging calls in the
+ * same task on a worker).
+ *
+ * @param conn The connection information.
+ * @param key The key to store the event in.
+ * @param key_length The length of the key.
+ * @param value The value to store.
+ * @param value_length The length of the value.
+ * @return Void.
+ */
+void photon_log_event(photon_conn *conn,
+                      uint8_t *key,
+                      int64_t key_length,
+                      uint8_t *value,
+                      int64_t value_length);
+
+/**
  * Get next task for this client. This will block until the scheduler assigns
  * a task to this worker. This allocates and returns a task, and so the task
  * must be freed by the caller.

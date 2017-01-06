@@ -497,6 +497,56 @@ class APITest(unittest.TestCase):
 
     ray.worker.cleanup()
 
+  def testLoggingAPI(self):
+    ray.init(start_ray_local=True, num_workers=1)
+
+    def events():
+      # This is a hack for getting the event log. It is not part of the API.
+      keys = ray.worker.global_worker.redis_client.keys("event_log:*")
+      return [ray.worker.global_worker.redis_client.lrange(key, 0, -1) for key in keys]
+
+    def wait_for_num_events(num_events, timeout=10):
+      start_time = time.time()
+      while time.time() - start_time < timeout:
+        if len(events()) >= num_events:
+          return
+        time.sleep(0.1)
+      print("Timing out of wait.")
+
+    @ray.remote
+    def test_log_event():
+      ray.log_event("event_type1", contents={"key": "val"})
+
+    @ray.remote
+    def test_log_span():
+      with ray.log_span("event_type2", contents={"key": "val"}):
+        pass
+
+    # Make sure that we can call ray.log_event in a remote function.
+    ray.get(test_log_event.remote())
+    # Wait for the event to appear in the event log.
+    wait_for_num_events(1)
+    self.assertEqual(len(events()), 1)
+
+    # Make sure that we can call ray.log_span in a remote function.
+    ray.get(test_log_span.remote())
+    # Wait for the events to appear in the event log.
+    wait_for_num_events(2)
+    self.assertEqual(len(events()), 2)
+
+    @ray.remote
+    def test_log_span_exception():
+      with ray.log_span("event_type2", contents={"key": "val"}):
+        raise Exception("This failed.")
+
+    # Make sure that logging a span works if an exception is thrown.
+    test_log_span_exception.remote()
+    # Wait for the events to appear in the event log.
+    wait_for_num_events(3)
+    self.assertEqual(len(events()), 3)
+
+    ray.worker.cleanup()
+
 class PythonModeTest(unittest.TestCase):
 
   def testPythonMode(self):

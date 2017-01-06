@@ -13,6 +13,8 @@
 #define RAY_OBJECT "OBJECT"
 #define RAY_TASK "TASK"
 
+#include "state/db.h"
+
 typedef struct ray_logger_impl ray_logger;
 
 /* Initialize a Ray logger for the given client type and logging level. If the
@@ -36,4 +38,20 @@ void ray_log(ray_logger *logger,
              const char *event_type,
              const char *message);
 
-#endif
+/**
+ * Log an event to the event log.
+ *
+ * @param db The database handle.
+ * @param key The key in Redis to store the event in.
+ * @param key_length The length of the key.
+ * @param value The value to log.
+ * @param value_length The length of the value.
+ * @return Void.
+ */
+void ray_log_event(db_handle *db,
+                   uint8_t *key,
+                   int64_t key_length,
+                   uint8_t *value,
+                   int64_t value_length);
+
+#endif /* LOGGING_H */

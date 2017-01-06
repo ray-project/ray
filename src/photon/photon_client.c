@@ -15,6 +15,28 @@ void photon_disconnect(photon_conn *conn) {
   free(conn);
 }
 
+void photon_log_event(photon_conn *conn,
+                      uint8_t *key,
+                      int64_t key_length,
+                      uint8_t *value,
+                      int64_t value_length) {
+  int64_t message_length =
+      sizeof(key_length) + sizeof(value_length) + key_length + value_length;
+  uint8_t *message = malloc(message_length);
+  int64_t offset = 0;
+  memcpy(&message[offset], &key_length, sizeof(key_length));
+  offset += sizeof(key_length);
+  memcpy(&message[offset], &value_length, sizeof(value_length));
+  offset += sizeof(value_length);
+  memcpy(&message[offset], key, key_length);
+  offset += key_length;
+  memcpy(&message[offset], value, value_length);
+  offset += value_length;
+  CHECK(offset == message_length);
+  write_message(conn->conn, EVENT_LOG_MESSAGE, message_length, message);
+  free(message);
+}
+
 void photon_submit(photon_conn *conn, task_spec *task) {
   write_message(conn->conn, SUBMIT_TASK, task_spec_size(task),
                 (uint8_t *) task);

@@ -25,6 +25,8 @@ enum photon_message_type {
   EXECUTE_TASK,
   /** Reconstruct a possibly lost object. */
   RECONSTRUCT_OBJECT,
+  /** Log a message to the event table. */
+  EVENT_LOG_MESSAGE,
 };
 
 // clang-format off
