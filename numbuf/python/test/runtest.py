@@ -118,5 +118,21 @@ class SerializationTests(unittest.TestCase):
       result = numbuf.deserialize_list(array)
       assert_equal(result[0], obj)
 
+  def testObjectArrayImmutable(self):
+    obj = np.zeros([10])
+    obj.flags.writeable = False
+    schema, size, batch = numbuf.serialize_list([obj])
+    size = size + 4096 # INITIAL_METADATA_SIZE in arrow
+    buff = np.zeros(size, dtype="uint8")
+    metadata_offset = numbuf.write_to_buffer(batch, memoryview(buff))
+    array = numbuf.read_from_buffer(memoryview(buff), memoryview(schema), metadata_offset)
+    result = numbuf.deserialize_list(array)
+    assert_equal(result[0], obj)
+    try:
+      result[0][0] = 1
+      self.assertTrue(False)
+    except ValueError:
+      pass
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
