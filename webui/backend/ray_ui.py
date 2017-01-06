@@ -26,6 +26,15 @@ def identifier(hex_identifier):
 def key_to_hex_identifier(key):
   return hex_identifier(key[key.index(b":")+1:key.index(b":")+IDENTIFIER_LENGTH+1])
 
+def key_to_hex_identifiers(key):
+  # extract worker_id and task_id from key of the form prefix:worker_id:task_id
+  offset = key.index(b":") + 1
+  worker_id = hex_identifier(key[offset:offset+IDENTIFIER_LENGTH])
+  offset += IDENTIFIER_LENGTH + 1
+  task_id = hex_identifier(key[offset:offset+IDENTIFIER_LENGTH])
+  return worker_id, task_id
+  
+
 async def hello(websocket, path):
   conn = await aioredis.create_connection((redis_host, redis_port), loop=loop)
 
@@ -72,14 +81,20 @@ async def hello(websocket, path):
     elif command["command"] == "get-timeline":
       tasks = defaultdict(list)
       for key in await conn.execute("keys", "event_log:*"):
-        worker_id = key_to_hex_identifier(key)
+        worker_id, task_id = key_to_hex_identifiers(key)
         content = await conn.execute("lrange", key, "0", "-1")
-        tasks[worker_id].extend([json.loads(entry.decode()) for entry in content])
+        data = json.loads(content[0].decode())
+        begin_and_end_time = [timestamp for (timestamp, task, kind, info) in data if task == "ray:task"]
+        tasks[worker_id].append({"task_id": task_id, "start_task": min(begin_and_end_time), "end_task": max(begin_and_end_time)})
       await websocket.send(json.dumps(tasks))
     elif command["command"] == "get-events":
       result = []
       for key in await conn.execute("keys", "event_log:*"):
-        result.append("hello")
+        worker_id, task_id = key_to_hex_identifiers(key)
+        answer = await conn.execute("lrange", key, "0", "-1")
+        assert len(answer) == 1
+        events = json.loads(answer[0].decode())
+        result.extend([{"worker_id": worker_id, "task_id": task_id, "time": event[0], "type": event[1]} for event in events])
       await websocket.send(json.dumps(result))
 
 if __name__ == "__main__":
