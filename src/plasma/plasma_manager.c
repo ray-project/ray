@@ -762,7 +762,14 @@ void process_transfer_request(event_loop *loop,
     event_loop_add_file(loop, manager_conn->fd, EVENT_LOOP_WRITE,
                         send_queued_request, manager_conn);
   }
-  /* Add this transfer request to this connection's transfer queue. */
+  /* Add this transfer request to this connection's transfer queue if there
+   * isn't already a request with the same object ID. */
+  plasma_request_buffer *pending;
+  LL_FOREACH(manager_conn->transfer_queue, pending) {
+    if (object_ids_equal(pending->object_id, buf->object_id)) {
+      return;
+    }
+  }
   LL_APPEND(manager_conn->transfer_queue, buf);
 }
 
