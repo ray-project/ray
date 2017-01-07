@@ -1,13 +1,22 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 class TFVariables(object):
   def __init__(self, loss, sess):
     import tensorflow as tf
     self.sess = sess
-    var_names = [v.name[:-7] for v in loss.graph.get_operations() if v.name.endswith('/Assign')] # v.name[:-7] strips the /Assign from the name as we want the 
-                                                                                                 # general variable rather than the assign node. 
-    self.variables = [v for v in tf.trainable_variables() if v.name.split(":")[0] in var_names] # Split is required as tensorflow appends :0 to a variable name
+
+    # v.name[:-7] strips the /Assign from the name as we want the 
+    # general variable rather than the assign node. 
+    var_names = [v.name[:-7] for v in loss.graph.get_operations() if v.name.endswith("/Assign")]                                                                                                  
+    # Split is required as tensorflow appends :0 to a variable name
+    self.variables = [v for v in tf.trainable_variables() if v.name.split(":")[0] in var_names]     
     assignment_placeholders = []
     assignment_nodes = []
-    for var in self.variables: #Create new placeholders to put in custom weights
+    
+    # Create new placeholders to put in custom weights
+    for var in self.variables:
       assignment_placeholders.append(tf.placeholder(var.value().dtype, var.get_shape().as_list()))
       assignment_nodes.append(var.assign(assignment_placeholders[-1]))
     self.loss = loss
