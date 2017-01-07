@@ -160,8 +160,9 @@ for iteration in range(NUM_ITERS):
   # Get all of the weights.
   new_weights_list = ray.get(new_weights_ids)
   # Add up all the different weights. Each element of new_weights_list is a dict
-  # of weights, and we want to add up these dicts component wise using the keys of the first dict.
-  weights = {variable: sum(d[variable] for d in new_weights_list) / NUM_BATCHES for variable in new_weights_list[0]} 
+  # of weights, and we want to add up these dicts component wise using the keys
+  # of the first dict.
+  weights = {variable: sum(d[variable] for d in new_weights_list) / NUM_BATCHES for variable in new_weights_list[0]}
   # Print the current weights. They should converge to roughly to the values 0.1
   # and 0.3 used in generate_fake_x_y_data.
   if iteration % 20 == 0:
