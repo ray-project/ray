@@ -100,7 +100,7 @@ def net_vars_initializer():
   optimizer = tf.train.GradientDescentOptimizer(0.5)
   train = optimizer.minimize(loss)
   # Define the weight initializer and session.
-  init = tf.initialize_all_variables()
+  init = tf.global_variables_initializer()
   sess = tf.Session()
   # Additional code for setting and getting the weights.
   variables = ray.experimental.TensorFlowVariables(loss, sess)
@@ -159,9 +159,10 @@ for iteration in range(NUM_ITERS):
   new_weights_ids = [step.remote(weights_id, x_ids[i], y_ids[i]) for i in range(NUM_BATCHES)]
   # Get all of the weights.
   new_weights_list = ray.get(new_weights_ids)
-  # Add up all the different weights. Each element of new_weights_list is a list
-  # of weights, and we want to add up these lists component wise.
-  weights = [sum(weight_tuple) / NUM_BATCHES for weight_tuple in zip(*new_weights_list)]
+  # Add up all the different weights. Each element of new_weights_list is a dict
+  # of weights, and we want to add up these dicts component wise using the keys
+  # of the first dict.
+  weights = {variable: sum(weight_dict[variable] for weight_dict in new_weights_list) / NUM_BATCHES for variable in new_weights_list[0]}
   # Print the current weights. They should converge to roughly to the values 0.1
   # and 0.3 used in generate_fake_x_y_data.
   if iteration % 20 == 0:
