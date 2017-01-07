@@ -71,7 +71,7 @@ def train_cnn_and_compute_accuracy(params, steps, train_images, train_labels, va
   # Do the training and evaluation.
   with tf.Session() as sess:
     # Initialize the network weights.
-    sess.run(tf.initialize_all_variables())
+    sess.run(tf.global_variables_initializer())
     for i in range(1, steps + 1):
       # Fetch the next batch of data.
       image_batch = get_batch(train_images, i, batch_size)
