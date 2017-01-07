@@ -40,7 +40,7 @@ sess = tf.Session()
 To extract the weights and set the weights, you can call
 
 ```python
-variables = ray.experimental.TFVariables(loss, sess)
+variables = ray.experimental.TensorFlowVariables(loss, sess)
 ```
 
 which gives you methods to set and get the weights as well as collecting all of the variables in the model.
@@ -52,7 +52,7 @@ network as follows.
 # First initialize the weights.
 sess.run(init)
 # Get the weights
-weights = variables.get_weights()  # Returns a list of numpy arrays
+weights = variables.get_weights()  # Returns a dictionary of numpy arrays
 # Set the weights
 variables.set_weights(weights)
 ```
@@ -103,7 +103,7 @@ def net_vars_initializer():
   init = tf.initialize_all_variables()
   sess = tf.Session()
   # Additional code for setting and getting the weights.
-  variables = ray.experimental.TFVariables(loss, sess)
+  variables = ray.experimental.TensorFlowVariables(loss, sess)
   # Return all of the data needed to use the network.
   return variables, sess, train, loss, x_data, y_data, init
 
