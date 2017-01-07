@@ -37,27 +37,13 @@ init = tf.initialize_all_variables()
 sess = tf.Session()
 ```
 
-To extract the weights and set the weights, we need to write a couple lines of
-boilerplate code.
+To extract the weights and set the weights, you can call
 
 ```python
-def get_and_set_weights_methods():
-  assignment_placeholders = []
-  assignment_nodes = []
-  for var in tf.trainable_variables():
-    assignment_placeholders.append(tf.placeholder(var.value().dtype, var.get_shape().as_list()))
-    assignment_nodes.append(var.assign(assignment_placeholders[-1]))
-  # Define a function for getting the network weights.
-  def get_weights():
-    return [v.eval(session=sess) for v in tf.trainable_variables()]
-  # Define a function for setting the network weights.
-  def set_weights(new_weights):
-    sess.run(assignment_nodes, feed_dict={p: w for p, w in zip(assignment_placeholders, new_weights)})
-  # Return the methods.
-  return get_weights, set_weights
-
-get_weights, set_weights = get_and_set_weights_methods()
+variables = ray.experimental.TFVariables(loss, sess)
 ```
+
+which gives you methods to set and get the weights as well as collecting all of the variables in the model.
 
 Now we can use these methods to extract the weights, and place them back in the
 network as follows.
@@ -66,9 +52,9 @@ network as follows.
 # First initialize the weights.
 sess.run(init)
 # Get the weights
-weights = get_weights()  # Returns a list of numpy arrays
+weights = variables.get_weights()  # Returns a list of numpy arrays
 # Set the weights
-set_weights(weights)
+variables.set_weights(weights)
 ```
 
 **Note:** If we were to set the weights using the `assign` method like below,
@@ -117,20 +103,9 @@ def net_vars_initializer():
   init = tf.initialize_all_variables()
   sess = tf.Session()
   # Additional code for setting and getting the weights.
-  def get_and_set_weights_methods():
-    assignment_placeholders = []
-    assignment_nodes = []
-    for var in tf.trainable_variables():
-      assignment_placeholders.append(tf.placeholder(var.value().dtype, var.get_shape().as_list()))
-      assignment_nodes.append(var.assign(assignment_placeholders[-1]))
-    def get_weights():
-      return [v.eval(session=sess) for v in tf.trainable_variables()]
-    def set_weights(new_weights):
-      sess.run(assignment_nodes, feed_dict={p: w for p, w in zip(assignment_placeholders, new_weights)})
-    return get_weights, set_weights
-  get_weights, set_weights = get_and_set_weights_methods()
+  variables = ray.experimental.TFVariables(loss, sess)
   # Return all of the data needed to use the network.
-  return get_weights, set_weights, sess, train, loss, x_data, y_data, init
+  return variables, sess, train, loss, x_data, y_data, init
 
 def net_vars_reinitializer(net_vars):
   return net_vars
@@ -142,19 +117,19 @@ ray.reusables.net_vars = ray.Reusable(net_vars_initializer, net_vars_reinitializ
 # new weights.
 @ray.remote
 def step(weights, x, y):
-  get_weights, set_weights, sess, train, _, x_data, y_data, _ = ray.reusables.net_vars
+  variables, sess, train, _, x_data, y_data, _ = ray.reusables.net_vars
   # Set the weights in the network.
-  set_weights(weights)
+  variables.set_weights(weights)
   # Do one step of training.
   sess.run(train, feed_dict={x_data: x, y_data: y})
   # Return the new weights.
-  return get_weights()
+  return variables.get_weights()
 
-get_weights, set_weights, sess, _, loss, x_data, y_data, init = ray.reusables.net_vars
+variables, sess, _, loss, x_data, y_data, init = ray.reusables.net_vars
 # Initialize the network weights.
 sess.run(init)
 # Get the weights as a list of numpy arrays.
-weights = get_weights()
+weights = variables.get_weights()
 
 # Define a remote function for generating fake data.
 @ray.remote(num_return_vals=2)

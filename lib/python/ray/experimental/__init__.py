@@ -5,7 +5,6 @@ from __future__ import print_function
 from .utils import copy_directory
 
 try:
-  from .tfExtension import TFVariables
-
+  from .tfutils import TFVariables
 except ImportError:
   pass
