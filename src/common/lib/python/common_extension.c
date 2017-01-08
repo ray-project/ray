@@ -68,6 +68,16 @@ PyObject *PyObjectID_make(object_id object_id) {
   return (PyObject *) result;
 }
 
+/**
+ * Convert a string to a Ray task specification Python object.
+ *
+ * This is called from Python like
+ * 
+ * task = photon.task_from_string("...")
+ *
+ * @param task_string String representation of the task specification.
+ * @return Python task specification object.
+ */
 PyObject *PyTask_from_string(PyObject *self, PyObject *args) {
  const char *data;
  int size;
@@ -78,9 +88,25 @@ PyObject *PyTask_from_string(PyObject *self, PyObject *args) {
  result = (PyTask *) PyObject_Init((PyObject *) result, &PyTaskType);
  result->spec = malloc(size);
  memcpy(result->spec, data, size);
+ /* TODO(pcm): Better error checking once we use flatbuffers. */
+ if (size != task_spec_size(result->spec)) {
+   PyErr_SetString(CommonError,
+                   "task_from_string: task specification string malformed");
+   return NULL;
+ }
  return (PyObject *)result;
 }
 
+/**
+ * Convert a Ray task specification Python object to a string.
+ *
+ * This is called from Python like
+ * 
+ * s = photon.task_to_string(task)
+ *
+ * @param task Ray task specification Python object.
+ * @return String representing the task specification.
+ */
 PyObject *PyTask_to_string(PyObject *self, PyObject *args) {
   PyObject *arg;
   if (!PyArg_ParseTuple(args, "O", &arg)) {
