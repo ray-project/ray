@@ -113,7 +113,7 @@ class TestObjectID(unittest.TestCase):
 class TestTask(unittest.TestCase):
 
   def check_task(self, task, function_id, num_return_vals, args):
-    self.assertEqual(function_id, task.function_id().id())
+    self.assertEqual(function_id.id(), task.function_id().id())
     retrieved_args = task.arguments()
     self.assertEqual(num_return_vals, len(task.returns()))
     self.assertEqual(len(args), len(retrieved_args))

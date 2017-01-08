@@ -72,7 +72,7 @@ PyObject *PyObjectID_make(object_id object_id) {
  * Convert a string to a Ray task specification Python object.
  *
  * This is called from Python like
- * 
+ *
  * task = photon.task_from_string("...")
  *
  * @param task_string String representation of the task specification.
@@ -94,14 +94,14 @@ PyObject *PyTask_from_string(PyObject *self, PyObject *args) {
                     "task_from_string: task specification string malformed");
     return NULL;
   }
-  return (PyObject *)result;
+  return (PyObject *) result;
 }
 
 /**
  * Convert a Ray task specification Python object to a string.
  *
  * This is called from Python like
- * 
+ *
  * s = photon.task_to_string(task)
  *
  * @param task Ray task specification Python object.
@@ -113,7 +113,8 @@ PyObject *PyTask_to_string(PyObject *self, PyObject *args) {
     return NULL;
   }
   PyTask *task = (PyTask *) arg;
-  return PyBytes_FromStringAndSize((char *) task->spec, task_spec_size(task->spec));
+  return PyBytes_FromStringAndSize((char *) task->spec,
+                                   task_spec_size(task->spec));
 }
 
 static PyObject *PyObjectID_id(PyObject *self) {
