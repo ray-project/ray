@@ -39,6 +39,9 @@ PyObject *PyObjectID_make(object_id object_id);
 
 PyObject *check_simple_value(PyObject *self, PyObject *args);
 
+static PyObject *PyTask_to_string(PyObject *args, PyObject *kwds);
+static PyTask *PyTask_from_string(PyObject *args, PyObject *kwds);
+
 PyObject *compute_put_id(PyObject *self, PyObject *args);
 
 PyObject *PyTask_make(task_spec *task_spec);

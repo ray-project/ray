@@ -7,6 +7,10 @@ static PyMethodDef common_methods[] = {
      "Should the object be passed by value?"},
     {"compute_put_id", compute_put_id, METH_VARARGS,
      "Return the object ID for a put call within a task."},
+    {"pytask_from_string", PyTask_from_string, METH_VARARGS,
+      "creates a Python PyTask object from a string representation of task_spec"},
+    {"pytask_to_string", PyTask_to_string, METH_VARARGS,
+      "translates a PyTask python object to a byte string"},
     {NULL} /* Sentinel */
 };
 

@@ -68,6 +68,28 @@ PyObject *PyObjectID_make(object_id object_id) {
   return (PyObject *) result;
 }
 
+static PyTask *PyTask_from_string(PyObjectID *self, PyObject *args, PyObject *kwds) {
+ const char *data;
+ int size;
+ if (!PyArg_ParseTuple(args, "s#", &data, &size)) {
+   Py_RETURN_NONE;
+ }
+ PyTask *result = PyObject_New(PyTask, &PyTaskType);
+ result = (PyTask *) PyObject_Init((PyObject *) result, &PyTaskType);
+ result->spec = malloc(size);
+ memcpy(result->spec, data, size);
+ return result;
+}
+
+static PyObject *PyTask_to_string(PyObjectID *self, PyObject *args, PyObject *kwds) {
+  PyObject *arg;
+  if (!PyArg_ParseTuple(args, "O", &arg)) {
+    Py_RETURN_NONE;
+  }
+  PyTask *task = (PyTask *) arg;
+  return PyBytes_FromStringAndSize((char *) task->spec, task_spec_size(task->spec));
+}
+
 static PyObject *PyObjectID_id(PyObject *self) {
   PyObjectID *s = (PyObjectID *) self;
   return PyBytes_FromStringAndSize((char *) &s->object_id.id[0],
