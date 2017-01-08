@@ -112,7 +112,18 @@ class TestObjectID(unittest.TestCase):
 
 class TestTask(unittest.TestCase):
 
-  def test_create_task(self):
+  def check_task(self, task, function_id, num_return_vals, args):
+    self.assertEqual(function_id.id(), task.function_id().id())
+    retrieved_args = task.arguments()
+    self.assertEqual(num_return_vals, len(task.returns()))
+    self.assertEqual(len(args), len(retrieved_args))
+    for i in range(len(retrieved_args)):
+      if isinstance(retrieved_args[i], common.ObjectID):
+        self.assertEqual(retrieved_args[i].id(), args[i].id())
+      else:
+        self.assertEqual(retrieved_args[i], args[i])
+
+  def test_create_and_serialize_task(self):
     # TODO(rkn): The function ID should be a FunctionID object, not an ObjectID.
     parent_id = random_task_id()
     function_id = random_function_id()
@@ -146,15 +157,10 @@ class TestTask(unittest.TestCase):
     for args in args_list:
       for num_return_vals in [0, 1, 2, 3, 5, 10, 100]:
         task = common.Task(function_id, args, num_return_vals, parent_id, 0)
-        self.assertEqual(function_id.id(), task.function_id().id())
-        retrieved_args = task.arguments()
-        self.assertEqual(num_return_vals, len(task.returns()))
-        self.assertEqual(len(args), len(retrieved_args))
-        for i in range(len(retrieved_args)):
-          if isinstance(retrieved_args[i], common.ObjectID):
-            self.assertEqual(retrieved_args[i].id(), args[i].id())
-          else:
-            self.assertEqual(retrieved_args[i], args[i])
+        self.check_task(task, function_id, num_return_vals, args)
+        data = common.task_to_string(task)
+        task2 = common.task_from_string(data)
+        self.check_task(task2, function_id, num_return_vals, args)
 
 if __name__ == "__main__":
   unittest.main(verbosity=2)
