@@ -79,22 +79,22 @@ PyObject *PyObjectID_make(object_id object_id) {
  * @return Python task specification object.
  */
 PyObject *PyTask_from_string(PyObject *self, PyObject *args) {
- const char *data;
- int size;
- if (!PyArg_ParseTuple(args, "s#", &data, &size)) {
-   return NULL;
- }
- PyTask *result = PyObject_New(PyTask, &PyTaskType);
- result = (PyTask *) PyObject_Init((PyObject *) result, &PyTaskType);
- result->spec = malloc(size);
- memcpy(result->spec, data, size);
- /* TODO(pcm): Better error checking once we use flatbuffers. */
- if (size != task_spec_size(result->spec)) {
-   PyErr_SetString(CommonError,
-                   "task_from_string: task specification string malformed");
-   return NULL;
- }
- return (PyObject *)result;
+  const char *data;
+  int size;
+  if (!PyArg_ParseTuple(args, "s#", &data, &size)) {
+    return NULL;
+  }
+  PyTask *result = PyObject_New(PyTask, &PyTaskType);
+  result = (PyTask *) PyObject_Init((PyObject *) result, &PyTaskType);
+  result->spec = malloc(size);
+  memcpy(result->spec, data, size);
+  /* TODO(pcm): Better error checking once we use flatbuffers. */
+  if (size != task_spec_size(result->spec)) {
+    PyErr_SetString(CommonError,
+                    "task_from_string: task specification string malformed");
+    return NULL;
+  }
+  return (PyObject *)result;
 }
 
 /**
