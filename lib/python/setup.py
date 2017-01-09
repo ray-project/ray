@@ -33,7 +33,7 @@ setup(name="ray",
                         "colorama",
                         "psutil",
                         "redis",
-                        "cloudpickle"],
+                        "cloudpickle >= 0.2.2"],
       include_package_data=True,
       zip_safe=False,
       license="Apache 2.0")
