@@ -1,6 +1,6 @@
 CC = gcc
 # The -rdynamic is here so we always get function names in backtraces.
-CFLAGS = -g -Wall -rdynamic -Wextra -Werror=implicit-function-declaration -Wno-sign-compare -Wno-unused-parameter -Wno-type-limits -Wno-missing-field-initializers --std=c99 -D_XOPEN_SOURCE=500 -D_POSIX_C_SOURCE=200809L -I. -Ithirdparty -I../common -I../common/thirdparty -I../common/build/flatcc-prefix/src/flatcc/include
+CFLAGS = -g -Wall -rdynamic -Wextra -Werror=implicit-function-declaration -Wno-sign-compare -Wno-unused-parameter -Wno-type-limits -Wno-missing-field-initializers --std=c99 -D_XOPEN_SOURCE=500 -D_POSIX_C_SOURCE=200809L -I. -Ithirdparty -I../common -I../common/thirdparty -I../common/build/flatcc-prefix/src/flatcc/include -fPIC
 TEST_CFLAGS = -DPLASMA_TEST=1 -I.
 BUILD = build
 
