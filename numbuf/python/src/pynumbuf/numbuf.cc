@@ -20,8 +20,8 @@ extern "C" {
 #include "plasma_client.h"
 }
 
-PyObject *NumbufPlasmaOutOfMemoryError;
-PyObject *NumbufPlasmaObjectExistsError;
+PyObject* NumbufPlasmaOutOfMemoryError;
+PyObject* NumbufPlasmaObjectExistsError;
 #endif
 
 using namespace arrow;
@@ -257,14 +257,14 @@ static PyObject* store_list(PyObject* self, PyObject* args) {
       (uint8_t*)metadata->data(), metadata->size(), &data);
   if (error_code == PlasmaError_ObjectExists) {
     PyErr_SetString(NumbufPlasmaObjectExistsError,
-                    "An object with this ID already exists in the plasma "
-                    "store.");
+        "An object with this ID already exists in the plasma "
+        "store.");
     return NULL;
   }
   if (error_code == PlasmaError_OutOfMemory) {
     PyErr_SetString(NumbufPlasmaOutOfMemoryError,
-                    "The plasma store ran out of memory and could not create "
-                    "this object.");
+        "The plasma store ran out of memory and could not create "
+        "this object.");
     return NULL;
   }
   CHECK(error_code == PlasmaError_OK);
@@ -272,8 +272,8 @@ static PyObject* store_list(PyObject* self, PyObject* args) {
   auto target = std::make_shared<FixedBufferStream>(sizeof(size) + data, size);
   int64_t body_end_offset;
   int64_t header_end_offset;
-  ARROW_CHECK_OK(ipc::WriteRecordBatch(batch->columns(), batch->num_rows(),
-      target.get(), &body_end_offset, &header_end_offset));
+  ARROW_CHECK_OK(ipc::WriteRecordBatch(batch->columns(), batch->num_rows(), target.get(),
+      &body_end_offset, &header_end_offset));
 
   /* Save the header end offset at the beginning of the plasma data buffer. */
   *((int64_t*)data) = header_end_offset;
@@ -391,13 +391,15 @@ MOD_INIT(libnumbuf) {
   NumbufPlasmaObjectExistsError =
       PyErr_NewException(numbuf_plasma_object_exists_error, NULL, NULL);
   Py_INCREF(NumbufPlasmaObjectExistsError);
-  PyModule_AddObject(m, "pnumbuf_lasma_object_exists_error", NumbufPlasmaObjectExistsError);
+  PyModule_AddObject(
+      m, "pnumbuf_lasma_object_exists_error", NumbufPlasmaObjectExistsError);
   /* Create a custom exception for when the plasma store is out of memory. */
   char numbuf_plasma_out_of_memory_error[] = "numbuf_plasma_out_of_memory.error";
   NumbufPlasmaOutOfMemoryError =
       PyErr_NewException(numbuf_plasma_out_of_memory_error, NULL, NULL);
   Py_INCREF(NumbufPlasmaOutOfMemoryError);
-  PyModule_AddObject(m, "numbuf_plasma_out_of_memory_error", NumbufPlasmaOutOfMemoryError);
+  PyModule_AddObject(
+      m, "numbuf_plasma_out_of_memory_error", NumbufPlasmaOutOfMemoryError);
 #endif
 
   char numbuf_error[] = "numbuf.error";
