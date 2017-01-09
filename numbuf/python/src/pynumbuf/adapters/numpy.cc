@@ -61,6 +61,7 @@ Status DeserializeArray(
   DCHECK(flags != NULL) << "Could not mark Numpy array immutable";
   int flag_set = PyObject_SetAttrString(flags, "writeable", Py_False);
   DCHECK(flag_set == 0) << "Could not mark Numpy array immutable";
+  Py_XDECREF(flags);
   return Status::OK();
 }
 
