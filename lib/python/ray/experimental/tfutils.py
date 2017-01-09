@@ -13,7 +13,7 @@ class TensorFlowVariables(object):
     assignment_placeholders (List[tf.placeholders]): The nodes that weights get passed to.
     assignment_nodes (List[tf.Tensor]): The nodes that assign the weights.
   """
-  def __init__(self, loss, sess):
+  def __init__(self, loss, sess=None):
     """Creates a TensorFlowVariables instance."""
     import tensorflow as tf
     self.sess = sess
@@ -28,10 +28,16 @@ class TensorFlowVariables(object):
       self.assignment_placeholders[var.op.node_def.name] = tf.placeholder(var.value().dtype, var.get_shape().as_list())
       self.assignment_nodes.append(var.assign(self.assignment_placeholders[var.op.node_def.name]))
 
+  def set_session(self, sess):
+    """Modifies the current session used by the class"""
+    self.sess = sess
+
   def get_weights(self):
     """Returns the weights of the variables of the loss function in a list."""
+    assert self.sess is not None, "Session is not set. User should set the session through either the initialization or by calling set_session(sess)."
     return {v.op.node_def.name: v.eval(session=self.sess) for v in self.variables}
 
   def set_weights(self, new_weights):
     """Sets the weights to new_weights."""
+    assert self.sess is not None, "Session is not set. User should set the session through either the initialization or by calling set_session(sess)."
     self.sess.run(self.assignment_nodes, feed_dict={self.assignment_placeholders[name]: value for (name, value) in new_weights.items()})
