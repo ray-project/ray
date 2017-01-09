@@ -143,12 +143,13 @@ static PyObject* read_from_buffer(PyObject* self, PyObject* args) {
   }
 
   Py_buffer* metadata_buffer = PyMemoryView_GET_BUFFER(metadata_memoryview);
+  Py_buffer* data_buffer = PyMemoryView_GET_BUFFER(data_memoryview);
   auto ptr = reinterpret_cast<uint8_t*>(metadata_buffer->buf);
   auto schema_buffer = std::make_shared<Buffer>(ptr, metadata_buffer->len);
 
   auto batch = new std::shared_ptr<arrow::RecordBatch>();
   ARROW_CHECK_OK(read_batch(schema_buffer, header_end_offset,
-      reinterpret_cast<uint8_t*>(metadata_buffer->buf), metadata_buffer->len, batch));
+      reinterpret_cast<uint8_t*>(data_buffer->buf), data_buffer->len, batch));
 
   return PyCapsule_New(reinterpret_cast<void*>(batch), "arrow", &ArrowCapsule_Destructor);
 }
