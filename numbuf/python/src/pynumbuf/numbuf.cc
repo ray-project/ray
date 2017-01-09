@@ -16,6 +16,7 @@
 
 #ifdef HAS_PLASMA
 extern "C" {
+#include "plasma_protocol.h"
 #include "plasma_client.h"
 }
 #endif
@@ -214,10 +215,10 @@ static void BufferCapsule_Destructor(PyObject* capsule) {
 /**
  * Store a PyList in the plasma store.
  *
- * This function converts the PyList into an arrow RecordBatch,
- * constructs the metadata (schema) of the PyList, creates a new plasma
- * object, puts the data into the plasma buffer and the schema into the
- * plasma metadata.
+ * This function converts the PyList into an arrow RecordBatch, constructs the
+ * metadata (schema) of the PyList, creates a new plasma object, puts the data
+ * into the plasma buffer and the schema into the plasma metadata. This raises
+ *
  *
  * @param args Contains the object ID the list is stored under, the
  *        connection to the plasma store and the PyList we want to store.
@@ -238,9 +239,9 @@ static PyObject* store_list(PyObject* self, PyObject* args) {
   Status s = SerializeSequences(std::vector<PyObject*>({value}), recursion_depth, &array);
   CHECK_SERIALIZATION_ERROR(s);
 
-  auto batch = new std::shared_ptr<RecordBatch>();
+  std::shared_ptr<RecordBatch> batch;
   std::shared_ptr<Buffer> metadata;
-  int64_t size = make_schema_and_batch(array, &metadata, batch);
+  int64_t size = make_schema_and_batch(array, &metadata, &batch);
 
   uint8_t* data;
   /* The arrow schema is stored as the metadata of the plasma object and
@@ -248,8 +249,21 @@ static PyObject* store_list(PyObject* self, PyObject* args) {
    * stored in the plasma data buffer. The header end offset is stored in
    * the first sizeof(int64_t) bytes of the data buffer. The RecordBatch
    * data is stored after that. */
-  plasma_create(conn, obj_id, sizeof(size) + size, (uint8_t*)metadata->data(),
-      metadata->size(), &data);
+  int error_code = plasma_create(conn, obj_id, sizeof(size) + size,
+      (uint8_t*)metadata->data(), metadata->size(), &data);
+  if (error_code == PlasmaError_ObjectExists) {
+    PyErr_SetString(PlasmaObjectExistsError,
+                    "An object with this ID already exists in the plasma "
+                    "store.");
+    return NULL;
+  }
+  if (error_code == PlasmaError_OutOfMemory) {
+    PyErr_SetString(PlasmaOutOfMemoryError,
+                    "The plasma store ran out of memory and could not create "
+                    "this object.");
+    return NULL;
+  }
+  CHECK(error_code == PlasmaError_OK);
 
   auto target = std::make_shared<FixedBufferStream>(sizeof(size) + data, size);
   int64_t body_end_offset;
@@ -259,6 +273,9 @@ static PyObject* store_list(PyObject* self, PyObject* args) {
 
   /* Save the header end offset at the beginning of the plasma data buffer. */
   *((int64_t*)data) = header_end_offset;
+  /* Do the plasma_release corresponding to the call to plasma_create. */
+  plasma_release(conn, obj_id);
+  /* Seal the object. */
   plasma_seal(conn, obj_id);
   Py_RETURN_NONE;
 }

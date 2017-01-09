@@ -123,7 +123,7 @@ else()
 endif()
 
 if(HAS_PLASMA)
-  target_link_libraries(numbuf ${ARROW_LIB} ${ARROW_IO_LIB} ${ARROW_IPC_LIB} ${PYTHON_LIBRARIES} "${CMAKE_SOURCE_DIR}/../src/plasma/build/libplasma_client.a" "${CMAKE_SOURCE_DIR}/../src/common/build/libcommon.a" "${CMAKE_SOURCE_DIR}/../src//common/build/flatcc-prefix/src/flatcc/lib/libflatcc.a")
+  target_link_libraries(numbuf ${ARROW_LIB} ${ARROW_IO_LIB} ${ARROW_IPC_LIB} ${PYTHON_LIBRARIES} "${CMAKE_SOURCE_DIR}/../src/plasma/build/libplasma_client.a" "${CMAKE_SOURCE_DIR}/../src/common/build/libcommon.a" "${CMAKE_SOURCE_DIR}/../src/common/build/flatcc-prefix/src/flatcc/lib/libflatcc.a")
 else()
   target_link_libraries(numbuf ${ARROW_LIB} ${ARROW_IO_LIB} ${ARROW_IPC_LIB} ${PYTHON_LIBRARIES})
 endif()

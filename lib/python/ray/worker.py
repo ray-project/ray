@@ -410,8 +410,15 @@ class Worker(object):
       value (serializable object): The value to put in the object store.
     """
     # Serialize and put the object in the object store.
-    numbuf.store_list(objectid.id(), self.plasma_client.conn, [value])
-
+    try:
+      numbuf.store_list(objectid.id(), self.plasma_client.conn, [value])
+    except plasma.plasma_object_exists_error as e:
+      # The object already exists in the object store, so there is no need to
+      # add it again. TODO(rkn): We need to compare the hashes and make sure
+      # that the objects are in fact the same. We also should return an error
+      # code to the caller instead of printing a message.
+      print("This object already exists in the object store.")
+      return
     global contained_objectids
     # Optionally do something with the contained_objectids here.
     contained_objectids = []
