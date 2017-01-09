@@ -98,6 +98,7 @@ if(HAS_PLASMA)
   include_directories("../src/plasma")
   include_directories("../src/common")
   include_directories("../src/common/thirdparty")
+  include_directories("../src/common/build/flatcc-prefix/src/flatcc/include")
 endif()
 
 add_definitions(-fPIC)
