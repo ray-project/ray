@@ -63,4 +63,3 @@ estimate of pi (waiting until the computation has finished if necessary).
 - [Hyperparameter Optimization](examples/hyperopt/README.md)
 - [Batch L-BFGS](examples/lbfgs/README.md)
 - [Learning to Play Pong](examples/rl_pong/README.md)
-- [Training AlexNet](examples/alexnet/README.md)
