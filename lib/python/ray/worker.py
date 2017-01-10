@@ -333,18 +333,6 @@ class RayReusables(object):
     """
     raise Exception("Attempted deletion of attribute {}. Attributes of a RayReusable object may not be deleted.".format(name))
 
-class ObjectFixture(object):
-  """This is used to handle releasing objects backed by the object store.
-
-  This keeps a PlasmaBuffer in scope as long as an object that is backed by that
-  PlasmaBuffer is in scope. This prevents memory in the object store from getting
-  released while it is still being used to back a Python object.
-  """
-
-  def __init__(self, plasma_buffer):
-    """Initialize an ObjectFixture object."""
-    self.plasma_buffer = plasma_buffer
-
 class Worker(object):
   """A class used to define the control flow of a worker process.
 
@@ -422,10 +410,8 @@ class Worker(object):
       value (serializable object): The value to put in the object store.
     """
     # Serialize and put the object in the object store.
-    schema, size, serialized = numbuf_serialize(value)
-    size = size + 4096 * 4 + 8 # The last 8 bytes are for the metadata offset. This is temporary.
     try:
-      buff = self.plasma_client.create(objectid.id(), size, bytearray(schema))
+      numbuf.store_list(objectid.id(), self.plasma_client.conn, [value])
     except plasma.plasma_object_exists_error as e:
       # The object already exists in the object store, so there is no need to
       # add it again. TODO(rkn): We need to compare the hashes and make sure
@@ -433,11 +419,6 @@ class Worker(object):
       # code to the caller instead of printing a message.
       print("This object already exists in the object store.")
       return
-    data = np.frombuffer(buff.buffer, dtype="byte")[8:]
-    metadata_offset = numbuf.write_to_buffer(serialized, memoryview(data))
-    np.frombuffer(buff.buffer, dtype="int64", count=1)[0] = metadata_offset
-    self.plasma_client.seal(objectid.id())
-
     global contained_objectids
     # Optionally do something with the contained_objectids here.
     contained_objectids = []
@@ -452,18 +433,7 @@ class Worker(object):
       objectid (object_id.ObjectID): The object ID of the value to retrieve.
     """
     self.plasma_client.fetch([objectid.id()])
-    buff = self.plasma_client.get(objectid.id())
-    metadata_buff = self.plasma_client.get_metadata(objectid.id())
-    metadata_size = len(metadata_buff)
-    data = np.frombuffer(buff.buffer, dtype="byte")[8:]
-    metadata = np.frombuffer(metadata_buff.buffer, dtype="byte")
-    metadata_offset = int(np.frombuffer(buff.buffer, dtype="int64", count=1)[0])
-    serialized = numbuf.read_from_buffer(memoryview(data), memoryview(metadata), metadata_offset)
-    # Create an ObjectFixture. If the object we are getting is backed by the
-    # PlasmaBuffer, this ObjectFixture will keep the PlasmaBuffer in scope as
-    # long as the object is in scope.
-    object_fixture = ObjectFixture(buff)
-    deserialized = numbuf.deserialize_list(serialized, object_fixture)
+    deserialized = numbuf.retrieve_list(objectid.id(), self.plasma_client.conn)
     # Unwrap the object from the list (it was wrapped put_object).
     assert len(deserialized) == 1
     return deserialized[0]
