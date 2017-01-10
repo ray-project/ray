@@ -111,7 +111,7 @@ class SerializationTests(unittest.TestCase):
   def testBuffer(self):
     for (i, obj) in enumerate(TEST_OBJECTS):
       schema, size, batch = numbuf.serialize_list([obj])
-      size = size + 4096 # INITIAL_METADATA_SIZE in arrow
+      size = size + 4096 # INITIAL_METADATA_SIZE in arrow.
       buff = np.zeros(size, dtype="uint8")
       metadata_offset = numbuf.write_to_buffer(batch, memoryview(buff))
       array = numbuf.read_from_buffer(memoryview(buff), memoryview(schema), metadata_offset)

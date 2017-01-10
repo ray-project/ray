@@ -10,26 +10,7 @@
 PyObject *PlasmaOutOfMemoryError;
 PyObject *PlasmaObjectExistsError;
 
-static int PyObjectToPlasmaConnection(PyObject *object,
-                                      plasma_connection **conn) {
-  if (PyCapsule_IsValid(object, "plasma")) {
-    *conn = (plasma_connection *) PyCapsule_GetPointer(object, "plasma");
-    return 1;
-  } else {
-    PyErr_SetString(PyExc_TypeError, "must be a 'plasma' capsule");
-    return 0;
-  }
-}
-
-static int PyStringToUniqueID(PyObject *object, object_id *object_id) {
-  if (PyBytes_Check(object)) {
-    memcpy(&object_id->id[0], PyBytes_AsString(object), UNIQUE_ID_SIZE);
-    return 1;
-  } else {
-    PyErr_SetString(PyExc_TypeError, "must be a 20 character string");
-    return 0;
-  }
-}
+#include "plasma_extension.h"
 
 PyObject *PyPlasma_connect(PyObject *self, PyObject *args) {
   const char *store_socket_name;
@@ -50,11 +31,18 @@ PyObject *PyPlasma_connect(PyObject *self, PyObject *args) {
 }
 
 PyObject *PyPlasma_disconnect(PyObject *self, PyObject *args) {
+  PyObject *conn_capsule;
   plasma_connection *conn;
-  if (!PyArg_ParseTuple(args, "O&", PyObjectToPlasmaConnection, &conn)) {
+  if (!PyArg_ParseTuple(args, "O", &conn_capsule)) {
     return NULL;
   }
+  CHECK(PyObjectToPlasmaConnection(conn_capsule, &conn));
   plasma_disconnect(conn);
+  /* We use the context of the connection capsule to indicate if the connection
+   * is still active (if the context is NULL) or if it is closed (if the context
+   * is (void*) 0x1). This is neccessary because the primary pointer of the
+   * capsule cannot be NULL. */
+  PyCapsule_SetContext(conn_capsule, (void *) 0x1);
   Py_RETURN_NONE;
 }
 
