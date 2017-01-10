@@ -548,7 +548,7 @@ def check_connected(worker=global_worker):
     Exception: An exception is raised if the worker is not connected.
   """
   if not worker.connected:
-    raise RayConnectionError("This command cannot be called before Ray has been started. You can start Ray with 'ray.init(start_ray_local=True, num_workers=1)'.")
+    raise RayConnectionError("This command cannot be called before Ray has been started. You can start Ray with 'ray.init(num_workers=10)'.")
 
 def print_failed_task(task_status):
   """Print information about failed tasks.
@@ -724,7 +724,7 @@ def _init(address_info=None, start_ray_local=False, object_id_seed=None,
     # Use the address 127.0.0.1 in local mode.
     node_ip_address = "127.0.0.1" if node_ip_address is None else node_ip_address
     # Use 1 worker if num_workers is not provided.
-    num_workers = 1 if num_workers is None else num_workers
+    num_workers = 10 if num_workers is None else num_workers
     # Use 1 local scheduler if num_local_schedulers is not provided. If
     # existing local schedulers are provided, use that count as
     # num_local_schedulers.
@@ -770,8 +770,8 @@ def _init(address_info=None, start_ray_local=False, object_id_seed=None,
   connect(driver_address_info, object_id_seed=object_id_seed, mode=driver_mode, worker=global_worker)
   return address_info
 
-def init(node_ip_address=None, redis_address=None, start_ray_local=False,
-         object_id_seed=None, num_workers=None, driver_mode=SCRIPT_MODE):
+def init(redis_address=None, node_ip_address=None, object_id_seed=None,
+         num_workers=None, driver_mode=SCRIPT_MODE):
   """Either connect to an existing Ray cluster or start one and connect to it.
 
   This method handles two cases. Either a Ray cluster already exists and we
@@ -780,18 +780,16 @@ def init(node_ip_address=None, redis_address=None, start_ray_local=False,
 
   Args:
     node_ip_address (str): The IP address of the node that we are on.
-    redis_address (str): The address of the Redis server to connect to. This
-      should only be provided if start_ray_local is False.
-    start_ray_local (bool): If True then this will start Redis, a global
+    redis_address (str): The address of the Redis server to connect to. If this
+      address is not provided, then this command will start Redis, a global
       scheduler, a local scheduler, a plasma store, a plasma manager, and some
-      workers. It will also kill these processes when Python exits. If False,
-      this will attach to an existing Ray cluster.
+      workers. It will also kill these processes when Python exits.
     object_id_seed (int): Used to seed the deterministic generation of object
       IDs. The same value can be used across multiple runs of the same job in
       order to generate the object IDs in a consistent manner. However, the same
       ID should not be used for different jobs.
     num_workers (int): The number of workers to start. This is only provided if
-      start_ray_local is True.
+      redis_address is not provided.
     driver_mode (bool): The mode in which to start the driver. This should be
       one of ray.SCRIPT_MODE, ray.PYTHON_MODE, and ray.SILENT_MODE.
 
@@ -806,9 +804,8 @@ def init(node_ip_address=None, redis_address=None, start_ray_local=False,
       "node_ip_address": node_ip_address,
       "redis_address": redis_address,
       }
-  return _init(address_info=info,
-               start_ray_local=start_ray_local, num_workers=num_workers,
-               driver_mode=driver_mode)
+  return _init(address_info=info, start_ray_local=(redis_address is None),
+               num_workers=num_workers, driver_mode=driver_mode)
 
 def cleanup(worker=global_worker):
   """Disconnect the driver, and terminate any processes started in init.

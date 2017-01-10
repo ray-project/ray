@@ -129,7 +129,7 @@ except AttributeError:
 class SerializationTest(unittest.TestCase):
 
   def testRecursiveObjects(self):
-    ray.init(start_ray_local=True, num_workers=0)
+    ray.init(num_workers=0)
 
     class ClassA(object):
       pass
@@ -160,7 +160,7 @@ class SerializationTest(unittest.TestCase):
     ray.worker.cleanup()
 
   def testPassingArgumentsByValue(self):
-    ray.init(start_ray_local=True, num_workers=1)
+    ray.init(num_workers=1)
 
     @ray.remote
     def f(x):
@@ -184,7 +184,7 @@ class SerializationTest(unittest.TestCase):
 class WorkerTest(unittest.TestCase):
 
   def testPutGet(self):
-    ray.init(start_ray_local=True, num_workers=0)
+    ray.init(num_workers=0)
 
     for i in range(100):
       value_before = i * 10 ** 6
@@ -215,7 +215,7 @@ class WorkerTest(unittest.TestCase):
 class APITest(unittest.TestCase):
 
   def testRegisterClass(self):
-    ray.init(start_ray_local=True, num_workers=0)
+    ray.init(num_workers=0)
 
     # Check that putting an object of a class that has not been registered
     # throws an exception.
@@ -233,7 +233,7 @@ class APITest(unittest.TestCase):
 
   def testKeywordArgs(self):
     reload(test_functions)
-    ray.init(start_ray_local=True, num_workers=1)
+    ray.init(num_workers=1)
 
     x = test_functions.keyword_fct1.remote(1)
     self.assertEqual(ray.get(x), "1 hello")
@@ -270,7 +270,7 @@ class APITest(unittest.TestCase):
 
   def testVariableNumberOfArgs(self):
     reload(test_functions)
-    ray.init(start_ray_local=True, num_workers=1)
+    ray.init(num_workers=1)
 
     x = test_functions.varargs_fct1.remote(0, 1, 2)
     self.assertEqual(ray.get(x), "0 1 2")
@@ -284,14 +284,14 @@ class APITest(unittest.TestCase):
 
   def testNoArgs(self):
     reload(test_functions)
-    ray.init(start_ray_local=True, num_workers=1)
+    ray.init(num_workers=1)
 
     ray.get(test_functions.no_op.remote())
 
     ray.worker.cleanup()
 
   def testDefiningRemoteFunctions(self):
-    ray.init(start_ray_local=True, num_workers=3)
+    ray.init(num_workers=3)
 
     # Test that we can define a remote function in the shell.
     @ray.remote
@@ -345,13 +345,13 @@ class APITest(unittest.TestCase):
     ray.worker.cleanup()
 
   def testGetMultiple(self):
-    ray.init(start_ray_local=True, num_workers=0)
+    ray.init(num_workers=0)
     object_ids = [ray.put(i) for i in range(10)]
     self.assertEqual(ray.get(object_ids), list(range(10)))
     ray.worker.cleanup()
 
   def testWait(self):
-    ray.init(start_ray_local=True, num_workers=1)
+    ray.init(num_workers=1)
 
     @ray.remote
     def f(delay):
@@ -401,7 +401,7 @@ class APITest(unittest.TestCase):
       ray.reusables.bar.append(1)
       return ray.reusables.bar
 
-    ray.init(start_ray_local=True, num_workers=2)
+    ray.init(num_workers=2)
 
     self.assertEqual(ray.get(use_foo.remote()), 1)
     self.assertEqual(ray.get(use_foo.remote()), 1)
@@ -425,7 +425,7 @@ class APITest(unittest.TestCase):
       sys.path.append(4)
     ray.worker.global_worker.run_function_on_all_workers(f)
 
-    ray.init(start_ray_local=True, num_workers=2)
+    ray.init(num_workers=2)
 
     @ray.remote
     def get_state():
@@ -448,7 +448,7 @@ class APITest(unittest.TestCase):
     ray.worker.cleanup()
 
   def testRunningFunctionOnAllWorkers(self):
-    ray.init(start_ray_local=True, num_workers=1)
+    ray.init(num_workers=1)
 
     def f(worker_info):
       sys.path.append("fake_directory")
@@ -471,7 +471,7 @@ class APITest(unittest.TestCase):
     ray.worker.cleanup()
 
   def testPassingInfoToAllWorkers(self):
-    ray.init(start_ray_local=True, num_workers=10)
+    ray.init(num_workers=10)
 
     def f(worker_info):
       sys.path.append(worker_info)
@@ -498,7 +498,7 @@ class APITest(unittest.TestCase):
     ray.worker.cleanup()
 
   def testLoggingAPI(self):
-    ray.init(start_ray_local=True, num_workers=1)
+    ray.init(num_workers=1)
 
     def events():
       # This is a hack for getting the event log. It is not part of the API.
@@ -551,7 +551,7 @@ class PythonModeTest(unittest.TestCase):
 
   def testPythonMode(self):
     reload(test_functions)
-    ray.init(start_ray_local=True, driver_mode=ray.PYTHON_MODE)
+    ray.init(driver_mode=ray.PYTHON_MODE)
 
     @ray.remote
     def f():
@@ -574,7 +574,7 @@ class PythonModeTest(unittest.TestCase):
 
   def testReusableVariablesInPythonMode(self):
     reload(test_functions)
-    ray.init(start_ray_local=True, driver_mode=ray.PYTHON_MODE)
+    ray.init(driver_mode=ray.PYTHON_MODE)
 
     def l_init():
       return []
@@ -612,7 +612,7 @@ class PythonModeTest(unittest.TestCase):
 class ReusablesTest(unittest.TestCase):
 
   def testReusables(self):
-    ray.init(start_ray_local=True, num_workers=1)
+    ray.init(num_workers=1)
 
     # Test that we can add a variable to the key-value store.
 
@@ -688,7 +688,7 @@ class ReusablesTest(unittest.TestCase):
     ray.worker.cleanup()
 
   def testUsingReusablesOnDriver(self):
-    ray.init(start_ray_local=True, num_workers=1)
+    ray.init(num_workers=1)
 
     # Test that we can add a variable to the key-value store.
 
@@ -731,7 +731,7 @@ class UtilsTest(unittest.TestCase):
     # The functionality being tested here is really multi-node functionality,
     # but this test just uses a single node.
 
-    ray.init(start_ray_local=True, num_workers=1)
+    ray.init(num_workers=1)
 
     source_text = "hello world"
 

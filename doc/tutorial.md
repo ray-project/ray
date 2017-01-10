@@ -7,20 +7,26 @@ To use Ray, you need to understand the following:
 
 ## Overview
 
-Ray is a distributed extension of Python. When using Ray, several processes are
-involved.
+Ray is a Python-based distributed execution engine. It can be used on a single
+machine to achieve effective multiprocessing, and it can be used on a cluster
+for large computations.
 
-- A **scheduler**: The scheduler assigns tasks to workers. It is its own
-process.
-- Multiple **workers**: Workers execute tasks and store the results in object
-stores. Each worker is a separate process.
-- One **object store** per node: The object store enables the sharing of Python
-objects between worker processes so each worker does not have to have a separate
-copy.
-- A **driver**: The driver is the Python process that the user controls and
-which submits tasks to the scheduler. For example, if the user is running a
-script or using a Python shell, then the driver is the process that runs the
-script or the shell.
+When using Ray, several processes are involved.
+
+- Multiple **worker** processes execute tasks and store results in object stores.
+Each worker is a separate process.
+- One **object store** per node stores immutable objects in shared memory and
+allows workers to efficiently share objects on the same node with minimal
+copying and deserialization.
+- One **local scheduler** per node assigns tasks to workers on the same node.
+- A **global scheduler** receives tasks from local schedulers and assigns them
+to other local schedulers.
+- A **driver** is the Python process that the user controls. For example, if the
+user is running a script or using a Python shell, then the driver is the Python
+process that runs the script or the shell. A driver is similar to a worker in
+that it can submit tasks to its local scheduler and get objects from the object
+store, but it is different in that the local scheduler will not assign tasks to
+the driver to be executed.
 
 ## Starting Ray
 
@@ -28,7 +34,7 @@ To start Ray, start Python, and run the following commands.
 
 ```python
 import ray
-ray.init(start_ray_local=True, num_workers=10)
+ray.init(num_workers=10)
 ```
 
 That command starts a scheduler, one object store, and ten workers. Each of

@@ -24,7 +24,7 @@ def wait_for_errors(error_type, num_errors, timeout=10):
 class FailureTest(unittest.TestCase):
   def testUnknownSerialization(self):
     reload(test_functions)
-    ray.init(start_ray_local=True, num_workers=1, driver_mode=ray.SILENT_MODE)
+    ray.init(num_workers=1, driver_mode=ray.SILENT_MODE)
 
     test_functions.test_unknown_type.remote()
     wait_for_errors(b"TaskError", 1)
@@ -35,7 +35,7 @@ class FailureTest(unittest.TestCase):
 
 class TaskSerializationTest(unittest.TestCase):
   def testReturnAndPassUnknownType(self):
-    ray.init(start_ray_local=True, num_workers=1, driver_mode=ray.SILENT_MODE)
+    ray.init(num_workers=1, driver_mode=ray.SILENT_MODE)
 
     class Foo(object):
       pass
@@ -57,7 +57,7 @@ class TaskSerializationTest(unittest.TestCase):
 class TaskStatusTest(unittest.TestCase):
   def testFailedTask(self):
     reload(test_functions)
-    ray.init(start_ray_local=True, num_workers=3, driver_mode=ray.SILENT_MODE)
+    ray.init(num_workers=3, driver_mode=ray.SILENT_MODE)
 
     test_functions.throw_exception_fct1.remote()
     test_functions.throw_exception_fct1.remote()
@@ -87,7 +87,7 @@ class TaskStatusTest(unittest.TestCase):
     ray.worker.cleanup()
 
   def testFailImportingRemoteFunction(self):
-    ray.init(start_ray_local=True, num_workers=2, driver_mode=ray.SILENT_MODE)
+    ray.init(num_workers=2, driver_mode=ray.SILENT_MODE)
 
     # This example is somewhat contrived. It should be successfully pickled, and
     # then it should throw an exception when it is unpickled. This may depend a
@@ -115,7 +115,7 @@ class TaskStatusTest(unittest.TestCase):
     ray.worker.cleanup()
 
   def testFailImportingReusableVariable(self):
-    ray.init(start_ray_local=True, num_workers=2, driver_mode=ray.SILENT_MODE)
+    ray.init(num_workers=2, driver_mode=ray.SILENT_MODE)
 
     # This will throw an exception when the reusable variable is imported on the
     # workers.
@@ -131,7 +131,7 @@ class TaskStatusTest(unittest.TestCase):
     ray.worker.cleanup()
 
   def testFailReinitializingVariable(self):
-    ray.init(start_ray_local=True, num_workers=2, driver_mode=ray.SILENT_MODE)
+    ray.init(num_workers=2, driver_mode=ray.SILENT_MODE)
 
     def initializer():
       return 0
@@ -149,7 +149,7 @@ class TaskStatusTest(unittest.TestCase):
     ray.worker.cleanup()
 
   def testFailedFunctionToRun(self):
-    ray.init(start_ray_local=True, num_workers=2, driver_mode=ray.SILENT_MODE)
+    ray.init(num_workers=2, driver_mode=ray.SILENT_MODE)
 
     def f(worker):
       if ray.worker.global_worker.mode == ray.WORKER_MODE:

@@ -20,7 +20,7 @@ class RemoteArrayTest(unittest.TestCase):
   def testMethods(self):
     for module in [ra.core, ra.random, ra.linalg, da.core, da.random, da.linalg]:
       reload(module)
-    ray.init(start_ray_local=True)
+    ray.init(num_workers=1)
 
     # test eye
     object_id = ra.eye.remote(3)
@@ -54,7 +54,7 @@ class DistributedArrayTest(unittest.TestCase):
   def testAssemble(self):
     for module in [ra.core, ra.random, ra.linalg, da.core, da.random, da.linalg]:
       reload(module)
-    ray.init(start_ray_local=True, num_workers=1)
+    ray.init(num_workers=1)
 
     a = ra.ones.remote([da.BLOCK_SIZE, da.BLOCK_SIZE])
     b = ra.zeros.remote([da.BLOCK_SIZE, da.BLOCK_SIZE])

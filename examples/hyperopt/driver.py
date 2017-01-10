@@ -21,7 +21,7 @@ parser.add_argument("--steps", default=10, type=int, help="The number of steps o
 if __name__ == "__main__":
   args = parser.parse_args()
 
-  ray.init(start_ray_local=True, num_workers=10)
+  ray.init(num_workers=10)
 
   # The number of sets of random hyperparameters to try.
   trials = args.trials

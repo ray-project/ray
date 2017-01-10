@@ -19,7 +19,7 @@ parser.add_argument("--label-file", default="train.txt", type=str, help="File co
 if __name__ == "__main__":
   args = parser.parse_args()
 
-  ray.init(start_ray_local=True, num_workers=10)
+  ray.init(num_workers=10)
 
   # Note we do not do sess.run(tf.initialize_all_variables()) because that would
   # result in a different initialization on each worker. Instead, we initialize
