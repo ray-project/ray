@@ -209,10 +209,16 @@ static PyObject* register_callbacks(PyObject* self, PyObject* args) {
 static void BufferCapsule_Destructor(PyObject* capsule) {
   object_id* id = reinterpret_cast<object_id*>(PyCapsule_GetPointer(capsule, "buffer"));
   auto context = reinterpret_cast<PyObject*>(PyCapsule_GetContext(capsule));
+  /* We use the context of the connection capsule to indicate if the connection
+   * is still active (if the context is NULL) or if it is closed (if the context
+   * is (void*) 0x1). This is neccessary because the primary pointer of the
+   * capsule cannot be NULL. */
+  if (PyCapsule_GetContext(context) == NULL) {
+    plasma_connection* conn;
+    CHECK(PyObjectToPlasmaConnection(context, &conn));
+    plasma_release(conn, *id);
+  }
   Py_XDECREF(context);
-  plasma_connection* conn;
-  CHECK(PyObjectToPlasmaConnection(context, &conn));
-  if (conn) { plasma_release(conn, *id); }
   delete id;
 }
 
