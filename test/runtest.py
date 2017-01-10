@@ -16,8 +16,8 @@ if sys.version_info >= (3, 0):
   from importlib import reload
 
 import ray.test.test_functions as test_functions
-import ray.array.remote as ra
-import ray.array.distributed as da
+import ray.experimental.array.remote as ra
+import ray.experimental.array.distributed as da
 
 def assert_equal(obj1, obj2):
   if type(obj1).__module__ == np.__name__ or type(obj2).__module__ == np.__name__:

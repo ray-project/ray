@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import ray.array.remote as ra
+import ray.experimental.array.remote as ra
 import ray
 
 __all__ = ["BLOCK_SIZE", "DistArray", "assemble", "zeros", "ones", "copy",

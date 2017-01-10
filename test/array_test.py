@@ -12,8 +12,8 @@ import sys
 if sys.version_info >= (3, 0):
   from importlib import reload
 
-import ray.array.remote as ra
-import ray.array.distributed as da
+import ray.experimental.array.remote as ra
+import ray.experimental.array.distributed as da
 
 class RemoteArrayTest(unittest.TestCase):
 
