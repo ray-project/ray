@@ -2,8 +2,8 @@
 
 [![Build Status](https://travis-ci.org/ray-project/ray.svg?branch=master)](https://travis-ci.org/ray-project/ray)
 
-Ray is an experimental distributed extension of Python. It is under development
-and not ready to be used.
+Ray is an experimental distributed execution engine. It is under development and
+not ready to be used.
 
 The goal of Ray is to make it easy to write machine learning applications that
 run on a cluster while providing the development and debugging experience of

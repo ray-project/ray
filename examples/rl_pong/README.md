@@ -12,7 +12,6 @@ the application, first install this dependency.
 Then from the directory `ray/examples/rl_pong/` run the following.
 
 ```
-source ../../setup-env.sh
 python driver.py
 ```
 
