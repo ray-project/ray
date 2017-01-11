@@ -39,16 +39,46 @@ def integerToAsciiHex(num, numbytes):
 
   return retstr
 
+def start_redis(num_retries=20):
+  counter = 0
+  while counter < num_retries:
+    if counter > 0:
+      print("Redis failed to start, retrying now.")
+    port = random.randint(10000, 65535)
+    p = subprocess.Popen([redis_path, "--port", str(port), "--loglevel", "warning", "--loadmodule", module_path])
+    time.sleep(0.1)
+    # Check if Redis successfully started (or at least if it the executable did
+    # not exit within 0.1 seconds).
+    if p.poll() is None:
+      break
+    counter += 1
+  if counter == num_retries:
+    raise Exception("Couldn't start Redis.")
+
+  # Wait for the Redis server to start.
+  redis_client = redis.StrictRedis(port=port)
+  counter = 0
+  while counter < num_retries:
+    try:
+      # Run some random command and see if it worked.
+      redis_client.client_list()
+    except redis.ConnectionError as e:
+      # Wait a little bit.
+      time.sleep(1)
+      print("Failed to connect to the redis server, retrying.")
+      counter += 1
+    else:
+      break
+  if counter == num_retries:
+    raise Exception("Unable to connect to Redis. If the Redis instance is on a different machine, check that your firewall is configured properly.")
+
+  return p, port
+
 class TestGlobalStateStore(unittest.TestCase):
 
   def setUp(self):
-    redis_port = random.randint(2000, 50000)
-    self.redis_process = subprocess.Popen([redis_path,
-                                           "--port", str(redis_port),
-                                           "--loglevel", "warning",
-                                           "--loadmodule", module_path])
-    time.sleep(1.5)
-    self.redis = redis.StrictRedis(host="localhost", port=redis_port, db=0)
+    self.redis_process, redis_port = start_redis()
+    self.redis = redis.StrictRedis(host="localhost", port=redis_port)
 
   def tearDown(self):
     self.redis_process.kill()
