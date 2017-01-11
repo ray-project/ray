@@ -10,103 +10,102 @@ import tensorflow as tf
 
 from tensorflow.examples.tutorials.mnist import input_data
 
+class LinearModel(object):
+  """Simple class for a one layer neural network.
+
+  Note that this code does not initialize the network weights. Instead weights 
+  are set via self.variables.set_weights.
+
+  Example:
+    net = LinearModel([10,10])
+    weights = [np.random.normal(size=[10,10]), np.random.normal(size=[10])]
+    variable_names = [v.name for v in net.variables]
+    net.variables.set_weights(dict(zip(variable_names, weights)))
+
+  Attributes:
+    x (tf.placeholder): Input vector.
+    w (tf.Variable): Weight matrix.
+    b (tf.Variable): Bias vector.
+    y_ (tf.placeholder): Input result vector.
+    cross_entropy (tf.Operation): Final layer of network.
+    cross_entropy_grads (tf.Operation): Gradient computation.
+    sess (tf.Session): Session used for training.
+    variables (TensorFlowVariables): Extracted variables and methods to 
+      manipulate them.
+  """
+  def __init__(self, shape):
+    """Creates a LinearModel object."""
+    x = tf.placeholder(tf.float32, [None, shape[0]])
+    w = tf.Variable(tf.zeros(shape))
+    b = tf.Variable(tf.zeros(shape[1]))
+    self.x = x
+    self.w = w
+    self.b = b
+    y = tf.nn.softmax(tf.matmul(x, w) + b)
+    y_ = tf.placeholder(tf.float32, [None, shape[1]])
+    self.y_ = y_
+    cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y), reduction_indices=[1]))
+    self.cross_entropy = cross_entropy
+    self.cross_entropy_grads = tf.gradients(cross_entropy, [w, b])
+    self.sess = tf.Session()
+    # In order to get and set the weights, we pass in the loss function to Ray's 
+    # TensorFlowVariables to automatically create methods to modify the weights.
+    self.variables = ray.experimental.TensorFlowVariables(cross_entropy, self.sess)
+
+  def loss(self, xs, ys):
+    """Computes the loss of the network."""
+    return float(self.sess.run(self.cross_entropy, feed_dict={self.x: xs, self.y_: ys}))
+
+  def grad(self, xs, ys):
+    """Computes the gradients of the network."""
+    return self.sess.run(self.cross_entropy_grads, feed_dict={self.x: xs, self.y_: ys})
+
+def net_initialization():
+  return LinearModel([784,10])
+
+# By default, when a reusable variable is used by a remote function, the
+# initialization code will be rerun at the end of the remote task to ensure
+# that the state of the variable is not changed by the remote task. However,
+# the initialization code may be expensive. This case is one example, because
+# a TensorFlow network is constructed. In this case, we pass in a special
+# reinitialization function which gets run instead of the original
+# initialization code. As users, if we pass in custom reinitialization code,
+# we must ensure that no state is leaked between tasks.
+def net_reinitialization(net):
+  return net
+
+# Register the network with Ray and create a reusable variable for it.
+ray.reusables.net = ray.Reusable(net_initialization, net_reinitialization)
+
+# Compute the loss on a batch of data.
+@ray.remote
+def loss(theta, xs, ys):
+  net = ray.reusables.net
+  net.variables.set_flat(theta)
+  return net.loss(xs,ys)
+
+# Compute the gradient of the loss on a batch of data.
+@ray.remote
+def grad(theta, xs, ys):
+  net = ray.reusables.net
+  net.variables.set_flat(theta)
+  gradients = net.grad(xs, ys)
+  return np.concatenate([g.flatten() for g in gradients])
+
+# Compute the loss on the entire dataset.
+def full_loss(theta):
+  theta_id = ray.put(theta)
+  loss_ids = [loss.remote(theta_id, xs_id, ys_id) for (xs_id, ys_id) in batch_ids]
+  return sum(ray.get(loss_ids))
+
+# Compute the gradient of the loss on the entire dataset.
+def full_grad(theta):
+  theta_id = ray.put(theta)
+  grad_ids = [grad.remote(theta_id, xs_id, ys_id) for (xs_id, ys_id) in batch_ids]
+  return sum(ray.get(grad_ids)).astype("float64") # This conversion is necessary for use with fmin_l_bfgs_b.
+
 if __name__ == "__main__":
   ray.init(num_workers=10)
-
-  # Define the dimensions of the data and of the model.
-  image_dimension = 784
-  label_dimension = 10
-  w_shape = [image_dimension, label_dimension]
-  w_size = np.prod(w_shape)
-  b_shape = [label_dimension]
-  b_size = np.prod(b_shape)
-  dim = w_size + b_size
-
-  # Define a function for initializing the network. Note that this code does not
-  # call initialize the network weights. If it did, the weights would be
-  # randomly initialized on each worker and would differ from worker to worker.
-  # We pass the weights into the remote functions loss and grad so that the
-  # weights are the same on each worker.
-  def net_initialization():
-    x = tf.placeholder(tf.float32, [None, image_dimension])
-    w = tf.Variable(tf.zeros(w_shape))
-    b = tf.Variable(tf.zeros(b_shape))
-    y = tf.nn.softmax(tf.matmul(x, w) + b)
-    y_ = tf.placeholder(tf.float32, [None, label_dimension])
-    cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y), reduction_indices=[1]))
-    cross_entropy_grads = tf.gradients(cross_entropy, [w, b])
-
-    sess = tf.Session()
-
-    # In order to set the weights of the TensorFlow graph on a worker, we add
-    # assignment nodes. To get the network weights (as a list of numpy arrays)
-    # and to set the network weights (from a list of numpy arrays), use the
-    # methods get_weights and set_weights. This can be done from within a remote
-    # function or on the driver.
-    def get_and_set_weights_methods():
-      assignment_placeholders = []
-      assignment_nodes = []
-      for var in tf.trainable_variables():
-        assignment_placeholders.append(tf.placeholder(var.value().dtype, var.get_shape().as_list()))
-        assignment_nodes.append(var.assign(assignment_placeholders[-1]))
-
-      def get_weights():
-        return [v.eval(session=sess) for v in tf.trainable_variables()]
-
-      def set_weights(new_weights):
-        sess.run(assignment_nodes, feed_dict={p: w for p, w in zip(assignment_placeholders, new_weights)})
-
-      return get_weights, set_weights
-
-    get_weights, set_weights = get_and_set_weights_methods()
-
-    return sess, cross_entropy, cross_entropy_grads, x, y_, get_weights, set_weights
-
-  # By default, when a reusable variable is used by a remote function, the
-  # initialization code will be rerun at the end of the remote task to ensure
-  # that the state of the variable is not changed by the remote task. However,
-  # the initialization code may be expensive. This case is one example, because
-  # a TensorFlow network is constructed. In this case, we pass in a special
-  # reinitialization function which gets run instead of the original
-  # initialization code. As users, if we pass in custom reinitialization code,
-  # we must ensure that no state is leaked between tasks.
-  def net_reinitialization(net_vars):
-    return net_vars
-
-  # Create a reusable variable for the network.
-  ray.reusables.net_vars = ray.Reusable(net_initialization, net_reinitialization)
-
-  # Load the weights into the network.
-  def load_weights(theta):
-    sess, _, _, _, _, get_weights, set_weights = ray.reusables.net_vars
-    set_weights([theta[:w_size].reshape(w_shape), theta[w_size:].reshape(b_shape)])
-
-  # Compute the loss on a batch of data.
-  @ray.remote
-  def loss(theta, xs, ys):
-    sess, cross_entropy, _, x, y_, _, _ = ray.reusables.net_vars
-    load_weights(theta)
-    return float(sess.run(cross_entropy, feed_dict={x: xs, y_: ys}))
-
-  # Compute the gradient of the loss on a batch of data.
-  @ray.remote
-  def grad(theta, xs, ys):
-    sess, _, cross_entropy_grads, x, y_, _, _ = ray.reusables.net_vars
-    load_weights(theta)
-    gradients = sess.run(cross_entropy_grads, feed_dict={x: xs, y_: ys})
-    return np.concatenate([g.flatten() for g in gradients])
-
-  # Compute the loss on the entire dataset.
-  def full_loss(theta):
-    theta_id = ray.put(theta)
-    loss_ids = [loss.remote(theta_id, xs_id, ys_id) for (xs_id, ys_id) in batch_ids]
-    return sum(ray.get(loss_ids))
-
-  # Compute the gradient of the loss on the entire dataset.
-  def full_grad(theta):
-    theta_id = ray.put(theta)
-    grad_ids = [grad.remote(theta_id, xs_id, ys_id) for (xs_id, ys_id) in batch_ids]
-    return sum(ray.get(grad_ids)).astype("float64") # This conversion is necessary for use with fmin_l_bfgs_b.
 
   # From the perspective of scipy.optimize.fmin_l_bfgs_b, full_loss is simply a
   # function which takes some parameters theta, and computes a loss. Similarly,
@@ -128,7 +127,9 @@ if __name__ == "__main__":
   batch_ids = [(ray.put(xs), ray.put(ys)) for (xs, ys) in batches]
 
   # Initialize the weights for the network to the vector of all zeros.
+  dim = ray.reusables.net.variables.get_flat_size()
   theta_init = 1e-2 * np.random.normal(size=dim)
+
   # Use L-BFGS to minimize the loss function.
   print("Running L-BFGS.")
   result = scipy.optimize.fmin_l_bfgs_b(full_loss, theta_init, maxiter=10, fprime=full_grad, disp=True)

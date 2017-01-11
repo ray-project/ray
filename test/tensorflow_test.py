@@ -5,6 +5,8 @@ from __future__ import print_function
 import unittest
 import tensorflow as tf
 import ray
+from numpy.testing import assert_almost_equal
+
 
 class TensorFlowTest(unittest.TestCase):
 
@@ -46,7 +48,17 @@ class TensorFlowTest(unittest.TestCase):
 
     variables2.set_weights(weights2)
     self.assertEqual(weights2, variables2.get_weights())
-
+ 
+    flat_weights = variables2.get_flat() + 2.0
+    variables2.set_flat(flat_weights)
+    assert_almost_equal(flat_weights, variables2.get_flat())
+   
+    variables3 = ray.experimental.TensorFlowVariables(loss2)
+    self.assertEqual(variables3.sess, None)
+    sess = tf.Session()
+    variables3.set_session(sess)
+    self.assertEqual(variables3.sess, sess)
+    
     ray.worker.cleanup()
 
 if __name__ == "__main__":
