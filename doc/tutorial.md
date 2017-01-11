@@ -27,6 +27,9 @@ process that runs the script or the shell. A driver is similar to a worker in
 that it can submit tasks to its local scheduler and get objects from the object
 store, but it is different in that the local scheduler will not assign tasks to
 the driver to be executed.
+- A **Redis server** maintains much of the system's state. For example, it keeps
+track of which objects live on which machines and of the task specifications. It
+can also be queried directly for debugging purposes.
 
 ## Starting Ray
 

@@ -22,10 +22,6 @@ PLASMA_DIR="$ROOT_DIR/../src/plasma"
 pushd "$PLASMA_DIR"
   make clean
   make
-  pushd "$PLASMA_DIR/build"
-    cmake ..
-    make install
-  popd
 popd
 
 mkdir -p "$ROOT_DIR/build"
