@@ -33,17 +33,20 @@ loss = tf.reduce_mean(tf.square(y - y_data))
 optimizer = tf.train.GradientDescentOptimizer(0.5)
 train = optimizer.minimize(loss)
 
-init = tf.initialize_all_variables()
+init = tf.global_variables_initializer()
 sess = tf.Session()
 ```
 
-To extract the weights and set the weights, you can call
+To extract the weights and set the weights, you can use the following helper
+method.
 
 ```python
+import ray
 variables = ray.experimental.TensorFlowVariables(loss, sess)
 ```
 
-which gives you methods to set and get the weights as well as collecting all of the variables in the model.
+The `TensorFlowVariables` object provides methods for getting and setting the
+weights as well as collecting all of the variables in the model.
 
 Now we can use these methods to extract the weights, and place them back in the
 network as follows.

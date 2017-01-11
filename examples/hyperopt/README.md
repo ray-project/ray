@@ -8,7 +8,6 @@ To run the application, first install this dependency.
 Then from the directory `ray/examples/hyperopt/` run the following.
 
 ```
-source ../../setup-env.sh
 python driver.py
 ```
 
