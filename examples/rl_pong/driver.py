@@ -29,8 +29,8 @@ def env_reinitializer(env):
   env.reset()
   return env
 
-# Create a reusable variable for the gym environment.
-ray.reusables.env = ray.Reusable(env_initializer, env_reinitializer)
+# Create an environment variable for the gym environment.
+ray.env.env = ray.EnvironmentVariable(env_initializer, env_reinitializer)
 
 def sigmoid(x):
   return 1.0 / (1.0 + np.exp(-x)) # sigmoid "squashing" function to interval [0,1]
@@ -71,7 +71,7 @@ def policy_backward(eph, epx, epdlogp, model):
 
 @ray.remote(num_return_vals=2)
 def compute_gradient(model):
-  env = ray.reusables.env
+  env = ray.env.env
   observation = env.reset()
   prev_x = None # used in computing the difference frame
   xs, hs, dlogps, drs = [], [], [], []

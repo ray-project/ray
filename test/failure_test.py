@@ -114,19 +114,19 @@ class TaskStatusTest(unittest.TestCase):
 
     ray.worker.cleanup()
 
-  def testFailImportingReusableVariable(self):
+  def testFailImportingEnvironmentVariable(self):
     ray.init(num_workers=2, driver_mode=ray.SILENT_MODE)
 
-    # This will throw an exception when the reusable variable is imported on the
-    # workers.
+    # This will throw an exception when the environment variable is imported on
+    # the workers.
     def initializer():
       if ray.worker.global_worker.mode == ray.WORKER_MODE:
         raise Exception("The initializer failed.")
       return 0
-    ray.reusables.foo = ray.Reusable(initializer)
-    wait_for_errors(b"ReusableVariableImportError", 2)
+    ray.env.foo = ray.EnvironmentVariable(initializer)
+    wait_for_errors(b"EnvironmentVariableImportError", 2)
     # Check that the error message is in the task info.
-    self.assertTrue(b"The initializer failed." in ray.error_info()[b"ReusableVariableImportError"][0][b"message"])
+    self.assertTrue(b"The initializer failed." in ray.error_info()[b"EnvironmentVariableImportError"][0][b"message"])
 
     ray.worker.cleanup()
 
@@ -137,14 +137,14 @@ class TaskStatusTest(unittest.TestCase):
       return 0
     def reinitializer(foo):
       raise Exception("The reinitializer failed.")
-    ray.reusables.foo = ray.Reusable(initializer, reinitializer)
+    ray.env.foo = ray.EnvironmentVariable(initializer, reinitializer)
     @ray.remote
     def use_foo():
-      ray.reusables.foo
+      ray.env.foo
     use_foo.remote()
-    wait_for_errors(b"ReusableVariableReinitializeError", 1)
+    wait_for_errors(b"EnvironmentVariableReinitializeError", 1)
     # Check that the error message is in the task info.
-    self.assertTrue(b"The reinitializer failed." in ray.error_info()[b"ReusableVariableReinitializeError"][0][b"message"])
+    self.assertTrue(b"The reinitializer failed." in ray.error_info()[b"EnvironmentVariableReinitializeError"][0][b"message"])
 
     ray.worker.cleanup()
 

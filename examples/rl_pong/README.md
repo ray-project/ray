@@ -35,7 +35,7 @@ function.
 @ray.remote(num_return_vals=2)
 def compute_gradient(model):
   # Retrieve the game environment.
-  env = ray.reusables.env
+  env = ray.env.env
   # Reset the game.
   observation = env.reset()
   while not done:
@@ -73,22 +73,22 @@ the output of the overall program will depend on which tasks are scheduled on
 which workers. This can be avoided if the state of the Pong environment is reset
 between tasks.
 
-To accomplish this, the user must mark the Pong environment as a reusable
+To accomplish this, the user must mark the Pong environment as an environment
 variable. This is done by providing a method for initializing the gym, and
-storing it in `ray.reusables`.
+storing it in `ray.env`.
 
 ```python
 # Function for initializing the gym environment.
 def env_initializer():
   return gym.make("Pong-v0")
 
-# Create a reusable variable for the gym environment.
-ray.reusables.env = ray.Reusable(env_initializer)
+# Create an environment variable for the gym environment.
+ray.env.env = ray.EnvironmentVariable(env_initializer)
 ```
 
-A remote task can then call `ray.reusables.env` to retrieve the variable.
+A remote task can then call `ray.env.env` to retrieve the variable.
 
-By default, whenever a task uses the `ray.reusables.env` variable, the worker
+By default, whenever a task uses the `ray.env.env` variable, the worker
 that the task was scheduled on will rerun the initialization code
 `env_initializer` after the task has finished so that state will not leak
 between the tasks.
@@ -109,6 +109,6 @@ def env_reinitializer(env):
   env.reset()
   return env
 
-# Create a reusable variable for the gym environment.
-ray.reusables.env = ray.Reusable(env_initializer, env_reinitializer)
+# Create an environment variable for the gym environment.
+ray.env.env = ray.EnvironmentVariable(env_initializer, env_reinitializer)
 ```

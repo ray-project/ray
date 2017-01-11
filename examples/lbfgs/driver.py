@@ -13,7 +13,7 @@ from tensorflow.examples.tutorials.mnist import input_data
 class LinearModel(object):
   """Simple class for a one layer neural network.
 
-  Note that this code does not initialize the network weights. Instead weights 
+  Note that this code does not initialize the network weights. Instead weights
   are set via self.variables.set_weights.
 
   Example:
@@ -30,7 +30,7 @@ class LinearModel(object):
     cross_entropy (tf.Operation): Final layer of network.
     cross_entropy_grads (tf.Operation): Gradient computation.
     sess (tf.Session): Session used for training.
-    variables (TensorFlowVariables): Extracted variables and methods to 
+    variables (TensorFlowVariables): Extracted variables and methods to
       manipulate them.
   """
   def __init__(self, shape):
@@ -48,7 +48,7 @@ class LinearModel(object):
     self.cross_entropy = cross_entropy
     self.cross_entropy_grads = tf.gradients(cross_entropy, [w, b])
     self.sess = tf.Session()
-    # In order to get and set the weights, we pass in the loss function to Ray's 
+    # In order to get and set the weights, we pass in the loss function to Ray's
     # TensorFlowVariables to automatically create methods to modify the weights.
     self.variables = ray.experimental.TensorFlowVariables(cross_entropy, self.sess)
 
@@ -63,7 +63,7 @@ class LinearModel(object):
 def net_initialization():
   return LinearModel([784,10])
 
-# By default, when a reusable variable is used by a remote function, the
+# By default, when an environment variable is used by a remote function, the
 # initialization code will be rerun at the end of the remote task to ensure
 # that the state of the variable is not changed by the remote task. However,
 # the initialization code may be expensive. This case is one example, because
@@ -74,20 +74,20 @@ def net_initialization():
 def net_reinitialization(net):
   return net
 
-# Register the network with Ray and create a reusable variable for it.
-ray.reusables.net = ray.Reusable(net_initialization, net_reinitialization)
+# Register the network with Ray and create an environment variable for it.
+ray.env.net = ray.EnvironmentVariable(net_initialization, net_reinitialization)
 
 # Compute the loss on a batch of data.
 @ray.remote
 def loss(theta, xs, ys):
-  net = ray.reusables.net
+  net = ray.env.net
   net.variables.set_flat(theta)
   return net.loss(xs,ys)
 
 # Compute the gradient of the loss on a batch of data.
 @ray.remote
 def grad(theta, xs, ys):
-  net = ray.reusables.net
+  net = ray.env.net
   net.variables.set_flat(theta)
   gradients = net.grad(xs, ys)
   return np.concatenate([g.flatten() for g in gradients])
@@ -127,7 +127,7 @@ if __name__ == "__main__":
   batch_ids = [(ray.put(xs), ray.put(ys)) for (xs, ys) in batches]
 
   # Initialize the weights for the network to the vector of all zeros.
-  dim = ray.reusables.net.variables.get_flat_size()
+  dim = ray.env.net.variables.get_flat_size()
   theta_init = 1e-2 * np.random.normal(size=dim)
 
   # Use L-BFGS to minimize the loss function.

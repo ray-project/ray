@@ -69,10 +69,10 @@ b.assign(np.zeros(1))  # This adds a node to the graph every time you call it.
 ## Complete Example
 
 Putting this all together, we would first create the graph on each worker using
-reusable variables. Within the reusable variables, we would define `get_weights`
-and `set_weights` methods. We would then use those methods to ship the weights
-(as lists of numpy arrays) between the processes without shipping the actual
-TensorFlow graphs, which are much more complex Python objects.
+environment variables. Within the environment variables, we would define
+`get_weights` and `set_weights` methods. We would then use those methods to ship
+the weights (as lists of numpy arrays) between the processes without shipping
+the actual TensorFlow graphs, which are much more complex Python objects.
 
 ```python
 import tensorflow as tf
@@ -110,14 +110,14 @@ def net_vars_initializer():
 def net_vars_reinitializer(net_vars):
   return net_vars
 
-# Define a reusable variable for the network variables.
-ray.reusables.net_vars = ray.Reusable(net_vars_initializer, net_vars_reinitializer)
+# Define an environment variable for the network variables.
+ray.env.net_vars = ray.EnvironmentVariable(net_vars_initializer, net_vars_reinitializer)
 
 # Define a remote function that trains the network for one step and returns the
 # new weights.
 @ray.remote
 def step(weights, x, y):
-  variables, sess, train, _, x_data, y_data, _ = ray.reusables.net_vars
+  variables, sess, train, _, x_data, y_data, _ = ray.env.net_vars
   # Set the weights in the network.
   variables.set_weights(weights)
   # Do one step of training.
@@ -125,7 +125,7 @@ def step(weights, x, y):
   # Return the new weights.
   return variables.get_weights()
 
-variables, sess, _, loss, x_data, y_data, init = ray.reusables.net_vars
+variables, sess, _, loss, x_data, y_data, init = ray.env.net_vars
 # Initialize the network weights.
 sess.run(init)
 # Get the weights as a list of numpy arrays.
