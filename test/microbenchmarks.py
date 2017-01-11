@@ -18,7 +18,7 @@ class MicroBenchmarkTest(unittest.TestCase):
 
   def testTiming(self):
     reload(test_functions)
-    ray.init(start_ray_local=True, num_workers=3)
+    ray.init(num_workers=3)
 
     # measure the time required to submit a remote task to the scheduler
     elapsed_times = []
@@ -88,7 +88,7 @@ class MicroBenchmarkTest(unittest.TestCase):
     ray.worker.cleanup()
 
   def testCache(self):
-    ray.init(start_ray_local=True, num_workers=1)
+    ray.init(num_workers=1)
 
     A = np.random.rand(1, 1000000)
     v = np.random.rand(1000000)

@@ -65,7 +65,7 @@ class TaskTests(unittest.TestCase):
         ray.worker.cleanup()
 
   def testGettingAndPutting(self):
-    ray.init(start_ray_local=True, num_workers=1)
+    ray.init(num_workers=1)
 
     for n in range(8):
       x = np.zeros(10 ** n)
