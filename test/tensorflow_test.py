@@ -9,7 +9,7 @@ import ray
 class TensorFlowTest(unittest.TestCase):
 
   def testTensorFlowVariables(self):
-    ray.init(start_ray_local=True, num_workers=2)
+    ray.init(num_workers=2)
 
     x_data = tf.placeholder(tf.float32, shape=[100])
     y_data = tf.placeholder(tf.float32, shape=[100])

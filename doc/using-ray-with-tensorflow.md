@@ -79,7 +79,7 @@ import tensorflow as tf
 import numpy as np
 import ray
 
-ray.init(start_ray_local=True, num_workers=5)
+ray.init(num_workers=5)
 
 BATCH_SIZE = 100
 NUM_BATCHES = 1

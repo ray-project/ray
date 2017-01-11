@@ -31,7 +31,7 @@ Python wrapper for an Atari simulator.
 import gym
 import ray
 
-ray.init(start_ray_local=True, num_workers=5)
+ray.init(num_workers=10)
 
 # Define a function to create the gym environment.
 def env_initializer():

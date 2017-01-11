@@ -12,15 +12,15 @@ import sys
 if sys.version_info >= (3, 0):
   from importlib import reload
 
-import ray.array.remote as ra
-import ray.array.distributed as da
+import ray.experimental.array.remote as ra
+import ray.experimental.array.distributed as da
 
 class RemoteArrayTest(unittest.TestCase):
 
   def testMethods(self):
     for module in [ra.core, ra.random, ra.linalg, da.core, da.random, da.linalg]:
       reload(module)
-    ray.init(start_ray_local=True)
+    ray.init(num_workers=1)
 
     # test eye
     object_id = ra.eye.remote(3)
@@ -54,7 +54,7 @@ class DistributedArrayTest(unittest.TestCase):
   def testAssemble(self):
     for module in [ra.core, ra.random, ra.linalg, da.core, da.random, da.linalg]:
       reload(module)
-    ray.init(start_ray_local=True, num_workers=1)
+    ray.init(num_workers=1)
 
     a = ra.ones.remote([da.BLOCK_SIZE, da.BLOCK_SIZE])
     b = ra.zeros.remote([da.BLOCK_SIZE, da.BLOCK_SIZE])

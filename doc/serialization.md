@@ -76,7 +76,7 @@ This can be addressed by calling `ray.register_class(Foo)`.
 ```python
 import ray
 
-ray.init(start_ray_local=True, num_workers=1)
+ray.init(num_workers=10)
 
 # Define a custom class.
 class Foo(object):
