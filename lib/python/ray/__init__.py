@@ -16,5 +16,5 @@ if hasattr(ctypes, "windll"):
 import ray.experimental
 import ray.serialization
 from ray.worker import register_class, error_info, init, connect, disconnect, get, put, wait, remote, log_event, log_span, flush_log
-from ray.worker import Reusable, reusables
+from ray.worker import EnvironmentVariable, env
 from ray.worker import SCRIPT_MODE, WORKER_MODE, PYTHON_MODE, SILENT_MODE
