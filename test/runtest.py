@@ -382,24 +382,24 @@ class APITest(unittest.TestCase):
 
     ray.worker.cleanup()
 
-  def testCachingReusables(self):
-    # Test that we can define reusable variables before the driver is connected.
+  def testCachingEnvironmentVariables(self):
+    # Test that we can define environment variables before the driver is connected.
     def foo_initializer():
       return 1
     def bar_initializer():
       return []
     def bar_reinitializer(bar):
       return []
-    ray.reusables.foo = ray.Reusable(foo_initializer)
-    ray.reusables.bar = ray.Reusable(bar_initializer, bar_reinitializer)
+    ray.env.foo = ray.EnvironmentVariable(foo_initializer)
+    ray.env.bar = ray.EnvironmentVariable(bar_initializer, bar_reinitializer)
 
     @ray.remote
     def use_foo():
-      return ray.reusables.foo
+      return ray.env.foo
     @ray.remote
     def use_bar():
-      ray.reusables.bar.append(1)
-      return ray.reusables.bar
+      ray.env.bar.append(1)
+      return ray.env.bar
 
     ray.init(num_workers=2)
 
@@ -572,7 +572,7 @@ class PythonModeTest(unittest.TestCase):
 
     ray.worker.cleanup()
 
-  def testReusableVariablesInPythonMode(self):
+  def testEnvironmentVariablesInPythonMode(self):
     reload(test_functions)
     ray.init(driver_mode=ray.PYTHON_MODE)
 
@@ -580,38 +580,38 @@ class PythonModeTest(unittest.TestCase):
       return []
     def l_reinit(l):
       return []
-    ray.reusables.l = ray.Reusable(l_init, l_reinit)
+    ray.env.l = ray.EnvironmentVariable(l_init, l_reinit)
 
     @ray.remote
     def use_l():
-      l = ray.reusables.l
+      l = ray.env.l
       l.append(1)
       return l
 
-    # Get the local copy of the reusable variable. This should be stateful.
-    l = ray.reusables.l
+    # Get the local copy of the environment variable. This should be stateful.
+    l = ray.env.l
     assert_equal(l, [])
 
     # Make sure the remote function does what we expect.
     assert_equal(ray.get(use_l.remote()), [1])
     assert_equal(ray.get(use_l.remote()), [1])
 
-    # Make sure the local copy of the reusable variable has not been mutated.
+    # Make sure the local copy of the environment variable has not been mutated.
     assert_equal(l, [])
-    l = ray.reusables.l
+    l = ray.env.l
     assert_equal(l, [])
 
     # Make sure that running a remote function does not reset the state of the
-    # local copy of the reusable variable.
+    # local copy of the environment variable.
     l.append(2)
     assert_equal(ray.get(use_l.remote()), [1])
     assert_equal(l, [2])
 
     ray.worker.cleanup()
 
-class ReusablesTest(unittest.TestCase):
+class EnvironmentVariablesTest(unittest.TestCase):
 
-  def testReusables(self):
+  def testEnvironmentVariables(self):
     ray.init(num_workers=1)
 
     # Test that we can add a variable to the key-value store.
@@ -621,12 +621,12 @@ class ReusablesTest(unittest.TestCase):
     def foo_reinitializer(foo):
       return foo
 
-    ray.reusables.foo = ray.Reusable(foo_initializer, foo_reinitializer)
-    self.assertEqual(ray.reusables.foo, 1)
+    ray.env.foo = ray.EnvironmentVariable(foo_initializer, foo_reinitializer)
+    self.assertEqual(ray.env.foo, 1)
 
     @ray.remote
     def use_foo():
-      return ray.reusables.foo
+      return ray.env.foo
     self.assertEqual(ray.get(use_foo.remote()), 1)
     self.assertEqual(ray.get(use_foo.remote()), 1)
     self.assertEqual(ray.get(use_foo.remote()), 1)
@@ -636,12 +636,12 @@ class ReusablesTest(unittest.TestCase):
     def bar_initializer():
       return [1, 2, 3]
 
-    ray.reusables.bar = ray.Reusable(bar_initializer)
+    ray.env.bar = ray.EnvironmentVariable(bar_initializer)
 
     @ray.remote
     def use_bar():
-      ray.reusables.bar.append(4)
-      return ray.reusables.bar
+      ray.env.bar.append(4)
+      return ray.env.bar
     self.assertEqual(ray.get(use_bar.remote()), [1, 2, 3, 4])
     self.assertEqual(ray.get(use_bar.remote()), [1, 2, 3, 4])
     self.assertEqual(ray.get(use_bar.remote()), [1, 2, 3, 4])
@@ -655,11 +655,11 @@ class ReusablesTest(unittest.TestCase):
         baz[i] = 0
       return baz
 
-    ray.reusables.baz = ray.Reusable(baz_initializer, baz_reinitializer)
+    ray.env.baz = ray.EnvironmentVariable(baz_initializer, baz_reinitializer)
 
     @ray.remote
     def use_baz(i):
-      baz = ray.reusables.baz
+      baz = ray.env.baz
       baz[i] = 1
       return baz
     assert_equal(ray.get(use_baz.remote(0)), np.array([1, 0, 0, 0]))
@@ -676,18 +676,18 @@ class ReusablesTest(unittest.TestCase):
     def qux_reinitializer(x):
       return x + 1
 
-    ray.reusables.qux = ray.Reusable(qux_initializer, qux_reinitializer)
+    ray.env.qux = ray.EnvironmentVariable(qux_initializer, qux_reinitializer)
 
     @ray.remote
     def use_qux():
-      return ray.reusables.qux
+      return ray.env.qux
     self.assertEqual(ray.get(use_qux.remote()), 0)
     self.assertEqual(ray.get(use_qux.remote()), 1)
     self.assertEqual(ray.get(use_qux.remote()), 2)
 
     ray.worker.cleanup()
 
-  def testUsingReusablesOnDriver(self):
+  def testUsingEnvironmentVariablesOnDriver(self):
     ray.init(num_workers=1)
 
     # Test that we can add a variable to the key-value store.
@@ -697,17 +697,17 @@ class ReusablesTest(unittest.TestCase):
     def foo_reinitializer(foo):
       return []
 
-    ray.reusables.foo = ray.Reusable(foo_initializer, foo_reinitializer)
+    ray.env.foo = ray.EnvironmentVariable(foo_initializer, foo_reinitializer)
 
     @ray.remote
     def use_foo():
-      foo = ray.reusables.foo
+      foo = ray.env.foo
       foo.append(1)
       return foo
 
-    # Check that running a remote function does not reset the reusable variable
-    # on the driver.
-    foo = ray.reusables.foo
+    # Check that running a remote function does not reset the enviroment
+    # variable on the driver.
+    foo = ray.env.foo
     self.assertEqual(foo, [])
     foo.append(2)
     self.assertEqual(foo, [2])
@@ -720,7 +720,7 @@ class ReusablesTest(unittest.TestCase):
 
     # Check that the copy of foo on the driver has not changed.
     self.assertEqual(foo, [2, 3])
-    foo = ray.reusables.foo
+    foo = ray.env.foo
     self.assertEqual(foo, [2, 3])
 
     ray.worker.cleanup()
