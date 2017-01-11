@@ -17,7 +17,8 @@
     "paper-icon-button": "PolymerElements/paper-icon-button#~1.1.0",
     "polymer": "Polymer/polymer#^1.6.0",
     "vaadin-grid": "^1.2.1",
-    "google-chart": "^1.1.1"
+    "google-chart": "^1.1.1",
+    "a-dot": "^0.1.1"
   },
   "devDependencies": {
     "web-component-tester": "^4.0.0"
