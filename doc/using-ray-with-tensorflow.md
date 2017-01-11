@@ -77,6 +77,9 @@ environment variables. Within the environment variables, we would define
 the weights (as lists of numpy arrays) between the processes without shipping
 the actual TensorFlow graphs, which are much more complex Python objects.
 
+(Note that you will need to clear the default graph with `tf.reset_default_graph()`
+if you ran the above code in the same python session.)
+
 ```python
 import tensorflow as tf
 import numpy as np
