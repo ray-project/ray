@@ -553,7 +553,7 @@ def check_connected(worker=global_worker):
     Exception: An exception is raised if the worker is not connected.
   """
   if not worker.connected:
-    raise RayConnectionError("This command cannot be called before Ray has been started. You can start Ray with 'ray.init()'.")
+    raise RayConnectionError("This command cannot be called before Ray has been started. You can start Ray with 'ray.init(num_workers=10)'.")
 
 def print_failed_task(task_status):
   """Print information about failed tasks.

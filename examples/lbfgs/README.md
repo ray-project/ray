@@ -9,7 +9,6 @@ application, first install these dependencies.
 Then from the directory `ray/examples/lbfgs/` run the following.
 
 ```
-source ../../setup-env.sh
 python driver.py
 ```
 
