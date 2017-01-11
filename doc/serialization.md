@@ -16,8 +16,8 @@ A normal Python object may have pointers all over the place, so to place an
 object in the object store or send it between processes, it must first be
 converted to a contiguous string of bytes. This process is known as
 serialization. The process of turning the string of bytes back into a Python
-object is known as deserialization. The processes of serialization and
-deserialization are often bottlenecks in distributed computing.
+object is known as deserialization. Serialization and deserialization are often
+bottlenecks in distributed computing.
 
 Pickle is one example of a library for serialization and deserialization in
 Python.
@@ -25,8 +25,8 @@ Python.
 ```python
 import pickle
 
-pickle.dumps([1, 2, 3])  # prints '(lp0\nI1\naI2\naI3\na.'
-pickle.loads("(lp0\nI1\naI2\naI3\na.")  # prints [1, 2, 3]
+pickle.dumps([1, 2, 3])  # prints b'\x80\x03]q\x00(K\x01K\x02K\x03e.'
+pickle.loads(b'\x80\x03]q\x00(K\x01K\x02K\x03e.')  # prints [1, 2, 3]
 ```
 
 Pickle (and its variants) are pretty general. They can successfully serialize a
@@ -35,8 +35,8 @@ unpickling can be inefficient. For example, when unpickling a list of numpy
 arrays, pickle will create completely new arrays in memory. In Ray, when we
 deserialize a list of numpy arrays from the object store, we will create a list
 of numpy array objects in Python, but each numpy array object is essentially
-just a pointer to the relevant location in the object store's memory. There are
-some advantages to this form of serialization.
+just a pointer to the relevant location in shared memory. There are some
+advantages to this form of serialization.
 
 - Deserialization can be very fast.
 - Memory is shared between processes so worker processes can all read the same
@@ -126,6 +126,9 @@ below.
 ```python
 l = []
 l.append(l)
+
+# Try to put this list that recursively contains itself in the object store.
+ray.put(l)
 ```
 
 It will throw an exception with a message like the following.
