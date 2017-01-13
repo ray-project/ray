@@ -62,10 +62,11 @@ def compute_rollout(weights, x, y):
   return model.variables.get_weights()  
 
 def model_initialization():
-  model = resnet_model.ResNet(hps, FLAGS.mode)
-  model.build_graph()
-  sess = tf.Session()
-  model.variables.set_session(sess)
+  with tf.Graph().as_default() as g:
+    model = resnet_model.ResNet(hps, FLAGS.mode)
+    model.build_graph()
+    sess = tf.Session()
+    model.variables.set_session(sess)
   return model
 
 def model_reinitialization(model):
@@ -73,13 +74,12 @@ def model_reinitialization(model):
 
 def train(hps):
   """Training loop."""
-#  images, labels = cifar_input.build_input(
- #     FLAGS.dataset, FLAGS.train_data_path, hps.batch_size, FLAGS.mode)
+  images, labels = cifar_input.build_input(
+      FLAGS.dataset, FLAGS.train_data_path, hps.batch_size, FLAGS.mode)
 
   ray.env.model = ray.EnvironmentVariable(model_initialization, model_reinitialization)
-  ray.init(num_workers=10)
+  ray.init(num_workers=0)
   model = ray.env.model
-  IPython.embed()
   param_stats = tf.contrib.tfprof.model_analyzer.print_model_analysis(
       tf.get_default_graph(),
       tfprof_options=tf.contrib.tfprof.model_analyzer.
@@ -136,9 +136,12 @@ def train(hps):
       # SummarySaverHook. To do that we set save_summaries_steps to 0.
       save_summaries_steps=0,
       config=tf.ConfigProto(allow_soft_placement=True)) as mon_sess:
-    model.variables.set_session(mon_sess)
     while not mon_sess.should_stop():
-      
+      weights = model.variables.get_weights()
+      weight_id = ray.put(weights)
+      all_weights = ray.get([compute_rollout.remote(weight_id, xs[i], ys[i])  for i in rand_list])
+      mean_weights = {k: sum([weights[k] for weights in all_weights]) / batch for k in all_weights[0]}
+      model.variables.set_weights(mean_weights)
       mon_sess.run(model.train_op)
 
 
