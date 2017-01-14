@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 2.8)
 
 project(photon)
 
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/../common/ ${CMAKE_CURRENT_LIST_DIR}/../common/build)
+
 message(STATUS "Trying custom approach for finding Python.")
 # Start off by figuring out which Python executable to use.
 find_program(CUSTOM_PYTHON_EXECUTABLE python)
@@ -67,9 +69,6 @@ if(UNIX AND NOT APPLE)
   link_libraries(rt)
 endif()
 
-set(PHOTON_CLIENT_LIB "${CMAKE_SOURCE_DIR}/build/photon_client.a"
-    CACHE STRING "Path to photon_client.a")
-
 set(COMMON_LIB "${CMAKE_SOURCE_DIR}/../common/build/libcommon.a"
     CACHE STRING "Path to libcommon.a")
 
@@ -90,6 +89,10 @@ if(APPLE)
                      POST_BUILD COMMAND ${CMAKE_INSTALL_NAME_TOOL} -change ${PYTHON_SHARED_LIBRARY} ${PYTHON_LIBRARIES} libphoton.so)
 endif(APPLE)
 
-target_link_libraries(photon ${PHOTON_CLIENT_LIB} ${COMMON_LIB} ${PYTHON_LIBRARIES})
+add_library(photon_client STATIC photon_client.c)
+target_link_libraries(photon photon_client ${COMMON_LIB} ${PYTHON_LIBRARIES})
+
+add_executable(photon_scheduler photon_scheduler.c photon_algorithm.c)
+target_link_libraries(photon_scheduler photon_client common ${HIREDIS_LIB} ${CMAKE_CURRENT_LIST_DIR}/../plasma/build/)
 
 install(TARGETS photon DESTINATION ${CMAKE_SOURCE_DIR}/photon)
