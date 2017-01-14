@@ -31,9 +31,9 @@ add_library(common STATIC
 target_link_libraries(common "${CMAKE_CURRENT_LIST_DIR}/thirdparty/hiredis/libhiredis.a")
 
 function(define_test test_name)
-  add_executable(${test_name} test/${test_name}.c)
+  add_executable(${test_name} test/${test_name}.c ${file_list} ${ARGN})
   add_dependencies(${test_name} hiredis)
-  target_link_libraries(${test_name} common)
+  target_link_libraries(${test_name} common ${FLATBUFFERS_STATIC_LIB})
 endfunction()
 
 define_test(common_tests)

@@ -74,25 +74,21 @@ add_executable(plasma_store
 
 target_link_libraries(plasma_store common ${FLATBUFFERS_STATIC_LIB})
 
+set(PLASMA_FILES plasma.c plasma_protocol.c fling.c thirdparty/xxhash.c)
+
 add_executable(plasma_manager
   plasma_manager.c
-  plasma.c
-  plasma_protocol.c
   plasma_client.c
-  thirdparty/xxhash.c
-  fling.c)
+  ${PLASMA_FILES})
 
 target_link_libraries(plasma_manager common ${FLATBUFFERS_STATIC_LIB})
 
 add_library(plasma_client STATIC
-  plasma.c
-  plasma_protocol.c
   plasma_client.c
-  thirdparty/xxhash.c
-  fling.c)
+  ${PLASMA_FILES})
 
 target_link_libraries(plasma_client common ${FLATBUFFERS_STATIC_LIB})
 
-# define_test(client_tests)
+define_test(client_tests plasma_client.c ${PLASMA_FILES})
 
 install(TARGETS plasma DESTINATION ${CMAKE_SOURCE_DIR}/plasma)
