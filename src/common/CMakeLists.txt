@@ -34,6 +34,7 @@ function(define_test test_name)
   add_executable(${test_name} test/${test_name}.c ${file_list} ${ARGN})
   add_dependencies(${test_name} hiredis)
   target_link_libraries(${test_name} common ${FLATBUFFERS_STATIC_LIB})
+  target_compile_options(${test_name} PUBLIC "-DPLASMA_TEST")
 endfunction()
 
 define_test(common_tests)

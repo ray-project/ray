@@ -72,23 +72,28 @@ add_executable(plasma_store
   malloc.c
   thirdparty/dlmalloc.c)
 
+add_dependencies(plasma_store hiredis)
+
 target_link_libraries(plasma_store common ${FLATBUFFERS_STATIC_LIB})
 
-set(PLASMA_FILES plasma.c plasma_protocol.c fling.c thirdparty/xxhash.c)
+add_library(plasma_lib STATIC
+  plasma_client.c
+  plasma.c
+  plasma_protocol.c
+  fling.c
+  thirdparty/xxhash.c)
+
+target_link_libraries(plasma_lib common ${FLATBUFFERS_STATIC_LIB})
 
 add_executable(plasma_manager
-  plasma_manager.c
-  plasma_client.c
-  ${PLASMA_FILES})
+  plasma_manager.c)
 
-target_link_libraries(plasma_manager common ${FLATBUFFERS_STATIC_LIB})
+target_link_libraries(plasma_manager common plasma_lib ${FLATBUFFERS_STATIC_LIB})
 
-add_library(plasma_client STATIC
-  plasma_client.c
-  ${PLASMA_FILES})
+add_library(plasma_client SHARED)
 
-target_link_libraries(plasma_client common ${FLATBUFFERS_STATIC_LIB})
+target_link_libraries(plasma_client common plasma_lib ${FLATBUFFERS_STATIC_LIB})
 
-define_test(client_tests plasma_client.c ${PLASMA_FILES})
-
-install(TARGETS plasma DESTINATION ${CMAKE_SOURCE_DIR}/plasma)
+# define_test(client_tests plasma_client.c ${PLASMA_FILES})
+# define_test(manager_tests plasma_manager.c plasma_client.c ${PLASMA_FILES})
+# define_test(serialization_tests ${PLASMA_FILES})
