@@ -38,9 +38,14 @@ if(APPLE)
 endif(APPLE)
 
 add_library(photon_client STATIC photon_client.c)
+
 target_link_libraries(photon photon_client ${COMMON_LIB} ${PYTHON_LIBRARIES})
 
 add_executable(photon_scheduler photon_scheduler.c photon_algorithm.c)
 target_link_libraries(photon_scheduler photon_client common ${HIREDIS_LIB} plasma_lib)
+
+add_executable(photon_tests test/photon_tests.c photon_scheduler.c photon_algorithm.c )
+target_link_libraries(photon_tests photon_client common ${HIREDIS_LIB} plasma_lib)
+target_compile_options(photon_tests PUBLIC "-DPHOTON_TEST")
 
 install(TARGETS photon DESTINATION ${CMAKE_SOURCE_DIR}/photon)

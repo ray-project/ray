@@ -7,12 +7,8 @@ set -e
 
 ./src/common/thirdparty/redis/src/redis-server --loglevel warning --loadmodule ./src/common/redis_module/libray_redis_module.so &
 sleep 1s
-./src/common/common_tests
-./src/common/db_tests
-./src/common/io_tests
-./src/common/task_tests
-./src/common/redis_tests
-./src/common/task_table_tests
-./src/common/object_table_tests
-./src/common/thirdparty/redis/src/redis-cli shutdown
-python ./src/common/redis_module/runtest.py
+../plasma/build/plasma_store -s /tmp/plasma_store_socket_1 -m 100000000 &
+sleep 0.5s
+./build/photon_tests
+../common/thirdparty/redis/src/redis-cli shutdown
+killall plasma_store
