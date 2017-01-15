@@ -37,17 +37,13 @@ matrix:
       install:
         - ./.travis/install-dependencies.sh
 
-        - cd src/common
-        - make valgrind
-        - cd ../..
+        - cd build
+        - cmake ..
+        - make
 
-        - cd src/plasma
-        - make valgrind
-        - cd ../..
-
-        - cd src/photon
-        - make valgrind
-        - cd ../..
+        - bash ../common/test/run_valgrind.sh
+        - bash ../plasma/test/run_valgrind.sh
+        - bash ../photon/test/run_valgrind.sh
 
         - ./.travis/install-ray.sh
       script:

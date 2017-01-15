@@ -7,8 +7,8 @@ set -e
 
 ./src/common/thirdparty/redis/src/redis-server --loglevel warning --loadmodule ./src/common/redis_module/libray_redis_module.so &
 sleep 1s
-../plasma/build/plasma_store -s /tmp/plasma_store_socket_1 -m 100000000 &
+./src/plasma/plasma_store -s /tmp/plasma_store_socket_1 -m 100000000 &
 sleep 0.5s
-./build/photon_tests
-../common/thirdparty/redis/src/redis-cli shutdown
+./src/photon/photon_tests
+./src/common/thirdparty/redis/src/redis-cli shutdown
 killall plasma_store

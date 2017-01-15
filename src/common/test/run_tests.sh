@@ -15,4 +15,5 @@ sleep 1s
 ./src/common/task_table_tests
 ./src/common/object_table_tests
 ./src/common/thirdparty/redis/src/redis-cli shutdown
-python ./src/common/redis_module/runtest.py
+
+python ../src/common/redis_module/runtest.py
