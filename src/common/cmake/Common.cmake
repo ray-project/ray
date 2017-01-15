@@ -73,3 +73,12 @@ endif()
 message(STATUS "Using CUSTOM_PYTHON_EXECUTABLE: " ${CUSTOM_PYTHON_EXECUTABLE})
 message(STATUS "Using PYTHON_LIBRARIES: " ${PYTHON_LIBRARIES})
 message(STATUS "Using PYTHON_INCLUDE_DIRS: " ${PYTHON_INCLUDE_DIRS})
+
+# Common libraries
+
+set(COMMON_LIB "${CMAKE_BINARY_DIR}/src/common/libcommon.a"
+    CACHE STRING "Path to libcommon.a")
+
+include_directories("${CMAKE_CURRENT_LIST_DIR}/..")
+include_directories("${CMAKE_CURRENT_LIST_DIR}/../thirdparty/")
+include_directories("${CMAKE_CURRENT_LIST_DIR}/../lib/python")

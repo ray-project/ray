@@ -31,14 +31,8 @@ if(UNIX AND NOT APPLE)
   link_libraries(rt)
 endif()
 
-set(COMMON_LIB "${CMAKE_CURRENT_LIST_DIR}/../common/build/libcommon.a"
-    CACHE STRING "Path to libcommon.a")
-
 include_directories("${CMAKE_CURRENT_LIST_DIR}/")
 include_directories("${CMAKE_CURRENT_LIST_DIR}/../")
-include_directories("${CMAKE_CURRENT_LIST_DIR}/../common/")
-include_directories("${CMAKE_CURRENT_LIST_DIR}/../common/thirdparty/")
-include_directories("${CMAKE_CURRENT_LIST_DIR}/../common/lib/python/")
 
 include_directories("${FLATBUFFERS_INCLUDE_DIR}")
 
