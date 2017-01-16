@@ -33,7 +33,7 @@ target_link_libraries(common "${CMAKE_CURRENT_LIST_DIR}/thirdparty/hiredis/libhi
 
 function(define_test test_name library)
   add_executable(${test_name} test/${test_name}.c ${ARGN})
-  add_dependencies(${test_name} hiredis)
+  add_dependencies(${test_name} hiredis flatcc)
   target_link_libraries(${test_name} common ${FLATBUFFERS_STATIC_LIB} ${library})
   target_compile_options(${test_name} PUBLIC "-DPLASMA_TEST") # XXX
 endfunction()
