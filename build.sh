@@ -77,4 +77,3 @@ cp "$GLOBAL_SCHEDULER_SOURCE_DIR/lib/python/global_scheduler_services.py" "$PYTH
 mkdir -p "$PYTHON_NUMBUF_DIR/"
 cp "$NUMBUF_BUILD_DIR/libnumbuf.so" "$PYTHON_NUMBUF_DIR/"
 cp "$NUMBUF_SOURCE_DIR/thirdparty/arrow/cpp/build/release/libarrow.so" "$PYTHON_NUMBUF_DIR/"
-cp "$NUMBUF_SOURCE_DIR/numbuf/__init__.py" "$PYTHON_NUMBUF_DIR/"
