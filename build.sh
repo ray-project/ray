@@ -24,12 +24,15 @@ PHOTON_BUILD_DIR="$ROOT_DIR/build/src/photon"
 PHOTON_SOURCE_DIR="$ROOT_DIR/src/photon"
 GLOBAL_SCHEDULER_BUILD_DIR="$ROOT_DIR/build/src/global_scheduler"
 GLOBAL_SCHEDULER_SOURCE_DIR="$ROOT_DIR/src/global_scheduler"
+NUMBUF_BUILD_DIR="$ROOT_DIR/build/src/numbuf"
+NUMBUF_SOURCE_DIR="$ROOT_DIR/src/numbuf"
 
 PYTHON_DIR="$ROOT_DIR/lib/python"
 PYTHON_COMMON_DIR="$PYTHON_DIR/common"
 PYTHON_PLASMA_DIR="$PYTHON_DIR/plasma"
 PYTHON_PHOTON_DIR="$PYTHON_DIR/photon"
 PYTHON_GLOBAL_SCHEDULER_DIR="$PYTHON_DIR/global_scheduler"
+PYTHON_NUMBUF_DIR="$PYTHON_DIR/numbuf"
 
 # First clean up old build files.
 rm -rf "$ROOT_DIR/build"
@@ -55,3 +58,7 @@ cp "$PHOTON_SOURCE_DIR/photon/photon_services.py" "$PYTHON_PHOTON_DIR/photon/"
 
 cp "$GLOBAL_SCHEDULER_BUILD_DIR/global_scheduler" "$PYTHON_GLOBAL_SCHEDULER_DIR/build/"
 cp "$GLOBAL_SCHEDULER_SOURCE_DIR/lib/python/global_scheduler_services.py" "$PYTHON_GLOBAL_SCHEDULER_DIR/lib/python/"
+
+cp "$NUMBUF_BUILD_DIR/libnumbuf.so" "$PYTHON_NUMBUF_DIR/"
+cp "$NUMBUF_SOURCE_DIR/thirdparty/arrow/cpp/build/release/libarrow.so" "$PYTHON_NUMBUF_DIR/"
+cp "$NUMBUF_SOURCE_DIR/numbuf/__init__.py" "$PYTHON_NUMBUF_DIR/"

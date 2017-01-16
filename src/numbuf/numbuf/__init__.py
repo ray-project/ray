@@ -11,7 +11,7 @@ If you are using Anaconda, try fixing this problem by running:
 """
 
 try:
-  from numbuf.libnumbuf import *
+  from .libnumbuf import *
 except ImportError as e:
   if hasattr(e, "msg") and isinstance(e.msg, str) and "GLIBCXX" in e.msg:
     # This code path should be taken with Python 3.

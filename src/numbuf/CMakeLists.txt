@@ -8,7 +8,7 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake/Modules)
 
 option(HAS_PLASMA
   "Are we linking with the plasma object store? Recommended if numbuf is used as part of ray."
-  OFF)
+  ON)
 
 if(HAS_PLASMA)
   add_definitions(-DHAS_PLASMA)
@@ -44,10 +44,10 @@ include_directories("cpp/src/")
 include_directories("python/src/")
 
 if(HAS_PLASMA)
-  include_directories("../src/plasma")
-  include_directories("../src/common")
-  include_directories("../src/common/thirdparty")
-  include_directories("../src/common/build/flatcc-prefix/src/flatcc/include")
+  include_directories("${CMAKE_CURRENT_LIST_DIR}/../plasma")
+  include_directories("${CMAKE_CURRENT_LIST_DIR}/../common")
+  include_directories("${CMAKE_CURRENT_LIST_DIR}/../common/thirdparty")
+  include_directories("${CMAKE_CURRENT_LIST_DIR}/../common/build/flatcc-prefix/src/flatcc/include")
 endif()
 
 add_definitions(-fPIC)
@@ -73,7 +73,7 @@ else()
 endif()
 
 if(HAS_PLASMA)
-  target_link_libraries(numbuf ${ARROW_LIB} ${ARROW_IO_LIB} ${ARROW_IPC_LIB} ${PYTHON_LIBRARIES} "${CMAKE_SOURCE_DIR}/../src/plasma/build/libplasma_client.a" "${CMAKE_SOURCE_DIR}/../src/common/build/libcommon.a" "${CMAKE_SOURCE_DIR}/../src/common/build/flatcc-prefix/src/flatcc/lib/libflatcc.a")
+  target_link_libraries(numbuf ${ARROW_LIB} ${ARROW_IO_LIB} ${ARROW_IPC_LIB} ${PYTHON_LIBRARIES} plasma_lib common ${FLATBUFFERS_STATIC_LIB})
 else()
   target_link_libraries(numbuf ${ARROW_LIB} ${ARROW_IO_LIB} ${ARROW_IPC_LIB} ${PYTHON_LIBRARIES})
 endif()
