@@ -59,7 +59,7 @@ install:
 script:
   - if [[ "$PYTHON" == "3.5" ]]; then export PATH="$HOME/miniconda/bin:$PATH"; fi
 
-  - python numbuf/python/test/runtest.py
+  - python src/numbuf/python/test/runtest.py
 
   - python src/common/test/test.py
   - python src/plasma/test/test.py

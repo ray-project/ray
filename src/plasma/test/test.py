@@ -463,8 +463,8 @@ class TestPlasmaManager(unittest.TestCase):
     store_name1, self.p2 = plasma.start_plasma_store(use_valgrind=USE_VALGRIND)
     store_name2, self.p3 = plasma.start_plasma_store(use_valgrind=USE_VALGRIND)
     # Start a Redis server.
-    redis_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../common/thirdparty/redis/src/redis-server")
-    redis_module = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../common/redis_module/ray_redis_module.so")
+    redis_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../../build/src/common/thirdparty/redis/src/redis-server")
+    redis_module = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../../build/src/common/redis_module/ray_redis_module.so")
     assert os.path.isfile(redis_path)
     assert os.path.isfile(redis_module)
     redis_port = 6379
