@@ -52,7 +52,7 @@ pushd "$ROOT_DIR/build"
 popd
 
 mkdir -p "$PYTHON_COMMON_DIR/thirdparty/redis/src/"
-mkdir -p "$PYTHON_COMMON_DIR/redis_module/
+mkdir -p "$PYTHON_COMMON_DIR/redis_module/"
 cp "$COMMON_BUILD_DIR/thirdparty/redis/src/redis-server" "$PYTHON_COMMON_DIR/thirdparty/redis/src/"
 cp "$COMMON_BUILD_DIR/redis_module/libray_redis_module.so" "$PYTHON_COMMON_DIR/redis_module/ray_redis_module.so" # XXX
 
