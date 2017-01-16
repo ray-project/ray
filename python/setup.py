@@ -10,7 +10,7 @@ import setuptools.command.install as _install
 
 class install(_install.install):
   def run(self):
-    subprocess.check_call(["../../build.sh"])
+    subprocess.check_call(["../build.sh"])
     # Calling _install.install.run(self) does not fetch required packages and
     # instead performs an old-style install. See command/install.py in
     # setuptools. So, calling do_egg_install() manually here.
