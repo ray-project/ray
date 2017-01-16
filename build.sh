@@ -17,8 +17,8 @@ else
 fi
 
 # First clean up old build files.
-rm -rf "$ROOT_DIR/python/build"
-mkdir "$ROOT_DIR/python/build"
+rm -rf "$ROOT_DIR/python/core"
+mkdir "$ROOT_DIR/python/core"
 
 pushd "$ROOT_DIR/src/common/thirdparty/"
   bash build-redis.sh
@@ -28,7 +28,7 @@ bash "$ROOT_DIR/src/numbuf/thirdparty/download_thirdparty.sh"
 bash "$ROOT_DIR/src/numbuf/thirdparty/build_thirdparty.sh"
 
 # Now build everything.
-pushd "$ROOT_DIR/python/build"
+pushd "$ROOT_DIR/python/core"
   cmake ../..
   make
 popd
