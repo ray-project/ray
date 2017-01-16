@@ -50,22 +50,31 @@ pushd "$ROOT_DIR/build"
   cmake ..
   make
 popd
+
+mkdir -p "$PYTHON_COMMON_DIR/thirdparty/redis/src/"
+mkdir -p "$PYTHON_COMMON_DIR/redis_module/
 cp "$COMMON_BUILD_DIR/thirdparty/redis/src/redis-server" "$PYTHON_COMMON_DIR/thirdparty/redis/src/"
 cp "$COMMON_BUILD_DIR/redis_module/libray_redis_module.so" "$PYTHON_COMMON_DIR/redis_module/ray_redis_module.so" # XXX
 
+mkdir -p "$PYTHON_PLASMA_DIR/"
 cp "$PLASMA_BUILD_DIR/plasma_store" "$PYTHON_PLASMA_DIR/"
 cp "$PLASMA_BUILD_DIR/plasma_manager" "$PYTHON_PLASMA_DIR/"
 cp "$PLASMA_BUILD_DIR/libplasma.so" "$PYTHON_PLASMA_DIR/"
 cp "$PLASMA_SOURCE_DIR/plasma/plasma.py" "$PYTHON_PLASMA_DIR/"
 cp "$PLASMA_SOURCE_DIR/plasma/utils.py" "$PYTHON_PLASMA_DIR/"
 
+mkdir -p "$PYTHON_PHOTON_DIR/build/"
+mkdir -p "$PYTHON_PHOTON_DIR/photon/"
 cp "$PHOTON_BUILD_DIR/photon_scheduler" "$PYTHON_PHOTON_DIR/build/"
 cp "$PHOTON_BUILD_DIR/libphoton.so" "$PYTHON_PHOTON_DIR/photon/"
 cp "$PHOTON_SOURCE_DIR/photon/photon_services.py" "$PYTHON_PHOTON_DIR/photon/"
 
+mkdir -p "$PYTHON_GLOBAL_SCHEDULER_DIR/build/"
+mkdir -p "$PYTHON_GLOBAL_SCHEDULER_DIR/lib/python/"
 cp "$GLOBAL_SCHEDULER_BUILD_DIR/global_scheduler" "$PYTHON_GLOBAL_SCHEDULER_DIR/build/"
 cp "$GLOBAL_SCHEDULER_SOURCE_DIR/lib/python/global_scheduler_services.py" "$PYTHON_GLOBAL_SCHEDULER_DIR/lib/python/"
 
+mkdir -p "$PYTHON_NUMBUF_DIR/"
 cp "$NUMBUF_BUILD_DIR/libnumbuf.so" "$PYTHON_NUMBUF_DIR/"
 cp "$NUMBUF_SOURCE_DIR/thirdparty/arrow/cpp/build/release/libarrow.so" "$PYTHON_NUMBUF_DIR/"
 cp "$NUMBUF_SOURCE_DIR/numbuf/__init__.py" "$PYTHON_NUMBUF_DIR/"
