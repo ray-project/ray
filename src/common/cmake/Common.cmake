@@ -2,7 +2,7 @@
 
 include(ExternalProject)
 
-set(FLATCC_PREFIX "${CMAKE_CURRENT_LIST_DIR}/../build/flatcc-prefix/src/flatcc")
+set(FLATCC_PREFIX "${CMAKE_BINARY_DIR}/src/common/flatcc-prefix/src/flatcc")
 
 if (NOT TARGET flatcc)
   ExternalProject_Add(flatcc
