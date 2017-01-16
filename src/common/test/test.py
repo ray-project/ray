@@ -7,18 +7,18 @@ import pickle
 import sys
 import unittest
 
-import common
+import photon
 
 ID_SIZE = 20
 
 def random_object_id():
-  return common.ObjectID(np.random.bytes(ID_SIZE))
+  return photon.ObjectID(np.random.bytes(ID_SIZE))
 
 def random_function_id():
-  return common.ObjectID(np.random.bytes(ID_SIZE))
+  return photon.ObjectID(np.random.bytes(ID_SIZE))
 
 def random_task_id():
-  return common.ObjectID(np.random.bytes(ID_SIZE))
+  return photon.ObjectID(np.random.bytes(ID_SIZE))
 
 BASE_SIMPLE_OBJECTS = [
   0, 1, 100000,  0.0, 0.5, 0.9, 100000.1, (), [], {},
@@ -62,9 +62,9 @@ class TestSerialization(unittest.TestCase):
   def test_serialize_by_value(self):
 
     for val in SIMPLE_OBJECTS:
-      self.assertTrue(common.check_simple_value(val))
+      self.assertTrue(photon.check_simple_value(val))
     for val in COMPLEX_OBJECTS:
-      self.assertFalse(common.check_simple_value(val))
+      self.assertFalse(photon.check_simple_value(val))
 
 class TestObjectID(unittest.TestCase):
 
@@ -89,17 +89,17 @@ class TestObjectID(unittest.TestCase):
     self.assertRaises(Exception, lambda : pickling.dumps(h))
 
   def test_equality_comparisons(self):
-    x1 = common.ObjectID(ID_SIZE * b"a")
-    x2 = common.ObjectID(ID_SIZE * b"a")
-    y1 = common.ObjectID(ID_SIZE * b"b")
-    y2 = common.ObjectID(ID_SIZE * b"b")
+    x1 = photon.ObjectID(ID_SIZE * b"a")
+    x2 = photon.ObjectID(ID_SIZE * b"a")
+    y1 = photon.ObjectID(ID_SIZE * b"b")
+    y2 = photon.ObjectID(ID_SIZE * b"b")
     self.assertEqual(x1, x2)
     self.assertEqual(y1, y2)
     self.assertNotEqual(x1, y1)
 
     random_strings = [np.random.bytes(ID_SIZE) for _ in range(256)]
-    object_ids1 = [common.ObjectID(random_strings[i]) for i in range(256)]
-    object_ids2 = [common.ObjectID(random_strings[i]) for i in range(256)]
+    object_ids1 = [photon.ObjectID(random_strings[i]) for i in range(256)]
+    object_ids2 = [photon.ObjectID(random_strings[i]) for i in range(256)]
     self.assertEqual(len(set(object_ids1)), 256)
     self.assertEqual(len(set(object_ids1 + object_ids2)), 256)
     self.assertEqual(set(object_ids1), set(object_ids2))
@@ -118,7 +118,7 @@ class TestTask(unittest.TestCase):
     self.assertEqual(num_return_vals, len(task.returns()))
     self.assertEqual(len(args), len(retrieved_args))
     for i in range(len(retrieved_args)):
-      if isinstance(retrieved_args[i], common.ObjectID):
+      if isinstance(retrieved_args[i], photon.ObjectID):
         self.assertEqual(retrieved_args[i].id(), args[i].id())
       else:
         self.assertEqual(retrieved_args[i], args[i])
@@ -156,10 +156,10 @@ class TestTask(unittest.TestCase):
     ]
     for args in args_list:
       for num_return_vals in [0, 1, 2, 3, 5, 10, 100]:
-        task = common.Task(function_id, args, num_return_vals, parent_id, 0)
+        task = photon.Task(function_id, args, num_return_vals, parent_id, 0)
         self.check_task(task, function_id, num_return_vals, args)
-        data = common.task_to_string(task)
-        task2 = common.task_from_string(data)
+        data = photon.task_to_string(task)
+        task2 = photon.task_from_string(data)
         self.check_task(task2, function_id, num_return_vals, args)
 
 if __name__ == "__main__":
