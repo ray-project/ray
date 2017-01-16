@@ -6,7 +6,7 @@ include(${CMAKE_CURRENT_LIST_DIR}/cmake/Common.cmake)
 
 add_subdirectory(redis_module)
 
-include_directories(thirdparty/ae "${FLATBUFFERS_INCLUDE_DIR}")
+include_directories(thirdparty/ae)
 
 add_custom_target(
    hiredis

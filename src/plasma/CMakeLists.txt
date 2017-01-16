@@ -34,8 +34,6 @@ endif()
 include_directories("${CMAKE_CURRENT_LIST_DIR}/")
 include_directories("${CMAKE_CURRENT_LIST_DIR}/../")
 
-include_directories("${FLATBUFFERS_INCLUDE_DIR}")
-
 add_library(plasma SHARED
   plasma.c
   plasma_extension.c
@@ -77,6 +75,7 @@ add_library(plasma_lib STATIC
   thirdparty/xxhash.c)
 
 target_link_libraries(plasma_lib common ${FLATBUFFERS_STATIC_LIB})
+add_dependencies(plasma_lib gen_plasma_fbs)
 
 add_executable(plasma_manager
   plasma_manager.c)

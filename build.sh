@@ -38,6 +38,13 @@ PYTHON_NUMBUF_DIR="$PYTHON_DIR/numbuf"
 rm -rf "$ROOT_DIR/build"
 mkdir "$ROOT_DIR/build"
 
+pushd ./src/common/thirdparty/
+  bash build-redis.sh
+popd
+
+bash ./src/numbuf/thirdparty/download_thirdparty.sh
+bash ./src/numbuf/thirdparty/build_thirdparty.sh
+
 # Now build everything.
 pushd "$ROOT_DIR/build"
   cmake ..

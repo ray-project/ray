@@ -15,6 +15,8 @@ set(FLATBUFFERS_INCLUDE_DIR "${FLATCC_PREFIX}/include")
 set(FLATBUFFERS_STATIC_LIB "${FLATCC_PREFIX}/lib/libflatcc.a")
 set(FLATBUFFERS_COMPILER "${FLATCC_PREFIX}/bin/flatcc")
 
+include_directories("${FLATBUFFERS_INCLUDE_DIR}")
+
 # Custom CFLAGS
 
 set(CMAKE_C_FLAGS "-g -Wall -Wextra -Werror=implicit-function-declaration -Wno-sign-compare -Wno-unused-parameter -Wno-type-limits -Wno-missing-field-initializers --std=c99 -D_XOPEN_SOURCE=500 -D_POSIX_C_SOURCE=200809L -fPIC -std=c99")
