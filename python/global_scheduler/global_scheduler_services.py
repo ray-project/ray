@@ -23,7 +23,7 @@ def start_global_scheduler(redis_address, use_valgrind=False, use_profiler=False
   """
   if use_valgrind and use_profiler:
     raise Exception("Cannot use valgrind and profiler at the same time.")
-  global_scheduler_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../build/global_scheduler")
+  global_scheduler_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../core/src/global_scheduler/global_scheduler")
   command = [global_scheduler_executable, "-r", redis_address]
   with open(os.devnull, "w") as FNULL:
     stdout = FNULL if redirect_output else None
