@@ -46,8 +46,8 @@ class TestGlobalScheduler(unittest.TestCase):
 
   def setUp(self):
     # Start a Redis server.
-    redis_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../../build/src/common/thirdparty/redis/src/redis-server")
-    redis_module = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../../build/src/common/redis_module/libray_redis_module.so") # XXX
+    redis_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../core/src/common/thirdparty/redis/src/redis-server")
+    redis_module = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../core/src/common/redis_module/libray_redis_module.so") # XXX
     assert os.path.isfile(redis_path)
     assert os.path.isfile(redis_module)
     node_ip_address = "127.0.0.1"
