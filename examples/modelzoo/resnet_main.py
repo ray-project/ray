@@ -62,7 +62,7 @@ def compute_rollout(weights, x, y):
   return model.variables.get_weights()  
 
 def model_initialization():
-  with tf.Graph().as_default() as g:
+  with tf.Graph().as_default():
     model = resnet_model.ResNet(hps, FLAGS.mode)
     model.build_graph()
     sess = tf.Session()
