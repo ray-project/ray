@@ -36,16 +36,11 @@ matrix:
         - sudo apt-get install -qq valgrind
       install:
         - ./.travis/install-dependencies.sh
-
-        - cd python/core
-        - cmake ../..
-        - make
+        - ./.travis/install-ray.sh
 
         - bash ../common/test/run_valgrind.sh
         - bash ../plasma/test/run_valgrind.sh
         - bash ../photon/test/run_valgrind.sh
-
-        - ./.travis/install-ray.sh
       script:
         - python src/plasma/test/test.py valgrind
         - python src/photon/test/test.py valgrind
