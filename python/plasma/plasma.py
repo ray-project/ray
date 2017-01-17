@@ -8,9 +8,9 @@ import subprocess
 import sys
 import time
 
-from . import libplasma
-from .libplasma import plasma_object_exists_error
-from .libplasma import plasma_out_of_memory_error
+from core.src.plasma as libplasma
+from core.src.plasma.libplasma import plasma_object_exists_error
+from core.src.plasma.libplasma import plasma_out_of_memory_error
 
 PLASMA_ID_SIZE = 20
 PLASMA_WAIT_TIMEOUT = 2 ** 30
