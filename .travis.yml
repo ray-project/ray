@@ -44,11 +44,11 @@ matrix:
         - bash ../../src/plasma/test/run_valgrind.sh
         - bash ../../src/photon/test/run_valgrind.sh
 
-        - cd ../..
+        - cd ..
       script:
-        - python ./src/plasma/test/test.py valgrind
-        - python ./src/photon/test/test.py valgrind
-        - python ./src/global_scheduler/test/test.py valgrind
+        - python ./plasma/test/test.py valgrind
+        - python ./photon/test/test.py valgrind
+        - python ./global_scheduler/test/test.py valgrind
 
 install:
   - ./.travis/install-dependencies.sh
