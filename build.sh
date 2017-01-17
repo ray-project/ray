@@ -19,6 +19,7 @@ fi
 # First clean up old build files.
 rm -rf "$ROOT_DIR/python/core"
 mkdir "$ROOT_DIR/python/core"
+touch "$ROOT_DIR/python/core/__init__.py"
 
 pushd "$ROOT_DIR/src/common/thirdparty/"
   bash build-redis.sh
