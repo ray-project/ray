@@ -40,9 +40,11 @@ matrix:
 
         - cd python/core
 
-        - bash ./src/common/test/run_valgrind.sh
-        - bash ./src/plasma/test/run_valgrind.sh
-        - bash ./src/photon/test/run_valgrind.sh
+        - bash ../../src/common/test/run_valgrind.sh
+        - bash ../../src/plasma/test/run_valgrind.sh
+        - bash ../../src/photon/test/run_valgrind.sh
+
+        - cd ../..
       script:
         - python ./src/plasma/test/test.py valgrind
         - python ./src/photon/test/test.py valgrind
