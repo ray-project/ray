@@ -17,7 +17,7 @@ endif()
 find_package(NumPy REQUIRED)
 
 if(APPLE)
-  SET(CMAKE_SHARED_LIBRARY_SUFFIX ".so")
+  set(CMAKE_SHARED_LIBRARY_SUFFIX ".so")
 endif(APPLE)
 
 include_directories("${PYTHON_INCLUDE_DIRS}")

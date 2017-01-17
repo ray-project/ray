@@ -63,7 +63,7 @@ add_executable(plasma_store
   malloc.c
   thirdparty/dlmalloc.c)
 
-add_dependencies(plasma_store hiredis)
+add_dependencies(plasma_store hiredis gen_plasma_fbs)
 
 target_link_libraries(plasma_store common ${FLATBUFFERS_STATIC_LIB})
 
