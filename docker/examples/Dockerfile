@@ -2,5 +2,5 @@
 
 FROM ray-project/deploy
 RUN conda install -y -c conda-forge tensorflow
-RUN apt-get install zlib1g-dev
+RUN apt-get install -y zlib1g-dev
 RUN pip install gym[atari]
