@@ -16,11 +16,6 @@ else
   exit 1
 fi
 
-# First clean up old build files.
-rm -rf "$ROOT_DIR/python/core"
-mkdir "$ROOT_DIR/python/core"
-touch "$ROOT_DIR/python/core/__init__.py"
-
 pushd "$ROOT_DIR/src/common/thirdparty/"
   bash build-redis.sh
 popd
@@ -31,5 +26,6 @@ bash "$ROOT_DIR/src/numbuf/thirdparty/build_thirdparty.sh"
 # Now build everything.
 pushd "$ROOT_DIR/python/core"
   cmake ../..
+  make clean
   make
 popd
