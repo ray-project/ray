@@ -37,9 +37,8 @@ matrix:
       install:
         - ./.travis/install-dependencies.sh
 
-        - mkdir build # only used for valgrind
-        - cd build
-        - cmake ..
+        - cd python/core
+        - cmake ../..
         - make
 
         - bash ../common/test/run_valgrind.sh
