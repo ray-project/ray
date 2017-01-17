@@ -280,7 +280,7 @@ def start_plasma_store(plasma_store_memory=DEFAULT_PLASMA_STORE_MEMORY, use_valg
   """
   if use_valgrind and use_profiler:
     raise Exception("Cannot use valgrind and profiler at the same time.")
-  plasma_store_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "plasma_store")
+  plasma_store_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../core/src/plasma/plasma_store")
   plasma_store_name = "/tmp/plasma_store{}".format(random_name())
   command = [plasma_store_executable, "-s", plasma_store_name, "-m", str(plasma_store_memory)]
   with open(os.devnull, "w") as FNULL:
@@ -316,7 +316,7 @@ def start_plasma_manager(store_name, redis_address, node_ip_address="127.0.0.1",
   Raises:
     Exception: An exception is raised if the manager could not be started.
   """
-  plasma_manager_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "plasma_manager")
+  plasma_manager_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../core/src/plasma/plasma_manager")
   plasma_manager_name = "/tmp/plasma_manager{}".format(random_name())
   port = None
   process = None
