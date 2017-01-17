@@ -9,14 +9,14 @@ echo "PYTHON is $PYTHON"
 
 if [[ "$PYTHON" == "2.7" ]]; then
 
-  pushd "$ROOT_DIR/../lib/python"
+  pushd "$ROOT_DIR/../python"
     sudo python setup.py install
   popd
 
 elif [[ "$PYTHON" == "3.5" ]]; then
   export PATH="$HOME/miniconda/bin:$PATH"
 
-  pushd "$ROOT_DIR/../lib/python"
+  pushd "$ROOT_DIR/../python"
     python setup.py install --user
   popd
 
