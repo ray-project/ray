@@ -38,13 +38,13 @@ matrix:
         - ./.travis/install-dependencies.sh
         - ./.travis/install-ray.sh
 
-        - bash ../common/test/run_valgrind.sh
-        - bash ../plasma/test/run_valgrind.sh
-        - bash ../photon/test/run_valgrind.sh
+        - bash ./src/common/test/run_valgrind.sh
+        - bash ./src/plasma/test/run_valgrind.sh
+        - bash ./src/photon/test/run_valgrind.sh
       script:
-        - python src/plasma/test/test.py valgrind
-        - python src/photon/test/test.py valgrind
-        - python src/global_scheduler/test/test.py valgrind
+        - python ./src/plasma/test/test.py valgrind
+        - python ./src/photon/test/test.py valgrind
+        - python ./src/global_scheduler/test/test.py valgrind
 
 install:
   - ./.travis/install-dependencies.sh
