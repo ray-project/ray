@@ -37,6 +37,7 @@ matrix:
       install:
         - ./.travis/install-dependencies.sh
 
+        - mkdir build # only used for valgrind
         - cd build
         - cmake ..
         - make
