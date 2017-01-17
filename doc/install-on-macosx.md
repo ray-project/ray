@@ -13,7 +13,6 @@ brew install cmake automake autoconf libtool boost wget
 sudo easy_install pip  # If you're using Anaconda, then this is unnecessary.
 
 pip install numpy cloudpickle funcsigs colorama psutil redis --ignore-installed six
-pip install --upgrade --verbose "git+git://github.com/ray-project/ray.git#egg=numbuf&subdirectory=numbuf"
 ```
 
 # Install Ray
@@ -26,14 +25,8 @@ cd ray/lib/python
 python setup.py install --user
 ```
 
-Alternatively, Ray can be installed with pip as follows. However, this is
-slightly less likely to succeed.
-
-```
-pip install --upgrade --verbose "git+git://github.com/ray-project/ray.git#egg=ray&subdirectory=lib/python"
-```
-
 ## Test if the installation succeeded
+
 To test if the installation was successful, try running some tests. This assumes
 that you've cloned the git repository.
 

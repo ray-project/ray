@@ -39,21 +39,25 @@ matrix:
         - ./.travis/install-ray.sh
 
         - cd python/core
-
         - bash ../../src/common/test/run_valgrind.sh
         - bash ../../src/plasma/test/run_valgrind.sh
         - bash ../../src/photon/test/run_valgrind.sh
+        - cd ../..
 
-        - cd ..
       script:
-        - python ./plasma/test/test.py valgrind
-        - python ./photon/test/test.py valgrind
-        - python ./global_scheduler/test/test.py valgrind
+        - python ./python/plasma/test/test.py valgrind
+        - python ./python/photon/test/test.py valgrind
+        - python ./python/global_scheduler/test/test.py valgrind
 
 install:
   - ./.travis/install-dependencies.sh
-  - ./.travis/run-c-tests.sh
   - ./.travis/install-ray.sh
+
+  - cd python/core
+  - bash ../../src/common/test/run_tests.sh
+  - bash ../../src/plasma/test/run_tests.sh
+  - bash ../../src/photon/test/run_tests.sh
+  - cd ../..
 
 script:
   - if [[ "$PYTHON" == "3.5" ]]; then export PATH="$HOME/miniconda/bin:$PATH"; fi
@@ -61,6 +65,7 @@ script:
   - python src/numbuf/python/test/runtest.py
 
   - python python/common/test/test.py
+  - python python/common/redis_module/runtest.py
   - python python/plasma/test/test.py
   - python python/photon/test/test.py
   - python python/global_scheduler/test/test.py
