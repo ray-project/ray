@@ -154,8 +154,8 @@ def start_redis(node_ip_address, num_retries=20, cleanup=True, redirect_output=F
   Raises:
     Exception: An exception is raised if Redis could not be started.
   """
-  redis_filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../common/thirdparty/redis/src/redis-server")
-  redis_module = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../common/redis_module/ray_redis_module.so")
+  redis_filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../core/src/common/thirdparty/redis/src/redis-server")
+  redis_module = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../core/src/common/redis_module/libray_redis_module.so")
   assert os.path.isfile(redis_filepath)
   assert os.path.isfile(redis_module)
   counter = 0
