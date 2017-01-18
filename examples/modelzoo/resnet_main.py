@@ -24,6 +24,7 @@ import resnet_model
 import tensorflow as tf
 import IPython
 import ray
+import uuid
 
 FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('dataset', 'cifar10', 'cifar10 or cifar100.')
@@ -62,7 +63,7 @@ def compute_rollout(weights, x, y):
   return model.variables.get_weights()  
 
 def model_initialization():
-  with tf.Graph().as_default():
+  with tf.variable_scope(str(uuid.uuid1().hex())):
     model = resnet_model.ResNet(hps, FLAGS.mode)
     model.build_graph()
     sess = tf.Session()
