@@ -340,7 +340,8 @@ void remove_wait_request_for_object(plasma_manager_state *manager_state,
       }
     }
     /* In principle, if there are no more wait requests involving this object
-     * ID, then we could remove the object_wait_reqs struct. */
+     * ID, then we could remove the object_wait_reqs struct. However, the
+     * object_wait_reqs struct gets removed in update_object_wait_requests. */
   }
 }
 
@@ -412,12 +413,11 @@ void update_object_wait_requests(plasma_manager_state *manager_state,
       /* If this wait request is done, reply to the client. */
       if (wait_req->num_satisfied == wait_req->num_objects_to_wait_for) {
         return_from_wait(manager_state, wait_req);
+      } else {
         /* The call to return_from_wait will remove the current element in the
-         * array, so we need to decrement the counter by one. TODO(rkn): This is
-         * very ugly. */
-        index -= 1;
+         * array, so we only increment the counter in the else branch. */
+        index += 1;
       }
-      index += 1;
     }
     DCHECK(index == utarray_len(object_wait_reqs->wait_requests));
     /* Remove the array of wait requests for this object, since no one should be

@@ -275,8 +275,7 @@ void plasma_get(plasma_connection *conn,
                 int64_t num_objects,
                 int64_t timeout_ms,
                 object_buffer object_buffers[]) {
-  /* Check if this client is already using all of the objects and has their info
-   * cached. */
+  /* Fill out the info for the objects that are already in use locally. */
   bool all_present = true;
   for (int i = 0; i < num_objects; ++i) {
     object_in_use_entry *object_entry;
@@ -286,18 +285,10 @@ void plasma_get(plasma_connection *conn,
       /* This object is not currently in use by this client, so we need to send
        * a request to the store. */
       all_present = false;
-      break;
-    }
-  }
-
-  /* If all of the objects are currently in use by the client, we can avoid
-   * sending a message to the store. */
-  if (all_present) {
-    for (int i = 0; i < num_objects; ++i) {
-      object_in_use_entry *object_entry;
-      HASH_FIND(hh, conn->objects_in_use, &object_ids[i], sizeof(object_ids[i]),
-                object_entry);
-      DCHECK(object_entry != NULL);
+      /* Make a note to ourselves that the object is not present. */
+      object_buffers[i].data_size = -1;
+    } else {
+      /*  */
       plasma_object object_data;
       plasma_object *object;
       /* NOTE: If the object is still unsealed, we will deadlock, since we must
@@ -316,13 +307,16 @@ void plasma_get(plasma_connection *conn,
        * count. Cache the reference to the object. */
       increment_object_count(conn, object_ids[i], object, true);
     }
+  }
+
+  if (all_present) {
     return;
   }
 
   /* If we get here, then the objects aren't all currently in use by this
    * client, so we need to send a request to the plasma store. */
   CHECK(plasma_send_GetRequest(conn->store_conn, conn->builder, object_ids,
-                               num_objects, timeout_ms) >= 0);//REBASE THIS
+                               num_objects, timeout_ms) >= 0);
   uint8_t *reply_data =
       plasma_receive(conn->store_conn, MessageType_PlasmaGetReply);
   object_id received_obj_ids[num_objects];
@@ -334,6 +328,16 @@ void plasma_get(plasma_connection *conn,
   for (int i = 0; i < num_objects; ++i) {
     DCHECK(object_ids_equal(received_obj_ids[i], object_ids[i]));
     object = &object_data[i];
+    if (object_buffers[i].data_size != -1) {
+      /* If the object was already in use by the client, then the store should
+       * have returned it. */
+      DCHECK(object->data_size != -1);
+      /* We've already filled out the information for this object, so we can
+       * just continue. */
+      continue;
+    }
+    /* If we are here, the object was not currently in use, so we need to
+     * process the reply from the object store. */
     if (object->data_size != -1) {
       /* The object was retrieved. The user will be responsible for releasing
        * this object. */
@@ -351,9 +355,10 @@ void plasma_get(plasma_connection *conn,
        * count. Cache the reference to the object. */
       increment_object_count(conn, received_obj_ids[i], object, true);
     } else {
-      /* The object was not retrieved. */
-      /* Put a -1 here to indicate that the object was not retrieved. The caller
-       * is not responsible for releasing this object. */
+      /* The object was not retrieved. Make sure we already put a -1 here to
+       * indicate that the object was not retrieved. The caller is not
+       * responsible for releasing this object. */
+      DCHECK(object_buffers[i].data_size == -1);
       object_buffers[i].data_size = -1;
     }
   }
