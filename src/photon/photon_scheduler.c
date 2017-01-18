@@ -114,7 +114,19 @@ void assign_task_to_worker(local_scheduler_state *state,
                            bool from_global_scheduler) {
   CHECK(worker_index < utarray_len(state->workers));
   worker *w = (worker *) utarray_eltptr(state->workers, worker_index);
-  write_message(w->sock, EXECUTE_TASK, task_spec_size(spec), (uint8_t *) spec);
+  if (write_message(w->sock, EXECUTE_TASK, task_spec_size(spec),
+                    (uint8_t *) spec) < 0) {
+    if (errno == EPIPE || errno == EBADF) {
+      /* TODO(rkn): If this happens, the task should be added back to the task
+       * queue. */
+      LOG_WARN(
+          "Failed to give task to worker on fd %d. The client may have hung "
+          "up.",
+          w->sock);
+    } else {
+      LOG_FATAL("Failed to give task to client on fd %d.", w->sock);
+    }
+  }
   /* Update the global task table. */
   if (state->db != NULL) {
     task *task =
@@ -350,6 +362,9 @@ void start_server(const char *node_ip_address,
                   const char *plasma_manager_socket_name,
                   const char *plasma_manager_address,
                   bool global_scheduler_exists) {
+  /* Ignore SIGPIPE signals. If we don't do this, then when we attempt to write
+   * to a client that has already died, the local scheduler could die. */
+  signal(SIGPIPE, SIG_IGN);
   int fd = bind_ipc_sock(socket_name, true);
   event_loop *loop = event_loop_create();
   g_state = init_local_scheduler(
