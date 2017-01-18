@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 import numpy as np
-from collections import deque
+from collections import deque, OrderedDict
 
 def unflatten(vector, shapes):
   i = 0
@@ -46,7 +46,10 @@ class TensorFlowVariables(object):
       queue.extend(op.inputs)
       if op.node_def.op == "Variable":
         variable_names.append(op.node_def.name)
-    self.variables = {v.op.node_def.name.split("/", 1 if prefix else 0)[-1]: v for v in tf.global_variables() if v.op.node_def.name in variable_names}
+    self.variables = OrderedDict()
+    for v in [v for v in tf.global_variables() if v.op.node_def.name in variable_names]:
+      name = v.op.node_def.name.split("/", 1 if prefix else 0)[-1]
+      self.variables[name] = v
     self.assignment_placeholders = dict()
     self.assignment_nodes = []
 
@@ -60,7 +63,7 @@ class TensorFlowVariables(object):
     self.sess = sess
 
   def get_flat_size(self):
-    return sum([np.prod(v.get_shape().as_list()) for _, v in self.variables.items()])
+    return sum([np.prod(v.get_shape().as_list()) for v in self.variables.values()])
 
   def _check_sess(self):
     """Checks if the session is set, and if not throw an error message."""
@@ -69,12 +72,12 @@ class TensorFlowVariables(object):
   def get_flat(self):
     """Gets the weights and returns them as a flat array."""
     self._check_sess()
-    return np.concatenate([v.eval(session=self.sess).flatten() for _, v in self.variables.items()])
+    return np.concatenate([v.eval(session=self.sess).flatten() for v in self.variables.values()])
   
   def set_flat(self, new_weights):
     """Sets the weights to new_weights, converting from a flat array."""
     self._check_sess()
-    shapes = [v.get_shape().as_list() for v in self.variables]
+    shapes = [v.get_shape().as_list() for v in self.variables.values()]
     arrays = unflatten(new_weights, shapes)
     placeholders = [self.assignment_placeholders[k] for k, v in self.variables.items()]
     self.sess.run(self.assignment_nodes, feed_dict=dict(zip(placeholders,arrays)))

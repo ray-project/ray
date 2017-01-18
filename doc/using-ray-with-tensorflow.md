@@ -73,13 +73,13 @@ b.assign(np.zeros(1))  # This adds a node to the graph every time you call it.
 
 Putting this all together, we would first create the graph on each worker using
 environment variables. Within the environment variables, we would use the 
-`get_weights` and `set_weights` methods of the `TensorflowVariables` class. We
+`get_weights` and `set_weights` methods of the `TensorFlowVariables` class. We
 would then use those methods to ship the weights (as a dictionary of variable 
 names mapping to tensorflow tensors) between the processes without shipping the
 actual TensorFlow graphs, which are much more complex Python objects. Note that
 to avoid namespace collision with already created variables on the workers, we 
 use a variable_scope and a prefix in the environment variables and then pass 
-true to the prefix in TensorFlowVariables so it can properly decode the variable
+true to the prefix in `TensorFlowVariables` so it can properly decode the variable
 names.
 
 ```python
@@ -116,8 +116,8 @@ def net_vars_initializer():
     # Define the weight initializer and session.
     init = tf.global_variables_initializer()
     sess = tf.Session()
-    # Additional code for setting and getting the weights, and pass in the
-    # prefix so that the variable names can be converted between workers.
+    # Additional code for setting and getting the weights, and use a prefix
+    # so that the variable names can be converted between workers.
     variables = ray.experimental.TensorFlowVariables(loss, sess, prefix=True)
     # Return all of the data needed to use the network.
   return variables, sess, train, loss, x_data, y_data, init
@@ -143,7 +143,7 @@ def step(weights, x, y):
 variables, sess, _, loss, x_data, y_data, init = ray.env.net_vars
 # Initialize the network weights.
 sess.run(init)
-# Get the weights as a list of numpy arrays.
+# Get the weights as a dictionary of numpy arrays.
 weights = variables.get_weights()
 
 # Define a remote function for generating fake data.

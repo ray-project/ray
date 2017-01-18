@@ -3,9 +3,38 @@ from __future__ import division
 from __future__ import print_function
 
 import unittest
+import uuid
 import tensorflow as tf
 import ray
 from numpy.testing import assert_almost_equal
+
+def net_vars_initializer():
+  # Random prefix so variable names do not clash if we use nets with
+  # the same name.
+  prefix = str(uuid.uuid1().hex)
+  # Use the tensorflow variable_scope to prefix all of the variables
+  with tf.variable_scope(prefix):
+    # Define the inputs.
+    x_data = tf.placeholder(tf.float32, shape=[100])
+    y_data = tf.placeholder(tf.float32, shape=[100])
+    # Define the weights and computation.
+    w = tf.Variable(tf.random_uniform([1], -1.0, 1.0))
+    b = tf.Variable(tf.zeros([1]))
+    y = w * x_data + b
+    # Define the loss.
+    loss = tf.reduce_mean(tf.square(y - y_data))
+    # Define the weight initializer and session.
+    init = tf.global_variables_initializer()
+    sess = tf.Session()
+    # Additional code for setting and getting the weights.
+    variables = ray.experimental.TensorFlowVariables(loss, sess, prefix=True)
+    # Initialize the session.
+    sess.run(init)
+  # Return all of the data needed to use the network.
+  return variables
+
+def net_vars_reinitializer(net_vars):
+  return net_vars
 
 class TensorFlowTest(unittest.TestCase):
 
@@ -57,6 +86,16 @@ class TensorFlowTest(unittest.TestCase):
     sess = tf.Session()
     variables3.set_session(sess)
     self.assertEqual(variables3.sess, sess)
+
+    ray.worker.cleanup()
+
+  def testTensorFlowVariableCollision(self):
+    ray.init(num_workers=2)
+
+    ray.env.net_vars1 = ray.EnvironmentVariable(net_vars_initializer, net_vars_reinitializer)
+    ray.env.net_vars2 = ray.EnvironmentVariable(net_vars_initializer, net_vars_reinitializer)
+
+    ray.env.net_vars1.set_weights(ray.env.net_vars2.get_weights())
 
     ray.worker.cleanup()
 
