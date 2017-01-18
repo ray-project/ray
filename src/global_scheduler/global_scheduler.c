@@ -237,7 +237,7 @@ void local_scheduler_table_handler(db_client_id client_id,
   UNUSED(id_string);
   LOG_DEBUG(
       "total workers = %d, task queue length = %d, available workers = %d",
-      info.num_total_workers, info.task_queue_length, info.available_workers);
+      info.total_num_workers, info.task_queue_length, info.available_workers);
   /* Update the local scheduler info struct. */
   local_scheduler *local_scheduler_ptr = get_local_scheduler(state, client_id);
   if (local_scheduler_ptr != NULL) {
