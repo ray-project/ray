@@ -12,17 +12,31 @@ import string
 import subprocess
 import sys
 import time
-from collections import namedtuple
+from collections import namedtuple, OrderedDict
 
 # Ray modules
 import photon
 import plasma
 import global_scheduler
 
-# all_processes is a list of the scheduler, object store, and worker processes
-# that have been started by this services module if Ray is being used in local
-# mode.
-all_processes = []
+PROCESS_TYPE_WORKER = "worker"
+PROCESS_TYPE_LOCAL_SCHEDULER = "local_scheduler"
+PROCESS_TYPE_PLASMA_MANAGER = "plasma_manager"
+PROCESS_TYPE_PLASMA_STORE = "plasma_store"
+PROCESS_TYPE_GLOBAL_SCHEDULER = "global_scheduler"
+PROCESS_TYPE_REDIS_SERVER = "redis_server"
+
+# This is a dictionary tracking all of the processes of different types that
+# have been started by this services module. Note that the order of the keys is
+# important because it determines the order in which these processes will be
+# terminated when Ray exits, and certain orders will cause errors to be logged
+# to the screen.
+all_processes = OrderedDict([(PROCESS_TYPE_WORKER, []),
+                             (PROCESS_TYPE_LOCAL_SCHEDULER, []),
+                             (PROCESS_TYPE_PLASMA_MANAGER, []),
+                             (PROCESS_TYPE_PLASMA_STORE, []),
+                             (PROCESS_TYPE_GLOBAL_SCHEDULER, []),
+                             (PROCESS_TYPE_REDIS_SERVER, [])])
 
 # True if processes are run in the valgrind profiler.
 RUN_PHOTON_PROFILER = False
@@ -54,6 +68,35 @@ def new_port():
 def random_name():
   return str(random.randint(0, 99999999))
 
+def kill_process(p):
+  """Kill a process.
+
+  Args:
+    p: The process to kill.
+
+  Returns:
+    True if the process was killed successfully and false otherwise.
+  """
+  if p.poll() is not None: # process has already terminated
+    return True
+  if RUN_PHOTON_PROFILER or RUN_PLASMA_MANAGER_PROFILER or RUN_PLASMA_STORE_PROFILER:
+    os.kill(p.pid, signal.SIGINT) # Give process signal to write profiler data.
+    time.sleep(0.1) # Wait for profiling data to be written.
+  p.kill()
+  # Sleeping for 0 should yield the core and allow the killed process to process
+  # its pending signals.
+  time.sleep(0)
+  if p.poll() is not None:
+    return True
+  p.terminate()
+  # Sleeping for 0 should yield the core and allow the killed process to process
+  # its pending signals.
+  time.sleep(0)
+  if p.poll is not None:
+    return True
+  # The process was not killed for some reason.
+  return False
+
 def cleanup():
   """When running in local mode, shutdown the Ray processes.
 
@@ -62,33 +105,33 @@ def cleanup():
   processes that were started by this services module. Driver processes are
   started and disconnected by worker.py.
   """
-  global all_processes
   successfully_shut_down = True
   # Terminate the processes in reverse order.
-  for p in all_processes[::-1]:
-    if p.poll() is not None: # process has already terminated
-      continue
-    if RUN_PHOTON_PROFILER or RUN_PLASMA_MANAGER_PROFILER or RUN_PLASMA_STORE_PROFILER:
-      os.kill(p.pid, signal.SIGINT) # Give process signal to write profiler data.
-      time.sleep(0.1) # Wait for profiling data to be written.
-    p.kill()
-    time.sleep(0.05) # is this necessary?
-    if p.poll() is not None:
-      continue
-    p.terminate()
-    time.sleep(0.05) # is this necessary?
-    if p.poll is not None:
-      continue
-    successfully_shut_down = False
+  for process_type in all_processes.keys():
+    # Kill all of the processes of a certain type.
+    for p in all_processes[process_type]:
+      success = kill_process(p)
+      successfully_shut_down = successfully_shut_down and success
+    # Reset the list of processes of this type.
+    all_processes[process_type] = []
   if successfully_shut_down:
     if len(all_processes) > 0:
       print("Successfully shut down Ray.")
   else:
     print("Ray did not shut down properly.")
-  all_processes = []
 
-def all_processes_alive():
-  return all([p.poll() is None for p in all_processes])
+def all_processes_alive(exclude=[]):
+  """Check if all of the processes are still alive.
+
+  Args:
+    exclude: Don't check the processes whose types are in this list.
+  """
+  for process_type, processes in all_processes.items():
+    # Note that p.poll() returns the exit code that the process exited with, so
+    # an exit code of None indicates that the process is still alive.
+    if not all([p.poll() is None for p in processes]) and process_type not in exclude:
+      return False
+  return True
 
 def get_node_ip_address(address="8.8.8.8:53"):
   """Determine the IP address of the local node.
@@ -172,7 +215,7 @@ def start_redis(node_ip_address, num_retries=20, cleanup=True, redirect_output=F
     # not exit within 0.1 seconds).
     if p.poll() is None:
       if cleanup:
-        all_processes.append(p)
+        all_processes[PROCESS_TYPE_REDIS_SERVER].append(p)
       break
     counter += 1
   if counter == num_retries:
@@ -204,7 +247,7 @@ def start_global_scheduler(redis_address, cleanup=True, redirect_output=False):
   """
   p = global_scheduler.start_global_scheduler(redis_address, redirect_output=redirect_output)
   if cleanup:
-    all_processes.append(p)
+    all_processes[PROCESS_TYPE_GLOBAL_SCHEDULER].append(p)
 
 def start_local_scheduler(redis_address, node_ip_address, plasma_store_name, plasma_manager_name, plasma_address=None, cleanup=True, redirect_output=False):
   """Start a local scheduler process.
@@ -227,7 +270,7 @@ def start_local_scheduler(redis_address, node_ip_address, plasma_store_name, pla
   """
   local_scheduler_name, p = photon.start_local_scheduler(plasma_store_name, plasma_manager_name, node_ip_address=node_ip_address, redis_address=redis_address, plasma_address=plasma_address, use_profiler=RUN_PHOTON_PROFILER, redirect_output=redirect_output)
   if cleanup:
-    all_processes.append(p)
+    all_processes[PROCESS_TYPE_LOCAL_SCHEDULER].append(p)
   return local_scheduler_name
 
 def start_objstore(node_ip_address, redis_address, cleanup=True, redirect_output=False, objstore_memory=None):
@@ -273,8 +316,8 @@ def start_objstore(node_ip_address, redis_address, cleanup=True, redirect_output
   # Start the plasma manager.
   plasma_manager_name, p2, plasma_manager_port = plasma.start_plasma_manager(plasma_store_name, redis_address, node_ip_address=node_ip_address, run_profiler=RUN_PLASMA_MANAGER_PROFILER, redirect_output=redirect_output)
   if cleanup:
-    all_processes.append(p1)
-    all_processes.append(p2)
+    all_processes[PROCESS_TYPE_PLASMA_STORE].append(p1)
+    all_processes[PROCESS_TYPE_PLASMA_MANAGER].append(p2)
 
   return ObjectStoreAddress(plasma_store_name, plasma_manager_name,
                             plasma_manager_port)
@@ -309,28 +352,7 @@ def start_worker(node_ip_address, object_store_name, object_store_manager_name, 
     stderr = FNULL if redirect_output else None
     p = subprocess.Popen(command, stdout=stdout, stderr=stderr)
   if cleanup:
-    all_processes.append(p)
-
-def start_webui(redis_port, cleanup=True, redirect_output=False):
-  """This method starts the web interface.
-
-  Args:
-    redis_port (int): The redis server's port
-    cleanup (bool): True if using Ray in local mode. If cleanup is true, then
-      this process will be killed by services.cleanup() when the Python process
-      that imported services exits. This is True by default.
-    redirect_output (bool): True if stdout and stderr should be redirected to
-      /dev/null.
-  """
-  executable = "nodejs" if sys.platform == "linux" or sys.platform == "linux2" else "node"
-  command = [executable, os.path.join(os.path.abspath(os.path.dirname(__file__)), "../webui/index.js"), str(redis_port)]
-  with open("/tmp/webui_out.txt", "wb") as out:
-    with open(os.devnull, "w") as FNULL:
-      stdout = FNULL if redirect_output else out
-      stderr = FNULL if redirect_output else None
-      p = subprocess.Popen(command, stdout=stdout, stderr=stderr)
-  if cleanup:
-    all_processes.append(p)
+    all_processes[PROCESS_TYPE_WORKER].append(p)
 
 def start_ray_processes(address_info=None,
                         node_ip_address="127.0.0.1",

@@ -353,9 +353,34 @@ void seal_object(client *client_context,
     /* Send notifications to the clients that were waiting for this object. */
     for (int i = 0; i < utarray_len(notify_entry->waiting_clients); ++i) {
       client **c = (client **) utarray_eltptr(notify_entry->waiting_clients, i);
-      CHECK(plasma_send_GetReply((*c)->sock, plasma_state->builder, &object_id,
-                                 &object, 1) >= 0);
-      CHECK(send_fd((*c)->sock, object.handle.store_fd) >= 0);
+      int status;
+      /* Send the get reply to the client. Handle errors on the write. If the
+       * client has hung up, that's ok. */
+      if (plasma_send_GetReply((*c)->sock, plasma_state->builder, &object_id,
+                               &object, 1) < 0) {
+        if (errno == EPIPE || errno == EBADF) {
+          LOG_WARN(
+              "Failed to send a message to client on fd %d. The client may "
+              "have hung up.",
+              (*c)->sock);
+          continue;
+        } else {
+          LOG_FATAL("Failed to send a message to client on fd %d.", (*c)->sock);
+        }
+      }
+      /* Send the object's file descriptor to the client. Handle errors on the
+       * write. If the client has hung up, that's ok. */
+      if (send_fd((*c)->sock, object.handle.store_fd) < 0) {
+        if (errno == EPIPE || errno == EBADF) {
+          LOG_WARN(
+              "Failed to send a message to client on fd %d. The client may "
+              "have hung up.",
+              (*c)->sock);
+          continue;
+        } else {
+          LOG_FATAL("Failed to send a message to client on fd %d.", (*c)->sock);
+        }
+      }
       /* Record that the client is using this object. */
       add_client_to_object_clients(entry, *c);
     }
@@ -458,7 +483,7 @@ void send_notifications(event_loop *loop,
                           send_notifications, plasma_state);
       break;
     } else {
-      CHECKM(0, "This code should be unreachable.");
+      LOG_WARN("Failed to send notification to client on fd %d", client_sock);
     }
     num_processed += 1;
   }
@@ -474,8 +499,14 @@ void send_notifications(event_loop *loop,
 void subscribe_to_updates(client *client_context, int conn) {
   LOG_DEBUG("subscribing to updates");
   plasma_store_state *plasma_state = client_context->plasma_state;
+  /* TODO(rkn): The store could block here if the client doesn't send a file
+   * descriptor. */
   int fd = recv_fd(conn);
-  CHECK(fd >= 0);
+  if (fd < 0) {
+    /* This may mean that the client died before sending the file descriptor. */
+    LOG_WARN("Failed to receive file descriptor from client on fd %d.", conn);
+    return;
+  }
   CHECKM(HASH_CNT(handle, plasma_state->plasma_store_info->objects) == 0,
          "plasma_subscribe should be called before any objects are created.");
   /* Create a new array to buffer notifications that can't be sent to the
@@ -515,19 +546,24 @@ void process_message(event_loop *loop,
                               &metadata_size);
     int error_code = create_object(client_context, object_ids[0], data_size,
                                    metadata_size, &objects[0]);
-    CHECK(plasma_send_CreateReply(client_sock, state->builder, object_ids[0],
-                                  &objects[0], error_code) >= 0);
+    warn_if_sigpipe(
+        plasma_send_CreateReply(client_sock, state->builder, object_ids[0],
+                                &objects[0], error_code),
+        client_sock, errno);
     if (error_code == PlasmaError_OK) {
-      CHECK(send_fd(client_sock, objects[0].handle.store_fd) >= 0);
+      warn_if_sigpipe(send_fd(client_sock, objects[0].handle.store_fd),
+                      client_sock, errno);
     }
   } break;
   case MessageType_PlasmaGetRequest: {
     plasma_read_GetRequest(input, object_ids, 1);
     if (get_object(client_context, client_sock, object_ids[0], &objects[0]) ==
         OBJECT_FOUND) {
-      CHECK(plasma_send_GetReply(client_sock, state->builder, object_ids,
-                                 objects, 1) >= 0);
-      CHECK(send_fd(client_sock, objects[0].handle.store_fd) >= 0);
+      warn_if_sigpipe(plasma_send_GetReply(client_sock, state->builder,
+                                           object_ids, objects, 1),
+                      client_sock, errno);
+      warn_if_sigpipe(send_fd(client_sock, objects[0].handle.store_fd),
+                      client_sock, errno);
     }
   } break;
   case MessageType_PlasmaGetLocalRequest: {
@@ -535,13 +571,19 @@ void process_message(event_loop *loop,
     if (get_object_local(client_context, client_sock, object_ids[0],
                          &objects[0]) == OBJECT_FOUND) {
       int has_object = 1;
-      CHECK(plasma_send_GetLocalReply(client_sock, state->builder, object_ids,
-                                      objects, &has_object, 1) >= 0);
-      CHECK(send_fd(client_sock, objects[0].handle.store_fd) >= 0);
+      warn_if_sigpipe(
+          plasma_send_GetLocalReply(client_sock, state->builder, object_ids,
+                                    objects, &has_object, 1),
+          client_sock, errno);
+      warn_if_sigpipe(send_fd(client_sock, objects[0].handle.store_fd),
+                      client_sock, errno);
     } else {
       int has_object = 0;
-      CHECK(plasma_send_GetLocalReply(client_sock, state->builder, object_ids,
-                                      objects, &has_object, 1) >= 0);
+
+      warn_if_sigpipe(
+          plasma_send_GetLocalReply(client_sock, state->builder, object_ids,
+                                    objects, &has_object, 1),
+          client_sock, errno);
     }
   } break;
   case MessageType_PlasmaReleaseRequest:
@@ -551,11 +593,13 @@ void process_message(event_loop *loop,
   case MessageType_PlasmaContainsRequest:
     plasma_read_ContainsRequest(input, &object_ids[0]);
     if (contains_object(client_context, object_ids[0]) == OBJECT_FOUND) {
-      CHECK(plasma_send_ContainsReply(client_sock, state->builder,
-                                      object_ids[0], 1) >= 0);
+      warn_if_sigpipe(plasma_send_ContainsReply(client_sock, state->builder,
+                                                object_ids[0], 1),
+                      client_sock, errno);
     } else {
-      CHECK(plasma_send_ContainsReply(client_sock, state->builder,
-                                      object_ids[0], 0) >= 0);
+      warn_if_sigpipe(plasma_send_ContainsReply(client_sock, state->builder,
+                                                object_ids[0], 0),
+                      client_sock, errno);
     }
     break;
   case MessageType_PlasmaSealRequest: {
@@ -575,19 +619,21 @@ void process_message(event_loop *loop,
         &num_objects_to_evict, &objects_to_evict);
     remove_objects(client_context->plasma_state, num_objects_to_evict,
                    objects_to_evict);
-    CHECK(plasma_send_EvictReply(client_sock, state->builder,
-                                 num_bytes_evicted) >= 0);
+    warn_if_sigpipe(
+        plasma_send_EvictReply(client_sock, state->builder, num_bytes_evicted),
+        client_sock, errno);
   } break;
   case MessageType_PlasmaSubscribeRequest:
     subscribe_to_updates(client_context, client_sock);
     break;
-  case MessageType_PlasmaConnectRequest:
-    CHECK(plasma_send_ConnectReply(client_sock, state->builder,
-                                   state->plasma_store_info->memory_capacity) >=
-          0);
-    break;
+  case MessageType_PlasmaConnectRequest: {
+    warn_if_sigpipe(
+        plasma_send_ConnectReply(client_sock, state->builder,
+                                 state->plasma_store_info->memory_capacity),
+        client_sock, errno);
+  } break;
   case DISCONNECT_CLIENT: {
-    LOG_DEBUG("Disconnecting client on fd %d", client_sock);
+    LOG_INFO("Disconnecting client on fd %d", client_sock);
     event_loop_remove_file(loop, client_sock);
     /* If this client was using any objects, remove it from the appropriate
      * lists. */
@@ -597,6 +643,10 @@ void process_message(event_loop *loop,
               temp_entry) {
       remove_client_from_object_clients(entry, client_context);
     }
+    /* Note, the store may still attempt to send a message to the disconnected
+     * client (for example, when an object ID that the client was waiting for
+     * is ready). In these cases, the attempt to send the message will fail, but
+     * the store should just ignore the failure. */
   } break;
   default:
     /* This code should be unreachable. */
@@ -629,6 +679,10 @@ void signal_handler(int signal) {
 }
 
 void start_server(char *socket_name, int64_t system_memory) {
+  /* Ignore SIGPIPE signals. If we don't do this, then when we attempt to write
+   * to a client that has already died, the store could die. */
+  signal(SIGPIPE, SIG_IGN);
+  /* Create the event loop. */
   event_loop *loop = event_loop_create();
   plasma_store_state *state = init_plasma_store(loop, system_memory);
   int socket = bind_ipc_sock(socket_name, true);
