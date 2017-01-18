@@ -357,9 +357,10 @@ void remove_wait_request(plasma_manager_state *manager_state,
 void return_from_wait(plasma_manager_state *manager_state,
                       wait_request *wait_req) {
   /* Send the reply to the client. */
-  CHECK(plasma_send_WaitReply(wait_req->client_conn->fd, manager_state->builder,
-                              wait_req->object_requests,
-                              wait_req->num_object_requests) >= 0);
+  warn_if_sigpipe(plasma_send_WaitReply(
+                      wait_req->client_conn->fd, manager_state->builder,
+                      wait_req->object_requests, wait_req->num_object_requests),
+                  wait_req->client_conn->fd);
   /* Remove the wait request from each of the relevant object_wait_requests hash
    * tables if it is present there. */
   for (int i = 0; i < wait_req->num_object_requests; ++i) {
@@ -580,16 +581,20 @@ void send_queued_request(event_loop *loop,
   plasma_request_buffer *buf = conn->transfer_queue;
   switch (buf->type) {
   case MessageType_PlasmaDataRequest:
-    CHECK(plasma_send_DataRequest(conn->fd, state->builder, buf->object_id,
-                                  state->addr, state->port) >= 0);
+    warn_if_sigpipe(
+        plasma_send_DataRequest(conn->fd, state->builder, buf->object_id,
+                                state->addr, state->port),
+        conn->fd);
     break;
   case MessageType_PlasmaDataReply:
     LOG_DEBUG("Transferring object to manager");
     if (conn->cursor == 0) {
       /* If the cursor is zero, we haven't sent any requests for this object
        * yet, so send the initial data request. */
-      CHECK(plasma_send_DataReply(conn->fd, state->builder, buf->object_id,
-                                  buf->data_size, buf->metadata_size) >= 0);
+      warn_if_sigpipe(
+          plasma_send_DataReply(conn->fd, state->builder, buf->object_id,
+                                buf->data_size, buf->metadata_size),
+          conn->fd);
     }
     write_object_chunk(conn, buf);
     break;
@@ -1169,9 +1174,10 @@ void request_status_done(object_id object_id,
   client_connection *client_conn = (client_connection *) context;
   int status =
       request_status(object_id, manager_count, manager_vector, context);
-  CHECK(plasma_send_StatusReply(client_conn->fd,
-                                client_conn->manager_state->builder, &object_id,
-                                &status, 1) >= 0);
+  warn_if_sigpipe(plasma_send_StatusReply(client_conn->fd,
+                                          client_conn->manager_state->builder,
+                                          &object_id, &status, 1),
+                  client_conn->fd);
 }
 
 int request_status(object_id object_id,
@@ -1204,17 +1210,19 @@ void process_status_request(client_connection *client_conn,
   /* Return success immediately if we already have this object. */
   if (is_object_local(client_conn->manager_state, object_id)) {
     int status = ObjectStatus_Local;
-    CHECK(plasma_send_StatusReply(client_conn->fd,
-                                  client_conn->manager_state->builder,
-                                  &object_id, &status, 1) >= 0);
+    warn_if_sigpipe(plasma_send_StatusReply(client_conn->fd,
+                                            client_conn->manager_state->builder,
+                                            &object_id, &status, 1),
+                    client_conn->fd);
     return;
   }
 
   if (client_conn->manager_state->db == NULL) {
     int status = ObjectStatus_Nonexistent;
-    CHECK(plasma_send_StatusReply(client_conn->fd,
-                                  client_conn->manager_state->builder,
-                                  &object_id, &status, 1) >= 0);
+    warn_if_sigpipe(plasma_send_StatusReply(client_conn->fd,
+                                            client_conn->manager_state->builder,
+                                            &object_id, &status, 1),
+                    client_conn->fd);
     return;
   }
 
@@ -1427,6 +1435,9 @@ void start_server(const char *store_socket_name,
                   int port,
                   const char *db_addr,
                   int db_port) {
+  /* Ignore SIGPIPE signals. If we don't do this, then when we attempt to write
+   * to a client that has already died, the manager could die. */
+  signal(SIGPIPE, SIG_IGN);
   /* Bind the sockets before we try to connect to the plasma store.
    * In case the bind does not succeed, we want to be able to exit
    * without breaking the pipe to the store. */
