@@ -3,60 +3,7 @@ cmake_minimum_required(VERSION 2.8)
 project(plasma)
 
 # Recursively include common
-include(${CMAKE_CURRENT_SOURCE_DIR}/../common/CMakeLists.txt)
-
-message(STATUS "Trying custom approach for finding Python.")
-# Start off by figuring out which Python executable to use.
-find_program(CUSTOM_PYTHON_EXECUTABLE python)
-message(STATUS "Found Python program: ${CUSTOM_PYTHON_EXECUTABLE}")
-execute_process(COMMAND ${CUSTOM_PYTHON_EXECUTABLE} -c "import sys; print('python' + sys.version[0:3])"
-                OUTPUT_VARIABLE PYTHON_LIBRARY_NAME OUTPUT_STRIP_TRAILING_WHITESPACE)
-message(STATUS "PYTHON_LIBRARY_NAME: " ${PYTHON_LIBRARY_NAME})
-# Now find the Python include directories.
-execute_process(COMMAND ${CUSTOM_PYTHON_EXECUTABLE} -c "from distutils.sysconfig import *; print(get_python_inc())"
-                OUTPUT_VARIABLE PYTHON_INCLUDE_DIRS OUTPUT_STRIP_TRAILING_WHITESPACE)
-message(STATUS "PYTHON_INCLUDE_DIRS: " ${PYTHON_INCLUDE_DIRS})
-# Now find the Python libraries. We'll start by looking near the Python
-# executable. If that fails, then we'll look near the Python include
-# directories.
-execute_process(COMMAND ${CUSTOM_PYTHON_EXECUTABLE} -c "import sys; print(sys.exec_prefix)"
-                OUTPUT_VARIABLE PYTHON_PREFIX OUTPUT_STRIP_TRAILING_WHITESPACE)
-message(STATUS "PYTHON_PREFIX: " ${PYTHON_PREFIX})
-# The name ending in "m" is for miniconda.
-FIND_LIBRARY(PYTHON_LIBRARIES
-             NAMES "${PYTHON_LIBRARY_NAME}" "${PYTHON_LIBRARY_NAME}m"
-             HINTS "${PYTHON_PREFIX}"
-             PATH_SUFFIXES "lib" "libs"
-             NO_DEFAULT_PATH)
-message(STATUS "PYTHON_LIBRARIES: " ${PYTHON_LIBRARIES})
-# If that failed, perhaps because the user is in a virtualenv, search around
-# the Python include directories.
-if(NOT PYTHON_LIBRARIES)
-  message(STATUS "Failed to find PYTHON_LIBRARIES near the Python executable, so now looking near the Python include directories.")
-  # The name ending in "m" is for miniconda.
-  FIND_LIBRARY(PYTHON_LIBRARIES
-               NAMES "${PYTHON_LIBRARY_NAME}" "${PYTHON_LIBRARY_NAME}m"
-               HINTS "${PYTHON_INCLUDE_DIRS}/../.."
-               PATH_SUFFIXES "lib" "libs"
-               NO_DEFAULT_PATH)
-  message(STATUS "PYTHON_LIBRARIES: " ${PYTHON_LIBRARIES})
-endif()
-# If we found the Python libraries and the include directories, then continue
-# on. If not, then try find_package as a last resort, but it probably won't
-# work.
-if(PYTHON_LIBRARIES AND PYTHON_INCLUDE_DIRS)
-  message(STATUS "The custom approach for finding Python succeeded.")
-  SET(PYTHONLIBS_FOUND TRUE)
-else()
-  message(WARNING "The custom approach for finding Python failed. Defaulting to find_package.")
-  find_package(PythonInterp REQUIRED)
-  find_package(PythonLibs ${PYTHON_VERSION_STRING} EXACT REQUIRED)
-  set(CUSTOM_PYTHON_EXECUTABLE ${PYTHON_EXECUTABLE})
-endif()
-
-message(STATUS "Using CUSTOM_PYTHON_EXECUTABLE: " ${CUSTOM_PYTHON_EXECUTABLE})
-message(STATUS "Using PYTHON_LIBRARIES: " ${PYTHON_LIBRARIES})
-message(STATUS "Using PYTHON_INCLUDE_DIRS: " ${PYTHON_INCLUDE_DIRS})
+include(${CMAKE_CURRENT_LIST_DIR}/../common/cmake/Common.cmake)
 
 if(APPLE)
   SET(CMAKE_SHARED_LIBRARY_SUFFIX ".so")
@@ -68,8 +15,8 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --std=c99 -D_XOPEN_SOURCE=500 -D_POSIX_C_SOU
 
 # Compile flatbuffers
 
-set(PLASMA_FBS_SRC "${CMAKE_SOURCE_DIR}/format/plasma.fbs")
-set(OUTPUT_DIR ${CMAKE_SOURCE_DIR}/format/)
+set(PLASMA_FBS_SRC "${CMAKE_CURRENT_LIST_DIR}/format/plasma.fbs")
+set(OUTPUT_DIR ${CMAKE_CURRENT_LIST_DIR}/format/)
 
 add_custom_target(gen_plasma_fbs ALL)
 
@@ -84,16 +31,8 @@ if(UNIX AND NOT APPLE)
   link_libraries(rt)
 endif()
 
-set(COMMON_LIB "${CMAKE_SOURCE_DIR}/../common/build/libcommon.a"
-    CACHE STRING "Path to libcommon.a")
-
-include_directories("${CMAKE_SOURCE_DIR}/")
-include_directories("${CMAKE_SOURCE_DIR}/../")
-include_directories("${CMAKE_SOURCE_DIR}/../common/")
-include_directories("${CMAKE_SOURCE_DIR}/../common/thirdparty/")
-include_directories("${CMAKE_SOURCE_DIR}/../common/lib/python/")
-
-include_directories("${FLATBUFFERS_INCLUDE_DIR}")
+include_directories("${CMAKE_CURRENT_LIST_DIR}/")
+include_directories("${CMAKE_CURRENT_LIST_DIR}/../")
 
 add_library(plasma SHARED
   plasma.c
@@ -113,4 +52,39 @@ endif(APPLE)
 
 target_link_libraries(plasma ${COMMON_LIB} ${PYTHON_LIBRARIES} ${FLATBUFFERS_STATIC_LIB})
 
-install(TARGETS plasma DESTINATION ${CMAKE_SOURCE_DIR}/plasma)
+set_source_files_properties(thirdparty/dlmalloc.c PROPERTIES COMPILE_FLAGS -Wno-all)
+
+add_executable(plasma_store
+  plasma_store.c
+  plasma.c
+  plasma_protocol.c
+  eviction_policy.c
+  fling.c
+  malloc.c)
+
+add_dependencies(plasma_store hiredis gen_plasma_fbs)
+
+target_link_libraries(plasma_store common ${FLATBUFFERS_STATIC_LIB})
+
+add_library(plasma_lib STATIC
+  plasma_client.c
+  plasma.c
+  plasma_protocol.c
+  fling.c
+  thirdparty/xxhash.c)
+
+target_link_libraries(plasma_lib common ${FLATBUFFERS_STATIC_LIB})
+add_dependencies(plasma_lib gen_plasma_fbs)
+
+add_executable(plasma_manager
+  plasma_manager.c)
+
+target_link_libraries(plasma_manager common plasma_lib ${FLATBUFFERS_STATIC_LIB})
+
+add_library(plasma_client SHARED plasma_client.c)
+
+target_link_libraries(plasma_client common plasma_lib ${FLATBUFFERS_STATIC_LIB})
+
+define_test(client_tests plasma_lib)
+define_test(manager_tests plasma_lib plasma_manager.c)
+define_test(serialization_tests plasma_lib)

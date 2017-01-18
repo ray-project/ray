@@ -13,7 +13,6 @@ sudo apt-get update
 sudo apt-get install -y cmake build-essential autoconf curl libtool python-dev python-pip libboost-all-dev unzip  # If you're using Anaconda, then python-dev and python-pip are unnecessary.
 
 pip install numpy cloudpickle funcsigs colorama psutil redis
-pip install --upgrade --verbose "git+git://github.com/ray-project/ray.git#egg=numbuf&subdirectory=numbuf"
 ```
 
 # Install Ray
@@ -24,13 +23,6 @@ Ray can be built from the repository as follows.
 git clone https://github.com/ray-project/ray.git
 cd ray/lib/python
 python setup.py install --user
-```
-
-Alternatively, Ray can be installed with pip as follows. However, this is
-slightly less likely to succeed.
-
-```
-pip install --upgrade --verbose "git+git://github.com/ray-project/ray.git#egg=ray&subdirectory=lib/python"
 ```
 
 ## Test if the installation succeeded

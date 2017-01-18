@@ -14,4 +14,3 @@ RUN echo 'export PATH=/opt/conda/bin:$PATH' > /etc/profile.d/conda.sh \
 ENV PATH "/opt/conda/bin:$PATH"
 RUN conda install libgcc
 RUN pip install --upgrade pip
-RUN pip install --upgrade --verbose "git+git://github.com/ray-project/ray.git#egg=numbuf&subdirectory=numbuf"
