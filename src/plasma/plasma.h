@@ -148,10 +148,8 @@ bool plasma_object_ids_distinct(int num_object_ids, object_id object_ids[]);
  *        print a warning.
  * @param client_sock The client socket. This is just used to print some extra
  *        information.
- * @param error This should be the current value of errno at the time this
- *        method is called.
  * @return Void.
  */
-void warn_if_sigpipe(int status, int client_sock, int error);
+void warn_if_sigpipe(int status, int client_sock);
 
 #endif /* PLASMA_H */

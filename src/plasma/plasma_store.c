@@ -549,10 +549,10 @@ void process_message(event_loop *loop,
     warn_if_sigpipe(
         plasma_send_CreateReply(client_sock, state->builder, object_ids[0],
                                 &objects[0], error_code),
-        client_sock, errno);
+        client_sock);
     if (error_code == PlasmaError_OK) {
       warn_if_sigpipe(send_fd(client_sock, objects[0].handle.store_fd),
-                      client_sock, errno);
+                      client_sock);
     }
   } break;
   case MessageType_PlasmaGetRequest: {
@@ -561,9 +561,9 @@ void process_message(event_loop *loop,
         OBJECT_FOUND) {
       warn_if_sigpipe(plasma_send_GetReply(client_sock, state->builder,
                                            object_ids, objects, 1),
-                      client_sock, errno);
+                      client_sock);
       warn_if_sigpipe(send_fd(client_sock, objects[0].handle.store_fd),
-                      client_sock, errno);
+                      client_sock);
     }
   } break;
   case MessageType_PlasmaGetLocalRequest: {
@@ -574,16 +574,16 @@ void process_message(event_loop *loop,
       warn_if_sigpipe(
           plasma_send_GetLocalReply(client_sock, state->builder, object_ids,
                                     objects, &has_object, 1),
-          client_sock, errno);
+          client_sock);
       warn_if_sigpipe(send_fd(client_sock, objects[0].handle.store_fd),
-                      client_sock, errno);
+                      client_sock);
     } else {
       int has_object = 0;
 
       warn_if_sigpipe(
           plasma_send_GetLocalReply(client_sock, state->builder, object_ids,
                                     objects, &has_object, 1),
-          client_sock, errno);
+          client_sock);
     }
   } break;
   case MessageType_PlasmaReleaseRequest:
@@ -595,11 +595,11 @@ void process_message(event_loop *loop,
     if (contains_object(client_context, object_ids[0]) == OBJECT_FOUND) {
       warn_if_sigpipe(plasma_send_ContainsReply(client_sock, state->builder,
                                                 object_ids[0], 1),
-                      client_sock, errno);
+                      client_sock);
     } else {
       warn_if_sigpipe(plasma_send_ContainsReply(client_sock, state->builder,
                                                 object_ids[0], 0),
-                      client_sock, errno);
+                      client_sock);
     }
     break;
   case MessageType_PlasmaSealRequest: {
@@ -621,7 +621,7 @@ void process_message(event_loop *loop,
                    objects_to_evict);
     warn_if_sigpipe(
         plasma_send_EvictReply(client_sock, state->builder, num_bytes_evicted),
-        client_sock, errno);
+        client_sock);
   } break;
   case MessageType_PlasmaSubscribeRequest:
     subscribe_to_updates(client_context, client_sock);
@@ -630,7 +630,7 @@ void process_message(event_loop *loop,
     warn_if_sigpipe(
         plasma_send_ConnectReply(client_sock, state->builder,
                                  state->plasma_store_info->memory_capacity),
-        client_sock, errno);
+        client_sock);
   } break;
   case DISCONNECT_CLIENT: {
     LOG_INFO("Disconnecting client on fd %d", client_sock);

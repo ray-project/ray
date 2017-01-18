@@ -360,7 +360,7 @@ void return_from_wait(plasma_manager_state *manager_state,
   warn_if_sigpipe(plasma_send_WaitReply(
                       wait_req->client_conn->fd, manager_state->builder,
                       wait_req->object_requests, wait_req->num_object_requests),
-                  wait_req->client_conn->fd, errno);
+                  wait_req->client_conn->fd);
   /* Remove the wait request from each of the relevant object_wait_requests hash
    * tables if it is present there. */
   for (int i = 0; i < wait_req->num_object_requests; ++i) {
@@ -584,7 +584,7 @@ void send_queued_request(event_loop *loop,
     warn_if_sigpipe(
         plasma_send_DataRequest(conn->fd, state->builder, buf->object_id,
                                 state->addr, state->port),
-        conn->fd, errno);
+        conn->fd);
     break;
   case MessageType_PlasmaDataReply:
     LOG_DEBUG("Transferring object to manager");
@@ -594,7 +594,7 @@ void send_queued_request(event_loop *loop,
       warn_if_sigpipe(
           plasma_send_DataReply(conn->fd, state->builder, buf->object_id,
                                 buf->data_size, buf->metadata_size),
-          conn->fd, errno);
+          conn->fd);
     }
     write_object_chunk(conn, buf);
     break;
@@ -1177,7 +1177,7 @@ void request_status_done(object_id object_id,
   warn_if_sigpipe(plasma_send_StatusReply(client_conn->fd,
                                           client_conn->manager_state->builder,
                                           &object_id, &status, 1),
-                  client_conn->fd, errno);
+                  client_conn->fd);
 }
 
 int request_status(object_id object_id,
@@ -1213,7 +1213,7 @@ void process_status_request(client_connection *client_conn,
     warn_if_sigpipe(plasma_send_StatusReply(client_conn->fd,
                                             client_conn->manager_state->builder,
                                             &object_id, &status, 1),
-                    client_conn->fd, errno);
+                    client_conn->fd);
     return;
   }
 
@@ -1222,7 +1222,7 @@ void process_status_request(client_connection *client_conn,
     warn_if_sigpipe(plasma_send_StatusReply(client_conn->fd,
                                             client_conn->manager_state->builder,
                                             &object_id, &status, 1),
-                    client_conn->fd, errno);
+                    client_conn->fd);
     return;
   }
 
