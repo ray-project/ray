@@ -24,8 +24,8 @@ void warn_if_sigpipe(int status, int client_sock, int error) {
   }
   if (error == EPIPE || error == EBADF) {
     LOG_WARN(
-        "Received SIGPIPE when sending a message to client on fd %d. The "
-        "client on the other end may have hung up.",
+        "Received SIGPIPE or BAD FILE DESCRIPTOR when sending a message to "
+        "client on fd %d. The client on the other end may have hung up.",
         client_sock);
     return;
   }
