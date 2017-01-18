@@ -205,6 +205,8 @@ void dispatch_tasks(local_scheduler_state *state,
     assign_task_to_worker(state, dispatched_task->spec, *worker_index);
     /* Remove the available worker from the queue and free the struct. */
     utarray_pop_back(algorithm_state->available_workers);
+    free_task_spec(dispatched_task->spec);
+    free(dispatched_task);
   }
 }
 
