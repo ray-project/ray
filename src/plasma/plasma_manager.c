@@ -383,9 +383,17 @@ void update_object_wait_requests(plasma_manager_state *manager_state,
   HASH_FIND(hh, *object_wait_requests_table_ptr, &obj_id, sizeof(obj_id),
             object_wait_reqs);
   if (object_wait_reqs != NULL) {
-    for (int i = 0; i < utarray_len(object_wait_reqs->wait_requests); ++i) {
-      wait_request **wait_req_ptr =
-          (wait_request **) utarray_eltptr(object_wait_reqs->wait_requests, i);
+    /* We compute the number of requests first because the length of the utarray
+     * will change as we iterate over it (because each call to return_from_wait
+     * will remove one element). */
+    int num_requests = utarray_len(object_wait_reqs->wait_requests);
+    /* The argument index is the index of the current element of the utarray
+     * that we are processing. It may differ from the counter i when elements
+     * are removed from the array. */
+    int index = 0;
+    for (int i = 0; i < num_requests; ++i) {
+      wait_request **wait_req_ptr = (wait_request **) utarray_eltptr(
+          object_wait_reqs->wait_requests, index);
       wait_request *wait_req = *wait_req_ptr;
       wait_req->num_satisfied += 1;
       /* Mark the object as present in the wait request. */
@@ -404,8 +412,14 @@ void update_object_wait_requests(plasma_manager_state *manager_state,
       /* If this wait request is done, reply to the client. */
       if (wait_req->num_satisfied == wait_req->num_objects_to_wait_for) {
         return_from_wait(manager_state, wait_req);
+        /* The call to return_from_wait will remove the current element in the
+         * array, so we need to decrement the counter by one. TODO(rkn): This is
+         * very ugly. */
+        index -= 1;
       }
+      index += 1;
     }
+    DCHECK(index == utarray_len(object_wait_reqs->wait_requests));
     /* Remove the array of wait requests for this object, since no one should be
      * waiting for this object anymore. */
     HASH_DELETE(hh, *object_wait_requests_table_ptr, object_wait_reqs);
@@ -721,7 +735,7 @@ client_connection *get_manager_connection(plasma_manager_state *state,
 }
 
 void process_transfer_request(event_loop *loop,
-                              object_id object_id,
+                              object_id obj_id,
                               const char *addr,
                               int port,
                               client_connection *conn) {
@@ -738,25 +752,26 @@ void process_transfer_request(event_loop *loop,
    * do a non-blocking get call on the store, and if the object isn't there then
    * perhaps the manager should initiate the transfer when it receives a
    * notification from the store that the object is present. */
-  int has_obj;
+  object_buffer obj_buffer;
   int counter = 0;
   do {
-    plasma_contains(conn->manager_state->plasma_conn, object_id, &has_obj);
+    /* We pass in 0 to indicate that the command should return immediately. */
+    object_id obj_id_array[1] = {obj_id};
+    plasma_get(conn->manager_state->plasma_conn, obj_id_array, 1, 0,
+               &obj_buffer);
     if (counter > 0) {
       LOG_WARN("Blocking in the plasma manager.");
     }
     counter += 1;
-  } while (!has_obj);
-  plasma_get(conn->manager_state->plasma_conn, object_id, &data_size, &data,
-             &metadata_size, &metadata);
-  assert(metadata == data + data_size);
+  } while (obj_buffer.data_size == -1);
+  DCHECK(obj_buffer.metadata == obj_buffer.data + obj_buffer.data_size);
   plasma_request_buffer *buf = malloc(sizeof(plasma_request_buffer));
   buf->type = MessageType_PlasmaDataReply;
-  buf->object_id = object_id;
-  buf->data = data; /* We treat this as a pointer to the
+  buf->object_id = obj_id;
+  buf->data = obj_buffer.data; /* We treat this as a pointer to the
                        concatenated data and metadata. */
-  buf->data_size = data_size;
-  buf->metadata_size = metadata_size;
+  buf->data_size = obj_buffer.data_size;
+  buf->metadata_size = obj_buffer.metadata_size;
 
   client_connection *manager_conn =
       get_manager_connection(conn->manager_state, addr, port);

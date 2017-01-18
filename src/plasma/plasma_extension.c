@@ -126,36 +126,57 @@ PyObject *PyPlasma_release(PyObject *self, PyObject *args) {
 
 PyObject *PyPlasma_get(PyObject *self, PyObject *args) {
   plasma_connection *conn;
-  object_id object_id;
-  if (!PyArg_ParseTuple(args, "O&O&", PyObjectToPlasmaConnection, &conn,
-                        PyStringToUniqueID, &object_id)) {
+  PyObject *object_id_list;
+  long long timeout_ms;
+  if (!PyArg_ParseTuple(args, "O&OL", PyObjectToPlasmaConnection, &conn,
+                        &object_id_list, &timeout_ms)) {
     return NULL;
   }
-  int64_t size;
-  uint8_t *data;
-  int64_t metadata_size;
-  uint8_t *metadata;
+
+  Py_ssize_t num_object_ids = PyList_Size(object_id_list);
+  object_id object_ids[num_object_ids];
+  object_buffer object_buffers[num_object_ids];
+
+  for (int i = 0; i < num_object_ids; ++i) {
+    PyStringToUniqueID(PyList_GetItem(object_id_list, i), &object_ids[i]);
+  }
+
   Py_BEGIN_ALLOW_THREADS;
-  plasma_get(conn, object_id, &size, &data, &metadata_size, &metadata);
+  plasma_get(conn, object_ids, num_object_ids, timeout_ms, object_buffers);
   Py_END_ALLOW_THREADS;
-  PyObject *t = PyTuple_New(2);
-#if PY_MAJOR_VERSION >= 3
-  PyTuple_SetItem(t, 0, PyMemoryView_FromMemory((void *) data,
-                                                (Py_ssize_t) size, PyBUF_READ));
-#else
-  PyTuple_SetItem(t, 0, PyBuffer_FromMemory((void *) data, (Py_ssize_t) size));
-#endif
 
+  PyObject *returns = PyList_New(num_object_ids);
+  for (int i = 0; i < num_object_ids; ++i) {
+    if (object_buffers[i].data_size != -1) {
+      /* The object was retrieved, so return the object. */
+      PyObject *t = PyTuple_New(2);
 #if PY_MAJOR_VERSION >= 3
-  PyTuple_SetItem(
-      t, 1, PyMemoryView_FromMemory((void *) metadata,
-                                    (Py_ssize_t) metadata_size, PyBUF_READ));
+      PyTuple_SetItem(
+          t, 0, PyMemoryView_FromMemory((void *) object_buffers[i].data,
+                                        (Py_ssize_t) object_buffers[i].data_size,
+                                        PyBUF_READ));
+      PyTuple_SetItem(
+          t, 1, PyMemoryView_FromMemory(
+                    (void *) object_buffers[i].metadata,
+                    (Py_ssize_t) object_buffers[i].metadata_size, PyBUF_READ));
 #else
-  PyTuple_SetItem(
-      t, 1, PyBuffer_FromMemory((void *) metadata, (Py_ssize_t) metadata_size));
+      PyTuple_SetItem(
+          t, 0, PyBuffer_FromMemory((void *) object_buffers[i].data,
+                                    (Py_ssize_t) object_buffers[i].data_size));
+      PyTuple_SetItem(
+          t, 1, PyBuffer_FromMemory(
+                    (void *) object_buffers[i].metadata,
+                    (Py_ssize_t) object_buffers[i].metadata_size));
 #endif
-
-  return t;
+      PyList_SetItem(returns, i, t);
+    } else {
+      /* The object was not retrieved, so just add None to the list of return
+       * values. */
+      Py_XINCREF(Py_None);
+      PyList_SetItem(returns, i, Py_None);
+    }
+  }
+  return returns;
 }
 
 PyObject *PyPlasma_contains(PyObject *self, PyObject *args) {

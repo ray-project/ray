@@ -40,15 +40,6 @@
 void *dlmalloc(size_t);
 void dlfree(void *);
 
-typedef struct {
-  /* Object id of this object. */
-  object_id object_id;
-  /* An array of the clients that are waiting to get this object. */
-  UT_array *waiting_clients;
-  /* Handle for the uthash table. */
-  UT_hash_handle handle;
-} object_notify_entry;
-
 /** Contains all information that is associated with a Plasma store client. */
 struct client {
   /** The socket used to communicate with the client. */
@@ -71,11 +62,46 @@ typedef struct {
   UT_hash_handle hh;
 } notification_queue;
 
+typedef struct {
+  /** The client connection that called get. */
+  client *client;
+  /** The ID of the timer that will time out and cause this wait to return to
+   *  the client if it hasn't already returned. */
+  int64_t timer;
+  /** The number of objects in this get request. */
+  int64_t num_object_ids;
+  /** The object IDs involved in this request. This is used in the reply. */
+  object_id *object_ids;
+  /** The object information for the objects in this request. This is used in
+   *  the reply. */
+  plasma_object *objects;
+  /** The minimum number of objects to wait for in this request. */
+  int64_t num_objects_to_wait_for;
+  /** The number of object requests in this wait request that are already
+   *  satisfied. */
+  int64_t num_satisfied;
+} get_request;
+
+typedef struct {
+  /** The ID of the object. This is used as a key in a hash table. */
+  object_id object_id;
+  /** An array of the get requests involving this object ID. */
+  UT_array *get_requests;
+  /** Handle for the uthash table in the store state that keeps track of the get
+   *  requests involving this object ID. */
+  UT_hash_handle hh;
+} object_get_requests;
+
+/** This is used to define the utarray of get requests in the
+ *  object_get_requests struct. */
+UT_icd get_request_icd = {sizeof(get_request *), NULL, NULL, NULL};
+
 struct plasma_store_state {
   /* Event loop of the plasma store. */
   event_loop *loop;
-  /* Objects that processes are waiting for. */
-  object_notify_entry *objects_notify;
+  /** A hash table mapping object IDs to a vector of the get requests that are
+   *  waiting for the object to arrive. */
+  object_get_requests *object_get_requests;
   /** The pending notifications that have not been sent to subscribers because
    *  the socket send buffers were full. This is a hash table from client file
    *  descriptor to an array of object_ids to send to that client. */
@@ -97,7 +123,7 @@ UT_icd byte_icd = {sizeof(uint8_t), NULL, NULL, NULL};
 plasma_store_state *init_plasma_store(event_loop *loop, int64_t system_memory) {
   plasma_store_state *state = malloc(sizeof(plasma_store_state));
   state->loop = loop;
-  state->objects_notify = NULL;
+  state->object_get_requests = NULL;
   state->pending_notifications = NULL;
   /* Initialize the plasma store info. */
   state->plasma_store_info = malloc(sizeof(plasma_store_info));
@@ -208,42 +234,238 @@ int create_object(client *client_context,
   return PlasmaError_OK;
 }
 
-/* Get an object from the hash table. */
-int get_object(client *client_context,
-               int conn,
-               object_id object_id,
-               plasma_object *result) {
-  plasma_store_state *plasma_state = client_context->plasma_state;
-  object_table_entry *entry;
-  HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
-            sizeof(object_id), entry);
-  if (entry && entry->state == PLASMA_SEALED) {
-    result->handle.store_fd = entry->fd;
-    result->handle.mmap_size = entry->map_size;
-    result->data_offset = entry->offset;
-    result->metadata_offset = entry->offset + entry->info.data_size;
-    result->data_size = entry->info.data_size;
-    result->metadata_size = entry->info.metadata_size;
-    /* If necessary, record that this client is using this object. In the case
-     * where entry == NULL, this will be called from seal_object. */
-    add_client_to_object_clients(entry, client_context);
-    return OBJECT_FOUND;
-  } else {
-    object_notify_entry *notify_entry;
-    LOG_DEBUG("object not in hash table of sealed objects");
-    HASH_FIND(handle, plasma_state->objects_notify, &object_id,
-              sizeof(object_id), notify_entry);
-    if (!notify_entry) {
-      notify_entry = malloc(sizeof(object_notify_entry));
-      memset(notify_entry, 0, sizeof(object_notify_entry));
-      utarray_new(notify_entry->waiting_clients, &client_icd);
-      notify_entry->object_id = object_id;
-      HASH_ADD(handle, plasma_state->objects_notify, object_id,
-               sizeof(object_id), notify_entry);
-    }
-    utarray_push_back(notify_entry->waiting_clients, &client_context);
+void add_get_request_for_object(plasma_store_state *store_state,
+                                object_id object_id,
+                                get_request *get_req) {
+  object_get_requests *object_get_reqs;
+  HASH_FIND(hh, store_state->object_get_requests, &object_id, sizeof(object_id),
+            object_get_reqs);
+  /* If there are currently no get requests involving this object ID, create a
+   * new object_get_requests struct for this object ID and add it to the hash
+   * table. */
+  if (object_get_reqs == NULL) {
+    object_get_reqs = malloc(sizeof(object_get_requests));
+    object_get_reqs->object_id = object_id;
+    utarray_new(object_get_reqs->get_requests, &get_request_icd);
+    HASH_ADD(hh, store_state->object_get_requests, object_id,
+             sizeof(object_get_reqs->object_id), object_get_reqs);
   }
-  return OBJECT_NOT_FOUND;
+  /* Add this get request to the vector of get requests involving this object
+   * ID. */
+  utarray_push_back(object_get_reqs->get_requests, &get_req);
+}
+
+void remove_get_request_for_object(plasma_store_state *store_state,
+                                   object_id object_id,
+                                   get_request *get_req) {
+  object_get_requests *object_get_reqs;
+  HASH_FIND(hh, store_state->object_get_requests, &object_id, sizeof(object_id),
+            object_get_reqs);
+  /* If there is a vector of get requests for this object ID, and if this vector
+   * contains the get request, then remove the get request from the vector. */
+  if (object_get_reqs != NULL) {
+    for (int i = 0; i < utarray_len(object_get_reqs->get_requests); ++i) {
+      get_request **get_req_ptr =
+          (get_request **) utarray_eltptr(object_get_reqs->get_requests, i);
+      if (*get_req_ptr == get_req) {
+        /* Remove the get request from the array. */
+        utarray_erase(object_get_reqs->get_requests, i, 1);
+        break;
+      }
+    }
+    /* In principle, if there are no more get requests involving this object ID,
+     * then we could remove the object_get_reqs struct. */
+  }
+}
+
+void remove_get_request(plasma_store_state *store_state, get_request *get_req) {
+  if (get_req->timer != -1) {
+    CHECK(event_loop_remove_timer(store_state->loop, get_req->timer) == AE_OK);
+  }
+  free(get_req->object_ids);
+  free(get_req->objects);
+  free(get_req);
+}
+
+void initialize_plasma_object(plasma_object *object,
+                              object_table_entry *entry) {
+  DCHECK(object != NULL);
+  DCHECK(entry != NULL);
+  DCHECK(entry->state == PLASMA_SEALED);
+  object->handle.store_fd = entry->fd;
+  object->handle.mmap_size = entry->map_size;
+  object->data_offset = entry->offset;
+  object->metadata_offset = entry->offset + entry->info.data_size;
+  object->data_size = entry->info.data_size;
+  object->metadata_size = entry->info.metadata_size;
+}
+
+void return_from_get(plasma_store_state *store_state, get_request *get_req) {
+  /* Send the get reply to the client. */
+  int status = plasma_send_GetReply(get_req->client->sock, store_state->builder,
+                                    get_req->object_ids, get_req->objects,
+                                    get_req->num_object_ids);
+  warn_if_sigpipe(status, get_req->client->sock, errno);
+  /* If we successfully sent the get reply message to the client, then also send
+   * the file descriptors. */
+  if (status >= 0) {
+    /* Send all of the file descriptors for the present objects. */
+    for (int i = 0; i < get_req->num_object_ids; ++i) {
+      /* We use the data size to indicate whether the object is present or not.
+       */
+      if (get_req->objects[i].data_size != -1) {
+        int error_code =
+            send_fd(get_req->client->sock, get_req->objects[i].handle.store_fd);
+        /* If we failed to send the file descriptor, loop until we have sent it
+         * successfully. TODO(rkn): This is problematic for two reasons. First
+         * of all, sending the file descriptor should just succeed without any
+         * errors, but sometimes I see a "Message too long" error number.
+         * Second, looping like this allows a client to potentially block the
+         * plasma store event loop which should never happen. */
+        while (error_code < 0) {
+          if (errno == EMSGSIZE) {
+            LOG_WARN("Failed to send file descriptor, retrying.");
+            error_code = send_fd(get_req->client->sock,
+                                 get_req->objects[i].handle.store_fd);
+            continue;
+          }
+          warn_if_sigpipe(error_code, get_req->client->sock, errno);
+          break;
+        }
+      }
+    }
+  }
+
+  /* Remove the get request from each of the relevant object_get_requests hash
+   * tables if it is present there. It should only be present there if the get
+   * request timed out. */
+  for (int i = 0; i < get_req->num_object_ids; ++i) {
+    remove_get_request_for_object(store_state, get_req->object_ids[i], get_req);
+  }
+  /* Remove the get request. */
+  remove_get_request(store_state, get_req);
+}
+
+void update_object_get_requests(plasma_store_state *store_state,
+                                object_id obj_id) {
+  /* Update the in-progress get requests. */
+  object_get_requests *object_get_reqs;
+  HASH_FIND(hh, store_state->object_get_requests, &obj_id, sizeof(obj_id),
+            object_get_reqs);
+  if (object_get_reqs != NULL) {
+    /* We compute the number of requests first because the length of the utarray
+     * will change as we iterate over it (because each call to return_from_get
+     * will remove one element). */
+    int num_requests = utarray_len(object_get_reqs->get_requests);
+    /* The argument index is the index of the current element of the utarray
+     * that we are processing. It may differ from the counter i when elements
+     * are removed from the array. */
+    int index = 0;
+    for (int i = 0; i < num_requests; ++i) {
+      get_request **get_req_ptr =
+          (get_request **) utarray_eltptr(object_get_reqs->get_requests, index);
+      get_request *get_req = *get_req_ptr;
+
+      int num_updated = 0;
+      for (int j = 0; j < get_req->num_objects_to_wait_for; ++j) {
+        object_table_entry *entry;
+        HASH_FIND(handle, store_state->plasma_store_info->objects, &obj_id,
+                  sizeof(obj_id), entry);
+        CHECK(entry != NULL);
+
+        if (object_ids_equal(get_req->object_ids[j], obj_id)) {
+          initialize_plasma_object(&get_req->objects[j], entry);
+          num_updated += 1;
+          get_req->num_satisfied += 1;
+          /* Record the fact that this client will be using this object and will
+           * be responsible for releasing this object. */
+          add_client_to_object_clients(entry, get_req->client);
+        }
+      }
+      /* Check a few things just to be sure there aren't bugs. */
+      DCHECK(num_updated > 0);
+      if (num_updated > 1) {
+        LOG_WARN("A get request contained a duplicated object ID.");
+      }
+
+      /* If this get request is done, reply to the client. */
+      if (get_req->num_satisfied == get_req->num_objects_to_wait_for) {
+        return_from_get(store_state, get_req);
+        /* The call to return_from_get will remove the current element in the
+         * array, so we need to decrement the counter by one. TODO(rkn): This is
+         * very ugly. */
+        index -= 1;
+      }
+      index += 1;
+    }
+    DCHECK(index == utarray_len(object_get_reqs->get_requests));
+    /* Remove the array of get requests for this object, since no one should be
+     * waiting for this object anymore. */
+    HASH_DELETE(hh, store_state->object_get_requests, object_get_reqs);
+    utarray_free(object_get_reqs->get_requests);
+    free(object_get_reqs);
+  }
+}
+
+int get_timeout_handler(event_loop *loop, timer_id id, void *context) {
+  get_request *get_req = context;
+  return_from_get(get_req->client->plasma_state, get_req);
+  return EVENT_LOOP_TIMER_DONE;
+}
+
+void process_get_request(client *client_context,
+                         int num_object_ids,
+                         object_id object_ids[],
+                         uint64_t timeout_ms) {
+  plasma_store_state *plasma_state = client_context->plasma_state;
+
+  /* Create a get request for this object. */
+  get_request *get_req = malloc(sizeof(get_request));
+  memset(get_req, 0, sizeof(get_request));
+  get_req->client = client_context;
+  get_req->timer = -1;
+  get_req->num_object_ids = num_object_ids;
+  get_req->object_ids = malloc(num_object_ids * sizeof(object_id));
+  get_req->objects = malloc(num_object_ids * sizeof(plasma_object));
+  for (int i = 0; i < num_object_ids; ++i) {
+    get_req->object_ids[i] = object_ids[i];
+  }
+  get_req->num_objects_to_wait_for = num_object_ids;
+  get_req->num_satisfied = 0;
+
+  for (int i = 0; i < num_object_ids; ++i) {
+    object_id obj_id = object_ids[i];
+
+    /* Check if this object is already present locally. If so, record that the
+     * object is being used and mark it as accounted for. */
+    object_table_entry *entry;
+    HASH_FIND(handle, plasma_state->plasma_store_info->objects, &obj_id,
+              sizeof(obj_id), entry);
+    if (entry && entry->state == PLASMA_SEALED) {
+      /* Update the get request to take into account the present object. */
+      initialize_plasma_object(&get_req->objects[i], entry);
+      get_req->num_satisfied += 1;
+      /* If necessary, record that this client is using this object. In the case
+       * where entry == NULL, this will be called from seal_object. */
+      add_client_to_object_clients(entry, client_context);
+    } else {
+      /* Add a placeholder plasma object to the get request to indicate that the
+       * object is not present. This will be parsed by the client. */
+      get_req->objects[i].data_size = -1;
+      /* Add the get request to the relevant data structures. */
+      add_get_request_for_object(plasma_state, obj_id, get_req);
+    }
+  }
+
+  /* If all of the objects are present already, return to the client. */
+  if (get_req->num_satisfied == get_req->num_objects_to_wait_for) {
+    return_from_get(plasma_state, get_req);
+  } else if (timeout_ms != -1) {
+    /* Set a timer that will cause the get request to return to the client. Note
+     * that a timeout of -1 is used to indicate that no timer should be set. */
+    get_req->timer = event_loop_add_timer(plasma_state->loop, timeout_ms,
+                                          get_timeout_handler, get_req);
+  }
 }
 
 /* Get an object from the local Plasma Store if exists. */
@@ -337,56 +559,8 @@ void seal_object(client *client_context,
   /* Inform all subscribers that a new object has been sealed. */
   push_notification(plasma_state, object_id);
 
-  /* Inform processes getting this object that the object is ready now. */
-  object_notify_entry *notify_entry;
-  HASH_FIND(handle, plasma_state->objects_notify, &object_id, sizeof(object_id),
-            notify_entry);
-  if (notify_entry) {
-    plasma_object object;
-    object.handle.store_fd = entry->fd;
-    object.handle.mmap_size = entry->map_size;
-    object.data_offset = entry->offset;
-    object.metadata_offset = entry->offset + entry->info.data_size;
-    object.data_size = entry->info.data_size;
-    object.metadata_size = entry->info.metadata_size;
-    HASH_DELETE(handle, plasma_state->objects_notify, notify_entry);
-    /* Send notifications to the clients that were waiting for this object. */
-    for (int i = 0; i < utarray_len(notify_entry->waiting_clients); ++i) {
-      client **c = (client **) utarray_eltptr(notify_entry->waiting_clients, i);
-      int status;
-      /* Send the get reply to the client. Handle errors on the write. If the
-       * client has hung up, that's ok. */
-      if (plasma_send_GetReply((*c)->sock, plasma_state->builder, &object_id,
-                               &object, 1) < 0) {
-        if (errno == EPIPE || errno == EBADF) {
-          LOG_WARN(
-              "Failed to send a message to client on fd %d. The client may "
-              "have hung up.",
-              (*c)->sock);
-          continue;
-        } else {
-          LOG_FATAL("Failed to send a message to client on fd %d.", (*c)->sock);
-        }
-      }
-      /* Send the object's file descriptor to the client. Handle errors on the
-       * write. If the client has hung up, that's ok. */
-      if (send_fd((*c)->sock, object.handle.store_fd) < 0) {
-        if (errno == EPIPE || errno == EBADF) {
-          LOG_WARN(
-              "Failed to send a message to client on fd %d. The client may "
-              "have hung up.",
-              (*c)->sock);
-          continue;
-        } else {
-          LOG_FATAL("Failed to send a message to client on fd %d.", (*c)->sock);
-        }
-      }
-      /* Record that the client is using this object. */
-      add_client_to_object_clients(entry, *c);
-    }
-    utarray_free(notify_entry->waiting_clients);
-    free(notify_entry);
-  }
+  /* Update all get requests that involve this object. */
+  update_object_get_requests(plasma_state, object_id);
 }
 
 /* Delete an object that has been created in the hash table. This should only
@@ -556,35 +730,12 @@ void process_message(event_loop *loop,
     }
   } break;
   case MessageType_PlasmaGetRequest: {
-    plasma_read_GetRequest(input, object_ids, 1);
-    if (get_object(client_context, client_sock, object_ids[0], &objects[0]) ==
-        OBJECT_FOUND) {
-      warn_if_sigpipe(plasma_send_GetReply(client_sock, state->builder,
-                                           object_ids, objects, 1),
-                      client_sock);
-      warn_if_sigpipe(send_fd(client_sock, objects[0].handle.store_fd),
-                      client_sock);
-    }
-  } break;
-  case MessageType_PlasmaGetLocalRequest: {
-    plasma_read_GetLocalRequest(input, &object_ids[0], 1);
-    if (get_object_local(client_context, client_sock, object_ids[0],
-                         &objects[0]) == OBJECT_FOUND) {
-      int has_object = 1;
-      warn_if_sigpipe(
-          plasma_send_GetLocalReply(client_sock, state->builder, object_ids,
-                                    objects, &has_object, 1),
-          client_sock);
-      warn_if_sigpipe(send_fd(client_sock, objects[0].handle.store_fd),
-                      client_sock);
-    } else {
-      int has_object = 0;
-
-      warn_if_sigpipe(
-          plasma_send_GetLocalReply(client_sock, state->builder, object_ids,
-                                    objects, &has_object, 1),
-          client_sock);
-    }
+    num_objects = plasma_read_GetRequest_num_objects(input);
+    object_id object_ids_to_get[num_objects];
+    int64_t timeout_ms;
+    plasma_read_GetRequest(input, object_ids_to_get, &timeout_ms, num_objects);
+    process_get_request(client_context, num_objects, object_ids_to_get,
+                        timeout_ms);
   } break;
   case MessageType_PlasmaReleaseRequest:
     plasma_read_ReleaseRequest(input, &object_ids[0]);

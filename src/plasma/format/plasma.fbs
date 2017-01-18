@@ -10,9 +10,6 @@ enum MessageType:int {
   // Get an object that is stored on the local Plasma store.
   PlasmaGetRequest,
   PlasmaGetReply,
-  // Non-blocking version of PlasmaGet
-  PlasmaGetLocalRequest,
-  PlasmaGetLocalReply,
   // Release an object.
   PlasmaReleaseRequest,
   PlasmaReleaseReply,
@@ -109,6 +106,8 @@ table PlasmaSealReply {
 table PlasmaGetRequest {
   // IDs of the objects stored at local Plasma store we are getting.
   object_ids: [string];
+  // The number of milliseconds before the request should timeout.
+  timeout_ms: long;
 }
 
 table PlasmaGetReply {
@@ -120,21 +119,6 @@ table PlasmaGetReply {
   // Plasma object information, in the same order as their IDs.
   plasma_objects: [PlasmaObject];
   // The number of elements in both object_ids and plasma_objects arrays must agree.
-}
-
-table PlasmaGetLocalRequest {
-  // IDs of the objects stored at local Plasma store we are getting.
-  object_ids: [string];
-}
-
-table PlasmaGetLocalReply {
-  // IDs of the objects being returned.
-  object_ids: [string];
-  // Plasma object information, in the same order as their IDs.
-  plasma_objects: [PlasmaObject];
-  // Indication if the object is local it's file descriptor has been transfered,
-  // same order as their IDs.
-  has_object: [int];
 }
 
 table PlasmaReleaseRequest {
