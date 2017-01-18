@@ -274,7 +274,8 @@ void remove_get_request_for_object(plasma_store_state *store_state,
       }
     }
     /* In principle, if there are no more get requests involving this object ID,
-     * then we could remove the object_get_reqs struct. */
+     * then we could remove the object_get_reqs struct. However, the
+     * object_get_reqs struct gets removed in update_object_get_requests. */
   }
 }
 
@@ -305,7 +306,7 @@ void return_from_get(plasma_store_state *store_state, get_request *get_req) {
   int status = plasma_send_GetReply(get_req->client->sock, store_state->builder,
                                     get_req->object_ids, get_req->objects,
                                     get_req->num_object_ids);
-  warn_if_sigpipe(status, get_req->client->sock, errno);
+  warn_if_sigpipe(status, get_req->client->sock);
   /* If we successfully sent the get reply message to the client, then also send
    * the file descriptors. */
   if (status >= 0) {
@@ -329,7 +330,7 @@ void return_from_get(plasma_store_state *store_state, get_request *get_req) {
                                  get_req->objects[i].handle.store_fd);
             continue;
           }
-          warn_if_sigpipe(error_code, get_req->client->sock, errno);
+          warn_if_sigpipe(error_code, get_req->client->sock);
           break;
         }
       }
@@ -391,12 +392,11 @@ void update_object_get_requests(plasma_store_state *store_state,
       /* If this get request is done, reply to the client. */
       if (get_req->num_satisfied == get_req->num_objects_to_wait_for) {
         return_from_get(store_state, get_req);
+      } else {
         /* The call to return_from_get will remove the current element in the
-         * array, so we need to decrement the counter by one. TODO(rkn): This is
-         * very ugly. */
-        index -= 1;
+         * array, so we only increment the counter in the else branch. */
+        index += 1;
       }
-      index += 1;
     }
     DCHECK(index == utarray_len(object_get_reqs->get_requests));
     /* Remove the array of get requests for this object, since no one should be
@@ -457,8 +457,10 @@ void process_get_request(client *client_context,
     }
   }
 
-  /* If all of the objects are present already, return to the client. */
-  if (get_req->num_satisfied == get_req->num_objects_to_wait_for) {
+  /* If all of the objects are present already or if the timeout is 0, return to
+   * the client. */
+  if (get_req->num_satisfied == get_req->num_objects_to_wait_for ||
+      timeout_ms == 0) {
     return_from_get(plasma_state, get_req);
   } else if (timeout_ms != -1) {
     /* Set a timer that will cause the get request to return to the client. Note

@@ -297,9 +297,13 @@ static PyObject* store_list(PyObject* self, PyObject* args) {
  * Python objects from the plasma data according to the schema and
  * returns the object.
  *
- * @param args Object ID of the PyList to be retrieved and connection to the
- *        plasma store.
- * @return The PyList.
+ * @param args The first argument is a list of object IDs of the lists to be
+ *        retrieved and the second argument is the connection to the plasma
+ *        store.
+ * @return A list of tuples, where the first element in the tuple is the object
+ *         ID (appearing in the same order as in the argument to the method),
+ *         and the second element in the tuple is the retrieved list (or None)
+ *         if no value was retrieved.
  */
 static PyObject* retrieve_list(PyObject* self, PyObject* args) {
   PyObject* object_id_list;
@@ -332,7 +336,6 @@ static PyObject* retrieve_list(PyObject* self, PyObject* args) {
 
     if (object_buffers[i].data_size != -1) {
       /* The object was retrieved, so return the object. */
-
       object_id* buffer_obj_id = new object_id(object_ids[i]);
       /* This keeps a Plasma buffer in scope as long as an object that is backed by that
        * buffer is in scope. This prevents memory in the object store from getting

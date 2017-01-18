@@ -152,9 +152,9 @@ PyObject *PyPlasma_get(PyObject *self, PyObject *args) {
       PyObject *t = PyTuple_New(2);
 #if PY_MAJOR_VERSION >= 3
       PyTuple_SetItem(
-          t, 0, PyMemoryView_FromMemory((void *) object_buffers[i].data,
-                                        (Py_ssize_t) object_buffers[i].data_size,
-                                        PyBUF_READ));
+          t, 0, PyMemoryView_FromMemory(
+              (void *) object_buffers[i].data,
+              (Py_ssize_t) object_buffers[i].data_size, PyBUF_READ));
       PyTuple_SetItem(
           t, 1, PyMemoryView_FromMemory(
                     (void *) object_buffers[i].metadata,
@@ -163,10 +163,9 @@ PyObject *PyPlasma_get(PyObject *self, PyObject *args) {
       PyTuple_SetItem(
           t, 0, PyBuffer_FromMemory((void *) object_buffers[i].data,
                                     (Py_ssize_t) object_buffers[i].data_size));
-      PyTuple_SetItem(
-          t, 1, PyBuffer_FromMemory(
-                    (void *) object_buffers[i].metadata,
-                    (Py_ssize_t) object_buffers[i].metadata_size));
+      PyTuple_SetItem(t, 1, PyBuffer_FromMemory(
+                                (void *) object_buffers[i].metadata,
+                                (Py_ssize_t) object_buffers[i].metadata_size));
 #endif
       PyList_SetItem(returns, i, t);
     } else {
