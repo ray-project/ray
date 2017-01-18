@@ -428,20 +428,25 @@ class Worker(object):
     # Optionally do something with the contained_objectids here.
     contained_objectids = []
 
-  def get_object(self, objectid):
+  def get_object(self, object_ids):
     """Get the value in the local object store associated with objectid.
 
     Return the value from the local object store for objectid. This will block
     until the value for objectid has been written to the local object store.
 
     Args:
-      objectid (object_id.ObjectID): The object ID of the value to retrieve.
+      object_ids (List[object_id.ObjectID]): A list of the object IDs whose
+        values should be retrieved.
     """
-    self.plasma_client.fetch([objectid.id()])
-    deserialized = numbuf.retrieve_list(objectid.id(), self.plasma_client.conn)
+    self.plasma_client.fetch([object_id.id() for object_id in object_ids])
+    # We currently pass in a timeout of -1 to indicate that no timeout should be
+    # used.
+    results = numbuf.retrieve_list([object_id.id() for object_id in object_ids], self.plasma_client.conn, -1)
     # Unwrap the object from the list (it was wrapped put_object).
-    assert len(deserialized) == 1
-    return deserialized[0]
+    assert len(results) == len(object_ids)
+    for i in range(len(results)):
+      assert results[i][0] == object_ids[i].id()
+    return [result[1][0] for result in results]
 
   def submit_task(self, function_id, func_name, args):
     """Submit a remote task to the scheduler.
@@ -1228,7 +1233,7 @@ def flush_log(worker=global_worker):
   worker.photon_client.log_event(event_log_key, event_log_value)
   worker.events = []
 
-def get(objectid, worker=global_worker):
+def get(object_ids, worker=global_worker):
   """Get a remote object or a list of remote objects from the object store.
 
   This method blocks until the object corresponding to objectid is available in
@@ -1238,7 +1243,7 @@ def get(objectid, worker=global_worker):
   in the list will be returned.
 
   Args:
-    objectid: Object ID of the object to get or a list of object IDs to get.
+    object_ids: Object ID of the object to get or a list of object IDs to get.
 
   Returns:
     A Python object or a list of Python objects.
@@ -1249,19 +1254,19 @@ def get(objectid, worker=global_worker):
 
     if worker.mode == PYTHON_MODE:
       # In PYTHON_MODE, ray.get is the identity operation (the input will actually be a value not an objectid)
-      return objectid
-    if isinstance(objectid, list):
-      values = [worker.get_object(x) for x in objectid]
+      return object_ids
+    if isinstance(object_ids, list):
+      values = worker.get_object(object_ids)
       for i, value in enumerate(values):
         if isinstance(value, RayTaskError):
-          raise RayGetError(objectid[i], value)
+          raise RayGetError(object_ids[i], value)
       return values
     else:
-      value = worker.get_object(objectid)
+      value = worker.get_object([object_ids])[0]
       if isinstance(value, RayTaskError):
         # If the result is a RayTaskError, then the task that created this object
         # failed, and we should propagate the error message here.
-        raise RayGetError(objectid, value)
+        raise RayGetError(object_ids, value)
       return value
 
 def put(value, worker=global_worker):
@@ -1705,7 +1710,7 @@ def get_arguments_for_execution(function, serialized_args, worker=global_worker)
   for (i, arg) in enumerate(serialized_args):
     if isinstance(arg, photon.ObjectID):
       # get the object from the local object store
-      argument = worker.get_object(arg)
+      argument = worker.get_object([arg])[0]
       if isinstance(argument, RayTaskError):
         # If the result is a RayTaskError, then the task that created this
         # object failed, and we should propagate the error message here.

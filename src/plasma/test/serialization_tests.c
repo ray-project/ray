@@ -133,13 +133,16 @@ TEST plasma_get_request_test(void) {
   object_id object_ids[2];
   object_ids[0] = globally_unique_id();
   object_ids[1] = globally_unique_id();
-  plasma_send_GetRequest(fd, g_B, object_ids, 2);
+  int64_t timeout_ms = 1234;
+  plasma_send_GetRequest(fd, g_B, object_ids, 2, timeout_ms);
   uint8_t *data = read_message_from_file(fd, MessageType_PlasmaGetRequest);
   int64_t num_objects;
   object_id object_ids_return[2];
-  plasma_read_GetRequest(data, &object_ids_return[0], 2);
+  int64_t timeout_ms_return;
+  plasma_read_GetRequest(data, &object_ids_return[0], &timeout_ms_return, 2);
   ASSERT(object_ids_equal(object_ids[0], object_ids_return[0]));
   ASSERT(object_ids_equal(object_ids[1], object_ids_return[1]));
+  ASSERT(timeout_ms == timeout_ms_return);
   free(data);
   close(fd);
   PASS();
@@ -155,7 +158,7 @@ TEST plasma_get_reply_test(void) {
   plasma_objects[1] = random_plasma_object();
   plasma_send_GetReply(fd, g_B, object_ids, plasma_objects, 2);
   uint8_t *data = read_message_from_file(fd, MessageType_PlasmaGetReply);
-  int64_t num_objects = plasma_read_GetLocalRequest_num_objects(data);
+  int64_t num_objects = plasma_read_GetRequest_num_objects(data);
   object_id object_ids_return[num_objects];
   plasma_object plasma_objects_return[2];
   plasma_read_GetReply(data, object_ids_return, &plasma_objects_return[0],
@@ -166,53 +169,6 @@ TEST plasma_get_reply_test(void) {
                 sizeof(plasma_object)) == 0);
   ASSERT(memcmp(&plasma_objects[1], &plasma_objects_return[1],
                 sizeof(plasma_object)) == 0);
-  free(data);
-  close(fd);
-  PASS();
-}
-
-TEST plasma_get_local_request_test(void) {
-  int fd = create_temp_file();
-  object_id object_ids[2];
-  object_ids[0] = globally_unique_id();
-  object_ids[1] = globally_unique_id();
-  plasma_send_GetLocalRequest(fd, g_B, object_ids, 2);
-  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaGetLocalRequest);
-  int64_t num_objects = plasma_read_GetLocalRequest_num_objects(data);
-  object_id object_ids_return[num_objects];
-  plasma_read_GetLocalRequest(data, object_ids_return, num_objects);
-  ASSERT(object_ids_equal(object_ids[0], object_ids_return[0]));
-  ASSERT(object_ids_equal(object_ids[1], object_ids_return[1]));
-  free(data);
-  close(fd);
-  PASS();
-}
-
-TEST plasma_get_local_reply_test(void) {
-  int fd = create_temp_file();
-  object_id object_ids[2];
-  object_ids[0] = globally_unique_id();
-  object_ids[1] = globally_unique_id();
-  plasma_object plasma_objects[2];
-  plasma_objects[0] = random_plasma_object();
-  plasma_objects[1] = random_plasma_object();
-  int has_object[2] = {1, 0};
-  plasma_send_GetLocalReply(fd, g_B, object_ids, plasma_objects, has_object, 2);
-  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaGetLocalReply);
-  int64_t num_objects;
-  object_id object_ids_return[2];
-  plasma_object plasma_objects_return[2];
-  int has_object_return[2];
-  plasma_read_GetLocalReply(data, &object_ids_return[0],
-                            &plasma_objects_return[0], has_object_return, 2);
-  ASSERT(object_ids_equal(object_ids[0], object_ids_return[0]));
-  ASSERT(object_ids_equal(object_ids[1], object_ids_return[1]));
-  ASSERT(memcmp(&plasma_objects[0], &plasma_objects_return[0],
-                sizeof(plasma_object)) == 0);
-  ASSERT(memcmp(&plasma_objects[1], &plasma_objects_return[1],
-                sizeof(plasma_object)) == 0);
-  ASSERT(has_object_return[0] == has_object[0]);
-  ASSERT(has_object_return[1] == has_object[1]);
   free(data);
   close(fd);
   PASS();
@@ -462,8 +418,6 @@ SUITE(plasma_serialization_tests) {
   RUN_TEST(plasma_seal_reply_test);
   RUN_TEST(plasma_get_request_test);
   RUN_TEST(plasma_get_reply_test);
-  RUN_TEST(plasma_get_local_request_test);
-  RUN_TEST(plasma_get_local_reply_test);
   RUN_TEST(plasma_release_request_test);
   RUN_TEST(plasma_release_reply_test);
   RUN_TEST(plasma_delete_request_test);
