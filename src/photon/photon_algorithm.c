@@ -194,6 +194,7 @@ void dispatch_tasks(local_scheduler_state *state,
    * available workers. */
   while ((algorithm_state->dispatch_task_queue != NULL) &&
          (utarray_len(algorithm_state->available_workers) > 0)) {
+    LOG_DEBUG("Dispatching task");
     /* Pop a task from the dispatch queue. */
     task_queue_entry *dispatched_task = algorithm_state->dispatch_task_queue;
     DL_DELETE(algorithm_state->dispatch_task_queue, dispatched_task);
@@ -211,19 +212,31 @@ void dispatch_tasks(local_scheduler_state *state,
 }
 
 /**
- * Queue a task specification.
+ * A helper function to allocate a queue entry for a task specification and
+ * push it onto a generic queue.
  *
  * @param task_queue A pointer to a task queue.
  * @param spec The task specification to queue.
  * @return Void.
  */
-void queue_task(task_queue_entry **task_queue, task_spec *spec) {
+void queue_task(local_scheduler_state *state,
+                task_queue_entry **task_queue,
+                task_spec *spec) {
   /* Copy the spec and add it to the task queue. The allocated spec will be
    * freed when it is assigned to a worker. */
   task_queue_entry *elt = malloc(sizeof(task_queue_entry));
   elt->spec = (task_spec *) malloc(task_spec_size(spec));
   memcpy(elt->spec, spec, task_spec_size(spec));
   DL_APPEND((*task_queue), elt);
+
+  /* The task has been added to a local scheduler queue. Add the task to the
+   * task table to notify others that we have queued it. */
+  if (state->db != NULL) {
+    task *task =
+        alloc_task(spec, TASK_STATUS_QUEUED, get_db_client_id(state->db));
+    task_table_add_task(state->db, task, (retry_info *) &photon_retry, NULL,
+                        NULL);
+  }
 }
 
 /**
@@ -240,11 +253,12 @@ void queue_task(task_queue_entry **task_queue, task_spec *spec) {
 void queue_waiting_task(local_scheduler_state *state,
                         scheduling_algorithm_state *algorithm_state,
                         task_spec *spec) {
+  LOG_DEBUG("Queueing task in waiting queue");
   /* Initiate fetch calls for any dependencies that are not present locally. */
   if (plasma_manager_is_connected(state->plasma_conn)) {
     fetch_missing_dependencies(state, algorithm_state, spec);
   }
-  queue_task(&algorithm_state->waiting_task_queue, spec);
+  queue_task(state, &algorithm_state->waiting_task_queue, spec);
 }
 
 /**
@@ -256,9 +270,33 @@ void queue_waiting_task(local_scheduler_state *state,
  * @param spec The task specification to queue.
  * @return Void.
  */
-void queue_dispatch_task(scheduling_algorithm_state *algorithm_state,
+void queue_dispatch_task(local_scheduler_state *state,
+                         scheduling_algorithm_state *algorithm_state,
                          task_spec *spec) {
-  queue_task(&algorithm_state->dispatch_task_queue, spec);
+  LOG_DEBUG("Queueing task in dispatch queue");
+  queue_task(state, &algorithm_state->dispatch_task_queue, spec);
+}
+
+/**
+ * Add the task to the proper local scheduler queue. This assumes that the
+ * scheduling decision to place the task on this node has already been made,
+ * whether locally or by the global scheduler.
+ *
+ * @param state The scheduler state.
+ * @param algorithm_state The scheduling algorithm state.
+ * @param spec The task specification to queue.
+ * @return Void.
+ */
+void queue_task_locally(local_scheduler_state *state,
+                        scheduling_algorithm_state *algorithm_state,
+                        task_spec *spec) {
+  if (can_run(algorithm_state, spec)) {
+    /* Dependencies are ready, so push the task to the dispatch queue. */
+    queue_dispatch_task(state, algorithm_state, spec);
+  } else {
+    /* Dependencies are not ready, so push the task to the waiting queue. */
+    queue_waiting_task(state, algorithm_state, spec);
+  }
 }
 
 /**
@@ -272,6 +310,11 @@ void queue_dispatch_task(scheduling_algorithm_state *algorithm_state,
 void give_task_to_global_scheduler(local_scheduler_state *state,
                                    scheduling_algorithm_state *algorithm_state,
                                    task_spec *spec) {
+  if (state->db == NULL || !state->global_scheduler_exists) {
+    /* A global scheduler is not available, so queue the task locally. */
+    queue_task_locally(state, algorithm_state, spec);
+    return;
+  }
   /* Pass on the task to the global scheduler. */
   DCHECK(state->global_scheduler_exists);
   task *task = alloc_task(spec, TASK_STATUS_WAITING, NIL_ID);
@@ -287,6 +330,9 @@ void give_task_to_global_scheduler(local_scheduler_state *state,
  * 2. Put into the dispatch queue, where it will wait for an available worker.
  * 3. Given to the global scheduler to be scheduled.
  *
+ * Currently, the local scheduler policy is to keep the task if its
+ * dependencies are ready and there is an available worker.
+ *
  * @param state The scheduler state.
  * @param algorithm_state The scheduling algorithm state.
  * @param spec The task specification to schedule.
@@ -298,33 +344,23 @@ void schedule_task(local_scheduler_state *state,
                    scheduling_algorithm_state *algorithm_state,
                    task_spec *spec,
                    bool from_global_scheduler) {
-  if (can_run(algorithm_state, spec)) {
-    /* Dependencies are ready, so push the task onto the dispatch queue. */
-    queue_dispatch_task(algorithm_state, spec);
-  } else if (from_global_scheduler) {
-    /* Dependencies are not ready, and the task is from the global scheduler,
-     * so queue it locally. */
-    queue_waiting_task(state, algorithm_state, spec);
-  } else if (state->db == NULL || !state->global_scheduler_exists) {
-    /* Dependencies are not ready, and the task was submitted by a worker. A
-     * global scheduler is not available, so queue the task locally. */
-    queue_waiting_task(state, algorithm_state, spec);
+  if (from_global_scheduler) {
+    /* If the task is from a global scheduler, no scheduling decision needs to
+     * be made. Put the task in the right queue. */
+    queue_task_locally(state, algorithm_state, spec);
   } else {
-    /* Dependencies are not ready, and the task was submitted by a worker. A
-     * global scheduler is available, so give the task to the global scheduler
-     * to schedule, and return immediately. */
-    give_task_to_global_scheduler(state, algorithm_state, spec);
-    return;
-  }
-
-  /* If the task was not submitted by the global scheduler, it must've been
-   * submitted by a worker. Add the task to the task table to notify others
-   * that we have scheduled it. */
-  if (!from_global_scheduler && state->db != NULL) {
-    task *task =
-        alloc_task(spec, TASK_STATUS_SCHEDULED, get_db_client_id(state->db));
-    task_table_add_task(state->db, task, (retry_info *) &photon_retry, NULL,
-                        NULL);
+    /* Local scheduling policy. */
+    if (can_run(algorithm_state, spec) &&
+        (utarray_len(algorithm_state->available_workers) > 0)) {
+      /* Dependencies are ready and there is an available worker, so keep the
+       * task. */
+      queue_dispatch_task(state, algorithm_state, spec);
+    } else {
+      /* Give the task to the global scheduler to schedule, and return
+       * immediately. */
+      give_task_to_global_scheduler(state, algorithm_state, spec);
+      return;
+    }
   }
 
   /* Try to dispatch tasks, since we may added the current task to the dispatch
@@ -416,6 +452,7 @@ void handle_object_available(local_scheduler_state *state,
   task_queue_entry *elt, *tmp;
   DL_FOREACH_SAFE(algorithm_state->waiting_task_queue, elt, tmp) {
     if (can_run(algorithm_state, elt->spec)) {
+      LOG_DEBUG("Moved task to dispatch queue");
       DL_DELETE(algorithm_state->waiting_task_queue, elt);
       DL_APPEND(algorithm_state->dispatch_task_queue, elt);
     }

@@ -244,9 +244,9 @@ void print_task(task_spec *spec, UT_string *output);
 
 /**
  * ==== Task ====
- * Contains information about a scheduled task: The task specification, the task
- * schedulign state (WAITING, SCHEDULED, RUNNING, DONE), and which local
- * scheduler the task is scheduled on.
+ * Contains information about a scheduled task: The task specification, the
+ * task scheduling state (WAITING, SCHEDULED, QUEUED, RUNNING, DONE), and which
+ * local scheduler the task is scheduled on.
  */
 
 /** The scheduling_state can be used as a flag when we are listening
@@ -254,8 +254,9 @@ void print_task(task_spec *spec, UT_string *output);
 typedef enum {
   TASK_STATUS_WAITING = 1,
   TASK_STATUS_SCHEDULED = 2,
-  TASK_STATUS_RUNNING = 4,
-  TASK_STATUS_DONE = 8
+  TASK_STATUS_QUEUED = 4,
+  TASK_STATUS_RUNNING = 8,
+  TASK_STATUS_DONE = 16
 } scheduling_state;
 
 /** A task is an execution of a task specification.  It has a state of execution

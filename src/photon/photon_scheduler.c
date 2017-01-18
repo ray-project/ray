@@ -160,15 +160,13 @@ void reconstruct_object_task_lookup_callback(object_id reconstruct_object_id,
   CHECKM(task != NULL,
          "No task information found for object during reconstruction");
   local_scheduler_state *state = user_context;
-  /* If the task's scheduling state is WAITING or SCHEDULED, assume that
+  /* If the task's scheduling state is pending completion, assume that
    * reconstruction is already being taken care of and cancel this
    * reconstruction operation. NOTE: This codepath is not responsible for
    * detecting failure of the other reconstruction, or updating the
    * scheduling_state accordingly. */
   scheduling_state task_status = task_state(task);
-  if (task_status == TASK_STATUS_WAITING ||
-      task_status == TASK_STATUS_SCHEDULED ||
-      task_status == TASK_STATUS_RUNNING) {
+  if (task_status < TASK_STATUS_DONE) {
     LOG_DEBUG("Task to reconstruct had scheduling state %d", task_status);
     return;
   }
