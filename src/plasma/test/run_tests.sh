@@ -32,3 +32,4 @@ kill $plasma3_pid
 kill $plasma2_pid
 kill $plasma1_pid
 kill $redis_pid
+wait $redis_pid
