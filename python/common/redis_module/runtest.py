@@ -173,24 +173,24 @@ class TestGlobalStateStore(unittest.TestCase):
     self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id1")
     response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id1")
     self.assertIsNone(response)
-    # Add the result to the result table. This is necessary, but not sufficient
-    # because the task is still not in the task table.
-    self.redis.execute_command("RAY.RESULT_TABLE_ADD", "object_id1", "task_id1")
-    response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id1")
-    self.assertIsNone(response)
-    # Add the task to the task table so that the result table lookup can
-    # succeed.
-    self.redis.execute_command("RAY.TASK_TABLE_ADD", "task_id1", 1, "local_scheduler_id1", "task_spec1")
-    response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id1")
-    self.assertEqual(response, [1, b"local_scheduler_id1", b"task_spec1"])
+    # Add the result to the result table. This should now return a task ID that
+    # can be used to look up the correct task in the task table.
+    task_id = b"task_id1"
+    self.redis.execute_command("RAY.RESULT_TABLE_ADD", "object_id1", task_id)
+    task_args = [1, b"node_id", b"task_spec1"]
+    response = self.redis.execute_command("RAY.TASK_TABLE_ADD", task_id,
+                                          *task_args)
+    response_task_id = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id1")
+    self.assertEqual(response_task_id, task_id)
+    response = self.redis.execute_command("RAY.TASK_TABLE_GET", response_task_id)
+    self.assertEqual(response, task_args)
     # Doing it again should still work.
     response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id1")
-    self.assertEqual(response, [1, b"local_scheduler_id1", b"task_spec1"])
+    self.assertEqual(response, b"task_id1")
     # Try another result table lookup. This should succeed.
-    self.redis.execute_command("RAY.TASK_TABLE_ADD", "task_id2", 2, "local_scheduler_id2", "task_spec2")
     self.redis.execute_command("RAY.RESULT_TABLE_ADD", "object_id2", "task_id2")
     response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id2")
-    self.assertEqual(response, [2, b"local_scheduler_id2", b"task_spec2"])
+    self.assertEqual(response, b"task_id2")
 
   def testInvalidTaskTableAdd(self):
     # Check that Redis returns an error when RAY.TASK_TABLE_ADD is called with
