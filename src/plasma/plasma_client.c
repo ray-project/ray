@@ -270,55 +270,98 @@ int plasma_create(plasma_connection *conn,
   return PlasmaError_OK;
 }
 
-/* This method is used to get both the data and the metadata. */
 void plasma_get(plasma_connection *conn,
-                object_id obj_id,
-                int64_t *size,
-                uint8_t **data,
-                int64_t *metadata_size,
-                uint8_t **metadata) {
-  /* Check if we already have a reference to the object. */
-  object_in_use_entry *object_entry;
-  HASH_FIND(hh, conn->objects_in_use, &obj_id, sizeof(object_id), object_entry);
-  plasma_object object_data;
+                object_id object_ids[],
+                int64_t num_objects,
+                int64_t timeout_ms,
+                object_buffer object_buffers[]) {
+  /* Fill out the info for the objects that are already in use locally. */
+  bool all_present = true;
+  for (int i = 0; i < num_objects; ++i) {
+    object_in_use_entry *object_entry;
+    HASH_FIND(hh, conn->objects_in_use, &object_ids[i], sizeof(object_ids[i]),
+              object_entry);
+    if (object_entry == NULL) {
+      /* This object is not currently in use by this client, so we need to send
+       * a request to the store. */
+      all_present = false;
+      /* Make a note to ourselves that the object is not present. */
+      object_buffers[i].data_size = -1;
+    } else {
+      /*  */
+      plasma_object object_data;
+      plasma_object *object;
+      /* NOTE: If the object is still unsealed, we will deadlock, since we must
+       * have been the one who created it. */
+      CHECKM(object_entry->is_sealed,
+             "Plasma client called get on an unsealed object that it created");
+      object = &object_entry->object;
+      object_buffers[i].data =
+          lookup_mmapped_file(conn, object->handle.store_fd);
+      object_buffers[i].data = object_buffers[i].data + object->data_offset;
+      object_buffers[i].data_size = object->data_size;
+      object_buffers[i].metadata = object_buffers[i].data + object->data_size;
+      object_buffers[i].metadata_size = object->metadata_size;
+      /* Increment the count of the number of instances of this object that this
+       * client is using. A call to plasma_release is required to decrement this
+       * count. Cache the reference to the object. */
+      increment_object_count(conn, object_ids[i], object, true);
+    }
+  }
+
+  if (all_present) {
+    return;
+  }
+
+  /* If we get here, then the objects aren't all currently in use by this
+   * client, so we need to send a request to the plasma store. */
+  CHECK(plasma_send_GetRequest(conn->store_conn, conn->builder, object_ids,
+                               num_objects, timeout_ms) >= 0);
+  uint8_t *reply_data =
+      plasma_receive(conn->store_conn, MessageType_PlasmaGetReply);
+  object_id received_obj_ids[num_objects];
+  plasma_object object_data[num_objects];
   plasma_object *object;
-  if (object_entry) {
-    /* If we have already have a reference to the object, use it to get the
-     * data pointer.
-     * NOTE: If the object is still unsealed, we will deadlock, since we must
-     * have been the one who created it. */
-    CHECKM(object_entry->is_sealed,
-           "Plasma client called get on an unsealed object that it created");
-    object = &object_entry->object;
-    *data = lookup_mmapped_file(conn, object->handle.store_fd);
-  } else {
-    /* Else, request a reference to the object data from the plasma store. */
-    CHECK(plasma_send_GetRequest(conn->store_conn, conn->builder, &obj_id, 1) >=
-          0);
-    uint8_t *reply_data =
-        plasma_receive(conn->store_conn, MessageType_PlasmaGetReply);
-    object_id received_obj_id;
-    plasma_read_GetReply(reply_data, &received_obj_id, &object_data, 1);
-    free(reply_data);
-    DCHECK(memcmp(&received_obj_id, &obj_id, sizeof(obj_id)) == 0);
-    int fd = recv_fd(conn->store_conn);
-    CHECK(fd >= 0);
-    object = &object_data;
-    *data = lookup_or_mmap(conn, fd, object->handle.store_fd,
-                           object->handle.mmap_size);
+  plasma_read_GetReply(reply_data, received_obj_ids, object_data, num_objects);
+  free(reply_data);
+
+  for (int i = 0; i < num_objects; ++i) {
+    DCHECK(object_ids_equal(received_obj_ids[i], object_ids[i]));
+    object = &object_data[i];
+    if (object_buffers[i].data_size != -1) {
+      /* If the object was already in use by the client, then the store should
+       * have returned it. */
+      DCHECK(object->data_size != -1);
+      /* We've already filled out the information for this object, so we can
+       * just continue. */
+      continue;
+    }
+    /* If we are here, the object was not currently in use, so we need to
+     * process the reply from the object store. */
+    if (object->data_size != -1) {
+      /* The object was retrieved. The user will be responsible for releasing
+       * this object. */
+      int fd = recv_fd(conn->store_conn);
+      CHECK(fd >= 0);
+      object_buffers[i].data = lookup_or_mmap(
+          conn, fd, object->handle.store_fd, object->handle.mmap_size);
+      /* Finish filling out the return values. */
+      object_buffers[i].data = object_buffers[i].data + object->data_offset;
+      object_buffers[i].data_size = object->data_size;
+      object_buffers[i].metadata = object_buffers[i].data + object->data_size;
+      object_buffers[i].metadata_size = object->metadata_size;
+      /* Increment the count of the number of instances of this object that this
+       * client is using. A call to plasma_release is required to decrement this
+       * count. Cache the reference to the object. */
+      increment_object_count(conn, received_obj_ids[i], object, true);
+    } else {
+      /* The object was not retrieved. Make sure we already put a -1 here to
+       * indicate that the object was not retrieved. The caller is not
+       * responsible for releasing this object. */
+      DCHECK(object_buffers[i].data_size == -1);
+      object_buffers[i].data_size = -1;
+    }
   }
-  /* Finish filling out the return values. */
-  *data = *data + object->data_offset;
-  *size = object->data_size;
-  /* If requested, return the metadata as well. */
-  if (metadata != NULL) {
-    *metadata = *data + object->data_size;
-    *metadata_size = object->metadata_size;
-  }
-  /* Increment the count of the number of instances of this object that this
-   * client is using. A call to plasma_release is required to decrement this
-   * count. Cache the reference to the object. */
-  increment_object_count(conn, obj_id, object, true);
 }
 
 /**
@@ -446,12 +489,21 @@ bool plasma_compute_object_hash(plasma_connection *conn,
   uint8_t *data;
   int64_t metadata_size;
   uint8_t *metadata;
-  plasma_get(conn, obj_id, &size, &data, &metadata_size, &metadata);
+  /* We pass in a timeout of -1 to indicate that no timeout should be used. */
+  object_buffer obj_buffer;
+  object_id obj_id_array[1] = {obj_id};
+  plasma_get(conn, obj_id_array, 1, 0, &obj_buffer);
+  /* Make sure that the object was retrieved. It actually should be cached
+   * locally, so this call should not go to the store. If it did go to the
+   * store, it would probably fail because get only works on sealed objects. */
+  DCHECK(obj_buffer.data_size != -1);
   /* Compute the hash. */
   XXH64_state_t hash_state;
   XXH64_reset(&hash_state, XXH64_DEFAULT_SEED);
-  XXH64_update(&hash_state, (unsigned char *) data, size);
-  XXH64_update(&hash_state, (unsigned char *) metadata, metadata_size);
+  XXH64_update(&hash_state, (unsigned char *) obj_buffer.data,
+               obj_buffer.data_size);
+  XXH64_update(&hash_state, (unsigned char *) obj_buffer.metadata,
+               obj_buffer.metadata_size);
   uint64_t hash = XXH64_digest(&hash_state);
   DCHECK(DIGEST_SIZE >= sizeof(uint64_t));
   memcpy(digest, &hash, DIGEST_SIZE);
@@ -674,58 +726,6 @@ int get_manager_fd(plasma_connection *conn) {
   return conn->manager_conn;
 }
 
-bool plasma_get_local(plasma_connection *conn,
-                      object_id obj_id,
-                      object_buffer *object_buffer) {
-  CHECK(conn != NULL);
-  /* Check if we already have a reference to the object. */
-  object_in_use_entry *object_entry;
-  HASH_FIND(hh, conn->objects_in_use, &obj_id, sizeof(obj_id), object_entry);
-  plasma_object *object;
-  if (object_entry) {
-    /* If we have already have a reference to the object, use it to get the
-     * data pointer. */
-    if (!object_entry->is_sealed) {
-      /* The object is in our local store, but it hasn't been sealed yet. */
-      return false;
-    }
-    object = &object_entry->object;
-    object_buffer->data = lookup_mmapped_file(conn, object->handle.store_fd);
-  } else {
-    /* Else, request a reference to the object data from the plasma store. */
-    CHECK(plasma_send_GetLocalRequest(conn->store_conn, conn->builder, &obj_id,
-                                      1) >= 0);
-    uint8_t *reply_data =
-        plasma_receive(conn->store_conn, MessageType_PlasmaGetLocalReply);
-    plasma_object object_data;
-    int has_object;
-    plasma_read_GetLocalReply(reply_data, &obj_id, &object_data, &has_object,
-                              1);
-    free(reply_data);
-
-    if (!has_object) {
-      /* The object is not in our local store. */
-      return false;
-    }
-
-    int fd = recv_fd(conn->store_conn);
-    CHECKM(fd >= 0, "recv_fd not successful");
-    object = &object_data;
-    object_buffer->data = lookup_or_mmap(conn, fd, object->handle.store_fd,
-                                         object->handle.mmap_size);
-  }
-  /* Finish filling out the return values. */
-  object_buffer->data += object->data_offset;
-  object_buffer->data_size = object->data_size;
-  object_buffer->metadata = object_buffer->data + object->data_size;
-  object_buffer->metadata_size = object->metadata_size;
-  /* Increment the count of the number of instances of this object that this
-   * client is using. A call to plasma_release is required to decrement this
-   * count. Cache the reference to the object. */
-  increment_object_count(conn, obj_id, object, true);
-  return true;
-}
-
 int plasma_status(plasma_connection *conn, object_id object_id) {
   CHECK(conn != NULL);
   CHECK(conn->manager_conn >= 0);
@@ -785,205 +785,4 @@ int plasma_wait(plasma_connection *conn,
     }
   }
   return num_objects_ready;
-}
-
-/*
- *  TODO: maybe move the plasma_client_* functions in another file.
- *
- *  plasma_client_* represent functions implemented by client; so probably
- *  need to be in a different file.
- */
-
-void plasma_client_get(plasma_connection *conn,
-                       object_id obj_id,
-                       object_buffer *object_buffer) {
-  CHECK(conn != NULL);
-  CHECK(conn->manager_conn >= 0);
-
-  object_request request;
-  request.object_id = obj_id;
-
-  while (true) {
-    if (plasma_get_local(conn, obj_id, object_buffer)) {
-      /* Object is in the local Plasma Store, and it is sealed. */
-      return;
-    }
-
-    object_id object_ids[1] = {obj_id};
-    plasma_fetch(conn, 1, object_ids);
-    switch (plasma_status(conn, obj_id)) {
-    case ObjectStatus_Local:
-      /* Object has finished being transfered just after calling
-       * plasma_get_local(), and it is now in the local Plasma Store. Loop again
-       * to call plasma_get_local() and eventually return. */
-      continue;
-    case ObjectStatus_Remote:
-      /* A fetch request has been already scheduled for obj_id, so wait for
-       * it to complete. */
-      request.type = PLASMA_QUERY_LOCAL;
-      break;
-    case ObjectStatus_Nonexistent:
-      /* Object doesn’t exist in the system so ask local scheduler to create it.
-       */
-      /* TODO: scheduler_create_object(obj_id); */
-      /* Wait for the object to be (re)constructed and sealed either in the
-       * local Plasma Store or remotely. */
-      request.type = PLASMA_QUERY_ANYWHERE;
-      break;
-    default:
-      CHECKM(0, "Unrecognizable object status.")
-    }
-
-/*
- * Wait for obj_id to (1) be transferred and sealed in the local
- * Plasma Store, if available remotely, or (2) be (re)constructued either
- * locally or remotely, if obj_id didn't exist in the system.
- * - if timeout, next iteration will retry plasma_fetch() or
- *   scheduler_create_object()
- * - if request.status == ObjectStatus_Local, next iteration
- *     will get object and return
- * - if request.status == ObjectStatus_Remote, next iteration
- *     will call plasma_fetch()
- * - if request.status == ObjectStatus_Nonexistent, next iteration
- *     will call scheduler_create_object()
- */
-#define TIMEOUT_WAIT_MS 200
-    plasma_wait(conn, 1, &request, 1, TIMEOUT_WAIT_MS);
-  }
-}
-
-int plasma_client_wait(plasma_connection *conn,
-                       int num_object_ids,
-                       object_id object_ids[],
-                       uint64_t timeout,
-                       int num_returns,
-                       object_id return_object_ids[]) {
-  CHECK(conn->manager_conn >= 0);
-  CHECK(num_object_ids >= num_returns);
-
-  object_request requests[num_object_ids];
-
-  /* Initialize array of object requests. We only care for the objects to be
-   * present in the system, not necessary in the local Plasma Store. Thus, we
-   * set the request type to PLASMA_QUERY_ANYWHERE. */
-  for (int i = 0; i < num_object_ids; ++i) {
-    requests[i].object_id = object_ids[i];
-    requests[i].type = PLASMA_QUERY_ANYWHERE;
-  }
-
-  /* Loop until we get num_returns objects stored in the system either in the
-   * local Plasma Store or remotely. */
-  uint64_t remaining_timeout = timeout;
-  while (true) {
-    struct timeval start, end;
-    gettimeofday(&start, NULL);
-
-    int n = plasma_wait(conn, num_object_ids, requests, num_returns,
-                        MIN(remaining_timeout, TIMEOUT_WAIT_MS));
-
-    gettimeofday(&end, NULL);
-    float diff_ms = (end.tv_sec - start.tv_sec);
-    diff_ms = (((diff_ms * 1000000.) + end.tv_usec) - (start.tv_usec)) / 1000.;
-    remaining_timeout =
-        (remaining_timeout >= diff_ms ? remaining_timeout - diff_ms : 0);
-
-    if (n >= num_returns || remaining_timeout == 0) {
-      /* Either (1) num_returns requests are satisfied or (2) timeout expired.
-       * In both cases we return. */
-      int idx_returns = 0;
-
-      for (int i = 0; i < num_returns; ++i) {
-        if (requests[i].status == ObjectStatus_Local ||
-            requests[i].status == ObjectStatus_Remote) {
-          return_object_ids[idx_returns] = requests[i].object_id;
-          idx_returns += 1;
-        }
-      }
-      return idx_returns;
-    }
-    /* The timeout hasn't expired and we got less than num_returns in the
-     * system. Trigger reconstruction of the missing objects. */
-    for (int i = 0; i < num_returns; ++i) {
-      if (requests[i].status == ObjectStatus_Nonexistent) {
-        /* Object doesn’t exist in the system so ask local scheduler to create
-         * object with ID requests[i].object_id. */
-        /* TODO: scheduler_create_object(object_id); */
-        printf("XXX Need to schedule object -- not implemented yet!\n");
-        /* Subscribe to hear back when object_id is sealed. */
-      }
-    }
-  }
-}
-
-void plasma_client_multiget(plasma_connection *conn,
-                            int num_object_ids,
-                            object_id object_ids[],
-                            object_buffer object_buffers[]) {
-  object_request requests[num_object_ids];
-
-  /* Set all request types to ObjectStatus_Local, as we want to get all objects
-   * into the local Plasma Store. */
-  for (int i = 0; i < num_object_ids; ++i) {
-    requests[i].object_id = object_ids[i];
-    requests[i].type = PLASMA_QUERY_LOCAL;
-  }
-
-  while (true) {
-    int n;
-
-    /* Issue a fetch command so the object IDs end up locally. */
-    plasma_fetch(conn, num_object_ids, object_ids);
-
-    /* Wait to get all objects in the system. The reason we call plasma_wait()
-     * here instead of iterating over plasma_client_get() is to increase
-     * concurrency as plasma_client_get() is blocking. */
-    n = plasma_wait(conn, num_object_ids, requests, num_object_ids,
-                    TIMEOUT_WAIT_MS);
-
-    if (n == num_object_ids) {
-      /* All objects are in the system either on the local or a remote Plasma
-       * store, so we are done. */
-      break;
-    }
-  }
-
-  /* Now get the data for every object. */
-  for (int i = 0; i < num_object_ids; ++i) {
-    plasma_client_get(conn, object_ids[i], &object_buffers[i]);
-  }
-}
-
-/**
- * TODO: maybe move object_requests_* functions in another file.
- * The object_request data structure is defined in plasma.h since
- * it is used by plasma_request and plasma_reply, but there is no
- * plasma.c file.
- */
-void object_requests_copy(int num_object_requests,
-                          object_request object_requests_dst[],
-                          object_request object_requests_src[]) {
-  for (int i = 0; i < num_object_requests; ++i) {
-    object_requests_dst[i].object_id = object_requests_src[i].object_id;
-    object_requests_dst[i].type = object_requests_src[i].type;
-    object_requests_dst[i].status = object_requests_src[i].type;
-  }
-}
-
-object_request *object_requests_get_object(object_id object_id,
-                                           int num_object_requests,
-                                           object_request object_requests[]) {
-  for (int i = 0; i < num_object_requests; ++i) {
-    if (object_ids_equal(object_requests[i].object_id, object_id)) {
-      return &object_requests[i];
-    }
-  }
-  return NULL;
-}
-
-void object_requests_set_status_all(int num_object_requests,
-                                    object_request object_requests[],
-                                    int status) {
-  for (int i = 0; i < num_object_requests; ++i) {
-    object_requests[i].status = status;
-  }
 }

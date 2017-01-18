@@ -135,4 +135,23 @@ typedef struct {
  */
 bool plasma_object_ids_distinct(int num_object_ids, object_id object_ids[]);
 
+/**
+ * Print a warning if the status is less than zero. This should be used to check
+ * the success of messages sent to plasma clients. We print a warning instead of
+ * failing because the plasma clients are allowed to die. This is used to handle
+ * situations where the store writes to a client file descriptor, and the client
+ * may already have disconnected. If we have processed the disconnection and
+ * closed the file descriptor, we should get a BAD FILE DESCRIPTOR error. If we
+ * have not, then we should get a SIGPIPE.
+ *
+ * @param status The status to check. If it is less less than zero, we will
+ *        print a warning.
+ * @param client_sock The client socket. This is just used to print some extra
+ *        information.
+ * @param error This should bee the current value of errno at the time this
+ *        method is called.
+ * @return Void.
+ */
+void warn_if_sigpipe(int status, int client_sock, int error);
+
 #endif /* PLASMA_H */

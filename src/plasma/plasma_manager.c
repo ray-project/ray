@@ -340,7 +340,8 @@ void remove_wait_request_for_object(plasma_manager_state *manager_state,
       }
     }
     /* In principle, if there are no more wait requests involving this object
-     * ID, then we could remove the object_wait_reqs struct. */
+     * ID, then we could remove the object_wait_reqs struct. However, the
+     * object_wait_reqs struct gets removed in update_object_wait_requests. */
   }
 }
 
@@ -357,9 +358,10 @@ void remove_wait_request(plasma_manager_state *manager_state,
 void return_from_wait(plasma_manager_state *manager_state,
                       wait_request *wait_req) {
   /* Send the reply to the client. */
-  CHECK(plasma_send_WaitReply(wait_req->client_conn->fd, manager_state->builder,
-                              wait_req->object_requests,
-                              wait_req->num_object_requests) >= 0);
+  warn_if_sigpipe(plasma_send_WaitReply(
+                      wait_req->client_conn->fd, manager_state->builder,
+                      wait_req->object_requests, wait_req->num_object_requests),
+                  wait_req->client_conn->fd, errno);
   /* Remove the wait request from each of the relevant object_wait_requests hash
    * tables if it is present there. */
   for (int i = 0; i < wait_req->num_object_requests; ++i) {
@@ -382,9 +384,17 @@ void update_object_wait_requests(plasma_manager_state *manager_state,
   HASH_FIND(hh, *object_wait_requests_table_ptr, &obj_id, sizeof(obj_id),
             object_wait_reqs);
   if (object_wait_reqs != NULL) {
-    for (int i = 0; i < utarray_len(object_wait_reqs->wait_requests); ++i) {
-      wait_request **wait_req_ptr =
-          (wait_request **) utarray_eltptr(object_wait_reqs->wait_requests, i);
+    /* We compute the number of requests first because the length of the utarray
+     * will change as we iterate over it (because each call to return_from_wait
+     * will remove one element). */
+    int num_requests = utarray_len(object_wait_reqs->wait_requests);
+    /* The argument index is the index of the current element of the utarray
+     * that we are processing. It may differ from the counter i when elements
+     * are removed from the array. */
+    int index = 0;
+    for (int i = 0; i < num_requests; ++i) {
+      wait_request **wait_req_ptr = (wait_request **) utarray_eltptr(
+          object_wait_reqs->wait_requests, index);
       wait_request *wait_req = *wait_req_ptr;
       wait_req->num_satisfied += 1;
       /* Mark the object as present in the wait request. */
@@ -403,8 +413,13 @@ void update_object_wait_requests(plasma_manager_state *manager_state,
       /* If this wait request is done, reply to the client. */
       if (wait_req->num_satisfied == wait_req->num_objects_to_wait_for) {
         return_from_wait(manager_state, wait_req);
+      } else {
+        /* The call to return_from_wait will remove the current element in the
+         * array, so we only increment the counter in the else branch. */
+        index += 1;
       }
     }
+    DCHECK(index == utarray_len(object_wait_reqs->wait_requests));
     /* Remove the array of wait requests for this object, since no one should be
      * waiting for this object anymore. */
     HASH_DELETE(hh, *object_wait_requests_table_ptr, object_wait_reqs);
@@ -580,16 +595,20 @@ void send_queued_request(event_loop *loop,
   plasma_request_buffer *buf = conn->transfer_queue;
   switch (buf->type) {
   case MessageType_PlasmaDataRequest:
-    CHECK(plasma_send_DataRequest(conn->fd, state->builder, buf->object_id,
-                                  state->addr, state->port) >= 0);
+    warn_if_sigpipe(
+        plasma_send_DataRequest(conn->fd, state->builder, buf->object_id,
+                                state->addr, state->port),
+        conn->fd, errno);
     break;
   case MessageType_PlasmaDataReply:
     LOG_DEBUG("Transferring object to manager");
     if (conn->cursor == 0) {
       /* If the cursor is zero, we haven't sent any requests for this object
        * yet, so send the initial data request. */
-      CHECK(plasma_send_DataReply(conn->fd, state->builder, buf->object_id,
-                                  buf->data_size, buf->metadata_size) >= 0);
+      warn_if_sigpipe(
+          plasma_send_DataReply(conn->fd, state->builder, buf->object_id,
+                                buf->data_size, buf->metadata_size),
+          conn->fd, errno);
     }
     write_object_chunk(conn, buf);
     break;
@@ -716,7 +735,7 @@ client_connection *get_manager_connection(plasma_manager_state *state,
 }
 
 void process_transfer_request(event_loop *loop,
-                              object_id object_id,
+                              object_id obj_id,
                               const char *addr,
                               int port,
                               client_connection *conn) {
@@ -733,25 +752,26 @@ void process_transfer_request(event_loop *loop,
    * do a non-blocking get call on the store, and if the object isn't there then
    * perhaps the manager should initiate the transfer when it receives a
    * notification from the store that the object is present. */
-  int has_obj;
+  object_buffer obj_buffer;
   int counter = 0;
   do {
-    plasma_contains(conn->manager_state->plasma_conn, object_id, &has_obj);
+    /* We pass in 0 to indicate that the command should return immediately. */
+    object_id obj_id_array[1] = {obj_id};
+    plasma_get(conn->manager_state->plasma_conn, obj_id_array, 1, 0,
+               &obj_buffer);
     if (counter > 0) {
       LOG_WARN("Blocking in the plasma manager.");
     }
     counter += 1;
-  } while (!has_obj);
-  plasma_get(conn->manager_state->plasma_conn, object_id, &data_size, &data,
-             &metadata_size, &metadata);
-  assert(metadata == data + data_size);
+  } while (obj_buffer.data_size == -1);
+  DCHECK(obj_buffer.metadata == obj_buffer.data + obj_buffer.data_size);
   plasma_request_buffer *buf = malloc(sizeof(plasma_request_buffer));
   buf->type = MessageType_PlasmaDataReply;
-  buf->object_id = object_id;
-  buf->data = data; /* We treat this as a pointer to the
+  buf->object_id = obj_id;
+  buf->data = obj_buffer.data; /* We treat this as a pointer to the
                        concatenated data and metadata. */
-  buf->data_size = data_size;
-  buf->metadata_size = metadata_size;
+  buf->data_size = obj_buffer.data_size;
+  buf->metadata_size = obj_buffer.metadata_size;
 
   client_connection *manager_conn =
       get_manager_connection(conn->manager_state, addr, port);
@@ -1169,9 +1189,10 @@ void request_status_done(object_id object_id,
   client_connection *client_conn = (client_connection *) context;
   int status =
       request_status(object_id, manager_count, manager_vector, context);
-  CHECK(plasma_send_StatusReply(client_conn->fd,
-                                client_conn->manager_state->builder, &object_id,
-                                &status, 1) >= 0);
+  warn_if_sigpipe(plasma_send_StatusReply(client_conn->fd,
+                                          client_conn->manager_state->builder,
+                                          &object_id, &status, 1),
+                  client_conn->fd, errno);
 }
 
 int request_status(object_id object_id,
@@ -1204,17 +1225,19 @@ void process_status_request(client_connection *client_conn,
   /* Return success immediately if we already have this object. */
   if (is_object_local(client_conn->manager_state, object_id)) {
     int status = ObjectStatus_Local;
-    CHECK(plasma_send_StatusReply(client_conn->fd,
-                                  client_conn->manager_state->builder,
-                                  &object_id, &status, 1) >= 0);
+    warn_if_sigpipe(plasma_send_StatusReply(client_conn->fd,
+                                            client_conn->manager_state->builder,
+                                            &object_id, &status, 1),
+                    client_conn->fd, errno);
     return;
   }
 
   if (client_conn->manager_state->db == NULL) {
     int status = ObjectStatus_Nonexistent;
-    CHECK(plasma_send_StatusReply(client_conn->fd,
-                                  client_conn->manager_state->builder,
-                                  &object_id, &status, 1) >= 0);
+    warn_if_sigpipe(plasma_send_StatusReply(client_conn->fd,
+                                            client_conn->manager_state->builder,
+                                            &object_id, &status, 1),
+                    client_conn->fd, errno);
     return;
   }
 
@@ -1427,6 +1450,9 @@ void start_server(const char *store_socket_name,
                   int port,
                   const char *db_addr,
                   int db_port) {
+  /* Ignore SIGPIPE signals. If we don't do this, then when we attempt to write
+   * to a client that has already died, the manager could die. */
+  signal(SIGPIPE, SIG_IGN);
   /* Bind the sockets before we try to connect to the plasma store.
    * In case the bind does not succeed, we want to be able to exit
    * without breaking the pipe to the store. */

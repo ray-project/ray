@@ -69,12 +69,14 @@ void plasma_read_SealReply(uint8_t *data, object_id *object_id, int *error);
 int plasma_send_GetRequest(int sock,
                            protocol_builder *B,
                            object_id object_ids[],
-                           int64_t num_objects);
+                           int64_t num_objects,
+                           int64_t timeout_ms);
 
 int64_t plasma_read_GetRequest_num_objects(uint8_t *data);
 
 void plasma_read_GetRequest(uint8_t *data,
                             object_id object_ids[],
+                            int64_t *timeout_ms,
                             int64_t num_objects);
 
 int plasma_send_GetReply(int sock,
@@ -87,32 +89,6 @@ void plasma_read_GetReply(uint8_t *data,
                           object_id object_ids[],
                           plasma_object plasma_objects[],
                           int64_t num_objects);
-
-/* Plasma Get local message functions. */
-
-int plasma_send_GetLocalRequest(int sock,
-                                protocol_builder *B,
-                                object_id object_ids[],
-                                int64_t num_objects);
-
-int64_t plasma_read_GetLocalRequest_num_objects(uint8_t *data);
-
-void plasma_read_GetLocalRequest(uint8_t *data,
-                                 object_id object_ids[],
-                                 int64_t num_objects);
-
-int plasma_send_GetLocalReply(int sock,
-                              protocol_builder *B,
-                              object_id object_ids[],
-                              plasma_object plasma_objects[],
-                              int has_object[],
-                              int64_t num_objects);
-
-void plasma_read_GetLocalReply(uint8_t *data,
-                               object_id object_ids[],
-                               plasma_object plasma_objects[],
-                               int has_object[],
-                               int64_t num_objects);
 
 /* Plasma Release message functions. */
 

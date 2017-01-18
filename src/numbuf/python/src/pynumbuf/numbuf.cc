@@ -297,42 +297,80 @@ static PyObject* store_list(PyObject* self, PyObject* args) {
  * Python objects from the plasma data according to the schema and
  * returns the object.
  *
- * @param args Object ID of the PyList to be retrieved and connection to the
- *        plasma store.
- * @return The PyList.
+ * @param args The first argument is a list of object IDs of the lists to be
+ *        retrieved and the second argument is the connection to the plasma
+ *        store.
+ * @return A list of tuples, where the first element in the tuple is the object
+ *         ID (appearing in the same order as in the argument to the method),
+ *         and the second element in the tuple is the retrieved list (or None)
+ *         if no value was retrieved.
  */
 static PyObject* retrieve_list(PyObject* self, PyObject* args) {
-  object_id obj_id;
+  PyObject* object_id_list;
   PyObject* plasma_conn;
-  if (!PyArg_ParseTuple(args, "O&O", PyStringToUniqueID, &obj_id, &plasma_conn)) {
+  long long timeout_ms;
+  if (!PyArg_ParseTuple(args, "OOL", &object_id_list, &plasma_conn, &timeout_ms)) {
     return NULL;
   }
   plasma_connection* conn;
   if (!PyObjectToPlasmaConnection(plasma_conn, &conn)) { return NULL; }
-  object_id* buffer_obj_id = new object_id(obj_id);
-  /* This keeps a Plasma buffer in scope as long as an object that is backed by that
-   * buffer is in scope. This prevents memory in the object store from getting
-   * released while it is still being used to back a Python object. */
-  PyObject* base = PyCapsule_New(buffer_obj_id, "buffer", BufferCapsule_Destructor);
-  PyCapsule_SetContext(base, plasma_conn);
-  Py_XINCREF(plasma_conn);
 
-  int64_t size, metadata_size;
-  uint8_t *data, *metadata;
-  plasma_get(conn, obj_id, &size, &data, &metadata_size, &metadata);
+  Py_ssize_t num_object_ids = PyList_Size(object_id_list);
+  object_id object_ids[num_object_ids];
+  object_buffer object_buffers[num_object_ids];
 
-  /* Remember: The metadata offset was written at the beginning of the plasma buffer. */
-  int64_t header_end_offset = *((int64_t*)data);
-  auto schema_buffer = std::make_shared<Buffer>(metadata, metadata_size);
-  auto batch = std::shared_ptr<RecordBatch>();
-  ARROW_CHECK_OK(read_batch(schema_buffer, header_end_offset, data + sizeof(size),
-      size - sizeof(size), &batch));
+  for (int i = 0; i < num_object_ids; ++i) {
+    PyStringToUniqueID(PyList_GetItem(object_id_list, i), &object_ids[i]);
+  }
 
-  PyObject* result;
-  Status s = DeserializeList(batch->column(0), 0, batch->num_rows(), base, &result);
-  CHECK_SERIALIZATION_ERROR(s);
-  Py_XDECREF(base);
-  return result;
+  Py_BEGIN_ALLOW_THREADS;
+  plasma_get(conn, object_ids, num_object_ids, timeout_ms, object_buffers);
+  Py_END_ALLOW_THREADS;
+
+  PyObject* returns = PyList_New(num_object_ids);
+  for (int i = 0; i < num_object_ids; ++i) {
+    PyObject* obj_id = PyList_GetItem(object_id_list, i);
+    PyObject* t = PyTuple_New(2);
+    Py_XINCREF(obj_id);
+    PyTuple_SetItem(t, 0, obj_id);
+
+    if (object_buffers[i].data_size != -1) {
+      /* The object was retrieved, so return the object. */
+      object_id* buffer_obj_id = new object_id(object_ids[i]);
+      /* This keeps a Plasma buffer in scope as long as an object that is backed by that
+       * buffer is in scope. This prevents memory in the object store from getting
+       * released while it is still being used to back a Python object. */
+      PyObject* base = PyCapsule_New(buffer_obj_id, "buffer", BufferCapsule_Destructor);
+      PyCapsule_SetContext(base, plasma_conn);
+      Py_XINCREF(plasma_conn);
+
+      /* Remember: The metadata offset was written at the beginning of the plasma buffer.
+       */
+      int64_t header_end_offset = *((int64_t*)object_buffers[i].data);
+      auto schema_buffer = std::make_shared<Buffer>(
+          object_buffers[i].metadata, object_buffers[i].metadata_size);
+      auto batch = std::shared_ptr<RecordBatch>();
+      ARROW_CHECK_OK(read_batch(schema_buffer, header_end_offset,
+          object_buffers[i].data + sizeof(object_buffers[i].data_size),
+          object_buffers[i].data_size - sizeof(object_buffers[i].data_size), &batch));
+
+      PyObject* result;
+      Status s = DeserializeList(batch->column(0), 0, batch->num_rows(), base, &result);
+      CHECK_SERIALIZATION_ERROR(s);
+      Py_XDECREF(base);
+
+      PyTuple_SetItem(t, 1, result);
+    } else {
+      /* The object was not retrieved, so just add None to the list of return
+       * values. */
+      Py_XINCREF(Py_None);
+      PyTuple_SetItem(t, 1, Py_None);
+    }
+
+    PyList_SetItem(returns, i, t);
+  }
+
+  return returns;
 }
 
 #endif  // HAS_PLASMA
