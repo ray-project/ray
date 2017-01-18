@@ -484,12 +484,8 @@ bool plasma_compute_object_hash(plasma_connection *conn,
   if (!has_object) {
     return false;
   }
-  /* Get the plasma object data. */
-  int64_t size;
-  uint8_t *data;
-  int64_t metadata_size;
-  uint8_t *metadata;
-  /* We pass in a timeout of -1 to indicate that no timeout should be used. */
+  /* Get the plasma object data. We pass in a timeout of -1 to indicate that no
+   * timeout should be used. */
   object_buffer obj_buffer;
   object_id obj_id_array[1] = {obj_id};
   plasma_get(conn, obj_id_array, 1, 0, &obj_buffer);
@@ -505,8 +501,9 @@ bool plasma_compute_object_hash(plasma_connection *conn,
   XXH64_update(&hash_state, (unsigned char *) obj_buffer.metadata,
                obj_buffer.metadata_size);
   uint64_t hash = XXH64_digest(&hash_state);
-  DCHECK(DIGEST_SIZE >= sizeof(uint64_t));
-  memcpy(digest, &hash, DIGEST_SIZE);
+  DCHECK(DIGEST_SIZE >= sizeof(hash));
+  memset(digest, 0, DIGEST_SIZE);
+  memcpy(digest, &hash, sizeof(hash));
   /* Release the plasma object. */
   plasma_release(conn, obj_id);
   return true;
