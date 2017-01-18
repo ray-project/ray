@@ -2,7 +2,7 @@
 
 #include "object_info.h"
 #include "task.h"
-#include "task_table.h"
+#include "state/task_table.h"
 
 #include "global_scheduler_algorithm.h"
 

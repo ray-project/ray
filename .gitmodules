@@ -1,8 +1,0 @@
-[submodule "src/common/thirdparty/redis"]
-	path = src/common/thirdparty/redis-windows
-	url = https://github.com/MSOpenTech/redis.git
-	ignore = all
-[submodule "src/common/thirdparty/python"]
-	path = src/common/thirdparty/python
-	url = https://github.com/austinsc/python.git
-	ignore = all

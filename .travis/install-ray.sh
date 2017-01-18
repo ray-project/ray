@@ -9,36 +9,14 @@ echo "PYTHON is $PYTHON"
 
 if [[ "$PYTHON" == "2.7" ]]; then
 
-  pushd "$ROOT_DIR/../numbuf"
-    sudo python setup.py install
-  popd
-
-  pushd "$ROOT_DIR/../src/common/lib/python"
-    pushd "$ROOT_DIR/../src/common"
-      make
-    popd
-    sudo python setup.py install
-  popd
-
-  pushd "$ROOT_DIR/../lib/python"
+  pushd "$ROOT_DIR/../python"
     sudo python setup.py install
   popd
 
 elif [[ "$PYTHON" == "3.5" ]]; then
   export PATH="$HOME/miniconda/bin:$PATH"
 
-  pushd "$ROOT_DIR/../numbuf"
-    python setup.py install --user
-  popd
-
-  pushd "$ROOT_DIR/../src/common/lib/python"
-    pushd "$ROOT_DIR/../src/common"
-      make
-    popd
-    python setup.py install --user
-  popd
-
-  pushd "$ROOT_DIR/../lib/python"
+  pushd "$ROOT_DIR/../python"
     python setup.py install --user
   popd
 
