@@ -56,6 +56,9 @@ struct task_spec_impl {
    *  has been written so far, relative to &task_spec->args_and_returns[0] +
    *  (task_spec->num_args + task_spec->num_returns) * sizeof(task_arg) */
   int64_t args_value_offset;
+  /* Resource vector for this task. A resource vector maps a resource index
+   * (like "cpu" or "gpu") to the number of units of that resource required. */
+  int16_t resource_vector[NUM_RESOURCE_INDICES];
   /** Argument and return IDs as well as offsets for pass-by-value args. */
   task_arg args_and_returns[0];
 };

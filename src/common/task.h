@@ -243,6 +243,20 @@ void free_task_spec(task_spec *spec);
 void print_task(task_spec *spec, UT_string *output);
 
 /**
+ * Indices into resource vectors.
+ * A resource vector maps a resource index to the number
+ * of units of that resource required.
+ */
+typedef enum {
+  /* Index for number of cpus the task requires. */
+  CPU_RESOURCE_INDEX = 0,
+  /* Index for number of gpus the task requires. */
+  GPU_RESOURCE_INDEX,
+  /* Total number of different resources in the system. */
+  NUM_RESOURCE_INDICES
+} resource_vector_index;
+
+/**
  * ==== Task ====
  * Contains information about a scheduled task: The task specification, the task
  * schedulign state (WAITING, SCHEDULED, RUNNING, DONE), and which local
