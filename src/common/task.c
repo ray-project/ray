@@ -61,7 +61,7 @@ struct task_spec_impl {
    * Note that this will allow us to support arbitrary attributes:
    * For example, we can have a coloring of nodes and "red" can correspond
    * to 0.0, "green" to 1.0 and "yellow" to 2.0. */
-  int32_t required_resources[NUM_RESOURCE_INDICES];
+  double required_resources[MAX_RESOURCE_INDEX];
   /** Argument and return IDs as well as offsets for pass-by-value args. */
   task_arg args_and_returns[0];
 };
@@ -272,7 +272,7 @@ object_id task_return(task_spec *spec, int64_t return_index) {
   return ret->obj_id;
 }
 
-int32_t task_required_resource(task_spec *spec, int64_t resource_index) {
+double task_required_resource(task_spec *spec, int64_t resource_index) {
   return spec->required_resources[resource_index];
 }
 

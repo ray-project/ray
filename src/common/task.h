@@ -229,7 +229,7 @@ typedef enum {
   /* Index for number of gpus the task requires. */
   GPU_RESOURCE_INDEX,
   /* Total number of different resources in the system. */
-  NUM_RESOURCE_INDICES
+  MAX_RESOURCE_INDEX
 } resource_vector_index;
 
 /**
@@ -239,7 +239,7 @@ typedef enum {
  * @param resource_index Index of the resource.
  * @return How many of this resource the task needs to execute.
  */
-int32_t task_required_resource(task_spec *spec, int64_t resource_index);
+double task_required_resource(task_spec *spec, int64_t resource_index);
 
 /**
  * Compute the object id associated to a put call.
