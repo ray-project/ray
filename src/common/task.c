@@ -58,7 +58,7 @@ struct task_spec_impl {
   int64_t args_value_offset;
   /* Resource vector for this task. A resource vector maps a resource index
    * (like "cpu" or "gpu") to the number of units of that resource required. */
-  int16_t resource_vector[NUM_RESOURCE_INDICES];
+  int32_t resource_vector[NUM_RESOURCE_INDICES];
   /** Argument and return IDs as well as offsets for pass-by-value args. */
   task_arg args_and_returns[0];
 };
@@ -267,6 +267,10 @@ object_id task_return(task_spec *spec, int64_t return_index) {
   task_arg *ret = &spec->args_and_returns[spec->num_args + return_index];
   DCHECK(ret->type == ARG_BY_REF);
   return ret->obj_id;
+}
+
+int32_t task_resource_value(task_spec *spec, int64_t resource_index) {
+  return spec->resource_vector[resource_index];
 }
 
 void free_task_spec(task_spec *spec) {
