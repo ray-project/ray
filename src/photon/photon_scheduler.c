@@ -110,8 +110,7 @@ void free_local_scheduler(local_scheduler_state *state) {
 
 void assign_task_to_worker(local_scheduler_state *state,
                            task_spec *spec,
-                           int worker_index,
-                           bool from_global_scheduler) {
+                           int worker_index) {
   CHECK(worker_index < utarray_len(state->workers));
   worker *w = (worker *) utarray_eltptr(state->workers, worker_index);
   if (write_message(w->sock, EXECUTE_TASK, task_spec_size(spec),
@@ -131,13 +130,8 @@ void assign_task_to_worker(local_scheduler_state *state,
   if (state->db != NULL) {
     task *task =
         alloc_task(spec, TASK_STATUS_RUNNING, get_db_client_id(state->db));
-    if (from_global_scheduler) {
-      task_table_update(state->db, task, (retry_info *) &photon_retry, NULL,
-                        NULL);
-    } else {
-      task_table_add_task(state->db, task, (retry_info *) &photon_retry, NULL,
-                          NULL);
-    }
+    task_table_update(state->db, task, (retry_info *) &photon_retry, NULL,
+                      NULL);
     /* Record which task this worker is executing. This will be freed in
      * process_message when the worker sends a GET_TASK message to the local
      * scheduler. */
@@ -178,15 +172,13 @@ void reconstruct_object_task_lookup_callback(object_id reconstruct_object_id,
   CHECKM(task != NULL,
          "No task information found for object during reconstruction");
   local_scheduler_state *state = user_context;
-  /* If the task's scheduling state is WAITING or SCHEDULED, assume that
+  /* If the task's scheduling state is pending completion, assume that
    * reconstruction is already being taken care of and cancel this
    * reconstruction operation. NOTE: This codepath is not responsible for
    * detecting failure of the other reconstruction, or updating the
    * scheduling_state accordingly. */
   scheduling_state task_status = task_state(task);
-  if (task_status == TASK_STATUS_WAITING ||
-      task_status == TASK_STATUS_SCHEDULED ||
-      task_status == TASK_STATUS_RUNNING) {
+  if (task_status != TASK_STATUS_DONE) {
     LOG_DEBUG("Task to reconstruct had scheduling state %d", task_status);
     return;
   }

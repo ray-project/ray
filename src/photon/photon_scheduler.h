@@ -35,8 +35,7 @@ void new_client_connection(event_loop *loop,
  */
 void assign_task_to_worker(local_scheduler_state *state,
                            task_spec *task,
-                           int worker_index,
-                           bool from_global_scheduler);
+                           int worker_index);
 
 /**
  * This is the callback that is used to process a notification from the Plasma
