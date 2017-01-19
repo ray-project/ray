@@ -289,7 +289,7 @@ TEST object_reconstruction_suppression_test(void) {
   }
 }
 
-TEST object_notifications_test(void) {
+TEST task_dependency_test(void) {
   photon_mock *photon = init_photon_mock(false);
   local_scheduler_state *state = photon->photon_state;
   scheduling_algorithm_state *algorithm_state = state->algorithm_state;
@@ -362,11 +362,74 @@ TEST object_notifications_test(void) {
   PASS();
 }
 
+TEST task_multi_dependency_test(void) {
+  photon_mock *photon = init_photon_mock(false);
+  local_scheduler_state *state = photon->photon_state;
+  scheduling_algorithm_state *algorithm_state = state->algorithm_state;
+  int worker_index = 0;
+  task_spec *spec = example_task_spec(2, 1);
+  object_id oid1 = task_arg_id(spec, 0);
+  object_id oid2 = task_arg_id(spec, 1);
+
+  /* Check that the task gets queued in the waiting queue if the task is
+   * submitted, but the inputs and workers are not available. */
+  handle_task_submitted(state, algorithm_state, spec);
+  ASSERT_EQ(num_waiting_tasks(algorithm_state), 1);
+  ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
+  /* Check that the task stays in the waiting queue if only one input becomes
+   * available. */
+  handle_object_available(state, algorithm_state, oid2);
+  ASSERT_EQ(num_waiting_tasks(algorithm_state), 1);
+  ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
+  /* Once all inputs are available, the task is moved to the dispatch queue. */
+  handle_object_available(state, algorithm_state, oid1);
+  ASSERT_EQ(num_waiting_tasks(algorithm_state), 0);
+  ASSERT_EQ(num_dispatch_tasks(algorithm_state), 1);
+  /* Once a worker is available, the task gets assigned. */
+  handle_worker_available(state, algorithm_state, worker_index);
+  ASSERT_EQ(num_waiting_tasks(algorithm_state), 0);
+  ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
+  reset_worker(photon, worker_index);
+
+  /* Check that the task gets queued in the dispatch queue if the task is
+   * submitted and the inputs are available, but no worker is available yet. */
+  handle_task_submitted(state, algorithm_state, spec);
+  ASSERT_EQ(num_waiting_tasks(algorithm_state), 0);
+  ASSERT_EQ(num_dispatch_tasks(algorithm_state), 1);
+  /* If any input is removed while a task is in the dispatch queue, the task
+   * gets moved back to the waiting queue. */
+  handle_object_removed(state, oid1);
+  ASSERT_EQ(num_waiting_tasks(algorithm_state), 1);
+  ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
+  handle_object_removed(state, oid2);
+  ASSERT_EQ(num_waiting_tasks(algorithm_state), 1);
+  ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
+  /* Check that the task stays in the waiting queue if only one input becomes
+   * available. */
+  handle_object_available(state, algorithm_state, oid2);
+  ASSERT_EQ(num_waiting_tasks(algorithm_state), 1);
+  ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
+  /* Once all inputs are available, the task is moved to the dispatch queue. */
+  handle_object_available(state, algorithm_state, oid1);
+  ASSERT_EQ(num_waiting_tasks(algorithm_state), 0);
+  ASSERT_EQ(num_dispatch_tasks(algorithm_state), 1);
+  /* Once a worker is available, the task gets assigned. */
+  handle_worker_available(state, algorithm_state, worker_index);
+  ASSERT_EQ(num_waiting_tasks(algorithm_state), 0);
+  ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
+  reset_worker(photon, worker_index);
+
+  free_task_spec(spec);
+  destroy_photon_mock(photon);
+  PASS();
+}
+
 SUITE(photon_tests) {
   RUN_REDIS_TEST(object_reconstruction_test);
   RUN_REDIS_TEST(object_reconstruction_recursive_test);
   RUN_REDIS_TEST(object_reconstruction_suppression_test);
-  RUN_TEST(object_notifications_test);
+  RUN_TEST(task_dependency_test);
+  RUN_TEST(task_multi_dependency_test);
 }
 
 GREATEST_MAIN_DEFS();

@@ -522,12 +522,17 @@ void handle_object_available(local_scheduler_state *state,
             sizeof(object_id), elt);
   if (elt != NULL) {
     HASH_DELETE(dependency_handle, algorithm_state->object_dependencies, elt);
-    task_queue_entry **task_entry = NULL;
-    while ((task_entry = (task_queue_entry **) utarray_next(
-                elt->dependent_tasks, task_entry))) {
-      LOG_DEBUG("Moved task to dispatch queue");
-      DL_DELETE(algorithm_state->waiting_task_queue, *task_entry);
-      DL_APPEND(algorithm_state->dispatch_task_queue, *task_entry);
+    task_queue_entry *task_entry = NULL;
+    for (task_queue_entry **p =
+             (task_queue_entry **) utarray_front(elt->dependent_tasks);
+         p != NULL;
+         p = (task_queue_entry **) utarray_next(elt->dependent_tasks, p)) {
+      task_queue_entry *task_entry = *p;
+      if (can_run(algorithm_state, task_entry->spec)) {
+        LOG_DEBUG("Moved task to dispatch queue");
+        DL_DELETE(algorithm_state->waiting_task_queue, task_entry);
+        DL_APPEND(algorithm_state->dispatch_task_queue, task_entry);
+      }
     }
     utarray_free(elt->dependent_tasks);
     free(elt);
