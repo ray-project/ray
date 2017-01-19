@@ -239,7 +239,7 @@ typedef enum {
  * @param resource_index Index of the resource.
  * @return How many of this resource the task needs to execute.
  */
-int32_t task_resource_value(task_spec *spec, int64_t resource_index);
+int32_t task_required_resource(task_spec *spec, int64_t resource_index);
 
 /**
  * Compute the object id associated to a put call.
