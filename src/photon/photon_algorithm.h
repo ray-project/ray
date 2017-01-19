@@ -108,6 +108,18 @@ void handle_worker_available(local_scheduler_state *state,
                              scheduling_algorithm_state *algorithm_state,
                              int worker_index);
 
+/**
+ * This function fetches queued task's missing object dependencies. It is
+ * called every LOCAL_SCHEDULER_FETCH_TIMEOUT_MILLISECONDS.
+ *
+ * @param loop The local scheduler's event loop.
+ * @param id The ID of the timer that triggers this function.
+ * @param context The function's context.
+ * @return An integer representing the time interval in seconds before the
+ *         next invocation of the function.
+ */
+int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context);
+
 /** The following methods are for testing purposes only. */
 #ifdef PHOTON_TEST
 /**

@@ -388,6 +388,9 @@ void start_server(const char *node_ip_address,
     event_loop_add_timer(loop, LOCAL_SCHEDULER_HEARTBEAT_TIMEOUT_MILLISECONDS,
                          heartbeat_handler, g_state);
   }
+  /* Create a timer for fetching queued tasks' missing object dependencies. */
+  event_loop_add_timer(loop, LOCAL_SCHEDULER_FETCH_TIMEOUT_MILLISECONDS,
+                       fetch_object_timeout_handler, g_state);
   /* Run event loop. */
   event_loop_run(loop);
 }
