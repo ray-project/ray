@@ -450,7 +450,10 @@ void process_get_request(client *client_context,
       add_client_to_object_clients(entry, client_context);
     } else {
       /* Add a placeholder plasma object to the get request to indicate that the
-       * object is not present. This will be parsed by the client. */
+       * object is not present. This will be parsed by the client. We memset it
+       * to 0 so valgrind doesn't complain. We set the data size to -1 to
+       * indicate that the object is not present. */
+      memset(&get_req->objects[i], 0, sizeof(get_req->objects[i]));
       get_req->objects[i].data_size = -1;
       /* Add the get request to the relevant data structures. */
       add_get_request_for_object(plasma_state, obj_id, get_req);
