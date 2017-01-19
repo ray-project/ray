@@ -215,7 +215,10 @@ void dispatch_tasks(local_scheduler_state *state,
  * A helper function to allocate a queue entry for a task specification and
  * push it onto a generic queue.
  *
- * @param task_queue A pointer to a task queue.
+ * @param task_queue A pointer to a task queue. NOTE: Because we are using
+ *        utlist.h, we must pass in a pointer to the queue we want to append
+ *        to. If we passed in the queue itself and the queue was empty, this
+ *        would append the task to a queue that we don't have a reference to.
  * @param spec The task specification to queue.
  * @return Void.
  */
