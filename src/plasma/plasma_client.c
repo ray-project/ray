@@ -332,6 +332,10 @@ void plasma_get(plasma_connection *conn,
       /* If the object was already in use by the client, then the store should
        * have returned it. */
       DCHECK(object->data_size != -1);
+      /* We won't use this file descriptor, but the store sent us one, so we
+       * need to receive it. */
+      int fd = recv_fd(conn->store_conn);
+      CHECK(fd >= 0);
       /* We've already filled out the information for this object, so we can
        * just continue. */
       continue;

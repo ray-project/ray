@@ -155,7 +155,13 @@ class PlasmaClient(object):
     """
     results = libplasma.get(self.conn, object_ids, timeout_ms)
     assert len(object_ids) == len(results)
-    return [PlasmaBuffer(results[i][0], object_ids[i], self) for i in range(len(object_ids))]
+    returns = []
+    for i in range(len(object_ids)):
+      if results[i] is None:
+        returns.append(None)
+      else:
+        returns.append(PlasmaBuffer(results[i][0], object_ids[i], self))
+    return returns
 
   def get_metadata(self, object_ids, timeout_ms=-1):
     """Create a buffer from the PlasmaStore based on object ID.
@@ -170,7 +176,13 @@ class PlasmaClient(object):
     """
     results = libplasma.get(self.conn, object_ids, timeout_ms)
     assert len(object_ids) == len(results)
-    return [PlasmaBuffer(results[i][1], object_ids[i], self) for i in range(len(object_ids))]
+    returns = []
+    for i in range(len(object_ids)):
+      if results[i] is None:
+        returns.append(None)
+      else:
+        returns.append(PlasmaBuffer(results[i][1], object_ids[i], self))
+    return returns
 
   def contains(self, object_id):
     """Check if the object is present and has been sealed in the PlasmaStore.

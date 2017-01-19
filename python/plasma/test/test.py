@@ -112,6 +112,35 @@ class TestPlasmaClient(unittest.TestCase):
       else:
         self.assertTrue(False)
 
+  def test_get(self):
+    num_object_ids = 100
+    # Test timing out of get with various timeouts.
+    for timeout in [0, 10, 100, 1000]:
+      object_ids = [random_object_id() for _ in range(num_object_ids)]
+      results = self.plasma_client.get(object_ids, timeout_ms=timeout)
+      self.assertEqual(results, num_object_ids * [None])
+
+    data_buffers = []
+    metadata_buffers = []
+    for i in range(num_object_ids):
+      if i % 2 == 0:
+        data_buffer, metadata_buffer = create_object_with_id(self.plasma_client, object_ids[i], 2000, 2000)
+        data_buffers.append(data_buffer)
+        metadata_buffers.append(metadata_buffer)
+
+    # Test timing out from some but not all get calls with various timeouts.
+    for timeout in [0, 10, 100, 1000]:
+      data_results = self.plasma_client.get(object_ids, timeout_ms=timeout)
+      metadata_results = self.plasma_client.get(object_ids, timeout_ms=timeout)
+      for i in range(num_object_ids):
+        if i % 2 == 0:
+          self.assertTrue(plasma.buffers_equal(data_buffers[i // 2], data_results[i]))
+          # TODO(rkn): We should compare the metadata as well. But currently the
+          # types are different (e.g., memoryview versus bytearray).
+          # self.assertTrue(plasma.buffers_equal(metadata_buffers[i // 2], metadata_results[i]))
+        else:
+          self.assertIsNone(results[i])
+
   def test_store_full(self):
     # The store is started with 1GB, so make sure that create throws an
     # exception when it is full.
