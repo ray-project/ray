@@ -431,17 +431,32 @@ void handle_object_available(local_scheduler_state *state,
   dispatch_tasks(state, algorithm_state);
 }
 
-void handle_object_removed(local_scheduler_state *state, object_id object_id) {
-  /* TODO(swang): Move dependent tasks from the dispatch queue back to the
-   * waiting queue. It's okay not to do this since the worker will get any
-   * missing objects, but this may lead to unnecessarily blocked workers. */
+void handle_object_removed(local_scheduler_state *state,
+                           object_id removed_object_id) {
   scheduling_algorithm_state *algorithm_state = state->algorithm_state;
   available_object *entry;
-  HASH_FIND(handle, algorithm_state->local_objects, &object_id,
-            sizeof(object_id), entry);
+  HASH_FIND(handle, algorithm_state->local_objects, &removed_object_id,
+            sizeof(removed_object_id), entry);
   if (entry != NULL) {
     HASH_DELETE(handle, algorithm_state->local_objects, entry);
     free(entry);
+  }
+
+  /* Move dependent tasks from the dispatch queue back to the waiting queue. */
+  task_queue_entry *elt, *tmp;
+  DL_FOREACH_SAFE(algorithm_state->dispatch_task_queue, elt, tmp) {
+    task_spec *task = elt->spec;
+    int64_t num_args = task_num_args(task);
+    for (int i = 0; i < num_args; ++i) {
+      if (task_arg_type(task, i) == ARG_BY_REF) {
+        object_id arg_id = task_arg_id(task, i);
+        if (object_ids_equal(arg_id, removed_object_id)) {
+          LOG_DEBUG("Moved task from dispatch queue back to waiting queue");
+          DL_DELETE(algorithm_state->dispatch_task_queue, elt);
+          DL_APPEND(algorithm_state->waiting_task_queue, elt);
+        }
+      }
+    }
   }
 }
 

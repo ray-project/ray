@@ -298,7 +298,23 @@ TEST object_notifications_test(void) {
   object_id oid = task_arg_id(spec, 0);
 
   /* Check that the task gets queued in the waiting queue if the task is
+   * submitted, but the input and workers are not available. */
+  handle_task_submitted(state, algorithm_state, spec);
+  ASSERT_EQ(num_waiting_tasks(algorithm_state), 1);
+  ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
+  /* Once the input is available, the task gets moved to the dispatch queue. */
+  handle_object_available(state, algorithm_state, oid);
+  ASSERT_EQ(num_waiting_tasks(algorithm_state), 0);
+  ASSERT_EQ(num_dispatch_tasks(algorithm_state), 1);
+  /* Once a worker is available, the task gets assigned. */
+  handle_worker_available(state, algorithm_state, worker_index);
+  ASSERT_EQ(num_waiting_tasks(algorithm_state), 0);
+  ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
+  reset_worker(photon, worker_index);
+
+  /* Check that the task gets queued in the waiting queue if the task is
    * submitted and a worker is available, but the input is not. */
+  handle_object_removed(state, oid);
   handle_task_submitted(state, algorithm_state, spec);
   handle_worker_available(state, algorithm_state, worker_index);
   ASSERT_EQ(num_waiting_tasks(algorithm_state), 1);
@@ -323,13 +339,21 @@ TEST object_notifications_test(void) {
   /* If an object gets removed, check the first scenario again, where the task
    * gets queued in the waiting task if the task is submitted and a worker is
    * available, but the input is not. */
-  handle_object_removed(state, oid);
   handle_task_submitted(state, algorithm_state, spec);
-  handle_worker_available(state, algorithm_state, worker_index);
+  ASSERT_EQ(num_waiting_tasks(algorithm_state), 0);
+  ASSERT_EQ(num_dispatch_tasks(algorithm_state), 1);
+  /* If the input is removed while a task is in the dispatch queue, the task
+   * gets moved back to the waiting queue. */
+  handle_object_removed(state, oid);
   ASSERT_EQ(num_waiting_tasks(algorithm_state), 1);
   ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
-  /*  Once the input is made available again, the task gets assigned. */
+  /* Once the input is available, the task gets moved back to the dispatch
+   * queue. */
   handle_object_available(state, algorithm_state, oid);
+  ASSERT_EQ(num_waiting_tasks(algorithm_state), 0);
+  ASSERT_EQ(num_dispatch_tasks(algorithm_state), 1);
+  /* Once a worker is available, the task gets assigned. */
+  handle_worker_available(state, algorithm_state, worker_index);
   ASSERT_EQ(num_waiting_tasks(algorithm_state), 0);
   ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
 
