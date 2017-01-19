@@ -42,10 +42,13 @@ class TensorFlowVariables(object):
     # We do a BFS on the dependency graph of the input function to find 
     # the variables.
     while len(queue) != 0:
-      op = queue.popleft().op
-      queue.extend(op.inputs)
-      if op.node_def.op == "Variable":
-        variable_names.append(op.node_def.name)
+      tf_obj = queue.popleft()
+      if hasattr(tf_obj, "op"):
+         tf_obj = tf_obj.op
+      queue.extend(tf_obj.inputs)
+      queue.extend(tf_obj.control_inputs)
+      if tf_obj.node_def.op == "Variable":
+        variable_names.append(tf_obj.node_def.name)
     self.variables = OrderedDict()
     for v in [v for v in tf.global_variables() if v.op.node_def.name in variable_names]:
       name = v.op.node_def.name.split("/", 1 if prefix else 0)[-1]
