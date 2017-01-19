@@ -27,7 +27,10 @@ should look something like `123.45.67.89:12345`).
 ```
 ./ray/scripts/start_ray.sh --redis-address <redis-address>
 ```
-
+To specify the number of processes to start, use the flag `--num-workers`, as follows:
+```
+./ray/scripts/start_ray.sh --num-workers <int>
+```
 Now we've started all of the Ray processes on each node Ray. This includes
 
 - Some worker processes on each machine.
@@ -36,11 +39,7 @@ Now we've started all of the Ray processes on each node Ray. This includes
 - One Redis server (on the head node).
 - One global scheduler (on the head node).
 
-Later when you want to stop the Ray processes, run `./ray/scripts/stop_ray.sh`
-on each node.
-
-That should start up all of the Ray processes. To run some commands, start up
-Python on one of the nodes in the cluster, and do the following.
+To run some commands, start up Python on one of the nodes in the cluster, and do the following.
 
 ```python
 import ray
@@ -56,6 +55,10 @@ def f(x):
 
 ray.get([f.remote(f.remote(f.remote(0))) for _ in range(1000)])
 ```
+
+### Stopping Ray 
+When you want to stop the Ray processes, run `./ray/scripts/stop_ray.sh`
+on each node.
 
 ### Copying Application Files to Other Nodes (Experimental)
 
