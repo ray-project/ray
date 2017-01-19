@@ -12,11 +12,13 @@ if sys.version_info >= (3, 0):
 
 import ray.test.test_functions as test_functions
 
+def relevant_errors(error_type):
+  return [info for info in ray.error_info() if info[b"type"] == error_type]
+
 def wait_for_errors(error_type, num_errors, timeout=10):
   start_time = time.time()
   while time.time() - start_time < timeout:
-    error_info = ray.error_info()
-    if len(error_info[error_type]) >= num_errors:
+    if len(relevant_errors(error_type)) >= num_errors:
       return
     time.sleep(0.1)
   print("Timing out of wait.")
@@ -27,9 +29,9 @@ class FailureTest(unittest.TestCase):
     ray.init(num_workers=1, driver_mode=ray.SILENT_MODE)
 
     test_functions.test_unknown_type.remote()
-    wait_for_errors(b"TaskError", 1)
+    wait_for_errors(b"task", 1)
     error_info = ray.error_info()
-    self.assertEqual(len(error_info[b"TaskError"]), 1)
+    self.assertEqual(len(relevant_errors(b"task")), 1)
 
     ray.worker.cleanup()
 
@@ -61,10 +63,10 @@ class TaskStatusTest(unittest.TestCase):
 
     test_functions.throw_exception_fct1.remote()
     test_functions.throw_exception_fct1.remote()
-    wait_for_errors(b"TaskError", 2)
+    wait_for_errors(b"task", 2)
     result = ray.error_info()
-    self.assertEqual(len(result[b"TaskError"]), 2)
-    for task in result[b"TaskError"]:
+    self.assertEqual(len(relevant_errors(b"task")), 2)
+    for task in relevant_errors(b"task"):
       self.assertTrue(b"Test function 1 intentionally failed." in task.get(b"message"))
 
     x = test_functions.throw_exception_fct2.remote()
@@ -104,8 +106,8 @@ class TaskStatusTest(unittest.TestCase):
       def __call__(self):
         return
     f = ray.remote(Foo())
-    wait_for_errors(b"RemoteFunctionImportError", 2)
-    self.assertTrue(b"There is a problem here." in ray.error_info()[b"RemoteFunctionImportError"][0][b"message"])
+    wait_for_errors(b"register_remote_function", 2)
+    self.assertTrue(b"There is a problem here." in ray.error_info()[0][b"message"])
 
     # Check that if we try to call the function it throws an exception and does
     # not hang.
@@ -124,9 +126,9 @@ class TaskStatusTest(unittest.TestCase):
         raise Exception("The initializer failed.")
       return 0
     ray.env.foo = ray.EnvironmentVariable(initializer)
-    wait_for_errors(b"EnvironmentVariableImportError", 2)
+    wait_for_errors(b"register_environment_variable", 2)
     # Check that the error message is in the task info.
-    self.assertTrue(b"The initializer failed." in ray.error_info()[b"EnvironmentVariableImportError"][0][b"message"])
+    self.assertTrue(b"The initializer failed." in ray.error_info()[0][b"message"])
 
     ray.worker.cleanup()
 
@@ -142,9 +144,9 @@ class TaskStatusTest(unittest.TestCase):
     def use_foo():
       ray.env.foo
     use_foo.remote()
-    wait_for_errors(b"EnvironmentVariableReinitializeError", 1)
+    wait_for_errors(b"reinitialize_environment_variable", 1)
     # Check that the error message is in the task info.
-    self.assertTrue(b"The reinitializer failed." in ray.error_info()[b"EnvironmentVariableReinitializeError"][0][b"message"])
+    self.assertTrue(b"The reinitializer failed." in ray.error_info()[0][b"message"])
 
     ray.worker.cleanup()
 
@@ -155,11 +157,11 @@ class TaskStatusTest(unittest.TestCase):
       if ray.worker.global_worker.mode == ray.WORKER_MODE:
         raise Exception("Function to run failed.")
     ray.worker.global_worker.run_function_on_all_workers(f)
-    wait_for_errors(b"FunctionToRunError", 2)
+    wait_for_errors(b"function_to_run", 2)
     # Check that the error message is in the task info.
-    self.assertEqual(len(ray.error_info()[b"FunctionToRunError"]), 2)
-    self.assertTrue(b"Function to run failed." in ray.error_info()[b"FunctionToRunError"][0][b"message"])
-    self.assertTrue(b"Function to run failed." in ray.error_info()[b"FunctionToRunError"][1][b"message"])
+    self.assertEqual(len(ray.error_info()), 2)
+    self.assertTrue(b"Function to run failed." in ray.error_info()[0][b"message"])
+    self.assertTrue(b"Function to run failed." in ray.error_info()[1][b"message"])
 
     ray.worker.cleanup()
 
