@@ -333,8 +333,10 @@ void plasma_get(plasma_connection *conn,
        * have returned it. */
       DCHECK(object->data_size != -1);
       /* We won't use this file descriptor, but the store sent us one, so we
-       * need to receive it. */
+       * need to receive it and then close it right away so we don't leak file
+       * descriptors. */
       int fd = recv_fd(conn->store_conn);
+      close(fd);
       CHECK(fd >= 0);
       /* We've already filled out the information for this object, so we can
        * just continue. */
