@@ -166,7 +166,7 @@ void reconstruct_object_task_lookup_callback(object_id reconstruct_object_id,
    * detecting failure of the other reconstruction, or updating the
    * scheduling_state accordingly. */
   scheduling_state task_status = task_state(task);
-  if (task_status < TASK_STATUS_DONE) {
+  if (task_status != TASK_STATUS_DONE) {
     LOG_DEBUG("Task to reconstruct had scheduling state %d", task_status);
     return;
   }
