@@ -153,8 +153,8 @@ PyObject *PyPlasma_get(PyObject *self, PyObject *args) {
 #if PY_MAJOR_VERSION >= 3
       PyTuple_SetItem(
           t, 0, PyMemoryView_FromMemory(
-              (void *) object_buffers[i].data,
-              (Py_ssize_t) object_buffers[i].data_size, PyBUF_READ));
+                    (void *) object_buffers[i].data,
+                    (Py_ssize_t) object_buffers[i].data_size, PyBUF_READ));
       PyTuple_SetItem(
           t, 1, PyMemoryView_FromMemory(
                     (void *) object_buffers[i].metadata,
