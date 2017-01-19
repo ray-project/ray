@@ -48,22 +48,34 @@ tf.app.flags.DEFINE_string('log_root', '',
 tf.app.flags.DEFINE_integer('num_gpus', 0,
                             'Number of gpus used for training. (0 or 1)')
 
+@ray.remote(num_return_vals=25)
+def get_batches(dataset, path, size, mode):
+  images, labels = cifar_input.build_input(dataset, path, size, mode)
+  sess = tf.Session()
+  coord = tf.train.Coordinator()
+  tf.train.start_queue_runners(sess, coord=coord)
+  batches = [sess.run([images, labels]) for _ in range(25)]
+  coord.request_stop()
+  return batches
+
 @ray.remote
-def compute_rollout(weights, x, y):
+def compute_rollout(weights, batch):
   model = ray.env.model
   rollouts = 10
   model.variables.set_weights(weights)
   placeholders = [model.x, model.labels]
   dim_zero = x.shape[0]
+  x = batch[0]
+  y = batch[1]
   for i in range(rollouts):
-    idx = np.random.choice(dim_zero, batch_size, replace=False)
+    idx = np.random.choice(dim_zero, 128, replace=False)
     x_subset = x[idx, :]
     y_subset = y[idx, :]
     model.variables.sess.run(model.train_op, feed_dict=dict(zip(placeholders, [x_subset, y_subset]))) 
   return model.variables.get_weights()  
 
 def model_initialization():
-  with tf.variable_scope(str(uuid.uuid1().hex())):
+  with tf.variable_scope(uuid.uuid1().hex):
     model = resnet_model.ResNet(hps, FLAGS.mode)
     model.build_graph()
     sess = tf.Session()
@@ -75,10 +87,11 @@ def model_reinitialization(model):
 
 def train(hps):
   """Training loop."""
-  images, labels = cifar_input.build_input(
-      FLAGS.dataset, FLAGS.train_data_path, hps.batch_size, FLAGS.mode)
-  ray.env.model = ray.EnvironmentVariable(model_initialization, model_reinitialization)
   ray.init(num_workers=10)
+  batches = get_batches.remote(
+      FLAGS.dataset, FLAGS.train_data_path, hps.batch_size, FLAGS.mode)
+  IPython.embed()
+  ray.env.model = ray.EnvironmentVariable(model_initialization, model_reinitialization)
   model = ray.env.model
   param_stats = tf.contrib.tfprof.model_analyzer.print_model_analysis(
       tf.get_default_graph(),
@@ -136,14 +149,16 @@ def train(hps):
       # SummarySaverHook. To do that we set save_summaries_steps to 0.
       save_summaries_steps=0,
       config=tf.ConfigProto(allow_soft_placement=True)) as mon_sess:
+    mon_sess.run(tf.global_variables_initializer())
     while not mon_sess.should_stop():
       weights = model.variables.get_weights()
       weight_id = ray.put(weights)
-      all_weights = ray.get([compute_rollout.remote(weight_id, xs[i], ys[i])  for i in rand_list])
+      rand_list = np.random.choice(25, 10, replace=False)
+      all_weights = ray.get([compute_rollout.remote(weight_id, batches[i])  for i in rand_list])
       mean_weights = {k: sum([weights[k] for weights in all_weights]) / batch for k in all_weights[0]}
       model.variables.set_weights(mean_weights)
       mon_sess.run(model.train_op)
-
+      print "i"
 
 def evaluate(hps):
   """Eval loop."""
