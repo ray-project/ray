@@ -138,7 +138,8 @@ TEST object_reconstruction_test(void) {
      * left in the local scheduler's task queue. Then, clean up. */
     wait(NULL);
     free_task_spec(spec);
-    ASSERT_EQ(num_tasks_in_queue(photon->photon_state->algorithm_state), 0);
+    ASSERT_EQ(num_waiting_tasks(photon->photon_state->algorithm_state), 0);
+    ASSERT_EQ(num_dispatch_tasks(photon->photon_state->algorithm_state), 0);
     destroy_photon_mock(photon);
     PASS();
   }
@@ -217,7 +218,8 @@ TEST object_reconstruction_recursive_test(void) {
     /* Wait for the child process to exit and check that there are no tasks
      * left in the local scheduler's task queue. Then, clean up. */
     wait(NULL);
-    ASSERT_EQ(num_tasks_in_queue(photon->photon_state->algorithm_state), 0);
+    ASSERT_EQ(num_waiting_tasks(photon->photon_state->algorithm_state), 0);
+    ASSERT_EQ(num_dispatch_tasks(photon->photon_state->algorithm_state), 0);
     for (int i = 0; i < NUM_TASKS; ++i) {
       free_task_spec(specs[i]);
     }
@@ -278,7 +280,8 @@ TEST object_reconstruction_suppression_test(void) {
     /* Wait for the child process to exit and check that there are no tasks
      * left in the local scheduler's task queue. Then, clean up. */
     wait(NULL);
-    ASSERT_EQ(num_tasks_in_queue(photon->photon_state->algorithm_state), 0);
+    ASSERT_EQ(num_waiting_tasks(photon->photon_state->algorithm_state), 0);
+    ASSERT_EQ(num_dispatch_tasks(photon->photon_state->algorithm_state), 0);
     free_task_spec(object_reconstruction_suppression_spec);
     db_disconnect(db);
     destroy_photon_mock(photon);
@@ -294,35 +297,65 @@ TEST object_notifications_test(void) {
   task_spec *spec = example_task_spec(1, 1);
   object_id oid = task_arg_id(spec, 0);
 
-  /* Check that the task gets queued if the task is submitted and a worker is
-   * available, but the input is not. Once the input is available, the task
-   * gets assigned. */
+  /* Check that the task gets queued in the waiting queue if the task is
+   * submitted, but the input and workers are not available. */
   handle_task_submitted(state, algorithm_state, spec);
-  handle_worker_available(state, algorithm_state, worker_index);
-  ASSERT_EQ(num_tasks_in_queue(algorithm_state), 1);
+  ASSERT_EQ(num_waiting_tasks(algorithm_state), 1);
+  ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
+  /* Once the input is available, the task gets moved to the dispatch queue. */
   handle_object_available(state, algorithm_state, oid);
-  ASSERT_EQ(num_tasks_in_queue(algorithm_state), 0);
-  reset_worker(photon, worker_index);
-
-  /* Check that the task gets queued if the task is submitted and the input is
-   * available, but no worker is available yet. Once a worker is available, the
-   * task gets assigned. */
-  handle_task_submitted(state, algorithm_state, spec);
-  ASSERT_EQ(num_tasks_in_queue(algorithm_state), 1);
+  ASSERT_EQ(num_waiting_tasks(algorithm_state), 0);
+  ASSERT_EQ(num_dispatch_tasks(algorithm_state), 1);
+  /* Once a worker is available, the task gets assigned. */
   handle_worker_available(state, algorithm_state, worker_index);
-  ASSERT_EQ(num_tasks_in_queue(algorithm_state), 0);
+  ASSERT_EQ(num_waiting_tasks(algorithm_state), 0);
+  ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
   reset_worker(photon, worker_index);
 
-  /* If an object gets removed, check the first scenario again, where the task
-   * gets queued if the task is submitted and a worker is available, but the
-   * input is not. Once the input is made available again, the task gets
-   * assigned. */
+  /* Check that the task gets queued in the waiting queue if the task is
+   * submitted and a worker is available, but the input is not. */
   handle_object_removed(state, oid);
   handle_task_submitted(state, algorithm_state, spec);
   handle_worker_available(state, algorithm_state, worker_index);
-  ASSERT_EQ(num_tasks_in_queue(algorithm_state), 1);
+  ASSERT_EQ(num_waiting_tasks(algorithm_state), 1);
+  ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
+  /* Once the input is available, the task gets assigned. */
   handle_object_available(state, algorithm_state, oid);
-  ASSERT_EQ(num_tasks_in_queue(algorithm_state), 0);
+  ASSERT_EQ(num_waiting_tasks(algorithm_state), 0);
+  ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
+  reset_worker(photon, worker_index);
+
+  /* Check that the task gets queued in the dispatch queue if the task is
+   * submitted and the input is available, but no worker is available yet. */
+  handle_task_submitted(state, algorithm_state, spec);
+  ASSERT_EQ(num_waiting_tasks(algorithm_state), 0);
+  ASSERT_EQ(num_dispatch_tasks(algorithm_state), 1);
+  /* Once a worker is available, the task gets assigned. */
+  handle_worker_available(state, algorithm_state, worker_index);
+  ASSERT_EQ(num_waiting_tasks(algorithm_state), 0);
+  ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
+  reset_worker(photon, worker_index);
+
+  /* If an object gets removed, check the first scenario again, where the task
+   * gets queued in the waiting task if the task is submitted and a worker is
+   * available, but the input is not. */
+  handle_task_submitted(state, algorithm_state, spec);
+  ASSERT_EQ(num_waiting_tasks(algorithm_state), 0);
+  ASSERT_EQ(num_dispatch_tasks(algorithm_state), 1);
+  /* If the input is removed while a task is in the dispatch queue, the task
+   * gets moved back to the waiting queue. */
+  handle_object_removed(state, oid);
+  ASSERT_EQ(num_waiting_tasks(algorithm_state), 1);
+  ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
+  /* Once the input is available, the task gets moved back to the dispatch
+   * queue. */
+  handle_object_available(state, algorithm_state, oid);
+  ASSERT_EQ(num_waiting_tasks(algorithm_state), 0);
+  ASSERT_EQ(num_dispatch_tasks(algorithm_state), 1);
+  /* Once a worker is available, the task gets assigned. */
+  handle_worker_available(state, algorithm_state, worker_index);
+  ASSERT_EQ(num_waiting_tasks(algorithm_state), 0);
+  ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
 
   free_task_spec(spec);
   destroy_photon_mock(photon);
