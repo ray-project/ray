@@ -120,9 +120,6 @@ struct plasma_connection {
    *  TODO(pcm): replace this with a proper lru cache using the size of the L3
    *  cache. */
   pending_release *release_history;
-  /** This is the first element in the release_history doubly-linked list. It is
-   *  an implementation detail used so we can pop from the front of the list. */
-  pending_release *release_history_first_entry;
   /** The length of the release_history doubly-linked list. This is an
    *  implementation detail. */
   int release_history_length;
@@ -380,34 +377,26 @@ void plasma_release(plasma_connection *conn, object_id obj_id) {
   pending_release_entry->object_id = obj_id;
   DL_APPEND(conn->release_history, pending_release_entry);
   conn->release_history_length += 1;
-  /* If the doubly-linked list was previously empty, update the pointer to the
-   * first element of the doubly-linked list. */
-  if (conn->release_history_first_entry == NULL) {
-    conn->release_history_first_entry = pending_release_entry;
-  }
   /* If there are too many bytes in use by the client or if there are too many
    * pending release calls, and there are at least some pending release calls in
-   * the release_history list, then release some objects. TODO(rkn): Checking
-   * that conn->release_history_first_entry != NULL may be relying on an
-   * implementation detail that may or may not work as expected. */
+   * the release_history list, then release some objects. */
   while ((conn->in_use_object_bytes >
               MIN(L3_CACHE_SIZE_BYTES, conn->store_capacity / 100) ||
           conn->release_history_length > conn->config.release_delay) &&
          conn->release_history_length > 0) {
-    DCHECK(conn->release_history_first_entry != NULL);
+    DCHECK(conn->release_history != NULL);
     /* Perform a release for the object ID for the first pending release. */
-    plasma_perform_release(conn, conn->release_history_first_entry->object_id);
-    /* Remove the first entry from the doubly-linked list. */
-    pending_release *new_first_entry = conn->release_history_first_entry->next;
-    DL_DELETE(conn->release_history, conn->release_history_first_entry);
-    free(conn->release_history_first_entry);
-    /* Update the first element in the doubly linked list. */
-    conn->release_history_first_entry = new_first_entry;
+    plasma_perform_release(conn, conn->release_history->object_id);
+    /* Remove the first entry from the doubly-linked list. Note that the pointer
+     * to the doubly linked list is just the pointer to the first entry. */
+    pending_release *release_history_first_entry = conn->release_history;
+    DL_DELETE(conn->release_history, release_history_first_entry);
+    free(release_history_first_entry);
     conn->release_history_length -= 1;
     DCHECK(conn->release_history_length >= 0);
   }
   if (conn->release_history_length == 0) {
-    DCHECK(conn->release_history_first_entry == NULL);
+    DCHECK(conn->release_history == NULL);
   }
 }
 
@@ -564,7 +553,6 @@ plasma_connection *plasma_connect(const char *store_socket_name,
   /* Initialize the release history doubly-linked list to NULL and also
    * initialize other implementation details of the release history. */
   result->release_history = NULL;
-  result->release_history_first_entry = NULL;
   result->release_history_length = 0;
   result->in_use_object_bytes = 0;
   /* Send a ConnectRequest to the store to get its memory capacity. */
