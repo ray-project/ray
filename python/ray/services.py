@@ -232,7 +232,7 @@ def start_redis(node_ip_address, num_retries=20, cleanup=True, redirect_output=F
   # hosts can connect to it. TODO(rkn): Do this in a more secure way.
   redis_client.config_set("protected-mode", "no")
   redis_address = address(node_ip_address, port)
-  return redis_address
+  return redis_address, p
 
 def start_global_scheduler(redis_address, cleanup=True, redirect_output=False):
   """Start a global scheduler process.
@@ -402,8 +402,8 @@ def start_ray_processes(address_info=None,
   # should address the warnings.
   redis_address = address_info.get("redis_address")
   if redis_address is None:
-    redis_address = start_redis(node_ip_address, cleanup=cleanup,
-                                redirect_output=redirect_output)
+    redis_address, _ = start_redis(node_ip_address, cleanup=cleanup,
+                                   redirect_output=redirect_output)
     address_info["redis_address"] = redis_address
     time.sleep(0.1)
   redis_port = get_port(redis_address)
