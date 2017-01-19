@@ -68,7 +68,7 @@ def model_initialization():
     model.build_graph()
     sess = tf.Session()
     model.variables.set_session(sess)
-  return model
+    return model
 
 def model_reinitialization(model):
   return model
@@ -77,9 +77,8 @@ def train(hps):
   """Training loop."""
   images, labels = cifar_input.build_input(
       FLAGS.dataset, FLAGS.train_data_path, hps.batch_size, FLAGS.mode)
-
   ray.env.model = ray.EnvironmentVariable(model_initialization, model_reinitialization)
-  ray.init(num_workers=0)
+  ray.init(num_workers=10)
   model = ray.env.model
   param_stats = tf.contrib.tfprof.model_analyzer.print_model_analysis(
       tf.get_default_graph(),
@@ -98,8 +97,8 @@ def train(hps):
   summary_hook = tf.train.SummarySaverHook(
       save_steps=100,
       output_dir=FLAGS.train_dir,
-      summary_op=[model.summaries,
-                  tf.summary.scalar('Precision', precision)])
+      summary_op=tf.summary.merge([model.summaries,
+                  tf.summary.scalar('Precision', precision)]))
 
   logging_hook = tf.train.LoggingTensorHook(
       tensors={'step': model.global_step,
