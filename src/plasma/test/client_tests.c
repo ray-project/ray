@@ -115,15 +115,16 @@ bool is_equal_data_123(uint8_t *data1, uint8_t *data2, uint64_t size) {
   return true;
 }
 
-TEST plasma_get_local_tests(void) {
+TEST plasma_nonblocking_get_tests(void) {
   plasma_connection *plasma_conn = plasma_connect(
       "/tmp/store1", "/tmp/manager1", PLASMA_DEFAULT_RELEASE_DELAY);
   object_id oid = globally_unique_id();
+  object_id oid_array[1] = {oid};
   object_buffer obj_buffer;
 
   /* Test for object non-existence. */
-  int status = plasma_get_local(plasma_conn, oid, &obj_buffer);
-  ASSERT(status == false);
+  plasma_get(plasma_conn, oid_array, 1, 0, &obj_buffer);
+  ASSERT(obj_buffer.data_size == -1);
 
   /* Test for the object being in local Plasma store. */
   /* First create object. */
@@ -136,8 +137,7 @@ TEST plasma_get_local_tests(void) {
   plasma_seal(plasma_conn, oid);
 
   sleep(1);
-  status = plasma_get_local(plasma_conn, oid, &obj_buffer);
-  ASSERT(status == true);
+  plasma_get(plasma_conn, oid_array, 1, 0, &obj_buffer);
   ASSERT(is_equal_data_123(data, obj_buffer.data, data_size) == true);
 
   sleep(1);
@@ -222,6 +222,9 @@ TEST plasma_get_tests(void) {
   object_id oid2 = globally_unique_id();
   object_buffer obj_buffer;
 
+  object_id oid_array1[1] = {oid1};
+  object_id oid_array2[1] = {oid2};
+
   int64_t data_size = 4;
   uint8_t metadata[] = {5};
   int64_t metadata_size = sizeof(metadata);
@@ -230,14 +233,15 @@ TEST plasma_get_tests(void) {
   init_data_123(data, data_size, 1);
   plasma_seal(plasma_conn1, oid1);
 
-  plasma_client_get(plasma_conn1, oid1, &obj_buffer);
+  plasma_get(plasma_conn1, oid_array1, 1, -1, &obj_buffer);
   ASSERT(data[0] == obj_buffer.data[0]);
 
   plasma_create(plasma_conn2, oid2, data_size, metadata, metadata_size, &data);
   init_data_123(data, data_size, 2);
   plasma_seal(plasma_conn2, oid2);
 
-  plasma_client_get(plasma_conn1, oid2, &obj_buffer);
+  plasma_fetch(plasma_conn1, 1, oid_array2);
+  plasma_get(plasma_conn1, oid_array2, 1, -1, &obj_buffer);
   ASSERT(data[0] == obj_buffer.data[0]);
 
   sleep(1);
@@ -247,82 +251,7 @@ TEST plasma_get_tests(void) {
   PASS();
 }
 
-TEST plasma_wait_tests(void) {
-  plasma_connection *plasma_conn1 = plasma_connect(
-      "/tmp/store1", "/tmp/manager1", PLASMA_DEFAULT_RELEASE_DELAY);
-  plasma_connection *plasma_conn2 = plasma_connect(
-      "/tmp/store2", "/tmp/manager2", PLASMA_DEFAULT_RELEASE_DELAY);
-  object_id oid1 = globally_unique_id();
-  object_id oid2 = globally_unique_id();
-  object_id obj_ids[NUM_OBJ_REQUEST];
-  object_id return_obj_ids[NUM_OBJ_REQUEST];
-
-  obj_ids[0] = oid1;
-  obj_ids[1] = oid2;
-
-  struct timeval start, end;
-  gettimeofday(&start, NULL);
-
-  int n = plasma_client_wait(plasma_conn1, NUM_OBJ_REQUEST, obj_ids,
-                             WAIT_TIMEOUT_MS, 1, return_obj_ids);
-
-  ASSERT(n == 0);
-  gettimeofday(&end, NULL);
-  float diff_ms = (end.tv_sec - start.tv_sec);
-  diff_ms = (((diff_ms * 1000000.) + end.tv_usec) - (start.tv_usec)) / 1000.;
-  /* Reduce threshold by 10% to make sure we pass consistently. */
-  ASSERT(diff_ms > WAIT_TIMEOUT_MS * 0.9);
-
-  /* Create and insert an object in plasma_conn1. */
-  int64_t data_size = 4;
-  uint8_t metadata[] = {5};
-  int64_t metadata_size = sizeof(metadata);
-  uint8_t *data;
-  plasma_create(plasma_conn1, oid1, data_size, metadata, metadata_size, &data);
-  plasma_seal(plasma_conn1, oid1);
-
-  n = plasma_client_wait(plasma_conn1, NUM_OBJ_REQUEST, obj_ids,
-                         WAIT_TIMEOUT_MS, 1, return_obj_ids);
-  ASSERT(n == 1);
-  ASSERT(oid1.id[0] == return_obj_ids[0].id[0]);
-
-  gettimeofday(&start, NULL);
-  return_obj_ids[0].id[0] = 0;
-  n = plasma_client_wait(plasma_conn1, NUM_OBJ_REQUEST, obj_ids,
-                         WAIT_TIMEOUT_MS, 2, return_obj_ids);
-  ASSERT(n == 1);
-  ASSERT(oid1.id[0] == return_obj_ids[0].id[0]);
-  gettimeofday(&end, NULL);
-  diff_ms = (end.tv_sec - start.tv_sec);
-  diff_ms = (((diff_ms * 1000000.) + end.tv_usec) - (start.tv_usec)) / 1000.;
-  ASSERT(diff_ms > WAIT_TIMEOUT_MS * 0.9);
-
-  /* Create and insert an object in plasma_conn1. */
-  plasma_create(plasma_conn2, oid2, data_size, metadata, metadata_size, &data);
-  plasma_seal(plasma_conn2, oid2);
-
-  return_obj_ids[0].id[0] = 0;
-  n = plasma_client_wait(plasma_conn1, NUM_OBJ_REQUEST, obj_ids,
-                         WAIT_TIMEOUT_MS, 2, return_obj_ids);
-  ASSERT(n == 2);
-  ASSERT(oid1.id[0] == return_obj_ids[0].id[0]);
-  ASSERT(oid2.id[0] == return_obj_ids[1].id[0]);
-
-  return_obj_ids[0].id[0] = return_obj_ids[1].id[0] = 0;
-  n = plasma_client_wait(plasma_conn2, NUM_OBJ_REQUEST, obj_ids,
-                         WAIT_TIMEOUT_MS, 2, return_obj_ids);
-  ASSERT(n == 2);
-  ASSERT(oid1.id[0] == return_obj_ids[0].id[0]);
-  ASSERT(oid2.id[0] == return_obj_ids[1].id[0]);
-
-  sleep(1);
-  plasma_disconnect(plasma_conn1);
-  plasma_disconnect(plasma_conn2);
-
-  PASS();
-}
-
-TEST plasma_multiget_tests(void) {
+TEST plasma_get_multiple_tests(void) {
   plasma_connection *plasma_conn1 = plasma_connect(
       "/tmp/store1", "/tmp/manager1", PLASMA_DEFAULT_RELEASE_DELAY);
   plasma_connection *plasma_conn2 = plasma_connect(
@@ -344,14 +273,16 @@ TEST plasma_multiget_tests(void) {
   init_data_123(data, data_size, obj1_first);
   plasma_seal(plasma_conn1, oid1);
 
-  plasma_client_multiget(plasma_conn1, 1, obj_ids, obj_buffer);
+  /* This only waits for oid1. */
+  plasma_get(plasma_conn1, obj_ids, 1, -1, obj_buffer);
   ASSERT(data[0] == obj_buffer[0].data[0]);
 
   plasma_create(plasma_conn2, oid2, data_size, metadata, metadata_size, &data);
   init_data_123(data, data_size, obj2_first);
   plasma_seal(plasma_conn2, oid2);
 
-  plasma_client_multiget(plasma_conn1, 2, obj_ids, obj_buffer);
+  plasma_fetch(plasma_conn1, 2, obj_ids);
+  plasma_get(plasma_conn1, obj_ids, 2, -1, obj_buffer);
   ASSERT(obj1_first == obj_buffer[0].data[0]);
   ASSERT(obj2_first == obj_buffer[1].data[0]);
 
@@ -365,11 +296,10 @@ TEST plasma_multiget_tests(void) {
 SUITE(plasma_client_tests) {
   RUN_TEST(plasma_status_tests);
   RUN_TEST(plasma_fetch_tests);
-  RUN_TEST(plasma_get_local_tests);
+  RUN_TEST(plasma_nonblocking_get_tests);
   RUN_TEST(plasma_wait_for_objects_tests);
   RUN_TEST(plasma_get_tests);
-  RUN_TEST(plasma_wait_tests);
-  RUN_TEST(plasma_multiget_tests);
+  RUN_TEST(plasma_get_multiple_tests);
 }
 
 GREATEST_MAIN_DEFS();

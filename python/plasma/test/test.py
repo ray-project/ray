@@ -22,10 +22,10 @@ USE_VALGRIND = False
 PLASMA_STORE_MEMORY = 1000000000
 
 def assert_get_object_equal(unit_test, client1, client2, object_id, memory_buffer=None, metadata=None):
-  client1_buff = client1.get(object_id)
-  client2_buff = client2.get(object_id)
-  client1_metadata = client1.get_metadata(object_id)
-  client2_metadata = client2.get_metadata(object_id)
+  client1_buff = client1.get([object_id])[0]
+  client2_buff = client2.get([object_id])[0]
+  client1_metadata = client1.get_metadata([object_id])[0]
+  client2_metadata = client2.get_metadata([object_id])[0]
   unit_test.assertEqual(len(client1_buff), len(client2_buff))
   unit_test.assertEqual(len(client1_metadata), len(client2_metadata))
   # Check that the buffers from the two clients are the same.
@@ -72,7 +72,7 @@ class TestPlasmaClient(unittest.TestCase):
     # Seal the object.
     self.plasma_client.seal(object_id)
     # Get the object.
-    memory_buffer = self.plasma_client.get(object_id)
+    memory_buffer = self.plasma_client.get([object_id])[0]
     for i in range(length):
       self.assertEqual(memory_buffer[i], chr(i % 256))
 
@@ -89,11 +89,11 @@ class TestPlasmaClient(unittest.TestCase):
       # Seal the object.
       self.plasma_client.seal(object_id)
       # Get the object.
-      memory_buffer = self.plasma_client.get(object_id)
+      memory_buffer = self.plasma_client.get([object_id])[0]
       for i in range(length):
         self.assertEqual(memory_buffer[i], chr(i % 256))
       # Get the metadata.
-      metadata_buffer = self.plasma_client.get_metadata(object_id)
+      metadata_buffer = self.plasma_client.get_metadata([object_id])[0]
       self.assertEqual(len(metadata), len(metadata_buffer))
       for i in range(len(metadata)):
         self.assertEqual(chr(metadata[i]), metadata_buffer[i])
@@ -111,6 +111,35 @@ class TestPlasmaClient(unittest.TestCase):
         pass
       else:
         self.assertTrue(False)
+
+  def test_get(self):
+    num_object_ids = 100
+    # Test timing out of get with various timeouts.
+    for timeout in [0, 10, 100, 1000]:
+      object_ids = [random_object_id() for _ in range(num_object_ids)]
+      results = self.plasma_client.get(object_ids, timeout_ms=timeout)
+      self.assertEqual(results, num_object_ids * [None])
+
+    data_buffers = []
+    metadata_buffers = []
+    for i in range(num_object_ids):
+      if i % 2 == 0:
+        data_buffer, metadata_buffer = create_object_with_id(self.plasma_client, object_ids[i], 2000, 2000)
+        data_buffers.append(data_buffer)
+        metadata_buffers.append(metadata_buffer)
+
+    # Test timing out from some but not all get calls with various timeouts.
+    for timeout in [0, 10, 100, 1000]:
+      data_results = self.plasma_client.get(object_ids, timeout_ms=timeout)
+      metadata_results = self.plasma_client.get(object_ids, timeout_ms=timeout)
+      for i in range(num_object_ids):
+        if i % 2 == 0:
+          self.assertTrue(plasma.buffers_equal(data_buffers[i // 2], data_results[i]))
+          # TODO(rkn): We should compare the metadata as well. But currently the
+          # types are different (e.g., memoryview versus bytearray).
+          # self.assertTrue(plasma.buffers_equal(metadata_buffers[i // 2], metadata_results[i]))
+        else:
+          self.assertIsNone(results[i])
 
   def test_store_full(self):
     # The store is started with 1GB, so make sure that create throws an
@@ -336,7 +365,7 @@ class TestPlasmaClient(unittest.TestCase):
     #   memory_buffer[0] = chr(0)
     # self.assertRaises(Exception, illegal_assignment)
     # Get the object.
-    memory_buffer = self.plasma_client.get(object_id)
+    memory_buffer = self.plasma_client.get([object_id])[0]
     # Make sure the object is read only.
     def illegal_assignment():
       memory_buffer[0] = chr(0)

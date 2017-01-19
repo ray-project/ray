@@ -382,6 +382,38 @@ class APITest(unittest.TestCase):
 
     ray.worker.cleanup()
 
+  def testMultipleWaitsAndGets(self):
+    # It is important to use three workers here, so that the three tasks
+    # launched in this experiment can run at the same time.
+    ray.init(num_workers=3)
+
+    @ray.remote
+    def f(delay):
+      time.sleep(delay)
+      return 1
+
+    @ray.remote
+    def g(l):
+      # The argument l should be a list containing one object ID.
+      ray.wait([l[0]])
+
+    @ray.remote
+    def h(l):
+      # The argument l should be a list containing one object ID.
+      ray.get(l[0])
+
+    # Make sure that multiple wait requests involving the same object ID all
+    # return.
+    x = f.remote(1)
+    ray.get([g.remote([x]), g.remote([x])])
+
+    # Make sure that multiple get requests involving the same object ID all
+    # return.
+    x = f.remote(1)
+    ray.get([h.remote([x]), h.remote([x])])
+
+    ray.worker.cleanup()
+
   def testCachingEnvironmentVariables(self):
     # Test that we can define environment variables before the driver is connected.
     def foo_initializer():
