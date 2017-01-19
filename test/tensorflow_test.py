@@ -239,5 +239,17 @@ class TensorFlowTest(unittest.TestCase):
     self.assertTrue(before_acc < after_acc)
     ray.worker.cleanup()
 
+  def testVariablesControlDependencies(self):
+    ray.init(num_workers=1)
+
+    sess = tf.Session()
+    loss, _ = make_linear_network()
+    minimizer = tf.train.MomentumOptimizer(0.9, 0.9).minimize(loss)
+    net_vars = ray.experiemental.TensorFlowVariables(minimizer, sess)
+   
+    self.assertEqual(len(net_vars.variables.items()), 4)
+
+    ray.worker.cleanup()
+
 if __name__ == "__main__":
   unittest.main(verbosity=2)
