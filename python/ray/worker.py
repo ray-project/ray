@@ -571,8 +571,8 @@ def print_failed_task(task_status):
 
 def error_info(worker=global_worker):
   """Return information about failed tasks."""
-  check_main_thread()
   check_connected(worker)
+  check_main_thread()
   result = {b"TaskError": [],
             b"RemoteFunctionImportError": [],
             b"EnvironmentVariableImportError": [],
@@ -1243,9 +1243,9 @@ def get(objectid, worker=global_worker):
   Returns:
     A Python object or a list of Python objects.
   """
+  check_connected(worker)
   with log_span("ray:get", worker=worker):
     check_main_thread()
-    check_connected(worker)
 
     if worker.mode == PYTHON_MODE:
       # In PYTHON_MODE, ray.get is the identity operation (the input will actually be a value not an objectid)
@@ -1273,9 +1273,9 @@ def put(value, worker=global_worker):
   Returns:
     The object ID assigned to this value.
   """
+  check_connected(worker)
   with log_span("ray:put", worker=worker):
     check_main_thread()
-    check_connected(worker)
 
     if worker.mode == PYTHON_MODE:
       # In PYTHON_MODE, ray.put is the identity operation
@@ -1307,9 +1307,9 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
   Returns:
     A list of object IDs that are ready and a list of the remaining object IDs.
   """
+  check_connected(worker)
   with log_span("ray:wait", worker=worker):
     check_main_thread()
-    check_connected(worker)
     object_id_strs = [object_id.id() for object_id in object_ids]
     timeout = timeout if timeout is not None else 2 ** 30
     ready_ids, remaining_ids = worker.plasma_client.wait(object_id_strs, timeout, num_returns)
@@ -1567,8 +1567,8 @@ def remote(*args, **kwargs):
 
       def func_call(*args, **kwargs):
         """This gets run immediately when a worker calls a remote function."""
-        check_main_thread()
         check_connected()
+        check_main_thread()
         args = list(args)
         args.extend([kwargs[keyword] if keyword in kwargs else default for keyword, default in keyword_defaults[len(args):]]) # fill in the remaining arguments
         if any([arg is funcsigs._empty for arg in args]):
