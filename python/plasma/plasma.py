@@ -142,29 +142,47 @@ class PlasmaClient(object):
     buff = libplasma.create(self.conn, object_id, size, metadata)
     return PlasmaBuffer(buff, object_id, self)
 
-  def get(self, object_id):
+  def get(self, object_ids, timeout_ms=-1):
     """Create a buffer from the PlasmaStore based on object ID.
 
     If the object has not been sealed yet, this call will block. The retrieved
     buffer is immutable.
 
     Args:
-      object_id (str): A string used to identify an object.
+      object_ids (List[str]): A list of strings used to identify some objects.
+      timeout_ms (int): The number of milliseconds that the get call should
+        block before timing out and returning.
     """
-    buff = libplasma.get(self.conn, object_id)[0]
-    return PlasmaBuffer(buff, object_id, self)
+    results = libplasma.get(self.conn, object_ids, timeout_ms)
+    assert len(object_ids) == len(results)
+    returns = []
+    for i in range(len(object_ids)):
+      if results[i] is None:
+        returns.append(None)
+      else:
+        returns.append(PlasmaBuffer(results[i][0], object_ids[i], self))
+    return returns
 
-  def get_metadata(self, object_id):
+  def get_metadata(self, object_ids, timeout_ms=-1):
     """Create a buffer from the PlasmaStore based on object ID.
 
     If the object has not been sealed yet, this call will block until the object
     has been sealed. The retrieved buffer is immutable.
 
     Args:
-      object_id (str): A string used to identify an object.
+      object_ids (List[str]): A list of strings used to identify some objects.
+      timeout_ms (int): The number of milliseconds that the get call should
+        block before timing out and returning.
     """
-    buff = libplasma.get(self.conn, object_id)[1]
-    return PlasmaBuffer(buff, object_id, self)
+    results = libplasma.get(self.conn, object_ids, timeout_ms)
+    assert len(object_ids) == len(results)
+    returns = []
+    for i in range(len(object_ids)):
+      if results[i] is None:
+        returns.append(None)
+      else:
+        returns.append(PlasmaBuffer(results[i][1], object_ids[i], self))
+    return returns
 
   def contains(self, object_id):
     """Check if the object is present and has been sealed in the PlasmaStore.
