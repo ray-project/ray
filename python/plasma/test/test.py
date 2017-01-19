@@ -734,16 +734,9 @@ class TestPlasmaManager(unittest.TestCase):
     self.client2.seal(object_id)
     # Give the second manager some time to complete the seal, then make sure it
     # exited.
-    time_left = 100
-    while time_left > 0:
-      if self.p5.poll() != None:
-        self.processes_to_kill.remove(self.p5)
-        break
-      time_left -= 0.1
-      time.sleep(0.1)
-
-    print("Time waiting for plasma manager to fail = {:.2}".format(100 - time_left))
-    self.assertNotEqual(self.p5.poll(), None)
+    print("Waiting for plasma manager to exit.")
+    self.assertNotEqual(self.p5.wait(timeout=100), None)
+    self.processes_to_kill.remove(self.p5)
 
   def test_illegal_functionality(self):
     # Create an object id string.
