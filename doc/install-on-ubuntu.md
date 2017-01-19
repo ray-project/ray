@@ -10,7 +10,7 @@ To install Ray, first install the following dependencies. We recommend using
 
 ```
 sudo apt-get update
-sudo apt-get install -y cmake build-essential autoconf curl libtool python-dev python-pip libboost-all-dev unzip  # If you're using Anaconda, then python-dev and python-pip are unnecessary.
+sudo apt-get install -y cmake build-essential autoconf curl libtool libboost-all-dev unzip python-dev python-pip  # If you're using Anaconda, then python-dev and python-pip are unnecessary.
 
 pip install numpy cloudpickle funcsigs colorama psutil redis
 ```
@@ -21,7 +21,7 @@ Ray can be built from the repository as follows.
 
 ```
 git clone https://github.com/ray-project/ray.git
-cd ray/lib/python
+cd ray/python
 python setup.py install --user
 ```
 
