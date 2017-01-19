@@ -66,7 +66,6 @@ class ResNet(object):
   def _build_model(self):
     """Build the core model within the graph."""
     with tf.variable_scope('init'):
-      print("thisisabug")
       x = tf.placeholder(tf.float32, shape=[128, 32, 32, 3])
       self.labels = tf.placeholder(tf.float32, shape=[128,10])
       x = self._conv('init_conv', x, 3, 3, 16, self._stride_arr(1))
@@ -106,7 +105,7 @@ class ResNet(object):
     for i in xrange(1, self.hps.num_residual_units):
       with tf.variable_scope('unit_3_%d' % i):
         x = res_func(x, filters[3], filters[3], self._stride_arr(1), False)
-
+    print("thisisabug")
     with tf.variable_scope('unit_last'):
       x = self._batch_norm('final_bn', x)
       x = self._relu(x, self.hps.relu_leakiness)
@@ -141,7 +140,6 @@ class ResNet(object):
     #    zip(self.assignment_placeholders, trainable_variables),
     #    global_step=self.global_step, name='train_step')
     min_ops = optimizer.minimize(self.cost)
-    IPython.embed()
     self.variables = ray.experimental.TensorFlowVariables(min_ops, prefix=True)
     train_ops = [min_ops] + self._extra_train_ops
     self.train_op = tf.group(*train_ops)

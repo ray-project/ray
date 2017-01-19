@@ -76,7 +76,7 @@ def compute_rollout(weights, batch):
 
 def model_initialization():
   with tf.variable_scope(uuid.uuid1().hex):
-    model = resnet_model.ResNet(hps, FLAGS.mode)
+    model = resnet_model.ResNet(hps, 'train')
     model.build_graph()
     sess = tf.Session()
     model.variables.set_session(sess)
