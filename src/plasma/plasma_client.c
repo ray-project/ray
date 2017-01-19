@@ -484,8 +484,8 @@ void plasma_contains(plasma_connection *conn,
 bool plasma_compute_object_hash(plasma_connection *conn,
                                 object_id obj_id,
                                 unsigned char *digest) {
-  /* Get the plasma object data. We pass in a timeout of -1 to indicate that no
-   * timeout should be used. */
+  /* Get the plasma object data. We pass in a timeout of 0 to indicate that
+   * the operation should timeout immediately. */
   object_buffer obj_buffer;
   object_id obj_id_array[1] = {obj_id};
   plasma_get(conn, obj_id_array, 1, 0, &obj_buffer);

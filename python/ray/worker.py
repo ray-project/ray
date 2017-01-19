@@ -429,10 +429,10 @@ class Worker(object):
     contained_objectids = []
 
   def get_object(self, object_ids):
-    """Get the value in the local object store associated with objectid.
+    """Get the value or values in the local object store associated with object_ids.
 
-    Return the value from the local object store for objectid. This will block
-    until the value for objectid has been written to the local object store.
+    Return the values from the local object store for object_ids. This will block
+    until all the values for object_ids have been written to the local object store.
 
     Args:
       object_ids (List[object_id.ObjectID]): A list of the object IDs whose
@@ -1240,10 +1240,10 @@ def flush_log(worker=global_worker):
 def get(object_ids, worker=global_worker):
   """Get a remote object or a list of remote objects from the object store.
 
-  This method blocks until the object corresponding to objectid is available in
+  This method blocks until the object corresponding to the object ID is available in
   the local object store. If this object is not in the local object store, it
   will be shipped from an object store that has it (once the object has been
-  created). If objectid is a list, then the objects corresponding to each object
+  created). If object_ids is a list, then the objects corresponding to each object
   in the list will be returned.
 
   Args:
