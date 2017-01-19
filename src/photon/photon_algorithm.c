@@ -326,51 +326,6 @@ void give_task_to_global_scheduler(local_scheduler_state *state,
                       NULL);
 }
 
-/**
- * Schedule a task. The task will either be:
- * 1. Put into the waiting queue, where it will wait for its dependencies to
- *    become available.
- * 2. Put into the dispatch queue, where it will wait for an available worker.
- * 3. Given to the global scheduler to be scheduled.
- *
- * Currently, the local scheduler policy is to keep the task if its
- * dependencies are ready and there is an available worker.
- *
- * @param state The scheduler state.
- * @param algorithm_state The scheduling algorithm state.
- * @param spec The task specification to schedule.
- * @param from_global_scheduler Whether we received the task from the global
- *        scheduler. If this is false, then we received the task from a worker.
- * @return Void.
- */
-void schedule_task(local_scheduler_state *state,
-                   scheduling_algorithm_state *algorithm_state,
-                   task_spec *spec,
-                   bool from_global_scheduler) {
-  if (from_global_scheduler) {
-    /* If the task is from a global scheduler, no scheduling decision needs to
-     * be made. Put the task in the right queue. */
-    queue_task_locally(state, algorithm_state, spec);
-  } else {
-    /* Local scheduling policy. */
-    if (can_run(algorithm_state, spec) &&
-        (utarray_len(algorithm_state->available_workers) > 0)) {
-      /* Dependencies are ready and there is an available worker, so keep the
-       * task. */
-      queue_dispatch_task(state, algorithm_state, spec);
-    } else {
-      /* Give the task to the global scheduler to schedule, and return
-       * immediately. */
-      give_task_to_global_scheduler(state, algorithm_state, spec);
-      return;
-    }
-  }
-
-  /* Try to dispatch tasks, since we may added the current task to the dispatch
-   * queue. */
-  dispatch_tasks(state, algorithm_state);
-}
-
 void handle_task_submitted(local_scheduler_state *state,
                            scheduling_algorithm_state *algorithm_state,
                            task_spec *spec) {
@@ -379,7 +334,19 @@ void handle_task_submitted(local_scheduler_state *state,
    * cannot assign the task to a worker immediately, we either queue the task in
    * the local task queue or we pass the task to the global scheduler. For now,
    * we pass the task along to the global scheduler if there is one. */
-  schedule_task(state, algorithm_state, spec, false);
+  if (can_run(algorithm_state, spec) &&
+      (utarray_len(algorithm_state->available_workers) > 0)) {
+    /* Dependencies are ready and there is an available worker, so dispatch the
+     * task. */
+    queue_dispatch_task(state, algorithm_state, spec);
+  } else {
+    /* Give the task to the global scheduler to schedule, if it exists. */
+    give_task_to_global_scheduler(state, algorithm_state, spec);
+  }
+
+  /* Try to dispatch tasks, since we may have added one to the queue. */
+  dispatch_tasks(state, algorithm_state);
+
   /* Update the result table, which holds mappings of object ID -> ID of the
    * task that created it. */
   if (state->db != NULL) {
@@ -400,10 +367,9 @@ void handle_task_scheduled(local_scheduler_state *state,
    * to the database. */
   DCHECK(state->db != NULL);
   DCHECK(state->global_scheduler_exists);
-  /* If this task's dependencies are available locally, and if there is an
-   * available worker, then assign this task to an available worker. If we
-   * cannot assign the task to a worker immediately, queue the task locally. */
-  schedule_task(state, algorithm_state, spec, true);
+  /* Push the task to the appropriate queue. */
+  queue_task_locally(state, algorithm_state, spec);
+  dispatch_tasks(state, algorithm_state);
 }
 
 void handle_worker_available(local_scheduler_state *state,
@@ -417,8 +383,7 @@ void handle_worker_available(local_scheduler_state *state,
        p = (int *) utarray_next(algorithm_state->available_workers, p)) {
     DCHECK(*p != worker_index);
   }
-  /* Add client_sock to a list of available workers. This struct will be freed
-   * when a task is assigned to this worker. */
+  /* Add worker to the list of available workers. */
   utarray_push_back(algorithm_state->available_workers, &worker_index);
   LOG_DEBUG("Adding worker_index %d to available workers.\n", worker_index);
 
@@ -430,7 +395,7 @@ void handle_worker_available(local_scheduler_state *state,
 void handle_object_available(local_scheduler_state *state,
                              scheduling_algorithm_state *algorithm_state,
                              object_id object_id) {
-  /* TODO(rkn): When does this get freed? */
+  /* Available object entries get freed if the object is removed. */
   available_object *entry =
       (available_object *) malloc(sizeof(available_object));
   entry->object_id = object_id;

@@ -43,8 +43,17 @@ void provide_scheduler_info(local_scheduler_state *state,
 
 /**
  * This function will be called when a new task is submitted by a worker for
- * execution.
+ * execution. The task will either be:
+ * 1. Put into the waiting queue, where it will wait for its dependencies to
+ *    become available.
+ * 2. Put into the dispatch queue, where it will wait for an available worker.
+ * 3. Given to the global scheduler to be scheduled.
  *
+ * Currently, the local scheduler policy is to keep the task if its
+ * dependencies are ready and there is an available worker.
+ *
+ * @param state The state of the local scheduler.
+ * @param algorithm_state State maintained by the scheduling algorithm.
  * @param task Task that is submitted by the worker.
  * @return Void.
  */
