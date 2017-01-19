@@ -72,15 +72,21 @@ b.assign(np.zeros(1))  # This adds a node to the graph every time you call it.
 ## Complete Example
 
 Putting this all together, we would first create the graph on each worker using
-environment variables. Within the environment variables, we would define
-`get_weights` and `set_weights` methods. We would then use those methods to ship
-the weights (as lists of numpy arrays) between the processes without shipping
-the actual TensorFlow graphs, which are much more complex Python objects.
+environment variables. Within the environment variables, we would use the 
+`get_weights` and `set_weights` methods of the `TensorFlowVariables` class. We
+would then use those methods to ship the weights (as a dictionary of variable 
+names mapping to tensorflow tensors) between the processes without shipping the
+actual TensorFlow graphs, which are much more complex Python objects. Note that
+to avoid namespace collision with already created variables on the workers, we 
+use a variable_scope and a prefix in the environment variables and then pass 
+true to the prefix in `TensorFlowVariables` so it can properly decode the variable
+names.
 
 ```python
 import tensorflow as tf
 import numpy as np
 import ray
+import uuid
 
 ray.init(num_workers=5)
 
@@ -89,25 +95,31 @@ NUM_BATCHES = 1
 NUM_ITERS = 201
 
 def net_vars_initializer():
-  # Seed TensorFlow to make the script deterministic.
-  tf.set_random_seed(0)
-  # Define the inputs.
-  x_data = tf.placeholder(tf.float32, shape=[BATCH_SIZE])
-  y_data = tf.placeholder(tf.float32, shape=[BATCH_SIZE])
-  # Define the weights and computation.
-  w = tf.Variable(tf.random_uniform([1], -1.0, 1.0))
-  b = tf.Variable(tf.zeros([1]))
-  y = w * x_data + b
-  # Define the loss.
-  loss = tf.reduce_mean(tf.square(y - y_data))
-  optimizer = tf.train.GradientDescentOptimizer(0.5)
-  train = optimizer.minimize(loss)
-  # Define the weight initializer and session.
-  init = tf.global_variables_initializer()
-  sess = tf.Session()
-  # Additional code for setting and getting the weights.
-  variables = ray.experimental.TensorFlowVariables(loss, sess)
-  # Return all of the data needed to use the network.
+  # Prefix should be random so that there is no conflict with variable names in
+  # the cluster setting.
+  prefix = str(uuid.uuid1().hex)
+  # Use the tensorflow variable_scope to prefix all of the variables
+  with tf.variable_scope(prefix):
+    # Seed TensorFlow to make the script deterministic.
+    tf.set_random_seed(0)
+    # Define the inputs.
+    x_data = tf.placeholder(tf.float32, shape=[BATCH_SIZE])
+    y_data = tf.placeholder(tf.float32, shape=[BATCH_SIZE])
+    # Define the weights and computation.
+    w = tf.Variable(tf.random_uniform([1], -1.0, 1.0))
+    b = tf.Variable(tf.zeros([1]))
+    y = w * x_data + b
+    # Define the loss.
+    loss = tf.reduce_mean(tf.square(y - y_data))
+    optimizer = tf.train.GradientDescentOptimizer(0.5)
+    train = optimizer.minimize(loss)
+    # Define the weight initializer and session.
+    init = tf.global_variables_initializer()
+    sess = tf.Session()
+    # Additional code for setting and getting the weights, and use a prefix
+    # so that the variable names can be converted between workers.
+    variables = ray.experimental.TensorFlowVariables(loss, sess, prefix=True)
+    # Return all of the data needed to use the network.
   return variables, sess, train, loss, x_data, y_data, init
 
 def net_vars_reinitializer(net_vars):
@@ -131,7 +143,7 @@ def step(weights, x, y):
 variables, sess, _, loss, x_data, y_data, init = ray.env.net_vars
 # Initialize the network weights.
 sess.run(init)
-# Get the weights as a list of numpy arrays.
+# Get the weights as a dictionary of numpy arrays.
 weights = variables.get_weights()
 
 # Define a remote function for generating fake data.
