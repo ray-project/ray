@@ -252,10 +252,16 @@ void print_task(task_spec *spec, UT_string *output);
 /** The scheduling_state can be used as a flag when we are listening
  *  for an event, for example TASK_WAITING | TASK_SCHEDULED. */
 typedef enum {
+  /** The task is waiting to be scheduled. */
   TASK_STATUS_WAITING = 1,
+  /** The task has been scheduled to a node, but has not been queued yet. */
   TASK_STATUS_SCHEDULED = 2,
+  /** The task has been queued on a node, where it will wait for its
+   *  dependencies to become ready and a worker to become available. */
   TASK_STATUS_QUEUED = 4,
+  /** The task is running on a worker. */
   TASK_STATUS_RUNNING = 8,
+  /** The task is done executing. */
   TASK_STATUS_DONE = 16
 } scheduling_state;
 
