@@ -484,21 +484,15 @@ void plasma_contains(plasma_connection *conn,
 bool plasma_compute_object_hash(plasma_connection *conn,
                                 object_id obj_id,
                                 unsigned char *digest) {
-  /* If we don't have the object, return an empty digest. */
-  int has_object;
-  plasma_contains(conn, obj_id, &has_object);
-  if (!has_object) {
-    return false;
-  }
   /* Get the plasma object data. We pass in a timeout of -1 to indicate that no
    * timeout should be used. */
   object_buffer obj_buffer;
   object_id obj_id_array[1] = {obj_id};
   plasma_get(conn, obj_id_array, 1, 0, &obj_buffer);
-  /* Make sure that the object was retrieved. It actually should be cached
-   * locally, so this call should not go to the store. If it did go to the
-   * store, it would probably fail because get only works on sealed objects. */
-  DCHECK(obj_buffer.data_size != -1);
+  /* If the object was not retrieved, return false. */
+  if (obj_buffer.data_size == -1) {
+    return false;
+  }
   /* Compute the hash. */
   XXH64_state_t hash_state;
   XXH64_reset(&hash_state, XXH64_DEFAULT_SEED);

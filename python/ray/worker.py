@@ -439,9 +439,13 @@ class Worker(object):
         values should be retrieved.
     """
     self.plasma_client.fetch([object_id.id() for object_id in object_ids])
-    # We currently pass in a timeout of -1 to indicate that no timeout should be
-    # used.
-    results = numbuf.retrieve_list([object_id.id() for object_id in object_ids], self.plasma_client.conn, -1)
+    # We currently pass in a timeout of one second.
+    unready_ids = object_ids
+    while len(unready_ids) > 0:
+      results = numbuf.retrieve_list([object_id.id() for object_id in object_ids], self.plasma_client.conn, 1000)
+      unready_ids = [object_id for (object_id, val) in results if val is None]
+      # This would be a natural place to issue a command to reconstruct some of
+      # the objects.
     # Unwrap the object from the list (it was wrapped put_object).
     assert len(results) == len(object_ids)
     for i in range(len(results)):

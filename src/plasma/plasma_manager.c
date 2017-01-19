@@ -768,8 +768,9 @@ void process_transfer_request(event_loop *loop,
   plasma_request_buffer *buf = malloc(sizeof(plasma_request_buffer));
   buf->type = MessageType_PlasmaDataReply;
   buf->object_id = obj_id;
-  buf->data = obj_buffer.data; /* We treat this as a pointer to the
-                       concatenated data and metadata. */
+  /* We treat buf->data as a pointer to the concatenated data and metadata, so
+   * we don't actually use buf->metadata. */
+  buf->data = obj_buffer.data;
   buf->data_size = obj_buffer.data_size;
   buf->metadata_size = obj_buffer.metadata_size;
 
