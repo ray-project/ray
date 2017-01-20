@@ -123,7 +123,7 @@ try:
   import cloudpickle
   cloudpickle.dumps(Point)
 except AttributeError:
-  cloudpickle_command = "pip install --upgrade git+git://github.com/cloudpipe/cloudpickle.git@0d225a4695f1f65ae1cbb2e0bbc145e10167cce4"
+  cloudpickle_command = "pip install --upgrade cloudpickle"
   raise Exception("You have an older version of cloudpickle that is not able to serialize namedtuples. Try running \n\n{}\n\n".format(cloudpickle_command))
 
 class SerializationTest(unittest.TestCase):
