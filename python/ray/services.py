@@ -114,10 +114,7 @@ def cleanup():
       successfully_shut_down = successfully_shut_down and success
     # Reset the list of processes of this type.
     all_processes[process_type] = []
-  if successfully_shut_down:
-    if len(all_processes) > 0:
-      print("Successfully shut down Ray.")
-  else:
+  if not successfully_shut_down:
     print("Ray did not shut down properly.")
 
 def all_processes_alive(exclude=[]):
