@@ -161,11 +161,13 @@ def wait_for_redis_to_start(redis_host, redis_port, num_retries=5):
     Exception: An exception is raised if we could not connect with Redis.
   """
   redis_client = redis.StrictRedis(host=redis_host, port=redis_port)
+  print("Redis Client Started!")
   # Wait for the Redis server to start.
   counter = 0
   while counter < num_retries:
     try:
       # Run some random command and see if it worked.
+      print("Waiting for %s to respond..." % redis_host)
       redis_client.client_list()
     except redis.ConnectionError as e:
       # Wait a little bit.
