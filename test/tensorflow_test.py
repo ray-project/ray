@@ -43,7 +43,7 @@ def train_vars_initializer():
     loss, init, x_data, y_data = make_linear_network()
     sess = tf.Session()
     variables = ray.experimental.TensorFlowVariables(loss, sess, prefix=True)
-    grad = tf.gradients(loss, variables.variables.values())
+    grad = tf.gradients(loss, list(variables.variables.values()))
   return variables, init, sess, grad, [x_data, y_data]
   
 
