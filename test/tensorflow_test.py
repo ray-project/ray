@@ -122,12 +122,6 @@ class TensorFlowTest(unittest.TestCase):
       ray.env.net2[0].set_weights(weights2)
       return ray.env.net1[0].get_weights(), ray.env.net2[0].get_weights()
 
-    @ray.remote
-    def swap_weights(weights1, weights2):
-      ray.env.net1[0].set_weights(weights2)
-      ray.env.net2[0].set_weights(weights1)
-      return ray.env.net1[0].get_weights(), ray.env.net2[0].get_weights()
-
     # Make sure the two networks have different weights. TODO(rkn): Note that
     # equality comparisons of numpy arrays normally does not work. This only
     # works because at the moment they have size 1.
@@ -141,7 +135,7 @@ class TensorFlowTest(unittest.TestCase):
     self.assertEqual(weights2, new_weights2)
 
     # Swap the weights.
-    new_weights2, new_weights1 = ray.get(swap_weights.remote(weights1, weights2))
+    new_weights2, new_weights1 = ray.get(set_and_get_weights.remote(weights2, weights1))
     self.assertEqual(weights1, new_weights1)
     self.assertEqual(weights2, new_weights2)
 
