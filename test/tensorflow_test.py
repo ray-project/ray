@@ -44,7 +44,6 @@ def train_vars_initializer():
     train = optimizer.apply_gradients(grads)
   return loss, variables, init, sess, grads, train, [x_data, y_data]
 
-
 class TensorFlowTest(unittest.TestCase):
 
   def testTensorFlowVariables(self):
@@ -244,13 +243,32 @@ class TensorFlowTest(unittest.TestCase):
 
     # Creates a network and appends a momentum optimizer.
     sess = tf.Session()
-    loss, _ = make_linear_network()
+    loss, init, _, _ = make_linear_network()
     minimizer = tf.train.MomentumOptimizer(0.9, 0.9).minimize(loss)
     net_vars = ray.experimental.TensorFlowVariables(minimizer, sess)
-   
+    sess.run(init)
+
     # Tests if all variables are properly retrieved, 2 variables and 2 momentum
     # variables.
     self.assertEqual(len(net_vars.variables.items()), 4)
+
+    ray.worker.cleanup()
+
+  def testRemoteTrainingStep(self):
+    ray.init(num_workers=1)
+
+    ray.env.net = ray.EnvironmentVariable(train_vars_initializer, net_vars_reinitializer)
+
+    @ray.remote
+    def training_step(weights):
+      variables, _, sess, grad, placeholders = ray.env.net
+      variables.set_weights(weights)
+      return sess.run(grad, feed_dict=dict(zip(placeholders, [[1]*100]*2)))
+  
+    variables, init, sess, _, _ = ray.env.net
+
+    sess.run(init)
+    ray.get(training_step.remote(variables.get_weights()))
 
     ray.worker.cleanup()
 
