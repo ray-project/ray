@@ -190,11 +190,14 @@ class TensorFlowTest(unittest.TestCase):
   def testVariablesControlDependencies(self):
     ray.init(num_workers=1)
 
+    # Creates a network and appends a momentum optimizer.
     sess = tf.Session()
     loss, _ = make_linear_network()
     minimizer = tf.train.MomentumOptimizer(0.9, 0.9).minimize(loss)
-    net_vars = ray.experiemental.TensorFlowVariables(minimizer, sess)
+    net_vars = ray.experimental.TensorFlowVariables(minimizer, sess)
    
+    # Tests if all variables are properly retrieved, 2 variables and 2 momentum
+    # variables.
     self.assertEqual(len(net_vars.variables.items()), 4)
 
     ray.worker.cleanup()
