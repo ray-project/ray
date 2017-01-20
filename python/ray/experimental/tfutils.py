@@ -43,6 +43,10 @@ class TensorFlowVariables(object):
     # the variables.
     while len(queue) != 0:
       tf_obj = queue.popleft()
+     
+      # The object put into the queue is not necessarily an operation, so we
+      # want the op attribute to get the operation underlying the object.
+      # Only operations contain the inputs that we can explore.
       if hasattr(tf_obj, "op"):
          tf_obj = tf_obj.op
       queue.extend(tf_obj.inputs)
