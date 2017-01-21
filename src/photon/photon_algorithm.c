@@ -26,7 +26,7 @@ typedef struct {
   UT_array *dependent_tasks;
   /** Handle for the uthash table. NOTE: This handle is used for both the
    *  scheduling algorithm state's local_objects and remote_objects tables.
-   *  We must inforce the uthash invariant that the entry be in either one or
+   *  We must enforce the uthash invariant that the entry be in either one or
    *  neither tables. */
   UT_hash_handle hh;
 } object_entry;
