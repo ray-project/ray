@@ -578,9 +578,8 @@ int num_waiting_tasks(scheduling_algorithm_state *algorithm_state) {
 }
 
 bool object_is_local(local_scheduler_state *state, object_id object_id) {
-  scheduling_algorithm_state *algorithm_state = state->algorithm_state;
   available_object *entry;
-  HASH_FIND(handle, algorithm_state->local_objects, &object_id,
+  HASH_FIND(handle, state->algorithm_state->local_objects, &object_id,
             sizeof(object_id), entry);
   return entry != NULL;
 }

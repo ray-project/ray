@@ -152,11 +152,11 @@ class ReconstructionTests(unittest.TestCase):
       args.append(foo.remote(i, size))
 
     # Get each value to force each task to finish. After some number of gets,
-    # old values should be evicted. Get each value again to force
-    # reconstruction.
+    # old values should be evicted.
     for i in range(num_objects):
       value = ray.get(args[i])
       self.assertEqual(value[0], i)
+    # Get each value again to force reconstruction.
     for i in range(num_objects):
       value = ray.get(args[i])
       self.assertEqual(value[0], i)
@@ -186,14 +186,15 @@ class ReconstructionTests(unittest.TestCase):
     arg = no_dependency_task.remote(size)
     args = []
     for i in range(num_iterations):
-      args.append(single_dependency.remote(i, arg))
+      arg = single_dependency.remote(i, arg)
+      args.append(arg)
 
     # Get each value to force each task to finish. After some number of gets,
-    # old values should be evicted. Get each value again to force
-    # reconstruction.
+    # old values should be evicted.
     for i in range(num_iterations):
       value = ray.get(args[i])
       self.assertEqual(value[0], i)
+    # Get each value again to force reconstruction.
     for i in range(num_iterations):
       value = ray.get(args[i])
       self.assertEqual(value[0], i)
@@ -234,12 +235,12 @@ class ReconstructionTests(unittest.TestCase):
       args.append(multiple_dependency.remote(i, *args[i:i+num_args]))
 
     # Get each value to force each task to finish. After some number of gets,
-    # old values should be evicted. Get each value again to force
-    # reconstruction.
+    # old values should be evicted.
     args = args[num_args:]
     for i in range(num_iterations):
       value = ray.get(args[i])
       self.assertEqual(value[0], i)
+    # Get each value again to force reconstruction.
     for i in range(num_iterations):
       value = ray.get(args[i])
       self.assertEqual(value[0], i)

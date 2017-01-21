@@ -131,7 +131,7 @@ class PlasmaClient(object):
 
     Returns:
       A buffer for the object created. If the object wasn't able to be created
-      because it already exists locally, returns None.
+        because it already exists locally, returns None.
 
     Raises:
       plasma_object_exists_error: This exception is raised if the object could
