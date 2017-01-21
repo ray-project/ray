@@ -448,26 +448,36 @@ class Worker(object):
     """
     self.plasma_client.fetch([object_id.id() for object_id in object_ids])
 
-    # Get the objects. We initially try to get the object immediately.
-    unready_ids = object_ids
-    timeout = 0
+    # Get the objects. We initially try to get the objects immediately.
+    final_results = numbuf.retrieve_list(
+        [object_id.id() for object_id in object_ids],
+        self.plasma_client.conn,
+        0)
+    # Construct a dictionary mapping object IDs that we haven't gotten yet to
+    # their original index object_ids.
+    unready_ids = dict((object_id, i) for (i, (object_id, val)) in
+                       enumerate(final_results) if val is None)
+    # Try reconstructing any objects we haven't gotten yet. Try to get them
+    # until GET_TIMEOUT milliseconds passes, then repeat.
     while len(unready_ids) > 0:
-      results = numbuf.retrieve_list(
-          [object_id.id() for object_id in object_ids],
-          self.plasma_client.conn,
-          timeout)
-      unready_ids = [object_id for (object_id, val) in results if val is None]
-      # For objects that aren't ready yet, request a reconstruction, and wait
-      # GET_TIMEOUT milliseconds before trying again.
       for unready_id in unready_ids:
         self.photon_client.reconstruct_object(unready_id)
-      timeout = GET_TIMEOUT
+      results = numbuf.retrieve_list(unready_ids.keys(),
+                                     self.plasma_client.conn,
+                                     GET_TIMEOUT)
+      # Remove any entries for objects we received during this iteration so we
+      # don't retrieve the same object twice.
+      for object_id, val in results:
+        if val is not None:
+          index = unready_ids[object_id]
+          final_results[index] = (object_id, val)
+          del unready_ids[object_id]
 
     # Unwrap the object from the list (it was wrapped put_object).
-    assert len(results) == len(object_ids)
-    for i in range(len(results)):
-      assert results[i][0] == object_ids[i].id()
-    return [result[1][0] for result in results]
+    assert len(final_results) == len(object_ids)
+    for i in range(len(final_results)):
+      assert final_results[i][0] == object_ids[i].id()
+    return [result[1][0] for result in final_results]
 
   def submit_task(self, function_id, func_name, args):
     """Submit a remote task to the scheduler.
