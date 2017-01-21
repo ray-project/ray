@@ -139,11 +139,63 @@ class TestPhotonClient(unittest.TestCase):
     # Wait until the thread finishes so that we know the task was scheduled.
     t.join()
 
+  def test_scheduling_when_objects_evicted(self):
+    # Create a task with two dependencies and submit it.
+    object_id1 = random_object_id()
+    object_id2 = random_object_id()
+    task = photon.Task(random_function_id(), [object_id1, object_id2], 0, random_task_id(), 0)
+    self.photon_client.submit(task)
+
+    # Launch a thread to get the task.
+    def get_task():
+      self.photon_client.get_task()
+    t = threading.Thread(target=get_task)
+    t.start()
+
+    # Make one of the dependencies available.
+    self.plasma_client.create(object_id1.id(), 1)
+    self.plasma_client.seal(object_id1.id())
+    # Check that the thread is still waiting for a task.
+    time.sleep(0.1)
+    self.assertTrue(t.is_alive())
+
+    # Force eviction of the first dependency.
+    num_objects = 4
+    for i in range(num_objects + 1):
+      object_id = random_object_id()
+      self.plasma_client.create(object_id.id(), plasma.DEFAULT_PLASMA_STORE_MEMORY / num_objects)
+      self.plasma_client.seal(object_id.id())
+    # Check that the thread is still waiting for a task.
+    time.sleep(0.1)
+    self.assertTrue(t.is_alive())
+    # Check that the first object dependency was evicted.
+    object1 = self.plasma_client.get([object_id1.id()], timeout_ms=0)
+    self.assertEqual(object1, [None])
+    # Check that the thread is still waiting for a task.
+    time.sleep(0.1)
+    self.assertTrue(t.is_alive())
+
+    # Create the second dependency.
+    self.plasma_client.create(object_id2.id(), 1)
+    self.plasma_client.seal(object_id2.id())
+    # Check that the thread is still waiting for a task.
+    time.sleep(0.1)
+    self.assertTrue(t.is_alive())
+
+    # Create the first dependency again. Both dependencies are now available.
+    self.plasma_client.create(object_id1.id(), 1)
+    self.plasma_client.seal(object_id1.id())
+
+    # Wait until the thread finishes so that we know the task was scheduled.
+    t.join()
+
+
+
 if __name__ == "__main__":
   if len(sys.argv) > 1:
     # pop the argument so we don't mess with unittest's own argument parser
-    arg = sys.argv.pop()
-    if arg == "valgrind":
+    if sys.argv[-1] == "valgrind":
+      arg = sys.argv.pop()
       USE_VALGRIND = True
       print("Using valgrind for tests")
   unittest.main(verbosity=2)

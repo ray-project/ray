@@ -212,6 +212,7 @@ bool can_run(scheduling_algorithm_state *algorithm_state, task_spec *task) {
 }
 
 /* TODO(rkn): This method will need to be changed to call reconstruct. */
+/* TODO(swang): This method is not covered by any valgrind tests. */
 int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
   local_scheduler_state *state = context;
   /* Only try the fetches if we are connected to the object store manager. */
@@ -232,6 +233,7 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
     ++i;
   }
   plasma_fetch(state->plasma_conn, num_object_ids, object_ids);
+  free(object_ids);
   return LOCAL_SCHEDULER_FETCH_TIMEOUT_MILLISECONDS;
 }
 

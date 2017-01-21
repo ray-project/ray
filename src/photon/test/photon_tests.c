@@ -409,8 +409,18 @@ TEST task_multi_dependency_test(void) {
   handle_object_available(state, algorithm_state, oid2);
   ASSERT_EQ(num_waiting_tasks(algorithm_state), 1);
   ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
-  /* Once all inputs are available, the task is moved to the dispatch queue. */
+  /* Check that the task stays in the waiting queue if the one input is
+   * unavailable again. */
+  handle_object_removed(state, oid2);
+  ASSERT_EQ(num_waiting_tasks(algorithm_state), 1);
+  ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
+  /* Check that the task stays in the waiting queue if the other input becomes
+   * available. */
   handle_object_available(state, algorithm_state, oid1);
+  ASSERT_EQ(num_waiting_tasks(algorithm_state), 1);
+  ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
+  /* Once all inputs are available, the task is moved to the dispatch queue. */
+  handle_object_available(state, algorithm_state, oid2);
   ASSERT_EQ(num_waiting_tasks(algorithm_state), 0);
   ASSERT_EQ(num_dispatch_tasks(algorithm_state), 1);
   /* Once a worker is available, the task gets assigned. */
