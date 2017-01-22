@@ -51,6 +51,22 @@ if __name__ == "__main__":
                                             num_workers=args.num_workers,
                                             cleanup=False,
                                             redirect_output=True)
+    print(address_info)
+    print("\nStarted Ray with {} workers on this node. A different number of "
+          "workers can be set with the --num-workers flag (but you have to "
+          "first terminate the existing cluster). You can add additional nodes "
+          "to the cluster by calling\n\n"
+          "    ./scripts/start_ray.sh --redis-address {}\n\n"
+          "from the node you wish to add. You can connect a driver to the "
+          "cluster from Python by running\n\n"
+          "    import ray\n"
+          "    ray.init(redis_address=\"{}\")\n\n"
+          "If you have trouble connecting from a different machine, check that "
+          "your firewall is configured properly. If you wish to terminate the "
+          "processes that have been started, run\n\n"
+          "    ./scripts/stop_ray.sh".format(args.num_workers,
+                                             address_info["redis_address"],
+                                             address_info["redis_address"]))
   else:
     # Start Ray on a non-head node.
     if args.redis_address is None:
@@ -74,4 +90,9 @@ if __name__ == "__main__":
                                            num_workers=args.num_workers,
                                            cleanup=False,
                                            redirect_output=True)
-  print(address_info)
+    print(address_info)
+    print("\nStarted {} workers on this node. A different number of workers "
+          "can be set with the --num-workers flag (but you have to first "
+          "terminate the existing cluster). If you wish to terminate the "
+          "processes that have been started, run\n\n"
+          "    ./scripts/stop_ray.sh".format(args.num_workers))
