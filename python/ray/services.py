@@ -145,7 +145,7 @@ def get_node_ip_address(address="8.8.8.8:53"):
   s.connect((host, int(port)))
   return s.getsockname()[0]
 
-def wait_for_redis_to_start(redis_host, redis_port, num_retries=2):
+def wait_for_redis_to_start(redis_host, redis_port, num_retries=5):
   """Wait for a Redis server to be available.
 
   This is accomplished by creating a Redis client and sending a random command
