@@ -166,6 +166,7 @@ def wait_for_redis_to_start(redis_host, redis_port, num_retries=5):
   while counter < num_retries:
     try:
       # Run some random command and see if it worked.
+      print("Waiting for redis server at {}:{} to respond...".format(redis_host, redis_port))
       redis_client.client_list()
     except redis.ConnectionError as e:
       # Wait a little bit.
