@@ -454,7 +454,7 @@ class Worker(object):
         self.plasma_client.conn,
         0)
     # Construct a dictionary mapping object IDs that we haven't gotten yet to
-    # their original index object_ids.
+    # their original index in the object_ids argument.
     unready_ids = dict((object_id, i) for (i, (object_id, val)) in
                        enumerate(final_results) if val is None)
     # Try reconstructing any objects we haven't gotten yet. Try to get them
@@ -462,7 +462,7 @@ class Worker(object):
     while len(unready_ids) > 0:
       for unready_id in unready_ids:
         self.photon_client.reconstruct_object(unready_id)
-      results = numbuf.retrieve_list(unready_ids.keys(),
+      results = numbuf.retrieve_list(list(unready_ids.keys()),
                                      self.plasma_client.conn,
                                      GET_TIMEOUT)
       # Remove any entries for objects we received during this iteration so we
