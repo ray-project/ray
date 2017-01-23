@@ -161,9 +161,10 @@ class TestPhotonClient(unittest.TestCase):
 
     # Force eviction of the first dependency.
     num_objects = 4
+    object_size = int(plasma.DEFAULT_PLASMA_STORE_MEMORY / num_objects)
     for i in range(num_objects + 1):
       object_id = random_object_id()
-      self.plasma_client.create(object_id.id(), plasma.DEFAULT_PLASMA_STORE_MEMORY / num_objects)
+      self.plasma_client.create(object_id.id(), object_size)
       self.plasma_client.seal(object_id.id())
     # Check that the thread is still waiting for a task.
     time.sleep(0.1)
