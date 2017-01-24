@@ -26,8 +26,8 @@ typedef struct {
   UT_array *dependent_tasks;
   /** Handle for the uthash table. NOTE: This handle is used for both the
    *  scheduling algorithm state's local_objects and remote_objects tables.
-   *  We must enforce the uthash invariant that the entry be in either one or
-   *  neither tables. */
+   *  We must enforce the uthash invariant that the entry be in at most one of
+   *  the tables. */
   UT_hash_handle hh;
 } object_entry;
 
@@ -138,10 +138,10 @@ void fetch_missing_dependency(local_scheduler_state *state,
       plasma_fetch(state->plasma_conn, 1, &obj_id);
     }
     /* Create an entry and add it to the list of active fetch requests to
-     * ensure that the fetch actually happens. The entry will be moved to
-     * the hash table of locally available objects in
-     * handle_object_available when the object becomes available locally.
-     * It will get freed if the object is subsequently removed locally. */
+     * ensure that the fetch actually happens. The entry will be moved to the
+     * hash table of locally available objects in handle_object_available when
+     * the object becomes available locally. It will get freed if the object is
+     * subsequently removed locally. */
     entry = malloc(sizeof(object_entry));
     entry->object_id = obj_id;
     utarray_new(entry->dependent_tasks, &task_queue_entry_icd);
@@ -166,7 +166,7 @@ void fetch_missing_dependencies(local_scheduler_state *state,
                                 task_queue_entry *task_entry) {
   task_spec *task = task_entry->spec;
   int64_t num_args = task_num_args(task);
-  int num_dependencies = 0;
+  int num_missing_dependencies = 0;
   for (int i = 0; i < num_args; ++i) {
     if (task_arg_type(task, i) == ARG_BY_REF) {
       object_id obj_id = task_arg_id(task, i);
@@ -176,11 +176,11 @@ void fetch_missing_dependencies(local_scheduler_state *state,
       if (entry == NULL) {
         /* If the entry is not yet available locally, record the dependency. */
         fetch_missing_dependency(state, algorithm_state, task_entry, obj_id);
-        ++num_dependencies;
+        ++num_missing_dependencies;
       }
     }
   }
-  CHECK(num_dependencies > 0);
+  CHECK(num_missing_dependencies > 0);
 }
 
 /**
