@@ -17,26 +17,21 @@ typedef struct task_queue_entry {
   struct task_queue_entry *next;
 } task_queue_entry;
 
+/** A data structure used to track which objects are available locally and
+ *  which objects are being actively fetched. */
 typedef struct {
   /** Object id of this object. */
   object_id object_id;
-  /** Handle for the uthash table. */
-  UT_hash_handle handle;
-} available_object;
-
-/** A data structure used to track which objects are being fetched. */
-typedef struct {
-  /** The object ID that we are trying to fetch. */
-  object_id object_id;
-  /** The local scheduler state. */
-  local_scheduler_state *state;
-  /** The scheduling algorithm state. */
-  scheduling_algorithm_state *algorithm_state;
-  /** The ID for the timer that will time out the current request. */
-  int64_t timer;
-  /** Handle for the uthash table. */
+  /** An array of the tasks dependent on this object. */
+  UT_array *dependent_tasks;
+  /** Handle for the uthash table. NOTE: This handle is used for both the
+   *  scheduling algorithm state's local_objects and remote_objects tables.
+   *  We must enforce the uthash invariant that the entry be in at most one of
+   *  the tables. */
   UT_hash_handle hh;
-} fetch_object_request;
+} object_entry;
+
+UT_icd task_queue_entry_icd = {sizeof(task_queue_entry *), NULL, NULL, NULL};
 
 /** Part of the photon state that is maintained by the scheduling algorithm. */
 struct scheduling_algorithm_state {
@@ -49,11 +44,14 @@ struct scheduling_algorithm_state {
    *  waiting for tasks. */
   UT_array *available_workers;
   /** A hash map of the objects that are available in the local Plasma store.
-   *  This information could be a little stale. */
-  available_object *local_objects;
-  /** A hash map of the objects that are currently being fetched by this local
-   *  scheduler. The key is the object ID. */
-  fetch_object_request *fetch_requests;
+   *  The key is the object ID. This information could be a little stale. */
+  object_entry *local_objects;
+  /** A hash map of the objects that are not available locally. These are
+   *  currently being fetched by this local scheduler. The key is the object
+   *  ID. Every LOCAL_SCHEDULER_FETCH_TIMEOUT_MILLISECONDS, a Plasma fetch
+   *  request will be sent the object IDs in this table. Each entry also holds
+   *  an array of queued tasks that are dependent on it. */
+  object_entry *remote_objects;
 };
 
 scheduling_algorithm_state *make_scheduling_algorithm_state(void) {
@@ -61,12 +59,12 @@ scheduling_algorithm_state *make_scheduling_algorithm_state(void) {
       malloc(sizeof(scheduling_algorithm_state));
   /* Initialize an empty hash map for the cache of local available objects. */
   algorithm_state->local_objects = NULL;
+  /* Initialize the hash table of objects being fetched. */
+  algorithm_state->remote_objects = NULL;
   /* Initialize the local data structures used for queuing tasks and workers. */
   algorithm_state->waiting_task_queue = NULL;
   algorithm_state->dispatch_task_queue = NULL;
   utarray_new(algorithm_state->available_workers, &ut_int_icd);
-  /* Initialize the hash table of objects being fetched. */
-  algorithm_state->fetch_requests = NULL;
   return algorithm_state;
 }
 
@@ -84,15 +82,16 @@ void free_scheduling_algorithm_state(
     free(elt);
   }
   utarray_free(algorithm_state->available_workers);
-  available_object *available_obj, *tmp2;
-  HASH_ITER(handle, algorithm_state->local_objects, available_obj, tmp2) {
-    HASH_DELETE(handle, algorithm_state->local_objects, available_obj);
-    free(available_obj);
+  object_entry *obj_entry, *tmp_obj_entry;
+  HASH_ITER(hh, algorithm_state->local_objects, obj_entry, tmp_obj_entry) {
+    HASH_DELETE(hh, algorithm_state->local_objects, obj_entry);
+    CHECK(obj_entry->dependent_tasks == NULL);
+    free(obj_entry);
   }
-  fetch_object_request *fetch_elt, *tmp_fetch_elt;
-  HASH_ITER(hh, algorithm_state->fetch_requests, fetch_elt, tmp_fetch_elt) {
-    HASH_DELETE(hh, algorithm_state->fetch_requests, fetch_elt);
-    free(fetch_elt);
+  HASH_ITER(hh, algorithm_state->remote_objects, obj_entry, tmp_obj_entry) {
+    HASH_DELETE(hh, algorithm_state->remote_objects, obj_entry);
+    utarray_free(obj_entry->dependent_tasks);
+    free(obj_entry);
   }
   free(algorithm_state);
 }
@@ -115,21 +114,92 @@ void provide_scheduler_info(local_scheduler_state *state,
 }
 
 /**
+ * Fetch a queued task's missing object dependency. The fetch request will be
+ * retried every LOCAL_SCHEDULER_FETCH_TIMEOUT_MILLISECONDS until the object is
+ * available locally.
+ *
+ * @param state The scheduler state.
+ * @param algorithm_state The scheduling algorithm state.
+ * @param task_entry The task's queue entry.
+ * @param obj_id The ID of the object that the task is dependent on.
+ * @returns Void.
+ */
+void fetch_missing_dependency(local_scheduler_state *state,
+                              scheduling_algorithm_state *algorithm_state,
+                              task_queue_entry *task_entry,
+                              object_id obj_id) {
+  object_entry *entry;
+  HASH_FIND(hh, algorithm_state->remote_objects, &obj_id, sizeof(obj_id),
+            entry);
+  if (entry == NULL) {
+    /* We weren't actively fetching this object. Try the fetch once
+     * immediately. */
+    if (plasma_manager_is_connected(state->plasma_conn)) {
+      plasma_fetch(state->plasma_conn, 1, &obj_id);
+    }
+    /* Create an entry and add it to the list of active fetch requests to
+     * ensure that the fetch actually happens. The entry will be moved to the
+     * hash table of locally available objects in handle_object_available when
+     * the object becomes available locally. It will get freed if the object is
+     * subsequently removed locally. */
+    entry = malloc(sizeof(object_entry));
+    entry->object_id = obj_id;
+    utarray_new(entry->dependent_tasks, &task_queue_entry_icd);
+    HASH_ADD(hh, algorithm_state->remote_objects, object_id,
+             sizeof(entry->object_id), entry);
+  }
+  utarray_push_back(entry->dependent_tasks, &task_entry);
+}
+
+/**
+ * Fetch a queued task's missing object dependencies. The fetch requests will
+ * be retried every LOCAL_SCHEDULER_FETCH_TIMEOUT_MILLISECONDS until all
+ * objects are available locally.
+ *
+ * @param state The scheduler state.
+ * @param algorithm_state The scheduling algorithm state.
+ * @param task_entry The task's queue entry.
+ * @returns Void.
+ */
+void fetch_missing_dependencies(local_scheduler_state *state,
+                                scheduling_algorithm_state *algorithm_state,
+                                task_queue_entry *task_entry) {
+  task_spec *task = task_entry->spec;
+  int64_t num_args = task_num_args(task);
+  int num_missing_dependencies = 0;
+  for (int i = 0; i < num_args; ++i) {
+    if (task_arg_type(task, i) == ARG_BY_REF) {
+      object_id obj_id = task_arg_id(task, i);
+      object_entry *entry;
+      HASH_FIND(hh, algorithm_state->local_objects, &obj_id, sizeof(obj_id),
+                entry);
+      if (entry == NULL) {
+        /* If the entry is not yet available locally, record the dependency. */
+        fetch_missing_dependency(state, algorithm_state, task_entry, obj_id);
+        ++num_missing_dependencies;
+      }
+    }
+  }
+  CHECK(num_missing_dependencies > 0);
+}
+
+/**
  * Check if all of the remote object arguments for a task are available in the
  * local object store.
  *
- * @param s The scheduler state.
+ * @param algorithm_state The scheduling algorithm state.
  * @param task Task specification of the task to check.
- * @return This returns 1 if all of the remote object arguments for the task are
- *         present in the local object store, otherwise it returns 0.
+ * @return bool This returns true if all of the remote object arguments for the
+ *         task are present in the local object store, otherwise it returns
+ *         false.
  */
 bool can_run(scheduling_algorithm_state *algorithm_state, task_spec *task) {
   int64_t num_args = task_num_args(task);
   for (int i = 0; i < num_args; ++i) {
     if (task_arg_type(task, i) == ARG_BY_REF) {
       object_id obj_id = task_arg_id(task, i);
-      available_object *entry;
-      HASH_FIND(handle, algorithm_state->local_objects, &obj_id, sizeof(obj_id),
+      object_entry *entry;
+      HASH_FIND(hh, algorithm_state->local_objects, &obj_id, sizeof(obj_id),
                 entry);
       if (entry == NULL) {
         /* The object is not present locally, so this task cannot be scheduled
@@ -142,43 +212,29 @@ bool can_run(scheduling_algorithm_state *algorithm_state, task_spec *task) {
 }
 
 /* TODO(rkn): This method will need to be changed to call reconstruct. */
+/* TODO(swang): This method is not covered by any valgrind tests. */
 int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
-  fetch_object_request *fetch_req = (fetch_object_request *) context;
-  object_id object_ids[1] = {fetch_req->object_id};
-  plasma_fetch(fetch_req->state->plasma_conn, 1, object_ids);
-  return LOCAL_SCHEDULER_FETCH_TIMEOUT_MILLISECONDS;
-}
-
-void fetch_missing_dependencies(local_scheduler_state *state,
-                                scheduling_algorithm_state *algorithm_state,
-                                task_spec *spec) {
-  int64_t num_args = task_num_args(spec);
-  for (int i = 0; i < num_args; ++i) {
-    if (task_arg_type(spec, i) == ARG_BY_REF) {
-      object_id obj_id = task_arg_id(spec, i);
-      available_object *entry;
-      HASH_FIND(handle, algorithm_state->local_objects, &obj_id, sizeof(obj_id),
-                entry);
-      if (entry == NULL) {
-        /* The object is not present locally, fetch the object. */
-        object_id object_ids[1] = {obj_id};
-        plasma_fetch(state->plasma_conn, 1, object_ids);
-        /* Create a fetch request and add a timer to the event loop to ensure
-         * that the fetch actually happens. */
-        fetch_object_request *fetch_req = malloc(sizeof(fetch_object_request));
-        fetch_req->object_id = obj_id;
-        fetch_req->state = state;
-        fetch_req->algorithm_state = algorithm_state;
-        fetch_req->timer = event_loop_add_timer(
-            state->loop, LOCAL_SCHEDULER_FETCH_TIMEOUT_MILLISECONDS,
-            fetch_object_timeout_handler, fetch_req);
-        /* The fetch request will be freed and removed from the hash table in
-         * handle_object_available when the object becomes available locally. */
-        HASH_ADD(hh, algorithm_state->fetch_requests, object_id,
-                 sizeof(fetch_req->object_id), fetch_req);
-      }
-    }
+  local_scheduler_state *state = context;
+  /* Only try the fetches if we are connected to the object store manager. */
+  if (!plasma_manager_is_connected(state->plasma_conn)) {
+    LOG_INFO("Local scheduler is not connected to a object store manager");
+    return LOCAL_SCHEDULER_FETCH_TIMEOUT_MILLISECONDS;
   }
+
+  /* Allocate a buffer to hold all the object IDs for active fetch requests. */
+  int num_object_ids = HASH_COUNT(state->algorithm_state->remote_objects);
+  object_id *object_ids = malloc(num_object_ids * sizeof(object_id));
+
+  /* Fill out the request with the object IDs for active fetches. */
+  object_entry *fetch_request, *tmp;
+  int i = 0;
+  HASH_ITER(hh, state->algorithm_state->remote_objects, fetch_request, tmp) {
+    object_ids[i] = fetch_request->object_id;
+    ++i;
+  }
+  plasma_fetch(state->plasma_conn, num_object_ids, object_ids);
+  free(object_ids);
+  return LOCAL_SCHEDULER_FETCH_TIMEOUT_MILLISECONDS;
 }
 
 /**
@@ -225,10 +281,10 @@ void dispatch_tasks(local_scheduler_state *state,
  *        scheduler. If false, the task was submitted by a worker.
  * @return Void.
  */
-void queue_task(local_scheduler_state *state,
-                task_queue_entry **task_queue,
-                task_spec *spec,
-                bool from_global_scheduler) {
+task_queue_entry *queue_task(local_scheduler_state *state,
+                             task_queue_entry **task_queue,
+                             task_spec *spec,
+                             bool from_global_scheduler) {
   /* Copy the spec and add it to the task queue. The allocated spec will be
    * freed when it is assigned to a worker. */
   task_queue_entry *elt = malloc(sizeof(task_queue_entry));
@@ -253,6 +309,8 @@ void queue_task(local_scheduler_state *state,
                           NULL);
     }
   }
+
+  return elt;
 }
 
 /**
@@ -273,12 +331,11 @@ void queue_waiting_task(local_scheduler_state *state,
                         task_spec *spec,
                         bool from_global_scheduler) {
   LOG_DEBUG("Queueing task in waiting queue");
-  /* Initiate fetch calls for any dependencies that are not present locally. */
-  if (plasma_manager_is_connected(state->plasma_conn)) {
-    fetch_missing_dependencies(state, algorithm_state, spec);
-  }
-  queue_task(state, &algorithm_state->waiting_task_queue, spec,
-             from_global_scheduler);
+  task_queue_entry *task_entry = queue_task(
+      state, &algorithm_state->waiting_task_queue, spec, from_global_scheduler);
+  /* If we're queueing this task in the waiting queue, there must be at least
+   * one missing dependency, so record it. */
+  fetch_missing_dependencies(state, algorithm_state, task_entry);
 }
 
 /**
@@ -419,55 +476,83 @@ void handle_worker_available(local_scheduler_state *state,
 void handle_object_available(local_scheduler_state *state,
                              scheduling_algorithm_state *algorithm_state,
                              object_id object_id) {
-  /* Available object entries get freed if the object is removed. */
-  available_object *entry =
-      (available_object *) malloc(sizeof(available_object));
-  entry->object_id = object_id;
-  HASH_ADD(handle, algorithm_state->local_objects, object_id, sizeof(object_id),
+  /* Get the entry for this object from the active fetch request, or allocate
+   * one if needed. */
+  object_entry *entry;
+  HASH_FIND(hh, algorithm_state->remote_objects, &object_id, sizeof(object_id),
+            entry);
+  if (entry != NULL) {
+    /* Remove the object from the active fetch requests. */
+    HASH_DELETE(hh, algorithm_state->remote_objects, entry);
+  } else {
+    /* Allocate a new object entry. Object entries will get freed if the object
+     * is removed. */
+    entry = (object_entry *) malloc(sizeof(object_entry));
+    entry->object_id = object_id;
+    entry->dependent_tasks = NULL;
+  }
+
+  /* Add the entry to the set of locally available objects. */
+  HASH_ADD(hh, algorithm_state->local_objects, object_id, sizeof(object_id),
            entry);
 
-  /* If we were previously trying to fetch this object, remove the fetch request
-   * from the hash table. */
-  fetch_object_request *fetch_req;
-  HASH_FIND(hh, algorithm_state->fetch_requests, &object_id, sizeof(object_id),
-            fetch_req);
-  if (fetch_req != NULL) {
-    HASH_DELETE(hh, algorithm_state->fetch_requests, fetch_req);
-    CHECK(event_loop_remove_timer(state->loop, fetch_req->timer) == AE_OK);
-    free(fetch_req);
-  }
-
-  /* Move any tasks whose object dependencies are now ready to the dispatch
-   * queue. */
-  /* TODO(swang): This can be optimized by keeping a lookup table from object
-   * ID to list of dependent tasks in the waiting queue. */
-  task_queue_entry *elt, *tmp;
-  DL_FOREACH_SAFE(algorithm_state->waiting_task_queue, elt, tmp) {
-    if (can_run(algorithm_state, elt->spec)) {
-      LOG_DEBUG("Moved task to dispatch queue");
-      DL_DELETE(algorithm_state->waiting_task_queue, elt);
-      DL_APPEND(algorithm_state->dispatch_task_queue, elt);
+  if (entry->dependent_tasks != NULL) {
+    /* Out of the tasks that were dependent on this object, if they were now
+     * ready to run, move them to the dispatch queue. */
+    task_queue_entry *task_entry = NULL;
+    for (task_queue_entry **p =
+             (task_queue_entry **) utarray_front(entry->dependent_tasks);
+         p != NULL;
+         p = (task_queue_entry **) utarray_next(entry->dependent_tasks, p)) {
+      task_queue_entry *task_entry = *p;
+      if (can_run(algorithm_state, task_entry->spec)) {
+        LOG_DEBUG("Moved task to dispatch queue");
+        DL_DELETE(algorithm_state->waiting_task_queue, task_entry);
+        DL_APPEND(algorithm_state->dispatch_task_queue, task_entry);
+      }
     }
+    /* Try to dispatch tasks, since we may have added some from the waiting
+     * queue. */
+    dispatch_tasks(state, algorithm_state);
+    /* Clean up the records for dependent tasks. */
+    utarray_free(entry->dependent_tasks);
+    entry->dependent_tasks = NULL;
   }
-
-  /* Try to dispatch tasks, since we may have added some from the waiting
-   * queue. */
-  dispatch_tasks(state, algorithm_state);
 }
 
 void handle_object_removed(local_scheduler_state *state,
                            object_id removed_object_id) {
+  /* Remove the object from the set of locally available objects. */
   scheduling_algorithm_state *algorithm_state = state->algorithm_state;
-  available_object *entry;
-  HASH_FIND(handle, algorithm_state->local_objects, &removed_object_id,
+  object_entry *entry;
+  HASH_FIND(hh, algorithm_state->local_objects, &removed_object_id,
             sizeof(removed_object_id), entry);
-  if (entry != NULL) {
-    HASH_DELETE(handle, algorithm_state->local_objects, entry);
-    free(entry);
-  }
+  CHECK(entry != NULL);
+  HASH_DELETE(hh, algorithm_state->local_objects, entry);
+  free(entry);
 
-  /* Move dependent tasks from the dispatch queue back to the waiting queue. */
+  /* Track queued tasks that were dependent on this object.
+   * NOTE: Since objects often get removed in batches (e.g., during eviction),
+   * we may end up iterating through the queues many times in a row. If this
+   * turns out to be a bottleneck, consider tracking dependencies even for
+   * tasks in the dispatch queue, or batching object notifications. */
   task_queue_entry *elt, *tmp;
+  /* Track the dependency for tasks that were in the waiting queue. */
+  DL_FOREACH(algorithm_state->waiting_task_queue, elt) {
+    task_spec *task = elt->spec;
+    int64_t num_args = task_num_args(task);
+    for (int i = 0; i < num_args; ++i) {
+      if (task_arg_type(task, i) == ARG_BY_REF) {
+        object_id arg_id = task_arg_id(task, i);
+        if (object_ids_equal(arg_id, removed_object_id)) {
+          fetch_missing_dependency(state, algorithm_state, elt,
+                                   removed_object_id);
+        }
+      }
+    }
+  }
+  /* Track the dependency for tasks that were in the dispatch queue. Remove
+   * these tasks from the dispatch queue and push them to the waiting queue. */
   DL_FOREACH_SAFE(algorithm_state->dispatch_task_queue, elt, tmp) {
     task_spec *task = elt->spec;
     int64_t num_args = task_num_args(task);
@@ -478,6 +563,8 @@ void handle_object_removed(local_scheduler_state *state,
           LOG_DEBUG("Moved task from dispatch queue back to waiting queue");
           DL_DELETE(algorithm_state->dispatch_task_queue, elt);
           DL_APPEND(algorithm_state->waiting_task_queue, elt);
+          fetch_missing_dependency(state, algorithm_state, elt,
+                                   removed_object_id);
         }
       }
     }
