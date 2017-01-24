@@ -264,9 +264,11 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   task_id parent_task_id;
   /* The number of tasks that the parent task has called prior to this one. */
   int parent_counter;
-  if (!PyArg_ParseTuple(args, "O&OiO&i", &PyObjectToUniqueID, &function_id,
+  /* Resource vector of the required resources to execute this task. */
+  PyObject *resource_vector;
+  if (!PyArg_ParseTuple(args, "O&OiO&iO", &PyObjectToUniqueID, &function_id,
                         &arguments, &num_returns, &PyObjectToUniqueID,
-                        &parent_task_id, &parent_counter)) {
+                        &parent_task_id, &parent_counter, &resource_vector)) {
     return -1;
   }
   Py_ssize_t size = PyList_Size(arguments);
@@ -305,6 +307,12 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
     }
   }
   utarray_free(val_repr_ptrs);
+  /* Set the resource vector of the task. */
+  CHECK(PyList_Size(resource_vector) == MAX_RESOURCE_INDEX);
+  for (int i = 0; i < MAX_RESOURCE_INDEX; ++i) {
+    PyObject *resource_entry = PyList_GetItem(resource_vector, i);
+    task_add_required_resource(self->spec, i, PyFloat_AsDouble(resource_entry));
+  }
   /* Compute the task ID and the return object IDs. */
   finish_construct_task_spec(self->spec);
   return 0;
