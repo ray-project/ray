@@ -52,12 +52,16 @@ struct client {
  * object_table_entry type. */
 UT_icd client_icd = {sizeof(client *), NULL, NULL, NULL};
 
+/* This is used to define the queue of object notifications for plasma
+ * subscribers. */
+UT_icd object_info_icd = {sizeof(object_info), NULL, NULL, NULL};
+
 typedef struct {
   /** Client file descriptor. This is used as a key for the hash table. */
   int subscriber_fd;
-  /** The object IDs to notify the client about. We notify the client about the
-   *  IDs in the order that the objects were sealed. */
-  UT_array *object_ids;
+  /** The object notifications for clients. We notify the client about the
+   *  objects in the order that the objects were sealed or deleted. */
+  UT_array *object_notifications;
   /** Handle for the uthash table. */
   UT_hash_handle hh;
 } notification_queue;
@@ -136,7 +140,8 @@ plasma_store_state *init_plasma_store(event_loop *loop, int64_t system_memory) {
   return state;
 }
 
-void push_notification(plasma_store_state *state, object_id object_id);
+void push_notification(plasma_store_state *state,
+                       object_info *object_notification);
 
 /* If this client is not already using the object, add the client to the
  * object's list of clients, otherwise do nothing. */
@@ -562,7 +567,7 @@ void seal_object(client *client_context,
   /* Set the object digest. */
   memcpy(entry->info.digest, digest, DIGEST_SIZE);
   /* Inform all subscribers that a new object has been sealed. */
-  push_notification(plasma_state, object_id);
+  push_notification(plasma_state, &entry->info);
 
   /* Update all get requests that involve this object. */
   update_object_get_requests(plasma_state, object_id);
@@ -589,7 +594,8 @@ void delete_object(plasma_store_state *plasma_state, object_id object_id) {
   utarray_free(entry->clients);
   free(entry);
   /* Inform all subscribers that the object has been deleted. */
-  push_notification(plasma_state, object_id);
+  object_info notification = {.obj_id = object_id, .is_deletion = true};
+  push_notification(plasma_state, &notification);
 }
 
 void remove_objects(plasma_store_state *plasma_state,
@@ -605,10 +611,11 @@ void remove_objects(plasma_store_state *plasma_state,
   }
 }
 
-void push_notification(plasma_store_state *plasma_state, object_id object_id) {
+void push_notification(plasma_store_state *plasma_state,
+                       object_info *notification) {
   notification_queue *queue, *temp_queue;
   HASH_ITER(hh, plasma_state->pending_notifications, queue, temp_queue) {
-    utarray_push_back(queue->object_ids, &object_id);
+    utarray_push_back(queue->object_notifications, notification);
     send_notifications(plasma_state->loop, queue->subscriber_fd, plasma_state,
                        0);
   }
@@ -627,26 +634,13 @@ void send_notifications(event_loop *loop,
   int num_processed = 0;
   /* Loop over the array of pending notifications and send as many of them as
    * possible. */
-  for (int i = 0; i < utarray_len(queue->object_ids); ++i) {
-    object_id *obj_id = (object_id *) utarray_eltptr(queue->object_ids, i);
-    object_table_entry *entry = NULL;
-    /* This object should already exist in plasma store state. */
-    HASH_FIND(handle, plasma_state->plasma_store_info->objects, obj_id,
-              sizeof(object_id), entry);
-
-    object_info object_info;
-    if (entry == NULL) {
-      memset(&object_info, 0, sizeof(object_info));
-      object_info.obj_id = *obj_id;
-      object_info.is_deletion = true;
-    } else {
-      object_info = entry->info;
-      object_info.is_deletion = false;
-    }
+  for (int i = 0; i < utarray_len(queue->object_notifications); ++i) {
+    object_info *notification =
+        (object_info *) utarray_eltptr(queue->object_notifications, i);
 
     /* Attempt to send a notification about this object ID. */
     int nbytes =
-        send(client_sock, (char const *) &object_info, sizeof(object_info), 0);
+        send(client_sock, (char const *) notification, sizeof(object_info), 0);
     if (nbytes >= 0) {
       CHECK(nbytes == sizeof(object_info));
     } else if (nbytes == -1 &&
@@ -667,9 +661,9 @@ void send_notifications(event_loop *loop,
     num_processed += 1;
   }
   /* Remove the sent notifications from the array. */
-  utarray_erase(queue->object_ids, 0, num_processed);
+  utarray_erase(queue->object_notifications, 0, num_processed);
   /* If we have sent all notifications, remove the fd from the event loop. */
-  if (utarray_len(queue->object_ids) == 0) {
+  if (utarray_len(queue->object_notifications) == 0) {
     event_loop_remove_file(loop, client_sock);
   }
 }
@@ -694,7 +688,7 @@ void subscribe_to_updates(client *client_context, int conn) {
   notification_queue *queue =
       (notification_queue *) malloc(sizeof(notification_queue));
   queue->subscriber_fd = fd;
-  utarray_new(queue->object_ids, &object_id_icd);
+  utarray_new(queue->object_notifications, &object_info_icd);
   HASH_ADD_INT(plasma_state->pending_notifications, subscriber_fd, queue);
 }
 
