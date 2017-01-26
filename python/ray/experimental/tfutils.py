@@ -38,6 +38,7 @@ class TensorFlowVariables(object):
     self.prefix = prefix
     queue = deque([loss])
     variable_names = []
+    explored_inputs = set()
 
     # We do a BFS on the dependency graph of the input function to find 
     # the variables.
@@ -50,7 +51,13 @@ class TensorFlowVariables(object):
       if hasattr(tf_obj, "op"):
          tf_obj = tf_obj.op
       queue.extend(tf_obj.inputs)
-      queue.extend(tf_obj.control_inputs)
+
+      # Tensorflow control inputs can be circular, so we keep track of
+      # explored operations.
+      for control in tf_obj.control_inputs:
+        if control not in explored_inputs:
+          queue.add(control)
+          explored_inputs.add(control)
       if tf_obj.node_def.op == "Variable":
         variable_names.append(tf_obj.node_def.name)
     self.variables = OrderedDict()
