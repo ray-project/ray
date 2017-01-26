@@ -93,6 +93,7 @@ def train(hps):
       FLAGS.dataset, FLAGS.train_data_path, hps.batch_size, FLAGS.mode)
   ray.env.model = ray.EnvironmentVariable(model_initialization, model_reinitialization)
   model = ray.env.model
+  init = tf.global_variables_initializer()
   param_stats = tf.contrib.tfprof.model_analyzer.print_model_analysis(
       tf.get_default_graph(),
       tfprof_options=tf.contrib.tfprof.model_analyzer.
@@ -118,7 +119,7 @@ def train(hps):
                'loss': model.cost,
                'precision': precision},
       every_n_iter=100)
-
+  tf.Session().run(init)
   class _LearningRateSetterHook(tf.train.SessionRunHook):
     """Sets learning_rate based on global step."""
 
@@ -140,7 +141,6 @@ def train(hps):
         self._lrn_rate = 0.001
       else:
         self._lrn_rate = 0.0001
-
   with tf.train.MonitoredTrainingSession(
       checkpoint_dir=FLAGS.log_root,
       hooks=[logging_hook, _LearningRateSetterHook()],
@@ -149,7 +149,6 @@ def train(hps):
       # SummarySaverHook. To do that we set save_summaries_steps to 0.
       save_summaries_steps=0,
       config=tf.ConfigProto(allow_soft_placement=True)) as mon_sess:
-    mon_sess.run(tf.global_variables_initializer())
     while not mon_sess.should_stop():
       print "i"
       weights = model.variables.get_weights()

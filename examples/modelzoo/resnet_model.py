@@ -140,7 +140,6 @@ class ResNet(object):
     #    zip(self.assignment_placeholders, trainable_variables),
     #    global_step=self.global_step, name='train_step')
     min_ops = optimizer.minimize(self.cost)
-    IPython.embed()
     self.variables = tfutils.TensorFlowVariables(min_ops, prefix=True)
     train_ops = [min_ops] + self._extra_train_ops
     self.train_op = tf.group(*train_ops)
