@@ -17,6 +17,7 @@ import unittest
 
 import plasma
 from plasma.utils import random_object_id, generate_metadata, write_to_data_buffer, create_object_with_id, create_object
+from ray import services
 
 USE_VALGRIND = False
 PLASMA_STORE_MEMORY = 1000000000
@@ -492,19 +493,8 @@ class TestPlasmaManager(unittest.TestCase):
     store_name1, self.p2 = plasma.start_plasma_store(use_valgrind=USE_VALGRIND)
     store_name2, self.p3 = plasma.start_plasma_store(use_valgrind=USE_VALGRIND)
     # Start a Redis server.
-    redis_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../core/src/common/thirdparty/redis/src/redis-server")
-    redis_module = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../core/src/common/redis_module/libray_redis_module.so")
-    assert os.path.isfile(redis_path)
-    assert os.path.isfile(redis_module)
-    redis_port = 6379
-    with open(os.devnull, "w") as FNULL:
-      self.redis_process = subprocess.Popen([redis_path,
-                                             "--port", str(redis_port),
-                                             "--loadmodule", redis_module],
-                                             stdout=FNULL)
-    time.sleep(0.1)
+    redis_address = services.start_redis("127.0.0.1")
     # Start two PlasmaManagers.
-    redis_address = "{}:{}".format("127.0.0.1", redis_port)
     manager_name1, self.p4, self.port1 = plasma.start_plasma_manager(store_name1, redis_address, use_valgrind=USE_VALGRIND)
     manager_name2, self.p5, self.port2 = plasma.start_plasma_manager(store_name2, redis_address, use_valgrind=USE_VALGRIND)
     # Connect two PlasmaClients.
@@ -533,7 +523,9 @@ class TestPlasmaManager(unittest.TestCase):
     else:
       for process in self.processes_to_kill:
         process.kill()
-    self.redis_process.kill()
+
+    # Clean up the Redis server.
+    services.cleanup()
 
   def test_fetch(self):
     if self.redis_process is None:
@@ -803,19 +795,8 @@ class TestPlasmaManagerRecovery(unittest.TestCase):
     # Start a Plasma store.
     self.store_name, self.p2 = plasma.start_plasma_store(use_valgrind=USE_VALGRIND)
     # Start a Redis server.
-    redis_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../core/src/common/thirdparty/redis/src/redis-server")
-    redis_module = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../core/src/common/redis_module/libray_redis_module.so")
-    assert os.path.isfile(redis_path)
-    assert os.path.isfile(redis_module)
-    redis_port = 6379
-    with open(os.devnull, "w") as FNULL:
-      self.redis_process = subprocess.Popen([redis_path,
-                                             "--port", str(redis_port),
-                                             "--loadmodule", redis_module],
-                                             stdout=FNULL)
-    time.sleep(0.1)
+    self.redis_address = services.start_redis("127.0.0.1")
     # Start a PlasmaManagers.
-    self.redis_address = "{}:{}".format("127.0.0.1", redis_port)
     manager_name, self.p3, self.port1 = plasma.start_plasma_manager(
         self.store_name,
         self.redis_address,
@@ -844,7 +825,9 @@ class TestPlasmaManagerRecovery(unittest.TestCase):
     else:
       for process in self.processes_to_kill:
         process.kill()
-    self.redis_process.kill()
+
+    # Clean up the Redis server.
+    services.cleanup()
 
   def test_delayed_start(self):
     num_objects = 10
