@@ -80,6 +80,7 @@ def model_initialization():
     model.build_graph()
     sess = tf.Session()
     model.variables.set_session(sess)
+    IPython.embed()
     return model
 
 def model_reinitialization(model):
@@ -88,7 +89,6 @@ def model_reinitialization(model):
 def train(hps):
   """Training loop."""
   ray.init(num_workers=0)
-  resnet_model.ResNet(hps, 'train').build_graph()
   batches = get_batches.remote(
       FLAGS.dataset, FLAGS.train_data_path, hps.batch_size, FLAGS.mode)
   ray.env.model = ray.EnvironmentVariable(model_initialization, model_reinitialization)
