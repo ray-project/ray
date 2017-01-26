@@ -120,8 +120,6 @@ void handle_worker_available(local_scheduler_state *state,
  */
 int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context);
 
-bool object_is_local(local_scheduler_state *state, object_id object_id);
-
 /** The following methods are for testing purposes only. */
 #ifdef PHOTON_TEST
 /**
