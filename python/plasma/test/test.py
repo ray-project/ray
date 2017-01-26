@@ -528,9 +528,6 @@ class TestPlasmaManager(unittest.TestCase):
     services.cleanup()
 
   def test_fetch(self):
-    if self.redis_process is None:
-      print("Cannot test fetch without a running redis instance.")
-      self.assertTrue(False)
     for _ in range(10):
       # Create an object.
       object_id1, memory_buffer1, metadata1 = create_object(self.client1, 2000, 2000)
@@ -574,9 +571,6 @@ class TestPlasmaManager(unittest.TestCase):
                             memory_buffer=memory_buffer3, metadata=metadata3)
 
   def test_fetch_multiple(self):
-    if self.redis_process is None:
-      print("Cannot test fetch without a running redis instance.")
-      self.assertTrue(False)
     for _ in range(20):
       # Create two objects and a third fake one that doesn't exist.
       object_id1, memory_buffer1, metadata1 = create_object(self.client1, 2000, 2000)
