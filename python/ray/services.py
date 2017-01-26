@@ -190,7 +190,7 @@ def start_redis(node_ip_address, num_retries=20, cleanup=True, redirect_output=F
       /dev/null.
 
   Returns:
-    The port used by Redis.
+    The address used by Redis.
 
   Raises:
     Exception: An exception is raised if Redis could not be started.

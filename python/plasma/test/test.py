@@ -17,6 +17,7 @@ import unittest
 
 import plasma
 from plasma.utils import random_object_id, generate_metadata, write_to_data_buffer, create_object_with_id, create_object
+from ray import services
 
 USE_VALGRIND = False
 PLASMA_STORE_MEMORY = 1000000000
@@ -492,19 +493,8 @@ class TestPlasmaManager(unittest.TestCase):
     store_name1, self.p2 = plasma.start_plasma_store(use_valgrind=USE_VALGRIND)
     store_name2, self.p3 = plasma.start_plasma_store(use_valgrind=USE_VALGRIND)
     # Start a Redis server.
-    redis_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../core/src/common/thirdparty/redis/src/redis-server")
-    redis_module = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../core/src/common/redis_module/libray_redis_module.so")
-    assert os.path.isfile(redis_path)
-    assert os.path.isfile(redis_module)
-    redis_port = 6379
-    with open(os.devnull, "w") as FNULL:
-      self.redis_process = subprocess.Popen([redis_path,
-                                             "--port", str(redis_port),
-                                             "--loadmodule", redis_module],
-                                             stdout=FNULL)
-    time.sleep(0.1)
+    redis_address = services.start_redis("127.0.0.1")
     # Start two PlasmaManagers.
-    redis_address = "{}:{}".format("127.0.0.1", redis_port)
     manager_name1, self.p4, self.port1 = plasma.start_plasma_manager(store_name1, redis_address, use_valgrind=USE_VALGRIND)
     manager_name2, self.p5, self.port2 = plasma.start_plasma_manager(store_name2, redis_address, use_valgrind=USE_VALGRIND)
     # Connect two PlasmaClients.
@@ -533,12 +523,11 @@ class TestPlasmaManager(unittest.TestCase):
     else:
       for process in self.processes_to_kill:
         process.kill()
-    self.redis_process.kill()
+
+    # Clean up the Redis server.
+    services.cleanup()
 
   def test_fetch(self):
-    if self.redis_process is None:
-      print("Cannot test fetch without a running redis instance.")
-      self.assertTrue(False)
     for _ in range(10):
       # Create an object.
       object_id1, memory_buffer1, metadata1 = create_object(self.client1, 2000, 2000)
@@ -582,9 +571,6 @@ class TestPlasmaManager(unittest.TestCase):
                             memory_buffer=memory_buffer3, metadata=metadata3)
 
   def test_fetch_multiple(self):
-    if self.redis_process is None:
-      print("Cannot test fetch without a running redis instance.")
-      self.assertTrue(False)
     for _ in range(20):
       # Create two objects and a third fake one that doesn't exist.
       object_id1, memory_buffer1, metadata1 = create_object(self.client1, 2000, 2000)
@@ -796,6 +782,73 @@ class TestPlasmaManager(unittest.TestCase):
     b = time.time() - a
 
     print("it took", b, "seconds to put and transfer the objects")
+
+class TestPlasmaManagerRecovery(unittest.TestCase):
+
+  def setUp(self):
+    # Start a Plasma store.
+    self.store_name, self.p2 = plasma.start_plasma_store(use_valgrind=USE_VALGRIND)
+    # Start a Redis server.
+    self.redis_address = services.start_redis("127.0.0.1")
+    # Start a PlasmaManagers.
+    manager_name, self.p3, self.port1 = plasma.start_plasma_manager(
+        self.store_name,
+        self.redis_address,
+        use_valgrind=USE_VALGRIND)
+    # Connect a PlasmaClient.
+    self.client = plasma.PlasmaClient(self.store_name, manager_name)
+
+    # Store the processes that will be explicitly killed during tearDown so
+    # that a test case can remove ones that will be killed during the test.
+    self.processes_to_kill = [self.p2, self.p3]
+
+  def tearDown(self):
+    # Check that the processes are still alive.
+    for process in self.processes_to_kill:
+      self.assertEqual(process.poll(), None)
+
+    # Kill the Plasma store and Plasma manager processes.
+    if USE_VALGRIND:
+      time.sleep(1) # give processes opportunity to finish work
+      for process in self.processes_to_kill:
+        process.send_signal(signal.SIGTERM)
+        process.wait()
+        if process.returncode != 0:
+          print("aborting due to valgrind error")
+          os._exit(-1)
+    else:
+      for process in self.processes_to_kill:
+        process.kill()
+
+    # Clean up the Redis server.
+    services.cleanup()
+
+  def test_delayed_start(self):
+    num_objects = 10
+    # Create some objects using one client.
+    object_ids = [random_object_id() for _ in range(num_objects)]
+    for i in range(10):
+      create_object_with_id(self.client, object_ids[i], 2000, 2000)
+
+    # Wait until the objects have been sealed in the store.
+    ready, waiting = self.client.wait(object_ids, num_returns=num_objects)
+    self.assertEqual(set(ready), set(object_ids))
+    self.assertEqual(waiting, [])
+
+    # Start a second plasma manager attached to the same store.
+    manager_name, self.p5, self.port2 = plasma.start_plasma_manager(self.store_name, self.redis_address, use_valgrind=USE_VALGRIND)
+    self.processes_to_kill.append(self.p5)
+
+    # Check that the second manager knows about existing objects.
+    client2 = plasma.PlasmaClient(self.store_name, manager_name)
+    ready, waiting = [], object_ids
+    while True:
+      ready, waiting = client2.wait(object_ids, num_returns=num_objects, timeout=0)
+      if len(ready) == len(object_ids):
+        break
+
+    self.assertEqual(set(ready), set(object_ids))
+    self.assertEqual(waiting, [])
 
 if __name__ == "__main__":
   if len(sys.argv) > 1:
