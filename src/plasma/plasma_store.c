@@ -680,8 +680,7 @@ void subscribe_to_updates(client *client_context, int conn) {
     LOG_WARN("Failed to receive file descriptor from client on fd %d.", conn);
     return;
   }
-  CHECKM(HASH_CNT(handle, plasma_state->plasma_store_info->objects) == 0,
-         "plasma_subscribe should be called before any objects are created.");
+
   /* Create a new array to buffer notifications that can't be sent to the
    * subscriber yet because the socket send buffer is full. TODO(rkn): the queue
    * never gets freed. */
@@ -690,6 +689,14 @@ void subscribe_to_updates(client *client_context, int conn) {
   queue->subscriber_fd = fd;
   utarray_new(queue->object_notifications, &object_info_icd);
   HASH_ADD_INT(plasma_state->pending_notifications, subscriber_fd, queue);
+
+  /* Push notifications to the new subscriber about existing objects. */
+  object_table_entry *entry, *temp_entry;
+  HASH_ITER(handle, plasma_state->plasma_store_info->objects, entry,
+            temp_entry) {
+    utarray_push_back(queue->object_notifications, &entry->info);
+  }
+  send_notifications(plasma_state->loop, queue->subscriber_fd, plasma_state, 0);
 }
 
 void process_message(event_loop *loop,
