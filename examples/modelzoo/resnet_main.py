@@ -80,7 +80,6 @@ def model_initialization():
     model.build_graph()
     sess = tf.Session()
     model.variables.set_session(sess)
-    IPython.embed()
     return model
 
 def model_reinitialization(model):
