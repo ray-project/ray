@@ -64,7 +64,6 @@ class TensorFlowVariables(object):
           explored_inputs.add(control)
       if tf_obj.node_def.op == "Variable":
         variable_names.append(tf_obj.node_def.name)
-    IPython.embed()
     self.variables = OrderedDict()
     for v in [v for v in tf.global_variables() if v.op.node_def.name in variable_names]:
       names = re.split(r"([^/]*/)\1*", v.op.node_def.name, maxsplit=1 if prefix else -1)
@@ -79,7 +78,7 @@ class TensorFlowVariables(object):
     for k, var in self.variables.items():
       self.assignment_placeholders[k] = tf.placeholder(var.value().dtype, var.get_shape().as_list())
       self.assignment_nodes.append(var.assign(self.assignment_placeholders[k]))
-    IPython.embed()
+
   def set_session(self, sess):
     """Modifies the current session used by the class."""
     self.sess = sess
