@@ -35,6 +35,8 @@ typedef struct {
 } task_arg;
 
 struct task_spec_impl {
+  /** ID of the driver that created this task. */
+  unique_id driver_id;
   /** Task ID of the task. */
   task_id task_id;
   /** Task ID of the parent task. */
@@ -136,7 +138,8 @@ object_id task_compute_put_id(task_id task_id, int64_t put_index) {
   return put_id;
 }
 
-task_spec *start_construct_task_spec(task_id parent_task_id,
+task_spec *start_construct_task_spec(unique_id driver_id,
+                                     task_id parent_task_id,
                                      int64_t parent_counter,
                                      function_id function_id,
                                      int64_t num_args,
@@ -145,6 +148,7 @@ task_spec *start_construct_task_spec(task_id parent_task_id,
   int64_t size = TASK_SPEC_SIZE(num_args, num_returns, args_value_size);
   task_spec *task = malloc(size);
   memset(task, 0, size);
+  task->driver_id = driver_id;
   task->task_id = NIL_TASK_ID;
   task->parent_task_id = parent_task_id;
   task->parent_counter = parent_counter;
@@ -171,7 +175,7 @@ void finish_construct_task_spec(task_spec *spec) {
 
 task_spec *alloc_nil_task_spec(task_id task_id) {
   task_spec *spec =
-      start_construct_task_spec(NIL_ID, 0, NIL_FUNCTION_ID, 0, 0, 0);
+      start_construct_task_spec(NIL_ID, NIL_ID, 0, NIL_FUNCTION_ID, 0, 0, 0);
   finish_construct_task_spec(spec);
   spec->task_id = task_id;
   return spec;
@@ -186,6 +190,12 @@ function_id task_function(task_spec *spec) {
   /* Check that the task has been constructed. */
   DCHECK(!task_ids_equal(spec->task_id, NIL_TASK_ID));
   return spec->function_id;
+}
+
+unique_id task_spec_driver_id(task_spec *spec) {
+  /* Check that the task has been constructed. */
+  DCHECK(!task_ids_equal(spec->task_id, NIL_TASK_ID));
+  return spec->driver_id;
 }
 
 task_id task_spec_id(task_spec *spec) {

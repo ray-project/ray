@@ -34,6 +34,9 @@ TASK_STATUS_DONE = 16
 DB_CLIENT_PREFIX = "CL:"
 TASK_PREFIX = "TT:"
 
+def random_driver_id():
+  return photon.ObjectID(np.random.bytes(ID_SIZE))
+
 def random_task_id():
   return photon.ObjectID(np.random.bytes(ID_SIZE))
 
@@ -150,7 +153,7 @@ class TestGlobalScheduler(unittest.TestCase):
     # Sleep before submitting task to photon.
     time.sleep(0.1)
     # Submit a task to Redis.
-    task = photon.Task(random_function_id(), [photon.ObjectID(object_dep)], num_return_vals[0], random_task_id(), 0)
+    task = photon.Task(random_driver_id(), random_function_id(), [photon.ObjectID(object_dep)], num_return_vals[0], random_task_id(), 0)
     self.photon_client.submit(task)
     time.sleep(0.1)
     # There should now be a task in Redis, and it should get assigned to the
@@ -194,7 +197,7 @@ class TestGlobalScheduler(unittest.TestCase):
       if timesync:
         # Give 10ms for object info handler to fire (long enough to yield CPU).
         time.sleep(0.010)
-      task = photon.Task(random_function_id(), [photon.ObjectID(object_dep)], num_return_vals[0], random_task_id(), 0)
+      task = photon.Task(random_driver_id(), random_function_id(), [photon.ObjectID(object_dep)], num_return_vals[0], random_task_id(), 0)
       self.photon_client.submit(task)
     # Check that there are the correct number of tasks in Redis and that they
     # all get assigned to the local scheduler.

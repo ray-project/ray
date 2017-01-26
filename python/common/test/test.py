@@ -17,6 +17,9 @@ def random_object_id():
 def random_function_id():
   return photon.ObjectID(np.random.bytes(ID_SIZE))
 
+def random_driver_id():
+  return photon.ObjectID(np.random.bytes(ID_SIZE))
+
 def random_task_id():
   return photon.ObjectID(np.random.bytes(ID_SIZE))
 
@@ -125,6 +128,7 @@ class TestTask(unittest.TestCase):
 
   def test_create_and_serialize_task(self):
     # TODO(rkn): The function ID should be a FunctionID object, not an ObjectID.
+    driver_id = random_driver_id()
     parent_id = random_task_id()
     function_id = random_function_id()
     object_ids = [random_object_id() for _ in range(256)]
@@ -156,7 +160,7 @@ class TestTask(unittest.TestCase):
     ]
     for args in args_list:
       for num_return_vals in [0, 1, 2, 3, 5, 10, 100]:
-        task = photon.Task(function_id, args, num_return_vals, parent_id, 0)
+        task = photon.Task(driver_id, function_id, args, num_return_vals, parent_id, 0)
         self.check_task(task, function_id, num_return_vals, args)
         data = photon.task_to_string(task)
         task2 = photon.task_from_string(data)

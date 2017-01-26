@@ -35,6 +35,10 @@ LOG_POINT = 0
 LOG_SPAN_START = 1
 LOG_SPAN_END = 2
 
+ERROR_KEY_PREFIX = b"Error:"
+DRIVER_ID_LENGTH = 20
+ERROR_ID_LENGTH = 20
+
 def random_string():
   return np.random.bytes(20)
 
@@ -479,7 +483,8 @@ class Worker(object):
           args_for_photon.append(put(arg))
 
       # Submit the task to Photon.
-      task = photon.Task(photon.ObjectID(function_id.id()),
+      task = photon.Task(self.task_driver_id,
+                         photon.ObjectID(function_id.id()),
                          args_for_photon,
                          self.num_return_vals[function_id.id()],
                          self.current_task_id,
@@ -520,10 +525,29 @@ class Worker(object):
       counter = self.redis_client.hincrby(self.node_ip_address, key, 1) - 1
       function({"counter": counter})
       # Run the function on all workers.
-      self.redis_client.hmset(key, {"function_id": function_to_run_id,
+      self.redis_client.hmset(key, {"driver_id": self.task_driver_id.id(),
+                                    "function_id": function_to_run_id,
                                     "function": pickling.dumps(function)})
       self.redis_client.rpush("Exports", key)
       self.driver_export_counter += 1
+
+  def push_error_to_driver(self, driver_id, error_type, message, data=None):
+    """Push an error message to the driver to be printed in the background.
+
+    Args:
+      driver_id: The ID of the driver to push the error message to.
+      error_type (str): The type of the error.
+      message (str): The message that will be printed in the background on the
+        driver.
+      data: This should be a dictionary mapping strings to strings. It will be
+        serialized with json and stored in Redis.
+    """
+    error_key = ERROR_KEY_PREFIX + driver_id + b":" + random_string()
+    data = {} if data is None else data
+    self.redis_client.hmset(error_key, {"type": error_type,
+                                        "message": message,
+                                        "data": data})
+    self.redis_client.rpush("ErrorKeys", error_key)
 
 global_worker = Worker()
 """Worker: The global Worker object for this worker process.
@@ -578,24 +602,29 @@ def print_failed_task(task_status):
       Error Message: \n{}
   """.format(task_status["function_name"], task_status["operationid"], task_status["error_message"]))
 
+def error_applies_to_driver(error_key, worker=global_worker):
+  """Return True if the error is for this driver and false otherwise."""
+  # TODO(rkn): Should probably check that this is only called on a driver.
+  # Check that the error key is formatted as in push_error_to_driver.
+  assert len(error_key) == len(ERROR_KEY_PREFIX) + DRIVER_ID_LENGTH + 1 + ERROR_ID_LENGTH, error_key
+  # If the driver ID in the error message is a sequence of all zeros, then the
+  # message is intended for all drivers.
+  generic_driver_id = DRIVER_ID_LENGTH * b"\x00"
+  driver_id = error_key[len(ERROR_KEY_PREFIX):(len(ERROR_KEY_PREFIX) + DRIVER_ID_LENGTH)]
+  return driver_id == worker.task_driver_id.id() or driver_id == generic_driver_id
+
 def error_info(worker=global_worker):
   """Return information about failed tasks."""
   check_connected(worker)
   check_main_thread()
-  result = {b"TaskError": [],
-            b"RemoteFunctionImportError": [],
-            b"EnvironmentVariableImportError": [],
-            b"EnvironmentVariableReinitializeError": [],
-            b"FunctionToRunError": [],
-            b"GenericWarning": [],
-            }
   error_keys = worker.redis_client.lrange("ErrorKeys", 0, -1)
+  errors = []
   for error_key in error_keys:
-    error_type = error_key.split(b":", 1)[0]
-    error_contents = worker.redis_client.hgetall(error_key)
-    result[error_type].append(error_contents)
+    if error_applies_to_driver(error_key, worker=worker):
+      error_contents = worker.redis_client.hgetall(error_key)
+      errors.append(error_contents)
 
-  return result
+  return errors
 
 def initialize_numbuf(worker=global_worker):
   """Initialize the serialization library.
@@ -866,25 +895,27 @@ If this driver is hanging, start a new one with
   # error_message_pubsub_client.psubscribe and before the call to
   # error_message_pubsub_client.listen will still be processed in the loop.
   worker.error_message_pubsub_client.psubscribe("__keyspace@0__:ErrorKeys")
-  num_errors_printed = 0
+  num_errors_received = 0
 
   # Get the exports that occurred before the call to psubscribe.
   with worker.lock:
     error_keys = worker.redis_client.lrange("ErrorKeys", 0, -1)
     for error_key in error_keys:
-      error_message = worker.redis_client.hget(error_key, "message").decode("ascii")
-      print(error_message)
-      print(helpful_message)
-      num_errors_printed += 1
+      if error_applies_to_driver(error_key, worker=worker):
+        error_message = worker.redis_client.hget(error_key, "message").decode("ascii")
+        print(error_message)
+        print(helpful_message)
+      num_errors_received += 1
 
   try:
     for msg in worker.error_message_pubsub_client.listen():
       with worker.lock:
-        for error_key in worker.redis_client.lrange("ErrorKeys", num_errors_printed, -1):
-          error_message = worker.redis_client.hget(error_key, "message").decode("ascii")
-          print(error_message)
-          print(helpful_message)
-          num_errors_printed += 1
+        for error_key in worker.redis_client.lrange("ErrorKeys", num_errors_received, -1):
+          if error_applies_to_driver(error_key, worker=worker):
+            error_message = worker.redis_client.hget(error_key, "message").decode("ascii")
+            print(error_message)
+            print(helpful_message)
+          num_errors_received += 1
   except redis.ConnectionError:
     # When Redis terminates the listen call will throw a ConnectionError, which
     # we catch here.
@@ -892,7 +923,7 @@ If this driver is hanging, start a new one with
 
 def fetch_and_register_remote_function(key, worker=global_worker):
   """Import a remote function."""
-  function_id_str, function_name, serialized_function, num_return_vals, module, function_export_counter = worker.redis_client.hmget(key, ["function_id", "name", "function", "num_return_vals", "module", "function_export_counter"])
+  driver_id, function_id_str, function_name, serialized_function, num_return_vals, module, function_export_counter = worker.redis_client.hmget(key, ["driver_id", "function_id", "name", "function", "num_return_vals", "module", "function_export_counter"])
   function_id = photon.ObjectID(function_id_str)
   function_name = function_name.decode("ascii")
   num_return_vals = int(num_return_vals)
@@ -915,11 +946,10 @@ def fetch_and_register_remote_function(key, worker=global_worker):
     # record the traceback and notify the scheduler of the failure.
     traceback_str = format_error_message(traceback.format_exc())
     # Log the error message.
-    error_key = "RemoteFunctionImportError:{}".format(function_id.id())
-    worker.redis_client.hmset(error_key, {"function_id": function_id.id(),
-                                          "function_name": function_name,
-                                          "message": traceback_str})
-    worker.redis_client.rpush("ErrorKeys", error_key)
+    worker.push_error_to_driver(driver_id, "register_remote_function",
+                                traceback_str,
+                                data={"function_id": function_id.id(),
+                                      "function_name": function_name})
   else:
     # TODO(rkn): Why is the below line necessary?
     function.__module__ = module
@@ -929,7 +959,7 @@ def fetch_and_register_remote_function(key, worker=global_worker):
 
 def fetch_and_register_environment_variable(key, worker=global_worker):
   """Import an environment variable."""
-  environment_variable_name, serialized_initializer, serialized_reinitializer = worker.redis_client.hmget(key, ["name", "initializer", "reinitializer"])
+  driver_id, environment_variable_name, serialized_initializer, serialized_reinitializer = worker.redis_client.hmget(key, ["driver_id", "name", "initializer", "reinitializer"])
   environment_variable_name = environment_variable_name.decode("ascii")
   try:
     initializer = pickling.loads(serialized_initializer)
@@ -940,14 +970,13 @@ def fetch_and_register_environment_variable(key, worker=global_worker):
     # record the traceback and notify the scheduler of the failure.
     traceback_str = format_error_message(traceback.format_exc())
     # Log the error message.
-    error_key = "EnvironmentVariableImportError:{}".format(random_string())
-    worker.redis_client.hmset(error_key, {"name": environment_variable_name,
-                                          "message": traceback_str})
-    worker.redis_client.rpush("ErrorKeys", error_key)
+    worker.push_error_to_driver(driver_id, "register_environment_variable",
+                                traceback_str,
+                                data={"name": environment_variable_name})
 
 def fetch_and_execute_function_to_run(key, worker=global_worker):
   """Run on arbitrary function on the worker."""
-  serialized_function, = worker.redis_client.hmget(key, ["function"])
+  driver_id, serialized_function = worker.redis_client.hmget(key, ["driver_id", "function"])
   # Get the number of workers on this node that have already started executing
   # this remote function, and increment that value. Subtract 1 so the counter
   # starts at 0.
@@ -963,10 +992,8 @@ def fetch_and_execute_function_to_run(key, worker=global_worker):
     traceback_str = traceback.format_exc()
     # Log the error message.
     name = function.__name__  if "function" in locals() and hasattr(function, "__name__") else ""
-    error_key = "FunctionToRunError:{}".format(random_string())
-    worker.redis_client.hmset(error_key, {"name": name,
-                                          "message": traceback_str})
-    worker.redis_client.rpush("ErrorKeys", error_key)
+    worker.push_error_to_driver(driver_id, "function_to_run", traceback_str,
+                                data={"name": name})
 
 def import_thread(worker):
   worker.import_pubsub_client = worker.redis_client.pubsub()
@@ -1062,7 +1089,8 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker):
     worker.redis_client.hmset(b"Workers:" + worker.worker_id, {"node_ip_address": worker.node_ip_address})
   else:
     raise Exception("This code should be unreachable.")
-  # If this is a driver, set the current task ID and set the task index to 0.
+  # If this is a driver, set the current task ID, the task driver ID, and set
+  # the task index to 0.
   if mode in [SCRIPT_MODE, SILENT_MODE]:
     # If the user provided an object_id_seed, then set the current task ID
     # deterministically based on that seed (without altering the state of the
@@ -1075,6 +1103,11 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker):
       # Try to use true randomness.
       np.random.seed(None)
     worker.current_task_id = photon.ObjectID(np.random.bytes(20))
+    # When tasks are executed on remote workers in the context of multiple
+    # drivers, the task driver ID is used to keep track of which driver is
+    # responsible for the task so that error messages will be propagated to the
+    # correct driver.
+    worker.task_driver_id = photon.ObjectID(worker.worker_id)
     # Reset the state of the numpy random number generator.
     np.random.set_state(numpy_state)
     # Set other fields needed for computing task IDs.
@@ -1328,7 +1361,7 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
     remaining_ids = [photon.ObjectID(object_id) for object_id in remaining_ids]
     return ready_ids, remaining_ids
 
-def wait_for_valid_import_counter(function_id, timeout=5, worker=global_worker):
+def wait_for_valid_import_counter(function_id, driver_id, timeout=5, worker=global_worker):
   """Wait until this worker has imported enough to execute the function.
 
   This method will simply loop until the import thread has imported enough of
@@ -1338,6 +1371,8 @@ def wait_for_valid_import_counter(function_id, timeout=5, worker=global_worker):
 
   Args:
     function_id (str): The ID of the function that we want to execute.
+    driver_id (str): The ID of the driver to push the error message to if this
+      times out.
   """
   start_time = time.time()
   # Only send the warning once.
@@ -1353,7 +1388,8 @@ def wait_for_valid_import_counter(function_id, timeout=5, worker=global_worker):
       else:
         warning_message = "This worker's import counter is too small."
       if not warning_sent:
-        push_warning_to_user(warning_message, worker=worker)
+        worker.push_error_to_driver(driver_id, "import_counter",
+                                    warning_message)
       warning_sent = True
     time.sleep(0.001)
 
@@ -1400,6 +1436,10 @@ def main_loop(worker=global_worker):
     were accessed by the task.
     """
     try:
+      # The ID of the driver that this task belongs to. This is needed so that
+      # if the task throws an exception, we propagate the error message to the
+      # correct driver.
+      worker.task_driver_id = task.driver_id()
       worker.current_task_id = task.task_id()
       worker.task_index = 0
       worker.put_index = 0
@@ -1440,11 +1480,10 @@ def main_loop(worker=global_worker):
       failure_objects = [failure_object for _ in range(len(return_object_ids))]
       store_outputs_in_objstore(return_object_ids, failure_objects, worker)
       # Log the error message.
-      error_key = "TaskError:{}".format(random_string())
-      worker.redis_client.hmset(error_key, {"function_id": function_id.id(),
-                                            "function_name": function_name,
-                                            "message": str(failure_object)})
-      worker.redis_client.rpush("ErrorKeys", error_key)
+      worker.push_error_to_driver(worker.task_driver_id.id(), "task",
+                                  str(failure_object),
+                                  data={"function_id": function_id.id(),
+                                        "function_name": function_name})
     try:
       # Reinitialize the values of environment variables that were used in the
       # task above so that changes made to their state do not affect other tasks.
@@ -1454,12 +1493,11 @@ def main_loop(worker=global_worker):
       # The attempt to reinitialize the environment variables threw an
       # exception. We record the traceback and notify the scheduler.
       traceback_str = format_error_message(traceback.format_exc())
-      error_key = "EnvironmentVariableReinitializeError:{}".format(random_string())
-      worker.redis_client.hmset(error_key, {"task_id": "NOTIMPLEMENTED",
-                                            "function_id": function_id.id(),
-                                            "function_name": function_name,
-                                            "message": traceback_str})
-      worker.redis_client.rpush("ErrorKeys", error_key)
+      worker.push_error_to_driver(worker.task_driver_id.id(),
+                                  "reinitialize_environment_variable",
+                                  traceback_str,
+                                  data={"function_id": function_id.id(),
+                                        "function_name": function_name})
 
   check_main_thread()
   while True:
@@ -1471,7 +1509,7 @@ def main_loop(worker=global_worker):
     # export counter for the task. If not, wait until we have imported enough.
     # We will push warnings to the user if we spend too long in this loop.
     with log_span("ray:wait_for_import_counter", worker=worker):
-      wait_for_valid_import_counter(function_id, worker=worker)
+      wait_for_valid_import_counter(function_id, task.driver_id().id(), worker=worker)
 
     # Execute the task.
     # TODO(rkn): Consider acquiring this lock with a timeout and pushing a
@@ -1489,11 +1527,6 @@ def main_loop(worker=global_worker):
 
     # Push all of the log events to the global state store.
     flush_log()
-
-def push_warning_to_user(message, worker=global_worker):
-  error_key = "GenericWarning:{}".format(random_string())
-  worker.redis_client.hmset(error_key, {"message": message})
-  worker.redis_client.rpush("ErrorKeys", error_key)
 
 def _submit_task(function_id, func_name, args, worker=global_worker):
   """This is a wrapper around worker.submit_task.
@@ -1538,7 +1571,8 @@ def _export_environment_variable(name, environment_variable, worker=global_worke
     raise Exception("_export_environment_variable can only be called on a driver.")
   environment_variable_id = name
   key = "EnvironmentVariables:{}".format(environment_variable_id)
-  worker.redis_client.hmset(key, {"name": name,
+  worker.redis_client.hmset(key, {"driver_id": worker.task_driver_id.id(),
+                                  "name": name,
                                   "initializer": pickling.dumps(environment_variable.initializer),
                                   "reinitializer": pickling.dumps(environment_variable.reinitializer)})
   worker.redis_client.rpush("Exports", key)
@@ -1551,7 +1585,8 @@ def export_remote_function(function_id, func_name, func, num_return_vals, worker
   key = "RemoteFunction:{}".format(function_id.id())
   worker.num_return_vals[function_id.id()] = num_return_vals
   pickled_func = pickling.dumps(func)
-  worker.redis_client.hmset(key, {"function_id": function_id.id(),
+  worker.redis_client.hmset(key, {"driver_id": worker.task_driver_id.id(),
+                                  "function_id": function_id.id(),
                                   "name": func_name,
                                   "module": func.__module__,
                                   "function": pickled_func,
