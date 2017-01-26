@@ -87,10 +87,10 @@ def model_reinitialization(model):
 
 def train(hps):
   """Training loop."""
-  ray.init(num_workers=10)
+  ray.init(num_workers=0)
+  resnet_model.ResNet(hps, 'train').build_graph()
   batches = get_batches.remote(
       FLAGS.dataset, FLAGS.train_data_path, hps.batch_size, FLAGS.mode)
-  IPython.embed()
   ray.env.model = ray.EnvironmentVariable(model_initialization, model_reinitialization)
   model = ray.env.model
   param_stats = tf.contrib.tfprof.model_analyzer.print_model_analysis(
@@ -151,13 +151,14 @@ def train(hps):
       config=tf.ConfigProto(allow_soft_placement=True)) as mon_sess:
     mon_sess.run(tf.global_variables_initializer())
     while not mon_sess.should_stop():
+      print "i"
       weights = model.variables.get_weights()
       weight_id = ray.put(weights)
       rand_list = np.random.choice(25, 10, replace=False)
+      print "i"
       all_weights = ray.get([compute_rollout.remote(weight_id, batches[i])  for i in rand_list])
       mean_weights = {k: sum([weights[k] for weights in all_weights]) / batch for k in all_weights[0]}
       model.variables.set_weights(mean_weights)
-      mon_sess.run(model.train_op)
       print "i"
 
 def evaluate(hps):
@@ -244,7 +245,6 @@ def main(_):
                              weight_decay_rate=0.0002,
                              relu_leakiness=0.1,
                              optimizer='mom')
-  IPython.embed()
   with tf.device(dev):
     if FLAGS.mode == 'train':
       train(hps)

@@ -26,7 +26,8 @@ import numpy as np
 import tensorflow as tf
 import ray
 from tensorflow.python.training import moving_averages
-
+import IPython
+import tfutils
 
 HParams = namedtuple('HParams',
                      'batch_size, num_classes, min_lrn_rate, lrn_rate, '
@@ -105,7 +106,6 @@ class ResNet(object):
     for i in xrange(1, self.hps.num_residual_units):
       with tf.variable_scope('unit_3_%d' % i):
         x = res_func(x, filters[3], filters[3], self._stride_arr(1), False)
-    print("thisisabug")
     with tf.variable_scope('unit_last'):
       x = self._batch_norm('final_bn', x)
       x = self._relu(x, self.hps.relu_leakiness)
@@ -140,7 +140,8 @@ class ResNet(object):
     #    zip(self.assignment_placeholders, trainable_variables),
     #    global_step=self.global_step, name='train_step')
     min_ops = optimizer.minimize(self.cost)
-    self.variables = ray.experimental.TensorFlowVariables(min_ops, prefix=True)
+    IPython.embed()
+    self.variables = tfutils.TensorFlowVariables(min_ops, prefix=True)
     train_ops = [min_ops] + self._extra_train_ops
     self.train_op = tf.group(*train_ops)
 
