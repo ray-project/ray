@@ -78,6 +78,8 @@ bool function_id_is_nil(function_id id);
  * Begin constructing a task_spec. After this is called, the arguments must be
  * added to the task_spec and then finish_construct_task_spec must be called.
  *
+ * @param driver_id The ID of the driver whose job is responsible for the
+ *        creation of this task.
  * @param parent_task_id The task ID of the task that submitted this task.
  * @param parent_counter A counter indicating how many tasks were submitted by
  *        the parent task prior to this one.
@@ -88,7 +90,8 @@ bool function_id_is_nil(function_id id);
           ignoring object ID arguments.
  * @return The partially constructed task_spec.
  */
-task_spec *start_construct_task_spec(task_id parent_task_id,
+task_spec *start_construct_task_spec(unique_id driver_id,
+                                     task_id parent_task_id,
                                      int64_t parent_counter,
                                      function_id function_id,
                                      int64_t num_args,
@@ -120,6 +123,14 @@ int64_t task_spec_size(task_spec *spec);
  * @return The function ID of the function to execute in this task.
  */
 function_id task_function(task_spec *spec);
+
+/**
+ * Return the driver ID of the task.
+ *
+ * @param spec The task_spec in question.
+ * @return The driver ID of the task.
+ */
+unique_id task_spec_driver_id(task_spec *spec);
 
 /**
  * Return the task ID of the task.

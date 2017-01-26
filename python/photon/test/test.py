@@ -21,6 +21,9 @@ ID_SIZE = 20
 def random_object_id():
   return photon.ObjectID(np.random.bytes(ID_SIZE))
 
+def random_driver_id():
+  return photon.ObjectID(np.random.bytes(ID_SIZE))
+
 def random_task_id():
   return photon.ObjectID(np.random.bytes(ID_SIZE))
 
@@ -94,7 +97,7 @@ class TestPhotonClient(unittest.TestCase):
 
     for args in args_list:
       for num_return_vals in [0, 1, 2, 3, 5, 10, 100]:
-        task = photon.Task(function_id, args, num_return_vals, random_task_id(), 0)
+        task = photon.Task(random_driver_id(), function_id, args, num_return_vals, random_task_id(), 0)
         # Submit a task.
         self.photon_client.submit(task)
         # Get the task.
@@ -113,7 +116,7 @@ class TestPhotonClient(unittest.TestCase):
     # Submit all of the tasks.
     for args in args_list:
       for num_return_vals in [0, 1, 2, 3, 5, 10, 100]:
-        task = photon.Task(function_id, args, num_return_vals, random_task_id(), 0)
+        task = photon.Task(random_driver_id(), function_id, args, num_return_vals, random_task_id(), 0)
         self.photon_client.submit(task)
     # Get all of the tasks.
     for args in args_list:
@@ -123,7 +126,7 @@ class TestPhotonClient(unittest.TestCase):
   def test_scheduling_when_objects_ready(self):
     # Create a task and submit it.
     object_id = random_object_id()
-    task = photon.Task(random_function_id(), [object_id], 0, random_task_id(), 0)
+    task = photon.Task(random_driver_id(), random_function_id(), [object_id], 0, random_task_id(), 0)
     self.photon_client.submit(task)
     # Launch a thread to get the task.
     def get_task():
@@ -143,7 +146,7 @@ class TestPhotonClient(unittest.TestCase):
     # Create a task with two dependencies and submit it.
     object_id1 = random_object_id()
     object_id2 = random_object_id()
-    task = photon.Task(random_function_id(), [object_id1, object_id2], 0, random_task_id(), 0)
+    task = photon.Task(random_driver_id(), random_function_id(), [object_id1, object_id2], 0, random_task_id(), 0)
     self.photon_client.submit(task)
 
     # Launch a thread to get the task.
