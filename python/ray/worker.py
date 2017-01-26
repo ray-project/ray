@@ -35,6 +35,10 @@ LOG_POINT = 0
 LOG_SPAN_START = 1
 LOG_SPAN_END = 2
 
+ERROR_KEY_PREFIX = b"Error:"
+DRIVER_ID_LENGTH = 20
+ERROR_ID_LENGTH = 20
+
 def random_string():
   return np.random.bytes(20)
 
@@ -538,7 +542,7 @@ class Worker(object):
       data: This should be a dictionary mapping strings to strings. It will be
         serialized with json and stored in Redis.
     """
-    error_key = b"Error:" + driver_id + b":" + random_string()
+    error_key = ERROR_KEY_PREFIX + driver_id + b":" + random_string()
     data = {} if data is None else data
     self.redis_client.hmset(error_key, {"type": error_type,
                                         "message": message,
@@ -601,14 +605,12 @@ def print_failed_task(task_status):
 def error_applies_to_driver(error_key, worker=global_worker):
   """Return True if the error is for this driver and false otherwise."""
   # TODO(rkn): Should probably check that this is only called on a driver.
-  DRIVER_ID_LENGTH = 20
-  ERROR_ID_LENGTH = 20
   # Check that the error key is formatted as in push_error_to_driver.
-  assert len(error_key) == 5 + 1 + DRIVER_ID_LENGTH + 1 + ERROR_ID_LENGTH, error_key
+  assert len(error_key) == len(ERROR_KEY_PREFIX) + DRIVER_ID_LENGTH + 1 + ERROR_ID_LENGTH, error_key
   # If the driver ID in the error message is a sequence of all zeros, then the
   # message is intended for all drivers.
   generic_driver_id = DRIVER_ID_LENGTH * b"\x00"
-  driver_id = error_key[6:(6 + DRIVER_ID_LENGTH)]
+  driver_id = error_key[len(ERROR_KEY_PREFIX):(len(ERROR_KEY_PREFIX) + DRIVER_ID_LENGTH)]
   return driver_id == worker.task_driver_id.id() or driver_id == generic_driver_id
 
 def error_info(worker=global_worker):
