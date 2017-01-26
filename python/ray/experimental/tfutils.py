@@ -3,6 +3,8 @@ from __future__ import division
 from __future__ import print_function
 import numpy as np
 from collections import deque, OrderedDict
+import IPython
+import re
 
 def unflatten(vector, shapes):
   i = 0
@@ -38,7 +40,7 @@ class TensorFlowVariables(object):
     self.prefix = prefix
     queue = deque([loss])
     variable_names = []
-    explored_inputs = set()
+    explored_inputs = set([loss])
 
     # We do a BFS on the dependency graph of the input function to find 
     # the variables.
@@ -50,19 +52,25 @@ class TensorFlowVariables(object):
       # Only operations contain the inputs that we can explore.
       if hasattr(tf_obj, "op"):
          tf_obj = tf_obj.op
-      queue.extend(tf_obj.inputs)
-
+      for input_op in tf_obj.inputs:
+        if input_op not in explored_inputs:
+          queue.append(input_op)
+          explored_inputs.add(input_op)
       # Tensorflow control inputs can be circular, so we keep track of
       # explored operations.
       for control in tf_obj.control_inputs:
         if control not in explored_inputs:
-          queue.add(control)
+          queue.append(control)
           explored_inputs.add(control)
       if tf_obj.node_def.op == "Variable":
         variable_names.append(tf_obj.node_def.name)
+    IPython.embed()
     self.variables = OrderedDict()
     for v in [v for v in tf.global_variables() if v.op.node_def.name in variable_names]:
-      name = v.op.node_def.name.split("/", 1 if prefix else 0)[-1]
+      names = re.split(r"([^/]*/)\1*", v.op.node_def.name, maxsplit=1 if prefix else -1)
+      if prefix:
+        assert(names[1] not in names[-1])
+      name = names[-1]
       self.variables[name] = v
     self.assignment_placeholders = dict()
     self.assignment_nodes = []
@@ -71,7 +79,7 @@ class TensorFlowVariables(object):
     for k, var in self.variables.items():
       self.assignment_placeholders[k] = tf.placeholder(var.value().dtype, var.get_shape().as_list())
       self.assignment_nodes.append(var.assign(self.assignment_placeholders[k]))
-
+    IPython.embed()
   def set_session(self, sess):
     """Modifies the current session used by the class."""
     self.sess = sess
