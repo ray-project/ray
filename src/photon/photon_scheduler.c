@@ -90,6 +90,7 @@ local_scheduler_state *init_local_scheduler(
 void free_local_scheduler(local_scheduler_state *state) {
   if (state->start_worker_command != NULL) {
     free(state->start_worker_command);
+    state->start_worker_command = NULL;
   }
 
   if (state->db != NULL) {
