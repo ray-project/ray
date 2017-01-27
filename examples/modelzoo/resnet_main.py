@@ -48,6 +48,17 @@ tf.app.flags.DEFINE_string('log_root', '',
 tf.app.flags.DEFINE_integer('num_gpus', 0,
                             'Number of gpus used for training. (0 or 1)')
 
+
+@ray.remote
+def get_test(dataset, path, size, mode):
+  images, labels = cifar_input.build_input(dataset, path, size, mode)
+  sess = tf.Session()
+  coord = tf.train.Coordinator()
+  tf.train.start_queue_runners(sess, coord=coord)
+  batches = [sess.run([images, labels]) for _ in range(5)]
+  coord.request_stop()
+  return (np.concatenate([batches[i][0] for i in range(5)]), np.concatenate([batches[i][1] for i in range(5)]))
+
 @ray.remote(num_return_vals=25)
 def get_batches(dataset, path, size, mode):
   images, labels = cifar_input.build_input(dataset, path, size, mode)
@@ -64,15 +75,23 @@ def compute_rollout(weights, batch):
   rollouts = 10
   model.variables.set_weights(weights)
   placeholders = [model.x, model.labels]
-  dim_zero = x.shape[0]
   x = batch[0]
   y = batch[1]
+  dim_zero = x.shape[0]
   for i in range(rollouts):
     idx = np.random.choice(dim_zero, 128, replace=False)
     x_subset = x[idx, :]
     y_subset = y[idx, :]
     model.variables.sess.run(model.train_op, feed_dict=dict(zip(placeholders, [x_subset, y_subset]))) 
   return model.variables.get_weights()  
+
+@ray.remote
+def accuracy(weights, batch):
+  model = ray.env.model
+  model.variables.set_weights(weights)
+  placeholders = [model.x, model.labels]
+  batches = [(batch[0][128*i:128*(i+1)], batch[1][128*i:128*(i+1)]) for i in range(78)]
+  return sum([model.variables.sess.run(model.precision, feed_dict=dict(zip(placeholders, batches[i]))) for i in range(78)]) / 78
 
 def model_initialization():
   with tf.variable_scope(uuid.uuid1().hex):
@@ -87,9 +106,10 @@ def model_reinitialization(model):
 
 def train(hps):
   """Training loop."""
-  ray.init(num_workers=0)
+  ray.init(num_workers=10)
   batches = get_batches.remote(
       FLAGS.dataset, FLAGS.train_data_path, hps.batch_size, FLAGS.mode)
+  test_batch = get_test.remote(FLAGS.dataset, FLAGS.eval_data_path, hps.batch_size, FLAGS.mode)
   ray.env.model = ray.EnvironmentVariable(model_initialization, model_reinitialization)
   model = ray.env.model
   init = tf.global_variables_initializer()
@@ -118,7 +138,6 @@ def train(hps):
                'loss': model.cost,
                'precision': precision},
       every_n_iter=100)
-  tf.Session().run(init)
   class _LearningRateSetterHook(tf.train.SessionRunHook):
     """Sets learning_rate based on global step."""
 
@@ -140,7 +159,7 @@ def train(hps):
         self._lrn_rate = 0.001
       else:
         self._lrn_rate = 0.0001
-  with tf.train.MonitoredTrainingSession(
+  '''with tf.train.MonitoredTrainingSession(
       checkpoint_dir=FLAGS.log_root,
       hooks=[logging_hook, _LearningRateSetterHook()],
       chief_only_hooks=[summary_hook],
@@ -148,16 +167,21 @@ def train(hps):
       # SummarySaverHook. To do that we set save_summaries_steps to 0.
       save_summaries_steps=0,
       config=tf.ConfigProto(allow_soft_placement=True)) as mon_sess:
-    while not mon_sess.should_stop():
-      print "i"
-      weights = model.variables.get_weights()
-      weight_id = ray.put(weights)
-      rand_list = np.random.choice(25, 10, replace=False)
-      print "i"
-      all_weights = ray.get([compute_rollout.remote(weight_id, batches[i])  for i in rand_list])
-      mean_weights = {k: sum([weights[k] for weights in all_weights]) / batch for k in all_weights[0]}
-      model.variables.set_weights(mean_weights)
-      print "i"
+    model.variables.set_session(mon_sess)
+    mon_sess.run(init)
+    while not mon_sess.should_stop():'''
+  model.variables.sess.run(init)
+  while True:
+    print "Start of loop"
+    weights = model.variables.get_weights()
+    weight_id = ray.put(weights)
+    rand_list = np.random.choice(25, 10, replace=False)
+    print "Computing rollouts"
+    all_weights = ray.get([compute_rollout.remote(weight_id, batches[i])  for i in rand_list])
+    mean_weights = {k: sum([weights[k] for weights in all_weights]) / 10 for k in all_weights[0]}
+    model.variables.set_weights(mean_weights)
+    new_weights = ray.put(mean_weights)
+    print ray.get(accuracy.remote(new_weights, test_batch))
 
 def evaluate(hps):
   """Eval loop."""

@@ -57,6 +57,9 @@ class ResNet(object):
     self._build_model()
     if self.mode == 'train':
       self._build_train_op()
+    truth = tf.argmax(self.labels, axis=1)
+    predictions = tf.argmax(self.predictions, axis=1)
+    self.precision = tf.reduce_mean(tf.to_float(tf.equal(predictions, truth)))
     self.summaries = tf.summary.merge_all()
 
   def _stride_arr(self, stride):
@@ -67,6 +70,7 @@ class ResNet(object):
     """Build the core model within the graph."""
     with tf.variable_scope('init'):
       x = tf.placeholder(tf.float32, shape=[128, 32, 32, 3])
+      self.x = x
       self.labels = tf.placeholder(tf.float32, shape=[128,10])
       x = self._conv('init_conv', x, 3, 3, 16, self._stride_arr(1))
 
@@ -140,7 +144,7 @@ class ResNet(object):
     #    global_step=self.global_step, name='train_step')
     min_ops = optimizer.minimize(self.cost)
     self.variables = ray.experimental.TensorFlowVariables(min_ops, prefix=True)
-    train_ops = [min_ops] + self._extra_train_ops
+    train_ops = [min_ops]
     self.train_op = tf.group(*train_ops)
 
   # TODO(xpan): Consider batch_norm in contrib/layers/python/layers/layers.py
