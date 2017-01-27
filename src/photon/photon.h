@@ -55,8 +55,20 @@ typedef struct {
 /** Internal state of the scheduling algorithm. */
 typedef struct scheduling_algorithm_state scheduling_algorithm_state;
 
+/** A struct storing the configuration state of the local scheduler. This should
+ *  consist of values that don't change over the lifetime of the local
+ *  scheduler. */
+typedef struct {
+  /** The script to use when starting a new worker. */
+  char *start_worker_command;
+  /** Whether there is a global scheduler. */
+  bool global_scheduler_exists;
+} local_scheduler_config;
+
 /** The state of the local scheduler. */
 typedef struct {
+  /** The configuration for the local scheduler. */
+  local_scheduler_config config;
   /** The local scheduler event loop. */
   event_loop *loop;
   /** Association between client socket and worker index. */
@@ -67,8 +79,6 @@ typedef struct {
   UT_array *workers;
   /** The handle to the database. */
   db_handle *db;
-  /** Whether there is a global scheduler. */
-  bool global_scheduler_exists;
   /** The Plasma client. */
   plasma_connection *plasma_conn;
   /** State for the scheduling algorithm. */
