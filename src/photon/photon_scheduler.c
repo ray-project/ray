@@ -37,7 +37,11 @@ local_scheduler_state *init_local_scheduler(
     bool global_scheduler_exists,
     const char *start_worker_command) {
   local_scheduler_state *state = malloc(sizeof(local_scheduler_state));
-  state->start_worker_command = strdup(start_worker_command);
+  if (start_worker_command != NULL) {
+    state->start_worker_command = strdup(start_worker_command);
+  } else {
+    state->start_worker_command = NULL;
+  }
   state->loop = loop;
   state->worker_index = NULL;
   /* Add scheduler info. */
@@ -84,7 +88,9 @@ local_scheduler_state *init_local_scheduler(
 };
 
 void free_local_scheduler(local_scheduler_state *state) {
-  free(state->start_worker_command);
+  if (state->start_worker_command != NULL) {
+    free(state->start_worker_command);
+  }
 
   if (state->db != NULL) {
     db_disconnect(state->db);
@@ -376,7 +382,6 @@ void start_server(const char *node_ip_address,
       node_ip_address, loop, redis_addr, redis_port, socket_name,
       plasma_store_socket_name, plasma_manager_socket_name,
       plasma_manager_address, global_scheduler_exists, start_worker_command);
-  start_new_worker(g_state);
   /* Register a callback for registering new clients. */
   event_loop_add_file(loop, fd, EVENT_LOOP_READ, new_client_connection,
                       g_state);
