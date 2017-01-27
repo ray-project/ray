@@ -37,11 +37,14 @@ local_scheduler_state *init_local_scheduler(
     bool global_scheduler_exists,
     const char *start_worker_command) {
   local_scheduler_state *state = malloc(sizeof(local_scheduler_state));
+  /* Set the configuration struct for the local scheduler. */
   if (start_worker_command != NULL) {
-    state->start_worker_command = strdup(start_worker_command);
+    state->config.start_worker_command = strdup(start_worker_command);
   } else {
-    state->start_worker_command = NULL;
+    state->config.start_worker_command = NULL;
   }
+  state->config.global_scheduler_exists = global_scheduler_exists;
+
   state->loop = loop;
   state->worker_index = NULL;
   /* Add scheduler info. */
@@ -79,8 +82,6 @@ local_scheduler_state *init_local_scheduler(
   /* Add the callback that processes the notification to the event loop. */
   event_loop_add_file(loop, plasma_fd, EVENT_LOOP_READ,
                       process_plasma_notification, state);
-  /* Set the flag for whether there is a global scheduler. */
-  state->global_scheduler_exists = global_scheduler_exists;
   /* Add scheduler state. */
   state->algorithm_state = make_scheduling_algorithm_state();
   utarray_new(state->input_buffer, &byte_icd);
@@ -88,9 +89,9 @@ local_scheduler_state *init_local_scheduler(
 };
 
 void free_local_scheduler(local_scheduler_state *state) {
-  if (state->start_worker_command != NULL) {
-    free(state->start_worker_command);
-    state->start_worker_command = NULL;
+  if (state->config.start_worker_command != NULL) {
+    free(state->config.start_worker_command);
+    state->config.start_worker_command = NULL;
   }
 
   if (state->db != NULL) {
@@ -359,9 +360,9 @@ int heartbeat_handler(event_loop *loop, timer_id id, void *context) {
 
 void start_new_worker(local_scheduler_state *state) {
   /* We can't start a worker if we don't have the path to the worker script. */
-  CHECK(state->start_worker_command != NULL);
+  CHECK(state->config.start_worker_command != NULL);
   /* Launch the process to create the worker. */
-  FILE *p = popen(state->start_worker_command, "r");
+  FILE *p = popen(state->config.start_worker_command, "r");
   UNUSED(p);
 }
 
