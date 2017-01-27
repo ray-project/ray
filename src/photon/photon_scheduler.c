@@ -182,13 +182,9 @@ void reconstruct_object_task_lookup_callback(object_id reconstruct_object_id,
                                              void *user_context) {
   /* Recursively resubmit the task and its task lineage to the scheduler. */
   /* TODO(swang): The following check will fail if an object was created by a
-   * put. Once we're able to reconstruct those objects as well, uncomment the
-   * check and remove the if-check and exit. */
-  /* CHECKM(task != NULL,
-         "No task information found for object during reconstruction"); */
-  if (task == NULL) {
-    return;
-  }
+   * put. */
+  CHECKM(task != NULL,
+         "No task information found for object during reconstruction");
   local_scheduler_state *state = user_context;
   /* If the task's scheduling state is pending completion, assume that
    * reconstruction is already being taken care of and cancel this

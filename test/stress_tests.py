@@ -134,9 +134,10 @@ class ReconstructionTests(unittest.TestCase):
 
   def testSingleNodeSimple(self):
     # Define the size of one task's return argument so that the combined sum of
-    # all objects' sizes is twice the plasma store's allotted memory.
+    # all objects' sizes is at least 10 times the plasma store's allotted
+    # memory.
     num_objects = 1000
-    size = int(self.plasma_store_memory * 2 / (num_objects * 8))
+    size = self.plasma_store_memory * 10 // (num_objects * 8)
 
     # Define a remote task with no dependencies, which returns a numpy array of
     # the given size.
@@ -163,9 +164,9 @@ class ReconstructionTests(unittest.TestCase):
 
   def testSingleNodeRecursive(self):
     # Define the size of one task's return argument so that the combined sum of
-    # all objects' sizes is twice the plasma store's allotted memory.
-    num_iterations = 1000
-    size = int(self.plasma_store_memory * 2 / (num_iterations * 8))
+    # all objects' sizes is at least 10 times the plasma store's allotted memory.
+    num_objects = 1000
+    size = self.plasma_store_memory * 10 // (num_objects * 8)
 
     # Define a root task with no dependencies, which returns a numpy array of
     # the given size.
@@ -181,21 +182,26 @@ class ReconstructionTests(unittest.TestCase):
       arg[0] = i
       return arg
 
-    # Launch num_iterations instances of the remote task, each dependent on the
+    # Launch num_objects instances of the remote task, each dependent on the
     # one before it.
     arg = no_dependency_task.remote(size)
     args = []
-    for i in range(num_iterations):
+    for i in range(num_objects):
       arg = single_dependency.remote(i, arg)
       args.append(arg)
 
     # Get each value to force each task to finish. After some number of gets,
     # old values should be evicted.
-    for i in range(num_iterations):
+    for i in range(num_objects):
       value = ray.get(args[i])
       self.assertEqual(value[0], i)
     # Get each value again to force reconstruction.
-    for i in range(num_iterations):
+    for i in range(num_objects):
+      value = ray.get(args[i])
+      self.assertEqual(value[0], i)
+    # Get 10 values randomly.
+    for _ in range(10):
+      i  = np.random.randint(num_objects)
       value = ray.get(args[i])
       self.assertEqual(value[0], i)
 
@@ -205,8 +211,8 @@ class ReconstructionTests(unittest.TestCase):
   def testSingleNodeMultipleRecursive(self):
     # Define the size of one task's return argument so that the combined sum of
     # all objects' sizes is twice the plasma store's allotted memory.
-    num_iterations = 1000
-    size = int(self.plasma_store_memory * 2 / (num_iterations * 8))
+    num_objects = 1000
+    size = int(self.plasma_store_memory * 2 / (num_objects * 8))
 
     # Define a root task with no dependencies, which returns a numpy array of
     # the given size.
@@ -223,7 +229,7 @@ class ReconstructionTests(unittest.TestCase):
       arg1[0] = i
       return arg1
 
-    # Launch num_args instances of the root task. Then launch num_iterations
+    # Launch num_args instances of the root task. Then launch num_objects
     # instances of the multi-dependency remote task, each dependent on the
     # num_args tasks before it.
     num_args = 3
@@ -231,17 +237,24 @@ class ReconstructionTests(unittest.TestCase):
     for i in range(num_args):
       arg = no_dependency_task.remote(size)
       args.append(arg)
-    for i in range(num_iterations):
-      args.append(multiple_dependency.remote(i, *args[i:i+num_args]))
+    for i in range(num_objects):
+      args.append(multiple_dependency.remote(i, *args[i:i + num_args]))
 
     # Get each value to force each task to finish. After some number of gets,
     # old values should be evicted.
     args = args[num_args:]
-    for i in range(num_iterations):
+    for i in range(num_objects):
       value = ray.get(args[i])
       self.assertEqual(value[0], i)
     # Get each value again to force reconstruction.
-    for i in range(num_iterations):
+    for i in range(num_objects):
+      value = ray.get(args[i])
+      self.assertEqual(value[0], i)
+    # Get 10 values randomly.
+    # XXX: This is crashing everything right now.
+    for _ in range(10):
+      i  = np.random.randint(num_objects)
+      print("Getting {} object".format(i))
       value = ray.get(args[i])
       self.assertEqual(value[0], i)
 

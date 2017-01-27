@@ -11,7 +11,9 @@
  */
 
 /* Callback called when the lookup completes. The callback should free
- * the manager_vector array, but NOT the strings they are pointing to.
+ * the manager_vector array, but NOT the strings they are pointing to. If there
+ * was no entry at all for the object (the object had never been created
+ * before), then manager_count will be -1.
  */
 typedef void (*object_table_lookup_done_callback)(
     object_id object_id,

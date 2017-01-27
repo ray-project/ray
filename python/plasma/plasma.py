@@ -129,10 +129,6 @@ class PlasmaClient(object):
       metadata (buffer): An optional buffer encoding whatever metadata the user
         wishes to encode.
 
-    Returns:
-      A buffer for the object created. If the object wasn't able to be created
-        because it already exists locally, returns None.
-
     Raises:
       plasma_object_exists_error: This exception is raised if the object could
         not be created because there already is an object with the same ID in

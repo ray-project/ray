@@ -471,7 +471,7 @@ class Worker(object):
         if val is not None:
           index = unready_ids[object_id]
           final_results[index] = (object_id, val)
-          del unready_ids[object_id]
+          unready_ids.pop(object_id)
 
     # Unwrap the object from the list (it was wrapped put_object).
     assert len(final_results) == len(object_ids)
