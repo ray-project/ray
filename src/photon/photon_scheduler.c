@@ -92,6 +92,14 @@ local_scheduler_state *init_local_scheduler(
 };
 
 void free_local_scheduler(local_scheduler_state *state) {
+  free(state->node_ip_address);
+  free(state->redis_address);
+  free(state->redis_port);
+  free(state->local_scheduler_socket_name);
+  free(state->plasma_store_socket_name);
+  free(state->plasma_manager_socket_name);
+  free(state->worker_path);
+
   if (state->db != NULL) {
     db_disconnect(state->db);
   }
