@@ -57,6 +57,20 @@ typedef struct scheduling_algorithm_state scheduling_algorithm_state;
 
 /** The state of the local scheduler. */
 typedef struct {
+  /** The IP address of the node this local scheduler is running on. */
+  const char *node_ip_address;
+  /** The IP address of the redis server. */
+  const char *redis_address;
+  /** The port of the redis server. */
+  int redis_port;
+  /** This local schedulers socket. */
+  const char *local_scheduler_socket_name;
+  /** The socket used to communicate with the plasma store. */
+  const char *plasma_store_socket_name;
+  /** The socket used to communicate with the plasma manager. */
+  const char *plasma_manager_socket_name;
+  /** The path of the worker script to use when starting a new worker. */
+  const char *worker_path;
   /** The local scheduler event loop. */
   event_loop *loop;
   /** Association between client socket and worker index. */

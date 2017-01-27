@@ -247,7 +247,9 @@ def start_global_scheduler(redis_address, cleanup=True, redirect_output=False):
   if cleanup:
     all_processes[PROCESS_TYPE_GLOBAL_SCHEDULER].append(p)
 
-def start_local_scheduler(redis_address, node_ip_address, plasma_store_name, plasma_manager_name, plasma_address=None, cleanup=True, redirect_output=False):
+def start_local_scheduler(redis_address, node_ip_address, plasma_store_name,
+                          plasma_manager_name, worker_path, plasma_address=None,
+                          cleanup=True, redirect_output=False):
   """Start a local scheduler process.
 
   Args:
@@ -257,6 +259,8 @@ def start_local_scheduler(redis_address, node_ip_address, plasma_store_name, pla
     plasma_store_name (str): The name of the plasma store socket to connect to.
     plasma_manager_name (str): The name of the plasma manager socket to connect
       to.
+    worker_path (str): The path of the script to use when the local scheduler
+      starts up new workers.
     cleanup (bool): True if using Ray in local mode. If cleanup is true, then
       this process will be killed by serices.cleanup() when the Python process
       that imported services exits.
@@ -266,7 +270,14 @@ def start_local_scheduler(redis_address, node_ip_address, plasma_store_name, pla
   Return:
     The name of the local scheduler socket.
   """
-  local_scheduler_name, p = photon.start_local_scheduler(plasma_store_name, plasma_manager_name, node_ip_address=node_ip_address, redis_address=redis_address, plasma_address=plasma_address, use_profiler=RUN_PHOTON_PROFILER, redirect_output=redirect_output)
+  local_scheduler_name, p = photon.start_local_scheduler(plasma_store_name,
+                                                         plasma_manager_name,
+                                                         worker_path=worker_path,
+                                                         node_ip_address=node_ip_address,
+                                                         redis_address=redis_address,
+                                                         plasma_address=plasma_address,
+                                                         use_profiler=RUN_PHOTON_PROFILER,
+                                                         redirect_output=redirect_output)
   if cleanup:
     all_processes[PROCESS_TYPE_LOCAL_SCHEDULER].append(p)
   return local_scheduler_name
@@ -439,6 +450,7 @@ def start_ray_processes(address_info=None,
                                                  node_ip_address,
                                                  object_store_address.name,
                                                  object_store_address.manager_name,
+                                                 worker_path,
                                                  plasma_address=plasma_address,
                                                  cleanup=cleanup,
                                                  redirect_output=redirect_output)
