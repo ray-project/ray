@@ -9,6 +9,7 @@
 #include "state/object_table.h"
 #include "photon.h"
 #include "photon_scheduler.h"
+#include "common/task.h"
 
 typedef struct task_queue_entry {
   /** The task that is queued. */
@@ -407,18 +408,37 @@ void give_task_to_global_scheduler(local_scheduler_state *state,
                       NULL);
 }
 
+bool resource_constraints_satisfied(local_scheduler_state *state,
+                                    task_spec *spec) {
+
+  /* At the local scheduler, if required resource vector exceeds either static
+   * or dynamic resource vector, the resource constraint is not satisfied.  */
+  for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
+    if (task_required_resource(spec, i) > state->static_resources[i] ||
+        task_required_resource(spec, i) > state->dynamic_resources[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 void handle_task_submitted(local_scheduler_state *state,
                            scheduling_algorithm_state *algorithm_state,
                            task_spec *spec) {
+  /* TODO(atumanov): if static is satisfied and local objects ready, but
+   * dynamic resource is currently unavailable, then
+   * consider queueing task locally and recheck dynamic next time.   */
+
+  /* If local node satisfies constraints AND objects are available, then
+   * schedule locally. Else forward to the global scheduler. */
+  if (resource_constraints_satisfied(state, spec) &&
+      (utarray_len(algorithm_state->available_workers) > 0) &&
+      can_run(algorithm_state, spec)) {
   /* If this task's dependencies are available locally, and if there is an
    * available worker, then assign this task to an available worker. If we
    * cannot assign the task to a worker immediately, we either queue the task in
    * the local task queue or we pass the task to the global scheduler. For now,
    * we pass the task along to the global scheduler if there is one. */
-  if (can_run(algorithm_state, spec) &&
-      (utarray_len(algorithm_state->available_workers) > 0)) {
-    /* Dependencies are ready and there is an available worker, so dispatch the
-     * task. */
     queue_dispatch_task(state, algorithm_state, spec, false);
   } else {
     /* Give the task to the global scheduler to schedule, if it exists. */

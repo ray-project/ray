@@ -126,6 +126,14 @@ void assign_task_to_worker(local_scheduler_state *state,
       LOG_FATAL("Failed to give task to client on fd %d.", w->sock);
     }
   }
+
+  /* Resource accounting:
+   * Update dynamic resource vector in the local scheduler state. */
+  for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
+    state->dynamic_resources[i] -= task_required_resource(spec, i);
+    CHECK(state->dynamic_resources[i] >= 0);
+  }
+
   /* Update the global task table. */
   if (state->db != NULL) {
     task *task =
@@ -267,7 +275,17 @@ void process_message(event_loop *loop,
     /* Update the task table with the completed task. */
     worker *available_worker =
         (worker *) utarray_eltptr(state->workers, wi->worker_index);
-    if (state->db != NULL && available_worker->task_in_progress != NULL) {
+    task *task_in_progress = available_worker->task_in_progress;
+    task_spec *spec = (task_in_progress != NULL)?
+        task_task_spec(task_in_progress):NULL;
+    if (state->db != NULL && task_in_progress != NULL) {
+      /* Return dynamic resources back. */
+      for (int i = 0 ; i < MAX_RESOURCE_INDEX; i++) {
+        state->dynamic_resources[i] += task_required_resource(spec, i);
+        /* Sanity-check resource vector boundary conditions. */
+        CHECK(state->dynamic_resources[i] <= state->static_resources[i]);
+      }
+      /* Update control state tables. */
       task_set_state(available_worker->task_in_progress, TASK_STATUS_DONE);
       task_table_update(state->db, available_worker->task_in_progress,
                         (retry_info *) &photon_retry, NULL, NULL);
