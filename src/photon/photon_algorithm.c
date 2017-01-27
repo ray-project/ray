@@ -394,13 +394,13 @@ void queue_task_locally(local_scheduler_state *state,
 void give_task_to_global_scheduler(local_scheduler_state *state,
                                    scheduling_algorithm_state *algorithm_state,
                                    task_spec *spec) {
-  if (state->db == NULL || !state->global_scheduler_exists) {
+  if (state->db == NULL || !state->config.global_scheduler_exists) {
     /* A global scheduler is not available, so queue the task locally. */
     queue_task_locally(state, algorithm_state, spec, false);
     return;
   }
   /* Pass on the task to the global scheduler. */
-  DCHECK(state->global_scheduler_exists);
+  DCHECK(state->config.global_scheduler_exists);
   task *task = alloc_task(spec, TASK_STATUS_WAITING, NIL_ID);
   DCHECK(state->db != NULL);
   task_table_add_task(state->db, task, (retry_info *) &photon_retry, NULL,
@@ -447,7 +447,7 @@ void handle_task_scheduled(local_scheduler_state *state,
    * the global scheduler, so we can safely assert that there is a connection
    * to the database. */
   DCHECK(state->db != NULL);
-  DCHECK(state->global_scheduler_exists);
+  DCHECK(state->config.global_scheduler_exists);
   /* Push the task to the appropriate queue. */
   queue_task_locally(state, algorithm_state, spec, true);
   dispatch_tasks(state, algorithm_state);
@@ -499,7 +499,6 @@ void handle_object_available(local_scheduler_state *state,
   if (entry->dependent_tasks != NULL) {
     /* Out of the tasks that were dependent on this object, if they were now
      * ready to run, move them to the dispatch queue. */
-    task_queue_entry *task_entry = NULL;
     for (task_queue_entry **p =
              (task_queue_entry **) utarray_front(entry->dependent_tasks);
          p != NULL;

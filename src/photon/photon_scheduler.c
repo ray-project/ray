@@ -34,8 +34,17 @@ local_scheduler_state *init_local_scheduler(
     const char *plasma_store_socket_name,
     const char *plasma_manager_socket_name,
     const char *plasma_manager_address,
-    bool global_scheduler_exists) {
+    bool global_scheduler_exists,
+    const char *start_worker_command) {
   local_scheduler_state *state = malloc(sizeof(local_scheduler_state));
+  /* Set the configuration struct for the local scheduler. */
+  if (start_worker_command != NULL) {
+    state->config.start_worker_command = strdup(start_worker_command);
+  } else {
+    state->config.start_worker_command = NULL;
+  }
+  state->config.global_scheduler_exists = global_scheduler_exists;
+
   state->loop = loop;
   state->worker_index = NULL;
   /* Add scheduler info. */
@@ -73,8 +82,6 @@ local_scheduler_state *init_local_scheduler(
   /* Add the callback that processes the notification to the event loop. */
   event_loop_add_file(loop, plasma_fd, EVENT_LOOP_READ,
                       process_plasma_notification, state);
-  /* Set the flag for whether there is a global scheduler. */
-  state->global_scheduler_exists = global_scheduler_exists;
   /* Add scheduler state. */
   state->algorithm_state = make_scheduling_algorithm_state();
   utarray_new(state->input_buffer, &byte_icd);
@@ -82,6 +89,11 @@ local_scheduler_state *init_local_scheduler(
 };
 
 void free_local_scheduler(local_scheduler_state *state) {
+  if (state->config.start_worker_command != NULL) {
+    free(state->config.start_worker_command);
+    state->config.start_worker_command = NULL;
+  }
+
   if (state->db != NULL) {
     db_disconnect(state->db);
   }
@@ -346,6 +358,14 @@ int heartbeat_handler(event_loop *loop, timer_id id, void *context) {
   return LOCAL_SCHEDULER_HEARTBEAT_TIMEOUT_MILLISECONDS;
 }
 
+void start_new_worker(local_scheduler_state *state) {
+  /* We can't start a worker if we don't have the path to the worker script. */
+  CHECK(state->config.start_worker_command != NULL);
+  /* Launch the process to create the worker. */
+  FILE *p = popen(state->config.start_worker_command, "r");
+  UNUSED(p);
+}
+
 void start_server(const char *node_ip_address,
                   const char *socket_name,
                   const char *redis_addr,
@@ -353,7 +373,8 @@ void start_server(const char *node_ip_address,
                   const char *plasma_store_socket_name,
                   const char *plasma_manager_socket_name,
                   const char *plasma_manager_address,
-                  bool global_scheduler_exists) {
+                  bool global_scheduler_exists,
+                  const char *start_worker_command) {
   /* Ignore SIGPIPE signals. If we don't do this, then when we attempt to write
    * to a client that has already died, the local scheduler could die. */
   signal(SIGPIPE, SIG_IGN);
@@ -362,8 +383,7 @@ void start_server(const char *node_ip_address,
   g_state = init_local_scheduler(
       node_ip_address, loop, redis_addr, redis_port, socket_name,
       plasma_store_socket_name, plasma_manager_socket_name,
-      plasma_manager_address, global_scheduler_exists);
-
+      plasma_manager_address, global_scheduler_exists, start_worker_command);
   /* Register a callback for registering new clients. */
   event_loop_add_file(loop, fd, EVENT_LOOP_READ, new_client_connection,
                       g_state);
@@ -412,9 +432,11 @@ int main(int argc, char *argv[]) {
   char *plasma_manager_address = NULL;
   /* The IP address of the node that this local scheduler is running on. */
   char *node_ip_address = NULL;
+  /* The command to run when starting new workers. */
+  char *start_worker_command = NULL;
   int c;
   bool global_scheduler_exists = true;
-  while ((c = getopt(argc, argv, "s:r:p:m:ga:h:")) != -1) {
+  while ((c = getopt(argc, argv, "s:r:p:m:ga:h:w:")) != -1) {
     switch (c) {
     case 's':
       scheduler_socket_name = optarg;
@@ -437,6 +459,9 @@ int main(int argc, char *argv[]) {
     case 'h':
       node_ip_address = optarg;
       break;
+    case 'w':
+      start_worker_command = optarg;
+      break;
     default:
       LOG_FATAL("unknown option %c", c);
     }
@@ -449,7 +474,7 @@ int main(int argc, char *argv[]) {
         "please specify socket for connecting to Plasma store with -p switch");
   }
   if (!node_ip_address) {
-    LOG_FATAL("please specify the node IP address with -p switch");
+    LOG_FATAL("please specify the node IP address with -h switch");
   }
   if (!redis_addr_port) {
     /* Start the local scheduler without connecting to Redis. In this case, all
@@ -461,7 +486,7 @@ int main(int argc, char *argv[]) {
     }
     start_server(node_ip_address, scheduler_socket_name, NULL, -1,
                  plasma_store_socket_name, NULL, plasma_manager_address,
-                 global_scheduler_exists);
+                 global_scheduler_exists, start_worker_command);
   } else {
     /* Parse the Redis address into an IP address and a port. */
     char redis_addr[16] = {0};
@@ -481,7 +506,7 @@ int main(int argc, char *argv[]) {
     start_server(node_ip_address, scheduler_socket_name, &redis_addr[0],
                  atoi(redis_port), plasma_store_socket_name,
                  plasma_manager_socket_name, plasma_manager_address,
-                 global_scheduler_exists);
+                 global_scheduler_exists, start_worker_command);
   }
 }
 #endif

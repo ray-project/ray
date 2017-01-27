@@ -67,7 +67,7 @@ photon_mock *init_photon_mock(bool connect_to_redis) {
   mock->photon_state = init_local_scheduler(
       "127.0.0.1", mock->loop, redis_addr, redis_port,
       utstring_body(photon_socket_name), plasma_store_socket_name,
-      utstring_body(plasma_manager_socket_name), NULL, false);
+      utstring_body(plasma_manager_socket_name), NULL, false, NULL);
   /* Connect a Photon client. */
   mock->conn = photon_connect(utstring_body(photon_socket_name));
   new_client_connection(mock->loop, mock->photon_fd,
