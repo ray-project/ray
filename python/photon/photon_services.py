@@ -52,7 +52,21 @@ def start_local_scheduler(plasma_store_name, plasma_manager_name=None,
   if plasma_manager_name is not None:
     command += ["-m", plasma_manager_name]
   if worker_path is not None:
-    command += ["-w", worker_path]
+    assert plasma_store_name is not None
+    assert plasma_manager_name is not None
+    assert redis_address is not None
+    start_worker_command = ("python {} "
+                            "--node-ip-address={} "
+                            "--object-store-name={} "
+                            "--object-store-manager-name={} "
+                            "--local-scheduler-name={} "
+                            "--redis-address={}").format(worker_path,
+                                                         node_ip_address,
+                                                         plasma_store_name,
+                                                         plasma_manager_name,
+                                                         local_scheduler_name,
+                                                         redis_address)
+    command += ["-w", start_worker_command]
   if redis_address is not None:
     command += ["-r", redis_address]
   if plasma_address is not None:

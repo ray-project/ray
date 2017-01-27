@@ -499,7 +499,6 @@ void handle_object_available(local_scheduler_state *state,
   if (entry->dependent_tasks != NULL) {
     /* Out of the tasks that were dependent on this object, if they were now
      * ready to run, move them to the dispatch queue. */
-    task_queue_entry *task_entry = NULL;
     for (task_queue_entry **p =
              (task_queue_entry **) utarray_front(entry->dependent_tasks);
          p != NULL;
