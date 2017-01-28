@@ -73,16 +73,11 @@ def get_batches(dataset, path, size, mode):
 def compute_rollout(weights, batch):
   model = ray.env.model
   rollouts = 10
+  IPython.embed()
   model.variables.set_weights(weights)
   placeholders = [model.x, model.labels]
-  x = batch[0]
-  y = batch[1]
-  dim_zero = x.shape[0]
   for i in range(rollouts):
-    idx = np.random.choice(dim_zero, 128, replace=False)
-    x_subset = x[idx, :]
-    y_subset = y[idx, :]
-    model.variables.sess.run(model.train_op, feed_dict=dict(zip(placeholders, [x_subset, y_subset]))) 
+    model.variables.sess.run(model.train_op, feed_dict=dict(zip(placeholders, batch))) 
   return model.variables.get_weights()  
 
 @ray.remote
@@ -98,7 +93,7 @@ def model_initialization():
     model = resnet_model.ResNet(hps, 'train')
     model.build_graph()
     sess = tf.Session()
-    model.variables.set_session(sess)
+ #   model.variables.set_session(sess)
     return model
 
 def model_reinitialization(model):
@@ -106,7 +101,8 @@ def model_reinitialization(model):
 
 def train(hps):
   """Training loop."""
-  ray.init(num_workers=10)
+  ab = model_initialization()
+  ba = model_initialization()
   batches = get_batches.remote(
       FLAGS.dataset, FLAGS.train_data_path, hps.batch_size, FLAGS.mode)
   test_batch = get_test.remote(FLAGS.dataset, FLAGS.eval_data_path, hps.batch_size, FLAGS.mode)

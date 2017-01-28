@@ -27,6 +27,7 @@ import tensorflow as tf
 import ray
 from tensorflow.python.training import moving_averages
 import IPython
+import six
 
 HParams = namedtuple('HParams',
                      'batch_size, num_classes, min_lrn_rate, lrn_rate, '
@@ -68,10 +69,16 @@ class ResNet(object):
 
   def _build_model(self):
     """Build the core model within the graph."""
+
+    x = tf.placeholder(tf.float32, shape=[128, 32, 32, 3])
+    self.x = x
+    self.labels = tf.placeholder(tf.float32, shape=[128,10])
+    labels = self.labels
+#    queue = tf.RandomShuffleQueue(capacity=10000, min_after_dequeue=1000, dtypes=[tf.float32, tf.float32], shapes=[[32,32,3], [10]])
+#    enqueue_op = queue.enqueue_many([self.x, self.labels])
+#    tf.train.add_queue_runner(tf.train.queue_runner.QueueRunner(queue, [enqueue_op] * 1))
+#    images, labels = queue.dequeue_many(128)
     with tf.variable_scope('init'):
-      x = tf.placeholder(tf.float32, shape=[128, 32, 32, 3])
-      self.x = x
-      self.labels = tf.placeholder(tf.float32, shape=[128,10])
       x = self._conv('init_conv', x, 3, 3, 16, self._stride_arr(1))
 
     strides = [1, 2, 2]
@@ -92,21 +99,21 @@ class ResNet(object):
     with tf.variable_scope('unit_1_0'):
       x = res_func(x, filters[0], filters[1], self._stride_arr(strides[0]),
                    activate_before_residual[0])
-    for i in xrange(1, self.hps.num_residual_units):
+    for i in six.moves.range(1, self.hps.num_residual_units):
       with tf.variable_scope('unit_1_%d' % i):
         x = res_func(x, filters[1], filters[1], self._stride_arr(1), False)
 
     with tf.variable_scope('unit_2_0'):
       x = res_func(x, filters[1], filters[2], self._stride_arr(strides[1]),
                    activate_before_residual[1])
-    for i in xrange(1, self.hps.num_residual_units):
+    for i in six.moves.range(1, self.hps.num_residual_units):
       with tf.variable_scope('unit_2_%d' % i):
         x = res_func(x, filters[2], filters[2], self._stride_arr(1), False)
 
     with tf.variable_scope('unit_3_0'):
       x = res_func(x, filters[2], filters[3], self._stride_arr(strides[2]),
                    activate_before_residual[2])
-    for i in xrange(1, self.hps.num_residual_units):
+    for i in six.moves.range(1, self.hps.num_residual_units):
       with tf.variable_scope('unit_3_%d' % i):
         x = res_func(x, filters[3], filters[3], self._stride_arr(1), False)
     with tf.variable_scope('unit_last'):
@@ -120,7 +127,7 @@ class ResNet(object):
     
     with tf.variable_scope('costs'):
       xent = tf.nn.softmax_cross_entropy_with_logits(
-          logits, self.labels)
+          logits=logits, labels=labels)
       self.cost = tf.reduce_mean(xent, name='xent')
       self.cost += self._decay()
 
@@ -143,7 +150,8 @@ class ResNet(object):
     #    zip(self.assignment_placeholders, trainable_variables),
     #    global_step=self.global_step, name='train_step')
     min_ops = optimizer.minimize(self.cost)
-    self.variables = ray.experimental.TensorFlowVariables(min_ops, prefix=True)
+    IPython.embed()
+#    self.variables = ray.experimental.TensorFlowVariables(min_ops, prefix=True)
     train_ops = [min_ops]
     self.train_op = tf.group(*train_ops)
 
