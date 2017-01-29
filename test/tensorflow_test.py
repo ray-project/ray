@@ -20,16 +20,13 @@ def make_linear_network(w_name=None, b_name=None):
   return tf.reduce_mean(tf.square(y - y_data)), tf.global_variables_initializer(), x_data, y_data
 
 def net_vars_initializer():
-  # Random prefix so variable names do not clash if we use nets with
-  # the same name.
-  prefix = str(uuid.uuid1().hex)
-  # Use the tensorflow variable_scope to prefix all of the variables
-  with tf.variable_scope(prefix):
+  # Uses a seperate graph for each network.
+  with tf.Graph().as_default():
     # Create the network.
     loss, init, _, _ = make_linear_network()
     sess = tf.Session()
     # Additional code for setting and getting the weights.
-    variables = ray.experimental.TensorFlowVariables(loss, sess, prefix=True)
+    variables = ray.experimental.TensorFlowVariables(loss, sess)
   # Return all of the data needed to use the network.
   return variables, init, sess
 
@@ -38,11 +35,10 @@ def net_vars_reinitializer(net_vars):
 
 def train_vars_initializer():
   # Almost the same as above, but now returns the placeholders and gradient.
-  prefix = str(uuid.uuid1().hex)
-  with tf.variable_scope(prefix):
+  with tf.Graph().as_default():
     loss, init, x_data, y_data = make_linear_network()
     sess = tf.Session()
-    variables = ray.experimental.TensorFlowVariables(loss, sess, prefix=True)
+    variables = ray.experimental.TensorFlowVariables(loss, sess)
     grad = tf.gradients(loss, list(variables.variables.values()))
   return variables, init, sess, grad, [x_data, y_data]
   

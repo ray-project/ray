@@ -30,14 +30,12 @@ class TensorFlowVariables(object):
     assignment_placeholders (List[tf.placeholders]): The nodes that weights get
       passed to.
     assignment_nodes (List[tf.Tensor]): The nodes that assign the weights.
-    prefix (Bool): Boolean for if there is a prefix on the variable names.
   """
-  def __init__(self, loss, sess=None, prefix=False):
+  def __init__(self, loss, sess=None):
     """Creates a TensorFlowVariables instance."""
     import tensorflow as tf
     self.sess = sess
     self.loss = loss
-    self.prefix = prefix
     queue = deque([loss])
     variable_names = []
     explored_inputs = set([loss])
@@ -66,11 +64,7 @@ class TensorFlowVariables(object):
         variable_names.append(tf_obj.node_def.name)
     self.variables = OrderedDict()
     for v in [v for v in tf.global_variables() if v.op.node_def.name in variable_names]:
-      names = re.split(r"([^/]*/)\1*", v.op.node_def.name, maxsplit=1 if prefix else -1)
-      if prefix:
-        assert(names[1] not in names[-1])
-      name = names[-1]
-      self.variables[name] = v
+      self.variables[v.op.node_def.name] = v
     self.assignment_placeholders = dict()
     self.assignment_nodes = []
 
