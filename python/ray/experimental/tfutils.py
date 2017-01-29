@@ -3,8 +3,6 @@ from __future__ import division
 from __future__ import print_function
 import numpy as np
 from collections import deque, OrderedDict
-import IPython
-import re
 
 def unflatten(vector, shapes):
   i = 0
