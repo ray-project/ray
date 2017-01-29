@@ -3,6 +3,6 @@
 
 FROM ray-project/base-deps
 ADD ray.tar /ray
-WORKDIR /ray/lib/python
+WORKDIR /ray/python
 RUN python setup.py install
 WORKDIR /ray
