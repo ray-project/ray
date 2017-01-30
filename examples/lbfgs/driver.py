@@ -61,7 +61,8 @@ class LinearModel(object):
     return self.sess.run(self.cross_entropy_grads, feed_dict={self.x: xs, self.y_: ys})
 
 def net_initialization():
-  return LinearModel([784,10])
+  with tf.Graph().as_default():
+    return LinearModel([784,10])
 
 # By default, when an environment variable is used by a remote function, the
 # initialization code will be rerun at the end of the remote task to ensure

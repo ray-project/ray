@@ -92,7 +92,7 @@ NUM_BATCHES = 1
 NUM_ITERS = 201
 
 def net_vars_initializer():
-  # Use a seperate graph for each network.
+  # Use a separate graph for each network.
   with tf.Graph().as_default():
     # Seed TensorFlow to make the script deterministic.
     tf.set_random_seed(0)
