@@ -101,7 +101,7 @@ def cleanup():
   """When running in local mode, shutdown the Ray processes.
 
   This method is used to shutdown processes that were started with
-  services.start_ray_local(). It kills all scheduler, object store, and worker
+  services.start_ray_head(). It kills all scheduler, object store, and worker
   processes that were started by this services module. Driver processes are
   started and disconnected by worker.py.
   """
@@ -178,7 +178,7 @@ def wait_for_redis_to_start(redis_host, redis_port, num_retries=5):
   if counter == num_retries:
     raise Exception("Unable to connect to Redis. If the Redis instance is on a different machine, check that your firewall is configured properly.")
 
-def start_redis(node_ip_address, num_retries=20, cleanup=True, redirect_output=False):
+def start_redis(node_ip_address, port=None, num_retries=20, cleanup=True, redirect_output=False):
   """Start a Redis server.
 
   Args:
@@ -200,10 +200,14 @@ def start_redis(node_ip_address, num_retries=20, cleanup=True, redirect_output=F
   assert os.path.isfile(redis_filepath)
   assert os.path.isfile(redis_module)
   counter = 0
+  if port:
+    if num_retries != 1:
+      raise Exception("Num retries must be 1 if port is specified")
+  else:
+    port = new_port()
   while counter < num_retries:
     if counter > 0:
       print("Redis failed to start, retrying now.")
-    port = new_port()
     with open(os.devnull, "w") as FNULL:
       stdout = FNULL if redirect_output else None
       stderr = FNULL if redirect_output else None
@@ -215,6 +219,7 @@ def start_redis(node_ip_address, num_retries=20, cleanup=True, redirect_output=F
       if cleanup:
         all_processes[PROCESS_TYPE_REDIS_SERVER].append(p)
       break
+    port = new_port()
     counter += 1
   if counter == num_retries:
     raise Exception("Couldn't start Redis.")
@@ -370,7 +375,8 @@ def start_ray_processes(address_info=None,
                         worker_path=None,
                         cleanup=True,
                         redirect_output=False,
-                        include_global_scheduler=False):
+                        include_global_scheduler=False,
+                        include_redis=False):
   """Helper method to start Ray processes.
 
   Args:
@@ -410,11 +416,23 @@ def start_ray_processes(address_info=None,
   # warning messages when it starts up. Instead of suppressing the output, we
   # should address the warnings.
   redis_address = address_info.get("redis_address")
-  if redis_address is None:
-    redis_address = start_redis(node_ip_address, cleanup=cleanup,
-                                redirect_output=redirect_output)
-    address_info["redis_address"] = redis_address
-    time.sleep(0.1)
+  if include_redis:
+    if redis_address is None:
+      redis_address = start_redis(node_ip_address, cleanup=cleanup,
+                                  redirect_output=redirect_output)
+      address_info["redis_address"] = redis_address
+      time.sleep(0.1)
+    else:
+      redis_host, redis_port = redis_address.split(":")
+      redis_address = start_redis(redis_host,
+                                  port=int(redis_port),
+                                  num_retries=1,
+                                  cleanup=cleanup,
+                                  redirect_output=redirect_output)
+  else:
+    if redis_address is None:
+      raise Exception("Redis address expected")
+
   redis_port = get_port(redis_address)
 
   # Start the global scheduler, if necessary.
@@ -519,7 +537,7 @@ def start_ray_node(node_ip_address,
                              cleanup=cleanup,
                              redirect_output=redirect_output)
 
-def start_ray_local(address_info=None,
+def start_ray_head(address_info=None,
                     node_ip_address="127.0.0.1",
                     num_workers=0,
                     num_local_schedulers=1,
@@ -558,4 +576,5 @@ def start_ray_local(address_info=None,
                              worker_path=worker_path,
                              cleanup=cleanup,
                              redirect_output=redirect_output,
-                             include_global_scheduler=True)
+                             include_global_scheduler=True,
+                             include_redis=True)
