@@ -10,5 +10,5 @@ RUN echo 'export PATH=/opt/conda/bin:$PATH' > /etc/profile.d/conda.sh \
     && /bin/bash /tmp/anaconda.sh -b -p /opt/conda \
     && rm /tmp/anaconda.sh
 ENV PATH "/opt/conda/bin:$PATH"
-RUN conda install libgcc
+RUN conda install -y libgcc
 RUN pip install --upgrade pip
