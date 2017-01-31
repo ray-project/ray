@@ -48,10 +48,10 @@ being caught in "lib/python/ray/workers/default_worker.py".
       # We use a driver ID of all zeros to push an error message to all drivers.
       driver_id = DRIVER_ID_LENGTH * b"\x00"
       error_key = b"Error:" + driver_id + b":" + random_string()
-      redis_host, redis_port = args.redis_address.split(":")
+      redis_ip_address, redis_port = args.redis_address.split(":")
       # For this command to work, some other client (on the same machine as
       # Redis) must have run "CONFIG SET protected-mode no".
-      redis_client = redis.StrictRedis(host=redis_host, port=int(redis_port))
+      redis_client = redis.StrictRedis(host=redis_ip_address, port=int(redis_port))
       redis_client.hmset(error_key, {"type": "worker_crash",
                                      "message": traceback_str,
                                      "note": "This error is unexpected and should not have happened."})
