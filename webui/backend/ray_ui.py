@@ -33,7 +33,7 @@ def key_to_hex_identifiers(key):
 
 
 async def hello(websocket, path):
-  conn = await aioredis.create_connection((redis_host, redis_port), loop=loop)
+  conn = await aioredis.create_connection((redis_ip_address, redis_port), loop=loop)
 
   while True:
     command = json.loads(await websocket.recv())
@@ -107,7 +107,7 @@ async def hello(websocket, path):
 if __name__ == "__main__":
   args = parser.parse_args()
   redis_address = args.redis_address.split(":")
-  redis_host, redis_port = redis_address[0], int(redis_address[1])
+  redis_ip_address, redis_port = redis_address[0], int(redis_address[1])
 
   start_server = websockets.serve(hello, "localhost", args.port)
 

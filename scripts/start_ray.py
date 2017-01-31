@@ -15,8 +15,8 @@ parser.add_argument("--num-workers", default=10, required=False, type=int, help=
 parser.add_argument("--head", action="store_true", help="provide this argument for the head node")
 
 def check_no_existing_redis_clients(node_ip_address, redis_address):
-  redis_host, redis_port = redis_address.split(":")
-  redis_client = redis.StrictRedis(host=redis_host, port=int(redis_port))
+  redis_ip_address, redis_port = redis_address.split(":")
+  redis_client = redis.StrictRedis(host=redis_ip_address, port=int(redis_port))
   # The client table prefix must be kept in sync with the file
   # "src/common/redis_module/ray_redis_module.c" where it is defined.
   REDIS_CLIENT_TABLE_PREFIX = "CL:"
@@ -83,10 +83,10 @@ if __name__ == "__main__":
       raise Exception("If --head is not passed in, --redis-port is not allowed")
     if args.redis_address is None:
       raise Exception("If --head is not passed in, --redis-address must be provided.")
-    redis_host, redis_port = args.redis_address.split(":")
+    redis_ip_address, redis_port = args.redis_address.split(":")
     # Wait for the Redis server to be started. And throw an exception if we
     # can't connect to it.
-    services.wait_for_redis_to_start(redis_host, int(redis_port))
+    services.wait_for_redis_to_start(redis_ip_address, int(redis_port))
     # Get the node IP address if one is not provided.
     if args.node_ip_address is None:
       node_ip_address = services.get_node_ip_address(args.redis_address)

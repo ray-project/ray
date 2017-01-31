@@ -52,8 +52,8 @@ ObjectStoreAddress = namedtuple("ObjectStoreAddress", ["name",
                                                        "manager_name",
                                                        "manager_port"])
 
-def address(host, port):
-  return host + ":" + str(port)
+def address(ip_address, port):
+  return ip_address + ":" + str(port)
 
 def get_port(address):
   try:
@@ -140,19 +140,19 @@ def get_node_ip_address(address="8.8.8.8:53"):
   Returns:
     The IP address of the current node.
   """
-  host, port = address.split(":")
+  ip_address, port = address.split(":")
   s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-  s.connect((host, int(port)))
+  s.connect((ip_address, int(port)))
   return s.getsockname()[0]
 
-def wait_for_redis_to_start(redis_host, redis_port, num_retries=5):
+def wait_for_redis_to_start(redis_ip_address, redis_port, num_retries=5):
   """Wait for a Redis server to be available.
 
   This is accomplished by creating a Redis client and sending a random command
   to the server until the command gets through.
 
   Args:
-    redis_host (str): The IP address of the redis server.
+    redis_ip_address (str): The IP address of the redis server.
     redis_port (int): The port of the redis server.
     num_retries (int): The number of times to try connecting with redis. The
       client will sleep for one second between attempts.
@@ -160,13 +160,13 @@ def wait_for_redis_to_start(redis_host, redis_port, num_retries=5):
   Raises:
     Exception: An exception is raised if we could not connect with Redis.
   """
-  redis_client = redis.StrictRedis(host=redis_host, port=redis_port)
+  redis_client = redis.StrictRedis(host=redis_ip_address, port=redis_port)
   # Wait for the Redis server to start.
   counter = 0
   while counter < num_retries:
     try:
       # Run some random command and see if it worked.
-      print("Waiting for redis server at {}:{} to respond...".format(redis_host, redis_port))
+      print("Waiting for redis server at {}:{} to respond...".format(redis_ip_address, redis_port))
       redis_client.client_list()
     except redis.ConnectionError as e:
       # Wait a little bit.
@@ -430,7 +430,7 @@ def start_ray_processes(address_info=None,
       # A Redis address was provided, so start a Redis server with the given
       # port. TODO(rkn): We should check that the IP address corresponds to the
       # machine that this method is running on.
-      redis_host, redis_port = redis_address.split(":")
+      redis_ip_address, redis_port = redis_address.split(":")
       new_redis_port = start_redis(port=int(redis_port),
                                    num_retries=1,
                                    cleanup=cleanup,
