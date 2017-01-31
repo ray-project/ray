@@ -110,8 +110,7 @@ def net_vars_initializer():
     # Define the weight initializer and session.
     init = tf.global_variables_initializer()
     sess = tf.Session()
-    # Additional code for setting and getting the weights, and use a prefix
-    # so that the variable names can be converted between workers.
+    # Additional code for setting and getting the weights
     variables = ray.experimental.TensorFlowVariables(loss, sess)
     # Return all of the data needed to use the network.
   return variables, sess, train, loss, x_data, y_data, init
