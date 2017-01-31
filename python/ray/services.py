@@ -200,7 +200,7 @@ def start_redis(node_ip_address, port=None, num_retries=20, cleanup=True, redire
   assert os.path.isfile(redis_filepath)
   assert os.path.isfile(redis_module)
   counter = 0
-  if port:
+  if port is not None:
     if num_retries != 1:
       raise Exception("Num retries must be 1 if port is specified")
   else:
@@ -399,6 +399,8 @@ def start_ray_processes(address_info=None,
       /dev/null.
     include_global_scheduler (bool): If include_global_scheduler is True, then
       start a global scheduler process.
+    include_redis (bool): If include_redis is True, then start a Redis
+      server process.
 
   Returns:
     A dictionary of the address information for the processes that were
@@ -538,12 +540,12 @@ def start_ray_node(node_ip_address,
                              redirect_output=redirect_output)
 
 def start_ray_head(address_info=None,
-                    node_ip_address="127.0.0.1",
-                    num_workers=0,
-                    num_local_schedulers=1,
-                    worker_path=None,
-                    cleanup=True,
-                    redirect_output=False):
+                   node_ip_address="127.0.0.1",
+                   num_workers=0,
+                   num_local_schedulers=1,
+                   worker_path=None,
+                   cleanup=True,
+                   redirect_output=False):
   """Start Ray in local mode.
 
   Args:

@@ -56,10 +56,10 @@ if __name__ == "__main__":
       address_info_in = None
 
     address_info = services.start_ray_head(address_info=address_info_in,
-                                            node_ip_address=node_ip_address,
-                                            num_workers=args.num_workers,
-                                            cleanup=False,
-                                            redirect_output=True)
+                                           node_ip_address=node_ip_address,
+                                           num_workers=args.num_workers,
+                                           cleanup=False,
+                                           redirect_output=True)
     print(address_info)
     print("\nStarted Ray with {} workers on this node. A different number of "
           "workers can be set with the --num-workers flag (but you have to "
@@ -78,7 +78,7 @@ if __name__ == "__main__":
                                              address_info["redis_address"]))
   else:
     # Start Ray on a non-head node.
-    if args.redis_port:
+    if args.redis_port is not None:
       raise Exception("If --head is not passed in, --redis-port is not allowed")
     if args.redis_address is None:
       raise Exception("If --head is not passed in, --redis-address must be provided.")

@@ -781,10 +781,10 @@ def _init(address_info=None, start_ray_local=False, object_id_seed=None,
         num_local_schedulers = 1
     # Start the scheduler, object store, and some workers. These will be killed
     # by the call to cleanup(), which happens when the Python script exits.
-    address_info = services.start_ray_local(address_info=address_info,
-                                            node_ip_address=node_ip_address,
-                                            num_workers=num_workers,
-                                            num_local_schedulers=num_local_schedulers)
+    address_info = services.start_ray_head(address_info=address_info,
+                                           node_ip_address=node_ip_address,
+                                           num_workers=num_workers,
+                                           num_local_schedulers=num_local_schedulers)
   else:
     if redis_address is None:
       raise Exception("If start_ray_local=False, then redis_address must be provided.")
