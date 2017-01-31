@@ -830,6 +830,46 @@ void redis_task_table_update(table_callback_data *callback_data) {
   }
 }
 
+void redis_task_table_test_and_update_callback(redisAsyncContext *c,
+                                               void *r,
+                                               void *privdata) {
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
+  redisReply *reply = r;
+  /* Parse the task from the reply. */
+  task *task = parse_and_construct_task_from_redis_reply(reply);
+  /* Call the done callback if there is one. */
+  task_table_get_callback done_callback = callback_data->done_callback;
+  if (done_callback != NULL) {
+    done_callback(task, callback_data->user_context);
+  }
+  /* Free the task if it is not NULL. */
+  if (task != NULL) {
+    free_task(task);
+  }
+  /* Clean up timer and callback. */
+  destroy_timer_callback(db->loop, callback_data);
+}
+
+void redis_task_table_test_and_update(table_callback_data *callback_data) {
+  db_handle *db = callback_data->db_handle;
+  task *task = callback_data->data;
+  task_id task_id = task_task_id(task);
+  db_client_id local_scheduler_id = task_local_scheduler(task);
+  scheduling_state state = task_state(task);
+  scheduling_state test_state = TASK_STATUS_DONE;
+
+  CHECKM(task != NULL, "NULL task passed to redis_task_table_update.");
+  int status =
+      redisAsyncCommand(db->context, redis_task_table_test_and_update_callback,
+                        (void *) callback_data->timer_id,
+                        "RAY.TASK_TABLE_TEST_AND_UPDATE %b %d %d %b",
+                        task_id.id, sizeof(task_id.id), test_state, state,
+                        local_scheduler_id.id, sizeof(local_scheduler_id.id));
+  if ((status == REDIS_ERR) || db->context->err) {
+    LOG_REDIS_DEBUG(db->context, "error in redis_task_table_update");
+  }
+}
+
 /* The format of the payload is described in ray_redis_module.c and is
  * "<task ID> <state> <local scheduler ID> <task specification>". TODO(rkn):
  * Make this code nicer. */

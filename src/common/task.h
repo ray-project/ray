@@ -273,7 +273,9 @@ typedef enum {
   /** The task is running on a worker. */
   TASK_STATUS_RUNNING = 8,
   /** The task is done executing. */
-  TASK_STATUS_DONE = 16
+  TASK_STATUS_DONE = 16,
+  /** The task will be submitted for reexecution. */
+  TASK_STATUS_RECONSTRUCTING = 32
 } scheduling_state;
 
 /** A task is an execution of a task specification.  It has a state of execution

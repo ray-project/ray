@@ -425,7 +425,7 @@ class Worker(object):
     # Serialize and put the object in the object store.
     try:
       numbuf.store_list(objectid.id(), self.plasma_client.conn, [value])
-    except plasma.plasma_object_exists_error as e:
+    except numbuf.numbuf_plasma_object_exists_error as e:
       # The object already exists in the object store, so there is no need to
       # add it again. TODO(rkn): We need to compare the hashes and make sure
       # that the objects are in fact the same. We also should return an error

@@ -176,6 +176,7 @@ void redis_task_table_add_task(table_callback_data *callback_data);
  */
 void redis_task_table_update(table_callback_data *callback_data);
 
+void redis_task_table_test_and_update(table_callback_data *callback_data);
 /**
  * Callback invoked when the reply from the task push command is received.
  *

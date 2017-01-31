@@ -177,6 +177,23 @@ void process_plasma_notification(event_loop *loop,
   }
 }
 
+void reconstruct_object_task_lookup_callback2(task *task, void *user_context) {
+  if (task == NULL) {
+    return;
+  }
+  local_scheduler_state *state = user_context;
+  task_spec *spec = task_task_spec(task);
+  handle_task_submitted(state, state->algorithm_state, spec);
+
+  /* Recursively reconstruct the task's inputs, if necessary. */
+  for (int64_t i = 0; i < task_num_args(spec); ++i) {
+    if (task_arg_type(spec, i) == ARG_BY_REF) {
+      object_id arg_id = task_arg_id(spec, i);
+      reconstruct_object(state, arg_id);
+    }
+  }
+}
+
 void reconstruct_object_task_lookup_callback(object_id reconstruct_object_id,
                                              task *task,
                                              void *user_context) {
@@ -196,16 +213,11 @@ void reconstruct_object_task_lookup_callback(object_id reconstruct_object_id,
     LOG_DEBUG("Task to reconstruct had scheduling state %d", task_status);
     return;
   }
-  /* Recursively reconstruct the task's inputs, if necessary. */
-  task_spec *spec = task_task_spec(task);
-  for (int64_t i = 0; i < task_num_args(spec); ++i) {
-    if (task_arg_type(spec, i) == ARG_BY_REF) {
-      object_id arg_id = task_arg_id(spec, i);
-      reconstruct_object(state, arg_id);
-    }
-  }
 
-  handle_task_submitted(state, state->algorithm_state, spec);
+  task = copy_task(task);
+  task_set_state(task, TASK_STATUS_RECONSTRUCTING);
+  task_table_test_and_update(state->db, task, (retry_info *) &photon_retry,
+                             reconstruct_object_task_lookup_callback2, state);
 }
 
 void reconstruct_object_object_lookup_callback(object_id reconstruct_object_id,

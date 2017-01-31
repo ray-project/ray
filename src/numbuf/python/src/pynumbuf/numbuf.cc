@@ -440,7 +440,7 @@ MOD_INIT(libnumbuf) {
       PyErr_NewException(numbuf_plasma_object_exists_error, NULL, NULL);
   Py_INCREF(NumbufPlasmaObjectExistsError);
   PyModule_AddObject(
-      m, "pnumbuf_lasma_object_exists_error", NumbufPlasmaObjectExistsError);
+      m, "numbuf_plasma_object_exists_error", NumbufPlasmaObjectExistsError);
   /* Create a custom exception for when the plasma store is out of memory. */
   char numbuf_plasma_out_of_memory_error[] = "numbuf_plasma_out_of_memory.error";
   NumbufPlasmaOutOfMemoryError =

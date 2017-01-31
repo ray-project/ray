@@ -30,6 +30,16 @@ void task_table_update(db_handle *db_handle,
                       done_callback, redis_task_table_update, user_context);
 }
 
+void task_table_test_and_update(db_handle *db_handle,
+                                OWNER task *task,
+                                retry_info *retry,
+                                task_table_done_callback done_callback,
+                                void *user_context) {
+  init_table_callback(db_handle, task_task_id(task), __func__, task, retry,
+                      done_callback, redis_task_table_test_and_update,
+                      user_context);
+}
+
 /* TODO(swang): A corresponding task_table_unsubscribe. */
 void task_table_subscribe(db_handle *db_handle,
                           db_client_id local_scheduler_id,

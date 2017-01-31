@@ -251,10 +251,8 @@ class ReconstructionTests(unittest.TestCase):
       value = ray.get(args[i])
       self.assertEqual(value[0], i)
     # Get 10 values randomly.
-    # XXX: This is crashing everything right now.
     for _ in range(10):
       i  = np.random.randint(num_objects)
-      print("Getting {} object".format(i))
       value = ray.get(args[i])
       self.assertEqual(value[0], i)
 

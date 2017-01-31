@@ -87,6 +87,12 @@ void task_table_update(db_handle *db_handle,
                        task_table_done_callback done_callback,
                        void *user_context);
 
+void task_table_test_and_update(db_handle *db_handle,
+                                OWNER task *task,
+                                retry_info *retry,
+                                task_table_done_callback done_callback,
+                                void *user_context);
+
 /*
  *  ==== Subscribing to the task table ====
  */

@@ -233,6 +233,9 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
     ++i;
   }
   plasma_fetch(state->plasma_conn, num_object_ids, object_ids);
+  for (int i = 0; i < num_object_ids; ++i) {
+    reconstruct_object(state, object_ids[i]);
+  }
   free(object_ids);
   return LOCAL_SCHEDULER_FETCH_TIMEOUT_MILLISECONDS;
 }
