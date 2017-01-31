@@ -174,7 +174,7 @@ class TestGlobalStateStore(unittest.TestCase):
     response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id1")
     self.assertIsNone(response)
     # Add the result to the result table. The lookup now returns the task ID.
-    task_id = "task_id1"
+    task_id = b"task_id1"
     self.redis.execute_command("RAY.RESULT_TABLE_ADD", "object_id1", task_id)
     response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id1")
     self.assertEqual(response, task_id)
@@ -182,7 +182,7 @@ class TestGlobalStateStore(unittest.TestCase):
     response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id1")
     self.assertEqual(response, task_id)
     # Try another result table lookup. This should succeed.
-    task_id = "task_id2"
+    task_id = b"task_id2"
     self.redis.execute_command("RAY.RESULT_TABLE_ADD", "object_id2", task_id)
     response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id2")
     self.assertEqual(response, task_id)
