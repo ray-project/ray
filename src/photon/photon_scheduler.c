@@ -177,7 +177,7 @@ void process_plasma_notification(event_loop *loop,
   }
 }
 
-void reconstruct_object_task_lookup_callback2(task *task, void *user_context) {
+void reconstruct_task_update_callback(task *task, void *user_context) {
   if (task == NULL) {
     /* The test-and-set of the task's scheduling state failed, so the task was
      * either not finished yet, or it was already being reconstructed.
@@ -199,7 +199,7 @@ void reconstruct_object_task_lookup_callback2(task *task, void *user_context) {
   }
 }
 
-void reconstruct_object_task_lookup_callback(object_id reconstruct_object_id,
+void reconstruct_result_lookup_callback(object_id reconstruct_object_id,
                                              task_id task_id,
                                              void *user_context) {
   /* TODO(swang): The following check will fail if an object was created by a
@@ -219,10 +219,10 @@ void reconstruct_object_task_lookup_callback(object_id reconstruct_object_id,
   free_task_spec(nil_spec);
   task_table_test_and_update(state->db, task, TASK_STATUS_DONE,
                              (retry_info *) &photon_retry,
-                             reconstruct_object_task_lookup_callback2, state);
+                             reconstruct_task_update_callback, state);
 }
 
-void reconstruct_object_object_lookup_callback(object_id reconstruct_object_id,
+void reconstruct_object_lookup_callback(object_id reconstruct_object_id,
                                                int manager_count,
                                                const char *manager_vector[],
                                                void *user_context) {
@@ -235,7 +235,7 @@ void reconstruct_object_object_lookup_callback(object_id reconstruct_object_id,
     /* Look up the task that created the object in the result table. */
     result_table_lookup(
         state->db, reconstruct_object_id, (retry_info *) &photon_retry,
-        reconstruct_object_task_lookup_callback, (void *) state);
+        reconstruct_result_lookup_callback, (void *) state);
   }
 }
 
@@ -248,7 +248,7 @@ void reconstruct_object(local_scheduler_state *state,
    * on a node. */
   object_table_lookup(
       state->db, reconstruct_object_id, (retry_info *) &photon_retry,
-      reconstruct_object_object_lookup_callback, (void *) state);
+      reconstruct_object_lookup_callback, (void *) state);
 }
 
 void process_message(event_loop *loop,
