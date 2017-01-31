@@ -699,23 +699,21 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
   key = OpenPrefixedKey(ctx, OBJECT_INFO_PREFIX, object_id, REDISMODULE_READ);
 
   if (RedisModule_KeyType(key) == REDISMODULE_KEYTYPE_EMPTY) {
+    RedisModule_CloseKey(key);
     return RedisModule_ReplyWithNull(ctx);
   }
 
   RedisModuleString *task_id;
   RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "task", &task_id, NULL);
+  RedisModule_CloseKey(key);
   if (task_id == NULL) {
     return RedisModule_ReplyWithNull(ctx);
   }
 
-  /* Construct a reply by getting the task from the task ID. */
-  int status = ReplyWithTask(ctx, task_id);
-
-  /* Clean up. */
+  RedisModule_ReplyWithString(ctx, task_id);
   RedisModule_FreeString(ctx, task_id);
-  RedisModule_CloseKey(key);
 
-  return status;
+  return REDISMODULE_OK;
 }
 
 int TaskTableWrite(RedisModuleCtx *ctx,
@@ -887,11 +885,11 @@ int TaskTableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
   }
 
   /* If the key exists, look up the fields and return them in an array. */
-  RedisModuleString *tested_state = NULL;
-  RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "state", &tested_state,
+  RedisModuleString *current_state = NULL;
+  RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "state", &current_state,
                       NULL);
-  int tested_state_integer = ParseTaskState(tested_state);
-  if (tested_state_integer < 0) {
+  int current_state_integer = ParseTaskState(current_state);
+  if (current_state_integer < 0) {
     RedisModule_CloseKey(key);
     RedisModule_FreeString(ctx, state);
     return RedisModule_ReplyWithError(ctx,
@@ -906,15 +904,18 @@ int TaskTableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
     return RedisModule_ReplyWithError(
         ctx, "Invalid test value for scheduling state");
   }
-  if (tested_state_integer != test_state_integer) {
-    /* The value tested does not match the requested value. */
+  if (current_state_integer != test_state_integer) {
+    /* The current value does not match the test value, so do not perform the
+     * update. */
     RedisModule_CloseKey(key);
     RedisModule_FreeString(ctx, state);
     return RedisModule_ReplyWithNull(ctx);
   }
 
+  /* The test passed, so perform the update. */
   RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "state", state, "node",
                       argv[4], NULL);
+  /* Clean up. */
   RedisModule_CloseKey(key);
   RedisModule_FreeString(ctx, state);
   /* Construct a reply by getting the task from the task ID. */

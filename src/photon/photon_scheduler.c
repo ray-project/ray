@@ -179,8 +179,13 @@ void process_plasma_notification(event_loop *loop,
 
 void reconstruct_object_task_lookup_callback2(task *task, void *user_context) {
   if (task == NULL) {
+    /* The test-and-set of the task's scheduling state failed, so the task was
+     * either not finished yet, or it was already being reconstructed.
+     * Suppress the reconstruction request. */
     return;
   }
+  /* Otherwise, the test-and-set succeeded, so resubmit the task for execution
+   * to ensure that reconstruction will happen. */
   local_scheduler_state *state = user_context;
   task_spec *spec = task_task_spec(task);
   handle_task_submitted(state, state->algorithm_state, spec);
@@ -195,28 +200,25 @@ void reconstruct_object_task_lookup_callback2(task *task, void *user_context) {
 }
 
 void reconstruct_object_task_lookup_callback(object_id reconstruct_object_id,
-                                             task *task,
+                                             task_id task_id,
                                              void *user_context) {
-  /* Recursively resubmit the task and its task lineage to the scheduler. */
   /* TODO(swang): The following check will fail if an object was created by a
    * put. */
-  CHECKM(task != NULL,
+  CHECKM(!IS_NIL_ID(task_id),
          "No task information found for object during reconstruction");
   local_scheduler_state *state = user_context;
-  /* If the task's scheduling state is pending completion, assume that
-   * reconstruction is already being taken care of and cancel this
-   * reconstruction operation. NOTE: This codepath is not responsible for
+  /* Try to claim the responsibility for reconstruction by doing a test-and-set
+   * of the task's scheduling state in the global state. If the task's
+   * scheduling state is pending completion, assume that reconstruction is
+   * already being taken care of. NOTE: This codepath is not responsible for
    * detecting failure of the other reconstruction, or updating the
    * scheduling_state accordingly. */
-  scheduling_state task_status = task_state(task);
-  if (task_status != TASK_STATUS_DONE) {
-    LOG_DEBUG("Task to reconstruct had scheduling state %d", task_status);
-    return;
-  }
-
-  task = copy_task(task);
-  task_set_state(task, TASK_STATUS_RECONSTRUCTING);
-  task_table_test_and_update(state->db, task, (retry_info *) &photon_retry,
+  task_spec *nil_spec = alloc_nil_task_spec(task_id);
+  task *task = alloc_task(nil_spec, TASK_STATUS_RECONSTRUCTING,
+                          get_db_client_id(state->db));
+  free_task_spec(nil_spec);
+  task_table_test_and_update(state->db, task, TASK_STATUS_DONE,
+                             (retry_info *) &photon_retry,
                              reconstruct_object_task_lookup_callback2, state);
 }
 

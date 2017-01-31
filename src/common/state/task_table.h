@@ -87,11 +87,34 @@ void task_table_update(db_handle *db_handle,
                        task_table_done_callback done_callback,
                        void *user_context);
 
+/**
+ * Update a task's scheduling information in the task table, if the current
+ * value matches the given test value. This assumes that the task spec already
+ * exists in the task table entry.
+ *
+ * @param db_handle Database handle.
+ * @param task The task entry to add to the table. The task spec in the entry is
+ *        ignored.
+ * @param test_state The value to test the current task entry's scheduling
+ *        state against.
+ * @param retry Information about retrying the request to the database.
+ * @param done_callback Function to be called when database returns result.
+ * @param user_context Data that will be passed to done_callback and
+ *        fail_callback.
+ * @return Void.
+ */
 void task_table_test_and_update(db_handle *db_handle,
                                 OWNER task *task,
+                                scheduling_state test_state,
                                 retry_info *retry,
-                                task_table_done_callback done_callback,
+                                task_table_get_callback done_callback,
                                 void *user_context);
+
+/* Data that is needed to test and set the task's scheduling state. */
+typedef struct {
+  task *task;
+  scheduling_state test_state;
+} task_table_test_and_update_data;
 
 /*
  *  ==== Subscribing to the task table ====

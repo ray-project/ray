@@ -401,16 +401,20 @@ void redis_result_table_lookup_callback(redisAsyncContext *c,
                                         void *privdata) {
   REDIS_CALLBACK_HEADER(db, callback_data, r);
   redisReply *reply = r;
+  CHECKM(reply->type == REDIS_REPLY_NIL || reply->type == REDIS_REPLY_STRING,
+         "Unexpected reply type %d in redis_result_table_lookup_callback",
+         reply->type);
   /* Parse the task from the reply. */
-  task *task = parse_and_construct_task_from_redis_reply(reply);
+  task_id result_id = NIL_TASK_ID;
+  if (reply->type == REDIS_REPLY_STRING) {
+    CHECK(reply->len == sizeof(result_id));
+    memcpy(&result_id, reply->str, reply->len);
+  }
+
   /* Call the done callback if there is one. */
   result_table_lookup_callback done_callback = callback_data->done_callback;
   if (done_callback != NULL) {
-    done_callback(callback_data->id, task, callback_data->user_context);
-  }
-  /* Free the task if it is not NULL. */
-  if (task != NULL) {
-    free_task(task);
+    done_callback(callback_data->id, result_id, callback_data->user_context);
   }
   /* Clean up timer and callback. */
   destroy_timer_callback(db->loop, callback_data);
@@ -847,16 +851,19 @@ void redis_task_table_test_and_update_callback(redisAsyncContext *c,
     free_task(task);
   }
   /* Clean up timer and callback. */
+  task_table_test_and_update_data *update_data = callback_data->data;
+  free_task(update_data->task);
   destroy_timer_callback(db->loop, callback_data);
 }
 
 void redis_task_table_test_and_update(table_callback_data *callback_data) {
   db_handle *db = callback_data->db_handle;
-  task *task = callback_data->data;
+  task_table_test_and_update_data *update_data = callback_data->data;
+  task *task = update_data->task;
   task_id task_id = task_task_id(task);
   db_client_id local_scheduler_id = task_local_scheduler(task);
   scheduling_state state = task_state(task);
-  scheduling_state test_state = TASK_STATUS_DONE;
+  int test_state = update_data->test_state;
 
   CHECKM(task != NULL, "NULL task passed to redis_task_table_update.");
   int status =

@@ -32,11 +32,16 @@ void task_table_update(db_handle *db_handle,
 
 void task_table_test_and_update(db_handle *db_handle,
                                 OWNER task *task,
+                                scheduling_state test_state,
                                 retry_info *retry,
-                                task_table_done_callback done_callback,
+                                task_table_get_callback done_callback,
                                 void *user_context) {
-  init_table_callback(db_handle, task_task_id(task), __func__, task, retry,
-                      done_callback, redis_task_table_test_and_update,
+  task_table_test_and_update_data *update_data =
+      malloc(sizeof(task_table_test_and_update_data));
+  update_data->task = task;
+  update_data->test_state = test_state;
+  init_table_callback(db_handle, task_task_id(task), __func__, update_data,
+                      retry, done_callback, redis_task_table_test_and_update,
                       user_context);
 }
 

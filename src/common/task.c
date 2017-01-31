@@ -182,6 +182,9 @@ task_spec *alloc_nil_task_spec(task_id task_id) {
 }
 
 int64_t task_spec_size(task_spec *spec) {
+  if (spec == NULL) {
+    return 0;
+  }
   return TASK_SPEC_SIZE(spec->num_args, spec->num_returns,
                         spec->args_value_size);
 }
@@ -315,7 +318,10 @@ struct task_impl {
 task *alloc_task(task_spec *spec,
                  scheduling_state state,
                  db_client_id local_scheduler_id) {
-  int64_t size = sizeof(task) - sizeof(task_spec) + task_spec_size(spec);
+  int64_t size = sizeof(task);
+  if (spec != NULL) {
+    size = sizeof(task) - sizeof(task_spec) + task_spec_size(spec);
+  }
   task *result = malloc(size);
   memset(result, 0, size);
   result->state = state;
@@ -330,13 +336,6 @@ task *copy_task(task *other) {
   CHECK(copy != NULL);
   memcpy(copy, other, size);
   return copy;
-}
-
-task *alloc_nil_task(task_id task_id) {
-  task_spec *nil_spec = alloc_nil_task_spec(task_id);
-  task *nil_task = alloc_task(nil_spec, 0, NIL_ID);
-  free_task_spec(nil_spec);
-  return nil_task;
 }
 
 int64_t task_size(task *task_arg) {

@@ -236,11 +236,12 @@ void result_table_add(db_handle *db_handle,
 
 /** Callback called when the result table lookup completes. */
 typedef void (*result_table_lookup_callback)(object_id object_id,
-                                             task *task,
+                                             task_id task_id,
                                              void *user_context);
 
 /**
- * Lookup the task that created an object in the result table.
+ * Lookup the task that created an object in the result table. The return value
+ * is the task ID.
  *
  * @param db_handle Handle to object_table database.
  * @param object_id ID of the object to lookup.

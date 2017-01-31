@@ -109,6 +109,14 @@ task_spec *start_construct_task_spec(unique_id driver_id,
 void finish_construct_task_spec(task_spec *spec);
 
 /**
+ * Allocate an empty task specification with the given task ID.
+ *
+ * @param task_id The task ID of the task specification to return.
+ * @return An empty task specification with the given task ID.
+ */
+task_spec *alloc_nil_task_spec(task_id task_id);
+
+/**
  * The size of the task in bytes.
  *
  * @param spec The task_spec in question.
