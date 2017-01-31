@@ -17,24 +17,31 @@ def make_linear_network(w_name=None, b_name=None):
   b = tf.Variable(tf.zeros([1]), name=b_name)
   y = w * x_data + b
   # Return the loss and weight initializer.
-  return tf.reduce_mean(tf.square(y - y_data)), tf.global_variables_initializer()
+  return tf.reduce_mean(tf.square(y - y_data)), tf.global_variables_initializer(), x_data, y_data
 
 def net_vars_initializer():
-  # Random prefix so variable names do not clash if we use nets with
-  # the same name.
-  prefix = str(uuid.uuid1().hex)
-  # Use the tensorflow variable_scope to prefix all of the variables
-  with tf.variable_scope(prefix):
+  # Uses a separate graph for each network.
+  with tf.Graph().as_default():
     # Create the network.
-    loss, init = make_linear_network()
+    loss, init, _, _ = make_linear_network()
     sess = tf.Session()
     # Additional code for setting and getting the weights.
-    variables = ray.experimental.TensorFlowVariables(loss, sess, prefix=True)
+    variables = ray.experimental.TensorFlowVariables(loss, sess)
   # Return all of the data needed to use the network.
   return variables, init, sess
 
 def net_vars_reinitializer(net_vars):
   return net_vars
+
+def train_vars_initializer():
+  # Almost the same as above, but now returns the placeholders and gradient.
+  with tf.Graph().as_default():
+    loss, init, x_data, y_data = make_linear_network()
+    sess = tf.Session()
+    variables = ray.experimental.TensorFlowVariables(loss, sess)
+    grad = tf.gradients(loss, list(variables.variables.values()))
+  return variables, init, sess, grad, [x_data, y_data]
+
 
 class TensorFlowTest(unittest.TestCase):
 
@@ -42,7 +49,7 @@ class TensorFlowTest(unittest.TestCase):
     ray.init(num_workers=2)
 
     sess = tf.Session()
-    loss, init = make_linear_network()
+    loss, init, _, _ = make_linear_network()
     sess.run(init)
 
     variables = ray.experimental.TensorFlowVariables(loss, sess)
@@ -54,7 +61,7 @@ class TensorFlowTest(unittest.TestCase):
     variables.set_weights(weights)
     self.assertEqual(weights, variables.get_weights())
 
-    loss2, init2 = make_linear_network("w", "b")
+    loss2, init2, _, _ = make_linear_network("w", "b")
     sess.run(init2)
 
     variables2 = ray.experimental.TensorFlowVariables(loss2, sess)
@@ -148,7 +155,7 @@ class TensorFlowTest(unittest.TestCase):
 
     # Create a network on the driver locally.
     sess1 = tf.Session()
-    loss1, init1 = make_linear_network()
+    loss1, init1, _, _ = make_linear_network()
     net_vars1 = ray.experimental.TensorFlowVariables(loss1, sess1)
     sess1.run(init1)
 
@@ -167,6 +174,40 @@ class TensorFlowTest(unittest.TestCase):
 
     new_weights2 = ray.get(set_and_get_weights.remote(net_vars2.get_weights()))
     self.assertEqual(weights2, new_weights2)
+
+    ray.worker.cleanup()
+
+  def testVariablesControlDependencies(self):
+    ray.init(num_workers=1)
+
+    # Creates a network and appends a momentum optimizer.
+    sess = tf.Session()
+    loss, init, _, _ = make_linear_network()
+    minimizer = tf.train.MomentumOptimizer(0.9, 0.9).minimize(loss)
+    net_vars = ray.experimental.TensorFlowVariables(minimizer, sess)
+    sess.run(init)
+
+    # Tests if all variables are properly retrieved, 2 variables and 2 momentum
+    # variables.
+    self.assertEqual(len(net_vars.variables.items()), 4)
+
+    ray.worker.cleanup()
+
+  def testRemoteTrainingStep(self):
+    ray.init(num_workers=1)
+
+    ray.env.net = ray.EnvironmentVariable(train_vars_initializer, net_vars_reinitializer)
+
+    @ray.remote
+    def training_step(weights):
+      variables, _, sess, grad, placeholders = ray.env.net
+      variables.set_weights(weights)
+      return sess.run(grad, feed_dict=dict(zip(placeholders, [[1]*100]*2)))
+
+    variables, init, sess, _, _ = ray.env.net
+
+    sess.run(init)
+    ray.get(training_step.remote(variables.get_weights()))
 
     ray.worker.cleanup()
 
