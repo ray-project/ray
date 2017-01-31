@@ -173,24 +173,19 @@ class TestGlobalStateStore(unittest.TestCase):
     self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id1")
     response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id1")
     self.assertIsNone(response)
-    # Add the result to the result table. This is necessary, but not sufficient
-    # because the task is still not in the task table.
-    self.redis.execute_command("RAY.RESULT_TABLE_ADD", "object_id1", "task_id1")
+    # Add the result to the result table. The lookup now returns the task ID.
+    task_id = "task_id1"
+    self.redis.execute_command("RAY.RESULT_TABLE_ADD", "object_id1", task_id)
     response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id1")
-    self.assertIsNone(response)
-    # Add the task to the task table so that the result table lookup can
-    # succeed.
-    self.redis.execute_command("RAY.TASK_TABLE_ADD", "task_id1", 1, "local_scheduler_id1", "task_spec1")
-    response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id1")
-    self.assertEqual(response, [1, b"local_scheduler_id1", b"task_spec1"])
+    self.assertEqual(response, task_id)
     # Doing it again should still work.
     response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id1")
-    self.assertEqual(response, [1, b"local_scheduler_id1", b"task_spec1"])
+    self.assertEqual(response, task_id)
     # Try another result table lookup. This should succeed.
-    self.redis.execute_command("RAY.TASK_TABLE_ADD", "task_id2", 2, "local_scheduler_id2", "task_spec2")
-    self.redis.execute_command("RAY.RESULT_TABLE_ADD", "object_id2", "task_id2")
+    task_id = "task_id2"
+    self.redis.execute_command("RAY.RESULT_TABLE_ADD", "object_id2", task_id)
     response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id2")
-    self.assertEqual(response, [2, b"local_scheduler_id2", b"task_spec2"])
+    self.assertEqual(response, task_id)
 
   def testInvalidTaskTableAdd(self):
     # Check that Redis returns an error when RAY.TASK_TABLE_ADD is called with
