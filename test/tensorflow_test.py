@@ -20,7 +20,7 @@ def make_linear_network(w_name=None, b_name=None):
   return tf.reduce_mean(tf.square(y - y_data)), tf.global_variables_initializer(), x_data, y_data
 
 def net_vars_initializer():
-  # Uses a seperate graph for each network.
+  # Uses a separate graph for each network.
   with tf.Graph().as_default():
     # Create the network.
     loss, init, _, _ = make_linear_network()
@@ -41,7 +41,7 @@ def train_vars_initializer():
     variables = ray.experimental.TensorFlowVariables(loss, sess)
     grad = tf.gradients(loss, list(variables.variables.values()))
   return variables, init, sess, grad, [x_data, y_data]
-  
+
 
 class TensorFlowTest(unittest.TestCase):
 
@@ -93,7 +93,7 @@ class TensorFlowTest(unittest.TestCase):
 
     ray.env.net1 = ray.EnvironmentVariable(net_vars_initializer, net_vars_reinitializer)
     ray.env.net2 = ray.EnvironmentVariable(net_vars_initializer, net_vars_reinitializer)
-    
+
     net_vars1, init1, sess1 = ray.env.net1
     net_vars2, init2, sess2 = ray.env.net2
 
@@ -115,7 +115,7 @@ class TensorFlowTest(unittest.TestCase):
 
     ray.env.net1 = ray.EnvironmentVariable(net_vars_initializer, net_vars_reinitializer)
     ray.env.net2 = ray.EnvironmentVariable(net_vars_initializer, net_vars_reinitializer)
-    
+
     net_vars1, init1, sess1 = ray.env.net1
     net_vars2, init2, sess2 = ray.env.net2
 
@@ -220,7 +220,7 @@ class TensorFlowTest(unittest.TestCase):
       variables, _, sess, grad, placeholders = ray.env.net
       variables.set_weights(weights)
       return sess.run(grad, feed_dict=dict(zip(placeholders, [[1]*100]*2)))
-  
+
     variables, init, sess, _, _ = ray.env.net
 
     sess.run(init)

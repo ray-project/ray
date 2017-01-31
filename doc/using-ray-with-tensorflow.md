@@ -72,13 +72,13 @@ b.assign(np.zeros(1))  # This adds a node to the graph every time you call it.
 ## Complete Example
 
 Putting this all together, we would first create the graph on each worker using
-environment variables. Within the environment variables, we would use the 
+environment variables. Within the environment variables, we would use the
 `get_weights` and `set_weights` methods of the `TensorFlowVariables` class. We
-would then use those methods to ship the weights (as a dictionary of variable 
+would then use those methods to ship the weights (as a dictionary of variable
 names mapping to tensorflow tensors) between the processes without shipping the
 actual TensorFlow graphs, which are much more complex Python objects. Note that
-to avoid namespace collision with already created variables on the workers, we 
-use a seperate graph for each network.
+to avoid namespace collision with already created variables on the workers, we
+use a separate graph for each network.
 
 ```python
 import tensorflow as tf
