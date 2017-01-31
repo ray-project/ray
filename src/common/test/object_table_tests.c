@@ -31,12 +31,11 @@ void new_object_fail_callback(unique_id id,
 /* === Test adding an object with an associated task === */
 
 void new_object_done_callback(object_id object_id,
-                              task *task,
+                              task_id task_id,
                               void *user_context) {
   new_object_succeeded = 1;
   CHECK(object_ids_equal(object_id, new_object_id));
-  CHECK(task);
-  CHECK(memcmp(task, new_object_task, task_size(task)) == 0);
+  CHECK(task_ids_equal(task_id, new_object_task_id));
   event_loop_stop(g_loop);
 }
 
@@ -92,24 +91,12 @@ TEST new_object_test(void) {
 
 /* === Test adding an object without an associated task === */
 
-void new_object_no_task_lookup_callback(object_id object_id,
-                                        task *task,
-                                        void *user_context) {
+void new_object_no_task_callback(object_id object_id,
+                                 task_id task_id,
+                                 void *user_context) {
   new_object_succeeded = 1;
-  CHECK(task == NULL);
+  CHECK(IS_NIL_ID(task_id));
   event_loop_stop(g_loop);
-}
-
-void new_object_no_task_callback(object_id object_id, void *user_context) {
-  CHECK(object_ids_equal(object_id, new_object_id));
-  retry_info retry = {
-      .num_retries = 5,
-      .timeout = 100,
-      .fail_callback = new_object_fail_callback,
-  };
-  db_handle *db = user_context;
-  result_table_lookup(db, object_id, &retry, new_object_no_task_lookup_callback,
-                      NULL);
 }
 
 TEST new_object_no_task_test(void) {
@@ -126,8 +113,8 @@ TEST new_object_no_task_test(void) {
       .timeout = 100,
       .fail_callback = new_object_fail_callback,
   };
-  result_table_add(db, new_object_id, new_object_task_id, &retry,
-                   new_object_no_task_callback, db);
+  result_table_lookup(db, new_object_id, &retry, new_object_no_task_callback,
+                      NULL);
   event_loop_run(g_loop);
   db_disconnect(db);
   destroy_outstanding_callbacks(g_loop);
