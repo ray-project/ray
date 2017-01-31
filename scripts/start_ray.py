@@ -51,7 +51,8 @@ if __name__ == "__main__":
     print("Using IP address {} for this node.".format(node_ip_address))
 
     if args.redis_port is not None:
-      address_info_in = { "redis_address" : "{}:{}".format(node_ip_address, args.redis_port) }
+      address_info_in = {"redis_address": "{}:{}".format(node_ip_address,
+                                                         args.redis_port)}
     else:
       address_info_in = None
 
