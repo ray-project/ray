@@ -52,8 +52,8 @@ ObjectStoreAddress = namedtuple("ObjectStoreAddress", ["name",
                                                        "manager_name",
                                                        "manager_port"])
 
-def address(host, port):
-  return host + ":" + str(port)
+def address(ip_address, port):
+  return ip_address + ":" + str(port)
 
 def get_port(address):
   try:
@@ -101,7 +101,7 @@ def cleanup():
   """When running in local mode, shutdown the Ray processes.
 
   This method is used to shutdown processes that were started with
-  services.start_ray_local(). It kills all scheduler, object store, and worker
+  services.start_ray_head(). It kills all scheduler, object store, and worker
   processes that were started by this services module. Driver processes are
   started and disconnected by worker.py.
   """
@@ -140,19 +140,19 @@ def get_node_ip_address(address="8.8.8.8:53"):
   Returns:
     The IP address of the current node.
   """
-  host, port = address.split(":")
+  ip_address, port = address.split(":")
   s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-  s.connect((host, int(port)))
+  s.connect((ip_address, int(port)))
   return s.getsockname()[0]
 
-def wait_for_redis_to_start(redis_host, redis_port, num_retries=5):
+def wait_for_redis_to_start(redis_ip_address, redis_port, num_retries=5):
   """Wait for a Redis server to be available.
 
   This is accomplished by creating a Redis client and sending a random command
   to the server until the command gets through.
 
   Args:
-    redis_host (str): The IP address of the redis server.
+    redis_ip_address (str): The IP address of the redis server.
     redis_port (int): The port of the redis server.
     num_retries (int): The number of times to try connecting with redis. The
       client will sleep for one second between attempts.
@@ -160,13 +160,13 @@ def wait_for_redis_to_start(redis_host, redis_port, num_retries=5):
   Raises:
     Exception: An exception is raised if we could not connect with Redis.
   """
-  redis_client = redis.StrictRedis(host=redis_host, port=redis_port)
+  redis_client = redis.StrictRedis(host=redis_ip_address, port=redis_port)
   # Wait for the Redis server to start.
   counter = 0
   while counter < num_retries:
     try:
       # Run some random command and see if it worked.
-      print("Waiting for redis server at {}:{} to respond...".format(redis_host, redis_port))
+      print("Waiting for redis server at {}:{} to respond...".format(redis_ip_address, redis_port))
       redis_client.client_list()
     except redis.ConnectionError as e:
       # Wait a little bit.
@@ -178,10 +178,11 @@ def wait_for_redis_to_start(redis_host, redis_port, num_retries=5):
   if counter == num_retries:
     raise Exception("Unable to connect to Redis. If the Redis instance is on a different machine, check that your firewall is configured properly.")
 
-def start_redis(node_ip_address, num_retries=20, cleanup=True, redirect_output=False):
+def start_redis(port=None, num_retries=20, cleanup=True, redirect_output=False):
   """Start a Redis server.
 
   Args:
+    port (int): If provided, start a Redis server with this port.
     num_retries (int): The number of times to attempt to start Redis.
     cleanup (bool): True if using Ray in local mode. If cleanup is true, then
       this process will be killed by serices.cleanup() when the Python process
@@ -190,7 +191,8 @@ def start_redis(node_ip_address, num_retries=20, cleanup=True, redirect_output=F
       /dev/null.
 
   Returns:
-    The address used by Redis.
+    The port used by Redis. If a port is passed in, then the same value is
+      returned.
 
   Raises:
     Exception: An exception is raised if Redis could not be started.
@@ -200,10 +202,14 @@ def start_redis(node_ip_address, num_retries=20, cleanup=True, redirect_output=F
   assert os.path.isfile(redis_filepath)
   assert os.path.isfile(redis_module)
   counter = 0
+  if port is not None:
+    if num_retries != 1:
+      raise Exception("Num retries must be 1 if port is specified")
+  else:
+    port = new_port()
   while counter < num_retries:
     if counter > 0:
       print("Redis failed to start, retrying now.")
-    port = new_port()
     with open(os.devnull, "w") as FNULL:
       stdout = FNULL if redirect_output else None
       stderr = FNULL if redirect_output else None
@@ -215,6 +221,7 @@ def start_redis(node_ip_address, num_retries=20, cleanup=True, redirect_output=F
       if cleanup:
         all_processes[PROCESS_TYPE_REDIS_SERVER].append(p)
       break
+    port = new_port()
     counter += 1
   if counter == num_retries:
     raise Exception("Couldn't start Redis.")
@@ -229,8 +236,7 @@ def start_redis(node_ip_address, num_retries=20, cleanup=True, redirect_output=F
   # Configure Redis to not run in protected mode so that processes on other
   # hosts can connect to it. TODO(rkn): Do this in a more secure way.
   redis_client.config_set("protected-mode", "no")
-  redis_address = address(node_ip_address, port)
-  return redis_address
+  return port
 
 def start_global_scheduler(redis_address, cleanup=True, redirect_output=False):
   """Start a global scheduler process.
@@ -370,7 +376,8 @@ def start_ray_processes(address_info=None,
                         worker_path=None,
                         cleanup=True,
                         redirect_output=False,
-                        include_global_scheduler=False):
+                        include_global_scheduler=False,
+                        include_redis=False):
   """Helper method to start Ray processes.
 
   Args:
@@ -393,6 +400,8 @@ def start_ray_processes(address_info=None,
       /dev/null.
     include_global_scheduler (bool): If include_global_scheduler is True, then
       start a global scheduler process.
+    include_redis (bool): If include_redis is True, then start a Redis server
+      process.
 
   Returns:
     A dictionary of the address information for the processes that were
@@ -410,12 +419,26 @@ def start_ray_processes(address_info=None,
   # warning messages when it starts up. Instead of suppressing the output, we
   # should address the warnings.
   redis_address = address_info.get("redis_address")
-  if redis_address is None:
-    redis_address = start_redis(node_ip_address, cleanup=cleanup,
-                                redirect_output=redirect_output)
-    address_info["redis_address"] = redis_address
-    time.sleep(0.1)
-  redis_port = get_port(redis_address)
+  if include_redis:
+    if redis_address is None:
+      # Start a Redis server. The start_redis method will choose a random port.
+      redis_port = start_redis(cleanup=cleanup, redirect_output=redirect_output)
+      redis_address = address(node_ip_address, redis_port)
+      address_info["redis_address"] = redis_address
+      time.sleep(0.1)
+    else:
+      # A Redis address was provided, so start a Redis server with the given
+      # port. TODO(rkn): We should check that the IP address corresponds to the
+      # machine that this method is running on.
+      redis_ip_address, redis_port = redis_address.split(":")
+      new_redis_port = start_redis(port=int(redis_port),
+                                   num_retries=1,
+                                   cleanup=cleanup,
+                                   redirect_output=redirect_output)
+      assert redis_port == new_redis_port
+  else:
+    if redis_address is None:
+      raise Exception("Redis address expected")
 
   # Start the global scheduler, if necessary.
   if include_global_scheduler:
@@ -519,13 +542,13 @@ def start_ray_node(node_ip_address,
                              cleanup=cleanup,
                              redirect_output=redirect_output)
 
-def start_ray_local(address_info=None,
-                    node_ip_address="127.0.0.1",
-                    num_workers=0,
-                    num_local_schedulers=1,
-                    worker_path=None,
-                    cleanup=True,
-                    redirect_output=False):
+def start_ray_head(address_info=None,
+                   node_ip_address="127.0.0.1",
+                   num_workers=0,
+                   num_local_schedulers=1,
+                   worker_path=None,
+                   cleanup=True,
+                   redirect_output=False):
   """Start Ray in local mode.
 
   Args:
@@ -558,4 +581,5 @@ def start_ray_local(address_info=None,
                              worker_path=worker_path,
                              cleanup=cleanup,
                              redirect_output=redirect_output,
-                             include_global_scheduler=True)
+                             include_global_scheduler=True,
+                             include_redis=True)

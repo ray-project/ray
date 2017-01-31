@@ -649,10 +649,10 @@ def initialize_numbuf(worker=global_worker):
     register_class(RayGetArgumentError)
 
 def get_address_info_from_redis_helper(redis_address, node_ip_address):
-  redis_host, redis_port = redis_address.split(":")
+  redis_ip_address, redis_port = redis_address.split(":")
   # For this command to work, some other client (on the same machine as Redis)
   # must have run "CONFIG SET protected-mode no".
-  redis_client = redis.StrictRedis(host=redis_host, port=int(redis_port))
+  redis_client = redis.StrictRedis(host=redis_ip_address, port=int(redis_port))
   # The client table prefix must be kept in sync with the file
   # "src/common/redis_module/ray_redis_module.c" where it is defined.
   REDIS_CLIENT_TABLE_PREFIX = "CL:"
@@ -781,10 +781,10 @@ def _init(address_info=None, start_ray_local=False, object_id_seed=None,
         num_local_schedulers = 1
     # Start the scheduler, object store, and some workers. These will be killed
     # by the call to cleanup(), which happens when the Python script exits.
-    address_info = services.start_ray_local(address_info=address_info,
-                                            node_ip_address=node_ip_address,
-                                            num_workers=num_workers,
-                                            num_local_schedulers=num_local_schedulers)
+    address_info = services.start_ray_head(address_info=address_info,
+                                           node_ip_address=node_ip_address,
+                                           num_workers=num_workers,
+                                           num_local_schedulers=num_local_schedulers)
   else:
     if redis_address is None:
       raise Exception("If start_ray_local=False, then redis_address must be provided.")
@@ -1075,8 +1075,8 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker):
   worker.node_ip_address = info["node_ip_address"]
   worker.redis_address = info["redis_address"]
   # Create a Redis client.
-  redis_host, redis_port = info["redis_address"].split(":")
-  worker.redis_client = redis.StrictRedis(host=redis_host, port=int(redis_port))
+  redis_ip_address, redis_port = info["redis_address"].split(":")
+  worker.redis_client = redis.StrictRedis(host=redis_ip_address, port=int(redis_port))
   worker.lock = threading.Lock()
   # Create an object store client.
   worker.plasma_client = plasma.PlasmaClient(info["store_socket_name"], info["manager_socket_name"])
