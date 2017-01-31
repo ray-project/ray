@@ -6,6 +6,7 @@ import unittest
 import ray
 import numpy as np
 import time
+import redis
 
 class TaskTests(unittest.TestCase):
 
@@ -110,34 +111,52 @@ class TaskTests(unittest.TestCase):
 
 class ReconstructionTests(unittest.TestCase):
 
+  num_local_schedulers = 1
+
   def setUp(self):
-    # Start a Redis instance and a Plasma store instance with 1GB memory.
+    # Start a Redis instance and Plasma store instances with a total of 1GB
+    # memory.
     node_ip_address = "127.0.0.1"
-    redis_address = ray.services.start_redis(node_ip_address)
+    self.redis_address = ray.services.start_redis(node_ip_address)
     self.plasma_store_memory = 10 ** 9
-    plasma_address = ray.services.start_objstore(node_ip_address,
-                                                 redis_address,
-                                                 objstore_memory=self.plasma_store_memory)
+    plasma_addresses = []
+    objstore_memory = (self.plasma_store_memory // self.num_local_schedulers)
+    for i in range(self.num_local_schedulers):
+        plasma_addresses.append(
+            ray.services.start_objstore(node_ip_address, self.redis_address,
+                                        objstore_memory=objstore_memory)
+            )
     address_info = {
-        "redis_address": redis_address,
-        "object_store_addresses": [plasma_address],
+        "redis_address": self.redis_address,
+        "object_store_addresses": plasma_addresses,
         }
 
     # Start the rest of the services in the Ray cluster.
     ray.worker._init(address_info=address_info, start_ray_local=True,
-                     num_workers=1)
+                     num_workers=self.num_local_schedulers, num_local_schedulers=self.num_local_schedulers)
 
   def tearDown(self):
-    # Clean up the Ray cluster.
     self.assertTrue(ray.services.all_processes_alive())
+
+    # Make sure that all nodes in the cluster were used by checking where tasks
+    # were scheduled and/or submitted from.
+    redis_port = ray.services.get_port(self.redis_address)
+    r = redis.StrictRedis(port=redis_port)
+    task_ids = r.keys("TT:*")
+    task_ids = [task_id[3:] for task_id in task_ids]
+    node_ids = [r.execute_command("ray.task_table_get", task_id)[1] for task_id
+                in task_ids]
+    self.assertEqual(len(set(node_ids)), self.num_local_schedulers)
+
+    # Clean up the Ray cluster.
     ray.worker.cleanup()
 
-  def testSingleNodeSimple(self):
+  def testSimple(self):
     # Define the size of one task's return argument so that the combined sum of
-    # all objects' sizes is at least 10 times the plasma store's allotted
+    # all objects' sizes is at least twice the plasma stores' combined allotted
     # memory.
     num_objects = 1000
-    size = self.plasma_store_memory * 10 // (num_objects * 8)
+    size = self.plasma_store_memory * 2 // (num_objects * 8)
 
     # Define a remote task with no dependencies, which returns a numpy array of
     # the given size.
@@ -162,11 +181,12 @@ class ReconstructionTests(unittest.TestCase):
       value = ray.get(args[i])
       self.assertEqual(value[0], i)
 
-  def testSingleNodeRecursive(self):
+  def testRecursive(self):
     # Define the size of one task's return argument so that the combined sum of
-    # all objects' sizes is at least 10 times the plasma store's allotted memory.
+    # all objects' sizes is at least twice the plasma stores' combined allotted
+    # memory.
     num_objects = 1000
-    size = self.plasma_store_memory * 10 // (num_objects * 8)
+    size = self.plasma_store_memory * 2 // (num_objects * 8)
 
     # Define a root task with no dependencies, which returns a numpy array of
     # the given size.
@@ -205,14 +225,12 @@ class ReconstructionTests(unittest.TestCase):
       value = ray.get(args[i])
       self.assertEqual(value[0], i)
 
-    self.assertTrue(ray.services.all_processes_alive())
-    ray.worker.cleanup()
-
-  def testSingleNodeMultipleRecursive(self):
+  def testMultipleRecursive(self):
     # Define the size of one task's return argument so that the combined sum of
-    # all objects' sizes is twice the plasma store's allotted memory.
+    # all objects' sizes is at least twice the plasma stores' combined allotted
+    # memory.
     num_objects = 1000
-    size = int(self.plasma_store_memory * 2 / (num_objects * 8))
+    size = self.plasma_store_memory * 2 // (num_objects * 8)
 
     # Define a root task with no dependencies, which returns a numpy array of
     # the given size.
@@ -256,8 +274,11 @@ class ReconstructionTests(unittest.TestCase):
       value = ray.get(args[i])
       self.assertEqual(value[0], i)
 
-    self.assertTrue(ray.services.all_processes_alive())
-    ray.worker.cleanup()
+class ReconstructionTestsMultinode(ReconstructionTests):
+
+  # Run the same tests as the single-node suite, but with 4 local schedulers,
+  # one worker each.
+  num_local_schedulers = 4
 
 if __name__ == "__main__":
   unittest.main(verbosity=2)
