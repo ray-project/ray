@@ -113,9 +113,6 @@ typedef struct {
   object_id object_id;
   /** The plasma manager state. */
   plasma_manager_state *manager_state;
-  /** The ID for the timer that will time out the current request to the state
-   *  database or another plasma manager. */
-  int64_t timer;
   /** Pointer to the array containing the manager locations of this object. This
    *  struct owns and must free each entry. */
   char **manager_vector;
@@ -433,7 +430,6 @@ fetch_request *create_fetch_request(plasma_manager_state *manager_state,
   fetch_request *fetch_req = malloc(sizeof(fetch_request));
   fetch_req->manager_state = manager_state;
   fetch_req->object_id = object_id;
-  fetch_req->timer = -1;
   fetch_req->manager_count = 0;
   fetch_req->manager_vector = NULL;
   return fetch_req;
@@ -443,11 +439,6 @@ void remove_fetch_request(plasma_manager_state *manager_state,
                           fetch_request *fetch_req) {
   /* Remove the fetch request from the table of fetch requests. */
   HASH_DELETE(hh, manager_state->fetch_requests, fetch_req);
-  /* Remove the timer associated with this fetch request. */
-  if (fetch_req->timer != -1) {
-    CHECK(event_loop_remove_timer(manager_state->loop, fetch_req->timer) ==
-          AE_OK);
-  }
   /* Free the fetch request and everything in it. */
   for (int i = 0; i < fetch_req->manager_count; ++i) {
     free(fetch_req->manager_vector[i]);
@@ -898,10 +889,15 @@ void request_transfer_from(plasma_manager_state *manager_state,
   fetch_req->next_manager %= fetch_req->manager_count;
 }
 
-int manager_timeout_handler(event_loop *loop, timer_id id, void *context) {
-  fetch_request *fetch_req = context;
-  plasma_manager_state *manager_state = fetch_req->manager_state;
-  request_transfer_from(manager_state, fetch_req->object_id);
+int fetch_timeout_handler(event_loop *loop, timer_id id, void *context) {
+  plasma_manager_state *manager_state = context;
+  /* Loop over the fetch requests and reissue the requests. */
+  fetch_request *fetch_req, *tmp;
+  HASH_ITER(hh, manager_state->fetch_requests, fetch_req, tmp) {
+    if (fetch_req->manager_count > 0) {
+      request_transfer_from(fetch_req->manager_state, fetch_req->object_id);
+    }
+  }
   return MANAGER_TIMEOUT;
 }
 
@@ -959,13 +955,6 @@ void request_transfer(object_id object_id,
   /* Wait for the object data for the default number of retries, which timeout
    * after a default interval. */
   request_transfer_from(manager_state, object_id);
-  /* It is possible for this method to be called multiple times, but we only
-   * need to create a timer once. */
-  if (fetch_req->timer == -1) {
-    fetch_req->timer =
-        event_loop_add_timer(manager_state->loop, MANAGER_TIMEOUT,
-                             manager_timeout_handler, fetch_req);
-  }
 }
 
 /* This method is only called from the tests. */
@@ -1484,6 +1473,12 @@ void start_server(const char *store_socket_name,
   object_table_subscribe_to_notifications(g_manager_state->db, false,
                                           object_table_subscribe_callback,
                                           g_manager_state, NULL, NULL, NULL);
+  /* Set up a recurring timer that will loop through the outstanding fetch
+   * requests and reissue requests for transfers of those objects. */
+  event_loop_add_timer(g_manager_state->loop, MANAGER_TIMEOUT,
+                       fetch_timeout_handler, g_manager_state);
+
+
   /* Run the event loop. */
   event_loop_run(g_manager_state->loop);
 }
