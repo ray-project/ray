@@ -178,10 +178,11 @@ def wait_for_redis_to_start(redis_host, redis_port, num_retries=5):
   if counter == num_retries:
     raise Exception("Unable to connect to Redis. If the Redis instance is on a different machine, check that your firewall is configured properly.")
 
-def start_redis(node_ip_address, port=None, num_retries=20, cleanup=True, redirect_output=False):
+def start_redis(port=None, num_retries=20, cleanup=True, redirect_output=False):
   """Start a Redis server.
 
   Args:
+    port (int): If provided, start a Redis server with this port.
     num_retries (int): The number of times to attempt to start Redis.
     cleanup (bool): True if using Ray in local mode. If cleanup is true, then
       this process will be killed by serices.cleanup() when the Python process
@@ -190,7 +191,8 @@ def start_redis(node_ip_address, port=None, num_retries=20, cleanup=True, redire
       /dev/null.
 
   Returns:
-    The address used by Redis.
+    The port used by Redis. If a port is passed in, then the same value is
+      returned.
 
   Raises:
     Exception: An exception is raised if Redis could not be started.
@@ -234,8 +236,7 @@ def start_redis(node_ip_address, port=None, num_retries=20, cleanup=True, redire
   # Configure Redis to not run in protected mode so that processes on other
   # hosts can connect to it. TODO(rkn): Do this in a more secure way.
   redis_client.config_set("protected-mode", "no")
-  redis_address = address(node_ip_address, port)
-  return redis_address
+  return port
 
 def start_global_scheduler(redis_address, cleanup=True, redirect_output=False):
   """Start a global scheduler process.
@@ -399,8 +400,8 @@ def start_ray_processes(address_info=None,
       /dev/null.
     include_global_scheduler (bool): If include_global_scheduler is True, then
       start a global scheduler process.
-    include_redis (bool): If include_redis is True, then start a Redis
-      server process.
+    include_redis (bool): If include_redis is True, then start a Redis server
+      process.
 
   Returns:
     A dictionary of the address information for the processes that were
@@ -420,22 +421,24 @@ def start_ray_processes(address_info=None,
   redis_address = address_info.get("redis_address")
   if include_redis:
     if redis_address is None:
-      redis_address = start_redis(node_ip_address, cleanup=cleanup,
-                                  redirect_output=redirect_output)
+      # Start a Redis server. The start_redis method will choose a random port.
+      redis_port = start_redis(cleanup=cleanup, redirect_output=redirect_output)
+      redis_address = address(node_ip_address, redis_port)
       address_info["redis_address"] = redis_address
       time.sleep(0.1)
     else:
+      # A Redis address was provided, so start a Redis server with the given
+      # port. TODO(rkn): We should check that the IP address corresponds to the
+      # machine that this method is running on.
       redis_host, redis_port = redis_address.split(":")
-      redis_address = start_redis(redis_host,
-                                  port=int(redis_port),
-                                  num_retries=1,
-                                  cleanup=cleanup,
-                                  redirect_output=redirect_output)
+      new_redis_port = start_redis(port=int(redis_port),
+                                   num_retries=1,
+                                   cleanup=cleanup,
+                                   redirect_output=redirect_output)
+      assert redis_port == new_redis_port
   else:
     if redis_address is None:
       raise Exception("Redis address expected")
-
-  redis_port = get_port(redis_address)
 
   # Start the global scheduler, if necessary.
   if include_global_scheduler:

@@ -51,12 +51,12 @@ if __name__ == "__main__":
     print("Using IP address {} for this node.".format(node_ip_address))
 
     if args.redis_port is not None:
-      address_info_in = {"redis_address": "{}:{}".format(node_ip_address,
-                                                         args.redis_port)}
+      address_info = {"redis_address": "{}:{}".format(node_ip_address,
+                                                      args.redis_port)}
     else:
-      address_info_in = None
+      address_info = None
 
-    address_info = services.start_ray_head(address_info=address_info_in,
+    address_info = services.start_ray_head(address_info=address_info,
                                            node_ip_address=node_ip_address,
                                            num_workers=args.num_workers,
                                            cleanup=False,
