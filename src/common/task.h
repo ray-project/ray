@@ -109,14 +109,6 @@ task_spec *start_construct_task_spec(unique_id driver_id,
 void finish_construct_task_spec(task_spec *spec);
 
 /**
- * Allocate an empty task specification with the given task ID.
- *
- * @param task_id The task ID of the task specification to return.
- * @return An empty task specification with the given task ID.
- */
-task_spec *alloc_nil_task_spec(task_id task_id);
-
-/**
  * The size of the task in bytes.
  *
  * @param spec The task_spec in question.
@@ -334,15 +326,5 @@ task_id task_task_id(task *task);
 
 /** Free this task datastructure. */
 void free_task(task *task);
-
-/**
- * ==== Task update ====
- * Contains the information necessary to update a task in the task log.
- */
-
-typedef struct {
-  scheduling_state state;
-  db_client_id local_scheduler_id;
-} task_update;
 
 #endif

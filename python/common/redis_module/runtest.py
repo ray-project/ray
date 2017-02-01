@@ -246,6 +246,7 @@ class TestGlobalStateStore(unittest.TestCase):
 
     # If the current value is no longer the same as the test value, the
     # response is nil.
+    task_args[1] += 1
     response = self.redis.execute_command("RAY.TASK_TABLE_TEST_AND_UPDATE",
                                           "task_id",
                                           *task_args[:3])
@@ -253,6 +254,7 @@ class TestGlobalStateStore(unittest.TestCase):
     # Check that the update did not happen.
     get_response2 = self.redis.execute_command("RAY.TASK_TABLE_GET", "task_id")
     self.assertEqual(get_response2, get_response)
+    self.assertNotEqual(get_response2, task_args[1:])
 
   def testTaskTableSubscribe(self):
     scheduling_state = 1

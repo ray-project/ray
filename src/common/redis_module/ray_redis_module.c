@@ -845,22 +845,31 @@ int TaskTableUpdate_RedisCommand(RedisModuleCtx *ctx,
 }
 
 /**
- * Update an entry in the task table. This does not update the task
- * specification in the table.
+ * Test and update an entry in the task table if the current value matches the
+ * test value. This does not update the task specification in the table.
  *
  * This is called from a client with the command:
  *
- *     RAY.TASK_TABLE_UPDATE <task ID> <state> <local scheduler ID>
+ *     RAY.TASK_TABLE_TEST_AND_UPDATE <task ID> <test state> <state>
+ *         <local scheduler ID>
  *
  * @param task_id A string that is the ID of the task.
- * @param state A string that is the current scheduling state (a
- *        scheduling_state enum instance). The string's value must be a
+ * @param test_state A string that is the test value for the scheduling state.
+ *        The update happens if and only if the current scheduling state
+ *        matches this value.
+ * @param state A string that is the scheduling state (a scheduling_state enum
+ *        instance) to update the task entry with. The string's value must be a
  *        nonnegative integer less than 100, so that it has width at most 2. If
  *        less than 2, the value will be left-padded with spaces to a width of
  *        2.
  * @param ray_client_id A string that is the ray client ID of the associated
- *        local scheduler, if any.
- * @return OK if the operation was successful.
+ *        local scheduler, if any, to update the task entry with.
+ * @return If the current scheduling state does not match the test value,
+ *         returns nil. Else, returns the same as RAY.TASK_TABLE_GET: an array
+ *         of strings representing the updated task fields in the following
+ *         order: 1) (integer) scheduling state 2) (string) associated node ID,
+ *         if any 3) (string) the task specification, which can be casted to a
+ *         task_spec.
  */
 int TaskTableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
                                         RedisModuleString **argv,

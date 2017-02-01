@@ -173,14 +173,6 @@ void finish_construct_task_spec(task_spec *spec) {
   }
 }
 
-task_spec *alloc_nil_task_spec(task_id task_id) {
-  task_spec *spec =
-      start_construct_task_spec(NIL_ID, NIL_ID, 0, NIL_FUNCTION_ID, 0, 0, 0);
-  finish_construct_task_spec(spec);
-  spec->task_id = task_id;
-  return spec;
-}
-
 int64_t task_spec_size(task_spec *spec) {
   return TASK_SPEC_SIZE(spec->num_args, spec->num_returns,
                         spec->args_value_size);

@@ -41,7 +41,7 @@ ERROR_ID_LENGTH = 20
 
 # When performing ray.get, wait 1 second before attemping to reconstruct and
 # fetch the object again.
-GET_TIMEOUT = 1000
+GET_TIMEOUT_MILLISECONDS = 1000
 
 def random_string():
   return np.random.bytes(20)
@@ -458,13 +458,13 @@ class Worker(object):
     unready_ids = dict((object_id, i) for (i, (object_id, val)) in
                        enumerate(final_results) if val is None)
     # Try reconstructing any objects we haven't gotten yet. Try to get them
-    # until GET_TIMEOUT milliseconds passes, then repeat.
+    # until GET_TIMEOUT_MILLISECONDS milliseconds passes, then repeat.
     while len(unready_ids) > 0:
       for unready_id in unready_ids:
         self.photon_client.reconstruct_object(unready_id)
       results = numbuf.retrieve_list(list(unready_ids.keys()),
                                      self.plasma_client.conn,
-                                     GET_TIMEOUT)
+                                     GET_TIMEOUT_MILLISECONDS)
       # Remove any entries for objects we received during this iteration so we
       # don't retrieve the same object twice.
       for object_id, val in results:

@@ -213,13 +213,9 @@ void reconstruct_result_lookup_callback(object_id reconstruct_object_id,
    * already being taken care of. NOTE: This codepath is not responsible for
    * detecting failure of the other reconstruction, or updating the
    * scheduling_state accordingly. */
-  task_spec *nil_spec = alloc_nil_task_spec(task_id);
-  task *task = alloc_task(nil_spec, TASK_STATUS_RECONSTRUCTING,
-                          get_db_client_id(state->db));
-  free_task_spec(nil_spec);
-  task_table_test_and_update(state->db, task, TASK_STATUS_DONE,
-                             (retry_info *) &photon_retry,
-                             reconstruct_task_update_callback, state);
+  task_table_test_and_update(
+      state->db, task_id, TASK_STATUS_DONE, TASK_STATUS_RECONSTRUCTING,
+      (retry_info *) &photon_retry, reconstruct_task_update_callback, state);
 }
 
 void reconstruct_object_lookup_callback(object_id reconstruct_object_id,
