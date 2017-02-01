@@ -1376,9 +1376,10 @@ void process_message(event_loop *loop,
   case MessageType_PlasmaFetchRequest: {
     LOG_DEBUG("Processing fetch remote");
     int64_t num_objects = plasma_read_FetchRequest_num_objects(data);
-    object_id object_ids_to_fetch[num_objects];
+    object_id *object_ids_to_fetch = malloc(num_objects * sizeof(object_id));
     plasma_read_FetchRequest(data, object_ids_to_fetch, num_objects);
     process_fetch_requests(conn, num_objects, &object_ids_to_fetch[0]);
+    free(object_ids_to_fetch);
   } break;
   case MessageType_PlasmaWaitRequest: {
     LOG_DEBUG("Processing wait");
