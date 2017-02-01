@@ -39,7 +39,6 @@ void task_table_test_and_update(db_handle *db_handle,
                                 void *user_context) {
   task_table_test_and_update_data *update_data =
       malloc(sizeof(task_table_test_and_update_data));
-  memset(update_data, 0, sizeof(task_table_test_and_update_data));
   update_data->test_state = test_state;
   update_data->update_state = update_state;
   /* Update the task entry's local scheduler with this client's ID. */
