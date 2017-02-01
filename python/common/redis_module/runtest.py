@@ -9,6 +9,7 @@ import sys
 import time
 import unittest
 import redis
+import ray.services
 
 # Check if the redis-server binary is present.
 redis_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../core/src/common/thirdparty/redis/src/redis-server")
@@ -42,17 +43,11 @@ def integerToAsciiHex(num, numbytes):
 class TestGlobalStateStore(unittest.TestCase):
 
   def setUp(self):
-    redis_port = random.randint(2000, 50000)
-    self.redis_process = subprocess.Popen([redis_path,
-                                           "--port", str(redis_port),
-                                           "--loglevel", "warning",
-                                           "--loadmodule", module_path])
-    time.sleep(1.5)
+    redis_port = ray.services.start_redis()
     self.redis = redis.StrictRedis(host="localhost", port=redis_port, db=0)
 
   def tearDown(self):
-    self.redis_process.kill()
-
+    ray.services.cleanup()
 
   def testInvalidObjectTableAdd(self):
     # Check that Redis returns an error when RAY.OBJECT_TABLE_ADD is called with
