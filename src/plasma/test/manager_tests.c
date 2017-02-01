@@ -177,6 +177,11 @@ TEST request_transfer_retry_test(void) {
   free(manager_vector);
   event_loop_add_timer(local_mock->loop, MANAGER_TIMEOUT * 2, test_done_handler,
                        local_mock->state);
+  /* Register the fetch timeout handler. This is normally done when the plasma
+   * manager is started. It is needed here so that retries will happen when
+   * fetch requests time out. */
+  event_loop_add_timer(local_mock->loop, MANAGER_TIMEOUT, fetch_timeout_handler,
+                       local_mock->state);
   event_loop_run(local_mock->loop);
 
   int read_fd = get_client_sock(remote_mock2->read_conn);

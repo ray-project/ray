@@ -111,8 +111,6 @@ typedef struct {
 typedef struct {
   /** The ID of the object we are fetching or waiting for. */
   object_id object_id;
-  /** The plasma manager state. */
-  plasma_manager_state *manager_state;
   /** Pointer to the array containing the manager locations of this object. This
    *  struct owns and must free each entry. */
   char **manager_vector;
@@ -428,7 +426,6 @@ void update_object_wait_requests(plasma_manager_state *manager_state,
 fetch_request *create_fetch_request(plasma_manager_state *manager_state,
                                     object_id object_id) {
   fetch_request *fetch_req = malloc(sizeof(fetch_request));
-  fetch_req->manager_state = manager_state;
   fetch_req->object_id = object_id;
   fetch_req->manager_count = 0;
   fetch_req->manager_vector = NULL;
@@ -517,7 +514,7 @@ void destroy_plasma_manager_state(plasma_manager_state *state) {
   if (state->fetch_requests != NULL) {
     fetch_request *fetch_req, *tmp;
     HASH_ITER(hh, state->fetch_requests, fetch_req, tmp) {
-      remove_fetch_request(fetch_req->manager_state, fetch_req);
+      remove_fetch_request(state, fetch_req);
     }
   }
 
@@ -895,7 +892,7 @@ int fetch_timeout_handler(event_loop *loop, timer_id id, void *context) {
   fetch_request *fetch_req, *tmp;
   HASH_ITER(hh, manager_state->fetch_requests, fetch_req, tmp) {
     if (fetch_req->manager_count > 0) {
-      request_transfer_from(fetch_req->manager_state, fetch_req->object_id);
+      request_transfer_from(manager_state, fetch_req->object_id);
     }
   }
   return MANAGER_TIMEOUT;
@@ -1477,8 +1474,6 @@ void start_server(const char *store_socket_name,
    * requests and reissue requests for transfers of those objects. */
   event_loop_add_timer(g_manager_state->loop, MANAGER_TIMEOUT,
                        fetch_timeout_handler, g_manager_state);
-
-
   /* Run the event loop. */
   event_loop_run(g_manager_state->loop);
 }
