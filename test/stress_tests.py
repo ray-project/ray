@@ -117,17 +117,19 @@ class ReconstructionTests(unittest.TestCase):
     # Start a Redis instance and Plasma store instances with a total of 1GB
     # memory.
     node_ip_address = "127.0.0.1"
-    self.redis_address = ray.services.start_redis(node_ip_address)
+    self.redis_port = ray.services.new_port()
+    print(self.redis_port)
+    redis_address = ray.services.address(node_ip_address, self.redis_port)
     self.plasma_store_memory = 10 ** 9
     plasma_addresses = []
     objstore_memory = (self.plasma_store_memory // self.num_local_schedulers)
     for i in range(self.num_local_schedulers):
         plasma_addresses.append(
-            ray.services.start_objstore(node_ip_address, self.redis_address,
+            ray.services.start_objstore(node_ip_address, redis_address,
                                         objstore_memory=objstore_memory)
             )
     address_info = {
-        "redis_address": self.redis_address,
+        "redis_address": redis_address,
         "object_store_addresses": plasma_addresses,
         }
 
@@ -140,8 +142,7 @@ class ReconstructionTests(unittest.TestCase):
 
     # Make sure that all nodes in the cluster were used by checking where tasks
     # were scheduled and/or submitted from.
-    redis_port = ray.services.get_port(self.redis_address)
-    r = redis.StrictRedis(port=redis_port)
+    r = redis.StrictRedis(port=self.redis_port)
     task_ids = r.keys("TT:*")
     task_ids = [task_id[3:] for task_id in task_ids]
     node_ids = [r.execute_command("ray.task_table_get", task_id)[1] for task_id
