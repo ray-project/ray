@@ -737,11 +737,12 @@ void process_message(event_loop *loop,
   } break;
   case MessageType_PlasmaGetRequest: {
     num_objects = plasma_read_GetRequest_num_objects(input);
-    object_id object_ids_to_get[num_objects];
+    object_id *object_ids_to_get = malloc(num_objects * sizeof(object_id));
     int64_t timeout_ms;
     plasma_read_GetRequest(input, object_ids_to_get, &timeout_ms, num_objects);
     process_get_request(client_context, num_objects, object_ids_to_get,
                         timeout_ms);
+    free(object_ids_to_get);
   } break;
   case MessageType_PlasmaReleaseRequest:
     plasma_read_ReleaseRequest(input, &object_ids[0]);
