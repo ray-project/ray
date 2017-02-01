@@ -185,7 +185,7 @@ struct plasma_request_buffer {
  * Call the request_transfer method, which well attempt to get an object from
  * a remote Plasma manager. If it is unable to get it from another Plasma
  * manager, it will cycle through a list of Plasma managers that have the
- * object.
+ * object. This method is only called from the tests.
  *
  * @param object_id The object ID of the object to transfer.
  * @param manager_count The number of managers that have the object.
@@ -197,6 +197,14 @@ void call_request_transfer(object_id object_id,
                            int manager_count,
                            const char *manager_vector[],
                            void *context);
+
+/*
+ * This runs periodically (every MANAGER_TIMEOUT milliseconds) and reissues
+ * transfer requests for all outstanding fetch requests. This is only exposed so
+ * that it can be called from the tests.
+ *
+ */
+int fetch_timeout_handler(event_loop *loop, timer_id id, void *context);
 
 /**
  * Clean up and free an active object context. Deregister it from the
