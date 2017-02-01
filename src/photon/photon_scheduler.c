@@ -200,8 +200,8 @@ void reconstruct_task_update_callback(task *task, void *user_context) {
 }
 
 void reconstruct_result_lookup_callback(object_id reconstruct_object_id,
-                                             task_id task_id,
-                                             void *user_context) {
+                                        task_id task_id,
+                                        void *user_context) {
   /* TODO(swang): The following check will fail if an object was created by a
    * put. */
   CHECKM(!IS_NIL_ID(task_id),
@@ -223,9 +223,9 @@ void reconstruct_result_lookup_callback(object_id reconstruct_object_id,
 }
 
 void reconstruct_object_lookup_callback(object_id reconstruct_object_id,
-                                               int manager_count,
-                                               const char *manager_vector[],
-                                               void *user_context) {
+                                        int manager_count,
+                                        const char *manager_vector[],
+                                        void *user_context) {
   LOG_DEBUG("Manager count was %d", manager_count);
   /* Only continue reconstruction if we find that the object doesn't exist on
    * any nodes. NOTE: This codepath is not responsible for checking if the
@@ -233,9 +233,9 @@ void reconstruct_object_lookup_callback(object_id reconstruct_object_id,
   local_scheduler_state *state = user_context;
   if (manager_count == 0) {
     /* Look up the task that created the object in the result table. */
-    result_table_lookup(
-        state->db, reconstruct_object_id, (retry_info *) &photon_retry,
-        reconstruct_result_lookup_callback, (void *) state);
+    result_table_lookup(state->db, reconstruct_object_id,
+                        (retry_info *) &photon_retry,
+                        reconstruct_result_lookup_callback, (void *) state);
   }
 }
 
@@ -246,9 +246,9 @@ void reconstruct_object(local_scheduler_state *state,
   CHECK(state->db != NULL);
   /* Determine if reconstruction is necessary by checking if the object exists
    * on a node. */
-  object_table_lookup(
-      state->db, reconstruct_object_id, (retry_info *) &photon_retry,
-      reconstruct_object_lookup_callback, (void *) state);
+  object_table_lookup(state->db, reconstruct_object_id,
+                      (retry_info *) &photon_retry,
+                      reconstruct_object_lookup_callback, (void *) state);
 }
 
 void process_message(event_loop *loop,
