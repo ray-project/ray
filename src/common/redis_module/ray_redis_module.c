@@ -649,10 +649,9 @@ int ReplyWithTask(RedisModuleCtx *ctx, RedisModuleString *task_id) {
  *     RAY.RESULT_TABLE_LOOKUP <object id>
  *
  * @param object_id A string representing the object ID.
- * @return NIL if the object ID is not in the result table or if the
- *         corresponding task ID is not in the task table. Otherwise, this
- *         returns an array of the scheduling state, the local scheduler ID, and
- *         the task spec for the task corresponding to this object ID.
+ * @return NIL if the object ID is not in the result table. Otherwise, this
+ *         returns the task ID of the task that created the object. The
+ *         returned string can be used as a key into the task table.
  */
 int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
                                    RedisModuleString **argv,
@@ -673,18 +672,14 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
 
   RedisModuleString *task_id;
   RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "task", &task_id, NULL);
+  RedisModule_CloseKey(key);
   if (task_id == NULL) {
     return RedisModule_ReplyWithNull(ctx);
   }
 
-  /* Construct a reply by getting the task from the task ID. */
-  int status = ReplyWithTask(ctx, task_id);
-
-  /* Clean up. */
+  RedisModule_ReplyWithString(ctx, task_id);
   RedisModule_FreeString(ctx, task_id);
-  RedisModule_CloseKey(key);
-
-  return status;
+  return REDISMODULE_OK;
 }
 
 int TaskTableWrite(RedisModuleCtx *ctx,

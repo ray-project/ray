@@ -396,9 +396,9 @@ task *parse_and_construct_task_from_redis_reply(redisReply *reply) {
   return task;
 }
 
-void redis_result_table_lookup_callback(redisAsyncContext *c,
-                                        void *r,
-                                        void *privdata) {
+void redis_result_table_lookup_task_callback(redisAsyncContext *c,
+                                             void *r,
+                                             void *privdata) {
   REDIS_CALLBACK_HEADER(db, callback_data, r);
   redisReply *reply = r;
   /* Parse the task from the reply. */
@@ -416,12 +416,44 @@ void redis_result_table_lookup_callback(redisAsyncContext *c,
   destroy_timer_callback(db->loop, callback_data);
 }
 
+void redis_result_table_lookup_object_callback(redisAsyncContext *c,
+                                               void *r,
+                                               void *privdata) {
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
+  redisReply *reply = r;
+
+  if (reply->type == REDIS_REPLY_NIL) {
+    /* No task ID was found. Call the done callback if there is one. */
+    result_table_lookup_callback done_callback = callback_data->done_callback;
+    if (done_callback != NULL) {
+      done_callback(callback_data->id, NULL, callback_data->user_context);
+    }
+    /* Clean up timer and callback. */
+    destroy_timer_callback(db->loop, callback_data);
+  } else if (reply->type == REDIS_REPLY_STRING) {
+    task_id task_id;
+    DCHECK(reply->len == sizeof(task_id));
+    memcpy(&task_id, reply->str, reply->len);
+    int status = redisAsyncCommand(
+        db->context, redis_result_table_lookup_task_callback,
+        (void *) callback_data->timer_id, "RAY.TASK_TABLE_GET %b", task_id.id,
+        sizeof(task_id.id));
+    if ((status == REDIS_ERR) || db->context->err) {
+      LOG_REDIS_DEBUG(db->context, "Error in result table lookup");
+    }
+  } else {
+    LOG_FATAL(
+        "Unexpected reply type %d in redis_result_table_lookup_object_callback",
+        reply->type);
+  }
+}
+
 void redis_result_table_lookup(table_callback_data *callback_data) {
   CHECK(callback_data);
   db_handle *db = callback_data->db_handle;
   object_id id = callback_data->id;
   int status =
-      redisAsyncCommand(db->context, redis_result_table_lookup_callback,
+      redisAsyncCommand(db->context, redis_result_table_lookup_object_callback,
                         (void *) callback_data->timer_id,
                         "RAY.RESULT_TABLE_LOOKUP %b", id.id, sizeof(id.id));
   if ((status == REDIS_ERR) || db->context->err) {
