@@ -124,10 +124,10 @@ class ReconstructionTests(unittest.TestCase):
     plasma_addresses = []
     objstore_memory = (self.plasma_store_memory // self.num_local_schedulers)
     for i in range(self.num_local_schedulers):
-        plasma_addresses.append(
-            ray.services.start_objstore(node_ip_address, redis_address,
-                                        objstore_memory=objstore_memory)
-            )
+      plasma_addresses.append(
+          ray.services.start_objstore(node_ip_address, redis_address,
+                                      objstore_memory=objstore_memory)
+          )
     address_info = {
         "redis_address": redis_address,
         "object_store_addresses": plasma_addresses,
