@@ -71,44 +71,45 @@ def get_batches(dataset, path, size, mode):
 
 @ray.remote
 def compute_rollout(weights, batch):
-  model = ray.env.model
+  model, _ = ray.env.model
   rollouts = 10
-  IPython.embed()
   model.variables.set_weights(weights)
   placeholders = [model.x, model.labels]
+
   for i in range(rollouts):
-    model.variables.sess.run(model.train_op, feed_dict=dict(zip(placeholders, batch))) 
+    randlist = np.random.randint(0,batch[0].shape[0], 128)
+    subset = (batch[0][randlist, :], batch[1][randlist, :])
+    model.variables.sess.run(model.train_op, feed_dict=dict(zip(placeholders, subset))) 
   return model.variables.get_weights()  
 
 @ray.remote
 def accuracy(weights, batch):
-  model = ray.env.model
+  model, _ = ray.env.model
   model.variables.set_weights(weights)
   placeholders = [model.x, model.labels]
   batches = [(batch[0][128*i:128*(i+1)], batch[1][128*i:128*(i+1)]) for i in range(78)]
   return sum([model.variables.sess.run(model.precision, feed_dict=dict(zip(placeholders, batches[i]))) for i in range(78)]) / 78
 
 def model_initialization():
-  with tf.variable_scope(uuid.uuid1().hex):
+  with tf.Graph().as_default():
     model = resnet_model.ResNet(hps, 'train')
     model.build_graph()
     sess = tf.Session()
- #   model.variables.set_session(sess)
-    return model
+    model.variables.set_session(sess)
+    init = tf.global_variables_initializer()
+    return model, init
 
 def model_reinitialization(model):
   return model
 
 def train(hps):
   """Training loop."""
-  ab = model_initialization()
-  ba = model_initialization()
+  ray.init(num_workers=10, driver_mode=2)
   batches = get_batches.remote(
       FLAGS.dataset, FLAGS.train_data_path, hps.batch_size, FLAGS.mode)
   test_batch = get_test.remote(FLAGS.dataset, FLAGS.eval_data_path, hps.batch_size, FLAGS.mode)
   ray.env.model = ray.EnvironmentVariable(model_initialization, model_reinitialization)
-  model = ray.env.model
-  init = tf.global_variables_initializer()
+  model, init = ray.env.model
   param_stats = tf.contrib.tfprof.model_analyzer.print_model_analysis(
       tf.get_default_graph(),
       tfprof_options=tf.contrib.tfprof.model_analyzer.
@@ -119,20 +120,18 @@ def train(hps):
       tf.get_default_graph(),
       tfprof_options=tf.contrib.tfprof.model_analyzer.FLOAT_OPS_OPTIONS)
 
-  truth = tf.argmax(model.labels, axis=1)
-  predictions = tf.argmax(model.predictions, axis=1)
-  precision = tf.reduce_mean(tf.to_float(tf.equal(predictions, truth)))
+
 
   summary_hook = tf.train.SummarySaverHook(
       save_steps=100,
       output_dir=FLAGS.train_dir,
       summary_op=tf.summary.merge([model.summaries,
-                  tf.summary.scalar('Precision', precision)]))
+                  tf.summary.scalar('Precision', model.precision)]))
 
   logging_hook = tf.train.LoggingTensorHook(
       tensors={'step': model.global_step,
                'loss': model.cost,
-               'precision': precision},
+               'precision': model.precision},
       every_n_iter=100)
   class _LearningRateSetterHook(tf.train.SessionRunHook):
     """Sets learning_rate based on global step."""
@@ -171,10 +170,10 @@ def train(hps):
     print "Start of loop"
     weights = model.variables.get_weights()
     weight_id = ray.put(weights)
-    rand_list = np.random.choice(25, 10, replace=False)
+    rand_list = np.random.choice(25, 1, replace=False)
     print "Computing rollouts"
     all_weights = ray.get([compute_rollout.remote(weight_id, batches[i])  for i in rand_list])
-    mean_weights = {k: sum([weights[k] for weights in all_weights]) / 10 for k in all_weights[0]}
+    mean_weights = {k: sum([weights[k] for weights in all_weights]) / 1 for k in all_weights[0]}
     model.variables.set_weights(mean_weights)
     new_weights = ray.put(mean_weights)
     print ray.get(accuracy.remote(new_weights, test_batch))

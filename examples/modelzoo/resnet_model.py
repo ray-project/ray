@@ -72,12 +72,8 @@ class ResNet(object):
 
     x = tf.placeholder(tf.float32, shape=[128, 32, 32, 3])
     self.x = x
-    self.labels = tf.placeholder(tf.float32, shape=[128,10])
+    self.labels = tf.placeholder(tf.float32, shape=[128, 10])
     labels = self.labels
-#    queue = tf.RandomShuffleQueue(capacity=10000, min_after_dequeue=1000, dtypes=[tf.float32, tf.float32], shapes=[[32,32,3], [10]])
-#    enqueue_op = queue.enqueue_many([self.x, self.labels])
-#    tf.train.add_queue_runner(tf.train.queue_runner.QueueRunner(queue, [enqueue_op] * 1))
-#    images, labels = queue.dequeue_many(128)
     with tf.variable_scope('init'):
       x = self._conv('init_conv', x, 3, 3, 16, self._stride_arr(1))
 
@@ -135,7 +131,10 @@ class ResNet(object):
 
   def _build_train_op(self):
     """Build training specific ops for the graph."""
-    self.lrn_rate = tf.constant(self.hps.lrn_rate, tf.float32)
+    rate = self.hps.lrn_rate
+    boundaries = np.array([40000, 60000, 80000], dtype=np.int64)
+    values = [rate, rate/10, rate/100, rate/1000]
+    self.lrn_rate = tf.train.piecewise_constant(self.global_step, boundaries, values)
     tf.summary.scalar('learning rate', self.lrn_rate)
 
 
@@ -150,8 +149,7 @@ class ResNet(object):
     #    zip(self.assignment_placeholders, trainable_variables),
     #    global_step=self.global_step, name='train_step')
     min_ops = optimizer.minimize(self.cost)
-    IPython.embed()
-#    self.variables = ray.experimental.TensorFlowVariables(min_ops, prefix=True)
+    self.variables = ray.experimental.TensorFlowVariables(min_ops, global_step=self.global_step)
     train_ops = [min_ops]
     self.train_op = tf.group(*train_ops)
 
@@ -297,7 +295,7 @@ class ResNet(object):
     """FullyConnected layer for final output."""
     x = tf.reshape(x, [self.hps.batch_size, -1])
     w = tf.get_variable(
-        'DW', [x.get_shape()[1], out_dim],
+        'DW', [64, out_dim],
         initializer=tf.uniform_unit_scaling_initializer(factor=1.0))
     b = tf.get_variable('biases', [out_dim],
                         initializer=tf.constant_initializer())
