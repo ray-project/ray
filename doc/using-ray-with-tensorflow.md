@@ -185,7 +185,7 @@ above to illustrate how to do this in Ray. The only differences are in the step 
 function and the driver code.
 
 In the step function, we run the grad operation rather than the train operation to get the gradients.
-Since Tensorflow pairs the gradients with the variables, we extract the gradients
+Since Tensorflow pairs the gradients with the variables, we extract the gradients.
 
 ```python
   grads = sess.run(grad, feed_dict={x_data: x, y_data: y})
@@ -204,7 +204,7 @@ and then create a feed dict to apply the gradients.
   sess.run(apply, feed_dict=feedDict)
 ```
 
-The full code is below:
+For reference, the full code is below:
 
 ```python
 import tensorflow as tf
