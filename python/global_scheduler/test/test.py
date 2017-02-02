@@ -43,6 +43,9 @@ def random_task_id():
 def random_function_id():
   return photon.ObjectID(np.random.bytes(ID_SIZE))
 
+def random_object_id():
+  return photon.ObjectID(np.random.bytes(ID_SIZE))
+
 def new_port():
   return random.randint(10000, 65535)
 
@@ -123,6 +126,12 @@ class TestGlobalScheduler(unittest.TestCase):
 
     return db_client_id
 
+  def test_task_default_resources(self):
+    task1 = photon.Task(random_driver_id(), random_function_id(), [random_object_id()], 0, random_task_id(), 0)
+    self.assertEqual(task1.required_resources() == [1.0, 0.0])
+    task2 = photon.Task(random_driver_id(), random_function_id(), [random_object_id()], 0, random_task_id(), 0, [1.0, 2.0])
+    self.assertEqual(task2.required_resources(), [1.0, 2.0])
+
   def test_redis_only_single_task(self):
     """
     Tests global scheduler functionality by interacting with Redis and checking
@@ -136,12 +145,12 @@ class TestGlobalScheduler(unittest.TestCase):
     assert(db_client_id != None)
     assert(db_client_id.startswith(b"CL:"))
     db_client_id = db_client_id[len(b"CL:"):] # Remove the CL: prefix.
-
+  
   def test_integration_single_task(self):
     # There should be three db clients, the global scheduler, the local
     # scheduler, and the plasma manager.
     self.assertEqual(len(self.redis_client.keys("{}*".format(DB_CLIENT_PREFIX))), 3)
-
+  
     num_return_vals = [0, 1, 2, 3, 5, 10]
     # There should not be anything else in Redis yet.
     self.assertEqual(len(self.redis_client.keys("*")), 3)
@@ -149,7 +158,7 @@ class TestGlobalScheduler(unittest.TestCase):
     data_size = 0xf1f0
     metadata_size = 0x40
     object_dep, memory_buffer, metadata = create_object(self.plasma_client, data_size, metadata_size, seal=True)
-
+  
     # Sleep before submitting task to photon.
     time.sleep(0.1)
     # Submit a task to Redis.
@@ -175,18 +184,18 @@ class TestGlobalScheduler(unittest.TestCase):
       print("The task has not been scheduled yet, trying again.")
       num_retries -= 1
       time.sleep(1)
-
+  
     if num_retries <= 0 and task_status != TASK_STATUS_QUEUED:
       # Failed to submit and schedule a single task -- bail.
       self.tearDown()
       sys.exit(1)
-
+  
   def integration_many_tasks_helper(self, timesync=True):
     # There should be three db clients, the global scheduler, the local
     # scheduler, and the plasma manager.
     self.assertEqual(len(self.redis_client.keys("{}*".format(DB_CLIENT_PREFIX))), 3)
     num_return_vals = [0, 1, 2, 3, 5, 10]
-
+  
     # Submit a bunch of tasks to Redis.
     num_tasks = 1000
     for _ in range(num_tasks):
@@ -226,15 +235,15 @@ class TestGlobalScheduler(unittest.TestCase):
           break
       num_retries -= 1
       time.sleep(0.1)
-
+  
     if num_tasks_done != num_tasks:
       # At least one of the tasks failed to schedule.
       self.tearDown()
       sys.exit(2)
-
+  
   def test_integration_many_tasks_handler_sync(self):
     self.integration_many_tasks_helper(timesync=True)
-
+  
   def test_integration_many_tasks(self):
     # More realistic case: should handle out of order object and task
     # notifications.

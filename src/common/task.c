@@ -58,6 +58,12 @@ struct task_spec_impl {
    *  has been written so far, relative to &task_spec->args_and_returns[0] +
    *  (task_spec->num_args + task_spec->num_returns) * sizeof(task_arg) */
   int64_t args_value_offset;
+  /* Resource vector for this task. A resource vector maps a resource index
+   * (like "cpu" or "gpu") to the number of units of that resource required.
+   * Note that this will allow us to support arbitrary attributes:
+   * For example, we can have a coloring of nodes and "red" can correspond
+   * to 0.0, "green" to 1.0 and "yellow" to 2.0. */
+  double required_resources[MAX_RESOURCE_INDEX];
   /** Argument and return IDs as well as offsets for pass-by-value args. */
   task_arg args_and_returns[0];
 };
@@ -259,6 +265,10 @@ int64_t task_args_add_val(task_spec *spec, uint8_t *data, int64_t length) {
   return spec->arg_index++;
 }
 
+void task_add_required_resource(task_spec *spec, int64_t resource_index, double value) {
+  spec->required_resources[resource_index] = value;
+}
+
 object_id task_return(task_spec *spec, int64_t return_index) {
   /* Check that the task has been constructed. */
   DCHECK(!task_ids_equal(spec->task_id, NIL_TASK_ID));
@@ -266,6 +276,10 @@ object_id task_return(task_spec *spec, int64_t return_index) {
   task_arg *ret = &spec->args_and_returns[spec->num_args + return_index];
   DCHECK(ret->type == ARG_BY_REF);
   return ret->obj_id;
+}
+
+double task_required_resource(task_spec *spec, int64_t resource_index) {
+  return spec->required_resources[resource_index];
 }
 
 void free_task_spec(task_spec *spec) {
