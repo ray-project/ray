@@ -182,6 +182,7 @@ for iteration in range(NUM_ITERS):
 In some cases, you may want to do data-parallel training on your network. We use the network 
 above to illustrate how to do this in Ray.
 
+```python
 import tensorflow as tf
 import numpy as np
 import ray
@@ -283,4 +284,4 @@ for iteration in range(NUM_ITERS):
   # and 0.3 used in generate_fake_x_y_data.
   if iteration % 20 == 0:
     print("Iteration {}: weights are {}".format(iteration, weights))
-
+```
