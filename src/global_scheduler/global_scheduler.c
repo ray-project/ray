@@ -70,6 +70,14 @@ void free_global_scheduler(global_scheduler_state *state) {
     free(entry->aux_address);
     free(entry);
   }
+
+  /* Delete the photon to plasma association map. */
+  HASH_ITER(hh, state->photon_plasma_map, entry, tmp) {
+    HASH_DELETE(hh, state->photon_plasma_map, entry);
+    /* Note that the entry itself is shared with plasma 2 photon map:
+     * already deleted above.  */
+  }
+
   /* Free the scheduler object info table. */
   scheduler_object_info *object_entry, *tmp_entry;
   HASH_ITER(hh, state->scheduler_object_info_table, object_entry, tmp_entry) {
