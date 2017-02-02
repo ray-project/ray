@@ -244,6 +244,18 @@ typedef enum {
 } resource_vector_index;
 
 /**
+ * Set the value associated to a resource index.
+ *
+ * @param spec Task specification.
+ * @param resource_index Index of the resource.
+ * @param value Value for the resource. This can be a quantity of resources
+ *              this task needs for example or it can be a value for an
+ *              attribute this task requires.
+ * @return How many of this resource the task needs to execute.
+ */
+void task_add_required_resource(task_spec *spec, int64_t resource_index, double value);
+
+/**
  * Get the value associated to a resource index.
  *
  * @param spec Task specification.

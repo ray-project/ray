@@ -273,6 +273,10 @@ int64_t task_args_add_val(task_spec *spec, uint8_t *data, int64_t length) {
   return spec->arg_index++;
 }
 
+void task_add_required_resource(task_spec *spec, int64_t resource_index, double value) {
+  spec->required_resources[resource_index] = value;
+}
+
 object_id task_return(task_spec *spec, int64_t return_index) {
   /* Check that the task has been constructed. */
   DCHECK(!task_ids_equal(spec->task_id, NIL_TASK_ID));

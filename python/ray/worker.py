@@ -456,7 +456,7 @@ class Worker(object):
       assert results[i][0] == object_ids[i].id()
     return [result[1][0] for result in results]
 
-  def submit_task(self, function_id, func_name, args):
+  def submit_task(self, function_id, func_name, args, num_cpus, num_gpus):
     """Submit a remote task to the scheduler.
 
     Tell the scheduler to schedule the execution of the function with name
@@ -468,6 +468,8 @@ class Worker(object):
       args (List[Any]): The arguments to pass into the function. Arguments can
         be object IDs or they can be values. If they are values, they
         must be serializable objecs.
+      num_cpus (int): The number of cpu cores this task requires to run.
+      num_gpus (int): The number of gpus this task requires to run.
     """
     with log_span("ray:submit_task", worker=self):
       check_main_thread()
@@ -488,7 +490,8 @@ class Worker(object):
                          args_for_photon,
                          self.num_return_vals[function_id.id()],
                          self.current_task_id,
-                         self.task_index)
+                         self.task_index,
+                         [num_cpus, num_gpus])
       # Increment the worker's task index to track how many tasks have been
       # submitted by the current task so far.
       self.task_index += 1
@@ -1528,7 +1531,7 @@ def main_loop(worker=global_worker):
     # Push all of the log events to the global state store.
     flush_log()
 
-def _submit_task(function_id, func_name, args, worker=global_worker):
+def _submit_task(function_id, func_name, args, num_cpus, num_gpus, worker=global_worker):
   """This is a wrapper around worker.submit_task.
 
   We use this wrapper so that in the remote decorator, we can call _submit_task
@@ -1536,7 +1539,7 @@ def _submit_task(function_id, func_name, args, worker=global_worker):
   serialize remote functions, we don't attempt to serialize the worker object,
   which cannot be serialized.
   """
-  return worker.submit_task(function_id, func_name, args)
+  return worker.submit_task(function_id, func_name, args, num_cpus, num_gpus)
 
 def _mode(worker=global_worker):
   """This is a wrapper around worker.mode.
@@ -1603,7 +1606,7 @@ def remote(*args, **kwargs):
       should return.
   """
   worker = global_worker
-  def make_remote_decorator(num_return_vals, func_id=None):
+  def make_remote_decorator(num_return_vals, num_cpus, num_gpus, func_id=None):
     def remote_decorator(func):
       func_name = "{}.{}".format(func.__module__, func.__name__)
       if func_id is None:
@@ -1630,7 +1633,7 @@ def remote(*args, **kwargs):
             _env()._reinitialize()
             _env()._running_remote_function_locally = False
           return result
-        objectids = _submit_task(function_id, func_name, args)
+        objectids = _submit_task(function_id, func_name, args, num_cpus, num_gpus)
         if len(objectids) == 1:
           return objectids[0]
         elif len(objectids) > 1:
@@ -1681,24 +1684,24 @@ def remote(*args, **kwargs):
 
     return remote_decorator
 
+  num_return_vals = kwargs["num_return_vals"] if "num_return_vals" in kwargs.keys() else 1
+  num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs.keys() else 1
+  num_gpus = kwargs["num_gpus"] if "num_gpus" in kwargs.keys() else 0
+
   if _mode() == WORKER_MODE:
     if "function_id" in kwargs:
-      num_return_vals = kwargs["num_return_vals"]
       function_id = kwargs["function_id"]
-      return make_remote_decorator(num_return_vals, function_id)
+      return make_remote_decorator(num_return_vals, num_cpus, num_gpus, function_id)
 
   if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
     # This is the case where the decorator is just @ray.remote.
-    num_return_vals = 1
-    func = args[0]
-    return make_remote_decorator(num_return_vals)(func)
+    return make_remote_decorator(num_return_vals, num_cpus, num_gpus)(args[0])
   else:
     # This is the case where the decorator is something like
     # @ray.remote(num_return_vals=2).
-    assert len(args) == 0 and "num_return_vals" in kwargs, "The @ray.remote decorator must be applied either with no arguments and no parentheses, for example '@ray.remote', or it must be applied with only the argument num_return_vals, like '@ray.remote(num_return_vals=2)'."
-    num_return_vals = kwargs["num_return_vals"]
+    assert len(args) == 0 and "num_return_vals" in kwargs or "num_cpus" in kwargs or "num_gpus" in kwargs, "The @ray.remote decorator must be applied either with no arguments and no parentheses, for example '@ray.remote', or it must be applied with only the argument num_return_vals, like '@ray.remote(num_return_vals=2)'."
     assert not "function_id" in kwargs
-    return make_remote_decorator(num_return_vals)
+    return make_remote_decorator(num_return_vals, num_cpus, num_gpus)
 
 def check_signature_supported(has_kwargs_param, has_vararg_param, keyword_defaults, name):
   """Check if we support the signature of this function.
