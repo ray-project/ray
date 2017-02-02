@@ -273,7 +273,9 @@ typedef enum {
   /** The task is running on a worker. */
   TASK_STATUS_RUNNING = 8,
   /** The task is done executing. */
-  TASK_STATUS_DONE = 16
+  TASK_STATUS_DONE = 16,
+  /** The task will be submitted for reexecution. */
+  TASK_STATUS_RECONSTRUCTING = 32
 } scheduling_state;
 
 /** A task is an execution of a task specification.  It has a state of execution
@@ -324,15 +326,5 @@ task_id task_task_id(task *task);
 
 /** Free this task datastructure. */
 void free_task(task *task);
-
-/**
- * ==== Task update ====
- * Contains the information necessary to update a task in the task log.
- */
-
-typedef struct {
-  scheduling_state state;
-  db_client_id local_scheduler_id;
-} task_update;
 
 #endif

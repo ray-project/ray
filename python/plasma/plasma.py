@@ -151,7 +151,8 @@ class PlasmaClient(object):
     Args:
       object_ids (List[str]): A list of strings used to identify some objects.
       timeout_ms (int): The number of milliseconds that the get call should
-        block before timing out and returning.
+        block before timing out and returning. Pass -1 if the call should block
+        and 0 if the call should return immediately.
     """
     results = libplasma.get(self.conn, object_ids, timeout_ms)
     assert len(object_ids) == len(results)
@@ -172,7 +173,8 @@ class PlasmaClient(object):
     Args:
       object_ids (List[str]): A list of strings used to identify some objects.
       timeout_ms (int): The number of milliseconds that the get call should
-        block before timing out and returning.
+        block before timing out and returning. Pass -1 if the call should block
+        and 0 if the call should return immediately.
     """
     results = libplasma.get(self.conn, object_ids, timeout_ms)
     assert len(object_ids) == len(results)

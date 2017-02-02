@@ -9,6 +9,7 @@ import sys
 import time
 import unittest
 import redis
+import ray.services
 
 # Check if the redis-server binary is present.
 redis_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../core/src/common/thirdparty/redis/src/redis-server")
@@ -42,17 +43,11 @@ def integerToAsciiHex(num, numbytes):
 class TestGlobalStateStore(unittest.TestCase):
 
   def setUp(self):
-    redis_port = random.randint(2000, 50000)
-    self.redis_process = subprocess.Popen([redis_path,
-                                           "--port", str(redis_port),
-                                           "--loglevel", "warning",
-                                           "--loadmodule", module_path])
-    time.sleep(1.5)
+    redis_port = ray.services.start_redis()
     self.redis = redis.StrictRedis(host="localhost", port=redis_port, db=0)
 
   def tearDown(self):
-    self.redis_process.kill()
-
+    ray.services.cleanup()
 
   def testInvalidObjectTableAdd(self):
     # Check that Redis returns an error when RAY.OBJECT_TABLE_ADD is called with
@@ -81,7 +76,7 @@ class TestGlobalStateStore(unittest.TestCase):
     # Try calling RAY.OBJECT_TABLE_LOOKUP with an object ID that has not been
     # added yet.
     response = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP", "object_id1")
-    self.assertEqual(set(response), set([]))
+    self.assertEqual(response, None)
     # Add some managers and try again.
     self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id1")
     self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id2")
@@ -109,7 +104,7 @@ class TestGlobalStateStore(unittest.TestCase):
     # Try calling RAY.OBJECT_TABLE_LOOKUP with an object ID that has not been
     # added yet.
     response = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP", "object_id1")
-    self.assertEqual(set(response), set([]))
+    self.assertEqual(response, None)
     # Add some managers and try again.
     self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id1")
     self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id2")
@@ -131,7 +126,7 @@ class TestGlobalStateStore(unittest.TestCase):
     self.redis.execute_command("RAY.OBJECT_TABLE_REMOVE", "object_id1", "manager_id2")
     response = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP", "object_id1")
     self.assertEqual(set(response), set())
-    # Remove a manager from an empty set, and make sure we still have an empty set.
+    # Remove a manager from an empty set, and make sure we now have an empty set.
     self.redis.execute_command("RAY.OBJECT_TABLE_REMOVE", "object_id1", "manager_id3")
     response = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP", "object_id1")
     self.assertEqual(set(response), set())
@@ -173,24 +168,19 @@ class TestGlobalStateStore(unittest.TestCase):
     self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id1")
     response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id1")
     self.assertIsNone(response)
-    # Add the result to the result table. This is necessary, but not sufficient
-    # because the task is still not in the task table.
-    self.redis.execute_command("RAY.RESULT_TABLE_ADD", "object_id1", "task_id1")
+    # Add the result to the result table. The lookup now returns the task ID.
+    task_id = b"task_id1"
+    self.redis.execute_command("RAY.RESULT_TABLE_ADD", "object_id1", task_id)
     response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id1")
-    self.assertIsNone(response)
-    # Add the task to the task table so that the result table lookup can
-    # succeed.
-    self.redis.execute_command("RAY.TASK_TABLE_ADD", "task_id1", 1, "local_scheduler_id1", "task_spec1")
-    response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id1")
-    self.assertEqual(response, [1, b"local_scheduler_id1", b"task_spec1"])
+    self.assertEqual(response, task_id)
     # Doing it again should still work.
     response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id1")
-    self.assertEqual(response, [1, b"local_scheduler_id1", b"task_spec1"])
+    self.assertEqual(response, task_id)
     # Try another result table lookup. This should succeed.
-    self.redis.execute_command("RAY.TASK_TABLE_ADD", "task_id2", 2, "local_scheduler_id2", "task_spec2")
-    self.redis.execute_command("RAY.RESULT_TABLE_ADD", "object_id2", "task_id2")
+    task_id = b"task_id2"
+    self.redis.execute_command("RAY.RESULT_TABLE_ADD", "object_id2", task_id)
     response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id2")
-    self.assertEqual(response, [2, b"local_scheduler_id2", b"task_spec2"])
+    self.assertEqual(response, task_id)
 
   def testInvalidTaskTableAdd(self):
     # Check that Redis returns an error when RAY.TASK_TABLE_ADD is called with
@@ -226,6 +216,40 @@ class TestGlobalStateStore(unittest.TestCase):
     self.redis.execute_command("RAY.TASK_TABLE_UPDATE", "task_id", *task_args[:2])
     response = self.redis.execute_command("RAY.TASK_TABLE_GET", "task_id")
     self.assertEqual(response, task_args)
+
+    # If the current value, test value, and set value are all the same, the
+    # update happens, and the response is still the same task.
+    task_args = [task_args[0]] + task_args
+    response = self.redis.execute_command("RAY.TASK_TABLE_TEST_AND_UPDATE",
+                                          "task_id",
+                                          *task_args[:3])
+    self.assertEqual(response, task_args[1:])
+    # Check that the task entry is still the same.
+    get_response = self.redis.execute_command("RAY.TASK_TABLE_GET", "task_id")
+    self.assertEqual(get_response, task_args[1:])
+
+    # If the current value is the same as the test value, and the set value is
+    # different, the update happens, and the response is the entire task.
+    task_args[1] += 1
+    response = self.redis.execute_command("RAY.TASK_TABLE_TEST_AND_UPDATE",
+                                          "task_id",
+                                          *task_args[:3])
+    self.assertEqual(response, task_args[1:])
+    # Check that the update happened.
+    get_response = self.redis.execute_command("RAY.TASK_TABLE_GET", "task_id")
+    self.assertEqual(get_response, task_args[1:])
+
+    # If the current value is no longer the same as the test value, the
+    # response is nil.
+    task_args[1] += 1
+    response = self.redis.execute_command("RAY.TASK_TABLE_TEST_AND_UPDATE",
+                                          "task_id",
+                                          *task_args[:3])
+    self.assertEqual(response, None)
+    # Check that the update did not happen.
+    get_response2 = self.redis.execute_command("RAY.TASK_TABLE_GET", "task_id")
+    self.assertEqual(get_response2, get_response)
+    self.assertNotEqual(get_response2, task_args[1:])
 
   def testTaskTableSubscribe(self):
     scheduling_state = 1

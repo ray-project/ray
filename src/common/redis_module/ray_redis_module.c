@@ -188,8 +188,9 @@ int GetClientAddress_RedisCommand(RedisModuleCtx *ctx,
  *     RAY.OBJECT_TABLE_LOOKUP <object id>
  *
  * @param object_id A string representing the object ID.
- * @return A list of plasma manager IDs that are listed in the object table as
- *         having the object.
+ * @return A list, possibly empty, of plasma manager IDs that are listed in the
+ *         object table as having the object. If there was no entry found in
+ *         the object table, returns nil.
  */
 int ObjectTableLookup_RedisCommand(RedisModuleCtx *ctx,
                                    RedisModuleString **argv,
@@ -201,8 +202,12 @@ int ObjectTableLookup_RedisCommand(RedisModuleCtx *ctx,
   RedisModuleKey *key =
       OpenPrefixedKey(ctx, OBJECT_LOCATION_PREFIX, argv[1], REDISMODULE_READ);
 
-  if (RedisModule_KeyType(key) == REDISMODULE_KEYTYPE_EMPTY ||
-      RedisModule_ValueLength(key) == 0) {
+  if (RedisModule_KeyType(key) == REDISMODULE_KEYTYPE_EMPTY) {
+    /* Return nil if no entry was found. */
+    return RedisModule_ReplyWithNull(ctx);
+  }
+  if (RedisModule_ValueLength(key) == 0) {
+    /* Return empty list if there are no managers. */
     return RedisModule_ReplyWithArray(ctx, 0);
   }
 
@@ -581,6 +586,35 @@ int ResultTableAdd_RedisCommand(RedisModuleCtx *ctx,
   return REDISMODULE_OK;
 }
 
+int ParseTaskState(RedisModuleString *state) {
+  size_t state_length;
+  const char *state_string = RedisModule_StringPtrLen(state, &state_length);
+  int state_integer;
+  int scanned = sscanf(state_string, "%2d", &state_integer);
+  if (scanned != 1 || state_length != 2) {
+    return -1;
+  }
+  return state_integer;
+}
+
+RedisModuleString *NormalizeTaskState(RedisModuleCtx *ctx,
+                                      RedisModuleString *state) {
+  /* Pad the state integer to a fixed-width integer, and make sure it has width
+   * less than or equal to 2. */
+  long long state_integer;
+  int status = RedisModule_StringToLongLong(state, &state_integer);
+  if (status != REDISMODULE_OK) {
+    return NULL;
+  }
+  state = RedisModule_CreateStringPrintf(ctx, "%2d", state_integer);
+  size_t length;
+  RedisModule_StringPtrLen(state, &length);
+  if (length != 2) {
+    return NULL;
+  }
+  return state;
+}
+
 /**
  * Reply with information about a task ID. This is used by
  * RAY.RESULT_TABLE_LOOKUP and RAY.TASK_TABLE_GET.
@@ -609,11 +643,8 @@ int ReplyWithTask(RedisModuleCtx *ctx, RedisModuleString *task_id) {
           ctx, "Missing fields in the task table entry");
     }
 
-    size_t state_length;
-    const char *state_string = RedisModule_StringPtrLen(state, &state_length);
-    int state_integer;
-    int scanned = sscanf(state_string, "%2d", &state_integer);
-    if (scanned != 1 || state_length != 2) {
+    int state_integer = ParseTaskState(state);
+    if (state_integer < 0) {
       RedisModule_CloseKey(key);
       RedisModule_FreeString(ctx, state);
       RedisModule_FreeString(ctx, local_scheduler_id);
@@ -668,23 +699,21 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
   key = OpenPrefixedKey(ctx, OBJECT_INFO_PREFIX, object_id, REDISMODULE_READ);
 
   if (RedisModule_KeyType(key) == REDISMODULE_KEYTYPE_EMPTY) {
+    RedisModule_CloseKey(key);
     return RedisModule_ReplyWithNull(ctx);
   }
 
   RedisModuleString *task_id;
   RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "task", &task_id, NULL);
+  RedisModule_CloseKey(key);
   if (task_id == NULL) {
     return RedisModule_ReplyWithNull(ctx);
   }
 
-  /* Construct a reply by getting the task from the task ID. */
-  int status = ReplyWithTask(ctx, task_id);
-
-  /* Clean up. */
+  RedisModule_ReplyWithString(ctx, task_id);
   RedisModule_FreeString(ctx, task_id);
-  RedisModule_CloseKey(key);
 
-  return status;
+  return REDISMODULE_OK;
 }
 
 int TaskTableWrite(RedisModuleCtx *ctx,
@@ -694,18 +723,11 @@ int TaskTableWrite(RedisModuleCtx *ctx,
                    RedisModuleString *task_spec) {
   /* Pad the state integer to a fixed-width integer, and make sure it has width
    * less than or equal to 2. */
-  long long state_integer;
-  int status = RedisModule_StringToLongLong(state, &state_integer);
-  if (status != REDISMODULE_OK) {
+  state = NormalizeTaskState(ctx, state);
+  if (state == NULL) {
     return RedisModule_ReplyWithError(
-        ctx, "Invalid scheduling state (must be an integer)");
-  }
-  state = RedisModule_CreateStringPrintf(ctx, "%2d", state_integer);
-  size_t length;
-  RedisModule_StringPtrLen(state, &length);
-  if (length != 2) {
-    return RedisModule_ReplyWithError(
-        ctx, "Invalid scheduling state width (must have width 2)");
+        ctx,
+        "Invalid scheduling state (must be an integer of width at most 2)");
   }
 
   /* Add the task to the task table. If no spec was provided, get the existing
@@ -720,6 +742,7 @@ int TaskTableWrite(RedisModuleCtx *ctx,
                         &existing_task_spec, NULL);
     if (existing_task_spec == NULL) {
       RedisModule_CloseKey(key);
+      RedisModule_FreeString(ctx, state);
       return RedisModule_ReplyWithError(
           ctx, "Cannot update a task that doesn't exist yet");
     }
@@ -743,6 +766,7 @@ int TaskTableWrite(RedisModuleCtx *ctx,
     publish_message = RedisString_Format(ctx, "%S %S %S %S", task_id, state,
                                          node_id, existing_task_spec);
   }
+  RedisModule_FreeString(ctx, state);
 
   RedisModuleCallReply *reply =
       RedisModule_Call(ctx, "PUBLISH", "ss", publish_topic, publish_message);
@@ -818,6 +842,93 @@ int TaskTableUpdate_RedisCommand(RedisModuleCtx *ctx,
   }
 
   return TaskTableWrite(ctx, argv[1], argv[2], argv[3], NULL);
+}
+
+/**
+ * Test and update an entry in the task table if the current value matches the
+ * test value. This does not update the task specification in the table.
+ *
+ * This is called from a client with the command:
+ *
+ *     RAY.TASK_TABLE_TEST_AND_UPDATE <task ID> <test state> <state>
+ *         <local scheduler ID>
+ *
+ * @param task_id A string that is the ID of the task.
+ * @param test_state A string that is the test value for the scheduling state.
+ *        The update happens if and only if the current scheduling state
+ *        matches this value.
+ * @param state A string that is the scheduling state (a scheduling_state enum
+ *        instance) to update the task entry with. The string's value must be a
+ *        nonnegative integer less than 100, so that it has width at most 2. If
+ *        less than 2, the value will be left-padded with spaces to a width of
+ *        2.
+ * @param ray_client_id A string that is the ray client ID of the associated
+ *        local scheduler, if any, to update the task entry with.
+ * @return If the current scheduling state does not match the test value,
+ *         returns nil. Else, returns the same as RAY.TASK_TABLE_GET: an array
+ *         of strings representing the updated task fields in the following
+ *         order: 1) (integer) scheduling state 2) (string) associated node ID,
+ *         if any 3) (string) the task specification, which can be casted to a
+ *         task_spec.
+ */
+int TaskTableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
+                                        RedisModuleString **argv,
+                                        int argc) {
+  if (argc != 5) {
+    return RedisModule_WrongArity(ctx);
+  }
+
+  RedisModuleString *state = NormalizeTaskState(ctx, argv[3]);
+  if (state == NULL) {
+    return RedisModule_ReplyWithError(
+        ctx,
+        "Invalid scheduling state (must be an integer of width at most 2)");
+  }
+
+  RedisModuleKey *key = OpenPrefixedKey(ctx, TASK_PREFIX, argv[1],
+                                        REDISMODULE_READ | REDISMODULE_WRITE);
+  if (RedisModule_KeyType(key) == REDISMODULE_KEYTYPE_EMPTY) {
+    RedisModule_CloseKey(key);
+    RedisModule_FreeString(ctx, state);
+    return RedisModule_ReplyWithNull(ctx);
+  }
+
+  /* If the key exists, look up the fields and return them in an array. */
+  RedisModuleString *current_state = NULL;
+  RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "state", &current_state,
+                      NULL);
+  int current_state_integer = ParseTaskState(current_state);
+  if (current_state_integer < 0) {
+    RedisModule_CloseKey(key);
+    RedisModule_FreeString(ctx, state);
+    return RedisModule_ReplyWithError(ctx,
+                                      "Found invalid scheduling state (must "
+                                      "be an integer of width 2");
+  }
+  long long test_state_integer;
+  int status = RedisModule_StringToLongLong(argv[2], &test_state_integer);
+  if (status != REDISMODULE_OK) {
+    RedisModule_CloseKey(key);
+    RedisModule_FreeString(ctx, state);
+    return RedisModule_ReplyWithError(
+        ctx, "Invalid test value for scheduling state");
+  }
+  if (current_state_integer != test_state_integer) {
+    /* The current value does not match the test value, so do not perform the
+     * update. */
+    RedisModule_CloseKey(key);
+    RedisModule_FreeString(ctx, state);
+    return RedisModule_ReplyWithNull(ctx);
+  }
+
+  /* The test passed, so perform the update. */
+  RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "state", state, "node",
+                      argv[4], NULL);
+  /* Clean up. */
+  RedisModule_CloseKey(key);
+  RedisModule_FreeString(ctx, state);
+  /* Construct a reply by getting the task from the task ID. */
+  return ReplyWithTask(ctx, argv[1]);
 }
 
 /**
@@ -919,6 +1030,12 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx,
   if (RedisModule_CreateCommand(ctx, "ray.task_table_update",
                                 TaskTableUpdate_RedisCommand, "write pubsub", 0,
                                 0, 0) == REDISMODULE_ERR) {
+    return REDISMODULE_ERR;
+  }
+
+  if (RedisModule_CreateCommand(ctx, "ray.task_table_test_and_update",
+                                TaskTableTestAndUpdate_RedisCommand,
+                                "write pubsub", 0, 0, 0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 

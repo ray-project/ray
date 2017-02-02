@@ -177,45 +177,61 @@ void process_plasma_notification(event_loop *loop,
   }
 }
 
-void reconstruct_object_task_lookup_callback(object_id reconstruct_object_id,
-                                             task *task,
-                                             void *user_context) {
-  /* Recursively resubmit the task and its task lineage to the scheduler. */
-  CHECKM(task != NULL,
-         "No task information found for object during reconstruction");
-  local_scheduler_state *state = user_context;
-  /* If the task's scheduling state is pending completion, assume that
-   * reconstruction is already being taken care of and cancel this
-   * reconstruction operation. NOTE: This codepath is not responsible for
-   * detecting failure of the other reconstruction, or updating the
-   * scheduling_state accordingly. */
-  scheduling_state task_status = task_state(task);
-  if (task_status != TASK_STATUS_DONE) {
-    LOG_DEBUG("Task to reconstruct had scheduling state %d", task_status);
+void reconstruct_task_update_callback(task *task, void *user_context) {
+  if (task == NULL) {
+    /* The test-and-set of the task's scheduling state failed, so the task was
+     * either not finished yet, or it was already being reconstructed.
+     * Suppress the reconstruction request. */
     return;
   }
-  /* Recursively reconstruct the task's inputs, if necessary. */
+  /* Otherwise, the test-and-set succeeded, so resubmit the task for execution
+   * to ensure that reconstruction will happen. */
+  local_scheduler_state *state = user_context;
   task_spec *spec = task_task_spec(task);
-  for (int64_t i = 0; i < task_num_args(spec); ++i) {
-    object_id arg_id = task_arg_id(spec, i);
-    reconstruct_object(state, arg_id);
-  }
   handle_task_submitted(state, state->algorithm_state, spec);
+
+  /* Recursively reconstruct the task's inputs, if necessary. */
+  for (int64_t i = 0; i < task_num_args(spec); ++i) {
+    if (task_arg_type(spec, i) == ARG_BY_REF) {
+      object_id arg_id = task_arg_id(spec, i);
+      reconstruct_object(state, arg_id);
+    }
+  }
 }
 
-void reconstruct_object_object_lookup_callback(object_id reconstruct_object_id,
-                                               int manager_count,
-                                               const char *manager_vector[],
-                                               void *user_context) {
+void reconstruct_result_lookup_callback(object_id reconstruct_object_id,
+                                        task_id task_id,
+                                        void *user_context) {
+  /* TODO(swang): The following check will fail if an object was created by a
+   * put. */
+  CHECKM(!IS_NIL_ID(task_id),
+         "No task information found for object during reconstruction");
+  local_scheduler_state *state = user_context;
+  /* Try to claim the responsibility for reconstruction by doing a test-and-set
+   * of the task's scheduling state in the global state. If the task's
+   * scheduling state is pending completion, assume that reconstruction is
+   * already being taken care of. NOTE: This codepath is not responsible for
+   * detecting failure of the other reconstruction, or updating the
+   * scheduling_state accordingly. */
+  task_table_test_and_update(
+      state->db, task_id, TASK_STATUS_DONE, TASK_STATUS_RECONSTRUCTING,
+      (retry_info *) &photon_retry, reconstruct_task_update_callback, state);
+}
+
+void reconstruct_object_lookup_callback(object_id reconstruct_object_id,
+                                        int manager_count,
+                                        const char *manager_vector[],
+                                        void *user_context) {
+  LOG_DEBUG("Manager count was %d", manager_count);
   /* Only continue reconstruction if we find that the object doesn't exist on
    * any nodes. NOTE: This codepath is not responsible for checking if the
    * object table entry is up-to-date. */
   local_scheduler_state *state = user_context;
   if (manager_count == 0) {
     /* Look up the task that created the object in the result table. */
-    result_table_lookup(
-        state->db, reconstruct_object_id, (retry_info *) &photon_retry,
-        reconstruct_object_task_lookup_callback, (void *) state);
+    result_table_lookup(state->db, reconstruct_object_id,
+                        (retry_info *) &photon_retry,
+                        reconstruct_result_lookup_callback, (void *) state);
   }
 }
 
@@ -226,9 +242,9 @@ void reconstruct_object(local_scheduler_state *state,
   CHECK(state->db != NULL);
   /* Determine if reconstruction is necessary by checking if the object exists
    * on a node. */
-  object_table_lookup(
-      state->db, reconstruct_object_id, (retry_info *) &photon_retry,
-      reconstruct_object_object_lookup_callback, (void *) state);
+  object_table_lookup(state->db, reconstruct_object_id,
+                      (retry_info *) &photon_retry,
+                      reconstruct_object_lookup_callback, (void *) state);
 }
 
 void process_message(event_loop *loop,

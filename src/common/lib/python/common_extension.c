@@ -35,6 +35,16 @@ void init_pickle_module(void) {
 
 /* Define the PyObjectID class. */
 
+int PyStringToUniqueID(PyObject *object, object_id *object_id) {
+  if (PyBytes_Check(object)) {
+    memcpy(&object_id->id[0], PyBytes_AsString(object), UNIQUE_ID_SIZE);
+    return 1;
+  } else {
+    PyErr_SetString(PyExc_TypeError, "must be a 20 character string");
+    return 0;
+  }
+}
+
 int PyObjectToUniqueID(PyObject *object, object_id *objectid) {
   if (PyObject_IsInstance(object, (PyObject *) &PyObjectIDType)) {
     *objectid = ((PyObjectID *) object)->object_id;
