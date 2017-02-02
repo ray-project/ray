@@ -210,15 +210,13 @@ def net_vars_initializer():
     optimizer = tf.train.GradientDescentOptimizer(0.5)
 
     # We create a dictionary so that we can map each variable to its placeholder on the driver.
-    grad = {v.name.split(':')[0]:k for k,v in optimizer.compute_gradients(loss)}
-    train = optimizer.minimize(loss)
+    grad = optimizer.compute_gradients(loss)
+    apply = optimizer.apply_gradients(grad)
     # Define the weight initializer and session.
     init = tf.global_variables_initializer()
     sess = tf.Session()
     # Additional code for setting and getting the weights
     variables = ray.experimental.TensorFlowVariables(loss, sess)
-    placeholders = [(variables.placeholders[v], variables.variables[v]) for v in grad.keys()]
-    apply = optimizer.apply_gradients(placeholders)
     # Return all of the data needed to use the network.
   return variables, sess, grad, apply, loss, x_data, y_data, init
 
@@ -237,10 +235,10 @@ def step(weights, x, y):
   variables.set_weights(weights)
   # Do one step of training.
   grads = sess.run(grad, feed_dict={x_data: x, y_data: y})
-  # Return the new weights.
-  return grads
+  # We only need the actual gradients.
+  return [grad[0] for grad in grads]
 
-variables, sess, _, apply, loss, x_data, y_data, init = ray.env.net_vars
+variables, sess, grad, apply, loss, x_data, y_data, init = ray.env.net_vars
 # Initialize the network weights.
 sess.run(init)
 # Get the weights as a dictionary of numpy arrays.
@@ -262,6 +260,8 @@ y_ids = [y_id for x_id, y_id in batch_ids]
 # Generate some test data.
 x_test, y_test = ray.get(generate_fake_x_y_data.remote(BATCH_SIZE, seed=NUM_BATCHES))
 
+sym_grads = [grad[0] for grad in grads]
+
 # Do some steps of training.
 for iteration in range(NUM_ITERS):
   # Put the weights in the object store. This is optional. We could instead pass
@@ -277,7 +277,9 @@ for iteration in range(NUM_ITERS):
   # Add up all the different weights. Each element of new_weights_list is a dict
   # of weights, and we want to add up these dicts component wise using the keys
   # of the first dict.
-  feedDict = {variables.placeholders[k]: sum([weights[k] for weights in all_weights]) / len(all_weights) for k in all_weights[0]}
+
+  mean_grads = [sum([gradients[i] for gradients in gradients_list]) / len(gradients_list) for i in range(len(gradients_list[0]))]
+  feedDict = dict(zip(sym_grads, mean_grads))
   sess.run(apply, feed_dict=feedDict)
   weights = variables.get_weights()
   # Print the current weights. They should converge to roughly to the values 0.1
