@@ -1,4 +1,4 @@
-# Using Ray on a cluster
+# Using Ray on a large cluster
 
 Deploying Ray on a cluster currently requires a bit of manual work.
 The instructions here make use of parallel ssh commands which you can use to execute commands and scripts on many machines simultaneously.
