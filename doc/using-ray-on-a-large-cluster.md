@@ -1,7 +1,8 @@
 # Using Ray on a large cluster
 
-Deploying Ray on a cluster currently requires a bit of manual work.
-The instructions here make use of parallel ssh commands which you can use to execute commands and scripts on many machines simultaneously.
+Deploying Ray on a cluster currently requires a bit of manual work. The
+instructions here illustrate how to use parallel ssh commands to simplify the
+process of running commands and scripts on many machines simultaneously.
 
 ## Booting up a cluster on EC2
 
@@ -9,23 +10,29 @@ The instructions here make use of parallel ssh commands which you can use to exe
 Ubuntu](install-on-ubuntu.md).
     * Add any packages that you may need for running your application.
     * Install the pssh package: `sudo apt-get install pssh`
-* [Create an AMI Image](http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/creating-an-ami-ebs.html) of your installation.
+* [Create an AMI Image](http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/creating-an-ami-ebs.html)
+of your installation.
 * Use the EC2 console to launch additional instances using the AMI created.
 
 ## Deploying Ray on a cluster.
 
-This section assumes that you have a cluster of machines running and that these nodes have network connectivity to one another.
-It also assumes that Ray is installed on each machine.
+This section assumes that you have a cluster of machines running and that these
+nodes have network connectivity to one another. It also assumes that Ray is
+installed on each machine.
 
 Additional assumptions:
 
 * All of the following commands are run from a machine designated as
-the _head node_.
+  the _head node_.
 * The head node will run Redis and the global scheduler.
-* The head node is the launching point for driver programs and for administrative tasks.
+* The head node is the launching point for driver programs and for
+  administrative tasks.
 * The head node has ssh access to all other nodes.
 * All nodes are accessible via ssh keys
-* Ray is checked out on each worker at the apth `$HOME/ray`.
+* Ray is checked out on each node at the location `$HOME/ray`.
+
+**Note:** The commands below will probably need to be customized for your specific
+setup.
 
 ### Connect to the head node
 
@@ -33,12 +40,13 @@ the _head node_.
 ssh -A ubuntu@raycluster
 ```
 
-The `-A` parameter for `ssh` enables agent forwarding, which will allow your session to connect to other nodes in the cluster without further authentication.
+The `-A` parameter for `ssh` enables agent forwarding, which will allow your
+session to connect to other nodes in the cluster without further authentication.
 
 ### Build a list of node IP addresses
 
-Populate a file `workers.txt` with one IP address on each line.
-Do not include the head node ip address in this file.
+Populate a file `workers.txt` with one IP address on each line. Do not include
+the head node IP address in this file.
 
 ### Confirm that you can ssh to all nodes
 ```
@@ -65,18 +73,24 @@ Also, replace `<num-workers>` with the number of workers that you wish to start.
 
 #### Start Ray on the worker nodes
 
-Edit a file `start_worker.sh` to include something like the following:
+Create a file `start_worker.sh` that contains something like the following:
 
 ```
 export PATH=/home/ubuntu/anaconda2/bin/:$PATH
 ray/scripts/start_ray.sh --num-workers=<num-workers> --redis-address=<head-node-ip>:<redis-port>
 ```
 
-This is the script that when run on the worker nodes will start up Ray.
-You will need to replace `<head-node-ip>` with the IP address that worker nodes will
-use to connect to the head node (most likely a private network address).
-In this example we also export the path to the Python installation since our remote
+This script, when run on the worker nodes, will start up Ray. You will need to
+replace `<head-node-ip>` with the IP address that worker nodes will use to
+connect to the head node (most likely a private network address). In this
+example we also export the path to the Python installation since our remote
 commands will not be executing in a login shell.
+
+**Note:** You may need to manually export the correct path to Python (you will
+need to change the first line of `start_worker.sh` to find the version of Python
+that Ray was built against). This is necessary because the `PATH` environment
+variable used by `parallel-ssh` can differ from the `PATH` environment variable
+that gets set when you `ssh` to the machine.
 
 Now use `parallel-ssh` to start up Ray on each worker node.
 
@@ -88,7 +102,7 @@ Note that on some distributions the `parallel-ssh` command may be called `pssh`.
 
 #### Verification
 
-Now you have started all of the Ray processes on each node Ray. These include:
+Now you have started all of the Ray processes on each node. These include:
 
 - Some worker processes on each machine.
 - An object store on each machine.
@@ -96,7 +110,9 @@ Now you have started all of the Ray processes on each node Ray. These include:
 - One Redis server (on the head node).
 - One global scheduler (on the head node).
 
-To confirm that the Ray cluster setup is working, start up Python on one of the nodes in the cluster and enter the following commands to initialize Ray.
+To confirm that the Ray cluster setup is working, start up Python on one of the
+nodes in the cluster and enter the following commands to connect to the Ray
+cluster.
 
 ```python
 import ray
@@ -114,7 +130,6 @@ def f(x):
 
 ray.get([f.remote(f.remote(f.remote(0))) for _ in range(1000)])
 ```
-
 
 ### Stopping Ray
 
@@ -146,4 +161,3 @@ parallel-rsync -h workers.txt -r <workload-dir> /home/ubuntu/<workload-dir>
 
 where `<workload-dir>` is the directory you want to synchronize.
 Note that the destination argument for this command must represent an absolute path on the worker node.
-
