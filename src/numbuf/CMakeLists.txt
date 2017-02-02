@@ -48,6 +48,7 @@ if(HAS_PLASMA)
   include_directories("${CMAKE_CURRENT_LIST_DIR}/../common")
   include_directories("${CMAKE_CURRENT_LIST_DIR}/../common/thirdparty")
   include_directories("${CMAKE_CURRENT_LIST_DIR}/../common/build/flatcc-prefix/src/flatcc/include")
+  set(COMMON_EXTENSION ../common/lib/python/common_extension.c)
 endif()
 
 add_definitions(-fPIC)
@@ -58,7 +59,8 @@ add_library(numbuf SHARED
   cpp/src/numbuf/sequence.cc
   python/src/pynumbuf/numbuf.cc
   python/src/pynumbuf/adapters/numpy.cc
-  python/src/pynumbuf/adapters/python.cc)
+  python/src/pynumbuf/adapters/python.cc
+  ${COMMON_EXTENSION})
 
 get_filename_component(PYTHON_SHARED_LIBRARY ${PYTHON_LIBRARIES} NAME)
 if(APPLE)

@@ -55,6 +55,13 @@ ObjectStoreAddress = namedtuple("ObjectStoreAddress", ["name",
 def address(ip_address, port):
   return ip_address + ":" + str(port)
 
+def get_ip_address(address):
+  try:
+    ip_address = address.split(":")[0]
+  except:
+    raise Exception("Unable to parse IP address from address {}".format(address))
+  return ip_address
+
 def get_port(address):
   try:
     port = int(address.split(":")[1])
@@ -430,7 +437,8 @@ def start_ray_processes(address_info=None,
       # A Redis address was provided, so start a Redis server with the given
       # port. TODO(rkn): We should check that the IP address corresponds to the
       # machine that this method is running on.
-      redis_ip_address, redis_port = redis_address.split(":")
+      redis_ip_address = get_ip_address(redis_address)
+      redis_port = get_port(redis_address)
       new_redis_port = start_redis(port=int(redis_port),
                                    num_retries=1,
                                    cleanup=cleanup,

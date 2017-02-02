@@ -401,16 +401,20 @@ void redis_result_table_lookup_callback(redisAsyncContext *c,
                                         void *privdata) {
   REDIS_CALLBACK_HEADER(db, callback_data, r);
   redisReply *reply = r;
+  CHECKM(reply->type == REDIS_REPLY_NIL || reply->type == REDIS_REPLY_STRING,
+         "Unexpected reply type %d in redis_result_table_lookup_callback",
+         reply->type);
   /* Parse the task from the reply. */
-  task *task = parse_and_construct_task_from_redis_reply(reply);
+  task_id result_id = NIL_TASK_ID;
+  if (reply->type == REDIS_REPLY_STRING) {
+    CHECK(reply->len == sizeof(result_id));
+    memcpy(&result_id, reply->str, reply->len);
+  }
+
   /* Call the done callback if there is one. */
   result_table_lookup_callback done_callback = callback_data->done_callback;
   if (done_callback != NULL) {
-    done_callback(callback_data->id, task, callback_data->user_context);
-  }
-  /* Free the task if it is not NULL. */
-  if (task != NULL) {
-    free_task(task);
+    done_callback(callback_data->id, result_id, callback_data->user_context);
   }
   /* Clean up timer and callback. */
   destroy_timer_callback(db->loop, callback_data);
@@ -465,24 +469,33 @@ void redis_object_table_lookup_callback(redisAsyncContext *c,
                                         void *privdata) {
   REDIS_CALLBACK_HEADER(db, callback_data, r);
   redisReply *reply = r;
+  LOG_DEBUG("Object table lookup callback");
+  CHECK(reply->type == REDIS_REPLY_NIL || reply->type == REDIS_REPLY_ARRAY);
 
   object_id obj_id = callback_data->id;
-
-  LOG_DEBUG("Object table lookup callback");
-  CHECK(reply->type == REDIS_REPLY_ARRAY);
-
-  int64_t manager_count = reply->elements;
+  int64_t manager_count = 0;
   db_client_id *managers = NULL;
   const char **manager_vector = NULL;
-  if (manager_count > 0) {
-    managers = malloc(reply->elements * sizeof(db_client_id));
-    manager_vector = malloc(manager_count * sizeof(char *));
+
+  /* Parse the Redis reply. */
+  if (reply->type == REDIS_REPLY_NIL) {
+    /* The object entry did not exist. */
+    manager_count = -1;
+  } else if (reply->type == REDIS_REPLY_ARRAY) {
+    manager_count = reply->elements;
+    if (manager_count > 0) {
+      managers = malloc(reply->elements * sizeof(db_client_id));
+      manager_vector = malloc(manager_count * sizeof(char *));
+    }
+    for (int j = 0; j < reply->elements; ++j) {
+      CHECK(reply->element[j]->type == REDIS_REPLY_STRING);
+      memcpy(managers[j].id, reply->element[j]->str, sizeof(managers[j].id));
+      redis_get_cached_db_client(db, managers[j], manager_vector + j);
+    }
+  } else {
+    LOG_FATAL("Unexpected reply type from object table lookup.");
   }
-  for (int j = 0; j < reply->elements; ++j) {
-    CHECK(reply->element[j]->type == REDIS_REPLY_STRING);
-    memcpy(managers[j].id, reply->element[j]->str, sizeof(managers[j].id));
-    redis_get_cached_db_client(db, managers[j], manager_vector + j);
-  }
+
   object_table_lookup_done_callback done_callback =
       callback_data->done_callback;
   if (done_callback) {
@@ -818,6 +831,43 @@ void redis_task_table_update(table_callback_data *callback_data) {
       sizeof(local_scheduler_id.id));
   if ((status == REDIS_ERR) || db->context->err) {
     LOG_REDIS_DEBUG(db->context, "error in redis_task_table_update");
+  }
+}
+
+void redis_task_table_test_and_update_callback(redisAsyncContext *c,
+                                               void *r,
+                                               void *privdata) {
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
+  redisReply *reply = r;
+  /* Parse the task from the reply. */
+  task *task = parse_and_construct_task_from_redis_reply(reply);
+  /* Call the done callback if there is one. */
+  task_table_get_callback done_callback = callback_data->done_callback;
+  if (done_callback != NULL) {
+    done_callback(task, callback_data->user_context);
+  }
+  /* Free the task if it is not NULL. */
+  if (task != NULL) {
+    free_task(task);
+  }
+  /* Clean up timer and callback. */
+  destroy_timer_callback(db->loop, callback_data);
+}
+
+void redis_task_table_test_and_update(table_callback_data *callback_data) {
+  db_handle *db = callback_data->db_handle;
+  task_id task_id = callback_data->id;
+  task_table_test_and_update_data *update_data = callback_data->data;
+
+  int status = redisAsyncCommand(
+      db->context, redis_task_table_test_and_update_callback,
+      (void *) callback_data->timer_id,
+      "RAY.TASK_TABLE_TEST_AND_UPDATE %b %d %d %b", task_id.id,
+      sizeof(task_id.id), update_data->test_state, update_data->update_state,
+      update_data->local_scheduler_id.id,
+      sizeof(update_data->local_scheduler_id.id));
+  if ((status == REDIS_ERR) || db->context->err) {
+    LOG_REDIS_DEBUG(db->context, "error in redis_task_table_test_and_update");
   }
 }
 

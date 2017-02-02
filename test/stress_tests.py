@@ -6,6 +6,7 @@ import unittest
 import ray
 import numpy as np
 import time
+import redis
 
 class TaskTests(unittest.TestCase):
 
@@ -107,6 +108,178 @@ class TaskTests(unittest.TestCase):
 
         self.assertTrue(ray.services.all_processes_alive())
         ray.worker.cleanup()
+
+class ReconstructionTests(unittest.TestCase):
+
+  num_local_schedulers = 1
+
+  def setUp(self):
+    # Start a Redis instance and Plasma store instances with a total of 1GB
+    # memory.
+    node_ip_address = "127.0.0.1"
+    self.redis_port = ray.services.new_port()
+    print(self.redis_port)
+    redis_address = ray.services.address(node_ip_address, self.redis_port)
+    self.plasma_store_memory = 10 ** 9
+    plasma_addresses = []
+    objstore_memory = (self.plasma_store_memory // self.num_local_schedulers)
+    for i in range(self.num_local_schedulers):
+      plasma_addresses.append(
+          ray.services.start_objstore(node_ip_address, redis_address,
+                                      objstore_memory=objstore_memory)
+          )
+    address_info = {
+        "redis_address": redis_address,
+        "object_store_addresses": plasma_addresses,
+        }
+
+    # Start the rest of the services in the Ray cluster.
+    ray.worker._init(address_info=address_info, start_ray_local=True,
+                     num_workers=self.num_local_schedulers, num_local_schedulers=self.num_local_schedulers)
+
+  def tearDown(self):
+    self.assertTrue(ray.services.all_processes_alive())
+
+    # Make sure that all nodes in the cluster were used by checking where tasks
+    # were scheduled and/or submitted from.
+    r = redis.StrictRedis(port=self.redis_port)
+    task_ids = r.keys("TT:*")
+    task_ids = [task_id[3:] for task_id in task_ids]
+    node_ids = [r.execute_command("ray.task_table_get", task_id)[1] for task_id
+                in task_ids]
+    self.assertEqual(len(set(node_ids)), self.num_local_schedulers)
+
+    # Clean up the Ray cluster.
+    ray.worker.cleanup()
+
+  def testSimple(self):
+    # Define the size of one task's return argument so that the combined sum of
+    # all objects' sizes is at least twice the plasma stores' combined allotted
+    # memory.
+    num_objects = 1000
+    size = self.plasma_store_memory * 2 // (num_objects * 8)
+
+    # Define a remote task with no dependencies, which returns a numpy array of
+    # the given size.
+    @ray.remote
+    def foo(i, size):
+      array = np.zeros(size)
+      array[0] = i
+      return array
+
+    # Launch num_objects instances of the remote task.
+    args = []
+    for i in range(num_objects):
+      args.append(foo.remote(i, size))
+
+    # Get each value to force each task to finish. After some number of gets,
+    # old values should be evicted.
+    for i in range(num_objects):
+      value = ray.get(args[i])
+      self.assertEqual(value[0], i)
+    # Get each value again to force reconstruction.
+    for i in range(num_objects):
+      value = ray.get(args[i])
+      self.assertEqual(value[0], i)
+
+  def testRecursive(self):
+    # Define the size of one task's return argument so that the combined sum of
+    # all objects' sizes is at least twice the plasma stores' combined allotted
+    # memory.
+    num_objects = 1000
+    size = self.plasma_store_memory * 2 // (num_objects * 8)
+
+    # Define a root task with no dependencies, which returns a numpy array of
+    # the given size.
+    @ray.remote
+    def no_dependency_task(size):
+      array = np.zeros(size)
+      return array
+
+    # Define a task with a single dependency, which returns its one argument.
+    @ray.remote
+    def single_dependency(i, arg):
+      arg = np.copy(arg)
+      arg[0] = i
+      return arg
+
+    # Launch num_objects instances of the remote task, each dependent on the
+    # one before it.
+    arg = no_dependency_task.remote(size)
+    args = []
+    for i in range(num_objects):
+      arg = single_dependency.remote(i, arg)
+      args.append(arg)
+
+    # Get each value to force each task to finish. After some number of gets,
+    # old values should be evicted.
+    for i in range(num_objects):
+      value = ray.get(args[i])
+      self.assertEqual(value[0], i)
+    # Get each value again to force reconstruction.
+    for i in range(num_objects):
+      value = ray.get(args[i])
+      self.assertEqual(value[0], i)
+    # Get 10 values randomly.
+    for _ in range(10):
+      i  = np.random.randint(num_objects)
+      value = ray.get(args[i])
+      self.assertEqual(value[0], i)
+
+  def testMultipleRecursive(self):
+    # Define the size of one task's return argument so that the combined sum of
+    # all objects' sizes is at least twice the plasma stores' combined allotted
+    # memory.
+    num_objects = 1000
+    size = self.plasma_store_memory * 2 // (num_objects * 8)
+
+    # Define a root task with no dependencies, which returns a numpy array of
+    # the given size.
+    @ray.remote
+    def no_dependency_task(size):
+      array = np.zeros(size)
+      return array
+
+    # Define a task with multiple dependencies, which returns its first
+    # argument.
+    @ray.remote
+    def multiple_dependency(i, arg1, arg2, arg3):
+      arg1 = np.copy(arg1)
+      arg1[0] = i
+      return arg1
+
+    # Launch num_args instances of the root task. Then launch num_objects
+    # instances of the multi-dependency remote task, each dependent on the
+    # num_args tasks before it.
+    num_args = 3
+    args = []
+    for i in range(num_args):
+      arg = no_dependency_task.remote(size)
+      args.append(arg)
+    for i in range(num_objects):
+      args.append(multiple_dependency.remote(i, *args[i:i + num_args]))
+
+    # Get each value to force each task to finish. After some number of gets,
+    # old values should be evicted.
+    args = args[num_args:]
+    for i in range(num_objects):
+      value = ray.get(args[i])
+      self.assertEqual(value[0], i)
+    # Get each value again to force reconstruction.
+    for i in range(num_objects):
+      value = ray.get(args[i])
+      self.assertEqual(value[0], i)
+    # Get 10 values randomly.
+    for _ in range(10):
+      i  = np.random.randint(num_objects)
+      value = ray.get(args[i])
+      self.assertEqual(value[0], i)
+
+class ReconstructionTestsMultinode(ReconstructionTests):
+
+  # Run the same tests as the single-node suite, but with 4 local schedulers,
+  # one worker each.
+  num_local_schedulers = 4
 
 if __name__ == "__main__":
   unittest.main(verbosity=2)

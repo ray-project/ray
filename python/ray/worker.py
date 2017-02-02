@@ -39,6 +39,10 @@ ERROR_KEY_PREFIX = b"Error:"
 DRIVER_ID_LENGTH = 20
 ERROR_ID_LENGTH = 20
 
+# When performing ray.get, wait 1 second before attemping to reconstruct and
+# fetch the object again.
+GET_TIMEOUT_MILLISECONDS = 1000
+
 def random_string():
   return np.random.bytes(20)
 
@@ -421,13 +425,13 @@ class Worker(object):
     # Serialize and put the object in the object store.
     try:
       numbuf.store_list(objectid.id(), self.plasma_client.conn, [value])
-    except plasma.plasma_object_exists_error as e:
+    except numbuf.numbuf_plasma_object_exists_error as e:
       # The object already exists in the object store, so there is no need to
       # add it again. TODO(rkn): We need to compare the hashes and make sure
       # that the objects are in fact the same. We also should return an error
       # code to the caller instead of printing a message.
       print("This object already exists in the object store.")
-      return
+
     global contained_objectids
     # Optionally do something with the contained_objectids here.
     contained_objectids = []
@@ -443,18 +447,37 @@ class Worker(object):
         values should be retrieved.
     """
     self.plasma_client.fetch([object_id.id() for object_id in object_ids])
-    # We currently pass in a timeout of one second.
-    unready_ids = object_ids
+
+    # Get the objects. We initially try to get the objects immediately.
+    final_results = numbuf.retrieve_list(
+        [object_id.id() for object_id in object_ids],
+        self.plasma_client.conn,
+        0)
+    # Construct a dictionary mapping object IDs that we haven't gotten yet to
+    # their original index in the object_ids argument.
+    unready_ids = dict((object_id, i) for (i, (object_id, val)) in
+                       enumerate(final_results) if val is None)
+    # Try reconstructing any objects we haven't gotten yet. Try to get them
+    # until GET_TIMEOUT_MILLISECONDS milliseconds passes, then repeat.
     while len(unready_ids) > 0:
-      results = numbuf.retrieve_list([object_id.id() for object_id in object_ids], self.plasma_client.conn, 1000)
-      unready_ids = [object_id for (object_id, val) in results if val is None]
-      # This would be a natural place to issue a command to reconstruct some of
-      # the objects.
+      for unready_id in unready_ids:
+        self.photon_client.reconstruct_object(unready_id)
+      results = numbuf.retrieve_list(list(unready_ids.keys()),
+                                     self.plasma_client.conn,
+                                     GET_TIMEOUT_MILLISECONDS)
+      # Remove any entries for objects we received during this iteration so we
+      # don't retrieve the same object twice.
+      for object_id, val in results:
+        if val is not None:
+          index = unready_ids[object_id]
+          final_results[index] = (object_id, val)
+          unready_ids.pop(object_id)
+
     # Unwrap the object from the list (it was wrapped put_object).
-    assert len(results) == len(object_ids)
-    for i in range(len(results)):
-      assert results[i][0] == object_ids[i].id()
-    return [result[1][0] for result in results]
+    assert len(final_results) == len(object_ids)
+    for i in range(len(final_results)):
+      assert final_results[i][0] == object_ids[i].id()
+    return [result[1][0] for result in final_results]
 
   def submit_task(self, function_id, func_name, args):
     """Submit a remote task to the scheduler.

@@ -121,8 +121,7 @@ void redis_object_table_request_notifications(
 void redis_result_table_add(table_callback_data *callback_data);
 
 /**
- * Lookup the object in the object table in redis. The entry in
- * the object table contains metadata about the object.
+ * Lookup the task that created the object in redis. The result is the task ID.
  *
  * @param callback_data Data structure containing redis connection and timeout
  *        information.
@@ -175,6 +174,16 @@ void redis_task_table_add_task(table_callback_data *callback_data);
  * @return Void.
  */
 void redis_task_table_update(table_callback_data *callback_data);
+
+/**
+ * Update a task table entry with the task's scheduling information, if the
+ * task's current scheduling information matches the test value.
+ *
+ * @param callback_data Data structure containing redis connection and timeout
+ *        information.
+ * @return Void.
+ */
+void redis_task_table_test_and_update(table_callback_data *callback_data);
 
 /**
  * Callback invoked when the reply from the task push command is received.

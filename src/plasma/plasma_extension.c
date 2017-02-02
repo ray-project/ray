@@ -1,6 +1,7 @@
 #include <Python.h>
 #include "bytesobject.h"
 
+#include "common_extension.h"
 #include "common.h"
 #include "io.h"
 #include "plasma_protocol.h"

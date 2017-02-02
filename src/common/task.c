@@ -173,14 +173,6 @@ void finish_construct_task_spec(task_spec *spec) {
   }
 }
 
-task_spec *alloc_nil_task_spec(task_id task_id) {
-  task_spec *spec =
-      start_construct_task_spec(NIL_ID, NIL_ID, 0, NIL_FUNCTION_ID, 0, 0, 0);
-  finish_construct_task_spec(spec);
-  spec->task_id = task_id;
-  return spec;
-}
-
 int64_t task_spec_size(task_spec *spec) {
   return TASK_SPEC_SIZE(spec->num_args, spec->num_returns,
                         spec->args_value_size);
@@ -330,13 +322,6 @@ task *copy_task(task *other) {
   CHECK(copy != NULL);
   memcpy(copy, other, size);
   return copy;
-}
-
-task *alloc_nil_task(task_id task_id) {
-  task_spec *nil_spec = alloc_nil_task_spec(task_id);
-  task *nil_task = alloc_task(nil_spec, 0, NIL_ID);
-  free_task_spec(nil_spec);
-  return nil_task;
 }
 
 int64_t task_size(task *task_arg) {

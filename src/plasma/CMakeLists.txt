@@ -37,6 +37,7 @@ include_directories("${CMAKE_CURRENT_LIST_DIR}/../")
 add_library(plasma SHARED
   plasma.c
   plasma_extension.c
+  ../common/lib/python/common_extension.c
   plasma_protocol.c
   plasma_client.c
   thirdparty/xxhash.c
