@@ -316,8 +316,8 @@ static PyObject* retrieve_list(PyObject* self, PyObject* args) {
   if (!PyObjectToPlasmaConnection(plasma_conn, &conn)) { return NULL; }
 
   Py_ssize_t num_object_ids = PyList_Size(object_id_list);
-  object_id *object_ids = (object_id*) malloc(num_object_ids * sizeof(object_id));
-  object_buffer *object_buffers = (object_buffer*) malloc(num_object_ids * sizeof(object_buffer));
+  object_id* object_ids = new object_id[num_object_ids];
+  object_buffer* object_buffers = new object_buffer[num_object_ids];
 
   for (int i = 0; i < num_object_ids; ++i) {
     PyStringToUniqueID(PyList_GetItem(object_id_list, i), &object_ids[i]);
@@ -370,8 +370,8 @@ static PyObject* retrieve_list(PyObject* self, PyObject* args) {
     PyList_SetItem(returns, i, t);
   }
 
-  free(object_ids);
-  free(object_buffers);
+  delete[] object_ids;
+  delete[] object_buffers;
 
   return returns;
 }
