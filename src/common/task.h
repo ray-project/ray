@@ -243,6 +243,9 @@ typedef enum {
   MAX_RESOURCE_INDEX
 } resource_vector_index;
 
+#define DEFAULT_NUM_CPUS 16
+#define DEFAULT_NUM_GPUS 0
+
 /**
  * Set the value associated to a resource index.
  *
