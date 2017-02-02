@@ -139,6 +139,12 @@ void process_new_db_client(db_client_id db_client_id,
         hh, state->plasma_photon_map, plasma_photon_entry->aux_address,
         strlen(plasma_photon_entry->aux_address), plasma_photon_entry);
 
+    /* Add photon_db_client_id -> plasma_manager ip:port association to state.*/
+    HASH_ADD(hh, state->photon_plasma_map,
+             photon_db_client_id, /* Key is the field name of entry struct. */
+             sizeof(plasma_photon_entry->photon_db_client_id),
+             plasma_photon_entry);
+
     {
       /* Print the photon to plasma association map so far. */
       aux_address_entry *entry, *tmp;
