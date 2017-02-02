@@ -318,7 +318,7 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
     }
   } else {
     for (int i = 0; i < MAX_RESOURCE_INDEX; ++i) {
-      task_add_required_resource(self->spec, i, i == 0 ? 1.0 : 0.0);
+      task_add_required_resource(self->spec, i, i == CPU_RESOURCE_INDEX ? 1.0 : 0.0);
     }
   }
   /* Compute the task ID and the return object IDs. */
