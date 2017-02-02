@@ -106,14 +106,15 @@ def net_vars_initializer():
     # Define the loss.
     loss = tf.reduce_mean(tf.square(y - y_data))
     optimizer = tf.train.GradientDescentOptimizer(0.5)
-    train = optimizer.minimize(loss)
+    grad = optimizer.compute_gradients(loss)
+    train = optimizer.apply_gradients(grad)
     # Define the weight initializer and session.
     init = tf.global_variables_initializer()
     sess = tf.Session()
     # Additional code for setting and getting the weights
     variables = ray.experimental.TensorFlowVariables(loss, sess)
     # Return all of the data needed to use the network.
-  return variables, sess, train, loss, x_data, y_data, init
+  return variables, sess, grad, apply, loss, x_data, y_data, init
 
 def net_vars_reinitializer(net_vars):
   return net_vars
@@ -125,7 +126,7 @@ ray.env.net_vars = ray.EnvironmentVariable(net_vars_initializer, net_vars_reinit
 # new weights.
 @ray.remote
 def step(weights, x, y):
-  variables, sess, train, _, x_data, y_data, _ = ray.env.net_vars
+  variables, sess, _, train, _, x_data, y_data, _ = ray.env.net_vars
   # Set the weights in the network.
   variables.set_weights(weights)
   # Do one step of training.
@@ -133,7 +134,7 @@ def step(weights, x, y):
   # Return the new weights.
   return variables.get_weights()
 
-variables, sess, _, loss, x_data, y_data, init = ray.env.net_vars
+variables, sess, _, train, loss, x_data, y_data, init = ray.env.net_vars
 # Initialize the network weights.
 sess.run(init)
 # Get the weights as a dictionary of numpy arrays.
@@ -180,7 +181,30 @@ for iteration in range(NUM_ITERS):
 ## How to Train in Parallel using Ray
 
 In some cases, you may want to do data-parallel training on your network. We use the network 
-above to illustrate how to do this in Ray.
+above to illustrate how to do this in Ray. The only differences are in the step remote 
+function and the driver code.
+
+In the step function, we run the grad operation rather than the train operation to get the gradients.
+Since Tensorflow pairs the gradients with the variables, we extract the gradients
+
+```python
+  grads = sess.run(grad, feed_dict={x_data: x, y_data: y})
+  # We only need the actual gradients.
+  return [grad[0] for grad in grads]
+```
+
+In the main driver code, we get the symbolic gradients from the same operation run in step. These will
+be used in the feed_dict to the apply gradients. We then take the mean of the gradients returned by step,
+and then create a feed dict to apply the gradients.
+
+```python
+  sym_grads = [grad[0] for grad in grads]
+  mean_grads = [sum([gradients[i] for gradients in gradients_list]) / len(gradients_list) for i in range(len(gradients_list[0]))]
+  feedDict = dict(zip(sym_grads, mean_grads))
+  sess.run(apply, feed_dict=feedDict)
+```
+
+The full code is below:
 
 ```python
 import tensorflow as tf
@@ -210,8 +234,7 @@ def net_vars_initializer():
     optimizer = tf.train.GradientDescentOptimizer(0.5)
 
     # We create a dictionary so that we can map each variable to its placeholder on the driver.
-    grad = optimizer.compute_gradients(loss)
-    apply = optimizer.apply_gradients(grad)
+
     # Define the weight initializer and session.
     init = tf.global_variables_initializer()
     sess = tf.Session()
@@ -238,7 +261,7 @@ def step(weights, x, y):
   # We only need the actual gradients.
   return [grad[0] for grad in grads]
 
-variables, sess, grad, apply, loss, x_data, y_data, init = ray.env.net_vars
+variables, sess, grads, apply, loss, x_data, y_data, init = ray.env.net_vars
 # Initialize the network weights.
 sess.run(init)
 # Get the weights as a dictionary of numpy arrays.
@@ -273,10 +296,10 @@ for iteration in range(NUM_ITERS):
   # Call the remote function multiple times in parallel.
   gradients_ids = [step.remote(weights_id, x_ids[i], y_ids[i]) for i in range(NUM_BATCHES)]
   # Get all of the weights.
-  gradients_list = ray.get(new_weights_ids)
-  # Add up all the different weights. Each element of new_weights_list is a dict
-  # of weights, and we want to add up these dicts component wise using the keys
-  # of the first dict.
+  gradients_list = ray.get(gradients_ids)
+  # Take the mean of the different gradients. Each element of gradients_list is a list
+  # of gradients, and we want to take the mean of each one.
+
 
   mean_grads = [sum([gradients[i] for gradients in gradients_list]) / len(gradients_list) for i in range(len(gradients_list[0]))]
   feedDict = dict(zip(sym_grads, mean_grads))
