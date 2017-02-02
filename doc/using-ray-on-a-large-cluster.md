@@ -36,17 +36,30 @@ setup.
 
 ### Connect to the head node
 
+In order to initiate ssh commands from the cluster head node we suggest setting
+ssh agent forwarding.
+This will allow the the session that you initiate with the head
+node to connect to other nodes in the cluster further intervention.
+Run:
+
+```
+ssh-add <ssh-key>
+```
+
+Replace `<ssh-key>` with the path to the private key that you will use when
+logging on to the cluster nodes.
+
+Now log in to the head node:
 ```
 ssh -A ubuntu@raycluster
 ```
-
-The `-A` parameter for `ssh` enables agent forwarding, which will allow your
-session to connect to other nodes in the cluster without further authentication.
 
 ### Build a list of node IP addresses
 
 Populate a file `workers.txt` with one IP address on each line. Do not include
 the head node IP address in this file.
+These IP addresses should typically be private network IP addresses but any IPs
+by which the head node can access worker nodes via ssh will work here.
 
 ### Confirm that you can ssh to all nodes
 ```
