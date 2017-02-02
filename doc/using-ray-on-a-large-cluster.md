@@ -47,10 +47,12 @@ to the nodes in the cluster).
 ssh-add <ssh-key>
 ```
 
-Now log in to the head node with the following command.
+Now log in to the head node with the following command, where
+`<head-node-public-ip>` is the public IP address of the head node (just choose
+one of the nodes to be the head node).
 
 ```
-ssh -A ubuntu@raycluster
+ssh -A ubuntu@<head-node-public-ip>
 ```
 
 ### Build a list of node IP addresses
