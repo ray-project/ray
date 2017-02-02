@@ -1377,6 +1377,8 @@ void process_message(event_loop *loop,
     LOG_DEBUG("Processing fetch remote");
     int64_t num_objects = plasma_read_FetchRequest_num_objects(data);
     object_id *object_ids_to_fetch = malloc(num_objects * sizeof(object_id));
+    /* TODO(pcm): process_fetch_requests mallocates an array of num_objects
+     * object_ids too so these should be shared in the future. */
     plasma_read_FetchRequest(data, object_ids_to_fetch, num_objects);
     process_fetch_requests(conn, num_objects, &object_ids_to_fetch[0]);
     free(object_ids_to_fetch);
@@ -1384,13 +1386,16 @@ void process_message(event_loop *loop,
   case MessageType_PlasmaWaitRequest: {
     LOG_DEBUG("Processing wait");
     int num_object_ids = plasma_read_WaitRequest_num_object_ids(data);
+    object_request *object_requests = malloc(num_object_ids * sizeof(object_request));
     int64_t timeout_ms;
     int num_ready_objects;
-    object_request object_requests[num_object_ids];
     plasma_read_WaitRequest(data, &object_requests[0], num_object_ids,
                             &timeout_ms, &num_ready_objects);
+    /* TODO(pcm): process_wait_requests mallocates an array of num_object_ids
+     * object_requests too so these could be shared in the future. */
     process_wait_request(conn, num_object_ids, &object_requests[0], timeout_ms,
                          num_ready_objects);
+    free(object_requests);
   } break;
   case MessageType_PlasmaStatusRequest: {
     LOG_DEBUG("Processing status");
