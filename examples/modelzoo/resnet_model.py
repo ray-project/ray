@@ -54,7 +54,7 @@ class ResNet(object):
 
   def build_graph(self):
     """Build a whole graph for the model."""
-    self.global_step = tf.contrib.framework.get_or_create_global_step()
+    self.global_step = tf.Variable(0, trainable=False)
     self._build_model()
     if self.mode == 'train':
       self._build_train_op()
@@ -132,7 +132,7 @@ class ResNet(object):
   def _build_train_op(self):
     """Build training specific ops for the graph."""
     rate = self.hps.lrn_rate
-    boundaries = np.array([40000, 60000, 80000], dtype=np.int64)
+    boundaries = [40000, 60000, 80000]
     values = [rate, rate/10, rate/100, rate/1000]
     self.lrn_rate = tf.train.piecewise_constant(self.global_step, boundaries, values)
     tf.summary.scalar('learning rate', self.lrn_rate)
@@ -148,8 +148,8 @@ class ResNet(object):
     #apply_op = optimizer.apply_gradients(
     #    zip(self.assignment_placeholders, trainable_variables),
     #    global_step=self.global_step, name='train_step')
-    min_ops = optimizer.minimize(self.cost)
-    self.variables = ray.experimental.TensorFlowVariables(min_ops, global_step=self.global_step)
+    min_ops = optimizer.minimize(self.cost, global_step=self.global_step)
+    self.variables = ray.experimental.TensorFlowVariables(min_ops)
     train_ops = [min_ops]
     self.train_op = tf.group(*train_ops)
 

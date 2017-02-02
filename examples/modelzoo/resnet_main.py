@@ -170,10 +170,10 @@ def train(hps):
     print "Start of loop"
     weights = model.variables.get_weights()
     weight_id = ray.put(weights)
-    rand_list = np.random.choice(25, 1, replace=False)
+    rand_list = np.random.choice(25, 10, replace=False)
     print "Computing rollouts"
     all_weights = ray.get([compute_rollout.remote(weight_id, batches[i])  for i in rand_list])
-    mean_weights = {k: sum([weights[k] for weights in all_weights]) / 1 for k in all_weights[0]}
+    mean_weights = {k: sum([weights[k] for weights in all_weights]) / 10 for k in all_weights[0]}
     model.variables.set_weights(mean_weights)
     new_weights = ray.put(mean_weights)
     print ray.get(accuracy.remote(new_weights, test_batch))
