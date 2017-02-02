@@ -99,11 +99,15 @@ connect to the head node (most likely a private network address). In this
 example we also export the path to the Python installation since our remote
 commands will not be executing in a login shell.
 
-**Note:** You may need to manually export the correct path to Python (you will
+**Warning:** You may need to manually export the correct path to Python (you will
 need to change the first line of `start_worker.sh` to find the version of Python
 that Ray was built against). This is necessary because the `PATH` environment
 variable used by `parallel-ssh` can differ from the `PATH` environment variable
 that gets set when you `ssh` to the machine.
+
+**Warning:** If the `parallel-ssh` command below appears to hang, the
+`head-node-ip` may need to be a private IP address instead of a public IP
+address (e.g., if you are using EC2).
 
 Now use `parallel-ssh` to start up Ray on each worker node.
 
