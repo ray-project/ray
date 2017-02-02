@@ -112,6 +112,11 @@ void provide_scheduler_info(local_scheduler_state *state,
   info->task_queue_length =
       waiting_task_queue_length + dispatch_task_queue_length;
   info->available_workers = utarray_len(algorithm_state->available_workers);
+  /* Copy static and dynamic resource information. */
+  for(int i = 0; i < MAX_RESOURCE_INDEX; i++) {
+    info->dynamic_resources[i] = state->dynamic_resources[i];
+    info->static_resources[i] = state->static_resources[i];
+  }
 }
 
 /**
