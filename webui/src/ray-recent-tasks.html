@@ -1,0 +1,76 @@
+<link rel="import" href="../bower_components/polymer/polymer.html">
+<link rel="import" href="shared-styles.html">
+
+<script src="recent-tasks.js"></script>
+
+<dom-module id="ray-recent-tasks">
+  <template>
+    <style include="shared-styles">
+      :host {
+        display: block;
+
+        padding: 10px;
+      }
+      rect:hover
+      {
+        opacity: 0.5;
+      }
+
+    </style>
+
+    <div class="card">
+      <h1>Ray Recent Tasks</h1>
+      <input value=100 id="input_num_tasks"></input>
+      <button id="refresh_button">Refresh</button>
+      <br></br>
+      <svg id="recent_tasks"></svg>
+    </div>
+  </template>
+
+  <script>
+    var redis_address = "ws://127.0.0.1:8888";
+
+    var width = 1000,
+        height = 500,
+        row_height = 50,
+        num_workers = 8;
+
+    Polymer({
+      is: 'ray-recent-tasks',
+      ready: function() {
+
+        var self = this;
+        var socket = new WebSocket(redis_address);
+
+        recent_tasks = new RecentTasks(self.$.recent_tasks, {
+          "width": width, "height": height,
+        });
+
+        socket.onopen = function() {
+          socket.send(JSON.stringify({"command": "get-recent-tasks", "num": 100}));
+        }
+
+        socket.onmessage = function(messageEvent) {
+          var task_info = JSON.parse(messageEvent.data);
+          console.log(task_info.num_tasks);
+          if (task_info["num_tasks"] == 0) {
+            console.log("No tasks yet.");
+            return;
+          }
+          recent_tasks.draw_new_tasks(task_info);
+        }
+
+        socket.onclose = function(closeEvent) {
+          console.log(closeEvent)
+        }
+
+        d3.select(this.$.refresh_button)
+            .on("click", function () {
+              recent_tasks.erase();
+              var num_tasks_to_get = self.$.input_num_tasks.value;
+              socket.send(JSON.stringify({"command": "get-recent-tasks", "num": parseInt(num_tasks_to_get)}));
+            });
+      }
+    });
+  </script>
+</dom-module>

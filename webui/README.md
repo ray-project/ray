@@ -3,8 +3,7 @@
 This is Ray's Web UI. It consists of two components:
 
 * The **frontend** is a [Polymer](https://www.polymer-project.org/1.0/) app that
-  uses [google-charts](https://elements.polymer-project.org/elements/google-chart)
-  for visualization.
+  uses [D3](https://d3js.org/) for visualization.
 * The **backend** is a Python 3 websocket server (see `backend/ray_ui.py`) that
   connects to Redis and potentially Ray.
 
