@@ -63,12 +63,12 @@ class TensorFlowVariables(object):
     self.variables = OrderedDict()
     for v in [v for v in tf.global_variables() if v.op.node_def.name in variable_names]:
       self.variables[v.op.node_def.name] = v
-    self.assignment_placeholders = dict()
+    self.placeholders = dict()
     self.assignment_nodes = []
 
     # Create new placeholders to put in custom weights.
     for k, var in self.variables.items():
-      self.assignment_placeholders[k] = tf.placeholder(var.value().dtype, var.get_shape().as_list())
+      self.placeholders[k] = tf.placeholder(var.value().dtype, var.get_shape().as_list())
       self.assignment_nodes.append(var.assign(self.assignment_placeholders[k]))
 
   def set_session(self, sess):
