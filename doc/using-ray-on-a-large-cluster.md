@@ -36,20 +36,19 @@ setup.
 
 ### Connect to the head node
 
-In order to initiate ssh commands from the cluster head node we suggest setting
-ssh agent forwarding.
-This will allow the the session that you initiate with the head
-node to connect to other nodes in the cluster further intervention.
-Run:
+In order to initiate ssh commands from the cluster head node we suggest enabling
+ssh agent forwarding. This will allow the session that you initiate with the
+head node to connect to other nodes in the cluster to run scripts on them. You
+can enable ssh forwarding by running the following command (replacing
+`<ssh-key>` with the path to the private key that you would use when logging in
+to the nodes in the cluster).
 
 ```
 ssh-add <ssh-key>
 ```
 
-Replace `<ssh-key>` with the path to the private key that you will use when
-logging on to the cluster nodes.
+Now log in to the head node with the following command.
 
-Now log in to the head node:
 ```
 ssh -A ubuntu@raycluster
 ```
@@ -57,11 +56,12 @@ ssh -A ubuntu@raycluster
 ### Build a list of node IP addresses
 
 Populate a file `workers.txt` with one IP address on each line. Do not include
-the head node IP address in this file.
-These IP addresses should typically be private network IP addresses but any IPs
-by which the head node can access worker nodes via ssh will work here.
+the head node IP address in this file. These IP addresses should typically be
+private network IP addresses, but any IP addresses which the head node can use
+to ssh to worker nodes will work here.
 
 ### Confirm that you can ssh to all nodes
+
 ```
 for host in $(cat workers.txt); do
 	ssh $host uptime
@@ -80,8 +80,8 @@ On the head node (just choose some node to be the head node), run the following:
 ./ray/scripts/start_ray.sh --head --num-workers=<num-workers> --redis-port <redis-port>
 ```
 
-Replace `<redis-port>` with a port of your choice, e.g., `6379`.
-Also, replace `<num-workers>` with the number of workers that you wish to start.
+Replace `<redis-port>` with a port of your choice, e.g., `6379`. Also, replace
+`<num-workers>` with the number of workers that you wish to start.
 
 
 #### Start Ray on the worker nodes
@@ -99,11 +99,11 @@ connect to the head node (most likely a private network address). In this
 example we also export the path to the Python installation since our remote
 commands will not be executing in a login shell.
 
-**Warning:** You may need to manually export the correct path to Python (you will
-need to change the first line of `start_worker.sh` to find the version of Python
-that Ray was built against). This is necessary because the `PATH` environment
-variable used by `parallel-ssh` can differ from the `PATH` environment variable
-that gets set when you `ssh` to the machine.
+**Warning:** You may need to manually export the correct path to Python (you
+will need to change the first line of `start_worker.sh` to find the version of
+Python that Ray was built against). This is necessary because the `PATH`
+environment variable used by `parallel-ssh` can differ from the `PATH`
+environment variable that gets set when you `ssh` to the machine.
 
 **Warning:** If the `parallel-ssh` command below appears to hang, the
 `head-node-ip` may need to be a private IP address instead of a public IP
