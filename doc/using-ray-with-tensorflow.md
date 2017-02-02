@@ -232,8 +232,8 @@ def net_vars_initializer():
     # Define the loss.
     loss = tf.reduce_mean(tf.square(y - y_data))
     optimizer = tf.train.GradientDescentOptimizer(0.5)
-
-    # We create a dictionary so that we can map each variable to its placeholder on the driver.
+    grad = optimizer.compute_gradients(loss)
+    train = optimizer.apply_gradients(grad)
 
     # Define the weight initializer and session.
     init = tf.global_variables_initializer()
@@ -297,14 +297,14 @@ for iteration in range(NUM_ITERS):
   gradients_ids = [step.remote(weights_id, x_ids[i], y_ids[i]) for i in range(NUM_BATCHES)]
   # Get all of the weights.
   gradients_list = ray.get(gradients_ids)
+
   # Take the mean of the different gradients. Each element of gradients_list is a list
   # of gradients, and we want to take the mean of each one.
-
-
   mean_grads = [sum([gradients[i] for gradients in gradients_list]) / len(gradients_list) for i in range(len(gradients_list[0]))]
   feedDict = dict(zip(sym_grads, mean_grads))
   sess.run(apply, feed_dict=feedDict)
   weights = variables.get_weights()
+
   # Print the current weights. They should converge to roughly to the values 0.1
   # and 0.3 used in generate_fake_x_y_data.
   if iteration % 20 == 0:
