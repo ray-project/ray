@@ -85,6 +85,12 @@ local_scheduler_state *init_local_scheduler(
     state->static_resources[i] = state->dynamic_resources[i] =
         static_resource_conf[i];
   }
+  /* Print some debug information about resource configuration. */
+  char buf[256]; UNUSED(buf);
+  sprintf(buf, "%f,%f\n", state->static_resources[0], state->static_resources[1]);
+  LOG_DEBUG("Initialized photon scheduler with static resources=%s\n", buf);
+  sprintf(buf, "%f,%f\n", state->dynamic_resources[0], state->dynamic_resources[1]);
+  LOG_DEBUG("Initialized photon scheduler with dynamic resources=%s\n", buf);
   return state;
 };
 

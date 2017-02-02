@@ -77,7 +77,8 @@ class TestGlobalScheduler(unittest.TestCase):
         plasma_store_name,
         plasma_manager_name=plasma_manager_name,
         plasma_address=self.plasma_address,
-        redis_address=redis_address)
+        redis_address=redis_address,
+        static_resource_list=["8", "1"]) #num_cpus=8, num_gpus=1
     # Connect to the scheduler.
     self.photon_client = photon.PhotonClient(local_scheduler_name)
 
