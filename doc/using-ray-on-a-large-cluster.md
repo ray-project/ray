@@ -1,6 +1,7 @@
 # Using Ray on a cluster
 
 Deploying Ray on a cluster currently requires a bit of manual work.
+The instructions here make use of parallel ssh commands which you can use to execute commands and scripts on many machines simultaneously.
 
 ## Booting up a cluster on EC2
 
@@ -24,6 +25,7 @@ the _head node_.
 * The head node is the launching point for driver programs and for administrative tasks.
 * The head node has ssh access to all other nodes.
 * All nodes are accessible via ssh keys
+* Ray is checked out on each worker at the apth `$HOME/ray`.
 
 ### Connect to the head node
 
@@ -51,14 +53,15 @@ You may be prompted to verify the host keys during this process.
 
 #### Starting Ray on the head node
 
-On the head node (just choose some node to be the head node), run the following,
-replacing `<redis-port>` with a port of your choice, e.g., `6379`.
-Also, replace `<num-workers>` with the number of workers that you wish to start.
-
+On the head node (just choose some node to be the head node), run the following:
 
 ```
 ./ray/scripts/start_ray.sh --head --num-workers=<num-workers> --redis-port <redis-port>
 ```
+
+Replace `<redis-port>` with a port of your choice, e.g., `6379`.
+Also, replace `<num-workers>` with the number of workers that you wish to start.
+
 
 #### Start Ray on the worker nodes
 
@@ -85,7 +88,7 @@ Note that on some distributions the `parallel-ssh` command may be called `pssh`.
 
 #### Verification
 
-Now we've started all of the Ray processes on each node Ray. This includes
+Now you have started all of the Ray processes on each node Ray. These include:
 
 - Some worker processes on each machine.
 - An object store on each machine.
@@ -93,13 +96,14 @@ Now we've started all of the Ray processes on each node Ray. This includes
 - One Redis server (on the head node).
 - One global scheduler (on the head node).
 
-To run some commands, start up Python on one of the nodes in the cluster, and do
-the following.
+To confirm that the Ray cluster setup is working, start up Python on one of the nodes in the cluster and enter the following commands to initialize Ray.
 
 ```python
 import ray
 ray.init(redis_address="<redis-address>")
 ```
+
+Here `<redis-address>` should have the form `<head-node-ip>:<redis-port>`.
 
 Now you can define remote functions and execute tasks. For example:
 
@@ -120,6 +124,8 @@ ray.get([f.remote(f.remote(f.remote(0))) for _ in range(1000)])
 parallel-ssh -h workers.txt -P ray/scripts/stop_ray.sh
 ```
 
+This command will execute the `stop_ray.sh` script on each of the worker nodes.
+
 #### Stop Ray on the head node
 
 ```
@@ -129,7 +135,7 @@ ray/scripts/stop_ray.sh
 
 ## Sync Application Files to other nodes
 
-If you are running an application that requires several files, either input data or additional Python libraries, then you may find it useful to synchronize a directory on the head node with directories on the worker nodes.
+If you are running an application that reads input files or uses python libraries then you may find it useful to copy a directory on the head to the worker nodes.
 
 
 You can do this using the `parallel-rsync` command:
@@ -138,6 +144,6 @@ You can do this using the `parallel-rsync` command:
 parallel-rsync -h workers.txt -r <workload-dir> /home/ubuntu/<workload-dir>
 ```
 
-where here `<workload-dir>` is the directory you want to synchronize.
+where `<workload-dir>` is the directory you want to synchronize.
 Note that the destination argument for this command must represent an absolute path on the worker node.
 
