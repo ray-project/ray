@@ -18,7 +18,16 @@ def fetch_and_register_actor(key, worker):
     worker.redis_client.hmget(key, ["driver_id", "actor_id", "name", "module", "class", "class_export_counter"])
   actor_id = photon.ObjectID(actor_id_str)
   actor_name = actor_name.decode("ascii")
-
+  module = module.decode("ascii")
+  class_export_counter = int(class_export_counter)
+  try:
+    unpickled_class = pickling.loads(pickled_class)
+  except:
+    raise NotImplemented("TODO(pcm)")
+  else:
+    # TODO(pcm): Why is the below line necessary?
+    unpickled_class.__module__ = module
+    worker.actors[actor_id_str] = unpickled_class.__new__(unpickled_class)
   print("registering actor...")
 
 def export_actor(actor_id, Class, worker):
@@ -40,7 +49,7 @@ def export_actor(actor_id, Class, worker):
   actor_worker_id = random.choice(workers)[len("Workers:"):]
 
   d = {"driver_id": worker.task_driver_id.id(),
-       "actor_id": actor_id.id,
+       "actor_id": actor_id.id(),
        "actor_worker_id": actor_worker_id,
        "name": Class.__name__,
        "module": Class.__module__,
@@ -80,17 +89,4 @@ def actor(Class):
       return "Actor(" + self.actor_id.hex() + ")"
   return NewClass
 
-class ActorRegistry(object):
-  """Class that is used to keep track of actors on this worker (typically only one)."""
-
-  def __init__(self):
-    self.actors = {}
-
-  def 
-
-@actor
-class Test(object):
-  def __init__(self, x):
-    self.x = x
-  def f(self, y):
-    return 1
+ray.worker.global_worker.fetch_and_register["Actor"] = fetch_and_register_actor

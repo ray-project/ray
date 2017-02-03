@@ -387,6 +387,8 @@ class Worker(object):
     self.cached_functions_to_run = []
     self.driver_export_counter = 0
     self.worker_import_counter = 0
+    self.fetch_and_register = {}
+    self.actors = {}
 
   def set_mode(self, mode):
     """Set the mode of the worker.
@@ -1125,7 +1127,8 @@ def import_thread(worker):
           assert key.startswith(b"Actor")
           actor_worker_id_str, = worker.redis_client.hmget(key, "actor_worker_id")
           if worker.worker_id == actor_worker_id_str:
-            print("right worker")
+            # TODO(pcm): make sure fetch_and_register is set
+            worker.fetch_and_register["Actor"](key, worker)
           else:
             print("wrong worker")
           
