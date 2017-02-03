@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import numpy as np
 import photon
 import inspect
@@ -5,6 +9,7 @@ import random
 
 import ray.pickling as pickling
 import ray.worker
+import ray.experimental.state as state
 
 def random_string():
   return np.random.bytes(20)
@@ -58,6 +63,11 @@ def export_actor(actor_id, Class, worker):
   worker.redis_client.hmset(key, d)
   worker.redis_client.rpush("Exports", key)
   worker.driver_export_counter += 1
+
+  # select local scheduler for the actor
+  # local_schedulers = state.get_local_schedulers()
+  # local_scheduler_id = random.choice(local_schedulers)
+  # worker.redis_client.publish("actor_notification", actor_id.id() + local_scheduler_id)
 
 def actor(Class):
   # This function gets called if somebody tries to call a method on their
