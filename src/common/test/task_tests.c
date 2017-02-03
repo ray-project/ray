@@ -15,7 +15,7 @@ TEST task_test(void) {
   task_id parent_task_id = globally_unique_id();
   function_id func_id = globally_unique_id();
   task_spec *spec =
-      start_construct_task_spec(NIL_ID, parent_task_id, 0, func_id, 4, 2, 10);
+      start_construct_task_spec(NIL_ID, parent_task_id, 0, NIL_ID, 0, func_id, 4, 2, 10);
   ASSERT(task_num_args(spec) == 4);
   ASSERT(task_num_returns(spec) == 2);
 
@@ -53,14 +53,14 @@ TEST deterministic_ids_test(void) {
 
   /* Construct a first task. */
   task_spec *spec1 =
-      start_construct_task_spec(NIL_ID, parent_task_id, 0, func_id, 2, 3, 11);
+      start_construct_task_spec(NIL_ID, parent_task_id, 0, NIL_ID, 0, func_id, 2, 3, 11);
   task_args_add_ref(spec1, arg1);
   task_args_add_val(spec1, arg2, 11);
   finish_construct_task_spec(spec1);
 
   /* Construct a second identical task. */
   task_spec *spec2 =
-      start_construct_task_spec(NIL_ID, parent_task_id, 0, func_id, 2, 3, 11);
+      start_construct_task_spec(NIL_ID, parent_task_id, 0, NIL_ID, 0, func_id, 2, 3, 11);
   task_args_add_ref(spec2, arg1);
   task_args_add_val(spec2, arg2, 11);
   finish_construct_task_spec(spec2);
@@ -78,7 +78,7 @@ TEST deterministic_ids_test(void) {
   /* Create more tasks that are only mildly different. */
 
   /* Construct a task with a different parent task ID. */
-  task_spec *spec3 = start_construct_task_spec(NIL_ID, globally_unique_id(), 0,
+  task_spec *spec3 = start_construct_task_spec(NIL_ID, globally_unique_id(), 0, NIL_ID, 0,
                                                func_id, 2, 3, 11);
   task_args_add_ref(spec3, arg1);
   task_args_add_val(spec3, arg2, 11);
@@ -86,13 +86,13 @@ TEST deterministic_ids_test(void) {
 
   /* Construct a task with a different parent counter. */
   task_spec *spec4 =
-      start_construct_task_spec(NIL_ID, parent_task_id, 1, func_id, 2, 3, 11);
+      start_construct_task_spec(NIL_ID, parent_task_id, 1, NIL_ID, 0, func_id, 2, 3, 11);
   task_args_add_ref(spec4, arg1);
   task_args_add_val(spec4, arg2, 11);
   finish_construct_task_spec(spec4);
 
   /* Construct a task with a different function ID. */
-  task_spec *spec5 = start_construct_task_spec(NIL_ID, parent_task_id, 0,
+  task_spec *spec5 = start_construct_task_spec(NIL_ID, parent_task_id, 0, NIL_ID, 0,
                                                globally_unique_id(), 2, 3, 11);
   task_args_add_ref(spec5, arg1);
   task_args_add_val(spec5, arg2, 11);
@@ -100,14 +100,14 @@ TEST deterministic_ids_test(void) {
 
   /* Construct a task with a different object ID argument. */
   task_spec *spec6 =
-      start_construct_task_spec(NIL_ID, parent_task_id, 0, func_id, 2, 3, 11);
+      start_construct_task_spec(NIL_ID, parent_task_id, 0, NIL_ID, 0, func_id, 2, 3, 11);
   task_args_add_ref(spec6, globally_unique_id());
   task_args_add_val(spec6, arg2, 11);
   finish_construct_task_spec(spec6);
 
   /* Construct a task with a different value argument. */
   task_spec *spec7 =
-      start_construct_task_spec(NIL_ID, parent_task_id, 0, func_id, 2, 3, 11);
+      start_construct_task_spec(NIL_ID, parent_task_id, 0, NIL_ID, 0, func_id, 2, 3, 11);
   task_args_add_ref(spec7, arg1);
   task_args_add_val(spec7, (uint8_t *) "hello_world", 11);
   finish_construct_task_spec(spec7);
@@ -149,7 +149,7 @@ TEST send_task(void) {
   task_id parent_task_id = globally_unique_id();
   function_id func_id = globally_unique_id();
   task_spec *spec =
-      start_construct_task_spec(NIL_ID, parent_task_id, 0, func_id, 4, 2, 10);
+      start_construct_task_spec(NIL_ID, parent_task_id, 0, NIL_ID, 0, func_id, 4, 2, 10);
   task_args_add_ref(spec, globally_unique_id());
   task_args_add_val(spec, (uint8_t *) "Hello", 5);
   task_args_add_val(spec, (uint8_t *) "World", 5);

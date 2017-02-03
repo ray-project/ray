@@ -83,6 +83,8 @@ bool function_id_is_nil(function_id id);
  * @param parent_task_id The task ID of the task that submitted this task.
  * @param parent_counter A counter indicating how many tasks were submitted by
  *        the parent task prior to this one.
+ * @param actor_id The ID of the actor this task belongs to.
+ * @param actor_counter Number of tasks that have been executed on this actor.
  * @param function_id The function ID of the function to execute in this task.
  * @param num_args The number of arguments that this task has.
  * @param num_returns The number of return values that this task has.
@@ -93,6 +95,8 @@ bool function_id_is_nil(function_id id);
 task_spec *start_construct_task_spec(unique_id driver_id,
                                      task_id parent_task_id,
                                      int64_t parent_counter,
+                                     unique_id actor_id,
+                                     int64_t actor_counter,
                                      function_id function_id,
                                      int64_t num_args,
                                      int64_t num_returns,
@@ -123,6 +127,14 @@ int64_t task_spec_size(task_spec *spec);
  * @return The function ID of the function to execute in this task.
  */
 function_id task_function(task_spec *spec);
+
+/**
+ * Return the actor ID of the task.
+ *
+ * @param spec The task_spec in question.
+ * @return The actor ID of the actor the task is part of.
+ */
+unique_id task_spec_actor_id(task_spec *spec);
 
 /**
  * Return the driver ID of the task.

@@ -44,6 +44,11 @@ struct task_spec_impl {
   /** A count of the number of tasks submitted by the parent task before this
    *  one. */
   int64_t parent_counter;
+  /** Actor ID of the task. This is the actor that this task is executed on
+   *  or NIL_ID if the task is just a normal task. */
+  unique_id actor_id;
+  /* Number of tasks that have been submitted to this actor so far. */
+  int64_t actor_counter;
   /** Function ID of the task. */
   function_id function_id;
   /** Total number of arguments. */
@@ -147,6 +152,8 @@ object_id task_compute_put_id(task_id task_id, int64_t put_index) {
 task_spec *start_construct_task_spec(unique_id driver_id,
                                      task_id parent_task_id,
                                      int64_t parent_counter,
+                                     unique_id actor_id,
+                                     int64_t actor_counter,
                                      function_id function_id,
                                      int64_t num_args,
                                      int64_t num_returns,
@@ -158,6 +165,8 @@ task_spec *start_construct_task_spec(unique_id driver_id,
   task->task_id = NIL_TASK_ID;
   task->parent_task_id = parent_task_id;
   task->parent_counter = parent_counter;
+  task->actor_id = actor_id;
+  task->actor_counter = actor_counter;
   task->function_id = function_id;
   task->num_args = num_args;
   task->arg_index = 0;
@@ -188,6 +197,12 @@ function_id task_function(task_spec *spec) {
   /* Check that the task has been constructed. */
   DCHECK(!task_ids_equal(spec->task_id, NIL_TASK_ID));
   return spec->function_id;
+}
+
+unique_id task_spec_actor_id(task_spec *spec) {
+  /* Check that the task has been constructed. */
+  DCHECK(!task_ids_equal(spec->task_id, NIL_TASK_ID));
+  return spec->actor_id;
 }
 
 unique_id task_spec_driver_id(task_spec *spec) {
