@@ -80,6 +80,9 @@ actual TensorFlow graphs, which are much more complex Python objects. Note that
 to avoid namespace collision with already created variables on the workers, we
 use a separate graph for each network.
 
+**Note:** You will need to clear the default graph with `tf.reset_default_graph()`
+if you ran the above code in the same python session.
+
 ```python
 import tensorflow as tf
 import numpy as np
