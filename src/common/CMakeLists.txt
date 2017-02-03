@@ -25,6 +25,7 @@ add_library(common STATIC
   state/object_table.c
   state/task_table.c
   state/db_client_table.c
+  state/actor_notification_table.c
   state/local_scheduler_table.c
   thirdparty/ae/ae.c
   thirdparty/sha256.c)

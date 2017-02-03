@@ -23,6 +23,10 @@ typedef unique_id function_id;
  *  executes and the argument IDs or argument values. */
 typedef unique_id task_id;
 
+/** The actor ID is the ID of the actor that a task must run on. If the task is
+ *  not run on an actor, then NIL_ID should be used. */
+typedef unique_id actor_id;
+
 /** The task instance ID is a globally unique ID generated which identifies this
  *  particular execution of the task. */
 typedef unique_id task_iid;
@@ -54,6 +58,15 @@ bool task_ids_equal(task_id first_id, task_id second_id);
  * @return True if the task ID is equal to nil.
  */
 bool task_id_is_nil(task_id id);
+
+/**
+ * Compare two actor IDs.
+ *
+ * @param first_id The first actor ID to compare.
+ * @param second_id The first actor ID to compare.
+ * @return True if the actor IDs are the same and false otherwise.
+ */
+bool actor_ids_equal(actor_id first_id, actor_id second_id);
 
 /**
  * Compare two function IDs.
@@ -135,6 +148,15 @@ function_id task_function(task_spec *spec);
  * @return The actor ID of the actor the task is part of.
  */
 unique_id task_spec_actor_id(task_spec *spec);
+
+/**
+ * Return the actor counter of the task. This equals "i" if it is the "i"th task
+ * submitted to run on the actor.
+ *
+ * @param spec The task_spec in question.
+ * @return The actor counter of the task.
+ */
+int64_t task_spec_actor_counter(task_spec *spec);
 
 /**
  * Return the driver ID of the task.

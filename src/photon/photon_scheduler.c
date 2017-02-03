@@ -15,6 +15,7 @@
 #include "photon.h"
 #include "photon_scheduler.h"
 #include "photon_algorithm.h"
+#include "state/actor_notification_table.h"
 #include "state/db.h"
 #include "state/task_table.h"
 #include "state/object_table.h"
@@ -156,6 +157,15 @@ void free_local_scheduler(local_scheduler_state *state) {
   utarray_free(state->workers);
   state->workers = NULL;
 
+  /* Free the mapping from the actor ID to the ID of the local scheduler
+   * responsible for that actor. */
+  actor_map_entry *current_actor_map_entry, *temp_actor_map_entry;
+  HASH_ITER(hh, state->actor_mapping, current_actor_map_entry,
+            temp_actor_map_entry) {
+    HASH_DEL(state->actor_mapping, current_actor_map_entry);
+    free(current_actor_map_entry);
+  }
+
   /* Free the algorithm state. */
   free_scheduling_algorithm_state(state->algorithm_state);
   state->algorithm_state = NULL;
@@ -259,6 +269,9 @@ local_scheduler_state *init_local_scheduler(
   state->loop = loop;
   /* Initialize the list of workers. */
   utarray_new(state->workers, &workers_icd);
+  /* Initialize the hash table mapping actor ID to the ID of the local scheduler
+   * that is responsible for that actor. */
+  state->actor_mapping = NULL;
   /* Connect to Redis if a Redis address is provided. */
   if (redis_addr != NULL) {
     int num_args;
@@ -313,7 +326,7 @@ local_scheduler_state *init_local_scheduler(
   }
 
   return state;
-};
+}
 
 void assign_task_to_worker(local_scheduler_state *state,
                            task_spec *spec,
@@ -442,6 +455,7 @@ void reconstruct_object_lookup_callback(object_id reconstruct_object_id,
 
 void reconstruct_object(local_scheduler_state *state,
                         object_id reconstruct_object_id) {
+//NEED TO HANDLE OR FAIL FOR ACTOR TASKS...
   LOG_DEBUG("Starting reconstruction");
   /* TODO(swang): Track task lineage for puts. */
   CHECK(state->db != NULL);
@@ -467,7 +481,12 @@ void process_message(event_loop *loop,
   switch (type) {
   case SUBMIT_TASK: {
     task_spec *spec = (task_spec *) utarray_front(state->input_buffer);
-    handle_task_submitted(state, state->algorithm_state, spec);
+    if (actor_ids_equal(task_spec_actor_id(spec), NIL_ID)) {
+      handle_task_submitted(state, state->algorithm_state, spec);
+    } else {
+      handle_actor_task_submitted(state, state->algorithm_state, spec);
+    }
+
   } break;
   case TASK_DONE: {
   } break;
@@ -521,7 +540,12 @@ void process_message(event_loop *loop,
     }
     /* Let the scheduling algorithm process the fact that there is an available
      * worker. */
-    handle_worker_available(state, state->algorithm_state, worker);
+    if (actor_ids_equal(wi->actor_id, NIL_ID)) {
+      handle_worker_available(state, state->algorithm_state, worker);
+    } else {
+      //SHOULD THIS IF CONDITION BE IN THE ALGORITHM OR THE SCHEDULER?
+      handle_actor_worker_available(state, state->algorithm_state, worker);
+    }
   } break;
   case RECONSTRUCT_OBJECT: {
     object_id *obj_id = (object_id *) utarray_front(state->input_buffer);
@@ -530,6 +554,7 @@ void process_message(event_loop *loop,
   case DISCONNECT_CLIENT: {
     LOG_INFO("Disconnecting client on fd %d", client_sock);
     kill_worker(worker, false);
+    //GET THE WORKER's ACTOR ID AND TRIGGER THE CLEANUP OF THE ACTOR QUEUE
   } break;
   case LOG_MESSAGE: {
   } break;
@@ -601,6 +626,58 @@ void handle_task_scheduled_callback(task *original_task, void *user_context) {
                         task_task_spec(original_task));
 }
 
+void start_new_worker(local_scheduler_state *state, actor_id actor_id) {
+  /* We can't start a worker if we don't have the path to the worker script. */
+  CHECK(state->config.start_worker_command != NULL);
+  /* Launch the process to create the worker. */
+  UT_string *start_worker_command = NULL;
+  utstring_new(start_worker_command);
+  char id_string[ID_STRING_SIZE];
+  utstring_printf(start_worker_command, "%s --actor-id=%s",
+                  state->config.start_worker_command,
+                  object_id_to_string(actor_id, id_string, ID_STRING_SIZE));
+  FILE *p =
+      popen(utstring_body(start_worker_command), "r");
+  UNUSED(p);
+  utstring_free(start_worker_command);
+}
+
+/**
+ * Process a notification about the creation of a new actor. Use this to update
+ * the mapping from actor ID to the local scheduler ID of the local scheduler
+ * that is responsible for the actor. If this local scheduler is responsible for
+ * the actor, then launch a new worker process to create that actor.
+ *
+ * @param actor_id The ID of the actor being created.
+ * @param local_scheduler_id The ID of the local scheduler that is responsible
+ *        for creating the actor.
+ * @return Void.
+ */
+void handle_actor_creation_callback(actor_info info, void *context) {
+  actor_id actor_id = info.actor_id;
+  db_client_id local_scheduler_id = info.local_scheduler_id;
+  local_scheduler_state *state = context;
+  /* Make sure the actor entry is not already present in the actor map table.
+   * TODO(rkn): We will need to remove this check to handle the case where the
+   * corresponding publish is retried and the case in which a task that creates
+   * an actor is resubmitted due to fault tolerance. */
+  actor_map_entry *entry;
+  HASH_FIND(hh, state->actor_mapping, &actor_id, sizeof(actor_id), entry);
+  CHECK(entry == NULL);
+  /* Create a new entry and add it to the actor mapping table. TODO(rkn):
+   * Currently this is never removed (except when the local scheduler state is
+   * deleted). */
+  entry = malloc(sizeof(actor_map_entry));
+  entry->actor_id = actor_id;
+  entry->local_scheduler_id = local_scheduler_id;
+  HASH_ADD(hh, state->actor_mapping, actor_id, sizeof(entry->actor_id), entry);
+  /* If this local scheduler is responsible for the actor, then start a new
+   * worker for the actor. */
+  if (db_client_ids_equal(local_scheduler_id, get_db_client_id(state->db))) {
+    start_new_worker(state, actor_id);
+  }
+}
+
 int heartbeat_handler(event_loop *loop, timer_id id, void *context) {
   local_scheduler_state *state = context;
   scheduling_algorithm_state *algorithm_state = state->algorithm_state;
@@ -651,6 +728,10 @@ void start_server(const char *node_ip_address,
                          TASK_STATUS_SCHEDULED, handle_task_scheduled_callback,
                          NULL, &retry, NULL, NULL);
   }
+  /* Subscribe to notifications about newly created actors. */
+  actor_notification_table_subscribe(g_state->db,
+                                     handle_actor_creation_callback, g_state,
+                                     &retry);
   /* Create a timer for publishing information about the load on the local
    * scheduler to the local scheduler table. This message also serves as a
    * heartbeat. */
