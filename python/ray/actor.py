@@ -69,24 +69,24 @@ def actor(Class):
     # TODO(pcm): Extend args with keyword args
     # TODO(pcm): call ray.worker._submit_task()
     print("executing actor attribute", attr)
+
   class NewClass(object):
     def __init__(self, *args, **kwargs):
-      self.actor_id = random_actor_id()
-      self.actor_methods = {k: v for (k, v) in inspect.getmembers(Class, predicate=inspect.isfunction)}
-      export_actor(self.actor_id, Class, ray.worker.global_worker)
+      self._ray_actor_id = random_actor_id()
+      self._ray_actor_methods = {k: v for (k, v) in inspect.getmembers(Class, predicate=inspect.isfunction)}
+      export_actor(self._ray_actor_id, Class, ray.worker.global_worker)
+    # Make IPython tab completion work
+    def __dir__(self):
+      return self._ray_actor_methods
     def __getattribute__(self, attr):
-      # First try to access the attribute from NewClass. This is needed so
-      # we can still access self.actor_methods.
-      try:
-        x = super(NewClass, self).__getattribute__(attr)
-      except AttributeError:
-        pass
-      else:
-        return x
-      if attr in self.actor_methods.keys():
+      # The following is needed so we can still access self.actor_methods.
+      if attr in ["_ray_actor_id", "_ray_actor_methods"]:
+        return super(NewClass, self).__getattribute__(attr)
+      if attr in self._ray_actor_methods.keys():
         return lambda *args, **kwargs: actor_method_call(attr, *args, **kwargs)
     def __repr__(self):
-      return "Actor(" + self.actor_id.hex() + ")"
+      return "Actor(" + self._ray_actor_id.hex() + ")"
+
   return NewClass
 
 ray.worker.global_worker.fetch_and_register["Actor"] = fetch_and_register_actor
