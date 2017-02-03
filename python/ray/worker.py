@@ -1098,7 +1098,8 @@ def import_thread(worker):
       elif key.startswith(b"FunctionsToRun"):
         fetch_and_execute_function_to_run(key, worker=worker)
       else:
-        raise Exception("This code should be unreachable.")
+        assert key.startswith(b"Actor")
+        # raise Exception("This code should be unreachable.")
       worker.redis_client.hincrby(worker_info_key, "export_counter", 1)
       worker.worker_import_counter += 1
 
@@ -1121,7 +1122,14 @@ def import_thread(worker):
           with log_span("ray:import_function_to_run", worker=worker):
             fetch_and_execute_function_to_run(key, worker=worker)
         else:
-          raise Exception("This code should be unreachable.")
+          assert key.startswith(b"Actor")
+          actor_worker_id_str, = worker.redis_client.hmget(key, "actor_worker_id")
+          if worker.worker_id == actor_worker_id_str:
+            print("right worker")
+          else:
+            print("wrong worker")
+          
+          # raise Exception("This code should be unreachable.")
         worker.redis_client.hincrby(worker_info_key, "export_counter", 1)
         worker.worker_import_counter += 1
 
