@@ -97,7 +97,7 @@ ray/scripts/start_ray.sh --num-workers=<num-workers> --redis-address=<head-node-
 
 This script, when run on the worker nodes, will start up Ray. You will need to
 replace `<head-node-ip>` with the IP address that worker nodes will use to
-connect to the head node (most likely a private network address). In this
+connect to the head node (most likely a **private IP address**). In this
 example we also export the path to the Python installation since our remote
 commands will not be executing in a login shell.
 
@@ -107,9 +107,9 @@ Python that Ray was built against). This is necessary because the `PATH`
 environment variable used by `parallel-ssh` can differ from the `PATH`
 environment variable that gets set when you `ssh` to the machine.
 
-**Warning:** If the `parallel-ssh` command below appears to hang, the
-`head-node-ip` may need to be a private IP address instead of a public IP
-address (e.g., if you are using EC2).
+**Warning:** If the `parallel-ssh` command below appears to hang, `head-node-ip`
+may need to be a private IP address instead of a public IP address (e.g., if you
+are using EC2).
 
 Now use `parallel-ssh` to start up Ray on each worker node.
 
