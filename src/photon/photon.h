@@ -27,6 +27,8 @@ enum photon_message_type {
   RECONSTRUCT_OBJECT,
   /** Log a message to the event table. */
   EVENT_LOG_MESSAGE,
+  /** Add a result table entry for an object put. */
+  PUT_OBJECT,
 };
 
 // clang-format off

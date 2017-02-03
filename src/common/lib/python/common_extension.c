@@ -522,14 +522,3 @@ PyObject *check_simple_value(PyObject *self, PyObject *args) {
   }
   Py_RETURN_FALSE;
 }
-
-PyObject *compute_put_id(PyObject *self, PyObject *args) {
-  int put_index;
-  task_id task_id;
-  if (!PyArg_ParseTuple(args, "O&i", &PyObjectToUniqueID, &task_id,
-                        &put_index)) {
-    return NULL;
-  }
-  object_id put_id = task_compute_put_id(task_id, put_index);
-  return PyObjectID_make(put_id);
-}

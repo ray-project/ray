@@ -77,6 +77,19 @@ static PyObject *PyPhotonClient_log_event(PyObject *self, PyObject *args) {
   Py_RETURN_NONE;
 }
 
+static PyObject *PyPhotonClient_compute_put_id(PyObject *self, PyObject *args) {
+  int put_index;
+  task_id task_id;
+  if (!PyArg_ParseTuple(args, "O&i", &PyObjectToUniqueID, &task_id,
+                        &put_index)) {
+    return NULL;
+  }
+  object_id put_id = task_compute_put_id(task_id, put_index);
+  photon_put_object(((PyPhotonClient *) self)->photon_connection, task_id,
+                    put_id);
+  return PyObjectID_make(put_id);
+}
+
 static PyMethodDef PyPhotonClient_methods[] = {
     {"submit", (PyCFunction) PyPhotonClient_submit, METH_VARARGS,
      "Submit a task to the local scheduler."},
@@ -86,6 +99,8 @@ static PyMethodDef PyPhotonClient_methods[] = {
      METH_VARARGS, "Ask the local scheduler to reconstruct an object."},
     {"log_event", (PyCFunction) PyPhotonClient_log_event, METH_VARARGS,
      "Log an event to the event log through the local scheduler."},
+    {"compute_put_id", (PyCFunction) PyPhotonClient_compute_put_id,
+     METH_VARARGS, "Return the object ID for a put call within a task."},
     {NULL} /* Sentinel */
 };
 
@@ -133,8 +148,6 @@ static PyTypeObject PyPhotonClientType = {
 static PyMethodDef photon_methods[] = {
     {"check_simple_value", check_simple_value, METH_VARARGS,
      "Should the object be passed by value?"},
-    {"compute_put_id", compute_put_id, METH_VARARGS,
-     "Return the object ID for a put call within a task."},
     {"task_from_string", PyTask_from_string, METH_VARARGS,
      "Creates a Python PyTask object from a string representation of "
      "task_spec."},

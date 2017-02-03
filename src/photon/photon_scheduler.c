@@ -317,6 +317,13 @@ void process_message(event_loop *loop,
   } break;
   case LOG_MESSAGE: {
   } break;
+  case PUT_OBJECT: {
+    unique_id *put_ids = (unique_id *) utarray_front(state->input_buffer);
+    task_id result_task_id = (task_id) put_ids[0];
+    object_id return_id = (object_id) put_ids[1];
+    result_table_add(state->db, return_id, result_task_id,
+                     (retry_info *) &photon_retry, NULL, NULL);
+  } break;
   default:
     /* This code should be unreachable. */
     CHECK(0);
