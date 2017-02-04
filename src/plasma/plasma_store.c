@@ -740,7 +740,8 @@ void process_message(event_loop *loop,
     object_id *object_ids_to_get = malloc(num_objects * sizeof(object_id));
     int64_t timeout_ms;
     plasma_read_GetRequest(input, object_ids_to_get, &timeout_ms, num_objects);
-    /* TODO(pcm): The array object_ids_to_get could be reused in process_get_request. */
+    /* TODO(pcm): The array object_ids_to_get could be reused in
+     * process_get_request. */
     process_get_request(client_context, num_objects, object_ids_to_get,
                         timeout_ms);
     free(object_ids_to_get);

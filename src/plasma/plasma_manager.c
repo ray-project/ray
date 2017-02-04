@@ -1386,7 +1386,8 @@ void process_message(event_loop *loop,
   case MessageType_PlasmaWaitRequest: {
     LOG_DEBUG("Processing wait");
     int num_object_ids = plasma_read_WaitRequest_num_object_ids(data);
-    object_request *object_requests = malloc(num_object_ids * sizeof(object_request));
+    object_request *object_requests =
+        malloc(num_object_ids * sizeof(object_request));
     int64_t timeout_ms;
     int num_ready_objects;
     plasma_read_WaitRequest(data, &object_requests[0], num_object_ids,
