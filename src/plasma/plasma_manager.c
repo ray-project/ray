@@ -1377,7 +1377,7 @@ void process_message(event_loop *loop,
     LOG_DEBUG("Processing fetch remote");
     int64_t num_objects = plasma_read_FetchRequest_num_objects(data);
     object_id *object_ids_to_fetch = malloc(num_objects * sizeof(object_id));
-    /* TODO(pcm): process_fetch_requests mallocates an array of num_objects
+    /* TODO(pcm): process_fetch_requests allocates an array of num_objects
      * object_ids too so these should be shared in the future. */
     plasma_read_FetchRequest(data, object_ids_to_fetch, num_objects);
     process_fetch_requests(conn, num_objects, &object_ids_to_fetch[0]);
@@ -1392,7 +1392,7 @@ void process_message(event_loop *loop,
     int num_ready_objects;
     plasma_read_WaitRequest(data, &object_requests[0], num_object_ids,
                             &timeout_ms, &num_ready_objects);
-    /* TODO(pcm): process_wait_requests mallocates an array of num_object_ids
+    /* TODO(pcm): process_wait_requests allocates an array of num_object_ids
      * object_requests too so these could be shared in the future. */
     process_wait_request(conn, num_object_ids, &object_requests[0], timeout_ms,
                          num_ready_objects);
