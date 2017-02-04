@@ -68,7 +68,7 @@ def export_actor(actor_id, Class, worker):
   # select local scheduler for the actor
   local_schedulers = state.get_local_schedulers()
   local_scheduler_id = random.choice(local_schedulers)
-  worker.redis_client.publish("actor_notification", actor_id.id() + local_scheduler_id)
+  worker.redis_client.publish("actor_notifications", actor_id.id() + local_scheduler_id)
 
 def actor(Class):
   # This function gets called if somebody tries to call a method on their
