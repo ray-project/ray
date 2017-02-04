@@ -9,6 +9,7 @@ import sys
 import time
 import traceback
 import copy
+import collections
 import funcsigs
 import numpy as np
 import colorama
@@ -378,7 +379,7 @@ class Worker(object):
   def __init__(self):
     """Initialize a Worker object."""
     self.functions = {}
-    self.num_return_vals = {}
+    self.num_return_vals = collections.defaultdict(lambda: 1)
     self.function_names = {}
     self.function_export_counters = {}
     self.connected = False
@@ -481,7 +482,7 @@ class Worker(object):
       assert final_results[i][0] == object_ids[i].id()
     return [result[1][0] for result in final_results]
 
-  def submit_task(self, function_id, func_name, args, num_cpus, num_gpus):
+  def submit_task(self, function_id, func_name, args, num_cpus, num_gpus, actor_id=None):
     """Submit a remote task to the scheduler.
 
     Tell the scheduler to schedule the execution of the function with name
@@ -516,6 +517,7 @@ class Worker(object):
                          self.num_return_vals[function_id.id()],
                          self.current_task_id,
                          self.task_index,
+                         self.task_index, actor_id,
                          [num_cpus, num_gpus])
       # Increment the worker's task index to track how many tasks have been
       # submitted by the current task so far.
@@ -1125,12 +1127,12 @@ def import_thread(worker):
             fetch_and_execute_function_to_run(key, worker=worker)
         else:
           assert key.startswith(b"Actor")
-          actor_worker_id_str, = worker.redis_client.hmget(key, "actor_worker_id")
-          if worker.worker_id == actor_worker_id_str:
-            # TODO(pcm): make sure fetch_and_register is set
-            worker.fetch_and_register["Actor"](key, worker)
-          else:
-            print("wrong worker")
+          # actor_worker_id_str, = worker.redis_client.hmget(key, "actor_worker_id")
+          # if worker.worker_id == actor_worker_id_str:
+          #  # TODO(pcm): make sure fetch_and_register is set
+          #  worker.fetch_and_register["Actor"](key, worker)
+          # else:
+          #   print("wrong worker")
           
           # raise Exception("This code should be unreachable.")
         worker.redis_client.hincrby(worker_info_key, "export_counter", 1)

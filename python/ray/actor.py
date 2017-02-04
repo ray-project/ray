@@ -51,12 +51,12 @@ def export_actor(actor_id, Class, worker):
   pickled_class = pickling.dumps(Class)
 
   # select worker to put the actor on
-  workers = worker.redis_client.keys("Workers:*")
-  actor_worker_id = random.choice(workers)[len("Workers:"):]
+  # workers = worker.redis_client.keys("Workers:*")
+  # actor_worker_id = random.choice(workers)[len("Workers:"):]
 
   d = {"driver_id": worker.task_driver_id.id(),
        "actor_id": actor_id.id(),
-       "actor_worker_id": actor_worker_id,
+       # "actor_worker_id": actor_worker_id,
        "name": Class.__name__,
        "module": Class.__module__,
        "class": pickled_class,
@@ -66,23 +66,30 @@ def export_actor(actor_id, Class, worker):
   worker.driver_export_counter += 1
 
   # select local scheduler for the actor
-  # local_schedulers = state.get_local_schedulers()
-  # local_scheduler_id = random.choice(local_schedulers)
-  # worker.redis_client.publish("actor_notification", actor_id.id() + local_scheduler_id)
+  local_schedulers = state.get_local_schedulers()
+  local_scheduler_id = random.choice(local_schedulers)
+  worker.redis_client.publish("actor_notification", actor_id.id() + local_scheduler_id)
 
 def actor(Class):
   # This function gets called if somebody tries to call a method on their
   # local actor stub object
+  
+  actor_id = random_actor_id()
+  
   def actor_method_call(attr, function_id, *args, **kwargs):
     ray.worker.check_connected()
     ray.worker.check_main_thread()
     args = list(args)
     # TODO(pcm): Extend args with keyword args
-    return ray.worker.global_worker.submit_task(function_id, "")
+    object_ids = ray.worker.global_worker.submit_task(function_id, "", args, actor_id=actor_id)
+    if len(object_ids) == 1:
+      return object_ids[0]
+    elif len(object_ids) > 1:
+      return object_ids
 
   class NewClass(object):
     def __init__(self, *args, **kwargs):
-      self._ray_actor_id = random_actor_id()
+      self._ray_actor_id = actor_id
       self._ray_actor_methods = {k: v for (k, v) in inspect.getmembers(Class, predicate=inspect.isfunction)}
       export_actor(self._ray_actor_id, Class, ray.worker.global_worker)
     # Make IPython tab completion work
@@ -94,7 +101,7 @@ def actor(Class):
         return super(NewClass, self).__getattribute__(attr)
       if attr in self._ray_actor_methods.keys():
         function_id = hashlib.sha1()
-        function_id.update(attr)
+        function_id.update(attr.encode("ascii"))
         return lambda *args, **kwargs: actor_method_call(attr, photon.ObjectID(function_id.digest()), *args, **kwargs)
     def __repr__(self):
       return "Actor(" + self._ray_actor_id.hex() + ")"
