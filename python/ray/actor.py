@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import hashlib
 import numpy as np
 import photon
 import inspect
@@ -72,13 +73,12 @@ def export_actor(actor_id, Class, worker):
 def actor(Class):
   # This function gets called if somebody tries to call a method on their
   # local actor stub object
-  def actor_method_call(attr, *args, **kwargs):
+  def actor_method_call(attr, function_id, *args, **kwargs):
     ray.worker.check_connected()
     ray.worker.check_main_thread()
     args = list(args)
     # TODO(pcm): Extend args with keyword args
-    # TODO(pcm): call ray.worker._submit_task()
-    print("executing actor attribute", attr)
+    return ray.worker.global_worker.submit_task(function_id, "")
 
   class NewClass(object):
     def __init__(self, *args, **kwargs):
@@ -93,7 +93,9 @@ def actor(Class):
       if attr in ["_ray_actor_id", "_ray_actor_methods"]:
         return super(NewClass, self).__getattribute__(attr)
       if attr in self._ray_actor_methods.keys():
-        return lambda *args, **kwargs: actor_method_call(attr, *args, **kwargs)
+        function_id = hashlib.sha1()
+        function_id.update(attr)
+        return lambda *args, **kwargs: actor_method_call(attr, photon.ObjectID(function_id.digest()), *args, **kwargs)
     def __repr__(self):
       return "Actor(" + self._ray_actor_id.hex() + ")"
 
