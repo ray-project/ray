@@ -101,12 +101,12 @@ void handle_object_removed(local_scheduler_state *state, object_id object_id);
  *
  * @param state The state of the local scheduler.
  * @param algorithm_state State maintained by the scheduling algorithm.
- * @param worker_index The index of the worker that becomes available.
+ * @param worker The worker that is available.
  * @return Void.
  */
 void handle_worker_available(local_scheduler_state *state,
                              scheduling_algorithm_state *algorithm_state,
-                             int worker_index);
+                             local_scheduler_client *worker);
 
 /**
  * This function fetches queued task's missing object dependencies. It is

@@ -21,7 +21,7 @@
 #include "uthash.h"
 
 UT_icd task_ptr_icd = {sizeof(task *), NULL, NULL, NULL};
-UT_icd worker_icd = {sizeof(worker), NULL, NULL, NULL};
+UT_icd workers_icd = {sizeof(local_scheduler_client), NULL, NULL, NULL};
 
 UT_icd byte_icd = {sizeof(uint8_t), NULL, NULL, NULL};
 
@@ -46,9 +46,8 @@ local_scheduler_state *init_local_scheduler(
   state->config.global_scheduler_exists = global_scheduler_exists;
 
   state->loop = loop;
-  state->worker_index = NULL;
-  /* Add scheduler info. */
-  utarray_new(state->workers, &worker_icd);
+  /* Initialize the list of workers. */
+  utarray_new(state->workers, &workers_icd);
   /* Connect to Redis if a Redis address is provided. */
   if (redis_addr != NULL) {
     int num_args;
@@ -84,7 +83,12 @@ local_scheduler_state *init_local_scheduler(
                       process_plasma_notification, state);
   /* Add scheduler state. */
   state->algorithm_state = make_scheduling_algorithm_state();
+  /* Add the input buffer. This is used to read in messages from clients without
+   * having to reallocate a new buffer every time. */
   utarray_new(state->input_buffer, &byte_icd);
+  /* Set the total number of workers to zero. This will increment whenever a
+   * worker connects. */
+  state->total_num_workers = 0;
   return state;
 };
 
@@ -99,17 +103,13 @@ void free_local_scheduler(local_scheduler_state *state) {
   }
   plasma_disconnect(state->plasma_conn);
 
-  worker_index *current_worker_index, *temp_worker_index;
-  HASH_ITER(hh, state->worker_index, current_worker_index, temp_worker_index) {
-    HASH_DEL(state->worker_index, current_worker_index);
-    free(current_worker_index);
-  }
-
-  worker *w;
-  for (w = (worker *) utarray_front(state->workers); w != NULL;
-       w = (worker *) utarray_next(state->workers, w)) {
-    if (w->task_in_progress) {
-      free_task(w->task_in_progress);
+  /* Free the list of workers and any tasks that are still in progress on those
+   * workers. */
+  for (int i = 0; i < utarray_len(state->workers); ++i) {
+    local_scheduler_client *worker =
+        (local_scheduler_client *) utarray_eltptr(state->workers, i);
+    if (worker->task_in_progress != NULL) {
+      free_task(worker->task_in_progress);
     }
   }
   utarray_free(state->workers);
@@ -122,10 +122,8 @@ void free_local_scheduler(local_scheduler_state *state) {
 
 void assign_task_to_worker(local_scheduler_state *state,
                            task_spec *spec,
-                           int worker_index) {
-  CHECK(worker_index < utarray_len(state->workers));
-  worker *w = (worker *) utarray_eltptr(state->workers, worker_index);
-  if (write_message(w->sock, EXECUTE_TASK, task_spec_size(spec),
+                           local_scheduler_client *worker) {
+  if (write_message(worker->sock, EXECUTE_TASK, task_spec_size(spec),
                     (uint8_t *) spec) < 0) {
     if (errno == EPIPE || errno == EBADF) {
       /* TODO(rkn): If this happens, the task should be added back to the task
@@ -133,9 +131,9 @@ void assign_task_to_worker(local_scheduler_state *state,
       LOG_WARN(
           "Failed to give task to worker on fd %d. The client may have hung "
           "up.",
-          w->sock);
+          worker->sock);
     } else {
-      LOG_FATAL("Failed to give task to client on fd %d.", w->sock);
+      LOG_FATAL("Failed to give task to client on fd %d.", worker->sock);
     }
   }
   /* Update the global task table. */
@@ -147,7 +145,7 @@ void assign_task_to_worker(local_scheduler_state *state,
     /* Record which task this worker is executing. This will be freed in
      * process_message when the worker sends a GET_TASK message to the local
      * scheduler. */
-    w->task_in_progress = copy_task(task);
+    worker->task_in_progress = copy_task(task);
   }
 }
 
@@ -251,7 +249,8 @@ void process_message(event_loop *loop,
                      int client_sock,
                      void *context,
                      int events) {
-  local_scheduler_state *state = context;
+  local_scheduler_client *worker = context;
+  local_scheduler_state *state = worker->local_scheduler_state;
 
   int64_t type;
   int64_t length = read_buffer(client_sock, &type, state->input_buffer);
@@ -290,22 +289,18 @@ void process_message(event_loop *loop,
     free(value);
   } break;
   case GET_TASK: {
-    worker_index *wi;
-    HASH_FIND_INT(state->worker_index, &client_sock, wi);
     /* Update the task table with the completed task. */
-    worker *available_worker =
-        (worker *) utarray_eltptr(state->workers, wi->worker_index);
-    if (state->db != NULL && available_worker->task_in_progress != NULL) {
-      task_set_state(available_worker->task_in_progress, TASK_STATUS_DONE);
-      task_table_update(state->db, available_worker->task_in_progress,
+    if (state->db != NULL && worker->task_in_progress != NULL) {
+      task_set_state(worker->task_in_progress, TASK_STATUS_DONE);
+      task_table_update(state->db, worker->task_in_progress,
                         (retry_info *) &photon_retry, NULL, NULL);
       /* The call to task_table_update takes ownership of the task_in_progress,
        * so we set the pointer to NULL so it is not used. */
-      available_worker->task_in_progress = NULL;
+      worker->task_in_progress = NULL;
     }
     /* Let the scheduling algorithm process the fact that there is an available
      * worker. */
-    handle_worker_available(state, state->algorithm_state, wi->worker_index);
+    handle_worker_available(state, state->algorithm_state, worker);
   } break;
   case RECONSTRUCT_OBJECT: {
     object_id *obj_id = (object_id *) utarray_front(state->input_buffer);
@@ -314,6 +309,7 @@ void process_message(event_loop *loop,
   case DISCONNECT_CLIENT: {
     LOG_INFO("Disconnecting client on fd %d", client_sock);
     event_loop_remove_file(loop, client_sock);
+    state->total_num_workers -= 1;
   } break;
   case LOG_MESSAGE: {
   } break;
@@ -329,19 +325,18 @@ void new_client_connection(event_loop *loop,
                            int events) {
   local_scheduler_state *state = context;
   int new_socket = accept_client(listener_sock);
-  event_loop_add_file(loop, new_socket, EVENT_LOOP_READ, process_message,
-                      state);
-  LOG_DEBUG("new connection with fd %d", new_socket);
-  /* Add worker to list of workers. */
-  /* TODO(pcm): Where shall we free this? */
-  worker_index *new_worker_index = malloc(sizeof(worker_index));
-  new_worker_index->sock = new_socket;
-  new_worker_index->worker_index = utarray_len(state->workers);
-  HASH_ADD_INT(state->worker_index, sock, new_worker_index);
-  worker worker;
-  memset(&worker, 0, sizeof(worker));
+  local_scheduler_client worker;
   worker.sock = new_socket;
+  worker.task_in_progress = NULL;
+  worker.local_scheduler_state = state;
   utarray_push_back(state->workers, &worker);
+  local_scheduler_client *worker_context =
+      (local_scheduler_client *) utarray_back(state->workers);
+  event_loop_add_file(loop, new_socket, EVENT_LOOP_READ, process_message,
+                      worker_context);
+  LOG_DEBUG("new connection with fd %d", new_socket);
+  /* Increment the number of workers connected to this local scheduler. */
+  state->total_num_workers += 1;
 }
 
 /* We need this code so we can clean up when we get a SIGTERM signal. */
