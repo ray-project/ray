@@ -299,14 +299,15 @@ void print_task(task_spec *spec, UT_string *output) {
 /* TASK INSTANCES */
 
 struct task_impl {
-  scheduling_state state;
+  /** The scheduling state of the task. */
+  int state;
+  /** The ID of the local scheduler involved. */
   db_client_id local_scheduler_id;
+  /** The task specification for this task. */
   task_spec spec;
 };
 
-task *alloc_task(task_spec *spec,
-                 scheduling_state state,
-                 db_client_id local_scheduler_id) {
+task *alloc_task(task_spec *spec, int state, db_client_id local_scheduler_id) {
   int64_t size = sizeof(task) - sizeof(task_spec) + task_spec_size(spec);
   task *result = malloc(size);
   memset(result, 0, size);
@@ -328,11 +329,11 @@ int64_t task_size(task *task_arg) {
   return sizeof(task) - sizeof(task_spec) + task_spec_size(&task_arg->spec);
 }
 
-scheduling_state task_state(task *task) {
+int task_state(task *task) {
   return task->state;
 }
 
-void task_set_state(task *task, scheduling_state state) {
+void task_set_state(task *task, int state) {
   task->state = state;
 }
 

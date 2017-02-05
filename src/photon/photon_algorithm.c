@@ -33,6 +33,9 @@ typedef struct {
 
 UT_icd task_queue_entry_icd = {sizeof(task_queue_entry *), NULL, NULL, NULL};
 
+/** This is used to define the queue of available workers. */
+UT_icd worker_icd = {sizeof(local_scheduler_client *), NULL, NULL, NULL};
+
 /** Part of the photon state that is maintained by the scheduling algorithm. */
 struct scheduling_algorithm_state {
   /** An array of pointers to tasks that are waiting for dependencies. */
@@ -64,35 +67,42 @@ scheduling_algorithm_state *make_scheduling_algorithm_state(void) {
   /* Initialize the local data structures used for queuing tasks and workers. */
   algorithm_state->waiting_task_queue = NULL;
   algorithm_state->dispatch_task_queue = NULL;
-  utarray_new(algorithm_state->available_workers, &ut_int_icd);
+  utarray_new(algorithm_state->available_workers, &worker_icd);
   return algorithm_state;
 }
 
 void free_scheduling_algorithm_state(
     scheduling_algorithm_state *algorithm_state) {
+  /* Free all of the tasks in the waiting queue. */
   task_queue_entry *elt, *tmp1;
   DL_FOREACH_SAFE(algorithm_state->waiting_task_queue, elt, tmp1) {
     DL_DELETE(algorithm_state->waiting_task_queue, elt);
     free_task_spec(elt->spec);
     free(elt);
   }
+  /* Free all the tasks in the dispatch queue. */
   DL_FOREACH_SAFE(algorithm_state->dispatch_task_queue, elt, tmp1) {
     DL_DELETE(algorithm_state->dispatch_task_queue, elt);
     free_task_spec(elt->spec);
     free(elt);
   }
+  /* Free the list of available workers. */
   utarray_free(algorithm_state->available_workers);
+  /* Free the cached information about which objects are present locally. */
   object_entry *obj_entry, *tmp_obj_entry;
   HASH_ITER(hh, algorithm_state->local_objects, obj_entry, tmp_obj_entry) {
     HASH_DELETE(hh, algorithm_state->local_objects, obj_entry);
     CHECK(obj_entry->dependent_tasks == NULL);
     free(obj_entry);
   }
+  /* Free the cached information about which objects are currently being
+   * fetched. */
   HASH_ITER(hh, algorithm_state->remote_objects, obj_entry, tmp_obj_entry) {
     HASH_DELETE(hh, algorithm_state->remote_objects, obj_entry);
     utarray_free(obj_entry->dependent_tasks);
     free(obj_entry);
   }
+  /* Free the algorithm state. */
   free(algorithm_state);
 }
 
@@ -259,10 +269,10 @@ void dispatch_tasks(local_scheduler_state *state,
     DL_DELETE(algorithm_state->dispatch_task_queue, dispatched_task);
 
     /* Get the last available worker in the available worker queue. */
-    int *worker_index =
-        (int *) utarray_back(algorithm_state->available_workers);
+    local_scheduler_client **worker = (local_scheduler_client **) utarray_back(
+        algorithm_state->available_workers);
     /* Tell the available worker to execute the task. */
-    assign_task_to_worker(state, dispatched_task->spec, *worker_index);
+    assign_task_to_worker(state, dispatched_task->spec, *worker);
     /* Remove the available worker from the queue and free the struct. */
     utarray_pop_back(algorithm_state->available_workers);
     free_task_spec(dispatched_task->spec);
@@ -458,18 +468,16 @@ void handle_task_scheduled(local_scheduler_state *state,
 
 void handle_worker_available(local_scheduler_state *state,
                              scheduling_algorithm_state *algorithm_state,
-                             int worker_index) {
-  worker *available_worker =
-      (worker *) utarray_eltptr(state->workers, worker_index);
-  CHECK(available_worker->task_in_progress == NULL);
-  for (int *p = (int *) utarray_front(algorithm_state->available_workers);
-       p != NULL;
-       p = (int *) utarray_next(algorithm_state->available_workers, p)) {
-    DCHECK(*p != worker_index);
+                             local_scheduler_client *worker) {
+  CHECK(worker->task_in_progress == NULL);
+  for (local_scheduler_client **p = (local_scheduler_client **) utarray_front(
+           algorithm_state->available_workers);
+       p != NULL; p = (local_scheduler_client **) utarray_next(
+                      algorithm_state->available_workers, p)) {
+    DCHECK(*p != worker);
   }
   /* Add worker to the list of available workers. */
-  utarray_push_back(algorithm_state->available_workers, &worker_index);
-  LOG_DEBUG("Adding worker_index %d to available workers", worker_index);
+  utarray_push_back(algorithm_state->available_workers, &worker);
 
   /* Try to dispatch tasks, since we now have available workers to assign them
    * to. */
