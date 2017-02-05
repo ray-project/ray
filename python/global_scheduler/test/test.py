@@ -23,7 +23,7 @@ PLASMA_STORE_MEMORY = 1000000000
 ID_SIZE = 20
 DEFAULT_NUM_CPUS = 8
 DEFAULT_NUM_GPUS = 1
-NUM_CLUSTER_NODES = 1
+NUM_CLUSTER_NODES = 2
 
 # These constants must match the scheduling state enum in task.h.
 TASK_STATUS_WAITING = 1
@@ -61,6 +61,7 @@ class TestGlobalScheduler(unittest.TestCase):
     assert os.path.isfile(redis_path)
     assert os.path.isfile(redis_module)
     node_ip_address = "127.0.0.1"
+    #redis_port = 6379 #default Redis port
     redis_port = new_port()
     redis_address = "{}:{}".format(node_ip_address, redis_port)
     self.redis_process = subprocess.Popen([redis_path, "--port", str(redis_port), "--loglevel", "warning", "--loadmodule", redis_module])

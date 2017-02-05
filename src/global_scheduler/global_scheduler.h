@@ -43,7 +43,8 @@ typedef struct {
 typedef struct {
   char *aux_address; /* Key: plasma_manager IP:PORT */
   db_client_id photon_db_client_id; /* Photon db client id */
-  UT_hash_handle hh;
+  UT_hash_handle plasma_photon_hh; /* aux_addr -> photon_db_client_id */
+  UT_hash_handle photon_plasma_hh; /* photon_db_client_id -> aux_addr */
 } aux_address_entry;
 
 typedef struct {

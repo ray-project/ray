@@ -64,16 +64,16 @@ void free_global_scheduler(global_scheduler_state *state) {
   utarray_free(state->local_schedulers);
   destroy_global_scheduler_policy(state->policy_state);
   /* Delete the plasma 2 photon association map. */
-  HASH_ITER(hh, state->plasma_photon_map, entry, tmp) {
-    HASH_DELETE(hh, state->plasma_photon_map, entry);
+  HASH_ITER(plasma_photon_hh, state->plasma_photon_map, entry, tmp) {
+    HASH_DELETE(plasma_photon_hh, state->plasma_photon_map, entry);
     /* Now deallocate hash table entry. */
     free(entry->aux_address);
     free(entry);
   }
 
   /* Delete the photon to plasma association map. */
-  HASH_ITER(hh, state->photon_plasma_map, entry, tmp) {
-    HASH_DELETE(hh, state->photon_plasma_map, entry);
+  HASH_ITER(photon_plasma_hh, state->photon_plasma_map, entry, tmp) {
+    HASH_DELETE(photon_plasma_hh, state->photon_plasma_map, entry);
     /* Note that the entry itself is shared with plasma 2 photon map:
      * already deleted above.  */
   }
@@ -144,25 +144,27 @@ void process_new_db_client(db_client_id db_client_id,
     plasma_photon_entry->aux_address = strdup(aux_address);
     plasma_photon_entry->photon_db_client_id = db_client_id;
     HASH_ADD_KEYPTR(
-        hh, state->plasma_photon_map, plasma_photon_entry->aux_address,
+        plasma_photon_hh, state->plasma_photon_map, plasma_photon_entry->aux_address,
         strlen(plasma_photon_entry->aux_address), plasma_photon_entry);
 
     /* Add photon_db_client_id -> plasma_manager ip:port association to state.*/
-    HASH_ADD(hh, state->photon_plasma_map,
+    HASH_ADD(photon_plasma_hh, state->photon_plasma_map,
              photon_db_client_id, /* Key is the field name of entry struct. */
              sizeof(plasma_photon_entry->photon_db_client_id),
              plasma_photon_entry);
 
+#if (RAY_COMMON_LOG_LEVEL <= RAY_COMMON_DEBUG)
     {
       /* Print the photon to plasma association map so far. */
       aux_address_entry *entry, *tmp;
       LOG_DEBUG("Photon to Plasma hash map so far:");
-      HASH_ITER(hh, state->plasma_photon_map, entry, tmp) {
+      HASH_ITER(plasma_photon_hh, state->plasma_photon_map, entry, tmp) {
         LOG_DEBUG("%s -> %s", entry->aux_address,
                   object_id_to_string(entry->photon_db_client_id, id_string,
                                       ID_STRING_SIZE));
       }
     }
+#endif
 
     /* Add new local scheduler to the state. */
     local_scheduler local_scheduler;

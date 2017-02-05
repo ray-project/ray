@@ -164,7 +164,8 @@ db_client_id get_photon_id(global_scheduler_state *state,
   if (plasma_location != NULL) {
     LOG_DEBUG("max object size location found : %s", plasma_location);
     /* Lookup association of plasma location to photon. */
-    HASH_FIND_STR(state->plasma_photon_map, plasma_location, aux_entry);
+    HASH_FIND(plasma_photon_hh, state->plasma_photon_map, plasma_location,
+              uthash_strlen(plasma_location), aux_entry);
     if (aux_entry) {
       LOG_DEBUG("found photon db client association for plasma ip:port = %s",
                 aux_entry->aux_address);
@@ -270,8 +271,15 @@ void handle_task_waiting(global_scheduler_state *state,
                          global_scheduler_policy_state *policy_state,
                          task *task) {
   task_spec *task_spec = task_task_spec(task);
+
   CHECKM(task_spec != NULL,
          "task wait handler encounted a task with NULL spec");
+#if (RAY_COMMON_LOG_LEVEL <= RAY_COMMON_DEBUG)
+  char buf[256];
+  sprintf(buf, "%4.2f\t%4.2f", task_required_resource(task_spec, 0),
+          task_required_resource(task_spec, 1));
+  LOG_DEBUG("[GS]: received task to schedule with resreq: %s\n", buf);
+#endif
   /* Local hash table to keep track of aggregate object sizes per local
    * scheduler. */
   object_size_entry *s = NULL, *object_size_table = NULL;
@@ -315,7 +323,7 @@ void handle_task_waiting(global_scheduler_state *state,
        * The use the plasma aux address to locate object_size this node contributes.
        */
       aux_address_entry *photon_plasma_pair = NULL;
-      HASH_FIND(hh, state->photon_plasma_map, &(ls->id), sizeof(ls->id),
+      HASH_FIND(photon_plasma_hh, state->photon_plasma_map, &(ls->id), sizeof(ls->id),
                 photon_plasma_pair);
       if (photon_plasma_pair != NULL) {
         /* Found this node's photon to plasma mapping. Use the corresponding
