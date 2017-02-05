@@ -110,7 +110,7 @@ void provide_scheduler_info(local_scheduler_state *state,
                             scheduling_algorithm_state *algorithm_state,
                             local_scheduler_info *info) {
   task_queue_entry *elt;
-  info->total_num_workers = state->total_num_workers;
+  info->total_num_workers = utarray_len(state->workers);
   /* TODO(swang): Provide separate counts for tasks that are waiting for
    * dependencies vs tasks that are waiting to be assigned. */
   int waiting_task_queue_length;

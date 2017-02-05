@@ -303,6 +303,7 @@ struct task_impl {
   int state;
   /** The ID of the local scheduler involved. */
   db_client_id local_scheduler_id;
+  /** The task specification for this task. */
   task_spec spec;
 };
 

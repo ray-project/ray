@@ -86,9 +86,6 @@ local_scheduler_state *init_local_scheduler(
   /* Add the input buffer. This is used to read in messages from clients without
    * having to reallocate a new buffer every time. */
   utarray_new(state->input_buffer, &byte_icd);
-  /* Set the total number of workers to zero. This will increment whenever a
-   * worker connects. */
-  state->total_num_workers = 0;
   return state;
 };
 
@@ -328,7 +325,6 @@ void process_message(event_loop *loop,
   case DISCONNECT_CLIENT: {
     LOG_INFO("Disconnecting client on fd %d", client_sock);
     event_loop_remove_file(loop, client_sock);
-    state->total_num_workers -= 1;
   } break;
   case LOG_MESSAGE: {
   } break;
@@ -344,6 +340,8 @@ void new_client_connection(event_loop *loop,
                            int events) {
   local_scheduler_state *state = context;
   int new_socket = accept_client(listener_sock);
+  /* Create a struct for this worker. This will be freed when we free the local
+   * scheduler state. */
   local_scheduler_client *worker = malloc(sizeof(local_scheduler_client));
   worker->sock = new_socket;
   worker->task_in_progress = NULL;
@@ -352,8 +350,6 @@ void new_client_connection(event_loop *loop,
   event_loop_add_file(loop, new_socket, EVENT_LOOP_READ, process_message,
                       worker);
   LOG_DEBUG("new connection with fd %d", new_socket);
-  /* Increment the number of workers connected to this local scheduler. */
-  state->total_num_workers += 1;
 }
 
 /* We need this code so we can clean up when we get a SIGTERM signal. */

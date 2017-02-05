@@ -74,10 +74,6 @@ typedef struct {
   /** Input buffer, used for reading input in process_message to avoid
    *  allocation for each call to process_message. */
   UT_array *input_buffer;
-  /** The total number of workers connected to this local scheduler. This is
-   *  only used for sending load information to the global scheduler. TODO(rkn):
-   *  Don't count drivers. */
-  int total_num_workers;
 } local_scheduler_state;
 
 /** Contains all information associated with a local scheduler client. */
