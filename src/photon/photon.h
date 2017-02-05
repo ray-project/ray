@@ -42,16 +42,6 @@ typedef struct {
 UT_icd task_ptr_icd;
 UT_icd worker_icd;
 
-/** Association between the socket fd of a worker and its worker_index. */
-typedef struct {
-  /** The socket fd of a worker. */
-  int sock;
-  /** The index of the worker in scheduler_info->workers. */
-  int64_t worker_index;
-  /** Handle for the hash table. */
-  UT_hash_handle hh;
-} worker_index;
-
 /** Internal state of the scheduling algorithm. */
 typedef struct scheduling_algorithm_state scheduling_algorithm_state;
 
@@ -71,11 +61,9 @@ typedef struct {
   local_scheduler_config config;
   /** The local scheduler event loop. */
   event_loop *loop;
-  /** Association between client socket and worker index. */
-  worker_index *worker_index;
-  /** List of workers available to this node. The index into this array
-   *  is the worker_index and is used to identify workers throughout
-   *  the program. */
+  /** List of workers available to this node. This is used to free the worker
+   *  structs when we free the scheduler state and also to access the worker
+   *  structs in the tests. */
   UT_array *workers;
   /** The handle to the database. */
   db_handle *db;
@@ -87,5 +75,17 @@ typedef struct {
    *  allocation for each call to process_message. */
   UT_array *input_buffer;
 } local_scheduler_state;
+
+/** Contains all information associated with a local scheduler client. */
+typedef struct {
+  /** The socket used to communicate with the client. */
+  int sock;
+  /** A pointer to the task object that is currently running on this client. If
+   *  no task is running on the worker, this will be NULL. This is used to
+   *  update the task table. */
+  task *task_in_progress;
+  /** A pointer to the local scheduler state. */
+  local_scheduler_state *local_scheduler_state;
+} local_scheduler_client;
 
 #endif /* PHOTON_H */

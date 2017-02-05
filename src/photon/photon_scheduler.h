@@ -28,14 +28,12 @@ void new_client_connection(event_loop *loop,
  *
  * @param info
  * @param task The task that is submitted to the worker.
- * @param worker_index The index of the worker the task is submitted to.
- * @param from_global_scheduler True if the task was assigned to the local
- *        scheduler by the global scheduler and false otherwise.
+ * @param worker The worker to assign the task to.
  * @return Void.
  */
 void assign_task_to_worker(local_scheduler_state *state,
                            task_spec *task,
-                           int worker_index);
+                           local_scheduler_client *worker);
 
 /**
  * This is the callback that is used to process a notification from the Plasma
