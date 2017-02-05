@@ -108,16 +108,16 @@ void task_table_update(db_handle *db_handle,
  */
 void task_table_test_and_update(db_handle *db_handle,
                                 task_id task_id,
-                                scheduling_state test_state,
-                                scheduling_state update_state,
+                                int test_state,
+                                int update_state,
                                 retry_info *retry,
                                 task_table_get_callback done_callback,
                                 void *user_context);
 
 /* Data that is needed to test and set the task's scheduling state. */
 typedef struct {
-  scheduling_state test_state;
-  scheduling_state update_state;
+  int test_state;
+  int update_state;
   db_client_id local_scheduler_id;
 } task_table_test_and_update_data;
 
@@ -153,7 +153,7 @@ typedef void (*task_table_subscribe_callback)(task *task, void *user_context);
  */
 void task_table_subscribe(db_handle *db_handle,
                           db_client_id local_scheduler_id,
-                          scheduling_state state_filter,
+                          int state_filter,
                           task_table_subscribe_callback subscribe_callback,
                           void *subscribe_context,
                           retry_info *retry,
@@ -164,7 +164,7 @@ void task_table_subscribe(db_handle *db_handle,
  * database. */
 typedef struct {
   db_client_id local_scheduler_id;
-  scheduling_state state_filter;
+  int state_filter;
   task_table_subscribe_callback subscribe_callback;
   void *subscribe_context;
 } task_table_subscribe_data;

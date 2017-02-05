@@ -297,6 +297,9 @@ void process_message(event_loop *loop,
       /* The call to task_table_update takes ownership of the task_in_progress,
        * so we set the pointer to NULL so it is not used. */
       worker->task_in_progress = NULL;
+    } else if (worker->task_in_progress != NULL) {
+      free_task(worker->task_in_progress);
+      worker->task_in_progress = NULL;
     }
     /* Let the scheduling algorithm process the fact that there is an available
      * worker. */

@@ -292,7 +292,7 @@ typedef struct task_impl task;
  *        scheduled on, if any.
  */
 task *alloc_task(task_spec *spec,
-                 scheduling_state state,
+                 int state,
                  db_client_id local_scheduler_id);
 
 /**
@@ -307,10 +307,10 @@ task *copy_task(task *other);
 int64_t task_size(task *task);
 
 /** The scheduling state of the task. */
-scheduling_state task_state(task *task);
+int task_state(task *task);
 
 /** Update the schedule state of the task. */
-void task_set_state(task *task, scheduling_state state);
+void task_set_state(task *task, int state);
 
 /** Local scheduler this task has been assigned to or is running on. */
 db_client_id task_local_scheduler(task *task);

@@ -785,7 +785,7 @@ void redis_task_table_add_task(table_callback_data *callback_data) {
   task *task = callback_data->data;
   task_id task_id = task_task_id(task);
   db_client_id local_scheduler_id = task_local_scheduler(task);
-  scheduling_state state = task_state(task);
+  int state = task_state(task);
   task_spec *spec = task_task_spec(task);
 
   CHECKM(task != NULL, "NULL task passed to redis_task_table_add_task.");
@@ -821,7 +821,7 @@ void redis_task_table_update(table_callback_data *callback_data) {
   task *task = callback_data->data;
   task_id task_id = task_task_id(task);
   db_client_id local_scheduler_id = task_local_scheduler(task);
-  scheduling_state state = task_state(task);
+  int state = task_state(task);
 
   CHECKM(task != NULL, "NULL task passed to redis_task_table_update.");
   int status = redisAsyncCommand(
