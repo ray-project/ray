@@ -81,6 +81,18 @@ class TaskTests(unittest.TestCase):
     self.assertTrue(ray.services.all_processes_alive())
     ray.worker.cleanup()
 
+  def testGettingManyObjects(self):
+    ray.init()
+
+    @ray.remote
+    def f():
+      return 1
+
+    n = 10 ** 4 # TODO(pcm): replace by 10 ** 5 once this is faster
+    l = ray.get([f.remote() for _ in range(n)])
+    self.assertEqual(l, n * [1])
+    ray.worker.cleanup()
+
   def testWait(self):
     for num_local_schedulers in [1, 4]:
       for num_workers_per_scheduler in [4]:

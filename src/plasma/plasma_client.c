@@ -316,8 +316,8 @@ void plasma_get(plasma_connection *conn,
                                num_objects, timeout_ms) >= 0);
   uint8_t *reply_data =
       plasma_receive(conn->store_conn, MessageType_PlasmaGetReply);
-  object_id received_obj_ids[num_objects];
-  plasma_object object_data[num_objects];
+  object_id *received_obj_ids = malloc(num_objects * sizeof(object_id));
+  plasma_object *object_data = malloc(num_objects * sizeof(plasma_object));
   plasma_object *object;
   plasma_read_GetReply(reply_data, received_obj_ids, object_data, num_objects);
   free(reply_data);
@@ -365,6 +365,8 @@ void plasma_get(plasma_connection *conn,
       object_buffers[i].data_size = -1;
     }
   }
+  free(object_data);
+  free(received_obj_ids);
 }
 
 /**
