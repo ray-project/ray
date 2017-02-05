@@ -326,7 +326,7 @@ TEST task_dependency_test(void) {
   scheduling_algorithm_state *algorithm_state = state->algorithm_state;
   /* Get the first worker. */
   local_scheduler_client *worker =
-      (local_scheduler_client *) utarray_eltptr(state->workers, 0);
+      *((local_scheduler_client **) utarray_eltptr(state->workers, 0));
   task_spec *spec = example_task_spec(1, 1);
   object_id oid = task_arg_id(spec, 0);
 
@@ -401,7 +401,7 @@ TEST task_multi_dependency_test(void) {
   scheduling_algorithm_state *algorithm_state = state->algorithm_state;
   /* Get the first worker. */
   local_scheduler_client *worker =
-      (local_scheduler_client *) utarray_eltptr(state->workers, 0);
+      *((local_scheduler_client **) utarray_eltptr(state->workers, 0));
   task_spec *spec = example_task_spec(2, 1);
   object_id oid1 = task_arg_id(spec, 0);
   object_id oid2 = task_arg_id(spec, 1);
