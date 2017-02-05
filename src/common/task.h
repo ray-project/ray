@@ -291,9 +291,7 @@ typedef struct task_impl task;
  * @param local_scheduler_id The ID of the local scheduler that the task is
  *        scheduled on, if any.
  */
-task *alloc_task(task_spec *spec,
-                 int state,
-                 db_client_id local_scheduler_id);
+task *alloc_task(task_spec *spec, int state, db_client_id local_scheduler_id);
 
 /**
  * Create a copy of the task. Must be freed with free_task after use.

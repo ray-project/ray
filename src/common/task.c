@@ -306,9 +306,7 @@ struct task_impl {
   task_spec spec;
 };
 
-task *alloc_task(task_spec *spec,
-                 int state,
-                 db_client_id local_scheduler_id) {
+task *alloc_task(task_spec *spec, int state, db_client_id local_scheduler_id) {
   int64_t size = sizeof(task) - sizeof(task_spec) + task_spec_size(spec);
   task *result = malloc(size);
   memset(result, 0, size);

@@ -21,7 +21,7 @@
 #include "uthash.h"
 
 UT_icd task_ptr_icd = {sizeof(task *), NULL, NULL, NULL};
-UT_icd workers_icd = {sizeof(local_scheduler_client), NULL, NULL, NULL};
+UT_icd workers_icd = {sizeof(local_scheduler_client *), NULL, NULL, NULL};
 
 UT_icd byte_icd = {sizeof(uint8_t), NULL, NULL, NULL};
 
@@ -93,30 +93,46 @@ local_scheduler_state *init_local_scheduler(
 };
 
 void free_local_scheduler(local_scheduler_state *state) {
+  /* Free the command for starting new workers. */
   if (state->config.start_worker_command != NULL) {
     free(state->config.start_worker_command);
     state->config.start_worker_command = NULL;
   }
 
+  /* Disconnect from the database. */
   if (state->db != NULL) {
     db_disconnect(state->db);
+    state->db = NULL;
   }
+  /* Disconnect from plasma. */
   plasma_disconnect(state->plasma_conn);
+  state->plasma_conn = NULL;
 
   /* Free the list of workers and any tasks that are still in progress on those
    * workers. */
   for (int i = 0; i < utarray_len(state->workers); ++i) {
-    local_scheduler_client *worker =
-        (local_scheduler_client *) utarray_eltptr(state->workers, i);
-    if (worker->task_in_progress != NULL) {
-      free_task(worker->task_in_progress);
+    local_scheduler_client **worker =
+        (local_scheduler_client **) utarray_eltptr(state->workers, i);
+    if ((*worker)->task_in_progress != NULL) {
+      free_task((*worker)->task_in_progress);
+      (*worker)->task_in_progress = NULL;
     }
+    free(*worker);
+    *worker = NULL;
   }
   utarray_free(state->workers);
+  state->workers = NULL;
 
+  /* Free the algorithm state. */
   free_scheduling_algorithm_state(state->algorithm_state);
+  state->algorithm_state = NULL;
+  /* Free the input buffer. */
   utarray_free(state->input_buffer);
+  state->input_buffer = NULL;
+  /* Destroy the event loop. */
   event_loop_destroy(state->loop);
+  state->loop = NULL;
+  /* Free the scheduler state. */
   free(state);
 }
 
@@ -328,15 +344,13 @@ void new_client_connection(event_loop *loop,
                            int events) {
   local_scheduler_state *state = context;
   int new_socket = accept_client(listener_sock);
-  local_scheduler_client worker;
-  worker.sock = new_socket;
-  worker.task_in_progress = NULL;
-  worker.local_scheduler_state = state;
+  local_scheduler_client *worker = malloc(sizeof(local_scheduler_client));
+  worker->sock = new_socket;
+  worker->task_in_progress = NULL;
+  worker->local_scheduler_state = state;
   utarray_push_back(state->workers, &worker);
-  local_scheduler_client *worker_context =
-      (local_scheduler_client *) utarray_back(state->workers);
   event_loop_add_file(loop, new_socket, EVENT_LOOP_READ, process_message,
-                      worker_context);
+                      worker);
   LOG_DEBUG("new connection with fd %d", new_socket);
   /* Increment the number of workers connected to this local scheduler. */
   state->total_num_workers += 1;
