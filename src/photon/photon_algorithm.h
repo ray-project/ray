@@ -132,7 +132,7 @@ void handle_worker_available(local_scheduler_state *state,
  */
 void handle_actor_worker_available(local_scheduler_state *state,
                                    scheduling_algorithm_state *algorithm_state,
-                                   worker_index *wi);
+                                   local_scheduler_client *worker);
 
 /**
  * This function fetches queued task's missing object dependencies. It is

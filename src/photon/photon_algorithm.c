@@ -302,13 +302,13 @@ void add_task_to_actor_queue(local_scheduler_state *state,
  *
  * @param state The state of the local scheduler.
  * @param algorithm_state The state of the scheduling algorithm.
- * @param worker_index The worker to dispatch the task to.
+ * @param worker The worker to dispatch the task to.
  * @return True if a task was dispatched to the actor and false otherwise.
  */
 bool dispatch_actor_task(local_scheduler_state *state,
                          scheduling_algorithm_state *algorithm_state,
-                         worker_index *wi) {
-  actor_id actor_id = wi->actor_id;
+                         local_scheduler_client *worker) {
+  actor_id actor_id = worker->actor_id;
   /* Make sure this worker actually is an actor. */
   CHECK(!actor_ids_equal(actor_id, NIL_ID));
   actor_queue *entry = get_actor_info(algorithm_state, actor_id);
@@ -325,7 +325,7 @@ bool dispatch_actor_task(local_scheduler_state *state,
     return false;
   }
   /* Assign the first task in the task queue to the worker. */
-  assign_task_to_worker(state, entry->task_queue->spec, wi->worker_index);
+  assign_task_to_worker(state, entry->task_queue->spec, worker);
   /* Remove the task from the actor's task queue. */
   DL_DELETE(entry->task_queue, entry->task_queue);
   return true;
@@ -734,8 +734,8 @@ void handle_worker_available(local_scheduler_state *state,
 
 void handle_actor_worker_available(local_scheduler_state *state,
                                    scheduling_algorithm_state *algorithm_state,
-                                   worker_index *wi) {
-  bool dispatched_task = dispatch_actor_task(state, algorithm_state, wi);
+                                   local_scheduler_client *worker) {
+  bool dispatched_task = dispatch_actor_task(state, algorithm_state, worker);
   if (dispatched_task) {
     LOG_INFO("Dispatched task to actor.");
   } else {

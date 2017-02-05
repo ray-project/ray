@@ -540,7 +540,7 @@ void process_message(event_loop *loop,
     }
     /* Let the scheduling algorithm process the fact that there is an available
      * worker. */
-    if (actor_ids_equal(wi->actor_id, NIL_ID)) {
+    if (actor_ids_equal(worker->actor_id, NIL_ID)) {
       handle_worker_available(state, state->algorithm_state, worker);
     } else {
       //SHOULD THIS IF CONDITION BE IN THE ALGORITHM OR THE SCHEDULER?
@@ -600,6 +600,7 @@ void new_client_connection(event_loop *loop,
   worker->task_in_progress = NULL;
   worker->pid = 0;
   worker->is_child = false;
+  worker->actor_id = NIL_ID;
   worker->local_scheduler_state = state;
   utarray_push_back(state->workers, &worker);
   event_loop_add_file(loop, new_socket, EVENT_LOOP_READ, process_message,
