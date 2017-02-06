@@ -104,7 +104,7 @@ def model_reinitialization(model):
 
 def train(hps):
   """Training loop."""
-  ray.init(num_workers=10, driver_mode=2)
+  ray.init(num_workers=10)
   batches = get_batches.remote(
       FLAGS.dataset, FLAGS.train_data_path, hps.batch_size, FLAGS.mode)
   test_batch = get_test.remote(FLAGS.dataset, FLAGS.eval_data_path, hps.batch_size, FLAGS.mode)
@@ -166,17 +166,21 @@ def train(hps):
     mon_sess.run(init)
     while not mon_sess.should_stop():'''
   model.variables.sess.run(init)
-  while True:
-    print "Start of loop"
-    weights = model.variables.get_weights()
-    weight_id = ray.put(weights)
-    rand_list = np.random.choice(25, 10, replace=False)
-    print "Computing rollouts"
-    all_weights = ray.get([compute_rollout.remote(weight_id, batches[i])  for i in rand_list])
-    mean_weights = {k: sum([weights[k] for weights in all_weights]) / 10 for k in all_weights[0]}
-    model.variables.set_weights(mean_weights)
-    new_weights = ray.put(mean_weights)
-    print ray.get(accuracy.remote(new_weights, test_batch))
+  step = 0
+  with open("results.txt", "w") as results:
+    while True:
+      print "Start of loop"
+      weights = model.variables.get_weights()
+      weight_id = ray.put(weights)
+      rand_list = np.random.choice(25, 10, replace=False)
+      print "Computing rollouts"
+      all_weights = ray.get([compute_rollout.remote(weight_id, batches[i])  for i in rand_list])
+      mean_weights = {k: sum([weights[k] for weights in all_weights]) / 10 for k in all_weights[0]}
+      model.variables.set_weights(mean_weights)
+      new_weights = ray.put(mean_weights)
+      if step % 200 == 0:
+        results.write(str(step) + " " + str(ray.get(accuracy.remote(new_weights, test_batch))) + "\n")
+      step += 1
 
 def evaluate(hps):
   """Eval loop."""

@@ -70,9 +70,9 @@ class ResNet(object):
   def _build_model(self):
     """Build the core model within the graph."""
 
-    x = tf.placeholder(tf.float32, shape=[128, 32, 32, 3])
+    x = tf.placeholder_with_default(tf.zeros([128,32,32,3]), shape=[128, 32, 32, 3])
     self.x = x
-    self.labels = tf.placeholder(tf.float32, shape=[128, 10])
+    self.labels = tf.placeholder_with_default(tf.zeros([128,10]), shape=[128, 10])
     labels = self.labels
     with tf.variable_scope('init'):
       x = self._conv('init_conv', x, 3, 3, 16, self._stride_arr(1))
@@ -295,7 +295,7 @@ class ResNet(object):
     """FullyConnected layer for final output."""
     x = tf.reshape(x, [self.hps.batch_size, -1])
     w = tf.get_variable(
-        'DW', [64, out_dim],
+        'DW', [x.get_shape()[1], out_dim],
         initializer=tf.uniform_unit_scaling_initializer(factor=1.0))
     b = tf.get_variable('biases', [out_dim],
                         initializer=tf.constant_initializer())
