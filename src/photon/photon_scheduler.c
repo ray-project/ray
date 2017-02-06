@@ -199,7 +199,7 @@ void assign_task_to_worker(local_scheduler_state *state,
   /* Record which task this worker is executing. This will be freed in
    * process_message when the worker sends a GET_TASK message to the local
    * scheduler. */
-  w->task_in_progress = copy_task(task);
+  worker->task_in_progress = copy_task(task);
   /* Update the global task table. */
   if (state->db != NULL) {
     task_table_update(state->db, task, (retry_info *) &photon_retry, NULL,
