@@ -102,10 +102,12 @@ class TestGlobalScheduler(unittest.TestCase):
   def tearDown(self):
     # Check that the processes are still alive.
     self.assertEqual(self.p1.poll(), None)
-    for i in range(NUM_CLUSTER_NODES):
-      self.assertEqual(self.plasma_store_p2[i].poll(), None)
-      self.assertEqual(self.plasma_manager_p3[i].poll(), None)
-      self.assertEqual(self.local_scheduler_p4[i].poll(), None)
+    for p2 in self.plasma_store_p2:
+      self.assertEqual(p2.poll(), None)
+    for p3 in self.plasma_manager_p3:
+      self.assertEqual(p3.poll(), None)
+    for p4 in self.local_scheduler_p4:
+      self.assertEqual(p4.poll(), None)
       
     self.assertEqual(self.redis_process.poll(), None)
 
@@ -117,10 +119,10 @@ class TestGlobalScheduler(unittest.TestCase):
         os._exit(-1)
     else:
       self.p1.kill()
-    for i in range(NUM_CLUSTER_NODES):
-      self.plasma_store_p2[i].kill()    #kill plasma store
-      self.plasma_manager_p3[i].kill()  #kill plasma manager
-      self.local_scheduler_p4[i].kill() #kill photon
+    # kill photons, plasma managers, and plasma stores.
+    map(subprocess.Popen.kill, self.local_scheduler_p4) #kill photon
+    map(subprocess.Popen.kill, self.plasma_manager_p3)  #kill plasma manager
+    map(subprocess.Popen.kill, self.plasma_store_p2)    #kill plasma store
     # Kill Redis. In the event that we are using valgrind, this needs to happen
     # after we kill the global scheduler.
     self.redis_process.kill()
