@@ -167,7 +167,7 @@ void provide_scheduler_info(local_scheduler_state *state,
   }
 }
 
-local_actor_info *create_actor(scheduling_algorithm_state *algorithm_state,
+void create_actor(scheduling_algorithm_state *algorithm_state,
                                actor_id actor_id) {
   /* This will be freed when the actor is removed in remove_actor. */
   local_actor_info *entry = malloc(sizeof(local_actor_info));
@@ -183,11 +183,10 @@ local_actor_info *create_actor(scheduling_algorithm_state *algorithm_state,
   LOG_DEBUG("Creating actor with ID %s.",
             object_id_to_string(actor_id, id_string, ID_STRING_SIZE));
   UNUSED(id_string);
-
-  return entry;
 }
 
-void remove_actor(scheduling_algorithm_state *algorithm_state, actor_id actor_id) {
+void remove_actor(scheduling_algorithm_state *algorithm_state,
+                  actor_id actor_id) {
   local_actor_info *entry;
   HASH_FIND(hh, algorithm_state->local_actor_infos, &actor_id, sizeof(actor_id),
             entry);
@@ -199,8 +198,8 @@ void remove_actor(scheduling_algorithm_state *algorithm_state, actor_id actor_id
   task_queue_entry *elt;
   int count;
   DL_COUNT(entry->task_queue, elt, count);
-  LOG_DEBUG("Removing actor with ID %s and %d remaining tasks.",
-            object_id_to_string(actor_id, id_string, ID_STRING_SIZE), count);
+  LOG_WARN("Removing actor with ID %s and %d remaining tasks.",
+           object_id_to_string(actor_id, id_string, ID_STRING_SIZE), count);
   UNUSED(id_string);
 
   /* Free all remaining tasks in the actor queue. */
@@ -215,18 +214,16 @@ void remove_actor(scheduling_algorithm_state *algorithm_state, actor_id actor_id
   free(entry);
 }
 
-local_actor_info *get_actor_info(scheduling_algorithm_state *algorithm_state,
+void handle_actor_worker_connect(local_scheduler_state *state,
+                                 scheduling_algorithm_state *algorithm_state,
                                  actor_id actor_id) {
-  /* See if an entry in the local actor info hash table exists for this
-   * actor. */
-  local_actor_info *entry;
-  HASH_FIND(hh, algorithm_state->local_actor_infos, &actor_id, sizeof(actor_id),
-            entry);
-  /* Create an entry for this actor if necessary. */
-  if (entry == NULL) {
-    entry = create_actor(algorithm_state, actor_id);
-  }
-  return entry;
+  create_actor(algorithm_state, actor_id);
+}
+
+void handle_actor_worker_disconnect(local_scheduler_state *state,
+                                    scheduling_algorithm_state *algorithm_state,
+                                    actor_id actor_id) {
+  remove_actor(algorithm_state, actor_id);
 }
 
 /**
@@ -246,9 +243,14 @@ void add_task_to_actor_queue(local_scheduler_state *state,
                              scheduling_algorithm_state *algorithm_state,
                              task_spec *spec,
                              bool from_global_scheduler) {
-  DCHECK(!actor_ids_equal(task_spec_actor_id(spec), NIL_ID));
-  local_actor_info *entry = get_actor_info(algorithm_state,
-                                           task_spec_actor_id(spec));
+  actor_id actor_id = task_spec_actor_id(spec);
+  DCHECK(!actor_ids_equal(actor_id, NIL_ID));
+  /* Get the local actor entry for this actor. */
+  local_actor_info *entry;
+  HASH_FIND(hh, algorithm_state->local_actor_infos, &actor_id, sizeof(actor_id),
+            entry);
+  CHECK(entry != NULL);
+
   int64_t task_counter = task_spec_actor_counter(spec);
   /* As a sanity check, the counter of the new task should be greater than the
    * number of tasks that have executed on this actor so far (since we are
@@ -322,7 +324,12 @@ bool dispatch_actor_task(local_scheduler_state *state,
   CHECK(db_client_ids_equal(actor_entry->local_scheduler_id,
                             get_db_client_id(state->db)));
 
-  local_actor_info *entry = get_actor_info(algorithm_state, actor_id);
+  /* Get the local actor entry for this actor. */
+  local_actor_info *entry;
+  HASH_FIND(hh, algorithm_state->local_actor_infos, &actor_id, sizeof(actor_id),
+            entry);
+  CHECK(entry != NULL);
+
   if (entry->task_queue == NULL) {
     /* There are no queued tasks for this actor, so we cannot dispatch a task to
      * the actor. */

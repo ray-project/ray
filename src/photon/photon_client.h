@@ -14,9 +14,11 @@ typedef struct {
  *
  * @param photon_socket The name of the socket to use to connect to the local
  *        scheduler.
+ * @param actor_id The ID of the actor running on this worker. If no actor is
+ *        running on this actor, this should be NIL_ID.
  * @return The connection information.
  */
-photon_conn *photon_connect(const char *photon_socket);
+photon_conn *photon_connect(const char *photon_socket, actor_id actor_id);
 
 /**
  * Disconnect from the local scheduler.

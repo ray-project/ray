@@ -149,6 +149,30 @@ void handle_actor_worker_available(local_scheduler_state *state,
                                    local_scheduler_client *worker);
 
 /**
+ * Handle the fact that a new worker is available for running an actor.
+ *
+ * @param state The state of the local scheduler.
+ * @param algorithm_state State maintained by the scheduling algorithm.
+ * @param actor_id The ID of the actor running on the worker.
+ * @return Void.
+ */
+void handle_actor_worker_connect(local_scheduler_state *state,
+                                 scheduling_algorithm_state *algorithm_state,
+                                 actor_id actor_id);
+
+/**
+ * Handle the fact that a worker running an actor has disconnected.
+ *
+ * @param state The state of the local scheduler.
+ * @param algorithm_state State maintained by the scheduling algorithm.
+ * @param actor_id The ID of the actor running on the worker.
+ * @return Void.
+ */
+void handle_actor_worker_disconnect(local_scheduler_state *state,
+                                    scheduling_algorithm_state *algorithm_state,
+                                    actor_id actor_id);
+
+/**
  * This function fetches queued task's missing object dependencies. It is
  * called every LOCAL_SCHEDULER_FETCH_TIMEOUT_MILLISECONDS.
  *

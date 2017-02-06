@@ -514,6 +514,27 @@ void process_message(event_loop *loop,
     free(key);
     free(value);
   } break;
+  case LOCAL_SCHEDULER_CONNECT: {
+    /* Update the actor mapping with the actor ID of the worker (if an actor is
+     * running on the worker). */
+    actor_id actor_id_obj = *((actor_id *) utarray_front(state->input_buffer));
+    if (!actor_ids_equal(worker->actor_id, NIL_ID)) {
+      /* Make sure that the local scheduler is aware that it is responsible for
+       * this actor. */
+      actor_map_entry *entry;
+      HASH_FIND(hh, state->actor_mapping, &actor_id_obj, sizeof(actor_id_obj),
+                entry);
+      CHECK(entry != NULL);
+      CHECK(db_client_ids_equal(entry->local_scheduler_id,
+                                get_db_client_id(state->db)));
+      /* Update the worker struct with this actor ID. */
+      CHECK(actor_ids_equal(worker->actor_id, NIL_ID));
+      worker->actor_id = actor_id_obj;
+      /* Let the scheduling algorithm process the presence of this new
+       * worker. */
+      handle_actor_worker_connect(state, state->algorithm_state, actor_id_obj);
+    }
+  } break;
   case GET_TASK: {
     /* If this worker reports a completed task: account for resources. */
     if (worker->task_in_progress != NULL) {
@@ -554,7 +575,12 @@ void process_message(event_loop *loop,
   case DISCONNECT_CLIENT: {
     LOG_INFO("Disconnecting client on fd %d", client_sock);
     kill_worker(worker, false);
-    //GET THE WORKER's ACTOR ID AND TRIGGER THE CLEANUP OF THE ACTOR QUEUE
+    if (!actor_ids_equal(worker->actor_id, NIL_ID)) {
+      /* Let the scheduling algorithm process the presence of this new
+       * worker. */
+      handle_actor_worker_disconnect(state, state->algorithm_state,
+                                     worker->actor_id);
+    }
   } break;
   case LOG_MESSAGE: {
   } break;
