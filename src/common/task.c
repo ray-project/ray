@@ -286,7 +286,7 @@ object_id task_return(task_spec *spec, int64_t return_index) {
   return ret->obj_id;
 }
 
-double task_required_resource(task_spec *spec, int64_t resource_index) {
+double task_required_resource(const task_spec *spec, int64_t resource_index) {
   return spec->required_resources[resource_index];
 }
 

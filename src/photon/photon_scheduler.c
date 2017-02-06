@@ -25,6 +25,31 @@ UT_icd worker_icd = {sizeof(worker), NULL, NULL, NULL};
 
 UT_icd byte_icd = {sizeof(uint8_t), NULL, NULL, NULL};
 
+/* print_resource_info: a helper function for printing available and requested
+ * resource information.
+ */
+void print_resource_info(const local_scheduler_state *state,
+                         const task_spec *spec) {
+
+#if RAY_COMMON_LOG_LEVEL <= RAY_COMMON_INFO
+  /* Print information about available and requested resources. */
+  char buftotal[256], bufavail[256], bufresreq[256];
+  snprintf(bufavail, sizeof(bufavail), "%8.4f %8.4f",
+          state->dynamic_resources[0],
+          state->dynamic_resources[1]);
+  snprintf(buftotal, sizeof(buftotal), "%8.4f %8.4f",
+          state->static_resources[0],
+          state->static_resources[1]);
+  if (spec) {
+    snprintf(bufresreq, sizeof(bufresreq), "%8.4f %8.4f",
+            task_required_resource(spec, 0),
+            task_required_resource(spec, 1));
+  }
+  LOG_INFO("Resources: [total=%s][available=%s][requested=%s]",
+           buftotal, bufavail, spec?bufresreq:"n/a");
+#endif
+}
+
 local_scheduler_state *init_local_scheduler(
     const char *node_ip_address,
     event_loop *loop,
@@ -86,11 +111,7 @@ local_scheduler_state *init_local_scheduler(
         static_resource_conf[i];
   }
   /* Print some debug information about resource configuration. */
-  char buf[256]; UNUSED(buf);
-  sprintf(buf, "%f,%f\n", state->static_resources[0], state->static_resources[1]);
-  LOG_DEBUG("Initialized photon scheduler with static resources=%s\n", buf);
-  sprintf(buf, "%f,%f\n", state->dynamic_resources[0], state->dynamic_resources[1]);
-  LOG_DEBUG("Initialized photon scheduler with dynamic resources=%s\n", buf);
+  print_resource_info(state, NULL);
   return state;
 };
 
@@ -144,19 +165,22 @@ void assign_task_to_worker(local_scheduler_state *state,
    * Update dynamic resource vector in the local scheduler state. */
   for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
     state->dynamic_resources[i] -= task_required_resource(spec, i);
-    CHECK(state->dynamic_resources[i] >= 0);
+    CHECKM(state->dynamic_resources[i] >= 0,
+           "photon dynamic resources dropped to %8.4f\t%8.4f\n",
+           state->dynamic_resources[0],
+           state->dynamic_resources[1]);
   }
-
+  print_resource_info(state, spec);
+  task *task = alloc_task(spec, TASK_STATUS_RUNNING,
+                          state->db ? get_db_client_id(state->db) : NIL_ID);
+  /* Record which task this worker is executing. This will be freed in
+   * process_message when the worker sends a GET_TASK message to the local
+   * scheduler. */
+  w->task_in_progress = copy_task(task);
   /* Update the global task table. */
   if (state->db != NULL) {
-    task *task =
-        alloc_task(spec, TASK_STATUS_RUNNING, get_db_client_id(state->db));
     task_table_update(state->db, task, (retry_info *) &photon_retry, NULL,
                       NULL);
-    /* Record which task this worker is executing. This will be freed in
-     * process_message when the worker sends a GET_TASK message to the local
-     * scheduler. */
-    w->task_in_progress = copy_task(task);
   }
 }
 
@@ -291,20 +315,30 @@ void process_message(event_loop *loop,
     task *task_in_progress = available_worker->task_in_progress;
     task_spec *spec = (task_in_progress != NULL)?
         task_task_spec(task_in_progress):NULL;
-    if (state->db != NULL && task_in_progress != NULL) {
-      /* Return dynamic resources back. */
+
+    /* If this worker reports a completed task: account for resources. */
+    if (task_in_progress != NULL) {
+      /* Return dynamic resources back for the task in progress. */
       for (int i = 0 ; i < MAX_RESOURCE_INDEX; i++) {
         state->dynamic_resources[i] += task_required_resource(spec, i);
         /* Sanity-check resource vector boundary conditions. */
         CHECK(state->dynamic_resources[i] <= state->static_resources[i]);
       }
-      /* Update control state tables. */
-      task_set_state(available_worker->task_in_progress, TASK_STATUS_DONE);
-      task_table_update(state->db, available_worker->task_in_progress,
-                        (retry_info *) &photon_retry, NULL, NULL);
-      /* The call to task_table_update takes ownership of the task_in_progress,
-       * so we set the pointer to NULL so it is not used. */
-      available_worker->task_in_progress = NULL;
+      print_resource_info(state, spec);
+      /* If we're connected to Redis, update tables. */
+      if (state->db != NULL && task_in_progress != NULL) {
+        /* Update control state tables. */
+        task_set_state(available_worker->task_in_progress, TASK_STATUS_DONE);
+        task_table_update(state->db, available_worker->task_in_progress,
+                          (retry_info *) &photon_retry, NULL, NULL);
+        /* The call to task_table_update takes ownership of the task_in_progress,
+         * so we set the pointer to NULL so it is not used. */
+        available_worker->task_in_progress = NULL;
+      }
+      if (available_worker->task_in_progress) {
+        free(available_worker->task_in_progress);
+        available_worker->task_in_progress = NULL;
+      }
     }
     /* Let the scheduling algorithm process the fact that there is an available
      * worker. */
