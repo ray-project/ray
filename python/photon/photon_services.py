@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import os
 import random
+import string
 import subprocess
 import time
 
@@ -14,7 +15,7 @@ def start_local_scheduler(plasma_store_name, plasma_manager_name=None,
                           worker_path=None, plasma_address=None,
                           node_ip_address="127.0.0.1", redis_address=None,
                           use_valgrind=False, use_profiler=False,
-                          redirect_output=False):
+                          redirect_output=False, static_resource_list=None):
   """Start a local scheduler process.
 
   Args:
@@ -37,6 +38,7 @@ def start_local_scheduler(plasma_store_name, plasma_manager_name=None,
       profiler. If this is True, use_valgrind must be False.
     redirect_output (bool): True if stdout and stderr should be redirected to
       /dev/null.
+    static_resource_list: List of numeric values for resources in the order defined in task.h
 
   Return:
     A tuple of the name of the local scheduler socket and the process ID of the
@@ -71,6 +73,8 @@ def start_local_scheduler(plasma_store_name, plasma_manager_name=None,
     command += ["-r", redis_address]
   if plasma_address is not None:
     command += ["-a", plasma_address]
+  if static_resource_list is not None:
+    command += ["-c", string.join(static_resource_list, ',')]
   with open(os.devnull, "w") as FNULL:
     stdout = FNULL if redirect_output else None
     stderr = FNULL if redirect_output else None

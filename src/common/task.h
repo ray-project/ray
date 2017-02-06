@@ -228,6 +228,46 @@ int64_t task_args_add_val(task_spec *spec, uint8_t *data, int64_t length);
 object_id task_return(task_spec *spec, int64_t return_index);
 
 /**
+ * Indices into resource vectors.
+ * A resource vector maps a resource index to the number
+ * of units of that resource required.
+ *
+ * The total length of the resource vector is NUM_RESOURCE_INDICES.
+ */
+typedef enum {
+  /* Index for number of cpus the task requires. */
+  CPU_RESOURCE_INDEX = 0,
+  /* Index for number of gpus the task requires. */
+  GPU_RESOURCE_INDEX,
+  /* Total number of different resources in the system. */
+  MAX_RESOURCE_INDEX
+} resource_vector_index;
+
+#define DEFAULT_NUM_CPUS 16
+#define DEFAULT_NUM_GPUS 0
+
+/**
+ * Set the value associated to a resource index.
+ *
+ * @param spec Task specification.
+ * @param resource_index Index of the resource.
+ * @param value Value for the resource. This can be a quantity of resources
+ *              this task needs for example or it can be a value for an
+ *              attribute this task requires.
+ * @return How many of this resource the task needs to execute.
+ */
+void task_add_required_resource(task_spec *spec, int64_t resource_index, double value);
+
+/**
+ * Get the value associated to a resource index.
+ *
+ * @param spec Task specification.
+ * @param resource_index Index of the resource.
+ * @return How many of this resource the task needs to execute.
+ */
+double task_required_resource(const task_spec *spec, int64_t resource_index);
+
+/**
  * Compute the object id associated to a put call.
  *
  * @param task_id The task id of the parent task that called the put.

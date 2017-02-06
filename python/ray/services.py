@@ -262,7 +262,8 @@ def start_global_scheduler(redis_address, cleanup=True, redirect_output=False):
 
 def start_local_scheduler(redis_address, node_ip_address, plasma_store_name,
                           plasma_manager_name, worker_path, plasma_address=None,
-                          cleanup=True, redirect_output=False):
+                          cleanup=True, redirect_output=False,
+                          static_resource_list=None):
   """Start a local scheduler process.
 
   Args:
@@ -290,7 +291,8 @@ def start_local_scheduler(redis_address, node_ip_address, plasma_store_name,
                                                          redis_address=redis_address,
                                                          plasma_address=plasma_address,
                                                          use_profiler=RUN_PHOTON_PROFILER,
-                                                         redirect_output=redirect_output)
+                                                         redirect_output=redirect_output,
+                                                         static_resource_list=static_resource_list)
   if cleanup:
     all_processes[PROCESS_TYPE_LOCAL_SCHEDULER].append(p)
   return local_scheduler_name

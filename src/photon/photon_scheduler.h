@@ -74,7 +74,8 @@ local_scheduler_state *init_local_scheduler(
     const char *plasma_store_socket_name,
     const char *plasma_manager_address,
     bool global_scheduler_exists,
-    const char *worker_path);
+    const char *worker_path,
+    const double static_resource_vector[]);
 
 void free_local_scheduler(local_scheduler_state *state);
 
