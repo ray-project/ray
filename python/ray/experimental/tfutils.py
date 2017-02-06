@@ -69,7 +69,7 @@ class TensorFlowVariables(object):
     # Create new placeholders to put in custom weights.
     for k, var in self.variables.items():
       self.placeholders[k] = tf.placeholder(var.value().dtype, var.get_shape().as_list())
-      self.assignment_nodes.append(var.assign(self.assignment_placeholders[k]))
+      self.assignment_nodes.append(var.assign(self.placeholders[k]))
 
   def set_session(self, sess):
     """Modifies the current session used by the class."""
@@ -92,7 +92,7 @@ class TensorFlowVariables(object):
     self._check_sess()
     shapes = [v.get_shape().as_list() for v in self.variables.values()]
     arrays = unflatten(new_weights, shapes)
-    placeholders = [self.assignment_placeholders[k] for k, v in self.variables.items()]
+    placeholders = [self.placeholders[k] for k, v in self.variables.items()]
     self.sess.run(self.assignment_nodes, feed_dict=dict(zip(placeholders,arrays)))
 
   def get_weights(self):
@@ -103,4 +103,4 @@ class TensorFlowVariables(object):
   def set_weights(self, new_weights):
     """Sets the weights to new_weights."""
     self._check_sess()
-    self.sess.run(self.assignment_nodes, feed_dict={self.assignment_placeholders[name]: value for (name, value) in new_weights.items()})
+    self.sess.run(self.assignment_nodes, feed_dict={self.placeholders[name]: value for (name, value) in new_weights.items()})
