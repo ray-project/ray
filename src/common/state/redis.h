@@ -247,4 +247,22 @@ void redis_local_scheduler_table_send_info(table_callback_data *callback_data);
 
 void redis_object_info_subscribe(table_callback_data *callback_data);
 
+/**
+ * Put an error message to Redis.
+ *
+ * @param callback_data Data structure containing redis connection and timeout
+ *        information.
+ * @return Void.
+ */
+void redis_error_table_push_error_hmset(table_callback_data *callback_data);
+
+/**
+ * Put an error message identifier in Redis.
+ *
+ * @param callback_data Data structure containing redis connection and timeout
+ *        information.
+ * @return Void.
+ */
+void redis_error_table_push_error_rpush(table_callback_data *callback_data);
+
 #endif /* REDIS_H */

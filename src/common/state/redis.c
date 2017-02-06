@@ -12,6 +12,7 @@
 #include "common.h"
 #include "db.h"
 #include "db_client_table.h"
+#include "error_table.h"
 #include "local_scheduler_table.h"
 #include "object_table.h"
 #include "object_info.h"
@@ -1175,6 +1176,74 @@ void redis_object_info_subscribe(table_callback_data *callback_data) {
       (void *) callback_data->timer_id, "PSUBSCRIBE obj:info");
   if ((status == REDIS_ERR) || db->sub_context->err) {
     LOG_REDIS_DEBUG(db->sub_context, "error in object_info_register_callback");
+  }
+}
+
+void redis_error_table_push_error_hmset_callback(redisAsyncContext *c,
+                                                 void *r,
+                                                 void *privdata) {
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
+
+  redisReply *reply = r;
+  CHECKM(reply->type == REDIS_REPLY_STATUS, "reply->type is %d", reply->type);
+  CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
+
+  error_table_push_error_rpush_data *data = callback_data->data;
+
+  /* Run the done callback. In this case, the done callback should do an
+   * RPUSH. */
+  CHECK(callback_data->done_callback != NULL);
+  error_table_push_error_hmset_callback done_callback =
+      callback_data->done_callback;
+  done_callback(db, data->driver_id, data->error_id);
+
+  /* Clean up the timer and callback. */
+  destroy_timer_callback(db->loop, callback_data);
+}
+
+void redis_error_table_push_error_hmset(table_callback_data *callback_data) {
+  db_handle *db = callback_data->db_handle;
+  error_table_push_error_hmset_data *data = callback_data->data;
+  /* Note the strings error_type and error_message are not null terminated. */
+  uint8_t *error_type = &data->error_type_and_message[0];
+  uint8_t *error_message = &data->error_type_and_message[data->error_type_len];
+
+  int status = redisAsyncCommand(
+      db->context, redis_error_table_push_error_hmset_callback,
+      (void *) callback_data->timer_id,
+      "HMSET Error:%b:%b type %b message %b data %s", data->driver_id.id,
+      sizeof(data->driver_id.id), data->error_id.id, sizeof(data->error_id.id),
+      error_type, data->error_type_len, error_message, data->error_message_len,
+      "{}");
+  if ((status == REDIS_ERR) || db->context->err) {
+    LOG_REDIS_DEBUG(db->context, "error in redis_error_table_push_error_hmset");
+  }
+}
+
+void redis_error_table_push_error_rpush_callback(redisAsyncContext *c,
+                                                 void *r,
+                                                 void *privdata) {
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
+
+  redisReply *reply = r;
+  CHECK(reply->type == REDIS_REPLY_INTEGER);
+  /* There should be no done callback. */
+  CHECK(callback_data->done_callback == NULL);
+  /* Clean up the timer and callback. */
+  destroy_timer_callback(db->loop, callback_data);
+}
+
+void redis_error_table_push_error_rpush(table_callback_data *callback_data) {
+  db_handle *db = callback_data->db_handle;
+  error_table_push_error_rpush_data *data = callback_data->data;
+
+  int status = redisAsyncCommand(
+      db->context, redis_error_table_push_error_rpush_callback,
+      (void *) callback_data->timer_id, "RPUSH ErrorKeys Error:%b:%b",
+      data->driver_id.id, sizeof(data->driver_id.id), data->error_id.id,
+      sizeof(data->error_id.id));
+  if ((status == REDIS_ERR) || db->context->err) {
+    LOG_REDIS_DEBUG(db->context, "error in redis_error_table_push_error_rpush");
   }
 }
 
