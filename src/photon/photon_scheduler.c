@@ -623,8 +623,15 @@ void signal_handler(int signal) {
 /* End of the cleanup code. */
 
 void handle_task_scheduled_callback(task *original_task, void *user_context) {
-  handle_task_scheduled(g_state, g_state->algorithm_state,
-                        task_task_spec(original_task));
+  task_spec *spec = task_task_spec(original_task);
+  if (actor_ids_equal(task_spec_actor_id(spec), NIL_ID)) {
+    /* This task does not involve an actor. Handle it normally. */
+    handle_task_scheduled(g_state, g_state->algorithm_state, spec);
+  } else {
+    /* This task involves an actor. Call the scheduling algorithm's actor
+     * handler. */
+    handle_actor_task_scheduled(g_state, g_state->algorithm_state, spec);
+  }
 }
 
 void start_new_worker(local_scheduler_state *state, actor_id actor_id) {
@@ -716,9 +723,9 @@ void start_server(const char *node_ip_address,
   event_loop_add_file(loop, fd, EVENT_LOOP_READ, new_client_connection,
                       g_state);
   /* Subscribe to receive notifications about tasks that are assigned to this
-   * local scheduler by the global scheduler. TODO(rkn): we also need to get any
-   * tasks that were assigned to this local scheduler before the call to
-   * subscribe. */
+   * local scheduler by the global scheduler or by other local schedulers.
+   * TODO(rkn): we also need to get any tasks that were assigned to this local
+   * scheduler before the call to subscribe. */
   retry_info retry;
   memset(&retry, 0, sizeof(retry));
   retry.num_retries = 0;

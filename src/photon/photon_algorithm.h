@@ -88,6 +88,20 @@ void handle_task_scheduled(local_scheduler_state *state,
                            task_spec *spec);
 
 /**
+ * This function will be called when an actor task is assigned by the global
+ * scheduler or by another local scheduler for execution on this local
+ * scheduler.
+ *
+ * @param state The state of the local scheduler.
+ * @param algorithm_state State maintained by the scheduling algorithm.
+ * @param task Task that is assigned by the global scheduler.
+ * @return Void.
+ */
+void handle_actor_task_scheduled(local_scheduler_state *state,
+                                 scheduling_algorithm_state *algorithm_state,
+                                 task_spec *spec);
+
+/**
  * This function is called if a new object becomes available in the local
  * plasma store.
  *

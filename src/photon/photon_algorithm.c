@@ -55,9 +55,13 @@ typedef struct {
   /** A queue of tasks to be executed on this actor. The tasks will be sorted by
    *  the order of their actor counters. */
   task_queue_entry *task_queue;
+  /** The worker that the actor is running on. */
+  local_scheduler_client *worker;
+  /** True if the worker is available and false otherwise. */
+  bool worker_available;
   /** Handle for the uthash table. */
   UT_hash_handle hh;
-} actor_queue;
+} local_actor_info;
 
 /** Part of the photon state that is maintained by the scheduling algorithm. */
 struct scheduling_algorithm_state {
@@ -69,7 +73,7 @@ struct scheduling_algorithm_state {
   /** This is a hash table from actor ID to information about that actor. In
    *  particular, a queue of tasks that are waiting to execute on that actor.
    *  This is only used for actors that exist locally. */
-  actor_queue *actor_queues;
+  local_actor_info *local_actor_infos;
   /** An array of worker indices corresponding to clients that are
    *  waiting for tasks. */
   UT_array *available_workers;
@@ -95,7 +99,7 @@ scheduling_algorithm_state *make_scheduling_algorithm_state(void) {
   algorithm_state->waiting_task_queue = NULL;
   algorithm_state->dispatch_task_queue = NULL;
   utarray_new(algorithm_state->available_workers, &worker_icd);
-  algorithm_state->actor_queues = NULL;
+  algorithm_state->local_actor_infos = NULL;
   return algorithm_state;
 }
 
@@ -115,8 +119,8 @@ void free_scheduling_algorithm_state(
     free(elt);
   }
   /* Remove all of the remaining actors. */
-  actor_queue *actor_entry, *tmp_actor_entry;
-  HASH_ITER(hh, algorithm_state->actor_queues, actor_entry, tmp_actor_entry) {
+  local_actor_info *actor_entry, *tmp_actor_entry;
+  HASH_ITER(hh, algorithm_state->local_actor_infos, actor_entry, tmp_actor_entry) {
     /* We do not call HASH_DELETE here because it will be called inside of
      * remove_actor. */
     remove_actor(algorithm_state, actor_entry->actor_id);
@@ -163,15 +167,15 @@ void provide_scheduler_info(local_scheduler_state *state,
   }
 }
 
-actor_queue *create_actor(scheduling_algorithm_state *algorithm_state,
-                          actor_id actor_id) {
+local_actor_info *create_actor(scheduling_algorithm_state *algorithm_state,
+                               actor_id actor_id) {
   /* This will be freed when the actor is removed in remove_actor. */
-  actor_queue *entry = malloc(sizeof(actor_queue));
+  local_actor_info *entry = malloc(sizeof(local_actor_info));
   entry->actor_id = actor_id;
   entry->task_counter = 0;
   /* Initialize the doubly-linked list to NULL. */
   entry->task_queue = NULL;
-  HASH_ADD(hh, algorithm_state->actor_queues, actor_id, sizeof(actor_id),
+  HASH_ADD(hh, algorithm_state->local_actor_infos, actor_id, sizeof(actor_id),
            entry);
 
   /* Log some useful information about the actor that we created. */
@@ -184,8 +188,8 @@ actor_queue *create_actor(scheduling_algorithm_state *algorithm_state,
 }
 
 void remove_actor(scheduling_algorithm_state *algorithm_state, actor_id actor_id) {
-  actor_queue *entry;
-  HASH_FIND(hh, algorithm_state->actor_queues, &actor_id, sizeof(actor_id),
+  local_actor_info *entry;
+  HASH_FIND(hh, algorithm_state->local_actor_infos, &actor_id, sizeof(actor_id),
             entry);
   /* Make sure the actor actually exists. */
   CHECK(entry != NULL);
@@ -207,15 +211,16 @@ void remove_actor(scheduling_algorithm_state *algorithm_state, actor_id actor_id
     free(task_queue_elt);
   }
   /* Remove the entry from the hash table and free it. */
-  HASH_DELETE(hh, algorithm_state->actor_queues, entry);
+  HASH_DELETE(hh, algorithm_state->local_actor_infos, entry);
   free(entry);
 }
 
-actor_queue *get_actor_info(scheduling_algorithm_state *algorithm_state,
-                            actor_id actor_id) {
-  /* See if an entry in the actor_queues hash table exists for this actor. */
-  actor_queue *entry;
-  HASH_FIND(hh, algorithm_state->actor_queues, &actor_id, sizeof(actor_id),
+local_actor_info *get_actor_info(scheduling_algorithm_state *algorithm_state,
+                                 actor_id actor_id) {
+  /* See if an entry in the local actor info hash table exists for this
+   * actor. */
+  local_actor_info *entry;
+  HASH_FIND(hh, algorithm_state->local_actor_infos, &actor_id, sizeof(actor_id),
             entry);
   /* Create an entry for this actor if necessary. */
   if (entry == NULL) {
@@ -242,8 +247,8 @@ void add_task_to_actor_queue(local_scheduler_state *state,
                              task_spec *spec,
                              bool from_global_scheduler) {
   DCHECK(!actor_ids_equal(task_spec_actor_id(spec), NIL_ID));
-  actor_queue *entry = get_actor_info(algorithm_state,
-                                      task_spec_actor_id(spec));
+  local_actor_info *entry = get_actor_info(algorithm_state,
+                                           task_spec_actor_id(spec));
   int64_t task_counter = task_spec_actor_counter(spec);
   /* As a sanity check, the counter of the new task should be greater than the
    * number of tasks that have executed on this actor so far (since we are
@@ -302,16 +307,22 @@ void add_task_to_actor_queue(local_scheduler_state *state,
  *
  * @param state The state of the local scheduler.
  * @param algorithm_state The state of the scheduling algorithm.
- * @param worker The worker to dispatch the task to.
+ * @param actor_id The ID of the actor corresponding to the worker.
  * @return True if a task was dispatched to the actor and false otherwise.
  */
 bool dispatch_actor_task(local_scheduler_state *state,
                          scheduling_algorithm_state *algorithm_state,
-                         local_scheduler_client *worker) {
-  actor_id actor_id = worker->actor_id;
+                         actor_id actor_id) {
   /* Make sure this worker actually is an actor. */
   CHECK(!actor_ids_equal(actor_id, NIL_ID));
-  actor_queue *entry = get_actor_info(algorithm_state, actor_id);
+  /* Make sure this actor belongs to this local scheduler. */
+  actor_map_entry *actor_entry;
+  HASH_FIND(hh, state->actor_mapping, &actor_id, sizeof(actor_id), actor_entry);
+  CHECK(actor_entry != NULL);
+  CHECK(db_client_ids_equal(actor_entry->local_scheduler_id,
+                            get_db_client_id(state->db)));
+
+  local_actor_info *entry = get_actor_info(algorithm_state, actor_id);
   if (entry->task_queue == NULL) {
     /* There are no queued tasks for this actor, so we cannot dispatch a task to
      * the actor. */
@@ -324,10 +335,20 @@ bool dispatch_actor_task(local_scheduler_state *state,
     CHECK(next_task_counter > entry->task_counter + 1);
     return false;
   }
-  /* Assign the first task in the task queue to the worker. */
-  assign_task_to_worker(state, entry->task_queue->spec, worker);
+  /* If the worker is not available, we cannot assign a task to it. */
+  if (!entry->worker_available) {
+    return false;
+  }
+  /* Assign the first task in the task queue to the worker and mark the worker
+   * as unavailable. */
+  task_queue_entry *first_task = entry->task_queue;
+  assign_task_to_worker(state, first_task->spec, entry->worker);
+  entry->worker_available = false;
   /* Remove the task from the actor's task queue. */
-  DL_DELETE(entry->task_queue, entry->task_queue);
+  DL_DELETE(entry->task_queue, first_task);
+  /* Free the task spec and the task queue entry. */
+  free_task_spec(first_task->spec);
+  free(first_task);
   return true;
 }
 
@@ -623,6 +644,31 @@ void queue_task_locally(local_scheduler_state *state,
 }
 
 /**
+ * Give a task directly to another local scheduler. This is currently only used
+ * for assigning actor tasks to the local scheduer responsible for that actor.
+ *
+ * @param state The scheduler state.
+ * @param algorithm_state The scheduling algorithm state.
+ * @param spec The task specification to schedule.
+ * @param local_scheduler_id The ID of the local scheduler to give the task to.
+ * @return Void.
+ */
+void give_task_to_local_scheduler(local_scheduler_state *state,
+                                  scheduling_algorithm_state *algorithm_state,
+                                  task_spec *spec,
+                                  db_client_id local_scheduler_id) {
+  if (db_client_ids_equal(local_scheduler_id, get_db_client_id(state->db))) {
+    LOG_WARN("Local scheduler is trying to assign a task to itself.");
+  }
+  CHECK(state->db != NULL);
+  /* Assign the task to the relevant local scheduler. */
+  DCHECK(state->config.global_scheduler_exists);
+  task *task = alloc_task(spec, TASK_STATUS_SCHEDULED, local_scheduler_id);
+  task_table_add_task(state->db, task, (retry_info *) &photon_retry, NULL,
+                      NULL);
+}
+
+/**
  * Give a task to the global scheduler to schedule.
  *
  * @param state The scheduler state.
@@ -698,7 +744,40 @@ void handle_task_submitted(local_scheduler_state *state,
 void handle_actor_task_submitted(local_scheduler_state *state,
                                  scheduling_algorithm_state *algorithm_state,
                                  task_spec *spec) {
-  //TODO
+  actor_id actor_id = task_spec_actor_id(spec);
+  CHECK(!actor_ids_equal(actor_id, NIL_ID));
+
+  /* Find the local scheduler responsible for this actor. */
+  actor_map_entry *entry;
+  HASH_FIND(hh, state->actor_mapping, &actor_id, sizeof(actor_id), entry);
+  //THE CHECK BELOW COULD FAIL.. FIX THIS.
+  CHECK(entry != NULL);
+
+  if (db_client_ids_equal(entry->local_scheduler_id,
+                          get_db_client_id(state->db))) {
+    /* This local scheduler is responsible for the actor, so handle the task
+     * locally. */
+    add_task_to_actor_queue(state, algorithm_state, spec, false);
+    /* Attempt to dispatch tasks to this actor. */
+    dispatch_actor_task(state, algorithm_state, actor_id);
+  } else {
+    /* This local scheduler is not responsible for the task, so assign the task
+     * directly to the actor that is responsible. */
+    give_task_to_local_scheduler(state, algorithm_state, spec,
+                                 entry->local_scheduler_id);
+  }
+
+  /* Update the result table, which holds mappings of object ID -> ID of the
+   * task that created it. */
+  //THIS IS DUPLICATED FROM handle_task_submitted.
+  if (state->db != NULL) {
+    task_id task_id = task_spec_id(spec);
+    for (int64_t i = 0; i < task_num_returns(spec); ++i) {
+      object_id return_id = task_return(spec, i);
+      result_table_add(state->db, return_id, task_id,
+                       (retry_info *) &photon_retry, NULL, NULL);
+    }
+  }
 }
 
 void handle_task_scheduled(local_scheduler_state *state,
@@ -712,6 +791,28 @@ void handle_task_scheduled(local_scheduler_state *state,
   /* Push the task to the appropriate queue. */
   queue_task_locally(state, algorithm_state, spec, true);
   dispatch_tasks(state, algorithm_state);
+}
+
+void handle_actor_task_scheduled(local_scheduler_state *state,
+                                 scheduling_algorithm_state *algorithm_state,
+                                 task_spec *spec) {
+  /* This callback handles tasks that were assigned to this local scheduler by
+   * the global scheduler or by other workers, so we can safely assert that
+   * there is a connection to the database. */
+  DCHECK(state->db != NULL);
+  DCHECK(state->config.global_scheduler_exists);
+  /* Check that the task is meant to run on an actor that this local scheduler
+   * is responsible for. */
+  actor_id actor_id = task_spec_actor_id(spec);
+  DCHECK(!actor_ids_equal(actor_id, NIL_ID));
+  actor_map_entry *entry;
+  HASH_FIND(hh, state->actor_mapping, &actor_id, sizeof(actor_id), entry);
+  DCHECK(entry != NULL); //COULD THIS BE NULL? PROBABLY
+  DCHECK(db_client_ids_equal(entry->local_scheduler_id,
+                             get_db_client_id(state->db)));
+  /* Push the task to the appropriate queue. */
+  add_task_to_actor_queue(state, algorithm_state, spec, true);
+  dispatch_actor_task(state, algorithm_state, actor_id);
 }
 
 void handle_worker_available(local_scheduler_state *state,
@@ -735,12 +836,18 @@ void handle_worker_available(local_scheduler_state *state,
 void handle_actor_worker_available(local_scheduler_state *state,
                                    scheduling_algorithm_state *algorithm_state,
                                    local_scheduler_client *worker) {
-  bool dispatched_task = dispatch_actor_task(state, algorithm_state, worker);
-  if (dispatched_task) {
-    LOG_INFO("Dispatched task to actor.");
-  } else {
-    LOG_INFO("Did NOT dispatch task to actor.");
-  }
+  actor_id actor_id = worker->actor_id;
+  CHECK(!actor_ids_equal(actor_id, NIL_ID));
+  /* Get the actor info for this worker. */
+  local_actor_info *entry;
+  HASH_FIND(hh, algorithm_state->local_actor_infos, &actor_id, sizeof(actor_id),
+            entry);
+  CHECK(entry != NULL);
+  CHECK(worker == entry->worker);
+  CHECK(!entry->worker_available);
+  entry->worker_available = true;
+  /* Assign a task to this actor if possible. */
+  dispatch_actor_task(state, algorithm_state, actor_id);
 }
 
 void handle_object_available(local_scheduler_state *state,
