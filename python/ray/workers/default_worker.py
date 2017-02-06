@@ -6,6 +6,8 @@ import argparse
 import numpy as np
 import redis
 import traceback
+import sys
+import binascii
 
 import ray
 
@@ -15,6 +17,7 @@ parser.add_argument("--redis-address", required=True, type=str, help="the addres
 parser.add_argument("--object-store-name", required=True, type=str, help="the object store's name")
 parser.add_argument("--object-store-manager-name", required=True, type=str, help="the object store manager's name")
 parser.add_argument("--local-scheduler-name", required=True, type=str, help="the local scheduler's name")
+parser.add_argument("--actor-id", required=False, type=str, help="the actor ID of this worker")
 
 def random_string():
   return np.random.bytes(20)
@@ -26,7 +29,13 @@ if __name__ == "__main__":
           "store_socket_name": args.object_store_name,
           "manager_socket_name": args.object_store_manager_name,
           "local_scheduler_socket_name": args.local_scheduler_name}
-  ray.worker.connect(info, ray.WORKER_MODE)
+
+  print("Test")
+  print(args.actor_id)
+  sys.stdout.flush()
+  actor_id = binascii.unhexlify(args.actor_id) if args.actor_id is not None else None
+
+  ray.worker.connect(info, mode=ray.WORKER_MODE, actor_id=actor_id)
 
   error_explanation = """
 This error is unexpected and should not have happened. Somehow a worker crashed

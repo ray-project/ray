@@ -18,6 +18,18 @@ def random_string():
 def random_actor_id():
   return photon.ObjectID(random_string())
 
+def get_actor_method_function_id(attr):
+  """Get the function ID corresponding to an actor method.
+
+  Args:
+    attr (string): The attribute name of the method.
+  Returns:
+    Function ID corresponding to the method.
+  """
+  function_id = hashlib.sha1()
+  function_id.update(attr.encode("ascii"))
+  return photon.ObjectID(function_id.digest())
+
 def fetch_and_register_actor(key, worker):
   """Import an actor."""
   driver_id, actor_id_str, actor_name, module, pickled_class, class_export_counter = \
@@ -34,6 +46,11 @@ def fetch_and_register_actor(key, worker):
     # TODO(pcm): Why is the below line necessary?
     unpickled_class.__module__ = module
     worker.actors[actor_id_str] = unpickled_class.__new__(unpickled_class)
+    for (k, v) in inspect.getmembers(unpickled_class, predicate=inspect.isfunction):
+      function_id = get_actor_method_function_id(k)
+      worker.function_names[function_id.id()] = k
+      worker.functions[function_id.id()] = v
+      worker.functions[function_id.id()].executor = lambda *args: print("Hello World 111")
   print("registering actor...")
 
 def export_actor(actor_id, Class, worker):
@@ -50,6 +67,14 @@ def export_actor(actor_id, Class, worker):
   key = "Actor:{}".format(actor_id.id())
   pickled_class = pickling.dumps(Class)
 
+  # select local scheduler for the actor
+  local_schedulers = state.get_local_schedulers()
+  local_scheduler_id = random.choice(local_schedulers)
+
+  worker.redis_client.publish("actor_notifications", actor_id.id() + local_scheduler_id)
+  import time
+  time.sleep(5)
+
   # select worker to put the actor on
   # workers = worker.redis_client.keys("Workers:*")
   # actor_worker_id = random.choice(workers)[len("Workers:"):]
@@ -64,11 +89,7 @@ def export_actor(actor_id, Class, worker):
   worker.redis_client.hmset(key, d)
   worker.redis_client.rpush("Exports", key)
   worker.driver_export_counter += 1
-
-  # select local scheduler for the actor
-  local_schedulers = state.get_local_schedulers()
-  local_scheduler_id = random.choice(local_schedulers)
-  worker.redis_client.publish("actor_notifications", actor_id.id() + local_scheduler_id)
+  
 
 def actor(Class):
   # This function gets called if somebody tries to call a method on their
@@ -100,9 +121,8 @@ def actor(Class):
       if attr in ["_ray_actor_id", "_ray_actor_methods"]:
         return super(NewClass, self).__getattribute__(attr)
       if attr in self._ray_actor_methods.keys():
-        function_id = hashlib.sha1()
-        function_id.update(attr.encode("ascii"))
-        return lambda *args, **kwargs: actor_method_call(attr, photon.ObjectID(function_id.digest()), *args, **kwargs)
+        function_id = get_actor_method_function_id(attr)
+        return lambda *args, **kwargs: actor_method_call(attr, function_id, *args, **kwargs)
     def __repr__(self):
       return "Actor(" + self._ray_actor_id.hex() + ")"
 

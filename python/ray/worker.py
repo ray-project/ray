@@ -1127,6 +1127,11 @@ def import_thread(worker):
             fetch_and_execute_function_to_run(key, worker=worker)
         else:
           assert key.startswith(b"Actor")
+          actor_id, = worker.redis_client.hmget(key, "actor_id")
+          print("AAA", worker.actor_id, actor_id)
+          if worker.actor_id == actor_id:
+            worker.fetch_and_register["Actor"](key, worker)
+            print("Hit")
           # actor_worker_id_str, = worker.redis_client.hmget(key, "actor_worker_id")
           # if worker.worker_id == actor_worker_id_str:
           #  # TODO(pcm): make sure fetch_and_register is set
@@ -1138,7 +1143,7 @@ def import_thread(worker):
         worker.redis_client.hincrby(worker_info_key, "export_counter", 1)
         worker.worker_import_counter += 1
 
-def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker):
+def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker, actor_id=None):
   """Connect this worker to the local scheduler, to Plasma, and to Redis.
 
   Args:
@@ -1156,6 +1161,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker):
   assert env._cached_environment_variables is not None, error_message
   # Initialize some fields.
   worker.worker_id = random_string()
+  worker.actor_id = actor_id
   worker.connected = True
   worker.set_mode(mode)
   # The worker.events field is used to aggregate logging information and display
