@@ -5,6 +5,12 @@
 #include "global_scheduler.h"
 #include "task.h"
 
+#ifndef RAY_NUM_RETRIES
+#define NUM_RETRIES 10
+#else
+#define NUM_RETRIES RAY_NUM_RETRIES
+#endif
+
 /* ==== The scheduling algorithm ====
  *
  * This file contains declaration for all functions and data structures that

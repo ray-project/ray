@@ -39,26 +39,35 @@ void handle_task_round_robin(global_scheduler_state *state,
   local_scheduler *ls = NULL;
   task_spec *task_spec = task_task_spec(task);
   int i;
+  int num_retries = NUM_RETRIES;
+  bool task_satisfied = false;
 
   for (i = policy_state->round_robin_index;
-       ; /* TODO: handle tasks that can't be satisfied by any node. */
+       !task_satisfied && num_retries >= 0;
        i = (i+1) % utarray_len(state->local_schedulers)) {
+    if (i == policy_state->round_robin_index) {
+      num_retries--;
+    }
     ls = (local_scheduler *) utarray_eltptr(state->local_schedulers, i);
     /* Check this local scheduler for hard constraints. */
-    bool satisfied = true;
+    task_satisfied = true;
     for (int j = 0; j < MAX_RESOURCE_INDEX; j++) {
       if (ls->info.static_resources[j] < task_required_resource(task_spec, j)) {
-        satisfied = false;
+        task_satisfied = false;
         break; /* Node i doesn't satisfy task's constraint j. Bail. */
       }
     }
-    if (satisfied) {
-      break; /* Node i satisfies the task's constraints. Done. */
-    }
   }
-  /* Update next index to try and assign the task. */
-  policy_state->round_robin_index = (i+1) % utarray_len(state->local_schedulers);
-  assign_task_to_local_scheduler(state, task, ls->id);
+
+  if (task_satisfied) {
+    /* Update next index to try and assign the task. */
+    policy_state->round_robin_index = i; /* i was advanced. */
+    assign_task_to_local_scheduler(state, task, ls->id);
+  } else {
+    /* TODO(atumanov): propagate the error to the driver, which submitted
+     * this impossible task.
+     */
+  }
 }
 
 /**
