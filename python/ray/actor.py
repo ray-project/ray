@@ -95,12 +95,11 @@ def actor(Class):
   # This function gets called if somebody tries to call a method on their
   # local actor stub object
   
-  actor_id = random_actor_id()
-  
-  def actor_method_call(attr, function_id, *args, **kwargs):
+  def actor_method_call(actor_id, attr, *args, **kwargs):
     ray.worker.check_connected()
     ray.worker.check_main_thread()
     args = list(args)
+    function_id = get_actor_method_function_id(attr)
     # TODO(pcm): Extend args with keyword args
     object_ids = ray.worker.global_worker.submit_task(function_id, "", args, actor_id=actor_id)
     if len(object_ids) == 1:
@@ -110,12 +109,11 @@ def actor(Class):
 
   class NewClass(object):
     def __init__(self, *args, **kwargs):
-      self._ray_actor_id = actor_id
+      self._ray_actor_id = random_actor_id()
       self._ray_actor_methods = {k: v for (k, v) in inspect.getmembers(Class, predicate=inspect.isfunction)}
       export_actor(self._ray_actor_id, Class, ray.worker.global_worker)
       # Call __init__ as a remote function
-      function_id = get_actor_method_function_id("__init__")
-      actor_method_call("__init__", function_id, *args, **kwargs)
+      actor_method_call(self._ray_actor_id, "__init__", *args, **kwargs)
     # Make IPython tab completion work
     def __dir__(self):
       return self._ray_actor_methods
@@ -124,8 +122,7 @@ def actor(Class):
       if attr in ["_ray_actor_id", "_ray_actor_methods"]:
         return super(NewClass, self).__getattribute__(attr)
       if attr in self._ray_actor_methods.keys():
-        function_id = get_actor_method_function_id(attr)
-        return lambda *args, **kwargs: actor_method_call(attr, function_id, *args, **kwargs)
+        return lambda *args, **kwargs: actor_method_call(self._ray_actor_id, attr, *args, **kwargs)
     def __repr__(self):
       return "Actor(" + self._ray_actor_id.hex() + ")"
 
