@@ -47,10 +47,9 @@ def fetch_and_register_actor(key, worker):
     unpickled_class.__module__ = module
     worker.actors[actor_id_str] = unpickled_class.__new__(unpickled_class)
     for (k, v) in inspect.getmembers(unpickled_class, predicate=inspect.isfunction):
-      function_id = get_actor_method_function_id(k)
-      worker.function_names[function_id.id()] = k
-      worker.functions[function_id.id()] = v
-      worker.functions[function_id.id()].executor = lambda *args: v(worker.actors[actor_id_str], *args)
+      function_id = get_actor_method_function_id(k).id()
+      worker.function_names[function_id] = k
+      worker.functions[function_id] = v
   print("registering actor...")
 
 def export_actor(actor_id, Class, worker):
@@ -74,6 +73,7 @@ def export_actor(actor_id, Class, worker):
   worker.redis_client.publish("actor_notifications", actor_id.id() + local_scheduler_id)
   import time
   time.sleep(2) # XXX
+  
 
   # select worker to put the actor on
   # workers = worker.redis_client.keys("Workers:*")
@@ -113,6 +113,9 @@ def actor(Class):
       self._ray_actor_id = actor_id
       self._ray_actor_methods = {k: v for (k, v) in inspect.getmembers(Class, predicate=inspect.isfunction)}
       export_actor(self._ray_actor_id, Class, ray.worker.global_worker)
+      # Call __init__ as a remote function
+      function_id = get_actor_method_function_id("__init__")
+      actor_method_call("__init__", function_id, *args, **kwargs)
     # Make IPython tab completion work
     def __dir__(self):
       return self._ray_actor_methods

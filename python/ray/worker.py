@@ -1130,10 +1130,8 @@ def import_thread(worker):
         else:
           assert key.startswith(b"Actor")
           actor_id, = worker.redis_client.hmget(key, "actor_id")
-          print("AAA", worker.actor_id, actor_id)
           if worker.actor_id == actor_id:
             worker.fetch_and_register["Actor"](key, worker)
-            print("Hit")
           # actor_worker_id_str, = worker.redis_client.hmget(key, "actor_worker_id")
           # if worker.worker_id == actor_worker_id_str:
           #  # TODO(pcm): make sure fetch_and_register is set
@@ -1571,7 +1569,10 @@ def main_loop(worker=global_worker):
 
       # Execute the task.
       with log_span("ray:task:execute", worker=worker):
-        outputs = worker.functions[function_id.id()].executor(arguments)
+        if task.actor_id().id() == 20 * "\xff":
+          outputs = worker.functions[task.function_id().id()].executor(arguments)
+        else:
+          outputs = worker.functions[task.function_id().id()](worker.actors[task.actor_id().id()], *arguments)
 
       # Store the outputs in the local object store.
       with log_span("ray:task:store_outputs", worker=worker):
