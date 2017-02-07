@@ -188,9 +188,9 @@ In the step function, we run the grad operation rather than the train operation 
 Since Tensorflow pairs the gradients with the variables, we extract the gradients.
 
 ```python
-  grads = sess.run(grad, feed_dict={x_data: x, y_data: y})
-  # We only need the actual gradients.
-  return [grad[0] for grad in grads]
+  # Do one step of training. We only need the actual gradients so we filter over the list.
+  actual_grads = sess.run([grad[0] for grad in grads], feed_dict={x_data: x, y_data: y})
+  return actual_grads
 ```
 
 In the main driver code, we get the symbolic gradients from the same operation run in step. These will
@@ -253,13 +253,13 @@ ray.env.net_vars = ray.EnvironmentVariable(net_vars_initializer, net_vars_reinit
 # new weights.
 @ray.remote
 def step(weights, x, y):
-  variables, sess, grad, _, _, x_data, y_data, _ = ray.env.net_vars
+  variables, sess, grads, _, _, x_data, y_data, _ = ray.env.net_vars
   # Set the weights in the network.
   variables.set_weights(weights)
-  # Do one step of training.
-  grads = sess.run(grad, feed_dict={x_data: x, y_data: y})
-  # We only need the actual gradients.
-  return [grad[0] for grad in grads]
+  # Do one step of training. We only need the actual gradients so we filter over the list.
+  actual_grads = sess.run([grad[0] for grad in grads], feed_dict={x_data: x, y_data: y})
+  return actual_grads
+
 
 variables, sess, grads, apply, loss, x_data, y_data, init = ray.env.net_vars
 # Initialize the network weights.
