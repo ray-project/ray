@@ -90,6 +90,7 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
         }
         driverSocket.onmessage = function(answer) {
           drivers.items = JSON.parse(answer.data);
+          drivers.visibleRows = drivers.items.length;
 
           // Add a row details generator
           drivers.rowDetailsGenerator = function(rowIndex) {

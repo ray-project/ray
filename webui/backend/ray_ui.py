@@ -41,19 +41,33 @@ def key_to_hex_identifiers(key):
 
 worker_ids = []
 
+def duration_to_string(duration):
+  """Format a duration in seconds as a string.
+
+  Args:
+    duration (float): The duration in seconds.
+
+  Return:
+    A more human-readable version of the string (for example, "3.5 hours" or
+      "93 milliseconds").
+  """
+  if duration > 3600 * 24:
+    duration_str = "{0:0.1f} days".format(duration / (3600 * 24))
+  elif duration > 3600:
+    duration_str = "{0:0.1f} hours".format(duration / 3600)
+  elif duration > 60:
+    duration_str = "{0:0.1f} minutes".format(duration / 60)
+  elif duration > 1:
+    duration_str = "{0:0.1f} seconds".format(duration)
+  else:
+    duration_str = "{} milliseconds".format(int(duration * 1000))
+  return duration_str
+
 async def handle_get_statistics(websocket, redis_conn):
   cluster_start_time = float(await redis_conn.execute("get", "redis_start_time"))
   start_date = timestamp_to_date_string(cluster_start_time)
 
-  uptime = time.time() - cluster_start_time
-  if uptime > 3600 * 24:
-    uptime_str = "{0:0.1f} days".format(uptime / (3600 * 24))
-  elif uptime > 3600:
-    uptime_str = "{0:0.1f} hours".format(uptime / 3600)
-  elif uptime > 60:
-    uptime_str = "{0:0.1f} minutes".format(uptime / 60)
-  else:
-    uptime_str = "{0:0.1f} seconds".format(uptime)
+  uptime = duration_to_string(time.time() - cluster_start_time)
 
   client_keys = await redis_conn.execute("keys", "CL:*")
   clients = []
@@ -63,7 +77,7 @@ async def handle_get_statistics(websocket, redis_conn):
     clients.append(client_fields)
   ip_addresses = list(set([client[b"node_ip_address"].decode("ascii") for client in clients if client[b"client_type"] == b"photon"]))
   num_nodes = len(ip_addresses)
-  reply = {"uptime": uptime_str,
+  reply = {"uptime": uptime,
            "start_date": start_date,
            "nodes": num_nodes,
            "addresses": ip_addresses}
@@ -84,16 +98,7 @@ async def handle_get_drivers(websocket, redis_conn):
       duration = float(driver_fields[b"end_time"]) - float(driver_fields[b"start_time"])
     else:
       duration = time.time() - float(driver_fields[b"start_time"])
-    if duration > 3600 * 24:
-      driver_info["duration"] = "{0:0.1f} days".format(duration / (3600 * 24))
-    elif duration > 3600:
-      driver_info["duration"] = "{0:0.1f} hours".format(duration / 3600)
-    elif duration > 60:
-      driver_info["duration"] = "{0:0.1f} minutes".format(duration / 60)
-    elif duration > 1:
-      driver_info["duration"] = "{0:0.1f} seconds".format(duration)
-    else:
-      driver_info["duration"] = "{} milliseconds".format(int(duration * 1000))
+    driver_info["duration"] = duration_to_string(duration)
 
     if b"exception" in driver_fields:
       driver_info["status"] = "FAILED"
