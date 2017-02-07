@@ -106,15 +106,15 @@ def net_vars_initializer():
     # Define the loss.
     loss = tf.reduce_mean(tf.square(y - y_data))
     optimizer = tf.train.GradientDescentOptimizer(0.5)
-    grad = optimizer.compute_gradients(loss)
-    train = optimizer.apply_gradients(grad)
+    grads = optimizer.compute_gradients(loss)
+    train = optimizer.apply_gradients(grads)
     # Define the weight initializer and session.
     init = tf.global_variables_initializer()
     sess = tf.Session()
     # Additional code for setting and getting the weights
     variables = ray.experimental.TensorFlowVariables(loss, sess)
     # Return all of the data needed to use the network.
-  return variables, sess, grad, apply, loss, x_data, y_data, init
+  return variables, sess, grads, train, loss, x_data, y_data, init
 
 def net_vars_reinitializer(net_vars):
   return net_vars
@@ -198,10 +198,9 @@ be used in the feed_dict to the apply gradients. We then take the mean of the gr
 and then create a feed dict to apply the gradients.
 
 ```python
-  sym_grads = [grad[0] for grad in grads]
   mean_grads = [sum([gradients[i] for gradients in gradients_list]) / len(gradients_list) for i in range(len(gradients_list[0]))]
-  feedDict = dict(zip(sym_grads, mean_grads))
-  sess.run(apply, feed_dict=feedDict)
+  feed_dict = {grad[0]: mean_grad for (grad, mean_grad) in zip(grads, mean_grads)}
+  sess.run(train, feed_dict=feed_dict)
 ```
 
 For reference, the full code is below:
@@ -232,8 +231,8 @@ def net_vars_initializer():
     # Define the loss.
     loss = tf.reduce_mean(tf.square(y - y_data))
     optimizer = tf.train.GradientDescentOptimizer(0.5)
-    grad = optimizer.compute_gradients(loss)
-    train = optimizer.apply_gradients(grad)
+    grads = optimizer.compute_gradients(loss)
+    train = optimizer.apply_gradients(grads)
 
     # Define the weight initializer and session.
     init = tf.global_variables_initializer()
@@ -241,7 +240,7 @@ def net_vars_initializer():
     # Additional code for setting and getting the weights
     variables = ray.experimental.TensorFlowVariables(loss, sess)
     # Return all of the data needed to use the network.
-  return variables, sess, grad, apply, loss, x_data, y_data, init
+  return variables, sess, grads, train, loss, x_data, y_data, init
 
 def net_vars_reinitializer(net_vars):
   return net_vars
@@ -261,7 +260,7 @@ def step(weights, x, y):
   return actual_grads
 
 
-variables, sess, grads, apply, loss, x_data, y_data, init = ray.env.net_vars
+variables, sess, grads, train, loss, x_data, y_data, init = ray.env.net_vars
 # Initialize the network weights.
 sess.run(init)
 # Get the weights as a dictionary of numpy arrays.
@@ -283,7 +282,6 @@ y_ids = [y_id for x_id, y_id in batch_ids]
 # Generate some test data.
 x_test, y_test = ray.get(generate_fake_x_y_data.remote(BATCH_SIZE, seed=NUM_BATCHES))
 
-sym_grads = [grad[0] for grad in grads]
 
 # Do some steps of training.
 for iteration in range(NUM_ITERS):
@@ -301,8 +299,9 @@ for iteration in range(NUM_ITERS):
   # Take the mean of the different gradients. Each element of gradients_list is a list
   # of gradients, and we want to take the mean of each one.
   mean_grads = [sum([gradients[i] for gradients in gradients_list]) / len(gradients_list) for i in range(len(gradients_list[0]))]
-  feedDict = dict(zip(sym_grads, mean_grads))
-  sess.run(apply, feed_dict=feedDict)
+
+  feed_dict = {grad[0]: mean_grad for (grad, mean_grad) in zip(grads, mean_grads)}
+  sess.run(train, feed_dict=feed_dict)
   weights = variables.get_weights()
 
   # Print the current weights. They should converge to roughly to the values 0.1
