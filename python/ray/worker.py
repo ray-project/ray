@@ -883,6 +883,11 @@ def cleanup(worker=global_worker):
   services.cleanup() in the tests because we need to start and stop many
   clusters in the tests, but the import and exit only happen once.
   """
+  # If this is a driver, push the finish time to Redis.
+  if worker.mode in [SCRIPT_MODE, SILENT_MODE]:
+    worker.redis_client.hmset(b"Drivers:" + worker.worker_id,
+                              {"end_time": time.time()})
+
   disconnect(worker)
   worker.set_mode(None)
   worker.driver_export_counter = 0
@@ -892,6 +897,19 @@ def cleanup(worker=global_worker):
   services.cleanup()
 
 atexit.register(cleanup)
+
+# Define a custom excepthook so that if the driver exits with an exception, we
+# can push that exception to Redis.
+normal_excepthook = sys.excepthook
+def custom_excepthook(type, value, tb):
+  # If this is a driver, push the exception to redis.
+  if global_worker.mode in [SCRIPT_MODE, SILENT_MODE]:
+    error_message = "".join(traceback.format_tb(tb))
+    global_worker.redis_client.hmset(b"Drivers:" + global_worker.worker_id,
+                                     {"exception": error_message})
+  # Call the normal excepthook.
+  normal_excepthook(type, value, traceback)
+sys.excepthook = custom_excepthook
 
 def print_error_messages(worker):
   """Print error messages in the background on the driver.
@@ -1105,10 +1123,17 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker):
   worker.plasma_client = plasma.PlasmaClient(info["store_socket_name"], info["manager_socket_name"])
   # Create the local scheduler client.
   worker.photon_client = photon.PhotonClient(info["local_scheduler_socket_name"])
-  # Register the worker with Redis.
   if mode in [SCRIPT_MODE, SILENT_MODE]:
-    worker.redis_client.hmset(b"Drivers:" + worker.worker_id, {"node_ip_address": worker.node_ip_address})
+    # The concept of a driver is the same as the concept of a "job". Register
+    # the driver/job with Redis here.
+    import __main__ as main
+    driver_info = {"node_ip_address": worker.node_ip_address,
+                   "driver_id": worker.worker_id,
+                   "start_time": time.time()}
+    driver_info["name"] = main.__file__ if hasattr(main, "__file__") else "INTERACTIVE MODE"
+    worker.redis_client.hmset(b"Drivers:" + worker.worker_id, driver_info)
   elif mode == WORKER_MODE:
+    # Register the worker with Redis.
     worker.redis_client.hmset(b"Workers:" + worker.worker_id, {"node_ip_address": worker.node_ip_address})
   else:
     raise Exception("This code should be unreachable.")

@@ -3,9 +3,11 @@ import argparse
 import asyncio
 import binascii
 from collections import defaultdict
+import datetime
 import json
 import numpy as np
 import redis
+import time
 import websockets
 
 parser = argparse.ArgumentParser(description="parse information for the web ui")
@@ -25,6 +27,10 @@ def identifier(hex_identifier):
 def key_to_hex_identifier(key):
   return hex_identifier(key[(key.index(b":") + 1):(key.index(b":") + IDENTIFIER_LENGTH + 1)])
 
+def timestamp_to_date_string(timestamp):
+  """Convert a time stamp returned by time.time() to a formatted string."""
+  return datetime.datetime.fromtimestamp(timestamp).strftime("%Y/%m/%d %H:%M:%S")
+
 def key_to_hex_identifiers(key):
   # Extract worker_id and task_id from key of the form prefix:worker_id:task_id.
   offset = key.index(b":") + 1
@@ -34,6 +40,80 @@ def key_to_hex_identifiers(key):
   return worker_id, task_id
 
 worker_ids = []
+
+def duration_to_string(duration):
+  """Format a duration in seconds as a string.
+
+  Args:
+    duration (float): The duration in seconds.
+
+  Return:
+    A more human-readable version of the string (for example, "3.5 hours" or
+      "93 milliseconds").
+  """
+  if duration > 3600 * 24:
+    duration_str = "{0:0.1f} days".format(duration / (3600 * 24))
+  elif duration > 3600:
+    duration_str = "{0:0.1f} hours".format(duration / 3600)
+  elif duration > 60:
+    duration_str = "{0:0.1f} minutes".format(duration / 60)
+  elif duration > 1:
+    duration_str = "{0:0.1f} seconds".format(duration)
+  else:
+    duration_str = "{} milliseconds".format(int(duration * 1000))
+  return duration_str
+
+async def handle_get_statistics(websocket, redis_conn):
+  cluster_start_time = float(await redis_conn.execute("get", "redis_start_time"))
+  start_date = timestamp_to_date_string(cluster_start_time)
+
+  uptime = duration_to_string(time.time() - cluster_start_time)
+
+  client_keys = await redis_conn.execute("keys", "CL:*")
+  clients = []
+  for client_key in client_keys:
+    client_fields = await redis_conn.execute("hgetall", client_key)
+    client_fields = {client_fields[2 * i]: client_fields[2 * i + 1] for i in range(len(client_fields) // 2)}
+    clients.append(client_fields)
+  ip_addresses = list(set([client[b"node_ip_address"].decode("ascii") for client in clients if client[b"client_type"] == b"photon"]))
+  num_nodes = len(ip_addresses)
+  reply = {"uptime": uptime,
+           "start_date": start_date,
+           "nodes": num_nodes,
+           "addresses": ip_addresses}
+  await websocket.send(json.dumps(reply))
+
+async def handle_get_drivers(websocket, redis_conn):
+  keys = await redis_conn.execute("keys", "Drivers:*")
+  drivers = []
+  for key in keys:
+    driver_fields = await redis_conn.execute("hgetall", key)
+    driver_fields = {driver_fields[2 * i]: driver_fields[2 * i + 1] for i in range(len(driver_fields) // 2)}
+    driver_info = {"node ip address": driver_fields[b"node_ip_address"].decode("ascii"),
+                   "name": driver_fields[b"name"].decode("ascii")}
+
+    driver_info["start time"] = timestamp_to_date_string(float(driver_fields[b"start_time"]))
+
+    if b"end_time" in driver_fields:
+      duration = float(driver_fields[b"end_time"]) - float(driver_fields[b"start_time"])
+    else:
+      duration = time.time() - float(driver_fields[b"start_time"])
+    driver_info["duration"] = duration_to_string(duration)
+
+    if b"exception" in driver_fields:
+      driver_info["status"] = "FAILED"
+    elif b"end_time" not in driver_fields:
+      driver_info["status"] = "IN PROGRESS"
+    else:
+      driver_info["status"] = "SUCCESS"
+
+    if b"exception" in driver_fields:
+      driver_info["exception"] = driver_fields[b"exception"].decode("ascii")
+
+    drivers.append(driver_info)
+  # Sort the drivers by their start times.
+  reply = sorted(drivers, key=(lambda driver: driver["start time"]))[::-1]
+  await websocket.send(json.dumps(reply))
 
 async def handle_get_recent_tasks(websocket, redis_conn, num_tasks):
   keys = await redis_conn.execute("keys", "event_log:*")
@@ -85,11 +165,17 @@ async def serve_requests(websocket, path):
   redis_conn = await aioredis.create_connection((redis_ip_address, redis_port), loop=loop)
 
   # We loop infinitely because otherwise the websocket will be closed.
+  # TODO(rkn): Maybe we should open a new web sockets for every request instead
+  # of looping here.
   while True:
     command = json.loads(await websocket.recv())
     print("received command {}".format(command))
 
-    if command["command"] == "get-recent-tasks":
+    if command["command"] == "get-statistics":
+      await handle_get_statistics(websocket, redis_conn)
+    elif command["command"] == "get-drivers":
+      await handle_get_drivers(websocket, redis_conn)
+    elif command["command"] == "get-recent-tasks":
       await handle_get_recent_tasks(websocket, redis_conn, command["num"])
 
     if command["command"] == "get-workers":
