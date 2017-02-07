@@ -243,6 +243,8 @@ def start_redis(port=None, num_retries=20, cleanup=True, redirect_output=False):
   # Configure Redis to not run in protected mode so that processes on other
   # hosts can connect to it. TODO(rkn): Do this in a more secure way.
   redis_client.config_set("protected-mode", "no")
+  # Put a time stamp in Redis to indicate when it was started.
+  redis_client.set("redis_start_time", time.time())
   return port
 
 def start_global_scheduler(redis_address, cleanup=True, redirect_output=False):

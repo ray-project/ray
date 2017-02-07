@@ -23,6 +23,24 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
 
     <div class="card">
       <h1>Overview</h1>
+      <h2>Cluster Statistics</h2>
+      <div id="uptime"></div>
+      <div id="nodes"></div>
+      <div id="addresses"></div>
+
+      <h2>Drivers</h2>
+      <vaadin-grid id="drivers">
+        <table>
+          <colgroup>
+            <col name="name"/>
+            <col name="start time"/>
+            <col name="duration"/>
+            <col name="status"/>
+            <col name="node ip address"/>
+          </colgroup>
+        </table>
+      </vaadin-grid>
+
       <h2>Clients</h2>
       <vaadin-grid id="clients">
         <table>
@@ -33,6 +51,7 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
           </colgroup>
         </table>
       </vaadin-grid>
+
       <h2>Workers</h2>
       <vaadin-grid id="workers">
         <table>
@@ -50,6 +69,59 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
     Polymer({
       is: 'ray-overview',
       ready: function() {
+        var statisticsSocket = new WebSocket(backend_address);
+        var uptime = Polymer.dom(this.root).querySelector("#uptime");
+        var nodes = Polymer.dom(this.root).querySelector("#nodes");
+        var addresses = Polymer.dom(this.root).querySelector("#addresses");
+        statisticsSocket.onopen = function() {
+          statisticsSocket.send(JSON.stringify({"command": "get-statistics"}))
+        }
+        statisticsSocket.onmessage = function(answer) {
+          var statistics = JSON.parse(answer.data);
+          uptime.innerHTML = "<b>Total Uptime:</b> " + statistics.uptime + " <b>since</b> " + statistics.start_date;
+          nodes.innerHTML = "<b>Number of Machines:</b> " + statistics.nodes;
+          addresses.innerHTML = "<b>IP addresses:</b> " + statistics.addresses;
+        }
+
+        var driverSocket = new WebSocket(backend_address);
+        var drivers = Polymer.dom(this.root).querySelector("#drivers");
+        driverSocket.onopen = function() {
+          driverSocket.send(JSON.stringify({"command": "get-drivers"}));
+        }
+        driverSocket.onmessage = function(answer) {
+          drivers.items = JSON.parse(answer.data);
+
+          // Add a row details generator
+          drivers.rowDetailsGenerator = function(rowIndex) {
+            var elem = document.createElement("pre");
+            elem.setAttribute("class", "userdetailswrapper");
+            elem.style.whiteSpace = "pre-wrap";
+
+            drivers.getItem(rowIndex, function(error, item) {
+              if (!error) {
+                if (item.exception) {
+                  elem.innerHTML = item.exception + "\n\n";
+                }
+              }
+            });
+
+            return elem;
+          };
+
+          var detailsOpenIndex = -1;
+
+          // Show details for the selected row
+          drivers.addEventListener("selected-items-changed", function() {
+            drivers.setRowDetailsVisible(detailsOpenIndex, false);
+            var selected = drivers.selection.selected();
+            if (selected.length == 1) {
+              drivers.setRowDetailsVisible(selected[0], true);
+              detailsOpenIndex = selected[0];
+            }
+          });
+
+        }
+
         var workerSocket = new WebSocket(backend_address);
         var workers = Polymer.dom(this.root).querySelector("#workers");
         workerSocket.onopen = function() {
