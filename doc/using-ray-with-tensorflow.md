@@ -31,7 +31,8 @@ y = w * x_data + b
 
 loss = tf.reduce_mean(tf.square(y - y_data))
 optimizer = tf.train.GradientDescentOptimizer(0.5)
-train = optimizer.minimize(loss)
+grads = optimizer.compute_gradients(loss)
+train = optimizer.apply_gradients(grads)
 
 init = tf.global_variables_initializer()
 sess = tf.Session()
