@@ -62,6 +62,8 @@ void process_plasma_notification(event_loop *loop,
  */
 void reconstruct_object(local_scheduler_state *state, object_id object_id);
 
+void print_resource_info(const local_scheduler_state *s, const task_spec *spec);
+
 /** The following methods are for testing purposes only. */
 #ifdef PHOTON_TEST
 local_scheduler_state *init_local_scheduler(

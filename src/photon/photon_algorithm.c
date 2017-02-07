@@ -265,25 +265,42 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
  */
 void dispatch_tasks(local_scheduler_state *state,
                     scheduling_algorithm_state *algorithm_state) {
-  /* Assign tasks while there are still tasks in the dispatch queue and
-   * available workers. */
-  while ((algorithm_state->dispatch_task_queue != NULL) &&
-         (utarray_len(algorithm_state->available_workers) > 0)) {
-    LOG_DEBUG("Dispatching task");
-    /* Pop a task from the dispatch queue. */
-    task_queue_entry *dispatched_task = algorithm_state->dispatch_task_queue;
-    DL_DELETE(algorithm_state->dispatch_task_queue, dispatched_task);
 
+  task_queue_entry *elt, *tmp;
+
+  /* Assign as many tasks as we can, while there are workers available. */
+  DL_FOREACH_SAFE(algorithm_state->dispatch_task_queue, elt, tmp) {
+    if (utarray_len(algorithm_state->available_workers) <= 0) {
+      break; /* No more available workers. We're done */
+    }
+    /* TODO(atumanov): as an optimization, we can also check if all dynamic
+     * capacity is zero and bail early. */
+    bool task_satisfied = true;
+    for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
+      if (task_required_resource(elt->spec, i) > state->dynamic_resources[i]) {
+        /* Insufficient capacity for this task, proceed to the next task. */
+        task_satisfied = false;
+        break;
+      }
+    }
+    if (!task_satisfied) {
+      continue; /* Proceed to the next task. */
+    }
+    /* Dispatch this task to an available worker and dequeue the task. */
+    LOG_DEBUG("Dispatching task");
     /* Get the last available worker in the available worker queue. */
     local_scheduler_client **worker = (local_scheduler_client **) utarray_back(
         algorithm_state->available_workers);
     /* Tell the available worker to execute the task. */
-    assign_task_to_worker(state, dispatched_task->spec, *worker);
+    assign_task_to_worker(state, elt->spec, *worker);
     /* Remove the available worker from the queue and free the struct. */
     utarray_pop_back(algorithm_state->available_workers);
-    free_task_spec(dispatched_task->spec);
-    free(dispatched_task);
-  }
+    print_resource_info(state, elt->spec);
+    /* Deque the task. */
+    DL_DELETE(algorithm_state->dispatch_task_queue, elt);
+    free_task_spec(elt->spec);
+    free(elt);
+  } /* End for each task in the dispatch queue. */
 }
 
 /**

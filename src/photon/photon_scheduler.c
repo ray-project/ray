@@ -31,7 +31,7 @@ UT_icd byte_icd = {sizeof(uint8_t), NULL, NULL, NULL};
 void print_resource_info(const local_scheduler_state *state,
                          const task_spec *spec) {
 
-#if RAY_COMMON_LOG_LEVEL <= RAY_COMMON_INFO
+#if RAY_COMMON_LOG_LEVEL <= RAY_COMMON_DEBUG
   /* Print information about available and requested resources. */
   char buftotal[256], bufavail[256], bufresreq[256];
   snprintf(bufavail, sizeof(bufavail), "%8.4f %8.4f",
