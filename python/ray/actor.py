@@ -50,7 +50,7 @@ def fetch_and_register_actor(key, worker):
       function_id = get_actor_method_function_id(k)
       worker.function_names[function_id.id()] = k
       worker.functions[function_id.id()] = v
-      worker.functions[function_id.id()].executor = lambda *args: print("Hello World 111")
+      worker.functions[function_id.id()].executor = lambda *args: v(worker.actors[actor_id_str], *args)
   print("registering actor...")
 
 def export_actor(actor_id, Class, worker):
@@ -73,7 +73,7 @@ def export_actor(actor_id, Class, worker):
 
   worker.redis_client.publish("actor_notifications", actor_id.id() + local_scheduler_id)
   import time
-  time.sleep(5)
+  time.sleep(2) # XXX
 
   # select worker to put the actor on
   # workers = worker.redis_client.keys("Workers:*")

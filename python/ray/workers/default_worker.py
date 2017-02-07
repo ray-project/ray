@@ -33,7 +33,8 @@ if __name__ == "__main__":
   print("Test")
   print(args.actor_id)
   sys.stdout.flush()
-  actor_id = binascii.unhexlify(args.actor_id) if args.actor_id is not None else None
+
+  actor_id = binascii.unhexlify(args.actor_id) if not args.actor_id is None else 20 * b"0xff"
 
   ray.worker.connect(info, mode=ray.WORKER_MODE, actor_id=actor_id)
 

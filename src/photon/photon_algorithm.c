@@ -168,13 +168,16 @@ void provide_scheduler_info(local_scheduler_state *state,
 }
 
 void create_actor(scheduling_algorithm_state *algorithm_state,
-                               actor_id actor_id) {
+                               actor_id actor_id,
+                               local_scheduler_client *worker) {
   /* This will be freed when the actor is removed in remove_actor. */
   local_actor_info *entry = malloc(sizeof(local_actor_info));
   entry->actor_id = actor_id;
   entry->task_counter = 0;
   /* Initialize the doubly-linked list to NULL. */
   entry->task_queue = NULL;
+  entry->worker = worker;
+  entry->worker_available = false;
   HASH_ADD(hh, algorithm_state->local_actor_infos, actor_id, sizeof(actor_id),
            entry);
 
@@ -216,8 +219,9 @@ void remove_actor(scheduling_algorithm_state *algorithm_state,
 
 void handle_actor_worker_connect(local_scheduler_state *state,
                                  scheduling_algorithm_state *algorithm_state,
-                                 actor_id actor_id) {
-  create_actor(algorithm_state, actor_id);
+                                 actor_id actor_id,
+                                 local_scheduler_client *worker) {
+  create_actor(algorithm_state, actor_id, worker);
 }
 
 void handle_actor_worker_disconnect(local_scheduler_state *state,
@@ -257,7 +261,7 @@ void add_task_to_actor_queue(local_scheduler_state *state,
    * guaranteeing in-order execution of the tasks on the actor). TODO(rkn): This
    * check will fail if the fault-tolerance mechanism resubmits a task on an
    * actor. */
-  CHECK(task_counter > entry->task_counter);
+  CHECK(task_counter >= entry->task_counter);
 
   /* Create a new task queue entry. */
   task_queue_entry *elt = malloc(sizeof(task_queue_entry));
@@ -274,7 +278,7 @@ void add_task_to_actor_queue(local_scheduler_state *state,
     num_iters += 1;
     current_entry = current_entry->prev;
   }
-  if (task_counter > task_spec_actor_counter(current_entry->spec)) {
+  if (entry->task_queue == NULL || task_counter > task_spec_actor_counter(current_entry->spec)) {
     DL_APPEND_ELEM(entry->task_queue, current_entry, elt);
   } else if (task_counter < task_spec_actor_counter(current_entry->spec)) {
     DL_PREPEND_ELEM(entry->task_queue, current_entry, elt);
@@ -336,10 +340,10 @@ bool dispatch_actor_task(local_scheduler_state *state,
     return false;
   }
   int64_t next_task_counter = task_spec_actor_counter(entry->task_queue->spec);
-  if (next_task_counter != entry->task_counter + 1) {
+  if (next_task_counter != entry->task_counter) {
     /* We cannot execute the next task on this actor without violating the
      * in-order execution guarantee for actor tasks. */
-    CHECK(next_task_counter > entry->task_counter + 1);
+    CHECK(next_task_counter > entry->task_counter);
     return false;
   }
   /* If the worker is not available, we cannot assign a task to it. */
@@ -349,6 +353,7 @@ bool dispatch_actor_task(local_scheduler_state *state,
   /* Assign the first task in the task queue to the worker and mark the worker
    * as unavailable. */
   task_queue_entry *first_task = entry->task_queue;
+  entry->task_counter += 1;
   assign_task_to_worker(state, first_task->spec, entry->worker);
   entry->worker_available = false;
   /* Remove the task from the actor's task queue. */

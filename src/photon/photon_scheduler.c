@@ -518,7 +518,7 @@ void process_message(event_loop *loop,
     /* Update the actor mapping with the actor ID of the worker (if an actor is
      * running on the worker). */
     actor_id actor_id_obj = *((actor_id *) utarray_front(state->input_buffer));
-    if (!actor_ids_equal(worker->actor_id, NIL_ID)) {
+    if (!actor_ids_equal(actor_id_obj, NIL_ID)) {
       /* Make sure that the local scheduler is aware that it is responsible for
        * this actor. */
       actor_map_entry *entry;
@@ -532,7 +532,8 @@ void process_message(event_loop *loop,
       worker->actor_id = actor_id_obj;
       /* Let the scheduling algorithm process the presence of this new
        * worker. */
-      handle_actor_worker_connect(state, state->algorithm_state, actor_id_obj);
+      handle_actor_worker_connect(state, state->algorithm_state, actor_id_obj,
+                                  worker);
     }
   } break;
   case GET_TASK: {
