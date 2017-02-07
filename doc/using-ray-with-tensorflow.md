@@ -183,9 +183,9 @@ for iteration in range(NUM_ITERS):
 
 In some cases, you may want to do data-parallel training on your network. We use the network 
 above to illustrate how to do this in Ray. The only differences are in the remote function 
-step and the driver code.
+`step` and the driver code.
 
-In the function step, we run the grad operation rather than the train operation to get the gradients.
+In the function `step`, we run the grad operation rather than the train operation to get the gradients.
 Since Tensorflow pairs the gradients with the variables in a tuple, we extract the gradients to avoid
 needless computation.
 
