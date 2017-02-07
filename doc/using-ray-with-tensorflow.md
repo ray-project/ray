@@ -182,25 +182,27 @@ for iteration in range(NUM_ITERS):
 ## How to Train in Parallel using Ray
 
 In some cases, you may want to do data-parallel training on your network. We use the network 
-above to illustrate how to do this in Ray. The only differences are in the step remote 
-function and the driver code.
+above to illustrate how to do this in Ray. The only differences are in the remote function 
+step and the driver code.
 
-In the step function, we run the grad operation rather than the train operation to get the gradients.
+In the function step, we run the grad operation rather than the train operation to get the gradients.
 Since Tensorflow pairs the gradients with the variables in a tuple, we extract the gradients to avoid
 needless computation.
 
-### Getting numerical gradients that are returned in remote functions
+### Extracting numerical gradients
+
+Code like the following can be used in a remote function to compute numerical gradients.
+
 ```python
 x_values = [1] * 100
 y_values = [2] * 100
 numerical_grads = sess.run([grad[0] for grad in grads], feed_dict={x_data: x_values, y_data: y_values})
 ```
 
-In the main driver code, we get the symbolic gradients from the `grads` operation run in step. These will
-be used in the feed_dict to the train operation. We then create a feed dict to apply the gradients and run
-the `train` operation.
-
 ### Using the returned gradients to train the network
+
+By pairing the symbolic gradients with the numerical gradients in a feed_dict, we can update the network.
+
 ```python
 # We can feed the gradient values in using the associated symbolic gradient
 # operation defined in tensorflow.
