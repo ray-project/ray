@@ -189,27 +189,29 @@ In the step function, we run the grad operation rather than the train operation 
 Since Tensorflow pairs the gradients with the variables in a tuple, we extract the gradients to avoid
 needless computation.
 
-## Getting numerical gradients that are returned in remote functions
+### Getting numerical gradients that are returned in remote functions
 ```python
-  x_values = [1] * 100
-  y_values = [2] * 100
-  actual_grads = sess.run([grad[0] for grad in grads], feed_dict={x_data: x_values, y_data: y_values})
+x_values = [1] * 100
+y_values = [2] * 100
+actual_grads = sess.run([grad[0] for grad in grads], feed_dict={x_data: x_values, y_data: y_values})
 ```
 
 In the main driver code, we get the symbolic gradients from the `grads` operation run in step. These will
 be used in the feed_dict to the train operation. We then take the mean of the gradients returned by step,
 and then create a feed dict to apply the gradients.
 
-## Using the mean gradient to train the network
+### Using the mean gradient to train the network
 ```python
-  # Placeholder gradients.
-  gradients_list = [actual_grads, actual_grads]
-  mean_grads = [sum([gradients[i] for gradients in gradients_list]) / len(gradients_list) for i in range(len(gradients_list[0]))]
-  # We can feed the gradient values in using the associated symbolic gradient
-  # operation defined in tensorflow.
-  feed_dict = {grad[0]: mean_grad for (grad, mean_grad) in zip(grads, mean_grads)}
-  sess.run(train, feed_dict=feed_dict)
+# Placeholder gradients.
+gradients_list = [actual_grads, actual_grads]
+mean_grads = [sum([gradients[i] for gradients in gradients_list]) / len(gradients_list) for i in range(len(gradients_list[0]))]
+# We can feed the gradient values in using the associated symbolic gradient
+# operation defined in tensorflow.
+feed_dict = {grad[0]: mean_grad for (grad, mean_grad) in zip(grads, mean_grads)}
+sess.run(train, feed_dict=feed_dict)
 ```
+
+You can then run `variables.get_weights()` to see the updated weights of the network.
 
 For reference, the full code is below:
 
