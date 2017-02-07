@@ -204,7 +204,7 @@ the `train` operation.
 ```python
 # We can feed the gradient values in using the associated symbolic gradient
 # operation defined in tensorflow.
-feed_dict = {grad[0]: numerical_grad for (grad, mean_grad) in zip(grads, numerical_grads)}
+feed_dict = {grad[0]: numerical_grad for (grad, numerical_grad) in zip(grads, numerical_grads)}
 sess.run(train, feed_dict=feed_dict)
 ```
 
