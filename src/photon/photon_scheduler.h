@@ -79,8 +79,9 @@ local_scheduler_state *init_local_scheduler(
     const char *plasma_store_socket_name,
     const char *plasma_manager_address,
     bool global_scheduler_exists,
+    const double static_resource_vector[],
     const char *worker_path,
-    const double static_resource_vector[]);
+    int num_workers);
 
 void free_local_scheduler(local_scheduler_state *state);
 
@@ -90,6 +91,10 @@ void process_message(event_loop *loop,
                      int client_sock,
                      void *context,
                      int events);
+
+void kill_worker(local_scheduler_client *worker, bool wait);
+
+void start_worker(local_scheduler_state *state);
 #endif
 
 #endif /* PHOTON_SCHEDULER_H */

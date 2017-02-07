@@ -183,6 +183,22 @@ class SerializationTest(unittest.TestCase):
 
 class WorkerTest(unittest.TestCase):
 
+  def testPythonWorkers(self):
+    # Test the codepath for starting workers from the Python script, instead of
+    # the local scheduler. This codepath is for debugging purposes only.
+    num_workers = 4
+    ray.worker._init(num_workers=num_workers,
+                     start_workers_from_local_scheduler=False,
+                     start_ray_local=True)
+
+    @ray.remote
+    def f(x):
+      return x
+
+    values = ray.get([f.remote(1) for i in range(num_workers * 2)])
+    self.assertEqual(values, [1] * (num_workers * 2))
+    ray.worker.cleanup()
+
   def testPutGet(self):
     ray.init(num_workers=0)
 

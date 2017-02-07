@@ -16,7 +16,10 @@ class ComponentFailureTest(unittest.TestCase):
     def f():
       ray.worker.global_worker.plasma_client.get(obj_id)
 
-    ray.init(num_workers=1, driver_mode=ray.SILENT_MODE)
+    ray.worker._init(num_workers=1,
+                     driver_mode=ray.SILENT_MODE,
+                     start_workers_from_local_scheduler=False,
+                     start_ray_local=True)
 
     # Have the worker wait in a get call.
     f.remote()
@@ -44,7 +47,10 @@ class ComponentFailureTest(unittest.TestCase):
     def f():
       ray.worker.global_worker.plasma_client.wait([obj_id])
 
-    ray.init(num_workers=1, driver_mode=ray.SILENT_MODE)
+    ray.worker._init(num_workers=1,
+                     driver_mode=ray.SILENT_MODE,
+                     start_workers_from_local_scheduler=False,
+                     start_ray_local=True)
 
     # Have the worker wait in a get call.
     f.remote()

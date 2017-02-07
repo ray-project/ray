@@ -13,6 +13,7 @@ import subprocess
 import sys
 import time
 from collections import namedtuple, OrderedDict
+import threading
 
 # Ray modules
 import photon
@@ -89,18 +90,24 @@ def kill_process(p):
   if RUN_PHOTON_PROFILER or RUN_PLASMA_MANAGER_PROFILER or RUN_PLASMA_STORE_PROFILER:
     os.kill(p.pid, signal.SIGINT) # Give process signal to write profiler data.
     time.sleep(0.1) # Wait for profiling data to be written.
-  p.kill()
-  # Sleeping for 0 should yield the core and allow the killed process to process
-  # its pending signals.
-  time.sleep(0)
+
+  # Allow the process one second to exit gracefully.
+  p.terminate()
+  timer = threading.Timer(1, lambda p: p.kill(), [p])
+  try:
+    timer.start()
+    p.wait()
+  finally:
+    timer.cancel()
+
   if p.poll() is not None:
     return True
-  p.terminate()
-  # Sleeping for 0 should yield the core and allow the killed process to process
-  # its pending signals.
-  time.sleep(0)
-  if p.poll is not None:
+
+  # If the process did not exit within one second, force kill it.
+  p.kill()
+  if p.poll() is not None:
     return True
+
   # The process was not killed for some reason.
   return False
 
@@ -262,10 +269,16 @@ def start_global_scheduler(redis_address, cleanup=True, redirect_output=False):
   if cleanup:
     all_processes[PROCESS_TYPE_GLOBAL_SCHEDULER].append(p)
 
-def start_local_scheduler(redis_address, node_ip_address, plasma_store_name,
-                          plasma_manager_name, worker_path, plasma_address=None,
-                          cleanup=True, redirect_output=False,
-                          static_resource_list=None):
+def start_local_scheduler(redis_address,
+                          node_ip_address,
+                          plasma_store_name,
+                          plasma_manager_name,
+                          worker_path,
+                          plasma_address=None,
+                          cleanup=True,
+                          redirect_output=False,
+                          static_resource_list=None,
+                          num_workers=0):
   """Start a local scheduler process.
 
   Args:
@@ -284,6 +297,8 @@ def start_local_scheduler(redis_address, node_ip_address, plasma_store_name,
       /dev/null.
     static_resource_list (list): An ordered list of the configured resource
       capacities for this local scheduler.
+    num_workers (int): The number of workers that the local scheduler should
+      start.
 
   Return:
     The name of the local scheduler socket.
@@ -296,7 +311,8 @@ def start_local_scheduler(redis_address, node_ip_address, plasma_store_name,
                                                          plasma_address=plasma_address,
                                                          use_profiler=RUN_PHOTON_PROFILER,
                                                          redirect_output=redirect_output,
-                                                         static_resource_list=static_resource_list)
+                                                         static_resource_list=static_resource_list,
+                                                         num_workers=num_workers)
   if cleanup:
     all_processes[PROCESS_TYPE_LOCAL_SCHEDULER].append(p)
   return local_scheduler_name
@@ -391,6 +407,7 @@ def start_ray_processes(address_info=None,
                         redirect_output=False,
                         include_global_scheduler=False,
                         include_redis=False,
+                        start_workers_from_local_scheduler=True,
                         num_cpus=None,
                         num_gpus=None):
   """Helper method to start Ray processes.
@@ -417,6 +434,9 @@ def start_ray_processes(address_info=None,
       start a global scheduler process.
     include_redis (bool): If include_redis is True, then start a Redis server
       process.
+    start_workers_from_local_scheduler (bool): If this flag is True, then start
+      the initial workers from the local scheduler. Else, start them from
+      Python.
     num_cpus: A list of length num_local_schedulers containing the number of
       CPUs each local scheduler should be configured with.
     num_gpus: A list of length num_local_schedulers containing the number of
@@ -489,12 +509,25 @@ def start_ray_processes(address_info=None,
     object_store_addresses.append(object_store_address)
     time.sleep(0.1)
 
+  # Determine how many workers to start for each local scheduler.
+  num_workers_per_local_scheduler = [0] * num_local_schedulers
+  for i in range(num_workers):
+    num_workers_per_local_scheduler[i % num_local_schedulers] += 1
+
   # Start any local schedulers that do not yet exist.
   for i in range(len(local_scheduler_socket_names), num_local_schedulers):
     # Connect the local scheduler to the object store at the same index.
     object_store_address = object_store_addresses[i]
     plasma_address = "{}:{}".format(node_ip_address,
                                     object_store_address.manager_port)
+    # Determine how many workers this local scheduler should start.
+    if start_workers_from_local_scheduler:
+      num_local_scheduler_workers = num_workers_per_local_scheduler[i]
+      num_workers_per_local_scheduler[i] = 0
+    else:
+      # If we're starting the workers from Python, the local scheduler should
+      # not start any workers.
+      num_local_scheduler_workers = 0
     # Start the local scheduler.
     local_scheduler_name = start_local_scheduler(redis_address,
                                                  node_ip_address,
@@ -504,7 +537,8 @@ def start_ray_processes(address_info=None,
                                                  plasma_address=plasma_address,
                                                  cleanup=cleanup,
                                                  redirect_output=redirect_output,
-                                                 static_resource_list=[num_cpus[i], num_gpus[i]])
+                                                 static_resource_list=[num_cpus[i], num_gpus[i]],
+                                                 num_workers=num_local_scheduler_workers)
     local_scheduler_socket_names.append(local_scheduler_name)
     time.sleep(0.1)
 
@@ -513,18 +547,23 @@ def start_ray_processes(address_info=None,
   assert len(object_store_addresses) == num_local_schedulers
   assert len(local_scheduler_socket_names) == num_local_schedulers
 
-  # Start the workers.
-  for i in range(num_workers):
-    object_store_address = object_store_addresses[i % num_local_schedulers]
-    local_scheduler_name = local_scheduler_socket_names[i % num_local_schedulers]
-    start_worker(node_ip_address,
-                 object_store_address.name,
-                 object_store_address.manager_name,
-                 local_scheduler_name,
-                 redis_address,
-                 worker_path,
-                 cleanup=cleanup,
-                 redirect_output=redirect_output)
+  # Start any workers that the local scheduler has not already started.
+  for i, num_local_scheduler_workers in enumerate(num_workers_per_local_scheduler):
+    object_store_address = object_store_addresses[i]
+    local_scheduler_name = local_scheduler_socket_names[i]
+    for j in range(num_local_scheduler_workers):
+      start_worker(node_ip_address,
+                   object_store_address.name,
+                   object_store_address.manager_name,
+                   local_scheduler_name,
+                   redis_address,
+                   worker_path,
+                   cleanup=cleanup,
+                   redirect_output=redirect_output)
+      num_workers_per_local_scheduler[i] -= 1
+
+  # Make sure that we've started all the workers.
+  assert(sum(num_workers_per_local_scheduler) == 0)
 
   # Return the addresses of the relevant processes.
   return address_info
@@ -581,6 +620,7 @@ def start_ray_head(address_info=None,
                    worker_path=None,
                    cleanup=True,
                    redirect_output=False,
+                   start_workers_from_local_scheduler=True,
                    num_cpus=None,
                    num_gpus=None):
   """Start Ray in local mode.
@@ -603,6 +643,9 @@ def start_ray_head(address_info=None,
       method exits.
     redirect_output (bool): True if stdout and stderr should be redirected to
       /dev/null.
+    start_workers_from_local_scheduler (bool): If this flag is True, then start
+      the initial workers from the local scheduler. Else, start them from
+      Python.
     num_cpus (int): number of cpus to configure the local scheduler with.
     num_gpus (int): number of gpus to configure the local scheduler with.
 
@@ -619,5 +662,6 @@ def start_ray_head(address_info=None,
                              redirect_output=redirect_output,
                              include_global_scheduler=True,
                              include_redis=True,
+                             start_workers_from_local_scheduler=start_workers_from_local_scheduler,
                              num_cpus=num_cpus,
                              num_gpus=num_gpus)
