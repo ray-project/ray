@@ -200,6 +200,8 @@ void assign_task_to_worker(local_scheduler_state *state,
   if (state->db != NULL) {
     task_table_update(state->db, task, (retry_info *) &photon_retry, NULL,
                       NULL);
+  } else {
+    free_task(task);
   }
 }
 
