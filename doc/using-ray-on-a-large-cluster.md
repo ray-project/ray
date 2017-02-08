@@ -166,6 +166,56 @@ This command will execute the `stop_ray.sh` script on each of the worker nodes.
 ray/scripts/stop_ray.sh
 ```
 
+### Upgrading Ray
+
+Ray remains under active development so you may at times want to upgrade the
+cluster to take advantage of improvements and fixes.
+
+#### Create an upgrade script
+
+On the head node, create a file called `upgrade.sh` that contains the commands necessary
+to upgrade Ray. It should look something like the following:
+
+```
+export PATH=/home/ubuntu/anaconda2/bin/:$PATH
+pushd .
+cd ray
+git remote set-url origin https://github.com/ray-project/ray
+git checkout master
+git pull
+cd python
+python setup.py install --user
+popd
+```
+
+This script executes a series of git commands to update the Ray source code, then builds
+and installs Ray.
+
+#### Stop Ray on the cluster
+
+Follow the instructions for [stopping Ray](#stopping-ray).
+
+
+#### Run the upgrade script on the cluster
+
+First run the upgrade script on the head node. This will upgrade the head node and
+help confirm that the upgrade script is working properly.
+
+```
+bash upgrade.sh
+```
+
+Next run the upgrade script on the worker nodes.
+
+```
+parallel-ssh -h workers.txt -P -t 0 -I < upgrade.sh
+```
+
+Note here that we use the `-t 0` option to set the timeout to infinite.
+
+#### Start Ray on the cluster
+
+Follow the instructions for [starting Ray](#starting-ray).
 
 ## Sync Application Files to other nodes
 
