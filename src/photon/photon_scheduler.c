@@ -42,8 +42,8 @@ void print_resource_info(const local_scheduler_state *state,
           state->static_resources[1]);
   if (spec) {
     snprintf(bufresreq, sizeof(bufresreq), "%8.4f %8.4f",
-            task_required_resource(spec, 0),
-            task_required_resource(spec, 1));
+            task_spec_required_resource(spec, 0),
+            task_spec_required_resource(spec, 1));
   }
   LOG_INFO("Resources: [total=%s][available=%s][requested=%s]",
            buftotal, bufavail, spec?bufresreq:"n/a");
@@ -187,7 +187,7 @@ void assign_task_to_worker(local_scheduler_state *state,
   /* Resource accounting:
    * Update dynamic resource vector in the local scheduler state. */
   for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
-    state->dynamic_resources[i] -= task_required_resource(spec, i);
+    state->dynamic_resources[i] -= task_spec_required_resource(spec, i);
     CHECKM(state->dynamic_resources[i] >= 0,
            "photon dynamic resources dropped to %8.4f\t%8.4f\n",
            state->dynamic_resources[0],
@@ -356,7 +356,7 @@ void process_message(event_loop *loop,
     if (task_in_progress != NULL) {
       /* Return dynamic resources back for the task in progress. */
       for (int i = 0 ; i < MAX_RESOURCE_INDEX; i++) {
-        state->dynamic_resources[i] += task_required_resource(spec, i);
+        state->dynamic_resources[i] += task_spec_required_resource(spec, i);
         /* Sanity-check resource vector boundary conditions. */
         CHECK(state->dynamic_resources[i] <= state->static_resources[i]);
       }

@@ -57,7 +57,7 @@ void assign_task_to_local_scheduler(global_scheduler_state *state,
      *  this local scheduler. This will be overwritten on the next heartbeat. */
     local_scheduler->info.dynamic_resources[i] = MAX(0,
         local_scheduler->info.dynamic_resources[i] -
-        task_required_resource(spec, i));
+        task_spec_required_resource(spec, i));
   }
 }
 

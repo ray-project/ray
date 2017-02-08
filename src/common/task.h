@@ -263,7 +263,8 @@ void task_spec_add_required_resource(task_spec *spec, int64_t resource_index,
  * @param resource_index Index of the resource.
  * @return How many of this resource the task needs to execute.
  */
-double task_required_resource(const task_spec *spec, int64_t resource_index);
+double task_spec_required_resource(const task_spec *spec,
+                                   int64_t resource_index);
 
 /**
  * Compute the object id associated to a put call.

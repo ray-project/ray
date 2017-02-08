@@ -385,7 +385,7 @@ static PyObject *PyTask_required_resources(PyObject *self) {
   task_spec *task = ((PyTask *) self)->spec;
   PyObject *required_resources = PyList_New((Py_ssize_t) MAX_RESOURCE_INDEX);
   for (int i = 0; i < MAX_RESOURCE_INDEX; ++i) {
-    double r = task_required_resource(task, i);
+    double r = task_spec_required_resource(task, i);
     PyList_SetItem(required_resources, i, PyFloat_FromDouble(r));
   }
   return required_resources;
