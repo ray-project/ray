@@ -469,11 +469,11 @@ void handle_task_submitted(local_scheduler_state *state,
   if (resource_constraints_satisfied(state, spec) &&
       (utarray_len(algorithm_state->available_workers) > 0) &&
       can_run(algorithm_state, spec)) {
-  /* If this task's constraints are satisfied, dependencies are available
-   * locally, and there is an available worker, then enqueue the task in the
-   * dispatch queue and trigger task dispatch.
-   * Otherwise, pass the task along to the global scheduler if there is one.
-   */
+    /* If this task's constraints are satisfied, dependencies are available
+     * locally, and there is an available worker, then enqueue the task in the
+     * dispatch queue and trigger task dispatch.
+     * Otherwise, pass the task along to the global scheduler if there is one.
+     */
     queue_dispatch_task(state, algorithm_state, spec, false);
   } else {
     /* Give the task to the global scheduler to schedule, if it exists. */
