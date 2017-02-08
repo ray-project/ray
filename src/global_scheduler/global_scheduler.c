@@ -55,9 +55,9 @@ void assign_task_to_local_scheduler(global_scheduler_state *state,
   for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
     /** Subtract task's resource from the cached dynamic resource capacity for
      *  this local scheduler. This will be overwritten on the next heartbeat. */
-    local_scheduler->info.dynamic_resources[i] = MAX(0,
-        local_scheduler->info.dynamic_resources[i] -
-        task_spec_required_resource(spec, i));
+    local_scheduler->info.dynamic_resources[i] =
+        MAX(0, local_scheduler->info.dynamic_resources[i] -
+                   task_spec_required_resource(spec, i));
   }
 }
 
@@ -161,14 +161,14 @@ void process_new_db_client(db_client_id db_client_id,
         calloc(1, sizeof(aux_address_entry));
     plasma_photon_entry->aux_address = strdup(aux_address);
     plasma_photon_entry->photon_db_client_id = db_client_id;
-    HASH_ADD_KEYPTR(
-        plasma_photon_hh, state->plasma_photon_map, plasma_photon_entry->aux_address,
-        strlen(plasma_photon_entry->aux_address), plasma_photon_entry);
+    HASH_ADD_KEYPTR(plasma_photon_hh, state->plasma_photon_map,
+                    plasma_photon_entry->aux_address,
+                    strlen(plasma_photon_entry->aux_address),
+                    plasma_photon_entry);
 
     /* Add photon_db_client_id -> plasma_manager ip:port association to state.
      */
-    HASH_ADD(photon_plasma_hh, state->photon_plasma_map,
-             photon_db_client_id,
+    HASH_ADD(photon_plasma_hh, state->photon_plasma_map, photon_db_client_id,
              sizeof(plasma_photon_entry->photon_db_client_id),
              plasma_photon_entry);
 

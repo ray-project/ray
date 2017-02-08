@@ -253,7 +253,8 @@ typedef enum {
  *        attribute this task requires.
  * @return How many of this resource the task needs to execute.
  */
-void task_spec_add_required_resource(task_spec *spec, int64_t resource_index,
+void task_spec_add_required_resource(task_spec *spec,
+                                     int64_t resource_index,
                                      double value);
 
 /**

@@ -11,8 +11,8 @@ global_scheduler_policy_state *init_global_scheduler_policy(void) {
       malloc(sizeof(global_scheduler_policy_state));
   policy_state->round_robin_index = 0;
 
-  int num_weight_elem = sizeof(policy_state->resource_attribute_weight) /
-                        sizeof(double);
+  int num_weight_elem =
+      sizeof(policy_state->resource_attribute_weight) / sizeof(double);
   for (int i = 0; i < num_weight_elem; i++) {
     /* Weight distribution is subject to scheduling policy. Giving all weight
      * to the last element of the vector (cached data) is equivalent to
@@ -61,9 +61,8 @@ void handle_task_round_robin(global_scheduler_state *state,
   int num_retries = 1;
   bool task_satisfied = false;
 
-  for (i = policy_state->round_robin_index;
-       !task_satisfied && num_retries > 0;
-       i = (i+1) % utarray_len(state->local_schedulers)) {
+  for (i = policy_state->round_robin_index; !task_satisfied && num_retries > 0;
+       i = (i + 1) % utarray_len(state->local_schedulers)) {
     if (i == policy_state->round_robin_index) {
       num_retries--;
     }
@@ -222,8 +221,8 @@ void handle_task_waiting(global_scheduler_state *state,
   bool task_feasible = false;
   int64_t task_object_size = 0; /* total size of task's data. */
 
-  object_size_table =
-      create_object_size_hashmap(state, task_spec, &has_args_by_ref, &task_object_size);
+  object_size_table = create_object_size_hashmap(
+      state, task_spec, &has_args_by_ref, &task_object_size);
 
   /* Go through all the nodes, calculate the score for each, pick max score. */
   local_scheduler *ls = NULL;
@@ -247,7 +246,8 @@ void handle_task_waiting(global_scheduler_state *state,
       /* Does this node contribute anything to this task object size? */
       /* Lookup ls-> id in photon_plasma_map to get plasma aux address,
        * which is used as the key for object_size_table.
-       * The use the plasma aux address to locate object_size this node contributes.
+       * The use the plasma aux address to locate object_size this node
+       * contributes.
        */
       aux_address_entry *photon_plasma_pair = NULL;
       HASH_FIND(photon_plasma_hh, state->photon_plasma_map, &(ls->id),
@@ -255,15 +255,19 @@ void handle_task_waiting(global_scheduler_state *state,
       if (photon_plasma_pair != NULL) {
         object_size_entry *s = NULL;
         /* Found this node's photon to plasma mapping. Use the corresponding
-         * plasma key to see if this node has any cached objects for this task. */
+         * plasma key to see if this node has any cached objects for this task.
+         */
         HASH_FIND_STR(object_size_table, photon_plasma_pair->aux_address, s);
         if (s != NULL) {
-          /* This node has some of this task's objects. Calculate what fraction. */
-          CHECK(strcmp(s->object_location, photon_plasma_pair->aux_address) == 0);
-          object_size_fraction = MIN(1, (double)(s->total_object_size)/task_object_size);
+          /* This node has some of this task's objects. Calculate what fraction.
+           */
+          CHECK(strcmp(s->object_location, photon_plasma_pair->aux_address) ==
+                0);
+          object_size_fraction =
+              MIN(1, (double) (s->total_object_size) / task_object_size);
         } /* if this node has any of this task's objects cached */
-      } /* if found photon plasma association for this node */
-    } /* if this task has any objects passed by reference */
+      }   /* if found photon plasma association for this node */
+    }     /* if this task has any objects passed by reference */
 
     /* object size fraction is now calculated for this (task,node) pair. */
     /* construct the normalized dynamic resource attribute vector */
@@ -274,7 +278,7 @@ void handle_task_waiting(global_scheduler_state *state,
       if (resreqval <= 0) {
         continue; /* Skip and leave normalized dynvec value == 0 */
       }
-      normalized_dynvec[i] = MIN(1, resreqval/ls->info.dynamic_resources[i]);
+      normalized_dynvec[i] = MIN(1, resreqval / ls->info.dynamic_resources[i]);
     }
     normalized_dynvec[MAX_RESOURCE_INDEX] = object_size_fraction;
 

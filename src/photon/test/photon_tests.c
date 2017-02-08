@@ -48,8 +48,8 @@ typedef struct {
 photon_mock *init_photon_mock(bool connect_to_redis) {
   const char *redis_addr = NULL;
   int redis_port = -1;
-  const double static_resource_conf[MAX_RESOURCE_INDEX] =
-      {DEFAULT_NUM_CPUS, DEFAULT_NUM_GPUS};
+  const double static_resource_conf[MAX_RESOURCE_INDEX] = {DEFAULT_NUM_CPUS,
+                                                           DEFAULT_NUM_GPUS};
   if (connect_to_redis) {
     redis_addr = "127.0.0.1";
     redis_port = 6379;

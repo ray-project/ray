@@ -30,23 +30,20 @@ UT_icd byte_icd = {sizeof(uint8_t), NULL, NULL, NULL};
  */
 void print_resource_info(const local_scheduler_state *state,
                          const task_spec *spec) {
-
 #if RAY_COMMON_LOG_LEVEL <= RAY_COMMON_INFO
   /* Print information about available and requested resources. */
   char buftotal[256], bufavail[256], bufresreq[256];
   snprintf(bufavail, sizeof(bufavail), "%8.4f %8.4f",
-          state->dynamic_resources[0],
-          state->dynamic_resources[1]);
+           state->dynamic_resources[0], state->dynamic_resources[1]);
   snprintf(buftotal, sizeof(buftotal), "%8.4f %8.4f",
-          state->static_resources[0],
-          state->static_resources[1]);
+           state->static_resources[0], state->static_resources[1]);
   if (spec) {
     snprintf(bufresreq, sizeof(bufresreq), "%8.4f %8.4f",
-            task_spec_required_resource(spec, 0),
-            task_spec_required_resource(spec, 1));
+             task_spec_required_resource(spec, 0),
+             task_spec_required_resource(spec, 1));
   }
-  LOG_INFO("Resources: [total=%s][available=%s][requested=%s]",
-           buftotal, bufavail, spec?bufresreq:"n/a");
+  LOG_INFO("Resources: [total=%s][available=%s][requested=%s]", buftotal,
+           bufavail, spec ? bufresreq : "n/a");
 #endif
 }
 
@@ -190,8 +187,7 @@ void assign_task_to_worker(local_scheduler_state *state,
     state->dynamic_resources[i] -= task_spec_required_resource(spec, i);
     CHECKM(state->dynamic_resources[i] >= 0,
            "photon dynamic resources dropped to %8.4f\t%8.4f\n",
-           state->dynamic_resources[0],
-           state->dynamic_resources[1]);
+           state->dynamic_resources[0], state->dynamic_resources[1]);
   }
   print_resource_info(state, spec);
   task *task = alloc_task(spec, TASK_STATUS_RUNNING,
@@ -349,13 +345,13 @@ void process_message(event_loop *loop,
   case GET_TASK: {
     /* Update the task table with the completed task. */
     task *task_in_progress = worker->task_in_progress;
-    task_spec *spec = (task_in_progress != NULL)?
-        task_task_spec(task_in_progress):NULL;
+    task_spec *spec =
+        (task_in_progress != NULL) ? task_task_spec(task_in_progress) : NULL;
 
     /* If this worker reports a completed task: account for resources. */
     if (task_in_progress != NULL) {
       /* Return dynamic resources back for the task in progress. */
-      for (int i = 0 ; i < MAX_RESOURCE_INDEX; i++) {
+      for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
         state->dynamic_resources[i] += task_spec_required_resource(spec, i);
         /* Sanity-check resource vector boundary conditions. */
         CHECK(state->dynamic_resources[i] <= state->static_resources[i]);
@@ -367,7 +363,8 @@ void process_message(event_loop *loop,
         task_set_state(worker->task_in_progress, TASK_STATUS_DONE);
         task_table_update(state->db, worker->task_in_progress,
                           (retry_info *) &photon_retry, NULL, NULL);
-        /* The call to task_table_update takes ownership of the task_in_progress,
+        /* The call to task_table_update takes ownership of the
+         * task_in_progress,
          * so we set the pointer to NULL so it is not used. */
         worker->task_in_progress = NULL;
       } else if (worker->task_in_progress) {
@@ -565,15 +562,15 @@ int main(int argc, char *argv[]) {
     static_resource_conf[CPU_RESOURCE_INDEX] = DEFAULT_NUM_CPUS;
     static_resource_conf[GPU_RESOURCE_INDEX] = DEFAULT_NUM_GPUS;
   } else {
-   /* tokenize the string */
+    /* tokenize the string */
     const char delim[2] = ",";
     char *token;
     int idx = 0; /* Index into the resource vector. */
     token = strtok(static_resource_list, delim);
     while (token != NULL && idx < MAX_RESOURCE_INDEX) {
-        static_resource_conf[idx++] = atoi(token);
-        /* Attempt to get the next token. */
-        token = strtok(NULL, delim);
+      static_resource_conf[idx++] = atoi(token);
+      /* Attempt to get the next token. */
+      token = strtok(NULL, delim);
     }
   }
   if (!scheduler_socket_name) {
