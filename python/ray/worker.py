@@ -1089,6 +1089,9 @@ def import_thread(worker):
   # and before the call to import_pubsub_client.listen will still be processed
   # in the loop.
   worker.import_pubsub_client.psubscribe("__keyspace@0__:Exports")
+  # Notification that this actor process is listening to exports.
+  # TODO(pcm): Protect this by a lock!
+  worker.redis_client.lpush("ActorExportLock:{}".format(worker.actor_id), "done")
   worker_info_key = "WorkerInfo:{}".format(worker.worker_id)
   worker.redis_client.hset(worker_info_key, "export_counter", 0)
   worker.worker_import_counter = 0
@@ -1132,6 +1135,8 @@ def import_thread(worker):
           actor_id, = worker.redis_client.hmget(key, "actor_id")
           if worker.actor_id == actor_id:
             worker.fetch_and_register["Actor"](key, worker)
+            # Notification that this actor has been registered with the actor worker.
+            worker.redis_client.lpush("ActorLock:{}".format(worker.actor_id), "done")
           # actor_worker_id_str, = worker.redis_client.hmget(key, "actor_worker_id")
           # if worker.worker_id == actor_worker_id_str:
           #  # TODO(pcm): make sure fetch_and_register is set

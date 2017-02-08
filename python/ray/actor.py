@@ -71,13 +71,9 @@ def export_actor(actor_id, Class, worker):
   local_scheduler_id = random.choice(local_schedulers)
 
   worker.redis_client.publish("actor_notifications", actor_id.id() + local_scheduler_id)
-  import time
-  time.sleep(2) # XXX
   
-
-  # select worker to put the actor on
-  # workers = worker.redis_client.keys("Workers:*")
-  # actor_worker_id = random.choice(workers)[len("Workers:"):]
+  # Block until the actor worker process starts listening to exports.
+  worker.redis_client.blpop("ActorExportLock:{}".format(actor_id.id()))
 
   d = {"driver_id": worker.task_driver_id.id(),
        "actor_id": actor_id.id(),
@@ -89,6 +85,9 @@ def export_actor(actor_id, Class, worker):
   worker.redis_client.hmset(key, d)
   worker.redis_client.rpush("Exports", key)
   worker.driver_export_counter += 1
+
+  # Block until the actor has been registered in the actor worker.
+  worker.redis_client.blpop("ActorLock:{}".format(actor_id.id()))
   
 
 def actor(Class):
