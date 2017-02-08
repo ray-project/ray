@@ -764,8 +764,10 @@ def _init(address_info=None, start_ray_local=False, object_id_seed=None,
       only provided if start_ray_local is True.
     driver_mode (bool): The mode in which to start the driver. This should be
       one of ray.SCRIPT_MODE, ray.PYTHON_MODE, and ray.SILENT_MODE.
-    num_cpus (int): number of cpus the user wishes all local schedulers to be configured with.
-    num_gpus (int): number of gpus the user wishes all local schedulers to be configured with.
+    num_cpus: A list containing the number of CPUs the local schedulers should
+      be configured with.
+    num_gpus: A list containing the number of GPUs the local schedulers should
+      be configured with.
 
   Returns:
     Address information about the started processes.
@@ -821,9 +823,8 @@ def _init(address_info=None, start_ray_local=False, object_id_seed=None,
       raise Exception("If start_ray_local=False, then num_workers must not be provided.")
     if num_local_schedulers is not None:
       raise Exception("If start_ray_local=False, then num_local_schedulers must not be provided.")
-
     if num_cpus is not None or num_gpus is not None:
-      raise Exception("If start_ray_local=False, then num_cpus and num_gpus are not provided.")
+      raise Exception("If start_ray_local=False, then num_cpus and num_gpus must not be provided.")
     # Get the node IP address if one is not provided.
     if node_ip_address is None:
       node_ip_address = services.get_node_ip_address(redis_address)
@@ -1002,7 +1003,7 @@ def fetch_and_register_remote_function(key, worker=global_worker):
   else:
     # TODO(rkn): Why is the below line necessary?
     function.__module__ = module
-    worker.functions[function_id.id()] = remote(num_return_vals=num_return_vals, 
+    worker.functions[function_id.id()] = remote(num_return_vals=num_return_vals,
                                                 function_id=function_id,
                                                 num_cpus=num_cpus,
                                                 num_gpus=num_gpus)(function)

@@ -5,7 +5,6 @@ from __future__ import print_function
 import multiprocessing
 import os
 import random
-import string
 import subprocess
 import time
 
@@ -87,7 +86,7 @@ def start_local_scheduler(plasma_store_name, plasma_manager_name=None,
   # Pass the resource capacity string to the photon scheduler in all cases.
   # Sanity check to make sure all resource capacities in the list are numeric (int or float).
   assert(all([x == int or x == float for x in map(type, static_resource_list)]))
-  command += ["-c", string.join(map(str, static_resource_list), ',')]
+  command += ["-c", ",".join(map(str, static_resource_list))]
 
   with open(os.devnull, "w") as FNULL:
     stdout = FNULL if redirect_output else None

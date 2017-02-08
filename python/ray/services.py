@@ -416,11 +416,22 @@ def start_ray_processes(address_info=None,
       start a global scheduler process.
     include_redis (bool): If include_redis is True, then start a Redis server
       process.
+    num_cpus: A list of length num_local_schedulers containing the number of
+      CPUs each local scheduler should be configured with.
+    num_gpus: A list of length num_local_schedulers containing the number of
+      GPUs each local scheduler should be configured with.
 
   Returns:
     A dictionary of the address information for the processes that were
       started.
   """
+  if not isinstance(num_cpus, list):
+    num_cpus = num_local_schedulers * [num_cpus]
+  if not isinstance(num_gpus, list):
+    num_gpus = num_local_schedulers * [num_gpus]
+  assert len(num_cpus) == num_local_schedulers
+  assert len(num_gpus) == num_local_schedulers
+
   if address_info is None:
     address_info = {}
   address_info["node_ip_address"] = node_ip_address
@@ -492,7 +503,7 @@ def start_ray_processes(address_info=None,
                                                  plasma_address=plasma_address,
                                                  cleanup=cleanup,
                                                  redirect_output=redirect_output,
-                                                 static_resource_list=[num_cpus, num_gpus])
+                                                 static_resource_list=[num_cpus[i], num_gpus[i]])
     local_scheduler_socket_names.append(local_scheduler_name)
     time.sleep(0.1)
 
