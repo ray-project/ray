@@ -39,8 +39,10 @@ def train_vars_initializer():
     loss, init, x_data, y_data = make_linear_network()
     sess = tf.Session()
     variables = ray.experimental.TensorFlowVariables(loss, sess)
-    grad = tf.gradients(loss, list(variables.variables.values()))
-  return variables, init, sess, grad, [x_data, y_data]
+    optimizer = tf.train.GradientDescentOptimizer(0.9)
+    grads = optimizer.compute_gradients(loss)
+    train = optimizer.apply_gradients(grads)
+  return loss, variables, init, sess, grads, train, [x_data, y_data]
 
 
 class TensorFlowTest(unittest.TestCase):
@@ -200,15 +202,41 @@ class TensorFlowTest(unittest.TestCase):
 
     @ray.remote
     def training_step(weights):
-      variables, _, sess, grad, placeholders = ray.env.net
+      _, variables, _, sess, grads, _, placeholders = ray.env.net
       variables.set_weights(weights)
-      return sess.run(grad, feed_dict=dict(zip(placeholders, [[1]*100]*2)))
+      return sess.run([grad[0] for grad in grads], feed_dict=dict(zip(placeholders, [[1]*100]*2)))
 
-    variables, init, sess, _, _ = ray.env.net
+    _, variables, init, sess, _, _, _ = ray.env.net
 
     sess.run(init)
     ray.get(training_step.remote(variables.get_weights()))
 
+    ray.worker.cleanup()
+
+
+  def testRemoteTrainingLoss(self):
+    ray.init(num_workers=2)
+
+    ray.env.net = ray.EnvironmentVariable(train_vars_initializer, net_vars_reinitializer)
+
+    @ray.remote
+    def training_step(weights):
+      _, variables, _, sess, grads, _, placeholders = ray.env.net
+      variables.set_weights(weights)
+      return sess.run([grad[0] for grad in grads], feed_dict=dict(zip(placeholders, [[1]*100, [2]*100])))
+
+    loss, variables, init, sess, grads, train, placeholders = ray.env.net
+
+    sess.run(init)
+    before_acc = sess.run(loss, feed_dict=dict(zip(placeholders, [[2]*100, [4]*100])))
+
+    for _ in range(3):
+      gradients_list = ray.get([training_step.remote(variables.get_weights()) for _ in range(2)])
+      mean_grads = [sum([gradients[i] for gradients in gradients_list]) / len(gradients_list) for i in range(len(gradients_list[0]))]
+      feed_dict = {grad[0]: mean_grad for (grad, mean_grad) in zip(grads, mean_grads)}
+      sess.run(train, feed_dict=feed_dict)
+    after_acc = sess.run(loss, feed_dict=dict(zip(placeholders, [[2]*100, [4]*100])))
+    self.assertTrue(before_acc < after_acc)
     ray.worker.cleanup()
 
 if __name__ == "__main__":

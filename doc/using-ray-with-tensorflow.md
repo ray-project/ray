@@ -31,7 +31,8 @@ y = w * x_data + b
 
 loss = tf.reduce_mean(tf.square(y - y_data))
 optimizer = tf.train.GradientDescentOptimizer(0.5)
-train = optimizer.minimize(loss)
+grads = optimizer.compute_gradients(loss)
+train = optimizer.apply_gradients(grads)
 
 init = tf.global_variables_initializer()
 sess = tf.Session()
@@ -106,14 +107,15 @@ def net_vars_initializer():
     # Define the loss.
     loss = tf.reduce_mean(tf.square(y - y_data))
     optimizer = tf.train.GradientDescentOptimizer(0.5)
-    train = optimizer.minimize(loss)
+    grads = optimizer.compute_gradients(loss)
+    train = optimizer.apply_gradients(grads)
     # Define the weight initializer and session.
     init = tf.global_variables_initializer()
     sess = tf.Session()
     # Additional code for setting and getting the weights
     variables = ray.experimental.TensorFlowVariables(loss, sess)
     # Return all of the data needed to use the network.
-  return variables, sess, train, loss, x_data, y_data, init
+  return variables, sess, grads, train, loss, x_data, y_data, init
 
 def net_vars_reinitializer(net_vars):
   return net_vars
@@ -125,7 +127,7 @@ ray.env.net_vars = ray.EnvironmentVariable(net_vars_initializer, net_vars_reinit
 # new weights.
 @ray.remote
 def step(weights, x, y):
-  variables, sess, train, _, x_data, y_data, _ = ray.env.net_vars
+  variables, sess, _, train, _, x_data, y_data, _ = ray.env.net_vars
   # Set the weights in the network.
   variables.set_weights(weights)
   # Do one step of training.
@@ -133,7 +135,7 @@ def step(weights, x, y):
   # Return the new weights.
   return variables.get_weights()
 
-variables, sess, _, loss, x_data, y_data, init = ray.env.net_vars
+variables, sess, _, train, loss, x_data, y_data, init = ray.env.net_vars
 # Initialize the network weights.
 sess.run(init)
 # Get the weights as a dictionary of numpy arrays.
@@ -171,6 +173,146 @@ for iteration in range(NUM_ITERS):
   # of weights, and we want to add up these dicts component wise using the keys
   # of the first dict.
   weights = {variable: sum(weight_dict[variable] for weight_dict in new_weights_list) / NUM_BATCHES for variable in new_weights_list[0]}
+  # Print the current weights. They should converge to roughly to the values 0.1
+  # and 0.3 used in generate_fake_x_y_data.
+  if iteration % 20 == 0:
+    print("Iteration {}: weights are {}".format(iteration, weights))
+```
+
+## How to Train in Parallel using Ray
+
+In some cases, you may want to do data-parallel training on your network. We use the network 
+above to illustrate how to do this in Ray. The only differences are in the remote function 
+`step` and the driver code.
+
+In the function `step`, we run the grad operation rather than the train operation to get the gradients.
+Since Tensorflow pairs the gradients with the variables in a tuple, we extract the gradients to avoid
+needless computation.
+
+### Extracting numerical gradients
+
+Code like the following can be used in a remote function to compute numerical gradients.
+
+```python
+x_values = [1] * 100
+y_values = [2] * 100
+numerical_grads = sess.run([grad[0] for grad in grads], feed_dict={x_data: x_values, y_data: y_values})
+```
+
+### Using the returned gradients to train the network
+
+By pairing the symbolic gradients with the numerical gradients in a feed_dict, we can update the network.
+
+```python
+# We can feed the gradient values in using the associated symbolic gradient
+# operation defined in tensorflow.
+feed_dict = {grad[0]: numerical_grad for (grad, numerical_grad) in zip(grads, numerical_grads)}
+sess.run(train, feed_dict=feed_dict)
+```
+
+You can then run `variables.get_weights()` to see the updated weights of the network.
+
+For reference, the full code is below:
+
+```python
+import tensorflow as tf
+import numpy as np
+import ray
+
+ray.init(num_workers=5)
+
+BATCH_SIZE = 100
+NUM_BATCHES = 1
+NUM_ITERS = 201
+
+def net_vars_initializer():
+  # Use a separate graph for each network.
+  with tf.Graph().as_default():
+    # Seed TensorFlow to make the script deterministic.
+    tf.set_random_seed(0)
+    # Define the inputs.
+    x_data = tf.placeholder(tf.float32, shape=[BATCH_SIZE])
+    y_data = tf.placeholder(tf.float32, shape=[BATCH_SIZE])
+    # Define the weights and computation.
+    w = tf.Variable(tf.random_uniform([1], -1.0, 1.0))
+    b = tf.Variable(tf.zeros([1]))
+    y = w * x_data + b
+    # Define the loss.
+    loss = tf.reduce_mean(tf.square(y - y_data))
+    optimizer = tf.train.GradientDescentOptimizer(0.5)
+    grads = optimizer.compute_gradients(loss)
+    train = optimizer.apply_gradients(grads)
+
+    # Define the weight initializer and session.
+    init = tf.global_variables_initializer()
+    sess = tf.Session()
+    # Additional code for setting and getting the weights
+    variables = ray.experimental.TensorFlowVariables(loss, sess)
+    # Return all of the data needed to use the network.
+  return variables, sess, grads, train, loss, x_data, y_data, init
+
+def net_vars_reinitializer(net_vars):
+  return net_vars
+
+# Define an environment variable for the network variables.
+ray.env.net_vars = ray.EnvironmentVariable(net_vars_initializer, net_vars_reinitializer)
+
+# Define a remote function that trains the network for one step and returns the
+# new weights.
+@ray.remote
+def step(weights, x, y):
+  variables, sess, grads, _, _, x_data, y_data, _ = ray.env.net_vars
+  # Set the weights in the network.
+  variables.set_weights(weights)
+  # Do one step of training. We only need the actual gradients so we filter over the list.
+  actual_grads = sess.run([grad[0] for grad in grads], feed_dict={x_data: x, y_data: y})
+  return actual_grads
+
+
+variables, sess, grads, train, loss, x_data, y_data, init = ray.env.net_vars
+# Initialize the network weights.
+sess.run(init)
+# Get the weights as a dictionary of numpy arrays.
+weights = variables.get_weights()
+
+# Define a remote function for generating fake data.
+@ray.remote(num_return_vals=2)
+def generate_fake_x_y_data(num_data, seed=0):
+  # Seed numpy to make the script deterministic.
+  np.random.seed(seed)
+  x = np.random.rand(num_data)
+  y = x * 0.1 + 0.3
+  return x, y
+
+# Generate some training data.
+batch_ids = [generate_fake_x_y_data.remote(BATCH_SIZE, seed=i) for i in range(NUM_BATCHES)]
+x_ids = [x_id for x_id, y_id in batch_ids]
+y_ids = [y_id for x_id, y_id in batch_ids]
+# Generate some test data.
+x_test, y_test = ray.get(generate_fake_x_y_data.remote(BATCH_SIZE, seed=NUM_BATCHES))
+
+
+# Do some steps of training.
+for iteration in range(NUM_ITERS):
+  # Put the weights in the object store. This is optional. We could instead pass
+  # the variable weights directly into step.remote, in which case it would be
+  # placed in the object store under the hood. However, in that case multiple
+  # copies of the weights would be put in the object store, so this approach is
+  # more efficient.
+  weights_id = ray.put(weights)
+  # Call the remote function multiple times in parallel.
+  gradients_ids = [step.remote(weights_id, x_ids[i], y_ids[i]) for i in range(NUM_BATCHES)]
+  # Get all of the weights.
+  gradients_list = ray.get(gradients_ids)
+
+  # Take the mean of the different gradients. Each element of gradients_list is a list
+  # of gradients, and we want to take the mean of each one.
+  mean_grads = [sum([gradients[i] for gradients in gradients_list]) / len(gradients_list) for i in range(len(gradients_list[0]))]
+
+  feed_dict = {grad[0]: mean_grad for (grad, mean_grad) in zip(grads, mean_grads)}
+  sess.run(train, feed_dict=feed_dict)
+  weights = variables.get_weights()
+
   # Print the current weights. They should converge to roughly to the values 0.1
   # and 0.3 used in generate_fake_x_y_data.
   if iteration % 20 == 0:
