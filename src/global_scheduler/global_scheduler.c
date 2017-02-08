@@ -18,6 +18,15 @@
  * global_scheduler_state type. */
 UT_icd local_scheduler_icd = {sizeof(local_scheduler), NULL, NULL, NULL};
 
+/**
+ * Assign the given task to the local scheduler, update Redis and scheduler
+ * datastructures.
+ *
+ * @param state Global scheduler state.
+ * @param task Task to be assigned to the local scheduler.
+ * @param local_scheduler_id DB client ID for the local scheduler.
+ * @return Void.
+ */
 void assign_task_to_local_scheduler(global_scheduler_state *state,
                                     task *task,
                                     db_client_id local_scheduler_id) {
@@ -156,9 +165,10 @@ void process_new_db_client(db_client_id db_client_id,
         plasma_photon_hh, state->plasma_photon_map, plasma_photon_entry->aux_address,
         strlen(plasma_photon_entry->aux_address), plasma_photon_entry);
 
-    /* Add photon_db_client_id -> plasma_manager ip:port association to state.*/
+    /* Add photon_db_client_id -> plasma_manager ip:port association to state.
+     */
     HASH_ADD(photon_plasma_hh, state->photon_plasma_map,
-             photon_db_client_id, /* Key is the field name of entry struct. */
+             photon_db_client_id,
              sizeof(plasma_photon_entry->photon_db_client_id),
              plasma_photon_entry);
 

@@ -5,12 +5,6 @@
 #include "global_scheduler.h"
 #include "task.h"
 
-#ifndef RAY_NUM_RETRIES
-#define NUM_RETRIES 10
-#else
-#define NUM_RETRIES RAY_NUM_RETRIES
-#endif
-
 /* ==== The scheduling algorithm ====
  *
  * This file contains declaration for all functions and data structures that
@@ -56,14 +50,12 @@ void destroy_global_scheduler_policy(
     global_scheduler_policy_state *policy_state);
 
 /**
- * Assign the task to a local scheduler. At the moment, this simply assigns the
- * task to the local schedulers in a round robin fashion. If there are no local
- * schedulers it fails.
+ * Main new task handling function in the global scheduler.
  *
- * @param state The global scheduler state.
- * @param policy_state The state managed by the scheduling policy.
- * @param task The task that is waiting to be scheduled.
- * @return Void.
+ * @param state Global scheduler state.
+ * @param policy_state State specific to the scheduling policy.
+ * @param task New task to be scheduled.
+ * @return  Void.
  */
 void handle_task_waiting(global_scheduler_state *state,
                          global_scheduler_policy_state *policy_state,

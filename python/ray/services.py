@@ -18,7 +18,6 @@ from collections import namedtuple, OrderedDict
 import photon
 import plasma
 import global_scheduler
-from IPython.utils.sysinfo import num_cpus
 
 PROCESS_TYPE_WORKER = "worker"
 PROCESS_TYPE_LOCAL_SCHEDULER = "local_scheduler"

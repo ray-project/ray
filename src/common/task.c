@@ -265,7 +265,8 @@ int64_t task_args_add_val(task_spec *spec, uint8_t *data, int64_t length) {
   return spec->arg_index++;
 }
 
-void task_add_required_resource(task_spec *spec, int64_t resource_index, double value) {
+void task_spec_add_required_resource(task_spec *spec, int64_t resource_index,
+                                     double value) {
   spec->required_resources[resource_index] = value;
 }
 

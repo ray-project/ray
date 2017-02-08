@@ -11,12 +11,13 @@ global_scheduler_policy_state *init_global_scheduler_policy(void) {
       malloc(sizeof(global_scheduler_policy_state));
   policy_state->round_robin_index = 0;
 
-  int num_weight_elem = sizeof(policy_state->resource_attribute_weight)/sizeof(double);
+  int num_weight_elem = sizeof(policy_state->resource_attribute_weight) /
+                        sizeof(double);
   for (int i = 0; i < num_weight_elem; i++) {
     /* Weight distribution is subject to scheduling policy. Giving all weight
      * to the last element of the vector (cached data) is equivalent to
      * the transfer-aware policy. */
-    policy_state->resource_attribute_weight[i] = 1.0/num_weight_elem;
+    policy_state->resource_attribute_weight[i] = 1.0 / num_weight_elem;
   }
 
   return policy_state;
@@ -27,8 +28,13 @@ void destroy_global_scheduler_policy(
   free(policy_state);
 }
 
-/** constraints_satisfied_hard: returns true if task_spec's constraints are
- *      satisfied by the given local scheduler ls
+/**
+ * Checks if the given local scheduler satisfies the task's hard constraints.
+ *
+ * @param  ls    Local scheduler.
+ * @param  spec  Task specification.
+ * @return True if all tasks's resource constraints are satisfied. False
+ *         otherwise.
  */
 bool constraints_satisfied_hard(const local_scheduler *ls,
                                 const task_spec *spec) {
@@ -194,7 +200,14 @@ double inner_product(double a[], double b[], int size) {
   return result;
 }
 
-/* Main pending task handler */
+/**
+ * Main new task handling function in the global scheduler.
+ *
+ * @param state Global scheduler state.
+ * @param policy_state State specific to the scheduling policy.
+ * @param task New task to be scheduled.
+ * @return  Void.
+ */
 void handle_task_waiting(global_scheduler_state *state,
                          global_scheduler_policy_state *policy_state,
                          task *task) {
