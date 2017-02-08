@@ -123,7 +123,7 @@ void provide_scheduler_info(local_scheduler_state *state,
       waiting_task_queue_length + dispatch_task_queue_length;
   info->available_workers = utarray_len(algorithm_state->available_workers);
   /* Copy static and dynamic resource information. */
-  for(int i = 0; i < MAX_RESOURCE_INDEX; i++) {
+  for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
     info->dynamic_resources[i] = state->dynamic_resources[i];
     info->static_resources[i] = state->static_resources[i];
   }
@@ -265,7 +265,6 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
  */
 void dispatch_tasks(local_scheduler_state *state,
                     scheduling_algorithm_state *algorithm_state) {
-
   task_queue_entry *elt, *tmp;
 
   /* Assign as many tasks as we can, while there are workers available. */
@@ -277,7 +276,8 @@ void dispatch_tasks(local_scheduler_state *state,
      * capacity is zero and bail early. */
     bool task_satisfied = true;
     for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
-      if (task_spec_required_resource(elt->spec, i) > state->dynamic_resources[i]) {
+      if (task_spec_required_resource(elt->spec, i) >
+          state->dynamic_resources[i]) {
         /* Insufficient capacity for this task, proceed to the next task. */
         task_satisfied = false;
         break;
@@ -445,7 +445,6 @@ void give_task_to_global_scheduler(local_scheduler_state *state,
 
 bool resource_constraints_satisfied(local_scheduler_state *state,
                                     task_spec *spec) {
-
   /* At the local scheduler, if required resource vector exceeds either static
    * or dynamic resource vector, the resource constraint is not satisfied.  */
   for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
@@ -462,18 +461,19 @@ void handle_task_submitted(local_scheduler_state *state,
                            task_spec *spec) {
   /* TODO(atumanov): if static is satisfied and local objects ready, but
    * dynamic resource is currently unavailable, then
-   * consider queueing task locally and recheck dynamic next time.   */
+   * consider queueing task locally and recheck dynamic next time.
+   */
 
   /* If local node satisfies constraints AND objects are available, then
    * schedule locally. Else forward to the global scheduler. */
   if (resource_constraints_satisfied(state, spec) &&
       (utarray_len(algorithm_state->available_workers) > 0) &&
       can_run(algorithm_state, spec)) {
-  /* If this task's dependencies are available locally, and if there is an
-   * available worker, then assign this task to an available worker. If we
-   * cannot assign the task to a worker immediately, we either queue the task in
-   * the local task queue or we pass the task to the global scheduler. For now,
-   * we pass the task along to the global scheduler if there is one. */
+  /* If this task's constraints are satisfied, dependencies are available
+   * locally, and there is an available worker, then enqueue the task in the
+   * dispatch queue and trigger task dispatch.
+   * Otherwise, pass the task along to the global scheduler if there is one.
+   */
     queue_dispatch_task(state, algorithm_state, spec, false);
   } else {
     /* Give the task to the global scheduler to schedule, if it exists. */
