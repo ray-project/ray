@@ -821,7 +821,9 @@ def _init(address_info=None, start_ray_local=False, object_id_seed=None,
       raise Exception("If start_ray_local=False, then num_workers must not be provided.")
     if num_local_schedulers is not None:
       raise Exception("If start_ray_local=False, then num_local_schedulers must not be provided.")
-    # XXX : same for num_cpus and num_gpus
+
+    if num_cpus is not None or num_gpus is not None:
+      raise Exception("If start_ray_local=False, then num_cpus and num_gpus are not provided.")
     # Get the node IP address if one is not provided.
     if node_ip_address is None:
       node_ip_address = services.get_node_ip_address(redis_address)
@@ -956,10 +958,21 @@ If this driver is hanging, start a new one with
 
 def fetch_and_register_remote_function(key, worker=global_worker):
   """Import a remote function."""
-  driver_id, function_id_str, function_name, serialized_function, num_return_vals, module, function_export_counter = worker.redis_client.hmget(key, ["driver_id", "function_id", "name", "function", "num_return_vals", "module", "function_export_counter"])
+  driver_id, function_id_str, function_name, serialized_function, num_return_vals, module, function_export_counter, num_cpus, num_gpus = \
+    worker.redis_client.hmget(key, ["driver_id",
+                                    "function_id",
+                                    "name",
+                                    "function",
+                                    "num_return_vals",
+                                    "module",
+                                    "function_export_counter",
+                                    "num_cpus",
+                                    "num_gpus"])
   function_id = photon.ObjectID(function_id_str)
   function_name = function_name.decode("ascii")
   num_return_vals = int(num_return_vals)
+  num_cpus = int(num_cpus)
+  num_gpus = int(num_gpus)
   module = module.decode("ascii")
   function_export_counter = int(function_export_counter)
 
@@ -970,7 +983,10 @@ def fetch_and_register_remote_function(key, worker=global_worker):
   # overwritten if the function is unpickled successfully.
   def f():
     raise Exception("This function was not imported properly.")
-  worker.functions[function_id.id()] = remote(num_return_vals=num_return_vals, function_id=function_id)(lambda *xs: f())
+  worker.functions[function_id.id()] = remote(num_return_vals=num_return_vals,
+                                              function_id=function_id,
+                                              num_cpus=num_cpus,
+                                              num_gpus=num_gpus)(lambda *xs: f())
 
   try:
     function = pickling.loads(serialized_function)
@@ -986,7 +1002,10 @@ def fetch_and_register_remote_function(key, worker=global_worker):
   else:
     # TODO(rkn): Why is the below line necessary?
     function.__module__ = module
-    worker.functions[function_id.id()] = remote(num_return_vals=num_return_vals, function_id=function_id)(function)
+    worker.functions[function_id.id()] = remote(num_return_vals=num_return_vals, 
+                                                function_id=function_id,
+                                                num_cpus=num_cpus,
+                                                num_gpus=num_gpus)(function)
     # Add the function to the function table.
     worker.redis_client.rpush("FunctionTable:{}".format(function_id.id()), worker.worker_id)
 
@@ -1192,8 +1211,8 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker):
     for name, environment_variable in env._cached_environment_variables:
       env.__setattr__(name, environment_variable)
     # Export cached remote functions to the workers.
-    for function_id, func_name, func, num_return_vals in worker.cached_remote_functions:
-      export_remote_function(function_id, func_name, func, num_return_vals, worker)
+    for function_id, func_name, func, num_return_vals, num_cpus, num_gpus in worker.cached_remote_functions:
+      export_remote_function(function_id, func_name, func, num_return_vals, num_cpus, num_gpus, worker)
   worker.cached_functions_to_run = None
   worker.cached_remote_functions = None
   env._cached_environment_variables = None
@@ -1611,7 +1630,7 @@ def _export_environment_variable(name, environment_variable, worker=global_worke
   worker.redis_client.rpush("Exports", key)
   worker.driver_export_counter += 1
 
-def export_remote_function(function_id, func_name, func, num_return_vals, worker=global_worker):
+def export_remote_function(function_id, func_name, func, num_return_vals, num_cpus, num_gpus, worker=global_worker):
   check_main_thread()
   if _mode(worker) not in [SCRIPT_MODE, SILENT_MODE]:
     raise Exception("export_remote_function can only be called on a driver.")
@@ -1624,7 +1643,9 @@ def export_remote_function(function_id, func_name, func, num_return_vals, worker
                                   "module": func.__module__,
                                   "function": pickled_func,
                                   "num_return_vals": num_return_vals,
-                                  "function_export_counter": worker.driver_export_counter})
+                                  "function_export_counter": worker.driver_export_counter,
+                                  "num_cpus": num_cpus,
+                                  "num_gpus": num_gpus})
   worker.redis_client.rpush("Exports", key)
   worker.driver_export_counter += 1
 
@@ -1707,9 +1728,9 @@ def remote(*args, **kwargs):
           if func_name_global_valid: func.__globals__[func.__name__] = func_name_global_value
           else: del func.__globals__[func.__name__]
       if worker.mode in [SCRIPT_MODE, SILENT_MODE]:
-        export_remote_function(function_id, func_name, func, num_return_vals)
+        export_remote_function(function_id, func_name, func, num_return_vals, num_cpus, num_gpus)
       elif worker.mode is None:
-        worker.cached_remote_functions.append((function_id, func_name, func, num_return_vals))
+        worker.cached_remote_functions.append((function_id, func_name, func, num_return_vals, num_cpus, num_gpus))
       return func_invoker
 
     return remote_decorator
