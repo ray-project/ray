@@ -21,8 +21,6 @@ from plasma.utils import random_object_id, generate_metadata, write_to_data_buff
 USE_VALGRIND = False
 PLASMA_STORE_MEMORY = 1000000000
 ID_SIZE = 20
-DEFAULT_NUM_CPUS = 8
-DEFAULT_NUM_GPUS = 1
 NUM_CLUSTER_NODES = 2
 
 # These constants must match the scheduling state enum in task.h.
@@ -93,7 +91,7 @@ class TestGlobalScheduler(unittest.TestCase):
           plasma_manager_name=plasma_manager_name,
           plasma_address=plasma_address,
           redis_address=redis_address,
-          static_resource_list=[str(DEFAULT_NUM_CPUS), str(DEFAULT_NUM_GPUS)])
+          static_resource_list=[None, 0])
       # Connect to the scheduler.
       photon_client = photon.PhotonClient(local_scheduler_name)
       self.photon_clients.append(photon_client)

@@ -737,7 +737,7 @@ def get_address_info_from_redis(redis_address, node_ip_address, num_retries=5):
 
 def _init(address_info=None, start_ray_local=False, object_id_seed=None,
           num_workers=None, num_local_schedulers=None,
-          driver_mode=SCRIPT_MODE):
+          driver_mode=SCRIPT_MODE, num_cpus=None, num_gpus=None):
   """Helper method to connect to an existing Ray cluster or start a new one.
 
   This method handles two cases. Either a Ray cluster already exists and we
@@ -764,6 +764,8 @@ def _init(address_info=None, start_ray_local=False, object_id_seed=None,
       only provided if start_ray_local is True.
     driver_mode (bool): The mode in which to start the driver. This should be
       one of ray.SCRIPT_MODE, ray.PYTHON_MODE, and ray.SILENT_MODE.
+    num_cpus (int): number of cpus the user wishes all local schedulers to be configured with.
+    num_gpus (int): number of gpus the user wishes all local schedulers to be configured with.
 
   Returns:
     Address information about the started processes.
@@ -810,7 +812,8 @@ def _init(address_info=None, start_ray_local=False, object_id_seed=None,
     address_info = services.start_ray_head(address_info=address_info,
                                            node_ip_address=node_ip_address,
                                            num_workers=num_workers,
-                                           num_local_schedulers=num_local_schedulers)
+                                           num_local_schedulers=num_local_schedulers,
+                                           num_cpus=num_cpus, num_gpus=num_gpus)
   else:
     if redis_address is None:
       raise Exception("If start_ray_local=False, then redis_address must be provided.")
@@ -818,6 +821,7 @@ def _init(address_info=None, start_ray_local=False, object_id_seed=None,
       raise Exception("If start_ray_local=False, then num_workers must not be provided.")
     if num_local_schedulers is not None:
       raise Exception("If start_ray_local=False, then num_local_schedulers must not be provided.")
+    # XXX : same for num_cpus and num_gpus
     # Get the node IP address if one is not provided.
     if node_ip_address is None:
       node_ip_address = services.get_node_ip_address(redis_address)
@@ -842,7 +846,7 @@ def _init(address_info=None, start_ray_local=False, object_id_seed=None,
   return address_info
 
 def init(redis_address=None, node_ip_address=None, object_id_seed=None,
-         num_workers=None, driver_mode=SCRIPT_MODE):
+         num_workers=None, driver_mode=SCRIPT_MODE, num_cpus=None, num_gpus=None):
   """Either connect to an existing Ray cluster or start one and connect to it.
 
   This method handles two cases. Either a Ray cluster already exists and we
@@ -863,6 +867,8 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
       redis_address is not provided.
     driver_mode (bool): The mode in which to start the driver. This should be
       one of ray.SCRIPT_MODE, ray.PYTHON_MODE, and ray.SILENT_MODE.
+    num_cpus (int): Number of cpus the user wishes all local schedulers to be configured with.
+    num_gpus (int): Number of gpus the user wishes all local schedulers to be configured with.
 
   Returns:
     Address information about the started processes.
@@ -876,7 +882,8 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
       "redis_address": redis_address,
       }
   return _init(address_info=info, start_ray_local=(redis_address is None),
-               num_workers=num_workers, driver_mode=driver_mode)
+               num_workers=num_workers, driver_mode=driver_mode,
+               num_cpus=num_cpus, num_gpus=num_gpus)
 
 def cleanup(worker=global_worker):
   """Disconnect the driver, and terminate any processes started in init.

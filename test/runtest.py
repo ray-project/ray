@@ -291,7 +291,7 @@ class APITest(unittest.TestCase):
     ray.worker.cleanup()
 
   def testDefiningRemoteFunctions(self):
-    ray.init(num_workers=3)
+    ray.init(num_workers=3, num_cpus=3)
 
     # Test that we can define a remote function in the shell.
     @ray.remote
@@ -503,7 +503,7 @@ class APITest(unittest.TestCase):
     ray.worker.cleanup()
 
   def testPassingInfoToAllWorkers(self):
-    ray.init(num_workers=10)
+    ray.init(num_workers=10, num_cpus=10)
 
     def f(worker_info):
       sys.path.append(worker_info)

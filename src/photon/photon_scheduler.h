@@ -7,6 +7,9 @@
 /* The duration between local scheduler heartbeats. */
 #define LOCAL_SCHEDULER_HEARTBEAT_TIMEOUT_MILLISECONDS 100
 
+#define DEFAULT_NUM_CPUS INT16_MAX
+#define DEFAULT_NUM_GPUS 0
+
 /**
  * Establish a connection to a new client.
  *

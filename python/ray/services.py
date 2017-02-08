@@ -18,6 +18,7 @@ from collections import namedtuple, OrderedDict
 import photon
 import plasma
 import global_scheduler
+from IPython.utils.sysinfo import num_cpus
 
 PROCESS_TYPE_WORKER = "worker"
 PROCESS_TYPE_LOCAL_SCHEDULER = "local_scheduler"
@@ -280,6 +281,8 @@ def start_local_scheduler(redis_address, node_ip_address, plasma_store_name,
       that imported services exits.
     redirect_output (bool): True if stdout and stderr should be redirected to
       /dev/null.
+    static_resource_list (list of ints): ordered list of configured resource capacities for this
+      local scheduler.
 
   Return:
     The name of the local scheduler socket.
@@ -386,7 +389,9 @@ def start_ray_processes(address_info=None,
                         cleanup=True,
                         redirect_output=False,
                         include_global_scheduler=False,
-                        include_redis=False):
+                        include_redis=False,
+                        num_cpus=None,
+                        num_gpus=None):
   """Helper method to start Ray processes.
 
   Args:
@@ -486,7 +491,8 @@ def start_ray_processes(address_info=None,
                                                  worker_path,
                                                  plasma_address=plasma_address,
                                                  cleanup=cleanup,
-                                                 redirect_output=redirect_output)
+                                                 redirect_output=redirect_output,
+                                                 static_resource_list=[num_cpus, num_gpus])
     local_scheduler_socket_names.append(local_scheduler_name)
     time.sleep(0.1)
 
@@ -517,7 +523,9 @@ def start_ray_node(node_ip_address,
                    num_local_schedulers=1,
                    worker_path=None,
                    cleanup=True,
-                   redirect_output=False):
+                   redirect_output=False,
+                   num_cpus=None,
+                   num_gpus=None):
   """Start the Ray processes for a single node.
 
   This assumes that the Ray processes on some master node have already been
@@ -550,7 +558,9 @@ def start_ray_node(node_ip_address,
                              num_local_schedulers=num_local_schedulers,
                              worker_path=worker_path,
                              cleanup=cleanup,
-                             redirect_output=redirect_output)
+                             redirect_output=redirect_output,
+                             num_cpus=num_cpus,
+                             num_gpus=num_gpus)
 
 def start_ray_head(address_info=None,
                    node_ip_address="127.0.0.1",
@@ -558,7 +568,9 @@ def start_ray_head(address_info=None,
                    num_local_schedulers=1,
                    worker_path=None,
                    cleanup=True,
-                   redirect_output=False):
+                   redirect_output=False,
+                   num_cpus=None,
+                   num_gpus=None):
   """Start Ray in local mode.
 
   Args:
@@ -579,6 +591,8 @@ def start_ray_head(address_info=None,
       method exits.
     redirect_output (bool): True if stdout and stderr should be redirected to
       /dev/null.
+    num_cpus (int): number of cpus to configure the local scheduler with.
+    num_gpus (int): number of gpus to configure the local scheduler with.
 
   Returns:
     A dictionary of the address information for the processes that were
@@ -592,4 +606,6 @@ def start_ray_head(address_info=None,
                              cleanup=cleanup,
                              redirect_output=redirect_output,
                              include_global_scheduler=True,
-                             include_redis=True)
+                             include_redis=True,
+                             num_cpus=num_cpus,
+                             num_gpus=num_gpus)

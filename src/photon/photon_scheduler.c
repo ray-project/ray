@@ -31,7 +31,7 @@ UT_icd byte_icd = {sizeof(uint8_t), NULL, NULL, NULL};
 void print_resource_info(const local_scheduler_state *state,
                          const task_spec *spec) {
 
-#if RAY_COMMON_LOG_LEVEL <= RAY_COMMON_DEBUG
+#if RAY_COMMON_LOG_LEVEL <= RAY_COMMON_INFO
   /* Print information about available and requested resources. */
   char buftotal[256], bufavail[256], bufresreq[256];
   snprintf(bufavail, sizeof(bufavail), "%8.4f %8.4f",
@@ -370,8 +370,7 @@ void process_message(event_loop *loop,
         /* The call to task_table_update takes ownership of the task_in_progress,
          * so we set the pointer to NULL so it is not used. */
         worker->task_in_progress = NULL;
-      }
-      if (worker->task_in_progress) {
+      } else if (worker->task_in_progress) {
         free_task(worker->task_in_progress);
         worker->task_in_progress = NULL;
       }
