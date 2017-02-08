@@ -22,6 +22,7 @@ void assign_task_to_local_scheduler(global_scheduler_state *state,
                                     task *task,
                                     db_client_id local_scheduler_id) {
   char id_string[ID_STRING_SIZE];
+  task_spec *spec = task_task_spec(task);
   LOG_DEBUG("assigning task to local_scheduler_id = %s",
             object_id_to_string(local_scheduler_id, id_string, ID_STRING_SIZE));
   task_set_state(task, TASK_STATUS_SCHEDULED);
@@ -41,6 +42,14 @@ void assign_task_to_local_scheduler(global_scheduler_state *state,
       get_local_scheduler(state, local_scheduler_id);
   local_scheduler->num_tasks_sent += 1;
   local_scheduler->num_recent_tasks_sent += 1;
+  /** Resource accounting update for this local scheduler. */
+  for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
+    /** Subtract task's resource from the cached dynamic resource capacity for
+     *  this local scheduler. This will be overwritten on the next heartbeat. */
+    local_scheduler->info.dynamic_resources[i] = MAX(0,
+        local_scheduler->info.dynamic_resources[i] -
+        task_required_resource(spec, i));
+  }
 }
 
 global_scheduler_state *init_global_scheduler(event_loop *loop,
