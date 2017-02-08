@@ -68,3 +68,12 @@ void photon_reconstruct_object(photon_conn *conn, object_id object_id) {
 void photon_log_message(photon_conn *conn) {
   write_message(conn->conn, LOG_MESSAGE, 0, NULL);
 }
+
+void photon_put_object(photon_conn *conn,
+                       task_id task_id,
+                       object_id object_id) {
+  DCHECK(sizeof(unique_id) == sizeof(task_id));
+  DCHECK(sizeof(unique_id) == sizeof(object_id));
+  unique_id put_ids[2] = {task_id, object_id};
+  write_message(conn->conn, PUT_OBJECT, sizeof(put_ids), (uint8_t *) put_ids);
+}

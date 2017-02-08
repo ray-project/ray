@@ -91,4 +91,14 @@ void photon_reconstruct_object(photon_conn *conn, object_id object_id);
  */
 void photon_log_message(photon_conn *conn);
 
+/**
+ * Record the mapping from object ID to task ID for put events.
+ *
+ * @param conn The connection information.
+ * @param task_id The ID of the task that called put.
+ * @param object_id The ID of the object being stored.
+ * @return Void.
+ */
+void photon_put_object(photon_conn *conn, task_id task_id, object_id object_id);
+
 #endif

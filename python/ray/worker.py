@@ -1372,7 +1372,8 @@ def put(value, worker=global_worker):
     if worker.mode == PYTHON_MODE:
       # In PYTHON_MODE, ray.put is the identity operation
       return value
-    object_id = photon.compute_put_id(worker.current_task_id, worker.put_index)
+
+    object_id = worker.photon_client.compute_put_id(worker.current_task_id, worker.put_index)
     worker.put_object(object_id, value)
     worker.put_index += 1
     return object_id
