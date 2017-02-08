@@ -27,6 +27,19 @@ void destroy_global_scheduler_policy(
   free(policy_state);
 }
 
+/** constraints_satisfied_hard: returns true if task_spec's constraints are
+ *      satisfied by the given local scheduler ls
+ */
+bool constraints_satisfied_hard(const local_scheduler *ls,
+                                const task_spec *spec) {
+  for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
+    if (ls->info.static_resources[i] < task_required_resource(spec, i)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /**
  * This is a helper method that assigns a task to the next local scheduler in a
  * round robin fashion.
@@ -39,24 +52,17 @@ void handle_task_round_robin(global_scheduler_state *state,
   local_scheduler *ls = NULL;
   task_spec *task_spec = task_task_spec(task);
   int i;
-  int num_retries = NUM_RETRIES;
+  int num_retries = 1;
   bool task_satisfied = false;
 
   for (i = policy_state->round_robin_index;
-       !task_satisfied && num_retries >= 0;
+       !task_satisfied && num_retries > 0;
        i = (i+1) % utarray_len(state->local_schedulers)) {
     if (i == policy_state->round_robin_index) {
       num_retries--;
     }
     ls = (local_scheduler *) utarray_eltptr(state->local_schedulers, i);
-    /* Check this local scheduler for hard constraints. */
-    task_satisfied = true;
-    for (int j = 0; j < MAX_RESOURCE_INDEX; j++) {
-      if (ls->info.static_resources[j] < task_required_resource(task_spec, j)) {
-        task_satisfied = false;
-        break; /* Node i doesn't satisfy task's constraint j. Bail. */
-      }
-    }
+    task_satisfied = constraints_satisfied_hard(ls, task_spec);
   }
 
   if (task_satisfied) {
@@ -65,7 +71,8 @@ void handle_task_round_robin(global_scheduler_state *state,
     assign_task_to_local_scheduler(state, task, ls->id);
   } else {
     /* TODO(atumanov): propagate the error to the driver, which submitted
-     * this impossible task.
+     * this impossible task and/or cache the task to consider when new
+     * local schedulers register.
      */
   }
 }
@@ -181,8 +188,8 @@ db_client_id get_photon_id(global_scheduler_state *state,
 
 double inner_product(double a[], double b[], int size) {
   double result = 0;
-  for (int i=0; i<size; i++) {
-    result += a[i]*b[i];
+  for (int i = 0; i < size; i++) {
+    result += a[i] * b[i];
   }
   return result;
 }
@@ -197,36 +204,28 @@ void handle_task_waiting(global_scheduler_state *state,
          "task wait handler encounted a task with NULL spec");
   /* Local hash table to keep track of aggregate object sizes per local
    * scheduler. */
-  object_size_entry *s = NULL, *object_size_table = NULL;
+  object_size_entry *object_size_table = NULL;
   bool has_args_by_ref = false;
+  bool task_feasible = false;
   int64_t task_object_size = 0; /* total size of task's data. */
 
   object_size_table =
       create_object_size_hashmap(state, task_spec, &has_args_by_ref, &task_object_size);
 
   /* Go through all the nodes, calculate the score for each, pick max score. */
-  UT_array *lsarray = state->local_schedulers;
   local_scheduler *ls = NULL;
   double best_photon_score = -1;
   db_client_id best_photon_id = NIL_ID; /* best node to send this task */
-  for (ls = (local_scheduler *) utarray_front(lsarray);
+  for (ls = (local_scheduler *) utarray_front(state->local_schedulers);
        ls != NULL;
-       ls = (local_scheduler *) utarray_next(lsarray, ls)) {
+       ls = (local_scheduler *) utarray_next(state->local_schedulers, ls)) {
     /* For each local scheduler, calculate its score:
      * 1. check hard constraints first */
-    bool satisfied = true;
-    for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
-      if (ls->info.static_resources[i] < task_required_resource(task_spec, i)) {
-        /* Hard capacity constraint not satisfied for this resource attribute.*/
-        satisfied = false;
-        break;
-      }
-    }
-    if (!satisfied) {
-      /* This node does not satisfy the hard capacity constraint: skip.  */
+    if (!constraints_satisfied_hard(ls, task_spec)) {
       continue;
     }
     /* This node satisfies the hard capacity constraint. Calculate its score. */
+    task_feasible = true;
     /* Look up its cached object size in the hashmap, normalize by total object
      * size for this task. */
     /* Aggregate object size for this task. */
@@ -238,13 +237,14 @@ void handle_task_waiting(global_scheduler_state *state,
        * The use the plasma aux address to locate object_size this node contributes.
        */
       aux_address_entry *photon_plasma_pair = NULL;
-      HASH_FIND(photon_plasma_hh, state->photon_plasma_map, &(ls->id), sizeof(ls->id),
-                photon_plasma_pair);
+      HASH_FIND(photon_plasma_hh, state->photon_plasma_map, &(ls->id),
+                sizeof(ls->id), photon_plasma_pair);
       if (photon_plasma_pair != NULL) {
+        object_size_entry *s = NULL;
         /* Found this node's photon to plasma mapping. Use the corresponding
          * plasma key to see if this node has any cached objects for this task. */
         HASH_FIND_STR(object_size_table, photon_plasma_pair->aux_address, s);
-        if (s != NULL) { /* TODO: reset s to NULL just in case. */
+        if (s != NULL) {
           /* This node has some of this task's objects. Calculate what fraction. */
           CHECK(strcmp(s->object_location, photon_plasma_pair->aux_address) == 0);
           object_size_fraction = MIN(1, (double)(s->total_object_size)/task_object_size);
@@ -254,12 +254,12 @@ void handle_task_waiting(global_scheduler_state *state,
 
     /* object size fraction is now calculated for this (task,node) pair. */
     /* construct the normalized dynamic resource attribute vector */
-    double normalized_dynvec[MAX_RESOURCE_INDEX+1];
+    double normalized_dynvec[MAX_RESOURCE_INDEX + 1];
     memset(&normalized_dynvec, 0, sizeof(normalized_dynvec));
-    for (int i=0; i<MAX_RESOURCE_INDEX; i++) {
+    for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
       double resreqval = task_required_resource(task_spec, i);
       if (resreqval <= 0) {
-        continue; /* skip and leave normalized dynvec value == 0 */
+        continue; /* Skip and leave normalized dynvec value == 0 */
       }
       normalized_dynvec[i] = MIN(1, resreqval/ls->info.dynamic_resources[i]);
     }
@@ -276,6 +276,16 @@ void handle_task_waiting(global_scheduler_state *state,
   } /* for each node(LS) */
 
   free_object_size_hashmap(object_size_table);
+
+  if (!task_feasible) {
+    char id_string[ID_STRING_SIZE];
+    LOG_ERROR(
+        "Infeasible task. No nodes satisfy hard constraints for task = %s",
+        object_id_to_string(task_task_id(task), id_string, ID_STRING_SIZE));
+    /* TODO(atumanov): propagate this error to the task's driver and/or
+     * cache the task in case new local schedulers satisfy it in the future. */
+    return;
+  }
 
   if (IS_NIL_ID(best_photon_id)) {
     /* Score-based policy didn't find any matching nodes. This is exceptional.*/
