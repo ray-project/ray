@@ -70,31 +70,6 @@ void handle_task_round_robin(global_scheduler_state *state,
   }
 }
 
-/**
- * This is a helper method that assigns a task to the local scheduler with the
- * minimal load.
- */
-void handle_task_minimum_load(global_scheduler_state *state,
-                              global_scheduler_policy_state *policy_state,
-                              task *task) {
-  CHECKM(utarray_len(state->local_schedulers) > 0,
-         "No local schedulers. We currently don't handle this case.")
-  int current_minimal_load_estimate = INT_MAX;
-  local_scheduler *current_local_scheduler_ptr = NULL;
-  for (int i = 0; i < utarray_len(state->local_schedulers); ++i) {
-    local_scheduler *local_scheduler_ptr =
-        (local_scheduler *) utarray_eltptr(state->local_schedulers, i);
-    int load_estimate = local_scheduler_ptr->info.task_queue_length +
-                        local_scheduler_ptr->num_recent_tasks_sent;
-    if (load_estimate <= current_minimal_load_estimate) {
-      current_minimal_load_estimate = load_estimate;
-      current_local_scheduler_ptr = local_scheduler_ptr;
-    }
-  }
-  DCHECK(current_local_scheduler_ptr != NULL);
-  assign_task_to_local_scheduler(state, task, current_local_scheduler_ptr->id);
-}
-
 object_size_entry *create_object_size_hashmap(global_scheduler_state *state,
                                               task_spec *task_spec,
                                               bool *has_args_by_ref,
@@ -212,69 +187,6 @@ double inner_product(double a[], double b[], int size) {
   return result;
 }
 
-void handle_task_transferaware(global_scheduler_state *state,
-                               global_scheduler_policy_state *policy_state,
-                               task *task) {
-  task_spec *task_spec = task_task_spec(task);
-  CHECKM(task_spec != NULL,
-         "task wait handler encounted a task with NULL spec");
-  /* Local hash table to keep track of aggregate object sizes per local
-   * scheduler. */
-  object_size_entry *tmp, *s = NULL, *object_size_table = NULL;
-  bool has_args_by_ref = false;
-  int64_t task_object_size = 0; /* total size of task's data. */
-
-  object_size_table =
-      create_object_size_hashmap(state, task_spec, &has_args_by_ref, &task_object_size);
-
-  if (!object_size_table) {
-    char id_string[ID_STRING_SIZE];
-    if (has_args_by_ref) {
-      LOG_DEBUG(
-          "Using simple policy. Didn't find objects in GS cache for task = %s",
-          object_id_to_string(task_task_id(task), id_string, ID_STRING_SIZE));
-      /* TODO(future): wait for object notification and try again. */
-    } else {
-      LOG_DEBUG("Using simple policy. No arguments passed by reference.");
-    }
-    UNUSED(id_string);
-    handle_task_round_robin(state, policy_state, task);
-    return;
-  }
-
-  LOG_DEBUG("Using transfer-aware policy");
-  /* Pick maximum object_size and assign task to that scheduler. */
-  int64_t max_object_size = 0;
-  const char *max_object_location = NULL;
-  HASH_ITER(hh, object_size_table, s, tmp) {
-    if (s->total_object_size > max_object_size) {
-      max_object_size = s->total_object_size;
-      max_object_location = s->object_location;
-    }
-  }
-
-  db_client_id photon_id = get_photon_id(state, max_object_location);
-  CHECKM(!IS_NIL_ID(photon_id), "Failed to find an LS: num_args = %" PRId64
-                                " num_returns = %" PRId64 "\n",
-         task_num_args(task_spec), task_num_returns(task_spec));
-
-  /* Get the local scheduler for this photon ID. */
-  local_scheduler *local_scheduler_ptr = get_local_scheduler(state, photon_id);
-  CHECK(local_scheduler_ptr != NULL);
-  /* If this local scheduler has enough capacity, assign the task to this local
-   * scheduler. Otherwise assign the task to the global scheduler with the
-   * minimal load. */
-  int64_t load_estimate = local_scheduler_ptr->info.task_queue_length +
-                          local_scheduler_ptr->num_recent_tasks_sent;
-  if (local_scheduler_ptr->info.available_workers > 0 &&
-      load_estimate < local_scheduler_ptr->info.total_num_workers) {
-    assign_task_to_local_scheduler(state, task, photon_id);
-  } else {
-    handle_task_minimum_load(state, policy_state, task);
-  }
-  free_object_size_hashmap(object_size_table);
-}
-
 /* Main pending task handler */
 void handle_task_waiting(global_scheduler_state *state,
                          global_scheduler_policy_state *policy_state,
@@ -283,12 +195,6 @@ void handle_task_waiting(global_scheduler_state *state,
 
   CHECKM(task_spec != NULL,
          "task wait handler encounted a task with NULL spec");
-#if (RAY_COMMON_LOG_LEVEL <= RAY_COMMON_DEBUG)
-  char buf[256];
-  sprintf(buf, "%4.2f\t%4.2f", task_required_resource(task_spec, 0),
-          task_required_resource(task_spec, 1));
-  LOG_DEBUG("[GS]: received task to schedule with resreq: %s\n", buf);
-#endif
   /* Local hash table to keep track of aggregate object sizes per local
    * scheduler. */
   object_size_entry *s = NULL, *object_size_table = NULL;
@@ -389,12 +295,6 @@ void handle_task_waiting(global_scheduler_state *state,
 void handle_object_available(global_scheduler_state *state,
                              global_scheduler_policy_state *policy_state,
                              object_id object_id) {
-  /* Do nothing for now. */
-}
-
-void handle_local_scheduler_heartbeat(
-    global_scheduler_state *state,
-    global_scheduler_policy_state *policy_state) {
   /* Do nothing for now. */
 }
 
