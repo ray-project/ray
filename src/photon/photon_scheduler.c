@@ -25,25 +25,31 @@ UT_icd workers_icd = {sizeof(local_scheduler_client *), NULL, NULL, NULL};
 
 UT_icd byte_icd = {sizeof(uint8_t), NULL, NULL, NULL};
 
-/* print_resource_info: a helper function for printing available and requested
- * resource information.
+/*
+ * A helper function for printing available and requested resource information.
+ *
+ * @param state Local scheduler state.
+ * @param spec Task specification object.
+ * @return Void.
  */
 void print_resource_info(const local_scheduler_state *state,
                          const task_spec *spec) {
-#if RAY_COMMON_LOG_LEVEL <= RAY_COMMON_INFO
+#if RAY_COMMON_LOG_LEVEL <= RAY_COMMON_DEBUG
   /* Print information about available and requested resources. */
   char buftotal[256], bufavail[256], bufresreq[256];
   snprintf(bufavail, sizeof(bufavail), "%8.4f %8.4f",
-           state->dynamic_resources[0], state->dynamic_resources[1]);
+           state->dynamic_resources[CPU_RESOURCE_INDEX],
+           state->dynamic_resources[GPU_RESOURCE_INDEX]);
   snprintf(buftotal, sizeof(buftotal), "%8.4f %8.4f",
-           state->static_resources[0], state->static_resources[1]);
+           state->static_resources[CPU_RESOURCE_INDEX],
+           state->static_resources[GPU_RESOURCE_INDEX]);
   if (spec) {
     snprintf(bufresreq, sizeof(bufresreq), "%8.4f %8.4f",
-             task_spec_required_resource(spec, 0),
-             task_spec_required_resource(spec, 1));
+             task_spec_required_resource(spec, CPU_RESOURCE_INDEX),
+             task_spec_required_resource(spec, GPU_RESOURCE_INDEX));
   }
-  LOG_INFO("Resources: [total=%s][available=%s][requested=%s]", buftotal,
-           bufavail, spec ? bufresreq : "n/a");
+  LOG_DEBUG("Resources: [total=%s][available=%s][requested=%s]", buftotal,
+            bufavail, spec ? bufresreq : "n/a");
 #endif
 }
 
