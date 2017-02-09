@@ -299,9 +299,8 @@ void handle_task_waiting(global_scheduler_state *state,
   CHECKM(best_photon_score < 0, "We might have a floating point underflow");
   db_client_id best_photon_id = NIL_ID; /* best node to send this task */
   for (scheduler = (local_scheduler *) utarray_front(state->local_schedulers);
-       scheduler != NULL;
-       scheduler = (local_scheduler *) utarray_next(
-           state->local_schedulers, scheduler)) {
+       scheduler != NULL; scheduler = (local_scheduler *) utarray_next(
+                              state->local_schedulers, scheduler)) {
     /* For each local scheduler, calculate its score. Check hard constraints
      * first. */
     if (!constraints_satisfied_hard(scheduler, task_spec)) {
