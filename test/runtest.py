@@ -1039,5 +1039,32 @@ class ResourcesTest(unittest.TestCase):
 
     ray.worker.cleanup()
 
+class SchedulingAlgorithm(unittest.TestCase):
+
+  def testLoadBalancing(self):
+    num_workers = 21
+    num_local_schedulers = 3
+    ray.worker._init(start_ray_local=True, num_workers=num_workers, num_local_schedulers=num_local_schedulers)
+
+    @ray.remote
+    def f():
+      return ray.worker.global_worker.plasma_client.store_socket_name
+
+    locations = ray.get([f.remote() for _ in range(100)])
+    names = set(locations)
+    self.assertEqual(len(names), num_local_schedulers)
+    counts = [locations.count(name) for name in names]
+    for count in counts:
+      self.assertGreater(count, 30)
+
+    locations = ray.get([f.remote() for _ in range(1000)])
+    names = set(locations)
+    self.assertEqual(len(names), num_local_schedulers)
+    counts = [locations.count(name) for name in names]
+    for count in counts:
+      self.assertGreater(count, 330)
+
+    ray.worker.cleanup()
+
 if __name__ == "__main__":
   unittest.main(verbosity=2)
