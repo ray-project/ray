@@ -64,7 +64,7 @@ to ssh to worker nodes will work here.
 
 ### Confirm that you can ssh to all nodes
 
-```
+```bash
 for host in $(cat workers.txt); do
 	ssh $host uptime
 done
@@ -90,7 +90,8 @@ Replace `<redis-port>` with a port of your choice, e.g., `6379`. Also, replace
 
 Create a file `start_worker.sh` that contains something like the following:
 
-```
+```bash
+# Make sure the SSH session has the correct version of Python on its path.
 export PATH=/home/ubuntu/anaconda2/bin/:$PATH
 ray/scripts/start_ray.sh --num-workers=<num-workers> --redis-address=<head-node-ip>:<redis-port>
 ```
@@ -166,6 +167,59 @@ This command will execute the `stop_ray.sh` script on each of the worker nodes.
 ray/scripts/stop_ray.sh
 ```
 
+### Upgrading Ray
+
+Ray remains under active development so you may at times want to upgrade the
+cluster to take advantage of improvements and fixes.
+
+#### Create an upgrade script
+
+On the head node, create a file called `upgrade.sh` that contains the commands necessary
+to upgrade Ray. It should look something like the following:
+
+```bash
+# Make sure the SSH session has the correct version of Python on its path.
+export PATH=/home/ubuntu/anaconda2/bin/:$PATH
+# Do pushd/popd to make sure we end up in the same directory.
+pushd .
+# Upgrade Ray.
+cd ray
+git remote set-url origin https://github.com/ray-project/ray
+git checkout master
+git pull
+cd python
+python setup.py install --user
+popd
+```
+
+This script executes a series of git commands to update the Ray source code, then builds
+and installs Ray.
+
+#### Stop Ray on the cluster
+
+Follow the instructions for [stopping Ray](#stopping-ray).
+
+
+#### Run the upgrade script on the cluster
+
+First run the upgrade script on the head node. This will upgrade the head node and
+help confirm that the upgrade script is working properly.
+
+```
+bash upgrade.sh
+```
+
+Next run the upgrade script on the worker nodes.
+
+```
+parallel-ssh -h workers.txt -P -t 0 -I < upgrade.sh
+```
+
+Note here that we use the `-t 0` option to set the timeout to infinite.
+
+#### Start Ray on the cluster
+
+Follow the instructions for [starting Ray](#starting-ray).
 
 ## Sync Application Files to other nodes
 
@@ -180,3 +234,22 @@ parallel-rsync -h workers.txt -r <workload-dir> /home/ubuntu/<workload-dir>
 
 where `<workload-dir>` is the directory you want to synchronize.
 Note that the destination argument for this command must represent an absolute path on the worker node.
+
+## Troubleshooting
+
+If any of the above commands fail, verify that the head node has SSH access to
+the other nodes by running
+
+```bash
+for host in $(cat workers.txt); do
+	ssh $host uptime
+done
+```
+
+If you get a permission denied error, then make sure you have SSH'ed to the head
+node with agent forwarding enabled. This is done as follows.
+
+```
+ssh-add <ssh-key>
+ssh -A ubuntu@<head-node-public-ip>
+```
