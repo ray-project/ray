@@ -100,6 +100,8 @@ class PlasmaClient(object):
       store_socket_name (str): Name of the socket the plasma store is listening at.
       manager_socket_name (str): Name of the socket the plasma manager is listening at.
     """
+    self.store_socket_name = store_socket_name
+    self.manager_socket_name = manager_socket_name
     self.alive = True
 
     if manager_socket_name is not None:

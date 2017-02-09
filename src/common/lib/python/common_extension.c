@@ -275,10 +275,12 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   task_id parent_task_id;
   /* The number of tasks that the parent task has called prior to this one. */
   int parent_counter;
-  if (!PyArg_ParseTuple(args, "O&O&OiO&i", &PyObjectToUniqueID, &driver_id,
+  /* Resource vector of the required resources to execute this task. */
+  PyObject *resource_vector = NULL;
+  if (!PyArg_ParseTuple(args, "O&O&OiO&i|O", &PyObjectToUniqueID, &driver_id,
                         &PyObjectToUniqueID, &function_id, &arguments,
                         &num_returns, &PyObjectToUniqueID, &parent_task_id,
-                        &parent_counter)) {
+                        &parent_counter, &resource_vector)) {
     return -1;
   }
   Py_ssize_t size = PyList_Size(arguments);
@@ -317,6 +319,20 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
     }
   }
   utarray_free(val_repr_ptrs);
+  /* Set the resource vector of the task. */
+  if (resource_vector != NULL) {
+    CHECK(PyList_Size(resource_vector) == MAX_RESOURCE_INDEX);
+    for (int i = 0; i < MAX_RESOURCE_INDEX; ++i) {
+      PyObject *resource_entry = PyList_GetItem(resource_vector, i);
+      task_spec_set_required_resource(self->spec, i,
+                                      PyFloat_AsDouble(resource_entry));
+    }
+  } else {
+    for (int i = 0; i < MAX_RESOURCE_INDEX; ++i) {
+      task_spec_set_required_resource(self->spec, i,
+                                      i == CPU_RESOURCE_INDEX ? 1.0 : 0.0);
+    }
+  }
   /* Compute the task ID and the return object IDs. */
   finish_construct_task_spec(self->spec);
   return 0;
@@ -367,6 +383,16 @@ static PyObject *PyTask_arguments(PyObject *self) {
   return arg_list;
 }
 
+static PyObject *PyTask_required_resources(PyObject *self) {
+  task_spec *task = ((PyTask *) self)->spec;
+  PyObject *required_resources = PyList_New((Py_ssize_t) MAX_RESOURCE_INDEX);
+  for (int i = 0; i < MAX_RESOURCE_INDEX; ++i) {
+    double r = task_spec_get_required_resource(task, i);
+    PyList_SetItem(required_resources, i, PyFloat_FromDouble(r));
+  }
+  return required_resources;
+}
+
 static PyObject *PyTask_returns(PyObject *self) {
   task_spec *task = ((PyTask *) self)->spec;
   int64_t num_returns = task_num_returns(task);
@@ -387,6 +413,8 @@ static PyMethodDef PyTask_methods[] = {
      "Return the task ID for this task."},
     {"arguments", (PyCFunction) PyTask_arguments, METH_NOARGS,
      "Return the arguments for the task."},
+    {"required_resources", (PyCFunction) PyTask_required_resources, METH_NOARGS,
+     "Return the resource vector of the task."},
     {"returns", (PyCFunction) PyTask_returns, METH_NOARGS,
      "Return the object IDs for the return values of the task."},
     {NULL} /* Sentinel */

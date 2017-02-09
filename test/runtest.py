@@ -291,7 +291,7 @@ class APITest(unittest.TestCase):
     ray.worker.cleanup()
 
   def testDefiningRemoteFunctions(self):
-    ray.init(num_workers=3)
+    ray.init(num_workers=3, num_cpus=3)
 
     # Test that we can define a remote function in the shell.
     @ray.remote
@@ -503,7 +503,7 @@ class APITest(unittest.TestCase):
     ray.worker.cleanup()
 
   def testPassingInfoToAllWorkers(self):
-    ray.init(num_workers=10)
+    ray.init(num_workers=10, num_cpus=10)
 
     def f(worker_info):
       sys.path.append(worker_info)
@@ -802,6 +802,290 @@ class UtilsTest(unittest.TestCase):
 
     # Remove the relevant files to clean up.
     remove_temporary_files()
+
+    ray.worker.cleanup()
+
+class ResourcesTest(unittest.TestCase):
+
+  def testResourceConstraints(self):
+    num_workers = 20
+    ray.init(num_workers=num_workers, num_cpus=10, num_gpus=2)
+
+    # Attempt to wait for all of the workers to start up.
+    ray.worker.global_worker.run_function_on_all_workers(lambda worker_info: sys.path.append(worker_info["counter"]))
+    @ray.remote(num_cpus=0)
+    def get_worker_id():
+      time.sleep(1)
+      return sys.path[-1]
+    while True:
+      if len(set(ray.get([get_worker_id.remote() for _ in range(num_workers)]))) == num_workers:
+        break
+
+    time_buffer = 0.3
+
+    # At most 10 copies of this can run at once.
+    @ray.remote(num_cpus=1)
+    def f(n):
+      time.sleep(n)
+
+    start_time = time.time()
+    ray.get([f.remote(0.5) for _ in range(10)])
+    duration = time.time() - start_time
+    self.assertLess(duration, 0.5 + time_buffer)
+    self.assertGreater(duration, 0.5)
+
+    start_time = time.time()
+    ray.get([f.remote(0.5) for _ in range(11)])
+    duration = time.time() - start_time
+    self.assertLess(duration, 1 + time_buffer)
+    self.assertGreater(duration, 1)
+
+    @ray.remote(num_cpus=3)
+    def f(n):
+      time.sleep(n)
+
+    start_time = time.time()
+    ray.get([f.remote(0.5) for _ in range(3)])
+    duration = time.time() - start_time
+    self.assertLess(duration, 0.5 + time_buffer)
+    self.assertGreater(duration, 0.5)
+
+    start_time = time.time()
+    ray.get([f.remote(0.5) for _ in range(4)])
+    duration = time.time() - start_time
+    self.assertLess(duration, 1 + time_buffer)
+    self.assertGreater(duration, 1)
+
+    @ray.remote(num_gpus=1)
+    def f(n):
+      time.sleep(n)
+
+    start_time = time.time()
+    ray.get([f.remote(0.5) for _ in range(2)])
+    duration = time.time() - start_time
+    self.assertLess(duration, 0.5 + time_buffer)
+    self.assertGreater(duration, 0.5)
+
+    start_time = time.time()
+    ray.get([f.remote(0.5) for _ in range(3)])
+    duration = time.time() - start_time
+    self.assertLess(duration, 1 + time_buffer)
+    self.assertGreater(duration, 1)
+
+    start_time = time.time()
+    ray.get([f.remote(0.5) for _ in range(4)])
+    duration = time.time() - start_time
+    self.assertLess(duration, 1 + time_buffer)
+    self.assertGreater(duration, 1)
+
+    ray.worker.cleanup()
+
+  def testMultiResourceConstraints(self):
+    num_workers = 20
+    ray.init(num_workers=num_workers, num_cpus=10, num_gpus=10)
+
+    # Attempt to wait for all of the workers to start up.
+    ray.worker.global_worker.run_function_on_all_workers(lambda worker_info: sys.path.append(worker_info["counter"]))
+    @ray.remote(num_cpus=0)
+    def get_worker_id():
+      time.sleep(1)
+      return sys.path[-1]
+    while True:
+      if len(set(ray.get([get_worker_id.remote() for _ in range(num_workers)]))) == num_workers:
+        break
+
+    @ray.remote(num_cpus=1, num_gpus=9)
+    def f(n):
+      time.sleep(n)
+
+    @ray.remote(num_cpus=9, num_gpus=1)
+    def g(n):
+      time.sleep(n)
+
+    time_buffer = 0.3
+
+    start_time = time.time()
+    ray.get([f.remote(0.5), g.remote(0.5)])
+    duration = time.time() - start_time
+    self.assertLess(duration, 0.5 + time_buffer)
+    self.assertGreater(duration, 0.5)
+
+    start_time = time.time()
+    ray.get([f.remote(0.5), f.remote(0.5)])
+    duration = time.time() - start_time
+    self.assertLess(duration, 1 + time_buffer)
+    self.assertGreater(duration, 1)
+
+    start_time = time.time()
+    ray.get([g.remote(0.5), g.remote(0.5)])
+    duration = time.time() - start_time
+    self.assertLess(duration, 1 + time_buffer)
+    self.assertGreater(duration, 1)
+
+    start_time = time.time()
+    ray.get([f.remote(0.5), f.remote(0.5), g.remote(0.5), g.remote(0.5)])
+    duration = time.time() - start_time
+    self.assertLess(duration, 1 + time_buffer)
+    self.assertGreater(duration, 1)
+
+    ray.worker.cleanup()
+
+  def testMultipleLocalSchedulers(self):
+    # This test will define a bunch of tasks that can only be assigned to
+    # specific local schedulers, and we will check that they are assigned to the
+    # correct local schedulers.
+    address_info = ray.worker._init(start_ray_local=True,
+                                    num_local_schedulers=3,
+                                    num_cpus=[100, 5, 10],
+                                    num_gpus=[0, 5, 1])
+
+    # Define a bunch of remote functions that all return the socket name of the
+    # plasma store. Since there is a one-to-one correspondence between plasma
+    # stores and local schedulers (at least right now), this can be used to
+    # identify which local scheduler the task was assigned to.
+
+    # This must be run on the zeroth local scheduler.
+    @ray.remote(num_cpus=11)
+    def run_on_0():
+      return ray.worker.global_worker.plasma_client.store_socket_name
+
+    # This must be run on the first local scheduler.
+    @ray.remote(num_gpus=2)
+    def run_on_1():
+      return ray.worker.global_worker.plasma_client.store_socket_name
+
+    # This must be run on the second local scheduler.
+    @ray.remote(num_cpus=6, num_gpus=1)
+    def run_on_2():
+      return ray.worker.global_worker.plasma_client.store_socket_name
+
+    # This can be run anywhere.
+    @ray.remote(num_cpus=0, num_gpus=0)
+    def run_on_0_1_2():
+      return ray.worker.global_worker.plasma_client.store_socket_name
+
+    # This must be run on the first or second local scheduler.
+    @ray.remote(num_gpus=1)
+    def run_on_1_2():
+      return ray.worker.global_worker.plasma_client.store_socket_name
+
+    # This must be run on the zeroth or second local scheduler.
+    @ray.remote(num_cpus=8)
+    def run_on_0_2():
+      return ray.worker.global_worker.plasma_client.store_socket_name
+
+    def run_lots_of_tasks():
+      names = []
+      results = []
+      for i in range(100):
+        index = np.random.randint(6)
+        if index == 0:
+          names.append("run_on_0")
+          results.append(run_on_0.remote())
+        elif index == 1:
+          names.append("run_on_1")
+          results.append(run_on_1.remote())
+        elif index == 2:
+          names.append("run_on_2")
+          results.append(run_on_2.remote())
+        elif index == 3:
+          names.append("run_on_0_1_2")
+          results.append(run_on_0_1_2.remote())
+        elif index == 4:
+          names.append("run_on_1_2")
+          results.append(run_on_1_2.remote())
+        elif index == 5:
+          names.append("run_on_0_2")
+          results.append(run_on_0_2.remote())
+      return names, results
+
+    store_names = [object_store_address.name for object_store_address in address_info["object_store_addresses"]]
+
+    def validate_names_and_results(names, results):
+      for name, result in zip(names, ray.get(results)):
+        if name == "run_on_0":
+          self.assertIn(result, [store_names[0]])
+        elif name == "run_on_1":
+          self.assertIn(result, [store_names[1]])
+        elif name == "run_on_2":
+          self.assertIn(result, [store_names[2]])
+        elif name == "run_on_0_1_2":
+          self.assertIn(result, [store_names[0], store_names[1], store_names[2]])
+        elif name == "run_on_1_2":
+          self.assertIn(result, [store_names[1], store_names[2]])
+        elif name == "run_on_0_2":
+          self.assertIn(result, [store_names[0], store_names[2]])
+        else:
+          raise Exception("This should be unreachable.")
+        self.assertEqual(set(ray.get(results)), set(store_names))
+
+    names, results = run_lots_of_tasks()
+    validate_names_and_results(names, results)
+
+    # Make sure the same thing works when this is nested inside of a task.
+
+    @ray.remote
+    def run_nested1():
+      names, results = run_lots_of_tasks()
+      return names, results
+
+    @ray.remote
+    def run_nested2():
+      names, results = ray.get(run_nested1.remote())
+      return names, results
+
+    names, results = ray.get(run_nested2.remote())
+    validate_names_and_results(names, results)
+
+    ray.worker.cleanup()
+
+class SchedulingAlgorithm(unittest.TestCase):
+
+  def testLoadBalancing(self):
+    num_workers = 21
+    num_local_schedulers = 3
+    ray.worker._init(start_ray_local=True, num_workers=num_workers, num_local_schedulers=num_local_schedulers)
+
+    @ray.remote
+    def f():
+      time.sleep(0.001)
+      return ray.worker.global_worker.plasma_client.store_socket_name
+
+    locations = ray.get([f.remote() for _ in range(100)])
+    names = set(locations)
+    self.assertEqual(len(names), num_local_schedulers)
+    counts = [locations.count(name) for name in names]
+    for count in counts:
+      self.assertGreater(count, 30)
+
+    locations = ray.get([f.remote() for _ in range(1000)])
+    names = set(locations)
+    self.assertEqual(len(names), num_local_schedulers)
+    counts = [locations.count(name) for name in names]
+    for count in counts:
+      self.assertGreater(count, 200)
+
+    ray.worker.cleanup()
+
+  def testLoadBalancingWithDependencies(self):
+    num_workers = 3
+    num_local_schedulers = 3
+    ray.worker._init(start_ray_local=True, num_workers=num_workers, num_local_schedulers=num_local_schedulers)
+
+    @ray.remote
+    def f(x):
+      return ray.worker.global_worker.plasma_client.store_socket_name
+
+    # This object will be local to one of the local schedulers. Make sure this
+    # doesn't prevent tasks from being scheduled on other local schedulers.
+    x = ray.put(np.zeros(1000000))
+
+    locations = ray.get([f.remote(x) for _ in range(100)])
+    names = set(locations)
+    self.assertEqual(len(names), num_local_schedulers)
+    counts = [locations.count(name) for name in names]
+    for count in counts:
+      self.assertGreater(count, 30)
 
     ray.worker.cleanup()
 

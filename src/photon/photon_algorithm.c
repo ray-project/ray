@@ -9,6 +9,7 @@
 #include "state/object_table.h"
 #include "photon.h"
 #include "photon_scheduler.h"
+#include "common/task.h"
 
 typedef struct task_queue_entry {
   /** The task that is queued. */
@@ -121,6 +122,11 @@ void provide_scheduler_info(local_scheduler_state *state,
   info->task_queue_length =
       waiting_task_queue_length + dispatch_task_queue_length;
   info->available_workers = utarray_len(algorithm_state->available_workers);
+  /* Copy static and dynamic resource information. */
+  for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
+    info->dynamic_resources[i] = state->dynamic_resources[i];
+    info->static_resources[i] = state->static_resources[i];
+  }
 }
 
 /**
@@ -259,25 +265,43 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
  */
 void dispatch_tasks(local_scheduler_state *state,
                     scheduling_algorithm_state *algorithm_state) {
-  /* Assign tasks while there are still tasks in the dispatch queue and
-   * available workers. */
-  while ((algorithm_state->dispatch_task_queue != NULL) &&
-         (utarray_len(algorithm_state->available_workers) > 0)) {
-    LOG_DEBUG("Dispatching task");
-    /* Pop a task from the dispatch queue. */
-    task_queue_entry *dispatched_task = algorithm_state->dispatch_task_queue;
-    DL_DELETE(algorithm_state->dispatch_task_queue, dispatched_task);
+  task_queue_entry *elt, *tmp;
 
+  /* Assign as many tasks as we can, while there are workers available. */
+  DL_FOREACH_SAFE(algorithm_state->dispatch_task_queue, elt, tmp) {
+    if (utarray_len(algorithm_state->available_workers) <= 0) {
+      /* There are no more available workers, so we're done. */
+      break;
+    }
+    /* TODO(atumanov): as an optimization, we can also check if all dynamic
+     * capacity is zero and bail early. */
+    bool task_satisfied = true;
+    for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
+      if (task_spec_get_required_resource(elt->spec, i) >
+          state->dynamic_resources[i]) {
+        /* Insufficient capacity for this task, proceed to the next task. */
+        task_satisfied = false;
+        break;
+      }
+    }
+    if (!task_satisfied) {
+      continue; /* Proceed to the next task. */
+    }
+    /* Dispatch this task to an available worker and dequeue the task. */
+    LOG_DEBUG("Dispatching task");
     /* Get the last available worker in the available worker queue. */
     local_scheduler_client **worker = (local_scheduler_client **) utarray_back(
         algorithm_state->available_workers);
     /* Tell the available worker to execute the task. */
-    assign_task_to_worker(state, dispatched_task->spec, *worker);
+    assign_task_to_worker(state, elt->spec, *worker);
     /* Remove the available worker from the queue and free the struct. */
     utarray_pop_back(algorithm_state->available_workers);
-    free_task_spec(dispatched_task->spec);
-    free(dispatched_task);
-  }
+    print_resource_info(state, elt->spec);
+    /* Deque the task. */
+    DL_DELETE(algorithm_state->dispatch_task_queue, elt);
+    free_task_spec(elt->spec);
+    free(elt);
+  } /* End for each task in the dispatch queue. */
 }
 
 /**
@@ -420,18 +444,34 @@ void give_task_to_global_scheduler(local_scheduler_state *state,
                       NULL);
 }
 
+bool resource_constraints_satisfied(local_scheduler_state *state,
+                                    task_spec *spec) {
+  /* At the local scheduler, if required resource vector exceeds either static
+   * or dynamic resource vector, the resource constraint is not satisfied. */
+  for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
+    if (task_spec_get_required_resource(spec, i) > state->static_resources[i] ||
+        task_spec_get_required_resource(spec, i) >
+            state->dynamic_resources[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 void handle_task_submitted(local_scheduler_state *state,
                            scheduling_algorithm_state *algorithm_state,
                            task_spec *spec) {
-  /* If this task's dependencies are available locally, and if there is an
-   * available worker, then assign this task to an available worker. If we
-   * cannot assign the task to a worker immediately, we either queue the task in
-   * the local task queue or we pass the task to the global scheduler. For now,
-   * we pass the task along to the global scheduler if there is one. */
-  if (can_run(algorithm_state, spec) &&
-      (utarray_len(algorithm_state->available_workers) > 0)) {
-    /* Dependencies are ready and there is an available worker, so dispatch the
-     * task. */
+  /* TODO(atumanov): if static is satisfied and local objects ready, but dynamic
+   * resource is currently unavailable, then consider queueing task locally and
+   * recheck dynamic next time. */
+
+  /* If this task's constraints are satisfied, dependencies are available
+   * locally, and there is an available worker, then enqueue the task in the
+   * dispatch queue and trigger task dispatch. Otherwise, pass the task along to
+   * the global scheduler if there is one. */
+  if (resource_constraints_satisfied(state, spec) &&
+      (utarray_len(algorithm_state->available_workers) > 0) &&
+      can_run(algorithm_state, spec)) {
     queue_dispatch_task(state, algorithm_state, spec, false);
   } else {
     /* Give the task to the global scheduler to schedule, if it exists. */
@@ -457,8 +497,8 @@ void handle_task_scheduled(local_scheduler_state *state,
                            scheduling_algorithm_state *algorithm_state,
                            task_spec *spec) {
   /* This callback handles tasks that were assigned to this local scheduler by
-   * the global scheduler, so we can safely assert that there is a connection
-   * to the database. */
+   * the global scheduler, so we can safely assert that there is a connection to
+   * the database. */
   DCHECK(state->db != NULL);
   DCHECK(state->config.global_scheduler_exists);
   /* Push the task to the appropriate queue. */

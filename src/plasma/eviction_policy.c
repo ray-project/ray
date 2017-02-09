@@ -174,7 +174,7 @@ bool require_space(eviction_state *eviction_state,
         objects_to_evict);
     LOG_INFO(
         "There is not enough space to create this object, so evicting "
-        "%" PRId64 " objects to free up %" PRId64 " bytes.\n",
+        "%" PRId64 " objects to free up %" PRId64 " bytes.",
         *num_objects_to_evict, num_bytes_evicted);
   } else {
     num_bytes_evicted = 0;

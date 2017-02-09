@@ -7,6 +7,9 @@
 /* The duration between local scheduler heartbeats. */
 #define LOCAL_SCHEDULER_HEARTBEAT_TIMEOUT_MILLISECONDS 100
 
+#define DEFAULT_NUM_CPUS INT16_MAX
+#define DEFAULT_NUM_GPUS 0
+
 /**
  * Establish a connection to a new client.
  *
@@ -62,6 +65,8 @@ void process_plasma_notification(event_loop *loop,
  */
 void reconstruct_object(local_scheduler_state *state, object_id object_id);
 
+void print_resource_info(const local_scheduler_state *s, const task_spec *spec);
+
 /** The following methods are for testing purposes only. */
 #ifdef PHOTON_TEST
 local_scheduler_state *init_local_scheduler(
@@ -74,7 +79,8 @@ local_scheduler_state *init_local_scheduler(
     const char *plasma_store_socket_name,
     const char *plasma_manager_address,
     bool global_scheduler_exists,
-    const char *worker_path);
+    const char *worker_path,
+    const double static_resource_vector[]);
 
 void free_local_scheduler(local_scheduler_state *state);
 
