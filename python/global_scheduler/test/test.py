@@ -105,7 +105,7 @@ class TestGlobalScheduler(unittest.TestCase):
       self.assertEqual(p3.poll(), None)
     for p4 in self.local_scheduler_pids:
       self.assertEqual(p4.poll(), None)
-      
+
     self.assertEqual(self.redis_process.poll(), None)
 
     # Kill the global scheduler.
@@ -116,10 +116,10 @@ class TestGlobalScheduler(unittest.TestCase):
         os._exit(-1)
     else:
       self.p1.kill()
-    # Kill photons, plasma managers, and plasma stores.
-    map(subprocess.Popen.kill, self.local_scheduler_pids) # Kill local schedulers.
-    map(subprocess.Popen.kill, self.plasma_manager_pids)  # Kill plasma managers.
-    map(subprocess.Popen.kill, self.plasma_store_pids)    # Kill plasma stores.
+    # Kill local schedulers, plasma managers, and plasma stores.
+    map(subprocess.Popen.kill, self.local_scheduler_pids)
+    map(subprocess.Popen.kill, self.plasma_manager_pids)
+    map(subprocess.Popen.kill, self.plasma_store_pids)
     # Kill Redis. In the event that we are using valgrind, this needs to happen
     # after we kill the global scheduler.
     self.redis_process.kill()
@@ -171,7 +171,7 @@ class TestGlobalScheduler(unittest.TestCase):
     # scheduler, and the plasma manager.
     self.assertEqual(len(self.redis_client.keys("{}*".format(DB_CLIENT_PREFIX))),
                      2 * NUM_CLUSTER_NODES + 1)
-  
+
     num_return_vals = [0, 1, 2, 3, 5, 10]
     # There should not be anything else in Redis yet.
     self.assertEqual(len(self.redis_client.keys("*")), 2 * NUM_CLUSTER_NODES + 1)
@@ -218,7 +218,7 @@ class TestGlobalScheduler(unittest.TestCase):
     self.assertEqual(len(self.redis_client.keys("{}*".format(DB_CLIENT_PREFIX))),
                      2 * NUM_CLUSTER_NODES + 1)
     num_return_vals = [0, 1, 2, 3, 5, 10]
-  
+
     # Submit a bunch of tasks to Redis.
     num_tasks = 1000
     for _ in range(num_tasks):

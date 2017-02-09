@@ -280,8 +280,8 @@ def start_local_scheduler(redis_address, node_ip_address, plasma_store_name,
       that imported services exits.
     redirect_output (bool): True if stdout and stderr should be redirected to
       /dev/null.
-    static_resource_list (list of ints): ordered list of configured resource capacities for this
-      local scheduler.
+    static_resource_list (list): An ordered list of the configured resource
+      capacities for this local scheduler.
 
   Return:
     The name of the local scheduler socket.

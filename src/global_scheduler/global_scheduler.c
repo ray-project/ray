@@ -19,8 +19,8 @@
 UT_icd local_scheduler_icd = {sizeof(local_scheduler), NULL, NULL, NULL};
 
 /**
- * Assign the given task to the local scheduler, update Redis and scheduler
- * datastructures.
+ * Assign the given task to the local scheduler, update Redis and scheduler data
+ * structures.
  *
  * @param state Global scheduler state.
  * @param task Task to be assigned to the local scheduler.
@@ -51,9 +51,9 @@ void assign_task_to_local_scheduler(global_scheduler_state *state,
       get_local_scheduler(state, local_scheduler_id);
   local_scheduler->num_tasks_sent += 1;
   local_scheduler->num_recent_tasks_sent += 1;
-  /** Resource accounting update for this local scheduler. */
+  /* Resource accounting update for this local scheduler. */
   for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
-    /** Subtract task's resource from the cached dynamic resource capacity for
+    /* Subtract task's resource from the cached dynamic resource capacity for
      *  this local scheduler. This will be overwritten on the next heartbeat. */
     local_scheduler->info.dynamic_resources[i] =
         MAX(0, local_scheduler->info.dynamic_resources[i] -

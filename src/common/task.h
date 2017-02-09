@@ -3,7 +3,7 @@
 
 /**
  * This API specifies the task data structures. It is in C so we can
- * easily construct tasks from other languages like Python. The datastructures
+ * easily construct tasks from other languages like Python. The data structures
  * are also defined in such a way that memory is contiguous and all pointers
  * are relative, so that we can memcpy the datastructure and ship it over the
  * network without serialization and deserialization. */

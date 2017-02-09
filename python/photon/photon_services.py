@@ -38,7 +38,9 @@ def start_local_scheduler(plasma_store_name, plasma_manager_name=None,
       profiler. If this is True, use_valgrind must be False.
     redirect_output (bool): True if stdout and stderr should be redirected to
       /dev/null.
-    static_resource_list(list of ints): Resource capacity list matching the order defined in task.h
+    static_resource_list (list): A list of integers specifying the local
+      scheduler's resource capacities. The resources should appear in an order
+      matching the order defined in task.h.
 
   Return:
     A tuple of the name of the local scheduler socket and the process ID of the
@@ -73,18 +75,21 @@ def start_local_scheduler(plasma_store_name, plasma_manager_name=None,
     command += ["-r", redis_address]
   if plasma_address is not None:
     command += ["-a", plasma_address]
-  # We want to be able to support independently setting capacity for each of the supported resource
-  # types. Thus, the list can be None or contain any number of None values.
+  # We want to be able to support independently setting capacity for each of the
+  # supported resource types. Thus, the list can be None or contain any number
+  # of None values.
   if static_resource_list is None:
     static_resource_list = [None, None]
   if static_resource_list[0] is None:
-    # By default, use the number of hardware execution threads for the number of cores.
+    # By default, use the number of hardware execution threads for the number of
+    # cores.
     static_resource_list[0] = multiprocessing.cpu_count()
   if static_resource_list[1] is None:
     # By default, do not configure any GPUs on this node.
     static_resource_list[1] = 0
   # Pass the resource capacity string to the photon scheduler in all cases.
-  # Sanity check to make sure all resource capacities in the list are numeric (int or float).
+  # Sanity check to make sure all resource capacities in the list are numeric
+  # (int or float).
   assert(all([x == int or x == float for x in map(type, static_resource_list)]))
   command += ["-c", ",".join(map(str, static_resource_list))]
 

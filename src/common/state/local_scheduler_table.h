@@ -16,10 +16,10 @@ typedef struct {
   /** The number of workers that are available and waiting for tasks. */
   int available_workers;
   /** The resource vector of resources generally available to this local
-   * scheduler. */
+   *  scheduler. */
   double static_resources[MAX_RESOURCE_INDEX];
   /** The resource vector of resources currently available to this local
-   * scheduler. */
+   *  scheduler. */
   double dynamic_resources[MAX_RESOURCE_INDEX];
 } local_scheduler_info;
 

@@ -47,7 +47,7 @@ typedef struct {
   char *aux_address;
   /** Photon db client id. */
   db_client_id photon_db_client_id;
-  /* Plasma_manager ip:port -> photon_db_client_id. */
+  /** Plasma_manager ip:port -> photon_db_client_id. */
   UT_hash_handle plasma_photon_hh;
   /** Photon_db_client_id -> plasma_manager ip:port. */
   UT_hash_handle photon_plasma_hh;
@@ -67,9 +67,9 @@ typedef struct {
   UT_array *local_schedulers;
   /** The state managed by the scheduling policy. */
   global_scheduler_policy_state *policy_state;
-  /** plasma_manager ip:port -> photon_db_client_id association. */
+  /** The plasma_manager ip:port -> photon_db_client_id association. */
   aux_address_entry *plasma_photon_map;
-  /** photon_db_client_id -> plasma_manager ip:port association. */
+  /** The photon_db_client_id -> plasma_manager ip:port association. */
   aux_address_entry *photon_plasma_map;
   /** Objects cached by this global scheduler instance. */
   scheduler_object_info *scheduler_object_info_table;
@@ -88,8 +88,8 @@ local_scheduler *get_local_scheduler(global_scheduler_state *state,
                                      db_client_id photon_id);
 
 /**
- * Assign the given task to the local scheduler, update Redis and scheduler
- * datastructures.
+ * Assign the given task to the local scheduler, update Redis and scheduler data
+ * structures.
  *
  * @param state Global scheduler state.
  * @param task Task to be assigned to the local scheduler.

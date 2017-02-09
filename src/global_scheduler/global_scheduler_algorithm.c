@@ -31,15 +31,16 @@ void destroy_global_scheduler_policy(
 /**
  * Checks if the given local scheduler satisfies the task's hard constraints.
  *
- * @param  ls    Local scheduler.
- * @param  spec  Task specification.
+ * @param scheduler Local scheduler.
+ * @param spec Task specification.
  * @return True if all tasks's resource constraints are satisfied. False
  *         otherwise.
  */
-bool constraints_satisfied_hard(const local_scheduler *ls,
+bool constraints_satisfied_hard(const local_scheduler *scheduler,
                                 const task_spec *spec) {
   for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
-    if (ls->info.static_resources[i] < task_spec_get_required_resource(spec, i)) {
+    if (scheduler->info.static_resources[i] <
+        task_spec_get_required_resource(spec, i)) {
       return false;
     }
   }
@@ -273,7 +274,7 @@ double calculate_cost_pending(const global_scheduler_state *state,
  * @param state Global scheduler state.
  * @param policy_state State specific to the scheduling policy.
  * @param task New task to be scheduled.
- * @return  Void.
+ * @return Void.
  */
 void handle_task_waiting(global_scheduler_state *state,
                          global_scheduler_policy_state *policy_state,

@@ -1751,7 +1751,14 @@ def remote(*args, **kwargs):
   else:
     # This is the case where the decorator is something like
     # @ray.remote(num_return_vals=2).
-    assert len(args) == 0 and "num_return_vals" in kwargs or "num_cpus" in kwargs or "num_gpus" in kwargs, "The @ray.remote decorator must be applied either with no arguments and no parentheses, for example '@ray.remote', or it must be applied with only the argument num_return_vals, like '@ray.remote(num_return_vals=2)'."
+    error_string = ("The @ray.remote decorator must be applied either with no "
+                    "arguments and no parentheses, for example '@ray.remote', "
+                    "or it must be applied using some of the arguments "
+                    "'num_return_vals', 'num_cpus', or 'num_gpus', like "
+                    "'@ray.remote(num_return_vals=2)'.")
+    assert len(args) == 0 and ("num_return_vals" in kwargs or
+                               "num_cpus" in kwargs or
+                               "num_gpus" in kwargs), error_string
     assert not "function_id" in kwargs
     return make_remote_decorator(num_return_vals, num_cpus, num_gpus)
 
@@ -1759,7 +1766,7 @@ def check_signature_supported(has_kwargs_param, has_vararg_param, keyword_defaul
   """Check if we support the signature of this function.
 
   We currently do not allow remote functions to have **kwargs. We also do not
-  support keyword argumens in conjunction with a *args argument.
+  support keyword arguments in conjunction with a *args argument.
 
   Args:
     has_kwards_param (bool): True if the function being checked has a **kwargs
