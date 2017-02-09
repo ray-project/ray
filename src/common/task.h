@@ -235,11 +235,11 @@ object_id task_return(task_spec *spec, int64_t return_index);
  * The total length of the resource vector is NUM_RESOURCE_INDICES.
  */
 typedef enum {
-  /* Index for number of cpus the task requires. */
+  /** Index for number of cpus the task requires. */
   CPU_RESOURCE_INDEX = 0,
-  /* Index for number of gpus the task requires. */
+  /** Index for number of gpus the task requires. */
   GPU_RESOURCE_INDEX,
-  /* Total number of different resources in the system. */
+  /** Total number of different resources in the system. */
   MAX_RESOURCE_INDEX
 } resource_vector_index;
 
@@ -247,13 +247,12 @@ typedef enum {
  * Set the value associated to a resource index.
  *
  * @param spec Task specification.
- * @param resource_index Index of the resource.
- * @param value Value for the resource. This can be a quantity of resources
- *        this task needs for example or it can be a value for an
- *        attribute this task requires.
- * @return How many of this resource the task needs to execute.
+ * @param resource_index Index of the resource in the resource vector.
+ * @param value Value for the resource. This can be a quantity of this resource
+ *        this task needs or a value for an attribute this task requires.
+ * @return Void.
  */
-void task_spec_add_required_resource(task_spec *spec,
+void task_spec_set_required_resource(task_spec *spec,
                                      int64_t resource_index,
                                      double value);
 
@@ -264,8 +263,8 @@ void task_spec_add_required_resource(task_spec *spec,
  * @param resource_index Index of the resource.
  * @return How many of this resource the task needs to execute.
  */
-double task_spec_required_resource(const task_spec *spec,
-                                   int64_t resource_index);
+double task_spec_get_required_resource(const task_spec *spec,
+                                       int64_t resource_index);
 
 /**
  * Compute the object id associated to a put call.

@@ -116,10 +116,10 @@ class TestGlobalScheduler(unittest.TestCase):
         os._exit(-1)
     else:
       self.p1.kill()
-    # kill photons, plasma managers, and plasma stores.
-    map(subprocess.Popen.kill, self.local_scheduler_pids) #kill photon
-    map(subprocess.Popen.kill, self.plasma_manager_pids)  #kill plasma manager
-    map(subprocess.Popen.kill, self.plasma_store_pids)    #kill plasma store
+    # Kill photons, plasma managers, and plasma stores.
+    map(subprocess.Popen.kill, self.local_scheduler_pids) # Kill local schedulers.
+    map(subprocess.Popen.kill, self.plasma_manager_pids)  # Kill plasma managers.
+    map(subprocess.Popen.kill, self.plasma_store_pids)    # Kill plasma stores.
     # Kill Redis. In the event that we are using valgrind, this needs to happen
     # after we kill the global scheduler.
     self.redis_process.kill()

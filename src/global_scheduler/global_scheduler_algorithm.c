@@ -39,7 +39,7 @@ void destroy_global_scheduler_policy(
 bool constraints_satisfied_hard(const local_scheduler *ls,
                                 const task_spec *spec) {
   for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
-    if (ls->info.static_resources[i] < task_spec_required_resource(spec, i)) {
+    if (ls->info.static_resources[i] < task_spec_get_required_resource(spec, i)) {
       return false;
     }
   }
@@ -274,7 +274,7 @@ void handle_task_waiting(global_scheduler_state *state,
     double normalized_dynvec[MAX_RESOURCE_INDEX + 1];
     memset(&normalized_dynvec, 0, sizeof(normalized_dynvec));
     for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
-      double resreqval = task_spec_required_resource(task_spec, i);
+      double resreqval = task_spec_get_required_resource(task_spec, i);
       if (resreqval <= 0) {
         continue; /* Skip and leave normalized dynvec value == 0 */
       }

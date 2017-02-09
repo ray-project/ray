@@ -324,12 +324,12 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
     CHECK(PyList_Size(resource_vector) == MAX_RESOURCE_INDEX);
     for (int i = 0; i < MAX_RESOURCE_INDEX; ++i) {
       PyObject *resource_entry = PyList_GetItem(resource_vector, i);
-      task_spec_add_required_resource(self->spec, i,
+      task_spec_set_required_resource(self->spec, i,
                                       PyFloat_AsDouble(resource_entry));
     }
   } else {
     for (int i = 0; i < MAX_RESOURCE_INDEX; ++i) {
-      task_spec_add_required_resource(self->spec, i,
+      task_spec_set_required_resource(self->spec, i,
                                       i == CPU_RESOURCE_INDEX ? 1.0 : 0.0);
     }
   }
@@ -385,7 +385,7 @@ static PyObject *PyTask_required_resources(PyObject *self) {
   task_spec *task = ((PyTask *) self)->spec;
   PyObject *required_resources = PyList_New((Py_ssize_t) MAX_RESOURCE_INDEX);
   for (int i = 0; i < MAX_RESOURCE_INDEX; ++i) {
-    double r = task_spec_required_resource(task, i);
+    double r = task_spec_get_required_resource(task, i);
     PyList_SetItem(required_resources, i, PyFloat_FromDouble(r));
   }
   return required_resources;

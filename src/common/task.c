@@ -265,7 +265,7 @@ int64_t task_args_add_val(task_spec *spec, uint8_t *data, int64_t length) {
   return spec->arg_index++;
 }
 
-void task_spec_add_required_resource(task_spec *spec,
+void task_spec_set_required_resource(task_spec *spec,
                                      int64_t resource_index,
                                      double value) {
   spec->required_resources[resource_index] = value;
@@ -280,7 +280,7 @@ object_id task_return(task_spec *spec, int64_t return_index) {
   return ret->obj_id;
 }
 
-double task_spec_required_resource(const task_spec *spec,
+double task_spec_get_required_resource(const task_spec *spec,
                                    int64_t resource_index) {
   return spec->required_resources[resource_index];
 }

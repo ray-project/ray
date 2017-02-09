@@ -276,7 +276,7 @@ void dispatch_tasks(local_scheduler_state *state,
      * capacity is zero and bail early. */
     bool task_satisfied = true;
     for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
-      if (task_spec_required_resource(elt->spec, i) >
+      if (task_spec_get_required_resource(elt->spec, i) >
           state->dynamic_resources[i]) {
         /* Insufficient capacity for this task, proceed to the next task. */
         task_satisfied = false;
@@ -448,8 +448,8 @@ bool resource_constraints_satisfied(local_scheduler_state *state,
   /* At the local scheduler, if required resource vector exceeds either static
    * or dynamic resource vector, the resource constraint is not satisfied.  */
   for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
-    if (task_spec_required_resource(spec, i) > state->static_resources[i] ||
-        task_spec_required_resource(spec, i) > state->dynamic_resources[i]) {
+    if (task_spec_get_required_resource(spec, i) > state->static_resources[i] ||
+        task_spec_get_required_resource(spec, i) > state->dynamic_resources[i]) {
       return false;
     }
   }

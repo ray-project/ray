@@ -73,7 +73,7 @@ def start_local_scheduler(plasma_store_name, plasma_manager_name=None,
     command += ["-r", redis_address]
   if plasma_address is not None:
     command += ["-a", plasma_address]
-  # We want to be able to support indepdently setting capacity for each of the supported resource
+  # We want to be able to support independently setting capacity for each of the supported resource
   # types. Thus, the list can be None or contain any number of None values.
   if static_resource_list is None:
     static_resource_list = [None, None]

@@ -45,8 +45,8 @@ void print_resource_info(const local_scheduler_state *state,
            state->static_resources[GPU_RESOURCE_INDEX]);
   if (spec) {
     snprintf(bufresreq, sizeof(bufresreq), "%8.4f %8.4f",
-             task_spec_required_resource(spec, CPU_RESOURCE_INDEX),
-             task_spec_required_resource(spec, GPU_RESOURCE_INDEX));
+             task_spec_get_required_resource(spec, CPU_RESOURCE_INDEX),
+             task_spec_get_required_resource(spec, GPU_RESOURCE_INDEX));
   }
   LOG_DEBUG("Resources: [total=%s][available=%s][requested=%s]", buftotal,
             bufavail, spec ? bufresreq : "n/a");
@@ -190,7 +190,7 @@ void assign_task_to_worker(local_scheduler_state *state,
   /* Resource accounting:
    * Update dynamic resource vector in the local scheduler state. */
   for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
-    state->dynamic_resources[i] -= task_spec_required_resource(spec, i);
+    state->dynamic_resources[i] -= task_spec_get_required_resource(spec, i);
     CHECKM(state->dynamic_resources[i] >= 0,
            "photon dynamic resources dropped to %8.4f\t%8.4f\n",
            state->dynamic_resources[0], state->dynamic_resources[1]);
@@ -351,34 +351,28 @@ void process_message(event_loop *loop,
     free(value);
   } break;
   case GET_TASK: {
-    /* Update the task table with the completed task. */
-    task *task_in_progress = worker->task_in_progress;
-    task_spec *spec =
-        (task_in_progress != NULL) ? task_task_spec(task_in_progress) : NULL;
-
     /* If this worker reports a completed task: account for resources. */
-    if (task_in_progress != NULL) {
+    if (worker->task_in_progress != NULL) {
+      task_spec *spec = task_task_spec(worker->task_in_progress);
       /* Return dynamic resources back for the task in progress. */
       for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
-        state->dynamic_resources[i] += task_spec_required_resource(spec, i);
+        state->dynamic_resources[i] += task_spec_get_required_resource(spec, i);
         /* Sanity-check resource vector boundary conditions. */
         CHECK(state->dynamic_resources[i] <= state->static_resources[i]);
       }
       print_resource_info(state, spec);
       /* If we're connected to Redis, update tables. */
-      if (state->db != NULL && task_in_progress != NULL) {
+      if (state->db != NULL) {
         /* Update control state tables. */
         task_set_state(worker->task_in_progress, TASK_STATUS_DONE);
         task_table_update(state->db, worker->task_in_progress,
                           (retry_info *) &photon_retry, NULL, NULL);
         /* The call to task_table_update takes ownership of the
-         * task_in_progress,
-         * so we set the pointer to NULL so it is not used. */
-        worker->task_in_progress = NULL;
-      } else if (worker->task_in_progress) {
+         * task_in_progress, so we set the pointer to NULL so it is not used. */
+      } else {
         free_task(worker->task_in_progress);
-        worker->task_in_progress = NULL;
       }
+      worker->task_in_progress = NULL;
     }
     /* Let the scheduling algorithm process the fact that there is an available
      * worker. */
