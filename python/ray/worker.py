@@ -1421,7 +1421,7 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
 
   Args:
     object_ids (List[ObjectID]): List of object IDs for objects that may
-      or may not be ready.
+      or may not be ready. Note that these IDs must be unique.
     num_returns (int): The number of object IDs that should be returned.
     timeout (int): The maximum amount of time in milliseconds to wait before
       returning.

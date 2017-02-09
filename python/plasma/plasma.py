@@ -260,6 +260,8 @@ class PlasmaClient(object):
   def wait(self, object_ids, timeout=PLASMA_WAIT_TIMEOUT, num_returns=1):
     """Wait until num_returns objects in object_ids are ready.
 
+    Currently, the object ID arguments to wait must be unique.
+
     Args:
       object_ids (List[str]): List of object IDs to wait for.
       timeout (int): Return to the caller after timeout milliseconds.
@@ -269,6 +271,10 @@ class PlasmaClient(object):
       ready_ids, waiting_ids (List[str], List[str]): List of object IDs that
         are ready and list of object IDs we might still wait on respectively.
     """
+    # Check that the object ID arguments are unique. The plasma manager
+    # currently crashes if given duplicate object IDs.
+    if len(object_ids) != len(set(object_ids)):
+      raise Exception("Wait requires a list of unique object IDs.")
     ready_ids, waiting_ids = libplasma.wait(self.conn, object_ids, timeout, num_returns)
     return ready_ids, list(waiting_ids)
 
