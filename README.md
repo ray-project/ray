@@ -57,6 +57,7 @@ estimate of pi (waiting until the computation has finished if necessary).
   - [Environment Variables](doc/environment-variables.md)
   - [Using Ray with TensorFlow](doc/using-ray-with-tensorflow.md)
   - [Using Ray on a Cluster](doc/using-ray-on-a-cluster.md)
+    - [Example Management Using Parallel-SSH](doc/using-ray-on-a-large-cluster.md)
 
 ## Example Applications
 
