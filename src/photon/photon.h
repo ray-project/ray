@@ -74,7 +74,7 @@ typedef struct {
   /** Input buffer, used for reading input in process_message to avoid
    *  allocation for each call to process_message. */
   UT_array *input_buffer;
-  /**  Vector of static attributes associated with the node owned by this local
+  /** Vector of static attributes associated with the node owned by this local
    *  scheduler. */
   double static_resources[MAX_RESOURCE_INDEX];
   /** Vector of dynamic attributes associated with the node owned by this local
