@@ -17,7 +17,7 @@
 """
 import time
 import sys
-
+import os
 import cifar_input
 import numpy as np
 import resnet_model
@@ -48,6 +48,7 @@ tf.app.flags.DEFINE_string('log_root', '',
 tf.app.flags.DEFINE_integer('num_gpus', 0,
                             'Number of gpus used for training. (0 or 1)')
 
+parentpid = os.getpid()
 
 @ray.remote
 def get_test(dataset, path, size, mode):
@@ -91,20 +92,27 @@ def accuracy(weights, batch):
   return sum([model.variables.sess.run(model.precision, feed_dict=dict(zip(placeholders, batches[i]))) for i in range(78)]) / 78
 
 def model_initialization():
+  pid = os.getpid()
+  print(pid % 8 if pid != parentpid else "No")
+  device = "/gpu:" + str(pid % 8) if pid != parentpid else "/cpu:0"
+  os.environ["CUDA_VISIBLE_DEVICES"] = str(pid & 8)
   with tf.Graph().as_default():
-    model = resnet_model.ResNet(hps, 'train')
-    model.build_graph()
-    sess = tf.Session()
-    model.variables.set_session(sess)
-    init = tf.global_variables_initializer()
-    return model, init
+    with tf.device(device):
+      model = resnet_model.ResNet(hps, 'train')
+      model.build_graph()
+      config = tf.ConfigProto(allow_soft_placement=True)
+      sess = tf.Session(config=config)
+      model.variables.set_session(sess)
+      init = tf.global_variables_initializer()
+      sess.run(init)
+      return model, init
 
 def model_reinitialization(model):
   return model
 
 def train(hps):
   """Training loop."""
-  ray.init(num_workers=10)
+  ray.init(num_workers=1)
   batches = get_batches.remote(
       FLAGS.dataset, FLAGS.train_data_path, hps.batch_size, FLAGS.mode)
   test_batch = get_test.remote(FLAGS.dataset, FLAGS.eval_data_path, hps.batch_size, FLAGS.mode)
@@ -165,22 +173,24 @@ def train(hps):
     model.variables.set_session(mon_sess)
     mon_sess.run(init)
     while not mon_sess.should_stop():'''
-  model.variables.sess.run(init)
+ # model.variables.sess.run(init)
   step = 0
-  with open("results.txt", "w") as results:
-    while True:
-      print "Start of loop"
+  while True:
+    with open("results.txt", "w") as results:
+      print("Start of loop")
       weights = model.variables.get_weights()
       weight_id = ray.put(weights)
-      rand_list = np.random.choice(25, 10, replace=False)
-      print "Computing rollouts"
+      rand_list = np.random.choice(25, 2, replace=False)
+      print("Computing rollouts")
       all_weights = ray.get([compute_rollout.remote(weight_id, batches[i])  for i in rand_list])
-      mean_weights = {k: sum([weights[k] for weights in all_weights]) / 10 for k in all_weights[0]}
+      mean_weights = {k: sum([weights[k] for weights in all_weights]) / 2 for k in all_weights[0]}
       model.variables.set_weights(mean_weights)
       new_weights = ray.put(mean_weights)
       if step % 200 == 0:
-        results.write(str(step) + " " + str(ray.get(accuracy.remote(new_weights, test_batch))) + "\n")
-      step += 1
+        acc = ray.get(accuracy.remote(new_weights, test_batch))
+        print(acc)
+        results.write(str(step) + " " + str(acc) + "\n")
+      step += 10
 
 def evaluate(hps):
   """Eval loop."""
@@ -240,12 +250,6 @@ def evaluate(hps):
 
 
 def main(_):
-  if FLAGS.num_gpus == 0:
-    dev = '/cpu:0'
-  elif FLAGS.num_gpus == 1:
-    dev = '/gpu:0'
-  else:
-    raise ValueError('Only support 0 or 1 gpu.')
 
   if FLAGS.mode == 'train':
     batch_size = 128
@@ -266,11 +270,10 @@ def main(_):
                              weight_decay_rate=0.0002,
                              relu_leakiness=0.1,
                              optimizer='mom')
-  with tf.device(dev):
-    if FLAGS.mode == 'train':
-      train(hps)
-    elif FLAGS.mode == 'eval':
-      evaluate(hps)
+  if FLAGS.mode == 'train':
+    train(hps)
+  elif FLAGS.mode == 'eval':
+    evaluate(hps)
 
 
 if __name__ == '__main__':
