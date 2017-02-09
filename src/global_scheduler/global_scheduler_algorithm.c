@@ -199,6 +199,74 @@ double inner_product(double a[], double b[], int size) {
   return result;
 }
 
+double calculate_object_size_fraction(global_scheduler_state *state,
+                                      local_scheduler *ls,
+                                      object_size_entry *object_size_table,
+                                      int64_t total_task_object_size) {
+  /* Look up its cached object size in the hashmap, normalize by total object
+   * size for this task. */
+  /* Aggregate object size for this task. */
+  double object_size_fraction = 0;
+  if (total_task_object_size > 0) {
+    /* Does this node contribute anything to this task object size? */
+    /* Lookup ls-> id in photon_plasma_map to get plasma aux address,
+     * which is used as the key for object_size_table.
+     * The use the plasma aux address to locate object_size this node
+     * contributes.
+     */
+    aux_address_entry *photon_plasma_pair = NULL;
+    HASH_FIND(photon_plasma_hh, state->photon_plasma_map, &(ls->id),
+              sizeof(ls->id), photon_plasma_pair);
+    if (photon_plasma_pair != NULL) {
+      object_size_entry *s = NULL;
+      /* Found this node's photon to plasma mapping. Use the corresponding
+       * plasma key to see if this node has any cached objects for this task.
+       */
+      HASH_FIND_STR(object_size_table, photon_plasma_pair->aux_address, s);
+      if (s != NULL) {
+        /* This node has some of this task's objects. Calculate what fraction.
+         */
+        CHECK(strcmp(s->object_location, photon_plasma_pair->aux_address) ==
+              0);
+        object_size_fraction =
+            MIN(1, (double) (s->total_object_size) / total_task_object_size);
+      }
+    }
+  }
+  return object_size_fraction;
+}
+
+double calculate_score_dynvec_normalized(global_scheduler_state *state,
+                                         local_scheduler *ls,
+                                         const task_spec *task_spec,
+                                         double object_size_fraction) {
+
+  /* object size fraction is now calculated for this (task,node) pair. */
+  /* construct the normalized dynamic resource attribute vector */
+  double normalized_dynvec[MAX_RESOURCE_INDEX + 1];
+  memset(&normalized_dynvec, 0, sizeof(normalized_dynvec));
+  for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
+    double resreqval = task_spec_get_required_resource(task_spec, i);
+    if (resreqval <= 0) {
+      continue; /* Skip and leave normalized dynvec value == 0 */
+    }
+    normalized_dynvec[i] = MIN(1, ls->info.dynamic_resources[i] / resreqval);
+  }
+  normalized_dynvec[MAX_RESOURCE_INDEX] = object_size_fraction;
+
+  /* Finally, calculate the score. */
+  double score = inner_product(normalized_dynvec,
+                               state->policy_state->resource_attribute_weight,
+                               MAX_RESOURCE_INDEX + 1);
+  return score;
+}
+
+double calculate_cost_pending(const global_scheduler_state *state,
+                              const local_scheduler *ls) {
+  /* TODO: make sure that num_recent_tasks_sent is reset on each heartbeat */
+  return ls->num_recent_tasks_sent + ls->info.task_queue_length;
+}
+
 /**
  * Main new task handling function in the global scheduler.
  *
@@ -226,7 +294,8 @@ void handle_task_waiting(global_scheduler_state *state,
 
   /* Go through all the nodes, calculate the score for each, pick max score. */
   local_scheduler *ls = NULL;
-  double best_photon_score = -1;
+  double best_photon_score = INT32_MIN;
+  CHECKM(best_photon_score < 0, "We might have a floating point underflow");
   db_client_id best_photon_id = NIL_ID; /* best node to send this task */
   for (ls = (local_scheduler *) utarray_front(state->local_schedulers);
        ls != NULL;
@@ -236,56 +305,9 @@ void handle_task_waiting(global_scheduler_state *state,
     if (!constraints_satisfied_hard(ls, task_spec)) {
       continue;
     }
-    /* This node satisfies the hard capacity constraint. Calculate its score. */
     task_feasible = true;
-    /* Look up its cached object size in the hashmap, normalize by total object
-     * size for this task. */
-    /* Aggregate object size for this task. */
-    double object_size_fraction = 0;
-    if (task_object_size > 0) {
-      /* Does this node contribute anything to this task object size? */
-      /* Lookup ls-> id in photon_plasma_map to get plasma aux address,
-       * which is used as the key for object_size_table.
-       * The use the plasma aux address to locate object_size this node
-       * contributes.
-       */
-      aux_address_entry *photon_plasma_pair = NULL;
-      HASH_FIND(photon_plasma_hh, state->photon_plasma_map, &(ls->id),
-                sizeof(ls->id), photon_plasma_pair);
-      if (photon_plasma_pair != NULL) {
-        object_size_entry *s = NULL;
-        /* Found this node's photon to plasma mapping. Use the corresponding
-         * plasma key to see if this node has any cached objects for this task.
-         */
-        HASH_FIND_STR(object_size_table, photon_plasma_pair->aux_address, s);
-        if (s != NULL) {
-          /* This node has some of this task's objects. Calculate what fraction.
-           */
-          CHECK(strcmp(s->object_location, photon_plasma_pair->aux_address) ==
-                0);
-          object_size_fraction =
-              MIN(1, (double) (s->total_object_size) / task_object_size);
-        } /* if this node has any of this task's objects cached */
-      }   /* if found photon plasma association for this node */
-    }     /* if this task has any objects passed by reference */
-
-    /* object size fraction is now calculated for this (task,node) pair. */
-    /* construct the normalized dynamic resource attribute vector */
-    double normalized_dynvec[MAX_RESOURCE_INDEX + 1];
-    memset(&normalized_dynvec, 0, sizeof(normalized_dynvec));
-    for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
-      double resreqval = task_spec_get_required_resource(task_spec, i);
-      if (resreqval <= 0) {
-        continue; /* Skip and leave normalized dynvec value == 0 */
-      }
-      normalized_dynvec[i] = MIN(1, resreqval / ls->info.dynamic_resources[i]);
-    }
-    normalized_dynvec[MAX_RESOURCE_INDEX] = object_size_fraction;
-
-    /* Finally, calculate the score. */
-    double score = inner_product(normalized_dynvec,
-                                 state->policy_state->resource_attribute_weight,
-                                 MAX_RESOURCE_INDEX + 1);
+    /* This node satisfies the hard capacity constraint. Calculate its score. */
+    double score = -1 * calculate_cost_pending(state, ls);
     if (score > best_photon_score) {
       best_photon_score = score;
       best_photon_id = ls->id;
@@ -303,20 +325,10 @@ void handle_task_waiting(global_scheduler_state *state,
      * cache the task in case new local schedulers satisfy it in the future. */
     return;
   }
-
-  if (IS_NIL_ID(best_photon_id)) {
-    /* Score-based policy didn't find any matching nodes. This is exceptional.*/
-    char id_string[ID_STRING_SIZE];
-    LOG_WARN(
-        "Falling back to round robin. Found no nodes suitable for task = %s",
-        object_id_to_string(task_task_id(task), id_string, ID_STRING_SIZE));
-    handle_task_round_robin(state, policy_state, task);
-    return;
-  }
-
+  CHECKM(!IS_NIL_ID(best_photon_id), "Task is feasible, but doesn't have "
+         "a local scheduler assigned.");
   /* photon id found, assign task */
   assign_task_to_local_scheduler(state, task, best_photon_id);
-  /* Done. */
 }
 
 void handle_object_available(global_scheduler_state *state,
