@@ -15,7 +15,8 @@ class TaskTests(unittest.TestCase):
       for num_workers_per_scheduler in [4]:
         num_workers = num_local_schedulers * num_workers_per_scheduler
         ray.worker._init(start_ray_local=True, num_workers=num_workers,
-                         num_local_schedulers=num_local_schedulers)
+                         num_local_schedulers=num_local_schedulers,
+                         num_cpus=100)
 
         @ray.remote
         def f(x):
@@ -41,7 +42,8 @@ class TaskTests(unittest.TestCase):
       for num_workers_per_scheduler in [4]:
         num_workers = num_local_schedulers * num_workers_per_scheduler
         ray.worker._init(start_ray_local=True, num_workers=num_workers,
-                         num_local_schedulers=num_local_schedulers)
+                         num_local_schedulers=num_local_schedulers,
+                         num_cpus=100)
 
         @ray.remote
         def f(x):
@@ -98,7 +100,8 @@ class TaskTests(unittest.TestCase):
       for num_workers_per_scheduler in [4]:
         num_workers = num_local_schedulers * num_workers_per_scheduler
         ray.worker._init(start_ray_local=True, num_workers=num_workers,
-                         num_local_schedulers=num_local_schedulers)
+                         num_local_schedulers=num_local_schedulers,
+                         num_cpus=100)
 
         @ray.remote
         def f(x):
@@ -147,7 +150,9 @@ class ReconstructionTests(unittest.TestCase):
 
     # Start the rest of the services in the Ray cluster.
     ray.worker._init(address_info=address_info, start_ray_local=True,
-                     num_workers=self.num_local_schedulers, num_local_schedulers=self.num_local_schedulers)
+                     num_workers=self.num_local_schedulers,
+                     num_local_schedulers=self.num_local_schedulers,
+                     num_cpus=100)
 
   def tearDown(self):
     self.assertTrue(ray.services.all_processes_alive())
