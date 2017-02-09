@@ -14,6 +14,12 @@ brew install cmake automake autoconf libtool boost wget
 pip install numpy cloudpickle funcsigs colorama psutil redis --ignore-installed six
 ```
 
+If you are using Anaconda, you may also need to run the following.
+
+```
+conda install libgcc
+```
+
 # Install Ray
 
 Ray can be built from the repository as follows.
