@@ -446,10 +446,11 @@ void give_task_to_global_scheduler(local_scheduler_state *state,
 bool resource_constraints_satisfied(local_scheduler_state *state,
                                     task_spec *spec) {
   /* At the local scheduler, if required resource vector exceeds either static
-   * or dynamic resource vector, the resource constraint is not satisfied.  */
+   * or dynamic resource vector, the resource constraint is not satisfied. */
   for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
     if (task_spec_get_required_resource(spec, i) > state->static_resources[i] ||
-        task_spec_get_required_resource(spec, i) > state->dynamic_resources[i]) {
+        task_spec_get_required_resource(spec, i) >
+            state->dynamic_resources[i]) {
       return false;
     }
   }
@@ -459,10 +460,9 @@ bool resource_constraints_satisfied(local_scheduler_state *state,
 void handle_task_submitted(local_scheduler_state *state,
                            scheduling_algorithm_state *algorithm_state,
                            task_spec *spec) {
-  /* TODO(atumanov): if static is satisfied and local objects ready, but
-   * dynamic resource is currently unavailable, then
-   * consider queueing task locally and recheck dynamic next time.
-   */
+  /* TODO(atumanov): if static is satisfied and local objects ready, but dynamic
+   * resource is currently unavailable, then consider queueing task locally and
+   * recheck dynamic next time. */
 
   /* If local node satisfies constraints AND objects are available, then
    * schedule locally. Else forward to the global scheduler. */
@@ -471,9 +471,8 @@ void handle_task_submitted(local_scheduler_state *state,
       can_run(algorithm_state, spec)) {
     /* If this task's constraints are satisfied, dependencies are available
      * locally, and there is an available worker, then enqueue the task in the
-     * dispatch queue and trigger task dispatch.
-     * Otherwise, pass the task along to the global scheduler if there is one.
-     */
+     * dispatch queue and trigger task dispatch. Otherwise, pass the task along
+     * to the global scheduler if there is one. */
     queue_dispatch_task(state, algorithm_state, spec, false);
   } else {
     /* Give the task to the global scheduler to schedule, if it exists. */
@@ -499,8 +498,8 @@ void handle_task_scheduled(local_scheduler_state *state,
                            scheduling_algorithm_state *algorithm_state,
                            task_spec *spec) {
   /* This callback handles tasks that were assigned to this local scheduler by
-   * the global scheduler, so we can safely assert that there is a connection
-   * to the database. */
+   * the global scheduler, so we can safely assert that there is a connection to
+   * the database. */
   DCHECK(state->db != NULL);
   DCHECK(state->config.global_scheduler_exists);
   /* Push the task to the appropriate queue. */

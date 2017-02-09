@@ -56,7 +56,7 @@ void handle_task_round_robin(global_scheduler_state *state,
                              task *task) {
   CHECKM(utarray_len(state->local_schedulers) > 0,
          "No local schedulers. We currently don't handle this case.");
-  local_scheduler *ls = NULL;
+  local_scheduler *scheduler = NULL;
   task_spec *task_spec = task_task_spec(task);
   int i;
   int num_retries = 1;
@@ -67,14 +67,14 @@ void handle_task_round_robin(global_scheduler_state *state,
     if (i == policy_state->round_robin_index) {
       num_retries--;
     }
-    ls = (local_scheduler *) utarray_eltptr(state->local_schedulers, i);
-    task_satisfied = constraints_satisfied_hard(ls, task_spec);
+    scheduler = (local_scheduler *) utarray_eltptr(state->local_schedulers, i);
+    task_satisfied = constraints_satisfied_hard(scheduler, task_spec);
   }
 
   if (task_satisfied) {
     /* Update next index to try and assign the task. */
     policy_state->round_robin_index = i; /* i was advanced. */
-    assign_task_to_local_scheduler(state, task, ls->id);
+    assign_task_to_local_scheduler(state, task, scheduler->id);
   } else {
     /* TODO(atumanov): propagate the error to the driver, which submitted
      * this impossible task and/or cache the task to consider when new
@@ -201,7 +201,7 @@ double inner_product(double a[], double b[], int size) {
 }
 
 double calculate_object_size_fraction(global_scheduler_state *state,
-                                      local_scheduler *ls,
+                                      local_scheduler *scheduler,
                                       object_size_entry *object_size_table,
                                       int64_t total_task_object_size) {
   /* Look up its cached object size in the hashmap, normalize by total object
@@ -210,25 +210,23 @@ double calculate_object_size_fraction(global_scheduler_state *state,
   double object_size_fraction = 0;
   if (total_task_object_size > 0) {
     /* Does this node contribute anything to this task object size? */
-    /* Lookup ls-> id in photon_plasma_map to get plasma aux address,
+    /* Lookup scheduler->id in photon_plasma_map to get plasma aux address,
      * which is used as the key for object_size_table.
      * The use the plasma aux address to locate object_size this node
      * contributes.
      */
     aux_address_entry *photon_plasma_pair = NULL;
-    HASH_FIND(photon_plasma_hh, state->photon_plasma_map, &(ls->id),
-              sizeof(ls->id), photon_plasma_pair);
+    HASH_FIND(photon_plasma_hh, state->photon_plasma_map, &(scheduler->id),
+              sizeof(scheduler->id), photon_plasma_pair);
     if (photon_plasma_pair != NULL) {
       object_size_entry *s = NULL;
       /* Found this node's photon to plasma mapping. Use the corresponding
-       * plasma key to see if this node has any cached objects for this task.
-       */
+       * plasma key to see if this node has any cached objects for this task. */
       HASH_FIND_STR(object_size_table, photon_plasma_pair->aux_address, s);
       if (s != NULL) {
         /* This node has some of this task's objects. Calculate what fraction.
          */
-        CHECK(strcmp(s->object_location, photon_plasma_pair->aux_address) ==
-              0);
+        CHECK(strcmp(s->object_location, photon_plasma_pair->aux_address) == 0);
         object_size_fraction =
             MIN(1, (double) (s->total_object_size) / total_task_object_size);
       }
@@ -238,20 +236,21 @@ double calculate_object_size_fraction(global_scheduler_state *state,
 }
 
 double calculate_score_dynvec_normalized(global_scheduler_state *state,
-                                         local_scheduler *ls,
+                                         local_scheduler *scheduler,
                                          const task_spec *task_spec,
                                          double object_size_fraction) {
-
-  /* object size fraction is now calculated for this (task,node) pair. */
-  /* construct the normalized dynamic resource attribute vector */
+  /* The object size fraction is now calculated for this (task,node) pair. */
+  /* Construct the normalized dynamic resource attribute vector */
   double normalized_dynvec[MAX_RESOURCE_INDEX + 1];
   memset(&normalized_dynvec, 0, sizeof(normalized_dynvec));
   for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
     double resreqval = task_spec_get_required_resource(task_spec, i);
     if (resreqval <= 0) {
-      continue; /* Skip and leave normalized dynvec value == 0 */
+      /* Skip and leave normalized dynvec value == 0. */
+      continue;
     }
-    normalized_dynvec[i] = MIN(1, ls->info.dynamic_resources[i] / resreqval);
+    normalized_dynvec[i] =
+        MIN(1, scheduler->info.dynamic_resources[i] / resreqval);
   }
   normalized_dynvec[MAX_RESOURCE_INDEX] = object_size_fraction;
 
@@ -263,9 +262,9 @@ double calculate_score_dynvec_normalized(global_scheduler_state *state,
 }
 
 double calculate_cost_pending(const global_scheduler_state *state,
-                              const local_scheduler *ls) {
-  /* TODO: make sure that num_recent_tasks_sent is reset on each heartbeat */
-  return ls->num_recent_tasks_sent + ls->info.task_queue_length;
+                              const local_scheduler *scheduler) {
+  /* TODO: make sure that num_recent_tasks_sent is reset on each heartbeat. */
+  return scheduler->num_recent_tasks_sent + scheduler->info.task_queue_length;
 }
 
 /**
@@ -288,32 +287,34 @@ void handle_task_waiting(global_scheduler_state *state,
   object_size_entry *object_size_table = NULL;
   bool has_args_by_ref = false;
   bool task_feasible = false;
-  int64_t task_object_size = 0; /* total size of task's data. */
+  /* The total size of the task's data. */
+  int64_t task_object_size = 0;
 
   object_size_table = create_object_size_hashmap(
       state, task_spec, &has_args_by_ref, &task_object_size);
 
   /* Go through all the nodes, calculate the score for each, pick max score. */
-  local_scheduler *ls = NULL;
+  local_scheduler *scheduler = NULL;
   double best_photon_score = INT32_MIN;
   CHECKM(best_photon_score < 0, "We might have a floating point underflow");
   db_client_id best_photon_id = NIL_ID; /* best node to send this task */
-  for (ls = (local_scheduler *) utarray_front(state->local_schedulers);
-       ls != NULL;
-       ls = (local_scheduler *) utarray_next(state->local_schedulers, ls)) {
-    /* For each local scheduler, calculate its score:
-     * 1. check hard constraints first */
-    if (!constraints_satisfied_hard(ls, task_spec)) {
+  for (scheduler = (local_scheduler *) utarray_front(state->local_schedulers);
+       scheduler != NULL;
+       scheduler = (local_scheduler *) utarray_next(
+           state->local_schedulers, scheduler)) {
+    /* For each local scheduler, calculate its score. Check hard constraints
+     * first. */
+    if (!constraints_satisfied_hard(scheduler, task_spec)) {
       continue;
     }
     task_feasible = true;
     /* This node satisfies the hard capacity constraint. Calculate its score. */
-    double score = -1 * calculate_cost_pending(state, ls);
+    double score = -1 * calculate_cost_pending(state, scheduler);
     if (score > best_photon_score) {
       best_photon_score = score;
-      best_photon_id = ls->id;
+      best_photon_id = scheduler->id;
     }
-  } /* for each node(LS) */
+  } /* For each local scheduler. */
 
   free_object_size_hashmap(object_size_table);
 
@@ -326,9 +327,9 @@ void handle_task_waiting(global_scheduler_state *state,
      * cache the task in case new local schedulers satisfy it in the future. */
     return;
   }
-  CHECKM(!IS_NIL_ID(best_photon_id), "Task is feasible, but doesn't have "
-         "a local scheduler assigned.");
-  /* photon id found, assign task */
+  CHECKM(!IS_NIL_ID(best_photon_id),
+         "Task is feasible, but doesn't have a local scheduler assigned.");
+  /* A local scheduler ID was found, so assign the task. */
   assign_task_to_local_scheduler(state, task, best_photon_id);
 }
 
