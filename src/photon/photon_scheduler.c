@@ -25,7 +25,7 @@ UT_icd workers_icd = {sizeof(local_scheduler_client *), NULL, NULL, NULL};
 
 UT_icd byte_icd = {sizeof(uint8_t), NULL, NULL, NULL};
 
-/*
+/**
  * A helper function for printing available and requested resource information.
  *
  * @param state Local scheduler state.
