@@ -91,7 +91,10 @@ void destroy_photon_mock(photon_mock *mock) {
 }
 
 void reset_worker(photon_mock *mock, local_scheduler_client *worker) {
-  worker->task_in_progress = NULL;
+  if (worker->task_in_progress) {
+    free_task(worker->task_in_progress);
+    worker->task_in_progress = NULL;
+  }
 }
 
 /**
