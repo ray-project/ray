@@ -192,6 +192,10 @@ void process_new_db_client(db_client_id db_client_id,
     local_scheduler.num_recent_tasks_sent = 0;
     local_scheduler.info.task_queue_length = 0;
     local_scheduler.info.available_workers = 0;
+    memset(local_scheduler.info.dynamic_resources, 0,
+           sizeof(local_scheduler.info.dynamic_resources));
+    memset(local_scheduler.info.static_resources, 0,
+           sizeof(local_scheduler.info.static_resources));
     utarray_push_back(state->local_schedulers, &local_scheduler);
 
     /* Allow the scheduling algorithm to process this event. */
