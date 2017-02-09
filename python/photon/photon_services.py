@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import multiprocessing
 import os
 import random
 import subprocess
@@ -14,7 +15,7 @@ def start_local_scheduler(plasma_store_name, plasma_manager_name=None,
                           worker_path=None, plasma_address=None,
                           node_ip_address="127.0.0.1", redis_address=None,
                           use_valgrind=False, use_profiler=False,
-                          redirect_output=False):
+                          redirect_output=False, static_resource_list=None):
   """Start a local scheduler process.
 
   Args:
@@ -37,6 +38,9 @@ def start_local_scheduler(plasma_store_name, plasma_manager_name=None,
       profiler. If this is True, use_valgrind must be False.
     redirect_output (bool): True if stdout and stderr should be redirected to
       /dev/null.
+    static_resource_list (list): A list of integers specifying the local
+      scheduler's resource capacities. The resources should appear in an order
+      matching the order defined in task.h.
 
   Return:
     A tuple of the name of the local scheduler socket and the process ID of the
@@ -71,6 +75,24 @@ def start_local_scheduler(plasma_store_name, plasma_manager_name=None,
     command += ["-r", redis_address]
   if plasma_address is not None:
     command += ["-a", plasma_address]
+  # We want to be able to support independently setting capacity for each of the
+  # supported resource types. Thus, the list can be None or contain any number
+  # of None values.
+  if static_resource_list is None:
+    static_resource_list = [None, None]
+  if static_resource_list[0] is None:
+    # By default, use the number of hardware execution threads for the number of
+    # cores.
+    static_resource_list[0] = multiprocessing.cpu_count()
+  if static_resource_list[1] is None:
+    # By default, do not configure any GPUs on this node.
+    static_resource_list[1] = 0
+  # Pass the resource capacity string to the photon scheduler in all cases.
+  # Sanity check to make sure all resource capacities in the list are numeric
+  # (int or float).
+  assert(all([x == int or x == float for x in map(type, static_resource_list)]))
+  command += ["-c", ",".join(map(str, static_resource_list))]
+
   with open(os.devnull, "w") as FNULL:
     stdout = FNULL if redirect_output else None
     stderr = FNULL if redirect_output else None

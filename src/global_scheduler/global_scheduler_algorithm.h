@@ -23,6 +23,7 @@ typedef enum {
 struct global_scheduler_policy_state {
   /** The index of the next local scheduler to assign a task to. */
   int64_t round_robin_index;
+  double resource_attribute_weight[MAX_RESOURCE_INDEX + 1];
 };
 
 typedef struct {
@@ -49,13 +50,11 @@ void destroy_global_scheduler_policy(
     global_scheduler_policy_state *policy_state);
 
 /**
- * Assign the task to a local scheduler. At the moment, this simply assigns the
- * task to the local schedulers in a round robin fashion. If there are no local
- * schedulers it fails.
+ * Main new task handling function in the global scheduler.
  *
- * @param state The global scheduler state.
- * @param policy_state The state managed by the scheduling policy.
- * @param task The task that is waiting to be scheduled.
+ * @param state Global scheduler state.
+ * @param policy_state State specific to the scheduling policy.
+ * @param task New task to be scheduled.
  * @return Void.
  */
 void handle_task_waiting(global_scheduler_state *state,

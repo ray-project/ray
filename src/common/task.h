@@ -3,7 +3,7 @@
 
 /**
  * This API specifies the task data structures. It is in C so we can
- * easily construct tasks from other languages like Python. The datastructures
+ * easily construct tasks from other languages like Python. The data structures
  * are also defined in such a way that memory is contiguous and all pointers
  * are relative, so that we can memcpy the datastructure and ship it over the
  * network without serialization and deserialization. */
@@ -226,6 +226,45 @@ int64_t task_args_add_val(task_spec *spec, uint8_t *data, int64_t length);
  * @return The relevant return object ID.
  */
 object_id task_return(task_spec *spec, int64_t return_index);
+
+/**
+ * Indices into resource vectors.
+ * A resource vector maps a resource index to the number
+ * of units of that resource required.
+ *
+ * The total length of the resource vector is NUM_RESOURCE_INDICES.
+ */
+typedef enum {
+  /** Index for number of cpus the task requires. */
+  CPU_RESOURCE_INDEX = 0,
+  /** Index for number of gpus the task requires. */
+  GPU_RESOURCE_INDEX,
+  /** Total number of different resources in the system. */
+  MAX_RESOURCE_INDEX
+} resource_vector_index;
+
+/**
+ * Set the value associated to a resource index.
+ *
+ * @param spec Task specification.
+ * @param resource_index Index of the resource in the resource vector.
+ * @param value Value for the resource. This can be a quantity of this resource
+ *        this task needs or a value for an attribute this task requires.
+ * @return Void.
+ */
+void task_spec_set_required_resource(task_spec *spec,
+                                     int64_t resource_index,
+                                     double value);
+
+/**
+ * Get the value associated to a resource index.
+ *
+ * @param spec Task specification.
+ * @param resource_index Index of the resource.
+ * @return How many of this resource the task needs to execute.
+ */
+double task_spec_get_required_resource(const task_spec *spec,
+                                       int64_t resource_index);
 
 /**
  * Compute the object id associated to a put call.

@@ -479,7 +479,7 @@ class Worker(object):
       assert final_results[i][0] == object_ids[i].id()
     return [result[1][0] for result in final_results]
 
-  def submit_task(self, function_id, func_name, args):
+  def submit_task(self, function_id, func_name, args, num_cpus, num_gpus):
     """Submit a remote task to the scheduler.
 
     Tell the scheduler to schedule the execution of the function with name
@@ -491,6 +491,8 @@ class Worker(object):
       args (List[Any]): The arguments to pass into the function. Arguments can
         be object IDs or they can be values. If they are values, they
         must be serializable objecs.
+      num_cpus (int): The number of cpu cores this task requires to run.
+      num_gpus (int): The number of gpus this task requires to run.
     """
     with log_span("ray:submit_task", worker=self):
       check_main_thread()
@@ -511,7 +513,8 @@ class Worker(object):
                          args_for_photon,
                          self.num_return_vals[function_id.id()],
                          self.current_task_id,
-                         self.task_index)
+                         self.task_index,
+                         [num_cpus, num_gpus])
       # Increment the worker's task index to track how many tasks have been
       # submitted by the current task so far.
       self.task_index += 1
@@ -734,7 +737,7 @@ def get_address_info_from_redis(redis_address, node_ip_address, num_retries=5):
 
 def _init(address_info=None, start_ray_local=False, object_id_seed=None,
           num_workers=None, num_local_schedulers=None,
-          driver_mode=SCRIPT_MODE):
+          driver_mode=SCRIPT_MODE, num_cpus=None, num_gpus=None):
   """Helper method to connect to an existing Ray cluster or start a new one.
 
   This method handles two cases. Either a Ray cluster already exists and we
@@ -761,6 +764,10 @@ def _init(address_info=None, start_ray_local=False, object_id_seed=None,
       only provided if start_ray_local is True.
     driver_mode (bool): The mode in which to start the driver. This should be
       one of ray.SCRIPT_MODE, ray.PYTHON_MODE, and ray.SILENT_MODE.
+    num_cpus: A list containing the number of CPUs the local schedulers should
+      be configured with.
+    num_gpus: A list containing the number of GPUs the local schedulers should
+      be configured with.
 
   Returns:
     Address information about the started processes.
@@ -807,7 +814,8 @@ def _init(address_info=None, start_ray_local=False, object_id_seed=None,
     address_info = services.start_ray_head(address_info=address_info,
                                            node_ip_address=node_ip_address,
                                            num_workers=num_workers,
-                                           num_local_schedulers=num_local_schedulers)
+                                           num_local_schedulers=num_local_schedulers,
+                                           num_cpus=num_cpus, num_gpus=num_gpus)
   else:
     if redis_address is None:
       raise Exception("If start_ray_local=False, then redis_address must be provided.")
@@ -815,6 +823,8 @@ def _init(address_info=None, start_ray_local=False, object_id_seed=None,
       raise Exception("If start_ray_local=False, then num_workers must not be provided.")
     if num_local_schedulers is not None:
       raise Exception("If start_ray_local=False, then num_local_schedulers must not be provided.")
+    if num_cpus is not None or num_gpus is not None:
+      raise Exception("If start_ray_local=False, then num_cpus and num_gpus must not be provided.")
     # Get the node IP address if one is not provided.
     if node_ip_address is None:
       node_ip_address = services.get_node_ip_address(redis_address)
@@ -839,7 +849,7 @@ def _init(address_info=None, start_ray_local=False, object_id_seed=None,
   return address_info
 
 def init(redis_address=None, node_ip_address=None, object_id_seed=None,
-         num_workers=None, driver_mode=SCRIPT_MODE):
+         num_workers=None, driver_mode=SCRIPT_MODE, num_cpus=None, num_gpus=None):
   """Either connect to an existing Ray cluster or start one and connect to it.
 
   This method handles two cases. Either a Ray cluster already exists and we
@@ -860,6 +870,8 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
       redis_address is not provided.
     driver_mode (bool): The mode in which to start the driver. This should be
       one of ray.SCRIPT_MODE, ray.PYTHON_MODE, and ray.SILENT_MODE.
+    num_cpus (int): Number of cpus the user wishes all local schedulers to be configured with.
+    num_gpus (int): Number of gpus the user wishes all local schedulers to be configured with.
 
   Returns:
     Address information about the started processes.
@@ -873,7 +885,8 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
       "redis_address": redis_address,
       }
   return _init(address_info=info, start_ray_local=(redis_address is None),
-               num_workers=num_workers, driver_mode=driver_mode)
+               num_workers=num_workers, driver_mode=driver_mode,
+               num_cpus=num_cpus, num_gpus=num_gpus)
 
 def cleanup(worker=global_worker):
   """Disconnect the driver, and terminate any processes started in init.
@@ -964,10 +977,21 @@ If this driver is hanging, start a new one with
 
 def fetch_and_register_remote_function(key, worker=global_worker):
   """Import a remote function."""
-  driver_id, function_id_str, function_name, serialized_function, num_return_vals, module, function_export_counter = worker.redis_client.hmget(key, ["driver_id", "function_id", "name", "function", "num_return_vals", "module", "function_export_counter"])
+  driver_id, function_id_str, function_name, serialized_function, num_return_vals, module, function_export_counter, num_cpus, num_gpus = \
+    worker.redis_client.hmget(key, ["driver_id",
+                                    "function_id",
+                                    "name",
+                                    "function",
+                                    "num_return_vals",
+                                    "module",
+                                    "function_export_counter",
+                                    "num_cpus",
+                                    "num_gpus"])
   function_id = photon.ObjectID(function_id_str)
   function_name = function_name.decode("ascii")
   num_return_vals = int(num_return_vals)
+  num_cpus = int(num_cpus)
+  num_gpus = int(num_gpus)
   module = module.decode("ascii")
   function_export_counter = int(function_export_counter)
 
@@ -978,7 +1002,10 @@ def fetch_and_register_remote_function(key, worker=global_worker):
   # overwritten if the function is unpickled successfully.
   def f():
     raise Exception("This function was not imported properly.")
-  worker.functions[function_id.id()] = remote(num_return_vals=num_return_vals, function_id=function_id)(lambda *xs: f())
+  worker.functions[function_id.id()] = remote(num_return_vals=num_return_vals,
+                                              function_id=function_id,
+                                              num_cpus=num_cpus,
+                                              num_gpus=num_gpus)(lambda *xs: f())
 
   try:
     function = pickling.loads(serialized_function)
@@ -994,7 +1021,10 @@ def fetch_and_register_remote_function(key, worker=global_worker):
   else:
     # TODO(rkn): Why is the below line necessary?
     function.__module__ = module
-    worker.functions[function_id.id()] = remote(num_return_vals=num_return_vals, function_id=function_id)(function)
+    worker.functions[function_id.id()] = remote(num_return_vals=num_return_vals,
+                                                function_id=function_id,
+                                                num_cpus=num_cpus,
+                                                num_gpus=num_gpus)(function)
     # Add the function to the function table.
     worker.redis_client.rpush("FunctionTable:{}".format(function_id.id()), worker.worker_id)
 
@@ -1207,8 +1237,8 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker):
     for name, environment_variable in env._cached_environment_variables:
       env.__setattr__(name, environment_variable)
     # Export cached remote functions to the workers.
-    for function_id, func_name, func, num_return_vals in worker.cached_remote_functions:
-      export_remote_function(function_id, func_name, func, num_return_vals, worker)
+    for function_id, func_name, func, num_return_vals, num_cpus, num_gpus in worker.cached_remote_functions:
+      export_remote_function(function_id, func_name, func, num_return_vals, num_cpus, num_gpus, worker)
   worker.cached_functions_to_run = None
   worker.cached_remote_functions = None
   env._cached_environment_variables = None
@@ -1576,7 +1606,7 @@ def main_loop(worker=global_worker):
     # Push all of the log events to the global state store.
     flush_log()
 
-def _submit_task(function_id, func_name, args, worker=global_worker):
+def _submit_task(function_id, func_name, args, num_cpus, num_gpus, worker=global_worker):
   """This is a wrapper around worker.submit_task.
 
   We use this wrapper so that in the remote decorator, we can call _submit_task
@@ -1584,7 +1614,7 @@ def _submit_task(function_id, func_name, args, worker=global_worker):
   serialize remote functions, we don't attempt to serialize the worker object,
   which cannot be serialized.
   """
-  return worker.submit_task(function_id, func_name, args)
+  return worker.submit_task(function_id, func_name, args, num_cpus, num_gpus)
 
 def _mode(worker=global_worker):
   """This is a wrapper around worker.mode.
@@ -1626,7 +1656,7 @@ def _export_environment_variable(name, environment_variable, worker=global_worke
   worker.redis_client.rpush("Exports", key)
   worker.driver_export_counter += 1
 
-def export_remote_function(function_id, func_name, func, num_return_vals, worker=global_worker):
+def export_remote_function(function_id, func_name, func, num_return_vals, num_cpus, num_gpus, worker=global_worker):
   check_main_thread()
   if _mode(worker) not in [SCRIPT_MODE, SILENT_MODE]:
     raise Exception("export_remote_function can only be called on a driver.")
@@ -1639,7 +1669,9 @@ def export_remote_function(function_id, func_name, func, num_return_vals, worker
                                   "module": func.__module__,
                                   "function": pickled_func,
                                   "num_return_vals": num_return_vals,
-                                  "function_export_counter": worker.driver_export_counter})
+                                  "function_export_counter": worker.driver_export_counter,
+                                  "num_cpus": num_cpus,
+                                  "num_gpus": num_gpus})
   worker.redis_client.rpush("Exports", key)
   worker.driver_export_counter += 1
 
@@ -1651,7 +1683,7 @@ def remote(*args, **kwargs):
       should return.
   """
   worker = global_worker
-  def make_remote_decorator(num_return_vals, func_id=None):
+  def make_remote_decorator(num_return_vals, num_cpus, num_gpus, func_id=None):
     def remote_decorator(func):
       func_name = "{}.{}".format(func.__module__, func.__name__)
       if func_id is None:
@@ -1678,7 +1710,7 @@ def remote(*args, **kwargs):
             _env()._reinitialize()
             _env()._running_remote_function_locally = False
           return result
-        objectids = _submit_task(function_id, func_name, args)
+        objectids = _submit_task(function_id, func_name, args, num_cpus, num_gpus)
         if len(objectids) == 1:
           return objectids[0]
         elif len(objectids) > 1:
@@ -1722,37 +1754,44 @@ def remote(*args, **kwargs):
           if func_name_global_valid: func.__globals__[func.__name__] = func_name_global_value
           else: del func.__globals__[func.__name__]
       if worker.mode in [SCRIPT_MODE, SILENT_MODE]:
-        export_remote_function(function_id, func_name, func, num_return_vals)
+        export_remote_function(function_id, func_name, func, num_return_vals, num_cpus, num_gpus)
       elif worker.mode is None:
-        worker.cached_remote_functions.append((function_id, func_name, func, num_return_vals))
+        worker.cached_remote_functions.append((function_id, func_name, func, num_return_vals, num_cpus, num_gpus))
       return func_invoker
 
     return remote_decorator
 
+  num_return_vals = kwargs["num_return_vals"] if "num_return_vals" in kwargs.keys() else 1
+  num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs.keys() else 1
+  num_gpus = kwargs["num_gpus"] if "num_gpus" in kwargs.keys() else 0
+
   if _mode() == WORKER_MODE:
     if "function_id" in kwargs:
-      num_return_vals = kwargs["num_return_vals"]
       function_id = kwargs["function_id"]
-      return make_remote_decorator(num_return_vals, function_id)
+      return make_remote_decorator(num_return_vals, num_cpus, num_gpus, function_id)
 
   if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
     # This is the case where the decorator is just @ray.remote.
-    num_return_vals = 1
-    func = args[0]
-    return make_remote_decorator(num_return_vals)(func)
+    return make_remote_decorator(num_return_vals, num_cpus, num_gpus)(args[0])
   else:
     # This is the case where the decorator is something like
     # @ray.remote(num_return_vals=2).
-    assert len(args) == 0 and "num_return_vals" in kwargs, "The @ray.remote decorator must be applied either with no arguments and no parentheses, for example '@ray.remote', or it must be applied with only the argument num_return_vals, like '@ray.remote(num_return_vals=2)'."
-    num_return_vals = kwargs["num_return_vals"]
+    error_string = ("The @ray.remote decorator must be applied either with no "
+                    "arguments and no parentheses, for example '@ray.remote', "
+                    "or it must be applied using some of the arguments "
+                    "'num_return_vals', 'num_cpus', or 'num_gpus', like "
+                    "'@ray.remote(num_return_vals=2)'.")
+    assert len(args) == 0 and ("num_return_vals" in kwargs or
+                               "num_cpus" in kwargs or
+                               "num_gpus" in kwargs), error_string
     assert not "function_id" in kwargs
-    return make_remote_decorator(num_return_vals)
+    return make_remote_decorator(num_return_vals, num_cpus, num_gpus)
 
 def check_signature_supported(has_kwargs_param, has_vararg_param, keyword_defaults, name):
   """Check if we support the signature of this function.
 
   We currently do not allow remote functions to have **kwargs. We also do not
-  support keyword argumens in conjunction with a *args argument.
+  support keyword arguments in conjunction with a *args argument.
 
   Args:
     has_kwards_param (bool): True if the function being checked has a **kwargs

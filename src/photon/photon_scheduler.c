@@ -25,6 +25,34 @@ UT_icd workers_icd = {sizeof(local_scheduler_client *), NULL, NULL, NULL};
 
 UT_icd byte_icd = {sizeof(uint8_t), NULL, NULL, NULL};
 
+/**
+ * A helper function for printing available and requested resource information.
+ *
+ * @param state Local scheduler state.
+ * @param spec Task specification object.
+ * @return Void.
+ */
+void print_resource_info(const local_scheduler_state *state,
+                         const task_spec *spec) {
+#if RAY_COMMON_LOG_LEVEL <= RAY_COMMON_DEBUG
+  /* Print information about available and requested resources. */
+  char buftotal[256], bufavail[256], bufresreq[256];
+  snprintf(bufavail, sizeof(bufavail), "%8.4f %8.4f",
+           state->dynamic_resources[CPU_RESOURCE_INDEX],
+           state->dynamic_resources[GPU_RESOURCE_INDEX]);
+  snprintf(buftotal, sizeof(buftotal), "%8.4f %8.4f",
+           state->static_resources[CPU_RESOURCE_INDEX],
+           state->static_resources[GPU_RESOURCE_INDEX]);
+  if (spec) {
+    snprintf(bufresreq, sizeof(bufresreq), "%8.4f %8.4f",
+             task_spec_get_required_resource(spec, CPU_RESOURCE_INDEX),
+             task_spec_get_required_resource(spec, GPU_RESOURCE_INDEX));
+  }
+  LOG_DEBUG("Resources: [total=%s][available=%s][requested=%s]", buftotal,
+            bufavail, spec ? bufresreq : "n/a");
+#endif
+}
+
 local_scheduler_state *init_local_scheduler(
     const char *node_ip_address,
     event_loop *loop,
@@ -35,7 +63,8 @@ local_scheduler_state *init_local_scheduler(
     const char *plasma_manager_socket_name,
     const char *plasma_manager_address,
     bool global_scheduler_exists,
-    const char *start_worker_command) {
+    const char *start_worker_command,
+    const double static_resource_conf[]) {
   local_scheduler_state *state = malloc(sizeof(local_scheduler_state));
   /* Set the configuration struct for the local scheduler. */
   if (start_worker_command != NULL) {
@@ -86,6 +115,14 @@ local_scheduler_state *init_local_scheduler(
   /* Add the input buffer. This is used to read in messages from clients without
    * having to reallocate a new buffer every time. */
   utarray_new(state->input_buffer, &byte_icd);
+
+  /* Initialize resource vectors. */
+  for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
+    state->static_resources[i] = state->dynamic_resources[i] =
+        static_resource_conf[i];
+  }
+  /* Print some debug information about resource configuration. */
+  print_resource_info(state, NULL);
   return state;
 };
 
@@ -149,16 +186,28 @@ void assign_task_to_worker(local_scheduler_state *state,
       LOG_FATAL("Failed to give task to client on fd %d.", worker->sock);
     }
   }
+
+  /* Resource accounting:
+   * Update dynamic resource vector in the local scheduler state. */
+  for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
+    state->dynamic_resources[i] -= task_spec_get_required_resource(spec, i);
+    CHECKM(state->dynamic_resources[i] >= 0,
+           "photon dynamic resources dropped to %8.4f\t%8.4f\n",
+           state->dynamic_resources[0], state->dynamic_resources[1]);
+  }
+  print_resource_info(state, spec);
+  task *task = alloc_task(spec, TASK_STATUS_RUNNING,
+                          state->db ? get_db_client_id(state->db) : NIL_ID);
+  /* Record which task this worker is executing. This will be freed in
+   * process_message when the worker sends a GET_TASK message to the local
+   * scheduler. */
+  worker->task_in_progress = copy_task(task);
   /* Update the global task table. */
   if (state->db != NULL) {
-    task *task =
-        alloc_task(spec, TASK_STATUS_RUNNING, get_db_client_id(state->db));
     task_table_update(state->db, task, (retry_info *) &photon_retry, NULL,
                       NULL);
-    /* Record which task this worker is executing. This will be freed in
-     * process_message when the worker sends a GET_TASK message to the local
-     * scheduler. */
-    worker->task_in_progress = copy_task(task);
+  } else {
+    free_task(task);
   }
 }
 
@@ -302,16 +351,27 @@ void process_message(event_loop *loop,
     free(value);
   } break;
   case GET_TASK: {
-    /* Update the task table with the completed task. */
-    if (state->db != NULL && worker->task_in_progress != NULL) {
-      task_set_state(worker->task_in_progress, TASK_STATUS_DONE);
-      task_table_update(state->db, worker->task_in_progress,
-                        (retry_info *) &photon_retry, NULL, NULL);
-      /* The call to task_table_update takes ownership of the task_in_progress,
-       * so we set the pointer to NULL so it is not used. */
-      worker->task_in_progress = NULL;
-    } else if (worker->task_in_progress != NULL) {
-      free_task(worker->task_in_progress);
+    /* If this worker reports a completed task: account for resources. */
+    if (worker->task_in_progress != NULL) {
+      task_spec *spec = task_task_spec(worker->task_in_progress);
+      /* Return dynamic resources back for the task in progress. */
+      for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
+        state->dynamic_resources[i] += task_spec_get_required_resource(spec, i);
+        /* Sanity-check resource vector boundary conditions. */
+        CHECK(state->dynamic_resources[i] <= state->static_resources[i]);
+      }
+      print_resource_info(state, spec);
+      /* If we're connected to Redis, update tables. */
+      if (state->db != NULL) {
+        /* Update control state tables. */
+        task_set_state(worker->task_in_progress, TASK_STATUS_DONE);
+        task_table_update(state->db, worker->task_in_progress,
+                          (retry_info *) &photon_retry, NULL, NULL);
+        /* The call to task_table_update takes ownership of the
+         * task_in_progress, so we set the pointer to NULL so it is not used. */
+      } else {
+        free_task(worker->task_in_progress);
+      }
       worker->task_in_progress = NULL;
     }
     /* Let the scheduling algorithm process the fact that there is an available
@@ -398,7 +458,8 @@ void start_server(const char *node_ip_address,
                   const char *plasma_manager_socket_name,
                   const char *plasma_manager_address,
                   bool global_scheduler_exists,
-                  const char *start_worker_command) {
+                  const char *start_worker_command,
+                  const double static_resource_conf[]) {
   /* Ignore SIGPIPE signals. If we don't do this, then when we attempt to write
    * to a client that has already died, the local scheduler could die. */
   signal(SIGPIPE, SIG_IGN);
@@ -407,7 +468,8 @@ void start_server(const char *node_ip_address,
   g_state = init_local_scheduler(
       node_ip_address, loop, redis_addr, redis_port, socket_name,
       plasma_store_socket_name, plasma_manager_socket_name,
-      plasma_manager_address, global_scheduler_exists, start_worker_command);
+      plasma_manager_address, global_scheduler_exists, start_worker_command,
+      static_resource_conf);
   /* Register a callback for registering new clients. */
   event_loop_add_file(loop, fd, EVENT_LOOP_READ, new_client_connection,
                       g_state);
@@ -458,9 +520,12 @@ int main(int argc, char *argv[]) {
   char *node_ip_address = NULL;
   /* The command to run when starting new workers. */
   char *start_worker_command = NULL;
+  /* Comma-separated list of configured resource capabilities for this node. */
+  char *static_resource_list = NULL;
+  double static_resource_conf[MAX_RESOURCE_INDEX];
   int c;
   bool global_scheduler_exists = true;
-  while ((c = getopt(argc, argv, "s:r:p:m:ga:h:w:")) != -1) {
+  while ((c = getopt(argc, argv, "s:r:p:m:ga:h:w:c:")) != -1) {
     switch (c) {
     case 's':
       scheduler_socket_name = optarg;
@@ -486,8 +551,28 @@ int main(int argc, char *argv[]) {
     case 'w':
       start_worker_command = optarg;
       break;
+    case 'c':
+      static_resource_list = optarg;
+      break;
     default:
       LOG_FATAL("unknown option %c", c);
+    }
+  }
+  if (!static_resource_list) {
+    /* Use defaults for this node's static resource configuration. */
+    memset(&static_resource_conf[0], 0, sizeof(static_resource_conf));
+    static_resource_conf[CPU_RESOURCE_INDEX] = DEFAULT_NUM_CPUS;
+    static_resource_conf[GPU_RESOURCE_INDEX] = DEFAULT_NUM_GPUS;
+  } else {
+    /* Tokenize the string. */
+    const char delim[2] = ",";
+    char *token;
+    int idx = 0; /* Index into the resource vector. */
+    token = strtok(static_resource_list, delim);
+    while (token != NULL && idx < MAX_RESOURCE_INDEX) {
+      static_resource_conf[idx++] = atoi(token);
+      /* Attempt to get the next token. */
+      token = strtok(NULL, delim);
     }
   }
   if (!scheduler_socket_name) {
@@ -510,7 +595,8 @@ int main(int argc, char *argv[]) {
     }
     start_server(node_ip_address, scheduler_socket_name, NULL, -1,
                  plasma_store_socket_name, NULL, plasma_manager_address,
-                 global_scheduler_exists, start_worker_command);
+                 global_scheduler_exists, start_worker_command,
+                 static_resource_conf);
   } else {
     /* Parse the Redis address into an IP address and a port. */
     char redis_addr[16] = {0};
@@ -530,7 +616,8 @@ int main(int argc, char *argv[]) {
     start_server(node_ip_address, scheduler_socket_name, &redis_addr[0],
                  atoi(redis_port), plasma_store_socket_name,
                  plasma_manager_socket_name, plasma_manager_address,
-                 global_scheduler_exists, start_worker_command);
+                 global_scheduler_exists, start_worker_command,
+                 static_resource_conf);
   }
 }
 #endif
