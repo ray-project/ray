@@ -270,7 +270,8 @@ void dispatch_tasks(local_scheduler_state *state,
   /* Assign as many tasks as we can, while there are workers available. */
   DL_FOREACH_SAFE(algorithm_state->dispatch_task_queue, elt, tmp) {
     if (utarray_len(algorithm_state->available_workers) <= 0) {
-      break; /* No more available workers. We're done */
+      /* There are no more available workers, so we're done. */
+      break;
     }
     /* TODO(atumanov): as an optimization, we can also check if all dynamic
      * capacity is zero and bail early. */
@@ -464,15 +465,13 @@ void handle_task_submitted(local_scheduler_state *state,
    * resource is currently unavailable, then consider queueing task locally and
    * recheck dynamic next time. */
 
-  /* If local node satisfies constraints AND objects are available, then
-   * schedule locally. Else forward to the global scheduler. */
+  /* If this task's constraints are satisfied, dependencies are available
+   * locally, and there is an available worker, then enqueue the task in the
+   * dispatch queue and trigger task dispatch. Otherwise, pass the task along to
+   * the global scheduler if there is one. */
   if (resource_constraints_satisfied(state, spec) &&
       (utarray_len(algorithm_state->available_workers) > 0) &&
       can_run(algorithm_state, spec)) {
-    /* If this task's constraints are satisfied, dependencies are available
-     * locally, and there is an available worker, then enqueue the task in the
-     * dispatch queue and trigger task dispatch. Otherwise, pass the task along
-     * to the global scheduler if there is one. */
     queue_dispatch_task(state, algorithm_state, spec, false);
   } else {
     /* Give the task to the global scheduler to schedule, if it exists. */

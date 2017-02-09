@@ -564,7 +564,7 @@ int main(int argc, char *argv[]) {
     static_resource_conf[CPU_RESOURCE_INDEX] = DEFAULT_NUM_CPUS;
     static_resource_conf[GPU_RESOURCE_INDEX] = DEFAULT_NUM_GPUS;
   } else {
-    /* tokenize the string */
+    /* Tokenize the string. */
     const char delim[2] = ",";
     char *token;
     int idx = 0; /* Index into the resource vector. */

@@ -81,11 +81,11 @@ void free_global_scheduler(global_scheduler_state *state) {
   db_disconnect(state->db);
   utarray_free(state->local_schedulers);
   destroy_global_scheduler_policy(state->policy_state);
-  /* Delete the plasma 2 photon association map. */
+  /* Delete the plasma to photon association map. */
   HASH_ITER(plasma_photon_hh, state->plasma_photon_map, entry, tmp) {
     HASH_DELETE(plasma_photon_hh, state->plasma_photon_map, entry);
-    /* The hash entry is shared with the photon_plasma hashmap and will be
-       freed there. */
+    /* The hash entry is shared with the photon_plasma hashmap and will be freed
+     * there. */
     free(entry->aux_address);
   }
 

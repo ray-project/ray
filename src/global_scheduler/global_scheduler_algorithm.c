@@ -72,14 +72,14 @@ void handle_task_round_robin(global_scheduler_state *state,
   }
 
   if (task_satisfied) {
-    /* Update next index to try and assign the task. */
-    policy_state->round_robin_index = i; /* i was advanced. */
+    /* Update next index to try and assign the task. Note that the counter i has
+     * been advanced. */
+    policy_state->round_robin_index = i;
     assign_task_to_local_scheduler(state, task, scheduler->id);
   } else {
     /* TODO(atumanov): propagate the error to the driver, which submitted
      * this impossible task and/or cache the task to consider when new
-     * local schedulers register.
-     */
+     * local schedulers register. */
   }
 }
 
@@ -114,7 +114,8 @@ object_size_entry *create_object_size_hashmap(global_scheduler_state *state,
               obj_info_entry->data_size);
     /* Object is known to the scheduler. For each of its locations, add size. */
     int64_t object_size = obj_info_entry->data_size;
-    *task_data_size += object_size; /* Add each object's size to task's size. */
+    /* Add each object's size to task's size. */
+    *task_data_size += object_size;
     char **p = NULL;
     char id_string[ID_STRING_SIZE];
     LOG_DEBUG("locations for an arg_by_ref obj_id = %s",
@@ -212,9 +213,8 @@ double calculate_object_size_fraction(global_scheduler_state *state,
     /* Does this node contribute anything to this task object size? */
     /* Lookup scheduler->id in photon_plasma_map to get plasma aux address,
      * which is used as the key for object_size_table.
-     * The use the plasma aux address to locate object_size this node
-     * contributes.
-     */
+     * This uses the plasma aux address to locate the object_size this node
+     * contributes. */
     aux_address_entry *photon_plasma_pair = NULL;
     HASH_FIND(photon_plasma_hh, state->photon_plasma_map, &(scheduler->id),
               sizeof(scheduler->id), photon_plasma_pair);
