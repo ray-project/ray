@@ -15,6 +15,12 @@ sudo apt-get install -y cmake build-essential autoconf curl libtool libboost-all
 pip install numpy cloudpickle funcsigs colorama psutil redis
 ```
 
+If you are using Anaconda, you may also need to run the following.
+
+```
+conda install libgcc
+```
+
 # Install Ray
 
 Ray can be built from the repository as follows.
