@@ -380,6 +380,10 @@ class APITest(unittest.TestCase):
     self.assertEqual(len(ready_ids), 1)
     self.assertEqual(len(remaining_ids), 3)
 
+    # Verify that calling wait with duplicate object IDs throws an exception.
+    x = ray.put(1)
+    self.assertRaises(Exception, lambda : ray.wait([x, x]))
+
     ray.worker.cleanup()
 
   def testMultipleWaitsAndGets(self):
