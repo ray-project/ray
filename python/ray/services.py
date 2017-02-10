@@ -257,7 +257,7 @@ def start_redis(port=None, num_retries=20, cleanup=True, redirect_output=False):
   redis_client.set("redis_start_time", time.time())
   return port
 
-def start_global_scheduler(redis_address, cleanup=True, redirect_output=False):
+def start_global_scheduler(redis_address, cleanup=True, redirect_stdout=None, redirect_stderr=None):
   """Start a global scheduler process.
 
   Args:
@@ -268,7 +268,7 @@ def start_global_scheduler(redis_address, cleanup=True, redirect_output=False):
     redirect_output (bool): True if stdout and stderr should be redirected to
       /dev/null.
   """
-  p = global_scheduler.start_global_scheduler(redis_address, redirect_output=redirect_output)
+  p = global_scheduler.start_global_scheduler(redis_address, redirect_stdout=redirect_stdout,redirect_stderr=redirect_stderr)
   if cleanup:
     all_processes[PROCESS_TYPE_GLOBAL_SCHEDULER].append(p)
 
@@ -395,6 +395,10 @@ def start_local_scheduler(redis_address,
   if num_gpus is None:
     # By default, assume this node has no GPUs.
     num_gpus = 0
+  if redirect_output:
+    (redirect_stdout, redirect_stderr) = new_log_files("local_scheduler")
+  else:
+    (redirect_stdout, redirect_stderr) = (None, None)
   local_scheduler_name, p = photon.start_local_scheduler(plasma_store_name,
                                                          plasma_manager_name,
                                                          worker_path=worker_path,
@@ -402,7 +406,8 @@ def start_local_scheduler(redis_address,
                                                          redis_address=redis_address,
                                                          plasma_address=plasma_address,
                                                          use_profiler=RUN_PHOTON_PROFILER,
-                                                         redirect_output=redirect_output,
+                                                         redirect_stdout=redirect_stdout,
+                                                         redirect_stderr=redirect_stderr,
                                                          static_resource_list=[num_cpus, num_gpus],
                                                          num_workers=num_workers)
   if cleanup:
@@ -451,13 +456,21 @@ def start_objstore(node_ip_address, redis_address, object_manager_port=None,
     else:
       objstore_memory = int(system_memory * 0.8)
   # Start the Plasma store.
-  plasma_store_name, p1 = plasma.start_plasma_store(plasma_store_memory=objstore_memory, use_profiler=RUN_PLASMA_STORE_PROFILER, redirect_output=redirect_output)
+  if redirect_output:
+    (redirect_stdout, redirect_stderr) = new_log_files("plasma_store")
+  else:
+    (redirect_stdout, redirect_stderr) = (None, None)
+  plasma_store_name, p1 = plasma.start_plasma_store(plasma_store_memory=objstore_memory, use_profiler=RUN_PLASMA_STORE_PROFILER, redirect_stdout=redirect_stdout, redirect_stderr=redirect_stderr)
   # Start the plasma manager.
+  if redirect_output:
+    (redirect_stdout, redirect_stderr) = new_log_files("plasma_manager")
+  else:
+    (redirect_stdout, redirect_stderr) = (None, None)
   if object_manager_port is not None:
-    plasma_manager_name, p2, plasma_manager_port = plasma.start_plasma_manager(plasma_store_name, redis_address, plasma_manager_port=object_manager_port, node_ip_address=node_ip_address, num_retries=1, run_profiler=RUN_PLASMA_MANAGER_PROFILER, redirect_output=redirect_output)
+    plasma_manager_name, p2, plasma_manager_port = plasma.start_plasma_manager(plasma_store_name, redis_address, plasma_manager_port=object_manager_port, node_ip_address=node_ip_address, num_retries=1, run_profiler=RUN_PLASMA_MANAGER_PROFILER, redirect_stdout=redirect_stdout, redirect_stderr=redirect_stderr)
     assert plasma_manager_port == object_manager_port
   else:
-    plasma_manager_name, p2, plasma_manager_port = plasma.start_plasma_manager(plasma_store_name, redis_address, node_ip_address=node_ip_address, run_profiler=RUN_PLASMA_MANAGER_PROFILER, redirect_output=redirect_output)
+    plasma_manager_name, p2, plasma_manager_port = plasma.start_plasma_manager(plasma_store_name, redis_address, node_ip_address=node_ip_address, run_profiler=RUN_PLASMA_MANAGER_PROFILER, redirect_stdout=redirect_stdout, redirect_stderr=redirect_stderr)
   if cleanup:
     all_processes[PROCESS_TYPE_PLASMA_STORE].append(p1)
     all_processes[PROCESS_TYPE_PLASMA_MANAGER].append(p2)
@@ -465,7 +478,7 @@ def start_objstore(node_ip_address, redis_address, object_manager_port=None,
   return ObjectStoreAddress(plasma_store_name, plasma_manager_name,
                             plasma_manager_port)
 
-def start_worker(node_ip_address, object_store_name, object_store_manager_name, local_scheduler_name, redis_address, worker_path, cleanup=True, redirect_output=False):
+def start_worker(node_ip_address, object_store_name, object_store_manager_name, local_scheduler_name, redis_address, worker_path, cleanup=True, redirect_stdout=None, redirect_stderr=None):
   """This method starts a worker process.
 
   Args:
@@ -490,10 +503,11 @@ def start_worker(node_ip_address, object_store_name, object_store_manager_name, 
              "--object-store-manager-name=" + object_store_manager_name,
              "--local-scheduler-name=" + local_scheduler_name,
              "--redis-address=" + str(redis_address)]
-  with open(os.devnull, "w") as FNULL:
-    stdout = FNULL if redirect_output else None
-    stderr = FNULL if redirect_output else None
-    p = subprocess.Popen(command, stdout=stdout, stderr=stderr)
+  stdout = open(redirect_stdout, "a") if redirect_stdout else None
+  stderr = open(redirect_stderr, "a") if redirect_stderr else None
+  stdout = FNULL if redirect_output else None
+  stderr = FNULL if redirect_output else None
+  p = subprocess.Popen(command, stdout=stdout, stderr=stderr)
   if cleanup:
     all_processes[PROCESS_TYPE_WORKER].append(p)
 
@@ -548,6 +562,7 @@ def start_ray_processes(address_info=None,
     A dictionary of the address information for the processes that were
       started.
   """
+  start_workers_from_local_scheduler=True
   if not isinstance(num_cpus, list):
     num_cpus = num_local_schedulers * [num_cpus]
   if not isinstance(num_gpus, list):
@@ -591,8 +606,13 @@ def start_ray_processes(address_info=None,
 
   # Start the global scheduler, if necessary.
   if include_global_scheduler:
+    if redirect_output:
+      (redirect_stdout, redirect_stderr) = new_log_files("global_scheduler")
+    else:
+      (redirect_stdout, redirect_stderr) = (None, None)
     start_global_scheduler(redis_address, cleanup=cleanup,
-                           redirect_output=redirect_output)
+                           redirect_stdout=redirect_stdout,
+                           redirect_stderr=redirect_stderr)
 
   # Initialize with existing services.
   if "object_store_addresses" not in address_info:
@@ -662,6 +682,10 @@ def start_ray_processes(address_info=None,
     object_store_address = object_store_addresses[i]
     local_scheduler_name = local_scheduler_socket_names[i]
     for j in range(num_local_scheduler_workers):
+      if redirect_output:
+        (redirect_stdout, redirect_stderr) = new_log_files("worker")
+      else:
+        (redirect_stdout, redirect_stderr) = (None, None)
       start_worker(node_ip_address,
                    object_store_address.name,
                    object_store_address.manager_name,
@@ -669,7 +693,8 @@ def start_ray_processes(address_info=None,
                    redis_address,
                    worker_path,
                    cleanup=cleanup,
-                   redirect_output=redirect_output)
+                   redirect_stdout=redirect_stdout,
+                   redirect_stderr=redirect_stderr)
       num_workers_per_local_scheduler[i] -= 1
 
   # Make sure that we've started all the workers.
@@ -789,3 +814,21 @@ def start_ray_head(address_info=None,
                              start_workers_from_local_scheduler=start_workers_from_local_scheduler,
                              num_cpus=num_cpus,
                              num_gpus=num_gpus)
+
+def new_log_files(name):
+  """Generate partially randomized filenames for log files.
+
+  Args:
+    name (string): descriptive string for this log file.
+
+  Returns:
+    A tuple of the format (standard out filename, standard error filename).
+
+  """
+  logsdir = "/tmp/raylogs"
+  if not os.path.exists(logsdir):
+    os.makedirs(logsdir)
+  log_id = random.randint(0,100000)
+  log_stdout = "{}/{}-{:06d}.out".format(logsdir, name, log_id)
+  log_stderr = "{}/{}-{:06d}.err".format(logsdir, name, log_id)
+  return (log_stdout, log_stderr)
