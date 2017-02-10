@@ -11,11 +11,17 @@ import time
 def random_name():
   return str(random.randint(0, 99999999))
 
-def start_local_scheduler(plasma_store_name, plasma_manager_name=None,
-                          worker_path=None, plasma_address=None,
-                          node_ip_address="127.0.0.1", redis_address=None,
-                          use_valgrind=False, use_profiler=False,
-                          redirect_output=False, static_resource_list=None):
+def start_local_scheduler(plasma_store_name,
+                          plasma_manager_name=None,
+                          worker_path=None,
+                          plasma_address=None,
+                          node_ip_address="127.0.0.1",
+                          redis_address=None,
+                          use_valgrind=False,
+                          use_profiler=False,
+                          redirect_output=False,
+                          static_resource_list=None,
+                          num_workers=0):
   """Start a local scheduler process.
 
   Args:
@@ -41,6 +47,8 @@ def start_local_scheduler(plasma_store_name, plasma_manager_name=None,
     static_resource_list (list): A list of integers specifying the local
       scheduler's resource capacities. The resources should appear in an order
       matching the order defined in task.h.
+    num_workers (int): The number of workers that the local scheduler should
+      start.
 
   Return:
     A tuple of the name of the local scheduler socket and the process ID of the
@@ -52,7 +60,12 @@ def start_local_scheduler(plasma_store_name, plasma_manager_name=None,
     raise Exception("Cannot use valgrind and profiler at the same time.")
   local_scheduler_executable = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../core/src/photon/photon_scheduler")
   local_scheduler_name = "/tmp/scheduler{}".format(random_name())
-  command = [local_scheduler_executable, "-s", local_scheduler_name, "-p", plasma_store_name, "-h", node_ip_address]
+  command = [local_scheduler_executable,
+             "-s", local_scheduler_name,
+             "-p", plasma_store_name,
+             "-h", node_ip_address,
+             "-n", str(num_workers),
+             ]
   if plasma_manager_name is not None:
     command += ["-m", plasma_manager_name]
   if worker_path is not None:

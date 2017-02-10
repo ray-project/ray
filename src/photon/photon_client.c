@@ -7,6 +7,11 @@
 photon_conn *photon_connect(const char *photon_socket) {
   photon_conn *result = malloc(sizeof(photon_conn));
   result->conn = connect_ipc_sock(photon_socket);
+  /* If this is a worker, register the process ID with the local scheduler. */
+  pid_t my_pid = getpid();
+  int success = write_message(result->conn, REGISTER_PID, sizeof(my_pid),
+                              (uint8_t *) &my_pid);
+  CHECKM(success == 0, "Unable to register worker with local scheduler");
   return result;
 }
 
