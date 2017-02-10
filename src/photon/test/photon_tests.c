@@ -33,8 +33,11 @@ int64_t timeout_handler(event_loop *loop, int64_t id, void *context) {
 }
 
 typedef struct {
-  /** A socket to mock the Plasma store. */
-  int plasma_fd;
+  /** A socket to mock the Plasma manager. Clients (such as workers) that
+   *  connect to this file descriptor must be accepted. */
+  int plasma_manager_fd;
+  /** A socket to communicate with the Plasma store. */
+  int plasma_store_fd;
   /** Photon's socket for IPC requests. */
   int photon_fd;
   /** Photon's local scheduler state. */
@@ -64,14 +67,13 @@ photon_mock *init_photon_mock(bool connect_to_redis,
   memset(mock, 0, sizeof(photon_mock));
   mock->loop = event_loop_create();
   /* Bind to the Photon port and initialize the Photon scheduler. */
-  /* TODO(rkn): Why are we reusing mock->plasma_fd for both the store and the
-   * manager? */
-  UT_string *plasma_manager_socket_name =
-      bind_ipc_sock_retry(plasma_manager_socket_name_format, &mock->plasma_fd);
-  mock->plasma_fd = socket_connect_retry(plasma_store_socket_name, 5, 100);
+  UT_string *plasma_manager_socket_name = bind_ipc_sock_retry(
+      plasma_manager_socket_name_format, &mock->plasma_manager_fd);
+  mock->plasma_store_fd =
+      socket_connect_retry(plasma_store_socket_name, 5, 100);
   UT_string *photon_socket_name =
       bind_ipc_sock_retry(photon_socket_name_format, &mock->photon_fd);
-  CHECK(mock->plasma_fd >= 0 && mock->photon_fd >= 0);
+  CHECK(mock->plasma_store_fd >= 0 && mock->photon_fd >= 0);
 
   UT_string *worker_command;
   utstring_new(worker_command);
@@ -89,6 +91,11 @@ photon_mock *init_photon_mock(bool connect_to_redis,
       utstring_body(photon_socket_name), plasma_store_socket_name,
       utstring_body(plasma_manager_socket_name), NULL, false,
       static_resource_conf, utstring_body(worker_command), num_workers);
+
+  /* Accept the workers as clients to the plasma manager. */
+  for (int i = 0; i < num_workers; ++i) {
+    accept_client(mock->plasma_manager_fd);
+  }
 
   /* Connect a Photon client. */
   mock->num_photon_conns = num_mock_workers;
@@ -110,9 +117,10 @@ void destroy_photon_mock(photon_mock *mock) {
     photon_disconnect(mock->conns[i]);
   }
   free(mock->conns);
-  close(mock->plasma_fd);
   /* This also frees mock->loop. */
   free_local_scheduler(mock->photon_state);
+  close(mock->plasma_store_fd);
+  close(mock->plasma_manager_fd);
   free(mock);
 }
 
@@ -548,6 +556,9 @@ TEST start_kill_workers_test(void) {
 
   /* Start a worker after the local scheduler has been initialized. */
   start_worker(photon->photon_state);
+  /* Accept the workers as clients to the plasma manager. */
+  int new_worker_fd = accept_client(photon->plasma_manager_fd);
+  /* The new worker should register its process ID. */
   ASSERT_EQ(utarray_len(photon->photon_state->child_pids), 1);
   ASSERT_EQ(utarray_len(photon->photon_state->workers), num_workers - 1);
   /* Make sure the new worker connects to the photon scheduler. */
@@ -563,6 +574,7 @@ TEST start_kill_workers_test(void) {
   ASSERT_EQ(utarray_len(photon->photon_state->workers), num_workers);
 
   /* Clean up. */
+  close(new_worker_fd);
   destroy_photon_mock(photon);
   PASS();
 }
