@@ -20,6 +20,7 @@ static int PyPhotonClient_init(PyPhotonClient *self,
   if (!PyArg_ParseTuple(args, "s", &socket_name)) {
     return -1;
   }
+  /* Connect to the Photon scheduler. */
   self->photon_connection = photon_connect(socket_name);
   return 0;
 }

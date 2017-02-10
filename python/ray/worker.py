@@ -735,9 +735,15 @@ def get_address_info_from_redis(redis_address, node_ip_address, num_retries=5):
       time.sleep(1)
     counter += 1
 
-def _init(address_info=None, start_ray_local=False, object_id_seed=None,
-          num_workers=None, num_local_schedulers=None,
-          driver_mode=SCRIPT_MODE, num_cpus=None, num_gpus=None):
+def _init(address_info=None,
+          start_ray_local=False,
+          object_id_seed=None,
+          num_workers=None,
+          num_local_schedulers=None,
+          driver_mode=SCRIPT_MODE,
+          start_workers_from_local_scheduler=True,
+          num_cpus=None,
+          num_gpus=None):
   """Helper method to connect to an existing Ray cluster or start a new one.
 
   This method handles two cases. Either a Ray cluster already exists and we
@@ -764,6 +770,9 @@ def _init(address_info=None, start_ray_local=False, object_id_seed=None,
       only provided if start_ray_local is True.
     driver_mode (bool): The mode in which to start the driver. This should be
       one of ray.SCRIPT_MODE, ray.PYTHON_MODE, and ray.SILENT_MODE.
+    start_workers_from_local_scheduler (bool): If this flag is True, then start
+      the initial workers from the local scheduler. Else, start them from
+      Python. The latter case is for debugging purposes only.
     num_cpus: A list containing the number of CPUs the local schedulers should
       be configured with.
     num_gpus: A list containing the number of GPUs the local schedulers should
@@ -815,7 +824,9 @@ def _init(address_info=None, start_ray_local=False, object_id_seed=None,
                                            node_ip_address=node_ip_address,
                                            num_workers=num_workers,
                                            num_local_schedulers=num_local_schedulers,
-                                           num_cpus=num_cpus, num_gpus=num_gpus)
+                                           start_workers_from_local_scheduler=start_workers_from_local_scheduler,
+                                           num_cpus=num_cpus,
+                                           num_gpus=num_gpus)
   else:
     if redis_address is None:
       raise Exception("If start_ray_local=False, then redis_address must be provided.")

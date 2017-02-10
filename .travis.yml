@@ -53,6 +53,8 @@ install:
   - ./.travis/install-dependencies.sh
   - ./.travis/install-ray.sh
 
+  - if [[ "$PYTHON" == "3.5" ]]; then export PATH="$HOME/miniconda/bin:$PATH"; fi
+
   - cd python/core
   - bash ../../src/common/test/run_tests.sh
   - bash ../../src/plasma/test/run_tests.sh

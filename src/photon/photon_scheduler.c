@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include "common.h"
@@ -22,6 +23,8 @@
 
 UT_icd task_ptr_icd = {sizeof(task *), NULL, NULL, NULL};
 UT_icd workers_icd = {sizeof(local_scheduler_client *), NULL, NULL, NULL};
+
+UT_icd pid_t_icd = {sizeof(pid_t), NULL, NULL, NULL};
 
 UT_icd byte_icd = {sizeof(uint8_t), NULL, NULL, NULL};
 
@@ -53,6 +56,184 @@ void print_resource_info(const local_scheduler_state *state,
 #endif
 }
 
+/**
+ * Kill a worker, if it is a child process, and clean up all of its associated
+ * state.
+ *
+ * @param worker A pointer to the worker we want to kill.
+ * @param wait A bool representing whether we should wait for the worker's
+ *        process to exit. If the worker is not a child process, this flag is
+ *        ignored.
+ * @return Void.
+ */
+void kill_worker(local_scheduler_client *worker, bool wait) {
+  /* Erase the worker from the array of workers. */
+  local_scheduler_state *state = worker->local_scheduler_state;
+  int num_workers = utarray_len(state->workers);
+  for (int i = 0; i < utarray_len(state->workers); ++i) {
+    local_scheduler_client *active_worker =
+        *(local_scheduler_client **) utarray_eltptr(state->workers, i);
+    if (active_worker == worker) {
+      utarray_erase(state->workers, i, 1);
+    }
+  }
+  /* Make sure that we erased exactly 1 worker. */
+  CHECKM(!(utarray_len(state->workers) < num_workers - 1),
+         "Found duplicate workers");
+  CHECKM(utarray_len(state->workers) != num_workers,
+         "Tried to kill worker that doesn't exist");
+
+  /* Remove the client socket from the event loop so that we don't process the
+   * SIGPIPE when the worker is killed. */
+  event_loop_remove_file(worker->local_scheduler_state->loop, worker->sock);
+
+  /* If the worker has registered a process ID with us and it's a child
+   * process, use it to send a kill signal. */
+  if (worker->is_child && worker->pid != 0) {
+    kill(worker->pid, SIGKILL);
+    if (wait) {
+      /* Wait for the process to exit. */
+      waitpid(worker->pid, NULL, 0);
+    }
+  }
+
+  /* Clean up the client socket after killing the worker so that the worker
+   * can't receive the SIGPIPE before exiting. */
+  close(worker->sock);
+
+  /* Clean up the task in progress. */
+  if (worker->task_in_progress) {
+    /* TODO(swang): Update the task table to mark the task as lost. */
+    free_task(worker->task_in_progress);
+  }
+
+  LOG_DEBUG("Killed worker with pid %d", worker->pid);
+  free(worker);
+}
+
+void free_local_scheduler(local_scheduler_state *state) {
+  /* Free the command for starting new workers. */
+  if (state->config.start_worker_command != NULL) {
+    int i = 0;
+    const char *arg = state->config.start_worker_command[i];
+    while (arg != NULL) {
+      free((void *) arg);
+      ++i;
+      arg = state->config.start_worker_command[i];
+    }
+    free(state->config.start_worker_command);
+    state->config.start_worker_command = NULL;
+  }
+
+  /* Disconnect from the database. */
+  if (state->db != NULL) {
+    db_disconnect(state->db);
+    state->db = NULL;
+  }
+  /* Disconnect from plasma. */
+  plasma_disconnect(state->plasma_conn);
+  state->plasma_conn = NULL;
+
+  /* Kill any child processes that didn't register as a worker yet. */
+  pid_t *worker_pid;
+  for (worker_pid = (pid_t *) utarray_front(state->child_pids);
+       worker_pid != NULL;
+       worker_pid = (pid_t *) utarray_next(state->child_pids, worker_pid)) {
+    kill(*worker_pid, SIGKILL);
+    waitpid(*worker_pid, NULL, 0);
+    LOG_DEBUG("Killed pid %d", *worker_pid);
+  }
+  utarray_free(state->child_pids);
+
+  /* Free the list of workers and any tasks that are still in progress on those
+   * workers. */
+  for (local_scheduler_client **worker =
+           (local_scheduler_client **) utarray_front(state->workers);
+       worker != NULL;
+       worker = (local_scheduler_client **) utarray_front(state->workers)) {
+    kill_worker(*worker, true);
+  }
+  utarray_free(state->workers);
+  state->workers = NULL;
+
+  /* Free the algorithm state. */
+  free_scheduling_algorithm_state(state->algorithm_state);
+  state->algorithm_state = NULL;
+  /* Free the input buffer. */
+  utarray_free(state->input_buffer);
+  state->input_buffer = NULL;
+  /* Destroy the event loop. */
+  event_loop_destroy(state->loop);
+  state->loop = NULL;
+  /* Free the scheduler state. */
+  free(state);
+}
+
+/**
+ * Start a new worker as a child process.
+ *
+ * @param state The state of the local scheduler.
+ * @return Void.
+ */
+void start_worker(local_scheduler_state *state) {
+  /* We can't start a worker if we don't have the path to the worker script. */
+  CHECK(state->config.start_worker_command != NULL);
+  /* Launch the process to create the worker. */
+  pid_t pid = fork();
+  if (pid != 0) {
+    utarray_push_back(state->child_pids, &pid);
+    LOG_DEBUG("Started worker with pid %d", pid);
+    return;
+  }
+
+  /* Try to execute the worker command. Exit if we're not successful. */
+  execvp(state->config.start_worker_command[0],
+         (char *const *) state->config.start_worker_command);
+  free_local_scheduler(state);
+  LOG_FATAL("Failed to start worker");
+}
+
+/**
+ * Parse the command to start a worker. This takes in the command string,
+ * splits it into tokens on the space characters, and allocates an array of the
+ * tokens, terminated by a NULL pointer.
+ *
+ * @param command The command string to start a worker.
+ * @return A pointer to an array of strings, the tokens in the command string.
+ *         The last element is a NULL pointer.
+ */
+const char **parse_command(const char *command) {
+  /* Count the number of tokens. */
+  char *command_copy = strdup(command);
+  const char *delimiter = " ";
+  char *token = NULL;
+  int num_args = 0;
+  token = strtok(command_copy, delimiter);
+  while (token != NULL) {
+    ++num_args;
+    token = strtok(NULL, delimiter);
+  }
+  free(command_copy);
+
+  /* Allocate a NULL-terminated array for the tokens. */
+  const char **command_args = malloc((num_args + 1) * sizeof(const char *));
+  command_args[num_args] = NULL;
+
+  /* Fill in the token array. */
+  command_copy = strdup(command);
+  token = strtok(command_copy, delimiter);
+  int i = 0;
+  while (token != NULL) {
+    command_args[i] = strdup(token);
+    ++i;
+    token = strtok(NULL, delimiter);
+  }
+  free(command_copy);
+
+  CHECK(num_args == i);
+  return command_args;
+}
+
 local_scheduler_state *init_local_scheduler(
     const char *node_ip_address,
     event_loop *loop,
@@ -63,12 +244,13 @@ local_scheduler_state *init_local_scheduler(
     const char *plasma_manager_socket_name,
     const char *plasma_manager_address,
     bool global_scheduler_exists,
+    const double static_resource_conf[],
     const char *start_worker_command,
-    const double static_resource_conf[]) {
+    int num_workers) {
   local_scheduler_state *state = malloc(sizeof(local_scheduler_state));
   /* Set the configuration struct for the local scheduler. */
   if (start_worker_command != NULL) {
-    state->config.start_worker_command = strdup(start_worker_command);
+    state->config.start_worker_command = parse_command(start_worker_command);
   } else {
     state->config.start_worker_command = NULL;
   }
@@ -123,52 +305,15 @@ local_scheduler_state *init_local_scheduler(
   }
   /* Print some debug information about resource configuration. */
   print_resource_info(state, NULL);
+
+  /* Start the initial set of workers. */
+  utarray_new(state->child_pids, &pid_t_icd);
+  for (int i = 0; i < num_workers; ++i) {
+    start_worker(state);
+  }
+
   return state;
 };
-
-void free_local_scheduler(local_scheduler_state *state) {
-  /* Free the command for starting new workers. */
-  if (state->config.start_worker_command != NULL) {
-    free(state->config.start_worker_command);
-    state->config.start_worker_command = NULL;
-  }
-
-  /* Disconnect from the database. */
-  if (state->db != NULL) {
-    db_disconnect(state->db);
-    state->db = NULL;
-  }
-  /* Disconnect from plasma. */
-  plasma_disconnect(state->plasma_conn);
-  state->plasma_conn = NULL;
-
-  /* Free the list of workers and any tasks that are still in progress on those
-   * workers. */
-  for (int i = 0; i < utarray_len(state->workers); ++i) {
-    local_scheduler_client **worker =
-        (local_scheduler_client **) utarray_eltptr(state->workers, i);
-    if ((*worker)->task_in_progress != NULL) {
-      free_task((*worker)->task_in_progress);
-      (*worker)->task_in_progress = NULL;
-    }
-    free(*worker);
-    *worker = NULL;
-  }
-  utarray_free(state->workers);
-  state->workers = NULL;
-
-  /* Free the algorithm state. */
-  free_scheduling_algorithm_state(state->algorithm_state);
-  state->algorithm_state = NULL;
-  /* Free the input buffer. */
-  utarray_free(state->input_buffer);
-  state->input_buffer = NULL;
-  /* Destroy the event loop. */
-  event_loop_destroy(state->loop);
-  state->loop = NULL;
-  /* Free the scheduler state. */
-  free(state);
-}
 
 void assign_task_to_worker(local_scheduler_state *state,
                            task_spec *spec,
@@ -384,9 +529,32 @@ void process_message(event_loop *loop,
   } break;
   case DISCONNECT_CLIENT: {
     LOG_INFO("Disconnecting client on fd %d", client_sock);
-    event_loop_remove_file(loop, client_sock);
+    kill_worker(worker, false);
   } break;
   case LOG_MESSAGE: {
+  } break;
+  case REGISTER_PID: {
+    pid_t *worker_pid = (pid_t *) utarray_front(state->input_buffer);
+    worker->pid = *worker_pid;
+
+    /* Determine if this worker is one of our child processes. */
+    LOG_DEBUG("Pid is %d", *worker_pid);
+    pid_t *child_pid;
+    int index = 0;
+    for (child_pid = (pid_t *) utarray_front(state->child_pids);
+         child_pid != NULL;
+         child_pid = (pid_t *) utarray_next(state->child_pids, child_pid)) {
+      if (*child_pid == *worker_pid) {
+        /* If this worker is one of our child processes, mark it as a child so
+         * that we know that we can wait for the process to exit during
+         * cleanup. */
+        worker->is_child = true;
+        utarray_erase(state->child_pids, index, 1);
+        LOG_DEBUG("Found matching child pid %d", *worker_pid);
+        break;
+      }
+      ++index;
+    }
   } break;
   default:
     /* This code should be unreachable. */
@@ -405,6 +573,8 @@ void new_client_connection(event_loop *loop,
   local_scheduler_client *worker = malloc(sizeof(local_scheduler_client));
   worker->sock = new_socket;
   worker->task_in_progress = NULL;
+  worker->pid = 0;
+  worker->is_child = false;
   worker->local_scheduler_state = state;
   utarray_push_back(state->workers, &worker);
   event_loop_add_file(loop, new_socket, EVENT_LOOP_READ, process_message,
@@ -417,6 +587,7 @@ void new_client_connection(event_loop *loop,
 local_scheduler_state *g_state;
 
 void signal_handler(int signal) {
+  LOG_DEBUG("Signal was %d", signal);
   if (signal == SIGTERM) {
     free_local_scheduler(g_state);
     exit(0);
@@ -442,14 +613,6 @@ int heartbeat_handler(event_loop *loop, timer_id id, void *context) {
   return LOCAL_SCHEDULER_HEARTBEAT_TIMEOUT_MILLISECONDS;
 }
 
-void start_new_worker(local_scheduler_state *state) {
-  /* We can't start a worker if we don't have the path to the worker script. */
-  CHECK(state->config.start_worker_command != NULL);
-  /* Launch the process to create the worker. */
-  FILE *p = popen(state->config.start_worker_command, "r");
-  UNUSED(p);
-}
-
 void start_server(const char *node_ip_address,
                   const char *socket_name,
                   const char *redis_addr,
@@ -458,8 +621,9 @@ void start_server(const char *node_ip_address,
                   const char *plasma_manager_socket_name,
                   const char *plasma_manager_address,
                   bool global_scheduler_exists,
+                  const double static_resource_conf[],
                   const char *start_worker_command,
-                  const double static_resource_conf[]) {
+                  int num_workers) {
   /* Ignore SIGPIPE signals. If we don't do this, then when we attempt to write
    * to a client that has already died, the local scheduler could die. */
   signal(SIGPIPE, SIG_IGN);
@@ -468,8 +632,8 @@ void start_server(const char *node_ip_address,
   g_state = init_local_scheduler(
       node_ip_address, loop, redis_addr, redis_port, socket_name,
       plasma_store_socket_name, plasma_manager_socket_name,
-      plasma_manager_address, global_scheduler_exists, start_worker_command,
-      static_resource_conf);
+      plasma_manager_address, global_scheduler_exists, static_resource_conf,
+      start_worker_command, num_workers);
   /* Register a callback for registering new clients. */
   event_loop_add_file(loop, fd, EVENT_LOOP_READ, new_client_connection,
                       g_state);
@@ -518,14 +682,16 @@ int main(int argc, char *argv[]) {
   char *plasma_manager_address = NULL;
   /* The IP address of the node that this local scheduler is running on. */
   char *node_ip_address = NULL;
-  /* The command to run when starting new workers. */
-  char *start_worker_command = NULL;
   /* Comma-separated list of configured resource capabilities for this node. */
   char *static_resource_list = NULL;
   double static_resource_conf[MAX_RESOURCE_INDEX];
+  /* The command to run when starting new workers. */
+  char *start_worker_command = NULL;
+  /* The number of workers to start. */
+  char *num_workers_str = NULL;
   int c;
   bool global_scheduler_exists = true;
-  while ((c = getopt(argc, argv, "s:r:p:m:ga:h:w:c:")) != -1) {
+  while ((c = getopt(argc, argv, "s:r:p:m:ga:h:c:w:n:")) != -1) {
     switch (c) {
     case 's':
       scheduler_socket_name = optarg;
@@ -548,11 +714,14 @@ int main(int argc, char *argv[]) {
     case 'h':
       node_ip_address = optarg;
       break;
+    case 'c':
+      static_resource_list = optarg;
+      break;
     case 'w':
       start_worker_command = optarg;
       break;
-    case 'c':
-      static_resource_list = optarg;
+    case 'n':
+      num_workers_str = optarg;
       break;
     default:
       LOG_FATAL("unknown option %c", c);
@@ -585,6 +754,16 @@ int main(int argc, char *argv[]) {
   if (!node_ip_address) {
     LOG_FATAL("please specify the node IP address with -h switch");
   }
+  int num_workers = 0;
+  if (num_workers_str) {
+    num_workers = strtol(num_workers_str, NULL, 10);
+    if (num_workers < 0) {
+      LOG_FATAL("Number of workers must be nonnegative");
+    }
+  }
+
+  char *redis_addr = NULL;
+  int redis_port = -1;
   if (!redis_addr_port) {
     /* Start the local scheduler without connecting to Redis. In this case, all
      * submitted tasks will be queued and scheduled locally. */
@@ -593,31 +772,34 @@ int main(int argc, char *argv[]) {
           "if a plasma manager socket name is provided with the -m switch, "
           "then a redis address must be provided with the -r switch");
     }
-    start_server(node_ip_address, scheduler_socket_name, NULL, -1,
-                 plasma_store_socket_name, NULL, plasma_manager_address,
-                 global_scheduler_exists, start_worker_command,
-                 static_resource_conf);
   } else {
+    char redis_addr_buffer[16] = {0};
+    char redis_port_str[6] = {0};
     /* Parse the Redis address into an IP address and a port. */
-    char redis_addr[16] = {0};
-    char redis_port[6] = {0};
-    int num_assigned =
-        sscanf(redis_addr_port, "%15[0-9.]:%5[0-9]", redis_addr, redis_port);
+    int num_assigned = sscanf(redis_addr_port, "%15[0-9.]:%5[0-9]",
+                              redis_addr_buffer, redis_port_str);
     if (num_assigned != 2) {
       LOG_FATAL(
           "if a redis address is provided with the -r switch, it should be "
           "formatted like 127.0.0.1:6379");
+    }
+    redis_addr = redis_addr_buffer;
+    redis_port = strtol(redis_port_str, NULL, 10);
+    if (redis_port == 0) {
+      LOG_FATAL("Unable to parse port number from redis address %s",
+                redis_addr_port);
     }
     if (!plasma_manager_socket_name) {
       LOG_FATAL(
           "please specify socket for connecting to Plasma manager with -m "
           "switch");
     }
-    start_server(node_ip_address, scheduler_socket_name, &redis_addr[0],
-                 atoi(redis_port), plasma_store_socket_name,
-                 plasma_manager_socket_name, plasma_manager_address,
-                 global_scheduler_exists, start_worker_command,
-                 static_resource_conf);
   }
+
+  LOG_INFO("Start worker command is %s", start_worker_command);
+  start_server(node_ip_address, scheduler_socket_name, redis_addr, redis_port,
+               plasma_store_socket_name, plasma_manager_socket_name,
+               plasma_manager_address, global_scheduler_exists,
+               static_resource_conf, start_worker_command, num_workers);
 }
 #endif
