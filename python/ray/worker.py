@@ -932,7 +932,7 @@ def custom_excepthook(type, value, tb):
     global_worker.redis_client.hmset(b"Drivers:" + global_worker.worker_id,
                                      {"exception": error_message})
   # Call the normal excepthook.
-  normal_excepthook(type, value, traceback)
+  normal_excepthook(type, value, tb)
 sys.excepthook = custom_excepthook
 
 def print_error_messages(worker):
