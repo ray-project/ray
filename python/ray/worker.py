@@ -524,6 +524,7 @@ class Worker(object):
       # submitted by the current task so far.
       self.task_index += 1
       self.actor_counters[actor_id] += 1
+      print("actor counter for", actor_id, "is", self.actor_counters[actor_id])
       self.photon_client.submit(task)
 
       return task.returns()

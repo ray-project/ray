@@ -668,8 +668,9 @@ void start_new_worker(local_scheduler_state *state, actor_id actor_id) {
   UT_string *start_worker_command = NULL;
   utstring_new(start_worker_command);
   char id_string[ID_STRING_SIZE];
-  utstring_printf(start_worker_command, "%s --actor-id=%s",
+  utstring_printf(start_worker_command, "%s --actor-id=%s > /tmp/worker-%s.txt",
                   state->config.start_worker_command,
+                  object_id_to_string(actor_id, id_string, ID_STRING_SIZE),
                   object_id_to_string(actor_id, id_string, ID_STRING_SIZE));
   FILE *p =
       popen(utstring_body(start_worker_command), "r");

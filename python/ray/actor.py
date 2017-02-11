@@ -107,7 +107,7 @@ def actor(Class):
       self._ray_actor_methods = {k: v for (k, v) in inspect.getmembers(Class, predicate=inspect.isfunction)}
       export_actor(self._ray_actor_id, Class, ray.worker.global_worker)
       # Block until the actor has been registered in the actor worker.
-      print("waiting for lock ", "ActorLock:{}".format(self._ray_actor_id))
+      print("waiting for lock ", "ActorLock:{}".format(self._ray_actor_id.id()))
       ray.worker.global_worker.redis_client.blpop("ActorLock:{}".format(self._ray_actor_id.id()))
       # Call __init__ as a remote function
       actor_method_call(self._ray_actor_id, "__init__", *args, **kwargs)
