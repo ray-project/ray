@@ -524,7 +524,6 @@ class Worker(object):
       # submitted by the current task so far.
       self.task_index += 1
       self.actor_counters[actor_id] += 1
-      print("actor counter for", actor_id, "is", self.actor_counters[actor_id])
       self.photon_client.submit(task)
 
       return task.returns()
@@ -1110,7 +1109,6 @@ def import_thread(worker):
         if worker.actor_id == actor_id:
           worker.fetch_and_register["Actor"](key, worker)
           # Notification that this actor has been registered with the actor worker.
-          print("releasing lock ", "ActorLock:{}".format(worker.actor_id))
           worker.redis_client.lpush("ActorLock:{}".format(worker.actor_id), "done")
       worker.redis_client.hincrby(worker_info_key, "export_counter", 1)
       worker.worker_import_counter += 1
@@ -1139,7 +1137,6 @@ def import_thread(worker):
           if worker.actor_id == actor_id:
             worker.fetch_and_register["Actor"](key, worker)
             # Notification that this actor has been registered with the actor worker.
-            print("releasing lock ", "ActorLock:{}".format(worker.actor_id))
             worker.redis_client.lpush("ActorLock:{}".format(worker.actor_id), "done")
           # raise Exception("This code should be unreachable.")
         worker.redis_client.hincrby(worker_info_key, "export_counter", 1)

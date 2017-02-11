@@ -250,7 +250,6 @@ void add_task_to_actor_queue(local_scheduler_state *state,
   actor_id actor_id = task_spec_actor_id(spec);
   char tmp[ID_STRING_SIZE];
   object_id_to_string(actor_id, tmp, ID_STRING_SIZE);
-  printf("adding task %s\n", tmp);
   DCHECK(!actor_ids_equal(actor_id, NIL_ID));
   /* Get the local actor entry for this actor. */
   local_actor_info *entry;
@@ -347,7 +346,6 @@ bool dispatch_actor_task(local_scheduler_state *state,
   task_queue_entry *first_task = entry->task_queue;
   entry->task_counter += 1;
   assign_task_to_worker(state, first_task->spec, entry->worker);
-  printf("assigned task to worker\n");
   entry->worker_available = false;
   /* Remove the task from the actor's task queue. */
   DL_DELETE(entry->task_queue, first_task);

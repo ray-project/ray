@@ -93,7 +93,6 @@ def actor(Class):
     ray.worker.check_main_thread()
     args = list(args)
     function_id = get_actor_method_function_id(attr)
-    print("executing actor fct. ", function_id.id())
     # TODO(pcm): Extend args with keyword args
     object_ids = ray.worker.global_worker.submit_task(function_id, "", args, actor_id=actor_id)
     if len(object_ids) == 1:
@@ -107,7 +106,6 @@ def actor(Class):
       self._ray_actor_methods = {k: v for (k, v) in inspect.getmembers(Class, predicate=inspect.isfunction)}
       export_actor(self._ray_actor_id, Class, ray.worker.global_worker)
       # Block until the actor has been registered in the actor worker.
-      print("waiting for lock ", "ActorLock:{}".format(self._ray_actor_id.id()))
       ray.worker.global_worker.redis_client.blpop("ActorLock:{}".format(self._ray_actor_id.id()))
       # Call __init__ as a remote function
       actor_method_call(self._ray_actor_id, "__init__", *args, **kwargs)
