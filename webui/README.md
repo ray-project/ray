@@ -28,7 +28,7 @@ The following must be done once.
 First start Ray and note down the address of the Redis server. Then run
 
     cd webui/backend
-    python ray_ui.py --redis-address 127.0.0.1:6379 --port 8888
+    python ray_ui.py --redis-address 127.0.0.1:6379
 
 where you substitute your Redis address appropriately.
 

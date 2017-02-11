@@ -26,6 +26,7 @@ PROCESS_TYPE_PLASMA_MANAGER = "plasma_manager"
 PROCESS_TYPE_PLASMA_STORE = "plasma_store"
 PROCESS_TYPE_GLOBAL_SCHEDULER = "global_scheduler"
 PROCESS_TYPE_REDIS_SERVER = "redis_server"
+PROCESS_TYPE_WEB_UI = "web_ui"
 
 # This is a dictionary tracking all of the processes of different types that
 # have been started by this services module. Note that the order of the keys is
@@ -37,7 +38,8 @@ all_processes = OrderedDict([(PROCESS_TYPE_WORKER, []),
                              (PROCESS_TYPE_PLASMA_MANAGER, []),
                              (PROCESS_TYPE_PLASMA_STORE, []),
                              (PROCESS_TYPE_GLOBAL_SCHEDULER, []),
-                             (PROCESS_TYPE_REDIS_SERVER, [])])
+                             (PROCESS_TYPE_REDIS_SERVER, []),
+                             (PROCESS_TYPE_WEB_UI, [])])
 
 # True if processes are run in the valgrind profiler.
 RUN_PHOTON_PROFILER = False
@@ -260,7 +262,7 @@ def start_global_scheduler(redis_address, cleanup=True, redirect_output=False):
   Args:
     redis_address (str): The address of the Redis instance.
     cleanup (bool): True if using Ray in local mode. If cleanup is true, then
-      this process will be killed by serices.cleanup() when the Python process
+      this process will be killed by services.cleanup() when the Python process
       that imported services exits.
     redirect_output (bool): True if stdout and stderr should be redirected to
       /dev/null.
@@ -268,6 +270,66 @@ def start_global_scheduler(redis_address, cleanup=True, redirect_output=False):
   p = global_scheduler.start_global_scheduler(redis_address, redirect_output=redirect_output)
   if cleanup:
     all_processes[PROCESS_TYPE_GLOBAL_SCHEDULER].append(p)
+
+def start_webui(redis_address, cleanup=True, redirect_output=False):
+  """Attempt to start the Ray web UI.
+
+  Args:
+    redis_address (str): The address of the Redis server.
+    cleanup (bool): True if using Ray in local mode. If cleanup is True, then
+      this process will be killed by services.cleanup() when the Python process
+      that imported services exits.
+    redirect_output (bool): True if stdout and stderr should be redirected to
+      /dev/null.
+
+  Return:
+    True if the web UI was successfully started, otherwise false.
+  """
+  webui_backend_filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../webui/backend/ray_ui.py")
+  webui_directory = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../webui/")
+
+  if sys.version_info < (3, 0):
+    print("Not starting the web UI because the web UI requires Python 3.")
+    return False
+
+  with open(os.devnull, "w") as FNULL:
+    stdout = FNULL if redirect_output else None
+    stderr = FNULL if redirect_output else None
+    backend_process = subprocess.Popen(["python", webui_backend_filepath,
+                                        "--redis-address", redis_address],
+                                        stdout=stdout, stderr=stderr)
+
+  time.sleep(0.1)
+  if backend_process.poll() is not None:
+    # Failed to start the web UI.
+    print("The web UI failed to start.")
+    # Kill the backend since it won't work without polymer.
+    backend_process.kill()
+    return False
+
+  try:
+    with open(os.devnull, "w") as FNULL:
+      stdout = FNULL if redirect_output else None
+      stderr = FNULL if redirect_output else None
+      polymer_process = subprocess.Popen(["polymer", "serve"],
+                                         cwd=webui_directory,
+                                         stdout=stdout, stderr=stderr)
+  except Exception as e:
+    pass
+
+  time.sleep(0.1)
+  if polymer_process.poll() is not None:
+    # Failed to start polymer.
+    print("Failed to serve the web UI with polymer.")
+    # Kill the backend since it won't work without polymer.
+    backend_process.kill()
+    return False
+
+  if cleanup:
+    all_processes[PROCESS_TYPE_WEB_UI].append(backend_process)
+    all_processes[PROCESS_TYPE_WEB_UI].append(polymer_process)
+
+  return True
 
 def start_local_scheduler(redis_address,
                           node_ip_address,
@@ -414,6 +476,7 @@ def start_ray_processes(address_info=None,
                         redirect_output=False,
                         include_global_scheduler=False,
                         include_redis=False,
+                        include_webui=False,
                         start_workers_from_local_scheduler=True,
                         num_cpus=None,
                         num_gpus=None):
@@ -441,6 +504,8 @@ def start_ray_processes(address_info=None,
       start a global scheduler process.
     include_redis (bool): If include_redis is True, then start a Redis server
       process.
+    include_webui (bool): If True, then attempt to start the web UI. Note that
+      this is only possible with Python 3.
     start_workers_from_local_scheduler (bool): If this flag is True, then start
       the initial workers from the local scheduler. Else, start them from
       Python.
@@ -579,6 +644,14 @@ def start_ray_processes(address_info=None,
   # Make sure that we've started all the workers.
   assert(sum(num_workers_per_local_scheduler) == 0)
 
+  # Try to start the web UI.
+  if include_webui:
+    successfully_started = start_webui(redis_address, cleanup=cleanup,
+                                       redirect_output=True)
+
+    if successfully_started:
+      print("View the web UI at http://localhost:8080.")
+
   # Return the addresses of the relevant processes.
   return address_info
 
@@ -681,6 +754,7 @@ def start_ray_head(address_info=None,
                              redirect_output=redirect_output,
                              include_global_scheduler=True,
                              include_redis=True,
+                             include_webui=True,
                              start_workers_from_local_scheduler=start_workers_from_local_scheduler,
                              num_cpus=num_cpus,
                              num_gpus=num_gpus)

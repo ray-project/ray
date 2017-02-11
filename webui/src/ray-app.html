@@ -71,6 +71,7 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
         <app-toolbar>Menu</app-toolbar>
         <iron-selector selected="[[page]]" attr-for-selected="name" class="drawer-list" role="navigation">
           <a name="overview" href="/overview">Overview</a>
+          <a name="cluster-health" href="/cluster-health">Cluster Health</a>
           <a name="objects" href="/objects">Objects</a>
           <a name="tasks" href="/tasks">Tasks</a>
           <a name="events" href="/events">Events</a>
@@ -95,6 +96,7 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
             fallback-selection="view404"
             role="main">
           <ray-overview name="overview"></ray-overview>
+          <ray-cluster-health name="cluster-health"></ray-cluster-health>
           <ray-objects name="objects"></ray-objects>
           <ray-tasks name="tasks"></ray-tasks>
           <ray-events name="events"></ray-events>

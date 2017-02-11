@@ -6,17 +6,21 @@ from collections import defaultdict
 import datetime
 import json
 import numpy as np
+import os
 import redis
+import sys
 import time
 import websockets
 
 parser = argparse.ArgumentParser(description="parse information for the web ui")
-parser.add_argument("--port", type=int, help="port to use for the web ui")
 parser.add_argument("--redis-address", required=True, type=str, help="the address to use for redis")
 
 loop = asyncio.get_event_loop()
 
 IDENTIFIER_LENGTH = 20
+
+# This prefix must match the value defined in ray_redis_module.c.
+DB_CLIENT_PREFIX = b"CL:"
 
 def hex_identifier(identifier):
   return binascii.hexlify(identifier).decode()
@@ -40,6 +44,9 @@ def key_to_hex_identifiers(key):
   return worker_id, task_id
 
 worker_ids = []
+
+# Cache information about the local schedulers.
+local_schedulers = {}
 
 def duration_to_string(duration):
   """Format a duration in seconds as a string.
@@ -161,6 +168,53 @@ async def handle_get_recent_tasks(websocket, redis_conn, num_tasks):
              "task_data": task_data}
     await websocket.send(json.dumps(reply))
 
+async def send_heartbeat_payload(websocket):
+  """Send heartbeat updates to the frontend every half second."""
+  while True:
+    reply = []
+    for local_scheduler_id, local_scheduler in local_schedulers.items():
+      current_time = time.time()
+      local_scheduler_info = {"local scheduler ID": local_scheduler_id,
+                              "time since heartbeat": duration_to_string(current_time - local_scheduler["last_heartbeat"]),
+                              "time since heartbeat numeric": str(current_time - local_scheduler["last_heartbeat"]),
+                              "node ip address": local_scheduler["node_ip_address"]}
+      reply.append(local_scheduler_info)
+    # Send the payload to the frontend.
+    print(json.dumps(reply))
+    await websocket.send(json.dumps(reply))
+    # Wait for a little while so as not to overwhelm the frontend.
+    await asyncio.sleep(0.5)
+
+async def send_heartbeats(websocket, redis_conn):
+  # First update the local scheduler info locally.
+  client_keys = await redis_conn.execute("keys", "CL:*")
+  clients = []
+  for client_key in client_keys:
+    client_fields = await redis_conn.execute("hgetall", client_key)
+    client_fields = {client_fields[2 * i]: client_fields[2 * i + 1] for i in range(len(client_fields) // 2)}
+    if client_fields[b"client_type"] == b"photon":
+      local_scheduler_id = hex_identifier(client_fields[b"ray_client_id"])
+      local_schedulers[local_scheduler_id] = {"node_ip_address": client_fields[b"node_ip_address"].decode("ascii"),
+                                              "local_scheduler_socket_name": client_fields[b"local_scheduler_socket_name"].decode("ascii"),
+                                              "aux_address": client_fields[b"aux_address"].decode("ascii"),
+                                              "last_heartbeat": -1 * np.inf}
+
+  # Subscribe to local scheduler heartbeats.
+  await redis_conn.execute_pubsub("subscribe", "local_schedulers")
+
+  # Start a method in the background to periodically update the frontend.
+  asyncio.ensure_future(send_heartbeat_payload(websocket))
+
+  while True:
+    msg = await redis_conn.pubsub_channels["local_schedulers"].get()
+    local_scheduler_id_bytes = msg[:IDENTIFIER_LENGTH]
+    local_scheduler_id = hex_identifier(local_scheduler_id_bytes)
+    if local_scheduler_id not in local_schedulers:
+      # A new local scheduler has joined the cluster. Ignore it. This won't be
+      # displayed in the UI until the page is refreshed.
+      continue
+    local_schedulers[local_scheduler_id]["last_heartbeat"] = time.time()
+
 async def serve_requests(websocket, path):
   redis_conn = await aioredis.create_connection((redis_ip_address, redis_port), loop=loop)
 
@@ -177,6 +231,8 @@ async def serve_requests(websocket, path):
       await handle_get_drivers(websocket, redis_conn)
     elif command["command"] == "get-recent-tasks":
       await handle_get_recent_tasks(websocket, redis_conn, command["num"])
+    elif command["command"] == "get-heartbeats":
+      await send_heartbeats(websocket, redis_conn)
 
     if command["command"] == "get-workers":
       result = []
@@ -248,7 +304,10 @@ if __name__ == "__main__":
   redis_address = args.redis_address.split(":")
   redis_ip_address, redis_port = redis_address[0], int(redis_address[1])
 
-  start_server = websockets.serve(serve_requests, "localhost", args.port)
+  # The port here must match the value used by the frontend to connect over
+  # websockets.
+  port = 8888
+  start_server = websockets.serve(serve_requests, "localhost", port)
 
   loop.run_until_complete(start_server)
   loop.run_forever()
