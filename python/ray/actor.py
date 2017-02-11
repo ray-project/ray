@@ -71,9 +71,6 @@ def export_actor(actor_id, Class, worker):
   local_scheduler_id = random.choice(local_schedulers)
 
   worker.redis_client.publish("actor_notifications", actor_id.id() + local_scheduler_id)
-  
-  # Block until the actor worker process starts listening to exports.
-  worker.redis_client.blpop("ActorExportLock:{}".format(actor_id.id()))
 
   d = {"driver_id": worker.task_driver_id.id(),
        "actor_id": actor_id.id(),
@@ -85,9 +82,6 @@ def export_actor(actor_id, Class, worker):
   worker.redis_client.hmset(key, d)
   worker.redis_client.rpush("Exports", key)
   worker.driver_export_counter += 1
-
-  # Block until the actor has been registered in the actor worker.
-  worker.redis_client.blpop("ActorLock:{}".format(actor_id.id()))
   
 
 def actor(Class):
@@ -99,6 +93,7 @@ def actor(Class):
     ray.worker.check_main_thread()
     args = list(args)
     function_id = get_actor_method_function_id(attr)
+    print("executing actor fct. ", function_id.id())
     # TODO(pcm): Extend args with keyword args
     object_ids = ray.worker.global_worker.submit_task(function_id, "", args, actor_id=actor_id)
     if len(object_ids) == 1:
@@ -111,6 +106,9 @@ def actor(Class):
       self._ray_actor_id = random_actor_id()
       self._ray_actor_methods = {k: v for (k, v) in inspect.getmembers(Class, predicate=inspect.isfunction)}
       export_actor(self._ray_actor_id, Class, ray.worker.global_worker)
+      # Block until the actor has been registered in the actor worker.
+      print("waiting for lock ", "ActorLock:{}".format(self._ray_actor_id))
+      ray.worker.global_worker.redis_client.blpop("ActorLock:{}".format(self._ray_actor_id.id()))
       # Call __init__ as a remote function
       actor_method_call(self._ray_actor_id, "__init__", *args, **kwargs)
     # Make IPython tab completion work
