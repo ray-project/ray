@@ -6,3 +6,4 @@ ADD ray.tar /ray
 WORKDIR /ray/python
 RUN python setup.py install
 WORKDIR /ray
+RUN echo "tail -f /dev/null" >> scripts/start_ray.sh
