@@ -271,27 +271,16 @@ void add_task_to_actor_queue(local_scheduler_state *state,
   elt->spec = (task_spec *) malloc(task_spec_size(spec));
   memcpy(elt->spec, spec, task_spec_size(spec));
   /* Add the task spec to the actor's task queue in a manner that preserves the
-   * order of the actor task counters. Iterate back from the end of the queue to
-   * find the right place to insert the task queue entry. In the common case,
-   * this should just append the entry to the end of the queue. */
-  int num_iters = 0;
+   * order of the actor task counters. Iterate from the beginning of the queue to
+   * find the right place to insert the task queue entry. TODO(pcm): This makes
+   it a quadratic algorithms, which needs to be optimized. */
   task_queue_entry *current_entry = entry->task_queue;
-  while (current_entry != entry->task_queue &&
-         task_counter >= task_spec_actor_counter(current_entry->spec) + 1) {
-    num_iters += 1;
-    current_entry = current_entry->prev;
+  while (current_entry != NULL &&
+         current_entry->next != NULL &&
+         task_counter > task_spec_actor_counter(current_entry->spec)) {
+    current_entry = current_entry->next;
   }
-  if (entry->task_queue == NULL || task_counter > task_spec_actor_counter(current_entry->spec)) {
-    DL_APPEND_ELEM(entry->task_queue, current_entry, elt);
-  } else if (task_counter < task_spec_actor_counter(current_entry->spec)) {
-    DL_PREPEND_ELEM(entry->task_queue, current_entry, elt);
-  } else {
-    CHECKM(0, "This code should be unreachable.");
-  }
-
-  if (num_iters > 0) {
-    LOG_INFO("Received actor tasks out of order. This is ok.");
-  }
+  DL_APPEND_ELEM(entry->task_queue, current_entry, elt);
 
   /* Update the task table. */
   if (state->db != NULL) {
