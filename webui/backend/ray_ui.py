@@ -180,7 +180,6 @@ async def send_heartbeat_payload(websocket):
                               "node ip address": local_scheduler["node_ip_address"]}
       reply.append(local_scheduler_info)
     # Send the payload to the frontend.
-    print(json.dumps(reply))
     await websocket.send(json.dumps(reply))
     # Wait for a little while so as not to overwhelm the frontend.
     await asyncio.sleep(0.5)
