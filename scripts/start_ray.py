@@ -97,7 +97,7 @@ if __name__ == "__main__":
     if args.node_ip_address is None:
       node_ip_address = services.get_node_ip_address(args.redis_address)
     else:
-      node_ip_addess = args.node_ip_address
+      node_ip_address = args.node_ip_address
     print("Using IP address {} for this node.".format(node_ip_address))
     # Check that there aren't already Redis clients with the same IP address
     # connected with this Redis instance. This raises an exception if the Redis
