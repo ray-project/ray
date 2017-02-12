@@ -11,6 +11,7 @@ parser = argparse.ArgumentParser(description="Parse addresses for the worker to 
 parser.add_argument("--node-ip-address", required=False, type=str, help="the IP address of the worker's node")
 parser.add_argument("--redis-address", required=False, type=str, help="the address to use for connecting to Redis")
 parser.add_argument("--redis-port", required=False, type=str, help="the port to use for starting Redis")
+parser.add_argument("--object-manager-port", required=False, type=int, help="the port to use for starting the object manager")
 parser.add_argument("--num-workers", default=10, required=False, type=int, help="the number of workers to start on this node")
 parser.add_argument("--head", action="store_true", help="provide this argument for the head node")
 
@@ -50,10 +51,13 @@ if __name__ == "__main__":
       node_ip_address = args.node_ip_address
     print("Using IP address {} for this node.".format(node_ip_address))
 
+    address_info = {}
     if args.redis_port is not None:
-      address_info = {"redis_address": "{}:{}".format(node_ip_address,
-                                                      args.redis_port)}
-    else:
+      address_info["redis_address"] = "{}:{}".format(node_ip_address,
+                                                     args.redis_port)
+    if args.object_manager_port is not None:
+      address_info["object_manager_port"] = args.object_manager_port
+    if address_info == {}:
       address_info = None
 
     address_info = services.start_ray_head(address_info=address_info,
@@ -99,6 +103,7 @@ if __name__ == "__main__":
     check_no_existing_redis_clients(node_ip_address, args.redis_address)
     address_info = services.start_ray_node(node_ip_address=node_ip_address,
                                            redis_address=args.redis_address,
+                                           object_manager_port=args.object_manager_port,
                                            num_workers=args.num_workers,
                                            cleanup=False,
                                            redirect_output=True)
