@@ -97,5 +97,48 @@ print("success")
     ray.worker.cleanup()
     subprocess.Popen([stop_ray_script]).wait()
 
+class StartRayScriptTest(unittest.TestCase):
+
+  def testCallingStartRayHead(self):
+    # Test that we can call start-ray.sh with various command line parameters.
+    # TODO(rkn): This test only tests the --head code path. We should also test
+    # the non-head node code path.
+
+    # Test starting Ray with no arguments.
+    out = subprocess.check_output([start_ray_script, "--head"]).decode("ascii")
+    subprocess.Popen([stop_ray_script]).wait()
+
+    # Test starting Ray with a number of workers specified.
+    subprocess.check_output([start_ray_script, "--head", "--num-workers", "20"])
+    subprocess.Popen([stop_ray_script]).wait()
+
+    # Test starting Ray with a redis port specified.
+    subprocess.check_output([start_ray_script, "--head",
+                             "--redis-port", "6379"])
+    subprocess.Popen([stop_ray_script]).wait()
+
+    # Test starting Ray with a node IP address specified.
+    subprocess.check_output([start_ray_script, "--head",
+                             "--node-ip-address", "127.0.0.1"])
+    subprocess.Popen([stop_ray_script]).wait()
+
+    # Test starting Ray with an object manager port specified.
+    subprocess.check_output([start_ray_script, "--head",
+                             "--object-manager-port", "12345"])
+    subprocess.Popen([stop_ray_script]).wait()
+
+    # Test starting Ray with all arguments specified.
+    subprocess.check_output([start_ray_script, "--head",
+                             "--num-workers", "20",
+                             "--redis-port", "6379",
+                             "--object-manager-port", "12345"])
+    subprocess.Popen([stop_ray_script]).wait()
+
+    # Test starting Ray with invalid arguments.
+    with self.assertRaises(Exception):
+      subprocess.check_output([start_ray_script, "--head",
+                               "--redis-address", "127.0.0.1:6379"])
+    subprocess.Popen([stop_ray_script]).wait()
+
 if __name__ == "__main__":
   unittest.main(verbosity=2)

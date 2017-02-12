@@ -218,7 +218,7 @@ def start_redis(port=None, num_retries=20, cleanup=True, redirect_output=False):
   counter = 0
   if port is not None:
     if num_retries != 1:
-      raise Exception("Num retries must be 1 if port is specified")
+      raise Exception("num_retries must be 1 if port is specified.")
   else:
     port = new_port()
   while counter < num_retries:
@@ -317,12 +317,15 @@ def start_local_scheduler(redis_address,
     all_processes[PROCESS_TYPE_LOCAL_SCHEDULER].append(p)
   return local_scheduler_name
 
-def start_objstore(node_ip_address, redis_address, cleanup=True, redirect_output=False, objstore_memory=None):
+def start_objstore(node_ip_address, redis_address, object_manager_port=None,
+                   cleanup=True, redirect_output=False, objstore_memory=None):
   """This method starts an object store process.
 
   Args:
     node_ip_address (str): The IP address of the node running the object store.
     redis_address (str): The address of the Redis instance to connect to.
+    object_manager_port (int): The port to use for the object manager. If this
+      is not provided, one will be generated randomly.
     cleanup (bool): True if using Ray in local mode. If cleanup is true, then
       this process will be killed by serices.cleanup() when the Python process
       that imported services exits.
@@ -358,7 +361,11 @@ def start_objstore(node_ip_address, redis_address, cleanup=True, redirect_output
   # Start the Plasma store.
   plasma_store_name, p1 = plasma.start_plasma_store(plasma_store_memory=objstore_memory, use_profiler=RUN_PLASMA_STORE_PROFILER, redirect_output=redirect_output)
   # Start the plasma manager.
-  plasma_manager_name, p2, plasma_manager_port = plasma.start_plasma_manager(plasma_store_name, redis_address, node_ip_address=node_ip_address, run_profiler=RUN_PLASMA_MANAGER_PROFILER, redirect_output=redirect_output)
+  if object_manager_port is not None:
+    plasma_manager_name, p2, plasma_manager_port = plasma.start_plasma_manager(plasma_store_name, redis_address, plasma_manager_port=object_manager_port, node_ip_address=node_ip_address, num_retries=1, run_profiler=RUN_PLASMA_MANAGER_PROFILER, redirect_output=redirect_output)
+    assert plasma_manager_port == object_manager_port
+  else:
+    plasma_manager_name, p2, plasma_manager_port = plasma.start_plasma_manager(plasma_store_name, redis_address, node_ip_address=node_ip_address, run_profiler=RUN_PLASMA_MANAGER_PROFILER, redirect_output=redirect_output)
   if cleanup:
     all_processes[PROCESS_TYPE_PLASMA_STORE].append(p1)
     all_processes[PROCESS_TYPE_PLASMA_MANAGER].append(p2)
@@ -500,10 +507,17 @@ def start_ray_processes(address_info=None,
     address_info["local_scheduler_socket_names"] = []
   local_scheduler_socket_names = address_info["local_scheduler_socket_names"]
 
+  # Get the ports to use for the object managers if any are provided.
+  object_manager_ports = address_info["object_manager_ports"] if "object_manager_ports" in address_info else None
+  if not isinstance(object_manager_ports, list):
+    object_manager_ports = num_local_schedulers * [object_manager_ports]
+  assert len(object_manager_ports) == num_local_schedulers
+
   # Start any object stores that do not yet exist.
-  for _ in range(num_local_schedulers - len(object_store_addresses)):
+  for i in range(num_local_schedulers - len(object_store_addresses)):
     # Start Plasma.
     object_store_address = start_objstore(node_ip_address, redis_address,
+                                          object_manager_port=object_manager_ports[i],
                                           cleanup=cleanup,
                                           redirect_output=redirect_output)
     object_store_addresses.append(object_store_address)
@@ -570,6 +584,7 @@ def start_ray_processes(address_info=None,
 
 def start_ray_node(node_ip_address,
                    redis_address,
+                   object_manager_ports=None,
                    num_workers=0,
                    num_local_schedulers=1,
                    worker_path=None,
@@ -585,6 +600,9 @@ def start_ray_node(node_ip_address,
   Args:
     node_ip_address (str): The IP address of this node.
     redis_address (str): The address of the Redis server.
+    object_manager_ports (list): A list of the ports to use for the object
+      managers. There should be one per object manager being started on this
+      node (typically just one).
     num_workers (int): The number of workers to start.
     num_local_schedulers (int): The number of local schedulers to start. This is
       also the number of plasma stores and plasma managers to start.
@@ -602,6 +620,7 @@ def start_ray_node(node_ip_address,
   """
   address_info = {
       "redis_address": redis_address,
+      "object_manager_ports": object_manager_ports,
       }
   return start_ray_processes(address_info=address_info,
                              node_ip_address=node_ip_address,
