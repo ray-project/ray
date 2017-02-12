@@ -379,6 +379,9 @@ class Worker(object):
   def __init__(self):
     """Initialize a Worker object."""
     self.functions = {}
+    # Use a defaultdict for the number of return values. If this is accessed
+    # with a missing key, the default value of 1 is returned, and that key value
+    # pair is added to the dict.
     self.num_return_vals = collections.defaultdict(lambda: 1)
     self.function_names = {}
     self.function_export_counters = {}
@@ -390,6 +393,9 @@ class Worker(object):
     self.worker_import_counter = 0
     self.fetch_and_register = {}
     self.actors = {}
+    # Use a defaultdict for the actor counts. If this is accessed with a missing
+    # key, the default value of 0 is returned, and that key value pair is added
+    # to the dict.
     self.actor_counters = collections.defaultdict(lambda: 0)
 
   def set_mode(self, mode):

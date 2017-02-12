@@ -3,9 +3,9 @@ from __future__ import division
 from __future__ import print_function
 
 import hashlib
+import inspect
 import numpy as np
 import photon
-import inspect
 import random
 
 import ray.pickling as pickling
@@ -58,7 +58,7 @@ def export_actor(actor_id, Class, worker):
   Args:
     actor_id: The ID of the actor.
     Class: Name of the class to be exported as an actor.
-    worker: The worker class 
+    worker: The worker class
   """
   ray.worker.check_main_thread()
   if worker.mode is None:
@@ -82,12 +82,12 @@ def export_actor(actor_id, Class, worker):
   worker.redis_client.hmset(key, d)
   worker.redis_client.rpush("Exports", key)
   worker.driver_export_counter += 1
-  
+
 
 def actor(Class):
   # This function gets called if somebody tries to call a method on their
   # local actor stub object
-  
+
   def actor_method_call(actor_id, attr, *args, **kwargs):
     ray.worker.check_connected()
     ray.worker.check_main_thread()

@@ -40,9 +40,9 @@ UT_icd pid_t_icd;
 /** This struct is used to register a new worker with the local scheduler.
  *  It is shipped as part of photon_connect */
 typedef struct {
-  /* The ID of the actor. This is NIL_ID if the worker is not an actor. */
+  /** The ID of the actor. This is NIL_ID if the worker is not an actor. */
   actor_id actor_id;
-  /* The process ID of this worker. */
+  /** The process ID of this worker. */
   pid_t worker_pid;
 } register_worker_info;
 

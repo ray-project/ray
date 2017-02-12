@@ -150,8 +150,8 @@ function_id task_function(task_spec *spec);
 unique_id task_spec_actor_id(task_spec *spec);
 
 /**
- * Return the actor counter of the task. This equals "i" if it is the "i"th task
- * submitted to run on the actor.
+ * Return the actor counter of the task. This starts at 0 and increments by 1
+ * every time a new task is submitted to run on the actor.
  *
  * @param spec The task_spec in question.
  * @return The actor counter of the task.
