@@ -317,7 +317,7 @@ def start_local_scheduler(redis_address,
     all_processes[PROCESS_TYPE_LOCAL_SCHEDULER].append(p)
   return local_scheduler_name
 
-def start_objstore(node_ip_address, redis_address, cleanup=True, redirect_output=False, objstore_memory=None):
+def start_objstore(node_ip_address, redis_address, object_manager_port=None, cleanup=True, redirect_output=False, objstore_memory=None):
   """This method starts an object store process.
 
   Args:
@@ -358,7 +358,11 @@ def start_objstore(node_ip_address, redis_address, cleanup=True, redirect_output
   # Start the Plasma store.
   plasma_store_name, p1 = plasma.start_plasma_store(plasma_store_memory=objstore_memory, use_profiler=RUN_PLASMA_STORE_PROFILER, redirect_output=redirect_output)
   # Start the plasma manager.
-  plasma_manager_name, p2, plasma_manager_port = plasma.start_plasma_manager(plasma_store_name, redis_address, node_ip_address=node_ip_address, run_profiler=RUN_PLASMA_MANAGER_PROFILER, redirect_output=redirect_output)
+  if object_manager_port is not None:
+    plasma_manager_name, p2, plasma_manager_port = plasma.start_plasma_manager(plasma_store_name, redis_address, plasma_manager_port=object_manager_port, node_ip_address=node_ip_address, num_retries=1, run_profiler=RUN_PLASMA_MANAGER_PROFILER, redirect_output=redirect_output)
+    assert plasma_manager_port == object_manager_port
+  else:
+    plasma_manager_name, p2, plasma_manager_port = plasma.start_plasma_manager(plasma_store_name, redis_address, node_ip_address=node_ip_address, run_profiler=RUN_PLASMA_MANAGER_PROFILER, redirect_output=redirect_output)
   if cleanup:
     all_processes[PROCESS_TYPE_PLASMA_STORE].append(p1)
     all_processes[PROCESS_TYPE_PLASMA_MANAGER].append(p2)
@@ -503,7 +507,9 @@ def start_ray_processes(address_info=None,
   # Start any object stores that do not yet exist.
   for _ in range(num_local_schedulers - len(object_store_addresses)):
     # Start Plasma.
+    object_manager_port = address_info["object_manager_port"] if "object_manager_port" in address_info else None
     object_store_address = start_objstore(node_ip_address, redis_address,
+                                          object_manager_port=object_manager_port,
                                           cleanup=cleanup,
                                           redirect_output=redirect_output)
     object_store_addresses.append(object_store_address)
@@ -570,6 +576,7 @@ def start_ray_processes(address_info=None,
 
 def start_ray_node(node_ip_address,
                    redis_address,
+                   object_manager_port=None,
                    num_workers=0,
                    num_local_schedulers=1,
                    worker_path=None,
@@ -602,6 +609,7 @@ def start_ray_node(node_ip_address,
   """
   address_info = {
       "redis_address": redis_address,
+      "object_manager_port": object_manager_port,
       }
   return start_ray_processes(address_info=address_info,
                              node_ip_address=node_ip_address,
