@@ -32,7 +32,7 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
   </template>
 
   <script>
-    var redis_address = "ws://127.0.0.1:8888";
+    var backend_address = "ws://127.0.0.1:8888";
 
     Polymer({
       is: 'ray-timeline',
@@ -55,7 +55,7 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
           table.addColumn({ type: 'date', id: 'Start' });
           table.addColumn({ type: 'date', id: 'End' });
 
-          var socket = new WebSocket(redis_address);
+          var socket = new WebSocket(backend_address);
 
           socket.onopen = function() {
             socket.send(JSON.stringify({"command": "get-timeline"}));
