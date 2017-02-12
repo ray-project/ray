@@ -313,25 +313,14 @@ def start_webui(redis_address, cleanup=True, redirect_output=False):
     print("The web UI failed to start.")
     return False
 
-  # Test if port 8080 is open.
-  s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-  try:
-    s.bind(("127.0.0.1", 8080))
-  except OSError as e:
-    print("The web UI failed to start because port 8080 is already in use.")
-    # Kill the backend since we won't be able to start polymer.
-    try:
-      backend_process.kill()
-    except Exception as e:
-      pass
-    return False
-
-  # Try to start polymer.
+  # Try to start polymer. If this fails, it may that port 8080 is already in
+  # use. It'd be nice to test for this, but doing so by calling "bind" may start
+  # using the port and prevent polymer from using it.
   try:
     with open(os.devnull, "w") as FNULL:
       stdout = FNULL if redirect_output else None
       stderr = FNULL if redirect_output else None
-      polymer_process = subprocess.Popen(["polymer", "serve"],
+      polymer_process = subprocess.Popen(["polymer", "serve", "--port", "8080"],
                                          cwd=webui_directory,
                                          stdout=stdout, stderr=stderr)
   except Exception as e:
