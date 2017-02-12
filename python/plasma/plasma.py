@@ -328,13 +328,18 @@ def start_plasma_store(plasma_store_memory=DEFAULT_PLASMA_STORE_MEMORY, use_valg
 def new_port():
   return random.randint(10000, 65535)
 
-def start_plasma_manager(store_name, redis_address, plasma_manager_port=None, node_ip_address="127.0.0.1", num_retries=20, use_valgrind=False, run_profiler=False, redirect_output=False):
+def start_plasma_manager(store_name, redis_address, node_ip_address="127.0.0.1",
+                         plasma_manager_port=None, num_retries=20,
+                         use_valgrind=False, run_profiler=False,
+                         redirect_output=False):
   """Start a plasma manager and return the ports it listens on.
 
   Args:
     store_name (str): The name of the plasma store socket.
     redis_address (str): The address of the Redis server.
     node_ip_address (str): The IP address of the node.
+    plasma_manager_port (int): The port to use for the plasma manager. If this
+      is not provided, a port will be generated at random.
     use_valgrind (bool): True if the Plasma manager should be started inside of
       valgrind and False otherwise.
     redirect_output (bool): True if stdout and stderr should be redirected to
@@ -350,10 +355,10 @@ def start_plasma_manager(store_name, redis_address, plasma_manager_port=None, no
   plasma_manager_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../core/src/plasma/plasma_manager")
   plasma_manager_name = "/tmp/plasma_manager{}".format(random_name())
   if plasma_manager_port is not None:
-    assert num_retries == 1
-    port = plasma_manager_port
+    if num_retries != 1:
+      raise Exception("num_retries must be 1 if port is specified.")
   else:
-    port = new_port()
+    plasma_manager_port = new_port()
   process = None
   counter = 0
   while counter < num_retries:
@@ -363,7 +368,7 @@ def start_plasma_manager(store_name, redis_address, plasma_manager_port=None, no
                "-s", store_name,
                "-m", plasma_manager_name,
                "-h", node_ip_address,
-               "-p", str(port),
+               "-p", str(plasma_manager_port),
                "-r", redis_address]
     with open(os.devnull, "w") as FNULL:
       stdout = FNULL if redirect_output else None
@@ -379,8 +384,8 @@ def start_plasma_manager(store_name, redis_address, plasma_manager_port=None, no
     time.sleep(0.1)
     # See if the process has terminated
     if process.poll() == None:
-      return plasma_manager_name, process, port
+      return plasma_manager_name, process, plasma_manager_port
     # Generate a new port and try again.
-    port = new_port()
+    plasma_manager_port = new_port()
     counter += 1
   raise Exception("Couldn't start plasma manager.")

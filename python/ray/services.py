@@ -218,7 +218,7 @@ def start_redis(port=None, num_retries=20, cleanup=True, redirect_output=False):
   counter = 0
   if port is not None:
     if num_retries != 1:
-      raise Exception("Num retries must be 1 if port is specified")
+      raise Exception("num_retries must be 1 if port is specified.")
   else:
     port = new_port()
   while counter < num_retries:
@@ -317,12 +317,15 @@ def start_local_scheduler(redis_address,
     all_processes[PROCESS_TYPE_LOCAL_SCHEDULER].append(p)
   return local_scheduler_name
 
-def start_objstore(node_ip_address, redis_address, object_manager_port=None, cleanup=True, redirect_output=False, objstore_memory=None):
+def start_objstore(node_ip_address, redis_address, object_manager_port=None,
+                   cleanup=True, redirect_output=False, objstore_memory=None):
   """This method starts an object store process.
 
   Args:
     node_ip_address (str): The IP address of the node running the object store.
     redis_address (str): The address of the Redis instance to connect to.
+    object_manager_port (int): The port to use for the object manager. If this
+      is not provided, one will be generated randomly.
     cleanup (bool): True if using Ray in local mode. If cleanup is true, then
       this process will be killed by serices.cleanup() when the Python process
       that imported services exits.
