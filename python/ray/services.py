@@ -288,14 +288,22 @@ def start_webui(redis_address, cleanup=True, redirect_output=False):
   webui_backend_filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../webui/backend/ray_ui.py")
   webui_directory = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../webui/")
 
-  if sys.version_info < (3, 0):
-    print("Not starting the web UI because the web UI requires Python 3.")
-    return False
+  if sys.version_info >= (3, 0):
+    python_executable = "python"
+  else:
+    # If the user is using Python 2, it is still possible to run the webserver
+    # separately with Python 3, so try to find a Python 3 executable.
+    try:
+      python_executable = subprocess.check_output(["which", "python3"]).decode("ascii").strip()
+    except Exception as e:
+      print("Not starting the web UI because the web UI requires Python 3.")
+      return False
 
   with open(os.devnull, "w") as FNULL:
     stdout = FNULL if redirect_output else None
     stderr = FNULL if redirect_output else None
-    backend_process = subprocess.Popen(["python", webui_backend_filepath,
+    backend_process = subprocess.Popen([python_executable,
+                                        webui_backend_filepath,
                                         "--redis-address", redis_address],
                                         stdout=stdout, stderr=stderr)
 
@@ -303,10 +311,22 @@ def start_webui(redis_address, cleanup=True, redirect_output=False):
   if backend_process.poll() is not None:
     # Failed to start the web UI.
     print("The web UI failed to start.")
-    # Kill the backend since it won't work without polymer.
-    backend_process.kill()
     return False
 
+  # Test if port 8080 is open.
+  s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+  try:
+    s.bind(("127.0.0.1", 8080))
+  except OSError as e:
+    print("The web UI failed to start because port 8080 is already in use.")
+    # Kill the backend since we won't be able to start polymer.
+    try:
+      backend_process.kill()
+    except Exception as e:
+      pass
+    return False
+
+  # Try to start polymer.
   try:
     with open(os.devnull, "w") as FNULL:
       stdout = FNULL if redirect_output else None
@@ -315,14 +335,26 @@ def start_webui(redis_address, cleanup=True, redirect_output=False):
                                          cwd=webui_directory,
                                          stdout=stdout, stderr=stderr)
   except Exception as e:
-    pass
+    print("Failed to start polymer.")
+    # Kill the backend since it won't work without polymer.
+    try:
+      backend_process.kill()
+    except Exception as e:
+      pass
+    return False
 
+  # Unfortunately this block of code is unlikely to catch any problems because
+  # when polymer throws an error on startup, it is typically after several
+  # seconds.
   time.sleep(0.1)
   if polymer_process.poll() is not None:
     # Failed to start polymer.
     print("Failed to serve the web UI with polymer.")
     # Kill the backend since it won't work without polymer.
-    backend_process.kill()
+    try:
+      backend_process.kill()
+    except Exception as e:
+      pass
     return False
 
   if cleanup:
