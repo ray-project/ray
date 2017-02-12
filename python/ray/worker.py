@@ -483,7 +483,7 @@ class Worker(object):
       assert final_results[i][0] == object_ids[i].id()
     return [result[1][0] for result in final_results]
 
-  def submit_task(self, function_id, func_name, args, num_cpus, num_gpus, actor_id=None):
+  def submit_task(self, function_id, func_name, args, num_cpus, num_gpus, actor_id=20*b"\xff"):
     """Submit a remote task to the scheduler.
 
     Tell the scheduler to schedule the execution of the function with name
@@ -1183,12 +1183,8 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker, a
   # Create an object store client.
   worker.plasma_client = plasma.PlasmaClient(info["store_socket_name"], info["manager_socket_name"])
   # Create the local scheduler client.
-<<<<<<< HEAD
-  worker.photon_client = photon.PhotonClient(info["local_scheduler_socket_name"])
-=======
   worker.photon_client = photon.PhotonClient(info["local_scheduler_socket_name"], worker.actor_id)
   # Register the worker with Redis.
->>>>>>> first working version of actors
   if mode in [SCRIPT_MODE, SILENT_MODE]:
     # The concept of a driver is the same as the concept of a "job". Register
     # the driver/job with Redis here.

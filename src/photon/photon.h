@@ -29,7 +29,7 @@ enum photon_message_type {
   EVENT_LOG_MESSAGE,
   /** Send an initial connection message to the local scheduler.
    *  This contains the worker's process ID and actor ID. */
-  REGISTER_WORKER
+  REGISTER_WORKER_INFO
 };
 
 /* These are needed to define the UT_arrays. */

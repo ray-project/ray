@@ -10,11 +10,9 @@ photon_conn *photon_connect(const char *photon_socket, actor_id actor_id) {
   register_worker_info info;
   memset(&info, 0, sizeof(info));
   /* Register the process ID with the local scheduler. */
-  info->worker_pid = getpid();
-  info->actor_id = actor_id;
-  /* Register the process ID and actor ID with the local scheduler. */
-  pid_t my_pid = getpid();
-  int success = write_message(result->conn, REGISTER_WORKER, sizeof(info),
+  info.worker_pid = getpid();
+  info.actor_id = actor_id;
+  int success = write_message(result->conn, REGISTER_WORKER_INFO, sizeof(info),
                               (uint8_t *) &info);
   CHECKM(success == 0, "Unable to register worker with local scheduler");
   return result;

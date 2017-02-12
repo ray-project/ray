@@ -514,26 +514,47 @@ void process_message(event_loop *loop,
     free(key);
     free(value);
   } break;
-  case LOCAL_SCHEDULER_CONNECT: {
+  case REGISTER_WORKER_INFO: {
     /* Update the actor mapping with the actor ID of the worker (if an actor is
      * running on the worker). */
-    actor_id actor_id_obj = *((actor_id *) utarray_front(state->input_buffer));
-    if (!actor_ids_equal(actor_id_obj, NIL_ID)) {
+    register_worker_info *info = utarray_front(state->input_buffer);
+    if (!actor_ids_equal(info->actor_id, NIL_ID)) {
       /* Make sure that the local scheduler is aware that it is responsible for
        * this actor. */
       actor_map_entry *entry;
-      HASH_FIND(hh, state->actor_mapping, &actor_id_obj, sizeof(actor_id_obj),
+      HASH_FIND(hh, state->actor_mapping, &info->actor_id, sizeof(info->actor_id),
                 entry);
       CHECK(entry != NULL);
       CHECK(db_client_ids_equal(entry->local_scheduler_id,
                                 get_db_client_id(state->db)));
       /* Update the worker struct with this actor ID. */
       CHECK(actor_ids_equal(worker->actor_id, NIL_ID));
-      worker->actor_id = actor_id_obj;
+      worker->actor_id = info->actor_id;
       /* Let the scheduling algorithm process the presence of this new
        * worker. */
-      handle_actor_worker_connect(state, state->algorithm_state, actor_id_obj,
+      handle_actor_worker_connect(state, state->algorithm_state, info->actor_id,
                                   worker);
+    }
+
+    /* Register worker process id with the scheduler. */
+    worker->pid = info->worker_pid;
+    /* Determine if this worker is one of our child processes. */
+    LOG_DEBUG("PID is %d", info->worker_pid);
+    pid_t *child_pid;
+    int index = 0;
+    for (child_pid = (pid_t *) utarray_front(state->child_pids);
+         child_pid != NULL;
+         child_pid = (pid_t *) utarray_next(state->child_pids, child_pid)) {
+      if (*child_pid == info->worker_pid) {
+        /* If this worker is one of our child processes, mark it as a child so
+         * that we know that we can wait for the process to exit during
+         * cleanup. */
+        worker->is_child = true;
+        utarray_erase(state->child_pids, index, 1);
+        LOG_DEBUG("Found matching child pid %d", info->worker_pid);
+        break;
+      }
+      ++index;
     }
   } break;
   case GET_TASK: {
@@ -584,29 +605,6 @@ void process_message(event_loop *loop,
     }
   } break;
   case LOG_MESSAGE: {
-  } break;
-  case REGISTER_PID: {
-    pid_t *worker_pid = (pid_t *) utarray_front(state->input_buffer);
-    worker->pid = *worker_pid;
-
-    /* Determine if this worker is one of our child processes. */
-    LOG_DEBUG("Pid is %d", *worker_pid);
-    pid_t *child_pid;
-    int index = 0;
-    for (child_pid = (pid_t *) utarray_front(state->child_pids);
-         child_pid != NULL;
-         child_pid = (pid_t *) utarray_next(state->child_pids, child_pid)) {
-      if (*child_pid == *worker_pid) {
-        /* If this worker is one of our child processes, mark it as a child so
-         * that we know that we can wait for the process to exit during
-         * cleanup. */
-        worker->is_child = true;
-        utarray_erase(state->child_pids, index, 1);
-        LOG_DEBUG("Found matching child pid %d", *worker_pid);
-        break;
-      }
-      ++index;
-    }
   } break;
   default:
     /* This code should be unreachable. */
