@@ -550,7 +550,7 @@ class APITest(unittest.TestCase):
     ray.worker.cleanup()
 
   def testLoggingAPI(self):
-    ray.init(num_workers=1)
+    ray.init(num_workers=1, driver_mode=ray.SILENT_MODE)
 
     def events():
       # This is a hack for getting the event log. It is not part of the API.

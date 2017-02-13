@@ -74,6 +74,7 @@ script:
 
   - python test/runtest.py
   - python test/array_test.py
+  - python test/actor_test.py
   - python test/tensorflow_test.py
   - python test/failure_test.py
   - python test/microbenchmarks.py

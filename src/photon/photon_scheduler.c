@@ -910,7 +910,6 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  LOG_INFO("Start worker command is %s", start_worker_command);
   start_server(node_ip_address, scheduler_socket_name, redis_addr, redis_port,
                plasma_store_socket_name, plasma_manager_socket_name,
                plasma_manager_address, global_scheduler_exists,
