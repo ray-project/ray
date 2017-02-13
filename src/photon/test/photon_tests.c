@@ -555,7 +555,7 @@ TEST start_kill_workers_test(void) {
   ASSERT_EQ(utarray_len(photon->photon_state->workers), num_workers - 1);
 
   /* Start a worker after the local scheduler has been initialized. */
-  start_worker(photon->photon_state);
+  start_worker(photon->photon_state, NIL_ACTOR_ID);
   /* Accept the workers as clients to the plasma manager. */
   int new_worker_fd = accept_client(photon->plasma_manager_fd);
   /* The new worker should register its process ID. */

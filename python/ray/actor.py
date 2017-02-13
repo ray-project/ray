@@ -94,7 +94,13 @@ def actor(Class):
     args = list(args)
     function_id = get_actor_method_function_id(attr)
     # TODO(pcm): Extend args with keyword args
-    object_ids = ray.worker.global_worker.submit_task(function_id, "", args, actor_id=actor_id)
+    # For now, actor methods should not require resources beyond the resources
+    # used by the actor.
+    num_cpus = 0
+    num_gpus = 0
+    object_ids = ray.worker.global_worker.submit_task(function_id, "", args,
+                                                      num_cpus, num_gpus,
+                                                      actor_id=actor_id)
     if len(object_ids) == 1:
       return object_ids[0]
     elif len(object_ids) > 1:

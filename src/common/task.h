@@ -15,6 +15,7 @@
 #include "utstring.h"
 
 #define NIL_TASK_ID NIL_ID
+#define NIL_ACTOR_ID NIL_ID
 #define NIL_FUNCTION_ID NIL_ID
 
 typedef unique_id function_id;

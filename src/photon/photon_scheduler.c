@@ -185,7 +185,7 @@ void free_local_scheduler(local_scheduler_state *state) {
  * @param state The state of the local scheduler.
  * @return Void.
  */
-void start_worker(local_scheduler_state *state) {
+void start_worker(local_scheduler_state *state, actor_id actor_id) {
   /* We can't start a worker if we don't have the path to the worker script. */
   CHECK(state->config.start_worker_command != NULL);
   /* Launch the process to create the worker. */
@@ -196,9 +196,24 @@ void start_worker(local_scheduler_state *state) {
     return;
   }
 
+  char id_string[ID_STRING_SIZE];
+  object_id_to_string(actor_id, id_string, ID_STRING_SIZE);
+  /* Figure out how many arguments there are in the start_worker_command. */
+  int num_args = 0;
+  for (; state->config.start_worker_command[num_args] != NULL; ++num_args) {
+  }
+  const char **start_actor_worker_command =
+      malloc((num_args + 3) * sizeof(const char *));
+  for (int i = 0; i < num_args; ++i) {
+    start_actor_worker_command[i] = state->config.start_worker_command[i];
+  }
+  start_actor_worker_command[num_args] = "--actor-id";
+  start_actor_worker_command[num_args + 1] = (const char *) id_string;
+  start_actor_worker_command[num_args + 2] = NULL;
   /* Try to execute the worker command. Exit if we're not successful. */
-  execvp(state->config.start_worker_command[0],
-         (char *const *) state->config.start_worker_command);
+  execvp(start_actor_worker_command[0],
+         (char *const *) start_actor_worker_command);
+  free(start_actor_worker_command);
   free_local_scheduler(state);
   LOG_FATAL("Failed to start worker");
 }
@@ -322,7 +337,7 @@ local_scheduler_state *init_local_scheduler(
   /* Start the initial set of workers. */
   utarray_new(state->child_pids, &pid_t_icd);
   for (int i = 0; i < num_workers; ++i) {
-    start_worker(state);
+    start_worker(state, NIL_ACTOR_ID);
   }
 
   return state;
@@ -517,7 +532,8 @@ void process_message(event_loop *loop,
   case REGISTER_WORKER_INFO: {
     /* Update the actor mapping with the actor ID of the worker (if an actor is
      * running on the worker). */
-    register_worker_info *info = utarray_front(state->input_buffer);
+    register_worker_info *info =
+        (register_worker_info *) utarray_front(state->input_buffer);
     if (!actor_ids_equal(info->actor_id, NIL_ID)) {
       /* Make sure that the local scheduler is aware that it is responsible for
        * this actor. */
@@ -659,23 +675,6 @@ void handle_task_scheduled_callback(task *original_task, void *user_context) {
   }
 }
 
-void start_new_worker(local_scheduler_state *state, actor_id actor_id) {
-  /* We can't start a worker if we don't have the path to the worker script. */
-  CHECK(state->config.start_worker_command != NULL);
-  /* Launch the process to create the worker. */
-  UT_string *start_worker_command = NULL;
-  utstring_new(start_worker_command);
-  char id_string[ID_STRING_SIZE];
-  utstring_printf(start_worker_command, "%s --actor-id=%s > /tmp/worker-%s.txt",
-                  state->config.start_worker_command,
-                  object_id_to_string(actor_id, id_string, ID_STRING_SIZE),
-                  object_id_to_string(actor_id, id_string, ID_STRING_SIZE));
-  FILE *p =
-      popen(utstring_body(start_worker_command), "r");
-  UNUSED(p);
-  utstring_free(start_worker_command);
-}
-
 /**
  * Process a notification about the creation of a new actor. Use this to update
  * the mapping from actor ID to the local scheduler ID of the local scheduler
@@ -708,7 +707,7 @@ void handle_actor_creation_callback(actor_info info, void *context) {
   /* If this local scheduler is responsible for the actor, then start a new
    * worker for the actor. */
   if (db_client_ids_equal(local_scheduler_id, get_db_client_id(state->db))) {
-    start_new_worker(state, actor_id);
+    start_worker(state, actor_id);
   }
 }
 
