@@ -1061,6 +1061,20 @@ class ResourcesTest(unittest.TestCase):
 
 class SchedulingAlgorithm(unittest.TestCase):
 
+  def attempt_to_load_balance(self, remote_function, args, total_tasks,
+                              num_local_schedulers, minimum_count,
+                              num_attempts=20):
+    attempts = 0
+    while attempts < num_attempts:
+      locations = ray.get([remote_function.remote(*args) for _ in range(total_tasks)])
+      names = set(locations)
+      counts = [locations.count(name) for name in names]
+      print("Counts are {}.".format(counts))
+      if len(names) == num_local_schedulers and all([count >= minimum_count for count in counts]):
+        break
+      attempts += 1
+    self.assertLess(attempts, num_attempts)
+
   def testLoadBalancing(self):
     # This test ensures that tasks are being assigned to all local schedulers in
     # a roughly equal manner.
@@ -1073,33 +1087,14 @@ class SchedulingAlgorithm(unittest.TestCase):
       time.sleep(0.001)
       return ray.worker.global_worker.plasma_client.store_socket_name
 
-    num_attempts = 20
-
-    attempts = 0
-    while attempts < num_attempts:
-      locations = ray.get([f.remote() for _ in range(100)])
-      names = set(locations)
-      counts = [locations.count(name) for name in names]
-      print("Counts are {}.".format(counts))
-      if len(names) == num_local_schedulers and all([count > 25 for count in counts]):
-        break
-      attempts += 1
-    self.assertLess(attempts, num_attempts)
-
-    attempts = 0
-    while attempts < num_attempts:
-      locations = ray.get([f.remote() for _ in range(1000)])
-      names = set(locations)
-      counts = [locations.count(name) for name in names]
-      print("Counts are {}.".format(counts))
-      if len(names) == num_local_schedulers and all([count > 250 for count in counts]):
-        break
-      attempts += 1
-    self.assertLess(attempts, num_attempts)
+    self.attempt_to_load_balance(f, [], 100, num_local_schedulers, 25)
+    self.attempt_to_load_balance(f, [], 1000, num_local_schedulers, 250)
 
     ray.worker.cleanup()
 
   def testLoadBalancingWithDependencies(self):
+    # This test ensures that tasks are being assigned to all local schedulers in
+    # a roughly equal manner even when the tasks have dependencies.
     num_workers = 3
     num_local_schedulers = 3
     ray.worker._init(start_ray_local=True, num_workers=num_workers, num_local_schedulers=num_local_schedulers)
@@ -1112,18 +1107,7 @@ class SchedulingAlgorithm(unittest.TestCase):
     # doesn't prevent tasks from being scheduled on other local schedulers.
     x = ray.put(np.zeros(1000000))
 
-    num_attempts = 20
-
-    attempts = 0
-    while attempts < 20:
-      locations = ray.get([f.remote(x) for _ in range(100)])
-      names = set(locations)
-      counts = [locations.count(name) for name in names]
-      print("Counts are {}.".format(counts))
-      if len(names) == num_local_schedulers and all([count > 25 for count in counts]):
-        break
-      attempts += 1
-    self.assertLess(attempts, num_attempts)
+    self.attempt_to_load_balance(f, [x], 100, num_local_schedulers, 25)
 
     ray.worker.cleanup()
 
