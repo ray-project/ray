@@ -1062,6 +1062,8 @@ class ResourcesTest(unittest.TestCase):
 class SchedulingAlgorithm(unittest.TestCase):
 
   def testLoadBalancing(self):
+    # This test ensures that tasks are being assigned to all local schedulers in
+    # a roughly equal manner.
     num_workers = 21
     num_local_schedulers = 3
     ray.worker._init(start_ray_local=True, num_workers=num_workers, num_local_schedulers=num_local_schedulers)
@@ -1071,19 +1073,29 @@ class SchedulingAlgorithm(unittest.TestCase):
       time.sleep(0.001)
       return ray.worker.global_worker.plasma_client.store_socket_name
 
-    locations = ray.get([f.remote() for _ in range(100)])
-    names = set(locations)
-    self.assertEqual(len(names), num_local_schedulers)
-    counts = [locations.count(name) for name in names]
-    for count in counts:
-      self.assertGreater(count, 30)
+    num_attempts = 20
 
-    locations = ray.get([f.remote() for _ in range(1000)])
-    names = set(locations)
-    self.assertEqual(len(names), num_local_schedulers)
-    counts = [locations.count(name) for name in names]
-    for count in counts:
-      self.assertGreater(count, 200)
+    attempts = 0
+    while attempts < num_attempts:
+      locations = ray.get([f.remote() for _ in range(100)])
+      names = set(locations)
+      counts = [locations.count(name) for name in names]
+      print("Counts are {}.".format(counts))
+      if len(names) == num_local_schedulers and all([count > 25 for count in counts]):
+        break
+      attempts += 1
+    self.assertLess(attempts, num_attempts)
+
+    attempts = 0
+    while attempts < num_attempts:
+      locations = ray.get([f.remote() for _ in range(1000)])
+      names = set(locations)
+      counts = [locations.count(name) for name in names]
+      print("Counts are {}.".format(counts))
+      if len(names) == num_local_schedulers and all([count > 250 for count in counts]):
+        break
+      attempts += 1
+    self.assertLess(attempts, num_attempts)
 
     ray.worker.cleanup()
 
@@ -1100,12 +1112,18 @@ class SchedulingAlgorithm(unittest.TestCase):
     # doesn't prevent tasks from being scheduled on other local schedulers.
     x = ray.put(np.zeros(1000000))
 
-    locations = ray.get([f.remote(x) for _ in range(100)])
-    names = set(locations)
-    self.assertEqual(len(names), num_local_schedulers)
-    counts = [locations.count(name) for name in names]
-    for count in counts:
-      self.assertGreater(count, 30)
+    num_attempts = 20
+
+    attempts = 0
+    while attempts < 20:
+      locations = ray.get([f.remote(x) for _ in range(100)])
+      names = set(locations)
+      counts = [locations.count(name) for name in names]
+      print("Counts are {}.".format(counts))
+      if len(names) == num_local_schedulers and all([count > 25 for count in counts]):
+        break
+      attempts += 1
+    self.assertLess(attempts, num_attempts)
 
     ray.worker.cleanup()
 
