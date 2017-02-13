@@ -40,6 +40,7 @@ ERROR_KEY_PREFIX = b"Error:"
 DRIVER_ID_LENGTH = 20
 ERROR_ID_LENGTH = 20
 
+# This must match the definition of NIL_ACTOR_ID in task.h.
 NIL_ACTOR_ID = 20 * b"\xff"
 
 # When performing ray.get, wait 1 second before attemping to reconstruct and

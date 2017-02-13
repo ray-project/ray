@@ -22,7 +22,8 @@ def get_actor_method_function_id(attr):
   """Get the function ID corresponding to an actor method.
 
   Args:
-    attr (string): The attribute name of the method.
+    attr (str): The attribute name of the method.
+
   Returns:
     Function ID corresponding to the method.
   """
@@ -50,7 +51,6 @@ def fetch_and_register_actor(key, worker):
       function_id = get_actor_method_function_id(k).id()
       worker.function_names[function_id] = k
       worker.functions[function_id] = v
-  print("registering actor...")
 
 def export_actor(actor_id, Class, worker):
   """Export an actor to redis.
@@ -66,7 +66,7 @@ def export_actor(actor_id, Class, worker):
   key = "Actor:{}".format(actor_id.id())
   pickled_class = pickling.dumps(Class)
 
-  # select local scheduler for the actor
+  # Select a local scheduler for the actor.
   local_schedulers = state.get_local_schedulers()
   local_scheduler_id = random.choice(local_schedulers)
 
@@ -85,13 +85,14 @@ def export_actor(actor_id, Class, worker):
 
 
 def actor(Class):
-  # This function gets called if somebody tries to call a method on their
-  # local actor stub object
-
+  # The function actor_method_call gets called if somebody tries to call a
+  # method on their local actor stub object.
   def actor_method_call(actor_id, attr, *args, **kwargs):
     ray.worker.check_connected()
     ray.worker.check_main_thread()
     args = list(args)
+    if len(kwargs) > 0:
+      raise Exception("Actors currently do not support **kwargs.")
     function_id = get_actor_method_function_id(attr)
     # TODO(pcm): Extend args with keyword args
     # For now, actor methods should not require resources beyond the resources
@@ -113,9 +114,9 @@ def actor(Class):
       export_actor(self._ray_actor_id, Class, ray.worker.global_worker)
       # Block until the actor has been registered in the actor worker.
       ray.worker.global_worker.redis_client.blpop("ActorLock:{}".format(self._ray_actor_id.id()))
-      # Call __init__ as a remote function
+      # Call __init__ as a remote function.
       actor_method_call(self._ray_actor_id, "__init__", *args, **kwargs)
-    # Make IPython tab completion work
+    # Make tab completion work.
     def __dir__(self):
       return self._ray_actor_methods
     def __getattribute__(self, attr):
