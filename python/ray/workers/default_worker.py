@@ -30,7 +30,7 @@ if __name__ == "__main__":
           "manager_socket_name": args.object_store_manager_name,
           "local_scheduler_socket_name": args.local_scheduler_name}
 
-  actor_id = binascii.unhexlify(args.actor_id) if not args.actor_id is None else 20 * b"\xff"
+  actor_id = binascii.unhexlify(args.actor_id) if not args.actor_id is None else ray.worker.NIL_ACTOR_ID
 
   ray.worker.connect(info, mode=ray.WORKER_MODE, actor_id=actor_id)
 

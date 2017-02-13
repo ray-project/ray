@@ -40,6 +40,8 @@ ERROR_KEY_PREFIX = b"Error:"
 DRIVER_ID_LENGTH = 20
 ERROR_ID_LENGTH = 20
 
+NIL_ACTOR_ID = 20 * b"\xff"
+
 # When performing ray.get, wait 1 second before attemping to reconstruct and
 # fetch the object again.
 GET_TIMEOUT_MILLISECONDS = 1000
@@ -489,7 +491,7 @@ class Worker(object):
       assert final_results[i][0] == object_ids[i].id()
     return [result[1][0] for result in final_results]
 
-  def submit_task(self, function_id, func_name, args, num_cpus, num_gpus, actor_id=20*b"\xff"):
+  def submit_task(self, function_id, func_name, args, num_cpus, num_gpus, actor_id=photon.ObjectID(NIL_ACTOR_ID)):
     """Submit a remote task to the scheduler.
 
     Tell the scheduler to schedule the execution of the function with name
@@ -868,7 +870,7 @@ def _init(address_info=None,
         "manager_socket_name": address_info["object_store_addresses"][0].manager_name,
         "local_scheduler_socket_name": address_info["local_scheduler_socket_names"][0],
         }
-  connect(driver_address_info, object_id_seed=object_id_seed, mode=driver_mode, worker=global_worker, actor_id=20*b"\xff")
+  connect(driver_address_info, object_id_seed=object_id_seed, mode=driver_mode, worker=global_worker, actor_id=NIL_ACTOR_ID)
   return address_info
 
 def init(redis_address=None, node_ip_address=None, object_id_seed=None,
@@ -1150,7 +1152,7 @@ def import_thread(worker):
 
 
 
-def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker, actor_id=20*b"\xff"):
+def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker, actor_id=NIL_ACTOR_ID):
   """Connect this worker to the local scheduler, to Plasma, and to Redis.
 
   Args:
@@ -1570,7 +1572,7 @@ def main_loop(worker=global_worker):
 
       # Execute the task.
       with log_span("ray:task:execute", worker=worker):
-        if task.actor_id().id() == 20 * "\xff":
+        if task.actor_id().id() == NIL_ACTOR_ID:
           outputs = worker.functions[task.function_id().id()].executor(arguments)
         else:
           outputs = worker.functions[task.function_id().id()](worker.actors[task.actor_id().id()], *arguments)
