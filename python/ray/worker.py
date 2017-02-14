@@ -395,8 +395,7 @@ class Worker(object):
     # The driver_export_counter and worker_import_counter are used to make sure
     # that no task executes before everything it needs is present. For example,
     # if we define a remote function f, a worker cannot execute a task for f
-    # until the worker has imported the function f. TODO(rkn): These counters
-    # must be tracked separately for each driver.
+    # until the worker has imported the function f.
     #   - When a remote function, a reusable variable, or a function to run is
     #     exported, the driver_export_counter is incremented. These exports must
     #     take place from the driver.
@@ -411,12 +410,22 @@ class Worker(object):
     #     value of the driver_export_counter and a worker will not execute that
     #     remote function until it has imported that many exports (excluding
     #     actors).
-    #   - When an actor is defined, the actor records the driver_export_counter
-    #     of the driver (if the actor is created on a driver), or it records the
-    #     driver_export_counter associated with the function in the task
-    #     creating the actor (if the actor was created inside a task). The
-    #     worker that ultimately runs the actor will not execute any tasks until
-    #     it has imported that many imports.
+    #   - When an actor is defined.
+    #       a) If the actor is created on a driver, it records the
+    #          driver_export_counter.
+    #       b) If the actor is created inside a task on a regular worker, it
+    #          records the driver_export_counter associated with the function in
+    #          task creating the actor.
+    #       c) If the actor is created inside a task on an actor worker, it
+    #          records
+    #     The worker that ultimately runs the actor will not execute any tasks
+    #     until it has imported that many imports.
+    #
+    # TODO(rkn): These counters must be tracked separately for each driver.
+    # TODO(rkn): Maybe none of these counters are necessary? When executing a
+    # regular task, workers can just wait until the function ID is present. When
+    # executing an actor task, the actor worker can just wait until the actor
+    # has been defined.
     self.driver_export_counter = 0
     self.worker_import_counter = 0
     self.fetch_and_register = {}
@@ -1126,6 +1135,9 @@ def import_thread(worker):
   worker_info_key = "WorkerInfo:{}".format(worker.worker_id)
   worker.redis_client.hset(worker_info_key, "export_counter", 0)
   worker.worker_import_counter = 0
+  # The number of imports is similar to the worker_import_counter except that it
+  # also counts actors.
+  num_imported = 0
 
   # Get the exports that occurred before the call to psubscribe.
   with worker.lock:
@@ -1148,8 +1160,11 @@ def import_thread(worker):
           worker.redis_client.lpush("ActorLock:{}".format(worker.actor_id), "done")
       else:
         raise Exception("This code should be unreachable.")
-      worker.redis_client.hincrby(worker_info_key, "export_counter", 1)
-      worker.worker_import_counter += 1
+      # Actors do not contribute to the import counter.
+      if not key.startswith(b"Actor"):
+        worker.redis_client.hincrby(worker_info_key, "export_counter", 1)
+        worker.worker_import_counter += 1
+      num_imported += 1
 
   for msg in worker.import_pubsub_client.listen():
     with worker.lock:
@@ -1157,8 +1172,8 @@ def import_thread(worker):
         continue
       assert msg["data"] == b"rpush"
       num_imports = worker.redis_client.llen("Exports")
-      assert num_imports >= worker.worker_import_counter
-      for i in range(worker.worker_import_counter, num_imports):
+      assert num_imports >= num_imported
+      for i in range(num_imported, num_imports):
         key = worker.redis_client.lindex("Exports", i)
         if key.startswith(b"RemoteFunction"):
           with log_span("ray:import_remote_function", worker=worker):
@@ -1180,8 +1195,11 @@ def import_thread(worker):
             worker.redis_client.lpush("ActorLock:{}".format(worker.actor_id), "done")
         else:
           raise Exception("This code should be unreachable.")
-        worker.redis_client.hincrby(worker_info_key, "export_counter", 1)
-        worker.worker_import_counter += 1
+        # Actors do not contribute to the import counter.
+        if not key.startswith(b"Actor"):
+          worker.redis_client.hincrby(worker_info_key, "export_counter", 1)
+          worker.worker_import_counter += 1
+        num_imported += 1
 
 def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker, actor_id=NIL_ACTOR_ID):
   """Connect this worker to the local scheduler, to Plasma, and to Redis.
@@ -1518,7 +1536,11 @@ def wait_for_valid_import_counter(function_id, driver_id, timeout=5, worker=glob
   may indicate a problem somewhere and we will push an error message to the
   user.
 
+  If this worker is an actor, then this will wait until the actor has been
+  defined.
+
   Args:
+    is_actor (bool): True if this worker is an actor, and false otherwise.
     function_id (str): The ID of the function that we want to execute.
     driver_id (str): The ID of the driver to push the error message to if this
       times out.
@@ -1529,17 +1551,19 @@ def wait_for_valid_import_counter(function_id, driver_id, timeout=5, worker=glob
   num_warnings_sent = 0
   while True:
     with worker.lock:
-      if function_id.id() in worker.functions and (worker.function_export_counters[function_id.id()] <= worker.worker_import_counter):
+      if worker.actor_id == NIL_ACTOR_ID and function_id.id() in worker.functions and (worker.function_export_counters[function_id.id()] <= worker.worker_import_counter):
         break
-    if time.time() - start_time > timeout * (num_warnings_sent + 1):
-      if function_id.id() not in worker.functions:
-        warning_message = "This worker was asked to execute a function that it does not have registered. You may have to restart Ray."
-      else:
-        warning_message = "This worker's import counter is too small."
-      if not warning_sent:
-        worker.push_error_to_driver(driver_id, "import_counter",
-                                    warning_message)
-      warning_sent = True
+      elif worker.actor_id != NIL_ACTOR_ID and worker.actor_id in worker.actors:
+        break
+      if time.time() - start_time > timeout * (num_warnings_sent + 1):
+        if function_id.id() not in worker.functions:
+          warning_message = "This worker was asked to execute a function that it does not have registered. You may have to restart Ray."
+        else:
+          warning_message = "This worker's import counter is too small."
+        if not warning_sent:
+          worker.push_error_to_driver(driver_id, "import_counter",
+                                      warning_message)
+        warning_sent = True
     time.sleep(0.001)
 
 def format_error_message(exception_message, task_exception=False):
@@ -1590,6 +1614,7 @@ def main_loop(worker=global_worker):
       # correct driver.
       worker.task_driver_id = task.driver_id()
       worker.current_task_id = task.task_id()
+      worker.current_function_id = task.function_id().id()
       worker.task_index = 0
       worker.put_index = 0
       function_id = task.function_id()
@@ -1664,8 +1689,8 @@ def main_loop(worker=global_worker):
     # Check that the number of imports we have is at least as great as the
     # export counter for the task. If not, wait until we have imported enough.
     # We will push warnings to the user if we spend too long in this loop.
-    # with log_span("ray:wait_for_import_counter", worker=worker):
-    #   wait_for_valid_import_counter(function_id, task.driver_id().id(), worker=worker)
+    with log_span("ray:wait_for_import_counter", worker=worker):
+      wait_for_valid_import_counter(function_id, task.driver_id().id(), worker=worker)
 
     # Execute the task.
     # TODO(rkn): Consider acquiring this lock with a timeout and pushing a

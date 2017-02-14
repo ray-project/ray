@@ -80,7 +80,7 @@ class ActorAPI(unittest.TestCase):
       def get_values(self):
         pass
 
-    actor = Actor(0)
+    actor = Actor()
     self.assertEqual(ray.get(actor.get_values()), None)
 
     ray.worker.cleanup()
@@ -213,9 +213,9 @@ class ActorNesting(unittest.TestCase):
     self.assertEqual(ray.get(values[2]), list(range(1, 6)))
     self.assertEqual(values[3], list(range(1, 6)))
 
-    self.assertEqual(ray.get(ray.get(actor.f())), range(1, 6))
-    self.assertEqual(ray.get(actor.g()), range(1, 6))
-    self.assertEqual(ray.get(actor.h([f.remote(i) for i in range(5)])), range(1, 6))
+    self.assertEqual(ray.get(ray.get(actor.f())), list(range(1, 6)))
+    self.assertEqual(ray.get(actor.g()), list(range(1, 6)))
+    self.assertEqual(ray.get(actor.h([f.remote(i) for i in range(5)])), list(range(1, 6)))
 
     ray.worker.cleanup()
 
@@ -391,9 +391,11 @@ class ActorSchedulingProperties(unittest.TestCase):
     self.assertEqual(ready_ids, [])
     self.assertEqual(len(remaining_ids), 10)
 
+    ray.worker.cleanup()
+
 class ActorsOnMultipleNodes(unittest.TestCase):
 
-  def testDefineActorWithinActor(self):
+  def testActorLoadBalancing(self):
     num_local_schedulers = 3
     ray.worker._init(start_ray_local=True, num_workers=0, num_local_schedulers=num_local_schedulers)
 

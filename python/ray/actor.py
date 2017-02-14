@@ -77,17 +77,15 @@ def export_actor(actor_id, Class, worker):
   if worker.mode in [ray.SCRIPT_MODE, ray.SILENT_MODE]:
     export_counter = worker.driver_export_counter
   elif worker.mode == ray.WORKER_MODE:
-
-    export_counter =
-
+    # We don't actually need export counters for actors.
+    export_counter = 0
   d = {"driver_id": worker.task_driver_id.id(),
        "actor_id": actor_id.id(),
        # "actor_worker_id": actor_worker_id,
        "name": Class.__name__,
        "module": Class.__module__,
        "class": pickled_class,
-       "class_export_counter": worker.driver_export_counter}
-  print("worker.driver_export_counter", worker.driver_export_counter)
+       "class_export_counter": export_counter}
   worker.redis_client.hmset(key, d)
   worker.redis_client.rpush("Exports", key)
   worker.driver_export_counter += 1
