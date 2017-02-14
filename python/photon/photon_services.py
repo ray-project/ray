@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import multiprocessing
 import os
 import random
 import subprocess
@@ -88,23 +87,9 @@ def start_local_scheduler(plasma_store_name,
     command += ["-r", redis_address]
   if plasma_address is not None:
     command += ["-a", plasma_address]
-  # We want to be able to support independently setting capacity for each of the
-  # supported resource types. Thus, the list can be None or contain any number
-  # of None values.
-  if static_resource_list is None:
-    static_resource_list = [None, None]
-  if static_resource_list[0] is None:
-    # By default, use the number of hardware execution threads for the number of
-    # cores.
-    static_resource_list[0] = multiprocessing.cpu_count()
-  if static_resource_list[1] is None:
-    # By default, do not configure any GPUs on this node.
-    static_resource_list[1] = 0
-  # Pass the resource capacity string to the photon scheduler in all cases.
-  # Sanity check to make sure all resource capacities in the list are numeric
-  # (int or float).
-  assert(all([x == int or x == float for x in map(type, static_resource_list)]))
-  command += ["-c", ",".join(map(str, static_resource_list))]
+  if static_resource_list is not None:
+    assert all([isinstance(resource, int) or isinstance(resource, float) for resource in static_resource_list])
+    command += ["-c", ",".join([str(resource) for resource in static_resource_list])]
 
   with open(os.devnull, "w") as FNULL:
     stdout = FNULL if redirect_output else None

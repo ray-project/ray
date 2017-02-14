@@ -13,6 +13,8 @@ parser.add_argument("--redis-address", required=False, type=str, help="the addre
 parser.add_argument("--redis-port", required=False, type=str, help="the port to use for starting Redis")
 parser.add_argument("--object-manager-port", required=False, type=int, help="the port to use for starting the object manager")
 parser.add_argument("--num-workers", default=10, required=False, type=int, help="the number of workers to start on this node")
+parser.add_argument("--num-cpus", required=False, type=int, help="the number of CPUs on this node")
+parser.add_argument("--num-gpus", required=False, type=int, help="the number of GPUs on this node")
 parser.add_argument("--head", action="store_true", help="provide this argument for the head node")
 
 def check_no_existing_redis_clients(node_ip_address, redis_address):
@@ -66,7 +68,9 @@ if __name__ == "__main__":
                                            node_ip_address=node_ip_address,
                                            num_workers=args.num_workers,
                                            cleanup=False,
-                                           redirect_output=True)
+                                           redirect_output=True,
+                                           num_cpus=args.num_cpus,
+                                           num_gpus=args.num_gpus)
     print(address_info)
     print("\nStarted Ray with {} workers on this node. A different number of "
           "workers can be set with the --num-workers flag (but you have to "
@@ -108,7 +112,9 @@ if __name__ == "__main__":
                                            object_manager_ports=[args.object_manager_port],
                                            num_workers=args.num_workers,
                                            cleanup=False,
-                                           redirect_output=True)
+                                           redirect_output=True,
+                                           num_cpus=args.num_cpus,
+                                           num_gpus=args.num_gpus)
     print(address_info)
     print("\nStarted {} workers on this node. A different number of workers "
           "can be set with the --num-workers flag (but you have to first "

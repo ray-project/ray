@@ -2,8 +2,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import psutil
+from collections import namedtuple, OrderedDict
+import multiprocessing
 import os
+import psutil
 import random
 import redis
 import signal
@@ -12,7 +14,6 @@ import string
 import subprocess
 import sys
 import time
-from collections import namedtuple, OrderedDict
 import threading
 
 # Ray modules
@@ -360,7 +361,8 @@ def start_local_scheduler(redis_address,
                           plasma_address=None,
                           cleanup=True,
                           redirect_output=False,
-                          static_resource_list=None,
+                          num_cpus=None,
+                          num_gpus=None,
                           num_workers=0):
   """Start a local scheduler process.
 
@@ -378,14 +380,21 @@ def start_local_scheduler(redis_address,
       that imported services exits.
     redirect_output (bool): True if stdout and stderr should be redirected to
       /dev/null.
-    static_resource_list (list): An ordered list of the configured resource
-      capacities for this local scheduler.
+    num_cpus: The number of CPUs the local scheduler should be configured with.
+    num_gpus: The number of GPUs the local scheduler should be configured with.
     num_workers (int): The number of workers that the local scheduler should
       start.
 
   Return:
     The name of the local scheduler socket.
   """
+  if num_cpus is None:
+    # By default, use the number of hardware execution threads for the number of
+    # cores.
+    num_cpus = multiprocessing.cpu_count()
+  if num_gpus is None:
+    # By default, assume this node has no GPUs.
+    num_gpus = 0
   local_scheduler_name, p = photon.start_local_scheduler(plasma_store_name,
                                                          plasma_manager_name,
                                                          worker_path=worker_path,
@@ -394,7 +403,7 @@ def start_local_scheduler(redis_address,
                                                          plasma_address=plasma_address,
                                                          use_profiler=RUN_PHOTON_PROFILER,
                                                          redirect_output=redirect_output,
-                                                         static_resource_list=static_resource_list,
+                                                         static_resource_list=[num_cpus, num_gpus],
                                                          num_workers=num_workers)
   if cleanup:
     all_processes[PROCESS_TYPE_LOCAL_SCHEDULER].append(p)
@@ -637,7 +646,8 @@ def start_ray_processes(address_info=None,
                                                  plasma_address=plasma_address,
                                                  cleanup=cleanup,
                                                  redirect_output=redirect_output,
-                                                 static_resource_list=[num_cpus[i], num_gpus[i]],
+                                                 num_cpus=num_cpus[i],
+                                                 num_gpus=num_gpus[i],
                                                  num_workers=num_local_scheduler_workers)
     local_scheduler_socket_names.append(local_scheduler_name)
     time.sleep(0.1)
