@@ -90,7 +90,7 @@ class TestGlobalScheduler(unittest.TestCase):
           plasma_manager_name=plasma_manager_name,
           plasma_address=plasma_address,
           redis_address=redis_address,
-          static_resource_list=[None, 0])
+          static_resource_list=[10, 0])
       # Connect to the scheduler.
       photon_client = photon.PhotonClient(local_scheduler_name)
       self.photon_clients.append(photon_client)

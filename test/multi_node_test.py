@@ -127,11 +127,23 @@ class StartRayScriptTest(unittest.TestCase):
                              "--object-manager-port", "12345"])
     subprocess.Popen([stop_ray_script]).wait()
 
+    # Test starting Ray with the number of CPUs specified.
+    subprocess.check_output([start_ray_script, "--head",
+                             "--num-cpus", "100"])
+    subprocess.Popen([stop_ray_script]).wait()
+
+    # Test starting Ray with the number of GPUs specified.
+    subprocess.check_output([start_ray_script, "--head",
+                             "--num-gpus", "100"])
+    subprocess.Popen([stop_ray_script]).wait()
+
     # Test starting Ray with all arguments specified.
     subprocess.check_output([start_ray_script, "--head",
                              "--num-workers", "20",
                              "--redis-port", "6379",
-                             "--object-manager-port", "12345"])
+                             "--object-manager-port", "12345",
+                             "--num-cpus", "100",
+                             "--num-gpus", "0"])
     subprocess.Popen([stop_ray_script]).wait()
 
     # Test starting Ray with invalid arguments.
