@@ -1155,9 +1155,6 @@ def import_thread(worker):
         actor_id, = worker.redis_client.hmget(key, "actor_id")
         if worker.actor_id == actor_id:
           worker.fetch_and_register["Actor"](key, worker)
-          # Notification that this actor has been registered with the actor
-          # worker.
-          worker.redis_client.lpush("ActorLock:{}".format(worker.actor_id), "done")
       else:
         raise Exception("This code should be unreachable.")
       # Actors do not contribute to the import counter.
@@ -1190,9 +1187,6 @@ def import_thread(worker):
           actor_id, = worker.redis_client.hmget(key, "actor_id")
           if worker.actor_id == actor_id:
             worker.fetch_and_register["Actor"](key, worker)
-            # Notification that this actor has been registered with the actor
-            # worker.
-            worker.redis_client.lpush("ActorLock:{}".format(worker.actor_id), "done")
         else:
           raise Exception("This code should be unreachable.")
         # Actors do not contribute to the import counter.

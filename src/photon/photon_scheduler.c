@@ -709,6 +709,9 @@ void handle_actor_creation_callback(actor_info info, void *context) {
   if (db_client_ids_equal(local_scheduler_id, get_db_client_id(state->db))) {
     start_worker(state, actor_id);
   }
+  /* Let the scheduling algorithm process the fact that a new actor has been
+   * created. */
+  handle_actor_creation_notification(state, state->algorithm_state, actor_id);
 }
 
 int heartbeat_handler(event_loop *loop, timer_id id, void *context) {

@@ -90,7 +90,6 @@ def export_actor(actor_id, Class, worker):
   worker.redis_client.rpush("Exports", key)
   worker.driver_export_counter += 1
 
-
 def actor(Class):
   # The function actor_method_call gets called if somebody tries to call a
   # method on their local actor stub object.
@@ -119,8 +118,6 @@ def actor(Class):
       self._ray_actor_id = random_actor_id()
       self._ray_actor_methods = {k: v for (k, v) in inspect.getmembers(Class, predicate=inspect.isfunction)}
       export_actor(self._ray_actor_id, Class, ray.worker.global_worker)
-      # Block until the actor has been registered in the actor worker.
-      ray.worker.global_worker.redis_client.blpop("ActorLock:{}".format(self._ray_actor_id.id()))
       # Call __init__ as a remote function.
       actor_method_call(self._ray_actor_id, "__init__", *args, **kwargs)
     # Make tab completion work.

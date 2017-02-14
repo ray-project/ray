@@ -75,6 +75,21 @@ void handle_actor_task_submitted(local_scheduler_state *state,
                                  task_spec *spec);
 
 /**
+ * This function will be called when the local scheduler receives a notification
+ * about the creation of a new actor. This can be used by the scheduling
+ * algorithm to resubmit cached actor tasks.
+ *
+ * @param state The state of the local scheduler.
+ * @param algorithm_state State maintained by the scheduling algorithm.
+ * @param actor_id The ID of the actor being created.
+ * @return Void.
+ */
+void handle_actor_creation_notification(
+    local_scheduler_state *state,
+    scheduling_algorithm_state *algorithm_state,
+    actor_id actor_id);
+
+/**
  * This function will be called when a task is assigned by the global scheduler
  * for execution on this local scheduler.
  *
