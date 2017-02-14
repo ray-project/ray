@@ -251,7 +251,7 @@ void add_task_to_actor_queue(local_scheduler_state *state,
   actor_id actor_id = task_spec_actor_id(spec);
   char tmp[ID_STRING_SIZE];
   object_id_to_string(actor_id, tmp, ID_STRING_SIZE);
-  DCHECK(!actor_ids_equal(actor_id, NIL_ID));
+  DCHECK(!actor_ids_equal(actor_id, NIL_ACTOR_ID));
   /* Get the local actor entry for this actor. */
   local_actor_info *entry;
   HASH_FIND(hh, algorithm_state->local_actor_infos, &actor_id, sizeof(actor_id),
@@ -312,7 +312,7 @@ bool dispatch_actor_task(local_scheduler_state *state,
                          scheduling_algorithm_state *algorithm_state,
                          actor_id actor_id) {
   /* Make sure this worker actually is an actor. */
-  CHECK(!actor_ids_equal(actor_id, NIL_ID));
+  CHECK(!actor_ids_equal(actor_id, NIL_ACTOR_ID));
   /* Make sure this actor belongs to this local scheduler. */
   actor_map_entry *actor_entry;
   HASH_FIND(hh, state->actor_mapping, &actor_id, sizeof(actor_id), actor_entry);
@@ -761,7 +761,7 @@ void handle_actor_task_submitted(local_scheduler_state *state,
                                  scheduling_algorithm_state *algorithm_state,
                                  task_spec *spec) {
   actor_id actor_id = task_spec_actor_id(spec);
-  CHECK(!actor_ids_equal(actor_id, NIL_ID));
+  CHECK(!actor_ids_equal(actor_id, NIL_ACTOR_ID));
 
   /* Find the local scheduler responsible for this actor. */
   actor_map_entry *entry;
@@ -813,7 +813,7 @@ void handle_actor_task_scheduled(local_scheduler_state *state,
   /* Check that the task is meant to run on an actor that this local scheduler
    * is responsible for. */
   actor_id actor_id = task_spec_actor_id(spec);
-  DCHECK(!actor_ids_equal(actor_id, NIL_ID));
+  DCHECK(!actor_ids_equal(actor_id, NIL_ACTOR_ID));
   actor_map_entry *entry;
   HASH_FIND(hh, state->actor_mapping, &actor_id, sizeof(actor_id), entry);
   DCHECK(entry != NULL); //COULD THIS BE NULL? PROBABLY
@@ -846,7 +846,7 @@ void handle_actor_worker_available(local_scheduler_state *state,
                                    scheduling_algorithm_state *algorithm_state,
                                    local_scheduler_client *worker) {
   actor_id actor_id = worker->actor_id;
-  CHECK(!actor_ids_equal(actor_id, NIL_ID));
+  CHECK(!actor_ids_equal(actor_id, NIL_ACTOR_ID));
   /* Get the actor info for this worker. */
   local_actor_info *entry;
   HASH_FIND(hh, algorithm_state->local_actor_infos, &actor_id, sizeof(actor_id),

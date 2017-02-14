@@ -151,7 +151,9 @@ class TestGlobalScheduler(unittest.TestCase):
   def test_task_default_resources(self):
     task1 = photon.Task(random_driver_id(), random_function_id(), [random_object_id()], 0, random_task_id(), 0)
     self.assertEqual(task1.required_resources(), [1.0, 0.0])
-    task2 = photon.Task(random_driver_id(), random_function_id(), [random_object_id()], 0, random_task_id(), 0, [1.0, 2.0])
+    task2 = photon.Task(random_driver_id(), random_function_id(),
+                        [random_object_id()], 0, random_task_id(), 0,
+                        photon.ObjectID(NIL_ACTOR_ID), 0, [1.0, 2.0])
     self.assertEqual(task2.required_resources(), [1.0, 2.0])
 
   def test_redis_only_single_task(self):

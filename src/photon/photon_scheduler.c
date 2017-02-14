@@ -421,8 +421,11 @@ void reconstruct_task_update_callback(task *task, void *user_context) {
    * to ensure that reconstruction will happen. */
   local_scheduler_state *state = user_context;
   task_spec *spec = task_task_spec(task);
+  /* If the task is an actor task, then we currently do not reconstruct it.
+   * TODO(rkn): Handle this better. */
+  CHECK(actor_ids_equal(task_spec_actor_id(spec), NIL_ACTOR_ID));
+  /* Resubmit the task. */
   handle_task_submitted(state, state->algorithm_state, spec);
-
   /* Recursively reconstruct the task's inputs, if necessary. */
   for (int64_t i = 0; i < task_num_args(spec); ++i) {
     if (task_arg_type(spec, i) == ARG_BY_REF) {
@@ -470,7 +473,6 @@ void reconstruct_object_lookup_callback(object_id reconstruct_object_id,
 
 void reconstruct_object(local_scheduler_state *state,
                         object_id reconstruct_object_id) {
-//NEED TO HANDLE OR FAIL FOR ACTOR TASKS...
   LOG_DEBUG("Starting reconstruction");
   /* TODO(swang): Track task lineage for puts. */
   CHECK(state->db != NULL);
@@ -496,7 +498,7 @@ void process_message(event_loop *loop,
   switch (type) {
   case SUBMIT_TASK: {
     task_spec *spec = (task_spec *) utarray_front(state->input_buffer);
-    if (actor_ids_equal(task_spec_actor_id(spec), NIL_ID)) {
+    if (actor_ids_equal(task_spec_actor_id(spec), NIL_ACTOR_ID)) {
       handle_task_submitted(state, state->algorithm_state, spec);
     } else {
       handle_actor_task_submitted(state, state->algorithm_state, spec);
@@ -534,17 +536,17 @@ void process_message(event_loop *loop,
      * running on the worker). */
     register_worker_info *info =
         (register_worker_info *) utarray_front(state->input_buffer);
-    if (!actor_ids_equal(info->actor_id, NIL_ID)) {
+    if (!actor_ids_equal(info->actor_id, NIL_ACTOR_ID)) {
       /* Make sure that the local scheduler is aware that it is responsible for
        * this actor. */
       actor_map_entry *entry;
-      HASH_FIND(hh, state->actor_mapping, &info->actor_id, sizeof(info->actor_id),
-                entry);
+      HASH_FIND(hh, state->actor_mapping, &info->actor_id,
+                sizeof(info->actor_id), entry);
       CHECK(entry != NULL);
       CHECK(db_client_ids_equal(entry->local_scheduler_id,
                                 get_db_client_id(state->db)));
       /* Update the worker struct with this actor ID. */
-      CHECK(actor_ids_equal(worker->actor_id, NIL_ID));
+      CHECK(actor_ids_equal(worker->actor_id, NIL_ACTOR_ID));
       worker->actor_id = info->actor_id;
       /* Let the scheduling algorithm process the presence of this new
        * worker. */
@@ -599,10 +601,9 @@ void process_message(event_loop *loop,
     }
     /* Let the scheduling algorithm process the fact that there is an available
      * worker. */
-    if (actor_ids_equal(worker->actor_id, NIL_ID)) {
+    if (actor_ids_equal(worker->actor_id, NIL_ACTOR_ID)) {
       handle_worker_available(state, state->algorithm_state, worker);
     } else {
-      //SHOULD THIS IF CONDITION BE IN THE ALGORITHM OR THE SCHEDULER?
       handle_actor_worker_available(state, state->algorithm_state, worker);
     }
   } break;
@@ -613,9 +614,8 @@ void process_message(event_loop *loop,
   case DISCONNECT_CLIENT: {
     LOG_INFO("Disconnecting client on fd %d", client_sock);
     kill_worker(worker, false);
-    if (!actor_ids_equal(worker->actor_id, NIL_ID)) {
-      /* Let the scheduling algorithm process the presence of this new
-       * worker. */
+    if (!actor_ids_equal(worker->actor_id, NIL_ACTOR_ID)) {
+      /* Let the scheduling algorithm process the absence of this worker. */
       handle_actor_worker_disconnect(state, state->algorithm_state,
                                      worker->actor_id);
     }
@@ -665,7 +665,7 @@ void signal_handler(int signal) {
 
 void handle_task_scheduled_callback(task *original_task, void *user_context) {
   task_spec *spec = task_task_spec(original_task);
-  if (actor_ids_equal(task_spec_actor_id(spec), NIL_ID)) {
+  if (actor_ids_equal(task_spec_actor_id(spec), NIL_ACTOR_ID)) {
     /* This task does not involve an actor. Handle it normally. */
     handle_task_scheduled(g_state, g_state->algorithm_state, spec);
   } else {
@@ -763,9 +763,8 @@ void start_server(const char *node_ip_address,
   }
   /* Subscribe to notifications about newly created actors. */
   if (g_state->db != NULL) {
-    actor_notification_table_subscribe(g_state->db,
-                                       handle_actor_creation_callback, g_state,
-                                       &retry);
+    actor_notification_table_subscribe(
+        g_state->db, handle_actor_creation_callback, g_state, &retry);
   }
   /* Create a timer for publishing information about the load on the local
    * scheduler to the local scheduler table. This message also serves as a
