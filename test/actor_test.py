@@ -314,6 +314,35 @@ class ActorNesting(unittest.TestCase):
   #
   #   ray.worker.cleanup()
 
+  def testActorImportCounter(self):
+    # This is mostly a test of the export counters to make sure that when an
+    # actor is imported, all of the necessary remote functions have been
+    # imported.
+    ray.init()
+
+    # Export a bunch of remote functions.
+    num_remote_functions = 50
+    for i in range(num_remote_functions):
+      @ray.remote
+      def f():
+        return i
+
+    @ray.remote
+    def g():
+      @ray.actor
+      class Actor(object):
+        def __init__(self):
+          # This should use the last version of f.
+          self.x = ray.get(f.remote())
+        def get_val(self):
+          return self.x
+      actor = Actor()
+      return ray.get(actor.get_val())
+
+    self.assertEqual(ray.get(g.remote()), num_remote_functions - 1)
+
+    ray.worker.cleanup()
+
 class ActorInheritance(unittest.TestCase):
 
   def testInheritActorFromClass(self):

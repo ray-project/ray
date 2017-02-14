@@ -392,6 +392,31 @@ class Worker(object):
     self.mode = None
     self.cached_remote_functions = []
     self.cached_functions_to_run = []
+    # The driver_export_counter and worker_import_counter are used to make sure
+    # that no task executes before everything it needs is present. For example,
+    # if we define a remote function f, a worker cannot execute a task for f
+    # until the worker has imported the function f. TODO(rkn): These counters
+    # must be tracked separately for each driver.
+    #   - When a remote function, a reusable variable, or a function to run is
+    #     exported, the driver_export_counter is incremented. These exports must
+    #     take place from the driver.
+    #   - When an actor is created, the driver_export_counter is NOT
+    #     incremented. Note that an actor can be created from a driver or from
+    #     any worker.
+    #   - When a worker imports a remote function, a reusable variable, or a
+    #     function to run, its worker_import_counter is incremented.
+    #   - Notably, when an actor is imported, its worker_import_counter is NOT
+    #     incremented.
+    #   - Whenever a remote function is DEFINED on the driver, it records the
+    #     value of the driver_export_counter and a worker will not execute that
+    #     remote function until it has imported that many exports (excluding
+    #     actors).
+    #   - When an actor is defined, the actor records the driver_export_counter
+    #     of the driver (if the actor is created on a driver), or it records the
+    #     driver_export_counter associated with the function in the task
+    #     creating the actor (if the actor was created inside a task). The
+    #     worker that ultimately runs the actor will not execute any tasks until
+    #     it has imported that many imports.
     self.driver_export_counter = 0
     self.worker_import_counter = 0
     self.fetch_and_register = {}
@@ -1112,13 +1137,17 @@ def import_thread(worker):
         fetch_and_register_environment_variable(key, worker=worker)
       elif key.startswith(b"FunctionsToRun"):
         fetch_and_execute_function_to_run(key, worker=worker)
-      else:
-        assert key.startswith(b"Actor")
+      elif key.startswith(b"Actor"):
+        # Only get the actor if the actor ID matches the actor ID of this
+        # worker.
         actor_id, = worker.redis_client.hmget(key, "actor_id")
         if worker.actor_id == actor_id:
           worker.fetch_and_register["Actor"](key, worker)
-          # Notification that this actor has been registered with the actor worker.
+          # Notification that this actor has been registered with the actor
+          # worker.
           worker.redis_client.lpush("ActorLock:{}".format(worker.actor_id), "done")
+      else:
+        raise Exception("This code should be unreachable.")
       worker.redis_client.hincrby(worker_info_key, "export_counter", 1)
       worker.worker_import_counter += 1
 
@@ -1140,18 +1169,19 @@ def import_thread(worker):
         elif key.startswith(b"FunctionsToRun"):
           with log_span("ray:import_function_to_run", worker=worker):
             fetch_and_execute_function_to_run(key, worker=worker)
-        else:
-          assert key.startswith(b"Actor")
+        elif key.startswith(b"Actor"):
+          # Only get the actor if the actor ID matches the actor ID of this
+          # worker.
           actor_id, = worker.redis_client.hmget(key, "actor_id")
           if worker.actor_id == actor_id:
             worker.fetch_and_register["Actor"](key, worker)
-            # Notification that this actor has been registered with the actor worker.
+            # Notification that this actor has been registered with the actor
+            # worker.
             worker.redis_client.lpush("ActorLock:{}".format(worker.actor_id), "done")
-          # raise Exception("This code should be unreachable.")
+        else:
+          raise Exception("This code should be unreachable.")
         worker.redis_client.hincrby(worker_info_key, "export_counter", 1)
         worker.worker_import_counter += 1
-
-
 
 def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker, actor_id=NIL_ACTOR_ID):
   """Connect this worker to the local scheduler, to Plasma, and to Redis.
@@ -1634,7 +1664,6 @@ def main_loop(worker=global_worker):
     # Check that the number of imports we have is at least as great as the
     # export counter for the task. If not, wait until we have imported enough.
     # We will push warnings to the user if we spend too long in this loop.
-    # TODO(pcm): XXX
     # with log_span("ray:wait_for_import_counter", worker=worker):
     #   wait_for_valid_import_counter(function_id, task.driver_id().id(), worker=worker)
 

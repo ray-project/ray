@@ -72,6 +72,14 @@ def export_actor(actor_id, Class, worker):
 
   worker.redis_client.publish("actor_notifications", actor_id.id() + local_scheduler_id)
 
+  # The export counter is computed differently depending on whether we are
+  # currently in a driver or a worker.
+  if worker.mode in [ray.SCRIPT_MODE, ray.SILENT_MODE]:
+    export_counter = worker.driver_export_counter
+  elif worker.mode == ray.WORKER_MODE:
+
+    export_counter =
+
   d = {"driver_id": worker.task_driver_id.id(),
        "actor_id": actor_id.id(),
        # "actor_worker_id": actor_worker_id,
@@ -79,6 +87,7 @@ def export_actor(actor_id, Class, worker):
        "module": Class.__module__,
        "class": pickled_class,
        "class_export_counter": worker.driver_export_counter}
+  print("worker.driver_export_counter", worker.driver_export_counter)
   worker.redis_client.hmset(key, d)
   worker.redis_client.rpush("Exports", key)
   worker.driver_export_counter += 1
@@ -94,7 +103,7 @@ def actor(Class):
     if len(kwargs) > 0:
       raise Exception("Actors currently do not support **kwargs.")
     function_id = get_actor_method_function_id(attr)
-    # TODO(pcm): Extend args with keyword args
+    # TODO(pcm): Extend args with keyword args.
     # For now, actor methods should not require resources beyond the resources
     # used by the actor.
     num_cpus = 0
