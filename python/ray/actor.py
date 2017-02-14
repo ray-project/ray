@@ -47,7 +47,7 @@ def fetch_and_register_actor(key, worker):
     # TODO(pcm): Why is the below line necessary?
     unpickled_class.__module__ = module
     worker.actors[actor_id_str] = unpickled_class.__new__(unpickled_class)
-    for (k, v) in inspect.getmembers(unpickled_class, predicate=inspect.isfunction):
+    for (k, v) in inspect.getmembers(unpickled_class, predicate=(lambda x: inspect.isfunction(x) or inspect.ismethod(x))):
       function_id = get_actor_method_function_id(k).id()
       worker.function_names[function_id] = k
       worker.functions[function_id] = v
