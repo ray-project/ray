@@ -306,10 +306,9 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   }
   /* Construct the task specification. */
   int val_repr_index = 0;
-  self->spec = start_construct_task_spec(driver_id, parent_task_id,
-                                         parent_counter, actor_id, actor_counter,
-                                         function_id, size,
-                                         num_returns, value_data_bytes);
+  self->spec = start_construct_task_spec(
+      driver_id, parent_task_id, parent_counter, actor_id, actor_counter,
+      function_id, size, num_returns, value_data_bytes);
   /* Add the task arguments. */
   for (Py_ssize_t i = 0; i < size; ++i) {
     PyObject *arg = PyList_GetItem(arguments, i);
@@ -421,7 +420,7 @@ static PyMethodDef PyTask_methods[] = {
     {"function_id", (PyCFunction) PyTask_function_id, METH_NOARGS,
      "Return the function ID for this task."},
     {"actor_id", (PyCFunction) PyTask_actor_id, METH_NOARGS,
-      "Return the actor ID for this task."},
+     "Return the actor ID for this task."},
     {"driver_id", (PyCFunction) PyTask_driver_id, METH_NOARGS,
      "Return the driver ID for this task."},
     {"task_id", (PyCFunction) PyTask_task_id, METH_NOARGS,

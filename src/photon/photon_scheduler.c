@@ -762,9 +762,11 @@ void start_server(const char *node_ip_address,
                          NULL, &retry, NULL, NULL);
   }
   /* Subscribe to notifications about newly created actors. */
-  actor_notification_table_subscribe(g_state->db,
-                                     handle_actor_creation_callback, g_state,
-                                     &retry);
+  if (g_state->db != NULL) {
+    actor_notification_table_subscribe(g_state->db,
+                                       handle_actor_creation_callback, g_state,
+                                       &retry);
+  }
   /* Create a timer for publishing information about the load on the local
    * scheduler to the local scheduler table. This message also serves as a
    * heartbeat. */

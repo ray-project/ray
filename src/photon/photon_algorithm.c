@@ -120,7 +120,8 @@ void free_scheduling_algorithm_state(
   }
   /* Remove all of the remaining actors. */
   local_actor_info *actor_entry, *tmp_actor_entry;
-  HASH_ITER(hh, algorithm_state->local_actor_infos, actor_entry, tmp_actor_entry) {
+  HASH_ITER(hh, algorithm_state->local_actor_infos, actor_entry,
+            tmp_actor_entry) {
     /* We do not call HASH_DELETE here because it will be called inside of
      * remove_actor. */
     remove_actor(algorithm_state, actor_entry->actor_id);
@@ -168,8 +169,8 @@ void provide_scheduler_info(local_scheduler_state *state,
 }
 
 void create_actor(scheduling_algorithm_state *algorithm_state,
-                               actor_id actor_id,
-                               local_scheduler_client *worker) {
+                  actor_id actor_id,
+                  local_scheduler_client *worker) {
   /* This will be freed when the actor is removed in remove_actor. */
   local_actor_info *entry = malloc(sizeof(local_actor_info));
   entry->actor_id = actor_id;
@@ -270,12 +271,12 @@ void add_task_to_actor_queue(local_scheduler_state *state,
   elt->spec = (task_spec *) malloc(task_spec_size(spec));
   memcpy(elt->spec, spec, task_spec_size(spec));
   /* Add the task spec to the actor's task queue in a manner that preserves the
-   * order of the actor task counters. Iterate from the beginning of the queue to
-   * find the right place to insert the task queue entry. TODO(pcm): This makes
-   it a quadratic algorithms, which needs to be optimized. */
+   * order of the actor task counters. Iterate from the beginning of the queue
+   * to find the right place to insert the task queue entry. TODO(pcm): This
+   * makes submitting multiple actor tasks take quadratic time, which needs to
+   * be optimized. */
   task_queue_entry *current_entry = entry->task_queue;
-  while (current_entry != NULL &&
-         current_entry->next != NULL &&
+  while (current_entry != NULL && current_entry->next != NULL &&
          task_counter > task_spec_actor_counter(current_entry->spec)) {
     current_entry = current_entry->next;
   }
@@ -709,6 +710,25 @@ bool resource_constraints_satisfied(local_scheduler_state *state,
   return true;
 }
 
+/**
+ * Update the result table, which holds mappings of object ID -> ID of the
+ * task that created it.
+ *
+ * @param state The scheduler state.
+ * @param spec The task spec in question.
+ * @return Void.
+ */
+void update_result_table(local_scheduler_state *state, task_spec *spec) {
+  if (state->db != NULL) {
+    task_id task_id = task_spec_id(spec);
+    for (int64_t i = 0; i < task_num_returns(spec); ++i) {
+      object_id return_id = task_return(spec, i);
+      result_table_add(state->db, return_id, task_id,
+                       (retry_info *) &photon_retry, NULL, NULL);
+    }
+  }
+}
+
 void handle_task_submitted(local_scheduler_state *state,
                            scheduling_algorithm_state *algorithm_state,
                            task_spec *spec) {
@@ -734,14 +754,7 @@ void handle_task_submitted(local_scheduler_state *state,
 
   /* Update the result table, which holds mappings of object ID -> ID of the
    * task that created it. */
-  if (state->db != NULL) {
-    task_id task_id = task_spec_id(spec);
-    for (int64_t i = 0; i < task_num_returns(spec); ++i) {
-      object_id return_id = task_return(spec, i);
-      result_table_add(state->db, return_id, task_id,
-                       (retry_info *) &photon_retry, NULL, NULL);
-    }
-  }
+  update_result_table(state, spec);
 }
 
 void handle_actor_task_submitted(local_scheduler_state *state,
@@ -753,7 +766,8 @@ void handle_actor_task_submitted(local_scheduler_state *state,
   /* Find the local scheduler responsible for this actor. */
   actor_map_entry *entry;
   HASH_FIND(hh, state->actor_mapping, &actor_id, sizeof(actor_id), entry);
-  //THE CHECK BELOW COULD FAIL.. FIX THIS.
+  /* TODO(rkn): If we make actor creation non-blocking then the check below
+   * could fail. */
   CHECK(entry != NULL);
 
   if (db_client_ids_equal(entry->local_scheduler_id,
@@ -772,15 +786,7 @@ void handle_actor_task_submitted(local_scheduler_state *state,
 
   /* Update the result table, which holds mappings of object ID -> ID of the
    * task that created it. */
-  //THIS IS DUPLICATED FROM handle_task_submitted.
-  if (state->db != NULL) {
-    task_id task_id = task_spec_id(spec);
-    for (int64_t i = 0; i < task_num_returns(spec); ++i) {
-      object_id return_id = task_return(spec, i);
-      result_table_add(state->db, return_id, task_id,
-                       (retry_info *) &photon_retry, NULL, NULL);
-    }
-  }
+  update_result_table(state, spec);
 }
 
 void handle_task_scheduled(local_scheduler_state *state,

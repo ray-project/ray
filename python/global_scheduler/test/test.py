@@ -23,6 +23,8 @@ PLASMA_STORE_MEMORY = 1000000000
 ID_SIZE = 20
 NUM_CLUSTER_NODES = 2
 
+NIL_ACTOR_ID = 20 * b"\xff"
+
 # These constants must match the scheduling state enum in task.h.
 TASK_STATUS_WAITING = 1
 TASK_STATUS_SCHEDULED = 2
@@ -92,7 +94,7 @@ class TestGlobalScheduler(unittest.TestCase):
           redis_address=redis_address,
           static_resource_list=[10, 0])
       # Connect to the scheduler.
-      photon_client = photon.PhotonClient(local_scheduler_name)
+      photon_client = photon.PhotonClient(local_scheduler_name, NIL_ACTOR_ID)
       self.photon_clients.append(photon_client)
       self.local_scheduler_pids.append(p4)
 
