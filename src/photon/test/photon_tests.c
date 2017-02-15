@@ -101,7 +101,8 @@ photon_mock *init_photon_mock(bool connect_to_redis,
   mock->num_photon_conns = num_mock_workers;
   mock->conns = malloc(sizeof(photon_conn *) * num_mock_workers);
   for (int i = 0; i < num_mock_workers; ++i) {
-    mock->conns[i] = photon_connect(utstring_body(photon_socket_name));
+    mock->conns[i] =
+        photon_connect(utstring_body(photon_socket_name), NIL_ACTOR_ID);
     new_client_connection(mock->loop, mock->photon_fd,
                           (void *) mock->photon_state, 0);
   }
@@ -555,7 +556,7 @@ TEST start_kill_workers_test(void) {
   ASSERT_EQ(utarray_len(photon->photon_state->workers), num_workers - 1);
 
   /* Start a worker after the local scheduler has been initialized. */
-  start_worker(photon->photon_state);
+  start_worker(photon->photon_state, NIL_ACTOR_ID);
   /* Accept the workers as clients to the plasma manager. */
   int new_worker_fd = accept_client(photon->plasma_manager_fd);
   /* The new worker should register its process ID. */

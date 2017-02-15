@@ -165,5 +165,94 @@ class TaskStatusTest(unittest.TestCase):
 
     ray.worker.cleanup()
 
+class ActorTest(unittest.TestCase):
+
+  def testFailedActorInit(self):
+    ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
+
+    error_message1 = "actor constructor failed"
+    error_message2 = "actor method failed"
+    @ray.actor
+    class FailedActor(object):
+      def __init__(self):
+        raise Exception(error_message1)
+      def get_val(self):
+        return 1
+      def fail_method(self):
+        raise Exception(error_message2)
+
+    a = FailedActor()
+
+    # Make sure that we get errors from a failed constructor.
+    wait_for_errors(b"task", 1)
+    self.assertEqual(len(ray.error_info()), 1)
+    self.assertIn(error_message1, ray.error_info()[0][b"message"].decode("ascii"))
+
+    # Make sure that we get errors from a failed method.
+    a.fail_method()
+    wait_for_errors(b"task", 2)
+    self.assertEqual(len(ray.error_info()), 2)
+    self.assertIn(error_message2, ray.error_info()[1][b"message"].decode("ascii"))
+
+    ray.worker.cleanup()
+
+  def testIncorrectMethodCalls(self):
+    ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
+
+    @ray.actor
+    class Actor(object):
+      def __init__(self, missing_variable_name):
+        pass
+      def get_val(self, x):
+        pass
+
+    # Make sure that we get errors if we call the constructor incorrectly.
+    # TODO(rkn): These errors should instead be thrown when the method is
+    # called.
+
+    # Create an actor with too few arguments.
+    a = Actor()
+    wait_for_errors(b"task", 1)
+    self.assertEqual(len(ray.error_info()), 1)
+    if sys.version_info >= (3, 0):
+      self.assertIn("missing 1 required", ray.error_info()[0][b"message"].decode("ascii"))
+    else:
+      self.assertIn("takes exactly 2 arguments", ray.error_info()[0][b"message"].decode("ascii"))
+
+    # Create an actor with too many arguments.
+    a = Actor(1, 2)
+    wait_for_errors(b"task", 2)
+    self.assertEqual(len(ray.error_info()), 2)
+    if sys.version_info >= (3, 0):
+      self.assertIn("but 3 were given", ray.error_info()[1][b"message"].decode("ascii"))
+    else:
+      self.assertIn("takes exactly 2 arguments", ray.error_info()[1][b"message"].decode("ascii"))
+
+    # Create an actor the correct number of arguments.
+    a = Actor(1)
+
+    # Call a method with too few arguments.
+    a.get_val()
+    wait_for_errors(b"task", 3)
+    self.assertEqual(len(ray.error_info()), 3)
+    if sys.version_info >= (3, 0):
+      self.assertIn("missing 1 required", ray.error_info()[2][b"message"].decode("ascii"))
+    else:
+      self.assertIn("takes exactly 2 arguments", ray.error_info()[2][b"message"].decode("ascii"))
+
+    # Call a method with too many arguments.
+    a.get_val(1, 2)
+    wait_for_errors(b"task", 4)
+    self.assertEqual(len(ray.error_info()), 4)
+    if sys.version_info >= (3, 0):
+      self.assertIn("but 3 were given", ray.error_info()[3][b"message"].decode("ascii"))
+    else:
+      self.assertIn("takes exactly 2 arguments", ray.error_info()[3][b"message"].decode("ascii"))
+    # Call a method that doesn't exist.
+    with self.assertRaises(AttributeError):
+      a.nonexistent_method()
+
+    ray.worker.cleanup()
+
 if __name__ == "__main__":
   unittest.main(verbosity=2)

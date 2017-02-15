@@ -15,6 +15,7 @@
 #include "utstring.h"
 
 #define NIL_TASK_ID NIL_ID
+#define NIL_ACTOR_ID NIL_ID
 #define NIL_FUNCTION_ID NIL_ID
 
 typedef unique_id function_id;
@@ -22,6 +23,10 @@ typedef unique_id function_id;
 /** The task ID is a deterministic hash of the function ID that the task
  *  executes and the argument IDs or argument values. */
 typedef unique_id task_id;
+
+/** The actor ID is the ID of the actor that a task must run on. If the task is
+ *  not run on an actor, then NIL_ACTOR_ID should be used. */
+typedef unique_id actor_id;
 
 /** The task instance ID is a globally unique ID generated which identifies this
  *  particular execution of the task. */
@@ -56,6 +61,15 @@ bool task_ids_equal(task_id first_id, task_id second_id);
 bool task_id_is_nil(task_id id);
 
 /**
+ * Compare two actor IDs.
+ *
+ * @param first_id The first actor ID to compare.
+ * @param second_id The first actor ID to compare.
+ * @return True if the actor IDs are the same and false otherwise.
+ */
+bool actor_ids_equal(actor_id first_id, actor_id second_id);
+
+/**
  * Compare two function IDs.
  *
  * @param first_id The first function ID to compare.
@@ -83,6 +97,8 @@ bool function_id_is_nil(function_id id);
  * @param parent_task_id The task ID of the task that submitted this task.
  * @param parent_counter A counter indicating how many tasks were submitted by
  *        the parent task prior to this one.
+ * @param actor_id The ID of the actor this task belongs to.
+ * @param actor_counter Number of tasks that have been executed on this actor.
  * @param function_id The function ID of the function to execute in this task.
  * @param num_args The number of arguments that this task has.
  * @param num_returns The number of return values that this task has.
@@ -93,6 +109,8 @@ bool function_id_is_nil(function_id id);
 task_spec *start_construct_task_spec(unique_id driver_id,
                                      task_id parent_task_id,
                                      int64_t parent_counter,
+                                     unique_id actor_id,
+                                     int64_t actor_counter,
                                      function_id function_id,
                                      int64_t num_args,
                                      int64_t num_returns,
@@ -123,6 +141,23 @@ int64_t task_spec_size(task_spec *spec);
  * @return The function ID of the function to execute in this task.
  */
 function_id task_function(task_spec *spec);
+
+/**
+ * Return the actor ID of the task.
+ *
+ * @param spec The task_spec in question.
+ * @return The actor ID of the actor the task is part of.
+ */
+unique_id task_spec_actor_id(task_spec *spec);
+
+/**
+ * Return the actor counter of the task. This starts at 0 and increments by 1
+ * every time a new task is submitted to run on the actor.
+ *
+ * @param spec The task_spec in question.
+ * @return The actor counter of the task.
+ */
+int64_t task_spec_actor_counter(task_spec *spec);
 
 /**
  * Return the driver ID of the task.

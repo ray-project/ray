@@ -9,6 +9,7 @@ import sys
 import time
 import traceback
 import copy
+import collections
 import funcsigs
 import numpy as np
 import colorama
@@ -38,6 +39,9 @@ LOG_SPAN_END = 2
 ERROR_KEY_PREFIX = b"Error:"
 DRIVER_ID_LENGTH = 20
 ERROR_ID_LENGTH = 20
+
+# This must match the definition of NIL_ACTOR_ID in task.h.
+NIL_ACTOR_ID = 20 * b"\xff"
 
 # When performing ray.get, wait 1 second before attemping to reconstruct and
 # fetch the object again.
@@ -378,15 +382,58 @@ class Worker(object):
   def __init__(self):
     """Initialize a Worker object."""
     self.functions = {}
-    self.num_return_vals = {}
+    # Use a defaultdict for the number of return values. If this is accessed
+    # with a missing key, the default value of 1 is returned, and that key value
+    # pair is added to the dict.
+    self.num_return_vals = collections.defaultdict(lambda: 1)
     self.function_names = {}
     self.function_export_counters = {}
     self.connected = False
     self.mode = None
     self.cached_remote_functions = []
     self.cached_functions_to_run = []
+    # The driver_export_counter and worker_import_counter are used to make sure
+    # that no task executes before everything it needs is present. For example,
+    # if we define a remote function f, a worker cannot execute a task for f
+    # until the worker has imported the function f.
+    #   - When a remote function, a reusable variable, or a function to run is
+    #     exported, the driver_export_counter is incremented. These exports must
+    #     take place from the driver.
+    #   - When an actor is created, the driver_export_counter is NOT
+    #     incremented. Note that an actor can be created from a driver or from
+    #     any worker.
+    #   - When a worker imports a remote function, a reusable variable, or a
+    #     function to run, its worker_import_counter is incremented.
+    #   - Notably, when an actor is imported, its worker_import_counter is NOT
+    #     incremented.
+    #   - Whenever a remote function is DEFINED on the driver, it records the
+    #     value of the driver_export_counter and a worker will not execute that
+    #     remote function until it has imported that many exports (excluding
+    #     actors).
+    #   - When an actor is defined.
+    #       a) If the actor is created on a driver, it records the
+    #          driver_export_counter.
+    #       b) If the actor is created inside a task on a regular worker, it
+    #          records the driver_export_counter associated with the function in
+    #          task creating the actor.
+    #       c) If the actor is created inside a task on an actor worker, it
+    #          records
+    #     The worker that ultimately runs the actor will not execute any tasks
+    #     until it has imported that many imports.
+    #
+    # TODO(rkn): These counters must be tracked separately for each driver.
+    # TODO(rkn): Maybe none of these counters are necessary? When executing a
+    # regular task, workers can just wait until the function ID is present. When
+    # executing an actor task, the actor worker can just wait until the actor
+    # has been defined.
     self.driver_export_counter = 0
     self.worker_import_counter = 0
+    self.fetch_and_register = {}
+    self.actors = {}
+    # Use a defaultdict for the actor counts. If this is accessed with a missing
+    # key, the default value of 0 is returned, and that key value pair is added
+    # to the dict.
+    self.actor_counters = collections.defaultdict(lambda: 0)
 
   def set_mode(self, mode):
     """Set the mode of the worker.
@@ -479,7 +526,7 @@ class Worker(object):
       assert final_results[i][0] == object_ids[i].id()
     return [result[1][0] for result in final_results]
 
-  def submit_task(self, function_id, func_name, args, num_cpus, num_gpus):
+  def submit_task(self, function_id, func_name, args, num_cpus, num_gpus, actor_id=photon.ObjectID(NIL_ACTOR_ID)):
     """Submit a remote task to the scheduler.
 
     Tell the scheduler to schedule the execution of the function with name
@@ -514,10 +561,12 @@ class Worker(object):
                          self.num_return_vals[function_id.id()],
                          self.current_task_id,
                          self.task_index,
+                         actor_id, self.actor_counters[actor_id],
                          [num_cpus, num_gpus])
       # Increment the worker's task index to track how many tasks have been
       # submitted by the current task so far.
       self.task_index += 1
+      self.actor_counters[actor_id] += 1
       self.photon_client.submit(task)
 
       return task.returns()
@@ -856,7 +905,7 @@ def _init(address_info=None,
         "manager_socket_name": address_info["object_store_addresses"][0].manager_name,
         "local_scheduler_socket_name": address_info["local_scheduler_socket_names"][0],
         }
-  connect(driver_address_info, object_id_seed=object_id_seed, mode=driver_mode, worker=global_worker)
+  connect(driver_address_info, object_id_seed=object_id_seed, mode=driver_mode, worker=global_worker, actor_id=NIL_ACTOR_ID)
   return address_info
 
 def init(redis_address=None, node_ip_address=None, object_id_seed=None,
@@ -1086,6 +1135,9 @@ def import_thread(worker):
   worker_info_key = "WorkerInfo:{}".format(worker.worker_id)
   worker.redis_client.hset(worker_info_key, "export_counter", 0)
   worker.worker_import_counter = 0
+  # The number of imports is similar to the worker_import_counter except that it
+  # also counts actors.
+  num_imported = 0
 
   # Get the exports that occurred before the call to psubscribe.
   with worker.lock:
@@ -1097,10 +1149,19 @@ def import_thread(worker):
         fetch_and_register_environment_variable(key, worker=worker)
       elif key.startswith(b"FunctionsToRun"):
         fetch_and_execute_function_to_run(key, worker=worker)
+      elif key.startswith(b"Actor"):
+        # Only get the actor if the actor ID matches the actor ID of this
+        # worker.
+        actor_id, = worker.redis_client.hmget(key, "actor_id")
+        if worker.actor_id == actor_id:
+          worker.fetch_and_register["Actor"](key, worker)
       else:
         raise Exception("This code should be unreachable.")
-      worker.redis_client.hincrby(worker_info_key, "export_counter", 1)
-      worker.worker_import_counter += 1
+      # Actors do not contribute to the import counter.
+      if not key.startswith(b"Actor"):
+        worker.redis_client.hincrby(worker_info_key, "export_counter", 1)
+        worker.worker_import_counter += 1
+      num_imported += 1
 
   for msg in worker.import_pubsub_client.listen():
     with worker.lock:
@@ -1108,8 +1169,8 @@ def import_thread(worker):
         continue
       assert msg["data"] == b"rpush"
       num_imports = worker.redis_client.llen("Exports")
-      assert num_imports >= worker.worker_import_counter
-      for i in range(worker.worker_import_counter, num_imports):
+      assert num_imports >= num_imported
+      for i in range(num_imported, num_imports):
         key = worker.redis_client.lindex("Exports", i)
         if key.startswith(b"RemoteFunction"):
           with log_span("ray:import_remote_function", worker=worker):
@@ -1120,12 +1181,21 @@ def import_thread(worker):
         elif key.startswith(b"FunctionsToRun"):
           with log_span("ray:import_function_to_run", worker=worker):
             fetch_and_execute_function_to_run(key, worker=worker)
+        elif key.startswith(b"Actor"):
+          # Only get the actor if the actor ID matches the actor ID of this
+          # worker.
+          actor_id, = worker.redis_client.hmget(key, "actor_id")
+          if worker.actor_id == actor_id:
+            worker.fetch_and_register["Actor"](key, worker)
         else:
           raise Exception("This code should be unreachable.")
-        worker.redis_client.hincrby(worker_info_key, "export_counter", 1)
-        worker.worker_import_counter += 1
+        # Actors do not contribute to the import counter.
+        if not key.startswith(b"Actor"):
+          worker.redis_client.hincrby(worker_info_key, "export_counter", 1)
+          worker.worker_import_counter += 1
+        num_imported += 1
 
-def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker):
+def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker, actor_id=NIL_ACTOR_ID):
   """Connect this worker to the local scheduler, to Plasma, and to Redis.
 
   Args:
@@ -1143,6 +1213,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker):
   assert env._cached_environment_variables is not None, error_message
   # Initialize some fields.
   worker.worker_id = random_string()
+  worker.actor_id = actor_id
   worker.connected = True
   worker.set_mode(mode)
   # The worker.events field is used to aggregate logging information and display
@@ -1163,7 +1234,8 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker):
   # Create an object store client.
   worker.plasma_client = plasma.PlasmaClient(info["store_socket_name"], info["manager_socket_name"])
   # Create the local scheduler client.
-  worker.photon_client = photon.PhotonClient(info["local_scheduler_socket_name"])
+  worker.photon_client = photon.PhotonClient(info["local_scheduler_socket_name"], worker.actor_id)
+  # Register the worker with Redis.
   if mode in [SCRIPT_MODE, SILENT_MODE]:
     # The concept of a driver is the same as the concept of a "job". Register
     # the driver/job with Redis here.
@@ -1458,7 +1530,11 @@ def wait_for_valid_import_counter(function_id, driver_id, timeout=5, worker=glob
   may indicate a problem somewhere and we will push an error message to the
   user.
 
+  If this worker is an actor, then this will wait until the actor has been
+  defined.
+
   Args:
+    is_actor (bool): True if this worker is an actor, and false otherwise.
     function_id (str): The ID of the function that we want to execute.
     driver_id (str): The ID of the driver to push the error message to if this
       times out.
@@ -1469,17 +1545,19 @@ def wait_for_valid_import_counter(function_id, driver_id, timeout=5, worker=glob
   num_warnings_sent = 0
   while True:
     with worker.lock:
-      if function_id.id() in worker.functions and (worker.function_export_counters[function_id.id()] <= worker.worker_import_counter):
+      if worker.actor_id == NIL_ACTOR_ID and function_id.id() in worker.functions and (worker.function_export_counters[function_id.id()] <= worker.worker_import_counter):
         break
-    if time.time() - start_time > timeout * (num_warnings_sent + 1):
-      if function_id.id() not in worker.functions:
-        warning_message = "This worker was asked to execute a function that it does not have registered. You may have to restart Ray."
-      else:
-        warning_message = "This worker's import counter is too small."
-      if not warning_sent:
-        worker.push_error_to_driver(driver_id, "import_counter",
-                                    warning_message)
-      warning_sent = True
+      elif worker.actor_id != NIL_ACTOR_ID and worker.actor_id in worker.actors:
+        break
+      if time.time() - start_time > timeout * (num_warnings_sent + 1):
+        if function_id.id() not in worker.functions:
+          warning_message = "This worker was asked to execute a function that it does not have registered. You may have to restart Ray."
+        else:
+          warning_message = "This worker's import counter is too small."
+        if not warning_sent:
+          worker.push_error_to_driver(driver_id, "import_counter",
+                                      warning_message)
+        warning_sent = True
     time.sleep(0.001)
 
 def format_error_message(exception_message, task_exception=False):
@@ -1530,6 +1608,7 @@ def main_loop(worker=global_worker):
       # correct driver.
       worker.task_driver_id = task.driver_id()
       worker.current_task_id = task.task_id()
+      worker.current_function_id = task.function_id().id()
       worker.task_index = 0
       worker.put_index = 0
       function_id = task.function_id()
@@ -1543,7 +1622,10 @@ def main_loop(worker=global_worker):
 
       # Execute the task.
       with log_span("ray:task:execute", worker=worker):
-        outputs = worker.functions[function_id.id()].executor(arguments)
+        if task.actor_id().id() == NIL_ACTOR_ID:
+          outputs = worker.functions[task.function_id().id()].executor(arguments)
+        else:
+          outputs = worker.functions[task.function_id().id()](worker.actors[task.actor_id().id()], *arguments)
 
       # Store the outputs in the local object store.
       with log_span("ray:task:store_outputs", worker=worker):
@@ -1557,8 +1639,12 @@ def main_loop(worker=global_worker):
       # occurred, we format the error message differently.
       # whether the variables "arguments" and "outputs" are defined.
       if "arguments" in locals() and "outputs" not in locals():
-        # The error occurred during the task execution.
-        traceback_str = format_error_message(traceback.format_exc(), task_exception=True)
+        if task.actor_id().id() == NIL_ACTOR_ID:
+          # The error occurred during the task execution.
+          traceback_str = format_error_message(traceback.format_exc(), task_exception=True)
+        else:
+          # The error occurred during the execution of an actor task.
+          traceback_str = format_error_message(traceback.format_exc())
       elif "arguments" in locals() and "outputs" in locals():
         # The error occurred after the task executed.
         traceback_str = format_error_message(traceback.format_exc())

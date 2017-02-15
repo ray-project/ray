@@ -12,6 +12,7 @@
 #include "common.h"
 #include "db.h"
 #include "db_client_table.h"
+#include "actor_notification_table.h"
 #include "local_scheduler_table.h"
 #include "object_table.h"
 #include "object_info.h"
@@ -1063,7 +1064,7 @@ void redis_local_scheduler_table_subscribe_callback(redisAsyncContext *c,
   CHECK(reply->type == REDIS_REPLY_ARRAY);
   CHECK(reply->elements == 3);
   redisReply *message_type = reply->element[0];
-  LOG_DEBUG("Local scheduer table subscribe callback, message %s",
+  LOG_DEBUG("Local scheduler table subscribe callback, message %s",
             message_type->str);
 
   if (strcmp(message_type->str, "message") == 0) {
@@ -1127,6 +1128,57 @@ void redis_local_scheduler_table_send_info(table_callback_data *callback_data) {
   if ((status == REDIS_ERR) || db->context->err) {
     LOG_REDIS_DEBUG(db->context,
                     "error in redis_local_scheduler_table_send_info");
+  }
+}
+
+void redis_actor_notification_table_subscribe_callback(redisAsyncContext *c,
+                                                       void *r,
+                                                       void *privdata) {
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
+
+  redisReply *reply = r;
+  CHECK(reply->type == REDIS_REPLY_ARRAY);
+  CHECK(reply->elements == 3);
+  redisReply *message_type = reply->element[0];
+  LOG_DEBUG("Local scheduler table subscribe callback, message %s",
+            message_type->str);
+
+  if (strcmp(message_type->str, "message") == 0) {
+    /* Handle an actor notification message. Parse the payload and call the
+     * subscribe callback. */
+    redisReply *payload = reply->element[2];
+    actor_notification_table_subscribe_data *data = callback_data->data;
+    actor_info info;
+    /* The payload should be the concatenation of these two structs. */
+    CHECK(sizeof(info.actor_id) + sizeof(info.local_scheduler_id) ==
+          payload->len);
+    memcpy(&info.actor_id, payload->str, sizeof(info.actor_id));
+    memcpy(&info.local_scheduler_id, payload->str + sizeof(info.actor_id),
+           sizeof(info.local_scheduler_id));
+    if (data->subscribe_callback) {
+      data->subscribe_callback(info, data->subscribe_context);
+    }
+  } else if (strcmp(message_type->str, "subscribe") == 0) {
+    /* The reply for the initial SUBSCRIBE command. */
+    CHECK(callback_data->done_callback == NULL);
+    /* If the initial SUBSCRIBE was successful, clean up the timer, but don't
+     * destroy the callback data. */
+    event_loop_remove_timer(db->loop, callback_data->timer_id);
+
+  } else {
+    LOG_FATAL("Unexpected reply type from actor notification subscribe.");
+  }
+}
+
+void redis_actor_notification_table_subscribe(
+    table_callback_data *callback_data) {
+  db_handle *db = callback_data->db_handle;
+  int status = redisAsyncCommand(
+      db->sub_context, redis_actor_notification_table_subscribe_callback,
+      (void *) callback_data->timer_id, "SUBSCRIBE actor_notifications");
+  if ((status == REDIS_ERR) || db->sub_context->err) {
+    LOG_REDIS_DEBUG(db->sub_context,
+                    "error in redis_actor_notification_table_subscribe");
   }
 }
 

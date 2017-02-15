@@ -18,6 +18,8 @@ import plasma
 USE_VALGRIND = False
 ID_SIZE = 20
 
+NIL_ACTOR_ID = 20 * b"\xff"
+
 def random_object_id():
   return photon.ObjectID(np.random.bytes(ID_SIZE))
 
@@ -39,7 +41,7 @@ class TestPhotonClient(unittest.TestCase):
     # Start a local scheduler.
     scheduler_name, self.p2 = photon.start_local_scheduler(plasma_store_name, use_valgrind=USE_VALGRIND)
     # Connect to the scheduler.
-    self.photon_client = photon.PhotonClient(scheduler_name)
+    self.photon_client = photon.PhotonClient(scheduler_name, NIL_ACTOR_ID)
 
   def tearDown(self):
     # Check that the processes are still alive.
