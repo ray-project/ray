@@ -709,7 +709,7 @@ void queue_task_locally(local_scheduler_state *state,
 
 /**
  * Give a task directly to another local scheduler. This is currently only used
- * for assigning actor tasks to the local scheduer responsible for that actor.
+ * for assigning actor tasks to the local scheduler responsible for that actor.
  *
  * @param state The scheduler state.
  * @param algorithm_state The scheduling algorithm state.

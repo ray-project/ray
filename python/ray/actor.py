@@ -33,12 +33,11 @@ def get_actor_method_function_id(attr):
 
 def fetch_and_register_actor(key, worker):
   """Import an actor."""
-  driver_id, actor_id_str, actor_name, module, pickled_class, class_export_counter = \
-    worker.redis_client.hmget(key, ["driver_id", "actor_id", "name", "module", "class", "class_export_counter"])
+  driver_id, actor_id_str, actor_name, module, pickled_class = \
+    worker.redis_client.hmget(key, ["driver_id", "actor_id", "name", "module", "class"])
   actor_id = photon.ObjectID(actor_id_str)
   actor_name = actor_name.decode("ascii")
   module = module.decode("ascii")
-  class_export_counter = int(class_export_counter)
   try:
     unpickled_class = pickling.loads(pickled_class)
   except:
@@ -72,22 +71,13 @@ def export_actor(actor_id, Class, worker):
 
   worker.redis_client.publish("actor_notifications", actor_id.id() + local_scheduler_id)
 
-  # The export counter is computed differently depending on whether we are
-  # currently in a driver or a worker.
-  if worker.mode in [ray.SCRIPT_MODE, ray.SILENT_MODE]:
-    export_counter = worker.driver_export_counter
-  elif worker.mode == ray.WORKER_MODE:
-    # We don't actually need export counters for actors.
-    export_counter = 0
   d = {"driver_id": worker.task_driver_id.id(),
        "actor_id": actor_id.id(),
        "name": Class.__name__,
        "module": Class.__module__,
-       "class": pickled_class,
-       "class_export_counter": export_counter}
+       "class": pickled_class}
   worker.redis_client.hmset(key, d)
   worker.redis_client.rpush("Exports", key)
-  worker.driver_export_counter += 1
 
 def actor(Class):
   # The function actor_method_call gets called if somebody tries to call a

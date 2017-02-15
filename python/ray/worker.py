@@ -373,10 +373,6 @@ class Worker(object):
       that connect has been called already.
     cached_functions_to_run (List): A list of functions to run on all of the
       workers that should be exported as soon as connect is called.
-    driver_export_counter (int): The number of exports that the driver has
-      exported. This is only used on the driver.
-    worker_import_counter (int): The number of exports that the worker has
-      imported so far. This is only used on the workers.
   """
 
   def __init__(self):
@@ -387,47 +383,10 @@ class Worker(object):
     # pair is added to the dict.
     self.num_return_vals = collections.defaultdict(lambda: 1)
     self.function_names = {}
-    self.function_export_counters = {}
     self.connected = False
     self.mode = None
     self.cached_remote_functions = []
     self.cached_functions_to_run = []
-    # The driver_export_counter and worker_import_counter are used to make sure
-    # that no task executes before everything it needs is present. For example,
-    # if we define a remote function f, a worker cannot execute a task for f
-    # until the worker has imported the function f.
-    #   - When a remote function, a reusable variable, or a function to run is
-    #     exported, the driver_export_counter is incremented. These exports must
-    #     take place from the driver.
-    #   - When an actor is created, the driver_export_counter is NOT
-    #     incremented. Note that an actor can be created from a driver or from
-    #     any worker.
-    #   - When a worker imports a remote function, a reusable variable, or a
-    #     function to run, its worker_import_counter is incremented.
-    #   - Notably, when an actor is imported, its worker_import_counter is NOT
-    #     incremented.
-    #   - Whenever a remote function is DEFINED on the driver, it records the
-    #     value of the driver_export_counter and a worker will not execute that
-    #     remote function until it has imported that many exports (excluding
-    #     actors).
-    #   - When an actor is defined.
-    #       a) If the actor is created on a driver, it records the
-    #          driver_export_counter.
-    #       b) If the actor is created inside a task on a regular worker, it
-    #          records the driver_export_counter associated with the function in
-    #          task creating the actor.
-    #       c) If the actor is created inside a task on an actor worker, it
-    #          records
-    #     The worker that ultimately runs the actor will not execute any tasks
-    #     until it has imported that many imports.
-    #
-    # TODO(rkn): These counters must be tracked separately for each driver.
-    # TODO(rkn): Maybe none of these counters are necessary? When executing a
-    # regular task, workers can just wait until the function ID is present. When
-    # executing an actor task, the actor worker can just wait until the actor
-    # has been defined.
-    self.driver_export_counter = 0
-    self.worker_import_counter = 0
     self.fetch_and_register = {}
     self.actors = {}
     # Use a defaultdict for the actor counts. If this is accessed with a missing
@@ -604,7 +563,6 @@ class Worker(object):
                                     "function_id": function_to_run_id,
                                     "function": pickling.dumps(function)})
       self.redis_client.rpush("Exports", key)
-      self.driver_export_counter += 1
 
   def push_error_to_driver(self, driver_id, error_type, message, data=None):
     """Push an error message to the driver to be printed in the background.
@@ -963,8 +921,6 @@ def cleanup(worker=global_worker):
 
   disconnect(worker)
   worker.set_mode(None)
-  worker.driver_export_counter = 0
-  worker.worker_import_counter = 0
   if hasattr(worker, "plasma_client"):
     worker.plasma_client.shutdown()
   services.cleanup()
@@ -1037,14 +993,13 @@ If this driver is hanging, start a new one with
 
 def fetch_and_register_remote_function(key, worker=global_worker):
   """Import a remote function."""
-  driver_id, function_id_str, function_name, serialized_function, num_return_vals, module, function_export_counter, num_cpus, num_gpus = \
+  driver_id, function_id_str, function_name, serialized_function, num_return_vals, module, num_cpus, num_gpus = \
     worker.redis_client.hmget(key, ["driver_id",
                                     "function_id",
                                     "name",
                                     "function",
                                     "num_return_vals",
                                     "module",
-                                    "function_export_counter",
                                     "num_cpus",
                                     "num_gpus"])
   function_id = photon.ObjectID(function_id_str)
@@ -1053,11 +1008,9 @@ def fetch_and_register_remote_function(key, worker=global_worker):
   num_cpus = int(num_cpus)
   num_gpus = int(num_gpus)
   module = module.decode("ascii")
-  function_export_counter = int(function_export_counter)
 
   worker.function_names[function_id.id()] = function_name
   worker.num_return_vals[function_id.id()] = num_return_vals
-  worker.function_export_counters[function_id.id()] = function_export_counter
   # This is a placeholder in case the function can't be unpickled. This will be
   # overwritten if the function is unpickled successfully.
   def f():
@@ -1133,10 +1086,7 @@ def import_thread(worker):
   # in the loop.
   worker.import_pubsub_client.psubscribe("__keyspace@0__:Exports")
   worker_info_key = "WorkerInfo:{}".format(worker.worker_id)
-  worker.redis_client.hset(worker_info_key, "export_counter", 0)
-  worker.worker_import_counter = 0
-  # The number of imports is similar to the worker_import_counter except that it
-  # also counts actors.
+  # Keep track of the number of imports that we've imported.
   num_imported = 0
 
   # Get the exports that occurred before the call to psubscribe.
@@ -1157,10 +1107,6 @@ def import_thread(worker):
           worker.fetch_and_register["Actor"](key, worker)
       else:
         raise Exception("This code should be unreachable.")
-      # Actors do not contribute to the import counter.
-      if not key.startswith(b"Actor"):
-        worker.redis_client.hincrby(worker_info_key, "export_counter", 1)
-        worker.worker_import_counter += 1
       num_imported += 1
 
   for msg in worker.import_pubsub_client.listen():
@@ -1189,10 +1135,6 @@ def import_thread(worker):
             worker.fetch_and_register["Actor"](key, worker)
         else:
           raise Exception("This code should be unreachable.")
-        # Actors do not contribute to the import counter.
-        if not key.startswith(b"Actor"):
-          worker.redis_client.hincrby(worker_info_key, "export_counter", 1)
-          worker.worker_import_counter += 1
         num_imported += 1
 
 def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker, actor_id=NIL_ACTOR_ID):
@@ -1522,13 +1464,12 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
     remaining_ids = [photon.ObjectID(object_id) for object_id in remaining_ids]
     return ready_ids, remaining_ids
 
-def wait_for_valid_import_counter(function_id, driver_id, timeout=5, worker=global_worker):
-  """Wait until this worker has imported enough to execute the function.
+def wait_for_function(function_id, driver_id, timeout=5, worker=global_worker):
+  """Wait until the function to be executed is present on this worker.
 
-  This method will simply loop until the import thread has imported enough of
-  the exports to execute the function. If we spend too long in this loop, that
-  may indicate a problem somewhere and we will push an error message to the
-  user.
+  This method will simply loop until the import thread has imported the relevant
+  function. If we spend too long in this loop, that may indicate a problem
+  somewhere and we will push an error message to the user.
 
   If this worker is an actor, then this will wait until the actor has been
   defined.
@@ -1545,17 +1486,14 @@ def wait_for_valid_import_counter(function_id, driver_id, timeout=5, worker=glob
   num_warnings_sent = 0
   while True:
     with worker.lock:
-      if worker.actor_id == NIL_ACTOR_ID and function_id.id() in worker.functions and (worker.function_export_counters[function_id.id()] <= worker.worker_import_counter):
+      if worker.actor_id == NIL_ACTOR_ID and function_id.id() in worker.functions:
         break
       elif worker.actor_id != NIL_ACTOR_ID and worker.actor_id in worker.actors:
         break
       if time.time() - start_time > timeout * (num_warnings_sent + 1):
-        if function_id.id() not in worker.functions:
-          warning_message = "This worker was asked to execute a function that it does not have registered. You may have to restart Ray."
-        else:
-          warning_message = "This worker's import counter is too small."
+        warning_message = "This worker was asked to execute a function that it does not have registered. You may have to restart Ray."
         if not warning_sent:
-          worker.push_error_to_driver(driver_id, "import_counter",
+          worker.push_error_to_driver(driver_id, "wait_for_function",
                                       warning_message)
         warning_sent = True
     time.sleep(0.001)
@@ -1680,11 +1618,11 @@ def main_loop(worker=global_worker):
       task = worker.photon_client.get_task()
 
     function_id = task.function_id()
-    # Check that the number of imports we have is at least as great as the
-    # export counter for the task. If not, wait until we have imported enough.
-    # We will push warnings to the user if we spend too long in this loop.
-    with log_span("ray:wait_for_import_counter", worker=worker):
-      wait_for_valid_import_counter(function_id, task.driver_id().id(), worker=worker)
+    # Wait until the function to be executed has actually been registered on
+    # this worker. We will push warnings to the user if we spend too long in
+    # this loop.
+    with log_span("ray:wait_for_function", worker=worker):
+      wait_for_function(function_id, task.driver_id().id(), worker=worker)
 
     # Execute the task.
     # TODO(rkn): Consider acquiring this lock with a timeout and pushing a
@@ -1751,7 +1689,6 @@ def _export_environment_variable(name, environment_variable, worker=global_worke
                                   "initializer": pickling.dumps(environment_variable.initializer),
                                   "reinitializer": pickling.dumps(environment_variable.reinitializer)})
   worker.redis_client.rpush("Exports", key)
-  worker.driver_export_counter += 1
 
 def export_remote_function(function_id, func_name, func, num_return_vals, num_cpus, num_gpus, worker=global_worker):
   check_main_thread()
@@ -1766,11 +1703,9 @@ def export_remote_function(function_id, func_name, func, num_return_vals, num_cp
                                   "module": func.__module__,
                                   "function": pickled_func,
                                   "num_return_vals": num_return_vals,
-                                  "function_export_counter": worker.driver_export_counter,
                                   "num_cpus": num_cpus,
                                   "num_gpus": num_gpus})
   worker.redis_client.rpush("Exports", key)
-  worker.driver_export_counter += 1
 
 def remote(*args, **kwargs):
   """This decorator is used to create remote functions.
