@@ -85,6 +85,49 @@ class ActorAPI(unittest.TestCase):
 
     ray.worker.cleanup()
 
+  def testNoConstructor(self):
+    # If no __init__ method is provided, that should not be a problem.
+    ray.init(num_workers=0)
+
+    @ray.actor
+    class Actor(object):
+      def get_values(self):
+        pass
+
+    actor = Actor()
+    self.assertEqual(ray.get(actor.get_values()), None)
+
+    ray.worker.cleanup()
+
+  def testCustomClasses(self):
+    ray.init(num_workers=0)
+
+    class Foo(object):
+      def __init__(self, x):
+        self.x = x
+    ray.register_class(Foo)
+
+    @ray.actor
+    class Actor(object):
+      def __init__(self, f2):
+        self.f1 = Foo(1)
+        self.f2 = f2
+      def get_values1(self):
+        return self.f1, self.f2
+      def get_values2(self, f3):
+        return self.f1, self.f2, f3
+
+    actor = Actor(Foo(2))
+    results1 = ray.get(actor.get_values1())
+    self.assertEqual(results1[0].x, 1)
+    self.assertEqual(results1[1].x, 2)
+    results2 = ray.get(actor.get_values2(Foo(3)))
+    self.assertEqual(results2[0].x, 1)
+    self.assertEqual(results2[1].x, 2)
+    self.assertEqual(results2[2].x, 3)
+
+    ray.worker.cleanup()
+
   # def testCachingActors(self):
   #   # TODO(rkn): Implement this.
   #   pass

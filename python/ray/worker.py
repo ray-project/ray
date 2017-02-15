@@ -1639,7 +1639,7 @@ def main_loop(worker=global_worker):
       # occurred, we format the error message differently.
       # whether the variables "arguments" and "outputs" are defined.
       if "arguments" in locals() and "outputs" not in locals():
-        if task.actor_id().id() != NIL_ACTOR_ID:
+        if task.actor_id().id() == NIL_ACTOR_ID:
           # The error occurred during the task execution.
           traceback_str = format_error_message(traceback.format_exc(), task_exception=True)
         else:

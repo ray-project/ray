@@ -119,7 +119,10 @@ def actor(Class):
       self._ray_actor_methods = {k: v for (k, v) in inspect.getmembers(Class, predicate=(lambda x: inspect.isfunction(x) or inspect.ismethod(x)))}
       export_actor(self._ray_actor_id, Class, ray.worker.global_worker)
       # Call __init__ as a remote function.
-      actor_method_call(self._ray_actor_id, "__init__", *args, **kwargs)
+      if "__init__" in self._ray_actor_methods.keys():
+        actor_method_call(self._ray_actor_id, "__init__", *args, **kwargs)
+      else:
+        print("WARNING: this object has not __init__ method.")
     # Make tab completion work.
     def __dir__(self):
       return self._ray_actor_methods
@@ -129,6 +132,8 @@ def actor(Class):
         return super(NewClass, self).__getattribute__(attr)
       if attr in self._ray_actor_methods.keys():
         return lambda *args, **kwargs: actor_method_call(self._ray_actor_id, attr, *args, **kwargs)
+      # There is no method with this name, so raise an exception.
+      raise AttributeError("'{}' Actor object has no attribute '{}'".format(Class, attr))
     def __repr__(self):
       return "Actor(" + self._ray_actor_id.hex() + ")"
 
