@@ -562,7 +562,7 @@ def start_ray_processes(address_info=None,
     A dictionary of the address information for the processes that were
       started.
   """
-  start_workers_from_local_scheduler=True
+  start_workers_from_local_scheduler = True
   if not isinstance(num_cpus, list):
     num_cpus = num_local_schedulers * [num_cpus]
   if not isinstance(num_gpus, list):
@@ -819,7 +819,7 @@ def new_log_files(name):
   """Generate partially randomized filenames for log files.
 
   Args:
-    name (string): descriptive string for this log file.
+    name (str): descriptive string for this log file.
 
   Returns:
     A tuple of the format (standard out filename, standard error filename).
@@ -828,7 +828,7 @@ def new_log_files(name):
   logsdir = "/tmp/raylogs"
   if not os.path.exists(logsdir):
     os.makedirs(logsdir)
-  log_id = random.randint(0,100000)
+  log_id = random.randint(0, 100000)
   log_stdout = "{}/{}-{:06d}.out".format(logsdir, name, log_id)
   log_stderr = "{}/{}-{:06d}.err".format(logsdir, name, log_id)
   return (log_stdout, log_stderr)
