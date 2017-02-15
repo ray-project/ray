@@ -899,9 +899,19 @@ void handle_actor_task_scheduled(local_scheduler_state *state,
   DCHECK(!actor_ids_equal(actor_id, NIL_ACTOR_ID));
   actor_map_entry *entry;
   HASH_FIND(hh, state->actor_mapping, &actor_id, sizeof(actor_id), entry);
-  DCHECK(entry != NULL); //COULD THIS BE NULL? PROBABLY
-  DCHECK(db_client_ids_equal(entry->local_scheduler_id,
-                             get_db_client_id(state->db)));
+  if (entry != NULL) {
+    /* This means that an actor has been assigned to this local scheduler, and a
+     * task for that actor has been received by this local scheduler, but this
+     * local scheduler has not yet processed the notification about the actor
+     * creation. This may be possible though should be very uncommon. If it does
+     * happen, it's ok. */
+    DCHECK(db_client_ids_equal(entry->local_scheduler_id,
+                               get_db_client_id(state->db)));
+  } else {
+    LOG_INFO(
+        "handle_actor_task_scheduled called on local scheduler but the "
+        "corresponding actor_map_entry is not present. This should be rare.");
+  }
   /* Push the task to the appropriate queue. */
   add_task_to_actor_queue(state, algorithm_state, spec, true);
   dispatch_actor_task(state, algorithm_state, actor_id);
