@@ -23,6 +23,8 @@ PLASMA_STORE_MEMORY = 1000000000
 ID_SIZE = 20
 NUM_CLUSTER_NODES = 2
 
+NIL_ACTOR_ID = 20 * b"\xff"
+
 # These constants must match the scheduling state enum in task.h.
 TASK_STATUS_WAITING = 1
 TASK_STATUS_SCHEDULED = 2
@@ -92,7 +94,7 @@ class TestGlobalScheduler(unittest.TestCase):
           redis_address=redis_address,
           static_resource_list=[10, 0])
       # Connect to the scheduler.
-      photon_client = photon.PhotonClient(local_scheduler_name)
+      photon_client = photon.PhotonClient(local_scheduler_name, NIL_ACTOR_ID)
       self.photon_clients.append(photon_client)
       self.local_scheduler_pids.append(p4)
 
@@ -149,7 +151,9 @@ class TestGlobalScheduler(unittest.TestCase):
   def test_task_default_resources(self):
     task1 = photon.Task(random_driver_id(), random_function_id(), [random_object_id()], 0, random_task_id(), 0)
     self.assertEqual(task1.required_resources(), [1.0, 0.0])
-    task2 = photon.Task(random_driver_id(), random_function_id(), [random_object_id()], 0, random_task_id(), 0, [1.0, 2.0])
+    task2 = photon.Task(random_driver_id(), random_function_id(),
+                        [random_object_id()], 0, random_task_id(), 0,
+                        photon.ObjectID(NIL_ACTOR_ID), 0, [1.0, 2.0])
     self.assertEqual(task2.required_resources(), [1.0, 2.0])
 
   def test_redis_only_single_task(self):

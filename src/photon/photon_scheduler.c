@@ -15,6 +15,7 @@
 #include "photon.h"
 #include "photon_scheduler.h"
 #include "photon_algorithm.h"
+#include "state/actor_notification_table.h"
 #include "state/db.h"
 #include "state/task_table.h"
 #include "state/object_table.h"
@@ -156,6 +157,15 @@ void free_local_scheduler(local_scheduler_state *state) {
   utarray_free(state->workers);
   state->workers = NULL;
 
+  /* Free the mapping from the actor ID to the ID of the local scheduler
+   * responsible for that actor. */
+  actor_map_entry *current_actor_map_entry, *temp_actor_map_entry;
+  HASH_ITER(hh, state->actor_mapping, current_actor_map_entry,
+            temp_actor_map_entry) {
+    HASH_DEL(state->actor_mapping, current_actor_map_entry);
+    free(current_actor_map_entry);
+  }
+
   /* Free the algorithm state. */
   free_scheduling_algorithm_state(state->algorithm_state);
   state->algorithm_state = NULL;
@@ -175,7 +185,7 @@ void free_local_scheduler(local_scheduler_state *state) {
  * @param state The state of the local scheduler.
  * @return Void.
  */
-void start_worker(local_scheduler_state *state) {
+void start_worker(local_scheduler_state *state, actor_id actor_id) {
   /* We can't start a worker if we don't have the path to the worker script. */
   CHECK(state->config.start_worker_command != NULL);
   /* Launch the process to create the worker. */
@@ -186,9 +196,24 @@ void start_worker(local_scheduler_state *state) {
     return;
   }
 
+  char id_string[ID_STRING_SIZE];
+  object_id_to_string(actor_id, id_string, ID_STRING_SIZE);
+  /* Figure out how many arguments there are in the start_worker_command. */
+  int num_args = 0;
+  for (; state->config.start_worker_command[num_args] != NULL; ++num_args) {
+  }
+  const char **start_actor_worker_command =
+      malloc((num_args + 3) * sizeof(const char *));
+  for (int i = 0; i < num_args; ++i) {
+    start_actor_worker_command[i] = state->config.start_worker_command[i];
+  }
+  start_actor_worker_command[num_args] = "--actor-id";
+  start_actor_worker_command[num_args + 1] = (const char *) id_string;
+  start_actor_worker_command[num_args + 2] = NULL;
   /* Try to execute the worker command. Exit if we're not successful. */
-  execvp(state->config.start_worker_command[0],
-         (char *const *) state->config.start_worker_command);
+  execvp(start_actor_worker_command[0],
+         (char *const *) start_actor_worker_command);
+  free(start_actor_worker_command);
   free_local_scheduler(state);
   LOG_FATAL("Failed to start worker");
 }
@@ -259,6 +284,9 @@ local_scheduler_state *init_local_scheduler(
   state->loop = loop;
   /* Initialize the list of workers. */
   utarray_new(state->workers, &workers_icd);
+  /* Initialize the hash table mapping actor ID to the ID of the local scheduler
+   * that is responsible for that actor. */
+  state->actor_mapping = NULL;
   /* Connect to Redis if a Redis address is provided. */
   if (redis_addr != NULL) {
     int num_args;
@@ -309,11 +337,11 @@ local_scheduler_state *init_local_scheduler(
   /* Start the initial set of workers. */
   utarray_new(state->child_pids, &pid_t_icd);
   for (int i = 0; i < num_workers; ++i) {
-    start_worker(state);
+    start_worker(state, NIL_ACTOR_ID);
   }
 
   return state;
-};
+}
 
 void assign_task_to_worker(local_scheduler_state *state,
                            task_spec *spec,
@@ -393,8 +421,11 @@ void reconstruct_task_update_callback(task *task, void *user_context) {
    * to ensure that reconstruction will happen. */
   local_scheduler_state *state = user_context;
   task_spec *spec = task_task_spec(task);
+  /* If the task is an actor task, then we currently do not reconstruct it.
+   * TODO(rkn): Handle this better. */
+  CHECK(actor_ids_equal(task_spec_actor_id(spec), NIL_ACTOR_ID));
+  /* Resubmit the task. */
   handle_task_submitted(state, state->algorithm_state, spec);
-
   /* Recursively reconstruct the task's inputs, if necessary. */
   for (int64_t i = 0; i < task_num_args(spec); ++i) {
     if (task_arg_type(spec, i) == ARG_BY_REF) {
@@ -467,7 +498,12 @@ void process_message(event_loop *loop,
   switch (type) {
   case SUBMIT_TASK: {
     task_spec *spec = (task_spec *) utarray_front(state->input_buffer);
-    handle_task_submitted(state, state->algorithm_state, spec);
+    if (actor_ids_equal(task_spec_actor_id(spec), NIL_ACTOR_ID)) {
+      handle_task_submitted(state, state->algorithm_state, spec);
+    } else {
+      handle_actor_task_submitted(state, state->algorithm_state, spec);
+    }
+
   } break;
   case TASK_DONE: {
   } break;
@@ -495,6 +531,50 @@ void process_message(event_loop *loop,
     free(key);
     free(value);
   } break;
+  case REGISTER_WORKER_INFO: {
+    /* Update the actor mapping with the actor ID of the worker (if an actor is
+     * running on the worker). */
+    register_worker_info *info =
+        (register_worker_info *) utarray_front(state->input_buffer);
+    if (!actor_ids_equal(info->actor_id, NIL_ACTOR_ID)) {
+      /* Make sure that the local scheduler is aware that it is responsible for
+       * this actor. */
+      actor_map_entry *entry;
+      HASH_FIND(hh, state->actor_mapping, &info->actor_id,
+                sizeof(info->actor_id), entry);
+      CHECK(entry != NULL);
+      CHECK(db_client_ids_equal(entry->local_scheduler_id,
+                                get_db_client_id(state->db)));
+      /* Update the worker struct with this actor ID. */
+      CHECK(actor_ids_equal(worker->actor_id, NIL_ACTOR_ID));
+      worker->actor_id = info->actor_id;
+      /* Let the scheduling algorithm process the presence of this new
+       * worker. */
+      handle_actor_worker_connect(state, state->algorithm_state, info->actor_id,
+                                  worker);
+    }
+
+    /* Register worker process id with the scheduler. */
+    worker->pid = info->worker_pid;
+    /* Determine if this worker is one of our child processes. */
+    LOG_DEBUG("PID is %d", info->worker_pid);
+    pid_t *child_pid;
+    int index = 0;
+    for (child_pid = (pid_t *) utarray_front(state->child_pids);
+         child_pid != NULL;
+         child_pid = (pid_t *) utarray_next(state->child_pids, child_pid)) {
+      if (*child_pid == info->worker_pid) {
+        /* If this worker is one of our child processes, mark it as a child so
+         * that we know that we can wait for the process to exit during
+         * cleanup. */
+        worker->is_child = true;
+        utarray_erase(state->child_pids, index, 1);
+        LOG_DEBUG("Found matching child pid %d", info->worker_pid);
+        break;
+      }
+      ++index;
+    }
+  } break;
   case GET_TASK: {
     /* If this worker reports a completed task: account for resources. */
     if (worker->task_in_progress != NULL) {
@@ -521,7 +601,11 @@ void process_message(event_loop *loop,
     }
     /* Let the scheduling algorithm process the fact that there is an available
      * worker. */
-    handle_worker_available(state, state->algorithm_state, worker);
+    if (actor_ids_equal(worker->actor_id, NIL_ACTOR_ID)) {
+      handle_worker_available(state, state->algorithm_state, worker);
+    } else {
+      handle_actor_worker_available(state, state->algorithm_state, worker);
+    }
   } break;
   case RECONSTRUCT_OBJECT: {
     object_id *obj_id = (object_id *) utarray_front(state->input_buffer);
@@ -530,31 +614,13 @@ void process_message(event_loop *loop,
   case DISCONNECT_CLIENT: {
     LOG_INFO("Disconnecting client on fd %d", client_sock);
     kill_worker(worker, false);
+    if (!actor_ids_equal(worker->actor_id, NIL_ACTOR_ID)) {
+      /* Let the scheduling algorithm process the absence of this worker. */
+      handle_actor_worker_disconnect(state, state->algorithm_state,
+                                     worker->actor_id);
+    }
   } break;
   case LOG_MESSAGE: {
-  } break;
-  case REGISTER_PID: {
-    pid_t *worker_pid = (pid_t *) utarray_front(state->input_buffer);
-    worker->pid = *worker_pid;
-
-    /* Determine if this worker is one of our child processes. */
-    LOG_DEBUG("Pid is %d", *worker_pid);
-    pid_t *child_pid;
-    int index = 0;
-    for (child_pid = (pid_t *) utarray_front(state->child_pids);
-         child_pid != NULL;
-         child_pid = (pid_t *) utarray_next(state->child_pids, child_pid)) {
-      if (*child_pid == *worker_pid) {
-        /* If this worker is one of our child processes, mark it as a child so
-         * that we know that we can wait for the process to exit during
-         * cleanup. */
-        worker->is_child = true;
-        utarray_erase(state->child_pids, index, 1);
-        LOG_DEBUG("Found matching child pid %d", *worker_pid);
-        break;
-      }
-      ++index;
-    }
   } break;
   default:
     /* This code should be unreachable. */
@@ -575,6 +641,7 @@ void new_client_connection(event_loop *loop,
   worker->task_in_progress = NULL;
   worker->pid = 0;
   worker->is_child = false;
+  worker->actor_id = NIL_ACTOR_ID;
   worker->local_scheduler_state = state;
   utarray_push_back(state->workers, &worker);
   event_loop_add_file(loop, new_socket, EVENT_LOOP_READ, process_message,
@@ -597,8 +664,54 @@ void signal_handler(int signal) {
 /* End of the cleanup code. */
 
 void handle_task_scheduled_callback(task *original_task, void *user_context) {
-  handle_task_scheduled(g_state, g_state->algorithm_state,
-                        task_task_spec(original_task));
+  task_spec *spec = task_task_spec(original_task);
+  if (actor_ids_equal(task_spec_actor_id(spec), NIL_ACTOR_ID)) {
+    /* This task does not involve an actor. Handle it normally. */
+    handle_task_scheduled(g_state, g_state->algorithm_state, spec);
+  } else {
+    /* This task involves an actor. Call the scheduling algorithm's actor
+     * handler. */
+    handle_actor_task_scheduled(g_state, g_state->algorithm_state, spec);
+  }
+}
+
+/**
+ * Process a notification about the creation of a new actor. Use this to update
+ * the mapping from actor ID to the local scheduler ID of the local scheduler
+ * that is responsible for the actor. If this local scheduler is responsible for
+ * the actor, then launch a new worker process to create that actor.
+ *
+ * @param actor_id The ID of the actor being created.
+ * @param local_scheduler_id The ID of the local scheduler that is responsible
+ *        for creating the actor.
+ * @return Void.
+ */
+void handle_actor_creation_callback(actor_info info, void *context) {
+  actor_id actor_id = info.actor_id;
+  db_client_id local_scheduler_id = info.local_scheduler_id;
+  local_scheduler_state *state = context;
+  /* Make sure the actor entry is not already present in the actor map table.
+   * TODO(rkn): We will need to remove this check to handle the case where the
+   * corresponding publish is retried and the case in which a task that creates
+   * an actor is resubmitted due to fault tolerance. */
+  actor_map_entry *entry;
+  HASH_FIND(hh, state->actor_mapping, &actor_id, sizeof(actor_id), entry);
+  CHECK(entry == NULL);
+  /* Create a new entry and add it to the actor mapping table. TODO(rkn):
+   * Currently this is never removed (except when the local scheduler state is
+   * deleted). */
+  entry = malloc(sizeof(actor_map_entry));
+  entry->actor_id = actor_id;
+  entry->local_scheduler_id = local_scheduler_id;
+  HASH_ADD(hh, state->actor_mapping, actor_id, sizeof(entry->actor_id), entry);
+  /* If this local scheduler is responsible for the actor, then start a new
+   * worker for the actor. */
+  if (db_client_ids_equal(local_scheduler_id, get_db_client_id(state->db))) {
+    start_worker(state, actor_id);
+  }
+  /* Let the scheduling algorithm process the fact that a new actor has been
+   * created. */
+  handle_actor_creation_notification(state, state->algorithm_state, actor_id);
 }
 
 int heartbeat_handler(event_loop *loop, timer_id id, void *context) {
@@ -638,9 +751,9 @@ void start_server(const char *node_ip_address,
   event_loop_add_file(loop, fd, EVENT_LOOP_READ, new_client_connection,
                       g_state);
   /* Subscribe to receive notifications about tasks that are assigned to this
-   * local scheduler by the global scheduler. TODO(rkn): we also need to get any
-   * tasks that were assigned to this local scheduler before the call to
-   * subscribe. */
+   * local scheduler by the global scheduler or by other local schedulers.
+   * TODO(rkn): we also need to get any tasks that were assigned to this local
+   * scheduler before the call to subscribe. */
   retry_info retry;
   memset(&retry, 0, sizeof(retry));
   retry.num_retries = 0;
@@ -650,6 +763,11 @@ void start_server(const char *node_ip_address,
     task_table_subscribe(g_state->db, get_db_client_id(g_state->db),
                          TASK_STATUS_SCHEDULED, handle_task_scheduled_callback,
                          NULL, &retry, NULL, NULL);
+  }
+  /* Subscribe to notifications about newly created actors. */
+  if (g_state->db != NULL) {
+    actor_notification_table_subscribe(
+        g_state->db, handle_actor_creation_callback, g_state, &retry);
   }
   /* Create a timer for publishing information about the load on the local
    * scheduler to the local scheduler table. This message also serves as a
@@ -796,7 +914,6 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  LOG_INFO("Start worker command is %s", start_worker_command);
   start_server(node_ip_address, scheduler_socket_name, redis_addr, redis_port,
                plasma_store_socket_name, plasma_manager_socket_name,
                plasma_manager_address, global_scheduler_exists,

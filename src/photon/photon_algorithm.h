@@ -62,6 +62,34 @@ void handle_task_submitted(local_scheduler_state *state,
                            task_spec *spec);
 
 /**
+ * This version of handle_task_submitted is used when the task being submitted
+ * is a method of an actor.
+ *
+ * @param state The state of the local scheduler.
+ * @param algorithm_state State maintained by the scheduling algorithm.
+ * @param task Task that is submitted by the worker.
+ * @return Void.
+ */
+void handle_actor_task_submitted(local_scheduler_state *state,
+                                 scheduling_algorithm_state *algorithm_state,
+                                 task_spec *spec);
+
+/**
+ * This function will be called when the local scheduler receives a notification
+ * about the creation of a new actor. This can be used by the scheduling
+ * algorithm to resubmit cached actor tasks.
+ *
+ * @param state The state of the local scheduler.
+ * @param algorithm_state State maintained by the scheduling algorithm.
+ * @param actor_id The ID of the actor being created.
+ * @return Void.
+ */
+void handle_actor_creation_notification(
+    local_scheduler_state *state,
+    scheduling_algorithm_state *algorithm_state,
+    actor_id actor_id);
+
+/**
  * This function will be called when a task is assigned by the global scheduler
  * for execution on this local scheduler.
  *
@@ -73,6 +101,20 @@ void handle_task_submitted(local_scheduler_state *state,
 void handle_task_scheduled(local_scheduler_state *state,
                            scheduling_algorithm_state *algorithm_state,
                            task_spec *spec);
+
+/**
+ * This function will be called when an actor task is assigned by the global
+ * scheduler or by another local scheduler for execution on this local
+ * scheduler.
+ *
+ * @param state The state of the local scheduler.
+ * @param algorithm_state State maintained by the scheduling algorithm.
+ * @param task Task that is assigned by the global scheduler.
+ * @return Void.
+ */
+void handle_actor_task_scheduled(local_scheduler_state *state,
+                                 scheduling_algorithm_state *algorithm_state,
+                                 task_spec *spec);
 
 /**
  * This function is called if a new object becomes available in the local
@@ -107,6 +149,45 @@ void handle_object_removed(local_scheduler_state *state, object_id object_id);
 void handle_worker_available(local_scheduler_state *state,
                              scheduling_algorithm_state *algorithm_state,
                              local_scheduler_client *worker);
+
+/**
+ * This version of handle_worker_available is called whenever the worker that is
+ * available is running an actor.
+ *
+ * @param state The state of the local scheduler.
+ * @param algorithm_state State maintained by the scheduling algorithm.
+ * @param wi Information about the worker that is available.
+ * @return Void.
+ */
+void handle_actor_worker_available(local_scheduler_state *state,
+                                   scheduling_algorithm_state *algorithm_state,
+                                   local_scheduler_client *worker);
+
+/**
+ * Handle the fact that a new worker is available for running an actor.
+ *
+ * @param state The state of the local scheduler.
+ * @param algorithm_state State maintained by the scheduling algorithm.
+ * @param actor_id The ID of the actor running on the worker.
+ * @param worker The worker that was connected.
+ * @return Void.
+ */
+void handle_actor_worker_connect(local_scheduler_state *state,
+                                 scheduling_algorithm_state *algorithm_state,
+                                 actor_id actor_id,
+                                 local_scheduler_client *worker);
+
+/**
+ * Handle the fact that a worker running an actor has disconnected.
+ *
+ * @param state The state of the local scheduler.
+ * @param algorithm_state State maintained by the scheduling algorithm.
+ * @param actor_id The ID of the actor running on the worker.
+ * @return Void.
+ */
+void handle_actor_worker_disconnect(local_scheduler_state *state,
+                                    scheduling_algorithm_state *algorithm_state,
+                                    actor_id actor_id);
 
 /**
  * This function fetches queued task's missing object dependencies. It is

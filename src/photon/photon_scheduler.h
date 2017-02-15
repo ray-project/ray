@@ -94,7 +94,15 @@ void process_message(event_loop *loop,
 
 void kill_worker(local_scheduler_client *worker, bool wait);
 
-void start_worker(local_scheduler_state *state);
+/**
+ * Start a new worker by forking.
+ *
+ * @param state The local scheduler state.
+ * @param actor_id The ID of the actor for this worker. If this worker is not an
+ *        actor, then NIL_ACTOR_ID should be used.
+ * @return Void.
+ */
+void start_worker(local_scheduler_state *state, actor_id actor_id);
 #endif
 
 #endif /* PHOTON_SCHEDULER_H */

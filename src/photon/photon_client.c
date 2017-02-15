@@ -4,13 +4,16 @@
 #include "common/task.h"
 #include <stdlib.h>
 
-photon_conn *photon_connect(const char *photon_socket) {
+photon_conn *photon_connect(const char *photon_socket, actor_id actor_id) {
   photon_conn *result = malloc(sizeof(photon_conn));
   result->conn = connect_ipc_sock(photon_socket);
-  /* If this is a worker, register the process ID with the local scheduler. */
-  pid_t my_pid = getpid();
-  int success = write_message(result->conn, REGISTER_PID, sizeof(my_pid),
-                              (uint8_t *) &my_pid);
+  register_worker_info info;
+  memset(&info, 0, sizeof(info));
+  /* Register the process ID with the local scheduler. */
+  info.worker_pid = getpid();
+  info.actor_id = actor_id;
+  int success = write_message(result->conn, REGISTER_WORKER_INFO, sizeof(info),
+                              (uint8_t *) &info);
   CHECKM(success == 0, "Unable to register worker with local scheduler");
   return result;
 }

@@ -27,14 +27,36 @@ enum photon_message_type {
   RECONSTRUCT_OBJECT,
   /** Log a message to the event table. */
   EVENT_LOG_MESSAGE,
-  /** Register a worker's process ID with the local scheduler. */
-  REGISTER_PID,
+  /** Send an initial connection message to the local scheduler.
+   *  This contains the worker's process ID and actor ID. */
+  REGISTER_WORKER_INFO
 };
 
 /* These are needed to define the UT_arrays. */
 UT_icd task_ptr_icd;
 UT_icd workers_icd;
 UT_icd pid_t_icd;
+
+/** This struct is used to register a new worker with the local scheduler.
+ *  It is shipped as part of photon_connect */
+typedef struct {
+  /** The ID of the actor. This is NIL_ACTOR_ID if the worker is not an actor.
+   */
+  actor_id actor_id;
+  /** The process ID of this worker. */
+  pid_t worker_pid;
+} register_worker_info;
+
+/** This struct is used to maintain a mapping from actor IDs to the ID of the
+ *  local scheduler that is responsible for the actor. */
+typedef struct {
+  /** The ID of the actor. This is used as a key in the hash table. */
+  actor_id actor_id;
+  /** The ID of the local scheduler that is responsible for the actor. */
+  db_client_id local_scheduler_id;
+  /** Handle fo the hash table. */
+  UT_hash_handle hh;
+} actor_map_entry;
 
 /** Internal state of the scheduling algorithm. */
 typedef struct scheduling_algorithm_state scheduling_algorithm_state;
@@ -62,6 +84,9 @@ typedef struct {
   /** List of the process IDs for child processes (workers) started by the
    *  local scheduler that have not sent a REGISTER_PID message yet. */
   UT_array *child_pids;
+  /** A hash table mapping actor IDs to the db_client_id of the local scheduler
+   *  that is responsible for the actor. */
+  actor_map_entry *actor_mapping;
   /** The handle to the database. */
   db_handle *db;
   /** The Plasma client. */
@@ -92,6 +117,9 @@ typedef struct {
   pid_t pid;
   /** Whether the client is a child process of the local scheduler. */
   bool is_child;
+  /** The ID of the actor on this worker. If there is no actor running on this
+   *  worker, this should be NIL_ACTOR_ID. */
+  actor_id actor_id;
   /** A pointer to the local scheduler state. */
   local_scheduler_state *local_scheduler_state;
 } local_scheduler_client;

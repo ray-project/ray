@@ -70,7 +70,7 @@ void local_scheduler_table_send_info(db_handle *db_handle,
                                      local_scheduler_info *info,
                                      retry_info *retry);
 
-/* Data that is needed to publish local scheduer heartbeats to the local
+/* Data that is needed to publish local scheduler heartbeats to the local
  * scheduler table. */
 typedef struct {
   local_scheduler_info info;

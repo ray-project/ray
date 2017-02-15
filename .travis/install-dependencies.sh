@@ -20,7 +20,8 @@ fi
 if [[ "$PYTHON" == "2.7" ]] && [[ "$platform" == "linux" ]]; then
   sudo apt-get update
   sudo apt-get install -y cmake build-essential autoconf curl libtool python-dev python-numpy python-pip libboost-all-dev unzip
-  sudo pip install cloudpickle funcsigs colorama psutil redis tensorflow
+  sudo pip install cloudpickle funcsigs colorama psutil redis
+  sudo pip install tensorflow==0.12.0
 elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "linux" ]]; then
   sudo apt-get update
   sudo apt-get install -y cmake python-dev python-numpy build-essential autoconf curl libtool libboost-all-dev unzip
@@ -28,7 +29,8 @@ elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "linux" ]]; then
   wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
-  pip install numpy cloudpickle funcsigs colorama psutil redis tensorflow
+  pip install numpy cloudpickle funcsigs colorama psutil redis
+  pip install tensorflow==0.12.0
 elif [[ "$PYTHON" == "2.7" ]] && [[ "$platform" == "macosx" ]]; then
   # check that brew is installed
   which -s brew
@@ -41,7 +43,8 @@ elif [[ "$PYTHON" == "2.7" ]] && [[ "$platform" == "macosx" ]]; then
   fi
   brew install cmake automake autoconf libtool boost
   sudo easy_install pip
-  sudo pip install numpy cloudpickle funcsigs colorama psutil redis tensorflow --ignore-installed six
+  sudo pip install numpy cloudpickle funcsigs colorama psutil redis --ignore-installed six
+  sudo pip install tensorflow==0.12.0 --ignore-installed six
 elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "macosx" ]]; then
   # check that brew is installed
   which -s brew
@@ -57,7 +60,8 @@ elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "macosx" ]]; then
   wget https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh -O miniconda.sh
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
-  pip install numpy cloudpickle funcsigs colorama psutil redis tensorflow
+  pip install numpy cloudpickle funcsigs colorama psutil redis
+  pip install tensorflow==0.12.0
 else
   echo "Unrecognized environment."
   exit 1
