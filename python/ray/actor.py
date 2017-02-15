@@ -81,7 +81,6 @@ def export_actor(actor_id, Class, worker):
     export_counter = 0
   d = {"driver_id": worker.task_driver_id.id(),
        "actor_id": actor_id.id(),
-       # "actor_worker_id": actor_worker_id,
        "name": Class.__name__,
        "module": Class.__module__,
        "class": pickled_class,
