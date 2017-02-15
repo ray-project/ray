@@ -17,16 +17,13 @@
 """
 
 import tensorflow as tf
-import IPython
 
-def build_input(dataset, data_path, batch_size, mode):
+def build_input(data_path, batch_size):
   """Build CIFAR image and labels.
 
   Args:
-    dataset: Either 'cifar10' or 'cifar100'.
-    data_path: Filename for data.
+    data_path: Filename for cifar10 data.
     batch_size: Input batch size.
-    mode: Either 'train' or 'eval'.
   Returns:
     images: Batches of images. [batch_size, image_size, image_size, 3]
     labels: Batches of labels. [batch_size, num_classes]
@@ -34,16 +31,9 @@ def build_input(dataset, data_path, batch_size, mode):
     ValueError: when the specified dataset is not supported.
   """
   image_size = 32
-  if dataset == 'cifar10':
-    label_bytes = 1
-    label_offset = 0
-    num_classes = 10
-  elif dataset == 'cifar100':
-    label_bytes = 1
-    label_offset = 1
-    num_classes = 100
-  else:
-    raise ValueError('Not supported dataset %s', dataset)
+  label_bytes = 1
+  label_offset = 0
+  num_classes = 10
 
   depth = 3
   image_bytes = image_size * image_size * depth
@@ -64,33 +54,22 @@ def build_input(dataset, data_path, batch_size, mode):
   # Convert from [depth, height, width] to [height, width, depth].
   image = tf.cast(tf.transpose(depth_major, [1, 2, 0]), tf.float32)
 
-  if mode == 'train':
-    image = tf.image.resize_image_with_crop_or_pad(
-        image, image_size+4, image_size+4)
-    image = tf.random_crop(image, [image_size, image_size, 3])
-    image = tf.image.random_flip_left_right(image)
-    # Brightness/saturation/constrast provides small gains .2%~.5% on cifar.
-    # image = tf.image.random_brightness(image, max_delta=63. / 255.)
-    # image = tf.image.random_saturation(image, lower=0.5, upper=1.5)
-    # image = tf.image.random_contrast(image, lower=0.2, upper=1.8)
-    image = tf.image.per_image_standardization(image)
+  image = tf.image.resize_image_with_crop_or_pad(
+      image, image_size+4, image_size+4)
+  image = tf.random_crop(image, [image_size, image_size, 3])
+  image = tf.image.random_flip_left_right(image)
+  # Brightness/saturation/constrast provides small gains .2%~.5% on cifar.
+  # image = tf.image.random_brightness(image, max_delta=63. / 255.)
+  # image = tf.image.random_saturation(image, lower=0.5, upper=1.5)
+  # image = tf.image.random_contrast(image, lower=0.2, upper=1.8)
+  image = tf.image.per_image_standardization(image)
 
-    example_queue = tf.RandomShuffleQueue(
-        capacity=50000,
-        min_after_dequeue=0,
-        dtypes=[tf.float32, tf.int32],
-        shapes=[[image_size, image_size, depth], [1]])
-    num_threads = 16
-  else:
-    image = tf.image.resize_image_with_crop_or_pad(
-        image, image_size, image_size)
-    image = tf.image.per_image_whitening(image)
-
-    example_queue = tf.FIFOQueue(
-        3 * batch_size,
-        dtypes=[tf.float32, tf.int32],
-        shapes=[[image_size, image_size, depth], [1]])
-    num_threads = 1
+  example_queue = tf.RandomShuffleQueue(
+      capacity=50000,
+      min_after_dequeue=0,
+      dtypes=[tf.float32, tf.int32],
+      shapes=[[image_size, image_size, depth], [1]])
+  num_threads = 16
   example_enqueue_op = example_queue.enqueue([image, label])
   tf.train.add_queue_runner(tf.train.queue_runner.QueueRunner(
       example_queue, [example_enqueue_op] * num_threads))

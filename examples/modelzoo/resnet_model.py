@@ -25,8 +25,6 @@ from collections import namedtuple
 import numpy as np
 import tensorflow as tf
 import ray
-from tensorflow.python.training import moving_averages
-import IPython
 import six
 
 HParams = namedtuple('HParams',
@@ -43,25 +41,19 @@ class ResNet(object):
 
     Args:
       hps: Hyperparameters.
-      images: Batches of images. [batch_size, image_size, image_size, 3]
-      labels: Batches of labels. [batch_size, num_classes]
       mode: One of 'train' and 'eval'.
     """
     self.hps = hps
-    self.mode = mode
-
     self._extra_train_ops = []
 
   def build_graph(self):
     """Build a whole graph for the model."""
     self.global_step = tf.Variable(0, trainable=False)
     self._build_model()
-    if self.mode == 'train':
-      self._build_train_op()
+    self._build_train_op()
     truth = tf.argmax(self.labels, axis=1)
     predictions = tf.argmax(self.predictions, axis=1)
     self.precision = tf.reduce_mean(tf.to_float(tf.equal(predictions, truth)))
-    self.summaries = tf.summary.merge_all()
 
   def _stride_arr(self, stride):
     """Map a stride scalar to the stride array for tf.nn.conv2d."""
@@ -127,7 +119,6 @@ class ResNet(object):
       self.cost = tf.reduce_mean(xent, name='xent')
       self.cost += self._decay()
 
-      tf.summary.scalar('cost', self.cost)
 
   def _build_train_op(self):
     """Build training specific ops for the graph."""
@@ -135,23 +126,15 @@ class ResNet(object):
     boundaries = [40000, 60000, 80000]
     values = [rate, rate/10, rate/100, rate/1000]
     self.lrn_rate = tf.train.piecewise_constant(self.global_step, boundaries, values)
-    tf.summary.scalar('learning rate', self.lrn_rate)
-
-
-    #self.grads = tf.gradients(self.cost, trainable_variables)
 
     if self.hps.optimizer == 'sgd':
       optimizer = tf.train.GradientDescentOptimizer(self.lrn_rate)
     elif self.hps.optimizer == 'mom':
       optimizer = tf.train.MomentumOptimizer(self.lrn_rate, 0.9)
 
-    #apply_op = optimizer.apply_gradients(
-    #    zip(self.assignment_placeholders, trainable_variables),
-    #    global_step=self.global_step, name='train_step')
     min_ops = optimizer.minimize(self.cost, global_step=self.global_step)
     self.variables = ray.experimental.TensorFlowVariables(min_ops)
-    train_ops = [min_ops]
-    self.train_op = tf.group(*train_ops)
+    self.train_op = min_ops
 
   # TODO(xpan): Consider batch_norm in contrib/layers/python/layers/layers.py
   def _batch_norm(self, name, x):
@@ -166,34 +149,7 @@ class ResNet(object):
           'gamma', params_shape, tf.float32,
           initializer=tf.constant_initializer(1.0, tf.float32))
 
-      if self.mode == 'train':
-        mean, variance = tf.nn.moments(x, [0, 1, 2], name='moments')
-
-        moving_mean = tf.get_variable(
-            'moving_mean', params_shape, tf.float32,
-            initializer=tf.constant_initializer(0.0, tf.float32),
-            trainable=False)
-        moving_variance = tf.get_variable(
-            'moving_variance', params_shape, tf.float32,
-            initializer=tf.constant_initializer(1.0, tf.float32),
-            trainable=False)
-
-        self._extra_train_ops.append(moving_averages.assign_moving_average(
-            moving_mean, mean, 0.9))
-        self._extra_train_ops.append(moving_averages.assign_moving_average(
-            moving_variance, variance, 0.9))
-      else:
-        mean = tf.get_variable(
-            'moving_mean', params_shape, tf.float32,
-            initializer=tf.constant_initializer(0.0, tf.float32),
-            trainable=False)
-        variance = tf.get_variable(
-            'moving_variance', params_shape, tf.float32,
-            initializer=tf.constant_initializer(1.0, tf.float32),
-            trainable=False)
-        tf.histogram_summary(mean.op.name, mean)
-        tf.histogram_summary(variance.op.name, variance)
-      # elipson used to be 1e-5. Maybe 0.001 solves NaN problem in deeper net.
+      mean, variance = tf.nn.moments(x, [0, 1, 2], name='moments')
       y = tf.nn.batch_normalization(
           x, mean, variance, beta, gamma, 0.001)
       y.set_shape(x.get_shape())
@@ -229,7 +185,6 @@ class ResNet(object):
                      [(out_filter-in_filter)//2, (out_filter-in_filter)//2]])
       x += orig_x
 
-    tf.logging.info('image after unit %s', x.get_shape())
     return x
 
   def _bottleneck_residual(self, x, in_filter, out_filter, stride,
@@ -264,7 +219,6 @@ class ResNet(object):
         orig_x = self._conv('project', orig_x, 1, in_filter, out_filter, stride)
       x += orig_x
 
-    tf.logging.info('image after unit %s', x.get_shape())
     return x
 
   def _decay(self):
