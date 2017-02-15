@@ -116,7 +116,7 @@ def actor(Class):
   class NewClass(object):
     def __init__(self, *args, **kwargs):
       self._ray_actor_id = random_actor_id()
-      self._ray_actor_methods = {k: v for (k, v) in inspect.getmembers(Class, predicate=inspect.isfunction)}
+      self._ray_actor_methods = {k: v for (k, v) in inspect.getmembers(Class, predicate=(lambda x: inspect.isfunction(x) or inspect.ismethod(x)))}
       export_actor(self._ray_actor_id, Class, ray.worker.global_worker)
       # Call __init__ as a remote function.
       actor_method_call(self._ray_actor_id, "__init__", *args, **kwargs)
