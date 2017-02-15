@@ -25,7 +25,7 @@ typedef unique_id function_id;
 typedef unique_id task_id;
 
 /** The actor ID is the ID of the actor that a task must run on. If the task is
- *  not run on an actor, then NIL_ID should be used. */
+ *  not run on an actor, then NIL_ACTOR_ID should be used. */
 typedef unique_id actor_id;
 
 /** The task instance ID is a globally unique ID generated which identifies this

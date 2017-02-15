@@ -266,7 +266,7 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   /* ID of the driver that this task originates from. */
   unique_id driver_id;
   /* ID of the actor this task should run on. */
-  unique_id actor_id = NIL_ID;
+  unique_id actor_id = NIL_ACTOR_ID;
   /* How many tasks have been launched on the actor so far? */
   int actor_counter = 0;
   /* ID of the function this task executes. */

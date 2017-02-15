@@ -214,26 +214,43 @@ class ActorTest(unittest.TestCase):
     a = Actor()
     wait_for_errors(b"task", 1)
     self.assertEqual(len(ray.error_info()), 1)
-    self.assertIn("missing_variable_name", ray.error_info()[0][b"message"].decode("ascii"))
+    if sys.version_info >= (3, 0):
+      self.assertIn("missing 1 required", ray.error_info()[0][b"message"].decode("ascii"))
+    else:
+      self.assertIn("takes exactly 2 arguments", ray.error_info()[0][b"message"].decode("ascii"))
 
     # Create an actor with too many arguments.
     a = Actor(1, 2)
     wait_for_errors(b"task", 2)
     self.assertEqual(len(ray.error_info()), 2)
-    self.assertIn("but 3 were given", ray.error_info()[1][b"message"].decode("ascii"))
+    if sys.version_info >= (3, 0):
+      self.assertIn("but 3 were given", ray.error_info()[1][b"message"].decode("ascii"))
+    else:
+      self.assertIn("takes exactly 2 arguments", ray.error_info()[1][b"message"].decode("ascii"))
 
     # Create an actor the correct number of arguments.
     a = Actor(1)
+
     # Call a method with too few arguments.
     a.get_val()
     wait_for_errors(b"task", 3)
     self.assertEqual(len(ray.error_info()), 3)
-    self.assertIn("missing 1 required", ray.error_info()[2][b"message"].decode("ascii"))
+    if sys.version_info >= (3, 0):
+      self.assertIn("missing 1 required", ray.error_info()[2][b"message"].decode("ascii"))
+    else:
+      self.assertIn("takes exactly 2 arguments", ray.error_info()[2][b"message"].decode("ascii"))
+
     # Call a method with too many arguments.
     a.get_val(1, 2)
     wait_for_errors(b"task", 4)
     self.assertEqual(len(ray.error_info()), 4)
-    self.assertIn("but 3 were given", ray.error_info()[3][b"message"].decode("ascii"))
+    if sys.version_info >= (3, 0):
+      self.assertIn("but 3 were given", ray.error_info()[3][b"message"].decode("ascii"))
+    else:
+      self.assertIn("takes exactly 2 arguments", ray.error_info()[3][b"message"].decode("ascii"))
+    # Call a method that doesn't exist.
+    with self.assertRaises(AttributeError):
+      a.nonexistent_method()
 
     ray.worker.cleanup()
 

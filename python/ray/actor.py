@@ -122,7 +122,7 @@ def actor(Class):
       if "__init__" in self._ray_actor_methods.keys():
         actor_method_call(self._ray_actor_id, "__init__", *args, **kwargs)
       else:
-        print("WARNING: this object has not __init__ method.")
+        print("WARNING: this object has no __init__ method.")
     # Make tab completion work.
     def __dir__(self):
       return self._ray_actor_methods

@@ -101,7 +101,8 @@ photon_mock *init_photon_mock(bool connect_to_redis,
   mock->num_photon_conns = num_mock_workers;
   mock->conns = malloc(sizeof(photon_conn *) * num_mock_workers);
   for (int i = 0; i < num_mock_workers; ++i) {
-    mock->conns[i] = photon_connect(utstring_body(photon_socket_name), NIL_ID);
+    mock->conns[i] = photon_connect(utstring_body(photon_socket_name),
+                                    NIL_ACTOR_ID);
     new_client_connection(mock->loop, mock->photon_fd,
                           (void *) mock->photon_state, 0);
   }

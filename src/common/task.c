@@ -45,7 +45,7 @@ struct task_spec_impl {
    *  one. */
   int64_t parent_counter;
   /** Actor ID of the task. This is the actor that this task is executed on
-   *  or NIL_ID if the task is just a normal task. */
+   *  or NIL_ACTOR_ID if the task is just a normal task. */
   actor_id actor_id;
   /** Number of tasks that have been submitted to this actor so far. */
   int64_t actor_counter;

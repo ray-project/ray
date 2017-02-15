@@ -641,7 +641,7 @@ void new_client_connection(event_loop *loop,
   worker->task_in_progress = NULL;
   worker->pid = 0;
   worker->is_child = false;
-  worker->actor_id = NIL_ID;
+  worker->actor_id = NIL_ACTOR_ID;
   worker->local_scheduler_state = state;
   utarray_push_back(state->workers, &worker);
   event_loop_add_file(loop, new_socket, EVENT_LOOP_READ, process_message,

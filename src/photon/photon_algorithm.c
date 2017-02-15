@@ -235,8 +235,10 @@ void remove_actor(scheduling_algorithm_state *algorithm_state,
   task_queue_entry *elt;
   int count;
   DL_COUNT(entry->task_queue, elt, count);
-  LOG_WARN("Removing actor with ID %s and %d remaining tasks.",
-           object_id_to_string(actor_id, id_string, ID_STRING_SIZE), count);
+  if (count > 0) {
+    LOG_WARN("Removing actor with ID %s and %d remaining tasks.",
+             object_id_to_string(actor_id, id_string, ID_STRING_SIZE), count);
+  }
   UNUSED(id_string);
 
   /* Free all remaining tasks in the actor queue. */
