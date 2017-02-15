@@ -398,6 +398,8 @@ class ActorInheritance(unittest.TestCase):
         self.x = x
       def f(self):
         return self.x
+      def g(self, y):
+        return self.x + y
 
     @ray.actor
     class Actor(Foo):
@@ -408,6 +410,7 @@ class ActorInheritance(unittest.TestCase):
 
     actor = Actor(1)
     self.assertEqual(ray.get(actor.get_value()), 1)
+    self.assertEqual(ray.get(actor.g(5)), 6)
 
     ray.worker.cleanup()
 
