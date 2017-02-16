@@ -36,9 +36,6 @@ SequenceBuilder::SequenceBuilder(MemoryPool* pool)
  * for allocations (see arrow::ArrayBuilder::Reserve).
  */
 #define UPDATE(OFFSET, TAG)                                                   \
-  if (total_num_bytes_ % 10000 == 0) {                                        \
-    std::cout << "bytes = " << total_num_bytes_ << std::endl;                 \
-  }                                                                           \
   if (total_num_bytes_ >= 1 << 29 - 1) {                                      \
     return Status::NotImplemented("Sequence contains too many elements");     \
   }                                                                           \

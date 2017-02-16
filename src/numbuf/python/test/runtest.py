@@ -138,6 +138,9 @@ class SerializationTests(unittest.TestCase):
     l = 500000000 * [["1"], 2, 3, ["4"]]
     with self.assertRaises(numbuf.numbuf_error):
       self.roundTripTest(l)
+    del l
+    l = (2**29 - 2) * ["s"] + (2**29 - 2) * [1.0]
+    self.roundTripTest(l)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
