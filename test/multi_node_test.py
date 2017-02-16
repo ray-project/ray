@@ -16,16 +16,22 @@ stop_ray_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../s
 
 class MultiNodeTest(unittest.TestCase):
 
-  def testErrorIsolation(self):
+  def setUp(self):
     # Start the Ray processes on this machine.
     out = subprocess.check_output([start_ray_script, "--head"]).decode("ascii")
     # Get the redis address from the output.
     redis_substring_prefix = "redis_address=\""
     redis_address_location = out.find(redis_substring_prefix) + len(redis_substring_prefix)
     redis_address = out[redis_address_location:]
-    redis_address = redis_address.split("\"")[0]
+    self.redis_address = redis_address.split("\"")[0]
+
+  def tearDown(self):
+    # Kill the Ray cluster.
+    subprocess.Popen([stop_ray_script]).wait()
+
+  def testErrorIsolation(self):
     # Connect a driver to the Ray cluster.
-    ray.init(redis_address=redis_address, driver_mode=ray.SILENT_MODE)
+    ray.init(redis_address=self.redis_address, driver_mode=ray.SILENT_MODE)
 
     # There shouldn't be any errors yet.
     self.assertEqual(len(ray.error_info()), 0)
@@ -79,7 +85,7 @@ assert len(ray.error_info()) == 1
 assert "{}" in ray.error_info()[0][b"message"].decode("ascii")
 
 print("success")
-""".format(redis_address, error_string2, error_string2)
+""".format(self.redis_address, error_string2, error_string2)
 
     # Save the driver script as a file so we can call it using subprocess.
     with tempfile.NamedTemporaryFile() as f:
@@ -95,7 +101,53 @@ print("success")
     self.assertIn(error_string1, ray.error_info()[0][b"message"].decode("ascii"))
 
     ray.worker.cleanup()
-    subprocess.Popen([stop_ray_script]).wait()
+
+  def testRemoteFunctionIsolation(self):
+    # This test will run multiple remote functions with the same names in two
+    # different drivers.
+    # Connect a driver to the Ray cluster.
+    ray.init(redis_address=self.redis_address, driver_mode=ray.SILENT_MODE)
+
+    # Start another driver and make sure that it can define and call its own
+    # commands with the same names.
+    driver_script = """
+import ray
+import time
+ray.init(redis_address="{}")
+@ray.remote
+def f():
+  return 3
+@ray.remote
+def g(x, y):
+  return 4
+for _ in range(10000):
+  result = ray.get([f.remote(), g.remote(0, 0)])
+  assert result == [3, 4]
+print("success")
+""".format(self.redis_address)
+
+    # Save the driver script as a file so we can call it using subprocess.
+    with tempfile.NamedTemporaryFile() as f:
+      f.write(driver_script.encode("ascii"))
+      f.flush()
+      out = subprocess.check_output(["python", f.name]).decode("ascii")
+
+    @ray.remote
+    def f():
+      return 1
+
+    @ray.remote
+    def g(x):
+      return 2
+
+    for _ in range(10000):
+      result = ray.get([f.remote(), g.remote(0)])
+      self.assertEqual(result, [1, 2])
+
+    # Make sure the other driver succeeded.
+    self.assertIn("success", out)
+
+    ray.worker.cleanup()
 
 class StartRayScriptTest(unittest.TestCase):
 
