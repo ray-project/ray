@@ -1115,6 +1115,21 @@ class ResourcesTest(unittest.TestCase):
 
     ray.worker.cleanup()
 
+  def testWorkerDeadlock(self):
+    @ray.remote
+    def f(i, j):
+      return (i, j)
+
+    @ray.remote
+    def g(i):
+      object_ids = [f.remote(i, j) for j in range(10)]
+      return ray.get(object_ids)
+
+    ray.init(num_workers=1)
+    for i in range(10):
+      ray.get([g.remote(i) for i in range(100)])
+    ray.worker.cleanup()
+
 class SchedulingAlgorithm(unittest.TestCase):
 
   def attempt_to_load_balance(self, remote_function, args, total_tasks,

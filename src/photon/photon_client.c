@@ -76,3 +76,7 @@ void photon_reconstruct_object(photon_conn *conn, object_id object_id) {
 void photon_log_message(photon_conn *conn) {
   write_message(conn->conn, LOG_MESSAGE, 0, NULL);
 }
+
+void photon_notify_unblocked(photon_conn *conn) {
+  write_message(conn->conn, NOTIFY_UNBLOCKED, 0, NULL);
+}

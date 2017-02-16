@@ -29,7 +29,10 @@ enum photon_message_type {
   EVENT_LOG_MESSAGE,
   /** Send an initial connection message to the local scheduler.
    *  This contains the worker's process ID and actor ID. */
-  REGISTER_WORKER_INFO
+  REGISTER_WORKER_INFO,
+  /** For a worker that was blocked on some object(s), tell the local scheduler
+   *  that the worker is now unblocked. */
+  NOTIFY_UNBLOCKED,
 };
 
 /* These are needed to define the UT_arrays. */
@@ -112,6 +115,9 @@ typedef struct {
    *  no task is running on the worker, this will be NULL. This is used to
    *  update the task table. */
   task *task_in_progress;
+  /** A flag to indicate whether this worker is currently blocking on an
+   *  object(s) that isn't available locally yet. */
+  bool is_blocked;
   /** The process ID of the client. If this is set to zero, the client has not
    *  yet registered a process ID. */
   pid_t pid;

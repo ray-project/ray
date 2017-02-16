@@ -80,6 +80,11 @@ static PyObject *PyPhotonClient_log_event(PyObject *self, PyObject *args) {
   Py_RETURN_NONE;
 }
 
+static PyObject *PyPhotonClient_notify_unblocked(PyObject *self) {
+  photon_notify_unblocked(((PyPhotonClient *) self)->photon_connection);
+  Py_RETURN_NONE;
+}
+
 static PyMethodDef PyPhotonClient_methods[] = {
     {"submit", (PyCFunction) PyPhotonClient_submit, METH_VARARGS,
      "Submit a task to the local scheduler."},
@@ -89,6 +94,8 @@ static PyMethodDef PyPhotonClient_methods[] = {
      METH_VARARGS, "Ask the local scheduler to reconstruct an object."},
     {"log_event", (PyCFunction) PyPhotonClient_log_event, METH_VARARGS,
      "Log an event to the event log through the local scheduler."},
+    {"notify_unblocked", (PyCFunction) PyPhotonClient_notify_unblocked,
+     METH_NOARGS, "Notify the local scheduler that we are unblocked."},
     {NULL} /* Sentinel */
 };
 
