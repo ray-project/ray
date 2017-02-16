@@ -2,22 +2,23 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import json
-import hashlib
-import os
-import sys
-import time
-import traceback
-import copy
-import collections
-import funcsigs
-import numpy as np
-import colorama
 import atexit
+import collections
+import colorama
+import copy
+import funcsigs
+import hashlib
+import inspect
+import json
+import numpy as np
+import os
 import random
 import redis
-import threading
 import string
+import sys
+import threading
+import time
+import traceback
 
 # Ray modules
 import ray.pickling as pickling
@@ -1726,7 +1727,16 @@ def remote(*args, **kwargs):
     def remote_decorator(func):
       func_name = "{}.{}".format(func.__module__, func.__name__)
       if func_id is None:
-        function_id = FunctionID((hashlib.sha256(func_name.encode("ascii")).digest())[:20])
+        # Compute the function ID as a hash of the function name as well as the
+        # source code. We could in principle hash in the values in the closure
+        # of the function, but that is likely to introduce non-determinism in
+        # the computation of the function ID.
+        function_id_hash = hashlib.sha1()
+        function_id_hash.update(func_name.encode("ascii"))
+        function_id_hash.update(inspect.getsource(func).encode("ascii"))
+        function_id = function_id_hash.digest()
+        assert len(function_id) == 20
+        function_id = FunctionID(function_id)
       else:
         function_id = func_id
 

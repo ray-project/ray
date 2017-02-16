@@ -599,6 +599,62 @@ class APITest(unittest.TestCase):
 
     ray.worker.cleanup()
 
+  def testIdenticalFunctionNames(self):
+    # Define a bunch of remote functions and make sure that we don't
+    # accidentally call an older version.
+    ray.init(num_workers=2)
+
+    num_remote_functions = 100
+    num_calls = 200
+
+    @ray.remote
+    def f():
+      return 1
+    results1 = [f.remote() for _ in range(num_calls)]
+    @ray.remote
+    def f():
+      return 2
+    results2 = [f.remote() for _ in range(num_calls)]
+    @ray.remote
+    def f():
+      return 3
+    results3 = [f.remote() for _ in range(num_calls)]
+    @ray.remote
+    def f():
+      return 4
+    results4 = [f.remote() for _ in range(num_calls)]
+    @ray.remote
+    def f():
+      return 5
+    results5 = [f.remote() for _ in range(num_calls)]
+
+    self.assertEqual(ray.get(results1), num_calls * [1])
+    self.assertEqual(ray.get(results2), num_calls * [2])
+    self.assertEqual(ray.get(results3), num_calls * [3])
+    self.assertEqual(ray.get(results4), num_calls * [4])
+    self.assertEqual(ray.get(results5), num_calls * [5])
+
+    @ray.remote
+    def g():
+      return 1
+    @ray.remote
+    def g():
+      return 2
+    @ray.remote
+    def g():
+      return 3
+    @ray.remote
+    def g():
+      return 4
+    @ray.remote
+    def g():
+      return 5
+
+    result_values = ray.get([g.remote() for _ in range(num_calls)])
+    self.assertEqual(result_values, num_calls * [5])
+
+    ray.worker.cleanup()
+
 class PythonModeTest(unittest.TestCase):
 
   def testPythonMode(self):

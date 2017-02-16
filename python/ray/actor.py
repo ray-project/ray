@@ -27,9 +27,11 @@ def get_actor_method_function_id(attr):
   Returns:
     Function ID corresponding to the method.
   """
-  function_id = hashlib.sha1()
-  function_id.update(attr.encode("ascii"))
-  return photon.ObjectID(function_id.digest())
+  function_id_hash = hashlib.sha1()
+  function_id_hash.update(attr.encode("ascii"))
+  function_id = function_id_hash.digest()
+  assert len(function_id) == 20
+  return photon.ObjectID(function_id)
 
 def fetch_and_register_actor(key, worker):
   """Import an actor."""
