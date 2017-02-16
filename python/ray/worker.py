@@ -471,7 +471,7 @@ class Worker(object):
     # their original index in the object_ids argument.
     unready_ids = dict((object_id, i) for (i, (object_id, val)) in
                        enumerate(final_results) if val is None)
-    was_blocked = (unready_ids > 0)
+    was_blocked = (len(unready_ids) > 0)
     # Try reconstructing any objects we haven't gotten yet. Try to get them
     # until GET_TIMEOUT_MILLISECONDS milliseconds passes, then repeat.
     while len(unready_ids) > 0:

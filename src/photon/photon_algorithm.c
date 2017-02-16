@@ -974,6 +974,12 @@ void handle_worker_available(local_scheduler_state *state,
       break;
     }
   }
+  /* Check that we actually erased the worker. */
+  for (int i = 0; i < utarray_len(algorithm_state->executing_workers); ++i) {
+    local_scheduler_client **p = (local_scheduler_client **) utarray_eltptr(
+        algorithm_state->executing_workers, i);
+    DCHECK(*p != worker);
+  }
 
   /* Add worker to the list of available workers. */
   utarray_push_back(algorithm_state->available_workers, &worker);

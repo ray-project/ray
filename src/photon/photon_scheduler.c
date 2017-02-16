@@ -68,6 +68,9 @@ void print_resource_info(const local_scheduler_state *state,
  * @return Void.
  */
 void kill_worker(local_scheduler_client *worker, bool wait) {
+  /* TODO(swang): This method should also propagate changes to other parts of
+   * the system to reflect the killed task in progress, if there was one.  This
+   * includes updating dynamic resources and updating the task table. */
   /* Erase the worker from the array of workers. */
   local_scheduler_state *state = worker->local_scheduler_state;
   int num_workers = utarray_len(state->workers);

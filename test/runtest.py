@@ -1115,19 +1115,37 @@ class ResourcesTest(unittest.TestCase):
 
     ray.worker.cleanup()
 
-  def testWorkerDeadlock(self):
+class WorkerPoolTests(unittest.TestCase):
+
+  def tearDown(self):
+    ray.worker.cleanup()
+
+  def testNoWorkers(self):
+    ray.init(num_workers=0)
+
+    @ray.remote
+    def f():
+      return 1
+
+    # Make sure we can call a remote function. This will require starting a new worker.
+    ray.get(f.remote())
+
+    ray.get([f.remote() for _ in range(100)])
+
+  def testBlockingTasks(self):
     @ray.remote
     def f(i, j):
       return (i, j)
 
     @ray.remote
     def g(i):
+      # Each instance of g submits and blocks on the result of another remote
+      # task.
       object_ids = [f.remote(i, j) for j in range(10)]
       return ray.get(object_ids)
 
     ray.init(num_workers=1)
-    for i in range(10):
-      ray.get([g.remote(i) for i in range(100)])
+    ray.get([g.remote(i) for i in range(100)])
     ray.worker.cleanup()
 
 class SchedulingAlgorithm(unittest.TestCase):
