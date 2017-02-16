@@ -127,20 +127,21 @@ class SerializationTests(unittest.TestCase):
       result[0][0] = 1
 
   def testArrowLimits(self):
-    l = 1000000000 * [1.0]
+    l = 2**29 * [1.0]
     with self.assertRaises(numbuf.numbuf_error):
       self.roundTripTest(l)
     del l
-    l = 500000000 * ["s"]
+    l = 2**29 * ["s"]
     with self.assertRaises(numbuf.numbuf_error):
       self.roundTripTest(l)
     del l
-    l = 500000000 * [["1"], 2, 3, ["4"]]
+    l = 2**29 * [["1"], 2, 3, ["4"]]
     with self.assertRaises(numbuf.numbuf_error):
       self.roundTripTest(l)
     del l
-    l = (2**29 - 2) * ["s"] + (2**29 - 2) * [1.0]
-    self.roundTripTest(l)
+    with self.assertRaises(numbuf.numbuf_error):
+      l = 2**29 * ["s"] + 2**29 * [1.0]
+      self.roundTripTest(l)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
