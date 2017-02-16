@@ -128,24 +128,42 @@ class SerializationTests(unittest.TestCase):
       result[0][0] = 1
 
   def testArrowLimits(self):
+    # Test that objects that are too large for Arrow throw a Python exception.
     # These tests give out of memory errors on Travis and need to be run on a
     # machine with lots of RAM.
     if os.getenv("TRAVIS") is None:
       l = 2 ** 29 * [1.0]
       with self.assertRaises(numbuf.numbuf_error):
         self.roundTripTest(l)
+        self.roundTripTest([l])
       del l
       l = 2 ** 29 * ["s"]
       with self.assertRaises(numbuf.numbuf_error):
         self.roundTripTest(l)
+        self.roundTripTest([l])
       del l
       l = 2 ** 29 * [["1"], 2, 3, [{"s": 4}]]
       with self.assertRaises(numbuf.numbuf_error):
         self.roundTripTest(l)
+        self.roundTripTest([l])
       del l
       with self.assertRaises(numbuf.numbuf_error):
         l = 2 ** 29 * [{"s": 1}] + 2 ** 29 * [1.0]
         self.roundTripTest(l)
+        self.roundTripTest([l])
+      del l
+      with self.assertRaises(numbuf.numbuf_error):
+        l = np.zeros(2 ** 25)
+        self.roundTripTest([l])
+      del l
+      with self.assertRaises(numbuf.numbuf_error):
+        l = [np.zeros(2 ** 18) for _ in range(2 ** 7)]
+        self.roundTripTest(l)
+        self.roundTripTest([l])
+      del l
+    else:
+      print("Not running testArrowLimits on Travis because of the test's "
+            "memory requirements.")
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
