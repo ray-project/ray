@@ -2,10 +2,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import unittest
+import os
 import ray
 import sys
+import tempfile
 import time
+import unittest
 
 if sys.version_info >= (3, 0):
   from importlib import reload
@@ -91,29 +93,40 @@ class TaskStatusTest(unittest.TestCase):
   def testFailImportingRemoteFunction(self):
     ray.init(num_workers=2, driver_mode=ray.SILENT_MODE)
 
-    # This example is somewhat contrived. It should be successfully pickled, and
-    # then it should throw an exception when it is unpickled. This may depend a
-    # bit on the specifics of our pickler.
-    def reducer(*args):
-      raise Exception("There is a problem here.")
-    class Foo(object):
-      def __init__(self):
-        self.__name__ = "Foo_object"
-        self.func_doc = ""
-        self.__globals__ = {}
-      def __reduce__(self):
-        return reducer, ()
-      def __call__(self):
-        return
-    f = ray.remote(Foo())
+    # Create the contents of a temporary Python file.
+    temporary_python_file = """
+def temporary_helper_function():
+  return 1
+"""
+
+    f = tempfile.NamedTemporaryFile(suffix=".py")
+    f.write(temporary_python_file.encode("ascii"))
+    f.flush()
+    directory = os.path.dirname(f.name)
+    # Get the module name and strip ".py" from the end.
+    module_name = os.path.basename(f.name)[:-3]
+    sys.path.append(directory)
+    module = __import__(module_name)
+
+    # Define a function that closes over this temporary module. This should fail
+    # when it is unpickled.
+    @ray.remote
+    def g():
+      return module.temporary_python_file()
+
     wait_for_errors(b"register_remote_function", 2)
-    self.assertTrue(b"There is a problem here." in ray.error_info()[0][b"message"])
+    self.assertTrue(b"ImportError: No module named" in ray.error_info()[0][b"message"])
+    self.assertTrue(b"ImportError: No module named" in ray.error_info()[1][b"message"])
 
     # Check that if we try to call the function it throws an exception and does
     # not hang.
     for _ in range(10):
-      self.assertRaises(Exception, lambda : ray.get(f.remote()))
+      self.assertRaises(Exception, lambda : ray.get(g.remote()))
 
+    f.close()
+
+    # Clean up the junk we added to sys.path.
+    sys.path.pop(-1)
     ray.worker.cleanup()
 
   def testFailImportingEnvironmentVariable(self):
