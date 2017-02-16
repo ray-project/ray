@@ -115,8 +115,8 @@ def temporary_helper_function():
       return module.temporary_python_file()
 
     wait_for_errors(b"register_remote_function", 2)
-    self.assertIn(b"ImportError: No module named", ray.error_info()[0][b"message"])
-    self.assertIn(b"ImportError: No module named", ray.error_info()[1][b"message"])
+    self.assertIn(b"No module named", ray.error_info()[0][b"message"])
+    self.assertIn(b"No module named", ray.error_info()[1][b"message"])
 
     # Check that if we try to call the function it throws an exception and does
     # not hang.
