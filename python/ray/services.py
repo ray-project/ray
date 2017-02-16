@@ -599,7 +599,6 @@ def start_ray_processes(address_info=None,
     A dictionary of the address information for the processes that were
       started.
   """
-  start_workers_from_local_scheduler = True
   if not isinstance(num_cpus, list):
     num_cpus = num_local_schedulers * [num_cpus]
   if not isinstance(num_gpus, list):
