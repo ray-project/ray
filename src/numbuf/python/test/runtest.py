@@ -135,12 +135,12 @@ class SerializationTests(unittest.TestCase):
     with self.assertRaises(numbuf.numbuf_error):
       self.roundTripTest(l)
     del l
-    l = 2**29 * [["1"], 2, 3, ["4"]]
+    l = 2**29 * [["1"], 2, 3, [{"s": 4}]]
     with self.assertRaises(numbuf.numbuf_error):
       self.roundTripTest(l)
     del l
     with self.assertRaises(numbuf.numbuf_error):
-      l = 2**29 * ["s"] + 2**29 * [1.0]
+      l = 2**29 * [{"s": 1}] + 2**29 * [1.0]
       self.roundTripTest(l)
 
 if __name__ == "__main__":

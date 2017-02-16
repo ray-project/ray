@@ -31,8 +31,8 @@ SequenceBuilder::SequenceBuilder(MemoryPool* pool)
       dict_offsets_({0}) {}
 
 /* We need to ensure that the number of bytes allocated by arrow
- * does not exceed 2**32. To make sure that is the case, allocation needs
- * to be capped at 2**31, because arrow calculates the next power of two
+ * does not exceed 2**31 - 1. To make sure that is the case, allocation needs
+ * to be capped at 2**29 - 1, because arrow calculates the next power of two
  * for allocations (see arrow::ArrayBuilder::Reserve).
  */
 #define UPDATE(OFFSET, TAG)                                                   \

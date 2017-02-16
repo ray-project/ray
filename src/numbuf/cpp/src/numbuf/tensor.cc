@@ -1,8 +1,5 @@
 #include "tensor.h"
 
-#include <limits>
-#include <sstream>
-
 using namespace arrow;
 
 namespace numbuf {
