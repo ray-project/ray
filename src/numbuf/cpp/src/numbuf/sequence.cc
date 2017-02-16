@@ -8,6 +8,7 @@ SequenceBuilder::SequenceBuilder(MemoryPool* pool)
     : pool_(pool),
       types_(pool, std::make_shared<Int8Type>()),
       offsets_(pool, std::make_shared<Int32Type>()),
+      total_num_bytes_(0),
       nones_(pool, std::make_shared<NullType>()),
       bools_(pool, std::make_shared<BooleanType>()),
       ints_(pool, std::make_shared<Int64Type>()),
@@ -29,13 +30,21 @@ SequenceBuilder::SequenceBuilder(MemoryPool* pool)
       tuple_offsets_({0}),
       dict_offsets_({0}) {}
 
-#define UPDATE(OFFSET, TAG)               \
-  if (TAG == -1) {                        \
-    TAG = num_tags;                       \
-    num_tags += 1;                        \
-  }                                       \
-  RETURN_NOT_OK(offsets_.Append(OFFSET)); \
-  RETURN_NOT_OK(types_.Append(TAG));      \
+/* We need to ensure that the number of bytes allocated by arrow
+ * does not exceed 2**32. To make sure that is the case, allocation needs
+ * to be capped at 2**31, because arrow calculates the next power of two
+ * for allocations (see arrow::ArrayBuilder::Reserve).
+ */
+#define UPDATE(OFFSET, TAG)                                                   \
+  if (total_num_bytes_ >= 1000000000) {                                       \
+    return Status::NotImplemented("Sequence contains too many elements");     \
+  }                                                                           \
+  if (TAG == -1) {                                                            \
+    TAG = num_tags;                                                           \
+    num_tags += 1;                                                            \
+  }                                                                           \
+  RETURN_NOT_OK(offsets_.Append(OFFSET));                                     \
+  RETURN_NOT_OK(types_.Append(TAG));                                          \
   RETURN_NOT_OK(nones_.AppendToBitmap(true));
 
 Status SequenceBuilder::AppendNone() {
@@ -45,36 +54,43 @@ Status SequenceBuilder::AppendNone() {
 }
 
 Status SequenceBuilder::AppendBool(bool data) {
+  total_num_bytes_ += sizeof(bool);
   UPDATE(bools_.length(), bool_tag);
   return bools_.Append(data);
 }
 
 Status SequenceBuilder::AppendInt64(int64_t data) {
+  total_num_bytes_ += sizeof(int64_t);
   UPDATE(ints_.length(), int_tag);
   return ints_.Append(data);
 }
 
 Status SequenceBuilder::AppendUInt64(uint64_t data) {
+  total_num_bytes_ += sizeof(uint64_t);
   UPDATE(ints_.length(), int_tag);
   return ints_.Append(data);
 }
 
 Status SequenceBuilder::AppendBytes(const uint8_t* data, int32_t length) {
+  total_num_bytes_ += length * sizeof(uint8_t);
   UPDATE(bytes_.length(), bytes_tag);
   return bytes_.Append(data, length);
 }
 
 Status SequenceBuilder::AppendString(const char* data, int32_t length) {
+  total_num_bytes_ += length * sizeof(char);
   UPDATE(strings_.length(), string_tag);
   return strings_.Append(data, length);
 }
 
 Status SequenceBuilder::AppendFloat(float data) {
+  total_num_bytes_ += sizeof(float);
   UPDATE(floats_.length(), float_tag);
   return floats_.Append(data);
 }
 
 Status SequenceBuilder::AppendDouble(double data) {
+  total_num_bytes_ += sizeof(double);
   UPDATE(doubles_.length(), double_tag);
   return doubles_.Append(data);
 }
@@ -82,6 +98,11 @@ Status SequenceBuilder::AppendDouble(double data) {
 #define DEF_TENSOR_APPEND(NAME, TYPE, TAG)                                             \
   Status SequenceBuilder::AppendTensor(const std::vector<int64_t>& dims, TYPE* data) { \
     if (TAG == -1) { NAME.Start(); }                                                   \
+    int64_t size = 1;                                                                  \
+    for (auto dim : dims) {                                                            \
+      size *= dim;                                                                     \
+    }                                                                                  \
+    total_num_bytes_ +=  size * sizeof(TYPE);                                          \
     UPDATE(NAME.length(), TAG);                                                        \
     return NAME.Append(dims, data);                                                    \
   }

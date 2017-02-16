@@ -58,7 +58,7 @@ class SequenceBuilder {
   arrow::Status AppendTensor(const std::vector<int64_t>& dims, float* data);
   arrow::Status AppendTensor(const std::vector<int64_t>& dims, double* data);
 
-  /*! Add a sublist to the sequenc. The data contained in the sublist will be
+  /*! Add a sublist to the sequence. The data contained in the sublist will be
      specified in the "Finish" method.
 
      To construct l = [[11, 22], 33, [44, 55]] you would for example run
@@ -88,6 +88,9 @@ class SequenceBuilder {
 
   arrow::Int8Builder types_;
   arrow::Int32Builder offsets_;
+
+  /* Total number of bytes needed to represent this sequence. */
+  int64_t total_num_bytes_;
 
   arrow::NullArrayBuilder nones_;
   arrow::BooleanBuilder bools_;

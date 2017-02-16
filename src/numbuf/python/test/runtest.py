@@ -126,5 +126,14 @@ class SerializationTests(unittest.TestCase):
     with self.assertRaises(ValueError):
       result[0][0] = 1
 
+  def testArrowLimits(self):
+    l = 1000000000 * [1.0]
+    with self.assertRaises(numbuf.numbuf_error):
+      self.roundTripTest(l)
+    del l
+    l = 500000000 * ["s"]
+    with self.assertRaises(numbuf.numbuf_error):
+      self.roundTripTest(l)
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

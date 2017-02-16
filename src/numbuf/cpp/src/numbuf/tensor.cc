@@ -1,5 +1,8 @@
 #include "tensor.h"
 
+#include <limits>
+#include <sstream>
+
 using namespace arrow;
 
 namespace numbuf {
@@ -29,10 +32,19 @@ Status TensorBuilder<T>::Append(const std::vector<int64_t>& dims, const elem_typ
   RETURN_NOT_OK(tensors_->Append());
   RETURN_NOT_OK(dims_->Append());
   RETURN_NOT_OK(values_->Append());
-  int32_t size = 1;
+  int64_t size = 1;
   for (auto dim : dims) {
     size *= dim;
     RETURN_NOT_OK(dim_data_->Append(dim));
+  }
+  if (size * sizeof(T) >= std::numeric_limits<int32_t>::max()) {
+    std::stringstream stream;
+    stream << std::string("Numpy array of dimensions ");
+    for (auto dim : dims) {
+      stream << dim << std::string(" ");
+    }
+    stream << std::string("too large to be converted to arrow") << std::endl;
+    return Status::NotImplemented(stream.str());
   }
   RETURN_NOT_OK(value_data_->Append(data, size));
   return Status::OK();  // tensors_->Append();
