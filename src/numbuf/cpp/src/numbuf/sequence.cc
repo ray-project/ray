@@ -119,18 +119,27 @@ DEF_TENSOR_APPEND(float_tensors_, float, float_tensor_tag);
 DEF_TENSOR_APPEND(double_tensors_, double, double_tensor_tag);
 
 Status SequenceBuilder::AppendList(int32_t size) {
+  // Increase number of bytes to account for offsets
+  // (types and bitmaps are smaller)
+  total_num_bytes_ +=  size * sizeof(int32_t);
   UPDATE(list_offsets_.size() - 1, list_tag);
   list_offsets_.push_back(list_offsets_.back() + size);
   return Status::OK();
 }
 
 Status SequenceBuilder::AppendTuple(int32_t size) {
+  // Increase number of bytes to account for offsets
+  // (types and bitmaps are smaller)
+  total_num_bytes_ +=  size * sizeof(int32_t);
   UPDATE(tuple_offsets_.size() - 1, tuple_tag);
   tuple_offsets_.push_back(tuple_offsets_.back() + size);
   return Status::OK();
 }
 
 Status SequenceBuilder::AppendDict(int32_t size) {
+  // Increase number of bytes to account for offsets
+  // (types and bitmaps are smaller)
+  total_num_bytes_ +=  size * sizeof(int32_t);
   UPDATE(dict_offsets_.size() - 1, dict_tag);
   dict_offsets_.push_back(dict_offsets_.back() + size);
   return Status::OK();
