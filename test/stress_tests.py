@@ -300,5 +300,27 @@ class ReconstructionTestsMultinode(ReconstructionTests):
   # one worker each.
   num_local_schedulers = 4
 
+# NOTE(swang): This test tries to launch 1000 workers and breaks.
+#class WorkerPoolTests(unittest.TestCase):
+#
+#  def tearDown(self):
+#    ray.worker.cleanup()
+#
+#  def testBlockingTasks(self):
+#    @ray.remote
+#    def f(i, j):
+#      return (i, j)
+#
+#    @ray.remote
+#    def g(i):
+#      # Each instance of g submits and blocks on the result of another remote
+#      # task.
+#      object_ids = [f.remote(i, j) for j in range(10)]
+#      return ray.get(object_ids)
+#
+#    ray.init(num_workers=1)
+#    ray.get([g.remote(i) for i in range(1000)])
+#    ray.worker.cleanup()
+
 if __name__ == "__main__":
   unittest.main(verbosity=2)
