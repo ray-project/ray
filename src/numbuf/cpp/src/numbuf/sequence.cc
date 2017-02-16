@@ -35,19 +35,20 @@ SequenceBuilder::SequenceBuilder(MemoryPool* pool)
  * to be capped at 2**29 - 1, because arrow calculates the next power of two
  * for allocations (see arrow::ArrayBuilder::Reserve).
  */
-#define UPDATE(OFFSET, TAG)                                                   \
-  if (total_num_bytes_ >= 1 << 29 - 1) {                                      \
-    return Status::NotImplemented("Sequence contains too many elements");     \
-  }                                                                           \
-  if (TAG == -1) {                                                            \
-    TAG = num_tags;                                                           \
-    num_tags += 1;                                                            \
-  }                                                                           \
-  RETURN_NOT_OK(offsets_.Append(OFFSET));                                     \
-  RETURN_NOT_OK(types_.Append(TAG));                                          \
+#define UPDATE(OFFSET, TAG)                                               \
+  if (total_num_bytes_ >= 1 << 29 - 1) {                                  \
+    return Status::NotImplemented("Sequence contains too many elements"); \
+  }                                                                       \
+  if (TAG == -1) {                                                        \
+    TAG = num_tags;                                                       \
+    num_tags += 1;                                                        \
+  }                                                                       \
+  RETURN_NOT_OK(offsets_.Append(OFFSET));                                 \
+  RETURN_NOT_OK(types_.Append(TAG));                                      \
   RETURN_NOT_OK(nones_.AppendToBitmap(true));
 
 Status SequenceBuilder::AppendNone() {
+  total_num_bytes_ += sizeof(int32_t);
   RETURN_NOT_OK(offsets_.Append(0));
   RETURN_NOT_OK(types_.Append(0));
   return nones_.AppendToBitmap(false);
@@ -102,7 +103,7 @@ Status SequenceBuilder::AppendDouble(double data) {
     for (auto dim : dims) {                                                            \
       size *= dim;                                                                     \
     }                                                                                  \
-    total_num_bytes_ +=  size * sizeof(TYPE);                                          \
+    total_num_bytes_ += size * sizeof(TYPE);                                           \
     UPDATE(NAME.length(), TAG);                                                        \
     return NAME.Append(dims, data);                                                    \
   }
