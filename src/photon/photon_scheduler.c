@@ -190,7 +190,9 @@ void free_local_scheduler(local_scheduler_state *state) {
  */
 void start_worker(local_scheduler_state *state, actor_id actor_id) {
   /* We can't start a worker if we don't have the path to the worker script. */
-  CHECK(state->config.start_worker_command != NULL);
+  if (state->config.start_worker_command == NULL) {
+    return;
+  }
   /* Launch the process to create the worker. */
   pid_t pid = fork();
   if (pid != 0) {
@@ -281,6 +283,11 @@ local_scheduler_state *init_local_scheduler(
     state->config.start_worker_command = parse_command(start_worker_command);
   } else {
     state->config.start_worker_command = NULL;
+  }
+  if (start_worker_command == NULL) {
+    LOG_WARN(
+        "No valid command to start a worker provided, local scheduler will not "
+        "start any workers.");
   }
   state->config.global_scheduler_exists = global_scheduler_exists;
 
@@ -624,11 +631,14 @@ void process_message(event_loop *loop,
   } break;
   case RECONSTRUCT_OBJECT: {
     if (worker->task_in_progress != NULL && !worker->is_blocked) {
-      /* If the worker was executing a task (i.e. non-driver) and it wasn't
-       * already blocked on an object that's not locally available, update its
-       * state to blocked. */
-      handle_worker_blocked(state, state->algorithm_state, worker);
-      print_worker_info("Reconstructing", state->algorithm_state);
+      /* TODO(swang): For now, we don't handle blocked actors. */
+      if (actor_ids_equal(worker->actor_id, NIL_ACTOR_ID)) {
+        /* If the worker was executing a task (i.e. non-driver) and it wasn't
+         * already blocked on an object that's not locally available, update its
+         * state to blocked. */
+        handle_worker_blocked(state, state->algorithm_state, worker);
+        print_worker_info("Reconstructing", state->algorithm_state);
+      }
     }
     object_id *obj_id = (object_id *) utarray_front(state->input_buffer);
     reconstruct_object(state, *obj_id);
@@ -646,10 +656,13 @@ void process_message(event_loop *loop,
   } break;
   case NOTIFY_UNBLOCKED: {
     if (worker->task_in_progress != NULL) {
-      /* If the worker was executing a task (i.e. non-driver), update its state
-       * to not blocked. */
-      CHECK(worker->is_blocked);
-      handle_worker_unblocked(state, state->algorithm_state, worker);
+      /* TODO(swang): For now, we don't handle blocked actors. */
+      if (actor_ids_equal(worker->actor_id, NIL_ACTOR_ID)) {
+        /* If the worker was executing a task (i.e. non-driver), update its
+         * state to not blocked. */
+        CHECK(worker->is_blocked);
+        handle_worker_unblocked(state, state->algorithm_state, worker);
+      }
     }
     print_worker_info("Worker unblocked", state->algorithm_state);
   } break;

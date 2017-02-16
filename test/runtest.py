@@ -367,7 +367,7 @@ class APITest(unittest.TestCase):
     ray.worker.cleanup()
 
   def testWait(self):
-    ray.init(num_workers=1)
+    ray.init(num_workers=1, num_cpus=1)
 
     @ray.remote
     def f(delay):
