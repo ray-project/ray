@@ -1133,6 +1133,8 @@ class WorkerPoolTests(unittest.TestCase):
     ray.get([f.remote() for _ in range(100)])
 
   def testBlockingTasks(self):
+    ray.init(num_workers=1)
+
     @ray.remote
     def f(i, j):
       return (i, j)
@@ -1144,8 +1146,21 @@ class WorkerPoolTests(unittest.TestCase):
       object_ids = [f.remote(i, j) for j in range(10)]
       return ray.get(object_ids)
 
-    ray.init(num_workers=1)
     ray.get([g.remote(i) for i in range(100)])
+
+    @ray.remote
+    def _sleep(i, j):
+      time.sleep(1)
+      return (i, j)
+
+    @ray.remote
+    def sleep(i):
+      # Each instance of sleep submits and blocks on the result of another
+      # remote task, which takes one second to execute.
+      ray.get([_sleep.remote(i, j) for j in range(10)])
+
+    ray.get(sleep.remote(i))
+
     ray.worker.cleanup()
 
 class SchedulingAlgorithm(unittest.TestCase):
