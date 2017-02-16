@@ -48,16 +48,17 @@ def fetch_and_register_actor(key, worker):
     worker.actors[actor_id_str] = unpickled_class.__new__(unpickled_class)
     for (k, v) in inspect.getmembers(unpickled_class, predicate=(lambda x: inspect.isfunction(x) or inspect.ismethod(x))):
       function_id = get_actor_method_function_id(k).id()
-      worker.function_names[function_id] = k
-      worker.functions[function_id] = v
+      worker.functions[driver_id][function_id] = (k, v)
+      # We do not set worker.function_properties[driver_id][function_id] because
+      # we currently do need the actor worker to submit new tasks for the actor.
 
-def export_actor(actor_id, Class, worker):
+def export_actor(actor_id, Class, actor_method_names, worker):
   """Export an actor to redis.
 
   Args:
     actor_id: The ID of the actor.
     Class: Name of the class to be exported as an actor.
-    worker: The worker class
+    actor_method_names (list): A list of the names of this actor's methods.
   """
   ray.worker.check_main_thread()
   if worker.mode is None:
@@ -65,13 +66,19 @@ def export_actor(actor_id, Class, worker):
   key = "Actor:{}".format(actor_id.id())
   pickled_class = pickling.dumps(Class)
 
+  # For now, all actor methods have 1 return value and require 0 CPUs and GPUs.
+  driver_id = worker.task_driver_id.id()
+  for actor_method_name in actor_method_names:
+    function_id = get_actor_method_function_id(actor_method_name).id()
+    worker.function_properties[driver_id][function_id] = (1, 0, 0)
+
   # Select a local scheduler for the actor.
   local_schedulers = state.get_local_schedulers()
   local_scheduler_id = random.choice(local_schedulers)
 
   worker.redis_client.publish("actor_notifications", actor_id.id() + local_scheduler_id)
 
-  d = {"driver_id": worker.task_driver_id.id(),
+  d = {"driver_id": driver_id,
        "actor_id": actor_id.id(),
        "name": Class.__name__,
        "module": Class.__module__,
@@ -95,7 +102,6 @@ def actor(Class):
     num_cpus = 0
     num_gpus = 0
     object_ids = ray.worker.global_worker.submit_task(function_id, "", args,
-                                                      num_cpus, num_gpus,
                                                       actor_id=actor_id)
     if len(object_ids) == 1:
       return object_ids[0]
@@ -106,7 +112,7 @@ def actor(Class):
     def __init__(self, *args, **kwargs):
       self._ray_actor_id = random_actor_id()
       self._ray_actor_methods = {k: v for (k, v) in inspect.getmembers(Class, predicate=(lambda x: inspect.isfunction(x) or inspect.ismethod(x)))}
-      export_actor(self._ray_actor_id, Class, ray.worker.global_worker)
+      export_actor(self._ray_actor_id, Class, self._ray_actor_methods, ray.worker.global_worker)
       # Call __init__ as a remote function.
       if "__init__" in self._ray_actor_methods.keys():
         actor_method_call(self._ray_actor_id, "__init__", *args, **kwargs)
