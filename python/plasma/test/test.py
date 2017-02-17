@@ -747,18 +747,22 @@ class TestPlasmaManager(unittest.TestCase):
         j += 1
       memory_buffer2[i] = chr(j % 256)
     self.client2.seal(object_id)
-    # Give the second manager some time to complete the seal, then make sure it
-    # exited.
+    # Make sure that one of the plasma managers exited (the second one to call
+    # RAY.OBJECT_TABLE_ADD should have exited). In the vast majority of cases,
+    # this should be p5. However, on Travis, it is frequently p4.
     time_left = 100
     while time_left > 0:
       if self.p5.poll() != None:
         self.processes_to_kill.remove(self.p5)
         break
+      if self.p4.poll() != None:
+        self.processes_to_kill.remove(self.p4)
+        break
       time_left -= 0.1
       time.sleep(0.1)
 
     print("Time waiting for plasma manager to fail = {:.2}".format(100 - time_left))
-    self.assertNotEqual(self.p5.poll(), None)
+    self.assertNotEqual([self.p5.poll(), self.p4.poll()], [None, None])
 
   def test_illegal_functionality(self):
     # Create an object id string.
