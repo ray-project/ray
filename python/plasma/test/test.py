@@ -762,7 +762,8 @@ class TestPlasmaManager(unittest.TestCase):
       time.sleep(0.1)
 
     print("Time waiting for plasma manager to fail = {:.2}".format(100 - time_left))
-    self.assertNotEqual([self.p5.poll(), self.p4.poll()], [None, None])
+    # Check that exactly one of the plasma managers has died.
+    self.assertEqual([self.p5.poll(), self.p4.poll()].count(None), 1)
 
   def test_illegal_functionality(self):
     # Create an object id string.
