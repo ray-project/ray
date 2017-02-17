@@ -1127,7 +1127,8 @@ class WorkerPoolTests(unittest.TestCase):
     def f():
       return 1
 
-    # Make sure we can call a remote function. This will require starting a new worker.
+    # Make sure we can call a remote function. This will require starting a new
+    # worker.
     ray.get(f.remote())
 
     ray.get([f.remote() for _ in range(100)])
