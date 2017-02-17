@@ -1149,17 +1149,17 @@ class WorkerPoolTests(unittest.TestCase):
     ray.get([g.remote(i) for i in range(100)])
 
     @ray.remote
-    def _sleep(i, j):
+    def _sleep(i):
       time.sleep(1)
-      return (i, j)
+      return (i)
 
     @ray.remote
-    def sleep(i):
+    def sleep():
       # Each instance of sleep submits and blocks on the result of another
       # remote task, which takes one second to execute.
-      ray.get([_sleep.remote(i, j) for j in range(10)])
+      ray.get([_sleep.remote(i) for i in range(10)])
 
-    ray.get(sleep.remote(i))
+    ray.get(sleep.remote())
 
     ray.worker.cleanup()
 
