@@ -15,29 +15,26 @@
 
 """ResNet Train/Eval module.
 """
-import time
-import sys
 import os
 import cifar_input
 import numpy as np
 import resnet_model
-import tensorflow as tf
-import IPython
 import ray
-import uuid
+import tensorflow as tf
+import importlib
 
 FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('train_data_path', '',
                            'Filepattern for training data.')
 tf.app.flags.DEFINE_string('eval_data_path', '',
                            'Filepattern for eval data')
-tf.app.flags.DEFINE_integer('num_gpus', 0,
-                            'Number of gpus used for training. (0 or 1)')
 
 parentpid = os.getpid()
+print(parentpid)
 
 @ray.remote
 def get_test(path, size):
+ with tf.device("/cpu:0"):
   images, labels = cifar_input.build_input(path, size)
   sess = tf.Session()
   coord = tf.train.Coordinator()
@@ -48,12 +45,14 @@ def get_test(path, size):
 
 @ray.remote(num_return_vals=25)
 def get_batches(path, size):
+ with tf.device("/cpu:0"):
   images, labels = cifar_input.build_input(path, size)
   sess = tf.Session()
   coord = tf.train.Coordinator()
   tf.train.start_queue_runners(sess, coord=coord)
   batches = [sess.run([images, labels]) for _ in range(25)]
   coord.request_stop()
+  print("get_btaches")
   return batches
 
 @ray.remote
@@ -79,11 +78,10 @@ def accuracy(weights, batch):
 
 def model_initialization():
   pid = os.getpid()
+  os.environ["CUDA_VISIBLE_DEVICES"] = str(pid & 8) if pid != parentpid else ""
   print(pid % 8 if pid != parentpid else "No")
-  device = "/gpu:" + str(pid % 8) if pid != parentpid else "/cpu:0"
-  os.environ["CUDA_VISIBLE_DEVICES"] = str(pid & 8)
   with tf.Graph().as_default():
-    with tf.device(device):
+    with tf.device("/gpu:0" if pid != parentpid else "/cpu:0"):
       model = resnet_model.ResNet(hps, 'train')
       model.build_graph()
       config = tf.ConfigProto(allow_soft_placement=True)
@@ -98,12 +96,13 @@ def model_reinitialization(model):
 
 def train(hps):
   """Training loop."""
-  ray.init(num_workers=1)
+  ray.init(num_workers=2)
   batches = get_batches.remote(FLAGS.train_data_path, hps.batch_size)
   test_batch = get_test.remote(FLAGS.eval_data_path, hps.batch_size)
+  print(ray.get(batches))
   ray.env.model = ray.EnvironmentVariable(model_initialization, model_reinitialization)
   model, init = ray.env.model
- # model.variables.sess.run(init)
+  model.variables.sess.run(init)
   step = 0
   while True:
     with open("results.txt", "w") as results:
