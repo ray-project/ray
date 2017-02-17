@@ -18,7 +18,8 @@ def start_local_scheduler(plasma_store_name,
                           redis_address=None,
                           use_valgrind=False,
                           use_profiler=False,
-                          redirect_output=False,
+                          stdout_file=None,
+                          stderr_file=None,
                           static_resource_list=None,
                           num_workers=0):
   """Start a local scheduler process.
@@ -41,8 +42,10 @@ def start_local_scheduler(plasma_store_name,
       valgrind. If this is True, use_profiler must be False.
     use_profiler (bool): True if the local scheduler should be started inside a
       profiler. If this is True, use_valgrind must be False.
-    redirect_output (bool): True if stdout and stderr should be redirected to
-      /dev/null.
+    stdout_file: A file handle opened for writing to redirect stdout to. If no
+      redirection should happen, then this should be None.
+    stderr_file: A file handle opened for writing to redirect stderr to. If no
+      redirection should happen, then this should be None.
     static_resource_list (list): A list of integers specifying the local
       scheduler's resource capacities. The resources should appear in an order
       matching the order defined in task.h.
@@ -63,8 +66,7 @@ def start_local_scheduler(plasma_store_name,
              "-s", local_scheduler_name,
              "-p", plasma_store_name,
              "-h", node_ip_address,
-             "-n", str(num_workers),
-             ]
+             "-n", str(num_workers)]
   if plasma_manager_name is not None:
     command += ["-m", plasma_manager_name]
   if worker_path is not None:
@@ -91,16 +93,19 @@ def start_local_scheduler(plasma_store_name,
     assert all([isinstance(resource, int) or isinstance(resource, float) for resource in static_resource_list])
     command += ["-c", ",".join([str(resource) for resource in static_resource_list])]
 
-  with open(os.devnull, "w") as FNULL:
-    stdout = FNULL if redirect_output else None
-    stderr = FNULL if redirect_output else None
-    if use_valgrind:
-      pid = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + command, stdout=stdout, stderr=stderr)
-      time.sleep(1.0)
-    elif use_profiler:
-      pid = subprocess.Popen(["valgrind", "--tool=callgrind"] + command, stdout=stdout, stderr=stderr)
-      time.sleep(1.0)
-    else:
-      pid = subprocess.Popen(command, stdout=stdout, stderr=stderr)
-      time.sleep(0.1)
+  if use_valgrind:
+    pid = subprocess.Popen(["valgrind",
+                            "--track-origins=yes",
+                            "--leak-check=full",
+                            "--show-leak-kinds=all",
+                            "--error-exitcode=1"] + command,
+                            stdout=stdout_file, stderr=stderr_file)
+    time.sleep(1.0)
+  elif use_profiler:
+    pid = subprocess.Popen(["valgrind", "--tool=callgrind"] + command,
+                           stdout=stdout_file, stderr=stderr_file)
+    time.sleep(1.0)
+  else:
+    pid = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
+    time.sleep(0.1)
   return local_scheduler_name, pid

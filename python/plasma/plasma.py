@@ -291,7 +291,9 @@ DEFAULT_PLASMA_STORE_MEMORY = 10 ** 9
 def random_name():
   return str(random.randint(0, 99999999))
 
-def start_plasma_store(plasma_store_memory=DEFAULT_PLASMA_STORE_MEMORY, use_valgrind=False, use_profiler=False, redirect_output=False):
+def start_plasma_store(plasma_store_memory=DEFAULT_PLASMA_STORE_MEMORY,
+                       use_valgrind=False, use_profiler=False,
+                       stdout_file=None, stderr_file=None):
   """Start a plasma store process.
 
   Args:
@@ -299,8 +301,10 @@ def start_plasma_store(plasma_store_memory=DEFAULT_PLASMA_STORE_MEMORY, use_valg
       valgrind. If this is True, use_profiler must be False.
     use_profiler (bool): True if the plasma store should be started inside a
       profiler. If this is True, use_valgrind must be False.
-    redirect_output (bool): True if stdout and stderr should be redirected to
-      /dev/null.
+    stdout_file: A file handle opened for writing to redirect stdout to. If no
+      redirection should happen, then this should be None.
+    stderr_file: A file handle opened for writing to redirect stderr to. If no
+      redirection should happen, then this should be None.
 
   Return:
     A tuple of the name of the plasma store socket and the process ID of the
@@ -311,18 +315,21 @@ def start_plasma_store(plasma_store_memory=DEFAULT_PLASMA_STORE_MEMORY, use_valg
   plasma_store_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../core/src/plasma/plasma_store")
   plasma_store_name = "/tmp/plasma_store{}".format(random_name())
   command = [plasma_store_executable, "-s", plasma_store_name, "-m", str(plasma_store_memory)]
-  with open(os.devnull, "w") as FNULL:
-    stdout = FNULL if redirect_output else None
-    stderr = FNULL if redirect_output else None
-    if use_valgrind:
-      pid = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + command, stdout=stdout, stderr=stderr)
-      time.sleep(1.0)
-    elif use_profiler:
-      pid = subprocess.Popen(["valgrind", "--tool=callgrind"] + command, stdout=stdout, stderr=stderr)
-      time.sleep(1.0)
-    else:
-      pid = subprocess.Popen(command, stdout=stdout, stderr=stderr)
-      time.sleep(0.1)
+  if use_valgrind:
+    pid = subprocess.Popen(["valgrind",
+                            "--track-origins=yes",
+                            "--leak-check=full",
+                            "--show-leak-kinds=all",
+                            "--error-exitcode=1"] + command,
+                            stdout=stdout_file, stderr=stderr_file)
+    time.sleep(1.0)
+  elif use_profiler:
+    pid = subprocess.Popen(["valgrind", "--tool=callgrind"] + command,
+                           stdout=stdout_file, stderr=stderr_file)
+    time.sleep(1.0)
+  else:
+    pid = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
+    time.sleep(0.1)
   return plasma_store_name, pid
 
 def new_port():
@@ -331,7 +338,7 @@ def new_port():
 def start_plasma_manager(store_name, redis_address, node_ip_address="127.0.0.1",
                          plasma_manager_port=None, num_retries=20,
                          use_valgrind=False, run_profiler=False,
-                         redirect_output=False):
+                         stdout_file=None, stderr_file=None):
   """Start a plasma manager and return the ports it listens on.
 
   Args:
@@ -342,8 +349,10 @@ def start_plasma_manager(store_name, redis_address, node_ip_address="127.0.0.1",
       is not provided, a port will be generated at random.
     use_valgrind (bool): True if the Plasma manager should be started inside of
       valgrind and False otherwise.
-    redirect_output (bool): True if stdout and stderr should be redirected to
-      /dev/null.
+    stdout_file: A file handle opened for writing to redirect stdout to. If no
+      redirection should happen, then this should be None.
+    stderr_file: A file handle opened for writing to redirect stderr to. If no
+      redirection should happen, then this should be None.
 
   Returns:
     A tuple of the Plasma manager socket name, the process ID of the Plasma
@@ -370,15 +379,19 @@ def start_plasma_manager(store_name, redis_address, node_ip_address="127.0.0.1",
                "-h", node_ip_address,
                "-p", str(plasma_manager_port),
                "-r", redis_address]
-    with open(os.devnull, "w") as FNULL:
-      stdout = FNULL if redirect_output else None
-      stderr = FNULL if redirect_output else None
-      if use_valgrind:
-        process = subprocess.Popen(["valgrind", "--track-origins=yes", "--leak-check=full", "--show-leak-kinds=all", "--error-exitcode=1"] + command, stdout=stdout, stderr=stderr)
-      elif run_profiler:
-        process = subprocess.Popen(["valgrind", "--tool=callgrind"] + command, stdout=stdout, stderr=stderr)
-      else:
-        process = subprocess.Popen(command, stdout=stdout, stderr=stderr)
+    if use_valgrind:
+      process = subprocess.Popen(["valgrind",
+                                  "--track-origins=yes",
+                                  "--leak-check=full",
+                                  "--show-leak-kinds=all",
+                                  "--error-exitcode=1"] + command,
+                                  stdout=stdout_file, stderr=stderr_file)
+    elif run_profiler:
+      process = subprocess.Popen(["valgrind", "--tool=callgrind"] + command,
+                                 stdout=stdout_file, stderr=stderr_file)
+    else:
+      process = subprocess.Popen(command, stdout=stdout_file,
+                                 stderr=stderr_file)
     # This sleep is critical. If the plasma_manager fails to start because the
     # port is already in use, then we need it to fail within 0.1 seconds.
     time.sleep(0.1)
