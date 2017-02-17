@@ -757,6 +757,7 @@ def _init(address_info=None,
           num_workers=None,
           num_local_schedulers=None,
           driver_mode=SCRIPT_MODE,
+          redirect_output=False,
           start_workers_from_local_scheduler=True,
           num_cpus=None,
           num_gpus=None):
@@ -786,6 +787,8 @@ def _init(address_info=None,
       only provided if start_ray_local is True.
     driver_mode (bool): The mode in which to start the driver. This should be
       one of ray.SCRIPT_MODE, ray.PYTHON_MODE, and ray.SILENT_MODE.
+    redirect_output (bool): True if stdout and stderr for all the processes
+      should be redirected to files and false otherwise.
     start_workers_from_local_scheduler (bool): If this flag is True, then start
       the initial workers from the local scheduler. Else, start them from
       Python. The latter case is for debugging purposes only.
@@ -840,6 +843,7 @@ def _init(address_info=None,
                                            node_ip_address=node_ip_address,
                                            num_workers=num_workers,
                                            num_local_schedulers=num_local_schedulers,
+                                           redirect_output=redirect_output,
                                            start_workers_from_local_scheduler=start_workers_from_local_scheduler,
                                            num_cpus=num_cpus,
                                            num_gpus=num_gpus)
@@ -876,7 +880,8 @@ def _init(address_info=None,
   return address_info
 
 def init(redis_address=None, node_ip_address=None, object_id_seed=None,
-         num_workers=None, driver_mode=SCRIPT_MODE, num_cpus=None, num_gpus=None):
+         num_workers=None, driver_mode=SCRIPT_MODE, redirect_output=False,
+         num_cpus=None, num_gpus=None):
   """Either connect to an existing Ray cluster or start one and connect to it.
 
   This method handles two cases. Either a Ray cluster already exists and we
@@ -897,8 +902,12 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
       redis_address is not provided.
     driver_mode (bool): The mode in which to start the driver. This should be
       one of ray.SCRIPT_MODE, ray.PYTHON_MODE, and ray.SILENT_MODE.
-    num_cpus (int): Number of cpus the user wishes all local schedulers to be configured with.
-    num_gpus (int): Number of gpus the user wishes all local schedulers to be configured with.
+    redirect_output (bool): True if stdout and stderr for all the processes
+      should be redirected to files and false otherwise.
+    num_cpus (int): Number of cpus the user wishes all local schedulers to be
+      configured with.
+    num_gpus (int): Number of gpus the user wishes all local schedulers to be
+      configured with.
 
   Returns:
     Address information about the started processes.
@@ -913,7 +922,8 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
       }
   return _init(address_info=info, start_ray_local=(redis_address is None),
                num_workers=num_workers, driver_mode=driver_mode,
-               num_cpus=num_cpus, num_gpus=num_gpus)
+               redirect_output=redirect_output, num_cpus=num_cpus,
+               num_gpus=num_gpus)
 
 def cleanup(worker=global_worker):
   """Disconnect the driver, and terminate any processes started in init.
