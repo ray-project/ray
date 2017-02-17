@@ -99,6 +99,7 @@ void kill_worker(local_scheduler_client *worker, bool wait) {
       /* Wait for the process to exit. */
       waitpid(worker->pid, NULL, 0);
     }
+    LOG_INFO("Killed worker with pid %d", worker->pid);
   }
 
   /* Clean up the client socket after killing the worker so that the worker
@@ -191,13 +192,14 @@ void free_local_scheduler(local_scheduler_state *state) {
 void start_worker(local_scheduler_state *state, actor_id actor_id) {
   /* We can't start a worker if we don't have the path to the worker script. */
   if (state->config.start_worker_command == NULL) {
+    LOG_WARN("No valid command to start worker provided. Cannot start worker.");
     return;
   }
   /* Launch the process to create the worker. */
   pid_t pid = fork();
   if (pid != 0) {
     utarray_push_back(state->child_pids, &pid);
-    LOG_DEBUG("Started worker with pid %d", pid);
+    LOG_INFO("Started worker with pid %d", pid);
     return;
   }
 
