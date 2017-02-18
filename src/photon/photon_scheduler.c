@@ -68,6 +68,9 @@ void print_resource_info(const local_scheduler_state *state,
  * @return Void.
  */
 void kill_worker(local_scheduler_client *worker, bool wait) {
+  /* TODO(swang): This method should also propagate changes to other parts of
+   * the system to reflect the killed task in progress, if there was one.  This
+   * includes updating dynamic resources and updating the task table. */
   /* Erase the worker from the array of workers. */
   local_scheduler_state *state = worker->local_scheduler_state;
   int num_workers = utarray_len(state->workers);
@@ -96,6 +99,7 @@ void kill_worker(local_scheduler_client *worker, bool wait) {
       /* Wait for the process to exit. */
       waitpid(worker->pid, NULL, 0);
     }
+    LOG_INFO("Killed worker with pid %d", worker->pid);
   }
 
   /* Clean up the client socket after killing the worker so that the worker
@@ -187,12 +191,15 @@ void free_local_scheduler(local_scheduler_state *state) {
  */
 void start_worker(local_scheduler_state *state, actor_id actor_id) {
   /* We can't start a worker if we don't have the path to the worker script. */
-  CHECK(state->config.start_worker_command != NULL);
+  if (state->config.start_worker_command == NULL) {
+    LOG_WARN("No valid command to start worker provided. Cannot start worker.");
+    return;
+  }
   /* Launch the process to create the worker. */
   pid_t pid = fork();
   if (pid != 0) {
     utarray_push_back(state->child_pids, &pid);
-    LOG_DEBUG("Started worker with pid %d", pid);
+    LOG_INFO("Started worker with pid %d", pid);
     return;
   }
 
@@ -279,6 +286,11 @@ local_scheduler_state *init_local_scheduler(
   } else {
     state->config.start_worker_command = NULL;
   }
+  if (start_worker_command == NULL) {
+    LOG_WARN(
+        "No valid command to start a worker provided, local scheduler will not "
+        "start any workers.");
+  }
   state->config.global_scheduler_exists = global_scheduler_exists;
 
   state->loop = loop;
@@ -343,6 +355,29 @@ local_scheduler_state *init_local_scheduler(
   return state;
 }
 
+void update_dynamic_resources(local_scheduler_state *state,
+                              task_spec *spec,
+                              bool return_resources) {
+  for (int i = 0; i < MAX_RESOURCE_INDEX; ++i) {
+    double resource = task_spec_get_required_resource(spec, i);
+    if (!return_resources) {
+      /* If we are not returning resources, we are leasing them, so we want to
+       * subtract the resource quantities from our accounting. */
+      resource *= -1;
+    }
+    /* Add or subtract the task's resources from our count. */
+    state->dynamic_resources[i] += resource;
+
+    if (!return_resources && state->dynamic_resources[i] < 0) {
+      /* We are using more resources than we have been allocated. */
+      LOG_WARN("photon dynamic resources dropped to %8.4f\t%8.4f\n",
+               state->dynamic_resources[0], state->dynamic_resources[1]);
+    }
+    CHECK(state->dynamic_resources[i] <= state->static_resources[i]);
+  }
+  print_resource_info(state, spec);
+}
+
 void assign_task_to_worker(local_scheduler_state *state,
                            task_spec *spec,
                            local_scheduler_client *worker) {
@@ -362,13 +397,7 @@ void assign_task_to_worker(local_scheduler_state *state,
 
   /* Resource accounting:
    * Update dynamic resource vector in the local scheduler state. */
-  for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
-    state->dynamic_resources[i] -= task_spec_get_required_resource(spec, i);
-    CHECKM(state->dynamic_resources[i] >= 0,
-           "photon dynamic resources dropped to %8.4f\t%8.4f\n",
-           state->dynamic_resources[0], state->dynamic_resources[1]);
-  }
-  print_resource_info(state, spec);
+  update_dynamic_resources(state, spec, false);
   task *task = alloc_task(spec, TASK_STATUS_RUNNING,
                           state->db ? get_db_client_id(state->db) : NIL_ID);
   /* Record which task this worker is executing. This will be freed in
@@ -580,12 +609,7 @@ void process_message(event_loop *loop,
     if (worker->task_in_progress != NULL) {
       task_spec *spec = task_task_spec(worker->task_in_progress);
       /* Return dynamic resources back for the task in progress. */
-      for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
-        state->dynamic_resources[i] += task_spec_get_required_resource(spec, i);
-        /* Sanity-check resource vector boundary conditions. */
-        CHECK(state->dynamic_resources[i] <= state->static_resources[i]);
-      }
-      print_resource_info(state, spec);
+      update_dynamic_resources(state, spec, true);
       /* If we're connected to Redis, update tables. */
       if (state->db != NULL) {
         /* Update control state tables. */
@@ -608,6 +632,16 @@ void process_message(event_loop *loop,
     }
   } break;
   case RECONSTRUCT_OBJECT: {
+    if (worker->task_in_progress != NULL && !worker->is_blocked) {
+      /* TODO(swang): For now, we don't handle blocked actors. */
+      if (actor_ids_equal(worker->actor_id, NIL_ACTOR_ID)) {
+        /* If the worker was executing a task (i.e. non-driver) and it wasn't
+         * already blocked on an object that's not locally available, update its
+         * state to blocked. */
+        handle_worker_blocked(state, state->algorithm_state, worker);
+        print_worker_info("Reconstructing", state->algorithm_state);
+      }
+    }
     object_id *obj_id = (object_id *) utarray_front(state->input_buffer);
     reconstruct_object(state, *obj_id);
   } break;
@@ -621,6 +655,18 @@ void process_message(event_loop *loop,
     }
   } break;
   case LOG_MESSAGE: {
+  } break;
+  case NOTIFY_UNBLOCKED: {
+    if (worker->task_in_progress != NULL) {
+      /* TODO(swang): For now, we don't handle blocked actors. */
+      if (actor_ids_equal(worker->actor_id, NIL_ACTOR_ID)) {
+        /* If the worker was executing a task (i.e. non-driver), update its
+         * state to not blocked. */
+        CHECK(worker->is_blocked);
+        handle_worker_unblocked(state, state->algorithm_state, worker);
+      }
+    }
+    print_worker_info("Worker unblocked", state->algorithm_state);
   } break;
   default:
     /* This code should be unreachable. */
@@ -639,6 +685,7 @@ void new_client_connection(event_loop *loop,
   local_scheduler_client *worker = malloc(sizeof(local_scheduler_client));
   worker->sock = new_socket;
   worker->task_in_progress = NULL;
+  worker->is_blocked = false;
   worker->pid = 0;
   worker->is_child = false;
   worker->actor_id = NIL_ACTOR_ID;

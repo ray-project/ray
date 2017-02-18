@@ -93,4 +93,12 @@ void photon_reconstruct_object(photon_conn *conn, object_id object_id);
  */
 void photon_log_message(photon_conn *conn);
 
+/**
+ * Notify the local scheduler that this client (worker) is no longer blocked.
+ *
+ * @param conn The connection information.
+ * @return Void.
+ */
+void photon_notify_unblocked(photon_conn *conn);
+
 #endif
