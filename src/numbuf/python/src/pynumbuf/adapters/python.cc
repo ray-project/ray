@@ -98,13 +98,14 @@ Status append(PyObject* elem, SequenceBuilder& builder, std::vector<PyObject*>& 
     Py_ssize_t size;
 #if PY_MAJOR_VERSION >= 3
     char* data = PyUnicode_AsUTF8AndSize(elem, &size);
+    Status s = builder.AppendString(data, size);
 #else
     PyObject* str = PyUnicode_AsUTF8String(elem);
     char* data = PyString_AS_STRING(str);
     size = PyString_GET_SIZE(str);
+    Status s = builder.AppendString(data, size);
     Py_XDECREF(str);
 #endif
-    Status s = builder.AppendString(data, size);
     RETURN_NOT_OK(s);
   } else if (PyList_Check(elem)) {
     builder.AppendList(PyList_Size(elem));
