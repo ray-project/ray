@@ -70,7 +70,7 @@ photon_mock *init_photon_mock(bool connect_to_redis,
   UT_string *plasma_manager_socket_name = bind_ipc_sock_retry(
       plasma_manager_socket_name_format, &mock->plasma_manager_fd);
   mock->plasma_store_fd =
-      socket_connect_retry(plasma_store_socket_name, 5, 100);
+      connect_ipc_sock_retry(plasma_store_socket_name, 5, 100);
   UT_string *photon_socket_name =
       bind_ipc_sock_retry(photon_socket_name_format, &mock->photon_fd);
   CHECK(mock->plasma_store_fd >= 0 && mock->photon_fd >= 0);
