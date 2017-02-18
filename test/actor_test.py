@@ -454,13 +454,21 @@ class ActorsOnMultipleNodes(unittest.TestCase):
 
     # Create a bunch of actors.
     num_actors = 30
-    actors = [Actor1() for _ in range(num_actors)]
+    num_attempts = 20
+    minimum_count = 5
 
     # Make sure that actors are spread between the local schedulers.
-    locations = ray.get([actor.get_location() for actor in actors])
-    names = set(locations)
-    self.assertEqual(len(names), num_local_schedulers)
-    self.assertTrue(all([locations.count(name) > 5 for name in names]))
+    attempts = 0
+    while attempts < num_attempts:
+      actors = [Actor1() for _ in range(num_actors)]
+      locations = ray.get([actor.get_location() for actor in actors])
+      names = set(locations)
+      counts = [locations.count(name) for name in names]
+      print("Counts are {}.".format(counts))
+      if len(names) == num_local_schedulers and all([count >= minimum_count for count in counts]):
+        break
+      attempts += 1
+    self.assertLess(attempts, num_attempts)
 
     # Make sure we can get the results of a bunch of tasks.
     results = []
