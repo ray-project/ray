@@ -47,6 +47,7 @@ def get_next_message(pubsub_client, timeout_seconds=10):
     message = pubsub_client.get_message()
     if message is not None:
       return message
+    time.sleep(0.1)
     if time.time() - start_time > timeout_seconds:
       raise Exception("Timed out while waiting for next message.")
 
