@@ -35,15 +35,6 @@
 
 #define XXH64_DEFAULT_SEED 0
 
-/* Number of times we try connecting to a socket. */
-#define NUM_CONNECT_ATTEMPTS 50
-#define CONNECT_TIMEOUT 100
-
-#ifndef _WIN32
-/* This function is actually not declared in standard POSIX, so declare it. */
-extern int usleep(useconds_t usec);
-#endif
-
 typedef struct {
   /** Key that uniquely identifies the  memory mapped file. In practice, we
    *  take the numerical value of the file descriptor in the object store. */
@@ -564,36 +555,14 @@ int plasma_subscribe(plasma_connection *conn) {
   return fd[0];
 }
 
-int socket_connect_retry(const char *socket_name,
-                         int num_retries,
-                         int64_t timeout) {
-  CHECK(socket_name);
-  int fd = -1;
-  for (int num_attempts = 0; num_attempts < num_retries; ++num_attempts) {
-    fd = connect_ipc_sock(socket_name);
-    if (fd >= 0) {
-      break;
-    }
-    /* Sleep for timeout milliseconds. */
-    usleep(timeout * 1000);
-  }
-  /* If we could not connect to the socket, exit. */
-  if (fd == -1) {
-    LOG_FATAL("could not connect to socket %s", socket_name);
-  }
-  return fd;
-}
-
 plasma_connection *plasma_connect(const char *store_socket_name,
                                   const char *manager_socket_name,
                                   int release_delay) {
   /* Initialize the store connection struct */
   plasma_connection *result = malloc(sizeof(plasma_connection));
-  result->store_conn = socket_connect_retry(
-      store_socket_name, NUM_CONNECT_ATTEMPTS, CONNECT_TIMEOUT);
+  result->store_conn = connect_ipc_sock_retry(store_socket_name, -1, -1);
   if (manager_socket_name != NULL) {
-    result->manager_conn = socket_connect_retry(
-        manager_socket_name, NUM_CONNECT_ATTEMPTS, CONNECT_TIMEOUT);
+    result->manager_conn = connect_ipc_sock_retry(manager_socket_name, -1, -1);
   } else {
     result->manager_conn = -1;
   }
@@ -649,48 +618,6 @@ bool plasma_manager_is_connected(plasma_connection *conn) {
 }
 
 #define h_addr h_addr_list[0]
-
-int plasma_manager_try_connect(const char *ip_addr, int port) {
-  int fd = socket(PF_INET, SOCK_STREAM, 0);
-  if (fd < 0) {
-    return -1;
-  }
-
-  struct hostent *manager = gethostbyname(ip_addr); /* TODO(pcm): cache this */
-  if (!manager) {
-    return -1;
-  }
-
-  struct sockaddr_in addr;
-  addr.sin_family = AF_INET;
-  memcpy(&addr.sin_addr.s_addr, manager->h_addr, manager->h_length);
-  addr.sin_port = htons(port);
-
-  int r = connect(fd, (struct sockaddr *) &addr, sizeof(addr));
-  if (r < 0) {
-    return -1;
-  }
-  return fd;
-}
-
-int plasma_manager_connect(const char *ip_addr, int port) {
-  /* Try to connect to the Plasma manager. If unsuccessful, retry several times.
-   */
-  int fd = -1;
-  for (int num_attempts = 0; num_attempts < NUM_CONNECT_ATTEMPTS;
-       ++num_attempts) {
-    fd = plasma_manager_try_connect(ip_addr, port);
-    if (fd >= 0) {
-      break;
-    }
-    /* Sleep for 100 milliseconds. */
-    usleep(100000);
-  }
-  if (fd < 0) {
-    LOG_WARN("Unable to connect to plasma manager at %s:%d", ip_addr, port);
-  }
-  return fd;
-}
 
 void plasma_transfer(plasma_connection *conn,
                      const char *address,

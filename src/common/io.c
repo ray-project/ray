@@ -11,8 +11,14 @@
 #include <sys/ioctl.h>
 #include <netinet/in.h>
 #include <utstring.h>
+#include <netdb.h>
 
 #include "common.h"
+
+#ifndef _WIN32
+/* This function is actually not declared in standard POSIX, so declare it. */
+extern int usleep(useconds_t usec);
+#endif
 
 int bind_inet_sock(const int port, bool shall_listen) {
   struct sockaddr_in name;
@@ -91,6 +97,34 @@ int bind_ipc_sock(const char *socket_pathname, bool shall_listen) {
   return socket_fd;
 }
 
+int connect_ipc_sock_retry(const char *socket_pathname,
+                           int num_retries,
+                           int64_t timeout) {
+  /* Pick the default values if the user did not specify. */
+  if (num_retries < 0) {
+    num_retries = NUM_CONNECT_ATTEMPTS;
+  }
+  if (timeout < 0) {
+    timeout = CONNECT_TIMEOUT_MS;
+  }
+
+  CHECK(socket_pathname);
+  int fd = -1;
+  for (int num_attempts = 0; num_attempts < num_retries; ++num_attempts) {
+    fd = connect_ipc_sock(socket_pathname);
+    if (fd >= 0) {
+      break;
+    }
+    /* Sleep for timeout milliseconds. */
+    usleep(timeout * 1000);
+  }
+  /* If we could not connect to the socket, exit. */
+  if (fd == -1) {
+    LOG_FATAL("Could not connect to socket %s", socket_pathname);
+  }
+  return fd;
+}
+
 int connect_ipc_sock(const char *socket_pathname) {
   struct sockaddr_un socket_address;
   int socket_fd;
@@ -117,6 +151,60 @@ int connect_ipc_sock(const char *socket_pathname) {
   }
 
   return socket_fd;
+}
+
+int connect_inet_sock_retry(const char *ip_addr,
+                            int port,
+                            int num_retries,
+                            int64_t timeout) {
+  /* Pick the default values if the user did not specify. */
+  if (num_retries < 0) {
+    num_retries = NUM_CONNECT_ATTEMPTS;
+  }
+  if (timeout < 0) {
+    timeout = CONNECT_TIMEOUT_MS;
+  }
+
+  CHECK(ip_addr);
+  int fd = -1;
+  for (int num_attempts = 0; num_attempts < num_retries; ++num_attempts) {
+    fd = connect_inet_sock(ip_addr, port);
+    if (fd >= 0) {
+      break;
+    }
+    /* Sleep for timeout milliseconds. */
+    usleep(timeout * 1000);
+  }
+  /* If we could not connect to the socket, exit. */
+  if (fd == -1) {
+    LOG_FATAL("Could not connect to address %s:%d", ip_addr, port);
+  }
+  return fd;
+}
+
+int connect_inet_sock(const char *ip_addr, int port) {
+  int fd = socket(PF_INET, SOCK_STREAM, 0);
+  if (fd < 0) {
+    LOG_ERROR("socket() failed for address %s:%d.", ip_addr, port);
+    return -1;
+  }
+
+  struct hostent *manager = gethostbyname(ip_addr); /* TODO(pcm): cache this */
+  if (!manager) {
+    LOG_ERROR("Failed to get hostname from address %s:%d.", ip_addr, port);
+    return -1;
+  }
+
+  struct sockaddr_in addr;
+  addr.sin_family = AF_INET;
+  memcpy(&addr.sin_addr.s_addr, manager->h_addr_list[0], manager->h_length);
+  addr.sin_port = htons(port);
+
+  if (connect(fd, (struct sockaddr *) &addr, sizeof(addr)) != 0) {
+    LOG_ERROR("Connection to socket failed for address %s:%d.", ip_addr, port);
+    return -1;
+  }
+  return fd;
 }
 
 int accept_client(int socket_fd) {
