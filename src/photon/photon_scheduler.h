@@ -67,6 +67,44 @@ void reconstruct_object(local_scheduler_state *state, object_id object_id);
 
 void print_resource_info(const local_scheduler_state *s, const task_spec *spec);
 
+/**
+ * Kill a worker.
+ *
+ * @param worker The local scheduler client to kill.
+ * @param wait A boolean representing whether to wait for the killed worker to
+ *        exit.
+ * @param Void.
+ */
+void kill_worker(local_scheduler_client *worker, bool wait);
+
+/**
+ * Start a worker. This forks a new worker process that can be added to the
+ * pool of available workers, pending registration of its PID with the local
+ * scheduler.
+ *
+ * @param state The local scheduler state.
+ * @param actor_id The ID of the actor for this worker. If this worker is not an
+ *        actor, then NIL_ACTOR_ID should be used.
+ * @param Void.
+ */
+void start_worker(local_scheduler_state *state, actor_id actor_id);
+
+/**
+ * Update our accounting for the current resources being used, according to
+ * some task that is starting or finishing execution.
+ *
+ * @param state The local scheduler state.
+ * @param spec The specification for the task that is or was using resources.
+ * @param return_resources A boolean representing whether the task is starting
+ *        or finishing execution. If true, then the task is finishing execution
+ *        (possibly temporarily), so it will add to the dynamic resources
+ *        available. Else, it will take from the dynamic resources available.
+ * @return Void.
+ */
+void update_dynamic_resources(local_scheduler_state *state,
+                              task_spec *spec,
+                              bool return_resources);
+
 /** The following methods are for testing purposes only. */
 #ifdef PHOTON_TEST
 local_scheduler_state *init_local_scheduler(
@@ -92,17 +130,6 @@ void process_message(event_loop *loop,
                      void *context,
                      int events);
 
-void kill_worker(local_scheduler_client *worker, bool wait);
-
-/**
- * Start a new worker by forking.
- *
- * @param state The local scheduler state.
- * @param actor_id The ID of the actor for this worker. If this worker is not an
- *        actor, then NIL_ACTOR_ID should be used.
- * @return Void.
- */
-void start_worker(local_scheduler_state *state, actor_id actor_id);
 #endif
 
 #endif /* PHOTON_SCHEDULER_H */

@@ -471,6 +471,7 @@ class Worker(object):
     # their original index in the object_ids argument.
     unready_ids = dict((object_id, i) for (i, (object_id, val)) in
                        enumerate(final_results) if val is None)
+    was_blocked = (len(unready_ids) > 0)
     # Try reconstructing any objects we haven't gotten yet. Try to get them
     # until GET_TIMEOUT_MILLISECONDS milliseconds passes, then repeat.
     while len(unready_ids) > 0:
@@ -486,6 +487,11 @@ class Worker(object):
           index = unready_ids[object_id]
           final_results[index] = (object_id, val)
           unready_ids.pop(object_id)
+
+    # If there were objects that we weren't able to get locally, let the local
+    # scheduler know that we're now unblocked.
+    if was_blocked:
+      self.photon_client.notify_unblocked()
 
     # Unwrap the object from the list (it was wrapped put_object).
     assert len(final_results) == len(object_ids)

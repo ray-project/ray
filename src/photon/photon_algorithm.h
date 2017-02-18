@@ -139,7 +139,7 @@ void handle_object_available(local_scheduler_state *state,
 void handle_object_removed(local_scheduler_state *state, object_id object_id);
 
 /**
- * This function is called when a new worker becomes available
+ * This function is called when a new worker becomes available.
  *
  * @param state The state of the local scheduler.
  * @param algorithm_state State maintained by the scheduling algorithm.
@@ -190,6 +190,32 @@ void handle_actor_worker_disconnect(local_scheduler_state *state,
                                     actor_id actor_id);
 
 /**
+ * This function is called when a worker that was executing a task becomes
+ * blocked on an object that isn't available locally yet.
+ *
+ * @param state The state of the local scheduler.
+ * @param algorithm_state State maintained by the scheduling algorithm.
+ * @param worker The worker that is blocked.
+ * @return Void.
+ */
+void handle_worker_blocked(local_scheduler_state *state,
+                           scheduling_algorithm_state *algorithm_state,
+                           local_scheduler_client *worker);
+
+/**
+ * This function is called when a worker that was blocked on an object that
+ * wasn't available locally yet becomes unblocked.
+ *
+ * @param state The state of the local scheduler.
+ * @param algorithm_state State maintained by the scheduling algorithm.
+ * @param worker The worker that is now unblocked.
+ * @return Void.
+ */
+void handle_worker_unblocked(local_scheduler_state *state,
+                             scheduling_algorithm_state *algorithm_state,
+                             local_scheduler_client *worker);
+
+/**
  * This function fetches queued task's missing object dependencies. It is
  * called every LOCAL_SCHEDULER_FETCH_TIMEOUT_MILLISECONDS.
  *
@@ -200,6 +226,17 @@ void handle_actor_worker_disconnect(local_scheduler_state *state,
  *         next invocation of the function.
  */
 int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context);
+
+/**
+ * A helper function to print debug information about the current state and
+ * number of workers.
+ *
+ * @param message A message to identify the log message.
+ * @param algorithm_state State maintained by the scheduling algorithm.
+ * @return Void.
+ */
+void print_worker_info(const char *message,
+                       scheduling_algorithm_state *algorithm_state);
 
 /** The following methods are for testing purposes only. */
 #ifdef PHOTON_TEST

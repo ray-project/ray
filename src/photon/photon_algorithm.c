@@ -83,9 +83,19 @@ struct scheduling_algorithm_state {
    *  about a new local scheduler arrives, we will resubmit all of these tasks
    *  locally. */
   UT_array *cached_submitted_actor_tasks;
-  /** An array of worker indices corresponding to clients that are
-   *  waiting for tasks. */
+  /** An array of pointers to workers in the worker pool. These are workers
+   *  that have registered a PID with us and that are now waiting to be
+   *  assigned a task to execute. */
   UT_array *available_workers;
+  /** An array of pointers to workers that are currently executing a task,
+   *  unblocked. These are the workers that are leasing some number of
+   *  resources. */
+  UT_array *executing_workers;
+  /** An array of pointers to workers that are currently executing a task,
+   *  blocked on some object(s) that isn't available locally yet. These are the
+   *  workers that are executing a task, but that have temporarily returned the
+   *  task's required resources. */
+  UT_array *blocked_workers;
   /** A hash map of the objects that are available in the local Plasma store.
    *  The key is the object ID. This information could be a little stale. */
   object_entry *local_objects;
@@ -107,9 +117,13 @@ scheduling_algorithm_state *make_scheduling_algorithm_state(void) {
   /* Initialize the local data structures used for queuing tasks and workers. */
   algorithm_state->waiting_task_queue = NULL;
   algorithm_state->dispatch_task_queue = NULL;
-  utarray_new(algorithm_state->available_workers, &worker_icd);
+
   utarray_new(algorithm_state->cached_submitted_actor_tasks, &task_spec_icd);
   algorithm_state->local_actor_infos = NULL;
+
+  utarray_new(algorithm_state->available_workers, &worker_icd);
+  utarray_new(algorithm_state->executing_workers, &worker_icd);
+  utarray_new(algorithm_state->blocked_workers, &worker_icd);
   return algorithm_state;
 }
 
@@ -146,6 +160,8 @@ void free_scheduling_algorithm_state(
   utarray_free(algorithm_state->cached_submitted_actor_tasks);
   /* Free the list of available workers. */
   utarray_free(algorithm_state->available_workers);
+  utarray_free(algorithm_state->executing_workers);
+  utarray_free(algorithm_state->blocked_workers);
   /* Free the cached information about which objects are present locally. */
   object_entry *obj_entry, *tmp_obj_entry;
   HASH_ITER(hh, algorithm_state->local_objects, obj_entry, tmp_obj_entry) {
@@ -556,10 +572,6 @@ void dispatch_tasks(local_scheduler_state *state,
 
   /* Assign as many tasks as we can, while there are workers available. */
   DL_FOREACH_SAFE(algorithm_state->dispatch_task_queue, elt, tmp) {
-    if (utarray_len(algorithm_state->available_workers) <= 0) {
-      /* There are no more available workers, so we're done. */
-      break;
-    }
     /* TODO(atumanov): as an optimization, we can also check if all dynamic
      * capacity is zero and bail early. */
     bool task_satisfied = true;
@@ -574,6 +586,19 @@ void dispatch_tasks(local_scheduler_state *state,
     if (!task_satisfied) {
       continue; /* Proceed to the next task. */
     }
+
+    /* If there is a task to assign, but there are no more available workers in
+     * the worker pool, then exit. Ensure that there will be an available
+     * worker during a future invocation of dispatch_tasks. */
+    if (utarray_len(algorithm_state->available_workers) == 0) {
+      if (utarray_len(state->child_pids) == 0) {
+        /* If there are no workers, including those pending PID registration,
+         * then we must start a new one to replenish the worker pool. */
+        start_worker(state, NIL_ACTOR_ID);
+      }
+      break;
+    }
+
     /* Dispatch this task to an available worker and dequeue the task. */
     LOG_DEBUG("Dispatching task");
     /* Get the last available worker in the available worker queue. */
@@ -581,10 +606,12 @@ void dispatch_tasks(local_scheduler_state *state,
         algorithm_state->available_workers);
     /* Tell the available worker to execute the task. */
     assign_task_to_worker(state, elt->spec, *worker);
-    /* Remove the available worker from the queue and free the struct. */
+    /* Remove the worker from the available queue, and add it to the executing
+     * workers. */
     utarray_pop_back(algorithm_state->available_workers);
+    utarray_push_back(algorithm_state->executing_workers, worker);
+    /* Dequeue the task and free the struct. */
     print_resource_info(state, elt->spec);
-    /* Deque the task. */
     DL_DELETE(algorithm_state->dispatch_task_queue, elt);
     free_task_spec(elt->spec);
     free(elt);
@@ -923,12 +950,37 @@ void handle_worker_available(local_scheduler_state *state,
                              scheduling_algorithm_state *algorithm_state,
                              local_scheduler_client *worker) {
   CHECK(worker->task_in_progress == NULL);
+  /* Check that the worker isn't in the pool of available workers. */
   for (local_scheduler_client **p = (local_scheduler_client **) utarray_front(
            algorithm_state->available_workers);
        p != NULL; p = (local_scheduler_client **) utarray_next(
                       algorithm_state->available_workers, p)) {
     DCHECK(*p != worker);
   }
+  /* Check that the worker isn't in the list of blocked workers. */
+  for (local_scheduler_client **p = (local_scheduler_client **) utarray_front(
+           algorithm_state->blocked_workers);
+       p != NULL; p = (local_scheduler_client **) utarray_next(
+                      algorithm_state->blocked_workers, p)) {
+    DCHECK(*p != worker);
+  }
+  /* If the worker was executing a task, it must have finished, so remove it
+   * from the list of executing workers. */
+  for (int i = 0; i < utarray_len(algorithm_state->executing_workers); ++i) {
+    local_scheduler_client **p = (local_scheduler_client **) utarray_eltptr(
+        algorithm_state->executing_workers, i);
+    if (*p == worker) {
+      utarray_erase(algorithm_state->executing_workers, i, 1);
+      break;
+    }
+  }
+  /* Check that we actually erased the worker. */
+  for (int i = 0; i < utarray_len(algorithm_state->executing_workers); ++i) {
+    local_scheduler_client **p = (local_scheduler_client **) utarray_eltptr(
+        algorithm_state->executing_workers, i);
+    DCHECK(*p != worker);
+  }
+
   /* Add worker to the list of available workers. */
   utarray_push_back(algorithm_state->available_workers, &worker);
 
@@ -952,6 +1004,88 @@ void handle_actor_worker_available(local_scheduler_state *state,
   entry->worker_available = true;
   /* Assign a task to this actor if possible. */
   dispatch_actor_task(state, algorithm_state, actor_id);
+}
+
+void handle_worker_blocked(local_scheduler_state *state,
+                           scheduling_algorithm_state *algorithm_state,
+                           local_scheduler_client *worker) {
+  /* Find the worker in the list of executing workers. */
+  for (int i = 0; i < utarray_len(algorithm_state->executing_workers); ++i) {
+    local_scheduler_client **p = (local_scheduler_client **) utarray_eltptr(
+        algorithm_state->executing_workers, i);
+    if (*p == worker) {
+      /* Remove the worker from the list of executing workers. */
+      utarray_erase(algorithm_state->executing_workers, i, 1);
+
+      /* Check that the worker isn't in the list of blocked workers. */
+      for (local_scheduler_client **q =
+               (local_scheduler_client **) utarray_front(
+                   algorithm_state->blocked_workers);
+           q != NULL; q = (local_scheduler_client **) utarray_next(
+                          algorithm_state->blocked_workers, q)) {
+        DCHECK(*q != worker);
+      }
+
+      /* Return the resources that the blocked worker was using. */
+      CHECK(worker->task_in_progress != NULL);
+      task_spec *spec = task_task_spec(worker->task_in_progress);
+      update_dynamic_resources(state, spec, true);
+      /* Add the worker to the list of blocked workers. */
+      worker->is_blocked = true;
+      utarray_push_back(algorithm_state->blocked_workers, &worker);
+
+      return;
+    }
+  }
+
+  /* The worker should have been in the list of executing workers, so this line
+   * should be unreachable. */
+  LOG_FATAL(
+      "Worker registered as blocked, but it was not in the list of executing "
+      "workers.");
+}
+
+void handle_worker_unblocked(local_scheduler_state *state,
+                             scheduling_algorithm_state *algorithm_state,
+                             local_scheduler_client *worker) {
+  /* Find the worker in the list of blocked workers. */
+  for (int i = 0; i < utarray_len(algorithm_state->blocked_workers); ++i) {
+    local_scheduler_client **p = (local_scheduler_client **) utarray_eltptr(
+        algorithm_state->blocked_workers, i);
+    if (*p == worker) {
+      /* Remove the worker from the list of blocked workers. */
+      utarray_erase(algorithm_state->blocked_workers, i, 1);
+
+      /* Check that the worker isn't in the list of executing workers. */
+      for (local_scheduler_client **q =
+               (local_scheduler_client **) utarray_front(
+                   algorithm_state->executing_workers);
+           q != NULL; q = (local_scheduler_client **) utarray_next(
+                          algorithm_state->executing_workers, q)) {
+        DCHECK(*q != worker);
+      }
+
+      /* Lease back the resources that the blocked worker will need. */
+      /* TODO(swang): Leasing back the resources to blocked workers can cause
+       * us to transiently exceed the maximum number of resources. This can be
+       * fixed by having blocked workers explicitly yield and wait to be given
+       * back resources before continuing execution. */
+      CHECK(worker->task_in_progress != NULL);
+      task_spec *spec = task_task_spec(worker->task_in_progress);
+      update_dynamic_resources(state, spec, false);
+      /* Add the worker to the list of executing workers. */
+      worker->is_blocked = false;
+      utarray_push_back(algorithm_state->executing_workers, &worker);
+
+      return;
+    }
+  }
+
+  /* The worker should have been in the list of blocked workers, so this line
+   * should be unreachable. */
+  LOG_FATAL(
+      "Worker registered as unblocked, but it was not in the list of blocked "
+      "workers.");
 }
 
 void handle_object_available(local_scheduler_state *state,
@@ -1063,4 +1197,12 @@ int num_dispatch_tasks(scheduling_algorithm_state *algorithm_state) {
   int count;
   DL_COUNT(algorithm_state->dispatch_task_queue, elt, count);
   return count;
+}
+
+void print_worker_info(const char *message,
+                       scheduling_algorithm_state *algorithm_state) {
+  LOG_DEBUG("%s: %d available, %d executing, %d blocked", message,
+            utarray_len(algorithm_state->available_workers),
+            utarray_len(algorithm_state->executing_workers),
+            utarray_len(algorithm_state->blocked_workers));
 }
