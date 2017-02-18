@@ -20,7 +20,6 @@
 #include <poll.h>
 #include <assert.h>
 #include <netinet/in.h>
-#include <netdb.h>
 
 #include "uthash.h"
 #include "utlist.h"
@@ -703,7 +702,7 @@ client_connection *get_manager_connection(plasma_manager_state *state,
             utstring_len(ip_addr_port), manager_conn);
   if (!manager_conn) {
     /* If we don't already have a connection to this manager, start one. */
-    int fd = plasma_manager_connect(ip_addr, port);
+    int fd = connect_inet_sock_retry(ip_addr, port, -1, -1);
     /* TODO(swang): Handle the case when connection to this manager was
      * unsuccessful. */
     CHECK(fd >= 0);

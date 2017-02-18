@@ -61,7 +61,7 @@ plasma_mock *init_plasma_mock(plasma_mock *remote_mock) {
   plasma_mock *mock = malloc(sizeof(plasma_mock));
   /* Start listening on all the ports and initiate the local plasma manager. */
   mock->port = bind_inet_sock_retry(&mock->manager_remote_fd);
-  mock->local_store = socket_connect_retry(plasma_store_socket_name, 5, 100);
+  mock->local_store = connect_ipc_sock_retry(plasma_store_socket_name, 5, 100);
   UT_string *manager_socket_name = bind_ipc_sock_retry(
       plasma_manager_socket_name_format, &mock->manager_local_fd);
 
