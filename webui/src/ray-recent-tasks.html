@@ -23,17 +23,14 @@
       <input value=100 id="input_num_tasks"></input>
       <button id="refresh_button">Refresh</button>
       <br></br>
-      <svg id="recent_tasks"></svg>
+
+      <div id="all_recent_tasks"></div>
+
     </div>
   </template>
 
   <script>
     var backend_address = "ws://127.0.0.1:8888";
-
-    var width = 1000,
-        height = 500,
-        row_height = 50,
-        num_workers = 8;
 
     Polymer({
       is: 'ray-recent-tasks',
@@ -41,10 +38,6 @@
 
         var self = this;
         var socket = new WebSocket(backend_address);
-
-        recent_tasks = new RecentTasks(self.$.recent_tasks, {
-          "width": width, "height": height,
-        });
 
         socket.onopen = function() {
           socket.send(JSON.stringify({"command": "get-recent-tasks", "num": 100}));
@@ -57,7 +50,8 @@
             console.log("No tasks yet.");
             return;
           }
-          recent_tasks.draw_new_tasks(task_info);
+          recent_tasks = new RecentTasks(self.$.all_recent_tasks);
+          recent_tasks.draw_new_tasks(task_info, self.offsetWidth - 100);
         }
 
         socket.onclose = function(closeEvent) {
@@ -70,7 +64,8 @@
               var num_tasks_to_get = self.$.input_num_tasks.value;
               socket.send(JSON.stringify({"command": "get-recent-tasks", "num": parseInt(num_tasks_to_get)}));
             });
-      }
+      },
+
     });
   </script>
 </dom-module>
