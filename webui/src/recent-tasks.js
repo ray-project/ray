@@ -6,6 +6,13 @@ RecentTasks = function(all_recent_tasks_elem) {
 
   var all_recent_tasks_div = d3.select(all_recent_tasks_elem);
 
+  this.generate_task_info = function(d) {
+    return "<div><b>Total Time:</b> " + d.task_formatted_time + "</div>" +
+           "<div><b>Time Getting Arguments:</b> " + d.get_arguments_formatted_time + "</div>" +
+           "<div><b>Time in Execution:</b> " + d.execute_formatted_time + "</div>" +
+           "<div><b>Time Storing Outputs:</b> " + d.store_outputs_formatted_time + "</div>";
+  }
+
   this.draw_new_node_tasks = function(all_task_info, task_info, width, svg, info) {
     var height = task_info.num_workers * barHeight + 2 * verticalPadding;
 
@@ -41,10 +48,7 @@ RecentTasks = function(all_recent_tasks_elem) {
         .attr("fill", "orange")
         .attr("id", function (d) { d.store_outputs[1]; })
         .on("click", function(d, i) {
-          info.html("<div><b>Total Time:</b> " + d.task_formatted_time + "</div>" +
-                    "<div><b>Time Getting Arguments:</b> " + d.get_arguments_formatted_time + "</div>" +
-                    "<div><b>Time in Execution:</b> " + d.execute_formatted_time + "</div>" +
-                    "<div><b>Time Storing Outputs:</b> " + d.store_outputs_formatted_time + "</div>");
+          info.html(self.generate_task_info(d));
         })
 
     get_arguments_rects.selectAll("rect")
@@ -57,10 +61,7 @@ RecentTasks = function(all_recent_tasks_elem) {
         .attr("height", function (d) { return barHeight - 3; })
         .attr("fill", "black")
         .on("click", function(d, i) {
-          info.html("<div><b>Total Time:</b> " + d.task_formatted_time + "</div>" +
-                    "<div><b>Time Getting Arguments:</b> " + d.get_arguments_formatted_time + "</div>" +
-                    "<div><b>Time in Execution:</b> " + d.execute_formatted_time + "</div>" +
-                    "<div><b>Time Storing Outputs:</b> " + d.store_outputs_formatted_time + "</div>");
+          info.html(self.generate_task_info(d));
         })
 
     execute_rects.selectAll("rect")
@@ -73,10 +74,7 @@ RecentTasks = function(all_recent_tasks_elem) {
         .attr("height", function (d) { return barHeight - 3; })
         .attr("fill", "blue")
         .on("click", function(d, i) {
-          info.html("<div><b>Total Time:</b> " + d.task_formatted_time + "</div>" +
-                    "<div><b>Time Getting Arguments:</b> " + d.get_arguments_formatted_time + "</div>" +
-                    "<div><b>Time in Execution:</b> " + d.execute_formatted_time + "</div>" +
-                    "<div><b>Time Storing Outputs:</b> " + d.store_outputs_formatted_time + "</div>");
+          info.html(self.generate_task_info(d));
         })
 
     store_outputs_rects.selectAll("rect")
@@ -89,10 +87,7 @@ RecentTasks = function(all_recent_tasks_elem) {
         .attr("height", function (d) { return barHeight - 3; })
         .attr("fill", "green")
         .on("click", function(d, i) {
-          info.html("<div><b>Total Time:</b> " + d.task_formatted_time + "</div>" +
-                    "<div><b>Time Getting Arguments:</b> " + d.get_arguments_formatted_time + "</div>" +
-                    "<div><b>Time in Execution:</b> " + d.execute_formatted_time + "</div>" +
-                    "<div><b>Time Storing Outputs:</b> " + d.store_outputs_formatted_time + "</div>");
+          info.html(self.generate_task_info(d));
         })
   }
 
