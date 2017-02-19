@@ -1203,12 +1203,19 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker, a
     import __main__ as main
     driver_info = {"node_ip_address": worker.node_ip_address,
                    "driver_id": worker.worker_id,
-                   "start_time": time.time()}
+                   "start_time": time.time(),
+                   "plasma_store_socket": info["store_socket_name"],
+                   "plasma_manager_socket": info["manager_socket_name"],
+                   "local_scheduler_socket": info["local_scheduler_socket_name"]}
     driver_info["name"] = main.__file__ if hasattr(main, "__file__") else "INTERACTIVE MODE"
     worker.redis_client.hmset(b"Drivers:" + worker.worker_id, driver_info)
   elif mode == WORKER_MODE:
     # Register the worker with Redis.
-    worker.redis_client.hmset(b"Workers:" + worker.worker_id, {"node_ip_address": worker.node_ip_address})
+    worker.redis_client.hmset(b"Workers:" + worker.worker_id,
+                              {"node_ip_address": worker.node_ip_address,
+                               "plasma_store_socket": info["store_socket_name"],
+                               "plasma_manager_socket": info["manager_socket_name"],
+                               "local_scheduler_socket": info["local_scheduler_socket_name"]})
   else:
     raise Exception("This code should be unreachable.")
   # If this is a driver, set the current task ID, the task driver ID, and set
