@@ -460,6 +460,7 @@ class Worker(object):
       object_ids (List[object_id.ObjectID]): A list of the object IDs whose
         values should be retrieved.
     """
+    # Fetch the object, in case it already exists on a different node.
     self.plasma_client.fetch([object_id.id() for object_id in object_ids])
 
     # Get the objects. We initially try to get the objects immediately.
@@ -477,6 +478,8 @@ class Worker(object):
     while len(unready_ids) > 0:
       for unready_id in unready_ids:
         self.photon_client.reconstruct_object(unready_id)
+      # Fetch the object, in case it was reconstructed on a different node.
+      self.plasma_client.fetch([object_id.id() for object_id in object_ids])
       results = numbuf.retrieve_list(list(unready_ids.keys()),
                                      self.plasma_client.conn,
                                      GET_TIMEOUT_MILLISECONDS)

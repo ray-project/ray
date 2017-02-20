@@ -1253,7 +1253,7 @@ void process_delete_object_notification(plasma_manager_state *state,
     retry_info retry = {
         .num_retries = NUM_RETRIES,
         .timeout = MANAGER_TIMEOUT,
-        .fail_callback = NULL,
+        .fail_callback = fatal_table_callback,
     };
     object_table_remove(state->db, obj_id, NULL, &retry, NULL, NULL);
   }
@@ -1280,7 +1280,7 @@ void process_add_object_notification(plasma_manager_state *state,
     retry_info retry = {
         .num_retries = NUM_RETRIES,
         .timeout = MANAGER_TIMEOUT,
-        .fail_callback = NULL,
+        .fail_callback = fatal_table_callback,
     };
     object_table_add(state->db, obj_id,
                      object_info.data_size + object_info.metadata_size,
