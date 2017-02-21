@@ -18,6 +18,10 @@
  * global_scheduler_state type. */
 UT_icd local_scheduler_icd = {sizeof(local_scheduler), NULL, NULL, NULL};
 
+/* This is used to define the array of tasks that cannot be scheduled at the
+ * moment due to their resource requirements. */
+UT_icd impossible_tasks_icd = {sizeof(task *), NULL, NULL, NULL};
+
 /**
  * Assign the given task to the local scheduler, update Redis and scheduler data
  * structures.
@@ -72,6 +76,9 @@ global_scheduler_state *init_global_scheduler(event_loop *loop,
   db_attach(state->db, loop, false);
   utarray_new(state->local_schedulers, &local_scheduler_icd);
   state->policy_state = init_global_scheduler_policy();
+  /* Initialize the array of tasks that are cannot be scheduled when the arrive
+   * at the global scheduler. */
+  utarray_new(state->impossible_tasks, &impossible_tasks_icd);
   return state;
 }
 
@@ -103,6 +110,19 @@ void free_global_scheduler(global_scheduler_state *state) {
     utarray_free(object_entry->object_locations);
     free(object_entry);
   }
+  /* Free the array of unschedulable tasks. */
+  int64_t num_remaining_impossible_tasks = utarray_len(state->impossible_tasks);
+  if (num_remaining_impossible_tasks > 0) {
+    LOG_WARN("There are %" PRId64
+             " remaining tasks in the impossible tasks array.",
+             num_remaining_impossible_tasks);
+  }
+  for (int i = 0; i < num_remaining_impossible_tasks; ++i) {
+    task **impossible_task =
+        (task **) utarray_eltptr(state->impossible_tasks, i);
+    free_task(*impossible_task);
+  }
+  utarray_free(state->impossible_tasks);
   /* Free the global scheduler state. */
   free(state);
 }
@@ -288,6 +308,23 @@ void local_scheduler_table_handler(db_client_id client_id,
   }
 }
 
+int task_cleanup_handler(event_loop *loop, timer_id id, void *context) {
+  global_scheduler_state *state = context;
+  /* Loop over the impossible tasks and resubmit them. */
+  int64_t num_impossible_tasks = utarray_len(state->impossible_tasks);
+  for (int i = 0; i < num_impossible_tasks; ++i) {
+    task **impossible_task =
+        (task **) utarray_eltptr(state->impossible_tasks, i);
+    /* Pretend that the task has been resubmitted. */
+    handle_task_waiting(state, state->policy_state, *impossible_task);
+  }
+  /* Clean out the old impossible tasks from the impossible task array. Any
+   * tasks that are still impossible will be readded to this array. */
+  utarray_erase(state->impossible_tasks, 0, num_impossible_tasks);
+  /* Reset the timer. */
+  return GLOBAL_SCHEDULER_TASK_CLEANUP_MILLISECONDS;
+}
+
 void start_server(const char *redis_addr, int redis_port) {
   event_loop *loop = event_loop_create();
   g_state = init_global_scheduler(loop, redis_addr, redis_port);
@@ -315,6 +352,13 @@ void start_server(const char *redis_addr, int redis_port) {
    * schedulers. */
   local_scheduler_table_subscribe(g_state->db, local_scheduler_table_handler,
                                   g_state, NULL);
+  /* Start a timer that periodically checks if there are queued tasks that can
+   * be scheduled. Currently this is only used to handle the special case in
+   * which a task is waiting and no node meets its static resource requirements.
+   * If a new node joins the cluster that does have enough resources, then this
+   * timer should notice and schedule the task. */
+  event_loop_add_timer(loop, GLOBAL_SCHEDULER_TASK_CLEANUP_MILLISECONDS,
+                       task_cleanup_handler, g_state);
   /* Start the event loop. */
   event_loop_run(loop);
 }

@@ -324,6 +324,10 @@ void handle_task_waiting(global_scheduler_state *state,
         object_id_to_string(task_task_id(task), id_string, ID_STRING_SIZE));
     /* TODO(atumanov): propagate this error to the task's driver and/or
      * cache the task in case new local schedulers satisfy it in the future. */
+    /* Add the task to the array of tasks that currently cannot be scheduled.
+     * The global scheduler will periodically resubmit the tasks in this array.
+     */
+    utarray_push_back(state->impossible_tasks, &task);
     return;
   }
   CHECKM(!IS_NIL_ID(best_photon_id),

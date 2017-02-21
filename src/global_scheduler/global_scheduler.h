@@ -8,6 +8,11 @@
 #include "utarray.h"
 #include "uthash.h"
 
+/* The frequency with which the global scheduer checks if there are any tasks
+ * that were impossible to schedule at the time they arrived but can now be
+ * scheduled because new nodes have joined the cluster. */
+#define GLOBAL_SCHEDULER_TASK_CLEANUP_MILLISECONDS 1000
+
 /** Contains all information that is associated with a local scheduler. */
 typedef struct {
   /** The ID of the local scheduler in Redis. */
@@ -73,6 +78,9 @@ typedef struct {
   aux_address_entry *photon_plasma_map;
   /** Objects cached by this global scheduler instance. */
   scheduler_object_info *scheduler_object_info_table;
+  /** An array of tasks that are currently impossible to schedule due to their
+   *  resource requirements. */
+  UT_array *impossible_tasks;
 } global_scheduler_state;
 
 /**
