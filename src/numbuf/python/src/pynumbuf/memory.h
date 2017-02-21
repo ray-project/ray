@@ -22,7 +22,7 @@ class FixedBufferStream : public arrow::io::OutputStream,
     return arrow::Status::OK();
   }
 
-  arrow::Status Read(int64_t nbytes, int64_t* bytes_read, uint8_t* out) {
+  arrow::Status Read(int64_t nbytes, int64_t* bytes_read, uint8_t* out) override {
     assert(0);
     return arrow::Status::OK();
   }
