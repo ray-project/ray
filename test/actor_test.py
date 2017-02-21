@@ -612,5 +612,37 @@ class ActorsWithGPUs(unittest.TestCase):
 
     ray.worker.cleanup()
 
+  def testActorMultipleGPUsFromMultipleTasks(self):
+    num_local_schedulers = 10
+    num_gpus_per_scheduler = 10
+    ray.worker._init(start_ray_local=True, num_workers=0,
+                     num_local_schedulers=num_local_schedulers,
+                     num_gpus=(num_local_schedulers * [num_gpus_per_scheduler]))
+
+    @ray.remote
+    def create_actors(n):
+      @ray.actor(num_gpus=1)
+      class Actor(object):
+        def __init__(self):
+          self.gpu_ids = ray.get_gpu_ids()
+        def get_location_and_ids(self):
+          return ray.worker.global_worker.plasma_client.store_socket_name, tuple(self.gpu_ids)
+      # Create n actors.
+      for _ in range(n):
+        Actor()
+
+    ray.get([create_actors.remote(10) for _ in range(10)])
+
+    @ray.actor(num_gpus=1)
+    class Actor(object):
+      def __init__(self):
+        self.gpu_ids = ray.get_gpu_ids()
+      def get_location_and_ids(self):
+        return ray.worker.global_worker.plasma_client.store_socket_name, tuple(self.gpu_ids)
+
+    # All the GPUs should be used up now.
+    with self.assertRaises(Exception):
+      Actor()
+
 if __name__ == "__main__":
   unittest.main(verbosity=2)

@@ -97,6 +97,8 @@ def export_actor(actor_id, Class, actor_method_names, num_cpus, num_gpus, worker
     local_scheduler_id = random.choice(local_schedulers)[b"ray_client_id"]
     gpu_ids = []
   else:
+    # All of this logic is for finding a local scheduler that has enough
+    # available GPUs.
     local_scheduler_id = None
     for local_scheduler in local_schedulers:
       local_scheduler_total_gpus = int(float(local_scheduler[b"num_gpus"].decode("ascii")))
