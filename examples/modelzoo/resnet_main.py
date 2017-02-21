@@ -56,10 +56,10 @@ def get_batches(path, size):
   print("get_batches")
   return batches
 
-@ray.actor
+@ray.actor(num_gpus=1)
 class ResNetActor(object):
-  def __init__(self, gpu_id):
-    os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+  def __init__(self):
+    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(i) for i in ray.get_gpu_ids()])
     hps = resnet_model.HParams(batch_size=128,
                                num_classes=10,
                                min_lrn_rate=0.0001,
@@ -101,11 +101,11 @@ class ResNetActor(object):
 
 def train(hps):
   """Training loop."""
-  ray.init(num_workers=2)
+  gpus = int(FLAGS.num_gpus)
+  ray.init(num_workers=2, num_gpus=gpus)
   batches = get_batches.remote(FLAGS.train_data_path, hps.batch_size)
   test_batch = get_test.remote(FLAGS.eval_data_path, hps.batch_size)
-  gpus = int(FLAGS.num_gpus)
-  actor_list = [ResNetActor(i) for i in range(gpus)]
+  actor_list = [ResNetActor() for i in range(gpus)]
   step = 0
   weight_id = actor_list[0].get_weights()
   while True:
