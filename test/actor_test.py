@@ -612,6 +612,36 @@ class ActorsWithGPUs(unittest.TestCase):
 
     ray.worker.cleanup()
 
+  def testActorDifferentNumbersOfGPUs(self):
+    # Test that we can create actors on two nodes that have different numbers of
+    # GPUs.
+    ray.worker._init(start_ray_local=True, num_workers=0,
+                     num_local_schedulers=3, num_gpus=[0, 5, 10])
+
+    @ray.actor(num_gpus=1)
+    class Actor1(object):
+      def __init__(self):
+        self.gpu_ids = ray.get_gpu_ids()
+      def get_location_and_ids(self):
+        return ray.worker.global_worker.plasma_client.store_socket_name, tuple(self.gpu_ids)
+
+    # Create some actors.
+    actors = [Actor1() for _ in range(0 + 5 + 10)]
+    # Make sure that no two actors are assigned to the same GPU.
+    locations_and_ids = ray.get([actor.get_location_and_ids() for actor in actors])
+    node_names = set([location for location, gpu_id in locations_and_ids])
+    self.assertEqual(len(node_names), 2)
+    for node_name in node_names:
+      node_gpu_ids = [gpu_id for location, gpu_id in locations_and_ids if location == node_name]
+      self.assertIn(len(node_gpu_ids), [5, 10])
+      self.assertEqual(set(node_gpu_ids), set([(i,) for i in range(len(node_gpu_ids))]))
+
+    # Creating a new actor should fail because all of the GPUs are being used.
+    with self.assertRaises(Exception):
+      a = Actor1()
+
+    ray.worker.cleanup()
+
   def testActorMultipleGPUsFromMultipleTasks(self):
     num_local_schedulers = 10
     num_gpus_per_scheduler = 10
