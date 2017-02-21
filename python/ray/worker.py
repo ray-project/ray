@@ -480,7 +480,7 @@ class Worker(object):
         self.photon_client.reconstruct_object(unready_id)
       # Do another fetch for objects that aren't available locally yet, in case
       # they were evicted since the last fetch.
-      self.plasma_client.fetch(unready_ids.keys())
+      self.plasma_client.fetch(list(unready_ids.keys()))
       results = numbuf.retrieve_list(list(unready_ids.keys()),
                                      self.plasma_client.conn,
                                      GET_TIMEOUT_MILLISECONDS)
