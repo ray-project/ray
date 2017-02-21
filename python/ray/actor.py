@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import hashlib
 import inspect
+import json
 import numpy as np
 import photon
 import random
@@ -11,6 +12,18 @@ import random
 import ray.pickling as pickling
 import ray.worker
 import ray.experimental.state as state
+
+# This is a variable used by each actor to indicate the IDs of the GPUs that
+# the worker is currently allowed to use.
+gpu_ids = []
+
+def get_gpu_ids():
+  """Get the IDs of the GPU that are available to the worker.
+
+  Each ID is an integer in the range [0, NUM_GPUS - 1], where NUM_GPUS is the
+  number of GPUs that the node has.
+  """
+  return gpu_ids
 
 def random_string():
   return np.random.bytes(20)
@@ -35,11 +48,13 @@ def get_actor_method_function_id(attr):
 
 def fetch_and_register_actor(key, worker):
   """Import an actor."""
-  driver_id, actor_id_str, actor_name, module, pickled_class = \
-    worker.redis_client.hmget(key, ["driver_id", "actor_id", "name", "module", "class"])
+  driver_id, actor_id_str, actor_name, module, pickled_class, assigned_gpu_ids = \
+    worker.redis_client.hmget(key, ["driver_id", "actor_id", "name", "module", "class", "gpu_ids"])
   actor_id = photon.ObjectID(actor_id_str)
   actor_name = actor_name.decode("ascii")
   module = module.decode("ascii")
+  global gpu_ids
+  gpu_ids = json.loads(assigned_gpu_ids.decode("ascii"))
   try:
     unpickled_class = pickling.loads(pickled_class)
   except:
@@ -54,13 +69,15 @@ def fetch_and_register_actor(key, worker):
       # We do not set worker.function_properties[driver_id][function_id] because
       # we currently do need the actor worker to submit new tasks for the actor.
 
-def export_actor(actor_id, Class, actor_method_names, worker):
+def export_actor(actor_id, Class, actor_method_names, num_cpus, num_gpus, worker):
   """Export an actor to redis.
 
   Args:
     actor_id: The ID of the actor.
     Class: Name of the class to be exported as an actor.
     actor_method_names (list): A list of the names of this actor's methods.
+    num_cpus (int): The number of CPUs that this actor requires.
+    num_gpus (int): The number of GPUs that this actor requires.
   """
   ray.worker.check_main_thread()
   if worker.mode is None:
@@ -68,15 +85,37 @@ def export_actor(actor_id, Class, actor_method_names, worker):
   key = "Actor:{}".format(actor_id.id())
   pickled_class = pickling.dumps(Class)
 
-  # For now, all actor methods have 1 return value and require 0 CPUs and GPUs.
+  # For now, all actor methods have 1 return value.
   driver_id = worker.task_driver_id.id()
   for actor_method_name in actor_method_names:
     function_id = get_actor_method_function_id(actor_method_name).id()
-    worker.function_properties[driver_id][function_id] = (1, 0, 0)
+    worker.function_properties[driver_id][function_id] = (1, num_cpus, num_gpus)
 
   # Select a local scheduler for the actor.
-  local_schedulers = state.get_local_schedulers()
-  local_scheduler_id = random.choice(local_schedulers)
+  local_schedulers = state.get_local_schedulers(worker)
+  if num_gpus == 0:
+    local_scheduler_id = random.choice(local_schedulers)[b"ray_client_id"]
+    gpu_ids = []
+  else:
+    local_scheduler_id = None
+    for local_scheduler in local_schedulers:
+      local_scheduler_total_gpus = int(float(local_scheduler[b"num_gpus"].decode("ascii")))
+      if local_scheduler_total_gpus > 0:
+        gpus_in_use = worker.redis_client.hget(local_scheduler[b"ray_client_id"], b"gpus_in_use")
+        gpus_in_use = 0 if gpus_in_use is None else int(gpus_in_use)
+        if gpus_in_use + num_gpus <= local_scheduler_total_gpus:
+          new_gpus_in_use = worker.redis_client.hincrby(local_scheduler[b"ray_client_id"], b"gpus_in_use", num_gpus)
+          if new_gpus_in_use > local_scheduler_total_gpus:
+            # Undo the increment.
+            worker.redis_client.hincrby(local_scheduler[b"ray_client_id"], b"gpus_in_use", num_gpus)
+          else:
+            # We succeeded.
+            local_scheduler_id = local_scheduler[b"ray_client_id"]
+            gpu_ids = list(range(new_gpus_in_use - num_gpus, new_gpus_in_use))
+            break
+    if local_scheduler_id is None:
+      raise Exception("Could not find a node with enough GPUs to create this "
+                      "actor. The local scheduler information is {}.".format(local_schedulers))
 
   worker.redis_client.publish("actor_notifications", actor_id.id() + local_scheduler_id)
 
@@ -84,7 +123,8 @@ def export_actor(actor_id, Class, actor_method_names, worker):
        "actor_id": actor_id.id(),
        "name": Class.__name__,
        "module": Class.__module__,
-       "class": pickled_class}
+       "class": pickled_class,
+       "gpu_ids": json.dumps(gpu_ids)}
   worker.redis_client.hmset(key, d)
   worker.redis_client.rpush("Exports", key)
 
@@ -101,10 +141,6 @@ def actor(*args, **kwargs):
           raise Exception("Actors currently do not support **kwargs.")
         function_id = get_actor_method_function_id(attr)
         # TODO(pcm): Extend args with keyword args.
-        # For now, actor methods should not require resources beyond the resources
-        # used by the actor.
-        num_cpus = 0
-        num_gpus = 0
         object_ids = ray.worker.global_worker.submit_task(function_id, "", args,
                                                           actor_id=actor_id)
         if len(object_ids) == 1:
@@ -116,7 +152,7 @@ def actor(*args, **kwargs):
         def __init__(self, *args, **kwargs):
           self._ray_actor_id = random_actor_id()
           self._ray_actor_methods = {k: v for (k, v) in inspect.getmembers(Class, predicate=(lambda x: inspect.isfunction(x) or inspect.ismethod(x)))}
-          export_actor(self._ray_actor_id, Class, self._ray_actor_methods, ray.worker.global_worker)
+          export_actor(self._ray_actor_id, Class, self._ray_actor_methods, num_cpus, num_gpus, ray.worker.global_worker)
           # Call __init__ as a remote function.
           if "__init__" in self._ray_actor_methods.keys():
             actor_method_call(self._ray_actor_id, "__init__", *args, **kwargs)

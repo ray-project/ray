@@ -303,21 +303,38 @@ local_scheduler_state *init_local_scheduler(
   if (redis_addr != NULL) {
     int num_args;
     const char **db_connect_args = NULL;
+    /* Use UT_string to convert the resource value into a string. */
+    UT_string *num_cpus;
+    UT_string *num_gpus;
+    utstring_new(num_cpus);
+    utstring_new(num_gpus);
+    utstring_printf(num_cpus, "%f", static_resource_conf[0]);
+    utstring_printf(num_gpus, "%f", static_resource_conf[1]);
     if (plasma_manager_address != NULL) {
-      num_args = 4;
+      num_args = 8;
       db_connect_args = malloc(sizeof(char *) * num_args);
       db_connect_args[0] = "local_scheduler_socket_name";
       db_connect_args[1] = local_scheduler_socket_name;
-      db_connect_args[2] = "aux_address";
-      db_connect_args[3] = plasma_manager_address;
+      db_connect_args[2] = "num_cpus";
+      db_connect_args[3] = utstring_body(num_cpus);
+      db_connect_args[4] = "num_gpus";
+      db_connect_args[5] = utstring_body(num_gpus);
+      db_connect_args[6] = "aux_address";
+      db_connect_args[7] = plasma_manager_address;
     } else {
-      num_args = 2;
+      num_args = 6;
       db_connect_args = malloc(sizeof(char *) * num_args);
       db_connect_args[0] = "local_scheduler_socket_name";
       db_connect_args[1] = local_scheduler_socket_name;
+      db_connect_args[2] = "num_cpus";
+      db_connect_args[3] = utstring_body(num_cpus);
+      db_connect_args[4] = "num_gpus";
+      db_connect_args[5] = utstring_body(num_gpus);
     }
     state->db = db_connect(redis_addr, redis_port, "photon", node_ip_address,
                            num_args, db_connect_args);
+    utstring_free(num_cpus);
+    utstring_free(num_gpus);
     free(db_connect_args);
     db_attach(state->db, loop, false);
   } else {
