@@ -96,6 +96,11 @@
 /* This should be defined if we want to check calls to DCHECK. */
 #define RAY_DCHECK
 
+/* Arrow also defines the DCHECK macro, so undo that definition. */
+#ifdef DCHECK
+#undef DCHECK
+#endif
+
 #ifdef RAY_DCHECK
 #define DCHECK(COND) CHECK(COND)
 #else

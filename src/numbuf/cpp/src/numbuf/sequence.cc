@@ -33,10 +33,11 @@ SequenceBuilder::SequenceBuilder(MemoryPool* pool)
 /* We need to ensure that the number of bytes allocated by arrow
  * does not exceed 2**31 - 1. To make sure that is the case, allocation needs
  * to be capped at 2**29 - 1, because arrow calculates the next power of two
- * for allocations (see arrow::ArrayBuilder::Reserve).
+ * for allocations (see arrow::ArrayBuilder::Reserve). TODO(rkn): The (1 << 28)
+ * below should really be (1 << 29), but there seems to be a bug.
  */
 #define UPDATE(OFFSET, TAG)                                               \
-  if (total_num_bytes_ >= 1 << 29 - 1) {                                  \
+  if (total_num_bytes_ >= (1 << 28) - 1) {                                \
     return Status::NotImplemented("Sequence contains too many elements"); \
   }                                                                       \
   if (TAG == -1) {                                                        \
