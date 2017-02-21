@@ -62,9 +62,9 @@ class ResNet(object):
   def _build_model(self):
     """Build the core model within the graph."""
 
-    x = tf.placeholder_with_default(tf.zeros([128,32,32,3]), shape=[128, 32, 32, 3])
+    x = tf.placeholder(tf.float32, [128, 32, 32, 3])
     self.x = x
-    self.labels = tf.placeholder_with_default(tf.zeros([128,10]), shape=[128, 10])
+    self.labels = tf.placeholder(tf.float32, [128, 10])
     labels = self.labels
     with tf.variable_scope('init'):
       x = self._conv('init_conv', x, 3, 3, 16, self._stride_arr(1))
