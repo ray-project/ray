@@ -69,6 +69,53 @@ def fetch_and_register_actor(key, worker):
       # We do not set worker.function_properties[driver_id][function_id] because
       # we currently do need the actor worker to submit new tasks for the actor.
 
+def select_local_scheduler(local_schedulers, num_gpus, worker):
+  """Select a local scheduler to assign this actor to.
+
+  Args:
+    local_schedulers: A list of dictionaries of information about the local
+      schedulers.
+    num_gpus (int): The number of GPUs that must be reserved for this actor.
+
+  Returns:
+    A tuple of the ID of the local scheduler that has been chosen and a list of
+      the gpu_ids that are reserved for the actor.
+
+  Raises:
+    Exception: An exception is raised if no local scheduler can be found with
+      sufficient resources.
+  """
+  if num_gpus == 0:
+    local_scheduler_id = random.choice(local_schedulers)[b"ray_client_id"]
+    gpu_ids = []
+  else:
+    # All of this logic is for finding a local scheduler that has enough
+    # available GPUs.
+    local_scheduler_id = None
+    # Loop through all of the local schedulers.
+    for local_scheduler in local_schedulers:
+      # Check if the local scheduler has any GPUs.
+      local_scheduler_total_gpus = int(float(local_scheduler[b"num_gpus"].decode("ascii")))
+      if local_scheduler_total_gpus > 0:
+        # See if there are enough available GPUs on this local scheduler.
+        gpus_in_use = worker.redis_client.hget(local_scheduler[b"ray_client_id"], b"gpus_in_use")
+        gpus_in_use = 0 if gpus_in_use is None else int(gpus_in_use)
+        if gpus_in_use + num_gpus <= local_scheduler_total_gpus:
+          # Attempt to reserve some GPUs for this actor.
+          new_gpus_in_use = worker.redis_client.hincrby(local_scheduler[b"ray_client_id"], b"gpus_in_use", num_gpus)
+          if new_gpus_in_use > local_scheduler_total_gpus:
+            # If we failed to reserve the GPUs, undo the increment.
+            worker.redis_client.hincrby(local_scheduler[b"ray_client_id"], b"gpus_in_use", num_gpus)
+          else:
+            # We succeeded at reserving the GPUs, so we are done.
+            local_scheduler_id = local_scheduler[b"ray_client_id"]
+            gpu_ids = list(range(new_gpus_in_use - num_gpus, new_gpus_in_use))
+            break
+    if local_scheduler_id is None:
+      raise Exception("Could not find a node with enough GPUs to create this "
+                      "actor. The local scheduler information is {}.".format(local_schedulers))
+  return local_scheduler_id, gpu_ids
+
 def export_actor(actor_id, Class, actor_method_names, num_cpus, num_gpus, worker):
   """Export an actor to redis.
 
@@ -93,31 +140,7 @@ def export_actor(actor_id, Class, actor_method_names, num_cpus, num_gpus, worker
 
   # Select a local scheduler for the actor.
   local_schedulers = state.get_local_schedulers(worker)
-  if num_gpus == 0:
-    local_scheduler_id = random.choice(local_schedulers)[b"ray_client_id"]
-    gpu_ids = []
-  else:
-    # All of this logic is for finding a local scheduler that has enough
-    # available GPUs.
-    local_scheduler_id = None
-    for local_scheduler in local_schedulers:
-      local_scheduler_total_gpus = int(float(local_scheduler[b"num_gpus"].decode("ascii")))
-      if local_scheduler_total_gpus > 0:
-        gpus_in_use = worker.redis_client.hget(local_scheduler[b"ray_client_id"], b"gpus_in_use")
-        gpus_in_use = 0 if gpus_in_use is None else int(gpus_in_use)
-        if gpus_in_use + num_gpus <= local_scheduler_total_gpus:
-          new_gpus_in_use = worker.redis_client.hincrby(local_scheduler[b"ray_client_id"], b"gpus_in_use", num_gpus)
-          if new_gpus_in_use > local_scheduler_total_gpus:
-            # Undo the increment.
-            worker.redis_client.hincrby(local_scheduler[b"ray_client_id"], b"gpus_in_use", num_gpus)
-          else:
-            # We succeeded.
-            local_scheduler_id = local_scheduler[b"ray_client_id"]
-            gpu_ids = list(range(new_gpus_in_use - num_gpus, new_gpus_in_use))
-            break
-    if local_scheduler_id is None:
-      raise Exception("Could not find a node with enough GPUs to create this "
-                      "actor. The local scheduler information is {}.".format(local_schedulers))
+  local_scheduler_id, gpu_ids = select_local_scheduler(local_schedulers, num_gpus, worker)
 
   worker.redis_client.publish("actor_notifications", actor_id.id() + local_scheduler_id)
 
