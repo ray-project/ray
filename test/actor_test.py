@@ -132,6 +132,50 @@ class ActorAPI(unittest.TestCase):
   #   # TODO(rkn): Implement this.
   #   pass
 
+  def testDecoratorArgs(self):
+    ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
+
+    # This is an invalid way of using the actor decorator.
+    with self.assertRaises(Exception):
+      @ray.actor()
+      class Actor(object):
+        def __init__(self):
+          pass
+
+    # This is an invalid way of using the actor decorator.
+    with self.assertRaises(Exception):
+      @ray.actor(invalid_kwarg=0)
+      class Actor(object):
+        def __init__(self):
+          pass
+
+    # This is an invalid way of using the actor decorator.
+    with self.assertRaises(Exception):
+      @ray.actor(num_cpus=0, invalid_kwarg=0)
+      class Actor(object):
+        def __init__(self):
+          pass
+
+    # This is a valid way of using the decorator.
+    @ray.actor(num_cpus=1)
+    class Actor(object):
+      def __init__(self):
+        pass
+
+    # This is a valid way of using the decorator.
+    @ray.actor(num_gpus=1)
+    class Actor(object):
+      def __init__(self):
+        pass
+
+    # This is a valid way of using the decorator.
+    @ray.actor(num_cpus=1, num_gpus=1)
+    class Actor(object):
+      def __init__(self):
+        pass
+
+    ray.worker.cleanup()
+
 class ActorMethods(unittest.TestCase):
 
   def testDefineActor(self):

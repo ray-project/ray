@@ -88,52 +88,72 @@ def export_actor(actor_id, Class, actor_method_names, worker):
   worker.redis_client.hmset(key, d)
   worker.redis_client.rpush("Exports", key)
 
-def actor(Class):
-  # The function actor_method_call gets called if somebody tries to call a
-  # method on their local actor stub object.
-  def actor_method_call(actor_id, attr, *args, **kwargs):
-    ray.worker.check_connected()
-    ray.worker.check_main_thread()
-    args = list(args)
-    if len(kwargs) > 0:
-      raise Exception("Actors currently do not support **kwargs.")
-    function_id = get_actor_method_function_id(attr)
-    # TODO(pcm): Extend args with keyword args.
-    # For now, actor methods should not require resources beyond the resources
-    # used by the actor.
-    num_cpus = 0
-    num_gpus = 0
-    object_ids = ray.worker.global_worker.submit_task(function_id, "", args,
-                                                      actor_id=actor_id)
-    if len(object_ids) == 1:
-      return object_ids[0]
-    elif len(object_ids) > 1:
-      return object_ids
+def actor(*args, **kwargs):
+  def make_actor_decorator(num_cpus=1, num_gpus=0):
+    def make_actor(Class):
+      # The function actor_method_call gets called if somebody tries to call a
+      # method on their local actor stub object.
+      def actor_method_call(actor_id, attr, *args, **kwargs):
+        ray.worker.check_connected()
+        ray.worker.check_main_thread()
+        args = list(args)
+        if len(kwargs) > 0:
+          raise Exception("Actors currently do not support **kwargs.")
+        function_id = get_actor_method_function_id(attr)
+        # TODO(pcm): Extend args with keyword args.
+        # For now, actor methods should not require resources beyond the resources
+        # used by the actor.
+        num_cpus = 0
+        num_gpus = 0
+        object_ids = ray.worker.global_worker.submit_task(function_id, "", args,
+                                                          actor_id=actor_id)
+        if len(object_ids) == 1:
+          return object_ids[0]
+        elif len(object_ids) > 1:
+          return object_ids
 
-  class NewClass(object):
-    def __init__(self, *args, **kwargs):
-      self._ray_actor_id = random_actor_id()
-      self._ray_actor_methods = {k: v for (k, v) in inspect.getmembers(Class, predicate=(lambda x: inspect.isfunction(x) or inspect.ismethod(x)))}
-      export_actor(self._ray_actor_id, Class, self._ray_actor_methods, ray.worker.global_worker)
-      # Call __init__ as a remote function.
-      if "__init__" in self._ray_actor_methods.keys():
-        actor_method_call(self._ray_actor_id, "__init__", *args, **kwargs)
-      else:
-        print("WARNING: this object has no __init__ method.")
-    # Make tab completion work.
-    def __dir__(self):
-      return self._ray_actor_methods
-    def __getattribute__(self, attr):
-      # The following is needed so we can still access self.actor_methods.
-      if attr in ["_ray_actor_id", "_ray_actor_methods"]:
-        return super(NewClass, self).__getattribute__(attr)
-      if attr in self._ray_actor_methods.keys():
-        return lambda *args, **kwargs: actor_method_call(self._ray_actor_id, attr, *args, **kwargs)
-      # There is no method with this name, so raise an exception.
-      raise AttributeError("'{}' Actor object has no attribute '{}'".format(Class, attr))
-    def __repr__(self):
-      return "Actor(" + self._ray_actor_id.hex() + ")"
+      class NewClass(object):
+        def __init__(self, *args, **kwargs):
+          self._ray_actor_id = random_actor_id()
+          self._ray_actor_methods = {k: v for (k, v) in inspect.getmembers(Class, predicate=(lambda x: inspect.isfunction(x) or inspect.ismethod(x)))}
+          export_actor(self._ray_actor_id, Class, self._ray_actor_methods, ray.worker.global_worker)
+          # Call __init__ as a remote function.
+          if "__init__" in self._ray_actor_methods.keys():
+            actor_method_call(self._ray_actor_id, "__init__", *args, **kwargs)
+          else:
+            print("WARNING: this object has no __init__ method.")
+        # Make tab completion work.
+        def __dir__(self):
+          return self._ray_actor_methods
+        def __getattribute__(self, attr):
+          # The following is needed so we can still access self.actor_methods.
+          if attr in ["_ray_actor_id", "_ray_actor_methods"]:
+            return super(NewClass, self).__getattribute__(attr)
+          if attr in self._ray_actor_methods.keys():
+            return lambda *args, **kwargs: actor_method_call(self._ray_actor_id, attr, *args, **kwargs)
+          # There is no method with this name, so raise an exception.
+          raise AttributeError("'{}' Actor object has no attribute '{}'".format(Class, attr))
+        def __repr__(self):
+          return "Actor(" + self._ray_actor_id.hex() + ")"
 
-  return NewClass
+      return NewClass
+    return make_actor
+
+  if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
+    # In this case, the actor decorator was applied directly to a class
+    # definition.
+    Class = args[0]
+    return make_actor_decorator(num_cpus=1, num_gpus=0)(Class)
+
+  # In this case, the actor decorator is something like @ray.actor(num_gpus=1).
+  if len(args) == 0 and len(kwargs) > 0 and all([key in ["num_cpus", "num_gpus"] for key in kwargs.keys()]):
+    num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs.keys() else 1
+    num_gpus = kwargs["num_gpus"] if "num_gpus" in kwargs.keys() else 0
+    return make_actor_decorator(num_cpus=num_cpus, num_gpus=num_gpus)
+
+  raise Exception("The ray.actor decorator must either be applied with no "
+                  "arguments as in '@ray.actor', or it must be applied using "
+                  "some of the arguments 'num_cpus' or 'num_gpus' as in "
+                  "'ray.actor(num_gpus=1)'.")
 
 ray.worker.global_worker.fetch_and_register["Actor"] = fetch_and_register_actor
