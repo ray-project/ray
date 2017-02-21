@@ -726,6 +726,27 @@ void process_transfer_request(event_loop *loop,
                               const char *addr,
                               int port,
                               client_connection *conn) {
+  client_connection *manager_conn =
+      get_manager_connection(conn->manager_state, addr, port);
+
+  /* If there is already a request in the transfer queue with the same object
+   * ID, do not add the transfer request. */
+  plasma_request_buffer *pending;
+  LL_FOREACH(manager_conn->transfer_queue, pending) {
+    if (object_ids_equal(pending->object_id, obj_id) &&
+        (pending->type == MessageType_PlasmaDataReply)) {
+      return;
+    }
+  }
+
+  /* If we already have a connection to this manager and its inactive,
+   * (re)register it with the event loop again. */
+  if (manager_conn->transfer_queue == NULL) {
+    event_loop_add_file(loop, manager_conn->fd, EVENT_LOOP_WRITE,
+                        send_queued_request, manager_conn);
+  }
+
+  /* Allocate and append the request to the transfer queue. */
   uint8_t *data;
   int64_t data_size;
   uint8_t *metadata;
@@ -761,23 +782,6 @@ void process_transfer_request(event_loop *loop,
   buf->data_size = obj_buffer.data_size;
   buf->metadata_size = obj_buffer.metadata_size;
 
-  client_connection *manager_conn =
-      get_manager_connection(conn->manager_state, addr, port);
-
-  if (manager_conn->transfer_queue == NULL) {
-    /* If we already have a connection to this manager and its inactive,
-     * (re)register it with the event loop again. */
-    event_loop_add_file(loop, manager_conn->fd, EVENT_LOOP_WRITE,
-                        send_queued_request, manager_conn);
-  }
-  /* Add this transfer request to this connection's transfer queue if there
-   * isn't already a request with the same object ID. */
-  plasma_request_buffer *pending;
-  LL_FOREACH(manager_conn->transfer_queue, pending) {
-    if (object_ids_equal(pending->object_id, buf->object_id)) {
-      return;
-    }
-  }
   LL_APPEND(manager_conn->transfer_queue, buf);
 }
 
@@ -1253,7 +1257,7 @@ void process_delete_object_notification(plasma_manager_state *state,
     retry_info retry = {
         .num_retries = NUM_RETRIES,
         .timeout = MANAGER_TIMEOUT,
-        .fail_callback = NULL,
+        .fail_callback = fatal_table_callback,
     };
     object_table_remove(state->db, obj_id, NULL, &retry, NULL, NULL);
   }
@@ -1280,7 +1284,7 @@ void process_add_object_notification(plasma_manager_state *state,
     retry_info retry = {
         .num_retries = NUM_RETRIES,
         .timeout = MANAGER_TIMEOUT,
-        .fail_callback = NULL,
+        .fail_callback = fatal_table_callback,
     };
     object_table_add(state->db, obj_id,
                      object_info.data_size + object_info.metadata_size,

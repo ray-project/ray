@@ -459,13 +459,11 @@ int ObjectTableRemove_RedisCommand(RedisModuleCtx *ctx,
 
 /**
  * Request notifications about the presence of some object IDs. This command
- * takes a list of object IDs. There will be an immediate reply acknowledging
- * the call and containing a list of all the object IDs that are already
- * present in the object table along with vectors of the plasma managers that
- * contain each object. For each object ID that is not already present in the
- * object table, there will be a separate subsequent reply that returns the list
- * of manager vectors conaining the object ID, and this will be called as soon
- * as the object is added to the object table.
+ * takes a list of object IDs. For each object ID, the reply will be the list
+ * of plasma managers that contain the object. If the list of plasma managers
+ * is currently nonempty, then the reply will happen immediately. Else, the
+ * reply will come later, on the first invocation of `RAY.OBJECT_TABLE_ADD`
+ * following this call.
  *
  * This is called from a client with the command:
  *
