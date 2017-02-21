@@ -2,12 +2,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import ray.worker
-
-def get_local_schedulers():
+def get_local_schedulers(worker):
   local_schedulers = []
-  for client in ray.worker.global_worker.redis_client.keys("CL:*"):
-    client_type, ray_client_id = ray.worker.global_worker.redis_client.hmget(client, "client_type", "ray_client_id")
-    if client_type == b"photon":
-      local_schedulers.append(ray_client_id)
+  for client in worker.redis_client.keys("CL:*"):
+    client_info = worker.redis_client.hgetall(client)
+    if client_info[b"client_type"] == b"photon":
+      local_schedulers.append(client_info)
   return local_schedulers
