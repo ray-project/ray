@@ -154,10 +154,18 @@ local_scheduler *get_local_scheduler(global_scheduler_state *state,
   return NULL;
 }
 
-void process_task_waiting(task *task, void *user_context) {
+void process_task_waiting(task *waiting_task, void *user_context) {
   global_scheduler_state *state = (global_scheduler_state *) user_context;
   LOG_DEBUG("Task waiting callback is called.");
-  handle_task_waiting(state, state->policy_state, task);
+  bool successfully_assigned =
+      handle_task_waiting(state, state->policy_state, waiting_task);
+  /* If the task was not successfully submitted to a local scheduler, add the
+   * task to the array of tasks that currently cannot be scheduled. The global
+   * scheduler will periodically resubmit the tasks in this array. */
+  if (!successfully_assigned) {
+    task *task_copy = copy_task(waiting_task);
+    utarray_push_back(state->impossible_tasks, &task_copy);
+  }
 }
 
 /**
@@ -312,15 +320,19 @@ int task_cleanup_handler(event_loop *loop, timer_id id, void *context) {
   global_scheduler_state *state = context;
   /* Loop over the impossible tasks and resubmit them. */
   int64_t num_impossible_tasks = utarray_len(state->impossible_tasks);
-  for (int i = 0; i < num_impossible_tasks; ++i) {
+  for (int64_t i = num_impossible_tasks - 1; i >= 0; --i) {
     task **impossible_task =
         (task **) utarray_eltptr(state->impossible_tasks, i);
     /* Pretend that the task has been resubmitted. */
-    handle_task_waiting(state, state->policy_state, *impossible_task);
+    bool successfully_assigned =
+        handle_task_waiting(state, state->policy_state, *impossible_task);
+    if (successfully_assigned) {
+      /* The task was successfully assigned, so remove it from this list and
+       * free it. */
+      utarray_erase(state->impossible_tasks, i, 1);
+      free(*impossible_task);
+    }
   }
-  /* Clean out the old impossible tasks from the impossible task array. Any
-   * tasks that are still impossible will be readded to this array. */
-  utarray_erase(state->impossible_tasks, 0, num_impossible_tasks);
   /* Reset the timer. */
   return GLOBAL_SCHEDULER_TASK_CLEANUP_MILLISECONDS;
 }

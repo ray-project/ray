@@ -267,15 +267,7 @@ double calculate_cost_pending(const global_scheduler_state *state,
   return scheduler->num_recent_tasks_sent + scheduler->info.task_queue_length;
 }
 
-/**
- * Main new task handling function in the global scheduler.
- *
- * @param state Global scheduler state.
- * @param policy_state State specific to the scheduling policy.
- * @param task New task to be scheduled.
- * @return Void.
- */
-void handle_task_waiting(global_scheduler_state *state,
+bool handle_task_waiting(global_scheduler_state *state,
                          global_scheduler_policy_state *policy_state,
                          task *task) {
   task_spec *task_spec = task_task_spec(task);
@@ -324,16 +316,13 @@ void handle_task_waiting(global_scheduler_state *state,
         object_id_to_string(task_task_id(task), id_string, ID_STRING_SIZE));
     /* TODO(atumanov): propagate this error to the task's driver and/or
      * cache the task in case new local schedulers satisfy it in the future. */
-    /* Add the task to the array of tasks that currently cannot be scheduled.
-     * The global scheduler will periodically resubmit the tasks in this array.
-     */
-    utarray_push_back(state->impossible_tasks, &task);
-    return;
+    return false;
   }
   CHECKM(!IS_NIL_ID(best_photon_id),
          "Task is feasible, but doesn't have a local scheduler assigned.");
   /* A local scheduler ID was found, so assign the task. */
   assign_task_to_local_scheduler(state, task, best_photon_id);
+  return true;
 }
 
 void handle_object_available(global_scheduler_state *state,
