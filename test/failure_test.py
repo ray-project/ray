@@ -178,6 +178,62 @@ def temporary_helper_function():
 
     ray.worker.cleanup()
 
+  def testFailImportingActor(self):
+    ray.init(num_workers=2, driver_mode=ray.SILENT_MODE)
+
+    # Create the contents of a temporary Python file.
+    temporary_python_file = """
+def temporary_helper_function():
+  return 1
+"""
+
+    f = tempfile.NamedTemporaryFile(suffix=".py")
+    f.write(temporary_python_file.encode("ascii"))
+    f.flush()
+    directory = os.path.dirname(f.name)
+    # Get the module name and strip ".py" from the end.
+    module_name = os.path.basename(f.name)[:-3]
+    sys.path.append(directory)
+    module = __import__(module_name)
+
+    # Define an actor that closes over this temporary module. This should fail
+    # when it is unpickled.
+    @ray.actor
+    class Foo(object):
+      def __init__(self):
+        self.x = module.temporary_python_file()
+      def get_val(self):
+        return 1
+
+    # There should be no errors yet.
+    self.assertEqual(len(ray.error_info()), 0)
+
+    # Create an actor.
+    foo = Foo()
+
+    # Wait for the error to arrive.
+    wait_for_errors(b"register_actor", 1)
+    self.assertIn(b"No module named", ray.error_info()[0][b"message"])
+
+    # Wait for the error from when the __init__ tries to run.
+    wait_for_errors(b"task", 1)
+    self.assertIn(b"failed to be imported, and so cannot execute this method", ray.error_info()[1][b"message"])
+
+    # Check that if we try to get the function it throws an exception and does
+    # not hang.
+    with self.assertRaises(Exception):
+      ray.get(foo.get_val())
+
+    # Wait for the error from when the call to get_val.
+    wait_for_errors(b"task", 2)
+    self.assertIn(b"failed to be imported, and so cannot execute this method", ray.error_info()[2][b"message"])
+
+    f.close()
+
+    # Clean up the junk we added to sys.path.
+    sys.path.pop(-1)
+    ray.worker.cleanup()
+
 class ActorTest(unittest.TestCase):
 
   def testFailedActorInit(self):
