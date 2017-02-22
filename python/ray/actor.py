@@ -65,9 +65,8 @@ def fetch_and_register_actor(key, worker):
     pass
   worker.actors[actor_id_str] = TemporaryActor()
   def temporary_actor_method(*xs):
-    raise Exception("The actor with name {} and ID {} failed to be imported, "
-                    "and so cannot execute this method".format(actor_name,
-                                                               actor_id.id()))
+    raise Exception("The actor with name {} failed to be imported, and so "
+                    "cannot execute this method".format(actor_name))
   for actor_method_name in actor_method_names:
     function_id = get_actor_method_function_id(actor_method_name).id()
     worker.functions[driver_id][function_id] = (actor_method_name, temporary_actor_method)
