@@ -8,6 +8,10 @@
 #include "utarray.h"
 #include "uthash.h"
 
+/* The frequency with which the global scheduler checks if there are any tasks
+ * that haven't been scheduled yet. */
+#define GLOBAL_SCHEDULER_TASK_CLEANUP_MILLISECONDS 100
+
 /** Contains all information that is associated with a local scheduler. */
 typedef struct {
   /** The ID of the local scheduler in Redis. */
@@ -73,6 +77,8 @@ typedef struct {
   aux_address_entry *photon_plasma_map;
   /** Objects cached by this global scheduler instance. */
   scheduler_object_info *scheduler_object_info_table;
+  /** An array of tasks that haven't been scheduled yet. */
+  UT_array *pending_tasks;
 } global_scheduler_state;
 
 /**

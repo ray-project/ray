@@ -55,9 +55,10 @@ void destroy_global_scheduler_policy(
  * @param state Global scheduler state.
  * @param policy_state State specific to the scheduling policy.
  * @param task New task to be scheduled.
- * @return Void.
+ * @return True if the task was assigned to a local scheduler and false
+ *         otherwise.
  */
-void handle_task_waiting(global_scheduler_state *state,
+bool handle_task_waiting(global_scheduler_state *state,
                          global_scheduler_policy_state *policy_state,
                          task *task);
 
