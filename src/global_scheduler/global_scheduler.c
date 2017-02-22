@@ -116,8 +116,7 @@ void free_global_scheduler(global_scheduler_state *state) {
              num_pending_tasks);
   }
   for (int i = 0; i < num_pending_tasks; ++i) {
-    task **pending_task =
-        (task **) utarray_eltptr(state->pending_tasks, i);
+    task **pending_task = (task **) utarray_eltptr(state->pending_tasks, i);
     free_task(*pending_task);
   }
   utarray_free(state->pending_tasks);
@@ -319,8 +318,7 @@ int task_cleanup_handler(event_loop *loop, timer_id id, void *context) {
   /* Loop over the pending tasks and resubmit them. */
   int64_t num_pending_tasks = utarray_len(state->pending_tasks);
   for (int64_t i = num_pending_tasks - 1; i >= 0; --i) {
-    task **pending_task =
-        (task **) utarray_eltptr(state->pending_tasks, i);
+    task **pending_task = (task **) utarray_eltptr(state->pending_tasks, i);
     /* Pretend that the task has been resubmitted. */
     bool successfully_assigned =
         handle_task_waiting(state, state->policy_state, *pending_task);
