@@ -18,9 +18,8 @@
  * global_scheduler_state type. */
 UT_icd local_scheduler_icd = {sizeof(local_scheduler), NULL, NULL, NULL};
 
-/* This is used to define the array of tasks that cannot be scheduled at the
- * moment due to their resource requirements. */
-UT_icd impossible_tasks_icd = {sizeof(task *), NULL, NULL, NULL};
+/* This is used to define the array of tasks that haven't been scheduled yet. */
+UT_icd pending_tasks_icd = {sizeof(task *), NULL, NULL, NULL};
 
 /**
  * Assign the given task to the local scheduler, update Redis and scheduler data
@@ -76,9 +75,8 @@ global_scheduler_state *init_global_scheduler(event_loop *loop,
   db_attach(state->db, loop, false);
   utarray_new(state->local_schedulers, &local_scheduler_icd);
   state->policy_state = init_global_scheduler_policy();
-  /* Initialize the array of tasks that are cannot be scheduled when the arrive
-   * at the global scheduler. */
-  utarray_new(state->impossible_tasks, &impossible_tasks_icd);
+  /* Initialize the array of tasks that have not been scheduled yet. */
+  utarray_new(state->pending_tasks, &pending_tasks_icd);
   return state;
 }
 
@@ -111,18 +109,18 @@ void free_global_scheduler(global_scheduler_state *state) {
     free(object_entry);
   }
   /* Free the array of unschedulable tasks. */
-  int64_t num_remaining_impossible_tasks = utarray_len(state->impossible_tasks);
-  if (num_remaining_impossible_tasks > 0) {
+  int64_t num_pending_tasks = utarray_len(state->pending_tasks);
+  if (num_pending_tasks > 0) {
     LOG_WARN("There are %" PRId64
-             " remaining tasks in the impossible tasks array.",
-             num_remaining_impossible_tasks);
+             " remaining tasks in the pending tasks array.",
+             num_pending_tasks);
   }
-  for (int i = 0; i < num_remaining_impossible_tasks; ++i) {
-    task **impossible_task =
-        (task **) utarray_eltptr(state->impossible_tasks, i);
-    free_task(*impossible_task);
+  for (int i = 0; i < num_pending_tasks; ++i) {
+    task **pending_task =
+        (task **) utarray_eltptr(state->pending_tasks, i);
+    free_task(*pending_task);
   }
-  utarray_free(state->impossible_tasks);
+  utarray_free(state->pending_tasks);
   /* Free the global scheduler state. */
   free(state);
 }
@@ -160,11 +158,11 @@ void process_task_waiting(task *waiting_task, void *user_context) {
   bool successfully_assigned =
       handle_task_waiting(state, state->policy_state, waiting_task);
   /* If the task was not successfully submitted to a local scheduler, add the
-   * task to the array of tasks that currently cannot be scheduled. The global
-   * scheduler will periodically resubmit the tasks in this array. */
+   * task to the array of pending tasks. The global scheduler will periodically
+   * resubmit the tasks in this array. */
   if (!successfully_assigned) {
     task *task_copy = copy_task(waiting_task);
-    utarray_push_back(state->impossible_tasks, &task_copy);
+    utarray_push_back(state->pending_tasks, &task_copy);
   }
 }
 
@@ -318,19 +316,19 @@ void local_scheduler_table_handler(db_client_id client_id,
 
 int task_cleanup_handler(event_loop *loop, timer_id id, void *context) {
   global_scheduler_state *state = context;
-  /* Loop over the impossible tasks and resubmit them. */
-  int64_t num_impossible_tasks = utarray_len(state->impossible_tasks);
-  for (int64_t i = num_impossible_tasks - 1; i >= 0; --i) {
-    task **impossible_task =
-        (task **) utarray_eltptr(state->impossible_tasks, i);
+  /* Loop over the pending tasks and resubmit them. */
+  int64_t num_pending_tasks = utarray_len(state->pending_tasks);
+  for (int64_t i = num_pending_tasks - 1; i >= 0; --i) {
+    task **pending_task =
+        (task **) utarray_eltptr(state->pending_tasks, i);
     /* Pretend that the task has been resubmitted. */
     bool successfully_assigned =
-        handle_task_waiting(state, state->policy_state, *impossible_task);
+        handle_task_waiting(state, state->policy_state, *pending_task);
     if (successfully_assigned) {
       /* The task was successfully assigned, so remove it from this list and
        * free it. */
-      utarray_erase(state->impossible_tasks, i, 1);
-      free(*impossible_task);
+      utarray_erase(state->pending_tasks, i, 1);
+      free(*pending_task);
     }
   }
   /* Reset the timer. */
