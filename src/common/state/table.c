@@ -3,16 +3,10 @@
 #include <inttypes.h>
 #include "redis.h"
 
-void default_table_failure_callback(object_id id,
-                                    void *user_context,
-                                    void *user_data) {
-  CHECKM(0, "default_table_failure_callback was called.");
-}
-
-static const retry_info default_retry = {
-    .num_retries = 0,
-    .timeout = 1000,
-    .fail_callback = default_table_failure_callback};
+/* The default behavior is to retry every ten seconds forever. */
+static const retry_info default_retry = {.num_retries = -1,
+                                         .timeout = 10000,
+                                         .fail_callback = NULL};
 
 table_callback_data *init_table_callback(db_handle *db_handle,
                                          unique_id id,
@@ -84,7 +78,8 @@ int64_t table_timeout_handler(event_loop *loop,
   CHECK(user_context != NULL);
   table_callback_data *callback_data = (table_callback_data *) user_context;
 
-  CHECK(callback_data->retry.num_retries >= 0)
+  CHECK(callback_data->retry.num_retries >= 0 ||
+        callback_data->retry.num_retries == -1);
   LOG_DEBUG("retrying operation, retry_count = %d",
             callback_data->retry.num_retries);
 
@@ -101,8 +96,11 @@ int64_t table_timeout_handler(event_loop *loop,
     return EVENT_LOOP_TIMER_DONE;
   }
 
-  /* Decrement retry count and try again. */
-  callback_data->retry.num_retries--;
+  /* Decrement retry count and try again. We use -1 to indicate infinite
+   * retries. */
+  if (callback_data->retry.num_retries != -1) {
+    callback_data->retry.num_retries--;
+  }
   callback_data->retry_callback(callback_data);
   return callback_data->retry.timeout;
 }

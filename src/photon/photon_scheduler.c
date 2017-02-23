@@ -423,8 +423,7 @@ void assign_task_to_worker(local_scheduler_state *state,
   worker->task_in_progress = copy_task(task);
   /* Update the global task table. */
   if (state->db != NULL) {
-    task_table_update(state->db, task, (retry_info *) &photon_retry, NULL,
-                      NULL);
+    task_table_update(state->db, task, NULL, NULL, NULL);
   } else {
     free_task(task);
   }
@@ -495,9 +494,9 @@ void reconstruct_result_lookup_callback(object_id reconstruct_object_id,
    * already being taken care of. NOTE: This codepath is not responsible for
    * detecting failure of the other reconstruction, or updating the
    * scheduling_state accordingly. */
-  task_table_test_and_update(
-      state->db, task_id, TASK_STATUS_DONE, TASK_STATUS_RECONSTRUCTING,
-      (retry_info *) &photon_retry, reconstruct_task_update_callback, state);
+  task_table_test_and_update(state->db, task_id, TASK_STATUS_DONE,
+                             TASK_STATUS_RECONSTRUCTING, NULL,
+                             reconstruct_task_update_callback, state);
 }
 
 void reconstruct_object_lookup_callback(object_id reconstruct_object_id,
@@ -511,8 +510,7 @@ void reconstruct_object_lookup_callback(object_id reconstruct_object_id,
   local_scheduler_state *state = user_context;
   if (manager_count == 0) {
     /* Look up the task that created the object in the result table. */
-    result_table_lookup(state->db, reconstruct_object_id,
-                        (retry_info *) &photon_retry,
+    result_table_lookup(state->db, reconstruct_object_id, NULL,
                         reconstruct_result_lookup_callback, (void *) state);
   }
 }
@@ -524,8 +522,7 @@ void reconstruct_object(local_scheduler_state *state,
   CHECK(state->db != NULL);
   /* Determine if reconstruction is necessary by checking if the object exists
    * on a node. */
-  object_table_lookup(state->db, reconstruct_object_id,
-                      (retry_info *) &photon_retry,
+  object_table_lookup(state->db, reconstruct_object_id, NULL,
                       reconstruct_object_lookup_callback, (void *) state);
 }
 
@@ -631,8 +628,8 @@ void process_message(event_loop *loop,
       if (state->db != NULL) {
         /* Update control state tables. */
         task_set_state(worker->task_in_progress, TASK_STATUS_DONE);
-        task_table_update(state->db, worker->task_in_progress,
-                          (retry_info *) &photon_retry, NULL, NULL);
+        task_table_update(state->db, worker->task_in_progress, NULL, NULL,
+                          NULL);
         /* The call to task_table_update takes ownership of the
          * task_in_progress, so we set the pointer to NULL so it is not used. */
       } else {
@@ -818,20 +815,15 @@ void start_server(const char *node_ip_address,
    * local scheduler by the global scheduler or by other local schedulers.
    * TODO(rkn): we also need to get any tasks that were assigned to this local
    * scheduler before the call to subscribe. */
-  retry_info retry;
-  memset(&retry, 0, sizeof(retry));
-  retry.num_retries = 0;
-  retry.timeout = 100;
-  retry.fail_callback = NULL;
   if (g_state->db != NULL) {
     task_table_subscribe(g_state->db, get_db_client_id(g_state->db),
                          TASK_STATUS_SCHEDULED, handle_task_scheduled_callback,
-                         NULL, &retry, NULL, NULL);
+                         NULL, NULL, NULL, NULL);
   }
   /* Subscribe to notifications about newly created actors. */
   if (g_state->db != NULL) {
     actor_notification_table_subscribe(
-        g_state->db, handle_actor_creation_callback, g_state, &retry);
+        g_state->db, handle_actor_creation_callback, g_state, NULL);
   }
   /* Create a timer for publishing information about the load on the local
    * scheduler to the local scheduler table. This message also serves as a

@@ -39,13 +39,10 @@ void assign_task_to_local_scheduler(global_scheduler_state *state,
             object_id_to_string(local_scheduler_id, id_string, ID_STRING_SIZE));
   task_set_state(task, TASK_STATUS_SCHEDULED);
   task_set_local_scheduler(task, local_scheduler_id);
-  retry_info retry = {
-      .num_retries = 0, .timeout = 100, .fail_callback = NULL,
-  };
   LOG_DEBUG("Issuing a task table update for task = %s",
             object_id_to_string(task_task_id(task), id_string, ID_STRING_SIZE));
   UNUSED(id_string);
-  task_table_update(state->db, copy_task(task), &retry, NULL, NULL);
+  task_table_update(state->db, copy_task(task), NULL, NULL, NULL);
 
   /* TODO(rkn): We should probably pass around local_scheduler struct pointers
    * instead of db_client_id objects. */
@@ -336,25 +333,21 @@ int task_cleanup_handler(event_loop *loop, timer_id id, void *context) {
 void start_server(const char *redis_addr, int redis_port) {
   event_loop *loop = event_loop_create();
   g_state = init_global_scheduler(loop, redis_addr, redis_port);
-  /* Generic retry information for notification subscriptions. */
-  retry_info retry = {
-      .num_retries = 0, .timeout = 100, .fail_callback = NULL,
-  };
   /* TODO(rkn): subscribe to notifications from the object table. */
   /* Subscribe to notifications about new local schedulers. TODO(rkn): this
    * needs to also get all of the clients that registered with the database
    * before this call to subscribe. */
   db_client_table_subscribe(g_state->db, process_new_db_client,
-                            (void *) g_state, &retry, NULL, NULL);
+                            (void *) g_state, NULL, NULL, NULL);
   /* Subscribe to notifications about waiting tasks. TODO(rkn): this may need to
    * get tasks that were submitted to the database before the subscribe. */
   task_table_subscribe(g_state->db, NIL_ID, TASK_STATUS_WAITING,
-                       process_task_waiting, (void *) g_state, &retry, NULL,
+                       process_task_waiting, (void *) g_state, NULL, NULL,
                        NULL);
 
   object_table_subscribe_to_notifications(g_state->db, true,
                                           object_table_subscribe_callback,
-                                          g_state, &retry, NULL, NULL);
+                                          g_state, NULL, NULL, NULL);
   /* Subscribe to notifications from local schedulers. These notifications serve
    * as heartbeats and contain informaion about the load on the local
    * schedulers. */
