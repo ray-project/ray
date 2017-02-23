@@ -581,7 +581,7 @@ void dispatch_tasks(local_scheduler_state *state,
          * then we must start a new one to replenish the worker pool. */
         start_worker(state, NIL_ACTOR_ID);
       }
-      return; /* No workers available -- terminate early. */
+      return;
     }
     /* Terminate early if there are no more resources available. */
     bool resources_available = false;
@@ -593,7 +593,8 @@ void dispatch_tasks(local_scheduler_state *state,
       }
     }
     if (!resources_available) {
-      return; /* No resources available -- terminate early. */
+      /* No resources available -- terminate early. */
+      return;
     }
     /* Skip to the next task if this task cannot currently be satisfied. */
     bool task_satisfied = true;
@@ -606,7 +607,8 @@ void dispatch_tasks(local_scheduler_state *state,
       }
     }
     if (!task_satisfied) {
-      continue; /* Proceed to the next task. */
+      /* This task could not be satisfied -- proceed to the next task. */
+      continue;
     }
 
     /* Dispatch this task to an available worker and dequeue the task. */
