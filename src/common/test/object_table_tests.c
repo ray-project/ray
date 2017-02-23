@@ -288,81 +288,10 @@ void lookup_retry_fail_callback(unique_id id,
   CHECK(0);
 }
 
-TEST lookup_retry_test(void) {
-  g_loop = event_loop_create();
-  lookup_retry_succeeded = 0;
-  db_handle *db =
-      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
-  db_attach(db, g_loop, false);
-  retry_info retry = {
-      .num_retries = 5,
-      .timeout = 100,
-      .fail_callback = lookup_retry_fail_callback,
-  };
-  object_table_lookup(db, NIL_ID, &retry, lookup_retry_done_callback,
-                      (void *) lookup_retry_context);
-  /* Disconnect the database to let the lookup time out the first time. */
-  close(db->context->c.fd);
-  /* Install handler for reconnecting the database. */
-  event_loop_add_timer(
-      g_loop, 150, (event_loop_timer_handler) reconnect_context_callback, db);
-  /* Install handler for terminating the event loop. */
-  event_loop_add_timer(g_loop, 750,
-                       (event_loop_timer_handler) terminate_event_loop_callback,
-                       NULL);
-  event_loop_run(g_loop);
-  db_disconnect(db);
-  destroy_outstanding_callbacks(g_loop);
-  event_loop_destroy(g_loop);
-  ASSERT(lookup_retry_succeeded);
-  PASS();
-}
-
 /* === Test add retry === */
 
 const char *add_retry_context = "add_retry";
 int add_retry_succeeded = 0;
-
-void add_retry_done_callback(object_id object_id, void *user_context) {
-  CHECK(user_context == (void *) add_retry_context);
-  add_retry_succeeded = 1;
-}
-
-void add_retry_fail_callback(unique_id id,
-                             void *user_context,
-                             void *user_data) {
-  /* The fail callback should not be called. */
-  LOG_FATAL("add_retry_succeded value was %d", add_retry_succeeded);
-}
-
-TEST add_retry_test(void) {
-  g_loop = event_loop_create();
-  db_handle *db =
-      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
-  db_attach(db, g_loop, false);
-  retry_info retry = {
-      .num_retries = 5,
-      .timeout = 100,
-      .fail_callback = add_retry_fail_callback,
-  };
-  object_table_add(db, NIL_ID, 0, (unsigned char *) NIL_DIGEST, &retry,
-                   add_retry_done_callback, (void *) add_retry_context);
-  /* Disconnect the database to let the add time out the first time. */
-  close(db->context->c.fd);
-  /* Install handler for reconnecting the database. */
-  event_loop_add_timer(
-      g_loop, 150, (event_loop_timer_handler) reconnect_context_callback, db);
-  /* Install handler for terminating the event loop. */
-  event_loop_add_timer(g_loop, 750,
-                       (event_loop_timer_handler) terminate_event_loop_callback,
-                       NULL);
-  event_loop_run(g_loop);
-  db_disconnect(db);
-  destroy_outstanding_callbacks(g_loop);
-  event_loop_destroy(g_loop);
-  ASSERT(add_retry_succeeded);
-  PASS();
-}
 
 /* === Test add then lookup retry === */
 
@@ -492,52 +421,6 @@ int64_t reconnect_sub_context_callback(event_loop *loop,
   /* Re-attach the database to the event loop (the file descriptor changed). */
   db_attach(db, loop, true);
   return EVENT_LOOP_TIMER_DONE;
-}
-
-void subscribe_retry_done_callback(object_id object_id,
-                                   int manager_count,
-                                   const char *manager_vector[],
-                                   void *user_context) {
-  CHECK(user_context == (void *) subscribe_retry_context);
-  subscribe_retry_succeeded = 1;
-}
-
-void subscribe_retry_fail_callback(unique_id id,
-                                   void *user_context,
-                                   void *user_data) {
-  /* The fail callback should not be called. */
-  CHECK(0);
-}
-
-TEST subscribe_retry_test(void) {
-  g_loop = event_loop_create();
-  db_handle *db =
-      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
-  db_attach(db, g_loop, false);
-  retry_info retry = {
-      .num_retries = 5,
-      .timeout = 100,
-      .fail_callback = subscribe_retry_fail_callback,
-  };
-  object_table_subscribe_to_notifications(db, false, NULL, NULL, &retry,
-                                          subscribe_retry_done_callback,
-                                          (void *) subscribe_retry_context);
-  /* Disconnect the database to let the subscribe times out the first time. */
-  close(db->sub_context->c.fd);
-  /* Install handler for reconnecting the database. */
-  event_loop_add_timer(
-      g_loop, 150, (event_loop_timer_handler) reconnect_sub_context_callback,
-      db);
-  /* Install handler for terminating the event loop. */
-  event_loop_add_timer(g_loop, 750,
-                       (event_loop_timer_handler) terminate_event_loop_callback,
-                       NULL);
-  event_loop_run(g_loop);
-  db_disconnect(db);
-  destroy_outstanding_callbacks(g_loop);
-  event_loop_destroy(g_loop);
-  ASSERT(subscribe_retry_succeeded);
-  PASS();
 }
 
 /* ==== Test if late succeed is working correctly ==== */
@@ -1005,11 +888,8 @@ SUITE(object_table_tests) {
   RUN_REDIS_TEST(lookup_timeout_test);
   RUN_REDIS_TEST(add_timeout_test);
   RUN_REDIS_TEST(subscribe_timeout_test);
-  RUN_REDIS_TEST(lookup_retry_test);
-  RUN_REDIS_TEST(add_retry_test);
   RUN_REDIS_TEST(add_lookup_test);
   RUN_REDIS_TEST(add_remove_lookup_test);
-  RUN_REDIS_TEST(subscribe_retry_test);
   RUN_REDIS_TEST(lookup_late_test);
   RUN_REDIS_TEST(add_late_test);
   RUN_REDIS_TEST(subscribe_late_test);
