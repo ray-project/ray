@@ -572,8 +572,31 @@ void dispatch_tasks(local_scheduler_state *state,
 
   /* Assign as many tasks as we can, while there are workers available. */
   DL_FOREACH_SAFE(algorithm_state->dispatch_task_queue, elt, tmp) {
-    /* TODO(atumanov): as an optimization, we can also check if all dynamic
-     * capacity is zero and bail early. */
+    /* If there is a task to assign, but there are no more available workers in
+     * the worker pool, then exit. Ensure that there will be an available
+     * worker during a future invocation of dispatch_tasks. */
+    if (utarray_len(algorithm_state->available_workers) == 0) {
+      if (utarray_len(state->child_pids) == 0) {
+        /* If there are no workers, including those pending PID registration,
+         * then we must start a new one to replenish the worker pool. */
+        start_worker(state, NIL_ACTOR_ID);
+      }
+      return;
+    }
+    /* Terminate early if there are no more resources available. */
+    bool resources_available = false;
+    for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
+      if (state->dynamic_resources[i] > 0) {
+        /* There are still resources left, continue checking tasks. */
+        resources_available = true;
+        break;
+      }
+    }
+    if (!resources_available) {
+      /* No resources available -- terminate early. */
+      return;
+    }
+    /* Skip to the next task if this task cannot currently be satisfied. */
     bool task_satisfied = true;
     for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
       if (task_spec_get_required_resource(elt->spec, i) >
@@ -584,19 +607,8 @@ void dispatch_tasks(local_scheduler_state *state,
       }
     }
     if (!task_satisfied) {
-      continue; /* Proceed to the next task. */
-    }
-
-    /* If there is a task to assign, but there are no more available workers in
-     * the worker pool, then exit. Ensure that there will be an available
-     * worker during a future invocation of dispatch_tasks. */
-    if (utarray_len(algorithm_state->available_workers) == 0) {
-      if (utarray_len(state->child_pids) == 0) {
-        /* If there are no workers, including those pending PID registration,
-         * then we must start a new one to replenish the worker pool. */
-        start_worker(state, NIL_ACTOR_ID);
-      }
-      break;
+      /* This task could not be satisfied -- proceed to the next task. */
+      continue;
     }
 
     /* Dispatch this task to an available worker and dequeue the task. */
