@@ -8,13 +8,6 @@
 #include "utarray.h"
 #include "uthash.h"
 
-/* Retry values for state table operations. For now, only try each command once
- * and give it one second to succeed. */
-/* TODO(swang): We should set retry values in a config file somewhere. */
-static const retry_info photon_retry = {.num_retries = 0,
-                                        .timeout = 1000,
-                                        .fail_callback = NULL};
-
 enum photon_message_type {
   /** Notify the local scheduler that a task has finished. */
   TASK_DONE = 64,

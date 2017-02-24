@@ -183,8 +183,7 @@ TEST object_reconstruction_test(void) {
      * that would suppress object reconstruction. */
     task *task = alloc_task(spec, TASK_STATUS_DONE,
                             get_db_client_id(photon->photon_state->db));
-    task_table_add_task(photon->photon_state->db, task,
-                        (retry_info *) &photon_retry, NULL, NULL);
+    task_table_add_task(photon->photon_state->db, task, NULL, NULL, NULL);
     /* Trigger reconstruction, and run the event loop again. */
     object_id return_id = task_return(spec, 0);
     photon_reconstruct_object(worker, return_id);
@@ -282,8 +281,7 @@ TEST object_reconstruction_recursive_test(void) {
      * condition that would suppress object reconstruction. */
     task *last_task = alloc_task(specs[NUM_TASKS - 1], TASK_STATUS_DONE,
                                  get_db_client_id(photon->photon_state->db));
-    task_table_add_task(photon->photon_state->db, last_task,
-                        (retry_info *) &photon_retry, NULL, NULL);
+    task_table_add_task(photon->photon_state->db, last_task, NULL, NULL, NULL);
     /* Trigger reconstruction for the last object, and run the event loop
      * again. */
     object_id return_id = task_return(specs[NUM_TASKS - 1], 0);
@@ -346,8 +344,7 @@ TEST object_reconstruction_suppression_test(void) {
                                2, db_connect_args);
     db_attach(db, photon->loop, false);
     /* Add the object to the object table. */
-    object_table_add(db, return_id, 1, (unsigned char *) NIL_DIGEST,
-                     (retry_info *) &photon_retry,
+    object_table_add(db, return_id, 1, (unsigned char *) NIL_DIGEST, NULL,
                      object_reconstruction_suppression_callback,
                      (void *) worker);
     /* Run the event loop. NOTE: OSX appears to require the parent process to
