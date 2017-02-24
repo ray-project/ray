@@ -211,8 +211,8 @@ def start_redis(port=None, num_retries=20, stdout_file=None, stderr_file=None,
       that imported services exits.
 
   Returns:
-    The port used by Redis. If a port is passed in, then the same value is
-      returned.
+    A tuple of the port used by Redis and a handle to the process that was
+      started. If a port is passed in, then the returned port value is the same.
 
   Raises:
     Exception: An exception is raised if Redis could not be started.
@@ -259,7 +259,7 @@ def start_redis(port=None, num_retries=20, stdout_file=None, stderr_file=None,
   redis_client.config_set("protected-mode", "no")
   # Put a time stamp in Redis to indicate when it was started.
   redis_client.set("redis_start_time", time.time())
-  return port
+  return port, p
 
 def start_global_scheduler(redis_address, stdout_file=None, stderr_file=None,
                            cleanup=True):
@@ -622,9 +622,9 @@ def start_ray_processes(address_info=None,
     redis_stdout_file, redis_stderr_file = new_log_files("redis", redirect_output)
     if redis_address is None:
       # Start a Redis server. The start_redis method will choose a random port.
-      redis_port = start_redis(stdout_file=redis_stdout_file,
-                               stderr_file=redis_stderr_file,
-                               cleanup=cleanup)
+      redis_port, _ = start_redis(stdout_file=redis_stdout_file,
+                                  stderr_file=redis_stderr_file,
+                                  cleanup=cleanup)
       redis_address = address(node_ip_address, redis_port)
       address_info["redis_address"] = redis_address
       time.sleep(0.1)
@@ -634,11 +634,11 @@ def start_ray_processes(address_info=None,
       # machine that this method is running on.
       redis_ip_address = get_ip_address(redis_address)
       redis_port = get_port(redis_address)
-      new_redis_port = start_redis(port=int(redis_port),
-                                   num_retries=1,
-                                   stdout_file=redis_stdout_file,
-                                   stderr_file=redis_stderr_file,
-                                   cleanup=cleanup)
+      new_redis_port, _ = start_redis(port=int(redis_port),
+                                      num_retries=1,
+                                      stdout_file=redis_stdout_file,
+                                      stderr_file=redis_stderr_file,
+                                      cleanup=cleanup)
       assert redis_port == new_redis_port
   else:
     if redis_address is None:
