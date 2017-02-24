@@ -68,10 +68,7 @@ void print_resource_info(const local_scheduler_state *state,
  * @return Void.
  */
 void kill_worker(local_scheduler_client *worker, bool wait) {
-  /* TODO(swang): This method should also propagate changes to other parts of
-   * the system to reflect the killed task in progress, if there was one.  This
-   * includes updating dynamic resources and updating the task table. */
-  /* Erase the worker from the array of workers. */
+  /* Erase the local scheduler's reference to the worker. */
   local_scheduler_state *state = worker->local_scheduler_state;
   int num_workers = utarray_len(state->workers);
   for (int i = 0; i < utarray_len(state->workers); ++i) {
@@ -86,6 +83,8 @@ void kill_worker(local_scheduler_client *worker, bool wait) {
          "Found duplicate workers");
   CHECKM(utarray_len(state->workers) != num_workers,
          "Tried to kill worker that doesn't exist");
+  /* Erase the algorithm state's reference to the worker. */
+  handle_worker_removed(state, state->algorithm_state, worker);
 
   /* Remove the client socket from the event loop so that we don't process the
    * SIGPIPE when the worker is killed. */
@@ -108,8 +107,12 @@ void kill_worker(local_scheduler_client *worker, bool wait) {
 
   /* Clean up the task in progress. */
   if (worker->task_in_progress) {
-    /* TODO(swang): Update the task table to mark the task as lost. */
-    free_task(worker->task_in_progress);
+    /* Return the resources that the worker was using. */
+    task_spec *spec = task_task_spec(worker->task_in_progress);
+    update_dynamic_resources(state, spec, true);
+    /* Update the task table to reflect that the task failed to complete. */
+    task_set_state(worker->task_in_progress, TASK_STATUS_LOST);
+    task_table_update(state->db, worker->task_in_progress, NULL, NULL, NULL);
   }
 
   LOG_DEBUG("Killed worker with pid %d", worker->pid);
@@ -480,21 +483,33 @@ void reconstruct_task_update_callback(task *task, void *user_context) {
   }
 }
 
-void reconstruct_result_lookup_callback(object_id reconstruct_object_id,
-                                        task_id task_id,
-                                        void *user_context) {
+void reconstruct_evicted_result_lookup_callback(object_id reconstruct_object_id,
+                                                task_id task_id,
+                                                void *user_context) {
   /* TODO(swang): The following check will fail if an object was created by a
    * put. */
   CHECKM(!IS_NIL_ID(task_id),
          "No task information found for object during reconstruction");
   local_scheduler_state *state = user_context;
-  /* Try to claim the responsibility for reconstruction by doing a test-and-set
-   * of the task's scheduling state in the global state. If the task's
-   * scheduling state is pending completion, assume that reconstruction is
-   * already being taken care of. NOTE: This codepath is not responsible for
-   * detecting failure of the other reconstruction, or updating the
-   * scheduling_state accordingly. */
-  task_table_test_and_update(state->db, task_id, TASK_STATUS_DONE,
+  /* If there are no other instances of the task running, it's safe for us to
+   * claim responsibility for reconstruction. */
+  task_table_test_and_update(state->db, task_id,
+                             (TASK_STATUS_DONE | TASK_STATUS_LOST),
+                             TASK_STATUS_RECONSTRUCTING, NULL,
+                             reconstruct_task_update_callback, state);
+}
+
+void reconstruct_failed_result_lookup_callback(object_id reconstruct_object_id,
+                                               task_id task_id,
+                                               void *user_context) {
+  /* TODO(swang): The following check will fail if an object was created by a
+   * put. */
+  CHECKM(!IS_NIL_ID(task_id),
+         "No task information found for object during reconstruction");
+  local_scheduler_state *state = user_context;
+  /* If the task failed to finish, it's safe for us to claim responsibility for
+   * reconstruction. */
+  task_table_test_and_update(state->db, task_id, TASK_STATUS_LOST,
                              TASK_STATUS_RECONSTRUCTING, NULL,
                              reconstruct_task_update_callback, state);
 }
@@ -508,10 +523,19 @@ void reconstruct_object_lookup_callback(object_id reconstruct_object_id,
    * any nodes. NOTE: This codepath is not responsible for checking if the
    * object table entry is up-to-date. */
   local_scheduler_state *state = user_context;
+  /* Look up the task that created the object in the result table. */
   if (manager_count == 0) {
-    /* Look up the task that created the object in the result table. */
+    /* If the object was created and later evicted, we reconstruct the object
+     * if and only if there are no other instances of the task running. */
     result_table_lookup(state->db, reconstruct_object_id, NULL,
-                        reconstruct_result_lookup_callback, (void *) state);
+                        reconstruct_evicted_result_lookup_callback,
+                        (void *) state);
+  } else if (manager_count == -1) {
+    /* If the object has not been created yet, we reconstruct the object if and
+     * only if the task that created the object failed to complete. */
+    result_table_lookup(state->db, reconstruct_object_id, NULL,
+                        reconstruct_failed_result_lookup_callback,
+                        (void *) state);
   }
 }
 

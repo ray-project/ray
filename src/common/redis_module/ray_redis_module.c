@@ -844,17 +844,18 @@ int TaskTableUpdate_RedisCommand(RedisModuleCtx *ctx,
 
 /**
  * Test and update an entry in the task table if the current value matches the
- * test value. This does not update the task specification in the table.
+ * test value bitmask. This does not update the task specification in the
+ * table.
  *
  * This is called from a client with the command:
  *
- *     RAY.TASK_TABLE_TEST_AND_UPDATE <task ID> <test state> <state>
+ *     RAY.TASK_TABLE_TEST_AND_UPDATE <task ID> <test state bitmask> <state>
  *         <local scheduler ID>
  *
  * @param task_id A string that is the ID of the task.
- * @param test_state A string that is the test value for the scheduling state.
- *        The update happens if and only if the current scheduling state
- *        matches this value.
+ * @param test_state_bitmask A string that is the test bitmask for the
+ *        scheduling state. The update happens if and only if the current
+ *        scheduling state AND-ed with the bitmask is greater than 0.
  * @param state A string that is the scheduling state (a scheduling_state enum
  *        instance) to update the task entry with. The string's value must be a
  *        nonnegative integer less than 100, so that it has width at most 2. If
@@ -862,7 +863,7 @@ int TaskTableUpdate_RedisCommand(RedisModuleCtx *ctx,
  *        2.
  * @param ray_client_id A string that is the ray client ID of the associated
  *        local scheduler, if any, to update the task entry with.
- * @return If the current scheduling state does not match the test value,
+ * @return If the current scheduling state does not match the test bitmask,
  *         returns nil. Else, returns the same as RAY.TASK_TABLE_GET: an array
  *         of strings representing the updated task fields in the following
  *         order: 1) (integer) scheduling state 2) (string) associated node ID,
@@ -903,16 +904,16 @@ int TaskTableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
                                       "Found invalid scheduling state (must "
                                       "be an integer of width 2");
   }
-  long long test_state_integer;
-  int status = RedisModule_StringToLongLong(argv[2], &test_state_integer);
+  long long test_state_bitmask;
+  int status = RedisModule_StringToLongLong(argv[2], &test_state_bitmask);
   if (status != REDISMODULE_OK) {
     RedisModule_CloseKey(key);
     RedisModule_FreeString(ctx, state);
     return RedisModule_ReplyWithError(
         ctx, "Invalid test value for scheduling state");
   }
-  if (current_state_integer != test_state_integer) {
-    /* The current value does not match the test value, so do not perform the
+  if ((current_state_integer & test_state_bitmask) == 0) {
+    /* The current value does not match the test bitmask, so do not perform the
      * update. */
     RedisModule_CloseKey(key);
     RedisModule_FreeString(ctx, state);

@@ -151,6 +151,18 @@ void handle_worker_available(local_scheduler_state *state,
                              local_scheduler_client *worker);
 
 /**
+ * This function is called when a worker is removed.
+ *
+ * @param state The state of the local scheduler.
+ * @param algorithm_state State maintained by the scheduling algorithm.
+ * @param worker The worker that is removed.
+ * @return Void.
+ */
+void handle_worker_removed(local_scheduler_state *state,
+                           scheduling_algorithm_state *algorithm_state,
+                           local_scheduler_client *worker);
+
+/**
  * This version of handle_worker_available is called whenever the worker that is
  * available is running an actor.
  *

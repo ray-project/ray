@@ -864,8 +864,8 @@ void redis_task_table_test_and_update(table_callback_data *callback_data) {
       db->context, redis_task_table_test_and_update_callback,
       (void *) callback_data->timer_id,
       "RAY.TASK_TABLE_TEST_AND_UPDATE %b %d %d %b", task_id.id,
-      sizeof(task_id.id), update_data->test_state, update_data->update_state,
-      update_data->local_scheduler_id.id,
+      sizeof(task_id.id), update_data->test_state_bitmask,
+      update_data->update_state, update_data->local_scheduler_id.id,
       sizeof(update_data->local_scheduler_id.id));
   if ((status == REDIS_ERR) || db->context->err) {
     LOG_REDIS_DEBUG(db->context, "error in redis_task_table_test_and_update");

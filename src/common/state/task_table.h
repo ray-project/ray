@@ -96,10 +96,11 @@ void task_table_update(db_handle *db_handle,
  *
  * @param db_handle Database handle.
  * @param task_id The task ID of the task entry to update.
- * @param test_state The value to test the current task entry's scheduling
- *        state against.
+ * @param test_state_bitmask The bitmask to apply to the task entry's current
+ *        scheduling state.  The update happens if and only if the current
+ *        scheduling state AND-ed with the bitmask is greater than 0.
  * @param update_state The value to update the task entry's scheduling state
- *        with, if the current state matches test_state.
+ *        with, if the current state matches test_state_bitmask.
  * @param retry Information about retrying the request to the database.
  * @param done_callback Function to be called when database returns result.
  * @param user_context Data that will be passed to done_callback and
@@ -108,7 +109,7 @@ void task_table_update(db_handle *db_handle,
  */
 void task_table_test_and_update(db_handle *db_handle,
                                 task_id task_id,
-                                int test_state,
+                                int test_state_bitmask,
                                 int update_state,
                                 retry_info *retry,
                                 task_table_get_callback done_callback,
@@ -116,7 +117,7 @@ void task_table_test_and_update(db_handle *db_handle,
 
 /* Data that is needed to test and set the task's scheduling state. */
 typedef struct {
-  int test_state;
+  int test_state_bitmask;
   int update_state;
   db_client_id local_scheduler_id;
 } task_table_test_and_update_data;

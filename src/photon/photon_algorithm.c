@@ -994,6 +994,50 @@ void handle_worker_available(local_scheduler_state *state,
   dispatch_tasks(state, algorithm_state);
 }
 
+void handle_worker_removed(local_scheduler_state *state,
+                           scheduling_algorithm_state *algorithm_state,
+                           local_scheduler_client *worker) {
+  /* Make sure that we remove the worker at most once. */
+  bool removed = false;
+  int64_t num_workers;
+
+  /* Remove the worker from available workers, if it's there. */
+  num_workers = utarray_len(algorithm_state->available_workers);
+  for (int64_t i = num_workers - 1; i >= 0; --i) {
+    local_scheduler_client **p = (local_scheduler_client **) utarray_eltptr(
+        algorithm_state->available_workers, i);
+    DCHECK(!((*p == worker) && removed));
+    if (*p == worker) {
+      utarray_erase(algorithm_state->available_workers, i, 1);
+      removed = true;
+    }
+  }
+
+  /* Remove the worker from executing workers, if it's there. */
+  num_workers = utarray_len(algorithm_state->executing_workers);
+  for (int64_t i = num_workers - 1; i >= 0; --i) {
+    local_scheduler_client **p = (local_scheduler_client **) utarray_eltptr(
+        algorithm_state->executing_workers, i);
+    DCHECK(!((*p == worker) && removed));
+    if (*p == worker) {
+      utarray_erase(algorithm_state->executing_workers, i, 1);
+      removed = true;
+    }
+  }
+
+  /* Remove the worker from blocked workers, if it's there. */
+  num_workers = utarray_len(algorithm_state->blocked_workers);
+  for (int64_t i = num_workers - 1; i >= 0; --i) {
+    local_scheduler_client **p = (local_scheduler_client **) utarray_eltptr(
+        algorithm_state->blocked_workers, i);
+    DCHECK(!((*p == worker) && removed));
+    if (*p == worker) {
+      utarray_erase(algorithm_state->blocked_workers, i, 1);
+      removed = true;
+    }
+  }
+}
+
 void handle_actor_worker_available(local_scheduler_state *state,
                                    scheduling_algorithm_state *algorithm_state,
                                    local_scheduler_client *worker) {
