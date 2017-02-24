@@ -18,6 +18,8 @@ import photon
 import plasma
 from plasma.utils import random_object_id, generate_metadata, write_to_data_buffer, create_object_with_id, create_object
 
+from ray import services
+
 USE_VALGRIND = False
 PLASMA_STORE_MEMORY = 1000000000
 ID_SIZE = 20
@@ -56,15 +58,9 @@ class TestGlobalScheduler(unittest.TestCase):
 
   def setUp(self):
     # Start one Redis server and N pairs of (plasma, photon)
-    redis_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../core/src/common/thirdparty/redis/src/redis-server")
-    redis_module = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../core/src/common/redis_module/libray_redis_module.so")
-    assert os.path.isfile(redis_path)
-    assert os.path.isfile(redis_module)
     node_ip_address = "127.0.0.1"
-    redis_port = new_port()
-    redis_address = "{}:{}".format(node_ip_address, redis_port)
-    self.redis_process = subprocess.Popen([redis_path, "--port", str(redis_port), "--loglevel", "warning", "--loadmodule", redis_module])
-    time.sleep(0.1)
+    redis_port, self.redis_process = services.start_redis(cleanup=False)
+    redis_address = services.address(node_ip_address, redis_port)
     # Create a Redis client.
     self.redis_client = redis.StrictRedis(host=node_ip_address, port=redis_port)
     # Start one global scheduler.
@@ -119,9 +115,12 @@ class TestGlobalScheduler(unittest.TestCase):
     else:
       self.p1.kill()
     # Kill local schedulers, plasma managers, and plasma stores.
-    map(subprocess.Popen.kill, self.local_scheduler_pids)
-    map(subprocess.Popen.kill, self.plasma_manager_pids)
-    map(subprocess.Popen.kill, self.plasma_store_pids)
+    for p2 in self.local_scheduler_pids:
+      p2.kill()
+    for p3 in self.plasma_manager_pids:
+      p3.kill()
+    for p4 in self.plasma_store_pids:
+      p4.kill()
     # Kill Redis. In the event that we are using valgrind, this needs to happen
     # after we kill the global scheduler.
     self.redis_process.kill()
@@ -177,8 +176,6 @@ class TestGlobalScheduler(unittest.TestCase):
                      2 * NUM_CLUSTER_NODES + 1)
 
     num_return_vals = [0, 1, 2, 3, 5, 10]
-    # There should not be anything else in Redis yet.
-    self.assertEqual(len(self.redis_client.keys("*")), 2 * NUM_CLUSTER_NODES + 1)
     # Insert the object into Redis.
     data_size = 0xf1f0
     metadata_size = 0x40

@@ -493,7 +493,7 @@ class TestPlasmaManager(unittest.TestCase):
     store_name1, self.p2 = plasma.start_plasma_store(use_valgrind=USE_VALGRIND)
     store_name2, self.p3 = plasma.start_plasma_store(use_valgrind=USE_VALGRIND)
     # Start a Redis server.
-    redis_address = services.address("127.0.0.1", services.start_redis())
+    redis_address = services.address("127.0.0.1", services.start_redis()[0])
     # Start two PlasmaManagers.
     manager_name1, self.p4, self.port1 = plasma.start_plasma_manager(store_name1, redis_address, use_valgrind=USE_VALGRIND)
     manager_name2, self.p5, self.port2 = plasma.start_plasma_manager(store_name2, redis_address, use_valgrind=USE_VALGRIND)
@@ -794,7 +794,7 @@ class TestPlasmaManagerRecovery(unittest.TestCase):
     # Start a Plasma store.
     self.store_name, self.p2 = plasma.start_plasma_store(use_valgrind=USE_VALGRIND)
     # Start a Redis server.
-    self.redis_address = services.address("127.0.0.1", services.start_redis())
+    self.redis_address = services.address("127.0.0.1", services.start_redis()[0])
     # Start a PlasmaManagers.
     manager_name, self.p3, self.port1 = plasma.start_plasma_manager(
         self.store_name,
