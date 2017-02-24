@@ -365,13 +365,11 @@ void add_task_to_actor_queue(local_scheduler_state *state,
     if (from_global_scheduler) {
       /* If the task is from the global scheduler, it's already been added to
        * the task table, so just update the entry. */
-      task_table_update(state->db, task, (retry_info *) &photon_retry, NULL,
-                        NULL);
+      task_table_update(state->db, task, NULL, NULL, NULL);
     } else {
       /* Otherwise, this is the first time the task has been seen in the system
        * (unless it's a resubmission of a previous task), so add the entry. */
-      task_table_add_task(state->db, task, (retry_info *) &photon_retry, NULL,
-                          NULL);
+      task_table_add_task(state->db, task, NULL, NULL, NULL);
     }
   }
 }
@@ -663,13 +661,11 @@ task_queue_entry *queue_task(local_scheduler_state *state,
     if (from_global_scheduler) {
       /* If the task is from the global scheduler, it's already been added to
        * the task table, so just update the entry. */
-      task_table_update(state->db, task, (retry_info *) &photon_retry, NULL,
-                        NULL);
+      task_table_update(state->db, task, NULL, NULL, NULL);
     } else {
       /* Otherwise, this is the first time the task has been seen in the system
        * (unless it's a resubmission of a previous task), so add the entry. */
-      task_table_add_task(state->db, task, (retry_info *) &photon_retry, NULL,
-                          NULL);
+      task_table_add_task(state->db, task, NULL, NULL, NULL);
     }
   }
 
@@ -767,8 +763,7 @@ void give_task_to_local_scheduler(local_scheduler_state *state,
   /* Assign the task to the relevant local scheduler. */
   DCHECK(state->config.global_scheduler_exists);
   task *task = alloc_task(spec, TASK_STATUS_SCHEDULED, local_scheduler_id);
-  task_table_add_task(state->db, task, (retry_info *) &photon_retry, NULL,
-                      NULL);
+  task_table_add_task(state->db, task, NULL, NULL, NULL);
 }
 
 /**
@@ -791,8 +786,7 @@ void give_task_to_global_scheduler(local_scheduler_state *state,
   DCHECK(state->config.global_scheduler_exists);
   task *task = alloc_task(spec, TASK_STATUS_WAITING, NIL_ID);
   DCHECK(state->db != NULL);
-  task_table_add_task(state->db, task, (retry_info *) &photon_retry, NULL,
-                      NULL);
+  task_table_add_task(state->db, task, NULL, NULL, NULL);
 }
 
 bool resource_constraints_satisfied(local_scheduler_state *state,
@@ -822,8 +816,7 @@ void update_result_table(local_scheduler_state *state, task_spec *spec) {
     task_id task_id = task_spec_id(spec);
     for (int64_t i = 0; i < task_num_returns(spec); ++i) {
       object_id return_id = task_return(spec, i);
-      result_table_add(state->db, return_id, task_id,
-                       (retry_info *) &photon_retry, NULL, NULL);
+      result_table_add(state->db, return_id, task_id, NULL, NULL, NULL);
     }
   }
 }

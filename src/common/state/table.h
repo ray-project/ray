@@ -29,10 +29,14 @@ typedef void (*table_fail_callback)(unique_id id,
 typedef void (*table_retry_callback)(table_callback_data *callback_data);
 
 /**
- * Data structure consolidating the retry related varaibles.
+ * Data structure consolidating the retry related variables. If a NULL
+ * retry_info struct is used, the default behavior will be to retry infinitely
+ * many times.
  */
 typedef struct {
-  /** Number of retries left. */
+  /** Number of retries. This field will be decremented every time a retry
+   *  occurs (unless the value is -1). If this value is -1, then there will be
+   *  infinitely many retries. */
   int num_retries;
   /** Timeout, in milliseconds. */
   uint64_t timeout;

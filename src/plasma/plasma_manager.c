@@ -1053,14 +1053,9 @@ void process_fetch_requests(client_connection *client_conn,
      * available. The notifications will call the callback that was passed to
      * object_table_subscribe_to_notifications, which will initiate a transfer
      * of the object to this plasma manager. */
-    retry_info retry;
-    memset(&retry, 0, sizeof(retry));
-    retry.num_retries = 0;
-    retry.timeout = MANAGER_TIMEOUT;
-    retry.fail_callback = fatal_table_callback;
     object_table_request_notifications(manager_state->db,
                                        num_object_ids_to_request,
-                                       object_ids_to_request, &retry);
+                                       object_ids_to_request, NULL);
   }
   free(object_ids_to_request);
 }
@@ -1140,14 +1135,9 @@ void process_wait_request(client_connection *client_conn,
        * become available. The notifications will call the callback that was
        * passed to object_table_subscribe_to_notifications, which will update
        * the wait request. */
-      retry_info retry;
-      memset(&retry, 0, sizeof(retry));
-      retry.num_retries = 0;
-      retry.timeout = MANAGER_TIMEOUT;
-      retry.fail_callback = fatal_table_callback;
       object_table_request_notifications(manager_state->db,
                                          num_object_ids_to_request,
-                                         object_ids_to_request, &retry);
+                                         object_ids_to_request, NULL);
     }
 
     /* Set a timer that will cause the wait request to return to the client. */
@@ -1232,13 +1222,7 @@ void process_status_request(client_connection *client_conn,
   }
 
   /* The object is not local, so check whether it is stored remotely. */
-  retry_info retry = {
-      .num_retries = NUM_RETRIES,
-      .timeout = MANAGER_TIMEOUT,
-      .fail_callback = object_table_lookup_fail_callback,
-  };
-
-  object_table_lookup(client_conn->manager_state->db, object_id, &retry,
+  object_table_lookup(client_conn->manager_state->db, object_id, NULL,
                       request_status_done, client_conn);
 }
 
@@ -1254,12 +1238,7 @@ void process_delete_object_notification(plasma_manager_state *state,
 
   /* Remove this object from the (redis) object table. */
   if (state->db) {
-    retry_info retry = {
-        .num_retries = NUM_RETRIES,
-        .timeout = MANAGER_TIMEOUT,
-        .fail_callback = fatal_table_callback,
-    };
-    object_table_remove(state->db, obj_id, NULL, &retry, NULL, NULL);
+    object_table_remove(state->db, obj_id, NULL, NULL, NULL, NULL);
   }
 
   /* NOTE: There could be pending wait requests for this object that will now
@@ -1281,14 +1260,9 @@ void process_add_object_notification(plasma_manager_state *state,
   if (state->db) {
     /* TODO(swang): Log the error if we fail to add the object, and possibly
      * retry later? */
-    retry_info retry = {
-        .num_retries = NUM_RETRIES,
-        .timeout = MANAGER_TIMEOUT,
-        .fail_callback = fatal_table_callback,
-    };
     object_table_add(state->db, obj_id,
                      object_info.data_size + object_info.metadata_size,
-                     object_info.digest, &retry, NULL, NULL);
+                     object_info.digest, NULL, NULL, NULL);
   }
 
   /* If we were trying to fetch this object, finish up the fetch request. */
