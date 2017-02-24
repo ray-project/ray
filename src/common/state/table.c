@@ -80,8 +80,8 @@ int64_t table_timeout_handler(event_loop *loop,
 
   CHECK(callback_data->retry.num_retries >= 0 ||
         callback_data->retry.num_retries == -1);
-  LOG_DEBUG("retrying operation, retry_count = %d",
-            callback_data->retry.num_retries);
+  LOG_WARN("retrying operation, retry_count = %d",
+           callback_data->retry.num_retries);
 
   if (callback_data->retry.num_retries == 0) {
     /* We didn't get a response from the database after exhausting all retries;
