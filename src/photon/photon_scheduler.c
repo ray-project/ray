@@ -93,6 +93,7 @@ void kill_worker(local_scheduler_client *worker, bool wait) {
   /* If the worker has registered a process ID with us and it's a child
    * process, use it to send a kill signal. */
   if (worker->is_child && worker->pid != 0) {
+    kill(worker->pid, SIGTERM);
     kill(worker->pid, SIGKILL);
     if (wait) {
       /* Wait for the process to exit. */
