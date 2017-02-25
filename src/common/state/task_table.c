@@ -4,7 +4,7 @@
 #define NUM_DB_REQUESTS 2
 
 void task_table_get_task(db_handle *db_handle,
-                         task_id task_id,
+                         TaskID task_id,
                          retry_info *retry,
                          task_table_get_callback done_callback,
                          void *user_context) {
@@ -31,7 +31,7 @@ void task_table_update(db_handle *db_handle,
 }
 
 void task_table_test_and_update(db_handle *db_handle,
-                                task_id task_id,
+                                TaskID task_id,
                                 int test_state_bitmask,
                                 int update_state,
                                 retry_info *retry,

@@ -38,7 +38,7 @@ UT_icd pid_t_icd;
 typedef struct {
   /** The ID of the actor. This is NIL_ACTOR_ID if the worker is not an actor.
    */
-  actor_id actor_id;
+  ActorID actor_id;
   /** The process ID of this worker. */
   pid_t worker_pid;
 } register_worker_info;
@@ -47,7 +47,7 @@ typedef struct {
  *  local scheduler that is responsible for the actor. */
 typedef struct {
   /** The ID of the actor. This is used as a key in the hash table. */
-  actor_id actor_id;
+  ActorID actor_id;
   /** The ID of the local scheduler that is responsible for the actor. */
   db_client_id local_scheduler_id;
   /** Handle fo the hash table. */
@@ -118,7 +118,7 @@ typedef struct {
   bool is_child;
   /** The ID of the actor on this worker. If there is no actor running on this
    *  worker, this should be NIL_ACTOR_ID. */
-  actor_id actor_id;
+  ActorID actor_id;
   /** A pointer to the local scheduler state. */
   local_scheduler_state *local_scheduler_state;
 } local_scheduler_client;

@@ -4,7 +4,7 @@
 #include "common/task.h"
 #include <stdlib.h>
 
-photon_conn *photon_connect(const char *photon_socket, actor_id actor_id) {
+photon_conn *photon_connect(const char *photon_socket, ActorID actor_id) {
   photon_conn *result = malloc(sizeof(photon_conn));
   result->conn = connect_ipc_sock_retry(photon_socket, -1, -1);
   register_worker_info info;

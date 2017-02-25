@@ -18,19 +18,15 @@
 #define NIL_ACTOR_ID NIL_ID
 #define NIL_FUNCTION_ID NIL_ID
 
-typedef UniqueID function_id;
+typedef UniqueID FunctionID;
 
 /** The task ID is a deterministic hash of the function ID that the task
  *  executes and the argument IDs or argument values. */
-typedef UniqueID task_id;
+typedef UniqueID TaskID;
 
 /** The actor ID is the ID of the actor that a task must run on. If the task is
  *  not run on an actor, then NIL_ACTOR_ID should be used. */
-typedef UniqueID actor_id;
-
-/** The task instance ID is a globally unique ID generated which identifies this
- *  particular execution of the task. */
-typedef UniqueID task_iid;
+typedef UniqueID ActorID;
 
 /**
  * ==== Task specifications ====
@@ -50,7 +46,7 @@ enum arg_type { ARG_BY_REF, ARG_BY_VAL };
  * @param second_id The first task ID to compare.
  * @return True if the task IDs are the same and false otherwise.
  */
-bool task_ids_equal(task_id first_id, task_id second_id);
+bool task_ids_equal(TaskID first_id, TaskID second_id);
 
 /**
  * Compare a task ID to the nil ID.
@@ -58,7 +54,7 @@ bool task_ids_equal(task_id first_id, task_id second_id);
  * @param id The task ID to compare to nil.
  * @return True if the task ID is equal to nil.
  */
-bool task_id_is_nil(task_id id);
+bool task_id_is_nil(TaskID id);
 
 /**
  * Compare two actor IDs.
@@ -67,7 +63,7 @@ bool task_id_is_nil(task_id id);
  * @param second_id The first actor ID to compare.
  * @return True if the actor IDs are the same and false otherwise.
  */
-bool actor_ids_equal(actor_id first_id, actor_id second_id);
+bool actor_ids_equal(ActorID first_id, ActorID second_id);
 
 /**
  * Compare two function IDs.
@@ -76,7 +72,7 @@ bool actor_ids_equal(actor_id first_id, actor_id second_id);
  * @param second_id The first function ID to compare.
  * @return True if the function IDs are the same and false otherwise.
  */
-bool function_ids_equal(function_id first_id, function_id second_id);
+bool function_ids_equal(FunctionID first_id, FunctionID second_id);
 
 /**
  * Compare a function ID to the nil ID.
@@ -84,7 +80,7 @@ bool function_ids_equal(function_id first_id, function_id second_id);
  * @param id The function ID to compare to nil.
  * @return True if the function ID is equal to nil.
  */
-bool function_id_is_nil(function_id id);
+bool function_id_is_nil(FunctionID id);
 
 /* Construct and modify task specifications. */
 
@@ -107,11 +103,11 @@ bool function_id_is_nil(function_id id);
  * @return The partially constructed task_spec.
  */
 task_spec *start_construct_task_spec(UniqueID driver_id,
-                                     task_id parent_task_id,
+                                     TaskID parent_task_id,
                                      int64_t parent_counter,
                                      UniqueID actor_id,
                                      int64_t actor_counter,
-                                     function_id function_id,
+                                     FunctionID function_id,
                                      int64_t num_args,
                                      int64_t num_returns,
                                      int64_t args_value_size);
@@ -140,7 +136,7 @@ int64_t task_spec_size(task_spec *spec);
  * @param spec The task_spec in question.
  * @return The function ID of the function to execute in this task.
  */
-function_id task_function(task_spec *spec);
+FunctionID task_function(task_spec *spec);
 
 /**
  * Return the actor ID of the task.
@@ -173,7 +169,7 @@ UniqueID task_spec_driver_id(task_spec *spec);
  * @param spec The task_spec in question.
  * @return The task ID of the task.
  */
-task_id task_spec_id(task_spec *spec);
+TaskID task_spec_id(task_spec *spec);
 
 /**
  * Get the number of arguments to this task.
@@ -308,7 +304,7 @@ double task_spec_get_required_resource(const task_spec *spec,
  * @param put_index The number of put calls in this task so far.
  * @return The object ID for the object that was put.
  */
-ObjectID task_compute_put_id(task_id task_id, int64_t put_index);
+ObjectID task_compute_put_id(TaskID task_id, int64_t put_index);
 
 /**
  * Free a task_spec.
@@ -396,7 +392,7 @@ void task_set_local_scheduler(task *task, db_client_id local_scheduler_id);
 task_spec *task_task_spec(task *task);
 
 /** Task ID of this task. */
-task_id task_task_id(task *task);
+TaskID task_task_id(task *task);
 
 /** Free this task datastructure. */
 void free_task(task *task);

@@ -19,7 +19,7 @@ int new_object_succeeded = 0;
 ObjectID new_object_id;
 task *new_object_task;
 task_spec *new_object_task_spec;
-task_id new_object_task_id;
+TaskID new_object_task_id;
 
 void new_object_fail_callback(UniqueID id,
                               void *user_context,
@@ -31,7 +31,7 @@ void new_object_fail_callback(UniqueID id,
 /* === Test adding an object with an associated task === */
 
 void new_object_done_callback(ObjectID object_id,
-                              task_id task_id,
+                              TaskID task_id,
                               void *user_context) {
   new_object_succeeded = 1;
   CHECK(object_ids_equal(object_id, new_object_id));
@@ -51,7 +51,7 @@ void new_object_lookup_callback(ObjectID object_id, void *user_context) {
                       NULL);
 }
 
-void new_object_task_callback(task_id task_id, void *user_context) {
+void new_object_task_callback(TaskID task_id, void *user_context) {
   retry_info retry = {
       .num_retries = 5,
       .timeout = 100,
@@ -92,7 +92,7 @@ TEST new_object_test(void) {
 /* === Test adding an object without an associated task === */
 
 void new_object_no_task_callback(ObjectID object_id,
-                                 task_id task_id,
+                                 TaskID task_id,
                                  void *user_context) {
   new_object_succeeded = 1;
   CHECK(IS_NIL_ID(task_id));

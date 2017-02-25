@@ -349,7 +349,7 @@ void redis_result_table_add(table_callback_data *callback_data) {
   CHECK(callback_data);
   db_handle *db = callback_data->db_handle;
   ObjectID id = callback_data->id;
-  task_id *result_task_id = (task_id *) callback_data->data;
+  TaskID *result_task_id = (TaskID *) callback_data->data;
   /* Add the result entry to the result table. */
   int status = redisAsyncCommand(
       db->context, redis_result_table_add_callback,
@@ -406,7 +406,7 @@ void redis_result_table_lookup_callback(redisAsyncContext *c,
          "Unexpected reply type %d in redis_result_table_lookup_callback",
          reply->type);
   /* Parse the task from the reply. */
-  task_id result_id = NIL_TASK_ID;
+  TaskID result_id = NIL_TASK_ID;
   if (reply->type == REDIS_REPLY_STRING) {
     CHECK(reply->len == sizeof(result_id));
     memcpy(&result_id, reply->str, reply->len);
@@ -753,7 +753,7 @@ void redis_task_table_get_task_callback(redisAsyncContext *c,
 void redis_task_table_get_task(table_callback_data *callback_data) {
   db_handle *db = callback_data->db_handle;
   CHECK(callback_data->data == NULL);
-  task_id task_id = callback_data->id;
+  TaskID task_id = callback_data->id;
 
   int status = redisAsyncCommand(
       db->context, redis_task_table_get_task_callback,
@@ -784,7 +784,7 @@ void redis_task_table_add_task_callback(redisAsyncContext *c,
 void redis_task_table_add_task(table_callback_data *callback_data) {
   db_handle *db = callback_data->db_handle;
   task *task = callback_data->data;
-  task_id task_id = task_task_id(task);
+  TaskID task_id = task_task_id(task);
   db_client_id local_scheduler_id = task_local_scheduler(task);
   int state = task_state(task);
   task_spec *spec = task_task_spec(task);
@@ -820,7 +820,7 @@ void redis_task_table_update_callback(redisAsyncContext *c,
 void redis_task_table_update(table_callback_data *callback_data) {
   db_handle *db = callback_data->db_handle;
   task *task = callback_data->data;
-  task_id task_id = task_task_id(task);
+  TaskID task_id = task_task_id(task);
   db_client_id local_scheduler_id = task_local_scheduler(task);
   int state = task_state(task);
 
@@ -857,7 +857,7 @@ void redis_task_table_test_and_update_callback(redisAsyncContext *c,
 
 void redis_task_table_test_and_update(table_callback_data *callback_data) {
   db_handle *db = callback_data->db_handle;
-  task_id task_id = callback_data->id;
+  TaskID task_id = callback_data->id;
   task_table_test_and_update_data *update_data = callback_data->data;
 
   int status = redisAsyncCommand(
@@ -877,7 +877,7 @@ void redis_task_table_test_and_update(table_callback_data *callback_data) {
  * Make this code nicer. */
 void parse_task_table_subscribe_callback(char *payload,
                                          int length,
-                                         task_id *task_id,
+                                         TaskID *task_id,
                                          int *state,
                                          db_client_id *local_scheduler_id,
                                          task_spec **spec) {
@@ -933,7 +933,7 @@ void redis_task_table_subscribe_callback(redisAsyncContext *c,
     /* Handle a task table event. Parse the payload and call the callback. */
     task_table_subscribe_data *data = callback_data->data;
     /* Read out the information from the payload. */
-    task_id task_id;
+    TaskID task_id;
     int state;
     db_client_id local_scheduler_id;
     task_spec *spec;

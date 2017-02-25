@@ -13,7 +13,7 @@
 
 /* Declared for convenience. */
 void remove_actor(scheduling_algorithm_state *algorithm_state,
-                  actor_id actor_id);
+                  ActorID actor_id);
 
 typedef struct task_queue_entry {
   /** The task that is queued. */
@@ -48,7 +48,7 @@ UT_icd worker_icd = {sizeof(local_scheduler_client *), NULL, NULL, NULL};
  *  used inside of a hash table. */
 typedef struct {
   /** The ID of the actor. This is used as a key in the hash table. */
-  actor_id actor_id;
+  ActorID actor_id;
   /** The number of tasks that have been executed on this actor so far. This is
    *  used to guarantee the in-order execution of tasks on actors (in the order
    *  that the tasks were submitted). This is currently meaningful because we
@@ -218,7 +218,7 @@ void provide_scheduler_info(local_scheduler_state *state,
  * @return Void.
  */
 void create_actor(scheduling_algorithm_state *algorithm_state,
-                  actor_id actor_id,
+                  ActorID actor_id,
                   local_scheduler_client *worker) {
   /* This will be freed when the actor is removed in remove_actor. */
   local_actor_info *entry = malloc(sizeof(local_actor_info));
@@ -239,7 +239,7 @@ void create_actor(scheduling_algorithm_state *algorithm_state,
 }
 
 void remove_actor(scheduling_algorithm_state *algorithm_state,
-                  actor_id actor_id) {
+                  ActorID actor_id) {
   local_actor_info *entry;
   HASH_FIND(hh, algorithm_state->local_actor_infos, &actor_id, sizeof(actor_id),
             entry);
@@ -271,7 +271,7 @@ void remove_actor(scheduling_algorithm_state *algorithm_state,
 
 void handle_actor_worker_connect(local_scheduler_state *state,
                                  scheduling_algorithm_state *algorithm_state,
-                                 actor_id actor_id,
+                                 ActorID actor_id,
                                  local_scheduler_client *worker) {
   local_actor_info *entry;
   HASH_FIND(hh, algorithm_state->local_actor_infos, &actor_id, sizeof(actor_id),
@@ -288,7 +288,7 @@ void handle_actor_worker_connect(local_scheduler_state *state,
 
 void handle_actor_worker_disconnect(local_scheduler_state *state,
                                     scheduling_algorithm_state *algorithm_state,
-                                    actor_id actor_id) {
+                                    ActorID actor_id) {
   remove_actor(algorithm_state, actor_id);
 }
 
@@ -314,7 +314,7 @@ void add_task_to_actor_queue(local_scheduler_state *state,
                              scheduling_algorithm_state *algorithm_state,
                              task_spec *spec,
                              bool from_global_scheduler) {
-  actor_id actor_id = task_spec_actor_id(spec);
+  ActorID actor_id = task_spec_actor_id(spec);
   char tmp[ID_STRING_SIZE];
   object_id_to_string(actor_id, tmp, ID_STRING_SIZE);
   DCHECK(!actor_ids_equal(actor_id, NIL_ACTOR_ID));
@@ -384,7 +384,7 @@ void add_task_to_actor_queue(local_scheduler_state *state,
  */
 bool dispatch_actor_task(local_scheduler_state *state,
                          scheduling_algorithm_state *algorithm_state,
-                         actor_id actor_id) {
+                         ActorID actor_id) {
   /* Make sure this worker actually is an actor. */
   CHECK(!actor_ids_equal(actor_id, NIL_ACTOR_ID));
   /* Make sure this actor belongs to this local scheduler. */
@@ -830,7 +830,7 @@ void handle_task_submitted(local_scheduler_state *state,
 void handle_actor_task_submitted(local_scheduler_state *state,
                                  scheduling_algorithm_state *algorithm_state,
                                  task_spec *spec) {
-  actor_id actor_id = task_spec_actor_id(spec);
+  ActorID actor_id = task_spec_actor_id(spec);
   CHECK(!actor_ids_equal(actor_id, NIL_ACTOR_ID));
 
   /* Find the local scheduler responsible for this actor. */
@@ -864,7 +864,7 @@ void handle_actor_task_submitted(local_scheduler_state *state,
 void handle_actor_creation_notification(
     local_scheduler_state *state,
     scheduling_algorithm_state *algorithm_state,
-    actor_id actor_id) {
+    ActorID actor_id) {
   int num_cached_actor_tasks =
       utarray_len(algorithm_state->cached_submitted_actor_tasks);
   for (int i = 0; i < num_cached_actor_tasks; ++i) {
@@ -903,7 +903,7 @@ void handle_actor_task_scheduled(local_scheduler_state *state,
   DCHECK(state->config.global_scheduler_exists);
   /* Check that the task is meant to run on an actor that this local scheduler
    * is responsible for. */
-  actor_id actor_id = task_spec_actor_id(spec);
+  ActorID actor_id = task_spec_actor_id(spec);
   DCHECK(!actor_ids_equal(actor_id, NIL_ACTOR_ID));
   actor_map_entry *entry;
   HASH_FIND(hh, state->actor_mapping, &actor_id, sizeof(actor_id), entry);
@@ -1015,7 +1015,7 @@ void handle_worker_removed(local_scheduler_state *state,
 void handle_actor_worker_available(local_scheduler_state *state,
                                    scheduling_algorithm_state *algorithm_state,
                                    local_scheduler_client *worker) {
-  actor_id actor_id = worker->actor_id;
+  ActorID actor_id = worker->actor_id;
   CHECK(!actor_ids_equal(actor_id, NIL_ACTOR_ID));
   /* Get the actor info for this worker. */
   local_actor_info *entry;

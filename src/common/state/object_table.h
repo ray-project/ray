@@ -229,14 +229,14 @@ typedef void (*result_table_done_callback)(ObjectID object_id,
  */
 void result_table_add(db_handle *db_handle,
                       ObjectID object_id,
-                      task_id task_id,
+                      TaskID task_id,
                       retry_info *retry,
                       result_table_done_callback done_callback,
                       void *user_context);
 
 /** Callback called when the result table lookup completes. */
 typedef void (*result_table_lookup_callback)(ObjectID object_id,
-                                             task_id task_id,
+                                             TaskID task_id,
                                              void *user_context);
 
 /**

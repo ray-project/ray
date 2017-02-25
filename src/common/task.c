@@ -38,19 +38,19 @@ struct task_spec_impl {
   /** ID of the driver that created this task. */
   UniqueID driver_id;
   /** Task ID of the task. */
-  task_id task_id;
+  TaskID task_id;
   /** Task ID of the parent task. */
-  task_id parent_task_id;
+  TaskID parent_task_id;
   /** A count of the number of tasks submitted by the parent task before this
    *  one. */
   int64_t parent_counter;
   /** Actor ID of the task. This is the actor that this task is executed on
    *  or NIL_ACTOR_ID if the task is just a normal task. */
-  actor_id actor_id;
+  ActorID actor_id;
   /** Number of tasks that have been submitted to this actor so far. */
   int64_t actor_counter;
   /** Function ID of the task. */
-  function_id function_id;
+  FunctionID function_id;
   /** Total number of arguments. */
   int64_t num_args;
   /** Index of the last argument that has been constructed. */
@@ -78,27 +78,27 @@ struct task_spec_impl {
   (sizeof(task_spec) + ((NUM_ARGS) + (NUM_RETURNS)) * sizeof(task_arg) + \
    (ARGS_VALUE_SIZE))
 
-bool task_ids_equal(task_id first_id, task_id second_id) {
+bool task_ids_equal(TaskID first_id, TaskID second_id) {
   return UNIQUE_ID_EQ(first_id, second_id);
 }
 
-bool task_id_is_nil(task_id id) {
+bool task_id_is_nil(TaskID id) {
   return task_ids_equal(id, NIL_TASK_ID);
 }
 
-bool actor_ids_equal(actor_id first_id, actor_id second_id) {
+bool actor_ids_equal(ActorID first_id, ActorID second_id) {
   return UNIQUE_ID_EQ(first_id, second_id);
 }
 
-bool function_ids_equal(function_id first_id, function_id second_id) {
+bool function_ids_equal(FunctionID first_id, FunctionID second_id) {
   return UNIQUE_ID_EQ(first_id, second_id);
 }
 
-bool function_id_is_nil(function_id id) {
+bool function_id_is_nil(FunctionID id) {
   return function_ids_equal(id, NIL_FUNCTION_ID);
 }
 
-task_id *task_return_ptr(task_spec *spec, int64_t return_index) {
+TaskID *task_return_ptr(task_spec *spec, int64_t return_index) {
   DCHECK(0 <= return_index && return_index < spec->num_returns);
   task_arg *ret = &spec->args_and_returns[spec->num_args + return_index];
   DCHECK(ret->type == ARG_BY_REF);
@@ -109,7 +109,7 @@ task_id *task_return_ptr(task_spec *spec, int64_t return_index) {
  * and that the return IDs have not been set. It assumes the task_spec was
  * zero-initialized so that uninitialized fields will not make the task ID
  * nondeterministic. */
-task_id compute_task_id(task_spec *spec) {
+TaskID compute_task_id(task_spec *spec) {
   /* Check that the task ID and return ID fields of the task_spec are
    * uninitialized. */
   DCHECK(task_ids_equal(spec->task_id, NIL_TASK_ID));
@@ -123,13 +123,13 @@ task_id compute_task_id(task_spec *spec) {
   sha256_update(&ctx, (BYTE *) spec, task_spec_size(spec));
   sha256_final(&ctx, buff);
   /* Create a task ID out of the hash. This will truncate the hash. */
-  task_id task_id;
+  TaskID task_id;
   CHECK(sizeof(task_id) <= DIGEST_SIZE);
   memcpy(&task_id.id, buff, sizeof(task_id.id));
   return task_id;
 }
 
-ObjectID task_compute_return_id(task_id task_id, int64_t return_index) {
+ObjectID task_compute_return_id(TaskID task_id, int64_t return_index) {
   /* Here, return_indices need to be >= 0, so we can use negative
    * indices for put. */
   DCHECK(return_index >= 0);
@@ -142,7 +142,7 @@ ObjectID task_compute_return_id(task_id task_id, int64_t return_index) {
   return return_id;
 }
 
-ObjectID task_compute_put_id(task_id task_id, int64_t put_index) {
+ObjectID task_compute_put_id(TaskID task_id, int64_t put_index) {
   DCHECK(put_index >= 0);
   /* TODO(pcm): This line requires object and task IDs to be the same size. */
   ObjectID put_id = task_id;
@@ -154,11 +154,11 @@ ObjectID task_compute_put_id(task_id task_id, int64_t put_index) {
 }
 
 task_spec *start_construct_task_spec(UniqueID driver_id,
-                                     task_id parent_task_id,
+                                     TaskID parent_task_id,
                                      int64_t parent_counter,
-                                     actor_id actor_id,
+                                     ActorID actor_id,
                                      int64_t actor_counter,
-                                     function_id function_id,
+                                     FunctionID function_id,
                                      int64_t num_args,
                                      int64_t num_returns,
                                      int64_t args_value_size) {
@@ -197,13 +197,13 @@ int64_t task_spec_size(task_spec *spec) {
                         spec->args_value_size);
 }
 
-function_id task_function(task_spec *spec) {
+FunctionID task_function(task_spec *spec) {
   /* Check that the task has been constructed. */
   DCHECK(!task_ids_equal(spec->task_id, NIL_TASK_ID));
   return spec->function_id;
 }
 
-actor_id task_spec_actor_id(task_spec *spec) {
+ActorID task_spec_actor_id(task_spec *spec) {
   /* Check that the task has been constructed. */
   DCHECK(!task_ids_equal(spec->task_id, NIL_TASK_ID));
   return spec->actor_id;
@@ -221,7 +221,7 @@ UniqueID task_spec_driver_id(task_spec *spec) {
   return spec->driver_id;
 }
 
-task_id task_spec_id(task_spec *spec) {
+TaskID task_spec_id(task_spec *spec) {
   /* Check that the task has been constructed. */
   DCHECK(!task_ids_equal(spec->task_id, NIL_TASK_ID));
   return spec->task_id;
@@ -391,7 +391,7 @@ task_spec *task_task_spec(task *task) {
   return &task->spec;
 }
 
-task_id task_task_id(task *task) {
+TaskID task_task_id(task *task) {
   task_spec *spec = task_task_spec(task);
   return task_spec_id(spec);
 }

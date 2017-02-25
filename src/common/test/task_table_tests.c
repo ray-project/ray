@@ -17,7 +17,7 @@ event_loop *g_loop;
 
 /* === A lookup of a task not in the table === */
 
-task_id lookup_nil_id;
+TaskID lookup_nil_id;
 int lookup_nil_success = 0;
 const char *lookup_nil_context = "lookup_nil";
 
@@ -77,7 +77,7 @@ void lookup_success_callback(task *task, void *context) {
   event_loop_stop(g_loop);
 }
 
-void add_success_callback(task_id task_id, void *context) {
+void add_success_callback(TaskID task_id, void *context) {
   add_success = 1;
   CHECK(task_ids_equal(task_id, task_task_id(add_lookup_task)));
 
@@ -121,7 +121,7 @@ TEST add_lookup_test(void) {
 const char *subscribe_timeout_context = "subscribe_timeout";
 int subscribe_failed = 0;
 
-void subscribe_done_callback(task_id task_id, void *user_context) {
+void subscribe_done_callback(TaskID task_id, void *user_context) {
   /* The done callback should not be called. */
   CHECK(0);
 }
@@ -164,7 +164,7 @@ const char *publish_timeout_context = "publish_timeout";
 const int publish_test_number = 272;
 int publish_failed = 0;
 
-void publish_done_callback(task_id task_id, void *user_context) {
+void publish_done_callback(TaskID task_id, void *user_context) {
   /* The done callback should not be called. */
   CHECK(0);
 }
@@ -328,7 +328,7 @@ void subscribe_late_fail_callback(UniqueID id,
   subscribe_late_failed = 1;
 }
 
-void subscribe_late_done_callback(task_id task_id, void *user_context) {
+void subscribe_late_done_callback(TaskID task_id, void *user_context) {
   /* This function should never be called. */
   CHECK(0);
 }
@@ -373,7 +373,7 @@ void publish_late_fail_callback(UniqueID id,
   publish_late_failed = 1;
 }
 
-void publish_late_done_callback(task_id task_id, void *user_context) {
+void publish_late_done_callback(TaskID task_id, void *user_context) {
   /* This function should never be called. */
   CHECK(0);
 }

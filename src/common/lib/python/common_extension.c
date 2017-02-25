@@ -270,7 +270,7 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   /* How many tasks have been launched on the actor so far? */
   int actor_counter = 0;
   /* ID of the function this task executes. */
-  function_id function_id;
+  FunctionID function_id;
   /* Arguments of the task (can be PyObjectIDs or Python values). */
   PyObject *arguments;
   /* Array of pointers to string representations of pass-by-value args. */
@@ -278,7 +278,7 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   utarray_new(val_repr_ptrs, &ut_ptr_icd);
   int num_returns;
   /* The ID of the task that called this task. */
-  task_id parent_task_id;
+  TaskID parent_task_id;
   /* The number of tasks that the parent task has called prior to this one. */
   int parent_counter;
   /* Resource vector of the required resources to execute this task. */
@@ -353,12 +353,12 @@ static void PyTask_dealloc(PyTask *self) {
 }
 
 static PyObject *PyTask_function_id(PyObject *self) {
-  function_id function_id = task_function(((PyTask *) self)->spec);
+  FunctionID function_id = task_function(((PyTask *) self)->spec);
   return PyObjectID_make(function_id);
 }
 
 static PyObject *PyTask_actor_id(PyObject *self) {
-  actor_id actor_id = task_spec_actor_id(((PyTask *) self)->spec);
+  ActorID actor_id = task_spec_actor_id(((PyTask *) self)->spec);
   return PyObjectID_make(actor_id);
 }
 
@@ -368,7 +368,7 @@ static PyObject *PyTask_driver_id(PyObject *self) {
 }
 
 static PyObject *PyTask_task_id(PyObject *self) {
-  task_id task_id = task_spec_id(((PyTask *) self)->spec);
+  TaskID task_id = task_spec_id(((PyTask *) self)->spec);
   return PyObjectID_make(task_id);
 }
 
@@ -423,7 +423,7 @@ static PyMethodDef PyTask_methods[] = {
      "Return the actor ID for this task."},
     {"driver_id", (PyCFunction) PyTask_driver_id, METH_NOARGS,
      "Return the driver ID for this task."},
-    {"task_id", (PyCFunction) PyTask_task_id, METH_NOARGS,
+    {"TaskID", (PyCFunction) PyTask_task_id, METH_NOARGS,
      "Return the task ID for this task."},
     {"arguments", (PyCFunction) PyTask_arguments, METH_NOARGS,
      "Return the arguments for the task."},
@@ -569,7 +569,7 @@ PyObject *check_simple_value(PyObject *self, PyObject *args) {
 
 PyObject *compute_put_id(PyObject *self, PyObject *args) {
   int put_index;
-  task_id task_id;
+  TaskID task_id;
   if (!PyArg_ParseTuple(args, "O&i", &PyObjectToUniqueID, &task_id,
                         &put_index)) {
     return NULL;

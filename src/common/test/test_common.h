@@ -19,8 +19,8 @@ const int64_t arg_value_size = 1000;
 static inline task_spec *example_task_spec_with_args(int64_t num_args,
                                                      int64_t num_returns,
                                                      ObjectID arg_ids[]) {
-  task_id parent_task_id = globally_unique_id();
-  function_id func_id = globally_unique_id();
+  TaskID parent_task_id = globally_unique_id();
+  FunctionID func_id = globally_unique_id();
   task_spec *task =
       start_construct_task_spec(NIL_ID, parent_task_id, 0, NIL_ACTOR_ID, 0,
                                 func_id, num_args, num_returns, arg_value_size);

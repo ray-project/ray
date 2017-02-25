@@ -12,8 +12,8 @@
 SUITE(task_tests);
 
 TEST task_test(void) {
-  task_id parent_task_id = globally_unique_id();
-  function_id func_id = globally_unique_id();
+  TaskID parent_task_id = globally_unique_id();
+  FunctionID func_id = globally_unique_id();
   task_spec *spec = start_construct_task_spec(
       NIL_ID, parent_task_id, 0, NIL_ACTOR_ID, 0, func_id, 4, 2, 10);
   ASSERT(task_num_args(spec) == 4);
@@ -46,8 +46,8 @@ TEST task_test(void) {
 
 TEST deterministic_ids_test(void) {
   /* Define the inputs to the task construction. */
-  task_id parent_task_id = globally_unique_id();
-  function_id func_id = globally_unique_id();
+  TaskID parent_task_id = globally_unique_id();
+  FunctionID func_id = globally_unique_id();
   UniqueID arg1 = globally_unique_id();
   uint8_t *arg2 = (uint8_t *) "hello world";
 
@@ -147,8 +147,8 @@ TEST deterministic_ids_test(void) {
 }
 
 TEST send_task(void) {
-  task_id parent_task_id = globally_unique_id();
-  function_id func_id = globally_unique_id();
+  TaskID parent_task_id = globally_unique_id();
+  FunctionID func_id = globally_unique_id();
   task_spec *spec = start_construct_task_spec(
       NIL_ID, parent_task_id, 0, NIL_ACTOR_ID, 0, func_id, 4, 2, 10);
   task_args_add_ref(spec, globally_unique_id());

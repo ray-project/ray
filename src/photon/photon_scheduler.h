@@ -91,7 +91,7 @@ void kill_worker(local_scheduler_client *worker, bool wait);
  *        actor, then NIL_ACTOR_ID should be used.
  * @param Void.
  */
-void start_worker(local_scheduler_state *state, actor_id actor_id);
+void start_worker(local_scheduler_state *state, ActorID actor_id);
 
 /**
  * Update our accounting for the current resources being used, according to

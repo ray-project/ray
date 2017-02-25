@@ -18,7 +18,7 @@ typedef struct {
  *        running on this actor, this should be NIL_ACTOR_ID.
  * @return The connection information.
  */
-photon_conn *photon_connect(const char *photon_socket, actor_id actor_id);
+photon_conn *photon_connect(const char *photon_socket, ActorID actor_id);
 
 /**
  * Disconnect from the local scheduler.

@@ -17,7 +17,7 @@ static int PyPhotonClient_init(PyPhotonClient *self,
                                PyObject *args,
                                PyObject *kwds) {
   char *socket_name;
-  actor_id actor_id;
+  ActorID actor_id;
   if (!PyArg_ParseTuple(args, "sO&", &socket_name, PyStringToUniqueID,
                         &actor_id)) {
     return -1;

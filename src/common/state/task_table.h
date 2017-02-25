@@ -22,7 +22,7 @@
  */
 
 /* Callback called when a task table write operation completes. */
-typedef void (*task_table_done_callback)(task_id task_id, void *user_context);
+typedef void (*task_table_done_callback)(TaskID task_id, void *user_context);
 
 /* Callback called when a task table read operation completes. If the task ID
  * was not in the task table, then the task pointer will be NULL. */
@@ -40,7 +40,7 @@ typedef void (*task_table_get_callback)(task *task, void *user_context);
  * @return Void.
  */
 void task_table_get_task(db_handle *db,
-                         task_id task_id,
+                         TaskID task_id,
                          retry_info *retry,
                          task_table_get_callback done_callback,
                          void *user_context);
@@ -108,7 +108,7 @@ void task_table_update(db_handle *db_handle,
  * @return Void.
  */
 void task_table_test_and_update(db_handle *db_handle,
-                                task_id task_id,
+                                TaskID task_id,
                                 int test_state_bitmask,
                                 int update_state,
                                 retry_info *retry,

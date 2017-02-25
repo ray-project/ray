@@ -87,7 +87,7 @@ void handle_actor_task_submitted(local_scheduler_state *state,
 void handle_actor_creation_notification(
     local_scheduler_state *state,
     scheduling_algorithm_state *algorithm_state,
-    actor_id actor_id);
+    ActorID actor_id);
 
 /**
  * This function will be called when a task is assigned by the global scheduler
@@ -186,7 +186,7 @@ void handle_actor_worker_available(local_scheduler_state *state,
  */
 void handle_actor_worker_connect(local_scheduler_state *state,
                                  scheduling_algorithm_state *algorithm_state,
-                                 actor_id actor_id,
+                                 ActorID actor_id,
                                  local_scheduler_client *worker);
 
 /**
@@ -199,7 +199,7 @@ void handle_actor_worker_connect(local_scheduler_state *state,
  */
 void handle_actor_worker_disconnect(local_scheduler_state *state,
                                     scheduling_algorithm_state *algorithm_state,
-                                    actor_id actor_id);
+                                    ActorID actor_id);
 
 /**
  * This function is called when a worker that was executing a task becomes
