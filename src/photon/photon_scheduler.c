@@ -639,7 +639,7 @@ void process_message(event_loop *loop,
     offset += value_length;
     CHECK(offset == length);
     if (state->db != NULL) {
-      ray_log_event(state->db, key, key_length, value, value_length);
+      RayLogger_log_event(state->db, key, key_length, value, value_length);
     }
     free(key);
     free(value);

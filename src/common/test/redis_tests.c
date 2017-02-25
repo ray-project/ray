@@ -185,8 +185,8 @@ TEST logging_test(void) {
   int client_fd = connect_ipc_sock(socket_pathname);
   ASSERT(client_fd >= 0);
   utarray_push_back(connections, &client_fd);
-  ray_logger *logger = init_ray_logger("worker", RAY_INFO, 0, &client_fd);
-  ray_log(logger, RAY_INFO, "TEST", "Message");
+  RayLogger *logger = RayLogger_init("worker", RAY_INFO, 0, &client_fd);
+  RayLogger_log(logger, RAY_INFO, "TEST", "Message");
 
   event_loop_add_file(loop, socket_fd, EVENT_LOOP_READ, logging_accept_callback,
                       conn);
@@ -197,7 +197,7 @@ TEST logging_test(void) {
 
   ASSERT(logging_test_callback_called);
 
-  free_ray_logger(logger);
+  RayLogger_free(logger);
   db_disconnect(conn);
   event_loop_destroy(loop);
   for (int *p = (int *) utarray_front(connections); p != NULL;
