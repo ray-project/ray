@@ -105,7 +105,7 @@ void remove_object_from_lru_cache(eviction_state *eviction_state,
 }
 
 int64_t choose_objects_to_evict(eviction_state *eviction_state,
-                                plasma_store_info *plasma_store_info,
+                                PlasmaStoreInfo *plasma_store_info,
                                 int64_t num_bytes_required,
                                 int64_t *num_objects_to_evict,
                                 ObjectID **objects_to_evict) {
@@ -149,13 +149,13 @@ int64_t choose_objects_to_evict(eviction_state *eviction_state,
 }
 
 void object_created(eviction_state *eviction_state,
-                    plasma_store_info *plasma_store_info,
+                    PlasmaStoreInfo *plasma_store_info,
                     ObjectID obj_id) {
   add_object_to_lru_cache(eviction_state, obj_id);
 }
 
 bool require_space(eviction_state *eviction_state,
-                   plasma_store_info *plasma_store_info,
+                   PlasmaStoreInfo *plasma_store_info,
                    int64_t size,
                    int64_t *num_objects_to_evict,
                    ObjectID **objects_to_evict) {
@@ -190,7 +190,7 @@ bool require_space(eviction_state *eviction_state,
 }
 
 void begin_object_access(eviction_state *eviction_state,
-                         plasma_store_info *plasma_store_info,
+                         PlasmaStoreInfo *plasma_store_info,
                          ObjectID obj_id,
                          int64_t *num_objects_to_evict,
                          ObjectID **objects_to_evict) {
@@ -201,7 +201,7 @@ void begin_object_access(eviction_state *eviction_state,
 }
 
 void end_object_access(eviction_state *eviction_state,
-                       plasma_store_info *plasma_store_info,
+                       PlasmaStoreInfo *plasma_store_info,
                        ObjectID obj_id,
                        int64_t *num_objects_to_evict,
                        ObjectID **objects_to_evict) {

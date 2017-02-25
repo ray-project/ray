@@ -42,7 +42,7 @@ void free_eviction_state(eviction_state *state);
  * @return Void.
  */
 void object_created(eviction_state *eviction_state,
-                    plasma_store_info *plasma_store_info,
+                    PlasmaStoreInfo *plasma_store_info,
                     ObjectID obj_id);
 
 /**
@@ -66,7 +66,7 @@ void object_created(eviction_state *eviction_state,
  * @return True if enough space can be freed and false otherwise.
  */
 bool require_space(eviction_state *eviction_state,
-                   plasma_store_info *plasma_store_info,
+                   PlasmaStoreInfo *plasma_store_info,
                    int64_t size,
                    int64_t *num_objects_to_evict,
                    ObjectID **objects_to_evict);
@@ -90,7 +90,7 @@ bool require_space(eviction_state *eviction_state,
  * @return Void.
  */
 void begin_object_access(eviction_state *eviction_state,
-                         plasma_store_info *plasma_store_info,
+                         PlasmaStoreInfo *plasma_store_info,
                          ObjectID obj_id,
                          int64_t *num_objects_to_evict,
                          ObjectID **objects_to_evict);
@@ -114,7 +114,7 @@ void begin_object_access(eviction_state *eviction_state,
  * @return Void.
  */
 void end_object_access(eviction_state *eviction_state,
-                       plasma_store_info *plasma_store_info,
+                       PlasmaStoreInfo *plasma_store_info,
                        ObjectID obj_id,
                        int64_t *num_objects_to_evict,
                        ObjectID **objects_to_evict);
@@ -140,7 +140,7 @@ void end_object_access(eviction_state *eviction_state,
  * @return The total number of bytes of space chosen to be evicted.
  */
 int64_t choose_objects_to_evict(eviction_state *eviction_state,
-                                plasma_store_info *plasma_store_info,
+                                PlasmaStoreInfo *plasma_store_info,
                                 int64_t num_bytes_required,
                                 int64_t *num_objects_to_evict,
                                 ObjectID **objects_to_evict);

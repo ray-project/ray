@@ -115,25 +115,7 @@ typedef struct {
   /** The amount of memory (in bytes) that we allow to be allocated in the
    *  store. */
   int64_t memory_capacity;
-} plasma_store_info;
-
-typedef struct {
-  /** The ID of the object. */
-  ObjectID obj_id;
-  /** The size of the object. */
-  int64_t object_size;
-  /** The digest of the object used, used to see if two objects are the same. */
-  unsigned char digest[DIGEST_SIZE];
-} object_id_notification;
-
-/**
- * Check if a collection of object IDs contains any duplicates.
- *
- * @param num_object_ids The number of object IDs.
- * @param object_ids[] The list of object IDs to check.
- * @return True if the object IDs are all distinct and false otherwise.
- */
-bool plasma_object_ids_distinct(int num_object_ids, ObjectID object_ids[]);
+} PlasmaStoreInfo;
 
 /**
  * Print a warning if the status is less than zero. This should be used to check

@@ -112,7 +112,7 @@ struct plasma_store_state {
   notification_queue *pending_notifications;
   /** The plasma store information, including the object tables, that is exposed
    *  to the eviction policy. */
-  plasma_store_info *plasma_store_info;
+  PlasmaStoreInfo *plasma_store_info;
   /** The state that is managed by the eviction policy. */
   eviction_state *eviction_state;
   /** Input buffer. This is allocated only once to avoid mallocs for every
@@ -130,7 +130,7 @@ plasma_store_state *init_plasma_store(event_loop *loop, int64_t system_memory) {
   state->object_get_requests = NULL;
   state->pending_notifications = NULL;
   /* Initialize the plasma store info. */
-  state->plasma_store_info = malloc(sizeof(plasma_store_info));
+  state->plasma_store_info = malloc(sizeof(PlasmaStoreInfo));
   state->plasma_store_info->objects = NULL;
   state->plasma_store_info->memory_capacity = system_memory;
   /* Initialize the eviction state. */
