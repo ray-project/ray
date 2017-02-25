@@ -25,7 +25,7 @@ typedef struct plasma_store_state plasma_store_state;
  *           plasma_release.
  */
 int create_object(client *client_context,
-                  object_id object_id,
+                  ObjectID object_id,
                   int64_t data_size,
                   int64_t metadata_size,
                   plasma_object *result);
@@ -45,7 +45,7 @@ int create_object(client *client_context,
  */
 int get_object(client *client_context,
                int conn,
-               object_id object_id,
+               ObjectID object_id,
                plasma_object *result);
 
 /**
@@ -63,7 +63,7 @@ int get_object(client *client_context,
  */
 int get_object_local(client *client_context,
                      int conn,
-                     object_id object_id,
+                     ObjectID object_id,
                      plasma_object *result);
 
 /**
@@ -73,7 +73,7 @@ int get_object_local(client *client_context,
  * @param object_id The object ID of the object that is being released.
  * @param Void.
  */
-void release_object(client *client_context, object_id object_id);
+void release_object(client *client_context, ObjectID object_id);
 
 /**
  * Seal an object. The object is now immutable and can be accessed with get.
@@ -85,7 +85,7 @@ void release_object(client *client_context, object_id object_id);
  * @return Void.
  */
 void seal_object(client *client_context,
-                 object_id object_id,
+                 ObjectID object_id,
                  unsigned char digest[]);
 
 /**
@@ -95,7 +95,7 @@ void seal_object(client *client_context,
  * @param object_id Object ID that will be checked.
  * @return OBJECT_FOUND if the object is in the store, OBJECT_NOT_FOUND if not
  */
-int contains_object(client *client_context, object_id object_id);
+int contains_object(client *client_context, ObjectID object_id);
 
 /**
  * Send notifications about sealed objects to the subscribers. This is called
@@ -116,6 +116,6 @@ void send_notifications(event_loop *loop,
 
 void remove_objects(plasma_store_state *plasma_state,
                     int64_t num_objects_to_evict,
-                    object_id *objects_to_evict);
+                    ObjectID *objects_to_evict);
 
 #endif /* PLASMA_STORE_H */

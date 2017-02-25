@@ -52,7 +52,7 @@ typedef struct {
 
 typedef struct {
   /** The ID of the object. This is used as the key in the hash table. */
-  object_id object_id;
+  ObjectID object_id;
   /** A count of the number of times this client has called plasma_create or
    *  plasma_get on this object ID minus the number of calls to plasma_release.
    *  When this count reaches zero, we remove the entry from the objects_in_use
@@ -78,7 +78,7 @@ typedef struct {
  *  is used to implement the delayed release mechanism. */
 typedef struct pending_release {
   /** The object_id of the released object. */
-  object_id object_id;
+  ObjectID object_id;
   /** Needed for the doubly-linked list macros. */
   struct pending_release *prev;
   /** Needed for the doubly-linked list macros. */
@@ -166,7 +166,7 @@ uint8_t *lookup_mmapped_file(plasma_connection *conn, int store_fd_val) {
 }
 
 void increment_object_count(plasma_connection *conn,
-                            object_id object_id,
+                            ObjectID object_id,
                             plasma_object *object,
                             bool is_sealed) {
   /* Increment the count of the object to track the fact that it is being used.
@@ -205,7 +205,7 @@ void increment_object_count(plasma_connection *conn,
 }
 
 int plasma_create(plasma_connection *conn,
-                  object_id obj_id,
+                  ObjectID obj_id,
                   int64_t data_size,
                   uint8_t *metadata,
                   int64_t metadata_size,
@@ -218,7 +218,7 @@ int plasma_create(plasma_connection *conn,
   uint8_t *reply_data =
       plasma_receive(conn->store_conn, MessageType_PlasmaCreateReply);
   int error;
-  object_id id;
+  ObjectID id;
   plasma_object object;
   plasma_read_CreateReply(reply_data, &id, &object, &error);
   free(reply_data);
@@ -259,7 +259,7 @@ int plasma_create(plasma_connection *conn,
 }
 
 void plasma_get(plasma_connection *conn,
-                object_id object_ids[],
+                ObjectID object_ids[],
                 int64_t num_objects,
                 int64_t timeout_ms,
                 object_buffer object_buffers[]) {
@@ -307,7 +307,7 @@ void plasma_get(plasma_connection *conn,
                                num_objects, timeout_ms) >= 0);
   uint8_t *reply_data =
       plasma_receive(conn->store_conn, MessageType_PlasmaGetReply);
-  object_id *received_obj_ids = malloc(num_objects * sizeof(object_id));
+  ObjectID *received_obj_ids = malloc(num_objects * sizeof(ObjectID));
   plasma_object *object_data = malloc(num_objects * sizeof(plasma_object));
   plasma_object *object;
   plasma_read_GetReply(reply_data, received_obj_ids, object_data, num_objects);
@@ -371,7 +371,7 @@ void plasma_get(plasma_connection *conn,
  * @param conn The plasma connection.
  * @param object_id The object ID to attempt to release.
  */
-void plasma_perform_release(plasma_connection *conn, object_id object_id) {
+void plasma_perform_release(plasma_connection *conn, ObjectID object_id) {
   /* Decrement the count of the number of instances of this object that are
    * being used by this client. The corresponding increment should have happened
    * in plasma_get. */
@@ -412,7 +412,7 @@ void plasma_perform_release(plasma_connection *conn, object_id object_id) {
   }
 }
 
-void plasma_release(plasma_connection *conn, object_id obj_id) {
+void plasma_release(plasma_connection *conn, ObjectID obj_id) {
   /* Add the new object to the release history. The corresponding call to free
    * will occur in plasma_perform_release or in plasma_disconnect. */
   pending_release *pending_release_entry = malloc(sizeof(pending_release));
@@ -444,7 +444,7 @@ void plasma_release(plasma_connection *conn, object_id obj_id) {
 
 /* This method is used to query whether the plasma store contains an object. */
 void plasma_contains(plasma_connection *conn,
-                     object_id obj_id,
+                     ObjectID obj_id,
                      int *has_object) {
   /* Check if we already have a reference to the object. */
   object_in_use_entry *object_entry;
@@ -457,19 +457,19 @@ void plasma_contains(plasma_connection *conn,
     plasma_send_ContainsRequest(conn->store_conn, conn->builder, obj_id);
     uint8_t *reply_data =
         plasma_receive(conn->store_conn, MessageType_PlasmaContainsReply);
-    object_id object_id2;
+    ObjectID object_id2;
     plasma_read_ContainsReply(reply_data, &object_id2, has_object);
     free(reply_data);
   }
 }
 
 bool plasma_compute_object_hash(plasma_connection *conn,
-                                object_id obj_id,
+                                ObjectID obj_id,
                                 unsigned char *digest) {
   /* Get the plasma object data. We pass in a timeout of 0 to indicate that
    * the operation should timeout immediately. */
   object_buffer obj_buffer;
-  object_id obj_id_array[1] = {obj_id};
+  ObjectID obj_id_array[1] = {obj_id};
   plasma_get(conn, obj_id_array, 1, 0, &obj_buffer);
   /* If the object was not retrieved, return false. */
   if (obj_buffer.data_size == -1) {
@@ -491,7 +491,7 @@ bool plasma_compute_object_hash(plasma_connection *conn,
   return true;
 }
 
-void plasma_seal(plasma_connection *conn, object_id object_id) {
+void plasma_seal(plasma_connection *conn, ObjectID object_id) {
   /* Make sure this client has a reference to the object before sending the
    * request to Plasma. */
   object_in_use_entry *object_entry;
@@ -514,7 +514,7 @@ void plasma_seal(plasma_connection *conn, object_id object_id) {
   plasma_release(conn, object_id);
 }
 
-void plasma_delete(plasma_connection *conn, object_id object_id) {
+void plasma_delete(plasma_connection *conn, ObjectID object_id) {
   /* TODO(rkn): In the future, we can use this method to give hints to the
    * eviction policy about when an object will no longer be needed. */
 }
@@ -596,7 +596,7 @@ void plasma_disconnect(plasma_connection *conn) {
   /* Loop over the objects in use table and release all remaining objects. */
   object_in_use_entry *current_entry, *temp_entry;
   HASH_ITER(hh, conn->objects_in_use, current_entry, temp_entry) {
-    object_id object_id_to_release = current_entry->object_id;
+    ObjectID object_id_to_release = current_entry->object_id;
     int count = current_entry->count;
     for (int i = 0; i < count; ++i) {
       plasma_perform_release(conn, object_id_to_release);
@@ -622,14 +622,14 @@ bool plasma_manager_is_connected(plasma_connection *conn) {
 void plasma_transfer(plasma_connection *conn,
                      const char *address,
                      int port,
-                     object_id object_id) {
+                     ObjectID object_id) {
   CHECK(plasma_send_DataRequest(conn->manager_conn, conn->builder, object_id,
                                 address, port) >= 0);
 }
 
 void plasma_fetch(plasma_connection *conn,
                   int num_object_ids,
-                  object_id object_ids[]) {
+                  ObjectID object_ids[]) {
   CHECK(conn != NULL);
   CHECK(conn->manager_conn >= 0);
   CHECK(plasma_send_FetchRequest(conn->manager_conn, conn->builder, object_ids,
@@ -640,7 +640,7 @@ int get_manager_fd(plasma_connection *conn) {
   return conn->manager_conn;
 }
 
-int plasma_status(plasma_connection *conn, object_id object_id) {
+int plasma_status(plasma_connection *conn, ObjectID object_id) {
   CHECK(conn != NULL);
   CHECK(conn->manager_conn >= 0);
 

@@ -22,7 +22,7 @@
  */
 typedef struct {
   /** The ID of the requested object. If ID_NIL request any object. */
-  object_id object_id;
+  ObjectID object_id;
   /** Request associated to the object. It can take one of the following values:
    *  - PLASMA_QUERY_LOCAL: return if or when the object is available in the
    *    local Plasma Store.
@@ -87,7 +87,7 @@ typedef enum {
  *  the eviction policy. */
 typedef struct {
   /** Object id of this object. */
-  object_id object_id;
+  ObjectID object_id;
   /** Object info like size, creation time and owner. */
   object_info info;
   /** Memory mapped file containing the object. */
@@ -119,7 +119,7 @@ typedef struct {
 
 typedef struct {
   /** The ID of the object. */
-  object_id obj_id;
+  ObjectID obj_id;
   /** The size of the object. */
   int64_t object_size;
   /** The digest of the object used, used to see if two objects are the same. */
@@ -133,7 +133,7 @@ typedef struct {
  * @param object_ids[] The list of object IDs to check.
  * @return True if the object IDs are all distinct and false otherwise.
  */
-bool plasma_object_ids_distinct(int num_object_ids, object_id object_ids[]);
+bool plasma_object_ids_distinct(int num_object_ids, ObjectID object_ids[]);
 
 /**
  * Print a warning if the status is less than zero. This should be used to check

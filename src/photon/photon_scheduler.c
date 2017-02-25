@@ -504,13 +504,13 @@ void reconstruct_task_update_callback(task *task, void *user_context) {
   /* Recursively reconstruct the task's inputs, if necessary. */
   for (int64_t i = 0; i < task_num_args(spec); ++i) {
     if (task_arg_type(spec, i) == ARG_BY_REF) {
-      object_id arg_id = task_arg_id(spec, i);
+      ObjectID arg_id = task_arg_id(spec, i);
       reconstruct_object(state, arg_id);
     }
   }
 }
 
-void reconstruct_evicted_result_lookup_callback(object_id reconstruct_object_id,
+void reconstruct_evicted_result_lookup_callback(ObjectID reconstruct_object_id,
                                                 task_id task_id,
                                                 void *user_context) {
   /* TODO(swang): The following check will fail if an object was created by a
@@ -549,7 +549,7 @@ void reconstruct_failed_result_lookup_callback(object_id reconstruct_object_id,
                              reconstruct_task_update_callback, state);
 }
 
-void reconstruct_object_lookup_callback(object_id reconstruct_object_id,
+void reconstruct_object_lookup_callback(ObjectID reconstruct_object_id,
                                         int manager_count,
                                         const char *manager_vector[],
                                         void *user_context) {
@@ -575,7 +575,7 @@ void reconstruct_object_lookup_callback(object_id reconstruct_object_id,
 }
 
 void reconstruct_object(local_scheduler_state *state,
-                        object_id reconstruct_object_id) {
+                        ObjectID reconstruct_object_id) {
   LOG_DEBUG("Starting reconstruction");
   /* TODO(swang): Track task lineage for puts. */
   CHECK(state->db != NULL);
@@ -726,7 +726,7 @@ void process_message(event_loop *loop,
         print_worker_info("Reconstructing", state->algorithm_state);
       }
     }
-    object_id *obj_id = (object_id *) utarray_front(state->input_buffer);
+    ObjectID *obj_id = (ObjectID *) utarray_front(state->input_buffer);
     reconstruct_object(state, *obj_id);
   } break;
   case DISCONNECT_CLIENT: {

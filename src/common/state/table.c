@@ -9,7 +9,7 @@ static const retry_info default_retry = {.num_retries = -1,
                                          .fail_callback = NULL};
 
 table_callback_data *init_table_callback(db_handle *db_handle,
-                                         unique_id id,
+                                         UniqueID id,
                                          const char *label,
                                          OWNER void *data,
                                          retry_info *retry,

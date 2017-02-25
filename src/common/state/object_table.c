@@ -3,7 +3,7 @@
 #include "object_info.h"
 
 void object_table_lookup(db_handle *db_handle,
-                         object_id object_id,
+                         ObjectID object_id,
                          retry_info *retry,
                          object_table_lookup_done_callback done_callback,
                          void *user_context) {
@@ -13,7 +13,7 @@ void object_table_lookup(db_handle *db_handle,
 }
 
 void object_table_add(db_handle *db_handle,
-                      object_id object_id,
+                      ObjectID object_id,
                       int64_t object_size,
                       unsigned char digest[],
                       retry_info *retry,
@@ -29,7 +29,7 @@ void object_table_add(db_handle *db_handle,
 }
 
 void object_table_remove(db_handle *db_handle,
-                         object_id object_id,
+                         ObjectID object_id,
                          db_client_id *client_id,
                          retry_info *retry,
                          object_table_done_callback done_callback,
@@ -67,15 +67,15 @@ void object_table_subscribe_to_notifications(
 
 void object_table_request_notifications(db_handle *db_handle,
                                         int num_object_ids,
-                                        object_id object_ids[],
+                                        ObjectID object_ids[],
                                         retry_info *retry) {
   CHECK(db_handle != NULL);
   CHECK(num_object_ids > 0);
   object_table_request_notifications_data *data =
       malloc(sizeof(object_table_request_notifications_data) +
-             num_object_ids * sizeof(object_id));
+             num_object_ids * sizeof(ObjectID));
   data->num_object_ids = num_object_ids;
-  memcpy(data->object_ids, object_ids, num_object_ids * sizeof(object_id));
+  memcpy(data->object_ids, object_ids, num_object_ids * sizeof(ObjectID));
 
   init_table_callback(db_handle, NIL_OBJECT_ID, __func__, data, retry, NULL,
                       redis_object_table_request_notifications, NULL);
@@ -97,7 +97,7 @@ void object_info_subscribe(db_handle *db_handle,
 }
 
 void result_table_add(db_handle *db_handle,
-                      object_id object_id,
+                      ObjectID object_id,
                       task_id task_id_arg,
                       retry_info *retry,
                       result_table_done_callback done_callback,
@@ -109,7 +109,7 @@ void result_table_add(db_handle *db_handle,
 }
 
 void result_table_lookup(db_handle *db_handle,
-                         object_id object_id,
+                         ObjectID object_id,
                          retry_info *retry,
                          result_table_lookup_callback done_callback,
                          void *user_context) {

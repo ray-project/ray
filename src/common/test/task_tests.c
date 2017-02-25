@@ -19,10 +19,10 @@ TEST task_test(void) {
   ASSERT(task_num_args(spec) == 4);
   ASSERT(task_num_returns(spec) == 2);
 
-  unique_id arg1 = globally_unique_id();
+  UniqueID arg1 = globally_unique_id();
   ASSERT(task_args_add_ref(spec, arg1) == 0);
   ASSERT(task_args_add_val(spec, (uint8_t *) "hello", 5) == 1);
-  unique_id arg2 = globally_unique_id();
+  UniqueID arg2 = globally_unique_id();
   ASSERT(task_args_add_ref(spec, arg2) == 2);
   ASSERT(task_args_add_val(spec, (uint8_t *) "world", 5) == 3);
   /* Finish constructing the spec. This constructs the task ID and the
@@ -48,7 +48,7 @@ TEST deterministic_ids_test(void) {
   /* Define the inputs to the task construction. */
   task_id parent_task_id = globally_unique_id();
   function_id func_id = globally_unique_id();
-  unique_id arg1 = globally_unique_id();
+  UniqueID arg1 = globally_unique_id();
   uint8_t *arg2 = (uint8_t *) "hello world";
 
   /* Construct a first task. */

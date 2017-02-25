@@ -99,7 +99,7 @@ object_size_entry *create_object_size_hashmap(global_scheduler_state *state,
       continue;
     }
     *has_args_by_ref = true;
-    object_id obj_id = task_arg_id(task_spec, i);
+    ObjectID obj_id = task_arg_id(task_spec, i);
     /* Look up this object ID in the global scheduler object cache. */
     scheduler_object_info *obj_info_entry = NULL;
     HASH_FIND(hh, state->scheduler_object_info_table, &obj_id, sizeof(obj_id),
@@ -327,7 +327,7 @@ bool handle_task_waiting(global_scheduler_state *state,
 
 void handle_object_available(global_scheduler_state *state,
                              global_scheduler_policy_state *policy_state,
-                             object_id object_id) {
+                             ObjectID object_id) {
   /* Do nothing for now. */
 }
 

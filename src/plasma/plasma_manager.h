@@ -71,7 +71,7 @@ void destroy_plasma_manager_state(plasma_manager_state *state);
  * manager.
  */
 void process_transfer(event_loop *loop,
-                      object_id object_id,
+                      ObjectID object_id,
                       uint8_t addr[4],
                       int port,
                       client_connection *conn);
@@ -93,7 +93,7 @@ void process_transfer(event_loop *loop,
  */
 void process_data(event_loop *loop,
                   int client_sock,
-                  object_id object_id,
+                  ObjectID object_id,
                   int64_t data_size,
                   int64_t metadata_size,
                   client_connection *conn);
@@ -170,7 +170,7 @@ client_connection *new_client_connection(event_loop *loop,
 typedef struct plasma_request_buffer plasma_request_buffer;
 struct plasma_request_buffer {
   int type;
-  object_id object_id;
+  ObjectID object_id;
   uint8_t *data;
   int64_t data_size;
   uint8_t *metadata;
@@ -193,7 +193,7 @@ struct plasma_request_buffer {
  * @param context The plasma manager state.
  * @return Void.
  */
-void call_request_transfer(object_id object_id,
+void call_request_transfer(ObjectID object_id,
                            int manager_count,
                            const char *manager_vector[],
                            void *context);
@@ -277,6 +277,6 @@ int get_client_sock(client_connection *conn);
  * @return A bool that is true if the requested object is local and false
  *         otherwise.
  */
-bool is_object_local(plasma_manager_state *state, object_id object_id);
+bool is_object_local(plasma_manager_state *state, ObjectID object_id);
 
 #endif /* PLASMA_MANAGER_H */

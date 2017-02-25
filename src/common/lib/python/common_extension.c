@@ -35,7 +35,7 @@ void init_pickle_module(void) {
 
 /* Define the PyObjectID class. */
 
-int PyStringToUniqueID(PyObject *object, object_id *object_id) {
+int PyStringToUniqueID(PyObject *object, ObjectID *object_id) {
   if (PyBytes_Check(object)) {
     memcpy(&object_id->id[0], PyBytes_AsString(object), UNIQUE_ID_SIZE);
     return 1;
@@ -45,7 +45,7 @@ int PyStringToUniqueID(PyObject *object, object_id *object_id) {
   }
 }
 
-int PyObjectToUniqueID(PyObject *object, object_id *objectid) {
+int PyObjectToUniqueID(PyObject *object, ObjectID *objectid) {
   if (PyObject_IsInstance(object, (PyObject *) &PyObjectIDType)) {
     *objectid = ((PyObjectID *) object)->object_id;
     return 1;
@@ -61,7 +61,7 @@ static int PyObjectID_init(PyObjectID *self, PyObject *args, PyObject *kwds) {
   if (!PyArg_ParseTuple(args, "s#", &data, &size)) {
     return -1;
   }
-  if (size != sizeof(object_id)) {
+  if (size != sizeof(ObjectID)) {
     PyErr_SetString(CommonError,
                     "ObjectID: object id string needs to have length 20");
     return -1;
@@ -71,7 +71,7 @@ static int PyObjectID_init(PyObjectID *self, PyObject *args, PyObject *kwds) {
 }
 
 /* Create a PyObjectID from C. */
-PyObject *PyObjectID_make(object_id object_id) {
+PyObject *PyObjectID_make(ObjectID object_id) {
   PyObjectID *result = PyObject_New(PyObjectID, &PyObjectIDType);
   result = (PyObjectID *) PyObject_Init((PyObject *) result, &PyObjectIDType);
   result->object_id = object_id;
@@ -264,9 +264,9 @@ PyTypeObject PyObjectIDType = {
 
 static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   /* ID of the driver that this task originates from. */
-  unique_id driver_id;
+  UniqueID driver_id;
   /* ID of the actor this task should run on. */
-  unique_id actor_id = NIL_ACTOR_ID;
+  UniqueID actor_id = NIL_ACTOR_ID;
   /* How many tasks have been launched on the actor so far? */
   int actor_counter = 0;
   /* ID of the function this task executes. */
@@ -363,7 +363,7 @@ static PyObject *PyTask_actor_id(PyObject *self) {
 }
 
 static PyObject *PyTask_driver_id(PyObject *self) {
-  unique_id driver_id = task_spec_driver_id(((PyTask *) self)->spec);
+  UniqueID driver_id = task_spec_driver_id(((PyTask *) self)->spec);
   return PyObjectID_make(driver_id);
 }
 
@@ -378,7 +378,7 @@ static PyObject *PyTask_arguments(PyObject *self) {
   PyObject *arg_list = PyList_New((Py_ssize_t) num_args);
   for (int i = 0; i < num_args; ++i) {
     if (task_arg_type(task, i) == ARG_BY_REF) {
-      object_id object_id = task_arg_id(task, i);
+      ObjectID object_id = task_arg_id(task, i);
       PyList_SetItem(arg_list, i, PyObjectID_make(object_id));
     } else {
       CHECK(pickle_module != NULL);
@@ -410,7 +410,7 @@ static PyObject *PyTask_returns(PyObject *self) {
   int64_t num_returns = task_num_returns(task);
   PyObject *return_id_list = PyList_New((Py_ssize_t) num_returns);
   for (int i = 0; i < num_returns; ++i) {
-    object_id object_id = task_return(task, i);
+    ObjectID object_id = task_return(task, i);
     PyList_SetItem(return_id_list, i, PyObjectID_make(object_id));
   }
   return return_id_list;
@@ -574,6 +574,6 @@ PyObject *compute_put_id(PyObject *self, PyObject *args) {
                         &put_index)) {
     return NULL;
   }
-  object_id put_id = task_compute_put_id(task_id, put_index);
+  ObjectID put_id = task_compute_put_id(task_id, put_index);
   return PyObjectID_make(put_id);
 }

@@ -16,12 +16,12 @@ static event_loop *g_loop;
 
 int new_object_failed = 0;
 int new_object_succeeded = 0;
-object_id new_object_id;
+ObjectID new_object_id;
 task *new_object_task;
 task_spec *new_object_task_spec;
 task_id new_object_task_id;
 
-void new_object_fail_callback(unique_id id,
+void new_object_fail_callback(UniqueID id,
                               void *user_context,
                               void *user_data) {
   new_object_failed = 1;
@@ -30,7 +30,7 @@ void new_object_fail_callback(unique_id id,
 
 /* === Test adding an object with an associated task === */
 
-void new_object_done_callback(object_id object_id,
+void new_object_done_callback(ObjectID object_id,
                               task_id task_id,
                               void *user_context) {
   new_object_succeeded = 1;
@@ -39,7 +39,7 @@ void new_object_done_callback(object_id object_id,
   event_loop_stop(g_loop);
 }
 
-void new_object_lookup_callback(object_id object_id, void *user_context) {
+void new_object_lookup_callback(ObjectID object_id, void *user_context) {
   CHECK(object_ids_equal(object_id, new_object_id));
   retry_info retry = {
       .num_retries = 5,
@@ -91,7 +91,7 @@ TEST new_object_test(void) {
 
 /* === Test adding an object without an associated task === */
 
-void new_object_no_task_callback(object_id object_id,
+void new_object_no_task_callback(ObjectID object_id,
                                  task_id task_id,
                                  void *user_context) {
   new_object_succeeded = 1;
@@ -131,7 +131,7 @@ TEST new_object_no_task_test(void) {
 const char *lookup_timeout_context = "lookup_timeout";
 int lookup_failed = 0;
 
-void lookup_done_callback(object_id object_id,
+void lookup_done_callback(ObjectID object_id,
                           int manager_count,
                           const char *manager_vector[],
                           void *context) {
@@ -139,7 +139,7 @@ void lookup_done_callback(object_id object_id,
   CHECK(0);
 }
 
-void lookup_fail_callback(unique_id id, void *user_context, void *user_data) {
+void lookup_fail_callback(UniqueID id, void *user_context, void *user_data) {
   lookup_failed = 1;
   CHECK(user_context == (void *) lookup_timeout_context);
   event_loop_stop(g_loop);
@@ -170,12 +170,12 @@ TEST lookup_timeout_test(void) {
 const char *add_timeout_context = "add_timeout";
 int add_failed = 0;
 
-void add_done_callback(object_id object_id, void *user_context) {
+void add_done_callback(ObjectID object_id, void *user_context) {
   /* The done callback should not be called. */
   CHECK(0);
 }
 
-void add_fail_callback(unique_id id, void *user_context, void *user_data) {
+void add_fail_callback(UniqueID id, void *user_context, void *user_data) {
   add_failed = 1;
   CHECK(user_context == (void *) add_timeout_context);
   event_loop_stop(g_loop);
@@ -205,7 +205,7 @@ TEST add_timeout_test(void) {
 
 int subscribe_failed = 0;
 
-void subscribe_done_callback(object_id object_id,
+void subscribe_done_callback(ObjectID object_id,
                              int64_t data_size,
                              int manager_count,
                              const char *manager_vector[],
@@ -214,7 +214,7 @@ void subscribe_done_callback(object_id object_id,
   CHECK(0);
 }
 
-void subscribe_fail_callback(unique_id id,
+void subscribe_fail_callback(UniqueID id,
                              void *user_context,
                              void *user_data) {
   subscribe_failed = 1;
@@ -273,7 +273,7 @@ int64_t terminate_event_loop_callback(event_loop *loop,
 const char *lookup_retry_context = "lookup_retry";
 int lookup_retry_succeeded = 0;
 
-void lookup_retry_done_callback(object_id object_id,
+void lookup_retry_done_callback(ObjectID object_id,
                                 int manager_count,
                                 const char *manager_vector[],
                                 void *context) {
@@ -281,7 +281,7 @@ void lookup_retry_done_callback(object_id object_id,
   lookup_retry_succeeded = 1;
 }
 
-void lookup_retry_fail_callback(unique_id id,
+void lookup_retry_fail_callback(UniqueID id,
                                 void *user_context,
                                 void *user_data) {
   /* The fail callback should not be called. */
@@ -295,7 +295,7 @@ int add_retry_succeeded = 0;
 
 /* === Test add then lookup retry === */
 
-void add_lookup_done_callback(object_id object_id,
+void add_lookup_done_callback(ObjectID object_id,
                               int manager_count,
                               const char *manager_vector[],
                               void *context) {
@@ -305,7 +305,7 @@ void add_lookup_done_callback(object_id object_id,
   lookup_retry_succeeded = 1;
 }
 
-void add_lookup_callback(object_id object_id, void *user_context) {
+void add_lookup_callback(ObjectID object_id, void *user_context) {
   db_handle *db = user_context;
   retry_info retry = {
       .num_retries = 5,
@@ -344,7 +344,7 @@ TEST add_lookup_test(void) {
 }
 
 /* === Test add, remove, then lookup === */
-void add_remove_lookup_done_callback(object_id object_id,
+void add_remove_lookup_done_callback(ObjectID object_id,
                                      int manager_count,
                                      const char *manager_vector[],
                                      void *context) {
@@ -353,7 +353,7 @@ void add_remove_lookup_done_callback(object_id object_id,
   lookup_retry_succeeded = 1;
 }
 
-void add_remove_lookup_callback(object_id object_id, void *user_context) {
+void add_remove_lookup_callback(ObjectID object_id, void *user_context) {
   db_handle *db = user_context;
   retry_info retry = {
       .num_retries = 5,
@@ -364,7 +364,7 @@ void add_remove_lookup_callback(object_id object_id, void *user_context) {
                       (void *) lookup_retry_context);
 }
 
-void add_remove_callback(object_id object_id, void *user_context) {
+void add_remove_callback(ObjectID object_id, void *user_context) {
   db_handle *db = user_context;
   retry_info retry = {
       .num_retries = 5,
@@ -430,14 +430,14 @@ int64_t reconnect_sub_context_callback(event_loop *loop,
 const char *lookup_late_context = "lookup_late";
 int lookup_late_failed = 0;
 
-void lookup_late_fail_callback(unique_id id,
+void lookup_late_fail_callback(UniqueID id,
                                void *user_context,
                                void *user_data) {
   CHECK(user_context == (void *) lookup_late_context);
   lookup_late_failed = 1;
 }
 
-void lookup_late_done_callback(object_id object_id,
+void lookup_late_done_callback(ObjectID object_id,
                                int manager_count,
                                const char *manager_vector[],
                                void *context) {
@@ -477,12 +477,12 @@ TEST lookup_late_test(void) {
 const char *add_late_context = "add_late";
 int add_late_failed = 0;
 
-void add_late_fail_callback(unique_id id, void *user_context, void *user_data) {
+void add_late_fail_callback(UniqueID id, void *user_context, void *user_data) {
   CHECK(user_context == (void *) add_late_context);
   add_late_failed = 1;
 }
 
-void add_late_done_callback(object_id object_id, void *user_context) {
+void add_late_done_callback(ObjectID object_id, void *user_context) {
   /* This function should never be called. */
   CHECK(0);
 }
@@ -517,14 +517,14 @@ TEST add_late_test(void) {
 const char *subscribe_late_context = "subscribe_late";
 int subscribe_late_failed = 0;
 
-void subscribe_late_fail_callback(unique_id id,
+void subscribe_late_fail_callback(UniqueID id,
                                   void *user_context,
                                   void *user_data) {
   CHECK(user_context == (void *) subscribe_late_context);
   subscribe_late_failed = 1;
 }
 
-void subscribe_late_done_callback(object_id object_id,
+void subscribe_late_done_callback(ObjectID object_id,
                                   int manager_count,
                                   const char *manager_vector[],
                                   void *user_context) {
@@ -565,16 +565,16 @@ TEST subscribe_late_test(void) {
 const char *subscribe_success_context = "subscribe_success";
 int subscribe_success_done = 0;
 int subscribe_success_succeeded = 0;
-object_id subscribe_id;
+ObjectID subscribe_id;
 
-void subscribe_success_fail_callback(unique_id id,
+void subscribe_success_fail_callback(UniqueID id,
                                      void *user_context,
                                      void *user_data) {
   /* This function should never be called. */
   CHECK(0);
 }
 
-void subscribe_success_done_callback(object_id object_id,
+void subscribe_success_done_callback(ObjectID object_id,
                                      int manager_count,
                                      const char *manager_vector[],
                                      void *user_context) {
@@ -586,7 +586,7 @@ void subscribe_success_done_callback(object_id object_id,
   subscribe_success_done = 1;
 }
 
-void subscribe_success_object_available_callback(object_id object_id,
+void subscribe_success_object_available_callback(ObjectID object_id,
                                                  int64_t data_size,
                                                  int manager_count,
                                                  const char *manager_vector[],
@@ -617,7 +617,7 @@ TEST subscribe_success_test(void) {
       (void *) subscribe_success_context, &retry,
       subscribe_success_done_callback, (void *) db);
 
-  object_id object_ids[1] = {subscribe_id};
+  ObjectID object_ids[1] = {subscribe_id};
   object_table_request_notifications(db, 1, object_ids, &retry);
 
   /* Install handler for terminating the event loop. */
@@ -645,7 +645,7 @@ const char *subscribe_object_present_str = "subscribe_object_present";
 int subscribe_object_present_succeeded = 0;
 
 void subscribe_object_present_object_available_callback(
-    object_id object_id,
+    ObjectID object_id,
     int64_t data_size,
     int manager_count,
     const char *manager_vector[],
@@ -658,7 +658,7 @@ void subscribe_object_present_object_available_callback(
   CHECK(manager_count == 1);
 }
 
-void fatal_fail_callback(unique_id id, void *user_context, void *user_data) {
+void fatal_fail_callback(UniqueID id, void *user_context, void *user_data) {
   /* This function should never be called. */
   CHECK(0);
 }
@@ -674,7 +674,7 @@ TEST subscribe_object_present_test(void) {
   db_handle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1",
                              2, db_connect_args);
   db_attach(db, g_loop, false);
-  unique_id id = globally_unique_id();
+  UniqueID id = globally_unique_id();
   retry_info retry = {
       .num_retries = 0, .timeout = 100, .fail_callback = fatal_fail_callback,
   };
@@ -690,7 +690,7 @@ TEST subscribe_object_present_test(void) {
   /* Run the event loop to create do the add and subscribe. */
   event_loop_run(g_loop);
 
-  object_id object_ids[1] = {id};
+  ObjectID object_ids[1] = {id};
   object_table_request_notifications(db, 1, object_ids, &retry);
   /* Install handler for terminating the event loop. */
   event_loop_add_timer(g_loop, 750,
@@ -712,7 +712,7 @@ const char *subscribe_object_not_present_context =
     "subscribe_object_not_present";
 
 void subscribe_object_not_present_object_available_callback(
-    object_id object_id,
+    ObjectID object_id,
     int64_t data_size,
     int manager_count,
     const char *manager_vector[],
@@ -726,7 +726,7 @@ TEST subscribe_object_not_present_test(void) {
   db_handle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
-  unique_id id = globally_unique_id();
+  UniqueID id = globally_unique_id();
   retry_info retry = {
       .num_retries = 0, .timeout = 100, .fail_callback = NULL,
   };
@@ -740,7 +740,7 @@ TEST subscribe_object_not_present_test(void) {
   /* Run the event loop to do the subscribe. */
   event_loop_run(g_loop);
 
-  object_id object_ids[1] = {id};
+  ObjectID object_ids[1] = {id};
   object_table_request_notifications(db, 1, object_ids, &retry);
   /* Install handler for terminating the event loop. */
   event_loop_add_timer(g_loop, 750,
@@ -762,7 +762,7 @@ const char *subscribe_object_available_later_context =
 int subscribe_object_available_later_succeeded = 0;
 
 void subscribe_object_available_later_object_available_callback(
-    object_id object_id,
+    ObjectID object_id,
     int64_t data_size,
     int manager_count,
     const char *manager_vector[],
@@ -789,7 +789,7 @@ TEST subscribe_object_available_later_test(void) {
   db_handle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1",
                              2, db_connect_args);
   db_attach(db, g_loop, false);
-  unique_id id = globally_unique_id();
+  UniqueID id = globally_unique_id();
   retry_info retry = {
       .num_retries = 0, .timeout = 100, .fail_callback = NULL,
   };
@@ -803,7 +803,7 @@ TEST subscribe_object_available_later_test(void) {
   /* Run the event loop to do the subscribe. */
   event_loop_run(g_loop);
 
-  object_id object_ids[1] = {id};
+  ObjectID object_ids[1] = {id};
   object_table_request_notifications(db, 1, object_ids, &retry);
   /* Install handler for terminating the event loop. */
   event_loop_add_timer(g_loop, 750,
@@ -842,7 +842,7 @@ TEST subscribe_object_available_subscribe_all(void) {
   db_handle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1",
                              2, db_connect_args);
   db_attach(db, g_loop, false);
-  unique_id id = globally_unique_id();
+  UniqueID id = globally_unique_id();
   retry_info retry = {
       .num_retries = 0, .timeout = 100, .fail_callback = NULL,
   };

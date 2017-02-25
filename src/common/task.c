@@ -24,7 +24,7 @@ typedef struct {
   /* Either ARG_BY_REF or ARG_BY_VAL. */
   int8_t type;
   union {
-    object_id obj_id;
+    ObjectID obj_id;
     struct {
       /* Offset where the data associated to this arg is located relative
        * to &task_spec.args_and_returns[0]. */
@@ -36,7 +36,7 @@ typedef struct {
 
 struct task_spec_impl {
   /** ID of the driver that created this task. */
-  unique_id driver_id;
+  UniqueID driver_id;
   /** Task ID of the task. */
   task_id task_id;
   /** Task ID of the parent task. */
@@ -129,12 +129,12 @@ task_id compute_task_id(task_spec *spec) {
   return task_id;
 }
 
-object_id task_compute_return_id(task_id task_id, int64_t return_index) {
+ObjectID task_compute_return_id(task_id task_id, int64_t return_index) {
   /* Here, return_indices need to be >= 0, so we can use negative
    * indices for put. */
   DCHECK(return_index >= 0);
   /* TODO(rkn): This line requires object and task IDs to be the same size. */
-  object_id return_id = task_id;
+  ObjectID return_id = task_id;
   int64_t *first_bytes = (int64_t *) &return_id;
   /* XOR the first bytes of the object ID with the return index. We add one so
    * the first return ID is not the same as the task ID. */
@@ -142,10 +142,10 @@ object_id task_compute_return_id(task_id task_id, int64_t return_index) {
   return return_id;
 }
 
-object_id task_compute_put_id(task_id task_id, int64_t put_index) {
+ObjectID task_compute_put_id(task_id task_id, int64_t put_index) {
   DCHECK(put_index >= 0);
   /* TODO(pcm): This line requires object and task IDs to be the same size. */
-  object_id put_id = task_id;
+  ObjectID put_id = task_id;
   int64_t *first_bytes = (int64_t *) &put_id;
   /* XOR the first bytes of the object ID with the return index. We add one so
    * the first return ID is not the same as the task ID. */
@@ -153,7 +153,7 @@ object_id task_compute_put_id(task_id task_id, int64_t put_index) {
   return put_id;
 }
 
-task_spec *start_construct_task_spec(unique_id driver_id,
+task_spec *start_construct_task_spec(UniqueID driver_id,
                                      task_id parent_task_id,
                                      int64_t parent_counter,
                                      actor_id actor_id,
@@ -215,7 +215,7 @@ int64_t task_spec_actor_counter(task_spec *spec) {
   return spec->actor_counter;
 }
 
-unique_id task_spec_driver_id(task_spec *spec) {
+UniqueID task_spec_driver_id(task_spec *spec) {
   /* Check that the task has been constructed. */
   DCHECK(!task_ids_equal(spec->task_id, NIL_TASK_ID));
   return spec->driver_id;
@@ -240,7 +240,7 @@ int8_t task_arg_type(task_spec *spec, int64_t arg_index) {
   return spec->args_and_returns[arg_index].type;
 }
 
-object_id task_arg_id(task_spec *spec, int64_t arg_index) {
+ObjectID task_arg_id(task_spec *spec, int64_t arg_index) {
   /* Check that the task has been constructed. */
   DCHECK(!task_ids_equal(spec->task_id, NIL_TASK_ID));
   DCHECK(0 <= arg_index && arg_index < spec->num_args);
@@ -265,7 +265,7 @@ int64_t task_arg_length(task_spec *spec, int64_t arg_index) {
   return arg->value.length;
 }
 
-int64_t task_args_add_ref(task_spec *spec, object_id obj_id) {
+int64_t task_args_add_ref(task_spec *spec, ObjectID obj_id) {
   /* Check that the task is still under construction. */
   DCHECK(task_ids_equal(spec->task_id, NIL_TASK_ID));
   task_arg *arg = &spec->args_and_returns[spec->arg_index];
@@ -296,7 +296,7 @@ void task_spec_set_required_resource(task_spec *spec,
   spec->required_resources[resource_index] = value;
 }
 
-object_id task_return(task_spec *spec, int64_t return_index) {
+ObjectID task_return(task_spec *spec, int64_t return_index) {
   /* Check that the task has been constructed. */
   DCHECK(!task_ids_equal(spec->task_id, NIL_TASK_ID));
   DCHECK(0 <= return_index && return_index < spec->num_returns);
@@ -322,17 +322,17 @@ void print_task(task_spec *spec, UT_string *output) {
    * of bytes compared to the id (+ 1 byte for '\0'). */
   static char hex[ID_STRING_SIZE];
   /* Print function id. */
-  object_id_to_string((object_id) task_function(spec), &hex[0], ID_STRING_SIZE);
+  object_id_to_string((ObjectID) task_function(spec), &hex[0], ID_STRING_SIZE);
   utstring_printf(output, "fun %s ", &hex[0]);
   /* Print arguments. */
   for (int i = 0; i < task_num_args(spec); ++i) {
-    object_id_to_string((object_id) task_arg_id(spec, i), &hex[0],
+    object_id_to_string((ObjectID) task_arg_id(spec, i), &hex[0],
                         ID_STRING_SIZE);
     utstring_printf(output, " id:%d %s", i, &hex[0]);
   }
   /* Print return ids. */
   for (int i = 0; i < task_num_returns(spec); ++i) {
-    object_id obj_id = task_return(spec, i);
+    ObjectID obj_id = task_return(spec, i);
     object_id_to_string(obj_id, &hex[0], ID_STRING_SIZE);
     utstring_printf(output, " ret:%d %s", i, &hex[0]);
   }

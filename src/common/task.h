@@ -18,19 +18,19 @@
 #define NIL_ACTOR_ID NIL_ID
 #define NIL_FUNCTION_ID NIL_ID
 
-typedef unique_id function_id;
+typedef UniqueID function_id;
 
 /** The task ID is a deterministic hash of the function ID that the task
  *  executes and the argument IDs or argument values. */
-typedef unique_id task_id;
+typedef UniqueID task_id;
 
 /** The actor ID is the ID of the actor that a task must run on. If the task is
  *  not run on an actor, then NIL_ACTOR_ID should be used. */
-typedef unique_id actor_id;
+typedef UniqueID actor_id;
 
 /** The task instance ID is a globally unique ID generated which identifies this
  *  particular execution of the task. */
-typedef unique_id task_iid;
+typedef UniqueID task_iid;
 
 /**
  * ==== Task specifications ====
@@ -106,10 +106,10 @@ bool function_id_is_nil(function_id id);
           ignoring object ID arguments.
  * @return The partially constructed task_spec.
  */
-task_spec *start_construct_task_spec(unique_id driver_id,
+task_spec *start_construct_task_spec(UniqueID driver_id,
                                      task_id parent_task_id,
                                      int64_t parent_counter,
-                                     unique_id actor_id,
+                                     UniqueID actor_id,
                                      int64_t actor_counter,
                                      function_id function_id,
                                      int64_t num_args,
@@ -148,7 +148,7 @@ function_id task_function(task_spec *spec);
  * @param spec The task_spec in question.
  * @return The actor ID of the actor the task is part of.
  */
-unique_id task_spec_actor_id(task_spec *spec);
+UniqueID task_spec_actor_id(task_spec *spec);
 
 /**
  * Return the actor counter of the task. This starts at 0 and increments by 1
@@ -165,7 +165,7 @@ int64_t task_spec_actor_counter(task_spec *spec);
  * @param spec The task_spec in question.
  * @return The driver ID of the task.
  */
-unique_id task_spec_driver_id(task_spec *spec);
+UniqueID task_spec_driver_id(task_spec *spec);
 
 /**
  * Return the task ID of the task.
@@ -209,7 +209,7 @@ int8_t task_arg_type(task_spec *spec, int64_t arg_index);
  * @param arg_index The index of the argument in question.
  * @return The argument at that index.
  */
-object_id task_arg_id(task_spec *spec, int64_t arg_index);
+ObjectID task_arg_id(task_spec *spec, int64_t arg_index);
 
 /**
  * Get a particular argument to this task. This assumes the argument is a value.
@@ -239,7 +239,7 @@ int64_t task_arg_length(task_spec *spec, int64_t arg_index);
  * @return The number of task arguments that have been set before this one. This
  *         is only used for testing.
  */
-int64_t task_args_add_ref(task_spec *spec, object_id obj_id);
+int64_t task_args_add_ref(task_spec *spec, ObjectID obj_id);
 
 /**
  * Set the next task argument. Note that this API only allows you to set the
@@ -260,7 +260,7 @@ int64_t task_args_add_val(task_spec *spec, uint8_t *data, int64_t length);
  * @param return_index The index of the return object ID in question.
  * @return The relevant return object ID.
  */
-object_id task_return(task_spec *spec, int64_t return_index);
+ObjectID task_return(task_spec *spec, int64_t return_index);
 
 /**
  * Indices into resource vectors.
@@ -308,7 +308,7 @@ double task_spec_get_required_resource(const task_spec *spec,
  * @param put_index The number of put calls in this task so far.
  * @return The object ID for the object that was put.
  */
-object_id task_compute_put_id(task_id task_id, int64_t put_index);
+ObjectID task_compute_put_id(task_id task_id, int64_t put_index);
 
 /**
  * Free a task_spec.

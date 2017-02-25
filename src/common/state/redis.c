@@ -256,7 +256,7 @@ void redis_object_table_add(table_callback_data *callback_data) {
   db_handle *db = callback_data->db_handle;
 
   object_table_add_data *info = callback_data->data;
-  object_id obj_id = callback_data->id;
+  ObjectID obj_id = callback_data->id;
   int64_t object_size = info->object_size;
   unsigned char *digest = info->digest;
 
@@ -297,7 +297,7 @@ void redis_object_table_remove_callback(redisAsyncContext *c,
 void redis_object_table_remove(table_callback_data *callback_data) {
   db_handle *db = callback_data->db_handle;
 
-  object_id obj_id = callback_data->id;
+  ObjectID obj_id = callback_data->id;
   /* If the caller provided a manager ID to delete, use it. Otherwise, use our
    * own client ID as the ID to delete. */
   db_client_id *client_id = callback_data->data;
@@ -318,7 +318,7 @@ void redis_object_table_lookup(table_callback_data *callback_data) {
   CHECK(callback_data);
   db_handle *db = callback_data->db_handle;
 
-  object_id obj_id = callback_data->id;
+  ObjectID obj_id = callback_data->id;
   int status = redisAsyncCommand(
       db->context, redis_object_table_lookup_callback,
       (void *) callback_data->timer_id, "RAY.OBJECT_TABLE_LOOKUP %b", obj_id.id,
@@ -348,7 +348,7 @@ void redis_result_table_add_callback(redisAsyncContext *c,
 void redis_result_table_add(table_callback_data *callback_data) {
   CHECK(callback_data);
   db_handle *db = callback_data->db_handle;
-  object_id id = callback_data->id;
+  ObjectID id = callback_data->id;
   task_id *result_task_id = (task_id *) callback_data->data;
   /* Add the result entry to the result table. */
   int status = redisAsyncCommand(
@@ -424,7 +424,7 @@ void redis_result_table_lookup_callback(redisAsyncContext *c,
 void redis_result_table_lookup(table_callback_data *callback_data) {
   CHECK(callback_data);
   db_handle *db = callback_data->db_handle;
-  object_id id = callback_data->id;
+  ObjectID id = callback_data->id;
   int status =
       redisAsyncCommand(db->context, redis_result_table_lookup_callback,
                         (void *) callback_data->timer_id,
@@ -473,7 +473,7 @@ void redis_object_table_lookup_callback(redisAsyncContext *c,
   LOG_DEBUG("Object table lookup callback");
   CHECK(reply->type == REDIS_REPLY_NIL || reply->type == REDIS_REPLY_ARRAY);
 
-  object_id obj_id = callback_data->id;
+  ObjectID obj_id = callback_data->id;
   int64_t manager_count = 0;
   db_client_id *managers = NULL;
   const char **manager_vector = NULL;
@@ -530,7 +530,7 @@ void redis_object_table_lookup_callback(redisAsyncContext *c,
  *        The caller is responsible for freeing this array.
  * @return The object ID that the notification is about.
  */
-object_id parse_subscribe_to_notifications_payload(
+ObjectID parse_subscribe_to_notifications_payload(
     db_handle *db,
     char *payload,
     int length,
@@ -538,18 +538,18 @@ object_id parse_subscribe_to_notifications_payload(
     int *manager_count,
     const char ***manager_vector) {
   long long data_size_value = 0;
-  int num_managers = (length - sizeof(object_id) - 1 - sizeof(data_size_value) -
+  int num_managers = (length - sizeof(ObjectID) - 1 - sizeof(data_size_value) -
                       1 - strlen("MANAGERS")) /
                      (1 + sizeof(db_client_id));
 
-  int64_t rval = sizeof(object_id) + 1 + sizeof(data_size_value) + 1 +
+  int64_t rval = sizeof(ObjectID) + 1 + sizeof(data_size_value) + 1 +
                  strlen("MANAGERS") + num_managers * (1 + sizeof(db_client_id));
 
   CHECKM(length == rval,
          "length mismatch: num_managers = %d, length = %d, rval = %" PRId64,
          num_managers, length, rval);
   CHECK(num_managers > 0);
-  object_id obj_id;
+  ObjectID obj_id;
   /* Track our current offset in the payload. */
   int offset = 0;
   /* Parse the object ID. */
@@ -617,7 +617,7 @@ void object_table_redis_subscribe_to_notifications_callback(
     int64_t data_size = 0;
     int manager_count;
     const char **manager_vector;
-    object_id obj_id = parse_subscribe_to_notifications_payload(
+    ObjectID obj_id = parse_subscribe_to_notifications_payload(
         db, reply->element[2]->str, reply->element[2]->len, &data_size,
         &manager_count, &manager_vector);
     /* Call the subscribe callback. */
@@ -697,7 +697,7 @@ void redis_object_table_request_notifications(
 
   object_table_request_notifications_data *request_data = callback_data->data;
   int num_object_ids = request_data->num_object_ids;
-  object_id *object_ids = request_data->object_ids;
+  ObjectID *object_ids = request_data->object_ids;
 
   /* Create the arguments for the Redis command. */
   int num_args = 1 + 1 + num_object_ids;
@@ -1209,9 +1209,9 @@ void redis_object_info_subscribe_callback(redisAsyncContext *c,
   }
   /* Otherwise, parse the payload and call the callback. */
   object_info_subscribe_data *data = callback_data->data;
-  object_id object_id;
+  ObjectID object_id;
   memcpy(object_id.id, payload->str, sizeof(object_id.id));
-  /* payload->str should have the format: "object_id:object_size_int" */
+  /* payload->str should have the format: "ObjectID:object_size_int" */
   LOG_DEBUG("obj:info channel received message <%s>", payload->str);
   if (data->subscribe_callback) {
     data->subscribe_callback(

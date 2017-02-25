@@ -23,7 +23,7 @@ SUITE(plasma_manager_tests);
 const char *plasma_store_socket_name = "/tmp/plasma_store_socket_1";
 const char *plasma_manager_socket_name_format = "/tmp/plasma_manager_socket_%d";
 const char *manager_addr = "127.0.0.1";
-object_id oid;
+ObjectID oid;
 
 void wait_for_pollin(int fd) {
   struct pollfd poll_list[1];
@@ -134,7 +134,7 @@ TEST request_transfer_test(void) {
   int read_fd = get_client_sock(remote_mock->read_conn);
   uint8_t *request_data =
       plasma_receive(read_fd, MessageType_PlasmaDataRequest);
-  object_id oid2;
+  ObjectID oid2;
   char *address;
   int port;
   plasma_read_DataRequest(request_data, &oid2, &address, &port);
@@ -187,7 +187,7 @@ TEST request_transfer_retry_test(void) {
   int read_fd = get_client_sock(remote_mock2->read_conn);
   uint8_t *request_data =
       plasma_receive(read_fd, MessageType_PlasmaDataRequest);
-  object_id oid2;
+  ObjectID oid2;
   char *address;
   int port;
   plasma_read_DataRequest(request_data, &oid2, &address, &port);
@@ -259,7 +259,7 @@ TEST object_notifications_test(void) {
   int flags = fcntl(fd[1], F_GETFL, 0);
   CHECK(fcntl(fd[1], F_SETFL, flags | O_NONBLOCK) == 0);
 
-  object_id oid = globally_unique_id();
+  ObjectID oid = globally_unique_id();
   object_info info = {.obj_id = oid,
                       .data_size = 10,
                       .metadata_size = 1,

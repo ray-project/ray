@@ -90,7 +90,7 @@ int plasma_manager_connect(const char *addr, int port);
  *           plasma_release.
  */
 int plasma_create(plasma_connection *conn,
-                  object_id object_id,
+                  ObjectID object_id,
                   int64_t size,
                   uint8_t *metadata,
                   int64_t metadata_size,
@@ -126,7 +126,7 @@ typedef struct {
  * @return Void.
  */
 void plasma_get(plasma_connection *conn,
-                object_id object_ids[],
+                ObjectID object_ids[],
                 int64_t num_objects,
                 int64_t timeout_ms,
                 object_buffer object_buffers[]);
@@ -141,7 +141,7 @@ void plasma_get(plasma_connection *conn,
  * @param object_id The ID of the object that is no longer needed.
  * @return Void.
  */
-void plasma_release(plasma_connection *conn, object_id object_id);
+void plasma_release(plasma_connection *conn, ObjectID object_id);
 
 /**
  * Check if the object store contains a particular object and the object has
@@ -156,7 +156,7 @@ void plasma_release(plasma_connection *conn, object_id object_id);
  * @return Void.
  */
 void plasma_contains(plasma_connection *conn,
-                     object_id object_id,
+                     ObjectID object_id,
                      int *has_object);
 
 /**
@@ -169,7 +169,7 @@ void plasma_contains(plasma_connection *conn,
  * @return A boolean representing whether the hash operation succeeded.
  */
 bool plasma_compute_object_hash(plasma_connection *conn,
-                                object_id object_id,
+                                ObjectID object_id,
                                 unsigned char *digest);
 
 /**
@@ -180,7 +180,7 @@ bool plasma_compute_object_hash(plasma_connection *conn,
  * @param object_id The ID of the object to seal.
  * @return Void.
  */
-void plasma_seal(plasma_connection *conn, object_id object_id);
+void plasma_seal(plasma_connection *conn, ObjectID object_id);
 
 /**
  * Delete an object from the object store. This currently assumes that the
@@ -193,7 +193,7 @@ void plasma_seal(plasma_connection *conn, object_id object_id);
  * @param object_id The ID of the object to delete.
  * @return Void.
  */
-void plasma_delete(plasma_connection *conn, object_id object_id);
+void plasma_delete(plasma_connection *conn, ObjectID object_id);
 
 /**
  * Delete objects until we have freed up num_bytes bytes or there are no more
@@ -228,7 +228,7 @@ int64_t plasma_evict(plasma_connection *conn, int64_t num_bytes);
  */
 void plasma_fetch(plasma_connection *conn,
                   int num_object_ids,
-                  object_id object_ids[]);
+                  ObjectID object_ids[]);
 
 /**
  * Transfer local object to a different plasma manager.
@@ -243,7 +243,7 @@ void plasma_fetch(plasma_connection *conn,
 void plasma_transfer(plasma_connection *conn,
                      const char *addr,
                      int port,
-                     object_id object_id);
+                     ObjectID object_id);
 
 /**
  * Subscribe to notifications when objects are sealed in the object store.
@@ -281,7 +281,7 @@ int get_manager_fd(plasma_connection *conn);
  *         - PLASMA_CLIENT_DOES_NOT_EXIST, if the object doesn’t exist in the
  *           system.
  */
-int plasma_status(plasma_connection *conn, object_id object_id);
+int plasma_status(plasma_connection *conn, ObjectID object_id);
 
 /**
  * Return the information associated to a given object.
@@ -294,7 +294,7 @@ int plasma_status(plasma_connection *conn, object_id object_id);
  *         ignore data, metadata_size, and metadata fields.
  */
 int plasma_info(plasma_connection *conn,
-                object_id object_id,
+                ObjectID object_id,
                 object_info *object_info);
 
 /**

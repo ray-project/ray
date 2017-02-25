@@ -9,7 +9,7 @@
  * Object information data structure.
  */
 typedef struct {
-  object_id obj_id;
+  ObjectID obj_id;
   int64_t data_size;
   int64_t metadata_size;
   int64_t create_time;

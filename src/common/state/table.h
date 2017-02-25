@@ -22,7 +22,7 @@ typedef void *table_done_callback;
  *        data field in table_callback_data. The user is responsible for
  *        freeing user_data.
  */
-typedef void (*table_fail_callback)(unique_id id,
+typedef void (*table_fail_callback)(UniqueID id,
                                     void *user_context,
                                     void *user_data);
 
@@ -47,7 +47,7 @@ typedef struct {
 struct table_callback_data {
   /** ID of the entry in the table that we are going to look up, remove or add.
    */
-  unique_id id;
+  UniqueID id;
   /** A label to identify the original request for logging purposes. */
   const char *label;
   /** The callback that will be called when results is returned. */
@@ -105,7 +105,7 @@ int64_t table_timeout_handler(event_loop *loop,
  * @return New table callback data struct.
  */
 table_callback_data *init_table_callback(db_handle *db_handle,
-                                         unique_id id,
+                                         UniqueID id,
                                          const char *label,
                                          OWNER void *data,
                                          retry_info *retry,

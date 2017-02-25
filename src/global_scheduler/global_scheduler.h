@@ -34,7 +34,7 @@ typedef struct global_scheduler_policy_state global_scheduler_policy_state;
  */
 typedef struct {
   /** The object ID in question. */
-  object_id object_id;
+  ObjectID object_id;
   /** The size in bytes of the object. */
   int64_t data_size;
   /** An array of object locations for this object. */

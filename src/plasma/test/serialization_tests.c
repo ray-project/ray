@@ -60,12 +60,12 @@ plasma_object random_plasma_object(void) {
 
 TEST plasma_create_request_test(void) {
   int fd = create_temp_file();
-  object_id object_id1 = globally_unique_id();
+  ObjectID object_id1 = globally_unique_id();
   int64_t data_size1 = 42;
   int64_t metadata_size1 = 11;
   plasma_send_CreateRequest(fd, g_B, object_id1, data_size1, metadata_size1);
   uint8_t *data = read_message_from_file(fd, MessageType_PlasmaCreateRequest);
-  object_id object_id2;
+  ObjectID object_id2;
   int64_t data_size2;
   int64_t metadata_size2;
   plasma_read_CreateRequest(data, &object_id2, &data_size2, &metadata_size2);
@@ -79,11 +79,11 @@ TEST plasma_create_request_test(void) {
 
 TEST plasma_create_reply_test(void) {
   int fd = create_temp_file();
-  object_id object_id1 = globally_unique_id();
+  ObjectID object_id1 = globally_unique_id();
   plasma_object object1 = random_plasma_object();
   plasma_send_CreateReply(fd, g_B, object_id1, &object1, 0);
   uint8_t *data = read_message_from_file(fd, MessageType_PlasmaCreateReply);
-  object_id object_id2;
+  ObjectID object_id2;
   plasma_object object2;
   memset(&object2, 0, sizeof(object2));
   int error_code;
@@ -97,12 +97,12 @@ TEST plasma_create_reply_test(void) {
 
 TEST plasma_seal_request_test(void) {
   int fd = create_temp_file();
-  object_id object_id1 = globally_unique_id();
+  ObjectID object_id1 = globally_unique_id();
   unsigned char digest1[DIGEST_SIZE];
   memset(&digest1[0], 7, DIGEST_SIZE);
   plasma_send_SealRequest(fd, g_B, object_id1, &digest1[0]);
   uint8_t *data = read_message_from_file(fd, MessageType_PlasmaSealRequest);
-  object_id object_id2;
+  ObjectID object_id2;
   unsigned char digest2[DIGEST_SIZE];
   plasma_read_SealRequest(data, &object_id2, &digest2[0]);
   ASSERT(object_ids_equal(object_id1, object_id2));
@@ -114,11 +114,11 @@ TEST plasma_seal_request_test(void) {
 
 TEST plasma_seal_reply_test(void) {
   int fd = create_temp_file();
-  object_id object_id1 = globally_unique_id();
+  ObjectID object_id1 = globally_unique_id();
   int error1 = 5;
   plasma_send_SealReply(fd, g_B, object_id1, error1);
   uint8_t *data = read_message_from_file(fd, MessageType_PlasmaSealReply);
-  object_id object_id2;
+  ObjectID object_id2;
   int error2;
   plasma_read_SealReply(data, &object_id2, &error2);
   ASSERT(object_ids_equal(object_id1, object_id2));
@@ -130,14 +130,14 @@ TEST plasma_seal_reply_test(void) {
 
 TEST plasma_get_request_test(void) {
   int fd = create_temp_file();
-  object_id object_ids[2];
+  ObjectID object_ids[2];
   object_ids[0] = globally_unique_id();
   object_ids[1] = globally_unique_id();
   int64_t timeout_ms = 1234;
   plasma_send_GetRequest(fd, g_B, object_ids, 2, timeout_ms);
   uint8_t *data = read_message_from_file(fd, MessageType_PlasmaGetRequest);
   int64_t num_objects;
-  object_id object_ids_return[2];
+  ObjectID object_ids_return[2];
   int64_t timeout_ms_return;
   plasma_read_GetRequest(data, &object_ids_return[0], &timeout_ms_return, 2);
   ASSERT(object_ids_equal(object_ids[0], object_ids_return[0]));
@@ -150,7 +150,7 @@ TEST plasma_get_request_test(void) {
 
 TEST plasma_get_reply_test(void) {
   int fd = create_temp_file();
-  object_id object_ids[2];
+  ObjectID object_ids[2];
   object_ids[0] = globally_unique_id();
   object_ids[1] = globally_unique_id();
   plasma_object plasma_objects[2];
@@ -159,7 +159,7 @@ TEST plasma_get_reply_test(void) {
   plasma_send_GetReply(fd, g_B, object_ids, plasma_objects, 2);
   uint8_t *data = read_message_from_file(fd, MessageType_PlasmaGetReply);
   int64_t num_objects = plasma_read_GetRequest_num_objects(data);
-  object_id object_ids_return[num_objects];
+  ObjectID object_ids_return[num_objects];
   plasma_object plasma_objects_return[2];
   plasma_read_GetReply(data, object_ids_return, &plasma_objects_return[0],
                        num_objects);
@@ -176,10 +176,10 @@ TEST plasma_get_reply_test(void) {
 
 TEST plasma_release_request_test(void) {
   int fd = create_temp_file();
-  object_id object_id1 = globally_unique_id();
+  ObjectID object_id1 = globally_unique_id();
   plasma_send_ReleaseRequest(fd, g_B, object_id1);
   uint8_t *data = read_message_from_file(fd, MessageType_PlasmaReleaseRequest);
-  object_id object_id2;
+  ObjectID object_id2;
   plasma_read_ReleaseRequest(data, &object_id2);
   ASSERT(object_ids_equal(object_id1, object_id2));
   free(data);
@@ -189,11 +189,11 @@ TEST plasma_release_request_test(void) {
 
 TEST plasma_release_reply_test(void) {
   int fd = create_temp_file();
-  object_id object_id1 = globally_unique_id();
+  ObjectID object_id1 = globally_unique_id();
   int error1 = 5;
   plasma_send_ReleaseReply(fd, g_B, object_id1, error1);
   uint8_t *data = read_message_from_file(fd, MessageType_PlasmaReleaseReply);
-  object_id object_id2;
+  ObjectID object_id2;
   int error2;
   plasma_read_ReleaseReply(data, &object_id2, &error2);
   ASSERT(object_ids_equal(object_id1, object_id2));
@@ -205,10 +205,10 @@ TEST plasma_release_reply_test(void) {
 
 TEST plasma_delete_request_test(void) {
   int fd = create_temp_file();
-  object_id object_id1 = globally_unique_id();
+  ObjectID object_id1 = globally_unique_id();
   plasma_send_DeleteRequest(fd, g_B, object_id1);
   uint8_t *data = read_message_from_file(fd, MessageType_PlasmaDeleteRequest);
-  object_id object_id2;
+  ObjectID object_id2;
   plasma_read_DeleteRequest(data, &object_id2);
   ASSERT(object_ids_equal(object_id1, object_id2));
   free(data);
@@ -218,11 +218,11 @@ TEST plasma_delete_request_test(void) {
 
 TEST plasma_delete_reply_test(void) {
   int fd = create_temp_file();
-  object_id object_id1 = globally_unique_id();
+  ObjectID object_id1 = globally_unique_id();
   int error1 = 5;
   plasma_send_DeleteReply(fd, g_B, object_id1, error1);
   uint8_t *data = read_message_from_file(fd, MessageType_PlasmaDeleteReply);
-  object_id object_id2;
+  ObjectID object_id2;
   int error2;
   plasma_read_DeleteReply(data, &object_id2, &error2);
   ASSERT(object_ids_equal(object_id1, object_id2));
@@ -234,13 +234,13 @@ TEST plasma_delete_reply_test(void) {
 
 TEST plasma_status_request_test(void) {
   int fd = create_temp_file();
-  object_id object_ids[2];
+  ObjectID object_ids[2];
   object_ids[0] = globally_unique_id();
   object_ids[1] = globally_unique_id();
   plasma_send_StatusRequest(fd, g_B, object_ids, 2);
   uint8_t *data = read_message_from_file(fd, MessageType_PlasmaStatusRequest);
   int64_t num_objects = plasma_read_StatusRequest_num_objects(data);
-  object_id object_ids_read[num_objects];
+  ObjectID object_ids_read[num_objects];
   plasma_read_StatusRequest(data, object_ids_read, num_objects);
   ASSERT(object_ids_equal(object_ids[0], object_ids_read[0]));
   ASSERT(object_ids_equal(object_ids[1], object_ids_read[1]));
@@ -251,14 +251,14 @@ TEST plasma_status_request_test(void) {
 
 TEST plasma_status_reply_test(void) {
   int fd = create_temp_file();
-  object_id object_ids[2];
+  ObjectID object_ids[2];
   object_ids[0] = globally_unique_id();
   object_ids[1] = globally_unique_id();
   int object_statuses[2] = {42, 43};
   plasma_send_StatusReply(fd, g_B, object_ids, object_statuses, 2);
   uint8_t *data = read_message_from_file(fd, MessageType_PlasmaStatusReply);
   int64_t num_objects = plasma_read_StatusReply_num_objects(data);
-  object_id object_ids_read[num_objects];
+  ObjectID object_ids_read[num_objects];
   int object_statuses_read[num_objects];
   plasma_read_StatusReply(data, object_ids_read, object_statuses_read,
                           num_objects);
@@ -274,7 +274,7 @@ TEST plasma_status_reply_test(void) {
 TEST plasma_evict_request_test(void) {
   int fd = create_temp_file();
   int64_t num_bytes = 111;
-  object_id object_id1 = globally_unique_id();
+  ObjectID object_id1 = globally_unique_id();
   plasma_send_EvictRequest(fd, g_B, num_bytes);
   uint8_t *data = read_message_from_file(fd, MessageType_PlasmaEvictRequest);
   int64_t num_bytes_received;
@@ -288,7 +288,7 @@ TEST plasma_evict_request_test(void) {
 TEST plasma_evict_reply_test(void) {
   int fd = create_temp_file();
   int64_t num_bytes = 111;
-  object_id object_id1 = globally_unique_id();
+  ObjectID object_id1 = globally_unique_id();
   plasma_send_EvictReply(fd, g_B, num_bytes);
   uint8_t *data = read_message_from_file(fd, MessageType_PlasmaEvictReply);
   int64_t num_bytes_received;
@@ -301,12 +301,12 @@ TEST plasma_evict_reply_test(void) {
 
 TEST plasma_fetch_request_test(void) {
   int fd = create_temp_file();
-  object_id object_ids[2];
+  ObjectID object_ids[2];
   object_ids[0] = globally_unique_id();
   object_ids[1] = globally_unique_id();
   plasma_send_FetchRequest(fd, g_B, object_ids, 2);
   uint8_t *data = read_message_from_file(fd, MessageType_PlasmaFetchRequest);
-  object_id object_ids_read[2];
+  ObjectID object_ids_read[2];
   plasma_read_FetchRequest(data, &object_ids_read[0], 2);
   ASSERT(object_ids_equal(object_ids[0], object_ids_read[0]));
   ASSERT(object_ids_equal(object_ids[1], object_ids_read[1]));
@@ -373,13 +373,13 @@ TEST plasma_wait_reply_test(void) {
 
 TEST plasma_data_request_test(void) {
   int fd = create_temp_file();
-  object_id object_id1 = globally_unique_id();
+  ObjectID object_id1 = globally_unique_id();
   const char *address1 = "address1";
   int port1 = 12345;
   plasma_send_DataRequest(fd, g_B, object_id1, address1, port1);
   /* Reading message back. */
   uint8_t *data = read_message_from_file(fd, MessageType_PlasmaDataRequest);
-  object_id object_id2;
+  ObjectID object_id2;
   char *address2;
   int port2;
   plasma_read_DataRequest(data, &object_id2, &address2, &port2);
@@ -394,13 +394,13 @@ TEST plasma_data_request_test(void) {
 
 TEST plasma_data_reply_test(void) {
   int fd = create_temp_file();
-  object_id object_id1 = globally_unique_id();
+  ObjectID object_id1 = globally_unique_id();
   int64_t object_size1 = 146;
   int64_t metadata_size1 = 198;
   plasma_send_DataReply(fd, g_B, object_id1, object_size1, metadata_size1);
   /* Reading message back. */
   uint8_t *data = read_message_from_file(fd, MessageType_PlasmaDataReply);
-  object_id object_id2;
+  ObjectID object_id2;
   int64_t object_size2;
   int64_t metadata_size2;
   plasma_read_DataReply(data, &object_id2, &object_size2, &metadata_size2);

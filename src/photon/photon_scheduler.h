@@ -67,7 +67,7 @@ void process_plasma_notification(event_loop *loop,
  * @param object_id The ID of the object to reconstruct.
  * @return Void.
  */
-void reconstruct_object(local_scheduler_state *state, object_id object_id);
+void reconstruct_object(local_scheduler_state *state, ObjectID object_id);
 
 void print_resource_info(const local_scheduler_state *s, const task_spec *spec);
 

@@ -127,7 +127,7 @@ void handle_actor_task_scheduled(local_scheduler_state *state,
  */
 void handle_object_available(local_scheduler_state *state,
                              scheduling_algorithm_state *algorithm_state,
-                             object_id object_id);
+                             ObjectID object_id);
 
 /**
  * This function is called if an object is removed from the local plasma store.
@@ -136,7 +136,7 @@ void handle_object_available(local_scheduler_state *state,
  * @param object_id ID of the object that was removed.
  * @return Void.
  */
-void handle_object_removed(local_scheduler_state *state, object_id object_id);
+void handle_object_removed(local_scheduler_state *state, ObjectID object_id);
 
 /**
  * This function is called when a new worker becomes available.

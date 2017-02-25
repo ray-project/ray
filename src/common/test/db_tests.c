@@ -34,7 +34,7 @@ const int TEST_NUMBER = 10;
 
 /* Test if entries have been written to the database. */
 
-void lookup_done_callback(object_id object_id,
+void lookup_done_callback(ObjectID object_id,
                           int manager_count,
                           const char *manager_vector[],
                           void *user_context) {
@@ -52,10 +52,10 @@ void lookup_done_callback(object_id object_id,
 }
 
 /* Entry added to database successfully. */
-void add_done_callback(object_id object_id, void *user_context) {}
+void add_done_callback(ObjectID object_id, void *user_context) {}
 
 /* Test if we got a timeout callback if we couldn't connect database. */
-void timeout_callback(object_id object_id, void *context, void *user_data) {
+void timeout_callback(ObjectID object_id, void *context, void *user_data) {
   user_context *uc = (user_context *) context;
   CHECK(uc->test_number == TEST_NUMBER)
 }
@@ -77,7 +77,7 @@ TEST object_table_lookup_test(void) {
                               2, db_connect_args2);
   db_attach(db1, loop, false);
   db_attach(db2, loop, false);
-  unique_id id = globally_unique_id();
+  UniqueID id = globally_unique_id();
   retry_info retry = {
       .num_retries = NUM_RETRIES,
       .timeout = TIMEOUT,
@@ -111,7 +111,7 @@ TEST object_table_lookup_test(void) {
 int task_table_test_callback_called = 0;
 task *task_table_test_task;
 
-void task_table_test_fail_callback(unique_id id,
+void task_table_test_fail_callback(UniqueID id,
                                    void *context,
                                    void *user_data) {
   event_loop *loop = user_data;

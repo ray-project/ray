@@ -72,7 +72,7 @@ bool handle_task_waiting(global_scheduler_state *state,
  */
 void handle_object_available(global_scheduler_state *state,
                              global_scheduler_policy_state *policy_state,
-                             object_id object_id);
+                             ObjectID object_id);
 
 /**
  * Handle a heartbeat message from a local scheduler. TODO(rkn): this is a

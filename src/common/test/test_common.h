@@ -18,14 +18,14 @@ const int64_t arg_value_size = 1000;
 
 static inline task_spec *example_task_spec_with_args(int64_t num_args,
                                                      int64_t num_returns,
-                                                     object_id arg_ids[]) {
+                                                     ObjectID arg_ids[]) {
   task_id parent_task_id = globally_unique_id();
   function_id func_id = globally_unique_id();
   task_spec *task =
       start_construct_task_spec(NIL_ID, parent_task_id, 0, NIL_ACTOR_ID, 0,
                                 func_id, num_args, num_returns, arg_value_size);
   for (int64_t i = 0; i < num_args; ++i) {
-    object_id arg_id;
+    ObjectID arg_id;
     if (arg_ids == NULL) {
       arg_id = globally_unique_id();
     } else {
@@ -45,7 +45,7 @@ static inline task_spec *example_task_spec(int64_t num_args,
 static inline task *example_task_with_args(int64_t num_args,
                                            int64_t num_returns,
                                            int task_state,
-                                           object_id arg_ids[]) {
+                                           ObjectID arg_ids[]) {
   task_spec *spec = example_task_spec_with_args(num_args, num_returns, arg_ids);
   task *instance = alloc_task(spec, task_state, NIL_ID);
   free_task_spec(spec);

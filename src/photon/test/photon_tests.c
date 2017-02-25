@@ -151,7 +151,7 @@ TEST object_reconstruction_test(void) {
 
   /* Create a task with zero dependencies and one return value. */
   task_spec *spec = example_task_spec(0, 1);
-  object_id return_id = task_return(spec, 0);
+  ObjectID return_id = task_return(spec, 0);
 
   /* Add an empty object table entry for the object we want to reconstruct, to
    * simulate it having been created and evicted. */
@@ -193,7 +193,7 @@ TEST object_reconstruction_test(void) {
                             get_db_client_id(photon->photon_state->db));
     task_table_add_task(photon->photon_state->db, task, NULL, NULL, NULL);
     /* Trigger reconstruction, and run the event loop again. */
-    object_id return_id = task_return(spec, 0);
+    ObjectID return_id = task_return(spec, 0);
     photon_reconstruct_object(worker, return_id);
     event_loop_add_timer(photon->loop, 500,
                          (event_loop_timer_handler) timeout_handler, NULL);
@@ -223,7 +223,7 @@ TEST object_reconstruction_recursive_test(void) {
   task_spec *specs[NUM_TASKS];
   specs[0] = example_task_spec(0, 1);
   for (int i = 1; i < NUM_TASKS; ++i) {
-    object_id arg_id = task_return(specs[i - 1], 0);
+    ObjectID arg_id = task_return(specs[i - 1], 0);
     handle_object_available(photon->photon_state,
                             photon->photon_state->algorithm_state, arg_id);
     specs[i] = example_task_spec_with_args(1, 1, &arg_id);
@@ -234,7 +234,7 @@ TEST object_reconstruction_recursive_test(void) {
   const char *client_id = "clientid";
   redisContext *context = redisConnect("127.0.0.1", 6379);
   for (int i = 0; i < NUM_TASKS; ++i) {
-    object_id return_id = task_return(specs[i], 0);
+    ObjectID return_id = task_return(specs[i], 0);
     redisReply *reply = redisCommand(
         context, "RAY.OBJECT_TABLE_ADD %b %ld %b %s", return_id.id,
         sizeof(return_id.id), 1, NIL_DIGEST, (size_t) DIGEST_SIZE, client_id);
@@ -292,7 +292,7 @@ TEST object_reconstruction_recursive_test(void) {
     task_table_add_task(photon->photon_state->db, last_task, NULL, NULL, NULL);
     /* Trigger reconstruction for the last object, and run the event loop
      * again. */
-    object_id return_id = task_return(specs[NUM_TASKS - 1], 0);
+    ObjectID return_id = task_return(specs[NUM_TASKS - 1], 0);
     photon_reconstruct_object(worker, return_id);
     event_loop_add_timer(photon->loop, 500,
                          (event_loop_timer_handler) timeout_handler, NULL);
@@ -316,7 +316,7 @@ TEST object_reconstruction_recursive_test(void) {
  */
 task_spec *object_reconstruction_suppression_spec;
 
-void object_reconstruction_suppression_callback(object_id object_id,
+void object_reconstruction_suppression_callback(ObjectID object_id,
                                                 void *user_context) {
   /* Submit the task after adding the object to the object table. */
   photon_conn *worker = user_context;
@@ -328,7 +328,7 @@ TEST object_reconstruction_suppression_test(void) {
   photon_conn *worker = photon->conns[0];
 
   object_reconstruction_suppression_spec = example_task_spec(0, 1);
-  object_id return_id = task_return(object_reconstruction_suppression_spec, 0);
+  ObjectID return_id = task_return(object_reconstruction_suppression_spec, 0);
   pid_t pid = fork();
   if (pid == 0) {
     /* Make sure we receive the task once. This will block until the
@@ -380,7 +380,7 @@ TEST task_dependency_test(void) {
   local_scheduler_client *worker =
       *((local_scheduler_client **) utarray_eltptr(state->workers, 0));
   task_spec *spec = example_task_spec(1, 1);
-  object_id oid = task_arg_id(spec, 0);
+  ObjectID oid = task_arg_id(spec, 0);
 
   /* Check that the task gets queued in the waiting queue if the task is
    * submitted, but the input and workers are not available. */
@@ -455,8 +455,8 @@ TEST task_multi_dependency_test(void) {
   local_scheduler_client *worker =
       *((local_scheduler_client **) utarray_eltptr(state->workers, 0));
   task_spec *spec = example_task_spec(2, 1);
-  object_id oid1 = task_arg_id(spec, 0);
-  object_id oid2 = task_arg_id(spec, 1);
+  ObjectID oid1 = task_arg_id(spec, 0);
+  ObjectID oid2 = task_arg_id(spec, 1);
 
   /* Check that the task gets queued in the waiting queue if the task is
    * submitted, but the inputs and workers are not available. */

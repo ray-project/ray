@@ -75,7 +75,7 @@ typedef struct {
   /** The number of objects in this get request. */
   int64_t num_object_ids;
   /** The object IDs involved in this request. This is used in the reply. */
-  object_id *object_ids;
+  ObjectID *object_ids;
   /** The object information for the objects in this request. This is used in
    *  the reply. */
   plasma_object *objects;
@@ -88,7 +88,7 @@ typedef struct {
 
 typedef struct {
   /** The ID of the object. This is used as a key in a hash table. */
-  object_id object_id;
+  ObjectID object_id;
   /** An array of the get requests involving this object ID. */
   UT_array *get_requests;
   /** Handle for the uthash table in the store state that keeps track of the get
@@ -159,7 +159,7 @@ void add_client_to_object_clients(object_table_entry *entry,
   if (utarray_len(entry->clients) == 0) {
     /* Tell the eviction policy that this object is being used. */
     int64_t num_objects_to_evict;
-    object_id *objects_to_evict;
+    ObjectID *objects_to_evict;
     begin_object_access(client_info->plasma_state->eviction_state,
                         client_info->plasma_state->plasma_store_info,
                         entry->object_id, &num_objects_to_evict,
@@ -173,11 +173,11 @@ void add_client_to_object_clients(object_table_entry *entry,
 
 /* Create a new object buffer in the hash table. */
 int create_object(client *client_context,
-                  object_id obj_id,
+                  ObjectID obj_id,
                   int64_t data_size,
                   int64_t metadata_size,
                   plasma_object *result) {
-  LOG_DEBUG("creating object"); /* TODO(pcm): add object_id here */
+  LOG_DEBUG("creating object"); /* TODO(pcm): add ObjectID here */
   plasma_store_state *plasma_state = client_context->plasma_state;
   object_table_entry *entry;
   /* TODO(swang): Return these error to the client instead of exiting. */
@@ -190,7 +190,7 @@ int create_object(client *client_context,
   }
   /* Tell the eviction policy how much space we need to create this object. */
   int64_t num_objects_to_evict;
-  object_id *objects_to_evict;
+  ObjectID *objects_to_evict;
   bool success = require_space(
       plasma_state->eviction_state, plasma_state->plasma_store_info,
       data_size + metadata_size, &num_objects_to_evict, &objects_to_evict);
@@ -222,7 +222,7 @@ int create_object(client *client_context,
   entry->state = PLASMA_CREATED;
   utarray_new(entry->clients, &client_icd);
   HASH_ADD(handle, plasma_state->plasma_store_info->objects, object_id,
-           sizeof(object_id), entry);
+           sizeof(ObjectID), entry);
   result->handle.store_fd = fd;
   result->handle.mmap_size = map_size;
   result->data_offset = offset;
@@ -240,7 +240,7 @@ int create_object(client *client_context,
 }
 
 void add_get_request_for_object(plasma_store_state *store_state,
-                                object_id object_id,
+                                ObjectID object_id,
                                 get_request *get_req) {
   object_get_requests *object_get_reqs;
   HASH_FIND(hh, store_state->object_get_requests, &object_id, sizeof(object_id),
@@ -261,7 +261,7 @@ void add_get_request_for_object(plasma_store_state *store_state,
 }
 
 void remove_get_request_for_object(plasma_store_state *store_state,
-                                   object_id object_id,
+                                   ObjectID object_id,
                                    get_request *get_req) {
   object_get_requests *object_get_reqs;
   HASH_FIND(hh, store_state->object_get_requests, &object_id, sizeof(object_id),
@@ -353,7 +353,7 @@ void return_from_get(plasma_store_state *store_state, get_request *get_req) {
 }
 
 void update_object_get_requests(plasma_store_state *store_state,
-                                object_id obj_id) {
+                                ObjectID obj_id) {
   /* Update the in-progress get requests. */
   object_get_requests *object_get_reqs;
   HASH_FIND(hh, store_state->object_get_requests, &obj_id, sizeof(obj_id),
@@ -420,7 +420,7 @@ int get_timeout_handler(event_loop *loop, timer_id id, void *context) {
 
 void process_get_request(client *client_context,
                          int num_object_ids,
-                         object_id object_ids[],
+                         ObjectID object_ids[],
                          uint64_t timeout_ms) {
   plasma_store_state *plasma_state = client_context->plasma_state;
 
@@ -430,7 +430,7 @@ void process_get_request(client *client_context,
   get_req->client = client_context;
   get_req->timer = -1;
   get_req->num_object_ids = num_object_ids;
-  get_req->object_ids = malloc(num_object_ids * sizeof(object_id));
+  get_req->object_ids = malloc(num_object_ids * sizeof(ObjectID));
   get_req->objects = malloc(num_object_ids * sizeof(plasma_object));
   for (int i = 0; i < num_object_ids; ++i) {
     get_req->object_ids[i] = object_ids[i];
@@ -439,7 +439,7 @@ void process_get_request(client *client_context,
   get_req->num_satisfied = 0;
 
   for (int i = 0; i < num_object_ids; ++i) {
-    object_id obj_id = object_ids[i];
+    ObjectID obj_id = object_ids[i];
 
     /* Check if this object is already present locally. If so, record that the
      * object is being used and mark it as accounted for. */
@@ -481,7 +481,7 @@ void process_get_request(client *client_context,
 /* Get an object from the local Plasma Store if exists. */
 int get_object_local(client *client_context,
                      int conn,
-                     object_id object_id,
+                     ObjectID object_id,
                      plasma_object *result) {
   plasma_store_state *plasma_state = client_context->plasma_state;
   object_table_entry *entry;
@@ -515,7 +515,7 @@ int remove_client_from_object_clients(object_table_entry *entry,
       if (utarray_len(entry->clients) == 0) {
         /* Tell the eviction policy that this object is no longer being used. */
         int64_t num_objects_to_evict;
-        object_id *objects_to_evict;
+        ObjectID *objects_to_evict;
         end_object_access(client_info->plasma_state->eviction_state,
                           client_info->plasma_state->plasma_store_info,
                           entry->object_id, &num_objects_to_evict,
@@ -531,7 +531,7 @@ int remove_client_from_object_clients(object_table_entry *entry,
   return 0;
 }
 
-void release_object(client *client_context, object_id object_id) {
+void release_object(client *client_context, ObjectID object_id) {
   plasma_store_state *plasma_state = client_context->plasma_state;
   object_table_entry *entry;
   HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
@@ -542,7 +542,7 @@ void release_object(client *client_context, object_id object_id) {
 }
 
 /* Check if an object is present. */
-int contains_object(client *client_context, object_id object_id) {
+int contains_object(client *client_context, ObjectID object_id) {
   plasma_store_state *plasma_state = client_context->plasma_state;
   object_table_entry *entry;
   HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
@@ -553,9 +553,9 @@ int contains_object(client *client_context, object_id object_id) {
 
 /* Seal an object that has been created in the hash table. */
 void seal_object(client *client_context,
-                 object_id object_id,
+                 ObjectID object_id,
                  unsigned char digest[]) {
-  LOG_DEBUG("sealing object");  // TODO(pcm): add object_id here
+  LOG_DEBUG("sealing object");  // TODO(pcm): add ObjectID here
   plasma_store_state *plasma_state = client_context->plasma_state;
   object_table_entry *entry;
   HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
@@ -575,7 +575,7 @@ void seal_object(client *client_context,
 
 /* Delete an object that has been created in the hash table. This should only
  * be called on objects that are returned by the eviction policy to evict. */
-void delete_object(plasma_store_state *plasma_state, object_id object_id) {
+void delete_object(plasma_store_state *plasma_state, ObjectID object_id) {
   LOG_DEBUG("deleting object");
   object_table_entry *entry;
   HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
@@ -600,7 +600,7 @@ void delete_object(plasma_store_state *plasma_state, object_id object_id) {
 
 void remove_objects(plasma_store_state *plasma_state,
                     int64_t num_objects_to_evict,
-                    object_id *objects_to_evict) {
+                    ObjectID *objects_to_evict) {
   if (num_objects_to_evict > 0) {
     for (int i = 0; i < num_objects_to_evict; ++i) {
       delete_object(plasma_state, objects_to_evict[i]);
@@ -709,7 +709,7 @@ void process_message(event_loop *loop,
   read_buffer(client_sock, &type, state->input_buffer);
 
   uint8_t *input = (uint8_t *) utarray_front(state->input_buffer);
-  object_id object_ids[1];
+  ObjectID object_ids[1];
   int64_t num_objects;
   plasma_object objects[1];
   memset(&objects[0], 0, sizeof(objects));
@@ -737,7 +737,7 @@ void process_message(event_loop *loop,
   } break;
   case MessageType_PlasmaGetRequest: {
     num_objects = plasma_read_GetRequest_num_objects(input);
-    object_id *object_ids_to_get = malloc(num_objects * sizeof(object_id));
+    ObjectID *object_ids_to_get = malloc(num_objects * sizeof(ObjectID));
     int64_t timeout_ms;
     plasma_read_GetRequest(input, object_ids_to_get, &timeout_ms, num_objects);
     /* TODO(pcm): The array object_ids_to_get could be reused in
@@ -772,7 +772,7 @@ void process_message(event_loop *loop,
     int64_t num_bytes;
     plasma_read_EvictRequest(input, &num_bytes);
     int64_t num_objects_to_evict;
-    object_id *objects_to_evict;
+    ObjectID *objects_to_evict;
     int64_t num_bytes_evicted = choose_objects_to_evict(
         client_context->plasma_state->eviction_state,
         client_context->plasma_state->plasma_store_info, num_bytes,

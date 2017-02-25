@@ -21,7 +21,7 @@ task_id lookup_nil_id;
 int lookup_nil_success = 0;
 const char *lookup_nil_context = "lookup_nil";
 
-void lookup_nil_fail_callback(unique_id id,
+void lookup_nil_fail_callback(UniqueID id,
                               void *user_context,
                               void *user_data) {
   /* The fail callback should not be called. */
@@ -64,7 +64,7 @@ int lookup_success = 0;
 task *add_lookup_task;
 const char *add_lookup_context = "add_lookup";
 
-void add_lookup_fail_callback(unique_id id,
+void add_lookup_fail_callback(UniqueID id,
                               void *user_context,
                               void *user_data) {
   /* The fail callback should not be called. */
@@ -126,7 +126,7 @@ void subscribe_done_callback(task_id task_id, void *user_context) {
   CHECK(0);
 }
 
-void subscribe_fail_callback(unique_id id,
+void subscribe_fail_callback(UniqueID id,
                              void *user_context,
                              void *user_data) {
   subscribe_failed = 1;
@@ -169,7 +169,7 @@ void publish_done_callback(task_id task_id, void *user_context) {
   CHECK(0);
 }
 
-void publish_fail_callback(unique_id id, void *user_context, void *user_data) {
+void publish_fail_callback(UniqueID id, void *user_context, void *user_data) {
   publish_failed = 1;
   CHECK(user_context == (void *) publish_timeout_context);
   event_loop_stop(g_loop);
@@ -225,12 +225,12 @@ const char *subscribe_retry_context = "subscribe_retry";
 const int subscribe_retry_test_number = 273;
 int subscribe_retry_succeeded = 0;
 
-void subscribe_retry_done_callback(object_id object_id, void *user_context) {
+void subscribe_retry_done_callback(ObjectID object_id, void *user_context) {
   CHECK(user_context == (void *) subscribe_retry_context);
   subscribe_retry_succeeded = 1;
 }
 
-void subscribe_retry_fail_callback(unique_id id,
+void subscribe_retry_fail_callback(UniqueID id,
                                    void *user_context,
                                    void *user_data) {
   /* The fail callback should not be called. */
@@ -272,12 +272,12 @@ TEST subscribe_retry_test(void) {
 const char *publish_retry_context = "publish_retry";
 int publish_retry_succeeded = 0;
 
-void publish_retry_done_callback(object_id object_id, void *user_context) {
+void publish_retry_done_callback(ObjectID object_id, void *user_context) {
   CHECK(user_context == (void *) publish_retry_context);
   publish_retry_succeeded = 1;
 }
 
-void publish_retry_fail_callback(unique_id id,
+void publish_retry_fail_callback(UniqueID id,
                                  void *user_context,
                                  void *user_data) {
   /* The fail callback should not be called. */
@@ -321,7 +321,7 @@ TEST publish_retry_test(void) {
 const char *subscribe_late_context = "subscribe_late";
 int subscribe_late_failed = 0;
 
-void subscribe_late_fail_callback(unique_id id,
+void subscribe_late_fail_callback(UniqueID id,
                                   void *user_context,
                                   void *user_data) {
   CHECK(user_context == (void *) subscribe_late_context);
@@ -366,7 +366,7 @@ TEST subscribe_late_test(void) {
 const char *publish_late_context = "publish_late";
 int publish_late_failed = 0;
 
-void publish_late_fail_callback(unique_id id,
+void publish_late_fail_callback(UniqueID id,
                                 void *user_context,
                                 void *user_data) {
   CHECK(user_context == (void *) publish_late_context);

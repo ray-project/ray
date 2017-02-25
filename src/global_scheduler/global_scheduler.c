@@ -235,7 +235,7 @@ void process_new_db_client(db_client_id db_client_id,
  * @param user_context The user context.
  * @return Void.
  */
-void object_table_subscribe_callback(object_id object_id,
+void object_table_subscribe_callback(ObjectID object_id,
                                      int64_t data_size,
                                      int manager_count,
                                      const char *manager_vector[],
@@ -294,7 +294,7 @@ void local_scheduler_table_handler(db_client_id client_id,
   char id_string[ID_STRING_SIZE];
   LOG_DEBUG(
       "Local scheduler heartbeat from db_client_id %s",
-      object_id_to_string((object_id) client_id, id_string, ID_STRING_SIZE));
+      object_id_to_string((ObjectID) client_id, id_string, ID_STRING_SIZE));
   UNUSED(id_string);
   LOG_DEBUG(
       "total workers = %d, task queue length = %d, available workers = %d",

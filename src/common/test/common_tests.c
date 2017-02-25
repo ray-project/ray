@@ -6,8 +6,8 @@ SUITE(common_tests);
 
 TEST sha1_test(void) {
   static char hex[ID_STRING_SIZE];
-  unique_id uid = globally_unique_id();
-  object_id_to_string((object_id) uid, &hex[0], ID_STRING_SIZE);
+  UniqueID uid = globally_unique_id();
+  object_id_to_string((ObjectID) uid, &hex[0], ID_STRING_SIZE);
   PASS();
 }
 

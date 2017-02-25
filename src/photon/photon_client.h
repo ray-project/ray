@@ -83,7 +83,7 @@ void photon_task_done(photon_conn *conn);
  * @param object_id The ID of the object to reconstruct.
  * @return Void.
  */
-void photon_reconstruct_object(photon_conn *conn, object_id object_id);
+void photon_reconstruct_object(photon_conn *conn, ObjectID object_id);
 
 /**
  * Send a log message to the local scheduler.

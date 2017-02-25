@@ -56,7 +56,7 @@ static PyObject *PyPhotonClient_get_task(PyObject *self) {
 
 static PyObject *PyPhotonClient_reconstruct_object(PyObject *self,
                                                    PyObject *args) {
-  object_id object_id;
+  ObjectID object_id;
   if (!PyArg_ParseTuple(args, "O&", PyStringToUniqueID, &object_id)) {
     return NULL;
   }

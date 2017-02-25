@@ -26,7 +26,7 @@ typedef struct task_queue_entry {
  *  which objects are being actively fetched. */
 typedef struct {
   /** Object id of this object. */
-  object_id object_id;
+  ObjectID object_id;
   /** An array of the tasks dependent on this object. */
   UT_array *dependent_tasks;
   /** Handle for the uthash table. NOTE: This handle is used for both the
@@ -444,7 +444,7 @@ bool dispatch_actor_task(local_scheduler_state *state,
 void fetch_missing_dependency(local_scheduler_state *state,
                               scheduling_algorithm_state *algorithm_state,
                               task_queue_entry *task_entry,
-                              object_id obj_id) {
+                              ObjectID obj_id) {
   object_entry *entry;
   HASH_FIND(hh, algorithm_state->remote_objects, &obj_id, sizeof(obj_id),
             entry);
@@ -486,7 +486,7 @@ void fetch_missing_dependencies(local_scheduler_state *state,
   int num_missing_dependencies = 0;
   for (int i = 0; i < num_args; ++i) {
     if (task_arg_type(task, i) == ARG_BY_REF) {
-      object_id obj_id = task_arg_id(task, i);
+      ObjectID obj_id = task_arg_id(task, i);
       object_entry *entry;
       HASH_FIND(hh, algorithm_state->local_objects, &obj_id, sizeof(obj_id),
                 entry);
@@ -514,7 +514,7 @@ bool can_run(scheduling_algorithm_state *algorithm_state, task_spec *task) {
   int64_t num_args = task_num_args(task);
   for (int i = 0; i < num_args; ++i) {
     if (task_arg_type(task, i) == ARG_BY_REF) {
-      object_id obj_id = task_arg_id(task, i);
+      ObjectID obj_id = task_arg_id(task, i);
       object_entry *entry;
       HASH_FIND(hh, algorithm_state->local_objects, &obj_id, sizeof(obj_id),
                 entry);
@@ -540,7 +540,7 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
 
   /* Allocate a buffer to hold all the object IDs for active fetch requests. */
   int num_object_ids = HASH_COUNT(state->algorithm_state->remote_objects);
-  object_id *object_ids = malloc(num_object_ids * sizeof(object_id));
+  ObjectID *object_ids = malloc(num_object_ids * sizeof(ObjectID));
 
   /* Fill out the request with the object IDs for active fetches. */
   object_entry *fetch_request, *tmp;
@@ -1113,7 +1113,7 @@ void handle_worker_unblocked(local_scheduler_state *state,
 
 void handle_object_available(local_scheduler_state *state,
                              scheduling_algorithm_state *algorithm_state,
-                             object_id object_id) {
+                             ObjectID object_id) {
   /* Get the entry for this object from the active fetch request, or allocate
    * one if needed. */
   object_entry *entry;
@@ -1158,7 +1158,7 @@ void handle_object_available(local_scheduler_state *state,
 }
 
 void handle_object_removed(local_scheduler_state *state,
-                           object_id removed_object_id) {
+                           ObjectID removed_object_id) {
   /* Remove the object from the set of locally available objects. */
   scheduling_algorithm_state *algorithm_state = state->algorithm_state;
   object_entry *entry;
@@ -1180,7 +1180,7 @@ void handle_object_removed(local_scheduler_state *state,
     int64_t num_args = task_num_args(task);
     for (int i = 0; i < num_args; ++i) {
       if (task_arg_type(task, i) == ARG_BY_REF) {
-        object_id arg_id = task_arg_id(task, i);
+        ObjectID arg_id = task_arg_id(task, i);
         if (object_ids_equal(arg_id, removed_object_id)) {
           fetch_missing_dependency(state, algorithm_state, elt,
                                    removed_object_id);
@@ -1195,7 +1195,7 @@ void handle_object_removed(local_scheduler_state *state,
     int64_t num_args = task_num_args(task);
     for (int i = 0; i < num_args; ++i) {
       if (task_arg_type(task, i) == ARG_BY_REF) {
-        object_id arg_id = task_arg_id(task, i);
+        ObjectID arg_id = task_arg_id(task, i);
         if (object_ids_equal(arg_id, removed_object_id)) {
           LOG_DEBUG("Moved task from dispatch queue back to waiting queue");
           DL_DELETE(algorithm_state->dispatch_task_queue, elt);
