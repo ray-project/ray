@@ -38,12 +38,12 @@ void plasma_read_CreateRequest(uint8_t *data,
 int plasma_send_CreateReply(int sock,
                             protocol_builder *B,
                             ObjectID object_id,
-                            plasma_object *object,
+                            PlasmaObject *object,
                             int error);
 
 void plasma_read_CreateReply(uint8_t *data,
                              ObjectID *object_id,
-                             plasma_object *object,
+                             PlasmaObject *object,
                              int *error);
 
 /* Plasma Seal message functions. */
@@ -82,12 +82,12 @@ void plasma_read_GetRequest(uint8_t *data,
 int plasma_send_GetReply(int sock,
                          protocol_builder *B,
                          ObjectID object_ids[],
-                         plasma_object plasma_objects[],
+                         PlasmaObject plasma_objects[],
                          int64_t num_objects);
 
 void plasma_read_GetReply(uint8_t *data,
                           ObjectID object_ids[],
-                          plasma_object plasma_objects[],
+                          PlasmaObject plasma_objects[],
                           int64_t num_objects);
 
 /* Plasma Release message functions. */

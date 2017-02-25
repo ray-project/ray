@@ -60,7 +60,7 @@ typedef struct {
   int64_t data_size;
   /** The size in bytes of the metadata. */
   int64_t metadata_size;
-} plasma_object;
+} PlasmaObject;
 
 typedef enum {
   /** Object was created but not sealed in the local Plasma Store. */

@@ -78,7 +78,7 @@ typedef struct {
   ObjectID *object_ids;
   /** The object information for the objects in this request. This is used in
    *  the reply. */
-  plasma_object *objects;
+  PlasmaObject *objects;
   /** The minimum number of objects to wait for in this request. */
   int64_t num_objects_to_wait_for;
   /** The number of object requests in this wait request that are already
@@ -176,7 +176,7 @@ int create_object(client *client_context,
                   ObjectID obj_id,
                   int64_t data_size,
                   int64_t metadata_size,
-                  plasma_object *result) {
+                  PlasmaObject *result) {
   LOG_DEBUG("creating object"); /* TODO(pcm): add ObjectID here */
   PlasmaStoreState *plasma_state = client_context->plasma_state;
   object_table_entry *entry;
@@ -293,8 +293,7 @@ void remove_get_request(PlasmaStoreState *store_state, get_request *get_req) {
   free(get_req);
 }
 
-void initialize_plasma_object(plasma_object *object,
-                              object_table_entry *entry) {
+void PlasmaObject_init(PlasmaObject *object, object_table_entry *entry) {
   DCHECK(object != NULL);
   DCHECK(entry != NULL);
   DCHECK(entry->state == PLASMA_SEALED);
@@ -380,7 +379,7 @@ void update_object_get_requests(PlasmaStoreState *store_state,
         CHECK(entry != NULL);
 
         if (object_ids_equal(get_req->object_ids[j], obj_id)) {
-          initialize_plasma_object(&get_req->objects[j], entry);
+          PlasmaObject_init(&get_req->objects[j], entry);
           num_updated += 1;
           get_req->num_satisfied += 1;
           /* Record the fact that this client will be using this object and will
@@ -431,7 +430,7 @@ void process_get_request(client *client_context,
   get_req->timer = -1;
   get_req->num_object_ids = num_object_ids;
   get_req->object_ids = malloc(num_object_ids * sizeof(ObjectID));
-  get_req->objects = malloc(num_object_ids * sizeof(plasma_object));
+  get_req->objects = malloc(num_object_ids * sizeof(PlasmaObject));
   for (int i = 0; i < num_object_ids; ++i) {
     get_req->object_ids[i] = object_ids[i];
   }
@@ -448,7 +447,7 @@ void process_get_request(client *client_context,
               sizeof(obj_id), entry);
     if (entry && entry->state == PLASMA_SEALED) {
       /* Update the get request to take into account the present object. */
-      initialize_plasma_object(&get_req->objects[i], entry);
+      PlasmaObject_init(&get_req->objects[i], entry);
       get_req->num_satisfied += 1;
       /* If necessary, record that this client is using this object. In the case
        * where entry == NULL, this will be called from seal_object. */
@@ -476,30 +475,6 @@ void process_get_request(client *client_context,
     get_req->timer = event_loop_add_timer(plasma_state->loop, timeout_ms,
                                           get_timeout_handler, get_req);
   }
-}
-
-/* Get an object from the local Plasma Store if exists. */
-int get_object_local(client *client_context,
-                     int conn,
-                     ObjectID object_id,
-                     plasma_object *result) {
-  PlasmaStoreState *plasma_state = client_context->plasma_state;
-  object_table_entry *entry;
-  HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
-            sizeof(object_id), entry);
-  if (entry && entry->state == PLASMA_SEALED) {
-    result->handle.store_fd = entry->fd;
-    result->handle.mmap_size = entry->map_size;
-    result->data_offset = entry->offset;
-    result->metadata_offset = entry->offset + entry->info.data_size;
-    result->data_size = entry->info.data_size;
-    result->metadata_size = entry->info.metadata_size;
-    /* If necessary, record that this client is using this object. In the case
-     * where entry == NULL, this will be called from seal_object. */
-    add_client_to_object_clients(entry, client_context);
-    return OBJECT_FOUND;
-  }
-  return OBJECT_NOT_FOUND;
 }
 
 int remove_client_from_object_clients(object_table_entry *entry,
@@ -711,7 +686,7 @@ void process_message(event_loop *loop,
   uint8_t *input = (uint8_t *) utarray_front(state->input_buffer);
   ObjectID object_ids[1];
   int64_t num_objects;
-  plasma_object objects[1];
+  PlasmaObject objects[1];
   memset(&objects[0], 0, sizeof(objects));
   int error;
 

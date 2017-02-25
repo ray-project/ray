@@ -59,7 +59,7 @@ typedef struct {
    *  and decrement a count in the relevant client_mmap_table_entry. */
   int count;
   /** Cached information to read the object. */
-  plasma_object object;
+  PlasmaObject object;
   /** A flag representing whether the object has been sealed. */
   bool is_sealed;
   /** Handle for the uthash table. */
@@ -167,7 +167,7 @@ uint8_t *lookup_mmapped_file(plasma_connection *conn, int store_fd_val) {
 
 void increment_object_count(plasma_connection *conn,
                             ObjectID object_id,
-                            plasma_object *object,
+                            PlasmaObject *object,
                             bool is_sealed) {
   /* Increment the count of the object to track the fact that it is being used.
    * The corresponding decrement should happen in plasma_release. */
@@ -219,7 +219,7 @@ int plasma_create(plasma_connection *conn,
       plasma_receive(conn->store_conn, MessageType_PlasmaCreateReply);
   int error;
   ObjectID id;
-  plasma_object object;
+  PlasmaObject object;
   plasma_read_CreateReply(reply_data, &id, &object, &error);
   free(reply_data);
   if (error != PlasmaError_OK) {
@@ -277,8 +277,8 @@ void plasma_get(plasma_connection *conn,
       object_buffers[i].data_size = -1;
     } else {
       /*  */
-      plasma_object object_data;
-      plasma_object *object;
+      PlasmaObject object_data;
+      PlasmaObject *object;
       /* NOTE: If the object is still unsealed, we will deadlock, since we must
        * have been the one who created it. */
       CHECKM(object_entry->is_sealed,
@@ -308,8 +308,8 @@ void plasma_get(plasma_connection *conn,
   uint8_t *reply_data =
       plasma_receive(conn->store_conn, MessageType_PlasmaGetReply);
   ObjectID *received_obj_ids = malloc(num_objects * sizeof(ObjectID));
-  plasma_object *object_data = malloc(num_objects * sizeof(plasma_object));
-  plasma_object *object;
+  PlasmaObject *object_data = malloc(num_objects * sizeof(PlasmaObject));
+  PlasmaObject *object;
   plasma_read_GetReply(reply_data, received_obj_ids, object_data, num_objects);
   free(reply_data);
 

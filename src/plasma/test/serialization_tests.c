@@ -45,9 +45,9 @@ uint8_t *read_message_from_file(int fd, int message_type) {
   return data;
 }
 
-plasma_object random_plasma_object(void) {
+PlasmaObject random_plasma_object(void) {
   int random = rand();
-  plasma_object object;
+  PlasmaObject object;
   memset(&object, 0, sizeof(object));
   object.handle.store_fd = random + 7;
   object.handle.mmap_size = random + 42;
@@ -80,11 +80,11 @@ TEST plasma_create_request_test(void) {
 TEST plasma_create_reply_test(void) {
   int fd = create_temp_file();
   ObjectID object_id1 = globally_unique_id();
-  plasma_object object1 = random_plasma_object();
+  PlasmaObject object1 = random_plasma_object();
   plasma_send_CreateReply(fd, g_B, object_id1, &object1, 0);
   uint8_t *data = read_message_from_file(fd, MessageType_PlasmaCreateReply);
   ObjectID object_id2;
-  plasma_object object2;
+  PlasmaObject object2;
   memset(&object2, 0, sizeof(object2));
   int error_code;
   plasma_read_CreateReply(data, &object_id2, &object2, &error_code);
@@ -153,22 +153,22 @@ TEST plasma_get_reply_test(void) {
   ObjectID object_ids[2];
   object_ids[0] = globally_unique_id();
   object_ids[1] = globally_unique_id();
-  plasma_object plasma_objects[2];
+  PlasmaObject plasma_objects[2];
   plasma_objects[0] = random_plasma_object();
   plasma_objects[1] = random_plasma_object();
   plasma_send_GetReply(fd, g_B, object_ids, plasma_objects, 2);
   uint8_t *data = read_message_from_file(fd, MessageType_PlasmaGetReply);
   int64_t num_objects = plasma_read_GetRequest_num_objects(data);
   ObjectID object_ids_return[num_objects];
-  plasma_object plasma_objects_return[2];
+  PlasmaObject plasma_objects_return[2];
   plasma_read_GetReply(data, object_ids_return, &plasma_objects_return[0],
                        num_objects);
   ASSERT(object_ids_equal(object_ids[0], object_ids_return[0]));
   ASSERT(object_ids_equal(object_ids[1], object_ids_return[1]));
   ASSERT(memcmp(&plasma_objects[0], &plasma_objects_return[0],
-                sizeof(plasma_object)) == 0);
+                sizeof(PlasmaObject)) == 0);
   ASSERT(memcmp(&plasma_objects[1], &plasma_objects_return[1],
-                sizeof(plasma_object)) == 0);
+                sizeof(PlasmaObject)) == 0);
   free(data);
   close(fd);
   PASS();
