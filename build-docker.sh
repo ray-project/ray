@@ -4,7 +4,7 @@ while [[ $# -gt 0 ]]
 do
 key="$1"
 case $key in
-    --no-cachd)
+    --no-cache)
     NO_CACHE="--no-cache"
     ;;
     --skip-examples)
