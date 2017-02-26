@@ -30,7 +30,7 @@ void free_protocol_builder(protocol_builder *builder) {
  * @return Reference to the flatbuffer string vector.
  */
 flatbuffers_string_vec_ref_t object_ids_to_flatbuffer(flatcc_builder_t *B,
-                                                      object_id object_ids[],
+                                                      ObjectID object_ids[],
                                                       int64_t num_objects) {
   flatbuffers_string_vec_start(B);
   for (int i = 0; i < num_objects; i++) {
@@ -52,7 +52,7 @@ flatbuffers_string_vec_ref_t object_ids_to_flatbuffer(flatcc_builder_t *B,
  * @return Void.
  */
 void object_ids_from_flatbuffer(flatbuffers_string_vec_t object_id_vector,
-                                object_id object_ids[],
+                                ObjectID object_ids[],
                                 int64_t num_objects) {
   CHECK(flatbuffers_string_vec_len(object_id_vector) == num_objects);
   for (int64_t i = 0; i < num_objects; ++i) {
@@ -92,7 +92,7 @@ uint8_t *plasma_receive(int sock, int64_t message_type) {
 
 int plasma_send_CreateRequest(int sock,
                               protocol_builder *B,
-                              object_id object_id,
+                              ObjectID object_id,
                               int64_t data_size,
                               int64_t metadata_size) {
   PlasmaCreateRequest_start_as_root(B);
@@ -105,7 +105,7 @@ int plasma_send_CreateRequest(int sock,
 }
 
 void plasma_read_CreateRequest(uint8_t *data,
-                               object_id *object_id,
+                               ObjectID *object_id,
                                int64_t *data_size,
                                int64_t *metadata_size) {
   DCHECK(data);
@@ -119,8 +119,8 @@ void plasma_read_CreateRequest(uint8_t *data,
 
 int plasma_send_CreateReply(int sock,
                             protocol_builder *B,
-                            object_id object_id,
-                            plasma_object *object,
+                            ObjectID object_id,
+                            PlasmaObject *object,
                             int error_code) {
   PlasmaCreateReply_start_as_root(B);
   PlasmaCreateReply_object_id_create(B, (const char *) &object_id.id[0],
@@ -134,27 +134,27 @@ int plasma_send_CreateReply(int sock,
 }
 
 void plasma_read_CreateReply(uint8_t *data,
-                             object_id *object_id,
-                             plasma_object *object,
+                             ObjectID *object_id,
+                             PlasmaObject *object,
                              int *error_code) {
   DCHECK(data);
   PlasmaCreateReply_table_t rep = PlasmaCreateReply_as_root(data);
   flatbuffers_string_t id = PlasmaCreateReply_object_id(rep);
   CHECK(flatbuffers_string_len(id) == sizeof(object_id->id));
   memcpy(&object_id->id[0], id, sizeof(object_id->id));
-  PlasmaObject_struct_t obj = PlasmaCreateReply_plasma_object(rep);
-  object->handle.store_fd = PlasmaObject_segment_index(obj);
-  object->handle.mmap_size = PlasmaObject_mmap_size(obj);
-  object->data_offset = PlasmaObject_data_offset(obj);
-  object->data_size = PlasmaObject_data_size(obj);
-  object->metadata_offset = PlasmaObject_metadata_offset(obj);
-  object->metadata_size = PlasmaObject_metadata_size(obj);
+  PlasmaObjectSpec_struct_t obj = PlasmaCreateReply_plasma_object(rep);
+  object->handle.store_fd = PlasmaObjectSpec_segment_index(obj);
+  object->handle.mmap_size = PlasmaObjectSpec_mmap_size(obj);
+  object->data_offset = PlasmaObjectSpec_data_offset(obj);
+  object->data_size = PlasmaObjectSpec_data_size(obj);
+  object->metadata_offset = PlasmaObjectSpec_metadata_offset(obj);
+  object->metadata_size = PlasmaObjectSpec_metadata_size(obj);
   *error_code = PlasmaCreateReply_error(rep);
 }
 
 #define DEFINE_SIMPLE_SEND_REQUEST(MESSAGE_NAME)                       \
   int plasma_send_##MESSAGE_NAME(int sock, protocol_builder *B,        \
-                                 object_id object_id) {                \
+                                 ObjectID object_id) {                \
     Plasma##MESSAGE_NAME##_start_as_root(B);                           \
     Plasma##MESSAGE_NAME##_object_id_create(                           \
         B, (const char *) &object_id.id[0], sizeof(object_id.id));     \
@@ -164,7 +164,7 @@ void plasma_read_CreateReply(uint8_t *data,
   }
 
 #define DEFINE_SIMPLE_READ_REQUEST(MESSAGE_NAME)                               \
-  void plasma_read_##MESSAGE_NAME(uint8_t *data, object_id *object_id) {       \
+  void plasma_read_##MESSAGE_NAME(uint8_t *data, ObjectID *object_id) {       \
     DCHECK(data);                                                              \
     Plasma##MESSAGE_NAME##_table_t req = Plasma##MESSAGE_NAME##_as_root(data); \
     flatbuffers_string_t id = Plasma##MESSAGE_NAME##_object_id(req);           \
@@ -174,7 +174,7 @@ void plasma_read_CreateReply(uint8_t *data,
 
 #define DEFINE_SIMPLE_SEND_REPLY(MESSAGE_NAME)                         \
   int plasma_send_##MESSAGE_NAME(int sock, protocol_builder *B,        \
-                                 object_id object_id, int error) {     \
+                                 ObjectID object_id, int error) {     \
     Plasma##MESSAGE_NAME##_start_as_root(B);                           \
     Plasma##MESSAGE_NAME##_object_id_create(                           \
         B, (const char *) &object_id.id[0], sizeof(object_id.id));     \
@@ -185,7 +185,7 @@ void plasma_read_CreateReply(uint8_t *data,
   }
 
 #define DEFINE_SIMPLE_READ_REPLY(MESSAGE_NAME)                                 \
-  void plasma_read_##MESSAGE_NAME(uint8_t *data, object_id *object_id,         \
+  void plasma_read_##MESSAGE_NAME(uint8_t *data, ObjectID *object_id,         \
                                   int *error) {                                \
     DCHECK(data);                                                              \
     Plasma##MESSAGE_NAME##_table_t req = Plasma##MESSAGE_NAME##_as_root(data); \
@@ -197,7 +197,7 @@ void plasma_read_CreateReply(uint8_t *data,
 
 int plasma_send_SealRequest(int sock,
                             protocol_builder *B,
-                            object_id object_id,
+                            ObjectID object_id,
                             unsigned char *digest) {
   PlasmaSealRequest_start_as_root(B);
   PlasmaSealRequest_object_id_create(B, (const char *) &object_id.id[0],
@@ -208,7 +208,7 @@ int plasma_send_SealRequest(int sock,
 }
 
 void plasma_read_SealRequest(uint8_t *data,
-                             object_id *object_id,
+                             ObjectID *object_id,
                              unsigned char *digest) {
   DCHECK(data);
   PlasmaSealRequest_table_t req = PlasmaSealRequest_as_root(data);
@@ -237,7 +237,7 @@ DEFINE_SIMPLE_READ_REPLY(DeleteReply);
 
 int plasma_send_StatusRequest(int sock,
                               protocol_builder *B,
-                              object_id object_ids[],
+                              ObjectID object_ids[],
                               int64_t num_objects) {
   PlasmaStatusRequest_start_as_root(B);
   PlasmaStatusRequest_object_ids_add(
@@ -253,7 +253,7 @@ int64_t plasma_read_StatusRequest_num_objects(uint8_t *data) {
 }
 
 void plasma_read_StatusRequest(uint8_t *data,
-                               object_id object_ids[],
+                               ObjectID object_ids[],
                                int64_t num_objects) {
   DCHECK(data);
   PlasmaStatusRequest_table_t req = PlasmaStatusRequest_as_root(data);
@@ -263,7 +263,7 @@ void plasma_read_StatusRequest(uint8_t *data,
 
 int plasma_send_StatusReply(int sock,
                             protocol_builder *B,
-                            object_id object_ids[],
+                            ObjectID object_ids[],
                             int object_status[],
                             int64_t num_objects) {
   PlasmaStatusReply_start_as_root(B);
@@ -285,7 +285,7 @@ int64_t plasma_read_StatusReply_num_objects(uint8_t *data) {
 }
 
 void plasma_read_StatusReply(uint8_t *data,
-                             object_id object_ids[],
+                             ObjectID object_ids[],
                              int object_status[],
                              int64_t num_objects) {
   DCHECK(data);
@@ -302,7 +302,7 @@ void plasma_read_StatusReply(uint8_t *data,
 
 int plasma_send_ContainsRequest(int sock,
                                 protocol_builder *B,
-                                object_id object_id) {
+                                ObjectID object_id) {
   PlasmaContainsRequest_start_as_root(B);
   PlasmaContainsRequest_object_id_create(B, (const char *) &object_id.id[0],
                                          sizeof(object_id.id));
@@ -310,7 +310,7 @@ int plasma_send_ContainsRequest(int sock,
   return finalize_buffer_and_send(B, sock, MessageType_PlasmaContainsRequest);
 }
 
-void plasma_read_ContainsRequest(uint8_t *data, object_id *object_id) {
+void plasma_read_ContainsRequest(uint8_t *data, ObjectID *object_id) {
   DCHECK(data);
   PlasmaContainsRequest_table_t req = PlasmaContainsRequest_as_root(data);
   flatbuffers_string_t id = PlasmaContainsRequest_object_id(req);
@@ -320,7 +320,7 @@ void plasma_read_ContainsRequest(uint8_t *data, object_id *object_id) {
 
 int plasma_send_ContainsReply(int sock,
                               protocol_builder *B,
-                              object_id object_id,
+                              ObjectID object_id,
                               int has_object) {
   PlasmaContainsReply_start_as_root(B);
   PlasmaContainsReply_object_id_create(B, (const char *) &object_id.id[0],
@@ -331,7 +331,7 @@ int plasma_send_ContainsReply(int sock,
 }
 
 void plasma_read_ContainsReply(uint8_t *data,
-                               object_id *object_id,
+                               ObjectID *object_id,
                                int *has_object) {
   DCHECK(data);
   PlasmaContainsReply_table_t rep = PlasmaContainsReply_as_root(data);
@@ -401,7 +401,7 @@ void plasma_read_EvictReply(uint8_t *data, int64_t *num_bytes) {
 
 int plasma_send_GetRequest(int sock,
                            protocol_builder *B,
-                           object_id object_ids[],
+                           ObjectID object_ids[],
                            int64_t num_objects,
                            int64_t timeout_ms) {
   PlasmaGetRequest_start_as_root(B);
@@ -419,7 +419,7 @@ int64_t plasma_read_GetRequest_num_objects(uint8_t *data) {
 }
 
 void plasma_read_GetRequest(uint8_t *data,
-                            object_id object_ids[],
+                            ObjectID object_ids[],
                             int64_t *timeout_ms,
                             int64_t num_objects) {
   DCHECK(data);
@@ -431,8 +431,8 @@ void plasma_read_GetRequest(uint8_t *data,
 
 int plasma_send_GetReply(int sock,
                          protocol_builder *B,
-                         object_id object_ids[],
-                         plasma_object plasma_objects[],
+                         ObjectID object_ids[],
+                         PlasmaObject plasma_objects[],
                          int64_t num_objects) {
   PlasmaGetReply_start_as_root(B);
 
@@ -440,45 +440,47 @@ int plasma_send_GetReply(int sock,
       object_ids_to_flatbuffer(B, object_ids, num_objects);
   PlasmaGetReply_object_ids_add(B, ids);
 
-  PlasmaObject_vec_start(B);
+  PlasmaObjectSpec_vec_start(B);
   for (int i = 0; i < num_objects; ++i) {
-    plasma_object obj = plasma_objects[i];
-    PlasmaObject_t plasma_obj;
-    memset(&plasma_obj, 0, sizeof(PlasmaObject_t));
+    PlasmaObject obj = plasma_objects[i];
+    PlasmaObjectSpec_t plasma_obj;
+    memset(&plasma_obj, 0, sizeof(PlasmaObjectSpec_t));
     plasma_obj.segment_index = obj.handle.store_fd;
     plasma_obj.mmap_size = obj.handle.mmap_size;
     plasma_obj.data_offset = obj.data_offset;
     plasma_obj.data_size = obj.data_size;
     plasma_obj.metadata_offset = obj.metadata_offset;
     plasma_obj.metadata_size = obj.metadata_size;
-    PlasmaObject_vec_push(B, &plasma_obj);
+    PlasmaObjectSpec_vec_push(B, &plasma_obj);
   }
-  PlasmaObject_vec_ref_t object_vec = PlasmaObject_vec_end(B);
+  PlasmaObjectSpec_vec_ref_t object_vec = PlasmaObjectSpec_vec_end(B);
   PlasmaGetReply_plasma_objects_add(B, object_vec);
   PlasmaGetReply_end_as_root(B);
   return finalize_buffer_and_send(B, sock, MessageType_PlasmaGetReply);
 }
 
 void plasma_read_GetReply(uint8_t *data,
-                          object_id object_ids[],
-                          plasma_object plasma_objects[],
+                          ObjectID object_ids[],
+                          PlasmaObject plasma_objects[],
                           int64_t num_objects) {
   CHECK(data);
   PlasmaGetReply_table_t req = PlasmaGetReply_as_root(data);
   flatbuffers_string_vec_t object_id_vector = PlasmaGetReply_object_ids(req);
   object_ids_from_flatbuffer(object_id_vector, object_ids, num_objects);
 
-  memset(plasma_objects, 0, sizeof(plasma_object) * num_objects);
-  PlasmaObject_vec_t plasma_objects_vector = PlasmaGetReply_plasma_objects(req);
+  memset(plasma_objects, 0, sizeof(PlasmaObject) * num_objects);
+  PlasmaObjectSpec_vec_t plasma_objects_vector =
+      PlasmaGetReply_plasma_objects(req);
 
   for (int i = 0; i < num_objects; ++i) {
-    PlasmaObject_struct_t obj = PlasmaObject_vec_at(plasma_objects_vector, i);
-    plasma_objects[i].handle.store_fd = PlasmaObject_segment_index(obj);
-    plasma_objects[i].handle.mmap_size = PlasmaObject_mmap_size(obj);
-    plasma_objects[i].data_offset = PlasmaObject_data_offset(obj);
-    plasma_objects[i].data_size = PlasmaObject_data_size(obj);
-    plasma_objects[i].metadata_offset = PlasmaObject_metadata_offset(obj);
-    plasma_objects[i].metadata_size = PlasmaObject_metadata_size(obj);
+    PlasmaObjectSpec_struct_t obj =
+        PlasmaObjectSpec_vec_at(plasma_objects_vector, i);
+    plasma_objects[i].handle.store_fd = PlasmaObjectSpec_segment_index(obj);
+    plasma_objects[i].handle.mmap_size = PlasmaObjectSpec_mmap_size(obj);
+    plasma_objects[i].data_offset = PlasmaObjectSpec_data_offset(obj);
+    plasma_objects[i].data_size = PlasmaObjectSpec_data_size(obj);
+    plasma_objects[i].metadata_offset = PlasmaObjectSpec_metadata_offset(obj);
+    plasma_objects[i].metadata_size = PlasmaObjectSpec_metadata_size(obj);
   }
 }
 
@@ -486,7 +488,7 @@ void plasma_read_GetReply(uint8_t *data,
 
 int plasma_send_FetchRequest(int sock,
                              protocol_builder *B,
-                             object_id object_ids[],
+                             ObjectID object_ids[],
                              int64_t num_objects) {
   PlasmaFetchRequest_start_as_root(B);
   PlasmaFetchRequest_object_ids_add(
@@ -502,7 +504,7 @@ int64_t plasma_read_FetchRequest_num_objects(uint8_t *data) {
 }
 
 void plasma_read_FetchRequest(uint8_t *data,
-                              object_id object_ids[],
+                              ObjectID object_ids[],
                               int64_t num_objects) {
   DCHECK(data);
   PlasmaFetchRequest_table_t req = PlasmaFetchRequest_as_root(data);
@@ -515,7 +517,7 @@ void plasma_read_FetchRequest(uint8_t *data,
 
 int plasma_send_WaitRequest(int sock,
                             protocol_builder *B,
-                            object_request object_requests[],
+                            ObjectRequest object_requests[],
                             int num_requests,
                             int num_ready_objects,
                             int64_t timeout_ms) {
@@ -542,7 +544,7 @@ int plasma_read_WaitRequest_num_object_ids(uint8_t *data) {
 }
 
 void plasma_read_WaitRequest(uint8_t *data,
-                             object_request object_requests[],
+                             ObjectRequest object_requests[],
                              int num_object_ids,
                              int64_t *timeout_ms,
                              int *num_ready_objects) {
@@ -562,7 +564,7 @@ void plasma_read_WaitRequest(uint8_t *data,
 
 int plasma_send_WaitReply(int sock,
                           protocol_builder *B,
-                          object_request object_requests[],
+                          ObjectRequest object_requests[],
                           int num_ready_objects) {
   PlasmaWaitReply_start_as_root(B);
   ObjectReply_vec_start(B);
@@ -580,7 +582,7 @@ int plasma_send_WaitReply(int sock,
 }
 
 void plasma_read_WaitReply(uint8_t *data,
-                           object_request object_requests[],
+                           ObjectRequest object_requests[],
                            int *num_ready_objects) {
   DCHECK(data);
   PlasmaWaitReply_table_t req = PlasmaWaitReply_as_root(data);
@@ -604,7 +606,7 @@ int plasma_send_SubscribeRequest(int sock, protocol_builder *B) {
 
 int plasma_send_DataRequest(int sock,
                             protocol_builder *B,
-                            object_id object_id,
+                            ObjectID object_id,
                             const char *address,
                             int port) {
   PlasmaDataRequest_start_as_root(B);
@@ -617,7 +619,7 @@ int plasma_send_DataRequest(int sock,
 }
 
 void plasma_read_DataRequest(uint8_t *data,
-                             object_id *object_id,
+                             ObjectID *object_id,
                              char **address,
                              int *port) {
   DCHECK(data);
@@ -631,7 +633,7 @@ void plasma_read_DataRequest(uint8_t *data,
 
 int plasma_send_DataReply(int sock,
                           protocol_builder *B,
-                          object_id object_id,
+                          ObjectID object_id,
                           int64_t object_size,
                           int64_t metadata_size) {
   PlasmaDataReply_start_as_root(B);
@@ -644,7 +646,7 @@ int plasma_send_DataReply(int sock,
 }
 
 void plasma_read_DataReply(uint8_t *data,
-                           object_id *object_id,
+                           ObjectID *object_id,
                            int64_t *object_size,
                            int64_t *metadata_size) {
   DCHECK(data);

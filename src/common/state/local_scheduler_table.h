@@ -21,7 +21,7 @@ typedef struct {
   /** The resource vector of resources currently available to this local
    *  scheduler. */
   double dynamic_resources[MAX_RESOURCE_INDEX];
-} local_scheduler_info;
+} LocalSchedulerInfo;
 
 /*
  *  ==== Subscribing to the local scheduler table ====
@@ -29,8 +29,8 @@ typedef struct {
 
 /* Callback for subscribing to the local scheduler table. */
 typedef void (*local_scheduler_table_subscribe_callback)(
-    db_client_id client_id,
-    local_scheduler_info info,
+    DBClientID client_id,
+    LocalSchedulerInfo info,
     void *user_context);
 
 /**
@@ -45,17 +45,17 @@ typedef void (*local_scheduler_table_subscribe_callback)(
  * @return Void.
  */
 void local_scheduler_table_subscribe(
-    db_handle *db_handle,
+    DBHandle *db_handle,
     local_scheduler_table_subscribe_callback subscribe_callback,
     void *subscribe_context,
-    retry_info *retry);
+    RetryInfo *retry);
 
 /* Data that is needed to register local scheduler table subscribe callbacks
  * with the state database. */
 typedef struct {
   local_scheduler_table_subscribe_callback subscribe_callback;
   void *subscribe_context;
-} local_scheduler_table_subscribe_data;
+} LocalSchedulerTableSubscribeData;
 
 /**
  * Send a heartbeat to all subscriers to the local scheduler table. This
@@ -66,14 +66,14 @@ typedef struct {
  *        local scheduler.
  * @param retry Information about retrying the request to the database.
  */
-void local_scheduler_table_send_info(db_handle *db_handle,
-                                     local_scheduler_info *info,
-                                     retry_info *retry);
+void local_scheduler_table_send_info(DBHandle *db_handle,
+                                     LocalSchedulerInfo *info,
+                                     RetryInfo *retry);
 
 /* Data that is needed to publish local scheduler heartbeats to the local
  * scheduler table. */
 typedef struct {
-  local_scheduler_info info;
-} local_scheduler_table_send_info_data;
+  LocalSchedulerInfo info;
+} LocalSchedulerTableSendInfoData;
 
 #endif /* LOCAL_SCHEDULER_TABLE_H */

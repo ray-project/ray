@@ -18,19 +18,15 @@
 #define NIL_ACTOR_ID NIL_ID
 #define NIL_FUNCTION_ID NIL_ID
 
-typedef unique_id function_id;
+typedef UniqueID FunctionID;
 
 /** The task ID is a deterministic hash of the function ID that the task
  *  executes and the argument IDs or argument values. */
-typedef unique_id task_id;
+typedef UniqueID TaskID;
 
 /** The actor ID is the ID of the actor that a task must run on. If the task is
  *  not run on an actor, then NIL_ACTOR_ID should be used. */
-typedef unique_id actor_id;
-
-/** The task instance ID is a globally unique ID generated which identifies this
- *  particular execution of the task. */
-typedef unique_id task_iid;
+typedef UniqueID ActorID;
 
 /**
  * ==== Task specifications ====
@@ -50,7 +46,7 @@ enum arg_type { ARG_BY_REF, ARG_BY_VAL };
  * @param second_id The first task ID to compare.
  * @return True if the task IDs are the same and false otherwise.
  */
-bool task_ids_equal(task_id first_id, task_id second_id);
+bool TaskID_equal(TaskID first_id, TaskID second_id);
 
 /**
  * Compare a task ID to the nil ID.
@@ -58,7 +54,7 @@ bool task_ids_equal(task_id first_id, task_id second_id);
  * @param id The task ID to compare to nil.
  * @return True if the task ID is equal to nil.
  */
-bool task_id_is_nil(task_id id);
+bool TaskID_is_nil(TaskID id);
 
 /**
  * Compare two actor IDs.
@@ -67,7 +63,7 @@ bool task_id_is_nil(task_id id);
  * @param second_id The first actor ID to compare.
  * @return True if the actor IDs are the same and false otherwise.
  */
-bool actor_ids_equal(actor_id first_id, actor_id second_id);
+bool ActorID_equal(ActorID first_id, ActorID second_id);
 
 /**
  * Compare two function IDs.
@@ -76,7 +72,7 @@ bool actor_ids_equal(actor_id first_id, actor_id second_id);
  * @param second_id The first function ID to compare.
  * @return True if the function IDs are the same and false otherwise.
  */
-bool function_ids_equal(function_id first_id, function_id second_id);
+bool FunctionID_equal(FunctionID first_id, FunctionID second_id);
 
 /**
  * Compare a function ID to the nil ID.
@@ -84,7 +80,7 @@ bool function_ids_equal(function_id first_id, function_id second_id);
  * @param id The function ID to compare to nil.
  * @return True if the function ID is equal to nil.
  */
-bool function_id_is_nil(function_id id);
+bool FunctionID_is_nil(FunctionID id);
 
 /* Construct and modify task specifications. */
 
@@ -106,12 +102,12 @@ bool function_id_is_nil(function_id id);
           ignoring object ID arguments.
  * @return The partially constructed task_spec.
  */
-task_spec *start_construct_task_spec(unique_id driver_id,
-                                     task_id parent_task_id,
+task_spec *start_construct_task_spec(UniqueID driver_id,
+                                     TaskID parent_task_id,
                                      int64_t parent_counter,
-                                     unique_id actor_id,
+                                     UniqueID actor_id,
                                      int64_t actor_counter,
-                                     function_id function_id,
+                                     FunctionID function_id,
                                      int64_t num_args,
                                      int64_t num_returns,
                                      int64_t args_value_size);
@@ -140,7 +136,7 @@ int64_t task_spec_size(task_spec *spec);
  * @param spec The task_spec in question.
  * @return The function ID of the function to execute in this task.
  */
-function_id task_function(task_spec *spec);
+FunctionID task_function(task_spec *spec);
 
 /**
  * Return the actor ID of the task.
@@ -148,7 +144,7 @@ function_id task_function(task_spec *spec);
  * @param spec The task_spec in question.
  * @return The actor ID of the actor the task is part of.
  */
-unique_id task_spec_actor_id(task_spec *spec);
+UniqueID task_spec_actor_id(task_spec *spec);
 
 /**
  * Return the actor counter of the task. This starts at 0 and increments by 1
@@ -165,7 +161,7 @@ int64_t task_spec_actor_counter(task_spec *spec);
  * @param spec The task_spec in question.
  * @return The driver ID of the task.
  */
-unique_id task_spec_driver_id(task_spec *spec);
+UniqueID task_spec_driver_id(task_spec *spec);
 
 /**
  * Return the task ID of the task.
@@ -173,7 +169,7 @@ unique_id task_spec_driver_id(task_spec *spec);
  * @param spec The task_spec in question.
  * @return The task ID of the task.
  */
-task_id task_spec_id(task_spec *spec);
+TaskID task_spec_id(task_spec *spec);
 
 /**
  * Get the number of arguments to this task.
@@ -209,7 +205,7 @@ int8_t task_arg_type(task_spec *spec, int64_t arg_index);
  * @param arg_index The index of the argument in question.
  * @return The argument at that index.
  */
-object_id task_arg_id(task_spec *spec, int64_t arg_index);
+ObjectID task_arg_id(task_spec *spec, int64_t arg_index);
 
 /**
  * Get a particular argument to this task. This assumes the argument is a value.
@@ -239,7 +235,7 @@ int64_t task_arg_length(task_spec *spec, int64_t arg_index);
  * @return The number of task arguments that have been set before this one. This
  *         is only used for testing.
  */
-int64_t task_args_add_ref(task_spec *spec, object_id obj_id);
+int64_t task_args_add_ref(task_spec *spec, ObjectID obj_id);
 
 /**
  * Set the next task argument. Note that this API only allows you to set the
@@ -260,7 +256,7 @@ int64_t task_args_add_val(task_spec *spec, uint8_t *data, int64_t length);
  * @param return_index The index of the return object ID in question.
  * @return The relevant return object ID.
  */
-object_id task_return(task_spec *spec, int64_t return_index);
+ObjectID task_return(task_spec *spec, int64_t return_index);
 
 /**
  * Indices into resource vectors.
@@ -308,7 +304,7 @@ double task_spec_get_required_resource(const task_spec *spec,
  * @param put_index The number of put calls in this task so far.
  * @return The object ID for the object that was put.
  */
-object_id task_compute_put_id(task_id task_id, int64_t put_index);
+ObjectID task_compute_put_id(TaskID task_id, int64_t put_index);
 
 /**
  * Free a task_spec.
@@ -357,7 +353,7 @@ typedef enum {
 /** A task is an execution of a task specification.  It has a state of execution
  * (see scheduling_state) and the ID of the local scheduler it is scheduled on
  * or running on. */
-typedef struct task_impl task;
+typedef struct TaskImpl Task;
 
 /**
  * Allocate a new task. Must be freed with free_task after use.
@@ -367,7 +363,7 @@ typedef struct task_impl task;
  * @param local_scheduler_id The ID of the local scheduler that the task is
  *        scheduled on, if any.
  */
-task *alloc_task(task_spec *spec, int state, db_client_id local_scheduler_id);
+Task *Task_alloc(task_spec *spec, int state, DBClientID local_scheduler_id);
 
 /**
  * Create a copy of the task. Must be freed with free_task after use.
@@ -375,30 +371,30 @@ task *alloc_task(task_spec *spec, int state, db_client_id local_scheduler_id);
  * @param other The task that will be copied.
  * @returns Pointer to the copy of the task.
  */
-task *copy_task(task *other);
+Task *Task_copy(Task *other);
 
 /** Size of task structure in bytes. */
-int64_t task_size(task *task);
+int64_t Task_size(Task *task);
 
 /** The scheduling state of the task. */
-int task_state(task *task);
+int Task_state(Task *task);
 
 /** Update the schedule state of the task. */
-void task_set_state(task *task, int state);
+void Task_set_state(Task *task, int state);
 
 /** Local scheduler this task has been assigned to or is running on. */
-db_client_id task_local_scheduler(task *task);
+DBClientID Task_local_scheduler_id(Task *task);
 
 /** Set the local scheduler ID for this task. */
-void task_set_local_scheduler(task *task, db_client_id local_scheduler_id);
+void Task_set_local_scheduler_id(Task *task, DBClientID local_scheduler_id);
 
 /** Task specification of this task. */
-task_spec *task_task_spec(task *task);
+task_spec *Task_task_spec(Task *task);
 
 /** Task ID of this task. */
-task_id task_task_id(task *task);
+TaskID Task_task_id(Task *task);
 
 /** Free this task datastructure. */
-void free_task(task *task);
+void Task_free(Task *task);
 
 #endif

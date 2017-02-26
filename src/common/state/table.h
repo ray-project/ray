@@ -7,7 +7,7 @@
 #include "common.h"
 #include "db.h"
 
-typedef struct table_callback_data table_callback_data;
+typedef struct TableCallbackData TableCallbackData;
 
 typedef void *table_done_callback;
 
@@ -17,20 +17,20 @@ typedef void *table_done_callback;
  * @param id The unique ID that identifies this callback. Examples include an
  *        object ID or task ID.
  * @param user_context The state context for the callback. This is equivalent
- *        to the user_context field in table_callback_data.
+ *        to the user_context field in TableCallbackData.
  * @param user_data A data argument for the callback. This is equivalent to the
- *        data field in table_callback_data. The user is responsible for
+ *        data field in TableCallbackData. The user is responsible for
  *        freeing user_data.
  */
-typedef void (*table_fail_callback)(unique_id id,
+typedef void (*table_fail_callback)(UniqueID id,
                                     void *user_context,
                                     void *user_data);
 
-typedef void (*table_retry_callback)(table_callback_data *callback_data);
+typedef void (*table_retry_callback)(TableCallbackData *callback_data);
 
 /**
  * Data structure consolidating the retry related variables. If a NULL
- * retry_info struct is used, the default behavior will be to retry infinitely
+ * RetryInfo struct is used, the default behavior will be to retry infinitely
  * many times.
  */
 typedef struct {
@@ -42,12 +42,12 @@ typedef struct {
   uint64_t timeout;
   /** The callback that will be called if there are no more retries left. */
   table_fail_callback fail_callback;
-} retry_info;
+} RetryInfo;
 
-struct table_callback_data {
+struct TableCallbackData {
   /** ID of the entry in the table that we are going to look up, remove or add.
    */
-  unique_id id;
+  UniqueID id;
   /** A label to identify the original request for logging purposes. */
   const char *label;
   /** The callback that will be called when results is returned. */
@@ -57,7 +57,7 @@ struct table_callback_data {
   /** Retry information containing the remaining number of retries, the timeout
    *  before the next retry, and a pointer to the failure callback.
    */
-  retry_info retry;
+  RetryInfo retry;
   /** Pointer to the data that is entered into the table. This can be used to
    *  pass the result of the call to the callback. The callback takes ownership
    *  over this data and will free it. */
@@ -68,7 +68,7 @@ struct table_callback_data {
   /** User context. */
   void *user_context;
   /** Handle to db. */
-  db_handle *db_handle;
+  DBHandle *db_handle;
   /** Handle to timer. */
   int64_t timer_id;
   UT_hash_handle hh; /* makes this structure hashable */
@@ -104,11 +104,11 @@ int64_t table_timeout_handler(event_loop *loop,
  *        passed on to the various callbacks.
  * @return New table callback data struct.
  */
-table_callback_data *init_table_callback(db_handle *db_handle,
-                                         unique_id id,
+TableCallbackData *init_table_callback(DBHandle *db_handle,
+                                         UniqueID id,
                                          const char *label,
                                          OWNER void *data,
-                                         retry_info *retry,
+                                         RetryInfo *retry,
                                          table_done_callback done_callback,
                                          table_retry_callback retry_callback,
                                          void *user_context);
@@ -122,7 +122,7 @@ table_callback_data *init_table_callback(db_handle *db_handle,
  *        want to remove.
  * @return Void.
  */
-void destroy_table_callback(table_callback_data *callback_data);
+void destroy_table_callback(TableCallbackData *callback_data);
 
 /**
  * Destroy all state events associated with the callback data, including memory
@@ -133,7 +133,7 @@ void destroy_table_callback(table_callback_data *callback_data);
  * @return Void.
  */
 void destroy_timer_callback(event_loop *loop,
-                            table_callback_data *callback_data);
+                            TableCallbackData *callback_data);
 
 /**
  * Add an outstanding callback entry.
@@ -142,7 +142,7 @@ void destroy_timer_callback(event_loop *loop,
  *        want to insert.
  * @return None.
  */
-void outstanding_callbacks_add(table_callback_data *callback_data);
+void outstanding_callbacks_add(TableCallbackData *callback_data);
 
 /**
  * Find an outstanding callback entry.
@@ -151,7 +151,7 @@ void outstanding_callbacks_add(table_callback_data *callback_data);
  *        timer ID assigned by the Redis ae event loop.
  * @return Returns the callback data if found, NULL otherwise.
  */
-table_callback_data *outstanding_callbacks_find(int64_t key);
+TableCallbackData *outstanding_callbacks_find(int64_t key);
 
 /**
  * Remove an outstanding callback entry. This only removes the callback entry
@@ -162,7 +162,7 @@ table_callback_data *outstanding_callbacks_find(int64_t key);
  *        want to remove.
  * @return Void.
  */
-void outstanding_callbacks_remove(table_callback_data *callback_data);
+void outstanding_callbacks_remove(TableCallbackData *callback_data);
 
 /**
  * Destroy all outstanding callbacks and remove their associated timer events

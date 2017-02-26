@@ -13,7 +13,7 @@ extern PyObject *CommonError;
 // clang-format off
 typedef struct {
   PyObject_HEAD
-  object_id object_id;
+  ObjectID object_id;
 } PyObjectID;
 
 typedef struct {
@@ -33,11 +33,11 @@ extern PyObject *pickle_loads;
 
 void init_pickle_module(void);
 
-int PyStringToUniqueID(PyObject *object, object_id *object_id);
+int PyStringToUniqueID(PyObject *object, ObjectID *object_id);
 
-int PyObjectToUniqueID(PyObject *object, object_id *objectid);
+int PyObjectToUniqueID(PyObject *object, ObjectID *objectid);
 
-PyObject *PyObjectID_make(object_id object_id);
+PyObject *PyObjectID_make(ObjectID object_id);
 
 PyObject *check_simple_value(PyObject *self, PyObject *args);
 

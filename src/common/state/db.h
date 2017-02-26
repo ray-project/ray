@@ -4,7 +4,7 @@
 #include "common.h"
 #include "event_loop.h"
 
-typedef struct db_handle db_handle;
+typedef struct DBHandle DBHandle;
 
 /**
  * Connect to the global system store.
@@ -21,7 +21,7 @@ typedef struct db_handle db_handle;
  * @return This returns a handle to the database, which must be freed with
  *         db_disconnect after use.
  */
-db_handle *db_connect(const char *db_address,
+DBHandle *db_connect(const char *db_address,
                       int db_port,
                       const char *client_type,
                       const char *node_ip_address,
@@ -38,7 +38,7 @@ db_handle *db_connect(const char *db_address,
  *        reattached to the loop.
  * @return Void.
  */
-void db_attach(db_handle *db, event_loop *loop, bool reattach);
+void db_attach(DBHandle *db, event_loop *loop, bool reattach);
 
 /**
  * Disconnect from the global system store.
@@ -46,7 +46,7 @@ void db_attach(db_handle *db, event_loop *loop, bool reattach);
  * @param db The database connection to close and clean up.
  * @return Void.
  */
-void db_disconnect(db_handle *db);
+void db_disconnect(DBHandle *db);
 
 /**
  * Returns the db client ID.
@@ -54,6 +54,6 @@ void db_disconnect(db_handle *db);
  * @param db The handle to the database.
  * @returns int The db client ID for this connection to the database.
  */
-db_client_id get_db_client_id(db_handle *db);
+DBClientID get_db_client_id(DBHandle *db);
 
 #endif

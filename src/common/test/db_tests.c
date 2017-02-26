@@ -34,7 +34,7 @@ const int TEST_NUMBER = 10;
 
 /* Test if entries have been written to the database. */
 
-void lookup_done_callback(object_id object_id,
+void lookup_done_callback(ObjectID object_id,
                           int manager_count,
                           const char *manager_vector[],
                           void *user_context) {
@@ -52,10 +52,10 @@ void lookup_done_callback(object_id object_id,
 }
 
 /* Entry added to database successfully. */
-void add_done_callback(object_id object_id, void *user_context) {}
+void add_done_callback(ObjectID object_id, void *user_context) {}
 
 /* Test if we got a timeout callback if we couldn't connect database. */
-void timeout_callback(object_id object_id, void *context, void *user_data) {
+void timeout_callback(ObjectID object_id, void *context, void *user_data) {
   user_context *uc = (user_context *) context;
   CHECK(uc->test_number == TEST_NUMBER)
 }
@@ -69,16 +69,16 @@ TEST object_table_lookup_test(void) {
   event_loop *loop = event_loop_create();
   /* This uses manager_port1. */
   const char *db_connect_args1[] = {"address", "127.0.0.1:12345"};
-  db_handle *db1 = db_connect("127.0.0.1", 6379, "plasma_manager", manager_addr,
+  DBHandle *db1 = db_connect("127.0.0.1", 6379, "plasma_manager", manager_addr,
                               2, db_connect_args1);
   /* This uses manager_port2. */
   const char *db_connect_args2[] = {"address", "127.0.0.1:12346"};
-  db_handle *db2 = db_connect("127.0.0.1", 6379, "plasma_manager", manager_addr,
+  DBHandle *db2 = db_connect("127.0.0.1", 6379, "plasma_manager", manager_addr,
                               2, db_connect_args2);
   db_attach(db1, loop, false);
   db_attach(db2, loop, false);
-  unique_id id = globally_unique_id();
-  retry_info retry = {
+  UniqueID id = globally_unique_id();
+  RetryInfo retry = {
       .num_retries = NUM_RETRIES,
       .timeout = TIMEOUT,
       .fail_callback = timeout_callback,
@@ -109,9 +109,9 @@ TEST object_table_lookup_test(void) {
 }
 
 int task_table_test_callback_called = 0;
-task *task_table_test_task;
+Task *task_table_test_task;
 
-void task_table_test_fail_callback(unique_id id,
+void task_table_test_fail_callback(UniqueID id,
                                    void *context,
                                    void *user_data) {
   event_loop *loop = user_data;
@@ -121,22 +121,22 @@ void task_table_test_fail_callback(unique_id id,
 int64_t task_table_delayed_add_task(event_loop *loop,
                                     int64_t id,
                                     void *context) {
-  db_handle *db = context;
-  retry_info retry = {
+  DBHandle *db = context;
+  RetryInfo retry = {
       .num_retries = NUM_RETRIES,
       .timeout = TIMEOUT,
       .fail_callback = task_table_test_fail_callback,
   };
-  task_table_add_task(db, copy_task(task_table_test_task), &retry, NULL,
+  task_table_add_task(db, Task_copy(task_table_test_task), &retry, NULL,
                       (void *) loop);
   return EVENT_LOOP_TIMER_DONE;
 }
 
-void task_table_test_callback(task *callback_task, void *user_data) {
+void task_table_test_callback(Task *callback_task, void *user_data) {
   task_table_test_callback_called = 1;
-  CHECK(task_state(callback_task) == TASK_STATUS_SCHEDULED);
-  CHECK(task_size(callback_task) == task_size(task_table_test_task));
-  CHECK(memcmp(callback_task, task_table_test_task, task_size(callback_task)) ==
+  CHECK(Task_state(callback_task) == TASK_STATUS_SCHEDULED);
+  CHECK(Task_size(callback_task) == Task_size(task_table_test_task));
+  CHECK(memcmp(callback_task, task_table_test_task, Task_size(callback_task)) ==
         0);
   event_loop *loop = user_data;
   event_loop_stop(loop);
@@ -145,15 +145,15 @@ void task_table_test_callback(task *callback_task, void *user_data) {
 TEST task_table_test(void) {
   task_table_test_callback_called = 0;
   event_loop *loop = event_loop_create();
-  db_handle *db =
+  DBHandle *db =
       db_connect("127.0.0.1", 6379, "local_scheduler", "127.0.0.1", 0, NULL);
   db_attach(db, loop, false);
-  db_client_id local_scheduler_id = globally_unique_id();
+  DBClientID local_scheduler_id = globally_unique_id();
   task_spec *spec = example_task_spec(1, 1);
   task_table_test_task =
-      alloc_task(spec, TASK_STATUS_SCHEDULED, local_scheduler_id);
+      Task_alloc(spec, TASK_STATUS_SCHEDULED, local_scheduler_id);
   free_task_spec(spec);
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = NUM_RETRIES,
       .timeout = TIMEOUT,
       .fail_callback = task_table_test_fail_callback,
@@ -164,7 +164,7 @@ TEST task_table_test(void) {
   event_loop_add_timer(
       loop, 200, (event_loop_timer_handler) task_table_delayed_add_task, db);
   event_loop_run(loop);
-  free_task(task_table_test_task);
+  Task_free(task_table_test_task);
   db_disconnect(db);
   destroy_outstanding_callbacks(loop);
   event_loop_destroy(loop);
@@ -174,20 +174,20 @@ TEST task_table_test(void) {
 
 int num_test_callback_called = 0;
 
-void task_table_all_test_callback(task *task, void *user_data) {
+void task_table_all_test_callback(Task *task, void *user_data) {
   num_test_callback_called += 1;
 }
 
 TEST task_table_all_test(void) {
   event_loop *loop = event_loop_create();
-  db_handle *db =
+  DBHandle *db =
       db_connect("127.0.0.1", 6379, "local_scheduler", "127.0.0.1", 0, NULL);
   db_attach(db, loop, false);
   task_spec *spec = example_task_spec(1, 1);
   /* Schedule two tasks on different local local schedulers. */
-  task *task1 = alloc_task(spec, TASK_STATUS_SCHEDULED, globally_unique_id());
-  task *task2 = alloc_task(spec, TASK_STATUS_SCHEDULED, globally_unique_id());
-  retry_info retry = {
+  Task *task1 = Task_alloc(spec, TASK_STATUS_SCHEDULED, globally_unique_id());
+  Task *task2 = Task_alloc(spec, TASK_STATUS_SCHEDULED, globally_unique_id());
+  RetryInfo retry = {
       .num_retries = NUM_RETRIES, .timeout = TIMEOUT, .fail_callback = NULL,
   };
   task_table_subscribe(db, NIL_ID, TASK_STATUS_SCHEDULED,
@@ -212,8 +212,8 @@ TEST task_table_all_test(void) {
 TEST unique_client_id_test(void) {
   enum { num_conns = 100 };
 
-  db_client_id ids[num_conns];
-  db_handle *db;
+  DBClientID ids[num_conns];
+  DBHandle *db;
   for (int i = 0; i < num_conns; ++i) {
     db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
     ids[i] = get_db_client_id(db);
@@ -221,7 +221,7 @@ TEST unique_client_id_test(void) {
   }
   for (int i = 0; i < num_conns; ++i) {
     for (int j = 0; j < i; ++j) {
-      ASSERT(!db_client_ids_equal(ids[i], ids[j]));
+      ASSERT(!DBClientID_equal(ids[i], ids[j]));
     }
   }
   PASS();

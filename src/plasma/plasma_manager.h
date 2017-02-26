@@ -21,7 +21,7 @@
 #define BUFSIZE 4096
 
 typedef struct plasma_manager_state plasma_manager_state;
-typedef struct client_connection client_connection;
+typedef struct ClientConnection ClientConnection;
 typedef struct client_object_request client_object_request;
 
 /**
@@ -63,7 +63,7 @@ void destroy_plasma_manager_state(plasma_manager_state *state);
  * @param object_id The object_id of the object we will be sending.
  * @param addr The IP address of the plasma manager to send the object to.
  * @param port The port of the plasma manager we are sending the object to.
- * @param conn The client_connection to the other plasma manager.
+ * @param conn The ClientConnection to the other plasma manager.
  * @return Void.
  *
  * This establishes a connection to the remote manager if one doesn't already
@@ -71,10 +71,10 @@ void destroy_plasma_manager_state(plasma_manager_state *state);
  * manager.
  */
 void process_transfer(event_loop *loop,
-                      object_id object_id,
+                      ObjectID object_id,
                       uint8_t addr[4],
                       int port,
-                      client_connection *conn);
+                      ClientConnection *conn);
 
 /**
  * Process a request from another object store manager to receive data.
@@ -84,7 +84,7 @@ void process_transfer(event_loop *loop,
  * @param object_id The object_id of the object we will be reading.
  * @param data_size Size of the object.
  * @param metadata_size Size of the metadata.
- * @param conn The client_connection to the other plasma manager.
+ * @param conn The ClientConnection to the other plasma manager.
  * @return Void.
  *
  * Initializes the object we are going to write to in the local plasma store
@@ -93,10 +93,10 @@ void process_transfer(event_loop *loop,
  */
 void process_data(event_loop *loop,
                   int client_sock,
-                  object_id object_id,
+                  ObjectID object_id,
                   int64_t data_size,
                   int64_t metadata_size,
-                  client_connection *conn);
+                  ClientConnection *conn);
 
 /**
  * Read the next chunk of the object in transit from the plasma manager
@@ -105,7 +105,7 @@ void process_data(event_loop *loop,
  *
  * @param loop This is the event loop of the plasma manager.
  * @param data_sock The connection to the other plasma manager.
- * @param context The client_connection to the other plasma manager.
+ * @param context The ClientConnection to the other plasma manager.
  * @return Void.
  */
 void process_data_chunk(event_loop *loop,
@@ -136,7 +136,7 @@ void process_object_notification(event_loop *loop,
  *
  * @param loop This is the event loop of the plasma manager.
  * @param data_sock This is the socket the other plasma manager is listening on.
- * @param context The client_connection to the other plasma manager, contains a
+ * @param context The ClientConnection to the other plasma manager, contains a
  *        queue of objects that will be sent.
  * @return Void.
  */
@@ -154,10 +154,10 @@ void send_queued_request(event_loop *loop,
  * @param context The plasma manager state.
  * @return Void.
  */
-client_connection *new_client_connection(event_loop *loop,
-                                         int listener_sock,
-                                         void *context,
-                                         int events);
+ClientConnection *ClientConnection_init(event_loop *loop,
+                                        int listener_sock,
+                                        void *context,
+                                        int events);
 
 /**
  * The following definitions are internal to the plasma manager code but are
@@ -170,7 +170,7 @@ client_connection *new_client_connection(event_loop *loop,
 typedef struct plasma_request_buffer plasma_request_buffer;
 struct plasma_request_buffer {
   int type;
-  object_id object_id;
+  ObjectID object_id;
   uint8_t *data;
   int64_t data_size;
   uint8_t *metadata;
@@ -193,7 +193,7 @@ struct plasma_request_buffer {
  * @param context The plasma manager state.
  * @return Void.
  */
-void call_request_transfer(object_id object_id,
+void call_request_transfer(ObjectID object_id,
                            int manager_count,
                            const char *manager_vector[],
                            void *context);
@@ -214,7 +214,7 @@ int fetch_timeout_handler(event_loop *loop, timer_id id, void *context);
  * @param object_id The object ID whose context we want to delete.
  * @return Void.
  */
-void remove_object_request(client_connection *client_conn,
+void remove_object_request(ClientConnection *client_conn,
                            client_object_request *object_req);
 
 /**
@@ -226,7 +226,7 @@ void remove_object_request(client_connection *client_conn,
  * @param port The port that the remote manager is listening on.
  * @return A pointer to the connection to the remote manager.
  */
-client_connection *get_manager_connection(plasma_manager_state *state,
+ClientConnection *get_manager_connection(plasma_manager_state *state,
                                           const char *ip_addr,
                                           int port);
 
@@ -240,7 +240,7 @@ client_connection *get_manager_connection(plasma_manager_state *state,
  *         object. 1 means that the client has sent all the data, 0 means there
  *         is more.
  */
-int read_object_chunk(client_connection *conn, plasma_request_buffer *buf);
+int read_object_chunk(ClientConnection *conn, plasma_request_buffer *buf);
 
 /**
  * Writes an object chunk from a buffer to the given client. This is the
@@ -250,7 +250,7 @@ int read_object_chunk(client_connection *conn, plasma_request_buffer *buf);
  * @param buf The buffer to read data from.
  * @return Void.
  */
-void write_object_chunk(client_connection *conn, plasma_request_buffer *buf);
+void write_object_chunk(ClientConnection *conn, plasma_request_buffer *buf);
 
 /**
  * Get the event loop of the given plasma manager state.
@@ -267,7 +267,7 @@ event_loop *get_event_loop(plasma_manager_state *state);
  * @param conn The connection to the client who's sending or reading data.
  * @return A file descriptor for the socket.
  */
-int get_client_sock(client_connection *conn);
+int get_client_sock(ClientConnection *conn);
 
 /**
  * Return whether or not the object is local.
@@ -277,6 +277,6 @@ int get_client_sock(client_connection *conn);
  * @return A bool that is true if the requested object is local and false
  *         otherwise.
  */
-bool is_object_local(plasma_manager_state *state, object_id object_id);
+bool is_object_local(plasma_manager_state *state, ObjectID object_id);
 
 #endif /* PLASMA_MANAGER_H */

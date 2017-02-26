@@ -17,18 +17,18 @@ event_loop *g_loop;
 
 /* === A lookup of a task not in the table === */
 
-task_id lookup_nil_id;
+TaskID lookup_nil_id;
 int lookup_nil_success = 0;
 const char *lookup_nil_context = "lookup_nil";
 
-void lookup_nil_fail_callback(unique_id id,
+void lookup_nil_fail_callback(UniqueID id,
                               void *user_context,
                               void *user_data) {
   /* The fail callback should not be called. */
   CHECK(0);
 }
 
-void lookup_nil_success_callback(task *task, void *context) {
+void lookup_nil_success_callback(Task *task, void *context) {
   lookup_nil_success = 1;
   CHECK(task == NULL);
   CHECK(context == (void *) lookup_nil_context);
@@ -38,10 +38,10 @@ void lookup_nil_success_callback(task *task, void *context) {
 TEST lookup_nil_test(void) {
   lookup_nil_id = globally_unique_id();
   g_loop = event_loop_create();
-  db_handle *db =
+  DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = 5,
       .timeout = 1000,
       .fail_callback = lookup_nil_fail_callback,
@@ -61,28 +61,28 @@ TEST lookup_nil_test(void) {
 
 int add_success = 0;
 int lookup_success = 0;
-task *add_lookup_task;
+Task *add_lookup_task;
 const char *add_lookup_context = "add_lookup";
 
-void add_lookup_fail_callback(unique_id id,
+void add_lookup_fail_callback(UniqueID id,
                               void *user_context,
                               void *user_data) {
   /* The fail callback should not be called. */
   CHECK(0);
 }
 
-void lookup_success_callback(task *task, void *context) {
+void lookup_success_callback(Task *task, void *context) {
   lookup_success = 1;
-  CHECK(memcmp(task, add_lookup_task, task_size(task)) == 0);
+  CHECK(memcmp(task, add_lookup_task, Task_size(task)) == 0);
   event_loop_stop(g_loop);
 }
 
-void add_success_callback(task_id task_id, void *context) {
+void add_success_callback(TaskID task_id, void *context) {
   add_success = 1;
-  CHECK(task_ids_equal(task_id, task_task_id(add_lookup_task)));
+  CHECK(TaskID_equal(task_id, Task_task_id(add_lookup_task)));
 
-  db_handle *db = context;
-  retry_info retry = {
+  DBHandle *db = context;
+  RetryInfo retry = {
       .num_retries = 5,
       .timeout = 1000,
       .fail_callback = add_lookup_fail_callback,
@@ -94,15 +94,15 @@ void add_success_callback(task_id task_id, void *context) {
 TEST add_lookup_test(void) {
   add_lookup_task = example_task(1, 1, TASK_STATUS_WAITING);
   g_loop = event_loop_create();
-  db_handle *db =
+  DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = 5,
       .timeout = 1000,
       .fail_callback = add_lookup_fail_callback,
   };
-  task_table_add_task(db, copy_task(add_lookup_task), &retry,
+  task_table_add_task(db, Task_copy(add_lookup_task), &retry,
                       add_success_callback, (void *) db);
   /* Disconnect the database to see if the lookup times out. */
   event_loop_run(g_loop);
@@ -121,12 +121,12 @@ TEST add_lookup_test(void) {
 const char *subscribe_timeout_context = "subscribe_timeout";
 int subscribe_failed = 0;
 
-void subscribe_done_callback(task_id task_id, void *user_context) {
+void subscribe_done_callback(TaskID task_id, void *user_context) {
   /* The done callback should not be called. */
   CHECK(0);
 }
 
-void subscribe_fail_callback(unique_id id,
+void subscribe_fail_callback(UniqueID id,
                              void *user_context,
                              void *user_data) {
   subscribe_failed = 1;
@@ -136,10 +136,10 @@ void subscribe_fail_callback(unique_id id,
 
 TEST subscribe_timeout_test(void) {
   g_loop = event_loop_create();
-  db_handle *db =
+  DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = 5,
       .timeout = 100,
       .fail_callback = subscribe_fail_callback,
@@ -164,12 +164,12 @@ const char *publish_timeout_context = "publish_timeout";
 const int publish_test_number = 272;
 int publish_failed = 0;
 
-void publish_done_callback(task_id task_id, void *user_context) {
+void publish_done_callback(TaskID task_id, void *user_context) {
   /* The done callback should not be called. */
   CHECK(0);
 }
 
-void publish_fail_callback(unique_id id, void *user_context, void *user_data) {
+void publish_fail_callback(UniqueID id, void *user_context, void *user_data) {
   publish_failed = 1;
   CHECK(user_context == (void *) publish_timeout_context);
   event_loop_stop(g_loop);
@@ -177,11 +177,11 @@ void publish_fail_callback(unique_id id, void *user_context, void *user_data) {
 
 TEST publish_timeout_test(void) {
   g_loop = event_loop_create();
-  db_handle *db =
+  DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
-  task *task = example_task(1, 1, TASK_STATUS_WAITING);
-  retry_info retry = {
+  Task *task = example_task(1, 1, TASK_STATUS_WAITING);
+  RetryInfo retry = {
       .num_retries = 5, .timeout = 100, .fail_callback = publish_fail_callback,
   };
   task_table_add_task(db, task, &retry, publish_done_callback,
@@ -202,7 +202,7 @@ TEST publish_timeout_test(void) {
 int64_t reconnect_db_callback(event_loop *loop,
                               int64_t timer_id,
                               void *context) {
-  db_handle *db = context;
+  DBHandle *db = context;
   /* Reconnect to redis. */
   redisAsyncFree(db->sub_context);
   db->sub_context = redisAsyncConnect("127.0.0.1", 6379);
@@ -225,12 +225,12 @@ const char *subscribe_retry_context = "subscribe_retry";
 const int subscribe_retry_test_number = 273;
 int subscribe_retry_succeeded = 0;
 
-void subscribe_retry_done_callback(object_id object_id, void *user_context) {
+void subscribe_retry_done_callback(ObjectID object_id, void *user_context) {
   CHECK(user_context == (void *) subscribe_retry_context);
   subscribe_retry_succeeded = 1;
 }
 
-void subscribe_retry_fail_callback(unique_id id,
+void subscribe_retry_fail_callback(UniqueID id,
                                    void *user_context,
                                    void *user_data) {
   /* The fail callback should not be called. */
@@ -239,10 +239,10 @@ void subscribe_retry_fail_callback(unique_id id,
 
 TEST subscribe_retry_test(void) {
   g_loop = event_loop_create();
-  db_handle *db =
+  DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = 5,
       .timeout = 100,
       .fail_callback = subscribe_retry_fail_callback,
@@ -272,12 +272,12 @@ TEST subscribe_retry_test(void) {
 const char *publish_retry_context = "publish_retry";
 int publish_retry_succeeded = 0;
 
-void publish_retry_done_callback(object_id object_id, void *user_context) {
+void publish_retry_done_callback(ObjectID object_id, void *user_context) {
   CHECK(user_context == (void *) publish_retry_context);
   publish_retry_succeeded = 1;
 }
 
-void publish_retry_fail_callback(unique_id id,
+void publish_retry_fail_callback(UniqueID id,
                                  void *user_context,
                                  void *user_data) {
   /* The fail callback should not be called. */
@@ -286,11 +286,11 @@ void publish_retry_fail_callback(unique_id id,
 
 TEST publish_retry_test(void) {
   g_loop = event_loop_create();
-  db_handle *db =
+  DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
-  task *task = example_task(1, 1, TASK_STATUS_WAITING);
-  retry_info retry = {
+  Task *task = example_task(1, 1, TASK_STATUS_WAITING);
+  RetryInfo retry = {
       .num_retries = 5,
       .timeout = 100,
       .fail_callback = publish_retry_fail_callback,
@@ -321,24 +321,24 @@ TEST publish_retry_test(void) {
 const char *subscribe_late_context = "subscribe_late";
 int subscribe_late_failed = 0;
 
-void subscribe_late_fail_callback(unique_id id,
+void subscribe_late_fail_callback(UniqueID id,
                                   void *user_context,
                                   void *user_data) {
   CHECK(user_context == (void *) subscribe_late_context);
   subscribe_late_failed = 1;
 }
 
-void subscribe_late_done_callback(task_id task_id, void *user_context) {
+void subscribe_late_done_callback(TaskID task_id, void *user_context) {
   /* This function should never be called. */
   CHECK(0);
 }
 
 TEST subscribe_late_test(void) {
   g_loop = event_loop_create();
-  db_handle *db =
+  DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = 0,
       .timeout = 0,
       .fail_callback = subscribe_late_fail_callback,
@@ -366,25 +366,25 @@ TEST subscribe_late_test(void) {
 const char *publish_late_context = "publish_late";
 int publish_late_failed = 0;
 
-void publish_late_fail_callback(unique_id id,
+void publish_late_fail_callback(UniqueID id,
                                 void *user_context,
                                 void *user_data) {
   CHECK(user_context == (void *) publish_late_context);
   publish_late_failed = 1;
 }
 
-void publish_late_done_callback(task_id task_id, void *user_context) {
+void publish_late_done_callback(TaskID task_id, void *user_context) {
   /* This function should never be called. */
   CHECK(0);
 }
 
 TEST publish_late_test(void) {
   g_loop = event_loop_create();
-  db_handle *db =
+  DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
-  task *task = example_task(1, 1, TASK_STATUS_WAITING);
-  retry_info retry = {
+  Task *task = example_task(1, 1, TASK_STATUS_WAITING);
+  RetryInfo retry = {
       .num_retries = 0,
       .timeout = 0,
       .fail_callback = publish_late_fail_callback,

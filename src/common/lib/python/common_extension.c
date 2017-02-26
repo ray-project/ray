@@ -35,7 +35,7 @@ void init_pickle_module(void) {
 
 /* Define the PyObjectID class. */
 
-int PyStringToUniqueID(PyObject *object, object_id *object_id) {
+int PyStringToUniqueID(PyObject *object, ObjectID *object_id) {
   if (PyBytes_Check(object)) {
     memcpy(&object_id->id[0], PyBytes_AsString(object), UNIQUE_ID_SIZE);
     return 1;
@@ -45,7 +45,7 @@ int PyStringToUniqueID(PyObject *object, object_id *object_id) {
   }
 }
 
-int PyObjectToUniqueID(PyObject *object, object_id *objectid) {
+int PyObjectToUniqueID(PyObject *object, ObjectID *objectid) {
   if (PyObject_IsInstance(object, (PyObject *) &PyObjectIDType)) {
     *objectid = ((PyObjectID *) object)->object_id;
     return 1;
@@ -61,7 +61,7 @@ static int PyObjectID_init(PyObjectID *self, PyObject *args, PyObject *kwds) {
   if (!PyArg_ParseTuple(args, "s#", &data, &size)) {
     return -1;
   }
-  if (size != sizeof(object_id)) {
+  if (size != sizeof(ObjectID)) {
     PyErr_SetString(CommonError,
                     "ObjectID: object id string needs to have length 20");
     return -1;
@@ -71,7 +71,7 @@ static int PyObjectID_init(PyObjectID *self, PyObject *args, PyObject *kwds) {
 }
 
 /* Create a PyObjectID from C. */
-PyObject *PyObjectID_make(object_id object_id) {
+PyObject *PyObjectID_make(ObjectID object_id) {
   PyObjectID *result = PyObject_New(PyObjectID, &PyObjectIDType);
   result = (PyObjectID *) PyObject_Init((PyObject *) result, &PyObjectIDType);
   result->object_id = object_id;
@@ -83,7 +83,7 @@ PyObject *PyObjectID_make(object_id object_id) {
  *
  * This is called from Python like
  *
- * task = photon.task_from_string("...")
+ * task = local_scheduler.task_from_string("...")
  *
  * @param task_string String representation of the task specification.
  * @return Python task specification object.
@@ -112,7 +112,7 @@ PyObject *PyTask_from_string(PyObject *self, PyObject *args) {
  *
  * This is called from Python like
  *
- * s = photon.task_to_string(task)
+ * s = local_scheduler.task_to_string(task)
  *
  * @param task Ray task specification Python object.
  * @return String representing the task specification.
@@ -136,7 +136,7 @@ static PyObject *PyObjectID_id(PyObject *self) {
 static PyObject *PyObjectID_hex(PyObject *self) {
   PyObjectID *s = (PyObjectID *) self;
   char hex_id[ID_STRING_SIZE];
-  object_id_to_string(s->object_id, hex_id, ID_STRING_SIZE);
+  ObjectID_to_string(s->object_id, hex_id, ID_STRING_SIZE);
   PyObject *result = PyUnicode_FromString(hex_id);
   return result;
 }
@@ -157,12 +157,12 @@ static PyObject *PyObjectID_richcompare(PyObjectID *self,
       result = Py_NotImplemented;
       break;
     case Py_EQ:
-      result = object_ids_equal(self->object_id, other_id->object_id)
+      result = ObjectID_equal(self->object_id, other_id->object_id)
                    ? Py_True
                    : Py_False;
       break;
     case Py_NE:
-      result = !object_ids_equal(self->object_id, other_id->object_id)
+      result = !ObjectID_equal(self->object_id, other_id->object_id)
                    ? Py_True
                    : Py_False;
       break;
@@ -190,7 +190,7 @@ static long PyObjectID_hash(PyObjectID *self) {
 
 static PyObject *PyObjectID_repr(PyObjectID *self) {
   char hex_id[ID_STRING_SIZE];
-  object_id_to_string(self->object_id, hex_id, ID_STRING_SIZE);
+  ObjectID_to_string(self->object_id, hex_id, ID_STRING_SIZE);
   UT_string *repr;
   utstring_new(repr);
   utstring_printf(repr, "ObjectID(%s)", hex_id);
@@ -264,13 +264,13 @@ PyTypeObject PyObjectIDType = {
 
 static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   /* ID of the driver that this task originates from. */
-  unique_id driver_id;
+  UniqueID driver_id;
   /* ID of the actor this task should run on. */
-  unique_id actor_id = NIL_ACTOR_ID;
+  UniqueID actor_id = NIL_ACTOR_ID;
   /* How many tasks have been launched on the actor so far? */
   int actor_counter = 0;
   /* ID of the function this task executes. */
-  function_id function_id;
+  FunctionID function_id;
   /* Arguments of the task (can be PyObjectIDs or Python values). */
   PyObject *arguments;
   /* Array of pointers to string representations of pass-by-value args. */
@@ -278,7 +278,7 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   utarray_new(val_repr_ptrs, &ut_ptr_icd);
   int num_returns;
   /* The ID of the task that called this task. */
-  task_id parent_task_id;
+  TaskID parent_task_id;
   /* The number of tasks that the parent task has called prior to this one. */
   int parent_counter;
   /* Resource vector of the required resources to execute this task. */
@@ -353,22 +353,22 @@ static void PyTask_dealloc(PyTask *self) {
 }
 
 static PyObject *PyTask_function_id(PyObject *self) {
-  function_id function_id = task_function(((PyTask *) self)->spec);
+  FunctionID function_id = task_function(((PyTask *) self)->spec);
   return PyObjectID_make(function_id);
 }
 
 static PyObject *PyTask_actor_id(PyObject *self) {
-  actor_id actor_id = task_spec_actor_id(((PyTask *) self)->spec);
+  ActorID actor_id = task_spec_actor_id(((PyTask *) self)->spec);
   return PyObjectID_make(actor_id);
 }
 
 static PyObject *PyTask_driver_id(PyObject *self) {
-  unique_id driver_id = task_spec_driver_id(((PyTask *) self)->spec);
+  UniqueID driver_id = task_spec_driver_id(((PyTask *) self)->spec);
   return PyObjectID_make(driver_id);
 }
 
 static PyObject *PyTask_task_id(PyObject *self) {
-  task_id task_id = task_spec_id(((PyTask *) self)->spec);
+  TaskID task_id = task_spec_id(((PyTask *) self)->spec);
   return PyObjectID_make(task_id);
 }
 
@@ -378,7 +378,7 @@ static PyObject *PyTask_arguments(PyObject *self) {
   PyObject *arg_list = PyList_New((Py_ssize_t) num_args);
   for (int i = 0; i < num_args; ++i) {
     if (task_arg_type(task, i) == ARG_BY_REF) {
-      object_id object_id = task_arg_id(task, i);
+      ObjectID object_id = task_arg_id(task, i);
       PyList_SetItem(arg_list, i, PyObjectID_make(object_id));
     } else {
       CHECK(pickle_module != NULL);
@@ -410,7 +410,7 @@ static PyObject *PyTask_returns(PyObject *self) {
   int64_t num_returns = task_num_returns(task);
   PyObject *return_id_list = PyList_New((Py_ssize_t) num_returns);
   for (int i = 0; i < num_returns; ++i) {
-    object_id object_id = task_return(task, i);
+    ObjectID object_id = task_return(task, i);
     PyList_SetItem(return_id_list, i, PyObjectID_make(object_id));
   }
   return return_id_list;
@@ -569,11 +569,11 @@ PyObject *check_simple_value(PyObject *self, PyObject *args) {
 
 PyObject *compute_put_id(PyObject *self, PyObject *args) {
   int put_index;
-  task_id task_id;
+  TaskID task_id;
   if (!PyArg_ParseTuple(args, "O&i", &PyObjectToUniqueID, &task_id,
                         &put_index)) {
     return NULL;
   }
-  object_id put_id = task_compute_put_id(task_id, put_index);
+  ObjectID put_id = task_compute_put_id(task_id, put_index);
   return PyObjectID_make(put_id);
 }

@@ -14,7 +14,7 @@ static const char *log_levels[5] = {"DEBUG", "INFO", "WARN", "ERROR", "FATAL"};
 static const char *log_fmt =
     "HMSET log:%s:%s log_level %s event_type %s message %s timestamp %s";
 
-struct ray_logger_impl {
+struct RayLoggerImpl {
   /* String that identifies this client type. */
   const char *client_type;
   /* Suppress all log messages below this level. */
@@ -26,11 +26,11 @@ struct ray_logger_impl {
   void *conn;
 };
 
-ray_logger *init_ray_logger(const char *client_type,
-                            int log_level,
-                            int is_direct,
-                            void *conn) {
-  ray_logger *logger = malloc(sizeof(ray_logger));
+RayLogger *RayLogger_init(const char *client_type,
+                          int log_level,
+                          int is_direct,
+                          void *conn) {
+  RayLogger *logger = (RayLogger *) malloc(sizeof(RayLogger));
   logger->client_type = client_type;
   logger->log_level = log_level;
   logger->is_direct = is_direct;
@@ -38,14 +38,14 @@ ray_logger *init_ray_logger(const char *client_type,
   return logger;
 }
 
-void free_ray_logger(ray_logger *logger) {
+void RayLogger_free(RayLogger *logger) {
   free(logger);
 }
 
-void ray_log(ray_logger *logger,
-             int log_level,
-             const char *event_type,
-             const char *message) {
+void RayLogger_log(RayLogger *logger,
+                   int log_level,
+                   const char *event_type,
+                   const char *message) {
   if (log_level < logger->log_level) {
     return;
   }
@@ -65,7 +65,7 @@ void ray_log(ray_logger *logger,
                   log_levels[log_level], event_type, message,
                   utstring_body(timestamp));
   if (logger->is_direct) {
-    db_handle *db = (db_handle *) logger->conn;
+    DBHandle *db = (DBHandle *) logger->conn;
     /* Fill in the client ID and send the message to Redis. */
     int status = redisAsyncCommand(
         db->context, NULL, NULL, utstring_body(formatted_message),
@@ -83,11 +83,11 @@ void ray_log(ray_logger *logger,
   utstring_free(timestamp);
 }
 
-void ray_log_event(db_handle *db,
-                   uint8_t *key,
-                   int64_t key_length,
-                   uint8_t *value,
-                   int64_t value_length) {
+void RayLogger_log_event(DBHandle *db,
+                         uint8_t *key,
+                         int64_t key_length,
+                         uint8_t *value,
+                         int64_t value_length) {
   int status = redisAsyncCommand(db->context, NULL, NULL, "RPUSH %b %b", key,
                                  key_length, value, value_length);
   if ((status == REDIS_ERR) || db->context->err) {

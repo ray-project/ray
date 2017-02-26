@@ -6,7 +6,7 @@ import hashlib
 import inspect
 import json
 import numpy as np
-import photon
+import local_scheduler
 import random
 import traceback
 
@@ -30,7 +30,7 @@ def random_string():
   return np.random.bytes(20)
 
 def random_actor_id():
-  return photon.ObjectID(random_string())
+  return local_scheduler.ObjectID(random_string())
 
 def get_actor_method_function_id(attr):
   """Get the function ID corresponding to an actor method.
@@ -45,13 +45,13 @@ def get_actor_method_function_id(attr):
   function_id_hash.update(attr.encode("ascii"))
   function_id = function_id_hash.digest()
   assert len(function_id) == 20
-  return photon.ObjectID(function_id)
+  return local_scheduler.ObjectID(function_id)
 
 def fetch_and_register_actor(key, worker):
   """Import an actor."""
   driver_id, actor_id_str, actor_name, module, pickled_class, assigned_gpu_ids, actor_method_names = \
     worker.redis_client.hmget(key, ["driver_id", "actor_id", "name", "module", "class", "gpu_ids", "actor_method_names"])
-  actor_id = photon.ObjectID(actor_id_str)
+  actor_id = local_scheduler.ObjectID(actor_id_str)
   actor_name = actor_name.decode("ascii")
   module = module.decode("ascii")
   actor_method_names = json.loads(actor_method_names.decode("ascii"))

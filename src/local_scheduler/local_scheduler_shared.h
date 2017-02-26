@@ -1,5 +1,5 @@
-#ifndef PHOTON_H
-#define PHOTON_H
+#ifndef LOCAL_SCHEDULER_SHARED_H
+#define LOCAL_SCHEDULER_SHARED_H
 
 #include "common/task.h"
 #include "common/state/table.h"
@@ -8,7 +8,7 @@
 #include "utarray.h"
 #include "uthash.h"
 
-enum photon_message_type {
+enum local_scheduler_message_type {
   /** Notify the local scheduler that a task has finished. */
   TASK_DONE = 64,
   /** Get a new task from the local scheduler. */
@@ -34,11 +34,11 @@ UT_icd workers_icd;
 UT_icd pid_t_icd;
 
 /** This struct is used to register a new worker with the local scheduler.
- *  It is shipped as part of photon_connect */
+ *  It is shipped as part of local_scheduler_connect */
 typedef struct {
   /** The ID of the actor. This is NIL_ACTOR_ID if the worker is not an actor.
    */
-  actor_id actor_id;
+  ActorID actor_id;
   /** The process ID of this worker. */
   pid_t worker_pid;
 } register_worker_info;
@@ -47,15 +47,15 @@ typedef struct {
  *  local scheduler that is responsible for the actor. */
 typedef struct {
   /** The ID of the actor. This is used as a key in the hash table. */
-  actor_id actor_id;
+  ActorID actor_id;
   /** The ID of the local scheduler that is responsible for the actor. */
-  db_client_id local_scheduler_id;
+  DBClientID local_scheduler_id;
   /** Handle fo the hash table. */
   UT_hash_handle hh;
 } actor_map_entry;
 
 /** Internal state of the scheduling algorithm. */
-typedef struct scheduling_algorithm_state scheduling_algorithm_state;
+typedef struct SchedulingAlgorithmState SchedulingAlgorithmState;
 
 /** A struct storing the configuration state of the local scheduler. This should
  *  consist of values that don't change over the lifetime of the local
@@ -84,11 +84,11 @@ typedef struct {
    *  that is responsible for the actor. */
   actor_map_entry *actor_mapping;
   /** The handle to the database. */
-  db_handle *db;
+  DBHandle *db;
   /** The Plasma client. */
-  plasma_connection *plasma_conn;
+  PlasmaConnection *plasma_conn;
   /** State for the scheduling algorithm. */
-  scheduling_algorithm_state *algorithm_state;
+  SchedulingAlgorithmState *algorithm_state;
   /** Input buffer, used for reading input in process_message to avoid
    *  allocation for each call to process_message. */
   UT_array *input_buffer;
@@ -98,7 +98,7 @@ typedef struct {
   /** Vector of dynamic attributes associated with the node owned by this local
    *  scheduler. */
   double dynamic_resources[MAX_RESOURCE_INDEX];
-} local_scheduler_state;
+} LocalSchedulerState;
 
 /** Contains all information associated with a local scheduler client. */
 typedef struct {
@@ -107,7 +107,7 @@ typedef struct {
   /** A pointer to the task object that is currently running on this client. If
    *  no task is running on the worker, this will be NULL. This is used to
    *  update the task table. */
-  task *task_in_progress;
+  Task *task_in_progress;
   /** A flag to indicate whether this worker is currently blocking on an
    *  object(s) that isn't available locally yet. */
   bool is_blocked;
@@ -118,9 +118,9 @@ typedef struct {
   bool is_child;
   /** The ID of the actor on this worker. If there is no actor running on this
    *  worker, this should be NIL_ACTOR_ID. */
-  actor_id actor_id;
+  ActorID actor_id;
   /** A pointer to the local scheduler state. */
-  local_scheduler_state *local_scheduler_state;
-} local_scheduler_client;
+  LocalSchedulerState *local_scheduler_state;
+} LocalSchedulerClient;
 
-#endif /* PHOTON_H */
+#endif /* LOCAL_SCHEDULER_SHARED_H */

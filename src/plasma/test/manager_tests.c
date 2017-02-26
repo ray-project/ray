@@ -23,7 +23,7 @@ SUITE(plasma_manager_tests);
 const char *plasma_store_socket_name = "/tmp/plasma_store_socket_1";
 const char *plasma_manager_socket_name_format = "/tmp/plasma_manager_socket_%d";
 const char *manager_addr = "127.0.0.1";
-object_id oid;
+ObjectID oid;
 
 void wait_for_pollin(int fd) {
   struct pollfd poll_list[1];
@@ -49,12 +49,12 @@ typedef struct {
   plasma_manager_state *state;
   event_loop *loop;
   /* Accept a connection from the local manager on the remote manager. */
-  client_connection *write_conn;
-  client_connection *read_conn;
+  ClientConnection *write_conn;
+  ClientConnection *read_conn;
   /* Connect a new client to the local plasma manager and mock a request to an
    * object. */
-  plasma_connection *plasma_conn;
-  client_connection *client_conn;
+  PlasmaConnection *plasma_conn;
+  ClientConnection *client_conn;
 } plasma_mock;
 
 plasma_mock *init_plasma_mock(plasma_mock *remote_mock) {
@@ -77,7 +77,7 @@ plasma_mock *init_plasma_mock(plasma_mock *remote_mock) {
         get_manager_connection(remote_mock->state, manager_addr, mock->port);
     wait_for_pollin(mock->manager_remote_fd);
     mock->read_conn =
-        new_client_connection(mock->loop, mock->manager_remote_fd, mock->state,
+        ClientConnection_init(mock->loop, mock->manager_remote_fd, mock->state,
                               PLASMA_DEFAULT_RELEASE_DELAY);
   } else {
     mock->write_conn = NULL;
@@ -89,7 +89,7 @@ plasma_mock *init_plasma_mock(plasma_mock *remote_mock) {
                                      utstring_body(manager_socket_name), 0);
   wait_for_pollin(mock->manager_local_fd);
   mock->client_conn =
-      new_client_connection(mock->loop, mock->manager_local_fd, mock->state, 0);
+      ClientConnection_init(mock->loop, mock->manager_local_fd, mock->state, 0);
   utstring_free(manager_socket_name);
   return mock;
 }
@@ -134,11 +134,11 @@ TEST request_transfer_test(void) {
   int read_fd = get_client_sock(remote_mock->read_conn);
   uint8_t *request_data =
       plasma_receive(read_fd, MessageType_PlasmaDataRequest);
-  object_id oid2;
+  ObjectID oid2;
   char *address;
   int port;
   plasma_read_DataRequest(request_data, &oid2, &address, &port);
-  ASSERT(object_ids_equal(oid, oid2));
+  ASSERT(ObjectID_equal(oid, oid2));
   free(address);
   /* Clean up. */
   utstring_free(addr);
@@ -187,12 +187,12 @@ TEST request_transfer_retry_test(void) {
   int read_fd = get_client_sock(remote_mock2->read_conn);
   uint8_t *request_data =
       plasma_receive(read_fd, MessageType_PlasmaDataRequest);
-  object_id oid2;
+  ObjectID oid2;
   char *address;
   int port;
   plasma_read_DataRequest(request_data, &oid2, &address, &port);
   free(address);
-  ASSERT(object_ids_equal(oid, oid2));
+  ASSERT(ObjectID_equal(oid, oid2));
   /* Clean up. */
   utstring_free(addr0);
   utstring_free(addr1);
@@ -259,8 +259,8 @@ TEST object_notifications_test(void) {
   int flags = fcntl(fd[1], F_GETFL, 0);
   CHECK(fcntl(fd[1], F_SETFL, flags | O_NONBLOCK) == 0);
 
-  object_id oid = globally_unique_id();
-  object_info info = {.obj_id = oid,
+  ObjectID oid = globally_unique_id();
+  ObjectInfo info = {.obj_id = oid,
                       .data_size = 10,
                       .metadata_size = 1,
                       .create_time = 0,

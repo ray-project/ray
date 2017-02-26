@@ -22,7 +22,7 @@
  */
 typedef struct {
   /** The ID of the requested object. If ID_NIL request any object. */
-  object_id object_id;
+  ObjectID object_id;
   /** Request associated to the object. It can take one of the following values:
    *  - PLASMA_QUERY_LOCAL: return if or when the object is available in the
    *    local Plasma Store.
@@ -37,7 +37,7 @@ typedef struct {
    *  - PLASMA_CLIENT_IN_TRANSFER, if the object is currently being scheduled
    *    for being transferred or it is transferring. */
   int status;
-} object_request;
+} ObjectRequest;
 
 /* Handle to access memory mapped file and map it into client address space. */
 typedef struct {
@@ -60,7 +60,7 @@ typedef struct {
   int64_t data_size;
   /** The size in bytes of the metadata. */
   int64_t metadata_size;
-} plasma_object;
+} PlasmaObject;
 
 typedef enum {
   /** Object was created but not sealed in the local Plasma Store. */
@@ -87,9 +87,9 @@ typedef enum {
  *  the eviction policy. */
 typedef struct {
   /** Object id of this object. */
-  object_id object_id;
+  ObjectID object_id;
   /** Object info like size, creation time and owner. */
-  object_info info;
+  ObjectInfo info;
   /** Memory mapped file containing the object. */
   int fd;
   /** Size of the underlying map. */
@@ -115,25 +115,7 @@ typedef struct {
   /** The amount of memory (in bytes) that we allow to be allocated in the
    *  store. */
   int64_t memory_capacity;
-} plasma_store_info;
-
-typedef struct {
-  /** The ID of the object. */
-  object_id obj_id;
-  /** The size of the object. */
-  int64_t object_size;
-  /** The digest of the object used, used to see if two objects are the same. */
-  unsigned char digest[DIGEST_SIZE];
-} object_id_notification;
-
-/**
- * Check if a collection of object IDs contains any duplicates.
- *
- * @param num_object_ids The number of object IDs.
- * @param object_ids[] The list of object IDs to check.
- * @return True if the object IDs are all distinct and false otherwise.
- */
-bool plasma_object_ids_distinct(int num_object_ids, object_id object_ids[]);
+} PlasmaStoreInfo;
 
 /**
  * Print a warning if the status is less than zero. This should be used to check

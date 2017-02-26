@@ -37,7 +37,7 @@ int bind_inet_sock(const int port, bool shall_listen) {
     close(socket_fd);
     return -1;
   }
-  int *const pon = (char const *) &on;
+  int *const pon = (int *const) &on;
   if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, pon, sizeof(on)) < 0) {
     LOG_ERROR("setsockopt failed for port %d", port);
     close(socket_fd);
@@ -302,7 +302,7 @@ void read_message(int fd, int64_t *type, int64_t *length, uint8_t **bytes) {
   if (closed) {
     goto disconnected;
   }
-  *bytes = malloc(*length * sizeof(uint8_t));
+  *bytes = (uint8_t *) malloc(*length * sizeof(uint8_t));
   closed = read_bytes(fd, *bytes, *length);
   if (closed) {
     free(*bytes);

@@ -20,7 +20,7 @@ typedef enum {
 } global_scheduler_algorithm;
 
 /** The state managed by the global scheduling policy. */
-struct global_scheduler_policy_state {
+struct GlobalSchedulerPolicyState {
   /** The index of the next local scheduler to assign a task to. */
   int64_t round_robin_index;
   double resource_attribute_weight[MAX_RESOURCE_INDEX + 1];
@@ -30,7 +30,7 @@ typedef struct {
   const char *object_location;
   int64_t total_object_size;
   UT_hash_handle hh;
-} object_size_entry;
+} ObjectSizeEntry;
 
 /**
  * Create the state of the global scheduler policy. This state must be freed by
@@ -38,7 +38,7 @@ typedef struct {
  *
  * @return The state of the scheduling policy.
  */
-global_scheduler_policy_state *init_global_scheduler_policy(void);
+GlobalSchedulerPolicyState *GlobalSchedulerPolicyState_init(void);
 
 /**
  * Free the global scheduler policy state.
@@ -46,8 +46,8 @@ global_scheduler_policy_state *init_global_scheduler_policy(void);
  * @param policy_state The policy state to free.
  * @return Void.
  */
-void destroy_global_scheduler_policy(
-    global_scheduler_policy_state *policy_state);
+void GlobalSchedulerPolicyState_free(
+    GlobalSchedulerPolicyState *policy_state);
 
 /**
  * Main new task handling function in the global scheduler.
@@ -58,9 +58,9 @@ void destroy_global_scheduler_policy(
  * @return True if the task was assigned to a local scheduler and false
  *         otherwise.
  */
-bool handle_task_waiting(global_scheduler_state *state,
-                         global_scheduler_policy_state *policy_state,
-                         task *task);
+bool handle_task_waiting(GlobalSchedulerState *state,
+                         GlobalSchedulerPolicyState *policy_state,
+                         Task *task);
 
 /**
  * Handle the fact that a new object is available.
@@ -70,9 +70,9 @@ bool handle_task_waiting(global_scheduler_state *state,
  * @param object_id The ID of the object that is now available.
  * @return Void.
  */
-void handle_object_available(global_scheduler_state *state,
-                             global_scheduler_policy_state *policy_state,
-                             object_id object_id);
+void handle_object_available(GlobalSchedulerState *state,
+                             GlobalSchedulerPolicyState *policy_state,
+                             ObjectID object_id);
 
 /**
  * Handle a heartbeat message from a local scheduler. TODO(rkn): this is a
@@ -83,8 +83,8 @@ void handle_object_available(global_scheduler_state *state,
  * @return Void.
  */
 void handle_local_scheduler_heartbeat(
-    global_scheduler_state *state,
-    global_scheduler_policy_state *policy_state);
+    GlobalSchedulerState *state,
+    GlobalSchedulerPolicyState *policy_state);
 
 /**
  * Handle the presence of a new local scheduler. Currently, this just adds the
@@ -95,8 +95,8 @@ void handle_local_scheduler_heartbeat(
  * @param The db client ID of the new local scheduler.
  * @return Void.
  */
-void handle_new_local_scheduler(global_scheduler_state *state,
-                                global_scheduler_policy_state *policy_state,
-                                db_client_id db_client_id);
+void handle_new_local_scheduler(GlobalSchedulerState *state,
+                                GlobalSchedulerPolicyState *policy_state,
+                                DBClientID db_client_id);
 
 #endif /* GLOBAL_SCHEDULER_ALGORITHM_H */

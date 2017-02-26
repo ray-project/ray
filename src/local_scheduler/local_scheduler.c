@@ -12,9 +12,9 @@
 #include "io.h"
 #include "logging.h"
 #include "object_info.h"
-#include "photon.h"
-#include "photon_scheduler.h"
-#include "photon_algorithm.h"
+#include "local_scheduler_shared.h"
+#include "local_scheduler.h"
+#include "local_scheduler_algorithm.h"
 #include "state/actor_notification_table.h"
 #include "state/db.h"
 #include "state/task_table.h"
@@ -22,8 +22,8 @@
 #include "utarray.h"
 #include "uthash.h"
 
-UT_icd task_ptr_icd = {sizeof(task *), NULL, NULL, NULL};
-UT_icd workers_icd = {sizeof(local_scheduler_client *), NULL, NULL, NULL};
+UT_icd task_ptr_icd = {sizeof(Task *), NULL, NULL, NULL};
+UT_icd workers_icd = {sizeof(LocalSchedulerClient *), NULL, NULL, NULL};
 
 UT_icd pid_t_icd = {sizeof(pid_t), NULL, NULL, NULL};
 
@@ -36,7 +36,7 @@ UT_icd byte_icd = {sizeof(uint8_t), NULL, NULL, NULL};
  * @param spec Task specification object.
  * @return Void.
  */
-void print_resource_info(const local_scheduler_state *state,
+void print_resource_info(const LocalSchedulerState *state,
                          const task_spec *spec) {
 #if RAY_COMMON_LOG_LEVEL <= RAY_COMMON_DEBUG
   /* Print information about available and requested resources. */
@@ -58,7 +58,7 @@ void print_resource_info(const local_scheduler_state *state,
 }
 
 int force_kill_worker(event_loop *loop, timer_id id, void *context) {
-  local_scheduler_client *worker = (local_scheduler_client *) context;
+  LocalSchedulerClient *worker = (LocalSchedulerClient *) context;
   kill(worker->pid, SIGKILL);
   close(worker->sock);
   free(worker);
@@ -76,13 +76,13 @@ int force_kill_worker(event_loop *loop, timer_id id, void *context) {
  *        to clean up its own state.
  * @return Void.
  */
-void kill_worker(local_scheduler_client *worker, bool cleanup) {
+void kill_worker(LocalSchedulerClient *worker, bool cleanup) {
   /* Erase the local scheduler's reference to the worker. */
-  local_scheduler_state *state = worker->local_scheduler_state;
+  LocalSchedulerState *state = worker->local_scheduler_state;
   int num_workers = utarray_len(state->workers);
   for (int i = 0; i < utarray_len(state->workers); ++i) {
-    local_scheduler_client *active_worker =
-        *(local_scheduler_client **) utarray_eltptr(state->workers, i);
+    LocalSchedulerClient *active_worker =
+        *(LocalSchedulerClient **) utarray_eltptr(state->workers, i);
     if (active_worker == worker) {
       utarray_erase(state->workers, i, 1);
     }
@@ -124,14 +124,14 @@ void kill_worker(local_scheduler_client *worker, bool cleanup) {
   /* Clean up the task in progress. */
   if (worker->task_in_progress) {
     /* Return the resources that the worker was using. */
-    task_spec *spec = task_task_spec(worker->task_in_progress);
+    task_spec *spec = Task_task_spec(worker->task_in_progress);
     update_dynamic_resources(state, spec, true);
     /* Update the task table to reflect that the task failed to complete. */
     if (state->db != NULL) {
-      task_set_state(worker->task_in_progress, TASK_STATUS_LOST);
+      Task_set_state(worker->task_in_progress, TASK_STATUS_LOST);
       task_table_update(state->db, worker->task_in_progress, NULL, NULL, NULL);
     } else {
-      free_task(worker->task_in_progress);
+      Task_free(worker->task_in_progress);
     }
   }
 
@@ -144,7 +144,7 @@ void kill_worker(local_scheduler_client *worker, bool cleanup) {
   }
 }
 
-void free_local_scheduler(local_scheduler_state *state) {
+void LocalSchedulerState_free(LocalSchedulerState *state) {
   /* Free the command for starting new workers. */
   if (state->config.start_worker_command != NULL) {
     int i = 0;
@@ -173,10 +173,10 @@ void free_local_scheduler(local_scheduler_state *state) {
    * workers. */
   /* TODO(swang): It's possible that the local scheduler will exit before all
    * of its task table updates make it to redis. */
-  for (local_scheduler_client **worker =
-           (local_scheduler_client **) utarray_front(state->workers);
+  for (LocalSchedulerClient **worker =
+           (LocalSchedulerClient **) utarray_front(state->workers);
        worker != NULL;
-       worker = (local_scheduler_client **) utarray_front(state->workers)) {
+       worker = (LocalSchedulerClient **) utarray_front(state->workers)) {
     kill_worker(*worker, true);
   }
   utarray_free(state->workers);
@@ -201,7 +201,7 @@ void free_local_scheduler(local_scheduler_state *state) {
   }
 
   /* Free the algorithm state. */
-  free_scheduling_algorithm_state(state->algorithm_state);
+  SchedulingAlgorithmState_free(state->algorithm_state);
   state->algorithm_state = NULL;
   /* Free the input buffer. */
   utarray_free(state->input_buffer);
@@ -219,7 +219,7 @@ void free_local_scheduler(local_scheduler_state *state) {
  * @param state The state of the local scheduler.
  * @return Void.
  */
-void start_worker(local_scheduler_state *state, actor_id actor_id) {
+void start_worker(LocalSchedulerState *state, ActorID actor_id) {
   /* We can't start a worker if we don't have the path to the worker script. */
   if (state->config.start_worker_command == NULL) {
     LOG_WARN("No valid command to start worker provided. Cannot start worker.");
@@ -234,7 +234,7 @@ void start_worker(local_scheduler_state *state, actor_id actor_id) {
   }
 
   char id_string[ID_STRING_SIZE];
-  object_id_to_string(actor_id, id_string, ID_STRING_SIZE);
+  ObjectID_to_string(actor_id, id_string, ID_STRING_SIZE);
   /* Figure out how many arguments there are in the start_worker_command. */
   int num_args = 0;
   for (; state->config.start_worker_command[num_args] != NULL; ++num_args) {
@@ -251,7 +251,7 @@ void start_worker(local_scheduler_state *state, actor_id actor_id) {
   execvp(start_actor_worker_command[0],
          (char *const *) start_actor_worker_command);
   free(start_actor_worker_command);
-  free_local_scheduler(state);
+  LocalSchedulerState_free(state);
   LOG_FATAL("Failed to start worker");
 }
 
@@ -296,7 +296,7 @@ const char **parse_command(const char *command) {
   return command_args;
 }
 
-local_scheduler_state *init_local_scheduler(
+LocalSchedulerState *LocalSchedulerState_init(
     const char *node_ip_address,
     event_loop *loop,
     const char *redis_addr,
@@ -309,7 +309,7 @@ local_scheduler_state *init_local_scheduler(
     const double static_resource_conf[],
     const char *start_worker_command,
     int num_workers) {
-  local_scheduler_state *state = malloc(sizeof(local_scheduler_state));
+  LocalSchedulerState *state = malloc(sizeof(LocalSchedulerState));
   /* Set the configuration struct for the local scheduler. */
   if (start_worker_command != NULL) {
     state->config.start_worker_command = parse_command(start_worker_command);
@@ -361,8 +361,8 @@ local_scheduler_state *init_local_scheduler(
       db_connect_args[4] = "num_gpus";
       db_connect_args[5] = utstring_body(num_gpus);
     }
-    state->db = db_connect(redis_addr, redis_port, "photon", node_ip_address,
-                           num_args, db_connect_args);
+    state->db = db_connect(redis_addr, redis_port, "local_scheduler",
+                           node_ip_address, num_args, db_connect_args);
     utstring_free(num_cpus);
     utstring_free(num_gpus);
     free(db_connect_args);
@@ -380,7 +380,7 @@ local_scheduler_state *init_local_scheduler(
   event_loop_add_file(loop, plasma_fd, EVENT_LOOP_READ,
                       process_plasma_notification, state);
   /* Add scheduler state. */
-  state->algorithm_state = make_scheduling_algorithm_state();
+  state->algorithm_state = SchedulingAlgorithmState_init();
   /* Add the input buffer. This is used to read in messages from clients without
    * having to reallocate a new buffer every time. */
   utarray_new(state->input_buffer, &byte_icd);
@@ -402,7 +402,7 @@ local_scheduler_state *init_local_scheduler(
   return state;
 }
 
-void update_dynamic_resources(local_scheduler_state *state,
+void update_dynamic_resources(LocalSchedulerState *state,
                               task_spec *spec,
                               bool return_resources) {
   for (int i = 0; i < MAX_RESOURCE_INDEX; ++i) {
@@ -417,7 +417,7 @@ void update_dynamic_resources(local_scheduler_state *state,
 
     if (!return_resources && state->dynamic_resources[i] < 0) {
       /* We are using more resources than we have been allocated. */
-      LOG_WARN("photon dynamic resources dropped to %8.4f\t%8.4f\n",
+      LOG_WARN("local_scheduler dynamic resources dropped to %8.4f\t%8.4f\n",
                state->dynamic_resources[0], state->dynamic_resources[1]);
     }
     CHECK(state->dynamic_resources[i] <= state->static_resources[i]);
@@ -425,9 +425,9 @@ void update_dynamic_resources(local_scheduler_state *state,
   print_resource_info(state, spec);
 }
 
-void assign_task_to_worker(local_scheduler_state *state,
+void assign_task_to_worker(LocalSchedulerState *state,
                            task_spec *spec,
-                           local_scheduler_client *worker) {
+                           LocalSchedulerClient *worker) {
   if (write_message(worker->sock, EXECUTE_TASK, task_spec_size(spec),
                     (uint8_t *) spec) < 0) {
     if (errno == EPIPE || errno == EBADF) {
@@ -445,17 +445,17 @@ void assign_task_to_worker(local_scheduler_state *state,
   /* Resource accounting:
    * Update dynamic resource vector in the local scheduler state. */
   update_dynamic_resources(state, spec, false);
-  task *task = alloc_task(spec, TASK_STATUS_RUNNING,
+  Task *task = Task_alloc(spec, TASK_STATUS_RUNNING,
                           state->db ? get_db_client_id(state->db) : NIL_ID);
   /* Record which task this worker is executing. This will be freed in
    * process_message when the worker sends a GET_TASK message to the local
    * scheduler. */
-  worker->task_in_progress = copy_task(task);
+  worker->task_in_progress = Task_copy(task);
   /* Update the global task table. */
   if (state->db != NULL) {
     task_table_update(state->db, task, NULL, NULL, NULL);
   } else {
-    free_task(task);
+    Task_free(task);
   }
 }
 
@@ -463,9 +463,9 @@ void process_plasma_notification(event_loop *loop,
                                  int client_sock,
                                  void *context,
                                  int events) {
-  local_scheduler_state *state = context;
+  LocalSchedulerState *state = context;
   /* Read the notification from Plasma. */
-  object_info object_info;
+  ObjectInfo object_info;
   int error =
       read_bytes(client_sock, (uint8_t *) &object_info, sizeof(object_info));
   if (error < 0) {
@@ -485,7 +485,7 @@ void process_plasma_notification(event_loop *loop,
   }
 }
 
-void reconstruct_task_update_callback(task *task, void *user_context) {
+void reconstruct_task_update_callback(Task *task, void *user_context) {
   if (task == NULL) {
     /* The test-and-set of the task's scheduling state failed, so the task was
      * either not finished yet, or it was already being reconstructed.
@@ -494,30 +494,30 @@ void reconstruct_task_update_callback(task *task, void *user_context) {
   }
   /* Otherwise, the test-and-set succeeded, so resubmit the task for execution
    * to ensure that reconstruction will happen. */
-  local_scheduler_state *state = user_context;
-  task_spec *spec = task_task_spec(task);
+  LocalSchedulerState *state = user_context;
+  task_spec *spec = Task_task_spec(task);
   /* If the task is an actor task, then we currently do not reconstruct it.
    * TODO(rkn): Handle this better. */
-  CHECK(actor_ids_equal(task_spec_actor_id(spec), NIL_ACTOR_ID));
+  CHECK(ActorID_equal(task_spec_actor_id(spec), NIL_ACTOR_ID));
   /* Resubmit the task. */
   handle_task_submitted(state, state->algorithm_state, spec);
   /* Recursively reconstruct the task's inputs, if necessary. */
   for (int64_t i = 0; i < task_num_args(spec); ++i) {
     if (task_arg_type(spec, i) == ARG_BY_REF) {
-      object_id arg_id = task_arg_id(spec, i);
+      ObjectID arg_id = task_arg_id(spec, i);
       reconstruct_object(state, arg_id);
     }
   }
 }
 
-void reconstruct_evicted_result_lookup_callback(object_id reconstruct_object_id,
-                                                task_id task_id,
+void reconstruct_evicted_result_lookup_callback(ObjectID reconstruct_object_id,
+                                                TaskID task_id,
                                                 void *user_context) {
   /* TODO(swang): The following check will fail if an object was created by a
    * put. */
   CHECKM(!IS_NIL_ID(task_id),
          "No task information found for object during reconstruction");
-  local_scheduler_state *state = user_context;
+  LocalSchedulerState *state = user_context;
   /* If there are no other instances of the task running, it's safe for us to
    * claim responsibility for reconstruction. */
   task_table_test_and_update(state->db, task_id,
@@ -526,8 +526,8 @@ void reconstruct_evicted_result_lookup_callback(object_id reconstruct_object_id,
                              reconstruct_task_update_callback, state);
 }
 
-void reconstruct_failed_result_lookup_callback(object_id reconstruct_object_id,
-                                               task_id task_id,
+void reconstruct_failed_result_lookup_callback(ObjectID reconstruct_object_id,
+                                               TaskID task_id,
                                                void *user_context) {
   /* TODO(swang): The following check will fail if an object was created by a
    * put. */
@@ -541,7 +541,7 @@ void reconstruct_failed_result_lookup_callback(object_id reconstruct_object_id,
         "entry yet)");
     return;
   }
-  local_scheduler_state *state = user_context;
+  LocalSchedulerState *state = user_context;
   /* If the task failed to finish, it's safe for us to claim responsibility for
    * reconstruction. */
   task_table_test_and_update(state->db, task_id, TASK_STATUS_LOST,
@@ -549,7 +549,7 @@ void reconstruct_failed_result_lookup_callback(object_id reconstruct_object_id,
                              reconstruct_task_update_callback, state);
 }
 
-void reconstruct_object_lookup_callback(object_id reconstruct_object_id,
+void reconstruct_object_lookup_callback(ObjectID reconstruct_object_id,
                                         int manager_count,
                                         const char *manager_vector[],
                                         void *user_context) {
@@ -557,7 +557,7 @@ void reconstruct_object_lookup_callback(object_id reconstruct_object_id,
   /* Only continue reconstruction if we find that the object doesn't exist on
    * any nodes. NOTE: This codepath is not responsible for checking if the
    * object table entry is up-to-date. */
-  local_scheduler_state *state = user_context;
+  LocalSchedulerState *state = user_context;
   /* Look up the task that created the object in the result table. */
   if (manager_count == 0) {
     /* If the object was created and later evicted, we reconstruct the object
@@ -574,8 +574,8 @@ void reconstruct_object_lookup_callback(object_id reconstruct_object_id,
   }
 }
 
-void reconstruct_object(local_scheduler_state *state,
-                        object_id reconstruct_object_id) {
+void reconstruct_object(LocalSchedulerState *state,
+                        ObjectID reconstruct_object_id) {
   LOG_DEBUG("Starting reconstruction");
   /* TODO(swang): Track task lineage for puts. */
   CHECK(state->db != NULL);
@@ -589,8 +589,8 @@ void process_message(event_loop *loop,
                      int client_sock,
                      void *context,
                      int events) {
-  local_scheduler_client *worker = context;
-  local_scheduler_state *state = worker->local_scheduler_state;
+  LocalSchedulerClient *worker = context;
+  LocalSchedulerState *state = worker->local_scheduler_state;
 
   int64_t type;
   int64_t length = read_buffer(client_sock, &type, state->input_buffer);
@@ -603,15 +603,15 @@ void process_message(event_loop *loop,
     /* Update the result table, which holds mappings of object ID -> ID of the
      * task that created it. */
     if (state->db != NULL) {
-      task_id task_id = task_spec_id(spec);
+      TaskID task_id = task_spec_id(spec);
       for (int64_t i = 0; i < task_num_returns(spec); ++i) {
-        object_id return_id = task_return(spec, i);
+        ObjectID return_id = task_return(spec, i);
         result_table_add(state->db, return_id, task_id, NULL, NULL, NULL);
       }
     }
 
     /* Handle the task submission. */
-    if (actor_ids_equal(task_spec_actor_id(spec), NIL_ACTOR_ID)) {
+    if (ActorID_equal(task_spec_actor_id(spec), NIL_ACTOR_ID)) {
       handle_task_submitted(state, state->algorithm_state, spec);
     } else {
       handle_actor_task_submitted(state, state->algorithm_state, spec);
@@ -639,7 +639,7 @@ void process_message(event_loop *loop,
     offset += value_length;
     CHECK(offset == length);
     if (state->db != NULL) {
-      ray_log_event(state->db, key, key_length, value, value_length);
+      RayLogger_log_event(state->db, key, key_length, value, value_length);
     }
     free(key);
     free(value);
@@ -649,17 +649,17 @@ void process_message(event_loop *loop,
      * running on the worker). */
     register_worker_info *info =
         (register_worker_info *) utarray_front(state->input_buffer);
-    if (!actor_ids_equal(info->actor_id, NIL_ACTOR_ID)) {
+    if (!ActorID_equal(info->actor_id, NIL_ACTOR_ID)) {
       /* Make sure that the local scheduler is aware that it is responsible for
        * this actor. */
       actor_map_entry *entry;
       HASH_FIND(hh, state->actor_mapping, &info->actor_id,
                 sizeof(info->actor_id), entry);
       CHECK(entry != NULL);
-      CHECK(db_client_ids_equal(entry->local_scheduler_id,
+      CHECK(DBClientID_equal(entry->local_scheduler_id,
                                 get_db_client_id(state->db)));
       /* Update the worker struct with this actor ID. */
-      CHECK(actor_ids_equal(worker->actor_id, NIL_ACTOR_ID));
+      CHECK(ActorID_equal(worker->actor_id, NIL_ACTOR_ID));
       worker->actor_id = info->actor_id;
       /* Let the scheduling algorithm process the presence of this new
        * worker. */
@@ -691,25 +691,25 @@ void process_message(event_loop *loop,
   case GET_TASK: {
     /* If this worker reports a completed task: account for resources. */
     if (worker->task_in_progress != NULL) {
-      task_spec *spec = task_task_spec(worker->task_in_progress);
+      task_spec *spec = Task_task_spec(worker->task_in_progress);
       /* Return dynamic resources back for the task in progress. */
       update_dynamic_resources(state, spec, true);
       /* If we're connected to Redis, update tables. */
       if (state->db != NULL) {
         /* Update control state tables. */
-        task_set_state(worker->task_in_progress, TASK_STATUS_DONE);
+        Task_set_state(worker->task_in_progress, TASK_STATUS_DONE);
         task_table_update(state->db, worker->task_in_progress, NULL, NULL,
                           NULL);
         /* The call to task_table_update takes ownership of the
          * task_in_progress, so we set the pointer to NULL so it is not used. */
       } else {
-        free_task(worker->task_in_progress);
+        Task_free(worker->task_in_progress);
       }
       worker->task_in_progress = NULL;
     }
     /* Let the scheduling algorithm process the fact that there is an available
      * worker. */
-    if (actor_ids_equal(worker->actor_id, NIL_ACTOR_ID)) {
+    if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
       handle_worker_available(state, state->algorithm_state, worker);
     } else {
       handle_actor_worker_available(state, state->algorithm_state, worker);
@@ -718,7 +718,7 @@ void process_message(event_loop *loop,
   case RECONSTRUCT_OBJECT: {
     if (worker->task_in_progress != NULL && !worker->is_blocked) {
       /* TODO(swang): For now, we don't handle blocked actors. */
-      if (actor_ids_equal(worker->actor_id, NIL_ACTOR_ID)) {
+      if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
         /* If the worker was executing a task (i.e. non-driver) and it wasn't
          * already blocked on an object that's not locally available, update its
          * state to blocked. */
@@ -726,13 +726,13 @@ void process_message(event_loop *loop,
         print_worker_info("Reconstructing", state->algorithm_state);
       }
     }
-    object_id *obj_id = (object_id *) utarray_front(state->input_buffer);
+    ObjectID *obj_id = (ObjectID *) utarray_front(state->input_buffer);
     reconstruct_object(state, *obj_id);
   } break;
   case DISCONNECT_CLIENT: {
     LOG_INFO("Disconnecting client on fd %d", client_sock);
     kill_worker(worker, false);
-    if (!actor_ids_equal(worker->actor_id, NIL_ACTOR_ID)) {
+    if (!ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
       /* Let the scheduling algorithm process the absence of this worker. */
       handle_actor_worker_disconnect(state, state->algorithm_state,
                                      worker->actor_id);
@@ -743,7 +743,7 @@ void process_message(event_loop *loop,
   case NOTIFY_UNBLOCKED: {
     if (worker->task_in_progress != NULL) {
       /* TODO(swang): For now, we don't handle blocked actors. */
-      if (actor_ids_equal(worker->actor_id, NIL_ACTOR_ID)) {
+      if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
         /* If the worker was executing a task (i.e. non-driver), update its
          * state to not blocked. */
         CHECK(worker->is_blocked);
@@ -762,11 +762,11 @@ void new_client_connection(event_loop *loop,
                            int listener_sock,
                            void *context,
                            int events) {
-  local_scheduler_state *state = context;
+  LocalSchedulerState *state = context;
   int new_socket = accept_client(listener_sock);
   /* Create a struct for this worker. This will be freed when we free the local
    * scheduler state. */
-  local_scheduler_client *worker = malloc(sizeof(local_scheduler_client));
+  LocalSchedulerClient *worker = malloc(sizeof(LocalSchedulerClient));
   worker->sock = new_socket;
   worker->task_in_progress = NULL;
   worker->is_blocked = false;
@@ -782,21 +782,21 @@ void new_client_connection(event_loop *loop,
 
 /* We need this code so we can clean up when we get a SIGTERM signal. */
 
-local_scheduler_state *g_state;
+LocalSchedulerState *g_state;
 
 void signal_handler(int signal) {
   LOG_DEBUG("Signal was %d", signal);
   if (signal == SIGTERM) {
-    free_local_scheduler(g_state);
+    LocalSchedulerState_free(g_state);
     exit(0);
   }
 }
 
 /* End of the cleanup code. */
 
-void handle_task_scheduled_callback(task *original_task, void *user_context) {
-  task_spec *spec = task_task_spec(original_task);
-  if (actor_ids_equal(task_spec_actor_id(spec), NIL_ACTOR_ID)) {
+void handle_task_scheduled_callback(Task *original_task, void *user_context) {
+  task_spec *spec = Task_task_spec(original_task);
+  if (ActorID_equal(task_spec_actor_id(spec), NIL_ACTOR_ID)) {
     /* This task does not involve an actor. Handle it normally. */
     handle_task_scheduled(g_state, g_state->algorithm_state, spec);
   } else {
@@ -817,10 +817,10 @@ void handle_task_scheduled_callback(task *original_task, void *user_context) {
  *        for creating the actor.
  * @return Void.
  */
-void handle_actor_creation_callback(actor_info info, void *context) {
-  actor_id actor_id = info.actor_id;
-  db_client_id local_scheduler_id = info.local_scheduler_id;
-  local_scheduler_state *state = context;
+void handle_actor_creation_callback(ActorInfo info, void *context) {
+  ActorID actor_id = info.actor_id;
+  DBClientID local_scheduler_id = info.local_scheduler_id;
+  LocalSchedulerState *state = context;
   /* Make sure the actor entry is not already present in the actor map table.
    * TODO(rkn): We will need to remove this check to handle the case where the
    * corresponding publish is retried and the case in which a task that creates
@@ -837,7 +837,7 @@ void handle_actor_creation_callback(actor_info info, void *context) {
   HASH_ADD(hh, state->actor_mapping, actor_id, sizeof(entry->actor_id), entry);
   /* If this local scheduler is responsible for the actor, then start a new
    * worker for the actor. */
-  if (db_client_ids_equal(local_scheduler_id, get_db_client_id(state->db))) {
+  if (DBClientID_equal(local_scheduler_id, get_db_client_id(state->db))) {
     start_worker(state, actor_id);
   }
   /* Let the scheduling algorithm process the fact that a new actor has been
@@ -846,9 +846,9 @@ void handle_actor_creation_callback(actor_info info, void *context) {
 }
 
 int heartbeat_handler(event_loop *loop, timer_id id, void *context) {
-  local_scheduler_state *state = context;
-  scheduling_algorithm_state *algorithm_state = state->algorithm_state;
-  local_scheduler_info info;
+  LocalSchedulerState *state = context;
+  SchedulingAlgorithmState *algorithm_state = state->algorithm_state;
+  LocalSchedulerInfo info;
   /* Ask the scheduling algorithm to fill out the scheduler info struct. */
   provide_scheduler_info(state, algorithm_state, &info);
   /* Publish the heartbeat to all subscribers of the local scheduler table. */
@@ -873,7 +873,7 @@ void start_server(const char *node_ip_address,
   signal(SIGPIPE, SIG_IGN);
   int fd = bind_ipc_sock(socket_name, true);
   event_loop *loop = event_loop_create();
-  g_state = init_local_scheduler(
+  g_state = LocalSchedulerState_init(
       node_ip_address, loop, redis_addr, redis_port, socket_name,
       plasma_store_socket_name, plasma_manager_socket_name,
       plasma_manager_address, global_scheduler_exists, static_resource_conf,
@@ -911,7 +911,7 @@ void start_server(const char *node_ip_address,
 
 /* Only declare the main function if we are not in testing mode, since the test
  * suite has its own declaration of main. */
-#ifndef PHOTON_TEST
+#ifndef LOCAL_SCHEDULER_TEST
 int main(int argc, char *argv[]) {
   signal(SIGTERM, signal_handler);
   /* Path of the listening socket of the local scheduler. */
@@ -922,7 +922,8 @@ int main(int argc, char *argv[]) {
   char *plasma_store_socket_name = NULL;
   /* Socket name for the local Plasma manager. */
   char *plasma_manager_socket_name = NULL;
-  /* Address for the plasma manager associated with this Photon instance. */
+  /* Address for the plasma manager associated with this local scheduler
+   * instance. */
   char *plasma_manager_address = NULL;
   /* The IP address of the node that this local scheduler is running on. */
   char *node_ip_address = NULL;

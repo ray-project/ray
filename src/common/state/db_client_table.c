@@ -2,14 +2,14 @@
 #include "redis.h"
 
 void db_client_table_subscribe(
-    db_handle *db_handle,
+    DBHandle *db_handle,
     db_client_table_subscribe_callback subscribe_callback,
     void *subscribe_context,
-    retry_info *retry,
+    RetryInfo *retry,
     db_client_table_done_callback done_callback,
     void *user_context) {
-  db_client_table_subscribe_data *sub_data =
-      malloc(sizeof(db_client_table_subscribe_data));
+  DBClientTableSubscribeData *sub_data =
+      malloc(sizeof(DBClientTableSubscribeData));
   sub_data->subscribe_callback = subscribe_callback;
   sub_data->subscribe_context = subscribe_context;
 

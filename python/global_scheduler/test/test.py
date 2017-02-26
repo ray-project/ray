@@ -14,7 +14,7 @@ import time
 import unittest
 
 import global_scheduler
-import photon
+import local_scheduler
 import plasma
 from plasma.utils import random_object_id, generate_metadata, write_to_data_buffer, create_object_with_id, create_object
 
@@ -40,16 +40,16 @@ DB_CLIENT_PREFIX = "CL:"
 TASK_PREFIX = "TT:"
 
 def random_driver_id():
-  return photon.ObjectID(np.random.bytes(ID_SIZE))
+  return local_scheduler.ObjectID(np.random.bytes(ID_SIZE))
 
 def random_task_id():
-  return photon.ObjectID(np.random.bytes(ID_SIZE))
+  return local_scheduler.ObjectID(np.random.bytes(ID_SIZE))
 
 def random_function_id():
-  return photon.ObjectID(np.random.bytes(ID_SIZE))
+  return local_scheduler.ObjectID(np.random.bytes(ID_SIZE))
 
 def random_object_id():
-  return photon.ObjectID(np.random.bytes(ID_SIZE))
+  return local_scheduler.ObjectID(np.random.bytes(ID_SIZE))
 
 def new_port():
   return random.randint(10000, 65535)
@@ -57,7 +57,7 @@ def new_port():
 class TestGlobalScheduler(unittest.TestCase):
 
   def setUp(self):
-    # Start one Redis server and N pairs of (plasma, photon)
+    # Start one Redis server and N pairs of (plasma, local_scheduler)
     node_ip_address = "127.0.0.1"
     redis_port, self.redis_process = services.start_redis(cleanup=False)
     redis_address = services.address(node_ip_address, redis_port)
@@ -69,7 +69,7 @@ class TestGlobalScheduler(unittest.TestCase):
     self.plasma_manager_pids = []
     self.local_scheduler_pids = []
     self.plasma_clients = []
-    self.photon_clients = []
+    self.local_scheduler_clients = []
 
     for i in range(NUM_CLUSTER_NODES):
       # Start the Plasma store. Plasma store name is randomly generated.
@@ -83,15 +83,15 @@ class TestGlobalScheduler(unittest.TestCase):
       plasma_client = plasma.PlasmaClient(plasma_store_name, plasma_manager_name)
       self.plasma_clients.append(plasma_client)
       # Start the local scheduler.
-      local_scheduler_name, p4 = photon.start_local_scheduler(
+      local_scheduler_name, p4 = local_scheduler.start_local_scheduler(
           plasma_store_name,
           plasma_manager_name=plasma_manager_name,
           plasma_address=plasma_address,
           redis_address=redis_address,
           static_resource_list=[10, 0])
       # Connect to the scheduler.
-      photon_client = photon.PhotonClient(local_scheduler_name, NIL_ACTOR_ID)
-      self.photon_clients.append(photon_client)
+      local_scheduler_client = local_scheduler.LocalSchedulerClient(local_scheduler_name, NIL_ACTOR_ID)
+      self.local_scheduler_clients.append(local_scheduler_client)
       self.local_scheduler_pids.append(p4)
 
   def tearDown(self):
@@ -148,11 +148,11 @@ class TestGlobalScheduler(unittest.TestCase):
     return db_client_id
 
   def test_task_default_resources(self):
-    task1 = photon.Task(random_driver_id(), random_function_id(), [random_object_id()], 0, random_task_id(), 0)
+    task1 = local_scheduler.Task(random_driver_id(), random_function_id(), [random_object_id()], 0, random_task_id(), 0)
     self.assertEqual(task1.required_resources(), [1.0, 0.0])
-    task2 = photon.Task(random_driver_id(), random_function_id(),
-                        [random_object_id()], 0, random_task_id(), 0,
-                        photon.ObjectID(NIL_ACTOR_ID), 0, [1.0, 2.0])
+    task2 = local_scheduler.Task(random_driver_id(), random_function_id(),
+                                 [random_object_id()], 0, random_task_id(), 0,
+                                 local_scheduler.ObjectID(NIL_ACTOR_ID), 0, [1.0, 2.0])
     self.assertEqual(task2.required_resources(), [1.0, 2.0])
 
   def test_redis_only_single_task(self):
@@ -161,7 +161,7 @@ class TestGlobalScheduler(unittest.TestCase):
     task state transitions in Redis only. TODO(atumanov): implement.
     """
     # Check precondition for this test:
-    # There should be 2n+1 db clients: the global scheduler + one photon and one plasma per node.
+    # There should be 2n+1 db clients: the global scheduler + one local scheduler and one plasma per node.
     self.assertEqual(len(self.redis_client.keys("{}*".format(DB_CLIENT_PREFIX))),
                      2 * NUM_CLUSTER_NODES + 1)
     db_client_id = self.get_plasma_manager_id()
@@ -182,11 +182,11 @@ class TestGlobalScheduler(unittest.TestCase):
     plasma_client = self.plasma_clients[0]
     object_dep, memory_buffer, metadata = create_object(plasma_client, data_size, metadata_size, seal=True)
 
-    # Sleep before submitting task to photon.
+    # Sleep before submitting task to local scheduler.
     time.sleep(0.1)
     # Submit a task to Redis.
-    task = photon.Task(random_driver_id(), random_function_id(), [photon.ObjectID(object_dep)], num_return_vals[0], random_task_id(), 0)
-    self.photon_clients[0].submit(task)
+    task = local_scheduler.Task(random_driver_id(), random_function_id(), [local_scheduler.ObjectID(object_dep)], num_return_vals[0], random_task_id(), 0)
+    self.local_scheduler_clients[0].submit(task)
     time.sleep(0.1)
     # There should now be a task in Redis, and it should get assigned to the
     # local scheduler
@@ -231,8 +231,8 @@ class TestGlobalScheduler(unittest.TestCase):
       if timesync:
         # Give 10ms for object info handler to fire (long enough to yield CPU).
         time.sleep(0.010)
-      task = photon.Task(random_driver_id(), random_function_id(), [photon.ObjectID(object_dep)], num_return_vals[0], random_task_id(), 0)
-      self.photon_clients[0].submit(task)
+      task = local_scheduler.Task(random_driver_id(), random_function_id(), [local_scheduler.ObjectID(object_dep)], num_return_vals[0], random_task_id(), 0)
+      self.local_scheduler_clients[0].submit(task)
     # Check that there are the correct number of tasks in Redis and that they
     # all get assigned to the local scheduler.
     num_retries = 10
