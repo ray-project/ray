@@ -41,7 +41,7 @@ void *dlmalloc(size_t);
 void dlfree(void *);
 
 /** Contains all information that is associated with a Plasma store client. */
-struct client {
+struct Client {
   /** The socket used to communicate with the client. */
   int sock;
   /** A pointer to the global plasma state. */
@@ -50,7 +50,7 @@ struct client {
 
 /* This is used to define the array of clients used to define the
  * object_table_entry type. */
-UT_icd client_icd = {sizeof(client *), NULL, NULL, NULL};
+UT_icd client_icd = {sizeof(Client *), NULL, NULL, NULL};
 
 /* This is used to define the queue of object notifications for plasma
  * subscribers. */
@@ -68,7 +68,7 @@ typedef struct {
 
 typedef struct {
   /** The client connection that called get. */
-  client *client;
+  Client *client;
   /** The ID of the timer that will time out and cause this wait to return to
    *  the client if it hasn't already returned. */
   int64_t timer;
@@ -146,10 +146,10 @@ void push_notification(PlasmaStoreState *state,
 /* If this client is not already using the object, add the client to the
  * object's list of clients, otherwise do nothing. */
 void add_client_to_object_clients(object_table_entry *entry,
-                                  client *client_info) {
+                                  Client *client_info) {
   /* Check if this client is already using the object. */
   for (int i = 0; i < utarray_len(entry->clients); ++i) {
-    client **c = (client **) utarray_eltptr(entry->clients, i);
+    Client **c = (Client **) utarray_eltptr(entry->clients, i);
     if (*c == client_info) {
       return;
     }
@@ -172,7 +172,7 @@ void add_client_to_object_clients(object_table_entry *entry,
 }
 
 /* Create a new object buffer in the hash table. */
-int create_object(client *client_context,
+int create_object(Client *client_context,
                   ObjectID obj_id,
                   int64_t data_size,
                   int64_t metadata_size,
@@ -417,7 +417,7 @@ int get_timeout_handler(event_loop *loop, timer_id id, void *context) {
   return EVENT_LOOP_TIMER_DONE;
 }
 
-void process_get_request(client *client_context,
+void process_get_request(Client *client_context,
                          int num_object_ids,
                          ObjectID object_ids[],
                          uint64_t timeout_ms) {
@@ -478,10 +478,10 @@ void process_get_request(client *client_context,
 }
 
 int remove_client_from_object_clients(object_table_entry *entry,
-                                      client *client_info) {
+                                      Client *client_info) {
   /* Find the location of the client in the array. */
   for (int i = 0; i < utarray_len(entry->clients); ++i) {
-    client **c = (client **) utarray_eltptr(entry->clients, i);
+    Client **c = (Client **) utarray_eltptr(entry->clients, i);
     if (*c == client_info) {
       /* Remove the client from the array. */
       utarray_erase(entry->clients, i, 1);
@@ -506,7 +506,7 @@ int remove_client_from_object_clients(object_table_entry *entry,
   return 0;
 }
 
-void release_object(client *client_context, ObjectID object_id) {
+void release_object(Client *client_context, ObjectID object_id) {
   PlasmaStoreState *plasma_state = client_context->plasma_state;
   object_table_entry *entry;
   HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
@@ -517,7 +517,7 @@ void release_object(client *client_context, ObjectID object_id) {
 }
 
 /* Check if an object is present. */
-int contains_object(client *client_context, ObjectID object_id) {
+int contains_object(Client *client_context, ObjectID object_id) {
   PlasmaStoreState *plasma_state = client_context->plasma_state;
   object_table_entry *entry;
   HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
@@ -527,7 +527,7 @@ int contains_object(client *client_context, ObjectID object_id) {
 }
 
 /* Seal an object that has been created in the hash table. */
-void seal_object(client *client_context,
+void seal_object(Client *client_context,
                  ObjectID object_id,
                  unsigned char digest[]) {
   LOG_DEBUG("sealing object");  // TODO(pcm): add ObjectID here
@@ -644,7 +644,7 @@ void send_notifications(event_loop *loop,
 }
 
 /* Subscribe to notifications about sealed objects. */
-void subscribe_to_updates(client *client_context, int conn) {
+void subscribe_to_updates(Client *client_context, int conn) {
   LOG_DEBUG("subscribing to updates");
   PlasmaStoreState *plasma_state = client_context->plasma_state;
   /* TODO(rkn): The store could block here if the client doesn't send a file
@@ -678,7 +678,7 @@ void process_message(event_loop *loop,
                      int client_sock,
                      void *context,
                      int events) {
-  client *client_context = context;
+  Client *client_context = context;
   PlasmaStoreState *state = client_context->plasma_state;
   int64_t type;
   read_buffer(client_sock, &type, state->input_buffer);
@@ -797,7 +797,7 @@ void new_client_connection(event_loop *loop,
   int new_socket = accept_client(listener_sock);
   /* Create a new client object. This will also be used as the context to use
    * for events on this client's socket. TODO(rkn): free this somewhere. */
-  client *client_context = (client *) malloc(sizeof(client));
+  Client *client_context = (Client *) malloc(sizeof(Client));
   client_context->sock = new_socket;
   client_context->plasma_state = plasma_state;
   /* Add a callback to handle events on this socket. */

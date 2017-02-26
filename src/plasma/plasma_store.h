@@ -3,7 +3,7 @@
 
 #include "plasma.h"
 
-typedef struct client client;
+typedef struct Client Client;
 
 typedef struct PlasmaStoreState PlasmaStoreState;
 
@@ -24,7 +24,7 @@ typedef struct PlasmaStoreState PlasmaStoreState;
  *           create the object. In this case, the client should not call
  *           plasma_release.
  */
-int create_object(client *client_context,
+int create_object(Client *client_context,
                   ObjectID object_id,
                   int64_t data_size,
                   int64_t metadata_size,
@@ -43,7 +43,7 @@ int create_object(client *client_context,
  * @param object_id Object ID of the object to be gotten.
  * @return The status of the object (object_status in plasma.h).
  */
-int get_object(client *client_context,
+int get_object(Client *client_context,
                int conn,
                ObjectID object_id,
                PlasmaObject *result);
@@ -55,7 +55,7 @@ int get_object(client *client_context,
  * @param object_id The object ID of the object that is being released.
  * @param Void.
  */
-void release_object(client *client_context, ObjectID object_id);
+void release_object(Client *client_context, ObjectID object_id);
 
 /**
  * Seal an object. The object is now immutable and can be accessed with get.
@@ -66,7 +66,7 @@ void release_object(client *client_context, ObjectID object_id);
  *        with the same object ID are the same.
  * @return Void.
  */
-void seal_object(client *client_context,
+void seal_object(Client *client_context,
                  ObjectID object_id,
                  unsigned char digest[]);
 
@@ -77,7 +77,7 @@ void seal_object(client *client_context,
  * @param object_id Object ID that will be checked.
  * @return OBJECT_FOUND if the object is in the store, OBJECT_NOT_FOUND if not
  */
-int contains_object(client *client_context, ObjectID object_id);
+int contains_object(Client *client_context, ObjectID object_id);
 
 /**
  * Send notifications about sealed objects to the subscribers. This is called
