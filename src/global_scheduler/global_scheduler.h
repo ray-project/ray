@@ -25,7 +25,7 @@ typedef struct {
   /** The latest information about the local scheduler capacity. This is updated
    *  every time a new local scheduler heartbeat arrives. */
   local_scheduler_info info;
-} local_scheduler;
+} LocalScheduler;
 
 typedef struct global_scheduler_policy_state global_scheduler_policy_state;
 
@@ -90,8 +90,8 @@ typedef struct {
  * @return The corresponding local scheduler struct. If the global scheduler is
  *         not aware of the local scheduler, then this will be NULL.
  */
-local_scheduler *get_local_scheduler(global_scheduler_state *state,
-                                     DBClientID photon_id);
+LocalScheduler *get_local_scheduler(global_scheduler_state *state,
+                                    DBClientID photon_id);
 
 /**
  * Assign the given task to the local scheduler, update Redis and scheduler data

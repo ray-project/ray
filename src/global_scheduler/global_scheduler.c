@@ -16,7 +16,7 @@
 
 /* This is used to define the array of local schedulers used to define the
  * global_scheduler_state type. */
-UT_icd local_scheduler_icd = {sizeof(local_scheduler), NULL, NULL, NULL};
+UT_icd local_scheduler_icd = {sizeof(LocalScheduler), NULL, NULL, NULL};
 
 /* This is used to define the array of tasks that haven't been scheduled yet. */
 UT_icd pending_tasks_icd = {sizeof(Task *), NULL, NULL, NULL};
@@ -47,7 +47,7 @@ void assign_task_to_local_scheduler(global_scheduler_state *state,
   /* TODO(rkn): We should probably pass around local_scheduler struct pointers
    * instead of db_client_id objects. */
   /* Update the local scheduler info. */
-  local_scheduler *local_scheduler =
+  LocalScheduler *local_scheduler =
       get_local_scheduler(state, local_scheduler_id);
   local_scheduler->num_tasks_sent += 1;
   local_scheduler->num_recent_tasks_sent += 1;
@@ -134,12 +134,12 @@ void signal_handler(int signal) {
 
 /* End of the cleanup code. */
 
-local_scheduler *get_local_scheduler(global_scheduler_state *state,
-                                     DBClientID photon_id) {
-  local_scheduler *local_scheduler_ptr;
+LocalScheduler *get_local_scheduler(global_scheduler_state *state,
+                                    DBClientID photon_id) {
+  LocalScheduler *local_scheduler_ptr;
   for (int i = 0; i < utarray_len(state->local_schedulers); ++i) {
     local_scheduler_ptr =
-        (local_scheduler *) utarray_eltptr(state->local_schedulers, i);
+        (LocalScheduler *) utarray_eltptr(state->local_schedulers, i);
     if (db_client_ids_equal(local_scheduler_ptr->id, photon_id)) {
       LOG_DEBUG("photon_id matched cached local scheduler entry.");
       return local_scheduler_ptr;
@@ -208,7 +208,7 @@ void process_new_db_client(DBClientID db_client_id,
 #endif
 
     /* Add new local scheduler to the state. */
-    local_scheduler local_scheduler;
+    LocalScheduler local_scheduler;
     local_scheduler.id = db_client_id;
     local_scheduler.num_tasks_sent = 0;
     local_scheduler.num_recent_tasks_sent = 0;
@@ -257,8 +257,9 @@ void object_table_subscribe_callback(ObjectID object_id,
 
   if (obj_info_entry == NULL) {
     /* Construct a new object info hash table entry. */
-    obj_info_entry = malloc(sizeof(SchedulerObjectInfo));
-    memset(obj_info_entry, 0, sizeof(obj_info_entry));
+    obj_info_entry =
+        (SchedulerObjectInfo *) malloc(sizeof(SchedulerObjectInfo));
+    memset(obj_info_entry, 0, sizeof(*obj_info_entry));
 
     obj_info_entry->object_id = object_id;
     obj_info_entry->data_size = data_size;
@@ -300,7 +301,7 @@ void local_scheduler_table_handler(DBClientID client_id,
       "total workers = %d, task queue length = %d, available workers = %d",
       info.total_num_workers, info.task_queue_length, info.available_workers);
   /* Update the local scheduler info struct. */
-  local_scheduler *local_scheduler_ptr = get_local_scheduler(state, client_id);
+  LocalScheduler *local_scheduler_ptr = get_local_scheduler(state, client_id);
   if (local_scheduler_ptr != NULL) {
     /* Reset the number of tasks sent since the last heartbeat. */
     local_scheduler_ptr->num_recent_tasks_sent = 0;

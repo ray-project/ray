@@ -36,7 +36,7 @@ void destroy_global_scheduler_policy(
  * @return True if all tasks's resource constraints are satisfied. False
  *         otherwise.
  */
-bool constraints_satisfied_hard(const local_scheduler *scheduler,
+bool constraints_satisfied_hard(const LocalScheduler *scheduler,
                                 const task_spec *spec) {
   for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
     if (scheduler->info.static_resources[i] <
@@ -56,7 +56,7 @@ void handle_task_round_robin(global_scheduler_state *state,
                              Task *task) {
   CHECKM(utarray_len(state->local_schedulers) > 0,
          "No local schedulers. We currently don't handle this case.");
-  local_scheduler *scheduler = NULL;
+  LocalScheduler *scheduler = NULL;
   task_spec *task_spec = task_task_spec(task);
   int i;
   int num_retries = 1;
@@ -67,7 +67,7 @@ void handle_task_round_robin(global_scheduler_state *state,
     if (i == policy_state->round_robin_index) {
       num_retries--;
     }
-    scheduler = (local_scheduler *) utarray_eltptr(state->local_schedulers, i);
+    scheduler = (LocalScheduler *) utarray_eltptr(state->local_schedulers, i);
     task_satisfied = constraints_satisfied_hard(scheduler, task_spec);
   }
 
@@ -186,7 +186,7 @@ DBClientID get_photon_id(global_scheduler_state *state,
 
   /* Check to make sure this photon_db_client_id matches one of the
    * schedulers. */
-  local_scheduler *local_scheduler_ptr = get_local_scheduler(state, photon_id);
+  LocalScheduler *local_scheduler_ptr = get_local_scheduler(state, photon_id);
   if (local_scheduler_ptr == NULL) {
     LOG_WARN("photon_id didn't match any cached local scheduler entries");
   }
@@ -202,7 +202,7 @@ double inner_product(double a[], double b[], int size) {
 }
 
 double calculate_object_size_fraction(global_scheduler_state *state,
-                                      local_scheduler *scheduler,
+                                      LocalScheduler *scheduler,
                                       object_size_entry *object_size_table,
                                       int64_t total_task_object_size) {
   /* Look up its cached object size in the hashmap, normalize by total object
@@ -236,7 +236,7 @@ double calculate_object_size_fraction(global_scheduler_state *state,
 }
 
 double calculate_score_dynvec_normalized(global_scheduler_state *state,
-                                         local_scheduler *scheduler,
+                                         LocalScheduler *scheduler,
                                          const task_spec *task_spec,
                                          double object_size_fraction) {
   /* The object size fraction is now calculated for this (task,node) pair. */
@@ -262,7 +262,7 @@ double calculate_score_dynvec_normalized(global_scheduler_state *state,
 }
 
 double calculate_cost_pending(const global_scheduler_state *state,
-                              const local_scheduler *scheduler) {
+                              const LocalScheduler *scheduler) {
   /* TODO: make sure that num_recent_tasks_sent is reset on each heartbeat. */
   return scheduler->num_recent_tasks_sent + scheduler->info.task_queue_length;
 }
@@ -286,12 +286,12 @@ bool handle_task_waiting(global_scheduler_state *state,
       state, task_spec, &has_args_by_ref, &task_object_size);
 
   /* Go through all the nodes, calculate the score for each, pick max score. */
-  local_scheduler *scheduler = NULL;
+  LocalScheduler *scheduler = NULL;
   double best_photon_score = INT32_MIN;
   CHECKM(best_photon_score < 0, "We might have a floating point underflow");
   DBClientID best_photon_id = NIL_ID; /* best node to send this task */
-  for (scheduler = (local_scheduler *) utarray_front(state->local_schedulers);
-       scheduler != NULL; scheduler = (local_scheduler *) utarray_next(
+  for (scheduler = (LocalScheduler *) utarray_front(state->local_schedulers);
+       scheduler != NULL; scheduler = (LocalScheduler *) utarray_next(
                               state->local_schedulers, scheduler)) {
     /* For each local scheduler, calculate its score. Check hard constraints
      * first. */

@@ -295,7 +295,7 @@ int plasma_status(PlasmaConnection *conn, ObjectID object_id);
  */
 int plasma_info(PlasmaConnection *conn,
                 ObjectID object_id,
-                object_info *object_info);
+                ObjectInfo *object_info);
 
 /**
  * Wait for (1) a specified number of objects to be available (sealed) in the
