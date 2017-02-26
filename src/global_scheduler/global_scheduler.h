@@ -44,17 +44,17 @@ typedef struct {
 } SchedulerObjectInfo;
 
 /**
- * A struct used for caching Photon to Plasma association.
+ * A struct used for caching local scheduler to Plasma association.
  */
 typedef struct {
   /** IP:port string for the plasma_manager. */
   char *aux_address;
-  /** Photon db client id. */
-  DBClientID photon_db_client_id;
-  /** Plasma_manager ip:port -> photon_db_client_id. */
-  UT_hash_handle plasma_photon_hh;
-  /** Photon_db_client_id -> plasma_manager ip:port. */
-  UT_hash_handle photon_plasma_hh;
+  /** Local scheduler db client id. */
+  DBClientID local_scheduler_db_client_id;
+  /** Plasma_manager ip:port -> local_scheduler_db_client_id. */
+  UT_hash_handle plasma_local_scheduler_hh;
+  /** local_scheduler_db_client_id -> plasma_manager ip:port. */
+  UT_hash_handle local_scheduler_plasma_hh;
 } AuxAddressEntry;
 
 /**
@@ -71,10 +71,10 @@ typedef struct {
   UT_array *local_schedulers;
   /** The state managed by the scheduling policy. */
   GlobalSchedulerPolicyState *policy_state;
-  /** The plasma_manager ip:port -> photon_db_client_id association. */
-  AuxAddressEntry *plasma_photon_map;
-  /** The photon_db_client_id -> plasma_manager ip:port association. */
-  AuxAddressEntry *photon_plasma_map;
+  /** The plasma_manager ip:port -> local_scheduler_db_client_id association. */
+  AuxAddressEntry *plasma_local_scheduler_map;
+  /** The local_scheduler_db_client_id -> plasma_manager ip:port association. */
+  AuxAddressEntry *local_scheduler_plasma_map;
   /** Objects cached by this global scheduler instance. */
   SchedulerObjectInfo *scheduler_object_info_table;
   /** An array of tasks that haven't been scheduled yet. */
@@ -83,15 +83,15 @@ typedef struct {
 
 /**
  * This is a helper method to look up the local scheduler struct that
- * corresponds to a particular photon_id.
+ * corresponds to a particular local_scheduler_id.
  *
  * @param state The state of the global scheduler.
- * @param The photon_id of the local scheduler.
+ * @param The local_scheduler_id of the local scheduler.
  * @return The corresponding local scheduler struct. If the global scheduler is
  *         not aware of the local scheduler, then this will be NULL.
  */
 LocalScheduler *get_local_scheduler(GlobalSchedulerState *state,
-                                    DBClientID photon_id);
+                                    DBClientID local_scheduler_id);
 
 /**
  * Assign the given task to the local scheduler, update Redis and scheduler data

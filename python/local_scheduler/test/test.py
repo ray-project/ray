@@ -12,7 +12,7 @@ import threading
 import time
 import unittest
 
-import photon
+import local_scheduler
 import plasma
 
 USE_VALGRIND = False
@@ -21,27 +21,27 @@ ID_SIZE = 20
 NIL_ACTOR_ID = 20 * b"\xff"
 
 def random_object_id():
-  return photon.ObjectID(np.random.bytes(ID_SIZE))
+  return local_scheduler.ObjectID(np.random.bytes(ID_SIZE))
 
 def random_driver_id():
-  return photon.ObjectID(np.random.bytes(ID_SIZE))
+  return local_scheduler.ObjectID(np.random.bytes(ID_SIZE))
 
 def random_task_id():
-  return photon.ObjectID(np.random.bytes(ID_SIZE))
+  return local_scheduler.ObjectID(np.random.bytes(ID_SIZE))
 
 def random_function_id():
-  return photon.ObjectID(np.random.bytes(ID_SIZE))
+  return local_scheduler.ObjectID(np.random.bytes(ID_SIZE))
 
-class TestPhotonClient(unittest.TestCase):
+class TestLocalSchedulerClient(unittest.TestCase):
 
   def setUp(self):
     # Start Plasma store.
     plasma_store_name, self.p1 = plasma.start_plasma_store()
     self.plasma_client = plasma.PlasmaClient(plasma_store_name)
     # Start a local scheduler.
-    scheduler_name, self.p2 = photon.start_local_scheduler(plasma_store_name, use_valgrind=USE_VALGRIND)
+    scheduler_name, self.p2 = local_scheduler.start_local_scheduler(plasma_store_name, use_valgrind=USE_VALGRIND)
     # Connect to the scheduler.
-    self.photon_client = photon.PhotonClient(scheduler_name, NIL_ACTOR_ID)
+    self.local_scheduler_client = local_scheduler.LocalSchedulerClient(scheduler_name, NIL_ACTOR_ID)
 
   def tearDown(self):
     # Check that the processes are still alive.
@@ -99,18 +99,18 @@ class TestPhotonClient(unittest.TestCase):
 
     for args in args_list:
       for num_return_vals in [0, 1, 2, 3, 5, 10, 100]:
-        task = photon.Task(random_driver_id(), function_id, args, num_return_vals, random_task_id(), 0)
+        task = local_scheduler.Task(random_driver_id(), function_id, args, num_return_vals, random_task_id(), 0)
         # Submit a task.
-        self.photon_client.submit(task)
+        self.local_scheduler_client.submit(task)
         # Get the task.
-        new_task = self.photon_client.get_task()
+        new_task = self.local_scheduler_client.get_task()
         self.assertEqual(task.function_id().id(), new_task.function_id().id())
         retrieved_args = new_task.arguments()
         returns = new_task.returns()
         self.assertEqual(len(args), len(retrieved_args))
         self.assertEqual(num_return_vals, len(returns))
         for i in range(len(retrieved_args)):
-          if isinstance(args[i], photon.ObjectID):
+          if isinstance(args[i], local_scheduler.ObjectID):
             self.assertEqual(args[i].id(), retrieved_args[i].id())
           else:
             self.assertEqual(args[i], retrieved_args[i])
@@ -118,21 +118,21 @@ class TestPhotonClient(unittest.TestCase):
     # Submit all of the tasks.
     for args in args_list:
       for num_return_vals in [0, 1, 2, 3, 5, 10, 100]:
-        task = photon.Task(random_driver_id(), function_id, args, num_return_vals, random_task_id(), 0)
-        self.photon_client.submit(task)
+        task = local_scheduler.Task(random_driver_id(), function_id, args, num_return_vals, random_task_id(), 0)
+        self.local_scheduler_client.submit(task)
     # Get all of the tasks.
     for args in args_list:
       for num_return_vals in [0, 1, 2, 3, 5, 10, 100]:
-        new_task = self.photon_client.get_task()
+        new_task = self.local_scheduler_client.get_task()
 
   def test_scheduling_when_objects_ready(self):
     # Create a task and submit it.
     object_id = random_object_id()
-    task = photon.Task(random_driver_id(), random_function_id(), [object_id], 0, random_task_id(), 0)
-    self.photon_client.submit(task)
+    task = local_scheduler.Task(random_driver_id(), random_function_id(), [object_id], 0, random_task_id(), 0)
+    self.local_scheduler_client.submit(task)
     # Launch a thread to get the task.
     def get_task():
-      self.photon_client.get_task()
+      self.local_scheduler_client.get_task()
     t = threading.Thread(target=get_task)
     t.start()
     # Sleep to give the thread time to call get_task.
@@ -148,12 +148,12 @@ class TestPhotonClient(unittest.TestCase):
     # Create a task with two dependencies and submit it.
     object_id1 = random_object_id()
     object_id2 = random_object_id()
-    task = photon.Task(random_driver_id(), random_function_id(), [object_id1, object_id2], 0, random_task_id(), 0)
-    self.photon_client.submit(task)
+    task = local_scheduler.Task(random_driver_id(), random_function_id(), [object_id1, object_id2], 0, random_task_id(), 0)
+    self.local_scheduler_client.submit(task)
 
     # Launch a thread to get the task.
     def get_task():
-      self.photon_client.get_task()
+      self.local_scheduler_client.get_task()
     t = threading.Thread(target=get_task)
     t.start()
 

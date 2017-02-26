@@ -7,21 +7,21 @@ import pickle
 import sys
 import unittest
 
-import photon
+import local_scheduler
 
 ID_SIZE = 20
 
 def random_object_id():
-  return photon.ObjectID(np.random.bytes(ID_SIZE))
+  return local_scheduler.ObjectID(np.random.bytes(ID_SIZE))
 
 def random_function_id():
-  return photon.ObjectID(np.random.bytes(ID_SIZE))
+  return local_scheduler.ObjectID(np.random.bytes(ID_SIZE))
 
 def random_driver_id():
-  return photon.ObjectID(np.random.bytes(ID_SIZE))
+  return local_scheduler.ObjectID(np.random.bytes(ID_SIZE))
 
 def random_task_id():
-  return photon.ObjectID(np.random.bytes(ID_SIZE))
+  return local_scheduler.ObjectID(np.random.bytes(ID_SIZE))
 
 BASE_SIMPLE_OBJECTS = [
   0, 1, 100000,  0.0, 0.5, 0.9, 100000.1, (), [], {},
@@ -65,9 +65,9 @@ class TestSerialization(unittest.TestCase):
   def test_serialize_by_value(self):
 
     for val in SIMPLE_OBJECTS:
-      self.assertTrue(photon.check_simple_value(val))
+      self.assertTrue(local_scheduler.check_simple_value(val))
     for val in COMPLEX_OBJECTS:
-      self.assertFalse(photon.check_simple_value(val))
+      self.assertFalse(local_scheduler.check_simple_value(val))
 
 class TestObjectID(unittest.TestCase):
 
@@ -92,17 +92,17 @@ class TestObjectID(unittest.TestCase):
     self.assertRaises(Exception, lambda : pickling.dumps(h))
 
   def test_equality_comparisons(self):
-    x1 = photon.ObjectID(ID_SIZE * b"a")
-    x2 = photon.ObjectID(ID_SIZE * b"a")
-    y1 = photon.ObjectID(ID_SIZE * b"b")
-    y2 = photon.ObjectID(ID_SIZE * b"b")
+    x1 = local_scheduler.ObjectID(ID_SIZE * b"a")
+    x2 = local_scheduler.ObjectID(ID_SIZE * b"a")
+    y1 = local_scheduler.ObjectID(ID_SIZE * b"b")
+    y2 = local_scheduler.ObjectID(ID_SIZE * b"b")
     self.assertEqual(x1, x2)
     self.assertEqual(y1, y2)
     self.assertNotEqual(x1, y1)
 
     random_strings = [np.random.bytes(ID_SIZE) for _ in range(256)]
-    object_ids1 = [photon.ObjectID(random_strings[i]) for i in range(256)]
-    object_ids2 = [photon.ObjectID(random_strings[i]) for i in range(256)]
+    object_ids1 = [local_scheduler.ObjectID(random_strings[i]) for i in range(256)]
+    object_ids2 = [local_scheduler.ObjectID(random_strings[i]) for i in range(256)]
     self.assertEqual(len(set(object_ids1)), 256)
     self.assertEqual(len(set(object_ids1 + object_ids2)), 256)
     self.assertEqual(set(object_ids1), set(object_ids2))
@@ -121,7 +121,7 @@ class TestTask(unittest.TestCase):
     self.assertEqual(num_return_vals, len(task.returns()))
     self.assertEqual(len(args), len(retrieved_args))
     for i in range(len(retrieved_args)):
-      if isinstance(retrieved_args[i], photon.ObjectID):
+      if isinstance(retrieved_args[i], local_scheduler.ObjectID):
         self.assertEqual(retrieved_args[i].id(), args[i].id())
       else:
         self.assertEqual(retrieved_args[i], args[i])
@@ -160,10 +160,10 @@ class TestTask(unittest.TestCase):
     ]
     for args in args_list:
       for num_return_vals in [0, 1, 2, 3, 5, 10, 100]:
-        task = photon.Task(driver_id, function_id, args, num_return_vals, parent_id, 0)
+        task = local_scheduler.Task(driver_id, function_id, args, num_return_vals, parent_id, 0)
         self.check_task(task, function_id, num_return_vals, args)
-        data = photon.task_to_string(task)
-        task2 = photon.task_from_string(data)
+        data = local_scheduler.task_to_string(task)
+        task2 = local_scheduler.task_from_string(data)
         self.check_task(task2, function_id, num_return_vals, args)
 
 if __name__ == "__main__":

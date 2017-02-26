@@ -154,42 +154,48 @@ void free_object_size_hashmap(ObjectSizeEntry *object_size_table) {
   }
 }
 
-DBClientID get_photon_id(GlobalSchedulerState *state,
-                         const char *plasma_location) {
+DBClientID get_local_scheduler_id(GlobalSchedulerState *state,
+                                  const char *plasma_location) {
   AuxAddressEntry *aux_entry = NULL;
-  DBClientID photon_id = NIL_ID;
+  DBClientID local_scheduler_id = NIL_ID;
   if (plasma_location != NULL) {
     LOG_DEBUG("max object size location found : %s", plasma_location);
-    /* Lookup association of plasma location to photon. */
-    HASH_FIND(plasma_photon_hh, state->plasma_photon_map, plasma_location,
-              uthash_strlen(plasma_location), aux_entry);
+    /* Lookup association of plasma location to local scheduler. */
+    HASH_FIND(plasma_local_scheduler_hh, state->plasma_local_scheduler_map,
+              plasma_location, uthash_strlen(plasma_location), aux_entry);
     if (aux_entry) {
-      LOG_DEBUG("found photon db client association for plasma ip:port = %s",
-                aux_entry->aux_address);
-      /* Plasma to photon db client ID association found, get photon ID. */
-      photon_id = aux_entry->photon_db_client_id;
+      LOG_DEBUG(
+          "found local scheduler db client association for plasma ip:port = %s",
+          aux_entry->aux_address);
+      /* Plasma to local scheduler db client ID association found, get local
+       * scheduler ID. */
+      local_scheduler_id = aux_entry->local_scheduler_db_client_id;
     } else {
-      LOG_ERROR("photon db client association not found for plasma ip:port=%s",
-                plasma_location);
+      LOG_ERROR(
+          "local scheduler db client association not found for plasma "
+          "ip:port=%s",
+          plasma_location);
     }
   }
 
   char id_string[ID_STRING_SIZE];
-  LOG_DEBUG("photon ID found = %s",
-            ObjectID_to_string(photon_id, id_string, ID_STRING_SIZE));
+  LOG_DEBUG("local scheduler ID found = %s",
+            ObjectID_to_string(local_scheduler_id, id_string, ID_STRING_SIZE));
   UNUSED(id_string);
 
-  if (IS_NIL_ID(photon_id)) {
-    return photon_id;
+  if (IS_NIL_ID(local_scheduler_id)) {
+    return local_scheduler_id;
   }
 
-  /* Check to make sure this photon_db_client_id matches one of the
+  /* Check to make sure this local_scheduler_db_client_id matches one of the
    * schedulers. */
-  LocalScheduler *local_scheduler_ptr = get_local_scheduler(state, photon_id);
+  LocalScheduler *local_scheduler_ptr =
+      get_local_scheduler(state, local_scheduler_id);
   if (local_scheduler_ptr == NULL) {
-    LOG_WARN("photon_id didn't match any cached local scheduler entries");
+    LOG_WARN(
+        "local_scheduler_id didn't match any cached local scheduler entries");
   }
-  return photon_id;
+  return local_scheduler_id;
 }
 
 double inner_product(double a[], double b[], int size) {
@@ -210,22 +216,25 @@ double calculate_object_size_fraction(GlobalSchedulerState *state,
   double object_size_fraction = 0;
   if (total_task_object_size > 0) {
     /* Does this node contribute anything to this task object size? */
-    /* Lookup scheduler->id in photon_plasma_map to get plasma aux address,
-     * which is used as the key for object_size_table.
-     * This uses the plasma aux address to locate the object_size this node
-     * contributes. */
-    AuxAddressEntry *photon_plasma_pair = NULL;
-    HASH_FIND(photon_plasma_hh, state->photon_plasma_map, &(scheduler->id),
-              sizeof(scheduler->id), photon_plasma_pair);
-    if (photon_plasma_pair != NULL) {
+    /* Lookup scheduler->id in local_scheduler_plasma_map to get plasma aux
+     * address, which is used as the key for object_size_table. This uses the
+     * plasma aux address to locate the object_size this node contributes. */
+    AuxAddressEntry *local_scheduler_plasma_pair = NULL;
+    HASH_FIND(local_scheduler_plasma_hh, state->local_scheduler_plasma_map,
+              &(scheduler->id), sizeof(scheduler->id),
+              local_scheduler_plasma_pair);
+    if (local_scheduler_plasma_pair != NULL) {
       ObjectSizeEntry *s = NULL;
-      /* Found this node's photon to plasma mapping. Use the corresponding
-       * plasma key to see if this node has any cached objects for this task. */
-      HASH_FIND_STR(object_size_table, photon_plasma_pair->aux_address, s);
+      /* Found this node's local scheduler to plasma mapping. Use the
+       * corresponding plasma key to see if this node has any cached objects for
+       * this task. */
+      HASH_FIND_STR(object_size_table, local_scheduler_plasma_pair->aux_address,
+                    s);
       if (s != NULL) {
         /* This node has some of this task's objects. Calculate what fraction.
          */
-        CHECK(strcmp(s->object_location, photon_plasma_pair->aux_address) == 0);
+        CHECK(strcmp(s->object_location,
+                     local_scheduler_plasma_pair->aux_address) == 0);
         object_size_fraction =
             MIN(1, (double) (s->total_object_size) / total_task_object_size);
       }
@@ -286,9 +295,10 @@ bool handle_task_waiting(GlobalSchedulerState *state,
 
   /* Go through all the nodes, calculate the score for each, pick max score. */
   LocalScheduler *scheduler = NULL;
-  double best_photon_score = INT32_MIN;
-  CHECKM(best_photon_score < 0, "We might have a floating point underflow");
-  DBClientID best_photon_id = NIL_ID; /* best node to send this task */
+  double best_local_scheduler_score = INT32_MIN;
+  CHECKM(best_local_scheduler_score < 0,
+         "We might have a floating point underflow");
+  DBClientID best_local_scheduler_id = NIL_ID; /* best node to send this task */
   for (scheduler = (LocalScheduler *) utarray_front(state->local_schedulers);
        scheduler != NULL; scheduler = (LocalScheduler *) utarray_next(
                               state->local_schedulers, scheduler)) {
@@ -300,9 +310,9 @@ bool handle_task_waiting(GlobalSchedulerState *state,
     task_feasible = true;
     /* This node satisfies the hard capacity constraint. Calculate its score. */
     double score = -1 * calculate_cost_pending(state, scheduler);
-    if (score > best_photon_score) {
-      best_photon_score = score;
-      best_photon_id = scheduler->id;
+    if (score > best_local_scheduler_score) {
+      best_local_scheduler_score = score;
+      best_local_scheduler_id = scheduler->id;
     }
   } /* For each local scheduler. */
 
@@ -317,10 +327,10 @@ bool handle_task_waiting(GlobalSchedulerState *state,
      * cache the task in case new local schedulers satisfy it in the future. */
     return false;
   }
-  CHECKM(!IS_NIL_ID(best_photon_id),
+  CHECKM(!IS_NIL_ID(best_local_scheduler_id),
          "Task is feasible, but doesn't have a local scheduler assigned.");
   /* A local scheduler ID was found, so assign the task. */
-  assign_task_to_local_scheduler(state, task, best_photon_id);
+  assign_task_to_local_scheduler(state, task, best_local_scheduler_id);
   return true;
 }
 

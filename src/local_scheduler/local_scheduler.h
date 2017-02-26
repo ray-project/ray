@@ -1,5 +1,5 @@
-#ifndef PHOTON_SCHEDULER_H
-#define PHOTON_SCHEDULER_H
+#ifndef LOCAL_SCHEDULER_H
+#define LOCAL_SCHEDULER_H
 
 #include "task.h"
 #include "event_loop.h"
@@ -110,7 +110,7 @@ void update_dynamic_resources(LocalSchedulerState *state,
                               bool return_resources);
 
 /** The following methods are for testing purposes only. */
-#ifdef PHOTON_TEST
+#ifdef LOCAL_SCHEDULER_TEST
 LocalSchedulerState *LocalSchedulerState_init(
     const char *node_ip_address,
     event_loop *loop,
@@ -136,4 +136,4 @@ void process_message(event_loop *loop,
 
 #endif
 
-#endif /* PHOTON_SCHEDULER_H */
+#endif /* LOCAL_SCHEDULER_H */

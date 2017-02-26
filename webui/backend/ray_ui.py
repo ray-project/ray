@@ -86,7 +86,7 @@ async def handle_get_statistics(websocket, redis_conn):
   for client_key in client_keys:
     client_fields = await hgetall_as_dict(redis_conn, client_key)
     clients.append(client_fields)
-  ip_addresses = list(set([client[b"node_ip_address"].decode("ascii") for client in clients if client[b"client_type"] == b"photon"]))
+  ip_addresses = list(set([client[b"node_ip_address"].decode("ascii") for client in clients if client[b"client_type"] == b"local_scheduler"]))
   num_nodes = len(ip_addresses)
   reply = {"uptime": uptime,
            "start_date": start_date,
@@ -222,7 +222,7 @@ async def send_heartbeats(websocket, redis_conn):
   clients = []
   for client_key in client_keys:
     client_fields = await hgetall_as_dict(redis_conn, client_key)
-    if client_fields[b"client_type"] == b"photon":
+    if client_fields[b"client_type"] == b"local_scheduler":
       local_scheduler_id = hex_identifier(client_fields[b"ray_client_id"])
       local_schedulers[local_scheduler_id] = {"node_ip_address": client_fields[b"node_ip_address"].decode("ascii"),
                                               "local_scheduler_socket_name": client_fields[b"local_scheduler_socket_name"].decode("ascii"),

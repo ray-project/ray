@@ -83,7 +83,7 @@ PyObject *PyObjectID_make(ObjectID object_id) {
  *
  * This is called from Python like
  *
- * task = photon.task_from_string("...")
+ * task = local_scheduler.task_from_string("...")
  *
  * @param task_string String representation of the task specification.
  * @return Python task specification object.
@@ -112,7 +112,7 @@ PyObject *PyTask_from_string(PyObject *self, PyObject *args) {
  *
  * This is called from Python like
  *
- * s = photon.task_to_string(task)
+ * s = local_scheduler.task_to_string(task)
  *
  * @param task Ray task specification Python object.
  * @return String representing the task specification.
