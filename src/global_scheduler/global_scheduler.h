@@ -41,7 +41,7 @@ typedef struct {
   UT_array *object_locations;
   /** Handle for the uthash table. */
   UT_hash_handle hh;
-} scheduler_object_info;
+} SchedulerObjectInfo;
 
 /**
  * A struct used for caching Photon to Plasma association.
@@ -76,7 +76,7 @@ typedef struct {
   /** The photon_db_client_id -> plasma_manager ip:port association. */
   aux_address_entry *photon_plasma_map;
   /** Objects cached by this global scheduler instance. */
-  scheduler_object_info *scheduler_object_info_table;
+  SchedulerObjectInfo *scheduler_object_info_table;
   /** An array of tasks that haven't been scheduled yet. */
   UT_array *pending_tasks;
 } global_scheduler_state;

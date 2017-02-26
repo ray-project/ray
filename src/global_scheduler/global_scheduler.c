@@ -99,7 +99,7 @@ void free_global_scheduler(global_scheduler_state *state) {
   }
 
   /* Free the scheduler object info table. */
-  scheduler_object_info *object_entry, *tmp_entry;
+  SchedulerObjectInfo *object_entry, *tmp_entry;
   HASH_ITER(hh, state->scheduler_object_info_table, object_entry, tmp_entry) {
     HASH_DELETE(hh, state->scheduler_object_info_table, object_entry);
     utarray_free(object_entry->object_locations);
@@ -250,15 +250,15 @@ void object_table_subscribe_callback(ObjectID object_id,
   for (int i = 0; i < manager_count; i++) {
     LOG_DEBUG("\t\t%s", manager_vector[i]);
   }
-  scheduler_object_info *obj_info_entry = NULL;
+  SchedulerObjectInfo *obj_info_entry = NULL;
 
   HASH_FIND(hh, state->scheduler_object_info_table, &object_id,
             sizeof(object_id), obj_info_entry);
 
   if (obj_info_entry == NULL) {
     /* Construct a new object info hash table entry. */
-    obj_info_entry = malloc(sizeof(scheduler_object_info));
-    memset(obj_info_entry, 0, sizeof(scheduler_object_info));
+    obj_info_entry = malloc(sizeof(SchedulerObjectInfo));
+    memset(obj_info_entry, 0, sizeof(obj_info_entry));
 
     obj_info_entry->object_id = object_id;
     obj_info_entry->data_size = data_size;

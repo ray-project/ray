@@ -101,7 +101,7 @@ object_size_entry *create_object_size_hashmap(global_scheduler_state *state,
     *has_args_by_ref = true;
     ObjectID obj_id = task_arg_id(task_spec, i);
     /* Look up this object ID in the global scheduler object cache. */
-    scheduler_object_info *obj_info_entry = NULL;
+    SchedulerObjectInfo *obj_info_entry = NULL;
     HASH_FIND(hh, state->scheduler_object_info_table, &obj_id, sizeof(obj_id),
               obj_info_entry);
     if (obj_info_entry == NULL) {
