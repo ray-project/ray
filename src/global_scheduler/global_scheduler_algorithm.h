@@ -20,7 +20,7 @@ typedef enum {
 } global_scheduler_algorithm;
 
 /** The state managed by the global scheduling policy. */
-struct global_scheduler_policy_state {
+struct GlobalSchedulerPolicyState {
   /** The index of the next local scheduler to assign a task to. */
   int64_t round_robin_index;
   double resource_attribute_weight[MAX_RESOURCE_INDEX + 1];
@@ -38,7 +38,7 @@ typedef struct {
  *
  * @return The state of the scheduling policy.
  */
-global_scheduler_policy_state *init_global_scheduler_policy(void);
+GlobalSchedulerPolicyState *GlobalSchedulerPolicyState_init(void);
 
 /**
  * Free the global scheduler policy state.
@@ -46,8 +46,8 @@ global_scheduler_policy_state *init_global_scheduler_policy(void);
  * @param policy_state The policy state to free.
  * @return Void.
  */
-void destroy_global_scheduler_policy(
-    global_scheduler_policy_state *policy_state);
+void GlobalSchedulerPolicyState_free(
+    GlobalSchedulerPolicyState *policy_state);
 
 /**
  * Main new task handling function in the global scheduler.
@@ -59,7 +59,7 @@ void destroy_global_scheduler_policy(
  *         otherwise.
  */
 bool handle_task_waiting(GlobalSchedulerState *state,
-                         global_scheduler_policy_state *policy_state,
+                         GlobalSchedulerPolicyState *policy_state,
                          Task *task);
 
 /**
@@ -71,7 +71,7 @@ bool handle_task_waiting(GlobalSchedulerState *state,
  * @return Void.
  */
 void handle_object_available(GlobalSchedulerState *state,
-                             global_scheduler_policy_state *policy_state,
+                             GlobalSchedulerPolicyState *policy_state,
                              ObjectID object_id);
 
 /**
@@ -84,7 +84,7 @@ void handle_object_available(GlobalSchedulerState *state,
  */
 void handle_local_scheduler_heartbeat(
     GlobalSchedulerState *state,
-    global_scheduler_policy_state *policy_state);
+    GlobalSchedulerPolicyState *policy_state);
 
 /**
  * Handle the presence of a new local scheduler. Currently, this just adds the
@@ -96,7 +96,7 @@ void handle_local_scheduler_heartbeat(
  * @return Void.
  */
 void handle_new_local_scheduler(GlobalSchedulerState *state,
-                                global_scheduler_policy_state *policy_state,
+                                GlobalSchedulerPolicyState *policy_state,
                                 DBClientID db_client_id);
 
 #endif /* GLOBAL_SCHEDULER_ALGORITHM_H */

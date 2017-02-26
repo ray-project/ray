@@ -6,9 +6,9 @@
 
 #include "global_scheduler_algorithm.h"
 
-global_scheduler_policy_state *init_global_scheduler_policy(void) {
-  global_scheduler_policy_state *policy_state =
-      malloc(sizeof(global_scheduler_policy_state));
+GlobalSchedulerPolicyState *GlobalSchedulerPolicyState_init(void) {
+  GlobalSchedulerPolicyState *policy_state =
+      malloc(sizeof(GlobalSchedulerPolicyState));
   policy_state->round_robin_index = 0;
 
   int num_weight_elem =
@@ -23,8 +23,8 @@ global_scheduler_policy_state *init_global_scheduler_policy(void) {
   return policy_state;
 }
 
-void destroy_global_scheduler_policy(
-    global_scheduler_policy_state *policy_state) {
+void GlobalSchedulerPolicyState_free(
+    GlobalSchedulerPolicyState *policy_state) {
   free(policy_state);
 }
 
@@ -52,7 +52,7 @@ bool constraints_satisfied_hard(const LocalScheduler *scheduler,
  * round robin fashion.
  */
 void handle_task_round_robin(GlobalSchedulerState *state,
-                             global_scheduler_policy_state *policy_state,
+                             GlobalSchedulerPolicyState *policy_state,
                              Task *task) {
   CHECKM(utarray_len(state->local_schedulers) > 0,
          "No local schedulers. We currently don't handle this case.");
@@ -268,7 +268,7 @@ double calculate_cost_pending(const GlobalSchedulerState *state,
 }
 
 bool handle_task_waiting(GlobalSchedulerState *state,
-                         global_scheduler_policy_state *policy_state,
+                         GlobalSchedulerPolicyState *policy_state,
                          Task *task) {
   task_spec *task_spec = task_task_spec(task);
 
@@ -326,13 +326,13 @@ bool handle_task_waiting(GlobalSchedulerState *state,
 }
 
 void handle_object_available(GlobalSchedulerState *state,
-                             global_scheduler_policy_state *policy_state,
+                             GlobalSchedulerPolicyState *policy_state,
                              ObjectID object_id) {
   /* Do nothing for now. */
 }
 
 void handle_new_local_scheduler(GlobalSchedulerState *state,
-                                global_scheduler_policy_state *policy_state,
+                                GlobalSchedulerPolicyState *policy_state,
                                 DBClientID db_client_id) {
   /* Do nothing for now. */
 }

@@ -27,7 +27,7 @@ typedef struct {
   LocalSchedulerInfo info;
 } LocalScheduler;
 
-typedef struct global_scheduler_policy_state global_scheduler_policy_state;
+typedef struct GlobalSchedulerPolicyState GlobalSchedulerPolicyState;
 
 /**
  * This defines a hash table used to cache information about different objects.
@@ -70,7 +70,7 @@ typedef struct {
    *  based on its db_client_id. */
   UT_array *local_schedulers;
   /** The state managed by the scheduling policy. */
-  global_scheduler_policy_state *policy_state;
+  GlobalSchedulerPolicyState *policy_state;
   /** The plasma_manager ip:port -> photon_db_client_id association. */
   aux_address_entry *plasma_photon_map;
   /** The photon_db_client_id -> plasma_manager ip:port association. */

@@ -71,7 +71,7 @@ GlobalSchedulerState *GlobalSchedulerState_init(event_loop *loop,
       db_connect(redis_addr, redis_port, "global_scheduler", ":", 0, NULL);
   db_attach(state->db, loop, false);
   utarray_new(state->local_schedulers, &local_scheduler_icd);
-  state->policy_state = init_global_scheduler_policy();
+  state->policy_state = GlobalSchedulerPolicyState_init();
   /* Initialize the array of tasks that have not been scheduled yet. */
   utarray_new(state->pending_tasks, &pending_tasks_icd);
   return state;
@@ -82,7 +82,7 @@ void GlobalSchedulerState_free(GlobalSchedulerState *state) {
 
   db_disconnect(state->db);
   utarray_free(state->local_schedulers);
-  destroy_global_scheduler_policy(state->policy_state);
+  GlobalSchedulerPolicyState_free(state->policy_state);
   /* Delete the plasma to photon association map. */
   HASH_ITER(plasma_photon_hh, state->plasma_photon_map, entry, tmp) {
     HASH_DELETE(plasma_photon_hh, state->plasma_photon_map, entry);
