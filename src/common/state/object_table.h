@@ -39,7 +39,7 @@ typedef void (*object_table_object_available_callback)(
  *  @param user_context Context passed by the caller.
  *  @return Void.
  */
-void object_table_lookup(db_handle *db_handle,
+void object_table_lookup(DBHandle *db_handle,
                          ObjectID object_id,
                          retry_info *retry,
                          object_table_lookup_done_callback done_callback,
@@ -65,7 +65,7 @@ typedef void (*object_table_done_callback)(ObjectID object_id,
  * @param user_context User context to be passed in the callbacks.
  * @return Void.
  */
-void object_table_add(db_handle *db_handle,
+void object_table_add(DBHandle *db_handle,
                       ObjectID object_id,
                       int64_t object_size,
                       unsigned char digest[],
@@ -96,7 +96,7 @@ typedef struct {
  * @param user_context User context to be passed in the callbacks.
  * @return Void.
  */
-void object_table_remove(db_handle *db_handle,
+void object_table_remove(DBHandle *db_handle,
                          ObjectID object_id,
                          db_client_id *client_id,
                          retry_info *retry,
@@ -125,7 +125,7 @@ void object_table_remove(db_handle *db_handle,
  * @return Void.
  */
 void object_table_subscribe_to_notifications(
-    db_handle *db_handle,
+    DBHandle *db_handle,
     bool subscribe_all,
     object_table_object_available_callback object_available_callback,
     void *subscribe_context,
@@ -144,7 +144,7 @@ void object_table_subscribe_to_notifications(
  * @param retry Information about retrying the request to the database.
  * @return Void.
  */
-void object_table_request_notifications(db_handle *db,
+void object_table_request_notifications(DBHandle *db,
                                         int num_object_ids,
                                         ObjectID object_ids[],
                                         retry_info *retry);
@@ -190,7 +190,7 @@ typedef void (*object_info_subscribe_callback)(ObjectID object_id,
  *        callbacks.
  * @return Void.
  */
-void object_info_subscribe(db_handle *db_handle,
+void object_info_subscribe(DBHandle *db_handle,
                            object_info_subscribe_callback subscribe_callback,
                            void *subscribe_context,
                            retry_info *retry,
@@ -227,7 +227,7 @@ typedef void (*result_table_done_callback)(ObjectID object_id,
  * @param user_context Context passed by the caller.
  * @return Void.
  */
-void result_table_add(db_handle *db_handle,
+void result_table_add(DBHandle *db_handle,
                       ObjectID object_id,
                       TaskID task_id,
                       retry_info *retry,
@@ -250,7 +250,7 @@ typedef void (*result_table_lookup_callback)(ObjectID object_id,
  * @param user_context Context passed by the caller.
  * @return Void.
  */
-void result_table_lookup(db_handle *db_handle,
+void result_table_lookup(DBHandle *db_handle,
                          ObjectID object_id,
                          retry_info *retry,
                          result_table_lookup_callback done_callback,

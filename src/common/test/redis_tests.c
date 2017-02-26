@@ -69,7 +69,7 @@ TEST redis_socket_test(void) {
 }
 
 void redis_read_callback(event_loop *loop, int fd, void *context, int events) {
-  db_handle *db = context;
+  DBHandle *db = context;
   char *cmd = read_log_message(fd);
   redisAsyncCommand(db->context, async_redis_socket_test_callback, NULL, cmd);
   free(cmd);
@@ -102,7 +102,7 @@ TEST async_redis_socket_test(void) {
   utarray_push_back(connections, &socket_fd);
 
   /* Start connection to Redis. */
-  db_handle *db =
+  DBHandle *db =
       db_connect("127.0.0.1", 6379, "test_process", "127.0.0.1", 0, NULL);
   db_attach(db, loop, false);
 
@@ -148,7 +148,7 @@ void logging_read_callback(event_loop *loop,
                            int fd,
                            void *context,
                            int events) {
-  db_handle *conn = context;
+  DBHandle *conn = context;
   char *cmd = read_log_message(fd);
   redisAsyncCommand(conn->context, logging_test_callback, NULL, cmd,
                     (char *) conn->client.id, sizeof(conn->client.id));
@@ -177,7 +177,7 @@ TEST logging_test(void) {
   utarray_push_back(connections, &socket_fd);
 
   /* Start connection to Redis. */
-  db_handle *conn =
+  DBHandle *conn =
       db_connect("127.0.0.1", 6379, "test_process", "127.0.0.1", 0, NULL);
   db_attach(conn, loop, false);
 

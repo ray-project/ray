@@ -2,7 +2,7 @@
 #include "redis.h"
 #include "object_info.h"
 
-void object_table_lookup(db_handle *db_handle,
+void object_table_lookup(DBHandle *db_handle,
                          ObjectID object_id,
                          retry_info *retry,
                          object_table_lookup_done_callback done_callback,
@@ -12,7 +12,7 @@ void object_table_lookup(db_handle *db_handle,
                       done_callback, redis_object_table_lookup, user_context);
 }
 
-void object_table_add(db_handle *db_handle,
+void object_table_add(DBHandle *db_handle,
                       ObjectID object_id,
                       int64_t object_size,
                       unsigned char digest[],
@@ -28,7 +28,7 @@ void object_table_add(db_handle *db_handle,
                       done_callback, redis_object_table_add, user_context);
 }
 
-void object_table_remove(db_handle *db_handle,
+void object_table_remove(DBHandle *db_handle,
                          ObjectID object_id,
                          db_client_id *client_id,
                          retry_info *retry,
@@ -46,7 +46,7 @@ void object_table_remove(db_handle *db_handle,
 }
 
 void object_table_subscribe_to_notifications(
-    db_handle *db_handle,
+    DBHandle *db_handle,
     bool subscribe_all,
     object_table_object_available_callback object_available_callback,
     void *subscribe_context,
@@ -65,7 +65,7 @@ void object_table_subscribe_to_notifications(
       redis_object_table_subscribe_to_notifications, user_context);
 }
 
-void object_table_request_notifications(db_handle *db_handle,
+void object_table_request_notifications(DBHandle *db_handle,
                                         int num_object_ids,
                                         ObjectID object_ids[],
                                         retry_info *retry) {
@@ -81,7 +81,7 @@ void object_table_request_notifications(db_handle *db_handle,
                       redis_object_table_request_notifications, NULL);
 }
 
-void object_info_subscribe(db_handle *db_handle,
+void object_info_subscribe(DBHandle *db_handle,
                            object_info_subscribe_callback subscribe_callback,
                            void *subscribe_context,
                            retry_info *retry,
@@ -96,7 +96,7 @@ void object_info_subscribe(db_handle *db_handle,
                       done_callback, redis_object_info_subscribe, user_context);
 }
 
-void result_table_add(db_handle *db_handle,
+void result_table_add(DBHandle *db_handle,
                       ObjectID object_id,
                       TaskID task_id_arg,
                       retry_info *retry,
@@ -108,7 +108,7 @@ void result_table_add(db_handle *db_handle,
                       done_callback, redis_result_table_add, user_context);
 }
 
-void result_table_lookup(db_handle *db_handle,
+void result_table_lookup(DBHandle *db_handle,
                          ObjectID object_id,
                          retry_info *retry,
                          result_table_lookup_callback done_callback,

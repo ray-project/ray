@@ -2,7 +2,7 @@
 #include "redis.h"
 
 void local_scheduler_table_subscribe(
-    db_handle *db_handle,
+    DBHandle *db_handle,
     local_scheduler_table_subscribe_callback subscribe_callback,
     void *subscribe_context,
     retry_info *retry) {
@@ -15,7 +15,7 @@ void local_scheduler_table_subscribe(
                       redis_local_scheduler_table_subscribe, NULL);
 }
 
-void local_scheduler_table_send_info(db_handle *db_handle,
+void local_scheduler_table_send_info(DBHandle *db_handle,
                                      local_scheduler_info *info,
                                      retry_info *retry) {
   local_scheduler_table_send_info_data *data =

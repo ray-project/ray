@@ -38,7 +38,7 @@ void lookup_nil_success_callback(task *task, void *context) {
 TEST lookup_nil_test(void) {
   lookup_nil_id = globally_unique_id();
   g_loop = event_loop_create();
-  db_handle *db =
+  DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   retry_info retry = {
@@ -81,7 +81,7 @@ void add_success_callback(TaskID task_id, void *context) {
   add_success = 1;
   CHECK(task_ids_equal(task_id, task_task_id(add_lookup_task)));
 
-  db_handle *db = context;
+  DBHandle *db = context;
   retry_info retry = {
       .num_retries = 5,
       .timeout = 1000,
@@ -94,7 +94,7 @@ void add_success_callback(TaskID task_id, void *context) {
 TEST add_lookup_test(void) {
   add_lookup_task = example_task(1, 1, TASK_STATUS_WAITING);
   g_loop = event_loop_create();
-  db_handle *db =
+  DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   retry_info retry = {
@@ -136,7 +136,7 @@ void subscribe_fail_callback(UniqueID id,
 
 TEST subscribe_timeout_test(void) {
   g_loop = event_loop_create();
-  db_handle *db =
+  DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   retry_info retry = {
@@ -177,7 +177,7 @@ void publish_fail_callback(UniqueID id, void *user_context, void *user_data) {
 
 TEST publish_timeout_test(void) {
   g_loop = event_loop_create();
-  db_handle *db =
+  DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   task *task = example_task(1, 1, TASK_STATUS_WAITING);
@@ -202,7 +202,7 @@ TEST publish_timeout_test(void) {
 int64_t reconnect_db_callback(event_loop *loop,
                               int64_t timer_id,
                               void *context) {
-  db_handle *db = context;
+  DBHandle *db = context;
   /* Reconnect to redis. */
   redisAsyncFree(db->sub_context);
   db->sub_context = redisAsyncConnect("127.0.0.1", 6379);
@@ -239,7 +239,7 @@ void subscribe_retry_fail_callback(UniqueID id,
 
 TEST subscribe_retry_test(void) {
   g_loop = event_loop_create();
-  db_handle *db =
+  DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   retry_info retry = {
@@ -286,7 +286,7 @@ void publish_retry_fail_callback(UniqueID id,
 
 TEST publish_retry_test(void) {
   g_loop = event_loop_create();
-  db_handle *db =
+  DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   task *task = example_task(1, 1, TASK_STATUS_WAITING);
@@ -335,7 +335,7 @@ void subscribe_late_done_callback(TaskID task_id, void *user_context) {
 
 TEST subscribe_late_test(void) {
   g_loop = event_loop_create();
-  db_handle *db =
+  DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   retry_info retry = {
@@ -380,7 +380,7 @@ void publish_late_done_callback(TaskID task_id, void *user_context) {
 
 TEST publish_late_test(void) {
   g_loop = event_loop_create();
-  db_handle *db =
+  DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   task *task = example_task(1, 1, TASK_STATUS_WAITING);

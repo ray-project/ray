@@ -84,7 +84,7 @@ typedef struct {
    *  that is responsible for the actor. */
   actor_map_entry *actor_mapping;
   /** The handle to the database. */
-  db_handle *db;
+  DBHandle *db;
   /** The Plasma client. */
   plasma_connection *plasma_conn;
   /** State for the scheduling algorithm. */

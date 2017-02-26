@@ -68,7 +68,7 @@ struct table_callback_data {
   /** User context. */
   void *user_context;
   /** Handle to db. */
-  db_handle *db_handle;
+  DBHandle *db_handle;
   /** Handle to timer. */
   int64_t timer_id;
   UT_hash_handle hh; /* makes this structure hashable */
@@ -104,7 +104,7 @@ int64_t table_timeout_handler(event_loop *loop,
  *        passed on to the various callbacks.
  * @return New table callback data struct.
  */
-table_callback_data *init_table_callback(db_handle *db_handle,
+table_callback_data *init_table_callback(DBHandle *db_handle,
                                          UniqueID id,
                                          const char *label,
                                          OWNER void *data,

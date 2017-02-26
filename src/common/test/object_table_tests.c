@@ -46,7 +46,7 @@ void new_object_lookup_callback(ObjectID object_id, void *user_context) {
       .timeout = 100,
       .fail_callback = new_object_fail_callback,
   };
-  db_handle *db = user_context;
+  DBHandle *db = user_context;
   result_table_lookup(db, new_object_id, &retry, new_object_done_callback,
                       NULL);
 }
@@ -57,7 +57,7 @@ void new_object_task_callback(TaskID task_id, void *user_context) {
       .timeout = 100,
       .fail_callback = new_object_fail_callback,
   };
-  db_handle *db = user_context;
+  DBHandle *db = user_context;
   result_table_add(db, new_object_id, new_object_task_id, &retry,
                    new_object_lookup_callback, (void *) db);
 }
@@ -70,7 +70,7 @@ TEST new_object_test(void) {
   new_object_task_spec = task_task_spec(new_object_task);
   new_object_task_id = task_spec_id(new_object_task_spec);
   g_loop = event_loop_create();
-  db_handle *db =
+  DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   retry_info retry = {
@@ -105,7 +105,7 @@ TEST new_object_no_task_test(void) {
   new_object_id = globally_unique_id();
   new_object_task_id = globally_unique_id();
   g_loop = event_loop_create();
-  db_handle *db =
+  DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   retry_info retry = {
@@ -147,7 +147,7 @@ void lookup_fail_callback(UniqueID id, void *user_context, void *user_data) {
 
 TEST lookup_timeout_test(void) {
   g_loop = event_loop_create();
-  db_handle *db =
+  DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   retry_info retry = {
@@ -183,7 +183,7 @@ void add_fail_callback(UniqueID id, void *user_context, void *user_data) {
 
 TEST add_timeout_test(void) {
   g_loop = event_loop_create();
-  db_handle *db =
+  DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   retry_info retry = {
@@ -223,7 +223,7 @@ void subscribe_fail_callback(UniqueID id,
 
 TEST subscribe_timeout_test(void) {
   g_loop = event_loop_create();
-  db_handle *db =
+  DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   retry_info retry = {
@@ -248,7 +248,7 @@ TEST subscribe_timeout_test(void) {
 int64_t reconnect_context_callback(event_loop *loop,
                                    int64_t timer_id,
                                    void *context) {
-  db_handle *db = context;
+  DBHandle *db = context;
   /* Reconnect to redis. This is not reconnecting the pub/sub channel. */
   redisAsyncFree(db->context);
   redisFree(db->sync_context);
@@ -306,7 +306,7 @@ void add_lookup_done_callback(ObjectID object_id,
 }
 
 void add_lookup_callback(ObjectID object_id, void *user_context) {
-  db_handle *db = user_context;
+  DBHandle *db = user_context;
   retry_info retry = {
       .num_retries = 5,
       .timeout = 100,
@@ -321,7 +321,7 @@ TEST add_lookup_test(void) {
   lookup_retry_succeeded = 0;
   /* Construct the arguments to db_connect. */
   const char *db_connect_args[] = {"address", "127.0.0.1:11235"};
-  db_handle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1",
+  DBHandle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1",
                              2, db_connect_args);
   db_attach(db, g_loop, true);
   retry_info retry = {
@@ -354,7 +354,7 @@ void add_remove_lookup_done_callback(ObjectID object_id,
 }
 
 void add_remove_lookup_callback(ObjectID object_id, void *user_context) {
-  db_handle *db = user_context;
+  DBHandle *db = user_context;
   retry_info retry = {
       .num_retries = 5,
       .timeout = 100,
@@ -365,7 +365,7 @@ void add_remove_lookup_callback(ObjectID object_id, void *user_context) {
 }
 
 void add_remove_callback(ObjectID object_id, void *user_context) {
-  db_handle *db = user_context;
+  DBHandle *db = user_context;
   retry_info retry = {
       .num_retries = 5,
       .timeout = 100,
@@ -378,7 +378,7 @@ void add_remove_callback(ObjectID object_id, void *user_context) {
 TEST add_remove_lookup_test(void) {
   g_loop = event_loop_create();
   lookup_retry_succeeded = 0;
-  db_handle *db =
+  DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, true);
   retry_info retry = {
@@ -408,7 +408,7 @@ int subscribe_retry_succeeded = 0;
 int64_t reconnect_sub_context_callback(event_loop *loop,
                                        int64_t timer_id,
                                        void *context) {
-  db_handle *db = context;
+  DBHandle *db = context;
   /* Reconnect to redis. This is not reconnecting the pub/sub channel. */
   redisAsyncFree(db->sub_context);
   redisAsyncFree(db->context);
@@ -447,7 +447,7 @@ void lookup_late_done_callback(ObjectID object_id,
 
 TEST lookup_late_test(void) {
   g_loop = event_loop_create();
-  db_handle *db =
+  DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   retry_info retry = {
@@ -489,7 +489,7 @@ void add_late_done_callback(ObjectID object_id, void *user_context) {
 
 TEST add_late_test(void) {
   g_loop = event_loop_create();
-  db_handle *db =
+  DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   retry_info retry = {
@@ -534,7 +534,7 @@ void subscribe_late_done_callback(ObjectID object_id,
 
 TEST subscribe_late_test(void) {
   g_loop = event_loop_create();
-  db_handle *db =
+  DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   retry_info retry = {
@@ -581,7 +581,7 @@ void subscribe_success_done_callback(ObjectID object_id,
   retry_info retry = {
       .num_retries = 0, .timeout = 750, .fail_callback = NULL,
   };
-  object_table_add((db_handle *) user_context, subscribe_id, 0,
+  object_table_add((DBHandle *) user_context, subscribe_id, 0,
                    (unsigned char *) NIL_DIGEST, &retry, NULL, NULL);
   subscribe_success_done = 1;
 }
@@ -602,7 +602,7 @@ TEST subscribe_success_test(void) {
 
   /* Construct the arguments to db_connect. */
   const char *db_connect_args[] = {"address", "127.0.0.1:11236"};
-  db_handle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1",
+  DBHandle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1",
                              2, db_connect_args);
   db_attach(db, g_loop, false);
   subscribe_id = globally_unique_id();
@@ -671,7 +671,7 @@ TEST subscribe_object_present_test(void) {
   g_loop = event_loop_create();
   /* Construct the arguments to db_connect. */
   const char *db_connect_args[] = {"address", "127.0.0.1:11236"};
-  db_handle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1",
+  DBHandle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1",
                              2, db_connect_args);
   db_attach(db, g_loop, false);
   UniqueID id = globally_unique_id();
@@ -723,7 +723,7 @@ void subscribe_object_not_present_object_available_callback(
 
 TEST subscribe_object_not_present_test(void) {
   g_loop = event_loop_create();
-  db_handle *db =
+  DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   UniqueID id = globally_unique_id();
@@ -786,7 +786,7 @@ TEST subscribe_object_available_later_test(void) {
   g_loop = event_loop_create();
   /* Construct the arguments to db_connect. */
   const char *db_connect_args[] = {"address", "127.0.0.1:11236"};
-  db_handle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1",
+  DBHandle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1",
                              2, db_connect_args);
   db_attach(db, g_loop, false);
   UniqueID id = globally_unique_id();
@@ -839,7 +839,7 @@ TEST subscribe_object_available_subscribe_all(void) {
   g_loop = event_loop_create();
   /* Construct the arguments to db_connect. */
   const char *db_connect_args[] = {"address", "127.0.0.1:11236"};
-  db_handle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1",
+  DBHandle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1",
                              2, db_connect_args);
   db_attach(db, g_loop, false);
   UniqueID id = globally_unique_id();

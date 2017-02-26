@@ -39,7 +39,7 @@ typedef void (*task_table_get_callback)(task *task, void *user_context);
  *        fail_callback.
  * @return Void.
  */
-void task_table_get_task(db_handle *db,
+void task_table_get_task(DBHandle *db,
                          TaskID task_id,
                          retry_info *retry,
                          task_table_get_callback done_callback,
@@ -58,7 +58,7 @@ void task_table_get_task(db_handle *db,
  *        fail_callback.
  * @return Void.
  */
-void task_table_add_task(db_handle *db_handle,
+void task_table_add_task(DBHandle *db_handle,
                          OWNER task *task,
                          retry_info *retry,
                          task_table_done_callback done_callback,
@@ -81,7 +81,7 @@ void task_table_add_task(db_handle *db_handle,
  *        fail_callback.
  * @return Void.
  */
-void task_table_update(db_handle *db_handle,
+void task_table_update(DBHandle *db_handle,
                        OWNER task *task,
                        retry_info *retry,
                        task_table_done_callback done_callback,
@@ -107,7 +107,7 @@ void task_table_update(db_handle *db_handle,
  *        fail_callback.
  * @return Void.
  */
-void task_table_test_and_update(db_handle *db_handle,
+void task_table_test_and_update(DBHandle *db_handle,
                                 TaskID task_id,
                                 int test_state_bitmask,
                                 int update_state,
@@ -152,7 +152,7 @@ typedef void (*task_table_subscribe_callback)(task *task, void *user_context);
  *        fail_callback.
  * @return Void.
  */
-void task_table_subscribe(db_handle *db_handle,
+void task_table_subscribe(DBHandle *db_handle,
                           db_client_id local_scheduler_id,
                           int state_filter,
                           task_table_subscribe_callback subscribe_callback,

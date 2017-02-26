@@ -8,7 +8,7 @@ static const retry_info default_retry = {.num_retries = -1,
                                          .timeout = 10000,
                                          .fail_callback = NULL};
 
-table_callback_data *init_table_callback(db_handle *db_handle,
+table_callback_data *init_table_callback(DBHandle *db_handle,
                                          UniqueID id,
                                          const char *label,
                                          OWNER void *data,

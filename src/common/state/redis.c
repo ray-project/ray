@@ -58,7 +58,7 @@ extern int usleep(useconds_t usec);
   if ((REPLY) == NULL) {                              \
     return;                                           \
   }                                                   \
-  db_handle *DB = c->data;                            \
+  DBHandle *DB = c->data;                             \
   table_callback_data *CB_DATA =                      \
       outstanding_callbacks_find((int64_t) privdata); \
   if (CB_DATA == NULL) {                              \
@@ -89,7 +89,7 @@ typedef struct {
   bool is_redis_reply;
 } redis_requests_info;
 
-db_handle *db_connect(const char *db_address,
+DBHandle *db_connect(const char *db_address,
                       int db_port,
                       const char *client_type,
                       const char *node_ip_address,
@@ -101,7 +101,7 @@ db_handle *db_connect(const char *db_address,
     LOG_FATAL("The number of extra args must be divisible by two.");
   }
 
-  db_handle *db = malloc(sizeof(db_handle));
+  DBHandle *db = malloc(sizeof(DBHandle));
   /* Sync connection for initial handshake */
   redisReply *reply;
   int connection_attempts = 0;
@@ -194,7 +194,7 @@ db_handle *db_connect(const char *db_address,
   return db;
 }
 
-void db_disconnect(db_handle *db) {
+void db_disconnect(DBHandle *db) {
   redisFree(db->sync_context);
   redisAsyncFree(db->context);
   redisAsyncFree(db->sub_context);
@@ -208,7 +208,7 @@ void db_disconnect(db_handle *db) {
   free(db);
 }
 
-void db_attach(db_handle *db, event_loop *loop, bool reattach) {
+void db_attach(DBHandle *db, event_loop *loop, bool reattach) {
   db->loop = loop;
   int err = redisAeAttach(loop, db->context);
   /* If the database is reattached in the tests, redis normally gives
@@ -253,7 +253,7 @@ void redis_object_table_add_callback(redisAsyncContext *c,
 }
 
 void redis_object_table_add(table_callback_data *callback_data) {
-  db_handle *db = callback_data->db_handle;
+  DBHandle *db = callback_data->db_handle;
 
   object_table_add_data *info = callback_data->data;
   ObjectID obj_id = callback_data->id;
@@ -295,7 +295,7 @@ void redis_object_table_remove_callback(redisAsyncContext *c,
 }
 
 void redis_object_table_remove(table_callback_data *callback_data) {
-  db_handle *db = callback_data->db_handle;
+  DBHandle *db = callback_data->db_handle;
 
   ObjectID obj_id = callback_data->id;
   /* If the caller provided a manager ID to delete, use it. Otherwise, use our
@@ -316,7 +316,7 @@ void redis_object_table_remove(table_callback_data *callback_data) {
 
 void redis_object_table_lookup(table_callback_data *callback_data) {
   CHECK(callback_data);
-  db_handle *db = callback_data->db_handle;
+  DBHandle *db = callback_data->db_handle;
 
   ObjectID obj_id = callback_data->id;
   int status = redisAsyncCommand(
@@ -347,7 +347,7 @@ void redis_result_table_add_callback(redisAsyncContext *c,
 
 void redis_result_table_add(table_callback_data *callback_data) {
   CHECK(callback_data);
-  db_handle *db = callback_data->db_handle;
+  DBHandle *db = callback_data->db_handle;
   ObjectID id = callback_data->id;
   TaskID *result_task_id = (TaskID *) callback_data->data;
   /* Add the result entry to the result table. */
@@ -423,7 +423,7 @@ void redis_result_table_lookup_callback(redisAsyncContext *c,
 
 void redis_result_table_lookup(table_callback_data *callback_data) {
   CHECK(callback_data);
-  db_handle *db = callback_data->db_handle;
+  DBHandle *db = callback_data->db_handle;
   ObjectID id = callback_data->id;
   int status =
       redisAsyncCommand(db->context, redis_result_table_lookup_callback,
@@ -442,7 +442,7 @@ void redis_result_table_lookup(table_callback_data *callback_data) {
  * @param manager The pointer where the IP address of the manager gets written.
  * @return Void.
  */
-void redis_get_cached_db_client(db_handle *db,
+void redis_get_cached_db_client(DBHandle *db,
                                 db_client_id db_client_id,
                                 const char **manager) {
   db_client_cache_entry *entry;
@@ -531,7 +531,7 @@ void redis_object_table_lookup_callback(redisAsyncContext *c,
  * @return The object ID that the notification is about.
  */
 ObjectID parse_subscribe_to_notifications_payload(
-    db_handle *db,
+    DBHandle *db,
     char *payload,
     int length,
     int64_t *data_size,
@@ -648,7 +648,7 @@ void object_table_redis_subscribe_to_notifications_callback(
 
 void redis_object_table_subscribe_to_notifications(
     table_callback_data *callback_data) {
-  db_handle *db = callback_data->db_handle;
+  DBHandle *db = callback_data->db_handle;
   /* The object channel prefix must match the value defined in
    * src/common/redismodule/ray_redis_module.c. */
   const char *object_channel_prefix = "OC:";
@@ -693,7 +693,7 @@ void redis_object_table_request_notifications_callback(redisAsyncContext *c,
 
 void redis_object_table_request_notifications(
     table_callback_data *callback_data) {
-  db_handle *db = callback_data->db_handle;
+  DBHandle *db = callback_data->db_handle;
 
   object_table_request_notifications_data *request_data = callback_data->data;
   int num_object_ids = request_data->num_object_ids;
@@ -751,7 +751,7 @@ void redis_task_table_get_task_callback(redisAsyncContext *c,
 }
 
 void redis_task_table_get_task(table_callback_data *callback_data) {
-  db_handle *db = callback_data->db_handle;
+  DBHandle *db = callback_data->db_handle;
   CHECK(callback_data->data == NULL);
   TaskID task_id = callback_data->id;
 
@@ -782,7 +782,7 @@ void redis_task_table_add_task_callback(redisAsyncContext *c,
 }
 
 void redis_task_table_add_task(table_callback_data *callback_data) {
-  db_handle *db = callback_data->db_handle;
+  DBHandle *db = callback_data->db_handle;
   task *task = callback_data->data;
   TaskID task_id = task_task_id(task);
   db_client_id local_scheduler_id = task_local_scheduler(task);
@@ -818,7 +818,7 @@ void redis_task_table_update_callback(redisAsyncContext *c,
 }
 
 void redis_task_table_update(table_callback_data *callback_data) {
-  db_handle *db = callback_data->db_handle;
+  DBHandle *db = callback_data->db_handle;
   task *task = callback_data->data;
   TaskID task_id = task_task_id(task);
   db_client_id local_scheduler_id = task_local_scheduler(task);
@@ -856,7 +856,7 @@ void redis_task_table_test_and_update_callback(redisAsyncContext *c,
 }
 
 void redis_task_table_test_and_update(table_callback_data *callback_data) {
-  db_handle *db = callback_data->db_handle;
+  DBHandle *db = callback_data->db_handle;
   TaskID task_id = callback_data->id;
   task_table_test_and_update_data *update_data = callback_data->data;
 
@@ -965,7 +965,7 @@ void redis_task_table_subscribe_callback(redisAsyncContext *c,
 }
 
 void redis_task_table_subscribe(table_callback_data *callback_data) {
-  db_handle *db = callback_data->db_handle;
+  DBHandle *db = callback_data->db_handle;
   task_table_subscribe_data *data = callback_data->data;
   /* TASK_CHANNEL_PREFIX is defined in ray_redis_module.c and must be kept in
    * sync with that file. */
@@ -1045,7 +1045,7 @@ void redis_db_client_table_subscribe_callback(redisAsyncContext *c,
 }
 
 void redis_db_client_table_subscribe(table_callback_data *callback_data) {
-  db_handle *db = callback_data->db_handle;
+  DBHandle *db = callback_data->db_handle;
   int status = redisAsyncCommand(
       db->sub_context, redis_db_client_table_subscribe_callback,
       (void *) callback_data->timer_id, "SUBSCRIBE db_clients");
@@ -1094,7 +1094,7 @@ void redis_local_scheduler_table_subscribe_callback(redisAsyncContext *c,
 }
 
 void redis_local_scheduler_table_subscribe(table_callback_data *callback_data) {
-  db_handle *db = callback_data->db_handle;
+  DBHandle *db = callback_data->db_handle;
   int status = redisAsyncCommand(
       db->sub_context, redis_local_scheduler_table_subscribe_callback,
       (void *) callback_data->timer_id, "SUBSCRIBE local_schedulers");
@@ -1119,7 +1119,7 @@ void redis_local_scheduler_table_send_info_callback(redisAsyncContext *c,
 }
 
 void redis_local_scheduler_table_send_info(table_callback_data *callback_data) {
-  db_handle *db = callback_data->db_handle;
+  DBHandle *db = callback_data->db_handle;
   local_scheduler_table_send_info_data *data = callback_data->data;
   int status = redisAsyncCommand(
       db->context, redis_local_scheduler_table_send_info_callback,
@@ -1172,7 +1172,7 @@ void redis_actor_notification_table_subscribe_callback(redisAsyncContext *c,
 
 void redis_actor_notification_table_subscribe(
     table_callback_data *callback_data) {
-  db_handle *db = callback_data->db_handle;
+  DBHandle *db = callback_data->db_handle;
   int status = redisAsyncCommand(
       db->sub_context, redis_actor_notification_table_subscribe_callback,
       (void *) callback_data->timer_id, "SUBSCRIBE actor_notifications");
@@ -1221,7 +1221,7 @@ void redis_object_info_subscribe_callback(redisAsyncContext *c,
 }
 
 void redis_object_info_subscribe(table_callback_data *callback_data) {
-  db_handle *db = callback_data->db_handle;
+  DBHandle *db = callback_data->db_handle;
   int status = redisAsyncCommand(
       db->sub_context, redis_object_info_subscribe_callback,
       (void *) callback_data->timer_id, "PSUBSCRIBE obj:info");
@@ -1230,7 +1230,7 @@ void redis_object_info_subscribe(table_callback_data *callback_data) {
   }
 }
 
-db_client_id get_db_client_id(db_handle *db) {
+db_client_id get_db_client_id(DBHandle *db) {
   CHECK(db != NULL);
   return db->client;
 }

@@ -32,7 +32,7 @@ typedef void (*db_client_table_subscribe_callback)(db_client_id db_client_id,
  * @return Void.
  */
 void db_client_table_subscribe(
-    db_handle *db_handle,
+    DBHandle *db_handle,
     db_client_table_subscribe_callback subscribe_callback,
     void *subscribe_context,
     retry_info *retry,

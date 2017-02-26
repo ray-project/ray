@@ -45,7 +45,7 @@ typedef void (*local_scheduler_table_subscribe_callback)(
  * @return Void.
  */
 void local_scheduler_table_subscribe(
-    db_handle *db_handle,
+    DBHandle *db_handle,
     local_scheduler_table_subscribe_callback subscribe_callback,
     void *subscribe_context,
     retry_info *retry);
@@ -66,7 +66,7 @@ typedef struct {
  *        local scheduler.
  * @param retry Information about retrying the request to the database.
  */
-void local_scheduler_table_send_info(db_handle *db_handle,
+void local_scheduler_table_send_info(DBHandle *db_handle,
                                      local_scheduler_info *info,
                                      retry_info *retry);
 

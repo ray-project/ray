@@ -348,7 +348,7 @@ TEST object_reconstruction_suppression_test(void) {
   } else {
     /* Connect a plasma manager client so we can call object_table_add. */
     const char *db_connect_args[] = {"address", "127.0.0.1:12346"};
-    db_handle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1",
+    DBHandle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1",
                                2, db_connect_args);
     db_attach(db, photon->loop, false);
     /* Add the object to the object table. */

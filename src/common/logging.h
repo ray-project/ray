@@ -48,7 +48,7 @@ void RayLogger_log(RayLogger *logger,
  * @param value_length The length of the value.
  * @return Void.
  */
-void RayLogger_log_event(db_handle *db,
+void RayLogger_log_event(DBHandle *db,
                          uint8_t *key,
                          int64_t key_length,
                          uint8_t *value,

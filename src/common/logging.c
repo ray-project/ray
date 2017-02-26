@@ -65,7 +65,7 @@ void RayLogger_log(RayLogger *logger,
                   log_levels[log_level], event_type, message,
                   utstring_body(timestamp));
   if (logger->is_direct) {
-    db_handle *db = (db_handle *) logger->conn;
+    DBHandle *db = (DBHandle *) logger->conn;
     /* Fill in the client ID and send the message to Redis. */
     int status = redisAsyncCommand(
         db->context, NULL, NULL, utstring_body(formatted_message),
@@ -83,7 +83,7 @@ void RayLogger_log(RayLogger *logger,
   utstring_free(timestamp);
 }
 
-void RayLogger_log_event(db_handle *db,
+void RayLogger_log_event(DBHandle *db,
                          uint8_t *key,
                          int64_t key_length,
                          uint8_t *value,

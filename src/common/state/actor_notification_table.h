@@ -32,7 +32,7 @@ typedef void (*actor_notification_table_subscribe_callback)(actor_info info,
  * @return Void.
  */
 void actor_notification_table_subscribe(
-    db_handle *db_handle,
+    DBHandle *db_handle,
     actor_notification_table_subscribe_callback subscribe_callback,
     void *subscribe_context,
     retry_info *retry);

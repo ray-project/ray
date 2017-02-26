@@ -64,7 +64,7 @@ typedef struct {
   /** The global scheduler event loop. */
   event_loop *loop;
   /** The global state store database. */
-  db_handle *db;
+  DBHandle *db;
   /** The local schedulers that are connected to Redis. TODO(rkn): This probably
    *  needs to be a hashtable since we often look up the local_scheduler struct
    *  based on its db_client_id. */

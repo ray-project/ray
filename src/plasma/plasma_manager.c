@@ -186,7 +186,7 @@ struct plasma_manager_state {
    *  other plasma managers. These are used for writing data to
    *  other plasma stores. */
   client_connection *manager_connections;
-  db_handle *db;
+  DBHandle *db;
   /** Our address. */
   const char *addr;
   /** Our port. */
