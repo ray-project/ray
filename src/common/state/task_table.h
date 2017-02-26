@@ -22,11 +22,11 @@
  */
 
 /* Callback called when a task table write operation completes. */
-typedef void (*task_table_done_callback)(task_id task_id, void *user_context);
+typedef void (*task_table_done_callback)(TaskID task_id, void *user_context);
 
 /* Callback called when a task table read operation completes. If the task ID
  * was not in the task table, then the task pointer will be NULL. */
-typedef void (*task_table_get_callback)(task *task, void *user_context);
+typedef void (*task_table_get_callback)(Task *task, void *user_context);
 
 /**
  * Get a task's entry from the task table.
@@ -39,9 +39,9 @@ typedef void (*task_table_get_callback)(task *task, void *user_context);
  *        fail_callback.
  * @return Void.
  */
-void task_table_get_task(db_handle *db,
-                         task_id task_id,
-                         retry_info *retry,
+void task_table_get_task(DBHandle *db,
+                         TaskID task_id,
+                         RetryInfo *retry,
                          task_table_get_callback done_callback,
                          void *user_context);
 
@@ -58,9 +58,9 @@ void task_table_get_task(db_handle *db,
  *        fail_callback.
  * @return Void.
  */
-void task_table_add_task(db_handle *db_handle,
-                         OWNER task *task,
-                         retry_info *retry,
+void task_table_add_task(DBHandle *db_handle,
+                         OWNER Task *task,
+                         RetryInfo *retry,
                          task_table_done_callback done_callback,
                          void *user_context);
 
@@ -81,9 +81,9 @@ void task_table_add_task(db_handle *db_handle,
  *        fail_callback.
  * @return Void.
  */
-void task_table_update(db_handle *db_handle,
-                       OWNER task *task,
-                       retry_info *retry,
+void task_table_update(DBHandle *db_handle,
+                       OWNER Task *task,
+                       RetryInfo *retry,
                        task_table_done_callback done_callback,
                        void *user_context);
 
@@ -107,11 +107,11 @@ void task_table_update(db_handle *db_handle,
  *        fail_callback.
  * @return Void.
  */
-void task_table_test_and_update(db_handle *db_handle,
-                                task_id task_id,
+void task_table_test_and_update(DBHandle *db_handle,
+                                TaskID task_id,
                                 int test_state_bitmask,
                                 int update_state,
-                                retry_info *retry,
+                                RetryInfo *retry,
                                 task_table_get_callback done_callback,
                                 void *user_context);
 
@@ -119,15 +119,15 @@ void task_table_test_and_update(db_handle *db_handle,
 typedef struct {
   int test_state_bitmask;
   int update_state;
-  db_client_id local_scheduler_id;
-} task_table_test_and_update_data;
+  DBClientID local_scheduler_id;
+} TaskTableTestAndUpdateData;
 
 /*
  *  ==== Subscribing to the task table ====
  */
 
 /* Callback for subscribing to the task table. */
-typedef void (*task_table_subscribe_callback)(task *task, void *user_context);
+typedef void (*task_table_subscribe_callback)(Task *task, void *user_context);
 
 /**
  * Register a callback for a task event. An event is any update of a task in
@@ -152,22 +152,22 @@ typedef void (*task_table_subscribe_callback)(task *task, void *user_context);
  *        fail_callback.
  * @return Void.
  */
-void task_table_subscribe(db_handle *db_handle,
-                          db_client_id local_scheduler_id,
+void task_table_subscribe(DBHandle *db_handle,
+                          DBClientID local_scheduler_id,
                           int state_filter,
                           task_table_subscribe_callback subscribe_callback,
                           void *subscribe_context,
-                          retry_info *retry,
+                          RetryInfo *retry,
                           task_table_done_callback done_callback,
                           void *user_context);
 
 /* Data that is needed to register task table subscribe callbacks with the state
  * database. */
 typedef struct {
-  db_client_id local_scheduler_id;
+  DBClientID local_scheduler_id;
   int state_filter;
   task_table_subscribe_callback subscribe_callback;
   void *subscribe_context;
-} task_table_subscribe_data;
+} TaskTableSubscribeData;
 
 #endif /* task_table_H */

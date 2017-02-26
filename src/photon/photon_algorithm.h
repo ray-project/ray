@@ -23,7 +23,7 @@
  *
  * @return State managed by the scheduling algorithm.
  */
-scheduling_algorithm_state *make_scheduling_algorithm_state(void);
+SchedulingAlgorithmState *SchedulingAlgorithmState_init(void);
 
 /**
  * Free the scheduler state.
@@ -31,15 +31,14 @@ scheduling_algorithm_state *make_scheduling_algorithm_state(void);
  * @param algorithm_state State maintained by the scheduling algorithm.
  * @return Void.
  */
-void free_scheduling_algorithm_state(
-    scheduling_algorithm_state *algorithm_state);
+void SchedulingAlgorithmState_free(SchedulingAlgorithmState *algorithm_state);
 
 /**
  *
  */
-void provide_scheduler_info(local_scheduler_state *state,
-                            scheduling_algorithm_state *algorithm_state,
-                            local_scheduler_info *info);
+void provide_scheduler_info(LocalSchedulerState *state,
+                            SchedulingAlgorithmState *algorithm_state,
+                            LocalSchedulerInfo *info);
 
 /**
  * This function will be called when a new task is submitted by a worker for
@@ -57,8 +56,8 @@ void provide_scheduler_info(local_scheduler_state *state,
  * @param task Task that is submitted by the worker.
  * @return Void.
  */
-void handle_task_submitted(local_scheduler_state *state,
-                           scheduling_algorithm_state *algorithm_state,
+void handle_task_submitted(LocalSchedulerState *state,
+                           SchedulingAlgorithmState *algorithm_state,
                            task_spec *spec);
 
 /**
@@ -70,8 +69,8 @@ void handle_task_submitted(local_scheduler_state *state,
  * @param task Task that is submitted by the worker.
  * @return Void.
  */
-void handle_actor_task_submitted(local_scheduler_state *state,
-                                 scheduling_algorithm_state *algorithm_state,
+void handle_actor_task_submitted(LocalSchedulerState *state,
+                                 SchedulingAlgorithmState *algorithm_state,
                                  task_spec *spec);
 
 /**
@@ -85,9 +84,9 @@ void handle_actor_task_submitted(local_scheduler_state *state,
  * @return Void.
  */
 void handle_actor_creation_notification(
-    local_scheduler_state *state,
-    scheduling_algorithm_state *algorithm_state,
-    actor_id actor_id);
+    LocalSchedulerState *state,
+    SchedulingAlgorithmState *algorithm_state,
+    ActorID actor_id);
 
 /**
  * This function will be called when a task is assigned by the global scheduler
@@ -98,8 +97,8 @@ void handle_actor_creation_notification(
  * @param task Task that is assigned by the global scheduler.
  * @return Void.
  */
-void handle_task_scheduled(local_scheduler_state *state,
-                           scheduling_algorithm_state *algorithm_state,
+void handle_task_scheduled(LocalSchedulerState *state,
+                           SchedulingAlgorithmState *algorithm_state,
                            task_spec *spec);
 
 /**
@@ -112,8 +111,8 @@ void handle_task_scheduled(local_scheduler_state *state,
  * @param task Task that is assigned by the global scheduler.
  * @return Void.
  */
-void handle_actor_task_scheduled(local_scheduler_state *state,
-                                 scheduling_algorithm_state *algorithm_state,
+void handle_actor_task_scheduled(LocalSchedulerState *state,
+                                 SchedulingAlgorithmState *algorithm_state,
                                  task_spec *spec);
 
 /**
@@ -125,9 +124,9 @@ void handle_actor_task_scheduled(local_scheduler_state *state,
  * @param object_id ID of the object that became available.
  * @return Void.
  */
-void handle_object_available(local_scheduler_state *state,
-                             scheduling_algorithm_state *algorithm_state,
-                             object_id object_id);
+void handle_object_available(LocalSchedulerState *state,
+                             SchedulingAlgorithmState *algorithm_state,
+                             ObjectID object_id);
 
 /**
  * This function is called if an object is removed from the local plasma store.
@@ -136,7 +135,7 @@ void handle_object_available(local_scheduler_state *state,
  * @param object_id ID of the object that was removed.
  * @return Void.
  */
-void handle_object_removed(local_scheduler_state *state, object_id object_id);
+void handle_object_removed(LocalSchedulerState *state, ObjectID object_id);
 
 /**
  * This function is called when a new worker becomes available.
@@ -146,9 +145,9 @@ void handle_object_removed(local_scheduler_state *state, object_id object_id);
  * @param worker The worker that is available.
  * @return Void.
  */
-void handle_worker_available(local_scheduler_state *state,
-                             scheduling_algorithm_state *algorithm_state,
-                             local_scheduler_client *worker);
+void handle_worker_available(LocalSchedulerState *state,
+                             SchedulingAlgorithmState *algorithm_state,
+                             LocalSchedulerClient *worker);
 
 /**
  * This function is called when a worker is removed.
@@ -158,9 +157,9 @@ void handle_worker_available(local_scheduler_state *state,
  * @param worker The worker that is removed.
  * @return Void.
  */
-void handle_worker_removed(local_scheduler_state *state,
-                           scheduling_algorithm_state *algorithm_state,
-                           local_scheduler_client *worker);
+void handle_worker_removed(LocalSchedulerState *state,
+                           SchedulingAlgorithmState *algorithm_state,
+                           LocalSchedulerClient *worker);
 
 /**
  * This version of handle_worker_available is called whenever the worker that is
@@ -171,9 +170,9 @@ void handle_worker_removed(local_scheduler_state *state,
  * @param wi Information about the worker that is available.
  * @return Void.
  */
-void handle_actor_worker_available(local_scheduler_state *state,
-                                   scheduling_algorithm_state *algorithm_state,
-                                   local_scheduler_client *worker);
+void handle_actor_worker_available(LocalSchedulerState *state,
+                                   SchedulingAlgorithmState *algorithm_state,
+                                   LocalSchedulerClient *worker);
 
 /**
  * Handle the fact that a new worker is available for running an actor.
@@ -184,10 +183,10 @@ void handle_actor_worker_available(local_scheduler_state *state,
  * @param worker The worker that was connected.
  * @return Void.
  */
-void handle_actor_worker_connect(local_scheduler_state *state,
-                                 scheduling_algorithm_state *algorithm_state,
-                                 actor_id actor_id,
-                                 local_scheduler_client *worker);
+void handle_actor_worker_connect(LocalSchedulerState *state,
+                                 SchedulingAlgorithmState *algorithm_state,
+                                 ActorID actor_id,
+                                 LocalSchedulerClient *worker);
 
 /**
  * Handle the fact that a worker running an actor has disconnected.
@@ -197,9 +196,9 @@ void handle_actor_worker_connect(local_scheduler_state *state,
  * @param actor_id The ID of the actor running on the worker.
  * @return Void.
  */
-void handle_actor_worker_disconnect(local_scheduler_state *state,
-                                    scheduling_algorithm_state *algorithm_state,
-                                    actor_id actor_id);
+void handle_actor_worker_disconnect(LocalSchedulerState *state,
+                                    SchedulingAlgorithmState *algorithm_state,
+                                    ActorID actor_id);
 
 /**
  * This function is called when a worker that was executing a task becomes
@@ -210,9 +209,9 @@ void handle_actor_worker_disconnect(local_scheduler_state *state,
  * @param worker The worker that is blocked.
  * @return Void.
  */
-void handle_worker_blocked(local_scheduler_state *state,
-                           scheduling_algorithm_state *algorithm_state,
-                           local_scheduler_client *worker);
+void handle_worker_blocked(LocalSchedulerState *state,
+                           SchedulingAlgorithmState *algorithm_state,
+                           LocalSchedulerClient *worker);
 
 /**
  * This function is called when a worker that was blocked on an object that
@@ -223,9 +222,9 @@ void handle_worker_blocked(local_scheduler_state *state,
  * @param worker The worker that is now unblocked.
  * @return Void.
  */
-void handle_worker_unblocked(local_scheduler_state *state,
-                             scheduling_algorithm_state *algorithm_state,
-                             local_scheduler_client *worker);
+void handle_worker_unblocked(LocalSchedulerState *state,
+                             SchedulingAlgorithmState *algorithm_state,
+                             LocalSchedulerClient *worker);
 
 /**
  * This function fetches queued task's missing object dependencies. It is
@@ -248,7 +247,7 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context);
  * @return Void.
  */
 void print_worker_info(const char *message,
-                       scheduling_algorithm_state *algorithm_state);
+                       SchedulingAlgorithmState *algorithm_state);
 
 /** The following methods are for testing purposes only. */
 #ifdef PHOTON_TEST
@@ -259,7 +258,7 @@ void print_worker_info(const char *message,
  * @param algorithm_state State maintained by the scheduling algorithm.
  * @return The number of tasks queued.
  */
-int num_waiting_tasks(scheduling_algorithm_state *algorithm_state);
+int num_waiting_tasks(SchedulingAlgorithmState *algorithm_state);
 
 /**
  * Get the number of tasks currently waiting for a worker to become available.
@@ -267,7 +266,7 @@ int num_waiting_tasks(scheduling_algorithm_state *algorithm_state);
  * @param algorithm_state State maintained by the scheduling algorithm.
  * @return The number of tasks queued.
  */
-int num_dispatch_tasks(scheduling_algorithm_state *algorithm_state);
+int num_dispatch_tasks(SchedulingAlgorithmState *algorithm_state);
 #endif
 
 #endif /* PHOTON_ALGORITHM_H */

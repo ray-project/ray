@@ -9,7 +9,7 @@ PyObject *PhotonError;
 // clang-format off
 typedef struct {
   PyObject_HEAD
-  photon_conn *photon_connection;
+  PhotonConnection *photon_connection;
 } PyPhotonClient;
 // clang-format on
 
@@ -17,18 +17,18 @@ static int PyPhotonClient_init(PyPhotonClient *self,
                                PyObject *args,
                                PyObject *kwds) {
   char *socket_name;
-  actor_id actor_id;
+  ActorID actor_id;
   if (!PyArg_ParseTuple(args, "sO&", &socket_name, PyStringToUniqueID,
                         &actor_id)) {
     return -1;
   }
   /* Connect to the Photon scheduler. */
-  self->photon_connection = photon_connect(socket_name, actor_id);
+  self->photon_connection = PhotonConnection_init(socket_name, actor_id);
   return 0;
 }
 
 static void PyPhotonClient_dealloc(PyPhotonClient *self) {
-  photon_disconnect(((PyPhotonClient *) self)->photon_connection);
+  PhotonConnection_free(((PyPhotonClient *) self)->photon_connection);
   Py_TYPE(self)->tp_free((PyObject *) self);
 }
 
@@ -56,7 +56,7 @@ static PyObject *PyPhotonClient_get_task(PyObject *self) {
 
 static PyObject *PyPhotonClient_reconstruct_object(PyObject *self,
                                                    PyObject *args) {
-  object_id object_id;
+  ObjectID object_id;
   if (!PyArg_ParseTuple(args, "O&", PyStringToUniqueID, &object_id)) {
     return NULL;
   }

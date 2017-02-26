@@ -15,11 +15,11 @@
 #include "state/task_table.h"
 
 /* This is used to define the array of local schedulers used to define the
- * global_scheduler_state type. */
-UT_icd local_scheduler_icd = {sizeof(local_scheduler), NULL, NULL, NULL};
+ * GlobalSchedulerState type. */
+UT_icd local_scheduler_icd = {sizeof(LocalScheduler), NULL, NULL, NULL};
 
 /* This is used to define the array of tasks that haven't been scheduled yet. */
-UT_icd pending_tasks_icd = {sizeof(task *), NULL, NULL, NULL};
+UT_icd pending_tasks_icd = {sizeof(Task *), NULL, NULL, NULL};
 
 /**
  * Assign the given task to the local scheduler, update Redis and scheduler data
@@ -30,24 +30,24 @@ UT_icd pending_tasks_icd = {sizeof(task *), NULL, NULL, NULL};
  * @param local_scheduler_id DB client ID for the local scheduler.
  * @return Void.
  */
-void assign_task_to_local_scheduler(global_scheduler_state *state,
-                                    task *task,
-                                    db_client_id local_scheduler_id) {
+void assign_task_to_local_scheduler(GlobalSchedulerState *state,
+                                    Task *task,
+                                    DBClientID local_scheduler_id) {
   char id_string[ID_STRING_SIZE];
-  task_spec *spec = task_task_spec(task);
+  task_spec *spec = Task_task_spec(task);
   LOG_DEBUG("assigning task to local_scheduler_id = %s",
-            object_id_to_string(local_scheduler_id, id_string, ID_STRING_SIZE));
-  task_set_state(task, TASK_STATUS_SCHEDULED);
-  task_set_local_scheduler(task, local_scheduler_id);
+            ObjectID_to_string(local_scheduler_id, id_string, ID_STRING_SIZE));
+  Task_set_state(task, TASK_STATUS_SCHEDULED);
+  Task_set_local_scheduler_id(task, local_scheduler_id);
   LOG_DEBUG("Issuing a task table update for task = %s",
-            object_id_to_string(task_task_id(task), id_string, ID_STRING_SIZE));
+            ObjectID_to_string(Task_task_id(task), id_string, ID_STRING_SIZE));
   UNUSED(id_string);
-  task_table_update(state->db, copy_task(task), NULL, NULL, NULL);
+  task_table_update(state->db, Task_copy(task), NULL, NULL, NULL);
 
   /* TODO(rkn): We should probably pass around local_scheduler struct pointers
    * instead of db_client_id objects. */
   /* Update the local scheduler info. */
-  local_scheduler *local_scheduler =
+  LocalScheduler *local_scheduler =
       get_local_scheduler(state, local_scheduler_id);
   local_scheduler->num_tasks_sent += 1;
   local_scheduler->num_recent_tasks_sent += 1;
@@ -61,28 +61,28 @@ void assign_task_to_local_scheduler(global_scheduler_state *state,
   }
 }
 
-global_scheduler_state *init_global_scheduler(event_loop *loop,
-                                              const char *redis_addr,
-                                              int redis_port) {
-  global_scheduler_state *state = malloc(sizeof(global_scheduler_state));
+GlobalSchedulerState *GlobalSchedulerState_init(event_loop *loop,
+                                                const char *redis_addr,
+                                                int redis_port) {
+  GlobalSchedulerState *state = malloc(sizeof(GlobalSchedulerState));
   /* Must initialize state to 0. Sets hashmap head(s) to NULL. */
-  memset(state, 0, sizeof(global_scheduler_state));
+  memset(state, 0, sizeof(GlobalSchedulerState));
   state->db =
       db_connect(redis_addr, redis_port, "global_scheduler", ":", 0, NULL);
   db_attach(state->db, loop, false);
   utarray_new(state->local_schedulers, &local_scheduler_icd);
-  state->policy_state = init_global_scheduler_policy();
+  state->policy_state = GlobalSchedulerPolicyState_init();
   /* Initialize the array of tasks that have not been scheduled yet. */
   utarray_new(state->pending_tasks, &pending_tasks_icd);
   return state;
 }
 
-void free_global_scheduler(global_scheduler_state *state) {
-  aux_address_entry *entry, *tmp;
+void GlobalSchedulerState_free(GlobalSchedulerState *state) {
+  AuxAddressEntry *entry, *tmp;
 
   db_disconnect(state->db);
   utarray_free(state->local_schedulers);
-  destroy_global_scheduler_policy(state->policy_state);
+  GlobalSchedulerPolicyState_free(state->policy_state);
   /* Delete the plasma to photon association map. */
   HASH_ITER(plasma_photon_hh, state->plasma_photon_map, entry, tmp) {
     HASH_DELETE(plasma_photon_hh, state->plasma_photon_map, entry);
@@ -99,7 +99,7 @@ void free_global_scheduler(global_scheduler_state *state) {
   }
 
   /* Free the scheduler object info table. */
-  scheduler_object_info *object_entry, *tmp_entry;
+  SchedulerObjectInfo *object_entry, *tmp_entry;
   HASH_ITER(hh, state->scheduler_object_info_table, object_entry, tmp_entry) {
     HASH_DELETE(hh, state->scheduler_object_info_table, object_entry);
     utarray_free(object_entry->object_locations);
@@ -113,8 +113,8 @@ void free_global_scheduler(global_scheduler_state *state) {
              num_pending_tasks);
   }
   for (int i = 0; i < num_pending_tasks; ++i) {
-    task **pending_task = (task **) utarray_eltptr(state->pending_tasks, i);
-    free_task(*pending_task);
+    Task **pending_task = (Task **) utarray_eltptr(state->pending_tasks, i);
+    Task_free(*pending_task);
   }
   utarray_free(state->pending_tasks);
   /* Free the global scheduler state. */
@@ -123,24 +123,24 @@ void free_global_scheduler(global_scheduler_state *state) {
 
 /* We need this code so we can clean up when we get a SIGTERM signal. */
 
-global_scheduler_state *g_state;
+GlobalSchedulerState *g_state;
 
 void signal_handler(int signal) {
   if (signal == SIGTERM) {
-    free_global_scheduler(g_state);
+    GlobalSchedulerState_free(g_state);
     exit(0);
   }
 }
 
 /* End of the cleanup code. */
 
-local_scheduler *get_local_scheduler(global_scheduler_state *state,
-                                     db_client_id photon_id) {
-  local_scheduler *local_scheduler_ptr;
+LocalScheduler *get_local_scheduler(GlobalSchedulerState *state,
+                                    DBClientID photon_id) {
+  LocalScheduler *local_scheduler_ptr;
   for (int i = 0; i < utarray_len(state->local_schedulers); ++i) {
     local_scheduler_ptr =
-        (local_scheduler *) utarray_eltptr(state->local_schedulers, i);
-    if (db_client_ids_equal(local_scheduler_ptr->id, photon_id)) {
+        (LocalScheduler *) utarray_eltptr(state->local_schedulers, i);
+    if (DBClientID_equal(local_scheduler_ptr->id, photon_id)) {
       LOG_DEBUG("photon_id matched cached local scheduler entry.");
       return local_scheduler_ptr;
     }
@@ -148,8 +148,8 @@ local_scheduler *get_local_scheduler(global_scheduler_state *state,
   return NULL;
 }
 
-void process_task_waiting(task *waiting_task, void *user_context) {
-  global_scheduler_state *state = (global_scheduler_state *) user_context;
+void process_task_waiting(Task *waiting_task, void *user_context) {
+  GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
   LOG_DEBUG("Task waiting callback is called.");
   bool successfully_assigned =
       handle_task_waiting(state, state->policy_state, waiting_task);
@@ -157,7 +157,7 @@ void process_task_waiting(task *waiting_task, void *user_context) {
    * task to the array of pending tasks. The global scheduler will periodically
    * resubmit the tasks in this array. */
   if (!successfully_assigned) {
-    task *task_copy = copy_task(waiting_task);
+    Task *task_copy = Task_copy(waiting_task);
     utarray_push_back(state->pending_tasks, &task_copy);
   }
 }
@@ -167,20 +167,19 @@ void process_task_waiting(task *waiting_task, void *user_context) {
  * @param aux_address: an ip:port pair for the plasma manager associated with
  * this db client.
  */
-void process_new_db_client(db_client_id db_client_id,
+void process_new_db_client(DBClientID db_client_id,
                            const char *client_type,
                            const char *aux_address,
                            void *user_context) {
-  global_scheduler_state *state = (global_scheduler_state *) user_context;
+  GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
   char id_string[ID_STRING_SIZE];
   LOG_DEBUG("db client table callback for db client = %s",
-            object_id_to_string(db_client_id, id_string, ID_STRING_SIZE));
+            ObjectID_to_string(db_client_id, id_string, ID_STRING_SIZE));
   UNUSED(id_string);
   if (strncmp(client_type, "photon", strlen("photon")) == 0) {
     /* Add plasma_manager ip:port -> photon_db_client_id association to state.
      */
-    aux_address_entry *plasma_photon_entry =
-        calloc(1, sizeof(aux_address_entry));
+    AuxAddressEntry *plasma_photon_entry = calloc(1, sizeof(AuxAddressEntry));
     plasma_photon_entry->aux_address = strdup(aux_address);
     plasma_photon_entry->photon_db_client_id = db_client_id;
     HASH_ADD_KEYPTR(plasma_photon_hh, state->plasma_photon_map,
@@ -197,18 +196,18 @@ void process_new_db_client(db_client_id db_client_id,
 #if (RAY_COMMON_LOG_LEVEL <= RAY_COMMON_DEBUG)
     {
       /* Print the photon to plasma association map so far. */
-      aux_address_entry *entry, *tmp;
+      AuxAddressEntry *entry, *tmp;
       LOG_DEBUG("Photon to Plasma hash map so far:");
       HASH_ITER(plasma_photon_hh, state->plasma_photon_map, entry, tmp) {
         LOG_DEBUG("%s -> %s", entry->aux_address,
-                  object_id_to_string(entry->photon_db_client_id, id_string,
-                                      ID_STRING_SIZE));
+                  ObjectID_to_string(entry->photon_db_client_id, id_string,
+                                     ID_STRING_SIZE));
       }
     }
 #endif
 
     /* Add new local scheduler to the state. */
-    local_scheduler local_scheduler;
+    LocalScheduler local_scheduler;
     local_scheduler.id = db_client_id;
     local_scheduler.num_tasks_sent = 0;
     local_scheduler.num_recent_tasks_sent = 0;
@@ -235,30 +234,31 @@ void process_new_db_client(db_client_id db_client_id,
  * @param user_context The user context.
  * @return Void.
  */
-void object_table_subscribe_callback(object_id object_id,
+void object_table_subscribe_callback(ObjectID object_id,
                                      int64_t data_size,
                                      int manager_count,
                                      const char *manager_vector[],
                                      void *user_context) {
   /* Extract global scheduler state from the callback context. */
-  global_scheduler_state *state = (global_scheduler_state *) user_context;
+  GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
   char id_string[ID_STRING_SIZE];
   LOG_DEBUG("object table subscribe callback for OBJECT = %s",
-            object_id_to_string(object_id, id_string, ID_STRING_SIZE));
+            ObjectID_to_string(object_id, id_string, ID_STRING_SIZE));
   UNUSED(id_string);
   LOG_DEBUG("\tManagers<%d>:", manager_count);
   for (int i = 0; i < manager_count; i++) {
     LOG_DEBUG("\t\t%s", manager_vector[i]);
   }
-  scheduler_object_info *obj_info_entry = NULL;
+  SchedulerObjectInfo *obj_info_entry = NULL;
 
   HASH_FIND(hh, state->scheduler_object_info_table, &object_id,
             sizeof(object_id), obj_info_entry);
 
   if (obj_info_entry == NULL) {
     /* Construct a new object info hash table entry. */
-    obj_info_entry = malloc(sizeof(scheduler_object_info));
-    memset(obj_info_entry, 0, sizeof(scheduler_object_info));
+    obj_info_entry =
+        (SchedulerObjectInfo *) malloc(sizeof(SchedulerObjectInfo));
+    memset(obj_info_entry, 0, sizeof(*obj_info_entry));
 
     obj_info_entry->object_id = object_id;
     obj_info_entry->data_size = data_size;
@@ -266,7 +266,7 @@ void object_table_subscribe_callback(object_id object_id,
     HASH_ADD(hh, state->scheduler_object_info_table, object_id,
              sizeof(obj_info_entry->object_id), obj_info_entry);
     LOG_DEBUG("New object added to object_info_table with id = %s",
-              object_id_to_string(object_id, id_string, ID_STRING_SIZE));
+              ObjectID_to_string(object_id, id_string, ID_STRING_SIZE));
     LOG_DEBUG("\tmanager locations:");
     for (int i = 0; i < manager_count; i++) {
       LOG_DEBUG("\t\t%s", manager_vector[i]);
@@ -285,22 +285,22 @@ void object_table_subscribe_callback(object_id object_id,
   }
 }
 
-void local_scheduler_table_handler(db_client_id client_id,
-                                   local_scheduler_info info,
+void local_scheduler_table_handler(DBClientID client_id,
+                                   LocalSchedulerInfo info,
                                    void *user_context) {
   /* Extract global scheduler state from the callback context. */
-  global_scheduler_state *state = (global_scheduler_state *) user_context;
+  GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
   UNUSED(state);
   char id_string[ID_STRING_SIZE];
   LOG_DEBUG(
       "Local scheduler heartbeat from db_client_id %s",
-      object_id_to_string((object_id) client_id, id_string, ID_STRING_SIZE));
+      ObjectID_to_string((ObjectID) client_id, id_string, ID_STRING_SIZE));
   UNUSED(id_string);
   LOG_DEBUG(
       "total workers = %d, task queue length = %d, available workers = %d",
       info.total_num_workers, info.task_queue_length, info.available_workers);
   /* Update the local scheduler info struct. */
-  local_scheduler *local_scheduler_ptr = get_local_scheduler(state, client_id);
+  LocalScheduler *local_scheduler_ptr = get_local_scheduler(state, client_id);
   if (local_scheduler_ptr != NULL) {
     /* Reset the number of tasks sent since the last heartbeat. */
     local_scheduler_ptr->num_recent_tasks_sent = 0;
@@ -311,11 +311,11 @@ void local_scheduler_table_handler(db_client_id client_id,
 }
 
 int task_cleanup_handler(event_loop *loop, timer_id id, void *context) {
-  global_scheduler_state *state = context;
+  GlobalSchedulerState *state = context;
   /* Loop over the pending tasks and resubmit them. */
   int64_t num_pending_tasks = utarray_len(state->pending_tasks);
   for (int64_t i = num_pending_tasks - 1; i >= 0; --i) {
-    task **pending_task = (task **) utarray_eltptr(state->pending_tasks, i);
+    Task **pending_task = (Task **) utarray_eltptr(state->pending_tasks, i);
     /* Pretend that the task has been resubmitted. */
     bool successfully_assigned =
         handle_task_waiting(state, state->policy_state, *pending_task);
@@ -332,7 +332,7 @@ int task_cleanup_handler(event_loop *loop, timer_id id, void *context) {
 
 void start_server(const char *redis_addr, int redis_port) {
   event_loop *loop = event_loop_create();
-  g_state = init_global_scheduler(loop, redis_addr, redis_port);
+  g_state = GlobalSchedulerState_init(loop, redis_addr, redis_port);
   /* TODO(rkn): subscribe to notifications from the object table. */
   /* Subscribe to notifications about new local schedulers. TODO(rkn): this
    * needs to also get all of the clients that registered with the database

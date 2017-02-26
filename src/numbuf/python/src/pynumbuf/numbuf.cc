@@ -208,14 +208,14 @@ static PyObject* register_callbacks(PyObject* self, PyObject* args) {
  * @return Void.
  */
 static void BufferCapsule_Destructor(PyObject* capsule) {
-  object_id* id = reinterpret_cast<object_id*>(PyCapsule_GetPointer(capsule, "buffer"));
+  ObjectID* id = reinterpret_cast<ObjectID*>(PyCapsule_GetPointer(capsule, "buffer"));
   auto context = reinterpret_cast<PyObject*>(PyCapsule_GetContext(capsule));
   /* We use the context of the connection capsule to indicate if the connection
    * is still active (if the context is NULL) or if it is closed (if the context
    * is (void*) 0x1). This is neccessary because the primary pointer of the
    * capsule cannot be NULL. */
   if (PyCapsule_GetContext(context) == NULL) {
-    plasma_connection* conn;
+    PlasmaConnection* conn;
     CHECK(PyObjectToPlasmaConnection(context, &conn));
     plasma_release(conn, *id);
   }
@@ -236,8 +236,8 @@ static void BufferCapsule_Destructor(PyObject* capsule) {
  * @return None.
  */
 static PyObject* store_list(PyObject* self, PyObject* args) {
-  object_id obj_id;
-  plasma_connection* conn;
+  ObjectID obj_id;
+  PlasmaConnection* conn;
   PyObject* value;
   if (!PyArg_ParseTuple(args, "O&O&O", PyStringToUniqueID, &obj_id,
           PyObjectToPlasmaConnection, &conn, &value)) {
@@ -316,12 +316,12 @@ static PyObject* retrieve_list(PyObject* self, PyObject* args) {
   if (!PyArg_ParseTuple(args, "OOL", &object_id_list, &plasma_conn, &timeout_ms)) {
     return NULL;
   }
-  plasma_connection* conn;
+  PlasmaConnection* conn;
   if (!PyObjectToPlasmaConnection(plasma_conn, &conn)) { return NULL; }
 
   Py_ssize_t num_object_ids = PyList_Size(object_id_list);
-  object_id* object_ids = new object_id[num_object_ids];
-  object_buffer* object_buffers = new object_buffer[num_object_ids];
+  ObjectID* object_ids = new ObjectID[num_object_ids];
+  ObjectBuffer* object_buffers = new ObjectBuffer[num_object_ids];
 
   for (int i = 0; i < num_object_ids; ++i) {
     PyStringToUniqueID(PyList_GetItem(object_id_list, i), &object_ids[i]);
@@ -340,7 +340,7 @@ static PyObject* retrieve_list(PyObject* self, PyObject* args) {
 
     if (object_buffers[i].data_size != -1) {
       /* The object was retrieved, so return the object. */
-      object_id* buffer_obj_id = new object_id(object_ids[i]);
+      ObjectID* buffer_obj_id = new ObjectID(object_ids[i]);
       /* This keeps a Plasma buffer in scope as long as an object that is backed by that
        * buffer is in scope. This prevents memory in the object store from getting
        * released while it is still being used to back a Python object. */

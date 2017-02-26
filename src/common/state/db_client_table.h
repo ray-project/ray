@@ -4,7 +4,7 @@
 #include "db.h"
 #include "table.h"
 
-typedef void (*db_client_table_done_callback)(db_client_id db_client_id,
+typedef void (*db_client_table_done_callback)(DBClientID db_client_id,
                                               void *user_context);
 
 /*
@@ -12,7 +12,7 @@ typedef void (*db_client_table_done_callback)(db_client_id db_client_id,
  */
 
 /* Callback for subscribing to the db client table. */
-typedef void (*db_client_table_subscribe_callback)(db_client_id db_client_id,
+typedef void (*db_client_table_subscribe_callback)(DBClientID db_client_id,
                                                    const char *client_type,
                                                    const char *aux_address,
                                                    void *user_context);
@@ -32,10 +32,10 @@ typedef void (*db_client_table_subscribe_callback)(db_client_id db_client_id,
  * @return Void.
  */
 void db_client_table_subscribe(
-    db_handle *db_handle,
+    DBHandle *db_handle,
     db_client_table_subscribe_callback subscribe_callback,
     void *subscribe_context,
-    retry_info *retry,
+    RetryInfo *retry,
     db_client_table_done_callback done_callback,
     void *user_context);
 
@@ -44,6 +44,6 @@ void db_client_table_subscribe(
 typedef struct {
   db_client_table_subscribe_callback subscribe_callback;
   void *subscribe_context;
-} db_client_table_subscribe_data;
+} DBClientTableSubscribeData;
 
 #endif /* DB_CLIENT_TABLE_H */
