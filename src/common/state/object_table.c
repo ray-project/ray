@@ -30,15 +30,15 @@ void object_table_add(DBHandle *db_handle,
 
 void object_table_remove(DBHandle *db_handle,
                          ObjectID object_id,
-                         db_client_id *client_id,
+                         DBClientID *client_id,
                          retry_info *retry,
                          object_table_done_callback done_callback,
                          void *user_context) {
   CHECK(db_handle != NULL);
   /* Copy the client ID, if one was provided. */
-  db_client_id *client_id_copy = NULL;
+  DBClientID *client_id_copy = NULL;
   if (client_id != NULL) {
-    client_id_copy = malloc(sizeof(db_client_id));
+    client_id_copy = malloc(sizeof(DBClientID));
     *client_id_copy = *client_id;
   }
   init_table_callback(db_handle, object_id, __func__, client_id_copy, retry,

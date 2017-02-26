@@ -98,7 +98,7 @@ typedef struct {
  */
 void object_table_remove(DBHandle *db_handle,
                          ObjectID object_id,
-                         db_client_id *client_id,
+                         DBClientID *client_id,
                          retry_info *retry,
                          object_table_done_callback done_callback,
                          void *user_context);

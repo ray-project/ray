@@ -37,7 +37,7 @@ bool object_id_is_nil(ObjectID id) {
   return object_ids_equal(id, NIL_OBJECT_ID);
 }
 
-bool db_client_ids_equal(db_client_id first_id, db_client_id second_id) {
+bool db_client_ids_equal(DBClientID first_id, DBClientID second_id) {
   return UNIQUE_ID_EQ(first_id, second_id);
 }
 

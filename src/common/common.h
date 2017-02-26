@@ -166,7 +166,7 @@ bool object_ids_equal(ObjectID first_id, ObjectID second_id);
  */
 bool object_id_is_nil(ObjectID id);
 
-typedef UniqueID db_client_id;
+typedef UniqueID DBClientID;
 
 /**
  * Compare two db client IDs.
@@ -175,7 +175,7 @@ typedef UniqueID db_client_id;
  * @param second_id The first db client ID to compare.
  * @return True if the db client IDs are the same and false otherwise.
  */
-bool db_client_ids_equal(db_client_id first_id, db_client_id second_id);
+bool db_client_ids_equal(DBClientID first_id, DBClientID second_id);
 
 #define MAX(x, y) ((x) >= (y) ? (x) : (y))
 #define MIN(x, y) ((x) <= (y) ? (x) : (y))

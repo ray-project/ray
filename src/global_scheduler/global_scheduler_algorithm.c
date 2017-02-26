@@ -155,10 +155,10 @@ void free_object_size_hashmap(object_size_entry *object_size_table) {
   }
 }
 
-db_client_id get_photon_id(global_scheduler_state *state,
+DBClientID get_photon_id(global_scheduler_state *state,
                            const char *plasma_location) {
   aux_address_entry *aux_entry = NULL;
-  db_client_id photon_id = NIL_ID;
+  DBClientID photon_id = NIL_ID;
   if (plasma_location != NULL) {
     LOG_DEBUG("max object size location found : %s", plasma_location);
     /* Lookup association of plasma location to photon. */
@@ -289,7 +289,7 @@ bool handle_task_waiting(global_scheduler_state *state,
   local_scheduler *scheduler = NULL;
   double best_photon_score = INT32_MIN;
   CHECKM(best_photon_score < 0, "We might have a floating point underflow");
-  db_client_id best_photon_id = NIL_ID; /* best node to send this task */
+  DBClientID best_photon_id = NIL_ID; /* best node to send this task */
   for (scheduler = (local_scheduler *) utarray_front(state->local_schedulers);
        scheduler != NULL; scheduler = (local_scheduler *) utarray_next(
                               state->local_schedulers, scheduler)) {
@@ -333,6 +333,6 @@ void handle_object_available(global_scheduler_state *state,
 
 void handle_new_local_scheduler(global_scheduler_state *state,
                                 global_scheduler_policy_state *policy_state,
-                                db_client_id db_client_id) {
+                                DBClientID db_client_id) {
   /* Do nothing for now. */
 }

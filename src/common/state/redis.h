@@ -22,7 +22,7 @@
 
 typedef struct {
   /** Unique ID for this db client. */
-  db_client_id db_client_id;
+  DBClientID db_client_id;
   /** IP address and port of this db client. */
   char *addr;
   /** Handle for the uthash table. */
@@ -33,7 +33,7 @@ struct DBHandle {
   /** String that identifies this client type. */
   char *client_type;
   /** Unique ID for this client. */
-  db_client_id client;
+  DBClientID client;
   /** Redis context for all non-subscribe connections. */
   redisAsyncContext *context;
   /** Redis context for "subscribe" communication. Yes, we need a separate one

@@ -133,7 +133,7 @@ DBHandle *db_connect(const char *db_address,
   CHECKM(reply != NULL, "db_connect failed on CONFIG SET");
   freeReplyObject(reply);
   /* Create a client ID for this client. */
-  db_client_id client = globally_unique_id();
+  DBClientID client = globally_unique_id();
 
   /* Construct the argument arrays for RAY.CONNECT. */
   int argc = num_args + 4;
@@ -300,7 +300,7 @@ void redis_object_table_remove(table_callback_data *callback_data) {
   ObjectID obj_id = callback_data->id;
   /* If the caller provided a manager ID to delete, use it. Otherwise, use our
    * own client ID as the ID to delete. */
-  db_client_id *client_id = callback_data->data;
+  DBClientID *client_id = callback_data->data;
   if (client_id == NULL) {
     client_id = &db->client;
   }
@@ -379,7 +379,7 @@ task *parse_and_construct_task_from_redis_reply(redisReply *reply) {
     /* Parse the scheduling state. */
     long long state = reply->element[0]->integer;
     /* Parse the local scheduler db_client_id. */
-    db_client_id local_scheduler_id;
+    DBClientID local_scheduler_id;
     CHECK(sizeof(local_scheduler_id) == reply->element[1]->len);
     memcpy(local_scheduler_id.id, reply->element[1]->str,
            reply->element[1]->len);
@@ -443,7 +443,7 @@ void redis_result_table_lookup(table_callback_data *callback_data) {
  * @return Void.
  */
 void redis_get_cached_db_client(DBHandle *db,
-                                db_client_id db_client_id,
+                                DBClientID db_client_id,
                                 const char **manager) {
   db_client_cache_entry *entry;
   HASH_FIND(hh, db->db_client_cache, &db_client_id, sizeof(db_client_id),
@@ -475,7 +475,7 @@ void redis_object_table_lookup_callback(redisAsyncContext *c,
 
   ObjectID obj_id = callback_data->id;
   int64_t manager_count = 0;
-  db_client_id *managers = NULL;
+  DBClientID *managers = NULL;
   const char **manager_vector = NULL;
 
   /* Parse the Redis reply. */
@@ -485,7 +485,7 @@ void redis_object_table_lookup_callback(redisAsyncContext *c,
   } else if (reply->type == REDIS_REPLY_ARRAY) {
     manager_count = reply->elements;
     if (manager_count > 0) {
-      managers = malloc(reply->elements * sizeof(db_client_id));
+      managers = malloc(reply->elements * sizeof(DBClientID));
       manager_vector = malloc(manager_count * sizeof(char *));
     }
     for (int j = 0; j < reply->elements; ++j) {
@@ -540,10 +540,10 @@ ObjectID parse_subscribe_to_notifications_payload(
   long long data_size_value = 0;
   int num_managers = (length - sizeof(ObjectID) - 1 - sizeof(data_size_value) -
                       1 - strlen("MANAGERS")) /
-                     (1 + sizeof(db_client_id));
+                     (1 + sizeof(DBClientID));
 
   int64_t rval = sizeof(ObjectID) + 1 + sizeof(data_size_value) + 1 +
-                 strlen("MANAGERS") + num_managers * (1 + sizeof(db_client_id));
+                 strlen("MANAGERS") + num_managers * (1 + sizeof(DBClientID));
 
   CHECKM(length == rval,
          "length mismatch: num_managers = %d, length = %d, rval = %" PRId64,
@@ -573,7 +573,7 @@ ObjectID parse_subscribe_to_notifications_payload(
     CHECK(memcmp(&payload[offset], " ", strlen(" ")) == 0);
     offset += strlen(" ");
     /* Get the manager ID. */
-    db_client_id manager_id;
+    DBClientID manager_id;
     memcpy(&manager_id.id, &payload[offset], sizeof(manager_id.id));
     offset += sizeof(manager_id.id);
     /* Write the address of the corresponding manager to the returned array. */
@@ -785,7 +785,7 @@ void redis_task_table_add_task(table_callback_data *callback_data) {
   DBHandle *db = callback_data->db_handle;
   task *task = callback_data->data;
   TaskID task_id = task_task_id(task);
-  db_client_id local_scheduler_id = task_local_scheduler(task);
+  DBClientID local_scheduler_id = task_local_scheduler(task);
   int state = task_state(task);
   task_spec *spec = task_task_spec(task);
 
@@ -821,7 +821,7 @@ void redis_task_table_update(table_callback_data *callback_data) {
   DBHandle *db = callback_data->db_handle;
   task *task = callback_data->data;
   TaskID task_id = task_task_id(task);
-  db_client_id local_scheduler_id = task_local_scheduler(task);
+  DBClientID local_scheduler_id = task_local_scheduler(task);
   int state = task_state(task);
 
   CHECKM(task != NULL, "NULL task passed to redis_task_table_update.");
@@ -879,7 +879,7 @@ void parse_task_table_subscribe_callback(char *payload,
                                          int length,
                                          TaskID *task_id,
                                          int *state,
-                                         db_client_id *local_scheduler_id,
+                                         DBClientID *local_scheduler_id,
                                          task_spec **spec) {
   /* Note that the state is padded with spaces to consist of precisely two
    * characters. */
@@ -935,7 +935,7 @@ void redis_task_table_subscribe_callback(redisAsyncContext *c,
     /* Read out the information from the payload. */
     TaskID task_id;
     int state;
-    db_client_id local_scheduler_id;
+    DBClientID local_scheduler_id;
     task_spec *spec;
     parse_task_table_subscribe_callback(payload->str, payload->len, &task_id,
                                         &state, &local_scheduler_id, &spec);
@@ -979,7 +979,7 @@ void redis_task_table_subscribe(table_callback_data *callback_data) {
         (void *) callback_data->timer_id, "PSUBSCRIBE %s*:%2d",
         TASK_CHANNEL_PREFIX, data->state_filter);
   } else {
-    db_client_id local_scheduler_id = data->local_scheduler_id;
+    DBClientID local_scheduler_id = data->local_scheduler_id;
     status = redisAsyncCommand(
         db->sub_context, redis_task_table_subscribe_callback,
         (void *) callback_data->timer_id, "SUBSCRIBE %s%b:%2d",
@@ -1021,7 +1021,7 @@ void redis_db_client_table_subscribe_callback(redisAsyncContext *c,
   }
   /* Otherwise, parse the payload and call the callback. */
   db_client_table_subscribe_data *data = callback_data->data;
-  db_client_id client;
+  DBClientID client;
   memcpy(client.id, payload->str, sizeof(client.id));
   /* We subtract 1 + sizeof(client.id) to compute the length of the
    * client_type string, and we add 1 to null-terminate the string. */
@@ -1072,7 +1072,7 @@ void redis_local_scheduler_table_subscribe_callback(redisAsyncContext *c,
      * subscribe callback. */
     redisReply *payload = reply->element[2];
     local_scheduler_table_subscribe_data *data = callback_data->data;
-    db_client_id client_id;
+    DBClientID client_id;
     local_scheduler_info info;
     /* The payload should be the concatenation of these two structs. */
     CHECK(sizeof(client_id) + sizeof(info) == payload->len);
@@ -1230,7 +1230,7 @@ void redis_object_info_subscribe(table_callback_data *callback_data) {
   }
 }
 
-db_client_id get_db_client_id(DBHandle *db) {
+DBClientID get_db_client_id(DBHandle *db) {
   CHECK(db != NULL);
   return db->client;
 }

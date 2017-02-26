@@ -97,6 +97,6 @@ void handle_local_scheduler_heartbeat(
  */
 void handle_new_local_scheduler(global_scheduler_state *state,
                                 global_scheduler_policy_state *policy_state,
-                                db_client_id db_client_id);
+                                DBClientID db_client_id);
 
 #endif /* GLOBAL_SCHEDULER_ALGORITHM_H */

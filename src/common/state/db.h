@@ -54,6 +54,6 @@ void db_disconnect(DBHandle *db);
  * @param db The handle to the database.
  * @returns int The db client ID for this connection to the database.
  */
-db_client_id get_db_client_id(DBHandle *db);
+DBClientID get_db_client_id(DBHandle *db);
 
 #endif

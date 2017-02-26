@@ -49,7 +49,7 @@ typedef struct {
   /** The ID of the actor. This is used as a key in the hash table. */
   ActorID actor_id;
   /** The ID of the local scheduler that is responsible for the actor. */
-  db_client_id local_scheduler_id;
+  DBClientID local_scheduler_id;
   /** Handle fo the hash table. */
   UT_hash_handle hh;
 } actor_map_entry;

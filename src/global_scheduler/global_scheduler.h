@@ -15,7 +15,7 @@
 /** Contains all information that is associated with a local scheduler. */
 typedef struct {
   /** The ID of the local scheduler in Redis. */
-  db_client_id id;
+  DBClientID id;
   /** The number of tasks sent from the global scheduler to this local
    *  scheduler. */
   int64_t num_tasks_sent;
@@ -50,7 +50,7 @@ typedef struct {
   /** IP:port string for the plasma_manager. */
   char *aux_address;
   /** Photon db client id. */
-  db_client_id photon_db_client_id;
+  DBClientID photon_db_client_id;
   /** Plasma_manager ip:port -> photon_db_client_id. */
   UT_hash_handle plasma_photon_hh;
   /** Photon_db_client_id -> plasma_manager ip:port. */
@@ -91,7 +91,7 @@ typedef struct {
  *         not aware of the local scheduler, then this will be NULL.
  */
 local_scheduler *get_local_scheduler(global_scheduler_state *state,
-                                     db_client_id photon_id);
+                                     DBClientID photon_id);
 
 /**
  * Assign the given task to the local scheduler, update Redis and scheduler data
@@ -104,6 +104,6 @@ local_scheduler *get_local_scheduler(global_scheduler_state *state,
  */
 void assign_task_to_local_scheduler(global_scheduler_state *state,
                                     task *task,
-                                    db_client_id local_scheduler_id);
+                                    DBClientID local_scheduler_id);
 
 #endif /* GLOBAL_SCHEDULER_H */

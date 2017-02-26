@@ -148,7 +148,7 @@ TEST task_table_test(void) {
   DBHandle *db =
       db_connect("127.0.0.1", 6379, "local_scheduler", "127.0.0.1", 0, NULL);
   db_attach(db, loop, false);
-  db_client_id local_scheduler_id = globally_unique_id();
+  DBClientID local_scheduler_id = globally_unique_id();
   task_spec *spec = example_task_spec(1, 1);
   task_table_test_task =
       alloc_task(spec, TASK_STATUS_SCHEDULED, local_scheduler_id);
@@ -212,7 +212,7 @@ TEST task_table_all_test(void) {
 TEST unique_client_id_test(void) {
   enum { num_conns = 100 };
 
-  db_client_id ids[num_conns];
+  DBClientID ids[num_conns];
   DBHandle *db;
   for (int i = 0; i < num_conns; ++i) {
     db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);

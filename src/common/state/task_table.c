@@ -50,7 +50,7 @@ void task_table_test_and_update(DBHandle *db_handle,
 
 /* TODO(swang): A corresponding task_table_unsubscribe. */
 void task_table_subscribe(DBHandle *db_handle,
-                          db_client_id local_scheduler_id,
+                          DBClientID local_scheduler_id,
                           int state_filter,
                           task_table_subscribe_callback subscribe_callback,
                           void *subscribe_context,

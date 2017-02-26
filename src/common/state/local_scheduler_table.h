@@ -29,7 +29,7 @@ typedef struct {
 
 /* Callback for subscribing to the local scheduler table. */
 typedef void (*local_scheduler_table_subscribe_callback)(
-    db_client_id client_id,
+    DBClientID client_id,
     local_scheduler_info info,
     void *user_context);
 

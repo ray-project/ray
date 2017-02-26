@@ -119,7 +119,7 @@ void task_table_test_and_update(DBHandle *db_handle,
 typedef struct {
   int test_state_bitmask;
   int update_state;
-  db_client_id local_scheduler_id;
+  DBClientID local_scheduler_id;
 } task_table_test_and_update_data;
 
 /*
@@ -153,7 +153,7 @@ typedef void (*task_table_subscribe_callback)(task *task, void *user_context);
  * @return Void.
  */
 void task_table_subscribe(DBHandle *db_handle,
-                          db_client_id local_scheduler_id,
+                          DBClientID local_scheduler_id,
                           int state_filter,
                           task_table_subscribe_callback subscribe_callback,
                           void *subscribe_context,
@@ -164,7 +164,7 @@ void task_table_subscribe(DBHandle *db_handle,
 /* Data that is needed to register task table subscribe callbacks with the state
  * database. */
 typedef struct {
-  db_client_id local_scheduler_id;
+  DBClientID local_scheduler_id;
   int state_filter;
   task_table_subscribe_callback subscribe_callback;
   void *subscribe_context;

@@ -32,7 +32,7 @@ UT_icd pending_tasks_icd = {sizeof(task *), NULL, NULL, NULL};
  */
 void assign_task_to_local_scheduler(global_scheduler_state *state,
                                     task *task,
-                                    db_client_id local_scheduler_id) {
+                                    DBClientID local_scheduler_id) {
   char id_string[ID_STRING_SIZE];
   task_spec *spec = task_task_spec(task);
   LOG_DEBUG("assigning task to local_scheduler_id = %s",
@@ -135,7 +135,7 @@ void signal_handler(int signal) {
 /* End of the cleanup code. */
 
 local_scheduler *get_local_scheduler(global_scheduler_state *state,
-                                     db_client_id photon_id) {
+                                     DBClientID photon_id) {
   local_scheduler *local_scheduler_ptr;
   for (int i = 0; i < utarray_len(state->local_schedulers); ++i) {
     local_scheduler_ptr =
@@ -167,7 +167,7 @@ void process_task_waiting(task *waiting_task, void *user_context) {
  * @param aux_address: an ip:port pair for the plasma manager associated with
  * this db client.
  */
-void process_new_db_client(db_client_id db_client_id,
+void process_new_db_client(DBClientID db_client_id,
                            const char *client_type,
                            const char *aux_address,
                            void *user_context) {
@@ -285,7 +285,7 @@ void object_table_subscribe_callback(ObjectID object_id,
   }
 }
 
-void local_scheduler_table_handler(db_client_id client_id,
+void local_scheduler_table_handler(DBClientID client_id,
                                    local_scheduler_info info,
                                    void *user_context) {
   /* Extract global scheduler state from the callback context. */

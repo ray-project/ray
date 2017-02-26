@@ -755,7 +755,7 @@ void queue_task_locally(LocalSchedulerState *state,
 void give_task_to_local_scheduler(LocalSchedulerState *state,
                                   scheduling_algorithm_state *algorithm_state,
                                   task_spec *spec,
-                                  db_client_id local_scheduler_id) {
+                                  DBClientID local_scheduler_id) {
   if (db_client_ids_equal(local_scheduler_id, get_db_client_id(state->db))) {
     LOG_WARN("Local scheduler is trying to assign a task to itself.");
   }

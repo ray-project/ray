@@ -819,7 +819,7 @@ void handle_task_scheduled_callback(task *original_task, void *user_context) {
  */
 void handle_actor_creation_callback(actor_info info, void *context) {
   ActorID actor_id = info.actor_id;
-  db_client_id local_scheduler_id = info.local_scheduler_id;
+  DBClientID local_scheduler_id = info.local_scheduler_id;
   LocalSchedulerState *state = context;
   /* Make sure the actor entry is not already present in the actor map table.
    * TODO(rkn): We will need to remove this check to handle the case where the
