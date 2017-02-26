@@ -803,24 +803,6 @@ bool resource_constraints_satisfied(local_scheduler_state *state,
   return true;
 }
 
-/**
- * Update the result table, which holds mappings of object ID -> ID of the
- * task that created it.
- *
- * @param state The scheduler state.
- * @param spec The task spec in question.
- * @return Void.
- */
-void update_result_table(local_scheduler_state *state, task_spec *spec) {
-  if (state->db != NULL) {
-    task_id task_id = task_spec_id(spec);
-    for (int64_t i = 0; i < task_num_returns(spec); ++i) {
-      object_id return_id = task_return(spec, i);
-      result_table_add(state->db, return_id, task_id, NULL, NULL, NULL);
-    }
-  }
-}
-
 void handle_task_submitted(local_scheduler_state *state,
                            scheduling_algorithm_state *algorithm_state,
                            task_spec *spec) {
@@ -843,10 +825,6 @@ void handle_task_submitted(local_scheduler_state *state,
 
   /* Try to dispatch tasks, since we may have added one to the queue. */
   dispatch_tasks(state, algorithm_state);
-
-  /* Update the result table, which holds mappings of object ID -> ID of the
-   * task that created it. */
-  update_result_table(state, spec);
 }
 
 void handle_actor_task_submitted(local_scheduler_state *state,
@@ -881,10 +859,6 @@ void handle_actor_task_submitted(local_scheduler_state *state,
     give_task_to_local_scheduler(state, algorithm_state, spec,
                                  entry->local_scheduler_id);
   }
-
-  /* Update the result table, which holds mappings of object ID -> ID of the
-   * task that created it. */
-  update_result_table(state, spec);
 }
 
 void handle_actor_creation_notification(
@@ -992,6 +966,50 @@ void handle_worker_available(local_scheduler_state *state,
   /* Try to dispatch tasks, since we now have available workers to assign them
    * to. */
   dispatch_tasks(state, algorithm_state);
+}
+
+void handle_worker_removed(local_scheduler_state *state,
+                           scheduling_algorithm_state *algorithm_state,
+                           local_scheduler_client *worker) {
+  /* Make sure that we remove the worker at most once. */
+  bool removed = false;
+  int64_t num_workers;
+
+  /* Remove the worker from available workers, if it's there. */
+  num_workers = utarray_len(algorithm_state->available_workers);
+  for (int64_t i = num_workers - 1; i >= 0; --i) {
+    local_scheduler_client **p = (local_scheduler_client **) utarray_eltptr(
+        algorithm_state->available_workers, i);
+    DCHECK(!((*p == worker) && removed));
+    if (*p == worker) {
+      utarray_erase(algorithm_state->available_workers, i, 1);
+      removed = true;
+    }
+  }
+
+  /* Remove the worker from executing workers, if it's there. */
+  num_workers = utarray_len(algorithm_state->executing_workers);
+  for (int64_t i = num_workers - 1; i >= 0; --i) {
+    local_scheduler_client **p = (local_scheduler_client **) utarray_eltptr(
+        algorithm_state->executing_workers, i);
+    DCHECK(!((*p == worker) && removed));
+    if (*p == worker) {
+      utarray_erase(algorithm_state->executing_workers, i, 1);
+      removed = true;
+    }
+  }
+
+  /* Remove the worker from blocked workers, if it's there. */
+  num_workers = utarray_len(algorithm_state->blocked_workers);
+  for (int64_t i = num_workers - 1; i >= 0; --i) {
+    local_scheduler_client **p = (local_scheduler_client **) utarray_eltptr(
+        algorithm_state->blocked_workers, i);
+    DCHECK(!((*p == worker) && removed));
+    if (*p == worker) {
+      utarray_erase(algorithm_state->blocked_workers, i, 1);
+      removed = true;
+    }
+  }
 }
 
 void handle_actor_worker_available(local_scheduler_state *state,

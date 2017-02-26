@@ -57,21 +57,27 @@ void print_resource_info(const local_scheduler_state *state,
 #endif
 }
 
+int force_kill_worker(event_loop *loop, timer_id id, void *context) {
+  local_scheduler_client *worker = (local_scheduler_client *) context;
+  kill(worker->pid, SIGKILL);
+  close(worker->sock);
+  free(worker);
+  return EVENT_LOOP_TIMER_DONE;
+}
+
 /**
  * Kill a worker, if it is a child process, and clean up all of its associated
  * state.
  *
  * @param worker A pointer to the worker we want to kill.
- * @param wait A bool representing whether we should wait for the worker's
- *        process to exit. If the worker is not a child process, this flag is
- *        ignored.
+ * @param cleanup A bool representing whether we're cleaning up the entire local
+ *        scheduler's state, or just this worker. If true, then the worker will
+ *        be force-killed immediately. Else, the worker will be given a chance
+ *        to clean up its own state.
  * @return Void.
  */
-void kill_worker(local_scheduler_client *worker, bool wait) {
-  /* TODO(swang): This method should also propagate changes to other parts of
-   * the system to reflect the killed task in progress, if there was one.  This
-   * includes updating dynamic resources and updating the task table. */
-  /* Erase the worker from the array of workers. */
+void kill_worker(local_scheduler_client *worker, bool cleanup) {
+  /* Erase the local scheduler's reference to the worker. */
   local_scheduler_state *state = worker->local_scheduler_state;
   int num_workers = utarray_len(state->workers);
   for (int i = 0; i < utarray_len(state->workers); ++i) {
@@ -86,6 +92,8 @@ void kill_worker(local_scheduler_client *worker, bool wait) {
          "Found duplicate workers");
   CHECKM(utarray_len(state->workers) != num_workers,
          "Tried to kill worker that doesn't exist");
+  /* Erase the algorithm state's reference to the worker. */
+  handle_worker_removed(state, state->algorithm_state, worker);
 
   /* Remove the client socket from the event loop so that we don't process the
    * SIGPIPE when the worker is killed. */
@@ -93,27 +101,47 @@ void kill_worker(local_scheduler_client *worker, bool wait) {
 
   /* If the worker has registered a process ID with us and it's a child
    * process, use it to send a kill signal. */
+  bool free_worker = true;
   if (worker->is_child && worker->pid != 0) {
-    kill(worker->pid, SIGKILL);
-    if (wait) {
-      /* Wait for the process to exit. */
+    if (cleanup) {
+      /* If we're exiting the local scheduler anyway, it's okay to force kill
+       * the worker immediately. Wait for the process to exit. */
+      kill(worker->pid, SIGKILL);
       waitpid(worker->pid, NULL, 0);
+      close(worker->sock);
+    } else {
+      /* If we're just cleaning up a single worker, allow it some time to clean
+       * up its state before force killing. The client socket will be closed
+       * and the worker struct will be freed after the timeout. */
+      kill(worker->pid, SIGTERM);
+      event_loop_add_timer(state->loop, KILL_WORKER_TIMEOUT_MILLISECONDS,
+                           force_kill_worker, (void *) worker);
+      free_worker = false;
     }
     LOG_INFO("Killed worker with pid %d", worker->pid);
   }
 
-  /* Clean up the client socket after killing the worker so that the worker
-   * can't receive the SIGPIPE before exiting. */
-  close(worker->sock);
-
   /* Clean up the task in progress. */
   if (worker->task_in_progress) {
-    /* TODO(swang): Update the task table to mark the task as lost. */
-    free_task(worker->task_in_progress);
+    /* Return the resources that the worker was using. */
+    task_spec *spec = task_task_spec(worker->task_in_progress);
+    update_dynamic_resources(state, spec, true);
+    /* Update the task table to reflect that the task failed to complete. */
+    if (state->db != NULL) {
+      task_set_state(worker->task_in_progress, TASK_STATUS_LOST);
+      task_table_update(state->db, worker->task_in_progress, NULL, NULL, NULL);
+    } else {
+      free_task(worker->task_in_progress);
+    }
   }
 
   LOG_DEBUG("Killed worker with pid %d", worker->pid);
-  free(worker);
+  if (free_worker) {
+    /* Clean up the client socket after killing the worker so that the worker
+     * can't receive the SIGPIPE before exiting. */
+    close(worker->sock);
+    free(worker);
+  }
 }
 
 void free_local_scheduler(local_scheduler_state *state) {
@@ -130,15 +158,6 @@ void free_local_scheduler(local_scheduler_state *state) {
     state->config.start_worker_command = NULL;
   }
 
-  /* Disconnect from the database. */
-  if (state->db != NULL) {
-    db_disconnect(state->db);
-    state->db = NULL;
-  }
-  /* Disconnect from plasma. */
-  plasma_disconnect(state->plasma_conn);
-  state->plasma_conn = NULL;
-
   /* Kill any child processes that didn't register as a worker yet. */
   pid_t *worker_pid;
   for (worker_pid = (pid_t *) utarray_front(state->child_pids);
@@ -152,6 +171,8 @@ void free_local_scheduler(local_scheduler_state *state) {
 
   /* Free the list of workers and any tasks that are still in progress on those
    * workers. */
+  /* TODO(swang): It's possible that the local scheduler will exit before all
+   * of its task table updates make it to redis. */
   for (local_scheduler_client **worker =
            (local_scheduler_client **) utarray_front(state->workers);
        worker != NULL;
@@ -160,6 +181,15 @@ void free_local_scheduler(local_scheduler_state *state) {
   }
   utarray_free(state->workers);
   state->workers = NULL;
+
+  /* Disconnect from the database. */
+  if (state->db != NULL) {
+    db_disconnect(state->db);
+    state->db = NULL;
+  }
+  /* Disconnect from plasma. */
+  plasma_disconnect(state->plasma_conn);
+  state->plasma_conn = NULL;
 
   /* Free the mapping from the actor ID to the ID of the local scheduler
    * responsible for that actor. */
@@ -480,21 +510,41 @@ void reconstruct_task_update_callback(task *task, void *user_context) {
   }
 }
 
-void reconstruct_result_lookup_callback(object_id reconstruct_object_id,
-                                        task_id task_id,
-                                        void *user_context) {
+void reconstruct_evicted_result_lookup_callback(object_id reconstruct_object_id,
+                                                task_id task_id,
+                                                void *user_context) {
   /* TODO(swang): The following check will fail if an object was created by a
    * put. */
   CHECKM(!IS_NIL_ID(task_id),
          "No task information found for object during reconstruction");
   local_scheduler_state *state = user_context;
-  /* Try to claim the responsibility for reconstruction by doing a test-and-set
-   * of the task's scheduling state in the global state. If the task's
-   * scheduling state is pending completion, assume that reconstruction is
-   * already being taken care of. NOTE: This codepath is not responsible for
-   * detecting failure of the other reconstruction, or updating the
-   * scheduling_state accordingly. */
-  task_table_test_and_update(state->db, task_id, TASK_STATUS_DONE,
+  /* If there are no other instances of the task running, it's safe for us to
+   * claim responsibility for reconstruction. */
+  task_table_test_and_update(state->db, task_id,
+                             (TASK_STATUS_DONE | TASK_STATUS_LOST),
+                             TASK_STATUS_RECONSTRUCTING, NULL,
+                             reconstruct_task_update_callback, state);
+}
+
+void reconstruct_failed_result_lookup_callback(object_id reconstruct_object_id,
+                                               task_id task_id,
+                                               void *user_context) {
+  /* TODO(swang): The following check will fail if an object was created by a
+   * put. */
+  if (IS_NIL_ID(task_id)) {
+    /* NOTE(swang): For some reason, the result table update sometimes happens
+     * after this lookup returns, possibly due to concurrent clients. In most
+     * cases, this is okay because the initial execution is probably still
+     * pending, so for now, we log a warning and suppress reconstruction. */
+    LOG_WARN(
+        "No task information found for object during reconstruction (no object "
+        "entry yet)");
+    return;
+  }
+  local_scheduler_state *state = user_context;
+  /* If the task failed to finish, it's safe for us to claim responsibility for
+   * reconstruction. */
+  task_table_test_and_update(state->db, task_id, TASK_STATUS_LOST,
                              TASK_STATUS_RECONSTRUCTING, NULL,
                              reconstruct_task_update_callback, state);
 }
@@ -508,10 +558,19 @@ void reconstruct_object_lookup_callback(object_id reconstruct_object_id,
    * any nodes. NOTE: This codepath is not responsible for checking if the
    * object table entry is up-to-date. */
   local_scheduler_state *state = user_context;
+  /* Look up the task that created the object in the result table. */
   if (manager_count == 0) {
-    /* Look up the task that created the object in the result table. */
+    /* If the object was created and later evicted, we reconstruct the object
+     * if and only if there are no other instances of the task running. */
     result_table_lookup(state->db, reconstruct_object_id, NULL,
-                        reconstruct_result_lookup_callback, (void *) state);
+                        reconstruct_evicted_result_lookup_callback,
+                        (void *) state);
+  } else if (manager_count == -1) {
+    /* If the object has not been created yet, we reconstruct the object if and
+     * only if the task that created the object failed to complete. */
+    result_table_lookup(state->db, reconstruct_object_id, NULL,
+                        reconstruct_failed_result_lookup_callback,
+                        (void *) state);
   }
 }
 
@@ -541,6 +600,17 @@ void process_message(event_loop *loop,
   switch (type) {
   case SUBMIT_TASK: {
     task_spec *spec = (task_spec *) utarray_front(state->input_buffer);
+    /* Update the result table, which holds mappings of object ID -> ID of the
+     * task that created it. */
+    if (state->db != NULL) {
+      task_id task_id = task_spec_id(spec);
+      for (int64_t i = 0; i < task_num_returns(spec); ++i) {
+        object_id return_id = task_return(spec, i);
+        result_table_add(state->db, return_id, task_id, NULL, NULL, NULL);
+      }
+    }
+
+    /* Handle the task submission. */
     if (actor_ids_equal(task_spec_actor_id(spec), NIL_ACTOR_ID)) {
       handle_task_submitted(state, state->algorithm_state, spec);
     } else {

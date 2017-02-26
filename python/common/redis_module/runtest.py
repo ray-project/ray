@@ -216,14 +216,18 @@ class TestGlobalStateStore(unittest.TestCase):
                                  "node_id")
 
   def testTaskTableAddAndLookup(self):
+    TASK_STATUS_WAITING = 1
+    TASK_STATUS_SCHEDULED = 2
+    TASK_STATUS_QUEUED = 4
+
     # Check that task table adds, updates, and lookups work correctly.
-    task_args = [1, b"node_id", b"task_spec"]
+    task_args = [TASK_STATUS_WAITING, b"node_id", b"task_spec"]
     response = self.redis.execute_command("RAY.TASK_TABLE_ADD", "task_id",
                                           *task_args)
     response = self.redis.execute_command("RAY.TASK_TABLE_GET", "task_id")
     self.assertEqual(response, task_args)
 
-    task_args[0] = 2
+    task_args[0] = TASK_STATUS_SCHEDULED
     self.redis.execute_command("RAY.TASK_TABLE_UPDATE", "task_id", *task_args[:2])
     response = self.redis.execute_command("RAY.TASK_TABLE_GET", "task_id")
     self.assertEqual(response, task_args)
@@ -241,7 +245,7 @@ class TestGlobalStateStore(unittest.TestCase):
 
     # If the current value is the same as the test value, and the set value is
     # different, the update happens, and the response is the entire task.
-    task_args[1] += 1
+    task_args[1] = TASK_STATUS_QUEUED
     response = self.redis.execute_command("RAY.TASK_TABLE_TEST_AND_UPDATE",
                                           "task_id",
                                           *task_args[:3])
@@ -252,7 +256,7 @@ class TestGlobalStateStore(unittest.TestCase):
 
     # If the current value is no longer the same as the test value, the
     # response is nil.
-    task_args[1] += 1
+    task_args[1] = TASK_STATUS_WAITING
     response = self.redis.execute_command("RAY.TASK_TABLE_TEST_AND_UPDATE",
                                           "task_id",
                                           *task_args[:3])
@@ -261,6 +265,27 @@ class TestGlobalStateStore(unittest.TestCase):
     get_response2 = self.redis.execute_command("RAY.TASK_TABLE_GET", "task_id")
     self.assertEqual(get_response2, get_response)
     self.assertNotEqual(get_response2, task_args[1:])
+
+    # If the test value is a bitmask that matches the current value, the update
+    # happens.
+    task_args[0] = TASK_STATUS_SCHEDULED | TASK_STATUS_QUEUED
+    response = self.redis.execute_command("RAY.TASK_TABLE_TEST_AND_UPDATE",
+                                          "task_id",
+                                          *task_args[:3])
+    self.assertEqual(response, task_args[1:])
+
+    # If the test value is a bitmask that does not match the current value, the
+    # update does not happen.
+    task_args[1] = TASK_STATUS_SCHEDULED
+    old_response = response
+    response = self.redis.execute_command("RAY.TASK_TABLE_TEST_AND_UPDATE",
+                                          "task_id",
+                                          *task_args[:3])
+    self.assertEqual(response, None)
+    # Check that the update did not happen.
+    get_response = self.redis.execute_command("RAY.TASK_TABLE_GET", "task_id")
+    self.assertEqual(get_response, old_response)
+    self.assertNotEqual(get_response, task_args[1:])
 
   def testTaskTableSubscribe(self):
     scheduling_state = 1
