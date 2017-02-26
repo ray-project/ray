@@ -4,8 +4,10 @@
 #include "common/task.h"
 #include <stdlib.h>
 
-photon_conn *photon_connect(const char *photon_socket, ActorID actor_id) {
-  photon_conn *result = (photon_conn *) malloc(sizeof(photon_conn));
+PhotonConnection *PhotonConnection_init(const char *photon_socket,
+                                        ActorID actor_id) {
+  PhotonConnection *result =
+      (PhotonConnection *) malloc(sizeof(PhotonConnection));
   result->conn = connect_ipc_sock_retry(photon_socket, -1, -1);
   register_worker_info info;
   memset(&info, 0, sizeof(info));
@@ -18,12 +20,12 @@ photon_conn *photon_connect(const char *photon_socket, ActorID actor_id) {
   return result;
 }
 
-void photon_disconnect(photon_conn *conn) {
+void PhotonConnection_free(PhotonConnection *conn) {
   close(conn->conn);
   free(conn);
 }
 
-void photon_log_event(photon_conn *conn,
+void photon_log_event(PhotonConnection *conn,
                       uint8_t *key,
                       int64_t key_length,
                       uint8_t *value,
@@ -45,12 +47,12 @@ void photon_log_event(photon_conn *conn,
   free(message);
 }
 
-void photon_submit(photon_conn *conn, task_spec *task) {
+void photon_submit(PhotonConnection *conn, task_spec *task) {
   write_message(conn->conn, SUBMIT_TASK, task_spec_size(task),
                 (uint8_t *) task);
 }
 
-task_spec *photon_get_task(photon_conn *conn) {
+task_spec *photon_get_task(PhotonConnection *conn) {
   write_message(conn->conn, GET_TASK, 0, NULL);
   int64_t type;
   int64_t length;
@@ -64,19 +66,19 @@ task_spec *photon_get_task(photon_conn *conn) {
   return task;
 }
 
-void photon_task_done(photon_conn *conn) {
+void photon_task_done(PhotonConnection *conn) {
   write_message(conn->conn, TASK_DONE, 0, NULL);
 }
 
-void photon_reconstruct_object(photon_conn *conn, ObjectID object_id) {
+void photon_reconstruct_object(PhotonConnection *conn, ObjectID object_id) {
   write_message(conn->conn, RECONSTRUCT_OBJECT, sizeof(object_id),
                 (uint8_t *) &object_id);
 }
 
-void photon_log_message(photon_conn *conn) {
+void photon_log_message(PhotonConnection *conn) {
   write_message(conn->conn, LOG_MESSAGE, 0, NULL);
 }
 
-void photon_notify_unblocked(photon_conn *conn) {
+void photon_notify_unblocked(PhotonConnection *conn) {
   write_message(conn->conn, NOTIFY_UNBLOCKED, 0, NULL);
 }

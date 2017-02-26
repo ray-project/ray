@@ -47,7 +47,7 @@ typedef struct {
   /** Number of Photon client connections, or mock workers. */
   int num_photon_conns;
   /** Photon client connections. */
-  photon_conn **conns;
+  PhotonConnection **conns;
 } photon_mock;
 
 photon_mock *init_photon_mock(int num_workers, int num_mock_workers) {
@@ -92,10 +92,10 @@ photon_mock *init_photon_mock(int num_workers, int num_mock_workers) {
 
   /* Connect a Photon client. */
   mock->num_photon_conns = num_mock_workers;
-  mock->conns = malloc(sizeof(photon_conn *) * num_mock_workers);
+  mock->conns = malloc(sizeof(PhotonConnection *) * num_mock_workers);
   for (int i = 0; i < num_mock_workers; ++i) {
     mock->conns[i] =
-        photon_connect(utstring_body(photon_socket_name), NIL_ACTOR_ID);
+        PhotonConnection_init(utstring_body(photon_socket_name), NIL_ACTOR_ID);
     new_client_connection(mock->loop, mock->photon_fd,
                           (void *) mock->photon_state, 0);
   }
@@ -109,7 +109,7 @@ photon_mock *init_photon_mock(int num_workers, int num_mock_workers) {
 void destroy_photon_mock(photon_mock *mock) {
   /* Disconnect clients. */
   for (int i = 0; i < mock->num_photon_conns; ++i) {
-    photon_disconnect(mock->conns[i]);
+    PhotonConnection_free(mock->conns[i]);
   }
   free(mock->conns);
 
@@ -147,7 +147,7 @@ void reset_worker(photon_mock *mock, LocalSchedulerClient *worker) {
  */
 TEST object_reconstruction_test(void) {
   photon_mock *photon = init_photon_mock(0, 1);
-  photon_conn *worker = photon->conns[0];
+  PhotonConnection *worker = photon->conns[0];
 
   /* Create a task with zero dependencies and one return value. */
   task_spec *spec = example_task_spec(0, 1);
@@ -216,7 +216,7 @@ TEST object_reconstruction_test(void) {
  */
 TEST object_reconstruction_recursive_test(void) {
   photon_mock *photon = init_photon_mock(0, 1);
-  photon_conn *worker = photon->conns[0];
+  PhotonConnection *worker = photon->conns[0];
   /* Create a chain of tasks, each one dependent on the one before it. Mark
    * each object as available so that tasks will run immediately. */
   const int NUM_TASKS = 10;
@@ -319,13 +319,13 @@ task_spec *object_reconstruction_suppression_spec;
 void object_reconstruction_suppression_callback(ObjectID object_id,
                                                 void *user_context) {
   /* Submit the task after adding the object to the object table. */
-  photon_conn *worker = user_context;
+  PhotonConnection *worker = user_context;
   photon_submit(worker, object_reconstruction_suppression_spec);
 }
 
 TEST object_reconstruction_suppression_test(void) {
   photon_mock *photon = init_photon_mock(0, 1);
-  photon_conn *worker = photon->conns[0];
+  PhotonConnection *worker = photon->conns[0];
 
   object_reconstruction_suppression_spec = example_task_spec(0, 1);
   ObjectID return_id = task_return(object_reconstruction_suppression_spec, 0);

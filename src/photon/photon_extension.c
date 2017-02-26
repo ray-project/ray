@@ -9,7 +9,7 @@ PyObject *PhotonError;
 // clang-format off
 typedef struct {
   PyObject_HEAD
-  photon_conn *photon_connection;
+  PhotonConnection *photon_connection;
 } PyPhotonClient;
 // clang-format on
 
@@ -23,12 +23,12 @@ static int PyPhotonClient_init(PyPhotonClient *self,
     return -1;
   }
   /* Connect to the Photon scheduler. */
-  self->photon_connection = photon_connect(socket_name, actor_id);
+  self->photon_connection = PhotonConnection_init(socket_name, actor_id);
   return 0;
 }
 
 static void PyPhotonClient_dealloc(PyPhotonClient *self) {
-  photon_disconnect(((PyPhotonClient *) self)->photon_connection);
+  PhotonConnection_free(((PyPhotonClient *) self)->photon_connection);
   Py_TYPE(self)->tp_free((PyObject *) self);
 }
 
