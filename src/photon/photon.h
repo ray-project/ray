@@ -98,7 +98,7 @@ typedef struct {
   /** Vector of dynamic attributes associated with the node owned by this local
    *  scheduler. */
   double dynamic_resources[MAX_RESOURCE_INDEX];
-} local_scheduler_state;
+} LocalSchedulerState;
 
 /** Contains all information associated with a local scheduler client. */
 typedef struct {
@@ -120,7 +120,7 @@ typedef struct {
    *  worker, this should be NIL_ACTOR_ID. */
   ActorID actor_id;
   /** A pointer to the local scheduler state. */
-  local_scheduler_state *local_scheduler_state;
+  LocalSchedulerState *local_scheduler_state;
 } local_scheduler_client;
 
 #endif /* PHOTON_H */

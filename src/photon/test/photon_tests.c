@@ -41,7 +41,7 @@ typedef struct {
   /** Photon's socket for IPC requests. */
   int photon_fd;
   /** Photon's local scheduler state. */
-  local_scheduler_state *photon_state;
+  LocalSchedulerState *photon_state;
   /** Photon's event loop. */
   event_loop *loop;
   /** Number of Photon client connections, or mock workers. */
@@ -79,7 +79,7 @@ photon_mock *init_photon_mock(int num_workers, int num_mock_workers) {
                   utstring_body(plasma_manager_socket_name),
                   utstring_body(photon_socket_name), redis_addr, redis_port);
 
-  mock->photon_state = init_local_scheduler(
+  mock->photon_state = LocalSchedulerState_init(
       "127.0.0.1", mock->loop, redis_addr, redis_port,
       utstring_body(photon_socket_name), plasma_store_socket_name,
       utstring_body(plasma_manager_socket_name), NULL, false,
@@ -127,7 +127,7 @@ void destroy_photon_mock(photon_mock *mock) {
   event_loop_run(mock->loop);
 
   /* This also frees mock->loop. */
-  free_local_scheduler(mock->photon_state);
+  LocalSchedulerState_free(mock->photon_state);
   close(mock->plasma_store_fd);
   close(mock->plasma_manager_fd);
   free(mock);
@@ -374,7 +374,7 @@ TEST object_reconstruction_suppression_test(void) {
 
 TEST task_dependency_test(void) {
   photon_mock *photon = init_photon_mock(0, 1);
-  local_scheduler_state *state = photon->photon_state;
+  LocalSchedulerState *state = photon->photon_state;
   scheduling_algorithm_state *algorithm_state = state->algorithm_state;
   /* Get the first worker. */
   local_scheduler_client *worker =
@@ -449,7 +449,7 @@ TEST task_dependency_test(void) {
 
 TEST task_multi_dependency_test(void) {
   photon_mock *photon = init_photon_mock(0, 1);
-  local_scheduler_state *state = photon->photon_state;
+  LocalSchedulerState *state = photon->photon_state;
   scheduling_algorithm_state *algorithm_state = state->algorithm_state;
   /* Get the first worker. */
   local_scheduler_client *worker =
