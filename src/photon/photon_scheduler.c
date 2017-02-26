@@ -817,7 +817,7 @@ void handle_task_scheduled_callback(Task *original_task, void *user_context) {
  *        for creating the actor.
  * @return Void.
  */
-void handle_actor_creation_callback(actor_info info, void *context) {
+void handle_actor_creation_callback(ActorInfo info, void *context) {
   ActorID actor_id = info.actor_id;
   DBClientID local_scheduler_id = info.local_scheduler_id;
   LocalSchedulerState *state = context;

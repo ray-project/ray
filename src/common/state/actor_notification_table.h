@@ -10,14 +10,14 @@ typedef struct {
   ActorID actor_id;
   /** The ID of the local scheduler that is responsible for the actor. */
   DBClientID local_scheduler_id;
-} actor_info;
+} ActorInfo;
 
 /*
  *  ==== Subscribing to the actor notification table ====
  */
 
 /* Callback for subscribing to the local scheduler table. */
-typedef void (*actor_notification_table_subscribe_callback)(actor_info info,
+typedef void (*actor_notification_table_subscribe_callback)(ActorInfo info,
                                                             void *user_context);
 
 /**
