@@ -12,7 +12,7 @@
 #include "common/task.h"
 
 /* Declared for convenience. */
-void remove_actor(scheduling_algorithm_state *algorithm_state,
+void remove_actor(SchedulingAlgorithmState *algorithm_state,
                   ActorID actor_id);
 
 typedef struct task_queue_entry {
@@ -67,7 +67,7 @@ typedef struct {
 } local_actor_info;
 
 /** Part of the photon state that is maintained by the scheduling algorithm. */
-struct scheduling_algorithm_state {
+struct SchedulingAlgorithmState {
   /** An array of pointers to tasks that are waiting for dependencies. */
   task_queue_entry *waiting_task_queue;
   /** An array of pointers to tasks whose dependencies are ready but that are
@@ -107,9 +107,9 @@ struct scheduling_algorithm_state {
   object_entry *remote_objects;
 };
 
-scheduling_algorithm_state *make_scheduling_algorithm_state(void) {
-  scheduling_algorithm_state *algorithm_state =
-      malloc(sizeof(scheduling_algorithm_state));
+SchedulingAlgorithmState *SchedulingAlgorithmState_init(void) {
+  SchedulingAlgorithmState *algorithm_state =
+      malloc(sizeof(SchedulingAlgorithmState));
   /* Initialize an empty hash map for the cache of local available objects. */
   algorithm_state->local_objects = NULL;
   /* Initialize the hash table of objects being fetched. */
@@ -127,8 +127,8 @@ scheduling_algorithm_state *make_scheduling_algorithm_state(void) {
   return algorithm_state;
 }
 
-void free_scheduling_algorithm_state(
-    scheduling_algorithm_state *algorithm_state) {
+void SchedulingAlgorithmState_free(
+    SchedulingAlgorithmState *algorithm_state) {
   /* Free all of the tasks in the waiting queue. */
   task_queue_entry *elt, *tmp1;
   DL_FOREACH_SAFE(algorithm_state->waiting_task_queue, elt, tmp1) {
@@ -181,7 +181,7 @@ void free_scheduling_algorithm_state(
 }
 
 void provide_scheduler_info(LocalSchedulerState *state,
-                            scheduling_algorithm_state *algorithm_state,
+                            SchedulingAlgorithmState *algorithm_state,
                             local_scheduler_info *info) {
   task_queue_entry *elt;
   info->total_num_workers = utarray_len(state->workers);
@@ -217,7 +217,7 @@ void provide_scheduler_info(LocalSchedulerState *state,
  *        has arrived), then this should be NULL.
  * @return Void.
  */
-void create_actor(scheduling_algorithm_state *algorithm_state,
+void create_actor(SchedulingAlgorithmState *algorithm_state,
                   ActorID actor_id,
                   local_scheduler_client *worker) {
   /* This will be freed when the actor is removed in remove_actor. */
@@ -238,7 +238,7 @@ void create_actor(scheduling_algorithm_state *algorithm_state,
   UNUSED(id_string);
 }
 
-void remove_actor(scheduling_algorithm_state *algorithm_state,
+void remove_actor(SchedulingAlgorithmState *algorithm_state,
                   ActorID actor_id) {
   local_actor_info *entry;
   HASH_FIND(hh, algorithm_state->local_actor_infos, &actor_id, sizeof(actor_id),
@@ -270,7 +270,7 @@ void remove_actor(scheduling_algorithm_state *algorithm_state,
 }
 
 void handle_actor_worker_connect(LocalSchedulerState *state,
-                                 scheduling_algorithm_state *algorithm_state,
+                                 SchedulingAlgorithmState *algorithm_state,
                                  ActorID actor_id,
                                  local_scheduler_client *worker) {
   local_actor_info *entry;
@@ -287,7 +287,7 @@ void handle_actor_worker_connect(LocalSchedulerState *state,
 }
 
 void handle_actor_worker_disconnect(LocalSchedulerState *state,
-                                    scheduling_algorithm_state *algorithm_state,
+                                    SchedulingAlgorithmState *algorithm_state,
                                     ActorID actor_id) {
   remove_actor(algorithm_state, actor_id);
 }
@@ -311,7 +311,7 @@ void handle_actor_worker_disconnect(LocalSchedulerState *state,
  * @return Void.
  */
 void add_task_to_actor_queue(LocalSchedulerState *state,
-                             scheduling_algorithm_state *algorithm_state,
+                             SchedulingAlgorithmState *algorithm_state,
                              task_spec *spec,
                              bool from_global_scheduler) {
   ActorID actor_id = task_spec_actor_id(spec);
@@ -383,7 +383,7 @@ void add_task_to_actor_queue(LocalSchedulerState *state,
  * @return True if a task was dispatched to the actor and false otherwise.
  */
 bool dispatch_actor_task(LocalSchedulerState *state,
-                         scheduling_algorithm_state *algorithm_state,
+                         SchedulingAlgorithmState *algorithm_state,
                          ActorID actor_id) {
   /* Make sure this worker actually is an actor. */
   CHECK(!actor_ids_equal(actor_id, NIL_ACTOR_ID));
@@ -442,7 +442,7 @@ bool dispatch_actor_task(LocalSchedulerState *state,
  * @returns Void.
  */
 void fetch_missing_dependency(LocalSchedulerState *state,
-                              scheduling_algorithm_state *algorithm_state,
+                              SchedulingAlgorithmState *algorithm_state,
                               task_queue_entry *task_entry,
                               ObjectID obj_id) {
   object_entry *entry;
@@ -479,7 +479,7 @@ void fetch_missing_dependency(LocalSchedulerState *state,
  * @returns Void.
  */
 void fetch_missing_dependencies(LocalSchedulerState *state,
-                                scheduling_algorithm_state *algorithm_state,
+                                SchedulingAlgorithmState *algorithm_state,
                                 task_queue_entry *task_entry) {
   task_spec *task = task_entry->spec;
   int64_t num_args = task_num_args(task);
@@ -510,7 +510,7 @@ void fetch_missing_dependencies(LocalSchedulerState *state,
  *         task are present in the local object store, otherwise it returns
  *         false.
  */
-bool can_run(scheduling_algorithm_state *algorithm_state, task_spec *task) {
+bool can_run(SchedulingAlgorithmState *algorithm_state, task_spec *task) {
   int64_t num_args = task_num_args(task);
   for (int i = 0; i < num_args; ++i) {
     if (task_arg_type(task, i) == ARG_BY_REF) {
@@ -565,7 +565,7 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
  * @return Void.
  */
 void dispatch_tasks(LocalSchedulerState *state,
-                    scheduling_algorithm_state *algorithm_state) {
+                    SchedulingAlgorithmState *algorithm_state) {
   task_queue_entry *elt, *tmp;
 
   /* Assign as many tasks as we can, while there are workers available. */
@@ -686,7 +686,7 @@ task_queue_entry *queue_task(LocalSchedulerState *state,
  * @return Void.
  */
 void queue_waiting_task(LocalSchedulerState *state,
-                        scheduling_algorithm_state *algorithm_state,
+                        SchedulingAlgorithmState *algorithm_state,
                         task_spec *spec,
                         bool from_global_scheduler) {
   LOG_DEBUG("Queueing task in waiting queue");
@@ -709,7 +709,7 @@ void queue_waiting_task(LocalSchedulerState *state,
  * @return Void.
  */
 void queue_dispatch_task(LocalSchedulerState *state,
-                         scheduling_algorithm_state *algorithm_state,
+                         SchedulingAlgorithmState *algorithm_state,
                          task_spec *spec,
                          bool from_global_scheduler) {
   LOG_DEBUG("Queueing task in dispatch queue");
@@ -730,7 +730,7 @@ void queue_dispatch_task(LocalSchedulerState *state,
  * @return Void.
  */
 void queue_task_locally(LocalSchedulerState *state,
-                        scheduling_algorithm_state *algorithm_state,
+                        SchedulingAlgorithmState *algorithm_state,
                         task_spec *spec,
                         bool from_global_scheduler) {
   if (can_run(algorithm_state, spec)) {
@@ -753,7 +753,7 @@ void queue_task_locally(LocalSchedulerState *state,
  * @return Void.
  */
 void give_task_to_local_scheduler(LocalSchedulerState *state,
-                                  scheduling_algorithm_state *algorithm_state,
+                                  SchedulingAlgorithmState *algorithm_state,
                                   task_spec *spec,
                                   DBClientID local_scheduler_id) {
   if (db_client_ids_equal(local_scheduler_id, get_db_client_id(state->db))) {
@@ -775,7 +775,7 @@ void give_task_to_local_scheduler(LocalSchedulerState *state,
  * @return Void.
  */
 void give_task_to_global_scheduler(LocalSchedulerState *state,
-                                   scheduling_algorithm_state *algorithm_state,
+                                   SchedulingAlgorithmState *algorithm_state,
                                    task_spec *spec) {
   if (state->db == NULL || !state->config.global_scheduler_exists) {
     /* A global scheduler is not available, so queue the task locally. */
@@ -804,7 +804,7 @@ bool resource_constraints_satisfied(LocalSchedulerState *state,
 }
 
 void handle_task_submitted(LocalSchedulerState *state,
-                           scheduling_algorithm_state *algorithm_state,
+                           SchedulingAlgorithmState *algorithm_state,
                            task_spec *spec) {
   /* TODO(atumanov): if static is satisfied and local objects ready, but dynamic
    * resource is currently unavailable, then consider queueing task locally and
@@ -828,7 +828,7 @@ void handle_task_submitted(LocalSchedulerState *state,
 }
 
 void handle_actor_task_submitted(LocalSchedulerState *state,
-                                 scheduling_algorithm_state *algorithm_state,
+                                 SchedulingAlgorithmState *algorithm_state,
                                  task_spec *spec) {
   ActorID actor_id = task_spec_actor_id(spec);
   CHECK(!actor_ids_equal(actor_id, NIL_ACTOR_ID));
@@ -863,7 +863,7 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
 
 void handle_actor_creation_notification(
     LocalSchedulerState *state,
-    scheduling_algorithm_state *algorithm_state,
+    SchedulingAlgorithmState *algorithm_state,
     ActorID actor_id) {
   int num_cached_actor_tasks =
       utarray_len(algorithm_state->cached_submitted_actor_tasks);
@@ -881,7 +881,7 @@ void handle_actor_creation_notification(
 }
 
 void handle_task_scheduled(LocalSchedulerState *state,
-                           scheduling_algorithm_state *algorithm_state,
+                           SchedulingAlgorithmState *algorithm_state,
                            task_spec *spec) {
   /* This callback handles tasks that were assigned to this local scheduler by
    * the global scheduler, so we can safely assert that there is a connection to
@@ -894,7 +894,7 @@ void handle_task_scheduled(LocalSchedulerState *state,
 }
 
 void handle_actor_task_scheduled(LocalSchedulerState *state,
-                                 scheduling_algorithm_state *algorithm_state,
+                                 SchedulingAlgorithmState *algorithm_state,
                                  task_spec *spec) {
   /* This callback handles tasks that were assigned to this local scheduler by
    * the global scheduler or by other workers, so we can safely assert that
@@ -926,7 +926,7 @@ void handle_actor_task_scheduled(LocalSchedulerState *state,
 }
 
 void handle_worker_available(LocalSchedulerState *state,
-                             scheduling_algorithm_state *algorithm_state,
+                             SchedulingAlgorithmState *algorithm_state,
                              local_scheduler_client *worker) {
   CHECK(worker->task_in_progress == NULL);
   /* Check that the worker isn't in the pool of available workers. */
@@ -1013,7 +1013,7 @@ void handle_worker_removed(LocalSchedulerState *state,
 }
 
 void handle_actor_worker_available(LocalSchedulerState *state,
-                                   scheduling_algorithm_state *algorithm_state,
+                                   SchedulingAlgorithmState *algorithm_state,
                                    local_scheduler_client *worker) {
   ActorID actor_id = worker->actor_id;
   CHECK(!actor_ids_equal(actor_id, NIL_ACTOR_ID));
@@ -1030,7 +1030,7 @@ void handle_actor_worker_available(LocalSchedulerState *state,
 }
 
 void handle_worker_blocked(LocalSchedulerState *state,
-                           scheduling_algorithm_state *algorithm_state,
+                           SchedulingAlgorithmState *algorithm_state,
                            local_scheduler_client *worker) {
   /* Find the worker in the list of executing workers. */
   for (int i = 0; i < utarray_len(algorithm_state->executing_workers); ++i) {
@@ -1069,7 +1069,7 @@ void handle_worker_blocked(LocalSchedulerState *state,
 }
 
 void handle_worker_unblocked(LocalSchedulerState *state,
-                             scheduling_algorithm_state *algorithm_state,
+                             SchedulingAlgorithmState *algorithm_state,
                              local_scheduler_client *worker) {
   /* Find the worker in the list of blocked workers. */
   for (int i = 0; i < utarray_len(algorithm_state->blocked_workers); ++i) {
@@ -1112,7 +1112,7 @@ void handle_worker_unblocked(LocalSchedulerState *state,
 }
 
 void handle_object_available(LocalSchedulerState *state,
-                             scheduling_algorithm_state *algorithm_state,
+                             SchedulingAlgorithmState *algorithm_state,
                              ObjectID object_id) {
   /* Get the entry for this object from the active fetch request, or allocate
    * one if needed. */
@@ -1160,7 +1160,7 @@ void handle_object_available(LocalSchedulerState *state,
 void handle_object_removed(LocalSchedulerState *state,
                            ObjectID removed_object_id) {
   /* Remove the object from the set of locally available objects. */
-  scheduling_algorithm_state *algorithm_state = state->algorithm_state;
+  SchedulingAlgorithmState *algorithm_state = state->algorithm_state;
   object_entry *entry;
   HASH_FIND(hh, algorithm_state->local_objects, &removed_object_id,
             sizeof(removed_object_id), entry);
@@ -1208,14 +1208,14 @@ void handle_object_removed(LocalSchedulerState *state,
   }
 }
 
-int num_waiting_tasks(scheduling_algorithm_state *algorithm_state) {
+int num_waiting_tasks(SchedulingAlgorithmState *algorithm_state) {
   task_queue_entry *elt;
   int count;
   DL_COUNT(algorithm_state->waiting_task_queue, elt, count);
   return count;
 }
 
-int num_dispatch_tasks(scheduling_algorithm_state *algorithm_state) {
+int num_dispatch_tasks(SchedulingAlgorithmState *algorithm_state) {
   task_queue_entry *elt;
   int count;
   DL_COUNT(algorithm_state->dispatch_task_queue, elt, count);
@@ -1223,7 +1223,7 @@ int num_dispatch_tasks(scheduling_algorithm_state *algorithm_state) {
 }
 
 void print_worker_info(const char *message,
-                       scheduling_algorithm_state *algorithm_state) {
+                       SchedulingAlgorithmState *algorithm_state) {
   LOG_DEBUG("%s: %d available, %d executing, %d blocked", message,
             utarray_len(algorithm_state->available_workers),
             utarray_len(algorithm_state->executing_workers),

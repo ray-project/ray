@@ -375,7 +375,7 @@ TEST object_reconstruction_suppression_test(void) {
 TEST task_dependency_test(void) {
   photon_mock *photon = init_photon_mock(0, 1);
   LocalSchedulerState *state = photon->photon_state;
-  scheduling_algorithm_state *algorithm_state = state->algorithm_state;
+  SchedulingAlgorithmState *algorithm_state = state->algorithm_state;
   /* Get the first worker. */
   local_scheduler_client *worker =
       *((local_scheduler_client **) utarray_eltptr(state->workers, 0));
@@ -450,7 +450,7 @@ TEST task_dependency_test(void) {
 TEST task_multi_dependency_test(void) {
   photon_mock *photon = init_photon_mock(0, 1);
   LocalSchedulerState *state = photon->photon_state;
-  scheduling_algorithm_state *algorithm_state = state->algorithm_state;
+  SchedulingAlgorithmState *algorithm_state = state->algorithm_state;
   /* Get the first worker. */
   local_scheduler_client *worker =
       *((local_scheduler_client **) utarray_eltptr(state->workers, 0));

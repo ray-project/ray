@@ -55,7 +55,7 @@ typedef struct {
 } actor_map_entry;
 
 /** Internal state of the scheduling algorithm. */
-typedef struct scheduling_algorithm_state scheduling_algorithm_state;
+typedef struct SchedulingAlgorithmState SchedulingAlgorithmState;
 
 /** A struct storing the configuration state of the local scheduler. This should
  *  consist of values that don't change over the lifetime of the local
@@ -88,7 +88,7 @@ typedef struct {
   /** The Plasma client. */
   plasma_connection *plasma_conn;
   /** State for the scheduling algorithm. */
-  scheduling_algorithm_state *algorithm_state;
+  SchedulingAlgorithmState *algorithm_state;
   /** Input buffer, used for reading input in process_message to avoid
    *  allocation for each call to process_message. */
   UT_array *input_buffer;

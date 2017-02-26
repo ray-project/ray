@@ -201,7 +201,7 @@ void LocalSchedulerState_free(LocalSchedulerState *state) {
   }
 
   /* Free the algorithm state. */
-  free_scheduling_algorithm_state(state->algorithm_state);
+  SchedulingAlgorithmState_free(state->algorithm_state);
   state->algorithm_state = NULL;
   /* Free the input buffer. */
   utarray_free(state->input_buffer);
@@ -380,7 +380,7 @@ LocalSchedulerState *LocalSchedulerState_init(
   event_loop_add_file(loop, plasma_fd, EVENT_LOOP_READ,
                       process_plasma_notification, state);
   /* Add scheduler state. */
-  state->algorithm_state = make_scheduling_algorithm_state();
+  state->algorithm_state = SchedulingAlgorithmState_init();
   /* Add the input buffer. This is used to read in messages from clients without
    * having to reallocate a new buffer every time. */
   utarray_new(state->input_buffer, &byte_icd);
@@ -847,7 +847,7 @@ void handle_actor_creation_callback(actor_info info, void *context) {
 
 int heartbeat_handler(event_loop *loop, timer_id id, void *context) {
   LocalSchedulerState *state = context;
-  scheduling_algorithm_state *algorithm_state = state->algorithm_state;
+  SchedulingAlgorithmState *algorithm_state = state->algorithm_state;
   local_scheduler_info info;
   /* Ask the scheduling algorithm to fill out the scheduler info struct. */
   provide_scheduler_info(state, algorithm_state, &info);

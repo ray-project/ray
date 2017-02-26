@@ -127,7 +127,7 @@ LocalSchedulerState *LocalSchedulerState_init(
 
 void LocalSchedulerState_free(LocalSchedulerState *state);
 
-scheduling_algorithm_state *get_algorithm_state(LocalSchedulerState *state);
+SchedulingAlgorithmState *get_algorithm_state(LocalSchedulerState *state);
 
 void process_message(event_loop *loop,
                      int client_sock,

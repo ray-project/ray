@@ -23,7 +23,7 @@
  *
  * @return State managed by the scheduling algorithm.
  */
-scheduling_algorithm_state *make_scheduling_algorithm_state(void);
+SchedulingAlgorithmState *SchedulingAlgorithmState_init(void);
 
 /**
  * Free the scheduler state.
@@ -31,14 +31,14 @@ scheduling_algorithm_state *make_scheduling_algorithm_state(void);
  * @param algorithm_state State maintained by the scheduling algorithm.
  * @return Void.
  */
-void free_scheduling_algorithm_state(
-    scheduling_algorithm_state *algorithm_state);
+void SchedulingAlgorithmState_free(
+    SchedulingAlgorithmState *algorithm_state);
 
 /**
  *
  */
 void provide_scheduler_info(LocalSchedulerState *state,
-                            scheduling_algorithm_state *algorithm_state,
+                            SchedulingAlgorithmState *algorithm_state,
                             local_scheduler_info *info);
 
 /**
@@ -58,7 +58,7 @@ void provide_scheduler_info(LocalSchedulerState *state,
  * @return Void.
  */
 void handle_task_submitted(LocalSchedulerState *state,
-                           scheduling_algorithm_state *algorithm_state,
+                           SchedulingAlgorithmState *algorithm_state,
                            task_spec *spec);
 
 /**
@@ -71,7 +71,7 @@ void handle_task_submitted(LocalSchedulerState *state,
  * @return Void.
  */
 void handle_actor_task_submitted(LocalSchedulerState *state,
-                                 scheduling_algorithm_state *algorithm_state,
+                                 SchedulingAlgorithmState *algorithm_state,
                                  task_spec *spec);
 
 /**
@@ -86,7 +86,7 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
  */
 void handle_actor_creation_notification(
     LocalSchedulerState *state,
-    scheduling_algorithm_state *algorithm_state,
+    SchedulingAlgorithmState *algorithm_state,
     ActorID actor_id);
 
 /**
@@ -99,7 +99,7 @@ void handle_actor_creation_notification(
  * @return Void.
  */
 void handle_task_scheduled(LocalSchedulerState *state,
-                           scheduling_algorithm_state *algorithm_state,
+                           SchedulingAlgorithmState *algorithm_state,
                            task_spec *spec);
 
 /**
@@ -113,7 +113,7 @@ void handle_task_scheduled(LocalSchedulerState *state,
  * @return Void.
  */
 void handle_actor_task_scheduled(LocalSchedulerState *state,
-                                 scheduling_algorithm_state *algorithm_state,
+                                 SchedulingAlgorithmState *algorithm_state,
                                  task_spec *spec);
 
 /**
@@ -126,7 +126,7 @@ void handle_actor_task_scheduled(LocalSchedulerState *state,
  * @return Void.
  */
 void handle_object_available(LocalSchedulerState *state,
-                             scheduling_algorithm_state *algorithm_state,
+                             SchedulingAlgorithmState *algorithm_state,
                              ObjectID object_id);
 
 /**
@@ -147,7 +147,7 @@ void handle_object_removed(LocalSchedulerState *state, ObjectID object_id);
  * @return Void.
  */
 void handle_worker_available(LocalSchedulerState *state,
-                             scheduling_algorithm_state *algorithm_state,
+                             SchedulingAlgorithmState *algorithm_state,
                              local_scheduler_client *worker);
 
 /**
@@ -172,7 +172,7 @@ void handle_worker_removed(local_scheduler_state *state,
  * @return Void.
  */
 void handle_actor_worker_available(LocalSchedulerState *state,
-                                   scheduling_algorithm_state *algorithm_state,
+                                   SchedulingAlgorithmState *algorithm_state,
                                    local_scheduler_client *worker);
 
 /**
@@ -185,7 +185,7 @@ void handle_actor_worker_available(LocalSchedulerState *state,
  * @return Void.
  */
 void handle_actor_worker_connect(LocalSchedulerState *state,
-                                 scheduling_algorithm_state *algorithm_state,
+                                 SchedulingAlgorithmState *algorithm_state,
                                  ActorID actor_id,
                                  local_scheduler_client *worker);
 
@@ -198,7 +198,7 @@ void handle_actor_worker_connect(LocalSchedulerState *state,
  * @return Void.
  */
 void handle_actor_worker_disconnect(LocalSchedulerState *state,
-                                    scheduling_algorithm_state *algorithm_state,
+                                    SchedulingAlgorithmState *algorithm_state,
                                     ActorID actor_id);
 
 /**
@@ -211,7 +211,7 @@ void handle_actor_worker_disconnect(LocalSchedulerState *state,
  * @return Void.
  */
 void handle_worker_blocked(LocalSchedulerState *state,
-                           scheduling_algorithm_state *algorithm_state,
+                           SchedulingAlgorithmState *algorithm_state,
                            local_scheduler_client *worker);
 
 /**
@@ -224,7 +224,7 @@ void handle_worker_blocked(LocalSchedulerState *state,
  * @return Void.
  */
 void handle_worker_unblocked(LocalSchedulerState *state,
-                             scheduling_algorithm_state *algorithm_state,
+                             SchedulingAlgorithmState *algorithm_state,
                              local_scheduler_client *worker);
 
 /**
@@ -248,7 +248,7 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context);
  * @return Void.
  */
 void print_worker_info(const char *message,
-                       scheduling_algorithm_state *algorithm_state);
+                       SchedulingAlgorithmState *algorithm_state);
 
 /** The following methods are for testing purposes only. */
 #ifdef PHOTON_TEST
@@ -259,7 +259,7 @@ void print_worker_info(const char *message,
  * @param algorithm_state State maintained by the scheduling algorithm.
  * @return The number of tasks queued.
  */
-int num_waiting_tasks(scheduling_algorithm_state *algorithm_state);
+int num_waiting_tasks(SchedulingAlgorithmState *algorithm_state);
 
 /**
  * Get the number of tasks currently waiting for a worker to become available.
@@ -267,7 +267,7 @@ int num_waiting_tasks(scheduling_algorithm_state *algorithm_state);
  * @param algorithm_state State maintained by the scheduling algorithm.
  * @return The number of tasks queued.
  */
-int num_dispatch_tasks(scheduling_algorithm_state *algorithm_state);
+int num_dispatch_tasks(SchedulingAlgorithmState *algorithm_state);
 #endif
 
 #endif /* PHOTON_ALGORITHM_H */
