@@ -23,7 +23,7 @@
 #include "uthash.h"
 
 UT_icd task_ptr_icd = {sizeof(Task *), NULL, NULL, NULL};
-UT_icd workers_icd = {sizeof(local_scheduler_client *), NULL, NULL, NULL};
+UT_icd workers_icd = {sizeof(LocalSchedulerClient *), NULL, NULL, NULL};
 
 UT_icd pid_t_icd = {sizeof(pid_t), NULL, NULL, NULL};
 
@@ -58,7 +58,7 @@ void print_resource_info(const LocalSchedulerState *state,
 }
 
 int force_kill_worker(event_loop *loop, timer_id id, void *context) {
-  local_scheduler_client *worker = (local_scheduler_client *) context;
+  LocalSchedulerClient *worker = (LocalSchedulerClient *) context;
   kill(worker->pid, SIGKILL);
   close(worker->sock);
   free(worker);
@@ -76,13 +76,13 @@ int force_kill_worker(event_loop *loop, timer_id id, void *context) {
  *        to clean up its own state.
  * @return Void.
  */
-void kill_worker(local_scheduler_client *worker, bool cleanup) {
+void kill_worker(LocalSchedulerClient *worker, bool cleanup) {
   /* Erase the local scheduler's reference to the worker. */
   LocalSchedulerState *state = worker->local_scheduler_state;
   int num_workers = utarray_len(state->workers);
   for (int i = 0; i < utarray_len(state->workers); ++i) {
-    local_scheduler_client *active_worker =
-        *(local_scheduler_client **) utarray_eltptr(state->workers, i);
+    LocalSchedulerClient *active_worker =
+        *(LocalSchedulerClient **) utarray_eltptr(state->workers, i);
     if (active_worker == worker) {
       utarray_erase(state->workers, i, 1);
     }
@@ -173,10 +173,10 @@ void LocalSchedulerState_free(LocalSchedulerState *state) {
    * workers. */
   /* TODO(swang): It's possible that the local scheduler will exit before all
    * of its task table updates make it to redis. */
-  for (local_scheduler_client **worker =
-           (local_scheduler_client **) utarray_front(state->workers);
+  for (LocalSchedulerClient **worker =
+           (LocalSchedulerClient **) utarray_front(state->workers);
        worker != NULL;
-       worker = (local_scheduler_client **) utarray_front(state->workers)) {
+       worker = (LocalSchedulerClient **) utarray_front(state->workers)) {
     kill_worker(*worker, true);
   }
   utarray_free(state->workers);
@@ -427,7 +427,7 @@ void update_dynamic_resources(LocalSchedulerState *state,
 
 void assign_task_to_worker(LocalSchedulerState *state,
                            task_spec *spec,
-                           local_scheduler_client *worker) {
+                           LocalSchedulerClient *worker) {
   if (write_message(worker->sock, EXECUTE_TASK, task_spec_size(spec),
                     (uint8_t *) spec) < 0) {
     if (errno == EPIPE || errno == EBADF) {
@@ -589,7 +589,7 @@ void process_message(event_loop *loop,
                      int client_sock,
                      void *context,
                      int events) {
-  local_scheduler_client *worker = context;
+  LocalSchedulerClient *worker = context;
   LocalSchedulerState *state = worker->local_scheduler_state;
 
   int64_t type;
@@ -766,7 +766,7 @@ void new_client_connection(event_loop *loop,
   int new_socket = accept_client(listener_sock);
   /* Create a struct for this worker. This will be freed when we free the local
    * scheduler state. */
-  local_scheduler_client *worker = malloc(sizeof(local_scheduler_client));
+  LocalSchedulerClient *worker = malloc(sizeof(LocalSchedulerClient));
   worker->sock = new_socket;
   worker->task_in_progress = NULL;
   worker->is_blocked = false;

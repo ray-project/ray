@@ -148,7 +148,7 @@ void handle_object_removed(LocalSchedulerState *state, ObjectID object_id);
  */
 void handle_worker_available(LocalSchedulerState *state,
                              SchedulingAlgorithmState *algorithm_state,
-                             local_scheduler_client *worker);
+                             LocalSchedulerClient *worker);
 
 /**
  * This function is called when a worker is removed.
@@ -160,7 +160,7 @@ void handle_worker_available(LocalSchedulerState *state,
  */
 void handle_worker_removed(LocalSchedulerState *state,
                            SchedulingAlgorithmState *algorithm_state,
-                           local_scheduler_client *worker);
+                           LocalSchedulerClient *worker);
 
 /**
  * This version of handle_worker_available is called whenever the worker that is
@@ -173,7 +173,7 @@ void handle_worker_removed(LocalSchedulerState *state,
  */
 void handle_actor_worker_available(LocalSchedulerState *state,
                                    SchedulingAlgorithmState *algorithm_state,
-                                   local_scheduler_client *worker);
+                                   LocalSchedulerClient *worker);
 
 /**
  * Handle the fact that a new worker is available for running an actor.
@@ -187,7 +187,7 @@ void handle_actor_worker_available(LocalSchedulerState *state,
 void handle_actor_worker_connect(LocalSchedulerState *state,
                                  SchedulingAlgorithmState *algorithm_state,
                                  ActorID actor_id,
-                                 local_scheduler_client *worker);
+                                 LocalSchedulerClient *worker);
 
 /**
  * Handle the fact that a worker running an actor has disconnected.
@@ -212,7 +212,7 @@ void handle_actor_worker_disconnect(LocalSchedulerState *state,
  */
 void handle_worker_blocked(LocalSchedulerState *state,
                            SchedulingAlgorithmState *algorithm_state,
-                           local_scheduler_client *worker);
+                           LocalSchedulerClient *worker);
 
 /**
  * This function is called when a worker that was blocked on an object that
@@ -225,7 +225,7 @@ void handle_worker_blocked(LocalSchedulerState *state,
  */
 void handle_worker_unblocked(LocalSchedulerState *state,
                              SchedulingAlgorithmState *algorithm_state,
-                             local_scheduler_client *worker);
+                             LocalSchedulerClient *worker);
 
 /**
  * This function fetches queued task's missing object dependencies. It is

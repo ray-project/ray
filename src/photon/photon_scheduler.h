@@ -40,7 +40,7 @@ void new_client_connection(event_loop *loop,
  */
 void assign_task_to_worker(LocalSchedulerState *state,
                            task_spec *task,
-                           local_scheduler_client *worker);
+                           LocalSchedulerClient *worker);
 
 /**
  * This is the callback that is used to process a notification from the Plasma
@@ -79,7 +79,7 @@ void print_resource_info(const LocalSchedulerState *s, const task_spec *spec);
  *        exit.
  * @param Void.
  */
-void kill_worker(local_scheduler_client *worker, bool wait);
+void kill_worker(LocalSchedulerClient *worker, bool wait);
 
 /**
  * Start a worker. This forks a new worker process that can be added to the

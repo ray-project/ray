@@ -121,6 +121,6 @@ typedef struct {
   ActorID actor_id;
   /** A pointer to the local scheduler state. */
   LocalSchedulerState *local_scheduler_state;
-} local_scheduler_client;
+} LocalSchedulerClient;
 
 #endif /* PHOTON_H */

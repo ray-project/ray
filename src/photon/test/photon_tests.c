@@ -115,11 +115,11 @@ void destroy_photon_mock(photon_mock *mock) {
 
   /* Kill all the workers and run the event loop again so that the task table
    * updates propagate and the tasks in progress are freed. */
-  local_scheduler_client **worker = (local_scheduler_client **) utarray_eltptr(
+  LocalSchedulerClient **worker = (LocalSchedulerClient **) utarray_eltptr(
       mock->photon_state->workers, 0);
   while (worker != NULL) {
     kill_worker(*worker, true);
-    worker = (local_scheduler_client **) utarray_eltptr(
+    worker = (LocalSchedulerClient **) utarray_eltptr(
         mock->photon_state->workers, 0);
   }
   event_loop_add_timer(mock->loop, 500,
@@ -133,7 +133,7 @@ void destroy_photon_mock(photon_mock *mock) {
   free(mock);
 }
 
-void reset_worker(photon_mock *mock, local_scheduler_client *worker) {
+void reset_worker(photon_mock *mock, LocalSchedulerClient *worker) {
   if (worker->task_in_progress) {
     free_task(worker->task_in_progress);
     worker->task_in_progress = NULL;
@@ -377,8 +377,8 @@ TEST task_dependency_test(void) {
   LocalSchedulerState *state = photon->photon_state;
   SchedulingAlgorithmState *algorithm_state = state->algorithm_state;
   /* Get the first worker. */
-  local_scheduler_client *worker =
-      *((local_scheduler_client **) utarray_eltptr(state->workers, 0));
+  LocalSchedulerClient *worker =
+      *((LocalSchedulerClient **) utarray_eltptr(state->workers, 0));
   task_spec *spec = example_task_spec(1, 1);
   ObjectID oid = task_arg_id(spec, 0);
 
@@ -452,8 +452,8 @@ TEST task_multi_dependency_test(void) {
   LocalSchedulerState *state = photon->photon_state;
   SchedulingAlgorithmState *algorithm_state = state->algorithm_state;
   /* Get the first worker. */
-  local_scheduler_client *worker =
-      *((local_scheduler_client **) utarray_eltptr(state->workers, 0));
+  LocalSchedulerClient *worker =
+      *((LocalSchedulerClient **) utarray_eltptr(state->workers, 0));
   task_spec *spec = example_task_spec(2, 1);
   ObjectID oid1 = task_arg_id(spec, 0);
   ObjectID oid2 = task_arg_id(spec, 1);
@@ -545,8 +545,8 @@ TEST start_kill_workers_test(void) {
 
   /* Each worker should register its process ID. */
   for (int i = 0; i < utarray_len(photon->photon_state->workers); ++i) {
-    local_scheduler_client *worker =
-        *(local_scheduler_client **) utarray_eltptr(
+    LocalSchedulerClient *worker =
+        *(LocalSchedulerClient **) utarray_eltptr(
             photon->photon_state->workers, i);
     process_message(photon->photon_state->loop, worker->sock, worker, 0);
   }
@@ -554,7 +554,7 @@ TEST start_kill_workers_test(void) {
   ASSERT_EQ(utarray_len(photon->photon_state->workers), num_workers);
 
   /* After killing a worker, its state is cleaned up. */
-  local_scheduler_client *worker = *(local_scheduler_client **) utarray_eltptr(
+  LocalSchedulerClient *worker = *(LocalSchedulerClient **) utarray_eltptr(
       photon->photon_state->workers, 0);
   kill_worker(worker, false);
   ASSERT_EQ(utarray_len(photon->photon_state->child_pids), 0);
@@ -573,7 +573,7 @@ TEST start_kill_workers_test(void) {
   ASSERT_EQ(utarray_len(photon->photon_state->child_pids), 1);
   ASSERT_EQ(utarray_len(photon->photon_state->workers), num_workers);
   /* Make sure that the new worker registers its process ID. */
-  worker = *(local_scheduler_client **) utarray_eltptr(
+  worker = *(LocalSchedulerClient **) utarray_eltptr(
       photon->photon_state->workers, num_workers - 1);
   process_message(photon->photon_state->loop, worker->sock, worker, 0);
   ASSERT_EQ(utarray_len(photon->photon_state->child_pids), 0);
