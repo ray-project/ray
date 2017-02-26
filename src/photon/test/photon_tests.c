@@ -48,16 +48,16 @@ typedef struct {
   int num_photon_conns;
   /** Photon client connections. */
   PhotonConnection **conns;
-} photon_mock;
+} PhotonMock;
 
-photon_mock *init_photon_mock(int num_workers, int num_mock_workers) {
+PhotonMock *PhotonMock_init(int num_workers, int num_mock_workers) {
   const char *node_ip_address = "127.0.0.1";
   const char *redis_addr = node_ip_address;
   int redis_port = 6379;
   const double static_resource_conf[MAX_RESOURCE_INDEX] = {DEFAULT_NUM_CPUS,
                                                            DEFAULT_NUM_GPUS};
-  photon_mock *mock = malloc(sizeof(photon_mock));
-  memset(mock, 0, sizeof(photon_mock));
+  PhotonMock *mock = malloc(sizeof(PhotonMock));
+  memset(mock, 0, sizeof(PhotonMock));
   mock->loop = event_loop_create();
   /* Bind to the Photon port and initialize the Photon scheduler. */
   UT_string *plasma_manager_socket_name = bind_ipc_sock_retry(
@@ -106,7 +106,7 @@ photon_mock *init_photon_mock(int num_workers, int num_mock_workers) {
   return mock;
 }
 
-void destroy_photon_mock(photon_mock *mock) {
+void PhotonMock_free(PhotonMock *mock) {
   /* Disconnect clients. */
   for (int i = 0; i < mock->num_photon_conns; ++i) {
     PhotonConnection_free(mock->conns[i]);
@@ -133,7 +133,7 @@ void destroy_photon_mock(photon_mock *mock) {
   free(mock);
 }
 
-void reset_worker(photon_mock *mock, LocalSchedulerClient *worker) {
+void reset_worker(PhotonMock *mock, LocalSchedulerClient *worker) {
   if (worker->task_in_progress) {
     Task_free(worker->task_in_progress);
     worker->task_in_progress = NULL;
@@ -146,7 +146,7 @@ void reset_worker(photon_mock *mock, LocalSchedulerClient *worker) {
  * value, the task should get assigned to a worker again.
  */
 TEST object_reconstruction_test(void) {
-  photon_mock *photon = init_photon_mock(0, 1);
+  PhotonMock *photon = PhotonMock_init(0, 1);
   PhotonConnection *worker = photon->conns[0];
 
   /* Create a task with zero dependencies and one return value. */
@@ -179,7 +179,7 @@ TEST object_reconstruction_test(void) {
     free_task_spec(reconstruct_task);
     free_task_spec(task_assigned);
     free_task_spec(spec);
-    destroy_photon_mock(photon);
+    PhotonMock_free(photon);
     exit(0);
   } else {
     /* Run the event loop. NOTE: OSX appears to require the parent process to
@@ -204,7 +204,7 @@ TEST object_reconstruction_test(void) {
     free_task_spec(spec);
     ASSERT_EQ(num_waiting_tasks(photon->photon_state->algorithm_state), 0);
     ASSERT_EQ(num_dispatch_tasks(photon->photon_state->algorithm_state), 0);
-    destroy_photon_mock(photon);
+    PhotonMock_free(photon);
     PASS();
   }
 }
@@ -215,7 +215,7 @@ TEST object_reconstruction_test(void) {
  * should trigger reconstruction of all previous tasks in the lineage.
  */
 TEST object_reconstruction_recursive_test(void) {
-  photon_mock *photon = init_photon_mock(0, 1);
+  PhotonMock *photon = PhotonMock_init(0, 1);
   PhotonConnection *worker = photon->conns[0];
   /* Create a chain of tasks, each one dependent on the one before it. Mark
    * each object as available so that tasks will run immediately. */
@@ -277,7 +277,7 @@ TEST object_reconstruction_recursive_test(void) {
       free_task_spec(task_assigned);
       ASSERT(found);
     }
-    destroy_photon_mock(photon);
+    PhotonMock_free(photon);
     exit(0);
   } else {
     /* Run the event loop. NOTE: OSX appears to require the parent process to
@@ -305,7 +305,7 @@ TEST object_reconstruction_recursive_test(void) {
     for (int i = 0; i < NUM_TASKS; ++i) {
       free_task_spec(specs[i]);
     }
-    destroy_photon_mock(photon);
+    PhotonMock_free(photon);
     PASS();
   }
 }
@@ -324,7 +324,7 @@ void object_reconstruction_suppression_callback(ObjectID object_id,
 }
 
 TEST object_reconstruction_suppression_test(void) {
-  photon_mock *photon = init_photon_mock(0, 1);
+  PhotonMock *photon = PhotonMock_init(0, 1);
   PhotonConnection *worker = photon->conns[0];
 
   object_reconstruction_suppression_spec = example_task_spec(0, 1);
@@ -343,7 +343,7 @@ TEST object_reconstruction_suppression_test(void) {
     /* Clean up. */
     free_task_spec(task_assigned);
     free_task_spec(object_reconstruction_suppression_spec);
-    destroy_photon_mock(photon);
+    PhotonMock_free(photon);
     exit(0);
   } else {
     /* Connect a plasma manager client so we can call object_table_add. */
@@ -367,13 +367,13 @@ TEST object_reconstruction_suppression_test(void) {
     ASSERT_EQ(num_dispatch_tasks(photon->photon_state->algorithm_state), 0);
     free_task_spec(object_reconstruction_suppression_spec);
     db_disconnect(db);
-    destroy_photon_mock(photon);
+    PhotonMock_free(photon);
     PASS();
   }
 }
 
 TEST task_dependency_test(void) {
-  photon_mock *photon = init_photon_mock(0, 1);
+  PhotonMock *photon = PhotonMock_init(0, 1);
   LocalSchedulerState *state = photon->photon_state;
   SchedulingAlgorithmState *algorithm_state = state->algorithm_state;
   /* Get the first worker. */
@@ -443,12 +443,12 @@ TEST task_dependency_test(void) {
   ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
 
   free_task_spec(spec);
-  destroy_photon_mock(photon);
+  PhotonMock_free(photon);
   PASS();
 }
 
 TEST task_multi_dependency_test(void) {
-  photon_mock *photon = init_photon_mock(0, 1);
+  PhotonMock *photon = PhotonMock_init(0, 1);
   LocalSchedulerState *state = photon->photon_state;
   SchedulingAlgorithmState *algorithm_state = state->algorithm_state;
   /* Get the first worker. */
@@ -517,14 +517,14 @@ TEST task_multi_dependency_test(void) {
   reset_worker(photon, worker);
 
   free_task_spec(spec);
-  destroy_photon_mock(photon);
+  PhotonMock_free(photon);
   PASS();
 }
 
 TEST start_kill_workers_test(void) {
   /* Start some workers. */
   int num_workers = 4;
-  photon_mock *photon = init_photon_mock(num_workers, 0);
+  PhotonMock *photon = PhotonMock_init(num_workers, 0);
   /* We start off with num_workers children processes, but no workers
    * registered yet. */
   ASSERT_EQ(utarray_len(photon->photon_state->child_pids), num_workers);
@@ -581,7 +581,7 @@ TEST start_kill_workers_test(void) {
 
   /* Clean up. */
   close(new_worker_fd);
-  destroy_photon_mock(photon);
+  PhotonMock_free(photon);
   PASS();
 }
 
