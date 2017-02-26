@@ -55,7 +55,7 @@ void local_scheduler_table_subscribe(
 typedef struct {
   local_scheduler_table_subscribe_callback subscribe_callback;
   void *subscribe_context;
-} local_scheduler_table_subscribe_data;
+} LocalSchedulerTableSubscribeData;
 
 /**
  * Send a heartbeat to all subscriers to the local scheduler table. This

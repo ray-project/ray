@@ -1051,7 +1051,7 @@ void redis_local_scheduler_table_subscribe_callback(redisAsyncContext *c,
     /* Handle a local scheduler heartbeat. Parse the payload and call the
      * subscribe callback. */
     redisReply *payload = reply->element[2];
-    local_scheduler_table_subscribe_data *data = (local_scheduler_table_subscribe_data *) callback_data->data;
+    LocalSchedulerTableSubscribeData *data = (LocalSchedulerTableSubscribeData *) callback_data->data;
     DBClientID client_id;
     LocalSchedulerInfo info;
     /* The payload should be the concatenation of these two structs. */

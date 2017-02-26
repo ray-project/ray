@@ -6,8 +6,8 @@ void local_scheduler_table_subscribe(
     local_scheduler_table_subscribe_callback subscribe_callback,
     void *subscribe_context,
     RetryInfo *retry) {
-  local_scheduler_table_subscribe_data *sub_data =
-      malloc(sizeof(local_scheduler_table_subscribe_data));
+  LocalSchedulerTableSubscribeData *sub_data =
+      malloc(sizeof(LocalSchedulerTableSubscribeData));
   sub_data->subscribe_callback = subscribe_callback;
   sub_data->subscribe_context = subscribe_context;
 
