@@ -592,6 +592,17 @@ void process_message(event_loop *loop,
   switch (type) {
   case SUBMIT_TASK: {
     task_spec *spec = (task_spec *) utarray_front(state->input_buffer);
+    /* Update the result table, which holds mappings of object ID -> ID of the
+     * task that created it. */
+    if (state->db != NULL) {
+      task_id task_id = task_spec_id(spec);
+      for (int64_t i = 0; i < task_num_returns(spec); ++i) {
+        object_id return_id = task_return(spec, i);
+        result_table_add(state->db, return_id, task_id, NULL, NULL, NULL);
+      }
+    }
+
+    /* Handle the task submission. */
     if (actor_ids_equal(task_spec_actor_id(spec), NIL_ACTOR_ID)) {
       handle_task_submitted(state, state->algorithm_state, spec);
     } else {
