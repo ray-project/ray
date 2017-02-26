@@ -58,7 +58,7 @@ void destroy_global_scheduler_policy(
  * @return True if the task was assigned to a local scheduler and false
  *         otherwise.
  */
-bool handle_task_waiting(global_scheduler_state *state,
+bool handle_task_waiting(GlobalSchedulerState *state,
                          global_scheduler_policy_state *policy_state,
                          Task *task);
 
@@ -70,7 +70,7 @@ bool handle_task_waiting(global_scheduler_state *state,
  * @param object_id The ID of the object that is now available.
  * @return Void.
  */
-void handle_object_available(global_scheduler_state *state,
+void handle_object_available(GlobalSchedulerState *state,
                              global_scheduler_policy_state *policy_state,
                              ObjectID object_id);
 
@@ -83,7 +83,7 @@ void handle_object_available(global_scheduler_state *state,
  * @return Void.
  */
 void handle_local_scheduler_heartbeat(
-    global_scheduler_state *state,
+    GlobalSchedulerState *state,
     global_scheduler_policy_state *policy_state);
 
 /**
@@ -95,7 +95,7 @@ void handle_local_scheduler_heartbeat(
  * @param The db client ID of the new local scheduler.
  * @return Void.
  */
-void handle_new_local_scheduler(global_scheduler_state *state,
+void handle_new_local_scheduler(GlobalSchedulerState *state,
                                 global_scheduler_policy_state *policy_state,
                                 DBClientID db_client_id);
 

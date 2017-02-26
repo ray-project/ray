@@ -79,7 +79,7 @@ typedef struct {
   SchedulerObjectInfo *scheduler_object_info_table;
   /** An array of tasks that haven't been scheduled yet. */
   UT_array *pending_tasks;
-} global_scheduler_state;
+} GlobalSchedulerState;
 
 /**
  * This is a helper method to look up the local scheduler struct that
@@ -90,7 +90,7 @@ typedef struct {
  * @return The corresponding local scheduler struct. If the global scheduler is
  *         not aware of the local scheduler, then this will be NULL.
  */
-LocalScheduler *get_local_scheduler(global_scheduler_state *state,
+LocalScheduler *get_local_scheduler(GlobalSchedulerState *state,
                                     DBClientID photon_id);
 
 /**
@@ -102,7 +102,7 @@ LocalScheduler *get_local_scheduler(global_scheduler_state *state,
  * @param local_scheduler_id DB client ID for the local scheduler.
  * @return Void.
  */
-void assign_task_to_local_scheduler(global_scheduler_state *state,
+void assign_task_to_local_scheduler(GlobalSchedulerState *state,
                                     Task *task,
                                     DBClientID local_scheduler_id);
 

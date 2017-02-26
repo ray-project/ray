@@ -15,7 +15,7 @@
 #include "state/task_table.h"
 
 /* This is used to define the array of local schedulers used to define the
- * global_scheduler_state type. */
+ * GlobalSchedulerState type. */
 UT_icd local_scheduler_icd = {sizeof(LocalScheduler), NULL, NULL, NULL};
 
 /* This is used to define the array of tasks that haven't been scheduled yet. */
@@ -30,7 +30,7 @@ UT_icd pending_tasks_icd = {sizeof(Task *), NULL, NULL, NULL};
  * @param local_scheduler_id DB client ID for the local scheduler.
  * @return Void.
  */
-void assign_task_to_local_scheduler(global_scheduler_state *state,
+void assign_task_to_local_scheduler(GlobalSchedulerState *state,
                                     Task *task,
                                     DBClientID local_scheduler_id) {
   char id_string[ID_STRING_SIZE];
@@ -61,12 +61,12 @@ void assign_task_to_local_scheduler(global_scheduler_state *state,
   }
 }
 
-global_scheduler_state *init_global_scheduler(event_loop *loop,
-                                              const char *redis_addr,
-                                              int redis_port) {
-  global_scheduler_state *state = malloc(sizeof(global_scheduler_state));
+GlobalSchedulerState *GlobalSchedulerState_init(event_loop *loop,
+                                                const char *redis_addr,
+                                                int redis_port) {
+  GlobalSchedulerState *state = malloc(sizeof(GlobalSchedulerState));
   /* Must initialize state to 0. Sets hashmap head(s) to NULL. */
-  memset(state, 0, sizeof(global_scheduler_state));
+  memset(state, 0, sizeof(GlobalSchedulerState));
   state->db =
       db_connect(redis_addr, redis_port, "global_scheduler", ":", 0, NULL);
   db_attach(state->db, loop, false);
@@ -77,7 +77,7 @@ global_scheduler_state *init_global_scheduler(event_loop *loop,
   return state;
 }
 
-void free_global_scheduler(global_scheduler_state *state) {
+void GlobalSchedulerState_free(GlobalSchedulerState *state) {
   aux_address_entry *entry, *tmp;
 
   db_disconnect(state->db);
@@ -123,18 +123,18 @@ void free_global_scheduler(global_scheduler_state *state) {
 
 /* We need this code so we can clean up when we get a SIGTERM signal. */
 
-global_scheduler_state *g_state;
+GlobalSchedulerState *g_state;
 
 void signal_handler(int signal) {
   if (signal == SIGTERM) {
-    free_global_scheduler(g_state);
+    GlobalSchedulerState_free(g_state);
     exit(0);
   }
 }
 
 /* End of the cleanup code. */
 
-LocalScheduler *get_local_scheduler(global_scheduler_state *state,
+LocalScheduler *get_local_scheduler(GlobalSchedulerState *state,
                                     DBClientID photon_id) {
   LocalScheduler *local_scheduler_ptr;
   for (int i = 0; i < utarray_len(state->local_schedulers); ++i) {
@@ -149,7 +149,7 @@ LocalScheduler *get_local_scheduler(global_scheduler_state *state,
 }
 
 void process_task_waiting(Task *waiting_task, void *user_context) {
-  global_scheduler_state *state = (global_scheduler_state *) user_context;
+  GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
   LOG_DEBUG("Task waiting callback is called.");
   bool successfully_assigned =
       handle_task_waiting(state, state->policy_state, waiting_task);
@@ -171,7 +171,7 @@ void process_new_db_client(DBClientID db_client_id,
                            const char *client_type,
                            const char *aux_address,
                            void *user_context) {
-  global_scheduler_state *state = (global_scheduler_state *) user_context;
+  GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
   char id_string[ID_STRING_SIZE];
   LOG_DEBUG("db client table callback for db client = %s",
             object_id_to_string(db_client_id, id_string, ID_STRING_SIZE));
@@ -241,7 +241,7 @@ void object_table_subscribe_callback(ObjectID object_id,
                                      const char *manager_vector[],
                                      void *user_context) {
   /* Extract global scheduler state from the callback context. */
-  global_scheduler_state *state = (global_scheduler_state *) user_context;
+  GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
   char id_string[ID_STRING_SIZE];
   LOG_DEBUG("object table subscribe callback for OBJECT = %s",
             object_id_to_string(object_id, id_string, ID_STRING_SIZE));
@@ -290,7 +290,7 @@ void local_scheduler_table_handler(DBClientID client_id,
                                    LocalSchedulerInfo info,
                                    void *user_context) {
   /* Extract global scheduler state from the callback context. */
-  global_scheduler_state *state = (global_scheduler_state *) user_context;
+  GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
   UNUSED(state);
   char id_string[ID_STRING_SIZE];
   LOG_DEBUG(
@@ -312,7 +312,7 @@ void local_scheduler_table_handler(DBClientID client_id,
 }
 
 int task_cleanup_handler(event_loop *loop, timer_id id, void *context) {
-  global_scheduler_state *state = context;
+  GlobalSchedulerState *state = context;
   /* Loop over the pending tasks and resubmit them. */
   int64_t num_pending_tasks = utarray_len(state->pending_tasks);
   for (int64_t i = num_pending_tasks - 1; i >= 0; --i) {
@@ -333,7 +333,7 @@ int task_cleanup_handler(event_loop *loop, timer_id id, void *context) {
 
 void start_server(const char *redis_addr, int redis_port) {
   event_loop *loop = event_loop_create();
-  g_state = init_global_scheduler(loop, redis_addr, redis_port);
+  g_state = GlobalSchedulerState_init(loop, redis_addr, redis_port);
   /* TODO(rkn): subscribe to notifications from the object table. */
   /* Subscribe to notifications about new local schedulers. TODO(rkn): this
    * needs to also get all of the clients that registered with the database

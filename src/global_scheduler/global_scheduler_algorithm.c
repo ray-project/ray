@@ -51,7 +51,7 @@ bool constraints_satisfied_hard(const LocalScheduler *scheduler,
  * This is a helper method that assigns a task to the next local scheduler in a
  * round robin fashion.
  */
-void handle_task_round_robin(global_scheduler_state *state,
+void handle_task_round_robin(GlobalSchedulerState *state,
                              global_scheduler_policy_state *policy_state,
                              Task *task) {
   CHECKM(utarray_len(state->local_schedulers) > 0,
@@ -83,7 +83,7 @@ void handle_task_round_robin(global_scheduler_state *state,
   }
 }
 
-object_size_entry *create_object_size_hashmap(global_scheduler_state *state,
+object_size_entry *create_object_size_hashmap(GlobalSchedulerState *state,
                                               task_spec *task_spec,
                                               bool *has_args_by_ref,
                                               int64_t *task_data_size) {
@@ -155,7 +155,7 @@ void free_object_size_hashmap(object_size_entry *object_size_table) {
   }
 }
 
-DBClientID get_photon_id(global_scheduler_state *state,
+DBClientID get_photon_id(GlobalSchedulerState *state,
                            const char *plasma_location) {
   aux_address_entry *aux_entry = NULL;
   DBClientID photon_id = NIL_ID;
@@ -201,7 +201,7 @@ double inner_product(double a[], double b[], int size) {
   return result;
 }
 
-double calculate_object_size_fraction(global_scheduler_state *state,
+double calculate_object_size_fraction(GlobalSchedulerState *state,
                                       LocalScheduler *scheduler,
                                       object_size_entry *object_size_table,
                                       int64_t total_task_object_size) {
@@ -235,7 +235,7 @@ double calculate_object_size_fraction(global_scheduler_state *state,
   return object_size_fraction;
 }
 
-double calculate_score_dynvec_normalized(global_scheduler_state *state,
+double calculate_score_dynvec_normalized(GlobalSchedulerState *state,
                                          LocalScheduler *scheduler,
                                          const task_spec *task_spec,
                                          double object_size_fraction) {
@@ -261,13 +261,13 @@ double calculate_score_dynvec_normalized(global_scheduler_state *state,
   return score;
 }
 
-double calculate_cost_pending(const global_scheduler_state *state,
+double calculate_cost_pending(const GlobalSchedulerState *state,
                               const LocalScheduler *scheduler) {
   /* TODO: make sure that num_recent_tasks_sent is reset on each heartbeat. */
   return scheduler->num_recent_tasks_sent + scheduler->info.task_queue_length;
 }
 
-bool handle_task_waiting(global_scheduler_state *state,
+bool handle_task_waiting(GlobalSchedulerState *state,
                          global_scheduler_policy_state *policy_state,
                          Task *task) {
   task_spec *task_spec = task_task_spec(task);
@@ -325,13 +325,13 @@ bool handle_task_waiting(global_scheduler_state *state,
   return true;
 }
 
-void handle_object_available(global_scheduler_state *state,
+void handle_object_available(GlobalSchedulerState *state,
                              global_scheduler_policy_state *policy_state,
                              ObjectID object_id) {
   /* Do nothing for now. */
 }
 
-void handle_new_local_scheduler(global_scheduler_state *state,
+void handle_new_local_scheduler(GlobalSchedulerState *state,
                                 global_scheduler_policy_state *policy_state,
                                 DBClientID db_client_id) {
   /* Do nothing for now. */
