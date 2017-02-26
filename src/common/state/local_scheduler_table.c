@@ -18,8 +18,8 @@ void local_scheduler_table_subscribe(
 void local_scheduler_table_send_info(DBHandle *db_handle,
                                      LocalSchedulerInfo *info,
                                      RetryInfo *retry) {
-  local_scheduler_table_send_info_data *data =
-      malloc(sizeof(local_scheduler_table_send_info_data));
+  LocalSchedulerTableSendInfoData *data =
+      malloc(sizeof(LocalSchedulerTableSendInfoData));
   data->info = *info;
 
   init_table_callback(db_handle, NIL_ID, __func__, data, retry, NULL,

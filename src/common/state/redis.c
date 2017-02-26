@@ -1100,7 +1100,7 @@ void redis_local_scheduler_table_send_info_callback(redisAsyncContext *c,
 
 void redis_local_scheduler_table_send_info(table_callback_data *callback_data) {
   DBHandle *db = callback_data->db_handle;
-  local_scheduler_table_send_info_data *data = (local_scheduler_table_send_info_data *) callback_data->data;
+  LocalSchedulerTableSendInfoData *data = (LocalSchedulerTableSendInfoData *) callback_data->data;
   int status = redisAsyncCommand(
       db->context, redis_local_scheduler_table_send_info_callback,
       (void *) callback_data->timer_id, "PUBLISH local_schedulers %b%b",

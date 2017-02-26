@@ -74,6 +74,6 @@ void local_scheduler_table_send_info(DBHandle *db_handle,
  * scheduler table. */
 typedef struct {
   LocalSchedulerInfo info;
-} local_scheduler_table_send_info_data;
+} LocalSchedulerTableSendInfoData;
 
 #endif /* LOCAL_SCHEDULER_TABLE_H */
