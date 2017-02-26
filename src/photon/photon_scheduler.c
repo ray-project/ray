@@ -112,8 +112,12 @@ void kill_worker(local_scheduler_client *worker, bool wait) {
     task_spec *spec = task_task_spec(worker->task_in_progress);
     update_dynamic_resources(state, spec, true);
     /* Update the task table to reflect that the task failed to complete. */
-    task_set_state(worker->task_in_progress, TASK_STATUS_LOST);
-    task_table_update(state->db, worker->task_in_progress, NULL, NULL, NULL);
+    if (state->db != NULL) {
+      task_set_state(worker->task_in_progress, TASK_STATUS_LOST);
+      task_table_update(state->db, worker->task_in_progress, NULL, NULL, NULL);
+    } else {
+      free_task(worker->task_in_progress);
+    }
   }
 
   LOG_DEBUG("Killed worker with pid %d", worker->pid);
@@ -134,15 +138,6 @@ void free_local_scheduler(local_scheduler_state *state) {
     state->config.start_worker_command = NULL;
   }
 
-  /* Disconnect from the database. */
-  if (state->db != NULL) {
-    db_disconnect(state->db);
-    state->db = NULL;
-  }
-  /* Disconnect from plasma. */
-  plasma_disconnect(state->plasma_conn);
-  state->plasma_conn = NULL;
-
   /* Kill any child processes that didn't register as a worker yet. */
   pid_t *worker_pid;
   for (worker_pid = (pid_t *) utarray_front(state->child_pids);
@@ -156,6 +151,8 @@ void free_local_scheduler(local_scheduler_state *state) {
 
   /* Free the list of workers and any tasks that are still in progress on those
    * workers. */
+  /* TODO(swang): It's possible that the local scheduler will exit before all
+   * of its task table updates make it to redis. */
   for (local_scheduler_client **worker =
            (local_scheduler_client **) utarray_front(state->workers);
        worker != NULL;
@@ -164,6 +161,15 @@ void free_local_scheduler(local_scheduler_state *state) {
   }
   utarray_free(state->workers);
   state->workers = NULL;
+
+  /* Disconnect from the database. */
+  if (state->db != NULL) {
+    db_disconnect(state->db);
+    state->db = NULL;
+  }
+  /* Disconnect from plasma. */
+  plasma_disconnect(state->plasma_conn);
+  state->plasma_conn = NULL;
 
   /* Free the mapping from the actor ID to the ID of the local scheduler
    * responsible for that actor. */
