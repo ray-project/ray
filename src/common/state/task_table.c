@@ -32,14 +32,14 @@ void task_table_update(db_handle *db_handle,
 
 void task_table_test_and_update(db_handle *db_handle,
                                 task_id task_id,
-                                int test_state,
+                                int test_state_bitmask,
                                 int update_state,
                                 retry_info *retry,
                                 task_table_get_callback done_callback,
                                 void *user_context) {
   task_table_test_and_update_data *update_data =
       malloc(sizeof(task_table_test_and_update_data));
-  update_data->test_state = test_state;
+  update_data->test_state_bitmask = test_state_bitmask;
   update_data->update_state = update_state;
   /* Update the task entry's local scheduler with this client's ID. */
   update_data->local_scheduler_id = db_handle->client;

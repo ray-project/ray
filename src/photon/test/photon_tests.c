@@ -50,19 +50,12 @@ typedef struct {
   photon_conn **conns;
 } photon_mock;
 
-photon_mock *init_photon_mock(bool connect_to_redis,
-                              int num_workers,
-                              int num_mock_workers) {
+photon_mock *init_photon_mock(int num_workers, int num_mock_workers) {
   const char *node_ip_address = "127.0.0.1";
-  const char *redis_addr = NULL;
-  int redis_port = -1;
+  const char *redis_addr = node_ip_address;
+  int redis_port = 6379;
   const double static_resource_conf[MAX_RESOURCE_INDEX] = {DEFAULT_NUM_CPUS,
                                                            DEFAULT_NUM_GPUS};
-  if (connect_to_redis) {
-    redis_addr = node_ip_address;
-    redis_port = 6379;
-  }
-
   photon_mock *mock = malloc(sizeof(photon_mock));
   memset(mock, 0, sizeof(photon_mock));
   mock->loop = event_loop_create();
@@ -114,10 +107,25 @@ photon_mock *init_photon_mock(bool connect_to_redis,
 }
 
 void destroy_photon_mock(photon_mock *mock) {
+  /* Disconnect clients. */
   for (int i = 0; i < mock->num_photon_conns; ++i) {
     photon_disconnect(mock->conns[i]);
   }
   free(mock->conns);
+
+  /* Kill all the workers and run the event loop again so that the task table
+   * updates propagate and the tasks in progress are freed. */
+  local_scheduler_client **worker = (local_scheduler_client **) utarray_eltptr(
+      mock->photon_state->workers, 0);
+  while (worker != NULL) {
+    kill_worker(*worker, true);
+    worker = (local_scheduler_client **) utarray_eltptr(
+        mock->photon_state->workers, 0);
+  }
+  event_loop_add_timer(mock->loop, 500,
+                       (event_loop_timer_handler) timeout_handler, NULL);
+  event_loop_run(mock->loop);
+
   /* This also frees mock->loop. */
   free_local_scheduler(mock->photon_state);
   close(mock->plasma_store_fd);
@@ -138,7 +146,7 @@ void reset_worker(photon_mock *mock, local_scheduler_client *worker) {
  * value, the task should get assigned to a worker again.
  */
 TEST object_reconstruction_test(void) {
-  photon_mock *photon = init_photon_mock(true, 0, 1);
+  photon_mock *photon = init_photon_mock(0, 1);
   photon_conn *worker = photon->conns[0];
 
   /* Create a task with zero dependencies and one return value. */
@@ -207,7 +215,7 @@ TEST object_reconstruction_test(void) {
  * should trigger reconstruction of all previous tasks in the lineage.
  */
 TEST object_reconstruction_recursive_test(void) {
-  photon_mock *photon = init_photon_mock(true, 0, 1);
+  photon_mock *photon = init_photon_mock(0, 1);
   photon_conn *worker = photon->conns[0];
   /* Create a chain of tasks, each one dependent on the one before it. Mark
    * each object as available so that tasks will run immediately. */
@@ -316,7 +324,7 @@ void object_reconstruction_suppression_callback(object_id object_id,
 }
 
 TEST object_reconstruction_suppression_test(void) {
-  photon_mock *photon = init_photon_mock(true, 0, 1);
+  photon_mock *photon = init_photon_mock(0, 1);
   photon_conn *worker = photon->conns[0];
 
   object_reconstruction_suppression_spec = example_task_spec(0, 1);
@@ -365,7 +373,7 @@ TEST object_reconstruction_suppression_test(void) {
 }
 
 TEST task_dependency_test(void) {
-  photon_mock *photon = init_photon_mock(false, 0, 1);
+  photon_mock *photon = init_photon_mock(0, 1);
   local_scheduler_state *state = photon->photon_state;
   scheduling_algorithm_state *algorithm_state = state->algorithm_state;
   /* Get the first worker. */
@@ -440,7 +448,7 @@ TEST task_dependency_test(void) {
 }
 
 TEST task_multi_dependency_test(void) {
-  photon_mock *photon = init_photon_mock(false, 0, 1);
+  photon_mock *photon = init_photon_mock(0, 1);
   local_scheduler_state *state = photon->photon_state;
   scheduling_algorithm_state *algorithm_state = state->algorithm_state;
   /* Get the first worker. */
@@ -516,7 +524,7 @@ TEST task_multi_dependency_test(void) {
 TEST start_kill_workers_test(void) {
   /* Start some workers. */
   int num_workers = 4;
-  photon_mock *photon = init_photon_mock(true, num_workers, 0);
+  photon_mock *photon = init_photon_mock(num_workers, 0);
   /* We start off with num_workers children processes, but no workers
    * registered yet. */
   ASSERT_EQ(utarray_len(photon->photon_state->child_pids), num_workers);
@@ -548,7 +556,7 @@ TEST start_kill_workers_test(void) {
   /* After killing a worker, its state is cleaned up. */
   local_scheduler_client *worker = *(local_scheduler_client **) utarray_eltptr(
       photon->photon_state->workers, 0);
-  kill_worker(worker, true);
+  kill_worker(worker, false);
   ASSERT_EQ(utarray_len(photon->photon_state->child_pids), 0);
   ASSERT_EQ(utarray_len(photon->photon_state->workers), num_workers - 1);
 
@@ -581,9 +589,9 @@ SUITE(photon_tests) {
   RUN_REDIS_TEST(object_reconstruction_test);
   RUN_REDIS_TEST(object_reconstruction_recursive_test);
   RUN_REDIS_TEST(object_reconstruction_suppression_test);
-  RUN_TEST(task_dependency_test);
-  RUN_TEST(task_multi_dependency_test);
-  RUN_TEST(start_kill_workers_test);
+  RUN_REDIS_TEST(task_dependency_test);
+  RUN_REDIS_TEST(task_multi_dependency_test);
+  RUN_REDIS_TEST(start_kill_workers_test);
 }
 
 GREATEST_MAIN_DEFS();

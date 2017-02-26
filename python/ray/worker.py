@@ -14,6 +14,7 @@ import numpy as np
 import os
 import random
 import redis
+import signal
 import string
 import sys
 import threading
@@ -936,23 +937,31 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
                num_gpus=num_gpus)
 
 def cleanup(worker=global_worker):
-  """Disconnect the driver, and terminate any processes started in init.
+  """Disconnect the worker, and terminate any processes started in init.
 
   This will automatically run at the end when a Python process that uses Ray
   exits. It is ok to run this twice in a row. Note that we manually call
   services.cleanup() in the tests because we need to start and stop many
   clusters in the tests, but the import and exit only happen once.
   """
-  # If this is a driver, push the finish time to Redis.
-  if worker.mode in [SCRIPT_MODE, SILENT_MODE]:
-    worker.redis_client.hmset(b"Drivers:" + worker.worker_id,
-                              {"end_time": time.time()})
-
   disconnect(worker)
-  worker.set_mode(None)
+  if hasattr(worker, "photon_client"):
+    del worker.photon_client
   if hasattr(worker, "plasma_client"):
     worker.plasma_client.shutdown()
-  services.cleanup()
+
+  if worker.mode in [SCRIPT_MODE, SILENT_MODE]:
+    # If this is a driver, push the finish time to Redis and clean up any
+    # other services that were started with the driver.
+    worker.redis_client.hmset(b"Drivers:" + worker.worker_id,
+                              {"end_time": time.time()})
+    services.cleanup()
+  else:
+    # If this is not a driver, make sure there are no orphan processes.
+    for process_type, processes in services.all_processes.items():
+      assert(len(processes) == 0)
+
+  worker.set_mode(None)
 
 atexit.register(cleanup)
 
@@ -1558,6 +1567,12 @@ def main_loop(worker=global_worker):
   process. The worker executes the command, notifies the scheduler of any errors
   that occurred while executing the command, and waits for the next command.
   """
+
+  def exit(signum, frame):
+    cleanup(worker=worker)
+    sys.exit(0)
+
+  signal.signal(signal.SIGTERM, exit)
 
   def process_task(task): # wrapping these lines in a function should cause the local variables to go out of scope more quickly, which is useful for inspecting reference counts
     """Execute a task assigned to this worker.

@@ -28,7 +28,7 @@ static int PyPhotonClient_init(PyPhotonClient *self,
 }
 
 static void PyPhotonClient_dealloc(PyPhotonClient *self) {
-  free(((PyPhotonClient *) self)->photon_connection);
+  photon_disconnect(((PyPhotonClient *) self)->photon_connection);
   Py_TYPE(self)->tp_free((PyObject *) self);
 }
 
