@@ -969,7 +969,7 @@ void handle_worker_available(LocalSchedulerState *state,
 }
 
 void handle_worker_removed(LocalSchedulerState *state,
-                           scheduling_algorithm_state *algorithm_state,
+                           SchedulingAlgorithmState *algorithm_state,
                            local_scheduler_client *worker) {
   /* Make sure that we remove the worker at most once. */
   bool removed = false;

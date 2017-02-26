@@ -541,7 +541,7 @@ void reconstruct_failed_result_lookup_callback(ObjectID reconstruct_object_id,
         "entry yet)");
     return;
   }
-  local_scheduler_state *state = user_context;
+  LocalSchedulerState *state = user_context;
   /* If the task failed to finish, it's safe for us to claim responsibility for
    * reconstruction. */
   task_table_test_and_update(state->db, task_id, TASK_STATUS_LOST,
@@ -603,9 +603,9 @@ void process_message(event_loop *loop,
     /* Update the result table, which holds mappings of object ID -> ID of the
      * task that created it. */
     if (state->db != NULL) {
-      task_id task_id = task_spec_id(spec);
+      TaskID task_id = task_spec_id(spec);
       for (int64_t i = 0; i < task_num_returns(spec); ++i) {
-        object_id return_id = task_return(spec, i);
+        ObjectID return_id = task_return(spec, i);
         result_table_add(state->db, return_id, task_id, NULL, NULL, NULL);
       }
     }

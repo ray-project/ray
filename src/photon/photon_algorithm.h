@@ -158,8 +158,8 @@ void handle_worker_available(LocalSchedulerState *state,
  * @param worker The worker that is removed.
  * @return Void.
  */
-void handle_worker_removed(local_scheduler_state *state,
-                           scheduling_algorithm_state *algorithm_state,
+void handle_worker_removed(LocalSchedulerState *state,
+                           SchedulingAlgorithmState *algorithm_state,
                            local_scheduler_client *worker);
 
 /**
