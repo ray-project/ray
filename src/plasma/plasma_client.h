@@ -108,7 +108,7 @@ typedef struct {
   int64_t metadata_size;
   /** The address of the metadata. */
   uint8_t *metadata;
-} object_buffer;
+} ObjectBuffer;
 
 /**
  * Get some objects from the Plasma Store. This function will block until the
@@ -129,7 +129,7 @@ void plasma_get(PlasmaConnection *conn,
                 ObjectID object_ids[],
                 int64_t num_objects,
                 int64_t timeout_ms,
-                object_buffer object_buffers[]);
+                ObjectBuffer object_buffers[]);
 
 /**
  * Tell Plasma that the client no longer needs the object. This should be called

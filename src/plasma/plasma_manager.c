@@ -760,7 +760,7 @@ void process_transfer_request(event_loop *loop,
    * do a non-blocking get call on the store, and if the object isn't there then
    * perhaps the manager should initiate the transfer when it receives a
    * notification from the store that the object is present. */
-  object_buffer obj_buffer;
+  ObjectBuffer obj_buffer;
   int counter = 0;
   do {
     /* We pass in 0 to indicate that the command should return immediately. */

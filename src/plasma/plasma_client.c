@@ -262,7 +262,7 @@ void plasma_get(PlasmaConnection *conn,
                 ObjectID object_ids[],
                 int64_t num_objects,
                 int64_t timeout_ms,
-                object_buffer object_buffers[]) {
+                ObjectBuffer object_buffers[]) {
   /* Fill out the info for the objects that are already in use locally. */
   bool all_present = true;
   for (int i = 0; i < num_objects; ++i) {
@@ -468,7 +468,7 @@ bool plasma_compute_object_hash(PlasmaConnection *conn,
                                 unsigned char *digest) {
   /* Get the plasma object data. We pass in a timeout of 0 to indicate that
    * the operation should timeout immediately. */
-  object_buffer obj_buffer;
+  ObjectBuffer obj_buffer;
   ObjectID obj_id_array[1] = {obj_id};
   plasma_get(conn, obj_id_array, 1, 0, &obj_buffer);
   /* If the object was not retrieved, return false. */

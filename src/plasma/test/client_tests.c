@@ -120,7 +120,7 @@ TEST plasma_nonblocking_get_tests(void) {
       "/tmp/store1", "/tmp/manager1", PLASMA_DEFAULT_RELEASE_DELAY);
   ObjectID oid = globally_unique_id();
   ObjectID oid_array[1] = {oid};
-  object_buffer obj_buffer;
+  ObjectBuffer obj_buffer;
 
   /* Test for object non-existence. */
   plasma_get(plasma_conn, oid_array, 1, 0, &obj_buffer);
@@ -220,7 +220,7 @@ TEST plasma_get_tests(void) {
       "/tmp/store2", "/tmp/manager2", PLASMA_DEFAULT_RELEASE_DELAY);
   ObjectID oid1 = globally_unique_id();
   ObjectID oid2 = globally_unique_id();
-  object_buffer obj_buffer;
+  ObjectBuffer obj_buffer;
 
   ObjectID oid_array1[1] = {oid1};
   ObjectID oid_array2[1] = {oid2};
@@ -259,7 +259,7 @@ TEST plasma_get_multiple_tests(void) {
   ObjectID oid1 = globally_unique_id();
   ObjectID oid2 = globally_unique_id();
   ObjectID obj_ids[NUM_OBJ_REQUEST];
-  object_buffer obj_buffer[NUM_OBJ_REQUEST];
+  ObjectBuffer obj_buffer[NUM_OBJ_REQUEST];
   int obj1_first = 1, obj2_first = 2;
 
   obj_ids[0] = oid1;
