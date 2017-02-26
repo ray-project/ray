@@ -37,8 +37,8 @@ void task_table_test_and_update(DBHandle *db_handle,
                                 RetryInfo *retry,
                                 task_table_get_callback done_callback,
                                 void *user_context) {
-  task_table_test_and_update_data *update_data =
-      malloc(sizeof(task_table_test_and_update_data));
+  TaskTableTestAndUpdateData *update_data =
+      malloc(sizeof(TaskTableTestAndUpdateData));
   update_data->test_state_bitmask = test_state_bitmask;
   update_data->update_state = update_state;
   /* Update the task entry's local scheduler with this client's ID. */
@@ -57,8 +57,8 @@ void task_table_subscribe(DBHandle *db_handle,
                           RetryInfo *retry,
                           task_table_done_callback done_callback,
                           void *user_context) {
-  task_table_subscribe_data *sub_data =
-      malloc(sizeof(task_table_subscribe_data));
+  TaskTableSubscribeData *sub_data =
+      malloc(sizeof(TaskTableSubscribeData));
   sub_data->local_scheduler_id = local_scheduler_id;
   sub_data->state_filter = state_filter;
   sub_data->subscribe_callback = subscribe_callback;

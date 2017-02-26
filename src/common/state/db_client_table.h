@@ -44,6 +44,6 @@ void db_client_table_subscribe(
 typedef struct {
   db_client_table_subscribe_callback subscribe_callback;
   void *subscribe_context;
-} db_client_table_subscribe_data;
+} DBClientTableSubscribeData;
 
 #endif /* DB_CLIENT_TABLE_H */

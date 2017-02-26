@@ -120,7 +120,7 @@ typedef struct {
   int test_state_bitmask;
   int update_state;
   DBClientID local_scheduler_id;
-} task_table_test_and_update_data;
+} TaskTableTestAndUpdateData;
 
 /*
  *  ==== Subscribing to the task table ====
@@ -168,6 +168,6 @@ typedef struct {
   int state_filter;
   task_table_subscribe_callback subscribe_callback;
   void *subscribe_context;
-} task_table_subscribe_data;
+} TaskTableSubscribeData;
 
 #endif /* task_table_H */

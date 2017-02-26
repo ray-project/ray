@@ -77,7 +77,7 @@ void object_table_add(DBHandle *db_handle,
 typedef struct {
   int64_t object_size;
   unsigned char digest[DIGEST_SIZE];
-} object_table_add_data;
+} ObjectTableAddData;
 
 /*
  *  ==== Remove object call and callback ====
@@ -155,7 +155,7 @@ typedef struct {
   int num_object_ids;
   /** This field is used to store a variable number of object IDs. */
   ObjectID object_ids[0];
-} object_table_request_notifications_data;
+} ObjectTableRequestNotificationsData;
 
 /** Data that is needed to register new object available callbacks with the
  *  state database. */
@@ -163,7 +163,7 @@ typedef struct {
   bool subscribe_all;
   object_table_object_available_callback object_available_callback;
   void *subscribe_context;
-} object_table_subscribe_data;
+} ObjectTableSubscribeData;
 
 /*
  * ==== Object info table, contains size of the object ====

@@ -225,7 +225,8 @@ void redis_object_table_add_callback(redisAsyncContext *c,
   CHECK(strcmp(reply->str, "OK") == 0);
   /* Call the done callback if there is one. */
   if (callback_data->done_callback != NULL) {
-    object_table_done_callback done_callback = (object_table_done_callback) callback_data->done_callback;
+    object_table_done_callback done_callback =
+        (object_table_done_callback) callback_data->done_callback;
     done_callback(callback_data->id, callback_data->user_context);
   }
   /* Clean up the timer and callback. */
@@ -235,7 +236,7 @@ void redis_object_table_add_callback(redisAsyncContext *c,
 void redis_object_table_add(TableCallbackData *callback_data) {
   DBHandle *db = callback_data->db_handle;
 
-  object_table_add_data *info = (object_table_add_data *) callback_data->data;
+  ObjectTableAddData *info = (ObjectTableAddData *) callback_data->data;
   ObjectID obj_id = callback_data->id;
   int64_t object_size = info->object_size;
   unsigned char *digest = info->digest;
@@ -601,7 +602,8 @@ void object_table_redis_subscribe_to_notifications_callback(
         db, reply->element[2]->str, reply->element[2]->len, &data_size,
         &manager_count, &manager_vector);
     /* Call the subscribe callback. */
-    object_table_subscribe_data *data = (object_table_subscribe_data *) callback_data->data;
+    ObjectTableSubscribeData *data =
+        (ObjectTableSubscribeData *) callback_data->data;
     if (data->object_available_callback) {
       data->object_available_callback(obj_id, data_size, manager_count,
                                       manager_vector, data->subscribe_context);
@@ -639,7 +641,7 @@ void redis_object_table_subscribe_to_notifications(
    * The channel name should probably be the client ID with some prefix. */
   CHECKM(callback_data->data != NULL,
          "Object table subscribe data passed as NULL.");
-  if (((object_table_subscribe_data *) (callback_data->data))->subscribe_all) {
+  if (((ObjectTableSubscribeData *) (callback_data->data))->subscribe_all) {
     /* Subscribe to the object broadcast channel. */
     status = redisAsyncCommand(
         db->sub_context, object_table_redis_subscribe_to_notifications_callback,
@@ -675,7 +677,8 @@ void redis_object_table_request_notifications(
     TableCallbackData *callback_data) {
   DBHandle *db = callback_data->db_handle;
 
-  object_table_request_notifications_data *request_data = (object_table_request_notifications_data *) callback_data->data;
+  ObjectTableRequestNotificationsData *request_data =
+      (ObjectTableRequestNotificationsData *) callback_data->data;
   int num_object_ids = request_data->num_object_ids;
   ObjectID *object_ids = request_data->object_ids;
 
@@ -838,7 +841,7 @@ void redis_task_table_test_and_update_callback(redisAsyncContext *c,
 void redis_task_table_test_and_update(TableCallbackData *callback_data) {
   DBHandle *db = callback_data->db_handle;
   TaskID task_id = callback_data->id;
-  task_table_test_and_update_data *update_data = (task_table_test_and_update_data *) callback_data->data;
+  TaskTableTestAndUpdateData *update_data = (TaskTableTestAndUpdateData *) callback_data->data;
 
   int status = redisAsyncCommand(
       db->context, redis_task_table_test_and_update_callback,
@@ -911,7 +914,7 @@ void redis_task_table_subscribe_callback(redisAsyncContext *c,
   if (strcmp(message_type->str, "message") == 0 ||
       strcmp(message_type->str, "pmessage") == 0) {
     /* Handle a task table event. Parse the payload and call the callback. */
-    task_table_subscribe_data *data = (task_table_subscribe_data *) callback_data->data;
+    TaskTableSubscribeData *data = (TaskTableSubscribeData *) callback_data->data;
     /* Read out the information from the payload. */
     TaskID task_id;
     int state;
@@ -946,7 +949,7 @@ void redis_task_table_subscribe_callback(redisAsyncContext *c,
 
 void redis_task_table_subscribe(TableCallbackData *callback_data) {
   DBHandle *db = callback_data->db_handle;
-  task_table_subscribe_data *data = (task_table_subscribe_data *) callback_data->data;
+  TaskTableSubscribeData *data = (TaskTableSubscribeData *) callback_data->data;
   /* TASK_CHANNEL_PREFIX is defined in ray_redis_module.c and must be kept in
    * sync with that file. */
   const char *TASK_CHANNEL_PREFIX = "TT:";
@@ -1000,7 +1003,7 @@ void redis_db_client_table_subscribe_callback(redisAsyncContext *c,
     return;
   }
   /* Otherwise, parse the payload and call the callback. */
-  db_client_table_subscribe_data *data = (db_client_table_subscribe_data *) callback_data->data;
+  DBClientTableSubscribeData *data = (DBClientTableSubscribeData *) callback_data->data;
   DBClientID client;
   memcpy(client.id, payload->str, sizeof(client.id));
   /* We subtract 1 + sizeof(client.id) to compute the length of the

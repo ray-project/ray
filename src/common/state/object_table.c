@@ -21,7 +21,7 @@ void object_table_add(DBHandle *db_handle,
                       void *user_context) {
   CHECK(db_handle != NULL);
 
-  object_table_add_data *info = malloc(sizeof(object_table_add_data));
+  ObjectTableAddData *info = malloc(sizeof(ObjectTableAddData));
   info->object_size = object_size;
   memcpy(&info->digest[0], digest, DIGEST_SIZE);
   init_table_callback(db_handle, object_id, __func__, info, retry,
@@ -54,8 +54,8 @@ void object_table_subscribe_to_notifications(
     object_table_lookup_done_callback done_callback,
     void *user_context) {
   CHECK(db_handle != NULL);
-  object_table_subscribe_data *sub_data =
-      malloc(sizeof(object_table_subscribe_data));
+  ObjectTableSubscribeData *sub_data =
+      malloc(sizeof(ObjectTableSubscribeData));
   sub_data->object_available_callback = object_available_callback;
   sub_data->subscribe_context = subscribe_context;
   sub_data->subscribe_all = subscribe_all;
@@ -71,8 +71,8 @@ void object_table_request_notifications(DBHandle *db_handle,
                                         RetryInfo *retry) {
   CHECK(db_handle != NULL);
   CHECK(num_object_ids > 0);
-  object_table_request_notifications_data *data =
-      malloc(sizeof(object_table_request_notifications_data) +
+  ObjectTableRequestNotificationsData *data =
+      malloc(sizeof(ObjectTableRequestNotificationsData) +
              num_object_ids * sizeof(ObjectID));
   data->num_object_ids = num_object_ids;
   memcpy(data->object_ids, object_ids, num_object_ids * sizeof(ObjectID));
