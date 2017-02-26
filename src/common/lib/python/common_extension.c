@@ -423,7 +423,7 @@ static PyMethodDef PyTask_methods[] = {
      "Return the actor ID for this task."},
     {"driver_id", (PyCFunction) PyTask_driver_id, METH_NOARGS,
      "Return the driver ID for this task."},
-    {"TaskID", (PyCFunction) PyTask_task_id, METH_NOARGS,
+    {"task_id", (PyCFunction) PyTask_task_id, METH_NOARGS,
      "Return the task ID for this task."},
     {"arguments", (PyCFunction) PyTask_arguments, METH_NOARGS,
      "Return the arguments for the task."},
