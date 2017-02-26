@@ -1189,7 +1189,7 @@ void redis_object_info_subscribe_callback(redisAsyncContext *c,
     return;
   }
   /* Otherwise, parse the payload and call the callback. */
-  object_info_subscribe_data *data = (object_info_subscribe_data *) callback_data->data;
+  ObjectInfoSubscribeData *data = (ObjectInfoSubscribeData *) callback_data->data;
   ObjectID object_id;
   memcpy(object_id.id, payload->str, sizeof(object_id.id));
   /* payload->str should have the format: "ObjectID:object_size_int" */

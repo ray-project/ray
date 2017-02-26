@@ -87,8 +87,8 @@ void object_info_subscribe(DBHandle *db_handle,
                            RetryInfo *retry,
                            object_info_done_callback done_callback,
                            void *user_context) {
-  object_info_subscribe_data *sub_data =
-      malloc(sizeof(object_info_subscribe_data));
+  ObjectInfoSubscribeData *sub_data =
+      malloc(sizeof(ObjectInfoSubscribeData));
   sub_data->subscribe_callback = subscribe_callback;
   sub_data->subscribe_context = subscribe_context;
 

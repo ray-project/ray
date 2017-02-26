@@ -202,7 +202,7 @@ void object_info_subscribe(DBHandle *db_handle,
 typedef struct {
   object_info_subscribe_callback subscribe_callback;
   void *subscribe_context;
-} object_info_subscribe_data;
+} ObjectInfoSubscribeData;
 
 /*
  *  ==== Result table ====
