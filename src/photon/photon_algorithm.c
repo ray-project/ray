@@ -64,7 +64,7 @@ typedef struct {
   bool worker_available;
   /** Handle for the uthash table. */
   UT_hash_handle hh;
-} local_actor_info;
+} LocalActorInfo;
 
 /** Part of the photon state that is maintained by the scheduling algorithm. */
 struct SchedulingAlgorithmState {
@@ -76,7 +76,7 @@ struct SchedulingAlgorithmState {
   /** This is a hash table from actor ID to information about that actor. In
    *  particular, a queue of tasks that are waiting to execute on that actor.
    *  This is only used for actors that exist locally. */
-  local_actor_info *local_actor_infos;
+  LocalActorInfo *local_actor_infos;
   /** An array of actor tasks that have been submitted but this local scheduler
    *  doesn't know which local scheduler is responsible for them, so cannot
    *  assign them to the correct local scheduler yet. Whenever a notification
@@ -143,7 +143,7 @@ void SchedulingAlgorithmState_free(
     free(elt);
   }
   /* Remove all of the remaining actors. */
-  local_actor_info *actor_entry, *tmp_actor_entry;
+  LocalActorInfo *actor_entry, *tmp_actor_entry;
   HASH_ITER(hh, algorithm_state->local_actor_infos, actor_entry,
             tmp_actor_entry) {
     /* We do not call HASH_DELETE here because it will be called inside of
@@ -203,7 +203,7 @@ void provide_scheduler_info(LocalSchedulerState *state,
 }
 
 /**
- * Create the local_actor_info struct for an actor worker that this local
+ * Create the LocalActorInfo struct for an actor worker that this local
  * scheduler is responsible for. For a given actor, this will either be done
  * when the first task for that actor arrives or when the worker running that
  * actor connects to the local scheduler.
@@ -221,7 +221,7 @@ void create_actor(SchedulingAlgorithmState *algorithm_state,
                   ActorID actor_id,
                   LocalSchedulerClient *worker) {
   /* This will be freed when the actor is removed in remove_actor. */
-  local_actor_info *entry = malloc(sizeof(local_actor_info));
+  LocalActorInfo *entry = malloc(sizeof(LocalActorInfo));
   entry->actor_id = actor_id;
   entry->task_counter = 0;
   /* Initialize the doubly-linked list to NULL. */
@@ -240,7 +240,7 @@ void create_actor(SchedulingAlgorithmState *algorithm_state,
 
 void remove_actor(SchedulingAlgorithmState *algorithm_state,
                   ActorID actor_id) {
-  local_actor_info *entry;
+  LocalActorInfo *entry;
   HASH_FIND(hh, algorithm_state->local_actor_infos, &actor_id, sizeof(actor_id),
             entry);
   /* Make sure the actor actually exists. */
@@ -273,13 +273,13 @@ void handle_actor_worker_connect(LocalSchedulerState *state,
                                  SchedulingAlgorithmState *algorithm_state,
                                  ActorID actor_id,
                                  LocalSchedulerClient *worker) {
-  local_actor_info *entry;
+  LocalActorInfo *entry;
   HASH_FIND(hh, algorithm_state->local_actor_infos, &actor_id, sizeof(actor_id),
             entry);
   if (entry == NULL) {
     create_actor(algorithm_state, actor_id, worker);
   } else {
-    /* In this case, the local_actor_info struct was already been created by the
+    /* In this case, the LocalActorInfo struct was already been created by the
      * first call to add_task_to_actor_queue. However, the worker field was not
      * filled out, so fill out the correct worker field now. */
     entry->worker = worker;
@@ -294,7 +294,7 @@ void handle_actor_worker_disconnect(LocalSchedulerState *state,
 
 /**
  * This will add a task to the task queue for an actor. If this is the first
- * task being processed for this actor, it is possible that the local_actor_info
+ * task being processed for this actor, it is possible that the LocalActorInfo
  * struct has not yet been created by create_worker (which happens when the
  * actor worker connects to the local scheduler), so in that case this method
  * will call create_actor.
@@ -319,11 +319,11 @@ void add_task_to_actor_queue(LocalSchedulerState *state,
   ObjectID_to_string(actor_id, tmp, ID_STRING_SIZE);
   DCHECK(!ActorID_equal(actor_id, NIL_ACTOR_ID));
   /* Get the local actor entry for this actor. */
-  local_actor_info *entry;
+  LocalActorInfo *entry;
   HASH_FIND(hh, algorithm_state->local_actor_infos, &actor_id, sizeof(actor_id),
             entry);
 
-  /* Handle the case in which there is no local_actor_info struct yet. */
+  /* Handle the case in which there is no LocalActorInfo struct yet. */
   if (entry == NULL) {
     /* Create the actor struct with a NULL worker because the worker struct has
      * not been created yet. The correct worker struct will be inserted when the
@@ -395,7 +395,7 @@ bool dispatch_actor_task(LocalSchedulerState *state,
                             get_db_client_id(state->db)));
 
   /* Get the local actor entry for this actor. */
-  local_actor_info *entry;
+  LocalActorInfo *entry;
   HASH_FIND(hh, algorithm_state->local_actor_infos, &actor_id, sizeof(actor_id),
             entry);
   CHECK(entry != NULL);
@@ -1018,7 +1018,7 @@ void handle_actor_worker_available(LocalSchedulerState *state,
   ActorID actor_id = worker->actor_id;
   CHECK(!ActorID_equal(actor_id, NIL_ACTOR_ID));
   /* Get the actor info for this worker. */
-  local_actor_info *entry;
+  LocalActorInfo *entry;
   HASH_FIND(hh, algorithm_state->local_actor_infos, &actor_id, sizeof(actor_id),
             entry);
   CHECK(entry != NULL);
