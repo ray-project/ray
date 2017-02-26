@@ -49,12 +49,12 @@ typedef struct {
   plasma_manager_state *state;
   event_loop *loop;
   /* Accept a connection from the local manager on the remote manager. */
-  client_connection *write_conn;
-  client_connection *read_conn;
+  ClientConnection *write_conn;
+  ClientConnection *read_conn;
   /* Connect a new client to the local plasma manager and mock a request to an
    * object. */
   PlasmaConnection *plasma_conn;
-  client_connection *client_conn;
+  ClientConnection *client_conn;
 } plasma_mock;
 
 plasma_mock *init_plasma_mock(plasma_mock *remote_mock) {
@@ -77,7 +77,7 @@ plasma_mock *init_plasma_mock(plasma_mock *remote_mock) {
         get_manager_connection(remote_mock->state, manager_addr, mock->port);
     wait_for_pollin(mock->manager_remote_fd);
     mock->read_conn =
-        new_client_connection(mock->loop, mock->manager_remote_fd, mock->state,
+        ClientConnection_init(mock->loop, mock->manager_remote_fd, mock->state,
                               PLASMA_DEFAULT_RELEASE_DELAY);
   } else {
     mock->write_conn = NULL;
@@ -89,7 +89,7 @@ plasma_mock *init_plasma_mock(plasma_mock *remote_mock) {
                                      utstring_body(manager_socket_name), 0);
   wait_for_pollin(mock->manager_local_fd);
   mock->client_conn =
-      new_client_connection(mock->loop, mock->manager_local_fd, mock->state, 0);
+      ClientConnection_init(mock->loop, mock->manager_local_fd, mock->state, 0);
   utstring_free(manager_socket_name);
   return mock;
 }
