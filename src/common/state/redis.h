@@ -27,7 +27,7 @@ typedef struct {
   char *addr;
   /** Handle for the uthash table. */
   UT_hash_handle hh;
-} db_client_cache_entry;
+} DBClientCacheEntry;
 
 struct DBHandle {
   /** String that identifies this client type. */
@@ -45,7 +45,7 @@ struct DBHandle {
   int64_t db_index;
   /** Cache for the IP addresses of db clients. This is a hash table mapping
    *  client IDs to addresses. */
-  db_client_cache_entry *db_client_cache;
+  DBClientCacheEntry *db_client_cache;
   /** Redis context for synchronous connections. This should only be used very
    *  rarely, it is not asynchronous. */
   redisContext *sync_context;

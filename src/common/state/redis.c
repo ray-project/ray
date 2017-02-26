@@ -69,26 +69,6 @@ extern int usleep(useconds_t usec);
   do {                                                \
   } while (0)
 
-/**
- * A data structure to track the status of a table operation attempt that spans
- * multiple Redis commands. Each attempt at a table operation is associated
- * with a unique redis_requests_info instance. To use this data structure, pass
- * it as the `privdata` argument for the callback of each asynchronous Redis
- * command.
- */
-typedef struct {
-  /** The timer ID that uniquely identifies this table operation. All retry
-   *  attempts of a table operation share the same timer ID. */
-  int64_t timer_id;
-  /** The index of the next command to try for this operation. This may be
-   *  different across different attempts of the same table operation. */
-  int request_index;
-  /** Whether the current invocation of the callback was triggered by a reply
-   *  to an asynchronous Redis command. If not, then the callback was called
-   *  directly. */
-  bool is_redis_reply;
-} redis_requests_info;
-
 DBHandle *db_connect(const char *db_address,
                       int db_port,
                       const char *client_type,
@@ -198,7 +178,7 @@ void db_disconnect(DBHandle *db) {
   redisFree(db->sync_context);
   redisAsyncFree(db->context);
   redisAsyncFree(db->sub_context);
-  db_client_cache_entry *e, *tmp;
+  DBClientCacheEntry *e, *tmp;
   HASH_ITER(hh, db->db_client_cache, e, tmp) {
     free(e->addr);
     HASH_DELETE(hh, db->db_client_cache, e);
@@ -445,7 +425,7 @@ void redis_result_table_lookup(table_callback_data *callback_data) {
 void redis_get_cached_db_client(DBHandle *db,
                                 DBClientID db_client_id,
                                 const char **manager) {
-  db_client_cache_entry *entry;
+  DBClientCacheEntry *entry;
   HASH_FIND(hh, db->db_client_cache, &db_client_id, sizeof(db_client_id),
             entry);
   if (!entry) {
@@ -455,7 +435,7 @@ void redis_get_cached_db_client(DBHandle *db,
                      (char *) db_client_id.id, sizeof(db_client_id.id));
     CHECKM(reply->type == REDIS_REPLY_STRING, "REDIS reply type=%d, str=%s",
            reply->type, reply->str);
-    entry = (db_client_cache_entry *) malloc(sizeof(db_client_cache_entry));
+    entry = (DBClientCacheEntry *) malloc(sizeof(DBClientCacheEntry));
     entry->db_client_id = db_client_id;
     entry->addr = strdup(reply->str);
     HASH_ADD(hh, db->db_client_cache, db_client_id, sizeof(db_client_id),
