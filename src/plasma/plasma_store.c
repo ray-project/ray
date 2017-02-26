@@ -84,7 +84,7 @@ typedef struct {
   /** The number of object requests in this wait request that are already
    *  satisfied. */
   int64_t num_satisfied;
-} get_request;
+} GetRequest;
 
 typedef struct {
   /** The ID of the object. This is used as a key in a hash table. */
@@ -98,7 +98,7 @@ typedef struct {
 
 /** This is used to define the utarray of get requests in the
  *  ObjectGetRequests struct. */
-UT_icd get_request_icd = {sizeof(get_request *), NULL, NULL, NULL};
+UT_icd get_request_icd = {sizeof(GetRequest *), NULL, NULL, NULL};
 
 struct PlasmaStoreState {
   /* Event loop of the plasma store. */
@@ -241,7 +241,7 @@ int create_object(Client *client_context,
 
 void add_get_request_for_object(PlasmaStoreState *store_state,
                                 ObjectID object_id,
-                                get_request *get_req) {
+                                GetRequest *get_req) {
   ObjectGetRequests *object_get_reqs;
   HASH_FIND(hh, store_state->object_get_requests, &object_id, sizeof(object_id),
             object_get_reqs);
@@ -262,7 +262,7 @@ void add_get_request_for_object(PlasmaStoreState *store_state,
 
 void remove_get_request_for_object(PlasmaStoreState *store_state,
                                    ObjectID object_id,
-                                   get_request *get_req) {
+                                   GetRequest *get_req) {
   ObjectGetRequests *object_get_reqs;
   HASH_FIND(hh, store_state->object_get_requests, &object_id, sizeof(object_id),
             object_get_reqs);
@@ -270,8 +270,8 @@ void remove_get_request_for_object(PlasmaStoreState *store_state,
    * contains the get request, then remove the get request from the vector. */
   if (object_get_reqs != NULL) {
     for (int i = 0; i < utarray_len(object_get_reqs->get_requests); ++i) {
-      get_request **get_req_ptr =
-          (get_request **) utarray_eltptr(object_get_reqs->get_requests, i);
+      GetRequest **get_req_ptr =
+          (GetRequest **) utarray_eltptr(object_get_reqs->get_requests, i);
       if (*get_req_ptr == get_req) {
         /* Remove the get request from the array. */
         utarray_erase(object_get_reqs->get_requests, i, 1);
@@ -284,7 +284,7 @@ void remove_get_request_for_object(PlasmaStoreState *store_state,
   }
 }
 
-void remove_get_request(PlasmaStoreState *store_state, get_request *get_req) {
+void remove_get_request(PlasmaStoreState *store_state, GetRequest *get_req) {
   if (get_req->timer != -1) {
     CHECK(event_loop_remove_timer(store_state->loop, get_req->timer) == AE_OK);
   }
@@ -305,7 +305,7 @@ void PlasmaObject_init(PlasmaObject *object, object_table_entry *entry) {
   object->metadata_size = entry->info.metadata_size;
 }
 
-void return_from_get(PlasmaStoreState *store_state, get_request *get_req) {
+void return_from_get(PlasmaStoreState *store_state, GetRequest *get_req) {
   /* Send the get reply to the client. */
   int status = plasma_send_GetReply(get_req->client->sock, store_state->builder,
                                     get_req->object_ids, get_req->objects,
@@ -367,9 +367,9 @@ void update_object_get_requests(PlasmaStoreState *store_state,
      * are removed from the array. */
     int index = 0;
     for (int i = 0; i < num_requests; ++i) {
-      get_request **get_req_ptr =
-          (get_request **) utarray_eltptr(object_get_reqs->get_requests, index);
-      get_request *get_req = *get_req_ptr;
+      GetRequest **get_req_ptr =
+          (GetRequest **) utarray_eltptr(object_get_reqs->get_requests, index);
+      GetRequest *get_req = *get_req_ptr;
 
       int num_updated = 0;
       for (int j = 0; j < get_req->num_objects_to_wait_for; ++j) {
@@ -412,7 +412,7 @@ void update_object_get_requests(PlasmaStoreState *store_state,
 }
 
 int get_timeout_handler(event_loop *loop, timer_id id, void *context) {
-  get_request *get_req = context;
+  GetRequest *get_req = context;
   return_from_get(get_req->client->plasma_state, get_req);
   return EVENT_LOOP_TIMER_DONE;
 }
@@ -424,8 +424,8 @@ void process_get_request(Client *client_context,
   PlasmaStoreState *plasma_state = client_context->plasma_state;
 
   /* Create a get request for this object. */
-  get_request *get_req = malloc(sizeof(get_request));
-  memset(get_req, 0, sizeof(get_request));
+  GetRequest *get_req = malloc(sizeof(GetRequest));
+  memset(get_req, 0, sizeof(GetRequest));
   get_req->client = client_context;
   get_req->timer = -1;
   get_req->num_object_ids = num_object_ids;
