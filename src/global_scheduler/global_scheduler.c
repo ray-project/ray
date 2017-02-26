@@ -287,7 +287,7 @@ void object_table_subscribe_callback(ObjectID object_id,
 }
 
 void local_scheduler_table_handler(DBClientID client_id,
-                                   local_scheduler_info info,
+                                   LocalSchedulerInfo info,
                                    void *user_context) {
   /* Extract global scheduler state from the callback context. */
   global_scheduler_state *state = (global_scheduler_state *) user_context;

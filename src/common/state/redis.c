@@ -1073,7 +1073,7 @@ void redis_local_scheduler_table_subscribe_callback(redisAsyncContext *c,
     redisReply *payload = reply->element[2];
     local_scheduler_table_subscribe_data *data = (local_scheduler_table_subscribe_data *) callback_data->data;
     DBClientID client_id;
-    local_scheduler_info info;
+    LocalSchedulerInfo info;
     /* The payload should be the concatenation of these two structs. */
     CHECK(sizeof(client_id) + sizeof(info) == payload->len);
     memcpy(&client_id, payload->str, sizeof(client_id));

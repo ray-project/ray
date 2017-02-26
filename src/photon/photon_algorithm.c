@@ -182,7 +182,7 @@ void SchedulingAlgorithmState_free(
 
 void provide_scheduler_info(LocalSchedulerState *state,
                             SchedulingAlgorithmState *algorithm_state,
-                            local_scheduler_info *info) {
+                            LocalSchedulerInfo *info) {
   task_queue_entry *elt;
   info->total_num_workers = utarray_len(state->workers);
   /* TODO(swang): Provide separate counts for tasks that are waiting for

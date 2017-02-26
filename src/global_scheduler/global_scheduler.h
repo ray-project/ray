@@ -24,7 +24,7 @@ typedef struct {
   int64_t num_recent_tasks_sent;
   /** The latest information about the local scheduler capacity. This is updated
    *  every time a new local scheduler heartbeat arrives. */
-  local_scheduler_info info;
+  LocalSchedulerInfo info;
 } LocalScheduler;
 
 typedef struct global_scheduler_policy_state global_scheduler_policy_state;

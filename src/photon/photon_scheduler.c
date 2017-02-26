@@ -848,7 +848,7 @@ void handle_actor_creation_callback(actor_info info, void *context) {
 int heartbeat_handler(event_loop *loop, timer_id id, void *context) {
   LocalSchedulerState *state = context;
   SchedulingAlgorithmState *algorithm_state = state->algorithm_state;
-  local_scheduler_info info;
+  LocalSchedulerInfo info;
   /* Ask the scheduling algorithm to fill out the scheduler info struct. */
   provide_scheduler_info(state, algorithm_state, &info);
   /* Publish the heartbeat to all subscribers of the local scheduler table. */

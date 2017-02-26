@@ -21,7 +21,7 @@ typedef struct {
   /** The resource vector of resources currently available to this local
    *  scheduler. */
   double dynamic_resources[MAX_RESOURCE_INDEX];
-} local_scheduler_info;
+} LocalSchedulerInfo;
 
 /*
  *  ==== Subscribing to the local scheduler table ====
@@ -30,7 +30,7 @@ typedef struct {
 /* Callback for subscribing to the local scheduler table. */
 typedef void (*local_scheduler_table_subscribe_callback)(
     DBClientID client_id,
-    local_scheduler_info info,
+    LocalSchedulerInfo info,
     void *user_context);
 
 /**
@@ -67,13 +67,13 @@ typedef struct {
  * @param retry Information about retrying the request to the database.
  */
 void local_scheduler_table_send_info(DBHandle *db_handle,
-                                     local_scheduler_info *info,
+                                     LocalSchedulerInfo *info,
                                      retry_info *retry);
 
 /* Data that is needed to publish local scheduler heartbeats to the local
  * scheduler table. */
 typedef struct {
-  local_scheduler_info info;
+  LocalSchedulerInfo info;
 } local_scheduler_table_send_info_data;
 
 #endif /* LOCAL_SCHEDULER_TABLE_H */

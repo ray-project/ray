@@ -39,7 +39,7 @@ void SchedulingAlgorithmState_free(
  */
 void provide_scheduler_info(LocalSchedulerState *state,
                             SchedulingAlgorithmState *algorithm_state,
-                            local_scheduler_info *info);
+                            LocalSchedulerInfo *info);
 
 /**
  * This function will be called when a new task is submitted by a worker for

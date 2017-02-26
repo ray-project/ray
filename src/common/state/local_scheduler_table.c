@@ -16,7 +16,7 @@ void local_scheduler_table_subscribe(
 }
 
 void local_scheduler_table_send_info(DBHandle *db_handle,
-                                     local_scheduler_info *info,
+                                     LocalSchedulerInfo *info,
                                      retry_info *retry) {
   local_scheduler_table_send_info_data *data =
       malloc(sizeof(local_scheduler_table_send_info_data));
