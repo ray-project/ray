@@ -11,7 +11,7 @@
  */
 
 /** Internal state of the eviction policy. */
-typedef struct eviction_state eviction_state;
+typedef struct EvictionState EvictionState;
 
 /**
  * Initialize the eviction policy state.
@@ -20,7 +20,7 @@ typedef struct eviction_state eviction_state;
  *        store.
  * @return The internal state of the eviction policy.
  */
-eviction_state *make_eviction_state(void);
+EvictionState *EvictionState_init(void);
 
 /**
  * Free the eviction policy state.
@@ -28,7 +28,7 @@ eviction_state *make_eviction_state(void);
  * @param state The state managed by the eviction policy.
  * @return Void.
  */
-void free_eviction_state(eviction_state *state);
+void EvictionState_free(EvictionState *state);
 
 /**
  * This method will be called whenever an object is first created in order to
@@ -41,9 +41,9 @@ void free_eviction_state(eviction_state *state);
  * @param obj_id The object ID of the object that was created.
  * @return Void.
  */
-void object_created(eviction_state *eviction_state,
-                    PlasmaStoreInfo *plasma_store_info,
-                    ObjectID obj_id);
+void EvictionState_object_created(EvictionState *eviction_state,
+                                  PlasmaStoreInfo *plasma_store_info,
+                                  ObjectID obj_id);
 
 /**
  * This method will be called when the Plasma store needs more space, perhaps to
@@ -65,11 +65,11 @@ void object_created(eviction_state *eviction_state,
  *        the array will be NULL.
  * @return True if enough space can be freed and false otherwise.
  */
-bool require_space(eviction_state *eviction_state,
-                   PlasmaStoreInfo *plasma_store_info,
-                   int64_t size,
-                   int64_t *num_objects_to_evict,
-                   ObjectID **objects_to_evict);
+bool EvictionState_require_space(EvictionState *eviction_state,
+                                 PlasmaStoreInfo *plasma_store_info,
+                                 int64_t size,
+                                 int64_t *num_objects_to_evict,
+                                 ObjectID **objects_to_evict);
 
 /**
  * This method will be called whenever an unused object in the Plasma store
@@ -89,11 +89,11 @@ bool require_space(eviction_state *eviction_state,
  *        the array will be NULL.
  * @return Void.
  */
-void begin_object_access(eviction_state *eviction_state,
-                         PlasmaStoreInfo *plasma_store_info,
-                         ObjectID obj_id,
-                         int64_t *num_objects_to_evict,
-                         ObjectID **objects_to_evict);
+void EvictionState_begin_object_access(EvictionState *eviction_state,
+                                       PlasmaStoreInfo *plasma_store_info,
+                                       ObjectID obj_id,
+                                       int64_t *num_objects_to_evict,
+                                       ObjectID **objects_to_evict);
 
 /**
  * This method will be called whenever an object in the Plasma store that was
@@ -113,11 +113,11 @@ void begin_object_access(eviction_state *eviction_state,
  *        the array will be NULL.
  * @return Void.
  */
-void end_object_access(eviction_state *eviction_state,
-                       PlasmaStoreInfo *plasma_store_info,
-                       ObjectID obj_id,
-                       int64_t *num_objects_to_evict,
-                       ObjectID **objects_to_evict);
+void EvictionState_end_object_access(EvictionState *eviction_state,
+                                     PlasmaStoreInfo *plasma_store_info,
+                                     ObjectID obj_id,
+                                     int64_t *num_objects_to_evict,
+                                     ObjectID **objects_to_evict);
 
 /**
  * Choose some objects to evict from the Plasma store. When this method is
@@ -139,10 +139,11 @@ void end_object_access(eviction_state *eviction_state,
  *        the array will be NULL.
  * @return The total number of bytes of space chosen to be evicted.
  */
-int64_t choose_objects_to_evict(eviction_state *eviction_state,
-                                PlasmaStoreInfo *plasma_store_info,
-                                int64_t num_bytes_required,
-                                int64_t *num_objects_to_evict,
-                                ObjectID **objects_to_evict);
+int64_t EvictionState_choose_objects_to_evict(
+    EvictionState *eviction_state,
+    PlasmaStoreInfo *plasma_store_info,
+    int64_t num_bytes_required,
+    int64_t *num_objects_to_evict,
+    ObjectID **objects_to_evict);
 
 #endif /* EVICTION_POLICY_H */

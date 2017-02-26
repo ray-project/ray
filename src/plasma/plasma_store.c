@@ -114,7 +114,7 @@ struct PlasmaStoreState {
    *  to the eviction policy. */
   PlasmaStoreInfo *plasma_store_info;
   /** The state that is managed by the eviction policy. */
-  eviction_state *eviction_state;
+  EvictionState *eviction_state;
   /** Input buffer. This is allocated only once to avoid mallocs for every
    *  call to process_message. */
   UT_array *input_buffer;
@@ -134,7 +134,7 @@ PlasmaStoreState *PlasmaStoreState_init(event_loop *loop, int64_t system_memory)
   state->plasma_store_info->objects = NULL;
   state->plasma_store_info->memory_capacity = system_memory;
   /* Initialize the eviction state. */
-  state->eviction_state = make_eviction_state();
+  state->eviction_state = EvictionState_init();
   utarray_new(state->input_buffer, &byte_icd);
   state->builder = make_protocol_builder();
   return state;
@@ -160,10 +160,10 @@ void add_client_to_object_clients(object_table_entry *entry,
     /* Tell the eviction policy that this object is being used. */
     int64_t num_objects_to_evict;
     ObjectID *objects_to_evict;
-    begin_object_access(client_info->plasma_state->eviction_state,
-                        client_info->plasma_state->plasma_store_info,
-                        entry->object_id, &num_objects_to_evict,
-                        &objects_to_evict);
+    EvictionState_begin_object_access(
+        client_info->plasma_state->eviction_state,
+        client_info->plasma_state->plasma_store_info, entry->object_id,
+        &num_objects_to_evict, &objects_to_evict);
     remove_objects(client_info->plasma_state, num_objects_to_evict,
                    objects_to_evict);
   }
@@ -191,7 +191,7 @@ int create_object(client *client_context,
   /* Tell the eviction policy how much space we need to create this object. */
   int64_t num_objects_to_evict;
   ObjectID *objects_to_evict;
-  bool success = require_space(
+  bool success = EvictionState_require_space(
       plasma_state->eviction_state, plasma_state->plasma_store_info,
       data_size + metadata_size, &num_objects_to_evict, &objects_to_evict);
   remove_objects(plasma_state, num_objects_to_evict, objects_to_evict);
@@ -232,8 +232,8 @@ int create_object(client *client_context,
   /* Notify the eviction policy that this object was created. This must be done
    * immediately before the call to add_client_to_object_clients so that the
    * eviction policy does not have an opportunity to evict the object. */
-  object_created(plasma_state->eviction_state, plasma_state->plasma_store_info,
-                 obj_id);
+  EvictionState_object_created(plasma_state->eviction_state,
+                               plasma_state->plasma_store_info, obj_id);
   /* Record that this client is using this object. */
   add_client_to_object_clients(entry, client_context);
   return PlasmaError_OK;
@@ -491,10 +491,10 @@ int remove_client_from_object_clients(object_table_entry *entry,
         /* Tell the eviction policy that this object is no longer being used. */
         int64_t num_objects_to_evict;
         ObjectID *objects_to_evict;
-        end_object_access(client_info->plasma_state->eviction_state,
-                          client_info->plasma_state->plasma_store_info,
-                          entry->object_id, &num_objects_to_evict,
-                          &objects_to_evict);
+        EvictionState_end_object_access(
+            client_info->plasma_state->eviction_state,
+            client_info->plasma_state->plasma_store_info, entry->object_id,
+            &num_objects_to_evict, &objects_to_evict);
         remove_objects(client_info->plasma_state, num_objects_to_evict,
                        objects_to_evict);
       }
@@ -748,7 +748,7 @@ void process_message(event_loop *loop,
     plasma_read_EvictRequest(input, &num_bytes);
     int64_t num_objects_to_evict;
     ObjectID *objects_to_evict;
-    int64_t num_bytes_evicted = choose_objects_to_evict(
+    int64_t num_bytes_evicted = EvictionState_choose_objects_to_evict(
         client_context->plasma_state->eviction_state,
         client_context->plasma_state->plasma_store_info, num_bytes,
         &num_objects_to_evict, &objects_to_evict);

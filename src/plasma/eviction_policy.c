@@ -26,7 +26,7 @@ typedef struct {
 } released_object_entry;
 
 /** The part of the Plasma state that is maintained by the eviction policy. */
-struct eviction_state {
+struct EvictionState {
   /** The amount of memory (in bytes) currently being used. */
   int64_t memory_used;
   /** A doubly-linked list of the released objects in order from least recently
@@ -41,15 +41,15 @@ struct eviction_state {
  * released_objects type. */
 UT_icd released_objects_entry_icd = {sizeof(ObjectID), NULL, NULL, NULL};
 
-eviction_state *make_eviction_state(void) {
-  eviction_state *state = malloc(sizeof(eviction_state));
+EvictionState *EvictionState_init(void) {
+  EvictionState *state = malloc(sizeof(EvictionState));
   state->memory_used = 0;
   state->released_objects = NULL;
   state->released_object_table = NULL;
   return state;
 }
 
-void free_eviction_state(eviction_state *s) {
+void EvictionState_free(EvictionState *s) {
   /* Delete each element in the doubly-linked list. */
   released_object *element, *temp;
   DL_FOREACH_SAFE(s->released_objects, element, temp) {
@@ -66,7 +66,7 @@ void free_eviction_state(eviction_state *s) {
   free(s);
 }
 
-void add_object_to_lru_cache(eviction_state *eviction_state,
+void add_object_to_lru_cache(EvictionState *eviction_state,
                              ObjectID object_id) {
   /* Add the object ID to the doubly-linked list. */
   released_object *linked_list_entry = malloc(sizeof(released_object));
@@ -85,7 +85,7 @@ void add_object_to_lru_cache(eviction_state *eviction_state,
            sizeof(object_id), hash_table_entry);
 }
 
-void remove_object_from_lru_cache(eviction_state *eviction_state,
+void remove_object_from_lru_cache(EvictionState *eviction_state,
                                   ObjectID object_id) {
   /* Check that the object ID is in the hash table. */
   released_object_entry *hash_table_entry;
@@ -104,11 +104,12 @@ void remove_object_from_lru_cache(eviction_state *eviction_state,
   free(hash_table_entry);
 }
 
-int64_t choose_objects_to_evict(eviction_state *eviction_state,
-                                PlasmaStoreInfo *plasma_store_info,
-                                int64_t num_bytes_required,
-                                int64_t *num_objects_to_evict,
-                                ObjectID **objects_to_evict) {
+int64_t EvictionState_choose_objects_to_evict(
+    EvictionState *eviction_state,
+    PlasmaStoreInfo *plasma_store_info,
+    int64_t num_bytes_required,
+    int64_t *num_objects_to_evict,
+    ObjectID **objects_to_evict) {
   int64_t num_objects = 0;
   int64_t num_bytes = 0;
   /* Figure out how many objects need to be evicted in order to recover a
@@ -148,17 +149,17 @@ int64_t choose_objects_to_evict(eviction_state *eviction_state,
   return num_bytes;
 }
 
-void object_created(eviction_state *eviction_state,
-                    PlasmaStoreInfo *plasma_store_info,
-                    ObjectID obj_id) {
+void EvictionState_object_created(EvictionState *eviction_state,
+                                  PlasmaStoreInfo *plasma_store_info,
+                                  ObjectID obj_id) {
   add_object_to_lru_cache(eviction_state, obj_id);
 }
 
-bool require_space(eviction_state *eviction_state,
-                   PlasmaStoreInfo *plasma_store_info,
-                   int64_t size,
-                   int64_t *num_objects_to_evict,
-                   ObjectID **objects_to_evict) {
+bool EvictionState_require_space(EvictionState *eviction_state,
+                                 PlasmaStoreInfo *plasma_store_info,
+                                 int64_t size,
+                                 int64_t *num_objects_to_evict,
+                                 ObjectID **objects_to_evict) {
   /* Check if there is enough space to create the object. */
   int64_t required_space =
       eviction_state->memory_used + size - plasma_store_info->memory_capacity;
@@ -169,7 +170,7 @@ bool require_space(eviction_state *eviction_state,
     int64_t space_to_free = MAX(size, plasma_store_info->memory_capacity / 5);
     LOG_DEBUG("not enough space to create this object, so evicting objects");
     /* Choose some objects to evict, and update the return pointers. */
-    num_bytes_evicted = choose_objects_to_evict(
+    num_bytes_evicted = EvictionState_choose_objects_to_evict(
         eviction_state, plasma_store_info, space_to_free, num_objects_to_evict,
         objects_to_evict);
     LOG_INFO(
@@ -189,22 +190,22 @@ bool require_space(eviction_state *eviction_state,
   return num_bytes_evicted >= required_space;
 }
 
-void begin_object_access(eviction_state *eviction_state,
-                         PlasmaStoreInfo *plasma_store_info,
-                         ObjectID obj_id,
-                         int64_t *num_objects_to_evict,
-                         ObjectID **objects_to_evict) {
+void EvictionState_begin_object_access(EvictionState *eviction_state,
+                                       PlasmaStoreInfo *plasma_store_info,
+                                       ObjectID obj_id,
+                                       int64_t *num_objects_to_evict,
+                                       ObjectID **objects_to_evict) {
   /* If the object is in the LRU cache, remove it. */
   remove_object_from_lru_cache(eviction_state, obj_id);
   *num_objects_to_evict = 0;
   *objects_to_evict = NULL;
 }
 
-void end_object_access(eviction_state *eviction_state,
-                       PlasmaStoreInfo *plasma_store_info,
-                       ObjectID obj_id,
-                       int64_t *num_objects_to_evict,
-                       ObjectID **objects_to_evict) {
+void EvictionState_end_object_access(EvictionState *eviction_state,
+                                     PlasmaStoreInfo *plasma_store_info,
+                                     ObjectID obj_id,
+                                     int64_t *num_objects_to_evict,
+                                     ObjectID **objects_to_evict) {
   /* Add the object to the LRU cache.*/
   add_object_to_lru_cache(eviction_state, obj_id);
   *num_objects_to_evict = 0;
