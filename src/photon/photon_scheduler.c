@@ -657,7 +657,7 @@ void process_message(event_loop *loop,
                 sizeof(info->actor_id), entry);
       CHECK(entry != NULL);
       CHECK(DBClientID_equal(entry->local_scheduler_id,
-                                get_db_client_id(state->db)));
+                             get_db_client_id(state->db)));
       /* Update the worker struct with this actor ID. */
       CHECK(ActorID_equal(worker->actor_id, NIL_ACTOR_ID));
       worker->actor_id = info->actor_id;

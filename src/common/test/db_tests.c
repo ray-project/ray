@@ -70,11 +70,11 @@ TEST object_table_lookup_test(void) {
   /* This uses manager_port1. */
   const char *db_connect_args1[] = {"address", "127.0.0.1:12345"};
   DBHandle *db1 = db_connect("127.0.0.1", 6379, "plasma_manager", manager_addr,
-                              2, db_connect_args1);
+                             2, db_connect_args1);
   /* This uses manager_port2. */
   const char *db_connect_args2[] = {"address", "127.0.0.1:12346"};
   DBHandle *db2 = db_connect("127.0.0.1", 6379, "plasma_manager", manager_addr,
-                              2, db_connect_args2);
+                             2, db_connect_args2);
   db_attach(db1, loop, false);
   db_attach(db2, loop, false);
   UniqueID id = globally_unique_id();

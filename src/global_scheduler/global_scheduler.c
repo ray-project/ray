@@ -179,8 +179,7 @@ void process_new_db_client(DBClientID db_client_id,
   if (strncmp(client_type, "photon", strlen("photon")) == 0) {
     /* Add plasma_manager ip:port -> photon_db_client_id association to state.
      */
-    AuxAddressEntry *plasma_photon_entry =
-        calloc(1, sizeof(AuxAddressEntry));
+    AuxAddressEntry *plasma_photon_entry = calloc(1, sizeof(AuxAddressEntry));
     plasma_photon_entry->aux_address = strdup(aux_address);
     plasma_photon_entry->photon_db_client_id = db_client_id;
     HASH_ADD_KEYPTR(plasma_photon_hh, state->plasma_photon_map,
@@ -202,7 +201,7 @@ void process_new_db_client(DBClientID db_client_id,
       HASH_ITER(plasma_photon_hh, state->plasma_photon_map, entry, tmp) {
         LOG_DEBUG("%s -> %s", entry->aux_address,
                   ObjectID_to_string(entry->photon_db_client_id, id_string,
-                                      ID_STRING_SIZE));
+                                     ID_STRING_SIZE));
       }
     }
 #endif

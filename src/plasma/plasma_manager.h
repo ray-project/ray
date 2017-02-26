@@ -227,8 +227,8 @@ void remove_object_request(ClientConnection *client_conn,
  * @return A pointer to the connection to the remote manager.
  */
 ClientConnection *get_manager_connection(plasma_manager_state *state,
-                                          const char *ip_addr,
-                                          int port);
+                                         const char *ip_addr,
+                                         int port);
 
 /**
  * Reads an object chunk sent by the given client into a buffer. This is the

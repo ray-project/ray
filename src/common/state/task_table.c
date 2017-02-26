@@ -57,8 +57,7 @@ void task_table_subscribe(DBHandle *db_handle,
                           RetryInfo *retry,
                           task_table_done_callback done_callback,
                           void *user_context) {
-  TaskTableSubscribeData *sub_data =
-      malloc(sizeof(TaskTableSubscribeData));
+  TaskTableSubscribeData *sub_data = malloc(sizeof(TaskTableSubscribeData));
   sub_data->local_scheduler_id = local_scheduler_id;
   sub_data->state_filter = state_filter;
   sub_data->subscribe_callback = subscribe_callback;

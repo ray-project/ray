@@ -43,8 +43,7 @@
  * @param object_id ID of the object for which we process this request.
  * @return Void.
  */
-void process_status_request(ClientConnection *client_conn,
-                            ObjectID object_id);
+void process_status_request(ClientConnection *client_conn, ObjectID object_id);
 
 /**
  * Request the transfer from a remote node or get the status of
@@ -1200,8 +1199,7 @@ void object_table_lookup_fail_callback(ObjectID object_id,
   CHECK(0);
 }
 
-void process_status_request(ClientConnection *client_conn,
-                            ObjectID object_id) {
+void process_status_request(ClientConnection *client_conn, ObjectID object_id) {
   /* Return success immediately if we already have this object. */
   if (is_object_local(client_conn->manager_state, object_id)) {
     int status = ObjectStatus_Local;

@@ -23,8 +23,7 @@ GlobalSchedulerPolicyState *GlobalSchedulerPolicyState_init(void) {
   return policy_state;
 }
 
-void GlobalSchedulerPolicyState_free(
-    GlobalSchedulerPolicyState *policy_state) {
+void GlobalSchedulerPolicyState_free(GlobalSchedulerPolicyState *policy_state) {
   free(policy_state);
 }
 
@@ -156,7 +155,7 @@ void free_object_size_hashmap(ObjectSizeEntry *object_size_table) {
 }
 
 DBClientID get_photon_id(GlobalSchedulerState *state,
-                           const char *plasma_location) {
+                         const char *plasma_location) {
   AuxAddressEntry *aux_entry = NULL;
   DBClientID photon_id = NIL_ID;
   if (plasma_location != NULL) {

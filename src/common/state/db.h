@@ -22,11 +22,11 @@ typedef struct DBHandle DBHandle;
  *         db_disconnect after use.
  */
 DBHandle *db_connect(const char *db_address,
-                      int db_port,
-                      const char *client_type,
-                      const char *node_ip_address,
-                      int num_args,
-                      const char **args);
+                     int db_port,
+                     const char *client_type,
+                     const char *node_ip_address,
+                     int num_args,
+                     const char **args);
 
 /**
  * Attach global system store connection to an event loop. Callbacks from

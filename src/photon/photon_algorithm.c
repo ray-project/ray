@@ -12,8 +12,7 @@
 #include "common/task.h"
 
 /* Declared for convenience. */
-void remove_actor(SchedulingAlgorithmState *algorithm_state,
-                  ActorID actor_id);
+void remove_actor(SchedulingAlgorithmState *algorithm_state, ActorID actor_id);
 
 typedef struct task_queue_entry {
   /** The task that is queued. */
@@ -127,8 +126,7 @@ SchedulingAlgorithmState *SchedulingAlgorithmState_init(void) {
   return algorithm_state;
 }
 
-void SchedulingAlgorithmState_free(
-    SchedulingAlgorithmState *algorithm_state) {
+void SchedulingAlgorithmState_free(SchedulingAlgorithmState *algorithm_state) {
   /* Free all of the tasks in the waiting queue. */
   task_queue_entry *elt, *tmp1;
   DL_FOREACH_SAFE(algorithm_state->waiting_task_queue, elt, tmp1) {
@@ -238,8 +236,7 @@ void create_actor(SchedulingAlgorithmState *algorithm_state,
   UNUSED(id_string);
 }
 
-void remove_actor(SchedulingAlgorithmState *algorithm_state,
-                  ActorID actor_id) {
+void remove_actor(SchedulingAlgorithmState *algorithm_state, ActorID actor_id) {
   LocalActorInfo *entry;
   HASH_FIND(hh, algorithm_state->local_actor_infos, &actor_id, sizeof(actor_id),
             entry);
@@ -392,7 +389,7 @@ bool dispatch_actor_task(LocalSchedulerState *state,
   HASH_FIND(hh, state->actor_mapping, &actor_id, sizeof(actor_id), actor_entry);
   CHECK(actor_entry != NULL);
   CHECK(DBClientID_equal(actor_entry->local_scheduler_id,
-                            get_db_client_id(state->db)));
+                         get_db_client_id(state->db)));
 
   /* Get the local actor entry for this actor. */
   LocalActorInfo *entry;
@@ -847,7 +844,7 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
   }
 
   if (DBClientID_equal(entry->local_scheduler_id,
-                          get_db_client_id(state->db))) {
+                       get_db_client_id(state->db))) {
     /* This local scheduler is responsible for the actor, so handle the task
      * locally. */
     add_task_to_actor_queue(state, algorithm_state, spec, false);
@@ -914,7 +911,7 @@ void handle_actor_task_scheduled(LocalSchedulerState *state,
      * creation. This may be possible though should be very uncommon. If it does
      * happen, it's ok. */
     DCHECK(DBClientID_equal(entry->local_scheduler_id,
-                               get_db_client_id(state->db)));
+                            get_db_client_id(state->db)));
   } else {
     LOG_INFO(
         "handle_actor_task_scheduled called on local scheduler but the "
@@ -1041,9 +1038,8 @@ void handle_worker_blocked(LocalSchedulerState *state,
       utarray_erase(algorithm_state->executing_workers, i, 1);
 
       /* Check that the worker isn't in the list of blocked workers. */
-      for (LocalSchedulerClient **q =
-               (LocalSchedulerClient **) utarray_front(
-                   algorithm_state->blocked_workers);
+      for (LocalSchedulerClient **q = (LocalSchedulerClient **) utarray_front(
+               algorithm_state->blocked_workers);
            q != NULL; q = (LocalSchedulerClient **) utarray_next(
                           algorithm_state->blocked_workers, q)) {
         DCHECK(*q != worker);
@@ -1080,9 +1076,8 @@ void handle_worker_unblocked(LocalSchedulerState *state,
       utarray_erase(algorithm_state->blocked_workers, i, 1);
 
       /* Check that the worker isn't in the list of executing workers. */
-      for (LocalSchedulerClient **q =
-               (LocalSchedulerClient **) utarray_front(
-                   algorithm_state->executing_workers);
+      for (LocalSchedulerClient **q = (LocalSchedulerClient **) utarray_front(
+               algorithm_state->executing_workers);
            q != NULL; q = (LocalSchedulerClient **) utarray_next(
                           algorithm_state->executing_workers, q)) {
         DCHECK(*q != worker);

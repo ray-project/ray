@@ -31,8 +31,7 @@ SchedulingAlgorithmState *SchedulingAlgorithmState_init(void);
  * @param algorithm_state State maintained by the scheduling algorithm.
  * @return Void.
  */
-void SchedulingAlgorithmState_free(
-    SchedulingAlgorithmState *algorithm_state);
+void SchedulingAlgorithmState_free(SchedulingAlgorithmState *algorithm_state);
 
 /**
  *

@@ -124,7 +124,8 @@ struct PlasmaStoreState {
 
 UT_icd byte_icd = {sizeof(uint8_t), NULL, NULL, NULL};
 
-PlasmaStoreState *PlasmaStoreState_init(event_loop *loop, int64_t system_memory) {
+PlasmaStoreState *PlasmaStoreState_init(event_loop *loop,
+                                        int64_t system_memory) {
   PlasmaStoreState *state = malloc(sizeof(PlasmaStoreState));
   state->loop = loop;
   state->object_get_requests = NULL;
@@ -615,9 +616,9 @@ void send_notifications(event_loop *loop,
 
     /* Attempt to send a notification about this object ID. */
     int nbytes = send(client_sock, (char const *) notification,
-                      sizeof(* notification), 0);
+                      sizeof(*notification), 0);
     if (nbytes >= 0) {
-      CHECK(nbytes == sizeof(* notification));
+      CHECK(nbytes == sizeof(*notification));
     } else if (nbytes == -1 &&
                (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
       LOG_DEBUG(

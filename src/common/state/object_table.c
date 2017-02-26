@@ -54,8 +54,7 @@ void object_table_subscribe_to_notifications(
     object_table_lookup_done_callback done_callback,
     void *user_context) {
   CHECK(db_handle != NULL);
-  ObjectTableSubscribeData *sub_data =
-      malloc(sizeof(ObjectTableSubscribeData));
+  ObjectTableSubscribeData *sub_data = malloc(sizeof(ObjectTableSubscribeData));
   sub_data->object_available_callback = object_available_callback;
   sub_data->subscribe_context = subscribe_context;
   sub_data->subscribe_all = subscribe_all;
@@ -87,8 +86,7 @@ void object_info_subscribe(DBHandle *db_handle,
                            RetryInfo *retry,
                            object_info_done_callback done_callback,
                            void *user_context) {
-  ObjectInfoSubscribeData *sub_data =
-      malloc(sizeof(ObjectInfoSubscribeData));
+  ObjectInfoSubscribeData *sub_data = malloc(sizeof(ObjectInfoSubscribeData));
   sub_data->subscribe_callback = subscribe_callback;
   sub_data->subscribe_context = subscribe_context;
 

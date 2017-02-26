@@ -154,7 +154,7 @@ void plasma_read_CreateReply(uint8_t *data,
 
 #define DEFINE_SIMPLE_SEND_REQUEST(MESSAGE_NAME)                       \
   int plasma_send_##MESSAGE_NAME(int sock, protocol_builder *B,        \
-                                 ObjectID object_id) {                \
+                                 ObjectID object_id) {                 \
     Plasma##MESSAGE_NAME##_start_as_root(B);                           \
     Plasma##MESSAGE_NAME##_object_id_create(                           \
         B, (const char *) &object_id.id[0], sizeof(object_id.id));     \
@@ -164,7 +164,7 @@ void plasma_read_CreateReply(uint8_t *data,
   }
 
 #define DEFINE_SIMPLE_READ_REQUEST(MESSAGE_NAME)                               \
-  void plasma_read_##MESSAGE_NAME(uint8_t *data, ObjectID *object_id) {       \
+  void plasma_read_##MESSAGE_NAME(uint8_t *data, ObjectID *object_id) {        \
     DCHECK(data);                                                              \
     Plasma##MESSAGE_NAME##_table_t req = Plasma##MESSAGE_NAME##_as_root(data); \
     flatbuffers_string_t id = Plasma##MESSAGE_NAME##_object_id(req);           \
@@ -174,7 +174,7 @@ void plasma_read_CreateReply(uint8_t *data,
 
 #define DEFINE_SIMPLE_SEND_REPLY(MESSAGE_NAME)                         \
   int plasma_send_##MESSAGE_NAME(int sock, protocol_builder *B,        \
-                                 ObjectID object_id, int error) {     \
+                                 ObjectID object_id, int error) {      \
     Plasma##MESSAGE_NAME##_start_as_root(B);                           \
     Plasma##MESSAGE_NAME##_object_id_create(                           \
         B, (const char *) &object_id.id[0], sizeof(object_id.id));     \
@@ -185,7 +185,7 @@ void plasma_read_CreateReply(uint8_t *data,
   }
 
 #define DEFINE_SIMPLE_READ_REPLY(MESSAGE_NAME)                                 \
-  void plasma_read_##MESSAGE_NAME(uint8_t *data, ObjectID *object_id,         \
+  void plasma_read_##MESSAGE_NAME(uint8_t *data, ObjectID *object_id,          \
                                   int *error) {                                \
     DCHECK(data);                                                              \
     Plasma##MESSAGE_NAME##_table_t req = Plasma##MESSAGE_NAME##_as_root(data); \

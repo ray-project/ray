@@ -157,14 +157,12 @@ static PyObject *PyObjectID_richcompare(PyObjectID *self,
       result = Py_NotImplemented;
       break;
     case Py_EQ:
-      result = ObjectID_equal(self->object_id, other_id->object_id)
-                   ? Py_True
-                   : Py_False;
+      result = ObjectID_equal(self->object_id, other_id->object_id) ? Py_True
+                                                                    : Py_False;
       break;
     case Py_NE:
-      result = !ObjectID_equal(self->object_id, other_id->object_id)
-                   ? Py_True
-                   : Py_False;
+      result = !ObjectID_equal(self->object_id, other_id->object_id) ? Py_True
+                                                                     : Py_False;
       break;
     case Py_GT:
       result = Py_NotImplemented;

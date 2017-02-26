@@ -105,13 +105,13 @@ int64_t table_timeout_handler(event_loop *loop,
  * @return New table callback data struct.
  */
 TableCallbackData *init_table_callback(DBHandle *db_handle,
-                                         UniqueID id,
-                                         const char *label,
-                                         OWNER void *data,
-                                         RetryInfo *retry,
-                                         table_done_callback done_callback,
-                                         table_retry_callback retry_callback,
-                                         void *user_context);
+                                       UniqueID id,
+                                       const char *label,
+                                       OWNER void *data,
+                                       RetryInfo *retry,
+                                       table_done_callback done_callback,
+                                       table_retry_callback retry_callback,
+                                       void *user_context);
 
 /**
  * Destroy any state associated with the callback data. This removes all
@@ -132,8 +132,7 @@ void destroy_table_callback(TableCallbackData *callback_data);
  *        want to remove.
  * @return Void.
  */
-void destroy_timer_callback(event_loop *loop,
-                            TableCallbackData *callback_data);
+void destroy_timer_callback(event_loop *loop, TableCallbackData *callback_data);
 
 /**
  * Add an outstanding callback entry.

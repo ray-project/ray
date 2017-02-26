@@ -261,12 +261,12 @@ TEST object_notifications_test(void) {
 
   ObjectID oid = globally_unique_id();
   ObjectInfo info = {.obj_id = oid,
-                      .data_size = 10,
-                      .metadata_size = 1,
-                      .create_time = 0,
-                      .construct_duration = 0,
-                      .digest = {0},
-                      .is_deletion = false};
+                     .data_size = 10,
+                     .metadata_size = 1,
+                     .create_time = 0,
+                     .construct_duration = 0,
+                     .digest = {0},
+                     .is_deletion = false};
 
   /* Check that the object is not local at first. */
   bool is_local = is_object_local(local_mock->state, oid);

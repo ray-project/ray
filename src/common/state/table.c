@@ -5,17 +5,17 @@
 
 /* The default behavior is to retry every ten seconds forever. */
 static const RetryInfo default_retry = {.num_retries = -1,
-                                         .timeout = 10000,
-                                         .fail_callback = NULL};
+                                        .timeout = 10000,
+                                        .fail_callback = NULL};
 
 TableCallbackData *init_table_callback(DBHandle *db_handle,
-                                         UniqueID id,
-                                         const char *label,
-                                         OWNER void *data,
-                                         RetryInfo *retry,
-                                         table_done_callback done_callback,
-                                         table_retry_callback retry_callback,
-                                         void *user_context) {
+                                       UniqueID id,
+                                       const char *label,
+                                       OWNER void *data,
+                                       RetryInfo *retry,
+                                       table_done_callback done_callback,
+                                       table_retry_callback retry_callback,
+                                       void *user_context) {
   CHECK(db_handle);
   CHECK(db_handle->loop);
   /* If no retry info is provided, use the default retry info. */

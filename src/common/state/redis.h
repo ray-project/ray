@@ -108,8 +108,7 @@ void redis_object_table_subscribe_to_notifications(
  *        information.
  * @return Void.
  */
-void redis_object_table_request_notifications(
-    TableCallbackData *callback_data);
+void redis_object_table_request_notifications(TableCallbackData *callback_data);
 
 /**
  * Add a new object to the object table in redis.
@@ -252,8 +251,7 @@ void redis_local_scheduler_table_send_info(TableCallbackData *callback_data);
  *        information.
  * @return Void.
  */
-void redis_actor_notification_table_subscribe(
-    TableCallbackData *callback_data);
+void redis_actor_notification_table_subscribe(TableCallbackData *callback_data);
 
 void redis_object_info_subscribe(TableCallbackData *callback_data);
 

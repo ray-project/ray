@@ -37,7 +37,7 @@ int bind_inet_sock(const int port, bool shall_listen) {
     close(socket_fd);
     return -1;
   }
-  int *const pon = (int *const) &on;
+  int *const pon = (int *const) & on;
   if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, pon, sizeof(on)) < 0) {
     LOG_ERROR("setsockopt failed for port %d", port);
     close(socket_fd);

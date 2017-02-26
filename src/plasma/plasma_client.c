@@ -443,9 +443,7 @@ void plasma_release(PlasmaConnection *conn, ObjectID obj_id) {
 }
 
 /* This method is used to query whether the plasma store contains an object. */
-void plasma_contains(PlasmaConnection *conn,
-                     ObjectID obj_id,
-                     int *has_object) {
+void plasma_contains(PlasmaConnection *conn, ObjectID obj_id, int *has_object) {
   /* Check if we already have a reference to the object. */
   object_in_use_entry *object_entry;
   HASH_FIND(hh, conn->objects_in_use, &obj_id, sizeof(obj_id), object_entry);
@@ -556,8 +554,8 @@ int plasma_subscribe(PlasmaConnection *conn) {
 }
 
 PlasmaConnection *plasma_connect(const char *store_socket_name,
-                                  const char *manager_socket_name,
-                                  int release_delay) {
+                                 const char *manager_socket_name,
+                                 int release_delay) {
   /* Initialize the store connection struct */
   PlasmaConnection *result = malloc(sizeof(PlasmaConnection));
   result->store_conn = connect_ipc_sock_retry(store_socket_name, -1, -1);

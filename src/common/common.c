@@ -12,7 +12,7 @@
 const UT_icd object_id_icd = {sizeof(ObjectID), NULL, NULL, NULL};
 
 const UniqueID NIL_ID = {{255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-                           255, 255, 255, 255, 255, 255, 255, 255, 255, 255}};
+                          255, 255, 255, 255, 255, 255, 255, 255, 255, 255}};
 
 const unsigned char NIL_DIGEST[DIGEST_SIZE] = {0};
 

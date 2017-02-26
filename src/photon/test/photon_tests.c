@@ -115,8 +115,8 @@ void PhotonMock_free(PhotonMock *mock) {
 
   /* Kill all the workers and run the event loop again so that the task table
    * updates propagate and the tasks in progress are freed. */
-  LocalSchedulerClient **worker = (LocalSchedulerClient **) utarray_eltptr(
-      mock->photon_state->workers, 0);
+  LocalSchedulerClient **worker =
+      (LocalSchedulerClient **) utarray_eltptr(mock->photon_state->workers, 0);
   while (worker != NULL) {
     kill_worker(*worker, true);
     worker = (LocalSchedulerClient **) utarray_eltptr(
@@ -349,7 +349,7 @@ TEST object_reconstruction_suppression_test(void) {
     /* Connect a plasma manager client so we can call object_table_add. */
     const char *db_connect_args[] = {"address", "127.0.0.1:12346"};
     DBHandle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1",
-                               2, db_connect_args);
+                              2, db_connect_args);
     db_attach(db, photon->loop, false);
     /* Add the object to the object table. */
     object_table_add(db, return_id, 1, (unsigned char *) NIL_DIGEST, NULL,
@@ -545,9 +545,8 @@ TEST start_kill_workers_test(void) {
 
   /* Each worker should register its process ID. */
   for (int i = 0; i < utarray_len(photon->photon_state->workers); ++i) {
-    LocalSchedulerClient *worker =
-        *(LocalSchedulerClient **) utarray_eltptr(
-            photon->photon_state->workers, i);
+    LocalSchedulerClient *worker = *(LocalSchedulerClient **) utarray_eltptr(
+        photon->photon_state->workers, i);
     process_message(photon->photon_state->loop, worker->sock, worker, 0);
   }
   ASSERT_EQ(utarray_len(photon->photon_state->child_pids), 0);

@@ -336,9 +336,9 @@ TEST plasma_wait_request_test(void) {
   plasma_read_WaitRequest(data, &object_requests_read[0], num_object_ids_read,
                           &timeout_ms_read, &num_ready_objects_read);
   ASSERT(ObjectID_equal(object_requests[0].object_id,
-                          object_requests_read[0].object_id));
+                        object_requests_read[0].object_id));
   ASSERT(ObjectID_equal(object_requests[1].object_id,
-                          object_requests_read[1].object_id));
+                        object_requests_read[1].object_id));
   ASSERT(object_requests[0].type == object_requests_read[0].type);
   ASSERT(object_requests[1].type == object_requests_read[1].type);
   free(data);
@@ -361,9 +361,9 @@ TEST plasma_wait_reply_test(void) {
   int num_ready_objects_read2;
   plasma_read_WaitReply(data, &object_replies2[0], &num_ready_objects_read2);
   ASSERT(ObjectID_equal(object_replies1[0].object_id,
-                          object_replies2[0].object_id));
+                        object_replies2[0].object_id));
   ASSERT(ObjectID_equal(object_replies1[1].object_id,
-                          object_replies2[1].object_id));
+                        object_replies2[1].object_id));
   ASSERT(object_replies1[0].status == object_replies2[0].status);
   ASSERT(object_replies1[1].status == object_replies2[1].status);
   free(data);

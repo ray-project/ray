@@ -46,8 +46,7 @@ GlobalSchedulerPolicyState *GlobalSchedulerPolicyState_init(void);
  * @param policy_state The policy state to free.
  * @return Void.
  */
-void GlobalSchedulerPolicyState_free(
-    GlobalSchedulerPolicyState *policy_state);
+void GlobalSchedulerPolicyState_free(GlobalSchedulerPolicyState *policy_state);
 
 /**
  * Main new task handling function in the global scheduler.
@@ -82,9 +81,8 @@ void handle_object_available(GlobalSchedulerState *state,
  * @param policy_state The state managed by the scheduling policy.
  * @return Void.
  */
-void handle_local_scheduler_heartbeat(
-    GlobalSchedulerState *state,
-    GlobalSchedulerPolicyState *policy_state);
+void handle_local_scheduler_heartbeat(GlobalSchedulerState *state,
+                                      GlobalSchedulerPolicyState *policy_state);
 
 /**
  * Handle the presence of a new local scheduler. Currently, this just adds the

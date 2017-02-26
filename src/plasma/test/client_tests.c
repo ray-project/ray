@@ -116,8 +116,8 @@ bool is_equal_data_123(uint8_t *data1, uint8_t *data2, uint64_t size) {
 }
 
 TEST plasma_nonblocking_get_tests(void) {
-  PlasmaConnection *plasma_conn = plasma_connect(
-      "/tmp/store1", "/tmp/manager1", PLASMA_DEFAULT_RELEASE_DELAY);
+  PlasmaConnection *plasma_conn = plasma_connect("/tmp/store1", "/tmp/manager1",
+                                                 PLASMA_DEFAULT_RELEASE_DELAY);
   ObjectID oid = globally_unique_id();
   ObjectID oid_array[1] = {oid};
   ObjectBuffer obj_buffer;

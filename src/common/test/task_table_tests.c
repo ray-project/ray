@@ -126,9 +126,7 @@ void subscribe_done_callback(TaskID task_id, void *user_context) {
   CHECK(0);
 }
 
-void subscribe_fail_callback(UniqueID id,
-                             void *user_context,
-                             void *user_data) {
+void subscribe_fail_callback(UniqueID id, void *user_context, void *user_data) {
   subscribe_failed = 1;
   CHECK(user_context == (void *) subscribe_timeout_context);
   event_loop_stop(g_loop);

@@ -54,27 +54,26 @@ extern int usleep(useconds_t usec);
  * already removed, meaning that the operation was already marked as succeeded
  * or failed.
  */
-#define REDIS_CALLBACK_HEADER(DB, CB_DATA, REPLY)     \
-  if ((REPLY) == NULL) {                              \
-    return;                                           \
-  }                                                   \
-  DBHandle *DB = (DBHandle *) c->data;                \
-  TableCallbackData *CB_DATA =                      \
-      outstanding_callbacks_find((int64_t) privdata); \
-  if (CB_DATA == NULL) {                              \
-    /* the callback data structure has been           \
-     * already freed; just ignore this reply */       \
-    return;                                           \
-  }                                                   \
-  do {                                                \
+#define REDIS_CALLBACK_HEADER(DB, CB_DATA, REPLY)                              \
+  if ((REPLY) == NULL) {                                                       \
+    return;                                                                    \
+  }                                                                            \
+  DBHandle *DB = (DBHandle *) c->data;                                         \
+  TableCallbackData *CB_DATA = outstanding_callbacks_find((int64_t) privdata); \
+  if (CB_DATA == NULL) {                                                       \
+    /* the callback data structure has been                                    \
+     * already freed; just ignore this reply */                                \
+    return;                                                                    \
+  }                                                                            \
+  do {                                                                         \
   } while (0)
 
 DBHandle *db_connect(const char *db_address,
-                      int db_port,
-                      const char *client_type,
-                      const char *node_ip_address,
-                      int num_args,
-                      const char **args) {
+                     int db_port,
+                     const char *client_type,
+                     const char *node_ip_address,
+                     int num_args,
+                     const char **args) {
   /* Check that the number of args is even. These args will be passed to the
    * RAY.CONNECT Redis command, which takes arguments in pairs. */
   if (num_args % 2 != 0) {
@@ -104,7 +103,8 @@ DBHandle *db_connect(const char *db_address,
    * should only need to be done once (by whoever started Redis), but since
    * Redis may be started in multiple places (e.g., for testing or when starting
    * processes by hand), it is easier to do it multiple times. */
-  reply = (redisReply *) redisCommand(context, "CONFIG SET notify-keyspace-events Kl");
+  reply = (redisReply *) redisCommand(context,
+                                      "CONFIG SET notify-keyspace-events Kl");
   CHECKM(reply != NULL, "db_connect failed on CONFIG SET");
   freeReplyObject(reply);
   /* Also configure Redis to not run in protected mode, so clients on other
@@ -268,7 +268,8 @@ void redis_object_table_remove_callback(redisAsyncContext *c,
   CHECK(strcmp(reply->str, "OK") == 0);
   /* Call the done callback if there is one. */
   if (callback_data->done_callback != NULL) {
-    object_table_done_callback done_callback = (object_table_done_callback) callback_data->done_callback;
+    object_table_done_callback done_callback =
+        (object_table_done_callback) callback_data->done_callback;
     done_callback(callback_data->id, callback_data->user_context);
   }
   /* Clean up the timer and callback. */
@@ -320,7 +321,8 @@ void redis_result_table_add_callback(redisAsyncContext *c,
          reply->str);
   /* Call the done callback if there is one. */
   if (callback_data->done_callback) {
-    result_table_done_callback done_callback = (result_table_done_callback) callback_data->done_callback;
+    result_table_done_callback done_callback =
+        (result_table_done_callback) callback_data->done_callback;
     done_callback(callback_data->id, callback_data->user_context);
   }
   destroy_timer_callback(db->loop, callback_data);
@@ -394,7 +396,8 @@ void redis_result_table_lookup_callback(redisAsyncContext *c,
   }
 
   /* Call the done callback if there is one. */
-  result_table_lookup_callback done_callback = (result_table_lookup_callback) callback_data->done_callback;
+  result_table_lookup_callback done_callback =
+      (result_table_lookup_callback) callback_data->done_callback;
   if (done_callback != NULL) {
     done_callback(callback_data->id, result_id, callback_data->user_context);
   }
@@ -431,9 +434,9 @@ void redis_get_cached_db_client(DBHandle *db,
             entry);
   if (!entry) {
     /* This is a very rare case. It should happen at most once per db client. */
-    redisReply *reply = (redisReply *)
-        redisCommand(db->sync_context, "RAY.GET_CLIENT_ADDRESS %b",
-                     (char *) db_client_id.id, sizeof(db_client_id.id));
+    redisReply *reply = (redisReply *) redisCommand(
+        db->sync_context, "RAY.GET_CLIENT_ADDRESS %b", (char *) db_client_id.id,
+        sizeof(db_client_id.id));
     CHECKM(reply->type == REDIS_REPLY_STRING, "REDIS reply type=%d, str=%s",
            reply->type, reply->str);
     entry = (DBClientCacheEntry *) malloc(sizeof(DBClientCacheEntry));
@@ -466,7 +469,7 @@ void redis_object_table_lookup_callback(redisAsyncContext *c,
   } else if (reply->type == REDIS_REPLY_ARRAY) {
     manager_count = reply->elements;
     if (manager_count > 0) {
-      managers = (DBClientID*) malloc(reply->elements * sizeof(DBClientID));
+      managers = (DBClientID *) malloc(reply->elements * sizeof(DBClientID));
       manager_vector = (const char **) malloc(manager_count * sizeof(char *));
     }
     for (int j = 0; j < reply->elements; ++j) {
@@ -548,7 +551,7 @@ ObjectID parse_subscribe_to_notifications_payload(
   CHECK(memcmp(&payload[offset], managers_str, strlen(managers_str)) == 0);
   offset += strlen(managers_str);
   /* Parse the managers. */
-  const char **managers = (const char**) malloc(num_managers * sizeof(char *));
+  const char **managers = (const char **) malloc(num_managers * sizeof(char *));
   for (int i = 0; i < num_managers; ++i) {
     /* First there is a space. */
     CHECK(memcmp(&payload[offset], " ", strlen(" ")) == 0);
@@ -722,7 +725,8 @@ void redis_task_table_get_task_callback(redisAsyncContext *c,
   /* Parse the task from the reply. */
   Task *task = parse_and_construct_task_from_redis_reply(reply);
   /* Call the done callback if there is one. */
-  task_table_get_callback done_callback = (task_table_get_callback) callback_data->done_callback;
+  task_table_get_callback done_callback =
+      (task_table_get_callback) callback_data->done_callback;
   if (done_callback != NULL) {
     done_callback(task, callback_data->user_context);
   }
@@ -757,7 +761,8 @@ void redis_task_table_add_task_callback(redisAsyncContext *c,
   CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
   /* Call the done callback if there is one. */
   if (callback_data->done_callback != NULL) {
-    task_table_done_callback done_callback = (task_table_done_callback) callback_data->done_callback;
+    task_table_done_callback done_callback =
+        (task_table_done_callback) callback_data->done_callback;
     done_callback(callback_data->id, callback_data->user_context);
   }
   /* Clean up the timer and callback. */
@@ -793,7 +798,8 @@ void redis_task_table_update_callback(redisAsyncContext *c,
   CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
   /* Call the done callback if there is one. */
   if (callback_data->done_callback != NULL) {
-    task_table_done_callback done_callback = (task_table_done_callback) callback_data->done_callback;
+    task_table_done_callback done_callback =
+        (task_table_done_callback) callback_data->done_callback;
     done_callback(callback_data->id, callback_data->user_context);
   }
   /* Clean up the timer and callback. */
@@ -826,7 +832,8 @@ void redis_task_table_test_and_update_callback(redisAsyncContext *c,
   /* Parse the task from the reply. */
   Task *task = parse_and_construct_task_from_redis_reply(reply);
   /* Call the done callback if there is one. */
-  task_table_get_callback done_callback = (task_table_get_callback) callback_data->done_callback;
+  task_table_get_callback done_callback =
+      (task_table_get_callback) callback_data->done_callback;
   if (done_callback != NULL) {
     done_callback(task, callback_data->user_context);
   }
@@ -841,7 +848,8 @@ void redis_task_table_test_and_update_callback(redisAsyncContext *c,
 void redis_task_table_test_and_update(TableCallbackData *callback_data) {
   DBHandle *db = callback_data->db_handle;
   TaskID task_id = callback_data->id;
-  TaskTableTestAndUpdateData *update_data = (TaskTableTestAndUpdateData *) callback_data->data;
+  TaskTableTestAndUpdateData *update_data =
+      (TaskTableTestAndUpdateData *) callback_data->data;
 
   int status = redisAsyncCommand(
       db->context, redis_task_table_test_and_update_callback,
@@ -914,7 +922,8 @@ void redis_task_table_subscribe_callback(redisAsyncContext *c,
   if (strcmp(message_type->str, "message") == 0 ||
       strcmp(message_type->str, "pmessage") == 0) {
     /* Handle a task table event. Parse the payload and call the callback. */
-    TaskTableSubscribeData *data = (TaskTableSubscribeData *) callback_data->data;
+    TaskTableSubscribeData *data =
+        (TaskTableSubscribeData *) callback_data->data;
     /* Read out the information from the payload. */
     TaskID task_id;
     int state;
@@ -934,7 +943,8 @@ void redis_task_table_subscribe_callback(redisAsyncContext *c,
     /* If this condition is true, we got the initial message that acknowledged
      * the subscription. */
     if (callback_data->done_callback != NULL) {
-      task_table_done_callback done_callback = (task_table_done_callback) callback_data->done_callback;
+      task_table_done_callback done_callback =
+          (task_table_done_callback) callback_data->done_callback;
       done_callback(callback_data->id, callback_data->user_context);
     }
     /* Note that we do not destroy the callback data yet because the
@@ -1003,7 +1013,8 @@ void redis_db_client_table_subscribe_callback(redisAsyncContext *c,
     return;
   }
   /* Otherwise, parse the payload and call the callback. */
-  DBClientTableSubscribeData *data = (DBClientTableSubscribeData *) callback_data->data;
+  DBClientTableSubscribeData *data =
+      (DBClientTableSubscribeData *) callback_data->data;
   DBClientID client;
   memcpy(client.id, payload->str, sizeof(client.id));
   /* We subtract 1 + sizeof(client.id) to compute the length of the
@@ -1054,7 +1065,8 @@ void redis_local_scheduler_table_subscribe_callback(redisAsyncContext *c,
     /* Handle a local scheduler heartbeat. Parse the payload and call the
      * subscribe callback. */
     redisReply *payload = reply->element[2];
-    LocalSchedulerTableSubscribeData *data = (LocalSchedulerTableSubscribeData *) callback_data->data;
+    LocalSchedulerTableSubscribeData *data =
+        (LocalSchedulerTableSubscribeData *) callback_data->data;
     DBClientID client_id;
     LocalSchedulerInfo info;
     /* The payload should be the concatenation of these two structs. */
@@ -1103,7 +1115,8 @@ void redis_local_scheduler_table_send_info_callback(redisAsyncContext *c,
 
 void redis_local_scheduler_table_send_info(TableCallbackData *callback_data) {
   DBHandle *db = callback_data->db_handle;
-  LocalSchedulerTableSendInfoData *data = (LocalSchedulerTableSendInfoData *) callback_data->data;
+  LocalSchedulerTableSendInfoData *data =
+      (LocalSchedulerTableSendInfoData *) callback_data->data;
   int status = redisAsyncCommand(
       db->context, redis_local_scheduler_table_send_info_callback,
       (void *) callback_data->timer_id, "PUBLISH local_schedulers %b%b",
@@ -1192,7 +1205,8 @@ void redis_object_info_subscribe_callback(redisAsyncContext *c,
     return;
   }
   /* Otherwise, parse the payload and call the callback. */
-  ObjectInfoSubscribeData *data = (ObjectInfoSubscribeData *) callback_data->data;
+  ObjectInfoSubscribeData *data =
+      (ObjectInfoSubscribeData *) callback_data->data;
   ObjectID object_id;
   memcpy(object_id.id, payload->str, sizeof(object_id.id));
   /* payload->str should have the format: "ObjectID:object_size_int" */

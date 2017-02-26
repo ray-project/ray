@@ -327,7 +327,7 @@ void print_task(task_spec *spec, UT_string *output) {
   /* Print arguments. */
   for (int i = 0; i < task_num_args(spec); ++i) {
     ObjectID_to_string((ObjectID) task_arg_id(spec, i), &hex[0],
-                        ID_STRING_SIZE);
+                       ID_STRING_SIZE);
     utstring_printf(output, " id:%d %s", i, &hex[0]);
   }
   /* Print return ids. */
