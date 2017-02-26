@@ -556,7 +556,7 @@ TEST start_kill_workers_test(void) {
   /* After killing a worker, its state is cleaned up. */
   local_scheduler_client *worker = *(local_scheduler_client **) utarray_eltptr(
       photon->photon_state->workers, 0);
-  kill_worker(worker, true);
+  kill_worker(worker, false);
   ASSERT_EQ(utarray_len(photon->photon_state->child_pids), 0);
   ASSERT_EQ(utarray_len(photon->photon_state->workers), num_workers - 1);
 

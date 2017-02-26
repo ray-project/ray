@@ -8,7 +8,6 @@ import redis
 import traceback
 import sys
 import binascii
-import atexit
 
 import ray
 
@@ -70,5 +69,3 @@ being caught in "lib/python/ray/workers/default_worker.py".
     # After putting the error message in Redis, this worker will attempt to
     # reenter the main loop. TODO(rkn): We should probably reset it's state and
     # call connect again.
-
-atexit.register(ray.worker.cleanup_worker)

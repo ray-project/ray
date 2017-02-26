@@ -57,17 +57,26 @@ void print_resource_info(const local_scheduler_state *state,
 #endif
 }
 
+int force_kill_worker(event_loop *loop, timer_id id, void *context) {
+  local_scheduler_client *worker = (local_scheduler_client *) context;
+  kill(worker->pid, SIGKILL);
+  close(worker->sock);
+  free(worker);
+  return EVENT_LOOP_TIMER_DONE;
+}
+
 /**
  * Kill a worker, if it is a child process, and clean up all of its associated
  * state.
  *
  * @param worker A pointer to the worker we want to kill.
- * @param wait A bool representing whether we should wait for the worker's
- *        process to exit. If the worker is not a child process, this flag is
- *        ignored.
+ * @param cleanup A bool representing whether we're cleaning up the entire local
+ *        scheduler's state, or just this worker. If true, then the worker will
+ *        be force-killed immediately. Else, the worker will be given a chance
+ *        to clean up its own state.
  * @return Void.
  */
-void kill_worker(local_scheduler_client *worker, bool wait) {
+void kill_worker(local_scheduler_client *worker, bool cleanup) {
   /* Erase the local scheduler's reference to the worker. */
   local_scheduler_state *state = worker->local_scheduler_state;
   int num_workers = utarray_len(state->workers);
@@ -92,19 +101,25 @@ void kill_worker(local_scheduler_client *worker, bool wait) {
 
   /* If the worker has registered a process ID with us and it's a child
    * process, use it to send a kill signal. */
+  bool free_worker = true;
   if (worker->is_child && worker->pid != 0) {
-    kill(worker->pid, SIGTERM);
-    kill(worker->pid, SIGKILL);
-    if (wait) {
-      /* Wait for the process to exit. */
+    if (cleanup) {
+      /* If we're exiting the local scheduler anyway, it's okay to force kill
+       * the worker immediately. Wait for the process to exit. */
+      kill(worker->pid, SIGKILL);
       waitpid(worker->pid, NULL, 0);
+      close(worker->sock);
+    } else {
+      /* If we're just cleaning up a single worker, allow it some time to clean
+       * up its state before force killing. The client socket will be closed
+       * and the worker struct will be freed after the timeout. */
+      kill(worker->pid, SIGTERM);
+      event_loop_add_timer(state->loop, KILL_WORKER_TIMEOUT, force_kill_worker,
+                           (void *) worker);
+      free_worker = false;
     }
     LOG_INFO("Killed worker with pid %d", worker->pid);
   }
-
-  /* Clean up the client socket after killing the worker so that the worker
-   * can't receive the SIGPIPE before exiting. */
-  close(worker->sock);
 
   /* Clean up the task in progress. */
   if (worker->task_in_progress) {
@@ -121,7 +136,12 @@ void kill_worker(local_scheduler_client *worker, bool wait) {
   }
 
   LOG_DEBUG("Killed worker with pid %d", worker->pid);
-  free(worker);
+  if (free_worker) {
+    /* Clean up the client socket after killing the worker so that the worker
+     * can't receive the SIGPIPE before exiting. */
+    close(worker->sock);
+    free(worker);
+  }
 }
 
 void free_local_scheduler(local_scheduler_state *state) {

@@ -7,6 +7,10 @@
 /* The duration between local scheduler heartbeats. */
 #define LOCAL_SCHEDULER_HEARTBEAT_TIMEOUT_MILLISECONDS 100
 
+/* The duration that we wait after sending a worker SIGTERM before sending the
+ * worker SIGKILL. */
+#define KILL_WORKER_TIMEOUT 100
+
 #define DEFAULT_NUM_CPUS INT16_MAX
 #define DEFAULT_NUM_GPUS 0
 

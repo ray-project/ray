@@ -6,7 +6,6 @@ import ray
 import sys
 import time
 import unittest
-import os
 
 class ComponentFailureTest(unittest.TestCase):
   # This test checks that when a worker dies in the middle of a get, the plasma
