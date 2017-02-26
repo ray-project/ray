@@ -531,8 +531,16 @@ void reconstruct_failed_result_lookup_callback(object_id reconstruct_object_id,
                                                void *user_context) {
   /* TODO(swang): The following check will fail if an object was created by a
    * put. */
-  CHECKM(!IS_NIL_ID(task_id),
-         "No task information found for object during reconstruction");
+  if (IS_NIL_ID(task_id)) {
+    /* NOTE(swang): For some reason, the result table update sometimes happens
+     * after this lookup returns, possibly due to concurrent clients. In most
+     * cases, this is okay because the initial execution is probably still
+     * pending, so for now, we log a warning and suppress reconstruction. */
+    LOG_WARN(
+        "No task information found for object during reconstruction (no object "
+        "entry yet)");
+    return;
+  }
   local_scheduler_state *state = user_context;
   /* If the task failed to finish, it's safe for us to claim responsibility for
    * reconstruction. */
