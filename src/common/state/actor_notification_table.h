@@ -42,6 +42,6 @@ void actor_notification_table_subscribe(
 typedef struct {
   actor_notification_table_subscribe_callback subscribe_callback;
   void *subscribe_context;
-} actor_notification_table_subscribe_data;
+} ActorNotificationTableSubscribeData;
 
 #endif /* ACTOR_NOTIFICATION_TABLE_H */

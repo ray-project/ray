@@ -1127,8 +1127,8 @@ void redis_actor_notification_table_subscribe_callback(redisAsyncContext *c,
     /* Handle an actor notification message. Parse the payload and call the
      * subscribe callback. */
     redisReply *payload = reply->element[2];
-    actor_notification_table_subscribe_data *data =
-        (actor_notification_table_subscribe_data *) callback_data->data;
+    ActorNotificationTableSubscribeData *data =
+        (ActorNotificationTableSubscribeData *) callback_data->data;
     ActorInfo info;
     /* The payload should be the concatenation of these two structs. */
     CHECK(sizeof(info.actor_id) + sizeof(info.local_scheduler_id) ==
