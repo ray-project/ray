@@ -119,7 +119,7 @@ ObjectSizeEntry *create_object_size_hashmap(GlobalSchedulerState *state,
     char **p = NULL;
     char id_string[ID_STRING_SIZE];
     LOG_DEBUG("locations for an arg_by_ref obj_id = %s",
-              object_id_to_string(obj_id, id_string, ID_STRING_SIZE));
+              ObjectID_to_string(obj_id, id_string, ID_STRING_SIZE));
     UNUSED(id_string);
     for (p = (char **) utarray_front(obj_info_entry->object_locations);
          p != NULL;
@@ -177,7 +177,7 @@ DBClientID get_photon_id(GlobalSchedulerState *state,
 
   char id_string[ID_STRING_SIZE];
   LOG_DEBUG("photon ID found = %s",
-            object_id_to_string(photon_id, id_string, ID_STRING_SIZE));
+            ObjectID_to_string(photon_id, id_string, ID_STRING_SIZE));
   UNUSED(id_string);
 
   if (IS_NIL_ID(photon_id)) {
@@ -313,7 +313,7 @@ bool handle_task_waiting(GlobalSchedulerState *state,
     char id_string[ID_STRING_SIZE];
     LOG_ERROR(
         "Infeasible task. No nodes satisfy hard constraints for task = %s",
-        object_id_to_string(task_task_id(task), id_string, ID_STRING_SIZE));
+        ObjectID_to_string(task_task_id(task), id_string, ID_STRING_SIZE));
     /* TODO(atumanov): propagate this error to the task's driver and/or
      * cache the task in case new local schedulers satisfy it in the future. */
     return false;

@@ -36,11 +36,11 @@ void assign_task_to_local_scheduler(GlobalSchedulerState *state,
   char id_string[ID_STRING_SIZE];
   task_spec *spec = task_task_spec(task);
   LOG_DEBUG("assigning task to local_scheduler_id = %s",
-            object_id_to_string(local_scheduler_id, id_string, ID_STRING_SIZE));
+            ObjectID_to_string(local_scheduler_id, id_string, ID_STRING_SIZE));
   task_set_state(task, TASK_STATUS_SCHEDULED);
   task_set_local_scheduler(task, local_scheduler_id);
   LOG_DEBUG("Issuing a task table update for task = %s",
-            object_id_to_string(task_task_id(task), id_string, ID_STRING_SIZE));
+            ObjectID_to_string(task_task_id(task), id_string, ID_STRING_SIZE));
   UNUSED(id_string);
   task_table_update(state->db, copy_task(task), NULL, NULL, NULL);
 
@@ -140,7 +140,7 @@ LocalScheduler *get_local_scheduler(GlobalSchedulerState *state,
   for (int i = 0; i < utarray_len(state->local_schedulers); ++i) {
     local_scheduler_ptr =
         (LocalScheduler *) utarray_eltptr(state->local_schedulers, i);
-    if (db_client_ids_equal(local_scheduler_ptr->id, photon_id)) {
+    if (DBClientID_equal(local_scheduler_ptr->id, photon_id)) {
       LOG_DEBUG("photon_id matched cached local scheduler entry.");
       return local_scheduler_ptr;
     }
@@ -174,7 +174,7 @@ void process_new_db_client(DBClientID db_client_id,
   GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
   char id_string[ID_STRING_SIZE];
   LOG_DEBUG("db client table callback for db client = %s",
-            object_id_to_string(db_client_id, id_string, ID_STRING_SIZE));
+            ObjectID_to_string(db_client_id, id_string, ID_STRING_SIZE));
   UNUSED(id_string);
   if (strncmp(client_type, "photon", strlen("photon")) == 0) {
     /* Add plasma_manager ip:port -> photon_db_client_id association to state.
@@ -201,7 +201,7 @@ void process_new_db_client(DBClientID db_client_id,
       LOG_DEBUG("Photon to Plasma hash map so far:");
       HASH_ITER(plasma_photon_hh, state->plasma_photon_map, entry, tmp) {
         LOG_DEBUG("%s -> %s", entry->aux_address,
-                  object_id_to_string(entry->photon_db_client_id, id_string,
+                  ObjectID_to_string(entry->photon_db_client_id, id_string,
                                       ID_STRING_SIZE));
       }
     }
@@ -244,7 +244,7 @@ void object_table_subscribe_callback(ObjectID object_id,
   GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
   char id_string[ID_STRING_SIZE];
   LOG_DEBUG("object table subscribe callback for OBJECT = %s",
-            object_id_to_string(object_id, id_string, ID_STRING_SIZE));
+            ObjectID_to_string(object_id, id_string, ID_STRING_SIZE));
   UNUSED(id_string);
   LOG_DEBUG("\tManagers<%d>:", manager_count);
   for (int i = 0; i < manager_count; i++) {
@@ -267,7 +267,7 @@ void object_table_subscribe_callback(ObjectID object_id,
     HASH_ADD(hh, state->scheduler_object_info_table, object_id,
              sizeof(obj_info_entry->object_id), obj_info_entry);
     LOG_DEBUG("New object added to object_info_table with id = %s",
-              object_id_to_string(object_id, id_string, ID_STRING_SIZE));
+              ObjectID_to_string(object_id, id_string, ID_STRING_SIZE));
     LOG_DEBUG("\tmanager locations:");
     for (int i = 0; i < manager_count; i++) {
       LOG_DEBUG("\t\t%s", manager_vector[i]);
@@ -295,7 +295,7 @@ void local_scheduler_table_handler(DBClientID client_id,
   char id_string[ID_STRING_SIZE];
   LOG_DEBUG(
       "Local scheduler heartbeat from db_client_id %s",
-      object_id_to_string((ObjectID) client_id, id_string, ID_STRING_SIZE));
+      ObjectID_to_string((ObjectID) client_id, id_string, ID_STRING_SIZE));
   UNUSED(id_string);
   LOG_DEBUG(
       "total workers = %d, task queue length = %d, available workers = %d",

@@ -136,7 +136,7 @@ static PyObject *PyObjectID_id(PyObject *self) {
 static PyObject *PyObjectID_hex(PyObject *self) {
   PyObjectID *s = (PyObjectID *) self;
   char hex_id[ID_STRING_SIZE];
-  object_id_to_string(s->object_id, hex_id, ID_STRING_SIZE);
+  ObjectID_to_string(s->object_id, hex_id, ID_STRING_SIZE);
   PyObject *result = PyUnicode_FromString(hex_id);
   return result;
 }
@@ -157,12 +157,12 @@ static PyObject *PyObjectID_richcompare(PyObjectID *self,
       result = Py_NotImplemented;
       break;
     case Py_EQ:
-      result = object_ids_equal(self->object_id, other_id->object_id)
+      result = ObjectID_equal(self->object_id, other_id->object_id)
                    ? Py_True
                    : Py_False;
       break;
     case Py_NE:
-      result = !object_ids_equal(self->object_id, other_id->object_id)
+      result = !ObjectID_equal(self->object_id, other_id->object_id)
                    ? Py_True
                    : Py_False;
       break;
@@ -190,7 +190,7 @@ static long PyObjectID_hash(PyObjectID *self) {
 
 static PyObject *PyObjectID_repr(PyObjectID *self) {
   char hex_id[ID_STRING_SIZE];
-  object_id_to_string(self->object_id, hex_id, ID_STRING_SIZE);
+  ObjectID_to_string(self->object_id, hex_id, ID_STRING_SIZE);
   UT_string *repr;
   utstring_new(repr);
   utstring_printf(repr, "ObjectID(%s)", hex_id);

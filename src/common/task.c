@@ -78,24 +78,24 @@ struct task_spec_impl {
   (sizeof(task_spec) + ((NUM_ARGS) + (NUM_RETURNS)) * sizeof(task_arg) + \
    (ARGS_VALUE_SIZE))
 
-bool task_ids_equal(TaskID first_id, TaskID second_id) {
+bool TaskID_equal(TaskID first_id, TaskID second_id) {
   return UNIQUE_ID_EQ(first_id, second_id);
 }
 
-bool task_id_is_nil(TaskID id) {
-  return task_ids_equal(id, NIL_TASK_ID);
+bool TaskID_is_nil(TaskID id) {
+  return TaskID_equal(id, NIL_TASK_ID);
 }
 
-bool actor_ids_equal(ActorID first_id, ActorID second_id) {
+bool ActorID_equal(ActorID first_id, ActorID second_id) {
   return UNIQUE_ID_EQ(first_id, second_id);
 }
 
-bool function_ids_equal(FunctionID first_id, FunctionID second_id) {
+bool FunctionID_equal(FunctionID first_id, FunctionID second_id) {
   return UNIQUE_ID_EQ(first_id, second_id);
 }
 
-bool function_id_is_nil(FunctionID id) {
-  return function_ids_equal(id, NIL_FUNCTION_ID);
+bool FunctionID_is_nil(FunctionID id) {
+  return FunctionID_equal(id, NIL_FUNCTION_ID);
 }
 
 TaskID *task_return_ptr(task_spec *spec, int64_t return_index) {
@@ -112,9 +112,9 @@ TaskID *task_return_ptr(task_spec *spec, int64_t return_index) {
 TaskID compute_task_id(task_spec *spec) {
   /* Check that the task ID and return ID fields of the task_spec are
    * uninitialized. */
-  DCHECK(task_ids_equal(spec->task_id, NIL_TASK_ID));
+  DCHECK(TaskID_equal(spec->task_id, NIL_TASK_ID));
   for (int i = 0; i < spec->num_returns; ++i) {
-    DCHECK(object_ids_equal(*task_return_ptr(spec, i), NIL_ID));
+    DCHECK(ObjectID_equal(*task_return_ptr(spec, i), NIL_ID));
   }
   /* Compute a SHA256 hash of the task_spec. */
   SHA256_CTX ctx;
@@ -199,31 +199,31 @@ int64_t task_spec_size(task_spec *spec) {
 
 FunctionID task_function(task_spec *spec) {
   /* Check that the task has been constructed. */
-  DCHECK(!task_ids_equal(spec->task_id, NIL_TASK_ID));
+  DCHECK(!TaskID_equal(spec->task_id, NIL_TASK_ID));
   return spec->function_id;
 }
 
 ActorID task_spec_actor_id(task_spec *spec) {
   /* Check that the task has been constructed. */
-  DCHECK(!task_ids_equal(spec->task_id, NIL_TASK_ID));
+  DCHECK(!TaskID_equal(spec->task_id, NIL_TASK_ID));
   return spec->actor_id;
 }
 
 int64_t task_spec_actor_counter(task_spec *spec) {
   /* Check that the task has been constructed. */
-  DCHECK(!task_ids_equal(spec->task_id, NIL_TASK_ID));
+  DCHECK(!TaskID_equal(spec->task_id, NIL_TASK_ID));
   return spec->actor_counter;
 }
 
 UniqueID task_spec_driver_id(task_spec *spec) {
   /* Check that the task has been constructed. */
-  DCHECK(!task_ids_equal(spec->task_id, NIL_TASK_ID));
+  DCHECK(!TaskID_equal(spec->task_id, NIL_TASK_ID));
   return spec->driver_id;
 }
 
 TaskID task_spec_id(task_spec *spec) {
   /* Check that the task has been constructed. */
-  DCHECK(!task_ids_equal(spec->task_id, NIL_TASK_ID));
+  DCHECK(!TaskID_equal(spec->task_id, NIL_TASK_ID));
   return spec->task_id;
 }
 
@@ -242,7 +242,7 @@ int8_t task_arg_type(task_spec *spec, int64_t arg_index) {
 
 ObjectID task_arg_id(task_spec *spec, int64_t arg_index) {
   /* Check that the task has been constructed. */
-  DCHECK(!task_ids_equal(spec->task_id, NIL_TASK_ID));
+  DCHECK(!TaskID_equal(spec->task_id, NIL_TASK_ID));
   DCHECK(0 <= arg_index && arg_index < spec->num_args);
   task_arg *arg = &spec->args_and_returns[arg_index];
   DCHECK(arg->type == ARG_BY_REF)
@@ -267,7 +267,7 @@ int64_t task_arg_length(task_spec *spec, int64_t arg_index) {
 
 int64_t task_args_add_ref(task_spec *spec, ObjectID obj_id) {
   /* Check that the task is still under construction. */
-  DCHECK(task_ids_equal(spec->task_id, NIL_TASK_ID));
+  DCHECK(TaskID_equal(spec->task_id, NIL_TASK_ID));
   task_arg *arg = &spec->args_and_returns[spec->arg_index];
   arg->type = ARG_BY_REF;
   arg->obj_id = obj_id;
@@ -276,7 +276,7 @@ int64_t task_args_add_ref(task_spec *spec, ObjectID obj_id) {
 
 int64_t task_args_add_val(task_spec *spec, uint8_t *data, int64_t length) {
   /* Check that the task is still under construction. */
-  DCHECK(task_ids_equal(spec->task_id, NIL_TASK_ID));
+  DCHECK(TaskID_equal(spec->task_id, NIL_TASK_ID));
   task_arg *arg = &spec->args_and_returns[spec->arg_index];
   arg->type = ARG_BY_VAL;
   arg->value.offset = spec->args_value_offset;
@@ -298,7 +298,7 @@ void task_spec_set_required_resource(task_spec *spec,
 
 ObjectID task_return(task_spec *spec, int64_t return_index) {
   /* Check that the task has been constructed. */
-  DCHECK(!task_ids_equal(spec->task_id, NIL_TASK_ID));
+  DCHECK(!TaskID_equal(spec->task_id, NIL_TASK_ID));
   DCHECK(0 <= return_index && return_index < spec->num_returns);
   task_arg *ret = &spec->args_and_returns[spec->num_args + return_index];
   DCHECK(ret->type == ARG_BY_REF);
@@ -312,7 +312,7 @@ double task_spec_get_required_resource(const task_spec *spec,
 
 void free_task_spec(task_spec *spec) {
   /* Check that the task has been constructed. */
-  DCHECK(!task_ids_equal(spec->task_id, NIL_TASK_ID));
+  DCHECK(!TaskID_equal(spec->task_id, NIL_TASK_ID));
   DCHECK(spec->arg_index == spec->num_args);
   free(spec);
 }
@@ -322,18 +322,18 @@ void print_task(task_spec *spec, UT_string *output) {
    * of bytes compared to the id (+ 1 byte for '\0'). */
   static char hex[ID_STRING_SIZE];
   /* Print function id. */
-  object_id_to_string((ObjectID) task_function(spec), &hex[0], ID_STRING_SIZE);
+  ObjectID_to_string((ObjectID) task_function(spec), &hex[0], ID_STRING_SIZE);
   utstring_printf(output, "fun %s ", &hex[0]);
   /* Print arguments. */
   for (int i = 0; i < task_num_args(spec); ++i) {
-    object_id_to_string((ObjectID) task_arg_id(spec, i), &hex[0],
+    ObjectID_to_string((ObjectID) task_arg_id(spec, i), &hex[0],
                         ID_STRING_SIZE);
     utstring_printf(output, " id:%d %s", i, &hex[0]);
   }
   /* Print return ids. */
   for (int i = 0; i < task_num_returns(spec); ++i) {
     ObjectID obj_id = task_return(spec, i);
-    object_id_to_string(obj_id, &hex[0], ID_STRING_SIZE);
+    ObjectID_to_string(obj_id, &hex[0], ID_STRING_SIZE);
     utstring_printf(output, " ret:%d %s", i, &hex[0]);
   }
 }

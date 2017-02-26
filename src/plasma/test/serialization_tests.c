@@ -71,7 +71,7 @@ TEST plasma_create_request_test(void) {
   plasma_read_CreateRequest(data, &object_id2, &data_size2, &metadata_size2);
   ASSERT_EQ(data_size1, data_size2);
   ASSERT_EQ(metadata_size1, metadata_size2);
-  ASSERT(object_ids_equal(object_id1, object_id2));
+  ASSERT(ObjectID_equal(object_id1, object_id2));
   free(data);
   close(fd);
   PASS();
@@ -88,7 +88,7 @@ TEST plasma_create_reply_test(void) {
   memset(&object2, 0, sizeof(object2));
   int error_code;
   plasma_read_CreateReply(data, &object_id2, &object2, &error_code);
-  ASSERT(object_ids_equal(object_id1, object_id2));
+  ASSERT(ObjectID_equal(object_id1, object_id2));
   ASSERT(memcmp(&object1, &object2, sizeof(object1)) == 0);
   free(data);
   close(fd);
@@ -105,7 +105,7 @@ TEST plasma_seal_request_test(void) {
   ObjectID object_id2;
   unsigned char digest2[DIGEST_SIZE];
   plasma_read_SealRequest(data, &object_id2, &digest2[0]);
-  ASSERT(object_ids_equal(object_id1, object_id2));
+  ASSERT(ObjectID_equal(object_id1, object_id2));
   ASSERT(memcmp(&digest1[0], &digest2[0], DIGEST_SIZE) == 0);
   free(data);
   close(fd);
@@ -121,7 +121,7 @@ TEST plasma_seal_reply_test(void) {
   ObjectID object_id2;
   int error2;
   plasma_read_SealReply(data, &object_id2, &error2);
-  ASSERT(object_ids_equal(object_id1, object_id2));
+  ASSERT(ObjectID_equal(object_id1, object_id2));
   ASSERT(error1 == error2);
   free(data);
   close(fd);
@@ -140,8 +140,8 @@ TEST plasma_get_request_test(void) {
   ObjectID object_ids_return[2];
   int64_t timeout_ms_return;
   plasma_read_GetRequest(data, &object_ids_return[0], &timeout_ms_return, 2);
-  ASSERT(object_ids_equal(object_ids[0], object_ids_return[0]));
-  ASSERT(object_ids_equal(object_ids[1], object_ids_return[1]));
+  ASSERT(ObjectID_equal(object_ids[0], object_ids_return[0]));
+  ASSERT(ObjectID_equal(object_ids[1], object_ids_return[1]));
   ASSERT(timeout_ms == timeout_ms_return);
   free(data);
   close(fd);
@@ -163,8 +163,8 @@ TEST plasma_get_reply_test(void) {
   PlasmaObject plasma_objects_return[2];
   plasma_read_GetReply(data, object_ids_return, &plasma_objects_return[0],
                        num_objects);
-  ASSERT(object_ids_equal(object_ids[0], object_ids_return[0]));
-  ASSERT(object_ids_equal(object_ids[1], object_ids_return[1]));
+  ASSERT(ObjectID_equal(object_ids[0], object_ids_return[0]));
+  ASSERT(ObjectID_equal(object_ids[1], object_ids_return[1]));
   ASSERT(memcmp(&plasma_objects[0], &plasma_objects_return[0],
                 sizeof(PlasmaObject)) == 0);
   ASSERT(memcmp(&plasma_objects[1], &plasma_objects_return[1],
@@ -181,7 +181,7 @@ TEST plasma_release_request_test(void) {
   uint8_t *data = read_message_from_file(fd, MessageType_PlasmaReleaseRequest);
   ObjectID object_id2;
   plasma_read_ReleaseRequest(data, &object_id2);
-  ASSERT(object_ids_equal(object_id1, object_id2));
+  ASSERT(ObjectID_equal(object_id1, object_id2));
   free(data);
   close(fd);
   PASS();
@@ -196,7 +196,7 @@ TEST plasma_release_reply_test(void) {
   ObjectID object_id2;
   int error2;
   plasma_read_ReleaseReply(data, &object_id2, &error2);
-  ASSERT(object_ids_equal(object_id1, object_id2));
+  ASSERT(ObjectID_equal(object_id1, object_id2));
   ASSERT(error1 == error2);
   free(data);
   close(fd);
@@ -210,7 +210,7 @@ TEST plasma_delete_request_test(void) {
   uint8_t *data = read_message_from_file(fd, MessageType_PlasmaDeleteRequest);
   ObjectID object_id2;
   plasma_read_DeleteRequest(data, &object_id2);
-  ASSERT(object_ids_equal(object_id1, object_id2));
+  ASSERT(ObjectID_equal(object_id1, object_id2));
   free(data);
   close(fd);
   PASS();
@@ -225,7 +225,7 @@ TEST plasma_delete_reply_test(void) {
   ObjectID object_id2;
   int error2;
   plasma_read_DeleteReply(data, &object_id2, &error2);
-  ASSERT(object_ids_equal(object_id1, object_id2));
+  ASSERT(ObjectID_equal(object_id1, object_id2));
   ASSERT(error1 == error2);
   free(data);
   close(fd);
@@ -242,8 +242,8 @@ TEST plasma_status_request_test(void) {
   int64_t num_objects = plasma_read_StatusRequest_num_objects(data);
   ObjectID object_ids_read[num_objects];
   plasma_read_StatusRequest(data, object_ids_read, num_objects);
-  ASSERT(object_ids_equal(object_ids[0], object_ids_read[0]));
-  ASSERT(object_ids_equal(object_ids[1], object_ids_read[1]));
+  ASSERT(ObjectID_equal(object_ids[0], object_ids_read[0]));
+  ASSERT(ObjectID_equal(object_ids[1], object_ids_read[1]));
   free(data);
   close(fd);
   PASS();
@@ -262,8 +262,8 @@ TEST plasma_status_reply_test(void) {
   int object_statuses_read[num_objects];
   plasma_read_StatusReply(data, object_ids_read, object_statuses_read,
                           num_objects);
-  ASSERT(object_ids_equal(object_ids[0], object_ids_read[0]));
-  ASSERT(object_ids_equal(object_ids[1], object_ids_read[1]));
+  ASSERT(ObjectID_equal(object_ids[0], object_ids_read[0]));
+  ASSERT(ObjectID_equal(object_ids[1], object_ids_read[1]));
   ASSERT_EQ(object_statuses[0], object_statuses_read[0]);
   ASSERT_EQ(object_statuses[1], object_statuses_read[1]);
   free(data);
@@ -308,8 +308,8 @@ TEST plasma_fetch_request_test(void) {
   uint8_t *data = read_message_from_file(fd, MessageType_PlasmaFetchRequest);
   ObjectID object_ids_read[2];
   plasma_read_FetchRequest(data, &object_ids_read[0], 2);
-  ASSERT(object_ids_equal(object_ids[0], object_ids_read[0]));
-  ASSERT(object_ids_equal(object_ids[1], object_ids_read[1]));
+  ASSERT(ObjectID_equal(object_ids[0], object_ids_read[0]));
+  ASSERT(ObjectID_equal(object_ids[1], object_ids_read[1]));
   free(data);
   close(fd);
   PASS();
@@ -335,9 +335,9 @@ TEST plasma_wait_request_test(void) {
   int64_t timeout_ms_read;
   plasma_read_WaitRequest(data, &object_requests_read[0], num_object_ids_read,
                           &timeout_ms_read, &num_ready_objects_read);
-  ASSERT(object_ids_equal(object_requests[0].object_id,
+  ASSERT(ObjectID_equal(object_requests[0].object_id,
                           object_requests_read[0].object_id));
-  ASSERT(object_ids_equal(object_requests[1].object_id,
+  ASSERT(ObjectID_equal(object_requests[1].object_id,
                           object_requests_read[1].object_id));
   ASSERT(object_requests[0].type == object_requests_read[0].type);
   ASSERT(object_requests[1].type == object_requests_read[1].type);
@@ -360,9 +360,9 @@ TEST plasma_wait_reply_test(void) {
   ObjectRequest object_replies2[2];
   int num_ready_objects_read2;
   plasma_read_WaitReply(data, &object_replies2[0], &num_ready_objects_read2);
-  ASSERT(object_ids_equal(object_replies1[0].object_id,
+  ASSERT(ObjectID_equal(object_replies1[0].object_id,
                           object_replies2[0].object_id));
-  ASSERT(object_ids_equal(object_replies1[1].object_id,
+  ASSERT(ObjectID_equal(object_replies1[1].object_id,
                           object_replies2[1].object_id));
   ASSERT(object_replies1[0].status == object_replies2[0].status);
   ASSERT(object_replies1[1].status == object_replies2[1].status);
@@ -383,7 +383,7 @@ TEST plasma_data_request_test(void) {
   char *address2;
   int port2;
   plasma_read_DataRequest(data, &object_id2, &address2, &port2);
-  ASSERT(object_ids_equal(object_id1, object_id2));
+  ASSERT(ObjectID_equal(object_id1, object_id2));
   ASSERT(strcmp(address1, address2) == 0);
   ASSERT(port1 == port2);
   free(address2);
@@ -404,7 +404,7 @@ TEST plasma_data_reply_test(void) {
   int64_t object_size2;
   int64_t metadata_size2;
   plasma_read_DataReply(data, &object_id2, &object_size2, &metadata_size2);
-  ASSERT(object_ids_equal(object_id1, object_id2));
+  ASSERT(ObjectID_equal(object_id1, object_id2));
   ASSERT(object_size1 == object_size2);
   ASSERT(metadata_size1 == metadata_size2);
   free(data);

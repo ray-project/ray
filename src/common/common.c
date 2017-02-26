@@ -29,19 +29,19 @@ UniqueID globally_unique_id(void) {
   return result;
 }
 
-bool object_ids_equal(ObjectID first_id, ObjectID second_id) {
+bool ObjectID_equal(ObjectID first_id, ObjectID second_id) {
   return UNIQUE_ID_EQ(first_id, second_id);
 }
 
-bool object_id_is_nil(ObjectID id) {
-  return object_ids_equal(id, NIL_OBJECT_ID);
+bool ObjectID_is_nil(ObjectID id) {
+  return ObjectID_equal(id, NIL_OBJECT_ID);
 }
 
-bool db_client_ids_equal(DBClientID first_id, DBClientID second_id) {
+bool DBClientID_equal(DBClientID first_id, DBClientID second_id) {
   return UNIQUE_ID_EQ(first_id, second_id);
 }
 
-char *object_id_to_string(ObjectID obj_id, char *id_string, int id_length) {
+char *ObjectID_to_string(ObjectID obj_id, char *id_string, int id_length) {
   CHECK(id_length >= ID_STRING_SIZE);
   static const char hex[] = "0123456789abcdef";
   char *buf = id_string;

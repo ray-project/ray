@@ -221,7 +221,7 @@ TEST unique_client_id_test(void) {
   }
   for (int i = 0; i < num_conns; ++i) {
     for (int j = 0; j < i; ++j) {
-      ASSERT(!db_client_ids_equal(ids[i], ids[j]));
+      ASSERT(!DBClientID_equal(ids[i], ids[j]));
     }
   }
   PASS();

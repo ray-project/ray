@@ -234,7 +234,7 @@ void start_worker(LocalSchedulerState *state, ActorID actor_id) {
   }
 
   char id_string[ID_STRING_SIZE];
-  object_id_to_string(actor_id, id_string, ID_STRING_SIZE);
+  ObjectID_to_string(actor_id, id_string, ID_STRING_SIZE);
   /* Figure out how many arguments there are in the start_worker_command. */
   int num_args = 0;
   for (; state->config.start_worker_command[num_args] != NULL; ++num_args) {
@@ -498,7 +498,7 @@ void reconstruct_task_update_callback(Task *task, void *user_context) {
   task_spec *spec = task_task_spec(task);
   /* If the task is an actor task, then we currently do not reconstruct it.
    * TODO(rkn): Handle this better. */
-  CHECK(actor_ids_equal(task_spec_actor_id(spec), NIL_ACTOR_ID));
+  CHECK(ActorID_equal(task_spec_actor_id(spec), NIL_ACTOR_ID));
   /* Resubmit the task. */
   handle_task_submitted(state, state->algorithm_state, spec);
   /* Recursively reconstruct the task's inputs, if necessary. */
@@ -611,7 +611,7 @@ void process_message(event_loop *loop,
     }
 
     /* Handle the task submission. */
-    if (actor_ids_equal(task_spec_actor_id(spec), NIL_ACTOR_ID)) {
+    if (ActorID_equal(task_spec_actor_id(spec), NIL_ACTOR_ID)) {
       handle_task_submitted(state, state->algorithm_state, spec);
     } else {
       handle_actor_task_submitted(state, state->algorithm_state, spec);
@@ -649,17 +649,17 @@ void process_message(event_loop *loop,
      * running on the worker). */
     register_worker_info *info =
         (register_worker_info *) utarray_front(state->input_buffer);
-    if (!actor_ids_equal(info->actor_id, NIL_ACTOR_ID)) {
+    if (!ActorID_equal(info->actor_id, NIL_ACTOR_ID)) {
       /* Make sure that the local scheduler is aware that it is responsible for
        * this actor. */
       actor_map_entry *entry;
       HASH_FIND(hh, state->actor_mapping, &info->actor_id,
                 sizeof(info->actor_id), entry);
       CHECK(entry != NULL);
-      CHECK(db_client_ids_equal(entry->local_scheduler_id,
+      CHECK(DBClientID_equal(entry->local_scheduler_id,
                                 get_db_client_id(state->db)));
       /* Update the worker struct with this actor ID. */
-      CHECK(actor_ids_equal(worker->actor_id, NIL_ACTOR_ID));
+      CHECK(ActorID_equal(worker->actor_id, NIL_ACTOR_ID));
       worker->actor_id = info->actor_id;
       /* Let the scheduling algorithm process the presence of this new
        * worker. */
@@ -709,7 +709,7 @@ void process_message(event_loop *loop,
     }
     /* Let the scheduling algorithm process the fact that there is an available
      * worker. */
-    if (actor_ids_equal(worker->actor_id, NIL_ACTOR_ID)) {
+    if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
       handle_worker_available(state, state->algorithm_state, worker);
     } else {
       handle_actor_worker_available(state, state->algorithm_state, worker);
@@ -718,7 +718,7 @@ void process_message(event_loop *loop,
   case RECONSTRUCT_OBJECT: {
     if (worker->task_in_progress != NULL && !worker->is_blocked) {
       /* TODO(swang): For now, we don't handle blocked actors. */
-      if (actor_ids_equal(worker->actor_id, NIL_ACTOR_ID)) {
+      if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
         /* If the worker was executing a task (i.e. non-driver) and it wasn't
          * already blocked on an object that's not locally available, update its
          * state to blocked. */
@@ -732,7 +732,7 @@ void process_message(event_loop *loop,
   case DISCONNECT_CLIENT: {
     LOG_INFO("Disconnecting client on fd %d", client_sock);
     kill_worker(worker, false);
-    if (!actor_ids_equal(worker->actor_id, NIL_ACTOR_ID)) {
+    if (!ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
       /* Let the scheduling algorithm process the absence of this worker. */
       handle_actor_worker_disconnect(state, state->algorithm_state,
                                      worker->actor_id);
@@ -743,7 +743,7 @@ void process_message(event_loop *loop,
   case NOTIFY_UNBLOCKED: {
     if (worker->task_in_progress != NULL) {
       /* TODO(swang): For now, we don't handle blocked actors. */
-      if (actor_ids_equal(worker->actor_id, NIL_ACTOR_ID)) {
+      if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
         /* If the worker was executing a task (i.e. non-driver), update its
          * state to not blocked. */
         CHECK(worker->is_blocked);
@@ -796,7 +796,7 @@ void signal_handler(int signal) {
 
 void handle_task_scheduled_callback(Task *original_task, void *user_context) {
   task_spec *spec = task_task_spec(original_task);
-  if (actor_ids_equal(task_spec_actor_id(spec), NIL_ACTOR_ID)) {
+  if (ActorID_equal(task_spec_actor_id(spec), NIL_ACTOR_ID)) {
     /* This task does not involve an actor. Handle it normally. */
     handle_task_scheduled(g_state, g_state->algorithm_state, spec);
   } else {
@@ -837,7 +837,7 @@ void handle_actor_creation_callback(actor_info info, void *context) {
   HASH_ADD(hh, state->actor_mapping, actor_id, sizeof(entry->actor_id), entry);
   /* If this local scheduler is responsible for the actor, then start a new
    * worker for the actor. */
-  if (db_client_ids_equal(local_scheduler_id, get_db_client_id(state->db))) {
+  if (DBClientID_equal(local_scheduler_id, get_db_client_id(state->db))) {
     start_worker(state, actor_id);
   }
   /* Let the scheduling algorithm process the fact that a new actor has been

@@ -79,7 +79,7 @@ void lookup_success_callback(Task *task, void *context) {
 
 void add_success_callback(TaskID task_id, void *context) {
   add_success = 1;
-  CHECK(task_ids_equal(task_id, task_task_id(add_lookup_task)));
+  CHECK(TaskID_equal(task_id, task_task_id(add_lookup_task)));
 
   DBHandle *db = context;
   retry_info retry = {

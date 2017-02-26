@@ -147,7 +147,7 @@ typedef UniqueID ObjectID;
  *        string.
  * @param id_length The length of the id_string buffer.
  */
-char *object_id_to_string(ObjectID obj_id, char *id_string, int id_length);
+char *ObjectID_to_string(ObjectID obj_id, char *id_string, int id_length);
 
 /**
  * Compare two object IDs.
@@ -156,7 +156,7 @@ char *object_id_to_string(ObjectID obj_id, char *id_string, int id_length);
  * @param second_id The first object ID to compare.
  * @return True if the object IDs are the same and false otherwise.
  */
-bool object_ids_equal(ObjectID first_id, ObjectID second_id);
+bool ObjectID_equal(ObjectID first_id, ObjectID second_id);
 
 /**
  * Compare a object ID to the nil ID.
@@ -164,7 +164,7 @@ bool object_ids_equal(ObjectID first_id, ObjectID second_id);
  * @param id The object ID to compare to nil.
  * @return True if the object ID is equal to nil.
  */
-bool object_id_is_nil(ObjectID id);
+bool ObjectID_is_nil(ObjectID id);
 
 typedef UniqueID DBClientID;
 
@@ -175,7 +175,7 @@ typedef UniqueID DBClientID;
  * @param second_id The first db client ID to compare.
  * @return True if the db client IDs are the same and false otherwise.
  */
-bool db_client_ids_equal(DBClientID first_id, DBClientID second_id);
+bool DBClientID_equal(DBClientID first_id, DBClientID second_id);
 
 #define MAX(x, y) ((x) >= (y) ? (x) : (y))
 #define MIN(x, y) ((x) <= (y) ? (x) : (y))

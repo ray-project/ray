@@ -394,7 +394,7 @@ void update_object_wait_requests(plasma_manager_state *manager_state,
       /* Mark the object as present in the wait request. */
       int j = 0;
       for (; j < wait_req->num_object_requests; ++j) {
-        if (object_ids_equal(wait_req->object_requests[j].object_id, obj_id)) {
+        if (ObjectID_equal(wait_req->object_requests[j].object_id, obj_id)) {
           /* Check that this object is currently nonexistent. */
           CHECK(wait_req->object_requests[j].status ==
                 ObjectStatus_Nonexistent);
@@ -733,7 +733,7 @@ void process_transfer_request(event_loop *loop,
    * ID, do not add the transfer request. */
   plasma_request_buffer *pending;
   LL_FOREACH(manager_conn->transfer_queue, pending) {
-    if (object_ids_equal(pending->object_id, obj_id) &&
+    if (ObjectID_equal(pending->object_id, obj_id) &&
         (pending->type == MessageType_PlasmaDataReply)) {
       return;
     }

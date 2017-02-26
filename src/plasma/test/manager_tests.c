@@ -138,7 +138,7 @@ TEST request_transfer_test(void) {
   char *address;
   int port;
   plasma_read_DataRequest(request_data, &oid2, &address, &port);
-  ASSERT(object_ids_equal(oid, oid2));
+  ASSERT(ObjectID_equal(oid, oid2));
   free(address);
   /* Clean up. */
   utstring_free(addr);
@@ -192,7 +192,7 @@ TEST request_transfer_retry_test(void) {
   int port;
   plasma_read_DataRequest(request_data, &oid2, &address, &port);
   free(address);
-  ASSERT(object_ids_equal(oid, oid2));
+  ASSERT(ObjectID_equal(oid, oid2));
   /* Clean up. */
   utstring_free(addr0);
   utstring_free(addr1);

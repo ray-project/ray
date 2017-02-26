@@ -314,7 +314,7 @@ void plasma_get(PlasmaConnection *conn,
   free(reply_data);
 
   for (int i = 0; i < num_objects; ++i) {
-    DCHECK(object_ids_equal(received_obj_ids[i], object_ids[i]));
+    DCHECK(ObjectID_equal(received_obj_ids[i], object_ids[i]));
     object = &object_data[i];
     if (object_buffers[i].data_size != -1) {
       /* If the object was already in use by the client, then the store should

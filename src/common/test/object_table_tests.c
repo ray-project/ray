@@ -34,13 +34,13 @@ void new_object_done_callback(ObjectID object_id,
                               TaskID task_id,
                               void *user_context) {
   new_object_succeeded = 1;
-  CHECK(object_ids_equal(object_id, new_object_id));
-  CHECK(task_ids_equal(task_id, new_object_task_id));
+  CHECK(ObjectID_equal(object_id, new_object_id));
+  CHECK(TaskID_equal(task_id, new_object_task_id));
   event_loop_stop(g_loop);
 }
 
 void new_object_lookup_callback(ObjectID object_id, void *user_context) {
-  CHECK(object_ids_equal(object_id, new_object_id));
+  CHECK(ObjectID_equal(object_id, new_object_id));
   retry_info retry = {
       .num_retries = 5,
       .timeout = 100,
@@ -592,7 +592,7 @@ void subscribe_success_object_available_callback(ObjectID object_id,
                                                  const char *manager_vector[],
                                                  void *user_context) {
   CHECK(user_context == (void *) subscribe_success_context);
-  CHECK(object_ids_equal(object_id, subscribe_id));
+  CHECK(ObjectID_equal(object_id, subscribe_id));
   CHECK(manager_count == 1);
   subscribe_success_succeeded = 1;
 }

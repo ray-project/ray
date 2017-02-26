@@ -32,11 +32,11 @@ TEST task_test(void) {
   /* Check that the spec was constructed as expected. */
   ASSERT(task_num_args(spec) == 4);
   ASSERT(task_num_returns(spec) == 2);
-  ASSERT(function_ids_equal(task_function(spec), func_id));
-  ASSERT(object_ids_equal(task_arg_id(spec, 0), arg1));
+  ASSERT(FunctionID_equal(task_function(spec), func_id));
+  ASSERT(ObjectID_equal(task_arg_id(spec, 0), arg1));
   ASSERT(memcmp(task_arg_val(spec, 1), (uint8_t *) "hello",
                 task_arg_length(spec, 1)) == 0);
-  ASSERT(object_ids_equal(task_arg_id(spec, 2), arg2));
+  ASSERT(ObjectID_equal(task_arg_id(spec, 2), arg2));
   ASSERT(memcmp(task_arg_val(spec, 3), (uint8_t *) "world",
                 task_arg_length(spec, 3)) == 0);
 
@@ -66,14 +66,14 @@ TEST deterministic_ids_test(void) {
   finish_construct_task_spec(spec2);
 
   /* Check that these tasks have the same task IDs and the same return IDs.*/
-  ASSERT(task_ids_equal(task_spec_id(spec1), task_spec_id(spec2)));
-  ASSERT(object_ids_equal(task_return(spec1, 0), task_return(spec2, 0)));
-  ASSERT(object_ids_equal(task_return(spec1, 1), task_return(spec2, 1)));
-  ASSERT(object_ids_equal(task_return(spec1, 2), task_return(spec2, 2)));
+  ASSERT(TaskID_equal(task_spec_id(spec1), task_spec_id(spec2)));
+  ASSERT(ObjectID_equal(task_return(spec1, 0), task_return(spec2, 0)));
+  ASSERT(ObjectID_equal(task_return(spec1, 1), task_return(spec2, 1)));
+  ASSERT(ObjectID_equal(task_return(spec1, 2), task_return(spec2, 2)));
   /* Check that the return IDs are all distinct. */
-  ASSERT(!object_ids_equal(task_return(spec1, 0), task_return(spec2, 1)));
-  ASSERT(!object_ids_equal(task_return(spec1, 0), task_return(spec2, 2)));
-  ASSERT(!object_ids_equal(task_return(spec1, 1), task_return(spec2, 2)));
+  ASSERT(!ObjectID_equal(task_return(spec1, 0), task_return(spec2, 1)));
+  ASSERT(!ObjectID_equal(task_return(spec1, 0), task_return(spec2, 2)));
+  ASSERT(!ObjectID_equal(task_return(spec1, 1), task_return(spec2, 2)));
 
   /* Create more tasks that are only mildly different. */
 
@@ -114,11 +114,11 @@ TEST deterministic_ids_test(void) {
   finish_construct_task_spec(spec7);
 
   /* Check that the task IDs are all distinct from the original. */
-  ASSERT(!task_ids_equal(task_spec_id(spec1), task_spec_id(spec3)));
-  ASSERT(!task_ids_equal(task_spec_id(spec1), task_spec_id(spec4)));
-  ASSERT(!task_ids_equal(task_spec_id(spec1), task_spec_id(spec5)));
-  ASSERT(!task_ids_equal(task_spec_id(spec1), task_spec_id(spec6)));
-  ASSERT(!task_ids_equal(task_spec_id(spec1), task_spec_id(spec7)));
+  ASSERT(!TaskID_equal(task_spec_id(spec1), task_spec_id(spec3)));
+  ASSERT(!TaskID_equal(task_spec_id(spec1), task_spec_id(spec4)));
+  ASSERT(!TaskID_equal(task_spec_id(spec1), task_spec_id(spec5)));
+  ASSERT(!TaskID_equal(task_spec_id(spec1), task_spec_id(spec6)));
+  ASSERT(!TaskID_equal(task_spec_id(spec1), task_spec_id(spec7)));
 
   /* Check that the return object IDs are distinct from the originals. */
   task_spec *specs[6] = {spec1, spec3, spec4, spec5, spec6, spec7};
@@ -127,7 +127,7 @@ TEST deterministic_ids_test(void) {
       for (int task_index2 = 0; task_index2 < 6; ++task_index2) {
         for (int return_index2 = 0; return_index2 < 3; ++return_index2) {
           if (task_index1 != task_index2 && return_index1 != return_index2) {
-            ASSERT(!object_ids_equal(
+            ASSERT(!ObjectID_equal(
                 task_return(specs[task_index1], return_index1),
                 task_return(specs[task_index2], return_index2)));
           }

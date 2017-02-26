@@ -234,7 +234,7 @@ void create_actor(SchedulingAlgorithmState *algorithm_state,
   /* Log some useful information about the actor that we created. */
   char id_string[ID_STRING_SIZE];
   LOG_DEBUG("Creating actor with ID %s.",
-            object_id_to_string(actor_id, id_string, ID_STRING_SIZE));
+            ObjectID_to_string(actor_id, id_string, ID_STRING_SIZE));
   UNUSED(id_string);
 }
 
@@ -253,7 +253,7 @@ void remove_actor(SchedulingAlgorithmState *algorithm_state,
   DL_COUNT(entry->task_queue, elt, count);
   if (count > 0) {
     LOG_WARN("Removing actor with ID %s and %d remaining tasks.",
-             object_id_to_string(actor_id, id_string, ID_STRING_SIZE), count);
+             ObjectID_to_string(actor_id, id_string, ID_STRING_SIZE), count);
   }
   UNUSED(id_string);
 
@@ -316,8 +316,8 @@ void add_task_to_actor_queue(LocalSchedulerState *state,
                              bool from_global_scheduler) {
   ActorID actor_id = task_spec_actor_id(spec);
   char tmp[ID_STRING_SIZE];
-  object_id_to_string(actor_id, tmp, ID_STRING_SIZE);
-  DCHECK(!actor_ids_equal(actor_id, NIL_ACTOR_ID));
+  ObjectID_to_string(actor_id, tmp, ID_STRING_SIZE);
+  DCHECK(!ActorID_equal(actor_id, NIL_ACTOR_ID));
   /* Get the local actor entry for this actor. */
   local_actor_info *entry;
   HASH_FIND(hh, algorithm_state->local_actor_infos, &actor_id, sizeof(actor_id),
@@ -386,12 +386,12 @@ bool dispatch_actor_task(LocalSchedulerState *state,
                          SchedulingAlgorithmState *algorithm_state,
                          ActorID actor_id) {
   /* Make sure this worker actually is an actor. */
-  CHECK(!actor_ids_equal(actor_id, NIL_ACTOR_ID));
+  CHECK(!ActorID_equal(actor_id, NIL_ACTOR_ID));
   /* Make sure this actor belongs to this local scheduler. */
   actor_map_entry *actor_entry;
   HASH_FIND(hh, state->actor_mapping, &actor_id, sizeof(actor_id), actor_entry);
   CHECK(actor_entry != NULL);
-  CHECK(db_client_ids_equal(actor_entry->local_scheduler_id,
+  CHECK(DBClientID_equal(actor_entry->local_scheduler_id,
                             get_db_client_id(state->db)));
 
   /* Get the local actor entry for this actor. */
@@ -756,7 +756,7 @@ void give_task_to_local_scheduler(LocalSchedulerState *state,
                                   SchedulingAlgorithmState *algorithm_state,
                                   task_spec *spec,
                                   DBClientID local_scheduler_id) {
-  if (db_client_ids_equal(local_scheduler_id, get_db_client_id(state->db))) {
+  if (DBClientID_equal(local_scheduler_id, get_db_client_id(state->db))) {
     LOG_WARN("Local scheduler is trying to assign a task to itself.");
   }
   CHECK(state->db != NULL);
@@ -831,7 +831,7 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
                                  SchedulingAlgorithmState *algorithm_state,
                                  task_spec *spec) {
   ActorID actor_id = task_spec_actor_id(spec);
-  CHECK(!actor_ids_equal(actor_id, NIL_ACTOR_ID));
+  CHECK(!ActorID_equal(actor_id, NIL_ACTOR_ID));
 
   /* Find the local scheduler responsible for this actor. */
   actor_map_entry *entry;
@@ -846,7 +846,7 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
     return;
   }
 
-  if (db_client_ids_equal(entry->local_scheduler_id,
+  if (DBClientID_equal(entry->local_scheduler_id,
                           get_db_client_id(state->db))) {
     /* This local scheduler is responsible for the actor, so handle the task
      * locally. */
@@ -904,7 +904,7 @@ void handle_actor_task_scheduled(LocalSchedulerState *state,
   /* Check that the task is meant to run on an actor that this local scheduler
    * is responsible for. */
   ActorID actor_id = task_spec_actor_id(spec);
-  DCHECK(!actor_ids_equal(actor_id, NIL_ACTOR_ID));
+  DCHECK(!ActorID_equal(actor_id, NIL_ACTOR_ID));
   actor_map_entry *entry;
   HASH_FIND(hh, state->actor_mapping, &actor_id, sizeof(actor_id), entry);
   if (entry != NULL) {
@@ -913,7 +913,7 @@ void handle_actor_task_scheduled(LocalSchedulerState *state,
      * local scheduler has not yet processed the notification about the actor
      * creation. This may be possible though should be very uncommon. If it does
      * happen, it's ok. */
-    DCHECK(db_client_ids_equal(entry->local_scheduler_id,
+    DCHECK(DBClientID_equal(entry->local_scheduler_id,
                                get_db_client_id(state->db)));
   } else {
     LOG_INFO(
@@ -1016,7 +1016,7 @@ void handle_actor_worker_available(LocalSchedulerState *state,
                                    SchedulingAlgorithmState *algorithm_state,
                                    LocalSchedulerClient *worker) {
   ActorID actor_id = worker->actor_id;
-  CHECK(!actor_ids_equal(actor_id, NIL_ACTOR_ID));
+  CHECK(!ActorID_equal(actor_id, NIL_ACTOR_ID));
   /* Get the actor info for this worker. */
   local_actor_info *entry;
   HASH_FIND(hh, algorithm_state->local_actor_infos, &actor_id, sizeof(actor_id),
@@ -1181,7 +1181,7 @@ void handle_object_removed(LocalSchedulerState *state,
     for (int i = 0; i < num_args; ++i) {
       if (task_arg_type(task, i) == ARG_BY_REF) {
         ObjectID arg_id = task_arg_id(task, i);
-        if (object_ids_equal(arg_id, removed_object_id)) {
+        if (ObjectID_equal(arg_id, removed_object_id)) {
           fetch_missing_dependency(state, algorithm_state, elt,
                                    removed_object_id);
         }
@@ -1196,7 +1196,7 @@ void handle_object_removed(LocalSchedulerState *state,
     for (int i = 0; i < num_args; ++i) {
       if (task_arg_type(task, i) == ARG_BY_REF) {
         ObjectID arg_id = task_arg_id(task, i);
-        if (object_ids_equal(arg_id, removed_object_id)) {
+        if (ObjectID_equal(arg_id, removed_object_id)) {
           LOG_DEBUG("Moved task from dispatch queue back to waiting queue");
           DL_DELETE(algorithm_state->dispatch_task_queue, elt);
           DL_APPEND(algorithm_state->waiting_task_queue, elt);

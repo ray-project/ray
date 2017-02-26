@@ -378,7 +378,7 @@ void update_object_get_requests(PlasmaStoreState *store_state,
                   sizeof(obj_id), entry);
         CHECK(entry != NULL);
 
-        if (object_ids_equal(get_req->object_ids[j], obj_id)) {
+        if (ObjectID_equal(get_req->object_ids[j], obj_id)) {
           PlasmaObject_init(&get_req->objects[j], entry);
           num_updated += 1;
           get_req->num_satisfied += 1;
