@@ -21,7 +21,7 @@ PyObject *PyPlasma_connect(PyObject *self, PyObject *args) {
                         &release_delay)) {
     return NULL;
   }
-  plasma_connection *conn;
+  PlasmaConnection *conn;
   if (strlen(manager_socket_name) == 0) {
     conn = plasma_connect(store_socket_name, NULL, release_delay);
   } else {
@@ -33,7 +33,7 @@ PyObject *PyPlasma_connect(PyObject *self, PyObject *args) {
 
 PyObject *PyPlasma_disconnect(PyObject *self, PyObject *args) {
   PyObject *conn_capsule;
-  plasma_connection *conn;
+  PlasmaConnection *conn;
   if (!PyArg_ParseTuple(args, "O", &conn_capsule)) {
     return NULL;
   }
@@ -48,7 +48,7 @@ PyObject *PyPlasma_disconnect(PyObject *self, PyObject *args) {
 }
 
 PyObject *PyPlasma_create(PyObject *self, PyObject *args) {
-  plasma_connection *conn;
+  PlasmaConnection *conn;
   ObjectID object_id;
   long long size;
   PyObject *metadata;
@@ -86,7 +86,7 @@ PyObject *PyPlasma_create(PyObject *self, PyObject *args) {
 }
 
 PyObject *PyPlasma_hash(PyObject *self, PyObject *args) {
-  plasma_connection *conn;
+  PlasmaConnection *conn;
   ObjectID object_id;
   if (!PyArg_ParseTuple(args, "O&O&", PyObjectToPlasmaConnection, &conn,
                         PyStringToUniqueID, &object_id)) {
@@ -104,7 +104,7 @@ PyObject *PyPlasma_hash(PyObject *self, PyObject *args) {
 }
 
 PyObject *PyPlasma_seal(PyObject *self, PyObject *args) {
-  plasma_connection *conn;
+  PlasmaConnection *conn;
   ObjectID object_id;
   if (!PyArg_ParseTuple(args, "O&O&", PyObjectToPlasmaConnection, &conn,
                         PyStringToUniqueID, &object_id)) {
@@ -115,7 +115,7 @@ PyObject *PyPlasma_seal(PyObject *self, PyObject *args) {
 }
 
 PyObject *PyPlasma_release(PyObject *self, PyObject *args) {
-  plasma_connection *conn;
+  PlasmaConnection *conn;
   ObjectID object_id;
   if (!PyArg_ParseTuple(args, "O&O&", PyObjectToPlasmaConnection, &conn,
                         PyStringToUniqueID, &object_id)) {
@@ -126,7 +126,7 @@ PyObject *PyPlasma_release(PyObject *self, PyObject *args) {
 }
 
 PyObject *PyPlasma_get(PyObject *self, PyObject *args) {
-  plasma_connection *conn;
+  PlasmaConnection *conn;
   PyObject *object_id_list;
   long long timeout_ms;
   if (!PyArg_ParseTuple(args, "O&OL", PyObjectToPlasmaConnection, &conn,
@@ -180,7 +180,7 @@ PyObject *PyPlasma_get(PyObject *self, PyObject *args) {
 }
 
 PyObject *PyPlasma_contains(PyObject *self, PyObject *args) {
-  plasma_connection *conn;
+  PlasmaConnection *conn;
   ObjectID object_id;
   if (!PyArg_ParseTuple(args, "O&O&", PyObjectToPlasmaConnection, &conn,
                         PyStringToUniqueID, &object_id)) {
@@ -196,7 +196,7 @@ PyObject *PyPlasma_contains(PyObject *self, PyObject *args) {
 }
 
 PyObject *PyPlasma_fetch(PyObject *self, PyObject *args) {
-  plasma_connection *conn;
+  PlasmaConnection *conn;
   PyObject *object_id_list;
   if (!PyArg_ParseTuple(args, "O&O", PyObjectToPlasmaConnection, &conn,
                         &object_id_list)) {
@@ -217,7 +217,7 @@ PyObject *PyPlasma_fetch(PyObject *self, PyObject *args) {
 }
 
 PyObject *PyPlasma_wait(PyObject *self, PyObject *args) {
-  plasma_connection *conn;
+  PlasmaConnection *conn;
   PyObject *object_id_list;
   long long timeout;
   int num_returns;
@@ -292,7 +292,7 @@ PyObject *PyPlasma_wait(PyObject *self, PyObject *args) {
 }
 
 PyObject *PyPlasma_evict(PyObject *self, PyObject *args) {
-  plasma_connection *conn;
+  PlasmaConnection *conn;
   long long num_bytes;
   if (!PyArg_ParseTuple(args, "O&L", PyObjectToPlasmaConnection, &conn,
                         &num_bytes)) {
@@ -303,7 +303,7 @@ PyObject *PyPlasma_evict(PyObject *self, PyObject *args) {
 }
 
 PyObject *PyPlasma_delete(PyObject *self, PyObject *args) {
-  plasma_connection *conn;
+  PlasmaConnection *conn;
   ObjectID object_id;
   if (!PyArg_ParseTuple(args, "O&O&", PyObjectToPlasmaConnection, &conn,
                         PyStringToUniqueID, &object_id)) {
@@ -314,7 +314,7 @@ PyObject *PyPlasma_delete(PyObject *self, PyObject *args) {
 }
 
 PyObject *PyPlasma_transfer(PyObject *self, PyObject *args) {
-  plasma_connection *conn;
+  PlasmaConnection *conn;
   ObjectID object_id;
   const char *addr;
   int port;
@@ -333,7 +333,7 @@ PyObject *PyPlasma_transfer(PyObject *self, PyObject *args) {
 }
 
 PyObject *PyPlasma_subscribe(PyObject *self, PyObject *args) {
-  plasma_connection *conn;
+  PlasmaConnection *conn;
   if (!PyArg_ParseTuple(args, "O&", PyObjectToPlasmaConnection, &conn)) {
     return NULL;
   }

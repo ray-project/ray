@@ -86,7 +86,7 @@ typedef struct {
   /** The handle to the database. */
   DBHandle *db;
   /** The Plasma client. */
-  plasma_connection *plasma_conn;
+  PlasmaConnection *plasma_conn;
   /** State for the scheduling algorithm. */
   SchedulingAlgorithmState *algorithm_state;
   /** Input buffer, used for reading input in process_message to avoid

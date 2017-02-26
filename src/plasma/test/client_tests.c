@@ -11,9 +11,9 @@
 SUITE(plasma_client_tests);
 
 TEST plasma_status_tests(void) {
-  plasma_connection *plasma_conn1 = plasma_connect(
+  PlasmaConnection *plasma_conn1 = plasma_connect(
       "/tmp/store1", "/tmp/manager1", PLASMA_DEFAULT_RELEASE_DELAY);
-  plasma_connection *plasma_conn2 = plasma_connect(
+  PlasmaConnection *plasma_conn2 = plasma_connect(
       "/tmp/store2", "/tmp/manager2", PLASMA_DEFAULT_RELEASE_DELAY);
   ObjectID oid1 = globally_unique_id();
 
@@ -46,9 +46,9 @@ TEST plasma_status_tests(void) {
 }
 
 TEST plasma_fetch_tests(void) {
-  plasma_connection *plasma_conn1 = plasma_connect(
+  PlasmaConnection *plasma_conn1 = plasma_connect(
       "/tmp/store1", "/tmp/manager1", PLASMA_DEFAULT_RELEASE_DELAY);
-  plasma_connection *plasma_conn2 = plasma_connect(
+  PlasmaConnection *plasma_conn2 = plasma_connect(
       "/tmp/store2", "/tmp/manager2", PLASMA_DEFAULT_RELEASE_DELAY);
   ObjectID oid1 = globally_unique_id();
 
@@ -116,7 +116,7 @@ bool is_equal_data_123(uint8_t *data1, uint8_t *data2, uint64_t size) {
 }
 
 TEST plasma_nonblocking_get_tests(void) {
-  plasma_connection *plasma_conn = plasma_connect(
+  PlasmaConnection *plasma_conn = plasma_connect(
       "/tmp/store1", "/tmp/manager1", PLASMA_DEFAULT_RELEASE_DELAY);
   ObjectID oid = globally_unique_id();
   ObjectID oid_array[1] = {oid};
@@ -147,9 +147,9 @@ TEST plasma_nonblocking_get_tests(void) {
 }
 
 TEST plasma_wait_for_objects_tests(void) {
-  plasma_connection *plasma_conn1 = plasma_connect(
+  PlasmaConnection *plasma_conn1 = plasma_connect(
       "/tmp/store1", "/tmp/manager1", PLASMA_DEFAULT_RELEASE_DELAY);
-  plasma_connection *plasma_conn2 = plasma_connect(
+  PlasmaConnection *plasma_conn2 = plasma_connect(
       "/tmp/store2", "/tmp/manager2", PLASMA_DEFAULT_RELEASE_DELAY);
   ObjectID oid1 = globally_unique_id();
   ObjectID oid2 = globally_unique_id();
@@ -214,9 +214,9 @@ TEST plasma_wait_for_objects_tests(void) {
 }
 
 TEST plasma_get_tests(void) {
-  plasma_connection *plasma_conn1 = plasma_connect(
+  PlasmaConnection *plasma_conn1 = plasma_connect(
       "/tmp/store1", "/tmp/manager1", PLASMA_DEFAULT_RELEASE_DELAY);
-  plasma_connection *plasma_conn2 = plasma_connect(
+  PlasmaConnection *plasma_conn2 = plasma_connect(
       "/tmp/store2", "/tmp/manager2", PLASMA_DEFAULT_RELEASE_DELAY);
   ObjectID oid1 = globally_unique_id();
   ObjectID oid2 = globally_unique_id();
@@ -252,9 +252,9 @@ TEST plasma_get_tests(void) {
 }
 
 TEST plasma_get_multiple_tests(void) {
-  plasma_connection *plasma_conn1 = plasma_connect(
+  PlasmaConnection *plasma_conn1 = plasma_connect(
       "/tmp/store1", "/tmp/manager1", PLASMA_DEFAULT_RELEASE_DELAY);
-  plasma_connection *plasma_conn2 = plasma_connect(
+  PlasmaConnection *plasma_conn2 = plasma_connect(
       "/tmp/store2", "/tmp/manager2", PLASMA_DEFAULT_RELEASE_DELAY);
   ObjectID oid1 = globally_unique_id();
   ObjectID oid2 = globally_unique_id();

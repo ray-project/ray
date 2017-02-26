@@ -215,7 +215,7 @@ static void BufferCapsule_Destructor(PyObject* capsule) {
    * is (void*) 0x1). This is neccessary because the primary pointer of the
    * capsule cannot be NULL. */
   if (PyCapsule_GetContext(context) == NULL) {
-    plasma_connection* conn;
+    PlasmaConnection* conn;
     CHECK(PyObjectToPlasmaConnection(context, &conn));
     plasma_release(conn, *id);
   }
@@ -237,7 +237,7 @@ static void BufferCapsule_Destructor(PyObject* capsule) {
  */
 static PyObject* store_list(PyObject* self, PyObject* args) {
   ObjectID obj_id;
-  plasma_connection* conn;
+  PlasmaConnection* conn;
   PyObject* value;
   if (!PyArg_ParseTuple(args, "O&O&O", PyStringToUniqueID, &obj_id,
           PyObjectToPlasmaConnection, &conn, &value)) {
@@ -316,7 +316,7 @@ static PyObject* retrieve_list(PyObject* self, PyObject* args) {
   if (!PyArg_ParseTuple(args, "OOL", &object_id_list, &plasma_conn, &timeout_ms)) {
     return NULL;
   }
-  plasma_connection* conn;
+  PlasmaConnection* conn;
   if (!PyObjectToPlasmaConnection(plasma_conn, &conn)) { return NULL; }
 
   Py_ssize_t num_object_ids = PyList_Size(object_id_list);

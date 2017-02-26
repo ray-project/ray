@@ -53,7 +53,7 @@ typedef struct {
   client_connection *read_conn;
   /* Connect a new client to the local plasma manager and mock a request to an
    * object. */
-  plasma_connection *plasma_conn;
+  PlasmaConnection *plasma_conn;
   client_connection *client_conn;
 } plasma_mock;
 

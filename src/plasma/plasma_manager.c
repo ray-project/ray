@@ -181,7 +181,7 @@ struct plasma_manager_state {
   /** Event loop. */
   event_loop *loop;
   /** Connection to the local plasma store for reading or writing data. */
-  plasma_connection *plasma_conn;
+  PlasmaConnection *plasma_conn;
   /** Hash table of all contexts for active connections to
    *  other plasma managers. These are used for writing data to
    *  other plasma stores. */
