@@ -30,7 +30,7 @@ RayLogger *RayLogger_init(const char *client_type,
                           int log_level,
                           int is_direct,
                           void *conn) {
-  RayLogger *logger = malloc(sizeof(RayLogger));
+  RayLogger *logger = (RayLogger *) malloc(sizeof(RayLogger));
   logger->client_type = client_type;
   logger->log_level = log_level;
   logger->is_direct = is_direct;

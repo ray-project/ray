@@ -163,7 +163,7 @@ task_spec *start_construct_task_spec(UniqueID driver_id,
                                      int64_t num_returns,
                                      int64_t args_value_size) {
   int64_t size = TASK_SPEC_SIZE(num_args, num_returns, args_value_size);
-  task_spec *task = malloc(size);
+  task_spec *task = (task_spec *) malloc(size);
   memset(task, 0, size);
   task->driver_id = driver_id;
   task->task_id = NIL_TASK_ID;
@@ -351,7 +351,7 @@ struct task_impl {
 
 Task *alloc_task(task_spec *spec, int state, DBClientID local_scheduler_id) {
   int64_t size = sizeof(Task) - sizeof(task_spec) + task_spec_size(spec);
-  Task *result = malloc(size);
+  Task *result = (Task *) malloc(size);
   memset(result, 0, size);
   result->state = state;
   result->local_scheduler_id = local_scheduler_id;
@@ -361,7 +361,7 @@ Task *alloc_task(task_spec *spec, int state, DBClientID local_scheduler_id) {
 
 Task *copy_task(Task *other) {
   int64_t size = task_size(other);
-  Task *copy = malloc(size);
+  Task *copy = (Task *) malloc(size);
   CHECK(copy != NULL);
   memcpy(copy, other, size);
   return copy;

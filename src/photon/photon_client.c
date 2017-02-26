@@ -5,7 +5,7 @@
 #include <stdlib.h>
 
 photon_conn *photon_connect(const char *photon_socket, ActorID actor_id) {
-  photon_conn *result = malloc(sizeof(photon_conn));
+  photon_conn *result = (photon_conn *) malloc(sizeof(photon_conn));
   result->conn = connect_ipc_sock_retry(photon_socket, -1, -1);
   register_worker_info info;
   memset(&info, 0, sizeof(info));
@@ -30,7 +30,7 @@ void photon_log_event(photon_conn *conn,
                       int64_t value_length) {
   int64_t message_length =
       sizeof(key_length) + sizeof(value_length) + key_length + value_length;
-  uint8_t *message = malloc(message_length);
+  uint8_t *message = (uint8_t *) malloc(message_length);
   int64_t offset = 0;
   memcpy(&message[offset], &key_length, sizeof(key_length));
   offset += sizeof(key_length);
