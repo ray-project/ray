@@ -94,10 +94,10 @@ typedef struct {
   /** Handle for the uthash table in the store state that keeps track of the get
    *  requests involving this object ID. */
   UT_hash_handle hh;
-} object_get_requests;
+} ObjectGetRequests;
 
 /** This is used to define the utarray of get requests in the
- *  object_get_requests struct. */
+ *  ObjectGetRequests struct. */
 UT_icd get_request_icd = {sizeof(get_request *), NULL, NULL, NULL};
 
 struct PlasmaStoreState {
@@ -105,7 +105,7 @@ struct PlasmaStoreState {
   event_loop *loop;
   /** A hash table mapping object IDs to a vector of the get requests that are
    *  waiting for the object to arrive. */
-  object_get_requests *object_get_requests;
+  ObjectGetRequests *object_get_requests;
   /** The pending notifications that have not been sent to subscribers because
    *  the socket send buffers were full. This is a hash table from client file
    *  descriptor to an array of object_ids to send to that client. */
@@ -242,14 +242,14 @@ int create_object(Client *client_context,
 void add_get_request_for_object(PlasmaStoreState *store_state,
                                 ObjectID object_id,
                                 get_request *get_req) {
-  object_get_requests *object_get_reqs;
+  ObjectGetRequests *object_get_reqs;
   HASH_FIND(hh, store_state->object_get_requests, &object_id, sizeof(object_id),
             object_get_reqs);
   /* If there are currently no get requests involving this object ID, create a
-   * new object_get_requests struct for this object ID and add it to the hash
+   * new ObjectGetRequests struct for this object ID and add it to the hash
    * table. */
   if (object_get_reqs == NULL) {
-    object_get_reqs = malloc(sizeof(object_get_requests));
+    object_get_reqs = malloc(sizeof(ObjectGetRequests));
     object_get_reqs->object_id = object_id;
     utarray_new(object_get_reqs->get_requests, &get_request_icd);
     HASH_ADD(hh, store_state->object_get_requests, object_id,
@@ -263,7 +263,7 @@ void add_get_request_for_object(PlasmaStoreState *store_state,
 void remove_get_request_for_object(PlasmaStoreState *store_state,
                                    ObjectID object_id,
                                    get_request *get_req) {
-  object_get_requests *object_get_reqs;
+  ObjectGetRequests *object_get_reqs;
   HASH_FIND(hh, store_state->object_get_requests, &object_id, sizeof(object_id),
             object_get_reqs);
   /* If there is a vector of get requests for this object ID, and if this vector
@@ -354,7 +354,7 @@ void return_from_get(PlasmaStoreState *store_state, get_request *get_req) {
 void update_object_get_requests(PlasmaStoreState *store_state,
                                 ObjectID obj_id) {
   /* Update the in-progress get requests. */
-  object_get_requests *object_get_reqs;
+  ObjectGetRequests *object_get_reqs;
   HASH_FIND(hh, store_state->object_get_requests, &obj_id, sizeof(obj_id),
             object_get_reqs);
   if (object_get_reqs != NULL) {
