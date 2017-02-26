@@ -55,7 +55,7 @@ enum PlasmaError:int {
 
 // Plasma store messages
 
-struct PlasmaObject {
+struct PlasmaObjectSpec {
   // Index of the memory segment (= memory mapped file) that
   // this object is allocated in.
   segment_index: int;
@@ -84,7 +84,7 @@ table PlasmaCreateReply {
   // ID of the object that was created.
   object_id: string;
   // The object that is returned with this reply.
-  plasma_object: PlasmaObject;
+  plasma_object: PlasmaObjectSpec;
   // Error that occurred for this call.
   error: PlasmaError;
 }
@@ -117,7 +117,7 @@ table PlasmaGetReply {
   // in the local Plasma store.
   object_ids: [string];
   // Plasma object information, in the same order as their IDs.
-  plasma_objects: [PlasmaObject];
+  plasma_objects: [PlasmaObjectSpec];
   // The number of elements in both object_ids and plasma_objects arrays must agree.
 }
 

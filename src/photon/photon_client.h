@@ -7,7 +7,7 @@
 typedef struct {
   /* File descriptor of the Unix domain socket that connects to photon. */
   int conn;
-} photon_conn;
+} PhotonConnection;
 
 /**
  * Connect to the local scheduler.
@@ -18,15 +18,16 @@ typedef struct {
  *        running on this actor, this should be NIL_ACTOR_ID.
  * @return The connection information.
  */
-photon_conn *photon_connect(const char *photon_socket, actor_id actor_id);
+PhotonConnection *PhotonConnection_init(const char *photon_socket,
+                                        ActorID actor_id);
 
 /**
  * Disconnect from the local scheduler.
  *
- * @param conn Photon connection information returned by photon_connect.
+ * @param conn Photon connection information returned by PhotonConnection_init.
  * @return Void.
  */
-void photon_disconnect(photon_conn *conn);
+void PhotonConnection_free(PhotonConnection *conn);
 
 /**
  * Submit a task to the local scheduler.
@@ -35,7 +36,7 @@ void photon_disconnect(photon_conn *conn);
  * @param task The address of the task to submit.
  * @return Void.
  */
-void photon_submit(photon_conn *conn, task_spec *task);
+void photon_submit(PhotonConnection *conn, task_spec *task);
 
 /**
  * Log an event to the event log. This will call RPUSH key value. We use RPUSH
@@ -50,7 +51,7 @@ void photon_submit(photon_conn *conn, task_spec *task);
  * @param value_length The length of the value.
  * @return Void.
  */
-void photon_log_event(photon_conn *conn,
+void photon_log_event(PhotonConnection *conn,
                       uint8_t *key,
                       int64_t key_length,
                       uint8_t *value,
@@ -66,7 +67,7 @@ void photon_log_event(photon_conn *conn,
  * @param conn The connection information.
  * @return The address of the assigned task.
  */
-task_spec *photon_get_task(photon_conn *conn);
+task_spec *photon_get_task(PhotonConnection *conn);
 
 /**
  * Tell the local scheduler that the client has finished executing a task.
@@ -74,7 +75,7 @@ task_spec *photon_get_task(photon_conn *conn);
  * @param conn The connection information.
  * @return Void.
  */
-void photon_task_done(photon_conn *conn);
+void photon_task_done(PhotonConnection *conn);
 
 /**
  * Tell the local scheduler to reconstruct an object.
@@ -83,7 +84,7 @@ void photon_task_done(photon_conn *conn);
  * @param object_id The ID of the object to reconstruct.
  * @return Void.
  */
-void photon_reconstruct_object(photon_conn *conn, object_id object_id);
+void photon_reconstruct_object(PhotonConnection *conn, ObjectID object_id);
 
 /**
  * Send a log message to the local scheduler.
@@ -91,7 +92,7 @@ void photon_reconstruct_object(photon_conn *conn, object_id object_id);
  * @param conn The connection information.
  * @return Void.
  */
-void photon_log_message(photon_conn *conn);
+void photon_log_message(PhotonConnection *conn);
 
 /**
  * Notify the local scheduler that this client (worker) is no longer blocked.
@@ -99,6 +100,6 @@ void photon_log_message(photon_conn *conn);
  * @param conn The connection information.
  * @return Void.
  */
-void photon_notify_unblocked(photon_conn *conn);
+void photon_notify_unblocked(PhotonConnection *conn);
 
 #endif

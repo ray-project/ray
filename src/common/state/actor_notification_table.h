@@ -7,17 +7,17 @@
 
 typedef struct {
   /** The ID of the actor. */
-  actor_id actor_id;
+  ActorID actor_id;
   /** The ID of the local scheduler that is responsible for the actor. */
-  db_client_id local_scheduler_id;
-} actor_info;
+  DBClientID local_scheduler_id;
+} ActorInfo;
 
 /*
  *  ==== Subscribing to the actor notification table ====
  */
 
 /* Callback for subscribing to the local scheduler table. */
-typedef void (*actor_notification_table_subscribe_callback)(actor_info info,
+typedef void (*actor_notification_table_subscribe_callback)(ActorInfo info,
                                                             void *user_context);
 
 /**
@@ -32,16 +32,16 @@ typedef void (*actor_notification_table_subscribe_callback)(actor_info info,
  * @return Void.
  */
 void actor_notification_table_subscribe(
-    db_handle *db_handle,
+    DBHandle *db_handle,
     actor_notification_table_subscribe_callback subscribe_callback,
     void *subscribe_context,
-    retry_info *retry);
+    RetryInfo *retry);
 
 /* Data that is needed to register local scheduler table subscribe callbacks
  * with the state database. */
 typedef struct {
   actor_notification_table_subscribe_callback subscribe_callback;
   void *subscribe_context;
-} actor_notification_table_subscribe_data;
+} ActorNotificationTableSubscribeData;
 
 #endif /* ACTOR_NOTIFICATION_TABLE_H */

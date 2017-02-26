@@ -16,14 +16,14 @@
  * before), then manager_count will be -1.
  */
 typedef void (*object_table_lookup_done_callback)(
-    object_id object_id,
+    ObjectID object_id,
     int manager_count,
     OWNER const char *manager_vector[],
     void *user_context);
 
-/* Callback called when object object_id is available. */
+/* Callback called when object ObjectID is available. */
 typedef void (*object_table_object_available_callback)(
-    object_id object_id,
+    ObjectID object_id,
     int64_t data_size,
     int manager_count,
     OWNER const char *manager_vector[],
@@ -39,9 +39,9 @@ typedef void (*object_table_object_available_callback)(
  *  @param user_context Context passed by the caller.
  *  @return Void.
  */
-void object_table_lookup(db_handle *db_handle,
-                         object_id object_id,
-                         retry_info *retry,
+void object_table_lookup(DBHandle *db_handle,
+                         ObjectID object_id,
+                         RetryInfo *retry,
                          object_table_lookup_done_callback done_callback,
                          void *user_context);
 
@@ -50,7 +50,7 @@ void object_table_lookup(db_handle *db_handle,
  */
 
 /* Callback called when the object add/remove operation completes. */
-typedef void (*object_table_done_callback)(object_id object_id,
+typedef void (*object_table_done_callback)(ObjectID object_id,
                                            void *user_context);
 
 /**
@@ -65,11 +65,11 @@ typedef void (*object_table_done_callback)(object_id object_id,
  * @param user_context User context to be passed in the callbacks.
  * @return Void.
  */
-void object_table_add(db_handle *db_handle,
-                      object_id object_id,
+void object_table_add(DBHandle *db_handle,
+                      ObjectID object_id,
                       int64_t object_size,
                       unsigned char digest[],
-                      retry_info *retry,
+                      RetryInfo *retry,
                       object_table_done_callback done_callback,
                       void *user_context);
 
@@ -77,7 +77,7 @@ void object_table_add(db_handle *db_handle,
 typedef struct {
   int64_t object_size;
   unsigned char digest[DIGEST_SIZE];
-} object_table_add_data;
+} ObjectTableAddData;
 
 /*
  *  ==== Remove object call and callback ====
@@ -96,10 +96,10 @@ typedef struct {
  * @param user_context User context to be passed in the callbacks.
  * @return Void.
  */
-void object_table_remove(db_handle *db_handle,
-                         object_id object_id,
-                         db_client_id *client_id,
-                         retry_info *retry,
+void object_table_remove(DBHandle *db_handle,
+                         ObjectID object_id,
+                         DBClientID *client_id,
+                         RetryInfo *retry,
                          object_table_done_callback done_callback,
                          void *user_context);
 
@@ -125,11 +125,11 @@ void object_table_remove(db_handle *db_handle,
  * @return Void.
  */
 void object_table_subscribe_to_notifications(
-    db_handle *db_handle,
+    DBHandle *db_handle,
     bool subscribe_all,
     object_table_object_available_callback object_available_callback,
     void *subscribe_context,
-    retry_info *retry,
+    RetryInfo *retry,
     object_table_lookup_done_callback done_callback,
     void *user_context);
 
@@ -144,18 +144,18 @@ void object_table_subscribe_to_notifications(
  * @param retry Information about retrying the request to the database.
  * @return Void.
  */
-void object_table_request_notifications(db_handle *db,
+void object_table_request_notifications(DBHandle *db,
                                         int num_object_ids,
-                                        object_id object_ids[],
-                                        retry_info *retry);
+                                        ObjectID object_ids[],
+                                        RetryInfo *retry);
 
 /** Data that is needed to run object_request_notifications requests. */
 typedef struct {
   /** The number of object IDs. */
   int num_object_ids;
   /** This field is used to store a variable number of object IDs. */
-  object_id object_ids[0];
-} object_table_request_notifications_data;
+  ObjectID object_ids[0];
+} ObjectTableRequestNotificationsData;
 
 /** Data that is needed to register new object available callbacks with the
  *  state database. */
@@ -163,16 +163,16 @@ typedef struct {
   bool subscribe_all;
   object_table_object_available_callback object_available_callback;
   void *subscribe_context;
-} object_table_subscribe_data;
+} ObjectTableSubscribeData;
 
 /*
  * ==== Object info table, contains size of the object ====
  */
 
-typedef void (*object_info_done_callback)(object_id object_id,
+typedef void (*object_info_done_callback)(ObjectID object_id,
                                           void *user_context);
 
-typedef void (*object_info_subscribe_callback)(object_id object_id,
+typedef void (*object_info_subscribe_callback)(ObjectID object_id,
                                                int64_t object_size,
                                                void *user_context);
 
@@ -190,10 +190,10 @@ typedef void (*object_info_subscribe_callback)(object_id object_id,
  *        callbacks.
  * @return Void.
  */
-void object_info_subscribe(db_handle *db_handle,
+void object_info_subscribe(DBHandle *db_handle,
                            object_info_subscribe_callback subscribe_callback,
                            void *subscribe_context,
-                           retry_info *retry,
+                           RetryInfo *retry,
                            object_info_done_callback done_callback,
                            void *user_context);
 
@@ -202,7 +202,7 @@ void object_info_subscribe(db_handle *db_handle,
 typedef struct {
   object_info_subscribe_callback subscribe_callback;
   void *subscribe_context;
-} object_info_subscribe_data;
+} ObjectInfoSubscribeData;
 
 /*
  *  ==== Result table ====
@@ -211,7 +211,7 @@ typedef struct {
 /**
  * Callback called when the add/remove operation for a result table entry
  * completes. */
-typedef void (*result_table_done_callback)(object_id object_id,
+typedef void (*result_table_done_callback)(ObjectID object_id,
                                            void *user_context);
 
 /**
@@ -227,16 +227,16 @@ typedef void (*result_table_done_callback)(object_id object_id,
  * @param user_context Context passed by the caller.
  * @return Void.
  */
-void result_table_add(db_handle *db_handle,
-                      object_id object_id,
-                      task_id task_id,
-                      retry_info *retry,
+void result_table_add(DBHandle *db_handle,
+                      ObjectID object_id,
+                      TaskID task_id,
+                      RetryInfo *retry,
                       result_table_done_callback done_callback,
                       void *user_context);
 
 /** Callback called when the result table lookup completes. */
-typedef void (*result_table_lookup_callback)(object_id object_id,
-                                             task_id task_id,
+typedef void (*result_table_lookup_callback)(ObjectID object_id,
+                                             TaskID task_id,
                                              void *user_context);
 
 /**
@@ -250,9 +250,9 @@ typedef void (*result_table_lookup_callback)(object_id object_id,
  * @param user_context Context passed by the caller.
  * @return Void.
  */
-void result_table_lookup(db_handle *db_handle,
-                         object_id object_id,
-                         retry_info *retry,
+void result_table_lookup(DBHandle *db_handle,
+                         ObjectID object_id,
+                         RetryInfo *retry,
                          result_table_lookup_callback done_callback,
                          void *user_context);
 

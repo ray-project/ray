@@ -15,7 +15,7 @@
 /** Contains all information that is associated with a local scheduler. */
 typedef struct {
   /** The ID of the local scheduler in Redis. */
-  db_client_id id;
+  DBClientID id;
   /** The number of tasks sent from the global scheduler to this local
    *  scheduler. */
   int64_t num_tasks_sent;
@@ -24,24 +24,24 @@ typedef struct {
   int64_t num_recent_tasks_sent;
   /** The latest information about the local scheduler capacity. This is updated
    *  every time a new local scheduler heartbeat arrives. */
-  local_scheduler_info info;
-} local_scheduler;
+  LocalSchedulerInfo info;
+} LocalScheduler;
 
-typedef struct global_scheduler_policy_state global_scheduler_policy_state;
+typedef struct GlobalSchedulerPolicyState GlobalSchedulerPolicyState;
 
 /**
  * This defines a hash table used to cache information about different objects.
  */
 typedef struct {
   /** The object ID in question. */
-  object_id object_id;
+  ObjectID object_id;
   /** The size in bytes of the object. */
   int64_t data_size;
   /** An array of object locations for this object. */
   UT_array *object_locations;
   /** Handle for the uthash table. */
   UT_hash_handle hh;
-} scheduler_object_info;
+} SchedulerObjectInfo;
 
 /**
  * A struct used for caching Photon to Plasma association.
@@ -50,12 +50,12 @@ typedef struct {
   /** IP:port string for the plasma_manager. */
   char *aux_address;
   /** Photon db client id. */
-  db_client_id photon_db_client_id;
+  DBClientID photon_db_client_id;
   /** Plasma_manager ip:port -> photon_db_client_id. */
   UT_hash_handle plasma_photon_hh;
   /** Photon_db_client_id -> plasma_manager ip:port. */
   UT_hash_handle photon_plasma_hh;
-} aux_address_entry;
+} AuxAddressEntry;
 
 /**
  * Global scheduler state structure.
@@ -64,22 +64,22 @@ typedef struct {
   /** The global scheduler event loop. */
   event_loop *loop;
   /** The global state store database. */
-  db_handle *db;
+  DBHandle *db;
   /** The local schedulers that are connected to Redis. TODO(rkn): This probably
    *  needs to be a hashtable since we often look up the local_scheduler struct
    *  based on its db_client_id. */
   UT_array *local_schedulers;
   /** The state managed by the scheduling policy. */
-  global_scheduler_policy_state *policy_state;
+  GlobalSchedulerPolicyState *policy_state;
   /** The plasma_manager ip:port -> photon_db_client_id association. */
-  aux_address_entry *plasma_photon_map;
+  AuxAddressEntry *plasma_photon_map;
   /** The photon_db_client_id -> plasma_manager ip:port association. */
-  aux_address_entry *photon_plasma_map;
+  AuxAddressEntry *photon_plasma_map;
   /** Objects cached by this global scheduler instance. */
-  scheduler_object_info *scheduler_object_info_table;
+  SchedulerObjectInfo *scheduler_object_info_table;
   /** An array of tasks that haven't been scheduled yet. */
   UT_array *pending_tasks;
-} global_scheduler_state;
+} GlobalSchedulerState;
 
 /**
  * This is a helper method to look up the local scheduler struct that
@@ -90,8 +90,8 @@ typedef struct {
  * @return The corresponding local scheduler struct. If the global scheduler is
  *         not aware of the local scheduler, then this will be NULL.
  */
-local_scheduler *get_local_scheduler(global_scheduler_state *state,
-                                     db_client_id photon_id);
+LocalScheduler *get_local_scheduler(GlobalSchedulerState *state,
+                                    DBClientID photon_id);
 
 /**
  * Assign the given task to the local scheduler, update Redis and scheduler data
@@ -102,8 +102,8 @@ local_scheduler *get_local_scheduler(global_scheduler_state *state,
  * @param local_scheduler_id DB client ID for the local scheduler.
  * @return Void.
  */
-void assign_task_to_local_scheduler(global_scheduler_state *state,
-                                    task *task,
-                                    db_client_id local_scheduler_id);
+void assign_task_to_local_scheduler(GlobalSchedulerState *state,
+                                    Task *task,
+                                    DBClientID local_scheduler_id);
 
 #endif /* GLOBAL_SCHEDULER_H */

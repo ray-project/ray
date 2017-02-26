@@ -38,9 +38,9 @@ void new_client_connection(event_loop *loop,
  * @param worker The worker to assign the task to.
  * @return Void.
  */
-void assign_task_to_worker(local_scheduler_state *state,
+void assign_task_to_worker(LocalSchedulerState *state,
                            task_spec *task,
-                           local_scheduler_client *worker);
+                           LocalSchedulerClient *worker);
 
 /**
  * This is the callback that is used to process a notification from the Plasma
@@ -67,9 +67,9 @@ void process_plasma_notification(event_loop *loop,
  * @param object_id The ID of the object to reconstruct.
  * @return Void.
  */
-void reconstruct_object(local_scheduler_state *state, object_id object_id);
+void reconstruct_object(LocalSchedulerState *state, ObjectID object_id);
 
-void print_resource_info(const local_scheduler_state *s, const task_spec *spec);
+void print_resource_info(const LocalSchedulerState *s, const task_spec *spec);
 
 /**
  * Kill a worker.
@@ -79,7 +79,7 @@ void print_resource_info(const local_scheduler_state *s, const task_spec *spec);
  *        exit.
  * @param Void.
  */
-void kill_worker(local_scheduler_client *worker, bool wait);
+void kill_worker(LocalSchedulerClient *worker, bool wait);
 
 /**
  * Start a worker. This forks a new worker process that can be added to the
@@ -91,7 +91,7 @@ void kill_worker(local_scheduler_client *worker, bool wait);
  *        actor, then NIL_ACTOR_ID should be used.
  * @param Void.
  */
-void start_worker(local_scheduler_state *state, actor_id actor_id);
+void start_worker(LocalSchedulerState *state, ActorID actor_id);
 
 /**
  * Update our accounting for the current resources being used, according to
@@ -105,13 +105,13 @@ void start_worker(local_scheduler_state *state, actor_id actor_id);
  *        available. Else, it will take from the dynamic resources available.
  * @return Void.
  */
-void update_dynamic_resources(local_scheduler_state *state,
+void update_dynamic_resources(LocalSchedulerState *state,
                               task_spec *spec,
                               bool return_resources);
 
 /** The following methods are for testing purposes only. */
 #ifdef PHOTON_TEST
-local_scheduler_state *init_local_scheduler(
+LocalSchedulerState *LocalSchedulerState_init(
     const char *node_ip_address,
     event_loop *loop,
     const char *redis_addr,
@@ -125,9 +125,9 @@ local_scheduler_state *init_local_scheduler(
     const char *worker_path,
     int num_workers);
 
-void free_local_scheduler(local_scheduler_state *state);
+void LocalSchedulerState_free(LocalSchedulerState *state);
 
-scheduling_algorithm_state *get_algorithm_state(local_scheduler_state *state);
+SchedulingAlgorithmState *get_algorithm_state(LocalSchedulerState *state);
 
 void process_message(event_loop *loop,
                      int client_sock,

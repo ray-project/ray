@@ -121,18 +121,18 @@
 
 #define IS_NIL_ID(id) UNIQUE_ID_EQ(id, NIL_ID)
 
-typedef struct { unsigned char id[UNIQUE_ID_SIZE]; } unique_id;
+typedef struct { unsigned char id[UNIQUE_ID_SIZE]; } UniqueID;
 
 extern const UT_icd object_id_icd;
 
-extern const unique_id NIL_ID;
+extern const UniqueID NIL_ID;
 
 /* Generate a globally unique ID. */
-unique_id globally_unique_id(void);
+UniqueID globally_unique_id(void);
 
 #define NIL_OBJECT_ID NIL_ID
 
-typedef unique_id object_id;
+typedef UniqueID ObjectID;
 
 #define ID_STRING_SIZE (2 * UNIQUE_ID_SIZE + 1)
 
@@ -147,7 +147,7 @@ typedef unique_id object_id;
  *        string.
  * @param id_length The length of the id_string buffer.
  */
-char *object_id_to_string(object_id obj_id, char *id_string, int id_length);
+char *ObjectID_to_string(ObjectID obj_id, char *id_string, int id_length);
 
 /**
  * Compare two object IDs.
@@ -156,7 +156,7 @@ char *object_id_to_string(object_id obj_id, char *id_string, int id_length);
  * @param second_id The first object ID to compare.
  * @return True if the object IDs are the same and false otherwise.
  */
-bool object_ids_equal(object_id first_id, object_id second_id);
+bool ObjectID_equal(ObjectID first_id, ObjectID second_id);
 
 /**
  * Compare a object ID to the nil ID.
@@ -164,9 +164,9 @@ bool object_ids_equal(object_id first_id, object_id second_id);
  * @param id The object ID to compare to nil.
  * @return True if the object ID is equal to nil.
  */
-bool object_id_is_nil(object_id id);
+bool ObjectID_is_nil(ObjectID id);
 
-typedef unique_id db_client_id;
+typedef UniqueID DBClientID;
 
 /**
  * Compare two db client IDs.
@@ -175,7 +175,7 @@ typedef unique_id db_client_id;
  * @param second_id The first db client ID to compare.
  * @return True if the db client IDs are the same and false otherwise.
  */
-bool db_client_ids_equal(db_client_id first_id, db_client_id second_id);
+bool DBClientID_equal(DBClientID first_id, DBClientID second_id);
 
 #define MAX(x, y) ((x) >= (y) ? (x) : (y))
 #define MIN(x, y) ((x) <= (y) ? (x) : (y))

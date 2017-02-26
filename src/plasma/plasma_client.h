@@ -10,7 +10,7 @@
 /* Use 100MB as an overestimate of the L3 cache size. */
 #define L3_CACHE_SIZE_BYTES 100000000
 
-typedef struct plasma_connection plasma_connection;
+typedef struct PlasmaConnection PlasmaConnection;
 
 /**
  * Try to connect to the socket several times. If unsuccessful, fail.
@@ -35,9 +35,9 @@ int socket_connect_retry(const char *socket_name,
  *        function will not connect to a manager.
  * @return The object containing the connection state.
  */
-plasma_connection *plasma_connect(const char *store_socket_name,
-                                  const char *manager_socket_name,
-                                  int release_delay);
+PlasmaConnection *plasma_connect(const char *store_socket_name,
+                                 const char *manager_socket_name,
+                                 int release_delay);
 
 /**
  * Disconnect from the local plasma instance, including the local store and
@@ -46,7 +46,7 @@ plasma_connection *plasma_connect(const char *store_socket_name,
  * @param conn The connection to the local plasma store and plasma manager.
  * @return Void.
  */
-void plasma_disconnect(plasma_connection *conn);
+void plasma_disconnect(PlasmaConnection *conn);
 
 /**
  * Return true if the plasma manager is connected.
@@ -54,7 +54,7 @@ void plasma_disconnect(plasma_connection *conn);
  * @param conn The connection to the local plasma store and plasma manager.
  * @return True if the plasma manager is connected and false otherwise.
  */
-bool plasma_manager_is_connected(plasma_connection *conn);
+bool plasma_manager_is_connected(PlasmaConnection *conn);
 
 /**
  * Try to connect to a possibly remote Plasma Manager.
@@ -89,8 +89,8 @@ int plasma_manager_connect(const char *addr, int port);
  *           create the object. In this case, the client should not call
  *           plasma_release.
  */
-int plasma_create(plasma_connection *conn,
-                  object_id object_id,
+int plasma_create(PlasmaConnection *conn,
+                  ObjectID object_id,
                   int64_t size,
                   uint8_t *metadata,
                   int64_t metadata_size,
@@ -108,7 +108,7 @@ typedef struct {
   int64_t metadata_size;
   /** The address of the metadata. */
   uint8_t *metadata;
-} object_buffer;
+} ObjectBuffer;
 
 /**
  * Get some objects from the Plasma Store. This function will block until the
@@ -125,11 +125,11 @@ typedef struct {
  *        size field is -1, then the object was not retrieved.
  * @return Void.
  */
-void plasma_get(plasma_connection *conn,
-                object_id object_ids[],
+void plasma_get(PlasmaConnection *conn,
+                ObjectID object_ids[],
                 int64_t num_objects,
                 int64_t timeout_ms,
-                object_buffer object_buffers[]);
+                ObjectBuffer object_buffers[]);
 
 /**
  * Tell Plasma that the client no longer needs the object. This should be called
@@ -141,7 +141,7 @@ void plasma_get(plasma_connection *conn,
  * @param object_id The ID of the object that is no longer needed.
  * @return Void.
  */
-void plasma_release(plasma_connection *conn, object_id object_id);
+void plasma_release(PlasmaConnection *conn, ObjectID object_id);
 
 /**
  * Check if the object store contains a particular object and the object has
@@ -155,8 +155,8 @@ void plasma_release(plasma_connection *conn, object_id object_id);
  *        present and 0 if it is not present.
  * @return Void.
  */
-void plasma_contains(plasma_connection *conn,
-                     object_id object_id,
+void plasma_contains(PlasmaConnection *conn,
+                     ObjectID object_id,
                      int *has_object);
 
 /**
@@ -168,8 +168,8 @@ void plasma_contains(plasma_connection *conn,
  *        The pointer must have at least DIGEST_SIZE bytes allocated.
  * @return A boolean representing whether the hash operation succeeded.
  */
-bool plasma_compute_object_hash(plasma_connection *conn,
-                                object_id object_id,
+bool plasma_compute_object_hash(PlasmaConnection *conn,
+                                ObjectID object_id,
                                 unsigned char *digest);
 
 /**
@@ -180,7 +180,7 @@ bool plasma_compute_object_hash(plasma_connection *conn,
  * @param object_id The ID of the object to seal.
  * @return Void.
  */
-void plasma_seal(plasma_connection *conn, object_id object_id);
+void plasma_seal(PlasmaConnection *conn, ObjectID object_id);
 
 /**
  * Delete an object from the object store. This currently assumes that the
@@ -193,7 +193,7 @@ void plasma_seal(plasma_connection *conn, object_id object_id);
  * @param object_id The ID of the object to delete.
  * @return Void.
  */
-void plasma_delete(plasma_connection *conn, object_id object_id);
+void plasma_delete(PlasmaConnection *conn, ObjectID object_id);
 
 /**
  * Delete objects until we have freed up num_bytes bytes or there are no more
@@ -203,7 +203,7 @@ void plasma_delete(plasma_connection *conn, object_id object_id);
  * @param num_bytes The number of bytes to try to free up.
  * @return The total number of bytes of space retrieved.
  */
-int64_t plasma_evict(plasma_connection *conn, int64_t num_bytes);
+int64_t plasma_evict(PlasmaConnection *conn, int64_t num_bytes);
 
 /**
  * Attempt to initiate the transfer of some objects from remote Plasma Stores.
@@ -226,9 +226,9 @@ int64_t plasma_evict(plasma_connection *conn, int64_t num_bytes);
  * @param object_ids The IDs of the objects that fetch is being called on.
  * @return Void.
  */
-void plasma_fetch(plasma_connection *conn,
+void plasma_fetch(PlasmaConnection *conn,
                   int num_object_ids,
-                  object_id object_ids[]);
+                  ObjectID object_ids[]);
 
 /**
  * Transfer local object to a different plasma manager.
@@ -240,10 +240,10 @@ void plasma_fetch(plasma_connection *conn,
  *
  * @return Void.
  */
-void plasma_transfer(plasma_connection *conn,
+void plasma_transfer(PlasmaConnection *conn,
                      const char *addr,
                      int port,
-                     object_id object_id);
+                     ObjectID object_id);
 
 /**
  * Subscribe to notifications when objects are sealed in the object store.
@@ -254,7 +254,7 @@ void plasma_transfer(plasma_connection *conn,
  * @return The file descriptor that the client should use to read notifications
            from the object store about sealed objects.
  */
-int plasma_subscribe(plasma_connection *conn);
+int plasma_subscribe(PlasmaConnection *conn);
 
 /**
  * Get the file descriptor for the socket connection to the plasma manager.
@@ -263,7 +263,7 @@ int plasma_subscribe(plasma_connection *conn);
  * @return The file descriptor for the manager connection. If there is no
  *         connection to the manager, this is -1.
  */
-int get_manager_fd(plasma_connection *conn);
+int get_manager_fd(PlasmaConnection *conn);
 
 /**
  * Return the status of a given object. This method may query the object table.
@@ -281,7 +281,7 @@ int get_manager_fd(plasma_connection *conn);
  *         - PLASMA_CLIENT_DOES_NOT_EXIST, if the object doesn’t exist in the
  *           system.
  */
-int plasma_status(plasma_connection *conn, object_id object_id);
+int plasma_status(PlasmaConnection *conn, ObjectID object_id);
 
 /**
  * Return the information associated to a given object.
@@ -293,9 +293,9 @@ int plasma_status(plasma_connection *conn, object_id object_id);
  *         PLASMA_CLIENT_NOT_LOCAL, if not. In this case, the caller needs to
  *         ignore data, metadata_size, and metadata fields.
  */
-int plasma_info(plasma_connection *conn,
-                object_id object_id,
-                object_info *object_info);
+int plasma_info(PlasmaConnection *conn,
+                ObjectID object_id,
+                ObjectInfo *object_info);
 
 /**
  * Wait for (1) a specified number of objects to be available (sealed) in the
@@ -326,9 +326,9 @@ int plasma_info(plasma_connection *conn,
  *         returned number is less than min_num_ready_objects this means that
  *         timeout expired.
  */
-int plasma_wait(plasma_connection *conn,
+int plasma_wait(PlasmaConnection *conn,
                 int num_object_requests,
-                object_request object_requests[],
+                ObjectRequest object_requests[],
                 int num_ready_objects,
                 uint64_t timeout_ms);
 
