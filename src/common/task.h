@@ -353,7 +353,7 @@ typedef enum {
 /** A task is an execution of a task specification.  It has a state of execution
  * (see scheduling_state) and the ID of the local scheduler it is scheduled on
  * or running on. */
-typedef struct task_impl Task;
+typedef struct TaskImpl Task;
 
 /**
  * Allocate a new task. Must be freed with free_task after use.
@@ -363,7 +363,7 @@ typedef struct task_impl Task;
  * @param local_scheduler_id The ID of the local scheduler that the task is
  *        scheduled on, if any.
  */
-Task *alloc_task(task_spec *spec, int state, DBClientID local_scheduler_id);
+Task *Task_alloc(task_spec *spec, int state, DBClientID local_scheduler_id);
 
 /**
  * Create a copy of the task. Must be freed with free_task after use.
@@ -371,30 +371,30 @@ Task *alloc_task(task_spec *spec, int state, DBClientID local_scheduler_id);
  * @param other The task that will be copied.
  * @returns Pointer to the copy of the task.
  */
-Task *copy_task(Task *other);
+Task *Task_copy(Task *other);
 
 /** Size of task structure in bytes. */
-int64_t task_size(Task *task);
+int64_t Task_size(Task *task);
 
 /** The scheduling state of the task. */
-int task_state(Task *task);
+int Task_state(Task *task);
 
 /** Update the schedule state of the task. */
-void task_set_state(Task *task, int state);
+void Task_set_state(Task *task, int state);
 
 /** Local scheduler this task has been assigned to or is running on. */
-DBClientID task_local_scheduler(Task *task);
+DBClientID Task_local_scheduler_id(Task *task);
 
 /** Set the local scheduler ID for this task. */
-void task_set_local_scheduler(Task *task, DBClientID local_scheduler_id);
+void Task_set_local_scheduler_id(Task *task, DBClientID local_scheduler_id);
 
 /** Task specification of this task. */
-task_spec *task_task_spec(Task *task);
+task_spec *Task_task_spec(Task *task);
 
 /** Task ID of this task. */
-TaskID task_task_id(Task *task);
+TaskID Task_task_id(Task *task);
 
 /** Free this task datastructure. */
-void free_task(Task *task);
+void Task_free(Task *task);
 
 #endif

@@ -34,15 +34,15 @@ void assign_task_to_local_scheduler(GlobalSchedulerState *state,
                                     Task *task,
                                     DBClientID local_scheduler_id) {
   char id_string[ID_STRING_SIZE];
-  task_spec *spec = task_task_spec(task);
+  task_spec *spec = Task_task_spec(task);
   LOG_DEBUG("assigning task to local_scheduler_id = %s",
             ObjectID_to_string(local_scheduler_id, id_string, ID_STRING_SIZE));
-  task_set_state(task, TASK_STATUS_SCHEDULED);
-  task_set_local_scheduler(task, local_scheduler_id);
+  Task_set_state(task, TASK_STATUS_SCHEDULED);
+  Task_set_local_scheduler_id(task, local_scheduler_id);
   LOG_DEBUG("Issuing a task table update for task = %s",
-            ObjectID_to_string(task_task_id(task), id_string, ID_STRING_SIZE));
+            ObjectID_to_string(Task_task_id(task), id_string, ID_STRING_SIZE));
   UNUSED(id_string);
-  task_table_update(state->db, copy_task(task), NULL, NULL, NULL);
+  task_table_update(state->db, Task_copy(task), NULL, NULL, NULL);
 
   /* TODO(rkn): We should probably pass around local_scheduler struct pointers
    * instead of db_client_id objects. */
@@ -114,7 +114,7 @@ void GlobalSchedulerState_free(GlobalSchedulerState *state) {
   }
   for (int i = 0; i < num_pending_tasks; ++i) {
     Task **pending_task = (Task **) utarray_eltptr(state->pending_tasks, i);
-    free_task(*pending_task);
+    Task_free(*pending_task);
   }
   utarray_free(state->pending_tasks);
   /* Free the global scheduler state. */
@@ -157,7 +157,7 @@ void process_task_waiting(Task *waiting_task, void *user_context) {
    * task to the array of pending tasks. The global scheduler will periodically
    * resubmit the tasks in this array. */
   if (!successfully_assigned) {
-    Task *task_copy = copy_task(waiting_task);
+    Task *task_copy = Task_copy(waiting_task);
     utarray_push_back(state->pending_tasks, &task_copy);
   }
 }

@@ -17,7 +17,7 @@ void task_table_add_task(DBHandle *db_handle,
                          retry_info *retry,
                          task_table_done_callback done_callback,
                          void *user_context) {
-  init_table_callback(db_handle, task_task_id(task), __func__, task, retry,
+  init_table_callback(db_handle, Task_task_id(task), __func__, task, retry,
                       done_callback, redis_task_table_add_task, user_context);
 }
 
@@ -26,7 +26,7 @@ void task_table_update(DBHandle *db_handle,
                        retry_info *retry,
                        task_table_done_callback done_callback,
                        void *user_context) {
-  init_table_callback(db_handle, task_task_id(task), __func__, task, retry,
+  init_table_callback(db_handle, Task_task_id(task), __func__, task, retry,
                       done_callback, redis_task_table_update, user_context);
 }
 

@@ -387,7 +387,7 @@ Task *parse_and_construct_task_from_redis_reply(redisReply *reply) {
     task_spec *spec = (task_spec *) malloc(reply->element[2]->len);
     memcpy(spec, reply->element[2]->str, reply->element[2]->len);
     CHECK(task_spec_size(spec) == reply->element[2]->len);
-    task = alloc_task(spec, state, local_scheduler_id);
+    task = Task_alloc(spec, state, local_scheduler_id);
     /* Free the task spec. */
     free_task_spec(spec);
   } else {
@@ -744,7 +744,7 @@ void redis_task_table_get_task_callback(redisAsyncContext *c,
     done_callback(task, callback_data->user_context);
   }
   /* Free the task if it is not NULL. */
-  free_task(task);
+  Task_free(task);
 
   /* Clean up the timer and callback. */
   destroy_timer_callback(db->loop, callback_data);
@@ -784,10 +784,10 @@ void redis_task_table_add_task_callback(redisAsyncContext *c,
 void redis_task_table_add_task(table_callback_data *callback_data) {
   DBHandle *db = callback_data->db_handle;
   Task *task = (Task *) callback_data->data;
-  TaskID task_id = task_task_id(task);
-  DBClientID local_scheduler_id = task_local_scheduler(task);
-  int state = task_state(task);
-  task_spec *spec = task_task_spec(task);
+  TaskID task_id = Task_task_id(task);
+  DBClientID local_scheduler_id = Task_local_scheduler_id(task);
+  int state = Task_state(task);
+  task_spec *spec = Task_task_spec(task);
 
   CHECKM(task != NULL, "NULL task passed to redis_task_table_add_task.");
   int status = redisAsyncCommand(
@@ -820,9 +820,9 @@ void redis_task_table_update_callback(redisAsyncContext *c,
 void redis_task_table_update(table_callback_data *callback_data) {
   DBHandle *db = callback_data->db_handle;
   Task *task = (Task *) callback_data->data;
-  TaskID task_id = task_task_id(task);
-  DBClientID local_scheduler_id = task_local_scheduler(task);
-  int state = task_state(task);
+  TaskID task_id = Task_task_id(task);
+  DBClientID local_scheduler_id = Task_local_scheduler_id(task);
+  int state = Task_state(task);
 
   CHECKM(task != NULL, "NULL task passed to redis_task_table_update.");
   int status = redisAsyncCommand(
@@ -849,7 +849,7 @@ void redis_task_table_test_and_update_callback(redisAsyncContext *c,
   }
   /* Free the task if it is not NULL. */
   if (task != NULL) {
-    free_task(task);
+    Task_free(task);
   }
   /* Clean up timer and callback. */
   destroy_timer_callback(db->loop, callback_data);
@@ -939,13 +939,13 @@ void redis_task_table_subscribe_callback(redisAsyncContext *c,
     task_spec *spec;
     parse_task_table_subscribe_callback(payload->str, payload->len, &task_id,
                                         &state, &local_scheduler_id, &spec);
-    Task *task = alloc_task(spec, state, local_scheduler_id);
+    Task *task = Task_alloc(spec, state, local_scheduler_id);
     free(spec);
     /* Call the subscribe callback if there is one. */
     if (data->subscribe_callback != NULL) {
       data->subscribe_callback(task, data->subscribe_context);
     }
-    free_task(task);
+    Task_free(task);
   } else if (strcmp(message_type->str, "subscribe") == 0 ||
              strcmp(message_type->str, "psubscribe") == 0) {
     /* If this condition is true, we got the initial message that acknowledged

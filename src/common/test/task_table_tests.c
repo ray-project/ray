@@ -73,13 +73,13 @@ void add_lookup_fail_callback(UniqueID id,
 
 void lookup_success_callback(Task *task, void *context) {
   lookup_success = 1;
-  CHECK(memcmp(task, add_lookup_task, task_size(task)) == 0);
+  CHECK(memcmp(task, add_lookup_task, Task_size(task)) == 0);
   event_loop_stop(g_loop);
 }
 
 void add_success_callback(TaskID task_id, void *context) {
   add_success = 1;
-  CHECK(TaskID_equal(task_id, task_task_id(add_lookup_task)));
+  CHECK(TaskID_equal(task_id, Task_task_id(add_lookup_task)));
 
   DBHandle *db = context;
   retry_info retry = {
@@ -102,7 +102,7 @@ TEST add_lookup_test(void) {
       .timeout = 1000,
       .fail_callback = add_lookup_fail_callback,
   };
-  task_table_add_task(db, copy_task(add_lookup_task), &retry,
+  task_table_add_task(db, Task_copy(add_lookup_task), &retry,
                       add_success_callback, (void *) db);
   /* Disconnect the database to see if the lookup times out. */
   event_loop_run(g_loop);

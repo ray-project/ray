@@ -127,16 +127,16 @@ int64_t task_table_delayed_add_task(event_loop *loop,
       .timeout = TIMEOUT,
       .fail_callback = task_table_test_fail_callback,
   };
-  task_table_add_task(db, copy_task(task_table_test_task), &retry, NULL,
+  task_table_add_task(db, Task_copy(task_table_test_task), &retry, NULL,
                       (void *) loop);
   return EVENT_LOOP_TIMER_DONE;
 }
 
 void task_table_test_callback(Task *callback_task, void *user_data) {
   task_table_test_callback_called = 1;
-  CHECK(task_state(callback_task) == TASK_STATUS_SCHEDULED);
-  CHECK(task_size(callback_task) == task_size(task_table_test_task));
-  CHECK(memcmp(callback_task, task_table_test_task, task_size(callback_task)) ==
+  CHECK(Task_state(callback_task) == TASK_STATUS_SCHEDULED);
+  CHECK(Task_size(callback_task) == Task_size(task_table_test_task));
+  CHECK(memcmp(callback_task, task_table_test_task, Task_size(callback_task)) ==
         0);
   event_loop *loop = user_data;
   event_loop_stop(loop);
@@ -151,7 +151,7 @@ TEST task_table_test(void) {
   DBClientID local_scheduler_id = globally_unique_id();
   task_spec *spec = example_task_spec(1, 1);
   task_table_test_task =
-      alloc_task(spec, TASK_STATUS_SCHEDULED, local_scheduler_id);
+      Task_alloc(spec, TASK_STATUS_SCHEDULED, local_scheduler_id);
   free_task_spec(spec);
   retry_info retry = {
       .num_retries = NUM_RETRIES,
@@ -164,7 +164,7 @@ TEST task_table_test(void) {
   event_loop_add_timer(
       loop, 200, (event_loop_timer_handler) task_table_delayed_add_task, db);
   event_loop_run(loop);
-  free_task(task_table_test_task);
+  Task_free(task_table_test_task);
   db_disconnect(db);
   destroy_outstanding_callbacks(loop);
   event_loop_destroy(loop);
@@ -185,8 +185,8 @@ TEST task_table_all_test(void) {
   db_attach(db, loop, false);
   task_spec *spec = example_task_spec(1, 1);
   /* Schedule two tasks on different local local schedulers. */
-  Task *task1 = alloc_task(spec, TASK_STATUS_SCHEDULED, globally_unique_id());
-  Task *task2 = alloc_task(spec, TASK_STATUS_SCHEDULED, globally_unique_id());
+  Task *task1 = Task_alloc(spec, TASK_STATUS_SCHEDULED, globally_unique_id());
+  Task *task2 = Task_alloc(spec, TASK_STATUS_SCHEDULED, globally_unique_id());
   retry_info retry = {
       .num_retries = NUM_RETRIES, .timeout = TIMEOUT, .fail_callback = NULL,
   };

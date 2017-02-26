@@ -57,7 +57,7 @@ void handle_task_round_robin(GlobalSchedulerState *state,
   CHECKM(utarray_len(state->local_schedulers) > 0,
          "No local schedulers. We currently don't handle this case.");
   LocalScheduler *scheduler = NULL;
-  task_spec *task_spec = task_task_spec(task);
+  task_spec *task_spec = Task_task_spec(task);
   int i;
   int num_retries = 1;
   bool task_satisfied = false;
@@ -270,7 +270,7 @@ double calculate_cost_pending(const GlobalSchedulerState *state,
 bool handle_task_waiting(GlobalSchedulerState *state,
                          GlobalSchedulerPolicyState *policy_state,
                          Task *task) {
-  task_spec *task_spec = task_task_spec(task);
+  task_spec *task_spec = Task_task_spec(task);
 
   CHECKM(task_spec != NULL,
          "task wait handler encounted a task with NULL spec");
@@ -313,7 +313,7 @@ bool handle_task_waiting(GlobalSchedulerState *state,
     char id_string[ID_STRING_SIZE];
     LOG_ERROR(
         "Infeasible task. No nodes satisfy hard constraints for task = %s",
-        ObjectID_to_string(task_task_id(task), id_string, ID_STRING_SIZE));
+        ObjectID_to_string(Task_task_id(task), id_string, ID_STRING_SIZE));
     /* TODO(atumanov): propagate this error to the task's driver and/or
      * cache the task in case new local schedulers satisfy it in the future. */
     return false;

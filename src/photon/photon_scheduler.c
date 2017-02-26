@@ -124,14 +124,14 @@ void kill_worker(LocalSchedulerClient *worker, bool cleanup) {
   /* Clean up the task in progress. */
   if (worker->task_in_progress) {
     /* Return the resources that the worker was using. */
-    task_spec *spec = task_task_spec(worker->task_in_progress);
+    task_spec *spec = Task_task_spec(worker->task_in_progress);
     update_dynamic_resources(state, spec, true);
     /* Update the task table to reflect that the task failed to complete. */
     if (state->db != NULL) {
-      task_set_state(worker->task_in_progress, TASK_STATUS_LOST);
+      Task_set_state(worker->task_in_progress, TASK_STATUS_LOST);
       task_table_update(state->db, worker->task_in_progress, NULL, NULL, NULL);
     } else {
-      free_task(worker->task_in_progress);
+      Task_free(worker->task_in_progress);
     }
   }
 
@@ -445,17 +445,17 @@ void assign_task_to_worker(LocalSchedulerState *state,
   /* Resource accounting:
    * Update dynamic resource vector in the local scheduler state. */
   update_dynamic_resources(state, spec, false);
-  Task *task = alloc_task(spec, TASK_STATUS_RUNNING,
+  Task *task = Task_alloc(spec, TASK_STATUS_RUNNING,
                           state->db ? get_db_client_id(state->db) : NIL_ID);
   /* Record which task this worker is executing. This will be freed in
    * process_message when the worker sends a GET_TASK message to the local
    * scheduler. */
-  worker->task_in_progress = copy_task(task);
+  worker->task_in_progress = Task_copy(task);
   /* Update the global task table. */
   if (state->db != NULL) {
     task_table_update(state->db, task, NULL, NULL, NULL);
   } else {
-    free_task(task);
+    Task_free(task);
   }
 }
 
@@ -495,7 +495,7 @@ void reconstruct_task_update_callback(Task *task, void *user_context) {
   /* Otherwise, the test-and-set succeeded, so resubmit the task for execution
    * to ensure that reconstruction will happen. */
   LocalSchedulerState *state = user_context;
-  task_spec *spec = task_task_spec(task);
+  task_spec *spec = Task_task_spec(task);
   /* If the task is an actor task, then we currently do not reconstruct it.
    * TODO(rkn): Handle this better. */
   CHECK(ActorID_equal(task_spec_actor_id(spec), NIL_ACTOR_ID));
@@ -691,19 +691,19 @@ void process_message(event_loop *loop,
   case GET_TASK: {
     /* If this worker reports a completed task: account for resources. */
     if (worker->task_in_progress != NULL) {
-      task_spec *spec = task_task_spec(worker->task_in_progress);
+      task_spec *spec = Task_task_spec(worker->task_in_progress);
       /* Return dynamic resources back for the task in progress. */
       update_dynamic_resources(state, spec, true);
       /* If we're connected to Redis, update tables. */
       if (state->db != NULL) {
         /* Update control state tables. */
-        task_set_state(worker->task_in_progress, TASK_STATUS_DONE);
+        Task_set_state(worker->task_in_progress, TASK_STATUS_DONE);
         task_table_update(state->db, worker->task_in_progress, NULL, NULL,
                           NULL);
         /* The call to task_table_update takes ownership of the
          * task_in_progress, so we set the pointer to NULL so it is not used. */
       } else {
-        free_task(worker->task_in_progress);
+        Task_free(worker->task_in_progress);
       }
       worker->task_in_progress = NULL;
     }
@@ -795,7 +795,7 @@ void signal_handler(int signal) {
 /* End of the cleanup code. */
 
 void handle_task_scheduled_callback(Task *original_task, void *user_context) {
-  task_spec *spec = task_task_spec(original_task);
+  task_spec *spec = Task_task_spec(original_task);
   if (ActorID_equal(task_spec_actor_id(spec), NIL_ACTOR_ID)) {
     /* This task does not involve an actor. Handle it normally. */
     handle_task_scheduled(g_state, g_state->algorithm_state, spec);

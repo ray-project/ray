@@ -361,7 +361,7 @@ void add_task_to_actor_queue(LocalSchedulerState *state,
   /* Update the task table. */
   if (state->db != NULL) {
     Task *task =
-        alloc_task(spec, TASK_STATUS_QUEUED, get_db_client_id(state->db));
+        Task_alloc(spec, TASK_STATUS_QUEUED, get_db_client_id(state->db));
     if (from_global_scheduler) {
       /* If the task is from the global scheduler, it's already been added to
        * the task table, so just update the entry. */
@@ -657,7 +657,7 @@ task_queue_entry *queue_task(LocalSchedulerState *state,
    * task table to notify others that we have queued it. */
   if (state->db != NULL) {
     Task *task =
-        alloc_task(spec, TASK_STATUS_QUEUED, get_db_client_id(state->db));
+        Task_alloc(spec, TASK_STATUS_QUEUED, get_db_client_id(state->db));
     if (from_global_scheduler) {
       /* If the task is from the global scheduler, it's already been added to
        * the task table, so just update the entry. */
@@ -762,7 +762,7 @@ void give_task_to_local_scheduler(LocalSchedulerState *state,
   CHECK(state->db != NULL);
   /* Assign the task to the relevant local scheduler. */
   DCHECK(state->config.global_scheduler_exists);
-  Task *task = alloc_task(spec, TASK_STATUS_SCHEDULED, local_scheduler_id);
+  Task *task = Task_alloc(spec, TASK_STATUS_SCHEDULED, local_scheduler_id);
   task_table_add_task(state->db, task, NULL, NULL, NULL);
 }
 
@@ -784,7 +784,7 @@ void give_task_to_global_scheduler(LocalSchedulerState *state,
   }
   /* Pass on the task to the global scheduler. */
   DCHECK(state->config.global_scheduler_exists);
-  Task *task = alloc_task(spec, TASK_STATUS_WAITING, NIL_ID);
+  Task *task = Task_alloc(spec, TASK_STATUS_WAITING, NIL_ID);
   DCHECK(state->db != NULL);
   task_table_add_task(state->db, task, NULL, NULL, NULL);
 }
@@ -1051,7 +1051,7 @@ void handle_worker_blocked(LocalSchedulerState *state,
 
       /* Return the resources that the blocked worker was using. */
       CHECK(worker->task_in_progress != NULL);
-      task_spec *spec = task_task_spec(worker->task_in_progress);
+      task_spec *spec = Task_task_spec(worker->task_in_progress);
       update_dynamic_resources(state, spec, true);
       /* Add the worker to the list of blocked workers. */
       worker->is_blocked = true;
@@ -1094,7 +1094,7 @@ void handle_worker_unblocked(LocalSchedulerState *state,
        * fixed by having blocked workers explicitly yield and wait to be given
        * back resources before continuing execution. */
       CHECK(worker->task_in_progress != NULL);
-      task_spec *spec = task_task_spec(worker->task_in_progress);
+      task_spec *spec = Task_task_spec(worker->task_in_progress);
       update_dynamic_resources(state, spec, false);
       /* Add the worker to the list of executing workers. */
       worker->is_blocked = false;
