@@ -64,7 +64,7 @@ typedef struct {
   UT_array *object_notifications;
   /** Handle for the uthash table. */
   UT_hash_handle hh;
-} notification_queue;
+} NotificationQueue;
 
 typedef struct {
   /** The client connection that called get. */
@@ -109,7 +109,7 @@ struct PlasmaStoreState {
   /** The pending notifications that have not been sent to subscribers because
    *  the socket send buffers were full. This is a hash table from client file
    *  descriptor to an array of object_ids to send to that client. */
-  notification_queue *pending_notifications;
+  NotificationQueue *pending_notifications;
   /** The plasma store information, including the object tables, that is exposed
    *  to the eviction policy. */
   PlasmaStoreInfo *plasma_store_info;
@@ -588,7 +588,7 @@ void remove_objects(PlasmaStoreState *plasma_state,
 
 void push_notification(PlasmaStoreState *plasma_state,
                        object_info *notification) {
-  notification_queue *queue, *temp_queue;
+  NotificationQueue *queue, *temp_queue;
   HASH_ITER(hh, plasma_state->pending_notifications, queue, temp_queue) {
     utarray_push_back(queue->object_notifications, notification);
     send_notifications(plasma_state->loop, queue->subscriber_fd, plasma_state,
@@ -602,7 +602,7 @@ void send_notifications(event_loop *loop,
                         void *context,
                         int events) {
   PlasmaStoreState *plasma_state = context;
-  notification_queue *queue;
+  NotificationQueue *queue;
   HASH_FIND_INT(plasma_state->pending_notifications, &client_sock, queue);
   CHECK(queue != NULL);
 
@@ -659,8 +659,8 @@ void subscribe_to_updates(Client *client_context, int conn) {
   /* Create a new array to buffer notifications that can't be sent to the
    * subscriber yet because the socket send buffer is full. TODO(rkn): the queue
    * never gets freed. */
-  notification_queue *queue =
-      (notification_queue *) malloc(sizeof(notification_queue));
+  NotificationQueue *queue =
+      (NotificationQueue *) malloc(sizeof(NotificationQueue));
   queue->subscriber_fd = fd;
   utarray_new(queue->object_notifications, &object_info_icd);
   HASH_ADD_INT(plasma_state->pending_notifications, subscriber_fd, queue);
