@@ -83,11 +83,11 @@ void handle_task_round_robin(GlobalSchedulerState *state,
   }
 }
 
-object_size_entry *create_object_size_hashmap(GlobalSchedulerState *state,
-                                              task_spec *task_spec,
-                                              bool *has_args_by_ref,
-                                              int64_t *task_data_size) {
-  object_size_entry *s = NULL, *object_size_table = NULL;
+ObjectSizeEntry *create_object_size_hashmap(GlobalSchedulerState *state,
+                                            task_spec *task_spec,
+                                            bool *has_args_by_ref,
+                                            int64_t *task_data_size) {
+  ObjectSizeEntry *s = NULL, *object_size_table = NULL;
   *task_data_size = 0;
 
   for (int i = 0; i < task_num_args(task_spec); i++) {
@@ -132,7 +132,7 @@ object_size_entry *create_object_size_hashmap(GlobalSchedulerState *state,
       HASH_FIND_STR(object_size_table, object_location, s);
       if (NULL == s) {
         /* This location not yet known, so add this object location. */
-        s = calloc(1, sizeof(object_size_entry));
+        s = calloc(1, sizeof(ObjectSizeEntry));
         s->object_location = object_location;
         HASH_ADD_KEYPTR(hh, object_size_table, s->object_location,
                         strlen(s->object_location), s);
@@ -145,9 +145,9 @@ object_size_entry *create_object_size_hashmap(GlobalSchedulerState *state,
   return object_size_table;
 }
 
-void free_object_size_hashmap(object_size_entry *object_size_table) {
+void free_object_size_hashmap(ObjectSizeEntry *object_size_table) {
   /* Destroy local state. */
-  object_size_entry *tmp, *s = NULL;
+  ObjectSizeEntry *tmp, *s = NULL;
   HASH_ITER(hh, object_size_table, s, tmp) {
     HASH_DEL(object_size_table, s);
     /* NOTE: Do not free externally stored s->object_location. */
@@ -203,7 +203,7 @@ double inner_product(double a[], double b[], int size) {
 
 double calculate_object_size_fraction(GlobalSchedulerState *state,
                                       LocalScheduler *scheduler,
-                                      object_size_entry *object_size_table,
+                                      ObjectSizeEntry *object_size_table,
                                       int64_t total_task_object_size) {
   /* Look up its cached object size in the hashmap, normalize by total object
    * size for this task. */
@@ -219,7 +219,7 @@ double calculate_object_size_fraction(GlobalSchedulerState *state,
     HASH_FIND(photon_plasma_hh, state->photon_plasma_map, &(scheduler->id),
               sizeof(scheduler->id), photon_plasma_pair);
     if (photon_plasma_pair != NULL) {
-      object_size_entry *s = NULL;
+      ObjectSizeEntry *s = NULL;
       /* Found this node's photon to plasma mapping. Use the corresponding
        * plasma key to see if this node has any cached objects for this task. */
       HASH_FIND_STR(object_size_table, photon_plasma_pair->aux_address, s);
@@ -276,7 +276,7 @@ bool handle_task_waiting(GlobalSchedulerState *state,
          "task wait handler encounted a task with NULL spec");
   /* Local hash table to keep track of aggregate object sizes per local
    * scheduler. */
-  object_size_entry *object_size_table = NULL;
+  ObjectSizeEntry *object_size_table = NULL;
   bool has_args_by_ref = false;
   bool task_feasible = false;
   /* The total size of the task's data. */
