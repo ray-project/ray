@@ -114,8 +114,8 @@ void kill_worker(local_scheduler_client *worker, bool cleanup) {
        * up its state before force killing. The client socket will be closed
        * and the worker struct will be freed after the timeout. */
       kill(worker->pid, SIGTERM);
-      event_loop_add_timer(state->loop, KILL_WORKER_TIMEOUT, force_kill_worker,
-                           (void *) worker);
+      event_loop_add_timer(state->loop, KILL_WORKER_TIMEOUT_MILLISECONDS,
+                           force_kill_worker, (void *) worker);
       free_worker = false;
     }
     LOG_INFO("Killed worker with pid %d", worker->pid);

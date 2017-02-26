@@ -9,7 +9,7 @@
 
 /* The duration that we wait after sending a worker SIGTERM before sending the
  * worker SIGKILL. */
-#define KILL_WORKER_TIMEOUT 100
+#define KILL_WORKER_TIMEOUT_MILLISECONDS 100
 
 #define DEFAULT_NUM_CPUS INT16_MAX
 #define DEFAULT_NUM_GPUS 0
