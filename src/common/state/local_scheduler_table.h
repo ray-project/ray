@@ -48,7 +48,7 @@ void local_scheduler_table_subscribe(
     DBHandle *db_handle,
     local_scheduler_table_subscribe_callback subscribe_callback,
     void *subscribe_context,
-    retry_info *retry);
+    RetryInfo *retry);
 
 /* Data that is needed to register local scheduler table subscribe callbacks
  * with the state database. */
@@ -68,7 +68,7 @@ typedef struct {
  */
 void local_scheduler_table_send_info(DBHandle *db_handle,
                                      LocalSchedulerInfo *info,
-                                     retry_info *retry);
+                                     RetryInfo *retry);
 
 /* Data that is needed to publish local scheduler heartbeats to the local
  * scheduler table. */

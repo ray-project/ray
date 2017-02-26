@@ -41,7 +41,7 @@ typedef void (*object_table_object_available_callback)(
  */
 void object_table_lookup(DBHandle *db_handle,
                          ObjectID object_id,
-                         retry_info *retry,
+                         RetryInfo *retry,
                          object_table_lookup_done_callback done_callback,
                          void *user_context);
 
@@ -69,7 +69,7 @@ void object_table_add(DBHandle *db_handle,
                       ObjectID object_id,
                       int64_t object_size,
                       unsigned char digest[],
-                      retry_info *retry,
+                      RetryInfo *retry,
                       object_table_done_callback done_callback,
                       void *user_context);
 
@@ -99,7 +99,7 @@ typedef struct {
 void object_table_remove(DBHandle *db_handle,
                          ObjectID object_id,
                          DBClientID *client_id,
-                         retry_info *retry,
+                         RetryInfo *retry,
                          object_table_done_callback done_callback,
                          void *user_context);
 
@@ -129,7 +129,7 @@ void object_table_subscribe_to_notifications(
     bool subscribe_all,
     object_table_object_available_callback object_available_callback,
     void *subscribe_context,
-    retry_info *retry,
+    RetryInfo *retry,
     object_table_lookup_done_callback done_callback,
     void *user_context);
 
@@ -147,7 +147,7 @@ void object_table_subscribe_to_notifications(
 void object_table_request_notifications(DBHandle *db,
                                         int num_object_ids,
                                         ObjectID object_ids[],
-                                        retry_info *retry);
+                                        RetryInfo *retry);
 
 /** Data that is needed to run object_request_notifications requests. */
 typedef struct {
@@ -193,7 +193,7 @@ typedef void (*object_info_subscribe_callback)(ObjectID object_id,
 void object_info_subscribe(DBHandle *db_handle,
                            object_info_subscribe_callback subscribe_callback,
                            void *subscribe_context,
-                           retry_info *retry,
+                           RetryInfo *retry,
                            object_info_done_callback done_callback,
                            void *user_context);
 
@@ -230,7 +230,7 @@ typedef void (*result_table_done_callback)(ObjectID object_id,
 void result_table_add(DBHandle *db_handle,
                       ObjectID object_id,
                       TaskID task_id,
-                      retry_info *retry,
+                      RetryInfo *retry,
                       result_table_done_callback done_callback,
                       void *user_context);
 
@@ -252,7 +252,7 @@ typedef void (*result_table_lookup_callback)(ObjectID object_id,
  */
 void result_table_lookup(DBHandle *db_handle,
                          ObjectID object_id,
-                         retry_info *retry,
+                         RetryInfo *retry,
                          result_table_lookup_callback done_callback,
                          void *user_context);
 

@@ -35,7 +35,7 @@ void db_client_table_subscribe(
     DBHandle *db_handle,
     db_client_table_subscribe_callback subscribe_callback,
     void *subscribe_context,
-    retry_info *retry,
+    RetryInfo *retry,
     db_client_table_done_callback done_callback,
     void *user_context);
 

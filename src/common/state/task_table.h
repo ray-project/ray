@@ -41,7 +41,7 @@ typedef void (*task_table_get_callback)(Task *task, void *user_context);
  */
 void task_table_get_task(DBHandle *db,
                          TaskID task_id,
-                         retry_info *retry,
+                         RetryInfo *retry,
                          task_table_get_callback done_callback,
                          void *user_context);
 
@@ -60,7 +60,7 @@ void task_table_get_task(DBHandle *db,
  */
 void task_table_add_task(DBHandle *db_handle,
                          OWNER Task *task,
-                         retry_info *retry,
+                         RetryInfo *retry,
                          task_table_done_callback done_callback,
                          void *user_context);
 
@@ -83,7 +83,7 @@ void task_table_add_task(DBHandle *db_handle,
  */
 void task_table_update(DBHandle *db_handle,
                        OWNER Task *task,
-                       retry_info *retry,
+                       RetryInfo *retry,
                        task_table_done_callback done_callback,
                        void *user_context);
 
@@ -111,7 +111,7 @@ void task_table_test_and_update(DBHandle *db_handle,
                                 TaskID task_id,
                                 int test_state_bitmask,
                                 int update_state,
-                                retry_info *retry,
+                                RetryInfo *retry,
                                 task_table_get_callback done_callback,
                                 void *user_context);
 
@@ -157,7 +157,7 @@ void task_table_subscribe(DBHandle *db_handle,
                           int state_filter,
                           task_table_subscribe_callback subscribe_callback,
                           void *subscribe_context,
-                          retry_info *retry,
+                          RetryInfo *retry,
                           task_table_done_callback done_callback,
                           void *user_context);
 

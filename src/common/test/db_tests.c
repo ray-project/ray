@@ -78,7 +78,7 @@ TEST object_table_lookup_test(void) {
   db_attach(db1, loop, false);
   db_attach(db2, loop, false);
   UniqueID id = globally_unique_id();
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = NUM_RETRIES,
       .timeout = TIMEOUT,
       .fail_callback = timeout_callback,
@@ -122,7 +122,7 @@ int64_t task_table_delayed_add_task(event_loop *loop,
                                     int64_t id,
                                     void *context) {
   DBHandle *db = context;
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = NUM_RETRIES,
       .timeout = TIMEOUT,
       .fail_callback = task_table_test_fail_callback,
@@ -153,7 +153,7 @@ TEST task_table_test(void) {
   task_table_test_task =
       Task_alloc(spec, TASK_STATUS_SCHEDULED, local_scheduler_id);
   free_task_spec(spec);
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = NUM_RETRIES,
       .timeout = TIMEOUT,
       .fail_callback = task_table_test_fail_callback,
@@ -187,7 +187,7 @@ TEST task_table_all_test(void) {
   /* Schedule two tasks on different local local schedulers. */
   Task *task1 = Task_alloc(spec, TASK_STATUS_SCHEDULED, globally_unique_id());
   Task *task2 = Task_alloc(spec, TASK_STATUS_SCHEDULED, globally_unique_id());
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = NUM_RETRIES, .timeout = TIMEOUT, .fail_callback = NULL,
   };
   task_table_subscribe(db, NIL_ID, TASK_STATUS_SCHEDULED,

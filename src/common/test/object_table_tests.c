@@ -41,7 +41,7 @@ void new_object_done_callback(ObjectID object_id,
 
 void new_object_lookup_callback(ObjectID object_id, void *user_context) {
   CHECK(ObjectID_equal(object_id, new_object_id));
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = 5,
       .timeout = 100,
       .fail_callback = new_object_fail_callback,
@@ -52,7 +52,7 @@ void new_object_lookup_callback(ObjectID object_id, void *user_context) {
 }
 
 void new_object_task_callback(TaskID task_id, void *user_context) {
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = 5,
       .timeout = 100,
       .fail_callback = new_object_fail_callback,
@@ -73,7 +73,7 @@ TEST new_object_test(void) {
   DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = 5,
       .timeout = 100,
       .fail_callback = new_object_fail_callback,
@@ -108,7 +108,7 @@ TEST new_object_no_task_test(void) {
   DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = 5,
       .timeout = 100,
       .fail_callback = new_object_fail_callback,
@@ -150,7 +150,7 @@ TEST lookup_timeout_test(void) {
   DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = 5, .timeout = 100, .fail_callback = lookup_fail_callback,
   };
   object_table_lookup(db, NIL_ID, &retry, lookup_done_callback,
@@ -186,7 +186,7 @@ TEST add_timeout_test(void) {
   DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = 5, .timeout = 100, .fail_callback = add_fail_callback,
   };
   object_table_add(db, NIL_ID, 0, (unsigned char *) NIL_DIGEST, &retry,
@@ -226,7 +226,7 @@ TEST subscribe_timeout_test(void) {
   DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = 5,
       .timeout = 100,
       .fail_callback = subscribe_fail_callback,
@@ -307,7 +307,7 @@ void add_lookup_done_callback(ObjectID object_id,
 
 void add_lookup_callback(ObjectID object_id, void *user_context) {
   DBHandle *db = user_context;
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = 5,
       .timeout = 100,
       .fail_callback = lookup_retry_fail_callback,
@@ -324,7 +324,7 @@ TEST add_lookup_test(void) {
   DBHandle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1",
                              2, db_connect_args);
   db_attach(db, g_loop, true);
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = 5,
       .timeout = 100,
       .fail_callback = lookup_retry_fail_callback,
@@ -355,7 +355,7 @@ void add_remove_lookup_done_callback(ObjectID object_id,
 
 void add_remove_lookup_callback(ObjectID object_id, void *user_context) {
   DBHandle *db = user_context;
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = 5,
       .timeout = 100,
       .fail_callback = lookup_retry_fail_callback,
@@ -366,7 +366,7 @@ void add_remove_lookup_callback(ObjectID object_id, void *user_context) {
 
 void add_remove_callback(ObjectID object_id, void *user_context) {
   DBHandle *db = user_context;
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = 5,
       .timeout = 100,
       .fail_callback = lookup_retry_fail_callback,
@@ -381,7 +381,7 @@ TEST add_remove_lookup_test(void) {
   DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, true);
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = 5,
       .timeout = 100,
       .fail_callback = lookup_retry_fail_callback,
@@ -450,7 +450,7 @@ TEST lookup_late_test(void) {
   DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = 0,
       .timeout = 0,
       .fail_callback = lookup_late_fail_callback,
@@ -492,7 +492,7 @@ TEST add_late_test(void) {
   DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = 0, .timeout = 0, .fail_callback = add_late_fail_callback,
   };
   object_table_add(db, NIL_ID, 0, (unsigned char *) NIL_DIGEST, &retry,
@@ -537,7 +537,7 @@ TEST subscribe_late_test(void) {
   DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = 0,
       .timeout = 0,
       .fail_callback = subscribe_late_fail_callback,
@@ -578,7 +578,7 @@ void subscribe_success_done_callback(ObjectID object_id,
                                      int manager_count,
                                      const char *manager_vector[],
                                      void *user_context) {
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = 0, .timeout = 750, .fail_callback = NULL,
   };
   object_table_add((DBHandle *) user_context, subscribe_id, 0,
@@ -607,7 +607,7 @@ TEST subscribe_success_test(void) {
   db_attach(db, g_loop, false);
   subscribe_id = globally_unique_id();
 
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = 0,
       .timeout = 100,
       .fail_callback = subscribe_success_fail_callback,
@@ -675,7 +675,7 @@ TEST subscribe_object_present_test(void) {
                              2, db_connect_args);
   db_attach(db, g_loop, false);
   UniqueID id = globally_unique_id();
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = 0, .timeout = 100, .fail_callback = fatal_fail_callback,
   };
   object_table_add(db, id, data_size, (unsigned char *) NIL_DIGEST, &retry,
@@ -727,7 +727,7 @@ TEST subscribe_object_not_present_test(void) {
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   UniqueID id = globally_unique_id();
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = 0, .timeout = 100, .fail_callback = NULL,
   };
   object_table_subscribe_to_notifications(
@@ -790,7 +790,7 @@ TEST subscribe_object_available_later_test(void) {
                              2, db_connect_args);
   db_attach(db, g_loop, false);
   UniqueID id = globally_unique_id();
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = 0, .timeout = 100, .fail_callback = NULL,
   };
   object_table_subscribe_to_notifications(
@@ -843,7 +843,7 @@ TEST subscribe_object_available_subscribe_all(void) {
                              2, db_connect_args);
   db_attach(db, g_loop, false);
   UniqueID id = globally_unique_id();
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = 0, .timeout = 100, .fail_callback = NULL,
   };
   object_table_subscribe_to_notifications(

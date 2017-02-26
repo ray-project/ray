@@ -4,7 +4,7 @@
 #include "redis.h"
 
 /* The default behavior is to retry every ten seconds forever. */
-static const retry_info default_retry = {.num_retries = -1,
+static const RetryInfo default_retry = {.num_retries = -1,
                                          .timeout = 10000,
                                          .fail_callback = NULL};
 
@@ -12,7 +12,7 @@ table_callback_data *init_table_callback(DBHandle *db_handle,
                                          UniqueID id,
                                          const char *label,
                                          OWNER void *data,
-                                         retry_info *retry,
+                                         RetryInfo *retry,
                                          table_done_callback done_callback,
                                          table_retry_callback retry_callback,
                                          void *user_context) {
@@ -20,7 +20,7 @@ table_callback_data *init_table_callback(DBHandle *db_handle,
   CHECK(db_handle->loop);
   /* If no retry info is provided, use the default retry info. */
   if (retry == NULL) {
-    retry = (retry_info *) &default_retry;
+    retry = (RetryInfo *) &default_retry;
   }
   CHECK(retry);
   /* Allocate and initialize callback data structure for object table */

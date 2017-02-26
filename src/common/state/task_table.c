@@ -5,7 +5,7 @@
 
 void task_table_get_task(DBHandle *db_handle,
                          TaskID task_id,
-                         retry_info *retry,
+                         RetryInfo *retry,
                          task_table_get_callback done_callback,
                          void *user_context) {
   init_table_callback(db_handle, task_id, __func__, NULL, retry, done_callback,
@@ -14,7 +14,7 @@ void task_table_get_task(DBHandle *db_handle,
 
 void task_table_add_task(DBHandle *db_handle,
                          OWNER Task *task,
-                         retry_info *retry,
+                         RetryInfo *retry,
                          task_table_done_callback done_callback,
                          void *user_context) {
   init_table_callback(db_handle, Task_task_id(task), __func__, task, retry,
@@ -23,7 +23,7 @@ void task_table_add_task(DBHandle *db_handle,
 
 void task_table_update(DBHandle *db_handle,
                        OWNER Task *task,
-                       retry_info *retry,
+                       RetryInfo *retry,
                        task_table_done_callback done_callback,
                        void *user_context) {
   init_table_callback(db_handle, Task_task_id(task), __func__, task, retry,
@@ -34,7 +34,7 @@ void task_table_test_and_update(DBHandle *db_handle,
                                 TaskID task_id,
                                 int test_state_bitmask,
                                 int update_state,
-                                retry_info *retry,
+                                RetryInfo *retry,
                                 task_table_get_callback done_callback,
                                 void *user_context) {
   task_table_test_and_update_data *update_data =
@@ -54,7 +54,7 @@ void task_table_subscribe(DBHandle *db_handle,
                           int state_filter,
                           task_table_subscribe_callback subscribe_callback,
                           void *subscribe_context,
-                          retry_info *retry,
+                          RetryInfo *retry,
                           task_table_done_callback done_callback,
                           void *user_context) {
   task_table_subscribe_data *sub_data =

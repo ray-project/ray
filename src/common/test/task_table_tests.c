@@ -41,7 +41,7 @@ TEST lookup_nil_test(void) {
   DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = 5,
       .timeout = 1000,
       .fail_callback = lookup_nil_fail_callback,
@@ -82,7 +82,7 @@ void add_success_callback(TaskID task_id, void *context) {
   CHECK(TaskID_equal(task_id, Task_task_id(add_lookup_task)));
 
   DBHandle *db = context;
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = 5,
       .timeout = 1000,
       .fail_callback = add_lookup_fail_callback,
@@ -97,7 +97,7 @@ TEST add_lookup_test(void) {
   DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = 5,
       .timeout = 1000,
       .fail_callback = add_lookup_fail_callback,
@@ -139,7 +139,7 @@ TEST subscribe_timeout_test(void) {
   DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = 5,
       .timeout = 100,
       .fail_callback = subscribe_fail_callback,
@@ -181,7 +181,7 @@ TEST publish_timeout_test(void) {
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   Task *task = example_task(1, 1, TASK_STATUS_WAITING);
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = 5, .timeout = 100, .fail_callback = publish_fail_callback,
   };
   task_table_add_task(db, task, &retry, publish_done_callback,
@@ -242,7 +242,7 @@ TEST subscribe_retry_test(void) {
   DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = 5,
       .timeout = 100,
       .fail_callback = subscribe_retry_fail_callback,
@@ -290,7 +290,7 @@ TEST publish_retry_test(void) {
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   Task *task = example_task(1, 1, TASK_STATUS_WAITING);
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = 5,
       .timeout = 100,
       .fail_callback = publish_retry_fail_callback,
@@ -338,7 +338,7 @@ TEST subscribe_late_test(void) {
   DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = 0,
       .timeout = 0,
       .fail_callback = subscribe_late_fail_callback,
@@ -384,7 +384,7 @@ TEST publish_late_test(void) {
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   Task *task = example_task(1, 1, TASK_STATUS_WAITING);
-  retry_info retry = {
+  RetryInfo retry = {
       .num_retries = 0,
       .timeout = 0,
       .fail_callback = publish_late_fail_callback,

@@ -4,7 +4,7 @@
 
 void object_table_lookup(DBHandle *db_handle,
                          ObjectID object_id,
-                         retry_info *retry,
+                         RetryInfo *retry,
                          object_table_lookup_done_callback done_callback,
                          void *user_context) {
   CHECK(db_handle != NULL);
@@ -16,7 +16,7 @@ void object_table_add(DBHandle *db_handle,
                       ObjectID object_id,
                       int64_t object_size,
                       unsigned char digest[],
-                      retry_info *retry,
+                      RetryInfo *retry,
                       object_table_done_callback done_callback,
                       void *user_context) {
   CHECK(db_handle != NULL);
@@ -31,7 +31,7 @@ void object_table_add(DBHandle *db_handle,
 void object_table_remove(DBHandle *db_handle,
                          ObjectID object_id,
                          DBClientID *client_id,
-                         retry_info *retry,
+                         RetryInfo *retry,
                          object_table_done_callback done_callback,
                          void *user_context) {
   CHECK(db_handle != NULL);
@@ -50,7 +50,7 @@ void object_table_subscribe_to_notifications(
     bool subscribe_all,
     object_table_object_available_callback object_available_callback,
     void *subscribe_context,
-    retry_info *retry,
+    RetryInfo *retry,
     object_table_lookup_done_callback done_callback,
     void *user_context) {
   CHECK(db_handle != NULL);
@@ -68,7 +68,7 @@ void object_table_subscribe_to_notifications(
 void object_table_request_notifications(DBHandle *db_handle,
                                         int num_object_ids,
                                         ObjectID object_ids[],
-                                        retry_info *retry) {
+                                        RetryInfo *retry) {
   CHECK(db_handle != NULL);
   CHECK(num_object_ids > 0);
   object_table_request_notifications_data *data =
@@ -84,7 +84,7 @@ void object_table_request_notifications(DBHandle *db_handle,
 void object_info_subscribe(DBHandle *db_handle,
                            object_info_subscribe_callback subscribe_callback,
                            void *subscribe_context,
-                           retry_info *retry,
+                           RetryInfo *retry,
                            object_info_done_callback done_callback,
                            void *user_context) {
   object_info_subscribe_data *sub_data =
@@ -99,7 +99,7 @@ void object_info_subscribe(DBHandle *db_handle,
 void result_table_add(DBHandle *db_handle,
                       ObjectID object_id,
                       TaskID task_id_arg,
-                      retry_info *retry,
+                      RetryInfo *retry,
                       result_table_done_callback done_callback,
                       void *user_context) {
   TaskID *task_id_copy = malloc(sizeof(TaskID));
@@ -110,7 +110,7 @@ void result_table_add(DBHandle *db_handle,
 
 void result_table_lookup(DBHandle *db_handle,
                          ObjectID object_id,
-                         retry_info *retry,
+                         RetryInfo *retry,
                          result_table_lookup_callback done_callback,
                          void *user_context) {
   init_table_callback(db_handle, object_id, __func__, NULL, retry,

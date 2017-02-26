@@ -30,7 +30,7 @@ typedef void (*table_retry_callback)(table_callback_data *callback_data);
 
 /**
  * Data structure consolidating the retry related variables. If a NULL
- * retry_info struct is used, the default behavior will be to retry infinitely
+ * RetryInfo struct is used, the default behavior will be to retry infinitely
  * many times.
  */
 typedef struct {
@@ -42,7 +42,7 @@ typedef struct {
   uint64_t timeout;
   /** The callback that will be called if there are no more retries left. */
   table_fail_callback fail_callback;
-} retry_info;
+} RetryInfo;
 
 struct table_callback_data {
   /** ID of the entry in the table that we are going to look up, remove or add.
@@ -57,7 +57,7 @@ struct table_callback_data {
   /** Retry information containing the remaining number of retries, the timeout
    *  before the next retry, and a pointer to the failure callback.
    */
-  retry_info retry;
+  RetryInfo retry;
   /** Pointer to the data that is entered into the table. This can be used to
    *  pass the result of the call to the callback. The callback takes ownership
    *  over this data and will free it. */
@@ -108,7 +108,7 @@ table_callback_data *init_table_callback(DBHandle *db_handle,
                                          UniqueID id,
                                          const char *label,
                                          OWNER void *data,
-                                         retry_info *retry,
+                                         RetryInfo *retry,
                                          table_done_callback done_callback,
                                          table_retry_callback retry_callback,
                                          void *user_context);

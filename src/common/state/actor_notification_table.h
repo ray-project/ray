@@ -35,7 +35,7 @@ void actor_notification_table_subscribe(
     DBHandle *db_handle,
     actor_notification_table_subscribe_callback subscribe_callback,
     void *subscribe_context,
-    retry_info *retry);
+    RetryInfo *retry);
 
 /* Data that is needed to register local scheduler table subscribe callbacks
  * with the state database. */
