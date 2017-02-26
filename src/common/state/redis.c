@@ -363,8 +363,8 @@ void redis_result_table_add(table_callback_data *callback_data) {
 /* This allocates a task which must be freed by the caller, unless the returned
  * task is NULL. This is used by both redis_result_table_lookup_callback and
  * redis_task_table_get_task_callback. */
-task *parse_and_construct_task_from_redis_reply(redisReply *reply) {
-  task *task;
+Task *parse_and_construct_task_from_redis_reply(redisReply *reply) {
+  Task *task;
   if (reply->type == REDIS_REPLY_NIL) {
     /* There is no task in the reply, so return NULL. */
     task = NULL;
@@ -737,7 +737,7 @@ void redis_task_table_get_task_callback(redisAsyncContext *c,
   REDIS_CALLBACK_HEADER(db, callback_data, r);
   redisReply *reply = r;
   /* Parse the task from the reply. */
-  task *task = parse_and_construct_task_from_redis_reply(reply);
+  Task *task = parse_and_construct_task_from_redis_reply(reply);
   /* Call the done callback if there is one. */
   task_table_get_callback done_callback = callback_data->done_callback;
   if (done_callback != NULL) {
@@ -783,7 +783,7 @@ void redis_task_table_add_task_callback(redisAsyncContext *c,
 
 void redis_task_table_add_task(table_callback_data *callback_data) {
   DBHandle *db = callback_data->db_handle;
-  task *task = callback_data->data;
+  Task *task = callback_data->data;
   TaskID task_id = task_task_id(task);
   DBClientID local_scheduler_id = task_local_scheduler(task);
   int state = task_state(task);
@@ -819,7 +819,7 @@ void redis_task_table_update_callback(redisAsyncContext *c,
 
 void redis_task_table_update(table_callback_data *callback_data) {
   DBHandle *db = callback_data->db_handle;
-  task *task = callback_data->data;
+  Task *task = callback_data->data;
   TaskID task_id = task_task_id(task);
   DBClientID local_scheduler_id = task_local_scheduler(task);
   int state = task_state(task);
@@ -841,7 +841,7 @@ void redis_task_table_test_and_update_callback(redisAsyncContext *c,
   REDIS_CALLBACK_HEADER(db, callback_data, r);
   redisReply *reply = r;
   /* Parse the task from the reply. */
-  task *task = parse_and_construct_task_from_redis_reply(reply);
+  Task *task = parse_and_construct_task_from_redis_reply(reply);
   /* Call the done callback if there is one. */
   task_table_get_callback done_callback = callback_data->done_callback;
   if (done_callback != NULL) {
@@ -939,7 +939,7 @@ void redis_task_table_subscribe_callback(redisAsyncContext *c,
     task_spec *spec;
     parse_task_table_subscribe_callback(payload->str, payload->len, &task_id,
                                         &state, &local_scheduler_id, &spec);
-    task *task = alloc_task(spec, state, local_scheduler_id);
+    Task *task = alloc_task(spec, state, local_scheduler_id);
     free(spec);
     /* Call the subscribe callback if there is one. */
     if (data->subscribe_callback != NULL) {

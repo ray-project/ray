@@ -189,7 +189,7 @@ TEST object_reconstruction_test(void) {
     event_loop_run(photon->loop);
     /* Set the task's status to TASK_STATUS_DONE to prevent the race condition
      * that would suppress object reconstruction. */
-    task *task = alloc_task(spec, TASK_STATUS_DONE,
+    Task *task = alloc_task(spec, TASK_STATUS_DONE,
                             get_db_client_id(photon->photon_state->db));
     task_table_add_task(photon->photon_state->db, task, NULL, NULL, NULL);
     /* Trigger reconstruction, and run the event loop again. */
@@ -287,7 +287,7 @@ TEST object_reconstruction_recursive_test(void) {
     event_loop_run(photon->loop);
     /* Set the final task's status to TASK_STATUS_DONE to prevent the race
      * condition that would suppress object reconstruction. */
-    task *last_task = alloc_task(specs[NUM_TASKS - 1], TASK_STATUS_DONE,
+    Task *last_task = alloc_task(specs[NUM_TASKS - 1], TASK_STATUS_DONE,
                                  get_db_client_id(photon->photon_state->db));
     task_table_add_task(photon->photon_state->db, last_task, NULL, NULL, NULL);
     /* Trigger reconstruction for the last object, and run the event loop

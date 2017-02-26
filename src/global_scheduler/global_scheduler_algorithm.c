@@ -53,7 +53,7 @@ bool constraints_satisfied_hard(const local_scheduler *scheduler,
  */
 void handle_task_round_robin(global_scheduler_state *state,
                              global_scheduler_policy_state *policy_state,
-                             task *task) {
+                             Task *task) {
   CHECKM(utarray_len(state->local_schedulers) > 0,
          "No local schedulers. We currently don't handle this case.");
   local_scheduler *scheduler = NULL;
@@ -269,7 +269,7 @@ double calculate_cost_pending(const global_scheduler_state *state,
 
 bool handle_task_waiting(global_scheduler_state *state,
                          global_scheduler_policy_state *policy_state,
-                         task *task) {
+                         Task *task) {
   task_spec *task_spec = task_task_spec(task);
 
   CHECKM(task_spec != NULL,

@@ -60,7 +60,7 @@ void destroy_global_scheduler_policy(
  */
 bool handle_task_waiting(global_scheduler_state *state,
                          global_scheduler_policy_state *policy_state,
-                         task *task);
+                         Task *task);
 
 /**
  * Handle the fact that a new object is available.

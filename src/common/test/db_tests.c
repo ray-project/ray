@@ -109,7 +109,7 @@ TEST object_table_lookup_test(void) {
 }
 
 int task_table_test_callback_called = 0;
-task *task_table_test_task;
+Task *task_table_test_task;
 
 void task_table_test_fail_callback(UniqueID id,
                                    void *context,
@@ -132,7 +132,7 @@ int64_t task_table_delayed_add_task(event_loop *loop,
   return EVENT_LOOP_TIMER_DONE;
 }
 
-void task_table_test_callback(task *callback_task, void *user_data) {
+void task_table_test_callback(Task *callback_task, void *user_data) {
   task_table_test_callback_called = 1;
   CHECK(task_state(callback_task) == TASK_STATUS_SCHEDULED);
   CHECK(task_size(callback_task) == task_size(task_table_test_task));
@@ -174,7 +174,7 @@ TEST task_table_test(void) {
 
 int num_test_callback_called = 0;
 
-void task_table_all_test_callback(task *task, void *user_data) {
+void task_table_all_test_callback(Task *task, void *user_data) {
   num_test_callback_called += 1;
 }
 
@@ -185,8 +185,8 @@ TEST task_table_all_test(void) {
   db_attach(db, loop, false);
   task_spec *spec = example_task_spec(1, 1);
   /* Schedule two tasks on different local local schedulers. */
-  task *task1 = alloc_task(spec, TASK_STATUS_SCHEDULED, globally_unique_id());
-  task *task2 = alloc_task(spec, TASK_STATUS_SCHEDULED, globally_unique_id());
+  Task *task1 = alloc_task(spec, TASK_STATUS_SCHEDULED, globally_unique_id());
+  Task *task2 = alloc_task(spec, TASK_STATUS_SCHEDULED, globally_unique_id());
   retry_info retry = {
       .num_retries = NUM_RETRIES, .timeout = TIMEOUT, .fail_callback = NULL,
   };

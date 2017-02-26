@@ -17,7 +17,7 @@ static event_loop *g_loop;
 int new_object_failed = 0;
 int new_object_succeeded = 0;
 ObjectID new_object_id;
-task *new_object_task;
+Task *new_object_task;
 task_spec *new_object_task_spec;
 TaskID new_object_task_id;
 

@@ -19,7 +19,7 @@
 UT_icd local_scheduler_icd = {sizeof(local_scheduler), NULL, NULL, NULL};
 
 /* This is used to define the array of tasks that haven't been scheduled yet. */
-UT_icd pending_tasks_icd = {sizeof(task *), NULL, NULL, NULL};
+UT_icd pending_tasks_icd = {sizeof(Task *), NULL, NULL, NULL};
 
 /**
  * Assign the given task to the local scheduler, update Redis and scheduler data
@@ -31,7 +31,7 @@ UT_icd pending_tasks_icd = {sizeof(task *), NULL, NULL, NULL};
  * @return Void.
  */
 void assign_task_to_local_scheduler(global_scheduler_state *state,
-                                    task *task,
+                                    Task *task,
                                     DBClientID local_scheduler_id) {
   char id_string[ID_STRING_SIZE];
   task_spec *spec = task_task_spec(task);
@@ -113,7 +113,7 @@ void free_global_scheduler(global_scheduler_state *state) {
              num_pending_tasks);
   }
   for (int i = 0; i < num_pending_tasks; ++i) {
-    task **pending_task = (task **) utarray_eltptr(state->pending_tasks, i);
+    Task **pending_task = (Task **) utarray_eltptr(state->pending_tasks, i);
     free_task(*pending_task);
   }
   utarray_free(state->pending_tasks);
@@ -148,7 +148,7 @@ local_scheduler *get_local_scheduler(global_scheduler_state *state,
   return NULL;
 }
 
-void process_task_waiting(task *waiting_task, void *user_context) {
+void process_task_waiting(Task *waiting_task, void *user_context) {
   global_scheduler_state *state = (global_scheduler_state *) user_context;
   LOG_DEBUG("Task waiting callback is called.");
   bool successfully_assigned =
@@ -157,7 +157,7 @@ void process_task_waiting(task *waiting_task, void *user_context) {
    * task to the array of pending tasks. The global scheduler will periodically
    * resubmit the tasks in this array. */
   if (!successfully_assigned) {
-    task *task_copy = copy_task(waiting_task);
+    Task *task_copy = copy_task(waiting_task);
     utarray_push_back(state->pending_tasks, &task_copy);
   }
 }
@@ -315,7 +315,7 @@ int task_cleanup_handler(event_loop *loop, timer_id id, void *context) {
   /* Loop over the pending tasks and resubmit them. */
   int64_t num_pending_tasks = utarray_len(state->pending_tasks);
   for (int64_t i = num_pending_tasks - 1; i >= 0; --i) {
-    task **pending_task = (task **) utarray_eltptr(state->pending_tasks, i);
+    Task **pending_task = (Task **) utarray_eltptr(state->pending_tasks, i);
     /* Pretend that the task has been resubmitted. */
     bool successfully_assigned =
         handle_task_waiting(state, state->policy_state, *pending_task);

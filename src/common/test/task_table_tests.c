@@ -28,7 +28,7 @@ void lookup_nil_fail_callback(UniqueID id,
   CHECK(0);
 }
 
-void lookup_nil_success_callback(task *task, void *context) {
+void lookup_nil_success_callback(Task *task, void *context) {
   lookup_nil_success = 1;
   CHECK(task == NULL);
   CHECK(context == (void *) lookup_nil_context);
@@ -61,7 +61,7 @@ TEST lookup_nil_test(void) {
 
 int add_success = 0;
 int lookup_success = 0;
-task *add_lookup_task;
+Task *add_lookup_task;
 const char *add_lookup_context = "add_lookup";
 
 void add_lookup_fail_callback(UniqueID id,
@@ -71,7 +71,7 @@ void add_lookup_fail_callback(UniqueID id,
   CHECK(0);
 }
 
-void lookup_success_callback(task *task, void *context) {
+void lookup_success_callback(Task *task, void *context) {
   lookup_success = 1;
   CHECK(memcmp(task, add_lookup_task, task_size(task)) == 0);
   event_loop_stop(g_loop);
@@ -180,7 +180,7 @@ TEST publish_timeout_test(void) {
   DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
-  task *task = example_task(1, 1, TASK_STATUS_WAITING);
+  Task *task = example_task(1, 1, TASK_STATUS_WAITING);
   retry_info retry = {
       .num_retries = 5, .timeout = 100, .fail_callback = publish_fail_callback,
   };
@@ -289,7 +289,7 @@ TEST publish_retry_test(void) {
   DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
-  task *task = example_task(1, 1, TASK_STATUS_WAITING);
+  Task *task = example_task(1, 1, TASK_STATUS_WAITING);
   retry_info retry = {
       .num_retries = 5,
       .timeout = 100,
@@ -383,7 +383,7 @@ TEST publish_late_test(void) {
   DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
-  task *task = example_task(1, 1, TASK_STATUS_WAITING);
+  Task *task = example_task(1, 1, TASK_STATUS_WAITING);
   retry_info retry = {
       .num_retries = 0,
       .timeout = 0,

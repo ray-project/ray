@@ -353,7 +353,7 @@ typedef enum {
 /** A task is an execution of a task specification.  It has a state of execution
  * (see scheduling_state) and the ID of the local scheduler it is scheduled on
  * or running on. */
-typedef struct task_impl task;
+typedef struct task_impl Task;
 
 /**
  * Allocate a new task. Must be freed with free_task after use.
@@ -363,7 +363,7 @@ typedef struct task_impl task;
  * @param local_scheduler_id The ID of the local scheduler that the task is
  *        scheduled on, if any.
  */
-task *alloc_task(task_spec *spec, int state, DBClientID local_scheduler_id);
+Task *alloc_task(task_spec *spec, int state, DBClientID local_scheduler_id);
 
 /**
  * Create a copy of the task. Must be freed with free_task after use.
@@ -371,30 +371,30 @@ task *alloc_task(task_spec *spec, int state, DBClientID local_scheduler_id);
  * @param other The task that will be copied.
  * @returns Pointer to the copy of the task.
  */
-task *copy_task(task *other);
+Task *copy_task(Task *other);
 
 /** Size of task structure in bytes. */
-int64_t task_size(task *task);
+int64_t task_size(Task *task);
 
 /** The scheduling state of the task. */
-int task_state(task *task);
+int task_state(Task *task);
 
 /** Update the schedule state of the task. */
-void task_set_state(task *task, int state);
+void task_set_state(Task *task, int state);
 
 /** Local scheduler this task has been assigned to or is running on. */
-DBClientID task_local_scheduler(task *task);
+DBClientID task_local_scheduler(Task *task);
 
 /** Set the local scheduler ID for this task. */
-void task_set_local_scheduler(task *task, DBClientID local_scheduler_id);
+void task_set_local_scheduler(Task *task, DBClientID local_scheduler_id);
 
 /** Task specification of this task. */
-task_spec *task_task_spec(task *task);
+task_spec *task_task_spec(Task *task);
 
 /** Task ID of this task. */
-TaskID task_task_id(task *task);
+TaskID task_task_id(Task *task);
 
 /** Free this task datastructure. */
-void free_task(task *task);
+void free_task(Task *task);
 
 #endif

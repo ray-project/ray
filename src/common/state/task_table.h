@@ -26,7 +26,7 @@ typedef void (*task_table_done_callback)(TaskID task_id, void *user_context);
 
 /* Callback called when a task table read operation completes. If the task ID
  * was not in the task table, then the task pointer will be NULL. */
-typedef void (*task_table_get_callback)(task *task, void *user_context);
+typedef void (*task_table_get_callback)(Task *task, void *user_context);
 
 /**
  * Get a task's entry from the task table.
@@ -59,7 +59,7 @@ void task_table_get_task(DBHandle *db,
  * @return Void.
  */
 void task_table_add_task(DBHandle *db_handle,
-                         OWNER task *task,
+                         OWNER Task *task,
                          retry_info *retry,
                          task_table_done_callback done_callback,
                          void *user_context);
@@ -82,7 +82,7 @@ void task_table_add_task(DBHandle *db_handle,
  * @return Void.
  */
 void task_table_update(DBHandle *db_handle,
-                       OWNER task *task,
+                       OWNER Task *task,
                        retry_info *retry,
                        task_table_done_callback done_callback,
                        void *user_context);
@@ -127,7 +127,7 @@ typedef struct {
  */
 
 /* Callback for subscribing to the task table. */
-typedef void (*task_table_subscribe_callback)(task *task, void *user_context);
+typedef void (*task_table_subscribe_callback)(Task *task, void *user_context);
 
 /**
  * Register a callback for a task event. An event is any update of a task in

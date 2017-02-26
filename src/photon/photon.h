@@ -107,7 +107,7 @@ typedef struct {
   /** A pointer to the task object that is currently running on this client. If
    *  no task is running on the worker, this will be NULL. This is used to
    *  update the task table. */
-  task *task_in_progress;
+  Task *task_in_progress;
   /** A flag to indicate whether this worker is currently blocking on an
    *  object(s) that isn't available locally yet. */
   bool is_blocked;

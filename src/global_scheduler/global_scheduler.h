@@ -103,7 +103,7 @@ local_scheduler *get_local_scheduler(global_scheduler_state *state,
  * @return Void.
  */
 void assign_task_to_local_scheduler(global_scheduler_state *state,
-                                    task *task,
+                                    Task *task,
                                     DBClientID local_scheduler_id);
 
 #endif /* GLOBAL_SCHEDULER_H */

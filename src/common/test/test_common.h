@@ -42,21 +42,21 @@ static inline task_spec *example_task_spec(int64_t num_args,
   return example_task_spec_with_args(num_args, num_returns, NULL);
 }
 
-static inline task *example_task_with_args(int64_t num_args,
+static inline Task *example_task_with_args(int64_t num_args,
                                            int64_t num_returns,
                                            int task_state,
                                            ObjectID arg_ids[]) {
   task_spec *spec = example_task_spec_with_args(num_args, num_returns, arg_ids);
-  task *instance = alloc_task(spec, task_state, NIL_ID);
+  Task *instance = alloc_task(spec, task_state, NIL_ID);
   free_task_spec(spec);
   return instance;
 }
 
-static inline task *example_task(int64_t num_args,
+static inline Task *example_task(int64_t num_args,
                                  int64_t num_returns,
                                  int task_state) {
   task_spec *spec = example_task_spec(num_args, num_returns);
-  task *instance = alloc_task(spec, task_state, NIL_ID);
+  Task *instance = alloc_task(spec, task_state, NIL_ID);
   free_task_spec(spec);
   return instance;
 }

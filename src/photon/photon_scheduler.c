@@ -22,7 +22,7 @@
 #include "utarray.h"
 #include "uthash.h"
 
-UT_icd task_ptr_icd = {sizeof(task *), NULL, NULL, NULL};
+UT_icd task_ptr_icd = {sizeof(Task *), NULL, NULL, NULL};
 UT_icd workers_icd = {sizeof(local_scheduler_client *), NULL, NULL, NULL};
 
 UT_icd pid_t_icd = {sizeof(pid_t), NULL, NULL, NULL};
@@ -445,7 +445,7 @@ void assign_task_to_worker(LocalSchedulerState *state,
   /* Resource accounting:
    * Update dynamic resource vector in the local scheduler state. */
   update_dynamic_resources(state, spec, false);
-  task *task = alloc_task(spec, TASK_STATUS_RUNNING,
+  Task *task = alloc_task(spec, TASK_STATUS_RUNNING,
                           state->db ? get_db_client_id(state->db) : NIL_ID);
   /* Record which task this worker is executing. This will be freed in
    * process_message when the worker sends a GET_TASK message to the local
@@ -485,7 +485,7 @@ void process_plasma_notification(event_loop *loop,
   }
 }
 
-void reconstruct_task_update_callback(task *task, void *user_context) {
+void reconstruct_task_update_callback(Task *task, void *user_context) {
   if (task == NULL) {
     /* The test-and-set of the task's scheduling state failed, so the task was
      * either not finished yet, or it was already being reconstructed.
@@ -794,7 +794,7 @@ void signal_handler(int signal) {
 
 /* End of the cleanup code. */
 
-void handle_task_scheduled_callback(task *original_task, void *user_context) {
+void handle_task_scheduled_callback(Task *original_task, void *user_context) {
   task_spec *spec = task_task_spec(original_task);
   if (actor_ids_equal(task_spec_actor_id(spec), NIL_ACTOR_ID)) {
     /* This task does not involve an actor. Handle it normally. */

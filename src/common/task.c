@@ -349,9 +349,9 @@ struct task_impl {
   task_spec spec;
 };
 
-task *alloc_task(task_spec *spec, int state, DBClientID local_scheduler_id) {
-  int64_t size = sizeof(task) - sizeof(task_spec) + task_spec_size(spec);
-  task *result = malloc(size);
+Task *alloc_task(task_spec *spec, int state, DBClientID local_scheduler_id) {
+  int64_t size = sizeof(Task) - sizeof(task_spec) + task_spec_size(spec);
+  Task *result = malloc(size);
   memset(result, 0, size);
   result->state = state;
   result->local_scheduler_id = local_scheduler_id;
@@ -359,43 +359,43 @@ task *alloc_task(task_spec *spec, int state, DBClientID local_scheduler_id) {
   return result;
 }
 
-task *copy_task(task *other) {
+Task *copy_task(Task *other) {
   int64_t size = task_size(other);
-  task *copy = malloc(size);
+  Task *copy = malloc(size);
   CHECK(copy != NULL);
   memcpy(copy, other, size);
   return copy;
 }
 
-int64_t task_size(task *task_arg) {
-  return sizeof(task) - sizeof(task_spec) + task_spec_size(&task_arg->spec);
+int64_t task_size(Task *task_arg) {
+  return sizeof(Task) - sizeof(task_spec) + task_spec_size(&task_arg->spec);
 }
 
-int task_state(task *task) {
+int task_state(Task *task) {
   return task->state;
 }
 
-void task_set_state(task *task, int state) {
+void task_set_state(Task *task, int state) {
   task->state = state;
 }
 
-DBClientID task_local_scheduler(task *task) {
+DBClientID task_local_scheduler(Task *task) {
   return task->local_scheduler_id;
 }
 
-void task_set_local_scheduler(task *task, DBClientID local_scheduler_id) {
+void task_set_local_scheduler(Task *task, DBClientID local_scheduler_id) {
   task->local_scheduler_id = local_scheduler_id;
 }
 
-task_spec *task_task_spec(task *task) {
+task_spec *task_task_spec(Task *task) {
   return &task->spec;
 }
 
-TaskID task_task_id(task *task) {
+TaskID task_task_id(Task *task) {
   task_spec *spec = task_task_spec(task);
   return task_spec_id(spec);
 }
 
-void free_task(task *task) {
+void free_task(Task *task) {
   free(task);
 }

@@ -360,7 +360,7 @@ void add_task_to_actor_queue(LocalSchedulerState *state,
 
   /* Update the task table. */
   if (state->db != NULL) {
-    task *task =
+    Task *task =
         alloc_task(spec, TASK_STATUS_QUEUED, get_db_client_id(state->db));
     if (from_global_scheduler) {
       /* If the task is from the global scheduler, it's already been added to
@@ -656,7 +656,7 @@ task_queue_entry *queue_task(LocalSchedulerState *state,
   /* The task has been added to a local scheduler queue. Write the entry in the
    * task table to notify others that we have queued it. */
   if (state->db != NULL) {
-    task *task =
+    Task *task =
         alloc_task(spec, TASK_STATUS_QUEUED, get_db_client_id(state->db));
     if (from_global_scheduler) {
       /* If the task is from the global scheduler, it's already been added to
@@ -762,7 +762,7 @@ void give_task_to_local_scheduler(LocalSchedulerState *state,
   CHECK(state->db != NULL);
   /* Assign the task to the relevant local scheduler. */
   DCHECK(state->config.global_scheduler_exists);
-  task *task = alloc_task(spec, TASK_STATUS_SCHEDULED, local_scheduler_id);
+  Task *task = alloc_task(spec, TASK_STATUS_SCHEDULED, local_scheduler_id);
   task_table_add_task(state->db, task, NULL, NULL, NULL);
 }
 
@@ -784,7 +784,7 @@ void give_task_to_global_scheduler(LocalSchedulerState *state,
   }
   /* Pass on the task to the global scheduler. */
   DCHECK(state->config.global_scheduler_exists);
-  task *task = alloc_task(spec, TASK_STATUS_WAITING, NIL_ID);
+  Task *task = alloc_task(spec, TASK_STATUS_WAITING, NIL_ID);
   DCHECK(state->db != NULL);
   task_table_add_task(state->db, task, NULL, NULL, NULL);
 }
