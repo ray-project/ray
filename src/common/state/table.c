@@ -8,7 +8,7 @@ static const RetryInfo default_retry = {.num_retries = -1,
                                          .timeout = 10000,
                                          .fail_callback = NULL};
 
-table_callback_data *init_table_callback(DBHandle *db_handle,
+TableCallbackData *init_table_callback(DBHandle *db_handle,
                                          UniqueID id,
                                          const char *label,
                                          OWNER void *data,
@@ -24,7 +24,7 @@ table_callback_data *init_table_callback(DBHandle *db_handle,
   }
   CHECK(retry);
   /* Allocate and initialize callback data structure for object table */
-  table_callback_data *callback_data = malloc(sizeof(table_callback_data));
+  TableCallbackData *callback_data = malloc(sizeof(TableCallbackData));
   CHECKM(callback_data != NULL, "Memory allocation error!")
   callback_data->id = id;
   callback_data->label = label;
@@ -49,12 +49,12 @@ table_callback_data *init_table_callback(DBHandle *db_handle,
 }
 
 void destroy_timer_callback(event_loop *loop,
-                            table_callback_data *callback_data) {
+                            TableCallbackData *callback_data) {
   event_loop_remove_timer(loop, callback_data->timer_id);
   destroy_table_callback(callback_data);
 }
 
-void destroy_table_callback(table_callback_data *callback_data) {
+void destroy_table_callback(TableCallbackData *callback_data) {
   CHECK(callback_data != NULL);
 
   if (callback_data->requests_info)
@@ -76,7 +76,7 @@ int64_t table_timeout_handler(event_loop *loop,
                               void *user_context) {
   CHECK(loop != NULL);
   CHECK(user_context != NULL);
-  table_callback_data *callback_data = (table_callback_data *) user_context;
+  TableCallbackData *callback_data = (TableCallbackData *) user_context;
 
   CHECK(callback_data->retry.num_retries >= 0 ||
         callback_data->retry.num_retries == -1);
@@ -133,24 +133,24 @@ int64_t table_timeout_handler(event_loop *loop,
  * When the last timeout associated to the command expires we remove the entry
  * associated to the callback.
  */
-static table_callback_data *outstanding_callbacks = NULL;
+static TableCallbackData *outstanding_callbacks = NULL;
 
-void outstanding_callbacks_add(table_callback_data *callback_data) {
+void outstanding_callbacks_add(TableCallbackData *callback_data) {
   HASH_ADD_INT(outstanding_callbacks, timer_id, callback_data);
 }
 
-table_callback_data *outstanding_callbacks_find(int64_t key) {
-  table_callback_data *callback_data = NULL;
+TableCallbackData *outstanding_callbacks_find(int64_t key) {
+  TableCallbackData *callback_data = NULL;
   HASH_FIND_INT(outstanding_callbacks, &key, callback_data);
   return callback_data;
 }
 
-void outstanding_callbacks_remove(table_callback_data *callback_data) {
+void outstanding_callbacks_remove(TableCallbackData *callback_data) {
   HASH_DEL(outstanding_callbacks, callback_data);
 }
 
 void destroy_outstanding_callbacks(event_loop *loop) {
-  table_callback_data *callback_data, *tmp;
+  TableCallbackData *callback_data, *tmp;
   HASH_ITER(hh, outstanding_callbacks, callback_data, tmp) {
     destroy_timer_callback(loop, callback_data);
   }

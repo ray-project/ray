@@ -70,7 +70,7 @@ void object_table_lookup_callback(redisAsyncContext *c,
  *        information.
  * @return Void.
  */
-void redis_object_table_lookup(table_callback_data *callback_data);
+void redis_object_table_lookup(TableCallbackData *callback_data);
 
 /**
  * Add a location entry to the object table in redis.
@@ -79,7 +79,7 @@ void redis_object_table_lookup(table_callback_data *callback_data);
  *        information.
  * @return Void.
  */
-void redis_object_table_add(table_callback_data *callback_data);
+void redis_object_table_add(TableCallbackData *callback_data);
 
 /**
  * Remove a location entry from the object table in redis.
@@ -88,7 +88,7 @@ void redis_object_table_add(table_callback_data *callback_data);
  *        information.
  * @return Void.
  */
-void redis_object_table_remove(table_callback_data *callback_data);
+void redis_object_table_remove(TableCallbackData *callback_data);
 
 /**
  * Create a client-specific channel for receiving notifications from the object
@@ -99,7 +99,7 @@ void redis_object_table_remove(table_callback_data *callback_data);
  * @return Void.
  */
 void redis_object_table_subscribe_to_notifications(
-    table_callback_data *callback_data);
+    TableCallbackData *callback_data);
 
 /**
  * Request notifications about when certain objects become available.
@@ -109,7 +109,7 @@ void redis_object_table_subscribe_to_notifications(
  * @return Void.
  */
 void redis_object_table_request_notifications(
-    table_callback_data *callback_data);
+    TableCallbackData *callback_data);
 
 /**
  * Add a new object to the object table in redis.
@@ -118,7 +118,7 @@ void redis_object_table_request_notifications(
  *        information.
  * @return Void.
  */
-void redis_result_table_add(table_callback_data *callback_data);
+void redis_result_table_add(TableCallbackData *callback_data);
 
 /**
  * Lookup the task that created the object in redis. The result is the task ID.
@@ -127,7 +127,7 @@ void redis_result_table_add(table_callback_data *callback_data);
  *        information.
  * @return Void.
  */
-void redis_result_table_lookup(table_callback_data *callback_data);
+void redis_result_table_lookup(TableCallbackData *callback_data);
 
 /**
  * Callback invoked when the reply from the object table lookup command is
@@ -154,7 +154,7 @@ void redis_object_table_lookup_callback(redisAsyncContext *c,
  *        information.
  * @return Void.
  */
-void redis_task_table_get_task(table_callback_data *callback_data);
+void redis_task_table_get_task(TableCallbackData *callback_data);
 
 /**
  * Add a task table entry with a new task spec and the task's scheduling
@@ -164,7 +164,7 @@ void redis_task_table_get_task(table_callback_data *callback_data);
  *        information.
  * @return Void.
  */
-void redis_task_table_add_task(table_callback_data *callback_data);
+void redis_task_table_add_task(TableCallbackData *callback_data);
 
 /**
  * Update a task table entry with the task's scheduling information.
@@ -173,7 +173,7 @@ void redis_task_table_add_task(table_callback_data *callback_data);
  *        information.
  * @return Void.
  */
-void redis_task_table_update(table_callback_data *callback_data);
+void redis_task_table_update(TableCallbackData *callback_data);
 
 /**
  * Update a task table entry with the task's scheduling information, if the
@@ -183,7 +183,7 @@ void redis_task_table_update(table_callback_data *callback_data);
  *        information.
  * @return Void.
  */
-void redis_task_table_test_and_update(table_callback_data *callback_data);
+void redis_task_table_test_and_update(TableCallbackData *callback_data);
 
 /**
  * Callback invoked when the reply from the task push command is received.
@@ -216,7 +216,7 @@ void redis_task_table_publish_publish_callback(redisAsyncContext *c,
  *        information.
  * @return Void.
  */
-void redis_task_table_subscribe(table_callback_data *callback_data);
+void redis_task_table_subscribe(TableCallbackData *callback_data);
 
 /**
  * Subscribe to updates from the db client table.
@@ -225,7 +225,7 @@ void redis_task_table_subscribe(table_callback_data *callback_data);
  *        information.
  * @return Void.
  */
-void redis_db_client_table_subscribe(table_callback_data *callback_data);
+void redis_db_client_table_subscribe(TableCallbackData *callback_data);
 
 /**
  * Subscribe to updates from the local scheduler table.
@@ -234,7 +234,7 @@ void redis_db_client_table_subscribe(table_callback_data *callback_data);
  *        information.
  * @return Void.
  */
-void redis_local_scheduler_table_subscribe(table_callback_data *callback_data);
+void redis_local_scheduler_table_subscribe(TableCallbackData *callback_data);
 
 /**
  * Publish an update to the local scheduler table.
@@ -243,7 +243,7 @@ void redis_local_scheduler_table_subscribe(table_callback_data *callback_data);
  *        information.
  * @return Void.
  */
-void redis_local_scheduler_table_send_info(table_callback_data *callback_data);
+void redis_local_scheduler_table_send_info(TableCallbackData *callback_data);
 
 /**
  * Subscribe to updates about newly created actors.
@@ -253,8 +253,8 @@ void redis_local_scheduler_table_send_info(table_callback_data *callback_data);
  * @return Void.
  */
 void redis_actor_notification_table_subscribe(
-    table_callback_data *callback_data);
+    TableCallbackData *callback_data);
 
-void redis_object_info_subscribe(table_callback_data *callback_data);
+void redis_object_info_subscribe(TableCallbackData *callback_data);
 
 #endif /* REDIS_H */
