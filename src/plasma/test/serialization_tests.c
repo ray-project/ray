@@ -317,7 +317,7 @@ TEST plasma_fetch_request_test(void) {
 
 TEST plasma_wait_request_test(void) {
   int fd = create_temp_file();
-  object_request object_requests[2];
+  ObjectRequest object_requests[2];
   object_requests[0].object_id = globally_unique_id();
   object_requests[0].type = PLASMA_QUERY_ANYWHERE;
   object_requests[1].object_id = globally_unique_id();
@@ -328,7 +328,7 @@ TEST plasma_wait_request_test(void) {
                           timeout_ms);
   /* Read message back. */
   uint8_t *data = read_message_from_file(fd, MessageType_PlasmaWaitRequest);
-  object_request object_requests_read[2];
+  ObjectRequest object_requests_read[2];
   int num_object_ids_read = plasma_read_WaitRequest_num_object_ids(data);
   ASSERT_EQ(num_object_ids_read, 2);
   int num_ready_objects_read;
@@ -348,7 +348,7 @@ TEST plasma_wait_request_test(void) {
 
 TEST plasma_wait_reply_test(void) {
   int fd = create_temp_file();
-  object_request object_replies1[2];
+  ObjectRequest object_replies1[2];
   object_replies1[0].object_id = globally_unique_id();
   object_replies1[0].status = ObjectStatus_Local;
   object_replies1[1].object_id = globally_unique_id();
@@ -357,7 +357,7 @@ TEST plasma_wait_reply_test(void) {
   plasma_send_WaitReply(fd, g_B, object_replies1, num_ready_objects1);
   /* Read message back. */
   uint8_t *data = read_message_from_file(fd, MessageType_PlasmaWaitReply);
-  object_request object_replies2[2];
+  ObjectRequest object_replies2[2];
   int num_ready_objects_read2;
   plasma_read_WaitReply(data, &object_replies2[0], &num_ready_objects_read2);
   ASSERT(object_ids_equal(object_replies1[0].object_id,

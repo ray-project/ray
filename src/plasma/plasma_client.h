@@ -328,7 +328,7 @@ int plasma_info(plasma_connection *conn,
  */
 int plasma_wait(plasma_connection *conn,
                 int num_object_requests,
-                object_request object_requests[],
+                ObjectRequest object_requests[],
                 int num_ready_objects,
                 uint64_t timeout_ms);
 

@@ -202,7 +202,7 @@ void plasma_read_FetchRequest(uint8_t *data,
 
 int plasma_send_WaitRequest(int sock,
                             protocol_builder *B,
-                            object_request object_requests[],
+                            ObjectRequest object_requests[],
                             int num_requests,
                             int num_ready_objects,
                             int64_t timeout_ms);
@@ -210,18 +210,18 @@ int plasma_send_WaitRequest(int sock,
 int plasma_read_WaitRequest_num_object_ids(uint8_t *data);
 
 void plasma_read_WaitRequest(uint8_t *data,
-                             object_request object_requests[],
+                             ObjectRequest object_requests[],
                              int num_object_ids,
                              int64_t *timeout_ms,
                              int *num_ready_objects);
 
 int plasma_send_WaitReply(int sock,
                           protocol_builder *B,
-                          object_request object_requests[],
+                          ObjectRequest object_requests[],
                           int num_ready_objects);
 
 void plasma_read_WaitReply(uint8_t *data,
-                           object_request object_requests[],
+                           ObjectRequest object_requests[],
                            int *num_ready_objects);
 
 /* Plasma Subscribe message functions. */

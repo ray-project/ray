@@ -249,7 +249,7 @@ PyObject *PyPlasma_wait(PyObject *self, PyObject *args) {
     return NULL;
   }
 
-  object_request *object_requests = malloc(sizeof(object_request) * n);
+  ObjectRequest *object_requests = malloc(sizeof(ObjectRequest) * n);
   for (int i = 0; i < n; ++i) {
     CHECK(PyStringToUniqueID(PyList_GetItem(object_id_list, i),
                              &object_requests[i].object_id) == 1);

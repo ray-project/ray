@@ -37,7 +37,7 @@ typedef struct {
    *  - PLASMA_CLIENT_IN_TRANSFER, if the object is currently being scheduled
    *    for being transferred or it is transferring. */
   int status;
-} object_request;
+} ObjectRequest;
 
 /* Handle to access memory mapped file and map it into client address space. */
 typedef struct {

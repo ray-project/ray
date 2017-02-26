@@ -155,7 +155,7 @@ TEST plasma_wait_for_objects_tests(void) {
   ObjectID oid2 = globally_unique_id();
 #define NUM_OBJ_REQUEST 2
 #define WAIT_TIMEOUT_MS 1000
-  object_request obj_requests[NUM_OBJ_REQUEST];
+  ObjectRequest obj_requests[NUM_OBJ_REQUEST];
 
   obj_requests[0].object_id = oid1;
   obj_requests[0].type = PLASMA_QUERY_ANYWHERE;

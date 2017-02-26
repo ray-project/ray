@@ -155,7 +155,7 @@ typedef struct {
   /** The object requests for this wait request. Each object request has a
    *  status field which is either PLASMA_QUERY_LOCAL or PLASMA_QUERY_ANYWHERE.
    */
-  object_request *object_requests;
+  ObjectRequest *object_requests;
   /** The minimum number of objects to wait for in this request. */
   int64_t num_objects_to_wait_for;
   /** The number of object requests in this wait request that are already
@@ -1068,7 +1068,7 @@ int wait_timeout_handler(event_loop *loop, timer_id id, void *context) {
 
 void process_wait_request(client_connection *client_conn,
                           int num_object_requests,
-                          object_request object_requests[],
+                          ObjectRequest object_requests[],
                           uint64_t timeout_ms,
                           int num_ready_objects) {
   CHECK(client_conn != NULL);
@@ -1081,7 +1081,7 @@ void process_wait_request(client_connection *client_conn,
   wait_req->timer = -1;
   wait_req->num_object_requests = num_object_requests;
   wait_req->object_requests =
-      malloc(num_object_requests * sizeof(object_request));
+      malloc(num_object_requests * sizeof(ObjectRequest));
   for (int i = 0; i < num_object_requests; ++i) {
     wait_req->object_requests[i].object_id = object_requests[i].object_id;
     wait_req->object_requests[i].type = object_requests[i].type;
@@ -1349,8 +1349,8 @@ void process_message(event_loop *loop,
   case MessageType_PlasmaWaitRequest: {
     LOG_DEBUG("Processing wait");
     int num_object_ids = plasma_read_WaitRequest_num_object_ids(data);
-    object_request *object_requests =
-        malloc(num_object_ids * sizeof(object_request));
+    ObjectRequest *object_requests =
+        malloc(num_object_ids * sizeof(ObjectRequest));
     int64_t timeout_ms;
     int num_ready_objects;
     plasma_read_WaitRequest(data, &object_requests[0], num_object_ids,
