@@ -83,17 +83,21 @@ void GlobalSchedulerState_free(GlobalSchedulerState *state) {
   db_disconnect(state->db);
   utarray_free(state->local_schedulers);
   GlobalSchedulerPolicyState_free(state->policy_state);
-  /* Delete the plasma to photon association map. */
-  HASH_ITER(plasma_photon_hh, state->plasma_photon_map, entry, tmp) {
-    HASH_DELETE(plasma_photon_hh, state->plasma_photon_map, entry);
-    /* The hash entry is shared with the photon_plasma hashmap and will be freed
-     * there. */
+  /* Delete the plasma to local scheduler association map. */
+  HASH_ITER(plasma_local_scheduler_hh, state->plasma_local_scheduler_map, entry,
+            tmp) {
+    HASH_DELETE(plasma_local_scheduler_hh, state->plasma_local_scheduler_map,
+                entry);
+    /* The hash entry is shared with the local_scheduler_plasma hashmap and will
+     * be freed there. */
     free(entry->aux_address);
   }
 
-  /* Delete the photon to plasma association map. */
-  HASH_ITER(photon_plasma_hh, state->photon_plasma_map, entry, tmp) {
-    HASH_DELETE(photon_plasma_hh, state->photon_plasma_map, entry);
+  /* Delete the local scheduler to plasma association map. */
+  HASH_ITER(local_scheduler_plasma_hh, state->local_scheduler_plasma_map, entry,
+            tmp) {
+    HASH_DELETE(local_scheduler_plasma_hh, state->local_scheduler_plasma_map,
+                entry);
     /* Now free the shared hash entry -- no longer needed. */
     free(entry);
   }
@@ -135,13 +139,13 @@ void signal_handler(int signal) {
 /* End of the cleanup code. */
 
 LocalScheduler *get_local_scheduler(GlobalSchedulerState *state,
-                                    DBClientID photon_id) {
+                                    DBClientID local_scheduler_id) {
   LocalScheduler *local_scheduler_ptr;
   for (int i = 0; i < utarray_len(state->local_schedulers); ++i) {
     local_scheduler_ptr =
         (LocalScheduler *) utarray_eltptr(state->local_schedulers, i);
-    if (DBClientID_equal(local_scheduler_ptr->id, photon_id)) {
-      LOG_DEBUG("photon_id matched cached local scheduler entry.");
+    if (DBClientID_equal(local_scheduler_ptr->id, local_scheduler_id)) {
+      LOG_DEBUG("local_scheduler_id matched cached local scheduler entry.");
       return local_scheduler_ptr;
     }
   }
@@ -176,33 +180,36 @@ void process_new_db_client(DBClientID db_client_id,
   LOG_DEBUG("db client table callback for db client = %s",
             ObjectID_to_string(db_client_id, id_string, ID_STRING_SIZE));
   UNUSED(id_string);
-  if (strncmp(client_type, "photon", strlen("photon")) == 0) {
-    /* Add plasma_manager ip:port -> photon_db_client_id association to state.
-     */
-    AuxAddressEntry *plasma_photon_entry =
+  if (strncmp(client_type, "local_scheduler", strlen("local_scheduler")) == 0) {
+    /* Add plasma_manager ip:port -> local_scheduler_db_client_id association to
+     * state. */
+    AuxAddressEntry *plasma_local_scheduler_entry =
         calloc(1, sizeof(AuxAddressEntry));
-    plasma_photon_entry->aux_address = strdup(aux_address);
-    plasma_photon_entry->photon_db_client_id = db_client_id;
-    HASH_ADD_KEYPTR(plasma_photon_hh, state->plasma_photon_map,
-                    plasma_photon_entry->aux_address,
-                    strlen(plasma_photon_entry->aux_address),
-                    plasma_photon_entry);
+    plasma_local_scheduler_entry->aux_address = strdup(aux_address);
+    plasma_local_scheduler_entry->local_scheduler_db_client_id = db_client_id;
+    HASH_ADD_KEYPTR(plasma_local_scheduler_hh,
+                    state->plasma_local_scheduler_map,
+                    plasma_local_scheduler_entry->aux_address,
+                    strlen(plasma_local_scheduler_entry->aux_address),
+                    plasma_local_scheduler_entry);
 
-    /* Add photon_db_client_id -> plasma_manager ip:port association to state.
+    /* Add local_scheduler_db_client_id -> plasma_manager ip:port association to state.
      */
-    HASH_ADD(photon_plasma_hh, state->photon_plasma_map, photon_db_client_id,
-             sizeof(plasma_photon_entry->photon_db_client_id),
-             plasma_photon_entry);
+    HASH_ADD(local_scheduler_plasma_hh, state->local_scheduler_plasma_map,
+             local_scheduler_db_client_id,
+             sizeof(plasma_local_scheduler_entry->local_scheduler_db_client_id),
+             plasma_local_scheduler_entry);
 
 #if (RAY_COMMON_LOG_LEVEL <= RAY_COMMON_DEBUG)
     {
-      /* Print the photon to plasma association map so far. */
+      /* Print the local scheduler to plasma association map so far. */
       AuxAddressEntry *entry, *tmp;
-      LOG_DEBUG("Photon to Plasma hash map so far:");
-      HASH_ITER(plasma_photon_hh, state->plasma_photon_map, entry, tmp) {
+      LOG_DEBUG("Local scheduler to plasma hash map so far:");
+      HASH_ITER(plasma_local_scheduler_hh, state->plasma_local_scheduler_map,
+                entry, tmp) {
         LOG_DEBUG("%s -> %s", entry->aux_address,
-                  ObjectID_to_string(entry->photon_db_client_id, id_string,
-                                      ID_STRING_SIZE));
+                  ObjectID_to_string(entry->local_scheduler_db_client_id,
+                                     id_string, ID_STRING_SIZE));
       }
     }
 #endif

@@ -1,4 +1,4 @@
-#include "photon_algorithm.h"
+#include "local_scheduler_algorithm.h"
 
 #include <stdbool.h>
 #include "utarray.h"
@@ -7,8 +7,8 @@
 #include "state/task_table.h"
 #include "state/local_scheduler_table.h"
 #include "state/object_table.h"
-#include "photon.h"
-#include "photon_scheduler.h"
+#include "local_scheduler_shared.h"
+#include "local_scheduler.h"
 #include "common/task.h"
 
 /* Declared for convenience. */
@@ -66,7 +66,8 @@ typedef struct {
   UT_hash_handle hh;
 } LocalActorInfo;
 
-/** Part of the photon state that is maintained by the scheduling algorithm. */
+/** Part of the local scheduler state that is maintained by the scheduling
+ *  algorithm. */
 struct SchedulingAlgorithmState {
   /** An array of pointers to tasks that are waiting for dependencies. */
   task_queue_entry *waiting_task_queue;

@@ -1,12 +1,14 @@
-#include "photon_client.h"
+#include "local_scheduler_client.h"
 
 #include "common/io.h"
 #include "common/task.h"
 #include <stdlib.h>
 
-photon_conn *photon_connect(const char *photon_socket, ActorID actor_id) {
-  photon_conn *result = (photon_conn *) malloc(sizeof(photon_conn));
-  result->conn = connect_ipc_sock_retry(photon_socket, -1, -1);
+local_scheduler_conn *local_scheduler_connect(
+    const char *local_scheduler_socket, ActorID actor_id) {
+  local_scheduler_conn *result =
+      (local_scheduler_conn *) malloc(sizeof(local_scheduler_conn));
+  result->conn = connect_ipc_sock_retry(local_scheduler_socket, -1, -1);
   register_worker_info info;
   memset(&info, 0, sizeof(info));
   /* Register the process ID with the local scheduler. */
@@ -18,16 +20,16 @@ photon_conn *photon_connect(const char *photon_socket, ActorID actor_id) {
   return result;
 }
 
-void photon_disconnect(photon_conn *conn) {
+void local_scheduler_disconnect(local_scheduler_conn *conn) {
   close(conn->conn);
   free(conn);
 }
 
-void photon_log_event(photon_conn *conn,
-                      uint8_t *key,
-                      int64_t key_length,
-                      uint8_t *value,
-                      int64_t value_length) {
+void local_scheduler_log_event(local_scheduler_conn *conn,
+                               uint8_t *key,
+                               int64_t key_length,
+                               uint8_t *value,
+                               int64_t value_length) {
   int64_t message_length =
       sizeof(key_length) + sizeof(value_length) + key_length + value_length;
   uint8_t *message = (uint8_t *) malloc(message_length);
@@ -45,12 +47,12 @@ void photon_log_event(photon_conn *conn,
   free(message);
 }
 
-void photon_submit(photon_conn *conn, task_spec *task) {
+void local_scheduler_submit(local_scheduler_conn *conn, task_spec *task) {
   write_message(conn->conn, SUBMIT_TASK, task_spec_size(task),
                 (uint8_t *) task);
 }
 
-task_spec *photon_get_task(photon_conn *conn) {
+task_spec *local_scheduler_get_task(local_scheduler_conn *conn) {
   write_message(conn->conn, GET_TASK, 0, NULL);
   int64_t type;
   int64_t length;
@@ -64,19 +66,19 @@ task_spec *photon_get_task(photon_conn *conn) {
   return task;
 }
 
-void photon_task_done(photon_conn *conn) {
+void local_scheduler_task_done(local_scheduler_conn *conn) {
   write_message(conn->conn, TASK_DONE, 0, NULL);
 }
 
-void photon_reconstruct_object(photon_conn *conn, ObjectID object_id) {
+void local_scheduler_reconstruct_object(local_scheduler_conn *conn, ObjectID object_id) {
   write_message(conn->conn, RECONSTRUCT_OBJECT, sizeof(object_id),
                 (uint8_t *) &object_id);
 }
 
-void photon_log_message(photon_conn *conn) {
+void local_scheduler_log_message(local_scheduler_conn *conn) {
   write_message(conn->conn, LOG_MESSAGE, 0, NULL);
 }
 
-void photon_notify_unblocked(photon_conn *conn) {
+void local_scheduler_notify_unblocked(local_scheduler_conn *conn) {
   write_message(conn->conn, NOTIFY_UNBLOCKED, 0, NULL);
 }

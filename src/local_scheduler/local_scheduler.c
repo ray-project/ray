@@ -12,9 +12,9 @@
 #include "io.h"
 #include "logging.h"
 #include "object_info.h"
-#include "photon.h"
-#include "photon_scheduler.h"
-#include "photon_algorithm.h"
+#include "local_scheduler_shared.h"
+#include "local_scheduler.h"
+#include "local_scheduler_algorithm.h"
 #include "state/actor_notification_table.h"
 #include "state/db.h"
 #include "state/task_table.h"
@@ -361,8 +361,8 @@ LocalSchedulerState *LocalSchedulerState_init(
       db_connect_args[4] = "num_gpus";
       db_connect_args[5] = utstring_body(num_gpus);
     }
-    state->db = db_connect(redis_addr, redis_port, "photon", node_ip_address,
-                           num_args, db_connect_args);
+    state->db = db_connect(redis_addr, redis_port, "local_scheduler",
+                           node_ip_address, num_args, db_connect_args);
     utstring_free(num_cpus);
     utstring_free(num_gpus);
     free(db_connect_args);
@@ -417,7 +417,7 @@ void update_dynamic_resources(LocalSchedulerState *state,
 
     if (!return_resources && state->dynamic_resources[i] < 0) {
       /* We are using more resources than we have been allocated. */
-      LOG_WARN("photon dynamic resources dropped to %8.4f\t%8.4f\n",
+      LOG_WARN("local_scheduler dynamic resources dropped to %8.4f\t%8.4f\n",
                state->dynamic_resources[0], state->dynamic_resources[1]);
     }
     CHECK(state->dynamic_resources[i] <= state->static_resources[i]);
@@ -911,7 +911,7 @@ void start_server(const char *node_ip_address,
 
 /* Only declare the main function if we are not in testing mode, since the test
  * suite has its own declaration of main. */
-#ifndef PHOTON_TEST
+#ifndef LOCAL_SCHEDULER_TEST
 int main(int argc, char *argv[]) {
   signal(SIGTERM, signal_handler);
   /* Path of the listening socket of the local scheduler. */
@@ -922,7 +922,8 @@ int main(int argc, char *argv[]) {
   char *plasma_store_socket_name = NULL;
   /* Socket name for the local Plasma manager. */
   char *plasma_manager_socket_name = NULL;
-  /* Address for the plasma manager associated with this Photon instance. */
+  /* Address for the plasma manager associated with this local scheduler
+   * instance. */
   char *plasma_manager_address = NULL;
   /* The IP address of the node that this local scheduler is running on. */
   char *node_ip_address = NULL;

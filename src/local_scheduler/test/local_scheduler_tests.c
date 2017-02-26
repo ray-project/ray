@@ -16,16 +16,17 @@
 #include "state/object_table.h"
 #include "state/task_table.h"
 
-#include "photon.h"
-#include "photon_scheduler.h"
-#include "photon_algorithm.h"
-#include "photon_client.h"
+#include "local_scheduler_shared.h"
+#include "local_scheduler.h"
+#include "local_scheduler_algorithm.h"
+#include "local_scheduler_client.h"
 
-SUITE(photon_tests);
+SUITE(local_scheduler_tests);
 
 const char *plasma_store_socket_name = "/tmp/plasma_store_socket_1";
 const char *plasma_manager_socket_name_format = "/tmp/plasma_manager_socket_%d";
-const char *photon_socket_name_format = "/tmp/photon_socket_%d";
+const char *local_scheduler_socket_name_format =
+    "/tmp/local_scheduler_socket_%d";
 
 int64_t timeout_handler(event_loop *loop, int64_t id, void *context) {
   event_loop_stop(loop);
@@ -38,35 +39,37 @@ typedef struct {
   int plasma_manager_fd;
   /** A socket to communicate with the Plasma store. */
   int plasma_store_fd;
-  /** Photon's socket for IPC requests. */
-  int photon_fd;
-  /** Photon's local scheduler state. */
-  LocalSchedulerState *photon_state;
-  /** Photon's event loop. */
+  /** Local scheduler's socket for IPC requests. */
+  int local_scheduler_fd;
+  /** Local scheduler's local scheduler state. */
+  LocalSchedulerState *local_scheduler_state;
+  /** Local scheduler's event loop. */
   event_loop *loop;
-  /** Number of Photon client connections, or mock workers. */
-  int num_photon_conns;
-  /** Photon client connections. */
-  photon_conn **conns;
-} photon_mock;
+  /** Number of local scheduler client connections, or mock workers. */
+  int num_local_scheduler_conns;
+  /** Local scheduler client connections. */
+  local_scheduler_conn **conns;
+} local_scheduler_mock;
 
-photon_mock *init_photon_mock(int num_workers, int num_mock_workers) {
+local_scheduler_mock *init_local_scheduler_mock(int num_workers,
+                                                int num_mock_workers) {
   const char *node_ip_address = "127.0.0.1";
   const char *redis_addr = node_ip_address;
   int redis_port = 6379;
   const double static_resource_conf[MAX_RESOURCE_INDEX] = {DEFAULT_NUM_CPUS,
                                                            DEFAULT_NUM_GPUS};
-  photon_mock *mock = malloc(sizeof(photon_mock));
-  memset(mock, 0, sizeof(photon_mock));
+  local_scheduler_mock *mock = malloc(sizeof(local_scheduler_mock));
+  memset(mock, 0, sizeof(local_scheduler_mock));
   mock->loop = event_loop_create();
-  /* Bind to the Photon port and initialize the Photon scheduler. */
+  /* Bind to the local scheduler port and initialize the local scheduler. */
   UT_string *plasma_manager_socket_name = bind_ipc_sock_retry(
       plasma_manager_socket_name_format, &mock->plasma_manager_fd);
   mock->plasma_store_fd =
       connect_ipc_sock_retry(plasma_store_socket_name, 5, 100);
-  UT_string *photon_socket_name =
-      bind_ipc_sock_retry(photon_socket_name_format, &mock->photon_fd);
-  CHECK(mock->plasma_store_fd >= 0 && mock->photon_fd >= 0);
+  UT_string *local_scheduler_socket_name =
+      bind_ipc_sock_retry(local_scheduler_socket_name_format,
+                          &mock->local_scheduler_fd);
+  CHECK(mock->plasma_store_fd >= 0 && mock->local_scheduler_fd >= 0);
 
   UT_string *worker_command;
   utstring_new(worker_command);
@@ -77,11 +80,12 @@ photon_mock *init_photon_mock(int num_workers, int num_mock_workers) {
                   "--redis-address=%s:%d",
                   node_ip_address, plasma_store_socket_name,
                   utstring_body(plasma_manager_socket_name),
-                  utstring_body(photon_socket_name), redis_addr, redis_port);
+                  utstring_body(local_scheduler_socket_name), redis_addr,
+                  redis_port);
 
-  mock->photon_state = LocalSchedulerState_init(
+  mock->local_scheduler_state = LocalSchedulerState_init(
       "127.0.0.1", mock->loop, redis_addr, redis_port,
-      utstring_body(photon_socket_name), plasma_store_socket_name,
+      utstring_body(local_scheduler_socket_name), plasma_store_socket_name,
       utstring_body(plasma_manager_socket_name), NULL, false,
       static_resource_conf, utstring_body(worker_command), num_workers);
 
@@ -90,50 +94,51 @@ photon_mock *init_photon_mock(int num_workers, int num_mock_workers) {
     accept_client(mock->plasma_manager_fd);
   }
 
-  /* Connect a Photon client. */
-  mock->num_photon_conns = num_mock_workers;
-  mock->conns = malloc(sizeof(photon_conn *) * num_mock_workers);
+  /* Connect a local scheduler client. */
+  mock->num_local_scheduler_conns = num_mock_workers;
+  mock->conns = malloc(sizeof(local_scheduler_conn *) * num_mock_workers);
   for (int i = 0; i < num_mock_workers; ++i) {
     mock->conns[i] =
-        photon_connect(utstring_body(photon_socket_name), NIL_ACTOR_ID);
-    new_client_connection(mock->loop, mock->photon_fd,
-                          (void *) mock->photon_state, 0);
+        local_scheduler_connect(utstring_body(local_scheduler_socket_name),
+                                NIL_ACTOR_ID);
+    new_client_connection(mock->loop, mock->local_scheduler_fd,
+                          (void *) mock->local_scheduler_state, 0);
   }
 
   utstring_free(worker_command);
   utstring_free(plasma_manager_socket_name);
-  utstring_free(photon_socket_name);
+  utstring_free(local_scheduler_socket_name);
   return mock;
 }
 
-void destroy_photon_mock(photon_mock *mock) {
+void destroy_local_scheduler_mock(local_scheduler_mock *mock) {
   /* Disconnect clients. */
-  for (int i = 0; i < mock->num_photon_conns; ++i) {
-    photon_disconnect(mock->conns[i]);
+  for (int i = 0; i < mock->num_local_scheduler_conns; ++i) {
+    local_scheduler_disconnect(mock->conns[i]);
   }
   free(mock->conns);
 
   /* Kill all the workers and run the event loop again so that the task table
    * updates propagate and the tasks in progress are freed. */
   LocalSchedulerClient **worker = (LocalSchedulerClient **) utarray_eltptr(
-      mock->photon_state->workers, 0);
+      mock->local_scheduler_state->workers, 0);
   while (worker != NULL) {
     kill_worker(*worker, true);
     worker = (LocalSchedulerClient **) utarray_eltptr(
-        mock->photon_state->workers, 0);
+        mock->local_scheduler_state->workers, 0);
   }
   event_loop_add_timer(mock->loop, 500,
                        (event_loop_timer_handler) timeout_handler, NULL);
   event_loop_run(mock->loop);
 
   /* This also frees mock->loop. */
-  LocalSchedulerState_free(mock->photon_state);
+  LocalSchedulerState_free(mock->local_scheduler_state);
   close(mock->plasma_store_fd);
   close(mock->plasma_manager_fd);
   free(mock);
 }
 
-void reset_worker(photon_mock *mock, LocalSchedulerClient *worker) {
+void reset_worker(local_scheduler_mock *mock, LocalSchedulerClient *worker) {
   if (worker->task_in_progress) {
     Task_free(worker->task_in_progress);
     worker->task_in_progress = NULL;
@@ -146,8 +151,8 @@ void reset_worker(photon_mock *mock, LocalSchedulerClient *worker) {
  * value, the task should get assigned to a worker again.
  */
 TEST object_reconstruction_test(void) {
-  photon_mock *photon = init_photon_mock(0, 1);
-  photon_conn *worker = photon->conns[0];
+  local_scheduler_mock *local_scheduler = init_local_scheduler_mock(0, 1);
+  local_scheduler_conn *worker = local_scheduler->conns[0];
 
   /* Create a task with zero dependencies and one return value. */
   task_spec *spec = example_task_spec(0, 1);
@@ -170,41 +175,41 @@ TEST object_reconstruction_test(void) {
   if (pid == 0) {
     /* Make sure we receive the task twice. First from the initial submission,
      * and second from the reconstruct request. */
-    photon_submit(worker, spec);
-    task_spec *task_assigned = photon_get_task(worker);
+    local_scheduler_submit(worker, spec);
+    task_spec *task_assigned = local_scheduler_get_task(worker);
     ASSERT_EQ(memcmp(task_assigned, spec, task_spec_size(spec)), 0);
-    task_spec *reconstruct_task = photon_get_task(worker);
+    task_spec *reconstruct_task = local_scheduler_get_task(worker);
     ASSERT_EQ(memcmp(reconstruct_task, spec, task_spec_size(spec)), 0);
     /* Clean up. */
     free_task_spec(reconstruct_task);
     free_task_spec(task_assigned);
     free_task_spec(spec);
-    destroy_photon_mock(photon);
+    destroy_local_scheduler_mock(local_scheduler);
     exit(0);
   } else {
     /* Run the event loop. NOTE: OSX appears to require the parent process to
      * listen for events on the open file descriptors. */
-    event_loop_add_timer(photon->loop, 500,
+    event_loop_add_timer(local_scheduler->loop, 500,
                          (event_loop_timer_handler) timeout_handler, NULL);
-    event_loop_run(photon->loop);
+    event_loop_run(local_scheduler->loop);
     /* Set the task's status to TASK_STATUS_DONE to prevent the race condition
      * that would suppress object reconstruction. */
     Task *task = Task_alloc(spec, TASK_STATUS_DONE,
-                            get_db_client_id(photon->photon_state->db));
-    task_table_add_task(photon->photon_state->db, task, NULL, NULL, NULL);
+                            get_db_client_id(local_scheduler->local_scheduler_state->db));
+    task_table_add_task(local_scheduler->local_scheduler_state->db, task, NULL, NULL, NULL);
     /* Trigger reconstruction, and run the event loop again. */
     ObjectID return_id = task_return(spec, 0);
-    photon_reconstruct_object(worker, return_id);
-    event_loop_add_timer(photon->loop, 500,
+    local_scheduler_reconstruct_object(worker, return_id);
+    event_loop_add_timer(local_scheduler->loop, 500,
                          (event_loop_timer_handler) timeout_handler, NULL);
-    event_loop_run(photon->loop);
+    event_loop_run(local_scheduler->loop);
     /* Wait for the child process to exit and check that there are no tasks
      * left in the local scheduler's task queue. Then, clean up. */
     wait(NULL);
     free_task_spec(spec);
-    ASSERT_EQ(num_waiting_tasks(photon->photon_state->algorithm_state), 0);
-    ASSERT_EQ(num_dispatch_tasks(photon->photon_state->algorithm_state), 0);
-    destroy_photon_mock(photon);
+    ASSERT_EQ(num_waiting_tasks(local_scheduler->local_scheduler_state->algorithm_state), 0);
+    ASSERT_EQ(num_dispatch_tasks(local_scheduler->local_scheduler_state->algorithm_state), 0);
+    destroy_local_scheduler_mock(local_scheduler);
     PASS();
   }
 }
@@ -215,8 +220,8 @@ TEST object_reconstruction_test(void) {
  * should trigger reconstruction of all previous tasks in the lineage.
  */
 TEST object_reconstruction_recursive_test(void) {
-  photon_mock *photon = init_photon_mock(0, 1);
-  photon_conn *worker = photon->conns[0];
+  local_scheduler_mock *local_scheduler = init_local_scheduler_mock(0, 1);
+  local_scheduler_conn *worker = local_scheduler->conns[0];
   /* Create a chain of tasks, each one dependent on the one before it. Mark
    * each object as available so that tasks will run immediately. */
   const int NUM_TASKS = 10;
@@ -224,8 +229,8 @@ TEST object_reconstruction_recursive_test(void) {
   specs[0] = example_task_spec(0, 1);
   for (int i = 1; i < NUM_TASKS; ++i) {
     ObjectID arg_id = task_return(specs[i - 1], 0);
-    handle_object_available(photon->photon_state,
-                            photon->photon_state->algorithm_state, arg_id);
+    handle_object_available(local_scheduler->local_scheduler_state,
+                            local_scheduler->local_scheduler_state->algorithm_state, arg_id);
     specs[i] = example_task_spec_with_args(1, 1, &arg_id);
   }
 
@@ -249,11 +254,11 @@ TEST object_reconstruction_recursive_test(void) {
   if (pid == 0) {
     /* Submit the tasks, and make sure each one gets assigned to a worker. */
     for (int i = 0; i < NUM_TASKS; ++i) {
-      photon_submit(worker, specs[i]);
+      local_scheduler_submit(worker, specs[i]);
     }
     /* Make sure we receive each task from the initial submission. */
     for (int i = 0; i < NUM_TASKS; ++i) {
-      task_spec *task_assigned = photon_get_task(worker);
+      task_spec *task_assigned = local_scheduler_get_task(worker);
       ASSERT_EQ(memcmp(task_assigned, specs[i], task_spec_size(task_assigned)),
                 0);
       free_task_spec(task_assigned);
@@ -261,7 +266,7 @@ TEST object_reconstruction_recursive_test(void) {
     /* Check that the workers receive all tasks in the final return object's
      * lineage during reconstruction. */
     for (int i = 0; i < NUM_TASKS; ++i) {
-      task_spec *task_assigned = photon_get_task(worker);
+      task_spec *task_assigned = local_scheduler_get_task(worker);
       bool found = false;
       for (int j = 0; j < NUM_TASKS; ++j) {
         if (specs[j] == NULL) {
@@ -277,35 +282,35 @@ TEST object_reconstruction_recursive_test(void) {
       free_task_spec(task_assigned);
       ASSERT(found);
     }
-    destroy_photon_mock(photon);
+    destroy_local_scheduler_mock(local_scheduler);
     exit(0);
   } else {
     /* Run the event loop. NOTE: OSX appears to require the parent process to
      * listen for events on the open file descriptors. */
-    event_loop_add_timer(photon->loop, 500,
+    event_loop_add_timer(local_scheduler->loop, 500,
                          (event_loop_timer_handler) timeout_handler, NULL);
-    event_loop_run(photon->loop);
+    event_loop_run(local_scheduler->loop);
     /* Set the final task's status to TASK_STATUS_DONE to prevent the race
      * condition that would suppress object reconstruction. */
     Task *last_task = Task_alloc(specs[NUM_TASKS - 1], TASK_STATUS_DONE,
-                                 get_db_client_id(photon->photon_state->db));
-    task_table_add_task(photon->photon_state->db, last_task, NULL, NULL, NULL);
+                                 get_db_client_id(local_scheduler->local_scheduler_state->db));
+    task_table_add_task(local_scheduler->local_scheduler_state->db, last_task, NULL, NULL, NULL);
     /* Trigger reconstruction for the last object, and run the event loop
      * again. */
     ObjectID return_id = task_return(specs[NUM_TASKS - 1], 0);
-    photon_reconstruct_object(worker, return_id);
-    event_loop_add_timer(photon->loop, 500,
+    local_scheduler_reconstruct_object(worker, return_id);
+    event_loop_add_timer(local_scheduler->loop, 500,
                          (event_loop_timer_handler) timeout_handler, NULL);
-    event_loop_run(photon->loop);
+    event_loop_run(local_scheduler->loop);
     /* Wait for the child process to exit and check that there are no tasks
      * left in the local scheduler's task queue. Then, clean up. */
     wait(NULL);
-    ASSERT_EQ(num_waiting_tasks(photon->photon_state->algorithm_state), 0);
-    ASSERT_EQ(num_dispatch_tasks(photon->photon_state->algorithm_state), 0);
+    ASSERT_EQ(num_waiting_tasks(local_scheduler->local_scheduler_state->algorithm_state), 0);
+    ASSERT_EQ(num_dispatch_tasks(local_scheduler->local_scheduler_state->algorithm_state), 0);
     for (int i = 0; i < NUM_TASKS; ++i) {
       free_task_spec(specs[i]);
     }
-    destroy_photon_mock(photon);
+    destroy_local_scheduler_mock(local_scheduler);
     PASS();
   }
 }
@@ -319,13 +324,13 @@ task_spec *object_reconstruction_suppression_spec;
 void object_reconstruction_suppression_callback(ObjectID object_id,
                                                 void *user_context) {
   /* Submit the task after adding the object to the object table. */
-  photon_conn *worker = user_context;
-  photon_submit(worker, object_reconstruction_suppression_spec);
+  local_scheduler_conn *worker = user_context;
+  local_scheduler_submit(worker, object_reconstruction_suppression_spec);
 }
 
 TEST object_reconstruction_suppression_test(void) {
-  photon_mock *photon = init_photon_mock(0, 1);
-  photon_conn *worker = photon->conns[0];
+  local_scheduler_mock *local_scheduler = init_local_scheduler_mock(0, 1);
+  local_scheduler_conn *worker = local_scheduler->conns[0];
 
   object_reconstruction_suppression_spec = example_task_spec(0, 1);
   ObjectID return_id = task_return(object_reconstruction_suppression_spec, 0);
@@ -333,48 +338,48 @@ TEST object_reconstruction_suppression_test(void) {
   if (pid == 0) {
     /* Make sure we receive the task once. This will block until the
      * object_table_add callback completes. */
-    task_spec *task_assigned = photon_get_task(worker);
+    task_spec *task_assigned = local_scheduler_get_task(worker);
     ASSERT_EQ(memcmp(task_assigned, object_reconstruction_suppression_spec,
                      task_spec_size(object_reconstruction_suppression_spec)),
               0);
     /* Trigger a reconstruction. We will check that no tasks get queued as a
      * result of this line in the event loop process. */
-    photon_reconstruct_object(worker, return_id);
+    local_scheduler_reconstruct_object(worker, return_id);
     /* Clean up. */
     free_task_spec(task_assigned);
     free_task_spec(object_reconstruction_suppression_spec);
-    destroy_photon_mock(photon);
+    destroy_local_scheduler_mock(local_scheduler);
     exit(0);
   } else {
     /* Connect a plasma manager client so we can call object_table_add. */
     const char *db_connect_args[] = {"address", "127.0.0.1:12346"};
     DBHandle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1",
                                2, db_connect_args);
-    db_attach(db, photon->loop, false);
+    db_attach(db, local_scheduler->loop, false);
     /* Add the object to the object table. */
     object_table_add(db, return_id, 1, (unsigned char *) NIL_DIGEST, NULL,
                      object_reconstruction_suppression_callback,
                      (void *) worker);
     /* Run the event loop. NOTE: OSX appears to require the parent process to
      * listen for events on the open file descriptors. */
-    event_loop_add_timer(photon->loop, 1000,
+    event_loop_add_timer(local_scheduler->loop, 1000,
                          (event_loop_timer_handler) timeout_handler, NULL);
-    event_loop_run(photon->loop);
+    event_loop_run(local_scheduler->loop);
     /* Wait for the child process to exit and check that there are no tasks
      * left in the local scheduler's task queue. Then, clean up. */
     wait(NULL);
-    ASSERT_EQ(num_waiting_tasks(photon->photon_state->algorithm_state), 0);
-    ASSERT_EQ(num_dispatch_tasks(photon->photon_state->algorithm_state), 0);
+    ASSERT_EQ(num_waiting_tasks(local_scheduler->local_scheduler_state->algorithm_state), 0);
+    ASSERT_EQ(num_dispatch_tasks(local_scheduler->local_scheduler_state->algorithm_state), 0);
     free_task_spec(object_reconstruction_suppression_spec);
     db_disconnect(db);
-    destroy_photon_mock(photon);
+    destroy_local_scheduler_mock(local_scheduler);
     PASS();
   }
 }
 
 TEST task_dependency_test(void) {
-  photon_mock *photon = init_photon_mock(0, 1);
-  LocalSchedulerState *state = photon->photon_state;
+  local_scheduler_mock *local_scheduler = init_local_scheduler_mock(0, 1);
+  LocalSchedulerState *state = local_scheduler->local_scheduler_state;
   SchedulingAlgorithmState *algorithm_state = state->algorithm_state;
   /* Get the first worker. */
   LocalSchedulerClient *worker =
@@ -395,7 +400,7 @@ TEST task_dependency_test(void) {
   handle_worker_available(state, algorithm_state, worker);
   ASSERT_EQ(num_waiting_tasks(algorithm_state), 0);
   ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
-  reset_worker(photon, worker);
+  reset_worker(local_scheduler, worker);
 
   /* Check that the task gets queued in the waiting queue if the task is
    * submitted and a worker is available, but the input is not. */
@@ -408,7 +413,7 @@ TEST task_dependency_test(void) {
   handle_object_available(state, algorithm_state, oid);
   ASSERT_EQ(num_waiting_tasks(algorithm_state), 0);
   ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
-  reset_worker(photon, worker);
+  reset_worker(local_scheduler, worker);
 
   /* Check that the task gets queued in the dispatch queue if the task is
    * submitted and the input is available, but no worker is available yet. */
@@ -419,7 +424,7 @@ TEST task_dependency_test(void) {
   handle_worker_available(state, algorithm_state, worker);
   ASSERT_EQ(num_waiting_tasks(algorithm_state), 0);
   ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
-  reset_worker(photon, worker);
+  reset_worker(local_scheduler, worker);
 
   /* If an object gets removed, check the first scenario again, where the task
    * gets queued in the waiting task if the task is submitted and a worker is
@@ -443,13 +448,13 @@ TEST task_dependency_test(void) {
   ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
 
   free_task_spec(spec);
-  destroy_photon_mock(photon);
+  destroy_local_scheduler_mock(local_scheduler);
   PASS();
 }
 
 TEST task_multi_dependency_test(void) {
-  photon_mock *photon = init_photon_mock(0, 1);
-  LocalSchedulerState *state = photon->photon_state;
+  local_scheduler_mock *local_scheduler = init_local_scheduler_mock(0, 1);
+  LocalSchedulerState *state = local_scheduler->local_scheduler_state;
   SchedulingAlgorithmState *algorithm_state = state->algorithm_state;
   /* Get the first worker. */
   LocalSchedulerClient *worker =
@@ -476,7 +481,7 @@ TEST task_multi_dependency_test(void) {
   handle_worker_available(state, algorithm_state, worker);
   ASSERT_EQ(num_waiting_tasks(algorithm_state), 0);
   ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
-  reset_worker(photon, worker);
+  reset_worker(local_scheduler, worker);
 
   /* Check that the task gets queued in the dispatch queue if the task is
    * submitted and the inputs are available, but no worker is available yet. */
@@ -514,78 +519,78 @@ TEST task_multi_dependency_test(void) {
   handle_worker_available(state, algorithm_state, worker);
   ASSERT_EQ(num_waiting_tasks(algorithm_state), 0);
   ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
-  reset_worker(photon, worker);
+  reset_worker(local_scheduler, worker);
 
   free_task_spec(spec);
-  destroy_photon_mock(photon);
+  destroy_local_scheduler_mock(local_scheduler);
   PASS();
 }
 
 TEST start_kill_workers_test(void) {
   /* Start some workers. */
   int num_workers = 4;
-  photon_mock *photon = init_photon_mock(num_workers, 0);
+  local_scheduler_mock *local_scheduler = init_local_scheduler_mock(num_workers, 0);
   /* We start off with num_workers children processes, but no workers
    * registered yet. */
-  ASSERT_EQ(utarray_len(photon->photon_state->child_pids), num_workers);
-  ASSERT_EQ(utarray_len(photon->photon_state->workers), 0);
+  ASSERT_EQ(utarray_len(local_scheduler->local_scheduler_state->child_pids), num_workers);
+  ASSERT_EQ(utarray_len(local_scheduler->local_scheduler_state->workers), 0);
 
-  /* Make sure that each worker connects to the photon scheduler. This for loop
+  /* Make sure that each worker connects to the local_scheduler scheduler. This for loop
    * will hang if one of the workers does not connect. */
   for (int i = 0; i < num_workers; ++i) {
-    new_client_connection(photon->loop, photon->photon_fd,
-                          (void *) photon->photon_state, 0);
+    new_client_connection(local_scheduler->loop, local_scheduler->local_scheduler_fd,
+                          (void *) local_scheduler->local_scheduler_state, 0);
   }
 
   /* After handling each worker's initial connection, we should now have all
    * workers accounted for, but we haven't yet matched up process IDs with our
    * children processes. */
-  ASSERT_EQ(utarray_len(photon->photon_state->child_pids), num_workers);
-  ASSERT_EQ(utarray_len(photon->photon_state->workers), num_workers);
+  ASSERT_EQ(utarray_len(local_scheduler->local_scheduler_state->child_pids), num_workers);
+  ASSERT_EQ(utarray_len(local_scheduler->local_scheduler_state->workers), num_workers);
 
   /* Each worker should register its process ID. */
-  for (int i = 0; i < utarray_len(photon->photon_state->workers); ++i) {
+  for (int i = 0; i < utarray_len(local_scheduler->local_scheduler_state->workers); ++i) {
     LocalSchedulerClient *worker =
         *(LocalSchedulerClient **) utarray_eltptr(
-            photon->photon_state->workers, i);
-    process_message(photon->photon_state->loop, worker->sock, worker, 0);
+            local_scheduler->local_scheduler_state->workers, i);
+    process_message(local_scheduler->local_scheduler_state->loop, worker->sock, worker, 0);
   }
-  ASSERT_EQ(utarray_len(photon->photon_state->child_pids), 0);
-  ASSERT_EQ(utarray_len(photon->photon_state->workers), num_workers);
+  ASSERT_EQ(utarray_len(local_scheduler->local_scheduler_state->child_pids), 0);
+  ASSERT_EQ(utarray_len(local_scheduler->local_scheduler_state->workers), num_workers);
 
   /* After killing a worker, its state is cleaned up. */
   LocalSchedulerClient *worker = *(LocalSchedulerClient **) utarray_eltptr(
-      photon->photon_state->workers, 0);
+      local_scheduler->local_scheduler_state->workers, 0);
   kill_worker(worker, false);
-  ASSERT_EQ(utarray_len(photon->photon_state->child_pids), 0);
-  ASSERT_EQ(utarray_len(photon->photon_state->workers), num_workers - 1);
+  ASSERT_EQ(utarray_len(local_scheduler->local_scheduler_state->child_pids), 0);
+  ASSERT_EQ(utarray_len(local_scheduler->local_scheduler_state->workers), num_workers - 1);
 
   /* Start a worker after the local scheduler has been initialized. */
-  start_worker(photon->photon_state, NIL_ACTOR_ID);
+  start_worker(local_scheduler->local_scheduler_state, NIL_ACTOR_ID);
   /* Accept the workers as clients to the plasma manager. */
-  int new_worker_fd = accept_client(photon->plasma_manager_fd);
+  int new_worker_fd = accept_client(local_scheduler->plasma_manager_fd);
   /* The new worker should register its process ID. */
-  ASSERT_EQ(utarray_len(photon->photon_state->child_pids), 1);
-  ASSERT_EQ(utarray_len(photon->photon_state->workers), num_workers - 1);
-  /* Make sure the new worker connects to the photon scheduler. */
-  new_client_connection(photon->loop, photon->photon_fd,
-                        (void *) photon->photon_state, 0);
-  ASSERT_EQ(utarray_len(photon->photon_state->child_pids), 1);
-  ASSERT_EQ(utarray_len(photon->photon_state->workers), num_workers);
+  ASSERT_EQ(utarray_len(local_scheduler->local_scheduler_state->child_pids), 1);
+  ASSERT_EQ(utarray_len(local_scheduler->local_scheduler_state->workers), num_workers - 1);
+  /* Make sure the new worker connects to the local_scheduler scheduler. */
+  new_client_connection(local_scheduler->loop, local_scheduler->local_scheduler_fd,
+                        (void *) local_scheduler->local_scheduler_state, 0);
+  ASSERT_EQ(utarray_len(local_scheduler->local_scheduler_state->child_pids), 1);
+  ASSERT_EQ(utarray_len(local_scheduler->local_scheduler_state->workers), num_workers);
   /* Make sure that the new worker registers its process ID. */
   worker = *(LocalSchedulerClient **) utarray_eltptr(
-      photon->photon_state->workers, num_workers - 1);
-  process_message(photon->photon_state->loop, worker->sock, worker, 0);
-  ASSERT_EQ(utarray_len(photon->photon_state->child_pids), 0);
-  ASSERT_EQ(utarray_len(photon->photon_state->workers), num_workers);
+      local_scheduler->local_scheduler_state->workers, num_workers - 1);
+  process_message(local_scheduler->local_scheduler_state->loop, worker->sock, worker, 0);
+  ASSERT_EQ(utarray_len(local_scheduler->local_scheduler_state->child_pids), 0);
+  ASSERT_EQ(utarray_len(local_scheduler->local_scheduler_state->workers), num_workers);
 
   /* Clean up. */
   close(new_worker_fd);
-  destroy_photon_mock(photon);
+  destroy_local_scheduler_mock(local_scheduler);
   PASS();
 }
 
-SUITE(photon_tests) {
+SUITE(local_scheduler_tests) {
   RUN_REDIS_TEST(object_reconstruction_test);
   RUN_REDIS_TEST(object_reconstruction_recursive_test);
   RUN_REDIS_TEST(object_reconstruction_suppression_test);
@@ -598,6 +603,6 @@ GREATEST_MAIN_DEFS();
 
 int main(int argc, char **argv) {
   GREATEST_MAIN_BEGIN();
-  RUN_SUITE(photon_tests);
+  RUN_SUITE(local_scheduler_tests);
   GREATEST_MAIN_END();
 }

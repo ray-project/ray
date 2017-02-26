@@ -1,7 +1,7 @@
-#ifndef PHOTON_ALGORITHM_H
-#define PHOTON_ALGORITHM_H
+#ifndef LOCAL_SCHEDULER_ALGORITHM_H
+#define LOCAL_SCHEDULER_ALGORITHM_H
 
-#include "photon.h"
+#include "local_scheduler_shared.h"
 #include "common/task.h"
 #include "state/local_scheduler_table.h"
 
@@ -251,7 +251,7 @@ void print_worker_info(const char *message,
                        SchedulingAlgorithmState *algorithm_state);
 
 /** The following methods are for testing purposes only. */
-#ifdef PHOTON_TEST
+#ifdef LOCAL_SCHEDULER_TEST
 /**
  * Get the number of tasks currently waiting for object dependencies to become
  * available locally.
@@ -270,4 +270,4 @@ int num_waiting_tasks(SchedulingAlgorithmState *algorithm_state);
 int num_dispatch_tasks(SchedulingAlgorithmState *algorithm_state);
 #endif
 
-#endif /* PHOTON_ALGORITHM_H */
+#endif /* LOCAL_SCHEDULER_ALGORITHM_H */
