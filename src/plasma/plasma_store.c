@@ -54,7 +54,7 @@ UT_icd client_icd = {sizeof(Client *), NULL, NULL, NULL};
 
 /* This is used to define the queue of object notifications for plasma
  * subscribers. */
-UT_icd object_info_icd = {sizeof(object_info), NULL, NULL, NULL};
+UT_icd object_info_icd = {sizeof(ObjectInfo), NULL, NULL, NULL};
 
 typedef struct {
   /** Client file descriptor. This is used as a key for the hash table. */
@@ -141,7 +141,7 @@ PlasmaStoreState *PlasmaStoreState_init(event_loop *loop, int64_t system_memory)
 }
 
 void push_notification(PlasmaStoreState *state,
-                       object_info *object_notification);
+                       ObjectInfo *object_notification);
 
 /* If this client is not already using the object, add the client to the
  * object's list of clients, otherwise do nothing. */
@@ -569,7 +569,7 @@ void delete_object(PlasmaStoreState *plasma_state, ObjectID object_id) {
   utarray_free(entry->clients);
   free(entry);
   /* Inform all subscribers that the object has been deleted. */
-  object_info notification = {.obj_id = object_id, .is_deletion = true};
+  ObjectInfo notification = {.obj_id = object_id, .is_deletion = true};
   push_notification(plasma_state, &notification);
 }
 
@@ -587,7 +587,7 @@ void remove_objects(PlasmaStoreState *plasma_state,
 }
 
 void push_notification(PlasmaStoreState *plasma_state,
-                       object_info *notification) {
+                       ObjectInfo *notification) {
   NotificationQueue *queue, *temp_queue;
   HASH_ITER(hh, plasma_state->pending_notifications, queue, temp_queue) {
     utarray_push_back(queue->object_notifications, notification);
@@ -610,14 +610,14 @@ void send_notifications(event_loop *loop,
   /* Loop over the array of pending notifications and send as many of them as
    * possible. */
   for (int i = 0; i < utarray_len(queue->object_notifications); ++i) {
-    object_info *notification =
-        (object_info *) utarray_eltptr(queue->object_notifications, i);
+    ObjectInfo *notification =
+        (ObjectInfo *) utarray_eltptr(queue->object_notifications, i);
 
     /* Attempt to send a notification about this object ID. */
-    int nbytes =
-        send(client_sock, (char const *) notification, sizeof(object_info), 0);
+    int nbytes = send(client_sock, (char const *) notification,
+                      sizeof(* notification), 0);
     if (nbytes >= 0) {
-      CHECK(nbytes == sizeof(object_info));
+      CHECK(nbytes == sizeof(* notification));
     } else if (nbytes == -1 &&
                (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
       LOG_DEBUG(

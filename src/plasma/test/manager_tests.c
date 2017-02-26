@@ -260,7 +260,7 @@ TEST object_notifications_test(void) {
   CHECK(fcntl(fd[1], F_SETFL, flags | O_NONBLOCK) == 0);
 
   ObjectID oid = globally_unique_id();
-  object_info info = {.obj_id = oid,
+  ObjectInfo info = {.obj_id = oid,
                       .data_size = 10,
                       .metadata_size = 1,
                       .create_time = 0,

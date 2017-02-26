@@ -89,7 +89,7 @@ typedef struct {
   /** Object id of this object. */
   ObjectID object_id;
   /** Object info like size, creation time and owner. */
-  object_info info;
+  ObjectInfo info;
   /** Memory mapped file containing the object. */
   int fd;
   /** Size of the underlying map. */

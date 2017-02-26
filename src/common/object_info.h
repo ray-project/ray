@@ -16,6 +16,6 @@ typedef struct {
   int64_t construct_duration;
   unsigned char digest[DIGEST_SIZE];
   bool is_deletion;
-} object_info;
+} ObjectInfo;
 
 #endif

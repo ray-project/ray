@@ -1227,7 +1227,7 @@ void process_status_request(ClientConnection *client_conn,
 }
 
 void process_delete_object_notification(plasma_manager_state *state,
-                                        object_info object_info) {
+                                        ObjectInfo object_info) {
   ObjectID obj_id = object_info.obj_id;
   available_object *entry;
   HASH_FIND(hh, state->local_available_objects, &obj_id, sizeof(obj_id), entry);
@@ -1248,7 +1248,7 @@ void process_delete_object_notification(plasma_manager_state *state,
 }
 
 void process_add_object_notification(plasma_manager_state *state,
-                                     object_info object_info) {
+                                     ObjectInfo object_info) {
   ObjectID obj_id = object_info.obj_id;
   available_object *entry =
       (available_object *) malloc(sizeof(available_object));
@@ -1285,7 +1285,7 @@ void process_object_notification(event_loop *loop,
                                  void *context,
                                  int events) {
   plasma_manager_state *state = context;
-  object_info object_info;
+  ObjectInfo object_info;
   /* Read the notification from Plasma. */
   int error =
       read_bytes(client_sock, (uint8_t *) &object_info, sizeof(object_info));

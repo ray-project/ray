@@ -344,7 +344,7 @@ PyObject *PyPlasma_subscribe(PyObject *self, PyObject *args) {
 
 PyObject *PyPlasma_receive_notification(PyObject *self, PyObject *args) {
   int plasma_sock;
-  object_info object_info;
+  ObjectInfo object_info;
 
   if (!PyArg_ParseTuple(args, "i", &plasma_sock)) {
     return NULL;
