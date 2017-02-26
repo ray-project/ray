@@ -78,7 +78,7 @@ GlobalSchedulerState *GlobalSchedulerState_init(event_loop *loop,
 }
 
 void GlobalSchedulerState_free(GlobalSchedulerState *state) {
-  aux_address_entry *entry, *tmp;
+  AuxAddressEntry *entry, *tmp;
 
   db_disconnect(state->db);
   utarray_free(state->local_schedulers);
@@ -179,8 +179,8 @@ void process_new_db_client(DBClientID db_client_id,
   if (strncmp(client_type, "photon", strlen("photon")) == 0) {
     /* Add plasma_manager ip:port -> photon_db_client_id association to state.
      */
-    aux_address_entry *plasma_photon_entry =
-        calloc(1, sizeof(aux_address_entry));
+    AuxAddressEntry *plasma_photon_entry =
+        calloc(1, sizeof(AuxAddressEntry));
     plasma_photon_entry->aux_address = strdup(aux_address);
     plasma_photon_entry->photon_db_client_id = db_client_id;
     HASH_ADD_KEYPTR(plasma_photon_hh, state->plasma_photon_map,
@@ -197,7 +197,7 @@ void process_new_db_client(DBClientID db_client_id,
 #if (RAY_COMMON_LOG_LEVEL <= RAY_COMMON_DEBUG)
     {
       /* Print the photon to plasma association map so far. */
-      aux_address_entry *entry, *tmp;
+      AuxAddressEntry *entry, *tmp;
       LOG_DEBUG("Photon to Plasma hash map so far:");
       HASH_ITER(plasma_photon_hh, state->plasma_photon_map, entry, tmp) {
         LOG_DEBUG("%s -> %s", entry->aux_address,

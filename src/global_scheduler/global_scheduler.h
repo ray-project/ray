@@ -55,7 +55,7 @@ typedef struct {
   UT_hash_handle plasma_photon_hh;
   /** Photon_db_client_id -> plasma_manager ip:port. */
   UT_hash_handle photon_plasma_hh;
-} aux_address_entry;
+} AuxAddressEntry;
 
 /**
  * Global scheduler state structure.
@@ -72,9 +72,9 @@ typedef struct {
   /** The state managed by the scheduling policy. */
   GlobalSchedulerPolicyState *policy_state;
   /** The plasma_manager ip:port -> photon_db_client_id association. */
-  aux_address_entry *plasma_photon_map;
+  AuxAddressEntry *plasma_photon_map;
   /** The photon_db_client_id -> plasma_manager ip:port association. */
-  aux_address_entry *photon_plasma_map;
+  AuxAddressEntry *photon_plasma_map;
   /** Objects cached by this global scheduler instance. */
   SchedulerObjectInfo *scheduler_object_info_table;
   /** An array of tasks that haven't been scheduled yet. */

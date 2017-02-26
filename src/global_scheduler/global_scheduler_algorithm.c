@@ -157,7 +157,7 @@ void free_object_size_hashmap(ObjectSizeEntry *object_size_table) {
 
 DBClientID get_photon_id(GlobalSchedulerState *state,
                            const char *plasma_location) {
-  aux_address_entry *aux_entry = NULL;
+  AuxAddressEntry *aux_entry = NULL;
   DBClientID photon_id = NIL_ID;
   if (plasma_location != NULL) {
     LOG_DEBUG("max object size location found : %s", plasma_location);
@@ -215,7 +215,7 @@ double calculate_object_size_fraction(GlobalSchedulerState *state,
      * which is used as the key for object_size_table.
      * This uses the plasma aux address to locate the object_size this node
      * contributes. */
-    aux_address_entry *photon_plasma_pair = NULL;
+    AuxAddressEntry *photon_plasma_pair = NULL;
     HASH_FIND(photon_plasma_hh, state->photon_plasma_map, &(scheduler->id),
               sizeof(scheduler->id), photon_plasma_pair);
     if (photon_plasma_pair != NULL) {
