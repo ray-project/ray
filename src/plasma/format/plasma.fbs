@@ -93,7 +93,7 @@ table PlasmaSealRequest {
   // ID of the object to be sealed.
   object_id: string;
   // Hash of the object data.
-  digest: [ubyte];
+  digest: string;
 }
 
 table PlasmaSealReply {

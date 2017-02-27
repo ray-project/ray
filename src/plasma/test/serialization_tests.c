@@ -161,6 +161,7 @@ TEST plasma_get_reply_test(void) {
   int64_t num_objects = plasma_read_GetRequest_num_objects(data);
   ObjectID object_ids_return[num_objects];
   PlasmaObject plasma_objects_return[2];
+  memset(&plasma_objects_return, 0, sizeof(plasma_objects_return));
   plasma_read_GetReply(data, object_ids_return, &plasma_objects_return[0],
                        num_objects);
   ASSERT(ObjectID_equal(object_ids[0], object_ids_return[0]));

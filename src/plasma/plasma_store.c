@@ -691,7 +691,9 @@ void process_message(event_loop *loop,
   memset(&objects[0], 0, sizeof(objects));
   int error;
 
-  flatcc_builder_reset(state->builder);
+  if (!(type == MessageType_PlasmaCreateRequest || type == MessageType_PlasmaSealRequest)) {
+    flatcc_builder_reset(state->builder);
+  }
 
   /* Process the different types of requests. */
   switch (type) {

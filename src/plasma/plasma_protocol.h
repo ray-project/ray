@@ -4,15 +4,17 @@
 #include "common.h"
 #include "plasma.h"
 
+#ifndef __cplusplus
 #include "format/plasma_builder.h"
 #include "format/plasma_reader.h"
+/* Protocol builder. */
+typedef flatcc_builder_t protocol_builder;
+#else
+typedef void protocol_builder;
+#endif
 
 /* An argument to a function that a return value gets written to. */
 #define OUT
-
-/* Protocol builder. */
-
-typedef flatcc_builder_t protocol_builder;
 
 protocol_builder *make_protocol_builder(void);
 

@@ -6,19 +6,14 @@
 #include "format/plasma_builder.h"
 #include "plasma.h"
 
-#define FLATBUFFER_BUILDER_DEFAULT_SIZE 1024
-
 protocol_builder *make_protocol_builder(void) {
-  protocol_builder *builder = malloc(sizeof(protocol_builder));
-  CHECK(builder);
-  flatcc_builder_init(builder);
-  return builder;
+  return NULL;
 }
 
 void free_protocol_builder(protocol_builder *builder) {
-  flatcc_builder_clear(builder);
-  free(builder);
 }
+#if 0
+#define FLATBUFFER_BUILDER_DEFAULT_SIZE 1024
 
 /**
  * Writes an array of object IDs into a flatbuffer buffer and return
@@ -76,7 +71,10 @@ int finalize_buffer_and_send(flatcc_builder_t *B, int fd, int message_type) {
   void *buff = flatcc_builder_finalize_buffer(B, &size);
   int r = write_message(fd, message_type, size, buff);
   free(buff);
-  flatcc_builder_reset(B);
+  if (!(message_type == MessageType_PlasmaCreateRequest || message_type == MessageType_PlasmaSealRequest)) {
+    printf("Bad things happening\n");
+    flatcc_builder_reset(B);
+  }
   return r;
 }
 
@@ -90,6 +88,7 @@ uint8_t *plasma_receive(int sock, int64_t message_type) {
   return reply_data;
 }
 
+#if 0
 int plasma_send_CreateRequest(int sock,
                               protocol_builder *B,
                               ObjectID object_id,
@@ -151,6 +150,7 @@ void plasma_read_CreateReply(uint8_t *data,
   object->metadata_size = PlasmaObjectSpec_metadata_size(obj);
   *error_code = PlasmaCreateReply_error(rep);
 }
+#endif
 
 #define DEFINE_SIMPLE_SEND_REQUEST(MESSAGE_NAME)                       \
   int plasma_send_##MESSAGE_NAME(int sock, protocol_builder *B,        \
@@ -195,6 +195,7 @@ void plasma_read_CreateReply(uint8_t *data,
     *error = Plasma##MESSAGE_NAME##_error(req);                                \
   }
 
+#if 0
 int plasma_send_SealRequest(int sock,
                             protocol_builder *B,
                             ObjectID object_id,
@@ -222,19 +223,23 @@ void plasma_read_SealRequest(uint8_t *data,
 
 DEFINE_SIMPLE_SEND_REPLY(SealReply);
 DEFINE_SIMPLE_READ_REPLY(SealReply);
+#endif
 
-DEFINE_SIMPLE_SEND_REQUEST(ReleaseRequest);
-DEFINE_SIMPLE_READ_REQUEST(ReleaseRequest);
-DEFINE_SIMPLE_SEND_REPLY(ReleaseReply);
-DEFINE_SIMPLE_READ_REPLY(ReleaseReply);
+// DEFINE_SIMPLE_SEND_REQUEST(ReleaseRequest);
+// DEFINE_SIMPLE_READ_REQUEST(ReleaseRequest);
+// DEFINE_SIMPLE_SEND_REPLY(ReleaseReply);
+// DEFINE_SIMPLE_READ_REPLY(ReleaseReply);
 
-DEFINE_SIMPLE_SEND_REQUEST(DeleteRequest);
-DEFINE_SIMPLE_READ_REQUEST(DeleteRequest);
+// DEFINE_SIMPLE_SEND_REQUEST(DeleteRequest);
+// DEFINE_SIMPLE_READ_REQUEST(DeleteRequest);
+/*
 DEFINE_SIMPLE_SEND_REPLY(DeleteReply);
 DEFINE_SIMPLE_READ_REPLY(DeleteReply);
+*/
 
 /* Plasma status message. */
 
+#if 0
 int plasma_send_StatusRequest(int sock,
                               protocol_builder *B,
                               ObjectID object_ids[],
@@ -513,6 +518,8 @@ void plasma_read_FetchRequest(uint8_t *data,
   object_ids_from_flatbuffer(object_id_vector, object_ids, num_objects);
 }
 
+#endif
+
 /* Plasma wait messages. */
 
 int plasma_send_WaitRequest(int sock,
@@ -657,3 +664,4 @@ void plasma_read_DataReply(uint8_t *data,
   *object_size = PlasmaDataReply_object_size(rep);
   *metadata_size = PlasmaDataReply_metadata_size(rep);
 }
+#endif
