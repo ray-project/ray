@@ -25,10 +25,23 @@ uint8_t *plasma_receive(int sock, int64_t message_type) {
   return reply_data;
 }
 
+/**
+ * Convert an object ID to a flatbuffer string.
+ *
+ * @param fbb Reference to the flatbuffer builder.
+ * @param object_id The object ID to be converted.
+ * @return The flatbuffer string contining the object ID.
+ */
 flatbuffers::Offset<flatbuffers::String> to_flat(flatbuffers::FlatBufferBuilder &fbb, ObjectID object_id) {
   return fbb.CreateString((char*) &object_id.id[0], sizeof(object_id.id));
 }
 
+/**
+ * Convert a flatbuffer string to an object ID.
+ *
+ * @param string The flatbuffer string.
+ * @return The object ID.
+ */
 ObjectID from_flat(const flatbuffers::String* string) {
   ObjectID object_id;
   CHECK(string->size() == sizeof(object_id.id));
@@ -47,7 +60,7 @@ std::vector<std::string> object_ids_to_vector(ObjectID object_ids[],
                                               int64_t num_objects) {
   std::vector<std::string> result;
   for (int64_t i = 0; i < num_objects; ++i) {
-    result.push_back(std::string((const char *) &object_ids[i].id[0], UNIQUE_ID_SIZE));
+    result.push_back(std::string((const char *) &object_ids[i].id[0], sizeof(object_ids[i].id)));
   }
   return result;
 }
