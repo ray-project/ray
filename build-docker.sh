@@ -18,7 +18,7 @@ shift
 done
 
 # Build base dependencies, allow caching
-docker build -t $NO_CACHE ray-project/base-deps docker/base-deps
+docker build $NO_CACHE -t ray-project/base-deps docker/base-deps
 
 # Build the current Ray source
 git rev-parse HEAD > ./docker/deploy/git-rev
@@ -28,5 +28,5 @@ rm ./docker/deploy/ray.tar ./docker/deploy/git-rev
 
 
 if [ ! $SKIP_EXAMPLES ]; then
-    docker build -t $NO_CACHE ray-project/examples docker/examples
+    docker build $NO_CACHE -t ray-project/examples docker/examples
 fi
