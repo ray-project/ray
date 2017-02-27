@@ -28,6 +28,10 @@ extern "C" {
  *  as dead to the db_client table. */
 #define NUM_HEARTBEATS_TIMEOUT 100
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /** Definitions for Ray logging levels. */
 #define RAY_COMMON_DEBUG 0
 #define RAY_COMMON_INFO 1
@@ -202,5 +206,9 @@ bool DBClientID_equal(DBClientID first_id, DBClientID second_id);
 #define DIGEST_SIZE SHA256_BLOCK_SIZE
 
 extern const unsigned char NIL_DIGEST[DIGEST_SIZE];
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

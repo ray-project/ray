@@ -15,6 +15,10 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* This is neccessary for Mac OS X, see http://www.apuebook.com/faqs2e.html
  * (10). */
 #if !defined(CMSG_SPACE) && !defined(CMSG_LEN)
@@ -41,3 +45,7 @@ int send_fd(int conn, int fd);
  * @return File descriptor or a value < 0 on failure.
  */
 int recv_fd(int conn);
+
+#ifdef __cplusplus
+}
+#endif
