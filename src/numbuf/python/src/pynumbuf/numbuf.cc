@@ -16,8 +16,8 @@
 
 #ifdef HAS_PLASMA
 extern "C" {
-#include "plasma_protocol.h"
 #include "plasma_client.h"
+#include "plasma_protocol.h"
 }
 
 PyObject* NumbufPlasmaOutOfMemoryError;
