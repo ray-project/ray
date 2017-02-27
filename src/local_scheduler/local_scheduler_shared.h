@@ -1,5 +1,5 @@
-#ifndef PHOTON_H
-#define PHOTON_H
+#ifndef LOCAL_SCHEDULER_SHARED_H
+#define LOCAL_SCHEDULER_SHARED_H
 
 #include "common/task.h"
 #include "common/state/table.h"
@@ -8,7 +8,7 @@
 #include "utarray.h"
 #include "uthash.h"
 
-enum photon_message_type {
+enum local_scheduler_message_type {
   /** Notify the local scheduler that a task has finished. */
   TASK_DONE = 64,
   /** Get a new task from the local scheduler. */
@@ -34,7 +34,7 @@ UT_icd workers_icd;
 UT_icd pid_t_icd;
 
 /** This struct is used to register a new worker with the local scheduler.
- *  It is shipped as part of photon_connect */
+ *  It is shipped as part of local_scheduler_connect */
 typedef struct {
   /** The ID of the actor. This is NIL_ACTOR_ID if the worker is not an actor.
    */
@@ -123,4 +123,4 @@ typedef struct {
   LocalSchedulerState *local_scheduler_state;
 } LocalSchedulerClient;
 
-#endif /* PHOTON_H */
+#endif /* LOCAL_SCHEDULER_SHARED_H */
