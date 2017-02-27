@@ -1,6 +1,7 @@
-# Installation on Mac OS X
+# Installation on Ubuntu
 
-Ray should work with Python 2 and Python 3. We have tested Ray on OS X 10.11.
+Ray should work with Python 2 and Python 3. We have tested Ray on Ubuntu 14.04
+and Ubuntu 16.04
 
 ## Dependencies
 
@@ -8,10 +9,10 @@ To install Ray, first install the following dependencies. We recommend using
 [Anaconda](https://www.continuum.io/downloads).
 
 ```
-brew update
-brew install cmake automake autoconf libtool boost wget
+sudo apt-get update
+sudo apt-get install -y cmake build-essential autoconf curl libtool libboost-all-dev unzip python-dev python-pip  # If you're using Anaconda, then python-dev and python-pip are unnecessary.
 
-pip install numpy cloudpickle funcsigs colorama psutil redis --ignore-installed six
+pip install numpy cloudpickle funcsigs colorama psutil redis
 ```
 
 If you are using Anaconda, you may also need to run the following.
@@ -20,7 +21,7 @@ If you are using Anaconda, you may also need to run the following.
 conda install libgcc
 ```
 
-# Install Ray
+## Install Ray
 
 Ray can be built from the repository as follows.
 
