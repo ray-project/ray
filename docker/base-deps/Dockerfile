@@ -11,4 +11,4 @@ RUN echo 'export PATH=/opt/conda/bin:$PATH' > /etc/profile.d/conda.sh \
     && rm /tmp/anaconda.sh
 ENV PATH "/opt/conda/bin:$PATH"
 RUN conda install -y libgcc
-RUN pip install --upgrade pip
+RUN pip install --upgrade pip cloudpickle

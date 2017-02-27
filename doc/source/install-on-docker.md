@@ -2,19 +2,20 @@
 
 You can install Ray on any platform that runs Docker. We do not presently publish Docker images for Ray, but you can build them yourself using the Ray distribution.
 
-Using Docker can streamline the build process reliable way to get up and running quickly.
+Using Docker can streamline the build process and provide a reliable way to get up and running quickly.
 
 ## Install Docker
 
 ### Mac, Linux, Windows platforms
 
 The Docker Platform release is available for Mac, Windows, and Linux platforms. Please download the appropriate version from the [Docker website](https://www.docker.com/products/overview#/install_the_platform) and follow the corresponding installation instructions.
+Linux user may find these [alternate instructions](https://www.digitalocean.com/community/tutorials/how-to-install-and-use-docker-on-ubuntu-16-04) helpful.
 
 ### Docker installation on EC2 with Ubuntu
 
 The instructions below show in detail how to prepare an Amazon EC2 instance running Ubuntu 16.04 for use with Docker.
 
-Apply patches to the system:
+Apply initialize the package repository and apply system updates:
 
 ```
 sudo apt-get update
@@ -27,7 +28,7 @@ sudo apt-get install -y docker.io
 sudo service docker start
 ```
 
-Add the `ubuntu` user to the `docker` group to allow running Docker commands:
+Add the `ubuntu` user to the `docker` group to allow running Docker commands without sudo:
 ```
 sudo usermod -a -G docker ubuntu
 ```
@@ -90,7 +91,7 @@ ubuntu                              xenial              f49eec89601e        3 we
 Start out by launching the deployment container.
 
 ```
-docker run --shm-size=<shm-size> -t -i ray-project/ray:deploy
+docker run --shm-size=<shm-size> -t -i ray-project/deploy
 ```
 
 Replace `<shm-size>` with a limit appropriate for your system, for example `512M` or `2G`.
@@ -119,7 +120,7 @@ Ray includes a Docker image that includes dependencies necessary for running som
 
 Launch the examples container.
 ```
-docker run --shm-size=1024m -t -i ray-project/ray:examples
+docker run --shm-size=1024m -t -i ray-project/examples
 ```
 
 ### Hyperparameter optimization

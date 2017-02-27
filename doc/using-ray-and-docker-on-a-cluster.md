@@ -23,9 +23,13 @@ This is an example template Dockerfile for a Ray application:
 ```
 # Application Dockerfile template
 FROM ray-project/deploy
-RUN git clone https://github.com/my-user/my-project.git
-RUN ./my-project/install.sh
+RUN git clone <my-project-url>
+RUN <my-project-installation-script>
 ```
+
+Here `<my-project-url>` is the location of the source code repository for your application and
+`<my-project-installation-script> is a command that prepares the instance to run your
+application, for example by installing required dependencies dependencies.
 
 Build the image by running something like:
 ```
