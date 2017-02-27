@@ -15,7 +15,7 @@ include_directories("${PYTHON_INCLUDE_DIRS}" thirdparty)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --std=c99 -D_XOPEN_SOURCE=500 -D_POSIX_C_SOURCE=200809L")
 
-# Compile flatbuffers using flatcc
+# Compile flatbuffers
 
 set(PLASMA_FBS_SRC "${CMAKE_CURRENT_LIST_DIR}/format/plasma.fbs")
 set(OUTPUT_DIR ${CMAKE_CURRENT_LIST_DIR}/format/)
@@ -58,9 +58,9 @@ if(APPLE)
 endif(APPLE)
 
 if(APPLE)
-target_link_libraries(plasma -Wl,-force_load,${FLATBUFFERS_STATIC_LIB} ${COMMON_LIB} ${PYTHON_LIBRARIES} ${FLATBUFFERS_STATIC_LIB})
+  target_link_libraries(plasma -Wl,-force_load,${FLATBUFFERS_STATIC_LIB} ${COMMON_LIB} ${PYTHON_LIBRARIES} ${FLATBUFFERS_STATIC_LIB})
 else(APPLE)
-target_link_libraries(plasma -Wl,--whole-archive ${FLATBUFFERS_STATIC_LIB} -Wl,--no-whole-archive ${COMMON_LIB} ${PYTHON_LIBRARIES} ${FLATBUFFERS_STATIC_LIB})
+  target_link_libraries(plasma -Wl,--whole-archive ${FLATBUFFERS_STATIC_LIB} -Wl,--no-whole-archive ${COMMON_LIB} ${PYTHON_LIBRARIES} ${FLATBUFFERS_STATIC_LIB})
 endif(APPLE)
 
 include_directories("${FLATBUFFERS_INCLUDE_DIR}")
