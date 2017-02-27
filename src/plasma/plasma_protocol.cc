@@ -15,7 +15,7 @@ extern "C" {
  * @param num_objects The number of elements in the array.
  * @return The string vector containing the object IDs.
  */
-std::vector<std::string> object_ids_to_vector(object_id object_ids[],
+std::vector<std::string> object_ids_to_vector(ObjectID object_ids[],
                                               int64_t num_objects) {
   std::vector<std::string> result;
   for (int64_t i = 0; i < num_objects; ++i) {
@@ -26,7 +26,7 @@ std::vector<std::string> object_ids_to_vector(object_id object_ids[],
 
 int plasma_send_CreateRequest(int sock,
                               protocol_builder *B,
-                              object_id object_id,
+                              ObjectID object_id,
                               int64_t data_size,
                               int64_t metadata_size) {
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
@@ -37,7 +37,7 @@ int plasma_send_CreateRequest(int sock,
 }
 
 void plasma_read_CreateRequest(uint8_t *data,
-                               object_id *object_id,
+                               ObjectID *object_id,
                                int64_t *data_size,
                                int64_t *metadata_size) {
   CHECK(data);
@@ -50,20 +50,20 @@ void plasma_read_CreateRequest(uint8_t *data,
 
 int plasma_send_CreateReply(int sock,
                             protocol_builder *B,
-                            object_id object_id,
-                            plasma_object *object,
+                            ObjectID object_id,
+                            PlasmaObject *object,
                             int error_code) {
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
   auto id = fbb.CreateString((char*) &object_id.id[0], UNIQUE_ID_SIZE);
-  PlasmaObject plasma_object(object->handle.store_fd, object->handle.mmap_size, object->data_offset, object->data_size, object->metadata_offset, object->metadata_size);
+  PlasmaObjectSpec plasma_object(object->handle.store_fd, object->handle.mmap_size, object->data_offset, object->data_size, object->metadata_offset, object->metadata_size);
   auto message = CreatePlasmaCreateReply(fbb, id, &plasma_object, (PlasmaError) error_code);
   fbb.Finish(message);
   return write_message(sock, MessageType_PlasmaCreateReply, fbb.GetSize(), fbb.GetBufferPointer());
 }
 
 void plasma_read_CreateReply(uint8_t *data,
-                             object_id *object_id,
-                             plasma_object *object,
+                             ObjectID *object_id,
+                             PlasmaObject *object,
                              int *error_code) {
   CHECK(data);
   auto message = flatbuffers::GetRoot<PlasmaCreateReply>(data);
@@ -79,7 +79,7 @@ void plasma_read_CreateReply(uint8_t *data,
 
 int plasma_send_SealRequest(int sock,
                             protocol_builder *B,
-                            object_id object_id,
+                            ObjectID object_id,
                             unsigned char *digest) {
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
   auto id = fbb.CreateString((char*) &object_id.id[0], UNIQUE_ID_SIZE);
@@ -90,7 +90,7 @@ int plasma_send_SealRequest(int sock,
 }
 
 void plasma_read_SealRequest(uint8_t *data,
-                             object_id *object_id,
+                             ObjectID *object_id,
                              unsigned char *digest) {
 
   CHECK(data);                
@@ -102,7 +102,7 @@ void plasma_read_SealRequest(uint8_t *data,
 }
 
 int plasma_send_SealReply(int sock, protocol_builder *B,        
-                               object_id object_id, int error) {    
+                               ObjectID object_id, int error) {
 
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
   auto id = fbb.CreateString((char*) &object_id.id[0], UNIQUE_ID_SIZE);
@@ -112,7 +112,7 @@ int plasma_send_SealReply(int sock, protocol_builder *B,
 }
 
 void plasma_read_SealReply(uint8_t *data, 
-                           object_id *object_id,         
+                           ObjectID *object_id,
                            int *error) {                                
   CHECK(data);              
   auto message = flatbuffers::GetRoot<PlasmaSealReply>(data);
@@ -122,7 +122,7 @@ void plasma_read_SealReply(uint8_t *data,
 
 int plasma_send_ReleaseRequest(int sock,
                                protocol_builder *B,
-                               object_id object_id) {
+                               ObjectID object_id) {
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
   auto id = fbb.CreateString((char*) &object_id.id[0], UNIQUE_ID_SIZE);
   auto message = CreatePlasmaSealRequest(fbb, id);
@@ -131,7 +131,7 @@ int plasma_send_ReleaseRequest(int sock,
 }
 
 void plasma_read_ReleaseRequest(uint8_t *data,
-                                object_id *object_id) {
+                                ObjectID *object_id) {
 
   CHECK(data);                
   auto message = flatbuffers::GetRoot<PlasmaReleaseRequest>(data);
@@ -141,7 +141,7 @@ void plasma_read_ReleaseRequest(uint8_t *data,
 
 int plasma_send_ReleaseReply(int sock,
                              protocol_builder *B,
-                             object_id object_id,
+                             ObjectID object_id,
                              int error) {
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
   auto id = fbb.CreateString((char*) &object_id.id[0], UNIQUE_ID_SIZE);
@@ -151,7 +151,7 @@ int plasma_send_ReleaseReply(int sock,
 }
 
 void plasma_read_ReleaseReply(uint8_t *data,
-                              object_id *object_id,
+                              ObjectID *object_id,
                               int *error) {
   CHECK(data);                
   auto message = flatbuffers::GetRoot<PlasmaReleaseReply>(data);
@@ -162,7 +162,7 @@ void plasma_read_ReleaseReply(uint8_t *data,
 
 int plasma_send_DeleteRequest(int sock,
                               protocol_builder *B,
-                              object_id object_id) {
+                              ObjectID object_id) {
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
   auto id = fbb.CreateString((char*) &object_id.id[0], UNIQUE_ID_SIZE);
   auto message = CreatePlasmaDeleteRequest(fbb, id);
@@ -171,7 +171,7 @@ int plasma_send_DeleteRequest(int sock,
 }
 
 void plasma_read_DeleteRequest(uint8_t *data,
-                               object_id *object_id) {
+                               ObjectID *object_id) {
   CHECK(data);                
   auto message = flatbuffers::GetRoot<PlasmaReleaseReply>(data);
   CHECK(message->object_id()->size() == UNIQUE_ID_SIZE);
@@ -180,7 +180,7 @@ void plasma_read_DeleteRequest(uint8_t *data,
 
 int plasma_send_DeleteReply(int sock,
                             protocol_builder *B,
-                            object_id object_id,
+                            ObjectID object_id,
                             int error) {
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
   auto id = fbb.CreateString((char*) &object_id.id[0], UNIQUE_ID_SIZE);
@@ -190,7 +190,7 @@ int plasma_send_DeleteReply(int sock,
 }
 
 void plasma_read_DeleteReply(uint8_t *data,
-                             object_id *object_id,
+                             ObjectID *object_id,
                              int *error) {
   CHECK(data);                
   auto message = flatbuffers::GetRoot<PlasmaDeleteReply>(data);
@@ -201,7 +201,7 @@ void plasma_read_DeleteReply(uint8_t *data,
 
 int plasma_send_StatusRequest(int sock,
                               protocol_builder *B,
-                              object_id object_ids[],
+                              ObjectID object_ids[],
                               int64_t num_objects) {
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
   auto message = CreatePlasmaStatusRequest(fbb, fbb.CreateVectorOfStrings(object_ids_to_vector(object_ids, num_objects)));
@@ -216,7 +216,7 @@ int64_t plasma_read_StatusRequest_num_objects(uint8_t *data) {
 }
 
 void plasma_read_StatusRequest(uint8_t *data,
-                               object_id object_ids[],
+                               ObjectID object_ids[],
                                int64_t num_objects) {
   DCHECK(data);
   auto message = flatbuffers::GetRoot<PlasmaStatusRequest>(data);
@@ -227,7 +227,7 @@ void plasma_read_StatusRequest(uint8_t *data,
 
 int plasma_send_StatusReply(int sock,
                             protocol_builder *B,
-                            object_id object_ids[],
+                            ObjectID object_ids[],
                             int object_status[],
                             int64_t num_objects) {
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
@@ -243,7 +243,7 @@ int64_t plasma_read_StatusReply_num_objects(uint8_t *data) {
 }
 
 void plasma_read_StatusReply(uint8_t *data,
-                             object_id object_ids[],
+                             ObjectID object_ids[],
                              int object_status[],
                              int64_t num_objects) {
   DCHECK(data);
@@ -258,7 +258,7 @@ void plasma_read_StatusReply(uint8_t *data,
 
 int plasma_send_ContainsRequest(int sock,
                                 protocol_builder *B,
-                                object_id object_id) {
+                                ObjectID object_id) {
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
   auto id = fbb.CreateString((char*) &object_id.id[0], UNIQUE_ID_SIZE);
   auto message = CreatePlasmaContainsRequest(fbb, id);
@@ -266,7 +266,7 @@ int plasma_send_ContainsRequest(int sock,
   return write_message(sock, MessageType_PlasmaContainsRequest, fbb.GetSize(), fbb.GetBufferPointer());
 }
 
-void plasma_read_ContainsRequest(uint8_t *data, object_id *object_id) {
+void plasma_read_ContainsRequest(uint8_t *data, ObjectID *object_id) {
   CHECK(data);
   auto message = flatbuffers::GetRoot<PlasmaContainsRequest>(data);
   memcpy(&object_id->id[0], message->object_id()->data(), UNIQUE_ID_SIZE);
@@ -274,7 +274,7 @@ void plasma_read_ContainsRequest(uint8_t *data, object_id *object_id) {
 
 int plasma_send_ContainsReply(int sock,
                               protocol_builder *B,
-                              object_id object_id,
+                              ObjectID object_id,
                               int has_object) {
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
   auto id = fbb.CreateString((char*) &object_id.id[0], UNIQUE_ID_SIZE);
@@ -284,7 +284,7 @@ int plasma_send_ContainsReply(int sock,
 }
 
 void plasma_read_ContainsReply(uint8_t *data,
-                               object_id *object_id,
+                               ObjectID *object_id,
                                int *has_object) {
   CHECK(data);
   auto message = flatbuffers::GetRoot<PlasmaContainsReply>(data);
@@ -345,7 +345,7 @@ void plasma_read_EvictReply(uint8_t *data, int64_t *num_bytes) {
 
 int plasma_send_GetRequest(int sock,
                            protocol_builder *B,
-                           object_id object_ids[],
+                           ObjectID object_ids[],
                            int64_t num_objects,
                            int64_t timeout_ms) {
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
@@ -361,7 +361,7 @@ int64_t plasma_read_GetRequest_num_objects(uint8_t *data) {
 }
 
 void plasma_read_GetRequest(uint8_t *data,
-                            object_id object_ids[],
+                            ObjectID object_ids[],
                             int64_t *timeout_ms,
                             int64_t num_objects) {
   DCHECK(data);
@@ -374,16 +374,16 @@ void plasma_read_GetRequest(uint8_t *data,
 
 int plasma_send_GetReply(int sock,
                          protocol_builder *B,
-                         object_id object_ids[],
-                         plasma_object plasma_objects[],
+                         ObjectID object_ids[],
+                         PlasmaObject plasma_objects[],
                          int64_t num_objects) {
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
-  std::vector<PlasmaObject> objects;
+  std::vector<PlasmaObjectSpec> objects;
 
   //PlasmaObject objects[num_objects];
   for (int i = 0; i < num_objects; ++i) {
-    plasma_object *object = &plasma_objects[i];
-    objects.push_back(PlasmaObject(object->handle.store_fd, object->handle.mmap_size,
+    PlasmaObject *object = &plasma_objects[i];
+    objects.push_back(PlasmaObjectSpec(object->handle.store_fd, object->handle.mmap_size,
         object->data_offset, object->data_size, object->metadata_offset, object->metadata_size));
   }
   auto message = CreatePlasmaGetReply(fbb, fbb.CreateVectorOfStrings(object_ids_to_vector(object_ids, num_objects)),
@@ -393,8 +393,8 @@ int plasma_send_GetReply(int sock,
 }
 
 void plasma_read_GetReply(uint8_t *data,
-                          object_id object_ids[],
-                          plasma_object plasma_objects[],
+                          ObjectID object_ids[],
+                          PlasmaObject plasma_objects[],
                           int64_t num_objects) {
   CHECK(data);
   auto message = flatbuffers::GetRoot<PlasmaGetReply>(data);
@@ -402,7 +402,7 @@ void plasma_read_GetReply(uint8_t *data,
     memcpy(&object_ids[i].id[0], message->object_ids()->Get(i)->c_str(), UNIQUE_ID_SIZE);
   }
   for (int64_t i = 0; i < num_objects; ++i) {
-    const PlasmaObject *object = message->plasma_objects()->Get(i);
+    const PlasmaObjectSpec *object = message->plasma_objects()->Get(i);
     plasma_objects[i].handle.store_fd = object->segment_index();
     plasma_objects[i].handle.mmap_size = object->mmap_size();
     plasma_objects[i].data_offset = object->data_offset();
@@ -414,7 +414,7 @@ void plasma_read_GetReply(uint8_t *data,
 
 int plasma_send_FetchRequest(int sock,
                              protocol_builder *B,
-                             object_id object_ids[],
+                             ObjectID object_ids[],
                              int64_t num_objects) {
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
   auto message = CreatePlasmaFetchRequest(fbb, fbb.CreateVectorOfStrings(object_ids_to_vector(object_ids, num_objects)));
@@ -429,7 +429,7 @@ int64_t plasma_read_FetchRequest_num_objects(uint8_t *data) {
 }
 
 void plasma_read_FetchRequest(uint8_t *data,
-                              object_id object_ids[],
+                              ObjectID object_ids[],
                               int64_t num_objects) {
   CHECK(data);
   auto message = flatbuffers::GetRoot<PlasmaFetchRequest>(data);
@@ -442,16 +442,16 @@ void plasma_read_FetchRequest(uint8_t *data,
 
 int plasma_send_WaitRequest(int sock,
                             protocol_builder *B,
-                            object_request object_requests[],
+                            ObjectRequest object_requests[],
                             int num_requests,
                             int num_ready_objects,
                             int64_t timeout_ms) {
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
 
-  std::vector<flatbuffers::Offset<ObjectRequest>> objreq_vec;
+  std::vector<flatbuffers::Offset<ObjectRequestSpec>> objreq_vec;
   for (int i = 0 ; i < num_requests; i++) {
     auto id = fbb.CreateString((char*) &object_requests[i].object_id.id[0], UNIQUE_ID_SIZE);
-    auto objreq = CreateObjectRequest(fbb, id, object_requests[i].type);
+    auto objreq = CreateObjectRequestSpec(fbb, id, object_requests[i].type);
     objreq_vec.push_back(objreq);
   }
 
@@ -469,7 +469,7 @@ int plasma_read_WaitRequest_num_object_ids(uint8_t *data) {
 }
 
 void plasma_read_WaitRequest(uint8_t *data,
-                             object_request object_requests[],
+                             ObjectRequest object_requests[],
                              int num_object_ids,
                              int64_t *timeout_ms,
                              int *num_ready_objects) {
@@ -489,7 +489,7 @@ void plasma_read_WaitRequest(uint8_t *data,
 
 int plasma_send_WaitReply(int sock,
                           protocol_builder *B,
-                          object_request object_requests[],
+                          ObjectRequest object_requests[],
                           int num_ready_objects) {
 
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
@@ -509,7 +509,7 @@ int plasma_send_WaitReply(int sock,
 }
 
 void plasma_read_WaitReply(uint8_t *data,
-                           object_request object_requests[],
+                           ObjectRequest object_requests[],
                            int *num_ready_objects) {
   DCHECK(data);
 
@@ -533,7 +533,7 @@ int plasma_send_SubscribeRequest(int sock, protocol_builder *B) {
 
 int plasma_send_DataRequest(int sock,
                             protocol_builder *B,
-                            object_id object_id,
+                            ObjectID object_id,
                             const char *address,
                             int port) {
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
@@ -545,7 +545,7 @@ int plasma_send_DataRequest(int sock,
 }
 
 void plasma_read_DataRequest(uint8_t *data,
-                             object_id *object_id,
+                             ObjectID *object_id,
                              char **address,
                              int *port) {
   DCHECK(data);
@@ -563,7 +563,7 @@ void plasma_read_DataRequest(uint8_t *data,
 
 int plasma_send_DataReply(int sock,
                           protocol_builder *B,
-                          object_id object_id,
+                          ObjectID object_id,
                           int64_t object_size,
                           int64_t metadata_size) {
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
@@ -574,7 +574,7 @@ int plasma_send_DataReply(int sock,
 }
 
 void plasma_read_DataReply(uint8_t *data,
-                           object_id *object_id,
+                           ObjectID *object_id,
                            int64_t *object_size,
                            int64_t *metadata_size) {
   DCHECK(data);
