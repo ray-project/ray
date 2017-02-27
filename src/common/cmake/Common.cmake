@@ -26,23 +26,6 @@ message(STATUS "Flatbuffers static library: ${FLATBUFFERS_STATIC_LIB}")
 message(STATUS "Flatbuffers compiler: ${FLATBUFFERS_COMPILER}")
 include_directories(SYSTEM ${FLATBUFFERS_INCLUDE_DIR})
 
-
-set(FLATCC_PREFIX "${CMAKE_BINARY_DIR}/src/common/flatcc-prefix/src/flatcc")
-
-if (NOT TARGET flatcc)
-  ExternalProject_Add(flatcc
-    URL "https://github.com/dvidelabs/flatcc/archive/v0.4.0.tar.gz"
-    SOURCE_DIR "${FLATCC_PREFIX}"
-    INSTALL_COMMAND ""
-    CMAKE_ARGS "-DCMAKE_C_FLAGS=-fPIC")
-endif()
-
-set(FLATCC_INCLUDE_DIR "${FLATCC_PREFIX}/include")
-set(FLATCC_STATIC_LIB "${FLATCC_PREFIX}/lib/libflatcc.a")
-set(FLATCC_COMPILER "${FLATCC_PREFIX}/bin/flatcc")
-
-include_directories("${FLATCC_INCLUDE_DIR}")
-
 # Custom CFLAGS
 
 set(CMAKE_C_FLAGS "-g -Wall -Wextra -Werror=implicit-function-declaration -Wno-sign-compare -Wno-unused-parameter -Wno-type-limits -Wno-missing-field-initializers --std=c99 -D_XOPEN_SOURCE=500 -D_POSIX_C_SOURCE=200809L -fPIC -std=c99")

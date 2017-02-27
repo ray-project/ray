@@ -24,14 +24,6 @@ add_custom_target(gen_plasma_fbs ALL)
 
 add_custom_command(
   TARGET gen_plasma_fbs
-  COMMAND ${FLATCC_COMPILER} -a -c -o ${OUTPUT_DIR} ${PLASMA_FBS_SRC}
-  DEPENDS ${PLASMA_FBS_SRC}
-  COMMENT "Running flatc compiler on ${PLASMA_FBS_SRC}"
-  VERBATIM)
-
-
-add_custom_command(
-  TARGET gen_plasma_fbs
   COMMAND ${FLATBUFFERS_COMPILER} -c -o ${OUTPUT_DIR} ${PLASMA_FBS_SRC}
   DEPENDS ${PLASMA_FBS_SRC}
   COMMENT "Running flatc compiler on ${PLASMA_FBS_SRC}"
@@ -53,7 +45,6 @@ add_library(plasma SHARED
   plasma_extension.c
   ../common/lib/python/common_extension.c
   plasma_protocol.cc
-  plasma_protocol.c
   plasma_client.c
   thirdparty/xxhash.c
   fling.c)
@@ -67,9 +58,9 @@ if(APPLE)
 endif(APPLE)
 
 if(APPLE)
-target_link_libraries(plasma -Wl,-force_load,${FLATBUFFERS_STATIC_LIB} ${COMMON_LIB} ${PYTHON_LIBRARIES} ${FLATCC_STATIC_LIB} ${FLATBUFFERS_STATIC_LIB})
+target_link_libraries(plasma -Wl,-force_load,${FLATBUFFERS_STATIC_LIB} ${COMMON_LIB} ${PYTHON_LIBRARIES} ${FLATBUFFERS_STATIC_LIB})
 else(APPLE)
-target_link_libraries(plasma -Wl,--whole-archive ${FLATBUFFERS_STATIC_LIB} -Wl,--no-whole-archive ${COMMON_LIB} ${PYTHON_LIBRARIES} ${FLATCC_STATIC_LIB} ${FLATBUFFERS_STATIC_LIB})
+target_link_libraries(plasma -Wl,--whole-archive ${FLATBUFFERS_STATIC_LIB} -Wl,--no-whole-archive ${COMMON_LIB} ${PYTHON_LIBRARIES} ${FLATBUFFERS_STATIC_LIB})
 endif(APPLE)
 
 include_directories("${FLATBUFFERS_INCLUDE_DIR}")
@@ -82,24 +73,22 @@ add_executable(plasma_store
   plasma_store.c
   plasma.c
   plasma_protocol.cc
-  plasma_protocol.c
   eviction_policy.c
   fling.c
   malloc.c)
 
 add_dependencies(plasma_store hiredis gen_plasma_fbs)
 
-target_link_libraries(plasma_store common ${FLATCC_STATIC_LIB} ${FLATBUFFERS_STATIC_LIB})
+target_link_libraries(plasma_store common ${FLATBUFFERS_STATIC_LIB})
 
 add_library(plasma_lib STATIC
   plasma_client.c
   plasma.c
   plasma_protocol.cc
-  plasma_protocol.c
   fling.c
   thirdparty/xxhash.c)
 
-target_link_libraries(plasma_lib common ${FLATCC_STATIC_LIB} ${FLATBUFFERS_STATIC_LIB})
+target_link_libraries(plasma_lib common ${FLATBUFFERS_STATIC_LIB})
 add_dependencies(plasma_lib gen_plasma_fbs)
 
 add_dependencies(plasma protocol_fbs)
@@ -107,12 +96,12 @@ add_dependencies(plasma protocol_fbs)
 add_executable(plasma_manager
   plasma_manager.c)
 
-target_link_libraries(plasma_manager common plasma_lib ${FLATCC_STATIC_LIB} ${FLATBUFFERS_STATIC_LIB})
+target_link_libraries(plasma_manager common plasma_lib ${FLATBUFFERS_STATIC_LIB})
 
 add_library(plasma_client SHARED plasma_client.c)
 target_link_libraries(plasma_client ${FLATBUFFERS_STATIC_LIB})
 
-target_link_libraries(plasma_client common plasma_lib ${FLATCC_STATIC_LIB} ${FLATBUFFERS_STATIC_LIB})
+target_link_libraries(plasma_client common plasma_lib ${FLATBUFFERS_STATIC_LIB})
 
 define_test(client_tests plasma_lib)
 define_test(manager_tests plasma_lib plasma_manager.c)

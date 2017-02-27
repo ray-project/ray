@@ -16,7 +16,7 @@
 
 #ifdef HAS_PLASMA
 extern "C" {
-#include "format/plasma_reader.h"
+#include "plasma_protocol.h"
 #include "plasma_client.h"
 }
 

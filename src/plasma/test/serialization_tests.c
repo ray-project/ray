@@ -136,7 +136,6 @@ TEST plasma_get_request_test(void) {
   int64_t timeout_ms = 1234;
   plasma_send_GetRequest(fd, g_B, object_ids, 2, timeout_ms);
   uint8_t *data = read_message_from_file(fd, MessageType_PlasmaGetRequest);
-  int64_t num_objects;
   ObjectID object_ids_return[2];
   int64_t timeout_ms_return;
   plasma_read_GetRequest(data, &object_ids_return[0], &timeout_ms_return, 2);
@@ -275,7 +274,6 @@ TEST plasma_status_reply_test(void) {
 TEST plasma_evict_request_test(void) {
   int fd = create_temp_file();
   int64_t num_bytes = 111;
-  ObjectID object_id1 = globally_unique_id();
   plasma_send_EvictRequest(fd, g_B, num_bytes);
   uint8_t *data = read_message_from_file(fd, MessageType_PlasmaEvictRequest);
   int64_t num_bytes_received;
@@ -289,7 +287,6 @@ TEST plasma_evict_request_test(void) {
 TEST plasma_evict_reply_test(void) {
   int fd = create_temp_file();
   int64_t num_bytes = 111;
-  ObjectID object_id1 = globally_unique_id();
   plasma_send_EvictReply(fd, g_B, num_bytes);
   uint8_t *data = read_message_from_file(fd, MessageType_PlasmaEvictReply);
   int64_t num_bytes_received;

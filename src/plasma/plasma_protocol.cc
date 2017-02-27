@@ -8,6 +8,23 @@ extern "C" {
 
 #define FLATBUFFER_BUILDER_DEFAULT_SIZE 1024
 
+protocol_builder *make_protocol_builder(void) {
+  return NULL;
+}
+
+void free_protocol_builder(protocol_builder *builder) {
+}
+
+uint8_t *plasma_receive(int sock, int64_t message_type) {
+  int64_t type;
+  int64_t length;
+  uint8_t *reply_data;
+  read_message(sock, &type, &length, &reply_data);
+  CHECKM(type == message_type, "type = %" PRId64 ", message_type = %" PRId64,
+         type, message_type);
+  return reply_data;
+}
+
 /**
  * Writes an array of object IDs into a vector and return it.
  *
@@ -23,6 +40,8 @@ std::vector<std::string> object_ids_to_vector(ObjectID object_ids[],
   }
   return result;
 }
+
+/* Create messages. */
 
 int plasma_send_CreateRequest(int sock,
                               protocol_builder *B,
@@ -77,6 +96,8 @@ void plasma_read_CreateReply(uint8_t *data,
   *error_code = message->error();
 }
 
+/* Seal messages. */
+
 int plasma_send_SealRequest(int sock,
                             protocol_builder *B,
                             ObjectID object_id,
@@ -120,6 +141,8 @@ void plasma_read_SealReply(uint8_t *data,
   *error = message->error();
 }
 
+/* Release messages. */
+
 int plasma_send_ReleaseRequest(int sock,
                                protocol_builder *B,
                                ObjectID object_id) {
@@ -160,6 +183,8 @@ void plasma_read_ReleaseReply(uint8_t *data,
   *error = message->error();
 }
 
+/* Delete messages. */
+
 int plasma_send_DeleteRequest(int sock,
                               protocol_builder *B,
                               ObjectID object_id) {
@@ -198,6 +223,8 @@ void plasma_read_DeleteReply(uint8_t *data,
   memcpy(&object_id->id[0], message->object_id()->data(), UNIQUE_ID_SIZE);
   *error = message->error();
 }
+
+/* Satus messages. */
 
 int plasma_send_StatusRequest(int sock,
                               protocol_builder *B,
@@ -256,6 +283,8 @@ void plasma_read_StatusReply(uint8_t *data,
   }
 }
 
+/* Contains messages. */
+
 int plasma_send_ContainsRequest(int sock,
                                 protocol_builder *B,
                                 ObjectID object_id) {
@@ -292,6 +321,8 @@ void plasma_read_ContainsReply(uint8_t *data,
   *has_object = message->has_object();
 }
 
+/* Connect messages. */
+
 int plasma_send_ConnectRequest(int sock, protocol_builder *B) {
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
   auto message = CreatePlasmaConnectRequest(fbb);
@@ -316,6 +347,8 @@ void plasma_read_ConnectReply(uint8_t *data, int64_t *memory_capacity) {
   auto message = flatbuffers::GetRoot<PlasmaConnectReply>(data);
   *memory_capacity = message->memory_capacity();
 }
+
+/* Evict messages. */
 
 int plasma_send_EvictRequest(int sock, protocol_builder *B, int64_t num_bytes) {
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
@@ -342,6 +375,8 @@ void plasma_read_EvictReply(uint8_t *data, int64_t *num_bytes) {
   auto message = flatbuffers::GetRoot<PlasmaEvictReply>(data);
   *num_bytes = message->num_bytes();
 }
+
+/* Get messages. */
 
 int plasma_send_GetRequest(int sock,
                            protocol_builder *B,
@@ -380,7 +415,6 @@ int plasma_send_GetReply(int sock,
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
   std::vector<PlasmaObjectSpec> objects;
 
-  //PlasmaObject objects[num_objects];
   for (int i = 0; i < num_objects; ++i) {
     PlasmaObject *object = &plasma_objects[i];
     objects.push_back(PlasmaObjectSpec(object->handle.store_fd, object->handle.mmap_size,
@@ -412,6 +446,8 @@ void plasma_read_GetReply(uint8_t *data,
   }
 }
 
+/* Fetch messages. */
+
 int plasma_send_FetchRequest(int sock,
                              protocol_builder *B,
                              ObjectID object_ids[],
@@ -438,7 +474,7 @@ void plasma_read_FetchRequest(uint8_t *data,
   }
 }
 
-/* Plasma wait messages. */
+/* Wait messages. */
 
 int plasma_send_WaitRequest(int sock,
                             protocol_builder *B,
@@ -448,16 +484,14 @@ int plasma_send_WaitRequest(int sock,
                             int64_t timeout_ms) {
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
 
-  std::vector<flatbuffers::Offset<ObjectRequestSpec>> objreq_vec;
+  std::vector<flatbuffers::Offset<ObjectRequestSpec>> object_request_specs;
   for (int i = 0 ; i < num_requests; i++) {
     auto id = fbb.CreateString((char*) &object_requests[i].object_id.id[0], UNIQUE_ID_SIZE);
-    auto objreq = CreateObjectRequestSpec(fbb, id, object_requests[i].type);
-    objreq_vec.push_back(objreq);
+    object_request_specs.push_back(CreateObjectRequestSpec(fbb, id, object_requests[i].type));
   }
 
   auto message = CreatePlasmaWaitRequest(fbb,
-      //fbb.CreateVector(objreq_vec.data(), objreq_vec.size()),
-      fbb.CreateVector(objreq_vec), num_ready_objects, timeout_ms);
+      fbb.CreateVector(object_request_specs), num_ready_objects, timeout_ms);
   fbb.Finish(message);
   return write_message(sock, MessageType_PlasmaWaitRequest, fbb.GetSize(), fbb.GetBufferPointer());
 }
@@ -494,15 +528,14 @@ int plasma_send_WaitReply(int sock,
 
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
 
-  std::vector<flatbuffers::Offset<ObjectReply>> objreply_vec;
+  std::vector<flatbuffers::Offset<ObjectReply>> object_replies;
   for (int i = 0 ; i < num_ready_objects; i++) {
     auto id = fbb.CreateString((char*) &object_requests[i].object_id.id[0], UNIQUE_ID_SIZE);
-    auto objreply = CreateObjectReply(fbb, id, object_requests[i].status);
-    objreply_vec.push_back(objreply);
+    object_replies.push_back(CreateObjectReply(fbb, id, object_requests[i].status));
   }
 
   auto message = CreatePlasmaWaitReply(fbb,
-      fbb.CreateVector(objreply_vec.data(), num_ready_objects),
+      fbb.CreateVector(object_replies.data(), num_ready_objects),
       num_ready_objects);
   fbb.Finish(message);
   return write_message(sock, MessageType_PlasmaWaitReply, fbb.GetSize(), fbb.GetBufferPointer());
@@ -523,6 +556,8 @@ void plasma_read_WaitReply(uint8_t *data,
   }
 }
 
+/* Subscribe messages. */
+
 int plasma_send_SubscribeRequest(int sock, protocol_builder *B) {
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
   auto message = CreatePlasmaSubscribeRequest(fbb);
@@ -530,6 +565,8 @@ int plasma_send_SubscribeRequest(int sock, protocol_builder *B) {
   return write_message(sock, MessageType_PlasmaSubscribeRequest, fbb.GetSize(),
       fbb.GetBufferPointer());
 }
+
+/* Data messages. */
 
 int plasma_send_DataRequest(int sock,
                             protocol_builder *B,
@@ -549,13 +586,8 @@ void plasma_read_DataRequest(uint8_t *data,
                              char **address,
                              int *port) {
   DCHECK(data);
-  /*  */
   auto message = flatbuffers::GetRoot<PlasmaDataRequest>(data);
-  const flatbuffers::String *id = message->object_id();
-  /* Check object ID size. */
-  DCHECK(id);
-  DCHECK(id->size() == sizeof(object_id->id));
-  //memcpy(&object_id->id[0], message->object_id()->data(), UNIQUE_ID_SIZE);
+  DCHECK(message->object_id()->size() == sizeof(object_id->id));
   memcpy(&object_id->id[0], message->object_id()->c_str(), UNIQUE_ID_SIZE);
   *address = strdup(message->address()->c_str());
   *port = message->port();
@@ -567,8 +599,8 @@ int plasma_send_DataReply(int sock,
                           int64_t object_size,
                           int64_t metadata_size) {
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
-  auto objid = fbb.CreateString((char*)&object_id.id[0], UNIQUE_ID_SIZE);
-  auto message = CreatePlasmaDataReply(fbb, objid, object_size, metadata_size);
+  auto id = fbb.CreateString((char*)&object_id.id[0], UNIQUE_ID_SIZE);
+  auto message = CreatePlasmaDataReply(fbb, id, object_size, metadata_size);
   fbb.Finish(message);
   return write_message(sock, MessageType_PlasmaDataReply, fbb.GetSize(), fbb.GetBufferPointer());
 }
@@ -579,23 +611,11 @@ void plasma_read_DataReply(uint8_t *data,
                            int64_t *metadata_size) {
   DCHECK(data);
   auto message = flatbuffers::GetRoot<PlasmaDataReply>(data);
-  const flatbuffers::String *id = message->object_id();
-  DCHECK(id);
-  DCHECK(id->size() == sizeof(object_id->id));
+  DCHECK(message->object_id()->size() == sizeof(object_id->id));
   /* The size matches, copy the string. */
   memcpy(&object_id->id[0], message->object_id()->c_str(), UNIQUE_ID_SIZE);
   *object_size = (int64_t) message->object_size();
   *metadata_size = (int64_t) message->metadata_size();
-}
-
-uint8_t *plasma_receive(int sock, int64_t message_type) {
-  int64_t type;
-  int64_t length;
-  uint8_t *reply_data;
-  read_message(sock, &type, &length, &reply_data);
-  CHECKM(type == message_type, "type = %" PRId64 ", message_type = %" PRId64,
-         type, message_type);
-  return reply_data;
 }
 
 } /* extern "C" */
