@@ -377,9 +377,9 @@ void update_object_get_requests(PlasmaStoreState *store_state,
   std::vector<GetRequest *> &get_requests =
       store_state->object_get_requests[obj_id];
   int index = 0;
-  // TODO(rshin): return_from_get below will invalidate the iterators in the
-  // iteration, so the below code is incorrect.
-  for (GetRequest *get_req : get_requests) {
+  int num_requests = get_requests.size();
+  for (int i = 0; i < num_requests; ++i) {
+    GetRequest *get_req = get_requests[index];
     int num_updated = 0;
     for (int j = 0; j < get_req->num_objects_to_wait_for; ++j) {
       object_table_entry *entry;
