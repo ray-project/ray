@@ -60,7 +60,7 @@ def start_local_scheduler(plasma_store_name,
     raise Exception("If one of the plasma_manager_name and the redis_address is provided, then both must be provided.")
   if use_valgrind and use_profiler:
     raise Exception("Cannot use valgrind and profiler at the same time.")
-  local_scheduler_executable = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../core/src/photon/photon_scheduler")
+  local_scheduler_executable = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../core/src/local_scheduler/local_scheduler")
   local_scheduler_name = "/tmp/scheduler{}".format(random_name())
   command = [local_scheduler_executable,
              "-s", local_scheduler_name,

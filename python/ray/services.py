@@ -17,7 +17,7 @@ import time
 import threading
 
 # Ray modules
-import photon
+import local_scheduler
 import plasma
 import global_scheduler
 
@@ -43,7 +43,7 @@ all_processes = OrderedDict([(PROCESS_TYPE_WORKER, []),
                              (PROCESS_TYPE_WEB_UI, [])])
 
 # True if processes are run in the valgrind profiler.
-RUN_PHOTON_PROFILER = False
+RUN_LOCAL_SCHEDULER_PROFILER = False
 RUN_PLASMA_MANAGER_PROFILER = False
 RUN_PLASMA_STORE_PROFILER = False
 
@@ -90,7 +90,7 @@ def kill_process(p):
   """
   if p.poll() is not None: # process has already terminated
     return True
-  if RUN_PHOTON_PROFILER or RUN_PLASMA_MANAGER_PROFILER or RUN_PLASMA_STORE_PROFILER:
+  if RUN_LOCAL_SCHEDULER_PROFILER or RUN_PLASMA_MANAGER_PROFILER or RUN_PLASMA_STORE_PROFILER:
     os.kill(p.pid, signal.SIGINT) # Give process signal to write profiler data.
     time.sleep(0.1) # Wait for profiling data to be written.
 
@@ -415,17 +415,18 @@ def start_local_scheduler(redis_address,
   if num_gpus is None:
     # By default, assume this node has no GPUs.
     num_gpus = 0
-  local_scheduler_name, p = photon.start_local_scheduler(plasma_store_name,
-                                                         plasma_manager_name,
-                                                         worker_path=worker_path,
-                                                         node_ip_address=node_ip_address,
-                                                         redis_address=redis_address,
-                                                         plasma_address=plasma_address,
-                                                         use_profiler=RUN_PHOTON_PROFILER,
-                                                         stdout_file=stdout_file,
-                                                         stderr_file=stderr_file,
-                                                         static_resource_list=[num_cpus, num_gpus],
-                                                         num_workers=num_workers)
+  local_scheduler_name, p = local_scheduler.start_local_scheduler(
+      plasma_store_name,
+      plasma_manager_name,
+      worker_path=worker_path,
+      node_ip_address=node_ip_address,
+      redis_address=redis_address,
+      plasma_address=plasma_address,
+      use_profiler=RUN_LOCAL_SCHEDULER_PROFILER,
+      stdout_file=stdout_file,
+      stderr_file=stderr_file,
+      static_resource_list=[num_cpus, num_gpus],
+      num_workers=num_workers)
   if cleanup:
     all_processes[PROCESS_TYPE_LOCAL_SCHEDULER].append(p)
   return local_scheduler_name
