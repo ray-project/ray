@@ -96,6 +96,11 @@ docker run --shm-size=<shm-size> -t -i ray-project/deploy
 
 Replace `<shm-size>` with a limit appropriate for your system, for example `512M` or `2G`.
 The `-t` and `-i` options here are required to support interactive use of the container.
+
+**Note:** Ray requires a **large** amount of shared memory because each object
+store keeps all of its objects in shared memory, so the amount of shared memory
+will limit the size of the object store.
+
 You should now see a prompt that looks something like:
 
 ```
@@ -131,8 +136,6 @@ cd /ray/examples/hyperopt/
 python driver.py
 ```
 
-See the [Hyperparameter optimization documentation](../examples/hyperopt/README.md).
-
 ### Batch L-BFGS
 
 ```
@@ -140,18 +143,9 @@ cd /ray/examples/lbfgs/
 python driver.py
 ```
 
-See the [Batch L-BFGS documentation](../examples/lbfgs/README.md).
-
 ### Learning to play Pong
 
 ```
 cd /ray/examples/rl_pong/
 python driver.py
 ```
-
-See the [Learning to play Pong documentation](../examples/rl_pong/README.md).
-
-## Running a cluster with Docker
-
-We have provided [instructions for running a Ray cluster using Docker](using-ray-and-docker-on-a-cluster.md).
-

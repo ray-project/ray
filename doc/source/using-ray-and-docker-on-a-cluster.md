@@ -1,4 +1,4 @@
-# Using Ray and Docker on a Cluster
+# Using Ray and Docker on a Cluster (EXPERIMENTAL)
 
 Packaging and deploying an application using Docker can provide certain advantages. It can make managing dependencies easier, help ensure that each cluster node receives a uniform configuration, and facilitate swapping hardware resources between applications.
 
@@ -56,7 +56,7 @@ docker ps -a
 ```
 to identify the id of the container you just exited.
 
-Next, commit the container 
+Next, commit the container
 ```
 docker commit -t <app-tag> <container-id>
 ```
