@@ -137,7 +137,7 @@ It will throw an exception with a message like the following.
 This object exceeds the maximum recursion depth. It may contain itself recursively.
 ```
 
-# Last Resort Workaround
+## Last Resort Workaround
 
 If you find cases where Ray doesn't work or does the wrong thing, please let us
 know so we can fix it. In the meantime, you can do your own custom serialization

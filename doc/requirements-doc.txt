@@ -1,0 +1,10 @@
+colorama
+cloudpickle
+funcsigs
+mock
+numpy
+psutil
+recommonmark
+redis
+sphinx
+sphinx_rtd_theme
