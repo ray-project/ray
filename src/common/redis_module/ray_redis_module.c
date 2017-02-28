@@ -137,6 +137,64 @@ int Connect_RedisCommand(RedisModuleCtx *ctx,
 }
 
 /**
+ * Remove a client from Redis. This is called from a client with the command:
+ *
+ *     RAY.DISCONNECT <ray client id>
+ *
+ * This method also publishes a notification to all subscribers to the
+ * db_clients channel. The notification consists of a message of the form "<ray
+ * client id>:<client type>".
+ *
+ * @param ray_client_id The db client ID of the client.
+ * @return OK if the operation was successful.
+ */
+int Disconnect_RedisCommand(RedisModuleCtx *ctx,
+                            RedisModuleString **argv,
+                            int argc) {
+  if (argc != 2) {
+    return RedisModule_WrongArity(ctx);
+  }
+
+  RedisModuleString *ray_client_id = argv[1];
+
+  /* Get the client type. */
+  RedisModuleKey *db_client_table_key =
+      OpenPrefixedKey(ctx, DB_CLIENT_PREFIX, ray_client_id, REDISMODULE_WRITE);
+  if (RedisModule_KeyType(db_client_table_key) == REDISMODULE_KEYTYPE_EMPTY) {
+    /* Someone else already deleted this client. */
+    RedisModule_CloseKey(db_client_table_key);
+    RedisModule_ReplyWithSimpleString(ctx, "OK");
+    return REDISMODULE_OK;
+  }
+
+  RedisModuleString *client_type;
+  RedisModule_HashGet(db_client_table_key, REDISMODULE_HASH_CFIELDS,
+                      "client_type", &client_type, NULL);
+
+  /* Remove the client from the client table. */
+  CHECK_ERROR(RedisModule_DeleteKey(db_client_table_key),
+              "Unable to delete db client key.");
+  RedisModule_CloseKey(db_client_table_key);
+
+  /* Publish the deletion notification on the db client channel. */
+  RedisModuleString *channel_name =
+      RedisModule_CreateString(ctx, "db_clients", strlen("db_clients"));
+  RedisModuleString *notification =
+      RedisString_Format(ctx, "%S:%S", ray_client_id, client_type);
+  RedisModuleCallReply *reply =
+      RedisModule_Call(ctx, "PUBLISH", "ss", channel_name, notification);
+  RedisModule_FreeString(ctx, notification);
+  RedisModule_FreeString(ctx, channel_name);
+  RedisModule_FreeString(ctx, client_type);
+  if (reply == NULL) {
+    return RedisModule_ReplyWithError(ctx, "PUBLISH unsuccessful");
+  }
+
+  RedisModule_ReplyWithSimpleString(ctx, "OK");
+  return REDISMODULE_OK;
+}
+
+/**
  * Get the address of a client from its db client ID. This is called from a
  * client with the command:
  *
@@ -968,6 +1026,11 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx,
   }
 
   if (RedisModule_CreateCommand(ctx, "ray.connect", Connect_RedisCommand,
+                                "write", 0, 0, 0) == REDISMODULE_ERR) {
+    return REDISMODULE_ERR;
+  }
+
+  if (RedisModule_CreateCommand(ctx, "ray.disconnect", Disconnect_RedisCommand,
                                 "write", 0, 0, 0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }

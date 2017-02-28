@@ -81,7 +81,7 @@ int64_t table_timeout_handler(event_loop *loop,
 
   CHECK(callback_data->retry.num_retries >= 0 ||
         callback_data->retry.num_retries == -1);
-  LOG_WARN("retrying operation, retry_count = %d",
+  LOG_WARN("retrying operation %s, retry_count = %d", callback_data->label,
            callback_data->retry.num_retries);
 
   if (callback_data->retry.num_retries == 0) {

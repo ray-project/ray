@@ -1,0 +1,173 @@
+import argparse
+import binascii
+from collections import Counter
+import logging
+import time
+
+import redis
+
+from ray.services import get_ip_address
+from ray.services import get_port
+
+
+# These variables must be kept in sync with the C codebase.
+# common/common.h
+DBClientID_SIZE = 20
+NIL_ID = b"\xff" * DBClientID_SIZE
+# common/task.h
+TASK_STATUS_LOST = 32
+# common/redis_module/ray_redis_module.c
+TASK_PREFIX = "TT:"
+DB_CLIENT_PREFIX = "CL:"
+DB_CLIENT_TABLE_NAME = b"db_clients"
+# local_scheduler/local_scheduler.h
+LOCAL_SCHEDULER_HEARTBEAT_TIMEOUT_MILLISECONDS = 100
+LOCAL_SCHEDULER_CLIENT_TYPE = b"local_scheduler"
+
+# Set up logging.
+logging.basicConfig()
+log = logging.getLogger()
+
+class Monitor(object):
+  """A monitor for Ray processes.
+  """
+  def __init__(self, redis_address, redis_port):
+    self.redis = redis.StrictRedis(host=redis_address, port=redis_port, db=0)
+    self.subscribe_client = self.redis.pubsub()
+
+    # Initialize data structures to keep track of the active database clients.
+    self.local_schedulers = set()
+    # Add the NIL_ID so that we don't accidentally mark tasks that aren't
+    # associated with a node as LOST during cleanup.
+    self.local_schedulers.add(NIL_ID)
+
+  def subscribe(self):
+    """Subscribe to the db_clients channel.
+
+    Returns:
+      True if subscription was successful and False otherwise.
+    """
+    self.subscribe_client.subscribe(DB_CLIENT_TABLE_NAME)
+    # Wait for the first message to signal that the subscription was
+    # successful.
+    while True:
+      message = self.subscribe_client.get_message()
+      if message is None:
+        time.sleep(LOCAL_SCHEDULER_HEARTBEAT_TIMEOUT_MILLISECONDS / 1000.)
+        continue
+      break
+
+    # The first message's payload should be the index of our subscription.
+    if 'data' not in message:
+      return False
+    return True
+
+  def read_message(self):
+    """Read a message from the db_clients channel.
+
+    Returns:
+      None if no message was to be read. Else, a tuple of (db_client_id,
+      client_type, auxiliary_address). If auxiliary_address is None, the
+      update to db_clients was a deletion. Else, it was an insertion.
+    """
+    message = self.subscribe_client.get_message()
+    if message is None:
+      return None
+
+    # Parse the message.
+    data = message['data']
+    db_client_id = data[:DBClientID_SIZE]
+    data = data[DBClientID_SIZE + 1:]
+    data = data.split(b" ")
+    client_type = data[0]
+    auxiliary_address = None
+    if len(data) > 1:
+      auxiliary_address = data[1]
+
+    return db_client_id, client_type, auxiliary_address
+
+  def cleanup_task_table(self):
+    """Clean up global state for a failed local scheduler.
+
+    Args:
+      scheduler: The db client ID of the scheduler that failed.
+    """
+    task_ids = self.redis.keys("{prefix}*".format(prefix=TASK_PREFIX))
+    for task_id in task_ids:
+      task_id = task_id[len(TASK_PREFIX):]
+      response = self.redis.execute_command("RAY.TASK_TABLE_GET", task_id)
+      if response[1] not in self.local_schedulers:
+        ok = self.redis.execute_command("RAY.TASK_TABLE_UPDATE",
+                                        task_id,
+                                        TASK_STATUS_LOST,
+                                        NIL_ID)
+        if ok != b"OK":
+          log.warn("Failed to update lost task for dead scheduler")
+
+  def scan_db_client_table(self):
+    """Scan the database client table for the current clients.
+
+    After subscribing to the client table, it's necessary to call this before
+    reading any messages from the subscription channel.     """
+    db_client_keys = self.redis.keys("{prefix}*".format(prefix=DB_CLIENT_PREFIX))
+    for db_client_key in db_client_keys:
+      db_client_id = db_client_key[len(DB_CLIENT_PREFIX):]
+      client_type = self.redis.hget(db_client_key, "client_type")
+      if client_type == LOCAL_SCHEDULER_CLIENT_TYPE:
+        self.local_schedulers.add(db_client_id)
+
+  def run(self):
+    """Run the monitor.
+
+    This function loops forever, checking for messages about dead database
+    clients and cleaning up state accordingly.
+    """
+    # Initialize the subscription channel.
+    success = self.subscribe()
+    if not success:
+      raise Exception("Unable to subscribe to local scheduler table")
+
+    # Scan the database table and clean up any state associated with clients
+    # not in the database table. NOTE: This must be called before reading any
+    # messages from the subscription channel. This ensures that we start in a
+    # consistent state, since we may have missed notifications that were sent
+    # before we connected to the subscription channel.
+    self.scan_db_client_table()
+    self.cleanup_task_table()
+    log.debug("Scanned schedulers: {}".format(self.local_schedulers))
+
+    # Read messages from the subscription channel.
+    while True:
+      time.sleep(LOCAL_SCHEDULER_HEARTBEAT_TIMEOUT_MILLISECONDS / 1000.)
+      client = self.read_message()
+      # There was no message to be read.
+      if client is None:
+        continue
+
+      db_client_id, client_type, auxiliary_address = client
+
+      # If the update was an insertion, record the client ID.
+      if auxiliary_address is not None:
+        self.local_schedulers.add(db_client_id)
+        log.debug("Added scheduler: {}".format(db_client_id))
+        continue
+
+      # If the update was a deletion, clean up global state.
+      if client_type == LOCAL_SCHEDULER_CLIENT_TYPE:
+        if db_client_id in self.local_schedulers:
+          log.debug("Removed scheduler: {}".format(db_client_id))
+          self.local_schedulers.remove(db_client_id)
+          self.cleanup_task_table()
+
+if __name__ == '__main__':
+  parser = argparse.ArgumentParser(description=("Parse Redis server for the "
+                                                "monitor to connect to."))
+  parser.add_argument("--redis-address", required=True, type=str,
+                      help="the address to use for Redis")
+  args = parser.parse_args()
+
+  redis_ip_address = get_ip_address(args.redis_address)
+  redis_port = get_port(args.redis_address)
+
+  monitor = Monitor(redis_ip_address, redis_port)
+  monitor.run()
