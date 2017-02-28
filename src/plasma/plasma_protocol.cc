@@ -2,27 +2,10 @@
 #include "format/plasma_generated.h"
 
 extern "C" {
-#include "plasma_protocol.h"
 
+#include "plasma_protocol.h"
 #include "io.h"
 
-#define FLATBUFFER_BUILDER_DEFAULT_SIZE 1024
-
-protocol_builder *make_protocol_builder(void) {
-  return NULL;
-}
-
-void free_protocol_builder(protocol_builder *builder) {}
-
-uint8_t *plasma_receive(int sock, int64_t message_type) {
-  int64_t type;
-  int64_t length;
-  uint8_t *reply_data;
-  read_message(sock, &type, &length, &reply_data);
-  CHECKM(type == message_type, "type = %" PRId64 ", message_type = %" PRId64,
-         type, message_type);
-  return reply_data;
-}
 }
 
 /**
@@ -63,24 +46,25 @@ to_flat(flatbuffers::FlatBufferBuilder &fbb,
   return fbb.CreateVector(results);
 }
 
-/**
- * Writes an array of object IDs into a vector and return it.
- *
- * @param object_ids Array of object IDs to be written.
- * @param num_objects The number of elements in the array.
- * @return The string vector containing the object IDs.
- */
-std::vector<std::string> object_ids_to_vector(ObjectID object_ids[],
-                                              int64_t num_objects) {
-  std::vector<std::string> result;
-  for (int64_t i = 0; i < num_objects; ++i) {
-    result.push_back(std::string((const char *) &object_ids[i].id[0],
-                                 sizeof(object_ids[i].id)));
-  }
-  return result;
+extern "C" {
+
+#define FLATBUFFER_BUILDER_DEFAULT_SIZE 1024
+
+protocol_builder *make_protocol_builder(void) {
+  return NULL;
 }
 
-extern "C" {
+void free_protocol_builder(protocol_builder *builder) {}
+
+uint8_t *plasma_receive(int sock, int64_t message_type) {
+  int64_t type;
+  int64_t length;
+  uint8_t *reply_data;
+  read_message(sock, &type, &length, &reply_data);
+  CHECKM(type == message_type, "type = %" PRId64 ", message_type = %" PRId64,
+         type, message_type);
+  return reply_data;
+}
 
 /* Create messages. */
 
