@@ -17,8 +17,10 @@ We describe both approaches below.
 ### Creating a customized Dockerfile
 
 We recommend that you read the official Docker documentation for [Building your own image](https://docs.docker.com/engine/getstarted/step_four/) ahead of starting this section.
+Your customized Dockerfile is a script of commands needed to set up your application,
+possibly packaged in a folder with related resources.
 
-This is an example template Dockerfile for a Ray application:
+A simple template Dockerfile for a Ray application looks like this:
 
 ```
 # Application Dockerfile template
@@ -27,9 +29,8 @@ RUN git clone <my-project-url>
 RUN <my-project-installation-script>
 ```
 
-Here `<my-project-url>` is the location of the source code repository for your application and
-`<my-project-installation-script> is a command that prepares the instance to run your
-application, for example by installing required dependencies dependencies.
+This file instructs Docker to load the image tagged `ray-project/deploy`, check out the git
+repository at `<my-project-url>`, and then run the script `<my-project-installation-script>`.
 
 Build the image by running something like:
 ```
