@@ -165,6 +165,7 @@ docker run \
     -d --shm-size=<shm-size> --net=host \
     <repository-uri> \
     /ray/scripts/start_ray.sh --head \
+        --object-manager-port=8076 \
         --redis-port=6379 \
         --num-workers=<num-workers>
 ```
@@ -181,6 +182,7 @@ eval $(aws ecr get-login --region <region>)
 docker run -d --shm-size=<shm-size> --net=host \
     <repository-uri> \
     /ray/scripts/start_ray.sh \
+        --object-manager-port=8076 \
         --redis-address=<redis-address> \
         --num-workers=<num-workers>
 
