@@ -41,7 +41,7 @@ to_flat(flatbuffers::FlatBufferBuilder &fbb,
         int64_t num_objects) {
   std::vector<flatbuffers::Offset<flatbuffers::String>> results;
   for (size_t i = 0; i < num_objects; i++) {
-    results[i] = to_flat(fbb, object_ids[i]);
+    results.push_back(to_flat(fbb, object_ids[i]));
   }
   return fbb.CreateVector(results);
 }
