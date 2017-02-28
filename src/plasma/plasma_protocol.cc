@@ -6,6 +6,7 @@ extern "C" {
 
 #include "io.h"
 
+
 #define FLATBUFFER_BUILDER_DEFAULT_SIZE 1024
 
 protocol_builder *make_protocol_builder(void) {
@@ -22,6 +23,8 @@ uint8_t *plasma_receive(int sock, int64_t message_type) {
   CHECKM(type == message_type, "type = %" PRId64 ", message_type = %" PRId64,
          type, message_type);
   return reply_data;
+}
+
 }
 
 /**
@@ -50,6 +53,14 @@ ObjectID from_flat(const flatbuffers::String *string) {
   return object_id;
 }
 
+flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>> to_flat(flatbuffers::FlatBufferBuilder& fbb, ObjectID object_ids[], int64_t num_objects) {
+  std::vector<flatbuffers::Offset<flatbuffers::String>> results;
+  for (size_t i = 0; i < num_objects; i++) {
+    results[i] = to_flat(fbb, object_ids[i]);
+  }
+  return fbb.CreateVector(results);
+}
+
 /**
  * Writes an array of object IDs into a vector and return it.
  *
@@ -66,6 +77,8 @@ std::vector<std::string> object_ids_to_vector(ObjectID object_ids[],
   }
   return result;
 }
+
+extern "C" {
 
 /* Create messages. */
 
@@ -252,7 +265,7 @@ int plasma_send_StatusRequest(int sock,
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
   auto message = CreatePlasmaStatusRequest(
       fbb,
-      fbb.CreateVectorOfStrings(object_ids_to_vector(object_ids, num_objects)));
+      to_flat(fbb, object_ids, num_objects));
   fbb.Finish(message);
   return write_message(sock, MessageType_PlasmaStatusRequest, fbb.GetSize(),
                        fbb.GetBufferPointer());
@@ -282,7 +295,7 @@ int plasma_send_StatusReply(int sock,
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
   auto message = CreatePlasmaStatusReply(
       fbb,
-      fbb.CreateVectorOfStrings(object_ids_to_vector(object_ids, num_objects)),
+      to_flat(fbb, object_ids, num_objects),
       fbb.CreateVector(object_status, num_objects));
   fbb.Finish(message);
   return write_message(sock, MessageType_PlasmaStatusReply, fbb.GetSize(),
@@ -416,7 +429,7 @@ int plasma_send_GetRequest(int sock,
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
   auto message = CreatePlasmaGetRequest(
       fbb,
-      fbb.CreateVectorOfStrings(object_ids_to_vector(object_ids, num_objects)),
+      to_flat(fbb, object_ids, num_objects),
       timeout_ms);
   fbb.Finish(message);
   return write_message(sock, MessageType_PlasmaGetRequest, fbb.GetSize(),
@@ -457,7 +470,7 @@ int plasma_send_GetReply(int sock,
   }
   auto message = CreatePlasmaGetReply(
       fbb,
-      fbb.CreateVectorOfStrings(object_ids_to_vector(object_ids, num_objects)),
+      to_flat(fbb, object_ids, num_objects),
       fbb.CreateVectorOfStructs(objects.data(), num_objects));
   fbb.Finish(message);
   return write_message(sock, MessageType_PlasmaGetReply, fbb.GetSize(),
@@ -493,7 +506,7 @@ int plasma_send_FetchRequest(int sock,
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
   auto message = CreatePlasmaFetchRequest(
       fbb,
-      fbb.CreateVectorOfStrings(object_ids_to_vector(object_ids, num_objects)));
+      to_flat(fbb, object_ids, num_objects));
   fbb.Finish(message);
   return write_message(sock, MessageType_PlasmaFetchRequest, fbb.GetSize(),
                        fbb.GetBufferPointer());

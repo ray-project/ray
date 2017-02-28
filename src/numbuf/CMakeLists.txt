@@ -47,7 +47,6 @@ if(HAS_PLASMA)
   include_directories("${CMAKE_CURRENT_LIST_DIR}/../plasma")
   include_directories("${CMAKE_CURRENT_LIST_DIR}/../common")
   include_directories("${CMAKE_CURRENT_LIST_DIR}/../common/thirdparty")
-  include_directories("${CMAKE_CURRENT_LIST_DIR}/../common/build/flatcc-prefix/src/flatcc/include")
   set(COMMON_EXTENSION ../common/lib/python/common_extension.c)
 endif()
 
