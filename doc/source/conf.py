@@ -16,17 +16,16 @@ import sys
 import os
 import shlex
 
-# These 4 lines added to enable ReadTheDocs to work.
+# These lines added to enable Sphinx to work without installing Ray.
 import mock
-MOCK_MODULES = ["numpy", "funcsigs", "colorama", "cloudpickle"]
+MOCK_MODULES = ["global_scheduler", "numbuf", "local_scheduler", "plasma"]
 for mod_name in MOCK_MODULES:
   sys.modules[mod_name] = mock.Mock()
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
-sys.path.insert(0, os.path.abspath("../lib/python/"))
-sys.path.insert(0, os.path.abspath("../scripts/"))
+sys.path.insert(0, os.path.abspath("../../python/"))
 
 # -- General configuration ------------------------------------------------
 
@@ -38,7 +37,6 @@ sys.path.insert(0, os.path.abspath("../scripts/"))
 # ones.
 extensions = [
     'sphinx.ext.autodoc',
-    'sphinx.ext.pngmath',
     'sphinx.ext.napoleon',
 ]
 
@@ -118,7 +116,9 @@ todo_include_todos = False
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
-html_theme = 'alabaster'
+import sphinx_rtd_theme
+html_theme = 'sphinx_rtd_theme'
+html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
@@ -163,7 +163,7 @@ html_static_path = ['_static']
 #html_use_smartypants = True
 
 # Custom sidebar templates, maps document names to template names.
-#html_sidebars = {}
+html_sidebars = {'**': ['index.html']}
 
 # Additional templates that should be rendered to pages, maps page names to
 # template names.

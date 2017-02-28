@@ -435,7 +435,7 @@ class Worker(object):
 
     Args:
       objectid (object_id.ObjectID): The object ID of the value to be put.
-      value (serializable object): The value to put in the object store.
+      value: The value to put in the object store.
     """
     # Serialize and put the object in the object store.
     try:
@@ -1455,7 +1455,7 @@ def put(value, worker=global_worker):
   """Store an object in the object store.
 
   Args:
-    value (serializable object): The Python object to be stored.
+    value: The Python object to be stored.
 
   Returns:
     The object ID assigned to this value.
@@ -1485,8 +1485,8 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
   corresponds to the rest of the object IDs (which may or may not be ready).
 
   Args:
-    object_ids (List[ObjectID]): List of object IDs for objects that may
-      or may not be ready. Note that these IDs must be unique.
+    object_ids (List[ObjectID]): List of object IDs for objects that may or may
+      not be ready. Note that these IDs must be unique.
     num_returns (int): The number of object IDs that should be returned.
     timeout (int): The maximum amount of time in milliseconds to wait before
       returning.

@@ -28,6 +28,14 @@ matrix:
       install: []
       script:
         - .travis/check-git-clang-format-output.sh
+        # Try generating Sphinx documentation. To do this, we need to setup some
+        # Python stuff.
+        - wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
+        - bash miniconda.sh -b -p $HOME/miniconda
+        - export PATH="$HOME/miniconda/bin:$PATH"
+        - cd doc
+        - pip install -r requirements-doc.txt
+        - sphinx-build -W -b html -d _build/doctrees source _build/html
     - os: linux
       dist: trusty
       env: VALGRIND=1 PYTHON=2.7
