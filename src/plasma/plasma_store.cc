@@ -576,6 +576,9 @@ void delete_object(PlasmaStoreState *plasma_state, ObjectID object_id) {
   free(entry);
   /* Inform all subscribers that the object has been deleted. */
   ObjectInfo notification;
+  /* We memset the struct here because we have to initialize the full struct.
+   * However, we do not use most of the fields. */
+  memset(&notification, 0, sizeof(notification));
   notification.obj_id = object_id;
   notification.is_deletion = true;
   push_notification(plasma_state, &notification);
