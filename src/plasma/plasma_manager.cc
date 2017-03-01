@@ -101,6 +101,8 @@ void process_data_request(event_loop *loop,
                           int64_t metadata_size,
                           ClientConnection *conn);
 
+void remove_manager_connection(ClientConnection *manager_conn);
+
 /** Entry of the hashtable of objects that are available locally. */
 typedef struct {
   /** Object id of this object. */
@@ -601,9 +603,10 @@ void send_queued_request(event_loop *loop,
   }
 
   PlasmaRequestBuffer *buf = conn->transfer_queue;
+  bool sigpipe = false;
   switch (buf->type) {
   case MessageType_PlasmaDataRequest:
-    warn_if_sigpipe(
+    sigpipe = warn_if_sigpipe(
         plasma_send_DataRequest(conn->fd, state->builder, buf->object_id,
                                 state->addr, state->port),
         conn->fd);
@@ -613,7 +616,7 @@ void send_queued_request(event_loop *loop,
     if (conn->cursor == 0) {
       /* If the cursor is zero, we haven't sent any requests for this object
        * yet, so send the initial data request. */
-      warn_if_sigpipe(
+      sigpipe = warn_if_sigpipe(
           plasma_send_DataReply(conn->fd, state->builder, buf->object_id,
                                 buf->data_size, buf->metadata_size),
           conn->fd);
@@ -622,6 +625,12 @@ void send_queued_request(event_loop *loop,
     break;
   default:
     LOG_FATAL("Buffered request has unknown type.");
+  }
+
+  /* If there was a SIGPIPE, stop sending to this manager. */
+  if (sigpipe) {
+    remove_manager_connection(conn);
+    return;
   }
 
   /* If we are done sending this request, remove it from the transfer queue. */
@@ -728,10 +737,11 @@ ClientConnection *get_manager_connection(PlasmaManagerState *state,
             utstring_len(ip_addr_port), manager_conn);
   if (!manager_conn) {
     /* If we don't already have a connection to this manager, start one. */
-    int fd = connect_inet_sock_retry(ip_addr, port, -1, -1);
-    /* TODO(swang): Handle the case when connection to this manager was
-     * unsuccessful. */
-    CHECK(fd >= 0);
+    int fd = connect_inet_sock(ip_addr, port);
+    if (fd < 0) {
+      return NULL;
+    }
+
     manager_conn = (ClientConnection *) malloc(sizeof(ClientConnection));
     manager_conn->fd = fd;
     manager_conn->manager_state = state;
@@ -748,6 +758,22 @@ ClientConnection *get_manager_connection(PlasmaManagerState *state,
   return manager_conn;
 }
 
+void remove_manager_connection(ClientConnection *manager_conn) {
+  PlasmaManagerState *state =
+      (PlasmaManagerState *) manager_conn->manager_state;
+  HASH_DELETE(manager_hh, state->manager_connections, manager_conn);
+  PlasmaRequestBuffer *head = manager_conn->transfer_queue;
+  while (head) {
+    LL_DELETE(manager_conn->transfer_queue, head);
+    free(head);
+    head = manager_conn->transfer_queue;
+  }
+  event_loop_remove_file(state->loop, manager_conn->fd);
+  close(manager_conn->fd);
+  free(manager_conn->ip_addr_port);
+  free(manager_conn);
+}
+
 void process_transfer_request(event_loop *loop,
                               ObjectID obj_id,
                               const char *addr,
@@ -755,6 +781,9 @@ void process_transfer_request(event_loop *loop,
                               ClientConnection *conn) {
   ClientConnection *manager_conn =
       get_manager_connection(conn->manager_state, addr, port);
+  if (manager_conn == NULL) {
+    return;
+  }
 
   /* If there is already a request in the transfer queue with the same object
    * ID, do not add the transfer request. */
@@ -868,14 +897,7 @@ void process_data_request(event_loop *loop,
 }
 
 void request_transfer_from(PlasmaManagerState *manager_state,
-                           ObjectID object_id) {
-  FetchRequest *fetch_req;
-  HASH_FIND(hh, manager_state->fetch_requests, &object_id, sizeof(object_id),
-            fetch_req);
-  /* TODO(rkn): This probably can be NULL so we should remove this check, and
-   * instead return in the case where there is no fetch request. */
-  CHECK(fetch_req != NULL);
-
+                           FetchRequest *fetch_req) {
   CHECK(fetch_req->manager_count > 0);
   CHECK(fetch_req->next_manager >= 0 &&
         fetch_req->next_manager < fetch_req->manager_count);
@@ -886,30 +908,33 @@ void request_transfer_from(PlasmaManagerState *manager_state,
 
   ClientConnection *manager_conn =
       get_manager_connection(manager_state, addr, port);
+  if (manager_conn != NULL) {
+    /* Check that this manager isn't trying to request an object from itself.
+     * TODO(rkn): Later this should not be fatal. */
+    uint8_t temp_addr[4];
+    sscanf(addr, "%hhu.%hhu.%hhu.%hhu", &temp_addr[0], &temp_addr[1],
+           &temp_addr[2], &temp_addr[3]);
+    if (memcmp(temp_addr, manager_state->addr, 4) == 0 &&
+        port == manager_state->port) {
+      LOG_FATAL(
+          "This manager is attempting to request a transfer from itself.");
+    }
 
-  /* Check that this manager isn't trying to request an object from itself.
-   * TODO(rkn): Later this should not be fatal. */
-  uint8_t temp_addr[4];
-  sscanf(addr, "%hhu.%hhu.%hhu.%hhu", &temp_addr[0], &temp_addr[1],
-         &temp_addr[2], &temp_addr[3]);
-  if (memcmp(temp_addr, manager_state->addr, 4) == 0 &&
-      port == manager_state->port) {
-    LOG_FATAL("This manager is attempting to request a transfer from itself.");
+    PlasmaRequestBuffer *transfer_request =
+        (PlasmaRequestBuffer *) malloc(sizeof(PlasmaRequestBuffer));
+    transfer_request->type = MessageType_PlasmaDataRequest;
+    transfer_request->object_id = fetch_req->object_id;
+
+    if (manager_conn->transfer_queue == NULL) {
+      /* If we already have a connection to this manager and its inactive,
+       * (re)register it with the event loop. */
+      event_loop_add_file(manager_state->loop, manager_conn->fd,
+                          EVENT_LOOP_WRITE, send_queued_request, manager_conn);
+    }
+    /* Add this transfer request to this connection's transfer queue. */
+    DL_APPEND(manager_conn->transfer_queue, transfer_request);
   }
 
-  PlasmaRequestBuffer *transfer_request =
-      (PlasmaRequestBuffer *) malloc(sizeof(PlasmaRequestBuffer));
-  transfer_request->type = MessageType_PlasmaDataRequest;
-  transfer_request->object_id = fetch_req->object_id;
-
-  if (manager_conn->transfer_queue == NULL) {
-    /* If we already have a connection to this manager and its inactive,
-     * (re)register it with the event loop. */
-    event_loop_add_file(manager_state->loop, manager_conn->fd, EVENT_LOOP_WRITE,
-                        send_queued_request, manager_conn);
-  }
-  /* Add this transfer request to this connection's transfer queue. */
-  DL_APPEND(manager_conn->transfer_queue, transfer_request);
   /* On the next attempt, try the next manager in manager_vector. */
   fetch_req->next_manager += 1;
   fetch_req->next_manager %= fetch_req->manager_count;
@@ -921,7 +946,10 @@ int fetch_timeout_handler(event_loop *loop, timer_id id, void *context) {
   FetchRequest *fetch_req, *tmp;
   HASH_ITER(hh, manager_state->fetch_requests, fetch_req, tmp) {
     if (fetch_req->manager_count > 0) {
-      request_transfer_from(manager_state, fetch_req->object_id);
+      request_transfer_from(manager_state, fetch_req);
+      if (fetch_req->next_manager == 0) {
+        /* TODO(swang): Update the locations. */
+      }
     }
   }
   return MANAGER_TIMEOUT;
@@ -980,7 +1008,7 @@ void request_transfer(ObjectID object_id,
   }
   /* Wait for the object data for the default number of retries, which timeout
    * after a default interval. */
-  request_transfer_from(manager_state, object_id);
+  request_transfer_from(manager_state, fetch_req);
 }
 
 /* This method is only called from the tests. */

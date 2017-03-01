@@ -471,7 +471,9 @@ void process_plasma_notification(event_loop *loop,
   /* Read the notification from Plasma. */
   uint8_t *notification = read_message_async(loop, client_sock);
   if (!notification) {
-    return;
+    /* The store has closed the socket. */
+    LocalSchedulerState_free(state);
+    LOG_FATAL("Lost connection to the plasma store");
   }
   auto object_info = flatbuffers::GetRoot<ObjectInfo>(notification);
   ObjectID object_id = from_flatbuf(object_info->object_id());
