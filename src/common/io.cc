@@ -348,7 +348,7 @@ disconnected:
   return 0;
 }
 
-void write_log_message(int fd, char *message) {
+void write_log_message(int fd, const char *message) {
   /* Account for the \0 at the end of the string. */
   write_message(fd, LOG_MESSAGE, strlen(message) + 1, (uint8_t *) message);
 }

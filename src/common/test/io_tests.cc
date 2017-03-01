@@ -15,8 +15,8 @@ TEST ipc_socket_test(void) {
   int socket_fd = bind_ipc_sock(socket_pathname, true);
   ASSERT(socket_fd >= 0);
 
-  char *test_string = "hello world";
-  char *test_bytes = "another string";
+  const char *test_string = "hello world";
+  const char *test_bytes = "another string";
   pid_t pid = fork();
   if (pid == 0) {
     close(socket_fd);
@@ -60,7 +60,7 @@ TEST long_ipc_socket_test(void) {
   for (int i = 0; i < 10000; i++) {
     utstring_printf(test_string, "hello world ");
   }
-  char *test_bytes = "another string";
+  const char *test_bytes = "another string";
   pid_t pid = fork();
   if (pid == 0) {
     close(socket_fd);
