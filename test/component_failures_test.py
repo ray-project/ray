@@ -159,14 +159,17 @@ class ComponentFailureTest(unittest.TestCase):
     object_ids += [f.remote(object_id, 2) for object_id in object_ids]
 
     # Kill all nodes except the head node as the tasks execute.
-    time.sleep(0.1)
+    time.sleep(0.5)
     local_schedulers = ray.services.all_processes[ray.services.PROCESS_TYPE_LOCAL_SCHEDULER]
     plasma_managers = ray.services.all_processes[ray.services.PROCESS_TYPE_PLASMA_MANAGER]
-    for local_scheduler, plasma_manager in zip(local_schedulers, plasma_managers):
-      local_scheduler.terminate()
-      local_scheduler.wait()
-      plasma_manager.terminate()
-      plasma_manager.wait()
+    plasma_stores = ray.services.all_processes[ray.services.PROCESS_TYPE_PLASMA_STORE]
+    for local_scheduler, plasma_manager, plasma_store in zip(local_schedulers, plasma_managers, plasma_stores)[1:]:
+      #local_scheduler.terminate()
+      #local_scheduler.wait()
+      #plasma_manager.terminate()
+      #plasma_manager.wait()
+      plasma_store.terminate()
+      plasma_store.wait()
       time.sleep(1)
 
     # Make sure that we can still get the objects after the executing tasks died.

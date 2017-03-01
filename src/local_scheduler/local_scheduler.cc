@@ -473,12 +473,10 @@ void process_plasma_notification(event_loop *loop,
       read_bytes(client_sock, (uint8_t *) &object_info, sizeof(object_info));
   if (error < 0) {
     /* The store has closed the socket. */
-    LOG_DEBUG(
-        "The plasma store has closed the object notification socket, or some "
-        "other error has occurred.");
     event_loop_remove_file(loop, client_sock);
     close(client_sock);
-    return;
+    LocalSchedulerState_free(state);
+    LOG_FATAL("Lost connection to the plasma store");
   }
 
   if (object_info.is_deletion) {

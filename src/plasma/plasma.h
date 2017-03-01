@@ -132,6 +132,6 @@ typedef struct {
  *        information.
  * @return Void.
  */
-void warn_if_sigpipe(int status, int client_sock);
+bool warn_if_sigpipe(int status, int client_sock);
 
 #endif /* PLASMA_H */
