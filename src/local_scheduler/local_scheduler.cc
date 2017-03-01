@@ -279,7 +279,7 @@ const char **parse_command(const char *command) {
 
   /* Allocate a NULL-terminated array for the tokens. */
   const char **command_args =
-    (const char **) malloc((num_args + 1) * sizeof(const char *));
+      (const char **) malloc((num_args + 1) * sizeof(const char *));
   command_args[num_args] = NULL;
 
   /* Fill in the token array. */
@@ -311,7 +311,7 @@ LocalSchedulerState *LocalSchedulerState_init(
     const char *start_worker_command,
     int num_workers) {
   LocalSchedulerState *state =
-    (LocalSchedulerState *) malloc(sizeof(LocalSchedulerState));
+      (LocalSchedulerState *) malloc(sizeof(LocalSchedulerState));
   /* Set the configuration struct for the local scheduler. */
   if (start_worker_command != NULL) {
     state->config.start_worker_command = parse_command(start_worker_command);
@@ -769,7 +769,7 @@ void new_client_connection(event_loop *loop,
   /* Create a struct for this worker. This will be freed when we free the local
    * scheduler state. */
   LocalSchedulerClient *worker =
-    (LocalSchedulerClient *) malloc(sizeof(LocalSchedulerClient));
+      (LocalSchedulerClient *) malloc(sizeof(LocalSchedulerClient));
   worker->sock = new_socket;
   worker->task_in_progress = NULL;
   worker->is_blocked = false;

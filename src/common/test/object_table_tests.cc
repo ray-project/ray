@@ -777,7 +777,8 @@ void subscribe_object_available_later_object_available_callback(
 TEST subscribe_object_available_later_test(void) {
   int64_t data_size = 0xF1F0;
   subscribe_object_present_context_t *myctx =
-      (subscribe_object_present_context_t *) malloc(sizeof(subscribe_object_present_context_t));
+      (subscribe_object_present_context_t *) malloc(
+          sizeof(subscribe_object_present_context_t));
   myctx->teststr = subscribe_object_available_later_context;
   myctx->data_size = data_size;
 

@@ -69,7 +69,8 @@ void EvictionState_free(EvictionState *s) {
 void add_object_to_lru_cache(EvictionState *eviction_state,
                              ObjectID object_id) {
   /* Add the object ID to the doubly-linked list. */
-  ReleasedObject *linked_list_entry = (ReleasedObject *) malloc(sizeof(ReleasedObject));
+  ReleasedObject *linked_list_entry =
+      (ReleasedObject *) malloc(sizeof(ReleasedObject));
   linked_list_entry->object_id = object_id;
   DL_APPEND(eviction_state->released_objects, linked_list_entry);
   /* Check that the object ID is not already in the hash table. */
@@ -78,7 +79,8 @@ void add_object_to_lru_cache(EvictionState *eviction_state,
             sizeof(object_id), hash_table_entry);
   CHECK(hash_table_entry == NULL);
   /* Add the object ID to the hash table. */
-  hash_table_entry = (released_object_entry *) malloc(sizeof(released_object_entry));
+  hash_table_entry =
+      (released_object_entry *) malloc(sizeof(released_object_entry));
   hash_table_entry->object_id = object_id;
   hash_table_entry->released_object = linked_list_entry;
   HASH_ADD(handle, eviction_state->released_object_table, object_id,

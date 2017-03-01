@@ -64,7 +64,8 @@ void assign_task_to_local_scheduler(GlobalSchedulerState *state,
 GlobalSchedulerState *GlobalSchedulerState_init(event_loop *loop,
                                                 const char *redis_addr,
                                                 int redis_port) {
-  GlobalSchedulerState *state = (GlobalSchedulerState *) malloc(sizeof(GlobalSchedulerState));
+  GlobalSchedulerState *state =
+      (GlobalSchedulerState *) malloc(sizeof(GlobalSchedulerState));
   /* Must initialize state to 0. Sets hashmap head(s) to NULL. */
   memset(state, 0, sizeof(GlobalSchedulerState));
   state->db =

@@ -114,7 +114,7 @@ Task *task_table_test_task;
 void task_table_test_fail_callback(UniqueID id,
                                    void *context,
                                    void *user_data) {
-  event_loop *loop = (event_loop*) user_data;
+  event_loop *loop = (event_loop *) user_data;
   event_loop_stop(loop);
 }
 

@@ -14,6 +14,6 @@ void db_client_table_subscribe(
   sub_data->subscribe_context = subscribe_context;
 
   init_table_callback(db_handle, NIL_ID, __func__, sub_data, retry,
-                      (table_done_callback) done_callback, redis_db_client_table_subscribe,
-                      user_context);
+                      (table_done_callback) done_callback,
+                      redis_db_client_table_subscribe, user_context);
 }

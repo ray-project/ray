@@ -96,8 +96,8 @@ LocalSchedulerMock *LocalSchedulerMock_init(int num_workers,
 
   /* Connect a local scheduler client. */
   mock->num_local_scheduler_conns = num_mock_workers;
-  mock->conns = (LocalSchedulerConnection **)
-      malloc(sizeof(LocalSchedulerConnection *) * num_mock_workers);
+  mock->conns = (LocalSchedulerConnection **) malloc(
+      sizeof(LocalSchedulerConnection *) * num_mock_workers);
   for (int i = 0; i < num_mock_workers; ++i) {
     mock->conns[i] = LocalSchedulerConnection_init(
         utstring_body(local_scheduler_socket_name), NIL_ACTOR_ID);
@@ -162,12 +162,13 @@ TEST object_reconstruction_test(void) {
    * simulate it having been created and evicted. */
   const char *client_id = "clientid";
   redisContext *context = redisConnect("127.0.0.1", 6379);
-  redisReply *reply = (redisReply *) redisCommand(context, "RAY.OBJECT_TABLE_ADD %b %ld %b %s",
-                                   return_id.id, sizeof(return_id.id), 1,
-                                   NIL_DIGEST, (size_t) DIGEST_SIZE, client_id);
+  redisReply *reply = (redisReply *) redisCommand(
+      context, "RAY.OBJECT_TABLE_ADD %b %ld %b %s", return_id.id,
+      sizeof(return_id.id), 1, NIL_DIGEST, (size_t) DIGEST_SIZE, client_id);
   freeReplyObject(reply);
-  reply = (redisReply *) redisCommand(context, "RAY.OBJECT_TABLE_REMOVE %b %s", return_id.id,
-                       sizeof(return_id.id), client_id);
+  reply = (redisReply *) redisCommand(context, "RAY.OBJECT_TABLE_REMOVE %b %s",
+                                      return_id.id, sizeof(return_id.id),
+                                      client_id);
   freeReplyObject(reply);
   redisFree(context);
 
@@ -251,8 +252,9 @@ TEST object_reconstruction_recursive_test(void) {
         context, "RAY.OBJECT_TABLE_ADD %b %ld %b %s", return_id.id,
         sizeof(return_id.id), 1, NIL_DIGEST, (size_t) DIGEST_SIZE, client_id);
     freeReplyObject(reply);
-    reply = (redisReply *) redisCommand(context, "RAY.OBJECT_TABLE_REMOVE %b %s", return_id.id,
-                         sizeof(return_id.id), client_id);
+    reply = (redisReply *) redisCommand(
+        context, "RAY.OBJECT_TABLE_REMOVE %b %s", return_id.id,
+        sizeof(return_id.id), client_id);
     freeReplyObject(reply);
   }
   redisFree(context);

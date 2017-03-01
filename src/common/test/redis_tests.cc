@@ -27,7 +27,8 @@ void async_redis_socket_test_callback(redisAsyncContext *ac,
                                       void *privdata) {
   async_redis_socket_test_callback_called = 1;
   redisContext *context = redisConnect("127.0.0.1", 6379);
-  redisReply *reply = (redisReply *) redisCommand(context, test_get_format, test_key);
+  redisReply *reply =
+      (redisReply *) redisCommand(context, test_get_format, test_key);
   redisFree(context);
   CHECK(reply != NULL);
   if (strcmp(reply->str, test_value)) {

@@ -128,12 +128,14 @@ UT_icd byte_icd = {sizeof(uint8_t), NULL, NULL, NULL};
 
 PlasmaStoreState *PlasmaStoreState_init(event_loop *loop,
                                         int64_t system_memory) {
-  PlasmaStoreState *state = (PlasmaStoreState *) malloc(sizeof(PlasmaStoreState));
+  PlasmaStoreState *state =
+      (PlasmaStoreState *) malloc(sizeof(PlasmaStoreState));
   state->loop = loop;
   state->object_get_requests = NULL;
   state->pending_notifications = NULL;
   /* Initialize the plasma store info. */
-  state->plasma_store_info = (PlasmaStoreInfo *) malloc(sizeof(PlasmaStoreInfo));
+  state->plasma_store_info =
+      (PlasmaStoreInfo *) malloc(sizeof(PlasmaStoreInfo));
   state->plasma_store_info->objects = NULL;
   state->plasma_store_info->memory_capacity = system_memory;
   /* Initialize the eviction state. */
@@ -433,7 +435,8 @@ void process_get_request(Client *client_context,
   get_req->timer = -1;
   get_req->num_object_ids = num_object_ids;
   get_req->object_ids = (ObjectID *) malloc(num_object_ids * sizeof(ObjectID));
-  get_req->objects = (PlasmaObject *) malloc(num_object_ids * sizeof(PlasmaObject));
+  get_req->objects =
+      (PlasmaObject *) malloc(num_object_ids * sizeof(PlasmaObject));
   for (int i = 0; i < num_object_ids; ++i) {
     get_req->object_ids[i] = object_ids[i];
   }
@@ -714,7 +717,8 @@ void process_message(event_loop *loop,
   } break;
   case MessageType_PlasmaGetRequest: {
     num_objects = plasma_read_GetRequest_num_objects(input);
-    ObjectID *object_ids_to_get = (ObjectID *) malloc(num_objects * sizeof(ObjectID));
+    ObjectID *object_ids_to_get =
+        (ObjectID *) malloc(num_objects * sizeof(ObjectID));
     int64_t timeout_ms;
     plasma_read_GetRequest(input, object_ids_to_get, &timeout_ms, num_objects);
     /* TODO(pcm): The array object_ids_to_get could be reused in
