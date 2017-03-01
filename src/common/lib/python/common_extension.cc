@@ -96,7 +96,7 @@ PyObject *PyTask_from_string(PyObject *self, PyObject *args) {
   }
   PyTask *result = PyObject_New(PyTask, &PyTaskType);
   result = (PyTask *) PyObject_Init((PyObject *) result, &PyTaskType);
-  result->spec = malloc(size);
+  result->spec = (task_spec *) malloc(size);
   memcpy(result->spec, data, size);
   /* TODO(pcm): Better error checking once we use flatbuffers. */
   if (size != task_spec_size(result->spec)) {

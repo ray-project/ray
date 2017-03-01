@@ -29,9 +29,9 @@ enum local_scheduler_message_type {
 };
 
 /* These are needed to define the UT_arrays. */
-UT_icd task_ptr_icd;
-UT_icd workers_icd;
-UT_icd pid_t_icd;
+extern UT_icd task_ptr_icd;
+extern UT_icd workers_icd;
+extern UT_icd pid_t_icd;
 
 /** This struct is used to register a new worker with the local scheduler.
  *  It is shipped as part of local_scheduler_connect */

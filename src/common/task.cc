@@ -2,7 +2,9 @@
 #include <stdio.h>
 #include <string.h>
 
+extern "C" {
 #include "sha256.h"
+}
 #include "utarray.h"
 
 #include "task.h"

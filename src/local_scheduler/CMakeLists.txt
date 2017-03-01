@@ -5,6 +5,8 @@ project(local_scheduler)
 # Recursively include common
 include(${CMAKE_CURRENT_LIST_DIR}/../common/cmake/Common.cmake)
 
+add_definitions(-fPIC)
+
 if(APPLE)
   SET(CMAKE_SHARED_LIBRARY_SUFFIX ".so")
 endif(APPLE)
@@ -22,8 +24,8 @@ include_directories("${CMAKE_CURRENT_LIST_DIR}/../")
 include_directories("${CMAKE_CURRENT_LIST_DIR}/../plasma/")
 
 add_library(local_scheduler_library SHARED
-  local_scheduler_extension.c
-  ../common/lib/python/common_extension.c)
+  local_scheduler_extension.cc
+  ../common/lib/python/common_extension.cc)
 
 get_filename_component(PYTHON_SHARED_LIBRARY ${PYTHON_LIBRARIES} NAME)
 if(APPLE)
@@ -31,14 +33,14 @@ if(APPLE)
                      POST_BUILD COMMAND ${CMAKE_INSTALL_NAME_TOOL} -change ${PYTHON_SHARED_LIBRARY} ${PYTHON_LIBRARIES} liblocal_scheduler_library.so)
 endif(APPLE)
 
-add_library(local_scheduler_client STATIC local_scheduler_client.c)
+add_library(local_scheduler_client STATIC local_scheduler_client.cc)
 
 target_link_libraries(local_scheduler_library local_scheduler_client ${COMMON_LIB} ${PYTHON_LIBRARIES})
 
-add_executable(local_scheduler local_scheduler.c local_scheduler_algorithm.c)
+add_executable(local_scheduler local_scheduler.cc local_scheduler_algorithm.cc)
 target_link_libraries(local_scheduler local_scheduler_client common ${HIREDIS_LIB} plasma_lib)
 
-add_executable(local_scheduler_tests test/local_scheduler_tests.c local_scheduler.c local_scheduler_algorithm.c )
+add_executable(local_scheduler_tests test/local_scheduler_tests.cc local_scheduler.cc local_scheduler_algorithm.cc)
 target_link_libraries(local_scheduler_tests local_scheduler_client common ${HIREDIS_LIB} plasma_lib)
 target_compile_options(local_scheduler_tests PUBLIC "-DLOCAL_SCHEDULER_TEST")
 

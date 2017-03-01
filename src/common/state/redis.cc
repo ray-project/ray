@@ -4,9 +4,13 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <unistd.h>
+
+extern "C" {
 /* Including hiredis here is necessary on Windows for typedefs used in ae.h. */
 #include "hiredis/hiredis.h"
 #include "hiredis/adapters/ae.h"
+}
+
 #include "utstring.h"
 
 #include "common.h"

@@ -240,7 +240,7 @@ void start_worker(LocalSchedulerState *state, ActorID actor_id) {
   for (; state->config.start_worker_command[num_args] != NULL; ++num_args) {
   }
   const char **start_actor_worker_command =
-      malloc((num_args + 3) * sizeof(const char *));
+      (const char **) malloc((num_args + 3) * sizeof(const char *));
   for (int i = 0; i < num_args; ++i) {
     start_actor_worker_command[i] = state->config.start_worker_command[i];
   }
@@ -278,7 +278,8 @@ const char **parse_command(const char *command) {
   free(command_copy);
 
   /* Allocate a NULL-terminated array for the tokens. */
-  const char **command_args = malloc((num_args + 1) * sizeof(const char *));
+  const char **command_args =
+      (const char **) malloc((num_args + 1) * sizeof(const char *));
   command_args[num_args] = NULL;
 
   /* Fill in the token array. */
@@ -309,7 +310,8 @@ LocalSchedulerState *LocalSchedulerState_init(
     const double static_resource_conf[],
     const char *start_worker_command,
     int num_workers) {
-  LocalSchedulerState *state = malloc(sizeof(LocalSchedulerState));
+  LocalSchedulerState *state =
+      (LocalSchedulerState *) malloc(sizeof(LocalSchedulerState));
   /* Set the configuration struct for the local scheduler. */
   if (start_worker_command != NULL) {
     state->config.start_worker_command = parse_command(start_worker_command);
@@ -342,7 +344,7 @@ LocalSchedulerState *LocalSchedulerState_init(
     utstring_printf(num_gpus, "%f", static_resource_conf[1]);
     if (plasma_manager_address != NULL) {
       num_args = 8;
-      db_connect_args = malloc(sizeof(char *) * num_args);
+      db_connect_args = (const char **) malloc(sizeof(char *) * num_args);
       db_connect_args[0] = "local_scheduler_socket_name";
       db_connect_args[1] = local_scheduler_socket_name;
       db_connect_args[2] = "num_cpus";
@@ -353,7 +355,7 @@ LocalSchedulerState *LocalSchedulerState_init(
       db_connect_args[7] = plasma_manager_address;
     } else {
       num_args = 6;
-      db_connect_args = malloc(sizeof(char *) * num_args);
+      db_connect_args = (const char **) malloc(sizeof(char *) * num_args);
       db_connect_args[0] = "local_scheduler_socket_name";
       db_connect_args[1] = local_scheduler_socket_name;
       db_connect_args[2] = "num_cpus";
@@ -463,7 +465,7 @@ void process_plasma_notification(event_loop *loop,
                                  int client_sock,
                                  void *context,
                                  int events) {
-  LocalSchedulerState *state = context;
+  LocalSchedulerState *state = (LocalSchedulerState *) context;
   /* Read the notification from Plasma. */
   ObjectInfo object_info;
   int error =
@@ -494,7 +496,7 @@ void reconstruct_task_update_callback(Task *task, void *user_context) {
   }
   /* Otherwise, the test-and-set succeeded, so resubmit the task for execution
    * to ensure that reconstruction will happen. */
-  LocalSchedulerState *state = user_context;
+  LocalSchedulerState *state = (LocalSchedulerState *) user_context;
   task_spec *spec = Task_task_spec(task);
   /* If the task is an actor task, then we currently do not reconstruct it.
    * TODO(rkn): Handle this better. */
@@ -517,7 +519,7 @@ void reconstruct_evicted_result_lookup_callback(ObjectID reconstruct_object_id,
    * put. */
   CHECKM(!IS_NIL_ID(task_id),
          "No task information found for object during reconstruction");
-  LocalSchedulerState *state = user_context;
+  LocalSchedulerState *state = (LocalSchedulerState *) user_context;
   /* If there are no other instances of the task running, it's safe for us to
    * claim responsibility for reconstruction. */
   task_table_test_and_update(state->db, task_id,
@@ -541,7 +543,7 @@ void reconstruct_failed_result_lookup_callback(ObjectID reconstruct_object_id,
         "entry yet)");
     return;
   }
-  LocalSchedulerState *state = user_context;
+  LocalSchedulerState *state = (LocalSchedulerState *) user_context;
   /* If the task failed to finish, it's safe for us to claim responsibility for
    * reconstruction. */
   task_table_test_and_update(state->db, task_id, TASK_STATUS_LOST,
@@ -557,7 +559,7 @@ void reconstruct_object_lookup_callback(ObjectID reconstruct_object_id,
   /* Only continue reconstruction if we find that the object doesn't exist on
    * any nodes. NOTE: This codepath is not responsible for checking if the
    * object table entry is up-to-date. */
-  LocalSchedulerState *state = user_context;
+  LocalSchedulerState *state = (LocalSchedulerState *) user_context;
   /* Look up the task that created the object in the result table. */
   if (manager_count == 0) {
     /* If the object was created and later evicted, we reconstruct the object
@@ -589,7 +591,7 @@ void process_message(event_loop *loop,
                      int client_sock,
                      void *context,
                      int events) {
-  LocalSchedulerClient *worker = context;
+  LocalSchedulerClient *worker = (LocalSchedulerClient *) context;
   LocalSchedulerState *state = worker->local_scheduler_state;
 
   int64_t type;
@@ -631,10 +633,10 @@ void process_message(event_loop *loop,
     int64_t value_length;
     memcpy(&value_length, &message[offset], sizeof(value_length));
     offset += sizeof(value_length);
-    uint8_t *key = malloc(key_length);
+    uint8_t *key = (uint8_t *) malloc(key_length);
     memcpy(key, &message[offset], key_length);
     offset += key_length;
-    uint8_t *value = malloc(value_length);
+    uint8_t *value = (uint8_t *) malloc(value_length);
     memcpy(value, &message[offset], value_length);
     offset += value_length;
     CHECK(offset == length);
@@ -762,11 +764,12 @@ void new_client_connection(event_loop *loop,
                            int listener_sock,
                            void *context,
                            int events) {
-  LocalSchedulerState *state = context;
+  LocalSchedulerState *state = (LocalSchedulerState *) context;
   int new_socket = accept_client(listener_sock);
   /* Create a struct for this worker. This will be freed when we free the local
    * scheduler state. */
-  LocalSchedulerClient *worker = malloc(sizeof(LocalSchedulerClient));
+  LocalSchedulerClient *worker =
+      (LocalSchedulerClient *) malloc(sizeof(LocalSchedulerClient));
   worker->sock = new_socket;
   worker->task_in_progress = NULL;
   worker->is_blocked = false;
@@ -820,7 +823,7 @@ void handle_task_scheduled_callback(Task *original_task, void *user_context) {
 void handle_actor_creation_callback(ActorInfo info, void *context) {
   ActorID actor_id = info.actor_id;
   DBClientID local_scheduler_id = info.local_scheduler_id;
-  LocalSchedulerState *state = context;
+  LocalSchedulerState *state = (LocalSchedulerState *) context;
   /* Make sure the actor entry is not already present in the actor map table.
    * TODO(rkn): We will need to remove this check to handle the case where the
    * corresponding publish is retried and the case in which a task that creates
@@ -831,7 +834,7 @@ void handle_actor_creation_callback(ActorInfo info, void *context) {
   /* Create a new entry and add it to the actor mapping table. TODO(rkn):
    * Currently this is never removed (except when the local scheduler state is
    * deleted). */
-  entry = malloc(sizeof(actor_map_entry));
+  entry = (actor_map_entry *) malloc(sizeof(actor_map_entry));
   entry->actor_id = actor_id;
   entry->local_scheduler_id = local_scheduler_id;
   HASH_ADD(hh, state->actor_mapping, actor_id, sizeof(entry->actor_id), entry);
@@ -846,7 +849,7 @@ void handle_actor_creation_callback(ActorInfo info, void *context) {
 }
 
 int heartbeat_handler(event_loop *loop, timer_id id, void *context) {
-  LocalSchedulerState *state = context;
+  LocalSchedulerState *state = (LocalSchedulerState *) context;
   SchedulingAlgorithmState *algorithm_state = state->algorithm_state;
   LocalSchedulerInfo info;
   /* Ask the scheduling algorithm to fill out the scheduler info struct. */

@@ -174,7 +174,7 @@ int64_t read_buffer(int fd, int64_t *type, UT_array *buffer);
 /**
  * Write a null-terminated string to a file descriptor.
  */
-void write_log_message(int fd, char *message);
+void write_log_message(int fd, const char *message);
 
 void write_formatted_log_message(int fd, const char *format, ...);
 

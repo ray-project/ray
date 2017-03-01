@@ -6,6 +6,8 @@ include(${CMAKE_CURRENT_LIST_DIR}/cmake/Common.cmake)
 
 add_subdirectory(redis_module)
 
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
+
 include_directories(thirdparty/ae)
 
 add_custom_target(
@@ -14,26 +16,26 @@ add_custom_target(
    WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/thirdparty/hiredis)
 
 add_library(common STATIC
-  event_loop.c
-  common.c
-  task.c
-  io.c
-  net.c
-  logging.c
-  state/redis.c
-  state/table.c
-  state/object_table.c
-  state/task_table.c
-  state/db_client_table.c
-  state/actor_notification_table.c
-  state/local_scheduler_table.c
+  event_loop.cc
+  common.cc
+  task.cc
+  io.cc
+  net.cc
+  logging.cc
+  state/redis.cc
+  state/table.cc
+  state/object_table.cc
+  state/task_table.cc
+  state/db_client_table.cc
+  state/actor_notification_table.cc
+  state/local_scheduler_table.cc
   thirdparty/ae/ae.c
   thirdparty/sha256.c)
 
 target_link_libraries(common "${CMAKE_CURRENT_LIST_DIR}/thirdparty/hiredis/libhiredis.a")
 
 function(define_test test_name library)
-  add_executable(${test_name} test/${test_name}.c ${ARGN})
+  add_executable(${test_name} test/${test_name}.cc ${ARGN})
   add_dependencies(${test_name} hiredis flatbuffers_ep)
   target_link_libraries(${test_name} common ${FLATBUFFERS_STATIC_LIB} ${library})
   target_compile_options(${test_name} PUBLIC "-DPLASMA_TEST -DLOCAL_SCHEDULER_TEST -DCOMMON_TEST -DRAY_COMMON_LOG_LEVEL=4 -DRAY_TIMEOUT=50")
