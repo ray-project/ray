@@ -689,9 +689,6 @@ void process_message(event_loop *loop,
   int64_t num_objects;
   PlasmaObject objects[1];
   memset(&objects[0], 0, sizeof(objects));
-  int error;
-
-  flatcc_builder_reset(state->builder);
 
   /* Process the different types of requests. */
   switch (type) {

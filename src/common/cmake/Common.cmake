@@ -1,21 +1,30 @@
 # Code for compiling flatbuffers
 
 include(ExternalProject)
+include(CMakeParseArguments)
 
-set(FLATCC_PREFIX "${CMAKE_BINARY_DIR}/src/common/flatcc-prefix/src/flatcc")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
-if (NOT TARGET flatcc)
-  ExternalProject_Add(flatcc
-    URL "https://github.com/dvidelabs/flatcc/archive/v0.4.0.tar.gz"
-    INSTALL_COMMAND ""
-    CMAKE_ARGS "-DCMAKE_C_FLAGS=-fPIC")
+set(FLATBUFFERS_VERSION "1.3.0")
+
+set(FLATBUFFERS_PREFIX "${CMAKE_BINARY_DIR}/flatbuffers_ep-prefix/src/flatbuffers_ep-install")
+if (NOT TARGET flatbuffers_ep)
+  ExternalProject_Add(flatbuffers_ep
+    URL "https://github.com/google/flatbuffers/archive/v${FLATBUFFERS_VERSION}.tar.gz"
+    CMAKE_ARGS
+      "-DCMAKE_CXX_FLAGS=-fPIC"
+      "-DCMAKE_INSTALL_PREFIX:PATH=${FLATBUFFERS_PREFIX}"
+      "-DFLATBUFFERS_BUILD_TESTS=OFF")
 endif()
 
-set(FLATBUFFERS_INCLUDE_DIR "${FLATCC_PREFIX}/include")
-set(FLATBUFFERS_STATIC_LIB "${FLATCC_PREFIX}/lib/libflatcc.a")
-set(FLATBUFFERS_COMPILER "${FLATCC_PREFIX}/bin/flatcc")
+set(FLATBUFFERS_INCLUDE_DIR "${FLATBUFFERS_PREFIX}/include")
+set(FLATBUFFERS_STATIC_LIB "${FLATBUFFERS_PREFIX}/lib/libflatbuffers.a")
+set(FLATBUFFERS_COMPILER "${FLATBUFFERS_PREFIX}/bin/flatc")
 
-include_directories("${FLATBUFFERS_INCLUDE_DIR}")
+message(STATUS "Flatbuffers include dir: ${FLATBUFFERS_INCLUDE_DIR}")
+message(STATUS "Flatbuffers static library: ${FLATBUFFERS_STATIC_LIB}")
+message(STATUS "Flatbuffers compiler: ${FLATBUFFERS_COMPILER}")
+include_directories(SYSTEM ${FLATBUFFERS_INCLUDE_DIR})
 
 # Custom CFLAGS
 

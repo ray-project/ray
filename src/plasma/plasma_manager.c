@@ -746,10 +746,6 @@ void process_transfer_request(event_loop *loop,
   }
 
   /* Allocate and append the request to the transfer queue. */
-  uint8_t *data;
-  int64_t data_size;
-  uint8_t *metadata;
-  int64_t metadata_size;
   /* TODO(swang): A non-blocking plasma_get, or else we could block here
    * forever if we don't end up sealing this object. */
   /* The corresponding call to plasma_release will happen in
