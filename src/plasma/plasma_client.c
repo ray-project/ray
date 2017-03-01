@@ -276,8 +276,6 @@ void plasma_get(PlasmaConnection *conn,
       /* Make a note to ourselves that the object is not present. */
       object_buffers[i].data_size = -1;
     } else {
-      /*  */
-      PlasmaObject object_data;
       PlasmaObject *object;
       /* NOTE: If the object is still unsealed, we will deadlock, since we must
        * have been the one who created it. */

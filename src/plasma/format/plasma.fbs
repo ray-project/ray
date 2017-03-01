@@ -93,7 +93,7 @@ table PlasmaSealRequest {
   // ID of the object to be sealed.
   object_id: string;
   // Hash of the object data.
-  digest: [ubyte];
+  digest: string;
 }
 
 table PlasmaSealReply {
@@ -213,7 +213,7 @@ table PlasmaFetchRequest {
   object_ids: [string];
 }
 
-table ObjectRequest {
+table ObjectRequestSpec {
   // ID of the object.
   object_id: string;
   // The type of the object. This specifies whether we
@@ -224,7 +224,7 @@ table ObjectRequest {
 
 table PlasmaWaitRequest {
   // Array of object requests whose status we are asking for.
-  object_requests: [ObjectRequest];
+  object_requests: [ObjectRequestSpec];
   // Number of objects expected to be returned, if available.
   num_ready_objects: int;
   // timeout
