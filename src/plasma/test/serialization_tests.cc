@@ -19,9 +19,9 @@ protocol_builder *g_B;
  * @return File descriptor of the file.
  */
 int create_temp_file(void) {
-  static char template[] = "/tmp/tempfileXXXXXX";
+  static char temp[] = "/tmp/tempfileXXXXXX";
   char file_name[32];
-  strncpy(file_name, template, 32);
+  strncpy(file_name, temp, 32);
   return mkstemp(file_name);
 }
 

@@ -1,54 +1,12 @@
 #ifndef PLASMA_PROTOCOL_H
 #define PLASMA_PROTOCOL_H
 
+#include "format/plasma_generated.h"
+
 #include "common.h"
 #include "plasma.h"
 
-/* This is temporary to facilitate the transition between flatcc and google
- * flatbuffers. */
-
-typedef int32_t MessageType_enum_t;
-#define MessageType_PlasmaCreateRequest ((MessageType_enum_t) 1L)
-#define MessageType_PlasmaCreateReply ((MessageType_enum_t) 2L)
-#define MessageType_PlasmaSealRequest ((MessageType_enum_t) 3L)
-#define MessageType_PlasmaSealReply ((MessageType_enum_t) 4L)
-#define MessageType_PlasmaGetRequest ((MessageType_enum_t) 5L)
-#define MessageType_PlasmaGetReply ((MessageType_enum_t) 6L)
-#define MessageType_PlasmaReleaseRequest ((MessageType_enum_t) 7L)
-#define MessageType_PlasmaReleaseReply ((MessageType_enum_t) 8L)
-#define MessageType_PlasmaDeleteRequest ((MessageType_enum_t) 9L)
-#define MessageType_PlasmaDeleteReply ((MessageType_enum_t) 10L)
-#define MessageType_PlasmaStatusRequest ((MessageType_enum_t) 11L)
-#define MessageType_PlasmaStatusReply ((MessageType_enum_t) 12L)
-#define MessageType_PlasmaContainsRequest ((MessageType_enum_t) 13L)
-#define MessageType_PlasmaContainsReply ((MessageType_enum_t) 14L)
-#define MessageType_PlasmaConnectRequest ((MessageType_enum_t) 15L)
-#define MessageType_PlasmaConnectReply ((MessageType_enum_t) 16L)
-#define MessageType_PlasmaEvictRequest ((MessageType_enum_t) 17L)
-#define MessageType_PlasmaEvictReply ((MessageType_enum_t) 18L)
-#define MessageType_PlasmaFetchRequest ((MessageType_enum_t) 19L)
-#define MessageType_PlasmaWaitRequest ((MessageType_enum_t) 20L)
-#define MessageType_PlasmaWaitReply ((MessageType_enum_t) 21L)
-#define MessageType_PlasmaSubscribeRequest ((MessageType_enum_t) 22L)
-#define MessageType_PlasmaUnsubscribeRequest ((MessageType_enum_t) 23L)
-#define MessageType_PlasmaDataRequest ((MessageType_enum_t) 24L)
-#define MessageType_PlasmaDataReply ((MessageType_enum_t) 25L)
-
-typedef int32_t PlasmaError_enum_t;
-#define PlasmaError_OK ((PlasmaError_enum_t) 0L)
-#define PlasmaError_ObjectExists ((PlasmaError_enum_t) 1L)
-#define PlasmaError_ObjectNonexistent ((PlasmaError_enum_t) 2L)
-#define PlasmaError_OutOfMemory ((PlasmaError_enum_t) 3L)
-
-typedef int32_t ObjectStatus_enum_t;
-#define ObjectStatus_Local ((ObjectStatus_enum_t) 1L)
-#define ObjectStatus_Remote ((ObjectStatus_enum_t) 2L)
-#define ObjectStatus_Nonexistent ((ObjectStatus_enum_t) 3L)
-#define ObjectStatus_Transfer ((ObjectStatus_enum_t) 4L)
-
 typedef void protocol_builder;
-
-/* End temporary. */
 
 /* An argument to a function that a return value gets written to. */
 #define OUT

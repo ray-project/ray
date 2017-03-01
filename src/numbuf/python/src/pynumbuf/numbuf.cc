@@ -15,13 +15,17 @@
 #include "memory.h"
 
 #ifdef HAS_PLASMA
-extern "C" {
 #include "plasma_client.h"
 #include "plasma_protocol.h"
-}
 
+extern "C" {
 PyObject* NumbufPlasmaOutOfMemoryError;
 PyObject* NumbufPlasmaObjectExistsError;
+}
+
+#include "common_extension.h"
+#include "plasma_extension.h"
+
 #endif
 
 using namespace arrow;
@@ -192,9 +196,6 @@ static PyObject* register_callbacks(PyObject* self, PyObject* args) {
 }
 
 #ifdef HAS_PLASMA
-
-#include "common_extension.h"
-#include "plasma_extension.h"
 
 /**
  * Release the object when its associated PyCapsule goes out of scope.

@@ -1,11 +1,8 @@
 #include "flatbuffers/flatbuffers.h"
 #include "format/plasma_generated.h"
 
-extern "C" {
-
 #include "plasma_protocol.h"
 #include "io.h"
-}
 
 /**
  * Convert an object ID to a flatbuffer string.
@@ -44,8 +41,6 @@ to_flat(flatbuffers::FlatBufferBuilder &fbb,
   }
   return fbb.CreateVector(results);
 }
-
-extern "C" {
 
 #define FLATBUFFER_BUILDER_DEFAULT_SIZE 1024
 
@@ -652,5 +647,3 @@ void plasma_read_DataReply(uint8_t *data,
   *object_size = (int64_t) message->object_size();
   *metadata_size = (int64_t) message->metadata_size();
 }
-
-} /* extern "C" */

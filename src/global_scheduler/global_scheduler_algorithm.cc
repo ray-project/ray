@@ -8,7 +8,7 @@
 
 GlobalSchedulerPolicyState *GlobalSchedulerPolicyState_init(void) {
   GlobalSchedulerPolicyState *policy_state =
-      malloc(sizeof(GlobalSchedulerPolicyState));
+      (GlobalSchedulerPolicyState *) malloc(sizeof(GlobalSchedulerPolicyState));
   policy_state->round_robin_index = 0;
 
   int num_weight_elem =
@@ -131,7 +131,7 @@ ObjectSizeEntry *create_object_size_hashmap(GlobalSchedulerState *state,
       HASH_FIND_STR(object_size_table, object_location, s);
       if (NULL == s) {
         /* This location not yet known, so add this object location. */
-        s = calloc(1, sizeof(ObjectSizeEntry));
+        s = (ObjectSizeEntry *) calloc(1, sizeof(ObjectSizeEntry));
         s->object_location = object_location;
         HASH_ADD_KEYPTR(hh, object_size_table, s->object_location,
                         strlen(s->object_location), s);

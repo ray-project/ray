@@ -81,7 +81,7 @@ void add_success_callback(TaskID task_id, void *context) {
   add_success = 1;
   CHECK(TaskID_equal(task_id, Task_task_id(add_lookup_task)));
 
-  DBHandle *db = context;
+  DBHandle *db = (DBHandle *) context;
   RetryInfo retry = {
       .num_retries = 5,
       .timeout = 1000,
@@ -200,7 +200,7 @@ TEST publish_timeout_test(void) {
 int64_t reconnect_db_callback(event_loop *loop,
                               int64_t timer_id,
                               void *context) {
-  DBHandle *db = context;
+  DBHandle *db = (DBHandle *) context;
   /* Reconnect to redis. */
   redisAsyncFree(db->sub_context);
   db->sub_context = redisAsyncConnect("127.0.0.1", 6379);
