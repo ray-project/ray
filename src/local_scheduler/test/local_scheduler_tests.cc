@@ -74,7 +74,7 @@ LocalSchedulerMock *LocalSchedulerMock_init(int num_workers,
   UT_string *worker_command;
   utstring_new(worker_command);
   utstring_printf(worker_command,
-                  "python ../../python/ray/workers/default_worker.py "
+                  "python ../../../python/ray/workers/default_worker.py "
                   "--node-ip-address=%s --object-store-name=%s "
                   "--object-store-manager-name=%s --local-scheduler-name=%s "
                   "--redis-address=%s:%d",

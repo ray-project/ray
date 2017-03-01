@@ -12,8 +12,8 @@ import threading
 import time
 import unittest
 
-import local_scheduler
-import plasma
+import ray.local_scheduler as local_scheduler
+import ray.plasma as plasma
 
 USE_VALGRIND = False
 ID_SIZE = 20

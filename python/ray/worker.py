@@ -25,9 +25,9 @@ import traceback
 import ray.pickling as pickling
 import ray.serialization as serialization
 import ray.services as services
-import numbuf
-import local_scheduler
-import plasma
+import ray.numbuf as numbuf
+import ray.local_scheduler as local_scheduler
+import ray.plasma as plasma
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1

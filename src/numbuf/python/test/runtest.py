@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import unittest
-import numbuf
+import ray.numbuf as numbuf
 import numpy as np
 from numpy.testing import assert_equal
 import os
