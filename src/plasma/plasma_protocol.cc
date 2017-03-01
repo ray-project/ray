@@ -5,7 +5,6 @@ extern "C" {
 
 #include "plasma_protocol.h"
 #include "io.h"
-
 }
 
 /**
