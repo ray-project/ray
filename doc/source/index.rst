@@ -6,7 +6,7 @@ Ray
 learning and reinforcement learning applications.*
 
 .. toctree::
-   :maxdepth: 0
+   :maxdepth: 1
    :caption: Installation
 
    install-on-ubuntu.md
@@ -15,7 +15,7 @@ learning and reinforcement learning applications.*
    installation-troubleshooting.md
 
 .. toctree::
-   :maxdepth: 0
+   :maxdepth: 1
    :caption: Examples
 
    example-hyperopt.md
@@ -24,7 +24,7 @@ learning and reinforcement learning applications.*
    using-ray-with-tensorflow.md
 
 .. toctree::
-   :maxdepth: 0
+   :maxdepth: 1
    :caption: Getting Started
 
    api.rst
@@ -43,3 +43,4 @@ learning and reinforcement learning applications.*
 
    using-ray-on-a-cluster.md
    using-ray-on-a-large-cluster.md
+   using-ray-and-docker-on-a-cluster.md
