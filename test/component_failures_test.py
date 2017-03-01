@@ -103,7 +103,7 @@ class ComponentFailureTest(unittest.TestCase):
   def testWorkerFailedMultinode(self):
     self._testWorkerFailed(4)
 
-  def testNodeFailed(self):
+  def testLocalSchedulerFailed(self):
     @ray.remote
     def f(x, j):
       time.sleep(0.2)
@@ -135,6 +135,42 @@ class ComponentFailureTest(unittest.TestCase):
     results = ray.get(object_ids)
     expected_results = 4 * list(range(num_workers_per_scheduler * num_local_schedulers))
     self.assertEqual(results, expected_results)
+
+    ray.worker.cleanup()
+
+  def testPlasmaManagerFailed(self):
+    @ray.remote
+    def f(x, j):
+      time.sleep(0.2)
+      return x
+
+    # Start with 4 workers and 4 cores.
+    num_local_schedulers = 4
+    num_workers_per_scheduler = 8
+    address_info = ray.worker._init(num_workers=num_local_schedulers * num_workers_per_scheduler,
+                                    num_local_schedulers=num_local_schedulers,
+                                    start_ray_local=True,
+                                    num_cpus=[num_workers_per_scheduler] * num_local_schedulers)
+
+    # Submit more tasks than there are workers so that all workers and cores
+    # are utilized.
+    object_ids = [f.remote(i, 0) for i in range(num_workers_per_scheduler * num_local_schedulers)]
+    object_ids += [f.remote(object_id, 1) for object_id in object_ids]
+    object_ids += [f.remote(object_id, 2) for object_id in object_ids]
+
+    # Kill all nodes except the head node as the tasks execute.
+    time.sleep(0.1)
+    local_schedulers = ray.services.all_processes[ray.services.PROCESS_TYPE_LOCAL_SCHEDULER]
+    plasma_managers = ray.services.all_processes[ray.services.PROCESS_TYPE_PLASMA_MANAGER]
+    for local_scheduler, plasma_manager in zip(local_schedulers, plasma_managers):
+      local_scheduler.terminate()
+      local_scheduler.wait()
+      plasma_manager.terminate()
+      plasma_manager.wait()
+      time.sleep(1)
+
+    # Make sure that we can still get the objects after the executing tasks died.
+    ray.get(object_ids)
 
     ray.worker.cleanup()
 
