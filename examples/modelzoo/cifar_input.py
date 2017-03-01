@@ -1,24 +1,11 @@
-# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-# ==============================================================================
 
-"""CIFAR dataset input module.
+"""CIFAR dataset input module, with the majority taken from 
+   tensorflow/models/resnet.
 """
 
 import tensorflow as tf
 
-def build_input(data_path, batch_size):
+def build_input(data_path, batch_size, train):
   """Build CIFAR image and labels.
 
   Args:
@@ -54,28 +41,39 @@ def build_input(data_path, batch_size):
   # Convert from [depth, height, width] to [height, width, depth].
   image = tf.cast(tf.transpose(depth_major, [1, 2, 0]), tf.float32)
 
-  image = tf.image.resize_image_with_crop_or_pad(
-      image, image_size+4, image_size+4)
-  image = tf.random_crop(image, [image_size, image_size, 3])
-  image = tf.image.random_flip_left_right(image)
-  # Brightness/saturation/constrast provides small gains .2%~.5% on cifar.
-  # image = tf.image.random_brightness(image, max_delta=63. / 255.)
-  # image = tf.image.random_saturation(image, lower=0.5, upper=1.5)
-  # image = tf.image.random_contrast(image, lower=0.2, upper=1.8)
-  image = tf.image.per_image_standardization(image)
-
-  example_queue = tf.RandomShuffleQueue(
-      capacity=50000,
-      min_after_dequeue=0,
+  if train:
+    image = tf.image.resize_image_with_crop_or_pad(
+	image, image_size+4, image_size+4)
+    image = tf.random_crop(image, [image_size, image_size, 3])
+    image = tf.image.random_flip_left_right(image)
+    # Brightness/saturation/constrast provides small gains .2%~.5% on cifar.
+    # image = tf.image.random_brightness(image, max_delta=63. / 255.)
+    # image = tf.image.random_saturation(image, lower=0.5, upper=1.5)
+    # image = tf.image.random_contrast(image, lower=0.2, upper=1.8)
+    image = tf.image.per_image_standardization(image)
+    example_queue = tf.RandomShuffleQueue(
+      capacity=16 * batch_size,
+      min_after_dequeue=8 * batch_size,
       dtypes=[tf.float32, tf.int32],
       shapes=[[image_size, image_size, depth], [1]])
-  num_threads = 16
+    num_threads = 16
+  else:
+    image = tf.image.resize_image_with_crop_or_pad(
+	image, image_size, image_size)
+    image = tf.image.per_image_standardization(image)
+    batch_size = 5000
+    example_queue = tf.FIFOQueue(
+        3 * 5000,
+        dtypes=[tf.float32, tf.int32],
+        shapes=[[image_size, image_size, depth], [1]])
+    num_threads = 1
+
+
   example_enqueue_op = example_queue.enqueue([image, label])
   tf.train.add_queue_runner(tf.train.queue_runner.QueueRunner(
       example_queue, [example_enqueue_op] * num_threads))
 
   # Read 'batch' labels + images from the example queue.
-  batch_size = 2000
   images, labels = example_queue.dequeue_many(batch_size)
   labels = tf.reshape(labels, [batch_size, 1])
   indices = tf.reshape(tf.range(0, batch_size, 1), [batch_size, 1])
@@ -90,6 +88,4 @@ def build_input(data_path, batch_size):
   assert labels.get_shape()[0] == batch_size
   assert labels.get_shape()[1] == num_classes
 
-  # Display the training images in the visualizer.
-  tf.summary.image('images', images)
   return images, labels

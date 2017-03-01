@@ -1,19 +1,4 @@
-# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-# ==============================================================================
-
-"""ResNet model.
+"""ResNet model with most of the code taken from tensorflow/models/resnet.
 
 Related papers:
 https://arxiv.org/pdf/1603.05027v2.pdf
@@ -26,25 +11,28 @@ import numpy as np
 import tensorflow as tf
 import ray
 import six
+import math
 
 HParams = namedtuple('HParams',
                      'batch_size, num_classes, min_lrn_rate, lrn_rate, '
                      'num_residual_units, use_bottleneck, weight_decay_rate, '
-                     'relu_leakiness, optimizer')
+                     'relu_leakiness, optimizer, gpus')
 
 
 class ResNet(object):
   """ResNet model."""
 
-  def __init__(self, hps, mode):
+  def __init__(self, images, labels, hps):
     """ResNet constructor.
 
     Args:
+      images: Image tensor.
+      Labels: Label tensor. 
       hps: Hyperparameters.
-      mode: One of 'train' and 'eval'.
     """
+    self._images = images
+    self.labels = labels
     self.hps = hps
-    self._extra_train_ops = []
 
   def build_graph(self):
     """Build a whole graph for the model."""
@@ -62,11 +50,8 @@ class ResNet(object):
   def _build_model(self):
     """Build the core model within the graph."""
 
-    x = tf.placeholder(tf.float32, [128, 32, 32, 3])
-    self.x = x
-    self.labels = tf.placeholder(tf.float32, [128, 10])
-    labels = self.labels
     with tf.variable_scope('init'):
+      x = self._images
       x = self._conv('init_conv', x, 3, 3, 16, self._stride_arr(1))
 
     strides = [1, 2, 2]
@@ -115,7 +100,7 @@ class ResNet(object):
     
     with tf.variable_scope('costs'):
       xent = tf.nn.softmax_cross_entropy_with_logits(
-          logits=logits, labels=labels)
+          logits=logits, labels=self.labels)
       self.cost = tf.reduce_mean(xent, name='xent')
       self.cost += self._decay()
 
@@ -123,8 +108,10 @@ class ResNet(object):
   def _build_train_op(self):
     """Build training specific ops for the graph."""
     rate = self.hps.lrn_rate
-    boundaries = [40000, 60000, 80000]
-    values = [rate, rate/10, rate/100, rate/1000]
+    gpus = self.hps.gpus
+    # Learning rate schedule is dependent on the number of gpus.
+    boundaries = [math.floor(20000 * i / math.sqrt(gpus)) for i in range(2, 5)]
+    values = [0.1, 0.01, 0.001, 0.0001]
     self.lrn_rate = tf.train.piecewise_constant(self.global_step, boundaries, values)
 
     if self.hps.optimizer == 'sgd':
@@ -136,7 +123,6 @@ class ResNet(object):
     self.variables = ray.experimental.TensorFlowVariables(min_ops)
     self.train_op = min_ops
 
-  # TODO(xpan): Consider batch_norm in contrib/layers/python/layers/layers.py
   def _batch_norm(self, name, x):
     """Batch normalization."""
     with tf.variable_scope(name):
@@ -227,7 +213,6 @@ class ResNet(object):
     for var in tf.trainable_variables():
       if var.op.name.find(r'DW') > 0:
         costs.append(tf.nn.l2_loss(var))
-        # tf.histogram_summary(var.op.name, var)
 
     return tf.multiply(self.hps.weight_decay_rate, tf.add_n(costs))
 
