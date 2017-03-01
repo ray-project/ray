@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 
+extern "C" {
 #ifdef _WIN32
 /* Quirks mean that Windows version needs to be included differently */
 #include <hiredis/hiredis.h>
@@ -10,6 +11,7 @@
 #else
 #include "ae/ae.h"
 #endif
+}
 
 /* Unique timer ID that will be generated when the timer is added to the
  * event loop. Will not be reused later on in another call

@@ -7,7 +7,7 @@ void actor_notification_table_subscribe(
     void *subscribe_context,
     RetryInfo *retry) {
   ActorNotificationTableSubscribeData *sub_data =
-      malloc(sizeof(ActorNotificationTableSubscribeData));
+      (ActorNotificationTableSubscribeData *) malloc(sizeof(ActorNotificationTableSubscribeData));
   sub_data->subscribe_callback = subscribe_callback;
   sub_data->subscribe_context = subscribe_context;
 

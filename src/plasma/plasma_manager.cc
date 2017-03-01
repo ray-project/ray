@@ -299,7 +299,7 @@ void add_wait_request_for_object(plasma_manager_state *manager_state,
    * new object_wait_requests struct for this object ID and add it to the hash
    * table. */
   if (object_wait_reqs == NULL) {
-    object_wait_reqs = malloc(sizeof(object_wait_requests));
+    object_wait_reqs = (object_wait_requests *) malloc(sizeof(object_wait_requests));
     object_wait_reqs->object_id = object_id;
     utarray_new(object_wait_reqs->wait_requests, &wait_request_icd);
     HASH_ADD(hh, *object_wait_requests_table_ptr, object_id,
@@ -423,7 +423,7 @@ void update_object_wait_requests(plasma_manager_state *manager_state,
 
 fetch_request *create_fetch_request(plasma_manager_state *manager_state,
                                     ObjectID object_id) {
-  fetch_request *fetch_req = malloc(sizeof(fetch_request));
+  fetch_request *fetch_req = (fetch_request *) malloc(sizeof(fetch_request));
   fetch_req->object_id = object_id;
   fetch_req->manager_count = 0;
   fetch_req->manager_vector = NULL;
@@ -450,7 +450,7 @@ plasma_manager_state *init_plasma_manager_state(const char *store_socket_name,
                                                 int manager_port,
                                                 const char *db_addr,
                                                 int db_port) {
-  plasma_manager_state *state = malloc(sizeof(plasma_manager_state));
+  plasma_manager_state *state = (plasma_manager_state *) malloc(sizeof(plasma_manager_state));
   state->loop = event_loop_create();
   state->plasma_conn =
       plasma_connect(store_socket_name, NULL, PLASMA_DEFAULT_RELEASE_DELAY);
@@ -465,7 +465,7 @@ plasma_manager_state *init_plasma_manager_state(const char *store_socket_name,
     utstring_printf(manager_address_str, "%s:%d", manager_addr, manager_port);
 
     int num_args = 6;
-    const char **db_connect_args = malloc(sizeof(char *) * num_args);
+    const char **db_connect_args = (const char **) malloc(sizeof(char *) * num_args);
     db_connect_args[0] = "store_socket_name";
     db_connect_args[1] = store_socket_name;
     db_connect_args[2] = "manager_socket_name";
@@ -705,7 +705,7 @@ ClientConnection *get_manager_connection(plasma_manager_state *state,
     /* TODO(swang): Handle the case when connection to this manager was
      * unsuccessful. */
     CHECK(fd >= 0);
-    manager_conn = malloc(sizeof(ClientConnection));
+    manager_conn = (ClientConnection *) malloc(sizeof(ClientConnection));
     manager_conn->fd = fd;
     manager_conn->manager_state = state;
     manager_conn->transfer_queue = NULL;
@@ -768,7 +768,7 @@ void process_transfer_request(event_loop *loop,
     counter += 1;
   } while (obj_buffer.data_size == -1);
   DCHECK(obj_buffer.metadata == obj_buffer.data + obj_buffer.data_size);
-  plasma_request_buffer *buf = malloc(sizeof(plasma_request_buffer));
+  plasma_request_buffer *buf = (plasma_request_buffer *) malloc(sizeof(plasma_request_buffer));
   buf->type = MessageType_PlasmaDataReply;
   buf->object_id = obj_id;
   /* We treat buf->data as a pointer to the concatenated data and metadata, so
@@ -799,7 +799,7 @@ void process_data_request(event_loop *loop,
                           int64_t data_size,
                           int64_t metadata_size,
                           ClientConnection *conn) {
-  plasma_request_buffer *buf = malloc(sizeof(plasma_request_buffer));
+  plasma_request_buffer *buf = (plasma_request_buffer *) malloc(sizeof(plasma_request_buffer));
   buf->object_id = object_id;
   buf->data_size = data_size;
   buf->metadata_size = metadata_size;
@@ -867,7 +867,7 @@ void request_transfer_from(plasma_manager_state *manager_state,
   }
 
   plasma_request_buffer *transfer_request =
-      malloc(sizeof(plasma_request_buffer));
+      (plasma_request_buffer *) malloc(sizeof(plasma_request_buffer));
   transfer_request->type = MessageType_PlasmaDataRequest;
   transfer_request->object_id = fetch_req->object_id;
 
@@ -885,7 +885,7 @@ void request_transfer_from(plasma_manager_state *manager_state,
 }
 
 int fetch_timeout_handler(event_loop *loop, timer_id id, void *context) {
-  plasma_manager_state *manager_state = context;
+  plasma_manager_state *manager_state = (plasma_manager_state *) context;
   /* Loop over the fetch requests and reissue the requests. */
   fetch_request *fetch_req, *tmp;
   HASH_ITER(hh, manager_state->fetch_requests, fetch_req, tmp) {
@@ -938,12 +938,12 @@ void request_transfer(ObjectID object_id,
   }
   /* Update the manager vector. */
   fetch_req->manager_count = manager_count;
-  fetch_req->manager_vector = malloc(manager_count * sizeof(char *));
+  fetch_req->manager_vector = (char **) malloc(manager_count * sizeof(char *));
   fetch_req->next_manager = 0;
   memset(fetch_req->manager_vector, 0, manager_count * sizeof(char *));
   for (int i = 0; i < manager_count; ++i) {
     int len = strlen(manager_vector[i]);
-    fetch_req->manager_vector[i] = malloc(len + 1);
+    fetch_req->manager_vector[i] = (char *) malloc(len + 1);
     strncpy(fetch_req->manager_vector[i], manager_vector[i], len);
     fetch_req->manager_vector[i][len] = '\0';
   }
@@ -1015,7 +1015,7 @@ void process_fetch_requests(ClientConnection *client_conn,
   int num_object_ids_to_request = 0;
   /* This is allocating more space than necessary, but we do not know the exact
    * number of object IDs to request notifications for yet. */
-  ObjectID *object_ids_to_request = malloc(num_object_ids * sizeof(ObjectID));
+  ObjectID *object_ids_to_request = (ObjectID *) malloc(num_object_ids * sizeof(ObjectID));
 
   for (int i = 0; i < num_object_ids; ++i) {
     ObjectID obj_id = object_ids[i];
@@ -1056,7 +1056,7 @@ void process_fetch_requests(ClientConnection *client_conn,
 }
 
 int wait_timeout_handler(event_loop *loop, timer_id id, void *context) {
-  wait_request *wait_req = context;
+  wait_request *wait_req = (wait_request *) context;
   return_from_wait(wait_req->client_conn->manager_state, wait_req);
   return EVENT_LOOP_TIMER_DONE;
 }
@@ -1070,13 +1070,13 @@ void process_wait_request(ClientConnection *client_conn,
   plasma_manager_state *manager_state = client_conn->manager_state;
 
   /* Create a wait request for this object. */
-  wait_request *wait_req = malloc(sizeof(wait_request));
+  wait_request *wait_req = (wait_request *) malloc(sizeof(wait_request));
   memset(wait_req, 0, sizeof(wait_request));
   wait_req->client_conn = client_conn;
   wait_req->timer = -1;
   wait_req->num_object_requests = num_object_requests;
   wait_req->object_requests =
-      malloc(num_object_requests * sizeof(ObjectRequest));
+      (ObjectRequest *) malloc(num_object_requests * sizeof(ObjectRequest));
   for (int i = 0; i < num_object_requests; ++i) {
     wait_req->object_requests[i].object_id = object_requests[i].object_id;
     wait_req->object_requests[i].type = object_requests[i].type;
@@ -1089,7 +1089,7 @@ void process_wait_request(ClientConnection *client_conn,
   /* This is allocating more space than necessary, but we do not know the exact
    * number of object IDs to request notifications for yet. */
   ObjectID *object_ids_to_request =
-      malloc(num_object_requests * sizeof(ObjectID));
+      (ObjectID *) malloc(num_object_requests * sizeof(ObjectID));
 
   for (int i = 0; i < num_object_requests; ++i) {
     ObjectID obj_id = object_requests[i].object_id;
@@ -1278,7 +1278,7 @@ void process_object_notification(event_loop *loop,
                                  int client_sock,
                                  void *context,
                                  int events) {
-  plasma_manager_state *state = context;
+  plasma_manager_state *state = (plasma_manager_state *) context;
   ObjectInfo object_info;
   /* Read the notification from Plasma. */
   int error =
@@ -1333,7 +1333,7 @@ void process_message(event_loop *loop,
   case MessageType_PlasmaFetchRequest: {
     LOG_DEBUG("Processing fetch remote");
     int64_t num_objects = plasma_read_FetchRequest_num_objects(data);
-    ObjectID *object_ids_to_fetch = malloc(num_objects * sizeof(ObjectID));
+    ObjectID *object_ids_to_fetch = (ObjectID *) malloc(num_objects * sizeof(ObjectID));
     /* TODO(pcm): process_fetch_requests allocates an array of num_objects
      * object_ids too so these should be shared in the future. */
     plasma_read_FetchRequest(data, object_ids_to_fetch, num_objects);
@@ -1344,7 +1344,7 @@ void process_message(event_loop *loop,
     LOG_DEBUG("Processing wait");
     int num_object_ids = plasma_read_WaitRequest_num_object_ids(data);
     ObjectRequest *object_requests =
-        malloc(num_object_ids * sizeof(ObjectRequest));
+        (ObjectRequest *) malloc(num_object_ids * sizeof(ObjectRequest));
     int64_t timeout_ms;
     int num_ready_objects;
     plasma_read_WaitRequest(data, &object_requests[0], num_object_ids,
@@ -1386,7 +1386,7 @@ ClientConnection *ClientConnection_init(event_loop *loop,
                                         int events) {
   int new_socket = accept_client(listener_sock);
   /* Create a new data connection context per client. */
-  ClientConnection *conn = malloc(sizeof(ClientConnection));
+  ClientConnection *conn = (ClientConnection *) malloc(sizeof(ClientConnection));
   conn->manager_state = (plasma_manager_state *) context;
   conn->cursor = 0;
   conn->transfer_queue = NULL;

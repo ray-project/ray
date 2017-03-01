@@ -7,7 +7,7 @@ void local_scheduler_table_subscribe(
     void *subscribe_context,
     RetryInfo *retry) {
   LocalSchedulerTableSubscribeData *sub_data =
-      malloc(sizeof(LocalSchedulerTableSubscribeData));
+      (LocalSchedulerTableSubscribeData *) malloc(sizeof(LocalSchedulerTableSubscribeData));
   sub_data->subscribe_callback = subscribe_callback;
   sub_data->subscribe_context = subscribe_context;
 
@@ -19,7 +19,7 @@ void local_scheduler_table_send_info(DBHandle *db_handle,
                                      LocalSchedulerInfo *info,
                                      RetryInfo *retry) {
   LocalSchedulerTableSendInfoData *data =
-      malloc(sizeof(LocalSchedulerTableSendInfoData));
+      (LocalSchedulerTableSendInfoData *) malloc(sizeof(LocalSchedulerTableSendInfoData));
   data->info = *info;
 
   init_table_callback(db_handle, NIL_ID, __func__, data, retry, NULL,

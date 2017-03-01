@@ -109,7 +109,7 @@ struct SchedulingAlgorithmState {
 
 SchedulingAlgorithmState *SchedulingAlgorithmState_init(void) {
   SchedulingAlgorithmState *algorithm_state =
-      malloc(sizeof(SchedulingAlgorithmState));
+      (SchedulingAlgorithmState *) malloc(sizeof(SchedulingAlgorithmState));
   /* Initialize an empty hash map for the cache of local available objects. */
   algorithm_state->local_objects = NULL;
   /* Initialize the hash table of objects being fetched. */
@@ -220,7 +220,7 @@ void create_actor(SchedulingAlgorithmState *algorithm_state,
                   ActorID actor_id,
                   LocalSchedulerClient *worker) {
   /* This will be freed when the actor is removed in remove_actor. */
-  LocalActorInfo *entry = malloc(sizeof(LocalActorInfo));
+  LocalActorInfo *entry = (LocalActorInfo *) malloc(sizeof(LocalActorInfo));
   entry->actor_id = actor_id;
   entry->task_counter = 0;
   /* Initialize the doubly-linked list to NULL. */
@@ -341,7 +341,7 @@ void add_task_to_actor_queue(LocalSchedulerState *state,
   CHECK(task_counter >= entry->task_counter);
 
   /* Create a new task queue entry. */
-  task_queue_entry *elt = malloc(sizeof(task_queue_entry));
+  task_queue_entry *elt = (task_queue_entry *) malloc(sizeof(task_queue_entry));
   elt->spec = (task_spec *) malloc(task_spec_size(spec));
   memcpy(elt->spec, spec, task_spec_size(spec));
   /* Add the task spec to the actor's task queue in a manner that preserves the
@@ -457,7 +457,7 @@ void fetch_missing_dependency(LocalSchedulerState *state,
      * hash table of locally available objects in handle_object_available when
      * the object becomes available locally. It will get freed if the object is
      * subsequently removed locally. */
-    entry = malloc(sizeof(object_entry));
+    entry = (object_entry *) malloc(sizeof(object_entry));
     entry->object_id = obj_id;
     utarray_new(entry->dependent_tasks, &task_queue_entry_icd);
     HASH_ADD(hh, algorithm_state->remote_objects, object_id,
@@ -529,7 +529,7 @@ bool can_run(SchedulingAlgorithmState *algorithm_state, task_spec *task) {
 /* TODO(rkn): This method will need to be changed to call reconstruct. */
 /* TODO(swang): This method is not covered by any valgrind tests. */
 int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
-  LocalSchedulerState *state = context;
+  LocalSchedulerState *state = (LocalSchedulerState *) context;
   /* Only try the fetches if we are connected to the object store manager. */
   if (!plasma_manager_is_connected(state->plasma_conn)) {
     LOG_INFO("Local scheduler is not connected to a object store manager");
@@ -538,7 +538,7 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
 
   /* Allocate a buffer to hold all the object IDs for active fetch requests. */
   int num_object_ids = HASH_COUNT(state->algorithm_state->remote_objects);
-  ObjectID *object_ids = malloc(num_object_ids * sizeof(ObjectID));
+  ObjectID *object_ids = (ObjectID *) malloc(num_object_ids * sizeof(ObjectID));
 
   /* Fill out the request with the object IDs for active fetches. */
   object_entry *fetch_request, *tmp;
@@ -646,7 +646,7 @@ task_queue_entry *queue_task(LocalSchedulerState *state,
                              bool from_global_scheduler) {
   /* Copy the spec and add it to the task queue. The allocated spec will be
    * freed when it is assigned to a worker. */
-  task_queue_entry *elt = malloc(sizeof(task_queue_entry));
+  task_queue_entry *elt = (task_queue_entry *) malloc(sizeof(task_queue_entry));
   elt->spec = (task_spec *) malloc(task_spec_size(spec));
   memcpy(elt->spec, spec, task_spec_size(spec));
   DL_APPEND((*task_queue), elt);

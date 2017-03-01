@@ -58,7 +58,7 @@ typedef struct {
 } plasma_mock;
 
 plasma_mock *init_plasma_mock(plasma_mock *remote_mock) {
-  plasma_mock *mock = malloc(sizeof(plasma_mock));
+  plasma_mock *mock = (plasma_mock *) malloc(sizeof(plasma_mock));
   /* Start listening on all the ports and initiate the local plasma manager. */
   mock->port = bind_inet_sock_retry(&mock->manager_remote_fd);
   mock->local_store = connect_ipc_sock_retry(plasma_store_socket_name, 5, 100);
@@ -121,7 +121,7 @@ void destroy_plasma_mock(plasma_mock *mock) {
 TEST request_transfer_test(void) {
   plasma_mock *local_mock = init_plasma_mock(NULL);
   plasma_mock *remote_mock = init_plasma_mock(local_mock);
-  const char **manager_vector = malloc(sizeof(char *));
+  const char **manager_vector = (const char **) malloc(sizeof(char *));
   UT_string *addr = NULL;
   utstring_new(addr);
   utstring_printf(addr, "127.0.0.1:%d", remote_mock->port);
@@ -164,7 +164,7 @@ TEST request_transfer_retry_test(void) {
   plasma_mock *local_mock = init_plasma_mock(NULL);
   plasma_mock *remote_mock1 = init_plasma_mock(local_mock);
   plasma_mock *remote_mock2 = init_plasma_mock(local_mock);
-  const char **manager_vector = malloc(sizeof(char *) * 2);
+  const char **manager_vector = (const char **) malloc(sizeof(char *) * 2);
   UT_string *addr0 = NULL;
   utstring_new(addr0);
   utstring_printf(addr0, "127.0.0.1:%d", remote_mock1->port);
@@ -217,20 +217,18 @@ TEST read_write_object_chunk_test(void) {
   const char *data = "Hello world!";
   const int data_size = strlen(data) + 1;
   const int metadata_size = 0;
-  plasma_request_buffer remote_buf = {
-      .type = MessageType_PlasmaDataReply,
-      .object_id = oid,
-      .data = (uint8_t *) data,
-      .data_size = data_size,
-      .metadata = (uint8_t *) data + data_size,
-      .metadata_size = metadata_size,
-  };
-  plasma_request_buffer local_buf = {
-      .object_id = oid,
-      .data_size = data_size,
-      .metadata_size = metadata_size,
-      .data = malloc(data_size),
-  };
+  plasma_request_buffer remote_buf;
+  remote_buf.type = MessageType_PlasmaDataReply;
+  remote_buf.object_id = oid;
+  remote_buf.data = (uint8_t *) data;
+  remote_buf.data_size = data_size;
+  remote_buf.metadata = (uint8_t *) data + data_size;
+  remote_buf.metadata_size = metadata_size;
+  plasma_request_buffer local_buf;
+  local_buf.object_id = oid;
+  local_buf.data_size = data_size;
+  local_buf.metadata_size = metadata_size;
+  local_buf.data = (uint8_t *) malloc(data_size);
   /* The test:
    * - Write the object data from the remote manager to the local.
    * - Read the object data on the local manager.

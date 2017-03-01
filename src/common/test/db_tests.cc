@@ -114,14 +114,14 @@ Task *task_table_test_task;
 void task_table_test_fail_callback(UniqueID id,
                                    void *context,
                                    void *user_data) {
-  event_loop *loop = user_data;
+  event_loop *loop = (event_loop*) user_data;
   event_loop_stop(loop);
 }
 
 int64_t task_table_delayed_add_task(event_loop *loop,
                                     int64_t id,
                                     void *context) {
-  DBHandle *db = context;
+  DBHandle *db = (DBHandle *) context;
   RetryInfo retry = {
       .num_retries = NUM_RETRIES,
       .timeout = TIMEOUT,
@@ -138,7 +138,7 @@ void task_table_test_callback(Task *callback_task, void *user_data) {
   CHECK(Task_size(callback_task) == Task_size(task_table_test_task));
   CHECK(memcmp(callback_task, task_table_test_task, Task_size(callback_task)) ==
         0);
-  event_loop *loop = user_data;
+  event_loop *loop = (event_loop *) user_data;
   event_loop_stop(loop);
 }
 

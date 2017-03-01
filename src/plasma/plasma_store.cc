@@ -31,14 +31,16 @@
 #include "io.h"
 #include "uthash.h"
 #include "utarray.h"
-#include "fling.h"
-#include "malloc.h"
 #include "plasma_protocol.h"
 #include "plasma_store.h"
 #include "plasma.h"
 
+extern "C" {
+#include "fling.h"
+#include "malloc.h"
 void *dlmalloc(size_t);
 void dlfree(void *);
+}
 
 /** Contains all information that is associated with a Plasma store client. */
 struct Client {
@@ -126,12 +128,12 @@ UT_icd byte_icd = {sizeof(uint8_t), NULL, NULL, NULL};
 
 PlasmaStoreState *PlasmaStoreState_init(event_loop *loop,
                                         int64_t system_memory) {
-  PlasmaStoreState *state = malloc(sizeof(PlasmaStoreState));
+  PlasmaStoreState *state = (PlasmaStoreState *) malloc(sizeof(PlasmaStoreState));
   state->loop = loop;
   state->object_get_requests = NULL;
   state->pending_notifications = NULL;
   /* Initialize the plasma store info. */
-  state->plasma_store_info = malloc(sizeof(PlasmaStoreInfo));
+  state->plasma_store_info = (PlasmaStoreInfo *) malloc(sizeof(PlasmaStoreInfo));
   state->plasma_store_info->objects = NULL;
   state->plasma_store_info->memory_capacity = system_memory;
   /* Initialize the eviction state. */
@@ -202,14 +204,14 @@ int create_object(Client *client_context,
     return PlasmaError_OutOfMemory;
   }
   /* Allocate space for the new object */
-  uint8_t *pointer = dlmalloc(data_size + metadata_size);
+  uint8_t *pointer = (uint8_t *) dlmalloc(data_size + metadata_size);
   int fd;
   int64_t map_size;
   ptrdiff_t offset;
   get_malloc_mapinfo(pointer, &fd, &map_size, &offset);
   assert(fd != -1);
 
-  entry = malloc(sizeof(object_table_entry));
+  entry = (object_table_entry *) malloc(sizeof(object_table_entry));
   memset(entry, 0, sizeof(object_table_entry));
   memcpy(&entry->object_id, &obj_id, sizeof(entry->object_id));
   entry->info.obj_id = obj_id;
@@ -250,7 +252,7 @@ void add_get_request_for_object(PlasmaStoreState *store_state,
    * new ObjectGetRequests struct for this object ID and add it to the hash
    * table. */
   if (object_get_reqs == NULL) {
-    object_get_reqs = malloc(sizeof(ObjectGetRequests));
+    object_get_reqs = (ObjectGetRequests *) malloc(sizeof(ObjectGetRequests));
     object_get_reqs->object_id = object_id;
     utarray_new(object_get_reqs->get_requests, &get_request_icd);
     HASH_ADD(hh, store_state->object_get_requests, object_id,
@@ -413,7 +415,7 @@ void update_object_get_requests(PlasmaStoreState *store_state,
 }
 
 int get_timeout_handler(event_loop *loop, timer_id id, void *context) {
-  GetRequest *get_req = context;
+  GetRequest *get_req = (GetRequest *) context;
   return_from_get(get_req->client->plasma_state, get_req);
   return EVENT_LOOP_TIMER_DONE;
 }
@@ -425,13 +427,13 @@ void process_get_request(Client *client_context,
   PlasmaStoreState *plasma_state = client_context->plasma_state;
 
   /* Create a get request for this object. */
-  GetRequest *get_req = malloc(sizeof(GetRequest));
+  GetRequest *get_req = (GetRequest *) malloc(sizeof(GetRequest));
   memset(get_req, 0, sizeof(GetRequest));
   get_req->client = client_context;
   get_req->timer = -1;
   get_req->num_object_ids = num_object_ids;
-  get_req->object_ids = malloc(num_object_ids * sizeof(ObjectID));
-  get_req->objects = malloc(num_object_ids * sizeof(PlasmaObject));
+  get_req->object_ids = (ObjectID *) malloc(num_object_ids * sizeof(ObjectID));
+  get_req->objects = (PlasmaObject *) malloc(num_object_ids * sizeof(PlasmaObject));
   for (int i = 0; i < num_object_ids; ++i) {
     get_req->object_ids[i] = object_ids[i];
   }
@@ -570,7 +572,9 @@ void delete_object(PlasmaStoreState *plasma_state, ObjectID object_id) {
   utarray_free(entry->clients);
   free(entry);
   /* Inform all subscribers that the object has been deleted. */
-  ObjectInfo notification = {.obj_id = object_id, .is_deletion = true};
+  ObjectInfo notification;
+  notification.obj_id = object_id;
+  notification.is_deletion = true;
   push_notification(plasma_state, &notification);
 }
 
@@ -602,7 +606,7 @@ void send_notifications(event_loop *loop,
                         int client_sock,
                         void *context,
                         int events) {
-  PlasmaStoreState *plasma_state = context;
+  PlasmaStoreState *plasma_state = (PlasmaStoreState *) context;
   NotificationQueue *queue;
   HASH_FIND_INT(plasma_state->pending_notifications, &client_sock, queue);
   CHECK(queue != NULL);
@@ -679,7 +683,7 @@ void process_message(event_loop *loop,
                      int client_sock,
                      void *context,
                      int events) {
-  Client *client_context = context;
+  Client *client_context = (Client *) context;
   PlasmaStoreState *state = client_context->plasma_state;
   int64_t type;
   read_buffer(client_sock, &type, state->input_buffer);
@@ -710,7 +714,7 @@ void process_message(event_loop *loop,
   } break;
   case MessageType_PlasmaGetRequest: {
     num_objects = plasma_read_GetRequest_num_objects(input);
-    ObjectID *object_ids_to_get = malloc(num_objects * sizeof(ObjectID));
+    ObjectID *object_ids_to_get = (ObjectID *) malloc(num_objects * sizeof(ObjectID));
     int64_t timeout_ms;
     plasma_read_GetRequest(input, object_ids_to_get, &timeout_ms, num_objects);
     /* TODO(pcm): The array object_ids_to_get could be reused in
@@ -791,7 +795,7 @@ void new_client_connection(event_loop *loop,
                            int listener_sock,
                            void *context,
                            int events) {
-  PlasmaStoreState *plasma_state = context;
+  PlasmaStoreState *plasma_state = (PlasmaStoreState *) context;
   int new_socket = accept_client(listener_sock);
   /* Create a new client object. This will also be used as the context to use
    * for events on this client's socket. TODO(rkn): free this somewhere. */

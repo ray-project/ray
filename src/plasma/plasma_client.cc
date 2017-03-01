@@ -25,15 +25,20 @@
 #include "plasma.h"
 #include "plasma_protocol.h"
 #include "plasma_client.h"
-#include "fling.h"
 #include "uthash.h"
 #include "utlist.h"
 #include "sha256.h"
+
+extern "C" {
+
+#include "fling.h"
 
 #define XXH_STATIC_LINKING_ONLY
 #include "xxhash.h"
 
 #define XXH64_DEFAULT_SEED 0
+
+}
 
 typedef struct {
   /** Key that uniquely identifies the  memory mapped file. In practice, we
@@ -141,12 +146,12 @@ uint8_t *lookup_or_mmap(PlasmaConnection *conn,
     return entry->pointer;
   } else {
     uint8_t *result =
-        mmap(NULL, map_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+        (uint8_t *) mmap(NULL, map_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (result == MAP_FAILED) {
       LOG_FATAL("mmap failed");
     }
     close(fd);
-    entry = malloc(sizeof(client_mmap_table_entry));
+    entry = (client_mmap_table_entry *) malloc(sizeof(client_mmap_table_entry));
     entry->key = store_fd_val;
     entry->pointer = result;
     entry->length = map_size;
@@ -177,7 +182,7 @@ void increment_object_count(PlasmaConnection *conn,
   if (object_entry == NULL) {
     /* Add this object ID to the hash table of object IDs in use. The
      * corresponding call to free happens in plasma_release. */
-    object_entry = malloc(sizeof(object_in_use_entry));
+    object_entry = (object_in_use_entry *) malloc(sizeof(object_in_use_entry));
     object_entry->object_id = object_id;
     object_entry->object = *object;
     object_entry->count = 0;
@@ -305,8 +310,8 @@ void plasma_get(PlasmaConnection *conn,
                                num_objects, timeout_ms) >= 0);
   uint8_t *reply_data =
       plasma_receive(conn->store_conn, MessageType_PlasmaGetReply);
-  ObjectID *received_obj_ids = malloc(num_objects * sizeof(ObjectID));
-  PlasmaObject *object_data = malloc(num_objects * sizeof(PlasmaObject));
+  ObjectID *received_obj_ids = (ObjectID *) malloc(num_objects * sizeof(ObjectID));
+  PlasmaObject *object_data = (PlasmaObject *) malloc(num_objects * sizeof(PlasmaObject));
   PlasmaObject *object;
   plasma_read_GetReply(reply_data, received_obj_ids, object_data, num_objects);
   free(reply_data);
@@ -413,7 +418,7 @@ void plasma_perform_release(PlasmaConnection *conn, ObjectID object_id) {
 void plasma_release(PlasmaConnection *conn, ObjectID obj_id) {
   /* Add the new object to the release history. The corresponding call to free
    * will occur in plasma_perform_release or in plasma_disconnect. */
-  pending_release *pending_release_entry = malloc(sizeof(pending_release));
+  pending_release *pending_release_entry = (pending_release *) malloc(sizeof(pending_release));
   pending_release_entry->object_id = obj_id;
   DL_APPEND(conn->release_history, pending_release_entry);
   conn->release_history_length += 1;
@@ -555,7 +560,7 @@ PlasmaConnection *plasma_connect(const char *store_socket_name,
                                  const char *manager_socket_name,
                                  int release_delay) {
   /* Initialize the store connection struct */
-  PlasmaConnection *result = malloc(sizeof(PlasmaConnection));
+  PlasmaConnection *result = (PlasmaConnection *) malloc(sizeof(PlasmaConnection));
   result->store_conn = connect_ipc_sock_retry(store_socket_name, -1, -1);
   if (manager_socket_name != NULL) {
     result->manager_conn = connect_ipc_sock_retry(manager_socket_name, -1, -1);

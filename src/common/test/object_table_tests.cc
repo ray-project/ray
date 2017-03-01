@@ -46,7 +46,7 @@ void new_object_lookup_callback(ObjectID object_id, void *user_context) {
       .timeout = 100,
       .fail_callback = new_object_fail_callback,
   };
-  DBHandle *db = user_context;
+  DBHandle *db = (DBHandle *) user_context;
   result_table_lookup(db, new_object_id, &retry, new_object_done_callback,
                       NULL);
 }
@@ -57,7 +57,7 @@ void new_object_task_callback(TaskID task_id, void *user_context) {
       .timeout = 100,
       .fail_callback = new_object_fail_callback,
   };
-  DBHandle *db = user_context;
+  DBHandle *db = (DBHandle *) user_context;
   result_table_add(db, new_object_id, new_object_task_id, &retry,
                    new_object_lookup_callback, (void *) db);
 }
@@ -246,7 +246,7 @@ TEST subscribe_timeout_test(void) {
 int64_t reconnect_context_callback(event_loop *loop,
                                    int64_t timer_id,
                                    void *context) {
-  DBHandle *db = context;
+  DBHandle *db = (DBHandle *) context;
   /* Reconnect to redis. This is not reconnecting the pub/sub channel. */
   redisAsyncFree(db->context);
   redisFree(db->sync_context);
@@ -304,7 +304,7 @@ void add_lookup_done_callback(ObjectID object_id,
 }
 
 void add_lookup_callback(ObjectID object_id, void *user_context) {
-  DBHandle *db = user_context;
+  DBHandle *db = (DBHandle *) user_context;
   RetryInfo retry = {
       .num_retries = 5,
       .timeout = 100,
@@ -352,7 +352,7 @@ void add_remove_lookup_done_callback(ObjectID object_id,
 }
 
 void add_remove_lookup_callback(ObjectID object_id, void *user_context) {
-  DBHandle *db = user_context;
+  DBHandle *db = (DBHandle *) user_context;
   RetryInfo retry = {
       .num_retries = 5,
       .timeout = 100,
@@ -363,7 +363,7 @@ void add_remove_lookup_callback(ObjectID object_id, void *user_context) {
 }
 
 void add_remove_callback(ObjectID object_id, void *user_context) {
-  DBHandle *db = user_context;
+  DBHandle *db = (DBHandle *) user_context;
   RetryInfo retry = {
       .num_retries = 5,
       .timeout = 100,
@@ -406,7 +406,7 @@ int subscribe_retry_succeeded = 0;
 int64_t reconnect_sub_context_callback(event_loop *loop,
                                        int64_t timer_id,
                                        void *context) {
-  DBHandle *db = context;
+  DBHandle *db = (DBHandle *) context;
   /* Reconnect to redis. This is not reconnecting the pub/sub channel. */
   redisAsyncFree(db->sub_context);
   redisAsyncFree(db->context);
@@ -777,7 +777,7 @@ void subscribe_object_available_later_object_available_callback(
 TEST subscribe_object_available_later_test(void) {
   int64_t data_size = 0xF1F0;
   subscribe_object_present_context_t *myctx =
-      malloc(sizeof(subscribe_object_present_context_t));
+      (subscribe_object_present_context_t *) malloc(sizeof(subscribe_object_present_context_t));
   myctx->teststr = subscribe_object_available_later_context;
   myctx->data_size = data_size;
 

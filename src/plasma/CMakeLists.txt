@@ -41,11 +41,11 @@ include_directories("${CMAKE_CURRENT_LIST_DIR}/")
 include_directories("${CMAKE_CURRENT_LIST_DIR}/../")
 
 add_library(plasma SHARED
-  plasma.c
-  plasma_extension.c
-  ../common/lib/python/common_extension.c
+  plasma.cc
+  plasma_extension.cc
+  ../common/lib/python/common_extension.cc
   plasma_protocol.cc
-  plasma_client.c
+  plasma_client.cc
   thirdparty/xxhash.c
   fling.c)
 
@@ -70,10 +70,10 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
 set_source_files_properties(thirdparty/dlmalloc.c PROPERTIES COMPILE_FLAGS -Wno-all)
 
 add_executable(plasma_store
-  plasma_store.c
-  plasma.c
+  plasma_store.cc
+  plasma.cc
   plasma_protocol.cc
-  eviction_policy.c
+  eviction_policy.cc
   fling.c
   malloc.c)
 
@@ -82,8 +82,8 @@ add_dependencies(plasma_store hiredis gen_plasma_fbs)
 target_link_libraries(plasma_store common ${FLATBUFFERS_STATIC_LIB})
 
 add_library(plasma_lib STATIC
-  plasma_client.c
-  plasma.c
+  plasma_client.cc
+  plasma.cc
   plasma_protocol.cc
   fling.c
   thirdparty/xxhash.c)
@@ -94,15 +94,15 @@ add_dependencies(plasma_lib gen_plasma_fbs)
 add_dependencies(plasma protocol_fbs)
 
 add_executable(plasma_manager
-  plasma_manager.c)
+  plasma_manager.cc)
 
 target_link_libraries(plasma_manager common plasma_lib ${FLATBUFFERS_STATIC_LIB})
 
-add_library(plasma_client SHARED plasma_client.c)
+add_library(plasma_client SHARED plasma_client.cc)
 target_link_libraries(plasma_client ${FLATBUFFERS_STATIC_LIB})
 
 target_link_libraries(plasma_client common plasma_lib ${FLATBUFFERS_STATIC_LIB})
 
 define_test(client_tests plasma_lib)
-define_test(manager_tests plasma_lib plasma_manager.c)
+define_test(manager_tests plasma_lib plasma_manager.cc)
 define_test(serialization_tests plasma_lib)

@@ -24,7 +24,7 @@ TableCallbackData *init_table_callback(DBHandle *db_handle,
   }
   CHECK(retry);
   /* Allocate and initialize callback data structure for object table */
-  TableCallbackData *callback_data = malloc(sizeof(TableCallbackData));
+  TableCallbackData *callback_data = (TableCallbackData *) malloc(sizeof(TableCallbackData));
   CHECKM(callback_data != NULL, "Memory allocation error!")
   callback_data->id = id;
   callback_data->label = label;

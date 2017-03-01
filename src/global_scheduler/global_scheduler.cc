@@ -64,7 +64,7 @@ void assign_task_to_local_scheduler(GlobalSchedulerState *state,
 GlobalSchedulerState *GlobalSchedulerState_init(event_loop *loop,
                                                 const char *redis_addr,
                                                 int redis_port) {
-  GlobalSchedulerState *state = malloc(sizeof(GlobalSchedulerState));
+  GlobalSchedulerState *state = (GlobalSchedulerState *) malloc(sizeof(GlobalSchedulerState));
   /* Must initialize state to 0. Sets hashmap head(s) to NULL. */
   memset(state, 0, sizeof(GlobalSchedulerState));
   state->db =
@@ -184,7 +184,7 @@ void process_new_db_client(DBClientID db_client_id,
     /* Add plasma_manager ip:port -> local_scheduler_db_client_id association to
      * state. */
     AuxAddressEntry *plasma_local_scheduler_entry =
-        calloc(1, sizeof(AuxAddressEntry));
+        (AuxAddressEntry *) calloc(1, sizeof(AuxAddressEntry));
     plasma_local_scheduler_entry->aux_address = strdup(aux_address);
     plasma_local_scheduler_entry->local_scheduler_db_client_id = db_client_id;
     HASH_ADD_KEYPTR(plasma_local_scheduler_hh,
@@ -319,7 +319,7 @@ void local_scheduler_table_handler(DBClientID client_id,
 }
 
 int task_cleanup_handler(event_loop *loop, timer_id id, void *context) {
-  GlobalSchedulerState *state = context;
+  GlobalSchedulerState *state = (GlobalSchedulerState *) context;
   /* Loop over the pending tasks and resubmit them. */
   int64_t num_pending_tasks = utarray_len(state->pending_tasks);
   for (int64_t i = num_pending_tasks - 1; i >= 0; --i) {

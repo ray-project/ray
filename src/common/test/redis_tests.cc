@@ -27,7 +27,7 @@ void async_redis_socket_test_callback(redisAsyncContext *ac,
                                       void *privdata) {
   async_redis_socket_test_callback_called = 1;
   redisContext *context = redisConnect("127.0.0.1", 6379);
-  redisReply *reply = redisCommand(context, test_get_format, test_key);
+  redisReply *reply = (redisReply *) redisCommand(context, test_get_format, test_key);
   redisFree(context);
   CHECK(reply != NULL);
   if (strcmp(reply->str, test_value)) {
@@ -55,10 +55,9 @@ TEST redis_socket_test(void) {
   close(socket_fd);
   unlink(socket_pathname);
 
-  redisReply *reply;
-  reply = redisCommand(context, cmd, 0, 0);
+  redisReply *reply = (redisReply *) redisCommand(context, cmd, 0, 0);
   freeReplyObject(reply);
-  reply = redisCommand(context, "GET %s", test_key);
+  reply = (redisReply *) redisCommand(context, "GET %s", test_key);
   ASSERT(reply != NULL);
   ASSERT_STR_EQ(reply->str, test_value);
   freeReplyObject(reply);
@@ -69,7 +68,7 @@ TEST redis_socket_test(void) {
 }
 
 void redis_read_callback(event_loop *loop, int fd, void *context, int events) {
-  DBHandle *db = context;
+  DBHandle *db = (DBHandle *) context;
   char *cmd = read_log_message(fd);
   redisAsyncCommand(db->context, async_redis_socket_test_callback, NULL, cmd);
   free(cmd);
@@ -137,7 +136,7 @@ int logging_test_callback_called = 0;
 void logging_test_callback(redisAsyncContext *ac, void *r, void *privdata) {
   logging_test_callback_called = 1;
   redisContext *context = redisConnect("127.0.0.1", 6379);
-  redisReply *reply = redisCommand(context, "KEYS %s", "log:*");
+  redisReply *reply = (redisReply *) redisCommand(context, "KEYS %s", "log:*");
   redisFree(context);
   CHECK(reply != NULL);
   CHECK(reply->elements > 0);
@@ -148,7 +147,7 @@ void logging_read_callback(event_loop *loop,
                            int fd,
                            void *context,
                            int events) {
-  DBHandle *conn = context;
+  DBHandle *conn = (DBHandle *) context;
   char *cmd = read_log_message(fd);
   redisAsyncCommand(conn->context, logging_test_callback, NULL, cmd,
                     (char *) conn->client.id, sizeof(conn->client.id));

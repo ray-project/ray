@@ -42,7 +42,7 @@ typedef void (*task_table_get_callback)(Task *task, void *user_context);
 void task_table_get_task(DBHandle *db,
                          TaskID task_id,
                          RetryInfo *retry,
-                         task_table_get_callback done_callback,
+                         task_table_get_callback get_callback,
                          void *user_context);
 
 /**

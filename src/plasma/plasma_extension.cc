@@ -79,7 +79,7 @@ PyObject *PyPlasma_create(PyObject *self, PyObject *args) {
   CHECK(error_code == PlasmaError_OK);
 
 #if PY_MAJOR_VERSION >= 3
-  return PyMemoryView_FromMemory((void *) data, (Py_ssize_t) size, PyBUF_WRITE);
+  return PyMemoryView_FromMemory((char *) data, (Py_ssize_t) size, PyBUF_WRITE);
 #else
   return PyBuffer_FromReadWriteMemory((void *) data, (Py_ssize_t) size);
 #endif
@@ -154,11 +154,11 @@ PyObject *PyPlasma_get(PyObject *self, PyObject *args) {
 #if PY_MAJOR_VERSION >= 3
       PyTuple_SetItem(
           t, 0, PyMemoryView_FromMemory(
-                    (void *) object_buffers[i].data,
+                    (char *) object_buffers[i].data,
                     (Py_ssize_t) object_buffers[i].data_size, PyBUF_READ));
       PyTuple_SetItem(
           t, 1, PyMemoryView_FromMemory(
-                    (void *) object_buffers[i].metadata,
+                    (char *) object_buffers[i].metadata,
                     (Py_ssize_t) object_buffers[i].metadata_size, PyBUF_READ));
 #else
       PyTuple_SetItem(
@@ -207,7 +207,7 @@ PyObject *PyPlasma_fetch(PyObject *self, PyObject *args) {
     return NULL;
   }
   Py_ssize_t n = PyList_Size(object_id_list);
-  ObjectID *object_ids = malloc(sizeof(ObjectID) * n);
+  ObjectID *object_ids = (ObjectID *) malloc(sizeof(ObjectID) * n);
   for (int i = 0; i < n; ++i) {
     PyStringToUniqueID(PyList_GetItem(object_id_list, i), &object_ids[i]);
   }
@@ -249,7 +249,7 @@ PyObject *PyPlasma_wait(PyObject *self, PyObject *args) {
     return NULL;
   }
 
-  ObjectRequest *object_requests = malloc(sizeof(ObjectRequest) * n);
+  ObjectRequest *object_requests = (ObjectRequest *) malloc(sizeof(ObjectRequest) * n);
   for (int i = 0; i < n; ++i) {
     CHECK(PyStringToUniqueID(PyList_GetItem(object_id_list, i),
                              &object_requests[i].object_id) == 1);

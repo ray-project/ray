@@ -9,7 +9,7 @@ void object_table_lookup(DBHandle *db_handle,
                          void *user_context) {
   CHECK(db_handle != NULL);
   init_table_callback(db_handle, object_id, __func__, NULL, retry,
-                      done_callback, redis_object_table_lookup, user_context);
+                      (table_done_callback) done_callback, redis_object_table_lookup, user_context);
 }
 
 void object_table_add(DBHandle *db_handle,
@@ -21,11 +21,11 @@ void object_table_add(DBHandle *db_handle,
                       void *user_context) {
   CHECK(db_handle != NULL);
 
-  ObjectTableAddData *info = malloc(sizeof(ObjectTableAddData));
+  ObjectTableAddData *info = (ObjectTableAddData *) malloc(sizeof(ObjectTableAddData));
   info->object_size = object_size;
   memcpy(&info->digest[0], digest, DIGEST_SIZE);
   init_table_callback(db_handle, object_id, __func__, info, retry,
-                      done_callback, redis_object_table_add, user_context);
+                      (table_done_callback) done_callback, redis_object_table_add, user_context);
 }
 
 void object_table_remove(DBHandle *db_handle,
@@ -38,11 +38,11 @@ void object_table_remove(DBHandle *db_handle,
   /* Copy the client ID, if one was provided. */
   DBClientID *client_id_copy = NULL;
   if (client_id != NULL) {
-    client_id_copy = malloc(sizeof(DBClientID));
+    client_id_copy = (DBClientID *) malloc(sizeof(DBClientID));
     *client_id_copy = *client_id;
   }
   init_table_callback(db_handle, object_id, __func__, client_id_copy, retry,
-                      done_callback, redis_object_table_remove, user_context);
+                      (table_done_callback) done_callback, redis_object_table_remove, user_context);
 }
 
 void object_table_subscribe_to_notifications(
@@ -54,13 +54,13 @@ void object_table_subscribe_to_notifications(
     object_table_lookup_done_callback done_callback,
     void *user_context) {
   CHECK(db_handle != NULL);
-  ObjectTableSubscribeData *sub_data = malloc(sizeof(ObjectTableSubscribeData));
+  ObjectTableSubscribeData *sub_data = (ObjectTableSubscribeData *) malloc(sizeof(ObjectTableSubscribeData));
   sub_data->object_available_callback = object_available_callback;
   sub_data->subscribe_context = subscribe_context;
   sub_data->subscribe_all = subscribe_all;
 
   init_table_callback(
-      db_handle, NIL_OBJECT_ID, __func__, sub_data, retry, done_callback,
+      db_handle, NIL_OBJECT_ID, __func__, sub_data, retry, (table_done_callback) done_callback,
       redis_object_table_subscribe_to_notifications, user_context);
 }
 
@@ -71,7 +71,7 @@ void object_table_request_notifications(DBHandle *db_handle,
   CHECK(db_handle != NULL);
   CHECK(num_object_ids > 0);
   ObjectTableRequestNotificationsData *data =
-      malloc(sizeof(ObjectTableRequestNotificationsData) +
+      (ObjectTableRequestNotificationsData *) malloc(sizeof(ObjectTableRequestNotificationsData) +
              num_object_ids * sizeof(ObjectID));
   data->num_object_ids = num_object_ids;
   memcpy(data->object_ids, object_ids, num_object_ids * sizeof(ObjectID));
@@ -86,12 +86,12 @@ void object_info_subscribe(DBHandle *db_handle,
                            RetryInfo *retry,
                            object_info_done_callback done_callback,
                            void *user_context) {
-  ObjectInfoSubscribeData *sub_data = malloc(sizeof(ObjectInfoSubscribeData));
+  ObjectInfoSubscribeData *sub_data = (ObjectInfoSubscribeData *) malloc(sizeof(ObjectInfoSubscribeData));
   sub_data->subscribe_callback = subscribe_callback;
   sub_data->subscribe_context = subscribe_context;
 
   init_table_callback(db_handle, NIL_OBJECT_ID, __func__, sub_data, retry,
-                      done_callback, redis_object_info_subscribe, user_context);
+                      (table_done_callback) done_callback, redis_object_info_subscribe, user_context);
 }
 
 void result_table_add(DBHandle *db_handle,
@@ -100,10 +100,10 @@ void result_table_add(DBHandle *db_handle,
                       RetryInfo *retry,
                       result_table_done_callback done_callback,
                       void *user_context) {
-  TaskID *task_id_copy = malloc(sizeof(TaskID));
+  TaskID *task_id_copy = (TaskID *) malloc(sizeof(TaskID));
   memcpy(task_id_copy, task_id_arg.id, sizeof(*task_id_copy));
   init_table_callback(db_handle, object_id, __func__, task_id_copy, retry,
-                      done_callback, redis_result_table_add, user_context);
+                      (table_done_callback) done_callback, redis_result_table_add, user_context);
 }
 
 void result_table_lookup(DBHandle *db_handle,
@@ -112,5 +112,5 @@ void result_table_lookup(DBHandle *db_handle,
                          result_table_lookup_callback done_callback,
                          void *user_context) {
   init_table_callback(db_handle, object_id, __func__, NULL, retry,
-                      done_callback, redis_result_table_lookup, user_context);
+                      (table_done_callback) done_callback, redis_result_table_lookup, user_context);
 }

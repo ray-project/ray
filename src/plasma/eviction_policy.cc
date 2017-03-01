@@ -4,14 +4,14 @@
 
 /** An element representing a released object in a doubly-linked list. This is
  *  used to implement an LRU cache. */
-typedef struct released_object {
+typedef struct ReleasedObject {
   /** The object_id of the released object. */
   ObjectID object_id;
   /** Needed for the doubly-linked list macros. */
-  struct released_object *prev;
+  struct ReleasedObject *prev;
   /** Needed for the doubly-linked list macros. */
-  struct released_object *next;
-} released_object;
+  struct ReleasedObject *next;
+} ReleasedObject;
 
 /** This type is used to define a hash table mapping the object ID of a released
  *  object to its location in the doubly-linked list of released objects. */
@@ -20,7 +20,7 @@ typedef struct {
   ObjectID object_id;
   /** A pointer to the corresponding entry for this object in the doubly-linked
    *  list of released objects. */
-  released_object *released_object;
+  ReleasedObject *released_object;
   /** Handle for the uthash table. */
   UT_hash_handle handle;
 } released_object_entry;
@@ -31,7 +31,7 @@ struct EvictionState {
   int64_t memory_used;
   /** A doubly-linked list of the released objects in order from least recently
    *  released to most recently released. */
-  released_object *released_objects;
+  ReleasedObject *released_objects;
   /** A hash table mapping the object ID of a released object to its location in
    *  the doubly linked list of released objects. */
   released_object_entry *released_object_table;
@@ -42,7 +42,7 @@ struct EvictionState {
 UT_icd released_objects_entry_icd = {sizeof(ObjectID), NULL, NULL, NULL};
 
 EvictionState *EvictionState_init(void) {
-  EvictionState *state = malloc(sizeof(EvictionState));
+  EvictionState *state = (EvictionState *) malloc(sizeof(EvictionState));
   state->memory_used = 0;
   state->released_objects = NULL;
   state->released_object_table = NULL;
@@ -51,7 +51,7 @@ EvictionState *EvictionState_init(void) {
 
 void EvictionState_free(EvictionState *s) {
   /* Delete each element in the doubly-linked list. */
-  released_object *element, *temp;
+  ReleasedObject *element, *temp;
   DL_FOREACH_SAFE(s->released_objects, element, temp) {
     DL_DELETE(s->released_objects, element);
     free(element);
@@ -69,7 +69,7 @@ void EvictionState_free(EvictionState *s) {
 void add_object_to_lru_cache(EvictionState *eviction_state,
                              ObjectID object_id) {
   /* Add the object ID to the doubly-linked list. */
-  released_object *linked_list_entry = malloc(sizeof(released_object));
+  ReleasedObject *linked_list_entry = (ReleasedObject *) malloc(sizeof(ReleasedObject));
   linked_list_entry->object_id = object_id;
   DL_APPEND(eviction_state->released_objects, linked_list_entry);
   /* Check that the object ID is not already in the hash table. */
@@ -78,7 +78,7 @@ void add_object_to_lru_cache(EvictionState *eviction_state,
             sizeof(object_id), hash_table_entry);
   CHECK(hash_table_entry == NULL);
   /* Add the object ID to the hash table. */
-  hash_table_entry = malloc(sizeof(released_object_entry));
+  hash_table_entry = (released_object_entry *) malloc(sizeof(released_object_entry));
   hash_table_entry->object_id = object_id;
   hash_table_entry->released_object = linked_list_entry;
   HASH_ADD(handle, eviction_state->released_object_table, object_id,
@@ -114,7 +114,7 @@ int64_t EvictionState_choose_objects_to_evict(
   int64_t num_bytes = 0;
   /* Figure out how many objects need to be evicted in order to recover a
    * sufficient number of bytes. */
-  released_object *element, *temp;
+  ReleasedObject *element, *temp;
   DL_FOREACH_SAFE(eviction_state->released_objects, element, temp) {
     if (num_bytes >= num_bytes_required) {
       break;
