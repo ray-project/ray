@@ -106,7 +106,7 @@ class Monitor(object):
     Args:
       scheduler: The db client ID of the scheduler that failed.
     """
-    task_ids = self.redis.keys("{prefix}*".format(prefix=TASK_PREFIX))
+    task_ids = self.redis.scan_iter(match="{prefix}*".format(prefix=TASK_PREFIX))
     for task_id in task_ids:
       task_id = task_id[len(TASK_PREFIX):]
       response = self.redis.execute_command("RAY.TASK_TABLE_GET", task_id)
