@@ -1044,12 +1044,12 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx,
   }
 
   if (RedisModule_CreateCommand(ctx, "ray.connect", Connect_RedisCommand,
-                                "write", 0, 0, 0) == REDISMODULE_ERR) {
+                                "write pubsub", 0, 0, 0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 
   if (RedisModule_CreateCommand(ctx, "ray.disconnect", Disconnect_RedisCommand,
-                                "write", 0, 0, 0) == REDISMODULE_ERR) {
+                                "write pubsub", 0, 0, 0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 

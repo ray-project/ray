@@ -14,8 +14,8 @@ from ray.services import get_port
 
 # These variables must be kept in sync with the C codebase.
 # common/common.h
-DBClientID_SIZE = 20
-NIL_ID = b"\xff" * DBClientID_SIZE
+DB_CLIENT_ID_SIZE = 20
+NIL_ID = b"\xff" * DB_CLIENT_ID_SIZE
 # common/task.h
 TASK_STATUS_LOST = 32
 # common/redis_module/ray_redis_module.c
@@ -89,8 +89,8 @@ class Monitor(object):
 
     # Parse the message.
     data = message["data"]
-    db_client_id = data[:DBClientID_SIZE]
-    data = data[DBClientID_SIZE + 1:]
+    db_client_id = data[:DB_CLIENT_ID_SIZE]
+    data = data[DB_CLIENT_ID_SIZE + 1:]
     data = data.split(b" ")
     client_type, auxiliary_address, is_insertion = data
     is_insertion = int(is_insertion)
@@ -152,7 +152,7 @@ class Monitor(object):
 
     # Read messages from the subscription channel.
     while True:
-      time.sleep(LOCAL_SCHEDULER_HEARTBEAT_TIMEOUT_MILLISECONDS / 1000.)
+      time.sleep(LOCAL_SCHEDULER_HEARTBEAT_TIMEOUT_MILLISECONDS / 1000)
       client = self.read_message()
       # There was no message to be read.
       if client is None:

@@ -233,8 +233,7 @@ void remove_local_scheduler(GlobalSchedulerState *state, int index) {
       HASH_DELETE(plasma_local_scheduler_hh, state->plasma_local_scheduler_map,
                   entry);
       /* The hash entry is shared with the local_scheduler_plasma hashmap and
-       * will
-       * be freed there. */
+       * will be freed there. */
       free(entry->aux_address);
     }
   }
