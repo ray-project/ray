@@ -777,7 +777,7 @@ void give_task_to_local_scheduler(LocalSchedulerState *state,
   /* Assign the task to the relevant local scheduler. */
   DCHECK(state->config.global_scheduler_exists);
   Task *task = Task_alloc(spec, task_spec_size, TASK_STATUS_SCHEDULED, local_scheduler_id);
-  task_table_add_task(state->db, task, (RetryInfo *) &local_scheduler_retry, NULL, NULL);
+  task_table_add_task(state->db, task, NULL, NULL, NULL);
 }
 
 /**
@@ -816,25 +816,6 @@ bool resource_constraints_satisfied(LocalSchedulerState *state,
     }
   }
   return true;
-}
-
-/**
- * Update the result table, which holds mappings of object ID -> ID of the
- * task that created it.
- *
- * @param state The scheduler state.
- * @param spec The task spec in question.
- * @return Void.
- */
-void update_result_table(local_scheduler_state *state, task_spec *spec) {
-  if (state->db != NULL) {
-    task_id task_id = task_spec_id(spec);
-    for (int64_t i = 0; i < task_num_returns(spec); ++i) {
-      object_id return_id = task_return(spec, i);
-      result_table_add(state->db, return_id, task_id,
-                       (RetryInfo *) &local_scheduler_retry, NULL, NULL);
-    }
-  }
 }
 
 void handle_task_submitted(LocalSchedulerState *state,
