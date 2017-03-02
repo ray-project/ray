@@ -37,7 +37,7 @@ if __name__ == "__main__":
   error_explanation = """
 This error is unexpected and should not have happened. Somehow a worker crashed
 in an unanticipated way causing the main_loop to throw an exception, which is
-being caught in "lib/python/ray/workers/default_worker.py".
+being caught in "python/ray/workers/default_worker.py".
 """
 
   while True:

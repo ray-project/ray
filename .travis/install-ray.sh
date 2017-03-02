@@ -20,6 +20,13 @@ elif [[ "$PYTHON" == "3.5" ]]; then
     python setup.py install --user
   popd
 
+elif [[ "$LINT" == "1" ]]; then
+  export PATH="$HOME/miniconda/bin:$PATH"
+
+  pushd "$ROOT_DIR/../python"
+    python setup.py install --user
+  popd
+
 else
   echo "Unrecognized Python version."
   exit 1

@@ -3,8 +3,8 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import numbuf
 
+import ray.numbuf as numbuf
 import ray.pickling as pickling
 
 def check_serializable(cls):

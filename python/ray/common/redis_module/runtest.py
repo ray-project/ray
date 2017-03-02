@@ -11,15 +11,6 @@ import unittest
 import redis
 import ray.services
 
-# Check if the redis-server binary is present.
-redis_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../core/src/common/thirdparty/redis/src/redis-server")
-if not os.path.exists(redis_path):
-  raise Exception("You do not have the redis-server binary. Run `make test` in the plasma directory to get it.")
-
-# Absolute path of the ray redis module.
-module_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../core/src/common/redis_module/libray_redis_module.so")
-print("path to the redis module is {}".format(module_path))
-
 OBJECT_INFO_PREFIX = "OI:"
 OBJECT_LOCATION_PREFIX = "OL:"
 OBJECT_SUBSCRIBE_PREFIX = "OS:"

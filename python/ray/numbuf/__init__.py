@@ -11,7 +11,7 @@ If you are using Anaconda, try fixing this problem by running:
 """
 
 try:
-  from core.src.numbuf.libnumbuf import *
+  from ray.core.src.numbuf.libnumbuf import *
 except ImportError as e:
   if hasattr(e, "msg") and isinstance(e.msg, str) and ("libstdc++" in e.msg or "CXX" in e.msg):
     # This code path should be taken with Python 3.

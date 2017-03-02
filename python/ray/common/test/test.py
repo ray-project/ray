@@ -7,7 +7,7 @@ import pickle
 import sys
 import unittest
 
-import local_scheduler
+import ray.local_scheduler as local_scheduler
 
 ID_SIZE = 20
 
