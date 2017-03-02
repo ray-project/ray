@@ -257,6 +257,7 @@ void remove_local_scheduler(GlobalSchedulerState *state, int index) {
 void process_new_db_client(DBClientID db_client_id,
                            const char *client_type,
                            const char *aux_address,
+                           bool is_insertion,
                            void *user_context) {
   GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
   char id_string[ID_STRING_SIZE];
@@ -264,9 +265,10 @@ void process_new_db_client(DBClientID db_client_id,
             ObjectID_to_string(db_client_id, id_string, ID_STRING_SIZE));
   UNUSED(id_string);
   if (strncmp(client_type, "local_scheduler", strlen("local_scheduler")) == 0) {
-    if (aux_address == NULL) {
-      /* This is a notification for a delete. Remove the local scheduler from
-       * our state if it's not already removed. */
+    if (is_insertion) {
+      /* This is a notification for an insert. */
+      add_local_scheduler(state, db_client_id, aux_address);
+    } else {
       int i = 0;
       for (; i < utarray_len(state->local_schedulers); ++i) {
         LocalScheduler *active_worker =
@@ -278,9 +280,6 @@ void process_new_db_client(DBClientID db_client_id,
       if (i < utarray_len(state->local_schedulers)) {
         remove_local_scheduler(state, i);
       }
-    } else {
-      /* This is a notification for an insert. */
-      add_local_scheduler(state, db_client_id, aux_address);
     }
   }
 }

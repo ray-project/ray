@@ -67,8 +67,9 @@ class Monitor(object):
 
     Returns:
       None if no message was to be read. Else, a tuple of (db_client_id,
-      client_type, auxiliary_address). If auxiliary_address is None, the
-      update to db_clients was a deletion. Else, it was an insertion.
+      client_type, auxiliary_address, is_insertion). is_insertion is a bool
+      that is True if the update to the db_clients table was an insertion and
+      False if deletion.
     """
     message = self.subscribe_client.get_message()
     if message is None:
@@ -79,12 +80,13 @@ class Monitor(object):
     db_client_id = data[:DBClientID_SIZE]
     data = data[DBClientID_SIZE + 1:]
     data = data.split(b" ")
-    client_type = data[0]
-    auxiliary_address = None
-    if len(data) > 1:
-      auxiliary_address = data[1]
+    client_type, auxiliary_address, is_insertion = data
+    is_insertion = int(is_insertion)
+    if is_insertion != 1 and is_insertion != 0:
+      raise Exception("Expected 0 or 1 for insertion field, got {} instead".format(is_insertion))
+    is_insertion = bool(is_insertion)
 
-    return db_client_id, client_type, auxiliary_address
+    return db_client_id, client_type, auxiliary_address, is_insertion
 
   def cleanup_task_table(self):
     """Clean up global state for a failed local scheduler.
@@ -144,10 +146,10 @@ class Monitor(object):
       if client is None:
         continue
 
-      db_client_id, client_type, auxiliary_address = client
+      db_client_id, client_type, auxiliary_address, is_insertion = client
 
       # If the update was an insertion, record the client ID.
-      if auxiliary_address is not None:
+      if is_insertion:
         self.local_schedulers.add(db_client_id)
         log.debug("Added scheduler: {}".format(db_client_id))
         continue

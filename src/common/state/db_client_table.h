@@ -33,6 +33,7 @@ void db_client_table_remove(DBHandle *db_handle,
 typedef void (*db_client_table_subscribe_callback)(DBClientID db_client_id,
                                                    const char *client_type,
                                                    const char *aux_address,
+                                                   bool is_insertion,
                                                    void *user_context);
 
 /**

@@ -1060,24 +1060,24 @@ void redis_db_client_table_subscribe_callback(redisAsyncContext *c,
    * only client type, then the update was a delete. */
   char *client_type = (char *) malloc(client_type_length);
   char *aux_address = (char *) malloc(client_type_length);
+  int is_insertion;
   memset(aux_address, 0, client_type_length);
   /* Published message format: <client_id:client_type aux_addr> */
-  int rv = sscanf(&payload->str[1 + sizeof(client.id)], "%s %s", client_type,
-                  aux_address);
-  if (rv == 1) {
-    free(aux_address);
-    aux_address = NULL;
-  } else {
-    CHECKM(rv == 2,
-           "redis_db_client_table_subscribe_callback: expected 2 parsed args, "
-           "Got %d instead.",
-           rv);
-  }
+  int rv = sscanf(&payload->str[1 + sizeof(client.id)], "%s %s %d", client_type,
+                  aux_address, &is_insertion);
+  CHECKM(rv == 3,
+         "redis_db_client_table_subscribe_callback: expected 2 parsed args, "
+         "Got %d instead.",
+         rv);
+  CHECKM(is_insertion == 1 || is_insertion == 0,
+         "redis_db_client_table_subscribe_callback: expected 0 or 1 for "
+         "insertion field, got %d instead.",
+         is_insertion);
 
   /* Call the subscription callback. */
   if (data->subscribe_callback) {
     data->subscribe_callback(client, client_type, aux_address,
-                             data->subscribe_context);
+                             (bool) is_insertion, data->subscribe_context);
   }
   free(client_type);
   free(aux_address);
