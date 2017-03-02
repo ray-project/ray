@@ -136,7 +136,8 @@ PyObject *PyPlasma_get(PyObject *self, PyObject *args) {
 
   Py_ssize_t num_object_ids = PyList_Size(object_id_list);
   ObjectID *object_ids = (ObjectID *) malloc(sizeof(ObjectID) * num_object_ids);
-  ObjectBuffer *object_buffers = (ObjectBuffer *) malloc(sizeof(ObjectBuffer) * num_object_ids);
+  ObjectBuffer *object_buffers =
+      (ObjectBuffer *) malloc(sizeof(ObjectBuffer) * num_object_ids);
 
   for (int i = 0; i < num_object_ids; ++i) {
     PyStringToUniqueID(PyList_GetItem(object_id_list, i), &object_ids[i]);
