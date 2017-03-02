@@ -1,14 +1,16 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import argparse
 import binascii
 from collections import Counter
 import logging
-import time
-
 import redis
+import time
 
 from ray.services import get_ip_address
 from ray.services import get_port
-
 
 # These variables must be kept in sync with the C codebase.
 # common/common.h
@@ -30,6 +32,18 @@ log = logging.getLogger()
 
 class Monitor(object):
   """A monitor for Ray processes.
+
+  The monitor is in charge of cleaning up the tables in the global state after
+  processes have died. The monitor is currently not responsible for detecting
+  component failures.
+
+  Attributes:
+    redis: A connection to the Redis server.
+    subscribe_client: A pubsub client for the Redis server. This is used to
+      receive notifications about failed components.
+    local_schedulers: A set of the local scheduler IDs of all of the currently
+      live local schedulers in the cluster. In addition, this also includes
+      NIL_ID.
   """
   def __init__(self, redis_address, redis_port):
     self.redis = redis.StrictRedis(host=redis_address, port=redis_port, db=0)
@@ -44,39 +58,37 @@ class Monitor(object):
   def subscribe(self):
     """Subscribe to the db_clients channel.
 
-    Returns:
-      True if subscription was successful and False otherwise.
+    Raises:
+      Exception: An exception is raised if the subscription fails.
     """
     self.subscribe_client.subscribe(DB_CLIENT_TABLE_NAME)
-    # Wait for the first message to signal that the subscription was
-    # successful.
+    # Wait for the first message to signal that the subscription was successful.
     while True:
       message = self.subscribe_client.get_message()
       if message is None:
-        time.sleep(LOCAL_SCHEDULER_HEARTBEAT_TIMEOUT_MILLISECONDS / 1000.)
+        time.sleep(LOCAL_SCHEDULER_HEARTBEAT_TIMEOUT_MILLISECONDS / 1000)
         continue
       break
 
     # The first message's payload should be the index of our subscription.
-    if 'data' not in message:
-      return False
-    return True
+    if "data" not in message:
+      Exception("Unable to subscribe to local scheduler table.")
 
   def read_message(self):
     """Read a message from the db_clients channel.
 
     Returns:
-      None if no message was to be read. Else, a tuple of (db_client_id,
-      client_type, auxiliary_address, is_insertion). is_insertion is a bool
-      that is True if the update to the db_clients table was an insertion and
-      False if deletion.
+      None if no message was to read. Otherwise, a tuple of (db_client_id,
+        client_type, auxiliary_address, is_insertion) is returned. The value
+        is_insertion is a bool that is true if the update to the db_clients
+        table was an insertion and false if deletion.
     """
     message = self.subscribe_client.get_message()
     if message is None:
       return None
 
     # Parse the message.
-    data = message['data']
+    data = message["data"]
     db_client_id = data[:DBClientID_SIZE]
     data = data[DBClientID_SIZE + 1:]
     data = data.split(b" ")
@@ -104,13 +116,14 @@ class Monitor(object):
                                         TASK_STATUS_LOST,
                                         NIL_ID)
         if ok != b"OK":
-          log.warn("Failed to update lost task for dead scheduler")
+          log.warn("Failed to update lost task for dead scheduler.")
 
   def scan_db_client_table(self):
     """Scan the database client table for the current clients.
 
     After subscribing to the client table, it's necessary to call this before
-    reading any messages from the subscription channel.     """
+    reading any messages from the subscription channel.
+    """
     db_client_keys = self.redis.keys("{prefix}*".format(prefix=DB_CLIENT_PREFIX))
     for db_client_key in db_client_keys:
       db_client_id = db_client_key[len(DB_CLIENT_PREFIX):]
@@ -125,9 +138,7 @@ class Monitor(object):
     clients and cleaning up state accordingly.
     """
     # Initialize the subscription channel.
-    success = self.subscribe()
-    if not success:
-      raise Exception("Unable to subscribe to local scheduler table")
+    self.subscribe()
 
     # Scan the database table and clean up any state associated with clients
     # not in the database table. NOTE: This must be called before reading any
@@ -157,11 +168,11 @@ class Monitor(object):
       # If the update was a deletion, clean up global state.
       if client_type == LOCAL_SCHEDULER_CLIENT_TYPE:
         if db_client_id in self.local_schedulers:
-          log.debug("Removed scheduler: {}".format(db_client_id))
+          log.warn("Removed scheduler: {}".format(db_client_id))
           self.local_schedulers.remove(db_client_id)
           self.cleanup_task_table()
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   parser = argparse.ArgumentParser(description=("Parse Redis server for the "
                                                 "monitor to connect to."))
   parser.add_argument("--redis-address", required=True, type=str,

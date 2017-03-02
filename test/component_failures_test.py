@@ -117,8 +117,8 @@ class ComponentFailureTest(unittest.TestCase):
                                     start_ray_local=True,
                                     num_cpus=[num_workers_per_scheduler] * num_local_schedulers)
 
-    # Submit more tasks than there are workers so that all workers and cores
-    # are utilized.
+    # Submit more tasks than there are workers so that all workers and cores are
+    # utilized.
     object_ids = [f.remote(i, 0) for i in range(num_workers_per_scheduler * num_local_schedulers)]
     object_ids += [f.remote(object_id, 1) for object_id in object_ids]
     object_ids += [f.remote(object_id, 2) for object_id in object_ids]
@@ -130,8 +130,11 @@ class ComponentFailureTest(unittest.TestCase):
       process.terminate()
       time.sleep(1)
 
-    # Make sure that we can still get the objects after the executing tasks died.
-    ray.get(object_ids)
+    # Make sure that we can still get the objects after the executing tasks
+    # died.
+    results = ray.get(object_ids)
+    expected_results = 4 * list(range(num_workers_per_scheduler * num_local_schedulers))
+    self.assertEqual(results, expected_results)
 
     ray.worker.cleanup()
 

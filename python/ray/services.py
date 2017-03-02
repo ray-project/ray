@@ -551,8 +551,8 @@ def start_worker(node_ip_address, object_store_name, object_store_manager_name,
   if cleanup:
     all_processes[PROCESS_TYPE_WORKER].append(p)
 
-def start_monitor(redis_address,
-                 stdout_file=None, stderr_file=None, cleanup=True):
+def start_monitor(redis_address, stdout_file=None, stderr_file=None,
+                  cleanup=True):
   """Run a process to monitor the other processes.
 
   Args:
@@ -666,9 +666,10 @@ def start_ray_processes(address_info=None,
                                       cleanup=cleanup)
       assert redis_port == new_redis_port
     # Start monitoring the processes.
+    monitor_stdout_file, monitor_stderr_file = new_log_files("monitor", redirect_output)
     start_monitor(redis_address,
-                  stdout_file=redis_stdout_file,
-                  stderr_file=redis_stderr_file)
+                  stdout_file=monitor_stdout_file,
+                  stderr_file=monitor_stderr_file)
   else:
     if redis_address is None:
       raise Exception("Redis address expected")
