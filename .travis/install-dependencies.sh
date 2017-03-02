@@ -58,6 +58,14 @@ elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "macosx" ]]; then
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
   pip install numpy cloudpickle funcsigs colorama psutil redis tensorflow
+elif [[ "$LINT" == "1" ]]; then
+  sudo apt-get update
+  sudo apt-get install -y cmake build-essential autoconf curl libtool libboost-all-dev unzip
+  # Install miniconda.
+  wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
+  bash miniconda.sh -b -p $HOME/miniconda
+  export PATH="$HOME/miniconda/bin:$PATH"
+  pip install numpy cloudpickle funcsigs colorama psutil redis
 else
   echo "Unrecognized environment."
   exit 1
