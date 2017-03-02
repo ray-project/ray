@@ -308,7 +308,7 @@ class ActorNesting(unittest.TestCase):
 
   def testDefineActorWithinActor(self):
     # Make sure we can use remote funtions within actors.
-    ray.init()
+    ray.init(num_cpus=10)
 
     @ray.actor
     class Actor1(object):
@@ -337,7 +337,7 @@ class ActorNesting(unittest.TestCase):
   # error.
   # def testUseActorWithinActor(self):
   #   # Make sure we can use remote funtions within actors.
-  #   ray.init()
+  #   ray.init(num_cpus=10)
   #
   #   @ray.actor
   #   class Actor1(object):
@@ -362,7 +362,7 @@ class ActorNesting(unittest.TestCase):
 
   def testDefineActorWithinRemoteFunction(self):
     # Make sure we can define and actors within remote funtions.
-    ray.init()
+    ray.init(num_cpus=10)
 
     @ray.remote
     def f(x, n):
@@ -383,7 +383,7 @@ class ActorNesting(unittest.TestCase):
   # This test currently fails with a pickling error.
   # def testUseActorWithinRemoteFunction(self):
   #   # Make sure we can create and use actors within remote funtions.
-  #   ray.init()
+  #   ray.init(num_cpus=10)
   #
   #   @ray.actor
   #   class Actor1(object):
@@ -405,7 +405,7 @@ class ActorNesting(unittest.TestCase):
     # This is mostly a test of the export counters to make sure that when an
     # actor is imported, all of the necessary remote functions have been
     # imported.
-    ray.init()
+    ray.init(num_cpus=10)
 
     # Export a bunch of remote functions.
     num_remote_functions = 50
