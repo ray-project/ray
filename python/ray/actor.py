@@ -6,10 +6,10 @@ import hashlib
 import inspect
 import json
 import numpy as np
-import local_scheduler
 import random
 import traceback
 
+import ray.local_scheduler as local_scheduler
 import ray.pickling as pickling
 import ray.worker
 import ray.experimental.state as state

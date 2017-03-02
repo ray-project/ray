@@ -15,8 +15,8 @@ import threading
 import time
 import unittest
 
-import plasma
-from plasma.utils import random_object_id, generate_metadata, write_to_data_buffer, create_object_with_id, create_object
+import ray.plasma as plasma
+from ray.plasma.utils import random_object_id, generate_metadata, write_to_data_buffer, create_object_with_id, create_object
 from ray import services
 
 USE_VALGRIND = False

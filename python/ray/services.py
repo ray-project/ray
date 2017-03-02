@@ -17,9 +17,9 @@ import time
 import threading
 
 # Ray modules
-import local_scheduler
-import plasma
-import global_scheduler
+import ray.local_scheduler as local_scheduler
+import ray.plasma as plasma
+import ray.global_scheduler as global_scheduler
 
 PROCESS_TYPE_WORKER = "worker"
 PROCESS_TYPE_LOCAL_SCHEDULER = "local_scheduler"
@@ -217,8 +217,8 @@ def start_redis(port=None, num_retries=20, stdout_file=None, stderr_file=None,
   Raises:
     Exception: An exception is raised if Redis could not be started.
   """
-  redis_filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../core/src/common/thirdparty/redis/src/redis-server")
-  redis_module = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../core/src/common/redis_module/libray_redis_module.so")
+  redis_filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "./core/src/common/thirdparty/redis/src/redis-server")
+  redis_module = os.path.join(os.path.dirname(os.path.abspath(__file__)), "./core/src/common/redis_module/libray_redis_module.so")
   assert os.path.isfile(redis_filepath)
   assert os.path.isfile(redis_module)
   counter = 0
