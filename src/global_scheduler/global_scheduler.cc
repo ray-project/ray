@@ -399,6 +399,8 @@ int task_cleanup_handler(event_loop *loop, timer_id id, void *context) {
         (LocalScheduler *) utarray_eltptr(state->local_schedulers, i);
     if (local_scheduler_ptr->num_heartbeats_missed >=
         GLOBAL_SCHEDULER_HEARTBEAT_TIMEOUT) {
+      LOG_WARN(
+          "Missed too many heartbeats from local scheduler, marking as dead.");
       /* Notify others by updating the global state. */
       db_client_table_remove(state->db, local_scheduler_ptr->id, NULL, NULL,
                              NULL);

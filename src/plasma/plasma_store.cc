@@ -656,6 +656,7 @@ void send_notifications(event_loop *loop,
 
   /* Stop sending notifications if the pipe was broken. */
   if (closed) {
+    close(client_sock);
     utarray_free(queue->object_notifications);
     HASH_DEL(plasma_state->pending_notifications, queue);
     free(queue);

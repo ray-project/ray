@@ -101,10 +101,11 @@ class Monitor(object):
     return db_client_id, client_type, auxiliary_address, is_insertion
 
   def cleanup_task_table(self):
-    """Clean up global state for a failed local scheduler.
+    """Clean up global state for a failed local schedulers.
 
-    Args:
-      scheduler: The db client ID of the scheduler that failed.
+    This marks any tasks that were scheduled on dead local schedulers as
+    TASK_STATUS_LOST. A local scheduler is deemed dead if it is not in
+    self.local_schedulers.
     """
     task_ids = self.redis.scan_iter(match="{prefix}*".format(prefix=TASK_PREFIX))
     for task_id in task_ids:
