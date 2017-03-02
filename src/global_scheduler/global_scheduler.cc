@@ -52,7 +52,7 @@ void assign_task_to_local_scheduler(GlobalSchedulerState *state,
   local_scheduler->num_tasks_sent += 1;
   local_scheduler->num_recent_tasks_sent += 1;
   /* Resource accounting update for this local scheduler. */
-  for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
+  for (int i = 0; i < ResourceIndex_MAX; i++) {
     /* Subtract task's resource from the cached dynamic resource capacity for
      *  this local scheduler. This will be overwritten on the next heartbeat. */
     local_scheduler->info.dynamic_resources[i] =

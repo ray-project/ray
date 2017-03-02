@@ -10,6 +10,22 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
 
 include_directories(thirdparty/ae)
 
+# Compile flatbuffers
+
+set(COMMON_FBS_SRC "${CMAKE_CURRENT_LIST_DIR}/format/common.fbs")
+set(OUTPUT_DIR ${CMAKE_CURRENT_LIST_DIR}/format/)
+
+add_custom_target(gen_common_fbs ALL)
+
+add_custom_command(
+  TARGET gen_common_fbs
+  COMMAND ${FLATBUFFERS_COMPILER} -c -o ${OUTPUT_DIR} ${COMMON_FBS_SRC}
+  DEPENDS ${FBS_DEPENDS}
+  COMMENT "Running flatc compiler on ${COMMON_FBS_SRC}"
+  VERBATIM)
+
+add_dependencies(gen_common_fbs flatbuffers_ep)
+
 add_custom_target(
    hiredis
    COMMAND make
@@ -18,6 +34,7 @@ add_custom_target(
 add_library(common STATIC
   event_loop.cc
   common.cc
+  common_protocol.cc
   task.cc
   io.cc
   net.cc
@@ -32,22 +49,50 @@ add_library(common STATIC
   thirdparty/ae/ae.c
   thirdparty/sha256.c)
 
+add_dependencies(common gen_common_fbs)
+
+add_library(common2 STATIC
+  event_loop.cc
+  common.cc
+  common_protocol.cc
+  task2.cc
+  io.cc
+  net.cc
+  logging.cc
+  state/redis.cc
+  state/table.cc
+  state/object_table.cc
+  state/task_table.cc
+  state/db_client_table.cc
+  state/actor_notification_table.cc
+  state/local_scheduler_table.cc
+  thirdparty/ae/ae.c
+  thirdparty/sha256.c)
+
+add_dependencies(common2 gen_common_fbs)
+
+target_link_libraries(common2 "${CMAKE_CURRENT_LIST_DIR}/thirdparty/hiredis/libhiredis.a")
+
 target_link_libraries(common "${CMAKE_CURRENT_LIST_DIR}/thirdparty/hiredis/libhiredis.a")
 
 function(define_test test_name library)
   add_executable(${test_name} test/${test_name}.cc ${ARGN})
   add_dependencies(${test_name} hiredis flatbuffers_ep)
-  target_link_libraries(${test_name} common ${FLATBUFFERS_STATIC_LIB} ${library})
+  target_link_libraries(${test_name} common2 ${FLATBUFFERS_STATIC_LIB} ${library})
   target_compile_options(${test_name} PUBLIC "-DPLASMA_TEST -DLOCAL_SCHEDULER_TEST -DCOMMON_TEST -DRAY_COMMON_LOG_LEVEL=4 -DRAY_TIMEOUT=50")
 endfunction()
 
 define_test(common_tests "")
 define_test(db_tests "")
 define_test(io_tests "")
-define_test(task_tests "")
+# define_test(task_tests "")
 define_test(redis_tests "")
 define_test(task_table_tests "")
 define_test(object_table_tests "")
+
+add_executable(task_tests2 test/task_tests2.cc)
+add_dependencies(task_tests2 flatcc)
+target_link_libraries(task_tests2 common2 ${FLATBUFFERS_STATIC_LIB})
 
 add_custom_target(
    redis

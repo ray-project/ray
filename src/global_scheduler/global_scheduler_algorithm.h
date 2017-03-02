@@ -3,7 +3,7 @@
 
 #include "common.h"
 #include "global_scheduler.h"
-#include "task.h"
+#include "task2.h"
 
 /* ==== The scheduling algorithm ====
  *
@@ -23,7 +23,7 @@ typedef enum {
 struct GlobalSchedulerPolicyState {
   /** The index of the next local scheduler to assign a task to. */
   int64_t round_robin_index;
-  double resource_attribute_weight[MAX_RESOURCE_INDEX + 1];
+  double resource_attribute_weight[ResourceIndex_MAX + 1];
 };
 
 typedef struct {

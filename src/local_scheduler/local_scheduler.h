@@ -1,7 +1,7 @@
 #ifndef LOCAL_SCHEDULER_H
 #define LOCAL_SCHEDULER_H
 
-#include "task.h"
+#include "task2.h"
 #include "event_loop.h"
 
 /* The duration between local scheduler heartbeats. */
@@ -40,6 +40,7 @@ void new_client_connection(event_loop *loop,
  */
 void assign_task_to_worker(LocalSchedulerState *state,
                            task_spec *task,
+                           int64_t task_spec_size,
                            LocalSchedulerClient *worker);
 
 /**

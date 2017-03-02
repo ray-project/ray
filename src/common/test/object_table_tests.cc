@@ -1,6 +1,7 @@
 #include "greatest.h"
 
 #include "event_loop.h"
+#include "example_task.h"
 #include "test_common.h"
 #include "common.h"
 #include "state/object_table.h"
@@ -11,6 +12,7 @@
 SUITE(object_table_tests);
 
 static event_loop *g_loop;
+TaskBuilder *g_task_builder = NULL;
 
 /* ==== Test adding and looking up metadata ==== */
 
@@ -902,6 +904,7 @@ SUITE(object_table_tests) {
 GREATEST_MAIN_DEFS();
 
 int main(int argc, char **argv) {
+  g_task_builder = make_task_builder();
   GREATEST_MAIN_BEGIN();
   RUN_SUITE(object_table_tests);
   GREATEST_MAIN_END();

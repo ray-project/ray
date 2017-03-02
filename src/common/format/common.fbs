@@ -1,0 +1,24 @@
+enum ResourceIndex:int {
+  CPU = 0,
+  GPU
+}
+
+table Arg {
+  object_id: string;
+  data: string;
+}
+
+table TaskSpec {
+  driver_id: string;
+  task_id: string;
+  parent_task_id: string;
+  parent_counter: int;
+  actor_id: string;
+  actor_counter: int;
+  function_id: string;
+  args: [Arg];
+  returns: [string];
+  required_resources: [double];
+}
+
+root_type TaskSpec;

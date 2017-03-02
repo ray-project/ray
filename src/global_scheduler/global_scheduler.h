@@ -1,7 +1,7 @@
 #ifndef GLOBAL_SCHEDULER_H
 #define GLOBAL_SCHEDULER_H
 
-#include "task.h"
+#include "task2.h"
 
 #include "state/db.h"
 #include "state/local_scheduler_table.h"

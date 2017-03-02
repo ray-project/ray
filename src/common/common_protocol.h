@@ -1,0 +1,33 @@
+#ifndef COMMON_PROTOCOL_H
+#define COMMON_PROTOCOL_H
+
+#include "format/common_generated.h"
+
+#include "common.h"
+
+/**
+ * Convert an object ID to a flatbuffer string.
+ *
+ * @param fbb Reference to the flatbuffer builder.
+ * @param object_id The object ID to be converted.
+ * @return The flatbuffer string contining the object ID.
+ */
+flatbuffers::Offset<flatbuffers::String> to_flat(
+    flatbuffers::FlatBufferBuilder &fbb,
+    ObjectID object_id);
+
+/**
+ * Convert a flatbuffer string to an object ID.
+ *
+ * @param string The flatbuffer string.
+ * @return The object ID.
+ */
+ObjectID from_flat(const flatbuffers::String *string);
+
+flatbuffers::Offset<
+    flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
+to_flat(flatbuffers::FlatBufferBuilder &fbb,
+        ObjectID object_ids[],
+        int64_t num_objects);
+
+#endif

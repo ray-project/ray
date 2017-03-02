@@ -7,7 +7,6 @@
 #include <unistd.h>
 
 #include "common.h"
-#include "plasma.h"
 #include "uthash.h"
 
 void *fake_mmap(size_t);

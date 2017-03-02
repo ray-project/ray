@@ -6,15 +6,18 @@
 
 #include "event_loop.h"
 #include "test_common.h"
+#include "example_task.h"
 #include "state/db.h"
 #include "state/object_table.h"
 #include "state/task_table.h"
 #include "state/redis.h"
-#include "task.h"
+#include "task2.h"
 
 #include "utstring.h"
 
 SUITE(db_tests);
+
+TaskBuilder *g_task_builder = NULL;
 
 /* Retry 10 times with an 100ms timeout. */
 const int NUM_RETRIES = 10;
@@ -149,10 +152,11 @@ TEST task_table_test(void) {
       db_connect("127.0.0.1", 6379, "local_scheduler", "127.0.0.1", 0, NULL);
   db_attach(db, loop, false);
   DBClientID local_scheduler_id = globally_unique_id();
-  task_spec *spec = example_task_spec(1, 1);
+  int64_t task_spec_size;
+  task_spec *spec = example_task_spec(1, 1, &task_spec_size);
   task_table_test_task =
-      Task_alloc(spec, TASK_STATUS_SCHEDULED, local_scheduler_id);
-  free_task_spec(spec);
+      Task_alloc(spec, task_spec_size, TASK_STATUS_SCHEDULED, local_scheduler_id);
+  // free_task_spec(spec);
   RetryInfo retry = {
       .num_retries = NUM_RETRIES,
       .timeout = TIMEOUT,
@@ -183,10 +187,11 @@ TEST task_table_all_test(void) {
   DBHandle *db =
       db_connect("127.0.0.1", 6379, "local_scheduler", "127.0.0.1", 0, NULL);
   db_attach(db, loop, false);
-  task_spec *spec = example_task_spec(1, 1);
+  int64_t task_spec_size;
+  task_spec *spec = example_task_spec(1, 1, &task_spec_size);
   /* Schedule two tasks on different local local schedulers. */
-  Task *task1 = Task_alloc(spec, TASK_STATUS_SCHEDULED, globally_unique_id());
-  Task *task2 = Task_alloc(spec, TASK_STATUS_SCHEDULED, globally_unique_id());
+  Task *task1 = Task_alloc(spec, task_spec_size, TASK_STATUS_SCHEDULED, globally_unique_id());
+  Task *task2 = Task_alloc(spec, task_spec_size, TASK_STATUS_SCHEDULED, globally_unique_id());
   RetryInfo retry = {
       .num_retries = NUM_RETRIES, .timeout = TIMEOUT, .fail_callback = NULL,
   };
@@ -201,7 +206,7 @@ TEST task_table_all_test(void) {
   event_loop_add_timer(loop, 200, (event_loop_timer_handler) timeout_handler,
                        NULL);
   event_loop_run(loop);
-  free_task_spec(spec);
+  free(spec);
   db_disconnect(db);
   destroy_outstanding_callbacks(loop);
   event_loop_destroy(loop);
@@ -237,6 +242,7 @@ SUITE(db_tests) {
 GREATEST_MAIN_DEFS();
 
 int main(int argc, char **argv) {
+  g_task_builder = make_task_builder();
   GREATEST_MAIN_BEGIN();
   RUN_SUITE(db_tests);
   GREATEST_MAIN_END();

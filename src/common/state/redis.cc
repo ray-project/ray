@@ -20,7 +20,7 @@ extern "C" {
 #include "local_scheduler_table.h"
 #include "object_table.h"
 #include "object_info.h"
-#include "task.h"
+#include "task2.h"
 #include "task_table.h"
 #include "event_loop.h"
 #include "redis.h"
@@ -373,10 +373,9 @@ Task *parse_and_construct_task_from_redis_reply(redisReply *reply) {
     /* Parse the task spec. */
     task_spec *spec = (task_spec *) malloc(reply->element[2]->len);
     memcpy(spec, reply->element[2]->str, reply->element[2]->len);
-    CHECK(task_spec_size(spec) == reply->element[2]->len);
-    task = Task_alloc(spec, state, local_scheduler_id);
+    task = Task_alloc(spec, reply->element[2]->len, state, local_scheduler_id);
     /* Free the task spec. */
-    free_task_spec(spec);
+    free(spec);
   } else {
     LOG_FATAL("Unexpected reply type %d", reply->type);
   }
@@ -777,7 +776,7 @@ void redis_task_table_add_task(TableCallbackData *callback_data) {
   DBHandle *db = callback_data->db_handle;
   Task *task = (Task *) callback_data->data;
   TaskID task_id = Task_task_id(task);
-  DBClientID local_scheduler_id = Task_local_scheduler_id(task);
+  DBClientID local_scheduler_id = Task_local_scheduler(task);
   int state = Task_state(task);
   task_spec *spec = Task_task_spec(task);
 
@@ -786,7 +785,7 @@ void redis_task_table_add_task(TableCallbackData *callback_data) {
       db->context, redis_task_table_add_task_callback,
       (void *) callback_data->timer_id, "RAY.TASK_TABLE_ADD %b %d %b %b",
       task_id.id, sizeof(task_id.id), state, local_scheduler_id.id,
-      sizeof(local_scheduler_id.id), spec, task_spec_size(spec));
+      sizeof(local_scheduler_id.id), spec, Task_task_spec_size(task));
   if ((status == REDIS_ERR) || db->context->err) {
     LOG_REDIS_DEBUG(db->context, "error in redis_task_table_add_task");
   }
@@ -814,7 +813,7 @@ void redis_task_table_update(TableCallbackData *callback_data) {
   DBHandle *db = callback_data->db_handle;
   Task *task = (Task *) callback_data->data;
   TaskID task_id = Task_task_id(task);
-  DBClientID local_scheduler_id = Task_local_scheduler_id(task);
+  DBClientID local_scheduler_id = Task_local_scheduler(task);
   int state = Task_state(task);
 
   CHECKM(task != NULL, "NULL task passed to redis_task_table_update.");
@@ -875,7 +874,8 @@ void parse_task_table_subscribe_callback(char *payload,
                                          TaskID *task_id,
                                          int *state,
                                          DBClientID *local_scheduler_id,
-                                         task_spec **spec) {
+                                         task_spec **spec,
+                                         int64_t *task_spec_size) {
   /* Note that the state is padded with spaces to consist of precisely two
    * characters. */
   int task_spec_payload_size =
@@ -904,7 +904,7 @@ void parse_task_table_subscribe_callback(char *payload,
   /* Read in the task spec. */
   *spec = (task_spec *) malloc(task_spec_payload_size);
   memcpy(*spec, &payload[offset], task_spec_payload_size);
-  CHECK(task_spec_size(*spec) == task_spec_payload_size);
+  *task_spec_size = task_spec_payload_size;
 }
 
 void redis_task_table_subscribe_callback(redisAsyncContext *c,
@@ -933,9 +933,10 @@ void redis_task_table_subscribe_callback(redisAsyncContext *c,
     int state;
     DBClientID local_scheduler_id;
     task_spec *spec;
+    int64_t task_spec_size;
     parse_task_table_subscribe_callback(payload->str, payload->len, &task_id,
-                                        &state, &local_scheduler_id, &spec);
-    Task *task = Task_alloc(spec, state, local_scheduler_id);
+                                        &state, &local_scheduler_id, &spec, &task_spec_size);
+    Task *task = Task_alloc(spec, task_spec_size, state, local_scheduler_id);
     free(spec);
     /* Call the subscribe callback if there is one. */
     if (data->subscribe_callback != NULL) {

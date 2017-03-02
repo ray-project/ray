@@ -1,7 +1,7 @@
 #ifndef LOCAL_SCHEDULER_CLIENT_H
 #define LOCAL_SCHEDULER_CLIENT_H
 
-#include "common/task.h"
+#include "common/task2.h"
 #include "local_scheduler_shared.h"
 
 typedef struct {
@@ -39,7 +39,7 @@ void LocalSchedulerConnection_free(LocalSchedulerConnection *conn);
  * @param task The address of the task to submit.
  * @return Void.
  */
-void local_scheduler_submit(LocalSchedulerConnection *conn, task_spec *task);
+void local_scheduler_submit(LocalSchedulerConnection *conn, task_spec *task, int64_t task_size);
 
 /**
  * Log an event to the event log. This will call RPUSH key value. We use RPUSH

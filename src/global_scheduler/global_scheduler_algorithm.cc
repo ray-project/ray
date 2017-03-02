@@ -1,7 +1,7 @@
 #include <limits.h>
 
 #include "object_info.h"
-#include "task.h"
+#include "task2.h"
 #include "state/task_table.h"
 
 #include "global_scheduler_algorithm.h"
@@ -37,7 +37,7 @@ void GlobalSchedulerPolicyState_free(GlobalSchedulerPolicyState *policy_state) {
  */
 bool constraints_satisfied_hard(const LocalScheduler *scheduler,
                                 const task_spec *spec) {
-  for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
+  for (int i = 0; i < ResourceIndex_MAX; i++) {
     if (scheduler->info.static_resources[i] <
         task_spec_get_required_resource(spec, i)) {
       return false;
@@ -94,7 +94,7 @@ ObjectSizeEntry *create_object_size_hashmap(GlobalSchedulerState *state,
      * Args by value are serialized into the task_spec itself.
      * We will only concern ourselves with args by ref for data size calculation
      */
-    if (task_arg_type(task_spec, i) != ARG_BY_REF) {
+    if (task_arg_by_ref(task_spec, i)) {
       continue;
     }
     *has_args_by_ref = true;
@@ -249,9 +249,9 @@ double calculate_score_dynvec_normalized(GlobalSchedulerState *state,
                                          double object_size_fraction) {
   /* The object size fraction is now calculated for this (task,node) pair. */
   /* Construct the normalized dynamic resource attribute vector */
-  double normalized_dynvec[MAX_RESOURCE_INDEX + 1];
+  double normalized_dynvec[ResourceIndex_MAX + 1];
   memset(&normalized_dynvec, 0, sizeof(normalized_dynvec));
-  for (int i = 0; i < MAX_RESOURCE_INDEX; i++) {
+  for (int i = 0; i < ResourceIndex_MAX; i++) {
     double resreqval = task_spec_get_required_resource(task_spec, i);
     if (resreqval <= 0) {
       /* Skip and leave normalized dynvec value == 0. */
@@ -260,12 +260,12 @@ double calculate_score_dynvec_normalized(GlobalSchedulerState *state,
     normalized_dynvec[i] =
         MIN(1, scheduler->info.dynamic_resources[i] / resreqval);
   }
-  normalized_dynvec[MAX_RESOURCE_INDEX] = object_size_fraction;
+  normalized_dynvec[ResourceIndex_MAX] = object_size_fraction;
 
   /* Finally, calculate the score. */
   double score = inner_product(normalized_dynvec,
                                state->policy_state->resource_attribute_weight,
-                               MAX_RESOURCE_INDEX + 1);
+                               ResourceIndex_MAX + 1);
   return score;
 }
 

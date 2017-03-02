@@ -4,7 +4,7 @@
 
 #include "common.h"
 #include "common_extension.h"
-#include "task.h"
+#include "task2.h"
 #include "utarray.h"
 #include "utstring.h"
 
@@ -32,6 +32,8 @@ void init_pickle_module(void) {
   pickle_protocol = PyObject_GetAttrString(pickle_module, "HIGHEST_PROTOCOL");
   CHECK(pickle_protocol != NULL);
 }
+
+TaskBuilder *g_task_builder = NULL;
 
 /* Define the PyObjectID class. */
 
@@ -96,14 +98,10 @@ PyObject *PyTask_from_string(PyObject *self, PyObject *args) {
   }
   PyTask *result = PyObject_New(PyTask, &PyTaskType);
   result = (PyTask *) PyObject_Init((PyObject *) result, &PyTaskType);
+  result->size = size;
   result->spec = (task_spec *) malloc(size);
   memcpy(result->spec, data, size);
-  /* TODO(pcm): Better error checking once we use flatbuffers. */
-  if (size != task_spec_size(result->spec)) {
-    PyErr_SetString(CommonError,
-                    "task_from_string: task specification string malformed");
-    return NULL;
-  }
+  /* TODO(pcm): Use flatbuffers validation here. */
   return (PyObject *) result;
 }
 
@@ -123,8 +121,7 @@ PyObject *PyTask_to_string(PyObject *self, PyObject *args) {
     return NULL;
   }
   PyTask *task = (PyTask *) arg;
-  return PyBytes_FromStringAndSize((char *) task->spec,
-                                   task_spec_size(task->spec));
+  return PyBytes_FromStringAndSize((char *) task->spec, task->size);
 }
 
 static PyObject *PyObjectID_id(PyObject *self) {
@@ -271,9 +268,7 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   FunctionID function_id;
   /* Arguments of the task (can be PyObjectIDs or Python values). */
   PyObject *arguments;
-  /* Array of pointers to string representations of pass-by-value args. */
-  UT_array *val_repr_ptrs;
-  utarray_new(val_repr_ptrs, &ut_ptr_icd);
+  /* Number of return values of this task. */
   int num_returns;
   /* The ID of the task that called this task. */
   TaskID parent_task_id;
@@ -289,63 +284,46 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
     return -1;
   }
   Py_ssize_t size = PyList_Size(arguments);
-  /* Determine the size of pass by value data in bytes. */
-  Py_ssize_t value_data_bytes = 0;
-  for (Py_ssize_t i = 0; i < size; ++i) {
-    PyObject *arg = PyList_GetItem(arguments, i);
-    if (!PyObject_IsInstance(arg, (PyObject *) &PyObjectIDType)) {
-      CHECK(pickle_module != NULL);
-      CHECK(pickle_dumps != NULL);
-      PyObject *data = PyObject_CallMethodObjArgs(pickle_module, pickle_dumps,
-                                                  arg, pickle_protocol, NULL);
-      value_data_bytes += PyBytes_Size(data);
-      utarray_push_back(val_repr_ptrs, &data);
-    }
-  }
   /* Construct the task specification. */
-  int val_repr_index = 0;
-  self->spec = start_construct_task_spec(
-      driver_id, parent_task_id, parent_counter, actor_id, actor_counter,
-      function_id, size, num_returns, value_data_bytes);
+  start_construct_task_spec(
+      g_task_builder, driver_id, parent_task_id, parent_counter, actor_id,
+      actor_counter, function_id, num_returns);
   /* Add the task arguments. */
   for (Py_ssize_t i = 0; i < size; ++i) {
     PyObject *arg = PyList_GetItem(arguments, i);
     if (PyObject_IsInstance(arg, (PyObject *) &PyObjectIDType)) {
-      task_args_add_ref(self->spec, ((PyObjectID *) arg)->object_id);
+      task_args_add_ref(g_task_builder, ((PyObjectID *) arg)->object_id);
     } else {
       /* We do this check because we cast a signed int to an unsigned int. */
-      CHECK(val_repr_index >= 0);
-      PyObject *data = *((PyObject **) utarray_eltptr(
-          val_repr_ptrs, (uint64_t) val_repr_index));
-      task_args_add_val(self->spec, (uint8_t *) PyBytes_AS_STRING(data),
+      PyObject *data = PyObject_CallMethodObjArgs(pickle_module, pickle_dumps,
+                                                  arg, pickle_protocol, NULL);
+      task_args_add_val(g_task_builder, (uint8_t *) PyBytes_AS_STRING(data),
                         PyBytes_GET_SIZE(data));
       Py_DECREF(data);
-      val_repr_index += 1;
     }
   }
-  utarray_free(val_repr_ptrs);
   /* Set the resource vector of the task. */
   if (resource_vector != NULL) {
-    CHECK(PyList_Size(resource_vector) == MAX_RESOURCE_INDEX);
-    for (int i = 0; i < MAX_RESOURCE_INDEX; ++i) {
+    CHECK(PyList_Size(resource_vector) == ResourceIndex_MAX);
+    for (int i = 0; i < ResourceIndex_MAX; ++i) {
       PyObject *resource_entry = PyList_GetItem(resource_vector, i);
-      task_spec_set_required_resource(self->spec, i,
+      task_spec_set_required_resource(g_task_builder, i,
                                       PyFloat_AsDouble(resource_entry));
     }
   } else {
-    for (int i = 0; i < MAX_RESOURCE_INDEX; ++i) {
-      task_spec_set_required_resource(self->spec, i,
-                                      i == CPU_RESOURCE_INDEX ? 1.0 : 0.0);
+    for (int i = 0; i < ResourceIndex_MAX; ++i) {
+      task_spec_set_required_resource(g_task_builder, i,
+                                      i == ResourceIndex_CPU ? 1.0 : 0.0);
     }
   }
   /* Compute the task ID and the return object IDs. */
-  finish_construct_task_spec(self->spec);
+  self->spec = finish_construct_task_spec(g_task_builder, &self->size);
   return 0;
 }
 
 static void PyTask_dealloc(PyTask *self) {
   if (self->spec != NULL) {
-    free_task_spec(self->spec);
+    free(self->spec);
   }
   Py_TYPE(self)->tp_free((PyObject *) self);
 }
@@ -375,7 +353,7 @@ static PyObject *PyTask_arguments(PyObject *self) {
   int64_t num_args = task_num_args(task);
   PyObject *arg_list = PyList_New((Py_ssize_t) num_args);
   for (int i = 0; i < num_args; ++i) {
-    if (task_arg_type(task, i) == ARG_BY_REF) {
+    if (task_arg_by_ref(task, i)) {
       ObjectID object_id = task_arg_id(task, i);
       PyList_SetItem(arg_list, i, PyObjectID_make(object_id));
     } else {
@@ -395,8 +373,8 @@ static PyObject *PyTask_arguments(PyObject *self) {
 
 static PyObject *PyTask_required_resources(PyObject *self) {
   task_spec *task = ((PyTask *) self)->spec;
-  PyObject *required_resources = PyList_New((Py_ssize_t) MAX_RESOURCE_INDEX);
-  for (int i = 0; i < MAX_RESOURCE_INDEX; ++i) {
+  PyObject *required_resources = PyList_New((Py_ssize_t) ResourceIndex_MAX);
+  for (int i = 0; i < ResourceIndex_MAX; ++i) {
     double r = task_spec_get_required_resource(task, i);
     PyList_SetItem(required_resources, i, PyFloat_FromDouble(r));
   }

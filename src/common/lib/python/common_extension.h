@@ -6,7 +6,9 @@
 #include "structmember.h"
 
 #include "common.h"
-#include "task.h"
+
+typedef uint8_t task_spec;
+struct TaskBuilder;
 
 extern PyObject *CommonError;
 
@@ -18,6 +20,7 @@ typedef struct {
 
 typedef struct {
   PyObject_HEAD
+  int64_t size;
   task_spec *spec;
 } PyTask;
 // clang-format on
@@ -33,9 +36,11 @@ extern PyObject *pickle_loads;
 
 void init_pickle_module(void);
 
+extern TaskBuilder *g_task_builder;
+
 int PyStringToUniqueID(PyObject *object, ObjectID *object_id);
 
-int PyObjectToUniqueID(PyObject *object, ObjectID *objectid);
+int PyObjectToUniqueID(PyObject *object, ObjectID *object_id);
 
 PyObject *PyObjectID_make(ObjectID object_id);
 

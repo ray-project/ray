@@ -1,7 +1,7 @@
 #include "local_scheduler_client.h"
 
 #include "common/io.h"
-#include "common/task.h"
+#include "common/task2.h"
 #include <stdlib.h>
 
 LocalSchedulerConnection *LocalSchedulerConnection_init(
@@ -48,9 +48,8 @@ void local_scheduler_log_event(LocalSchedulerConnection *conn,
   free(message);
 }
 
-void local_scheduler_submit(LocalSchedulerConnection *conn, task_spec *task) {
-  write_message(conn->conn, SUBMIT_TASK, task_spec_size(task),
-                (uint8_t *) task);
+void local_scheduler_submit(LocalSchedulerConnection *conn, task_spec *task, int64_t task_size) {
+  write_message(conn->conn, SUBMIT_TASK, task_size, (uint8_t *) task);
 }
 
 task_spec *local_scheduler_get_task(LocalSchedulerConnection *conn) {
@@ -63,7 +62,6 @@ task_spec *local_scheduler_get_task(LocalSchedulerConnection *conn) {
   read_message(conn->conn, &type, &length, &message);
   CHECK(type == EXECUTE_TASK);
   task_spec *task = (task_spec *) message;
-  CHECK(length == task_spec_size(task));
   return task;
 }
 

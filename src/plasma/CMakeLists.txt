@@ -30,8 +30,7 @@ add_custom_command(
   VERBATIM
 )
 
-add_custom_target(protocol_fbs)
-add_dependencies(protocol_fbs flatbuffers_ep)
+add_dependencies(gen_plasma_fbs flatbuffers_ep)
 
 if(UNIX AND NOT APPLE)
   link_libraries(rt)
@@ -79,7 +78,7 @@ add_executable(plasma_store
 
 add_dependencies(plasma_store hiredis gen_plasma_fbs)
 
-target_link_libraries(plasma_store common ${FLATBUFFERS_STATIC_LIB})
+target_link_libraries(plasma_store common2 ${FLATBUFFERS_STATIC_LIB})
 
 add_library(plasma_lib STATIC
   plasma_client.cc
@@ -88,7 +87,7 @@ add_library(plasma_lib STATIC
   fling.c
   thirdparty/xxhash.c)
 
-target_link_libraries(plasma_lib common ${FLATBUFFERS_STATIC_LIB})
+target_link_libraries(plasma_lib common2 ${FLATBUFFERS_STATIC_LIB})
 add_dependencies(plasma_lib gen_plasma_fbs)
 
 add_dependencies(plasma protocol_fbs)
@@ -96,12 +95,12 @@ add_dependencies(plasma protocol_fbs)
 add_executable(plasma_manager
   plasma_manager.cc)
 
-target_link_libraries(plasma_manager common plasma_lib ${FLATBUFFERS_STATIC_LIB})
+target_link_libraries(plasma_manager common2 plasma_lib ${FLATBUFFERS_STATIC_LIB})
 
 add_library(plasma_client SHARED plasma_client.cc)
 target_link_libraries(plasma_client ${FLATBUFFERS_STATIC_LIB})
 
-target_link_libraries(plasma_client common plasma_lib ${FLATBUFFERS_STATIC_LIB})
+target_link_libraries(plasma_client common2 plasma_lib ${FLATBUFFERS_STATIC_LIB})
 
 define_test(client_tests plasma_lib)
 define_test(manager_tests plasma_lib plasma_manager.cc)
