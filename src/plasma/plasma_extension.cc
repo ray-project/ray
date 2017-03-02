@@ -135,8 +135,9 @@ PyObject *PyPlasma_get(PyObject *self, PyObject *args) {
   }
 
   Py_ssize_t num_object_ids = PyList_Size(object_id_list);
-  ObjectID object_ids[num_object_ids];
-  ObjectBuffer object_buffers[num_object_ids];
+  ObjectID *object_ids = (ObjectID *) malloc(sizeof(ObjectID) * num_object_ids);
+  ObjectBuffer *object_buffers =
+      (ObjectBuffer *) malloc(sizeof(ObjectBuffer) * num_object_ids);
 
   for (int i = 0; i < num_object_ids; ++i) {
     PyStringToUniqueID(PyList_GetItem(object_id_list, i), &object_ids[i]);
@@ -145,6 +146,7 @@ PyObject *PyPlasma_get(PyObject *self, PyObject *args) {
   Py_BEGIN_ALLOW_THREADS;
   plasma_get(conn, object_ids, num_object_ids, timeout_ms, object_buffers);
   Py_END_ALLOW_THREADS;
+  free(object_ids);
 
   PyObject *returns = PyList_New(num_object_ids);
   for (int i = 0; i < num_object_ids; ++i) {
@@ -176,6 +178,7 @@ PyObject *PyPlasma_get(PyObject *self, PyObject *args) {
       PyList_SetItem(returns, i, Py_None);
     }
   }
+  free(object_buffers);
   return returns;
 }
 
