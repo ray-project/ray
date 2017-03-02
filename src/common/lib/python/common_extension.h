@@ -51,6 +51,6 @@ PyObject *PyTask_from_string(PyObject *, PyObject *args);
 
 PyObject *compute_put_id(PyObject *self, PyObject *args);
 
-PyObject *PyTask_make(task_spec *task_spec);
+PyObject *PyTask_make(task_spec *task_spec, int64_t task_size);
 
 #endif /* COMMON_EXTENSION_H */

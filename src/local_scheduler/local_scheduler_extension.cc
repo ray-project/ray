@@ -2,7 +2,7 @@
 
 #include "common_extension.h"
 #include "local_scheduler_client.h"
-#include "task.h"
+#include "task2.h"
 
 PyObject *LocalSchedulerError;
 
@@ -41,7 +41,7 @@ static PyObject *PyLocalSchedulerClient_submit(PyObject *self, PyObject *args) {
   }
   local_scheduler_submit(
       ((PyLocalSchedulerClient *) self)->local_scheduler_connection,
-      ((PyTask *) py_task)->spec);
+      ((PyTask *) py_task)->spec, ((PyTask *) py_task)->size);
   Py_RETURN_NONE;
 }
 
@@ -50,11 +50,12 @@ static PyObject *PyLocalSchedulerClient_get_task(PyObject *self) {
   task_spec *task_spec;
   /* Drop the global interpreter lock while we get a task because
    * local_scheduler_get_task may block for a long time. */
+  int64_t task_size;
   Py_BEGIN_ALLOW_THREADS
   task_spec = local_scheduler_get_task(
-      ((PyLocalSchedulerClient *) self)->local_scheduler_connection);
+      ((PyLocalSchedulerClient *) self)->local_scheduler_connection, &task_size);
   Py_END_ALLOW_THREADS
-  return PyTask_make(task_spec);
+  return PyTask_make(task_spec, task_size);
 }
 // clang-format on
 

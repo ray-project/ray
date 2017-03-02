@@ -1,6 +1,7 @@
 enum ResourceIndex:int {
   CPU = 0,
-  GPU
+  GPU = 1,
+  DUMMY = 2
 }
 
 table Arg {

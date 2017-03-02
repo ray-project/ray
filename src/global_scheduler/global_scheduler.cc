@@ -38,7 +38,7 @@ void assign_task_to_local_scheduler(GlobalSchedulerState *state,
   LOG_DEBUG("assigning task to local_scheduler_id = %s",
             ObjectID_to_string(local_scheduler_id, id_string, ID_STRING_SIZE));
   Task_set_state(task, TASK_STATUS_SCHEDULED);
-  Task_set_local_scheduler_id(task, local_scheduler_id);
+  Task_set_local_scheduler(task, local_scheduler_id);
   LOG_DEBUG("Issuing a task table update for task = %s",
             ObjectID_to_string(Task_task_id(task), id_string, ID_STRING_SIZE));
   UNUSED(id_string);

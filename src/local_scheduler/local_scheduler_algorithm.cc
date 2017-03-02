@@ -860,7 +860,7 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
      * will be resubmitted (internally by the local scheduler) whenever a new
      * actor notification arrives. */
     utarray_push_back(algorithm_state->cached_submitted_actor_tasks, &spec);
-    utarray_push_back(algorithm_state->cached_submitted_actor_task_sizes, task_spec_size);
+    utarray_push_back(algorithm_state->cached_submitted_actor_task_sizes, &task_spec_size);
     return;
   }
 
@@ -1205,7 +1205,7 @@ void handle_object_removed(LocalSchedulerState *state,
     for (int i = 0; i < num_args; ++i) {
       if (task_arg_by_ref(task, i)) {
         ObjectID arg_id = task_arg_id(task, i);
-        if (object_ids_equal(arg_id, removed_object_id)) {
+        if (ObjectID_equal(arg_id, removed_object_id)) {
           fetch_missing_dependency(state, algorithm_state, elt,
                                    removed_object_id);
         }
@@ -1220,7 +1220,7 @@ void handle_object_removed(LocalSchedulerState *state,
     for (int i = 0; i < num_args; ++i) {
       if (task_arg_by_ref(task, i)) {
         ObjectID arg_id = task_arg_id(task, i);
-        if (object_ids_equal(arg_id, removed_object_id)) {
+        if (ObjectID_equal(arg_id, removed_object_id)) {
           LOG_DEBUG("Moved task from dispatch queue back to waiting queue");
           DL_DELETE(algorithm_state->dispatch_task_queue, elt);
           DL_APPEND(algorithm_state->waiting_task_queue, elt);
