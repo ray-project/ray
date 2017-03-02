@@ -1,6 +1,93 @@
 import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.rnn as rnn
+import distutils.version
+import ray
+from tensorflow.python.client import timeline
+use_tf100_api = distutils.version.LooseVersion(tf.VERSION) >= distutils.version.LooseVersion('1.0.0')
+
+class Policy(object):
+    def __init__(self, ob_space, ac_space, task, name="local"):
+        self.local_steps = 0
+        worker_device = "/job:localhost/replica:0/task:{}/cpu:0".format(0) #task)
+        self.g = tf.Graph()
+        with self.g.as_default(), tf.device(worker_device):
+            with tf.variable_scope(name):
+                self.setup_graph(ob_space, ac_space)
+                assert all([hasattr(self, attr) for attr in ["vf", "logits", "x", "var_list"]])
+            print("Setting up loss")
+            self.setup_loss(ac_space)
+            self.initialize()
+
+    def setup_graph(self):
+        raise NotImplementedError
+
+    def setup_loss(self, num_actions, summarize=True):
+        self.ac = tf.placeholder(tf.float32, [None, num_actions], name="ac")
+        self.adv = tf.placeholder(tf.float32, [None], name="adv")
+        self.r = tf.placeholder(tf.float32, [None], name="r")
+
+        log_prob_tf = tf.nn.log_softmax(self.logits)
+        prob_tf = tf.nn.softmax(self.logits)
+
+        # the "policy gradients" loss:  its derivative is precisely the policy gradient
+        # notice that self.ac is a placeholder that is provided externally.
+        # adv will contain the advantages, as calculated in process_rollout
+        pi_loss = - tf.reduce_sum(tf.reduce_sum(log_prob_tf * self.ac, [1]) * self.adv)
+
+        # loss of value function
+        vf_loss = 0.5 * tf.reduce_sum(tf.square(self.vf - self.r))
+        vf_loss = tf.Print(vf_loss, [vf_loss], "Value Fn Loss")
+        entropy = - tf.reduce_sum(prob_tf * log_prob_tf)
+
+        bs = tf.to_float(tf.shape(self.x)[0])
+        self.loss = pi_loss + 0.5 * vf_loss - entropy * 0.01
+
+        grads = tf.gradients(self.loss, self.var_list)
+        self.grads, _ = tf.clip_by_global_norm(grads, 40.0)
+
+        grads_and_vars = list(zip(self.grads, self.var_list))
+        opt = tf.train.AdamOptimizer(1e-4)
+        self._apply_gradients = opt.apply_gradients(grads_and_vars)
+
+        if summarize:
+            tf.scalar_summary("model/policy_loss", pi_loss / bs)
+            tf.scalar_summary("model/value_loss", vf_loss / bs)
+            tf.scalar_summary("model/entropy", entropy / bs)
+            tf.image_summary("model/state", self.x)
+            self.summary_op = tf.merge_all_summaries()
+
+    def initialize(self):
+        self.sess = tf.Session(graph=self.g,  config=tf.ConfigProto(intra_op_parallelism_threads=1, inter_op_parallelism_threads=2))
+        self.variables = ray.experimental.TensorFlowVariables(self.loss, self.sess)  
+        self.sess.run(tf.initialize_all_variables())
+        
+    def model_update(self, grads):
+        feed_dict = {self.grads[i]: grads[i] 
+                            for i in range(len(grads))}
+        self.sess.run(self._apply_gradients, feed_dict=feed_dict)
+
+    def get_weights(self):
+        weights = self.variables.get_weights()
+        return weights
+
+    def set_weights(self, weights):
+        self.variables.set_weights(weights)
+
+    def get_gradients(self, batch, profile=False):
+        raise NotImplementedError
+
+    def get_vf_loss(self):
+        raise NotImplementedError
+
+
+    def act(self, ob):
+        raise NotImplementedError
+
+    def value(self, ob):
+        raise NotImplementedError
+
+
 
 def normalized_columns_initializer(std=1.0):
     def _initializer(shape, dtype=None, partition_info=None):
@@ -41,48 +128,3 @@ def linear(x, size, name, initializer=None, bias_init=0):
 def categorical_sample(logits, d):
     value = tf.squeeze(tf.multinomial(logits - tf.reduce_max(logits, [1], keep_dims=True), 1), [1])
     return tf.one_hot(value, d)
-
-class LSTMPolicy(object):
-    def __init__(self, ob_space, ac_space):
-        self.x = x = tf.placeholder(tf.float32, [None] + list(ob_space))
-
-        for i in range(4):
-            x = tf.nn.elu(conv2d(x, 32, "l{}".format(i + 1), [3, 3], [2, 2]))
-        # introduce a "fake" batch dimension of 1 after flatten so that we can do LSTM over time dim
-        x = tf.expand_dims(flatten(x), [0])
-
-        size = 256
-        lstm = rnn.rnn_cell.BasicLSTMCell(size, state_is_tuple=True)
-        self.state_size = lstm.state_size
-        step_size = tf.shape(self.x)[:1]
-
-        c_init = np.zeros((1, lstm.state_size.c), np.float32)
-        h_init = np.zeros((1, lstm.state_size.h), np.float32)
-        self.state_init = [c_init, h_init]
-        c_in = tf.placeholder(tf.float32, [1, lstm.state_size.c])
-        h_in = tf.placeholder(tf.float32, [1, lstm.state_size.h])
-        self.state_in = [c_in, h_in]
-
-        state_in = rnn.rnn_cell.LSTMStateTuple(c_in, h_in)
-        lstm_outputs, lstm_state = tf.nn.dynamic_rnn(
-            lstm, x, initial_state=state_in, sequence_length=step_size,
-            time_major=False)
-        lstm_c, lstm_h = lstm_state
-        x = tf.reshape(lstm_outputs, [-1, size])
-        self.logits = linear(x, ac_space, "action", normalized_columns_initializer(0.01))
-        self.vf = tf.reshape(linear(x, 1, "value", normalized_columns_initializer(1.0)), [-1])
-        self.state_out = [lstm_c[:1, :], lstm_h[:1, :]]
-        self.sample = categorical_sample(self.logits, ac_space)[0, :]
-        self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
-
-    def get_initial_features(self):
-        return self.state_init
-
-    def act(self, ob, c, h):
-        sess = tf.get_default_session()
-        return sess.run([self.sample, self.vf] + self.state_out,
-                        {self.x: [ob], self.state_in[0]: c, self.state_in[1]: h})
-
-    def value(self, ob, c, h):
-        sess = tf.get_default_session()
-        return sess.run(self.vf, {self.x: [ob], self.state_in[0]: c, self.state_in[1]: h})[0]
