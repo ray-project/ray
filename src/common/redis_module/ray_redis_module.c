@@ -203,8 +203,13 @@ int Disconnect_RedisCommand(RedisModuleCtx *ctx,
   RedisModule_CloseKey(db_client_table_key);
 
   /* Publish the deletion notification on the db client channel. */
-  if (!PublishDBClientNotification(ctx, ray_client_id, client_type, aux_address,
-                                   false)) {
+  bool published = PublishDBClientNotification(ctx, ray_client_id, client_type,
+                                               aux_address, false);
+
+  RedisModule_FreeString(ctx, aux_address);
+  RedisModule_FreeString(ctx, client_type);
+
+  if (!published) {
     return RedisModule_ReplyWithError(ctx, "PUBLISH unsuccessful");
   }
 
