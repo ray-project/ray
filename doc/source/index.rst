@@ -18,7 +18,7 @@ learning and reinforcement learning applications.*
    :maxdepth: 1
    :caption: Examples
 
-   example-hyperopt.md
+   example-hyperopt.rst
    example-lbfgs.md
    example-rl-pong.md
    using-ray-with-tensorflow.md
