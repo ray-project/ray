@@ -31,8 +31,8 @@ matrix:
         # Try generating Sphinx documentation. To do this, we need to install
         # Ray first.
         - ./.travis/install-dependencies.sh
-        - export PATH="$HOME/miniconda/bin:$PATH"; fi
         - ./.travis/install-ray.sh
+        - export PATH="$HOME/miniconda/bin:$PATH"
         - cd doc
         - pip install -r requirements-doc.txt
         - sphinx-build -W -b html -d _build/doctrees source _build/html
