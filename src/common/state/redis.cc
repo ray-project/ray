@@ -992,6 +992,36 @@ void redis_task_table_subscribe(TableCallbackData *callback_data) {
  *  ==== db client table callbacks ====
  */
 
+void redis_db_client_table_remove_callback(redisAsyncContext *c,
+                                           void *r,
+                                           void *privdata) {
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
+  redisReply *reply = (redisReply *) r;
+
+  CHECK(reply->type != REDIS_REPLY_ERROR);
+  CHECK(strcmp(reply->str, "OK") == 0);
+
+  /* Call the done callback if there is one. */
+  db_client_table_done_callback done_callback =
+      (db_client_table_done_callback) callback_data->done_callback;
+  if (done_callback) {
+    done_callback(callback_data->id, callback_data->user_context);
+  }
+  /* Clean up the timer and callback. */
+  destroy_timer_callback(db->loop, callback_data);
+}
+
+void redis_db_client_table_remove(TableCallbackData *callback_data) {
+  DBHandle *db = callback_data->db_handle;
+  int status =
+      redisAsyncCommand(db->context, redis_db_client_table_remove_callback,
+                        (void *) callback_data->timer_id, "RAY.DISCONNECT %b",
+                        callback_data->id.id, sizeof(callback_data->id.id));
+  if ((status == REDIS_ERR) || db->context->err) {
+    LOG_REDIS_DEBUG(db->context, "error in db_client_table_remove");
+  }
+}
+
 void redis_db_client_table_subscribe_callback(redisAsyncContext *c,
                                               void *r,
                                               void *privdata) {
@@ -1024,19 +1054,30 @@ void redis_db_client_table_subscribe_callback(redisAsyncContext *c,
   /* We subtract 1 + sizeof(client.id) to compute the length of the
    * client_type string, and we add 1 to null-terminate the string. */
   int client_type_length = payload->len - 1 - sizeof(client.id) + 1;
+  CHECK(client_type_length > 0);
+
+  /* Parse the client type and auxiliary address from the response. If there is
+   * only client type, then the update was a delete. */
   char *client_type = (char *) malloc(client_type_length);
   char *aux_address = (char *) malloc(client_type_length);
+  int is_insertion;
   memset(aux_address, 0, client_type_length);
   /* Published message format: <client_id:client_type aux_addr> */
-  int rv = sscanf(&payload->str[1 + sizeof(client.id)], "%s %s", client_type,
-                  aux_address);
-  CHECKM(rv == 2,
+  int rv = sscanf(&payload->str[1 + sizeof(client.id)], "%s %s %d", client_type,
+                  aux_address, &is_insertion);
+  CHECKM(rv == 3,
          "redis_db_client_table_subscribe_callback: expected 2 parsed args, "
          "Got %d instead.",
          rv);
+  CHECKM(is_insertion == 1 || is_insertion == 0,
+         "redis_db_client_table_subscribe_callback: expected 0 or 1 for "
+         "insertion field, got %d instead.",
+         is_insertion);
+
+  /* Call the subscription callback. */
   if (data->subscribe_callback) {
     data->subscribe_callback(client, client_type, aux_address,
-                             data->subscribe_context);
+                             (bool) is_insertion, data->subscribe_context);
   }
   free(client_type);
   free(aux_address);

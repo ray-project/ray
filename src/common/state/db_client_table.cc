@@ -1,6 +1,16 @@
 #include "db_client_table.h"
 #include "redis.h"
 
+void db_client_table_remove(DBHandle *db_handle,
+                            DBClientID db_client_id,
+                            RetryInfo *retry,
+                            db_client_table_done_callback done_callback,
+                            void *user_context) {
+  init_table_callback(db_handle, db_client_id, __func__, NULL, retry,
+                      (table_done_callback) done_callback,
+                      redis_db_client_table_remove, user_context);
+}
+
 void db_client_table_subscribe(
     DBHandle *db_handle,
     db_client_table_subscribe_callback subscribe_callback,

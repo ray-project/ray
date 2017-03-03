@@ -7,6 +7,24 @@
 typedef void (*db_client_table_done_callback)(DBClientID db_client_id,
                                               void *user_context);
 
+/**
+ * Remove a client from the db clients table.
+ *
+ * @param db_handle Database handle.
+ * @param db_client_id The database client ID to remove.
+ * @param retry Information about retrying the request to the database.
+ * @param done_callback Function to be called when database returns result.
+ * @param user_context Data that will be passed to done_callback and
+ *        fail_callback.
+ * @return Void.
+ *
+ */
+void db_client_table_remove(DBHandle *db_handle,
+                            DBClientID db_client_id,
+                            RetryInfo *retry,
+                            db_client_table_done_callback done_callback,
+                            void *user_context);
+
 /*
  *  ==== Subscribing to the db client table ====
  */
@@ -15,6 +33,7 @@ typedef void (*db_client_table_done_callback)(DBClientID db_client_id,
 typedef void (*db_client_table_subscribe_callback)(DBClientID db_client_id,
                                                    const char *client_type,
                                                    const char *aux_address,
+                                                   bool is_insertion,
                                                    void *user_context);
 
 /**

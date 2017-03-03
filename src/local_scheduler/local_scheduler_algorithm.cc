@@ -526,7 +526,6 @@ bool can_run(SchedulingAlgorithmState *algorithm_state, task_spec *task) {
   return true;
 }
 
-/* TODO(rkn): This method will need to be changed to call reconstruct. */
 /* TODO(swang): This method is not covered by any valgrind tests. */
 int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
   LocalSchedulerState *state = (LocalSchedulerState *) context;

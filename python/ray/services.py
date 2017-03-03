@@ -21,6 +21,7 @@ import ray.local_scheduler as local_scheduler
 import ray.plasma as plasma
 import ray.global_scheduler as global_scheduler
 
+PROCESS_TYPE_MONITOR = "monitor"
 PROCESS_TYPE_WORKER = "worker"
 PROCESS_TYPE_LOCAL_SCHEDULER = "local_scheduler"
 PROCESS_TYPE_PLASMA_MANAGER = "plasma_manager"
@@ -34,13 +35,14 @@ PROCESS_TYPE_WEB_UI = "web_ui"
 # important because it determines the order in which these processes will be
 # terminated when Ray exits, and certain orders will cause errors to be logged
 # to the screen.
-all_processes = OrderedDict([(PROCESS_TYPE_WORKER, []),
+all_processes = OrderedDict([(PROCESS_TYPE_MONITOR, []),
+                             (PROCESS_TYPE_WORKER, []),
                              (PROCESS_TYPE_LOCAL_SCHEDULER, []),
                              (PROCESS_TYPE_PLASMA_MANAGER, []),
                              (PROCESS_TYPE_PLASMA_STORE, []),
                              (PROCESS_TYPE_GLOBAL_SCHEDULER, []),
                              (PROCESS_TYPE_REDIS_SERVER, []),
-                             (PROCESS_TYPE_WEB_UI, [])])
+                             (PROCESS_TYPE_WEB_UI, [])],)
 
 # True if processes are run in the valgrind profiler.
 RUN_LOCAL_SCHEDULER_PROFILER = False
@@ -527,7 +529,7 @@ def start_worker(node_ip_address, object_store_name, object_store_manager_name,
     object_store_name (str): The name of the object store.
     object_store_manager_name (str): The name of the object store manager.
     local_scheduler_name (str): The name of the local scheduler.
-    redis_address (int): The address that the Redis server is listening on.
+    redis_address (str): The address that the Redis server is listening on.
     worker_path (str): The path of the source code which the worker process will
       run.
     stdout_file: A file handle opened for writing to redirect stdout to. If no
@@ -544,6 +546,28 @@ def start_worker(node_ip_address, object_store_name, object_store_manager_name,
              "--object-store-name=" + object_store_name,
              "--object-store-manager-name=" + object_store_manager_name,
              "--local-scheduler-name=" + local_scheduler_name,
+             "--redis-address=" + str(redis_address)]
+  p = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
+  if cleanup:
+    all_processes[PROCESS_TYPE_WORKER].append(p)
+
+def start_monitor(redis_address, stdout_file=None, stderr_file=None,
+                  cleanup=True):
+  """Run a process to monitor the other processes.
+
+  Args:
+    redis_address (str): The address that the Redis server is listening on.
+    stdout_file: A file handle opened for writing to redirect stdout to. If no
+      redirection should happen, then this should be None.
+    stderr_file: A file handle opened for writing to redirect stderr to. If no
+      redirection should happen, then this should be None.
+    cleanup (bool): True if using Ray in local mode. If cleanup is true, then
+      this process will be killed by services.cleanup() when the Python process
+      that imported services exits. This is True by default.
+  """
+  monitor_path= os.path.join(os.path.dirname(os.path.abspath(__file__)), "monitor.py")
+  command = ["python",
+             monitor_path,
              "--redis-address=" + str(redis_address)]
   p = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
   if cleanup:
@@ -641,6 +665,11 @@ def start_ray_processes(address_info=None,
                                       stderr_file=redis_stderr_file,
                                       cleanup=cleanup)
       assert redis_port == new_redis_port
+    # Start monitoring the processes.
+    monitor_stdout_file, monitor_stderr_file = new_log_files("monitor", redirect_output)
+    start_monitor(redis_address,
+                  stdout_file=monitor_stdout_file,
+                  stderr_file=monitor_stderr_file)
   else:
     if redis_address is None:
       raise Exception("Redis address expected")
