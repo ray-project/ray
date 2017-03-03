@@ -48,6 +48,47 @@ RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
 }
 
 /**
+ * Publish a notification to a client's notification channel about an insertion
+ * or deletion to the db client table.
+ *
+ * @param ctx The Redis context.
+ * @param ray_client_id The ID of the database client that was inserted or
+ *        deleted.
+ * @param client_type The type of client that was inserted or deleted.
+ * @param aux_address An optional secondary address associated with the
+ *        database client.
+ * @param is_insertion A boolean that's true if the update was an insertion and
+ *        false if deletion.
+ * @return True if the publish was successful and false otherwise.
+ */
+bool PublishDBClientNotification(RedisModuleCtx *ctx,
+                                 RedisModuleString *ray_client_id,
+                                 RedisModuleString *client_type,
+                                 RedisModuleString *aux_address,
+                                 bool is_insertion) {
+  /* Construct strings to publish on the db client channel. */
+  RedisModuleString *channel_name =
+      RedisModule_CreateString(ctx, "db_clients", strlen("db_clients"));
+  RedisModuleString *client_info;
+  const char *is_insertion_string = is_insertion ? "1" : "0";
+  if (aux_address) {
+    client_info =
+        RedisString_Format(ctx, "%S:%S %S %s", ray_client_id, client_type,
+                           aux_address, is_insertion_string);
+  } else {
+    client_info = RedisString_Format(ctx, "%S:%S : %s", ray_client_id,
+                                     client_type, is_insertion_string);
+  }
+
+  /* Publish the client info on the db client channel. */
+  RedisModuleCallReply *reply;
+  reply = RedisModule_Call(ctx, "PUBLISH", "ss", channel_name, client_info);
+  RedisModule_FreeString(ctx, channel_name);
+  RedisModule_FreeString(ctx, client_info);
+  return (reply != NULL);
+}
+
+/**
  * Register a client with Redis. This is called from a client with the command:
  *
  *     RAY.CONNECT <ray client id> <node ip address> <client type> <field 1>
@@ -110,25 +151,65 @@ int Connect_RedisCommand(RedisModuleCtx *ctx,
   /* Clean up. */
   RedisModule_FreeString(ctx, aux_address_key);
   RedisModule_CloseKey(db_client_table_key);
-
-  /* Construct strings to publish on the db client channel. */
-  RedisModuleString *channel_name =
-      RedisModule_CreateString(ctx, "db_clients", strlen("db_clients"));
-  RedisModuleString *client_info;
-  if (aux_address) {
-    client_info = RedisString_Format(ctx, "%S:%S %S", ray_client_id,
-                                     client_type, aux_address);
-  } else {
-    client_info =
-        RedisString_Format(ctx, "%S:%S :", ray_client_id, client_type);
+  if (!PublishDBClientNotification(ctx, ray_client_id, client_type, aux_address,
+                                   true)) {
+    return RedisModule_ReplyWithError(ctx, "PUBLISH unsuccessful");
   }
 
-  /* Publish the client info on the db client channel. */
-  RedisModuleCallReply *reply;
-  reply = RedisModule_Call(ctx, "PUBLISH", "ss", channel_name, client_info);
-  RedisModule_FreeString(ctx, channel_name);
-  RedisModule_FreeString(ctx, client_info);
-  if (reply == NULL) {
+  RedisModule_ReplyWithSimpleString(ctx, "OK");
+  return REDISMODULE_OK;
+}
+
+/**
+ * Remove a client from Redis. This is called from a client with the command:
+ *
+ *     RAY.DISCONNECT <ray client id>
+ *
+ * This method also publishes a notification to all subscribers to the
+ * db_clients channel. The notification consists of a message of the form "<ray
+ * client id>:<client type>".
+ *
+ * @param ray_client_id The db client ID of the client.
+ * @return OK if the operation was successful.
+ */
+int Disconnect_RedisCommand(RedisModuleCtx *ctx,
+                            RedisModuleString **argv,
+                            int argc) {
+  if (argc != 2) {
+    return RedisModule_WrongArity(ctx);
+  }
+
+  RedisModuleString *ray_client_id = argv[1];
+
+  /* Get the client type. */
+  RedisModuleKey *db_client_table_key =
+      OpenPrefixedKey(ctx, DB_CLIENT_PREFIX, ray_client_id, REDISMODULE_WRITE);
+  if (RedisModule_KeyType(db_client_table_key) == REDISMODULE_KEYTYPE_EMPTY) {
+    /* Someone else already deleted this client. */
+    RedisModule_CloseKey(db_client_table_key);
+    RedisModule_ReplyWithSimpleString(ctx, "OK");
+    return REDISMODULE_OK;
+  }
+
+  RedisModuleString *client_type;
+  RedisModuleString *aux_address;
+  RedisModule_HashGet(db_client_table_key, REDISMODULE_HASH_CFIELDS,
+                      "client_type", &client_type, "aux_address", &aux_address,
+                      NULL);
+
+  /* Remove the client from the client table. */
+  CHECK_ERROR(RedisModule_DeleteKey(db_client_table_key),
+              "Unable to delete db client key.");
+  RedisModule_CloseKey(db_client_table_key);
+
+  /* Publish the deletion notification on the db client channel. */
+  bool published = PublishDBClientNotification(ctx, ray_client_id, client_type,
+                                               aux_address, false);
+
+  RedisModule_FreeString(ctx, aux_address);
+  RedisModule_FreeString(ctx, client_type);
+
+  if (!published) {
     return RedisModule_ReplyWithError(ctx, "PUBLISH unsuccessful");
   }
 
@@ -968,7 +1049,12 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx,
   }
 
   if (RedisModule_CreateCommand(ctx, "ray.connect", Connect_RedisCommand,
-                                "write", 0, 0, 0) == REDISMODULE_ERR) {
+                                "write pubsub", 0, 0, 0) == REDISMODULE_ERR) {
+    return REDISMODULE_ERR;
+  }
+
+  if (RedisModule_CreateCommand(ctx, "ray.disconnect", Disconnect_RedisCommand,
+                                "write pubsub", 0, 0, 0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 

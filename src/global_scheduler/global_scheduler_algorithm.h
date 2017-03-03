@@ -97,4 +97,8 @@ void handle_new_local_scheduler(GlobalSchedulerState *state,
                                 GlobalSchedulerPolicyState *policy_state,
                                 DBClientID db_client_id);
 
+void handle_local_scheduler_removed(GlobalSchedulerState *state,
+                                    GlobalSchedulerPolicyState *policy_state,
+                                    DBClientID db_client_id);
+
 #endif /* GLOBAL_SCHEDULER_ALGORITHM_H */

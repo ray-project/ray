@@ -618,6 +618,7 @@ void send_notifications(event_loop *loop,
   CHECK(queue != NULL);
 
   int num_processed = 0;
+  bool closed = false;
   /* Loop over the array of pending notifications and send as many of them as
    * possible. */
   for (int i = 0; i < utarray_len(queue->object_notifications); ++i) {
@@ -643,11 +644,24 @@ void send_notifications(event_loop *loop,
       break;
     } else {
       LOG_WARN("Failed to send notification to client on fd %d", client_sock);
+      if (errno == EPIPE) {
+        closed = true;
+        break;
+      }
     }
     num_processed += 1;
   }
   /* Remove the sent notifications from the array. */
   utarray_erase(queue->object_notifications, 0, num_processed);
+
+  /* Stop sending notifications if the pipe was broken. */
+  if (closed) {
+    close(client_sock);
+    utarray_free(queue->object_notifications);
+    HASH_DEL(plasma_state->pending_notifications, queue);
+    free(queue);
+  }
+
   /* If we have sent all notifications, remove the fd from the event loop. */
   if (utarray_len(queue->object_notifications) == 0) {
     event_loop_remove_file(loop, client_sock);

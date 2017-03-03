@@ -218,6 +218,15 @@ void redis_task_table_publish_publish_callback(redisAsyncContext *c,
 void redis_task_table_subscribe(TableCallbackData *callback_data);
 
 /**
+ * Remove a client from the db clients table.
+ *
+ * @param callback_data Data structure containing redis connection and timeout
+ *        information.
+ * @return Void.
+ */
+void redis_db_client_table_remove(TableCallbackData *callback_data);
+
+/**
  * Subscribe to updates from the db client table.
  *
  * @param callback_data Data structure containing redis connection and timeout

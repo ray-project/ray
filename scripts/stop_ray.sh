@@ -2,6 +2,9 @@
 
 killall global_scheduler plasma_store plasma_manager local_scheduler
 
+# Find the PID of the monitor process and kill it.
+kill $(ps aux | grep monitor.py | awk '{ print $2 }') 2> /dev/null
+
 # Find the PID of the Redis process and kill it.
 kill $(ps aux | grep redis-server | awk '{ print $2 }') 2> /dev/null
 

@@ -167,6 +167,87 @@ void process_task_waiting(Task *waiting_task, void *user_context) {
   }
 }
 
+void add_local_scheduler(GlobalSchedulerState *state,
+                         DBClientID db_client_id,
+                         const char *aux_address) {
+  /* Add plasma_manager ip:port -> local_scheduler_db_client_id association to
+   * state. */
+  AuxAddressEntry *plasma_local_scheduler_entry =
+      (AuxAddressEntry *) calloc(1, sizeof(AuxAddressEntry));
+  plasma_local_scheduler_entry->aux_address = strdup(aux_address);
+  plasma_local_scheduler_entry->local_scheduler_db_client_id = db_client_id;
+  HASH_ADD_KEYPTR(plasma_local_scheduler_hh, state->plasma_local_scheduler_map,
+                  plasma_local_scheduler_entry->aux_address,
+                  strlen(plasma_local_scheduler_entry->aux_address),
+                  plasma_local_scheduler_entry);
+
+  /* Add local_scheduler_db_client_id -> plasma_manager ip:port association to
+   * state. */
+  HASH_ADD(local_scheduler_plasma_hh, state->local_scheduler_plasma_map,
+           local_scheduler_db_client_id,
+           sizeof(plasma_local_scheduler_entry->local_scheduler_db_client_id),
+           plasma_local_scheduler_entry);
+
+#if (RAY_COMMON_LOG_LEVEL <= RAY_COMMON_DEBUG)
+  {
+    /* Print the local scheduler to plasma association map so far. */
+    AuxAddressEntry *entry, *tmp;
+    LOG_DEBUG("Local scheduler to plasma hash map so far:");
+    HASH_ITER(plasma_local_scheduler_hh, state->plasma_local_scheduler_map,
+              entry, tmp) {
+      LOG_DEBUG("%s -> %s", entry->aux_address,
+                ObjectID_to_string(entry->local_scheduler_db_client_id,
+                                   id_string, ID_STRING_SIZE));
+    }
+  }
+#endif
+
+  /* Add new local scheduler to the state. */
+  LocalScheduler local_scheduler;
+  local_scheduler.id = db_client_id;
+  local_scheduler.num_heartbeats_missed = 0;
+  local_scheduler.num_tasks_sent = 0;
+  local_scheduler.num_recent_tasks_sent = 0;
+  local_scheduler.info.task_queue_length = 0;
+  local_scheduler.info.available_workers = 0;
+  memset(local_scheduler.info.dynamic_resources, 0,
+         sizeof(local_scheduler.info.dynamic_resources));
+  memset(local_scheduler.info.static_resources, 0,
+         sizeof(local_scheduler.info.static_resources));
+  utarray_push_back(state->local_schedulers, &local_scheduler);
+
+  /* Allow the scheduling algorithm to process this event. */
+  handle_new_local_scheduler(state, state->policy_state, db_client_id);
+}
+
+void remove_local_scheduler(GlobalSchedulerState *state, int index) {
+  LocalScheduler *active_worker =
+      (LocalScheduler *) utarray_eltptr(state->local_schedulers, index);
+  DBClientID db_client_id = active_worker->id;
+  utarray_erase(state->local_schedulers, index, 1);
+
+  AuxAddressEntry *entry, *tmp;
+  HASH_ITER(plasma_local_scheduler_hh, state->plasma_local_scheduler_map, entry,
+            tmp) {
+    if (DBClientID_equal(entry->local_scheduler_db_client_id, db_client_id)) {
+      HASH_DELETE(plasma_local_scheduler_hh, state->plasma_local_scheduler_map,
+                  entry);
+      /* The hash entry is shared with the local_scheduler_plasma hashmap and
+       * will be freed there. */
+      free(entry->aux_address);
+    }
+  }
+
+  HASH_FIND(local_scheduler_plasma_hh, state->local_scheduler_plasma_map,
+            &db_client_id, sizeof(db_client_id), entry);
+  CHECK(entry != NULL);
+  HASH_DELETE(local_scheduler_plasma_hh, state->local_scheduler_plasma_map,
+              entry);
+  free(entry);
+
+  handle_local_scheduler_removed(state, state->policy_state, db_client_id);
+}
+
 /**
  * Process a notification about a new DB client connecting to Redis.
  * @param aux_address: an ip:port pair for the plasma manager associated with
@@ -175,6 +256,7 @@ void process_task_waiting(Task *waiting_task, void *user_context) {
 void process_new_db_client(DBClientID db_client_id,
                            const char *client_type,
                            const char *aux_address,
+                           bool is_insertion,
                            void *user_context) {
   GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
   char id_string[ID_STRING_SIZE];
@@ -182,54 +264,22 @@ void process_new_db_client(DBClientID db_client_id,
             ObjectID_to_string(db_client_id, id_string, ID_STRING_SIZE));
   UNUSED(id_string);
   if (strncmp(client_type, "local_scheduler", strlen("local_scheduler")) == 0) {
-    /* Add plasma_manager ip:port -> local_scheduler_db_client_id association to
-     * state. */
-    AuxAddressEntry *plasma_local_scheduler_entry =
-        (AuxAddressEntry *) calloc(1, sizeof(AuxAddressEntry));
-    plasma_local_scheduler_entry->aux_address = strdup(aux_address);
-    plasma_local_scheduler_entry->local_scheduler_db_client_id = db_client_id;
-    HASH_ADD_KEYPTR(plasma_local_scheduler_hh,
-                    state->plasma_local_scheduler_map,
-                    plasma_local_scheduler_entry->aux_address,
-                    strlen(plasma_local_scheduler_entry->aux_address),
-                    plasma_local_scheduler_entry);
-
-    /* Add local_scheduler_db_client_id -> plasma_manager ip:port association to
-     * state. */
-    HASH_ADD(local_scheduler_plasma_hh, state->local_scheduler_plasma_map,
-             local_scheduler_db_client_id,
-             sizeof(plasma_local_scheduler_entry->local_scheduler_db_client_id),
-             plasma_local_scheduler_entry);
-
-#if (RAY_COMMON_LOG_LEVEL <= RAY_COMMON_DEBUG)
-    {
-      /* Print the local scheduler to plasma association map so far. */
-      AuxAddressEntry *entry, *tmp;
-      LOG_DEBUG("Local scheduler to plasma hash map so far:");
-      HASH_ITER(plasma_local_scheduler_hh, state->plasma_local_scheduler_map,
-                entry, tmp) {
-        LOG_DEBUG("%s -> %s", entry->aux_address,
-                  ObjectID_to_string(entry->local_scheduler_db_client_id,
-                                     id_string, ID_STRING_SIZE));
+    if (is_insertion) {
+      /* This is a notification for an insert. */
+      add_local_scheduler(state, db_client_id, aux_address);
+    } else {
+      int i = 0;
+      for (; i < utarray_len(state->local_schedulers); ++i) {
+        LocalScheduler *active_worker =
+            (LocalScheduler *) utarray_eltptr(state->local_schedulers, i);
+        if (DBClientID_equal(active_worker->id, db_client_id)) {
+          break;
+        }
+      }
+      if (i < utarray_len(state->local_schedulers)) {
+        remove_local_scheduler(state, i);
       }
     }
-#endif
-
-    /* Add new local scheduler to the state. */
-    LocalScheduler local_scheduler;
-    local_scheduler.id = db_client_id;
-    local_scheduler.num_tasks_sent = 0;
-    local_scheduler.num_recent_tasks_sent = 0;
-    local_scheduler.info.task_queue_length = 0;
-    local_scheduler.info.available_workers = 0;
-    memset(local_scheduler.info.dynamic_resources, 0,
-           sizeof(local_scheduler.info.dynamic_resources));
-    memset(local_scheduler.info.static_resources, 0,
-           sizeof(local_scheduler.info.static_resources));
-    utarray_push_back(state->local_schedulers, &local_scheduler);
-
-    /* Allow the scheduling algorithm to process this event. */
-    handle_new_local_scheduler(state, state->policy_state, db_client_id);
   }
 }
 
@@ -312,6 +362,7 @@ void local_scheduler_table_handler(DBClientID client_id,
   LocalScheduler *local_scheduler_ptr = get_local_scheduler(state, client_id);
   if (local_scheduler_ptr != NULL) {
     /* Reset the number of tasks sent since the last heartbeat. */
+    local_scheduler_ptr->num_heartbeats_missed = 0;
     local_scheduler_ptr->num_recent_tasks_sent = 0;
     local_scheduler_ptr->info = info;
   } else {
@@ -335,6 +386,29 @@ int task_cleanup_handler(event_loop *loop, timer_id id, void *context) {
       free(*pending_task);
     }
   }
+
+  /* Check for local schedulers that have missed a number of heartbeats. If any
+   * local schedulers have died, notify others so that the state can be cleaned
+   * up. */
+  /* TODO(swang): If the local scheduler hasn't actually died, then it should
+   * clean up its state and exit upon receiving this notification. */
+  LocalScheduler *local_scheduler_ptr;
+  for (int i = utarray_len(state->local_schedulers) - 1; i >= 0; --i) {
+    local_scheduler_ptr =
+        (LocalScheduler *) utarray_eltptr(state->local_schedulers, i);
+    if (local_scheduler_ptr->num_heartbeats_missed >=
+        GLOBAL_SCHEDULER_HEARTBEAT_TIMEOUT) {
+      LOG_WARN(
+          "Missed too many heartbeats from local scheduler, marking as dead.");
+      /* Notify others by updating the global state. */
+      db_client_table_remove(state->db, local_scheduler_ptr->id, NULL, NULL,
+                             NULL);
+      /* Remove the scheduler from the local state. */
+      remove_local_scheduler(state, i);
+    }
+    ++local_scheduler_ptr->num_heartbeats_missed;
+  }
+
   /* Reset the timer. */
   return GLOBAL_SCHEDULER_TASK_CLEANUP_MILLISECONDS;
 }

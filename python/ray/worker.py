@@ -958,9 +958,13 @@ def cleanup(worker=global_worker):
                               {"end_time": time.time()})
     services.cleanup()
   else:
-    # If this is not a driver, make sure there are no orphan processes.
+    # If this is not a driver, make sure there are no orphan processes, besides
+    # possibly the worker itself.
     for process_type, processes in services.all_processes.items():
-      assert(len(processes) == 0)
+      if process_type == services.PROCESS_TYPE_WORKER:
+        assert(len(processes)) <= 1
+      else:
+        assert(len(processes) == 0)
 
   worker.set_mode(None)
 

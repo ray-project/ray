@@ -11,11 +11,18 @@
 /* The frequency with which the global scheduler checks if there are any tasks
  * that haven't been scheduled yet. */
 #define GLOBAL_SCHEDULER_TASK_CLEANUP_MILLISECONDS 100
+/* If a local scheduler has not sent a heartbeat in the last
+ * GLOBAL_SCHEDULER_HEARTBEAT_TIMEOUT heartbeat intervals, we will report it
+ * dead to the db_client table. */
+#define GLOBAL_SCHEDULER_HEARTBEAT_TIMEOUT 100
 
 /** Contains all information that is associated with a local scheduler. */
 typedef struct {
   /** The ID of the local scheduler in Redis. */
   DBClientID id;
+  /** The number of heartbeat intervals that have passed since we last heard
+   *  from this local scheduler. */
+  int64_t num_heartbeats_missed;
   /** The number of tasks sent from the global scheduler to this local
    *  scheduler. */
   int64_t num_tasks_sent;

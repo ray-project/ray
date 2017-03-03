@@ -6,6 +6,8 @@ def get_local_schedulers(worker):
   local_schedulers = []
   for client in worker.redis_client.keys("CL:*"):
     client_info = worker.redis_client.hgetall(client)
+    if b"client_type" not in client_info:
+      continue
     if client_info[b"client_type"] == b"local_scheduler":
       local_schedulers.append(client_info)
   return local_schedulers

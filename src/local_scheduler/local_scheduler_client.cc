@@ -75,6 +75,7 @@ void local_scheduler_reconstruct_object(LocalSchedulerConnection *conn,
                                         ObjectID object_id) {
   write_message(conn->conn, RECONSTRUCT_OBJECT, sizeof(object_id),
                 (uint8_t *) &object_id);
+  /* TODO(swang): Propagate the error. */
 }
 
 void local_scheduler_log_message(LocalSchedulerConnection *conn) {
