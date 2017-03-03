@@ -93,15 +93,6 @@ def train_cnn_and_compute_accuracy(params, steps, train_images, train_labels,
         label_batch = get_batch(train_labels, i, batch_size)
         # Do one step of training.
         sess.run(train_step, feed_dict={x: image_batch, y: label_batch, keep_prob: keep})
-        if i % 100 == 0:
-          # Estimate the training accuracy every once in a while.
-          train_ac = accuracy.eval(feed_dict={x: image_batch, y: label_batch, keep_prob: 1.0})
-          # If the training accuracy is too low, stop early in order to avoid
-          # wasting computation.
-          if train_ac < 0.25:
-            # Compute the validation accuracy and return.
-            totalacc = accuracy.eval(feed_dict={x: validation_images, y: validation_labels, keep_prob: 1.0})
-            return float(totalacc)
       # Training is done, so compute the validation accuracy and the current
       # weights and return.
       totalacc = accuracy.eval(feed_dict={x: validation_images,
