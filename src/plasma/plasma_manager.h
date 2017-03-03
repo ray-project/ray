@@ -179,6 +179,9 @@ struct plasma_request_buffer {
    * field is only used if we're pushing requests to another plasma manager,
    * not if we are receiving data. */
   plasma_request_buffer *next;
+  /* This is required to implement a doubly-linked list. We do not use this
+   * field except through the UT_list macros. */
+  plasma_request_buffer *prev;
 };
 
 /**

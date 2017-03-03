@@ -503,7 +503,7 @@ void destroy_plasma_manager_state(plasma_manager_state *state) {
     HASH_DELETE(manager_hh, state->manager_connections, manager_conn);
     plasma_request_buffer *head = manager_conn->transfer_queue;
     while (head) {
-      LL_DELETE(manager_conn->transfer_queue, head);
+      DL_DELETE(manager_conn->transfer_queue, head);
       free(head);
       head = manager_conn->transfer_queue;
     }
@@ -607,7 +607,7 @@ void send_queued_request(event_loop *loop,
 
   /* We are done sending this request. */
   if (conn->cursor == 0) {
-    LL_DELETE(conn->transfer_queue, buf);
+    DL_DELETE(conn->transfer_queue, buf);
     free(buf);
   }
 }
@@ -661,7 +661,7 @@ void process_data_chunk(event_loop *loop,
   plasma_seal(conn->manager_state->plasma_conn, buf->object_id);
   plasma_release(conn->manager_state->plasma_conn, buf->object_id);
   /* Remove the request buffer used for reading this object's data. */
-  LL_DELETE(conn->transfer_queue, buf);
+  DL_DELETE(conn->transfer_queue, buf);
   free(buf);
   /* Switch to listening for requests from this socket, instead of reading
    * object data. */
@@ -734,7 +734,7 @@ void process_transfer_request(event_loop *loop,
   /* If there is already a request in the transfer queue with the same object
    * ID, do not add the transfer request. */
   plasma_request_buffer *pending;
-  LL_FOREACH(manager_conn->transfer_queue, pending) {
+  DL_FOREACH(manager_conn->transfer_queue, pending) {
     if (ObjectID_equal(pending->object_id, obj_id) &&
         (pending->type == MessageType_PlasmaDataReply)) {
       return;
@@ -781,7 +781,7 @@ void process_transfer_request(event_loop *loop,
   buf->data_size = obj_buffer.data_size;
   buf->metadata_size = obj_buffer.metadata_size;
 
-  LL_APPEND(manager_conn->transfer_queue, buf);
+  DL_APPEND(manager_conn->transfer_queue, buf);
 }
 
 /**
@@ -819,7 +819,7 @@ void process_data_request(event_loop *loop,
   if (error_code == PlasmaError_OK) {
     /* Add buffer where the fetched data is to be stored to
      * conn->transfer_queue. */
-    LL_APPEND(conn->transfer_queue, buf);
+    DL_APPEND(conn->transfer_queue, buf);
   }
   CHECK(conn->cursor == 0);
 
@@ -883,7 +883,7 @@ void request_transfer_from(plasma_manager_state *manager_state,
                         send_queued_request, manager_conn);
   }
   /* Add this transfer request to this connection's transfer queue. */
-  LL_APPEND(manager_conn->transfer_queue, transfer_request);
+  DL_APPEND(manager_conn->transfer_queue, transfer_request);
   /* On the next attempt, try the next manager in manager_vector. */
   fetch_req->next_manager += 1;
   fetch_req->next_manager %= fetch_req->manager_count;
