@@ -252,6 +252,10 @@ struct ClientConnection {
    *  list of buffers to write. */
   /* TODO(swang): Split into two queues, data transfers and data requests. */
   plasma_request_buffer *transfer_queue;
+  /* A set of object IDs which are queued in the transfer_queue and waiting to
+   * be sent. This is used to avoid sending the same object ID to the same
+   * manager multiple times. */
+  plasma_request_buffer *pending_object_transfers;
   /** Buffer used to receive transfers (data fetches) we want to ignore */
   plasma_request_buffer *ignore_buffer;
   /** File descriptor for the socket connected to the other
@@ -501,12 +505,24 @@ void destroy_plasma_manager_state(plasma_manager_state *state) {
   ClientConnection *manager_conn, *tmp;
   HASH_ITER(manager_hh, state->manager_connections, manager_conn, tmp) {
     HASH_DELETE(manager_hh, state->manager_connections, manager_conn);
+
+    /* Free the hash table of object IDs that are waiting to be transferred. */
+    plasma_request_buffer *request_buffer, *tmp_buffer;
+    HASH_ITER(hh, manager_conn->pending_object_transfers, request_buffer,
+              tmp_buffer) {
+      /* We do not free the plasma_request_buffer here because it is also in the
+       * transfer queue and will be freed below. */
+      HASH_DELETE(hh, manager_conn->pending_object_transfers, request_buffer);
+    }
+
+    /* Free the transfer queue. */
     plasma_request_buffer *head = manager_conn->transfer_queue;
     while (head) {
       DL_DELETE(manager_conn->transfer_queue, head);
       free(head);
       head = manager_conn->transfer_queue;
     }
+    /* Close the manager connection and free the remaining state. */
     close(manager_conn->fd);
     free(manager_conn->ip_addr_port);
     free(manager_conn);
@@ -605,8 +621,13 @@ void send_queued_request(event_loop *loop,
     LOG_FATAL("Buffered request has unknown type.");
   }
 
-  /* We are done sending this request. */
+  /* If we are done sending this request, remove it from the transfer queue. */
   if (conn->cursor == 0) {
+    if (buf->type == MessageType_PlasmaDataReply) {
+      /* If we just finished sending an object to a remote manager, then remove
+       * the object from the hash table of pending transfer requests. */
+      HASH_DELETE(hh, conn->pending_object_transfers, buf);
+    }
     DL_DELETE(conn->transfer_queue, buf);
     free(buf);
   }
@@ -712,6 +733,7 @@ ClientConnection *get_manager_connection(plasma_manager_state *state,
     manager_conn->fd = fd;
     manager_conn->manager_state = state;
     manager_conn->transfer_queue = NULL;
+    manager_conn->pending_object_transfers = NULL;
     manager_conn->cursor = 0;
     manager_conn->ip_addr_port = strdup(utstring_body(ip_addr_port));
     HASH_ADD_KEYPTR(manager_hh,
@@ -734,11 +756,10 @@ void process_transfer_request(event_loop *loop,
   /* If there is already a request in the transfer queue with the same object
    * ID, do not add the transfer request. */
   plasma_request_buffer *pending;
-  DL_FOREACH(manager_conn->transfer_queue, pending) {
-    if (ObjectID_equal(pending->object_id, obj_id) &&
-        (pending->type == MessageType_PlasmaDataReply)) {
-      return;
-    }
+  HASH_FIND(hh, manager_conn->pending_object_transfers, &obj_id, sizeof(obj_id),
+            pending);
+  if (pending != NULL) {
+    return;
   }
 
   /* If we already have a connection to this manager and its inactive,
@@ -782,6 +803,8 @@ void process_transfer_request(event_loop *loop,
   buf->metadata_size = obj_buffer.metadata_size;
 
   DL_APPEND(manager_conn->transfer_queue, buf);
+  HASH_ADD(hh, manager_conn->pending_object_transfers, object_id,
+           sizeof(buf->object_id), buf);
 }
 
 /**
@@ -1398,6 +1421,8 @@ ClientConnection *ClientConnection_init(event_loop *loop,
   conn->manager_state = (plasma_manager_state *) context;
   conn->cursor = 0;
   conn->transfer_queue = NULL;
+  /* TODO(rkn): Is this pending_object_transfers hash table ever used? */
+  conn->pending_object_transfers = NULL;
   conn->fd = new_socket;
   conn->active_objects = NULL;
   conn->num_return_objects = 0;

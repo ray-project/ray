@@ -182,6 +182,11 @@ struct plasma_request_buffer {
   /* This is required to implement a doubly-linked list. We do not use this
    * field except through the UT_list macros. */
   plasma_request_buffer *prev;
+  /* This is used to also store the plasma_request_buffer in a hash table. The
+   * hash table is used as a set to make sure we don't try to send the same
+   * object multiple times to the same manager. The object_id field will be the
+   * key to the hash table. */
+  UT_hash_handle hh;
 };
 
 /**
