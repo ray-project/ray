@@ -7,9 +7,11 @@ from tensorflow.python.client import timeline
 use_tf100_api = distutils.version.LooseVersion(tf.VERSION) >= distutils.version.LooseVersion('1.0.0')
 
 class Policy(object):
+    """Policy base class"""
+    
     def __init__(self, ob_space, ac_space, task, name="local"):
         self.local_steps = 0
-        worker_device = "/job:localhost/replica:0/task:{}/cpu:0".format(0) #task)
+        worker_device = "/job:localhost/replica:0/task:0/cpu:0"
         self.g = tf.Graph()
         with self.g.as_default(), tf.device(worker_device):
             with tf.variable_scope(name):
@@ -74,7 +76,7 @@ class Policy(object):
     def set_weights(self, weights):
         self.variables.set_weights(weights)
 
-    def get_gradients(self, batch, profile=False):
+    def get_gradients(self, batch):
         raise NotImplementedError
 
     def get_vf_loss(self):
@@ -86,8 +88,6 @@ class Policy(object):
 
     def value(self, ob):
         raise NotImplementedError
-
-
 
 def normalized_columns_initializer(std=1.0):
     def _initializer(shape, dtype=None, partition_info=None):

@@ -4,14 +4,12 @@ import tensorflow.contrib.rnn as rnn
 import distutils.version
 import ray
 from policy import *
-from tensorflow.python.client import timeline
 use_tf100_api = distutils.version.LooseVersion(tf.VERSION) >= distutils.version.LooseVersion('1.0.0')
 
 
-
 class LSTMPolicy(Policy):
-    
     def setup_graph(self, ob_space, ac_space):
+        """Setup model used for Policy (in this A3C, both the Critic and the Actor share the model)"""
         self.x = x = tf.placeholder(tf.float32, [None] + list(ob_space))
 
         for i in range(4):
@@ -51,7 +49,9 @@ class LSTMPolicy(Policy):
         self.global_step = tf.get_variable("global_step", [], tf.int32, initializer=tf.constant_initializer(0, dtype=tf.int32),
                                                    trainable=False)
 
-    def get_gradients(self, batch, profile=False):
+    def get_gradients(self, batch):
+        """Computing the gradient is actually model-dependent. 
+            The LSTM needs its hidden states in order to compute the gradient accurately."""
         feed_dict = {
             self.x: batch.si,
             self.ac: batch.a,
@@ -61,17 +61,6 @@ class LSTMPolicy(Policy):
             self.state_in[1]: batch.features[1],
         }
         self.local_steps += 1
-        if profile:
-            run_options = tf.RunOptions(trace_level=tf.RunOptions.HARDWARE_TRACE)
-            run_metadata = tf.RunMetadata()
-            grads = self.sess.run(self.grads,feed_dict=feed_dict, options=run_options, run_metadata=run_metadata)
-
-            # Create the Timeline object, and write it to a json
-            tl = timeline.Timeline(run_metadata.step_stats)
-            ctf = tl.generate_chrome_trace_format()
-            with open('timeline_%d.json' % self.local_steps, 'w') as f:
-                f.write(ctf)
-            return grads
         return self.sess.run(self.grads, feed_dict=feed_dict)
 
     def act(self, ob, c, h):
