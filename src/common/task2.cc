@@ -4,6 +4,8 @@
 
 #include "task2.h"
 
+#include <iostream>
+
 extern "C" {
 #include "sha256.h"
 }
@@ -21,6 +23,17 @@ ObjectID task_compute_return_id(TaskID task_id, int64_t return_index) {
   return return_id;
 }
 
+ObjectID task_compute_put_id(TaskID task_id, int64_t put_index) {
+  DCHECK(put_index >= 0);
+  /* TODO(pcm): This line requires object and task IDs to be the same size. */
+  ObjectID put_id = task_id;
+  int64_t *first_bytes = (int64_t *) &put_id;
+  /* XOR the first bytes of the object ID with the return index. We add one so
+   * the first return ID is not the same as the task ID. */
+  *first_bytes = *first_bytes ^ (-put_index - 1);
+  return put_id;
+}
+
 class TaskBuilder {
 public:
   void Start(UniqueID driver_id, TaskID parent_task_id, int64_t parent_counter,
@@ -32,6 +45,9 @@ public:
     actor_counter_ = actor_counter;
     function_id_ = function_id;
     num_returns_ = num_returns;
+
+    std::cout << "********************************* clearing" << std::endl;
+    fbb.Clear();
 
     /* Compute hashes. */
     sha256_init(&ctx);
@@ -55,6 +71,16 @@ public:
     sha256_update(&ctx, (BYTE*) &value, length);
   }
 
+  void SetRequiredResource(int64_t resource_index, double value) {
+    if (resource_index >= resource_vector_.size()) {
+      /* Make sure the resource vector is constructed entry by entry,
+       * in order. */
+      CHECK(resource_index == resource_vector_.size());
+      resource_vector_.resize(resource_index + 1);
+    }
+    resource_vector_[resource_index] = value;
+  }
+
   uint8_t *Finish(int64_t *size) {
     /* Add arguments. */
     auto arguments = fbb.CreateVector(args);
@@ -71,17 +97,20 @@ public:
       returns.push_back(to_flat(fbb, return_id));
     }
     /* Create TaskSpec. */
+    for (int64_t i = resource_vector_.size(); i < ResourceIndex_MAX; ++i) {
+      std::cout << "i: " << i << std::endl;
+      resource_vector_.push_back(0.0);
+    }
     auto message = CreateTaskSpec(fbb,
       to_flat(fbb, driver_id_), to_flat(fbb, task_id),
       to_flat(fbb, parent_task_id_), parent_counter_,
       to_flat(fbb, actor_id_), actor_counter_, to_flat(fbb, function_id_),
-      arguments, fbb.CreateVector(returns));
+      arguments, fbb.CreateVector(returns), fbb.CreateVector(resource_vector_));
     /* Finish the TaskSpec. */
     fbb.Finish(message);
     *size = fbb.GetSize();
     uint8_t *result = (uint8_t *) malloc(*size);
     memcpy(result, fbb.GetBufferPointer(), *size);
-    fbb.Clear();
     return result;
   }
 
@@ -98,6 +127,7 @@ private:
   int64_t actor_counter_;
   FunctionID function_id_;
   int64_t num_returns_;
+  std::vector<double> resource_vector_;
 };
 
 TaskBuilder *make_task_builder(void) {
@@ -152,12 +182,7 @@ void task_args_add_val(TaskBuilder *builder, uint8_t *value, int64_t length) {
 void task_spec_set_required_resource(TaskBuilder *builder,
                                      int64_t resource_index,
                                      double value) {
-  
-  /*
-  CHECK(resource_index < Task_required_resources_reserved_len(builder->B));
-  double *resource_vector = Task_required_resources_edit(builder->B);
-  resource_vector[resource_index] = value;
-  */
+  builder->SetRequiredResource(resource_index, value);
 }
 
 /* Functions for reading tasks. */
@@ -186,6 +211,12 @@ int64_t task_spec_actor_counter(task_spec *spec) {
   return message->actor_counter();
 }
 
+UniqueID task_spec_driver_id(task_spec *spec) {
+  CHECK(spec);
+  auto message = flatbuffers::GetRoot<TaskSpec>(spec);
+  return from_flat(message->driver_id());
+}
+
 int64_t task_num_args(uint8_t *spec) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskSpec>(spec);
@@ -195,8 +226,8 @@ int64_t task_num_args(uint8_t *spec) {
 ObjectID task_arg_id(uint8_t *spec, int64_t arg_index) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskSpec>(spec);
+  std::cout << "XXXXXXXXXX length is " << message->args()->Get(arg_index)->object_id()->size() << std::endl;
   return from_flat(message->args()->Get(arg_index)->object_id());
-  return NIL_ID;
 }
 
 const uint8_t *task_arg_val(uint8_t *spec, int64_t arg_index) {

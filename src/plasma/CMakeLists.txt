@@ -57,9 +57,9 @@ if(APPLE)
 endif(APPLE)
 
 if(APPLE)
-  target_link_libraries(plasma -Wl,-force_load,${FLATBUFFERS_STATIC_LIB} ${COMMON_LIB} ${PYTHON_LIBRARIES} ${FLATBUFFERS_STATIC_LIB})
+  target_link_libraries(plasma -Wl,-force_load,${FLATBUFFERS_STATIC_LIB} common2 ${PYTHON_LIBRARIES} ${FLATBUFFERS_STATIC_LIB})
 else(APPLE)
-  target_link_libraries(plasma -Wl,--whole-archive ${FLATBUFFERS_STATIC_LIB} -Wl,--no-whole-archive ${COMMON_LIB} ${PYTHON_LIBRARIES} ${FLATBUFFERS_STATIC_LIB})
+  target_link_libraries(plasma -Wl,--whole-archive ${FLATBUFFERS_STATIC_LIB} -Wl,--no-whole-archive common2 ${PYTHON_LIBRARIES} ${FLATBUFFERS_STATIC_LIB})
 endif(APPLE)
 
 include_directories("${FLATBUFFERS_INCLUDE_DIR}")

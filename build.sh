@@ -25,7 +25,7 @@ bash "$ROOT_DIR/src/numbuf/thirdparty/build_thirdparty.sh"
 
 # Now build everything.
 pushd "$ROOT_DIR/python/ray/core"
-  cmake -DCMAKE_BUILD_TYPE=Release ../../..
+  cmake -DCMAKE_BUILD_TYPE=Debug ../../..
   make clean
   make
 popd

@@ -10,7 +10,7 @@ sleep 1s
 ./src/common/common_tests
 ./src/common/db_tests
 ./src/common/io_tests
-./src/common/task_tests
+./src/common/task_tests2
 ./src/common/redis_tests
 ./src/common/task_table_tests
 ./src/common/object_table_tests

@@ -94,7 +94,7 @@ ObjectSizeEntry *create_object_size_hashmap(GlobalSchedulerState *state,
      * Args by value are serialized into the task_spec itself.
      * We will only concern ourselves with args by ref for data size calculation
      */
-    if (task_arg_by_ref(task_spec, i)) {
+    if (!task_arg_by_ref(task_spec, i)) {
       continue;
     }
     *has_args_by_ref = true;

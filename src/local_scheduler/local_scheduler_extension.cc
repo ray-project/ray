@@ -224,6 +224,8 @@ MOD_INIT(liblocal_scheduler_library) {
   PyModule_AddObject(m, "LocalSchedulerClient",
                      (PyObject *) &PyLocalSchedulerClientType);
 
+  g_task_builder = make_task_builder();
+
   char local_scheduler_error[] = "local_scheduler.error";
   LocalSchedulerError = PyErr_NewException(local_scheduler_error, NULL, NULL);
   Py_INCREF(LocalSchedulerError);
