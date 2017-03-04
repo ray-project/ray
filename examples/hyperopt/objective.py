@@ -1,3 +1,7 @@
+# Most of the tensorflow code is adapted from Tensorflow's tutorial on using
+# CNNs to train MNIST
+# https://www.tensorflow.org/versions/r0.9/tutorials/mnist/pros/index.html#build-a-multilayer-convolutional-network.
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -51,42 +55,48 @@ def cnn_setup(x, y, keep_prob, lr, stddev):
   y_conv = tf.nn.softmax(tf.matmul(h_fc1_drop, W_fc2) + b_fc2)
   cross_entropy = tf.reduce_mean(-tf.reduce_sum(y * tf.log(y_conv), reduction_indices=[1]))
   correct_pred = tf.equal(tf.argmax(y_conv, 1), tf.argmax(y, 1))
-  return tf.train.AdamOptimizer(lr).minimize(cross_entropy), tf.reduce_mean(tf.cast(correct_pred, tf.float32))
+  return tf.train.AdamOptimizer(lr).minimize(cross_entropy), tf.reduce_mean(tf.cast(correct_pred, tf.float32)), cross_entropy
 
 # Define a remote function that takes a set of hyperparameters as well as the
 # data, consructs and trains a network, and returns the validation accuracy.
 @ray.remote
-def train_cnn_and_compute_accuracy(params, steps, train_images, train_labels, validation_images, validation_labels):
+def train_cnn_and_compute_accuracy(params, steps, train_images, train_labels,
+                                   validation_images, validation_labels,
+                                   weights=None):
   # Extract the hyperparameters from the params dictionary.
   learning_rate = params["learning_rate"]
   batch_size = params["batch_size"]
   keep = 1 - params["dropout"]
   stddev = params["stddev"]
-  # Create the input placeholders for the network.
-  x = tf.placeholder(tf.float32, shape=[None, 784])
-  y = tf.placeholder(tf.float32, shape=[None, 10])
-  keep_prob = tf.placeholder(tf.float32)
-  # Create the network.
-  train_step, accuracy = cnn_setup(x, y, keep_prob, learning_rate, stddev)
-  # Do the training and evaluation.
-  with tf.Session() as sess:
-    # Initialize the network weights.
-    sess.run(tf.global_variables_initializer())
-    for i in range(1, steps + 1):
-      # Fetch the next batch of data.
-      image_batch = get_batch(train_images, i, batch_size)
-      label_batch = get_batch(train_labels, i, batch_size)
-      # Do one step of training.
-      sess.run(train_step, feed_dict={x: image_batch, y: label_batch, keep_prob: keep})
-      if i % 100 == 0:
-        # Estimate the training accuracy every once in a while.
-        train_ac = accuracy.eval(feed_dict={x: image_batch, y: label_batch, keep_prob: 1.0})
-        # If the training accuracy is too low, stop early in order to avoid
-        # wasting computation.
-        if train_ac < 0.25:
-          # Compute the validation accuracy and return.
-          totalacc = accuracy.eval(feed_dict={x: validation_images, y: validation_labels, keep_prob: 1.0})
-          return float(totalacc)
-    # Training is done, compute the validation accuracy and return.
-    totalacc = accuracy.eval(feed_dict={x: validation_images, y: validation_labels, keep_prob: 1.0})
-  return float(totalacc)
+  # Create the network and related variables.
+  with tf.Graph().as_default():
+    # Create the input placeholders for the network.
+    x = tf.placeholder(tf.float32, shape=[None, 784])
+    y = tf.placeholder(tf.float32, shape=[None, 10])
+    keep_prob = tf.placeholder(tf.float32)
+    # Create the network.
+    train_step, accuracy, loss = cnn_setup(x, y, keep_prob, learning_rate, stddev)
+    # Do the training and evaluation.
+    with tf.Session() as sess:
+      # Use the TensorFlowVariables utility. This is only necessary if we want to
+      # set and get the weights.
+      variables = ray.experimental.TensorFlowVariables(loss, sess)
+      # Initialize the network weights.
+      sess.run(tf.global_variables_initializer())
+      # If some network weights were passed in, set those.
+      if weights is not None:
+        variables.set_weights(weights)
+      # Do some steps of training.
+      for i in range(1, steps + 1):
+        # Fetch the next batch of data.
+        image_batch = get_batch(train_images, i, batch_size)
+        label_batch = get_batch(train_labels, i, batch_size)
+        # Do one step of training.
+        sess.run(train_step, feed_dict={x: image_batch, y: label_batch, keep_prob: keep})
+      # Training is done, so compute the validation accuracy and the current
+      # weights and return.
+      totalacc = accuracy.eval(feed_dict={x: validation_images,
+                                          y: validation_labels,
+                                          keep_prob: 1.0})
+      new_weights = variables.get_weights()
+  return float(totalacc), new_weights
