@@ -1,7 +1,7 @@
 #ifndef LOCAL_SCHEDULER_SHARED_H
 #define LOCAL_SCHEDULER_SHARED_H
 
-#include "common/task2.h"
+#include "common/task.h"
 #include "common/state/table.h"
 #include "common/state/db.h"
 #include "plasma_client.h"

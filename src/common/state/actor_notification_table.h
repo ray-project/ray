@@ -1,7 +1,7 @@
 #ifndef ACTOR_NOTIFICATION_TABLE_H
 #define ACTOR_NOTIFICATION_TABLE_H
 
-#include "task2.h"
+#include "task.h"
 #include "db.h"
 #include "table.h"
 

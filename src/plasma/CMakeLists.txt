@@ -57,9 +57,9 @@ if(APPLE)
 endif(APPLE)
 
 if(APPLE)
-  target_link_libraries(plasma -Wl,-force_load,${FLATBUFFERS_STATIC_LIB} common2 ${PYTHON_LIBRARIES} ${FLATBUFFERS_STATIC_LIB})
+  target_link_libraries(plasma -Wl,-force_load,${FLATBUFFERS_STATIC_LIB} common ${PYTHON_LIBRARIES} ${FLATBUFFERS_STATIC_LIB})
 else(APPLE)
-  target_link_libraries(plasma -Wl,--whole-archive ${FLATBUFFERS_STATIC_LIB} -Wl,--no-whole-archive common2 ${PYTHON_LIBRARIES} ${FLATBUFFERS_STATIC_LIB})
+  target_link_libraries(plasma -Wl,--whole-archive ${FLATBUFFERS_STATIC_LIB} -Wl,--no-whole-archive common ${PYTHON_LIBRARIES} ${FLATBUFFERS_STATIC_LIB})
 endif(APPLE)
 
 include_directories("${FLATBUFFERS_INCLUDE_DIR}")
@@ -78,7 +78,7 @@ add_executable(plasma_store
 
 add_dependencies(plasma_store hiredis gen_plasma_fbs)
 
-target_link_libraries(plasma_store common2 ${FLATBUFFERS_STATIC_LIB})
+target_link_libraries(plasma_store common ${FLATBUFFERS_STATIC_LIB})
 
 add_library(plasma_lib STATIC
   plasma_client.cc
@@ -87,7 +87,7 @@ add_library(plasma_lib STATIC
   fling.c
   thirdparty/xxhash.c)
 
-target_link_libraries(plasma_lib common2 ${FLATBUFFERS_STATIC_LIB})
+target_link_libraries(plasma_lib common ${FLATBUFFERS_STATIC_LIB})
 add_dependencies(plasma_lib gen_plasma_fbs)
 
 add_dependencies(plasma protocol_fbs)
@@ -95,12 +95,12 @@ add_dependencies(plasma protocol_fbs)
 add_executable(plasma_manager
   plasma_manager.cc)
 
-target_link_libraries(plasma_manager common2 plasma_lib ${FLATBUFFERS_STATIC_LIB})
+target_link_libraries(plasma_manager common plasma_lib ${FLATBUFFERS_STATIC_LIB})
 
 add_library(plasma_client SHARED plasma_client.cc)
 target_link_libraries(plasma_client ${FLATBUFFERS_STATIC_LIB})
 
-target_link_libraries(plasma_client common2 plasma_lib ${FLATBUFFERS_STATIC_LIB})
+target_link_libraries(plasma_client common plasma_lib ${FLATBUFFERS_STATIC_LIB})
 
 define_test(client_tests plasma_lib)
 define_test(manager_tests plasma_lib plasma_manager.cc)

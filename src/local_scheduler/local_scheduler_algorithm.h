@@ -2,7 +2,7 @@
 #define LOCAL_SCHEDULER_ALGORITHM_H
 
 #include "local_scheduler_shared.h"
-#include "common/task2.h"
+#include "common/task.h"
 #include "state/local_scheduler_table.h"
 
 /* The duration that the local scheduler will wait before reinitiating a fetch

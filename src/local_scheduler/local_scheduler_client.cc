@@ -1,7 +1,7 @@
 #include "local_scheduler_client.h"
 
 #include "common/io.h"
-#include "common/task2.h"
+#include "common/task.h"
 #include <stdlib.h>
 
 LocalSchedulerConnection *LocalSchedulerConnection_init(

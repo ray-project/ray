@@ -1,7 +1,7 @@
 #ifndef LOCAL_SCHEDULER_H
 #define LOCAL_SCHEDULER_H
 
-#include "task2.h"
+#include "task.h"
 #include "event_loop.h"
 
 /* The duration between local scheduler heartbeats. */

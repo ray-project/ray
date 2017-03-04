@@ -1,7 +1,7 @@
 #ifndef LOCAL_SCHEDULER_CLIENT_H
 #define LOCAL_SCHEDULER_CLIENT_H
 
-#include "common/task2.h"
+#include "common/task.h"
 #include "local_scheduler_shared.h"
 
 typedef struct {

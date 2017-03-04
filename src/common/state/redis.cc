@@ -20,7 +20,7 @@ extern "C" {
 #include "local_scheduler_table.h"
 #include "object_table.h"
 #include "object_info.h"
-#include "task2.h"
+#include "task.h"
 #include "task_table.h"
 #include "event_loop.h"
 #include "redis.h"

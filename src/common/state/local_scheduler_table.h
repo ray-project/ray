@@ -3,7 +3,7 @@
 
 #include "db.h"
 #include "table.h"
-#include "task2.h"
+#include "task.h"
 
 /** This struct is sent with heartbeat messages from the local scheduler to the
  *  global scheduler, and it contains information about the load on the local

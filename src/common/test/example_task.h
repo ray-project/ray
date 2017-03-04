@@ -1,7 +1,7 @@
 #ifndef EXAMPLE_TASK_H
 #define EXAMPLE_TASK_H
 
-#include "task2.h"
+#include "task.h"
 
 extern TaskBuilder *g_task_builder;
 

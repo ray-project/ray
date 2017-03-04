@@ -3,7 +3,7 @@
 
 #include "common.h"
 #include "global_scheduler.h"
-#include "task2.h"
+#include "task.h"
 
 /* ==== The scheduling algorithm ====
  *

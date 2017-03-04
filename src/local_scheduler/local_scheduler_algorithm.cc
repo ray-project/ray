@@ -9,7 +9,7 @@
 #include "state/object_table.h"
 #include "local_scheduler_shared.h"
 #include "local_scheduler.h"
-#include "common/task2.h"
+#include "common/task.h"
 
 /* Declared for convenience. */
 void remove_actor(SchedulingAlgorithmState *algorithm_state, ActorID actor_id);

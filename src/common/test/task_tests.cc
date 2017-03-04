@@ -14,20 +14,22 @@ SUITE(task_tests);
 TEST task_test(void) {
   TaskID parent_task_id = globally_unique_id();
   FunctionID func_id = globally_unique_id();
-  task_spec *spec = start_construct_task_spec(
-      NIL_ID, parent_task_id, 0, NIL_ACTOR_ID, 0, func_id, 4, 2, 10);
+  TaskBuilder *builder = make_task_builder();
+  start_construct_task_spec(
+      builder, NIL_ID, parent_task_id, 0, NIL_ACTOR_ID, 0, func_id, 2);
   ASSERT(task_num_args(spec) == 4);
   ASSERT(task_num_returns(spec) == 2);
 
   UniqueID arg1 = globally_unique_id();
-  ASSERT(task_args_add_ref(spec, arg1) == 0);
-  ASSERT(task_args_add_val(spec, (uint8_t *) "hello", 5) == 1);
+  task_args_add_ref(builder, arg1);
+  task_args_add_val(builder, (uint8_t *) "hello", 5);
   UniqueID arg2 = globally_unique_id();
-  ASSERT(task_args_add_ref(spec, arg2) == 2);
-  ASSERT(task_args_add_val(spec, (uint8_t *) "world", 5) == 3);
+  task_args_add_ref(builder, arg2);
+  task_args_add_val(builder, (uint8_t *) "world", 5);
   /* Finish constructing the spec. This constructs the task ID and the
    * return IDs. */
-  finish_construct_task_spec(spec);
+  int64_t size;
+  uint8_t *spec = finish_construct_task_spec(builder, &size);
 
   /* Check that the spec was constructed as expected. */
   ASSERT(task_num_args(spec) == 4);
@@ -40,11 +42,12 @@ TEST task_test(void) {
   ASSERT(memcmp(task_arg_val(spec, 3), (uint8_t *) "world",
                 task_arg_length(spec, 3)) == 0);
 
-  free_task_spec(spec);
+  free(spec);
   PASS();
 }
 
 TEST deterministic_ids_test(void) {
+  TaskBuilder *builder = make_task_builder();
   /* Define the inputs to the task construction. */
   TaskID parent_task_id = globally_unique_id();
   FunctionID func_id = globally_unique_id();
@@ -52,18 +55,20 @@ TEST deterministic_ids_test(void) {
   uint8_t *arg2 = (uint8_t *) "hello world";
 
   /* Construct a first task. */
-  task_spec *spec1 = start_construct_task_spec(
-      NIL_ID, parent_task_id, 0, NIL_ACTOR_ID, 0, func_id, 2, 3, 11);
-  task_args_add_ref(spec1, arg1);
-  task_args_add_val(spec1, arg2, 11);
-  finish_construct_task_spec(spec1);
+  start_construct_task_spec(
+      builder, NIL_ID, parent_task_id, 0, NIL_ACTOR_ID, 0, func_id, 3);
+  task_args_add_ref(builder, arg1);
+  task_args_add_val(builder, arg2, 11);
+  int64_t size1;
+  task_spec *spec1 = finish_construct_task_spec(builder, &size1);
 
   /* Construct a second identical task. */
-  task_spec *spec2 = start_construct_task_spec(
-      NIL_ID, parent_task_id, 0, NIL_ACTOR_ID, 0, func_id, 2, 3, 11);
-  task_args_add_ref(spec2, arg1);
-  task_args_add_val(spec2, arg2, 11);
-  finish_construct_task_spec(spec2);
+  start_construct_task_spec(
+      builder, NIL_ID, parent_task_id, 0, NIL_ACTOR_ID, 0, func_id, 3);
+  task_args_add_ref(builder, arg1);
+  task_args_add_val(builder, arg2, 11);
+  int64_t size2;
+  task_spec *spec2 = finish_construct_task_spec(builder, &size2);
 
   /* Check that these tasks have the same task IDs and the same return IDs.*/
   ASSERT(TaskID_equal(task_spec_id(spec1), task_spec_id(spec2)));
@@ -78,40 +83,44 @@ TEST deterministic_ids_test(void) {
   /* Create more tasks that are only mildly different. */
 
   /* Construct a task with a different parent task ID. */
-  task_spec *spec3 = start_construct_task_spec(
-      NIL_ID, globally_unique_id(), 0, NIL_ACTOR_ID, 0, func_id, 2, 3, 11);
-  task_args_add_ref(spec3, arg1);
-  task_args_add_val(spec3, arg2, 11);
-  finish_construct_task_spec(spec3);
+  start_construct_task_spec(
+      builder, NIL_ID, globally_unique_id(), 0, NIL_ACTOR_ID, 0, func_id, 3);
+  task_args_add_ref(builder, arg1);
+  task_args_add_val(builder, arg2, 11);
+  int64_t size3;
+  task_spec *spec3 = finish_construct_task_spec(builder, &size3);
 
   /* Construct a task with a different parent counter. */
-  task_spec *spec4 = start_construct_task_spec(
-      NIL_ID, parent_task_id, 1, NIL_ACTOR_ID, 0, func_id, 2, 3, 11);
-  task_args_add_ref(spec4, arg1);
-  task_args_add_val(spec4, arg2, 11);
-  finish_construct_task_spec(spec4);
+  start_construct_task_spec(
+      builder, NIL_ID, parent_task_id, 1, NIL_ACTOR_ID, 0, func_id, 3);
+  task_args_add_ref(builder, arg1);
+  task_args_add_val(builder, arg2, 11);
+  int64_t size4;
+  task_spec *spec4 = finish_construct_task_spec(builder, &size4);
 
   /* Construct a task with a different function ID. */
-  task_spec *spec5 =
-      start_construct_task_spec(NIL_ID, parent_task_id, 0, NIL_ACTOR_ID, 0,
-                                globally_unique_id(), 2, 3, 11);
-  task_args_add_ref(spec5, arg1);
-  task_args_add_val(spec5, arg2, 11);
-  finish_construct_task_spec(spec5);
+  start_construct_task_spec(builder, NIL_ID, parent_task_id, 0, NIL_ACTOR_ID, 0,
+                            globally_unique_id(), 3);
+  task_args_add_ref(builder, arg1);
+  task_args_add_val(builder, arg2, 11);
+  int64_t size5;
+  task_spec *spec5 = finish_construct_task_spec(builder, &size5);
 
   /* Construct a task with a different object ID argument. */
-  task_spec *spec6 = start_construct_task_spec(
-      NIL_ID, parent_task_id, 0, NIL_ACTOR_ID, 0, func_id, 2, 3, 11);
-  task_args_add_ref(spec6, globally_unique_id());
-  task_args_add_val(spec6, arg2, 11);
-  finish_construct_task_spec(spec6);
+  start_construct_task_spec(
+      builder, NIL_ID, parent_task_id, 0, NIL_ACTOR_ID, 0, func_id, 3);
+  task_args_add_ref(builder, globally_unique_id());
+  task_args_add_val(builder, arg2, 11);
+  int64_t size6;
+  task_spec *spec6 = finish_construct_task_spec(builder, &size6);
 
   /* Construct a task with a different value argument. */
-  task_spec *spec7 = start_construct_task_spec(
-      NIL_ID, parent_task_id, 0, NIL_ACTOR_ID, 0, func_id, 2, 3, 11);
-  task_args_add_ref(spec7, arg1);
-  task_args_add_val(spec7, (uint8_t *) "hello_world", 11);
-  finish_construct_task_spec(spec7);
+  start_construct_task_spec(
+      builder, NIL_ID, parent_task_id, 0, NIL_ACTOR_ID, 0, func_id, 3);
+  task_args_add_ref(builder, arg1);
+  task_args_add_val(builder, (uint8_t *) "hello_world", 11);
+  int64_t size7;
+  task_spec *spec7 = finish_construct_task_spec(builder, &size7);
 
   /* Check that the task IDs are all distinct from the original. */
   ASSERT(!TaskID_equal(task_spec_id(spec1), task_spec_id(spec3)));
@@ -136,37 +145,38 @@ TEST deterministic_ids_test(void) {
     }
   }
 
-  free_task_spec(spec1);
-  free_task_spec(spec2);
-  free_task_spec(spec3);
-  free_task_spec(spec4);
-  free_task_spec(spec5);
-  free_task_spec(spec6);
-  free_task_spec(spec7);
+  free(spec1);
+  free(spec2);
+  free(spec3);
+  free(spec4);
+  free(spec5);
+  free(spec6);
+  free(spec7);
   PASS();
 }
 
 TEST send_task(void) {
+  TaskBuilder *builder = make_task_builder();
   TaskID parent_task_id = globally_unique_id();
   FunctionID func_id = globally_unique_id();
-  task_spec *spec = start_construct_task_spec(
-      NIL_ID, parent_task_id, 0, NIL_ACTOR_ID, 0, func_id, 4, 2, 10);
-  task_args_add_ref(spec, globally_unique_id());
-  task_args_add_val(spec, (uint8_t *) "Hello", 5);
-  task_args_add_val(spec, (uint8_t *) "World", 5);
-  task_args_add_ref(spec, globally_unique_id());
-  finish_construct_task_spec(spec);
+  start_construct_task_spec(
+      builder, NIL_ID, parent_task_id, 0, NIL_ACTOR_ID, 0, func_id, 2);
+  task_args_add_ref(builder, globally_unique_id());
+  task_args_add_val(builder, (uint8_t *) "Hello", 5);
+  task_args_add_val(builder, (uint8_t *) "World", 5);
+  task_args_add_ref(builder, globally_unique_id());
+  int64_t size;
+  task_spec *spec = finish_construct_task_spec(builder, &size);
   int fd[2];
   socketpair(AF_UNIX, SOCK_STREAM, 0, fd);
-  write_message(fd[0], SUBMIT_TASK, task_spec_size(spec), (uint8_t *) spec);
+  write_message(fd[0], SUBMIT_TASK, size, (uint8_t *) spec);
   int64_t type;
   int64_t length;
   uint8_t *message;
   read_message(fd[1], &type, &length, &message);
   task_spec *result = (task_spec *) message;
   ASSERT(type == SUBMIT_TASK);
-  ASSERT(memcmp(spec, result, task_spec_size(spec)) == 0);
-  ASSERT(memcmp(spec, result, task_spec_size(result)) == 0);
+  ASSERT(memcmp(spec, result, size) == 0);
   free(spec);
   free(result);
   PASS();

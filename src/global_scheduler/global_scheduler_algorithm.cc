@@ -1,7 +1,7 @@
 #include <limits.h>
 
 #include "object_info.h"
-#include "task2.h"
+#include "task.h"
 #include "state/task_table.h"
 
 #include "global_scheduler_algorithm.h"

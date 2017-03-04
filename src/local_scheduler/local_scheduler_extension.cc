@@ -2,7 +2,7 @@
 
 #include "common_extension.h"
 #include "local_scheduler_client.h"
-#include "task2.h"
+#include "task.h"
 
 PyObject *LocalSchedulerError;
 

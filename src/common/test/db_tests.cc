@@ -11,7 +11,7 @@
 #include "state/object_table.h"
 #include "state/task_table.h"
 #include "state/redis.h"
-#include "task2.h"
+#include "task.h"
 
 #include "utstring.h"
 
