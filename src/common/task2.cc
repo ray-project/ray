@@ -46,9 +46,6 @@ public:
     function_id_ = function_id;
     num_returns_ = num_returns;
 
-    std::cout << "********************************* clearing" << std::endl;
-    fbb.Clear();
-
     /* Compute hashes. */
     sha256_init(&ctx);
     sha256_update(&ctx, (BYTE*) &driver_id, sizeof(driver_id));
@@ -111,6 +108,8 @@ public:
     *size = fbb.GetSize();
     uint8_t *result = (uint8_t *) malloc(*size);
     memcpy(result, fbb.GetBufferPointer(), *size);
+    fbb.Clear();
+    args.clear();
     return result;
   }
 
