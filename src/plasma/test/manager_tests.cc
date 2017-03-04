@@ -46,7 +46,7 @@ typedef struct {
   int manager_local_fd;
   int local_store;
   int manager;
-  plasma_manager_state *state;
+  PlasmaManagerState *state;
   event_loop *loop;
   /* Accept a connection from the local manager on the remote manager. */
   ClientConnection *write_conn;
@@ -67,9 +67,9 @@ plasma_mock *init_plasma_mock(plasma_mock *remote_mock) {
 
   CHECK(mock->manager_local_fd >= 0 && mock->local_store >= 0);
 
-  mock->state = init_plasma_manager_state(plasma_store_socket_name,
-                                          utstring_body(manager_socket_name),
-                                          manager_addr, mock->port, NULL, 0);
+  mock->state = PlasmaManagerState_init(plasma_store_socket_name,
+                                        utstring_body(manager_socket_name),
+                                        manager_addr, mock->port, NULL, 0);
   mock->loop = get_event_loop(mock->state);
   /* Accept a connection from the local manager on the remote manager. */
   if (remote_mock != NULL) {
@@ -99,7 +99,7 @@ void destroy_plasma_mock(plasma_mock *mock) {
     close(get_client_sock(mock->read_conn));
     free(mock->read_conn);
   }
-  destroy_plasma_manager_state(mock->state);
+  PlasmaManagerState_free(mock->state);
   free(mock->client_conn);
   plasma_disconnect(mock->plasma_conn);
   close(mock->local_store);
@@ -217,14 +217,14 @@ TEST read_write_object_chunk_test(void) {
   const char *data = "Hello world!";
   const int data_size = strlen(data) + 1;
   const int metadata_size = 0;
-  plasma_request_buffer remote_buf;
+  PlasmaRequestBuffer remote_buf;
   remote_buf.type = MessageType_PlasmaDataReply;
   remote_buf.object_id = oid;
   remote_buf.data = (uint8_t *) data;
   remote_buf.data_size = data_size;
   remote_buf.metadata = (uint8_t *) data + data_size;
   remote_buf.metadata_size = metadata_size;
-  plasma_request_buffer local_buf;
+  PlasmaRequestBuffer local_buf;
   local_buf.object_id = oid;
   local_buf.data_size = data_size;
   local_buf.metadata_size = metadata_size;

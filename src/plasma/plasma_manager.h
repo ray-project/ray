@@ -20,15 +20,15 @@
 /* The buffer size in bytes. Data will get transfered in multiples of this */
 #define BUFSIZE 4096
 
-typedef struct plasma_manager_state plasma_manager_state;
+typedef struct PlasmaManagerState PlasmaManagerState;
 typedef struct ClientConnection ClientConnection;
-typedef struct client_object_request client_object_request;
+typedef struct ClientObjectRequest ClientObjectRequest;
 
 /**
  * Initializes the plasma manager state. This connects the manager to the local
  * plasma store, starts the manager listening for client connections, and
  * connects the manager to a database if there is one. The returned manager
- * state should be freed using the provided destroy_plasma_manager_state
+ * state should be freed using the provided PlasmaManagerState_destroy
  * function.
  *
  * @param store_socket_name The socket name used to connect to the local store.
@@ -41,12 +41,12 @@ typedef struct client_object_request client_object_request;
  * @param db_port The IP port of the database to connect to.
  * @return A pointer to the initialized plasma manager state.
  */
-plasma_manager_state *init_plasma_manager_state(const char *store_socket_name,
-                                                const char *manager_socket_name,
-                                                const char *manager_addr,
-                                                int manager_port,
-                                                const char *db_addr,
-                                                int db_port);
+PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
+                                            const char *manager_socket_name,
+                                            const char *manager_addr,
+                                            int manager_port,
+                                            const char *db_addr,
+                                            int db_port);
 
 /**
  * Destroys the plasma manager state and its connections.
@@ -54,7 +54,7 @@ plasma_manager_state *init_plasma_manager_state(const char *store_socket_name,
  * @param state A pointer to the plasma manager state to destroy.
  * @return Void.
  */
-void destroy_plasma_manager_state(plasma_manager_state *state);
+void PlasmaManagerState_free(PlasmaManagerState *state);
 
 /**
  * Process a request from another object store manager to transfer an object.
@@ -167,8 +167,7 @@ ClientConnection *ClientConnection_init(event_loop *loop,
  */
 
 /* Buffer for requests between plasma managers. */
-typedef struct plasma_request_buffer plasma_request_buffer;
-struct plasma_request_buffer {
+typedef struct PlasmaRequestBuffer {
   int type;
   ObjectID object_id;
   uint8_t *data;
@@ -178,16 +177,16 @@ struct plasma_request_buffer {
   /* Pointer to the next buffer that we will write to this plasma manager. This
    * field is only used if we're pushing requests to another plasma manager,
    * not if we are receiving data. */
-  plasma_request_buffer *next;
+  PlasmaRequestBuffer *next;
   /* This is required to implement a doubly-linked list. We do not use this
    * field except through the UT_list macros. */
-  plasma_request_buffer *prev;
-  /* This is used to also store the plasma_request_buffer in a hash table. The
+  PlasmaRequestBuffer *prev;
+  /* This is used to also store the PlasmaRequestBuffer in a hash table. The
    * hash table is used as a set to make sure we don't try to send the same
    * object multiple times to the same manager. The object_id field will be the
    * key to the hash table. */
   UT_hash_handle hh;
-};
+} PlasmaRequestBuffer;
 
 /**
  * Call the request_transfer method, which well attempt to get an object from
@@ -223,7 +222,7 @@ int fetch_timeout_handler(event_loop *loop, timer_id id, void *context);
  * @return Void.
  */
 void remove_object_request(ClientConnection *client_conn,
-                           client_object_request *object_req);
+                           ClientObjectRequest *object_req);
 
 /**
  * Get a connection to the remote manager at the specified address. Creates a
@@ -234,7 +233,7 @@ void remove_object_request(ClientConnection *client_conn,
  * @param port The port that the remote manager is listening on.
  * @return A pointer to the connection to the remote manager.
  */
-ClientConnection *get_manager_connection(plasma_manager_state *state,
+ClientConnection *get_manager_connection(PlasmaManagerState *state,
                                          const char *ip_addr,
                                          int port);
 
@@ -248,7 +247,7 @@ ClientConnection *get_manager_connection(plasma_manager_state *state,
  *         object. 1 means that the client has sent all the data, 0 means there
  *         is more.
  */
-int read_object_chunk(ClientConnection *conn, plasma_request_buffer *buf);
+int read_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf);
 
 /**
  * Writes an object chunk from a buffer to the given client. This is the
@@ -258,7 +257,7 @@ int read_object_chunk(ClientConnection *conn, plasma_request_buffer *buf);
  * @param buf The buffer to read data from.
  * @return Void.
  */
-void write_object_chunk(ClientConnection *conn, plasma_request_buffer *buf);
+void write_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf);
 
 /**
  * Get the event loop of the given plasma manager state.
@@ -266,7 +265,7 @@ void write_object_chunk(ClientConnection *conn, plasma_request_buffer *buf);
  * @param state The state of the plasma manager whose loop we want.
  * @return A pointer to the manager's event loop.
  */
-event_loop *get_event_loop(plasma_manager_state *state);
+event_loop *get_event_loop(PlasmaManagerState *state);
 
 /**
  * Get the file descriptor for the given client's socket. This is the socket
@@ -285,6 +284,6 @@ int get_client_sock(ClientConnection *conn);
  * @return A bool that is true if the requested object is local and false
  *         otherwise.
  */
-bool is_object_local(plasma_manager_state *state, ObjectID object_id);
+bool is_object_local(PlasmaManagerState *state, ObjectID object_id);
 
 #endif /* PLASMA_MANAGER_H */
