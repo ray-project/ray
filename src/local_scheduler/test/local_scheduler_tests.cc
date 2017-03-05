@@ -364,8 +364,8 @@ TEST object_reconstruction_suppression_test(void) {
 
   object_reconstruction_suppression_spec =
       example_task_spec(0, 1, &object_reconstruction_suppression_size);
-  ObjectID return_id = TaskSpec_return(object_reconstruction_suppression_spec,
-                                       0);
+  ObjectID return_id =
+      TaskSpec_return(object_reconstruction_suppression_spec, 0);
   pid_t pid = fork();
   if (pid == 0) {
     /* Make sure we receive the task once. This will block until the

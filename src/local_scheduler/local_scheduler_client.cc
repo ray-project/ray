@@ -55,7 +55,7 @@ void local_scheduler_submit(LocalSchedulerConnection *conn,
 }
 
 TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
-                                    int64_t *task_size) {
+                                   int64_t *task_size) {
   write_message(conn->conn, GET_TASK, 0, NULL);
   int64_t type;
   uint8_t *message;

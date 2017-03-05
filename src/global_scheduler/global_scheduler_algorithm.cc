@@ -39,7 +39,7 @@ bool constraints_satisfied_hard(const LocalScheduler *scheduler,
                                 const TaskSpec *spec) {
   for (int i = 0; i < ResourceIndex_MAX; i++) {
     if (scheduler->info.static_resources[i] <
-            TaskSpec_get_required_resource(spec, i)) {
+        TaskSpec_get_required_resource(spec, i)) {
       return false;
     }
   }

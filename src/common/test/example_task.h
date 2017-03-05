@@ -8,9 +8,9 @@ extern TaskBuilder *g_task_builder;
 const int64_t arg_value_size = 1000;
 
 static inline TaskSpec *example_task_spec_with_args(int64_t num_args,
-                                                     int64_t num_returns,
-                                                     ObjectID arg_ids[],
-                                                     int64_t *task_spec_size) {
+                                                    int64_t num_returns,
+                                                    ObjectID arg_ids[],
+                                                    int64_t *task_spec_size) {
   TaskID parent_task_id = globally_unique_id();
   FunctionID func_id = globally_unique_id();
   TaskSpec_start_construct(g_task_builder, NIL_ID, parent_task_id, 0,

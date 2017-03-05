@@ -227,7 +227,9 @@ void TaskSpec_args_add_ref(TaskBuilder *spec, ObjectID obj_id);
  * @return The number of task arguments that have been set before this one. This
  *         is only used for testing.
  */
-void TaskSpec_args_add_val(TaskBuilder *builder, uint8_t *value, int64_t length);
+void TaskSpec_args_add_val(TaskBuilder *builder,
+                           uint8_t *value,
+                           int64_t length);
 
 /**
  * Set the value associated to a resource index.

@@ -136,7 +136,7 @@ TEST deterministic_ids_test(void) {
         for (int return_index2 = 0; return_index2 < 3; ++return_index2) {
           if (task_index1 != task_index2 && return_index1 != return_index2) {
             ASSERT(!ObjectID_equal(
-                    TaskSpec_return(specs[task_index1], return_index1),
+                TaskSpec_return(specs[task_index1], return_index1),
                 TaskSpec_return(specs[task_index2], return_index2)));
           }
         }

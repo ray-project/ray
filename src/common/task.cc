@@ -182,7 +182,9 @@ void TaskSpec_args_add_ref(TaskBuilder *builder, ObjectID object_id) {
   builder->NextReferenceArgument(object_id);
 }
 
-void TaskSpec_args_add_val(TaskBuilder *builder, uint8_t *value, int64_t length) {
+void TaskSpec_args_add_val(TaskBuilder *builder,
+                           uint8_t *value,
+                           int64_t length) {
   builder->NextValueArgument(value, length);
 }
 
