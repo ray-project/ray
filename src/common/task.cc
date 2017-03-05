@@ -33,9 +33,14 @@ ObjectID task_compute_put_id(TaskID task_id, int64_t put_index) {
 }
 
 class TaskBuilder {
-public:
-  void Start(UniqueID driver_id, TaskID parent_task_id, int64_t parent_counter,
-             ActorID actor_id, int64_t actor_counter, FunctionID function_id, int64_t num_returns) {
+ public:
+  void Start(UniqueID driver_id,
+             TaskID parent_task_id,
+             int64_t parent_counter,
+             ActorID actor_id,
+             int64_t actor_counter,
+             FunctionID function_id,
+             int64_t num_returns) {
     driver_id_ = driver_id;
     parent_task_id_ = parent_task_id;
     parent_counter_ = parent_counter;
@@ -46,24 +51,24 @@ public:
 
     /* Compute hashes. */
     sha256_init(&ctx);
-    sha256_update(&ctx, (BYTE*) &driver_id, sizeof(driver_id));
-    sha256_update(&ctx, (BYTE*) &parent_task_id, sizeof(parent_task_id));
-    sha256_update(&ctx, (BYTE*) &parent_counter, sizeof(parent_counter));
-    sha256_update(&ctx, (BYTE*) &actor_id, sizeof(actor_id));
-    sha256_update(&ctx, (BYTE*) &actor_counter, sizeof(actor_counter));
-    sha256_update(&ctx, (BYTE*) &function_id, sizeof(function_id));
+    sha256_update(&ctx, (BYTE *) &driver_id, sizeof(driver_id));
+    sha256_update(&ctx, (BYTE *) &parent_task_id, sizeof(parent_task_id));
+    sha256_update(&ctx, (BYTE *) &parent_counter, sizeof(parent_counter));
+    sha256_update(&ctx, (BYTE *) &actor_id, sizeof(actor_id));
+    sha256_update(&ctx, (BYTE *) &actor_counter, sizeof(actor_counter));
+    sha256_update(&ctx, (BYTE *) &function_id, sizeof(function_id));
   }
-  
+
   void NextReferenceArgument(ObjectID object_id) {
     args.push_back(CreateArg(fbb, to_flatbuf(fbb, object_id)));
-    sha256_update(&ctx, (BYTE*) &object_id, sizeof(object_id));
+    sha256_update(&ctx, (BYTE *) &object_id, sizeof(object_id));
   }
 
   void NextValueArgument(uint8_t *value, int64_t length) {
     auto arg = fbb.CreateString((const char *) value, length);
     auto empty_id = fbb.CreateString("", 0);
     args.push_back(CreateArg(fbb, empty_id, arg));
-    sha256_update(&ctx, (BYTE*) &value, length);
+    sha256_update(&ctx, (BYTE *) &value, length);
   }
 
   void SetRequiredResource(int64_t resource_index, double value) {
@@ -95,11 +100,12 @@ public:
     for (int64_t i = resource_vector_.size(); i < ResourceIndex_MAX; ++i) {
       resource_vector_.push_back(0.0);
     }
-    auto message = CreateTaskSpec(fbb,
-      to_flatbuf(fbb, driver_id_), to_flatbuf(fbb, task_id),
-      to_flatbuf(fbb, parent_task_id_), parent_counter_,
-      to_flatbuf(fbb, actor_id_), actor_counter_, to_flatbuf(fbb, function_id_),
-      arguments, fbb.CreateVector(returns), fbb.CreateVector(resource_vector_));
+    auto message = CreateTaskSpec(
+        fbb, to_flatbuf(fbb, driver_id_), to_flatbuf(fbb, task_id),
+        to_flatbuf(fbb, parent_task_id_), parent_counter_,
+        to_flatbuf(fbb, actor_id_), actor_counter_,
+        to_flatbuf(fbb, function_id_), arguments, fbb.CreateVector(returns),
+        fbb.CreateVector(resource_vector_));
     /* Finish the TaskSpec. */
     fbb.Finish(message);
     *size = fbb.GetSize();
@@ -110,7 +116,7 @@ public:
     return result;
   }
 
-private:
+ private:
   flatbuffers::FlatBufferBuilder fbb;
   std::vector<flatbuffers::Offset<Arg>> args;
   SHA256_CTX ctx;
@@ -164,7 +170,8 @@ void start_construct_task_spec(TaskBuilder *builder,
                                int64_t actor_counter,
                                FunctionID function_id,
                                int64_t num_returns) {
-  builder->Start(driver_id, parent_task_id, parent_counter, actor_id, actor_counter, function_id, num_returns);
+  builder->Start(driver_id, parent_task_id, parent_counter, actor_id,
+                 actor_counter, function_id, num_returns);
 }
 
 uint8_t *finish_construct_task_spec(TaskBuilder *builder, int64_t *size) {
@@ -268,7 +275,10 @@ double task_spec_get_required_resource(const task_spec *spec,
 
 /* TASK INSTANCES */
 
-Task *Task_alloc(task_spec *spec, int64_t task_spec_size, int state, DBClientID local_scheduler_id) {
+Task *Task_alloc(task_spec *spec,
+                 int64_t task_spec_size,
+                 int state,
+                 DBClientID local_scheduler_id) {
   int64_t size = sizeof(Task) - sizeof(task_spec) + task_spec_size;
   Task *result = (Task *) malloc(size);
   memset(result, 0, size);

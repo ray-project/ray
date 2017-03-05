@@ -154,8 +154,8 @@ TEST task_table_test(void) {
   DBClientID local_scheduler_id = globally_unique_id();
   int64_t task_spec_size;
   task_spec *spec = example_task_spec(1, 1, &task_spec_size);
-  task_table_test_task =
-      Task_alloc(spec, task_spec_size, TASK_STATUS_SCHEDULED, local_scheduler_id);
+  task_table_test_task = Task_alloc(spec, task_spec_size, TASK_STATUS_SCHEDULED,
+                                    local_scheduler_id);
   free(spec);
   RetryInfo retry = {
       .num_retries = NUM_RETRIES,
@@ -190,8 +190,10 @@ TEST task_table_all_test(void) {
   int64_t task_spec_size;
   task_spec *spec = example_task_spec(1, 1, &task_spec_size);
   /* Schedule two tasks on different local local schedulers. */
-  Task *task1 = Task_alloc(spec, task_spec_size, TASK_STATUS_SCHEDULED, globally_unique_id());
-  Task *task2 = Task_alloc(spec, task_spec_size, TASK_STATUS_SCHEDULED, globally_unique_id());
+  Task *task1 = Task_alloc(spec, task_spec_size, TASK_STATUS_SCHEDULED,
+                           globally_unique_id());
+  Task *task2 = Task_alloc(spec, task_spec_size, TASK_STATUS_SCHEDULED,
+                           globally_unique_id());
   RetryInfo retry = {
       .num_retries = NUM_RETRIES, .timeout = TIMEOUT, .fail_callback = NULL,
   };

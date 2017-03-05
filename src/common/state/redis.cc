@@ -935,7 +935,8 @@ void redis_task_table_subscribe_callback(redisAsyncContext *c,
     task_spec *spec;
     int64_t task_spec_size;
     parse_task_table_subscribe_callback(payload->str, payload->len, &task_id,
-                                        &state, &local_scheduler_id, &spec, &task_spec_size);
+                                        &state, &local_scheduler_id, &spec,
+                                        &task_spec_size);
     Task *task = Task_alloc(spec, task_spec_size, state, local_scheduler_id);
     free(spec);
     /* Call the subscribe callback if there is one. */

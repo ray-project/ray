@@ -58,8 +58,9 @@ int plasma_send_CreateReply(int sock,
   PlasmaObjectSpec plasma_object(
       object->handle.store_fd, object->handle.mmap_size, object->data_offset,
       object->data_size, object->metadata_offset, object->metadata_size);
-  auto message = CreatePlasmaCreateReply(
-      fbb, to_flatbuf(fbb, object_id), &plasma_object, (PlasmaError) error_code);
+  auto message =
+      CreatePlasmaCreateReply(fbb, to_flatbuf(fbb, object_id), &plasma_object,
+                              (PlasmaError) error_code);
   fbb.Finish(message);
   return write_message(sock, MessageType_PlasmaCreateReply, fbb.GetSize(),
                        fbb.GetBufferPointer());
@@ -111,8 +112,8 @@ int plasma_send_SealReply(int sock,
                           ObjectID object_id,
                           int error) {
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
-  auto message =
-      CreatePlasmaSealReply(fbb, to_flatbuf(fbb, object_id), (PlasmaError) error);
+  auto message = CreatePlasmaSealReply(fbb, to_flatbuf(fbb, object_id),
+                                       (PlasmaError) error);
   fbb.Finish(message);
   return write_message(sock, MessageType_PlasmaSealReply, fbb.GetSize(),
                        fbb.GetBufferPointer());
@@ -477,9 +478,9 @@ int plasma_send_WaitRequest(int sock,
 
   std::vector<flatbuffers::Offset<ObjectRequestSpec>> object_request_specs;
   for (int i = 0; i < num_requests; i++) {
-    object_request_specs.push_back(
-        CreateObjectRequestSpec(fbb, to_flatbuf(fbb, object_requests[i].object_id),
-                                object_requests[i].type));
+    object_request_specs.push_back(CreateObjectRequestSpec(
+        fbb, to_flatbuf(fbb, object_requests[i].object_id),
+        object_requests[i].type));
   }
 
   auto message =

@@ -182,11 +182,13 @@ TEST object_reconstruction_test(void) {
      * and second from the reconstruct request. */
     int64_t task_assigned_size;
     local_scheduler_submit(worker, spec, task_size);
-    task_spec *task_assigned = local_scheduler_get_task(worker, &task_assigned_size);
+    task_spec *task_assigned =
+        local_scheduler_get_task(worker, &task_assigned_size);
     ASSERT_EQ(memcmp(task_assigned, spec, task_size), 0);
     ASSERT_EQ(task_assigned_size, task_size);
     int64_t reconstruct_task_size;
-    task_spec *reconstruct_task = local_scheduler_get_task(worker, &reconstruct_task_size);
+    task_spec *reconstruct_task =
+        local_scheduler_get_task(worker, &reconstruct_task_size);
     ASSERT_EQ(memcmp(reconstruct_task, spec, task_size), 0);
     ASSERT_EQ(reconstruct_task_size, task_size);
     /* Clean up. */
@@ -286,14 +288,14 @@ TEST object_reconstruction_recursive_test(void) {
      * lineage during reconstruction. */
     for (int i = 0; i < NUM_TASKS; ++i) {
       int64_t task_assigned_size;
-      task_spec *task_assigned = local_scheduler_get_task(worker, &task_assigned_size);
+      task_spec *task_assigned =
+          local_scheduler_get_task(worker, &task_assigned_size);
       bool found = false;
       for (int j = 0; j < NUM_TASKS; ++j) {
         if (specs[j] == NULL) {
           continue;
         }
-        if (memcmp(task_assigned, specs[j], task_assigned_size) ==
-            0) {
+        if (memcmp(task_assigned, specs[j], task_assigned_size) == 0) {
           found = true;
           free(specs[j]);
           specs[j] = NULL;
@@ -352,21 +354,24 @@ void object_reconstruction_suppression_callback(ObjectID object_id,
                                                 void *user_context) {
   /* Submit the task after adding the object to the object table. */
   LocalSchedulerConnection *worker = (LocalSchedulerConnection *) user_context;
-  local_scheduler_submit(worker, object_reconstruction_suppression_spec, object_reconstruction_suppression_size);
+  local_scheduler_submit(worker, object_reconstruction_suppression_spec,
+                         object_reconstruction_suppression_size);
 }
 
 TEST object_reconstruction_suppression_test(void) {
   LocalSchedulerMock *local_scheduler = LocalSchedulerMock_init(0, 1);
   LocalSchedulerConnection *worker = local_scheduler->conns[0];
 
-  object_reconstruction_suppression_spec = example_task_spec(0, 1, &object_reconstruction_suppression_size);
+  object_reconstruction_suppression_spec =
+      example_task_spec(0, 1, &object_reconstruction_suppression_size);
   ObjectID return_id = task_return(object_reconstruction_suppression_spec, 0);
   pid_t pid = fork();
   if (pid == 0) {
     /* Make sure we receive the task once. This will block until the
      * object_table_add callback completes. */
     int64_t task_assigned_size;
-    task_spec *task_assigned = local_scheduler_get_task(worker, &task_assigned_size);
+    task_spec *task_assigned =
+        local_scheduler_get_task(worker, &task_assigned_size);
     ASSERT_EQ(memcmp(task_assigned, object_reconstruction_suppression_spec,
                      object_reconstruction_suppression_size),
               0);

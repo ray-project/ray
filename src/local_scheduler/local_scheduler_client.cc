@@ -48,11 +48,14 @@ void local_scheduler_log_event(LocalSchedulerConnection *conn,
   free(message);
 }
 
-void local_scheduler_submit(LocalSchedulerConnection *conn, task_spec *task, int64_t task_size) {
+void local_scheduler_submit(LocalSchedulerConnection *conn,
+                            task_spec *task,
+                            int64_t task_size) {
   write_message(conn->conn, SUBMIT_TASK, task_size, (uint8_t *) task);
 }
 
-task_spec *local_scheduler_get_task(LocalSchedulerConnection *conn, int64_t *task_size) {
+task_spec *local_scheduler_get_task(LocalSchedulerConnection *conn,
+                                    int64_t *task_size) {
   write_message(conn->conn, GET_TASK, 0, NULL);
   int64_t type;
   uint8_t *message;
