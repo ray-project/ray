@@ -27,6 +27,10 @@ extern "C" {
 #include "redis.h"
 #include "io.h"
 
+#include "format/common_generated.h"
+
+#include "common_protocol.h"
+
 #ifndef _WIN32
 /* This function is actually not declared in standard POSIX, so declare it. */
 extern int usleep(useconds_t usec);
@@ -502,81 +506,6 @@ void redis_object_table_lookup_callback(redisAsyncContext *c,
   }
 }
 
-/**
- * This will parse a payload string published on the object notification
- * channel. The string must have the format:
- *
- *    <object id> MANAGERS <manager id1> <manager id2> ...
- *
- * where there may be any positive number of manager IDs.
- *
- * @param db The db handle.
- * @param payload The payload string.
- * @param length The length of the string.
- * @param manager_count This method will write the number of managers at this
- *        address.
- * @param manager_vector This method will allocate an array of pointers to
- *        manager addresses and write the address of the array at this address.
- *        The caller is responsible for freeing this array.
- * @return The object ID that the notification is about.
- */
-ObjectID parse_subscribe_to_notifications_payload(
-    DBHandle *db,
-    char *payload,
-    int length,
-    int64_t *data_size,
-    int *manager_count,
-    const char ***manager_vector) {
-  long long data_size_value = 0;
-  int num_managers = (length - sizeof(ObjectID) - 1 - sizeof(data_size_value) -
-                      1 - strlen("MANAGERS")) /
-                     (1 + sizeof(DBClientID));
-
-  int64_t rval = sizeof(ObjectID) + 1 + sizeof(data_size_value) + 1 +
-                 strlen("MANAGERS") + num_managers * (1 + sizeof(DBClientID));
-
-  CHECKM(length == rval,
-         "length mismatch: num_managers = %d, length = %d, rval = %" PRId64,
-         num_managers, length, rval);
-  CHECK(num_managers > 0);
-  ObjectID obj_id;
-  /* Track our current offset in the payload. */
-  int offset = 0;
-  /* Parse the object ID. */
-  memcpy(&obj_id.id, &payload[offset], sizeof(obj_id.id));
-  offset += sizeof(obj_id.id);
-  /* The next part of the payload is a space. */
-  const char *space_str = " ";
-  CHECK(memcmp(&payload[offset], space_str, strlen(space_str)) == 0);
-  offset += strlen(space_str);
-  /* The next part of the payload is binary data_size. */
-  memcpy(&data_size_value, &payload[offset], sizeof(data_size_value));
-  offset += sizeof(data_size_value);
-  /* The next part of the payload is the string " MANAGERS" with leading ' '. */
-  const char *managers_str = " MANAGERS";
-  CHECK(memcmp(&payload[offset], managers_str, strlen(managers_str)) == 0);
-  offset += strlen(managers_str);
-  /* Parse the managers. */
-  const char **managers = (const char **) malloc(num_managers * sizeof(char *));
-  for (int i = 0; i < num_managers; ++i) {
-    /* First there is a space. */
-    CHECK(memcmp(&payload[offset], " ", strlen(" ")) == 0);
-    offset += strlen(" ");
-    /* Get the manager ID. */
-    DBClientID manager_id;
-    memcpy(&manager_id.id, &payload[offset], sizeof(manager_id.id));
-    offset += sizeof(manager_id.id);
-    /* Write the address of the corresponding manager to the returned array. */
-    redis_get_cached_db_client(db, manager_id, &managers[i]);
-  }
-  CHECK(offset == length);
-  /* Return the manager array and the object ID. */
-  *manager_count = num_managers;
-  *manager_vector = managers;
-  *data_size = data_size_value;
-  return obj_id;
-}
-
 void object_table_redis_subscribe_to_notifications_callback(
     redisAsyncContext *c,
     void *r,
@@ -603,13 +532,22 @@ void object_table_redis_subscribe_to_notifications_callback(
             message_type->str);
 
   if (strcmp(message_type->str, "message") == 0) {
-    /* Handle an object notification. */
-    int64_t data_size = 0;
-    int manager_count;
-    const char **manager_vector;
-    ObjectID obj_id = parse_subscribe_to_notifications_payload(
-        db, reply->element[2]->str, reply->element[2]->len, &data_size,
-        &manager_count, &manager_vector);
+    /* We received an object notification. Parse the payload. */
+    auto message = flatbuffers::GetRoot<SubscribeToNotificationsReply>(
+        reply->element[2]->str);
+    /* Extract the object ID. */
+    ObjectID obj_id = from_flatbuf(message->object_id());
+    /* Extract the data size. */
+    int64_t data_size = message->object_size();
+    int manager_count = message->manager_ids()->size();
+    /* Construct the manager vector from the flatbuffers object. */
+    const char **manager_vector =
+        (const char **) malloc(manager_count * sizeof(char *));
+    for (int i = 0; i < manager_count; ++i) {
+      DBClientID manager_id = from_flatbuf(message->manager_ids()->Get(i));
+      redis_get_cached_db_client(db, manager_id, &manager_vector[i]);
+    }
+
     /* Call the subscribe callback. */
     ObjectTableSubscribeData *data =
         (ObjectTableSubscribeData *) callback_data->data;

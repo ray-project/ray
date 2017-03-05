@@ -5,6 +5,10 @@
 
 #include "redis_string.h"
 
+#include "format/common_generated.h"
+
+#include "common_protocol.h"
+
 /**
  * Various tables are maintained in redis:
  *
@@ -329,48 +333,51 @@ bool PublishObjectNotification(RedisModuleCtx *ctx,
                                RedisModuleString *object_id,
                                RedisModuleString *data_size,
                                RedisModuleKey *key) {
-  /* Create a string formatted as "<object id> MANAGERS <size> <manager id1>
-   * <manager id2> ..." */
+  flatbuffers::FlatBufferBuilder fbb;
+
+  size_t object_id_size;
+  const char *object_id_str =
+      RedisModule_StringPtrLen(object_id, &object_id_size);
+
   long long data_size_value;
   if (RedisModule_StringToLongLong(data_size, &data_size_value) !=
       REDISMODULE_OK) {
     return RedisModule_ReplyWithError(ctx, "data_size must be integer");
   }
 
-  RedisModuleString *manager_list = RedisString_Format(ctx, "%S ", object_id);
-
-  /* Append binary data size for this object. */
-  /* TODO(pcm): Replace by a formatted fix length version of the size. */
-  RedisModule_StringAppendBuffer(ctx, manager_list,
-                                 (const char *) &data_size_value,
-                                 sizeof(data_size_value));
-
-  RedisModule_StringAppendBuffer(ctx, manager_list, " MANAGERS",
-                                 strlen(" MANAGERS"));
-
+  std::vector<flatbuffers::Offset<flatbuffers::String>> manager_ids;
   CHECK_ERROR(
       RedisModule_ZsetFirstInScoreRange(key, REDISMODULE_NEGATIVE_INFINITE,
                                         REDISMODULE_POSITIVE_INFINITE, 1, 1),
       "Unable to initialize zset iterator");
-
   /* Loop over the managers in the object table for this object ID. */
   do {
     RedisModuleString *curr = RedisModule_ZsetRangeCurrentElement(key, NULL);
-    RedisModule_StringAppendBuffer(ctx, manager_list, " ", 1);
     size_t size;
     const char *val = RedisModule_StringPtrLen(curr, &size);
-    RedisModule_StringAppendBuffer(ctx, manager_list, val, size);
+    manager_ids.push_back(fbb.CreateString(val, size));
   } while (RedisModule_ZsetRangeNext(key));
+
+  auto message = CreateSubscribeToNotificationsReply(
+      fbb, fbb.CreateString(object_id_str, object_id_size), data_size_value,
+      fbb.CreateVector(manager_ids));
+  fbb.Finish(message);
+
+  //FREE SOME STRINGS!!
 
   /* Publish the notification to the clients notification channel.
    * TODO(rkn): These notifications could be batched together. */
   RedisModuleString *channel_name =
       RedisString_Format(ctx, "%s%S", OBJECT_CHANNEL_PREFIX, client_id);
 
+  RedisModuleString *payload =
+      RedisModule_CreateString(ctx, (const char *) fbb.GetBufferPointer(),
+                               fbb.GetSize());
+
   RedisModuleCallReply *reply;
-  reply = RedisModule_Call(ctx, "PUBLISH", "ss", channel_name, manager_list);
+  reply = RedisModule_Call(ctx, "PUBLISH", "ss", channel_name, payload);
   RedisModule_FreeString(ctx, channel_name);
-  RedisModule_FreeString(ctx, manager_list);
+  RedisModule_FreeString(ctx, payload);
   if (reply == NULL) {
     return false;
   }

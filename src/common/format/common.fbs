@@ -50,3 +50,14 @@ table TaskInfo {
 }
 
 root_type TaskInfo;
+
+table SubscribeToNotificationsReply {
+  // The object ID of the object that the notification is about.
+  object_id: string;
+  // The size of the object.
+  object_size: long;
+  // The IDs of the managers that contain this object.
+  manager_ids: [string];
+}
+
+root_type SubscribeToNotificationsReply;
