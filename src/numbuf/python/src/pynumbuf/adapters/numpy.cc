@@ -73,7 +73,7 @@ Status SerializeArray(
   size_t ndim = PyArray_NDIM(array);
   int dtype = PyArray_TYPE(array);
   std::vector<int64_t> dims(ndim);
-  for (int i = 0; i < ndim; ++i) {
+  for (int i = 0; i < (int)ndim; ++i) {
     dims[i] = PyArray_DIM(array, i);
   }
   // TODO(pcm): Once we don't use builders any more below and directly share

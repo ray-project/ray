@@ -476,7 +476,7 @@ void redis_object_table_lookup_callback(redisAsyncContext *c,
       managers = (DBClientID *) malloc(reply->elements * sizeof(DBClientID));
       manager_vector = (const char **) malloc(manager_count * sizeof(char *));
     }
-    for (int j = 0; j < reply->elements; ++j) {
+    for (size_t j = 0; j < reply->elements; ++j) {
       CHECK(reply->element[j]->type == REDIS_REPLY_STRING);
       memcpy(managers[j].id, reply->element[j]->str, sizeof(managers[j].id));
       redis_get_cached_db_client(db, managers[j], manager_vector + j);

@@ -150,7 +150,7 @@ void SchedulingAlgorithmState_free(SchedulingAlgorithmState *algorithm_state) {
     remove_actor(algorithm_state, actor_entry->actor_id);
   }
   /* Free the list of cached actor task specs and the task specs themselves. */
-  for (int i = 0;
+  for (size_t i = 0;
        i < utarray_len(algorithm_state->cached_submitted_actor_tasks); ++i) {
     task_spec **spec = (task_spec **) utarray_eltptr(
         algorithm_state->cached_submitted_actor_tasks, i);
@@ -862,9 +862,9 @@ void handle_actor_creation_notification(
     LocalSchedulerState *state,
     SchedulingAlgorithmState *algorithm_state,
     ActorID actor_id) {
-  int num_cached_actor_tasks =
+  size_t num_cached_actor_tasks =
       utarray_len(algorithm_state->cached_submitted_actor_tasks);
-  for (int i = 0; i < num_cached_actor_tasks; ++i) {
+  for (size_t i = 0; i < num_cached_actor_tasks; ++i) {
     task_spec **spec = (task_spec **) utarray_eltptr(
         algorithm_state->cached_submitted_actor_tasks, i);
     /* Note that handle_actor_task_submitted may append the spec to the end of
@@ -942,7 +942,7 @@ void handle_worker_available(LocalSchedulerState *state,
   }
   /* If the worker was executing a task, it must have finished, so remove it
    * from the list of executing workers. */
-  for (int i = 0; i < utarray_len(algorithm_state->executing_workers); ++i) {
+  for (size_t i = 0; i < utarray_len(algorithm_state->executing_workers); ++i) {
     LocalSchedulerClient **p = (LocalSchedulerClient **) utarray_eltptr(
         algorithm_state->executing_workers, i);
     if (*p == worker) {
@@ -951,7 +951,7 @@ void handle_worker_available(LocalSchedulerState *state,
     }
   }
   /* Check that we actually erased the worker. */
-  for (int i = 0; i < utarray_len(algorithm_state->executing_workers); ++i) {
+  for (size_t i = 0; i < utarray_len(algorithm_state->executing_workers); ++i) {
     LocalSchedulerClient **p = (LocalSchedulerClient **) utarray_eltptr(
         algorithm_state->executing_workers, i);
     DCHECK(*p != worker);
@@ -988,10 +988,10 @@ void handle_worker_removed(LocalSchedulerState *state,
   num_workers = utarray_len(algorithm_state->executing_workers);
   for (int64_t i = num_workers - 1; i >= 0; --i) {
     LocalSchedulerClient **p = (LocalSchedulerClient **) utarray_eltptr(
-        algorithm_state->executing_workers, i);
+        algorithm_state->executing_workers, (size_t) i);
     DCHECK(!((*p == worker) && removed));
     if (*p == worker) {
-      utarray_erase(algorithm_state->executing_workers, i, 1);
+      utarray_erase(algorithm_state->executing_workers, (size_t) i, 1);
       removed = true;
     }
   }
@@ -1000,10 +1000,10 @@ void handle_worker_removed(LocalSchedulerState *state,
   num_workers = utarray_len(algorithm_state->blocked_workers);
   for (int64_t i = num_workers - 1; i >= 0; --i) {
     LocalSchedulerClient **p = (LocalSchedulerClient **) utarray_eltptr(
-        algorithm_state->blocked_workers, i);
+        algorithm_state->blocked_workers, (size_t) i);
     DCHECK(!((*p == worker) && removed));
     if (*p == worker) {
-      utarray_erase(algorithm_state->blocked_workers, i, 1);
+      utarray_erase(algorithm_state->blocked_workers, (size_t) i, 1);
       removed = true;
     }
   }
@@ -1030,7 +1030,7 @@ void handle_worker_blocked(LocalSchedulerState *state,
                            SchedulingAlgorithmState *algorithm_state,
                            LocalSchedulerClient *worker) {
   /* Find the worker in the list of executing workers. */
-  for (int i = 0; i < utarray_len(algorithm_state->executing_workers); ++i) {
+  for (size_t i = 0; i < utarray_len(algorithm_state->executing_workers); ++i) {
     LocalSchedulerClient **p = (LocalSchedulerClient **) utarray_eltptr(
         algorithm_state->executing_workers, i);
     if (*p == worker) {
@@ -1068,7 +1068,7 @@ void handle_worker_unblocked(LocalSchedulerState *state,
                              SchedulingAlgorithmState *algorithm_state,
                              LocalSchedulerClient *worker) {
   /* Find the worker in the list of blocked workers. */
-  for (int i = 0; i < utarray_len(algorithm_state->blocked_workers); ++i) {
+  for (size_t i = 0; i < utarray_len(algorithm_state->blocked_workers); ++i) {
     LocalSchedulerClient **p = (LocalSchedulerClient **) utarray_eltptr(
         algorithm_state->blocked_workers, i);
     if (*p == worker) {

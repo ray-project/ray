@@ -324,7 +324,7 @@ static PyObject* retrieve_list(PyObject* self, PyObject* args) {
   ObjectID* object_ids = new ObjectID[num_object_ids];
   ObjectBuffer* object_buffers = new ObjectBuffer[num_object_ids];
 
-  for (int i = 0; i < num_object_ids; ++i) {
+  for (int64_t i = 0; i < (int64_t)num_object_ids; ++i) {
     PyStringToUniqueID(PyList_GetItem(object_id_list, i), &object_ids[i]);
   }
 
@@ -333,7 +333,7 @@ static PyObject* retrieve_list(PyObject* self, PyObject* args) {
   Py_END_ALLOW_THREADS;
 
   PyObject* returns = PyList_New(num_object_ids);
-  for (int i = 0; i < num_object_ids; ++i) {
+  for (int64_t i = 0; i < (int64_t)num_object_ids; ++i) {
     PyObject* obj_id = PyList_GetItem(object_id_list, i);
     PyObject* t = PyTuple_New(2);
     Py_XINCREF(obj_id);

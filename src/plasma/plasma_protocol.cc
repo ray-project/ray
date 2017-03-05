@@ -36,7 +36,7 @@ to_flat(flatbuffers::FlatBufferBuilder &fbb,
         ObjectID object_ids[],
         int64_t num_objects) {
   std::vector<flatbuffers::Offset<flatbuffers::String>> results;
-  for (size_t i = 0; i < num_objects; i++) {
+  for (int64_t i = 0; i < num_objects; i++) {
     results.push_back(to_flat(fbb, object_ids[i]));
   }
   return fbb.CreateVector(results);
@@ -543,7 +543,7 @@ void plasma_read_WaitRequest(uint8_t *data,
   *num_ready_objects = message->num_ready_objects();
   *timeout_ms = message->timeout();
 
-  CHECK(num_object_ids == message->object_requests()->size());
+  CHECK(num_object_ids == (int) message->object_requests()->size());
   for (int i = 0; i < num_object_ids; i++) {
     object_requests[i].object_id =
         from_flat(message->object_requests()->Get(i)->object_id());
