@@ -34,7 +34,7 @@ TASK_STATUS_QUEUED = 4
 TASK_STATUS_RUNNING = 8
 TASK_STATUS_DONE = 16
 
-# These constants are an implementation detail of ray_redis_module.c, so this
+# These constants are an implementation detail of ray_redis_module.cc, so this
 # must be kept in sync with that file.
 DB_CLIENT_PREFIX = "CL:"
 TASK_PREFIX = "TT:"

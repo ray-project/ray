@@ -723,7 +723,7 @@ def get_address_info_from_redis_helper(redis_address, node_ip_address):
   # must have run "CONFIG SET protected-mode no".
   redis_client = redis.StrictRedis(host=redis_ip_address, port=int(redis_port))
   # The client table prefix must be kept in sync with the file
-  # "src/common/redis_module/ray_redis_module.c" where it is defined.
+  # "src/common/redis_module/ray_redis_module.cc" where it is defined.
   REDIS_CLIENT_TABLE_PREFIX = "CL:"
   client_keys = redis_client.keys("{}*".format(REDIS_CLIENT_TABLE_PREFIX))
   # Filter to clients on the same node and do some basic checking.

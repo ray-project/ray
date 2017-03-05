@@ -641,7 +641,7 @@ void redis_object_table_subscribe_to_notifications(
     TableCallbackData *callback_data) {
   DBHandle *db = callback_data->db_handle;
   /* The object channel prefix must match the value defined in
-   * src/common/redismodule/ray_redis_module.c. */
+   * src/common/redismodule/ray_redis_module.cc. */
   const char *object_channel_prefix = "OC:";
   const char *object_channel_bcast = "BCAST";
   int status = REDIS_OK;
@@ -869,7 +869,7 @@ void redis_task_table_test_and_update(TableCallbackData *callback_data) {
   }
 }
 
-/* The format of the payload is described in ray_redis_module.c and is
+/* The format of the payload is described in ray_redis_module.cc and is
  * "<task ID> <state> <local scheduler ID> <task specification>". TODO(rkn):
  * Make this code nicer. */
 void parse_task_table_subscribe_callback(char *payload,
@@ -969,7 +969,7 @@ void redis_task_table_subscribe_callback(redisAsyncContext *c,
 void redis_task_table_subscribe(TableCallbackData *callback_data) {
   DBHandle *db = callback_data->db_handle;
   TaskTableSubscribeData *data = (TaskTableSubscribeData *) callback_data->data;
-  /* TASK_CHANNEL_PREFIX is defined in ray_redis_module.c and must be kept in
+  /* TASK_CHANNEL_PREFIX is defined in ray_redis_module.cc and must be kept in
    * sync with that file. */
   const char *TASK_CHANNEL_PREFIX = "TT:";
   int status;

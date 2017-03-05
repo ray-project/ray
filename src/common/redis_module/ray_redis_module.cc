@@ -42,7 +42,8 @@ RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
                                 int mode) {
   RedisModuleString *prefixed_keyname =
       RedisString_Format(ctx, "%s%S", prefix, keyname);
-  RedisModuleKey *key = RedisModule_OpenKey(ctx, prefixed_keyname, mode);
+  RedisModuleKey *key =
+      (RedisModuleKey *) RedisModule_OpenKey(ctx, prefixed_keyname, mode);
   RedisModule_FreeString(ctx, prefixed_keyname);
   return key;
 }
@@ -1038,6 +1039,8 @@ int TaskTableGet_RedisCommand(RedisModuleCtx *ctx,
   return ReplyWithTask(ctx, argv[1]);
 }
 
+extern "C" {
+
 /* This function must be present on each Redis module. It is used in order to
  * register the commands into the Redis server. */
 int RedisModule_OnLoad(RedisModuleCtx *ctx,
@@ -1135,3 +1138,5 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx,
 
   return REDISMODULE_OK;
 }
+
+} /* extern "C" */

@@ -18,7 +18,7 @@ DB_CLIENT_ID_SIZE = 20
 NIL_ID = b"\xff" * DB_CLIENT_ID_SIZE
 # common/task.h
 TASK_STATUS_LOST = 32
-# common/redis_module/ray_redis_module.c
+# common/redis_module/ray_redis_module.cc
 TASK_PREFIX = "TT:"
 DB_CLIENT_PREFIX = "CL:"
 DB_CLIENT_TABLE_NAME = b"db_clients"
