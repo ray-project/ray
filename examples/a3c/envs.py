@@ -5,7 +5,7 @@ import gym
 from gym import spaces
 import logging
 import vectorized
-from wrappers import Unvectorize, Vectorize
+from vectorized.wrappers import Unvectorize, Vectorize
 import time
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

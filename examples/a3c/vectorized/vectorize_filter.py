@@ -1,4 +1,4 @@
-import core
+import vectorized.vectorize_core as core
 
 class Filter(object):
     def _after_reset(self, observation):

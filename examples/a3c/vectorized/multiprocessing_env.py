@@ -5,7 +5,7 @@ import traceback
 
 import gym
 from gym import spaces
-import core
+import vectorized.vectorize_core as core
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

@@ -1,7 +1,7 @@
 import gym
 import weakref
 
-import core
+import vectorized.vectorize_core as core
 
 class Vectorize(gym.Wrapper):
     """
@@ -37,6 +37,7 @@ Take a vectorized environment with a batch of size 1 and turn it into an unvecto
     metadata = {'runtime.vectorized': False}
 
     def _configure(self, **kwargs):
+        import ipdb; ipdb.set_trace()
         super(Unvectorize, self)._configure(**kwargs)
         if self.n != 1:
             raise Exception('Can only disable vectorization with n=1, not n={}'.format(self.n))
