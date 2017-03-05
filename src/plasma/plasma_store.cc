@@ -153,7 +153,7 @@ void push_notification(PlasmaStoreState *state,
 void add_client_to_object_clients(object_table_entry *entry,
                                   Client *client_info) {
   /* Check if this client is already using the object. */
-  for (int i = 0; i < utarray_len(entry->clients); ++i) {
+  for (size_t i = 0; i < utarray_len(entry->clients); ++i) {
     Client **c = (Client **) utarray_eltptr(entry->clients, i);
     if (*c == client_info) {
       return;
@@ -274,7 +274,7 @@ void remove_get_request_for_object(PlasmaStoreState *store_state,
   /* If there is a vector of get requests for this object ID, and if this vector
    * contains the get request, then remove the get request from the vector. */
   if (object_get_reqs != NULL) {
-    for (int i = 0; i < utarray_len(object_get_reqs->get_requests); ++i) {
+    for (size_t i = 0; i < utarray_len(object_get_reqs->get_requests); ++i) {
       GetRequest **get_req_ptr =
           (GetRequest **) utarray_eltptr(object_get_reqs->get_requests, i);
       if (*get_req_ptr == get_req) {
@@ -370,7 +370,7 @@ void update_object_get_requests(PlasmaStoreState *store_state,
     /* The argument index is the index of the current element of the utarray
      * that we are processing. It may differ from the counter i when elements
      * are removed from the array. */
-    int index = 0;
+    size_t index = 0;
     for (int i = 0; i < num_requests; ++i) {
       GetRequest **get_req_ptr =
           (GetRequest **) utarray_eltptr(object_get_reqs->get_requests, index);
@@ -425,7 +425,7 @@ int get_timeout_handler(event_loop *loop, timer_id id, void *context) {
 void process_get_request(Client *client_context,
                          int num_object_ids,
                          ObjectID object_ids[],
-                         uint64_t timeout_ms) {
+                         int64_t timeout_ms) {
   PlasmaStoreState *plasma_state = client_context->plasma_state;
 
   /* Create a get request for this object. */
@@ -486,7 +486,7 @@ void process_get_request(Client *client_context,
 int remove_client_from_object_clients(object_table_entry *entry,
                                       Client *client_info) {
   /* Find the location of the client in the array. */
-  for (int i = 0; i < utarray_len(entry->clients); ++i) {
+  for (size_t i = 0; i < utarray_len(entry->clients); ++i) {
     Client **c = (Client **) utarray_eltptr(entry->clients, i);
     if (*c == client_info) {
       /* Remove the client from the array. */
@@ -617,11 +617,11 @@ void send_notifications(event_loop *loop,
   HASH_FIND_INT(plasma_state->pending_notifications, &client_sock, queue);
   CHECK(queue != NULL);
 
-  int num_processed = 0;
+  size_t num_processed = 0;
   bool closed = false;
   /* Loop over the array of pending notifications and send as many of them as
    * possible. */
-  for (int i = 0; i < utarray_len(queue->object_notifications); ++i) {
+  for (size_t i = 0; i < utarray_len(queue->object_notifications); ++i) {
     ObjectInfo *notification =
         (ObjectInfo *) utarray_eltptr(queue->object_notifications, i);
 

@@ -547,7 +547,7 @@ TEST task_multi_dependency_test(void) {
 
 TEST start_kill_workers_test(void) {
   /* Start some workers. */
-  int num_workers = 4;
+  size_t num_workers = 4;
   LocalSchedulerMock *local_scheduler = LocalSchedulerMock_init(num_workers, 0);
   /* We start off with num_workers children processes, but no workers
    * registered yet. */
@@ -557,7 +557,7 @@ TEST start_kill_workers_test(void) {
 
   /* Make sure that each worker connects to the local_scheduler scheduler. This
    * for loop will hang if one of the workers does not connect. */
-  for (int i = 0; i < num_workers; ++i) {
+  for (size_t i = 0; i < num_workers; ++i) {
     new_client_connection(local_scheduler->loop,
                           local_scheduler->local_scheduler_fd,
                           (void *) local_scheduler->local_scheduler_state, 0);
@@ -572,7 +572,7 @@ TEST start_kill_workers_test(void) {
             num_workers);
 
   /* Each worker should register its process ID. */
-  for (int i = 0;
+  for (size_t i = 0;
        i < utarray_len(local_scheduler->local_scheduler_state->workers); ++i) {
     LocalSchedulerClient *worker = *(LocalSchedulerClient **) utarray_eltptr(
         local_scheduler->local_scheduler_state->workers, i);

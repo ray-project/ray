@@ -79,8 +79,8 @@ int force_kill_worker(event_loop *loop, timer_id id, void *context) {
 void kill_worker(LocalSchedulerClient *worker, bool cleanup) {
   /* Erase the local scheduler's reference to the worker. */
   LocalSchedulerState *state = worker->local_scheduler_state;
-  int num_workers = utarray_len(state->workers);
-  for (int i = 0; i < utarray_len(state->workers); ++i) {
+  size_t num_workers = utarray_len(state->workers);
+  for (size_t i = 0; i < utarray_len(state->workers); ++i) {
     LocalSchedulerClient *active_worker =
         *(LocalSchedulerClient **) utarray_eltptr(state->workers, i);
     if (active_worker == worker) {
@@ -88,7 +88,7 @@ void kill_worker(LocalSchedulerClient *worker, bool cleanup) {
     }
   }
   /* Make sure that we erased exactly 1 worker. */
-  CHECKM(!(utarray_len(state->workers) < num_workers - 1),
+  CHECKM(!(utarray_len(state->workers) + 1 < num_workers),
          "Found duplicate workers");
   CHECKM(utarray_len(state->workers) != num_workers,
          "Tried to kill worker that doesn't exist");
@@ -674,7 +674,7 @@ void process_message(event_loop *loop,
     /* Determine if this worker is one of our child processes. */
     LOG_DEBUG("PID is %d", info->worker_pid);
     pid_t *child_pid;
-    int index = 0;
+    size_t index = 0;
     for (child_pid = (pid_t *) utarray_front(state->child_pids);
          child_pid != NULL;
          child_pid = (pid_t *) utarray_next(state->child_pids, child_pid)) {

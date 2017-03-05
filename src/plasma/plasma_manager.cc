@@ -328,7 +328,7 @@ void remove_wait_request_for_object(PlasmaManagerState *manager_state,
    * vector contains the wait request, then remove the wait request from the
    * vector. */
   if (object_wait_reqs != NULL) {
-    for (int i = 0; i < utarray_len(object_wait_reqs->wait_requests); ++i) {
+    for (size_t i = 0; i < utarray_len(object_wait_reqs->wait_requests); ++i) {
       WaitRequest **wait_req_ptr =
           (WaitRequest **) utarray_eltptr(object_wait_reqs->wait_requests, i);
       if (*wait_req_ptr == wait_req) {
@@ -389,7 +389,7 @@ void update_object_wait_requests(PlasmaManagerState *manager_state,
     /* The argument index is the index of the current element of the utarray
      * that we are processing. It may differ from the counter i when elements
      * are removed from the array. */
-    int index = 0;
+    size_t index = 0;
     for (int i = 0; i < num_requests; ++i) {
       WaitRequest **wait_req_ptr = (WaitRequest **) utarray_eltptr(
           object_wait_reqs->wait_requests, index);

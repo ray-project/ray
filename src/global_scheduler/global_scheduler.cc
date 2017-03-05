@@ -111,13 +111,13 @@ void GlobalSchedulerState_free(GlobalSchedulerState *state) {
     free(object_entry);
   }
   /* Free the array of unschedulable tasks. */
-  int64_t num_pending_tasks = utarray_len(state->pending_tasks);
+  size_t num_pending_tasks = utarray_len(state->pending_tasks);
   if (num_pending_tasks > 0) {
     LOG_WARN("There are %" PRId64
              " remaining tasks in the pending tasks array.",
-             num_pending_tasks);
+             (int64_t) num_pending_tasks);
   }
-  for (int i = 0; i < num_pending_tasks; ++i) {
+  for (size_t i = 0; i < num_pending_tasks; ++i) {
     Task **pending_task = (Task **) utarray_eltptr(state->pending_tasks, i);
     Task_free(*pending_task);
   }
@@ -142,7 +142,7 @@ void signal_handler(int signal) {
 LocalScheduler *get_local_scheduler(GlobalSchedulerState *state,
                                     DBClientID local_scheduler_id) {
   LocalScheduler *local_scheduler_ptr;
-  for (int i = 0; i < utarray_len(state->local_schedulers); ++i) {
+  for (size_t i = 0; i < utarray_len(state->local_schedulers); ++i) {
     local_scheduler_ptr =
         (LocalScheduler *) utarray_eltptr(state->local_schedulers, i);
     if (DBClientID_equal(local_scheduler_ptr->id, local_scheduler_id)) {
@@ -220,7 +220,7 @@ void add_local_scheduler(GlobalSchedulerState *state,
   handle_new_local_scheduler(state, state->policy_state, db_client_id);
 }
 
-void remove_local_scheduler(GlobalSchedulerState *state, int index) {
+void remove_local_scheduler(GlobalSchedulerState *state, size_t index) {
   LocalScheduler *active_worker =
       (LocalScheduler *) utarray_eltptr(state->local_schedulers, index);
   DBClientID db_client_id = active_worker->id;
@@ -268,7 +268,7 @@ void process_new_db_client(DBClientID db_client_id,
       /* This is a notification for an insert. */
       add_local_scheduler(state, db_client_id, aux_address);
     } else {
-      int i = 0;
+      size_t i = 0;
       for (; i < utarray_len(state->local_schedulers); ++i) {
         LocalScheduler *active_worker =
             (LocalScheduler *) utarray_eltptr(state->local_schedulers, i);
@@ -393,9 +393,9 @@ int task_cleanup_handler(event_loop *loop, timer_id id, void *context) {
   /* TODO(swang): If the local scheduler hasn't actually died, then it should
    * clean up its state and exit upon receiving this notification. */
   LocalScheduler *local_scheduler_ptr;
-  for (int i = utarray_len(state->local_schedulers) - 1; i >= 0; --i) {
+  for (int64_t i = utarray_len(state->local_schedulers) - 1; i >= 0; --i) {
     local_scheduler_ptr =
-        (LocalScheduler *) utarray_eltptr(state->local_schedulers, i);
+        (LocalScheduler *) utarray_eltptr(state->local_schedulers, (size_t) i);
     if (local_scheduler_ptr->num_heartbeats_missed >=
         GLOBAL_SCHEDULER_HEARTBEAT_TIMEOUT) {
       LOG_WARN(
@@ -404,7 +404,7 @@ int task_cleanup_handler(event_loop *loop, timer_id id, void *context) {
       db_client_table_remove(state->db, local_scheduler_ptr->id, NULL, NULL,
                              NULL);
       /* Remove the scheduler from the local state. */
-      remove_local_scheduler(state, i);
+      remove_local_scheduler(state, (size_t) i);
     }
     ++local_scheduler_ptr->num_heartbeats_missed;
   }

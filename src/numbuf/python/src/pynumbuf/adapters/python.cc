@@ -187,7 +187,7 @@ Status SerializeSequences(std::vector<PyObject*> sequences, int32_t recursion_de
   PyObject* result = CREATE(stop_idx - start_idx);                       \
   auto types = std::make_shared<Int8Array>(size, data->types());         \
   auto offsets = std::make_shared<Int32Array>(size, data->offset_buf()); \
-  for (size_t i = start_idx; i < stop_idx; ++i) {                        \
+  for (size_t i = start_idx; i < (size_t)stop_idx; ++i) {                \
     if (data->IsNull(i)) {                                               \
       Py_INCREF(Py_None);                                                \
       SET_ITEM(result, i - start_idx, Py_None);                          \
@@ -273,7 +273,7 @@ Status DeserializeDict(std::shared_ptr<Array> array, int32_t start_idx, int32_t 
   PyObject* result = PyDict_New();
   ARROW_RETURN_NOT_OK(DeserializeList(data->field(0), start_idx, stop_idx, base, &keys));
   ARROW_RETURN_NOT_OK(DeserializeList(data->field(1), start_idx, stop_idx, base, &vals));
-  for (size_t i = start_idx; i < stop_idx; ++i) {
+  for (size_t i = start_idx; i < (size_t)stop_idx; ++i) {
     PyDict_SetItem(
         result, PyList_GetItem(keys, i - start_idx), PyList_GetItem(vals, i - start_idx));
   }

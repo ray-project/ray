@@ -66,7 +66,8 @@ void handle_task_round_robin(GlobalSchedulerState *state,
     if (i == policy_state->round_robin_index) {
       num_retries--;
     }
-    scheduler = (LocalScheduler *) utarray_eltptr(state->local_schedulers, i);
+    scheduler =
+        (LocalScheduler *) utarray_eltptr(state->local_schedulers, (size_t) i);
     task_satisfied = constraints_satisfied_hard(scheduler, task_spec);
   }
 

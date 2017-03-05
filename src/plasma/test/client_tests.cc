@@ -101,13 +101,13 @@ TEST plasma_fetch_tests(void) {
 }
 
 void init_data_123(uint8_t *data, uint64_t size, uint8_t base) {
-  for (int i = 0; i < size; i++) {
+  for (uint64_t i = 0; i < size; i++) {
     data[i] = base + i;
   }
 }
 
 bool is_equal_data_123(uint8_t *data1, uint8_t *data2, uint64_t size) {
-  for (int i = 0; i < size; i++) {
+  for (uint64_t i = 0; i < size; i++) {
     if (data1[i] != data2[i]) {
       return false;
     };
