@@ -1,13 +1,6 @@
 #ifndef TASK_H
 #define TASK_H
 
-/**
- * This API specifies the task data structures. It is in C so we can
- * easily construct tasks from other languages like Python. The datastructures
- * are also defined in such a way that memory is contiguous and all pointers
- * are relative, so that we can memcpy the datastructure and ship it over the
- * network without serialization and deserialization. */
-
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -33,12 +26,6 @@ typedef UniqueID TaskID;
 /** The actor ID is the ID of the actor that a task must run on. If the task is
  *  not run on an actor, then NIL_ACTOR_ID should be used. */
 typedef UniqueID ActorID;
-
-/**
- * ==== Task specifications ====
- * Contain all the information neccessary to execute the
- * task (function id, arguments, return object ids).
- */
 
 /**
  * Compare two task IDs.

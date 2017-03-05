@@ -4,8 +4,6 @@
 
 #include "task.h"
 
-#include <iostream>
-
 extern "C" {
 #include "sha256.h"
 }
@@ -95,7 +93,6 @@ public:
     }
     /* Create TaskSpec. */
     for (int64_t i = resource_vector_.size(); i < ResourceIndex_MAX; ++i) {
-      std::cout << "i: " << i << std::endl;
       resource_vector_.push_back(0.0);
     }
     auto message = CreateTaskSpec(fbb,
@@ -225,7 +222,6 @@ int64_t task_num_args(uint8_t *spec) {
 ObjectID task_arg_id(uint8_t *spec, int64_t arg_index) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskSpec>(spec);
-  std::cout << "XXXXXXXXXX length is " << message->args()->Get(arg_index)->object_id()->size() << std::endl;
   return from_flat(message->args()->Get(arg_index)->object_id());
 }
 
