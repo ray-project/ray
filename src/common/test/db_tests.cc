@@ -156,7 +156,7 @@ TEST task_table_test(void) {
   task_spec *spec = example_task_spec(1, 1, &task_spec_size);
   task_table_test_task =
       Task_alloc(spec, task_spec_size, TASK_STATUS_SCHEDULED, local_scheduler_id);
-  // free_task_spec(spec);
+  free(spec);
   RetryInfo retry = {
       .num_retries = NUM_RETRIES,
       .timeout = TIMEOUT,

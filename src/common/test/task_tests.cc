@@ -17,8 +17,6 @@ TEST task_test(void) {
   TaskBuilder *builder = make_task_builder();
   start_construct_task_spec(
       builder, NIL_ID, parent_task_id, 0, NIL_ACTOR_ID, 0, func_id, 2);
-  ASSERT(task_num_args(spec) == 4);
-  ASSERT(task_num_returns(spec) == 2);
 
   UniqueID arg1 = globally_unique_id();
   task_args_add_ref(builder, arg1);

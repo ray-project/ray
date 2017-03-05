@@ -330,7 +330,6 @@ TEST object_reconstruction_recursive_test(void) {
     ASSERT_EQ(num_waiting_tasks(
                   local_scheduler->local_scheduler_state->algorithm_state),
               0);
-    printf("AAAAA %d\n", num_dispatch_tasks(local_scheduler->local_scheduler_state->algorithm_state));
     ASSERT_EQ(num_dispatch_tasks(
                   local_scheduler->local_scheduler_state->algorithm_state),
               0);

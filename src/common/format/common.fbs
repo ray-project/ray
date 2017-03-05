@@ -15,20 +15,37 @@ enum ResourceIndex:int {
 }
 
 table Arg {
+  // Object ID for pass-by-reference arguments.
   object_id: string;
+  // Data for pass-by-value arguments.
   data: string;
 }
 
 table TaskSpec {
+  // ID of the driver that created this task.
   driver_id: string;
+  // Task ID of the task.
   task_id: string;
+  // Task ID of the parent task.
   parent_task_id: string;
+  // A count of the number of tasks submitted by the parent task before this one.
   parent_counter: int;
+  // Actor ID of the task. This is the actor that this task is executed on
+  // or NIL_ACTOR_ID if the task is just a normal task.
   actor_id: string;
+  // Number of tasks that have been submitted to this actor so far.
   actor_counter: int;
+  // Function ID of the task.
   function_id: string;
+  // Task arguments.
   args: [Arg];
+  // Object IDs of return values.
   returns: [string];
+  // Resource vector for this task. A resource vector maps a resource index
+  // (like "cpu" or "gpu") to the number of units of that resource required.
+  // Note that this will allow us to support arbitrary attributes:
+  // For example, we can have a coloring of nodes and "red" can correspond
+  // to 0.0, "green" to 1.0 and "yellow" to 2.0.
   required_resources: [double];
 }
 
