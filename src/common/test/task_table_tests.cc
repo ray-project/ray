@@ -159,7 +159,6 @@ TEST subscribe_timeout_test(void) {
 /* === Test publish timeout === */
 
 const char *publish_timeout_context = "publish_timeout";
-const int publish_test_number = 272;
 int publish_failed = 0;
 
 void publish_done_callback(TaskID task_id, void *user_context) {
@@ -220,7 +219,6 @@ int64_t terminate_event_loop_callback(event_loop *loop,
 /* === Test subscribe retry === */
 
 const char *subscribe_retry_context = "subscribe_retry";
-const int subscribe_retry_test_number = 273;
 int subscribe_retry_succeeded = 0;
 
 void subscribe_retry_done_callback(ObjectID object_id, void *user_context) {

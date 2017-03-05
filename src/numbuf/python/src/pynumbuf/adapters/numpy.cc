@@ -14,6 +14,8 @@ extern PyObject* numbuf_deserialize_callback;
 
 namespace numbuf {
 
+#define UNUSED(x) ((void)(x))
+
 #define ARROW_TYPE_TO_NUMPY_CASE(TYPE) \
   case Type::TYPE:                     \
     return NPY_##TYPE;
@@ -61,6 +63,7 @@ Status DeserializeArray(
   DCHECK(flags != NULL) << "Could not mark Numpy array immutable";
   int flag_set = PyObject_SetAttrString(flags, "writeable", Py_False);
   DCHECK(flag_set == 0) << "Could not mark Numpy array immutable";
+  UNUSED(flag_set);
   Py_XDECREF(flags);
   return Status::OK();
 }
