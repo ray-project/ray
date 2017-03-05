@@ -12,7 +12,13 @@
 #endif
 
 #include "utarray.h"
+#ifdef __cplusplus
+extern "C" {
+#endif
 #include "sha256.h"
+#ifdef __cplusplus
+}
+#endif
 
 /** Definitions for Ray logging levels. */
 #define RAY_COMMON_DEBUG 0

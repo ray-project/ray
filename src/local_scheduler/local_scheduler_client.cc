@@ -48,22 +48,22 @@ void local_scheduler_log_event(LocalSchedulerConnection *conn,
   free(message);
 }
 
-void local_scheduler_submit(LocalSchedulerConnection *conn, task_spec *task) {
-  write_message(conn->conn, SUBMIT_TASK, task_spec_size(task),
-                (uint8_t *) task);
+void local_scheduler_submit(LocalSchedulerConnection *conn,
+                            TaskSpec *task,
+                            int64_t task_size) {
+  write_message(conn->conn, SUBMIT_TASK, task_size, (uint8_t *) task);
 }
 
-task_spec *local_scheduler_get_task(LocalSchedulerConnection *conn) {
+TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
+                                   int64_t *task_size) {
   write_message(conn->conn, GET_TASK, 0, NULL);
   int64_t type;
-  int64_t length;
   uint8_t *message;
   /* Receive a task from the local scheduler. This will block until the local
    * scheduler gives this client a task. */
-  read_message(conn->conn, &type, &length, &message);
+  read_message(conn->conn, &type, task_size, &message);
   CHECK(type == EXECUTE_TASK);
-  task_spec *task = (task_spec *) message;
-  CHECK(length == task_spec_size(task));
+  TaskSpec *task = (TaskSpec *) message;
   return task;
 }
 

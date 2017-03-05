@@ -10,6 +10,22 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
 
 include_directories(thirdparty/ae)
 
+# Compile flatbuffers
+
+set(COMMON_FBS_SRC "${CMAKE_CURRENT_LIST_DIR}/format/common.fbs")
+set(OUTPUT_DIR ${CMAKE_CURRENT_LIST_DIR}/format/)
+
+add_custom_target(gen_common_fbs ALL)
+
+add_custom_command(
+  TARGET gen_common_fbs
+  COMMAND ${FLATBUFFERS_COMPILER} -c -o ${OUTPUT_DIR} ${COMMON_FBS_SRC}
+  DEPENDS ${FBS_DEPENDS}
+  COMMENT "Running flatc compiler on ${COMMON_FBS_SRC}"
+  VERBATIM)
+
+add_dependencies(gen_common_fbs flatbuffers_ep)
+
 add_custom_target(
    hiredis
    COMMAND make
@@ -18,6 +34,7 @@ add_custom_target(
 add_library(common STATIC
   event_loop.cc
   common.cc
+  common_protocol.cc
   task.cc
   io.cc
   net.cc
@@ -31,6 +48,8 @@ add_library(common STATIC
   state/local_scheduler_table.cc
   thirdparty/ae/ae.c
   thirdparty/sha256.c)
+
+add_dependencies(common gen_common_fbs)
 
 target_link_libraries(common "${CMAKE_CURRENT_LIST_DIR}/thirdparty/hiredis/libhiredis.a")
 

@@ -1,6 +1,7 @@
 #include "greatest.h"
 
 #include "event_loop.h"
+#include "example_task.h"
 #include "test_common.h"
 #include "common.h"
 #include "state/object_table.h"
@@ -11,6 +12,7 @@
 SUITE(object_table_tests);
 
 static event_loop *g_loop;
+TaskBuilder *g_task_builder = NULL;
 
 /* ==== Test adding and looking up metadata ==== */
 
@@ -18,7 +20,7 @@ int new_object_failed = 0;
 int new_object_succeeded = 0;
 ObjectID new_object_id;
 Task *new_object_task;
-task_spec *new_object_task_spec;
+TaskSpec *new_object_task_spec;
 TaskID new_object_task_id;
 
 void new_object_fail_callback(UniqueID id,
@@ -68,7 +70,7 @@ TEST new_object_test(void) {
   new_object_id = globally_unique_id();
   new_object_task = example_task(1, 1, TASK_STATUS_WAITING);
   new_object_task_spec = Task_task_spec(new_object_task);
-  new_object_task_id = task_spec_id(new_object_task_spec);
+  new_object_task_id = TaskSpec_task_id(new_object_task_spec);
   g_loop = event_loop_create();
   DBHandle *db =
       db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
@@ -902,6 +904,7 @@ SUITE(object_table_tests) {
 GREATEST_MAIN_DEFS();
 
 int main(int argc, char **argv) {
+  g_task_builder = make_task_builder();
   GREATEST_MAIN_BEGIN();
   RUN_SUITE(object_table_tests);
   GREATEST_MAIN_END();

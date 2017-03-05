@@ -35,7 +35,7 @@ endif(APPLE)
 
 add_library(local_scheduler_client STATIC local_scheduler_client.cc)
 
-target_link_libraries(local_scheduler_library local_scheduler_client ${COMMON_LIB} ${PYTHON_LIBRARIES})
+target_link_libraries(local_scheduler_library local_scheduler_client common ${PYTHON_LIBRARIES})
 
 add_executable(local_scheduler local_scheduler.cc local_scheduler_algorithm.cc)
 target_link_libraries(local_scheduler local_scheduler_client common ${HIREDIS_LIB} plasma_lib)

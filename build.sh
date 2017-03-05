@@ -25,7 +25,12 @@ bash "$ROOT_DIR/src/numbuf/thirdparty/build_thirdparty.sh"
 
 # Now build everything.
 pushd "$ROOT_DIR/python/ray/core"
-  cmake -DCMAKE_BUILD_TYPE=Release ../../..
+  if [ "$VALGRIND" = "1" ]
+  then
+    cmake -DCMAKE_BUILD_TYPE=Debug ../../..
+  else
+    cmake -DCMAKE_BUILD_TYPE=Release ../../..
+  fi
   make clean
   make
 popd

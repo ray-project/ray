@@ -1,134 +1,11 @@
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
+#include <limits.h>
+
+#include "common_protocol.h"
+
+#include "task.h"
 
 extern "C" {
 #include "sha256.h"
-}
-#include "utarray.h"
-
-#include "task.h"
-#include "common.h"
-#include "io.h"
-
-/* TASK SPECIFICATIONS */
-
-/* Tasks are stored in a consecutive chunk of memory, the first
- * sizeof(task_spec) bytes are arranged according to the struct
- * task_spec. Then there is an array of task_args of length
- * (num_args + num_returns), and then follows the data of
- * pass-by-value arguments of size args_value_size. The offsets in the
- * task_arg.val are with respect to the end of the augmented structure,
- * i.e. with respect to the address &task_spec.args_and_returns[0] +
- * (task_spec->num_args + task_spec->num_returns) * sizeof(task_arg). */
-
-typedef struct {
-  /* Either ARG_BY_REF or ARG_BY_VAL. */
-  int8_t type;
-  union {
-    ObjectID obj_id;
-    struct {
-      /* Offset where the data associated to this arg is located relative
-       * to &task_spec.args_and_returns[0]. */
-      ptrdiff_t offset;
-      int64_t length;
-    } value;
-  };
-} task_arg;
-
-struct task_spec_impl {
-  /** ID of the driver that created this task. */
-  UniqueID driver_id;
-  /** Task ID of the task. */
-  TaskID task_id;
-  /** Task ID of the parent task. */
-  TaskID parent_task_id;
-  /** A count of the number of tasks submitted by the parent task before this
-   *  one. */
-  int64_t parent_counter;
-  /** Actor ID of the task. This is the actor that this task is executed on
-   *  or NIL_ACTOR_ID if the task is just a normal task. */
-  ActorID actor_id;
-  /** Number of tasks that have been submitted to this actor so far. */
-  int64_t actor_counter;
-  /** Function ID of the task. */
-  FunctionID function_id;
-  /** Total number of arguments. */
-  int64_t num_args;
-  /** Index of the last argument that has been constructed. */
-  int64_t arg_index;
-  /** Number of return values. */
-  int64_t num_returns;
-  /** Number of bytes the pass-by-value arguments are occupying. */
-  int64_t args_value_size;
-  /** The offset of the number of bytes of pass-by-value data that
-   *  has been written so far, relative to &task_spec->args_and_returns[0] +
-   *  (task_spec->num_args + task_spec->num_returns) * sizeof(task_arg) */
-  int64_t args_value_offset;
-  /** Resource vector for this task. A resource vector maps a resource index
-   *  (like "cpu" or "gpu") to the number of units of that resource required.
-   *  Note that this will allow us to support arbitrary attributes:
-   *  For example, we can have a coloring of nodes and "red" can correspond
-   *  to 0.0, "green" to 1.0 and "yellow" to 2.0. */
-  double required_resources[MAX_RESOURCE_INDEX];
-  /** Argument and return IDs as well as offsets for pass-by-value args. */
-  task_arg args_and_returns[0];
-};
-
-/* The size of a task specification is given by the following expression. */
-#define TASK_SPEC_SIZE(NUM_ARGS, NUM_RETURNS, ARGS_VALUE_SIZE)           \
-  (sizeof(task_spec) + ((NUM_ARGS) + (NUM_RETURNS)) * sizeof(task_arg) + \
-   (ARGS_VALUE_SIZE))
-
-bool TaskID_equal(TaskID first_id, TaskID second_id) {
-  return UNIQUE_ID_EQ(first_id, second_id);
-}
-
-bool TaskID_is_nil(TaskID id) {
-  return TaskID_equal(id, NIL_TASK_ID);
-}
-
-bool ActorID_equal(ActorID first_id, ActorID second_id) {
-  return UNIQUE_ID_EQ(first_id, second_id);
-}
-
-bool FunctionID_equal(FunctionID first_id, FunctionID second_id) {
-  return UNIQUE_ID_EQ(first_id, second_id);
-}
-
-bool FunctionID_is_nil(FunctionID id) {
-  return FunctionID_equal(id, NIL_FUNCTION_ID);
-}
-
-TaskID *task_return_ptr(task_spec *spec, int64_t return_index) {
-  DCHECK(0 <= return_index && return_index < spec->num_returns);
-  task_arg *ret = &spec->args_and_returns[spec->num_args + return_index];
-  DCHECK(ret->type == ARG_BY_REF);
-  return &ret->obj_id;
-}
-
-/* Compute the task ID. This assumes that all of the other fields have been set
- * and that the return IDs have not been set. It assumes the task_spec was
- * zero-initialized so that uninitialized fields will not make the task ID
- * nondeterministic. */
-TaskID compute_task_id(task_spec *spec) {
-  /* Check that the task ID and return ID fields of the task_spec are
-   * uninitialized. */
-  DCHECK(TaskID_equal(spec->task_id, NIL_TASK_ID));
-  for (int i = 0; i < spec->num_returns; ++i) {
-    DCHECK(ObjectID_equal(*task_return_ptr(spec, i), NIL_ID));
-  }
-  /* Compute a SHA256 hash of the task_spec. */
-  SHA256_CTX ctx;
-  BYTE buff[DIGEST_SIZE];
-  sha256_init(&ctx);
-  sha256_update(&ctx, (BYTE *) spec, task_spec_size(spec));
-  sha256_final(&ctx, buff);
-  /* Create a task ID out of the hash. This will truncate the hash. */
-  TaskID task_id;
-  CHECK(sizeof(task_id) <= DIGEST_SIZE);
-  memcpy(&task_id.id, buff, sizeof(task_id.id));
-  return task_id;
 }
 
 ObjectID task_compute_return_id(TaskID task_id, int64_t return_index) {
@@ -155,209 +32,266 @@ ObjectID task_compute_put_id(TaskID task_id, int64_t put_index) {
   return put_id;
 }
 
-task_spec *start_construct_task_spec(UniqueID driver_id,
-                                     TaskID parent_task_id,
-                                     int64_t parent_counter,
-                                     ActorID actor_id,
-                                     int64_t actor_counter,
-                                     FunctionID function_id,
-                                     int64_t num_args,
-                                     int64_t num_returns,
-                                     int64_t args_value_size) {
-  int64_t size = TASK_SPEC_SIZE(num_args, num_returns, args_value_size);
-  task_spec *task = (task_spec *) malloc(size);
-  memset(task, 0, size);
-  task->driver_id = driver_id;
-  task->task_id = NIL_TASK_ID;
-  task->parent_task_id = parent_task_id;
-  task->parent_counter = parent_counter;
-  task->actor_id = actor_id;
-  task->actor_counter = actor_counter;
-  task->function_id = function_id;
-  task->num_args = num_args;
-  task->arg_index = 0;
-  task->num_returns = num_returns;
-  task->args_value_size = args_value_size;
-  for (int i = 0; i < num_returns; ++i) {
-    *task_return_ptr(task, i) = NIL_ID;
+class TaskBuilder {
+ public:
+  void Start(UniqueID driver_id,
+             TaskID parent_task_id,
+             int64_t parent_counter,
+             ActorID actor_id,
+             int64_t actor_counter,
+             FunctionID function_id,
+             int64_t num_returns) {
+    driver_id_ = driver_id;
+    parent_task_id_ = parent_task_id;
+    parent_counter_ = parent_counter;
+    actor_id_ = actor_id;
+    actor_counter_ = actor_counter;
+    function_id_ = function_id;
+    num_returns_ = num_returns;
+
+    /* Compute hashes. */
+    sha256_init(&ctx);
+    sha256_update(&ctx, (BYTE *) &driver_id, sizeof(driver_id));
+    sha256_update(&ctx, (BYTE *) &parent_task_id, sizeof(parent_task_id));
+    sha256_update(&ctx, (BYTE *) &parent_counter, sizeof(parent_counter));
+    sha256_update(&ctx, (BYTE *) &actor_id, sizeof(actor_id));
+    sha256_update(&ctx, (BYTE *) &actor_counter, sizeof(actor_counter));
+    sha256_update(&ctx, (BYTE *) &function_id, sizeof(function_id));
   }
-  return task;
-}
 
-void finish_construct_task_spec(task_spec *spec) {
-  /* Check that all of the arguments were added to the task. */
-  DCHECK(spec->arg_index == spec->num_args);
-  spec->task_id = compute_task_id(spec);
-  /* Set the object IDs for the return values. */
-  for (int64_t i = 0; i < spec->num_returns; ++i) {
-    *task_return_ptr(spec, i) = task_compute_return_id(spec->task_id, i);
+  void NextReferenceArgument(ObjectID object_id) {
+    args.push_back(CreateArg(fbb, to_flatbuf(fbb, object_id)));
+    sha256_update(&ctx, (BYTE *) &object_id, sizeof(object_id));
   }
+
+  void NextValueArgument(uint8_t *value, int64_t length) {
+    auto arg = fbb.CreateString((const char *) value, length);
+    auto empty_id = fbb.CreateString("", 0);
+    args.push_back(CreateArg(fbb, empty_id, arg));
+    sha256_update(&ctx, (BYTE *) &value, length);
+  }
+
+  void SetRequiredResource(int64_t resource_index, double value) {
+    if (resource_index >= resource_vector_.size()) {
+      /* Make sure the resource vector is constructed entry by entry,
+       * in order. */
+      CHECK(resource_index == resource_vector_.size());
+      resource_vector_.resize(resource_index + 1);
+    }
+    resource_vector_[resource_index] = value;
+  }
+
+  uint8_t *Finish(int64_t *size) {
+    /* Add arguments. */
+    auto arguments = fbb.CreateVector(args);
+    /* Update hash. */
+    BYTE buff[DIGEST_SIZE];
+    sha256_final(&ctx, buff);
+    TaskID task_id;
+    CHECK(sizeof(task_id) <= DIGEST_SIZE);
+    memcpy(&task_id, buff, sizeof(task_id));
+    /* Add return object IDs. */
+    std::vector<flatbuffers::Offset<flatbuffers::String>> returns;
+    for (int64_t i = 0; i < num_returns_; i++) {
+      ObjectID return_id = task_compute_return_id(task_id, i);
+      returns.push_back(to_flatbuf(fbb, return_id));
+    }
+    /* Create TaskInfo. */
+    for (int64_t i = resource_vector_.size(); i < ResourceIndex_MAX; ++i) {
+      resource_vector_.push_back(0.0);
+    }
+    auto message = CreateTaskInfo(
+        fbb, to_flatbuf(fbb, driver_id_), to_flatbuf(fbb, task_id),
+        to_flatbuf(fbb, parent_task_id_), parent_counter_,
+        to_flatbuf(fbb, actor_id_), actor_counter_,
+        to_flatbuf(fbb, function_id_), arguments, fbb.CreateVector(returns),
+        fbb.CreateVector(resource_vector_));
+    /* Finish the TaskInfo. */
+    fbb.Finish(message);
+    *size = fbb.GetSize();
+    uint8_t *result = (uint8_t *) malloc(*size);
+    memcpy(result, fbb.GetBufferPointer(), *size);
+    fbb.Clear();
+    args.clear();
+    return result;
+  }
+
+ private:
+  flatbuffers::FlatBufferBuilder fbb;
+  std::vector<flatbuffers::Offset<Arg>> args;
+  SHA256_CTX ctx;
+
+  /* Data for the builder. */
+  UniqueID driver_id_;
+  TaskID parent_task_id_;
+  int64_t parent_counter_;
+  ActorID actor_id_;
+  int64_t actor_counter_;
+  FunctionID function_id_;
+  int64_t num_returns_;
+  std::vector<double> resource_vector_;
+};
+
+TaskBuilder *make_task_builder(void) {
+  return new TaskBuilder();
 }
 
-int64_t task_spec_size(task_spec *spec) {
-  return TASK_SPEC_SIZE(spec->num_args, spec->num_returns,
-                        spec->args_value_size);
+void free_task_builder(TaskBuilder *builder) {
+  delete builder;
 }
 
-FunctionID task_function(task_spec *spec) {
-  /* Check that the task has been constructed. */
-  DCHECK(!TaskID_equal(spec->task_id, NIL_TASK_ID));
-  return spec->function_id;
+bool TaskID_equal(TaskID first_id, TaskID second_id) {
+  return UNIQUE_ID_EQ(first_id, second_id);
 }
 
-ActorID task_spec_actor_id(task_spec *spec) {
-  /* Check that the task has been constructed. */
-  DCHECK(!TaskID_equal(spec->task_id, NIL_TASK_ID));
-  return spec->actor_id;
+bool TaskID_is_nil(TaskID id) {
+  return TaskID_equal(id, NIL_TASK_ID);
 }
 
-int64_t task_spec_actor_counter(task_spec *spec) {
-  /* Check that the task has been constructed. */
-  DCHECK(!TaskID_equal(spec->task_id, NIL_TASK_ID));
-  return spec->actor_counter;
+bool ActorID_equal(ActorID first_id, ActorID second_id) {
+  return UNIQUE_ID_EQ(first_id, second_id);
 }
 
-UniqueID task_spec_driver_id(task_spec *spec) {
-  /* Check that the task has been constructed. */
-  DCHECK(!TaskID_equal(spec->task_id, NIL_TASK_ID));
-  return spec->driver_id;
+bool FunctionID_equal(FunctionID first_id, FunctionID second_id) {
+  return UNIQUE_ID_EQ(first_id, second_id);
 }
 
-TaskID task_spec_id(task_spec *spec) {
-  /* Check that the task has been constructed. */
-  DCHECK(!TaskID_equal(spec->task_id, NIL_TASK_ID));
-  return spec->task_id;
+bool FunctionID_is_nil(FunctionID id) {
+  return FunctionID_equal(id, NIL_FUNCTION_ID);
 }
 
-int64_t task_num_args(task_spec *spec) {
-  return spec->num_args;
+/* Functions for building tasks. */
+
+void TaskSpec_start_construct(TaskBuilder *builder,
+                              UniqueID driver_id,
+                              TaskID parent_task_id,
+                              int64_t parent_counter,
+                              ActorID actor_id,
+                              int64_t actor_counter,
+                              FunctionID function_id,
+                              int64_t num_returns) {
+  builder->Start(driver_id, parent_task_id, parent_counter, actor_id,
+                 actor_counter, function_id, num_returns);
 }
 
-int64_t task_num_returns(task_spec *spec) {
-  return spec->num_returns;
+uint8_t *TaskSpec_finish_construct(TaskBuilder *builder, int64_t *size) {
+  return builder->Finish(size);
 }
 
-int8_t task_arg_type(task_spec *spec, int64_t arg_index) {
-  DCHECK(0 <= arg_index && arg_index < spec->num_args);
-  return spec->args_and_returns[arg_index].type;
+void TaskSpec_args_add_ref(TaskBuilder *builder, ObjectID object_id) {
+  builder->NextReferenceArgument(object_id);
 }
 
-ObjectID task_arg_id(task_spec *spec, int64_t arg_index) {
-  /* Check that the task has been constructed. */
-  DCHECK(!TaskID_equal(spec->task_id, NIL_TASK_ID));
-  DCHECK(0 <= arg_index && arg_index < spec->num_args);
-  task_arg *arg = &spec->args_and_returns[arg_index];
-  DCHECK(arg->type == ARG_BY_REF)
-  return arg->obj_id;
+void TaskSpec_args_add_val(TaskBuilder *builder,
+                           uint8_t *value,
+                           int64_t length) {
+  builder->NextValueArgument(value, length);
 }
 
-uint8_t *task_arg_val(task_spec *spec, int64_t arg_index) {
-  DCHECK(0 <= arg_index && arg_index < spec->num_args);
-  task_arg *arg = &spec->args_and_returns[arg_index];
-  DCHECK(arg->type == ARG_BY_VAL);
-  uint8_t *data = (uint8_t *) &spec->args_and_returns[0];
-  data += (spec->num_args + spec->num_returns) * sizeof(task_arg);
-  return data + arg->value.offset;
+void TaskSpec_set_required_resource(TaskBuilder *builder,
+                                    int64_t resource_index,
+                                    double value) {
+  builder->SetRequiredResource(resource_index, value);
 }
 
-int64_t task_arg_length(task_spec *spec, int64_t arg_index) {
-  DCHECK(0 <= arg_index && arg_index < spec->num_args);
-  task_arg *arg = &spec->args_and_returns[arg_index];
-  DCHECK(arg->type == ARG_BY_VAL);
-  return arg->value.length;
+/* Functions for reading tasks. */
+
+TaskID TaskSpec_task_id(TaskSpec *spec) {
+  CHECK(spec);
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec);
+  return from_flatbuf(message->task_id());
 }
 
-int64_t task_args_add_ref(task_spec *spec, ObjectID obj_id) {
-  /* Check that the task is still under construction. */
-  DCHECK(TaskID_equal(spec->task_id, NIL_TASK_ID));
-  task_arg *arg = &spec->args_and_returns[spec->arg_index];
-  arg->type = ARG_BY_REF;
-  arg->obj_id = obj_id;
-  return spec->arg_index++;
+FunctionID TaskSpec_function(TaskSpec *spec) {
+  CHECK(spec);
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec);
+  return from_flatbuf(message->function_id());
 }
 
-int64_t task_args_add_val(task_spec *spec, uint8_t *data, int64_t length) {
-  /* Check that the task is still under construction. */
-  DCHECK(TaskID_equal(spec->task_id, NIL_TASK_ID));
-  task_arg *arg = &spec->args_and_returns[spec->arg_index];
-  arg->type = ARG_BY_VAL;
-  arg->value.offset = spec->args_value_offset;
-  arg->value.length = length;
-  uint8_t *addr = task_arg_val(spec, spec->arg_index);
-  DCHECK(spec->args_value_offset + length <= spec->args_value_size);
-  DCHECK(spec->arg_index != spec->num_args - 1 ||
-         spec->args_value_offset + length == spec->args_value_size);
-  memcpy(addr, data, length);
-  spec->args_value_offset += length;
-  return spec->arg_index++;
+ActorID TaskSpec_actor_id(TaskSpec *spec) {
+  CHECK(spec);
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec);
+  return from_flatbuf(message->actor_id());
 }
 
-void task_spec_set_required_resource(task_spec *spec,
-                                     int64_t resource_index,
-                                     double value) {
-  spec->required_resources[resource_index] = value;
+int64_t TaskSpec_actor_counter(TaskSpec *spec) {
+  CHECK(spec);
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec);
+  return message->actor_counter();
 }
 
-ObjectID task_return(task_spec *spec, int64_t return_index) {
-  /* Check that the task has been constructed. */
-  DCHECK(!TaskID_equal(spec->task_id, NIL_TASK_ID));
-  DCHECK(0 <= return_index && return_index < spec->num_returns);
-  task_arg *ret = &spec->args_and_returns[spec->num_args + return_index];
-  DCHECK(ret->type == ARG_BY_REF);
-  return ret->obj_id;
+UniqueID TaskSpec_driver_id(TaskSpec *spec) {
+  CHECK(spec);
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec);
+  return from_flatbuf(message->driver_id());
 }
 
-double task_spec_get_required_resource(const task_spec *spec,
-                                       int64_t resource_index) {
-  return spec->required_resources[resource_index];
+int64_t TaskSpec_num_args(TaskSpec *spec) {
+  CHECK(spec);
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec);
+  return message->args()->size();
 }
 
-void free_task_spec(task_spec *spec) {
-  /* Check that the task has been constructed. */
-  DCHECK(!TaskID_equal(spec->task_id, NIL_TASK_ID));
-  DCHECK(spec->arg_index == spec->num_args);
+ObjectID TaskSpec_arg_id(TaskSpec *spec, int64_t arg_index) {
+  CHECK(spec);
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec);
+  return from_flatbuf(message->args()->Get(arg_index)->object_id());
+}
+
+const uint8_t *TaskSpec_arg_val(TaskSpec *spec, int64_t arg_index) {
+  CHECK(spec);
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec);
+  return (uint8_t *) message->args()->Get(arg_index)->data()->c_str();
+}
+
+int64_t TaskSpec_arg_length(TaskSpec *spec, int64_t arg_index) {
+  CHECK(spec);
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec);
+  return message->args()->Get(arg_index)->data()->size();
+}
+
+int64_t TaskSpec_num_returns(TaskSpec *spec) {
+  CHECK(spec);
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec);
+  return message->returns()->size();
+}
+
+bool TaskSpec_arg_by_ref(TaskSpec *spec, int64_t arg_index) {
+  CHECK(spec);
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec);
+  return message->args()->Get(arg_index)->object_id()->size() != 0;
+}
+
+ObjectID TaskSpec_return(TaskSpec *spec, int64_t return_index) {
+  CHECK(spec);
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec);
+  return from_flatbuf(message->returns()->Get(return_index));
+}
+
+double TaskSpec_get_required_resource(const TaskSpec *spec,
+                                      int64_t resource_index) {
+  CHECK(spec);
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec);
+  return message->required_resources()->Get(resource_index);
+}
+
+void TaskSpec_free(TaskSpec *spec) {
   free(spec);
-}
-
-void print_task(task_spec *spec, UT_string *output) {
-  /* For converting an id to hex, which has double the number
-   * of bytes compared to the id (+ 1 byte for '\0'). */
-  static char hex[ID_STRING_SIZE];
-  /* Print function id. */
-  ObjectID_to_string((ObjectID) task_function(spec), &hex[0], ID_STRING_SIZE);
-  utstring_printf(output, "fun %s ", &hex[0]);
-  /* Print arguments. */
-  for (int i = 0; i < task_num_args(spec); ++i) {
-    ObjectID_to_string((ObjectID) task_arg_id(spec, i), &hex[0],
-                       ID_STRING_SIZE);
-    utstring_printf(output, " id:%d %s", i, &hex[0]);
-  }
-  /* Print return ids. */
-  for (int i = 0; i < task_num_returns(spec); ++i) {
-    ObjectID obj_id = task_return(spec, i);
-    ObjectID_to_string(obj_id, &hex[0], ID_STRING_SIZE);
-    utstring_printf(output, " ret:%d %s", i, &hex[0]);
-  }
 }
 
 /* TASK INSTANCES */
 
-struct TaskImpl {
-  /** The scheduling state of the task. */
-  int state;
-  /** The ID of the local scheduler involved. */
-  DBClientID local_scheduler_id;
-  /** The task specification for this task. */
-  task_spec spec;
-};
-
-Task *Task_alloc(task_spec *spec, int state, DBClientID local_scheduler_id) {
-  int64_t size = sizeof(Task) - sizeof(task_spec) + task_spec_size(spec);
+Task *Task_alloc(TaskSpec *spec,
+                 int64_t task_spec_size,
+                 int state,
+                 DBClientID local_scheduler_id) {
+  int64_t size = sizeof(Task) - sizeof(TaskSpec) + task_spec_size;
   Task *result = (Task *) malloc(size);
   memset(result, 0, size);
   result->state = state;
   result->local_scheduler_id = local_scheduler_id;
-  memcpy(&result->spec, spec, task_spec_size(spec));
+  result->task_spec_size = task_spec_size;
+  memcpy(&result->spec, spec, task_spec_size);
   return result;
 }
 
@@ -370,7 +304,7 @@ Task *Task_copy(Task *other) {
 }
 
 int64_t Task_size(Task *task_arg) {
-  return sizeof(Task) - sizeof(task_spec) + task_spec_size(&task_arg->spec);
+  return sizeof(Task) - sizeof(TaskSpec) + task_arg->task_spec_size;
 }
 
 int Task_state(Task *task) {
@@ -381,21 +315,25 @@ void Task_set_state(Task *task, int state) {
   task->state = state;
 }
 
-DBClientID Task_local_scheduler_id(Task *task) {
+DBClientID Task_local_scheduler(Task *task) {
   return task->local_scheduler_id;
 }
 
-void Task_set_local_scheduler_id(Task *task, DBClientID local_scheduler_id) {
+void Task_set_local_scheduler(Task *task, DBClientID local_scheduler_id) {
   task->local_scheduler_id = local_scheduler_id;
 }
 
-task_spec *Task_task_spec(Task *task) {
+TaskSpec *Task_task_spec(Task *task) {
   return &task->spec;
 }
 
+int64_t Task_task_spec_size(Task *task) {
+  return task->task_spec_size;
+}
+
 TaskID Task_task_id(Task *task) {
-  task_spec *spec = Task_task_spec(task);
-  return task_spec_id(spec);
+  TaskSpec *spec = Task_task_spec(task);
+  return TaskSpec_task_id(spec);
 }
 
 void Task_free(Task *task) {

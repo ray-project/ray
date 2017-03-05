@@ -39,7 +39,9 @@ void LocalSchedulerConnection_free(LocalSchedulerConnection *conn);
  * @param task The address of the task to submit.
  * @return Void.
  */
-void local_scheduler_submit(LocalSchedulerConnection *conn, task_spec *task);
+void local_scheduler_submit(LocalSchedulerConnection *conn,
+                            TaskSpec *task,
+                            int64_t task_size);
 
 /**
  * Log an event to the event log. This will call RPUSH key value. We use RPUSH
@@ -70,7 +72,8 @@ void local_scheduler_log_event(LocalSchedulerConnection *conn,
  * @param conn The connection information.
  * @return The address of the assigned task.
  */
-task_spec *local_scheduler_get_task(LocalSchedulerConnection *conn);
+TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
+                                   int64_t *task_size);
 
 /**
  * Tell the local scheduler that the client has finished executing a task.

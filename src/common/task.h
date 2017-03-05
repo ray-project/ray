@@ -1,18 +1,17 @@
 #ifndef TASK_H
 #define TASK_H
 
-/**
- * This API specifies the task data structures. It is in C so we can
- * easily construct tasks from other languages like Python. The data structures
- * are also defined in such a way that memory is contiguous and all pointers
- * are relative, so that we can memcpy the datastructure and ship it over the
- * network without serialization and deserialization. */
-
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include "common.h"
 #include "utstring.h"
+
+#include "format/common_generated.h"
+
+typedef uint8_t TaskSpec;
+
+struct TaskBuilder;
 
 #define NIL_TASK_ID NIL_ID
 #define NIL_ACTOR_ID NIL_ID
@@ -27,17 +26,6 @@ typedef UniqueID TaskID;
 /** The actor ID is the ID of the actor that a task must run on. If the task is
  *  not run on an actor, then NIL_ACTOR_ID should be used. */
 typedef UniqueID ActorID;
-
-/**
- * ==== Task specifications ====
- * Contain all the information neccessary to execute the
- * task (function id, arguments, return object ids).
- */
-
-typedef struct task_spec_impl task_spec;
-
-/** If argument is passed by value or reference. */
-enum arg_type { ARG_BY_REF, ARG_BY_VAL };
 
 /**
  * Compare two task IDs.
@@ -84,6 +72,10 @@ bool FunctionID_is_nil(FunctionID id);
 
 /* Construct and modify task specifications. */
 
+TaskBuilder *make_task_builder(void);
+
+void free_task_builder(TaskBuilder *builder);
+
 /**
  * Begin constructing a task_spec. After this is called, the arguments must be
  * added to the task_spec and then finish_construct_task_spec must be called.
@@ -93,8 +85,6 @@ bool FunctionID_is_nil(FunctionID id);
  * @param parent_task_id The task ID of the task that submitted this task.
  * @param parent_counter A counter indicating how many tasks were submitted by
  *        the parent task prior to this one.
- * @param actor_id The ID of the actor this task belongs to.
- * @param actor_counter Number of tasks that have been executed on this actor.
  * @param function_id The function ID of the function to execute in this task.
  * @param num_args The number of arguments that this task has.
  * @param num_returns The number of return values that this task has.
@@ -102,15 +92,14 @@ bool FunctionID_is_nil(FunctionID id);
           ignoring object ID arguments.
  * @return The partially constructed task_spec.
  */
-task_spec *start_construct_task_spec(UniqueID driver_id,
-                                     TaskID parent_task_id,
-                                     int64_t parent_counter,
-                                     UniqueID actor_id,
-                                     int64_t actor_counter,
-                                     FunctionID function_id,
-                                     int64_t num_args,
-                                     int64_t num_returns,
-                                     int64_t args_value_size);
+void TaskSpec_start_construct(TaskBuilder *B,
+                              UniqueID driver_id,
+                              TaskID parent_task_id,
+                              int64_t parent_counter,
+                              UniqueID actor_id,
+                              int64_t actor_counter,
+                              FunctionID function_id,
+                              int64_t num_returns);
 
 /**
  * Finish constructing a task_spec. This computes the task ID and the object IDs
@@ -120,15 +109,7 @@ task_spec *start_construct_task_spec(UniqueID driver_id,
  * @param spec The task spec whose ID and return object IDs should be computed.
  * @return Void.
  */
-void finish_construct_task_spec(task_spec *spec);
-
-/**
- * The size of the task in bytes.
- *
- * @param spec The task_spec in question.
- * @return The size of the task_spec in bytes.
- */
-int64_t task_spec_size(task_spec *spec);
+uint8_t *TaskSpec_finish_construct(TaskBuilder *builder, int64_t *size);
 
 /**
  * Return the function ID of the task.
@@ -136,7 +117,7 @@ int64_t task_spec_size(task_spec *spec);
  * @param spec The task_spec in question.
  * @return The function ID of the function to execute in this task.
  */
-FunctionID task_function(task_spec *spec);
+FunctionID TaskSpec_function(TaskSpec *spec);
 
 /**
  * Return the actor ID of the task.
@@ -144,7 +125,7 @@ FunctionID task_function(task_spec *spec);
  * @param spec The task_spec in question.
  * @return The actor ID of the actor the task is part of.
  */
-UniqueID task_spec_actor_id(task_spec *spec);
+UniqueID TaskSpec_actor_id(TaskSpec *spec);
 
 /**
  * Return the actor counter of the task. This starts at 0 and increments by 1
@@ -153,7 +134,7 @@ UniqueID task_spec_actor_id(task_spec *spec);
  * @param spec The task_spec in question.
  * @return The actor counter of the task.
  */
-int64_t task_spec_actor_counter(task_spec *spec);
+int64_t TaskSpec_actor_counter(TaskSpec *spec);
 
 /**
  * Return the driver ID of the task.
@@ -161,7 +142,7 @@ int64_t task_spec_actor_counter(task_spec *spec);
  * @param spec The task_spec in question.
  * @return The driver ID of the task.
  */
-UniqueID task_spec_driver_id(task_spec *spec);
+UniqueID TaskSpec_driver_id(TaskSpec *spec);
 
 /**
  * Return the task ID of the task.
@@ -169,7 +150,7 @@ UniqueID task_spec_driver_id(task_spec *spec);
  * @param spec The task_spec in question.
  * @return The task ID of the task.
  */
-TaskID task_spec_id(task_spec *spec);
+TaskID TaskSpec_task_id(TaskSpec *spec);
 
 /**
  * Get the number of arguments to this task.
@@ -177,7 +158,7 @@ TaskID task_spec_id(task_spec *spec);
  * @param spec The task_spec in question.
  * @return The number of arguments to this task.
  */
-int64_t task_num_args(task_spec *spec);
+int64_t TaskSpec_num_args(TaskSpec *spec);
 
 /**
  * Get the number of return values expected from this task.
@@ -185,17 +166,16 @@ int64_t task_num_args(task_spec *spec);
  * @param spec The task_spec in question.
  * @return The number of return values expected from this task.
  */
-int64_t task_num_returns(task_spec *spec);
+int64_t TaskSpec_num_returns(TaskSpec *spec);
 
 /**
- * Get the type of an argument to this task. It should be either ARG_BY_REF or
- * ARG_BY_VAL.
+ * Return true if this argument is passed by reference.
  *
  * @param spec The task_spec in question.
  * @param arg_index The index of the argument in question.
- * @return The type of the argument.
+ * @return True if this argument is passed by reference.
  */
-int8_t task_arg_type(task_spec *spec, int64_t arg_index);
+bool TaskSpec_arg_by_ref(TaskSpec *spec, int64_t arg_index);
 
 /**
  * Get a particular argument to this task. This assumes the argument is an
@@ -205,7 +185,7 @@ int8_t task_arg_type(task_spec *spec, int64_t arg_index);
  * @param arg_index The index of the argument in question.
  * @return The argument at that index.
  */
-ObjectID task_arg_id(task_spec *spec, int64_t arg_index);
+ObjectID TaskSpec_arg_id(TaskSpec *spec, int64_t arg_index);
 
 /**
  * Get a particular argument to this task. This assumes the argument is a value.
@@ -214,7 +194,7 @@ ObjectID task_arg_id(task_spec *spec, int64_t arg_index);
  * @param arg_index The index of the argument in question.
  * @return The argument at that index.
  */
-uint8_t *task_arg_val(task_spec *spec, int64_t arg_index);
+const uint8_t *TaskSpec_arg_val(TaskSpec *spec, int64_t arg_index);
 
 /**
  * Get the number of bytes in a particular argument to this task. This assumes
@@ -224,7 +204,7 @@ uint8_t *task_arg_val(task_spec *spec, int64_t arg_index);
  * @param arg_index The index of the argument in question.
  * @return The number of bytes in the argument.
  */
-int64_t task_arg_length(task_spec *spec, int64_t arg_index);
+int64_t TaskSpec_arg_length(TaskSpec *spec, int64_t arg_index);
 
 /**
  * Set the next task argument. Note that this API only allows you to set the
@@ -235,7 +215,7 @@ int64_t task_arg_length(task_spec *spec, int64_t arg_index);
  * @return The number of task arguments that have been set before this one. This
  *         is only used for testing.
  */
-int64_t task_args_add_ref(task_spec *spec, ObjectID obj_id);
+void TaskSpec_args_add_ref(TaskBuilder *spec, ObjectID obj_id);
 
 /**
  * Set the next task argument. Note that this API only allows you to set the
@@ -247,32 +227,9 @@ int64_t task_args_add_ref(task_spec *spec, ObjectID obj_id);
  * @return The number of task arguments that have been set before this one. This
  *         is only used for testing.
  */
-int64_t task_args_add_val(task_spec *spec, uint8_t *data, int64_t length);
-
-/**
- * Get a particular return object ID of a task.
- *
- * @param spec The task_spec in question.
- * @param return_index The index of the return object ID in question.
- * @return The relevant return object ID.
- */
-ObjectID task_return(task_spec *spec, int64_t return_index);
-
-/**
- * Indices into resource vectors.
- * A resource vector maps a resource index to the number
- * of units of that resource required.
- *
- * The total length of the resource vector is NUM_RESOURCE_INDICES.
- */
-typedef enum {
-  /** Index for number of cpus the task requires. */
-  CPU_RESOURCE_INDEX = 0,
-  /** Index for number of gpus the task requires. */
-  GPU_RESOURCE_INDEX,
-  /** Total number of different resources in the system. */
-  MAX_RESOURCE_INDEX
-} resource_vector_index;
+void TaskSpec_args_add_val(TaskBuilder *builder,
+                           uint8_t *value,
+                           int64_t length);
 
 /**
  * Set the value associated to a resource index.
@@ -283,9 +240,18 @@ typedef enum {
  *        this task needs or a value for an attribute this task requires.
  * @return Void.
  */
-void task_spec_set_required_resource(task_spec *spec,
-                                     int64_t resource_index,
-                                     double value);
+void TaskSpec_set_required_resource(TaskBuilder *builder,
+                                    int64_t resource_index,
+                                    double value);
+
+/**
+ * Get a particular return object ID of a task.
+ *
+ * @param spec The task_spec in question.
+ * @param return_index The index of the return object ID in question.
+ * @return The relevant return object ID.
+ */
+ObjectID TaskSpec_return(TaskSpec *data, int64_t return_index);
 
 /**
  * Get the value associated to a resource index.
@@ -294,8 +260,8 @@ void task_spec_set_required_resource(task_spec *spec,
  * @param resource_index Index of the resource.
  * @return How many of this resource the task needs to execute.
  */
-double task_spec_get_required_resource(const task_spec *spec,
-                                       int64_t resource_index);
+double TaskSpec_get_required_resource(const TaskSpec *spec,
+                                      int64_t resource_index);
 
 /**
  * Compute the object id associated to a put call.
@@ -307,21 +273,21 @@ double task_spec_get_required_resource(const task_spec *spec,
 ObjectID task_compute_put_id(TaskID task_id, int64_t put_index);
 
 /**
- * Free a task_spec.
- *
- * @param The task_spec in question.
- * @return Void.
- */
-void free_task_spec(task_spec *spec);
-
-/**
  * Print the task as a humanly readable string.
  *
  * @param spec The task_spec in question.
  * @param output The buffer to write the string to.
  * @return Void.
  */
-void print_task(task_spec *spec, UT_string *output);
+void TaskSpec_print(TaskSpec *spec, UT_string *output);
+
+/**
+ * Free a task_spec.
+ *
+ * @param The task_spec in question.
+ * @return Void.
+ */
+void TaskSpec_free(TaskSpec *spec);
 
 /**
  * ==== Task ====
@@ -353,7 +319,17 @@ typedef enum {
 /** A task is an execution of a task specification.  It has a state of execution
  * (see scheduling_state) and the ID of the local scheduler it is scheduled on
  * or running on. */
-typedef struct TaskImpl Task;
+
+struct Task {
+  /** The scheduling state of the task. */
+  int state;
+  /** The ID of the local scheduler involved. */
+  DBClientID local_scheduler_id;
+  /** The size of the task specification for this task. */
+  int64_t task_spec_size;
+  /** The task specification for this task. */
+  TaskSpec spec;
+};
 
 /**
  * Allocate a new task. Must be freed with free_task after use.
@@ -363,7 +339,10 @@ typedef struct TaskImpl Task;
  * @param local_scheduler_id The ID of the local scheduler that the task is
  *        scheduled on, if any.
  */
-Task *Task_alloc(task_spec *spec, int state, DBClientID local_scheduler_id);
+Task *Task_alloc(TaskSpec *spec,
+                 int64_t task_spec_size,
+                 int state,
+                 DBClientID local_scheduler_id);
 
 /**
  * Create a copy of the task. Must be freed with free_task after use.
@@ -383,13 +362,15 @@ int Task_state(Task *task);
 void Task_set_state(Task *task, int state);
 
 /** Local scheduler this task has been assigned to or is running on. */
-DBClientID Task_local_scheduler_id(Task *task);
+DBClientID Task_local_scheduler(Task *task);
 
 /** Set the local scheduler ID for this task. */
-void Task_set_local_scheduler_id(Task *task, DBClientID local_scheduler_id);
+void Task_set_local_scheduler(Task *task, DBClientID local_scheduler_id);
 
 /** Task specification of this task. */
-task_spec *Task_task_spec(Task *task);
+TaskSpec *Task_task_spec(Task *task);
+
+int64_t Task_task_spec_size(Task *task);
 
 /** Task ID of this task. */
 TaskID Task_task_id(Task *task);
@@ -397,4 +378,4 @@ TaskID Task_task_id(Task *task);
 /** Free this task datastructure. */
 void Task_free(Task *task);
 
-#endif
+#endif /* TASK_H */

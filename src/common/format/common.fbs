@@ -1,0 +1,52 @@
+
+// Indices into resource vectors.
+// A resource vector maps a resource index to the number
+// of units of that resource required.
+
+// The total length of the resource vector is ResourceIndex_MAX.
+enum ResourceIndex:int {
+  // A central processing unit.
+  CPU = 0,
+  // A graphics processing unit.
+  GPU = 1,
+  // A dummy entry to make ResourceIndex_MAX equal to the length of
+  // a resource vector.
+  DUMMY = 2
+}
+
+table Arg {
+  // Object ID for pass-by-reference arguments.
+  object_id: string;
+  // Data for pass-by-value arguments.
+  data: string;
+}
+
+table TaskInfo {
+  // ID of the driver that created this task.
+  driver_id: string;
+  // Task ID of the task.
+  task_id: string;
+  // Task ID of the parent task.
+  parent_task_id: string;
+  // A count of the number of tasks submitted by the parent task before this one.
+  parent_counter: int;
+  // Actor ID of the task. This is the actor that this task is executed on
+  // or NIL_ACTOR_ID if the task is just a normal task.
+  actor_id: string;
+  // Number of tasks that have been submitted to this actor so far.
+  actor_counter: int;
+  // Function ID of the task.
+  function_id: string;
+  // Task arguments.
+  args: [Arg];
+  // Object IDs of return values.
+  returns: [string];
+  // The required_resources vector indicates the quantities of the different
+  // resources required by this task. The index in this vector corresponds to
+  // the resource type defined in the ResourceIndex enum. For example,
+  // required_resources[0] is the number of CPUs required, and
+  // required_resources[1] is the number of GPUs required.
+  required_resources: [double];
+}
+
+root_type TaskInfo;
