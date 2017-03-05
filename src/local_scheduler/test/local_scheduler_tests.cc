@@ -9,6 +9,7 @@
 
 #include "common.h"
 #include "test/test_common.h"
+#include "test/example_task.h"
 #include "event_loop.h"
 #include "io.h"
 #include "utstring.h"
@@ -22,6 +23,8 @@
 #include "local_scheduler_client.h"
 
 SUITE(local_scheduler_tests);
+
+TaskBuilder *g_task_builder = NULL;
 
 const char *plasma_store_socket_name = "/tmp/plasma_store_socket_1";
 const char *plasma_manager_socket_name_format = "/tmp/plasma_manager_socket_%d";
@@ -56,8 +59,8 @@ LocalSchedulerMock *LocalSchedulerMock_init(int num_workers,
   const char *node_ip_address = "127.0.0.1";
   const char *redis_addr = node_ip_address;
   int redis_port = 6379;
-  const double static_resource_conf[MAX_RESOURCE_INDEX] = {DEFAULT_NUM_CPUS,
-                                                           DEFAULT_NUM_GPUS};
+  const double static_resource_conf[ResourceIndex_MAX] = {DEFAULT_NUM_CPUS,
+                                                          DEFAULT_NUM_GPUS};
   LocalSchedulerMock *mock =
       (LocalSchedulerMock *) malloc(sizeof(LocalSchedulerMock));
   memset(mock, 0, sizeof(LocalSchedulerMock));
@@ -155,8 +158,9 @@ TEST object_reconstruction_test(void) {
   LocalSchedulerConnection *worker = local_scheduler->conns[0];
 
   /* Create a task with zero dependencies and one return value. */
-  task_spec *spec = example_task_spec(0, 1);
-  ObjectID return_id = task_return(spec, 0);
+  int64_t task_size;
+  TaskSpec *spec = example_task_spec(0, 1, &task_size);
+  ObjectID return_id = TaskSpec_return(spec, 0);
 
   /* Add an empty object table entry for the object we want to reconstruct, to
    * simulate it having been created and evicted. */
@@ -176,15 +180,21 @@ TEST object_reconstruction_test(void) {
   if (pid == 0) {
     /* Make sure we receive the task twice. First from the initial submission,
      * and second from the reconstruct request. */
-    local_scheduler_submit(worker, spec);
-    task_spec *task_assigned = local_scheduler_get_task(worker);
-    ASSERT_EQ(memcmp(task_assigned, spec, task_spec_size(spec)), 0);
-    task_spec *reconstruct_task = local_scheduler_get_task(worker);
-    ASSERT_EQ(memcmp(reconstruct_task, spec, task_spec_size(spec)), 0);
+    int64_t task_assigned_size;
+    local_scheduler_submit(worker, spec, task_size);
+    TaskSpec *task_assigned =
+        local_scheduler_get_task(worker, &task_assigned_size);
+    ASSERT_EQ(memcmp(task_assigned, spec, task_size), 0);
+    ASSERT_EQ(task_assigned_size, task_size);
+    int64_t reconstruct_task_size;
+    TaskSpec *reconstruct_task =
+        local_scheduler_get_task(worker, &reconstruct_task_size);
+    ASSERT_EQ(memcmp(reconstruct_task, spec, task_size), 0);
+    ASSERT_EQ(reconstruct_task_size, task_size);
     /* Clean up. */
-    free_task_spec(reconstruct_task);
-    free_task_spec(task_assigned);
-    free_task_spec(spec);
+    free(reconstruct_task);
+    free(task_assigned);
+    TaskSpec_free(spec);
     LocalSchedulerMock_free(local_scheduler);
     exit(0);
   } else {
@@ -196,12 +206,12 @@ TEST object_reconstruction_test(void) {
     /* Set the task's status to TASK_STATUS_DONE to prevent the race condition
      * that would suppress object reconstruction. */
     Task *task = Task_alloc(
-        spec, TASK_STATUS_DONE,
+        spec, task_size, TASK_STATUS_DONE,
         get_db_client_id(local_scheduler->local_scheduler_state->db));
     task_table_add_task(local_scheduler->local_scheduler_state->db, task, NULL,
                         NULL, NULL);
     /* Trigger reconstruction, and run the event loop again. */
-    ObjectID return_id = task_return(spec, 0);
+    ObjectID return_id = TaskSpec_return(spec, 0);
     local_scheduler_reconstruct_object(worker, return_id);
     event_loop_add_timer(local_scheduler->loop, 500,
                          (event_loop_timer_handler) timeout_handler, NULL);
@@ -209,7 +219,7 @@ TEST object_reconstruction_test(void) {
     /* Wait for the child process to exit and check that there are no tasks
      * left in the local scheduler's task queue. Then, clean up. */
     wait(NULL);
-    free_task_spec(spec);
+    TaskSpec_free(spec);
     ASSERT_EQ(num_waiting_tasks(
                   local_scheduler->local_scheduler_state->algorithm_state),
               0);
@@ -232,14 +242,15 @@ TEST object_reconstruction_recursive_test(void) {
   /* Create a chain of tasks, each one dependent on the one before it. Mark
    * each object as available so that tasks will run immediately. */
   const int NUM_TASKS = 10;
-  task_spec *specs[NUM_TASKS];
-  specs[0] = example_task_spec(0, 1);
+  TaskSpec *specs[NUM_TASKS];
+  int64_t task_sizes[NUM_TASKS];
+  specs[0] = example_task_spec(0, 1, &task_sizes[0]);
   for (int i = 1; i < NUM_TASKS; ++i) {
-    ObjectID arg_id = task_return(specs[i - 1], 0);
+    ObjectID arg_id = TaskSpec_return(specs[i - 1], 0);
     handle_object_available(
         local_scheduler->local_scheduler_state,
         local_scheduler->local_scheduler_state->algorithm_state, arg_id);
-    specs[i] = example_task_spec_with_args(1, 1, &arg_id);
+    specs[i] = example_task_spec_with_args(1, 1, &arg_id, &task_sizes[i]);
   }
 
   /* Add an empty object table entry for each object we want to reconstruct, to
@@ -247,7 +258,7 @@ TEST object_reconstruction_recursive_test(void) {
   const char *client_id = "clientid";
   redisContext *context = redisConnect("127.0.0.1", 6379);
   for (int i = 0; i < NUM_TASKS; ++i) {
-    ObjectID return_id = task_return(specs[i], 0);
+    ObjectID return_id = TaskSpec_return(specs[i], 0);
     redisReply *reply = (redisReply *) redisCommand(
         context, "RAY.OBJECT_TABLE_ADD %b %ld %b %s", return_id.id,
         sizeof(return_id.id), 1, NIL_DIGEST, (size_t) DIGEST_SIZE, client_id);
@@ -263,32 +274,34 @@ TEST object_reconstruction_recursive_test(void) {
   if (pid == 0) {
     /* Submit the tasks, and make sure each one gets assigned to a worker. */
     for (int i = 0; i < NUM_TASKS; ++i) {
-      local_scheduler_submit(worker, specs[i]);
+      local_scheduler_submit(worker, specs[i], task_sizes[i]);
     }
     /* Make sure we receive each task from the initial submission. */
     for (int i = 0; i < NUM_TASKS; ++i) {
-      task_spec *task_assigned = local_scheduler_get_task(worker);
-      ASSERT_EQ(memcmp(task_assigned, specs[i], task_spec_size(task_assigned)),
-                0);
-      free_task_spec(task_assigned);
+      int64_t task_size;
+      TaskSpec *task_assigned = local_scheduler_get_task(worker, &task_size);
+      ASSERT_EQ(memcmp(task_assigned, specs[i], task_sizes[i]), 0);
+      ASSERT_EQ(task_size, task_sizes[i]);
+      free(task_assigned);
     }
     /* Check that the workers receive all tasks in the final return object's
      * lineage during reconstruction. */
     for (int i = 0; i < NUM_TASKS; ++i) {
-      task_spec *task_assigned = local_scheduler_get_task(worker);
+      int64_t task_assigned_size;
+      TaskSpec *task_assigned =
+          local_scheduler_get_task(worker, &task_assigned_size);
       bool found = false;
       for (int j = 0; j < NUM_TASKS; ++j) {
         if (specs[j] == NULL) {
           continue;
         }
-        if (memcmp(task_assigned, specs[j], task_spec_size(task_assigned)) ==
-            0) {
+        if (memcmp(task_assigned, specs[j], task_assigned_size) == 0) {
           found = true;
-          free_task_spec(specs[j]);
+          TaskSpec_free(specs[j]);
           specs[j] = NULL;
         }
       }
-      free_task_spec(task_assigned);
+      free(task_assigned);
       ASSERT(found);
     }
     LocalSchedulerMock_free(local_scheduler);
@@ -302,13 +315,13 @@ TEST object_reconstruction_recursive_test(void) {
     /* Set the final task's status to TASK_STATUS_DONE to prevent the race
      * condition that would suppress object reconstruction. */
     Task *last_task = Task_alloc(
-        specs[NUM_TASKS - 1], TASK_STATUS_DONE,
+        specs[NUM_TASKS - 1], task_sizes[NUM_TASKS - 1], TASK_STATUS_DONE,
         get_db_client_id(local_scheduler->local_scheduler_state->db));
     task_table_add_task(local_scheduler->local_scheduler_state->db, last_task,
                         NULL, NULL, NULL);
     /* Trigger reconstruction for the last object, and run the event loop
      * again. */
-    ObjectID return_id = task_return(specs[NUM_TASKS - 1], 0);
+    ObjectID return_id = TaskSpec_return(specs[NUM_TASKS - 1], 0);
     local_scheduler_reconstruct_object(worker, return_id);
     event_loop_add_timer(local_scheduler->loop, 500,
                          (event_loop_timer_handler) timeout_handler, NULL);
@@ -323,7 +336,7 @@ TEST object_reconstruction_recursive_test(void) {
                   local_scheduler->local_scheduler_state->algorithm_state),
               0);
     for (int i = 0; i < NUM_TASKS; ++i) {
-      free_task_spec(specs[i]);
+      TaskSpec_free(specs[i]);
     }
     LocalSchedulerMock_free(local_scheduler);
     PASS();
@@ -334,35 +347,41 @@ TEST object_reconstruction_recursive_test(void) {
  * Test that object reconstruction gets suppressed when there is a location
  * listed for the object in the object table.
  */
-task_spec *object_reconstruction_suppression_spec;
+TaskSpec *object_reconstruction_suppression_spec;
+int64_t object_reconstruction_suppression_size;
 
 void object_reconstruction_suppression_callback(ObjectID object_id,
                                                 void *user_context) {
   /* Submit the task after adding the object to the object table. */
   LocalSchedulerConnection *worker = (LocalSchedulerConnection *) user_context;
-  local_scheduler_submit(worker, object_reconstruction_suppression_spec);
+  local_scheduler_submit(worker, object_reconstruction_suppression_spec,
+                         object_reconstruction_suppression_size);
 }
 
 TEST object_reconstruction_suppression_test(void) {
   LocalSchedulerMock *local_scheduler = LocalSchedulerMock_init(0, 1);
   LocalSchedulerConnection *worker = local_scheduler->conns[0];
 
-  object_reconstruction_suppression_spec = example_task_spec(0, 1);
-  ObjectID return_id = task_return(object_reconstruction_suppression_spec, 0);
+  object_reconstruction_suppression_spec =
+      example_task_spec(0, 1, &object_reconstruction_suppression_size);
+  ObjectID return_id =
+      TaskSpec_return(object_reconstruction_suppression_spec, 0);
   pid_t pid = fork();
   if (pid == 0) {
     /* Make sure we receive the task once. This will block until the
      * object_table_add callback completes. */
-    task_spec *task_assigned = local_scheduler_get_task(worker);
+    int64_t task_assigned_size;
+    TaskSpec *task_assigned =
+        local_scheduler_get_task(worker, &task_assigned_size);
     ASSERT_EQ(memcmp(task_assigned, object_reconstruction_suppression_spec,
-                     task_spec_size(object_reconstruction_suppression_spec)),
+                     object_reconstruction_suppression_size),
               0);
     /* Trigger a reconstruction. We will check that no tasks get queued as a
      * result of this line in the event loop process. */
     local_scheduler_reconstruct_object(worker, return_id);
     /* Clean up. */
-    free_task_spec(task_assigned);
-    free_task_spec(object_reconstruction_suppression_spec);
+    free(task_assigned);
+    TaskSpec_free(object_reconstruction_suppression_spec);
     LocalSchedulerMock_free(local_scheduler);
     exit(0);
   } else {
@@ -389,7 +408,7 @@ TEST object_reconstruction_suppression_test(void) {
     ASSERT_EQ(num_dispatch_tasks(
                   local_scheduler->local_scheduler_state->algorithm_state),
               0);
-    free_task_spec(object_reconstruction_suppression_spec);
+    TaskSpec_free(object_reconstruction_suppression_spec);
     db_disconnect(db);
     LocalSchedulerMock_free(local_scheduler);
     PASS();
@@ -403,12 +422,13 @@ TEST task_dependency_test(void) {
   /* Get the first worker. */
   LocalSchedulerClient *worker =
       *((LocalSchedulerClient **) utarray_eltptr(state->workers, 0));
-  task_spec *spec = example_task_spec(1, 1);
-  ObjectID oid = task_arg_id(spec, 0);
+  int64_t task_size;
+  TaskSpec *spec = example_task_spec(1, 1, &task_size);
+  ObjectID oid = TaskSpec_arg_id(spec, 0);
 
   /* Check that the task gets queued in the waiting queue if the task is
    * submitted, but the input and workers are not available. */
-  handle_task_submitted(state, algorithm_state, spec);
+  handle_task_submitted(state, algorithm_state, spec, task_size);
   ASSERT_EQ(num_waiting_tasks(algorithm_state), 1);
   ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
   /* Once the input is available, the task gets moved to the dispatch queue. */
@@ -424,7 +444,7 @@ TEST task_dependency_test(void) {
   /* Check that the task gets queued in the waiting queue if the task is
    * submitted and a worker is available, but the input is not. */
   handle_object_removed(state, oid);
-  handle_task_submitted(state, algorithm_state, spec);
+  handle_task_submitted(state, algorithm_state, spec, task_size);
   handle_worker_available(state, algorithm_state, worker);
   ASSERT_EQ(num_waiting_tasks(algorithm_state), 1);
   ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
@@ -436,7 +456,7 @@ TEST task_dependency_test(void) {
 
   /* Check that the task gets queued in the dispatch queue if the task is
    * submitted and the input is available, but no worker is available yet. */
-  handle_task_submitted(state, algorithm_state, spec);
+  handle_task_submitted(state, algorithm_state, spec, task_size);
   ASSERT_EQ(num_waiting_tasks(algorithm_state), 0);
   ASSERT_EQ(num_dispatch_tasks(algorithm_state), 1);
   /* Once a worker is available, the task gets assigned. */
@@ -448,7 +468,7 @@ TEST task_dependency_test(void) {
   /* If an object gets removed, check the first scenario again, where the task
    * gets queued in the waiting task if the task is submitted and a worker is
    * available, but the input is not. */
-  handle_task_submitted(state, algorithm_state, spec);
+  handle_task_submitted(state, algorithm_state, spec, task_size);
   ASSERT_EQ(num_waiting_tasks(algorithm_state), 0);
   ASSERT_EQ(num_dispatch_tasks(algorithm_state), 1);
   /* If the input is removed while a task is in the dispatch queue, the task
@@ -466,7 +486,7 @@ TEST task_dependency_test(void) {
   ASSERT_EQ(num_waiting_tasks(algorithm_state), 0);
   ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
 
-  free_task_spec(spec);
+  TaskSpec_free(spec);
   LocalSchedulerMock_free(local_scheduler);
   PASS();
 }
@@ -478,13 +498,14 @@ TEST task_multi_dependency_test(void) {
   /* Get the first worker. */
   LocalSchedulerClient *worker =
       *((LocalSchedulerClient **) utarray_eltptr(state->workers, 0));
-  task_spec *spec = example_task_spec(2, 1);
-  ObjectID oid1 = task_arg_id(spec, 0);
-  ObjectID oid2 = task_arg_id(spec, 1);
+  int64_t task_size;
+  TaskSpec *spec = example_task_spec(2, 1, &task_size);
+  ObjectID oid1 = TaskSpec_arg_id(spec, 0);
+  ObjectID oid2 = TaskSpec_arg_id(spec, 1);
 
   /* Check that the task gets queued in the waiting queue if the task is
    * submitted, but the inputs and workers are not available. */
-  handle_task_submitted(state, algorithm_state, spec);
+  handle_task_submitted(state, algorithm_state, spec, task_size);
   ASSERT_EQ(num_waiting_tasks(algorithm_state), 1);
   ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
   /* Check that the task stays in the waiting queue if only one input becomes
@@ -504,7 +525,7 @@ TEST task_multi_dependency_test(void) {
 
   /* Check that the task gets queued in the dispatch queue if the task is
    * submitted and the inputs are available, but no worker is available yet. */
-  handle_task_submitted(state, algorithm_state, spec);
+  handle_task_submitted(state, algorithm_state, spec, task_size);
   ASSERT_EQ(num_waiting_tasks(algorithm_state), 0);
   ASSERT_EQ(num_dispatch_tasks(algorithm_state), 1);
   /* If any input is removed while a task is in the dispatch queue, the task
@@ -540,7 +561,7 @@ TEST task_multi_dependency_test(void) {
   ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
   reset_worker(local_scheduler, worker);
 
-  free_task_spec(spec);
+  TaskSpec_free(spec);
   LocalSchedulerMock_free(local_scheduler);
   PASS();
 }
@@ -633,6 +654,7 @@ SUITE(local_scheduler_tests) {
 GREATEST_MAIN_DEFS();
 
 int main(int argc, char **argv) {
+  g_task_builder = make_task_builder();
   GREATEST_MAIN_BEGIN();
   RUN_SUITE(local_scheduler_tests);
   GREATEST_MAIN_END();

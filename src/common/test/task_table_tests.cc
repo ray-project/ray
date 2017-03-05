@@ -1,6 +1,7 @@
 #include "greatest.h"
 
 #include "event_loop.h"
+#include "example_task.h"
 #include "test_common.h"
 #include "common.h"
 #include "state/object_table.h"
@@ -12,6 +13,7 @@
 SUITE(task_table_tests);
 
 event_loop *g_loop;
+TaskBuilder *g_task_builder = NULL;
 
 /* ==== Test operations in non-failure scenario ==== */
 
@@ -418,6 +420,7 @@ SUITE(task_table_tests) {
 GREATEST_MAIN_DEFS();
 
 int main(int argc, char **argv) {
+  g_task_builder = make_task_builder();
   GREATEST_MAIN_BEGIN();
   RUN_SUITE(task_table_tests);
   GREATEST_MAIN_END();

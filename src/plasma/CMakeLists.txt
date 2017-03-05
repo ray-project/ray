@@ -30,8 +30,7 @@ add_custom_command(
   VERBATIM
 )
 
-add_custom_target(protocol_fbs)
-add_dependencies(protocol_fbs flatbuffers_ep)
+add_dependencies(gen_plasma_fbs flatbuffers_ep)
 
 if(UNIX AND NOT APPLE)
   link_libraries(rt)
@@ -58,9 +57,9 @@ if(APPLE)
 endif(APPLE)
 
 if(APPLE)
-  target_link_libraries(plasma -Wl,-force_load,${FLATBUFFERS_STATIC_LIB} ${COMMON_LIB} ${PYTHON_LIBRARIES} ${FLATBUFFERS_STATIC_LIB})
+  target_link_libraries(plasma -Wl,-force_load,${FLATBUFFERS_STATIC_LIB} common ${PYTHON_LIBRARIES} ${FLATBUFFERS_STATIC_LIB})
 else(APPLE)
-  target_link_libraries(plasma -Wl,--whole-archive ${FLATBUFFERS_STATIC_LIB} -Wl,--no-whole-archive ${COMMON_LIB} ${PYTHON_LIBRARIES} ${FLATBUFFERS_STATIC_LIB})
+  target_link_libraries(plasma -Wl,--whole-archive ${FLATBUFFERS_STATIC_LIB} -Wl,--no-whole-archive common ${PYTHON_LIBRARIES} ${FLATBUFFERS_STATIC_LIB})
 endif(APPLE)
 
 include_directories("${FLATBUFFERS_INCLUDE_DIR}")

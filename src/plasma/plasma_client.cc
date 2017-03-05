@@ -27,10 +27,9 @@
 #include "plasma_client.h"
 #include "uthash.h"
 #include "utlist.h"
-#include "sha256.h"
 
 extern "C" {
-
+#include "sha256.h"
 #include "fling.h"
 
 #define XXH_STATIC_LINKING_ONLY

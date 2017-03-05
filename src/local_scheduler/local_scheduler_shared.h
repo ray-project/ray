@@ -94,10 +94,10 @@ typedef struct {
   UT_array *input_buffer;
   /** Vector of static attributes associated with the node owned by this local
    *  scheduler. */
-  double static_resources[MAX_RESOURCE_INDEX];
+  double static_resources[ResourceIndex_MAX];
   /** Vector of dynamic attributes associated with the node owned by this local
    *  scheduler. */
-  double dynamic_resources[MAX_RESOURCE_INDEX];
+  double dynamic_resources[ResourceIndex_MAX];
 } LocalSchedulerState;
 
 /** Contains all information associated with a local scheduler client. */

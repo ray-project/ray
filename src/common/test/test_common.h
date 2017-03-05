@@ -3,63 +3,15 @@
 
 #include <unistd.h>
 
+#include "common.h"
 #include "io.h"
 #include "hiredis/hiredis.h"
 #include "utstring.h"
-
-#include "task.h"
 
 #ifndef _WIN32
 /* This function is actually not declared in standard POSIX, so declare it. */
 extern int usleep(useconds_t usec);
 #endif
-
-const int64_t arg_value_size = 1000;
-
-static inline task_spec *example_task_spec_with_args(int64_t num_args,
-                                                     int64_t num_returns,
-                                                     ObjectID arg_ids[]) {
-  TaskID parent_task_id = globally_unique_id();
-  FunctionID func_id = globally_unique_id();
-  task_spec *task =
-      start_construct_task_spec(NIL_ID, parent_task_id, 0, NIL_ACTOR_ID, 0,
-                                func_id, num_args, num_returns, arg_value_size);
-  for (int64_t i = 0; i < num_args; ++i) {
-    ObjectID arg_id;
-    if (arg_ids == NULL) {
-      arg_id = globally_unique_id();
-    } else {
-      arg_id = arg_ids[i];
-    }
-    task_args_add_ref(task, arg_id);
-  }
-  finish_construct_task_spec(task);
-  return task;
-}
-
-static inline task_spec *example_task_spec(int64_t num_args,
-                                           int64_t num_returns) {
-  return example_task_spec_with_args(num_args, num_returns, NULL);
-}
-
-static inline Task *example_task_with_args(int64_t num_args,
-                                           int64_t num_returns,
-                                           int Task_state,
-                                           ObjectID arg_ids[]) {
-  task_spec *spec = example_task_spec_with_args(num_args, num_returns, arg_ids);
-  Task *instance = Task_alloc(spec, Task_state, NIL_ID);
-  free_task_spec(spec);
-  return instance;
-}
-
-static inline Task *example_task(int64_t num_args,
-                                 int64_t num_returns,
-                                 int Task_state) {
-  task_spec *spec = example_task_spec(num_args, num_returns);
-  Task *instance = Task_alloc(spec, Task_state, NIL_ID);
-  free_task_spec(spec);
-  return instance;
-}
 
 /* I/O helper methods to retry binding to sockets. */
 static inline UT_string *bind_ipc_sock_retry(const char *socket_name_format,
