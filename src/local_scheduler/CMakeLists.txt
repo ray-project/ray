@@ -13,7 +13,7 @@ endif(APPLE)
 
 include_directories("${PYTHON_INCLUDE_DIRS}")
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -Wall -Werror")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -Wall")
 
 if(UNIX AND NOT APPLE)
   link_libraries(rt)

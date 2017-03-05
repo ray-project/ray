@@ -3,11 +3,11 @@ cmake_minimum_required(VERSION 2.8)
 project(ray_redis_module)
 
 if(APPLE)
-  set(REDIS_MODULE_CFLAGS -W -Wall -dynamic -fno-common -g -ggdb -std=c99 -O2)
+  set(REDIS_MODULE_CFLAGS -W -Wall -Werror -dynamic -fno-common -g -ggdb -std=c99 -O2)
   set(REDIS_MODULE_LDFLAGS "-undefined dynamic_lookup")
   set(CMAKE_SHARED_LIBRARY_SUFFIX ".so")
 else()
-  set(REDIS_MODULE_CFLAGS -W -Wall -fno-common -g -ggdb -std=c99 -O2)
+  set(REDIS_MODULE_CFLAGS -W -Wall -Werror -fno-common -g -ggdb -std=c99 -O2)
   set(REDIS_MODULE_LDFLAGS -shared)
 endif()
 
