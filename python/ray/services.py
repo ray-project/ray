@@ -17,8 +17,8 @@ import time
 import threading
 
 # Ray modules
-import ray.local_scheduler as local_scheduler
-import ray.plasma as plasma
+import ray.local_scheduler
+import ray.plasma
 import ray.global_scheduler as global_scheduler
 
 PROCESS_TYPE_MONITOR = "monitor"
@@ -417,7 +417,7 @@ def start_local_scheduler(redis_address,
   if num_gpus is None:
     # By default, assume this node has no GPUs.
     num_gpus = 0
-  local_scheduler_name, p = local_scheduler.start_local_scheduler(
+  local_scheduler_name, p = ray.local_scheduler.start_local_scheduler(
       plasma_store_name,
       plasma_manager_name,
       worker_path=worker_path,
@@ -489,28 +489,31 @@ def start_objstore(node_ip_address, redis_address, object_manager_port=None,
     else:
       objstore_memory = int(system_memory * 0.8)
   # Start the Plasma store.
-  plasma_store_name, p1 = plasma.start_plasma_store(plasma_store_memory=objstore_memory,
-                                                    use_profiler=RUN_PLASMA_STORE_PROFILER,
-                                                    stdout_file=store_stdout_file,
-                                                    stderr_file=store_stderr_file)
+  plasma_store_name, p1 = ray.plasma.start_plasma_store(
+      plasma_store_memory=objstore_memory,
+      use_profiler=RUN_PLASMA_STORE_PROFILER,
+      stdout_file=store_stdout_file,
+      stderr_file=store_stderr_file)
   # Start the plasma manager.
   if object_manager_port is not None:
-    plasma_manager_name, p2, plasma_manager_port = plasma.start_plasma_manager(plasma_store_name,
-                                                                               redis_address,
-                                                                               plasma_manager_port=object_manager_port,
-                                                                               node_ip_address=node_ip_address,
-                                                                               num_retries=1,
-                                                                               run_profiler=RUN_PLASMA_MANAGER_PROFILER,
-                                                                               stdout_file=manager_stdout_file,
-                                                                               stderr_file=manager_stderr_file)
+    plasma_manager_name, p2, plasma_manager_port = ray.plasma.start_plasma_manager(
+        plasma_store_name,
+        redis_address,
+        plasma_manager_port=object_manager_port,
+        node_ip_address=node_ip_address,
+        num_retries=1,
+        run_profiler=RUN_PLASMA_MANAGER_PROFILER,
+        stdout_file=manager_stdout_file,
+        stderr_file=manager_stderr_file)
     assert plasma_manager_port == object_manager_port
   else:
-    plasma_manager_name, p2, plasma_manager_port = plasma.start_plasma_manager(plasma_store_name,
-                                                                               redis_address,
-                                                                               node_ip_address=node_ip_address,
-                                                                               run_profiler=RUN_PLASMA_MANAGER_PROFILER,
-                                                                               stdout_file=manager_stdout_file,
-                                                                               stderr_file=manager_stderr_file)
+    plasma_manager_name, p2, plasma_manager_port = ray.plasma.start_plasma_manager(
+        plasma_store_name,
+        redis_address,
+        node_ip_address=node_ip_address,
+        run_profiler=RUN_PLASMA_MANAGER_PROFILER,
+        stdout_file=manager_stdout_file,
+        stderr_file=manager_stderr_file)
   if cleanup:
     all_processes[PROCESS_TYPE_PLASMA_STORE].append(p1)
     all_processes[PROCESS_TYPE_PLASMA_MANAGER].append(p2)
