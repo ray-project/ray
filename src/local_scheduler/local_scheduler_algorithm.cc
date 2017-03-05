@@ -124,8 +124,9 @@ SchedulingAlgorithmState *SchedulingAlgorithmState_init(void) {
   algorithm_state->dispatch_task_queue = NULL;
 
   utarray_new(algorithm_state->cached_submitted_actor_tasks, &task_spec_icd);
-  utarray_new(algorithm_state->cached_submitted_actor_task_sizes, &task_spec_size_icd);
-  
+  utarray_new(algorithm_state->cached_submitted_actor_task_sizes,
+              &task_spec_size_icd);
+
   algorithm_state->local_actor_infos = NULL;
 
   utarray_new(algorithm_state->available_workers, &worker_icd);
@@ -368,8 +369,8 @@ void add_task_to_actor_queue(LocalSchedulerState *state,
 
   /* Update the task table. */
   if (state->db != NULL) {
-    Task *task =
-        Task_alloc(spec, task_spec_size, TASK_STATUS_QUEUED, get_db_client_id(state->db));
+    Task *task = Task_alloc(spec, task_spec_size, TASK_STATUS_QUEUED,
+                            get_db_client_id(state->db));
     if (from_global_scheduler) {
       /* If the task is from the global scheduler, it's already been added to
        * the task table, so just update the entry. */
@@ -428,7 +429,8 @@ bool dispatch_actor_task(LocalSchedulerState *state,
    * as unavailable. */
   task_queue_entry *first_task = entry->task_queue;
   entry->task_counter += 1;
-  assign_task_to_worker(state, first_task->spec, first_task->task_spec_size, entry->worker);
+  assign_task_to_worker(state, first_task->spec, first_task->task_spec_size,
+                        entry->worker);
   entry->worker_available = false;
   /* Remove the task from the actor's task queue. */
   DL_DELETE(entry->task_queue, first_task);
@@ -666,8 +668,8 @@ task_queue_entry *queue_task(LocalSchedulerState *state,
   /* The task has been added to a local scheduler queue. Write the entry in the
    * task table to notify others that we have queued it. */
   if (state->db != NULL) {
-    Task *task =
-        Task_alloc(spec, task_spec_size, TASK_STATUS_QUEUED, get_db_client_id(state->db));
+    Task *task = Task_alloc(spec, task_spec_size, TASK_STATUS_QUEUED,
+                            get_db_client_id(state->db));
     if (from_global_scheduler) {
       /* If the task is from the global scheduler, it's already been added to
        * the task table, so just update the entry. */
@@ -701,8 +703,9 @@ void queue_waiting_task(LocalSchedulerState *state,
                         int64_t task_spec_size,
                         bool from_global_scheduler) {
   LOG_DEBUG("Queueing task in waiting queue");
-  task_queue_entry *task_entry = queue_task(
-      state, &algorithm_state->waiting_task_queue, spec, task_spec_size, from_global_scheduler);
+  task_queue_entry *task_entry =
+      queue_task(state, &algorithm_state->waiting_task_queue, spec,
+                 task_spec_size, from_global_scheduler);
   /* If we're queueing this task in the waiting queue, there must be at least
    * one missing dependency, so record it. */
   fetch_missing_dependencies(state, algorithm_state, task_entry);
@@ -748,10 +751,12 @@ void queue_task_locally(LocalSchedulerState *state,
                         bool from_global_scheduler) {
   if (can_run(algorithm_state, spec)) {
     /* Dependencies are ready, so push the task to the dispatch queue. */
-    queue_dispatch_task(state, algorithm_state, spec, task_spec_size, from_global_scheduler);
+    queue_dispatch_task(state, algorithm_state, spec, task_spec_size,
+                        from_global_scheduler);
   } else {
     /* Dependencies are not ready, so push the task to the waiting queue. */
-    queue_waiting_task(state, algorithm_state, spec, task_spec_size, from_global_scheduler);
+    queue_waiting_task(state, algorithm_state, spec, task_spec_size,
+                       from_global_scheduler);
   }
 }
 
@@ -776,7 +781,8 @@ void give_task_to_local_scheduler(LocalSchedulerState *state,
   CHECK(state->db != NULL);
   /* Assign the task to the relevant local scheduler. */
   DCHECK(state->config.global_scheduler_exists);
-  Task *task = Task_alloc(spec, task_spec_size, TASK_STATUS_SCHEDULED, local_scheduler_id);
+  Task *task = Task_alloc(spec, task_spec_size, TASK_STATUS_SCHEDULED,
+                          local_scheduler_id);
   task_table_add_task(state->db, task, NULL, NULL, NULL);
 }
 
@@ -860,7 +866,8 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
      * will be resubmitted (internally by the local scheduler) whenever a new
      * actor notification arrives. */
     utarray_push_back(algorithm_state->cached_submitted_actor_tasks, &spec);
-    utarray_push_back(algorithm_state->cached_submitted_actor_task_sizes, &task_spec_size);
+    utarray_push_back(algorithm_state->cached_submitted_actor_task_sizes,
+                      &task_spec_size);
     return;
   }
 
@@ -868,7 +875,8 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
                        get_db_client_id(state->db))) {
     /* This local scheduler is responsible for the actor, so handle the task
      * locally. */
-    add_task_to_actor_queue(state, algorithm_state, spec, task_spec_size, false);
+    add_task_to_actor_queue(state, algorithm_state, spec, task_spec_size,
+                            false);
     /* Attempt to dispatch tasks to this actor. */
     dispatch_actor_task(state, algorithm_state, actor_id);
   } else {
@@ -886,7 +894,7 @@ void handle_actor_creation_notification(
   int num_cached_actor_tasks =
       utarray_len(algorithm_state->cached_submitted_actor_tasks);
   CHECK(num_cached_actor_tasks ==
-      utarray_len(algorithm_state->cached_submitted_actor_task_sizes));
+        utarray_len(algorithm_state->cached_submitted_actor_task_sizes));
   for (int i = 0; i < num_cached_actor_tasks; ++i) {
     task_spec **spec = (task_spec **) utarray_eltptr(
         algorithm_state->cached_submitted_actor_tasks, i);

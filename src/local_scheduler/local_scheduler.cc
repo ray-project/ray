@@ -503,7 +503,8 @@ void reconstruct_task_update_callback(Task *task, void *user_context) {
    * TODO(rkn): Handle this better. */
   CHECK(ActorID_equal(task_spec_actor_id(spec), NIL_ACTOR_ID));
   /* Resubmit the task. */
-  handle_task_submitted(state, state->algorithm_state, spec, Task_task_spec_size(task));
+  handle_task_submitted(state, state->algorithm_state, spec,
+                        Task_task_spec_size(task));
   /* Recursively reconstruct the task's inputs, if necessary. */
   for (int64_t i = 0; i < task_num_args(spec); ++i) {
     if (task_arg_by_ref(spec, i)) {
@@ -802,11 +803,13 @@ void handle_task_scheduled_callback(Task *original_task, void *user_context) {
   task_spec *spec = Task_task_spec(original_task);
   if (ActorID_equal(task_spec_actor_id(spec), NIL_ACTOR_ID)) {
     /* This task does not involve an actor. Handle it normally. */
-    handle_task_scheduled(g_state, g_state->algorithm_state, spec, Task_task_spec_size(original_task));
+    handle_task_scheduled(g_state, g_state->algorithm_state, spec,
+                          Task_task_spec_size(original_task));
   } else {
     /* This task involves an actor. Call the scheduling algorithm's actor
      * handler. */
-    handle_actor_task_scheduled(g_state, g_state->algorithm_state, spec, Task_task_spec_size(original_task));
+    handle_actor_task_scheduled(g_state, g_state->algorithm_state, spec,
+                                Task_task_spec_size(original_task));
   }
 }
 
