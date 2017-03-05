@@ -162,128 +162,128 @@ bool FunctionID_is_nil(FunctionID id) {
 
 /* Functions for building tasks. */
 
-void start_construct_task_spec(TaskBuilder *builder,
-                               UniqueID driver_id,
-                               TaskID parent_task_id,
-                               int64_t parent_counter,
-                               ActorID actor_id,
-                               int64_t actor_counter,
-                               FunctionID function_id,
-                               int64_t num_returns) {
+void TaskSpec_start_construct(TaskBuilder *builder,
+                              UniqueID driver_id,
+                              TaskID parent_task_id,
+                              int64_t parent_counter,
+                              ActorID actor_id,
+                              int64_t actor_counter,
+                              FunctionID function_id,
+                              int64_t num_returns) {
   builder->Start(driver_id, parent_task_id, parent_counter, actor_id,
                  actor_counter, function_id, num_returns);
 }
 
-uint8_t *finish_construct_task_spec(TaskBuilder *builder, int64_t *size) {
+uint8_t *TaskSpec_finish_construct(TaskBuilder *builder, int64_t *size) {
   return builder->Finish(size);
 }
 
-void task_args_add_ref(TaskBuilder *builder, ObjectID object_id) {
+void TaskSpec_args_add_ref(TaskBuilder *builder, ObjectID object_id) {
   builder->NextReferenceArgument(object_id);
 }
 
-void task_args_add_val(TaskBuilder *builder, uint8_t *value, int64_t length) {
+void TaskSpec_args_add_val(TaskBuilder *builder, uint8_t *value, int64_t length) {
   builder->NextValueArgument(value, length);
 }
 
-void task_spec_set_required_resource(TaskBuilder *builder,
-                                     int64_t resource_index,
-                                     double value) {
+void TaskSpec_set_required_resource(TaskBuilder *builder,
+                                    int64_t resource_index,
+                                    double value) {
   builder->SetRequiredResource(resource_index, value);
 }
 
 /* Functions for reading tasks. */
 
-TaskID task_spec_id(task_spec *spec) {
+TaskID TaskSpec_task_id(TaskSpec *spec) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return from_flatbuf(message->task_id());
 }
 
-FunctionID task_function(task_spec *spec) {
+FunctionID TaskSpec_function(TaskSpec *spec) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return from_flatbuf(message->function_id());
 }
 
-ActorID task_spec_actor_id(task_spec *spec) {
+ActorID TaskSpec_actor_id(TaskSpec *spec) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return from_flatbuf(message->actor_id());
 }
 
-int64_t task_spec_actor_counter(task_spec *spec) {
+int64_t TaskSpec_actor_counter(TaskSpec *spec) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return message->actor_counter();
 }
 
-UniqueID task_spec_driver_id(task_spec *spec) {
+UniqueID TaskSpec_driver_id(TaskSpec *spec) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return from_flatbuf(message->driver_id());
 }
 
-int64_t task_num_args(task_spec *spec) {
+int64_t TaskSpec_num_args(TaskSpec *spec) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return message->args()->size();
 }
 
-ObjectID task_arg_id(task_spec *spec, int64_t arg_index) {
+ObjectID TaskSpec_arg_id(TaskSpec *spec, int64_t arg_index) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return from_flatbuf(message->args()->Get(arg_index)->object_id());
 }
 
-const uint8_t *task_arg_val(task_spec *spec, int64_t arg_index) {
+const uint8_t *TaskSpec_arg_val(TaskSpec *spec, int64_t arg_index) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return (uint8_t *) message->args()->Get(arg_index)->data()->c_str();
 }
 
-int64_t task_arg_length(task_spec *spec, int64_t arg_index) {
+int64_t TaskSpec_arg_length(TaskSpec *spec, int64_t arg_index) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return message->args()->Get(arg_index)->data()->size();
 }
 
-int64_t task_num_returns(task_spec *spec) {
+int64_t TaskSpec_num_returns(TaskSpec *spec) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return message->returns()->size();
 }
 
-bool task_arg_by_ref(task_spec *spec, int64_t arg_index) {
+bool TaskSpec_arg_by_ref(TaskSpec *spec, int64_t arg_index) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return message->args()->Get(arg_index)->object_id()->size() != 0;
 }
 
-ObjectID task_return(task_spec *spec, int64_t return_index) {
+ObjectID TaskSpec_return(TaskSpec *spec, int64_t return_index) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return from_flatbuf(message->returns()->Get(return_index));
 }
 
-double task_spec_get_required_resource(const task_spec *spec,
-                                       int64_t resource_index) {
+double TaskSpec_get_required_resource(const TaskSpec *spec,
+                                      int64_t resource_index) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return message->required_resources()->Get(resource_index);
 }
 
-void TaskSpec_free(task_spec *spec) {
+void TaskSpec_free(TaskSpec *spec) {
   free(spec);
 }
 
 /* TASK INSTANCES */
 
-Task *Task_alloc(task_spec *spec,
+Task *Task_alloc(TaskSpec *spec,
                  int64_t task_spec_size,
                  int state,
                  DBClientID local_scheduler_id) {
-  int64_t size = sizeof(Task) - sizeof(task_spec) + task_spec_size;
+  int64_t size = sizeof(Task) - sizeof(TaskSpec) + task_spec_size;
   Task *result = (Task *) malloc(size);
   memset(result, 0, size);
   result->state = state;
@@ -302,7 +302,7 @@ Task *Task_copy(Task *other) {
 }
 
 int64_t Task_size(Task *task_arg) {
-  return sizeof(Task) - sizeof(task_spec) + task_arg->task_spec_size;
+  return sizeof(Task) - sizeof(TaskSpec) + task_arg->task_spec_size;
 }
 
 int Task_state(Task *task) {
@@ -321,7 +321,7 @@ void Task_set_local_scheduler(Task *task, DBClientID local_scheduler_id) {
   task->local_scheduler_id = local_scheduler_id;
 }
 
-task_spec *Task_task_spec(Task *task) {
+TaskSpec *Task_task_spec(Task *task) {
   return &task->spec;
 }
 
@@ -330,8 +330,8 @@ int64_t Task_task_spec_size(Task *task) {
 }
 
 TaskID Task_task_id(Task *task) {
-  task_spec *spec = Task_task_spec(task);
-  return task_spec_id(spec);
+  TaskSpec *spec = Task_task_spec(task);
+  return TaskSpec_task_id(spec);
 }
 
 void Task_free(Task *task) {

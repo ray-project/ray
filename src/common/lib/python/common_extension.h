@@ -7,7 +7,7 @@
 
 #include "common.h"
 
-typedef uint8_t task_spec;
+typedef uint8_t TaskSpec;
 struct TaskBuilder;
 
 extern PyObject *CommonError;
@@ -21,7 +21,7 @@ typedef struct {
 typedef struct {
   PyObject_HEAD
   int64_t size;
-  task_spec *spec;
+  TaskSpec *spec;
 } PyTask;
 // clang-format on
 
@@ -51,6 +51,6 @@ PyObject *PyTask_from_string(PyObject *, PyObject *args);
 
 PyObject *compute_put_id(PyObject *self, PyObject *args);
 
-PyObject *PyTask_make(task_spec *task_spec, int64_t task_size);
+PyObject *PyTask_make(TaskSpec *task_spec, int64_t task_size);
 
 #endif /* COMMON_EXTENSION_H */

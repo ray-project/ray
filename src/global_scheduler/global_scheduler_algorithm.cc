@@ -36,10 +36,10 @@ void GlobalSchedulerPolicyState_free(GlobalSchedulerPolicyState *policy_state) {
  *         otherwise.
  */
 bool constraints_satisfied_hard(const LocalScheduler *scheduler,
-                                const task_spec *spec) {
+                                const TaskSpec *spec) {
   for (int i = 0; i < ResourceIndex_MAX; i++) {
     if (scheduler->info.static_resources[i] <
-        task_spec_get_required_resource(spec, i)) {
+            TaskSpec_get_required_resource(spec, i)) {
       return false;
     }
   }
@@ -56,7 +56,7 @@ void handle_task_round_robin(GlobalSchedulerState *state,
   CHECKM(utarray_len(state->local_schedulers) > 0,
          "No local schedulers. We currently don't handle this case.");
   LocalScheduler *scheduler = NULL;
-  task_spec *task_spec = Task_task_spec(task);
+  TaskSpec *task_spec = Task_task_spec(task);
   int i;
   int num_retries = 1;
   bool task_satisfied = false;
@@ -83,22 +83,22 @@ void handle_task_round_robin(GlobalSchedulerState *state,
 }
 
 ObjectSizeEntry *create_object_size_hashmap(GlobalSchedulerState *state,
-                                            task_spec *task_spec,
+                                            TaskSpec *task_spec,
                                             bool *has_args_by_ref,
                                             int64_t *task_data_size) {
   ObjectSizeEntry *s = NULL, *object_size_table = NULL;
   *task_data_size = 0;
 
-  for (int i = 0; i < task_num_args(task_spec); i++) {
+  for (int i = 0; i < TaskSpec_num_args(task_spec); i++) {
     /* Object ids are only available for args by references.
-     * Args by value are serialized into the task_spec itself.
+     * Args by value are serialized into the TaskSpec itself.
      * We will only concern ourselves with args by ref for data size calculation
      */
-    if (!task_arg_by_ref(task_spec, i)) {
+    if (!TaskSpec_arg_by_ref(task_spec, i)) {
       continue;
     }
     *has_args_by_ref = true;
-    ObjectID obj_id = task_arg_id(task_spec, i);
+    ObjectID obj_id = TaskSpec_arg_id(task_spec, i);
     /* Look up this object ID in the global scheduler object cache. */
     SchedulerObjectInfo *obj_info_entry = NULL;
     HASH_FIND(hh, state->scheduler_object_info_table, &obj_id, sizeof(obj_id),
@@ -245,14 +245,14 @@ double calculate_object_size_fraction(GlobalSchedulerState *state,
 
 double calculate_score_dynvec_normalized(GlobalSchedulerState *state,
                                          LocalScheduler *scheduler,
-                                         const task_spec *task_spec,
+                                         const TaskSpec *task_spec,
                                          double object_size_fraction) {
   /* The object size fraction is now calculated for this (task,node) pair. */
   /* Construct the normalized dynamic resource attribute vector */
   double normalized_dynvec[ResourceIndex_MAX + 1];
   memset(&normalized_dynvec, 0, sizeof(normalized_dynvec));
   for (int i = 0; i < ResourceIndex_MAX; i++) {
-    double resreqval = task_spec_get_required_resource(task_spec, i);
+    double resreqval = TaskSpec_get_required_resource(task_spec, i);
     if (resreqval <= 0) {
       /* Skip and leave normalized dynvec value == 0. */
       continue;
@@ -278,7 +278,7 @@ double calculate_cost_pending(const GlobalSchedulerState *state,
 bool handle_task_waiting(GlobalSchedulerState *state,
                          GlobalSchedulerPolicyState *policy_state,
                          Task *task) {
-  task_spec *task_spec = Task_task_spec(task);
+  TaskSpec *task_spec = Task_task_spec(task);
 
   CHECKM(task_spec != NULL,
          "task wait handler encounted a task with NULL spec");

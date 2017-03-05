@@ -37,7 +37,7 @@ UT_icd byte_icd = {sizeof(uint8_t), NULL, NULL, NULL};
  * @return Void.
  */
 void print_resource_info(const LocalSchedulerState *state,
-                         const task_spec *spec) {
+                         const TaskSpec *spec) {
 #if RAY_COMMON_LOG_LEVEL <= RAY_COMMON_DEBUG
   /* Print information about available and requested resources. */
   char buftotal[256], bufavail[256], bufresreq[256];
@@ -124,7 +124,7 @@ void kill_worker(LocalSchedulerClient *worker, bool cleanup) {
   /* Clean up the task in progress. */
   if (worker->task_in_progress) {
     /* Return the resources that the worker was using. */
-    task_spec *spec = Task_task_spec(worker->task_in_progress);
+    TaskSpec *spec = Task_task_spec(worker->task_in_progress);
     update_dynamic_resources(state, spec, true);
     /* Update the task table to reflect that the task failed to complete. */
     if (state->db != NULL) {
@@ -405,10 +405,10 @@ LocalSchedulerState *LocalSchedulerState_init(
 }
 
 void update_dynamic_resources(LocalSchedulerState *state,
-                              task_spec *spec,
+                              TaskSpec *spec,
                               bool return_resources) {
   for (int i = 0; i < ResourceIndex_MAX; ++i) {
-    double resource = task_spec_get_required_resource(spec, i);
+    double resource = TaskSpec_get_required_resource(spec, i);
     if (!return_resources) {
       /* If we are not returning resources, we are leasing them, so we want to
        * subtract the resource quantities from our accounting. */
@@ -428,7 +428,7 @@ void update_dynamic_resources(LocalSchedulerState *state,
 }
 
 void assign_task_to_worker(LocalSchedulerState *state,
-                           task_spec *spec,
+                           TaskSpec *spec,
                            int64_t task_spec_size,
                            LocalSchedulerClient *worker) {
   if (write_message(worker->sock, EXECUTE_TASK, task_spec_size,
@@ -498,17 +498,17 @@ void reconstruct_task_update_callback(Task *task, void *user_context) {
   /* Otherwise, the test-and-set succeeded, so resubmit the task for execution
    * to ensure that reconstruction will happen. */
   LocalSchedulerState *state = (LocalSchedulerState *) user_context;
-  task_spec *spec = Task_task_spec(task);
+  TaskSpec *spec = Task_task_spec(task);
   /* If the task is an actor task, then we currently do not reconstruct it.
    * TODO(rkn): Handle this better. */
-  CHECK(ActorID_equal(task_spec_actor_id(spec), NIL_ACTOR_ID));
+  CHECK(ActorID_equal(TaskSpec_actor_id(spec), NIL_ACTOR_ID));
   /* Resubmit the task. */
   handle_task_submitted(state, state->algorithm_state, spec,
                         Task_task_spec_size(task));
   /* Recursively reconstruct the task's inputs, if necessary. */
-  for (int64_t i = 0; i < task_num_args(spec); ++i) {
-    if (task_arg_by_ref(spec, i)) {
-      ObjectID arg_id = task_arg_id(spec, i);
+  for (int64_t i = 0; i < TaskSpec_num_args(spec); ++i) {
+    if (TaskSpec_arg_by_ref(spec, i)) {
+      ObjectID arg_id = TaskSpec_arg_id(spec, i);
       reconstruct_object(state, arg_id);
     }
   }
@@ -603,19 +603,19 @@ void process_message(event_loop *loop,
 
   switch (type) {
   case SUBMIT_TASK: {
-    task_spec *spec = (task_spec *) utarray_front(state->input_buffer);
+    TaskSpec *spec = (TaskSpec *) utarray_front(state->input_buffer);
     /* Update the result table, which holds mappings of object ID -> ID of the
      * task that created it. */
     if (state->db != NULL) {
-      TaskID task_id = task_spec_id(spec);
-      for (int64_t i = 0; i < task_num_returns(spec); ++i) {
-        ObjectID return_id = task_return(spec, i);
+      TaskID task_id = TaskSpec_task_id(spec);
+      for (int64_t i = 0; i < TaskSpec_num_returns(spec); ++i) {
+        ObjectID return_id = TaskSpec_return(spec, i);
         result_table_add(state->db, return_id, task_id, NULL, NULL, NULL);
       }
     }
 
     /* Handle the task submission. */
-    if (ActorID_equal(task_spec_actor_id(spec), NIL_ACTOR_ID)) {
+    if (ActorID_equal(TaskSpec_actor_id(spec), NIL_ACTOR_ID)) {
       handle_task_submitted(state, state->algorithm_state, spec, length);
     } else {
       handle_actor_task_submitted(state, state->algorithm_state, spec, length);
@@ -695,7 +695,7 @@ void process_message(event_loop *loop,
   case GET_TASK: {
     /* If this worker reports a completed task: account for resources. */
     if (worker->task_in_progress != NULL) {
-      task_spec *spec = Task_task_spec(worker->task_in_progress);
+      TaskSpec *spec = Task_task_spec(worker->task_in_progress);
       /* Return dynamic resources back for the task in progress. */
       update_dynamic_resources(state, spec, true);
       /* If we're connected to Redis, update tables. */
@@ -800,8 +800,8 @@ void signal_handler(int signal) {
 /* End of the cleanup code. */
 
 void handle_task_scheduled_callback(Task *original_task, void *user_context) {
-  task_spec *spec = Task_task_spec(original_task);
-  if (ActorID_equal(task_spec_actor_id(spec), NIL_ACTOR_ID)) {
+  TaskSpec *spec = Task_task_spec(original_task);
+  if (ActorID_equal(TaskSpec_actor_id(spec), NIL_ACTOR_ID)) {
     /* This task does not involve an actor. Handle it normally. */
     handle_task_scheduled(g_state, g_state->algorithm_state, spec,
                           Task_task_spec_size(original_task));

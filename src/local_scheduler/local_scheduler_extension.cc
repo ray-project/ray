@@ -47,7 +47,7 @@ static PyObject *PyLocalSchedulerClient_submit(PyObject *self, PyObject *args) {
 
 // clang-format off
 static PyObject *PyLocalSchedulerClient_get_task(PyObject *self) {
-  task_spec *task_spec;
+  TaskSpec *task_spec;
   /* Drop the global interpreter lock while we get a task because
    * local_scheduler_get_task may block for a long time. */
   int64_t task_size;
@@ -155,7 +155,7 @@ static PyMethodDef local_scheduler_methods[] = {
      "Return the object ID for a put call within a task."},
     {"task_from_string", PyTask_from_string, METH_VARARGS,
      "Creates a Python PyTask object from a string representation of "
-     "task_spec."},
+     "TaskSpec."},
     {"task_to_string", PyTask_to_string, METH_VARARGS,
      "Translates a PyTask python object to a byte string."},
     {NULL} /* Sentinel */

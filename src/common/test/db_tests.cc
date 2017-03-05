@@ -153,7 +153,7 @@ TEST task_table_test(void) {
   db_attach(db, loop, false);
   DBClientID local_scheduler_id = globally_unique_id();
   int64_t task_spec_size;
-  task_spec *spec = example_task_spec(1, 1, &task_spec_size);
+  TaskSpec *spec = example_task_spec(1, 1, &task_spec_size);
   task_table_test_task = Task_alloc(spec, task_spec_size, TASK_STATUS_SCHEDULED,
                                     local_scheduler_id);
   TaskSpec_free(spec);
@@ -188,7 +188,7 @@ TEST task_table_all_test(void) {
       db_connect("127.0.0.1", 6379, "local_scheduler", "127.0.0.1", 0, NULL);
   db_attach(db, loop, false);
   int64_t task_spec_size;
-  task_spec *spec = example_task_spec(1, 1, &task_spec_size);
+  TaskSpec *spec = example_task_spec(1, 1, &task_spec_size);
   /* Schedule two tasks on different local local schedulers. */
   Task *task1 = Task_alloc(spec, task_spec_size, TASK_STATUS_SCHEDULED,
                            globally_unique_id());

@@ -39,7 +39,7 @@ void new_client_connection(event_loop *loop,
  * @return Void.
  */
 void assign_task_to_worker(LocalSchedulerState *state,
-                           task_spec *task,
+                           TaskSpec *task,
                            int64_t task_spec_size,
                            LocalSchedulerClient *worker);
 
@@ -70,7 +70,7 @@ void process_plasma_notification(event_loop *loop,
  */
 void reconstruct_object(LocalSchedulerState *state, ObjectID object_id);
 
-void print_resource_info(const LocalSchedulerState *s, const task_spec *spec);
+void print_resource_info(const LocalSchedulerState *s, const TaskSpec *spec);
 
 /**
  * Kill a worker.
@@ -107,7 +107,7 @@ void start_worker(LocalSchedulerState *state, ActorID actor_id);
  * @return Void.
  */
 void update_dynamic_resources(LocalSchedulerState *state,
-                              task_spec *spec,
+                              TaskSpec *spec,
                               bool return_resources);
 
 /** The following methods are for testing purposes only. */

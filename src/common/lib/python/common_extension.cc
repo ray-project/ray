@@ -99,7 +99,7 @@ PyObject *PyTask_from_string(PyObject *self, PyObject *args) {
   PyTask *result = PyObject_New(PyTask, &PyTaskType);
   result = (PyTask *) PyObject_Init((PyObject *) result, &PyTaskType);
   result->size = size;
-  result->spec = (task_spec *) malloc(size);
+  result->spec = (TaskSpec *) malloc(size);
   memcpy(result->spec, data, size);
   /* TODO(pcm): Use flatbuffers validation here. */
   return (PyObject *) result;
@@ -285,20 +285,20 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   }
   Py_ssize_t size = PyList_Size(arguments);
   /* Construct the task specification. */
-  start_construct_task_spec(g_task_builder, driver_id, parent_task_id,
-                            parent_counter, actor_id, actor_counter,
-                            function_id, num_returns);
+  TaskSpec_start_construct(g_task_builder, driver_id, parent_task_id,
+                           parent_counter, actor_id, actor_counter,
+                           function_id, num_returns);
   /* Add the task arguments. */
   for (Py_ssize_t i = 0; i < size; ++i) {
     PyObject *arg = PyList_GetItem(arguments, i);
     if (PyObject_IsInstance(arg, (PyObject *) &PyObjectIDType)) {
-      task_args_add_ref(g_task_builder, ((PyObjectID *) arg)->object_id);
+      TaskSpec_args_add_ref(g_task_builder, ((PyObjectID *) arg)->object_id);
     } else {
       /* We do this check because we cast a signed int to an unsigned int. */
       PyObject *data = PyObject_CallMethodObjArgs(pickle_module, pickle_dumps,
                                                   arg, pickle_protocol, NULL);
-      task_args_add_val(g_task_builder, (uint8_t *) PyBytes_AS_STRING(data),
-                        PyBytes_GET_SIZE(data));
+      TaskSpec_args_add_val(g_task_builder, (uint8_t *) PyBytes_AS_STRING(data),
+                            PyBytes_GET_SIZE(data));
       Py_DECREF(data);
     }
   }
@@ -307,17 +307,17 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
     CHECK(PyList_Size(resource_vector) == ResourceIndex_MAX);
     for (int i = 0; i < ResourceIndex_MAX; ++i) {
       PyObject *resource_entry = PyList_GetItem(resource_vector, i);
-      task_spec_set_required_resource(g_task_builder, i,
-                                      PyFloat_AsDouble(resource_entry));
+      TaskSpec_set_required_resource(g_task_builder, i,
+                                     PyFloat_AsDouble(resource_entry));
     }
   } else {
     for (int i = 0; i < ResourceIndex_MAX; ++i) {
-      task_spec_set_required_resource(g_task_builder, i,
-                                      i == ResourceIndex_CPU ? 1.0 : 0.0);
+      TaskSpec_set_required_resource(g_task_builder, i,
+                                     i == ResourceIndex_CPU ? 1.0 : 0.0);
     }
   }
   /* Compute the task ID and the return object IDs. */
-  self->spec = finish_construct_task_spec(g_task_builder, &self->size);
+  self->spec = TaskSpec_finish_construct(g_task_builder, &self->size);
   return 0;
 }
 
@@ -329,39 +329,39 @@ static void PyTask_dealloc(PyTask *self) {
 }
 
 static PyObject *PyTask_function_id(PyObject *self) {
-  FunctionID function_id = task_function(((PyTask *) self)->spec);
+  FunctionID function_id = TaskSpec_function(((PyTask *) self)->spec);
   return PyObjectID_make(function_id);
 }
 
 static PyObject *PyTask_actor_id(PyObject *self) {
-  ActorID actor_id = task_spec_actor_id(((PyTask *) self)->spec);
+  ActorID actor_id = TaskSpec_actor_id(((PyTask *) self)->spec);
   return PyObjectID_make(actor_id);
 }
 
 static PyObject *PyTask_driver_id(PyObject *self) {
-  UniqueID driver_id = task_spec_driver_id(((PyTask *) self)->spec);
+  UniqueID driver_id = TaskSpec_driver_id(((PyTask *) self)->spec);
   return PyObjectID_make(driver_id);
 }
 
 static PyObject *PyTask_task_id(PyObject *self) {
-  TaskID task_id = task_spec_id(((PyTask *) self)->spec);
+  TaskID task_id = TaskSpec_task_id(((PyTask *) self)->spec);
   return PyObjectID_make(task_id);
 }
 
 static PyObject *PyTask_arguments(PyObject *self) {
-  task_spec *task = ((PyTask *) self)->spec;
-  int64_t num_args = task_num_args(task);
+  TaskSpec *task = ((PyTask *) self)->spec;
+  int64_t num_args = TaskSpec_num_args(task);
   PyObject *arg_list = PyList_New((Py_ssize_t) num_args);
   for (int i = 0; i < num_args; ++i) {
-    if (task_arg_by_ref(task, i)) {
-      ObjectID object_id = task_arg_id(task, i);
+    if (TaskSpec_arg_by_ref(task, i)) {
+      ObjectID object_id = TaskSpec_arg_id(task, i);
       PyList_SetItem(arg_list, i, PyObjectID_make(object_id));
     } else {
       CHECK(pickle_module != NULL);
       CHECK(pickle_loads != NULL);
       PyObject *str =
-          PyBytes_FromStringAndSize((char *) task_arg_val(task, i),
-                                    (Py_ssize_t) task_arg_length(task, i));
+          PyBytes_FromStringAndSize((char *) TaskSpec_arg_val(task, i),
+                                    (Py_ssize_t) TaskSpec_arg_length(task, i));
       PyObject *val =
           PyObject_CallMethodObjArgs(pickle_module, pickle_loads, str, NULL);
       Py_XDECREF(str);
@@ -372,21 +372,21 @@ static PyObject *PyTask_arguments(PyObject *self) {
 }
 
 static PyObject *PyTask_required_resources(PyObject *self) {
-  task_spec *task = ((PyTask *) self)->spec;
+  TaskSpec *task = ((PyTask *) self)->spec;
   PyObject *required_resources = PyList_New((Py_ssize_t) ResourceIndex_MAX);
   for (int i = 0; i < ResourceIndex_MAX; ++i) {
-    double r = task_spec_get_required_resource(task, i);
+    double r = TaskSpec_get_required_resource(task, i);
     PyList_SetItem(required_resources, i, PyFloat_FromDouble(r));
   }
   return required_resources;
 }
 
 static PyObject *PyTask_returns(PyObject *self) {
-  task_spec *task = ((PyTask *) self)->spec;
-  int64_t num_returns = task_num_returns(task);
+  TaskSpec *task = ((PyTask *) self)->spec;
+  int64_t num_returns = TaskSpec_num_returns(task);
   PyObject *return_id_list = PyList_New((Py_ssize_t) num_returns);
   for (int i = 0; i < num_returns; ++i) {
-    ObjectID object_id = task_return(task, i);
+    ObjectID object_id = TaskSpec_return(task, i);
     PyList_SetItem(return_id_list, i, PyObjectID_make(object_id));
   }
   return return_id_list;
@@ -452,8 +452,8 @@ PyTypeObject PyTaskType = {
 };
 
 /* Create a PyTask from a C struct. The resulting PyTask takes ownership of the
- * task_spec and will deallocate the task_spec in the PyTask destructor. */
-PyObject *PyTask_make(task_spec *task_spec, int64_t task_size) {
+ * TaskSpec and will deallocate the TaskSpec in the PyTask destructor. */
+PyObject *PyTask_make(TaskSpec *task_spec, int64_t task_size) {
   PyTask *result = PyObject_New(PyTask, &PyTaskType);
   result = (PyTask *) PyObject_Init((PyObject *) result, &PyTaskType);
   result->spec = task_spec;

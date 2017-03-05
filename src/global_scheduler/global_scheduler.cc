@@ -34,7 +34,7 @@ void assign_task_to_local_scheduler(GlobalSchedulerState *state,
                                     Task *task,
                                     DBClientID local_scheduler_id) {
   char id_string[ID_STRING_SIZE];
-  task_spec *spec = Task_task_spec(task);
+  TaskSpec *spec = Task_task_spec(task);
   LOG_DEBUG("assigning task to local_scheduler_id = %s",
             ObjectID_to_string(local_scheduler_id, id_string, ID_STRING_SIZE));
   Task_set_state(task, TASK_STATUS_SCHEDULED);
@@ -57,7 +57,7 @@ void assign_task_to_local_scheduler(GlobalSchedulerState *state,
      *  this local scheduler. This will be overwritten on the next heartbeat. */
     local_scheduler->info.dynamic_resources[i] =
         MAX(0, local_scheduler->info.dynamic_resources[i] -
-                   task_spec_get_required_resource(spec, i));
+                TaskSpec_get_required_resource(spec, i));
   }
 }
 

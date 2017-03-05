@@ -159,8 +159,8 @@ TEST object_reconstruction_test(void) {
 
   /* Create a task with zero dependencies and one return value. */
   int64_t task_size;
-  task_spec *spec = example_task_spec(0, 1, &task_size);
-  ObjectID return_id = task_return(spec, 0);
+  TaskSpec *spec = example_task_spec(0, 1, &task_size);
+  ObjectID return_id = TaskSpec_return(spec, 0);
 
   /* Add an empty object table entry for the object we want to reconstruct, to
    * simulate it having been created and evicted. */
@@ -182,12 +182,12 @@ TEST object_reconstruction_test(void) {
      * and second from the reconstruct request. */
     int64_t task_assigned_size;
     local_scheduler_submit(worker, spec, task_size);
-    task_spec *task_assigned =
+    TaskSpec *task_assigned =
         local_scheduler_get_task(worker, &task_assigned_size);
     ASSERT_EQ(memcmp(task_assigned, spec, task_size), 0);
     ASSERT_EQ(task_assigned_size, task_size);
     int64_t reconstruct_task_size;
-    task_spec *reconstruct_task =
+    TaskSpec *reconstruct_task =
         local_scheduler_get_task(worker, &reconstruct_task_size);
     ASSERT_EQ(memcmp(reconstruct_task, spec, task_size), 0);
     ASSERT_EQ(reconstruct_task_size, task_size);
@@ -211,7 +211,7 @@ TEST object_reconstruction_test(void) {
     task_table_add_task(local_scheduler->local_scheduler_state->db, task, NULL,
                         NULL, NULL);
     /* Trigger reconstruction, and run the event loop again. */
-    ObjectID return_id = task_return(spec, 0);
+    ObjectID return_id = TaskSpec_return(spec, 0);
     local_scheduler_reconstruct_object(worker, return_id);
     event_loop_add_timer(local_scheduler->loop, 500,
                          (event_loop_timer_handler) timeout_handler, NULL);
@@ -242,11 +242,11 @@ TEST object_reconstruction_recursive_test(void) {
   /* Create a chain of tasks, each one dependent on the one before it. Mark
    * each object as available so that tasks will run immediately. */
   const int NUM_TASKS = 10;
-  task_spec *specs[NUM_TASKS];
+  TaskSpec *specs[NUM_TASKS];
   int64_t task_sizes[NUM_TASKS];
   specs[0] = example_task_spec(0, 1, &task_sizes[0]);
   for (int i = 1; i < NUM_TASKS; ++i) {
-    ObjectID arg_id = task_return(specs[i - 1], 0);
+    ObjectID arg_id = TaskSpec_return(specs[i - 1], 0);
     handle_object_available(
         local_scheduler->local_scheduler_state,
         local_scheduler->local_scheduler_state->algorithm_state, arg_id);
@@ -258,7 +258,7 @@ TEST object_reconstruction_recursive_test(void) {
   const char *client_id = "clientid";
   redisContext *context = redisConnect("127.0.0.1", 6379);
   for (int i = 0; i < NUM_TASKS; ++i) {
-    ObjectID return_id = task_return(specs[i], 0);
+    ObjectID return_id = TaskSpec_return(specs[i], 0);
     redisReply *reply = (redisReply *) redisCommand(
         context, "RAY.OBJECT_TABLE_ADD %b %ld %b %s", return_id.id,
         sizeof(return_id.id), 1, NIL_DIGEST, (size_t) DIGEST_SIZE, client_id);
@@ -279,7 +279,7 @@ TEST object_reconstruction_recursive_test(void) {
     /* Make sure we receive each task from the initial submission. */
     for (int i = 0; i < NUM_TASKS; ++i) {
       int64_t task_size;
-      task_spec *task_assigned = local_scheduler_get_task(worker, &task_size);
+      TaskSpec *task_assigned = local_scheduler_get_task(worker, &task_size);
       ASSERT_EQ(memcmp(task_assigned, specs[i], task_sizes[i]), 0);
       ASSERT_EQ(task_size, task_sizes[i]);
       free(task_assigned);
@@ -288,7 +288,7 @@ TEST object_reconstruction_recursive_test(void) {
      * lineage during reconstruction. */
     for (int i = 0; i < NUM_TASKS; ++i) {
       int64_t task_assigned_size;
-      task_spec *task_assigned =
+      TaskSpec *task_assigned =
           local_scheduler_get_task(worker, &task_assigned_size);
       bool found = false;
       for (int j = 0; j < NUM_TASKS; ++j) {
@@ -321,7 +321,7 @@ TEST object_reconstruction_recursive_test(void) {
                         NULL, NULL, NULL);
     /* Trigger reconstruction for the last object, and run the event loop
      * again. */
-    ObjectID return_id = task_return(specs[NUM_TASKS - 1], 0);
+    ObjectID return_id = TaskSpec_return(specs[NUM_TASKS - 1], 0);
     local_scheduler_reconstruct_object(worker, return_id);
     event_loop_add_timer(local_scheduler->loop, 500,
                          (event_loop_timer_handler) timeout_handler, NULL);
@@ -347,7 +347,7 @@ TEST object_reconstruction_recursive_test(void) {
  * Test that object reconstruction gets suppressed when there is a location
  * listed for the object in the object table.
  */
-task_spec *object_reconstruction_suppression_spec;
+TaskSpec *object_reconstruction_suppression_spec;
 int64_t object_reconstruction_suppression_size;
 
 void object_reconstruction_suppression_callback(ObjectID object_id,
@@ -364,13 +364,14 @@ TEST object_reconstruction_suppression_test(void) {
 
   object_reconstruction_suppression_spec =
       example_task_spec(0, 1, &object_reconstruction_suppression_size);
-  ObjectID return_id = task_return(object_reconstruction_suppression_spec, 0);
+  ObjectID return_id = TaskSpec_return(object_reconstruction_suppression_spec,
+                                       0);
   pid_t pid = fork();
   if (pid == 0) {
     /* Make sure we receive the task once. This will block until the
      * object_table_add callback completes. */
     int64_t task_assigned_size;
-    task_spec *task_assigned =
+    TaskSpec *task_assigned =
         local_scheduler_get_task(worker, &task_assigned_size);
     ASSERT_EQ(memcmp(task_assigned, object_reconstruction_suppression_spec,
                      object_reconstruction_suppression_size),
@@ -422,8 +423,8 @@ TEST task_dependency_test(void) {
   LocalSchedulerClient *worker =
       *((LocalSchedulerClient **) utarray_eltptr(state->workers, 0));
   int64_t task_size;
-  task_spec *spec = example_task_spec(1, 1, &task_size);
-  ObjectID oid = task_arg_id(spec, 0);
+  TaskSpec *spec = example_task_spec(1, 1, &task_size);
+  ObjectID oid = TaskSpec_arg_id(spec, 0);
 
   /* Check that the task gets queued in the waiting queue if the task is
    * submitted, but the input and workers are not available. */
@@ -498,9 +499,9 @@ TEST task_multi_dependency_test(void) {
   LocalSchedulerClient *worker =
       *((LocalSchedulerClient **) utarray_eltptr(state->workers, 0));
   int64_t task_size;
-  task_spec *spec = example_task_spec(2, 1, &task_size);
-  ObjectID oid1 = task_arg_id(spec, 0);
-  ObjectID oid2 = task_arg_id(spec, 1);
+  TaskSpec *spec = example_task_spec(2, 1, &task_size);
+  ObjectID oid1 = TaskSpec_arg_id(spec, 0);
+  ObjectID oid2 = TaskSpec_arg_id(spec, 1);
 
   /* Check that the task gets queued in the waiting queue if the task is
    * submitted, but the inputs and workers are not available. */

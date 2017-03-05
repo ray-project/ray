@@ -49,12 +49,12 @@ void local_scheduler_log_event(LocalSchedulerConnection *conn,
 }
 
 void local_scheduler_submit(LocalSchedulerConnection *conn,
-                            task_spec *task,
+                            TaskSpec *task,
                             int64_t task_size) {
   write_message(conn->conn, SUBMIT_TASK, task_size, (uint8_t *) task);
 }
 
-task_spec *local_scheduler_get_task(LocalSchedulerConnection *conn,
+TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
                                     int64_t *task_size) {
   write_message(conn->conn, GET_TASK, 0, NULL);
   int64_t type;
@@ -63,7 +63,7 @@ task_spec *local_scheduler_get_task(LocalSchedulerConnection *conn,
    * scheduler gives this client a task. */
   read_message(conn->conn, &type, task_size, &message);
   CHECK(type == EXECUTE_TASK);
-  task_spec *task = (task_spec *) message;
+  TaskSpec *task = (TaskSpec *) message;
   return task;
 }
 

@@ -40,7 +40,7 @@ void LocalSchedulerConnection_free(LocalSchedulerConnection *conn);
  * @return Void.
  */
 void local_scheduler_submit(LocalSchedulerConnection *conn,
-                            task_spec *task,
+                            TaskSpec *task,
                             int64_t task_size);
 
 /**
@@ -72,7 +72,7 @@ void local_scheduler_log_event(LocalSchedulerConnection *conn,
  * @param conn The connection information.
  * @return The address of the assigned task.
  */
-task_spec *local_scheduler_get_task(LocalSchedulerConnection *conn,
+TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
                                     int64_t *task_size);
 
 /**

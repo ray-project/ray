@@ -633,7 +633,7 @@ int ReplyWithTask(RedisModuleCtx *ctx, RedisModuleString *task_id) {
     RedisModuleString *local_scheduler_id = NULL;
     RedisModuleString *task_spec = NULL;
     RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "state", &state, "node",
-                        &local_scheduler_id, "task_spec", &task_spec, NULL);
+                        &local_scheduler_id, "TaskSpec", &task_spec, NULL);
     if (state == NULL || local_scheduler_id == NULL || task_spec == NULL) {
       /* We must have either all fields or no fields. */
       RedisModule_CloseKey(key);
@@ -736,7 +736,7 @@ int TaskTableWrite(RedisModuleCtx *ctx,
   if (task_spec == NULL) {
     RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "state", state, "node",
                         node_id, NULL);
-    RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "task_spec",
+    RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "TaskSpec",
                         &existing_task_spec, NULL);
     if (existing_task_spec == NULL) {
       RedisModule_CloseKey(key);
@@ -746,7 +746,7 @@ int TaskTableWrite(RedisModuleCtx *ctx,
     }
   } else {
     RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "state", state, "node",
-                        node_id, "task_spec", task_spec, NULL);
+                        node_id, "TaskSpec", task_spec, NULL);
   }
   RedisModule_CloseKey(key);
 
