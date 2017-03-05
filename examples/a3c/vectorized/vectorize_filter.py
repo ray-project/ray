@@ -15,6 +15,7 @@ class VectorizeFilter(core.Wrapper):
     def __init__(self, env, filter_factory, *args, **kwargs):
         super(VectorizeFilter, self).__init__(env)
         self.filter_factory = filter_factory
+        self.metadata['configure.required'] = True ## HACK!
         self._args = args
         self._kwargs = kwargs
 
