@@ -1,6 +1,16 @@
+
+// Indices into resource vectors.
+// A resource vector maps a resource index to the number
+// of units of that resource required.
+
+// The total length of the resource vector is ResourceIndex_MAX.
 enum ResourceIndex:int {
+  // A central processing unit.
   CPU = 0,
+  // A graphics processing unit.
   GPU = 1,
+  // A dummy entry to make ResourceIndex_MAX equal to the length of
+  // a resource vector.
   DUMMY = 2
 }
 

@@ -130,6 +130,10 @@ TaskBuilder *make_task_builder(void) {
   return new TaskBuilder();
 }
 
+void free_task_builder(TaskBuilder *builder) {
+  delete builder;
+}
+
 bool TaskID_equal(TaskID first_id, TaskID second_id) {
   return UNIQUE_ID_EQ(first_id, second_id);
 }
