@@ -12,7 +12,7 @@
  * @param object_id The object ID to be converted.
  * @return The flatbuffer string contining the object ID.
  */
-flatbuffers::Offset<flatbuffers::String> to_flat(
+flatbuffers::Offset<flatbuffers::String> to_flatbuf(
     flatbuffers::FlatBufferBuilder &fbb,
     ObjectID object_id);
 
@@ -22,7 +22,7 @@ flatbuffers::Offset<flatbuffers::String> to_flat(
  * @param string The flatbuffer string.
  * @return The object ID.
  */
-ObjectID from_flat(const flatbuffers::String *string);
+ObjectID from_flatbuf(const flatbuffers::String *string);
 
 /**
  * Convert an array of object IDs to a flatbuffer vector of strings.
@@ -34,8 +34,8 @@ ObjectID from_flat(const flatbuffers::String *string);
  */
 flatbuffers::Offset<
     flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
-to_flat(flatbuffers::FlatBufferBuilder &fbb,
-        ObjectID object_ids[],
-        int64_t num_objects);
+to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
+           ObjectID object_ids[],
+           int64_t num_objects);
 
 #endif

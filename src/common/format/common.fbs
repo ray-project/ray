@@ -41,11 +41,11 @@ table TaskSpec {
   args: [Arg];
   // Object IDs of return values.
   returns: [string];
-  // Resource vector for this task. A resource vector maps a resource index
-  // (like "cpu" or "gpu") to the number of units of that resource required.
-  // Note that this will allow us to support arbitrary attributes:
-  // For example, we can have a coloring of nodes and "red" can correspond
-  // to 0.0, "green" to 1.0 and "yellow" to 2.0.
+  // The required_resources vector indicates the quantities of the different
+  // resources required by this task. The index in this vector corresponds to
+  // the resource type defined in the ResourceIndex enum. For example,
+  // required_resources[0] is the number of CPUs required, and
+  // required_resources[1] is the number of GPUs required.
   required_resources: [double];
 }
 

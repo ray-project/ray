@@ -55,7 +55,7 @@ public:
   }
   
   void NextReferenceArgument(ObjectID object_id) {
-    args.push_back(CreateArg(fbb, to_flat(fbb, object_id)));
+    args.push_back(CreateArg(fbb, to_flatbuf(fbb, object_id)));
     sha256_update(&ctx, (BYTE*) &object_id, sizeof(object_id));
   }
 
@@ -89,16 +89,16 @@ public:
     std::vector<flatbuffers::Offset<flatbuffers::String>> returns;
     for (int64_t i = 0; i < num_returns_; i++) {
       ObjectID return_id = task_compute_return_id(task_id, i);
-      returns.push_back(to_flat(fbb, return_id));
+      returns.push_back(to_flatbuf(fbb, return_id));
     }
     /* Create TaskSpec. */
     for (int64_t i = resource_vector_.size(); i < ResourceIndex_MAX; ++i) {
       resource_vector_.push_back(0.0);
     }
     auto message = CreateTaskSpec(fbb,
-      to_flat(fbb, driver_id_), to_flat(fbb, task_id),
-      to_flat(fbb, parent_task_id_), parent_counter_,
-      to_flat(fbb, actor_id_), actor_counter_, to_flat(fbb, function_id_),
+      to_flatbuf(fbb, driver_id_), to_flatbuf(fbb, task_id),
+      to_flatbuf(fbb, parent_task_id_), parent_counter_,
+      to_flatbuf(fbb, actor_id_), actor_counter_, to_flatbuf(fbb, function_id_),
       arguments, fbb.CreateVector(returns), fbb.CreateVector(resource_vector_));
     /* Finish the TaskSpec. */
     fbb.Finish(message);
@@ -190,19 +190,19 @@ void task_spec_set_required_resource(TaskBuilder *builder,
 TaskID task_spec_id(uint8_t *spec) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskSpec>(spec);
-  return from_flat(message->task_id());
+  return from_flatbuf(message->task_id());
 }
 
 FunctionID task_function(uint8_t *spec) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskSpec>(spec);
-  return from_flat(message->function_id());
+  return from_flatbuf(message->function_id());
 }
 
 ActorID task_spec_actor_id(task_spec *spec) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskSpec>(spec);
-  return from_flat(message->actor_id());
+  return from_flatbuf(message->actor_id());
 }
 
 int64_t task_spec_actor_counter(task_spec *spec) {
@@ -214,7 +214,7 @@ int64_t task_spec_actor_counter(task_spec *spec) {
 UniqueID task_spec_driver_id(task_spec *spec) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskSpec>(spec);
-  return from_flat(message->driver_id());
+  return from_flatbuf(message->driver_id());
 }
 
 int64_t task_num_args(uint8_t *spec) {
@@ -226,7 +226,7 @@ int64_t task_num_args(uint8_t *spec) {
 ObjectID task_arg_id(uint8_t *spec, int64_t arg_index) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskSpec>(spec);
-  return from_flat(message->args()->Get(arg_index)->object_id());
+  return from_flatbuf(message->args()->Get(arg_index)->object_id());
 }
 
 const uint8_t *task_arg_val(uint8_t *spec, int64_t arg_index) {
@@ -256,7 +256,7 @@ bool task_arg_by_ref(uint8_t *spec, int64_t arg_index) {
 ObjectID task_return(uint8_t *spec, int64_t return_index) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskSpec>(spec);
-  return from_flat(message->returns()->Get(return_index));
+  return from_flatbuf(message->returns()->Get(return_index));
 }
 
 double task_spec_get_required_resource(const task_spec *spec,
