@@ -17,8 +17,8 @@ TEST task_test(void) {
   TaskBuilder *builder = make_task_builder();
   start_construct_task_spec(
       builder, NIL_ID, parent_task_id, 0, NIL_ACTOR_ID, 0, func_id, 2);
-  ASSERT(task_num_args(spec) == 4);
-  ASSERT(task_num_returns(spec) == 2);
+  // ASSERT(task_num_args(spec) == 4);
+  // ASSERT(task_num_returns(spec) == 2);
 
   UniqueID arg1 = globally_unique_id();
   task_args_add_ref(builder, arg1);
@@ -33,6 +33,7 @@ TEST task_test(void) {
 
   /* Check that the spec was constructed as expected. */
   ASSERT(task_num_args(spec) == 4);
+  printf("zzzzzzzzzz %" PRId64 "\n", task_num_returns(spec));
   ASSERT(task_num_returns(spec) == 2);
   ASSERT(FunctionID_equal(task_function(spec), func_id));
   ASSERT(ObjectID_equal(task_arg_id(spec, 0), arg1));
