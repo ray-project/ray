@@ -21,7 +21,7 @@ table Arg {
   data: string;
 }
 
-table TaskSpec {
+table TaskInfo {
   // ID of the driver that created this task.
   driver_id: string;
   // Task ID of the task.
@@ -49,4 +49,4 @@ table TaskSpec {
   required_resources: [double];
 }
 
-root_type TaskSpec;
+root_type TaskInfo;
