@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import numpy as np
 
-import ray.numbuf as numbuf
+import ray.numbuf
 import ray.pickling as pickling
 
 def check_serializable(cls):
@@ -139,5 +139,11 @@ def deserialize(serialized_obj):
       obj.__dict__.update(serialized_obj)
   return obj
 
-# Register the callbacks with numbuf.
-numbuf.register_callbacks(serialize, deserialize)
+def set_callbacks():
+  """Register the custom callbacks with numbuf.
+
+  The serialize callback is used to serialize objects that numbuf does not know
+  how to serialize (for example custom Python classes). The deserialize callback
+  is used to serialize objects that were serialized by the serialize callback.
+  """
+  ray.numbuf.register_callbacks(serialize, deserialize)
