@@ -4,71 +4,14 @@ import numpy as np
 import gym
 from gym import spaces
 import logging
-import universe
-from universe import vectorized
-from universe.wrappers import BlockingReset, GymCoreAction, EpisodeID, Unvectorize, Vectorize, Vision, Logger
-from universe import spaces as vnc_spaces
-from universe.spaces.vnc_event import keycode
+import vectorized
+from wrappers import Unvectorize, Vectorize
 import time
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-universe.configure_logging()
 
 def create_env(env_id, client_id, remotes, **kwargs):
-    spec = gym.spec(env_id)
-
-    if spec.tags.get('flashgames', False):
-        return create_flash_env(env_id, client_id, remotes, **kwargs)
-    elif spec.tags.get('atari', False) and spec.tags.get('vnc', False):
-        return create_vncatari_env(env_id, client_id, remotes, **kwargs)
-    else:
-        # Assume atari.
-        assert "." not in env_id  # universe environments have dots in names.
-        return create_atari_env(env_id)
-
-def create_flash_env(env_id, client_id, remotes, **_):
-    env = gym.make(env_id)
-    env = Vision(env)
-    env = Logger(env)
-    env = BlockingReset(env)
-
-    reg = universe.runtime_spec('flashgames').server_registry
-    height = reg[env_id]["height"]
-    width = reg[env_id]["width"]
-    env = CropScreen(env, height, width, 84, 18)
-    env = FlashRescale(env)
-
-    keys = ['left', 'right', 'up', 'down', 'x']
-    if env_id == 'flashgames.NeonRace-v0':
-        # Better key space for this game.
-        keys = ['left', 'right', 'up', 'left up', 'right up', 'down', 'up x']
-    logger.info('create_flash_env(%s): keys=%s', env_id, keys)
-
-    env = DiscreteToFixedKeysVNCActions(env, keys)
-    env = EpisodeID(env)
-    env = DiagnosticsInfo(env)
-    env = Unvectorize(env)
-    env.configure(fps=5.0, remotes=remotes, start_timeout=15 * 60, client_id=client_id,
-                  vnc_driver='go', vnc_kwargs={
-                    'encoding': 'tight', 'compress_level': 0,
-                    'fine_quality_level': 50, 'subsample_level': 3})
-    return env
-
-def create_vncatari_env(env_id, client_id, remotes, **_):
-    env = gym.make(env_id)
-    env = Vision(env)
-    env = Logger(env)
-    env = BlockingReset(env)
-    env = GymCoreAction(env)
-    env = AtariRescale42x42(env)
-    env = EpisodeID(env)
-    env = DiagnosticsInfo(env)
-    env = Unvectorize(env)
-
-    logger.info('Connecting to remotes: %s', remotes)
-    fps = env.metadata['video.frames_per_second']
-    env.configure(remotes=remotes, start_timeout=15 * 60, fps=fps, client_id=client_id)
-    return env
+    return create_atari_env(env_id)
 
 def create_atari_env(env_id):
     env = gym.make(env_id)
@@ -186,66 +129,6 @@ class AtariRescale42x42(vectorized.ObservationWrapper):
     def _observation(self, observation_n):
         return [_process_frame42(observation) for observation in observation_n]
 
-class FixedKeyState(object):
-    def __init__(self, keys):
-        self._keys = [keycode(key) for key in keys]
-        self._down_keysyms = set()
-
-    def apply_vnc_actions(self, vnc_actions):
-        for event in vnc_actions:
-            if isinstance(event, vnc_spaces.KeyEvent):
-                if event.down:
-                    self._down_keysyms.add(event.key)
-                else:
-                    self._down_keysyms.discard(event.key)
-
-    def to_index(self):
-        action_n = 0
-        for key in self._down_keysyms:
-            if key in self._keys:
-                # If multiple keys are pressed, just use the first one
-                action_n = self._keys.index(key) + 1
-                break
-        return action_n
-
-class DiscreteToFixedKeysVNCActions(vectorized.ActionWrapper):
-    """
-    Define a fixed action space. Action 0 is all keys up. Each element of keys can be a single key or a space-separated list of keys
-
-    For example,
-       e=DiscreteToFixedKeysVNCActions(e, ['left', 'right'])
-    will have 3 actions: [none, left, right]
-
-    You can define a state with more than one key down by separating with spaces. For example,
-       e=DiscreteToFixedKeysVNCActions(e, ['left', 'right', 'space', 'left space', 'right space'])
-    will have 6 actions: [none, left, right, space, left space, right space]
-    """
-    def __init__(self, env, keys):
-        super(DiscreteToFixedKeysVNCActions, self).__init__(env)
-
-        self._keys = keys
-        self._generate_actions()
-        self.action_space = spaces.Discrete(len(self._actions))
-
-    def _generate_actions(self):
-        self._actions = []
-        uniq_keys = set()
-        for key in self._keys:
-            for cur_key in key.split(' '):
-                uniq_keys.add(cur_key)
-
-        for key in [''] + self._keys:
-            split_keys = key.split(' ')
-            cur_action = []
-            for cur_key in uniq_keys:
-                cur_action.append(vnc_spaces.KeyEvent.by_name(cur_key, down=(cur_key in split_keys)))
-            self._actions.append(cur_action)
-        self.key_state = FixedKeyState(uniq_keys)
-
-    def _action(self, action_n):
-        # Each action might be a length-1 np.array. Cast to int to
-        # avoid warnings.
-        return [self._actions[int(action)] for action in action_n]
 
 class CropScreen(vectorized.ObservationWrapper):
     """Crops out a [height]x[width] area starting from (top,left) """

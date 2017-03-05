@@ -3,7 +3,6 @@ import tensorflow as tf
 import tensorflow.contrib.rnn as rnn
 import distutils.version
 import ray
-from tensorflow.python.client import timeline
 use_tf100_api = distutils.version.LooseVersion(tf.VERSION) >= distutils.version.LooseVersion('1.0.0')
 
 class Policy(object):

@@ -67,11 +67,7 @@ once it has processed enough steps.
         self.features.extend(other.features)
 
 class RunnerThread(threading.Thread):
-    """
-One of the key distinctions between a normal environment and a universe environment
-is that a universe environment is _real time_.  This means that there should be a thread
-that would constantly interact with the environment and tell it what to do.  This thread is here.
-"""
+    """ This thread constantly interacts with the environment and tell it what to do.  """
     def __init__(self, env, policy, num_local_steps, visualise=False):
         threading.Thread.__init__(self)
         self.queue = queue.Queue(5)
