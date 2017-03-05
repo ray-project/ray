@@ -375,7 +375,7 @@ Task *parse_and_construct_task_from_redis_reply(redisReply *reply) {
     memcpy(spec, reply->element[2]->str, reply->element[2]->len);
     task = Task_alloc(spec, reply->element[2]->len, state, local_scheduler_id);
     /* Free the task spec. */
-    free(spec);
+    TaskSpec_free(spec);
   } else {
     LOG_FATAL("Unexpected reply type %d", reply->type);
   }
@@ -938,7 +938,7 @@ void redis_task_table_subscribe_callback(redisAsyncContext *c,
                                         &state, &local_scheduler_id, &spec,
                                         &task_spec_size);
     Task *task = Task_alloc(spec, task_spec_size, state, local_scheduler_id);
-    free(spec);
+    TaskSpec_free(spec);
     /* Call the subscribe callback if there is one. */
     if (data->subscribe_callback != NULL) {
       data->subscribe_callback(task, data->subscribe_context);

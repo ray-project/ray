@@ -40,7 +40,7 @@ TEST task_test(void) {
   ASSERT(memcmp(task_arg_val(spec, 3), (uint8_t *) "world",
                 task_arg_length(spec, 3)) == 0);
 
-  free(spec);
+  TaskSpec_free(spec);
   free_task_builder(builder);
   PASS();
 }
@@ -69,7 +69,7 @@ TEST deterministic_ids_test(void) {
   int64_t size2;
   task_spec *spec2 = finish_construct_task_spec(builder, &size2);
 
-  /* Check that these tasks have the same task IDs and the same return IDs.*/
+  /* Check that these tasks have the same task IDs and the same return IDs. */
   ASSERT(TaskID_equal(task_spec_id(spec1), task_spec_id(spec2)));
   ASSERT(ObjectID_equal(task_return(spec1, 0), task_return(spec2, 0)));
   ASSERT(ObjectID_equal(task_return(spec1, 1), task_return(spec2, 1)));
@@ -144,13 +144,13 @@ TEST deterministic_ids_test(void) {
     }
   }
 
-  free(spec1);
-  free(spec2);
-  free(spec3);
-  free(spec4);
-  free(spec5);
-  free(spec6);
-  free(spec7);
+  TaskSpec_free(spec1);
+  TaskSpec_free(spec2);
+  TaskSpec_free(spec3);
+  TaskSpec_free(spec4);
+  TaskSpec_free(spec5);
+  TaskSpec_free(spec6);
+  TaskSpec_free(spec7);
   free_task_builder(builder);
   PASS();
 }
@@ -177,7 +177,7 @@ TEST send_task(void) {
   task_spec *result = (task_spec *) message;
   ASSERT(type == SUBMIT_TASK);
   ASSERT(memcmp(spec, result, size) == 0);
-  free(spec);
+  TaskSpec_free(spec);
   free(result);
   free_task_builder(builder);
   PASS();

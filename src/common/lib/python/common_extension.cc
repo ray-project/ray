@@ -323,7 +323,7 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
 
 static void PyTask_dealloc(PyTask *self) {
   if (self->spec != NULL) {
-    free(self->spec);
+    TaskSpec_free(self->spec);
   }
   Py_TYPE(self)->tp_free((PyObject *) self);
 }

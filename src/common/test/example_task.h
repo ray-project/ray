@@ -42,7 +42,7 @@ static inline Task *example_task_with_args(int64_t num_args,
   task_spec *spec = example_task_spec_with_args(num_args, num_returns, arg_ids,
                                                 &task_spec_size);
   Task *instance = Task_alloc(spec, task_spec_size, task_state, NIL_ID);
-  free(spec);
+  TaskSpec_free(spec);
   return instance;
 }
 
@@ -52,7 +52,7 @@ static inline Task *example_task(int64_t num_args,
   int64_t task_spec_size;
   task_spec *spec = example_task_spec(num_args, num_returns, &task_spec_size);
   Task *instance = Task_alloc(spec, task_spec_size, task_state, NIL_ID);
-  free(spec);
+  TaskSpec_free(spec);
   return instance;
 }
 

@@ -194,7 +194,7 @@ TEST object_reconstruction_test(void) {
     /* Clean up. */
     free(reconstruct_task);
     free(task_assigned);
-    free(spec);
+    TaskSpec_free(spec);
     LocalSchedulerMock_free(local_scheduler);
     exit(0);
   } else {
@@ -219,7 +219,7 @@ TEST object_reconstruction_test(void) {
     /* Wait for the child process to exit and check that there are no tasks
      * left in the local scheduler's task queue. Then, clean up. */
     wait(NULL);
-    free(spec);
+    TaskSpec_free(spec);
     ASSERT_EQ(num_waiting_tasks(
                   local_scheduler->local_scheduler_state->algorithm_state),
               0);
@@ -297,7 +297,7 @@ TEST object_reconstruction_recursive_test(void) {
         }
         if (memcmp(task_assigned, specs[j], task_assigned_size) == 0) {
           found = true;
-          free(specs[j]);
+          TaskSpec_free(specs[j]);
           specs[j] = NULL;
         }
       }
@@ -336,7 +336,7 @@ TEST object_reconstruction_recursive_test(void) {
                   local_scheduler->local_scheduler_state->algorithm_state),
               0);
     for (int i = 0; i < NUM_TASKS; ++i) {
-      free(specs[i]);
+      TaskSpec_free(specs[i]);
     }
     LocalSchedulerMock_free(local_scheduler);
     PASS();
@@ -380,7 +380,7 @@ TEST object_reconstruction_suppression_test(void) {
     local_scheduler_reconstruct_object(worker, return_id);
     /* Clean up. */
     free(task_assigned);
-    free(object_reconstruction_suppression_spec);
+    TaskSpec_free(object_reconstruction_suppression_spec);
     LocalSchedulerMock_free(local_scheduler);
     exit(0);
   } else {
@@ -407,7 +407,7 @@ TEST object_reconstruction_suppression_test(void) {
     ASSERT_EQ(num_dispatch_tasks(
                   local_scheduler->local_scheduler_state->algorithm_state),
               0);
-    free(object_reconstruction_suppression_spec);
+    TaskSpec_free(object_reconstruction_suppression_spec);
     db_disconnect(db);
     LocalSchedulerMock_free(local_scheduler);
     PASS();
@@ -485,7 +485,7 @@ TEST task_dependency_test(void) {
   ASSERT_EQ(num_waiting_tasks(algorithm_state), 0);
   ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
 
-  free(spec);
+  TaskSpec_free(spec);
   LocalSchedulerMock_free(local_scheduler);
   PASS();
 }
@@ -560,7 +560,7 @@ TEST task_multi_dependency_test(void) {
   ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
   reset_worker(local_scheduler, worker);
 
-  free(spec);
+  TaskSpec_free(spec);
   LocalSchedulerMock_free(local_scheduler);
   PASS();
 }

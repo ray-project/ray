@@ -194,13 +194,13 @@ void task_spec_set_required_resource(TaskBuilder *builder,
 
 /* Functions for reading tasks. */
 
-TaskID task_spec_id(uint8_t *spec) {
+TaskID task_spec_id(task_spec *spec) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskSpec>(spec);
   return from_flatbuf(message->task_id());
 }
 
-FunctionID task_function(uint8_t *spec) {
+FunctionID task_function(task_spec *spec) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskSpec>(spec);
   return from_flatbuf(message->function_id());
@@ -224,43 +224,43 @@ UniqueID task_spec_driver_id(task_spec *spec) {
   return from_flatbuf(message->driver_id());
 }
 
-int64_t task_num_args(uint8_t *spec) {
+int64_t task_num_args(task_spec *spec) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskSpec>(spec);
   return message->args()->size();
 }
 
-ObjectID task_arg_id(uint8_t *spec, int64_t arg_index) {
+ObjectID task_arg_id(task_spec *spec, int64_t arg_index) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskSpec>(spec);
   return from_flatbuf(message->args()->Get(arg_index)->object_id());
 }
 
-const uint8_t *task_arg_val(uint8_t *spec, int64_t arg_index) {
+const uint8_t *task_arg_val(task_spec *spec, int64_t arg_index) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskSpec>(spec);
   return (uint8_t *) message->args()->Get(arg_index)->data()->c_str();
 }
 
-int64_t task_arg_length(uint8_t *spec, int64_t arg_index) {
+int64_t task_arg_length(task_spec *spec, int64_t arg_index) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskSpec>(spec);
   return message->args()->Get(arg_index)->data()->size();
 }
 
-int64_t task_num_returns(uint8_t *spec) {
+int64_t task_num_returns(task_spec *spec) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskSpec>(spec);
   return message->returns()->size();
 }
 
-bool task_arg_by_ref(uint8_t *spec, int64_t arg_index) {
+bool task_arg_by_ref(task_spec *spec, int64_t arg_index) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskSpec>(spec);
   return message->args()->Get(arg_index)->object_id()->size() != 0;
 }
 
-ObjectID task_return(uint8_t *spec, int64_t return_index) {
+ObjectID task_return(task_spec *spec, int64_t return_index) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskSpec>(spec);
   return from_flatbuf(message->returns()->Get(return_index));
@@ -271,6 +271,10 @@ double task_spec_get_required_resource(const task_spec *spec,
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskSpec>(spec);
   return message->required_resources()->Get(resource_index);
+}
+
+void TaskSpec_free(task_spec *spec) {
+  free(spec);
 }
 
 /* TASK INSTANCES */
