@@ -41,6 +41,7 @@ TEST task_test(void) {
                 task_arg_length(spec, 3)) == 0);
 
   free(spec);
+  free_task_builder(builder);
   PASS();
 }
 
@@ -150,6 +151,7 @@ TEST deterministic_ids_test(void) {
   free(spec5);
   free(spec6);
   free(spec7);
+  free_task_builder(builder);
   PASS();
 }
 
@@ -177,6 +179,7 @@ TEST send_task(void) {
   ASSERT(memcmp(spec, result, size) == 0);
   free(spec);
   free(result);
+  free_task_builder(builder);
   PASS();
 }
 
