@@ -24,6 +24,15 @@ add_custom_command(
   COMMENT "Running flatc compiler on ${COMMON_FBS_SRC}"
   VERBATIM)
 
+# Generate Python bindings for the flatbuffers objects.
+set(PYTHON_OUTPUT_DIR ${CMAKE_BINARY_DIR}/generated/)
+add_custom_command(
+  TARGET gen_common_fbs
+  COMMAND ${FLATBUFFERS_COMPILER} -p -o ${PYTHON_OUTPUT_DIR} ${COMMON_FBS_SRC}
+  DEPENDS ${FBS_DEPENDS}
+  COMMENT "Running flatc compiler on ${COMMON_FBS_SRC}"
+  VERBATIM)
+
 add_dependencies(gen_common_fbs flatbuffers_ep)
 
 add_custom_target(

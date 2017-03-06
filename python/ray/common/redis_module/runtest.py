@@ -11,6 +11,9 @@ import unittest
 import redis
 import ray.services
 
+# Import flatbuffers bindings.
+from ray.core.generated.SubscribeToNotificationsReply import SubscribeToNotificationsReply
+
 OBJECT_INFO_PREFIX = "OI:"
 OBJECT_LOCATION_PREFIX = "OL:"
 OBJECT_SUBSCRIBE_PREFIX = "OS:"
@@ -142,6 +145,15 @@ class TestGlobalStateStore(unittest.TestCase):
     self.assertEqual(set(response), set())
 
   def testObjectTableSubscribeToNotifications(self):
+    # Define a helper method for checking the contents of object notifications.
+    def check_object_notification(notification_message, object_id, object_size, manager_ids):
+      notification_object = SubscribeToNotificationsReply.GetRootAsSubscribeToNotificationsReply(notification_message, 0)
+      self.assertEqual(notification_object.ObjectId(), object_id)
+      self.assertEqual(notification_object.ObjectSize(), object_size)
+      self.assertEqual(notification_object.ManagerIdsLength(), len(manager_ids))
+      for i in range(len(manager_ids)):
+        self.assertEqual(notification_object.ManagerIds(i), manager_ids[i])
+
     data_size = 0xf1f0
     p = self.redis.pubsub()
     # Subscribe to an object ID.
@@ -151,8 +163,12 @@ class TestGlobalStateStore(unittest.TestCase):
     self.assertEqual(get_next_message(p)["data"], 1)
     # Request a notification and receive the data.
     self.redis.execute_command("RAY.OBJECT_TABLE_REQUEST_NOTIFICATIONS", "manager_id1", "object_id1")
-    self.assertEqual(get_next_message(p)["data"], b"object_id1 %s MANAGERS manager_id2"\
-                     %integerToAsciiHex(data_size, 8))
+    # Verify that the notification is correct.
+    check_object_notification(get_next_message(p)["data"],
+                              b"object_id1",
+                              data_size,
+                              [b"manager_id2"])
+
     # Request a notification for an object that isn't there. Then add the object
     # and receive the data. Only the first call to RAY.OBJECT_TABLE_ADD should
     # trigger notifications.
@@ -160,15 +176,24 @@ class TestGlobalStateStore(unittest.TestCase):
     self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id3", data_size, "hash1", "manager_id1")
     self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id3", data_size, "hash1", "manager_id2")
     self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id3", data_size, "hash1", "manager_id3")
-    self.assertEqual(get_next_message(p)["data"], b"object_id3 %s MANAGERS manager_id1"\
-                     %integerToAsciiHex(data_size, 8))
+    # Verify that the notification is correct.
+    check_object_notification(get_next_message(p)["data"],
+                              b"object_id3",
+                              data_size,
+                              [b"manager_id1"])
     self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id2", data_size, "hash1", "manager_id3")
-    self.assertEqual(get_next_message(p)["data"], b"object_id2 %s MANAGERS manager_id3"\
-                     %integerToAsciiHex(data_size, 8))
+    # Verify that the notification is correct.
+    check_object_notification(get_next_message(p)["data"],
+                              b"object_id2",
+                              data_size,
+                              [b"manager_id3"])
     # Request notifications for object_id3 again.
     self.redis.execute_command("RAY.OBJECT_TABLE_REQUEST_NOTIFICATIONS", "manager_id1", "object_id3")
-    self.assertEqual(get_next_message(p)["data"], b"object_id3 %s MANAGERS manager_id1 manager_id2 manager_id3"\
-                     %integerToAsciiHex(data_size, 8))
+    # Verify that the notification is correct.
+    check_object_notification(get_next_message(p)["data"],
+                              b"object_id3",
+                              data_size,
+                              [b"manager_id1", b"manager_id2", b"manager_id3"])
 
   def testResultTableAddAndLookup(self):
     # Try looking up something in the result table before anything is added.
