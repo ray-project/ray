@@ -13,6 +13,8 @@ import ray
 import six
 import math
 
+from tensorflow.python.training import moving_averages
+
 HParams = namedtuple('HParams',
                      'batch_size, num_classes, min_lrn_rate, lrn_rate, '
                      'num_residual_units, use_bottleneck, weight_decay_rate, '
@@ -22,26 +24,29 @@ HParams = namedtuple('HParams',
 class ResNet(object):
   """ResNet model."""
 
-  def __init__(self, images, labels, hps):
+  def __init__(self, hps, images, labels, mode):
     """ResNet constructor.
-
     Args:
-      images: Image tensor.
-      Labels: Label tensor. 
       hps: Hyperparameters.
+      images: Batches of images. [batch_size, image_size, image_size, 3]
+      labels: Batches of labels. [batch_size, num_classes]
+      mode: One of 'train' and 'eval'.
     """
+    self.hps = hps
     self._images = images
     self.labels = labels
-    self.hps = hps
+    self.mode = mode
+
+    self._extra_train_ops = []
 
   def build_graph(self):
     """Build a whole graph for the model."""
     self.global_step = tf.Variable(0, trainable=False)
     self._build_model()
-    self._build_train_op()
-    truth = tf.argmax(self.labels, axis=1)
-    predictions = tf.argmax(self.predictions, axis=1)
-    self.precision = tf.reduce_mean(tf.to_float(tf.equal(predictions, truth)))
+    if self.mode == 'train':
+      self._build_train_op()
+    else:
+      self.variables = ray.experimental.TensorFlowVariables(self.cost)
 
   def _stride_arr(self, stride):
     """Map a stride scalar to the stride array for tf.nn.conv2d."""
@@ -104,6 +109,9 @@ class ResNet(object):
       self.cost = tf.reduce_mean(xent, name='xent')
       self.cost += self._decay()
 
+    truth = tf.argmax(self.labels, axis=1)
+    predictions = tf.argmax(self.predictions, axis=1)
+    self.precision = tf.reduce_mean(tf.to_float(tf.equal(predictions, truth)))
 
   def _build_train_op(self):
     """Build training specific ops for the graph."""
@@ -119,9 +127,10 @@ class ResNet(object):
     elif self.hps.optimizer == 'mom':
       optimizer = tf.train.MomentumOptimizer(self.lrn_rate, 0.9)
 
-    min_ops = optimizer.minimize(self.cost, global_step=self.global_step)
-    self.variables = ray.experimental.TensorFlowVariables(min_ops)
-    self.train_op = min_ops
+    apply_op = optimizer.minimize(self.cost, global_step=self.global_step)
+    train_ops = [apply_op] + self._extra_train_ops
+    self.train_op = tf.group(*train_ops)
+    self.variables = ray.experimental.TensorFlowVariables(self.train_op)
 
   def _batch_norm(self, name, x):
     """Batch normalization."""
@@ -135,7 +144,32 @@ class ResNet(object):
           'gamma', params_shape, tf.float32,
           initializer=tf.constant_initializer(1.0, tf.float32))
 
-      mean, variance = tf.nn.moments(x, [0, 1, 2], name='moments')
+      if self.mode == 'train':
+        mean, variance = tf.nn.moments(x, [0, 1, 2], name='moments')
+
+        moving_mean = tf.get_variable(
+            'moving_mean', params_shape, tf.float32,
+            initializer=tf.constant_initializer(0.0, tf.float32),
+            trainable=False)
+        moving_variance = tf.get_variable(
+            'moving_variance', params_shape, tf.float32,
+            initializer=tf.constant_initializer(1.0, tf.float32),
+            trainable=False)
+
+        self._extra_train_ops.append(moving_averages.assign_moving_average(
+            moving_mean, mean, 0.9))
+        self._extra_train_ops.append(moving_averages.assign_moving_average(
+            moving_variance, variance, 0.9))
+      else:
+        mean = tf.get_variable(
+            'moving_mean', params_shape, tf.float32,
+            initializer=tf.constant_initializer(0.0, tf.float32),
+            trainable=False)
+        variance = tf.get_variable(
+            'moving_variance', params_shape, tf.float32,
+            initializer=tf.constant_initializer(1.0, tf.float32),
+            trainable=False)
+      # elipson used to be 1e-5. Maybe 0.001 solves NaN problem in deeper net.
       y = tf.nn.batch_normalization(
           x, mean, variance, beta, gamma, 0.001)
       y.set_shape(x.get_shape())

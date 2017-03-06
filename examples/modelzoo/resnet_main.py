@@ -6,6 +6,8 @@ import numpy as np
 import resnet_model
 import ray
 import tensorflow as tf
+import IPython
+import six
 
 FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('train_data_path', '',
@@ -14,22 +16,22 @@ tf.app.flags.DEFINE_string('eval_data_path', '',
                            'Filepattern for eval data')
 tf.app.flags.DEFINE_string('num_gpus', 1, 'Number of gpus to run with')
 
-@ray.remote
-def get_test(path):
+@ray.remote(num_return_vals=4)
+def get_data(path, size):
  os.environ["CUDA_VISIBLE_DEVICES"] = ''
  with tf.device("/cpu:0"):
-  images, labels = cifar_input.build_input(path, 5000, False)
+  queue = cifar_input.build_data(path, size)
   sess = tf.Session()
   coord = tf.train.Coordinator()
   tf.train.start_queue_runners(sess, coord=coord)
-  batches = [sess.run([images, labels]) for _ in range(2)]
+  images, labels = sess.run(queue)
   coord.request_stop()
   sess.close()
-  return (np.concatenate([batches[i][0] for i in range(2)]), np.concatenate([batches[i][1] for i in range(2)]))
+  return images[:int(size/3), :], images[int(size/3) : int(2*size/3), :], images[int(2*size/3):, :], labels
 
 @ray.actor(num_gpus=1)
-class ResNetActor(object):
-  def __init__(self, path, gpus):
+class ResNetTrainActor(object):
+  def __init__(self, data, gpus):
     os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(i) for i in ray.get_gpu_ids()])
     hps = resnet_model.HParams(batch_size=128,
                                num_classes=10,
@@ -41,11 +43,13 @@ class ResNetActor(object):
                                relu_leakiness=0.1,
                                optimizer='mom',
                                gpus=gpus)
+    data = ray.get(data)
+    total_images = np.concatenate([data[0], data[1], data[2]])
     with tf.Graph().as_default():
       tf.set_random_seed(ray.get_gpu_ids()[0] + 1)
       with tf.device("/gpu:0"):
-        images, labels = cifar_input.build_input(path, hps.batch_size, True)       
-        self.model = resnet_model.ResNet(images, labels, hps)
+        images, labels = cifar_input.build_input([total_images, data[3]], hps.batch_size, True)       
+        self.model = resnet_model.ResNet(hps, images, labels, 'train')
         self.model.build_graph()
         config = tf.ConfigProto(allow_soft_placement=True)
         sess = tf.Session(config=config)
@@ -53,20 +57,7 @@ class ResNetActor(object):
         self.coord = tf.train.Coordinator()
         tf.train.start_queue_runners(sess, coord=self.coord)
         init = tf.global_variables_initializer()
-        self.placeholders = [images, labels]
         sess.run(init)
-
-  def global_step(self):
-    return self.model.variables.sess.run(self.model.global_step)
-
-  def lrn_rate(self):
-    return self.model.variables.sess.run(self.model.lrn_rate)
-
-  def accuracy(self, weights, batch):
-    self.model.variables.set_weights(weights)
-    batches = [(batch[0][128*i:128*(i+1)], batch[1][128*i:128*(i+1)]) for i in range(78)]
-    return sum([self.model.variables.sess.run(self.model.precision, feed_dict=dict(zip(self.placeholders, batches[i]))) for i in range(78)]) / 78
-
 
   def compute_rollout(self, weights):
     rollouts = 10
@@ -78,25 +69,78 @@ class ResNetActor(object):
   def get_weights(self):
     return self.model.variables.get_weights()
 
+@ray.actor
+class ResNetTestActor(object):
+  def __init__(self, data, eval_batch_count):
+    hps = resnet_model.HParams(batch_size=100,
+                               num_classes=10,
+                               min_lrn_rate=0.0001,
+                               lrn_rate=0.1,
+                               num_residual_units=5,
+                               use_bottleneck=False,
+                               weight_decay_rate=0.0002,
+                               relu_leakiness=0.1,
+                               optimizer='mom',
+                               gpus=0)
+    data = ray.get(data)
+    total_images = np.concatenate([data[0], data[1], data[2]])
+    with tf.Graph().as_default():
+      with tf.device("/cpu:0"):
+        images, labels = cifar_input.build_input([total_images, data[3]], hps.batch_size, False)       
+        self.model = resnet_model.ResNet(hps, images, labels, 'eval')
+        self.model.build_graph()
+        config = tf.ConfigProto(allow_soft_placement=True)
+        sess = tf.Session(config=config)
+        self.model.variables.set_session(sess)
+        self.coord = tf.train.Coordinator()
+        tf.train.start_queue_runners(sess, coord=self.coord)
+        init = tf.global_variables_initializer()
+        sess.run(init)
+        self.best_precision = 0.0
+        self.eval_batch_count = eval_batch_count
+
+  def accuracy(self, weights):
+    self.model.variables.set_weights(weights)
+    total_prediction, correct_prediction = 0, 0
+    model = self.model
+    sess = self.model.variables.sess
+    for _ in six.moves.range(self.eval_batch_count):
+      (loss, predictions, truth, train_step) = sess.run(
+          [model.cost, model.predictions,
+           model.labels, model.global_step])
+
+      truth = np.argmax(truth, axis=1)
+      predictions = np.argmax(predictions, axis=1)
+      correct_prediction += np.sum(truth == predictions)
+      total_prediction += predictions.shape[0]
+
+    precision = 1.0 * correct_prediction / total_prediction
+    self.best_precision = max(precision, self.best_precision)
+    return precision
+
 def train():
   """Training loop."""
   gpus = int(FLAGS.num_gpus)
   ray.init(num_workers=2, num_gpus=gpus)
-  test_batch = get_test.remote(FLAGS.eval_data_path)
-  actor_list = [ResNetActor(FLAGS.train_data_path, gpus) for _ in range(gpus)]
+  train_data = get_data.remote(FLAGS.train_data_path, 50000)
+  test_data = get_data.remote(FLAGS.eval_data_path, 10000)
+  train_actors = [ResNetTrainActor(train_data, gpus) for _ in range(gpus)]
+  test_actor = ResNetTestActor(test_data, 50)
   step = 0
-  weight_id = actor_list[0].get_weights()
+  weight_id = train_actors[0].get_weights()
+  acc_id = test_actor.accuracy(weight_id)
   while True:
     with open("results.txt", "a") as results:
       print("Computing rollouts")
-      all_weights = ray.get([actor.compute_rollout(weight_id) for actor in actor_list])
+      all_weights = ray.get([actor.compute_rollout(weight_id) for actor in train_actors])
       mean_weights = {k: sum([weights[k] for weights in all_weights]) / gpus for k in all_weights[0]}
       weight_id = ray.put(mean_weights)
-      if step % 200 == 0:
-        acc = ray.get(actor_list[0].accuracy(weight_id, test_batch))
-        print(acc)
-        results.write(str(step) + " " + str(acc) + "\n")
       step += 10
+      if step % 200 == 0:
+        acc = ray.get(acc_id)
+        acc_id = test_actor.accuracy(weight_id)
+        print("Step {0}: {1:.6f}".format(step - 200, acc))
+        results.write(str(step - 200) + " " + str(acc) + "\n")
 
 def main(_):
   train()

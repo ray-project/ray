@@ -4,19 +4,10 @@
 """
 
 import tensorflow as tf
+import IPython
+import numpy as np
 
-def build_input(data_path, batch_size, train):
-  """Build CIFAR image and labels.
-
-  Args:
-    data_path: Filename for cifar10 data.
-    batch_size: Input batch size.
-  Returns:
-    images: Batches of images. [batch_size, image_size, image_size, 3]
-    labels: Batches of labels. [batch_size, num_classes]
-  Raises:
-    ValueError: when the specified dataset is not supported.
-  """
+def build_data(data_path, size):
   image_size = 32
   label_bytes = 1
   label_offset = 0
@@ -40,7 +31,27 @@ def build_input(data_path, batch_size, train):
                            [depth, image_size, image_size])
   # Convert from [depth, height, width] to [height, width, depth].
   image = tf.cast(tf.transpose(depth_major, [1, 2, 0]), tf.float32)
+  queue = tf.train.shuffle_batch([image, label], size, size, 0, num_threads=16)
+  return queue
 
+def build_input(data, batch_size, train):
+  """Build CIFAR image and labels.
+
+  Args:
+    data_path: Filename for cifar10 data.
+    batch_size: Input batch size.
+  Returns:
+    images: Batches of images. [batch_size, image_size, image_size, 3]
+    labels: Batches of labels. [batch_size, num_classes]
+  Raises:
+    ValueError: when the specified dataset is not supported.
+  """
+  images_constant = tf.constant(data[0])
+  labels_constant = tf.constant(data[1])
+  image_size = 32
+  depth = 3
+  num_classes = 10
+  image, label = tf.train.slice_input_producer([images_constant, labels_constant])
   if train:
     image = tf.image.resize_image_with_crop_or_pad(
 	image, image_size+4, image_size+4)
@@ -61,9 +72,8 @@ def build_input(data_path, batch_size, train):
     image = tf.image.resize_image_with_crop_or_pad(
 	image, image_size, image_size)
     image = tf.image.per_image_standardization(image)
-    batch_size = 5000
     example_queue = tf.FIFOQueue(
-        3 * 5000,
+        3 * batch_size,
         dtypes=[tf.float32, tf.int32],
         shapes=[[image_size, image_size, depth], [1]])
     num_threads = 1
