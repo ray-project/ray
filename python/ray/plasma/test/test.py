@@ -721,50 +721,6 @@ class TestPlasmaManager(unittest.TestCase):
       assert_get_object_equal(self, self.client1, self.client2, object_id2,
                               memory_buffer=memory_buffer2, metadata=metadata2)
 
-  def test_illegal_put(self):
-    """
-    Test doing a put at the same object ID, but with different object data. The
-    first put should succeed. The second put should cause the plasma manager to
-    exit with a fatal error.
-    """
-    if USE_VALGRIND:
-      # Don't run this test when we are using valgrind because when processes
-      # die without freeing up their state, valgrind complains.
-      return
-    # Create and seal the first object.
-    length = 1000
-    object_id = random_object_id()
-    memory_buffer1 = self.client1.create(object_id, length)
-    for i in range(length):
-      memory_buffer1[i] = chr(i % 256)
-    self.client1.seal(object_id)
-    # Create and seal the second object. It has all the same data as the first
-    # object, with one bit flipped.
-    memory_buffer2 = self.client2.create(object_id, length)
-    for i in range(length):
-      j = i
-      if j == 0:
-        j += 1
-      memory_buffer2[i] = chr(j % 256)
-    self.client2.seal(object_id)
-    # Make sure that one of the plasma managers exited (the second one to call
-    # RAY.OBJECT_TABLE_ADD should have exited). In the vast majority of cases,
-    # this should be p5. However, on Travis, it is frequently p4.
-    time_left = 100
-    while time_left > 0:
-      if self.p5.poll() != None:
-        self.processes_to_kill.remove(self.p5)
-        break
-      if self.p4.poll() != None:
-        self.processes_to_kill.remove(self.p4)
-        break
-      time_left -= 0.1
-      time.sleep(0.1)
-
-    print("Time waiting for plasma manager to fail = {:.2}".format(100 - time_left))
-    # Check that exactly one of the plasma managers has died.
-    self.assertEqual([self.p5.poll(), self.p4.poll()].count(None), 1)
-
   def test_illegal_functionality(self):
     # Create an object id string.
     object_id = random_object_id()

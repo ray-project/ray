@@ -172,7 +172,7 @@ TEST lookup_timeout_test(void) {
 const char *add_timeout_context = "add_timeout";
 int add_failed = 0;
 
-void add_done_callback(ObjectID object_id, void *user_context) {
+void add_done_callback(ObjectID object_id, bool success, void *user_context) {
   /* The done callback should not be called. */
   CHECK(0);
 }
@@ -305,7 +305,8 @@ void add_lookup_done_callback(ObjectID object_id,
   lookup_retry_succeeded = 1;
 }
 
-void add_lookup_callback(ObjectID object_id, void *user_context) {
+void add_lookup_callback(ObjectID object_id, bool success, void *user_context) {
+  CHECK(success);
   DBHandle *db = (DBHandle *) user_context;
   RetryInfo retry = {
       .num_retries = 5,
@@ -353,7 +354,10 @@ void add_remove_lookup_done_callback(ObjectID object_id,
   lookup_retry_succeeded = 1;
 }
 
-void add_remove_lookup_callback(ObjectID object_id, void *user_context) {
+void add_remove_lookup_callback(ObjectID object_id,
+                                bool success,
+                                void *user_context) {
+  CHECK(success);
   DBHandle *db = (DBHandle *) user_context;
   RetryInfo retry = {
       .num_retries = 5,
@@ -364,7 +368,8 @@ void add_remove_lookup_callback(ObjectID object_id, void *user_context) {
                       (void *) lookup_retry_context);
 }
 
-void add_remove_callback(ObjectID object_id, void *user_context) {
+void add_remove_callback(ObjectID object_id, bool success, void *user_context) {
+  CHECK(success);
   DBHandle *db = (DBHandle *) user_context;
   RetryInfo retry = {
       .num_retries = 5,
@@ -482,7 +487,9 @@ void add_late_fail_callback(UniqueID id, void *user_context, void *user_data) {
   add_late_failed = 1;
 }
 
-void add_late_done_callback(ObjectID object_id, void *user_context) {
+void add_late_done_callback(ObjectID object_id,
+                            bool success,
+                            void *user_context) {
   /* This function should never be called. */
   CHECK(0);
 }

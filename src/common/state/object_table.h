@@ -51,6 +51,7 @@ void object_table_lookup(DBHandle *db_handle,
 
 /* Callback called when the object add/remove operation completes. */
 typedef void (*object_table_done_callback)(ObjectID object_id,
+                                           bool success,
                                            void *user_context);
 
 /**

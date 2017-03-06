@@ -46,6 +46,7 @@ add_library(common STATIC
   state/db_client_table.cc
   state/actor_notification_table.cc
   state/local_scheduler_table.cc
+  state/error_table.cc
   thirdparty/ae/ae.c
   thirdparty/sha256.c)
 

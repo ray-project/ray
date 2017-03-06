@@ -294,6 +294,63 @@ class ReconstructionTests(unittest.TestCase):
       value = ray.get(args[i])
       self.assertEqual(value[0], i)
 
+  def testNondeterministicTask(self):
+    # Define the size of one task's return argument so that the combined sum of
+    # all objects' sizes is at least twice the plasma stores' combined allotted
+    # memory.
+    num_objects = 1000
+    size = self.plasma_store_memory * 2 // (num_objects * 8)
+
+    # Define a nondeterministic remote task with no dependencies, which returns
+    # a random numpy array of the given size. This task should produce an error
+    # on the driver if it is ever reexecuted.
+    @ray.remote
+    def foo(i, size):
+      array = np.random.rand(size)
+      array[0] = i
+      return array
+
+    # Define a deterministic remote task with no dependencies, which returns a
+    # numpy array of zeros of the given size.
+    @ray.remote
+    def bar(i, size):
+      array = np.zeros(size)
+      array[0] = i
+      return array
+
+    # Launch num_objects instances, half deterministic and half
+    # nondeterministic.
+    args = []
+    for i in range(num_objects):
+      if i % 2 == 0:
+        args.append(foo.remote(i, size))
+      else:
+        args.append(bar.remote(i, size))
+
+    # Get each value to force each task to finish. After some number of gets,
+    # old values should be evicted.
+    for i in range(num_objects):
+      value = ray.get(args[i])
+      self.assertEqual(value[0], i)
+    # Get each value again to force reconstruction.
+    for i in range(num_objects):
+      value = ray.get(args[i])
+      self.assertEqual(value[0], i)
+
+    # Wait for errors from all the nondeterministic tasks.
+    time_left = 100
+    while time_left > 0:
+      errors = ray.error_info()
+      if len(errors) >= num_objects / 2:
+        break
+      time_left -= 0.1
+      time.sleep(0.1)
+
+    # Make sure all the errors have the correct type.
+    self.assertTrue(all(error[b"type"] == b"object_hash_mismatch" for error in errors))
+    # Make sure all the errors have the correct function name.
+    self.assertTrue(all(error[b"data"] == b"__main__.foo" for error in errors))
+
 class ReconstructionTestsMultinode(ReconstructionTests):
 
   # Run the same tests as the single-node suite, but with 4 local schedulers,
