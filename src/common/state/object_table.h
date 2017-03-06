@@ -49,7 +49,16 @@ void object_table_lookup(DBHandle *db_handle,
  *  ==== Add object call and callback ====
  */
 
-/* Callback called when the object add/remove operation completes. */
+/**
+ * Callback called when the object add/remove operation completes.
+ *
+ * @param object_id The ID of the object that was added or removed.
+ * @param success Whether the operation was successful or not. If this is false
+ *        and the operation was an addition, the object was added, but there
+ *        was a hash mismatch.
+ * @param user_context The user context that was passed into the add/remove
+ *        call.
+ */
 typedef void (*object_table_done_callback)(ObjectID object_id,
                                            bool success,
                                            void *user_context);
