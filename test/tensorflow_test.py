@@ -19,30 +19,48 @@ def make_linear_network(w_name=None, b_name=None):
   # Return the loss and weight initializer.
   return tf.reduce_mean(tf.square(y - y_data)), tf.global_variables_initializer(), x_data, y_data
 
-def net_vars_initializer():
-  # Uses a separate graph for each network.
-  with tf.Graph().as_default():
-    # Create the network.
-    loss, init, _, _ = make_linear_network()
-    sess = tf.Session()
-    # Additional code for setting and getting the weights.
-    variables = ray.experimental.TensorFlowVariables(loss, sess)
-  # Return all of the data needed to use the network.
-  return variables, init, sess
+class NetActor(object):
 
-def net_vars_reinitializer(net_vars):
-  return net_vars
+  def __init__(self):
+    # Uses a separate graph for each network.
+    with tf.Graph().as_default():
+      # Create the network.
+      loss, init, _, _ = make_linear_network()
+      sess = tf.Session()
+      # Additional code for setting and getting the weights.
+      variables = ray.experimental.TensorFlowVariables(loss, sess)
+    # Return all of the data needed to use the network.
+    self.values = [variables, init, sess]
+    sess.run(init)
 
-def train_vars_initializer():
-  # Almost the same as above, but now returns the placeholders and gradient.
-  with tf.Graph().as_default():
-    loss, init, x_data, y_data = make_linear_network()
-    sess = tf.Session()
-    variables = ray.experimental.TensorFlowVariables(loss, sess)
-    optimizer = tf.train.GradientDescentOptimizer(0.9)
-    grads = optimizer.compute_gradients(loss)
-    train = optimizer.apply_gradients(grads)
-  return loss, variables, init, sess, grads, train, [x_data, y_data]
+  def set_and_get_weights(self, weights):
+    self.values[0].set_weights(weights)
+    return self.values[0].get_weights()
+
+  def get_weights(self):
+    return self.values[0].get_weights()
+
+class TrainActor(object):
+
+  def __init__(self):
+    # Almost the same as above, but now returns the placeholders and gradient.
+    with tf.Graph().as_default():
+      loss, init, x_data, y_data = make_linear_network()
+      sess = tf.Session()
+      variables = ray.experimental.TensorFlowVariables(loss, sess)
+      optimizer = tf.train.GradientDescentOptimizer(0.9)
+      grads = optimizer.compute_gradients(loss)
+      train = optimizer.apply_gradients(grads)
+    self.values = [loss, variables, init, sess, grads, train, [x_data, y_data]]
+    sess.run(init)
+
+  def training_step(self, weights):
+    _, variables, _, sess, grads, _, placeholders = self.values
+    variables.set_weights(weights)
+    return sess.run([grad[0] for grad in grads], feed_dict=dict(zip(placeholders, [[1]*100, [2]*100])))
+
+  def get_weights(self):
+    return self.values[1].get_weights()
 
 class TensorFlowTest(unittest.TestCase):
 
@@ -92,19 +110,15 @@ class TensorFlowTest(unittest.TestCase):
   def testVariableNameCollision(self):
     ray.init(num_workers=2)
 
-    ray.env.net1 = ray.EnvironmentVariable(net_vars_initializer, net_vars_reinitializer)
-    ray.env.net2 = ray.EnvironmentVariable(net_vars_initializer, net_vars_reinitializer)
+    net1 = NetActor()
+    net2 = NetActor()
 
-    net_vars1, init1, sess1 = ray.env.net1
-    net_vars2, init2, sess2 = ray.env.net2
-
-    # Initialize the networks
-    sess1.run(init1)
-    sess2.run(init2)
+    net_vars1, init1, sess1 = net1.values
+    net_vars2, init2, sess2 = net2.values
 
     # This is checking that the variable names of the two nets are the same,
     # i.e. that the names in the weight dictionaries are the same
-    ray.env.net1[0].set_weights(ray.env.net2[0].get_weights())
+    net1.values[0].set_weights(net2.values[0].get_weights())
 
     ray.worker.cleanup()
 
@@ -113,37 +127,25 @@ class TensorFlowTest(unittest.TestCase):
   def testNetworksIndependent(self):
     # Note we use only one worker to ensure that all of the remote functions run on the same worker.
     ray.init(num_workers=1)
-
-    ray.env.net1 = ray.EnvironmentVariable(net_vars_initializer, net_vars_reinitializer)
-    ray.env.net2 = ray.EnvironmentVariable(net_vars_initializer, net_vars_reinitializer)
-
-    net_vars1, init1, sess1 = ray.env.net1
-    net_vars2, init2, sess2 = ray.env.net2
-
-    # Initialize the networks
-    sess1.run(init1)
-    sess2.run(init2)
-
-    @ray.remote
-    def set_and_get_weights(weights1, weights2):
-      ray.env.net1[0].set_weights(weights1)
-      ray.env.net2[0].set_weights(weights2)
-      return ray.env.net1[0].get_weights(), ray.env.net2[0].get_weights()
+    net1 = NetActor()
+    net2 = NetActor()
 
     # Make sure the two networks have different weights. TODO(rkn): Note that
     # equality comparisons of numpy arrays normally does not work. This only
     # works because at the moment they have size 1.
-    weights1 = net_vars1.get_weights()
-    weights2 = net_vars2.get_weights()
+    weights1 = net1.get_weights()
+    weights2 = net2.get_weights()
     self.assertNotEqual(weights1, weights2)
 
     # Set the weights and get the weights, and make sure they are unchanged.
-    new_weights1, new_weights2 = ray.get(set_and_get_weights.remote(weights1, weights2))
+    new_weights1 = net1.set_and_get_weights(weights1)
+    new_weights2 = net2.set_and_get_weights(weights2)
     self.assertEqual(weights1, new_weights1)
     self.assertEqual(weights2, new_weights2)
 
     # Swap the weights.
-    new_weights2, new_weights1 = ray.get(set_and_get_weights.remote(weights2, weights1))
+    new_weights1 = net2.set_and_get_weights(weights1)
+    new_weights2 = net1.set_and_get_weights(weights2)
     self.assertEqual(weights1, new_weights1)
     self.assertEqual(weights2, new_weights2)
 
@@ -160,20 +162,10 @@ class TensorFlowTest(unittest.TestCase):
     net_vars1 = ray.experimental.TensorFlowVariables(loss1, sess1)
     sess1.run(init1)
 
-    # Create a network on the driver via an environment variable.
-    ray.env.net = ray.EnvironmentVariable(net_vars_initializer, net_vars_reinitializer)
+    net2 = ray.actor(NetActor)()
+    weights2 = ray.get(net2.get_weights())
 
-    net_vars2, init2, sess2 = ray.env.net
-    sess2.run(init2)
-
-    weights2 = net_vars2.get_weights()
-
-    @ray.remote
-    def set_and_get_weights(weights):
-      ray.env.net[0].set_weights(weights)
-      return ray.env.net[0].get_weights()
-
-    new_weights2 = ray.get(set_and_get_weights.remote(net_vars2.get_weights()))
+    new_weights2 = ray.get(net2.set_and_get_weights(net2.get_weights()))
     self.assertEqual(weights2, new_weights2)
 
     ray.worker.cleanup()
@@ -197,18 +189,8 @@ class TensorFlowTest(unittest.TestCase):
   def testRemoteTrainingStep(self):
     ray.init(num_workers=1)
 
-    ray.env.net = ray.EnvironmentVariable(train_vars_initializer, net_vars_reinitializer)
-
-    @ray.remote
-    def training_step(weights):
-      _, variables, _, sess, grads, _, placeholders = ray.env.net
-      variables.set_weights(weights)
-      return sess.run([grad[0] for grad in grads], feed_dict=dict(zip(placeholders, [[1]*100]*2)))
-
-    _, variables, init, sess, _, _, _ = ray.env.net
-
-    sess.run(init)
-    ray.get(training_step.remote(variables.get_weights()))
+    net = ray.actor(TrainActor)()
+    ray.get(net.training_step(net.get_weights()))
 
     ray.worker.cleanup()
 
@@ -216,21 +198,13 @@ class TensorFlowTest(unittest.TestCase):
   def testRemoteTrainingLoss(self):
     ray.init(num_workers=2)
 
-    ray.env.net = ray.EnvironmentVariable(train_vars_initializer, net_vars_reinitializer)
+    net = ray.actor(TrainActor)()
+    loss, variables, _, sess, grads, train, placeholders = TrainActor().values
 
-    @ray.remote
-    def training_step(weights):
-      _, variables, _, sess, grads, _, placeholders = ray.env.net
-      variables.set_weights(weights)
-      return sess.run([grad[0] for grad in grads], feed_dict=dict(zip(placeholders, [[1]*100, [2]*100])))
-
-    loss, variables, init, sess, grads, train, placeholders = ray.env.net
-
-    sess.run(init)
     before_acc = sess.run(loss, feed_dict=dict(zip(placeholders, [[2]*100, [4]*100])))
 
     for _ in range(3):
-      gradients_list = ray.get([training_step.remote(variables.get_weights()) for _ in range(2)])
+      gradients_list = ray.get([net.training_step(variables.get_weights()) for _ in range(2)])
       mean_grads = [sum([gradients[i] for gradients in gradients_list]) / len(gradients_list) for i in range(len(gradients_list[0]))]
       feed_dict = {grad[0]: mean_grad for (grad, mean_grad) in zip(grads, mean_grads)}
       sess.run(train, feed_dict=feed_dict)
@@ -251,24 +225,6 @@ class TensorFlowTest(unittest.TestCase):
     # Tests if all variables are properly retrieved, 2 variables and 2 momentum
     # variables.
     self.assertEqual(len(net_vars.variables.items()), 4)
-
-    ray.worker.cleanup()
-
-  def testRemoteTrainingStep(self):
-    ray.init(num_workers=1)
-
-    ray.env.net = ray.EnvironmentVariable(train_vars_initializer, net_vars_reinitializer)
-
-    @ray.remote
-    def training_step(weights):
-      variables, _, sess, grad, placeholders = ray.env.net
-      variables.set_weights(weights)
-      return sess.run(grad, feed_dict=dict(zip(placeholders, [[1]*100]*2)))
-  
-    variables, init, sess, _, _ = ray.env.net
-
-    sess.run(init)
-    ray.get(training_step.remote(variables.get_weights()))
 
     ray.worker.cleanup()
 
