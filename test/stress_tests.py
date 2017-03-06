@@ -346,6 +346,8 @@ class ReconstructionTests(unittest.TestCase):
       time_left -= 0.1
       time.sleep(0.1)
 
+    # Make sure that enough errors came through.
+    self.assertTrue(len(errors) >= num_objects / 2)
     # Make sure all the errors have the correct type.
     self.assertTrue(all(error[b"type"] == b"object_hash_mismatch" for error in errors))
     # Make sure all the errors have the correct function name.
