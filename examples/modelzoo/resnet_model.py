@@ -116,7 +116,7 @@ class ResNet(object):
   def _build_train_op(self):
     """Build training specific ops for the graph."""
     rate = self.hps.lrn_rate
-    gpus = self.hps.gpus
+    gpus = self.hps.gpus if self.hps.gpus != 0 else 1
     # Learning rate schedule is dependent on the number of gpus.
     boundaries = [math.floor(20000 * i / math.sqrt(gpus)) for i in range(2, 5)]
     values = [0.1, 0.01, 0.001, 0.0001]
