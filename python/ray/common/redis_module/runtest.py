@@ -13,6 +13,7 @@ import ray.services
 
 # Import flatbuffers bindings.
 from ray.core.generated.SubscribeToNotificationsReply import SubscribeToNotificationsReply
+from ray.core.generated.SubscribeToTasksReply import SubscribeToTasksReply
 
 OBJECT_INFO_PREFIX = "OI:"
 OBJECT_LOCATION_PREFIX = "OL:"
@@ -313,13 +314,13 @@ class TestGlobalStateStore(unittest.TestCase):
 
   def testTaskTableSubscribe(self):
     scheduling_state = 1
-    node_id = "node_id"
+    local_scheduler_id = "local_scheduler_id"
     # Subscribe to the task table.
     p = self.redis.pubsub()
     p.psubscribe("{prefix}*:*".format(prefix=TASK_PREFIX))
     p.psubscribe("{prefix}*:{state: >2}".format(prefix=TASK_PREFIX, state=scheduling_state))
-    p.psubscribe("{prefix}{node}:*".format(prefix=TASK_PREFIX, node=node_id))
-    task_args = [b"task_id", scheduling_state, node_id.encode("ascii"), b"task_spec"]
+    p.psubscribe("{prefix}{local_scheduler_id}:*".format(prefix=TASK_PREFIX, local_scheduler_id=local_scheduler_id))
+    task_args = [b"task_id", scheduling_state, local_scheduler_id.encode("ascii"), b"task_spec"]
     self.redis.execute_command("RAY.TASK_TABLE_ADD", *task_args)
     # Receive the acknowledgement message.
     self.assertEqual(get_next_message(p)["data"], 1)
@@ -327,10 +328,13 @@ class TestGlobalStateStore(unittest.TestCase):
     self.assertEqual(get_next_message(p)["data"], 3)
     # Receive the actual data.
     for i in range(3):
-        message = get_next_message(p)["data"]
-        message = message.split()
-        message[1] = int(message[1])
-        self.assertEqual(message, task_args)
+      message = get_next_message(p)["data"]
+      # Check that the notification object is correct.
+      notification_object = SubscribeToTasksReply.GetRootAsSubscribeToTasksReply(message, 0)
+      self.assertEqual(notification_object.TaskId(), b"task_id")
+      self.assertEqual(notification_object.State(), scheduling_state)
+      self.assertEqual(notification_object.LocalSchedulerId(), local_scheduler_id.encode("ascii"))
+      self.assertEqual(notification_object.TaskSpec(), b"task_spec")
 
 if __name__ == "__main__":
   unittest.main(verbosity=2)

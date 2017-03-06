@@ -807,47 +807,6 @@ void redis_task_table_test_and_update(TableCallbackData *callback_data) {
   }
 }
 
-/* The format of the payload is described in ray_redis_module.cc and is
- * "<task ID> <state> <local scheduler ID> <task specification>". TODO(rkn):
- * Make this code nicer. */
-void parse_task_table_subscribe_callback(char *payload,
-                                         int length,
-                                         TaskID *task_id,
-                                         int *state,
-                                         DBClientID *local_scheduler_id,
-                                         TaskSpec **spec,
-                                         int64_t *task_spec_size) {
-  /* Note that the state is padded with spaces to consist of precisely two
-   * characters. */
-  int task_spec_payload_size =
-      length - sizeof(*task_id) - 1 - 2 - 1 - sizeof(*local_scheduler_id) - 1;
-  int offset = 0;
-  /* Read in the task ID. */
-  memcpy(task_id, &payload[offset], sizeof(*task_id));
-  offset += sizeof(*task_id);
-  /* Read in a space. */
-  const char *space_str = (const char *) " ";
-  CHECK(memcmp(space_str, &payload[offset], strlen(space_str)) == 0);
-  offset += strlen(space_str);
-  /* Read in the state, which is an integer left-padded with spaces to two
-   * characters. */
-  CHECK(sscanf(&payload[offset], "%2d", state) == 1);
-  offset += 2;
-  /* Read in a space. */
-  CHECK(memcmp(space_str, &payload[offset], strlen(space_str)) == 0);
-  offset += strlen(space_str);
-  /* Read in the local scheduler ID. */
-  memcpy(local_scheduler_id, &payload[offset], sizeof(*local_scheduler_id));
-  offset += sizeof(*local_scheduler_id);
-  /* Read in a space. */
-  CHECK(memcmp(space_str, &payload[offset], strlen(space_str)) == 0);
-  offset += strlen(space_str);
-  /* Read in the task spec. */
-  *spec = (TaskSpec *) malloc(task_spec_payload_size);
-  memcpy(*spec, &payload[offset], task_spec_payload_size);
-  *task_spec_size = task_spec_payload_size;
-}
-
 void redis_task_table_subscribe_callback(redisAsyncContext *c,
                                          void *r,
                                          void *privdata) {
@@ -855,7 +814,7 @@ void redis_task_table_subscribe_callback(redisAsyncContext *c,
   redisReply *reply = (redisReply *) r;
 
   CHECK(reply->type == REDIS_REPLY_ARRAY);
-  /* The number of elements is 3 for a reply to SUBSCRIBE, and 4  for a reply to
+  /* The number of elements is 3 for a reply to SUBSCRIBE, and 4 for a reply to
    * PSUBSCRIBE. */
   CHECKM(reply->elements == 3 || reply->elements == 4, "reply->elements is %zu",
          reply->elements);
@@ -867,20 +826,22 @@ void redis_task_table_subscribe_callback(redisAsyncContext *c,
   if (strcmp(message_type->str, "message") == 0 ||
       strcmp(message_type->str, "pmessage") == 0) {
     /* Handle a task table event. Parse the payload and call the callback. */
+    auto message = flatbuffers::GetRoot<SubscribeToTasksReply>(payload->str);
+    /* Extract the task ID. */
+    TaskID task_id = from_flatbuf(message->task_id());
+    /* Extract the scheduling state. */
+    int64_t state = message->state();
+    /* Extract the local scheduler ID. */
+    DBClientID local_scheduler_id = from_flatbuf(message->local_scheduler_id());
+    /* Extract the task spec. */
+    TaskSpec *spec = (TaskSpec *) message->task_spec()->data();
+    int64_t task_spec_size = message->task_spec()->size();
+    /* Create a task. */
+    Task *task = Task_alloc(spec, task_spec_size, state, local_scheduler_id);
+
+    /* Call the subscribe callback if there is one. */
     TaskTableSubscribeData *data =
         (TaskTableSubscribeData *) callback_data->data;
-    /* Read out the information from the payload. */
-    TaskID task_id;
-    int state;
-    DBClientID local_scheduler_id;
-    TaskSpec *spec;
-    int64_t task_spec_size;
-    parse_task_table_subscribe_callback(payload->str, payload->len, &task_id,
-                                        &state, &local_scheduler_id, &spec,
-                                        &task_spec_size);
-    Task *task = Task_alloc(spec, task_spec_size, state, local_scheduler_id);
-    TaskSpec_free(spec);
-    /* Call the subscribe callback if there is one. */
     if (data->subscribe_callback != NULL) {
       data->subscribe_callback(task, data->subscribe_context);
     }

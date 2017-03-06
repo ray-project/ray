@@ -49,7 +49,7 @@ table TaskInfo {
   required_resources: [double];
 }
 
-root_type TaskInfo;
+//root_type TaskInfo;
 
 table SubscribeToNotificationsReply {
   // The object ID of the object that the notification is about.
@@ -61,3 +61,17 @@ table SubscribeToNotificationsReply {
 }
 
 root_type SubscribeToNotificationsReply;
+
+table SubscribeToTasksReply {
+  // The task ID of the task that the message is about.
+  task_id: string;
+  // The state of the task. This is encoded as a bit mask of scheduling_state
+  // enum values in task.h.
+  state: long;
+  // A local scheduler ID.
+  local_scheduler_id: string;
+  // A string of bytes representing the task specification.
+  task_spec: string;
+}
+
+root_type SubscribeToTasksReply;
