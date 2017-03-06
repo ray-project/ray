@@ -14,8 +14,8 @@ tf.app.flags.DEFINE_string('train_data_path', '',
                            'Filepattern for training data.')
 tf.app.flags.DEFINE_string('eval_data_path', '',
                            'Filepattern for eval data')
-tf.app.flags.DEFINE_string('num_gpus', 1, 'Number of gpus to run with')
-
+tf.app.flags.DEFINE_string('num_gpus', 0, 'Number of gpus to run with')
+use_gpu = 1 if int(FLAGS.num_gpus) > 0 else 0
 @ray.remote(num_return_vals=4)
 def get_data(path, size):
  os.environ["CUDA_VISIBLE_DEVICES"] = ''
@@ -29,7 +29,7 @@ def get_data(path, size):
   sess.close()
   return images[:int(size/3), :], images[int(size/3) : int(2*size/3), :], images[int(2*size/3):, :], labels
 
-@ray.actor(num_gpus=0)
+@ray.actor(num_gpus=use_gpu)
 class ResNetTrainActor(object):
   def __init__(self, data, gpus):
     if gpus > 0:
@@ -137,7 +137,7 @@ def train():
   step = 0
   weight_id = train_actors[0].get_weights()
   acc_id = test_actor.accuracy(weight_id)
-  if gpus > 0:
+  if gpus == 0:
     gpus = 1
   while True:
     with open("results.txt", "a") as results:
