@@ -28,8 +28,7 @@ static const char *error_messages[] = {
     "A nondeterministic task was reexecuted."};
 
 /**
- * Send a heartbeat to all subscriers to the local scheduler table. This
- * heartbeat contains some information about the load on the local scheduler.
+ * Push an error to the given Python driver.
  *
  * @param db_handle Database handle.
  * @param driver_id The ID of the Python driver to push the error
