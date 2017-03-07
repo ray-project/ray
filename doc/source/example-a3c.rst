@@ -28,27 +28,54 @@ You can view the `code for this example`_.
 
 .. _`code for this example`: https://github.com/richardliaw/ray/tree/master/examples/a3c
 
+Reinforcement Learning
+----------------------
 
-Code Walkthrough
--------------
+Reinforcement Learning is an area of machine learning concerned with how an agent should act
+in an environment, directing efforts to maximize some form of cumulative reward. 
+Typically, an agent will take in an observation and take an action given its observation. 
+The action will change the state of the environment and will provide some numerical reward 
+(or penalty) to the agent. The agent will then take in another observation as a result 
+and take another action. The mapping from state to action is a policy, and in deep reinforcement
+learning, this policy is often represented with a deep neural network.
 
-There are two main parts to the A3C implementation: the driver and the 
-worker. 
+Simulations are often used as the environment, effectively allowing different processes
+to each have their own instance of simulation and allow for a larger stream of experience.
+
+In order to improve the policy, a gradient is taken with respect to the actions and states
+observed. In our A3C implementation, each worker, implemented as an actor object,
+is continuously simulating the environment. The driver will trigger a gradient calculation
+on the worker, which the worker will then send back to the driver. The driver will then add
+the gradients and then trigger the gradient calculation again. 
+
+There are two main parts to the implementation - the driver and the worker.
+
+
+Driver Code Walkthrough
+-----------------------
 
 .. code-block:: python
 
   import numpy as np
   import ray
 
-  @ray.remote
-  def train_cnn_and_compute_accuracy(hyperparameters,
-                                     train_images,
-                                     train_labels,
-                                     validation_images,
-                                     validation_labels):
-    # Construct a deep network, train it, and return the accuracy on the
-    # validation data.
-    return np.random.uniform(0, 1)
+  def train(num_workers, env_name="PongDeterministic-v3"):
+    env = create_env(env_name, None, None)
+    policy = LSTMPolicy(env.observation_space.shape, env.action_space.n, 0)
+    agents = [Runner(env_name, i) for i in range(num_workers)]
+    parameters = policy.get_weights()
+    gradient_list = [agent.compute_gradient(parameters) for agent in agents]
+    steps = 0
+    obs = 0
+    while True:
+      done_id, gradient_list = ray.wait(gradient_list)
+      gradient, info = ray.get(done_id)[0]
+      policy.model_update(gradient)
+      parameters = policy.get_weights()
+      steps += 1
+      obs += info["size"]
+      gradient_list.extend([agents[info["id"]].compute_gradient(parameters)])
+    return policy
 
 Basic random search
 -------------------
@@ -107,44 +134,5 @@ hyperparameters worked the best. Note that in the above example, the for loop
 will run instantaneously and the program will block in the call to ``ray.get``,
 which will wait until all of the experiments have finished.
 
-Processing results as they become available
--------------------------------------------
-
-One problem with the above approach is that you have to wait for all of the
-experiments to finish before you can process the results. Instead, you may want
-to process the results as they become available, perhaps in order to adaptively
-choose new experiments to run, or perhaps simply so you know how well the
-experiments are doing. To process the results as they become available, we can
-use the ``ray.wait`` primitive.
-
-The most simple usage is the following. This example is implemented in more
-detail in driver.py_.
-
-.. code-block:: python
-
-  # Launch some experiments.
-  remaining_ids = []
-  for hyperparameters in hyperparameter_configurations:
-    remaining_ids.append(train_cnn_and_compute_accuracy.remote(hyperparameters,
-                                                               train_images,
-                                                               train_labels,
-                                                               validation_images,
-                                                               validation_labels))
-
-  # Whenever a new experiment finishes, print the value and start a new
-  # experiment.
-  for i in range(100):
-    ready_ids, remaining_ids = ray.wait(remaining_ids, num_returns=1)
-    accuracy = ray.get(ready_ids[0])
-    print("Accuracy is {}".format(accuracy))
-    # Start a new experiment.
-    new_hyperparameters = generate_hyperparameters()
-    remaining_ids.append(train_cnn_and_compute_accuracy.remote(new_hyperparameters,
-                                                               train_images,
-                                                               train_labels,
-                                                               validation_images,
-                                                               validation_labels))
-
-.. _driver.py: https://github.com/ray-project/ray/blob/master/examples/hyperopt/driver.py
-
-
+Deviations from the original A3C implementation
+-----------------------------------------------
