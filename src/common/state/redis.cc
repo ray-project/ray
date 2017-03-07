@@ -996,8 +996,8 @@ void redis_local_scheduler_table_subscribe_callback(redisAsyncContext *c,
   if (strcmp(message_type->str, "message") == 0) {
     /* Handle a local scheduler heartbeat. Parse the payload and call the
      * subscribe callback. */
-    auto message = flatbuffers::GetRoot<LocalSchedulerInfoMessage>(
-        reply->element[2]->str);
+    auto message =
+        flatbuffers::GetRoot<LocalSchedulerInfoMessage>(reply->element[2]->str);
 
     /* Extract the client ID. */
     DBClientID client_id = from_flatbuf(message->db_client_id());
@@ -1006,10 +1006,10 @@ void redis_local_scheduler_table_subscribe_callback(redisAsyncContext *c,
     info.total_num_workers = message->total_num_workers();
     info.task_queue_length = message->task_queue_length();
     info.available_workers = message->available_workers();
-    for (int i = 0; i < ResourceIndex_MAX; ++i){
+    for (int i = 0; i < ResourceIndex_MAX; ++i) {
       info.static_resources[i] = message->static_resources()->Get(i);
     }
-    for (int i = 0; i < ResourceIndex_MAX; ++i){
+    for (int i = 0; i < ResourceIndex_MAX; ++i) {
       info.dynamic_resources[i] = message->dynamic_resources()->Get(i);
     }
 

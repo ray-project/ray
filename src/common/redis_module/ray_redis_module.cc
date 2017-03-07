@@ -381,16 +381,13 @@ bool PublishObjectNotification(RedisModuleCtx *ctx,
       fbb.CreateVector(manager_ids));
   fbb.Finish(message);
 
-  //FREE SOME STRINGS!!
-
   /* Publish the notification to the clients notification channel.
    * TODO(rkn): These notifications could be batched together. */
   RedisModuleString *channel_name =
       RedisString_Format(ctx, "%s%S", OBJECT_CHANNEL_PREFIX, client_id);
 
-  RedisModuleString *payload =
-      RedisModule_CreateString(ctx, (const char *) fbb.GetBufferPointer(),
-                               fbb.GetSize());
+  RedisModuleString *payload = RedisModule_CreateString(
+      ctx, (const char *) fbb.GetBufferPointer(), fbb.GetSize());
 
   RedisModuleCallReply *reply;
   reply = RedisModule_Call(ctx, "PUBLISH", "ss", channel_name, payload);
