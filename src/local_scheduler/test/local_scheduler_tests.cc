@@ -351,7 +351,9 @@ TaskSpec *object_reconstruction_suppression_spec;
 int64_t object_reconstruction_suppression_size;
 
 void object_reconstruction_suppression_callback(ObjectID object_id,
+                                                bool success,
                                                 void *user_context) {
+  CHECK(success);
   /* Submit the task after adding the object to the object table. */
   LocalSchedulerConnection *worker = (LocalSchedulerConnection *) user_context;
   local_scheduler_submit(worker, object_reconstruction_suppression_spec,

@@ -388,9 +388,9 @@ bool PublishObjectNotification(RedisModuleCtx *ctx,
  * @param hash_string A string which is a hash of the object.
  * @param manager A string which represents the manager ID of the plasma manager
  *        that has the object.
- * @return OK if the operation was successful and an error with string
- *         "hash mismatch" if the same object_id is already present with a
- *         different hash value.
+ * @return OK if the operation was successful. If the same object_id is already
+ *         present with a different hash value, the entry is still added, but
+ *         an error with string "hash mismatch" is returned.
  */
 int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
                                 RedisModuleString **argv,
@@ -416,6 +416,7 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
                         REDISMODULE_READ | REDISMODULE_WRITE);
 
   /* Check if this object was already registered and if the hashes agree. */
+  bool hash_mismatch = false;
   if (RedisModule_KeyType(key) != REDISMODULE_KEYTYPE_EMPTY) {
     RedisModuleString *existing_hash;
     RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "hash", &existing_hash,
@@ -423,11 +424,9 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
     /* The existing hash may be NULL even if the key is present because a call
      * to RAY.RESULT_TABLE_ADD may have already created the key. */
     if (existing_hash != NULL) {
-      if (RedisModule_StringCompare(existing_hash, new_hash) != 0) {
-        RedisModule_CloseKey(key);
-        RedisModule_FreeString(ctx, existing_hash);
-        return RedisModule_ReplyWithError(ctx, "hash mismatch");
-      }
+      /* Check whether the new hash value matches the old one. If not, we will
+       * later return the "hash mismatch" error. */
+      hash_mismatch = (RedisModule_StringCompare(existing_hash, new_hash) != 0);
       RedisModule_FreeString(ctx, existing_hash);
     }
   }
@@ -493,8 +492,12 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
   }
 
   RedisModule_CloseKey(table_key);
-  RedisModule_ReplyWithSimpleString(ctx, "OK");
-  return REDISMODULE_OK;
+  if (hash_mismatch) {
+    return RedisModule_ReplyWithError(ctx, "hash mismatch");
+  } else {
+    RedisModule_ReplyWithSimpleString(ctx, "OK");
+    return REDISMODULE_OK;
+  }
 }
 
 /**

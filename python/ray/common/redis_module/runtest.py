@@ -65,14 +65,22 @@ class TestGlobalStateStore(unittest.TestCase):
     # Check that Redis returns an error when RAY.OBJECT_TABLE_ADD adds an object
     # ID that is already present with a different hash.
     self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id1")
+    response = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP", "object_id1")
+    self.assertEqual(set(response), {b"manager_id1"})
     with self.assertRaises(redis.ResponseError):
-      self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash2", "manager_id1")
+      self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash2", "manager_id2")
+    # Check that the second manager was added, even though the hash was
+    # mismatched.
+    response = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP", "object_id1")
+    self.assertEqual(set(response), {b"manager_id1", b"manager_id2"})
     # Check that it is fine if we add the same object ID multiple times with the
-    # same hash.
-    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id1")
-    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id1")
-    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash1", "manager_id2")
-    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 2, "hash1", "manager_id2")
+    # most recent hash.
+    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash2", "manager_id1")
+    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash2", "manager_id1")
+    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 1, "hash2", "manager_id2")
+    self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id1", 2, "hash2", "manager_id2")
+    response = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP", "object_id1")
+    self.assertEqual(set(response), {b"manager_id1", b"manager_id2"})
 
   def testObjectTableAddAndLookup(self):
     # Try calling RAY.OBJECT_TABLE_LOOKUP with an object ID that has not been

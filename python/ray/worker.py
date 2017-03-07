@@ -49,6 +49,10 @@ NIL_ACTOR_ID = 20 * b"\xff"
 # fetch the object again.
 GET_TIMEOUT_MILLISECONDS = 1000
 
+# This must be kept in sync with the `error_types` array in
+# common/state/error_table.h.
+OBJECT_HASH_MISMATCH_ERROR_TYPE = b"object_hash_mismatch"
+
 def random_string():
   return np.random.bytes(20)
 
@@ -677,6 +681,12 @@ def error_info(worker=global_worker):
   for error_key in error_keys:
     if error_applies_to_driver(error_key, worker=worker):
       error_contents = worker.redis_client.hgetall(error_key)
+      # If the error is an object hash mismatch, look up the function name for
+      # the nondeterministic task.
+      if error_contents[b"type"] == OBJECT_HASH_MISMATCH_ERROR_TYPE:
+        function_id = error_contents[b"data"]
+        function_name = worker.redis_client.hget("RemoteFunction:{}".format(function_id), "name")
+        error_contents[b"data"] = function_name
       errors.append(error_contents)
 
   return errors
