@@ -724,8 +724,7 @@ int ReplyWithTask(RedisModuleCtx *ctx, RedisModuleString *task_id) {
     }
 
     long long state_integer;
-    if (RedisModule_StringToLongLong(state, &state_integer) !=
-        REDISMODULE_OK) {
+    if (RedisModule_StringToLongLong(state, &state_integer) != REDISMODULE_OK) {
       RedisModule_CloseKey(key);
       RedisModule_FreeString(ctx, state);
       RedisModule_FreeString(ctx, local_scheduler_id);
@@ -842,21 +841,18 @@ int TaskTableWrite(RedisModuleCtx *ctx,
   /* Build the PUBLISH topic and message for task table subscribers. The topic
    * is a string in the format "TASK_PREFIX:<local scheduler ID>:<state>". The
    * message is a serialized SubscribeToTasksReply flatbuffer object. */
-  RedisModuleString *publish_topic =
-      RedisString_Format(ctx, "%s%S:%S", TASK_PREFIX, local_scheduler_id,
-                         formatted_state);
+  RedisModuleString *publish_topic = RedisString_Format(
+      ctx, "%s%S:%S", TASK_PREFIX, local_scheduler_id, formatted_state);
   RedisModule_FreeString(ctx, formatted_state);
 
   /* Construct the flatbuffers object for the payload. */
   flatbuffers::FlatBufferBuilder fbb;
   /* Extract the task ID. */
   size_t task_id_size;
-  const char *task_id_str =
-      RedisModule_StringPtrLen(task_id, &task_id_size);
+  const char *task_id_str = RedisModule_StringPtrLen(task_id, &task_id_size);
   /* Extract the scheduling state. */
   long long state_value;
-  if (RedisModule_StringToLongLong(state, &state_value) !=
-      REDISMODULE_OK) {
+  if (RedisModule_StringToLongLong(state, &state_value) != REDISMODULE_OK) {
     return RedisModule_ReplyWithError(ctx, "scheduling state must be integer");
   }
   /* Extract the local scheduler ID. */
@@ -879,9 +875,8 @@ int TaskTableWrite(RedisModuleCtx *ctx,
       fbb.CreateString(task_spec_str, task_spec_size));
   fbb.Finish(message);
 
-  RedisModuleString *publish_message =
-      RedisModule_CreateString(ctx, (const char *) fbb.GetBufferPointer(),
-                               fbb.GetSize());
+  RedisModuleString *publish_message = RedisModule_CreateString(
+      ctx, (const char *) fbb.GetBufferPointer(), fbb.GetSize());
 
   RedisModuleCallReply *reply =
       RedisModule_Call(ctx, "PUBLISH", "ss", publish_topic, publish_message);
