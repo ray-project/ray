@@ -2,7 +2,7 @@ ResNet
 ======
 
 This code adapts the `TensorFlow ResNet example`_ to do data parallel training
-across multiple GPUs using Ray.
+across multiple GPUs using Ray. View the `code for this example`_.
 
 To run the example, you will need to install `TensorFlow with GPU support`_ (at
 least version ``1.0.0``). Then you can run the example as follows.
@@ -69,3 +69,4 @@ object store.
 
 .. _`TensorFlow ResNet example`: https://github.com/tensorflow/models/tree/master/resnet
 .. _`TensorFlow with GPU support`: https://www.tensorflow.org/install/
+.. _`code for this example`: https://github.com/ray-project/ray/tree/master/examples/resnet
