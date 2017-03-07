@@ -50,4 +50,3 @@ class ProximalPolicyLoss(object):
 
   def loss(self):
     return self.loss
-                                                             self.prev_logits: prev_logits})

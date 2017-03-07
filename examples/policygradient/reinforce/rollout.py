@@ -55,7 +55,7 @@ def add_advantage_values(trajectory, gamma, lam, reward_filter):
   advantages = np.zeros_like(rewards)
   last_advantage = np.zeros(rewards.shape[1], dtype="float32")
 
-  for t in reversed(range(len(filt_rewards))):
+  for t in reversed(range(len(rewards))):
     delta = rewards[t,:] * (1 - dones[t,:])
     last_advantage = delta + gamma * lam * last_advantage
     advantages[t,:] = last_advantage
