@@ -1,7 +1,18 @@
 Asynchronous Advantage Actor Critic (A3C)
 ===========================
 
-This document provides a walkthrough of the hyperparameter optimization example.
+This document provides a walkthrough of an implementation of  `A3C`_, 
+a state-of-the-art reinforcement learning algorithm. 
+
+.. _`A3C`: https://arxiv.org/abs/1602.01783
+
+Note that this is a modified version of OpenAI's `Universe Starter Agent`_.
+The main modifications to the original code are the usage of Ray to start 
+new processes as opposed to starting subprocesses and coordinating with the
+TensorFlow server and the removal of the ``universe`` dependency. 
+
+.. _`Universe Starter Agent`: https://github.com/openai/universe-starter-agent 
+
 To run the application, first install some dependencies.
 
 .. code-block:: bash
@@ -15,50 +26,14 @@ To run the application, first install some dependencies.
 
 You can view the `code for this example`_.
 
-.. _`code for this example`: https://github.com/ray-project/ray/tree/master/examples/a3c
+.. _`code for this example`: https://github.com/richardliaw/ray/tree/master/examples/a3c
 
-The simple script that processes results as they become available and launches
-new experiments can be run as follows.
 
-.. code-block:: bash
-
-  python ray/examples/hyperopt/hyperopt_simple.py --trials=5 --steps=10
-
-The variant that divides training into multiple segments and aggressively
-terminates poorly performing models can be run as follows.
-
-.. code-block:: bash
-
-  python ray/examples/hyperopt/hyperopt_adaptive.py --num-starting-segments=5 \
-                                                    --num-segments=10 \
-                                                    --steps-per-segment=20
-
-Machine learning algorithms often have a number of *hyperparameters* whose
-values must be chosen by the practitioner. For example, an optimization
-algorithm may have a step size, a decay rate, and a regularization coefficient.
-In a deep network, the network parameterization itself (e.g., the number of
-layers and the number of units per layer) can be considered a hyperparameter.
-
-Choosing these parameters can be challenging, and so a common practice is to
-search over the space of hyperparameters. One approach that works surprisingly
-well is to randomly sample different options.
-
-Problem Setup
+Code Walkthrough
 -------------
 
-Suppose that we want to train a convolutional network, but we aren't sure how to
-choose the following hyperparameters:
-
-- the learning rate
-- the batch size
-- the dropout probability
-- the standard deviation of the distribution from which to initialize the
-  network weights
-
-Suppose that we've defined a remote function ``train_cnn_and_compute_accuracy``,
-which takes values for these hyperparameters as its input (along with the
-dataset), trains a convolutional network using those hyperparameters, and
-returns the accuracy of the trained model on a validation set.
+There are two main parts to the A3C implementation: the driver and the 
+worker. 
 
 .. code-block:: python
 
@@ -172,74 +147,4 @@ detail in driver.py_.
 
 .. _driver.py: https://github.com/ray-project/ray/blob/master/examples/hyperopt/driver.py
 
-More sophisticated hyperparameter search
-----------------------------------------
 
-Hyperparameter search algorithms can get much more sophisticated. So far, we've
-been treating the function ``train_cnn_and_compute_accuracy`` as a black box,
-that we can choose its inputs and inspect its outputs, but once we decide to run
-it, we have to run it until it finishes.
-
-However, there is often more structure to be exploited. For example, if the
-training procedure is going poorly, we can end the session early and invest more
-resources in the more promising hyperparameter experiments. And if we've saved
-the state of the training procedure, we can always restart it again later.
-
-This is one of the ideas of the Hyperband_ algorithm. Start with a huge number
-of hyperparameter configurations, aggressively stop the bad ones, and invest
-more resources in the promising experiments.
-
-To implement this, we can first adapt our training method to optionally take a
-model and to return the updated model.
-
-.. code-block:: python
-
-  @ray.remote
-  def train_cnn_and_compute_accuracy(hyperparameters, model=None):
-    # Construct a deep network, train it, and return the accuracy on the
-    # validation data as well as the latest version of the model. If the model
-    # argument is not None, this will continue training an existing model.
-    validation_accuracy = np.random.uniform(0, 1)
-    new_model = model
-    return validation_accuracy, new_model
-
-Here's a different variant that uses the same principles. Divide each training
-session into a series of shorter training sessions. Whenever a short session
-finishes, if it still looks promising, then continue running it. If it isn't
-doing well, then terminate it and start a new experiment.
-
-.. code-block:: python
-
-  import numpy as np
-
-  def is_promising(model):
-    # Return true if the model is doing well and false otherwise. In practice,
-    # this function will want more information than just the model.
-    return np.random.choice([True, False])
-
-  # Start 10 experiments.
-  remaining_ids = []
-  for _ in range(10):
-    experiment_id = train_cnn_and_compute_accuracy.remote(hyperparameters, model=None)
-    remaining_ids.append(experiment_id)
-
-  accuracies = []
-  for i in range(100):
-    # Whenever a segment of an experiment finishes, decide if it looks promising
-    # or not.
-    ready_ids, remaining_ids = ray.wait(remaining_ids, num_returns=1)
-    experiment_id = ready_ids[0]
-    current_accuracy, current_model = ray.get(experiment_id)
-    accuracies.append(current_accuracy)
-
-    if is_promising(experiment_id):
-      # Continue running the experiment.
-      experiment_id = train_cnn_and_compute_accuracy.remote(hyperparameters,
-                                                            model=current_model)
-    else:
-      # Start a new experiment.
-      experiment_id = train_cnn_and_compute_accuracy.remote(hyperparameters)
-
-    remaining_ids.append(experiment_id)
-
-.. _Hyperband: https://arxiv.org/abs/1603.06560
