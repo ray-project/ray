@@ -7,6 +7,7 @@ a state-of-the-art reinforcement learning algorithm.
 .. _`A3C`: https://arxiv.org/abs/1602.01783
 
 You can run the code with 
+
 .. code-block:: bash
 
   python driver.py [num_workers]
