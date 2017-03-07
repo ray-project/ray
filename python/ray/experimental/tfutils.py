@@ -103,4 +103,4 @@ class TensorFlowVariables(object):
   def set_weights(self, new_weights):
     """Sets the weights to new_weights."""
     self._check_sess()
-    self.sess.run(self.assignment_nodes, feed_dict={self.placeholders[name]: value for (name, value) in new_weights.items()})
+    self.sess.run(self.assignment_nodes, feed_dict={self.placeholders[name]: value for (name, value) in new_weights.items() if name in self.placeholders})
