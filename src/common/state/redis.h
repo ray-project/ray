@@ -264,4 +264,6 @@ void redis_actor_notification_table_subscribe(TableCallbackData *callback_data);
 
 void redis_object_info_subscribe(TableCallbackData *callback_data);
 
+void redis_push_error(TableCallbackData *callback_data);
+
 #endif /* REDIS_H */

@@ -55,7 +55,7 @@ void lookup_done_callback(ObjectID object_id,
 }
 
 /* Entry added to database successfully. */
-void add_done_callback(ObjectID object_id, void *user_context) {}
+void add_done_callback(ObjectID object_id, bool success, void *user_context) {}
 
 /* Test if we got a timeout callback if we couldn't connect database. */
 void timeout_callback(ObjectID object_id, void *context, void *user_data) {

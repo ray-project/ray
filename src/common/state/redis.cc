@@ -22,6 +22,7 @@ extern "C" {
 #include "object_info.h"
 #include "task.h"
 #include "task_table.h"
+#include "error_table.h"
 #include "event_loop.h"
 #include "redis.h"
 #include "io.h"
@@ -217,21 +218,23 @@ void redis_object_table_add_callback(redisAsyncContext *c,
 
   /* Do some minimal checking. */
   redisReply *reply = (redisReply *) r;
-  if (strcmp(reply->str, "hash mismatch") == 0) {
+  bool success = (strcmp(reply->str, "hash mismatch") != 0);
+  if (!success) {
     /* If our object hash doesn't match the one recorded in the table, report
      * the error back to the user and exit immediately. */
-    LOG_FATAL(
+    LOG_WARN(
         "Found objects with different value but same object ID, most likely "
         "because a nondeterministic task was executed twice, either for "
         "reconstruction or for speculation.");
+  } else {
+    CHECK(reply->type != REDIS_REPLY_ERROR);
+    CHECK(strcmp(reply->str, "OK") == 0);
   }
-  CHECK(reply->type != REDIS_REPLY_ERROR);
-  CHECK(strcmp(reply->str, "OK") == 0);
   /* Call the done callback if there is one. */
   if (callback_data->done_callback != NULL) {
     object_table_done_callback done_callback =
         (object_table_done_callback) callback_data->done_callback;
-    done_callback(callback_data->id, callback_data->user_context);
+    done_callback(callback_data->id, success, callback_data->user_context);
   }
   /* Clean up the timer and callback. */
   destroy_timer_callback(db->loop, callback_data);
@@ -274,7 +277,7 @@ void redis_object_table_remove_callback(redisAsyncContext *c,
   if (callback_data->done_callback != NULL) {
     object_table_done_callback done_callback =
         (object_table_done_callback) callback_data->done_callback;
-    done_callback(callback_data->id, callback_data->user_context);
+    done_callback(callback_data->id, true, callback_data->user_context);
   }
   /* Clean up the timer and callback. */
   destroy_timer_callback(db->loop, callback_data);
@@ -1272,6 +1275,58 @@ void redis_object_info_subscribe(TableCallbackData *callback_data) {
       (void *) callback_data->timer_id, "PSUBSCRIBE obj:info");
   if ((status == REDIS_ERR) || db->sub_context->err) {
     LOG_REDIS_DEBUG(db->sub_context, "error in object_info_register_callback");
+  }
+}
+
+void redis_push_error_rpush_callback(redisAsyncContext *c,
+                                     void *r,
+                                     void *privdata) {
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
+  redisReply *reply = (redisReply *) r;
+  /* The reply should be the length of the errors list after our RPUSH. */
+  CHECK(reply->type == REDIS_REPLY_INTEGER);
+  destroy_timer_callback(db->loop, callback_data);
+}
+
+void redis_push_error_hmset_callback(redisAsyncContext *c,
+                                     void *r,
+                                     void *privdata) {
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
+  redisReply *reply = (redisReply *) r;
+
+  /* Make sure we were able to add the error information. */
+  CHECK(reply->type != REDIS_REPLY_ERROR);
+  CHECK(strcmp(reply->str, "OK") == 0);
+
+  /* Add the error to this driver's list of errors. */
+  ErrorInfo *info = (ErrorInfo *) callback_data->data;
+  int status = redisAsyncCommand(db->context, redis_push_error_rpush_callback,
+                                 (void *) callback_data->timer_id,
+                                 "RPUSH ErrorKeys Error:%b:%b",
+                                 info->driver_id.id, sizeof(info->driver_id.id),
+                                 info->error_key, sizeof(info->error_key));
+  if ((status == REDIS_ERR) || db->sub_context->err) {
+    LOG_REDIS_DEBUG(db->sub_context, "error in redis_push_error rpush");
+  }
+}
+
+void redis_push_error(TableCallbackData *callback_data) {
+  DBHandle *db = callback_data->db_handle;
+  ErrorInfo *info = (ErrorInfo *) callback_data->data;
+  CHECK(info->error_index < MAX_ERROR_INDEX && info->error_index >= 0);
+  /* Look up the error type. */
+  const char *error_type = error_types[info->error_index];
+  const char *error_message = error_messages[info->error_index];
+
+  /* Set the error information. */
+  int status = redisAsyncCommand(
+      db->context, redis_push_error_hmset_callback,
+      (void *) callback_data->timer_id,
+      "HMSET Error:%b:%b type %s message %s data %b", info->driver_id.id,
+      sizeof(info->driver_id.id), info->error_key, sizeof(info->error_key),
+      error_type, error_message, info->data, info->data_length);
+  if ((status == REDIS_ERR) || db->sub_context->err) {
+    LOG_REDIS_DEBUG(db->sub_context, "error in redis_push_error hmset");
   }
 }
 

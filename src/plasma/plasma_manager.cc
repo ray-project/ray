@@ -35,6 +35,8 @@
 #include "plasma_manager.h"
 #include "state/db.h"
 #include "state/object_table.h"
+#include "state/error_table.h"
+#include "state/task_table.h"
 
 /**
  * Process either the fetch or the status request.
@@ -1270,6 +1272,44 @@ void process_delete_object_notification(PlasmaManagerState *state,
    * up-to-date. */
 }
 
+void log_object_hash_mismatch_error_task_callback(Task *task,
+                                                  void *user_context) {
+  CHECK(task != NULL);
+  PlasmaManagerState *state = (PlasmaManagerState *) user_context;
+  TaskSpec *spec = Task_task_spec(task);
+  FunctionID function = TaskSpec_function(spec);
+  /* Push the error to the Python driver that caused the nondeterministic task
+   * to be submitted. */
+  push_error(state->db, TaskSpec_driver_id(spec),
+             OBJECT_HASH_MISMATCH_ERROR_INDEX, sizeof(function), function.id);
+}
+
+void log_object_hash_mismatch_error_result_callback(ObjectID object_id,
+                                                    TaskID task_id,
+                                                    void *user_context) {
+  CHECK(!IS_NIL_ID(task_id));
+  PlasmaManagerState *state = (PlasmaManagerState *) user_context;
+  /* Get the specification for the nondeterministic task. */
+  task_table_get_task(state->db, task_id, NULL,
+                      log_object_hash_mismatch_error_task_callback, state);
+}
+
+void log_object_hash_mismatch_error_object_callback(ObjectID object_id,
+                                                    bool success,
+                                                    void *user_context) {
+  if (success) {
+    /* The object was added successfully. */
+    return;
+  }
+
+  /* The object was added, but there was an object hash mismatch. In this case,
+   * look up the task that created the object so we can notify the Python
+   * driver that the task is nondeterministic. */
+  PlasmaManagerState *state = (PlasmaManagerState *) user_context;
+  result_table_lookup(state->db, object_id, NULL,
+                      log_object_hash_mismatch_error_result_callback, state);
+}
+
 void process_add_object_notification(PlasmaManagerState *state,
                                      ObjectInfo object_info) {
   ObjectID obj_id = object_info.obj_id;
@@ -1280,11 +1320,10 @@ void process_add_object_notification(PlasmaManagerState *state,
 
   /* Add this object to the (redis) object table. */
   if (state->db) {
-    /* TODO(swang): Log the error if we fail to add the object, and possibly
-     * retry later? */
-    object_table_add(state->db, obj_id,
-                     object_info.data_size + object_info.metadata_size,
-                     object_info.digest, NULL, NULL, NULL);
+    object_table_add(
+        state->db, obj_id, object_info.data_size + object_info.metadata_size,
+        object_info.digest, NULL,
+        log_object_hash_mismatch_error_object_callback, (void *) state);
   }
 
   /* If we were trying to fetch this object, finish up the fetch request. */
