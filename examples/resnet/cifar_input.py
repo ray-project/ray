@@ -1,11 +1,13 @@
-
-"""CIFAR dataset input module, with the majority taken from 
-   tensorflow/models/resnet.
+"""CIFAR dataset input module, with the majority taken from
+https://github.com/tensorflow/models/tree/master/resnet.
 """
 
-import tensorflow as tf
-import IPython
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import numpy as np
+import tensorflow as tf
 
 def build_data(data_path, size):
   image_size = 32
@@ -40,11 +42,14 @@ def build_input(data, batch_size, train):
   Args:
     data_path: Filename for cifar10 data.
     batch_size: Input batch size.
+    train: True if we are training and false if we are testing.
+
   Returns:
-    images: Batches of images. [batch_size, image_size, image_size, 3]
-    labels: Batches of labels. [batch_size, num_classes]
+    images: Batches of images of size [batch_size, image_size, image_size, 3].
+    labels: Batches of labels of size [batch_size, num_classes].
+
   Raises:
-    ValueError: when the specified dataset is not supported.
+    ValueError: When the specified dataset is not supported.
   """
   images_constant = tf.constant(data[0])
   labels_constant = tf.constant(data[1])
