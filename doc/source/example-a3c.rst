@@ -43,12 +43,57 @@ Simulations are often used as the environment, effectively allowing different pr
 to each have their own instance of simulation and allow for a larger stream of experience.
 
 In order to improve the policy, a gradient is taken with respect to the actions and states
-observed. In our A3C implementation, each worker, implemented as an actor object,
+observed. Generally, the gradient calculation must be delayed until a termination condition
+is reached (completing a rollout) so that delayed rewards for an action is properly 
+allocated. However, in the Actor Critic model, we can begin the gradient calculation at any point 
+in the simulation rollout by predicting future rewards with a Value Function approximator 
+(read more here).
+
+In our A3C implementation, each worker, implemented as an actor object,
 is continuously simulating the environment. The driver will trigger a gradient calculation
 on the worker, which the worker will then send back to the driver. The driver will then add
 the gradients and then trigger the gradient calculation again. 
 
 There are two main parts to the implementation - the driver and the worker.
+
+Worker Code Walkthrough
+-------------------
+We use an Actor object to implement the simulation. 
+
+.. code-block:: python
+
+  import numpy as np
+  import ray
+
+  @ray.actor
+  class Runner(object):
+    """Actor object to start running simulation on workers. 
+        Gradient computation is also executed on this object."""
+    def __init__(self, env_name, actor_id, logdir="tmp/"):
+      # starts simulation environment, policy, and thread.
+      # Thread will continuously interact with the simulation environment
+      self.env = env = create_env(env_name)
+      self.policy = LSTMPolicy()
+      self.runner = RunnerThread(env, self.policy, 20)
+      self.start()
+
+    def start(self):
+      # starts the simulation thread
+      self.runner.start_runner()
+
+    def pull_batch_from_queue(self):
+      # Implementation details removed - gets partial rollout from queue
+      return rollout
+
+    def compute_gradient(self, params):
+      self.policy.set_weights(params)
+      rollout = self.pull_batch_from_queue()
+      batch = process_rollout(rollout, gamma=0.99, lambda_=1.0)
+      gradient = self.policy.get_gradients(batch)
+      info = {"id": self.id, 
+              "size": len(batch.a) }
+      return gradient, info
+      
 
 
 Driver Code Walkthrough
@@ -76,63 +121,6 @@ Driver Code Walkthrough
       obs += info["size"]
       gradient_list.extend([agents[info["id"]].compute_gradient(parameters)])
     return policy
-
-Basic random search
--------------------
-
-Something that works surprisingly well is to try random values for the
-hyperparameters. For example, we can write a function that randomly generates
-hyperparameter configurations.
-
-.. code-block:: python
-
-  def generate_hyperparameters():
-    # Randomly choose values for the hyperparameters.
-    return {"learning_rate": 10 ** np.random.uniform(-5, 5),
-            "batch_size": np.random.randint(1, 100),
-            "dropout": np.random.uniform(0, 1),
-            "stddev": 10 ** np.random.uniform(-5, 5)}
-
-In addition, let's assume that we've started Ray and loaded some data.
-
-.. code-block:: python
-
-  import ray
-
-  ray.init()
-
-  from tensorflow.examples.tutorials.mnist import input_data
-  mnist = input_data.read_data_sets("MNIST_data", one_hot=True)
-  train_images = ray.put(mnist.train.images)
-  train_labels = ray.put(mnist.train.labels)
-  validation_images = ray.put(mnist.validation.images)
-  validation_labels = ray.put(mnist.validation.labels)
-
-
-Then basic random hyperparameter search looks something like this. We launch a
-bunch of experiments, and we get the results.
-
-.. code-block:: python
-
-  # Generate a bunch of hyperparameter configurations.
-  hyperparameter_configurations = [generate_hyperparameters() for _ in range(20)]
-
-  # Launch some experiments.
-  results = []
-  for hyperparameters in hyperparameter_configurations:
-    results.append(train_cnn_and_compute_accuracy.remote(hyperparameters,
-                                                         train_images,
-                                                         train_labels,
-                                                         validation_images,
-                                                         validation_labels))
-
-  # Get the results.
-  accuracies = ray.get(results)
-
-Then we can inspect the contents of `accuracies` and see which set of
-hyperparameters worked the best. Note that in the above example, the for loop
-will run instantaneously and the program will block in the call to ``ray.get``,
-which will wait until all of the experiments have finished.
-
+    
 Deviations from the original A3C implementation
 -----------------------------------------------
