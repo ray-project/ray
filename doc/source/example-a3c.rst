@@ -2,9 +2,14 @@ Asynchronous Advantage Actor Critic (A3C)
 ===========================
 
 This document provides a walkthrough of an implementation of  `A3C`_, 
-a state-of-the-art reinforcement learning algorithm. 
+a state-of-the-art reinforcement learning algorithm.
 
 .. _`A3C`: https://arxiv.org/abs/1602.01783
+
+You can run the code with 
+.. code-block:: bash
+
+  python driver.py [num_workers]
 
 Note that this is a modified version of OpenAI's `Universe Starter Agent`_.
 The main modifications to the original code are the usage of Ray to start 
@@ -27,6 +32,7 @@ To run the application, first install some dependencies.
 You can view the `code for this example`_.
 
 .. _`code for this example`: https://github.com/richardliaw/ray/tree/master/examples/a3c
+
 
 Reinforcement Learning
 ----------------------
