@@ -69,10 +69,11 @@ We use an Actor object to implement the simulation.
   class Runner(object):
     """Actor object to start running simulation on workers. 
         Gradient computation is also executed on this object."""
-    def __init__(self, env_name, actor_id, logdir="tmp/"):
+    def __init__(self, env_name, actor_id):
       # starts simulation environment, policy, and thread.
       # Thread will continuously interact with the simulation environment
       self.env = env = create_env(env_name)
+      self.id = actor_id
       self.policy = LSTMPolicy()
       self.runner = RunnerThread(env, self.policy, 20)
       self.start()
@@ -98,6 +99,9 @@ We use an Actor object to implement the simulation.
 
 Driver Code Walkthrough
 -----------------------
+The driver manaages the coordination among workers and handles updating the global 
+model parameters.
+
 
 .. code-block:: python
 
@@ -105,20 +109,30 @@ Driver Code Walkthrough
   import ray
 
   def train(num_workers, env_name="PongDeterministic-v3"):
+    # Setup a copy of the environment 
+    # Instantiate a copy of the policy - mainly used as a placeholder
     env = create_env(env_name, None, None)
     policy = LSTMPolicy(env.observation_space.shape, env.action_space.n, 0)
+    obs = 0
+    
+    # Start simulations on actors
     agents = [Runner(env_name, i) for i in range(num_workers)]
+    
+    # Start gradient calculation tasks on each actor
     parameters = policy.get_weights()
     gradient_list = [agent.compute_gradient(parameters) for agent in agents]
-    steps = 0
-    obs = 0
-    while True:
+    
+    while True: # Replace with your termination condition
+      # wait for some gradient to be computed - unblock as soon as the earliest arrives
       done_id, gradient_list = ray.wait(gradient_list)
+      
+      # get the results of the task from the object store
       gradient, info = ray.get(done_id)[0]
+      obs += info["size"]
+      
+      # apply update, get the weights from the model, start a new task on the same actor object
       policy.model_update(gradient)
       parameters = policy.get_weights()
-      steps += 1
-      obs += info["size"]
       gradient_list.extend([agents[info["id"]].compute_gradient(parameters)])
     return policy
     
