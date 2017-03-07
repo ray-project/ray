@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.rnn as rnn
@@ -7,7 +11,7 @@ use_tf100_api = distutils.version.LooseVersion(tf.VERSION) >= distutils.version.
 
 class Policy(object):
     """Policy base class"""
-    
+
     def __init__(self, ob_space, ac_space, task, name="local"):
         self.local_steps = 0
         worker_device = "/job:localhost/replica:0/task:0/cpu:0"
@@ -52,19 +56,19 @@ class Policy(object):
         self._apply_gradients = opt.apply_gradients(grads_and_vars)
 
         if summarize:
-            tf.scalar_summary("model/policy_loss", pi_loss / bs)
-            tf.scalar_summary("model/value_loss", vf_loss / bs)
-            tf.scalar_summary("model/entropy", entropy / bs)
-            tf.image_summary("model/state", self.x)
-            self.summary_op = tf.merge_all_summaries()
+            tf.summary.scalar("model/policy_loss", pi_loss / bs)
+            tf.summary.scalar("model/value_loss", vf_loss / bs)
+            tf.summary.scalar("model/entropy", entropy / bs)
+            tf.summary.image("model/state", self.x)
+            self.summary_op = tf.summary.merge_all()
 
     def initialize(self):
         self.sess = tf.Session(graph=self.g,  config=tf.ConfigProto(intra_op_parallelism_threads=1, inter_op_parallelism_threads=2))
-        self.variables = ray.experimental.TensorFlowVariables(self.loss, self.sess)  
-        self.sess.run(tf.initialize_all_variables())
-        
+        self.variables = ray.experimental.TensorFlowVariables(self.loss, self.sess)
+        self.sess.run(tf.global_variables_initializer())
+
     def model_update(self, grads):
-        feed_dict = {self.grads[i]: grads[i] 
+        feed_dict = {self.grads[i]: grads[i]
                             for i in range(len(grads))}
         self.sess.run(self._apply_gradients, feed_dict=feed_dict)
 

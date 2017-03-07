@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.rnn as rnn
@@ -50,7 +54,7 @@ class LSTMPolicy(Policy):
                                                    trainable=False)
 
     def get_gradients(self, batch):
-        """Computing the gradient is actually model-dependent. 
+        """Computing the gradient is actually model-dependent.
             The LSTM needs its hidden states in order to compute the gradient accurately."""
         feed_dict = {
             self.x: batch.si,

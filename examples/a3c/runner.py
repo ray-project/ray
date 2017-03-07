@@ -1,4 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
+
 from collections import namedtuple
 import numpy as np
 import tensorflow as tf
@@ -152,5 +155,5 @@ runner appends the policy to the queue.
         if not terminal_end:
             rollout.r = policy.value(last_state, *last_features)
 
-        # once we have enough experience, yield it, and have the ThreadRunner place it on a queue        
+        # once we have enough experience, yield it, and have the ThreadRunner place it on a queue
         yield rollout

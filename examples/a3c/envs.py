@@ -1,12 +1,18 @@
-import cv2
-from gym.spaces.box import Box
-import numpy as np
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import gym
+from gym.spaces.box import Box
 from gym import spaces
 import logging
+import numpy as np
+import scipy.misc
+import time
+
 import vectorized
 from vectorized.wrappers import Unvectorize, Vectorize
-import time
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -113,8 +119,8 @@ def _process_frame42(frame):
     # Resize by half, then down to 42x42 (essentially mipmapping). If
     # we resize directly we lose pixels that, when mapped to 42x42,
     # aren't close enough to the pixel boundary.
-    frame = cv2.resize(frame, (80, 80))
-    frame = cv2.resize(frame, (42, 42))
+    frame = scipy.misc.imresize(frame, (80, 80))
+    frame = scipy.misc.imresize(frame, (42, 42))
     frame = frame.mean(2)
     frame = frame.astype(np.float32)
     frame *= (1.0 / 255.0)
@@ -145,7 +151,7 @@ class CropScreen(vectorized.ObservationWrapper):
                 for ob in observation_n]
 
 def _process_frame_flash(frame):
-    frame = cv2.resize(frame, (200, 128))
+    frame = scipy.misc.imresize(frame, (200, 128))
     frame = frame.mean(2).astype(np.float32)
     frame *= (1.0 / 255.0)
     frame = np.reshape(frame, [128, 200, 1])

@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import gym
 from gym import spaces
 
@@ -42,7 +46,7 @@ class Wrapper(Env, gym.Wrapper):
     """Use this instead of gym.Wrapper iff you're wrapping a vectorized env,
     (or a vanilla env you wish to be vectorized).
     """
-    # If True and this is instantiated with a non-vectorized environment, 
+    # If True and this is instantiated with a non-vectorized environment,
     # automatically wrap it with the Vectorize wrapper.
     autovectorize = True
 
@@ -71,4 +75,3 @@ class RewardWrapper(Wrapper, gym.RewardWrapper):
 
 class ActionWrapper(Wrapper, gym.ActionWrapper):
     pass
-

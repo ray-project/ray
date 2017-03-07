@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import ray
 import numpy as np
 from runner import RunnerThread, process_rollout
@@ -12,7 +16,7 @@ from envs import create_env
 
 @ray.actor
 class Runner(object):
-    """Actor object to start running simulation on workers. 
+    """Actor object to start running simulation on workers.
         Gradient computation is also executed from this object."""
     def __init__(self, env_name, actor_id, logdir="tmp/", start=True):
         env = create_env(env_name, None, None)
@@ -36,7 +40,7 @@ class Runner(object):
         return rollout
 
     def start(self):
-        summary_writer = tf.train.SummaryWriter(self.logdir + "test_1")
+        summary_writer = tf.summary.FileWriter(self.logdir + "test_1")
         self.summary_writer = summary_writer
         self.runner.start_runner(self.policy.sess, summary_writer)
 
@@ -45,8 +49,8 @@ class Runner(object):
         rollout = self.pull_batch_from_queue()
         batch = process_rollout(rollout, gamma=0.99, lambda_=1.0)
         gradient = self.policy.get_gradients(batch)
-        info = {"id": self.id, 
-                "size": len(batch.a) }
+        info = {"id": self.id,
+                "size": len(batch.a)}
         return gradient, info
 
 
