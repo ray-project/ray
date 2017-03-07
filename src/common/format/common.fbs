@@ -90,3 +90,22 @@ table SubscribeToDBClientTableReply {
 }
 
 root_type SubscribeToDBClientTableReply;
+
+table LocalSchedulerInfoMessage {
+  // The db client ID of the client that the message is about.
+  db_client_id: string;
+  // The total number of workers that are connected to this local scheduler.
+  total_num_workers: long;
+  // The number of tasks queued in this local scheduler.
+  task_queue_length: long;
+  // The number of workers that are available and waiting for tasks.
+  available_workers: long;
+  // The resource vector of resources generally available to this local
+  // scheduler.
+  static_resources: [double];
+  // The resource vector of resources currently available to this local
+  // scheduler.
+  dynamic_resources: [double];
+}
+
+root_type LocalSchedulerInfoMessage;

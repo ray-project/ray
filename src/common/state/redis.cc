@@ -996,15 +996,26 @@ void redis_local_scheduler_table_subscribe_callback(redisAsyncContext *c,
   if (strcmp(message_type->str, "message") == 0) {
     /* Handle a local scheduler heartbeat. Parse the payload and call the
      * subscribe callback. */
-    redisReply *payload = reply->element[2];
+    auto message = flatbuffers::GetRoot<LocalSchedulerInfoMessage>(
+        reply->element[2]->str);
+
+    /* Extract the client ID. */
+    DBClientID client_id = from_flatbuf(message->db_client_id());
+    /* Extract the fields of the local scheduler info struct. */
+    LocalSchedulerInfo info;
+    info.total_num_workers = message->total_num_workers();
+    info.task_queue_length = message->task_queue_length();
+    info.available_workers = message->available_workers();
+    for (int i = 0; i < ResourceIndex_MAX; ++i){
+      info.static_resources[i] = message->static_resources()->Get(i);
+    }
+    for (int i = 0; i < ResourceIndex_MAX; ++i){
+      info.dynamic_resources[i] = message->dynamic_resources()->Get(i);
+    }
+
+    /* Call the subscribe callback. */
     LocalSchedulerTableSubscribeData *data =
         (LocalSchedulerTableSubscribeData *) callback_data->data;
-    DBClientID client_id;
-    LocalSchedulerInfo info;
-    /* The payload should be the concatenation of these two structs. */
-    CHECK(sizeof(client_id) + sizeof(info) == payload->len);
-    memcpy(&client_id, payload->str, sizeof(client_id));
-    memcpy(&info, payload->str + sizeof(client_id), sizeof(info));
     if (data->subscribe_callback) {
       data->subscribe_callback(client_id, info, data->subscribe_context);
     }
@@ -1049,10 +1060,22 @@ void redis_local_scheduler_table_send_info(TableCallbackData *callback_data) {
   DBHandle *db = callback_data->db_handle;
   LocalSchedulerTableSendInfoData *data =
       (LocalSchedulerTableSendInfoData *) callback_data->data;
+
+  /* Create a flatbuffer object to serialize and publish. */
+  flatbuffers::FlatBufferBuilder fbb;
+  /* Create the flatbuffers message. */
+  LocalSchedulerInfo info = data->info;
+  auto message = CreateLocalSchedulerInfoMessage(
+      fbb, to_flatbuf(fbb, db->client), info.total_num_workers,
+      info.task_queue_length, info.available_workers,
+      fbb.CreateVector(info.static_resources, ResourceIndex_MAX),
+      fbb.CreateVector(info.dynamic_resources, ResourceIndex_MAX));
+  fbb.Finish(message);
+
   int status = redisAsyncCommand(
       db->context, redis_local_scheduler_table_send_info_callback,
-      (void *) callback_data->timer_id, "PUBLISH local_schedulers %b%b",
-      db->client.id, sizeof(db->client.id), &data->info, sizeof(data->info));
+      (void *) callback_data->timer_id, "PUBLISH local_schedulers %b",
+      fbb.GetBufferPointer(), fbb.GetSize());
   if ((status == REDIS_ERR) || db->context->err) {
     LOG_REDIS_DEBUG(db->context,
                     "error in redis_local_scheduler_table_send_info");
