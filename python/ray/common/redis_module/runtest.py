@@ -11,7 +11,7 @@ import unittest
 import redis
 import ray.services
 
-# Import flatbuffers bindings.
+# Import flatbuffer bindings.
 from ray.core.generated.SubscribeToNotificationsReply import SubscribeToNotificationsReply
 from ray.core.generated.SubscribeToTasksReply import SubscribeToTasksReply
 

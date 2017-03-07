@@ -951,40 +951,23 @@ void redis_db_client_table_subscribe_callback(redisAsyncContext *c,
     return;
   }
   /* Otherwise, parse the payload and call the callback. */
-  DBClientTableSubscribeData *data =
-      (DBClientTableSubscribeData *) callback_data->data;
-  DBClientID client;
-  memcpy(client.id, payload->str, sizeof(client.id));
-  /* We subtract 1 + sizeof(client.id) to compute the length of the
-   * client_type string, and we add 1 to null-terminate the string. */
-  int client_type_length = payload->len - 1 - sizeof(client.id) + 1;
-  CHECK(client_type_length > 0);
+  auto message =
+      flatbuffers::GetRoot<SubscribeToDBClientTableReply>(payload->str);
+  DBClientID client = from_flatbuf(message->db_client_id());
 
   /* Parse the client type and auxiliary address from the response. If there is
    * only client type, then the update was a delete. */
-  char *client_type = (char *) malloc(client_type_length);
-  char *aux_address = (char *) malloc(client_type_length);
-  int is_insertion;
-  memset(aux_address, 0, client_type_length);
-  /* Published message format: <client_id:client_type aux_addr> */
-  int rv = sscanf(&payload->str[1 + sizeof(client.id)], "%s %s %d", client_type,
-                  aux_address, &is_insertion);
-  CHECKM(rv == 3,
-         "redis_db_client_table_subscribe_callback: expected 2 parsed args, "
-         "Got %d instead.",
-         rv);
-  CHECKM(is_insertion == 1 || is_insertion == 0,
-         "redis_db_client_table_subscribe_callback: expected 0 or 1 for "
-         "insertion field, got %d instead.",
-         is_insertion);
+  char *client_type = (char *) message->client_type()->data();
+  char *aux_address = (char *) message->aux_address()->data();
+  bool is_insertion = message->is_insertion();
 
   /* Call the subscription callback. */
+  DBClientTableSubscribeData *data =
+      (DBClientTableSubscribeData *) callback_data->data;
   if (data->subscribe_callback) {
-    data->subscribe_callback(client, client_type, aux_address,
-                             (bool) is_insertion, data->subscribe_context);
+    data->subscribe_callback(client, client_type, aux_address, is_insertion,
+                             data->subscribe_context);
   }
-  free(client_type);
-  free(aux_address);
 }
 
 void redis_db_client_table_subscribe(TableCallbackData *callback_data) {

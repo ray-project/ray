@@ -74,16 +74,34 @@ bool PublishDBClientNotification(RedisModuleCtx *ctx,
   /* Construct strings to publish on the db client channel. */
   RedisModuleString *channel_name =
       RedisModule_CreateString(ctx, "db_clients", strlen("db_clients"));
-  RedisModuleString *client_info;
-  const char *is_insertion_string = is_insertion ? "1" : "0";
-  if (aux_address) {
-    client_info =
-        RedisString_Format(ctx, "%S:%S %S %s", ray_client_id, client_type,
-                           aux_address, is_insertion_string);
+  /* Construct the flatbuffers object to publish over the channel. */
+  flatbuffers::FlatBufferBuilder fbb;
+  /* Extract the client ID. */
+  size_t ray_client_id_size;
+  const char *ray_client_id_str =
+      RedisModule_StringPtrLen(ray_client_id, &ray_client_id_size);
+  /* Extract the client type. */
+  size_t client_type_size;
+  const char *client_type_str =
+      RedisModule_StringPtrLen(client_type, &client_type_size);
+  /* Extract the aux address. */
+  size_t aux_address_size;
+  const char *aux_address_str;
+  if (aux_address != NULL) {
+    aux_address_str = RedisModule_StringPtrLen(aux_address, &aux_address_size);
   } else {
-    client_info = RedisString_Format(ctx, "%S:%S : %s", ray_client_id,
-                                     client_type, is_insertion_string);
+    aux_address_str = "";
+    aux_address_size = strlen(aux_address_str);
   }
+  /* Create the flatbuffers message. */
+  auto message = CreateSubscribeToDBClientTableReply(
+      fbb, fbb.CreateString(ray_client_id_str, ray_client_id_size),
+      fbb.CreateString(client_type_str, client_type_size),
+      fbb.CreateString(aux_address_str, aux_address_size), is_insertion);
+  fbb.Finish(message);
+  /* Create a Redis string to publish by serializing the flatbuffers object. */
+  RedisModuleString *client_info = RedisModule_CreateString(
+      ctx, (const char *) fbb.GetBufferPointer(), fbb.GetSize());
 
   /* Publish the client info on the db client channel. */
   RedisModuleCallReply *reply;

@@ -75,3 +75,18 @@ table SubscribeToTasksReply {
 }
 
 root_type SubscribeToTasksReply;
+
+table SubscribeToDBClientTableReply {
+  // The db client ID of the client that the message is about.
+  db_client_id: string;
+  // The type of the client.
+  client_type: string;
+  // If the client is a local scheduler, this is the address of the plasma
+  // manager that the local scheduler is connected to. Otherwise, it is empty.
+  aux_address: string;
+  // True if the message is about the addition of a client and false if it is
+  // about the deletion of a client.
+  is_insertion: bool;
+}
+
+root_type SubscribeToDBClientTableReply;
