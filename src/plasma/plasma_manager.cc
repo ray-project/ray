@@ -966,7 +966,7 @@ int fetch_timeout_handler(event_loop *loop, timer_id id, void *context) {
   }
 
   /* Resend requests for notifications on these objects' locations. */
-  if (num_object_ids_to_request > 0) {
+  if (num_object_ids_to_request > 0 && manager_state->db != NULL) {
     object_table_request_notifications(manager_state->db,
                                        num_object_ids_to_request,
                                        object_ids_to_request, NULL);
