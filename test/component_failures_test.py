@@ -138,7 +138,7 @@ class ComponentFailureTest(unittest.TestCase):
 
     ray.worker.cleanup()
 
-  def testPlasmaManagerFailed(self):
+  def testPlasmaStoreFailed(self):
     @ray.remote
     def f(x, j):
       time.sleep(0.2)
@@ -158,22 +158,24 @@ class ComponentFailureTest(unittest.TestCase):
     object_ids += [f.remote(object_id, 1) for object_id in object_ids]
     object_ids += [f.remote(object_id, 2) for object_id in object_ids]
 
-    time.sleep(0.4)
+    time.sleep(0.1)
     # Kill all nodes except the head node as the tasks execute.
-    local_schedulers = ray.services.all_processes[ray.services.PROCESS_TYPE_LOCAL_SCHEDULER]
-    plasma_managers = ray.services.all_processes[ray.services.PROCESS_TYPE_PLASMA_MANAGER]
     plasma_stores = ray.services.all_processes[ray.services.PROCESS_TYPE_PLASMA_STORE]
-    for local_scheduler, plasma_manager, plasma_store in zip(local_schedulers, plasma_managers, plasma_stores)[1:2]:
-      #local_scheduler.terminate()
-      #local_scheduler.wait()
-      #plasma_manager.terminate()
-      #plasma_manager.wait()
+    for plasma_store in plasma_stores[1:]:
       plasma_store.terminate()
-      plasma_store.wait()
       time.sleep(1)
 
     # Make sure that we can still get the objects after the executing tasks died.
-    ray.get(object_ids)
+    results = ray.get(object_ids)
+    expected_results = 4 * list(range(num_workers_per_scheduler * num_local_schedulers))
+    self.assertEqual(results, expected_results)
+
+    local_schedulers = ray.services.all_processes[ray.services.PROCESS_TYPE_LOCAL_SCHEDULER]
+    plasma_managers = ray.services.all_processes[ray.services.PROCESS_TYPE_PLASMA_MANAGER]
+    for local_scheduler in local_schedulers[1:]:
+      self.assertTrue(local_scheduler.poll() < 0)
+    for plasma_manager in plasma_managers[1:]:
+      self.assertTrue(plasma_manager.poll() < 0)
 
     ray.worker.cleanup()
 
