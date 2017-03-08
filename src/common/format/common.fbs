@@ -62,7 +62,7 @@ table SubscribeToNotificationsReply {
 
 root_type SubscribeToNotificationsReply;
 
-table SubscribeToTasksReply {
+table TaskReply {
   // The task ID of the task that the message is about.
   task_id: string;
   // The state of the task. This is encoded as a bit mask of scheduling_state
@@ -74,7 +74,7 @@ table SubscribeToTasksReply {
   task_spec: string;
 }
 
-root_type SubscribeToTasksReply;
+root_type TaskReply;
 
 table SubscribeToDBClientTableReply {
   // The db client ID of the client that the message is about.

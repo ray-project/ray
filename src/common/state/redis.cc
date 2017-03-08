@@ -362,27 +362,14 @@ Task *parse_and_construct_task_from_redis_reply(redisReply *reply) {
   if (reply->type == REDIS_REPLY_NIL) {
     /* There is no task in the reply, so return NULL. */
     task = NULL;
-  } else if (reply->type == REDIS_REPLY_ARRAY) {
-    /* Check that the reply is as expected. The 0th element is the scheduling
-     * state. The 1st element is the db_client_id of the associated local
-     * scheduler, and the 2nd element is the TaskSpec. */
-    CHECK(reply->elements == 3);
-    CHECK(reply->element[0]->type == REDIS_REPLY_INTEGER);
-    CHECK(reply->element[1]->type == REDIS_REPLY_STRING);
-    CHECK(reply->element[2]->type == REDIS_REPLY_STRING);
-    /* Parse the scheduling state. */
-    long long state = reply->element[0]->integer;
-    /* Parse the local scheduler db_client_id. */
-    DBClientID local_scheduler_id;
-    CHECK(sizeof(local_scheduler_id) == reply->element[1]->len);
-    memcpy(local_scheduler_id.id, reply->element[1]->str,
-           reply->element[1]->len);
-    /* Parse the task spec. */
-    TaskSpec *spec = (TaskSpec *) malloc(reply->element[2]->len);
-    memcpy(spec, reply->element[2]->str, reply->element[2]->len);
-    task = Task_alloc(spec, reply->element[2]->len, state, local_scheduler_id);
-    /* Free the task spec. */
-    TaskSpec_free(spec);
+  } else if (reply->type == REDIS_REPLY_STRING) {
+    /* The reply is a flatbuffer TaskReply object. Parse it and construct the
+     * task. */
+    auto message = flatbuffers::GetRoot<TaskReply>(reply->str);
+    TaskSpec *spec = (TaskSpec *) message->task_spec()->data();
+    int64_t task_spec_size = message->task_spec()->size();
+    task = Task_alloc(spec, task_spec_size, message->state(),
+                      from_flatbuf(message->local_scheduler_id()));
   } else {
     LOG_FATAL("Unexpected reply type %d", reply->type);
   }
@@ -826,7 +813,7 @@ void redis_task_table_subscribe_callback(redisAsyncContext *c,
   if (strcmp(message_type->str, "message") == 0 ||
       strcmp(message_type->str, "pmessage") == 0) {
     /* Handle a task table event. Parse the payload and call the callback. */
-    auto message = flatbuffers::GetRoot<SubscribeToTasksReply>(payload->str);
+    auto message = flatbuffers::GetRoot<TaskReply>(payload->str);
     /* Extract the task ID. */
     TaskID task_id = from_flatbuf(message->task_id());
     /* Extract the scheduling state. */

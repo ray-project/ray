@@ -53,6 +53,23 @@ RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
 }
 
 /**
+ * This is a helper method to convert a redis module string to a flatbuffer
+ * string.
+ *
+ * @param fbb The flatbuffer builder.
+ * @param redis_string The redis string.
+ * @return The flatbuffer string.
+ */
+flatbuffers::Offset<flatbuffers::String> RedisStringToFlatbuf(
+    flatbuffers::FlatBufferBuilder &fbb,
+    RedisModuleString *redis_string) {
+  size_t redis_string_size;
+  const char *redis_string_str =
+      RedisModule_StringPtrLen(redis_string, &redis_string_size);
+  return fbb.CreateString(redis_string_str, redis_string_size);
+}
+
+/**
  * Publish a notification to a client's notification channel about an insertion
  * or deletion to the db client table.
  *
@@ -76,28 +93,17 @@ bool PublishDBClientNotification(RedisModuleCtx *ctx,
       RedisModule_CreateString(ctx, "db_clients", strlen("db_clients"));
   /* Construct the flatbuffers object to publish over the channel. */
   flatbuffers::FlatBufferBuilder fbb;
-  /* Extract the client ID. */
-  size_t ray_client_id_size;
-  const char *ray_client_id_str =
-      RedisModule_StringPtrLen(ray_client_id, &ray_client_id_size);
-  /* Extract the client type. */
-  size_t client_type_size;
-  const char *client_type_str =
-      RedisModule_StringPtrLen(client_type, &client_type_size);
-  /* Extract the aux address. */
-  size_t aux_address_size;
-  const char *aux_address_str;
+  /* Use an empty aux address if one is not passed in. */
+  flatbuffers::Offset<flatbuffers::String> aux_address_str;
   if (aux_address != NULL) {
-    aux_address_str = RedisModule_StringPtrLen(aux_address, &aux_address_size);
+    aux_address_str = RedisStringToFlatbuf(fbb, aux_address);
   } else {
-    aux_address_str = "";
-    aux_address_size = strlen(aux_address_str);
+    aux_address_str = fbb.CreateString("", strlen(""));
   }
   /* Create the flatbuffers message. */
   auto message = CreateSubscribeToDBClientTableReply(
-      fbb, fbb.CreateString(ray_client_id_str, ray_client_id_size),
-      fbb.CreateString(client_type_str, client_type_size),
-      fbb.CreateString(aux_address_str, aux_address_size), is_insertion);
+      fbb, RedisStringToFlatbuf(fbb, ray_client_id),
+      RedisStringToFlatbuf(fbb, client_type), aux_address_str, is_insertion);
   fbb.Finish(message);
   /* Create a Redis string to publish by serializing the flatbuffers object. */
   RedisModuleString *client_info = RedisModule_CreateString(
@@ -737,10 +743,15 @@ int ReplyWithTask(RedisModuleCtx *ctx, RedisModuleString *task_id) {
       return RedisModule_ReplyWithError(ctx, "Found invalid scheduling state.");
     }
 
-    RedisModule_ReplyWithArray(ctx, 3);
-    RedisModule_ReplyWithLongLong(ctx, state_integer);
-    RedisModule_ReplyWithString(ctx, local_scheduler_id);
-    RedisModule_ReplyWithString(ctx, task_spec);
+    flatbuffers::FlatBufferBuilder fbb;
+    auto message =
+        CreateTaskReply(fbb, RedisStringToFlatbuf(fbb, task_id), state_integer,
+                        RedisStringToFlatbuf(fbb, local_scheduler_id),
+                        RedisStringToFlatbuf(fbb, task_spec));
+    fbb.Finish(message);
+    RedisModuleString *reply = RedisModule_CreateString(
+        ctx, (char *) fbb.GetBufferPointer(), fbb.GetSize());
+    RedisModule_ReplyWithString(ctx, reply);
 
     RedisModule_FreeString(ctx, state);
     RedisModule_FreeString(ctx, local_scheduler_id);
@@ -804,6 +815,11 @@ int TaskTableWrite(RedisModuleCtx *ctx,
                    RedisModuleString *state,
                    RedisModuleString *local_scheduler_id,
                    RedisModuleString *task_spec) {
+  /* Extract the scheduling state. */
+  long long state_value;
+  if (RedisModule_StringToLongLong(state, &state_value) != REDISMODULE_OK) {
+    return RedisModule_ReplyWithError(ctx, "scheduling state must be integer");
+  }
   /* Add the task to the task table. If no spec was provided, get the existing
    * spec out of the task table so we can publish it. */
   RedisModuleString *existing_task_spec = NULL;
@@ -834,32 +850,18 @@ int TaskTableWrite(RedisModuleCtx *ctx,
 
   /* Construct the flatbuffers object for the payload. */
   flatbuffers::FlatBufferBuilder fbb;
-  /* Extract the task ID. */
-  size_t task_id_size;
-  const char *task_id_str = RedisModule_StringPtrLen(task_id, &task_id_size);
-  /* Extract the scheduling state. */
-  long long state_value;
-  if (RedisModule_StringToLongLong(state, &state_value) != REDISMODULE_OK) {
-    return RedisModule_ReplyWithError(ctx, "scheduling state must be integer");
-  }
-  /* Extract the local scheduler ID. */
-  size_t local_scheduler_id_size;
-  const char *local_scheduler_id_str =
-      RedisModule_StringPtrLen(local_scheduler_id, &local_scheduler_id_size);
-  /* Extract the task spec. */
-  size_t task_spec_size;
-  const char *task_spec_str;
+  /* Use the old task spec if the current one is NULL. */
+  RedisModuleString *task_spec_to_use;
   if (task_spec != NULL) {
-    task_spec_str = RedisModule_StringPtrLen(task_spec, &task_spec_size);
+    task_spec_to_use = task_spec;
   } else {
-    task_spec_str =
-        RedisModule_StringPtrLen(existing_task_spec, &task_spec_size);
+    task_spec_to_use = existing_task_spec;
   }
   /* Create the flatbuffers message. */
-  auto message = CreateSubscribeToTasksReply(
-      fbb, fbb.CreateString(task_id_str, task_id_size), state_value,
-      fbb.CreateString(local_scheduler_id_str, local_scheduler_id_size),
-      fbb.CreateString(task_spec_str, task_spec_size));
+  auto message =
+      CreateTaskReply(fbb, RedisStringToFlatbuf(fbb, task_id), state_value,
+                      RedisStringToFlatbuf(fbb, local_scheduler_id),
+                      RedisStringToFlatbuf(fbb, task_spec_to_use));
   fbb.Finish(message);
 
   RedisModuleString *publish_message = RedisModule_CreateString(
