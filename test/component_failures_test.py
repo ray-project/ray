@@ -103,7 +103,7 @@ class ComponentFailureTest(unittest.TestCase):
   def testWorkerFailedMultinode(self):
     self._testWorkerFailed(4)
 
-  def testComponentFailed(self, component_type):
+  def _testComponentFailed(self, component_type):
     """Kill a component on all worker nodes and check that workload succeeds.
     """
     @ray.remote
@@ -153,7 +153,7 @@ class ComponentFailureTest(unittest.TestCase):
 
   def testLocalSchedulerFailed(self):
     # Kill all local schedulers on worker nodes.
-    self.testComponentFailed(ray.services.PROCESS_TYPE_LOCAL_SCHEDULER)
+    self._testComponentFailed(ray.services.PROCESS_TYPE_LOCAL_SCHEDULER)
 
     # The plasma stores and plasma managers should still be alive on the worker
     # nodes.
@@ -165,7 +165,7 @@ class ComponentFailureTest(unittest.TestCase):
 
   def testPlasmaManagerFailed(self):
     # Kill all plasma managers on worker nodes.
-    self.testComponentFailed(ray.services.PROCESS_TYPE_PLASMA_MANAGER)
+    self._testComponentFailed(ray.services.PROCESS_TYPE_PLASMA_MANAGER)
 
     # The plasma stores should still be alive (but unreachable) on the worker
     # nodes.
@@ -177,7 +177,7 @@ class ComponentFailureTest(unittest.TestCase):
 
   def testPlasmaStoreFailed(self):
     # Kill all plasma stores on worker nodes.
-    self.testComponentFailed(ray.services.PROCESS_TYPE_PLASMA_STORE)
+    self._testComponentFailed(ray.services.PROCESS_TYPE_PLASMA_STORE)
 
     # No processes should be left alive on the worker nodes.
     self.check_components_alive(ray.services.PROCESS_TYPE_PLASMA_STORE, False)
