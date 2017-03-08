@@ -780,7 +780,9 @@ class TestPlasmaManagerRecovery(unittest.TestCase):
 
     # Store the processes that will be explicitly killed during tearDown so
     # that a test case can remove ones that will be killed during the test.
-    self.processes_to_kill = [self.p2, self.p3]
+    # NOTE: The plasma managers must be killed before the plasma store since
+    # plasma store death will bring down the managers.
+    self.processes_to_kill = [self.p3, self.p2]
 
   def tearDown(self):
     # Check that the processes are still alive.
@@ -817,7 +819,7 @@ class TestPlasmaManagerRecovery(unittest.TestCase):
 
     # Start a second plasma manager attached to the same store.
     manager_name, self.p5, self.port2 = plasma.start_plasma_manager(self.store_name, self.redis_address, use_valgrind=USE_VALGRIND)
-    self.processes_to_kill.append(self.p5)
+    self.processes_to_kill = [self.p5] + self.processes_to_kill
 
     # Check that the second manager knows about existing objects.
     client2 = plasma.PlasmaClient(self.store_name, manager_name)
