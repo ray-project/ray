@@ -102,8 +102,6 @@ void process_data_request(event_loop *loop,
                           int64_t metadata_size,
                           ClientConnection *conn);
 
-void remove_manager_connection(ClientConnection *manager_conn);
-
 /** Entry of the hashtable of objects that are available locally. */
 typedef struct {
   /** Object id of this object. */
@@ -269,9 +267,6 @@ struct ClientConnection {
   int fd;
   /** Timer id for timing out wait (or fetch). */
   int64_t timer_id;
-  /** The objects that we are waiting for and their callback
-   *  contexts, for either a fetch or a wait operation. */
-  ClientObjectRequest *active_objects;
   /** The number of objects that we have left to return for
    *  this fetch or wait operation. */
   int num_return_objects;
@@ -282,6 +277,28 @@ struct ClientConnection {
   /** Handle for the uthash table. */
   UT_hash_handle manager_hh;
 };
+
+/**
+ * Initializes the state for a plasma client connection.
+ *
+ * @param state The plasma manager state.
+ * @param client_sock The socket that we use to communicate with the client.
+ * @param client_key A string uniquely identifying the client. If the client is
+ *        another plasma manager, this is the manager's IP address and port.
+ *        Else, the client is the string of the client's socket.
+ * @return A pointer to the initialized client state.
+ */
+ClientConnection *ClientConnection_init(PlasmaManagerState *state,
+                                        int client_sock,
+                                        char *client_key);
+
+/**
+ * Destroys a plasma client and its connection.
+ *
+ * @param client_conn The client's state.
+ * @return Void.
+ */
+void ClientConnection_free(ClientConnection *client_conn);
 
 void object_table_subscribe_callback(ObjectID object_id,
                                      int64_t data_size,
@@ -514,30 +531,10 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
 }
 
 void PlasmaManagerState_free(PlasmaManagerState *state) {
-  ClientConnection *manager_conn, *tmp;
-  HASH_ITER(manager_hh, state->manager_connections, manager_conn, tmp) {
-    HASH_DELETE(manager_hh, state->manager_connections, manager_conn);
-
-    /* Free the hash table of object IDs that are waiting to be transferred. */
-    PlasmaRequestBuffer *request_buffer, *tmp_buffer;
-    HASH_ITER(hh, manager_conn->pending_object_transfers, request_buffer,
-              tmp_buffer) {
-      /* We do not free the PlasmaRequestBuffer here because it is also in the
-       * transfer queue and will be freed below. */
-      HASH_DELETE(hh, manager_conn->pending_object_transfers, request_buffer);
-    }
-
-    /* Free the transfer queue. */
-    PlasmaRequestBuffer *head = manager_conn->transfer_queue;
-    while (head) {
-      DL_DELETE(manager_conn->transfer_queue, head);
-      free(head);
-      head = manager_conn->transfer_queue;
-    }
-    /* Close the manager connection and free the remaining state. */
-    close(manager_conn->fd);
-    free(manager_conn->ip_addr_port);
-    free(manager_conn);
+  ClientConnection *manager_conn, *tmp_manager_conn;
+  HASH_ITER(manager_hh, state->manager_connections, manager_conn,
+            tmp_manager_conn) {
+    ClientConnection_free(manager_conn);
   }
 
   if (state->fetch_requests != NULL) {
@@ -545,6 +542,12 @@ void PlasmaManagerState_free(PlasmaManagerState *state) {
     HASH_ITER(hh, state->fetch_requests, fetch_req, tmp) {
       remove_fetch_request(state, fetch_req);
     }
+  }
+
+  AvailableObject *entry, *tmp_object_entry;
+  HASH_ITER(hh, state->local_available_objects, entry, tmp_object_entry) {
+    HASH_DELETE(hh, state->local_available_objects, entry);
+    free(entry);
   }
 
   plasma_disconnect(state->plasma_conn);
@@ -636,7 +639,7 @@ void send_queued_request(event_loop *loop,
 
   /* If there was a SIGPIPE, stop sending to this manager. */
   if (sigpipe) {
-    remove_manager_connection(conn);
+    ClientConnection_free(conn);
     return;
   }
 
@@ -749,36 +752,11 @@ ClientConnection *get_manager_connection(PlasmaManagerState *state,
       return NULL;
     }
 
-    manager_conn = (ClientConnection *) malloc(sizeof(ClientConnection));
-    manager_conn->fd = fd;
-    manager_conn->manager_state = state;
-    manager_conn->transfer_queue = NULL;
-    manager_conn->pending_object_transfers = NULL;
-    manager_conn->cursor = 0;
-    manager_conn->ip_addr_port = strdup(utstring_body(ip_addr_port));
-    HASH_ADD_KEYPTR(manager_hh,
-                    manager_conn->manager_state->manager_connections,
-                    manager_conn->ip_addr_port,
-                    strlen(manager_conn->ip_addr_port), manager_conn);
+    manager_conn =
+        ClientConnection_init(state, fd, utstring_body(ip_addr_port));
   }
   utstring_free(ip_addr_port);
   return manager_conn;
-}
-
-void remove_manager_connection(ClientConnection *manager_conn) {
-  PlasmaManagerState *state =
-      (PlasmaManagerState *) manager_conn->manager_state;
-  HASH_DELETE(manager_hh, state->manager_connections, manager_conn);
-  PlasmaRequestBuffer *head = manager_conn->transfer_queue;
-  while (head) {
-    LL_DELETE(manager_conn->transfer_queue, head);
-    free(head);
-    head = manager_conn->transfer_queue;
-  }
-  event_loop_remove_file(state->loop, manager_conn->fd);
-  close(manager_conn->fd);
-  free(manager_conn->ip_addr_port);
-  free(manager_conn);
 }
 
 void process_transfer_request(event_loop *loop,
@@ -1419,6 +1397,79 @@ void process_object_notification(event_loop *loop,
   free(notification);
 }
 
+/* TODO(pcm): Split this into two methods: new_worker_connection
+ * and new_manager_connection and also split ClientConnection
+ * into two structs, one for workers and one for other plasma managers. */
+ClientConnection *ClientConnection_init(PlasmaManagerState *state,
+                                        int client_sock,
+                                        char *client_key) {
+  /* Create a new data connection context per client. */
+  ClientConnection *conn =
+      (ClientConnection *) malloc(sizeof(ClientConnection));
+  conn->manager_state = state;
+  conn->cursor = 0;
+  conn->transfer_queue = NULL;
+  conn->pending_object_transfers = NULL;
+  conn->fd = client_sock;
+  conn->num_return_objects = 0;
+
+  conn->ip_addr_port = strdup(client_key);
+  HASH_ADD_KEYPTR(manager_hh, conn->manager_state->manager_connections,
+                  conn->ip_addr_port, strlen(conn->ip_addr_port), conn);
+  return conn;
+}
+
+ClientConnection *ClientConnection_listen(event_loop *loop,
+                                          int listener_sock,
+                                          void *context,
+                                          int events) {
+  PlasmaManagerState *state = (PlasmaManagerState *) context;
+  int new_socket = accept_client(listener_sock);
+  char client_key[8];
+  snprintf(client_key, sizeof(client_key), "%d", new_socket);
+  ClientConnection *conn = ClientConnection_init(state, new_socket, client_key);
+
+  event_loop_add_file(loop, new_socket, EVENT_LOOP_READ, process_message, conn);
+  LOG_DEBUG("New client connection with fd %d", new_socket);
+  return conn;
+}
+
+void ClientConnection_free(ClientConnection *client_conn) {
+  PlasmaManagerState *state = client_conn->manager_state;
+  HASH_DELETE(manager_hh, state->manager_connections, client_conn);
+  /* Free the hash table of object IDs that are waiting to be transferred. */
+  PlasmaRequestBuffer *request_buffer, *tmp_buffer;
+  HASH_ITER(hh, client_conn->pending_object_transfers, request_buffer,
+            tmp_buffer) {
+    /* We do not free the PlasmaRequestBuffer here because it is also in the
+     * transfer queue and will be freed below. */
+    HASH_DELETE(hh, client_conn->pending_object_transfers, request_buffer);
+  }
+
+  /* Free the transfer queue. */
+  PlasmaRequestBuffer *head = client_conn->transfer_queue;
+  while (head) {
+    DL_DELETE(client_conn->transfer_queue, head);
+    free(head);
+    head = client_conn->transfer_queue;
+  }
+  /* Close the manager connection and free the remaining state. */
+  close(client_conn->fd);
+  free(client_conn->ip_addr_port);
+  free(client_conn);
+}
+
+void handle_new_client(event_loop *loop,
+                       int listener_sock,
+                       void *context,
+                       int events) {
+  (void) ClientConnection_listen(loop, listener_sock, context, events);
+}
+
+int get_client_sock(ClientConnection *conn) {
+  return conn->fd;
+}
+
 void process_message(event_loop *loop,
                      int client_sock,
                      void *context,
@@ -1485,51 +1536,13 @@ void process_message(event_loop *loop,
   } break;
   case DISCONNECT_CLIENT: {
     LOG_INFO("Disconnecting client on fd %d", client_sock);
-    /* TODO(swang): Check if this connection was to a plasma manager. If so,
-     * delete it. */
     event_loop_remove_file(loop, client_sock);
-    close(client_sock);
-    free(conn);
+    ClientConnection_free(conn);
   } break;
   default:
     LOG_FATAL("invalid request %" PRId64, type);
   }
   free(data);
-}
-
-/* TODO(pcm): Split this into two methods: new_worker_connection
- * and new_manager_connection and also split ClientConnection
- * into two structs, one for workers and one for other plasma managers. */
-ClientConnection *ClientConnection_init(event_loop *loop,
-                                        int listener_sock,
-                                        void *context,
-                                        int events) {
-  int new_socket = accept_client(listener_sock);
-  /* Create a new data connection context per client. */
-  ClientConnection *conn =
-      (ClientConnection *) malloc(sizeof(ClientConnection));
-  conn->manager_state = (PlasmaManagerState *) context;
-  conn->cursor = 0;
-  conn->transfer_queue = NULL;
-  /* TODO(rkn): Is this pending_object_transfers hash table ever used? */
-  conn->pending_object_transfers = NULL;
-  conn->fd = new_socket;
-  conn->active_objects = NULL;
-  conn->num_return_objects = 0;
-  event_loop_add_file(loop, new_socket, EVENT_LOOP_READ, process_message, conn);
-  LOG_DEBUG("New client connection with fd %d", new_socket);
-  return conn;
-}
-
-void handle_new_client(event_loop *loop,
-                       int listener_sock,
-                       void *context,
-                       int events) {
-  (void) ClientConnection_init(loop, listener_sock, context, events);
-}
-
-int get_client_sock(ClientConnection *conn) {
-  return conn->fd;
 }
 
 void start_server(const char *store_socket_name,

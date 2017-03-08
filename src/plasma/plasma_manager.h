@@ -154,10 +154,10 @@ void send_queued_request(event_loop *loop,
  * @param context The plasma manager state.
  * @return Void.
  */
-ClientConnection *ClientConnection_init(event_loop *loop,
-                                        int listener_sock,
-                                        void *context,
-                                        int events);
+ClientConnection *ClientConnection_listen(event_loop *loop,
+                                          int listener_sock,
+                                          void *context,
+                                          int events);
 
 /**
  * The following definitions are internal to the plasma manager code but are
