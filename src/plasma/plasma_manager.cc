@@ -1534,14 +1534,6 @@ int get_client_sock(ClientConnection *conn) {
   return conn->fd;
 }
 
-int heartbeat_handler(event_loop *loop, timer_id id, void *context) {
-  PlasmaManagerState *state = (PlasmaManagerState *) context;
-  /* Publish the heartbeat to all subscribers of the plasma manager table. */
-  plasma_manager_send_heartbeat(state->db);
-  /* Reset the timer. */
-  return EVENT_LOOP_TIMER_DONE;
-}
-
 void start_server(const char *store_socket_name,
                   const char *manager_socket_name,
                   const char *master_addr,
@@ -1585,8 +1577,9 @@ void start_server(const char *store_socket_name,
    * requests and reissue requests for transfers of those objects. */
   event_loop_add_timer(g_manager_state->loop, MANAGER_TIMEOUT,
                        fetch_timeout_handler, g_manager_state);
-  event_loop_add_timer(g_manager_state->loop, HEARTBEAT_TIMEOUT_MILLISECONDS,
-                       heartbeat_handler, g_manager_state);
+  /* Begin publishing the heartbeats to all subscribers of the plasma manager
+   * table. */
+  plasma_manager_send_heartbeat(g_manager_state->db);
   /* Run the event loop. */
   event_loop_run(g_manager_state->loop);
 }

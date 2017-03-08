@@ -81,8 +81,13 @@ int64_t table_timeout_handler(event_loop *loop,
 
   CHECK(callback_data->retry.num_retries >= 0 ||
         callback_data->retry.num_retries == -1);
-  LOG_WARN("retrying operation %s, retry_count = %d", callback_data->label,
-           callback_data->retry.num_retries);
+  if (callback_data->retry.timeout > HEARTBEAT_TIMEOUT_MILLISECONDS) {
+    /* If the operation happens less often as a heartbeat, log the reattempt.
+     * NOTE(swang): This is a hack so that we don't get a log message per
+     * heartbeat. */
+    LOG_WARN("retrying operation %s, retry_count = %d", callback_data->label,
+             callback_data->retry.num_retries);
+  }
 
   if (callback_data->retry.num_retries == 0) {
     /* We didn't get a response from the database after exhausting all retries;
