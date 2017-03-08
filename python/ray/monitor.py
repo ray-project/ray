@@ -121,6 +121,8 @@ class Monitor(object):
     table. A plasma manager is deemed dead if it is in
     self.dead_plasma_managers.
     """
+    # TODO(swang): Also kill the associated plasma store, since it's no longer
+    # reachable without a plasma manager.
     object_ids = self.redis.scan_iter(match="{prefix}*".format(prefix=OBJECT_PREFIX))
     for object_id in object_ids:
       object_id = object_id[len(OBJECT_PREFIX):]
