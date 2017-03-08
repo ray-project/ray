@@ -42,7 +42,6 @@ class ProximalPolicyLoss(object):
     self.kl = self.prev_dist.kl(self.curr_dist)
     self.mean_kl = tf.reduce_mean(self.kl)
     self.mean_entropy = tf.reduce_mean(self.entropy)
-    # XXX
     self.surr1 = self.ratio * self.advantages
     self.surr2 = tf.clip_by_value(self.ratio, 1 - config["clip_param"], 1 + config["clip_param"]) * self.advantages
     self.surr = tf.minimum(self.surr1, self.surr2)

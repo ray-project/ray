@@ -19,8 +19,7 @@ config = {"kl_coeff": 0.2,
 
 ray.init()
 
-# mdp_name = "Walker2d-v1"
-mdp_name = "Pong-ramDeterministic-v3"
+mdp_name = "Pong-ram-v3"
 
 agents = [RemoteAgent(mdp_name, 1, config, False) for _ in range(5)]
 agent = Agent(mdp_name, 1, config, True)
