@@ -877,13 +877,13 @@ void redis_task_table_subscribe(TableCallbackData *callback_data) {
      * a Redis key-matching pattern. */
     status = redisAsyncCommand(
         db->sub_context, redis_task_table_subscribe_callback,
-        (void *) callback_data->timer_id, "PSUBSCRIBE %s*:%2d",
+        (void *) callback_data->timer_id, "PSUBSCRIBE %s*:%d",
         TASK_CHANNEL_PREFIX, data->state_filter);
   } else {
     DBClientID local_scheduler_id = data->local_scheduler_id;
     status = redisAsyncCommand(
         db->sub_context, redis_task_table_subscribe_callback,
-        (void *) callback_data->timer_id, "SUBSCRIBE %s%b:%2d",
+        (void *) callback_data->timer_id, "SUBSCRIBE %s%b:%d",
         TASK_CHANNEL_PREFIX, (char *) local_scheduler_id.id,
         sizeof(local_scheduler_id.id), data->state_filter);
   }

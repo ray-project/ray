@@ -691,24 +691,6 @@ int ResultTableAdd_RedisCommand(RedisModuleCtx *ctx,
   return REDISMODULE_OK;
 }
 
-RedisModuleString *NormalizeTaskState(RedisModuleCtx *ctx,
-                                      RedisModuleString *state) {
-  /* Pad the state integer to a fixed-width integer, and make sure it has width
-   * less than or equal to 2. */
-  long long state_integer;
-  int status = RedisModule_StringToLongLong(state, &state_integer);
-  if (status != REDISMODULE_OK) {
-    return NULL;
-  }
-  state = RedisModule_CreateStringPrintf(ctx, "%2d", state_integer);
-  size_t length;
-  RedisModule_StringPtrLen(state, &length);
-  if (length != 2) {
-    return NULL;
-  }
-  return state;
-}
-
 /**
  * Reply with information about a task ID. This is used by
  * RAY.RESULT_TABLE_LOOKUP and RAY.TASK_TABLE_GET.
@@ -822,15 +804,6 @@ int TaskTableWrite(RedisModuleCtx *ctx,
                    RedisModuleString *state,
                    RedisModuleString *local_scheduler_id,
                    RedisModuleString *task_spec) {
-  /* Format the state as a fixed width string of length 2 so that we can treat
-   * it as a bit mask and pattern match it with PSUBSCRIBE. This is done in
-   * redis_task_table_subscribe in redis.cc. */
-  RedisModuleString *formatted_state = NormalizeTaskState(ctx, state);
-  if (formatted_state == NULL) {
-    return RedisModule_ReplyWithError(
-        ctx,
-        "Invalid scheduling state (must be an integer of width at most 2)");
-  }
   /* Add the task to the task table. If no spec was provided, get the existing
    * spec out of the task table so we can publish it. */
   RedisModuleString *existing_task_spec = NULL;
@@ -857,8 +830,7 @@ int TaskTableWrite(RedisModuleCtx *ctx,
    * is a string in the format "TASK_PREFIX:<local scheduler ID>:<state>". The
    * message is a serialized SubscribeToTasksReply flatbuffer object. */
   RedisModuleString *publish_topic = RedisString_Format(
-      ctx, "%s%S:%S", TASK_PREFIX, local_scheduler_id, formatted_state);
-  RedisModule_FreeString(ctx, formatted_state);
+      ctx, "%s%S:%S", TASK_PREFIX, local_scheduler_id, state);
 
   /* Construct the flatbuffers object for the payload. */
   flatbuffers::FlatBufferBuilder fbb;
