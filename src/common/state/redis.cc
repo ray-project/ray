@@ -1179,6 +1179,10 @@ void redis_local_scheduler_table_send_info(TableCallbackData *callback_data) {
 
 void redis_plasma_manager_send_heartbeat(TableCallbackData *callback_data) {
   DBHandle *db = callback_data->db_handle;
+  /* NOTE(swang): We purposefully do not provide a callback, leaving the table
+   * operation and timer active. This allows us to send a new heartbeat every
+   * HEARTBEAT_TIMEOUT_MILLISECONDS without having to allocate and deallocate
+   * memory for callback data each time. */
   int status = redisAsyncCommand(
       db->context, NULL, (void *) callback_data->timer_id,
       "PUBLISH plasma_managers %b", db->client.id, sizeof(db->client.id));
