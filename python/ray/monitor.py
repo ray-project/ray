@@ -218,8 +218,8 @@ class Monitor(object):
         return
 
       # Parse the message.
-      channel = message[b"channel"]
-      data = message[b"data"]
+      channel = message["channel"]
+      data = message["data"]
 
       # Determine the appropriate message handler.
       message_handler = None
