@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import gym.spaces
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
@@ -10,7 +14,7 @@ class ProximalPolicyLoss(object):
   def __init__(self, observation_space, action_space, config, sess):
     assert isinstance(action_space, gym.spaces.Discrete) or isinstance(action_space, gym.spaces.Box)
     # adapting the kl divergence
-    self.kl_coeff = tf.placeholder(name='newkl', shape=(), dtype=tf.float32)
+    self.kl_coeff = tf.placeholder(name="newkl", shape=(), dtype=tf.float32)
     self.observations = tf.placeholder(tf.float32, shape=(None,) + observation_space.shape)
     self.advantages = tf.placeholder(tf.float32, shape=(None,))
 

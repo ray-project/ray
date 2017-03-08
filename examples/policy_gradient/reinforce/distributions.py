@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import tensorflow as tf
 import numpy as np
 
@@ -7,7 +11,7 @@ class Categorical(object):
     self.logits = logits
 
   def logp(self, x):
-    return -tf.nn.sparse_softmax_cross_entropy_with_logits(self.logits, x)
+    return -tf.nn.sparse_softmax_cross_entropy_with_logits(logits=self.logits, labels=x)
 
   def entropy(self):
     a0 = self.logits - tf.reduce_max(self.logits, reduction_indices=[1], keep_dims=True)
