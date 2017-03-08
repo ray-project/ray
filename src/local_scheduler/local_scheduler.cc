@@ -476,7 +476,8 @@ void process_plasma_notification(event_loop *loop,
     event_loop_remove_file(loop, client_sock);
     close(client_sock);
     LocalSchedulerState_free(state);
-    LOG_FATAL("Lost connection to the plasma store");
+    LOG_FATAL(
+        "Lost connection to the plasma store, local scheduler is exiting!");
   }
 
   if (object_info.is_deletion) {
@@ -859,7 +860,7 @@ int heartbeat_handler(event_loop *loop, timer_id id, void *context) {
   /* Publish the heartbeat to all subscribers of the local scheduler table. */
   local_scheduler_table_send_info(state->db, &info, NULL);
   /* Reset the timer. */
-  return LOCAL_SCHEDULER_HEARTBEAT_TIMEOUT_MILLISECONDS;
+  return HEARTBEAT_TIMEOUT_MILLISECONDS;
 }
 
 void start_server(const char *node_ip_address,
@@ -904,7 +905,7 @@ void start_server(const char *node_ip_address,
    * scheduler to the local scheduler table. This message also serves as a
    * heartbeat. */
   if (g_state->db != NULL) {
-    event_loop_add_timer(loop, LOCAL_SCHEDULER_HEARTBEAT_TIMEOUT_MILLISECONDS,
+    event_loop_add_timer(loop, HEARTBEAT_TIMEOUT_MILLISECONDS,
                          heartbeat_handler, g_state);
   }
   /* Create a timer for fetching queued tasks' missing object dependencies. */

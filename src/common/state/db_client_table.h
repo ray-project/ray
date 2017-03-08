@@ -65,4 +65,10 @@ typedef struct {
   void *subscribe_context;
 } DBClientTableSubscribeData;
 
+/*
+ * ==== Plasma manager heartbeats ====
+ */
+
+void plasma_manager_send_heartbeat(DBHandle *db_handle);
+
 #endif /* DB_CLIENT_TABLE_H */

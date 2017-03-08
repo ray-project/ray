@@ -44,6 +44,11 @@ typedef struct {
   table_fail_callback fail_callback;
 } RetryInfo;
 
+static const RetryInfo heartbeat_retry = {
+    .num_retries = -1,
+    .timeout = HEARTBEAT_TIMEOUT_MILLISECONDS,
+    .fail_callback = NULL};
+
 struct TableCallbackData {
   /** ID of the entry in the table that we are going to look up, remove or add.
    */

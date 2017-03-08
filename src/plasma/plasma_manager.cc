@@ -37,6 +37,7 @@
 #include "state/object_table.h"
 #include "state/error_table.h"
 #include "state/task_table.h"
+#include "state/db_client_table.h"
 
 /**
  * Process either the fetch or the status request.
@@ -280,6 +281,12 @@ struct ClientConnection {
   /** Handle for the uthash table. */
   UT_hash_handle manager_hh;
 };
+
+void object_table_subscribe_callback(ObjectID object_id,
+                                     int64_t data_size,
+                                     int manager_count,
+                                     const char *manager_vector[],
+                                     void *context);
 
 ObjectWaitRequests **object_wait_requests_table_ptr_from_type(
     PlasmaManagerState *manager_state,
@@ -943,14 +950,31 @@ int fetch_timeout_handler(event_loop *loop, timer_id id, void *context) {
   PlasmaManagerState *manager_state = (PlasmaManagerState *) context;
   /* Loop over the fetch requests and reissue the requests. */
   FetchRequest *fetch_req, *tmp;
+
+  int num_object_ids_to_request = 0;
+  int num_object_ids = HASH_COUNT(manager_state->fetch_requests);
+  /* This is allocating more space than necessary, but we do not know the exact
+   * number of object IDs to request notifications for yet. */
+  ObjectID *object_ids_to_request =
+      (ObjectID *) malloc(num_object_ids * sizeof(ObjectID));
+
   HASH_ITER(hh, manager_state->fetch_requests, fetch_req, tmp) {
     if (fetch_req->manager_count > 0) {
       request_transfer_from(manager_state, fetch_req);
       if (fetch_req->next_manager == 0) {
-        /* TODO(swang): Update the locations. */
+        object_ids_to_request[num_object_ids_to_request] = fetch_req->object_id;
+        ++num_object_ids_to_request;
       }
     }
   }
+
+  if (num_object_ids_to_request > 0) {
+    object_table_request_notifications(manager_state->db,
+                                       num_object_ids_to_request,
+                                       object_ids_to_request, NULL);
+  }
+  free(object_ids_to_request);
+
   return MANAGER_TIMEOUT;
 }
 
@@ -1380,12 +1404,11 @@ void process_object_notification(event_loop *loop,
       read_bytes(client_sock, (uint8_t *) &object_info, sizeof(object_info));
   if (error < 0) {
     /* The store has closed the socket. */
-    LOG_DEBUG(
-        "The plasma store has closed the object notification socket, or some "
-        "other error has occurred.");
     event_loop_remove_file(loop, client_sock);
     close(client_sock);
-    return;
+    PlasmaManagerState_free(state);
+    LOG_FATAL(
+        "Lost connection to the plasma store, plasma manager is exiting!");
   }
   /* Add object to locally available object. */
   if (object_info.is_deletion) {
@@ -1508,6 +1531,14 @@ int get_client_sock(ClientConnection *conn) {
   return conn->fd;
 }
 
+int heartbeat_handler(event_loop *loop, timer_id id, void *context) {
+  PlasmaManagerState *state = (PlasmaManagerState *) context;
+  /* Publish the heartbeat to all subscribers of the plasma manager table. */
+  plasma_manager_send_heartbeat(state->db);
+  /* Reset the timer. */
+  return EVENT_LOOP_TIMER_DONE;
+}
+
 void start_server(const char *store_socket_name,
                   const char *manager_socket_name,
                   const char *master_addr,
@@ -1551,6 +1582,8 @@ void start_server(const char *store_socket_name,
    * requests and reissue requests for transfers of those objects. */
   event_loop_add_timer(g_manager_state->loop, MANAGER_TIMEOUT,
                        fetch_timeout_handler, g_manager_state);
+  event_loop_add_timer(g_manager_state->loop, HEARTBEAT_TIMEOUT_MILLISECONDS,
+                       heartbeat_handler, g_manager_state);
   /* Run the event loop. */
   event_loop_run(g_manager_state->loop);
 }
