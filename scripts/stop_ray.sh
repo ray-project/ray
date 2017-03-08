@@ -16,3 +16,6 @@ killall polymer
 
 # Find the PID of the Ray UI backend process and kill it.
 kill $(ps aux | grep ray_ui.py | awk '{ print $2 }') 2> /dev/null
+
+# Find the PID of the Ray log monitor process and kill it.
+kill $(ps aux | grep log_monitor.py | awk '{ print $2 }') 2> /dev/null
