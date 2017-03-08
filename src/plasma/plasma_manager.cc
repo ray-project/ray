@@ -800,6 +800,20 @@ void process_transfer_request(event_loop *loop,
     return;
   }
 
+  /* Allocate and append the request to the transfer queue. */
+  ObjectBuffer obj_buffer;
+  /* We pass in 0 to indicate that the command should return immediately. */
+  plasma_get(conn->manager_state->plasma_conn, &obj_id, 1, 0, &obj_buffer);
+  if (obj_buffer.data_size == -1) {
+    /* If the object wasn't locally available, exit immediately. If the object
+     * later appears locally, the requesting plasma manager should request the
+     * transfer again. */
+    LOG_WARN(
+        "Unable to transfer object to requesting plasma manager, object not "
+        "local.");
+    return;
+  }
+
   /* If we already have a connection to this manager and its inactive,
    * (re)register it with the event loop again. */
   if (manager_conn->transfer_queue == NULL) {
@@ -807,28 +821,6 @@ void process_transfer_request(event_loop *loop,
                         send_queued_request, manager_conn);
   }
 
-  /* Allocate and append the request to the transfer queue. */
-  /* TODO(swang): A non-blocking plasma_get, or else we could block here
-   * forever if we don't end up sealing this object. */
-  /* The corresponding call to plasma_release will happen in
-   * write_object_chunk. */
-  /* TODO(rkn): The manager currently will block here if the object is not
-   * present in the store. This is completely unacceptable. The manager should
-   * do a non-blocking get call on the store, and if the object isn't there then
-   * perhaps the manager should initiate the transfer when it receives a
-   * notification from the store that the object is present. */
-  ObjectBuffer obj_buffer;
-  int counter = 0;
-  do {
-    /* We pass in 0 to indicate that the command should return immediately. */
-    ObjectID obj_id_array[1] = {obj_id};
-    plasma_get(conn->manager_state->plasma_conn, obj_id_array, 1, 0,
-               &obj_buffer);
-    if (counter > 0) {
-      LOG_WARN("Blocking in the plasma manager.");
-    }
-    counter += 1;
-  } while (obj_buffer.data_size == -1);
   DCHECK(obj_buffer.metadata == obj_buffer.data + obj_buffer.data_size);
   PlasmaRequestBuffer *buf =
       (PlasmaRequestBuffer *) malloc(sizeof(PlasmaRequestBuffer));
@@ -948,9 +940,9 @@ void request_transfer_from(PlasmaManagerState *manager_state,
 
 int fetch_timeout_handler(event_loop *loop, timer_id id, void *context) {
   PlasmaManagerState *manager_state = (PlasmaManagerState *) context;
-  /* Loop over the fetch requests and reissue the requests. */
-  FetchRequest *fetch_req, *tmp;
 
+  /* Allocate a vector of object IDs to resend requests for location
+   * notifications. */
   int num_object_ids_to_request = 0;
   int num_object_ids = HASH_COUNT(manager_state->fetch_requests);
   /* This is allocating more space than necessary, but we do not know the exact
@@ -958,9 +950,14 @@ int fetch_timeout_handler(event_loop *loop, timer_id id, void *context) {
   ObjectID *object_ids_to_request =
       (ObjectID *) malloc(num_object_ids * sizeof(ObjectID));
 
+  /* Loop over the fetch requests and reissue requests for objects whose
+   * locations we know. */
+  FetchRequest *fetch_req, *tmp;
   HASH_ITER(hh, manager_state->fetch_requests, fetch_req, tmp) {
     if (fetch_req->manager_count > 0) {
       request_transfer_from(manager_state, fetch_req);
+      /* If we've tried all of the managers that we know about for this object,
+       * add this object to the list to resend requests for. */
       if (fetch_req->next_manager == 0) {
         object_ids_to_request[num_object_ids_to_request] = fetch_req->object_id;
         ++num_object_ids_to_request;
@@ -968,6 +965,7 @@ int fetch_timeout_handler(event_loop *loop, timer_id id, void *context) {
     }
   }
 
+  /* Resend requests for notifications on these objects' locations. */
   if (num_object_ids_to_request > 0) {
     object_table_request_notifications(manager_state->db,
                                        num_object_ids_to_request,
