@@ -73,6 +73,11 @@ flatbuffers::Offset<flatbuffers::String> RedisStringToFlatbuf(
  * Publish a notification to a client's notification channel about an insertion
  * or deletion to the db client table.
  *
+ * The format for the published notification is:
+ *  <ray_client_id>:<client type> <aux_address> <is_insertion>
+ * If no auxiliary address is provided, aux_address will be set to ":". If
+ * is_insertion is true, then the last field will be "1", else "0".
+ *
  * @param ctx The Redis context.
  * @param ray_client_id The ID of the database client that was inserted or
  *        deleted.
@@ -159,14 +164,20 @@ int Connect_RedisCommand(RedisModuleCtx *ctx,
   RedisModuleKey *db_client_table_key =
       OpenPrefixedKey(ctx, DB_CLIENT_PREFIX, ray_client_id, REDISMODULE_WRITE);
 
+  if (RedisModule_KeyType(db_client_table_key) != REDISMODULE_KEYTYPE_EMPTY) {
+    return RedisModule_ReplyWithError(ctx, "Client already exists");
+  }
+
   /* This will be used to construct a publish message. */
   RedisModuleString *aux_address = NULL;
   RedisModuleString *aux_address_key =
       RedisModule_CreateString(ctx, "aux_address", strlen("aux_address"));
+  RedisModuleString *deleted = RedisModule_CreateString(ctx, "0", strlen("0"));
 
   RedisModule_HashSet(db_client_table_key, REDISMODULE_HASH_CFIELDS,
                       "ray_client_id", ray_client_id, "node_ip_address",
-                      node_ip_address, "client_type", client_type, NULL);
+                      node_ip_address, "client_type", client_type, "deleted",
+                      deleted, NULL);
 
   for (int i = 4; i < argc; i += 2) {
     RedisModuleString *key = argv[i];
@@ -178,6 +189,7 @@ int Connect_RedisCommand(RedisModuleCtx *ctx,
     }
   }
   /* Clean up. */
+  RedisModule_FreeString(ctx, deleted);
   RedisModule_FreeString(ctx, aux_address_key);
   RedisModule_CloseKey(db_client_table_key);
   if (!PublishDBClientNotification(ctx, ray_client_id, client_type, aux_address,
@@ -213,34 +225,47 @@ int Disconnect_RedisCommand(RedisModuleCtx *ctx,
   /* Get the client type. */
   RedisModuleKey *db_client_table_key =
       OpenPrefixedKey(ctx, DB_CLIENT_PREFIX, ray_client_id, REDISMODULE_WRITE);
-  if (RedisModule_KeyType(db_client_table_key) == REDISMODULE_KEYTYPE_EMPTY) {
-    /* Someone else already deleted this client. */
+
+  RedisModuleString *deleted_string;
+  RedisModule_HashGet(db_client_table_key, REDISMODULE_HASH_CFIELDS, "deleted",
+                      &deleted_string, NULL);
+  long long deleted;
+  int parsed = RedisModule_StringToLongLong(deleted_string, &deleted);
+  RedisModule_FreeString(ctx, deleted_string);
+  if (parsed != REDISMODULE_OK) {
     RedisModule_CloseKey(db_client_table_key);
-    RedisModule_ReplyWithSimpleString(ctx, "OK");
-    return REDISMODULE_OK;
+    return RedisModule_ReplyWithError(ctx, "Unable to parse deleted field");
   }
 
-  RedisModuleString *client_type;
-  RedisModuleString *aux_address;
-  RedisModule_HashGet(db_client_table_key, REDISMODULE_HASH_CFIELDS,
-                      "client_type", &client_type, "aux_address", &aux_address,
-                      NULL);
+  if (deleted == 0) {
+    /* Remove the client from the client table. */
+    RedisModuleString *deleted =
+        RedisModule_CreateString(ctx, "1", strlen("1"));
+    RedisModule_HashSet(db_client_table_key, REDISMODULE_HASH_CFIELDS,
+                        "deleted", deleted, NULL);
+    RedisModule_FreeString(ctx, deleted);
 
-  /* Remove the client from the client table. */
-  CHECK_ERROR(RedisModule_DeleteKey(db_client_table_key),
-              "Unable to delete db client key.");
+    RedisModuleString *client_type;
+    RedisModuleString *aux_address;
+    RedisModule_HashGet(db_client_table_key, REDISMODULE_HASH_CFIELDS,
+                        "client_type", &client_type, "aux_address",
+                        &aux_address, NULL);
+
+    /* Publish the deletion notification on the db client channel. */
+    bool published = PublishDBClientNotification(
+        ctx, ray_client_id, client_type, aux_address, false);
+    if (aux_address != NULL) {
+      RedisModule_FreeString(ctx, aux_address);
+    }
+    RedisModule_FreeString(ctx, client_type);
+
+    if (!published) {
+      RedisModule_CloseKey(db_client_table_key);
+      return RedisModule_ReplyWithError(ctx, "PUBLISH unsuccessful");
+    }
+  }
+
   RedisModule_CloseKey(db_client_table_key);
-
-  /* Publish the deletion notification on the db client channel. */
-  bool published = PublishDBClientNotification(ctx, ray_client_id, client_type,
-                                               aux_address, false);
-
-  RedisModule_FreeString(ctx, aux_address);
-  RedisModule_FreeString(ctx, client_type);
-
-  if (!published) {
-    return RedisModule_ReplyWithError(ctx, "PUBLISH unsuccessful");
-  }
 
   RedisModule_ReplyWithSimpleString(ctx, "OK");
   return REDISMODULE_OK;

@@ -158,12 +158,12 @@ class ComponentFailureTest(unittest.TestCase):
     object_ids += [f.remote(object_id, 1) for object_id in object_ids]
     object_ids += [f.remote(object_id, 2) for object_id in object_ids]
 
+    time.sleep(0.4)
     # Kill all nodes except the head node as the tasks execute.
-    time.sleep(0.5)
     local_schedulers = ray.services.all_processes[ray.services.PROCESS_TYPE_LOCAL_SCHEDULER]
     plasma_managers = ray.services.all_processes[ray.services.PROCESS_TYPE_PLASMA_MANAGER]
     plasma_stores = ray.services.all_processes[ray.services.PROCESS_TYPE_PLASMA_STORE]
-    for local_scheduler, plasma_manager, plasma_store in zip(local_schedulers, plasma_managers, plasma_stores)[1:]:
+    for local_scheduler, plasma_manager, plasma_store in zip(local_schedulers, plasma_managers, plasma_stores)[1:2]:
       #local_scheduler.terminate()
       #local_scheduler.wait()
       #plasma_manager.terminate()

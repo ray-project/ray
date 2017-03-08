@@ -1068,6 +1068,17 @@ void redis_local_scheduler_table_send_info(TableCallbackData *callback_data) {
   }
 }
 
+void redis_plasma_manager_send_heartbeat(TableCallbackData *callback_data) {
+  DBHandle *db = callback_data->db_handle;
+  int status = redisAsyncCommand(
+      db->context, NULL, (void *) callback_data->timer_id,
+      "PUBLISH plasma_managers %b", db->client.id, sizeof(db->client.id));
+  if ((status == REDIS_ERR) || db->context->err) {
+    LOG_REDIS_DEBUG(db->context,
+                    "error in redis_plasma_manager_send_heartbeat");
+  }
+}
+
 void redis_actor_notification_table_subscribe_callback(redisAsyncContext *c,
                                                        void *r,
                                                        void *privdata) {
