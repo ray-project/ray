@@ -49,7 +49,7 @@ table TaskInfo {
   required_resources: [double];
 }
 
-//root_type TaskInfo;
+root_type TaskInfo;
 
 table SubscribeToNotificationsReply {
   // The object ID of the object that the notification is about.
