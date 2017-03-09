@@ -95,12 +95,7 @@ plasma_mock *init_plasma_mock(plasma_mock *remote_mock) {
 }
 
 void destroy_plasma_mock(plasma_mock *mock) {
-  if (mock->read_conn != NULL) {
-    close(get_client_sock(mock->read_conn));
-    free(mock->read_conn);
-  }
   PlasmaManagerState_free(mock->state);
-  free(mock->client_conn);
   plasma_disconnect(mock->plasma_conn);
   close(mock->local_store);
   close(mock->manager_local_fd);
