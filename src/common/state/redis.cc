@@ -862,17 +862,17 @@ void redis_task_table_subscribe(TableCallbackData *callback_data) {
   if (IS_NIL_ID(data->local_scheduler_id)) {
     /* TODO(swang): Implement the state_filter by translating the bitmask into
      * a Redis key-matching pattern. */
-    status = redisAsyncCommand(
-        db->sub_context, redis_task_table_subscribe_callback,
-        (void *) callback_data->timer_id, "PSUBSCRIBE %s*:%d",
-        TASK_CHANNEL_PREFIX, data->state_filter);
+    status =
+        redisAsyncCommand(db->sub_context, redis_task_table_subscribe_callback,
+                          (void *) callback_data->timer_id, "PSUBSCRIBE %s*:%d",
+                          TASK_CHANNEL_PREFIX, data->state_filter);
   } else {
     DBClientID local_scheduler_id = data->local_scheduler_id;
-    status = redisAsyncCommand(
-        db->sub_context, redis_task_table_subscribe_callback,
-        (void *) callback_data->timer_id, "SUBSCRIBE %s%b:%d",
-        TASK_CHANNEL_PREFIX, (char *) local_scheduler_id.id,
-        sizeof(local_scheduler_id.id), data->state_filter);
+    status =
+        redisAsyncCommand(db->sub_context, redis_task_table_subscribe_callback,
+                          (void *) callback_data->timer_id, "SUBSCRIBE %s%b:%d",
+                          TASK_CHANNEL_PREFIX, (char *) local_scheduler_id.id,
+                          sizeof(local_scheduler_id.id), data->state_filter);
   }
   if ((status == REDIS_ERR) || db->sub_context->err) {
     LOG_REDIS_DEBUG(db->sub_context, "error in redis_task_table_subscribe");
