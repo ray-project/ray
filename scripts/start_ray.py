@@ -30,6 +30,14 @@ def check_no_existing_redis_clients(node_ip_address, redis_address):
     assert b"ray_client_id" in info
     assert b"node_ip_address" in info
     assert b"client_type" in info
+    assert b"deleted" in info
+    # Clients that ran on the same node but that are marked dead can be
+    # ignored.
+    deleted = info[b"deleted"]
+    deleted = bool(int(deleted))
+    if deleted:
+      continue
+
     if info[b"node_ip_address"].decode("ascii") == node_ip_address:
       raise Exception("This Redis instance is already connected to clients with this IP address.")
 
