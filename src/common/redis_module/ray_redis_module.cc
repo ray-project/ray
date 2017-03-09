@@ -359,10 +359,6 @@ bool PublishObjectNotification(RedisModuleCtx *ctx,
                                RedisModuleKey *key) {
   flatbuffers::FlatBufferBuilder fbb;
 
-  size_t object_id_size;
-  const char *object_id_str =
-      RedisModule_StringPtrLen(object_id, &object_id_size);
-
   long long data_size_value;
   if (RedisModule_StringToLongLong(data_size, &data_size_value) !=
       REDISMODULE_OK) {
@@ -377,13 +373,11 @@ bool PublishObjectNotification(RedisModuleCtx *ctx,
   /* Loop over the managers in the object table for this object ID. */
   do {
     RedisModuleString *curr = RedisModule_ZsetRangeCurrentElement(key, NULL);
-    size_t size;
-    const char *val = RedisModule_StringPtrLen(curr, &size);
-    manager_ids.push_back(fbb.CreateString(val, size));
+    manager_ids.push_back(RedisStringToFlatbuf(fbb, curr));
   } while (RedisModule_ZsetRangeNext(key));
 
   auto message = CreateSubscribeToNotificationsReply(
-      fbb, fbb.CreateString(object_id_str, object_id_size), data_size_value,
+      fbb, RedisStringToFlatbuf(fbb, object_id), data_size_value,
       fbb.CreateVector(manager_ids));
   fbb.Finish(message);
 
