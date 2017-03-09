@@ -721,15 +721,8 @@ int ReplyWithTask(RedisModuleCtx *ctx, RedisModuleString *task_id) {
     }
 
     long long state_integer;
-    if (RedisModule_StringToLongLong(state, &state_integer) != REDISMODULE_OK) {
-      RedisModule_CloseKey(key);
-      RedisModule_FreeString(ctx, state);
-      RedisModule_FreeString(ctx, local_scheduler_id);
-      RedisModule_FreeString(ctx, task_spec);
-      return RedisModule_ReplyWithError(ctx,
-                                        "Scheduling state must be integer.");
-    }
-    if (state_integer < 0) {
+    if (RedisModule_StringToLongLong(state, &state_integer) != REDISMODULE_OK ||
+        state_integer < 0) {
       RedisModule_CloseKey(key);
       RedisModule_FreeString(ctx, state);
       RedisModule_FreeString(ctx, local_scheduler_id);
@@ -743,6 +736,7 @@ int ReplyWithTask(RedisModuleCtx *ctx, RedisModuleString *task_id) {
                         RedisStringToFlatbuf(fbb, local_scheduler_id),
                         RedisStringToFlatbuf(fbb, task_spec));
     fbb.Finish(message);
+
     RedisModuleString *reply = RedisModule_CreateString(
         ctx, (char *) fbb.GetBufferPointer(), fbb.GetSize());
     RedisModule_ReplyWithString(ctx, reply);
