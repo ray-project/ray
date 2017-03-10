@@ -25,6 +25,7 @@
 #include "utlist.h"
 #include "utarray.h"
 #include "utstring.h"
+#include "common_protocol.h"
 #include "common.h"
 #include "io.h"
 #include "net.h"
@@ -1252,10 +1253,9 @@ void process_status_request(ClientConnection *client_conn, ObjectID object_id) {
 }
 
 void process_delete_object_notification(PlasmaManagerState *state,
-                                        ObjectInfo object_info) {
-  ObjectID obj_id = object_info.obj_id;
+                                        ObjectID object_id) {
   AvailableObject *entry;
-  HASH_FIND(hh, state->local_available_objects, &obj_id, sizeof(obj_id), entry);
+  HASH_FIND(hh, state->local_available_objects, &object_id, sizeof(object_id), entry);
   if (entry != NULL) {
     HASH_DELETE(hh, state->local_available_objects, entry);
     free(entry);
@@ -1263,7 +1263,7 @@ void process_delete_object_notification(PlasmaManagerState *state,
 
   /* Remove this object from the (redis) object table. */
   if (state->db) {
-    object_table_remove(state->db, obj_id, NULL, NULL, NULL, NULL);
+    object_table_remove(state->db, object_id, NULL, NULL, NULL, NULL);
   }
 
   /* NOTE: There could be pending wait requests for this object that will now
@@ -1311,33 +1311,35 @@ void log_object_hash_mismatch_error_object_callback(ObjectID object_id,
 }
 
 void process_add_object_notification(PlasmaManagerState *state,
-                                     ObjectInfo object_info) {
-  ObjectID obj_id = object_info.obj_id;
+                                     ObjectID object_id,
+                                     int64_t data_size,
+                                     int64_t metadata_size,
+                                     unsigned char* digest) {
   AvailableObject *entry = (AvailableObject *) malloc(sizeof(AvailableObject));
-  entry->object_id = obj_id;
+  entry->object_id = object_id;
   HASH_ADD(hh, state->local_available_objects, object_id, sizeof(ObjectID),
            entry);
 
   /* Add this object to the (redis) object table. */
   if (state->db) {
     object_table_add(
-        state->db, obj_id, object_info.data_size + object_info.metadata_size,
-        object_info.digest, NULL,
+        state->db, object_id, data_size + metadata_size,
+        digest, NULL,
         log_object_hash_mismatch_error_object_callback, (void *) state);
   }
 
   /* If we were trying to fetch this object, finish up the fetch request. */
   FetchRequest *fetch_req;
-  HASH_FIND(hh, state->fetch_requests, &obj_id, sizeof(obj_id), fetch_req);
+  HASH_FIND(hh, state->fetch_requests, &object_id, sizeof(object_id), fetch_req);
   if (fetch_req != NULL) {
     remove_fetch_request(state, fetch_req);
     /* TODO(rkn): We also really should unsubscribe from the object table. */
   }
 
   /* Update the in-progress local and remote wait requests. */
-  update_object_wait_requests(state, obj_id, PLASMA_QUERY_LOCAL,
+  update_object_wait_requests(state, object_id, PLASMA_QUERY_LOCAL,
                               ObjectStatus_Local);
-  update_object_wait_requests(state, obj_id, PLASMA_QUERY_ANYWHERE,
+  update_object_wait_requests(state, object_id, PLASMA_QUERY_ANYWHERE,
                               ObjectStatus_Local);
 }
 
@@ -1346,11 +1348,13 @@ void process_object_notification(event_loop *loop,
                                  void *context,
                                  int events) {
   PlasmaManagerState *state = (PlasmaManagerState *) context;
-  ObjectInfo object_info;
   /* Read the notification from Plasma. */
-  int error =
-      read_bytes(client_sock, (uint8_t *) &object_info, sizeof(object_info));
-  if (error < 0) {
+  int64_t size;
+  int nbytes = read_bytes(client_sock, (uint8_t *) &size, sizeof(int64_t));
+  uint8_t *notification = (uint8_t *) malloc(size);
+  nbytes = read_bytes(client_sock, notification, size);
+
+  if (nbytes < 0) {
     /* The store has closed the socket. */
     LOG_DEBUG(
         "The plasma store has closed the object notification socket, or some "
@@ -1359,12 +1363,15 @@ void process_object_notification(event_loop *loop,
     close(client_sock);
     return;
   }
+  auto object_info = flatbuffers::GetRoot<ObjectInfo>(notification);
   /* Add object to locally available object. */
-  if (object_info.is_deletion) {
-    process_delete_object_notification(state, object_info);
+  ObjectID object_id = from_flatbuf(object_info->object_id());
+  if (object_info->is_deletion()) {
+    process_delete_object_notification(state, object_id);
   } else {
-    process_add_object_notification(state, object_info);
+    process_add_object_notification(state, object_id, object_info->data_size(), object_info->metadata_size(), (unsigned char*) object_info->digest()->data());
   }
+  free(notification);
 }
 
 void process_message(event_loop *loop,

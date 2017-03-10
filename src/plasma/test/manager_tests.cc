@@ -258,31 +258,38 @@ TEST object_notifications_test(void) {
   CHECK(fcntl(fd[1], F_SETFL, flags | O_NONBLOCK) == 0);
 
   ObjectID oid = globally_unique_id();
-  ObjectInfo info = {.obj_id = oid,
-                     .data_size = 10,
-                     .metadata_size = 1,
-                     .create_time = 0,
-                     .construct_duration = 0,
-                     .digest = {0},
-                     .is_deletion = false};
+  ObjectInfoT info;
+  info.object_id = std::string((char*) &oid.id[0], sizeof(oid));
+  info.data_size = 10;
+  info.metadata_size = 1;
+  info.create_time = 0;
+  info.construct_duration = 0;
+  info.digest = std::string("0");
+  info.is_deletion = false;
 
   /* Check that the object is not local at first. */
   bool is_local = is_object_local(local_mock->state, oid);
   ASSERT(!is_local);
 
   /* Check that the object is local after receiving an object notification. */
-  send(fd[1], (char const *) &info, sizeof(info), 0);
+  uint8_t *notification = create_object_info_buffer(&info);
+  int64_t size = * ((int64_t *) notification);
+  send(fd[1], notification, sizeof(int64_t) + size, 0);
   process_object_notification(local_mock->loop, fd[0], local_mock->state, 0);
   is_local = is_object_local(local_mock->state, oid);
   ASSERT(is_local);
+  free(notification);
 
   /* Check that the object is not local after receiving a notification about
    * the object deletion. */
   info.is_deletion = true;
-  send(fd[1], (char const *) &info, sizeof(info), 0);
+  notification = create_object_info_buffer(&info);
+  size = * ((int64_t *) notification);
+  send(fd[1], notification, sizeof(int64_t) + size, 0);
   process_object_notification(local_mock->loop, fd[0], local_mock->state, 0);
   is_local = is_object_local(local_mock->state, oid);
   ASSERT(!is_local);
+  free(notification);
 
   /* Clean up. */
   close(fd[0]);

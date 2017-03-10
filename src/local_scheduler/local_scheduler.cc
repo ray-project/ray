@@ -8,10 +8,11 @@
 #include <unistd.h>
 
 #include "common.h"
+#include "common_protocol.h"
 #include "event_loop.h"
+#include "format/local_scheduler_generated.h"
 #include "io.h"
 #include "logging.h"
-#include "object_info.h"
 #include "local_scheduler_shared.h"
 #include "local_scheduler.h"
 #include "local_scheduler_algorithm.h"
@@ -431,7 +432,7 @@ void assign_task_to_worker(LocalSchedulerState *state,
                            TaskSpec *spec,
                            int64_t task_spec_size,
                            LocalSchedulerClient *worker) {
-  if (write_message(worker->sock, EXECUTE_TASK, task_spec_size,
+  if (write_message(worker->sock, MessageType_ExecuteTask, task_spec_size,
                     (uint8_t *) spec) < 0) {
     if (errno == EPIPE || errno == EBADF) {
       /* TODO(rkn): If this happens, the task should be added back to the task
@@ -451,7 +452,7 @@ void assign_task_to_worker(LocalSchedulerState *state,
   Task *task = Task_alloc(spec, task_spec_size, TASK_STATUS_RUNNING,
                           state->db ? get_db_client_id(state->db) : NIL_ID);
   /* Record which task this worker is executing. This will be freed in
-   * process_message when the worker sends a GET_TASK message to the local
+   * process_message when the worker sends a GetTask message to the local
    * scheduler. */
   worker->task_in_progress = Task_copy(task);
   /* Update the global task table. */
@@ -468,10 +469,12 @@ void process_plasma_notification(event_loop *loop,
                                  int events) {
   LocalSchedulerState *state = (LocalSchedulerState *) context;
   /* Read the notification from Plasma. */
-  ObjectInfo object_info;
-  int error =
-      read_bytes(client_sock, (uint8_t *) &object_info, sizeof(object_info));
-  if (error < 0) {
+  int64_t size;
+  int nbytes = read_bytes(client_sock, (uint8_t *) &size, sizeof(size));
+  uint8_t *notification = (uint8_t *) malloc(size);
+  nbytes = read_bytes(client_sock, notification, size);
+
+  if (nbytes < 0) {
     /* The store has closed the socket. */
     LOG_DEBUG(
         "The plasma store has closed the object notification socket, or some "
@@ -481,11 +484,14 @@ void process_plasma_notification(event_loop *loop,
     return;
   }
 
-  if (object_info.is_deletion) {
-    handle_object_removed(state, object_info.obj_id);
+  auto object_info = flatbuffers::GetRoot<ObjectInfo>(notification);
+  ObjectID object_id = from_flatbuf(object_info->object_id());
+  if (object_info->is_deletion()) {
+    handle_object_removed(state, object_id);
   } else {
-    handle_object_available(state, state->algorithm_state, object_info.obj_id);
+    handle_object_available(state, state->algorithm_state, object_id);
   }
+  free(notification);
 }
 
 void reconstruct_task_update_callback(Task *task, void *user_context) {
@@ -602,7 +608,7 @@ void process_message(event_loop *loop,
   LOG_DEBUG("New event of type %" PRId64, type);
 
   switch (type) {
-  case SUBMIT_TASK: {
+  case MessageType_SubmitTask: {
     TaskSpec *spec = (TaskSpec *) utarray_front(state->input_buffer);
     /* Update the result table, which holds mappings of object ID -> ID of the
      * task that created it. */
@@ -622,77 +628,60 @@ void process_message(event_loop *loop,
     }
 
   } break;
-  case TASK_DONE: {
+  case MessageType_TaskDone: {
   } break;
-  case EVENT_LOG_MESSAGE: {
-    /* Parse the message. TODO(rkn): Redo this using flatbuffers to serialize
-     * the message. */
-    uint8_t *message = (uint8_t *) utarray_front(state->input_buffer);
-    int64_t offset = 0;
-    int64_t key_length;
-    memcpy(&key_length, &message[offset], sizeof(key_length));
-    offset += sizeof(key_length);
-    int64_t value_length;
-    memcpy(&value_length, &message[offset], sizeof(value_length));
-    offset += sizeof(value_length);
-    uint8_t *key = (uint8_t *) malloc(key_length);
-    memcpy(key, &message[offset], key_length);
-    offset += key_length;
-    uint8_t *value = (uint8_t *) malloc(value_length);
-    memcpy(value, &message[offset], value_length);
-    offset += value_length;
-    CHECK(offset == length);
+  case MessageType_EventLogMessage: {
+    /* Parse the message. */
+    auto message = flatbuffers::GetRoot<EventLogMessage>(utarray_front(state->input_buffer));
     if (state->db != NULL) {
-      RayLogger_log_event(state->db, key, key_length, value, value_length);
+      RayLogger_log_event(state->db, (uint8_t *) message->key()->data(), message->key()->size(), (uint8_t *) message->value()->data(), message->value()->size());
     }
-    free(key);
-    free(value);
   } break;
-  case REGISTER_WORKER_INFO: {
+  case MessageType_RegisterWorkerInfo: {
     /* Update the actor mapping with the actor ID of the worker (if an actor is
      * running on the worker). */
-    register_worker_info *info =
-        (register_worker_info *) utarray_front(state->input_buffer);
-    if (!ActorID_equal(info->actor_id, NIL_ACTOR_ID)) {
+    auto message = flatbuffers::GetRoot<RegisterWorkerInfo>(utarray_front(state->input_buffer));
+    int64_t worker_pid = message->worker_pid();
+    ActorID actor_id = from_flatbuf(message->actor_id());
+    if (!ActorID_equal(actor_id, NIL_ACTOR_ID)) {
       /* Make sure that the local scheduler is aware that it is responsible for
        * this actor. */
       actor_map_entry *entry;
-      HASH_FIND(hh, state->actor_mapping, &info->actor_id,
-                sizeof(info->actor_id), entry);
+      HASH_FIND(hh, state->actor_mapping, &actor_id, sizeof(actor_id), entry);
       CHECK(entry != NULL);
       CHECK(DBClientID_equal(entry->local_scheduler_id,
                              get_db_client_id(state->db)));
       /* Update the worker struct with this actor ID. */
-      CHECK(ActorID_equal(worker->actor_id, NIL_ACTOR_ID));
-      worker->actor_id = info->actor_id;
+      CHECK(ActorID_equal(actor_id, NIL_ACTOR_ID));
+      worker->actor_id = actor_id;
       /* Let the scheduling algorithm process the presence of this new
        * worker. */
-      handle_actor_worker_connect(state, state->algorithm_state, info->actor_id,
+      handle_actor_worker_connect(state, state->algorithm_state, actor_id,
                                   worker);
     }
 
     /* Register worker process id with the scheduler. */
-    worker->pid = info->worker_pid;
+    worker->pid = worker_pid;
     /* Determine if this worker is one of our child processes. */
-    LOG_DEBUG("PID is %d", info->worker_pid);
+    LOG_DEBUG("PID is %d", worker_pid);
     pid_t *child_pid;
     int index = 0;
     for (child_pid = (pid_t *) utarray_front(state->child_pids);
          child_pid != NULL;
          child_pid = (pid_t *) utarray_next(state->child_pids, child_pid)) {
-      if (*child_pid == info->worker_pid) {
+      if (*child_pid == worker_pid) {
         /* If this worker is one of our child processes, mark it as a child so
          * that we know that we can wait for the process to exit during
          * cleanup. */
         worker->is_child = true;
         utarray_erase(state->child_pids, index, 1);
-        LOG_DEBUG("Found matching child pid %d", info->worker_pid);
+        LOG_DEBUG("Found matching child pid %d", worker_pid);
         break;
       }
       ++index;
     }
   } break;
-  case GET_TASK: {
+  case MessageType_GetTask: {
     /* If this worker reports a completed task: account for resources. */
     if (worker->task_in_progress != NULL) {
       TaskSpec *spec = Task_task_spec(worker->task_in_progress);
@@ -719,7 +708,8 @@ void process_message(event_loop *loop,
       handle_actor_worker_available(state, state->algorithm_state, worker);
     }
   } break;
-  case RECONSTRUCT_OBJECT: {
+  case MessageType_ReconstructObject: {
+    auto message = flatbuffers::GetRoot<ReconstructObject>(utarray_front(state->input_buffer));
     if (worker->task_in_progress != NULL && !worker->is_blocked) {
       /* TODO(swang): For now, we don't handle blocked actors. */
       if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
@@ -730,8 +720,7 @@ void process_message(event_loop *loop,
         print_worker_info("Reconstructing", state->algorithm_state);
       }
     }
-    ObjectID *obj_id = (ObjectID *) utarray_front(state->input_buffer);
-    reconstruct_object(state, *obj_id);
+    reconstruct_object(state, from_flatbuf(message->object_id()));
   } break;
   case DISCONNECT_CLIENT: {
     LOG_INFO("Disconnecting client on fd %d", client_sock);
@@ -742,9 +731,7 @@ void process_message(event_loop *loop,
                                      worker->actor_id);
     }
   } break;
-  case LOG_MESSAGE: {
-  } break;
-  case NOTIFY_UNBLOCKED: {
+  case MessageType_NotifyUnblocked: {
     if (worker->task_in_progress != NULL) {
       /* TODO(swang): For now, we don't handle blocked actors. */
       if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {

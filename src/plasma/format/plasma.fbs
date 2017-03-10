@@ -39,7 +39,9 @@ enum MessageType:int {
   PlasmaUnsubscribeRequest,
   // Sending and receiving data.
   PlasmaDataRequest,
-  PlasmaDataReply
+  PlasmaDataReply,
+  // Object notifications.
+  PlasmaNotification
 }
 
 enum PlasmaError:int {

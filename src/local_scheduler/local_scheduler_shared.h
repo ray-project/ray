@@ -8,40 +8,10 @@
 #include "utarray.h"
 #include "uthash.h"
 
-enum local_scheduler_message_type {
-  /** Notify the local scheduler that a task has finished. */
-  TASK_DONE = 64,
-  /** Get a new task from the local scheduler. */
-  GET_TASK,
-  /** This is sent from the local scheduler to a worker to tell the worker to
-   *  execute a task. */
-  EXECUTE_TASK,
-  /** Reconstruct a possibly lost object. */
-  RECONSTRUCT_OBJECT,
-  /** Log a message to the event table. */
-  EVENT_LOG_MESSAGE,
-  /** Send an initial connection message to the local scheduler.
-   *  This contains the worker's process ID and actor ID. */
-  REGISTER_WORKER_INFO,
-  /** For a worker that was blocked on some object(s), tell the local scheduler
-   *  that the worker is now unblocked. */
-  NOTIFY_UNBLOCKED,
-};
-
 /* These are needed to define the UT_arrays. */
 extern UT_icd task_ptr_icd;
 extern UT_icd workers_icd;
 extern UT_icd pid_t_icd;
-
-/** This struct is used to register a new worker with the local scheduler.
- *  It is shipped as part of local_scheduler_connect */
-typedef struct {
-  /** The ID of the actor. This is NIL_ACTOR_ID if the worker is not an actor.
-   */
-  ActorID actor_id;
-  /** The process ID of this worker. */
-  pid_t worker_pid;
-} register_worker_info;
 
 /** This struct is used to maintain a mapping from actor IDs to the ID of the
  *  local scheduler that is responsible for the actor. */

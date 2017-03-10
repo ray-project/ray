@@ -1,0 +1,42 @@
+// Local scheduler protocol specification
+
+enum MessageType:int {
+  SubmitTask = 1,
+  // Notify the local scheduler that a task has finished.
+  TaskDone,
+  // Log a message to the event table.
+  EventLogMessage,
+  // Send an initial connection message to the local scheduler.
+  // This contains the worker's process ID and actor ID.
+  RegisterWorkerInfo,
+  // Get a new task from the local scheduler.
+  GetTask,
+  // This is sent from the local scheduler to a worker to tell the worker to
+  // execute a task.
+  ExecuteTask,
+  // Reconstruct a possibly lost object.
+  ReconstructObject,
+  // For a worker that was blocked on some object(s), tell the local scheduler
+  // that the worker is now unblocked.
+  NotifyUnblocked
+}
+
+table EventLogMessage {
+  key: string;
+  value: string;
+}
+
+// This struct is used to register a new worker with the local scheduler.
+// It is shipped as part of local_scheduler_connect.
+table RegisterWorkerInfo {
+  // The ID of the actor.
+  // This is NIL_ACTOR_ID if the worker is not an actor.
+  actor_id: string;
+  // The process ID of this worker.
+  worker_pid: ulong;
+}
+
+table ReconstructObject {
+  // Object ID of the object that needs to be reconstructed.
+  object_id: string;
+}

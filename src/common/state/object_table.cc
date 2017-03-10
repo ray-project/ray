@@ -1,6 +1,5 @@
 #include "object_table.h"
 #include "redis.h"
-#include "object_info.h"
 
 void object_table_lookup(DBHandle *db_handle,
                          ObjectID object_id,

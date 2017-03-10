@@ -1,6 +1,5 @@
 #include <limits.h>
 
-#include "object_info.h"
 #include "task.h"
 #include "state/task_table.h"
 

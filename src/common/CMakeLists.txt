@@ -19,7 +19,7 @@ add_custom_target(gen_common_fbs ALL)
 
 add_custom_command(
   TARGET gen_common_fbs
-  COMMAND ${FLATBUFFERS_COMPILER} -c -o ${OUTPUT_DIR} ${COMMON_FBS_SRC}
+  COMMAND ${FLATBUFFERS_COMPILER} -c -o ${OUTPUT_DIR} ${COMMON_FBS_SRC} --gen-object-api
   DEPENDS ${FBS_DEPENDS}
   COMMENT "Running flatc compiler on ${COMMON_FBS_SRC}"
   VERBATIM)

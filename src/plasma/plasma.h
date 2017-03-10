@@ -11,7 +11,7 @@
 #include <unistd.h> /* pid_t */
 
 #include "common.h"
-#include "object_info.h"
+#include "format/common_generated.h"
 
 #include "utarray.h"
 #include "uthash.h"
@@ -89,7 +89,7 @@ typedef struct {
   /** Object id of this object. */
   ObjectID object_id;
   /** Object info like size, creation time and owner. */
-  ObjectInfo info;
+  ObjectInfoT info;
   /** Memory mapped file containing the object. */
   int fd;
   /** Size of the underlying map. */
@@ -133,5 +133,7 @@ typedef struct {
  * @return Void.
  */
 void warn_if_sigpipe(int status, int client_sock);
+
+uint8_t *create_object_info_buffer(ObjectInfoT* object_info);
 
 #endif /* PLASMA_H */

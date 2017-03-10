@@ -6,7 +6,6 @@
 #include "io.h"
 #include "plasma_protocol.h"
 #include "plasma_client.h"
-#include "object_info.h"
 
 PyObject *PlasmaOutOfMemoryError;
 PyObject *PlasmaObjectExistsError;
@@ -348,7 +347,6 @@ PyObject *PyPlasma_subscribe(PyObject *self, PyObject *args) {
 
 PyObject *PyPlasma_receive_notification(PyObject *self, PyObject *args) {
   int plasma_sock;
-  ObjectInfo object_info;
 
   if (!PyArg_ParseTuple(args, "i", &plasma_sock)) {
     return NULL;
@@ -357,26 +355,30 @@ PyObject *PyPlasma_receive_notification(PyObject *self, PyObject *args) {
    * object was added, return a tuple of its fields: ObjectID, data_size,
    * metadata_size. If the object was deleted, data_size and metadata_size will
    * be set to -1. */
-  int nbytes =
-      read_bytes(plasma_sock, (uint8_t *) &object_info, sizeof(object_info));
+  int64_t size;
+  int nbytes = read_bytes(plasma_sock, (uint8_t *) &size, sizeof(size));
+  CHECK(nbytes == sizeof(size));
+  uint8_t *notification = (uint8_t *) malloc(size);
+  nbytes = read_bytes(plasma_sock, notification, size);
 
   if (nbytes < 0) {
     PyErr_SetString(PyExc_RuntimeError,
                     "Failed to read object notification from Plasma socket");
     return NULL;
   }
+  auto object_info = flatbuffers::GetRoot<ObjectInfo>(notification);
   /* Construct a tuple from object_info and return. */
   PyObject *t = PyTuple_New(3);
-  PyTuple_SetItem(t, 0, PyBytes_FromStringAndSize(
-                            (char *) object_info.obj_id.id, UNIQUE_ID_SIZE));
-  if (object_info.is_deletion) {
+  PyTuple_SetItem(t, 0, PyBytes_FromStringAndSize(object_info->object_id()->data(), object_info->object_id()->size()));
+  if (object_info->is_deletion()) {
     PyTuple_SetItem(t, 1, PyLong_FromLong(-1));
     PyTuple_SetItem(t, 2, PyLong_FromLong(-1));
   } else {
-    PyTuple_SetItem(t, 1, PyLong_FromLong(object_info.data_size));
-    PyTuple_SetItem(t, 2, PyLong_FromLong(object_info.metadata_size));
+    PyTuple_SetItem(t, 1, PyLong_FromLong(object_info->data_size()));
+    PyTuple_SetItem(t, 2, PyLong_FromLong(object_info->metadata_size()));
   }
 
+  free(notification);
   return t;
 }
 
