@@ -282,10 +282,25 @@ async def cache_data_from_redis(redis_ip_address, redis_port):
 
   asyncio.ensure_future(listen_for_errors(redis_ip_address, redis_port))
 
+async def handle_get_log_files(websocket, redis_conn):
+  reply = {}
+  # First get all keys for the log file lists.
+  log_file_list_keys = await redis_conn.execute("keys", "LOG_FILENAMES:*")
+  for log_file_list_key in log_file_list_keys:
+    node_ip_address = log_file_list_key.decode("ascii").split(":")[1]
+    reply[node_ip_address] = {}
+    # Get all of the log filenames for this node IP address.
+    log_filenames = await redis_conn.execute("lrange", log_file_list_key, 0, -1)
+    for log_filename in log_filenames:
+      log_filename_key = "LOGFILE:{}:{}".format(node_ip_address, log_filename.decode("ascii"))
+      logfile = await redis_conn.execute("lrange", log_filename_key, 0, -1)
+      logfile = [line.decode("ascii") for line in logfile]
+      reply[node_ip_address][log_filename.decode("ascii")] = logfile
+
+  # Send the reply back to the front end.
+  await websocket.send(json.dumps(reply))
+
 async def serve_requests(websocket, path):
-  # We loop infinitely because otherwise the websocket will be closed.
-  # TODO(rkn): Maybe we should open a new web sockets for every request instead
-  # of looping here.
   redis_conn = await aioredis.create_connection((redis_ip_address, redis_port), loop=loop)
   while True:
     command = json.loads(await websocket.recv())
@@ -301,6 +316,8 @@ async def serve_requests(websocket, path):
       await handle_get_errors(websocket)
     elif command["command"] == "get-heartbeats":
       await send_heartbeats(websocket, redis_conn)
+    elif command["command"] == "get-log-files":
+      await handle_get_log_files(websocket, redis_conn)
 
     if command["command"] == "get-workers":
       result = []

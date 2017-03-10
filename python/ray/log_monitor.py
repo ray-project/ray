@@ -50,7 +50,7 @@ class LogMonitor(object):
         # If there are any new lines, cache them and also push them to Redis.
         if len(new_lines) > 0:
           self.log_files[log_filename] += new_lines
-          redis_key = "LOGFILE:{}:{}".format(self.node_ip_address, log_filename)
+          redis_key = "LOGFILE:{}:{}".format(self.node_ip_address, log_filename.decode("ascii"))
           self.redis_client.rpush(redis_key, *new_lines)
       else:
         try:
