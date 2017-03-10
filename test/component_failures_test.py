@@ -103,7 +103,9 @@ class ComponentFailureTest(unittest.TestCase):
   def testWorkerFailedMultinode(self):
     self._testWorkerFailed(4)
 
-  def testNodeFailed(self):
+  def _testComponentFailed(self, component_type):
+    """Kill a component on all worker nodes and check that workload succeeds.
+    """
     @ray.remote
     def f(x, j):
       time.sleep(0.2)
@@ -123,11 +125,14 @@ class ComponentFailureTest(unittest.TestCase):
     object_ids += [f.remote(object_id, 1) for object_id in object_ids]
     object_ids += [f.remote(object_id, 2) for object_id in object_ids]
 
-    # Kill all nodes except the head node as the tasks execute.
+    # Kill the component on all nodes except the head node as the tasks
+    # execute.
     time.sleep(0.1)
-    local_schedulers = ray.services.all_processes[ray.services.PROCESS_TYPE_LOCAL_SCHEDULER]
-    for process in local_schedulers[1:]:
+    components = ray.services.all_processes[component_type]
+    for process in components[1:]:
       process.terminate()
+      process.wait()
+      self.assertTrue(process.poll() == 0)
       time.sleep(1)
 
     # Make sure that we can still get the objects after the executing tasks
@@ -136,8 +141,50 @@ class ComponentFailureTest(unittest.TestCase):
     expected_results = 4 * list(range(num_workers_per_scheduler * num_local_schedulers))
     self.assertEqual(results, expected_results)
 
+  def check_components_alive(self, component_type, check_component_alive):
+    """Check that a given component type is alive on all worker nodes.
+    """
+    components = ray.services.all_processes[component_type][1:]
+    for component in components:
+      if check_component_alive:
+        self.assertTrue(component.poll() is None)
+      else:
+        self.assertTrue(component.poll() <= 0)
+
+  def testLocalSchedulerFailed(self):
+    # Kill all local schedulers on worker nodes.
+    self._testComponentFailed(ray.services.PROCESS_TYPE_LOCAL_SCHEDULER)
+
+    # The plasma stores and plasma managers should still be alive on the worker
+    # nodes.
+    self.check_components_alive(ray.services.PROCESS_TYPE_PLASMA_STORE, True)
+    self.check_components_alive(ray.services.PROCESS_TYPE_PLASMA_MANAGER, True)
+    self.check_components_alive(ray.services.PROCESS_TYPE_LOCAL_SCHEDULER, False)
+
     ray.worker.cleanup()
 
+  def testPlasmaManagerFailed(self):
+    # Kill all plasma managers on worker nodes.
+    self._testComponentFailed(ray.services.PROCESS_TYPE_PLASMA_MANAGER)
+
+    # The plasma stores should still be alive (but unreachable) on the worker
+    # nodes.
+    self.check_components_alive(ray.services.PROCESS_TYPE_PLASMA_STORE, True)
+    self.check_components_alive(ray.services.PROCESS_TYPE_PLASMA_MANAGER, False)
+    self.check_components_alive(ray.services.PROCESS_TYPE_LOCAL_SCHEDULER, False)
+
+    ray.worker.cleanup()
+
+  def testPlasmaStoreFailed(self):
+    # Kill all plasma stores on worker nodes.
+    self._testComponentFailed(ray.services.PROCESS_TYPE_PLASMA_STORE)
+
+    # No processes should be left alive on the worker nodes.
+    self.check_components_alive(ray.services.PROCESS_TYPE_PLASMA_STORE, False)
+    self.check_components_alive(ray.services.PROCESS_TYPE_PLASMA_MANAGER, False)
+    self.check_components_alive(ray.services.PROCESS_TYPE_LOCAL_SCHEDULER, False)
+
+    ray.worker.cleanup()
 
 if __name__ == "__main__":
   unittest.main(verbosity=2)

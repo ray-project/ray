@@ -387,6 +387,11 @@ int task_cleanup_handler(event_loop *loop, timer_id id, void *context) {
     }
   }
 
+  return GLOBAL_SCHEDULER_TASK_CLEANUP_MILLISECONDS;
+}
+
+int heartbeat_timeout_handler(event_loop *loop, timer_id id, void *context) {
+  GlobalSchedulerState *state = (GlobalSchedulerState *) context;
   /* Check for local schedulers that have missed a number of heartbeats. If any
    * local schedulers have died, notify others so that the state can be cleaned
    * up. */
@@ -396,8 +401,7 @@ int task_cleanup_handler(event_loop *loop, timer_id id, void *context) {
   for (int i = utarray_len(state->local_schedulers) - 1; i >= 0; --i) {
     local_scheduler_ptr =
         (LocalScheduler *) utarray_eltptr(state->local_schedulers, i);
-    if (local_scheduler_ptr->num_heartbeats_missed >=
-        GLOBAL_SCHEDULER_HEARTBEAT_TIMEOUT) {
+    if (local_scheduler_ptr->num_heartbeats_missed >= NUM_HEARTBEATS_TIMEOUT) {
       LOG_WARN(
           "Missed too many heartbeats from local scheduler, marking as dead.");
       /* Notify others by updating the global state. */
@@ -410,7 +414,7 @@ int task_cleanup_handler(event_loop *loop, timer_id id, void *context) {
   }
 
   /* Reset the timer. */
-  return GLOBAL_SCHEDULER_TASK_CLEANUP_MILLISECONDS;
+  return HEARTBEAT_TIMEOUT_MILLISECONDS;
 }
 
 void start_server(const char *redis_addr, int redis_port) {
@@ -443,6 +447,8 @@ void start_server(const char *redis_addr, int redis_port) {
    * timer should notice and schedule the task. */
   event_loop_add_timer(loop, GLOBAL_SCHEDULER_TASK_CLEANUP_MILLISECONDS,
                        task_cleanup_handler, g_state);
+  event_loop_add_timer(loop, HEARTBEAT_TIMEOUT_MILLISECONDS,
+                       heartbeat_timeout_handler, g_state);
   /* Start the event loop. */
   event_loop_run(loop);
 }

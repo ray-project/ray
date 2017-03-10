@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 
-killall global_scheduler plasma_store plasma_manager local_scheduler
+killall plasma_manager
+killall plasma_store
+killall local_scheduler
+killall global_scheduler
 
 # Find the PID of the monitor process and kill it.
 kill $(ps aux | grep monitor.py | awk '{ print $2 }') 2> /dev/null
