@@ -214,9 +214,8 @@ int create_object(Client *client_context,
   get_malloc_mapinfo(pointer, &fd, &map_size, &offset);
   assert(fd != -1);
 
-  entry = (object_table_entry *) malloc(sizeof(object_table_entry));
-  memset(entry, 0, sizeof(object_table_entry));
-  memcpy(&entry->object_id, &obj_id, sizeof(entry->object_id));
+  entry = new object_table_entry();
+  entry->object_id = obj_id;
   entry->info.object_id = std::string((char*) &obj_id.id[0], sizeof(obj_id));
   entry->info.data_size = data_size;
   entry->info.metadata_size = metadata_size;
@@ -574,7 +573,7 @@ void delete_object(PlasmaStoreState *plasma_state, ObjectID object_id) {
   HASH_DELETE(handle, plasma_state->plasma_store_info->objects, entry);
   dlfree(pointer);
   utarray_free(entry->clients);
-  free(entry);
+  delete entry;
   /* Inform all subscribers that the object has been deleted. */
   ObjectInfoT notification;
   notification.object_id = std::string((char*) &object_id.id[0], sizeof(object_id));
