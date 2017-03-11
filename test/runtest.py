@@ -655,6 +655,19 @@ class APITest(unittest.TestCase):
 
     ray.worker.cleanup()
 
+  def testIllegalAPICalls(self):
+    ray.init(num_workers=0)
+
+    # Verify that we cannot call put on an ObjectID.
+    x = ray.put(1)
+    with self.assertRaises(Exception):
+      ray.put(x)
+    # Verify that we cannot call get on a regular value.
+    with self.assertRaises(Exception):
+      ray.get(3)
+
+    ray.worker.cleanup()
+
 class PythonModeTest(unittest.TestCase):
 
   def testPythonMode(self):
