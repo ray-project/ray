@@ -8,6 +8,9 @@ import numpy as np
 import time
 import redis
 
+# Import flatbuffer bindings.
+from ray.core.generated.TaskReply import TaskReply
+
 class TaskTests(unittest.TestCase):
 
   def testSubmittingTasks(self):
@@ -164,9 +167,13 @@ class ReconstructionTests(unittest.TestCase):
     r = redis.StrictRedis(port=self.redis_port)
     task_ids = r.keys("TT:*")
     task_ids = [task_id[3:] for task_id in task_ids]
-    node_ids = [r.execute_command("ray.task_table_get", task_id)[1] for task_id
-                in task_ids]
-    self.assertEqual(len(set(node_ids)), self.num_local_schedulers)
+    local_scheduler_ids = []
+    for task_id in task_ids:
+      message = r.execute_command("ray.task_table_get", task_id)
+      task_reply_object = TaskReply.GetRootAsTaskReply(message, 0)
+      local_scheduler_ids.append(task_reply_object.LocalSchedulerId())
+
+    self.assertEqual(len(set(local_scheduler_ids)), self.num_local_schedulers)
 
     # Clean up the Ray cluster.
     ray.worker.cleanup()

@@ -19,7 +19,7 @@ loop = asyncio.get_event_loop()
 
 IDENTIFIER_LENGTH = 20
 
-# This prefix must match the value defined in ray_redis_module.c.
+# This prefix must match the value defined in ray_redis_module.cc.
 DB_CLIENT_PREFIX = b"CL:"
 
 def hex_identifier(identifier):

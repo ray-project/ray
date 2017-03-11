@@ -5,6 +5,10 @@
 
 #include "redis_string.h"
 
+#include "format/common_generated.h"
+
+#include "common_protocol.h"
+
 /**
  * Various tables are maintained in redis:
  *
@@ -42,9 +46,27 @@ RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
                                 int mode) {
   RedisModuleString *prefixed_keyname =
       RedisString_Format(ctx, "%s%S", prefix, keyname);
-  RedisModuleKey *key = RedisModule_OpenKey(ctx, prefixed_keyname, mode);
+  RedisModuleKey *key =
+      (RedisModuleKey *) RedisModule_OpenKey(ctx, prefixed_keyname, mode);
   RedisModule_FreeString(ctx, prefixed_keyname);
   return key;
+}
+
+/**
+ * This is a helper method to convert a redis module string to a flatbuffer
+ * string.
+ *
+ * @param fbb The flatbuffer builder.
+ * @param redis_string The redis string.
+ * @return The flatbuffer string.
+ */
+flatbuffers::Offset<flatbuffers::String> RedisStringToFlatbuf(
+    flatbuffers::FlatBufferBuilder &fbb,
+    RedisModuleString *redis_string) {
+  size_t redis_string_size;
+  const char *redis_string_str =
+      RedisModule_StringPtrLen(redis_string, &redis_string_size);
+  return fbb.CreateString(redis_string_str, redis_string_size);
 }
 
 /**
@@ -69,16 +91,23 @@ bool PublishDBClientNotification(RedisModuleCtx *ctx,
   /* Construct strings to publish on the db client channel. */
   RedisModuleString *channel_name =
       RedisModule_CreateString(ctx, "db_clients", strlen("db_clients"));
-  RedisModuleString *client_info;
-  const char *is_insertion_string = is_insertion ? "1" : "0";
-  if (aux_address) {
-    client_info =
-        RedisString_Format(ctx, "%S:%S %S %s", ray_client_id, client_type,
-                           aux_address, is_insertion_string);
+  /* Construct the flatbuffers object to publish over the channel. */
+  flatbuffers::FlatBufferBuilder fbb;
+  /* Use an empty aux address if one is not passed in. */
+  flatbuffers::Offset<flatbuffers::String> aux_address_str;
+  if (aux_address != NULL) {
+    aux_address_str = RedisStringToFlatbuf(fbb, aux_address);
   } else {
-    client_info = RedisString_Format(ctx, "%S:%S : %s", ray_client_id,
-                                     client_type, is_insertion_string);
+    aux_address_str = fbb.CreateString("", strlen(""));
   }
+  /* Create the flatbuffers message. */
+  auto message = CreateSubscribeToDBClientTableReply(
+      fbb, RedisStringToFlatbuf(fbb, ray_client_id),
+      RedisStringToFlatbuf(fbb, client_type), aux_address_str, is_insertion);
+  fbb.Finish(message);
+  /* Create a Redis string to publish by serializing the flatbuffers object. */
+  RedisModuleString *client_info = RedisModule_CreateString(
+      ctx, (const char *) fbb.GetBufferPointer(), fbb.GetSize());
 
   /* Publish the client info on the db client channel. */
   RedisModuleCallReply *reply;
@@ -328,48 +357,42 @@ bool PublishObjectNotification(RedisModuleCtx *ctx,
                                RedisModuleString *object_id,
                                RedisModuleString *data_size,
                                RedisModuleKey *key) {
-  /* Create a string formatted as "<object id> MANAGERS <size> <manager id1>
-   * <manager id2> ..." */
+  flatbuffers::FlatBufferBuilder fbb;
+
   long long data_size_value;
   if (RedisModule_StringToLongLong(data_size, &data_size_value) !=
       REDISMODULE_OK) {
     return RedisModule_ReplyWithError(ctx, "data_size must be integer");
   }
 
-  RedisModuleString *manager_list = RedisString_Format(ctx, "%S ", object_id);
-
-  /* Append binary data size for this object. */
-  /* TODO(pcm): Replace by a formatted fix length version of the size. */
-  RedisModule_StringAppendBuffer(ctx, manager_list,
-                                 (const char *) &data_size_value,
-                                 sizeof(data_size_value));
-
-  RedisModule_StringAppendBuffer(ctx, manager_list, " MANAGERS",
-                                 strlen(" MANAGERS"));
-
+  std::vector<flatbuffers::Offset<flatbuffers::String>> manager_ids;
   CHECK_ERROR(
       RedisModule_ZsetFirstInScoreRange(key, REDISMODULE_NEGATIVE_INFINITE,
                                         REDISMODULE_POSITIVE_INFINITE, 1, 1),
       "Unable to initialize zset iterator");
-
   /* Loop over the managers in the object table for this object ID. */
   do {
     RedisModuleString *curr = RedisModule_ZsetRangeCurrentElement(key, NULL);
-    RedisModule_StringAppendBuffer(ctx, manager_list, " ", 1);
-    size_t size;
-    const char *val = RedisModule_StringPtrLen(curr, &size);
-    RedisModule_StringAppendBuffer(ctx, manager_list, val, size);
+    manager_ids.push_back(RedisStringToFlatbuf(fbb, curr));
   } while (RedisModule_ZsetRangeNext(key));
+
+  auto message = CreateSubscribeToNotificationsReply(
+      fbb, RedisStringToFlatbuf(fbb, object_id), data_size_value,
+      fbb.CreateVector(manager_ids));
+  fbb.Finish(message);
 
   /* Publish the notification to the clients notification channel.
    * TODO(rkn): These notifications could be batched together. */
   RedisModuleString *channel_name =
       RedisString_Format(ctx, "%s%S", OBJECT_CHANNEL_PREFIX, client_id);
 
+  RedisModuleString *payload = RedisModule_CreateString(
+      ctx, (const char *) fbb.GetBufferPointer(), fbb.GetSize());
+
   RedisModuleCallReply *reply;
-  reply = RedisModule_Call(ctx, "PUBLISH", "ss", channel_name, manager_list);
+  reply = RedisModule_Call(ctx, "PUBLISH", "ss", channel_name, payload);
   RedisModule_FreeString(ctx, channel_name);
-  RedisModule_FreeString(ctx, manager_list);
+  RedisModule_FreeString(ctx, payload);
   if (reply == NULL) {
     return false;
   }
@@ -668,35 +691,6 @@ int ResultTableAdd_RedisCommand(RedisModuleCtx *ctx,
   return REDISMODULE_OK;
 }
 
-int ParseTaskState(RedisModuleString *state) {
-  size_t state_length;
-  const char *state_string = RedisModule_StringPtrLen(state, &state_length);
-  int state_integer;
-  int scanned = sscanf(state_string, "%2d", &state_integer);
-  if (scanned != 1 || state_length != 2) {
-    return -1;
-  }
-  return state_integer;
-}
-
-RedisModuleString *NormalizeTaskState(RedisModuleCtx *ctx,
-                                      RedisModuleString *state) {
-  /* Pad the state integer to a fixed-width integer, and make sure it has width
-   * less than or equal to 2. */
-  long long state_integer;
-  int status = RedisModule_StringToLongLong(state, &state_integer);
-  if (status != REDISMODULE_OK) {
-    return NULL;
-  }
-  state = RedisModule_CreateStringPrintf(ctx, "%2d", state_integer);
-  size_t length;
-  RedisModule_StringPtrLen(state, &length);
-  if (length != 2) {
-    return NULL;
-  }
-  return state;
-}
-
 /**
  * Reply with information about a task ID. This is used by
  * RAY.RESULT_TABLE_LOOKUP and RAY.TASK_TABLE_GET.
@@ -716,8 +710,9 @@ int ReplyWithTask(RedisModuleCtx *ctx, RedisModuleString *task_id) {
     RedisModuleString *state = NULL;
     RedisModuleString *local_scheduler_id = NULL;
     RedisModuleString *task_spec = NULL;
-    RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "state", &state, "node",
-                        &local_scheduler_id, "TaskSpec", &task_spec, NULL);
+    RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "state", &state,
+                        "local_scheduler_id", &local_scheduler_id, "TaskSpec",
+                        &task_spec, NULL);
     if (state == NULL || local_scheduler_id == NULL || task_spec == NULL) {
       /* We must have either all fields or no fields. */
       RedisModule_CloseKey(key);
@@ -725,21 +720,26 @@ int ReplyWithTask(RedisModuleCtx *ctx, RedisModuleString *task_id) {
           ctx, "Missing fields in the task table entry");
     }
 
-    int state_integer = ParseTaskState(state);
-    if (state_integer < 0) {
+    long long state_integer;
+    if (RedisModule_StringToLongLong(state, &state_integer) != REDISMODULE_OK ||
+        state_integer < 0) {
       RedisModule_CloseKey(key);
       RedisModule_FreeString(ctx, state);
       RedisModule_FreeString(ctx, local_scheduler_id);
       RedisModule_FreeString(ctx, task_spec);
-      return RedisModule_ReplyWithError(ctx,
-                                        "Found invalid scheduling state (must "
-                                        "be an integer of width 2");
+      return RedisModule_ReplyWithError(ctx, "Found invalid scheduling state.");
     }
 
-    RedisModule_ReplyWithArray(ctx, 3);
-    RedisModule_ReplyWithLongLong(ctx, state_integer);
-    RedisModule_ReplyWithString(ctx, local_scheduler_id);
-    RedisModule_ReplyWithString(ctx, task_spec);
+    flatbuffers::FlatBufferBuilder fbb;
+    auto message =
+        CreateTaskReply(fbb, RedisStringToFlatbuf(fbb, task_id), state_integer,
+                        RedisStringToFlatbuf(fbb, local_scheduler_id),
+                        RedisStringToFlatbuf(fbb, task_spec));
+    fbb.Finish(message);
+
+    RedisModuleString *reply = RedisModule_CreateString(
+        ctx, (char *) fbb.GetBufferPointer(), fbb.GetSize());
+    RedisModule_ReplyWithString(ctx, reply);
 
     RedisModule_FreeString(ctx, state);
     RedisModule_FreeString(ctx, local_scheduler_id);
@@ -801,54 +801,59 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
 int TaskTableWrite(RedisModuleCtx *ctx,
                    RedisModuleString *task_id,
                    RedisModuleString *state,
-                   RedisModuleString *node_id,
+                   RedisModuleString *local_scheduler_id,
                    RedisModuleString *task_spec) {
-  /* Pad the state integer to a fixed-width integer, and make sure it has width
-   * less than or equal to 2. */
-  state = NormalizeTaskState(ctx, state);
-  if (state == NULL) {
-    return RedisModule_ReplyWithError(
-        ctx,
-        "Invalid scheduling state (must be an integer of width at most 2)");
+  /* Extract the scheduling state. */
+  long long state_value;
+  if (RedisModule_StringToLongLong(state, &state_value) != REDISMODULE_OK) {
+    return RedisModule_ReplyWithError(ctx, "scheduling state must be integer");
   }
-
   /* Add the task to the task table. If no spec was provided, get the existing
    * spec out of the task table so we can publish it. */
   RedisModuleString *existing_task_spec = NULL;
   RedisModuleKey *key =
       OpenPrefixedKey(ctx, TASK_PREFIX, task_id, REDISMODULE_WRITE);
   if (task_spec == NULL) {
-    RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "state", state, "node",
-                        node_id, NULL);
+    RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "state", state,
+                        "local_scheduler_id", local_scheduler_id, NULL);
     RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "TaskSpec",
                         &existing_task_spec, NULL);
     if (existing_task_spec == NULL) {
       RedisModule_CloseKey(key);
-      RedisModule_FreeString(ctx, state);
       return RedisModule_ReplyWithError(
           ctx, "Cannot update a task that doesn't exist yet");
     }
   } else {
-    RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "state", state, "node",
-                        node_id, "TaskSpec", task_spec, NULL);
+    RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "state", state,
+                        "local_scheduler_id", local_scheduler_id, "TaskSpec",
+                        task_spec, NULL);
   }
   RedisModule_CloseKey(key);
 
   /* Build the PUBLISH topic and message for task table subscribers. The topic
-   * is a string in the format "TASK_PREFIX:<node ID>:<state>". The
-   * message is a string in the format: "<task ID> <state> <node ID> <task
-   * specification>". */
-  RedisModuleString *publish_topic =
-      RedisString_Format(ctx, "%s%S:%S", TASK_PREFIX, node_id, state);
-  RedisModuleString *publish_message;
+   * is a string in the format "TASK_PREFIX:<local scheduler ID>:<state>". The
+   * message is a serialized SubscribeToTasksReply flatbuffer object. */
+  RedisModuleString *publish_topic = RedisString_Format(
+      ctx, "%s%S:%S", TASK_PREFIX, local_scheduler_id, state);
+
+  /* Construct the flatbuffers object for the payload. */
+  flatbuffers::FlatBufferBuilder fbb;
+  /* Use the old task spec if the current one is NULL. */
+  RedisModuleString *task_spec_to_use;
   if (task_spec != NULL) {
-    publish_message = RedisString_Format(ctx, "%S %S %S %S", task_id, state,
-                                         node_id, task_spec);
+    task_spec_to_use = task_spec;
   } else {
-    publish_message = RedisString_Format(ctx, "%S %S %S %S", task_id, state,
-                                         node_id, existing_task_spec);
+    task_spec_to_use = existing_task_spec;
   }
-  RedisModule_FreeString(ctx, state);
+  /* Create the flatbuffers message. */
+  auto message =
+      CreateTaskReply(fbb, RedisStringToFlatbuf(fbb, task_id), state_value,
+                      RedisStringToFlatbuf(fbb, local_scheduler_id),
+                      RedisStringToFlatbuf(fbb, task_spec_to_use));
+  fbb.Finish(message);
+
+  RedisModuleString *publish_message = RedisModule_CreateString(
+      ctx, (const char *) fbb.GetBufferPointer(), fbb.GetSize());
 
   RedisModuleCallReply *reply =
       RedisModule_Call(ctx, "PUBLISH", "ss", publish_topic, publish_message);
@@ -878,10 +883,7 @@ int TaskTableWrite(RedisModuleCtx *ctx,
  *
  * @param task_id A string that is the ID of the task.
  * @param state A string that is the current scheduling state (a
- *        scheduling_state enum instance). The string's value must be a
- *        nonnegative integer less than 100, so that it has width at most 2. If
- *        less than 2, the value will be left-padded with spaces to a width of
- *        2.
+ *        scheduling_state enum instance).
  * @param local_scheduler_id A string that is the ray client ID of the
  *        associated local scheduler, if any.
  * @param task_spec A string that is the specification of the task, which can
@@ -908,10 +910,7 @@ int TaskTableAddTask_RedisCommand(RedisModuleCtx *ctx,
  *
  * @param task_id A string that is the ID of the task.
  * @param state A string that is the current scheduling state (a
- *        scheduling_state enum instance). The string's value must be a
- *        nonnegative integer less than 100, so that it has width at most 2. If
- *        less than 2, the value will be left-padded with spaces to a width of
- *        2.
+ *        scheduling_state enum instance).
  * @param ray_client_id A string that is the ray client ID of the associated
  *        local scheduler, if any.
  * @return OK if the operation was successful.
@@ -941,18 +940,15 @@ int TaskTableUpdate_RedisCommand(RedisModuleCtx *ctx,
  *        scheduling state. The update happens if and only if the current
  *        scheduling state AND-ed with the bitmask is greater than 0.
  * @param state A string that is the scheduling state (a scheduling_state enum
- *        instance) to update the task entry with. The string's value must be a
- *        nonnegative integer less than 100, so that it has width at most 2. If
- *        less than 2, the value will be left-padded with spaces to a width of
- *        2.
+ *        instance) to update the task entry with.
  * @param ray_client_id A string that is the ray client ID of the associated
  *        local scheduler, if any, to update the task entry with.
  * @return If the current scheduling state does not match the test bitmask,
  *         returns nil. Else, returns the same as RAY.TASK_TABLE_GET: an array
  *         of strings representing the updated task fields in the following
- *         order: 1) (integer) scheduling state 2) (string) associated node ID,
- *         if any 3) (string) the task specification, which can be casted to a
- *         task_spec.
+ *         order: 1) (integer) scheduling state 2) (string) associated local
+ *         scheduler ID, if any 3) (string) the task specification, which can be
+ *         cast to a task_spec.
  */
 int TaskTableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
                                         RedisModuleString **argv,
@@ -961,18 +957,12 @@ int TaskTableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
     return RedisModule_WrongArity(ctx);
   }
 
-  RedisModuleString *state = NormalizeTaskState(ctx, argv[3]);
-  if (state == NULL) {
-    return RedisModule_ReplyWithError(
-        ctx,
-        "Invalid scheduling state (must be an integer of width at most 2)");
-  }
+  RedisModuleString *state = argv[3];
 
   RedisModuleKey *key = OpenPrefixedKey(ctx, TASK_PREFIX, argv[1],
                                         REDISMODULE_READ | REDISMODULE_WRITE);
   if (RedisModule_KeyType(key) == REDISMODULE_KEYTYPE_EMPTY) {
     RedisModule_CloseKey(key);
-    RedisModule_FreeString(ctx, state);
     return RedisModule_ReplyWithNull(ctx);
   }
 
@@ -980,19 +970,20 @@ int TaskTableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
   RedisModuleString *current_state = NULL;
   RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "state", &current_state,
                       NULL);
-  int current_state_integer = ParseTaskState(current_state);
+  long long current_state_integer;
+  if (RedisModule_StringToLongLong(current_state, &current_state_integer) !=
+      REDISMODULE_OK) {
+    return RedisModule_ReplyWithError(ctx, "current_state must be integer");
+  }
+
   if (current_state_integer < 0) {
     RedisModule_CloseKey(key);
-    RedisModule_FreeString(ctx, state);
-    return RedisModule_ReplyWithError(ctx,
-                                      "Found invalid scheduling state (must "
-                                      "be an integer of width 2");
+    return RedisModule_ReplyWithError(ctx, "Found invalid scheduling state.");
   }
   long long test_state_bitmask;
   int status = RedisModule_StringToLongLong(argv[2], &test_state_bitmask);
   if (status != REDISMODULE_OK) {
     RedisModule_CloseKey(key);
-    RedisModule_FreeString(ctx, state);
     return RedisModule_ReplyWithError(
         ctx, "Invalid test value for scheduling state");
   }
@@ -1000,16 +991,14 @@ int TaskTableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
     /* The current value does not match the test bitmask, so do not perform the
      * update. */
     RedisModule_CloseKey(key);
-    RedisModule_FreeString(ctx, state);
     return RedisModule_ReplyWithNull(ctx);
   }
 
   /* The test passed, so perform the update. */
-  RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "state", state, "node",
-                      argv[4], NULL);
+  RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "state", state,
+                      "local_scheduler_id", argv[4], NULL);
   /* Clean up. */
   RedisModule_CloseKey(key);
-  RedisModule_FreeString(ctx, state);
   /* Construct a reply by getting the task from the task ID. */
   return ReplyWithTask(ctx, argv[1]);
 }
@@ -1023,9 +1012,9 @@ int TaskTableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
  *
  * @param task_id A string of the task ID to look up.
  * @return An array of strings representing the task fields in the following
- *         order: 1) (integer) scheduling state 2) (string) associated node ID,
- *         if any 3) (string) the task specification, which can be casted to a
- *         task_spec. If the task ID is not in the table, returns nil.
+ *         order: 1) (integer) scheduling state 2) (string) associated local
+ *         scheduler ID, if any 3) (string) the task specification, which can be
+ *         cast to a task_spec. If the task ID is not in the table, returns nil.
  */
 int TaskTableGet_RedisCommand(RedisModuleCtx *ctx,
                               RedisModuleString **argv,
@@ -1037,6 +1026,8 @@ int TaskTableGet_RedisCommand(RedisModuleCtx *ctx,
   /* Construct a reply by getting the task from the task ID. */
   return ReplyWithTask(ctx, argv[1]);
 }
+
+extern "C" {
 
 /* This function must be present on each Redis module. It is used in order to
  * register the commands into the Redis server. */
@@ -1135,3 +1126,5 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx,
 
   return REDISMODULE_OK;
 }
+
+} /* extern "C" */
