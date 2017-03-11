@@ -125,6 +125,8 @@ struct PlasmaStoreState {
   protocol_builder *builder;
 };
 
+PlasmaStoreState *g_state;
+
 UT_icd byte_icd = {sizeof(uint8_t), NULL, NULL, NULL};
 
 PlasmaStoreState *PlasmaStoreState_init(event_loop *loop,
@@ -144,6 +146,18 @@ PlasmaStoreState *PlasmaStoreState_init(event_loop *loop,
   utarray_new(state->input_buffer, &byte_icd);
   state->builder = make_protocol_builder();
   return state;
+}
+
+void PlasmaStoreState_free(PlasmaStoreState *state) {
+  /* Here we only clean up objects that need to be cleaned
+   * up to make the valgrind warnings go away. Objects that
+   * are still reachable are not cleaned up. */
+  object_table_entry *entry, *tmp;
+  HASH_ITER(handle, state->plasma_store_info->objects, entry, tmp) {
+    HASH_DELETE(handle, state->plasma_store_info->objects, entry);
+    utarray_free(entry->clients);
+    delete entry;
+  }
 }
 
 void push_notification(PlasmaStoreState *state,
@@ -832,6 +846,7 @@ void new_client_connection(event_loop *loop,
 /* Report "success" to valgrind. */
 void signal_handler(int signal) {
   if (signal == SIGTERM) {
+    PlasmaStoreState_free(g_state);
     exit(0);
   }
 }
@@ -847,6 +862,7 @@ void start_server(char *socket_name, int64_t system_memory) {
   CHECK(socket >= 0);
   event_loop_add_file(loop, socket, EVENT_LOOP_READ, new_client_connection,
                       state);
+  g_state = state;
   event_loop_run(loop);
 }
 
