@@ -259,7 +259,7 @@ TEST object_notifications_test(void) {
 
   ObjectID oid = globally_unique_id();
   ObjectInfoT info;
-  info.object_id = std::string((char*) &oid.id[0], sizeof(oid));
+  info.object_id = std::string((char *) &oid.id[0], sizeof(oid));
   info.data_size = 10;
   info.metadata_size = 1;
   info.create_time = 0;
@@ -273,7 +273,7 @@ TEST object_notifications_test(void) {
 
   /* Check that the object is local after receiving an object notification. */
   uint8_t *notification = create_object_info_buffer(&info);
-  int64_t size = * ((int64_t *) notification);
+  int64_t size = *((int64_t *) notification);
   send(fd[1], notification, sizeof(int64_t) + size, 0);
   process_object_notification(local_mock->loop, fd[0], local_mock->state, 0);
   is_local = is_object_local(local_mock->state, oid);
@@ -284,7 +284,7 @@ TEST object_notifications_test(void) {
    * the object deletion. */
   info.is_deletion = true;
   notification = create_object_info_buffer(&info);
-  size = * ((int64_t *) notification);
+  size = *((int64_t *) notification);
   send(fd[1], notification, sizeof(int64_t) + size, 0);
   process_object_notification(local_mock->loop, fd[0], local_mock->state, 0);
   is_local = is_object_local(local_mock->state, oid);

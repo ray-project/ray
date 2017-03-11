@@ -134,6 +134,6 @@ typedef struct {
  */
 void warn_if_sigpipe(int status, int client_sock);
 
-uint8_t *create_object_info_buffer(ObjectInfoT* object_info);
+uint8_t *create_object_info_buffer(ObjectInfoT *object_info);
 
 #endif /* PLASMA_H */

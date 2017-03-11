@@ -368,7 +368,9 @@ PyObject *PyPlasma_receive_notification(PyObject *self, PyObject *args) {
   auto object_info = flatbuffers::GetRoot<ObjectInfo>(notification);
   /* Construct a tuple from object_info and return. */
   PyObject *t = PyTuple_New(3);
-  PyTuple_SetItem(t, 0, PyBytes_FromStringAndSize(object_info->object_id()->data(), object_info->object_id()->size()));
+  PyTuple_SetItem(t, 0,
+                  PyBytes_FromStringAndSize(object_info->object_id()->data(),
+                                            object_info->object_id()->size()));
   if (object_info->is_deletion()) {
     PyTuple_SetItem(t, 1, PyLong_FromLong(-1));
     PyTuple_SetItem(t, 2, PyLong_FromLong(-1));

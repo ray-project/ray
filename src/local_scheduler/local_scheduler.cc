@@ -632,15 +632,19 @@ void process_message(event_loop *loop,
   } break;
   case MessageType_EventLogMessage: {
     /* Parse the message. */
-    auto message = flatbuffers::GetRoot<EventLogMessage>(utarray_front(state->input_buffer));
+    auto message = flatbuffers::GetRoot<EventLogMessage>(
+        utarray_front(state->input_buffer));
     if (state->db != NULL) {
-      RayLogger_log_event(state->db, (uint8_t *) message->key()->data(), message->key()->size(), (uint8_t *) message->value()->data(), message->value()->size());
+      RayLogger_log_event(
+          state->db, (uint8_t *) message->key()->data(), message->key()->size(),
+          (uint8_t *) message->value()->data(), message->value()->size());
     }
   } break;
   case MessageType_RegisterWorkerInfo: {
     /* Update the actor mapping with the actor ID of the worker (if an actor is
      * running on the worker). */
-    auto message = flatbuffers::GetRoot<RegisterWorkerInfo>(utarray_front(state->input_buffer));
+    auto message = flatbuffers::GetRoot<RegisterWorkerInfo>(
+        utarray_front(state->input_buffer));
     int64_t worker_pid = message->worker_pid();
     ActorID actor_id = from_flatbuf(message->actor_id());
     if (!ActorID_equal(actor_id, NIL_ACTOR_ID)) {
@@ -709,7 +713,8 @@ void process_message(event_loop *loop,
     }
   } break;
   case MessageType_ReconstructObject: {
-    auto message = flatbuffers::GetRoot<ReconstructObject>(utarray_front(state->input_buffer));
+    auto message = flatbuffers::GetRoot<ReconstructObject>(
+        utarray_front(state->input_buffer));
     if (worker->task_in_progress != NULL && !worker->is_blocked) {
       /* TODO(swang): For now, we don't handle blocked actors. */
       if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {

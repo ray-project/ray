@@ -1255,7 +1255,8 @@ void process_status_request(ClientConnection *client_conn, ObjectID object_id) {
 void process_delete_object_notification(PlasmaManagerState *state,
                                         ObjectID object_id) {
   AvailableObject *entry;
-  HASH_FIND(hh, state->local_available_objects, &object_id, sizeof(object_id), entry);
+  HASH_FIND(hh, state->local_available_objects, &object_id, sizeof(object_id),
+            entry);
   if (entry != NULL) {
     HASH_DELETE(hh, state->local_available_objects, entry);
     free(entry);
@@ -1314,7 +1315,7 @@ void process_add_object_notification(PlasmaManagerState *state,
                                      ObjectID object_id,
                                      int64_t data_size,
                                      int64_t metadata_size,
-                                     unsigned char* digest) {
+                                     unsigned char *digest) {
   AvailableObject *entry = (AvailableObject *) malloc(sizeof(AvailableObject));
   entry->object_id = object_id;
   HASH_ADD(hh, state->local_available_objects, object_id, sizeof(ObjectID),
@@ -1322,15 +1323,15 @@ void process_add_object_notification(PlasmaManagerState *state,
 
   /* Add this object to the (redis) object table. */
   if (state->db) {
-    object_table_add(
-        state->db, object_id, data_size + metadata_size,
-        digest, NULL,
-        log_object_hash_mismatch_error_object_callback, (void *) state);
+    object_table_add(state->db, object_id, data_size + metadata_size, digest,
+                     NULL, log_object_hash_mismatch_error_object_callback,
+                     (void *) state);
   }
 
   /* If we were trying to fetch this object, finish up the fetch request. */
   FetchRequest *fetch_req;
-  HASH_FIND(hh, state->fetch_requests, &object_id, sizeof(object_id), fetch_req);
+  HASH_FIND(hh, state->fetch_requests, &object_id, sizeof(object_id),
+            fetch_req);
   if (fetch_req != NULL) {
     remove_fetch_request(state, fetch_req);
     /* TODO(rkn): We also really should unsubscribe from the object table. */
@@ -1369,7 +1370,10 @@ void process_object_notification(event_loop *loop,
   if (object_info->is_deletion()) {
     process_delete_object_notification(state, object_id);
   } else {
-    process_add_object_notification(state, object_id, object_info->data_size(), object_info->metadata_size(), (unsigned char*) object_info->digest()->data());
+    process_add_object_notification(
+        state, object_id, object_info->data_size(),
+        object_info->metadata_size(),
+        (unsigned char *) object_info->digest()->data());
   }
   free(notification);
 }

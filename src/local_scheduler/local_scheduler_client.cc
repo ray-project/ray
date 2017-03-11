@@ -14,7 +14,8 @@ LocalSchedulerConnection *LocalSchedulerConnection_init(
       (LocalSchedulerConnection *) malloc(sizeof(LocalSchedulerConnection));
   result->conn = connect_ipc_sock_retry(local_scheduler_socket, -1, -1);
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = CreateRegisterWorkerInfo(fbb, to_flatbuf(fbb, actor_id), getpid());
+  auto message =
+      CreateRegisterWorkerInfo(fbb, to_flatbuf(fbb, actor_id), getpid());
   fbb.Finish(message);
   /* Register the process ID with the local scheduler. */
   int success = write_message(result->conn, MessageType_RegisterWorkerInfo,
@@ -38,13 +39,15 @@ void local_scheduler_log_event(LocalSchedulerConnection *conn,
   auto value_string = fbb.CreateString((char *) value, value_length);
   auto message = CreateEventLogMessage(fbb, key_string, value_string);
   fbb.Finish(message);
-  write_message(conn->conn, MessageType_EventLogMessage, fbb.GetSize(), fbb.GetBufferPointer());
+  write_message(conn->conn, MessageType_EventLogMessage, fbb.GetSize(),
+                fbb.GetBufferPointer());
 }
 
 void local_scheduler_submit(LocalSchedulerConnection *conn,
                             TaskSpec *task,
                             int64_t task_size) {
-  write_message(conn->conn, MessageType_SubmitTask, task_size, (uint8_t *) task);
+  write_message(conn->conn, MessageType_SubmitTask, task_size,
+                (uint8_t *) task);
 }
 
 TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
@@ -69,8 +72,8 @@ void local_scheduler_reconstruct_object(LocalSchedulerConnection *conn,
   flatbuffers::FlatBufferBuilder fbb;
   auto message = CreateReconstructObject(fbb, to_flatbuf(fbb, object_id));
   fbb.Finish(message);
-  write_message(conn->conn, MessageType_ReconstructObject,
-                fbb.GetSize(), fbb.GetBufferPointer());
+  write_message(conn->conn, MessageType_ReconstructObject, fbb.GetSize(),
+                fbb.GetBufferPointer());
   /* TODO(swang): Propagate the error. */
 }
 

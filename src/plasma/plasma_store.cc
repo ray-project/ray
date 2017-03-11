@@ -230,7 +230,7 @@ int create_object(Client *client_context,
 
   entry = new object_table_entry();
   entry->object_id = obj_id;
-  entry->info.object_id = std::string((char*) &obj_id.id[0], sizeof(obj_id));
+  entry->info.object_id = std::string((char *) &obj_id.id[0], sizeof(obj_id));
   entry->info.data_size = data_size;
   entry->info.metadata_size = metadata_size;
   entry->pointer = pointer;
@@ -590,7 +590,8 @@ void delete_object(PlasmaStoreState *plasma_state, ObjectID object_id) {
   delete entry;
   /* Inform all subscribers that the object has been deleted. */
   ObjectInfoT notification;
-  notification.object_id = std::string((char*) &object_id.id[0], sizeof(object_id));
+  notification.object_id =
+      std::string((char *) &object_id.id[0], sizeof(object_id));
   notification.is_deletion = true;
   push_notification(plasma_state, &notification);
 }
@@ -638,7 +639,7 @@ void send_notifications(event_loop *loop,
         (uint8_t **) utarray_eltptr(queue->object_notifications, i);
     uint8_t *data = *notification;
     /* Decode the length, which is the first bytes of the message. */
-    int64_t size = * ((int64_t *) data);
+    int64_t size = *((int64_t *) data);
 
     /* Attempt to send a notification about this object ID. */
     int nbytes = send(client_sock, data, size + sizeof(int64_t), 0);
