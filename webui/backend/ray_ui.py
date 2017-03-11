@@ -136,22 +136,23 @@ async def listen_for_errors(redis_ip_address, redis_port):
   print("Listening for error messages...")
   index = 0
   while (await channel.wait_message()):
-    msg = await channel.get() # instills block???
+    msg = await channel.get()
     info = await data_conn.execute("lrange", "ErrorKeys", index, -1)
 
     for error_key in info:
       worker, task = key_to_hex_identifiers(error_key)
-      # TODO: Filter out workers so that only relevant task errors are necessary
+      # TODO(richard): Filter out workers so that only relevant task errors are
+      # necessary.
       result = await data_conn.execute("hget", error_key, "message")
       result = result.decode("ascii")
-      # TODO: Maybe also get rid of coloring?
-      errors.append({"worker_id": worker,
+      # TODO(richard): Maybe also get rid of the coloring.
+      errors.append({"driver_id": worker,
                      "task_id": task,
                      "error": result})
       index += 1
 
 async def handle_get_errors(websocket):
-  """Renders error messages"""  
+  """Send error messages to the frontend."""
   await websocket.send(json.dumps(errors))
 
 node_info = collections.OrderedDict()
@@ -274,14 +275,12 @@ async def send_heartbeats(websocket, redis_conn):
       continue
     local_schedulers[local_scheduler_id]["last_heartbeat"] = time.time()
 
-async def initialize(redis_ip_address, redis_port):
-  """Open up ports to listen for new updates from Redis"""
-  # TODO(richard): A lot of code needs to be ported in order to open
-  # new websockets.
+async def cache_data_from_redis(redis_ip_address, redis_port):
+  """Open up ports to listen for new updates from Redis."""
+  # TODO(richard): A lot of code needs to be ported in order to open new
+  # websockets.
 
   asyncio.ensure_future(listen_for_errors(redis_ip_address, redis_port))
-
-
 
 async def serve_requests(websocket, path):
   # We loop infinitely because otherwise the websocket will be closed.
@@ -374,10 +373,11 @@ if __name__ == "__main__":
   redis_ip_address, redis_port = redis_address[0], int(redis_address[1])
 
   # The port here must match the value used by the frontend to connect over
-  # websockets.
-  port = 8888 #TODO: Automatically incrementation of port if taken already
+  # websockets. TODO(richard): Automatically increment the port if it is already
+  # taken.
+  port = 8888
 
-  loop.run_until_complete(initialize(redis_ip_address, redis_port))
+  loop.run_until_complete(cache_data_from_redis(redis_ip_address, redis_port))
 
   start_server = websockets.serve(serve_requests, "localhost", port)
   loop.run_until_complete(start_server)
