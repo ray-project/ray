@@ -134,8 +134,11 @@ async def listen_for_errors(redis_ip_address, redis_port):
   psub = await pubsub_conn.execute_pubsub("psubscribe", error_pattern)
   channel = pubsub_conn.pubsub_patterns[error_pattern]
   print("Listening for error messages...")
+  index = 0
   while (await channel.wait_message()):
-    info = await data_conn.execute("lrange", "ErrorKeys", 0, -1)
+    msg = await channel.get() # instills block???
+    info = await data_conn.execute("lrange", "ErrorKeys", index, -1)
+
     for error_key in info:
       worker, task = key_to_hex_identifiers(error_key)
       # TODO: Filter out workers so that only relevant task errors are necessary
@@ -143,6 +146,7 @@ async def listen_for_errors(redis_ip_address, redis_port):
       result = result.decode("ascii")
       # TODO: Maybe also get rid of coloring?
       errors[worker].append(result)
+      index += 1
 
 async def handle_get_errors(websocket):
   """Renders error messages"""
