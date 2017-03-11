@@ -16,7 +16,7 @@ Then you can run the example as follows.
 
 .. code-block:: bash
 
-  python ray/examples/rl_pong/driver.py
+  python ray/examples/rl_pong/driver.py --batch-size=10
 
 The distributed version
 -----------------------
@@ -40,6 +40,10 @@ the actor.
   @ray.actor
   class PongEnv(object):
     def __init__(self):
+      # Tell numpy to only use one core. If we don't do this, each actor may try
+      # to use all of the cores and the resulting contention may result in no
+      # speedup over the serial version.
+      os.environ["MKL_NUM_THREADS"] = "1"
       self.env = gym.make("Pong-v0")
 
     def compute_gradient(self, model):

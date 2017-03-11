@@ -5,30 +5,43 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import numpy as np
+import os
 import ray
+import time
 
 import gym
 
-# hyperparameters
-H = 200 # number of hidden layer neurons
-batch_size = 10 # every how many episodes to do a param update?
-learning_rate = 1e-4
-gamma = 0.99 # discount factor for reward
-decay_rate = 0.99 # decay factor for RMSProp leaky sum of grad^2
+# Define some hyperparameters.
 
-D = 80 * 80 # input dimensionality: 80x80 grid
+# The number of hidden layer neurons.
+H = 200
+learning_rate = 1e-4
+# Discount factor for reward.
+gamma = 0.99
+# The decay factor for RMSProp leaky sum of grad^2.
+decay_rate = 0.99
+
+# The input dimensionality: 80x80 grid.
+D = 80 * 80
 
 def sigmoid(x):
-  return 1.0 / (1.0 + np.exp(-x)) # sigmoid "squashing" function to interval [0,1]
+  # Sigmoid "squashing" function to interval [0, 1].
+  return 1.0 / (1.0 + np.exp(-x))
 
 def preprocess(I):
-  """preprocess 210x160x3 uint8 frame into 6400 (80x80) 1D float vector"""
-  I = I[35:195] # crop
-  I = I[::2,::2,0] # downsample by factor of 2
-  I[I == 144] = 0 # erase background (background type 1)
-  I[I == 109] = 0 # erase background (background type 2)
-  I[I != 0] = 1 # everything else (paddles, ball) just set to 1
+  """Preprocess 210x160x3 uint8 frame into 6400 (80x80) 1D float vector."""
+  # Crop the image.
+  I = I[35:195]
+  # Downsample by factor of 2.
+  I = I[::2,::2,0]
+  # Erase background (background type 1).
+  I[I == 144] = 0
+  # Erase background (background type 2).
+  I[I == 109] = 0
+  # Set everything else (paddles, ball) to 1.
+  I[I != 0] = 1
   return I.astype(np.float).ravel()
 
 def discount_rewards(r):
@@ -36,7 +49,8 @@ def discount_rewards(r):
   discounted_r = np.zeros_like(r)
   running_add = 0
   for t in reversed(range(0, r.size)):
-    if r[t] != 0: running_add = 0 # reset the sum, since this was a game boundary (pong specific!)
+    # Reset the sum, since this was a game boundary (pong specific!).
+    if r[t] != 0: running_add = 0
     running_add = running_add * gamma + r[t]
     discounted_r[t] = running_add
   return discounted_r
@@ -46,25 +60,32 @@ def policy_forward(x, model):
   h[h < 0] = 0 # ReLU nonlinearity
   logp = np.dot(model["W2"], h)
   p = sigmoid(logp)
-  return p, h # return probability of taking action 2, and hidden state
+  # Return probability of taking action 2, and hidden state.
+  return p, h
 
 def policy_backward(eph, epx, epdlogp, model):
   """backward pass. (eph is array of intermediate hidden states)"""
   dW2 = np.dot(eph.T, epdlogp).ravel()
   dh = np.outer(epdlogp, model["W2"])
-  dh[eph <= 0] = 0 # backpro prelu
+  # Backpro prelu.
+  dh[eph <= 0] = 0
   dW1 = np.dot(dh.T, epx)
   return {"W1": dW1, "W2": dW2}
 
 @ray.actor
 class PongEnv(object):
   def __init__(self):
+    # Tell numpy to only use one core. If we don't do this, each actor may try
+    # to use all of the cores and the resulting contention may result in no
+    # speedup over the serial version.
+    os.environ["MKL_NUM_THREADS"] = "1"
     self.env = gym.make("Pong-v0")
 
   def compute_gradient(self, model):
     # Reset the game.
     observation = self.env.reset()
-    prev_x = None # used in computing the difference frame
+    # Note that prev_x is used in computing the difference frame.
+    prev_x = None
     xs, hs, dlogps, drs = [], [], [], []
     reward_sum = 0
     done = False
@@ -74,60 +95,91 @@ class PongEnv(object):
       prev_x = cur_x
 
       aprob, h = policy_forward(x, model)
-      action = 2 if np.random.uniform() < aprob else 3 # roll the dice!
+      # Sample an action.
+      action = 2 if np.random.uniform() < aprob else 3
 
-      xs.append(x) # observation
-      hs.append(h) # hidden state
+      # The observation.
+      xs.append(x)
+      # The hidden state.
+      hs.append(h)
       y = 1 if action == 2 else 0 # a "fake label"
-      dlogps.append(y - aprob) # grad that encourages the action that was taken to be taken (see http://cs231n.github.io/neural-networks-2/#losses if confused)
+      # The gradient that encourages the action that was taken to be taken (see
+      # http://cs231n.github.io/neural-networks-2/#losses if confused).
+      dlogps.append(y - aprob)
 
       observation, reward, done, info = self.env.step(action)
       reward_sum += reward
 
-      drs.append(reward) # record reward (has to be done after we call step() to get reward for previous action)
+      # Record reward (has to be done after we call step() to get reward for
+      # previous action).
+      drs.append(reward)
 
     epx = np.vstack(xs)
     eph = np.vstack(hs)
     epdlogp = np.vstack(dlogps)
     epr = np.vstack(drs)
-    xs, hs, dlogps, drs = [], [], [], [] # reset array memory
+    # Reset the array memory.
+    xs, hs, dlogps, drs = [], [], [], []
 
-    # compute the discounted reward backwards through time
+    # Compute the discounted reward backward through time.
     discounted_epr = discount_rewards(epr)
-    # standardize the rewards to be unit normal (helps control the gradient estimator variance)
+    # Standardize the rewards to be unit normal (helps control the gradient
+    # estimator variance).
     discounted_epr -= np.mean(discounted_epr)
     discounted_epr /= np.std(discounted_epr)
-    epdlogp *= discounted_epr # modulate the gradient with advantage (PG magic happens right here.)
+    # Modulate the gradient with advantage (the policy gradient magic happens
+    # right here).
+    epdlogp *= discounted_epr
     return policy_backward(eph, epx, epdlogp, model), reward_sum
 
 if __name__ == "__main__":
-  ray.init()
+  parser = argparse.ArgumentParser(description="Train an RL agent on Pong.")
+  parser.add_argument("--batch-size", default=10, type=int,
+                      help="The number of rollouts to do per batch.")
+  parser.add_argument("--redis-address", default=None, type=str,
+                      help="The Redis address of the cluster.")
 
-  # Run the reinforcement learning
+  args = parser.parse_args()
+  batch_size = args.batch_size
+
+  ray.init(redis_address=args.redis_address, redirect_output=True)
+
+  # Run the reinforcement learning.
+
   running_reward = None
   batch_num = 1
   model = {}
-  model["W1"] = np.random.randn(H, D) / np.sqrt(D) # "Xavier" initialization
+  # "Xavier" initialization.
+  model["W1"] = np.random.randn(H, D) / np.sqrt(D)
   model["W2"] = np.random.randn(H) / np.sqrt(H)
-  grad_buffer = {k: np.zeros_like(v) for k, v in model.items()} # update buffers that add up gradients over a batch
-  rmsprop_cache = {k: np.zeros_like(v) for k, v in model.items()} # rmsprop memory
+  # Update buffers that add up gradients over a batch.
+  grad_buffer = {k: np.zeros_like(v) for k, v in model.items()}
+  # Update the rmsprop memory.
+  rmsprop_cache = {k: np.zeros_like(v) for k, v in model.items()}
   actors = [PongEnv() for _ in range(batch_size)]
   while True:
     model_id = ray.put(model)
     actions = []
     # Launch tasks to compute gradients from multiple rollouts in parallel.
+    start_time = time.time()
     for i in range(batch_size):
       action_id = actors[i].compute_gradient(model_id)
       actions.append(action_id)
     for i in range(batch_size):
       action_id, actions = ray.wait(actions)
       grad, reward_sum = ray.get(action_id[0])
-      for k in model: grad_buffer[k] += grad[k] # accumulate grad over batch
+      # Accumulate the gradient over batch.
+      for k in model:
+        grad_buffer[k] += grad[k]
       running_reward = reward_sum if running_reward is None else running_reward * 0.99 + reward_sum * 0.01
-      print("Batch {}. episode reward total was {}. running mean: {}".format(batch_num, reward_sum, running_reward))
+    end_time = time.time()
+    print("Batch {} computed {} rollouts in {} seconds, "
+          "running mean is {}".format(batch_num, batch_size,
+                                      end_time - start_time, running_reward))
     for k, v in model.items():
-      g = grad_buffer[k] # gradient
+      g = grad_buffer[k]
       rmsprop_cache[k] = decay_rate * rmsprop_cache[k] + (1 - decay_rate) * g ** 2
       model[k] += learning_rate * g / (np.sqrt(rmsprop_cache[k]) + 1e-5)
-      grad_buffer[k] = np.zeros_like(v) # reset batch gradient buffer
+      # Reset the batch gradient buffer.
+      grad_buffer[k] = np.zeros_like(v)
     batch_num += 1
