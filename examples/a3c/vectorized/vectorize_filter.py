@@ -15,11 +15,13 @@ class VectorizeFilter(core.Wrapper):
     """Vectorizes a Filter written for the non-vectorized case."""
 
     autovectorize = False
+    metadata = {
+        'configure.required': True
+    }
 
     def __init__(self, env, filter_factory, *args, **kwargs):
         super(VectorizeFilter, self).__init__(env)
         self.filter_factory = filter_factory
-        self.metadata['configure.required'] = True ## HACK!
         self._args = args
         self._kwargs = kwargs
 
