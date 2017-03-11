@@ -441,6 +441,14 @@ class Worker(object):
       objectid (object_id.ObjectID): The object ID of the value to be put.
       value: The value to put in the object store.
     """
+    # Make sure that the value is not an object ID.
+    if isinstance(value, ray.local_scheduler.ObjectID):
+      raise Exception("Calling `put` on an ObjectID is not allowed (similarly, "
+                      "returning an ObjectID from a remote function is not "
+                      "allowed). If you really want to do this, you can wrap "
+                      "the ObjectID in a list and call `put` on it (or return "
+                      "it).")
+
     # Serialize and put the object in the object store.
     try:
       ray.numbuf.store_list(objectid.id(), self.plasma_client.conn, [value])
@@ -465,6 +473,11 @@ class Worker(object):
       object_ids (List[object_id.ObjectID]): A list of the object IDs whose
         values should be retrieved.
     """
+    # Make sure that the values are object IDs.
+    for object_id in object_ids:
+      if not isinstance(object_id, ray.local_scheduler.ObjectID):
+        raise Exception("Attempting to call `get` on the value {}, which is "
+                        "not an ObjectID.".format(object_id))
     # Do an initial fetch for remote objects.
     self.plasma_client.fetch([object_id.id() for object_id in object_ids])
 
@@ -1980,8 +1993,5 @@ def store_outputs_in_objstore(objectids, outputs, worker=global_worker):
       wrapped in a tuple with one element prior to being passed into this
       function.
   """
-  for i in range(len(objectids)):
-    if isinstance(outputs[i], ray.local_scheduler.ObjectID):
-      raise Exception("This remote function returned an ObjectID as its {}th return value. This is not allowed.".format(i))
   for i in range(len(objectids)):
     worker.put_object(objectids[i], outputs[i])
