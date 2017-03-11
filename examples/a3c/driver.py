@@ -73,6 +73,9 @@ def train(num_workers, env_name="PongDeterministic-v3"):
     return policy
 
 if __name__ == '__main__':
+    if gym.__version__[:3] == '0.8':
+      raise Exception("This example currently does not work with gym==0.8.0. "
+                      "Please downgrade to gym==0.7.4.");
     NW = int(sys.argv[1])
     ray.init(num_workers=NW, num_cpus=NW)
     train(NW)
