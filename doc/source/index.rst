@@ -29,6 +29,7 @@ learning and reinforcement learning applications.*
    example-hyperopt.rst
    example-policy-gradient.rst
    example-resnet.rst
+   example-a3c.rst
    example-lbfgs.md
    example-rl-pong.md
    using-ray-with-tensorflow.md
