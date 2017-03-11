@@ -15,6 +15,8 @@ To run the application, first install some dependencies.
 
 .. code-block:: bash
 
+  sudo apt-get update && sudo apt-get install build-essential
+  sudo apt-get install -y cmake # or `brew install cmake` for OSX
   pip install tensorflow
   pip install six
   pip install gym[atari]
