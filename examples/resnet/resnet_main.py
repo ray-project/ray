@@ -21,6 +21,7 @@ tf.app.flags.DEFINE_string('eval_data_path', '',
                            'Filepattern for eval data')
 tf.app.flags.DEFINE_string('num_gpus', 0, 'Number of gpus to run with')
 use_gpu = 1 if int(FLAGS.num_gpus) > 0 else 0
+
 @ray.remote(num_return_vals=4)
 def get_data(path, size):
  os.environ['CUDA_VISIBLE_DEVICES'] = ''
@@ -136,7 +137,7 @@ class ResNetTestActor(object):
 def train():
   """Training loop."""
   num_gpus = int(FLAGS.num_gpus)
-  ray.init(num_workers=2, num_gpus=num_gpus)
+  ray.init(num_gpus=num_gpus)
   train_data = get_data.remote(FLAGS.train_data_path, 50000)
   test_data = get_data.remote(FLAGS.eval_data_path, 10000)
   if num_gpus > 0:

@@ -30,9 +30,9 @@ learning and reinforcement learning applications.*
    example-policy-gradient.rst
    example-resnet.rst
    example-a3c.rst
-   example-lbfgs.md
-   example-rl-pong.md
-   using-ray-with-tensorflow.md
+   example-lbfgs.rst
+   example-rl-pong.rst
+   using-ray-with-tensorflow.rst
 
 .. toctree::
    :maxdepth: 1

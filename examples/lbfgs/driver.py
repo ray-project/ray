@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
-import IPython
 import numpy as np
 import scipy.optimize
 import tensorflow as tf
@@ -18,8 +17,8 @@ class LinearModel(object):
   are set via self.variables.set_weights.
 
   Example:
-    net = LinearModel([10,10])
-    weights = [np.random.normal(size=[10,10]), np.random.normal(size=[10])]
+    net = LinearModel([10, 10])
+    weights = [np.random.normal(size=[10, 10]), np.random.normal(size=[10])]
     variable_names = [v.name for v in net.variables]
     net.variables.set_weights(dict(zip(variable_names, weights)))
 
@@ -48,7 +47,7 @@ class LinearModel(object):
     cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y), reduction_indices=[1]))
     self.cross_entropy = cross_entropy
     self.cross_entropy_grads = tf.gradients(cross_entropy, [w, b])
-    self.sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True))
+    self.sess = tf.Session()
     # In order to get and set the weights, we pass in the loss function to Ray's
     # TensorFlowVariables to automatically create methods to modify the weights.
     self.variables = ray.experimental.TensorFlowVariables(cross_entropy, self.sess)
@@ -64,9 +63,9 @@ class LinearModel(object):
 @ray.actor
 class NetActor(object):
   def __init__(self, xs, ys):
-    os.environ['CUDA_VISIBLE_DEVICES'] = ''
-    with tf.device('/cpu:0'):
-      self.net = LinearModel([784,10])
+    os.environ["CUDA_VISIBLE_DEVICES"] = ""
+    with tf.device("/cpu:0"):
+      self.net = LinearModel([784, 10])
       self.xs = xs
       self.ys = ys
 
@@ -99,7 +98,7 @@ def full_grad(theta):
   return sum(ray.get(grad_ids)).astype("float64") # This conversion is necessary for use with fmin_l_bfgs_b.
 
 if __name__ == "__main__":
-  ray.init(num_workers=1, redirect_output=True)
+  ray.init(redirect_output=True)
 
   # From the perspective of scipy.optimize.fmin_l_bfgs_b, full_loss is simply a
   # function which takes some parameters theta, and computes a loss. Similarly,

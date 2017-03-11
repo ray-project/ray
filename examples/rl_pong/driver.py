@@ -62,8 +62,8 @@ class PongEnv(object):
     self.env = gym.make("Pong-v0")
 
   def compute_gradient(self, model):
-    env = self.env
-    observation = env.reset()
+    # Reset the game.
+    observation = self.env.reset()
     prev_x = None # used in computing the difference frame
     xs, hs, dlogps, drs = [], [], [], []
     reward_sum = 0
@@ -81,7 +81,7 @@ class PongEnv(object):
       y = 1 if action == 2 else 0 # a "fake label"
       dlogps.append(y - aprob) # grad that encourages the action that was taken to be taken (see http://cs231n.github.io/neural-networks-2/#losses if confused)
 
-      observation, reward, done, info = env.step(action)
+      observation, reward, done, info = self.env.step(action)
       reward_sum += reward
 
       drs.append(reward) # record reward (has to be done after we call step() to get reward for previous action)
@@ -101,7 +101,7 @@ class PongEnv(object):
     return policy_backward(eph, epx, epdlogp, model), reward_sum
 
 if __name__ == "__main__":
-  ray.init(num_workers=1)
+  ray.init()
 
   # Run the reinforcement learning
   running_reward = None
