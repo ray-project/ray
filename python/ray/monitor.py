@@ -12,13 +12,16 @@ import time
 from ray.services import get_ip_address
 from ray.services import get_port
 
+# Import flatbuffer bindings.
+from ray.core.generated.SubscribeToDBClientTableReply import SubscribeToDBClientTableReply
+
 # These variables must be kept in sync with the C codebase.
 # common/common.h
 DB_CLIENT_ID_SIZE = 20
 NIL_ID = b"\xff" * DB_CLIENT_ID_SIZE
 # common/task.h
 TASK_STATUS_LOST = 32
-# common/redis_module/ray_redis_module.c
+# common/redis_module/ray_redis_module.cc
 TASK_PREFIX = "TT:"
 DB_CLIENT_PREFIX = "CL:"
 DB_CLIENT_TABLE_NAME = b"db_clients"
@@ -89,14 +92,12 @@ class Monitor(object):
 
     # Parse the message.
     data = message["data"]
-    db_client_id = data[:DB_CLIENT_ID_SIZE]
-    data = data[DB_CLIENT_ID_SIZE + 1:]
-    data = data.split(b" ")
-    client_type, auxiliary_address, is_insertion = data
-    is_insertion = int(is_insertion)
-    if is_insertion != 1 and is_insertion != 0:
-      raise Exception("Expected 0 or 1 for insertion field, got {} instead".format(is_insertion))
-    is_insertion = bool(is_insertion)
+
+    notification_object = SubscribeToDBClientTableReply.GetRootAsSubscribeToDBClientTableReply(data, 0)
+    db_client_id = notification_object.DbClientId()
+    client_type = notification_object.ClientType()
+    auxiliary_address = notification_object.AuxAddress()
+    is_insertion = notification_object.IsInsertion()
 
     return db_client_id, client_type, auxiliary_address, is_insertion
 
