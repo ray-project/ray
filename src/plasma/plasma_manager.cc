@@ -1350,11 +1350,11 @@ void process_object_notification(event_loop *loop,
   PlasmaManagerState *state = (PlasmaManagerState *) context;
   /* Read the notification from Plasma. */
   int64_t size;
-  int nbytes = read_bytes(client_sock, (uint8_t *) &size, sizeof(int64_t));
+  int error = read_bytes(client_sock, (uint8_t *) &size, sizeof(int64_t));
   uint8_t *notification = (uint8_t *) malloc(size);
-  nbytes = read_bytes(client_sock, notification, size);
+  error = read_bytes(client_sock, notification, size);
 
-  if (nbytes < 0) {
+  if (error < 0) {
     /* The store has closed the socket. */
     LOG_DEBUG(
         "The plasma store has closed the object notification socket, or some "

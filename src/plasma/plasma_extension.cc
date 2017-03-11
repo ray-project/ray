@@ -356,12 +356,11 @@ PyObject *PyPlasma_receive_notification(PyObject *self, PyObject *args) {
    * metadata_size. If the object was deleted, data_size and metadata_size will
    * be set to -1. */
   int64_t size;
-  int nbytes = read_bytes(plasma_sock, (uint8_t *) &size, sizeof(size));
-  CHECK(nbytes == sizeof(size));
+  int error = read_bytes(plasma_sock, (uint8_t *) &size, sizeof(size));
   uint8_t *notification = (uint8_t *) malloc(size);
-  nbytes = read_bytes(plasma_sock, notification, size);
+  error = read_bytes(plasma_sock, notification, size);
 
-  if (nbytes < 0) {
+  if (error < 0) {
     PyErr_SetString(PyExc_RuntimeError,
                     "Failed to read object notification from Plasma socket");
     return NULL;
