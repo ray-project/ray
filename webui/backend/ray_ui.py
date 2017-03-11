@@ -50,7 +50,7 @@ async def hgetall_as_dict(redis_conn, key):
 
 # Cache information about the local schedulers.
 local_schedulers = {}
-errors = collections.defaultdict(list)
+errors = []
 
 def duration_to_string(duration):
   """Format a duration in seconds as a string.
@@ -145,11 +145,13 @@ async def listen_for_errors(redis_ip_address, redis_port):
       result = await data_conn.execute("hget", error_key, "message")
       result = result.decode("ascii")
       # TODO: Maybe also get rid of coloring?
-      errors[worker].append(result)
+      errors.append({"worker_id": worker,
+                     "task_id": task,
+                     "error": result})
       index += 1
 
 async def handle_get_errors(websocket):
-  """Renders error messages"""
+  """Renders error messages"""  
   await websocket.send(json.dumps(errors))
 
 node_info = collections.OrderedDict()

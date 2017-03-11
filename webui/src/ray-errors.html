@@ -1,0 +1,56 @@
+<!--
+@license
+Copyright (c) 2016 The Polymer Project Authors. All rights reserved.
+This code may only be used under the BSD style license found at http://polymer.github.io/LICENSE.txt
+The complete set of authors may be found at http://polymer.github.io/AUTHORS.txt
+The complete set of contributors may be found at http://polymer.github.io/CONTRIBUTORS.txt
+Code distributed by Google as part of the polymer project is also
+subject to an additional IP rights grant found at http://polymer.github.io/PATENTS.txt
+-->
+
+<link rel="import" href="../bower_components/polymer/polymer.html">
+<link rel="import" href="shared-styles.html">
+
+<dom-module id="ray-errors">
+  <template>
+    <style include="shared-styles">
+      :host {
+        display: block;
+
+        padding: 10px;
+      }
+    </style>
+
+    <div class="card">
+      <h1>Errors</h1>
+      <vaadin-grid id="errors">
+        <table>
+          <colgroup>
+            <col name="worker_id" sortable="" sort-direction="desc"/>
+            <col name="task_id" sortable="" sort-direction="desc"/>
+            <col name="error" sortable="" sort-direction="desc"/>
+          </colgroup>
+        </table>
+      </vaadin-grid>
+    </div>
+  </template>
+
+  <script>
+    var backend_address = "ws://127.0.0.1:8888";
+    Polymer({
+      is: 'ray-errors',
+      ready: function() {
+        var eventSocket = new WebSocket(backend_address);
+        var errors = Polymer.dom(this.root).querySelector("#errors");
+
+        eventSocket.onopen = function() {
+          eventSocket.send(JSON.stringify({"command": "get-errors"}));
+        }
+        eventSocket.onmessage = function(answer) {
+          console.dir(answer.data);
+          errors.items = JSON.parse(answer.data);
+        }
+      }
+    });
+  </script>
+</dom-module>
