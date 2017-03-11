@@ -76,6 +76,6 @@ if __name__ == '__main__':
     if gym.__version__[:3] == '0.8':
       raise Exception("This example currently does not work with gym==0.8.0. "
                       "Please downgrade to gym==0.7.4.");
-    NW = int(sys.argv[1])
-    ray.init(num_workers=NW, num_cpus=NW)
-    train(NW)
+    num_workers = int(sys.argv[1])
+    ray.init(num_cpus=num_workers)
+    train(num_workers)

@@ -19,19 +19,6 @@ decay_rate = 0.99 # decay factor for RMSProp leaky sum of grad^2
 
 D = 80 * 80 # input dimensionality: 80x80 grid
 
-# Function for initializing the gym environment.
-def env_initializer():
-  return gym.make("Pong-v0")
-
-# Function for reinitializing the gym environment in order to guarantee that
-# the state of the game is reset after each remote task.
-def env_reinitializer(env):
-  env.reset()
-  return env
-
-# Create an environment variable for the gym environment.
-ray.env.env = ray.EnvironmentVariable(env_initializer, env_reinitializer)
-
 def sigmoid(x):
   return 1.0 / (1.0 + np.exp(-x)) # sigmoid "squashing" function to interval [0,1]
 
@@ -69,48 +56,52 @@ def policy_backward(eph, epx, epdlogp, model):
   dW1 = np.dot(dh.T, epx)
   return {"W1": dW1, "W2": dW2}
 
-@ray.remote(num_return_vals=2)
-def compute_gradient(model):
-  env = ray.env.env
-  observation = env.reset()
-  prev_x = None # used in computing the difference frame
-  xs, hs, dlogps, drs = [], [], [], []
-  reward_sum = 0
-  done = False
-  while not done:
-    cur_x = preprocess(observation)
-    x = cur_x - prev_x if prev_x is not None else np.zeros(D)
-    prev_x = cur_x
+@ray.actor
+class PongEnv(object):
+  def __init__(self):
+    self.env = gym.make("Pong-v0")
 
-    aprob, h = policy_forward(x, model)
-    action = 2 if np.random.uniform() < aprob else 3 # roll the dice!
+  def compute_gradient(self, model):
+    # Reset the game.
+    observation = self.env.reset()
+    prev_x = None # used in computing the difference frame
+    xs, hs, dlogps, drs = [], [], [], []
+    reward_sum = 0
+    done = False
+    while not done:
+      cur_x = preprocess(observation)
+      x = cur_x - prev_x if prev_x is not None else np.zeros(D)
+      prev_x = cur_x
 
-    xs.append(x) # observation
-    hs.append(h) # hidden state
-    y = 1 if action == 2 else 0 # a "fake label"
-    dlogps.append(y - aprob) # grad that encourages the action that was taken to be taken (see http://cs231n.github.io/neural-networks-2/#losses if confused)
+      aprob, h = policy_forward(x, model)
+      action = 2 if np.random.uniform() < aprob else 3 # roll the dice!
 
-    observation, reward, done, info = env.step(action)
-    reward_sum += reward
+      xs.append(x) # observation
+      hs.append(h) # hidden state
+      y = 1 if action == 2 else 0 # a "fake label"
+      dlogps.append(y - aprob) # grad that encourages the action that was taken to be taken (see http://cs231n.github.io/neural-networks-2/#losses if confused)
 
-    drs.append(reward) # record reward (has to be done after we call step() to get reward for previous action)
+      observation, reward, done, info = self.env.step(action)
+      reward_sum += reward
 
-  epx = np.vstack(xs)
-  eph = np.vstack(hs)
-  epdlogp = np.vstack(dlogps)
-  epr = np.vstack(drs)
-  xs, hs, dlogps, drs = [], [], [], [] # reset array memory
+      drs.append(reward) # record reward (has to be done after we call step() to get reward for previous action)
 
-  # compute the discounted reward backwards through time
-  discounted_epr = discount_rewards(epr)
-  # standardize the rewards to be unit normal (helps control the gradient estimator variance)
-  discounted_epr -= np.mean(discounted_epr)
-  discounted_epr /= np.std(discounted_epr)
-  epdlogp *= discounted_epr # modulate the gradient with advantage (PG magic happens right here.)
-  return policy_backward(eph, epx, epdlogp, model), reward_sum
+    epx = np.vstack(xs)
+    eph = np.vstack(hs)
+    epdlogp = np.vstack(dlogps)
+    epr = np.vstack(drs)
+    xs, hs, dlogps, drs = [], [], [], [] # reset array memory
+
+    # compute the discounted reward backwards through time
+    discounted_epr = discount_rewards(epr)
+    # standardize the rewards to be unit normal (helps control the gradient estimator variance)
+    discounted_epr -= np.mean(discounted_epr)
+    discounted_epr /= np.std(discounted_epr)
+    epdlogp *= discounted_epr # modulate the gradient with advantage (PG magic happens right here.)
+    return policy_backward(eph, epx, epdlogp, model), reward_sum
 
 if __name__ == "__main__":
-  ray.init(num_workers=10)
+  ray.init()
 
   # Run the reinforcement learning
   running_reward = None
@@ -120,18 +111,17 @@ if __name__ == "__main__":
   model["W2"] = np.random.randn(H) / np.sqrt(H)
   grad_buffer = {k: np.zeros_like(v) for k, v in model.items()} # update buffers that add up gradients over a batch
   rmsprop_cache = {k: np.zeros_like(v) for k, v in model.items()} # rmsprop memory
-
+  actors = [PongEnv() for _ in range(batch_size)]
   while True:
     model_id = ray.put(model)
-    grads, reward_sums = [], []
+    actions = []
     # Launch tasks to compute gradients from multiple rollouts in parallel.
     for i in range(batch_size):
-      grad_id, reward_sum_id = compute_gradient.remote(model_id)
-      grads.append(grad_id)
-      reward_sums.append(reward_sum_id)
+      action_id = actors[i].compute_gradient(model_id)
+      actions.append(action_id)
     for i in range(batch_size):
-      grad = ray.get(grads[i])
-      reward_sum = ray.get(reward_sums[i])
+      action_id, actions = ray.wait(actions)
+      grad, reward_sum = ray.get(action_id[0])
       for k in model: grad_buffer[k] += grad[k] # accumulate grad over batch
       running_reward = reward_sum if running_reward is None else running_reward * 0.99 + reward_sum * 0.01
       print("Batch {}. episode reward total was {}. running mean: {}".format(batch_num, reward_sum, running_reward))
