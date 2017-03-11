@@ -11,7 +11,7 @@ View the `code for this example`_.
 .. _`Universe Starter Agent`: https://github.com/openai/universe-starter-agent
 .. _`code for this example`: https://github.com/ray-project/ray/tree/master/examples/a3c
 
-To run the application, first install some dependencies.
+To run the application, first install **ray** and then some dependencies:
 
 .. code-block:: bash
 
