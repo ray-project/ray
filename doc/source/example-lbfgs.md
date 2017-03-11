@@ -87,21 +87,21 @@ We can load the data on the driver and distribute it this way because MNIST
 easily fits on a single machine. However, for larger data sets, we will need to
 use remote functions to distribute the loading of the data.
 
-Now, lets turn `loss` and `grad` into remote functions.
+Now, lets turn `loss` and `grad` into methods of an actor that will contain our network.
 
 ```python
-@ray.remote
-def loss(theta, xs, ys):
-  # compute the loss
-  return loss
+class Network(object):
+  def __init__():
+    # Initialize network.
 
-@ray.remote
-def grad(theta, xs, ys):
-  # compute the gradient
-  return grad
+  def loss(theta, xs, ys):
+    # compute the loss
+    return loss
+
+  def grad(theta, xs, ys):
+    # compute the gradient
+    return grad
 ```
-
-The only difference is that we added the `@ray.remote` decorator.
 
 Now, it is easy to speed up the computation of the full loss and the full
 gradient.
@@ -109,12 +109,12 @@ gradient.
 ```python
 def full_loss(theta):
   theta_id = ray.put(theta)
-  loss_ids = [loss.remote(theta_id, xs_id, ys_id) for (xs_id, ys_id) in batch_ids]
+  loss_ids = [actor.loss(theta_id) for actor in actors]
   return sum(ray.get(loss_ids))
 
 def full_grad(theta):
   theta_id = ray.put(theta)
-  grad_ids = [grad.remote(theta_id, xs_id, ys_id) for (xs_id, ys_id) in batch_ids]
+  grad_ids = [actor.grad(theta_id) for actor in actors]
   return sum(ray.get(grad_ids)).astype("float64") # This conversion is necessary for use with fmin_l_bfgs_b.
 ```
 
@@ -122,14 +122,14 @@ Note that we turn `theta` into a remote object with the line `theta_id =
 ray.put(theta)` before passing it into the remote functions. If we had written
 
 ```python
-[loss.remote(theta, xs_id, ys_id) for (xs_id, ys_id) in batch_ids]
+[actor.loss(theta_id) for actor in actors]
 ```
 
 instead of
 
 ```python
 theta_id = ray.put(theta)
-[loss.remote(theta_id, xs_id, ys_id) for (xs_id, ys_id) in batch_ids]
+[actor.loss(theta_id) for actor in actors]
 ```
 
 then each task that got sent to the scheduler (one for every element of
@@ -138,7 +138,7 @@ then each task that got sent to the scheduler (one for every element of
 inefficient. *Large objects should be passed by object ID to remote functions
 and not by value*.
 
-We use remote functions and remote objects internally in the implementation of
+We use remote actors and remote objects internally in the implementation of
 `full_loss` and `full_grad`, but the user-facing behavior of these methods is
 identical to the behavior in the serial version.
 
