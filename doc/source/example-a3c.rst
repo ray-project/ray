@@ -15,12 +15,9 @@ To run the application, first install **ray** and then some dependencies:
 
 .. code-block:: bash
 
-  sudo apt-get update && sudo apt-get install build-essential
-  sudo apt-get install -y cmake # or `brew install cmake` for OSX
   pip install tensorflow
   pip install six
   pip install gym[atari]==0.7.4
-  pip install numpy
   pip install scipy
 
 You can run the code with
