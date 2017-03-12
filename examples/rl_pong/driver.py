@@ -67,7 +67,7 @@ def policy_backward(eph, epx, epdlogp, model):
   """backward pass. (eph is array of intermediate hidden states)"""
   dW2 = np.dot(eph.T, epdlogp).ravel()
   dh = np.outer(epdlogp, model["W2"])
-  # Backpro prelu.
+  # Backprop relu.
   dh[eph <= 0] = 0
   dW1 = np.dot(dh.T, epx)
   return {"W1": dW1, "W2": dW2}
