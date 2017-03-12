@@ -212,17 +212,19 @@ async def handle_get_recent_tasks(websocket, redis_conn, num_tasks):
       task_get_arguments_times = [timestamp for (timestamp, task, kind, info) in data if task == "ray:task:get_arguments"]
       task_execute_times = [timestamp for (timestamp, task, kind, info) in data if task == "ray:task:execute"]
       task_store_outputs_times = [timestamp for (timestamp, task, kind, info) in data if task == "ray:task:store_outputs"]
-      task_data[node_index]["task_data"].append(
-          {"task": task_times,
-           "get_arguments": task_get_arguments_times,
-           "execute": task_execute_times,
-           "store_outputs": task_store_outputs_times,
-           "worker_index": worker_index,
-           "node_ip_address": node_ip_address,
-           "task_formatted_time": duration_to_string(task_times[1] - task_times[0]),
-           "get_arguments_formatted_time": duration_to_string(task_get_arguments_times[1] - task_get_arguments_times[0]),
-           "execute_formatted_time": duration_to_string(task_execute_times[1] - task_execute_times[0]),
-           "store_outputs_formatted_time": duration_to_string(task_store_outputs_times[1] - task_store_outputs_times[0])})
+      task_info = {"task": task_times,
+                   "get_arguments": task_get_arguments_times,
+                   "execute": task_execute_times,
+                   "store_outputs": task_store_outputs_times,
+                   "worker_index": worker_index,
+                   "node_ip_address": node_ip_address,
+                   "task_formatted_time": duration_to_string(task_times[1] - task_times[0]),
+                   "get_arguments_formatted_time": duration_to_string(task_get_arguments_times[1] - task_get_arguments_times[0])}
+      if len(task_execute_times) == 2:
+        task_info["execute_formatted_time"] = duration_to_string(task_execute_times[1] - task_execute_times[0])
+      if len(task_store_outputs_times) == 2:
+        task_info["store_outputs_formatted_time"] = duration_to_string(task_store_outputs_times[1] - task_store_outputs_times[0])
+      task_data[node_index]["task_data"].append(task_info)
       num_tasks += 1
     reply = {"min_time": min_time,
              "max_time": max_time,
