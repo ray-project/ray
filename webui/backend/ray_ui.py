@@ -12,6 +12,9 @@ import sys
 import time
 import websockets
 
+# Import flatbuffer bindings.
+from ray.core.generated.LocalSchedulerInfoMessage import LocalSchedulerInfoMessage
+
 parser = argparse.ArgumentParser(description="parse information for the web ui")
 parser.add_argument("--redis-address", required=True, type=str, help="the address to use for redis")
 
@@ -269,7 +272,8 @@ async def send_heartbeats(websocket, redis_conn):
 
   while True:
     msg = await redis_conn.pubsub_channels["local_schedulers"].get()
-    local_scheduler_id_bytes = msg[:IDENTIFIER_LENGTH]
+    heartbeat = LocalSchedulerInfoMessage.GetRootAsLocalSchedulerInfoMessage(msg, 0)
+    local_scheduler_id_bytes = heartbeat.DbClientId()
     local_scheduler_id = hex_identifier(local_scheduler_id_bytes)
     if local_scheduler_id not in local_schedulers:
       # A new local scheduler has joined the cluster. Ignore it. This won't be
