@@ -27,11 +27,11 @@ learning and reinforcement learning applications.*
    :caption: Examples
 
    example-hyperopt.rst
+   example-rl-pong.rst
    example-policy-gradient.rst
    example-resnet.rst
    example-a3c.rst
    example-lbfgs.rst
-   example-rl-pong.rst
    using-ray-with-tensorflow.rst
 
 .. toctree::
