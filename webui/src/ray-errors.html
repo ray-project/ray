@@ -1,7 +1,7 @@
 <link rel="import" href="../bower_components/polymer/polymer.html">
 <link rel="import" href="shared-styles.html">
 
-<dom-module id="ray-events">
+<dom-module id="ray-errors">
   <template>
     <style include="shared-styles">
       :host {
@@ -12,14 +12,13 @@
     </style>
 
     <div class="card">
-      <h1>Events</h1>
-      <vaadin-grid id="events">
+      <h1>Errors</h1>
+      <vaadin-grid id="errors">
         <table>
           <colgroup>
-            <col name="worker_id" sortable="" sort-direction="desc"/>
+            <col name="driver_id" sortable="" sort-direction="desc"/>
             <col name="task_id" sortable="" sort-direction="desc"/>
-            <col name="time" sortable="" sort-direction="desc"/>
-            <col name="type" sortable="" sort-direction="desc"/>
+            <col name="error" sortable="" sort-direction="desc"/>
           </colgroup>
         </table>
       </vaadin-grid>
@@ -29,17 +28,17 @@
   <script>
     var backend_address = "ws://127.0.0.1:8888";
     Polymer({
-      is: 'ray-events',
+      is: 'ray-errors',
       ready: function() {
         var eventSocket = new WebSocket(backend_address);
-        var events = Polymer.dom(this.root).querySelector("#events");
+        var errors = Polymer.dom(this.root).querySelector("#errors");
 
         eventSocket.onopen = function() {
-          eventSocket.send(JSON.stringify({"command": "get-events"}));
+          eventSocket.send(JSON.stringify({"command": "get-errors"}));
         }
         eventSocket.onmessage = function(answer) {
           console.dir(answer.data);
-          events.items = JSON.parse(answer.data);
+          errors.items = JSON.parse(answer.data);
         }
       }
     });
