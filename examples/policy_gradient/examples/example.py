@@ -15,20 +15,20 @@ config = {"kl_coeff": 0.2,
           "entropy_coeff": 0.0,
           "clip_param": 0.3,
           "kl_target": 0.01,
-          "timesteps_per_batch": 40000}
+          "timesteps_per_batch": 10000}
 
 ray.init()
 
-mdp_name = "Pong-ram-v3"
+mdp_name = "Pong-v0"
 
-agents = [RemoteAgent(mdp_name, 1, config, False) for _ in range(5)]
+agents = [RemoteAgent(mdp_name, 1, config, False) for _ in range(4)]
 agent = Agent(mdp_name, 1, config, True)
 
 kl_coeff = config["kl_coeff"]
 
 for j in range(1000):
   print("== iteration", j)
-  weights = agent.get_weights()
+  weights = ray.put(agent.get_weights())
   [a.load_weights(weights) for a in agents]
   trajectory, total_reward, traj_len_mean = collect_samples(agents, config["timesteps_per_batch"], 0.995, 1.0, 2000)
   print("total reward is ", total_reward)

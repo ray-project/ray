@@ -15,7 +15,7 @@ class ProximalPolicyLoss(object):
     assert isinstance(action_space, gym.spaces.Discrete) or isinstance(action_space, gym.spaces.Box)
     # adapting the kl divergence
     self.kl_coeff = tf.placeholder(name="newkl", shape=(), dtype=tf.float32)
-    self.observations = tf.placeholder(tf.float32, shape=(None,) + observation_space.shape)
+    self.observations = tf.placeholder(tf.float32, shape=(None,) + (80, 80, 3))
     self.advantages = tf.placeholder(tf.float32, shape=(None,))
 
     if isinstance(action_space, gym.spaces.Box):
@@ -33,7 +33,10 @@ class ProximalPolicyLoss(object):
       raise NotImplemented("action space" + str(type(env.action_space)) + "currently not supported")
     self.prev_logits = tf.placeholder(tf.float32, shape=(None, self.logit_dim))
     self.prev_dist = Distribution(self.prev_logits)
-    self.curr_logits = fc_net(self.observations, num_classes=self.logit_dim)
+    if isinstance(observation_space, gym.spaces.Box):
+      self.curr_logits = vision_net(self.observations, num_classes=self.logit_dim)
+    else:
+      self.curr_logits = fc_net(self.observations, num_classes=self.logit_dim)
     self.curr_dist = Distribution(self.curr_logits)
     self.sampler = self.curr_dist.sample()
     self.entropy = self.curr_dist.entropy()

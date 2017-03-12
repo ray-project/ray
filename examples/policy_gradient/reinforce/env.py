@@ -5,6 +5,15 @@ from __future__ import print_function
 import gym
 import numpy as np
 
+class AtariPreprocessor(object):
+
+  def __init__(self):
+    self.shape = (3, 80, 80)
+
+  def __call__(self, observation):
+    "Convert images from (210, 160, 3) to (3, 80, 80) by downsampling."
+    return (observation[25:-25:2,::2,:][None] - 128.0) / 128.8
+
 def atari_preprocessor(observation):
   "Convert images from (210, 160, 3) to (3, 80, 80) by downsampling."
   return (observation[25:-25:2,::2,:][None] - 128.0) / 128.8
