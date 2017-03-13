@@ -30,6 +30,9 @@ preprocessor = AtariRamPreprocessor()
 # mdp_name = "Pong-v0"
 # preprocessor = AtariPixelPreprocessor()
 
+# mdp_name = "CartPole-v0"
+# preprocessor = NoPreprocessor()
+
 agents = [RemoteAgent(mdp_name, 1, preprocessor, config, False) for _ in range(5)]
 agent = Agent(mdp_name, 1, preprocessor, config, True)
 

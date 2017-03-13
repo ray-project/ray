@@ -18,6 +18,8 @@ class Agent(object):
     if not use_gpu:
       os.environ["CUDA_VISIBLE_DEVICES"] = ""
     self.env = BatchedEnv(name, batchsize, preprocessor=preprocessor)
+    if preprocessor.shape is None:
+      preprocessor.shape = self.env.observation_space.shape
     self.sess = tf.Session()
     self.ppo = ProximalPolicyLoss(self.env.observation_space, self.env.action_space, preprocessor, config, self.sess)
     self.optimizer = tf.train.AdamOptimizer(config["sgd_stepsize"])
