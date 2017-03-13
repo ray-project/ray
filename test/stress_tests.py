@@ -345,10 +345,11 @@ class ReconstructionTests(unittest.TestCase):
       self.assertEqual(value[0], i)
 
     # Wait for errors from all the nondeterministic tasks.
-    max_time_to_wait = 100
+    max_time_to_wait = 100000
     start_time = time.time()
     while time.time() - start_time < max_time_to_wait:
       errors = ray.error_info()
+      print("len(errors) is {}.".format(len(errors)))
       if len(errors) >= num_objects / 2:
         break
       time.sleep(0.1)
