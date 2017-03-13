@@ -5,21 +5,30 @@ from __future__ import print_function
 import gym
 import numpy as np
 
-class AtariPreprocessor(object):
+class AtariPixelPreprocessor(object):
 
   def __init__(self):
-    self.shape = (3, 80, 80)
+    self.shape = (80, 80, 3)
 
   def __call__(self, observation):
     "Convert images from (210, 160, 3) to (3, 80, 80) by downsampling."
     return (observation[25:-25:2,::2,:][None] - 128.0) / 128.8
 
-def atari_preprocessor(observation):
-  "Convert images from (210, 160, 3) to (3, 80, 80) by downsampling."
-  return (observation[25:-25:2,::2,:][None] - 128.0) / 128.8
+class AtariRamPreprocessor(object):
 
-def ram_preprocessor(observation):
-  return (observation - 128.0) / 128.0
+  def __init__(self):
+    self.shape = (128,)
+
+  def __call__(self, observation):
+    return (observation - 128.0) / 128.0
+
+class NoPreprocessor(object):
+
+  def __init__(self):
+    self.shape = None
+
+  def __call__(self, observation):
+    return observation
 
 class BatchedEnv(object):
   "A BatchedEnv holds multiple gym enviroments and performs steps on all of them."

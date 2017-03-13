@@ -7,23 +7,23 @@ import os
 
 import ray
 
-from reinforce.env import BatchedEnv, atari_preprocessor
+from reinforce.env import BatchedEnv
 from reinforce.policy import ProximalPolicyLoss
 from reinforce.filter import MeanStdFilter
 from reinforce.rollout import rollouts, add_advantage_values
 
 class Agent(object):
 
-  def __init__(self, name, batchsize, config, use_gpu):
+  def __init__(self, name, batchsize, preprocessor, config, use_gpu):
     if not use_gpu:
       os.environ["CUDA_VISIBLE_DEVICES"] = ""
-    self.env = BatchedEnv(name, batchsize, preprocessor=atari_preprocessor)
+    self.env = BatchedEnv(name, batchsize, preprocessor=preprocessor)
     self.sess = tf.Session()
-    self.ppo = ProximalPolicyLoss(self.env.observation_space, self.env.action_space, config, self.sess)
+    self.ppo = ProximalPolicyLoss(self.env.observation_space, self.env.action_space, preprocessor, config, self.sess)
     self.optimizer = tf.train.AdamOptimizer(config["sgd_stepsize"])
     self.train_op = self.optimizer.minimize(self.ppo.loss)
     self.variables = ray.experimental.TensorFlowVariables(self.ppo.loss, self.sess)
-    self.observation_filter = MeanStdFilter((80, 80, 3), clip=None)
+    self.observation_filter = MeanStdFilter(preprocessor.shape, clip=None)
     self.reward_filter = MeanStdFilter((), clip=5.0)
     self.sess.run(tf.global_variables_initializer())
 

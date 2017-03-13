@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import ray
 
+from reinforce.env import NoPreprocessor, AtariRamPreprocessor, AtariPixelPreprocessor
 from reinforce.agent import Agent, RemoteAgent
 from reinforce.rollout import collect_samples
 from reinforce.utils import iterate, shuffle
@@ -15,14 +16,22 @@ config = {"kl_coeff": 0.2,
           "entropy_coeff": 0.0,
           "clip_param": 0.3,
           "kl_target": 0.01,
-          "timesteps_per_batch": 10000}
+          "timesteps_per_batch": 40000}
 
 ray.init()
 
-mdp_name = "Pong-v0"
+ray.register_class(AtariRamPreprocessor)
+ray.register_class(AtariPixelPreprocessor)
+ray.register_class(NoPreprocessor)
 
-agents = [RemoteAgent(mdp_name, 1, config, False) for _ in range(4)]
-agent = Agent(mdp_name, 1, config, True)
+mdp_name = "Pong-ram-v3"
+preprocessor = AtariRamPreprocessor()
+
+# mdp_name = "Pong-v0"
+# preprocessor = AtariPixelPreprocessor()
+
+agents = [RemoteAgent(mdp_name, 1, preprocessor, config, False) for _ in range(5)]
+agent = Agent(mdp_name, 1, preprocessor, config, True)
 
 kl_coeff = config["kl_coeff"]
 
