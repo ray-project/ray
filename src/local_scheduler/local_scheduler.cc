@@ -471,6 +471,15 @@ void process_plasma_notification(event_loop *loop,
   /* Read the notification from Plasma. */
   int64_t size;
   int error = read_bytes(client_sock, (uint8_t *) &size, sizeof(size));
+  if (error < 0) {
+    /* The store has closed the socket. */
+    LOG_DEBUG(
+        "The plasma store has closed the object notification socket, or some "
+        "other error has occurred.");
+    event_loop_remove_file(loop, client_sock);
+    close(client_sock);
+    return;
+  }
   uint8_t *notification = (uint8_t *) malloc(size);
   error = read_bytes(client_sock, notification, size);
 
