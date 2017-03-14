@@ -158,6 +158,16 @@ void PlasmaStoreState_free(PlasmaStoreState *state) {
     utarray_free(entry->clients);
     delete entry;
   }
+  NotificationQueue *queue, *temp_queue;
+  HASH_ITER(hh, state->pending_notifications, queue, temp_queue) {
+    for (int i = 0; i < utarray_len(queue->object_notifications); ++i) {
+      uint8_t **notification =
+        (uint8_t **) utarray_eltptr(queue->object_notifications, i);
+      uint8_t *data = *notification;
+      free(data);
+    }
+    utarray_free(queue->object_notifications);
+  }
 }
 
 void push_notification(PlasmaStoreState *state,
