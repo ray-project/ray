@@ -666,6 +666,7 @@ void send_notifications(event_loop *loop,
       }
     }
     num_processed += 1;
+    free(data);
   }
   /* Remove the sent notifications from the array. */
   utarray_erase(queue->object_notifications, 0, num_processed);
