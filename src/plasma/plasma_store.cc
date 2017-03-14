@@ -617,7 +617,7 @@ void push_notification(PlasmaStoreState *plasma_state,
     utarray_push_back(queue->object_notifications, &notification);
     send_notifications(plasma_state->loop, queue->subscriber_fd, plasma_state,
                        0);
-    free(notification);
+    // free(notification);
   }
 }
 
