@@ -23,9 +23,12 @@ Then you can run the example as follows.
 
 .. code-block:: bash
 
-  python ray/examples/policy_gradient/examples/example.py
+  python ray/examples/policy_gradient/examples/example.py --environment=Pong-ram-v3
 
-This will train an agent on an Atari environment.
+This will train an agent on the ``Pong-ram-v3`` Atari environment. You can also
+try passing in the ``Pong-v0`` environment or the ``CartPole-v0`` environment.
+If you wish to use a different environment, you will need to change a few lines
+in ``example.py``.
 
 .. _`TensorFlow with GPU support`: https://www.tensorflow.org/install/
 .. _`code for this example`: https://github.com/ray-project/ray/tree/master/examples/policy_gradient
