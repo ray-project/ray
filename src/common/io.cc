@@ -14,6 +14,7 @@
 #include <netdb.h>
 
 #include "common.h"
+#include "event_loop.h"
 
 #ifndef _WIN32
 /* This function is actually not declared in standard POSIX, so declare it. */
@@ -316,6 +317,32 @@ disconnected:
   *length = 0;
   *bytes = NULL;
   return;
+}
+
+uint8_t *read_message_async(event_loop *loop, int sock) {
+  int64_t size;
+  int error = read_bytes(sock, (uint8_t *) &size, sizeof(int64_t));
+  if (error < 0) {
+    /* The other side has closed the socket. */
+    LOG_DEBUG("Socket has been closed, or some other error has occurred.");
+    if (loop != NULL) {
+      event_loop_remove_file(loop, sock);
+    }
+    close(sock);
+    return NULL;
+  }
+  uint8_t *message = (uint8_t *) malloc(size);
+  error = read_bytes(sock, message, size);
+  if (error < 0) {
+    /* The other side has closed the socket. */
+    LOG_DEBUG("Socket has been closed, or some other error has occurred.");
+    if (loop != NULL) {
+      event_loop_remove_file(loop, sock);
+    }
+    close(sock);
+    return NULL;
+  }
+  return message;
 }
 
 int64_t read_buffer(int fd, int64_t *type, UT_array *buffer) {
