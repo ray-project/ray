@@ -627,7 +627,8 @@ void push_notification(PlasmaStoreState *plasma_state,
     utarray_push_back(queue->object_notifications, &notification);
     send_notifications(plasma_state->loop, queue->subscriber_fd, plasma_state,
                        0);
-    // free(notification);
+    /* The notification gets freed in send_notifications when the notification
+     * is sent over the socket. */
   }
 }
 
@@ -653,9 +654,9 @@ void send_notifications(event_loop *loop,
     int64_t size = *((int64_t *) data);
 
     /* Attempt to send a notification about this object ID. */
-    int nbytes = send(client_sock, data, size + sizeof(int64_t), 0);
+    int nbytes = send(client_sock, data, sizeof(int64_t) + size, 0);
     if (nbytes >= 0) {
-      CHECK(nbytes == size + sizeof(int64_t));
+      CHECK(nbytes == sizeof(int64_t) + size);
     } else if (nbytes == -1 &&
                (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
       LOG_DEBUG(
@@ -676,6 +677,8 @@ void send_notifications(event_loop *loop,
       }
     }
     num_processed += 1;
+    /* The corresponding malloc happened in create_object_info_buffer
+     * within push_notification. */
     free(data);
   }
   /* Remove the sent notifications from the array. */
