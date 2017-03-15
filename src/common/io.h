@@ -16,6 +16,9 @@
 #define NUM_CONNECT_ATTEMPTS 50
 #define CONNECT_TIMEOUT_MS 100
 
+struct aeEventLoop;
+typedef aeEventLoop event_loop;
+
 enum common_message_type {
   /** Disconnect a client. */
   DISCONNECT_CLIENT,
@@ -151,6 +154,17 @@ int write_message(int fd, int64_t type, int64_t length, uint8_t *bytes);
  * @return Void.
  */
 void read_message(int fd, int64_t *type, int64_t *length, uint8_t **bytes);
+
+/**
+ * Read a message from a file descriptor and remove the file descriptor
+ * from the event loop if there is nothing more to read.
+ *
+ * @param loop: The event loop.
+ * @param sock: The file descriptor to read from.
+ * @return A byte buffer contining the message or NULL if there was an
+ *         error. The buffer needs to be freed by the user.
+ */
+uint8_t *read_message_async(event_loop *loop, int sock);
 
 /**
  * Read a sequence of bytes written by write_message from a file descriptor.

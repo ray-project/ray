@@ -469,30 +469,10 @@ void process_plasma_notification(event_loop *loop,
                                  int events) {
   LocalSchedulerState *state = (LocalSchedulerState *) context;
   /* Read the notification from Plasma. */
-  int64_t size;
-  int error = read_bytes(client_sock, (uint8_t *) &size, sizeof(size));
-  if (error < 0) {
-    /* The store has closed the socket. */
-    LOG_DEBUG(
-        "The plasma store has closed the object notification socket, or some "
-        "other error has occurred.");
-    event_loop_remove_file(loop, client_sock);
-    close(client_sock);
+  uint8_t *notification = read_message_async(loop, client_sock);
+  if (!notification) {
     return;
   }
-  uint8_t *notification = (uint8_t *) malloc(size);
-  error = read_bytes(client_sock, notification, size);
-
-  if (error < 0) {
-    /* The store has closed the socket. */
-    LOG_DEBUG(
-        "The plasma store has closed the object notification socket, or some "
-        "other error has occurred.");
-    event_loop_remove_file(loop, client_sock);
-    close(client_sock);
-    return;
-  }
-
   auto object_info = flatbuffers::GetRoot<ObjectInfo>(notification);
   ObjectID object_id = from_flatbuf(object_info->object_id());
   if (object_info->is_deletion()) {

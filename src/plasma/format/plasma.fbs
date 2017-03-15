@@ -38,7 +38,12 @@ enum MessageType:int {
   // Unsubscribe.
   PlasmaUnsubscribeRequest,
   // Sending and receiving data.
+  // PlasmaDataRequest initiates sending the data, there will be one
+  // such message per data transfer.
   PlasmaDataRequest,
+  // PlasmaDataReply contains the actual data and is sent back to the
+  // object store that requested the data. For each transfer, multiple
+  // reply messages get sent. Each one contains a fixed number of bytes.
   PlasmaDataReply,
   // Object notifications.
   PlasmaNotification
