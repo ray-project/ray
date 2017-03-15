@@ -156,8 +156,10 @@ int write_message(int fd, int64_t type, int64_t length, uint8_t *bytes);
 void read_message(int fd, int64_t *type, int64_t *length, uint8_t **bytes);
 
 /**
- * Read a message from a file descriptor and remove the file descriptor
- * from the event loop if there is nothing more to read.
+ * Read a message from a file descriptor and remove the file descriptor from the
+ * event loop if there is an error. This will actually do two reads. The first
+ * read reads sizeof(int64_t) bytes to determine the number of bytes to read in
+ * the next read.
  *
  * @param loop: The event loop.
  * @param sock: The file descriptor to read from.

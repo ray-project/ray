@@ -1,23 +1,31 @@
 // Local scheduler protocol specification
 
 enum MessageType:int {
-  // Task is submitted to the local scheduler (worker -> local scheduler).
+  // Task is submitted to the local scheduler. This is sent from a worker to a
+  // local scheduler.
   SubmitTask = 1,
-  // Notify the local scheduler that a task has finished (worker -> local scheduler).
+  // Notify the local scheduler that a task has finished. This is sent  from a
+  // worker to a local scheduler.
   TaskDone,
-  // Log a message to the event table (worker -> local scheduler).
+  // Log a message to the event table. This is sent from a worker to a local
+  // scheduler.
   EventLogMessage,
-  // Send an initial connection message to the local scheduler (worker -> local scheduler).
+  // Send an initial connection message to the local scheduler. This is ent from
+  // a worker to a local scheduler.
   // This contains the worker's process ID and actor ID.
   RegisterWorkerInfo,
-  // Get a new task from the local scheduler (worker -> local scheduler).
+  // Get a new task from the local scheduler. This is sent from a worker to a
+  // local scheduler.
   GetTask,
-  // Tell a worker to execute a task (local scheduler -> worker).
+  // Tell a worker to execute a task. This is sent from a local scheduler to a
+  // worker.
   ExecuteTask,
-  // Reconstruct a possibly lost object (worker -> local scheduler).
+  // Reconstruct a possibly lost object. This is sent from a worker to a local
+  // scheduler.
   ReconstructObject,
   // For a worker that was blocked on some object(s), tell the local scheduler
-  // that the worker is now unblocked (worker -> local scheduler).
+  // that the worker is now unblocked. This is sent from a worker to a local
+  // scheduler.
   NotifyUnblocked
 }
 
