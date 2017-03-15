@@ -7,7 +7,6 @@
 #include "global_scheduler.h"
 #include "global_scheduler_algorithm.h"
 #include "net.h"
-#include "object_info.h"
 #include "state/db_client_table.h"
 #include "state/local_scheduler_table.h"
 #include "state/object_table.h"

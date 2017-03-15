@@ -19,7 +19,6 @@ extern "C" {
 #include "actor_notification_table.h"
 #include "local_scheduler_table.h"
 #include "object_table.h"
-#include "object_info.h"
 #include "task.h"
 #include "task_table.h"
 #include "error_table.h"

@@ -26,6 +26,7 @@
 #include <poll.h>
 
 #include "common.h"
+#include "format/common_generated.h"
 #include "event_loop.h"
 #include "eviction_policy.h"
 #include "io.h"
@@ -56,7 +57,7 @@ UT_icd client_icd = {sizeof(Client *), NULL, NULL, NULL};
 
 /* This is used to define the queue of object notifications for plasma
  * subscribers. */
-UT_icd object_info_icd = {sizeof(ObjectInfo), NULL, NULL, NULL};
+UT_icd object_info_icd = {sizeof(uint8_t *), NULL, NULL, NULL};
 
 typedef struct {
   /** Client file descriptor. This is used as a key for the hash table. */
@@ -124,6 +125,8 @@ struct PlasmaStoreState {
   protocol_builder *builder;
 };
 
+PlasmaStoreState *g_state;
+
 UT_icd byte_icd = {sizeof(uint8_t), NULL, NULL, NULL};
 
 PlasmaStoreState *PlasmaStoreState_init(event_loop *loop,
@@ -145,8 +148,30 @@ PlasmaStoreState *PlasmaStoreState_init(event_loop *loop,
   return state;
 }
 
+void PlasmaStoreState_free(PlasmaStoreState *state) {
+  /* Here we only clean up objects that need to be cleaned
+   * up to make the valgrind warnings go away. Objects that
+   * are still reachable are not cleaned up. */
+  object_table_entry *entry, *tmp;
+  HASH_ITER(handle, state->plasma_store_info->objects, entry, tmp) {
+    HASH_DELETE(handle, state->plasma_store_info->objects, entry);
+    utarray_free(entry->clients);
+    delete entry;
+  }
+  NotificationQueue *queue, *temp_queue;
+  HASH_ITER(hh, state->pending_notifications, queue, temp_queue) {
+    for (int i = 0; i < utarray_len(queue->object_notifications); ++i) {
+      uint8_t **notification =
+          (uint8_t **) utarray_eltptr(queue->object_notifications, i);
+      uint8_t *data = *notification;
+      free(data);
+    }
+    utarray_free(queue->object_notifications);
+  }
+}
+
 void push_notification(PlasmaStoreState *state,
-                       ObjectInfo *object_notification);
+                       ObjectInfoT *object_notification);
 
 /* If this client is not already using the object, add the client to the
  * object's list of clients, otherwise do nothing. */
@@ -213,10 +238,9 @@ int create_object(Client *client_context,
   get_malloc_mapinfo(pointer, &fd, &map_size, &offset);
   assert(fd != -1);
 
-  entry = (object_table_entry *) malloc(sizeof(object_table_entry));
-  memset(entry, 0, sizeof(object_table_entry));
-  memcpy(&entry->object_id, &obj_id, sizeof(entry->object_id));
-  entry->info.obj_id = obj_id;
+  entry = new object_table_entry();
+  entry->object_id = obj_id;
+  entry->info.object_id = std::string((char *) &obj_id.id[0], sizeof(obj_id));
   entry->info.data_size = data_size;
   entry->info.metadata_size = metadata_size;
   entry->pointer = pointer;
@@ -546,7 +570,7 @@ void seal_object(Client *client_context,
   /* Set the state of object to SEALED. */
   entry->state = PLASMA_SEALED;
   /* Set the object digest. */
-  memcpy(entry->info.digest, digest, DIGEST_SIZE);
+  entry->info.digest = std::string((char *) &digest[0], DIGEST_SIZE);
   /* Inform all subscribers that a new object has been sealed. */
   push_notification(plasma_state, &entry->info);
 
@@ -573,13 +597,11 @@ void delete_object(PlasmaStoreState *plasma_state, ObjectID object_id) {
   HASH_DELETE(handle, plasma_state->plasma_store_info->objects, entry);
   dlfree(pointer);
   utarray_free(entry->clients);
-  free(entry);
+  delete entry;
   /* Inform all subscribers that the object has been deleted. */
-  ObjectInfo notification;
-  /* We memset the struct here because we have to initialize the full struct.
-   * However, we do not use most of the fields. */
-  memset(&notification, 0, sizeof(notification));
-  notification.obj_id = object_id;
+  ObjectInfoT notification;
+  notification.object_id =
+      std::string((char *) &object_id.id[0], sizeof(object_id));
   notification.is_deletion = true;
   push_notification(plasma_state, &notification);
 }
@@ -598,12 +620,15 @@ void remove_objects(PlasmaStoreState *plasma_state,
 }
 
 void push_notification(PlasmaStoreState *plasma_state,
-                       ObjectInfo *notification) {
+                       ObjectInfoT *object_info) {
   NotificationQueue *queue, *temp_queue;
   HASH_ITER(hh, plasma_state->pending_notifications, queue, temp_queue) {
-    utarray_push_back(queue->object_notifications, notification);
+    uint8_t *notification = create_object_info_buffer(object_info);
+    utarray_push_back(queue->object_notifications, &notification);
     send_notifications(plasma_state->loop, queue->subscriber_fd, plasma_state,
                        0);
+    /* The notification gets freed in send_notifications when the notification
+     * is sent over the socket. */
   }
 }
 
@@ -622,14 +647,16 @@ void send_notifications(event_loop *loop,
   /* Loop over the array of pending notifications and send as many of them as
    * possible. */
   for (int i = 0; i < utarray_len(queue->object_notifications); ++i) {
-    ObjectInfo *notification =
-        (ObjectInfo *) utarray_eltptr(queue->object_notifications, i);
+    uint8_t **notification =
+        (uint8_t **) utarray_eltptr(queue->object_notifications, i);
+    uint8_t *data = *notification;
+    /* Decode the length, which is the first bytes of the message. */
+    int64_t size = *((int64_t *) data);
 
     /* Attempt to send a notification about this object ID. */
-    int nbytes = send(client_sock, (char const *) notification,
-                      sizeof(*notification), 0);
+    int nbytes = send(client_sock, data, sizeof(int64_t) + size, 0);
     if (nbytes >= 0) {
-      CHECK(nbytes == sizeof(*notification));
+      CHECK(nbytes == sizeof(int64_t) + size);
     } else if (nbytes == -1 &&
                (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
       LOG_DEBUG(
@@ -650,6 +677,9 @@ void send_notifications(event_loop *loop,
       }
     }
     num_processed += 1;
+    /* The corresponding malloc happened in create_object_info_buffer
+     * within push_notification. */
+    free(data);
   }
   /* Remove the sent notifications from the array. */
   utarray_erase(queue->object_notifications, 0, num_processed);
@@ -694,7 +724,7 @@ void subscribe_to_updates(Client *client_context, int conn) {
   object_table_entry *entry, *temp_entry;
   HASH_ITER(handle, plasma_state->plasma_store_info->objects, entry,
             temp_entry) {
-    utarray_push_back(queue->object_notifications, &entry->info);
+    push_notification(plasma_state, &entry->info);
   }
   send_notifications(plasma_state->loop, queue->subscriber_fd, plasma_state, 0);
 }
@@ -832,6 +862,7 @@ void new_client_connection(event_loop *loop,
 /* Report "success" to valgrind. */
 void signal_handler(int signal) {
   if (signal == SIGTERM) {
+    PlasmaStoreState_free(g_state);
     exit(0);
   }
 }
@@ -847,6 +878,7 @@ void start_server(char *socket_name, int64_t system_memory) {
   CHECK(socket >= 0);
   event_loop_add_file(loop, socket, EVENT_LOOP_READ, new_client_connection,
                       state);
+  g_state = state;
   event_loop_run(loop);
 }
 

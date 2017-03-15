@@ -661,7 +661,7 @@ class ActorsWithGPUs(unittest.TestCase):
       for _ in range(n):
         Actor()
 
-    ray.get([create_actors.remote(10) for _ in range(10)])
+    ray.get([create_actors.remote(num_gpus_per_scheduler) for _ in range(num_local_schedulers)])
 
     @ray.actor(num_gpus=1)
     class Actor(object):
@@ -673,6 +673,8 @@ class ActorsWithGPUs(unittest.TestCase):
     # All the GPUs should be used up now.
     with self.assertRaises(Exception):
       Actor()
+
+    ray.worker.cleanup()
 
 if __name__ == "__main__":
   unittest.main(verbosity=2)

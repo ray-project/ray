@@ -19,7 +19,11 @@ add_custom_target(gen_common_fbs ALL)
 
 add_custom_command(
   TARGET gen_common_fbs
-  COMMAND ${FLATBUFFERS_COMPILER} -c -o ${OUTPUT_DIR} ${COMMON_FBS_SRC}
+  # The --gen-object-api flag generates a C++ class MessageT for each
+  # flatbuffers message Message, which can be used to store deserialized
+  # messages in data structures. This is currently used for ObjectInfo for
+  # example.
+  COMMAND ${FLATBUFFERS_COMPILER} -c -o ${OUTPUT_DIR} ${COMMON_FBS_SRC} --gen-object-api
   DEPENDS ${FBS_DEPENDS}
   COMMENT "Running flatc compiler on ${COMMON_FBS_SRC}"
   VERBATIM)

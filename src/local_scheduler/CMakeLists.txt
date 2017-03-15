@@ -22,6 +22,23 @@ endif()
 include_directories("${CMAKE_CURRENT_LIST_DIR}/")
 include_directories("${CMAKE_CURRENT_LIST_DIR}/../")
 include_directories("${CMAKE_CURRENT_LIST_DIR}/../plasma/")
+include_directories("${CMAKE_CURRENT_LIST_DIR}/../common/format/")
+
+# Compile flatbuffers
+
+set(LOCAL_SCHEDULER_FBS_SRC "${CMAKE_CURRENT_LIST_DIR}/format/local_scheduler.fbs")
+set(OUTPUT_DIR ${CMAKE_CURRENT_LIST_DIR}/format/)
+
+add_custom_target(gen_local_scheduler_fbs ALL)
+
+add_custom_command(
+  TARGET gen_local_scheduler_fbs
+  COMMAND ${FLATBUFFERS_COMPILER} -c -o ${OUTPUT_DIR} ${LOCAL_SCHEDULER_FBS_SRC}
+  DEPENDS ${FBS_DEPENDS}
+  COMMENT "Running flatc compiler on ${LOCAL_SCHEDULER_FBS_SRC}"
+  VERBATIM)
+
+add_dependencies(gen_local_scheduler_fbs flatbuffers_ep)
 
 add_library(local_scheduler_library SHARED
   local_scheduler_extension.cc
@@ -35,7 +52,11 @@ endif(APPLE)
 
 add_library(local_scheduler_client STATIC local_scheduler_client.cc)
 
+add_dependencies(local_scheduler_client gen_local_scheduler_fbs)
+
 target_link_libraries(local_scheduler_library local_scheduler_client common ${PYTHON_LIBRARIES})
+
+add_dependencies(local_scheduler_library gen_local_scheduler_fbs)
 
 add_executable(local_scheduler local_scheduler.cc local_scheduler_algorithm.cc)
 target_link_libraries(local_scheduler local_scheduler_client common ${HIREDIS_LIB} plasma_lib)

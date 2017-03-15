@@ -23,7 +23,7 @@ SUITE(plasma_manager_tests);
 const char *plasma_store_socket_name = "/tmp/plasma_store_socket_1";
 const char *plasma_manager_socket_name_format = "/tmp/plasma_manager_socket_%d";
 const char *manager_addr = "127.0.0.1";
-ObjectID oid;
+ObjectID object_id;
 
 void wait_for_pollin(int fd) {
   struct pollfd poll_list[1];
@@ -126,7 +126,7 @@ TEST request_transfer_test(void) {
   utstring_new(addr);
   utstring_printf(addr, "127.0.0.1:%d", remote_mock->port);
   manager_vector[0] = utstring_body(addr);
-  call_request_transfer(oid, 1, manager_vector, local_mock->state);
+  call_request_transfer(object_id, 1, manager_vector, local_mock->state);
   free(manager_vector);
   event_loop_add_timer(local_mock->loop, MANAGER_TIMEOUT, test_done_handler,
                        local_mock->state);
@@ -134,11 +134,11 @@ TEST request_transfer_test(void) {
   int read_fd = get_client_sock(remote_mock->read_conn);
   uint8_t *request_data =
       plasma_receive(read_fd, MessageType_PlasmaDataRequest);
-  ObjectID oid2;
+  ObjectID object_id2;
   char *address;
   int port;
-  plasma_read_DataRequest(request_data, &oid2, &address, &port);
-  ASSERT(ObjectID_equal(oid, oid2));
+  plasma_read_DataRequest(request_data, &object_id2, &address, &port);
+  ASSERT(ObjectID_equal(object_id, object_id2));
   free(address);
   /* Clean up. */
   utstring_free(addr);
@@ -173,7 +173,7 @@ TEST request_transfer_retry_test(void) {
   utstring_new(addr1);
   utstring_printf(addr1, "127.0.0.1:%d", remote_mock2->port);
   manager_vector[1] = utstring_body(addr1);
-  call_request_transfer(oid, 2, manager_vector, local_mock->state);
+  call_request_transfer(object_id, 2, manager_vector, local_mock->state);
   free(manager_vector);
   event_loop_add_timer(local_mock->loop, MANAGER_TIMEOUT * 2, test_done_handler,
                        local_mock->state);
@@ -187,12 +187,12 @@ TEST request_transfer_retry_test(void) {
   int read_fd = get_client_sock(remote_mock2->read_conn);
   uint8_t *request_data =
       plasma_receive(read_fd, MessageType_PlasmaDataRequest);
-  ObjectID oid2;
+  ObjectID object_id2;
   char *address;
   int port;
-  plasma_read_DataRequest(request_data, &oid2, &address, &port);
+  plasma_read_DataRequest(request_data, &object_id2, &address, &port);
   free(address);
-  ASSERT(ObjectID_equal(oid, oid2));
+  ASSERT(ObjectID_equal(object_id, object_id2));
   /* Clean up. */
   utstring_free(addr0);
   utstring_free(addr1);
@@ -219,13 +219,13 @@ TEST read_write_object_chunk_test(void) {
   const int metadata_size = 0;
   PlasmaRequestBuffer remote_buf;
   remote_buf.type = MessageType_PlasmaDataReply;
-  remote_buf.object_id = oid;
+  remote_buf.object_id = object_id;
   remote_buf.data = (uint8_t *) data;
   remote_buf.data_size = data_size;
   remote_buf.metadata = (uint8_t *) data + data_size;
   remote_buf.metadata_size = metadata_size;
   PlasmaRequestBuffer local_buf;
-  local_buf.object_id = oid;
+  local_buf.object_id = object_id;
   local_buf.data_size = data_size;
   local_buf.metadata_size = metadata_size;
   local_buf.data = (uint8_t *) malloc(data_size);
@@ -257,32 +257,39 @@ TEST object_notifications_test(void) {
   int flags = fcntl(fd[1], F_GETFL, 0);
   CHECK(fcntl(fd[1], F_SETFL, flags | O_NONBLOCK) == 0);
 
-  ObjectID oid = globally_unique_id();
-  ObjectInfo info = {.obj_id = oid,
-                     .data_size = 10,
-                     .metadata_size = 1,
-                     .create_time = 0,
-                     .construct_duration = 0,
-                     .digest = {0},
-                     .is_deletion = false};
+  ObjectID object_id = globally_unique_id();
+  ObjectInfoT info;
+  info.object_id = std::string((char *) &object_id.id[0], sizeof(object_id));
+  info.data_size = 10;
+  info.metadata_size = 1;
+  info.create_time = 0;
+  info.construct_duration = 0;
+  info.digest = std::string("0");
+  info.is_deletion = false;
 
   /* Check that the object is not local at first. */
-  bool is_local = is_object_local(local_mock->state, oid);
+  bool is_local = is_object_local(local_mock->state, object_id);
   ASSERT(!is_local);
 
   /* Check that the object is local after receiving an object notification. */
-  send(fd[1], (char const *) &info, sizeof(info), 0);
+  uint8_t *notification = create_object_info_buffer(&info);
+  int64_t size = *((int64_t *) notification);
+  send(fd[1], notification, sizeof(int64_t) + size, 0);
   process_object_notification(local_mock->loop, fd[0], local_mock->state, 0);
-  is_local = is_object_local(local_mock->state, oid);
+  is_local = is_object_local(local_mock->state, object_id);
   ASSERT(is_local);
+  free(notification);
 
   /* Check that the object is not local after receiving a notification about
    * the object deletion. */
   info.is_deletion = true;
-  send(fd[1], (char const *) &info, sizeof(info), 0);
+  notification = create_object_info_buffer(&info);
+  size = *((int64_t *) notification);
+  send(fd[1], notification, sizeof(int64_t) + size, 0);
   process_object_notification(local_mock->loop, fd[0], local_mock->state, 0);
-  is_local = is_object_local(local_mock->state, oid);
+  is_local = is_object_local(local_mock->state, object_id);
   ASSERT(!is_local);
+  free(notification);
 
   /* Clean up. */
   close(fd[0]);
@@ -292,7 +299,7 @@ TEST object_notifications_test(void) {
 }
 
 SUITE(plasma_manager_tests) {
-  memset(&oid, 1, sizeof(oid));
+  memset(&object_id, 1, sizeof(object_id));
   RUN_TEST(request_transfer_test);
   RUN_TEST(request_transfer_retry_test);
   RUN_TEST(read_write_object_chunk_test);
