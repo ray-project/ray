@@ -32,5 +32,5 @@ pushd "$ROOT_DIR/python/ray/core"
     cmake -DCMAKE_BUILD_TYPE=Release ../../..
   fi
   make clean
-  make
+  make -j${PARALLEL}
 popd
