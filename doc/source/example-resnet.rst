@@ -21,9 +21,20 @@ Then run the training script.
 .. code-block:: bash
 
   python ray/examples/resnet/resnet_main.py \
+      --eval_dir=/tmp/resnet-model/eval \
       --train_data_path=cifar-10-batches-bin/data_batch* \
       --eval_data_path=cifar-10-batches-bin/test_batch.bin \
       --num_gpus=1
+
+The script will print out the ip address that the log files are stored on. In the single-node case,
+you can ignore this and run tensorboard on the current machine.
+
+.. code-block:: bash
+
+  python -m tensorflow.tensorboard --logdir=/tmp/resnet-model
+
+If you are running Ray on multiple nodes, you will to go to the node at the ip address printed, and
+run the command.
 
 The core of the script is the actor definition.
 

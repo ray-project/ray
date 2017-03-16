@@ -40,7 +40,7 @@ def build_data(data_path, size, dataset):
   queue = tf.train.shuffle_batch([image, label], size, size, 0, num_threads=16)
   return queue
 
-def build_input(data, batch_size, train):
+def build_input(data, batch_size, dataset, train):
   """Build CIFAR image and labels.
 
   Args:
@@ -59,7 +59,7 @@ def build_input(data, batch_size, train):
   labels_constant = tf.constant(data[1])
   image_size = 32
   depth = 3
-  num_classes = 10
+  num_classes = 10 if dataset == 'cifar10' else 100
   image, label = tf.train.slice_input_producer([images_constant, labels_constant], capacity=16 * batch_size)
   if train:
     image = tf.image.resize_image_with_crop_or_pad(

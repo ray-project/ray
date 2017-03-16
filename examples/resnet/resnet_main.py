@@ -6,18 +6,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import subprocess
 import os
 import numpy as np
 import ray
 import tensorflow as tf
+import IPython
 
 import cifar_input
 import resnet_model
 
 FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('dataset', 'cifar10', 'cifar10 or cifar100.')
-tf.app.flags.DEFINE_string('mode', 'train', 'train or eval.')
 tf.app.flags.DEFINE_string('train_data_path', '',
                            'Filepattern for training data.')
 tf.app.flags.DEFINE_string('eval_data_path', '',
@@ -68,7 +67,7 @@ class ResNetTrainActor(object):
     else:
       tf.set_random_seed(1)
     with tf.device('/gpu:0' if num_gpus > 0 else '/cpu:0'):
-      images, labels = cifar_input.build_input([total_images, data[3]], hps.batch_size, True)
+      images, labels = cifar_input.build_input([total_images, data[3]], hps.batch_size, dataset, True)
       self.model = resnet_model.ResNet(hps, images, labels, 'train')
       self.model.build_graph()
       config = tf.ConfigProto(allow_soft_placement=True)
@@ -107,7 +106,7 @@ class ResNetTestActor(object):
     data = ray.get(data)
     total_images = np.concatenate([data[0], data[1], data[2]])
     with tf.device('/cpu:0'):
-      images, labels = cifar_input.build_input([total_images, data[3]], hps.batch_size, False)
+      images, labels = cifar_input.build_input([total_images, data[3]], hps.batch_size, dataset, False)
       self.model = resnet_model.ResNet(hps, images, labels, 'eval')
       self.model.build_graph()
       config = tf.ConfigProto(allow_soft_placement=True)
@@ -163,6 +162,7 @@ def train():
   ray.init(num_gpus=num_gpus, redirect_output=True)
   train_data = get_data.remote(FLAGS.train_data_path, 50000, FLAGS.dataset)
   test_data = get_data.remote(FLAGS.eval_data_path, 10000, FLAGS.dataset)
+  IPython.embed()
   if num_gpus > 0:
     train_actors = [ResNetTrainActor(train_data, FLAGS.dataset, num_gpus) for _ in range(num_gpus)]
   else:
