@@ -237,6 +237,7 @@ int Disconnect_RedisCommand(RedisModuleCtx *ctx,
     return RedisModule_ReplyWithError(ctx, "Unable to parse deleted field");
   }
 
+  bool published = true;
   if (deleted == 0) {
     /* Remove the client from the client table. */
     RedisModuleString *deleted =
@@ -252,20 +253,21 @@ int Disconnect_RedisCommand(RedisModuleCtx *ctx,
                         &aux_address, NULL);
 
     /* Publish the deletion notification on the db client channel. */
-    bool published = PublishDBClientNotification(
-        ctx, ray_client_id, client_type, aux_address, false);
+    published = PublishDBClientNotification(ctx, ray_client_id, client_type,
+                                            aux_address, false);
     if (aux_address != NULL) {
       RedisModule_FreeString(ctx, aux_address);
     }
     RedisModule_FreeString(ctx, client_type);
-
-    if (!published) {
-      RedisModule_CloseKey(db_client_table_key);
-      return RedisModule_ReplyWithError(ctx, "PUBLISH unsuccessful");
-    }
   }
 
   RedisModule_CloseKey(db_client_table_key);
+
+  if (!published) {
+    /* Return an error message if we weren't able to publish the deletion
+     * notification. */
+    return RedisModule_ReplyWithError(ctx, "PUBLISH unsuccessful");
+  }
 
   RedisModule_ReplyWithSimpleString(ctx, "OK");
   return REDISMODULE_OK;

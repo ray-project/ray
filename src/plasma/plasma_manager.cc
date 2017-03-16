@@ -780,10 +780,10 @@ void process_transfer_request(event_loop *loop,
   }
 
   /* Allocate and append the request to the transfer queue. */
-  ObjectBuffer obj_buffer;
+  ObjectBuffer object_buffer;
   /* We pass in 0 to indicate that the command should return immediately. */
-  plasma_get(conn->manager_state->plasma_conn, &obj_id, 1, 0, &obj_buffer);
-  if (obj_buffer.data_size == -1) {
+  plasma_get(conn->manager_state->plasma_conn, &obj_id, 1, 0, &object_buffer);
+  if (object_buffer.data_size == -1) {
     /* If the object wasn't locally available, exit immediately. If the object
      * later appears locally, the requesting plasma manager should request the
      * transfer again. */
@@ -800,16 +800,17 @@ void process_transfer_request(event_loop *loop,
                         send_queued_request, manager_conn);
   }
 
-  DCHECK(obj_buffer.metadata == obj_buffer.data + obj_buffer.data_size);
+  DCHECK(object_buffer.metadata ==
+         object_buffer.data + object_buffer.data_size);
   PlasmaRequestBuffer *buf =
       (PlasmaRequestBuffer *) malloc(sizeof(PlasmaRequestBuffer));
   buf->type = MessageType_PlasmaDataReply;
   buf->object_id = obj_id;
   /* We treat buf->data as a pointer to the concatenated data and metadata, so
    * we don't actually use buf->metadata. */
-  buf->data = obj_buffer.data;
-  buf->data_size = obj_buffer.data_size;
-  buf->metadata_size = obj_buffer.metadata_size;
+  buf->data = object_buffer.data;
+  buf->data_size = object_buffer.data_size;
+  buf->metadata_size = object_buffer.metadata_size;
 
   DL_APPEND(manager_conn->transfer_queue, buf);
   HASH_ADD(hh, manager_conn->pending_object_transfers, object_id,
@@ -1545,6 +1546,12 @@ void process_message(event_loop *loop,
   free(data);
 }
 
+int heartbeat_handler(event_loop *loop, timer_id id, void *context) {
+  PlasmaManagerState *state = (PlasmaManagerState *) context;
+  plasma_manager_send_heartbeat(state->db);
+  return HEARTBEAT_TIMEOUT_MILLISECONDS;
+}
+
 void start_server(const char *store_socket_name,
                   const char *manager_socket_name,
                   const char *master_addr,
@@ -1588,9 +1595,9 @@ void start_server(const char *store_socket_name,
    * requests and reissue requests for transfers of those objects. */
   event_loop_add_timer(g_manager_state->loop, MANAGER_TIMEOUT,
                        fetch_timeout_handler, g_manager_state);
-  /* Begin publishing the heartbeats to all subscribers of the plasma manager
-   * table. */
-  plasma_manager_send_heartbeat(g_manager_state->db);
+  /* Publish the heartbeats to all subscribers of the plasma manager table. */
+  event_loop_add_timer(g_manager_state->loop, HEARTBEAT_TIMEOUT_MILLISECONDS,
+                       heartbeat_handler, g_manager_state);
   /* Run the event loop. */
   event_loop_run(g_manager_state->loop);
 }

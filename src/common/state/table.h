@@ -45,7 +45,7 @@ typedef struct {
 } RetryInfo;
 
 static const RetryInfo heartbeat_retry = {
-    .num_retries = -1,
+    .num_retries = 0,
     .timeout = HEARTBEAT_TIMEOUT_MILLISECONDS,
     .fail_callback = NULL};
 

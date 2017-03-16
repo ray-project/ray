@@ -145,7 +145,6 @@ class Monitor(object):
     not miss any notifications for deleted clients that occurred before we
     subscribed.
     """
-    # TODO(swang): Switch to flatbuffers!
     db_client_keys = self.redis.keys("{prefix}*".format(prefix=DB_CLIENT_PREFIX))
     for db_client_key in db_client_keys:
       db_client_id = db_client_key[len(DB_CLIENT_PREFIX):]
@@ -167,13 +166,10 @@ class Monitor(object):
   def db_client_notification_handler(self, channel, data):
     """Handle a notification from the db_client table from Redis.
 
-    This handler processes any notifications for deletions from the db_client
-    table. Insertions are ignored. Cleanup of the associate state in the state
-    tables should be handled by the caller.
-
-    As documented in common/redis_module/ray_redis_module.c, the format for the
-    notification message is:
-      <ray_client_id>:<client type> <aux_address> <is_insertion>
+    This handler processes notifications from the db_client table.
+    Notifications should be parsed using the SubscribeToDBClientTableReply
+    flatbuffer. Deletions are processed, insertions are ignored. Cleanup of the
+    associated state in the state tables should be handled by the caller.
     """
     notification_object = SubscribeToDBClientTableReply.GetRootAsSubscribeToDBClientTableReply(data, 0)
     db_client_id = notification_object.DbClientId()
@@ -224,20 +220,19 @@ class Monitor(object):
 
       # Determine the appropriate message handler.
       message_handler = None
-      try:
+      if not self.subscribed[channel]:
         # If the data was an integer, then the message was a response to an
         # initial subscription request.
         is_subscribe = int(data)
         message_handler = self.subscribe_handler
-      except ValueError:
-        # Else, the message was a published notification that we subscribed to.
+      elif channel == PLASMA_MANAGER_HEARTBEAT_CHANNEL:
         assert(self.subscribed[channel])
-        if channel == PLASMA_MANAGER_HEARTBEAT_CHANNEL:
-          # The message was a heartbeat from a plasma manager.
-          message_handler = self.plasma_manager_heartbeat_handler
-        elif channel == DB_CLIENT_TABLE_NAME:
-          # The message was a notification from the db_client table.
-          message_handler = self.db_client_notification_handler
+        # The message was a heartbeat from a plasma manager.
+        message_handler = self.plasma_manager_heartbeat_handler
+      elif channel == DB_CLIENT_TABLE_NAME:
+        assert(self.subscribed[channel])
+        # The message was a notification from the db_client table.
+        message_handler = self.db_client_notification_handler
 
       # Call the handler.
       assert(message_handler is not None)
@@ -309,7 +304,7 @@ class Monitor(object):
       time.sleep(HEARTBEAT_TIMEOUT_MILLISECONDS * 1e-3)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   parser = argparse.ArgumentParser(description=("Parse Redis server for the "
                                                 "monitor to connect to."))
   parser.add_argument("--redis-address", required=True, type=str,

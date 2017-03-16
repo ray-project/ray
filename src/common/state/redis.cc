@@ -1081,6 +1081,8 @@ void redis_plasma_manager_send_heartbeat(TableCallbackData *callback_data) {
     LOG_REDIS_DEBUG(db->context,
                     "error in redis_plasma_manager_send_heartbeat");
   }
+  /* Clean up the timer and callback. */
+  destroy_timer_callback(db->loop, callback_data);
 }
 
 void redis_actor_notification_table_subscribe_callback(redisAsyncContext *c,
