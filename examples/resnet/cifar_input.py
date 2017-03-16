@@ -37,8 +37,8 @@ def build_data(data_path, size, dataset):
                            [depth, image_size, image_size])
   # Convert from [depth, height, width] to [height, width, depth].
   image = tf.cast(tf.transpose(depth_major, [1, 2, 0]), tf.float32)
-#  queue = tf.train.shuffle_batch([image, label], size, size, 0, num_threads=16)
-  return image, label
+  queue = tf.train.shuffle_batch([image, label], size, size, 0, num_threads=16)
+  return queue
 
 def build_input(data, batch_size, train):
   """Build CIFAR image and labels.
@@ -55,13 +55,12 @@ def build_input(data, batch_size, train):
   Raises:
     ValueError: When the specified dataset is not supported.
   """
-  image, label = build_data(data, batch_size, 'cifar10')
-#  images_constant = tf.constant(data[0])
-#  labels_constant = tf.constant(data[1])
+  images_constant = tf.constant(data[0])
+  labels_constant = tf.constant(data[1])
   image_size = 32
   depth = 3
   num_classes = 10
-#  image, label = tf.train.slice_input_producer([images_constant, labels_constant], capacity=16 * batch_size)
+  image, label = tf.train.slice_input_producer([images_constant, labels_constant], capacity=16 * batch_size)
   if train:
     image = tf.image.resize_image_with_crop_or_pad(
 	image, image_size+4, image_size+4)

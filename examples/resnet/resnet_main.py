@@ -49,8 +49,8 @@ def get_data(path, size, dataset):
 @ray.actor(num_gpus=use_gpu)
 class ResNetTrainActor(object):
   def __init__(self, data, dataset, num_gpus):
-#    if num_gpus > 0:
-#      os.environ['CUDA_VISIBLE_DEVICES'] = ','.join([str(i) for i in ray.get_gpu_ids()])
+    if num_gpus > 0:
+      os.environ['CUDA_VISIBLE_DEVICES'] = ','.join([str(i) for i in ray.get_gpu_ids()])
     hps = resnet_model.HParams(batch_size=128,
                                num_classes=10 if dataset == 'cifar10' else 100,
                                min_lrn_rate=0.0001,
@@ -61,14 +61,14 @@ class ResNetTrainActor(object):
                                relu_leakiness=0.1,
                                optimizer='mom',
                                num_gpus=num_gpus)
-#    data = ray.get(data)
-#    total_images = np.concatenate([data[0], data[1], data[2]])
+    data = ray.get(data)
+    total_images = np.concatenate([data[0], data[1], data[2]])
     if num_gpus > 0:
       tf.set_random_seed(ray.get_gpu_ids()[0] + 1)
     else:
       tf.set_random_seed(1)
     with tf.device('/gpu:0' if num_gpus > 0 else '/cpu:0'):
-      images, labels = cifar_input.build_input(data, hps.batch_size, True)
+      images, labels = cifar_input.build_input([total_images, data[3]], hps.batch_size, True)
       self.model = resnet_model.ResNet(hps, images, labels, 'train')
       self.model.build_graph()
       config = tf.ConfigProto(allow_soft_placement=True)
@@ -82,7 +82,7 @@ class ResNetTrainActor(object):
   def compute_steps(self, weights):
     # This method sets the weights in the network, runs some training steps,
     # and returns the new weights.
-    steps = 200
+    steps = 10
     self.model.variables.set_weights(weights)
     for i in range(steps):
       self.model.variables.sess.run(self.model.train_op)
@@ -104,10 +104,10 @@ class ResNetTestActor(object):
                                relu_leakiness=0.1,
                                optimizer='mom',
                                num_gpus=0)
-#    data = ray.get(data)
-#    total_images = np.concatenate([data[0], data[1], data[2]])
+    data = ray.get(data)
+    total_images = np.concatenate([data[0], data[1], data[2]])
     with tf.device('/cpu:0'):
-      images, labels = cifar_input.build_input(data, hps.batch_size, False)
+      images, labels = cifar_input.build_input([total_images, data[3]], hps.batch_size, False)
       self.model = resnet_model.ResNet(hps, images, labels, 'eval')
       self.model.build_graph()
       config = tf.ConfigProto(allow_soft_placement=True)
@@ -119,7 +119,8 @@ class ResNetTestActor(object):
       sess.run(init)
       self.best_precision = 0.0
       self.eval_batch_count = eval_batch_count
-      self.summary_writer = tf.summary.FileWriter(eval_dir)
+      self.summary_writer = tf.summary.FileWriter(eval_dir, sess.graph)
+      self.summary_writer
     self.ip_addr = ray.services.get_node_ip_address()
 
   def accuracy(self, weights, train_step):
@@ -163,10 +164,10 @@ def train():
   train_data = get_data.remote(FLAGS.train_data_path, 50000, FLAGS.dataset)
   test_data = get_data.remote(FLAGS.eval_data_path, 10000, FLAGS.dataset)
   if num_gpus > 0:
-    train_actors = [ResNetTrainActor(FLAGS.train_data_path, FLAGS.dataset, num_gpus) for _ in range(num_gpus)]
+    train_actors = [ResNetTrainActor(train_data, FLAGS.dataset, num_gpus) for _ in range(num_gpus)]
   else:
     train_actors = [ResNetTrainActor(train_data, num_gpus)]
-  test_actor = ResNetTestActor(FLAGS.eval_data_path, FLAGS.dataset, FLAGS.eval_batch_count, FLAGS.eval_dir)
+  test_actor = ResNetTestActor(test_data, FLAGS.dataset, FLAGS.eval_batch_count, FLAGS.eval_dir)
   print('The log files for tensorboard are stored at ip {}.'.format(ray.get(test_actor.get_ip_addr())))
   step = 0
   weight_id = train_actors[0].get_weights()
@@ -178,7 +179,7 @@ def train():
     all_weights = ray.get([actor.compute_steps(weight_id) for actor in train_actors])
     mean_weights = {k: sum([weights[k] for weights in all_weights]) / num_gpus for k in all_weights[0]}
     weight_id = ray.put(mean_weights)
-    step += 200
+    step += 10
     if step % 200 == 0:
       acc = ray.get(acc_id)
       acc_id = test_actor.accuracy(weight_id, step)
