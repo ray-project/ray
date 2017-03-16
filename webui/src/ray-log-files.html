@@ -1,0 +1,90 @@
+<link rel="import" href="../bower_components/polymer/polymer.html">
+<link rel="import" href="shared-styles.html">
+
+<dom-module id="ray-log-files">
+  <template>
+    <style include="shared-styles">
+      :host {
+        display: block;
+
+        padding: 10px;
+      }
+      rect:hover
+      {
+        opacity: 0.5;
+      }
+
+    </style>
+
+    <div class="card">
+      <h1>Ray Log Files</h1>
+      <div id="all_log_files"></div>
+
+    </div>
+  </template>
+
+  <script>
+    var backend_address = "ws://127.0.0.1:8888";
+
+    Polymer({
+      is: 'ray-log-files',
+      ready: function() {
+
+        var self = this;
+        var socket = new WebSocket(backend_address);
+
+        socket.onopen = function() {
+          socket.send(JSON.stringify({"command": "get-log-files"}));
+        }
+
+        socket.onmessage = function(messageEvent) {
+          var reply = JSON.parse(messageEvent.data);
+          console.log(reply);
+          for (i = 0; i < Object.keys(reply).length; i++) {
+            key = Object.keys(reply)[i];
+            dict = reply[key];
+
+            var node = document.createElement("LI");
+            var bold_node = document.createElement("B");
+            var textnode = document.createTextNode(key);
+            bold_node.appendChild(textnode);
+            node.appendChild(bold_node);
+
+            var node_log_files_node = document.createElement("UL");
+
+            for (j = 0; j < Object.keys(dict).length; j++) {
+              file_key = Object.keys(dict)[j];
+              line_list = dict[file_key];
+              console.log(file_key);
+              console.log(line_list);
+
+              var logfile_node = document.createElement("LI");
+              var log_filename_node = document.createTextNode(file_key);
+              var bold_node = document.createElement("B");
+              bold_node.appendChild(log_filename_node);
+              logfile_node.appendChild(bold_node);
+
+              for (k = 0; k < line_list.length; k++) {
+                var paragraph = document.createElement("BR");
+                var logfile_line_node = document.createTextNode(line_list[k]);
+                logfile_node.append(paragraph);
+                logfile_node.append(logfile_line_node);
+              }
+              node_log_files_node.append(logfile_node);
+
+            }
+            node.appendChild(node_log_files_node);
+
+            self.$.all_log_files.appendChild(node);
+          }
+
+        }
+
+        socket.onclose = function(closeEvent) {
+          console.log(closeEvent)
+        }
+      },
+
+    });
+  </script>
+</dom-module>
