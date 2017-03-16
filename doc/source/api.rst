@@ -53,6 +53,10 @@ In this case, you cannot specify ``num_cpus`` or ``num_gpus`` in ``ray.init``
 because that information is passed into the cluster when the cluster is started,
 not when your script is started.
 
+View the instructions for how to `start a Ray cluster`_ on multiple nodes.
+
+.. _`start a Ray cluster`: http://ray.readthedocs.io/en/latest/using-ray-on-a-cluster.html
+
 .. autofunction:: ray.init
 
 Defining remote functions
@@ -227,9 +231,16 @@ Viewing errors
 --------------
 
 Keeping track of errors that occur in different processes throughout a cluster
-can be challenging. If a task throws an exception, that exception will be
-printed in the background of the driver process. The errors will also be
-accumulated in Redis and can be accessed with ``ray.error_info``.
+can be challenging. There are a couple mechanisms to help with this.
+
+1. If a task throws an exception, that exception will be printed in the
+   background of the driver process.
+
+2. If ``ray.get`` is called on an object ID whose parent task threw an exception
+   before creating the object, the exception will be re-raised by ``ray.get``.
+
+The errors will also be accumulated in Redis and can be accessed with
+``ray.error_info``. Normally, you shouldn't need to do this, but it is possible.
 
 .. code-block:: python
 
@@ -237,7 +248,7 @@ accumulated in Redis and can be accessed with ``ray.error_info``.
   def f():
     raise Exception("This task failed!!")
 
-  f.remote()
+  f.remote()  # An error message will be printed in the background.
 
   # Wait for the error to propagate to Redis.
   import time
