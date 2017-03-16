@@ -145,6 +145,7 @@ class Monitor(object):
     not miss any notifications for deleted clients that occurred before we
     subscribed.
     """
+    # TODO(swang): Switch to flatbuffers!
     db_client_keys = self.redis.keys("{prefix}*".format(prefix=DB_CLIENT_PREFIX))
     for db_client_key in db_client_keys:
       db_client_id = db_client_key[len(DB_CLIENT_PREFIX):]
