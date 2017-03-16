@@ -9,18 +9,26 @@
 
 LocalSchedulerConnection *LocalSchedulerConnection_init(
     const char *local_scheduler_socket,
-    ActorID actor_id) {
+    ActorID actor_id,
+    bool is_worker) {
   LocalSchedulerConnection *result =
       (LocalSchedulerConnection *) malloc(sizeof(LocalSchedulerConnection));
   result->conn = connect_ipc_sock_retry(local_scheduler_socket, -1, -1);
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message =
-      CreateRegisterWorkerInfo(fbb, to_flatbuf(fbb, actor_id), getpid());
-  fbb.Finish(message);
-  /* Register the process ID with the local scheduler. */
-  int success = write_message(result->conn, MessageType_RegisterWorkerInfo,
-                              fbb.GetSize(), fbb.GetBufferPointer());
-  CHECKM(success == 0, "Unable to register worker with local scheduler");
+
+  if (is_worker) {
+    /* If we are a worker, register with the local scheduler.
+     * NOTE(swang): If the local scheduler exits and we are registered as a
+     * worker, we will get killed. */
+    flatbuffers::FlatBufferBuilder fbb;
+    auto message =
+        CreateRegisterWorkerInfo(fbb, to_flatbuf(fbb, actor_id), getpid());
+    fbb.Finish(message);
+    /* Register the process ID with the local scheduler. */
+    int success = write_message(result->conn, MessageType_RegisterWorkerInfo,
+                                fbb.GetSize(), fbb.GetBufferPointer());
+    CHECKM(success == 0, "Unable to register worker with local scheduler");
+  }
+
   return result;
 }
 
