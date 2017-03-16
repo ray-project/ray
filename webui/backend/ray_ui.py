@@ -12,6 +12,9 @@ import sys
 import time
 import websockets
 
+# Import flatbuffer bindings.
+from ray.core.generated.LocalSchedulerInfoMessage import LocalSchedulerInfoMessage
+
 parser = argparse.ArgumentParser(description="parse information for the web ui")
 parser.add_argument("--redis-address", required=True, type=str, help="the address to use for redis")
 
@@ -212,17 +215,19 @@ async def handle_get_recent_tasks(websocket, redis_conn, num_tasks):
       task_get_arguments_times = [timestamp for (timestamp, task, kind, info) in data if task == "ray:task:get_arguments"]
       task_execute_times = [timestamp for (timestamp, task, kind, info) in data if task == "ray:task:execute"]
       task_store_outputs_times = [timestamp for (timestamp, task, kind, info) in data if task == "ray:task:store_outputs"]
-      task_data[node_index]["task_data"].append(
-          {"task": task_times,
-           "get_arguments": task_get_arguments_times,
-           "execute": task_execute_times,
-           "store_outputs": task_store_outputs_times,
-           "worker_index": worker_index,
-           "node_ip_address": node_ip_address,
-           "task_formatted_time": duration_to_string(task_times[1] - task_times[0]),
-           "get_arguments_formatted_time": duration_to_string(task_get_arguments_times[1] - task_get_arguments_times[0]),
-           "execute_formatted_time": duration_to_string(task_execute_times[1] - task_execute_times[0]),
-           "store_outputs_formatted_time": duration_to_string(task_store_outputs_times[1] - task_store_outputs_times[0])})
+      task_info = {"task": task_times,
+                   "get_arguments": task_get_arguments_times,
+                   "execute": task_execute_times,
+                   "store_outputs": task_store_outputs_times,
+                   "worker_index": worker_index,
+                   "node_ip_address": node_ip_address,
+                   "task_formatted_time": duration_to_string(task_times[1] - task_times[0]),
+                   "get_arguments_formatted_time": duration_to_string(task_get_arguments_times[1] - task_get_arguments_times[0])}
+      if len(task_execute_times) == 2:
+        task_info["execute_formatted_time"] = duration_to_string(task_execute_times[1] - task_execute_times[0])
+      if len(task_store_outputs_times) == 2:
+        task_info["store_outputs_formatted_time"] = duration_to_string(task_store_outputs_times[1] - task_store_outputs_times[0])
+      task_data[node_index]["task_data"].append(task_info)
       num_tasks += 1
     reply = {"min_time": min_time,
              "max_time": max_time,
@@ -267,7 +272,8 @@ async def send_heartbeats(websocket, redis_conn):
 
   while True:
     msg = await redis_conn.pubsub_channels["local_schedulers"].get()
-    local_scheduler_id_bytes = msg[:IDENTIFIER_LENGTH]
+    heartbeat = LocalSchedulerInfoMessage.GetRootAsLocalSchedulerInfoMessage(msg, 0)
+    local_scheduler_id_bytes = heartbeat.DbClientId()
     local_scheduler_id = hex_identifier(local_scheduler_id_bytes)
     if local_scheduler_id not in local_schedulers:
       # A new local scheduler has joined the cluster. Ignore it. This won't be
@@ -282,10 +288,25 @@ async def cache_data_from_redis(redis_ip_address, redis_port):
 
   asyncio.ensure_future(listen_for_errors(redis_ip_address, redis_port))
 
+async def handle_get_log_files(websocket, redis_conn):
+  reply = {}
+  # First get all keys for the log file lists.
+  log_file_list_keys = await redis_conn.execute("keys", "LOG_FILENAMES:*")
+  for log_file_list_key in log_file_list_keys:
+    node_ip_address = log_file_list_key.decode("ascii").split(":")[1]
+    reply[node_ip_address] = {}
+    # Get all of the log filenames for this node IP address.
+    log_filenames = await redis_conn.execute("lrange", log_file_list_key, 0, -1)
+    for log_filename in log_filenames:
+      log_filename_key = "LOGFILE:{}:{}".format(node_ip_address, log_filename.decode("ascii"))
+      logfile = await redis_conn.execute("lrange", log_filename_key, 0, -1)
+      logfile = [line.decode("ascii") for line in logfile]
+      reply[node_ip_address][log_filename.decode("ascii")] = logfile
+
+  # Send the reply back to the front end.
+  await websocket.send(json.dumps(reply))
+
 async def serve_requests(websocket, path):
-  # We loop infinitely because otherwise the websocket will be closed.
-  # TODO(rkn): Maybe we should open a new web sockets for every request instead
-  # of looping here.
   redis_conn = await aioredis.create_connection((redis_ip_address, redis_port), loop=loop)
   while True:
     command = json.loads(await websocket.recv())
@@ -301,6 +322,8 @@ async def serve_requests(websocket, path):
       await handle_get_errors(websocket)
     elif command["command"] == "get-heartbeats":
       await send_heartbeats(websocket, redis_conn)
+    elif command["command"] == "get-log-files":
+      await handle_get_log_files(websocket, redis_conn)
 
     if command["command"] == "get-workers":
       result = []
