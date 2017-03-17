@@ -182,19 +182,45 @@ class ComponentFailureTest(unittest.TestCase):
     self.check_components_alive(ray.services.PROCESS_TYPE_PLASMA_MANAGER, False)
     self.check_components_alive(ray.services.PROCESS_TYPE_LOCAL_SCHEDULER, False)
 
-  def testDriverLives(self):
+  def testDriverLivesSequential(self):
     ray.worker.init()
-    for process in [
+    processes = [
         ray.services.all_processes[ray.services.PROCESS_TYPE_PLASMA_STORE][0],
         ray.services.all_processes[ray.services.PROCESS_TYPE_PLASMA_MANAGER][0],
         ray.services.all_processes[ray.services.PROCESS_TYPE_LOCAL_SCHEDULER][0],
         ray.services.all_processes[ray.services.PROCESS_TYPE_GLOBAL_SCHEDULER][0],
-        ]:
+        ]
+
+    # Kill all the components sequentially.
+    for process in processes:
       process.terminate()
       time.sleep(0.1)
       process.kill()
       process.wait()
 
+    # If the driver can reach the tearDown method, then it is still alive.
+
+  def testDriverLivesParallel(self):
+    ray.worker.init()
+    processes = [
+        ray.services.all_processes[ray.services.PROCESS_TYPE_PLASMA_STORE][0],
+        ray.services.all_processes[ray.services.PROCESS_TYPE_PLASMA_MANAGER][0],
+        ray.services.all_processes[ray.services.PROCESS_TYPE_LOCAL_SCHEDULER][0],
+        ray.services.all_processes[ray.services.PROCESS_TYPE_GLOBAL_SCHEDULER][0],
+        ]
+
+    # Kill all the components in parallel.
+    for process in processes:
+      process.terminate()
+
+    time.sleep(0.1)
+    for process in processes:
+      process.kill()
+
+    for process in processes:
+      process.wait()
+
+    # If the driver can reach the tearDown method, then it is still alive.
 
 if __name__ == "__main__":
   unittest.main(verbosity=2)
