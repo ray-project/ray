@@ -904,7 +904,7 @@ void request_transfer_from(PlasmaManagerState *manager_state,
     transfer_request->object_id = fetch_req->object_id;
 
     if (manager_conn->transfer_queue == NULL) {
-      /* If we already have a connection to this manager and its inactive,
+      /* If we already have a connection to this manager and it's inactive,
        * (re)register it with the event loop. */
       event_loop_add_file(manager_state->loop, manager_conn->fd,
                           EVENT_LOOP_WRITE, send_queued_request, manager_conn);
