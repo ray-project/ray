@@ -134,7 +134,7 @@ class ComponentFailureTest(unittest.TestCase):
       time.sleep(0.1)
       process.kill()
       process.wait()
-      self.assertTrue(process.poll() == 0)
+      self.assertNotEqual(process.poll(), None)
       time.sleep(1)
 
     # Make sure that we can still get the objects after the executing tasks
