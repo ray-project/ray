@@ -8,6 +8,10 @@ import time
 import unittest
 
 class ComponentFailureTest(unittest.TestCase):
+
+  def tearDown(self):
+    ray.worker.cleanup()
+
   # This test checks that when a worker dies in the middle of a get, the plasma
   # store and manager will not die.
   def testDyingWorkerGet(self):
@@ -37,7 +41,6 @@ class ComponentFailureTest(unittest.TestCase):
 
     # Make sure that nothing has died.
     self.assertTrue(ray.services.all_processes_alive(exclude=[ray.services.PROCESS_TYPE_WORKER]))
-    ray.worker.cleanup()
 
   # This test checks that when a worker dies in the middle of a wait, the plasma
   # store and manager will not die.
@@ -68,7 +71,6 @@ class ComponentFailureTest(unittest.TestCase):
 
     # Make sure that nothing has died.
     self.assertTrue(ray.services.all_processes_alive(exclude=[ray.services.PROCESS_TYPE_WORKER]))
-    ray.worker.cleanup()
 
   def _testWorkerFailed(self, num_local_schedulers):
     @ray.remote
@@ -94,8 +96,6 @@ class ComponentFailureTest(unittest.TestCase):
       time.sleep(0.1)
     # Make sure that we can still get the objects after the executing tasks died.
     ray.get(object_ids)
-
-    ray.worker.cleanup()
 
   def testWorkerFailed(self):
     self._testWorkerFailed(1)
@@ -161,8 +161,6 @@ class ComponentFailureTest(unittest.TestCase):
     self.check_components_alive(ray.services.PROCESS_TYPE_PLASMA_MANAGER, True)
     self.check_components_alive(ray.services.PROCESS_TYPE_LOCAL_SCHEDULER, False)
 
-    ray.worker.cleanup()
-
   def testPlasmaManagerFailed(self):
     # Kill all plasma managers on worker nodes.
     self._testComponentFailed(ray.services.PROCESS_TYPE_PLASMA_MANAGER)
@@ -173,8 +171,6 @@ class ComponentFailureTest(unittest.TestCase):
     self.check_components_alive(ray.services.PROCESS_TYPE_PLASMA_MANAGER, False)
     self.check_components_alive(ray.services.PROCESS_TYPE_LOCAL_SCHEDULER, False)
 
-    ray.worker.cleanup()
-
   def testPlasmaStoreFailed(self):
     # Kill all plasma stores on worker nodes.
     self._testComponentFailed(ray.services.PROCESS_TYPE_PLASMA_STORE)
@@ -183,8 +179,6 @@ class ComponentFailureTest(unittest.TestCase):
     self.check_components_alive(ray.services.PROCESS_TYPE_PLASMA_STORE, False)
     self.check_components_alive(ray.services.PROCESS_TYPE_PLASMA_MANAGER, False)
     self.check_components_alive(ray.services.PROCESS_TYPE_LOCAL_SCHEDULER, False)
-
-    ray.worker.cleanup()
 
   def testDriverLives(self):
     ray.worker.init()
