@@ -3,15 +3,15 @@ Tutorial
 
 To use Ray, you need to understand the following:
 
-- How Ray uses object IDs to represent immutable remote objects.
 - How Ray executes tasks asynchronously to achieve parallelism.
+- How Ray uses object IDs to represent immutable remote objects.
 
 Overview
 --------
 
-Ray is a Python-based distributed execution engine. It can be used on a single
-machine to achieve efficient multiprocessing, and it can be used on a cluster
-for large computations.
+Ray is a Python-based distributed execution engine. The same code can be run on
+a single machine to achieve efficient multiprocessing, and it can be used on a
+cluster for large computations.
 
 When using Ray, several processes are involved.
 
@@ -43,15 +43,12 @@ To start Ray, start Python and run the following commands.
   import ray
   ray.init()
 
-This starts Ray along with a number of other processes including local and
-global schedulers, an object store, an object manager, a Redis server, and a
-bunch of worker processes. These will be killed when you exit the Python
-interpreter.
+This starts Ray.
 
 Immutable remote objects
 ------------------------
 
-In Ray, we can create and manipulate objects. We refer to these objects as
+In Ray, we can create and compute on objects. We refer to these objects as
 **remote objects**, and we use **object IDs** to refer to them. Remote objects
 are stored in **object stores**, and there is one object store per node in the
 cluster. In the cluster setting, we may not actually know which machine each
@@ -167,8 +164,6 @@ to parallelize computation.
   # The following takes ten seconds.
   [f1() for _ in range(10)]
 
-.. code-block:: python
-
   # The following takes one second (assuming the system has at least ten CPUs).
   ray.get([f2.remote() for _ in range(10)])
 
@@ -177,6 +172,9 @@ task*. When a remote function is called, the task of executing that function is
 submitted to a local scheduler, and object IDs for the outputs of the task are
 immediately returned. However, the task will not be executed until the system
 actually schedules the task on a worker. Task execution is **not** done lazily.
+The system moves the input data to the task, and the task will execute as soon
+as its input dependencies are available and there are enough resources for the
+computation.
 
 **When a task is submitted, each argument may be passed in by value or by object
 ID.** For example, these lines have the same behavior.
@@ -190,9 +188,8 @@ ID.** For example, these lines have the same behavior.
 Remote functions never return actual values, they always return object IDs.
 
 When the remote function is actually executed, it operates on Python objects.
-That is, if the remote function was called with any object IDs, the Python
-objects corresponding to those object IDs will be retrieved and passed into the
-actual execution of the remote function.
+That is, if the remote function was called with any object IDs, the system will
+retrieve the corresponding objects from the object store.
 
 Note that a remote function can return multiple object IDs.
 

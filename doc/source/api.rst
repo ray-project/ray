@@ -68,11 +68,12 @@ Remote functions are used to create tasks. To define a remote function, the
 The function can then be invoked with ``f.remote``. Invoking the function
 creates a **task** which will be scheduled on and executed by some worker
 process in the Ray cluster. The call will return an **object ID** (essentially a
-future) representing the eventual return value of the task.
+future) representing the eventual return value of the task. Anyone with the
+object ID can retrieve its value, regardless of where the task was executed (see
+`Getting values from object IDs`_).
 
-When a remote function returns, its outputs will be serialized into a string of
-bytes and stored in an object store (whichever object store the worker that
-executed the task is connected to).
+When a task executes, its outputs will be serialized into a string of bytes and
+stored in the object store.
 
 Note that arguments to remote functions can be values or object IDs.
 
@@ -107,16 +108,10 @@ Getting values from object IDs
 ------------------------------
 
 Object IDs can be converted into objects by calling ``ray.get`` on the object
-ID. When a driver or worker process calls ``ray.get`` on an object ID, the
-corresponding object will be transferred to the driver or worker's local object
-store (from whichever object store it is in). It will then be deserialized and
-turned into a regular Python object.
-
-Note that ``ray.get`` accepts either a single object ID or a list of object IDs.
+ID. Note that ``ray.get`` accepts either a single object ID or a list of object
+IDs.
 
 .. code-block:: python
-
-  import numpy as np
 
   @ray.remote
   def f():
@@ -156,12 +151,34 @@ store using ``ray.put``.
   x_id = ray.put(1)
   ray.get(x_id)  # 1
 
+The main reason to use ``ray.put`` is that you want to pass the same large
+object into a number of tasks. By first doing ``ray.put`` and then passing the
+resulting object ID into each of the tasks, the large object is copied into the
+object store only once, whereas when we directly pass the object in, it is
+copied multiple times.
+
+.. code-block:: python
+
+  import numpy as np
+
+  @ray.remote
+  def f(x):
+    pass
+
+  x = np.zeros(10 ** 6)
+
+  # Alternative 1: Here, x is copied into the object store 10 times.
+  [f.remote(x) for _ in range(10)]
+
+  # Alternative 2: Here, x is copied into the object store once.
+  x_id = ray.put(x)
+  [f.remote(x_id) for _ in range(10)]
+
 Note that ``ray.put`` is called under the hood in a couple situations.
 
 - It is called on the values returned by a task.
-- It is called on the arguments to a task, unless the arguments are simple
-  things like integers or short strings, lists, tuples, or dictionaries, in
-  which case they are serialized as part of the task specification.
+- It is called on the arguments to a task, unless the arguments are Python
+  primitives like integers or short strings, lists, tuples, or dictionaries.
 
 .. autofunction:: ray.put
 
@@ -179,11 +196,12 @@ To do this, we introduce the ``ray.wait`` primitive, which takes a list of
 object IDs and returns when a subset of them are available. By default it blocks
 until a single object is available, but the ``num_returns`` value can be
 specified to wait for a different number. If a ``timeout`` argument is passed
-in, it will block for at most that many milliseconds.
+in, it will block for at most that many milliseconds and may return a list with
+fewer than ``num_returns`` elements.
 
 The ``ray.wait`` function returns two lists. The first list is a list of object
 IDs of available objects (of length at most ``num_returns``), and the second
-list is a list of the remaining object IDs, so the concatenation of these two
+list is a list of the remaining object IDs, so the combination of these two
 lists is equal to the list passed in to ``ray.wait`` (up to ordering).
 
 .. code-block:: python
