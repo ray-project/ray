@@ -252,8 +252,7 @@ void start_worker(LocalSchedulerState *state, ActorID actor_id) {
   execvp(start_actor_worker_command[0],
          (char *const *) start_actor_worker_command);
   free(start_actor_worker_command);
-  LocalSchedulerState_free(state);
-  LOG_FATAL("Failed to start worker");
+  kill(getpid(), SIGTERM);
 }
 
 /**
@@ -472,9 +471,10 @@ void process_plasma_notification(event_loop *loop,
   uint8_t *notification = read_message_async(loop, client_sock);
   if (!notification) {
     /* The store has closed the socket. */
-    LocalSchedulerState_free(state);
-    LOG_FATAL(
+    kill(getpid(), SIGTERM);
+    LOG_WARN(
         "Lost connection to the plasma store, local scheduler is exiting!");
+    return;
   }
   auto object_info = flatbuffers::GetRoot<ObjectInfo>(notification);
   ObjectID object_id = from_flatbuf(object_info->object_id());

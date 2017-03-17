@@ -186,5 +186,17 @@ class ComponentFailureTest(unittest.TestCase):
 
     ray.worker.cleanup()
 
+  def testDriverLives(self):
+    ray.worker.init()
+    for process in [
+        ray.services.all_processes[ray.services.PROCESS_TYPE_PLASMA_STORE][0],
+        ray.services.all_processes[ray.services.PROCESS_TYPE_PLASMA_MANAGER][0],
+        ray.services.all_processes[ray.services.PROCESS_TYPE_LOCAL_SCHEDULER][0],
+        ray.services.all_processes[ray.services.PROCESS_TYPE_GLOBAL_SCHEDULER][0],
+        ]:
+      process.terminate()
+      process.wait()
+
+
 if __name__ == "__main__":
   unittest.main(verbosity=2)

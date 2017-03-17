@@ -73,6 +73,7 @@ flatbuffers::Offset<flatbuffers::String> RedisStringToFlatbuf(
  * Publish a notification to a client's notification channel about an insertion
  * or deletion to the db client table.
  *
+ * TODO(swang): Use flatbuffers for the notification message.
  * The format for the published notification is:
  *  <ray_client_id>:<client type> <aux_address> <is_insertion>
  * If no auxiliary address is provided, aux_address will be set to ":". If

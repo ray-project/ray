@@ -124,6 +124,7 @@ class Monitor(object):
     # TODO(swang): Also kill the associated plasma store, since it's no longer
     # reachable without a plasma manager.
     object_ids = self.redis.scan_iter(match="{prefix}*".format(prefix=OBJECT_PREFIX))
+    num_objects_removed = 0
     for object_id in object_ids:
       object_id = object_id[len(OBJECT_PREFIX):]
       managers = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP", object_id)
@@ -136,6 +137,9 @@ class Monitor(object):
           if ok != b"OK":
             log.warn("Failed to remove object location for dead plasma "
                      "manager.")
+          num_objects_removed += 1
+    if num_objects_removed > 0:
+      log.warn("Marked {} objects as lost.".format(num_objects_removed))
 
   def scan_db_client_table(self):
     """Scan the database client table for dead clients.
