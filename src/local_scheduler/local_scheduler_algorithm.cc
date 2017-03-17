@@ -1088,6 +1088,8 @@ void handle_worker_blocked(LocalSchedulerState *state,
       worker->is_blocked = true;
       utarray_push_back(algorithm_state->blocked_workers, &worker);
 
+      /* Try to dispatch tasks, since we may have freed up some resources. */
+      dispatch_tasks(state, algorithm_state);
       return;
     }
   }
