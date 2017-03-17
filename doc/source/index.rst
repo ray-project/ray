@@ -1,9 +1,7 @@
-===
 Ray
 ===
 
-*Ray is a low-latency distributed execution framework targeted at machine
-learning and reinforcement learning applications.*
+*Ray is a flexible, high-performance distributed execution framework.*
 
 .. toctree::
    :maxdepth: 1
@@ -18,9 +16,9 @@ learning and reinforcement learning applications.*
    :maxdepth: 1
    :caption: Getting Started
 
-   tutorial.md
-   actors.rst
+   tutorial.rst
    api.rst
+   actors.rst
 
 .. toctree::
    :maxdepth: 1
