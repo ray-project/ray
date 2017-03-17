@@ -10,7 +10,6 @@ import os
 import numpy as np
 import ray
 import tensorflow as tf
-import IPython
 
 import cifar_input
 import resnet_model
@@ -162,7 +161,6 @@ def train():
   ray.init(num_gpus=num_gpus, redirect_output=True)
   train_data = get_data.remote(FLAGS.train_data_path, 50000, FLAGS.dataset)
   test_data = get_data.remote(FLAGS.eval_data_path, 10000, FLAGS.dataset)
-  IPython.embed()
   if num_gpus > 0:
     train_actors = [ResNetTrainActor(train_data, FLAGS.dataset, num_gpus) for _ in range(num_gpus)]
   else:
@@ -183,6 +181,7 @@ def train():
     if step % 200 == 0:
       acc = ray.get(acc_id)
       acc_id = test_actor.accuracy(weight_id, step)
+      print('Step {0}: {1:.6f}'.format(step - 200, acc))
 
 def main(_):
   train()
