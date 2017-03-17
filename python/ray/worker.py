@@ -1251,7 +1251,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker, a
                    "local_scheduler_socket": info["local_scheduler_socket_name"]}
     driver_info["name"] = main.__file__ if hasattr(main, "__file__") else "INTERACTIVE MODE"
     worker.redis_client.hmset(b"Drivers:" + worker.worker_id, driver_info)
-    is_driver = True
+    is_worker = False
   elif mode == WORKER_MODE:
     # Register the worker with Redis.
     worker.redis_client.hmset(b"Workers:" + worker.worker_id,
@@ -1259,14 +1259,14 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker, a
                                "plasma_store_socket": info["store_socket_name"],
                                "plasma_manager_socket": info["manager_socket_name"],
                                "local_scheduler_socket": info["local_scheduler_socket_name"]})
-    is_driver = False
+    is_worker = True
   else:
     raise Exception("This code should be unreachable.")
 
   # Create an object store client.
   worker.plasma_client = ray.plasma.PlasmaClient(info["store_socket_name"], info["manager_socket_name"])
   # Create the local scheduler client.
-  worker.local_scheduler_client = ray.local_scheduler.LocalSchedulerClient(info["local_scheduler_socket_name"], worker.actor_id, is_driver)
+  worker.local_scheduler_client = ray.local_scheduler.LocalSchedulerClient(info["local_scheduler_socket_name"], worker.actor_id, is_worker)
 
   # If this is a driver, set the current task ID, the task driver ID, and set
   # the task index to 0.
