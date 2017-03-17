@@ -10,7 +10,6 @@ from subprocess32 import Popen, PIPE
 class DockerRunner(object):
 
     def __init__(self):
-        # self.logger = logger
         self.num_workers = None
         self.head_container_id = None
         self.worker_container_ids = []
@@ -34,10 +33,10 @@ class DockerRunner(object):
         else:
             return m.group(1)
 
-    def _start_head_node(self, mem_size, shm_size, num_workers):
+    def _start_head_node(self, docker_image, mem_size, shm_size, num_workers):
         mem_arg = ["--memory=" + mem_size] if mem_size else []
         shm_arg = ["--shm-size=" + shm_size] if shm_size else []
-        proc = Popen(["docker", "run", "-d"] + mem_arg + shm_arg + ["ray-project/testdocker", "/ray/scripts/start_ray.sh", "--head", "--redis-port=6379", "--num-workers={:d}".format(num_workers)], stdout=PIPE)
+        proc = Popen(["docker", "run", "-d"] + mem_arg + shm_arg + [docker_image, "/ray/scripts/start_ray.sh", "--head", "--redis-port=6379", "--num-workers={:d}".format(num_workers)], stdout=PIPE)
         (stdoutdata, stderrdata) = proc.communicate()
         container_id = self._get_container_id(stdoutdata)
         print("start_node", {
@@ -52,10 +51,10 @@ class DockerRunner(object):
         self.head_container_ip = self._get_container_ip(container_id)
         return container_id
 
-    def _start_worker_node(self, mem_size, shm_size, num_workers):
+    def _start_worker_node(self, docker_image, mem_size, shm_size, num_workers):
         mem_arg = ["--memory=" + mem_size] if mem_size else []
         shm_arg = ["--shm-size=" + shm_size] if shm_size else []
-        proc = Popen(["docker", "run", "-d"] + mem_arg + shm_arg + ["--shm-size=" + shm_size, "ray-project/testdocker", "/ray/scripts/start_ray.sh", "--redis-address={:s}:6379".format(self.head_container_ip), "--num-workers={:d}".format(num_workers)], stdout=PIPE)
+        proc = Popen(["docker", "run", "-d"] + mem_arg + shm_arg + ["--shm-size=" + shm_size, docker_image, "/ray/scripts/start_ray.sh", "--redis-address={:s}:6379".format(self.head_container_ip), "--num-workers={:d}".format(num_workers)], stdout=PIPE)
         (stdoutdata, stderrdata) = proc.communicate()
         container_id = self._get_container_id(stdoutdata)
         if not container_id:
@@ -68,7 +67,7 @@ class DockerRunner(object):
             "shm_size" : shm_size
             })
 
-    def start_ray(self, mem_size, shm_size, num_workers, num_nodes):
+    def start_ray(self, docker_image, mem_size, shm_size, num_workers, num_nodes):
         if num_workers < num_nodes:
             raise RuntimeError("number of workers must exceed number of nodes")
         self.num_workers = num_workers
@@ -86,11 +85,11 @@ class DockerRunner(object):
             n_a = n_a - 1
 
         # launch the head node
-        self._start_head_node(mem_size, shm_size, workers_per_node_h)
+        self._start_head_node(docker_image, mem_size, shm_size, workers_per_node_h)
         for _ in range(n_a):
-            self._start_worker_node(mem_size, shm_size, workers_per_node_a)
+            self._start_worker_node(docker_image, mem_size, shm_size, workers_per_node_a)
         for _ in range(n_b):
-            self._start_worker_node(mem_size, shm_size, workers_per_node_b)
+            self._start_worker_node(docker_image, mem_size, shm_size, workers_per_node_b)
 
 
     def _stop_node(self, container_id):
@@ -160,6 +159,7 @@ class DockerRunner(object):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog="loop.py", description="Plot Ray workloads")
+    parser.add_argument("--docker-image", default="ray-project/deploy", help="docker image")
     parser.add_argument("--mem-size", help="memory size")
     parser.add_argument("--shm-size", default="1G", help="shared memory size")
     parser.add_argument("--num-workers", default=4, type= int, help="number of workers")
@@ -168,7 +168,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     d = DockerRunner()
-    d.start_ray(mem_size=args.mem_size, shm_size=args.shm_size, num_workers=args.num_workers, num_nodes=args.num_nodes)
+    d.start_ray(mem_size=args.mem_size, shm_size=args.shm_size, num_workers=args.num_workers, num_nodes=args.num_nodes, docker_image=args.docker_image)
     try:
         time.sleep(2)
 
