@@ -131,6 +131,8 @@ class ComponentFailureTest(unittest.TestCase):
     components = ray.services.all_processes[component_type]
     for process in components[1:]:
       process.terminate()
+      time.sleep(0.1)
+      process.kill()
       process.wait()
       self.assertTrue(process.poll() == 0)
       time.sleep(1)
@@ -189,6 +191,8 @@ class ComponentFailureTest(unittest.TestCase):
         ray.services.all_processes[ray.services.PROCESS_TYPE_GLOBAL_SCHEDULER][0],
         ]:
       process.terminate()
+      time.sleep(0.1)
+      process.kill()
       process.wait()
 
 
