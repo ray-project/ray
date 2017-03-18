@@ -7,23 +7,47 @@ across multiple GPUs using Ray. View the `code for this example`_.
 To run the example, you will need to install `TensorFlow with GPU support`_ (at
 least version ``1.0.0``). Then you can run the example as follows.
 
-First download the CIFAR-10 dataset.
+First download the CIFAR-10 or CIFAR-100 dataset.
 
 .. code-block:: bash
 
+  # Get the CIFAR-10 dataset.
   curl -o cifar-10-binary.tar.gz https://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz
-
   tar -xvf cifar-10-binary.tar.gz
 
+  # Get the CIFAR-100 dataset.
+  curl -o cifar-100-binary.tar.gz https://www.cs.toronto.edu/~kriz/cifar-100-binary.tar.gz
+  tar -xvf cifar-100-binary.tar.gz
 
-Then run the training script.
+Then run the training script that matches the dataset you downloaded.
 
 .. code-block:: bash
 
+  # Train Resnet on CIFAR-10.
   python ray/examples/resnet/resnet_main.py \
+      --eval_dir=/tmp/resnet-model/eval \
       --train_data_path=cifar-10-batches-bin/data_batch* \
       --eval_data_path=cifar-10-batches-bin/test_batch.bin \
+      --dataset=cifar10 \
       --num_gpus=1
+
+  # Train Resnet on CIFAR-100.
+  python ray/examples/resnet/resnet_main.py \
+      --eval_dir=/tmp/resnet-model/eval \
+      --train_data_path=cifar-100-binary/train.bin \
+      --eval_data_path=cifar-100-binary/test.bin \
+      --dataset=cifar100 \
+      --num_gpus=1
+
+The script will print out the IP address that the log files are stored on. In the single-node case,
+you can ignore this and run tensorboard on the current machine.
+
+.. code-block:: bash
+
+  python -m tensorflow.tensorboard --logdir=/tmp/resnet-model
+
+If you are running Ray on multiple nodes, you will need to go to the node at the IP address printed, and
+run the command.
 
 The core of the script is the actor definition.
 
