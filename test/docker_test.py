@@ -5,7 +5,12 @@ import re
 import sys
 import time
 
-from subprocess32 import Popen, PIPE
+if sys.version_info >= (3, 0):
+  import subprocess
+  from subprocess import Popen, PIPE
+else:
+  import subprocess32 as subprocess
+  from subprocess32 import Popen, PIPE
 
 class DockerRunner(object):
 
@@ -16,7 +21,7 @@ class DockerRunner(object):
         self.head_container_ip = None
 
     def _get_container_id(self, stdoutdata):
-        p = re.compile("([0-9a-f]{64})\n")
+        p = re.compile(b"([0-9a-f]{64})\n")
         m = p.match(stdoutdata)
         if not m:
             return None
@@ -26,7 +31,7 @@ class DockerRunner(object):
     def _get_container_ip(self, container_id):
         proc = Popen(["docker", "inspect", "--format={{.NetworkSettings.Networks.bridge.IPAddress}}", container_id], stdout=PIPE, stderr=PIPE)
         (stdoutdata, _) = proc.communicate()
-        p = re.compile("([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})")
+        p = re.compile(b"([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})")
         m = p.match(stdoutdata)
         if not m:
             raise RuntimeError("Container IP not found")
@@ -48,7 +53,7 @@ class DockerRunner(object):
         if not container_id:
             raise RuntimeError("Failed to find container id")
         self.head_container_id = container_id
-        self.head_container_ip = self._get_container_ip(container_id)
+        self.head_container_ip = self._get_container_ip(container_id).decode("ascii")
         return container_id
 
     def _start_worker_node(self, docker_image, mem_size, shm_size, num_workers):
@@ -126,9 +131,10 @@ class DockerRunner(object):
         done = False
         while not done:
             try:
-                (stdoutdata, stderrdata) = proc.communicate(timeout=min(10, waited_time_limit))
+                (stdoutdata, stderrdata) = proc.communicate()
+                # (stdoutdata, stderrdata) = proc.communicate(timeout=min(10, waited_time_limit))
                 done = True
-            except(subprocess32.TimeoutExpired):
+            except(subprocess.TimeoutExpired):
                 waited_time = time.time() - start_time
                 if waited_time_limit and waited_time > waited_time_limit:
                     # self.logger.log("killed", {
