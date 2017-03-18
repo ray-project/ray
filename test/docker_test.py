@@ -1,6 +1,7 @@
 from __future__ import print_function
 
 import argparse
+import os
 import re
 import sys
 import time
@@ -38,10 +39,11 @@ class DockerRunner(object):
         else:
             return m.group(1)
 
-    def _start_head_node(self, docker_image, mem_size, shm_size, num_workers):
+    def _start_head_node(self, docker_image, mem_size, shm_size, num_workers, test_dev_mode):
         mem_arg = ["--memory=" + mem_size] if mem_size else []
         shm_arg = ["--shm-size=" + shm_size] if shm_size else []
-        proc = Popen(["docker", "run", "-d"] + mem_arg + shm_arg + [docker_image, "/ray/scripts/start_ray.sh", "--head", "--redis-port=6379", "--num-workers={:d}".format(num_workers)], stdout=PIPE)
+        volume_arg = ["-v", "{}:{}".format(os.path.dirname(os.path.realpath(__file__)), "/ray/test")] if test_dev_mode else []
+        proc = Popen(["docker", "run", "-d"] + mem_arg + shm_arg + volume_arg + [docker_image, "/ray/scripts/start_ray.sh", "--head", "--redis-port=6379", "--num-workers={:d}".format(num_workers)], stdout=PIPE)
         (stdoutdata, stderrdata) = proc.communicate()
         container_id = self._get_container_id(stdoutdata)
         print("start_node", {
@@ -72,7 +74,7 @@ class DockerRunner(object):
             "shm_size" : shm_size
             })
 
-    def start_ray(self, docker_image, mem_size, shm_size, num_workers, num_nodes):
+    def start_ray(self, docker_image, mem_size, shm_size, num_workers, num_nodes, test_dev_mode):
         if num_workers < num_nodes:
             raise RuntimeError("number of workers must exceed number of nodes")
         self.num_workers = num_workers
@@ -90,7 +92,7 @@ class DockerRunner(object):
             n_a = n_a - 1
 
         # launch the head node
-        self._start_head_node(docker_image, mem_size, shm_size, workers_per_node_h)
+        self._start_head_node(docker_image, mem_size, shm_size, workers_per_node_h, test_dev_mode)
         for _ in range(n_a):
             self._start_worker_node(docker_image, mem_size, shm_size, workers_per_node_a)
         for _ in range(n_b):
@@ -170,11 +172,12 @@ if __name__ == "__main__":
     parser.add_argument("--shm-size", default="1G", help="shared memory size")
     parser.add_argument("--num-workers", default=4, type= int, help="number of workers")
     parser.add_argument("--num-nodes", default=1, type=int, help="number of instances")
+    parser.add_argument("--test-dev-mode", action="store_true", help="mount the test directory inside of the head node")
     parser.add_argument("workload", help="workload script")
     args = parser.parse_args()
 
     d = DockerRunner()
-    d.start_ray(mem_size=args.mem_size, shm_size=args.shm_size, num_workers=args.num_workers, num_nodes=args.num_nodes, docker_image=args.docker_image)
+    d.start_ray(mem_size=args.mem_size, shm_size=args.shm_size, num_workers=args.num_workers, num_nodes=args.num_nodes, docker_image=args.docker_image, test_dev_mode=args.test_dev_mode)
     try:
         time.sleep(2)
 
