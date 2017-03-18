@@ -5,4 +5,4 @@ set -e
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
-python $ROOT_DIR/multi_node_docker_test.py --num-nodes=5 --test-script=$ROOT_DIR/multi_node_tests/test_0.py
+python $ROOT_DIR/multi_node_docker_test.py --num-nodes=5 --test-script=/ray/test/jenkins_tests/multi_node_tests/test_0.py "$@"

@@ -81,11 +81,16 @@ class DockerRunner(object):
     else:
       return m.group(1)
 
-  def _start_head_node(self, docker_image, mem_size, shm_size):
+  def _start_head_node(self, docker_image, mem_size, shm_size,
+                       development_mode):
     """Start the Ray head node inside a docker container."""
     mem_arg = ["--memory=" + mem_size] if mem_size else []
     shm_arg = ["--shm-size=" + shm_size] if shm_size else []
+    volume_arg = ["-v",
+                  "{}:{}".format(os.path.dirname(os.path.realpath(__file__)),
+                  "/ray/test/jenkins_tests")] if development_mode else []
     proc = subprocess.Popen(["docker", "run", "-d"] + mem_arg + shm_arg +
+                            volume_arg +
                             [docker_image, "/ray/scripts/start_ray.sh",
                              "--head", "--redis-port=6379"],
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -119,7 +124,8 @@ class DockerRunner(object):
                          "is_head": False,
                          "shm_size": shm_size})
 
-  def start_ray(self, docker_image, mem_size, shm_size, num_nodes):
+  def start_ray(self, docker_image, mem_size, shm_size, num_nodes,
+                development_mode):
     """Start a Ray cluster within docker.
 
     This starts one docker container running the head node and num_nodes - 1
@@ -134,9 +140,12 @@ class DockerRunner(object):
         This will be passed into `docker run` as the `--shm-size` flag.
       num_nodes: The number of nodes to use in the cluster (this counts the head
         node as well).
+      development_mode: True if you want to mount the local copy of
+        test/jenkins_test on the head node so we can avoid rebuilding docker
+        images during development.
     """
     # Launch the head node.
-    self._start_head_node(docker_image, mem_size, shm_size)
+    self._start_head_node(docker_image, mem_size, shm_size, development_mode)
     # Start the worker nodes.
     for _ in range(num_nodes - 1):
       self._start_worker_node(docker_image, mem_size, shm_size)
@@ -202,11 +211,14 @@ if __name__ == "__main__":
   parser.add_argument("--num-nodes", default=1, type=int,
                       help="number of nodes to use in the cluster")
   parser.add_argument("--test-script", required=True, help="test script")
+  parser.add_argument("--development-mode", action="store_true",
+                      help="use local copies of the test scripts")
   args = parser.parse_args()
 
   d = DockerRunner()
   d.start_ray(mem_size=args.mem_size, shm_size=args.shm_size,
-              num_nodes=args.num_nodes, docker_image=args.docker_image)
+              num_nodes=args.num_nodes, docker_image=args.docker_image,
+              development_mode=args.development_mode)
   time.sleep(2)
   try:
     run_result = d.run_test(args.test_script)
