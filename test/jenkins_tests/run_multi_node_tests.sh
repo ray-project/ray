@@ -1,1 +1,8 @@
-python test/multi_node_docker_test.py --num-nodes=5 --test-script=multi_node_tests/test_0.py
+#!/usr/bin/env bash
+
+# Cause the script to exit if a single command fails.
+set -e
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
+
+python $ROOT_DIR/multi_node_docker_test.py --num-nodes=5 --test-script=$ROOT_DIR/multi_node_tests/test_0.py
