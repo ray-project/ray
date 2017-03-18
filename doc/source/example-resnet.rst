@@ -11,18 +11,19 @@ First download the CIFAR-10 or CIFAR-100 dataset.
 
 .. code-block:: bash
 
+  # Get the CIFAR-10 dataset.
   curl -o cifar-10-binary.tar.gz https://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz
-
   tar -xvf cifar-10-binary.tar.gz
 
+  # Get the CIFAR-100 dataset.
   curl -o cifar-100-binary.tar.gz https://www.cs.toronto.edu/~kriz/cifar-100-binary.tar.gz
-
   tar -xvf cifar-100-binary.tar.gz
 
 Then run the training script that matches the dataset you downloaded.
 
 .. code-block:: bash
 
+  # Train Resnet on CIFAR-10.
   python ray/examples/resnet/resnet_main.py \
       --eval_dir=/tmp/resnet-model/eval \
       --train_data_path=cifar-10-batches-bin/data_batch* \
@@ -30,6 +31,7 @@ Then run the training script that matches the dataset you downloaded.
       --dataset=cifar10 \
       --num_gpus=1
 
+  # Train Resnet on CIFAR-100.
   python ray/examples/resnet/resnet_main.py \
       --eval_dir=/tmp/resnet-model/eval \
       --train_data_path=cifar-100-binary/train.bin \
