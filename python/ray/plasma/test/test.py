@@ -699,11 +699,21 @@ class TestPlasmaManager(unittest.TestCase):
       self.assertEqual(set(waiting), set(object_ids_perm[(i + 1):]))
 
   def test_transfer(self):
+    num_attempts = 100
     for _ in range(100):
       # Create an object.
       object_id1, memory_buffer1, metadata1 = create_object(self.client1, 2000, 2000)
-      # Transfer the buffer to the the other PlasmaStore.
-      self.client1.transfer("127.0.0.1", self.port2, object_id1)
+      # Transfer the buffer to the the other Plasma store. There is a race
+      # condition on the create and transfer of the object, so keep trying
+      # until the object appears on the second Plasma store.
+      for i in range(num_attempts):
+        self.client1.transfer("127.0.0.1", self.port2, object_id1)
+        buff = self.client2.get([object_id1], timeout_ms=100)[0]
+        if buff is not None:
+          break
+      self.assertNotEqual(buff, None)
+      del buff
+
       # Compare the two buffers.
       assert_get_object_equal(self, self.client1, self.client2, object_id1,
                               memory_buffer=memory_buffer1, metadata=metadata1)
@@ -715,8 +725,17 @@ class TestPlasmaManager(unittest.TestCase):
 
       # Create an object.
       object_id2, memory_buffer2, metadata2 = create_object(self.client2, 20000, 20000)
-      # Transfer the buffer to the the other PlasmaStore.
-      self.client2.transfer("127.0.0.1", self.port1, object_id2)
+      # Transfer the buffer to the the other Plasma store. There is a race
+      # condition on the create and transfer of the object, so keep trying
+      # until the object appears on the second Plasma store.
+      for i in range(num_attempts):
+        self.client2.transfer("127.0.0.1", self.port1, object_id2)
+        buff = self.client1.get([object_id2], timeout_ms=100)[0]
+        if buff is not None:
+          break
+      self.assertNotEqual(buff, None)
+      del buff
+
       # Compare the two buffers.
       assert_get_object_equal(self, self.client1, self.client2, object_id2,
                               memory_buffer=memory_buffer2, metadata=metadata2)
@@ -761,7 +780,9 @@ class TestPlasmaManagerRecovery(unittest.TestCase):
 
     # Store the processes that will be explicitly killed during tearDown so
     # that a test case can remove ones that will be killed during the test.
-    self.processes_to_kill = [self.p2, self.p3]
+    # NOTE: The plasma managers must be killed before the plasma store since
+    # plasma store death will bring down the managers.
+    self.processes_to_kill = [self.p3, self.p2]
 
   def tearDown(self):
     # Check that the processes are still alive.
@@ -798,7 +819,7 @@ class TestPlasmaManagerRecovery(unittest.TestCase):
 
     # Start a second plasma manager attached to the same store.
     manager_name, self.p5, self.port2 = plasma.start_plasma_manager(self.store_name, self.redis_address, use_valgrind=USE_VALGRIND)
-    self.processes_to_kill.append(self.p5)
+    self.processes_to_kill = [self.p5] + self.processes_to_kill
 
     # Check that the second manager knows about existing objects.
     client2 = plasma.PlasmaClient(self.store_name, manager_name)

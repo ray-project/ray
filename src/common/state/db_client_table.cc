@@ -27,3 +27,14 @@ void db_client_table_subscribe(
                       (table_done_callback) done_callback,
                       redis_db_client_table_subscribe, user_context);
 }
+
+void plasma_manager_send_heartbeat(DBHandle *db_handle) {
+  RetryInfo heartbeat_retry;
+  heartbeat_retry.num_retries = 0;
+  heartbeat_retry.timeout = HEARTBEAT_TIMEOUT_MILLISECONDS;
+  heartbeat_retry.fail_callback = NULL;
+
+  init_table_callback(db_handle, NIL_ID, __func__, NULL,
+                      (RetryInfo *) &heartbeat_retry, NULL,
+                      redis_plasma_manager_send_heartbeat, NULL);
+}
