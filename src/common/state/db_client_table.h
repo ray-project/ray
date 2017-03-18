@@ -65,4 +65,20 @@ typedef struct {
   void *subscribe_context;
 } DBClientTableSubscribeData;
 
+/*
+ * ==== Plasma manager heartbeats ====
+ */
+
+/**
+ * Start sending heartbeats to the plasma_managers channel. Each
+ * heartbeat contains this database client's ID. Heartbeats can be subscribed
+ * to through the plasma_managers channel. Once called, this "retries" the
+ * heartbeat operation forever, every HEARTBEAT_TIMEOUT_MILLISECONDS
+ * milliseconds.
+ *
+ * @param db_handle Database handle.
+ * @return Void.
+ */
+void plasma_manager_send_heartbeat(DBHandle *db_handle);
+
 #endif /* DB_CLIENT_TABLE_H */

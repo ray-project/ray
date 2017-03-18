@@ -193,6 +193,7 @@ int connect_inet_sock(const char *ip_addr, int port) {
   struct hostent *manager = gethostbyname(ip_addr); /* TODO(pcm): cache this */
   if (!manager) {
     LOG_ERROR("Failed to get hostname from address %s:%d.", ip_addr, port);
+    close(fd);
     return -1;
   }
 
@@ -203,6 +204,7 @@ int connect_inet_sock(const char *ip_addr, int port) {
 
   if (connect(fd, (struct sockaddr *) &addr, sizeof(addr)) != 0) {
     LOG_ERROR("Connection to socket failed for address %s:%d.", ip_addr, port);
+    close(fd);
     return -1;
   }
   return fd;

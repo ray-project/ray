@@ -146,6 +146,11 @@ void kill_worker(LocalSchedulerClient *worker, bool cleanup) {
 }
 
 void LocalSchedulerState_free(LocalSchedulerState *state) {
+  /* Reset the SIGTERM handler to default behavior, so we try to clean up the
+   * local scheduler at most once. If a SIGTERM is caught afterwards, there is
+   * the possibility of orphan worker processes. */
+  signal(SIGTERM, SIG_DFL);
+
   /* Free the command for starting new workers. */
   if (state->config.start_worker_command != NULL) {
     int i = 0;
@@ -471,7 +476,10 @@ void process_plasma_notification(event_loop *loop,
   /* Read the notification from Plasma. */
   uint8_t *notification = read_message_async(loop, client_sock);
   if (!notification) {
-    return;
+    /* The store has closed the socket. */
+    LocalSchedulerState_free(state);
+    LOG_FATAL(
+        "Lost connection to the plasma store, local scheduler is exiting!");
   }
   auto object_info = flatbuffers::GetRoot<ObjectInfo>(notification);
   ObjectID object_id = from_flatbuf(object_info->object_id());
@@ -773,6 +781,10 @@ LocalSchedulerState *g_state;
 void signal_handler(int signal) {
   LOG_DEBUG("Signal was %d", signal);
   if (signal == SIGTERM) {
+    /* NOTE(swang): This call removes the SIGTERM handler to ensure that we
+     * free the local scheduler state at most once. If another SIGTERM is
+     * caught during this call, there is the possibility of orphan worker
+     * processes. */
     LocalSchedulerState_free(g_state);
     exit(0);
   }
@@ -842,7 +854,7 @@ int heartbeat_handler(event_loop *loop, timer_id id, void *context) {
   /* Publish the heartbeat to all subscribers of the local scheduler table. */
   local_scheduler_table_send_info(state->db, &info, NULL);
   /* Reset the timer. */
-  return LOCAL_SCHEDULER_HEARTBEAT_TIMEOUT_MILLISECONDS;
+  return HEARTBEAT_TIMEOUT_MILLISECONDS;
 }
 
 void start_server(const char *node_ip_address,
@@ -887,7 +899,7 @@ void start_server(const char *node_ip_address,
    * scheduler to the local scheduler table. This message also serves as a
    * heartbeat. */
   if (g_state->db != NULL) {
-    event_loop_add_timer(loop, LOCAL_SCHEDULER_HEARTBEAT_TIMEOUT_MILLISECONDS,
+    event_loop_add_timer(loop, HEARTBEAT_TIMEOUT_MILLISECONDS,
                          heartbeat_handler, g_state);
   }
   /* Create a timer for fetching queued tasks' missing object dependencies. */

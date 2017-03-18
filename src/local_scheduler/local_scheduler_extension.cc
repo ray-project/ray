@@ -18,13 +18,14 @@ static int PyLocalSchedulerClient_init(PyLocalSchedulerClient *self,
                                        PyObject *kwds) {
   char *socket_name;
   ActorID actor_id;
-  if (!PyArg_ParseTuple(args, "sO&", &socket_name, PyStringToUniqueID,
-                        &actor_id)) {
+  PyObject *is_worker;
+  if (!PyArg_ParseTuple(args, "sO&O", &socket_name, PyStringToUniqueID,
+                        &actor_id, &is_worker)) {
     return -1;
   }
   /* Connect to the local scheduler. */
-  self->local_scheduler_connection =
-      LocalSchedulerConnection_init(socket_name, actor_id);
+  self->local_scheduler_connection = LocalSchedulerConnection_init(
+      socket_name, actor_id, (bool) PyObject_IsTrue(is_worker));
   return 0;
 }
 

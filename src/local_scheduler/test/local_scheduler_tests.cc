@@ -103,7 +103,7 @@ LocalSchedulerMock *LocalSchedulerMock_init(int num_workers,
       sizeof(LocalSchedulerConnection *) * num_mock_workers);
   for (int i = 0; i < num_mock_workers; ++i) {
     mock->conns[i] = LocalSchedulerConnection_init(
-        utstring_body(local_scheduler_socket_name), NIL_ACTOR_ID);
+        utstring_body(local_scheduler_socket_name), NIL_ACTOR_ID, true);
     new_client_connection(mock->loop, mock->local_scheduler_fd,
                           (void *) mock->local_scheduler_state, 0);
   }

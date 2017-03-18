@@ -38,6 +38,7 @@
 #include "state/object_table.h"
 #include "state/error_table.h"
 #include "state/task_table.h"
+#include "state/db_client_table.h"
 
 /**
  * Process either the fetch or the status request.
@@ -266,9 +267,6 @@ struct ClientConnection {
   int fd;
   /** Timer id for timing out wait (or fetch). */
   int64_t timer_id;
-  /** The objects that we are waiting for and their callback
-   *  contexts, for either a fetch or a wait operation. */
-  ClientObjectRequest *active_objects;
   /** The number of objects that we have left to return for
    *  this fetch or wait operation. */
   int num_return_objects;
@@ -279,6 +277,34 @@ struct ClientConnection {
   /** Handle for the uthash table. */
   UT_hash_handle manager_hh;
 };
+
+/**
+ * Initializes the state for a plasma client connection.
+ *
+ * @param state The plasma manager state.
+ * @param client_sock The socket that we use to communicate with the client.
+ * @param client_key A string uniquely identifying the client. If the client is
+ *        another plasma manager, this is the manager's IP address and port.
+ *        Else, the client is the string of the client's socket.
+ * @return A pointer to the initialized client state.
+ */
+ClientConnection *ClientConnection_init(PlasmaManagerState *state,
+                                        int client_sock,
+                                        char *client_key);
+
+/**
+ * Destroys a plasma client and its connection.
+ *
+ * @param client_conn The client's state.
+ * @return Void.
+ */
+void ClientConnection_free(ClientConnection *client_conn);
+
+void object_table_subscribe_callback(ObjectID object_id,
+                                     int64_t data_size,
+                                     int manager_count,
+                                     const char *manager_vector[],
+                                     void *context);
 
 ObjectWaitRequests **object_wait_requests_table_ptr_from_type(
     PlasmaManagerState *manager_state,
@@ -505,30 +531,10 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
 }
 
 void PlasmaManagerState_free(PlasmaManagerState *state) {
-  ClientConnection *manager_conn, *tmp;
-  HASH_ITER(manager_hh, state->manager_connections, manager_conn, tmp) {
-    HASH_DELETE(manager_hh, state->manager_connections, manager_conn);
-
-    /* Free the hash table of object IDs that are waiting to be transferred. */
-    PlasmaRequestBuffer *request_buffer, *tmp_buffer;
-    HASH_ITER(hh, manager_conn->pending_object_transfers, request_buffer,
-              tmp_buffer) {
-      /* We do not free the PlasmaRequestBuffer here because it is also in the
-       * transfer queue and will be freed below. */
-      HASH_DELETE(hh, manager_conn->pending_object_transfers, request_buffer);
-    }
-
-    /* Free the transfer queue. */
-    PlasmaRequestBuffer *head = manager_conn->transfer_queue;
-    while (head) {
-      DL_DELETE(manager_conn->transfer_queue, head);
-      free(head);
-      head = manager_conn->transfer_queue;
-    }
-    /* Close the manager connection and free the remaining state. */
-    close(manager_conn->fd);
-    free(manager_conn->ip_addr_port);
-    free(manager_conn);
+  ClientConnection *manager_conn, *tmp_manager_conn;
+  HASH_ITER(manager_hh, state->manager_connections, manager_conn,
+            tmp_manager_conn) {
+    ClientConnection_free(manager_conn);
   }
 
   if (state->fetch_requests != NULL) {
@@ -536,6 +542,12 @@ void PlasmaManagerState_free(PlasmaManagerState *state) {
     HASH_ITER(hh, state->fetch_requests, fetch_req, tmp) {
       remove_fetch_request(state, fetch_req);
     }
+  }
+
+  AvailableObject *entry, *tmp_object_entry;
+  HASH_ITER(hh, state->local_available_objects, entry, tmp_object_entry) {
+    HASH_DELETE(hh, state->local_available_objects, entry);
+    free(entry);
   }
 
   plasma_disconnect(state->plasma_conn);
@@ -601,9 +613,10 @@ void send_queued_request(event_loop *loop,
   }
 
   PlasmaRequestBuffer *buf = conn->transfer_queue;
+  bool sigpipe = false;
   switch (buf->type) {
   case MessageType_PlasmaDataRequest:
-    warn_if_sigpipe(
+    sigpipe = warn_if_sigpipe(
         plasma_send_DataRequest(conn->fd, state->builder, buf->object_id,
                                 state->addr, state->port),
         conn->fd);
@@ -613,7 +626,7 @@ void send_queued_request(event_loop *loop,
     if (conn->cursor == 0) {
       /* If the cursor is zero, we haven't sent any requests for this object
        * yet, so send the initial data request. */
-      warn_if_sigpipe(
+      sigpipe = warn_if_sigpipe(
           plasma_send_DataReply(conn->fd, state->builder, buf->object_id,
                                 buf->data_size, buf->metadata_size),
           conn->fd);
@@ -622,6 +635,12 @@ void send_queued_request(event_loop *loop,
     break;
   default:
     LOG_FATAL("Buffered request has unknown type.");
+  }
+
+  /* If there was a SIGPIPE, stop sending to this manager. */
+  if (sigpipe) {
+    ClientConnection_free(conn);
+    return;
   }
 
   /* If we are done sending this request, remove it from the transfer queue. */
@@ -728,21 +747,13 @@ ClientConnection *get_manager_connection(PlasmaManagerState *state,
             utstring_len(ip_addr_port), manager_conn);
   if (!manager_conn) {
     /* If we don't already have a connection to this manager, start one. */
-    int fd = connect_inet_sock_retry(ip_addr, port, -1, -1);
-    /* TODO(swang): Handle the case when connection to this manager was
-     * unsuccessful. */
-    CHECK(fd >= 0);
-    manager_conn = (ClientConnection *) malloc(sizeof(ClientConnection));
-    manager_conn->fd = fd;
-    manager_conn->manager_state = state;
-    manager_conn->transfer_queue = NULL;
-    manager_conn->pending_object_transfers = NULL;
-    manager_conn->cursor = 0;
-    manager_conn->ip_addr_port = strdup(utstring_body(ip_addr_port));
-    HASH_ADD_KEYPTR(manager_hh,
-                    manager_conn->manager_state->manager_connections,
-                    manager_conn->ip_addr_port,
-                    strlen(manager_conn->ip_addr_port), manager_conn);
+    int fd = connect_inet_sock(ip_addr, port);
+    if (fd < 0) {
+      return NULL;
+    }
+
+    manager_conn =
+        ClientConnection_init(state, fd, utstring_body(ip_addr_port));
   }
   utstring_free(ip_addr_port);
   return manager_conn;
@@ -755,6 +766,9 @@ void process_transfer_request(event_loop *loop,
                               ClientConnection *conn) {
   ClientConnection *manager_conn =
       get_manager_connection(conn->manager_state, addr, port);
+  if (manager_conn == NULL) {
+    return;
+  }
 
   /* If there is already a request in the transfer queue with the same object
    * ID, do not add the transfer request. */
@@ -765,6 +779,20 @@ void process_transfer_request(event_loop *loop,
     return;
   }
 
+  /* Allocate and append the request to the transfer queue. */
+  ObjectBuffer object_buffer;
+  /* We pass in 0 to indicate that the command should return immediately. */
+  plasma_get(conn->manager_state->plasma_conn, &obj_id, 1, 0, &object_buffer);
+  if (object_buffer.data_size == -1) {
+    /* If the object wasn't locally available, exit immediately. If the object
+     * later appears locally, the requesting plasma manager should request the
+     * transfer again. */
+    LOG_WARN(
+        "Unable to transfer object to requesting plasma manager, object not "
+        "local.");
+    return;
+  }
+
   /* If we already have a connection to this manager and its inactive,
    * (re)register it with the event loop again. */
   if (manager_conn->transfer_queue == NULL) {
@@ -772,38 +800,17 @@ void process_transfer_request(event_loop *loop,
                         send_queued_request, manager_conn);
   }
 
-  /* Allocate and append the request to the transfer queue. */
-  /* TODO(swang): A non-blocking plasma_get, or else we could block here
-   * forever if we don't end up sealing this object. */
-  /* The corresponding call to plasma_release will happen in
-   * write_object_chunk. */
-  /* TODO(rkn): The manager currently will block here if the object is not
-   * present in the store. This is completely unacceptable. The manager should
-   * do a non-blocking get call on the store, and if the object isn't there then
-   * perhaps the manager should initiate the transfer when it receives a
-   * notification from the store that the object is present. */
-  ObjectBuffer obj_buffer;
-  int counter = 0;
-  do {
-    /* We pass in 0 to indicate that the command should return immediately. */
-    ObjectID obj_id_array[1] = {obj_id};
-    plasma_get(conn->manager_state->plasma_conn, obj_id_array, 1, 0,
-               &obj_buffer);
-    if (counter > 0) {
-      LOG_WARN("Blocking in the plasma manager.");
-    }
-    counter += 1;
-  } while (obj_buffer.data_size == -1);
-  DCHECK(obj_buffer.metadata == obj_buffer.data + obj_buffer.data_size);
+  DCHECK(object_buffer.metadata ==
+         object_buffer.data + object_buffer.data_size);
   PlasmaRequestBuffer *buf =
       (PlasmaRequestBuffer *) malloc(sizeof(PlasmaRequestBuffer));
   buf->type = MessageType_PlasmaDataReply;
   buf->object_id = obj_id;
   /* We treat buf->data as a pointer to the concatenated data and metadata, so
    * we don't actually use buf->metadata. */
-  buf->data = obj_buffer.data;
-  buf->data_size = obj_buffer.data_size;
-  buf->metadata_size = obj_buffer.metadata_size;
+  buf->data = object_buffer.data;
+  buf->data_size = object_buffer.data_size;
+  buf->metadata_size = object_buffer.metadata_size;
 
   DL_APPEND(manager_conn->transfer_queue, buf);
   HASH_ADD(hh, manager_conn->pending_object_transfers, object_id,
@@ -868,14 +875,7 @@ void process_data_request(event_loop *loop,
 }
 
 void request_transfer_from(PlasmaManagerState *manager_state,
-                           ObjectID object_id) {
-  FetchRequest *fetch_req;
-  HASH_FIND(hh, manager_state->fetch_requests, &object_id, sizeof(object_id),
-            fetch_req);
-  /* TODO(rkn): This probably can be NULL so we should remove this check, and
-   * instead return in the case where there is no fetch request. */
-  CHECK(fetch_req != NULL);
-
+                           FetchRequest *fetch_req) {
   CHECK(fetch_req->manager_count > 0);
   CHECK(fetch_req->next_manager >= 0 &&
         fetch_req->next_manager < fetch_req->manager_count);
@@ -886,30 +886,33 @@ void request_transfer_from(PlasmaManagerState *manager_state,
 
   ClientConnection *manager_conn =
       get_manager_connection(manager_state, addr, port);
+  if (manager_conn != NULL) {
+    /* Check that this manager isn't trying to request an object from itself.
+     * TODO(rkn): Later this should not be fatal. */
+    uint8_t temp_addr[4];
+    sscanf(addr, "%hhu.%hhu.%hhu.%hhu", &temp_addr[0], &temp_addr[1],
+           &temp_addr[2], &temp_addr[3]);
+    if (memcmp(temp_addr, manager_state->addr, 4) == 0 &&
+        port == manager_state->port) {
+      LOG_FATAL(
+          "This manager is attempting to request a transfer from itself.");
+    }
 
-  /* Check that this manager isn't trying to request an object from itself.
-   * TODO(rkn): Later this should not be fatal. */
-  uint8_t temp_addr[4];
-  sscanf(addr, "%hhu.%hhu.%hhu.%hhu", &temp_addr[0], &temp_addr[1],
-         &temp_addr[2], &temp_addr[3]);
-  if (memcmp(temp_addr, manager_state->addr, 4) == 0 &&
-      port == manager_state->port) {
-    LOG_FATAL("This manager is attempting to request a transfer from itself.");
+    PlasmaRequestBuffer *transfer_request =
+        (PlasmaRequestBuffer *) malloc(sizeof(PlasmaRequestBuffer));
+    transfer_request->type = MessageType_PlasmaDataRequest;
+    transfer_request->object_id = fetch_req->object_id;
+
+    if (manager_conn->transfer_queue == NULL) {
+      /* If we already have a connection to this manager and it's inactive,
+       * (re)register it with the event loop. */
+      event_loop_add_file(manager_state->loop, manager_conn->fd,
+                          EVENT_LOOP_WRITE, send_queued_request, manager_conn);
+    }
+    /* Add this transfer request to this connection's transfer queue. */
+    DL_APPEND(manager_conn->transfer_queue, transfer_request);
   }
 
-  PlasmaRequestBuffer *transfer_request =
-      (PlasmaRequestBuffer *) malloc(sizeof(PlasmaRequestBuffer));
-  transfer_request->type = MessageType_PlasmaDataRequest;
-  transfer_request->object_id = fetch_req->object_id;
-
-  if (manager_conn->transfer_queue == NULL) {
-    /* If we already have a connection to this manager and its inactive,
-     * (re)register it with the event loop. */
-    event_loop_add_file(manager_state->loop, manager_conn->fd, EVENT_LOOP_WRITE,
-                        send_queued_request, manager_conn);
-  }
-  /* Add this transfer request to this connection's transfer queue. */
-  DL_APPEND(manager_conn->transfer_queue, transfer_request);
   /* On the next attempt, try the next manager in manager_vector. */
   fetch_req->next_manager += 1;
   fetch_req->next_manager %= fetch_req->manager_count;
@@ -917,13 +920,39 @@ void request_transfer_from(PlasmaManagerState *manager_state,
 
 int fetch_timeout_handler(event_loop *loop, timer_id id, void *context) {
   PlasmaManagerState *manager_state = (PlasmaManagerState *) context;
-  /* Loop over the fetch requests and reissue the requests. */
+
+  /* Allocate a vector of object IDs to resend requests for location
+   * notifications. */
+  int num_object_ids_to_request = 0;
+  int num_object_ids = HASH_COUNT(manager_state->fetch_requests);
+  /* This is allocating more space than necessary, but we do not know the exact
+   * number of object IDs to request notifications for yet. */
+  ObjectID *object_ids_to_request =
+      (ObjectID *) malloc(num_object_ids * sizeof(ObjectID));
+
+  /* Loop over the fetch requests and reissue requests for objects whose
+   * locations we know. */
   FetchRequest *fetch_req, *tmp;
   HASH_ITER(hh, manager_state->fetch_requests, fetch_req, tmp) {
     if (fetch_req->manager_count > 0) {
-      request_transfer_from(manager_state, fetch_req->object_id);
+      request_transfer_from(manager_state, fetch_req);
+      /* If we've tried all of the managers that we know about for this object,
+       * add this object to the list to resend requests for. */
+      if (fetch_req->next_manager == 0) {
+        object_ids_to_request[num_object_ids_to_request] = fetch_req->object_id;
+        ++num_object_ids_to_request;
+      }
     }
   }
+
+  /* Resend requests for notifications on these objects' locations. */
+  if (num_object_ids_to_request > 0 && manager_state->db != NULL) {
+    object_table_request_notifications(manager_state->db,
+                                       num_object_ids_to_request,
+                                       object_ids_to_request, NULL);
+  }
+  free(object_ids_to_request);
+
   return MANAGER_TIMEOUT;
 }
 
@@ -980,7 +1009,7 @@ void request_transfer(ObjectID object_id,
   }
   /* Wait for the object data for the default number of retries, which timeout
    * after a default interval. */
-  request_transfer_from(manager_state, object_id);
+  request_transfer_from(manager_state, fetch_req);
 }
 
 /* This method is only called from the tests. */
@@ -1351,7 +1380,9 @@ void process_object_notification(event_loop *loop,
   PlasmaManagerState *state = (PlasmaManagerState *) context;
   uint8_t *notification = read_message_async(loop, client_sock);
   if (notification == NULL) {
-    return;
+    PlasmaManagerState_free(state);
+    LOG_FATAL(
+        "Lost connection to the plasma store, plasma manager is exiting!");
   }
   auto object_info = flatbuffers::GetRoot<ObjectInfo>(notification);
   /* Add object to locally available object. */
@@ -1365,6 +1396,79 @@ void process_object_notification(event_loop *loop,
         (unsigned char *) object_info->digest()->data());
   }
   free(notification);
+}
+
+/* TODO(pcm): Split this into two methods: new_worker_connection
+ * and new_manager_connection and also split ClientConnection
+ * into two structs, one for workers and one for other plasma managers. */
+ClientConnection *ClientConnection_init(PlasmaManagerState *state,
+                                        int client_sock,
+                                        char *client_key) {
+  /* Create a new data connection context per client. */
+  ClientConnection *conn =
+      (ClientConnection *) malloc(sizeof(ClientConnection));
+  conn->manager_state = state;
+  conn->cursor = 0;
+  conn->transfer_queue = NULL;
+  conn->pending_object_transfers = NULL;
+  conn->fd = client_sock;
+  conn->num_return_objects = 0;
+
+  conn->ip_addr_port = strdup(client_key);
+  HASH_ADD_KEYPTR(manager_hh, conn->manager_state->manager_connections,
+                  conn->ip_addr_port, strlen(conn->ip_addr_port), conn);
+  return conn;
+}
+
+ClientConnection *ClientConnection_listen(event_loop *loop,
+                                          int listener_sock,
+                                          void *context,
+                                          int events) {
+  PlasmaManagerState *state = (PlasmaManagerState *) context;
+  int new_socket = accept_client(listener_sock);
+  char client_key[8];
+  snprintf(client_key, sizeof(client_key), "%d", new_socket);
+  ClientConnection *conn = ClientConnection_init(state, new_socket, client_key);
+
+  event_loop_add_file(loop, new_socket, EVENT_LOOP_READ, process_message, conn);
+  LOG_DEBUG("New client connection with fd %d", new_socket);
+  return conn;
+}
+
+void ClientConnection_free(ClientConnection *client_conn) {
+  PlasmaManagerState *state = client_conn->manager_state;
+  HASH_DELETE(manager_hh, state->manager_connections, client_conn);
+  /* Free the hash table of object IDs that are waiting to be transferred. */
+  PlasmaRequestBuffer *request_buffer, *tmp_buffer;
+  HASH_ITER(hh, client_conn->pending_object_transfers, request_buffer,
+            tmp_buffer) {
+    /* We do not free the PlasmaRequestBuffer here because it is also in the
+     * transfer queue and will be freed below. */
+    HASH_DELETE(hh, client_conn->pending_object_transfers, request_buffer);
+  }
+
+  /* Free the transfer queue. */
+  PlasmaRequestBuffer *head = client_conn->transfer_queue;
+  while (head) {
+    DL_DELETE(client_conn->transfer_queue, head);
+    free(head);
+    head = client_conn->transfer_queue;
+  }
+  /* Close the manager connection and free the remaining state. */
+  close(client_conn->fd);
+  free(client_conn->ip_addr_port);
+  free(client_conn);
+}
+
+void handle_new_client(event_loop *loop,
+                       int listener_sock,
+                       void *context,
+                       int events) {
+  (void) ClientConnection_listen(loop, listener_sock, context, events);
+}
+
+int get_client_sock(ClientConnection *conn) {
+  return conn->fd;
 }
 
 void process_message(event_loop *loop,
@@ -1433,11 +1537,8 @@ void process_message(event_loop *loop,
   } break;
   case DISCONNECT_CLIENT: {
     LOG_INFO("Disconnecting client on fd %d", client_sock);
-    /* TODO(swang): Check if this connection was to a plasma manager. If so,
-     * delete it. */
     event_loop_remove_file(loop, client_sock);
-    close(client_sock);
-    free(conn);
+    ClientConnection_free(conn);
   } break;
   default:
     LOG_FATAL("invalid request %" PRId64, type);
@@ -1445,39 +1546,10 @@ void process_message(event_loop *loop,
   free(data);
 }
 
-/* TODO(pcm): Split this into two methods: new_worker_connection
- * and new_manager_connection and also split ClientConnection
- * into two structs, one for workers and one for other plasma managers. */
-ClientConnection *ClientConnection_init(event_loop *loop,
-                                        int listener_sock,
-                                        void *context,
-                                        int events) {
-  int new_socket = accept_client(listener_sock);
-  /* Create a new data connection context per client. */
-  ClientConnection *conn =
-      (ClientConnection *) malloc(sizeof(ClientConnection));
-  conn->manager_state = (PlasmaManagerState *) context;
-  conn->cursor = 0;
-  conn->transfer_queue = NULL;
-  /* TODO(rkn): Is this pending_object_transfers hash table ever used? */
-  conn->pending_object_transfers = NULL;
-  conn->fd = new_socket;
-  conn->active_objects = NULL;
-  conn->num_return_objects = 0;
-  event_loop_add_file(loop, new_socket, EVENT_LOOP_READ, process_message, conn);
-  LOG_DEBUG("New client connection with fd %d", new_socket);
-  return conn;
-}
-
-void handle_new_client(event_loop *loop,
-                       int listener_sock,
-                       void *context,
-                       int events) {
-  (void) ClientConnection_init(loop, listener_sock, context, events);
-}
-
-int get_client_sock(ClientConnection *conn) {
-  return conn->fd;
+int heartbeat_handler(event_loop *loop, timer_id id, void *context) {
+  PlasmaManagerState *state = (PlasmaManagerState *) context;
+  plasma_manager_send_heartbeat(state->db);
+  return HEARTBEAT_TIMEOUT_MILLISECONDS;
 }
 
 void start_server(const char *store_socket_name,
@@ -1523,6 +1595,9 @@ void start_server(const char *store_socket_name,
    * requests and reissue requests for transfers of those objects. */
   event_loop_add_timer(g_manager_state->loop, MANAGER_TIMEOUT,
                        fetch_timeout_handler, g_manager_state);
+  /* Publish the heartbeats to all subscribers of the plasma manager table. */
+  event_loop_add_timer(g_manager_state->loop, HEARTBEAT_TIMEOUT_MILLISECONDS,
+                       heartbeat_handler, g_manager_state);
   /* Run the event loop. */
   event_loop_run(g_manager_state->loop);
 }
