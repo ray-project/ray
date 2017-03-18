@@ -361,6 +361,50 @@ class ReconstructionTests(unittest.TestCase):
     # Make sure all the errors have the correct function name.
     self.assertTrue(all(error[b"data"] == b"__main__.foo" for error in errors))
 
+  def testPut(self):
+    # Define the size of one task's return argument so that the combined sum of
+    # all objects' sizes is at least twice the plasma stores' combined allotted
+    # memory.
+    num_objects = 1000
+    size = self.plasma_store_memory * 2 // (num_objects * 8)
+
+    # Define a task with a single dependency, which returns its one argument.
+    @ray.remote
+    def single_dependency(i, arg):
+      print("Executing", i)
+      arg = np.copy(arg)
+      arg[0] = i
+      return arg
+
+    # Define a root task with no dependencies, which returns a numpy array of
+    # the given size.
+    @ray.remote
+    def no_dependency_task(size):
+      # Launch num_objects instances of the remote task, each dependent on the
+      # one before it.
+      arg = ray.put(np.zeros(size))
+      args = []
+      for i in range(num_objects):
+        arg = single_dependency.remote(i, arg)
+        args.append(arg)
+
+      # Get each value to force each task to finish. After some number of gets,
+      # old values should be evicted.
+      for i in range(num_objects):
+        print("Getting", i)
+        value = ray.get(args[i])
+        self.assertEqual(value[0], i)
+
+      # Get each value to force each task to finish. After some number of gets,
+      # old values should be evicted.
+      for i in range(num_objects):
+        print("Getting", i)
+        value = ray.get(args[i])
+        self.assertEqual(value[0], i)
+
+    object_id = no_dependency_task.remote(size)
+    ray.get(object_id)
+
 class ReconstructionTestsMultinode(ReconstructionTests):
 
   # Run the same tests as the single-node suite, but with 4 local schedulers,
