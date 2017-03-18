@@ -50,6 +50,7 @@ class ResNet(object):
       self._build_train_op()
     else:
       self.variables = ray.experimental.TensorFlowVariables(self.cost)
+      self.summaries = tf.summary.merge_all()
 
   def _stride_arr(self, stride):
     """Map a stride scalar to the stride array for tf.nn.conv2d."""
@@ -112,9 +113,8 @@ class ResNet(object):
       self.cost = tf.reduce_mean(xent, name='xent')
       self.cost += self._decay()
 
-    truth = tf.argmax(self.labels, axis=1)
-    predictions = tf.argmax(self.predictions, axis=1)
-    self.precision = tf.reduce_mean(tf.to_float(tf.equal(predictions, truth)))
+      if self.mode == 'eval':
+        tf.summary.scalar('cost', self.cost)
 
   def _build_train_op(self):
     """Build training specific ops for the graph."""
@@ -124,6 +124,7 @@ class ResNet(object):
     boundaries = [int(20000 * i / np.sqrt(num_gpus)) for i in range(2, 5)]
     values = [0.1, 0.01, 0.001, 0.0001]
     self.lrn_rate = tf.train.piecewise_constant(self.global_step, boundaries, values)
+    tf.summary.scalar('learning rate', self.lrn_rate)
 
     if self.hps.optimizer == 'sgd':
       optimizer = tf.train.GradientDescentOptimizer(self.lrn_rate)
@@ -172,6 +173,8 @@ class ResNet(object):
             'moving_variance', params_shape, tf.float32,
             initializer=tf.constant_initializer(1.0, tf.float32),
             trainable=False)
+        tf.summary.histogram(mean.op.name, mean)
+        tf.summary.histogram(variance.op.name, variance)
       # elipson used to be 1e-5. Maybe 0.001 solves NaN problem in deeper net.
       y = tf.nn.batch_normalization(
           x, mean, variance, beta, gamma, 0.001)

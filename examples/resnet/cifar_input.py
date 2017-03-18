@@ -9,12 +9,16 @@ from __future__ import print_function
 import numpy as np
 import tensorflow as tf
 
-def build_data(data_path, size):
+def build_data(data_path, size, dataset):
   image_size = 32
-  label_bytes = 1
-  label_offset = 0
-  num_classes = 10
-
+  if dataset == 'cifar10':
+    label_bytes = 1
+    label_offset = 0
+    num_classes = 10
+  elif dataset == 'cifar100':
+    label_bytes = 1
+    label_offset = 1
+    num_classes = 100
   depth = 3
   image_bytes = image_size * image_size * depth
   record_bytes = label_bytes + label_offset + image_bytes
@@ -36,7 +40,7 @@ def build_data(data_path, size):
   queue = tf.train.shuffle_batch([image, label], size, size, 0, num_threads=16)
   return queue
 
-def build_input(data, batch_size, train):
+def build_input(data, batch_size, dataset, train):
   """Build CIFAR image and labels.
 
   Args:
@@ -55,8 +59,8 @@ def build_input(data, batch_size, train):
   labels_constant = tf.constant(data[1])
   image_size = 32
   depth = 3
-  num_classes = 10
-  image, label = tf.train.slice_input_producer([images_constant, labels_constant])
+  num_classes = 10 if dataset == 'cifar10' else 100
+  image, label = tf.train.slice_input_producer([images_constant, labels_constant], capacity=16 * batch_size)
   if train:
     image = tf.image.resize_image_with_crop_or_pad(
 	image, image_size+4, image_size+4)
@@ -102,5 +106,6 @@ def build_input(data, batch_size, train):
   assert len(labels.get_shape()) == 2
   assert labels.get_shape()[0] == batch_size
   assert labels.get_shape()[1] == num_classes
-
+  if not train:
+    tf.summary.image('images', images)
   return images, labels
