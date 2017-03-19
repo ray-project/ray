@@ -2,10 +2,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import unittest
 import numpy as np
-import time
+import unittest
+
 import ray
+
 
 class ActorAPI(unittest.TestCase):
 
@@ -18,6 +19,7 @@ class ActorAPI(unittest.TestCase):
         self.arg0 = arg0
         self.arg1 = arg1
         self.arg2 = arg2
+
       def get_values(self, arg0, arg1=2, arg2="b"):
         return self.arg0 + arg0, self.arg1 + arg1, self.arg2 + arg2
 
@@ -53,6 +55,7 @@ class ActorAPI(unittest.TestCase):
         self.arg0 = arg0
         self.arg1 = arg1
         self.args = args
+
       def get_values(self, arg0, arg1=2, *args):
         return self.arg0 + arg0, self.arg1 + arg1, self.args, args
 
@@ -63,10 +66,12 @@ class ActorAPI(unittest.TestCase):
     self.assertEqual(ray.get(actor.get_values(2, 3)), (3, 5, (), ()))
 
     actor = Actor(1, 2, "c")
-    self.assertEqual(ray.get(actor.get_values(2, 3, "d")), (3, 5, ("c",), ("d",)))
+    self.assertEqual(ray.get(actor.get_values(2, 3, "d")),
+                     (3, 5, ("c",), ("d",)))
 
     actor = Actor(1, 2, "a", "b", "c", "d")
-    self.assertEqual(ray.get(actor.get_values(2, 3, 1, 2, 3, 4)), (3, 5, ("a", "b", "c", "d"), (1, 2, 3, 4)))
+    self.assertEqual(ray.get(actor.get_values(2, 3, 1, 2, 3, 4)),
+                     (3, 5, ("a", "b", "c", "d"), (1, 2, 3, 4)))
 
     ray.worker.cleanup()
 
@@ -77,6 +82,7 @@ class ActorAPI(unittest.TestCase):
     class Actor(object):
       def __init__(self):
         pass
+
       def get_values(self):
         pass
 
@@ -112,8 +118,10 @@ class ActorAPI(unittest.TestCase):
       def __init__(self, f2):
         self.f1 = Foo(1)
         self.f2 = f2
+
       def get_values1(self):
         return self.f1, self.f2
+
       def get_values2(self, f3):
         return self.f1, self.f2, f3
 
@@ -144,37 +152,38 @@ class ActorAPI(unittest.TestCase):
 
     # This is an invalid way of using the actor decorator.
     with self.assertRaises(Exception):
-      @ray.actor(invalid_kwarg=0)
+      @ray.actor(invalid_kwarg=0)  # noqa: F811
       class Actor(object):
         def __init__(self):
           pass
 
     # This is an invalid way of using the actor decorator.
     with self.assertRaises(Exception):
-      @ray.actor(num_cpus=0, invalid_kwarg=0)
+      @ray.actor(num_cpus=0, invalid_kwarg=0)  # noqa: F811
       class Actor(object):
         def __init__(self):
           pass
 
     # This is a valid way of using the decorator.
-    @ray.actor(num_cpus=1)
+    @ray.actor(num_cpus=1)  # noqa: F811
     class Actor(object):
       def __init__(self):
         pass
 
     # This is a valid way of using the decorator.
-    @ray.actor(num_gpus=1)
+    @ray.actor(num_gpus=1)  # noqa: F811
     class Actor(object):
       def __init__(self):
         pass
 
     # This is a valid way of using the decorator.
-    @ray.actor(num_cpus=1, num_gpus=1)
+    @ray.actor(num_cpus=1, num_gpus=1)  # noqa: F811
     class Actor(object):
       def __init__(self):
         pass
 
     ray.worker.cleanup()
+
 
 class ActorMethods(unittest.TestCase):
 
@@ -185,6 +194,7 @@ class ActorMethods(unittest.TestCase):
     class Test(object):
       def __init__(self, x):
         self.x = x
+
       def f(self, y):
         return self.x + y
 
@@ -200,8 +210,10 @@ class ActorMethods(unittest.TestCase):
     class Counter(object):
       def __init__(self):
         self.value = 0
+
       def increase(self):
         self.value += 1
+
       def value(self):
         return self.value
 
@@ -224,9 +236,11 @@ class ActorMethods(unittest.TestCase):
     class Counter(object):
       def __init__(self, value):
         self.value = value
+
       def increase(self):
         self.value += 1
         return self.value
+
       def reset(self):
         self.value = 0
 
@@ -240,7 +254,9 @@ class ActorMethods(unittest.TestCase):
       results += [actors[i].increase() for _ in range(num_increases)]
     result_values = ray.get(results)
     for i in range(num_actors):
-      self.assertEqual(result_values[(num_increases * i):(num_increases * (i + 1))], list(range(i + 1, num_increases + i + 1)))
+      self.assertEqual(
+          result_values[(num_increases * i):(num_increases * (i + 1))],
+          list(range(i + 1, num_increases + i + 1)))
 
     # Reset the actor values.
     [actor.reset() for actor in actors]
@@ -251,9 +267,11 @@ class ActorMethods(unittest.TestCase):
       results += [actor.increase() for actor in actors]
     result_values = ray.get(results)
     for j in range(num_increases):
-      self.assertEqual(result_values[(num_actors * j):(num_actors * (j + 1))], num_actors * [j + 1])
+      self.assertEqual(result_values[(num_actors * j):(num_actors * (j + 1))],
+                       num_actors * [j + 1])
 
     ray.worker.cleanup()
+
 
 class ActorNesting(unittest.TestCase):
 
@@ -302,7 +320,8 @@ class ActorNesting(unittest.TestCase):
 
     self.assertEqual(ray.get(ray.get(actor.f())), list(range(1, 6)))
     self.assertEqual(ray.get(actor.g()), list(range(1, 6)))
-    self.assertEqual(ray.get(actor.h([f.remote(i) for i in range(5)])), list(range(1, 6)))
+    self.assertEqual(ray.get(actor.h([f.remote(i) for i in range(5)])),
+                     list(range(1, 6)))
 
     ray.worker.cleanup()
 
@@ -320,6 +339,7 @@ class ActorNesting(unittest.TestCase):
         class Actor2(object):
           def __init__(self, x):
             self.x = x
+
           def get_value(self):
             return self.x
         self.actor2 = Actor2(z)
@@ -370,13 +390,15 @@ class ActorNesting(unittest.TestCase):
       class Actor1(object):
         def __init__(self, x):
           self.x = x
+
         def get_value(self):
           return self.x
       actor = Actor1(x)
       return ray.get([actor.get_value() for _ in range(n)])
 
     self.assertEqual(ray.get(f.remote(3, 1)), [3])
-    self.assertEqual(ray.get([f.remote(i, 20) for i in range(10)]), [20 * [i] for i in range(10)])
+    self.assertEqual(ray.get([f.remote(i, 20) for i in range(10)]),
+                     [20 * [i] for i in range(10)])
 
     ray.worker.cleanup()
 
@@ -421,14 +443,17 @@ class ActorNesting(unittest.TestCase):
         def __init__(self):
           # This should use the last version of f.
           self.x = ray.get(f.remote())
+
         def get_val(self):
           return self.x
+
       actor = Actor()
       return ray.get(actor.get_val())
 
     self.assertEqual(ray.get(g.remote()), num_remote_functions - 1)
 
     ray.worker.cleanup()
+
 
 class ActorInheritance(unittest.TestCase):
 
@@ -440,8 +465,10 @@ class ActorInheritance(unittest.TestCase):
     class Foo(object):
       def __init__(self, x):
         self.x = x
+
       def f(self):
         return self.x
+
       def g(self, y):
         return self.x + y
 
@@ -449,6 +476,7 @@ class ActorInheritance(unittest.TestCase):
     class Actor(Foo):
       def __init__(self, x):
         Foo.__init__(self, x)
+
       def get_value(self):
         return self.f()
 
@@ -457,6 +485,7 @@ class ActorInheritance(unittest.TestCase):
     self.assertEqual(ray.get(actor.g(5)), 6)
 
     ray.worker.cleanup()
+
 
 class ActorSchedulingProperties(unittest.TestCase):
 
@@ -469,7 +498,7 @@ class ActorSchedulingProperties(unittest.TestCase):
       def __init__(self):
         pass
 
-    actor = Actor()
+    Actor()
 
     @ray.remote
     def f():
@@ -477,22 +506,26 @@ class ActorSchedulingProperties(unittest.TestCase):
 
     # Make sure that f cannot be scheduled on the worker created for the actor.
     # The wait call should time out.
-    ready_ids, remaining_ids = ray.wait([f.remote() for _ in range(10)], timeout=3000)
+    ready_ids, remaining_ids = ray.wait([f.remote() for _ in range(10)],
+                                        timeout=3000)
     self.assertEqual(ready_ids, [])
     self.assertEqual(len(remaining_ids), 10)
 
     ray.worker.cleanup()
 
+
 class ActorsOnMultipleNodes(unittest.TestCase):
 
   def testActorLoadBalancing(self):
     num_local_schedulers = 3
-    ray.worker._init(start_ray_local=True, num_workers=0, num_local_schedulers=num_local_schedulers)
+    ray.worker._init(start_ray_local=True, num_workers=0,
+                     num_local_schedulers=num_local_schedulers)
 
     @ray.actor
     class Actor1(object):
       def __init__(self):
         pass
+
       def get_location(self):
         return ray.worker.global_worker.plasma_client.store_socket_name
 
@@ -509,7 +542,8 @@ class ActorsOnMultipleNodes(unittest.TestCase):
       names = set(locations)
       counts = [locations.count(name) for name in names]
       print("Counts are {}.".format(counts))
-      if len(names) == num_local_schedulers and all([count >= minimum_count for count in counts]):
+      if len(names) == num_local_schedulers and all([count >= minimum_count
+                                                     for count in counts]):
         break
       attempts += 1
     self.assertLess(attempts, num_attempts)
@@ -523,26 +557,32 @@ class ActorsOnMultipleNodes(unittest.TestCase):
 
     ray.worker.cleanup()
 
+
 class ActorsWithGPUs(unittest.TestCase):
 
   def testActorGPUs(self):
     num_local_schedulers = 3
     num_gpus_per_scheduler = 4
-    ray.worker._init(start_ray_local=True, num_workers=0,
-                     num_local_schedulers=num_local_schedulers,
-                     num_gpus=(num_local_schedulers * [num_gpus_per_scheduler]))
+    ray.worker._init(
+        start_ray_local=True, num_workers=0,
+        num_local_schedulers=num_local_schedulers,
+        num_gpus=(num_local_schedulers * [num_gpus_per_scheduler]))
 
     @ray.actor(num_gpus=1)
     class Actor1(object):
       def __init__(self):
         self.gpu_ids = ray.get_gpu_ids()
+
       def get_location_and_ids(self):
-        return ray.worker.global_worker.plasma_client.store_socket_name, tuple(self.gpu_ids)
+        return (ray.worker.global_worker.plasma_client.store_socket_name,
+                tuple(self.gpu_ids))
 
     # Create one actor per GPU.
-    actors = [Actor1() for _ in range(num_local_schedulers * num_gpus_per_scheduler)]
+    actors = [Actor1() for _
+              in range(num_local_schedulers * num_gpus_per_scheduler)]
     # Make sure that no two actors are assigned to the same GPU.
-    locations_and_ids = ray.get([actor.get_location_and_ids() for actor in actors])
+    locations_and_ids = ray.get([actor.get_location_and_ids()
+                                 for actor in actors])
     node_names = set([location for location, gpu_id in locations_and_ids])
     self.assertEqual(len(node_names), num_local_schedulers)
     location_actor_combinations = []
@@ -553,28 +593,32 @@ class ActorsWithGPUs(unittest.TestCase):
 
     # Creating a new actor should fail because all of the GPUs are being used.
     with self.assertRaises(Exception):
-      a = Actor1()
+      Actor1()
 
     ray.worker.cleanup()
 
   def testActorMultipleGPUs(self):
     num_local_schedulers = 3
     num_gpus_per_scheduler = 5
-    ray.worker._init(start_ray_local=True, num_workers=0,
-                     num_local_schedulers=num_local_schedulers,
-                     num_gpus=(num_local_schedulers * [num_gpus_per_scheduler]))
+    ray.worker._init(
+        start_ray_local=True, num_workers=0,
+        num_local_schedulers=num_local_schedulers,
+        num_gpus=(num_local_schedulers * [num_gpus_per_scheduler]))
 
     @ray.actor(num_gpus=2)
     class Actor1(object):
       def __init__(self):
         self.gpu_ids = ray.get_gpu_ids()
+
       def get_location_and_ids(self):
-        return ray.worker.global_worker.plasma_client.store_socket_name, tuple(self.gpu_ids)
+        return (ray.worker.global_worker.plasma_client.store_socket_name,
+                tuple(self.gpu_ids))
 
     # Create some actors.
     actors = [Actor1() for _ in range(num_local_schedulers * 2)]
     # Make sure that no two actors are assigned to the same GPU.
-    locations_and_ids = ray.get([actor.get_location_and_ids() for actor in actors])
+    locations_and_ids = ray.get([actor.get_location_and_ids()
+                                 for actor in actors])
     node_names = set([location for location, gpu_id in locations_and_ids])
     self.assertEqual(len(node_names), num_local_schedulers)
     location_actor_combinations = []
@@ -585,20 +629,23 @@ class ActorsWithGPUs(unittest.TestCase):
 
     # Creating a new actor should fail because all of the GPUs are being used.
     with self.assertRaises(Exception):
-      a = Actor1()
+      Actor1()
 
     # We should be able to create more actors that use only a single GPU.
     @ray.actor(num_gpus=1)
     class Actor2(object):
       def __init__(self):
         self.gpu_ids = ray.get_gpu_ids()
+
       def get_location_and_ids(self):
-        return ray.worker.global_worker.plasma_client.store_socket_name, tuple(self.gpu_ids)
+        return (ray.worker.global_worker.plasma_client.store_socket_name,
+                tuple(self.gpu_ids))
 
     # Create some actors.
     actors = [Actor2() for _ in range(num_local_schedulers)]
     # Make sure that no two actors are assigned to the same GPU.
-    locations_and_ids = ray.get([actor.get_location_and_ids() for actor in actors])
+    locations_and_ids = ray.get([actor.get_location_and_ids()
+                                 for actor in actors])
     node_names = set([location for location, gpu_id in locations_and_ids])
     self.assertEqual(len(node_names), num_local_schedulers)
     location_actor_combinations = []
@@ -608,13 +655,13 @@ class ActorsWithGPUs(unittest.TestCase):
 
     # Creating a new actor should fail because all of the GPUs are being used.
     with self.assertRaises(Exception):
-      a = Actor2()
+      Actor2()
 
     ray.worker.cleanup()
 
   def testActorDifferentNumbersOfGPUs(self):
-    # Test that we can create actors on two nodes that have different numbers of
-    # GPUs.
+    # Test that we can create actors on two nodes that have different numbers
+    # of GPUs.
     ray.worker._init(start_ray_local=True, num_workers=0,
                      num_local_schedulers=3, num_gpus=[0, 5, 10])
 
@@ -622,32 +669,38 @@ class ActorsWithGPUs(unittest.TestCase):
     class Actor1(object):
       def __init__(self):
         self.gpu_ids = ray.get_gpu_ids()
+
       def get_location_and_ids(self):
-        return ray.worker.global_worker.plasma_client.store_socket_name, tuple(self.gpu_ids)
+        return (ray.worker.global_worker.plasma_client.store_socket_name,
+                tuple(self.gpu_ids))
 
     # Create some actors.
     actors = [Actor1() for _ in range(0 + 5 + 10)]
     # Make sure that no two actors are assigned to the same GPU.
-    locations_and_ids = ray.get([actor.get_location_and_ids() for actor in actors])
+    locations_and_ids = ray.get([actor.get_location_and_ids()
+                                for actor in actors])
     node_names = set([location for location, gpu_id in locations_and_ids])
     self.assertEqual(len(node_names), 2)
     for node_name in node_names:
-      node_gpu_ids = [gpu_id for location, gpu_id in locations_and_ids if location == node_name]
+      node_gpu_ids = [gpu_id for location, gpu_id in locations_and_ids
+                      if location == node_name]
       self.assertIn(len(node_gpu_ids), [5, 10])
-      self.assertEqual(set(node_gpu_ids), set([(i,) for i in range(len(node_gpu_ids))]))
+      self.assertEqual(set(node_gpu_ids),
+                       set([(i,) for i in range(len(node_gpu_ids))]))
 
     # Creating a new actor should fail because all of the GPUs are being used.
     with self.assertRaises(Exception):
-      a = Actor1()
+      Actor1()
 
     ray.worker.cleanup()
 
   def testActorMultipleGPUsFromMultipleTasks(self):
     num_local_schedulers = 10
     num_gpus_per_scheduler = 10
-    ray.worker._init(start_ray_local=True, num_workers=0,
-                     num_local_schedulers=num_local_schedulers,
-                     num_gpus=(num_local_schedulers * [num_gpus_per_scheduler]))
+    ray.worker._init(
+        start_ray_local=True, num_workers=0,
+        num_local_schedulers=num_local_schedulers,
+        num_gpus=(num_local_schedulers * [num_gpus_per_scheduler]))
 
     @ray.remote
     def create_actors(n):
@@ -655,26 +708,32 @@ class ActorsWithGPUs(unittest.TestCase):
       class Actor(object):
         def __init__(self):
           self.gpu_ids = ray.get_gpu_ids()
+
         def get_location_and_ids(self):
-          return ray.worker.global_worker.plasma_client.store_socket_name, tuple(self.gpu_ids)
+          return (ray.worker.global_worker.plasma_client.store_socket_name,
+                  tuple(self.gpu_ids))
       # Create n actors.
       for _ in range(n):
         Actor()
 
-    ray.get([create_actors.remote(num_gpus_per_scheduler) for _ in range(num_local_schedulers)])
+    ray.get([create_actors.remote(num_gpus_per_scheduler)
+             for _ in range(num_local_schedulers)])
 
     @ray.actor(num_gpus=1)
     class Actor(object):
       def __init__(self):
         self.gpu_ids = ray.get_gpu_ids()
+
       def get_location_and_ids(self):
-        return ray.worker.global_worker.plasma_client.store_socket_name, tuple(self.gpu_ids)
+        return (ray.worker.global_worker.plasma_client.store_socket_name,
+                tuple(self.gpu_ids))
 
     # All the GPUs should be used up now.
     with self.assertRaises(Exception):
       Actor()
 
     ray.worker.cleanup()
+
 
 if __name__ == "__main__":
   unittest.main(verbosity=2)

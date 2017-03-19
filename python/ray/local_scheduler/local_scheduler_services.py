@@ -7,8 +7,10 @@ import random
 import subprocess
 import time
 
+
 def random_name():
   return str(random.randint(0, 99999999))
+
 
 def start_local_scheduler(plasma_store_name,
                           plasma_manager_name=None,
@@ -38,8 +40,8 @@ def start_local_scheduler(plasma_store_name,
       running on.
     redis_address (str): The address of the Redis instance to connect to. If
       this is not provided, then the local scheduler will not connect to Redis.
-    use_valgrind (bool): True if the local scheduler should be started inside of
-      valgrind. If this is True, use_profiler must be False.
+    use_valgrind (bool): True if the local scheduler should be started inside
+      of valgrind. If this is True, use_profiler must be False.
     use_profiler (bool): True if the local scheduler should be started inside a
       profiler. If this is True, use_valgrind must be False.
     stdout_file: A file handle opened for writing to redirect stdout to. If no
@@ -56,11 +58,14 @@ def start_local_scheduler(plasma_store_name,
     A tuple of the name of the local scheduler socket and the process ID of the
       local scheduler process.
   """
-  if (plasma_manager_name == None) != (redis_address == None):
-    raise Exception("If one of the plasma_manager_name and the redis_address is provided, then both must be provided.")
+  if (plasma_manager_name is None) != (redis_address is None):
+    raise Exception("If one of the plasma_manager_name and the redis_address "
+                    "is provided, then both must be provided.")
   if use_valgrind and use_profiler:
     raise Exception("Cannot use valgrind and profiler at the same time.")
-  local_scheduler_executable = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../core/src/local_scheduler/local_scheduler")
+  local_scheduler_executable = os.path.join(os.path.dirname(
+      os.path.abspath(__file__)),
+      "../core/src/local_scheduler/local_scheduler")
   local_scheduler_name = "/tmp/scheduler{}".format(random_name())
   command = [local_scheduler_executable,
              "-s", local_scheduler_name,
@@ -90,8 +95,10 @@ def start_local_scheduler(plasma_store_name,
   if plasma_address is not None:
     command += ["-a", plasma_address]
   if static_resource_list is not None:
-    assert all([isinstance(resource, int) or isinstance(resource, float) for resource in static_resource_list])
-    command += ["-c", ",".join([str(resource) for resource in static_resource_list])]
+    assert all([isinstance(resource, int) or isinstance(resource, float)
+                for resource in static_resource_list])
+    command += ["-c", ",".join([str(resource) for resource
+                in static_resource_list])]
 
   if use_valgrind:
     pid = subprocess.Popen(["valgrind",
@@ -99,7 +106,7 @@ def start_local_scheduler(plasma_store_name,
                             "--leak-check=full",
                             "--show-leak-kinds=all",
                             "--error-exitcode=1"] + command,
-                            stdout=stdout_file, stderr=stderr_file)
+                           stdout=stdout_file, stderr=stderr_file)
     time.sleep(1.0)
   elif use_profiler:
     pid = subprocess.Popen(["valgrind", "--tool=callgrind"] + command,

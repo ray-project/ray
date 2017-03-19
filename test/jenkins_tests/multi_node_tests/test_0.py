@@ -3,10 +3,12 @@ import time
 
 import ray
 
+
 @ray.remote
 def f():
   time.sleep(0.1)
   return ray.services.get_node_ip_address()
+
 
 if __name__ == "__main__":
   ray.init(redis_address=os.environ["RAY_REDIS_ADDRESS"])

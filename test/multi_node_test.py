@@ -2,17 +2,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 import os
 import unittest
 import ray
 import subprocess
-import sys
 import tempfile
 import time
 
-start_ray_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../scripts/start_ray.sh")
-stop_ray_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../scripts/stop_ray.sh")
+start_ray_script = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "../scripts/start_ray.sh")
+stop_ray_script = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                               "../scripts/stop_ray.sh")
+
 
 class MultiNodeTest(unittest.TestCase):
 
@@ -21,7 +22,8 @@ class MultiNodeTest(unittest.TestCase):
     out = subprocess.check_output([start_ray_script, "--head"]).decode("ascii")
     # Get the redis address from the output.
     redis_substring_prefix = "redis_address=\""
-    redis_address_location = out.find(redis_substring_prefix) + len(redis_substring_prefix)
+    redis_address_location = (out.find(redis_substring_prefix) +
+                              len(redis_substring_prefix))
     redis_address = out[redis_address_location:]
     self.redis_address = redis_address.split("\"")[0]
 
@@ -54,7 +56,8 @@ class MultiNodeTest(unittest.TestCase):
 
     # Make sure we got the error.
     self.assertEqual(len(ray.error_info()), 1)
-    self.assertIn(error_string1, ray.error_info()[0][b"message"].decode("ascii"))
+    self.assertIn(error_string1,
+                  ray.error_info()[0][b"message"].decode("ascii"))
 
     # Start another driver and make sure that it does not receive this error.
     # Make the other driver throw an error, and make sure it receives that
@@ -98,7 +101,8 @@ print("success")
 
     # Make sure that the other error message doesn't show up for this driver.
     self.assertEqual(len(ray.error_info()), 1)
-    self.assertIn(error_string1, ray.error_info()[0][b"message"].decode("ascii"))
+    self.assertIn(error_string1,
+                  ray.error_info()[0][b"message"].decode("ascii"))
 
     ray.worker.cleanup()
 
@@ -149,6 +153,7 @@ print("success")
 
     ray.worker.cleanup()
 
+
 class StartRayScriptTest(unittest.TestCase):
 
   def testCallingStartRayHead(self):
@@ -157,11 +162,12 @@ class StartRayScriptTest(unittest.TestCase):
     # the non-head node code path.
 
     # Test starting Ray with no arguments.
-    out = subprocess.check_output([start_ray_script, "--head"]).decode("ascii")
+    subprocess.check_output([start_ray_script, "--head"]).decode("ascii")
     subprocess.Popen([stop_ray_script]).wait()
 
     # Test starting Ray with a number of workers specified.
-    subprocess.check_output([start_ray_script, "--head", "--num-workers", "20"])
+    subprocess.check_output([start_ray_script, "--head", "--num-workers",
+                             "20"])
     subprocess.Popen([stop_ray_script]).wait()
 
     # Test starting Ray with a redis port specified.
@@ -203,6 +209,7 @@ class StartRayScriptTest(unittest.TestCase):
       subprocess.check_output([start_ray_script, "--head",
                                "--redis-address", "127.0.0.1:6379"])
     subprocess.Popen([stop_ray_script]).wait()
+
 
 if __name__ == "__main__":
   unittest.main(verbosity=2)

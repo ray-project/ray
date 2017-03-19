@@ -11,6 +11,7 @@ import redis
 # Import flatbuffer bindings.
 from ray.core.generated.TaskReply import TaskReply
 
+
 class TaskTests(unittest.TestCase):
 
   def testSubmittingTasks(self):
@@ -93,7 +94,7 @@ class TaskTests(unittest.TestCase):
     def f():
       return 1
 
-    n = 10 ** 4 # TODO(pcm): replace by 10 ** 5 once this is faster
+    n = 10 ** 4  # TODO(pcm): replace by 10 ** 5 once this is faster.
     l = ray.get([f.remote() for _ in range(n)])
     self.assertEqual(l, n * [1])
 
@@ -123,11 +124,13 @@ class TaskTests(unittest.TestCase):
           time.sleep(x)
 
         for i in range(1, 5):
-          x_ids = [g.remote(np.random.uniform(0, i)) for _ in range(2 * num_workers)]
+          x_ids = [g.remote(np.random.uniform(0, i))
+                   for _ in range(2 * num_workers)]
           ray.wait(x_ids, num_returns=len(x_ids))
 
         self.assertTrue(ray.services.all_processes_alive())
         ray.worker.cleanup()
+
 
 class ReconstructionTests(unittest.TestCase):
 
@@ -144,14 +147,10 @@ class ReconstructionTests(unittest.TestCase):
     plasma_addresses = []
     objstore_memory = (self.plasma_store_memory // self.num_local_schedulers)
     for i in range(self.num_local_schedulers):
-      plasma_addresses.append(
-          ray.services.start_objstore(node_ip_address, redis_address,
-                                      objstore_memory=objstore_memory)
-          )
-    address_info = {
-        "redis_address": redis_address,
-        "object_store_addresses": plasma_addresses,
-        }
+      plasma_addresses.append(ray.services.start_objstore(
+          node_ip_address, redis_address, objstore_memory=objstore_memory))
+    address_info = {"redis_address": redis_address,
+                    "object_store_addresses": plasma_addresses}
 
     # Start the rest of the services in the Ray cluster.
     ray.worker._init(address_info=address_info, start_ray_local=True,
@@ -180,7 +179,8 @@ class ReconstructionTests(unittest.TestCase):
     # total number of local schedulers to account for NIL_LOCAL_SCHEDULER_ID.
     # This is the local scheduler ID associated with the driver task, since it
     # is not scheduled by a particular local scheduler.
-    self.assertEqual(len(set(local_scheduler_ids)), self.num_local_schedulers + 1)
+    self.assertEqual(len(set(local_scheduler_ids)),
+                     self.num_local_schedulers + 1)
 
     # Clean up the Ray cluster.
     ray.worker.cleanup()
@@ -218,7 +218,7 @@ class ReconstructionTests(unittest.TestCase):
     num_chunks = 4 * self.num_local_schedulers
     chunk = num_objects // num_chunks
     for i in range(num_chunks):
-      values = ray.get(args[i * chunk : (i + 1) * chunk])
+      values = ray.get(args[i * chunk:(i + 1) * chunk])
       del values
 
   def testRecursive(self):
@@ -261,14 +261,14 @@ class ReconstructionTests(unittest.TestCase):
       self.assertEqual(value[0], i)
     # Get 10 values randomly.
     for _ in range(10):
-      i  = np.random.randint(num_objects)
+      i = np.random.randint(num_objects)
       value = ray.get(args[i])
       self.assertEqual(value[0], i)
     # Get values sequentially, in chunks.
     num_chunks = 4 * self.num_local_schedulers
     chunk = num_objects // num_chunks
     for i in range(num_chunks):
-      values = ray.get(args[i * chunk : (i + 1) * chunk])
+      values = ray.get(args[i * chunk:(i + 1) * chunk])
       del values
 
   def testMultipleRecursive(self):
@@ -316,7 +316,7 @@ class ReconstructionTests(unittest.TestCase):
       self.assertEqual(value[0], i)
     # Get 10 values randomly.
     for _ in range(10):
-      i  = np.random.randint(num_objects)
+      i = np.random.randint(num_objects)
       value = ray.get(args[i])
       self.assertEqual(value[0], i)
 
@@ -391,7 +391,8 @@ class ReconstructionTests(unittest.TestCase):
       return len(errors) >= min_errors
     errors = self.wait_for_errors(error_check)
     # Make sure all the errors have the correct type.
-    self.assertTrue(all(error[b"type"] == b"object_hash_mismatch" for error in errors))
+    self.assertTrue(all(error[b"type"] == b"object_hash_mismatch"
+                        for error in errors))
     # Make sure all the errors have the correct function name.
     self.assertTrue(all(error[b"data"] == b"__main__.foo" for error in errors))
 
@@ -462,20 +463,26 @@ class ReconstructionTests(unittest.TestCase):
         self.assertEqual(value[0], i)
 
     put_arg_task.remote(size)
+
     def error_check(errors):
       return len(errors) > 1
     errors = self.wait_for_errors(error_check)
     # Make sure all the errors have the correct type.
-    self.assertTrue(all(error[b"type"] == b"put_reconstruction" for error in errors))
-    self.assertTrue(all(error[b"data"] == b"__main__.put_arg_task" for error in errors))
+    self.assertTrue(all(error[b"type"] == b"put_reconstruction"
+                        for error in errors))
+    self.assertTrue(all(error[b"data"] == b"__main__.put_arg_task"
+                        for error in errors))
 
     put_task.remote(size)
+
     def error_check(errors):
       return any(error[b"data"] == b"__main__.put_task" for error in errors)
     errors = self.wait_for_errors(error_check)
     # Make sure all the errors have the correct type.
-    self.assertTrue(all(error[b"type"] == b"put_reconstruction" for error in errors))
-    self.assertTrue(any(error[b"data"] == b"__main__.put_task" for error in errors))
+    self.assertTrue(all(error[b"type"] == b"put_reconstruction"
+                        for error in errors))
+    self.assertTrue(any(error[b"data"] == b"__main__.put_task"
+                        for error in errors))
 
   def testDriverPutErrors(self):
     # Define the size of one task's return argument so that the combined sum of
@@ -511,11 +518,14 @@ class ReconstructionTests(unittest.TestCase):
     # were evicted and whose originating tasks are still running, this
     # for-loop should hang on its first iteration and push an error to the
     # driver.
-    ray.worker.global_worker.local_scheduler_client.reconstruct_object(args[0].id())
+    ray.worker.global_worker.local_scheduler_client.reconstruct_object(
+        args[0].id())
+
     def error_check(errors):
       return len(errors) > 1
     errors = self.wait_for_errors(error_check)
-    self.assertTrue(all(error[b"type"] == b"put_reconstruction" for error in errors))
+    self.assertTrue(all(error[b"type"] == b"put_reconstruction"
+                        for error in errors))
     self.assertTrue(all(error[b"data"] == b"Driver" for error in errors))
 
 
@@ -526,26 +536,27 @@ class ReconstructionTestsMultinode(ReconstructionTests):
   num_local_schedulers = 4
 
 # NOTE(swang): This test tries to launch 1000 workers and breaks.
-#class WorkerPoolTests(unittest.TestCase):
+# class WorkerPoolTests(unittest.TestCase):
 #
-#  def tearDown(self):
-#    ray.worker.cleanup()
+#   def tearDown(self):
+#     ray.worker.cleanup()
 #
-#  def testBlockingTasks(self):
-#    @ray.remote
-#    def f(i, j):
-#      return (i, j)
+#   def testBlockingTasks(self):
+#     @ray.remote
+#     def f(i, j):
+#       return (i, j)
 #
-#    @ray.remote
-#    def g(i):
-#      # Each instance of g submits and blocks on the result of another remote
-#      # task.
-#      object_ids = [f.remote(i, j) for j in range(10)]
-#      return ray.get(object_ids)
+#     @ray.remote
+#     def g(i):
+#       # Each instance of g submits and blocks on the result of another remote
+#       # task.
+#       object_ids = [f.remote(i, j) for j in range(10)]
+#       return ray.get(object_ids)
 #
-#    ray.init(num_workers=1)
-#    ray.get([g.remote(i) for i in range(1000)])
-#    ray.worker.cleanup()
+#     ray.init(num_workers=1)
+#     ray.get([g.remote(i) for i in range(1000)])
+#     ray.worker.cleanup()
+
 
 if __name__ == "__main__":
   unittest.main(verbosity=2)

@@ -3,9 +3,9 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
-import sys
 import time
 import unittest
+
 
 class ComponentFailureTest(unittest.TestCase):
 
@@ -16,6 +16,7 @@ class ComponentFailureTest(unittest.TestCase):
   # store and manager will not die.
   def testDyingWorkerGet(self):
     obj_id = 20 * b"a"
+
     @ray.remote
     def f():
       ray.worker.global_worker.plasma_client.get(obj_id)
@@ -40,12 +41,14 @@ class ComponentFailureTest(unittest.TestCase):
     time.sleep(0.1)
 
     # Make sure that nothing has died.
-    self.assertTrue(ray.services.all_processes_alive(exclude=[ray.services.PROCESS_TYPE_WORKER]))
+    self.assertTrue(ray.services.all_processes_alive(
+        exclude=[ray.services.PROCESS_TYPE_WORKER]))
 
-  # This test checks that when a worker dies in the middle of a wait, the plasma
-  # store and manager will not die.
+  # This test checks that when a worker dies in the middle of a wait, the
+  # plasma store and manager will not die.
   def testDyingWorkerWait(self):
     obj_id = 20 * b"a"
+
     @ray.remote
     def f():
       ray.worker.global_worker.plasma_client.wait([obj_id])
@@ -70,7 +73,8 @@ class ComponentFailureTest(unittest.TestCase):
     time.sleep(0.1)
 
     # Make sure that nothing has died.
-    self.assertTrue(ray.services.all_processes_alive(exclude=[ray.services.PROCESS_TYPE_WORKER]))
+    self.assertTrue(ray.services.all_processes_alive(
+        exclude=[ray.services.PROCESS_TYPE_WORKER]))
 
   def _testWorkerFailed(self, num_local_schedulers):
     @ray.remote
@@ -86,7 +90,8 @@ class ComponentFailureTest(unittest.TestCase):
                      num_cpus=[num_initial_workers] * num_local_schedulers)
     # Submit more tasks than there are workers so that all workers and cores
     # are utilized.
-    object_ids = [f.remote(i) for i in range(num_initial_workers * num_local_schedulers)]
+    object_ids = [f.remote(i) for i
+                  in range(num_initial_workers * num_local_schedulers)]
     object_ids += [f.remote(object_id) for object_id in object_ids]
     # Allow the tasks some time to begin executing.
     time.sleep(0.1)
@@ -94,7 +99,8 @@ class ComponentFailureTest(unittest.TestCase):
     for worker in ray.services.all_processes[ray.services.PROCESS_TYPE_WORKER]:
       worker.terminate()
       time.sleep(0.1)
-    # Make sure that we can still get the objects after the executing tasks died.
+    # Make sure that we can still get the objects after the executing tasks
+    # died.
     ray.get(object_ids)
 
   def testWorkerFailed(self):
@@ -104,8 +110,7 @@ class ComponentFailureTest(unittest.TestCase):
     self._testWorkerFailed(4)
 
   def _testComponentFailed(self, component_type):
-    """Kill a component on all worker nodes and check that workload succeeds.
-    """
+    """Kill a component on all worker nodes and check workload succeeds."""
     @ray.remote
     def f(x, j):
       time.sleep(0.2)
@@ -114,14 +119,16 @@ class ComponentFailureTest(unittest.TestCase):
     # Start with 4 workers and 4 cores.
     num_local_schedulers = 4
     num_workers_per_scheduler = 8
-    address_info = ray.worker._init(num_workers=num_local_schedulers * num_workers_per_scheduler,
-                                    num_local_schedulers=num_local_schedulers,
-                                    start_ray_local=True,
-                                    num_cpus=[num_workers_per_scheduler] * num_local_schedulers)
+    ray.worker._init(
+        num_workers=num_local_schedulers * num_workers_per_scheduler,
+        num_local_schedulers=num_local_schedulers,
+        start_ray_local=True,
+        num_cpus=[num_workers_per_scheduler] * num_local_schedulers)
 
-    # Submit more tasks than there are workers so that all workers and cores are
-    # utilized.
-    object_ids = [f.remote(i, 0) for i in range(num_workers_per_scheduler * num_local_schedulers)]
+    # Submit more tasks than there are workers so that all workers and cores
+    # are utilized.
+    object_ids = [f.remote(i, 0) for i
+                  in range(num_workers_per_scheduler * num_local_schedulers)]
     object_ids += [f.remote(object_id, 1) for object_id in object_ids]
     object_ids += [f.remote(object_id, 2) for object_id in object_ids]
 
@@ -140,7 +147,8 @@ class ComponentFailureTest(unittest.TestCase):
     # Make sure that we can still get the objects after the executing tasks
     # died.
     results = ray.get(object_ids)
-    expected_results = 4 * list(range(num_workers_per_scheduler * num_local_schedulers))
+    expected_results = 4 * list(range(
+        num_workers_per_scheduler * num_local_schedulers))
     self.assertEqual(results, expected_results)
 
   def check_components_alive(self, component_type, check_component_alive):
@@ -161,7 +169,8 @@ class ComponentFailureTest(unittest.TestCase):
     # nodes.
     self.check_components_alive(ray.services.PROCESS_TYPE_PLASMA_STORE, True)
     self.check_components_alive(ray.services.PROCESS_TYPE_PLASMA_MANAGER, True)
-    self.check_components_alive(ray.services.PROCESS_TYPE_LOCAL_SCHEDULER, False)
+    self.check_components_alive(ray.services.PROCESS_TYPE_LOCAL_SCHEDULER,
+                                False)
 
   def testPlasmaManagerFailed(self):
     # Kill all plasma managers on worker nodes.
@@ -170,8 +179,10 @@ class ComponentFailureTest(unittest.TestCase):
     # The plasma stores should still be alive (but unreachable) on the worker
     # nodes.
     self.check_components_alive(ray.services.PROCESS_TYPE_PLASMA_STORE, True)
-    self.check_components_alive(ray.services.PROCESS_TYPE_PLASMA_MANAGER, False)
-    self.check_components_alive(ray.services.PROCESS_TYPE_LOCAL_SCHEDULER, False)
+    self.check_components_alive(ray.services.PROCESS_TYPE_PLASMA_MANAGER,
+                                False)
+    self.check_components_alive(ray.services.PROCESS_TYPE_LOCAL_SCHEDULER,
+                                False)
 
   def testPlasmaStoreFailed(self):
     # Kill all plasma stores on worker nodes.
@@ -179,17 +190,19 @@ class ComponentFailureTest(unittest.TestCase):
 
     # No processes should be left alive on the worker nodes.
     self.check_components_alive(ray.services.PROCESS_TYPE_PLASMA_STORE, False)
-    self.check_components_alive(ray.services.PROCESS_TYPE_PLASMA_MANAGER, False)
-    self.check_components_alive(ray.services.PROCESS_TYPE_LOCAL_SCHEDULER, False)
+    self.check_components_alive(ray.services.PROCESS_TYPE_PLASMA_MANAGER,
+                                False)
+    self.check_components_alive(ray.services.PROCESS_TYPE_LOCAL_SCHEDULER,
+                                False)
 
   def testDriverLivesSequential(self):
     ray.worker.init()
+    all_processes = ray.services.all_processes
     processes = [
-        ray.services.all_processes[ray.services.PROCESS_TYPE_PLASMA_STORE][0],
-        ray.services.all_processes[ray.services.PROCESS_TYPE_PLASMA_MANAGER][0],
-        ray.services.all_processes[ray.services.PROCESS_TYPE_LOCAL_SCHEDULER][0],
-        ray.services.all_processes[ray.services.PROCESS_TYPE_GLOBAL_SCHEDULER][0],
-        ]
+        all_processes[ray.services.PROCESS_TYPE_PLASMA_STORE][0],
+        all_processes[ray.services.PROCESS_TYPE_PLASMA_MANAGER][0],
+        all_processes[ray.services.PROCESS_TYPE_LOCAL_SCHEDULER][0],
+        all_processes[ray.services.PROCESS_TYPE_GLOBAL_SCHEDULER][0]]
 
     # Kill all the components sequentially.
     for process in processes:
@@ -202,12 +215,12 @@ class ComponentFailureTest(unittest.TestCase):
 
   def testDriverLivesParallel(self):
     ray.worker.init()
+    all_processes = ray.services.all_processes
     processes = [
-        ray.services.all_processes[ray.services.PROCESS_TYPE_PLASMA_STORE][0],
-        ray.services.all_processes[ray.services.PROCESS_TYPE_PLASMA_MANAGER][0],
-        ray.services.all_processes[ray.services.PROCESS_TYPE_LOCAL_SCHEDULER][0],
-        ray.services.all_processes[ray.services.PROCESS_TYPE_GLOBAL_SCHEDULER][0],
-        ]
+        all_processes[ray.services.PROCESS_TYPE_PLASMA_STORE][0],
+        all_processes[ray.services.PROCESS_TYPE_PLASMA_MANAGER][0],
+        all_processes[ray.services.PROCESS_TYPE_LOCAL_SCHEDULER][0],
+        all_processes[ray.services.PROCESS_TYPE_GLOBAL_SCHEDULER][0]]
 
     # Kill all the components in parallel.
     for process in processes:
@@ -221,6 +234,7 @@ class ComponentFailureTest(unittest.TestCase):
       process.wait()
 
     # If the driver can reach the tearDown method, then it is still alive.
+
 
 if __name__ == "__main__":
   unittest.main(verbosity=2)

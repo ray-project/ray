@@ -9,13 +9,15 @@ import tempfile
 import time
 import unittest
 
+import ray.test.test_functions as test_functions
+
 if sys.version_info >= (3, 0):
   from importlib import reload
 
-import ray.test.test_functions as test_functions
 
 def relevant_errors(error_type):
   return [info for info in ray.error_info() if info[b"type"] == error_type]
+
 
 def wait_for_errors(error_type, num_errors, timeout=10):
   start_time = time.time()
@@ -25,6 +27,7 @@ def wait_for_errors(error_type, num_errors, timeout=10):
     time.sleep(0.1)
   print("Timing out of wait.")
 
+
 class FailureTest(unittest.TestCase):
   def testUnknownSerialization(self):
     reload(test_functions)
@@ -32,10 +35,10 @@ class FailureTest(unittest.TestCase):
 
     test_functions.test_unknown_type.remote()
     wait_for_errors(b"task", 1)
-    error_info = ray.error_info()
     self.assertEqual(len(relevant_errors(b"task")), 1)
 
     ray.worker.cleanup()
+
 
 class TaskSerializationTest(unittest.TestCase):
   def testReturnAndPassUnknownType(self):
@@ -43,20 +46,23 @@ class TaskSerializationTest(unittest.TestCase):
 
     class Foo(object):
       pass
+
     # Check that returning an unknown type from a remote function raises an
     # exception.
     @ray.remote
     def f():
       return Foo()
-    self.assertRaises(Exception, lambda : ray.get(f.remote()))
+    self.assertRaises(Exception, lambda: ray.get(f.remote()))
+
     # Check that passing an unknown type into a remote function raises an
     # exception.
     @ray.remote
     def g(x):
       return 1
-    self.assertRaises(Exception, lambda : g.remote(Foo()))
+    self.assertRaises(Exception, lambda: g.remote(Foo()))
 
     ray.worker.cleanup()
+
 
 class TaskStatusTest(unittest.TestCase):
   def testFailedTask(self):
@@ -66,10 +72,10 @@ class TaskStatusTest(unittest.TestCase):
     test_functions.throw_exception_fct1.remote()
     test_functions.throw_exception_fct1.remote()
     wait_for_errors(b"task", 2)
-    result = ray.error_info()
     self.assertEqual(len(relevant_errors(b"task")), 2)
     for task in relevant_errors(b"task"):
-      self.assertIn(b"Test function 1 intentionally failed.", task.get(b"message"))
+      self.assertIn(b"Test function 1 intentionally failed.",
+                    task.get(b"message"))
 
     x = test_functions.throw_exception_fct2.remote()
     try:
@@ -77,7 +83,8 @@ class TaskStatusTest(unittest.TestCase):
     except Exception as e:
       self.assertIn("Test function 2 intentionally failed.", str(e))
     else:
-      self.assertTrue(False) # ray.get should throw an exception
+      # ray.get should throw an exception.
+      self.assertTrue(False)
 
     x, y, z = test_functions.throw_exception_fct3.remote(1.0)
     for ref in [x, y, z]:
@@ -86,7 +93,8 @@ class TaskStatusTest(unittest.TestCase):
       except Exception as e:
         self.assertIn("Test function 3 intentionally failed.", str(e))
       else:
-        self.assertTrue(False) # ray.get should throw an exception
+        # ray.get should throw an exception.
+        self.assertTrue(False)
 
     ray.worker.cleanup()
 
@@ -108,8 +116,8 @@ def temporary_helper_function():
     sys.path.append(directory)
     module = __import__(module_name)
 
-    # Define a function that closes over this temporary module. This should fail
-    # when it is unpickled.
+    # Define a function that closes over this temporary module. This should
+    # fail when it is unpickled.
     @ray.remote
     def g():
       return module.temporary_python_file()
@@ -121,7 +129,7 @@ def temporary_helper_function():
     # Check that if we try to call the function it throws an exception and does
     # not hang.
     for _ in range(10):
-      self.assertRaises(Exception, lambda : ray.get(g.remote()))
+      self.assertRaises(Exception, lambda: ray.get(g.remote()))
 
     f.close()
 
@@ -150,16 +158,19 @@ def temporary_helper_function():
 
     def initializer():
       return 0
+
     def reinitializer(foo):
       raise Exception("The reinitializer failed.")
     ray.env.foo = ray.EnvironmentVariable(initializer, reinitializer)
+
     @ray.remote
     def use_foo():
       ray.env.foo
     use_foo.remote()
     wait_for_errors(b"reinitialize_environment_variable", 1)
     # Check that the error message is in the task info.
-    self.assertIn(b"The reinitializer failed.", ray.error_info()[0][b"message"])
+    self.assertIn(b"The reinitializer failed.",
+                  ray.error_info()[0][b"message"])
 
     ray.worker.cleanup()
 
@@ -202,6 +213,7 @@ def temporary_helper_function():
     class Foo(object):
       def __init__(self):
         self.x = module.temporary_python_file()
+
       def get_val(self):
         return 1
 
@@ -217,7 +229,8 @@ def temporary_helper_function():
 
     # Wait for the error from when the __init__ tries to run.
     wait_for_errors(b"task", 1)
-    self.assertIn(b"failed to be imported, and so cannot execute this method", ray.error_info()[1][b"message"])
+    self.assertIn(b"failed to be imported, and so cannot execute this method",
+                  ray.error_info()[1][b"message"])
 
     # Check that if we try to get the function it throws an exception and does
     # not hang.
@@ -226,13 +239,15 @@ def temporary_helper_function():
 
     # Wait for the error from when the call to get_val.
     wait_for_errors(b"task", 2)
-    self.assertIn(b"failed to be imported, and so cannot execute this method", ray.error_info()[2][b"message"])
+    self.assertIn(b"failed to be imported, and so cannot execute this method",
+                  ray.error_info()[2][b"message"])
 
     f.close()
 
     # Clean up the junk we added to sys.path.
     sys.path.pop(-1)
     ray.worker.cleanup()
+
 
 class ActorTest(unittest.TestCase):
 
@@ -241,12 +256,15 @@ class ActorTest(unittest.TestCase):
 
     error_message1 = "actor constructor failed"
     error_message2 = "actor method failed"
+
     @ray.actor
     class FailedActor(object):
       def __init__(self):
         raise Exception(error_message1)
+
       def get_val(self):
         return 1
+
       def fail_method(self):
         raise Exception(error_message2)
 
@@ -255,13 +273,15 @@ class ActorTest(unittest.TestCase):
     # Make sure that we get errors from a failed constructor.
     wait_for_errors(b"task", 1)
     self.assertEqual(len(ray.error_info()), 1)
-    self.assertIn(error_message1, ray.error_info()[0][b"message"].decode("ascii"))
+    self.assertIn(error_message1,
+                  ray.error_info()[0][b"message"].decode("ascii"))
 
     # Make sure that we get errors from a failed method.
     a.fail_method()
     wait_for_errors(b"task", 2)
     self.assertEqual(len(ray.error_info()), 2)
-    self.assertIn(error_message2, ray.error_info()[1][b"message"].decode("ascii"))
+    self.assertIn(error_message2,
+                  ray.error_info()[1][b"message"].decode("ascii"))
 
     ray.worker.cleanup()
 
@@ -272,6 +292,7 @@ class ActorTest(unittest.TestCase):
     class Actor(object):
       def __init__(self, missing_variable_name):
         pass
+
       def get_val(self, x):
         pass
 
@@ -284,18 +305,22 @@ class ActorTest(unittest.TestCase):
     wait_for_errors(b"task", 1)
     self.assertEqual(len(ray.error_info()), 1)
     if sys.version_info >= (3, 0):
-      self.assertIn("missing 1 required", ray.error_info()[0][b"message"].decode("ascii"))
+      self.assertIn("missing 1 required",
+                    ray.error_info()[0][b"message"].decode("ascii"))
     else:
-      self.assertIn("takes exactly 2 arguments", ray.error_info()[0][b"message"].decode("ascii"))
+      self.assertIn("takes exactly 2 arguments",
+                    ray.error_info()[0][b"message"].decode("ascii"))
 
     # Create an actor with too many arguments.
     a = Actor(1, 2)
     wait_for_errors(b"task", 2)
     self.assertEqual(len(ray.error_info()), 2)
     if sys.version_info >= (3, 0):
-      self.assertIn("but 3 were given", ray.error_info()[1][b"message"].decode("ascii"))
+      self.assertIn("but 3 were given",
+                    ray.error_info()[1][b"message"].decode("ascii"))
     else:
-      self.assertIn("takes exactly 2 arguments", ray.error_info()[1][b"message"].decode("ascii"))
+      self.assertIn("takes exactly 2 arguments",
+                    ray.error_info()[1][b"message"].decode("ascii"))
 
     # Create an actor the correct number of arguments.
     a = Actor(1)
@@ -305,23 +330,28 @@ class ActorTest(unittest.TestCase):
     wait_for_errors(b"task", 3)
     self.assertEqual(len(ray.error_info()), 3)
     if sys.version_info >= (3, 0):
-      self.assertIn("missing 1 required", ray.error_info()[2][b"message"].decode("ascii"))
+      self.assertIn("missing 1 required",
+                    ray.error_info()[2][b"message"].decode("ascii"))
     else:
-      self.assertIn("takes exactly 2 arguments", ray.error_info()[2][b"message"].decode("ascii"))
+      self.assertIn("takes exactly 2 arguments",
+                    ray.error_info()[2][b"message"].decode("ascii"))
 
     # Call a method with too many arguments.
     a.get_val(1, 2)
     wait_for_errors(b"task", 4)
     self.assertEqual(len(ray.error_info()), 4)
     if sys.version_info >= (3, 0):
-      self.assertIn("but 3 were given", ray.error_info()[3][b"message"].decode("ascii"))
+      self.assertIn("but 3 were given",
+                    ray.error_info()[3][b"message"].decode("ascii"))
     else:
-      self.assertIn("takes exactly 2 arguments", ray.error_info()[3][b"message"].decode("ascii"))
+      self.assertIn("takes exactly 2 arguments",
+                    ray.error_info()[3][b"message"].decode("ascii"))
     # Call a method that doesn't exist.
     with self.assertRaises(AttributeError):
       a.nonexistent_method()
 
     ray.worker.cleanup()
+
 
 if __name__ == "__main__":
   unittest.main(verbosity=2)

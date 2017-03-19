@@ -7,6 +7,7 @@ import numpy as np
 import ray.numbuf
 import ray.pickling as pickling
 
+
 def check_serializable(cls):
   """Throws an exception if Ray cannot serialize this class efficiently.
 
@@ -21,15 +22,30 @@ def check_serializable(cls):
     # This case works.
     return
   if not hasattr(cls, "__new__"):
-    raise Exception("The class {} does not have a '__new__' attribute, and is probably an old-style class. We do not support this. Please either make it a new-style class by inheriting from 'object', or use 'ray.register_class(cls, pickle=True)'. However, note that pickle is inefficient.".format(cls))
+    raise Exception("The class {} does not have a '__new__' attribute, and is "
+                    "probably an old-style class. We do not support this. "
+                    "Please either make it a new-style class by inheriting "
+                    "from 'object', or use "
+                    "'ray.register_class(cls, pickle=True)'. However, note "
+                    "that pickle is inefficient.".format(cls))
   try:
     obj = cls.__new__(cls)
   except:
-    raise Exception("The class {} has overridden '__new__', so Ray may not be able to serialize it efficiently. Try using 'ray.register_class(cls, pickle=True)'. However, note that pickle is inefficient.".format(cls))
+    raise Exception("The class {} has overridden '__new__', so Ray may not be "
+                    "able to serialize it efficiently. Try using "
+                    "'ray.register_class(cls, pickle=True)'. However, note "
+                    "that pickle is inefficient.".format(cls))
   if not hasattr(obj, "__dict__"):
-    raise Exception("Objects of the class {} do not have a `__dict__` attribute, so Ray cannot serialize it efficiently. Try using 'ray.register_class(cls, pickle=True)'. However, note that pickle is inefficient.".format(cls))
+    raise Exception("Objects of the class {} do not have a `__dict__` "
+                    "attribute, so Ray cannot serialize it efficiently. Try "
+                    "using 'ray.register_class(cls, pickle=True)'. However, "
+                    "note that pickle is inefficient.".format(cls))
   if hasattr(obj, "__slots__"):
-    raise Exception("The class {} uses '__slots__', so Ray may not be able to serialize it efficiently. Try using 'ray.register_class(cls, pickle=True)'. However, note that pickle is inefficient.".format(cls))
+    raise Exception("The class {} uses '__slots__', so Ray may not be able to "
+                    "serialize it efficiently. Try using "
+                    "'ray.register_class(cls, pickle=True)'. However, note "
+                    "that pickle is inefficient.".format(cls))
+
 
 # This field keeps track of a whitelisted set of classes that Ray will
 # serialize.
@@ -38,9 +54,11 @@ classes_to_pickle = set()
 custom_serializers = {}
 custom_deserializers = {}
 
+
 def class_identifier(typ):
   """Return a string that identifies this type."""
   return "{}.{}".format(typ.__module__, typ.__name__)
+
 
 def is_named_tuple(cls):
   """Return True if cls is a namedtuple and False otherwise."""
@@ -52,7 +70,9 @@ def is_named_tuple(cls):
     return False
   return all(type(n) == str for n in f)
 
-def add_class_to_whitelist(cls, pickle=False, custom_serializer=None, custom_deserializer=None):
+
+def add_class_to_whitelist(cls, pickle=False, custom_serializer=None,
+                           custom_deserializer=None):
   """Add cls to the list of classes that we can serialize.
 
   Args:
@@ -72,13 +92,21 @@ def add_class_to_whitelist(cls, pickle=False, custom_serializer=None, custom_des
     custom_serializers[class_id] = custom_serializer
     custom_deserializers[class_id] = custom_deserializer
 
+
 # Here we define a custom serializer and deserializer for handling numpy
 # arrays that contain objects.
 def array_custom_serializer(obj):
   return obj.tolist(), obj.dtype.str
+
+
 def array_custom_deserializer(serialized_obj):
   return np.array(serialized_obj[0], dtype=np.dtype(serialized_obj[1]))
-add_class_to_whitelist(np.ndarray, pickle=False, custom_serializer=array_custom_serializer, custom_deserializer=array_custom_deserializer)
+
+
+add_class_to_whitelist(np.ndarray, pickle=False,
+                       custom_serializer=array_custom_serializer,
+                       custom_deserializer=array_custom_deserializer)
+
 
 def serialize(obj):
   """This is the callback that will be used by numbuf.
@@ -94,7 +122,9 @@ def serialize(obj):
   """
   class_id = class_identifier(type(obj))
   if class_id not in whitelisted_classes:
-    raise Exception("Ray does not know how to serialize objects of type {}. To fix this, call 'ray.register_class' with this class.".format(type(obj)))
+    raise Exception("Ray does not know how to serialize objects of type {}. "
+                    "To fix this, call 'ray.register_class' with this class."
+                    .format(type(obj)))
   if class_id in classes_to_pickle:
     serialized_obj = {"data": pickling.dumps(obj)}
   elif class_id in custom_serializers.keys():
@@ -107,9 +137,11 @@ def serialize(obj):
     elif hasattr(obj, "__dict__"):
       serialized_obj = obj.__dict__
     else:
-      raise Exception("We do not know how to serialize the object '{}'".format(obj))
+      raise Exception("We do not know how to serialize the object '{}'"
+                      .format(obj))
   result = dict(serialized_obj, **{"_pytype_": class_id})
   return result
+
 
 def deserialize(serialized_obj):
   """This is the callback that will be used by numbuf.
@@ -139,11 +171,13 @@ def deserialize(serialized_obj):
       obj.__dict__.update(serialized_obj)
   return obj
 
+
 def set_callbacks():
   """Register the custom callbacks with numbuf.
 
   The serialize callback is used to serialize objects that numbuf does not know
-  how to serialize (for example custom Python classes). The deserialize callback
-  is used to serialize objects that were serialized by the serialize callback.
+  how to serialize (for example custom Python classes). The deserialize
+  callback is used to serialize objects that were serialized by the serialize
+  callback.
   """
   ray.numbuf.register_callbacks(serialize, deserialize)
