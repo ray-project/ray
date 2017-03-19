@@ -226,6 +226,8 @@ if __name__ == "__main__":
     d.stop_ray()
 
   if "success" in run_result and run_result["success"]:
+    print("RESULT: Test {} succeeded.".format(args.test_script))
     sys.exit(0)
   else:
+    print("RESULT: Test {} failed.".format(args.test_script))
     sys.exit(1)
