@@ -219,7 +219,6 @@ if __name__ == "__main__":
   d.start_ray(mem_size=args.mem_size, shm_size=args.shm_size,
               num_nodes=args.num_nodes, docker_image=args.docker_image,
               development_mode=args.development_mode)
-  time.sleep(2)
   try:
     run_result = d.run_test(args.test_script)
   finally:
