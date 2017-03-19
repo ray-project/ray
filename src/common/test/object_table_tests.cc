@@ -34,6 +34,7 @@ void new_object_fail_callback(UniqueID id,
 
 void new_object_done_callback(ObjectID object_id,
                               TaskID task_id,
+                              bool is_put,
                               void *user_context) {
   new_object_succeeded = 1;
   CHECK(ObjectID_equal(object_id, new_object_id));
@@ -60,7 +61,7 @@ void new_object_task_callback(TaskID task_id, void *user_context) {
       .fail_callback = new_object_fail_callback,
   };
   DBHandle *db = (DBHandle *) user_context;
-  result_table_add(db, new_object_id, new_object_task_id, &retry,
+  result_table_add(db, new_object_id, new_object_task_id, false, &retry,
                    new_object_lookup_callback, (void *) db);
 }
 
@@ -95,6 +96,7 @@ TEST new_object_test(void) {
 
 void new_object_no_task_callback(ObjectID object_id,
                                  TaskID task_id,
+                                 bool is_put,
                                  void *user_context) {
   new_object_succeeded = 1;
   CHECK(IS_NIL_ID(task_id));

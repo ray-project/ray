@@ -52,6 +52,7 @@ GET_TIMEOUT_MILLISECONDS = 1000
 # This must be kept in sync with the `error_types` array in
 # common/state/error_table.h.
 OBJECT_HASH_MISMATCH_ERROR_TYPE = b"object_hash_mismatch"
+PUT_RECONSTRUCTION_ERROR_TYPE = b"put_reconstruction"
 
 def random_string():
   return np.random.bytes(20)
@@ -696,7 +697,9 @@ def error_info(worker=global_worker):
       error_contents = worker.redis_client.hgetall(error_key)
       # If the error is an object hash mismatch, look up the function name for
       # the nondeterministic task.
-      if error_contents[b"type"] == OBJECT_HASH_MISMATCH_ERROR_TYPE:
+      error_type = error_contents[b"type"]
+      if (error_type == OBJECT_HASH_MISMATCH_ERROR_TYPE or error_type ==
+          PUT_RECONSTRUCTION_ERROR_TYPE):
         function_id = error_contents[b"data"]
         function_name = worker.redis_client.hget("RemoteFunction:{}".format(function_id), "name")
         error_contents[b"data"] = function_name
@@ -1503,7 +1506,8 @@ def put(value, worker=global_worker):
     if worker.mode == PYTHON_MODE:
       # In PYTHON_MODE, ray.put is the identity operation
       return value
-    object_id = ray.local_scheduler.compute_put_id(worker.current_task_id, worker.put_index)
+    object_id = worker.local_scheduler_client.compute_put_id(
+            worker.current_task_id, worker.put_index)
     worker.put_object(object_id, value)
     worker.put_index += 1
     return object_id

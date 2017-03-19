@@ -127,3 +127,12 @@ table LocalSchedulerInfoMessage {
 }
 
 root_type LocalSchedulerInfoMessage;
+
+table ResultTableReply {
+  // The task ID of the task that created the object.
+  task_id: string;
+  // Whether the task created the object through a ray.put.
+  is_put: bool;
+}
+
+root_type ResultTableReply;

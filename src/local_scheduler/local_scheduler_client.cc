@@ -92,3 +92,15 @@ void local_scheduler_log_message(LocalSchedulerConnection *conn) {
 void local_scheduler_notify_unblocked(LocalSchedulerConnection *conn) {
   write_message(conn->conn, MessageType_NotifyUnblocked, 0, NULL);
 }
+
+void local_scheduler_put_object(LocalSchedulerConnection *conn,
+                                TaskID task_id,
+                                ObjectID object_id) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = CreatePutObject(fbb, to_flatbuf(fbb, task_id),
+                                 to_flatbuf(fbb, object_id));
+  fbb.Finish(message);
+
+  write_message(conn->conn, MessageType_PutObject, fbb.GetSize(),
+                fbb.GetBufferPointer());
+}

@@ -20,6 +20,7 @@
 #include "state/db.h"
 #include "state/task_table.h"
 #include "state/object_table.h"
+#include "state/error_table.h"
 #include "utarray.h"
 #include "uthash.h"
 
@@ -124,9 +125,12 @@ void kill_worker(LocalSchedulerClient *worker, bool cleanup) {
 
   /* Clean up the task in progress. */
   if (worker->task_in_progress) {
-    /* Return the resources that the worker was using. */
-    TaskSpec *spec = Task_task_spec(worker->task_in_progress);
-    update_dynamic_resources(state, spec, true);
+    if (!worker->is_blocked) {
+      /* Return the resources that the worker was using, if any. Blocked
+       * workers do not use resources. */
+      TaskSpec *spec = Task_task_spec(worker->task_in_progress);
+      update_dynamic_resources(state, spec, true);
+    }
     /* Update the task table to reflect that the task failed to complete. */
     if (state->db != NULL) {
       Task_set_state(worker->task_in_progress, TASK_STATUS_LOST);
@@ -517,14 +521,33 @@ void reconstruct_task_update_callback(Task *task, void *user_context) {
   }
 }
 
+void log_put_reconstruction_error(Task *task, void *user_context) {
+  LOG_WARN("Put reconstruction!");
+  if (task == NULL) {
+    return;
+  }
+  LocalSchedulerState *state = (LocalSchedulerState *) user_context;
+  TaskSpec *spec = Task_task_spec(task);
+  FunctionID function = TaskSpec_function(spec);
+  push_error(state->db, TaskSpec_driver_id(spec),
+             PUT_RECONSTRUCTION_ERROR_INDEX, sizeof(function), function.id);
+}
+
 void reconstruct_evicted_result_lookup_callback(ObjectID reconstruct_object_id,
                                                 TaskID task_id,
+                                                bool is_put,
                                                 void *user_context) {
   /* TODO(swang): The following check will fail if an object was created by a
    * put. */
   CHECKM(!IS_NIL_ID(task_id),
          "No task information found for object during reconstruction");
   LocalSchedulerState *state = (LocalSchedulerState *) user_context;
+  if (is_put) {
+    task_table_get_task(state->db, task_id, NULL, log_put_reconstruction_error,
+                        state);
+    return;
+  }
+
   /* If there are no other instances of the task running, it's safe for us to
    * claim responsibility for reconstruction. */
   task_table_test_and_update(state->db, task_id,
@@ -535,6 +558,7 @@ void reconstruct_evicted_result_lookup_callback(ObjectID reconstruct_object_id,
 
 void reconstruct_failed_result_lookup_callback(ObjectID reconstruct_object_id,
                                                TaskID task_id,
+                                               bool is_put,
                                                void *user_context) {
   /* TODO(swang): The following check will fail if an object was created by a
    * put. */
@@ -613,7 +637,8 @@ void process_message(event_loop *loop,
       TaskID task_id = TaskSpec_task_id(spec);
       for (int64_t i = 0; i < TaskSpec_num_returns(spec); ++i) {
         ObjectID return_id = TaskSpec_return(spec, i);
-        result_table_add(state->db, return_id, task_id, NULL, NULL, NULL);
+        result_table_add(state->db, return_id, task_id, false, NULL, NULL,
+                         NULL);
       }
     }
 
@@ -744,6 +769,12 @@ void process_message(event_loop *loop,
       }
     }
     print_worker_info("Worker unblocked", state->algorithm_state);
+  } break;
+  case MessageType_PutObject: {
+    auto message =
+        flatbuffers::GetRoot<PutObject>(utarray_front(state->input_buffer));
+    result_table_add(state->db, from_flatbuf(message->object_id()),
+                     from_flatbuf(message->task_id()), true, NULL, NULL, NULL);
   } break;
   default:
     /* This code should be unreachable. */

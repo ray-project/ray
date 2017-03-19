@@ -690,27 +690,40 @@ int ObjectInfoSubscribe_RedisCommand(RedisModuleCtx *ctx,
  *
  * This is called from a client with the command:
  *
- *     RAY.RESULT_TABLE_ADD <object id> <task id>
+ *     RAY.RESULT_TABLE_ADD <object id> <task id> <is_put>
  *
  * @param object_id A string representing the object ID.
  * @param task_id A string representing the task ID of the task that produced
  *        the object.
+ * @param is_put A boolean representing whether the object was created through
+ *        ray.put.
  * @return OK if the operation was successful.
  */
 int ResultTableAdd_RedisCommand(RedisModuleCtx *ctx,
                                 RedisModuleString **argv,
                                 int argc) {
-  if (argc != 3) {
+  if (argc != 4) {
     return RedisModule_WrongArity(ctx);
   }
 
   /* Set the task ID under field "task" in the object info table. */
   RedisModuleString *object_id = argv[1];
   RedisModuleString *task_id = argv[2];
+  RedisModuleString *is_put = argv[3];
+
+  /* Check to make sure the is_put field was a 0 or a 1. */
+  long long is_put_integer;
+  if ((RedisModule_StringToLongLong(is_put, &is_put_integer) !=
+       REDISMODULE_OK) ||
+      (is_put_integer != 0 && is_put_integer != 1)) {
+    return RedisModule_ReplyWithError(
+        ctx, "The is_put field must be either a 0 or a 1.");
+  }
 
   RedisModuleKey *key;
   key = OpenPrefixedKey(ctx, OBJECT_INFO_PREFIX, object_id, REDISMODULE_WRITE);
-  RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "task", task_id, NULL);
+  RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "task", task_id, "is_put",
+                      is_put, NULL);
 
   /* Clean up. */
   RedisModule_CloseKey(key);
@@ -790,10 +803,8 @@ int ReplyWithTask(RedisModuleCtx *ctx, RedisModuleString *task_id) {
  *     RAY.RESULT_TABLE_LOOKUP <object id>
  *
  * @param object_id A string representing the object ID.
- * @return NIL if the object ID is not in the result table or if the
- *         corresponding task ID is not in the task table. Otherwise, this
- *         returns an array of the scheduling state, the local scheduler ID, and
- *         the task spec for the task corresponding to this object ID.
+ * @return NIL if the object ID is not in the result table. Otherwise, this
+ *         returns a ResultTableReply flatbuffer.
  */
 int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
                                    RedisModuleString **argv,
@@ -814,13 +825,38 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
   }
 
   RedisModuleString *task_id;
-  RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "task", &task_id, NULL);
+  RedisModuleString *is_put;
+  RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "task", &task_id, "is_put",
+                      &is_put, NULL);
   RedisModule_CloseKey(key);
   if (task_id == NULL) {
-    return RedisModule_ReplyWithNull(ctx);
+    RedisModule_FreeString(ctx, is_put);
+    RedisModule_FreeString(ctx, task_id);
+    return RedisModule_ReplyWithError(ctx, "Empty result table entry");
   }
 
-  RedisModule_ReplyWithString(ctx, task_id);
+  /* Check to make sure the is_put field was a 0 or a 1. */
+  long long is_put_integer;
+  if (RedisModule_StringToLongLong(is_put, &is_put_integer) != REDISMODULE_OK ||
+      (is_put_integer != 0 && is_put_integer != 1)) {
+    RedisModule_FreeString(ctx, is_put);
+    RedisModule_FreeString(ctx, task_id);
+    return RedisModule_ReplyWithError(
+        ctx, "The is_put field must be either a 0 or a 1.");
+  }
+
+  /* Make and return the flatbuffer reply. */
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = CreateResultTableReply(fbb, RedisStringToFlatbuf(fbb, task_id),
+                                        bool(is_put_integer));
+  fbb.Finish(message);
+  RedisModuleString *reply = RedisModule_CreateString(
+      ctx, (const char *) fbb.GetBufferPointer(), fbb.GetSize());
+  RedisModule_ReplyWithString(ctx, reply);
+
+  /* Clean up. */
+  RedisModule_FreeString(ctx, reply);
+  RedisModule_FreeString(ctx, is_put);
   RedisModule_FreeString(ctx, task_id);
 
   return REDISMODULE_OK;

@@ -302,6 +302,21 @@ class ReconstructionTests(unittest.TestCase):
       value = ray.get(args[i])
       self.assertEqual(value[0], i)
 
+  def wait_for_errors(self, error_check):
+    # Wait for errors from all the nondeterministic tasks.
+    errors = []
+    time_left = 100
+    while time_left > 0:
+      errors = ray.error_info()
+      if error_check(errors):
+        break
+      time_left -= 0.1
+      time.sleep(0.1)
+
+    # Make sure that enough errors came through.
+    self.assertTrue(error_check(errors))
+    return errors
+
   def testNondeterministicTask(self):
     # Define the size of one task's return argument so that the combined sum of
     # all objects' sizes is at least twice the plasma stores' combined allotted
@@ -345,17 +360,9 @@ class ReconstructionTests(unittest.TestCase):
       value = ray.get(args[i])
       self.assertEqual(value[0], i)
 
-    # Wait for errors from all the nondeterministic tasks.
-    time_left = 100
-    while time_left > 0:
-      errors = ray.error_info()
-      if len(errors) >= num_objects / 2:
-        break
-      time_left -= 0.1
-      time.sleep(0.1)
-
-    # Make sure that enough errors came through.
-    self.assertTrue(len(errors) >= num_objects / 2)
+    def error_check(errors):
+      return len(errors) > num_objects / 2
+    errors = self.wait_for_errors(error_check)
     # Make sure all the errors have the correct type.
     self.assertTrue(all(error[b"type"] == b"object_hash_mismatch" for error in errors))
     # Make sure all the errors have the correct function name.
@@ -371,7 +378,6 @@ class ReconstructionTests(unittest.TestCase):
     # Define a task with a single dependency, which returns its one argument.
     @ray.remote
     def single_dependency(i, arg):
-      print("Executing", i)
       arg = np.copy(arg)
       arg[0] = i
       return arg
@@ -379,11 +385,11 @@ class ReconstructionTests(unittest.TestCase):
     # Define a root task with no dependencies, which returns a numpy array of
     # the given size.
     @ray.remote
-    def no_dependency_task(size):
+    def put_arg_task(size):
       # Launch num_objects instances of the remote task, each dependent on the
       # one before it.
-      arg = ray.put(np.zeros(size))
       args = []
+      arg = single_dependency.remote(0, np.zeros(size))
       for i in range(num_objects):
         arg = single_dependency.remote(i, arg)
         args.append(arg)
@@ -391,19 +397,54 @@ class ReconstructionTests(unittest.TestCase):
       # Get each value to force each task to finish. After some number of gets,
       # old values should be evicted.
       for i in range(num_objects):
-        print("Getting", i)
         value = ray.get(args[i])
         self.assertEqual(value[0], i)
 
       # Get each value to force each task to finish. After some number of gets,
       # old values should be evicted.
       for i in range(num_objects):
-        print("Getting", i)
         value = ray.get(args[i])
         self.assertEqual(value[0], i)
 
-    object_id = no_dependency_task.remote(size)
-    ray.get(object_id)
+    # Define a root task with no dependencies, which returns a numpy array of
+    # the given size.
+    @ray.remote
+    def put_task(size):
+      # Launch num_objects instances of the remote task, each dependent on the
+      # one before it.
+      args = []
+      arg = ray.put(np.zeros(size))
+      for i in range(num_objects):
+        arg = single_dependency.remote(i, arg)
+        args.append(arg)
+
+      # Get each value to force each task to finish. After some number of gets,
+      # old values should be evicted.
+      for i in range(num_objects):
+        value = ray.get(args[i])
+        self.assertEqual(value[0], i)
+
+      # Get each value to force each task to finish. After some number of gets,
+      # old values should be evicted.
+      for i in range(num_objects):
+        value = ray.get(args[i])
+        self.assertEqual(value[0], i)
+
+    put_arg_task.remote(size)
+    def error_check(errors):
+      return len(errors) > 1
+    errors = self.wait_for_errors(error_check)
+    # Make sure all the errors have the correct type.
+    self.assertTrue(all(error[b"type"] == b"put_reconstruction" for error in errors))
+    self.assertTrue(all(error[b"data"] == b"__main__.put_arg_task" for error in errors))
+
+    put_task.remote(size)
+    def error_check(errors):
+      return any(error[b"data"] == b"__main__.put_task" for error in errors)
+    errors = self.wait_for_errors(error_check)
+    # Make sure all the errors have the correct type.
+    self.assertTrue(all(error[b"type"] == b"put_reconstruction" for error in errors))
+    self.assertTrue(any(error[b"data"] == b"__main__.put_task" for error in errors))
 
 class ReconstructionTestsMultinode(ReconstructionTests):
 

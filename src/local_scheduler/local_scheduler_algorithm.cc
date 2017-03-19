@@ -1080,13 +1080,13 @@ void handle_worker_blocked(LocalSchedulerState *state,
         DCHECK(*q != worker);
       }
 
+      /* Add the worker to the list of blocked workers. */
+      worker->is_blocked = true;
+      utarray_push_back(algorithm_state->blocked_workers, &worker);
       /* Return the resources that the blocked worker was using. */
       CHECK(worker->task_in_progress != NULL);
       TaskSpec *spec = Task_task_spec(worker->task_in_progress);
       update_dynamic_resources(state, spec, true);
-      /* Add the worker to the list of blocked workers. */
-      worker->is_blocked = true;
-      utarray_push_back(algorithm_state->blocked_workers, &worker);
 
       /* Try to dispatch tasks, since we may have freed up some resources. */
       dispatch_tasks(state, algorithm_state);
