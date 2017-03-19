@@ -35,13 +35,13 @@ fi
 git rev-parse HEAD > ./docker/deploy/git-rev
 git archive -o ./docker/deploy/ray.tar $(git rev-parse HEAD)
 if [ $OUTPUT_SHA ]; then
-    docker build --no-cache -t ray-project/deploy docker/deploy
-else
     IMAGE_SHA=$(docker build --no-cache -q -t ray-project/deploy docker/deploy)
+else
+    docker build --no-cache -t ray-project/deploy docker/deploy
 fi
 rm ./docker/deploy/ray.tar ./docker/deploy/git-rev
 
-
+# Build the examples, unless skipped
 if [ ! $SKIP_EXAMPLES ]; then
     if [ $OUTPUT_SHA ]; then
         IMAGE_SHA=$(docker build $NO_CACHE -q -t ray-project/examples docker/examples)
