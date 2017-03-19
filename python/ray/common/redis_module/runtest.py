@@ -14,6 +14,7 @@ import ray.services
 # Import flatbuffer bindings.
 from ray.core.generated.SubscribeToNotificationsReply import SubscribeToNotificationsReply
 from ray.core.generated.TaskReply import TaskReply
+from ray.core.generated.ResultTableReply import ResultTableReply
 
 OBJECT_INFO_PREFIX = "OI:"
 OBJECT_LOCATION_PREFIX = "OL:"
@@ -197,6 +198,11 @@ class TestGlobalStateStore(unittest.TestCase):
                               [b"manager_id1", b"manager_id2", b"manager_id3"])
 
   def testResultTableAddAndLookup(self):
+    def check_result_table_entry(message, task_id, is_put):
+      result_table_reply = ResultTableReply.GetRootAsResultTableReply(message, 0)
+      self.assertEqual(result_table_reply.TaskId(), task_id)
+      self.assertEqual(result_table_reply.IsPut(), is_put)
+
     # Try looking up something in the result table before anything is added.
     response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id1")
     self.assertIsNone(response)
@@ -206,17 +212,17 @@ class TestGlobalStateStore(unittest.TestCase):
     self.assertIsNone(response)
     # Add the result to the result table. The lookup now returns the task ID.
     task_id = b"task_id1"
-    self.redis.execute_command("RAY.RESULT_TABLE_ADD", "object_id1", task_id)
+    self.redis.execute_command("RAY.RESULT_TABLE_ADD", "object_id1", task_id, 0)
     response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id1")
-    self.assertEqual(response, task_id)
+    check_result_table_entry(response, task_id, False)
     # Doing it again should still work.
     response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id1")
-    self.assertEqual(response, task_id)
+    check_result_table_entry(response, task_id, False)
     # Try another result table lookup. This should succeed.
     task_id = b"task_id2"
-    self.redis.execute_command("RAY.RESULT_TABLE_ADD", "object_id2", task_id)
+    self.redis.execute_command("RAY.RESULT_TABLE_ADD", "object_id2", task_id, 1)
     response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id2")
-    self.assertEqual(response, task_id)
+    check_result_table_entry(response, task_id, True)
 
   def testInvalidTaskTableAdd(self):
     # Check that Redis returns an error when RAY.TASK_TABLE_ADD is called with

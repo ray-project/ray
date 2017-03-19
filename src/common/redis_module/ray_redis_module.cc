@@ -829,10 +829,8 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
   RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "task", &task_id, "is_put",
                       &is_put, NULL);
   RedisModule_CloseKey(key);
-  if (task_id == NULL) {
-    RedisModule_FreeString(ctx, is_put);
-    RedisModule_FreeString(ctx, task_id);
-    return RedisModule_ReplyWithError(ctx, "Empty result table entry");
+  if (task_id == NULL || is_put == NULL) {
+    return RedisModule_ReplyWithNull(ctx);
   }
 
   /* Check to make sure the is_put field was a 0 or a 1. */
