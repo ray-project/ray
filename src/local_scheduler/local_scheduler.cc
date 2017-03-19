@@ -522,8 +522,10 @@ void reconstruct_task_update_callback(Task *task, void *user_context) {
 }
 
 void log_put_reconstruction_error(Task *task, void *user_context) {
-  LOG_WARN("Put reconstruction!");
   if (task == NULL) {
+    LOG_WARN(
+        "Reconstruction requested for a driver ray.put, unable to push error "
+        "to driver");
     return;
   }
   LocalSchedulerState *state = (LocalSchedulerState *) user_context;

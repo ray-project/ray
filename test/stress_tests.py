@@ -361,14 +361,14 @@ class ReconstructionTests(unittest.TestCase):
       self.assertEqual(value[0], i)
 
     def error_check(errors):
-      return len(errors) > num_objects / 2
+      return len(errors) >= num_objects / 2
     errors = self.wait_for_errors(error_check)
     # Make sure all the errors have the correct type.
     self.assertTrue(all(error[b"type"] == b"object_hash_mismatch" for error in errors))
     # Make sure all the errors have the correct function name.
     self.assertTrue(all(error[b"data"] == b"__main__.foo" for error in errors))
 
-  def testPut(self):
+  def testPutErrors(self):
     # Define the size of one task's return argument so that the combined sum of
     # all objects' sizes is at least twice the plasma stores' combined allotted
     # memory.
