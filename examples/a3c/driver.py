@@ -20,7 +20,7 @@ class Runner(object):
     """Actor object to start running simulation on workers.
         Gradient computation is also executed from this object."""
     def __init__(self, env_name, actor_id, logdir="results/", start=True):
-        env = create_env(env_name, None, None)
+        env = create_env(env_name)
         self.id = actor_id
         num_actions = env.action_space.n
         self.policy = LSTMPolicy(env.observation_space.shape, num_actions, actor_id)
@@ -56,7 +56,7 @@ class Runner(object):
 
 
 def train(num_workers, env_name="PongDeterministic-v3"):
-    env = create_env(env_name, None, None)
+    env = create_env(env_name)
     policy = LSTMPolicy(env.observation_space.shape, env.action_space.n, 0)
     agents = [Runner(env_name, i) for i in range(num_workers)]
     parameters = policy.get_weights()

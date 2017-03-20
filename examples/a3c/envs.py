@@ -43,18 +43,18 @@ class AtariProcessing(gym.ObservationWrapper):
 class Diagnostic(gym.Wrapper):
     def __init__(self, env=None):
         super(Diagnostic, self).__init__(env)
-        self.diagnostics = Diagnostic()
+        self.diagnostics = DiagnosticsLogger()
 
     def _reset(self):
-        observation = self.env._reset()
+        observation = self.env.reset()
         return self.diagnostics._after_reset(observation)
 
     def _step(self, action):
-        results = self.env._step(action)
+        results = self.env.step(action)
         return self.diagnostics._after_step(*results)
 
 
-class Diagnostics():
+class DiagnosticsLogger():
     def __init__(self, log_interval=503):
 
         self._episode_time = time.time()
