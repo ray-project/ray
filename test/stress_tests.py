@@ -174,7 +174,7 @@ class ReconstructionTests(unittest.TestCase):
       task_reply_object = TaskReply.GetRootAsTaskReply(message, 0)
       local_scheduler_ids.append(task_reply_object.LocalSchedulerId())
 
-    self.assertEqual(len(set(local_scheduler_ids)), self.num_local_schedulers)
+    self.assertEqual(len(set(local_scheduler_ids)), self.num_local_schedulers + 1)
 
     # Clean up the Ray cluster.
     ray.worker.cleanup()
@@ -403,7 +403,8 @@ class ReconstructionTests(unittest.TestCase):
     @ray.remote
     def put_arg_task(size):
       # Launch num_objects instances of the remote task, each dependent on the
-      # one before it.
+      # one before it. The first instance of the task takes a numpy array as an
+      # argument, which is put into the object store.
       args = []
       arg = single_dependency.remote(0, np.zeros(size))
       for i in range(num_objects):
@@ -427,7 +428,8 @@ class ReconstructionTests(unittest.TestCase):
     @ray.remote
     def put_task(size):
       # Launch num_objects instances of the remote task, each dependent on the
-      # one before it.
+      # one before it. The first instance of the task takes an object ID
+      # returned by ray.put.
       args = []
       arg = ray.put(np.zeros(size))
       for i in range(num_objects):
@@ -462,6 +464,48 @@ class ReconstructionTests(unittest.TestCase):
     # Make sure all the errors have the correct type.
     self.assertTrue(all(error[b"type"] == b"put_reconstruction" for error in errors))
     self.assertTrue(any(error[b"data"] == b"__main__.put_task" for error in errors))
+
+  def testDriverPutErrors(self):
+    # Define the size of one task's return argument so that the combined sum of
+    # all objects' sizes is at least twice the plasma stores' combined allotted
+    # memory.
+    num_objects = 1000
+    size = self.plasma_store_memory * 2 // (num_objects * 8)
+
+    # Define a task with a single dependency, a numpy array, that returns
+    # another array.
+    @ray.remote
+    def single_dependency(i, arg):
+      arg = np.copy(arg)
+      arg[0] = i
+      return arg
+
+    # Launch num_objects instances of the remote task, each dependent on the
+    # one before it. The first instance of the task takes a numpy array as an
+    # argument, which is put into the object store.
+    args = []
+    arg = single_dependency.remote(0, np.zeros(size))
+    for i in range(num_objects):
+      arg = single_dependency.remote(i, arg)
+      args.append(arg)
+    # Get each value to force each task to finish. After some number of gets,
+    # old values should be evicted.
+    for i in range(num_objects):
+      value = ray.get(args[i])
+      self.assertEqual(value[0], i)
+
+    # Get each value starting from the beginning to force reconstruction.
+    # Currently, since we're not able to reconstruct `ray.put` objects that
+    # were evicted and whose originating tasks are still running, this
+    # for-loop should hang on its first iteration and push an error to the
+    # driver.
+    ray.worker.global_worker.local_scheduler_client.reconstruct_object(args[0].id())
+    def error_check(errors):
+      return len(errors) > 1
+    errors = self.wait_for_errors(error_check)
+    print(errors)
+    self.assertTrue(all(error[b"type"] == b"driver_put_reconstruction" for error in errors))
+
 
 class ReconstructionTestsMultinode(ReconstructionTests):
 

@@ -43,7 +43,10 @@ DRIVER_ID_LENGTH = 20
 ERROR_ID_LENGTH = 20
 
 # This must match the definition of NIL_ACTOR_ID in task.h.
-NIL_ACTOR_ID = 20 * b"\xff"
+NIL_ID = 20 * b"\xff"
+NIL_NODE_ID = NIL_ID
+NIL_FUNCTION_ID = NIL_ID
+NIL_ACTOR_ID = NIL_ID
 
 # When performing ray.get, wait 1 second before attemping to reconstruct and
 # fetch the object again.
@@ -53,6 +56,9 @@ GET_TIMEOUT_MILLISECONDS = 1000
 # common/state/error_table.h.
 OBJECT_HASH_MISMATCH_ERROR_TYPE = b"object_hash_mismatch"
 PUT_RECONSTRUCTION_ERROR_TYPE = b"put_reconstruction"
+
+# This must be kept in sync with the `scheduling_state` enum in common/task.h.
+TASK_STATUS_RUNNING = 8
 
 def random_string():
   return np.random.bytes(20)
@@ -1241,6 +1247,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker, a
   redis_ip_address, redis_port = info["redis_address"].split(":")
   worker.redis_client = redis.StrictRedis(host=redis_ip_address, port=int(redis_port))
   worker.lock = threading.Lock()
+
   # Register the worker with Redis.
   if mode in [SCRIPT_MODE, SILENT_MODE]:
     # The concept of a driver is the same as the concept of a "job". Register
@@ -1269,7 +1276,10 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker, a
   # Create an object store client.
   worker.plasma_client = ray.plasma.PlasmaClient(info["store_socket_name"], info["manager_socket_name"])
   # Create the local scheduler client.
-  worker.local_scheduler_client = ray.local_scheduler.LocalSchedulerClient(info["local_scheduler_socket_name"], worker.actor_id, is_worker)
+  worker.local_scheduler_client = ray.local_scheduler.LocalSchedulerClient(
+      info["local_scheduler_socket_name"],
+      worker.actor_id,
+      is_worker)
 
   # If this is a driver, set the current task ID, the task driver ID, and set
   # the task index to 0.
@@ -1295,12 +1305,36 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker, a
     # Set other fields needed for computing task IDs.
     worker.task_index = 0
     worker.put_index = 0
+
+    # Create an entry for the driver task in the task table. This task is added
+    # immediately with status RUNNING.
+    driver_task = ray.local_scheduler.Task(
+          worker.task_driver_id,
+          ray.local_scheduler.ObjectID(NIL_FUNCTION_ID),
+          [],
+          0,
+          worker.current_task_id,
+          worker.task_index,
+          ray.local_scheduler.ObjectID(NIL_ACTOR_ID),
+          worker.actor_counters[actor_id],
+          [0, 0])
+    worker.redis_client.execute_command(
+        "RAY.TASK_TABLE_ADD",
+        driver_task.task_id().id(),
+        TASK_STATUS_RUNNING,
+        NIL_NODE_ID,
+        ray.local_scheduler.task_to_string(driver_task))
+    # Set the driver's current task ID to the task ID assigned to the driver
+    # task.
+    worker.current_task_id = driver_task.task_id()
+
   # If this is a worker, then start a thread to import exports from the driver.
   if mode == WORKER_MODE:
     t = threading.Thread(target=import_thread, args=(worker,))
     # Making the thread a daemon causes it to exit when the main thread exits.
     t.daemon = True
     t.start()
+
   # If this is a driver running in SCRIPT_MODE, start a thread to print error
   # messages asynchronously in the background. Ideally the scheduler would push
   # messages to the driver's worker service, but we ran into bugs when trying to
