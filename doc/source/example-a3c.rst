@@ -17,7 +17,7 @@ To run the application, first install **ray** and then some dependencies:
 
   pip install tensorflow
   pip install six
-  pip install gym[atari]==0.7.4
+  pip install gym[atari]
   pip install opencv-python
   pip install scipy
 
