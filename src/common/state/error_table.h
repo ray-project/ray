@@ -29,8 +29,8 @@ static const char *error_types[] = {"object_hash_mismatch",
                                     "put_reconstruction"};
 static const char *error_messages[] = {
     "A nondeterministic task was reexecuted.",
-    "A task created an object using `ray.put` that was evicted and could not "
-    "be reconstructed. The driver may need to be restarted."};
+    "An object created by ray.put was evicted and could not be reconstructed. "
+    "The driver may need to be restarted."};
 
 /**
  * Push an error to the given Python driver.
