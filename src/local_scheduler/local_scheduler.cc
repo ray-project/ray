@@ -495,8 +495,14 @@ void process_plasma_notification(event_loop *loop,
   free(notification);
 }
 
-void reconstruct_task_update_callback(Task *task, void *user_context) {
-  if (task == NULL) {
+void reconstruct_task_update_callback(Task *task,
+                                      void *user_context,
+                                      bool updated) {
+  /* The task ID should be in the task table for all tasks except the driver
+   * task. We should never request reconstruction for an object produced by the
+   * driver task. */
+  CHECK(task != NULL);
+  if (!updated) {
     /* The test-and-set of the task's scheduling state failed, so the task was
      * either not finished yet, or it was already being reconstructed.
      * Suppress the reconstruction request. */
@@ -521,13 +527,29 @@ void reconstruct_task_update_callback(Task *task, void *user_context) {
   }
 }
 
-void log_put_reconstruction_error(Task *task, void *user_context) {
+void reconstruct_put_task_update_callback(Task *task,
+                                          void *user_context,
+                                          bool updated) {
+  if (updated) {
+    /* The update to TASK_STATUS_RECONSTRUCTING succeeded, so continue with
+     * reconstruction as usual. */
+    reconstruct_task_update_callback(task, user_context, updated);
+    return;
+  }
+
   if (task == NULL) {
+    /* The driver task needs to be reexecuted. */
+    /* TODO(swang): Store an entry for the driver task in the task table, so
+     * that we can push the error directly to the user instead of logging a
+     * warning here.  */
     LOG_WARN(
         "Reconstruction requested for a driver ray.put, unable to push error "
         "to driver");
     return;
   }
+
+  /* An object created by `ray.put` was not able to be reconstructed, and the
+   * workload will likely hang. Push an error to the appropriate driver. */
   LocalSchedulerState *state = (LocalSchedulerState *) user_context;
   TaskSpec *spec = Task_task_spec(task);
   FunctionID function = TaskSpec_function(spec);
@@ -539,31 +561,32 @@ void reconstruct_evicted_result_lookup_callback(ObjectID reconstruct_object_id,
                                                 TaskID task_id,
                                                 bool is_put,
                                                 void *user_context) {
-  /* TODO(swang): The following check will fail if an object was created by a
-   * put. */
   CHECKM(!IS_NIL_ID(task_id),
          "No task information found for object during reconstruction");
   LocalSchedulerState *state = (LocalSchedulerState *) user_context;
-  if (is_put) {
-    task_table_get_task(state->db, task_id, NULL, log_put_reconstruction_error,
-                        state);
-    return;
-  }
 
+  task_table_test_and_update_callback done_callback;
+  if (is_put) {
+    /* If the evicted object was created through ray.put and the originating
+     * task
+     * is still executing, it's very likely that the workload will hang and the
+     * worker needs to be restarted. Else, the reconstruction behavior is the
+     * same as for other evicted objects */
+    done_callback = reconstruct_put_task_update_callback;
+  } else {
+    done_callback = reconstruct_task_update_callback;
+  }
   /* If there are no other instances of the task running, it's safe for us to
    * claim responsibility for reconstruction. */
-  task_table_test_and_update(state->db, task_id,
-                             (TASK_STATUS_DONE | TASK_STATUS_LOST),
-                             TASK_STATUS_RECONSTRUCTING, NULL,
-                             reconstruct_task_update_callback, state);
+  task_table_test_and_update(
+      state->db, task_id, (TASK_STATUS_DONE | TASK_STATUS_LOST),
+      TASK_STATUS_RECONSTRUCTING, NULL, done_callback, state);
 }
 
 void reconstruct_failed_result_lookup_callback(ObjectID reconstruct_object_id,
                                                TaskID task_id,
                                                bool is_put,
                                                void *user_context) {
-  /* TODO(swang): The following check will fail if an object was created by a
-   * put. */
   if (IS_NIL_ID(task_id)) {
     /* NOTE(swang): For some reason, the result table update sometimes happens
      * after this lookup returns, possibly due to concurrent clients. In most

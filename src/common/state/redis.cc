@@ -766,11 +766,19 @@ void redis_task_table_test_and_update_callback(redisAsyncContext *c,
   redisReply *reply = (redisReply *) r;
   /* Parse the task from the reply. */
   Task *task = parse_and_construct_task_from_redis_reply(reply);
+  /* Determine whether the update happened. */
+  bool updated = false;
+  if (task != NULL) {
+    TaskTableTestAndUpdateData *update_data =
+        (TaskTableTestAndUpdateData *) callback_data->data;
+    updated = (Task_state(task) == update_data->update_state);
+  }
+
   /* Call the done callback if there is one. */
-  task_table_get_callback done_callback =
-      (task_table_get_callback) callback_data->done_callback;
+  task_table_test_and_update_callback done_callback =
+      (task_table_test_and_update_callback) callback_data->done_callback;
   if (done_callback != NULL) {
-    done_callback(task, callback_data->user_context);
+    done_callback(task, callback_data->user_context, updated);
   }
   /* Free the task if it is not NULL. */
   if (task != NULL) {

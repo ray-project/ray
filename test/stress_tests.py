@@ -310,8 +310,8 @@ class ReconstructionTests(unittest.TestCase):
       errors = ray.error_info()
       if error_check(errors):
         break
-      time_left -= 0.1
-      time.sleep(0.1)
+      time_left -= 1
+      time.sleep(1)
 
     # Make sure that enough errors came through.
     self.assertTrue(error_check(errors))
@@ -361,6 +361,9 @@ class ReconstructionTests(unittest.TestCase):
       self.assertEqual(value[0], i)
 
     def error_check(errors):
+      if len(errors) < num_objects / 2:
+        print("len(errors) is {}, waiting for {} errors".format(len(errors),
+                                                                num_objects / 2))
       return len(errors) >= num_objects / 2
     errors = self.wait_for_errors(error_check)
     # Make sure all the errors have the correct type.
@@ -375,15 +378,16 @@ class ReconstructionTests(unittest.TestCase):
     num_objects = 1000
     size = self.plasma_store_memory * 2 // (num_objects * 8)
 
-    # Define a task with a single dependency, which returns its one argument.
+    # Define a task with a single dependency, a numpy array, that returns
+    # another array.
     @ray.remote
     def single_dependency(i, arg):
       arg = np.copy(arg)
       arg[0] = i
       return arg
 
-    # Define a root task with no dependencies, which returns a numpy array of
-    # the given size.
+    # Define a root task that calls `ray.put` to put an argument in the object
+    # store.
     @ray.remote
     def put_arg_task(size):
       # Launch num_objects instances of the remote task, each dependent on the
@@ -399,15 +403,15 @@ class ReconstructionTests(unittest.TestCase):
       for i in range(num_objects):
         value = ray.get(args[i])
         self.assertEqual(value[0], i)
-
-      # Get each value to force each task to finish. After some number of gets,
-      # old values should be evicted.
+      # Get each value again to force reconstruction. Currently, since we're
+      # not able to reconstruct `ray.put` objects that were evicted and whose
+      # originating tasks are still running, this for-loop should hang on its
+      # first iteration and push an error to the driver.
       for i in range(num_objects):
         value = ray.get(args[i])
         self.assertEqual(value[0], i)
 
-    # Define a root task with no dependencies, which returns a numpy array of
-    # the given size.
+    # Define a root task that calls `ray.put` directly.
     @ray.remote
     def put_task(size):
       # Launch num_objects instances of the remote task, each dependent on the
@@ -423,9 +427,10 @@ class ReconstructionTests(unittest.TestCase):
       for i in range(num_objects):
         value = ray.get(args[i])
         self.assertEqual(value[0], i)
-
-      # Get each value to force each task to finish. After some number of gets,
-      # old values should be evicted.
+      # Get each value again to force reconstruction. Currently, since we're
+      # not able to reconstruct `ray.put` objects that were evicted and whose
+      # originating tasks are still running, this for-loop should hang on its
+      # first iteration and push an error to the driver.
       for i in range(num_objects):
         value = ray.get(args[i])
         self.assertEqual(value[0], i)

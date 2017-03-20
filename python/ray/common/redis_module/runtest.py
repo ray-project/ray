@@ -294,7 +294,7 @@ class TestGlobalStateStore(unittest.TestCase):
     response = self.redis.execute_command("RAY.TASK_TABLE_TEST_AND_UPDATE",
                                           "task_id",
                                           *task_args[:3])
-    self.assertEqual(response, None)
+    self.assertEqual(response, get_response)
     # Check that the update did not happen.
     get_response2 = self.redis.execute_command("RAY.TASK_TABLE_GET", "task_id")
     self.assertEqual(get_response2, get_response)
@@ -315,7 +315,7 @@ class TestGlobalStateStore(unittest.TestCase):
     response = self.redis.execute_command("RAY.TASK_TABLE_TEST_AND_UPDATE",
                                           "task_id",
                                           *task_args[:3])
-    self.assertEqual(response, None)
+    self.assertEqual(response, old_response)
     # Check that the update did not happen.
     get_response = self.redis.execute_command("RAY.TASK_TABLE_GET", "task_id")
     self.assertEqual(get_response, old_response)

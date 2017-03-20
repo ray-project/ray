@@ -33,13 +33,14 @@ void task_table_update(DBHandle *db_handle,
                       redis_task_table_update, user_context);
 }
 
-void task_table_test_and_update(DBHandle *db_handle,
-                                TaskID task_id,
-                                int test_state_bitmask,
-                                int update_state,
-                                RetryInfo *retry,
-                                task_table_get_callback done_callback,
-                                void *user_context) {
+void task_table_test_and_update(
+    DBHandle *db_handle,
+    TaskID task_id,
+    int test_state_bitmask,
+    int update_state,
+    RetryInfo *retry,
+    task_table_test_and_update_callback done_callback,
+    void *user_context) {
   TaskTableTestAndUpdateData *update_data =
       (TaskTableTestAndUpdateData *) malloc(sizeof(TaskTableTestAndUpdateData));
   update_data->test_state_bitmask = test_state_bitmask;
