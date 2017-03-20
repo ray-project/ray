@@ -10,15 +10,16 @@ import tensorflow as tf
 import six.moves.queue as queue
 import gym
 import sys
+import os
 from datetime import datetime, timedelta
-from misc import timestamp, Profiler
+from misc import *
 from envs import create_env
 
 @ray.actor
 class Runner(object):
     """Actor object to start running simulation on workers.
         Gradient computation is also executed from this object."""
-    def __init__(self, env_name, actor_id, logdir="tmp/", start=True):
+    def __init__(self, env_name, actor_id, logdir="results/", start=True):
         env = create_env(env_name, None, None)
         self.id = actor_id
         num_actions = env.action_space.n
@@ -40,7 +41,7 @@ class Runner(object):
         return rollout
 
     def start(self):
-        summary_writer = tf.summary.FileWriter(self.logdir + "agent_%d" % self.id)
+        summary_writer = tf.summary.FileWriter(os.path.join(self.logdir, "agent_%d" % self.id))
         self.summary_writer = summary_writer
         self.runner.start_runner(self.policy.sess, summary_writer)
 
