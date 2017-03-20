@@ -8,7 +8,7 @@ set -e
 TP_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
 if [ ! -d $TP_DIR/arrow ]; then
-  git clone https://github.com/pcmoritz/arrow.git "$TP_DIR/arrow"
+  git clone https://github.com/apache/arrow/ "$TP_DIR/arrow"
 fi
-cd "$TP_DIR/arrow"
-git checkout a4a5526e4a8fbc4e4d5382a5c806ec871d2fbd9f
+cd $TP_DIR/arrow
+git checkout 98a52b4823f3cd0880eaef066dc932f533170292

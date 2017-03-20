@@ -44,7 +44,11 @@ extern "C" {
 #define RAY_COMMON_LOG_LEVEL RAY_COMMON_INFO
 #endif
 
+/* Arrow defines the same macro, only define it if it has not already been
+ * defined. */
+#ifndef UNUSED
 #define UNUSED(x) ((void) (x))
+#endif
 
 /**
  * Macros to enable each level of Ray logging statements depending on the

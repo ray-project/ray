@@ -62,6 +62,28 @@ class FixedBufferStream : public arrow::io::OutputStream,
   int64_t size_;
 };
 
+class MockBufferStream : public arrow::io::OutputStream {
+ public:
+  virtual ~MockBufferStream() {}
+
+  explicit MockBufferStream() : position_(0) {}
+
+  arrow::Status Close() override { return arrow::Status::OK(); }
+
+  arrow::Status Tell(int64_t* position) override {
+    *position = position_;
+    return arrow::Status::OK();
+  }
+
+  arrow::Status Write(const uint8_t* data, int64_t nbytes) override {
+    position_ += nbytes;
+    return arrow::Status::OK();
+  }
+
+ private:
+  int64_t position_;
+};
+
 }  // namespace numbuf
 
 #endif  // PYNUMBUF_MEMORY_H
