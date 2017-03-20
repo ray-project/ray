@@ -18,15 +18,15 @@ namespace numbuf {
   case Type::TYPE:                     \
     return NPY_##TYPE;
 
-#define DESERIALIZE_ARRAY_CASE(TYPE, ArrayType, type)                             \
-  case Type::TYPE: {                                                              \
-    auto values = std::dynamic_pointer_cast<ArrayType>(content->values());        \
-    DCHECK(values);                                                               \
-    type* data = const_cast<type*>(values->raw_data()) + content->offset(offset); \
-    *out = PyArray_SimpleNewFromData(                                             \
-        num_dims, dim.data(), NPY_##TYPE, reinterpret_cast<void*>(data));         \
-    if (base != Py_None) { PyArray_SetBaseObject((PyArrayObject*)*out, base); }   \
-    Py_XINCREF(base);                                                             \
+#define DESERIALIZE_ARRAY_CASE(TYPE, ArrayType, type)                                   \
+  case Type::TYPE: {                                                                    \
+    auto values = std::dynamic_pointer_cast<ArrayType>(content->values());              \
+    DCHECK(values);                                                                     \
+    type* data = const_cast<type*>(values->raw_data()) + content->value_offset(offset); \
+    *out = PyArray_SimpleNewFromData(                                                   \
+        num_dims, dim.data(), NPY_##TYPE, reinterpret_cast<void*>(data));               \
+    if (base != Py_None) { PyArray_SetBaseObject((PyArrayObject*)*out, base); }         \
+    Py_XINCREF(base);                                                                   \
   } break;
 
 Status DeserializeArray(
@@ -38,8 +38,8 @@ Status DeserializeArray(
   auto content = std::dynamic_pointer_cast<ListArray>(tensor->field(1));
   npy_intp num_dims = dims->value_length(offset);
   std::vector<npy_intp> dim(num_dims);
-  for (int i = dims->offset(offset); i < dims->offset(offset + 1); ++i) {
-    dim[i - dims->offset(offset)] =
+  for (int i = dims->value_offset(offset); i < dims->value_offset(offset + 1); ++i) {
+    dim[i - dims->value_offset(offset)] =
         std::dynamic_pointer_cast<Int64Array>(dims->values())->Value(i);
   }
   switch (content->value_type()->type) {

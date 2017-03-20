@@ -2,7 +2,7 @@
 #define NUMBUF_TENSOR_H
 
 #include <arrow/api.h>
-#include <arrow/type.h>
+#include <arrow/util/logging.h>
 #include <memory>
 
 namespace numbuf {
@@ -38,7 +38,7 @@ class TensorBuilder {
   //! Number of tensors in the column
   int32_t length() { return tensors_->length(); }
 
-  const arrow::TypePtr& type() { return tensors_->type(); }
+  std::shared_ptr<arrow::DataType> type() { return tensors_->type(); }
 
  private:
   arrow::TypePtr dtype_;

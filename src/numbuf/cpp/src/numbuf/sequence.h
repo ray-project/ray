@@ -3,9 +3,18 @@
 
 #include "tensor.h"
 #include <arrow/api.h>
-#include <arrow/types/union.h>
 
 namespace numbuf {
+
+class NullArrayBuilder : public arrow::ArrayBuilder {
+ public:
+  explicit NullArrayBuilder(arrow::MemoryPool* pool, const arrow::TypePtr& type)
+      : arrow::ArrayBuilder(pool, type) {}
+  virtual ~NullArrayBuilder(){};
+  arrow::Status Finish(std::shared_ptr<arrow::Array>* out) override {
+    return arrow::Status::OK();
+  }
+};
 
 /*! A Sequence is a heterogeneous collections of elements. It can contain
     scalar Python types, lists, tuples, dictionaries and tensors.
@@ -92,7 +101,7 @@ class SequenceBuilder {
   /* Total number of bytes needed to represent this sequence. */
   int64_t total_num_bytes_;
 
-  arrow::NullArrayBuilder nones_;
+  NullArrayBuilder nones_;
   arrow::BooleanBuilder bools_;
   arrow::Int64Builder ints_;
   arrow::BinaryBuilder bytes_;
