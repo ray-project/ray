@@ -13,7 +13,7 @@ SequenceBuilder::SequenceBuilder(MemoryPool* pool)
       bools_(pool, std::make_shared<BooleanType>()),
       ints_(pool, std::make_shared<Int64Type>()),
       bytes_(pool, std::make_shared<BinaryType>()),
-      strings_(pool, std::make_shared<StringType>()),
+      strings_(pool),
       floats_(pool, std::make_shared<FloatType>()),
       doubles_(pool, std::make_shared<DoubleType>()),
       uint8_tensors_(std::make_shared<UInt8Type>(), pool),
@@ -152,6 +152,7 @@ Status SequenceBuilder::AppendDict(int32_t size) {
     types[TAG] = std::make_shared<Field>("", VARNAME.type()); \
     RETURN_NOT_OK(VARNAME.Finish(&children[TAG]));            \
     RETURN_NOT_OK(nones_.AppendToBitmap(true));               \
+    type_ids.push_back(TAG);                                  \
   }
 
 #define ADD_SUBSEQUENCE(DATA, OFFSETS, BUILDER, TAG, NAME)                    \
@@ -166,6 +167,7 @@ Status SequenceBuilder::AppendDict(int32_t size) {
     ARROW_CHECK_OK(list_builder->Append(OFFSETS.data(), OFFSETS.size()));     \
     builder.Append();                                                         \
     ADD_ELEMENT(builder, TAG);                                                \
+    type_ids.push_back(TAG);                                                  \
   } else {                                                                    \
     DCHECK(OFFSETS.size() == 1);                                              \
   }
@@ -174,7 +176,8 @@ Status SequenceBuilder::Finish(std::shared_ptr<Array> list_data,
     std::shared_ptr<Array> tuple_data, std::shared_ptr<Array> dict_data,
     std::shared_ptr<Array>* out) {
   std::vector<std::shared_ptr<Field>> types(num_tags);
-  std::vector<ArrayPtr> children(num_tags);
+  std::vector<std::shared_ptr<Array>> children(num_tags);
+  std::vector<uint8_t> type_ids;
 
   ADD_ELEMENT(bools_, bool_tag);
   ADD_ELEMENT(ints_, int_tag);
@@ -201,10 +204,9 @@ Status SequenceBuilder::Finish(std::shared_ptr<Array> list_data,
   ADD_SUBSEQUENCE(tuple_data, tuple_offsets_, tuple_builder, tuple_tag, "tuple");
   ADD_SUBSEQUENCE(dict_data, dict_offsets_, dict_builder, dict_tag, "dict");
 
-  std::vector<uint8_t> type_ids = {};
   TypePtr type = TypePtr(new UnionType(types, type_ids, UnionMode::DENSE));
   out->reset(new UnionArray(type, types_.length(), children, types_.data(),
-      offsets_.data(), nones_.null_count(), nones_.null_bitmap()));
+      offsets_.data(), nones_.null_bitmap(), nones_.null_count()));
   return Status::OK();
 }
 }

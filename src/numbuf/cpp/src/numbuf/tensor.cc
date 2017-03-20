@@ -29,7 +29,7 @@ Status TensorBuilder<T>::Append(const std::vector<int64_t>& dims, const elem_typ
   RETURN_NOT_OK(tensors_->Append());
   RETURN_NOT_OK(dims_->Append());
   RETURN_NOT_OK(values_->Append());
-  int32_t size = 1;
+  int64_t size = 1;
   for (auto dim : dims) {
     size *= dim;
     RETURN_NOT_OK(dim_data_->Append(dim));

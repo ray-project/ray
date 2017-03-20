@@ -21,7 +21,7 @@ namespace numbuf {
 #endif
 
 Status get_value(
-    ArrayPtr arr, int32_t index, int32_t type, PyObject* base, PyObject** result) {
+    std::shared_ptr<Array> arr, int32_t index, int32_t type, PyObject* base, PyObject** result) {
   switch (arr->type()->type) {
     case Type::BOOL:
       *result =
@@ -185,8 +185,8 @@ Status SerializeSequences(std::vector<PyObject*> sequences, int32_t recursion_de
   auto data = std::dynamic_pointer_cast<UnionArray>(array);              \
   int32_t size = array->length();                                        \
   PyObject* result = CREATE(stop_idx - start_idx);                       \
-  auto types = std::make_shared<Int8Array>(size, data->types());         \
-  auto offsets = std::make_shared<Int32Array>(size, data->offset_buf()); \
+  auto types = std::make_shared<Int8Array>(size, data->type_ids());      \
+  auto offsets = std::make_shared<Int32Array>(size, data->value_offsets()); \
   for (size_t i = start_idx; i < stop_idx; ++i) {                        \
     if (data->IsNull(i)) {                                               \
       Py_INCREF(Py_None);                                                \
@@ -194,7 +194,7 @@ Status SerializeSequences(std::vector<PyObject*> sequences, int32_t recursion_de
     } else {                                                             \
       int32_t offset = offsets->Value(i);                                \
       int8_t type = types->Value(i);                                     \
-      ArrayPtr arr = data->child(type);                                  \
+      std::shared_ptr<Array> arr = data->child(type);                                  \
       PyObject* value;                                                   \
       RETURN_NOT_OK(get_value(arr, offset, type, base, &value));         \
       SET_ITEM(result, i - start_idx, value);                            \

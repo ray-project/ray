@@ -1,6 +1,4 @@
 #include <Python.h>
-#include <arrow/api.h>
-#include <arrow/ipc/adapter.h>
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #define PY_ARRAY_UNIQUE_SYMBOL NUMBUF_ARRAY_API
 #include <numpy/arrayobject.h>
@@ -9,7 +7,8 @@
 
 #include <iostream>
 
-#include <arrow/ipc/metadata.h>
+#include <arrow/api.h>
+#include <arrow/ipc/api.h>
 
 #include "adapters/python.h"
 #include "memory.h"
@@ -31,30 +30,30 @@ PyObject* NumbufPlasmaObjectExistsError;
 using namespace arrow;
 using namespace numbuf;
 
-int64_t make_schema_and_batch(std::shared_ptr<Array> data,
-    std::shared_ptr<Buffer>* metadata_out, std::shared_ptr<RecordBatch>* batch_out) {
+std::shared_ptr<RecordBatch> make_batch(std::shared_ptr<Array> data) {
   auto field = std::make_shared<Field>("list", data->type());
   std::shared_ptr<Schema> schema(new Schema({field}));
-  *batch_out =
-      std::shared_ptr<RecordBatch>(new RecordBatch(schema, data->length(), {data}));
-  int64_t size = 0;
-  ARROW_CHECK_OK(ipc::GetRecordBatchSize(batch_out->get(), &size));
-  ARROW_CHECK_OK(ipc::WriteSchema((*batch_out)->schema().get(), metadata_out));
+  return std::shared_ptr<RecordBatch>(new RecordBatch(schema, data->length(), {data}));
+}
+
+int64_t get_batch_size(std::shared_ptr<RecordBatch> batch) {
+  // Determine the size of the file by writing to a mock file.
+  auto mock = std::make_shared<MockBufferStream>();
+  std::shared_ptr<arrow::ipc::FileWriter> writer;
+  ipc::FileWriter::Open(mock.get(), batch->schema(), &writer);
+  writer->WriteRecordBatch(*batch);
+  writer->Close();
+  int64_t size;
+  ARROW_CHECK_OK(mock->Tell(&size));
   return size;
 }
 
-Status read_batch(std::shared_ptr<Buffer> schema_buffer, int64_t header_end_offset,
-    uint8_t* data, int64_t size, std::shared_ptr<RecordBatch>* batch_out) {
-  std::shared_ptr<ipc::Message> message;
-  RETURN_NOT_OK(ipc::Message::Open(schema_buffer, &message));
-  DCHECK_EQ(ipc::Message::SCHEMA, message->type());
-  std::shared_ptr<ipc::SchemaMessage> schema_msg = message->GetSchema();
-  std::shared_ptr<Schema> schema;
-  RETURN_NOT_OK(schema_msg->GetSchema(&schema));
-  auto source = std::make_shared<FixedBufferStream>(data, size);
-  std::shared_ptr<arrow::ipc::RecordBatchReader> reader;
-  RETURN_NOT_OK(ipc::RecordBatchReader::Open(source.get(), header_end_offset, &reader));
-  RETURN_NOT_OK(reader->GetRecordBatch(schema, batch_out));
+Status read_batch(uint8_t* data, int64_t size, std::shared_ptr<RecordBatch>* batch_out) {
+  std::shared_ptr<arrow::ipc::FileReader> reader;
+  auto source = std::make_shared<FixedBufferStream>(sizeof(size) + data, size - sizeof(size));
+  int64_t data_size = *((int64_t*) data);
+  arrow::ipc::FileReader::Open(source, data_size, &reader);
+  reader->GetRecordBatch(0, batch_out);
   return Status::OK();
 }
 
@@ -104,14 +103,13 @@ static PyObject* serialize_list(PyObject* self, PyObject* args) {
     CHECK_SERIALIZATION_ERROR(s);
 
     auto batch = new std::shared_ptr<RecordBatch>();
-    std::shared_ptr<Buffer> metadata;
-    int64_t size = make_schema_and_batch(array, &metadata, batch);
+    *batch = make_batch(array);
 
-    auto ptr = reinterpret_cast<const char*>(metadata->data());
-    PyObject* r = PyTuple_New(3);
-    PyTuple_SetItem(r, 0, PyByteArray_FromStringAndSize(ptr, metadata->size()));
-    PyTuple_SetItem(r, 1, PyLong_FromLong(size));
-    PyTuple_SetItem(r, 2,
+    int64_t size = get_batch_size(*batch);
+
+    PyObject* r = PyTuple_New(2);
+    PyTuple_SetItem(r, 0, PyLong_FromLong(sizeof(int64_t) + size));
+    PyTuple_SetItem(r, 1,
         PyCapsule_New(reinterpret_cast<void*>(batch), "arrow", &ArrowCapsule_Destructor));
     return r;
   }
@@ -128,32 +126,27 @@ static PyObject* write_to_buffer(PyObject* self, PyObject* args) {
   if (!PyMemoryView_Check(memoryview)) { return NULL; }
   Py_buffer* buffer = PyMemoryView_GET_BUFFER(memoryview);
   auto target = std::make_shared<FixedBufferStream>(
-      reinterpret_cast<uint8_t*>(buffer->buf), buffer->len);
-  int64_t body_end_offset;
-  int64_t header_end_offset;
-  ARROW_CHECK_OK(ipc::WriteRecordBatch((*batch)->columns(), (*batch)->num_rows(),
-      target.get(), &body_end_offset, &header_end_offset));
-  return PyLong_FromLong(header_end_offset);
+      reinterpret_cast<uint8_t*>(buffer->buf) + sizeof(int64_t), buffer->len - sizeof(int64_t));
+  std::shared_ptr<arrow::ipc::FileWriter> writer;
+  ipc::FileWriter::Open(target.get(), (*batch)->schema(), &writer);
+  writer->WriteRecordBatch(*(*batch));
+  writer->Close();
+  *((int64_t*) buffer->buf) = buffer->len - sizeof(int64_t);
+  Py_RETURN_NONE;
 }
 
 /* Documented in doc/numbuf.rst in ray-core */
 static PyObject* read_from_buffer(PyObject* self, PyObject* args) {
   PyObject* data_memoryview;
-  PyObject* metadata_memoryview;
-  int64_t header_end_offset;
   if (!PyArg_ParseTuple(
-          args, "OOL", &data_memoryview, &metadata_memoryview, &header_end_offset)) {
+          args, "O", &data_memoryview)) {
     return NULL;
   }
 
-  Py_buffer* metadata_buffer = PyMemoryView_GET_BUFFER(metadata_memoryview);
   Py_buffer* data_buffer = PyMemoryView_GET_BUFFER(data_memoryview);
-  auto ptr = reinterpret_cast<uint8_t*>(metadata_buffer->buf);
-  auto schema_buffer = std::make_shared<Buffer>(ptr, metadata_buffer->len);
 
   auto batch = new std::shared_ptr<arrow::RecordBatch>();
-  ARROW_CHECK_OK(read_batch(schema_buffer, header_end_offset,
-      reinterpret_cast<uint8_t*>(data_buffer->buf), data_buffer->len, batch));
+  ARROW_CHECK_OK(read_batch(reinterpret_cast<uint8_t*>(data_buffer->buf), data_buffer->len, batch));
 
   return PyCapsule_New(reinterpret_cast<void*>(batch), "arrow", &ArrowCapsule_Destructor);
 }
@@ -251,9 +244,8 @@ static PyObject* store_list(PyObject* self, PyObject* args) {
   Status s = SerializeSequences(std::vector<PyObject*>({value}), recursion_depth, &array);
   CHECK_SERIALIZATION_ERROR(s);
 
-  std::shared_ptr<RecordBatch> batch;
-  std::shared_ptr<Buffer> metadata;
-  int64_t size = make_schema_and_batch(array, &metadata, &batch);
+  std::shared_ptr<RecordBatch> batch = make_batch(array);
+  int64_t size = get_batch_size(batch);
 
   uint8_t* data;
   /* The arrow schema is stored as the metadata of the plasma object and
@@ -261,8 +253,7 @@ static PyObject* store_list(PyObject* self, PyObject* args) {
    * stored in the plasma data buffer. The header end offset is stored in
    * the first sizeof(int64_t) bytes of the data buffer. The RecordBatch
    * data is stored after that. */
-  int error_code = plasma_create(conn, obj_id, sizeof(size) + size,
-      (uint8_t*)metadata->data(), metadata->size(), &data);
+  int error_code = plasma_create(conn, obj_id, sizeof(size) + size, NULL, 0, &data);
   if (error_code == PlasmaError_ObjectExists) {
     PyErr_SetString(NumbufPlasmaObjectExistsError,
         "An object with this ID already exists in the plasma "
@@ -278,13 +269,12 @@ static PyObject* store_list(PyObject* self, PyObject* args) {
   CHECK(error_code == PlasmaError_OK);
 
   auto target = std::make_shared<FixedBufferStream>(sizeof(size) + data, size);
-  int64_t body_end_offset;
-  int64_t header_end_offset;
-  ARROW_CHECK_OK(ipc::WriteRecordBatch(batch->columns(), batch->num_rows(), target.get(),
-      &body_end_offset, &header_end_offset));
-
-  /* Save the header end offset at the beginning of the plasma data buffer. */
-  *((int64_t*)data) = header_end_offset;
+  std::shared_ptr<arrow::ipc::FileWriter> writer;
+  ipc::FileWriter::Open(target.get(), batch->schema(), &writer);
+  writer->WriteRecordBatch(*batch);
+  writer->Close();
+  *((int64_t*)data) = size;
+  
   /* Do the plasma_release corresponding to the call to plasma_create. */
   plasma_release(conn, obj_id);
   /* Seal the object. */
@@ -349,15 +339,8 @@ static PyObject* retrieve_list(PyObject* self, PyObject* args) {
       PyCapsule_SetContext(base, plasma_conn);
       Py_XINCREF(plasma_conn);
 
-      /* Remember: The metadata offset was written at the beginning of the plasma buffer.
-       */
-      int64_t header_end_offset = *((int64_t*)object_buffers[i].data);
-      auto schema_buffer = std::make_shared<Buffer>(
-          object_buffers[i].metadata, object_buffers[i].metadata_size);
       auto batch = std::shared_ptr<RecordBatch>();
-      ARROW_CHECK_OK(read_batch(schema_buffer, header_end_offset,
-          object_buffers[i].data + sizeof(object_buffers[i].data_size),
-          object_buffers[i].data_size - sizeof(object_buffers[i].data_size), &batch));
+      ARROW_CHECK_OK(read_batch(object_buffers[i].data, object_buffers[i].data_size, &batch));
 
       PyObject* result;
       Status s = DeserializeList(batch->column(0), 0, batch->num_rows(), base, &result);

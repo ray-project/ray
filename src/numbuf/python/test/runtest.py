@@ -26,7 +26,7 @@ if sys.version_info < (3, 0):
 class SerializationTests(unittest.TestCase):
 
   def roundTripTest(self, data):
-    schema, size, serialized = numbuf.serialize_list(data)
+    size, serialized = numbuf.serialize_list(data)
     result = numbuf.deserialize_list(serialized)
     assert_equal(data, result)
 
@@ -89,7 +89,7 @@ class SerializationTests(unittest.TestCase):
 
     numbuf.register_callbacks(serialize, deserialize)
 
-    metadata, size, serialized = numbuf.serialize_list([bar])
+    size, serialized = numbuf.serialize_list([bar])
     self.assertEqual(numbuf.deserialize_list(serialized)[0].foo.x, 42)
 
   def testObjectArray(self):
@@ -105,23 +105,23 @@ class SerializationTests(unittest.TestCase):
 
     numbuf.register_callbacks(myserialize, mydeserialize)
 
-    metadata, size, serialized = numbuf.serialize_list([x, y])
+    size, serialized = numbuf.serialize_list([x, y])
 
     assert_equal(numbuf.deserialize_list(serialized), [x, y])
 
   def testBuffer(self):
     for (i, obj) in enumerate(TEST_OBJECTS):
-      schema, size, batch = numbuf.serialize_list([obj])
-      size = size + 4096 # INITIAL_METADATA_SIZE in arrow.
+      size, batch = numbuf.serialize_list([obj])
+      size = size
       buff = np.zeros(size, dtype="uint8")
-      metadata_offset = numbuf.write_to_buffer(batch, memoryview(buff))
-      array = numbuf.read_from_buffer(memoryview(buff), memoryview(schema), metadata_offset)
+      numbuf.write_to_buffer(batch, memoryview(buff))
+      array = numbuf.read_from_buffer(memoryview(buff))
       result = numbuf.deserialize_list(array)
       assert_equal(result[0], obj)
 
   def testObjectArrayImmutable(self):
     obj = np.zeros([10])
-    schema, size, serialized = numbuf.serialize_list([obj])
+    size, serialized = numbuf.serialize_list([obj])
     result = numbuf.deserialize_list(serialized)
     assert_equal(result[0], obj)
     with self.assertRaises(ValueError):
