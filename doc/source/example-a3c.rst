@@ -149,6 +149,6 @@ global model parameters. The main training script looks like the following.
 Benchmarks and Visualization
 ----------------------------
 
-For the :code:`PongDeterministic-v3` and an Amazon EC2 m4.16xlarge instance, we are able to train the agent with 16 workers in just under 15 minutes. With 8 workers, we can train the agent in just under 25 minutes.
+For the :code:`PongDeterministic-v3` and an Amazon EC2 m4.16xlarge instance, we are able to train the agent with 16 workers in around 15 minutes. With 8 workers, we can train the agent in around 25 minutes.
 
 You can visualize performance by running :code:`tensorboard --logdir [directory]` in a separate screen, where :code:`[directory]` is defaulted to :code:`./results/`. If you are running multiple experiments, be sure to vary the directory to which Tensorflow saves its progress (found in :code: `driver.py`).
