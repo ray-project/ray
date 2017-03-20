@@ -208,6 +208,12 @@ class ReconstructionTests(unittest.TestCase):
     for i in range(num_objects):
       value = ray.get(args[i])
       self.assertEqual(value[0], i)
+    # Get values sequentially, in chunks.
+    num_chunks = 4 * self.num_local_schedulers
+    chunk = num_objects // num_chunks
+    for i in range(num_chunks):
+      values = ray.get(args[i * chunk : (i + 1) * chunk])
+      del values
 
   def testRecursive(self):
     # Define the size of one task's return argument so that the combined sum of
@@ -252,6 +258,12 @@ class ReconstructionTests(unittest.TestCase):
       i  = np.random.randint(num_objects)
       value = ray.get(args[i])
       self.assertEqual(value[0], i)
+    # Get values sequentially, in chunks.
+    num_chunks = 4 * self.num_local_schedulers
+    chunk = num_objects // num_chunks
+    for i in range(num_chunks):
+      values = ray.get(args[i * chunk : (i + 1) * chunk])
+      del values
 
   def testMultipleRecursive(self):
     # Define the size of one task's return argument so that the combined sum of
