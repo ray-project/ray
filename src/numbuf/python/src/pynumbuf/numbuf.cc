@@ -56,8 +56,8 @@ int64_t get_batch_size(std::shared_ptr<RecordBatch> batch) {
 
 Status read_batch(uint8_t* data, int64_t size, std::shared_ptr<RecordBatch>* batch_out) {
   std::shared_ptr<arrow::ipc::FileReader> reader;
-  auto source =
-      std::make_shared<FixedBufferStream>(sizeof(size) + data, size - sizeof(size));
+  auto source = std::make_shared<FixedBufferStream>(
+      LENGTH_PREFIX_SIZE + data, size - LENGTH_PREFIX_SIZE);
   int64_t data_size = *((int64_t*)data);
   arrow::ipc::FileReader::Open(source, data_size, &reader);
   reader->GetRecordBatch(0, batch_out);
@@ -274,7 +274,7 @@ static PyObject* store_list(PyObject* self, PyObject* args) {
   }
   CHECK(error_code == PlasmaError_OK);
 
-  auto target = std::make_shared<FixedBufferStream>(sizeof(size) + data, size);
+  auto target = std::make_shared<FixedBufferStream>(LENGTH_PREFIX_SIZE + data, size);
   std::shared_ptr<arrow::ipc::FileWriter> writer;
   ipc::FileWriter::Open(target.get(), batch->schema(), &writer);
   writer->WriteRecordBatch(*batch);
