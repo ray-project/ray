@@ -18,15 +18,15 @@ namespace numbuf {
   case Type::TYPE:                     \
     return NPY_##TYPE;
 
-#define DESERIALIZE_ARRAY_CASE(TYPE, ArrayType, type)                             \
-  case Type::TYPE: {                                                              \
-    auto values = std::dynamic_pointer_cast<ArrayType>(content->values());        \
-    DCHECK(values);                                                               \
+#define DESERIALIZE_ARRAY_CASE(TYPE, ArrayType, type)                                   \
+  case Type::TYPE: {                                                                    \
+    auto values = std::dynamic_pointer_cast<ArrayType>(content->values());              \
+    DCHECK(values);                                                                     \
     type* data = const_cast<type*>(values->raw_data()) + content->value_offset(offset); \
-    *out = PyArray_SimpleNewFromData(                                             \
-        num_dims, dim.data(), NPY_##TYPE, reinterpret_cast<void*>(data));         \
-    if (base != Py_None) { PyArray_SetBaseObject((PyArrayObject*)*out, base); }   \
-    Py_XINCREF(base);                                                             \
+    *out = PyArray_SimpleNewFromData(                                                   \
+        num_dims, dim.data(), NPY_##TYPE, reinterpret_cast<void*>(data));               \
+    if (base != Py_None) { PyArray_SetBaseObject((PyArrayObject*)*out, base); }         \
+    Py_XINCREF(base);                                                                   \
   } break;
 
 Status DeserializeArray(

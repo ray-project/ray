@@ -50,8 +50,9 @@ int64_t get_batch_size(std::shared_ptr<RecordBatch> batch) {
 
 Status read_batch(uint8_t* data, int64_t size, std::shared_ptr<RecordBatch>* batch_out) {
   std::shared_ptr<arrow::ipc::FileReader> reader;
-  auto source = std::make_shared<FixedBufferStream>(sizeof(size) + data, size - sizeof(size));
-  int64_t data_size = *((int64_t*) data);
+  auto source =
+      std::make_shared<FixedBufferStream>(sizeof(size) + data, size - sizeof(size));
+  int64_t data_size = *((int64_t*)data);
   arrow::ipc::FileReader::Open(source, data_size, &reader);
   reader->GetRecordBatch(0, batch_out);
   return Status::OK();
@@ -126,27 +127,26 @@ static PyObject* write_to_buffer(PyObject* self, PyObject* args) {
   if (!PyMemoryView_Check(memoryview)) { return NULL; }
   Py_buffer* buffer = PyMemoryView_GET_BUFFER(memoryview);
   auto target = std::make_shared<FixedBufferStream>(
-      reinterpret_cast<uint8_t*>(buffer->buf) + sizeof(int64_t), buffer->len - sizeof(int64_t));
+      reinterpret_cast<uint8_t*>(buffer->buf) + sizeof(int64_t),
+      buffer->len - sizeof(int64_t));
   std::shared_ptr<arrow::ipc::FileWriter> writer;
   ipc::FileWriter::Open(target.get(), (*batch)->schema(), &writer);
   writer->WriteRecordBatch(*(*batch));
   writer->Close();
-  *((int64_t*) buffer->buf) = buffer->len - sizeof(int64_t);
+  *((int64_t*)buffer->buf) = buffer->len - sizeof(int64_t);
   Py_RETURN_NONE;
 }
 
 /* Documented in doc/numbuf.rst in ray-core */
 static PyObject* read_from_buffer(PyObject* self, PyObject* args) {
   PyObject* data_memoryview;
-  if (!PyArg_ParseTuple(
-          args, "O", &data_memoryview)) {
-    return NULL;
-  }
+  if (!PyArg_ParseTuple(args, "O", &data_memoryview)) { return NULL; }
 
   Py_buffer* data_buffer = PyMemoryView_GET_BUFFER(data_memoryview);
 
   auto batch = new std::shared_ptr<arrow::RecordBatch>();
-  ARROW_CHECK_OK(read_batch(reinterpret_cast<uint8_t*>(data_buffer->buf), data_buffer->len, batch));
+  ARROW_CHECK_OK(
+      read_batch(reinterpret_cast<uint8_t*>(data_buffer->buf), data_buffer->len, batch));
 
   return PyCapsule_New(reinterpret_cast<void*>(batch), "arrow", &ArrowCapsule_Destructor);
 }
@@ -274,7 +274,7 @@ static PyObject* store_list(PyObject* self, PyObject* args) {
   writer->WriteRecordBatch(*batch);
   writer->Close();
   *((int64_t*)data) = size;
-  
+
   /* Do the plasma_release corresponding to the call to plasma_create. */
   plasma_release(conn, obj_id);
   /* Seal the object. */
@@ -340,7 +340,8 @@ static PyObject* retrieve_list(PyObject* self, PyObject* args) {
       Py_XINCREF(plasma_conn);
 
       auto batch = std::shared_ptr<RecordBatch>();
-      ARROW_CHECK_OK(read_batch(object_buffers[i].data, object_buffers[i].data_size, &batch));
+      ARROW_CHECK_OK(
+          read_batch(object_buffers[i].data, object_buffers[i].data_size, &batch));
 
       PyObject* result;
       Status s = DeserializeList(batch->column(0), 0, batch->num_rows(), base, &result);

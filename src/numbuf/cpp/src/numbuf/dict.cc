@@ -16,7 +16,7 @@ Status DictBuilder::Finish(std::shared_ptr<Array> key_tuple_data,
   auto vals_field = std::make_shared<Field>("vals", vals->type());
   auto type =
       std::make_shared<StructType>(std::vector<FieldPtr>({keys_field, vals_field}));
-  std::vector<std::shared_ptr<Array> > field_arrays({keys, vals});
+  std::vector<std::shared_ptr<Array>> field_arrays({keys, vals});
   DCHECK(keys->length() == vals->length());
   out->reset(new StructArray(type, keys->length(), field_arrays));
   return Status::OK();

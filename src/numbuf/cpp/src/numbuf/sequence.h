@@ -8,8 +8,9 @@ namespace numbuf {
 
 class NullArrayBuilder : public arrow::ArrayBuilder {
  public:
-  explicit NullArrayBuilder(arrow::MemoryPool* pool, const arrow::TypePtr& type) : arrow::ArrayBuilder(pool, type) {}
-  virtual ~NullArrayBuilder() {};
+  explicit NullArrayBuilder(arrow::MemoryPool* pool, const arrow::TypePtr& type)
+      : arrow::ArrayBuilder(pool, type) {}
+  virtual ~NullArrayBuilder(){};
   arrow::Status Finish(std::shared_ptr<arrow::Array>* out) override {
     return arrow::Status::OK();
   }
