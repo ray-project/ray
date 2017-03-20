@@ -767,12 +767,8 @@ void redis_task_table_test_and_update_callback(redisAsyncContext *c,
   /* Parse the task from the reply. */
   Task *task = parse_and_construct_task_from_redis_reply(reply);
   /* Determine whether the update happened. */
-  bool updated = false;
-  if (task != NULL) {
-    TaskTableTestAndUpdateData *update_data =
-        (TaskTableTestAndUpdateData *) callback_data->data;
-    updated = (Task_state(task) == update_data->update_state);
-  }
+  auto message = flatbuffers::GetRoot<TaskReply>(reply->str);
+  bool updated = message->updated();
 
   /* Call the done callback if there is one. */
   task_table_test_and_update_callback done_callback =

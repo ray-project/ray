@@ -90,6 +90,9 @@ table TaskReply {
   local_scheduler_id: string;
   // A string of bytes representing the task specification.
   task_spec: string;
+  // A boolean representing whether the update was successful. This field
+  // should only be used for test-and-set operations.
+  updated: bool;
 }
 
 root_type TaskReply;

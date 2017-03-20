@@ -736,13 +736,19 @@ int ResultTableAdd_RedisCommand(RedisModuleCtx *ctx,
  * Reply with information about a task ID. This is used by
  * RAY.RESULT_TABLE_LOOKUP and RAY.TASK_TABLE_GET.
  *
+ * @param ctx The Redis context.
  * @param task_id The task ID of the task to reply about.
+ * @param updated A boolean representing whether the task was updated during
+ *        this operation. This field is only used for
+ *        RAY.TASK_TABLE_TEST_AND_UPDATE operations.
  * @return NIL if the task ID is not in the task table. An error if the task ID
  *         is in the task table but the appropriate fields are not there, and
  *         an array of the task scheduling state, the local scheduler ID, and
  *         the task spec for the task otherwise.
  */
-int ReplyWithTask(RedisModuleCtx *ctx, RedisModuleString *task_id) {
+int ReplyWithTask(RedisModuleCtx *ctx,
+                  RedisModuleString *task_id,
+                  bool updated) {
   RedisModuleKey *key =
       OpenPrefixedKey(ctx, TASK_PREFIX, task_id, REDISMODULE_READ);
 
@@ -775,7 +781,7 @@ int ReplyWithTask(RedisModuleCtx *ctx, RedisModuleString *task_id) {
     auto message =
         CreateTaskReply(fbb, RedisStringToFlatbuf(fbb, task_id), state_integer,
                         RedisStringToFlatbuf(fbb, local_scheduler_id),
-                        RedisStringToFlatbuf(fbb, task_spec));
+                        RedisStringToFlatbuf(fbb, task_spec), updated);
     fbb.Finish(message);
 
     RedisModuleString *reply = RedisModule_CreateString(
@@ -1046,16 +1052,18 @@ int TaskTableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
         ctx, "Invalid test value for scheduling state");
   }
 
+  bool updated = false;
   if (current_state_integer & test_state_bitmask) {
     /* The test passed, so perform the update. */
     RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "state", state,
                         "local_scheduler_id", argv[4], NULL);
+    updated = true;
   }
 
   /* Clean up. */
   RedisModule_CloseKey(key);
   /* Construct a reply by getting the task from the task ID. */
-  return ReplyWithTask(ctx, argv[1]);
+  return ReplyWithTask(ctx, argv[1], updated);
 }
 
 /**
@@ -1079,7 +1087,7 @@ int TaskTableGet_RedisCommand(RedisModuleCtx *ctx,
   }
 
   /* Construct a reply by getting the task from the task ID. */
-  return ReplyWithTask(ctx, argv[1]);
+  return ReplyWithTask(ctx, argv[1], false);
 }
 
 extern "C" {
