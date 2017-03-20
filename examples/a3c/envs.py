@@ -15,7 +15,8 @@ logger.setLevel(logging.INFO)
 
 def create_env(env_id):
     env = gym.make(env_id)
-    env = Processing(env)
+    env = AtariProcessing(env)
+    env = Diagnostic(env)
     return env
 
 def _process_frame42(frame):
@@ -31,20 +32,26 @@ def _process_frame42(frame):
     frame = np.reshape(frame, [42, 42, 1])
     return frame
 
-class Processing(gym.Wrapper):
+class AtariProcessing(gym.ObservationWrapper):
     def __init__(self, env=None):
-        super(Processing, self).__init__(env)
+        super(AtariProcessing, self).__init__(env)
         self.observation_space = Box(0.0, 1.0, [42, 42, 1])
-        self.diagnostics = Diagnostics()
 
     def _observation(self, observation):
         return _process_frame42(observation)
 
-    def _after_reset(self, observation):
+class Diagnostic(gym.Wrapper):
+    def __init__(self, env=None):
+        super(Diagnostic, self).__init__(env)
+        self.diagnostics = Diagnostic()
+
+    def _reset(self):
+        observation = self.env._reset()
         return self.diagnostics._after_reset(observation)
 
-    def _after_step(self, observation, reward, done, info):
-        return self.diagnostics._after_step(observation, reward, done, info)
+    def _step(self, action):
+        results = self.env._step(action)
+        return self.diagnostics._after_step(*results)
 
 
 class Diagnostics():
