@@ -27,6 +27,12 @@ PyObject* NumbufPlasmaObjectExistsError;
 
 #endif
 
+// Each arrow object is stored in the format
+// | length of the object in bytes | object data |.
+// LENGTH_PREFIX_SIZE is the number of bytes occupied by the
+// object length field.
+constexpr int64_t LENGTH_PREFIX_SIZE = sizeof(int64_t);
+
 using namespace arrow;
 using namespace numbuf;
 
@@ -109,7 +115,7 @@ static PyObject* serialize_list(PyObject* self, PyObject* args) {
     int64_t size = get_batch_size(*batch);
 
     PyObject* r = PyTuple_New(2);
-    PyTuple_SetItem(r, 0, PyLong_FromLong(sizeof(int64_t) + size));
+    PyTuple_SetItem(r, 0, PyLong_FromLong(LENGTH_PREFIX_SIZE + size));
     PyTuple_SetItem(r, 1,
         PyCapsule_New(reinterpret_cast<void*>(batch), "arrow", &ArrowCapsule_Destructor));
     return r;
@@ -127,13 +133,13 @@ static PyObject* write_to_buffer(PyObject* self, PyObject* args) {
   if (!PyMemoryView_Check(memoryview)) { return NULL; }
   Py_buffer* buffer = PyMemoryView_GET_BUFFER(memoryview);
   auto target = std::make_shared<FixedBufferStream>(
-      reinterpret_cast<uint8_t*>(buffer->buf) + sizeof(int64_t),
-      buffer->len - sizeof(int64_t));
+      LENGTH_PREFIX_SIZE + reinterpret_cast<uint8_t*>(buffer->buf),
+      buffer->len - LENGTH_PREFIX_SIZE);
   std::shared_ptr<arrow::ipc::FileWriter> writer;
   ipc::FileWriter::Open(target.get(), (*batch)->schema(), &writer);
   writer->WriteRecordBatch(*(*batch));
   writer->Close();
-  *((int64_t*)buffer->buf) = buffer->len - sizeof(int64_t);
+  *((int64_t*)buffer->buf) = buffer->len - LENGTH_PREFIX_SIZE;
   Py_RETURN_NONE;
 }
 
@@ -251,9 +257,9 @@ static PyObject* store_list(PyObject* self, PyObject* args) {
   /* The arrow schema is stored as the metadata of the plasma object and
    * both the arrow data and the header end offset are
    * stored in the plasma data buffer. The header end offset is stored in
-   * the first sizeof(int64_t) bytes of the data buffer. The RecordBatch
+   * the first LENGTH_PREFIX_SIZE bytes of the data buffer. The RecordBatch
    * data is stored after that. */
-  int error_code = plasma_create(conn, obj_id, sizeof(size) + size, NULL, 0, &data);
+  int error_code = plasma_create(conn, obj_id, LENGTH_PREFIX_SIZE + size, NULL, 0, &data);
   if (error_code == PlasmaError_ObjectExists) {
     PyErr_SetString(NumbufPlasmaObjectExistsError,
         "An object with this ID already exists in the plasma "
