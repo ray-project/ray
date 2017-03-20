@@ -65,6 +65,11 @@ model.
 
 There are two main parts to the implementation - the driver and the worker.
 
+Benchmarks
+-----------
+
+For the `PongDeterministic-v3` and an Amazon EC2 m4.16xlarge instance, we are able to train the agent with 16 workers in just under 15 minutes. With 8 workers, we can train the agent in just under 25 minutes.
+
 Worker Code Walkthrough
 -----------------------
 
