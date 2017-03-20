@@ -503,8 +503,8 @@ class ReconstructionTests(unittest.TestCase):
     def error_check(errors):
       return len(errors) > 1
     errors = self.wait_for_errors(error_check)
-    print(errors)
-    self.assertTrue(all(error[b"type"] == b"driver_put_reconstruction" for error in errors))
+    self.assertTrue(all(error[b"type"] == b"put_reconstruction" for error in errors))
+    self.assertTrue(all(error[b"data"] == b"Driver" for error in errors))
 
 
 class ReconstructionTestsMultinode(ReconstructionTests):

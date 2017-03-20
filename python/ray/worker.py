@@ -707,7 +707,10 @@ def error_info(worker=global_worker):
       if (error_type == OBJECT_HASH_MISMATCH_ERROR_TYPE or error_type ==
           PUT_RECONSTRUCTION_ERROR_TYPE):
         function_id = error_contents[b"data"]
-        function_name = worker.redis_client.hget("RemoteFunction:{}".format(function_id), "name")
+        if function_id == NIL_FUNCTION_ID:
+          function_name = "Driver"
+        else:
+          function_name = worker.redis_client.hget("RemoteFunction:{}".format(function_id), "name")
         error_contents[b"data"] = function_name
       errors.append(error_contents)
 

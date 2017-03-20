@@ -530,21 +530,11 @@ void reconstruct_task_update_callback(Task *task,
 void reconstruct_put_task_update_callback(Task *task,
                                           void *user_context,
                                           bool updated) {
+  CHECK(task != NULL);
   if (updated) {
     /* The update to TASK_STATUS_RECONSTRUCTING succeeded, so continue with
      * reconstruction as usual. */
     reconstruct_task_update_callback(task, user_context, updated);
-    return;
-  }
-
-  if (task == NULL) {
-    /* The driver task needs to be reexecuted. */
-    /* TODO(swang): Store an entry for the driver task in the task table, so
-     * that we can push the error directly to the user instead of logging a
-     * warning here.  */
-    LOG_WARN(
-        "Reconstruction requested for a driver ray.put, unable to push error "
-        "to driver");
     return;
   }
 
