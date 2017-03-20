@@ -40,7 +40,7 @@ class Runner(object):
         return rollout
 
     def start(self):
-        summary_writer = tf.summary.FileWriter(self.logdir + "test_1")
+        summary_writer = tf.summary.FileWriter(self.logdir + "agent_%d" % self.id)
         self.summary_writer = summary_writer
         self.runner.start_runner(self.policy.sess, summary_writer)
 
