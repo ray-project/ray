@@ -65,11 +65,6 @@ model.
 
 There are two main parts to the implementation - the driver and the worker.
 
-Benchmarks
------------
-
-For the `PongDeterministic-v3` and an Amazon EC2 m4.16xlarge instance, we are able to train the agent with 16 workers in just under 15 minutes. With 8 workers, we can train the agent in just under 25 minutes.
-
 Worker Code Walkthrough
 -----------------------
 
@@ -149,3 +144,11 @@ global model parameters. The main training script looks like the following.
       parameters = policy.get_weights()
       gradient_list.extend([agents[info["id"]].compute_gradient(parameters)])
     return policy
+
+
+Benchmarks and Visualization
+----------------------------
+
+For the `PongDeterministic-v3` and an Amazon EC2 m4.16xlarge instance, we are able to train the agent with 16 workers in just under 15 minutes. With 8 workers, we can train the agent in just under 25 minutes.
+
+You can visualize performance by running `tensorboard --logdir [directory]` in a separate screen, where `[directory]` is defaulted to `./tmp/`.
