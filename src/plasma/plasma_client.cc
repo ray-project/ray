@@ -486,34 +486,24 @@ static inline bool compute_object_hash_parallel(XXH64_state_t *hash_state,
                                                 const unsigned char *data,
                                                 int64_t nbytes) {
   const uint64_t num_threads = THREADPOOL_SIZE;
-  uint64_t threadhash[num_threads + 2];
-  const uint64_t block_size = BLOCK_SIZE;
-  /* Calculate the first and last aligned positions in the data stream. */
+  uint64_t threadhash[num_threads + 1];
   const uint64_t data_address = reinterpret_cast<uint64_t>(data);
-  uint64_t left_address = (data_address + block_size - 1) & ~(block_size - 1);
-  uint64_t right_address = (data_address + nbytes) & ~(block_size - 1);
-  /* Calculate how many cache blocks we have to hash and divide them equally. */
-  const uint64_t numblocks = (right_address - left_address) / block_size;
-  /* Update the end pointer. */
-  right_address = right_address - (numblocks % num_threads) * block_size;
-  const uint64_t prefix = left_address - data_address;
+  const uint64_t numblocks = nbytes / BLOCK_SIZE;
+  const uint64_t chunk_size = (numblocks / num_threads) * BLOCK_SIZE;
+  const uint64_t right_address = data_address + chunk_size * num_threads;
   const uint64_t suffix = (data_address + nbytes) - right_address;
-  /* Now the data layout is | prefix | k * num_threads * block_size | suffix |
-   * with chunk_size = k * block_size therefore the layout is
-   * | prefix | num_threads * chunksz | suffix |.
-   * Each thread gets a "chunk" of k blocks, except prefix and suffix threads.
+  /* Now the data layout is | k * num_threads * block_size | suffix | ==
+   * | num_threads * chunk_size | suffix |, where chunk_size = k * block_size.
+   * Each thread gets a "chunk" of k blocks, except the suffix thread.
    */
-  const uint64_t chunk_size = (right_address - left_address) / num_threads;
 
   for (int i = 0; i < num_threads; i++) {
-    threadpool_[i] =
-        std::thread(compute_block_hash,
-                    reinterpret_cast<uint8_t *>(left_address) + i * chunk_size,
-                    chunk_size, &threadhash[i]);
+    threadpool_[i] = std::thread(compute_block_hash,
+        reinterpret_cast<uint8_t *>(data_address) + i * chunk_size, chunk_size,
+        &threadhash[i]);
   }
-  compute_block_hash(data, prefix, &threadhash[num_threads]);
   compute_block_hash(reinterpret_cast<uint8_t *>(right_address), suffix,
-                     &threadhash[num_threads + 1]);
+      &threadhash[num_threads]);
 
   /* Join the threads. */
   for (auto &t : threadpool_) {
