@@ -2,11 +2,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import unittest
-import uuid
-import tensorflow as tf
-import ray
 from numpy.testing import assert_almost_equal
+import tensorflow as tf
+import unittest
+
+import ray
+
 
 def make_linear_network(w_name=None, b_name=None):
   # Define the inputs.
@@ -17,7 +18,9 @@ def make_linear_network(w_name=None, b_name=None):
   b = tf.Variable(tf.zeros([1]), name=b_name)
   y = w * x_data + b
   # Return the loss and weight initializer.
-  return tf.reduce_mean(tf.square(y - y_data)), tf.global_variables_initializer(), x_data, y_data
+  return (tf.reduce_mean(tf.square(y - y_data)),
+          tf.global_variables_initializer(), x_data, y_data)
+
 
 class NetActor(object):
 
@@ -40,6 +43,7 @@ class NetActor(object):
   def get_weights(self):
     return self.values[0].get_weights()
 
+
 class TrainActor(object):
 
   def __init__(self):
@@ -57,10 +61,12 @@ class TrainActor(object):
   def training_step(self, weights):
     _, variables, _, sess, grads, _, placeholders = self.values
     variables.set_weights(weights)
-    return sess.run([grad[0] for grad in grads], feed_dict=dict(zip(placeholders, [[1]*100, [2]*100])))
+    return sess.run([grad[0] for grad in grads],
+                    feed_dict=dict(zip(placeholders, [[1] * 100, [2] * 100])))
 
   def get_weights(self):
     return self.values[1].get_weights()
+
 
 class TensorFlowTest(unittest.TestCase):
 
@@ -113,9 +119,6 @@ class TensorFlowTest(unittest.TestCase):
     net1 = NetActor()
     net2 = NetActor()
 
-    net_vars1, init1, sess1 = net1.values
-    net_vars2, init2, sess2 = net2.values
-
     # This is checking that the variable names of the two nets are the same,
     # i.e. that the names in the weight dictionaries are the same
     net1.values[0].set_weights(net2.values[0].get_weights())
@@ -125,7 +128,8 @@ class TensorFlowTest(unittest.TestCase):
   # Test that different networks on the same worker are independent and
   # we can get/set their weights without any interaction.
   def testNetworksIndependent(self):
-    # Note we use only one worker to ensure that all of the remote functions run on the same worker.
+    # Note we use only one worker to ensure that all of the remote functions
+    # run on the same worker.
     ray.init(num_workers=1)
     net1 = NetActor()
     net2 = NetActor()
@@ -151,15 +155,15 @@ class TensorFlowTest(unittest.TestCase):
 
     ray.worker.cleanup()
 
-  # This test creates an additional network on the driver so that the tensorflow
-  # variables on the driver and the worker differ.
+  # This test creates an additional network on the driver so that the
+  # tensorflow variables on the driver and the worker differ.
   def testNetworkDriverWorkerIndependent(self):
     ray.init(num_workers=1)
 
     # Create a network on the driver locally.
     sess1 = tf.Session()
     loss1, init1, _, _ = make_linear_network()
-    net_vars1 = ray.experimental.TensorFlowVariables(loss1, sess1)
+    ray.experimental.TensorFlowVariables(loss1, sess1)
     sess1.run(init1)
 
     net2 = ray.actor(NetActor)()
@@ -194,39 +198,28 @@ class TensorFlowTest(unittest.TestCase):
 
     ray.worker.cleanup()
 
-
   def testRemoteTrainingLoss(self):
     ray.init(num_workers=2)
 
     net = ray.actor(TrainActor)()
     loss, variables, _, sess, grads, train, placeholders = TrainActor().values
 
-    before_acc = sess.run(loss, feed_dict=dict(zip(placeholders, [[2]*100, [4]*100])))
+    before_acc = sess.run(loss, feed_dict=dict(zip(placeholders,
+                                                   [[2] * 100, [4] * 100])))
 
     for _ in range(3):
-      gradients_list = ray.get([net.training_step(variables.get_weights()) for _ in range(2)])
-      mean_grads = [sum([gradients[i] for gradients in gradients_list]) / len(gradients_list) for i in range(len(gradients_list[0]))]
-      feed_dict = {grad[0]: mean_grad for (grad, mean_grad) in zip(grads, mean_grads)}
+      gradients_list = ray.get([net.training_step(variables.get_weights())
+                                for _ in range(2)])
+      mean_grads = [sum([gradients[i] for gradients in gradients_list]) /
+                    len(gradients_list) for i in range(len(gradients_list[0]))]
+      feed_dict = {grad[0]: mean_grad for (grad, mean_grad)
+                   in zip(grads, mean_grads)}
       sess.run(train, feed_dict=feed_dict)
-    after_acc = sess.run(loss, feed_dict=dict(zip(placeholders, [[2]*100, [4]*100])))
+    after_acc = sess.run(loss, feed_dict=dict(zip(placeholders,
+                                                  [[2] * 100, [4] * 100])))
     self.assertTrue(before_acc < after_acc)
     ray.worker.cleanup()
 
-  def testVariablesControlDependencies(self):
-    ray.init(num_workers=1)
-
-    # Creates a network and appends a momentum optimizer.
-    sess = tf.Session()
-    loss, init, _, _ = make_linear_network()
-    minimizer = tf.train.MomentumOptimizer(0.9, 0.9).minimize(loss)
-    net_vars = ray.experimental.TensorFlowVariables(minimizer, sess)
-    sess.run(init)
-
-    # Tests if all variables are properly retrieved, 2 variables and 2 momentum
-    # variables.
-    self.assertEqual(len(net_vars.variables.items()), 4)
-
-    ray.worker.cleanup()
 
 if __name__ == "__main__":
   unittest.main(verbosity=2)

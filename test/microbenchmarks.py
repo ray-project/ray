@@ -9,10 +9,11 @@ import sys
 import time
 import numpy as np
 
+import ray.test.test_functions as test_functions
+
 if sys.version_info >= (3, 0):
   from importlib import reload
 
-import ray.test.test_functions as test_functions
 
 class MicroBenchmarkTest(unittest.TestCase):
 
@@ -20,7 +21,7 @@ class MicroBenchmarkTest(unittest.TestCase):
     reload(test_functions)
     ray.init(num_workers=3)
 
-    # measure the time required to submit a remote task to the scheduler
+    # Measure the time required to submit a remote task to the scheduler.
     elapsed_times = []
     for _ in range(1000):
       start_time = time.time()
@@ -34,9 +35,10 @@ class MicroBenchmarkTest(unittest.TestCase):
     print("    90th percentile: {}".format(elapsed_times[900]))
     print("    99th percentile: {}".format(elapsed_times[990]))
     print("    worst:           {}".format(elapsed_times[999]))
-    # average_elapsed_time should be about 0.00038
+    # average_elapsed_time should be about 0.00038.
 
-    # measure the time required to submit a remote task to the scheduler (where the remote task returns one value)
+    # Measure the time required to submit a remote task to the scheduler
+    # (where the remote task returns one value).
     elapsed_times = []
     for _ in range(1000):
       start_time = time.time()
@@ -50,9 +52,10 @@ class MicroBenchmarkTest(unittest.TestCase):
     print("    90th percentile: {}".format(elapsed_times[900]))
     print("    99th percentile: {}".format(elapsed_times[990]))
     print("    worst:           {}".format(elapsed_times[999]))
-    # average_elapsed_time should be about 0.001
+    # average_elapsed_time should be about 0.001.
 
-    # measure the time required to submit a remote task to the scheduler and get the result
+    # Measure the time required to submit a remote task to the scheduler and
+    # get the result.
     elapsed_times = []
     for _ in range(1000):
       start_time = time.time()
@@ -62,14 +65,15 @@ class MicroBenchmarkTest(unittest.TestCase):
       elapsed_times.append(end_time - start_time)
     elapsed_times = np.sort(elapsed_times)
     average_elapsed_time = sum(elapsed_times) / 1000
-    print("Time required to submit a trivial function call and get the result:")
+    print("Time required to submit a trivial function call and get the "
+          "result:")
     print("    Average: {}".format(average_elapsed_time))
     print("    90th percentile: {}".format(elapsed_times[900]))
     print("    99th percentile: {}".format(elapsed_times[990]))
     print("    worst:           {}".format(elapsed_times[999]))
-    # average_elapsed_time should be about 0.0013
+    # average_elapsed_time should be about 0.0013.
 
-    # measure the time required to do do a put
+    # Measure the time required to do do a put.
     elapsed_times = []
     for _ in range(1000):
       start_time = time.time()
@@ -83,7 +87,7 @@ class MicroBenchmarkTest(unittest.TestCase):
     print("    90th percentile: {}".format(elapsed_times[900]))
     print("    99th percentile: {}".format(elapsed_times[990]))
     print("    worst:           {}".format(elapsed_times[999]))
-    # average_elapsed_time should be about 0.00087
+    # average_elapsed_time should be about 0.00087.
 
     ray.worker.cleanup()
 
@@ -105,11 +109,14 @@ class MicroBenchmarkTest(unittest.TestCase):
 
     if d > 1.5 * b:
       if os.getenv("TRAVIS") is None:
-        raise Exception("The caching test was too slow. d = {}, b = {}".format(d, b))
+        raise Exception("The caching test was too slow. "
+                        "d = {}, b = {}".format(d, b))
       else:
-        print("WARNING: The caching test was too slow. d = {}, b = {}".format(d, b))
+        print("WARNING: The caching test was too slow. "
+              "d = {}, b = {}".format(d, b))
 
     ray.worker.cleanup()
+
 
 if __name__ == "__main__":
   unittest.main(verbosity=2)

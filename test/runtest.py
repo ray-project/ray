@@ -12,24 +12,33 @@ import string
 import sys
 from collections import namedtuple
 
+import ray.test.test_functions as test_functions
+
 if sys.version_info >= (3, 0):
   from importlib import reload
 
-import ray.test.test_functions as test_functions
-import ray.experimental.array.remote as ra
-import ray.experimental.array.distributed as da
 
 def assert_equal(obj1, obj2):
-  if type(obj1).__module__ == np.__name__ or type(obj2).__module__ == np.__name__:
-    if (hasattr(obj1, "shape") and obj1.shape == ()) or (hasattr(obj2, "shape") and obj2.shape == ()):
+  module_numpy = (type(obj1).__module__ == np.__name__ or
+                  type(obj2).__module__ == np.__name__)
+  if module_numpy:
+    empty_shape = ((hasattr(obj1, "shape") and obj1.shape == ()) or
+                   (hasattr(obj2, "shape") and obj2.shape == ()))
+    if empty_shape:
       # This is a special case because currently np.testing.assert_equal fails
       # because we do not properly handle different numerical types.
-      assert obj1 == obj2, "Objects {} and {} are different.".format(obj1, obj2)
+      assert obj1 == obj2, ("Objects {} and {} are "
+                            "different.".format(obj1, obj2))
     else:
       np.testing.assert_equal(obj1, obj2)
   elif hasattr(obj1, "__dict__") and hasattr(obj2, "__dict__"):
     special_keys = ["_pytype_"]
-    assert set(list(obj1.__dict__.keys()) + special_keys) == set(list(obj2.__dict__.keys()) + special_keys), "Objects {} and {} are different.".format(obj1, obj2)
+    assert (set(list(obj1.__dict__.keys()) + special_keys) ==
+            set(list(obj2.__dict__.keys()) + special_keys)), ("Objects {} and "
+                                                              "{} are "
+                                                              "different."
+                                                              .format(obj1,
+                                                                      obj2))
     for key in obj1.__dict__.keys():
       if key not in special_keys:
         assert_equal(obj1.__dict__[key], obj2.__dict__[key])
@@ -38,24 +47,29 @@ def assert_equal(obj1, obj2):
     for key in obj1.keys():
       assert_equal(obj1[key], obj2[key])
   elif type(obj1) is list or type(obj2) is list:
-    assert len(obj1) == len(obj2), "Objects {} and {} are lists with different lengths.".format(obj1, obj2)
+    assert len(obj1) == len(obj2), ("Objects {} and {} are lists with "
+                                    "different lengths.".format(obj1, obj2))
     for i in range(len(obj1)):
       assert_equal(obj1[i], obj2[i])
   elif type(obj1) is tuple or type(obj2) is tuple:
-    assert len(obj1) == len(obj2), "Objects {} and {} are tuples with different lengths.".format(obj1, obj2)
+    assert len(obj1) == len(obj2), ("Objects {} and {} are tuples with "
+                                    "different lengths.".format(obj1, obj2))
     for i in range(len(obj1)):
       assert_equal(obj1[i], obj2[i])
-  elif ray.serialization.is_named_tuple(type(obj1)) or ray.serialization.is_named_tuple(type(obj2)):
-    assert len(obj1) == len(obj2), "Objects {} and {} are named tuples with different lengths.".format(obj1, obj2)
+  elif (ray.serialization.is_named_tuple(type(obj1)) or
+        ray.serialization.is_named_tuple(type(obj2))):
+    assert len(obj1) == len(obj2), ("Objects {} and {} are named tuples with "
+                                    "different lengths.".format(obj1, obj2))
     for i in range(len(obj1)):
       assert_equal(obj1[i], obj2[i])
   else:
     assert obj1 == obj2, "Objects {} and {} are different.".format(obj1, obj2)
 
+
 if sys.version_info >= (3, 0):
   long_extras = [0, np.array([["hi", u"hi"], [1.3, 1]])]
 else:
-  long_extras = [long(0), np.array([["hi", u"hi"], [1.3, long(1)]])]
+  long_extras = [long(0), np.array([["hi", u"hi"], [1.3, long(1)]])]  # noqa: E501,F821
 
 PRIMITIVE_OBJECTS = [0, 0.0, 0.9, 1 << 62, "a", string.printable, "\u262F",
                      u"hello world", u"\xff\xfe\x9c\x001\x000\x00", None, True,
@@ -65,45 +79,55 @@ PRIMITIVE_OBJECTS = [0, 0.0, 0.9, 1 << 62, "a", string.printable, "\u262F",
                      np.random.normal(size=[100, 100]), np.array(["hi", 3]),
                      np.array(["hi", 3], dtype=object)] + long_extras
 
-COMPLEX_OBJECTS = [[[[[[[[[[[[[]]]]]]]]]]]],
-                   {"obj{}".format(i): np.random.normal(size=[100, 100]) for i in range(10)},
-                   #{(): {(): {(): {(): {(): {(): {(): {(): {(): {(): {(): {(): {}}}}}}}}}}}}},
-                   ((((((((((),),),),),),),),),),
-                   {"a": {"b": {"c": {"d": {}}}}}
-                   ]
+COMPLEX_OBJECTS = [
+    [[[[[[[[[[[[]]]]]]]]]]]],
+    {"obj{}".format(i): np.random.normal(size=[100, 100]) for i in range(10)},
+    # {(): {(): {(): {(): {(): {(): {(): {(): {(): {(): {
+    #      (): {(): {}}}}}}}}}}}}},
+    ((((((((((),),),),),),),),),),
+    {"a": {"b": {"c": {"d": {}}}}}]
+
 
 class Foo(object):
   def __init__(self):
     pass
+
 
 class Bar(object):
   def __init__(self):
     for i, val in enumerate(PRIMITIVE_OBJECTS + COMPLEX_OBJECTS):
       setattr(self, "field{}".format(i), val)
 
+
 class Baz(object):
   def __init__(self):
     self.foo = Foo()
     self.bar = Bar()
+
   def method(self, arg):
     pass
+
 
 class Qux(object):
   def __init__(self):
     self.objs = [Foo(), Bar(), Baz()]
 
+
 class SubQux(Qux):
   def __init__(self):
     Qux.__init__(self)
 
+
 class CustomError(Exception):
   pass
 
+
 Point = namedtuple("Point", ["x", "y"])
-NamedTupleExample = namedtuple("Example", "field1, field2, field3, field4, field5")
+NamedTupleExample = namedtuple("Example",
+                               "field1, field2, field3, field4, field5")
 
 CUSTOM_OBJECTS = [Exception("Test object."), CustomError(), Point(11, y=22),
-                  Foo(), Bar(), Baz(), # Qux(), SubQux(),
+                  Foo(), Bar(), Baz(),  # Qux(), SubQux(),
                   NamedTupleExample(1, 1.0, "hi", np.zeros([3, 5]), [1, 2, 3])]
 
 BASE_OBJECTS = PRIMITIVE_OBJECTS + COMPLEX_OBJECTS + CUSTOM_OBJECTS
@@ -112,8 +136,9 @@ LIST_OBJECTS = [[obj] for obj in BASE_OBJECTS]
 TUPLE_OBJECTS = [(obj,) for obj in BASE_OBJECTS]
 # The check that type(obj).__module__ != "numpy" should be unnecessary, but
 # otherwise this seems to fail on Mac OS X on Travis.
-DICT_OBJECTS = ([{obj: obj} for obj in PRIMITIVE_OBJECTS if obj.__hash__ is not None and type(obj).__module__ != "numpy"] +
-# DICT_OBJECTS = ([{obj: obj} for obj in BASE_OBJECTS if obj.__hash__ is not None] +
+DICT_OBJECTS = ([{obj: obj} for obj in PRIMITIVE_OBJECTS
+                 if (obj.__hash__ is not None and
+                     type(obj).__module__ != "numpy")] +
                 [{0: obj} for obj in BASE_OBJECTS])
 
 RAY_TEST_OBJECTS = BASE_OBJECTS + LIST_OBJECTS + TUPLE_OBJECTS + DICT_OBJECTS
@@ -124,7 +149,10 @@ try:
   cloudpickle.dumps(Point)
 except AttributeError:
   cloudpickle_command = "pip install --upgrade cloudpickle"
-  raise Exception("You have an older version of cloudpickle that is not able to serialize namedtuples. Try running \n\n{}\n\n".format(cloudpickle_command))
+  raise Exception("You have an older version of cloudpickle that is not able "
+                  "to serialize namedtuples. Try running "
+                  "\n\n{}\n\n".format(cloudpickle_command))
+
 
 class SerializationTest(unittest.TestCase):
 
@@ -155,7 +183,7 @@ class SerializationTest(unittest.TestCase):
 
     # Check that exceptions are thrown when we serialize the recursive objects.
     for obj in recursive_objects:
-      self.assertRaises(Exception, lambda : ray.put(obj))
+      self.assertRaises(Exception, lambda: ray.put(obj))
 
     ray.worker.cleanup()
 
@@ -180,6 +208,7 @@ class SerializationTest(unittest.TestCase):
       assert_equal(obj, ray.get(f.remote(obj)))
 
     ray.worker.cleanup()
+
 
 class WorkerTest(unittest.TestCase):
 
@@ -228,6 +257,7 @@ class WorkerTest(unittest.TestCase):
 
     ray.worker.cleanup()
 
+
 class APITest(unittest.TestCase):
 
   def testRegisterClass(self):
@@ -237,10 +267,10 @@ class APITest(unittest.TestCase):
     # throws an exception.
     class TempClass(object):
       pass
-    self.assertRaises(Exception, lambda : ray.put(Foo))
+    self.assertRaises(Exception, lambda: ray.put(Foo))
     # Check that registering a class that Ray cannot serialize efficiently
     # raises an exception.
-    self.assertRaises(Exception, lambda : ray.register_class(type(True)))
+    self.assertRaises(Exception, lambda: ray.register_class(type(True)))
     # Check that registering the same class with pickle works.
     ray.register_class(type(float), pickle=True)
     self.assertEqual(ray.get(ray.put(float)), float)
@@ -328,7 +358,9 @@ class APITest(unittest.TestCase):
         print("Still using old definition of f, trying again.")
 
     # Test that we can close over plain old data.
-    data = [np.zeros([3, 5]), (1, 2, "a"), [0.0, 1.0, 1 << 62], 1 << 60, {"a": np.zeros(3)}]
+    data = [np.zeros([3, 5]), (1, 2, "a"), [0.0, 1.0, 1 << 62], 1 << 60,
+            {"a": np.zeros(3)}]
+
     @ray.remote
     def g():
       return data
@@ -339,18 +371,22 @@ class APITest(unittest.TestCase):
     def h():
       return np.zeros([3, 5])
     assert_equal(ray.get(h.remote()), np.zeros([3, 5]))
+
     @ray.remote
     def j():
       return time.time()
     ray.get(j.remote())
 
-    # Test that we can define remote functions that call other remote functions.
+    # Test that we can define remote functions that call other remote
+    # functions.
     @ray.remote
     def k(x):
       return x + 1
+
     @ray.remote
     def l(x):
       return ray.get(k.remote(x))
+
     @ray.remote
     def m(x):
       return ray.get(l.remote(x))
@@ -398,7 +434,7 @@ class APITest(unittest.TestCase):
 
     # Verify that calling wait with duplicate object IDs throws an exception.
     x = ray.put(1)
-    self.assertRaises(Exception, lambda : ray.wait([x, x]))
+    self.assertRaises(Exception, lambda: ray.wait([x, x]))
 
     ray.worker.cleanup()
 
@@ -435,11 +471,14 @@ class APITest(unittest.TestCase):
     ray.worker.cleanup()
 
   def testCachingEnvironmentVariables(self):
-    # Test that we can define environment variables before the driver is connected.
+    # Test that we can define environment variables before the driver is
+    # connected.
     def foo_initializer():
       return 1
+
     def bar_initializer():
       return []
+
     def bar_reinitializer(bar):
       return []
     ray.env.foo = ray.EnvironmentVariable(foo_initializer)
@@ -448,6 +487,7 @@ class APITest(unittest.TestCase):
     @ray.remote
     def use_foo():
       return ray.env.foo
+
     @ray.remote
     def use_bar():
       ray.env.bar.append(1)
@@ -463,16 +503,20 @@ class APITest(unittest.TestCase):
     ray.worker.cleanup()
 
   def testCachingFunctionsToRun(self):
-    # Test that we export functions to run on all workers before the driver is connected.
+    # Test that we export functions to run on all workers before the driver is
+    # connected.
     def f(worker_info):
       sys.path.append(1)
     ray.worker.global_worker.run_function_on_all_workers(f)
+
     def f(worker_info):
       sys.path.append(2)
     ray.worker.global_worker.run_function_on_all_workers(f)
+
     def g(worker_info):
       sys.path.append(3)
     ray.worker.global_worker.run_function_on_all_workers(g)
+
     def f(worker_info):
       sys.path.append(4)
     ray.worker.global_worker.run_function_on_all_workers(f)
@@ -505,13 +549,16 @@ class APITest(unittest.TestCase):
     def f(worker_info):
       sys.path.append("fake_directory")
     ray.worker.global_worker.run_function_on_all_workers(f)
+
     @ray.remote
     def get_path1():
       return sys.path
     self.assertEqual("fake_directory", ray.get(get_path1.remote())[-1])
+
     def f(worker_info):
       sys.path.pop(-1)
     ray.worker.global_worker.run_function_on_all_workers(f)
+
     # Create a second remote function to guarantee that when we call
     # get_path2.remote(), the second function to run will have been run on the
     # worker.
@@ -528,6 +575,7 @@ class APITest(unittest.TestCase):
     def f(worker_info):
       sys.path.append(worker_info)
     ray.worker.global_worker.run_function_on_all_workers(f)
+
     @ray.remote
     def get_path():
       time.sleep(1)
@@ -542,6 +590,7 @@ class APITest(unittest.TestCase):
     counters = [worker_info["counter"] for worker_info in worker_infos]
     # We use range(11) because the driver also runs the function.
     self.assertEqual(set(counters), set(range(11)))
+
     # Clean up the worker paths.
     def f(worker_info):
       sys.path.pop(-1)
@@ -555,7 +604,8 @@ class APITest(unittest.TestCase):
     def events():
       # This is a hack for getting the event log. It is not part of the API.
       keys = ray.worker.global_worker.redis_client.keys("event_log:*")
-      return [ray.worker.global_worker.redis_client.lrange(key, 0, -1) for key in keys]
+      return [ray.worker.global_worker.redis_client.lrange(key, 0, -1)
+              for key in keys]
 
     def wait_for_num_events(num_events, timeout=10):
       start_time = time.time()
@@ -604,25 +654,28 @@ class APITest(unittest.TestCase):
     # accidentally call an older version.
     ray.init(num_workers=2)
 
-    num_remote_functions = 100
     num_calls = 200
 
     @ray.remote
     def f():
       return 1
     results1 = [f.remote() for _ in range(num_calls)]
+
     @ray.remote
     def f():
       return 2
     results2 = [f.remote() for _ in range(num_calls)]
+
     @ray.remote
     def f():
       return 3
     results3 = [f.remote() for _ in range(num_calls)]
+
     @ray.remote
     def f():
       return 4
     results4 = [f.remote() for _ in range(num_calls)]
+
     @ray.remote
     def f():
       return 5
@@ -637,16 +690,20 @@ class APITest(unittest.TestCase):
     @ray.remote
     def g():
       return 1
-    @ray.remote
+
+    @ray.remote  # noqa: F811
     def g():
       return 2
-    @ray.remote
+
+    @ray.remote  # noqa: F811
     def g():
       return 3
-    @ray.remote
+
+    @ray.remote  # noqa: F811
     def g():
       return 4
-    @ray.remote
+
+    @ray.remote  # noqa: F811
     def g():
       return 5
 
@@ -668,6 +725,7 @@ class APITest(unittest.TestCase):
 
     ray.worker.cleanup()
 
+
 class PythonModeTest(unittest.TestCase):
 
   def testPythonMode(self):
@@ -678,17 +736,21 @@ class PythonModeTest(unittest.TestCase):
     def f():
       return np.ones([3, 4, 5])
     xref = f.remote()
-    assert_equal(xref, np.ones([3, 4, 5])) # remote functions should return by value
-    assert_equal(xref, ray.get(xref)) # ray.get should be the identity
+    # Remote functions should return by value.
+    assert_equal(xref, np.ones([3, 4, 5]))
+    # Check that ray.get is the identity.
+    assert_equal(xref, ray.get(xref))
     y = np.random.normal(size=[11, 12])
-    assert_equal(y, ray.put(y)) # ray.put should be the identity
+    # Check that ray.put is the identity.
+    assert_equal(y, ray.put(y))
 
-    # make sure objects are immutable, this example is why we need to copy
+    # Make sure objects are immutable, this example is why we need to copy
     # arguments before passing them into remote functions in python mode
     aref = test_functions.python_mode_f.remote()
     assert_equal(aref, np.array([0, 0]))
     bref = test_functions.python_mode_g.remote(aref)
-    assert_equal(aref, np.array([0, 0])) # python_mode_g should not mutate aref
+    # Make sure python_mode_g does not mutate aref.
+    assert_equal(aref, np.array([0, 0]))
     assert_equal(bref, np.array([1, 0]))
 
     ray.worker.cleanup()
@@ -699,6 +761,7 @@ class PythonModeTest(unittest.TestCase):
 
     def l_init():
       return []
+
     def l_reinit(l):
       return []
     ray.env.l = ray.EnvironmentVariable(l_init, l_reinit)
@@ -717,7 +780,8 @@ class PythonModeTest(unittest.TestCase):
     assert_equal(ray.get(use_l.remote()), [1])
     assert_equal(ray.get(use_l.remote()), [1])
 
-    # Make sure the local copy of the environment variable has not been mutated.
+    # Make sure the local copy of the environment variable has not been
+    # mutated.
     assert_equal(l, [])
     l = ray.env.l
     assert_equal(l, [])
@@ -730,6 +794,7 @@ class PythonModeTest(unittest.TestCase):
 
     ray.worker.cleanup()
 
+
 class EnvironmentVariablesTest(unittest.TestCase):
 
   def testEnvironmentVariables(self):
@@ -739,6 +804,7 @@ class EnvironmentVariablesTest(unittest.TestCase):
 
     def foo_initializer():
       return 1
+
     def foo_reinitializer(foo):
       return foo
 
@@ -752,7 +818,8 @@ class EnvironmentVariablesTest(unittest.TestCase):
     self.assertEqual(ray.get(use_foo.remote()), 1)
     self.assertEqual(ray.get(use_foo.remote()), 1)
 
-    # Test that we can add a variable to the key-value store, mutate it, and reset it.
+    # Test that we can add a variable to the key-value store, mutate it, and
+    # reset it.
 
     def bar_initializer():
       return [1, 2, 3]
@@ -771,6 +838,7 @@ class EnvironmentVariablesTest(unittest.TestCase):
 
     def baz_initializer():
       return np.zeros([4])
+
     def baz_reinitializer(baz):
       for i in range(len(baz)):
         baz[i] = 0
@@ -794,6 +862,7 @@ class EnvironmentVariablesTest(unittest.TestCase):
 
     def qux_initializer():
       return 0
+
     def qux_reinitializer(x):
       return x + 1
 
@@ -815,6 +884,7 @@ class EnvironmentVariablesTest(unittest.TestCase):
 
     def foo_initializer():
       return []
+
     def foo_reinitializer(foo):
       return []
 
@@ -845,6 +915,7 @@ class EnvironmentVariablesTest(unittest.TestCase):
     self.assertEqual(foo, [2, 3])
 
     ray.worker.cleanup()
+
 
 class UtilsTest(unittest.TestCase):
 
@@ -894,6 +965,7 @@ class UtilsTest(unittest.TestCase):
 
     ray.worker.cleanup()
 
+
 class ResourcesTest(unittest.TestCase):
 
   def testResourceConstraints(self):
@@ -901,13 +973,16 @@ class ResourcesTest(unittest.TestCase):
     ray.init(num_workers=num_workers, num_cpus=10, num_gpus=2)
 
     # Attempt to wait for all of the workers to start up.
-    ray.worker.global_worker.run_function_on_all_workers(lambda worker_info: sys.path.append(worker_info["counter"]))
+    ray.worker.global_worker.run_function_on_all_workers(
+        lambda worker_info: sys.path.append(worker_info["counter"]))
+
     @ray.remote(num_cpus=0)
     def get_worker_id():
       time.sleep(1)
       return sys.path[-1]
     while True:
-      if len(set(ray.get([get_worker_id.remote() for _ in range(num_workers)]))) == num_workers:
+      if len(set(ray.get([get_worker_id.remote()
+                          for _ in range(num_workers)]))) == num_workers:
         break
 
     time_buffer = 0.3
@@ -974,13 +1049,16 @@ class ResourcesTest(unittest.TestCase):
     ray.init(num_workers=num_workers, num_cpus=10, num_gpus=10)
 
     # Attempt to wait for all of the workers to start up.
-    ray.worker.global_worker.run_function_on_all_workers(lambda worker_info: sys.path.append(worker_info["counter"]))
+    ray.worker.global_worker.run_function_on_all_workers(
+        lambda worker_info: sys.path.append(worker_info["counter"]))
+
     @ray.remote(num_cpus=0)
     def get_worker_id():
       time.sleep(1)
       return sys.path[-1]
     while True:
-      if len(set(ray.get([get_worker_id.remote() for _ in range(num_workers)]))) == num_workers:
+      if len(set(ray.get([get_worker_id.remote()
+                          for _ in range(num_workers)]))) == num_workers:
         break
 
     @ray.remote(num_cpus=1, num_gpus=9)
@@ -1021,8 +1099,8 @@ class ResourcesTest(unittest.TestCase):
 
   def testMultipleLocalSchedulers(self):
     # This test will define a bunch of tasks that can only be assigned to
-    # specific local schedulers, and we will check that they are assigned to the
-    # correct local schedulers.
+    # specific local schedulers, and we will check that they are assigned to
+    # the correct local schedulers.
     address_info = ray.worker._init(start_ray_local=True,
                                     num_local_schedulers=3,
                                     num_cpus=[100, 5, 10],
@@ -1088,7 +1166,8 @@ class ResourcesTest(unittest.TestCase):
           results.append(run_on_0_2.remote())
       return names, results
 
-    store_names = [object_store_address.name for object_store_address in address_info["object_store_addresses"]]
+    store_names = [object_store_address.name for object_store_address
+                   in address_info["object_store_addresses"]]
 
     def validate_names_and_results(names, results):
       for name, result in zip(names, ray.get(results)):
@@ -1099,7 +1178,8 @@ class ResourcesTest(unittest.TestCase):
         elif name == "run_on_2":
           self.assertIn(result, [store_names[2]])
         elif name == "run_on_0_1_2":
-          self.assertIn(result, [store_names[0], store_names[1], store_names[2]])
+          self.assertIn(result, [store_names[0], store_names[1],
+                                 store_names[2]])
         elif name == "run_on_1_2":
           self.assertIn(result, [store_names[1], store_names[2]])
         elif name == "run_on_0_2":
@@ -1127,6 +1207,7 @@ class ResourcesTest(unittest.TestCase):
     validate_names_and_results(names, results)
 
     ray.worker.cleanup()
+
 
 class WorkerPoolTests(unittest.TestCase):
 
@@ -1177,6 +1258,7 @@ class WorkerPoolTests(unittest.TestCase):
 
     ray.worker.cleanup()
 
+
 class SchedulingAlgorithm(unittest.TestCase):
 
   def attempt_to_load_balance(self, remote_function, args, total_tasks,
@@ -1184,21 +1266,24 @@ class SchedulingAlgorithm(unittest.TestCase):
                               num_attempts=20):
     attempts = 0
     while attempts < num_attempts:
-      locations = ray.get([remote_function.remote(*args) for _ in range(total_tasks)])
+      locations = ray.get([remote_function.remote(*args)
+                           for _ in range(total_tasks)])
       names = set(locations)
       counts = [locations.count(name) for name in names]
       print("Counts are {}.".format(counts))
-      if len(names) == num_local_schedulers and all([count >= minimum_count for count in counts]):
+      if len(names) == num_local_schedulers and all([count >= minimum_count
+                                                     for count in counts]):
         break
       attempts += 1
     self.assertLess(attempts, num_attempts)
 
   def testLoadBalancing(self):
-    # This test ensures that tasks are being assigned to all local schedulers in
-    # a roughly equal manner.
+    # This test ensures that tasks are being assigned to all local schedulers
+    # in a roughly equal manner.
     num_workers = 21
     num_local_schedulers = 3
-    ray.worker._init(start_ray_local=True, num_workers=num_workers, num_local_schedulers=num_local_schedulers)
+    ray.worker._init(start_ray_local=True, num_workers=num_workers,
+                     num_local_schedulers=num_local_schedulers)
 
     @ray.remote
     def f():
@@ -1211,11 +1296,12 @@ class SchedulingAlgorithm(unittest.TestCase):
     ray.worker.cleanup()
 
   def testLoadBalancingWithDependencies(self):
-    # This test ensures that tasks are being assigned to all local schedulers in
-    # a roughly equal manner even when the tasks have dependencies.
+    # This test ensures that tasks are being assigned to all local schedulers
+    # in a roughly equal manner even when the tasks have dependencies.
     num_workers = 3
     num_local_schedulers = 3
-    ray.worker._init(start_ray_local=True, num_workers=num_workers, num_local_schedulers=num_local_schedulers)
+    ray.worker._init(start_ray_local=True, num_workers=num_workers,
+                     num_local_schedulers=num_local_schedulers)
 
     @ray.remote
     def f(x):
@@ -1228,6 +1314,7 @@ class SchedulingAlgorithm(unittest.TestCase):
     self.attempt_to_load_balance(f, [x], 100, num_local_schedulers, 25)
 
     ray.worker.cleanup()
+
 
 if __name__ == "__main__":
   unittest.main(verbosity=2)

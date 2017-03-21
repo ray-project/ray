@@ -35,6 +35,10 @@ matrix:
         - cd doc
         - pip install -r requirements-doc.txt
         - sphinx-build -W -b html -d _build/doctrees source _build/html
+        - cd ..
+        # Run Python linting.
+        - flake8 --ignore=E111,E114
+                 --exclude=python/ray/core/src/common/flatbuffers_ep-prefix/,python/ray/core/generated/,src/numbuf/thirdparty/,src/common/format/,examples/,doc/source/conf.py
     - os: linux
       dist: trusty
       env: VALGRIND=1 PYTHON=2.7
