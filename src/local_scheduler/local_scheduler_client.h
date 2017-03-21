@@ -112,4 +112,16 @@ void local_scheduler_log_message(LocalSchedulerConnection *conn);
  */
 void local_scheduler_notify_unblocked(LocalSchedulerConnection *conn);
 
+/**
+ * Record the mapping from object ID to task ID for put events.
+ *
+ * @param conn The connection information.
+ * @param task_id The ID of the task that called put.
+ * @param object_id The ID of the object being stored.
+ * @return Void.
+ */
+void local_scheduler_put_object(LocalSchedulerConnection *conn,
+                                TaskID task_id,
+                                ObjectID object_id);
+
 #endif

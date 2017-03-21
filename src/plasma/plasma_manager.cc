@@ -1316,6 +1316,7 @@ void log_object_hash_mismatch_error_task_callback(Task *task,
 
 void log_object_hash_mismatch_error_result_callback(ObjectID object_id,
                                                     TaskID task_id,
+                                                    bool is_put,
                                                     void *user_context) {
   CHECK(!IS_NIL_ID(task_id));
   PlasmaManagerState *state = (PlasmaManagerState *) user_context;

@@ -26,7 +26,9 @@ enum MessageType:int {
   // For a worker that was blocked on some object(s), tell the local scheduler
   // that the worker is now unblocked. This is sent from a worker to a local
   // scheduler.
-  NotifyUnblocked
+  NotifyUnblocked,
+  // Add a result table entry for an object put.
+  PutObject
 }
 
 table EventLogMessage {
@@ -46,5 +48,12 @@ table RegisterWorkerInfo {
 
 table ReconstructObject {
   // Object ID of the object that needs to be reconstructed.
+  object_id: string;
+}
+
+table PutObject {
+  // Task ID of the task that performed the put.
+  task_id: string;
+  // Object ID of the object that is being put.
   object_id: string;
 }

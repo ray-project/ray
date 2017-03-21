@@ -20,6 +20,7 @@
 #include "state/db.h"
 #include "state/task_table.h"
 #include "state/object_table.h"
+#include "state/error_table.h"
 #include "utarray.h"
 #include "uthash.h"
 
@@ -124,9 +125,12 @@ void kill_worker(LocalSchedulerClient *worker, bool cleanup) {
 
   /* Clean up the task in progress. */
   if (worker->task_in_progress) {
-    /* Return the resources that the worker was using. */
-    TaskSpec *spec = Task_task_spec(worker->task_in_progress);
-    update_dynamic_resources(state, spec, true);
+    if (!worker->is_blocked) {
+      /* Return the resources that the worker was using, if any. Blocked
+       * workers do not use resources. */
+      TaskSpec *spec = Task_task_spec(worker->task_in_progress);
+      update_dynamic_resources(state, spec, true);
+    }
     /* Update the task table to reflect that the task failed to complete. */
     if (state->db != NULL) {
       Task_set_state(worker->task_in_progress, TASK_STATUS_LOST);
@@ -420,11 +424,16 @@ void update_dynamic_resources(LocalSchedulerState *state,
        * subtract the resource quantities from our accounting. */
       resource *= -1;
     }
+
+    bool oversubscribed =
+        (!return_resources && state->dynamic_resources[i] < 0);
     /* Add or subtract the task's resources from our count. */
     state->dynamic_resources[i] += resource;
 
-    if (!return_resources && state->dynamic_resources[i] < 0) {
-      /* We are using more resources than we have been allocated. */
+    if ((!return_resources && state->dynamic_resources[i] < 0) &&
+        !oversubscribed) {
+      /* Log a warning if we are using more resources than we have been
+       * allocated, and we weren't already oversubscribed. */
       LOG_WARN("local_scheduler dynamic resources dropped to %8.4f\t%8.4f\n",
                state->dynamic_resources[0], state->dynamic_resources[1]);
     }
@@ -491,8 +500,12 @@ void process_plasma_notification(event_loop *loop,
   free(notification);
 }
 
-void reconstruct_task_update_callback(Task *task, void *user_context) {
-  if (task == NULL) {
+void reconstruct_task_update_callback(Task *task,
+                                      void *user_context,
+                                      bool updated) {
+  /* The task ID should be in the task table. */
+  CHECK(task != NULL);
+  if (!updated) {
     /* The test-and-set of the task's scheduling state failed, so the task was
      * either not finished yet, or it was already being reconstructed.
      * Suppress the reconstruction request. */
@@ -517,27 +530,56 @@ void reconstruct_task_update_callback(Task *task, void *user_context) {
   }
 }
 
+void reconstruct_put_task_update_callback(Task *task,
+                                          void *user_context,
+                                          bool updated) {
+  CHECK(task != NULL);
+  if (updated) {
+    /* The update to TASK_STATUS_RECONSTRUCTING succeeded, so continue with
+     * reconstruction as usual. */
+    reconstruct_task_update_callback(task, user_context, updated);
+    return;
+  }
+
+  /* An object created by `ray.put` was not able to be reconstructed, and the
+   * workload will likely hang. Push an error to the appropriate driver. */
+  LocalSchedulerState *state = (LocalSchedulerState *) user_context;
+  TaskSpec *spec = Task_task_spec(task);
+  FunctionID function = TaskSpec_function(spec);
+  push_error(state->db, TaskSpec_driver_id(spec),
+             PUT_RECONSTRUCTION_ERROR_INDEX, sizeof(function), function.id);
+}
+
 void reconstruct_evicted_result_lookup_callback(ObjectID reconstruct_object_id,
                                                 TaskID task_id,
+                                                bool is_put,
                                                 void *user_context) {
-  /* TODO(swang): The following check will fail if an object was created by a
-   * put. */
   CHECKM(!IS_NIL_ID(task_id),
          "No task information found for object during reconstruction");
   LocalSchedulerState *state = (LocalSchedulerState *) user_context;
+
+  task_table_test_and_update_callback done_callback;
+  if (is_put) {
+    /* If the evicted object was created through ray.put and the originating
+     * task
+     * is still executing, it's very likely that the workload will hang and the
+     * worker needs to be restarted. Else, the reconstruction behavior is the
+     * same as for other evicted objects */
+    done_callback = reconstruct_put_task_update_callback;
+  } else {
+    done_callback = reconstruct_task_update_callback;
+  }
   /* If there are no other instances of the task running, it's safe for us to
    * claim responsibility for reconstruction. */
-  task_table_test_and_update(state->db, task_id,
-                             (TASK_STATUS_DONE | TASK_STATUS_LOST),
-                             TASK_STATUS_RECONSTRUCTING, NULL,
-                             reconstruct_task_update_callback, state);
+  task_table_test_and_update(
+      state->db, task_id, (TASK_STATUS_DONE | TASK_STATUS_LOST),
+      TASK_STATUS_RECONSTRUCTING, NULL, done_callback, state);
 }
 
 void reconstruct_failed_result_lookup_callback(ObjectID reconstruct_object_id,
                                                TaskID task_id,
+                                               bool is_put,
                                                void *user_context) {
-  /* TODO(swang): The following check will fail if an object was created by a
-   * put. */
   if (IS_NIL_ID(task_id)) {
     /* NOTE(swang): For some reason, the result table update sometimes happens
      * after this lookup returns, possibly due to concurrent clients. In most
@@ -613,7 +655,8 @@ void process_message(event_loop *loop,
       TaskID task_id = TaskSpec_task_id(spec);
       for (int64_t i = 0; i < TaskSpec_num_returns(spec); ++i) {
         ObjectID return_id = TaskSpec_return(spec, i);
-        result_table_add(state->db, return_id, task_id, NULL, NULL, NULL);
+        result_table_add(state->db, return_id, task_id, false, NULL, NULL,
+                         NULL);
       }
     }
 
@@ -744,6 +787,12 @@ void process_message(event_loop *loop,
       }
     }
     print_worker_info("Worker unblocked", state->algorithm_state);
+  } break;
+  case MessageType_PutObject: {
+    auto message =
+        flatbuffers::GetRoot<PutObject>(utarray_front(state->input_buffer));
+    result_table_add(state->db, from_flatbuf(message->object_id()),
+                     from_flatbuf(message->task_id()), true, NULL, NULL, NULL);
   } break;
   default:
     /* This code should be unreachable. */

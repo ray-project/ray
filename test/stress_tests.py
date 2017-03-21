@@ -163,8 +163,8 @@ class ReconstructionTests(unittest.TestCase):
   def tearDown(self):
     self.assertTrue(ray.services.all_processes_alive())
 
-    # Make sure that all nodes in the cluster were used by checking where tasks
-    # were scheduled and/or submitted from.
+    # Determine the IDs of all local schedulers that had a task scheduled or
+    # submitted.
     r = redis.StrictRedis(port=self.redis_port)
     task_ids = r.keys("TT:*")
     task_ids = [task_id[3:] for task_id in task_ids]
@@ -174,7 +174,13 @@ class ReconstructionTests(unittest.TestCase):
       task_reply_object = TaskReply.GetRootAsTaskReply(message, 0)
       local_scheduler_ids.append(task_reply_object.LocalSchedulerId())
 
-    self.assertEqual(len(set(local_scheduler_ids)), self.num_local_schedulers)
+    # Make sure that all nodes in the cluster were used by checking that the
+    # set of local scheduler IDs that had a task scheduled or submitted is
+    # equal to the total number of local schedulers started. We add one to the
+    # total number of local schedulers to account for NIL_LOCAL_SCHEDULER_ID.
+    # This is the local scheduler ID associated with the driver task, since it
+    # is not scheduled by a particular local scheduler.
+    self.assertEqual(len(set(local_scheduler_ids)), self.num_local_schedulers + 1)
 
     # Clean up the Ray cluster.
     ray.worker.cleanup()
@@ -208,6 +214,12 @@ class ReconstructionTests(unittest.TestCase):
     for i in range(num_objects):
       value = ray.get(args[i])
       self.assertEqual(value[0], i)
+    # Get values sequentially, in chunks.
+    num_chunks = 4 * self.num_local_schedulers
+    chunk = num_objects // num_chunks
+    for i in range(num_chunks):
+      values = ray.get(args[i * chunk : (i + 1) * chunk])
+      del values
 
   def testRecursive(self):
     # Define the size of one task's return argument so that the combined sum of
@@ -252,6 +264,12 @@ class ReconstructionTests(unittest.TestCase):
       i  = np.random.randint(num_objects)
       value = ray.get(args[i])
       self.assertEqual(value[0], i)
+    # Get values sequentially, in chunks.
+    num_chunks = 4 * self.num_local_schedulers
+    chunk = num_objects // num_chunks
+    for i in range(num_chunks):
+      values = ray.get(args[i * chunk : (i + 1) * chunk])
+      del values
 
   def testMultipleRecursive(self):
     # Define the size of one task's return argument so that the combined sum of
@@ -302,6 +320,21 @@ class ReconstructionTests(unittest.TestCase):
       value = ray.get(args[i])
       self.assertEqual(value[0], i)
 
+  def wait_for_errors(self, error_check):
+    # Wait for errors from all the nondeterministic tasks.
+    errors = []
+    time_left = 100
+    while time_left > 0:
+      errors = ray.error_info()
+      if error_check(errors):
+        break
+      time_left -= 1
+      time.sleep(1)
+
+    # Make sure that enough errors came through.
+    self.assertTrue(error_check(errors))
+    return errors
+
   def testNondeterministicTask(self):
     # Define the size of one task's return argument so that the combined sum of
     # all objects' sizes is at least twice the plasma stores' combined allotted
@@ -345,21 +378,146 @@ class ReconstructionTests(unittest.TestCase):
       value = ray.get(args[i])
       self.assertEqual(value[0], i)
 
-    # Wait for errors from all the nondeterministic tasks.
-    time_left = 100
-    while time_left > 0:
-      errors = ray.error_info()
-      if len(errors) >= num_objects / 2:
-        break
-      time_left -= 0.1
-      time.sleep(0.1)
-
-    # Make sure that enough errors came through.
-    self.assertTrue(len(errors) >= num_objects / 2)
+    def error_check(errors):
+      if self.num_local_schedulers == 1:
+        # In a single-node setting, each object is evicted and reconstructed
+        # exactly once, so exactly half the objects will produce an error
+        # during reconstruction.
+        min_errors = num_objects // 2
+      else:
+        # In a multinode setting, each object is evicted zero or one times, so
+        # some of the nondeterministic tasks may not be reexecuted.
+        min_errors = 1
+      return len(errors) >= min_errors
+    errors = self.wait_for_errors(error_check)
     # Make sure all the errors have the correct type.
     self.assertTrue(all(error[b"type"] == b"object_hash_mismatch" for error in errors))
     # Make sure all the errors have the correct function name.
     self.assertTrue(all(error[b"data"] == b"__main__.foo" for error in errors))
+
+  def testPutErrors(self):
+    # Define the size of one task's return argument so that the combined sum of
+    # all objects' sizes is at least twice the plasma stores' combined allotted
+    # memory.
+    num_objects = 1000
+    size = self.plasma_store_memory * 2 // (num_objects * 8)
+
+    # Define a task with a single dependency, a numpy array, that returns
+    # another array.
+    @ray.remote
+    def single_dependency(i, arg):
+      arg = np.copy(arg)
+      arg[0] = i
+      return arg
+
+    # Define a root task that calls `ray.put` to put an argument in the object
+    # store.
+    @ray.remote
+    def put_arg_task(size):
+      # Launch num_objects instances of the remote task, each dependent on the
+      # one before it. The first instance of the task takes a numpy array as an
+      # argument, which is put into the object store.
+      args = []
+      arg = single_dependency.remote(0, np.zeros(size))
+      for i in range(num_objects):
+        arg = single_dependency.remote(i, arg)
+        args.append(arg)
+
+      # Get each value to force each task to finish. After some number of gets,
+      # old values should be evicted.
+      for i in range(num_objects):
+        value = ray.get(args[i])
+        self.assertEqual(value[0], i)
+      # Get each value again to force reconstruction. Currently, since we're
+      # not able to reconstruct `ray.put` objects that were evicted and whose
+      # originating tasks are still running, this for-loop should hang on its
+      # first iteration and push an error to the driver.
+      for i in range(num_objects):
+        value = ray.get(args[i])
+        self.assertEqual(value[0], i)
+
+    # Define a root task that calls `ray.put` directly.
+    @ray.remote
+    def put_task(size):
+      # Launch num_objects instances of the remote task, each dependent on the
+      # one before it. The first instance of the task takes an object ID
+      # returned by ray.put.
+      args = []
+      arg = ray.put(np.zeros(size))
+      for i in range(num_objects):
+        arg = single_dependency.remote(i, arg)
+        args.append(arg)
+
+      # Get each value to force each task to finish. After some number of gets,
+      # old values should be evicted.
+      for i in range(num_objects):
+        value = ray.get(args[i])
+        self.assertEqual(value[0], i)
+      # Get each value again to force reconstruction. Currently, since we're
+      # not able to reconstruct `ray.put` objects that were evicted and whose
+      # originating tasks are still running, this for-loop should hang on its
+      # first iteration and push an error to the driver.
+      for i in range(num_objects):
+        value = ray.get(args[i])
+        self.assertEqual(value[0], i)
+
+    put_arg_task.remote(size)
+    def error_check(errors):
+      return len(errors) > 1
+    errors = self.wait_for_errors(error_check)
+    # Make sure all the errors have the correct type.
+    self.assertTrue(all(error[b"type"] == b"put_reconstruction" for error in errors))
+    self.assertTrue(all(error[b"data"] == b"__main__.put_arg_task" for error in errors))
+
+    put_task.remote(size)
+    def error_check(errors):
+      return any(error[b"data"] == b"__main__.put_task" for error in errors)
+    errors = self.wait_for_errors(error_check)
+    # Make sure all the errors have the correct type.
+    self.assertTrue(all(error[b"type"] == b"put_reconstruction" for error in errors))
+    self.assertTrue(any(error[b"data"] == b"__main__.put_task" for error in errors))
+
+  def testDriverPutErrors(self):
+    # Define the size of one task's return argument so that the combined sum of
+    # all objects' sizes is at least twice the plasma stores' combined allotted
+    # memory.
+    num_objects = 1000
+    size = self.plasma_store_memory * 2 // (num_objects * 8)
+
+    # Define a task with a single dependency, a numpy array, that returns
+    # another array.
+    @ray.remote
+    def single_dependency(i, arg):
+      arg = np.copy(arg)
+      arg[0] = i
+      return arg
+
+    # Launch num_objects instances of the remote task, each dependent on the
+    # one before it. The first instance of the task takes a numpy array as an
+    # argument, which is put into the object store.
+    args = []
+    arg = single_dependency.remote(0, np.zeros(size))
+    for i in range(num_objects):
+      arg = single_dependency.remote(i, arg)
+      args.append(arg)
+    # Get each value to force each task to finish. After some number of gets,
+    # old values should be evicted.
+    for i in range(num_objects):
+      value = ray.get(args[i])
+      self.assertEqual(value[0], i)
+
+    # Get each value starting from the beginning to force reconstruction.
+    # Currently, since we're not able to reconstruct `ray.put` objects that
+    # were evicted and whose originating tasks are still running, this
+    # for-loop should hang on its first iteration and push an error to the
+    # driver.
+    ray.worker.global_worker.local_scheduler_client.reconstruct_object(args[0].id())
+    def error_check(errors):
+      return len(errors) > 1
+    errors = self.wait_for_errors(error_check)
+    self.assertTrue(all(error[b"type"] == b"put_reconstruction" for error in errors))
+    self.assertTrue(all(error[b"data"] == b"Driver" for error in errors))
+
 
 class ReconstructionTestsMultinode(ReconstructionTests):
 

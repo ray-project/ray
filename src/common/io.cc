@@ -116,6 +116,10 @@ int connect_ipc_sock_retry(const char *socket_pathname,
     if (fd >= 0) {
       break;
     }
+    if (num_attempts == 0) {
+      LOG_ERROR("Connection to socket failed for pathname %s.",
+                socket_pathname);
+    }
     /* Sleep for timeout milliseconds. */
     usleep(timeout * 1000);
   }
@@ -147,7 +151,7 @@ int connect_ipc_sock(const char *socket_pathname) {
 
   if (connect(socket_fd, (struct sockaddr *) &socket_address,
               sizeof(socket_address)) != 0) {
-    LOG_ERROR("Connection to socket failed for pathname %s.", socket_pathname);
+    close(socket_fd);
     return -1;
   }
 
@@ -172,6 +176,10 @@ int connect_inet_sock_retry(const char *ip_addr,
     fd = connect_inet_sock(ip_addr, port);
     if (fd >= 0) {
       break;
+    }
+    if (num_attempts == 0) {
+      LOG_ERROR("Connection to socket failed for address %s:%d.", ip_addr,
+                port);
     }
     /* Sleep for timeout milliseconds. */
     usleep(timeout * 1000);
@@ -203,7 +211,6 @@ int connect_inet_sock(const char *ip_addr, int port) {
   addr.sin_port = htons(port);
 
   if (connect(fd, (struct sockaddr *) &addr, sizeof(addr)) != 0) {
-    LOG_ERROR("Connection to socket failed for address %s:%d.", ip_addr, port);
     close(fd);
     return -1;
   }
