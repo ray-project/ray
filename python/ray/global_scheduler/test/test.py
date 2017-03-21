@@ -83,12 +83,15 @@ class TestGlobalScheduler(unittest.TestCase):
       plasma_client = plasma.PlasmaClient(plasma_store_name, plasma_manager_name)
       self.plasma_clients.append(plasma_client)
       # Start the local scheduler.
-      local_scheduler_name, p4 = local_scheduler.start_local_scheduler(
-          plasma_store_name,
-          plasma_manager_name=plasma_manager_name,
-          plasma_address=plasma_address,
-          redis_address=redis_address,
-          static_resource_list=[10, 0])
+      with open(os.devnull, "w") as FNULL:
+        local_scheduler_name, p4 = local_scheduler.start_local_scheduler(
+            plasma_store_name,
+            plasma_manager_name=plasma_manager_name,
+            plasma_address=plasma_address,
+            redis_address=redis_address,
+            static_resource_list=[10, 0],
+            stdout_file=FNULL,
+            stderr_file=FNULL)
       # Connect to the scheduler.
       local_scheduler_client = local_scheduler.LocalSchedulerClient(
               local_scheduler_name, NIL_ACTOR_ID, False)

@@ -39,7 +39,11 @@ class TestLocalSchedulerClient(unittest.TestCase):
     plasma_store_name, self.p1 = plasma.start_plasma_store()
     self.plasma_client = plasma.PlasmaClient(plasma_store_name)
     # Start a local scheduler.
-    scheduler_name, self.p2 = local_scheduler.start_local_scheduler(plasma_store_name, use_valgrind=USE_VALGRIND)
+    with open(os.devnull, "w") as FNULL:
+      scheduler_name, self.p2 = local_scheduler.start_local_scheduler(plasma_store_name,
+                                                                      use_valgrind=USE_VALGRIND,
+                                                                      stdout_file=FNULL,
+                                                                      stderr_file=FNULL)
     # Connect to the scheduler.
     self.local_scheduler_client = local_scheduler.LocalSchedulerClient(
             scheduler_name, NIL_ACTOR_ID, False)
