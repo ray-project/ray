@@ -44,7 +44,7 @@ ERROR_ID_LENGTH = 20
 
 # This must match the definition of NIL_ACTOR_ID in task.h.
 NIL_ID = 20 * b"\xff"
-NIL_NODE_ID = NIL_ID
+NIL_LOCAL_SCHEDULER_ID = NIL_ID
 NIL_FUNCTION_ID = NIL_ID
 NIL_ACTOR_ID = NIL_ID
 
@@ -1310,7 +1310,10 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker, a
     worker.put_index = 0
 
     # Create an entry for the driver task in the task table. This task is added
-    # immediately with status RUNNING.
+    # immediately with status RUNNING. This allows us to push errors related to
+    # this driver task back to the driver.  For example, if the driver creates
+    # an object that is later evicted, we should notify the user that we're
+    # unable to reconstruct the object, since we cannot rerun the driver.
     driver_task = ray.local_scheduler.Task(
           worker.task_driver_id,
           ray.local_scheduler.ObjectID(NIL_FUNCTION_ID),
@@ -1325,7 +1328,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker, a
         "RAY.TASK_TABLE_ADD",
         driver_task.task_id().id(),
         TASK_STATUS_RUNNING,
-        NIL_NODE_ID,
+        NIL_LOCAL_SCHEDULER_ID,
         ray.local_scheduler.task_to_string(driver_task))
     # Set the driver's current task ID to the task ID assigned to the driver
     # task.

@@ -163,8 +163,8 @@ class ReconstructionTests(unittest.TestCase):
   def tearDown(self):
     self.assertTrue(ray.services.all_processes_alive())
 
-    # Make sure that all nodes in the cluster were used by checking where tasks
-    # were scheduled and/or submitted from.
+    # Determine the IDs of all local schedulers that had a task scheduled or
+    # submitted.
     r = redis.StrictRedis(port=self.redis_port)
     task_ids = r.keys("TT:*")
     task_ids = [task_id[3:] for task_id in task_ids]
@@ -174,6 +174,12 @@ class ReconstructionTests(unittest.TestCase):
       task_reply_object = TaskReply.GetRootAsTaskReply(message, 0)
       local_scheduler_ids.append(task_reply_object.LocalSchedulerId())
 
+    # Make sure that all nodes in the cluster were used by checking that the
+    # set of local scheduler IDs that had a task scheduled or submitted is
+    # equal to the total number of local schedulers started. We add one to the
+    # total number of local schedulers to account for NIL_LOCAL_SCHEDULER_ID.
+    # This is the local scheduler ID associated with the driver task, since it
+    # is not scheduled by a particular local scheduler.
     self.assertEqual(len(set(local_scheduler_ids)), self.num_local_schedulers + 1)
 
     # Clean up the Ray cluster.
@@ -377,7 +383,7 @@ class ReconstructionTests(unittest.TestCase):
         # In a single-node setting, each object is evicted and reconstructed
         # exactly once, so exactly half the objects will produce an error
         # during reconstruction.
-        min_errors = num_objects / 2
+        min_errors = num_objects // 2
       else:
         # In a multinode setting, each object is evicted zero or one times, so
         # some of the nondeterministic tasks may not be reexecuted.
