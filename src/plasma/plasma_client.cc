@@ -488,14 +488,22 @@ static inline bool compute_object_hash_parallel(XXH64_state_t *hash_state,
   const uint64_t num_threads = THREADPOOL_SIZE;
   uint64_t threadhash[num_threads + 1];
   const uint64_t data_address = reinterpret_cast<uint64_t>(data);
-  const uint64_t numblocks = nbytes / BLOCK_SIZE;
-  const uint64_t chunk_size = (numblocks / num_threads) * BLOCK_SIZE;
+  const uint64_t num_blocks = nbytes / BLOCK_SIZE;
+  const uint64_t chunk_size = (num_blocks / num_threads) * BLOCK_SIZE;
   const uint64_t right_address = data_address + chunk_size * num_threads;
   const uint64_t suffix = (data_address + nbytes) - right_address;
   /* Now the data layout is | k * num_threads * block_size | suffix | ==
    * | num_threads * chunk_size | suffix |, where chunk_size = k * block_size.
-   * Each thread gets a "chunk" of k blocks, except the suffix thread.
-   */
+   * Each thread gets a "chunk" of k blocks, except the suffix thread. */
+
+  /* Check that the address passed in is 64-byte aligned. Note that this
+   * assumption is not strictly necessary and this function calculates the same
+   * hash regardless of the alignment of this address, However it is a
+   * performance optimization, and this multi-threaded hash computation should
+   * be faster if the blocks that we divide the data into do not straddle extra
+   * cache blocks. The incoming addresses are 64-byte aligned because we
+   * allocate them with dlmemalign in create_object in plasma_store.cc. */
+  CHECK(data_address % 64 == 0);
 
   for (int i = 0; i < num_threads; i++) {
     threadpool_[i] =

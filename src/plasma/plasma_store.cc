@@ -231,7 +231,11 @@ int create_object(Client *client_context,
   if (!success) {
     return PlasmaError_OutOfMemory;
   }
-  /* Allocate space for the new object */
+  /* Allocate space for the new object. We use dlmemalign instead of dlmalloc in
+   * order to align the allocated region to a 64-byte boundary. This is not
+   * strictly necessary, but it is an optimization that speeds up the
+   * computation of a hash of the data (see compute_object_hash_parallel in
+   * plasma_client.cc). */
   uint8_t *pointer =
       (uint8_t *) dlmemalign(BLOCK_SIZE, data_size + metadata_size);
   int fd;
