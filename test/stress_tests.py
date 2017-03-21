@@ -373,10 +373,16 @@ class ReconstructionTests(unittest.TestCase):
       self.assertEqual(value[0], i)
 
     def error_check(errors):
-      if len(errors) < num_objects / 2:
-        print("len(errors) is {}, waiting for {} errors".format(len(errors),
-                                                                num_objects / 2))
-      return len(errors) >= num_objects / 2
+      if self.num_local_schedulers == 1:
+        # In a single-node setting, each object is evicted and reconstructed
+        # exactly once, so exactly half the objects will produce an error
+        # during reconstruction.
+        min_errors = num_objects / 2
+      else:
+        # In a multinode setting, each object is evicted zero or one times, so
+        # some of the nondeterministic tasks may not be reexecuted.
+        min_errors = 1
+      return len(errors) >= min_errors
     errors = self.wait_for_errors(error_check)
     # Make sure all the errors have the correct type.
     self.assertTrue(all(error[b"type"] == b"object_hash_mismatch" for error in errors))

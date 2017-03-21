@@ -708,7 +708,7 @@ def error_info(worker=global_worker):
           PUT_RECONSTRUCTION_ERROR_TYPE):
         function_id = error_contents[b"data"]
         if function_id == NIL_FUNCTION_ID:
-          function_name = "Driver"
+          function_name = b"Driver"
         else:
           function_name = worker.redis_client.hget("RemoteFunction:{}".format(function_id), "name")
         error_contents[b"data"] = function_name
