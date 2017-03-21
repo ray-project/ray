@@ -41,8 +41,8 @@ class ParallelMemcopy {
       double elapsed =
           ((tv2.tv_sec - tv1.tv_sec) * 1000000 + (tv2.tv_usec - tv1.tv_usec)) / 1000000.0;
       // TODO: replace this with ARROW_LOG(ARROW_INFO) or better equivalent.
-      printf("Copied %llu bytes in time = %8.4f MBps=%8.4f\n", nbytes, elapsed,
-          nbytes / ((1 << 20) * elapsed));
+      printf("Copied %llu bytes in time = %8.4f MBps = %8.4f\n", nbytes, elapsed,
+          nbytes / (BYTES_IN_MB * elapsed));
     }
   }
 
