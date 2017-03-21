@@ -16,6 +16,9 @@
 #include "utarray.h"
 #include "uthash.h"
 
+/** Allocation granularity used in plasma for object allocation. */
+#define BLOCK_SIZE 64
+
 /**
  * Object request data structure. Used in the plasma_wait_for_objects()
  * argument.
