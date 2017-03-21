@@ -485,6 +485,8 @@ static void compute_block_hash(const unsigned char *data,
 static inline bool compute_object_hash_parallel(XXH64_state_t *hash_state,
                                                 const unsigned char *data,
                                                 int64_t nbytes) {
+  /* Note that this function will likely be faster if the address of data is
+   * aligned on a 64-byte boundary. */
   const uint64_t num_threads = THREADPOOL_SIZE;
   uint64_t threadhash[num_threads + 1];
   const uint64_t data_address = reinterpret_cast<uint64_t>(data);
@@ -495,15 +497,6 @@ static inline bool compute_object_hash_parallel(XXH64_state_t *hash_state,
   /* Now the data layout is | k * num_threads * block_size | suffix | ==
    * | num_threads * chunk_size | suffix |, where chunk_size = k * block_size.
    * Each thread gets a "chunk" of k blocks, except the suffix thread. */
-
-  /* Check that the address passed in is 64-byte aligned. Note that this
-   * assumption is not strictly necessary and this function calculates the same
-   * hash regardless of the alignment of this address, However it is a
-   * performance optimization, and this multi-threaded hash computation should
-   * be faster if the blocks that we divide the data into do not straddle extra
-   * cache blocks. The incoming addresses are 64-byte aligned because we
-   * allocate them with dlmemalign in create_object in plasma_store.cc. */
-  CHECK(data_address % 64 == 0);
 
   for (int i = 0; i < num_threads; i++) {
     threadpool_[i] =
