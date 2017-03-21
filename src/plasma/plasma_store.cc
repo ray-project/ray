@@ -232,8 +232,8 @@ int create_object(Client *client_context,
     return PlasmaError_OutOfMemory;
   }
   /* Allocate space for the new object */
-  uint8_t *pointer = (uint8_t *) dlmemalign(BLOCK_SIZE,
-                                            data_size + metadata_size);
+  uint8_t *pointer =
+      (uint8_t *) dlmemalign(BLOCK_SIZE, data_size + metadata_size);
   int fd;
   int64_t map_size;
   ptrdiff_t offset;

@@ -4,9 +4,9 @@
 #include <arrow/io/interfaces.h>
 
 /* C++ includes */
-#include <vector>
 #include <string>
 #include <thread>
+#include <vector>
 
 #define THREADPOOL_SIZE 8
 #define MEMCOPY_BLOCK_SIZE 64
@@ -17,12 +17,14 @@ using namespace std;
 namespace numbuf {
 
 class ParallelMemcopy {
-public:
+ public:
   explicit ParallelMemcopy(uint64_t block_size, bool timeit, int threadpool_size)
-  : timeit_(timeit), threadpool_(threadpool_size), block_size_(block_size),
-    threadpool_size_(threadpool_size) {}
+      : timeit_(timeit),
+        threadpool_(threadpool_size),
+        block_size_(block_size),
+        threadpool_size_(threadpool_size) {}
 
-  void memcopy(uint8_t *dst, const uint8_t *src, uint64_t nbytes) {
+  void memcopy(uint8_t* dst, const uint8_t* src, uint64_t nbytes) {
     struct timeval tv1, tv2;
     if (timeit_) {
       // Start the timer.
@@ -36,8 +38,8 @@ public:
     if (timeit_) {
       // Stop the timer and log the measured time.
       gettimeofday(&tv2, NULL);
-      double elapsed = ((tv2.tv_sec - tv1.tv_sec) * 1000000
-          + (tv2.tv_usec - tv1.tv_usec)) / 1000000.0;
+      double elapsed =
+          ((tv2.tv_sec - tv1.tv_sec) * 1000000 + (tv2.tv_usec - tv1.tv_usec)) / 1000000.0;
       // TODO: replace this with ARROW_LOG(ARROW_INFO) or better equivalent.
       printf("Copied %llu bytes in time = %8.4f MBps=%8.4f\n", nbytes, elapsed,
           nbytes / ((1 << 20) * elapsed));
@@ -46,14 +48,12 @@ public:
 
   ~ParallelMemcopy() {
     // Join threadpool threads just in case they are still running.
-    for (auto &t: threadpool_) {
-      if (t.joinable()) {
-        t.join();
-      }
+    for (auto& t : threadpool_) {
+      if (t.joinable()) { t.join(); }
     }
   }
 
-private:
+ private:
   /** Controls whether the memcopy operations are timed. */
   bool timeit_;
   /** Specifies the desired alignment in bytes, as a power of 2. */
@@ -62,9 +62,9 @@ private:
   int threadpool_size_;
   /** Internal threadpool to be used in the fork/join pattern. */
   std::vector<std::thread> threadpool_;
-  
-  void memcopy_aligned(uint8_t *dst, const uint8_t *src, uint64_t nbytes,
-                       uint64_t block_size) {
+
+  void memcopy_aligned(
+      uint8_t* dst, const uint8_t* src, uint64_t nbytes, uint64_t block_size) {
     uint64_t num_threads = threadpool_size_;
     uint64_t dst_address = reinterpret_cast<uint64_t>(dst);
     uint64_t src_address = reinterpret_cast<uint64_t>(src);
@@ -87,23 +87,18 @@ private:
     // Start all threads first and handle leftovers while threads run.
     for (int i = 0; i < num_threads; i++) {
       threadpool_[i] = std::thread(memcpy, dst + prefix + i * chunk_size,
-          reinterpret_cast<uint8_t*>(left_address) + i * chunk_size,
-          chunk_size);
+          reinterpret_cast<uint8_t*>(left_address) + i * chunk_size, chunk_size);
     }
 
     memcpy(dst, src, prefix);
     memcpy(dst + prefix + num_threads * chunk_size,
-           reinterpret_cast<uint8_t*>(right_address), suffix);
+        reinterpret_cast<uint8_t*>(right_address), suffix);
 
-    for (auto &t: threadpool_) {
-      if (t.joinable()) {
-        t.join();
-      }
+    for (auto& t : threadpool_) {
+      if (t.joinable()) { t.join(); }
     }
   }
 };
-
-
 
 class FixedBufferStream : public arrow::io::OutputStream,
                           public arrow::io::ReadableFileInterface {
@@ -111,7 +106,9 @@ class FixedBufferStream : public arrow::io::OutputStream,
   virtual ~FixedBufferStream() {}
 
   explicit FixedBufferStream(uint8_t* data, int64_t nbytes)
-      : data_(data), position_(0), size_(nbytes),
+      : data_(data),
+        position_(0),
+        size_(nbytes),
         memcopy_helper(MEMCOPY_BLOCK_SIZE, false, THREADPOOL_SIZE) {}
 
   arrow::Status Read(int64_t nbytes, std::shared_ptr<arrow::Buffer>* out) override {

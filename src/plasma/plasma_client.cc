@@ -473,7 +473,8 @@ void plasma_contains(PlasmaConnection *conn, ObjectID obj_id, int *has_object) {
   }
 }
 
-static void compute_block_hash(const unsigned char *data, int64_t nbytes,
+static void compute_block_hash(const unsigned char *data,
+                               int64_t nbytes,
                                uint64_t *hash) {
   XXH64_state_t hash_state;
   XXH64_reset(&hash_state, XXH64_DEFAULT_SEED);
@@ -504,13 +505,14 @@ static inline bool compute_object_hash_parallel(XXH64_state_t *hash_state,
   const uint64_t chunk_size = (right_address - left_address) / numthreads;
 
   for (int i = 0; i < numthreads; i++) {
-    threadpool_[i] = std::thread(compute_block_hash,
-        reinterpret_cast<uint8_t*>(left_address) + i * chunk_size, chunk_size,
-        &threadhash[i]);
+    threadpool_[i] =
+        std::thread(compute_block_hash,
+                    reinterpret_cast<uint8_t *>(left_address) + i * chunk_size,
+                    chunk_size, &threadhash[i]);
   }
   compute_block_hash(data, prefix, &threadhash[numthreads]);
-  compute_block_hash(reinterpret_cast<uint8_t*>(right_address), suffix,
-      &threadhash[numthreads + 1]);
+  compute_block_hash(reinterpret_cast<uint8_t *>(right_address), suffix,
+                     &threadhash[numthreads + 1]);
 
   /* Join the threads. */
   for (auto &t : threadpool_) {
@@ -519,7 +521,7 @@ static inline bool compute_object_hash_parallel(XXH64_state_t *hash_state,
     }
   }
 
-  XXH64_update(hash_state, (unsigned char*) threadhash, sizeof(threadhash));
+  XXH64_update(hash_state, (unsigned char *) threadhash, sizeof(threadhash));
   return true;
 }
 
@@ -527,8 +529,7 @@ static uint64_t compute_object_hash(const ObjectBuffer &obj_buffer) {
   XXH64_state_t hash_state;
   XXH64_reset(&hash_state, XXH64_DEFAULT_SEED);
   if (obj_buffer.data_size >= BYTES_IN_MB) {
-    compute_object_hash_parallel(&hash_state,
-                                 (unsigned char *) obj_buffer.data,
+    compute_object_hash_parallel(&hash_state, (unsigned char *) obj_buffer.data,
                                  obj_buffer.data_size);
   } else {
     XXH64_update(&hash_state, (unsigned char *) obj_buffer.data,
