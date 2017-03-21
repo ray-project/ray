@@ -3,12 +3,12 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import os
 import redis
 import time
 
 from ray.services import get_ip_address
 from ray.services import get_port
+
 
 class LogMonitor(object):
   """A monitor process for monitoring Ray log files.
@@ -27,15 +27,17 @@ class LogMonitor(object):
   def __init__(self, redis_ip_address, redis_port, node_ip_address):
     """Initialize the log monitor object."""
     self.node_ip_address = node_ip_address
-    self.redis_client = redis.StrictRedis(host=redis_ip_address, port=redis_port)
+    self.redis_client = redis.StrictRedis(host=redis_ip_address,
+                                          port=redis_port)
     self.log_files = {}
     self.log_file_handles = {}
 
   def update_log_filenames(self):
     """Get the most up-to-date list of log files to monitor from Redis."""
     num_current_log_files = len(self.log_files)
-    new_log_filenames = self.redis_client.lrange("LOG_FILENAMES:{}".format(self.node_ip_address),
-                                                 num_current_log_files, -1)
+    new_log_filenames = self.redis_client.lrange(
+        "LOG_FILENAMES:{}".format(self.node_ip_address),
+        num_current_log_files, -1)
     for log_filename in new_log_filenames:
       print("Beginning to track file {}".format(log_filename))
       assert log_filename not in self.log_files
@@ -50,7 +52,8 @@ class LogMonitor(object):
         # If there are any new lines, cache them and also push them to Redis.
         if len(new_lines) > 0:
           self.log_files[log_filename] += new_lines
-          redis_key = "LOGFILE:{}:{}".format(self.node_ip_address, log_filename.decode("ascii"))
+          redis_key = "LOGFILE:{}:{}".format(self.node_ip_address,
+                                             log_filename.decode("ascii"))
           self.redis_client.rpush(redis_key, *new_lines)
       else:
         try:
@@ -68,6 +71,7 @@ class LogMonitor(object):
       self.update_log_filenames()
       self.check_log_files_and_push_updates()
       time.sleep(1)
+
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(description=("Parse Redis server for the "

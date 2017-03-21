@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import binascii
 from collections import Counter
 import logging
 import redis
@@ -13,7 +12,8 @@ from ray.services import get_ip_address
 from ray.services import get_port
 
 # Import flatbuffer bindings.
-from ray.core.generated.SubscribeToDBClientTableReply import SubscribeToDBClientTableReply
+from ray.core.generated.SubscribeToDBClientTableReply \
+    import SubscribeToDBClientTableReply
 from ray.core.generated.TaskReply import TaskReply
 
 # These variables must be kept in sync with the C codebase.
@@ -40,6 +40,7 @@ PLASMA_MANAGER_CLIENT_TYPE = b"plasma_manager"
 logging.basicConfig()
 log = logging.getLogger()
 log.setLevel(logging.WARN)
+
 
 class Monitor(object):
   """A monitor for Ray processes.
@@ -92,7 +93,8 @@ class Monitor(object):
     TASK_STATUS_LOST. A local scheduler is deemed dead if it is in
     self.dead_local_schedulers.
     """
-    task_ids = self.redis.scan_iter(match="{prefix}*".format(prefix=TASK_PREFIX))
+    task_ids = self.redis.scan_iter(
+        match="{prefix}*".format(prefix=TASK_PREFIX))
     num_tasks_updated = 0
     for task_id in task_ids:
       task_id = task_id[len(TASK_PREFIX):]
@@ -123,11 +125,13 @@ class Monitor(object):
     """
     # TODO(swang): Also kill the associated plasma store, since it's no longer
     # reachable without a plasma manager.
-    object_ids = self.redis.scan_iter(match="{prefix}*".format(prefix=OBJECT_PREFIX))
+    object_ids = self.redis.scan_iter(
+        match="{prefix}*".format(prefix=OBJECT_PREFIX))
     num_objects_removed = 0
     for object_id in object_ids:
       object_id = object_id[len(OBJECT_PREFIX):]
-      managers = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP", object_id)
+      managers = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP",
+                                            object_id)
       for manager in managers:
         if manager in self.dead_plasma_managers:
           # If the object was on a dead plasma manager, remove that location
@@ -149,7 +153,8 @@ class Monitor(object):
     not miss any notifications for deleted clients that occurred before we
     subscribed.
     """
-    db_client_keys = self.redis.keys("{prefix}*".format(prefix=DB_CLIENT_PREFIX))
+    db_client_keys = self.redis.keys(
+        "{prefix}*".format(prefix=DB_CLIENT_PREFIX))
     for db_client_key in db_client_keys:
       db_client_id = db_client_key[len(DB_CLIENT_PREFIX):]
       client_type, deleted = self.redis.hmget(db_client_key,
@@ -175,10 +180,10 @@ class Monitor(object):
     flatbuffer. Deletions are processed, insertions are ignored. Cleanup of the
     associated state in the state tables should be handled by the caller.
     """
-    notification_object = SubscribeToDBClientTableReply.GetRootAsSubscribeToDBClientTableReply(data, 0)
+    notification_object = (SubscribeToDBClientTableReply
+                           .GetRootAsSubscribeToDBClientTableReply(data, 0))
     db_client_id = notification_object.DbClientId()
     client_type = notification_object.ClientType()
-    auxiliary_address = notification_object.AuxAddress()
     is_insertion = notification_object.IsInsertion()
 
     # If the update was an insertion, we ignore it.
@@ -227,7 +232,6 @@ class Monitor(object):
       if not self.subscribed[channel]:
         # If the data was an integer, then the message was a response to an
         # initial subscription request.
-        is_subscribe = int(data)
         message_handler = self.subscribe_handler
       elif channel == PLASMA_MANAGER_HEARTBEAT_CHANNEL:
         assert(self.subscribed[channel])
@@ -264,12 +268,11 @@ class Monitor(object):
       self.cleanup_task_table()
     if len(self.dead_plasma_managers) > 0:
       self.cleanup_object_table()
-    log.debug("{} dead local schedulers, {} plasma "
-              "managers total, {} dead plasma managers".format(
-                len(self.dead_local_schedulers),
-                len(self.live_plasma_managers) + len(self.dead_plasma_managers),
-                len(self.dead_plasma_managers)
-                ))
+    log.debug("{} dead local schedulers, {} plasma managers total, {} dead "
+              "plasma managers".format(len(self.dead_local_schedulers),
+                                       (len(self.live_plasma_managers) +
+                                        len(self.dead_plasma_managers)),
+                                       len(self.dead_plasma_managers)))
 
     # Handle messages from the subscription channels.
     while True:
@@ -289,7 +292,8 @@ class Monitor(object):
       # Handle plasma managers that timed out during this round.
       plasma_manager_ids = list(self.live_plasma_managers.keys())
       for plasma_manager_id in plasma_manager_ids:
-        if self.live_plasma_managers[plasma_manager_id] >= NUM_HEARTBEATS_TIMEOUT:
+        if ((self.live_plasma_managers
+             [plasma_manager_id]) >= NUM_HEARTBEATS_TIMEOUT):
           log.warn("Timed out {}".format(PLASMA_MANAGER_CLIENT_TYPE))
           # Remove the plasma manager from the managers whose heartbeats we're
           # tracking.
@@ -299,7 +303,8 @@ class Monitor(object):
           # receive the notification for this db_client deletion.
           self.redis.execute_command("RAY.DISCONNECT", plasma_manager_id)
 
-      # Increment the number of heartbeats that we've missed from each plasma manager.
+      # Increment the number of heartbeats that we've missed from each plasma
+      # manager.
       for plasma_manager_id in self.live_plasma_managers:
         self.live_plasma_managers[plasma_manager_id] += 1
 

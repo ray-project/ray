@@ -9,19 +9,21 @@ from numpy.testing import assert_equal
 import os
 import sys
 
-TEST_OBJECTS = [{(1,2) : 1}, {() : 2}, [1, "hello", 3.0], 42, 43, "hello world",
+TEST_OBJECTS = [{(1, 2): 1}, {(): 2}, [1, "hello", 3.0], 42, 43,
+                "hello world",
                 u"x", u"\u262F", 42.0,
                 1 << 62, (1.0, "hi"),
                 None, (None, None), ("hello", None),
                 True, False, (True, False), "hello",
                 {True: "hello", False: "world"},
-                {"hello" : "world", 1: 42, 1.0: 45}, {},
+                {"hello": "world", 1: 42, 2.5: 45}, {},
                 np.int8(3), np.int32(4), np.int64(5),
                 np.uint8(3), np.uint32(4), np.uint64(5),
                 np.float32(1.0), np.float64(1.0)]
 
 if sys.version_info < (3, 0):
-  TEST_OBJECTS += [long(42), long(1 << 62)]
+  TEST_OBJECTS += [long(42), long(1 << 62)]  # noqa: F821
+
 
 class SerializationTests(unittest.TestCase):
 
@@ -47,14 +49,16 @@ class SerializationTests(unittest.TestCase):
     self.roundTripTest([{"hello": [1, 2, 3]}])
     self.roundTripTest([{"hello": [1, [2, 3]]}])
     self.roundTripTest([{"hello": (None, 2, [3, 4])}])
-    self.roundTripTest([{"hello": (None, 2, [3, 4], np.array([1.0, 2.0, 3.0]))}])
+    self.roundTripTest(
+        [{"hello": (None, 2, [3, 4], np.array([1.0, 2.0, 3.0]))}])
 
   def numpyTest(self, t):
     a = np.random.randint(0, 10, size=(100, 100)).astype(t)
     self.roundTripTest([a])
 
   def testArrays(self):
-    for t in ["int8", "uint8", "int16", "uint16", "int32", "uint32", "float32", "float64"]:
+    for t in ["int8", "uint8", "int16", "uint16", "int32", "uint32", "float32",
+              "float64"]:
       self.numpyTest(t)
 
   def testRay(self):
@@ -164,6 +168,7 @@ class SerializationTests(unittest.TestCase):
     else:
       print("Not running testArrowLimits on Travis because of the test's "
             "memory requirements.")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

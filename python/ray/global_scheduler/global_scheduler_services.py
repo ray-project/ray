@@ -6,6 +6,7 @@ import os
 import subprocess
 import time
 
+
 def start_global_scheduler(redis_address, use_valgrind=False,
                            use_profiler=False, stdout_file=None,
                            stderr_file=None):
@@ -15,8 +16,8 @@ def start_global_scheduler(redis_address, use_valgrind=False,
     redis_address (str): The address of the Redis instance.
     use_valgrind (bool): True if the global scheduler should be started inside
       of valgrind. If this is True, use_profiler must be False.
-    use_profiler (bool): True if the global scheduler should be started inside a
-      profiler. If this is True, use_valgrind must be False.
+    use_profiler (bool): True if the global scheduler should be started inside
+      a profiler. If this is True, use_valgrind must be False.
     stdout_file: A file handle opened for writing to redirect stdout to. If no
       redirection should happen, then this should be None.
     stderr_file: A file handle opened for writing to redirect stderr to. If no
@@ -27,7 +28,9 @@ def start_global_scheduler(redis_address, use_valgrind=False,
   """
   if use_valgrind and use_profiler:
     raise Exception("Cannot use valgrind and profiler at the same time.")
-  global_scheduler_executable = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../core/src/global_scheduler/global_scheduler")
+  global_scheduler_executable = os.path.join(
+      os.path.abspath(os.path.dirname(__file__)),
+      "../core/src/global_scheduler/global_scheduler")
   command = [global_scheduler_executable, "-r", redis_address]
   if use_valgrind:
     pid = subprocess.Popen(["valgrind",
@@ -35,7 +38,7 @@ def start_global_scheduler(redis_address, use_valgrind=False,
                             "--leak-check=full",
                             "--show-leak-kinds=all",
                             "--error-exitcode=1"] + command,
-                            stdout=stdout_file, stderr=stderr_file)
+                           stdout=stdout_file, stderr=stderr_file)
     time.sleep(1.0)
   elif use_profiler:
     pid = subprocess.Popen(["valgrind", "--tool=callgrind"] + command,

@@ -7,7 +7,7 @@ import os
 import re
 import subprocess
 import sys
-import time
+
 
 def wait_for_output(proc):
   """This is a convenience method to parse a process's stdout and stderr.
@@ -19,9 +19,12 @@ def wait_for_output(proc):
     A tuple of the stdout and stderr of the process as strings.
   """
   stdout_data, stderr_data = proc.communicate()
-  stdout_data = stdout_data.decode("ascii") if stdout_data is not None else None
-  stderr_data = stderr_data.decode("ascii") if stderr_data is not None else None
+  stdout_data = (stdout_data.decode("ascii") if stdout_data is not None
+                 else None)
+  stderr_data = (stderr_data.decode("ascii") if stderr_data is not None
+                 else None)
   return stdout_data, stderr_data
+
 
 class DockerRunner(object):
   """This class manages the logistics of running multiple nodes in Docker.
@@ -34,8 +37,8 @@ class DockerRunner(object):
     head_container_id: The ID of the docker container that runs the head node.
     worker_container_ids: A list of the docker container IDs of the Ray worker
       nodes.
-    head_container_ip: The IP address of the docker container that runs the head
-      node.
+    head_container_ip: The IP address of the docker container that runs the
+      head node.
   """
   def __init__(self):
     """Initialize the DockerRunner."""
@@ -47,8 +50,8 @@ class DockerRunner(object):
     """Parse the docker container ID from stdout_data.
 
     Args:
-      stdout_data: This should be a string with the standard output of a call to
-        a docker command.
+      stdout_data: This should be a string with the standard output of a call
+        to a docker command.
 
     Returns:
       The container ID of the docker container.
@@ -70,7 +73,8 @@ class DockerRunner(object):
       The IP address of the container.
     """
     proc = subprocess.Popen(["docker", "inspect",
-                             "--format={{.NetworkSettings.Networks.bridge.IPAddress}}",
+                             "--format={{.NetworkSettings.Networks.bridge"
+                             ".IPAddress}}",
                              container_id],
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout_data, _ = wait_for_output(proc)
@@ -86,9 +90,10 @@ class DockerRunner(object):
     """Start the Ray head node inside a docker container."""
     mem_arg = ["--memory=" + mem_size] if mem_size else []
     shm_arg = ["--shm-size=" + shm_size] if shm_size else []
-    volume_arg = ["-v",
-                  "{}:{}".format(os.path.dirname(os.path.realpath(__file__)),
-                  "/ray/test/jenkins_tests")] if development_mode else []
+    volume_arg = (["-v",
+                   "{}:{}".format(os.path.dirname(os.path.realpath(__file__)),
+                                  "/ray/test/jenkins_tests")]
+                  if development_mode else [])
     proc = subprocess.Popen(["docker", "run", "-d"] + mem_arg + shm_arg +
                             volume_arg +
                             [docker_image, "/ray/scripts/start_ray.sh",
@@ -113,7 +118,8 @@ class DockerRunner(object):
     proc = subprocess.Popen(["docker", "run", "-d"] + mem_arg + shm_arg +
                             ["--shm-size=" + shm_size, docker_image,
                              "/ray/scripts/start_ray.sh",
-                             "--redis-address={:s}:6379".format(self.head_container_ip)],
+                             "--redis-address={:s}:6379".format(
+                                 self.head_container_ip)],
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout_data, _ = wait_for_output(proc)
     container_id = self._get_container_id(stdout_data)
@@ -136,10 +142,10 @@ class DockerRunner(object):
       mem_size: The amount of memory to start each docker container with. This
         will be passed into `docker run` as the --memory flag. If this is None,
         then no --memory flag will be used.
-      shm_size: The amount of shared memory to start each docker container with.
-        This will be passed into `docker run` as the `--shm-size` flag.
-      num_nodes: The number of nodes to use in the cluster (this counts the head
-        node as well).
+      shm_size: The amount of shared memory to start each docker container
+        with. This will be passed into `docker run` as the `--shm-size` flag.
+      num_nodes: The number of nodes to use in the cluster (this counts the
+        head node as well).
       development_mode: True if you want to mount the local copy of
         test/jenkins_test on the head node so we can avoid rebuilding docker
         images during development.
@@ -163,7 +169,7 @@ class DockerRunner(object):
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout_data, _ = wait_for_output(proc)
     removed_container_id = self._get_container_id(stdout_data)
-    if not container_id == stopped_container_id:
+    if not container_id == removed_container_id:
       raise Exception("Failed to remove container {}.".format(container_id))
 
     print("stop_node", {"container_id": container_id,
@@ -202,8 +208,10 @@ class DockerRunner(object):
     print(stderr_data)
     return {"success": proc.returncode == 0, "return_code": proc.returncode}
 
+
 if __name__ == "__main__":
-  parser = argparse.ArgumentParser(description="Run multinode tests in Docker.")
+  parser = argparse.ArgumentParser(
+      description="Run multinode tests in Docker.")
   parser.add_argument("--docker-image", default="ray-project/deploy",
                       help="docker image")
   parser.add_argument("--mem-size", help="memory size")

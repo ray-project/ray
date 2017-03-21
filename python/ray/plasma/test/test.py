@@ -6,23 +6,22 @@ import numpy as np
 import os
 import random
 import signal
-import socket
-import struct
-import subprocess
 import sys
-import tempfile
 import threading
 import time
 import unittest
 
 import ray.plasma as plasma
-from ray.plasma.utils import random_object_id, generate_metadata, write_to_data_buffer, create_object_with_id, create_object
+from ray.plasma.utils import (random_object_id, generate_metadata,
+                              create_object_with_id, create_object)
 from ray import services
 
 USE_VALGRIND = False
 PLASMA_STORE_MEMORY = 1000000000
 
-def assert_get_object_equal(unit_test, client1, client2, object_id, memory_buffer=None, metadata=None):
+
+def assert_get_object_equal(unit_test, client1, client2, object_id,
+                            memory_buffer=None, metadata=None):
   client1_buff = client1.get([object_id])[0]
   client2_buff = client2.get([object_id])[0]
   client1_metadata = client1.get_metadata([object_id])[0]
@@ -32,7 +31,8 @@ def assert_get_object_equal(unit_test, client1, client2, object_id, memory_buffe
   # Check that the buffers from the two clients are the same.
   unit_test.assertTrue(plasma.buffers_equal(client1_buff, client2_buff))
   # Check that the metadata buffers from the two clients are the same.
-  unit_test.assertTrue(plasma.buffers_equal(client1_metadata, client2_metadata))
+  unit_test.assertTrue(plasma.buffers_equal(client1_metadata,
+                                            client2_metadata))
   # If a reference buffer was provided, check that it is the same as well.
   if memory_buffer is not None:
     unit_test.assertTrue(plasma.buffers_equal(memory_buffer, client1_buff))
@@ -40,11 +40,13 @@ def assert_get_object_equal(unit_test, client1, client2, object_id, memory_buffe
   if metadata is not None:
     unit_test.assertTrue(plasma.buffers_equal(metadata, client1_metadata))
 
+
 class TestPlasmaClient(unittest.TestCase):
 
   def setUp(self):
     # Start Plasma store.
-    plasma_store_name, self.p = plasma.start_plasma_store(use_valgrind=USE_VALGRIND)
+    plasma_store_name, self.p = plasma.start_plasma_store(
+        use_valgrind=USE_VALGRIND)
     # Connect to Plasma.
     self.plasma_client = plasma.PlasmaClient(plasma_store_name, None, 64)
     # For the eviction test
@@ -107,7 +109,7 @@ class TestPlasmaClient(unittest.TestCase):
       object_id = random_object_id()
       self.plasma_client.create(object_id, length, generate_metadata(length))
       try:
-        val = self.plasma_client.create(object_id, length, generate_metadata(length))
+        self.plasma_client.create(object_id, length, generate_metadata(length))
       except plasma.plasma_object_exists_error as e:
         pass
       else:
@@ -125,20 +127,24 @@ class TestPlasmaClient(unittest.TestCase):
     metadata_buffers = []
     for i in range(num_object_ids):
       if i % 2 == 0:
-        data_buffer, metadata_buffer = create_object_with_id(self.plasma_client, object_ids[i], 2000, 2000)
+        data_buffer, metadata_buffer = create_object_with_id(
+            self.plasma_client, object_ids[i], 2000, 2000)
         data_buffers.append(data_buffer)
         metadata_buffers.append(metadata_buffer)
 
     # Test timing out from some but not all get calls with various timeouts.
     for timeout in [0, 10, 100, 1000]:
       data_results = self.plasma_client.get(object_ids, timeout_ms=timeout)
-      metadata_results = self.plasma_client.get(object_ids, timeout_ms=timeout)
+      # metadata_results = self.plasma_client.get_metadata(object_ids,
+      #                                                    timeout_ms=timeout)
       for i in range(num_object_ids):
         if i % 2 == 0:
-          self.assertTrue(plasma.buffers_equal(data_buffers[i // 2], data_results[i]))
-          # TODO(rkn): We should compare the metadata as well. But currently the
-          # types are different (e.g., memoryview versus bytearray).
-          # self.assertTrue(plasma.buffers_equal(metadata_buffers[i // 2], metadata_results[i]))
+          self.assertTrue(plasma.buffers_equal(data_buffers[i // 2],
+                                               data_results[i]))
+          # TODO(rkn): We should compare the metadata as well. But currently
+          # the types are different (e.g., memoryview versus bytearray).
+          # self.assertTrue(plasma.buffers_equal(metadata_buffers[i // 2],
+          #                                      metadata_results[i]))
         else:
           self.assertIsNone(results[i])
 
@@ -148,7 +154,9 @@ class TestPlasmaClient(unittest.TestCase):
     def assert_create_raises_plasma_full(unit_test, size):
       partial_size = np.random.randint(size)
       try:
-        _, memory_buffer, _ = create_object(unit_test.plasma_client, partial_size, size - partial_size)
+        _, memory_buffer, _ = create_object(unit_test.plasma_client,
+                                            partial_size,
+                                            size - partial_size)
       except plasma.plasma_out_of_memory_error as e:
         pass
       else:
@@ -215,7 +223,7 @@ class TestPlasmaClient(unittest.TestCase):
     real_object_ids = [random_object_id() for _ in range(100)]
     for object_id in real_object_ids:
       self.assertFalse(self.plasma_client.contains(object_id))
-      memory_buffer = self.plasma_client.create(object_id, 100)
+      self.plasma_client.create(object_id, 100)
       self.plasma_client.seal(object_id)
       self.assertTrue(self.plasma_client.contains(object_id))
     for object_id in fake_object_ids:
@@ -226,7 +234,7 @@ class TestPlasmaClient(unittest.TestCase):
   def test_hash(self):
     # Check the hash of an object that doesn't exist.
     object_id1 = random_object_id()
-    h = self.plasma_client.hash(object_id1)
+    self.plasma_client.hash(object_id1)
 
     length = 1000
     # Create a random object, and check that the hash function always returns
@@ -357,7 +365,7 @@ class TestPlasmaClient(unittest.TestCase):
     length = 1000
     memory_buffer = self.plasma_client.create(object_id, length)
     # Make sure we cannot access memory out of bounds.
-    self.assertRaises(Exception, lambda : memory_buffer[length])
+    self.assertRaises(Exception, lambda: memory_buffer[length])
     # Seal the object.
     self.plasma_client.seal(object_id)
     # This test is commented out because it currently fails.
@@ -367,6 +375,7 @@ class TestPlasmaClient(unittest.TestCase):
     # self.assertRaises(Exception, illegal_assignment)
     # Get the object.
     memory_buffer = self.plasma_client.get([object_id])[0]
+
     # Make sure the object is read only.
     def illegal_assignment():
       memory_buffer[0] = chr(0)
@@ -413,18 +422,20 @@ class TestPlasmaClient(unittest.TestCase):
 
   def test_subscribe(self):
     # Subscribe to notifications from the Plasma Store.
-    sock = self.plasma_client.subscribe()
+    self.plasma_client.subscribe()
     for i in [1, 10, 100, 1000, 10000, 100000]:
       object_ids = [random_object_id() for _ in range(i)]
       metadata_sizes = [np.random.randint(1000) for _ in range(i)]
       data_sizes = [np.random.randint(1000) for _ in range(i)]
       for j in range(i):
-        self.plasma_client.create(object_ids[j], size=data_sizes[j],
-                                  metadata=bytearray(np.random.bytes(metadata_sizes[j])))
+        self.plasma_client.create(
+            object_ids[j], size=data_sizes[j],
+            metadata=bytearray(np.random.bytes(metadata_sizes[j])))
         self.plasma_client.seal(object_ids[j])
       # Check that we received notifications for all of the objects.
       for j in range(i):
-        recv_objid, recv_dsize, recv_msize = self.plasma_client.get_next_notification()
+        notification_info = self.plasma_client.get_next_notification()
+        recv_objid, recv_dsize, recv_msize = notification_info
         self.assertEqual(object_ids[j], recv_objid)
         self.assertEqual(data_sizes[j], recv_dsize)
         self.assertEqual(metadata_sizes[j], recv_msize)
@@ -432,20 +443,22 @@ class TestPlasmaClient(unittest.TestCase):
   def test_subscribe_deletions(self):
     # Subscribe to notifications from the Plasma Store. We use plasma_client2
     # to make sure that all used objects will get evicted properly.
-    sock = self.plasma_client2.subscribe()
+    self.plasma_client2.subscribe()
     for i in [1, 10, 100, 1000, 10000, 100000]:
       object_ids = [random_object_id() for _ in range(i)]
       # Add 1 to the sizes to make sure we have nonzero object sizes.
       metadata_sizes = [np.random.randint(1000) + 1 for _ in range(i)]
       data_sizes = [np.random.randint(1000) + 1 for _ in range(i)]
       for j in range(i):
-        x = self.plasma_client2.create(object_ids[j], size=data_sizes[j],
-                                  metadata=bytearray(np.random.bytes(metadata_sizes[j])))
+        x = self.plasma_client2.create(
+            object_ids[j], size=data_sizes[j],
+            metadata=bytearray(np.random.bytes(metadata_sizes[j])))
         self.plasma_client2.seal(object_ids[j])
       del x
       # Check that we received notifications for creating all of the objects.
       for j in range(i):
-        recv_objid, recv_dsize, recv_msize = self.plasma_client2.get_next_notification()
+        notification_info = self.plasma_client2.get_next_notification()
+        recv_objid, recv_dsize, recv_msize = notification_info
         self.assertEqual(object_ids[j], recv_objid)
         self.assertEqual(data_sizes[j], recv_dsize)
         self.assertEqual(metadata_sizes[j], recv_msize)
@@ -453,8 +466,10 @@ class TestPlasmaClient(unittest.TestCase):
       # Check that we receive notifications for deleting all objects, as we
       # evict them.
       for j in range(i):
-        self.assertEqual(self.plasma_client2.evict(1), data_sizes[j] + metadata_sizes[j])
-        recv_objid, recv_dsize, recv_msize = self.plasma_client2.get_next_notification()
+        self.assertEqual(self.plasma_client2.evict(1),
+                         data_sizes[j] + metadata_sizes[j])
+        notification_info = self.plasma_client2.get_next_notification()
+        recv_objid, recv_dsize, recv_msize = notification_info
         self.assertEqual(object_ids[j], recv_objid)
         self.assertEqual(-1, recv_dsize)
         self.assertEqual(-1, recv_msize)
@@ -469,18 +484,22 @@ class TestPlasmaClient(unittest.TestCase):
     metadata_sizes.append(np.random.randint(1000))
     data_sizes.append(np.random.randint(1000))
     for i in range(num_object_ids):
-      x = self.plasma_client2.create(object_ids[i], size=data_sizes[i],
-                                metadata=bytearray(np.random.bytes(metadata_sizes[i])))
+      x = self.plasma_client2.create(
+          object_ids[i], size=data_sizes[i],
+          metadata=bytearray(np.random.bytes(metadata_sizes[i])))
       self.plasma_client2.seal(object_ids[i])
     del x
     for i in range(num_object_ids):
-      recv_objid, recv_dsize, recv_msize = self.plasma_client2.get_next_notification()
+      notification_info = self.plasma_client2.get_next_notification()
+      recv_objid, recv_dsize, recv_msize = notification_info
       self.assertEqual(object_ids[i], recv_objid)
       self.assertEqual(data_sizes[i], recv_dsize)
       self.assertEqual(metadata_sizes[i], recv_msize)
-    self.assertEqual(self.plasma_client2.evict(1), data_sizes[-1] + metadata_sizes[-1])
+    self.assertEqual(self.plasma_client2.evict(1),
+                     data_sizes[-1] + metadata_sizes[-1])
     for i in range(num_object_ids):
-      recv_objid, recv_dsize, recv_msize = self.plasma_client2.get_next_notification()
+      notification_info = self.plasma_client2.get_next_notification()
+      recv_objid, recv_dsize, recv_msize = notification_info
       self.assertEqual(object_ids[i], recv_objid)
       self.assertEqual(-1, recv_dsize)
       self.assertEqual(-1, recv_msize)
@@ -495,8 +514,10 @@ class TestPlasmaManager(unittest.TestCase):
     # Start a Redis server.
     redis_address = services.address("127.0.0.1", services.start_redis()[0])
     # Start two PlasmaManagers.
-    manager_name1, self.p4, self.port1 = plasma.start_plasma_manager(store_name1, redis_address, use_valgrind=USE_VALGRIND)
-    manager_name2, self.p5, self.port2 = plasma.start_plasma_manager(store_name2, redis_address, use_valgrind=USE_VALGRIND)
+    manager_name1, self.p4, self.port1 = plasma.start_plasma_manager(
+        store_name1, redis_address, use_valgrind=USE_VALGRIND)
+    manager_name2, self.p5, self.port2 = plasma.start_plasma_manager(
+        store_name2, redis_address, use_valgrind=USE_VALGRIND)
     # Connect two PlasmaClients.
     self.client1 = plasma.PlasmaClient(store_name1, manager_name1)
     self.client2 = plasma.PlasmaClient(store_name2, manager_name2)
@@ -513,7 +534,8 @@ class TestPlasmaManager(unittest.TestCase):
 
     # Kill the Plasma store and Plasma manager processes.
     if USE_VALGRIND:
-      time.sleep(1) # give processes opportunity to finish work
+      # Give processes opportunity to finish work.
+      time.sleep(1)
       for process in self.processes_to_kill:
         process.send_signal(signal.SIGTERM)
         process.wait()
@@ -530,7 +552,8 @@ class TestPlasmaManager(unittest.TestCase):
   def test_fetch(self):
     for _ in range(10):
       # Create an object.
-      object_id1, memory_buffer1, metadata1 = create_object(self.client1, 2000, 2000)
+      object_id1, memory_buffer1, metadata1 = create_object(self.client1, 2000,
+                                                            2000)
       self.client1.fetch([object_id1])
       self.assertEqual(self.client1.contains(object_id1), True)
       self.assertEqual(self.client2.contains(object_id1), False)
@@ -546,7 +569,8 @@ class TestPlasmaManager(unittest.TestCase):
     object_id2 = random_object_id()
     self.client1.fetch([object_id2])
     self.assertEqual(self.client1.contains(object_id2), False)
-    memory_buffer2, metadata2 = create_object_with_id(self.client2, object_id2, 2000, 2000)
+    memory_buffer2, metadata2 = create_object_with_id(self.client2, object_id2,
+                                                      2000, 2000)
     # # Check that the object has been fetched.
     # self.assertEqual(self.client1.contains(object_id2), True)
     # Compare the two buffers.
@@ -560,11 +584,12 @@ class TestPlasmaManager(unittest.TestCase):
     for _ in range(10):
       self.client1.fetch([object_id3])
       self.client2.fetch([object_id3])
-    memory_buffer3, metadata3 = create_object_with_id(self.client1, object_id3, 2000, 2000)
+    memory_buffer3, metadata3 = create_object_with_id(self.client1, object_id3,
+                                                      2000, 2000)
     for _ in range(10):
       self.client1.fetch([object_id3])
       self.client2.fetch([object_id3])
-    #TODO(rkn): Right now we must wait for the object table to be updated.
+    # TODO(rkn): Right now we must wait for the object table to be updated.
     while not self.client2.contains(object_id3):
       self.client2.fetch([object_id3])
     assert_get_object_equal(self, self.client1, self.client2, object_id3,
@@ -573,14 +598,17 @@ class TestPlasmaManager(unittest.TestCase):
   def test_fetch_multiple(self):
     for _ in range(20):
       # Create two objects and a third fake one that doesn't exist.
-      object_id1, memory_buffer1, metadata1 = create_object(self.client1, 2000, 2000)
+      object_id1, memory_buffer1, metadata1 = create_object(self.client1, 2000,
+                                                            2000)
       missing_object_id = random_object_id()
-      object_id2, memory_buffer2, metadata2 = create_object(self.client1, 2000, 2000)
+      object_id2, memory_buffer2, metadata2 = create_object(self.client1, 2000,
+                                                            2000)
       object_ids = [object_id1, missing_object_id, object_id2]
       # Fetch the objects from the other plasma store. The second object ID
       # should timeout since it does not exist.
       # TODO(rkn): Right now we must wait for the object table to be updated.
-      while (not self.client2.contains(object_id1)) or (not self.client2.contains(object_id2)):
+      while ((not self.client2.contains(object_id1)) or
+             (not self.client2.contains(object_id2))):
         self.client2.fetch(object_ids)
       # Compare the buffers of the objects that do exist.
       assert_get_object_equal(self, self.client1, self.client2, object_id1,
@@ -597,7 +625,8 @@ class TestPlasmaManager(unittest.TestCase):
     # Check that we can call fetch with duplicated object IDs.
     object_id3 = random_object_id()
     self.client1.fetch([object_id3, object_id3])
-    object_id4, memory_buffer4, metadata4 = create_object(self.client1, 2000, 2000)
+    object_id4, memory_buffer4, metadata4 = create_object(self.client1, 2000,
+                                                          2000)
     time.sleep(0.1)
     # TODO(rkn): Right now we must wait for the object table to be updated.
     while not self.client2.contains(object_id4):
@@ -623,7 +652,8 @@ class TestPlasmaManager(unittest.TestCase):
     obj_id2 = random_object_id()
     self.client1.create(obj_id2, 1000)
     # Don't seal.
-    ready, waiting = self.client1.wait([obj_id2, obj_id1], timeout=100, num_returns=1)
+    ready, waiting = self.client1.wait([obj_id2, obj_id1], timeout=100,
+                                       num_returns=1)
     self.assertEqual(set(ready), set([obj_id1]))
     self.assertEqual(set(waiting), set([obj_id2]))
 
@@ -636,11 +666,13 @@ class TestPlasmaManager(unittest.TestCase):
 
     t = threading.Timer(0.1, finish)
     t.start()
-    ready, waiting = self.client1.wait([obj_id3, obj_id2, obj_id1], timeout=1000, num_returns=2)
+    ready, waiting = self.client1.wait([obj_id3, obj_id2, obj_id1],
+                                       timeout=1000, num_returns=2)
     self.assertEqual(set(ready), set([obj_id1, obj_id3]))
     self.assertEqual(set(waiting), set([obj_id2]))
 
-    # Test if the appropriate number of objects is shown if some objects are not ready
+    # Test if the appropriate number of objects is shown if some objects are
+    # not ready.
     ready, waiting = self.client1.wait([obj_id3, obj_id2, obj_id1], 100, 3)
     self.assertEqual(set(ready), set([obj_id1, obj_id3]))
     self.assertEqual(set(waiting), set([obj_id2]))
@@ -651,9 +683,9 @@ class TestPlasmaManager(unittest.TestCase):
     # Test calling wait a bunch of times.
     object_ids = []
     # TODO(rkn): Increasing n to 100 (or larger) will cause failures. The
-    # problem appears to be that the number of timers added to the manager event
-    # loop slow down the manager so much that some of the asynchronous Redis
-    # commands timeout triggering fatal failure callbacks.
+    # problem appears to be that the number of timers added to the manager
+    # event loop slow down the manager so much that some of the asynchronous
+    # Redis commands timeout triggering fatal failure callbacks.
     n = 40
     for i in range(n * (n + 1) // 2):
       if i % 2 == 0:
@@ -669,7 +701,8 @@ class TestPlasmaManager(unittest.TestCase):
       self.assertEqual(len(ready), i)
       retrieved += ready
     self.assertEqual(set(retrieved), set(object_ids))
-    ready, waiting = self.client1.wait(object_ids, timeout=1000, num_returns=len(object_ids))
+    ready, waiting = self.client1.wait(object_ids, timeout=1000,
+                                       num_returns=len(object_ids))
     self.assertEqual(set(ready), set(object_ids))
     self.assertEqual(waiting, [])
     # Try waiting for all of the object IDs on the second client.
@@ -680,7 +713,8 @@ class TestPlasmaManager(unittest.TestCase):
       self.assertEqual(len(ready), i)
       retrieved += ready
     self.assertEqual(set(retrieved), set(object_ids))
-    ready, waiting = self.client2.wait(object_ids, timeout=1000, num_returns=len(object_ids))
+    ready, waiting = self.client2.wait(object_ids, timeout=1000,
+                                       num_returns=len(object_ids))
     self.assertEqual(set(ready), set(object_ids))
     self.assertEqual(waiting, [])
 
@@ -702,7 +736,8 @@ class TestPlasmaManager(unittest.TestCase):
     num_attempts = 100
     for _ in range(100):
       # Create an object.
-      object_id1, memory_buffer1, metadata1 = create_object(self.client1, 2000, 2000)
+      object_id1, memory_buffer1, metadata1 = create_object(self.client1, 2000,
+                                                            2000)
       # Transfer the buffer to the the other Plasma store. There is a race
       # condition on the create and transfer of the object, so keep trying
       # until the object appears on the second Plasma store.
@@ -721,10 +756,12 @@ class TestPlasmaManager(unittest.TestCase):
       # self.client1.transfer("127.0.0.1", self.port2, object_id1)
       # # Compare the two buffers.
       # assert_get_object_equal(self, self.client1, self.client2, object_id1,
-      #                         memory_buffer=memory_buffer1, metadata=metadata1)
+      #                         memory_buffer=memory_buffer1,
+      #                         metadata=metadata1)
 
       # Create an object.
-      object_id2, memory_buffer2, metadata2 = create_object(self.client2, 20000, 20000)
+      object_id2, memory_buffer2, metadata2 = create_object(self.client2,
+                                                            20000, 20000)
       # Transfer the buffer to the the other Plasma store. There is a race
       # condition on the create and transfer of the object, so keep trying
       # until the object appears on the second Plasma store.
@@ -742,17 +779,19 @@ class TestPlasmaManager(unittest.TestCase):
 
   def test_illegal_functionality(self):
     # Create an object id string.
-    object_id = random_object_id()
+    # object_id = random_object_id()
     # Create a new buffer.
     # memory_buffer = self.client1.create(object_id, 20000)
     # This test is commented out because it currently fails.
     # # Transferring the buffer before sealing it should fail.
-    # self.assertRaises(Exception, lambda : self.manager1.transfer(1, object_id))
+    # self.assertRaises(Exception,
+    #                   lambda : self.manager1.transfer(1, object_id))
+    pass
 
   def test_stresstest(self):
     a = time.time()
     object_ids = []
-    for i in range(10000): # TODO(pcm): increase this to 100000
+    for i in range(10000):  # TODO(pcm): increase this to 100000.
       object_id = random_object_id()
       object_ids.append(object_id)
       self.client1.create(object_id, 1)
@@ -763,13 +802,16 @@ class TestPlasmaManager(unittest.TestCase):
 
     print("it took", b, "seconds to put and transfer the objects")
 
+
 class TestPlasmaManagerRecovery(unittest.TestCase):
 
   def setUp(self):
     # Start a Plasma store.
-    self.store_name, self.p2 = plasma.start_plasma_store(use_valgrind=USE_VALGRIND)
+    self.store_name, self.p2 = plasma.start_plasma_store(
+        use_valgrind=USE_VALGRIND)
     # Start a Redis server.
-    self.redis_address = services.address("127.0.0.1", services.start_redis()[0])
+    self.redis_address = services.address("127.0.0.1",
+                                          services.start_redis()[0])
     # Start a PlasmaManagers.
     manager_name, self.p3, self.port1 = plasma.start_plasma_manager(
         self.store_name,
@@ -791,7 +833,8 @@ class TestPlasmaManagerRecovery(unittest.TestCase):
 
     # Kill the Plasma store and Plasma manager processes.
     if USE_VALGRIND:
-      time.sleep(1) # give processes opportunity to finish work
+      # Give processes opportunity to finish work.
+      time.sleep(1)
       for process in self.processes_to_kill:
         process.send_signal(signal.SIGTERM)
         process.wait()
@@ -818,23 +861,26 @@ class TestPlasmaManagerRecovery(unittest.TestCase):
     self.assertEqual(waiting, [])
 
     # Start a second plasma manager attached to the same store.
-    manager_name, self.p5, self.port2 = plasma.start_plasma_manager(self.store_name, self.redis_address, use_valgrind=USE_VALGRIND)
+    manager_name, self.p5, self.port2 = plasma.start_plasma_manager(
+        self.store_name, self.redis_address, use_valgrind=USE_VALGRIND)
     self.processes_to_kill = [self.p5] + self.processes_to_kill
 
     # Check that the second manager knows about existing objects.
     client2 = plasma.PlasmaClient(self.store_name, manager_name)
     ready, waiting = [], object_ids
     while True:
-      ready, waiting = client2.wait(object_ids, num_returns=num_objects, timeout=0)
+      ready, waiting = client2.wait(object_ids, num_returns=num_objects,
+                                    timeout=0)
       if len(ready) == len(object_ids):
         break
 
     self.assertEqual(set(ready), set(object_ids))
     self.assertEqual(waiting, [])
 
+
 if __name__ == "__main__":
   if len(sys.argv) > 1:
-    # pop the argument so we don't mess with unittest's own argument parser
+    # Pop the argument so we don't mess with unittest's own argument parser.
     if sys.argv[-1] == "valgrind":
       arg = sys.argv.pop()
       USE_VALGRIND = True
