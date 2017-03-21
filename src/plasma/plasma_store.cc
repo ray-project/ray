@@ -40,6 +40,7 @@ extern "C" {
 #include "fling.h"
 #include "malloc.h"
 void *dlmalloc(size_t);
+void *dlmemalign(size_t alignment, size_t bytes);
 void dlfree(void *);
 }
 
@@ -230,8 +231,15 @@ int create_object(Client *client_context,
   if (!success) {
     return PlasmaError_OutOfMemory;
   }
-  /* Allocate space for the new object */
-  uint8_t *pointer = (uint8_t *) dlmalloc(data_size + metadata_size);
+  /* Allocate space for the new object. We use dlmemalign instead of dlmalloc in
+   * order to align the allocated region to a 64-byte boundary. This is not
+   * strictly necessary, but it is an optimization that could speed up the
+   * computation of a hash of the data (see compute_object_hash_parallel in
+   * plasma_client.cc). Note that even though this pointer is 64-byte aligned,
+   * it is not guaranteed that the corresponding pointer in the client will be
+   * 64-byte aligned, but in practice it often will be. */
+  uint8_t *pointer =
+      (uint8_t *) dlmemalign(BLOCK_SIZE, data_size + metadata_size);
   int fd;
   int64_t map_size;
   ptrdiff_t offset;

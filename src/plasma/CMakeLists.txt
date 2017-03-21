@@ -57,9 +57,9 @@ if(APPLE)
 endif(APPLE)
 
 if(APPLE)
-  target_link_libraries(plasma -Wl,-force_load,${FLATBUFFERS_STATIC_LIB} common ${PYTHON_LIBRARIES} ${FLATBUFFERS_STATIC_LIB})
+  target_link_libraries(plasma -Wl,-force_load,${FLATBUFFERS_STATIC_LIB} common ${PYTHON_LIBRARIES} ${FLATBUFFERS_STATIC_LIB} -lpthread)
 else(APPLE)
-  target_link_libraries(plasma -Wl,--whole-archive ${FLATBUFFERS_STATIC_LIB} -Wl,--no-whole-archive common ${PYTHON_LIBRARIES} ${FLATBUFFERS_STATIC_LIB})
+  target_link_libraries(plasma -Wl,--whole-archive ${FLATBUFFERS_STATIC_LIB} -Wl,--no-whole-archive common ${PYTHON_LIBRARIES} ${FLATBUFFERS_STATIC_LIB} -lpthread)
 endif(APPLE)
 
 include_directories("${FLATBUFFERS_INCLUDE_DIR}")
@@ -87,7 +87,7 @@ add_library(plasma_lib STATIC
   fling.c
   thirdparty/xxhash.c)
 
-target_link_libraries(plasma_lib common ${FLATBUFFERS_STATIC_LIB})
+target_link_libraries(plasma_lib common ${FLATBUFFERS_STATIC_LIB} -lpthread)
 add_dependencies(plasma_lib gen_plasma_fbs)
 
 add_dependencies(plasma protocol_fbs)
