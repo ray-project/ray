@@ -498,12 +498,13 @@ static inline bool compute_object_hash_parallel(XXH64_state_t *hash_state,
    */
 
   for (int i = 0; i < num_threads; i++) {
-    threadpool_[i] = std::thread(compute_block_hash,
-        reinterpret_cast<uint8_t *>(data_address) + i * chunk_size, chunk_size,
-        &threadhash[i]);
+    threadpool_[i] =
+        std::thread(compute_block_hash,
+                    reinterpret_cast<uint8_t *>(data_address) + i * chunk_size,
+                    chunk_size, &threadhash[i]);
   }
   compute_block_hash(reinterpret_cast<uint8_t *>(right_address), suffix,
-      &threadhash[num_threads]);
+                     &threadhash[num_threads]);
 
   /* Join the threads. */
   for (auto &t : threadpool_) {
