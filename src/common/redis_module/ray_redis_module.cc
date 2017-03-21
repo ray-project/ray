@@ -690,27 +690,40 @@ int ObjectInfoSubscribe_RedisCommand(RedisModuleCtx *ctx,
  *
  * This is called from a client with the command:
  *
- *     RAY.RESULT_TABLE_ADD <object id> <task id>
+ *     RAY.RESULT_TABLE_ADD <object id> <task id> <is_put>
  *
  * @param object_id A string representing the object ID.
  * @param task_id A string representing the task ID of the task that produced
  *        the object.
+ * @param is_put An integer that is 1 if the object was created through ray.put
+ *        and 0 if created by return value.
  * @return OK if the operation was successful.
  */
 int ResultTableAdd_RedisCommand(RedisModuleCtx *ctx,
                                 RedisModuleString **argv,
                                 int argc) {
-  if (argc != 3) {
+  if (argc != 4) {
     return RedisModule_WrongArity(ctx);
   }
 
   /* Set the task ID under field "task" in the object info table. */
   RedisModuleString *object_id = argv[1];
   RedisModuleString *task_id = argv[2];
+  RedisModuleString *is_put = argv[3];
+
+  /* Check to make sure the is_put field was a 0 or a 1. */
+  long long is_put_integer;
+  if ((RedisModule_StringToLongLong(is_put, &is_put_integer) !=
+       REDISMODULE_OK) ||
+      (is_put_integer != 0 && is_put_integer != 1)) {
+    return RedisModule_ReplyWithError(
+        ctx, "The is_put field must be either a 0 or a 1.");
+  }
 
   RedisModuleKey *key;
   key = OpenPrefixedKey(ctx, OBJECT_INFO_PREFIX, object_id, REDISMODULE_WRITE);
-  RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "task", task_id, NULL);
+  RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "task", task_id, "is_put",
+                      is_put, NULL);
 
   /* Clean up. */
   RedisModule_CloseKey(key);
@@ -723,13 +736,19 @@ int ResultTableAdd_RedisCommand(RedisModuleCtx *ctx,
  * Reply with information about a task ID. This is used by
  * RAY.RESULT_TABLE_LOOKUP and RAY.TASK_TABLE_GET.
  *
+ * @param ctx The Redis context.
  * @param task_id The task ID of the task to reply about.
+ * @param updated A boolean representing whether the task was updated during
+ *        this operation. This field is only used for
+ *        RAY.TASK_TABLE_TEST_AND_UPDATE operations.
  * @return NIL if the task ID is not in the task table. An error if the task ID
  *         is in the task table but the appropriate fields are not there, and
  *         an array of the task scheduling state, the local scheduler ID, and
  *         the task spec for the task otherwise.
  */
-int ReplyWithTask(RedisModuleCtx *ctx, RedisModuleString *task_id) {
+int ReplyWithTask(RedisModuleCtx *ctx,
+                  RedisModuleString *task_id,
+                  bool updated) {
   RedisModuleKey *key =
       OpenPrefixedKey(ctx, TASK_PREFIX, task_id, REDISMODULE_READ);
 
@@ -762,7 +781,7 @@ int ReplyWithTask(RedisModuleCtx *ctx, RedisModuleString *task_id) {
     auto message =
         CreateTaskReply(fbb, RedisStringToFlatbuf(fbb, task_id), state_integer,
                         RedisStringToFlatbuf(fbb, local_scheduler_id),
-                        RedisStringToFlatbuf(fbb, task_spec));
+                        RedisStringToFlatbuf(fbb, task_spec), updated);
     fbb.Finish(message);
 
     RedisModuleString *reply = RedisModule_CreateString(
@@ -790,10 +809,8 @@ int ReplyWithTask(RedisModuleCtx *ctx, RedisModuleString *task_id) {
  *     RAY.RESULT_TABLE_LOOKUP <object id>
  *
  * @param object_id A string representing the object ID.
- * @return NIL if the object ID is not in the result table or if the
- *         corresponding task ID is not in the task table. Otherwise, this
- *         returns an array of the scheduling state, the local scheduler ID, and
- *         the task spec for the task corresponding to this object ID.
+ * @return NIL if the object ID is not in the result table. Otherwise, this
+ *         returns a ResultTableReply flatbuffer.
  */
 int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
                                    RedisModuleString **argv,
@@ -814,13 +831,36 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
   }
 
   RedisModuleString *task_id;
-  RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "task", &task_id, NULL);
+  RedisModuleString *is_put;
+  RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "task", &task_id, "is_put",
+                      &is_put, NULL);
   RedisModule_CloseKey(key);
-  if (task_id == NULL) {
+  if (task_id == NULL || is_put == NULL) {
     return RedisModule_ReplyWithNull(ctx);
   }
 
-  RedisModule_ReplyWithString(ctx, task_id);
+  /* Check to make sure the is_put field was a 0 or a 1. */
+  long long is_put_integer;
+  if (RedisModule_StringToLongLong(is_put, &is_put_integer) != REDISMODULE_OK ||
+      (is_put_integer != 0 && is_put_integer != 1)) {
+    RedisModule_FreeString(ctx, is_put);
+    RedisModule_FreeString(ctx, task_id);
+    return RedisModule_ReplyWithError(
+        ctx, "The is_put field must be either a 0 or a 1.");
+  }
+
+  /* Make and return the flatbuffer reply. */
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = CreateResultTableReply(fbb, RedisStringToFlatbuf(fbb, task_id),
+                                        bool(is_put_integer));
+  fbb.Finish(message);
+  RedisModuleString *reply = RedisModule_CreateString(
+      ctx, (const char *) fbb.GetBufferPointer(), fbb.GetSize());
+  RedisModule_ReplyWithString(ctx, reply);
+
+  /* Clean up. */
+  RedisModule_FreeString(ctx, reply);
+  RedisModule_FreeString(ctx, is_put);
   RedisModule_FreeString(ctx, task_id);
 
   return REDISMODULE_OK;
@@ -971,12 +1011,8 @@ int TaskTableUpdate_RedisCommand(RedisModuleCtx *ctx,
  *        instance) to update the task entry with.
  * @param ray_client_id A string that is the ray client ID of the associated
  *        local scheduler, if any, to update the task entry with.
- * @return If the current scheduling state does not match the test bitmask,
- *         returns nil. Else, returns the same as RAY.TASK_TABLE_GET: an array
- *         of strings representing the updated task fields in the following
- *         order: 1) (integer) scheduling state 2) (string) associated local
- *         scheduler ID, if any 3) (string) the task specification, which can be
- *         cast to a task_spec.
+ * @return Returns the task entry as a TaskReply. The reply will reflect the
+ *         update, if it happened.
  */
 int TaskTableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
                                         RedisModuleString **argv,
@@ -1015,20 +1051,19 @@ int TaskTableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
     return RedisModule_ReplyWithError(
         ctx, "Invalid test value for scheduling state");
   }
-  if ((current_state_integer & test_state_bitmask) == 0) {
-    /* The current value does not match the test bitmask, so do not perform the
-     * update. */
-    RedisModule_CloseKey(key);
-    return RedisModule_ReplyWithNull(ctx);
+
+  bool updated = false;
+  if (current_state_integer & test_state_bitmask) {
+    /* The test passed, so perform the update. */
+    RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "state", state,
+                        "local_scheduler_id", argv[4], NULL);
+    updated = true;
   }
 
-  /* The test passed, so perform the update. */
-  RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "state", state,
-                      "local_scheduler_id", argv[4], NULL);
   /* Clean up. */
   RedisModule_CloseKey(key);
   /* Construct a reply by getting the task from the task ID. */
-  return ReplyWithTask(ctx, argv[1]);
+  return ReplyWithTask(ctx, argv[1], updated);
 }
 
 /**
@@ -1052,7 +1087,7 @@ int TaskTableGet_RedisCommand(RedisModuleCtx *ctx,
   }
 
   /* Construct a reply by getting the task from the task ID. */
-  return ReplyWithTask(ctx, argv[1]);
+  return ReplyWithTask(ctx, argv[1], false);
 }
 
 extern "C" {

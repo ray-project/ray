@@ -224,6 +224,15 @@ typedef struct {
 typedef void (*result_table_done_callback)(ObjectID object_id,
                                            void *user_context);
 
+/** Information about a result table entry to add. */
+typedef struct {
+  /** The task ID of the task that created the requested object. */
+  TaskID task_id;
+  /** True if the object was created through a put, and false if created by
+   *  return value. */
+  bool is_put;
+} ResultTableAddInfo;
+
 /**
  * Add information about a new object to the object table. This
  * is immutable information like the ID of the task that
@@ -232,6 +241,8 @@ typedef void (*result_table_done_callback)(ObjectID object_id,
  * @param db_handle Handle to object_table database.
  * @param object_id ID of the object to add.
  * @param task_id ID of the task that creates this object.
+ * @param is_put A boolean that is true if the object was created through a
+ *        ray.put, and false if the object was created by return value.
  * @param retry Information about retrying the request to the database.
  * @param done_callback Function to be called when database returns result.
  * @param user_context Context passed by the caller.
@@ -240,6 +251,7 @@ typedef void (*result_table_done_callback)(ObjectID object_id,
 void result_table_add(DBHandle *db_handle,
                       ObjectID object_id,
                       TaskID task_id,
+                      bool is_put,
                       RetryInfo *retry,
                       result_table_done_callback done_callback,
                       void *user_context);
@@ -247,6 +259,7 @@ void result_table_add(DBHandle *db_handle,
 /** Callback called when the result table lookup completes. */
 typedef void (*result_table_lookup_callback)(ObjectID object_id,
                                              TaskID task_id,
+                                             bool is_put,
                                              void *user_context);
 
 /**

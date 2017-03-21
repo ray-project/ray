@@ -342,12 +342,14 @@ void redis_result_table_add(TableCallbackData *callback_data) {
   CHECK(callback_data);
   DBHandle *db = callback_data->db_handle;
   ObjectID id = callback_data->id;
-  TaskID *result_task_id = (TaskID *) callback_data->data;
+  ResultTableAddInfo *info = (ResultTableAddInfo *) callback_data->data;
+  int is_put = info->is_put ? 1 : 0;
+
   /* Add the result entry to the result table. */
   int status = redisAsyncCommand(
       db->context, redis_result_table_add_callback,
-      (void *) callback_data->timer_id, "RAY.RESULT_TABLE_ADD %b %b", id.id,
-      sizeof(id.id), result_task_id->id, sizeof(result_task_id->id));
+      (void *) callback_data->timer_id, "RAY.RESULT_TABLE_ADD %b %b %d", id.id,
+      sizeof(id.id), info->task_id.id, sizeof(info->task_id.id), is_put);
   if ((status == REDIS_ERR) || db->context->err) {
     LOG_REDIS_DEBUG(db->context, "Error in result table add");
   }
@@ -386,16 +388,19 @@ void redis_result_table_lookup_callback(redisAsyncContext *c,
          reply->type);
   /* Parse the task from the reply. */
   TaskID result_id = NIL_TASK_ID;
+  bool is_put = false;
   if (reply->type == REDIS_REPLY_STRING) {
-    CHECK(reply->len == sizeof(result_id));
-    memcpy(&result_id, reply->str, reply->len);
+    auto message = flatbuffers::GetRoot<ResultTableReply>(reply->str);
+    result_id = from_flatbuf(message->task_id());
+    is_put = message->is_put();
   }
 
   /* Call the done callback if there is one. */
   result_table_lookup_callback done_callback =
       (result_table_lookup_callback) callback_data->done_callback;
   if (done_callback != NULL) {
-    done_callback(callback_data->id, result_id, callback_data->user_context);
+    done_callback(callback_data->id, result_id, is_put,
+                  callback_data->user_context);
   }
   /* Clean up timer and callback. */
   destroy_timer_callback(db->loop, callback_data);
@@ -761,11 +766,15 @@ void redis_task_table_test_and_update_callback(redisAsyncContext *c,
   redisReply *reply = (redisReply *) r;
   /* Parse the task from the reply. */
   Task *task = parse_and_construct_task_from_redis_reply(reply);
+  /* Determine whether the update happened. */
+  auto message = flatbuffers::GetRoot<TaskReply>(reply->str);
+  bool updated = message->updated();
+
   /* Call the done callback if there is one. */
-  task_table_get_callback done_callback =
-      (task_table_get_callback) callback_data->done_callback;
+  task_table_test_and_update_callback done_callback =
+      (task_table_test_and_update_callback) callback_data->done_callback;
   if (done_callback != NULL) {
-    done_callback(task, callback_data->user_context);
+    done_callback(task, callback_data->user_context, updated);
   }
   /* Free the task if it is not NULL. */
   if (task != NULL) {

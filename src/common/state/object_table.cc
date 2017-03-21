@@ -104,13 +104,16 @@ void object_info_subscribe(DBHandle *db_handle,
 
 void result_table_add(DBHandle *db_handle,
                       ObjectID object_id,
-                      TaskID task_id_arg,
+                      TaskID task_id,
+                      bool is_put,
                       RetryInfo *retry,
                       result_table_done_callback done_callback,
                       void *user_context) {
-  TaskID *task_id_copy = (TaskID *) malloc(sizeof(TaskID));
-  memcpy(task_id_copy, task_id_arg.id, sizeof(*task_id_copy));
-  init_table_callback(db_handle, object_id, __func__, task_id_copy, retry,
+  ResultTableAddInfo *info =
+      (ResultTableAddInfo *) malloc(sizeof(ResultTableAddInfo));
+  info->task_id = task_id;
+  info->is_put = is_put;
+  init_table_callback(db_handle, object_id, __func__, info, retry,
                       (table_done_callback) done_callback,
                       redis_result_table_add, user_context);
 }

@@ -14,6 +14,7 @@ import ray.services
 # Import flatbuffer bindings.
 from ray.core.generated.SubscribeToNotificationsReply import SubscribeToNotificationsReply
 from ray.core.generated.TaskReply import TaskReply
+from ray.core.generated.ResultTableReply import ResultTableReply
 
 OBJECT_INFO_PREFIX = "OI:"
 OBJECT_LOCATION_PREFIX = "OL:"
@@ -197,6 +198,11 @@ class TestGlobalStateStore(unittest.TestCase):
                               [b"manager_id1", b"manager_id2", b"manager_id3"])
 
   def testResultTableAddAndLookup(self):
+    def check_result_table_entry(message, task_id, is_put):
+      result_table_reply = ResultTableReply.GetRootAsResultTableReply(message, 0)
+      self.assertEqual(result_table_reply.TaskId(), task_id)
+      self.assertEqual(result_table_reply.IsPut(), is_put)
+
     # Try looking up something in the result table before anything is added.
     response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id1")
     self.assertIsNone(response)
@@ -206,17 +212,17 @@ class TestGlobalStateStore(unittest.TestCase):
     self.assertIsNone(response)
     # Add the result to the result table. The lookup now returns the task ID.
     task_id = b"task_id1"
-    self.redis.execute_command("RAY.RESULT_TABLE_ADD", "object_id1", task_id)
+    self.redis.execute_command("RAY.RESULT_TABLE_ADD", "object_id1", task_id, 0)
     response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id1")
-    self.assertEqual(response, task_id)
+    check_result_table_entry(response, task_id, False)
     # Doing it again should still work.
     response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id1")
-    self.assertEqual(response, task_id)
+    check_result_table_entry(response, task_id, False)
     # Try another result table lookup. This should succeed.
     task_id = b"task_id2"
-    self.redis.execute_command("RAY.RESULT_TABLE_ADD", "object_id2", task_id)
+    self.redis.execute_command("RAY.RESULT_TABLE_ADD", "object_id2", task_id, 1)
     response = self.redis.execute_command("RAY.RESULT_TABLE_LOOKUP", "object_id2")
-    self.assertEqual(response, task_id)
+    check_result_table_entry(response, task_id, True)
 
   def testInvalidTaskTableAdd(self):
     # Check that Redis returns an error when RAY.TASK_TABLE_ADD is called with
@@ -241,12 +247,13 @@ class TestGlobalStateStore(unittest.TestCase):
     TASK_STATUS_SCHEDULED = 2
     TASK_STATUS_QUEUED = 4
 
-    def check_task_reply(message, task_args):
+    def check_task_reply(message, task_args, updated=False):
       task_status, local_scheduler_id, task_spec = task_args
       task_reply_object = TaskReply.GetRootAsTaskReply(message, 0)
       self.assertEqual(task_reply_object.State(), task_status)
       self.assertEqual(task_reply_object.LocalSchedulerId(), local_scheduler_id)
       self.assertEqual(task_reply_object.TaskSpec(), task_spec)
+      self.assertEqual(task_reply_object.Updated(), updated)
 
     # Check that task table adds, updates, and lookups work correctly.
     task_args = [TASK_STATUS_WAITING, b"node_id", b"task_spec"]
@@ -266,7 +273,7 @@ class TestGlobalStateStore(unittest.TestCase):
     response = self.redis.execute_command("RAY.TASK_TABLE_TEST_AND_UPDATE",
                                           "task_id",
                                           *task_args[:3])
-    check_task_reply(response, task_args[1:])
+    check_task_reply(response, task_args[1:], updated=True)
     # Check that the task entry is still the same.
     get_response = self.redis.execute_command("RAY.TASK_TABLE_GET", "task_id")
     check_task_reply(get_response, task_args[1:])
@@ -277,43 +284,46 @@ class TestGlobalStateStore(unittest.TestCase):
     response = self.redis.execute_command("RAY.TASK_TABLE_TEST_AND_UPDATE",
                                           "task_id",
                                           *task_args[:3])
-    check_task_reply(response, task_args[1:])
+    check_task_reply(response, task_args[1:], updated=True)
     # Check that the update happened.
     get_response = self.redis.execute_command("RAY.TASK_TABLE_GET", "task_id")
     check_task_reply(get_response, task_args[1:])
 
     # If the current value is no longer the same as the test value, the
-    # response is nil.
-    task_args[1] = TASK_STATUS_WAITING
+    # response is the same task as before the test-and-set.
+    new_task_args = task_args[:]
+    new_task_args[1] = TASK_STATUS_WAITING
     response = self.redis.execute_command("RAY.TASK_TABLE_TEST_AND_UPDATE",
                                           "task_id",
-                                          *task_args[:3])
-    self.assertEqual(response, None)
+                                          *new_task_args[:3])
+    check_task_reply(response, task_args[1:], updated=False)
     # Check that the update did not happen.
     get_response2 = self.redis.execute_command("RAY.TASK_TABLE_GET", "task_id")
     self.assertEqual(get_response2, get_response)
-    self.assertNotEqual(get_response2, task_args[1:])
 
     # If the test value is a bitmask that matches the current value, the update
     # happens.
+    task_args = new_task_args
     task_args[0] = TASK_STATUS_SCHEDULED | TASK_STATUS_QUEUED
     response = self.redis.execute_command("RAY.TASK_TABLE_TEST_AND_UPDATE",
                                           "task_id",
                                           *task_args[:3])
-    check_task_reply(response, task_args[1:])
+    check_task_reply(response, task_args[1:], updated=True)
 
     # If the test value is a bitmask that does not match the current value, the
-    # update does not happen.
-    task_args[1] = TASK_STATUS_SCHEDULED
+    # update does not happen, and the response is the same task as before the
+    # test-and-set.
+    new_task_args = task_args[:]
+    new_task_args[0] = TASK_STATUS_SCHEDULED
     old_response = response
     response = self.redis.execute_command("RAY.TASK_TABLE_TEST_AND_UPDATE",
                                           "task_id",
-                                          *task_args[:3])
-    self.assertEqual(response, None)
+                                          *new_task_args[:3])
+    check_task_reply(response, task_args[1:], updated=False)
     # Check that the update did not happen.
     get_response = self.redis.execute_command("RAY.TASK_TABLE_GET", "task_id")
-    self.assertEqual(get_response, old_response)
-    self.assertNotEqual(get_response, task_args[1:])
+    self.assertNotEqual(get_response, old_response)
+    check_task_reply(get_response, task_args[1:])
 
   def testTaskTableSubscribe(self):
     scheduling_state = 1

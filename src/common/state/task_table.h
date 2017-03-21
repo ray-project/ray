@@ -28,6 +28,13 @@ typedef void (*task_table_done_callback)(TaskID task_id, void *user_context);
  * was not in the task table, then the task pointer will be NULL. */
 typedef void (*task_table_get_callback)(Task *task, void *user_context);
 
+/* Callback called when a task table test-and-update operation completes. If
+ * the task ID was not in the task table, then the task pointer will be NULL.
+ * If the update succeeded, the updated field will be set to true. */
+typedef void (*task_table_test_and_update_callback)(Task *task,
+                                                    void *user_context,
+                                                    bool updated);
+
 /**
  * Get a task's entry from the task table.
  *
@@ -107,13 +114,14 @@ void task_table_update(DBHandle *db_handle,
  *        fail_callback.
  * @return Void.
  */
-void task_table_test_and_update(DBHandle *db_handle,
-                                TaskID task_id,
-                                int test_state_bitmask,
-                                int update_state,
-                                RetryInfo *retry,
-                                task_table_get_callback done_callback,
-                                void *user_context);
+void task_table_test_and_update(
+    DBHandle *db_handle,
+    TaskID task_id,
+    int test_state_bitmask,
+    int update_state,
+    RetryInfo *retry,
+    task_table_test_and_update_callback done_callback,
+    void *user_context);
 
 /* Data that is needed to test and set the task's scheduling state. */
 typedef struct {

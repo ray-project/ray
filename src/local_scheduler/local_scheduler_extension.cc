@@ -93,6 +93,21 @@ static PyObject *PyLocalSchedulerClient_notify_unblocked(PyObject *self) {
   Py_RETURN_NONE;
 }
 
+static PyObject *PyLocalSchedulerClient_compute_put_id(PyObject *self,
+                                                       PyObject *args) {
+  int put_index;
+  TaskID task_id;
+  if (!PyArg_ParseTuple(args, "O&i", &PyObjectToUniqueID, &task_id,
+                        &put_index)) {
+    return NULL;
+  }
+  ObjectID put_id = task_compute_put_id(task_id, put_index);
+  local_scheduler_put_object(
+      ((PyLocalSchedulerClient *) self)->local_scheduler_connection, task_id,
+      put_id);
+  return PyObjectID_make(put_id);
+}
+
 static PyMethodDef PyLocalSchedulerClient_methods[] = {
     {"submit", (PyCFunction) PyLocalSchedulerClient_submit, METH_VARARGS,
      "Submit a task to the local scheduler."},
@@ -105,6 +120,8 @@ static PyMethodDef PyLocalSchedulerClient_methods[] = {
      "Log an event to the event log through the local scheduler."},
     {"notify_unblocked", (PyCFunction) PyLocalSchedulerClient_notify_unblocked,
      METH_NOARGS, "Notify the local scheduler that we are unblocked."},
+    {"compute_put_id", (PyCFunction) PyLocalSchedulerClient_compute_put_id,
+     METH_VARARGS, "Return the object ID for a put call within a task."},
     {NULL} /* Sentinel */
 };
 
@@ -152,8 +169,6 @@ static PyTypeObject PyLocalSchedulerClientType = {
 static PyMethodDef local_scheduler_methods[] = {
     {"check_simple_value", check_simple_value, METH_VARARGS,
      "Should the object be passed by value?"},
-    {"compute_put_id", compute_put_id, METH_VARARGS,
-     "Return the object ID for a put call within a task."},
     {"task_from_string", PyTask_from_string, METH_VARARGS,
      "Creates a Python PyTask object from a string representation of "
      "TaskSpec."},
