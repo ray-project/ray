@@ -51,7 +51,13 @@ pip install aioredis asyncio websockets
 Then install
 [polymer](https://www.polymer-project.org/1.0/docs/tools/polymer-cli), which
 also requires [Node.js](https://nodejs.org/en/download/) and
-[Bower](http://bower.io/#install-bower).
+[Bower](http://bower.io/#install-bower). You can run the following commands to do this: 
+
+```
+brew install node
+npm install -g bower
+npm install -g polymer-cli
+```
 
 Once you've installed Polymer, run the following.
 
