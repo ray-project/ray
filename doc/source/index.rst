@@ -7,10 +7,10 @@ Ray
    :maxdepth: 1
    :caption: Installation
 
-   install-on-ubuntu.md
-   install-on-macosx.md
-   install-on-docker.md
-   installation-troubleshooting.md
+   install-on-ubuntu.rst
+   install-on-macosx.rst
+   install-on-docker.rst
+   installation-troubleshooting.rst
 
 .. toctree::
    :maxdepth: 1
