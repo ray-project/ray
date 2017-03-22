@@ -165,11 +165,12 @@ class TestGlobalScheduler(unittest.TestCase):
     def test_task_default_resources(self):
         task1 = local_scheduler.Task(random_driver_id(), random_function_id(),
                                      [random_object_id()], 0, random_task_id(),
-                                     0)
+                                     0, 0)
         self.assertEqual(task1.required_resources(), [1.0, 0.0, 0.0])
         task2 = local_scheduler.Task(random_driver_id(), random_function_id(),
                                      [random_object_id()], 0, random_task_id(),
-                                     0, local_scheduler.ObjectID(NIL_ACTOR_ID),
+                                     0, 0,
+                                     local_scheduler.ObjectID(NIL_ACTOR_ID),
                                      0, [1.0, 2.0, 0.0])
         self.assertEqual(task2.required_resources(), [1.0, 2.0, 0.0])
 
@@ -208,7 +209,7 @@ class TestGlobalScheduler(unittest.TestCase):
         task = local_scheduler.Task(
             random_driver_id(), random_function_id(),
             [local_scheduler.ObjectID(object_dep.binary())],
-            num_return_vals[0], random_task_id(), 0)
+            num_return_vals[0], random_task_id(), 0, 0)
         self.local_scheduler_clients[0].submit(task)
         time.sleep(0.1)
         # There should now be a task in Redis, and it should get assigned to
@@ -263,7 +264,7 @@ class TestGlobalScheduler(unittest.TestCase):
                 random_driver_id(),
                 random_function_id(),
                 [local_scheduler.ObjectID(object_dep.binary())],
-                num_return_vals[0], random_task_id(), 0)
+                num_return_vals[0], random_task_id(), 0, 0)
             self.local_scheduler_clients[0].submit(task)
         # Check that there are the correct number of tasks in Redis and that
         # they all get assigned to the local scheduler.

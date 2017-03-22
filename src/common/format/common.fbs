@@ -32,6 +32,8 @@ table TaskInfo {
   parent_task_id: string;
   // A count of the number of tasks submitted by the parent task before this one.
   parent_counter: int;
+  // The task's recursion depth, or its level in the submit graph.
+  submit_depth: int;
   // Actor ID of the task. This is the actor that this task is executed on
   // or NIL_ACTOR_ID if the task is just a normal task.
   actor_id: string;

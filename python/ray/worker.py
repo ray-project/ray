@@ -511,6 +511,7 @@ class Worker(object):
                 function_properties.num_return_vals,
                 self.current_task_id,
                 self.task_index,
+                self.submit_depth + 1,
                 actor_id,
                 self.actor_counters[actor_id],
                 [function_properties.num_cpus, function_properties.num_gpus,
@@ -710,6 +711,7 @@ class Worker(object):
             self.current_task_id = task.task_id()
             self.current_function_id = task.function_id().id()
             self.task_index = 0
+            self.submit_depth = task.submit_depth()
             self.put_index = 0
             function_id = task.function_id()
             args = task.arguments()
@@ -1723,6 +1725,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
         np.random.set_state(numpy_state)
         # Set other fields needed for computing task IDs.
         worker.task_index = 0
+        worker.submit_depth = 0
         worker.put_index = 0
 
         # Create an entry for the driver task in the task table. This task is
@@ -1738,6 +1741,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
             0,
             worker.current_task_id,
             worker.task_index,
+            worker.submit_depth,
             ray.local_scheduler.ObjectID(NIL_ACTOR_ID),
             worker.actor_counters[actor_id],
             [0, 0, 0])

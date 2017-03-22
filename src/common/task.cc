@@ -37,6 +37,7 @@ class TaskBuilder {
   void Start(UniqueID driver_id,
              TaskID parent_task_id,
              int64_t parent_counter,
+             int64_t submit_depth,
              ActorID actor_id,
              int64_t actor_counter,
              FunctionID function_id,
@@ -44,12 +45,16 @@ class TaskBuilder {
     driver_id_ = driver_id;
     parent_task_id_ = parent_task_id;
     parent_counter_ = parent_counter;
+    submit_depth_ = submit_depth;
     actor_id_ = actor_id;
     actor_counter_ = actor_counter;
     function_id_ = function_id;
     num_returns_ = num_returns;
 
-    /* Compute hashes. */
+    /* Compute hash. NOTE(swang): Only the fields that are necessary to
+     * uniquely identify this task are considered when computing the hash.
+     * submit_depth is not necessary since we include parent_task_id, and
+     * num_returns is not necessary since we include function_id. */
     sha256_init(&ctx);
     sha256_update(&ctx, (BYTE *) &driver_id, sizeof(driver_id));
     sha256_update(&ctx, (BYTE *) &parent_task_id, sizeof(parent_task_id));
@@ -102,7 +107,7 @@ class TaskBuilder {
     }
     auto message = CreateTaskInfo(
         fbb, to_flatbuf(fbb, driver_id_), to_flatbuf(fbb, task_id),
-        to_flatbuf(fbb, parent_task_id_), parent_counter_,
+        to_flatbuf(fbb, parent_task_id_), parent_counter_, submit_depth_,
         to_flatbuf(fbb, actor_id_), actor_counter_,
         to_flatbuf(fbb, function_id_), arguments, fbb.CreateVector(returns),
         fbb.CreateVector(resource_vector_));
@@ -125,6 +130,7 @@ class TaskBuilder {
   UniqueID driver_id_;
   TaskID parent_task_id_;
   int64_t parent_counter_;
+  int64_t submit_depth_;
   ActorID actor_id_;
   int64_t actor_counter_;
   FunctionID function_id_;
@@ -166,12 +172,13 @@ void TaskSpec_start_construct(TaskBuilder *builder,
                               UniqueID driver_id,
                               TaskID parent_task_id,
                               int64_t parent_counter,
+                              int64_t submit_depth,
                               ActorID actor_id,
                               int64_t actor_counter,
                               FunctionID function_id,
                               int64_t num_returns) {
-  builder->Start(driver_id, parent_task_id, parent_counter, actor_id,
-                 actor_counter, function_id, num_returns);
+  builder->Start(driver_id, parent_task_id, parent_counter, submit_depth,
+                 actor_id, actor_counter, function_id, num_returns);
 }
 
 uint8_t *TaskSpec_finish_construct(TaskBuilder *builder, int64_t *size) {
@@ -206,6 +213,12 @@ FunctionID TaskSpec_function(TaskSpec *spec) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return from_flatbuf(message->function_id());
+}
+
+int64_t TaskSpec_submit_depth(TaskSpec *spec) {
+  CHECK(spec);
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec);
+  return message->submit_depth();
 }
 
 ActorID TaskSpec_actor_id(TaskSpec *spec) {

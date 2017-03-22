@@ -84,6 +84,9 @@ void free_task_builder(TaskBuilder *builder);
  * @param parent_task_id The task ID of the task that submitted this task.
  * @param parent_counter A counter indicating how many tasks were submitted by
  *        the parent task prior to this one.
+ * @param submit_depth An index indicating the task's recursion depth, or its
+ *        level in the submit graph. This is one greater than its parent task's
+ *        submit_depth.
  * @param function_id The function ID of the function to execute in this task.
  * @param num_args The number of arguments that this task has.
  * @param num_returns The number of return values that this task has.
@@ -95,6 +98,7 @@ void TaskSpec_start_construct(TaskBuilder *B,
                               UniqueID driver_id,
                               TaskID parent_task_id,
                               int64_t parent_counter,
+                              int64_t submit_depth,
                               UniqueID actor_id,
                               int64_t actor_counter,
                               FunctionID function_id,
@@ -117,6 +121,14 @@ uint8_t *TaskSpec_finish_construct(TaskBuilder *builder, int64_t *size);
  * @return The function ID of the function to execute in this task.
  */
 FunctionID TaskSpec_function(TaskSpec *spec);
+
+/**
+ * Return the task's recursion depth.
+ *
+ * @param spec The task_spec in question.
+ * @return The recursion depth of the task.
+ */
+int64_t TaskSpec_submit_depth(TaskSpec *spec);
 
 /**
  * Return the actor ID of the task.

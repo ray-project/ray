@@ -108,7 +108,7 @@ class TestLocalSchedulerClient(unittest.TestCase):
             for num_return_vals in [0, 1, 2, 3, 5, 10, 100]:
                 task = local_scheduler.Task(random_driver_id(), function_id,
                                             args, num_return_vals,
-                                            random_task_id(), 0)
+                                            random_task_id(), 0, 0)
                 # Submit a task.
                 self.local_scheduler_client.submit(task)
                 # Get the task.
@@ -130,7 +130,7 @@ class TestLocalSchedulerClient(unittest.TestCase):
             for num_return_vals in [0, 1, 2, 3, 5, 10, 100]:
                 task = local_scheduler.Task(random_driver_id(), function_id,
                                             args, num_return_vals,
-                                            random_task_id(), 0)
+                                            random_task_id(), 0, 0)
                 self.local_scheduler_client.submit(task)
         # Get all of the tasks.
         for args in args_list:
@@ -141,7 +141,7 @@ class TestLocalSchedulerClient(unittest.TestCase):
         # Create a task and submit it.
         object_id = random_object_id()
         task = local_scheduler.Task(random_driver_id(), random_function_id(),
-                                    [object_id], 0, random_task_id(), 0)
+                                    [object_id], 0, random_task_id(), 0, 0)
         self.local_scheduler_client.submit(task)
 
         # Launch a thread to get the task.
@@ -165,7 +165,7 @@ class TestLocalSchedulerClient(unittest.TestCase):
         object_id2 = random_object_id()
         task = local_scheduler.Task(random_driver_id(), random_function_id(),
                                     [object_id1, object_id2], 0,
-                                    random_task_id(), 0)
+                                    random_task_id(), 0, 0)
         self.local_scheduler_client.submit(task)
 
         # Launch a thread to get the task.
