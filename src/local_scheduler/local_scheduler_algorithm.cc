@@ -1,6 +1,7 @@
 #include "local_scheduler_algorithm.h"
 
 #include <stdbool.h>
+#include <list>
 #include "utarray.h"
 #include "utlist.h"
 
@@ -18,8 +19,6 @@ typedef struct task_queue_entry {
   /** The task that is queued. */
   TaskSpec *spec;
   int64_t task_spec_size;
-  struct task_queue_entry *prev;
-  struct task_queue_entry *next;
 } task_queue_entry;
 
 /** A data structure used to track which objects are available locally and
@@ -59,7 +58,7 @@ typedef struct {
   int64_t task_counter;
   /** A queue of tasks to be executed on this actor. The tasks will be sorted by
    *  the order of their actor counters. */
-  task_queue_entry *task_queue;
+  std::list<task_queue_entry *> *task_queue;
   /** The worker that the actor is running on. */
   LocalSchedulerClient *worker;
   /** True if the worker is available and false otherwise. */
@@ -72,10 +71,10 @@ typedef struct {
  *  algorithm. */
 struct SchedulingAlgorithmState {
   /** An array of pointers to tasks that are waiting for dependencies. */
-  task_queue_entry *waiting_task_queue;
+  std::list<task_queue_entry *> *waiting_task_queue;
   /** An array of pointers to tasks whose dependencies are ready but that are
    *  waiting to be assigned to a worker. */
-  task_queue_entry *dispatch_task_queue;
+  std::list<task_queue_entry *> *dispatch_task_queue;
   /** This is a hash table from actor ID to information about that actor. In
    *  particular, a queue of tasks that are waiting to execute on that actor.
    *  This is only used for actors that exist locally. */
@@ -120,8 +119,8 @@ SchedulingAlgorithmState *SchedulingAlgorithmState_init(void) {
   /* Initialize the hash table of objects being fetched. */
   algorithm_state->remote_objects = NULL;
   /* Initialize the local data structures used for queuing tasks and workers. */
-  algorithm_state->waiting_task_queue = NULL;
-  algorithm_state->dispatch_task_queue = NULL;
+  algorithm_state->waiting_task_queue = new std::list<task_queue_entry *>();
+  algorithm_state->dispatch_task_queue = new std::list<task_queue_entry *>();
 
   utarray_new(algorithm_state->cached_submitted_actor_tasks, &task_spec_icd);
   utarray_new(algorithm_state->cached_submitted_actor_task_sizes,
@@ -137,18 +136,21 @@ SchedulingAlgorithmState *SchedulingAlgorithmState_init(void) {
 
 void SchedulingAlgorithmState_free(SchedulingAlgorithmState *algorithm_state) {
   /* Free all of the tasks in the waiting queue. */
-  task_queue_entry *elt, *tmp1;
-  DL_FOREACH_SAFE(algorithm_state->waiting_task_queue, elt, tmp1) {
-    DL_DELETE(algorithm_state->waiting_task_queue, elt);
-    free(elt->spec);
-    free(elt);
+  while (!algorithm_state->waiting_task_queue->empty()) {
+    task_queue_entry *entry = algorithm_state->waiting_task_queue->front();
+    TaskSpec_free(entry->spec);
+    free(entry);
+    algorithm_state->waiting_task_queue->pop_front();
   }
+  delete algorithm_state->waiting_task_queue;
   /* Free all the tasks in the dispatch queue. */
-  DL_FOREACH_SAFE(algorithm_state->dispatch_task_queue, elt, tmp1) {
-    DL_DELETE(algorithm_state->dispatch_task_queue, elt);
-    free(elt->spec);
-    free(elt);
+  while (!algorithm_state->dispatch_task_queue->empty()) {
+    task_queue_entry *entry = algorithm_state->dispatch_task_queue->front();
+    TaskSpec_free(entry->spec);
+    free(entry);
+    algorithm_state->dispatch_task_queue->pop_front();
   }
+  delete algorithm_state->dispatch_task_queue;
   /* Remove all of the remaining actors. */
   LocalActorInfo *actor_entry, *tmp_actor_entry;
   HASH_ITER(hh, algorithm_state->local_actor_infos, actor_entry,
@@ -191,15 +193,13 @@ void SchedulingAlgorithmState_free(SchedulingAlgorithmState *algorithm_state) {
 void provide_scheduler_info(LocalSchedulerState *state,
                             SchedulingAlgorithmState *algorithm_state,
                             LocalSchedulerInfo *info) {
-  task_queue_entry *elt;
   info->total_num_workers = utarray_len(state->workers);
   /* TODO(swang): Provide separate counts for tasks that are waiting for
    * dependencies vs tasks that are waiting to be assigned. */
-  int waiting_task_queue_length;
-  DL_COUNT(algorithm_state->waiting_task_queue, elt, waiting_task_queue_length);
-  int dispatch_task_queue_length;
-  DL_COUNT(algorithm_state->dispatch_task_queue, elt,
-           dispatch_task_queue_length);
+  int64_t waiting_task_queue_length =
+      algorithm_state->waiting_task_queue->size();
+  int64_t dispatch_task_queue_length =
+      algorithm_state->dispatch_task_queue->size();
   info->task_queue_length =
       waiting_task_queue_length + dispatch_task_queue_length;
   info->available_workers = utarray_len(algorithm_state->available_workers);
@@ -233,7 +233,7 @@ void create_actor(SchedulingAlgorithmState *algorithm_state,
   entry->actor_id = actor_id;
   entry->task_counter = 0;
   /* Initialize the doubly-linked list to NULL. */
-  entry->task_queue = NULL;
+  entry->task_queue = new std::list<task_queue_entry *>();
   entry->worker = worker;
   entry->worker_available = false;
   HASH_ADD(hh, algorithm_state->local_actor_infos, actor_id, sizeof(actor_id),
@@ -255,9 +255,7 @@ void remove_actor(SchedulingAlgorithmState *algorithm_state, ActorID actor_id) {
 
   /* Log some useful information about the actor that we're removing. */
   char id_string[ID_STRING_SIZE];
-  task_queue_entry *elt;
-  int count;
-  DL_COUNT(entry->task_queue, elt, count);
+  int64_t count = entry->task_queue->size();
   if (count > 0) {
     LOG_WARN("Removing actor with ID %s and %d remaining tasks.",
              ObjectID_to_string(actor_id, id_string, ID_STRING_SIZE), count);
@@ -265,12 +263,13 @@ void remove_actor(SchedulingAlgorithmState *algorithm_state, ActorID actor_id) {
   UNUSED(id_string);
 
   /* Free all remaining tasks in the actor queue. */
-  task_queue_entry *task_queue_elt, *tmp;
-  DL_FOREACH_SAFE(entry->task_queue, task_queue_elt, tmp) {
-    DL_DELETE(entry->task_queue, task_queue_elt);
-    free(task_queue_elt->spec);
-    free(task_queue_elt);
+  while (!entry->task_queue->empty()) {
+    task_queue_entry *task = entry->task_queue->front();
+    TaskSpec_free(task->spec);
+    free(task);
+    entry->task_queue->pop_front();
   }
+  delete entry->task_queue;
   /* Remove the entry from the hash table and free it. */
   HASH_DELETE(hh, algorithm_state->local_actor_infos, entry);
   free(entry);
@@ -360,12 +359,12 @@ void add_task_to_actor_queue(LocalSchedulerState *state,
    * to find the right place to insert the task queue entry. TODO(pcm): This
    * makes submitting multiple actor tasks take quadratic time, which needs to
    * be optimized. */
-  task_queue_entry *current_entry = entry->task_queue;
-  while (current_entry != NULL && current_entry->next != NULL &&
-         task_counter > TaskSpec_actor_counter(current_entry->spec)) {
-    current_entry = current_entry->next;
+  auto it = entry->task_queue->begin();
+  while (it != entry->task_queue->end() &&
+         (task_counter > TaskSpec_actor_counter((*it)->spec))) {
+    ++it;
   }
-  DL_APPEND_ELEM(entry->task_queue, current_entry, elt);
+  entry->task_queue->insert(it, elt);
 
   /* Update the task table. */
   if (state->db != NULL) {
@@ -409,12 +408,13 @@ bool dispatch_actor_task(LocalSchedulerState *state,
             entry);
   CHECK(entry != NULL);
 
-  if (entry->task_queue == NULL) {
+  if (entry->task_queue->empty()) {
     /* There are no queued tasks for this actor, so we cannot dispatch a task to
      * the actor. */
     return false;
   }
-  int64_t next_task_counter = TaskSpec_actor_counter(entry->task_queue->spec);
+  task_queue_entry *first_task = entry->task_queue->front();
+  int64_t next_task_counter = TaskSpec_actor_counter(first_task->spec);
   if (next_task_counter != entry->task_counter) {
     /* We cannot execute the next task on this actor without violating the
      * in-order execution guarantee for actor tasks. */
@@ -427,16 +427,15 @@ bool dispatch_actor_task(LocalSchedulerState *state,
   }
   /* Assign the first task in the task queue to the worker and mark the worker
    * as unavailable. */
-  task_queue_entry *first_task = entry->task_queue;
   entry->task_counter += 1;
   assign_task_to_worker(state, first_task->spec, first_task->task_spec_size,
                         entry->worker);
   entry->worker_available = false;
-  /* Remove the task from the actor's task queue. */
-  DL_DELETE(entry->task_queue, first_task);
   /* Free the task spec and the task queue entry. */
-  free(first_task->spec);
+  TaskSpec_free(first_task->spec);
   free(first_task);
+  /* Remove the task from the actor's task queue. */
+  entry->task_queue->pop_front();
   return true;
 }
 
@@ -575,10 +574,9 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
  */
 void dispatch_tasks(LocalSchedulerState *state,
                     SchedulingAlgorithmState *algorithm_state) {
-  task_queue_entry *elt, *tmp;
-
   /* Assign as many tasks as we can, while there are workers available. */
-  DL_FOREACH_SAFE(algorithm_state->dispatch_task_queue, elt, tmp) {
+  auto it = algorithm_state->dispatch_task_queue->begin();
+  while (it != algorithm_state->dispatch_task_queue->end()) {
     /* If there is a task to assign, but there are no more available workers in
      * the worker pool, then exit. Ensure that there will be an available
      * worker during a future invocation of dispatch_tasks. */
@@ -606,7 +604,7 @@ void dispatch_tasks(LocalSchedulerState *state,
     /* Skip to the next task if this task cannot currently be satisfied. */
     bool task_satisfied = true;
     for (int i = 0; i < ResourceIndex_MAX; i++) {
-      if (TaskSpec_get_required_resource(elt->spec, i) >
+      if (TaskSpec_get_required_resource((*it)->spec, i) >
           state->dynamic_resources[i]) {
         /* Insufficient capacity for this task, proceed to the next task. */
         task_satisfied = false;
@@ -615,6 +613,7 @@ void dispatch_tasks(LocalSchedulerState *state,
     }
     if (!task_satisfied) {
       /* This task could not be satisfied -- proceed to the next task. */
+      ++it;
       continue;
     }
 
@@ -624,16 +623,16 @@ void dispatch_tasks(LocalSchedulerState *state,
     LocalSchedulerClient **worker = (LocalSchedulerClient **) utarray_back(
         algorithm_state->available_workers);
     /* Tell the available worker to execute the task. */
-    assign_task_to_worker(state, elt->spec, elt->task_spec_size, *worker);
+    assign_task_to_worker(state, (*it)->spec, (*it)->task_spec_size, *worker);
     /* Remove the worker from the available queue, and add it to the executing
      * workers. */
     utarray_pop_back(algorithm_state->available_workers);
     utarray_push_back(algorithm_state->executing_workers, worker);
     /* Dequeue the task and free the struct. */
-    print_resource_info(state, elt->spec);
-    DL_DELETE(algorithm_state->dispatch_task_queue, elt);
-    free(elt->spec);
-    free(elt);
+    print_resource_info(state, (*it)->spec);
+    TaskSpec_free((*it)->spec);
+    free(*it);
+    it = algorithm_state->dispatch_task_queue->erase(it);
   } /* End for each task in the dispatch queue. */
 }
 
@@ -652,7 +651,7 @@ void dispatch_tasks(LocalSchedulerState *state,
  * @return Void.
  */
 task_queue_entry *queue_task(LocalSchedulerState *state,
-                             task_queue_entry **task_queue,
+                             std::list<task_queue_entry *> *task_queue,
                              TaskSpec *spec,
                              int64_t task_spec_size,
                              bool from_global_scheduler) {
@@ -662,7 +661,7 @@ task_queue_entry *queue_task(LocalSchedulerState *state,
   elt->spec = (TaskSpec *) malloc(task_spec_size);
   memcpy(elt->spec, spec, task_spec_size);
   elt->task_spec_size = task_spec_size;
-  DL_APPEND((*task_queue), elt);
+  task_queue->push_back(elt);
 
   /* The task has been added to a local scheduler queue. Write the entry in the
    * task table to notify others that we have queued it. */
@@ -703,7 +702,7 @@ void queue_waiting_task(LocalSchedulerState *state,
                         bool from_global_scheduler) {
   LOG_DEBUG("Queueing task in waiting queue");
   task_queue_entry *task_entry =
-      queue_task(state, &algorithm_state->waiting_task_queue, spec,
+      queue_task(state, algorithm_state->waiting_task_queue, spec,
                  task_spec_size, from_global_scheduler);
   /* If we're queueing this task in the waiting queue, there must be at least
    * one missing dependency, so record it. */
@@ -727,7 +726,7 @@ void queue_dispatch_task(LocalSchedulerState *state,
                          int64_t task_spec_size,
                          bool from_global_scheduler) {
   LOG_DEBUG("Queueing task in dispatch queue");
-  queue_task(state, &algorithm_state->dispatch_task_queue, spec, task_spec_size,
+  queue_task(state, algorithm_state->dispatch_task_queue, spec, task_spec_size,
              from_global_scheduler);
 }
 
@@ -1176,8 +1175,8 @@ void handle_object_available(LocalSchedulerState *state,
       task_queue_entry *task_entry = *p;
       if (can_run(algorithm_state, task_entry->spec)) {
         LOG_DEBUG("Moved task to dispatch queue");
-        DL_DELETE(algorithm_state->waiting_task_queue, task_entry);
-        DL_APPEND(algorithm_state->dispatch_task_queue, task_entry);
+        algorithm_state->waiting_task_queue->remove(task_entry);
+        algorithm_state->dispatch_task_queue->push_back(task_entry);
       }
     }
     /* Try to dispatch tasks, since we may have added some from the waiting
@@ -1205,16 +1204,16 @@ void handle_object_removed(LocalSchedulerState *state,
    * we may end up iterating through the queues many times in a row. If this
    * turns out to be a bottleneck, consider tracking dependencies even for
    * tasks in the dispatch queue, or batching object notifications. */
-  task_queue_entry *elt, *tmp;
   /* Track the dependency for tasks that were in the waiting queue. */
-  DL_FOREACH(algorithm_state->waiting_task_queue, elt) {
-    TaskSpec *task = elt->spec;
+  for (auto it = algorithm_state->waiting_task_queue->begin();
+       it != algorithm_state->waiting_task_queue->end(); ++it) {
+    TaskSpec *task = (*it)->spec;
     int64_t num_args = TaskSpec_num_args(task);
     for (int i = 0; i < num_args; ++i) {
       if (TaskSpec_arg_by_ref(task, i)) {
         ObjectID arg_id = TaskSpec_arg_id(task, i);
         if (ObjectID_equal(arg_id, removed_object_id)) {
-          fetch_missing_dependency(state, algorithm_state, elt,
+          fetch_missing_dependency(state, algorithm_state, (*it),
                                    removed_object_id);
         }
       }
@@ -1222,18 +1221,21 @@ void handle_object_removed(LocalSchedulerState *state,
   }
   /* Track the dependency for tasks that were in the dispatch queue. Remove
    * these tasks from the dispatch queue and push them to the waiting queue. */
-  DL_FOREACH_SAFE(algorithm_state->dispatch_task_queue, elt, tmp) {
-    TaskSpec *task = elt->spec;
+  for (auto it = algorithm_state->dispatch_task_queue->begin();
+       it != algorithm_state->dispatch_task_queue->end(); ++it) {
+    TaskSpec *task = (*it)->spec;
     int64_t num_args = TaskSpec_num_args(task);
     for (int i = 0; i < num_args; ++i) {
       if (TaskSpec_arg_by_ref(task, i)) {
         ObjectID arg_id = TaskSpec_arg_id(task, i);
         if (ObjectID_equal(arg_id, removed_object_id)) {
           LOG_DEBUG("Moved task from dispatch queue back to waiting queue");
-          DL_DELETE(algorithm_state->dispatch_task_queue, elt);
-          DL_APPEND(algorithm_state->waiting_task_queue, elt);
-          fetch_missing_dependency(state, algorithm_state, elt,
+          algorithm_state->waiting_task_queue->push_back(*it);
+          fetch_missing_dependency(state, algorithm_state, (*it),
                                    removed_object_id);
+          it = algorithm_state->dispatch_task_queue->erase(it);
+          --it;
+          break;
         }
       }
     }
@@ -1242,15 +1244,13 @@ void handle_object_removed(LocalSchedulerState *state,
 
 int num_waiting_tasks(SchedulingAlgorithmState *algorithm_state) {
   task_queue_entry *elt;
-  int count;
-  DL_COUNT(algorithm_state->waiting_task_queue, elt, count);
+  int count = algorithm_state->waiting_task_queue->size();
   return count;
 }
 
 int num_dispatch_tasks(SchedulingAlgorithmState *algorithm_state) {
   task_queue_entry *elt;
-  int count;
-  DL_COUNT(algorithm_state->dispatch_task_queue, elt, count);
+  int count = algorithm_state->dispatch_task_queue->size();
   return count;
 }
 
