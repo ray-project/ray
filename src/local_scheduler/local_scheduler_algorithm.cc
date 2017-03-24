@@ -2,6 +2,7 @@
 
 #include <stdbool.h>
 #include <list>
+#include <vector>
 #include "utarray.h"
 #include "utlist.h"
 
@@ -26,8 +27,8 @@ typedef struct TaskQueueEntry {
 typedef struct {
   /** Object id of this object. */
   ObjectID object_id;
-  /** An array of the tasks dependent on this object. */
-  UT_array *dependent_tasks;
+  /** A vector of the tasks dependent on this object. */
+  std::vector<TaskQueueEntry *> *dependent_tasks;
   /** Handle for the uthash table. NOTE: This handle is used for both the
    *  scheduling algorithm state's local_objects and remote_objects tables.
    *  We must enforce the uthash invariant that the entry be in at most one of
@@ -187,14 +188,15 @@ void SchedulingAlgorithmState_free(SchedulingAlgorithmState *algorithm_state) {
   object_entry *obj_entry, *tmp_obj_entry;
   HASH_ITER(hh, algorithm_state->local_objects, obj_entry, tmp_obj_entry) {
     HASH_DELETE(hh, algorithm_state->local_objects, obj_entry);
-    CHECK(obj_entry->dependent_tasks == NULL);
+    CHECK(obj_entry->dependent_tasks->empty());
+    delete obj_entry->dependent_tasks;
     free(obj_entry);
   }
   /* Free the cached information about which objects are currently being
    * fetched. */
   HASH_ITER(hh, algorithm_state->remote_objects, obj_entry, tmp_obj_entry) {
     HASH_DELETE(hh, algorithm_state->remote_objects, obj_entry);
-    utarray_free(obj_entry->dependent_tasks);
+    delete obj_entry->dependent_tasks;
     free(obj_entry);
   }
   /* Free the algorithm state. */
@@ -476,11 +478,11 @@ void fetch_missing_dependency(LocalSchedulerState *state,
      * subsequently removed locally. */
     entry = (object_entry *) malloc(sizeof(object_entry));
     entry->object_id = obj_id;
-    utarray_new(entry->dependent_tasks, &task_queue_entry_icd);
+    entry->dependent_tasks = new std::vector<TaskQueueEntry *>();
     HASH_ADD(hh, algorithm_state->remote_objects, object_id,
              sizeof(entry->object_id), entry);
   }
-  utarray_push_back(entry->dependent_tasks, &task_entry);
+  entry->dependent_tasks->push_back(task_entry);
 }
 
 /**
@@ -1161,21 +1163,19 @@ void handle_object_available(LocalSchedulerState *state,
      * is removed. */
     entry = (object_entry *) malloc(sizeof(object_entry));
     entry->object_id = object_id;
-    entry->dependent_tasks = NULL;
+    entry->dependent_tasks = new std::vector<TaskQueueEntry *>();
   }
 
   /* Add the entry to the set of locally available objects. */
   HASH_ADD(hh, algorithm_state->local_objects, object_id, sizeof(object_id),
            entry);
 
-  if (entry->dependent_tasks != NULL) {
+  if (!entry->dependent_tasks->empty()) {
     /* Out of the tasks that were dependent on this object, if they were now
      * ready to run, move them to the dispatch queue. */
-    for (TaskQueueEntry **p =
-             (TaskQueueEntry **) utarray_front(entry->dependent_tasks);
-         p != NULL;
-         p = (TaskQueueEntry **) utarray_next(entry->dependent_tasks, p)) {
-      TaskQueueEntry *task_entry = *p;
+    for (auto it = entry->dependent_tasks->begin();
+         it != entry->dependent_tasks->end(); ++it) {
+      TaskQueueEntry *task_entry = *it;
       if (can_run(algorithm_state, task_entry->spec)) {
         LOG_DEBUG("Moved task to dispatch queue");
         algorithm_state->waiting_task_queue->remove(task_entry);
@@ -1186,8 +1186,7 @@ void handle_object_available(LocalSchedulerState *state,
      * queue. */
     dispatch_tasks(state, algorithm_state);
     /* Clean up the records for dependent tasks. */
-    utarray_free(entry->dependent_tasks);
-    entry->dependent_tasks = NULL;
+    entry->dependent_tasks->clear();
   }
 }
 
@@ -1200,6 +1199,7 @@ void handle_object_removed(LocalSchedulerState *state,
             sizeof(removed_object_id), entry);
   CHECK(entry != NULL);
   HASH_DELETE(hh, algorithm_state->local_objects, entry);
+  delete entry->dependent_tasks;
   free(entry);
 
   /* Track queued tasks that were dependent on this object.
