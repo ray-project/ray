@@ -7,6 +7,7 @@ import inspect
 import json
 import numpy as np
 import random
+import time
 import traceback
 
 import ray.local_scheduler
@@ -187,8 +188,21 @@ def export_actor(actor_id, Class, actor_method_names, num_cpus, num_gpus,
   local_scheduler_id, gpu_ids = select_local_scheduler(local_schedulers,
                                                        num_gpus, worker)
 
-  worker.redis_client.publish("actor_notifications",
-                              actor_id.id() + local_scheduler_id)
+  # Publish a message to notify the relevant local scheduler that it needs to
+  # create an actor. If necessary, retry until the local scheduler actually
+  # gets the message.
+  num_retries = 10
+  for _ in range(num_retries):
+    num_recipients = worker.redis_client.publish(
+        "actor_notifications", actor_id.id() + local_scheduler_id)
+    if num_recipients == 1:
+      break
+    # This should be pretty rare. If we're here, this means that a local
+    # scheduler has not subscribed to the actor_notifications channel yet.
+    time.sleep(1)
+    print("Warning: {} redis clients received the publish message."
+          .format(num_recipients))
+  assert num_recipients == 1
 
   d = {"driver_id": driver_id,
        "actor_id": actor_id.id(),
