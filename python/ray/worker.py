@@ -1988,6 +1988,43 @@ def export_remote_function(function_id, func_name, func, num_return_vals,
   worker.redis_client.rpush("Exports", key)
 
 
+def in_ipython():
+  """Return true if we are in an IPython interpreter and false otherwise."""
+  try:
+    __IPYTHON__
+    return True
+  except NameError:
+    return False
+
+
+def compute_function_id(func_name, func):
+  """Compute an function ID for a function.
+
+  Args:
+    func_name: The name of the function (this includes the module name plus the
+      function name).
+    func: The actual function.
+
+  Returns:
+    This returns the function ID.
+  """
+  function_id_hash = hashlib.sha1()
+  # Include the function name in the hash.
+  function_id_hash.update(func_name.encode("ascii"))
+  # If we are running a script or are in IPython, include the source code in
+  # the hash. If we are in a regular Python interpreter we skip this part
+  # because the source code is not accessible.
+  import __main__ as main
+  if hasattr(main, "__file__") or in_ipython():
+    function_id_hash.update(inspect.getsource(func).encode("ascii"))
+  # Compute the function ID.
+  function_id = function_id_hash.digest()
+  assert len(function_id) == 20
+  function_id = FunctionID(function_id)
+
+  return function_id
+
+
 def remote(*args, **kwargs):
   """This decorator is used to create remote functions.
 
@@ -2005,16 +2042,7 @@ def remote(*args, **kwargs):
     def remote_decorator(func):
       func_name = "{}.{}".format(func.__module__, func.__name__)
       if func_id is None:
-        # Compute the function ID as a hash of the function name as well as the
-        # source code. We could in principle hash in the values in the closure
-        # of the function, but that is likely to introduce non-determinism in
-        # the computation of the function ID.
-        function_id_hash = hashlib.sha1()
-        function_id_hash.update(func_name.encode("ascii"))
-        function_id_hash.update(inspect.getsource(func).encode("ascii"))
-        function_id = function_id_hash.digest()
-        assert len(function_id) == 20
-        function_id = FunctionID(function_id)
+        function_id = compute_function_id(func_name, func)
       else:
         function_id = func_id
 
