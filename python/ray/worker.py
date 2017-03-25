@@ -2011,18 +2011,13 @@ def compute_function_id(func_name, func):
   function_id_hash = hashlib.sha1()
   # Include the function name in the hash.
   function_id_hash.update(func_name.encode("ascii"))
-  try:
-    # Include the source code in the hash. This will fail if we are in a
-    # regular Python interpreter (but not IPython) because in that case
-    # the source code is not accessible.
+  # If we are running a script or are in IPython, include the source code in
+  # the hash. If we are in a regular Python interpreter we skip this part
+  # because the source code is not accessible.
+  import __main__ as main
+  if hasattr(main, "__file__") or in_ipython():
     function_id_hash.update(inspect.getsource(func).encode("ascii"))
-  except (OSError, IOError):
-    # This means that we are in a regular Python interpreter. Verify that
-    # this is actually the case.
-    import __main__ as main
-    assert not hasattr(main, "__file__")
-    assert not in_ipython()
-
+  # Compute the function ID.
   function_id = function_id_hash.digest()
   assert len(function_id) == 20
   function_id = FunctionID(function_id)
