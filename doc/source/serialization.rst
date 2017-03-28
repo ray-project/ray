@@ -7,18 +7,19 @@ the object store. Once an object is placed in the object store, it is immutable.
 There are a number of situations in which Ray will place objects in the object
 store.
 
-1. When a remote function returns, its return values are stored in the object
+1. The return values of a remote function.
    store.
-2. A call to ``ray.put(x)`` places ``x`` in the object store.
-3. When large objects or objects other than simple primitive types are passed as
-   arguments into remote functions, they will be placed in the object store.
+2. ``x`` in a call to ``ray.put(x)``.
+3. Large objects or objects other than simple primitive types that are passed
+   as arguments into remote functions.
 
-A normal Python object may have pointers all over the place, so to place an
-object in the object store or send it between processes, it must first be
-converted to a contiguous string of bytes. This process is known as
-serialization. The process of turning the string of bytes back into a Python
-object is known as deserialization. Serialization and deserialization are often
-bottlenecks in distributed computing.
+A Python object may have an arbitrary number of pointers with arbitrarily deep
+nesting. To place an object in the object store or send it between processes,
+it must first be converted to a contiguous string of bytes. This process is
+known as serialization. The process of converting the string of bytes back into a
+Python object is known as deserialization. Serialization and deserialization
+are often bottlenecks in distributed computing, if the time needed to compute
+on the data is relatively low.
 
 Pickle is one example of a library for serialization and deserialization in
 Python.
@@ -30,24 +31,31 @@ Python.
   pickle.dumps([1, 2, 3])  # prints b'\x80\x03]q\x00(K\x01K\x02K\x03e.'
   pickle.loads(b'\x80\x03]q\x00(K\x01K\x02K\x03e.')  # prints [1, 2, 3]
 
-Pickle (and its variants) are pretty general. They can successfully serialize a
-large variety of Python objects. However, for numerical workloads, pickling and
-unpickling can be inefficient. For example, when unpickling a list of numpy
-arrays, pickle will create completely new arrays in memory. In Ray, when we
-deserialize a list of numpy arrays from the object store, we will create a list
-of numpy array objects in Python, but each numpy array object is essentially
-just a pointer to the relevant location in shared memory. There are some
-advantages to this form of serialization.
+Pickle (and the variant we use, cloudpickle) is general-purpose. They can
+serialize a large variety of Python objects. However, for numerical workloads,
+pickling and unpickling can be inefficient. For example, if multiple processes
+want to access a Python list of numpy arrays, each process must unpickle the
+list and create its own new copies of the arrays. This can lead to high memory
+overheads, even when all processes are read-only and could easily share memory.
+
+In Ray, we optimize for numpy arrays by using the `Apache Arrow`_ data format.
+When we deserialize a list of numpy arrays from the object store, we still
+create a Python list of numpy array objects.  However, rather than copy each
+numpy array over again, each numpy array object is essentially a pointer to its
+address in shared memory. There are some advantages to this form of
+serialization.
 
 - Deserialization can be very fast.
 - Memory is shared between processes so worker processes can all read the same
   data without having to copy it.
 
+.. _`Apache Arrow`: https://arrow.apache.org/
+
 What Objects Does Ray Handle
 ----------------------------
 
-However, Ray is not currently capable of serializing arbitrary Python objects.
-The set of Python objects that Ray can serialize includes the following.
+Ray does not currently support serialization of arbitrary Python objects.  The
+set of Python objects that Ray can serialize includes the following.
 
 1. Primitive types: ints, floats, longs, bools, strings, unicode, and numpy
    arrays.
@@ -97,15 +105,15 @@ This can be addressed by calling ``ray.register_class(Foo)``.
   f_id = ray.put(f)
   ray.get(f_id)  # prints <__main__.Foo at 0x1078128d0>
 
-Under the hood, ``ray.put`` essentially replaces ``f`` with ``f.__dict__``,
-which is just the dictionary ``{"a": 1, "b": 2}``. Then during deserialization,
-``ray.get`` constructs a new ``Foo`` object from the dictionary of fields.
+Under the hood, ``ray.put`` places ``f.__dict__``, the dictionary of attributes
+of ``f``, into the object store instead of ``f`` itself. In this case, this is
+the dictionary, ``{"a": 1, "b": 2}``. Then during deserialization, ``ray.get``
+constructs a new ``Foo`` object from the dictionary of fields.
 
-This naive substitution won't work in all cases. For example if we want to
-serialize Python objects of type ``function`` (for example ``f = lambda x: x +
-1``), this simple scheme doesn't quite work, and ``ray.register_class(type(f))``
-will give an error message. In these cases, we can fall back to pickle (actually
-we use cloudpickle).
+This naive substitution won't work in all cases. For example, this scheme does
+not support Python objects of type ``function`` (e.g., ``f = lambda x: x +
+1``). In these cases, the call to ``ray.register_class`` will give an error
+message, and you should fall back to pickle.
 
 .. code-block:: python
 
@@ -117,21 +125,21 @@ we use cloudpickle).
   f_new = ray.get(ray.put(f))
   f_new(0)  # prints 1
 
-However, it's best to avoid using pickle for efficiency reasons. If you find
-yourself needing to pickle certain objects, consider trying to use more
-efficient data structures like arrays.
+However, it's best to avoid using pickle for the efficiency reasons described
+above. If you find yourself needing to pickle certain objects, consider trying
+to use more efficient data structures like arrays.
 
 **Note:** Another setting where the naive replacement of an object with its
-``__dict__`` attribute fails is where an object recursively contains itself (or
-multiple objects recursively contain each other). To see more examples of this,
-see the section `Notes and Limitations`_.
+``__dict__`` attribute fails is recursion, e.g., an object contains itself or
+multiple objects contain each other. To see more examples of this, see the
+section `Notes and Limitations`_.
 
 Notes and limitations
 ---------------------
 
-- We currently handle certain patterns incorrectly. For example, a list that
-  contains two copies of the same list, will be serialized as if the two lists
-  were distinct.
+- We currently handle certain patterns incorrectly, according to Python
+  semantics. For example, a list that contains two copies of the same list will
+  be serialized as if the two lists were distinct.
 
   .. code-block:: python
 
@@ -139,12 +147,12 @@ Notes and limitations
     l2 = [l1, l1]
     l3 = ray.get(ray.put(l2))
 
-    l2[0] is l2[1]  # This is true.
-    l3[0] is l3[1]  # This is false.
+    l2[0] is l2[1]  # True.
+    l3[0] is l3[1]  # False.
 
 - For reasons similar to the above example, we also do not currently handle
-  objects that recursively contain themselves (this may be common with certain
-  graph-like data structures).
+  objects that recursively contain themselves (this may be common in graph-like
+  data structures).
 
   .. code-block:: python
 
@@ -163,15 +171,15 @@ Notes and limitations
 - If you need to pass a custom class into a remote function, you should call
   ``ray.register_class`` on the class **before defining the remote function**.
 
-- Whenever possible, use numpy arrays. This is generally good advice.
+- Whenever possible, use numpy arrays for maximum performance.
 
 Last Resort Workaround
 ----------------------
 
-If you find cases where Ray doesn't work or does the wrong thing, please `let us
-know`_ so we can fix it. In the meantime, you can do your own custom
-serialization and deserialization (for example by calling pickle by hand). Or by
-writing your own custom serializer and deserializer.
+If you find cases where Ray serialization doesn't work or does something
+unexpected, please `let us know`_ so we can fix it. In the meantime, you may
+have to resort to writing custom serialization and deserialization code (e.g.,
+calling pickle by hand).
 
 .. _`let us know`: https://github.com/ray-project/ray/issues
 
