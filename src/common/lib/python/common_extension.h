@@ -20,7 +20,9 @@ typedef struct {
 
 typedef struct {
   PyObject_HEAD
+  /** The size of the task spec. */
   int64_t size;
+  /** The task spec object. This must be freed in the PyTask destructor. */
   TaskSpec *spec;
 } PyTask;
 // clang-format on

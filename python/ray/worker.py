@@ -697,6 +697,10 @@ their state made by one task do not affect other tasks.
 """
 
 
+def get_gpu_ids():
+  return global_worker.local_scheduler_client.gpu_ids()
+
+
 class RayConnectionError(Exception):
   pass
 
@@ -1323,8 +1327,12 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
   Args:
     info (dict): A dictionary with address of the Redis server and the sockets
       of the plasma store, plasma manager, and local scheduler.
+    object_id_seed: A seed to use to make the generation of object IDs
+      deterministic.
     mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, PYTHON_MODE,
       and SILENT_MODE.
+    actor_id: The ID of the actor running on this worker. If this worker is not
+      an actor, then this is NIL_ACTOR_ID.
   """
   check_main_thread()
   # Do some basic checking to make sure we didn't call ray.init twice.
@@ -1388,8 +1396,14 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
   worker.plasma_client = ray.plasma.PlasmaClient(info["store_socket_name"],
                                                  info["manager_socket_name"])
   # Create the local scheduler client.
+  if worker.actor_id != NIL_ACTOR_ID:
+    num_gpus = int(worker.redis_client.hget("Actor:{}".format(actor_id),
+                                            "num_gpus"))
+  else:
+    num_gpus = 0
   worker.local_scheduler_client = ray.local_scheduler.LocalSchedulerClient(
-      info["local_scheduler_socket_name"], worker.actor_id, is_worker)
+      info["local_scheduler_socket_name"], worker.actor_id, is_worker,
+      num_gpus)
 
   # If this is a driver, set the current task ID, the task driver ID, and set
   # the task index to 0.

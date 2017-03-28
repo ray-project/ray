@@ -92,20 +92,40 @@ void kill_worker(LocalSchedulerClient *worker, bool wait);
 void start_worker(LocalSchedulerState *state, ActorID actor_id);
 
 /**
- * Update our accounting for the current resources being used, according to
- * some task that is starting or finishing execution.
+ * Check if sufficient resources are available to run a task.
+ *
+ * @param state The state of the local scheduler.
+ * @param spec The task spec whose resource requirements we are checking.
+ * @return True if there are enough resources to run the task and false
+ *         otherwise.
+ */
+bool sufficient_resources_for_task(LocalSchedulerState *state, TaskSpec *spec);
+
+/**
+ * Return resources (CPUs and GPUs) being used by a worker to the local
+ * scheduler.
  *
  * @param state The local scheduler state.
- * @param spec The specification for the task that is or was using resources.
- * @param return_resources A boolean representing whether the task is starting
- *        or finishing execution. If true, then the task is finishing execution
- *        (possibly temporarily), so it will add to the dynamic resources
- *        available. Else, it will take from the dynamic resources available.
+ * @param worker The worker who is returning resources.
+ * @param ignore_gpus If this is true, GPUs will not be returned. If it is
+ *        false, they will be returned.
  * @return Void.
  */
-void update_dynamic_resources(LocalSchedulerState *state,
-                              TaskSpec *spec,
-                              bool return_resources);
+void return_worker_resources(LocalSchedulerState *state,
+                             LocalSchedulerClient *worker,
+                             bool ignore_gpus);
+
+/**
+ * Acquire the resources (CPUs and GPUs) needed to run the task on the worker.
+ * If the worker already has some resources allocated for it, this will only
+ * acquire the extra resources needed to execute the task.
+ *
+ * @param state The local scheduler state.
+ * @param worker The worker who is acquiring resources.
+ * @return Void.
+ */
+void acquire_worker_resources_for_task(LocalSchedulerState *state,
+                                       LocalSchedulerClient *worker);
 
 /** The following methods are for testing purposes only. */
 #ifdef LOCAL_SCHEDULER_TEST

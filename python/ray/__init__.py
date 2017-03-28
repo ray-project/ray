@@ -4,9 +4,8 @@ from __future__ import print_function
 
 from ray.worker import (register_class, error_info, init, connect, disconnect,
                         get, put, wait, remote, log_event, log_span,
-                        flush_log)
+                        flush_log, get_gpu_ids)
 from ray.actor import actor
-from ray.actor import get_gpu_ids
 from ray.worker import EnvironmentVariable, env
 from ray.worker import SCRIPT_MODE, WORKER_MODE, PYTHON_MODE, SILENT_MODE
 

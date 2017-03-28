@@ -8,6 +8,11 @@ typedef struct {
   /** File descriptor of the Unix domain socket that connects to local
    *  scheduler. */
   int conn;
+  /** The actor ID of this client. If this client is not an actor, then this
+   *  should be NIL_ACTOR_ID. */
+  ActorID actor_id;
+  /** The IDs of the GPUs that this client can use. */
+  std::vector<int> *gpu_ids;
 } LocalSchedulerConnection;
 
 /**
@@ -19,12 +24,15 @@ typedef struct {
  *        running on this actor, this should be NIL_ACTOR_ID.
  * @param is_worker Whether this client is a worker. If it is a worker, an
  *        additional message will be sent to register as one.
+ * @param num_gpus The number of GPUs required by this worker. This is only used
+ *        if the worker is an actor.
  * @return The connection information.
  */
 LocalSchedulerConnection *LocalSchedulerConnection_init(
     const char *local_scheduler_socket,
     ActorID actor_id,
-    bool is_worker);
+    bool is_worker,
+    int64_t num_gpus);
 
 /**
  * Disconnect from the local scheduler.
