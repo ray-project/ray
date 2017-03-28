@@ -36,8 +36,8 @@ Ray
    :maxdepth: 1
    :caption: Design
 
-   remote-functions.md
-   serialization.md
+   internals-overview.rst
+   serialization.rst
 
 .. toctree::
    :maxdepth: 1
