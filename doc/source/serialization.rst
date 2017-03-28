@@ -8,8 +8,7 @@ There are a number of situations in which Ray will place objects in the object
 store.
 
 1. The return values of a remote function.
-   store.
-2. ``x`` in a call to ``ray.put(x)``.
+2. The value ``x`` in a call to ``ray.put(x)``.
 3. Large objects or objects other than simple primitive types that are passed
    as arguments into remote functions.
 
@@ -18,7 +17,7 @@ nesting. To place an object in the object store or send it between processes,
 it must first be converted to a contiguous string of bytes. This process is
 known as serialization. The process of converting the string of bytes back into a
 Python object is known as deserialization. Serialization and deserialization
-are often bottlenecks in distributed computing, if the time needed to compute
+are often bottlenecks in distributed computing if the time needed to compute
 on the data is relatively low.
 
 Pickle is one example of a library for serialization and deserialization in
@@ -31,7 +30,7 @@ Python.
   pickle.dumps([1, 2, 3])  # prints b'\x80\x03]q\x00(K\x01K\x02K\x03e.'
   pickle.loads(b'\x80\x03]q\x00(K\x01K\x02K\x03e.')  # prints [1, 2, 3]
 
-Pickle (and the variant we use, cloudpickle) is general-purpose. They can
+Pickle (and the variant we use, cloudpickle) is general-purpose. It can
 serialize a large variety of Python objects. However, for numerical workloads,
 pickling and unpickling can be inefficient. For example, if multiple processes
 want to access a Python list of numpy arrays, each process must unpickle the
@@ -40,9 +39,9 @@ overheads, even when all processes are read-only and could easily share memory.
 
 In Ray, we optimize for numpy arrays by using the `Apache Arrow`_ data format.
 When we deserialize a list of numpy arrays from the object store, we still
-create a Python list of numpy array objects.  However, rather than copy each
-numpy array over again, each numpy array object is essentially a pointer to its
-address in shared memory. There are some advantages to this form of
+create a Python list of numpy array objects. However, rather than copy each
+numpy array over again, each numpy array object holds a pointer to the relevant
+array held in shared memory. There are some advantages to this form of
 serialization.
 
 - Deserialization can be very fast.

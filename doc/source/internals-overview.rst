@@ -173,7 +173,7 @@ Several things happen when a driver or worker calls ``ray.get`` on an object ID.
 
 - The driver or worker goes to the object store on the same node and requests
   the relevant object. Each object store consists of two components, a
-  shared-memory key-value store of immutable objects, and an manager to
+  shared-memory key-value store of immutable objects, and a manager to
   coordinate the transfer of objects between nodes.
 
   - If the object is not present in the object store, the manager checks the
