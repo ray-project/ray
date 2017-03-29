@@ -28,9 +28,9 @@ typedef struct {
   /** Object id of this object. */
   ObjectID object_id;
   /** A vector of tasks dependent on this object. These tasks are a subset of
-   * the tasks in the waiting queue. Each element is actually store a reference
-   * to the corresponding task's queue entry in waiting queue, for fast
-   * deletion when all of the task's dependencies become available. */
+   *  the tasks in the waiting queue. Each element is actually store a
+   *  reference to the corresponding task's queue entry in waiting queue, for
+   *  fast deletion when all of the task's dependencies become available. */
   std::vector<std::list<TaskQueueEntry>::iterator> *dependent_tasks;
   /** Handle for the uthash table. NOTE: This handle is used for both the
    *  scheduling algorithm state's local_objects and remote_objects tables.
@@ -657,15 +657,20 @@ void dispatch_tasks(LocalSchedulerState *state,
  * @param task_entry A pointer to the task entry to queue.
  * @param from_global_scheduler Whether or not the task was from a global
  *        scheduler. If false, the task was submitted by a worker.
- * @return Void.
+ * @return A reference to the entry in the queue that was pushed.
  */
-void queue_task(LocalSchedulerState *state,
-                std::list<TaskQueueEntry> *task_queue,
-                TaskQueueEntry *task_entry,
-                bool from_global_scheduler) {
+std::list<TaskQueueEntry>::iterator queue_task(
+    LocalSchedulerState *state,
+    std::list<TaskQueueEntry> *task_queue,
+    TaskQueueEntry *task_entry,
+    bool from_global_scheduler) {
   /* Copy the spec and add it to the task queue. The allocated spec will be
    * freed when it is assigned to a worker. */
   task_queue->push_back(*task_entry);
+  /* Since we just queued the task, we can get a reference to it by going to
+   * the last element in the queue. */
+  auto it = state->algorithm_state->waiting_task_queue->end();
+  --it;
 
   /* The task has been added to a local scheduler queue. Write the entry in the
    * task table to notify others that we have queued it. */
@@ -682,6 +687,8 @@ void queue_task(LocalSchedulerState *state,
       task_table_add_task(state->db, task, NULL, NULL, NULL);
     }
   }
+
+  return it;
 }
 
 /**
@@ -704,13 +711,8 @@ void queue_waiting_task(LocalSchedulerState *state,
                         bool from_global_scheduler) {
   LOG_DEBUG("Queueing task in waiting queue");
   TaskQueueEntry task_entry = TaskQueueEntry_init(spec, task_spec_size);
-  queue_task(state, algorithm_state->waiting_task_queue, &task_entry,
-             from_global_scheduler);
-  /* There must be at least one missing dependency, so record it. The task was
-   * just queued, so we can get a reference to it by going to the last element
-   * in the waiting queue. */
-  auto it = algorithm_state->waiting_task_queue->end();
-  --it;
+  auto it = queue_task(state, algorithm_state->waiting_task_queue, &task_entry,
+                       from_global_scheduler);
   fetch_missing_dependencies(state, algorithm_state, it);
 }
 
@@ -1222,7 +1224,7 @@ void handle_object_removed(LocalSchedulerState *state,
        * spec. */
       it = algorithm_state->dispatch_task_queue->erase(it);
     } else {
-      /* The task can still run,so continue to the next task. */
+      /* The task can still run, so continue to the next task. */
       ++it;
     }
   }
