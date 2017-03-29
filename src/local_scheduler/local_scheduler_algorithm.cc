@@ -1247,15 +1247,11 @@ void handle_object_removed(LocalSchedulerState *state,
 }
 
 int num_waiting_tasks(SchedulingAlgorithmState *algorithm_state) {
-  TaskQueueEntry *elt;
-  int count = algorithm_state->waiting_task_queue->size();
-  return count;
+  return algorithm_state->waiting_task_queue->size();
 }
 
 int num_dispatch_tasks(SchedulingAlgorithmState *algorithm_state) {
-  TaskQueueEntry *elt;
-  int count = algorithm_state->dispatch_task_queue->size();
-  return count;
+  return algorithm_state->dispatch_task_queue->size();
 }
 
 void print_worker_info(const char *message,
