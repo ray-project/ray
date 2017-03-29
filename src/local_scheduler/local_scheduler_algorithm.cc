@@ -27,8 +27,11 @@ struct TaskQueueEntry {
 typedef struct {
   /** Object id of this object. */
   ObjectID object_id;
-  /** A vector of the tasks dependent on this object. */
-  std::vector<TaskQueueEntry> *dependent_tasks;
+  /** A vector of tasks dependent on this object. These tasks are a subset of
+   * the tasks in the waiting queue. Each element is actually store a reference
+   * to the corresponding task's queue entry in waiting queue, for fast
+   * deletion when all of the task's dependencies become available. */
+  std::vector<std::list<TaskQueueEntry>::const_iterator> *dependent_tasks;
   /** Handle for the uthash table. NOTE: This handle is used for both the
    *  scheduling algorithm state's local_objects and remote_objects tables.
    *  We must enforce the uthash invariant that the entry be in at most one of
@@ -263,10 +266,11 @@ void remove_actor(SchedulingAlgorithmState *algorithm_state, ActorID actor_id) {
 
   /* Log some useful information about the actor that we're removing. */
   char id_string[ID_STRING_SIZE];
-  int64_t count = entry->task_queue->size();
+  size_t count = entry->task_queue->size();
   if (count > 0) {
-    LOG_WARN("Removing actor with ID %s and %d remaining tasks.",
-             ObjectID_to_string(actor_id, id_string, ID_STRING_SIZE), count);
+    LOG_WARN("Removing actor with ID %s and %lld remaining tasks.",
+             ObjectID_to_string(actor_id, id_string, ID_STRING_SIZE),
+             (long long) count);
   }
   UNUSED(id_string);
 
@@ -448,14 +452,15 @@ bool dispatch_actor_task(LocalSchedulerState *state,
  *
  * @param state The scheduler state.
  * @param algorithm_state The scheduling algorithm state.
- * @param task_entry The task's queue entry.
+ * @param task_entry_it A reference to the task entry in the waiting queue.
  * @param obj_id The ID of the object that the task is dependent on.
  * @returns Void.
  */
-void fetch_missing_dependency(LocalSchedulerState *state,
-                              SchedulingAlgorithmState *algorithm_state,
-                              TaskQueueEntry *task_entry,
-                              ObjectID obj_id) {
+void fetch_missing_dependency(
+    LocalSchedulerState *state,
+    SchedulingAlgorithmState *algorithm_state,
+    std::list<TaskQueueEntry>::const_iterator task_entry_it,
+    ObjectID obj_id) {
   object_entry *entry;
   HASH_FIND(hh, algorithm_state->remote_objects, &obj_id, sizeof(obj_id),
             entry);
@@ -472,11 +477,12 @@ void fetch_missing_dependency(LocalSchedulerState *state,
      * subsequently removed locally. */
     entry = (object_entry *) malloc(sizeof(object_entry));
     entry->object_id = obj_id;
-    entry->dependent_tasks = new std::vector<TaskQueueEntry>();
+    entry->dependent_tasks =
+        new std::vector<std::list<TaskQueueEntry>::const_iterator>();
     HASH_ADD(hh, algorithm_state->remote_objects, object_id,
              sizeof(entry->object_id), entry);
   }
-  entry->dependent_tasks->push_back(*task_entry);
+  entry->dependent_tasks->push_back(task_entry_it);
 }
 
 /**
@@ -486,13 +492,14 @@ void fetch_missing_dependency(LocalSchedulerState *state,
  *
  * @param state The scheduler state.
  * @param algorithm_state The scheduling algorithm state.
- * @param task_entry The task's queue entry.
+ * @param task_entry_it A reference to the task entry in the waiting queue.
  * @returns Void.
  */
-void fetch_missing_dependencies(LocalSchedulerState *state,
-                                SchedulingAlgorithmState *algorithm_state,
-                                TaskQueueEntry *task_entry) {
-  TaskSpec *task = task_entry->spec;
+void fetch_missing_dependencies(
+    LocalSchedulerState *state,
+    SchedulingAlgorithmState *algorithm_state,
+    std::list<TaskQueueEntry>::const_iterator task_entry_it) {
+  TaskSpec *task = task_entry_it->spec;
   int64_t num_args = TaskSpec_num_args(task);
   int num_missing_dependencies = 0;
   for (int i = 0; i < num_args; ++i) {
@@ -503,7 +510,7 @@ void fetch_missing_dependencies(LocalSchedulerState *state,
                 entry);
       if (entry == NULL) {
         /* If the entry is not yet available locally, record the dependency. */
-        fetch_missing_dependency(state, algorithm_state, task_entry, obj_id);
+        fetch_missing_dependency(state, algorithm_state, task_entry_it, obj_id);
         ++num_missing_dependencies;
       }
     }
@@ -653,10 +660,10 @@ void dispatch_tasks(LocalSchedulerState *state,
  *        scheduler. If false, the task was submitted by a worker.
  * @return Void.
  */
-TaskQueueEntry *queue_task(LocalSchedulerState *state,
-                           std::list<TaskQueueEntry> *task_queue,
-                           TaskQueueEntry *task_entry,
-                           bool from_global_scheduler) {
+void queue_task(LocalSchedulerState *state,
+                std::list<TaskQueueEntry> *task_queue,
+                TaskQueueEntry *task_entry,
+                bool from_global_scheduler) {
   /* Copy the spec and add it to the task queue. The allocated spec will be
    * freed when it is assigned to a worker. */
   task_queue->push_back(*task_entry);
@@ -700,12 +707,12 @@ void queue_waiting_task(LocalSchedulerState *state,
   TaskQueueEntry task_entry = TaskQueueEntry_init(spec, task_spec_size);
   queue_task(state, algorithm_state->waiting_task_queue, &task_entry,
              from_global_scheduler);
-  /* If we're queueing this task in the waiting queue, there must be at least
-   * one missing dependency, so record it. The TaskSpec pointer that is added
-   * to the missing dependencies' dependent tasks must match the TaskSpec
-   * pointer added to the waiting queue, so that we can later remove the
-   * correct queue entry. */
-  fetch_missing_dependencies(state, algorithm_state, &task_entry);
+  /* There must be at least one missing dependency, so record it. The task was
+   * just queued, so we can get a reference to it by going to the last element
+   * in the waiting queue. */
+  auto it = algorithm_state->waiting_task_queue->end();
+  --it;
+  fetch_missing_dependencies(state, algorithm_state, it);
 }
 
 /**
@@ -1158,7 +1165,8 @@ void handle_object_available(LocalSchedulerState *state,
      * is removed. */
     entry = (object_entry *) malloc(sizeof(object_entry));
     entry->object_id = object_id;
-    entry->dependent_tasks = new std::vector<TaskQueueEntry>();
+    entry->dependent_tasks =
+        new std::vector<std::list<TaskQueueEntry>::const_iterator>();
   }
 
   /* Add the entry to the set of locally available objects. */
@@ -1168,19 +1176,13 @@ void handle_object_available(LocalSchedulerState *state,
   if (!entry->dependent_tasks->empty()) {
     /* Out of the tasks that were dependent on this object, if they are now
      * ready to run, move them to the dispatch queue. */
-    for (auto &task_entry : *entry->dependent_tasks) {
-      if (can_run(algorithm_state, task_entry.spec)) {
+    for (auto &it : *entry->dependent_tasks) {
+      if (can_run(algorithm_state, it->spec)) {
         LOG_DEBUG("Moved task to dispatch queue");
-        algorithm_state->dispatch_task_queue->push_back(task_entry);
+        algorithm_state->dispatch_task_queue->push_back(*it);
         /* Remove the entry with a matching TaskSpec pointer from the waiting
          * queue, but do not free the task spec. */
-        for (auto it = algorithm_state->waiting_task_queue->begin();
-             it != algorithm_state->waiting_task_queue->end(); ++it) {
-          if (task_entry.spec == it->spec) {
-            algorithm_state->waiting_task_queue->erase(it);
-            break;
-          }
-        }
+        algorithm_state->waiting_task_queue->erase(it);
       }
     }
     /* Try to dispatch tasks, since we may have added some from the waiting
@@ -1228,13 +1230,14 @@ void handle_object_removed(LocalSchedulerState *state,
 
   /* Track the dependency for tasks that are in the waiting queue, including
    * those that were just moved from the dispatch queue. */
-  for (auto &task : *algorithm_state->waiting_task_queue) {
-    int64_t num_args = TaskSpec_num_args(task.spec);
+  for (auto it = algorithm_state->waiting_task_queue->begin();
+       it != algorithm_state->waiting_task_queue->end(); ++it) {
+    int64_t num_args = TaskSpec_num_args(it->spec);
     for (int i = 0; i < num_args; ++i) {
-      if (TaskSpec_arg_by_ref(task.spec, i)) {
-        ObjectID arg_id = TaskSpec_arg_id(task.spec, i);
+      if (TaskSpec_arg_by_ref(it->spec, i)) {
+        ObjectID arg_id = TaskSpec_arg_id(it->spec, i);
         if (ObjectID_equal(arg_id, removed_object_id)) {
-          fetch_missing_dependency(state, algorithm_state, &task,
+          fetch_missing_dependency(state, algorithm_state, it,
                                    removed_object_id);
         }
       }
