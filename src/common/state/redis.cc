@@ -76,54 +76,60 @@ extern int usleep(useconds_t usec);
   do {                                                                         \
   } while (0)
 
-DBHandle *db_connect(const char *db_address,
-                     int db_port,
-                     const char *client_type,
-                     const char *node_ip_address,
-                     int num_args,
-                     const char **args) {
-  /* Check that the number of args is even. These args will be passed to the
-   * RAY.CONNECT Redis command, which takes arguments in pairs. */
-  if (num_args % 2 != 0) {
-    LOG_FATAL("The number of extra args must be divisible by two.");
-  }
+redisAsyncContext *get_redis_context(DBHandle *db, UniqueID id) {
+  int64_t index = *reinterpret_cast<int64_t *>(id.id + sizeof(id) - sizeof(size_t));
+  return db->contexts[index % db->contexts.size()].get();
+}
 
-  DBHandle *db = (DBHandle *) malloc(sizeof(DBHandle));
+redisAsyncContext *get_redis_sub_context(DBHandle *db, UniqueID id) {
+  int64_t index = *reinterpret_cast<int64_t *>(id.id + sizeof(id) - sizeof(size_t));
+  return db->sub_contexts[index % db->sub_contexts.size()].get();
+}
+
+void db_connect_shard(const std::string& db_address,
+                      int db_port,
+                      DBClientID client,
+                      const char *client_type,
+                      const char *node_ip_address,
+                      int num_args,
+                      const char **args,
+                      // out parameters
+                      redisAsyncContext **context_out,
+                      redisAsyncContext **subscription_context_out,
+                      redisContext **sync_context_out) {
   /* Sync connection for initial handshake */
   redisReply *reply;
   int connection_attempts = 0;
-  redisContext *context = redisConnect(db_address, db_port);
-  while (context == NULL || context->err) {
+  redisContext *sync_context = redisConnect(db_address.c_str(), db_port);
+  while (sync_context == NULL || sync_context->err) {
     if (connection_attempts >= REDIS_DB_CONNECT_RETRIES) {
       break;
     }
     LOG_WARN("Failed to connect to Redis, retrying.");
     /* Sleep for a little. */
     usleep(REDIS_DB_CONNECT_WAIT_MS * 1000);
-    context = redisConnect(db_address, db_port);
+    sync_context = redisConnect(db_address.c_str(), db_port);
     connection_attempts += 1;
   }
-  CHECK_REDIS_CONNECT(redisContext, context,
+  CHECK_REDIS_CONNECT(redisContext, sync_context,
                       "could not establish synchronous connection to redis "
                       "%s:%d",
-                      db_address, db_port);
+                      db_address.c_str(), db_port);
   /* Configure Redis to generate keyspace notifications for list events. This
    * should only need to be done once (by whoever started Redis), but since
    * Redis may be started in multiple places (e.g., for testing or when starting
    * processes by hand), it is easier to do it multiple times. */
-  reply = (redisReply *) redisCommand(context,
+  reply = (redisReply *) redisCommand(sync_context,
                                       "CONFIG SET notify-keyspace-events Kl");
   CHECKM(reply != NULL, "db_connect failed on CONFIG SET");
   freeReplyObject(reply);
   /* Also configure Redis to not run in protected mode, so clients on other
    * hosts can connect to it. */
-  reply = (redisReply *) redisCommand(context, "CONFIG SET protected-mode no");
+  reply = (redisReply *) redisCommand(sync_context, "CONFIG SET protected-mode no");
   CHECKM(reply != NULL, "db_connect failed on CONFIG SET");
   freeReplyObject(reply);
-  /* Create a client ID for this client. */
-  DBClientID client = globally_unique_id();
 
-  /* Construct the argument arrays for RAY.CONNECT. */
+    /* Construct the argument arrays for RAY.CONNECT. */
   int argc = num_args + 4;
   const char **argv = (const char **) malloc(sizeof(char *) * argc);
   size_t *argvlen = (size_t *) malloc(sizeof(size_t) * argc);
@@ -151,13 +157,50 @@ DBHandle *db_connect(const char *db_address,
 
   /* Register this client with Redis. RAY.CONNECT is a custom Redis command that
    * we've defined. */
-  reply = (redisReply *) redisCommandArgv(context, argc, argv, argvlen);
+  reply = (redisReply *) redisCommandArgv(sync_context, argc, argv, argvlen);
   CHECKM(reply != NULL, "db_connect failed on RAY.CONNECT");
   CHECK(reply->type != REDIS_REPLY_ERROR);
   CHECK(strcmp(reply->str, "OK") == 0);
   freeReplyObject(reply);
   free(argv);
   free(argvlen);
+  *sync_context_out = sync_context;
+
+  /* Async connection for control data. */
+  redisAsyncContext *context = redisAsyncConnect(db_address.c_str(), db_port);
+  CHECK_REDIS_CONNECT(redisAsyncContext, context,
+                      "could not establish asynchronous connection to redis "
+                      "%s:%d",
+                      db_address.c_str(), db_port);
+  context->data = (void *) db;
+
+  /* Establish async connection for subscription */
+  redisAsyncContext *subscription_context = redisAsyncConnect(db_address.c_str(), db_port);
+  CHECK_REDIS_CONNECT(redisAsyncContext, subscription_context,
+                      "could not establish asynchronous subscription "
+                      "connection to redis %s:%d",
+                      db_address, db_port);
+  subscription_context->data = (void *) db;
+}
+
+DBHandle *db_connect(const std::vector<std::string>& db_addresses,
+                     const std::vector<int>& db_ports,
+                     const char *client_type,
+                     const char *node_ip_address,
+                     int num_args,
+                     const char **args) {
+  /* Check that the number of args is even. These args will be passed to the
+   * RAY.CONNECT Redis command, which takes arguments in pairs. */
+  if (num_args % 2 != 0) {
+    LOG_FATAL("The number of extra args must be divisible by two.");
+  }
+
+  DBHandle *db = new DBHandle();
+  
+  /* Create a client ID for this client. */
+  DBClientID client = globally_unique_id();
+
+  db_connect_shard()
 
   db->client_type = strdup(client_type);
   db->client = client;
@@ -193,7 +236,7 @@ void db_disconnect(DBHandle *db) {
     free(e);
   }
   free(db->client_type);
-  free(db);
+  delete db;
 }
 
 void db_attach(DBHandle *db, event_loop *loop, bool reattach) {

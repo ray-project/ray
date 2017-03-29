@@ -1,6 +1,8 @@
 #ifndef REDIS_H
 #define REDIS_H
 
+#include <vector>
+
 #include "db.h"
 #include "object_table.h"
 #include "task_table.h"
@@ -36,9 +38,11 @@ struct DBHandle {
   DBClientID client;
   /** Redis context for all non-subscribe connections. */
   redisAsyncContext *context;
+  std::vector<std::unique_ptr<redisAsyncContext>> contexts;
   /** Redis context for "subscribe" communication. Yes, we need a separate one
    *  for that, see https://github.com/redis/hiredis/issues/55. */
   redisAsyncContext *sub_context;
+  std::vector<std::unique_ptr<redisAsyncContext>> sub_contexts;
   /** The event loop this global state store connection is part of. */
   event_loop *loop;
   /** Index of the database connection in the event loop */
