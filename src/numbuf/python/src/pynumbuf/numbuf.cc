@@ -42,16 +42,15 @@ std::shared_ptr<RecordBatch> make_batch(std::shared_ptr<Array> data) {
   return std::shared_ptr<RecordBatch>(new RecordBatch(schema, data->length(), {data}));
 }
 
-int64_t get_batch_size(std::shared_ptr<RecordBatch> batch) {
+Status get_batch_size(std::shared_ptr<RecordBatch> batch, int64_t* size) {
   // Determine the size of the file by writing to a mock file.
   auto mock = std::make_shared<MockBufferStream>();
   std::shared_ptr<arrow::ipc::FileWriter> writer;
-  ipc::FileWriter::Open(mock.get(), batch->schema(), &writer);
-  writer->WriteRecordBatch(*batch);
-  writer->Close();
-  int64_t size;
-  ARROW_CHECK_OK(mock->Tell(&size));
-  return size;
+  RETURN_NOT_OK(ipc::FileWriter::Open(mock.get(), batch->schema(), &writer));
+  RETURN_NOT_OK(writer->WriteRecordBatch(*batch));
+  RETURN_NOT_OK(writer->Close());
+  RETURN_NOT_OK(mock->Tell(size));
+  return Status::OK();
 }
 
 Status read_batch(uint8_t* data, int64_t size, std::shared_ptr<RecordBatch>* batch_out) {
@@ -112,7 +111,8 @@ static PyObject* serialize_list(PyObject* self, PyObject* args) {
     auto batch = new std::shared_ptr<RecordBatch>();
     *batch = make_batch(array);
 
-    int64_t size = get_batch_size(*batch);
+    int64_t size;
+    ARROW_CHECK_OK(get_batch_size(*batch, &size));
 
     PyObject* r = PyTuple_New(2);
     PyTuple_SetItem(r, 0, PyLong_FromLong(LENGTH_PREFIX_SIZE + size));
@@ -136,9 +136,9 @@ static PyObject* write_to_buffer(PyObject* self, PyObject* args) {
       LENGTH_PREFIX_SIZE + reinterpret_cast<uint8_t*>(buffer->buf),
       buffer->len - LENGTH_PREFIX_SIZE);
   std::shared_ptr<arrow::ipc::FileWriter> writer;
-  ipc::FileWriter::Open(target.get(), (*batch)->schema(), &writer);
-  writer->WriteRecordBatch(*(*batch));
-  writer->Close();
+  ARROW_CHECK_OK(ipc::FileWriter::Open(target.get(), (*batch)->schema(), &writer));
+  ARROW_CHECK_OK(writer->WriteRecordBatch(*(*batch)));
+  ARROW_CHECK_OK(writer->Close());
   *((int64_t*)buffer->buf) = buffer->len - LENGTH_PREFIX_SIZE;
   Py_RETURN_NONE;
 }
@@ -251,7 +251,8 @@ static PyObject* store_list(PyObject* self, PyObject* args) {
   CHECK_SERIALIZATION_ERROR(s);
 
   std::shared_ptr<RecordBatch> batch = make_batch(array);
-  int64_t size = get_batch_size(batch);
+  int64_t size;
+  ARROW_CHECK_OK(get_batch_size(batch, &size));
 
   uint8_t* data;
   /* The arrow schema is stored as the metadata of the plasma object and
