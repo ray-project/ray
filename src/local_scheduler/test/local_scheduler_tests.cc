@@ -56,8 +56,11 @@ typedef struct {
   LocalSchedulerConnection **conns;
 } LocalSchedulerMock;
 
-static void register_clients(int num_mock_workers,
-                             LocalSchedulerMock *mock) {
+/**
+ * Register clients of the local scheduler. This function is started in a
+ * separate thread so enable a blocking call to register the clients.
+ */
+static void register_clients(int num_mock_workers, LocalSchedulerMock *mock) {
   for (int i = 0; i < num_mock_workers; ++i) {
     new_client_connection(mock->loop, mock->local_scheduler_fd,
                           (void *) mock->local_scheduler_state, 0);
