@@ -3,6 +3,9 @@
 #include <list>
 #include <vector>
 #include <unordered_map>
+#include <map>
+#include "utarray.h"
+#include "utlist.h"
 
 #include "state/task_table.h"
 #include "state/local_scheduler_table.h"
@@ -58,7 +61,7 @@ struct SchedulingAlgorithmState {
   std::list<TaskQueueEntry> *waiting_task_queue;
   /** An array of pointers to tasks whose dependencies are ready but that are
    *  waiting to be assigned to a worker. */
-  std::list<TaskQueueEntry> *dispatch_task_queue;
+  std::map<int64_t, std::list<TaskQueueEntry>> *dispatch_task_queue;
   /** This is a hash table from actor ID to information about that actor. In
    *  particular, a queue of tasks that are waiting to execute on that actor.
    *  This is only used for actors that exist locally. */
@@ -113,7 +116,8 @@ SchedulingAlgorithmState *SchedulingAlgorithmState_init(void) {
   SchedulingAlgorithmState *algorithm_state = new SchedulingAlgorithmState();
   /* Initialize the local data structures used for queuing tasks and workers. */
   algorithm_state->waiting_task_queue = new std::list<TaskQueueEntry>();
-  algorithm_state->dispatch_task_queue = new std::list<TaskQueueEntry>();
+  algorithm_state->dispatch_task_queue =
+      new std::map<int64_t, std::list<TaskQueueEntry>>();
 
   return algorithm_state;
 }
@@ -126,8 +130,10 @@ void SchedulingAlgorithmState_free(SchedulingAlgorithmState *algorithm_state) {
   algorithm_state->waiting_task_queue->clear();
   delete algorithm_state->waiting_task_queue;
   /* Free all the tasks in the dispatch queue. */
-  for (auto &task : *algorithm_state->dispatch_task_queue) {
-    TaskQueueEntry_free(&task);
+  for (auto &task_queue : *algorithm_state->dispatch_task_queue) {
+    for (auto &task : task_queue.second) {
+      TaskQueueEntry_free(&task);
+    }
   }
   algorithm_state->dispatch_task_queue->clear();
   delete algorithm_state->dispatch_task_queue;
@@ -675,53 +681,54 @@ bool resources_available(LocalSchedulerState *state) {
 void dispatch_tasks(LocalSchedulerState *state,
                     SchedulingAlgorithmState *algorithm_state) {
   /* Assign as many tasks as we can, while there are workers available. */
-  for (auto it = algorithm_state->dispatch_task_queue->begin();
-       it != algorithm_state->dispatch_task_queue->end();) {
-    TaskQueueEntry task = *it;
-    /* If there is a task to assign, but there are no more available workers in
-     * the worker pool, then exit. Ensure that there will be an available
-     * worker during a future invocation of dispatch_tasks. */
-    if (algorithm_state->available_workers.size() == 0) {
-      if (state->child_pids.size() == 0) {
-        /* If there are no workers, including those pending PID registration,
-         * then we must start a new one to replenish the worker pool. */
-        start_worker(state, NIL_ACTOR_ID, false);
+  for (auto &queue : *algorithm_state->dispatch_task_queue) {
+    for (auto it = queue.second.begin(); it != queue.second.end();) {
+      TaskQueueEntry task = *it;
+      /* If there is a task to assign, but there are no more available workers in
+       * the worker pool, then exit. Ensure that there will be an available
+       * worker during a future invocation of dispatch_tasks. */
+      if (algorithm_state->available_workers.size() == 0) {
+        if (state->child_pids.size() == 0) {
+          /* If there are no workers, including those pending PID registration,
+           * then we must start a new one to replenish the worker pool. */
+          start_worker(state, NIL_ACTOR_ID, false);
+        }
+        return;
       }
-      return;
-    }
 
-    /* Terminate early if there are no more resources available. */
-    if (!resources_available(state)) {
-      return;
-    }
+      /* Terminate early if there are no more resources available. */
+      if (!resources_available(state)) {
+        return;
+      }
 
-    /* Skip to the next task if this task cannot currently be satisfied. */
-    if (!check_dynamic_resources(
-            state, TaskSpec_get_required_resource(task.spec, ResourceIndex_CPU),
-            TaskSpec_get_required_resource(task.spec, ResourceIndex_GPU),
-            TaskSpec_get_required_resource(task.spec,
-                                           ResourceIndex_CustomResource))) {
-      /* This task could not be satisfied -- proceed to the next task. */
-      ++it;
-      continue;
-    }
+      /* Skip to the next task if this task cannot currently be satisfied. */
+      if (!check_dynamic_resources(
+              state, TaskSpec_get_required_resource(task.spec, ResourceIndex_CPU),
+              TaskSpec_get_required_resource(task.spec, ResourceIndex_GPU),
+              TaskSpec_get_required_resource(task.spec,
+                                             ResourceIndex_CustomResource))) {
+        /* This task could not be satisfied -- proceed to the next task. */
+        ++it;
+        continue;
+      }
 
-    /* Dispatch this task to an available worker and dequeue the task. */
-    LOG_DEBUG("Dispatching task");
-    /* Get the last available worker in the available worker queue. */
-    LocalSchedulerClient *worker = algorithm_state->available_workers.back();
-    /* Tell the available worker to execute the task. */
-    assign_task_to_worker(state, task.spec, task.task_spec_size, worker);
-    /* Remove the worker from the available queue, and add it to the executing
-     * workers. */
-    algorithm_state->available_workers.pop_back();
-    algorithm_state->executing_workers.push_back(worker);
-    print_resource_info(state, task.spec);
-    /* Free the task queue entry. */
-    TaskQueueEntry_free(&task);
-    /* Dequeue the task. */
-    it = algorithm_state->dispatch_task_queue->erase(it);
-  } /* End for each task in the dispatch queue. */
+      /* Dispatch this task to an available worker and dequeue the task. */
+      LOG_DEBUG("Dispatching task");
+      /* Get the last available worker in the available worker queue. */
+      LocalSchedulerClient *worker = algorithm_state->available_workers.back();
+      /* Tell the available worker to execute the task. */
+      assign_task_to_worker(state, task.spec, task.task_spec_size, worker);
+      /* Remove the worker from the available queue, and add it to the executing
+       * workers. */
+      algorithm_state->available_workers.pop_back();
+      algorithm_state->executing_workers.push_back(worker);
+      print_resource_info(state, task.spec);
+      /* Free the task queue entry. */
+      TaskQueueEntry_free(&task);
+      /* Dequeue the task. */
+      it = queue.second.erase(it);
+    } /* End for each task in the dispatch queue. */
+  }
 }
 
 /**
@@ -841,8 +848,10 @@ void queue_dispatch_task(LocalSchedulerState *state,
                          bool from_global_scheduler) {
   LOG_DEBUG("Queueing task in dispatch queue");
   TaskQueueEntry task_entry = TaskQueueEntry_init(spec, task_spec_size);
-  queue_task(state, algorithm_state->dispatch_task_queue, &task_entry,
-             from_global_scheduler);
+  auto depth = TaskSpec_submit_depth(spec);
+  std::list<TaskQueueEntry> &queue =
+      (*algorithm_state->dispatch_task_queue)[depth];
+  queue_task(state, &queue, &task_entry, from_global_scheduler);
 }
 
 /**
@@ -1207,7 +1216,8 @@ void handle_object_available(LocalSchedulerState *state,
     for (auto &it : entry.dependent_tasks) {
       if (can_run(algorithm_state, it->spec)) {
         LOG_DEBUG("Moved task to dispatch queue");
-        algorithm_state->dispatch_task_queue->push_back(*it);
+        auto depth = TaskSpec_submit_depth(it->spec);
+        (*algorithm_state->dispatch_task_queue)[depth].push_back(*it);
         /* Remove the entry with a matching TaskSpec pointer from the waiting
          * queue, but do not free the task spec. */
         algorithm_state->waiting_task_queue->erase(it);
@@ -1236,19 +1246,19 @@ void handle_object_removed(LocalSchedulerState *state,
    * tasks in the dispatch queue, or batching object notifications. */
   /* Track the dependency for tasks that were in the dispatch queue. Remove
    * these tasks from the dispatch queue and push them to the waiting queue. */
-  for (auto it = algorithm_state->dispatch_task_queue->begin();
-       it != algorithm_state->dispatch_task_queue->end();) {
-    TaskQueueEntry task = *it;
-    if (TaskSpec_is_dependent_on(task.spec, removed_object_id)) {
-      /* This task was dependent on the removed object. */
-      LOG_DEBUG("Moved task from dispatch queue back to waiting queue");
-      algorithm_state->waiting_task_queue->push_back(task);
-      /* Remove the task from the dispatch queue, but do not free the task
-       * spec. */
-      it = algorithm_state->dispatch_task_queue->erase(it);
-    } else {
-      /* The task can still run, so continue to the next task. */
-      ++it;
+  for (auto &queue : *algorithm_state->dispatch_task_queue) {
+    for (auto it = queue.second.begin(); it != queue.second.end();) {
+      if (TaskSpec_is_dependent_on(it->spec, removed_object_id)) {
+        /* This task was dependent on the removed object. */
+        LOG_DEBUG("Moved task from dispatch queue back to waiting queue");
+        algorithm_state->waiting_task_queue->push_back(*it);
+        /* Remove the task from the dispatch queue, but do not free the task
+         * spec. */
+        it = queue.second.erase(it);
+      } else {
+        /* The task can still run, so continue to the next task. */
+        ++it;
+      }
     }
   }
 
@@ -1261,6 +1271,7 @@ void handle_object_removed(LocalSchedulerState *state,
       if (TaskSpec_arg_by_ref(it->spec, i)) {
         ObjectID arg_id = TaskSpec_arg_id(it->spec, i);
         if (ObjectID_equal(arg_id, removed_object_id)) {
+          LOG_INFO("adding back dependency %d", i);
           fetch_missing_dependency(state, algorithm_state, it,
                                    removed_object_id.to_plasma_id());
         }
@@ -1310,12 +1321,13 @@ void handle_driver_removed(LocalSchedulerState *state,
   }
 
   /* Remove this driver's tasks from the dispatch task queue. */
-  it = algorithm_state->dispatch_task_queue->begin();
-  while (it != algorithm_state->dispatch_task_queue->end()) {
-    if (WorkerID_equal(TaskSpec_driver_id(it->spec), driver_id)) {
-      it = algorithm_state->dispatch_task_queue->erase(it);
-    } else {
-      it++;
+  for (auto &queue : *algorithm_state->dispatch_task_queue) {
+    for (auto it = queue.second.begin(); it != queue.second.end();) {
+      if (WorkerID_equal(TaskSpec_driver_id(it->spec), driver_id)) {
+        it = queue.second.erase(it);
+      } else {
+        it++;
+      }
     }
   }
 
@@ -1327,7 +1339,11 @@ int num_waiting_tasks(SchedulingAlgorithmState *algorithm_state) {
 }
 
 int num_dispatch_tasks(SchedulingAlgorithmState *algorithm_state) {
-  return algorithm_state->dispatch_task_queue->size();
+  int count = 0;
+  for (auto &queue : *algorithm_state->dispatch_task_queue) {
+    count += queue.second.size();
+  }
+  return count;
 }
 
 void print_worker_info(const char *message,
