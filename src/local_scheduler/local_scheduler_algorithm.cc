@@ -330,7 +330,10 @@ void dispatch_actor_task(LocalSchedulerState *state,
   }
 
   /* Check that there are enough resources to run the task. */
-  if (!sufficient_resources_for_task(state, first_task.spec)) {
+  if (!check_dynamic_resources(
+          state, TaskSpec_get_required_resource(first_task.spec,
+                                                ResourceIndex_CPU),
+          TaskSpec_get_required_resource(first_task.spec, ResourceIndex_GPU))) {
     /* TODO(rkn): When we change actor methods to respect dynamic resource
      * constraints, we should return early here. */
   }
@@ -619,7 +622,10 @@ void dispatch_tasks(LocalSchedulerState *state,
       return;
     }
     /* Skip to the next task if this task cannot currently be satisfied. */
-    if (!sufficient_resources_for_task(state, task.spec)) {
+
+    if (!check_dynamic_resources(
+            state, TaskSpec_get_required_resource(task.spec, ResourceIndex_CPU),
+            TaskSpec_get_required_resource(task.spec, ResourceIndex_GPU))) {
       /* This task could not be satisfied -- proceed to the next task. */
       ++it;
       continue;
@@ -1096,7 +1102,7 @@ void handle_worker_blocked(LocalSchedulerState *state,
       utarray_push_back(algorithm_state->blocked_workers, &worker);
       /* Return the resources that the blocked worker was using, but not GPU
        * resources because it will still be using memory on those GPUs. */
-      return_worker_resources(state, worker, true);
+      release_resources(state, worker, (double) worker->cpus_in_use, 0);
 
       /* Try to dispatch tasks, since we may have freed up some resources. */
       dispatch_tasks(state, algorithm_state);
@@ -1138,7 +1144,10 @@ void handle_worker_unblocked(LocalSchedulerState *state,
        * us to transiently exceed the maximum number of resources. This can be
        * fixed by having blocked workers explicitly yield and wait to be given
        * back resources before continuing execution. */
-      acquire_worker_resources_for_task(state, worker);
+      TaskSpec *spec = Task_task_spec(worker->task_in_progress);
+      acquire_resources(state, worker,
+                        TaskSpec_get_required_resource(spec, ResourceIndex_CPU),
+                        0);
 
       /* Add the worker to the list of executing workers. */
       worker->is_blocked = false;

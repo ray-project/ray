@@ -59,86 +59,51 @@ void print_resource_info(const LocalSchedulerState *state,
 #endif
 }
 
-void give_gpus_to_worker(LocalSchedulerState *state,
-                         LocalSchedulerClient *worker,
-                         int num_gpus) {
-  /* Make sure that the worker we are about to give GPUs to isn't using any GPUs
-   * already. */
-  CHECK(worker->gpus_in_use.size() == 0);
-  /* Update the total quantity of GPU resources available. */
-  CHECK(state->dynamic_resources[ResourceIndex_GPU] >= num_gpus);
-  state->dynamic_resources[ResourceIndex_GPU] -= num_gpus;
-  /* Make sure the number of GPUs available is sufficiently large. */
-  CHECK(state->available_gpus.size() >= num_gpus);
-  /* Reserve GPUs for the worker. */
-  for (int i = 0; i < num_gpus; ++i) {
-    worker->gpus_in_use.push_back(state->available_gpus.back());
-    state->available_gpus.pop_back();
+void acquire_resources(LocalSchedulerState *state,
+                       LocalSchedulerClient *worker,
+                       double num_cpus,
+                       double num_gpus) {
+  /* Acquire the CPU resources. */
+  state->dynamic_resources[ResourceIndex_CPU] -= num_cpus;
+  CHECK(worker->cpus_in_use == 0);
+  worker->cpus_in_use += num_cpus;
+
+  /* Acquire the GPU resources. */
+  if (num_gpus != 0) {
+    /* Make sure that the worker isn't using any GPUs already. */
+    CHECK(worker->gpus_in_use.size() == 0);
+    /* Update the total quantity of GPU resources available. */
+    CHECK(state->dynamic_resources[ResourceIndex_GPU] >= num_gpus);
+    state->dynamic_resources[ResourceIndex_GPU] -= num_gpus;
+    /* Make sure the number of GPUs available is sufficiently large. */
+    CHECK(state->available_gpus.size() >= num_gpus);
+    /* Reserve GPUs for the worker. */
+    for (int i = 0; i < num_gpus; ++i) {
+      worker->gpus_in_use.push_back(state->available_gpus.back());
+      state->available_gpus.pop_back();
+    }
   }
 }
 
-void return_worker_resources(LocalSchedulerState *state,
-                             LocalSchedulerClient *worker,
-                             bool ignore_gpus) {
-  /* Return CPU resources. */
-  state->dynamic_resources[ResourceIndex_CPU] += worker->cpus_in_use;
+void release_resources(LocalSchedulerState *state,
+                       LocalSchedulerClient *worker,
+                       double num_cpus,
+                       double num_gpus) {
+  /* Release the CPU resources. */
+  CHECK(num_cpus == worker->cpus_in_use);
+  state->dynamic_resources[ResourceIndex_CPU] += num_cpus;
   worker->cpus_in_use = 0;
 
-  /* Return GPU resources if requested. */
-  if (!ignore_gpus) {
-    state->dynamic_resources[ResourceIndex_GPU] += worker->gpus_in_use.size();
+  /* Release the GPU resources. */
+  if (num_gpus != 0) {
+    CHECK(num_gpus == worker->gpus_in_use.size());
+    state->dynamic_resources[ResourceIndex_GPU] += num_gpus;
     /* Move the GPU IDs the worker was using back to the local scheduler. */
     for (auto const &gpu_id : worker->gpus_in_use) {
       state->available_gpus.push_back(gpu_id);
     }
     worker->gpus_in_use.clear();
   }
-  CHECK(state->available_gpus.size() ==
-        state->dynamic_resources[ResourceIndex_GPU]);
-
-  /* Check that none of the dynamic resource capacities exceed the static
-   * resource capacities. */
-  for (int i = 0; i < ResourceIndex_MAX; ++i) {
-    CHECK(state->dynamic_resources[i] <= state->static_resources[i]);
-  }
-}
-
-void acquire_worker_resources_for_task(LocalSchedulerState *state,
-                                       LocalSchedulerClient *worker) {
-  /* Get the task that the worker is running. */
-  TaskSpec *spec = Task_task_spec(worker->task_in_progress);
-  CHECK(spec != NULL);
-
-  /* Acquire enough CPUs to execute the task. */
-  bool oversubscribed = (state->dynamic_resources[ResourceIndex_CPU] < 0);
-  double num_cpus_required =
-      TaskSpec_get_required_resource(spec, ResourceIndex_CPU);
-  CHECK(worker->cpus_in_use == 0);
-  state->dynamic_resources[ResourceIndex_CPU] -= num_cpus_required;
-  worker->cpus_in_use += num_cpus_required;
-  /* Log a warning if we start using more resources than we have available. */
-  if (!oversubscribed && state->dynamic_resources[ResourceIndex_CPU] < 0) {
-    LOG_WARN("local_scheduler dynamic resources dropped to %8.4f\t%8.4f\n",
-             state->dynamic_resources[0], state->dynamic_resources[1]);
-  }
-
-  /* Acquire enough GPUs to execute the task. */
-  double num_gpus_required =
-      TaskSpec_get_required_resource(spec, ResourceIndex_GPU);
-  if (num_gpus_required != 0) {
-    /* Actor methods should not have GPU requirements. */
-    CHECK(ActorID_equal(worker->actor_id, NIL_ACTOR_ID));
-    if (worker->is_blocked) {
-      /* Blocked non-actor workers should already have the GPUs they need. */
-      CHECK(worker->gpus_in_use.size() == num_gpus_required);
-    } else {
-      /* Non-blocked non-actor workers should not already be using any GPUs. */
-      CHECK(worker->gpus_in_use.size() == 0);
-      give_gpus_to_worker(state, worker, (int) num_gpus_required);
-    }
-  }
-  CHECK(state->available_gpus.size() ==
-        state->dynamic_resources[ResourceIndex_GPU]);
 }
 
 int force_kill_worker(event_loop *loop, timer_id id, void *context) {
@@ -206,7 +171,8 @@ void kill_worker(LocalSchedulerClient *worker, bool cleanup) {
   }
 
   /* Return the resources that the worker was using, if any. */
-  return_worker_resources(state, worker, false);
+  release_resources(state, worker, (double) worker->cpus_in_use,
+                    (double) worker->gpus_in_use.size());
 
   /* Clean up the task in progress. */
   if (worker->task_in_progress) {
@@ -505,8 +471,8 @@ LocalSchedulerState *LocalSchedulerState_init(
  * @return True if there are enough CPUs and GPUs and false otherwise.
  */
 bool check_dynamic_resources(LocalSchedulerState *state,
-                             int64_t num_cpus,
-                             int64_t num_gpus) {
+                             double num_cpus,
+                             double num_gpus) {
   if (state->dynamic_resources[ResourceIndex_CPU] < num_cpus) {
     return false;
   }
@@ -546,7 +512,9 @@ void assign_task_to_worker(LocalSchedulerState *state,
   }
 
   /* Acquire the resources necessary to run the task. */
-  acquire_worker_resources_for_task(state, worker);
+  acquire_resources(state, worker,
+                    TaskSpec_get_required_resource(spec, ResourceIndex_CPU),
+                    TaskSpec_get_required_resource(spec, ResourceIndex_GPU));
 
   /* Construct the flatbuffer message to send to the worker. */
   flatbuffers::FlatBufferBuilder fbb;
@@ -831,9 +799,9 @@ void process_message(event_loop *loop,
 
       /* If there are enough GPUs available, allocate them and reply to the
        * actor. */
-      int64_t num_gpus_required = message->num_gpus();
+      double num_gpus_required = (double) message->num_gpus();
       if (check_dynamic_resources(state, 0, num_gpus_required)) {
-        give_gpus_to_worker(state, worker, num_gpus_required);
+        acquire_resources(state, worker, 0, num_gpus_required);
       } else {
         /* TODO(rkn): This means that an actor wants to register but that there
          * aren't enough GPUs for it. We should queue this request, and reply to
@@ -874,8 +842,14 @@ void process_message(event_loop *loop,
     if (worker->task_in_progress != NULL) {
       /* Return dynamic resources back for the task in progress. If the worker
        * is an actor, then we do not return GPU resources. */
-      bool ignore_gpus = !ActorID_equal(worker->actor_id, NIL_ACTOR_ID);
-      return_worker_resources(state, worker, ignore_gpus);
+      if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
+        release_resources(state, worker, (double) worker->cpus_in_use,
+                          (double) worker->gpus_in_use.size());
+      } else {
+        release_resources(state, worker, (double) worker->cpus_in_use, 0);
+      }
+
+
 
       /* If we're connected to Redis, update tables. */
       if (state->db != NULL) {
