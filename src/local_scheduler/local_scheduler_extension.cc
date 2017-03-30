@@ -54,29 +54,17 @@ static PyObject *PyLocalSchedulerClient_submit(PyObject *self, PyObject *args) {
 
 // clang-format off
 static PyObject *PyLocalSchedulerClient_get_task(PyObject *self) {
-  uint8_t *task_reply;
-  int64_t task_reply_size;
+  uint8_t *task_spec;
+  int64_t task_spec_size;
   /* Drop the global interpreter lock while we get a task because
    * local_scheduler_get_task may block for a long time. */
   Py_BEGIN_ALLOW_THREADS
-  task_reply = local_scheduler_get_task(
+  task_spec = local_scheduler_get_task(
       ((PyLocalSchedulerClient *) self)->local_scheduler_connection,
-      &task_reply_size);
+      &task_spec_size);
   Py_END_ALLOW_THREADS
 
-  /* Parse the TaskSpec from the reply. */
-  auto message = flatbuffers::GetRoot<GetTaskReply>(task_reply);
-  TaskSpec *task_spec = (TaskSpec *) message->task_spec()->data();
-  int64_t task_spec_size = message->task_spec()->size();
-
-  /* Copy the TaskSpec and give ownership of the copy to PyTask_make. This will
-   * be freed in the PyTask destructor. */
-  TaskSpec *task_spec_copy = (TaskSpec *) malloc(task_spec_size);
-  memcpy(task_spec_copy, task_spec, task_spec_size);
-
-  /* Free the task reply that was allocated by local_scheduler_get_task. */
-  free(task_reply);
-  return PyTask_make(task_spec_copy, task_spec_size);
+  return PyTask_make(task_spec, task_spec_size);
 }
 // clang-format on
 

@@ -7,6 +7,8 @@
 #include <sys/socket.h>
 #include <sys/wait.h>
 
+#include <thread>
+
 #include "common.h"
 #include "test/test_common.h"
 #include "test/example_task.h"
@@ -53,6 +55,20 @@ typedef struct {
   /** Local scheduler client connections. */
   LocalSchedulerConnection **conns;
 } LocalSchedulerMock;
+
+static void register_clients(int num_mock_workers,
+                             LocalSchedulerMock *mock) {
+  for (int i = 0; i < num_mock_workers; ++i) {
+    new_client_connection(mock->loop, mock->local_scheduler_fd,
+                          (void *) mock->local_scheduler_state, 0);
+
+    LocalSchedulerClient **worker = (LocalSchedulerClient **) utarray_eltptr(
+        mock->local_scheduler_state->workers, i);
+
+    process_message(mock->local_scheduler_state->loop, (*worker)->sock,
+                    *worker, 0);
+  }
+}
 
 LocalSchedulerMock *LocalSchedulerMock_init(int num_workers,
                                             int num_mock_workers) {
@@ -101,12 +117,16 @@ LocalSchedulerMock *LocalSchedulerMock_init(int num_workers,
   mock->num_local_scheduler_conns = num_mock_workers;
   mock->conns = (LocalSchedulerConnection **) malloc(
       sizeof(LocalSchedulerConnection *) * num_mock_workers);
+
+  std::thread background_thread = std::thread(register_clients,
+                                              num_mock_workers, mock);
+
   for (int i = 0; i < num_mock_workers; ++i) {
     mock->conns[i] = LocalSchedulerConnection_init(
         utstring_body(local_scheduler_socket_name), NIL_ACTOR_ID, true, 0);
-    new_client_connection(mock->loop, mock->local_scheduler_fd,
-                          (void *) mock->local_scheduler_state, 0);
   }
+
+  background_thread.join();
 
   utstring_free(worker_command);
   utstring_free(plasma_manager_socket_name);

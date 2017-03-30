@@ -849,8 +849,6 @@ void process_message(event_loop *loop,
         release_resources(state, worker, (double) worker->cpus_in_use, 0);
       }
 
-
-
       /* If we're connected to Redis, update tables. */
       if (state->db != NULL) {
         /* Update control state tables. */

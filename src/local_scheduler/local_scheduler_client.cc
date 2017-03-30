@@ -88,27 +88,40 @@ TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
   write_message(conn->conn, MessageType_GetTask, 0, NULL);
   int64_t type;
   uint8_t *task_reply;
+  int64_t task_reply_size;
   /* Receive a task from the local scheduler. This will block until the local
    * scheduler gives this client a task. */
-  read_message(conn->conn, &type, task_size, &task_reply);
+  read_message(conn->conn, &type, &task_reply_size, &task_reply);
   if (type == DISCONNECT_CLIENT) {
     LOG_WARN("Exiting because local scheduler closed connection.");
     exit(1);
   }
   CHECK(type == MessageType_ExecuteTask);
 
+  /* Parse the task reply as a flatbuffer object. */
+  auto message = flatbuffers::GetRoot<GetTaskReply>(task_reply);
+
   /* Set the GPU IDs for this task. We only do this for non-actor tasks because
    * for actors the GPUs are associated with the actor itself and not with the
    * actor methods. */
   if (ActorID_equal(conn->actor_id, NIL_ACTOR_ID)) {
-    auto message = flatbuffers::GetRoot<GetTaskReply>(task_reply);
     conn->gpu_ids.clear();
     for (int i = 0; i < message->gpu_ids()->size(); ++i) {
       conn->gpu_ids.push_back(message->gpu_ids()->Get(i));
     }
   }
 
-  return task_reply;
+  /* Parse the TaskSpec from the reply. */
+  TaskSpec *task_spec = (TaskSpec *) message->task_spec()->data();
+  *task_size = message->task_spec()->size();
+  /* Copy the TaskSpec and give ownership of the caller. */
+  TaskSpec *task_spec_copy = (TaskSpec *) malloc(*task_size);
+  memcpy(task_spec_copy, task_spec, *task_size);
+
+  /* Free the task reply that was allocated by local_scheduler_get_task. */
+  free(task_reply);
+
+  return task_spec_copy;
 }
 
 void local_scheduler_task_done(LocalSchedulerConnection *conn) {

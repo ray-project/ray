@@ -331,8 +331,8 @@ void dispatch_actor_task(LocalSchedulerState *state,
 
   /* Check that there are enough resources to run the task. */
   if (!check_dynamic_resources(
-          state, TaskSpec_get_required_resource(first_task.spec,
-                                                ResourceIndex_CPU),
+          state,
+          TaskSpec_get_required_resource(first_task.spec, ResourceIndex_CPU),
           TaskSpec_get_required_resource(first_task.spec, ResourceIndex_GPU))) {
     /* TODO(rkn): When we change actor methods to respect dynamic resource
      * constraints, we should return early here. */
