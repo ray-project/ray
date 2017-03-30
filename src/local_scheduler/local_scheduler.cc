@@ -64,16 +64,16 @@ void give_gpus_to_worker(LocalSchedulerState *state,
                          int num_gpus) {
   /* Make sure that the worker we are about to give GPUs to isn't using any GPUs
    * already. */
-  CHECK(worker->gpus_in_use->size() == 0);
+  CHECK(worker->gpus_in_use.size() == 0);
   /* Update the total quantity of GPU resources available. */
   CHECK(state->dynamic_resources[ResourceIndex_GPU] >= num_gpus);
   state->dynamic_resources[ResourceIndex_GPU] -= num_gpus;
   /* Make sure the number of GPUs available is sufficiently large. */
-  CHECK(state->available_gpus->size() >= num_gpus);
+  CHECK(state->available_gpus.size() >= num_gpus);
   /* Reserve GPUs for the worker. */
   for (int i = 0; i < num_gpus; ++i) {
-    worker->gpus_in_use->push_back(state->available_gpus->back());
-    state->available_gpus->pop_back();
+    worker->gpus_in_use.push_back(state->available_gpus.back());
+    state->available_gpus.pop_back();
   }
 }
 
@@ -86,14 +86,14 @@ void return_worker_resources(LocalSchedulerState *state,
 
   /* Return GPU resources if requested. */
   if (!ignore_gpus) {
-    state->dynamic_resources[ResourceIndex_GPU] += worker->gpus_in_use->size();
+    state->dynamic_resources[ResourceIndex_GPU] += worker->gpus_in_use.size();
     /* Move the GPU IDs the worker was using back to the local scheduler. */
-    for (auto const &gpu_id : *worker->gpus_in_use) {
-      state->available_gpus->push_back(gpu_id);
+    for (auto const &gpu_id : worker->gpus_in_use) {
+      state->available_gpus.push_back(gpu_id);
     }
-    worker->gpus_in_use->clear();
+    worker->gpus_in_use.clear();
   }
-  CHECK(state->available_gpus->size() ==
+  CHECK(state->available_gpus.size() ==
         state->dynamic_resources[ResourceIndex_GPU]);
 
   /* Check that none of the dynamic resource capacities exceed the static
@@ -130,14 +130,14 @@ void acquire_worker_resources_for_task(LocalSchedulerState *state,
     CHECK(ActorID_equal(worker->actor_id, NIL_ACTOR_ID));
     if (worker->is_blocked) {
       /* Blocked non-actor workers should already have the GPUs they need. */
-      CHECK(worker->gpus_in_use->size() == num_gpus_required);
+      CHECK(worker->gpus_in_use.size() == num_gpus_required);
     } else {
       /* Non-blocked non-actor workers should not already be using any GPUs. */
-      CHECK(worker->gpus_in_use->size() == 0);
+      CHECK(worker->gpus_in_use.size() == 0);
       give_gpus_to_worker(state, worker, (int) num_gpus_required);
     }
   }
-  CHECK(state->available_gpus->size() ==
+  CHECK(state->available_gpus.size() ==
         state->dynamic_resources[ResourceIndex_GPU]);
 }
 
@@ -219,15 +219,12 @@ void kill_worker(LocalSchedulerClient *worker, bool cleanup) {
     }
   }
 
-  /* Free the vector of GPUs in use. */
-  delete worker->gpus_in_use;
-
   LOG_DEBUG("Killed worker with pid %d", worker->pid);
   if (free_worker) {
     /* Clean up the client socket after killing the worker so that the worker
      * can't receive the SIGPIPE before exiting. */
     close(worker->sock);
-    free(worker);
+    delete worker;
   }
 }
 
@@ -298,13 +295,11 @@ void LocalSchedulerState_free(LocalSchedulerState *state) {
   /* Free the input buffer. */
   utarray_free(state->input_buffer);
   state->input_buffer = NULL;
-  /* Delete the vector of available GPUs. */
-  delete state->available_gpus;
   /* Destroy the event loop. */
   event_loop_destroy(state->loop);
   state->loop = NULL;
   /* Free the scheduler state. */
-  free(state);
+  delete state;
 }
 
 /**
@@ -404,8 +399,7 @@ LocalSchedulerState *LocalSchedulerState_init(
     const double static_resource_conf[],
     const char *start_worker_command,
     int num_workers) {
-  LocalSchedulerState *state =
-      (LocalSchedulerState *) malloc(sizeof(LocalSchedulerState));
+  LocalSchedulerState *state = new LocalSchedulerState;
   /* Set the configuration struct for the local scheduler. */
   if (start_worker_command != NULL) {
     state->config.start_worker_command = parse_command(start_worker_command);
@@ -487,9 +481,8 @@ LocalSchedulerState *LocalSchedulerState_init(
         static_resource_conf[i];
   }
   /* Initialize available GPUs. */
-  state->available_gpus = new std::vector<int>();
   for (int i = 0; i < state->static_resources[ResourceIndex_GPU]; ++i) {
-    state->available_gpus->push_back(i);
+    state->available_gpus.push_back(i);
   }
   /* Print some debug information about resource configuration. */
   print_resource_info(state, NULL);
@@ -559,7 +552,7 @@ void assign_task_to_worker(LocalSchedulerState *state,
   flatbuffers::FlatBufferBuilder fbb;
   auto message =
       CreateGetTaskReply(fbb, fbb.CreateString((char *) spec, task_spec_size),
-                         fbb.CreateVector(*worker->gpus_in_use));
+                         fbb.CreateVector(worker->gpus_in_use));
   fbb.Finish(message);
 
   /* Send the message to the local scheduler. */
@@ -591,7 +584,7 @@ void send_register_worker_reply(LocalSchedulerState *state,
   /* Construct the flatbuffer object to send to the worker. */
   flatbuffers::FlatBufferBuilder fbb;
   auto message =
-      CreateRegisterWorkerReply(fbb, fbb.CreateVector(*worker->gpus_in_use));
+      CreateRegisterWorkerReply(fbb, fbb.CreateVector(worker->gpus_in_use));
   fbb.Finish(message);
 
   /* Send the message to the worker. */
@@ -961,12 +954,10 @@ void new_client_connection(event_loop *loop,
   int new_socket = accept_client(listener_sock);
   /* Create a struct for this worker. This will be freed when we free the local
    * scheduler state. */
-  LocalSchedulerClient *worker =
-      (LocalSchedulerClient *) malloc(sizeof(LocalSchedulerClient));
+  LocalSchedulerClient *worker = new LocalSchedulerClient;
   worker->sock = new_socket;
   worker->task_in_progress = NULL;
   worker->cpus_in_use = 0;
-  worker->gpus_in_use = new std::vector<int>();
   worker->is_blocked = false;
   worker->pid = 0;
   worker->is_child = false;

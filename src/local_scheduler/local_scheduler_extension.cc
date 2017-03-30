@@ -130,12 +130,12 @@ static PyObject *PyLocalSchedulerClient_compute_put_id(PyObject *self,
 
 static PyObject *PyLocalSchedulerClient_gpu_ids(PyObject *self) {
   /* Construct a Python list of GPU IDs. */
-  std::vector<int> *gpu_ids =
+  std::vector<int> gpu_ids =
       ((PyLocalSchedulerClient *) self)->local_scheduler_connection->gpu_ids;
-  int num_gpu_ids = gpu_ids->size();
+  int num_gpu_ids = gpu_ids.size();
   PyObject *gpu_ids_list = PyList_New((Py_ssize_t) num_gpu_ids);
   for (int i = 0; i < num_gpu_ids; ++i) {
-    PyList_SetItem(gpu_ids_list, i, PyLong_FromLong((*gpu_ids)[i]));
+    PyList_SetItem(gpu_ids_list, i, PyLong_FromLong(gpu_ids[i]));
   }
   return gpu_ids_list;
 }

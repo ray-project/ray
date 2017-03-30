@@ -69,7 +69,7 @@ typedef struct {
    *  scheduler. */
   double dynamic_resources[ResourceIndex_MAX];
   /** The IDs of the available GPUs. */
-  std::vector<int> *available_gpus;
+  std::vector<int> available_gpus;
 } LocalSchedulerState;
 
 /** Contains all information associated with a local scheduler client. */
@@ -91,7 +91,7 @@ typedef struct {
    *  constant for the duration of a task and will have length equal to the
    *  number of GPUs requested by the task (in particular it will not change
    *  if the task blocks). */
-  std::vector<int> *gpus_in_use;
+  std::vector<int> gpus_in_use;
   /** A flag to indicate whether this worker is currently blocking on an
    *  object(s) that isn't available locally yet. */
   bool is_blocked;

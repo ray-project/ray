@@ -12,11 +12,9 @@ LocalSchedulerConnection *LocalSchedulerConnection_init(
     ActorID actor_id,
     bool is_worker,
     int64_t num_gpus) {
-  LocalSchedulerConnection *result =
-      (LocalSchedulerConnection *) malloc(sizeof(LocalSchedulerConnection));
+  LocalSchedulerConnection *result = new LocalSchedulerConnection;
   result->conn = connect_ipc_sock_retry(local_scheduler_socket, -1, -1);
   result->actor_id = actor_id;
-  result->gpu_ids = new std::vector<int>();
 
   if (is_worker) {
     /* If we are a worker, register with the local scheduler.
@@ -48,7 +46,7 @@ LocalSchedulerConnection *LocalSchedulerConnection_init(
      * worker. */
     auto reply_message = flatbuffers::GetRoot<RegisterWorkerReply>(reply);
     for (int i = 0; i < reply_message->gpu_ids()->size(); ++i) {
-      result->gpu_ids->push_back(reply_message->gpu_ids()->Get(i));
+      result->gpu_ids.push_back(reply_message->gpu_ids()->Get(i));
     }
     /* If the worker is not an actor, there should not be any GPU IDs here. */
     if (ActorID_equal(actor_id, NIL_ACTOR_ID)) {
@@ -61,8 +59,7 @@ LocalSchedulerConnection *LocalSchedulerConnection_init(
 
 void LocalSchedulerConnection_free(LocalSchedulerConnection *conn) {
   close(conn->conn);
-  delete conn->gpu_ids;
-  free(conn);
+  delete conn;
 }
 
 void local_scheduler_log_event(LocalSchedulerConnection *conn,
@@ -105,9 +102,9 @@ TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
    * actor methods. */
   if (ActorID_equal(conn->actor_id, NIL_ACTOR_ID)) {
     auto message = flatbuffers::GetRoot<GetTaskReply>(task_reply);
-    conn->gpu_ids->clear();
+    conn->gpu_ids.clear();
     for (int i = 0; i < message->gpu_ids()->size(); ++i) {
-      conn->gpu_ids->push_back(message->gpu_ids()->Get(i));
+      conn->gpu_ids.push_back(message->gpu_ids()->Get(i));
     }
   }
 

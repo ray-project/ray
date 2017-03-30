@@ -12,7 +12,7 @@ typedef struct {
    *  should be NIL_ACTOR_ID. */
   ActorID actor_id;
   /** The IDs of the GPUs that this client can use. */
-  std::vector<int> *gpu_ids;
+  std::vector<int> gpu_ids;
 } LocalSchedulerConnection;
 
 /**
