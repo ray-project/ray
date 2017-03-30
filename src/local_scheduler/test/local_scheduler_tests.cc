@@ -65,8 +65,8 @@ static void register_clients(int num_mock_workers,
     LocalSchedulerClient **worker = (LocalSchedulerClient **) utarray_eltptr(
         mock->local_scheduler_state->workers, i);
 
-    process_message(mock->local_scheduler_state->loop, (*worker)->sock,
-                    *worker, 0);
+    process_message(mock->local_scheduler_state->loop, (*worker)->sock, *worker,
+                    0);
   }
 }
 
@@ -118,8 +118,8 @@ LocalSchedulerMock *LocalSchedulerMock_init(int num_workers,
   mock->conns = (LocalSchedulerConnection **) malloc(
       sizeof(LocalSchedulerConnection *) * num_mock_workers);
 
-  std::thread background_thread = std::thread(register_clients,
-                                              num_mock_workers, mock);
+  std::thread background_thread =
+      std::thread(register_clients, num_mock_workers, mock);
 
   for (int i = 0; i < num_mock_workers; ++i) {
     mock->conns[i] = LocalSchedulerConnection_init(

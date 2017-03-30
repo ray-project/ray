@@ -46,7 +46,7 @@ class TestLocalSchedulerClient(unittest.TestCase):
         plasma_store_name, use_valgrind=USE_VALGRIND)
     # Connect to the scheduler.
     self.local_scheduler_client = local_scheduler.LocalSchedulerClient(
-        scheduler_name, NIL_ACTOR_ID, False)
+        scheduler_name, NIL_ACTOR_ID, False, 0)
 
   def tearDown(self):
     # Check that the processes are still alive.
