@@ -31,7 +31,7 @@ typedef struct {
    * the tasks in the waiting queue. Each element is actually store a reference
    * to the corresponding task's queue entry in waiting queue, for fast
    * deletion when all of the task's dependencies become available. */
-  std::vector<std::list<TaskQueueEntry>::const_iterator> *dependent_tasks;
+  std::vector<std::list<TaskQueueEntry>::iterator> *dependent_tasks;
   /** Handle for the uthash table. NOTE: This handle is used for both the
    *  scheduling algorithm state's local_objects and remote_objects tables.
    *  We must enforce the uthash invariant that the entry be in at most one of
@@ -456,11 +456,10 @@ bool dispatch_actor_task(LocalSchedulerState *state,
  * @param obj_id The ID of the object that the task is dependent on.
  * @returns Void.
  */
-void fetch_missing_dependency(
-    LocalSchedulerState *state,
-    SchedulingAlgorithmState *algorithm_state,
-    std::list<TaskQueueEntry>::const_iterator task_entry_it,
-    ObjectID obj_id) {
+void fetch_missing_dependency(LocalSchedulerState *state,
+                              SchedulingAlgorithmState *algorithm_state,
+                              std::list<TaskQueueEntry>::iterator task_entry_it,
+                              ObjectID obj_id) {
   object_entry *entry;
   HASH_FIND(hh, algorithm_state->remote_objects, &obj_id, sizeof(obj_id),
             entry);
@@ -478,7 +477,7 @@ void fetch_missing_dependency(
     entry = (object_entry *) malloc(sizeof(object_entry));
     entry->object_id = obj_id;
     entry->dependent_tasks =
-        new std::vector<std::list<TaskQueueEntry>::const_iterator>();
+        new std::vector<std::list<TaskQueueEntry>::iterator>();
     HASH_ADD(hh, algorithm_state->remote_objects, object_id,
              sizeof(entry->object_id), entry);
   }
@@ -498,7 +497,7 @@ void fetch_missing_dependency(
 void fetch_missing_dependencies(
     LocalSchedulerState *state,
     SchedulingAlgorithmState *algorithm_state,
-    std::list<TaskQueueEntry>::const_iterator task_entry_it) {
+    std::list<TaskQueueEntry>::iterator task_entry_it) {
   TaskSpec *task = task_entry_it->spec;
   int64_t num_args = TaskSpec_num_args(task);
   int num_missing_dependencies = 0;
@@ -1166,7 +1165,7 @@ void handle_object_available(LocalSchedulerState *state,
     entry = (object_entry *) malloc(sizeof(object_entry));
     entry->object_id = object_id;
     entry->dependent_tasks =
-        new std::vector<std::list<TaskQueueEntry>::const_iterator>();
+        new std::vector<std::list<TaskQueueEntry>::iterator>();
   }
 
   /* Add the entry to the set of locally available objects. */
