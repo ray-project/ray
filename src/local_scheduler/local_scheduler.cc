@@ -59,14 +59,35 @@ void print_resource_info(const LocalSchedulerState *state,
 #endif
 }
 
+bool check_dynamic_resources(LocalSchedulerState *state,
+                             double num_cpus,
+                             double num_gpus) {
+  if (num_cpus > 0 && state->dynamic_resources[ResourceIndex_CPU] < num_cpus) {
+    /* We only use this check when num_cpus is positive so that we can still
+     * create actors even when the CPUs are oversubscribed. */
+    return false;
+  }
+  if (state->dynamic_resources[ResourceIndex_GPU] < num_gpus) {
+    return false;
+  }
+  return true;
+}
+
 void acquire_resources(LocalSchedulerState *state,
                        LocalSchedulerClient *worker,
                        double num_cpus,
                        double num_gpus) {
   /* Acquire the CPU resources. */
+  bool oversubscribed = (state->dynamic_resources[ResourceIndex_CPU] < 0);
   state->dynamic_resources[ResourceIndex_CPU] -= num_cpus;
   CHECK(worker->cpus_in_use == 0);
   worker->cpus_in_use += num_cpus;
+  /* Log a warning if we are using more resources than we have been allocated,
+   * and we weren't already oversubscribed. */
+  if (!oversubscribed && state->dynamic_resources[ResourceIndex_CPU] < 0) {
+    LOG_WARN("local_scheduler dynamic resources dropped to %8.4f\t%8.4f\n",
+             state->dynamic_resources[0], state->dynamic_resources[1]);
+  }
 
   /* Acquire the GPU resources. */
   if (num_gpus != 0) {
@@ -460,38 +481,6 @@ LocalSchedulerState *LocalSchedulerState_init(
   }
 
   return state;
-}
-
-/**
- * Check if a certain quantity of dynamic resources are available.
- *
- * @param state The state of the local scheduler.
- * @param num_cpus Check if this many CPUs are available.
- * @param num_gpus Check if this many GPUs are available.
- * @return True if there are enough CPUs and GPUs and false otherwise.
- */
-bool check_dynamic_resources(LocalSchedulerState *state,
-                             double num_cpus,
-                             double num_gpus) {
-  if (state->dynamic_resources[ResourceIndex_CPU] < num_cpus) {
-    return false;
-  }
-  if (state->dynamic_resources[ResourceIndex_GPU] < num_gpus) {
-    return false;
-  }
-  return true;
-}
-
-bool sufficient_resources_for_task(LocalSchedulerState *state, TaskSpec *spec) {
-  bool sufficient_resources = true;
-  for (int i = 0; i < ResourceIndex_MAX; i++) {
-    if (TaskSpec_get_required_resource(spec, i) > state->dynamic_resources[i]) {
-      /* There are not enough resources for this task. */
-      sufficient_resources = false;
-      break;
-    }
-  }
-  return sufficient_resources;
 }
 
 void assign_task_to_worker(LocalSchedulerState *state,
