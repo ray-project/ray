@@ -47,7 +47,7 @@ Status get_batch_size(std::shared_ptr<RecordBatch> batch, int64_t* size) {
   auto mock = std::make_shared<MockBufferStream>();
   std::shared_ptr<arrow::ipc::FileWriter> writer;
   RETURN_NOT_OK(ipc::FileWriter::Open(mock.get(), batch->schema(), &writer));
-  RETURN_NOT_OK(writer->WriteRecordBatch(*batch));
+  RETURN_NOT_OK(writer->WriteRecordBatch(*batch, true));
   RETURN_NOT_OK(writer->Close());
   RETURN_NOT_OK(mock->Tell(size));
   return Status::OK();
@@ -137,7 +137,7 @@ static PyObject* write_to_buffer(PyObject* self, PyObject* args) {
       buffer->len - LENGTH_PREFIX_SIZE);
   std::shared_ptr<arrow::ipc::FileWriter> writer;
   ARROW_CHECK_OK(ipc::FileWriter::Open(target.get(), (*batch)->schema(), &writer));
-  ARROW_CHECK_OK(writer->WriteRecordBatch(*(*batch)));
+  ARROW_CHECK_OK(writer->WriteRecordBatch(*(*batch), true));
   ARROW_CHECK_OK(writer->Close());
   *((int64_t*)buffer->buf) = buffer->len - LENGTH_PREFIX_SIZE;
   Py_RETURN_NONE;
@@ -278,7 +278,7 @@ static PyObject* store_list(PyObject* self, PyObject* args) {
   auto target = std::make_shared<FixedBufferStream>(LENGTH_PREFIX_SIZE + data, size);
   std::shared_ptr<arrow::ipc::FileWriter> writer;
   ipc::FileWriter::Open(target.get(), batch->schema(), &writer);
-  writer->WriteRecordBatch(*batch);
+  writer->WriteRecordBatch(*batch, true);
   writer->Close();
   *((int64_t*)data) = size;
 
