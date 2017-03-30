@@ -275,6 +275,19 @@ double TaskSpec_get_required_resource(const TaskSpec *spec,
   return message->required_resources()->Get(resource_index);
 }
 
+bool TaskSpec_is_dependent_on(TaskSpec *spec, ObjectID object_id) {
+  int64_t num_args = TaskSpec_num_args(spec);
+  for (int i = 0; i < num_args; ++i) {
+    if (TaskSpec_arg_by_ref(spec, i)) {
+      ObjectID arg_id = TaskSpec_arg_id(spec, i);
+      if (ObjectID_equal(arg_id, object_id)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 void TaskSpec_free(TaskSpec *spec) {
   free(spec);
 }

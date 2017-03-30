@@ -264,6 +264,16 @@ double TaskSpec_get_required_resource(const TaskSpec *spec,
                                       int64_t resource_index);
 
 /**
+ * Compute whether the task is dependent on an object ID.
+ *
+ * @param spec Task specification.
+ * @param object_id The object ID that the task may be dependent on.
+ * @return bool This returns true if the task is dependent on the given object
+ *         ID and false otherwise.
+ */
+bool TaskSpec_is_dependent_on(TaskSpec *spec, ObjectID object_id);
+
+/**
  * Compute the object id associated to a put call.
  *
  * @param task_id The task id of the parent task that called the put.
