@@ -59,8 +59,8 @@ Status read_batch(uint8_t* data, int64_t size, std::shared_ptr<RecordBatch>* bat
   auto source = std::make_shared<FixedBufferStream>(
       LENGTH_PREFIX_SIZE + data, size - LENGTH_PREFIX_SIZE);
   int64_t data_size = *((int64_t*)data);
-  arrow::ipc::FileReader::Open(source, data_size, &reader);
-  reader->GetRecordBatch(0, batch_out);
+  RETURN_NOT_OK(arrow::ipc::FileReader::Open(source, data_size, &reader));
+  RETURN_NOT_OK(reader->GetRecordBatch(0, batch_out));
   return Status::OK();
 }
 
