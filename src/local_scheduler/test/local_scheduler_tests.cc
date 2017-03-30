@@ -277,7 +277,7 @@ TEST object_reconstruction_recursive_test(void) {
     handle_object_available(
         local_scheduler->local_scheduler_state,
         local_scheduler->local_scheduler_state->algorithm_state, arg_id);
-    specs[i] = example_task_spec_with_args(1, 1, &arg_id, &task_sizes[i]);
+    specs[i] = example_task_spec_with_args(1, 1, &arg_id, 0, &task_sizes[i]);
   }
 
   /* Add an empty object table entry for each object we want to reconstruct, to
@@ -602,6 +602,68 @@ TEST task_multi_dependency_test(void) {
   PASS();
 }
 
+TEST task_submit_depth_test(void) {
+  LocalSchedulerMock *local_scheduler = LocalSchedulerMock_init(0, 1);
+  LocalSchedulerState *state = local_scheduler->local_scheduler_state;
+  SchedulingAlgorithmState *algorithm_state = state->algorithm_state;
+  /* Get the first worker. */
+  LocalSchedulerClient *worker =
+      *((LocalSchedulerClient **) utarray_eltptr(state->workers, 0));
+
+  /* Create NUM_TASK tasks, with submit depths from 0 to NUM_TASKS - 1. */
+  const int NUM_TASKS = 10;
+  TaskSpec *specs[NUM_TASKS];
+  int64_t task_sizes[NUM_TASKS];
+  for (int i = 0; i < NUM_TASKS; ++i) {
+    specs[i] = example_task_spec_with_submit_depth(1, 1, i, &task_sizes[i]);
+  }
+
+  /* Submit a round of tasks. */
+  for (int i = 0; i < NUM_TASKS; ++i) {
+    handle_task_submitted(state, algorithm_state, specs[i], task_sizes[i]);
+  }
+  /* Check that the tasks get queued in the waiting queue. */
+  ASSERT_EQ(num_waiting_tasks(algorithm_state), NUM_TASKS);
+  ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
+
+  /* Make the inputs available in reverse order of submit depth. */
+  for (int i = NUM_TASKS - 1; i >= 0; --i) {
+    handle_object_available(state, algorithm_state,
+                            TaskSpec_arg_id(specs[i], 0));
+  }
+  /* Check that the tasks get moved to the dispatch queue. */
+  ASSERT_EQ(num_waiting_tasks(algorithm_state), 0);
+  ASSERT_EQ(num_dispatch_tasks(algorithm_state), NUM_TASKS);
+
+  /* Submit a second round of tasks, in reverse order of submit depth. */
+  for (int i = NUM_TASKS - 1; i >= 0; --i) {
+    handle_task_submitted(state, algorithm_state, specs[i], task_sizes[i]);
+  }
+  /* Check that the tasks were added directly to the dispatch queue. */
+  ASSERT_EQ(num_waiting_tasks(algorithm_state), 0);
+  ASSERT_EQ(num_dispatch_tasks(algorithm_state), 2 * NUM_TASKS);
+
+  /* Dispatch all tasks to a worker. Check that tasks are assigned in order of
+   * submit depth. There should be a total of 2 * NUM_TASKS, with submit depths
+   * from 0 to NUM_TASKS - 1, two tasks each. */
+  for (int i = 0; i < 2 * NUM_TASKS; ++i) {
+    ASSERT_EQ(num_dispatch_tasks(algorithm_state), 2 * NUM_TASKS - i);
+    handle_worker_available(state, algorithm_state, worker);
+    TaskSpec *spec_assigned = Task_task_spec(worker->task_in_progress);
+    /* Check that there are two tasks each with this submit depth. */
+    ASSERT_EQ(TaskSpec_submit_depth(spec_assigned), i / 2);
+    reset_worker(local_scheduler, worker);
+  }
+  ASSERT_EQ(num_dispatch_tasks(algorithm_state), 0);
+
+  /* Clean up. */
+  for (int i = 0; i < NUM_TASKS; ++i) {
+    TaskSpec_free(specs[i]);
+  }
+  LocalSchedulerMock_free(local_scheduler);
+  PASS();
+}
+
 TEST start_kill_workers_test(void) {
   /* Start some workers. */
   int num_workers = 4;
@@ -680,6 +742,7 @@ SUITE(local_scheduler_tests) {
   RUN_REDIS_TEST(object_reconstruction_suppression_test);
   RUN_REDIS_TEST(task_dependency_test);
   RUN_REDIS_TEST(task_multi_dependency_test);
+  RUN_REDIS_TEST(task_submit_depth_test);
   RUN_REDIS_TEST(start_kill_workers_test);
 }
 
