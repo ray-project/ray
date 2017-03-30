@@ -28,9 +28,9 @@ typedef struct {
   /** Object id of this object. */
   ObjectID object_id;
   /** A vector of tasks dependent on this object. These tasks are a subset of
-   *  the tasks in the waiting queue. Each element is actually store a
-   *  reference to the corresponding task's queue entry in waiting queue, for
-   *  fast deletion when all of the task's dependencies become available. */
+   *  the tasks in the waiting queue. Each element actually stores a reference
+   *  to the corresponding task's queue entry in waiting queue, for fast
+   *  deletion when all of the task's dependencies become available. */
   std::vector<std::list<TaskQueueEntry>::iterator> *dependent_tasks;
   /** Handle for the uthash table. NOTE: This handle is used for both the
    *  scheduling algorithm state's local_objects and remote_objects tables.
@@ -583,8 +583,8 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
 void dispatch_tasks(LocalSchedulerState *state,
                     SchedulingAlgorithmState *algorithm_state) {
   /* Assign as many tasks as we can, while there are workers available. */
-  auto it = algorithm_state->dispatch_task_queue->begin();
-  while (it != algorithm_state->dispatch_task_queue->end()) {
+  for (auto it = algorithm_state->dispatch_task_queue->begin();
+       it != algorithm_state->dispatch_task_queue->end();) {
     TaskQueueEntry task = *it;
     /* If there is a task to assign, but there are no more available workers in
      * the worker pool, then exit. Ensure that there will be an available
