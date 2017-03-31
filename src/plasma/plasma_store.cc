@@ -42,6 +42,7 @@ extern "C" {
 void *dlmalloc(size_t);
 void *dlmemalign(size_t alignment, size_t bytes);
 void dlfree(void *);
+size_t dlmalloc_set_footprint_limit(size_t bytes);
 }
 
 /** Contains all information that is associated with a Plasma store client. */
@@ -240,6 +241,10 @@ int create_object(Client *client_context,
    * 64-byte aligned, but in practice it often will be. */
   uint8_t *pointer =
       (uint8_t *) dlmemalign(BLOCK_SIZE, data_size + metadata_size);
+  if (pointer == NULL) {
+    printf("allocation failed\n");
+    abort();
+  }
   int fd;
   int64_t map_size;
   ptrdiff_t offset;
@@ -938,6 +943,8 @@ int main(int argc, char *argv[]) {
         system_memory, shm_mem_avail);
   }
 #endif
+  /* Make it so dlmalloc fails if we try to request more memory than is available. */
+  dlmalloc_set_footprint_limit(system_memory);
   LOG_DEBUG("starting server listening on %s", socket_name);
   start_server(socket_name, system_memory);
 }
