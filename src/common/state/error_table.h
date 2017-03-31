@@ -28,8 +28,7 @@ typedef enum {
 
 /** Information about the error to be displayed to the user. */
 static const char *error_types[] = {"object_hash_mismatch",
-                                    "put_reconstruction",
-                                    "worker_died"};
+                                    "put_reconstruction", "worker_died"};
 static const char *error_messages[] = {
     "A nondeterministic task was reexecuted.",
     "An object created by ray.put was evicted and could not be reconstructed. "
