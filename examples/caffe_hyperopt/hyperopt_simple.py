@@ -16,7 +16,8 @@ parser.add_argument("--redis-address", default=None, type=str, help="The Redis a
 if __name__ == "__main__":
   args = parser.parse_args()
 
-  ray.init(redis_address=args.redis_address)
+  # Suppressing caffe output on workers. To see output, set redirect_output to false.
+  ray.init(redis_address=args.redis_address, redirect_output=True)
 
   # The number of sets of random hyperparameters to try.
   trials = args.trials
@@ -36,7 +37,8 @@ if __name__ == "__main__":
   # A function for generating random hyperparameters.
   def generate_hyperparameters():
     return {"learning_rate": 10 ** np.random.uniform(-3, -1),
-            "batch_size": np.random.randint(1, 100)}
+            "batch_size": np.random.randint(1, 100),
+            "inner_output": np.random.randint(100, 1000)}
 
   # Randomly generate some hyperparameters, and launch a task for each set.
   for i in range(trials):
@@ -58,9 +60,11 @@ if __name__ == "__main__":
     print("""We achieve accuracy {:.3}% with
         learning_rate: {:.2}
         batch_size: {}
+        inner_output: {}
       """.format(100 * accuracy,
                  hyperparameters["learning_rate"],
-                 hyperparameters["batch_size"]))
+                 hyperparameters["batch_size"],
+                 hyperparameters["inner_output"]))
     if accuracy > best_accuracy:
       best_hyperparameters = hyperparameters
       best_accuracy = accuracy
@@ -69,6 +73,8 @@ if __name__ == "__main__":
   print("""Best accuracy over {} trials was {:.3} with
         learning_rate: {:.2}
         batch_size: {}
+        inner_output: {}
     """.format(trials, 100 * best_accuracy,
                best_hyperparameters["learning_rate"],
-               best_hyperparameters["batch_size"]))
+               best_hyperparameters["batch_size"],
+               best_hyperparameters["inner_output"]))
