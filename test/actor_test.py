@@ -747,6 +747,7 @@ class ActorsWithGPUs(unittest.TestCase):
     ray.worker._init(
         start_ray_local=True, num_workers=0,
         num_local_schedulers=num_local_schedulers,
+        num_cpus=num_gpus_per_scheduler,
         num_gpus=(num_local_schedulers * [num_gpus_per_scheduler]))
 
     def check_intervals_non_overlapping(list_of_intervals):
@@ -878,7 +879,7 @@ class ActorsWithGPUs(unittest.TestCase):
   def testActorsAndTasksWithGPUsVersionTwo(self):
     # Create tasks and actors that both use GPUs and make sure that they are
     # given different GPUs
-    ray.init(num_gpus=10)
+    ray.init(num_cpus=10, num_gpus=10)
 
     @ray.remote(num_gpus=1)
     def f():
