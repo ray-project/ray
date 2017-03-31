@@ -607,8 +607,7 @@ TEST task_submit_depth_test(void) {
   LocalSchedulerState *state = local_scheduler->local_scheduler_state;
   SchedulingAlgorithmState *algorithm_state = state->algorithm_state;
   /* Get the first worker. */
-  LocalSchedulerClient *worker =
-      *((LocalSchedulerClient **) utarray_eltptr(state->workers, 0));
+  LocalSchedulerClient *worker = state->workers.front();
 
   /* Create NUM_TASK tasks, with submit depths from 0 to NUM_TASKS - 1. */
   const int NUM_TASKS = 10;

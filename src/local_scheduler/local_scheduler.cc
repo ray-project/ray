@@ -594,6 +594,11 @@ void finish_task(LocalSchedulerState *state, LocalSchedulerClient *worker) {
     }
     worker->task_in_progress = NULL;
   }
+
+  if (worker->parent_worker != NULL) {
+    worker->parent_worker->child_worker = NULL;
+    worker->parent_worker = NULL;
+  }
 }
 
 void process_plasma_notification(event_loop *loop,
@@ -971,6 +976,7 @@ void process_message(event_loop *loop,
   case MessageType_GetTask: {
     /* If this worker reports a completed task, account for resources. */
     finish_task(state, worker);
+
     /* Let the scheduling algorithm process the fact that there is an available
      * worker. */
     if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
@@ -1028,6 +1034,10 @@ void process_message(event_loop *loop,
        * unblocked. */
       if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
         handle_worker_unblocked(state, state->algorithm_state, worker);
+        if (worker->child_worker) {
+          worker->child_worker->parent_worker = NULL;
+          worker->child_worker = NULL;
+        }
       } else {
         handle_actor_worker_unblocked(state, state->algorithm_state, worker);
       }
@@ -1076,6 +1086,8 @@ void new_client_connection(event_loop *loop,
   worker->pid = 0;
   worker->is_child = false;
   worker->actor_id = NIL_ACTOR_ID;
+  worker->parent_worker = NULL;
+  worker->child_worker = NULL;
   worker->local_scheduler_state = state;
   state->workers.push_back(worker);
   event_loop_add_file(loop, new_socket, EVENT_LOOP_READ, process_message,

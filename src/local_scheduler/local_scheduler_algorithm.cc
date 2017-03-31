@@ -4,8 +4,6 @@
 #include <vector>
 #include <unordered_map>
 #include <map>
-#include "utarray.h"
-#include "utlist.h"
 
 #include "state/task_table.h"
 #include "state/local_scheduler_table.h"
@@ -678,11 +676,23 @@ bool resources_available(LocalSchedulerState *state) {
  * @param algorithm_state The scheduling algorithm state.
  * @return Void.
  */
-void dispatch_tasks(LocalSchedulerState *state,
-                    SchedulingAlgorithmState *algorithm_state) {
+void _dispatch_tasks(LocalSchedulerState *state,
+                     SchedulingAlgorithmState *algorithm_state,
+                     LocalSchedulerClient *blocked_worker) {
+  int64_t min_depth = 0;
+  if (blocked_worker) {
+    min_depth = TaskSpec_submit_depth(
+                    Task_task_spec(blocked_worker->task_in_progress)) +
+                1;
+  }
   /* Assign as many tasks as we can, while there are workers available. */
-  for (auto &queue : *algorithm_state->dispatch_task_queue) {
-    for (auto it = queue.second.begin(); it != queue.second.end();) {
+  auto queue_it = algorithm_state->dispatch_task_queue->lower_bound(min_depth);
+  if (queue_it == algorithm_state->dispatch_task_queue->end()) {
+    return;
+  }
+
+  for (; queue_it != algorithm_state->dispatch_task_queue->end(); ++queue_it) {
+    for (auto it = queue_it->second.begin(); it != queue_it->second.end();) {
       TaskQueueEntry task = *it;
       /* If there is a task to assign, but there are no more available workers in
        * the worker pool, then exit. Ensure that there will be an available
@@ -726,11 +736,27 @@ void dispatch_tasks(LocalSchedulerState *state,
       /* Free the task queue entry. */
       TaskQueueEntry_free(&task);
       /* Dequeue the task. */
-      it = queue.second.erase(it);
+      it = queue_it->second.erase(it);
+
+      if (blocked_worker) {
+        worker->parent_worker = blocked_worker;
+        blocked_worker->child_worker = worker;
+        return;
+      }
     } /* End for each task in the dispatch queue. */
   }
 }
 
+void dispatch_tasks(LocalSchedulerState *state,
+                    SchedulingAlgorithmState *algorithm_state) {
+  for (auto &worker : algorithm_state->blocked_workers) {
+    if (worker->child_worker == NULL) {
+      _dispatch_tasks(state, algorithm_state, worker);
+    }
+  }
+
+  _dispatch_tasks(state, algorithm_state, NULL);
+}
 /**
  * Attempt to dispatch both regular tasks and actor tasks.
  *

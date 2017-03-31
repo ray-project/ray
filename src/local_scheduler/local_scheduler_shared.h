@@ -78,6 +78,8 @@ struct LocalSchedulerState {
   int64_t previous_heartbeat_time;
 };
 
+typedef struct LocalSchedulerClient LocalSchedulerClient;
+
 /** Contains all information associated with a local scheduler client. */
 struct LocalSchedulerClient {
   /** The socket used to communicate with the client. */
@@ -117,6 +119,8 @@ struct LocalSchedulerClient {
   /** The ID of the actor on this worker. If there is no actor running on this
    *  worker, this should be NIL_ACTOR_ID. */
   ActorID actor_id;
+  LocalSchedulerClient *parent_worker;
+  LocalSchedulerClient *child_worker;
   /** A pointer to the local scheduler state. */
   LocalSchedulerState *local_scheduler_state;
 };
