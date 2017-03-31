@@ -353,5 +353,26 @@ class ActorTest(unittest.TestCase):
     ray.worker.cleanup()
 
 
+class WorkerDeath(unittest.TestCase):
+
+  def testWorkerDying(self):
+    ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
+
+    # Define a remote function that will kill the worker that runs it.
+    @ray.remote
+    def f():
+      eval("exit()")
+
+    f.remote()
+
+    wait_for_errors(b"worker_died", 1)
+
+    self.assertEqual(len(ray.error_info()), 1)
+    self.assertIn("A worker died or was killed while executing a task.",
+                  ray.error_info()[0][b"message"].decode("ascii"))
+
+    ray.worker.cleanup()
+
+
 if __name__ == "__main__":
   unittest.main(verbosity=2)
