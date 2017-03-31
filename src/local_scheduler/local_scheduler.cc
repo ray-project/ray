@@ -131,7 +131,7 @@ int force_kill_worker(event_loop *loop, timer_id id, void *context) {
   LocalSchedulerClient *worker = (LocalSchedulerClient *) context;
   kill(worker->pid, SIGKILL);
   close(worker->sock);
-  free(worker);
+  delete worker;
   return EVENT_LOOP_TIMER_DONE;
 }
 
