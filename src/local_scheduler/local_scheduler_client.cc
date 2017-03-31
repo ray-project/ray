@@ -52,6 +52,8 @@ LocalSchedulerConnection *LocalSchedulerConnection_init(
     if (ActorID_equal(actor_id, NIL_ACTOR_ID)) {
       CHECK(reply_message->gpu_ids()->size() == 0);
     }
+    /* Free the reply message. */
+    free(reply);
   }
   /* Return the connection object. */
   return result;
