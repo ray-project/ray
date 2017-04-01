@@ -4030,7 +4030,6 @@ static void add_segment(mstate m, char* tbase, size_t tsize, flag_t mmapped) {
 
 /* Get memory from system using MORECORE or MMAP */
 static void* sys_alloc(mstate m, size_t nb) {
-  printf("called sys_alloc\n");
   char* tbase = CMFAIL;
   size_t tsize = 0;
   flag_t mmap_flag = 0;
@@ -4040,14 +4039,10 @@ static void* sys_alloc(mstate m, size_t nb) {
 
   /* Directly map large chunks, but only if already initialized */
   if (use_mmap(m) && nb >= mparams.mmap_threshold && m->topsize != 0) {
-    printf("called mmap_alloc\n");
     void* mem = mmap_alloc(m, nb);
     if (mem != 0)
       return mem;
   }
-  
-  printf("footprint_limit %" PRId64 "\n", m->footprint_limit);
-  printf("footprint %" PRId64 "\n", m->footprint);
 
   asize = granularity_align(nb + SYS_ALLOC_PADDING);
   if (asize <= nb)
@@ -4142,7 +4137,6 @@ static void* sys_alloc(mstate m, size_t nb) {
   }
 
   if (HAVE_MMAP && tbase == CMFAIL) {  /* Try MMAP */
-    printf("called mmap 2\n");
     char* mp = (char*)(CALL_MMAP(asize));
     if (mp != CMFAIL) {
       tbase = mp;
@@ -5356,24 +5350,14 @@ size_t dlmalloc_footprint_limit(void) {
 }
 
 size_t dlmalloc_set_footprint_limit(size_t bytes) {
-  printf("BYTES is %zu\n", bytes);
   ensure_initialization();
-  printf("BYTES is %zu\n", bytes);
   size_t result;  /* invert sense of 0 */
-  if (bytes == 0) {
+  if (bytes == 0)
     result = granularity_align(1); /* Use minimal size */
-    printf("res 1 is %zu\n", result);
-  }
-  if (bytes == MAX_SIZE_T) {
+  if (bytes == MAX_SIZE_T)
     result = 0;                    /* disable */
-    printf("res 2 is %zu\n", result);
-  } else {
+  else
     result = granularity_align(bytes);
-    printf("res 3 is %zu\n", result);
-    printf("granularity is %zu\n", mparams.granularity);
-  }
-  printf("BYTES is %zu\n", bytes);
-  printf("SETTING FOOTPRINT LIMIT to %zu\n", result);
   return gm->footprint_limit = result;
 }
 
