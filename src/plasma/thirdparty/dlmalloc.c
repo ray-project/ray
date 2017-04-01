@@ -4030,6 +4030,7 @@ static void add_segment(mstate m, char* tbase, size_t tsize, flag_t mmapped) {
 
 /* Get memory from system using MORECORE or MMAP */
 static void* sys_alloc(mstate m, size_t nb) {
+  printf("called sys_alloc\n");
   char* tbase = CMFAIL;
   size_t tsize = 0;
   flag_t mmap_flag = 0;
@@ -4039,6 +4040,7 @@ static void* sys_alloc(mstate m, size_t nb) {
 
   /* Directly map large chunks, but only if already initialized */
   if (use_mmap(m) && nb >= mparams.mmap_threshold && m->topsize != 0) {
+    printf("called mmap_alloc\n");
     void* mem = mmap_alloc(m, nb);
     if (mem != 0)
       return mem;
