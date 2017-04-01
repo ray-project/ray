@@ -57,10 +57,6 @@ struct hash<UniqueID> {
 };
 }  // namespace std
 
-bool operator==(UniqueID a, UniqueID b) {
-  return UNIQUE_ID_EQ(a, b);
-}
-
 /** Contains all information that is associated with a Plasma store client. */
 struct Client {
   Client(int sock, PlasmaStoreState *plasma_state);
