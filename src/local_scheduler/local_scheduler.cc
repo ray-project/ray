@@ -515,7 +515,7 @@ void assign_task_to_worker(LocalSchedulerState *state,
   /* Send the message to the local scheduler. */
   if (write_message(worker->sock, MessageType_ExecuteTask, fbb.GetSize(),
                     fbb.GetBufferPointer()) < 0) {
-    if (errno == EPIPE || errno == EBADF) {
+    if (errno == EPIPE || errno == EBADF || errno == ECONNRESET) {
       /* Something went wrong, so kill the worker. */
       kill_worker(worker, false);
       LOG_WARN(
@@ -547,7 +547,7 @@ void send_register_worker_reply(LocalSchedulerState *state,
   /* Send the message to the worker. */
   if (write_message(worker->sock, MessageType_RegisterWorkerReply,
                     fbb.GetSize(), fbb.GetBufferPointer()) < 0) {
-    if (errno == EPIPE || errno == EBADF) {
+    if (errno == EPIPE || errno == EBADF || errno == ECONNRESET) {
       /* Something went wrong, so kill the worker. */
       kill_worker(worker, false);
       LOG_WARN(
