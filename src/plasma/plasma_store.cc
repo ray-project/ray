@@ -43,6 +43,7 @@ void *dlmalloc(size_t);
 void *dlmemalign(size_t alignment, size_t bytes);
 void dlfree(void *);
 size_t dlmalloc_set_footprint_limit(size_t bytes);
+size_t dlmalloc_footprint_limit(void);
 }
 
 /** Contains all information that is associated with a Plasma store client. */
@@ -239,6 +240,7 @@ int create_object(Client *client_context,
    * plasma_client.cc). Note that even though this pointer is 64-byte aligned,
    * it is not guaranteed that the corresponding pointer in the client will be
    * 64-byte aligned, but in practice it often will be. */
+  printf("footprint limit is %" PRId64 "\n", dlmalloc_footprint_limit());
   uint8_t *pointer =
       (uint8_t *) dlmalloc(data_size + metadata_size);
   if (pointer == NULL) {
@@ -945,6 +947,7 @@ int main(int argc, char *argv[]) {
 #endif
   /* Make it so dlmalloc fails if we try to request more memory than is available. */
   dlmalloc_set_footprint_limit(system_memory);
+  printf("footprint limit is %" PRId64 "\n", dlmalloc_footprint_limit());
   LOG_DEBUG("starting server listening on %s", socket_name);
   start_server(socket_name, system_memory);
 }
