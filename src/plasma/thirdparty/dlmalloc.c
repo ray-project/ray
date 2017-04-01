@@ -4045,6 +4045,9 @@ static void* sys_alloc(mstate m, size_t nb) {
     if (mem != 0)
       return mem;
   }
+  
+  printf("footprint_limit %" PRId64 "\n", m->footprint_limit);
+  printf("footprint %" PRId64 "\n", m->footprint);
 
   asize = granularity_align(nb + SYS_ALLOC_PADDING);
   if (asize <= nb)
