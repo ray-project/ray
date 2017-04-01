@@ -4139,6 +4139,7 @@ static void* sys_alloc(mstate m, size_t nb) {
   }
 
   if (HAVE_MMAP && tbase == CMFAIL) {  /* Try MMAP */
+    printf("called mmap 2\n");
     char* mp = (char*)(CALL_MMAP(asize));
     if (mp != CMFAIL) {
       tbase = mp;
