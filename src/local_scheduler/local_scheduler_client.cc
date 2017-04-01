@@ -12,7 +12,7 @@ LocalSchedulerConnection *LocalSchedulerConnection_init(
     ActorID actor_id,
     bool is_worker,
     int64_t num_gpus) {
-  LocalSchedulerConnection *result = new LocalSchedulerConnection;
+  LocalSchedulerConnection *result = new LocalSchedulerConnection();
   result->conn = connect_ipc_sock_retry(local_scheduler_socket, -1, -1);
   result->actor_id = actor_id;
 

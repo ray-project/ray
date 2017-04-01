@@ -386,7 +386,7 @@ LocalSchedulerState *LocalSchedulerState_init(
     const double static_resource_conf[],
     const char *start_worker_command,
     int num_workers) {
-  LocalSchedulerState *state = new LocalSchedulerState;
+  LocalSchedulerState *state = new LocalSchedulerState();
   /* Set the configuration struct for the local scheduler. */
   if (start_worker_command != NULL) {
     state->config.start_worker_command = parse_command(start_worker_command);
@@ -917,7 +917,7 @@ void new_client_connection(event_loop *loop,
   int new_socket = accept_client(listener_sock);
   /* Create a struct for this worker. This will be freed when we free the local
    * scheduler state. */
-  LocalSchedulerClient *worker = new LocalSchedulerClient;
+  LocalSchedulerClient *worker = new LocalSchedulerClient();
   worker->sock = new_socket;
   worker->task_in_progress = NULL;
   worker->cpus_in_use = 0;
