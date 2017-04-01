@@ -19,6 +19,8 @@
 /** Allocation granularity used in plasma for object allocation. */
 #define BLOCK_SIZE 64
 
+struct Client;
+
 /**
  * Object request data structure. Used in the plasma_wait_for_objects()
  * argument.
@@ -104,7 +106,7 @@ typedef struct {
   /** Pointer to the object data. Needed to free the object. */
   uint8_t *pointer;
   /** An array of the clients that are currently using this object. */
-  UT_array *clients;
+  std::vector<Client *> clients;
   /** The state of the object, e.g., whether it is open or sealed. */
   object_state state;
   /** The digest of the object. Used to see if two objects are the same. */

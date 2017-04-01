@@ -71,10 +71,6 @@ struct Client {
   PlasmaStoreState *plasma_state;
 };
 
-/* This is used to define the array of clients used to define the
- * object_table_entry type. */
-UT_icd client_icd = {sizeof(Client *), NULL, NULL, NULL};
-
 /** The object notifications for clients. We notify the client about the
  *  objects in the order that the objects were sealed or deleted. */
 typedef std::vector<uint8_t *> ObjectNotifications;
@@ -143,7 +139,7 @@ GetRequest::GetRequest(Client *client,
 
 PlasmaStoreState::PlasmaStoreState(event_loop *loop, int64_t system_memory)
     : loop(loop),
-      plasma_store_info((PlasmaStoreInfo *) malloc(sizeof(PlasmaStoreInfo))),
+      plasma_store_info(new PlasmaStoreInfo()),
       eviction_state(EvictionState_init()),
       builder(make_protocol_builder()) {
   this->plasma_store_info->objects = NULL;
@@ -159,7 +155,6 @@ void PlasmaStoreState_free(PlasmaStoreState *state) {
   object_table_entry *entry, *tmp;
   HASH_ITER(handle, state->plasma_store_info->objects, entry, tmp) {
     HASH_DELETE(handle, state->plasma_store_info->objects, entry);
-    utarray_free(entry->clients);
     delete entry;
   }
   for (auto it : state->pending_notifications) {
@@ -177,15 +172,14 @@ void push_notification(PlasmaStoreState *state,
 void add_client_to_object_clients(object_table_entry *entry,
                                   Client *client_info) {
   /* Check if this client is already using the object. */
-  for (int i = 0; i < utarray_len(entry->clients); ++i) {
-    Client **c = (Client **) utarray_eltptr(entry->clients, i);
-    if (*c == client_info) {
+  for (int i = 0; i < entry->clients.size(); ++i) {
+    if (entry->clients[i] == client_info) {
       return;
     }
   }
   /* If there are no other clients using this object, notify the eviction policy
    * that the object is being used. */
-  if (utarray_len(entry->clients) == 0) {
+  if (entry->clients.size() == 0) {
     /* Tell the eviction policy that this object is being used. */
     int64_t num_objects_to_evict;
     ObjectID *objects_to_evict;
@@ -197,7 +191,7 @@ void add_client_to_object_clients(object_table_entry *entry,
                    objects_to_evict);
   }
   /* Add the client pointer to the list of clients using this object. */
-  utarray_push_back(entry->clients, &client_info);
+  entry->clients.push_back(client_info);
 }
 
 /* Create a new object buffer in the hash table. */
@@ -255,7 +249,6 @@ int create_object(Client *client_context,
   entry->map_size = map_size;
   entry->offset = offset;
   entry->state = PLASMA_CREATED;
-  utarray_new(entry->clients, &client_icd);
   HASH_ADD(handle, plasma_state->plasma_store_info->objects, object_id,
            sizeof(ObjectID), entry);
   result->handle.store_fd = fd;
@@ -461,14 +454,13 @@ void process_get_request(Client *client_context,
 int remove_client_from_object_clients(object_table_entry *entry,
                                       Client *client_info) {
   /* Find the location of the client in the array. */
-  for (int i = 0; i < utarray_len(entry->clients); ++i) {
-    Client **c = (Client **) utarray_eltptr(entry->clients, i);
-    if (*c == client_info) {
+  for (int i = 0; i < entry->clients.size(); ++i) {
+    if (entry->clients[i] == client_info) {
       /* Remove the client from the array. */
-      utarray_erase(entry->clients, i, 1);
+      entry->clients.erase(entry->clients.begin() + i);
       /* If no more clients are using this object, notify the eviction policy
        * that the object is no longer being used. */
-      if (utarray_len(entry->clients) == 0) {
+      if (entry->clients.size() == 0) {
         /* Tell the eviction policy that this object is no longer being used. */
         int64_t num_objects_to_evict;
         ObjectID *objects_to_evict;
@@ -542,12 +534,11 @@ void delete_object(PlasmaStoreState *plasma_state, ObjectID object_id) {
   CHECKM(entry != NULL, "To delete an object it must be in the object table.");
   CHECKM(entry->state == PLASMA_SEALED,
          "To delete an object it must have been sealed.");
-  CHECKM(utarray_len(entry->clients) == 0,
+  CHECKM(entry->clients.size() == 0,
          "To delete an object, there must be no clients currently using it.");
   uint8_t *pointer = entry->pointer;
   HASH_DELETE(handle, plasma_state->plasma_store_info->objects, entry);
   dlfree(pointer);
-  utarray_free(entry->clients);
   delete entry;
   /* Inform all subscribers that the object has been deleted. */
   ObjectInfoT notification;
