@@ -5,8 +5,6 @@ project(plasma)
 # Recursively include common
 include(${CMAKE_CURRENT_LIST_DIR}/../common/cmake/Common.cmake)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-
 if(APPLE)
   SET(CMAKE_SHARED_LIBRARY_SUFFIX ".so")
 endif(APPLE)
@@ -14,6 +12,7 @@ endif(APPLE)
 include_directories("${PYTHON_INCLUDE_DIRS}" thirdparty)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --std=c99 -D_XOPEN_SOURCE=500 -D_POSIX_C_SOURCE=200809L")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --std=c++11 -D_XOPEN_SOURCE=500 -D_POSIX_C_SOURCE=200809L")
 
 # Compile flatbuffers
 
