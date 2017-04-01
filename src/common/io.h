@@ -6,10 +6,6 @@
 
 #include "utarray.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #define RAY_PROTOCOL_VERSION 0x0000000000000000
 
 /* Number of times we try binding to a socket. */
@@ -233,9 +229,5 @@ int read_bytes(int fd, uint8_t *cursor, size_t length);
  *         success and -1 corresponds to an error (errno will be set).
  */
 int write_bytes(int fd, uint8_t *cursor, size_t length);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* IO_H */

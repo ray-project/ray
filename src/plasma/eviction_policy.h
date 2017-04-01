@@ -3,10 +3,6 @@
 
 #include "plasma.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /* ==== The eviction policy ====
  *
  * This file contains declaration for all functions and data structures that
@@ -149,9 +145,5 @@ int64_t EvictionState_choose_objects_to_evict(
     int64_t num_bytes_required,
     int64_t *num_objects_to_evict,
     ObjectID **objects_to_evict);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* EVICTION_POLICY_H */
