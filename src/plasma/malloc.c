@@ -120,12 +120,12 @@ void *fake_mmap(size_t size) {
 
   /* We lie to dlmalloc about where mapped memory actually lives. */
   pointer = pointer_advance(pointer, sizeof(size_t));
-  LOG_DEBUG("%p = fake_mmap(%lu)\n", pointer, size);
+  LOG_DEBUG("%p = fake_mmap(%lu)", pointer, size);
   return pointer;
 }
 
 int fake_munmap(void *addr, size_t size) {
-  LOG_DEBUG("fake_munmap(%p, %lu)\n", addr, size);
+  LOG_DEBUG("fake_munmap(%p, %lu)", addr, size);
   addr = pointer_retreat(addr, sizeof(size_t));
   size += sizeof(size_t);
 

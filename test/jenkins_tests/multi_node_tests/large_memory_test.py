@@ -17,29 +17,29 @@ if __name__ == "__main__":
   del A
   del a
 
-  C = {"hello": np.zeros(2 ** 30 + 1),
+  B = {"hello": np.zeros(2 ** 30 + 1),
        "world": np.ones(2 ** 30 + 1)}
+  b = ray.put(B)
+  assert_almost_equal(ray.get(b)["hello"], B["hello"])
+  assert_almost_equal(ray.get(b)["world"], B["world"])
+  del B
+  del b
+
+  C = [np.ones(2 ** 30 + 1), 42.0 * np.ones(2 ** 30 + 1)]
   c = ray.put(C)
-  assert_almost_equal(ray.get(c)["hello"], C["hello"])
-  assert_almost_equal(ray.get(c)["world"], C["world"])
+  assert_almost_equal(ray.get(c)[0], C[0])
+  assert_almost_equal(ray.get(c)[1], C[1])
   del C
   del c
 
-  D = [np.ones(2 ** 30 + 1), 42.0 * np.ones(2 ** 30 + 1)]
+  D = (2 ** 30 + 1) * ["h"]
   d = ray.put(D)
-  assert_almost_equal(ray.get(d)[0], D[0])
-  assert_almost_equal(ray.get(d)[1], D[1])
+  assert ray.get(d) == D
   del D
   del d
 
-  E = (2 ** 30 + 1) * ["h"]
+  E = (2 ** 30 + 1) * ("i",)
   e = ray.put(E)
   assert ray.get(e) == E
   del E
   del e
-
-  F = (2 ** 30 + 1) * ("i",)
-  f = ray.put(F)
-  assert ray.get(f) == F
-  del F
-  del f
