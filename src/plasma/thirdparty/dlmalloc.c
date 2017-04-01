@@ -5367,6 +5367,7 @@ size_t dlmalloc_set_footprint_limit(size_t bytes) {
   } else {
     result = granularity_align(bytes);
     printf("res 3 is %zu\n", result);
+    printf("granularity is %zu\n", mparams.granularity);
   }
   printf("BYTES is %zu\n", bytes);
   printf("SETTING FOOTPRINT LIMIT to %zu\n", result);
