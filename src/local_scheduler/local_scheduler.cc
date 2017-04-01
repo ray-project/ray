@@ -551,11 +551,13 @@ void send_register_worker_reply(LocalSchedulerState *state,
       /* Something went wrong, so kill the worker. */
       kill_worker(worker, false);
       LOG_WARN(
-          "Failed to give task to worker on fd %d. The client may have hung "
-          "up.",
+          "Failed to give send register worker reply to worker on fd %d. The "
+          "client may have hung up.",
           worker->sock);
     } else {
-      LOG_FATAL("Failed to give task to client on fd %d.", worker->sock);
+      LOG_FATAL(
+          "Failed to send register worker reply to client on fd %d.",
+          worker->sock);
     }
   }
 }
