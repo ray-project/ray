@@ -240,7 +240,7 @@ int create_object(Client *client_context,
    * it is not guaranteed that the corresponding pointer in the client will be
    * 64-byte aligned, but in practice it often will be. */
   uint8_t *pointer =
-      (uint8_t *) dlmemalign(BLOCK_SIZE, data_size + metadata_size);
+      (uint8_t *) dlmalloc(data_size + metadata_size);
   if (pointer == NULL) {
     printf("allocation failed\n");
     abort();
