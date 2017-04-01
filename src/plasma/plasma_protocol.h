@@ -1,10 +1,15 @@
 #ifndef PLASMA_PROTOCOL_H
 #define PLASMA_PROTOCOL_H
 
+/* C++ include files. */
+#include <unordered_set>
+
 #include "format/plasma_generated.h"
 
 #include "common.h"
 #include "plasma.h"
+
+#include <unordered_map>
 
 typedef void protocol_builder;
 
@@ -214,7 +219,8 @@ void plasma_read_WaitRequest(uint8_t *data,
 
 int plasma_send_WaitReply(int sock,
                           protocol_builder *B,
-                          ObjectRequest object_requests[],
+                          const std::unordered_map<ObjectID, ObjectRequest, decltype(&hashObjectID)> &object_requests,
+//                          ObjectRequest object_requests[],
                           int num_ready_objects);
 
 void plasma_read_WaitReply(uint8_t *data,

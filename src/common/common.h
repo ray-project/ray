@@ -152,6 +152,11 @@ UniqueID globally_unique_id(void);
 
 typedef UniqueID ObjectID;
 
+#ifdef __cplusplus
+size_t hashObjectID(const ObjectID &key);
+bool operator==(const ObjectID& x, const ObjectID& y);
+#endif
+
 #define ID_STRING_SIZE (2 * UNIQUE_ID_SIZE + 1)
 
 /**

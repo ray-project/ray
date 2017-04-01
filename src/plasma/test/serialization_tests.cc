@@ -346,13 +346,20 @@ TEST plasma_wait_request_test(void) {
 
 TEST plasma_wait_reply_test(void) {
   int fd = create_temp_file();
-  ObjectRequest object_replies1[2];
-  object_replies1[0].object_id = globally_unique_id();
-  object_replies1[0].status = ObjectStatus_Local;
-  object_replies1[1].object_id = globally_unique_id();
-  object_replies1[1].status = ObjectStatus_Nonexistent;
-  int num_ready_objects1 = 2;
-  plasma_send_WaitReply(fd, g_B, object_replies1, num_ready_objects1);
+  const int num_ready_objects1 = 2;
+  std::unordered_map<ObjectID, ObjectRequest, decltype(&hashObjectID)> objreqmap(
+      num_ready_objects1, &hashObjectID);
+  ObjectRequest objreq1 = ObjectRequest({globally_unique_id(), 0, ObjectStatus_Local});
+  ObjectRequest objreq2 = ObjectRequest({globally_unique_id(), 0, ObjectStatus_Nonexistent});
+  objreqmap[objreq1.object_id] = objreq1;
+  objreqmap[objreq2.object_id] = objreq2;
+  ObjectRequest object_replies1[2] = {objreq1, objreq2};
+//  object_replies1[0].object_id = globally_unique_id();
+//  object_replies1[0].status = ObjectStatus_Local;
+//  object_replies1[1].object_id = globally_unique_id();
+//  object_replies1[1].status = ObjectStatus_Nonexistent;
+
+  plasma_send_WaitReply(fd, g_B, objreqmap, num_ready_objects1);
   /* Read message back. */
   uint8_t *data = read_message_from_file(fd, MessageType_PlasmaWaitReply);
   ObjectRequest object_replies2[2];

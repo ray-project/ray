@@ -7,6 +7,7 @@
 #include <fcntl.h>
 
 #include "io.h"
+#include <functional>
 
 /* This is used to define the array of object IDs. */
 const UT_icd object_id_icd = {sizeof(ObjectID), NULL, NULL, NULL};
@@ -27,6 +28,22 @@ UniqueID globally_unique_id(void) {
   CHECK(read_bytes(fd, &result.id[0], UNIQUE_ID_SIZE) >= 0);
   close(fd);
   return result;
+}
+
+/* ObjectID hashing function. */
+size_t hashObjectID(const ObjectID &key) {
+    uint32_t acc = 0;
+    for (int i = 0; i < UNIQUE_ID_SIZE / sizeof(uint32_t); i++) {
+      acc ^=  *reinterpret_cast<const uint32_t *>(&key.id[i * sizeof(uint32_t)]);
+    }
+    return std::hash<uint32_t>()(acc);
+}
+/* ObjectID equality function. */
+bool operator==(const ObjectID& x, const ObjectID& y) {
+  if ((*reinterpret_cast<const uint32_t *>(&x.id[0])) !=
+      (*reinterpret_cast<const uint32_t *>(&y.id[0])))
+      return false;
+  return UNIQUE_ID_EQ(x, y);
 }
 
 bool ObjectID_equal(ObjectID first_id, ObjectID second_id) {
