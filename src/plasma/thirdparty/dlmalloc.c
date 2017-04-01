@@ -5356,7 +5356,9 @@ size_t dlmalloc_footprint_limit(void) {
 }
 
 size_t dlmalloc_set_footprint_limit(size_t bytes) {
+  printf("BYTES is %zu\n", bytes);
   ensure_initialization();
+  printf("BYTES is %zu\n", bytes);
   size_t result;  /* invert sense of 0 */
   if (bytes == 0) {
     result = granularity_align(1); /* Use minimal size */
