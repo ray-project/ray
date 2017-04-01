@@ -75,19 +75,9 @@ struct Client {
  * object_table_entry type. */
 UT_icd client_icd = {sizeof(Client *), NULL, NULL, NULL};
 
-/* This is used to define the queue of object notifications for plasma
- * subscribers. */
-UT_icd object_info_icd = {sizeof(uint8_t *), NULL, NULL, NULL};
-
-typedef struct {
-  /** Client file descriptor. This is used as a key for the hash table. */
-  int subscriber_fd;
-  /** The object notifications for clients. We notify the client about the
-   *  objects in the order that the objects were sealed or deleted. */
-  UT_array *object_notifications;
-  /** Handle for the uthash table. */
-  UT_hash_handle hh;
-} NotificationQueue;
+/** The object notifications for clients. We notify the client about the
+ *  objects in the order that the objects were sealed or deleted. */
+typedef std::vector<uint8_t *> ObjectNotifications;
 
 struct GetRequest {
   GetRequest(Client *client, int num_object_ids, ObjectID object_ids[]);
@@ -121,7 +111,7 @@ struct PlasmaStoreState {
   /** The pending notifications that have not been sent to subscribers because
    *  the socket send buffers were full. This is a hash table from client file
    *  descriptor to an array of object_ids to send to that client. */
-  NotificationQueue *pending_notifications;
+  std::unordered_map<int, ObjectNotifications> pending_notifications;
   /** The plasma store information, including the object tables, that is exposed
    *  to the eviction policy. */
   PlasmaStoreInfo *plasma_store_info;
@@ -153,7 +143,6 @@ GetRequest::GetRequest(Client *client,
 
 PlasmaStoreState::PlasmaStoreState(event_loop *loop, int64_t system_memory)
     : loop(loop),
-      pending_notifications(NULL),
       plasma_store_info((PlasmaStoreInfo *) malloc(sizeof(PlasmaStoreInfo))),
       eviction_state(EvictionState_init()),
       builder(make_protocol_builder()) {
@@ -173,15 +162,10 @@ void PlasmaStoreState_free(PlasmaStoreState *state) {
     utarray_free(entry->clients);
     delete entry;
   }
-  NotificationQueue *queue, *temp_queue;
-  HASH_ITER(hh, state->pending_notifications, queue, temp_queue) {
-    for (int i = 0; i < utarray_len(queue->object_notifications); ++i) {
-      uint8_t **notification =
-          (uint8_t **) utarray_eltptr(queue->object_notifications, i);
-      uint8_t *data = *notification;
-      free(data);
+  for (auto it : state->pending_notifications) {
+    for (int i = 0; i < it.second.size(); ++i) {
+      free(it.second[i]);
     }
-    utarray_free(queue->object_notifications);
   }
 }
 
@@ -588,12 +572,10 @@ void remove_objects(PlasmaStoreState *plasma_state,
 
 void push_notification(PlasmaStoreState *plasma_state,
                        ObjectInfoT *object_info) {
-  NotificationQueue *queue, *temp_queue;
-  HASH_ITER(hh, plasma_state->pending_notifications, queue, temp_queue) {
+  for (auto it : plasma_state->pending_notifications) {
     uint8_t *notification = create_object_info_buffer(object_info);
-    utarray_push_back(queue->object_notifications, &notification);
-    send_notifications(plasma_state->loop, queue->subscriber_fd, plasma_state,
-                       0);
+    it.second.push_back(notification);
+    send_notifications(plasma_state->loop, it.first, plasma_state, 0);
     /* The notification gets freed in send_notifications when the notification
      * is sent over the socket. */
   }
@@ -605,18 +587,14 @@ void send_notifications(event_loop *loop,
                         void *context,
                         int events) {
   PlasmaStoreState *plasma_state = (PlasmaStoreState *) context;
-  NotificationQueue *queue;
-  HASH_FIND_INT(plasma_state->pending_notifications, &client_sock, queue);
-  CHECK(queue != NULL);
+  ObjectNotifications& notifications = plasma_state->pending_notifications[client_sock];
 
   int num_processed = 0;
   bool closed = false;
   /* Loop over the array of pending notifications and send as many of them as
    * possible. */
-  for (int i = 0; i < utarray_len(queue->object_notifications); ++i) {
-    uint8_t **notification =
-        (uint8_t **) utarray_eltptr(queue->object_notifications, i);
-    uint8_t *data = *notification;
+  for (int i = 0; i < notifications.size(); ++i) {
+    uint8_t *data = notifications[i];
     /* Decode the length, which is the first bytes of the message. */
     int64_t size = *((int64_t *) data);
 
@@ -649,18 +627,17 @@ void send_notifications(event_loop *loop,
     free(data);
   }
   /* Remove the sent notifications from the array. */
-  utarray_erase(queue->object_notifications, 0, num_processed);
+  notifications.erase(notifications.begin(),
+                      notifications.begin() + num_processed);
 
   /* Stop sending notifications if the pipe was broken. */
   if (closed) {
     close(client_sock);
-    utarray_free(queue->object_notifications);
-    HASH_DEL(plasma_state->pending_notifications, queue);
-    free(queue);
+    plasma_state->pending_notifications.erase(client_sock);
   }
 
   /* If we have sent all notifications, remove the fd from the event loop. */
-  if (utarray_len(queue->object_notifications) == 0) {
+  if (notifications.size() == 0) {
     event_loop_remove_file(loop, client_sock);
   }
 }
@@ -678,22 +655,13 @@ void subscribe_to_updates(Client *client_context, int conn) {
     return;
   }
 
-  /* Create a new array to buffer notifications that can't be sent to the
-   * subscriber yet because the socket send buffer is full. TODO(rkn): the queue
-   * never gets freed. */
-  NotificationQueue *queue =
-      (NotificationQueue *) malloc(sizeof(NotificationQueue));
-  queue->subscriber_fd = fd;
-  utarray_new(queue->object_notifications, &object_info_icd);
-  HASH_ADD_INT(plasma_state->pending_notifications, subscriber_fd, queue);
-
   /* Push notifications to the new subscriber about existing objects. */
   object_table_entry *entry, *temp_entry;
   HASH_ITER(handle, plasma_state->plasma_store_info->objects, entry,
             temp_entry) {
     push_notification(plasma_state, &entry->info);
   }
-  send_notifications(plasma_state->loop, queue->subscriber_fd, plasma_state, 0);
+  send_notifications(plasma_state->loop, fd, plasma_state, 0);
 }
 
 void process_message(event_loop *loop,
