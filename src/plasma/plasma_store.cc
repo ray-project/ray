@@ -946,7 +946,7 @@ int main(int argc, char *argv[]) {
   }
 #endif
   /* Make it so dlmalloc fails if we try to request more memory than is available. */
-  dlmalloc_set_footprint_limit(system_memory);
+  dlmalloc_set_footprint_limit((size_t) system_memory);
   printf("footprint limit is %" PRId64 "\n", dlmalloc_footprint_limit());
   LOG_DEBUG("starting server listening on %s", socket_name);
   start_server(socket_name, system_memory);
