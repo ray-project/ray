@@ -142,7 +142,6 @@ PlasmaStoreState::PlasmaStoreState(event_loop *loop, int64_t system_memory)
       plasma_store_info(new PlasmaStoreInfo()),
       eviction_state(EvictionState_init()),
       builder(make_protocol_builder()) {
-  this->plasma_store_info->objects = NULL;
   this->plasma_store_info->memory_capacity = system_memory;
 
   utarray_new(this->input_buffer, &byte_icd);
@@ -152,10 +151,8 @@ void PlasmaStoreState_free(PlasmaStoreState *state) {
   /* Here we only clean up objects that need to be cleaned
    * up to make the valgrind warnings go away. Objects that
    * are still reachable are not cleaned up. */
-  object_table_entry *entry, *tmp;
-  HASH_ITER(handle, state->plasma_store_info->objects, entry, tmp) {
-    HASH_DELETE(handle, state->plasma_store_info->objects, entry);
-    delete entry;
+  for (auto it : state->plasma_store_info->objects) {
+    delete it.second;
   }
   for (auto it : state->pending_notifications) {
     for (int i = 0; i < it.second.size(); ++i) {
@@ -202,11 +199,7 @@ int create_object(Client *client_context,
                   PlasmaObject *result) {
   LOG_DEBUG("creating object"); /* TODO(pcm): add ObjectID here */
   PlasmaStoreState *plasma_state = client_context->plasma_state;
-  object_table_entry *entry;
-  /* TODO(swang): Return these error to the client instead of exiting. */
-  HASH_FIND(handle, plasma_state->plasma_store_info->objects, &obj_id,
-            sizeof(obj_id), entry);
-  if (entry != NULL) {
+  if (plasma_state->plasma_store_info->objects.count(obj_id) == 0) {
     /* There is already an object with the same ID in the Plasma Store, so
      * ignore this requst. */
     return PlasmaError_ObjectExists;
@@ -249,8 +242,7 @@ int create_object(Client *client_context,
   entry->map_size = map_size;
   entry->offset = offset;
   entry->state = PLASMA_CREATED;
-  HASH_ADD(handle, plasma_state->plasma_store_info->objects, object_id,
-           sizeof(ObjectID), entry);
+  plasma_state->plasma_store_info->objects[obj_id] = entry;
   result->handle.store_fd = fd;
   result->handle.mmap_size = map_size;
   result->data_offset = offset;
@@ -359,9 +351,7 @@ void update_object_get_requests(PlasmaStoreState *store_state,
     GetRequest *get_req = get_requests[index];
     int num_updated = 0;
     for (int j = 0; j < get_req->num_objects_to_wait_for; ++j) {
-      object_table_entry *entry;
-      HASH_FIND(handle, store_state->plasma_store_info->objects, &obj_id,
-                sizeof(obj_id), entry);
+      object_table_entry *entry = plasma_store_info->objects[obj_id];
       CHECK(entry != NULL);
 
       if (ObjectID_equal(get_req->object_ids[j], obj_id)) {
@@ -416,9 +406,7 @@ void process_get_request(Client *client_context,
 
     /* Check if this object is already present locally. If so, record that the
      * object is being used and mark it as accounted for. */
-    object_table_entry *entry;
-    HASH_FIND(handle, plasma_state->plasma_store_info->objects, &obj_id,
-              sizeof(obj_id), entry);
+    object_table_entry *entry = plasma_state->plasma_store_info->objects[obj_id];
     if (entry && entry->state == PLASMA_SEALED) {
       /* Update the get request to take into account the present object. */
       PlasmaObject_init(&get_req->objects[i], entry);
@@ -481,9 +469,7 @@ int remove_client_from_object_clients(object_table_entry *entry,
 
 void release_object(Client *client_context, ObjectID object_id) {
   PlasmaStoreState *plasma_state = client_context->plasma_state;
-  object_table_entry *entry;
-  HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
-            sizeof(object_id), entry);
+  object_table_entry *entry = plasma_state->plasma_store_info->objects[object_id];
   CHECK(entry != NULL);
   /* Remove the client from the object's array of clients. */
   CHECK(remove_client_from_object_clients(entry, client_context) == 1);
@@ -492,9 +478,7 @@ void release_object(Client *client_context, ObjectID object_id) {
 /* Check if an object is present. */
 int contains_object(Client *client_context, ObjectID object_id) {
   PlasmaStoreState *plasma_state = client_context->plasma_state;
-  object_table_entry *entry;
-  HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
-            sizeof(object_id), entry);
+  object_table_entry *entry = plasma_state->plasma_store_info->objects[object_id];
   return entry && (entry->state == PLASMA_SEALED) ? OBJECT_FOUND
                                                   : OBJECT_NOT_FOUND;
 }
@@ -505,9 +489,7 @@ void seal_object(Client *client_context,
                  unsigned char digest[]) {
   LOG_DEBUG("sealing object");  // TODO(pcm): add ObjectID here
   PlasmaStoreState *plasma_state = client_context->plasma_state;
-  object_table_entry *entry;
-  HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
-            sizeof(object_id), entry);
+  object_table_entry *entry = plasma_state->plasma_store_info->objects[object_id];
   CHECK(entry != NULL);
   CHECK(entry->state == PLASMA_CREATED);
   /* Set the state of object to SEALED. */
@@ -525,7 +507,7 @@ void seal_object(Client *client_context,
  * be called on objects that are returned by the eviction policy to evict. */
 void delete_object(PlasmaStoreState *plasma_state, ObjectID object_id) {
   LOG_DEBUG("deleting object");
-  object_table_entry *entry;
+  object_table_entry *entry = plasma_state->plasma_store_info->objects[object_id];
   HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
             sizeof(object_id), entry);
   /* TODO(rkn): This should probably not fail, but should instead throw an
