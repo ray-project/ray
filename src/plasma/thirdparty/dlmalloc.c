@@ -5357,12 +5357,17 @@ size_t dlmalloc_footprint_limit(void) {
 
 size_t dlmalloc_set_footprint_limit(size_t bytes) {
   size_t result;  /* invert sense of 0 */
-  if (bytes == 0)
+  if (bytes == 0) {
     result = granularity_align(1); /* Use minimal size */
-  if (bytes == MAX_SIZE_T)
+    printf("res 1 is %zu\n", result);
+  }
+  if (bytes == MAX_SIZE_T) {
     result = 0;                    /* disable */
-  else
+    printf("res 2 is %zu\n", result);
+  } else {
     result = granularity_align(bytes);
+    printf("res 3 is %zu\n", result);
+  }
   printf("BYTES is %zu\n", bytes);
   printf("SETTING FOOTPRINT LIMIT to %zu\n", result);
   return gm->footprint_limit = result;
