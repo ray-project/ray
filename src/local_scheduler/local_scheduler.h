@@ -104,8 +104,7 @@ bool check_dynamic_resources(LocalSchedulerState *state,
                              double num_gpus);
 
 /**
- * Acquire resources (CPUs and GPUs) for a worker. If the worker already has
- * some resources allocated for it, this will acquire additional resources.
+ * Acquire additional resources (CPUs and GPUs) for a worker.
  *
  * @param state The local scheduler state.
  * @param worker The worker who is acquiring resources.

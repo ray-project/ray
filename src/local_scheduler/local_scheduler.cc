@@ -501,9 +501,11 @@ void assign_task_to_worker(LocalSchedulerState *state,
   }
 
   /* Acquire the resources necessary to run the task. */
-  acquire_resources(state, worker,
-                    TaskSpec_get_required_resource(spec, ResourceIndex_CPU),
-                    TaskSpec_get_required_resource(spec, ResourceIndex_GPU));
+  if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
+    acquire_resources(state, worker,
+                      TaskSpec_get_required_resource(spec, ResourceIndex_CPU),
+                      TaskSpec_get_required_resource(spec, ResourceIndex_GPU));
+  }
 
   /* Construct the flatbuffer message to send to the worker. */
   flatbuffers::FlatBufferBuilder fbb;
@@ -837,7 +839,7 @@ void process_message(event_loop *loop,
         release_resources(state, worker, (double) worker->cpus_in_use,
                           (double) worker->gpus_in_use.size());
       } else {
-        release_resources(state, worker, (double) worker->cpus_in_use, 0);
+        /* release_resources(state, worker, (double) worker->cpus_in_use, 0); */
       }
 
       /* If we're connected to Redis, update tables. */
@@ -868,8 +870,18 @@ void process_message(event_loop *loop,
       /* TODO(swang): For now, we don't handle blocked actors. */
       if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
         /* If the worker was executing a task (i.e. non-driver) and it wasn't
-         * already blocked on an object that's not locally available, update its
-         * state to blocked. */
+         * already blocked on an object that's not locally available, release
+         * it's resources and update its state to blocked. Note, we do not
+         * return GPU resources because the worker will still be using memory on
+         * the GPUs. */
+        TaskSpec *spec = Task_task_spec(worker->task_in_progress);
+        CHECK((double) worker->cpus_in_use ==
+              TaskSpec_get_required_resource(spec, ResourceIndex_CPU));
+        release_resources(
+            state, worker,
+            TaskSpec_get_required_resource(spec, ResourceIndex_CPU), 0);
+
+
         handle_worker_blocked(state, state->algorithm_state, worker);
         print_worker_info("Reconstructing", state->algorithm_state);
       }
@@ -892,6 +904,19 @@ void process_message(event_loop *loop,
         /* If the worker was executing a task (i.e. non-driver), update its
          * state to not blocked. */
         CHECK(worker->is_blocked);
+
+        /* Lease back the resources that the blocked worker will need. However,
+         * do not return GPU resources because the blocked worker will still be
+         * using memory on the GPUs. */
+        /* TODO(swang): Leasing back the resources to blocked workers can cause
+         * us to transiently exceed the maximum number of resources. This can be
+         * fixed by having blocked workers explicitly yield and wait to be given
+         * back resources before continuing execution. */
+        TaskSpec *spec = Task_task_spec(worker->task_in_progress);
+        acquire_resources(
+            state, worker,
+            TaskSpec_get_required_resource(spec, ResourceIndex_CPU), 0);
+
         handle_worker_unblocked(state, state->algorithm_state, worker);
       }
     }

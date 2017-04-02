@@ -1100,9 +1100,6 @@ void handle_worker_blocked(LocalSchedulerState *state,
       /* Add the worker to the list of blocked workers. */
       worker->is_blocked = true;
       utarray_push_back(algorithm_state->blocked_workers, &worker);
-      /* Return the resources that the blocked worker was using, but not GPU
-       * resources because it will still be using memory on those GPUs. */
-      release_resources(state, worker, (double) worker->cpus_in_use, 0);
 
       /* Try to dispatch tasks, since we may have freed up some resources. */
       dispatch_tasks(state, algorithm_state);
@@ -1136,18 +1133,6 @@ void handle_worker_unblocked(LocalSchedulerState *state,
                           algorithm_state->executing_workers, q)) {
         DCHECK(*q != worker);
       }
-
-      /* Lease back the resources that the blocked worker will need. However,
-       * do not return GPU resources because the blocked worker will still be
-       * using memory on the GPUs. */
-      /* TODO(swang): Leasing back the resources to blocked workers can cause
-       * us to transiently exceed the maximum number of resources. This can be
-       * fixed by having blocked workers explicitly yield and wait to be given
-       * back resources before continuing execution. */
-      TaskSpec *spec = Task_task_spec(worker->task_in_progress);
-      acquire_resources(state, worker,
-                        TaskSpec_get_required_resource(spec, ResourceIndex_CPU),
-                        0);
 
       /* Add the worker to the list of executing workers. */
       worker->is_blocked = false;
