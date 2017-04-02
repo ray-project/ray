@@ -557,9 +557,8 @@ void send_register_worker_reply(LocalSchedulerState *state,
           "client may have hung up.",
           worker->sock);
     } else {
-      LOG_FATAL(
-          "Failed to send register worker reply to client on fd %d.",
-          worker->sock);
+      LOG_FATAL("Failed to send register worker reply to client on fd %d.",
+                worker->sock);
     }
   }
 }
@@ -880,7 +879,6 @@ void process_message(event_loop *loop,
         release_resources(
             state, worker,
             TaskSpec_get_required_resource(spec, ResourceIndex_CPU), 0);
-
 
         handle_worker_blocked(state, state->algorithm_state, worker);
         print_worker_info("Reconstructing", state->algorithm_state);
