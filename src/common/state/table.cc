@@ -3,6 +3,8 @@
 #include <inttypes.h>
 #include "redis.h"
 
+static int64_t timer_id_next = 1;
+
 /* The default behavior is to retry every ten seconds forever. */
 static const RetryInfo default_retry = {.num_retries = -1,
                                         .timeout = 10000,
@@ -37,9 +39,10 @@ TableCallbackData *init_table_callback(DBHandle *db_handle,
   callback_data->user_context = user_context;
   callback_data->db_handle = db_handle;
   /* Add timer and initialize it. */
-  callback_data->timer_id = event_loop_add_timer(
-      db_handle->loop, retry->timeout,
-      (event_loop_timer_handler) table_timeout_handler, callback_data);
+//  callback_data->timer_id = event_loop_add_timer(
+//      db_handle->loop, retry->timeout,
+//      (event_loop_timer_handler) table_timeout_handler, callback_data);
+  callback_data->timer_id = timer_id_next++;
   outstanding_callbacks_add(callback_data);
 
   LOG_DEBUG("Initializing table command %s with timer ID %" PRId64,
@@ -51,7 +54,7 @@ TableCallbackData *init_table_callback(DBHandle *db_handle,
 
 void destroy_timer_callback(event_loop *loop,
                             TableCallbackData *callback_data) {
-  event_loop_remove_timer(loop, callback_data->timer_id);
+//  event_loop_remove_timer(loop, callback_data->timer_id);
   destroy_table_callback(callback_data);
 }
 

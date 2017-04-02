@@ -310,6 +310,10 @@ def start_redis(node_ip_address="127.0.0.1", port=None, num_retries=20,
   # Configure Redis to not run in protected mode so that processes on other
   # hosts can connect to it. TODO(rkn): Do this in a more secure way.
   redis_client.config_set("protected-mode", "no")
+  cur_config = redis_client.config_get("client-output-buffer-limit")["client-output-buffer-limit"]
+  cur_config_list = cur_config.split()
+  cur_config_list[8:] = ['pubsub', '134217728', '134217728', '60']
+  redis_client.config_set("client-output-buffer-limit", string.join(cur_config_list))
   # Put a time stamp in Redis to indicate when it was started.
   redis_client.set("redis_start_time", time.time())
   # Record the log files in Redis.
