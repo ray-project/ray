@@ -1,6 +1,9 @@
 #ifndef DB_H
 #define DB_H
 
+#include <vector>
+#include <string>
+
 #include "common.h"
 #include "event_loop.h"
 
@@ -21,8 +24,8 @@ typedef struct DBHandle DBHandle;
  * @return This returns a handle to the database, which must be freed with
  *         db_disconnect after use.
  */
-DBHandle *db_connect(const char *db_address,
-                     int db_port,
+DBHandle *db_connect(const std::vector<std::string>& db_addresses,
+                     const std::vector<int>& db_ports,
                      const char *client_type,
                      const char *node_ip_address,
                      int num_args,

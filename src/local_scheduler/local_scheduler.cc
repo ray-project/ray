@@ -12,6 +12,7 @@
 #include "event_loop.h"
 #include "format/local_scheduler_generated.h"
 #include "io.h"
+#include "net.h"
 #include "logging.h"
 #include "local_scheduler_shared.h"
 #include "local_scheduler.h"
@@ -310,8 +311,8 @@ const char **parse_command(const char *command) {
 LocalSchedulerState *LocalSchedulerState_init(
     const char *node_ip_address,
     event_loop *loop,
-    const char *redis_addr,
-    int redis_port,
+    std::vector<std::string> db_addresses,
+    std::vector<int> db_ports,
     const char *local_scheduler_socket_name,
     const char *plasma_store_socket_name,
     const char *plasma_manager_socket_name,
@@ -342,7 +343,7 @@ LocalSchedulerState *LocalSchedulerState_init(
    * that is responsible for that actor. */
   state->actor_mapping = NULL;
   /* Connect to Redis if a Redis address is provided. */
-  if (redis_addr != NULL) {
+  if (db_addresses.size() > 0) {
     int num_args;
     const char **db_connect_args = NULL;
     /* Use UT_string to convert the resource value into a string. */
@@ -373,7 +374,7 @@ LocalSchedulerState *LocalSchedulerState_init(
       db_connect_args[4] = "num_gpus";
       db_connect_args[5] = utstring_body(num_gpus);
     }
-    state->db = db_connect(redis_addr, redis_port, "local_scheduler",
+    state->db = db_connect(db_addresses, db_ports, "local_scheduler",
                            node_ip_address, num_args, db_connect_args);
     utstring_free(num_cpus);
     utstring_free(num_gpus);
@@ -908,8 +909,8 @@ int heartbeat_handler(event_loop *loop, timer_id id, void *context) {
 
 void start_server(const char *node_ip_address,
                   const char *socket_name,
-                  const char *redis_addr,
-                  int redis_port,
+                  const std::vector<std::string> &db_addresses,
+                  const std::vector<int> &db_ports,
                   const char *plasma_store_socket_name,
                   const char *plasma_manager_socket_name,
                   const char *plasma_manager_address,
@@ -923,7 +924,7 @@ void start_server(const char *node_ip_address,
   int fd = bind_ipc_sock(socket_name, true);
   event_loop *loop = event_loop_create();
   g_state = LocalSchedulerState_init(
-      node_ip_address, loop, redis_addr, redis_port, socket_name,
+      node_ip_address, loop, db_addresses, db_ports, socket_name,
       plasma_store_socket_name, plasma_manager_socket_name,
       plasma_manager_address, global_scheduler_exists, static_resource_conf,
       start_worker_command, num_workers);
@@ -1056,8 +1057,8 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  char *redis_addr = NULL;
-  int redis_port = -1;
+  std::vector<std::string> ip_addrs;
+  std::vector<int> ports;
   if (!redis_addr_port) {
     /* Start the local scheduler without connecting to Redis. In this case, all
      * submitted tasks will be queued and scheduled locally. */
@@ -1067,22 +1068,8 @@ int main(int argc, char *argv[]) {
           "then a redis address must be provided with the -r switch");
     }
   } else {
-    char redis_addr_buffer[16] = {0};
-    char redis_port_str[6] = {0};
-    /* Parse the Redis address into an IP address and a port. */
-    int num_assigned = sscanf(redis_addr_port, "%15[0-9.]:%5[0-9]",
-                              redis_addr_buffer, redis_port_str);
-    if (num_assigned != 2) {
-      LOG_FATAL(
-          "if a redis address is provided with the -r switch, it should be "
-          "formatted like 127.0.0.1:6379");
-    }
-    redis_addr = redis_addr_buffer;
-    redis_port = strtol(redis_port_str, NULL, 10);
-    if (redis_port == 0) {
-      LOG_FATAL("Unable to parse port number from redis address %s",
-                redis_addr_port);
-    }
+    parse_ip_addrs_ports(std::string(redis_addr_port), ip_addrs, ports);
+
     if (!plasma_manager_socket_name) {
       LOG_FATAL(
           "please specify socket for connecting to Plasma manager with -m "
@@ -1090,7 +1077,7 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  start_server(node_ip_address, scheduler_socket_name, redis_addr, redis_port,
+  start_server(node_ip_address, scheduler_socket_name, ip_addrs, ports,
                plasma_store_socket_name, plasma_manager_socket_name,
                plasma_manager_address, global_scheduler_exists,
                static_resource_conf, start_worker_command, num_workers);

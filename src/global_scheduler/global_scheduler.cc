@@ -418,7 +418,7 @@ int heartbeat_timeout_handler(event_loop *loop, timer_id id, void *context) {
 
 void start_server(const std::vector<std::string>& redis_addrs, const std::vector<int> &redis_ports) {
   event_loop *loop = event_loop_create();
-  g_state = GlobalSchedulerState_init(loop, redis_addr, redis_port);
+  g_state = GlobalSchedulerState_init(loop, redis_addrs, redis_ports);
   /* TODO(rkn): subscribe to notifications from the object table. */
   /* Subscribe to notifications about new local schedulers. TODO(rkn): this
    * needs to also get all of the clients that registered with the database
