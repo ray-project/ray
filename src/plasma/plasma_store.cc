@@ -943,7 +943,8 @@ int main(int argc, char *argv[]) {
         system_memory, shm_mem_avail);
   }
 #endif
-  /* Make it so dlmalloc fails if we try to request more memory than is available. */
+  /* Make it so dlmalloc fails if we try to request more memory than is
+   * available. */
   dlmalloc_set_footprint_limit((size_t) system_memory);
   LOG_DEBUG("starting server listening on %s", socket_name);
   start_server(socket_name, system_memory);
