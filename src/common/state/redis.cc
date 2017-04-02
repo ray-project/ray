@@ -78,12 +78,12 @@ extern int usleep(useconds_t usec);
 
 redisAsyncContext *get_redis_context(DBHandle *db, UniqueID id) {
   int64_t index = *reinterpret_cast<int64_t *>(id.id + sizeof(id) - sizeof(size_t));
-  return db->contexts[index % db->contexts.size()].get();
+  return db->contexts[index % db->contexts.size()];
 }
 
-redisAsyncContext *get_redis_sub_context(DBHandle *db, UniqueID id) {
+redisAsyncContext *get_redis_subscription_context(DBHandle *db, UniqueID id) {
   int64_t index = *reinterpret_cast<int64_t *>(id.id + sizeof(id) - sizeof(size_t));
-  return db->sub_contexts[index % db->sub_contexts.size()].get();
+  return db->subscription_contexts[index % db->subscription_contexts.size()];
 }
 
 void db_connect_shard(const std::string& db_address,
@@ -93,6 +93,7 @@ void db_connect_shard(const std::string& db_address,
                       const char *node_ip_address,
                       int num_args,
                       const char **args,
+                      DBHandle *db,
                       // out parameters
                       redisAsyncContext **context_out,
                       redisAsyncContext **subscription_context_out,
@@ -173,14 +174,16 @@ void db_connect_shard(const std::string& db_address,
                       "%s:%d",
                       db_address.c_str(), db_port);
   context->data = (void *) db;
+  *context_out = context;
 
   /* Establish async connection for subscription */
   redisAsyncContext *subscription_context = redisAsyncConnect(db_address.c_str(), db_port);
   CHECK_REDIS_CONNECT(redisAsyncContext, subscription_context,
                       "could not establish asynchronous subscription "
                       "connection to redis %s:%d",
-                      db_address, db_port);
+                      db_address.c_str(), db_port);
   subscription_context->data = (void *) db;
+  *subscription_context_out = subscription_context;
 }
 
 DBHandle *db_connect(const std::vector<std::string>& db_addresses,
@@ -194,33 +197,25 @@ DBHandle *db_connect(const std::vector<std::string>& db_addresses,
   if (num_args % 2 != 0) {
     LOG_FATAL("The number of extra args must be divisible by two.");
   }
-
-  DBHandle *db = new DBHandle();
   
   /* Create a client ID for this client. */
   DBClientID client = globally_unique_id();
 
-  db_connect_shard()
-
+  DBHandle *db = new DBHandle();
   db->client_type = strdup(client_type);
   db->client = client;
   db->db_client_cache = NULL;
-  db->sync_context = context;
 
-  /* Establish async connection */
-  db->context = redisAsyncConnect(db_address, db_port);
-  CHECK_REDIS_CONNECT(redisAsyncContext, db->context,
-                      "could not establish asynchronous connection to redis "
-                      "%s:%d",
-                      db_address, db_port);
-  db->context->data = (void *) db;
-  /* Establish async connection for subscription */
-  db->sub_context = redisAsyncConnect(db_address, db_port);
-  CHECK_REDIS_CONNECT(redisAsyncContext, db->sub_context,
-                      "could not establish asynchronous subscription "
-                      "connection to redis %s:%d",
-                      db_address, db_port);
-  db->sub_context->data = (void *) db;
+  DCHECK(db_addresses.size() == db_ports.size());
+  for (int i = 0; i < db_addresses.size(); ++i) {
+    redisAsyncContext *context;
+    redisAsyncContext *subscription_context;
+    redisContext *sync_context;
+    db_connect_shard(db_addresses[i], db_ports[i], client, client_type, node_ip_address, num_args, args, db, &context, &subscription_context, &sync_context);
+    db->contexts.push_back(context);
+    db->subscription_contexts.push_back(subscription_context);
+    db->sync_contexts.push_back(sync_context);
+  }
 
   return db;
 }
