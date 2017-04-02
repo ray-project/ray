@@ -321,7 +321,9 @@ void dispatch_actor_task(LocalSchedulerState *state,
   if (next_task_counter != entry->task_counter) {
     /* We cannot execute the next task on this actor without violating the
      * in-order execution guarantee for actor tasks. */
-    CHECK(next_task_counter > entry->task_counter);
+    CHECKM(next_task_counter > entry->task_counter,
+           "next_task_counter is %d and entry->task_counter is %d",
+           (int) next_task_counter, (int) entry->task_counter);
     return;
   }
   /* If the worker is not available, we cannot assign a task to it. */
