@@ -4,6 +4,7 @@
 #include <vector>
 #include <unordered_map>
 #include <map>
+#include <tuple>
 
 #include "state/task_table.h"
 #include "state/local_scheduler_table.h"
@@ -669,6 +670,30 @@ bool resources_available(LocalSchedulerState *state) {
   return resources_available;
 }
 
+bool out_of_resources(LocalSchedulerState *state, SchedulingAlgorithmState *algorithm_state) {
+  /* If there is a task to assign, but there are no more available workers
+   * in the worker pool, then exit. Ensure that there will be an available
+   * worker during a future invocation of dispatch_tasks. */
+  if (algorithm_state->available_workers.size() == 0) {
+    if (state->child_pids.size() == 0) {
+      /* If there are no workers, including those pending PID registration,
+       * then we must start a new one to replenish the worker pool. */
+      start_worker(state, NIL_ACTOR_ID, false);
+    }
+    return true;
+  }
+  /* Terminate early if there are no more resources available. */
+  bool out_of_resources = true;
+  for (int i = 0; i < ResourceIndex_MAX; i++) {
+    if (state->dynamic_resources[i] > 0) {
+      /* There are still resources left, continue checking tasks. */
+      out_of_resources = false;
+      break;
+    }
+  }
+
+  return out_of_resources;
+}
 /**
  * Assign as many tasks from the dispatch queue as possible.
  *
@@ -676,41 +701,16 @@ bool resources_available(LocalSchedulerState *state) {
  * @param algorithm_state The scheduling algorithm state.
  * @return Void.
  */
-void _dispatch_tasks(LocalSchedulerState *state,
+std::pair<std::map<int64_t, std::list<TaskQueueEntry>>::iterator, std::list<TaskQueueEntry>::iterator> _dispatch_tasks(LocalSchedulerState *state,
                      SchedulingAlgorithmState *algorithm_state,
+                     std::pair<
+                       std::map<int64_t, std::list<TaskQueueEntry>>::iterator,
+                       std::list<TaskQueueEntry>::iterator
+                       > queue_it,
                      LocalSchedulerClient *blocked_worker) {
-  int64_t min_depth = 0;
-  if (blocked_worker) {
-    min_depth = TaskSpec_submit_depth(
-                    Task_task_spec(blocked_worker->task_in_progress)) +
-                1;
-  }
-  /* Assign as many tasks as we can, while there are workers available. */
-  auto queue_it = algorithm_state->dispatch_task_queue->lower_bound(min_depth);
-  if (queue_it == algorithm_state->dispatch_task_queue->end()) {
-    return;
-  }
-
-  for (; queue_it != algorithm_state->dispatch_task_queue->end(); ++queue_it) {
-    for (auto it = queue_it->second.begin(); it != queue_it->second.end();) {
-      TaskQueueEntry task = *it;
-      /* If there is a task to assign, but there are no more available workers in
-       * the worker pool, then exit. Ensure that there will be an available
-       * worker during a future invocation of dispatch_tasks. */
-      if (algorithm_state->available_workers.size() == 0) {
-        if (state->child_pids.size() == 0) {
-          /* If there are no workers, including those pending PID registration,
-           * then we must start a new one to replenish the worker pool. */
-          start_worker(state, NIL_ACTOR_ID, false);
-        }
-        return;
-      }
-
-      /* Terminate early if there are no more resources available. */
-      if (!resources_available(state)) {
-        return;
-      }
-
+  while (queue_it.first != algorithm_state->dispatch_task_queue->end()) {
+    while (queue_it.second != queue_it.first->second.end()) {
+      TaskQueueEntry task = *queue_it.second;
       /* Skip to the next task if this task cannot currently be satisfied. */
       if (!check_dynamic_resources(
               state, TaskSpec_get_required_resource(task.spec, ResourceIndex_CPU),
@@ -718,7 +718,7 @@ void _dispatch_tasks(LocalSchedulerState *state,
               TaskSpec_get_required_resource(task.spec,
                                              ResourceIndex_CustomResource))) {
         /* This task could not be satisfied -- proceed to the next task. */
-        ++it;
+        ++queue_it.second;
         continue;
       }
 
@@ -736,26 +736,53 @@ void _dispatch_tasks(LocalSchedulerState *state,
       /* Free the task queue entry. */
       TaskQueueEntry_free(&task);
       /* Dequeue the task. */
-      it = queue_it->second.erase(it);
+      queue_it.second = queue_it.first->second.erase(queue_it.second);
 
       if (blocked_worker) {
         worker->parent_worker = blocked_worker;
         blocked_worker->child_worker = worker;
-        return;
       }
+
+      return queue_it;
     } /* End for each task in the dispatch queue. */
+
+    ++queue_it.first;
+    if (queue_it.first != algorithm_state->dispatch_task_queue->end()) {
+      queue_it.second = queue_it.first->second.begin();
+    }
   }
+
+  return queue_it;
 }
 
 void dispatch_tasks(LocalSchedulerState *state,
                     SchedulingAlgorithmState *algorithm_state) {
   for (auto &worker : algorithm_state->blocked_workers) {
+    if (out_of_resources(state, algorithm_state)) {
+      return;
+    }
     if (worker->child_worker == NULL) {
-      _dispatch_tasks(state, algorithm_state, worker);
+      auto min_depth = TaskSpec_submit_depth(
+                      Task_task_spec(worker->task_in_progress)) + 1;
+      /* Assign as many tasks as we can, while there are workers available. */
+      auto queue_it = algorithm_state->dispatch_task_queue->lower_bound(min_depth);
+      if (queue_it == algorithm_state->dispatch_task_queue->end()) {
+        continue;
+      }
+
+      auto it = std::make_pair(queue_it, queue_it->second.begin());
+      _dispatch_tasks(state, algorithm_state, it, worker);
     }
   }
 
-  _dispatch_tasks(state, algorithm_state, NULL);
+  auto queue_it = algorithm_state->dispatch_task_queue->begin();
+  auto it = std::make_pair(queue_it, queue_it->second.begin());
+  while (it.first != algorithm_state->dispatch_task_queue->end()) {
+    if (out_of_resources(state, algorithm_state)) {
+      return;
+    }
+    it = _dispatch_tasks(state, algorithm_state, it, NULL);
+  }
 }
 /**
  * Attempt to dispatch both regular tasks and actor tasks.
