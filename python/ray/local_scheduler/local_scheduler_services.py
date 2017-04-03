@@ -18,6 +18,7 @@ def start_local_scheduler(plasma_store_name,
                           plasma_address=None,
                           node_ip_address="127.0.0.1",
                           redis_address=None,
+                          redis_shards=None,
                           use_valgrind=False,
                           use_profiler=False,
                           stdout_file=None,
@@ -91,7 +92,7 @@ def start_local_scheduler(plasma_store_name,
                                                          redis_address)
     command += ["-w", start_worker_command]
   if redis_address is not None:
-    command += ["-r", redis_address]
+    command += ["-r", redis_shards]
   if plasma_address is not None:
     command += ["-a", plasma_address]
   if static_resource_list is not None:

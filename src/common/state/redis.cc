@@ -78,6 +78,7 @@ extern int usleep(useconds_t usec);
 
 redisAsyncContext *get_redis_context(DBHandle *db, UniqueID id) {
   int64_t index = *reinterpret_cast<int64_t *>(id.id + sizeof(id) - sizeof(size_t));
+  printf("selecting index %" PRId64 " of %" PRId64 "\n", index % db->contexts.size(), db->contexts.size());
   return db->contexts[index % db->contexts.size()];
 }
 
@@ -226,6 +227,7 @@ DBHandle *db_connect(const std::vector<std::string>& db_addresses,
 }
 
 void db_disconnect(DBHandle *db) {
+  // XXX disconnect all the shards
   redisFree(db->sync_context);
   redisAsyncFree(db->context);
   redisAsyncFree(db->sub_context);
@@ -728,12 +730,14 @@ void redis_task_table_get_task(TableCallbackData *callback_data) {
   CHECK(callback_data->data == NULL);
   TaskID task_id = callback_data->id;
 
+  redisAsyncContext *context = get_redis_context(db, task_id);
+
   int status = redisAsyncCommand(
-      db->context, redis_task_table_get_task_callback,
+      context, redis_task_table_get_task_callback,
       (void *) callback_data->timer_id, "RAY.TASK_TABLE_GET %b", task_id.id,
       sizeof(task_id.id));
-  if ((status == REDIS_ERR) || db->context->err) {
-    LOG_REDIS_DEBUG(db->context, "error in redis_task_table_get_task");
+  if ((status == REDIS_ERR) || context->err) {
+    LOG_REDIS_DEBUG(context, "error in redis_task_table_get_task");
   }
 }
 
@@ -760,17 +764,20 @@ void redis_task_table_add_task(TableCallbackData *callback_data) {
   Task *task = (Task *) callback_data->data;
   TaskID task_id = Task_task_id(task);
   DBClientID local_scheduler_id = Task_local_scheduler(task);
+
+  redisAsyncContext *context = get_redis_context(db, task_id);
+
   int state = Task_state(task);
   TaskSpec *spec = Task_task_spec(task);
 
   CHECKM(task != NULL, "NULL task passed to redis_task_table_add_task.");
   int status = redisAsyncCommand(
-      db->context, redis_task_table_add_task_callback,
+      context, redis_task_table_add_task_callback,
       (void *) callback_data->timer_id, "RAY.TASK_TABLE_ADD %b %d %b %b",
       task_id.id, sizeof(task_id.id), state, local_scheduler_id.id,
       sizeof(local_scheduler_id.id), spec, Task_task_spec_size(task));
-  if ((status == REDIS_ERR) || db->context->err) {
-    LOG_REDIS_DEBUG(db->context, "error in redis_task_table_add_task");
+  if ((status == REDIS_ERR) || context->err) {
+    LOG_REDIS_DEBUG(context, "error in redis_task_table_add_task");
   }
 }
 
@@ -797,16 +804,19 @@ void redis_task_table_update(TableCallbackData *callback_data) {
   Task *task = (Task *) callback_data->data;
   TaskID task_id = Task_task_id(task);
   DBClientID local_scheduler_id = Task_local_scheduler(task);
+
+  redisAsyncContext *context = get_redis_context(db, task_id);
+
   int state = Task_state(task);
 
   CHECKM(task != NULL, "NULL task passed to redis_task_table_update.");
   int status = redisAsyncCommand(
-      db->context, redis_task_table_update_callback,
+      context, redis_task_table_update_callback,
       (void *) callback_data->timer_id, "RAY.TASK_TABLE_UPDATE %b %d %b",
       task_id.id, sizeof(task_id.id), state, local_scheduler_id.id,
       sizeof(local_scheduler_id.id));
-  if ((status == REDIS_ERR) || db->context->err) {
-    LOG_REDIS_DEBUG(db->context, "error in redis_task_table_update");
+  if ((status == REDIS_ERR) || context->err) {
+    LOG_REDIS_DEBUG(context, "error in redis_task_table_update");
   }
 }
 
@@ -917,24 +927,26 @@ void redis_task_table_subscribe(TableCallbackData *callback_data) {
   /* TASK_CHANNEL_PREFIX is defined in ray_redis_module.cc and must be kept in
    * sync with that file. */
   const char *TASK_CHANNEL_PREFIX = "TT:";
-  int status;
-  if (IS_NIL_ID(data->local_scheduler_id)) {
-    /* TODO(swang): Implement the state_filter by translating the bitmask into
-     * a Redis key-matching pattern. */
-    status =
-        redisAsyncCommand(db->sub_context, redis_task_table_subscribe_callback,
-                          (void *) callback_data->timer_id, "PSUBSCRIBE %s*:%d",
-                          TASK_CHANNEL_PREFIX, data->state_filter);
-  } else {
-    DBClientID local_scheduler_id = data->local_scheduler_id;
-    status =
-        redisAsyncCommand(db->sub_context, redis_task_table_subscribe_callback,
-                          (void *) callback_data->timer_id, "SUBSCRIBE %s%b:%d",
-                          TASK_CHANNEL_PREFIX, (char *) local_scheduler_id.id,
-                          sizeof(local_scheduler_id.id), data->state_filter);
-  }
-  if ((status == REDIS_ERR) || db->sub_context->err) {
-    LOG_REDIS_DEBUG(db->sub_context, "error in redis_task_table_subscribe");
+  for (auto subscribtion_context : db->subscription_contexts) {
+    int status;
+    if (IS_NIL_ID(data->local_scheduler_id)) {
+      /* TODO(swang): Implement the state_filter by translating the bitmask into
+       * a Redis key-matching pattern. */
+      status =
+          redisAsyncCommand(subscribtion_context, redis_task_table_subscribe_callback,
+                            (void *) callback_data->timer_id, "PSUBSCRIBE %s*:%d",
+                            TASK_CHANNEL_PREFIX, data->state_filter);
+    } else {
+      DBClientID local_scheduler_id = data->local_scheduler_id;
+      status =
+          redisAsyncCommand(subscribtion_context, redis_task_table_subscribe_callback,
+                            (void *) callback_data->timer_id, "SUBSCRIBE %s%b:%d",
+                            TASK_CHANNEL_PREFIX, (char *) local_scheduler_id.id,
+                            sizeof(local_scheduler_id.id), data->state_filter);
+    }
+    if ((status == REDIS_ERR) || subscribtion_context->err) {
+      LOG_REDIS_DEBUG(subscribtion_context, "error in redis_task_table_subscribe");
+    }
   }
 }
 
