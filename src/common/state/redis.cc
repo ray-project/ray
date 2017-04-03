@@ -294,14 +294,16 @@ void redis_object_table_add(TableCallbackData *callback_data) {
   int64_t object_size = info->object_size;
   unsigned char *digest = info->digest;
 
+  redisAsyncContext *context = get_redis_context(db, obj_id);
+
   int status = redisAsyncCommand(
-      db->context, redis_object_table_add_callback,
+      context, redis_object_table_add_callback,
       (void *) callback_data->timer_id, "RAY.OBJECT_TABLE_ADD %b %ld %b %b",
       obj_id.id, sizeof(obj_id.id), object_size, digest, (size_t) DIGEST_SIZE,
       db->client.id, sizeof(db->client.id));
 
-  if ((status == REDIS_ERR) || db->context->err) {
-    LOG_REDIS_DEBUG(db->context, "error in redis_object_table_add");
+  if ((status == REDIS_ERR) || context->err) {
+    LOG_REDIS_DEBUG(context, "error in redis_object_table_add");
   }
 }
 
@@ -339,13 +341,16 @@ void redis_object_table_remove(TableCallbackData *callback_data) {
   if (client_id == NULL) {
     client_id = &db->client;
   }
+
+  redisAsyncContext *context = get_redis_context(db, obj_id);
+
   int status = redisAsyncCommand(
-      db->context, redis_object_table_remove_callback,
+      context, redis_object_table_remove_callback,
       (void *) callback_data->timer_id, "RAY.OBJECT_TABLE_REMOVE %b %b",
       obj_id.id, sizeof(obj_id.id), client_id->id, sizeof(client_id->id));
 
-  if ((status == REDIS_ERR) || db->context->err) {
-    LOG_REDIS_DEBUG(db->context, "error in redis_object_table_remove");
+  if ((status == REDIS_ERR) || context->err) {
+    LOG_REDIS_DEBUG(context, "error in redis_object_table_remove");
   }
 }
 
@@ -354,12 +359,15 @@ void redis_object_table_lookup(TableCallbackData *callback_data) {
   DBHandle *db = callback_data->db_handle;
 
   ObjectID obj_id = callback_data->id;
+
+  redisAsyncContext *context = get_redis_context(db, obj_id);
+
   int status = redisAsyncCommand(
-      db->context, redis_object_table_lookup_callback,
+      context, redis_object_table_lookup_callback,
       (void *) callback_data->timer_id, "RAY.OBJECT_TABLE_LOOKUP %b", obj_id.id,
       sizeof(obj_id.id));
-  if ((status == REDIS_ERR) || db->context->err) {
-    LOG_REDIS_DEBUG(db->context, "error in object_table lookup");
+  if ((status == REDIS_ERR) || context->err) {
+    LOG_REDIS_DEBUG(context, "error in object_table lookup");
   }
 }
 
