@@ -2,6 +2,8 @@
 
 #include "common.h"
 
+#include <iostream>
+
 int parse_ip_addr_port(const char *ip_addr_port, char *ip_addr, int *port) {
   char port_str[6];
   int parsed = sscanf(ip_addr_port, "%15[0-9.]:%5[0-9]", ip_addr, port_str);
@@ -33,6 +35,12 @@ bool parse_ip_addrs_ports(std::string ip_addrs_ports,
     ports.push_back(port);
     stream >> ch;
   } while (ch == ',');
+  
+  std::cout << "[XXX] parsed IP addresses" << std::endl;
+  for (int i = 0; i < ip_addrs.size(); ++i) {
+    std::cout << "addr is " << ip_addrs[i] << std::endl;
+    std::cout << "port is " << ports[i] << std::endl;
+  }
 
   return true;
 }

@@ -243,15 +243,17 @@ void db_disconnect(DBHandle *db) {
 
 void db_attach(DBHandle *db, event_loop *loop, bool reattach) {
   db->loop = loop;
-  int err = redisAeAttach(loop, db->context);
-  /* If the database is reattached in the tests, redis normally gives
-   * an error which we can safely ignore. */
-  if (!reattach) {
-    CHECKM(err == REDIS_OK, "failed to attach the event loop");
-  }
-  err = redisAeAttach(loop, db->sub_context);
-  if (!reattach) {
-    CHECKM(err == REDIS_OK, "failed to attach the event loop");
+  for (int i = 0; i < db->contexts.size(); ++i) {
+    int err = redisAeAttach(loop, db->contexts[i]);
+    /* If the database is reattached in the tests, redis normally gives
+     * an error which we can safely ignore. */
+    if (!reattach) {
+      CHECKM(err == REDIS_OK, "failed to attach the event loop");
+    }
+    err = redisAeAttach(loop, db->subscription_contexts[i]);
+    if (!reattach) {
+      CHECKM(err == REDIS_OK, "failed to attach the event loop");
+    }
   }
 }
 
@@ -730,14 +732,12 @@ void redis_task_table_get_task(TableCallbackData *callback_data) {
   CHECK(callback_data->data == NULL);
   TaskID task_id = callback_data->id;
 
-  redisAsyncContext *context = get_redis_context(db, task_id);
-
   int status = redisAsyncCommand(
-      context, redis_task_table_get_task_callback,
+      db->context, redis_task_table_get_task_callback,
       (void *) callback_data->timer_id, "RAY.TASK_TABLE_GET %b", task_id.id,
       sizeof(task_id.id));
-  if ((status == REDIS_ERR) || context->err) {
-    LOG_REDIS_DEBUG(context, "error in redis_task_table_get_task");
+  if ((status == REDIS_ERR) || db->context->err) {
+    LOG_REDIS_DEBUG(db->context, "error in redis_task_table_get_task");
   }
 }
 
@@ -765,19 +765,17 @@ void redis_task_table_add_task(TableCallbackData *callback_data) {
   TaskID task_id = Task_task_id(task);
   DBClientID local_scheduler_id = Task_local_scheduler(task);
 
-  redisAsyncContext *context = get_redis_context(db, task_id);
-
   int state = Task_state(task);
   TaskSpec *spec = Task_task_spec(task);
 
   CHECKM(task != NULL, "NULL task passed to redis_task_table_add_task.");
   int status = redisAsyncCommand(
-      context, redis_task_table_add_task_callback,
+      db->context, redis_task_table_add_task_callback,
       (void *) callback_data->timer_id, "RAY.TASK_TABLE_ADD %b %d %b %b",
       task_id.id, sizeof(task_id.id), state, local_scheduler_id.id,
       sizeof(local_scheduler_id.id), spec, Task_task_spec_size(task));
-  if ((status == REDIS_ERR) || context->err) {
-    LOG_REDIS_DEBUG(context, "error in redis_task_table_add_task");
+  if ((status == REDIS_ERR) || db->context->err) {
+    LOG_REDIS_DEBUG(db->context, "error in redis_task_table_add_task");
   }
 }
 
@@ -805,18 +803,16 @@ void redis_task_table_update(TableCallbackData *callback_data) {
   TaskID task_id = Task_task_id(task);
   DBClientID local_scheduler_id = Task_local_scheduler(task);
 
-  redisAsyncContext *context = get_redis_context(db, task_id);
-
   int state = Task_state(task);
 
   CHECKM(task != NULL, "NULL task passed to redis_task_table_update.");
   int status = redisAsyncCommand(
-      context, redis_task_table_update_callback,
+      db->context, redis_task_table_update_callback,
       (void *) callback_data->timer_id, "RAY.TASK_TABLE_UPDATE %b %d %b",
       task_id.id, sizeof(task_id.id), state, local_scheduler_id.id,
       sizeof(local_scheduler_id.id));
-  if ((status == REDIS_ERR) || context->err) {
-    LOG_REDIS_DEBUG(context, "error in redis_task_table_update");
+  if ((status == REDIS_ERR) || db->context->err) {
+    LOG_REDIS_DEBUG(db->context, "error in redis_task_table_update");
   }
 }
 

@@ -187,7 +187,7 @@ void add_local_scheduler(GlobalSchedulerState *state,
            sizeof(plasma_local_scheduler_entry->local_scheduler_db_client_id),
            plasma_local_scheduler_entry);
 
-#if (RAY_COMMON_LOG_LEVEL <= RAY_COMMON_DEBUG)
+#if 0
   {
     /* Print the local scheduler to plasma association map so far. */
     AuxAddressEntry *entry, *tmp;

@@ -450,6 +450,8 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
     return RedisModule_WrongArity(ctx);
   }
 
+  printf("called object table add\n");
+
   RedisModuleString *object_id = argv[1];
   RedisModuleString *data_size = argv[2];
   RedisModuleString *new_hash = argv[3];
