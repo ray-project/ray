@@ -215,6 +215,11 @@ DBHandle *db_connect(const std::vector<std::string>& db_addresses,
     db->contexts.push_back(context);
     db->subscription_contexts.push_back(subscription_context);
     db->sync_contexts.push_back(sync_context);
+    if (i == 0) {
+      db->context = context;
+      db->sub_context = subscription_context;
+      db->sync_context = sync_context;
+    }
   }
 
   return db;
