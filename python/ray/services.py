@@ -695,6 +695,7 @@ def start_ray_processes(address_info=None,
                         node_ip_address="127.0.0.1",
                         num_workers=0,
                         num_local_schedulers=1,
+                        num_redis_shards=1,
                         worker_path=None,
                         cleanup=True,
                         redirect_output=False,
@@ -770,13 +771,24 @@ def start_ray_processes(address_info=None,
     redis_stdout_file, redis_stderr_file = new_log_files("redis",
                                                          redirect_output)
     if redis_address is None:
-      # Start a Redis server. The start_redis method will choose a random port.
+      # Start primary redis instance. The start_redis method will choose a
+      # random port.
       redis_port, _ = start_redis(node_ip_address,
-                                  stdout_file=redis_stdout_file,
-                                  stderr_file=redis_stderr_file,
-                                  cleanup=cleanup)
+                                    stdout_file=redis_stdout_file,
+                                    stderr_file=redis_stderr_file,
+                                    cleanup=cleanup)
       redis_address = address(node_ip_address, redis_port)
       address_info["redis_address"] = redis_address
+      # Start other redis shards.
+      redis_shards = [redis_address]
+      for i in range(num_redis_shards - 1):
+        # Start a Redis server. The start_redis method will choose a random port.
+        redis_port, _ = start_redis(node_ip_address,
+                                    stdout_file=redis_stdout_file,
+                                    stderr_file=redis_stderr_file,
+                                    cleanup=cleanup)
+        redis_shards.append(address(node_ip_address, redis_port))
+      address_info["redis_shards"] = "[" + ",".join(redis_shards) + "]"
       time.sleep(0.1)
     else:
       # A Redis address was provided, so start a Redis server with the given
