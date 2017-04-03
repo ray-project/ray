@@ -186,7 +186,10 @@ void SchedulingAlgorithmState_free(SchedulingAlgorithmState *algorithm_state) {
   object_entry *obj_entry, *tmp_obj_entry;
   HASH_ITER(hh, algorithm_state->local_objects, obj_entry, tmp_obj_entry) {
     HASH_DELETE(hh, algorithm_state->local_objects, obj_entry);
-    CHECK(obj_entry->dependent_tasks->empty());
+    /* The check below is commented out because it could fail if
+     * SchedulingAlgorithmState_free is called in response to a SIGINT which
+     * arrives in the middle of handle_object_available. */
+    /* CHECK(obj_entry->dependent_tasks->empty()); */
     delete obj_entry->dependent_tasks;
     free(obj_entry);
   }
