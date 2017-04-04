@@ -520,7 +520,7 @@ void plasma_read_WaitRequest(uint8_t *data,
 int plasma_send_WaitReply(
     int sock,
     protocol_builder *B,
-    const std::unordered_map<ObjectID, ObjectRequest, decltype(&hashObjectID)>
+    const std::unordered_map<ObjectID, ObjectRequest, UniqueIDHasher>
         &object_requests,
     int num_ready_objects) {
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);

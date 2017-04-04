@@ -161,8 +161,7 @@ typedef struct {
   /** The object requests for this wait request. Each object request has a
    *  status field which is either PLASMA_QUERY_LOCAL or PLASMA_QUERY_ANYWHERE.
    */
-  std::unordered_map<ObjectID, ObjectRequest, decltype(&hashObjectID)>
-      *object_requests;
+  std::unordered_map<ObjectID, ObjectRequest, UniqueIDHasher> *object_requests;
   /** The minimum number of objects to wait for in this request. */
   int64_t num_objects_to_wait_for;
   /** The number of object requests in this wait request that are already
@@ -1159,8 +1158,8 @@ void process_wait_request(ClientConnection *client_conn,
   wait_req->timer = -1;
   wait_req->num_object_requests = num_object_requests;
   wait_req->object_requests =
-      new std::unordered_map<ObjectID, ObjectRequest, decltype(&hashObjectID)>(
-      num_object_requests, &hashObjectID);
+      new std::unordered_map<ObjectID, ObjectRequest, UniqueIDHasher>(
+          num_object_requests);
   for (int i = 0; i < num_object_requests; ++i) {
     (*wait_req->object_requests)[object_requests[i].object_id] = object_requests[i];
   }
