@@ -512,20 +512,28 @@ void plasma_read_WaitRequest(uint8_t *data,
     object_requests[i].object_id =
         from_flatbuf(message->object_requests()->Get(i)->object_id());
     object_requests[i].type = message->object_requests()->Get(i)->type();
+    /* Initialize the object request status to nonexistent. */
+    object_requests[i].status = ObjectStatus_Nonexistent;
   }
 }
 
 int plasma_send_WaitReply(int sock,
                           protocol_builder *B,
-                          ObjectRequest object_requests[],
+                          const std::unordered_map<ObjectID, ObjectRequest, decltype(&hashObjectID)> &object_requests,
+//                          const std::unordered_set<ObjectRequest> &object_requests,
+//                          ObjectRequest object_requests[],
                           int num_ready_objects) {
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
 
   std::vector<flatbuffers::Offset<ObjectReply>> object_replies;
-  for (int i = 0; i < num_ready_objects; i++) {
+  for (const auto &objreq_pair : object_requests) {
+    const auto &object_request = objreq_pair.second;
+//  for (int i = 0; i < num_ready_objects; i++) {
     object_replies.push_back(
-        CreateObjectReply(fbb, to_flatbuf(fbb, object_requests[i].object_id),
-                          object_requests[i].status));
+//        CreateObjectReply(fbb, to_flatbuf(fbb, object_requests[i].object_id), object_requests[i].status));
+    CreateObjectReply(fbb,
+        to_flatbuf(fbb, object_request.object_id), object_request.status));
+
   }
 
   auto message = CreatePlasmaWaitReply(

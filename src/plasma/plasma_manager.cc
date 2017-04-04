@@ -21,6 +21,9 @@
 #include <assert.h>
 #include <netinet/in.h>
 
+/* C++ includes. */
+#include <unordered_map>
+
 #include "uthash.h"
 #include "utlist.h"
 #include "utarray.h"
@@ -158,7 +161,8 @@ typedef struct {
   /** The object requests for this wait request. Each object request has a
    *  status field which is either PLASMA_QUERY_LOCAL or PLASMA_QUERY_ANYWHERE.
    */
-  ObjectRequest *object_requests;
+//  ObjectRequest *object_requests;
+  std::unordered_map<ObjectID, ObjectRequest, decltype(&hashObjectID)> *object_requests;
   /** The minimum number of objects to wait for in this request. */
   int64_t num_objects_to_wait_for;
   /** The number of object requests in this wait request that are already
@@ -378,7 +382,8 @@ void remove_wait_request(PlasmaManagerState *manager_state,
     CHECK(event_loop_remove_timer(manager_state->loop, wait_req->timer) ==
           AE_OK);
   }
-  free(wait_req->object_requests);
+//  free(wait_req->object_requests);
+  delete wait_req->object_requests;
   free(wait_req);
 }
 
@@ -387,14 +392,17 @@ void return_from_wait(PlasmaManagerState *manager_state,
   /* Send the reply to the client. */
   warn_if_sigpipe(plasma_send_WaitReply(
                       wait_req->client_conn->fd, manager_state->builder,
-                      wait_req->object_requests, wait_req->num_object_requests),
-                  wait_req->client_conn->fd);
-  /* Remove the wait request from each of the relevant object_wait_requests hash
+                      *(wait_req->object_requests), wait_req->num_object_requests),
+                      wait_req->client_conn->fd);
+  /* Iterate over all object IDs requested as part of this wait request.
+   * Remove the wait request from each of the relevant object_wait_requests hash
    * tables if it is present there. */
-  for (int i = 0; i < wait_req->num_object_requests; ++i) {
+  for (const auto &objreq_pair : *(wait_req->object_requests)) {
+//  for (int i = 0; i < wait_req->num_object_requests; ++i) {
+    const auto &object_request = objreq_pair.second;
     remove_wait_request_for_object(manager_state,
-                                   wait_req->object_requests[i].object_id,
-                                   wait_req->object_requests[i].type, wait_req);
+                                   object_request.object_id,
+                                   object_request.type, wait_req);
   }
   /* Remove the wait request. */
   remove_wait_request(manager_state, wait_req);
@@ -424,19 +432,32 @@ void update_object_wait_requests(PlasmaManagerState *manager_state,
           object_wait_reqs->wait_requests, index);
       WaitRequest *wait_req = *wait_req_ptr;
       wait_req->num_satisfied += 1;
-      /* Mark the object as present in the wait request. */
-      int j = 0;
-      for (; j < wait_req->num_object_requests; ++j) {
-        if (ObjectID_equal(wait_req->object_requests[j].object_id, obj_id)) {
+       /* Mark the object as present in the wait request. */
+//      std::unordered_set<ObjectRequest>::iterator objreq_found_iter =
+//          wait_req->object_requests->find(ObjectRequest({obj_id, 0,0}));
+      auto objreq_found_iter = wait_req->object_requests->find(obj_id);
+      /* Check that we found the object. */
+      CHECK(objreq_found_iter != wait_req->object_requests->end());
+      /* Check that the object found was not previously known to us. */
+      CHECK(objreq_found_iter->second.status == ObjectStatus_Nonexistent);
+      /* Update the object's status to a known status. */
+      objreq_found_iter->second.status = status;
+#if 0
+      for (auto &object_request : *(wait_req->object_requests)) {
+//      int j = 0;
+//      for (; j < wait_req->num_object_requests; ++j) {
+//        if (ObjectID_equal(wait_req->object_requests[j].object_id, obj_id)) {
+        if (ObjectID_equal(object_request.object_id, obj_id)) {
+
           /* Check that this object is currently nonexistent. */
-          CHECK(wait_req->object_requests[j].status ==
-                ObjectStatus_Nonexistent);
-          wait_req->object_requests[j].status = status;
+          CHECK(object_request.status == ObjectStatus_Nonexistent);
+          object_request.status = status;
           break;
         }
       }
       /* Make sure that we actually marked an object as available.*/
-      CHECK(j != wait_req->num_object_requests);
+//      CHECK(j != wait_req->num_object_requests);
+#endif
       /* If this wait request is done, reply to the client. */
       if (wait_req->num_satisfied == wait_req->num_objects_to_wait_for) {
         return_from_wait(manager_state, wait_req);
@@ -1137,11 +1158,16 @@ void process_wait_request(ClientConnection *client_conn,
   wait_req->timer = -1;
   wait_req->num_object_requests = num_object_requests;
   wait_req->object_requests =
-      (ObjectRequest *) malloc(num_object_requests * sizeof(ObjectRequest));
+      new std::unordered_map<ObjectID, ObjectRequest, decltype(&hashObjectID)>(
+      num_object_requests, &hashObjectID);
+  //      object_requests + sizeof(object_requests)/sizeof(ObjectRequest));
+//  wait_req->object_requests =
+//      (ObjectRequest *) malloc(num_object_requests * sizeof(ObjectRequest));
   for (int i = 0; i < num_object_requests; ++i) {
-    wait_req->object_requests[i].object_id = object_requests[i].object_id;
-    wait_req->object_requests[i].type = object_requests[i].type;
-    wait_req->object_requests[i].status = ObjectStatus_Nonexistent;
+    (*wait_req->object_requests)[object_requests[i].object_id] = object_requests[i];
+//    wait_req->object_requests[i].object_id = object_requests[i].object_id;
+//    wait_req->object_requests[i].type = object_requests[i].type;
+//    wait_req->object_requests[i].status = ObjectStatus_Nonexistent;
   }
   wait_req->num_objects_to_wait_for = num_ready_objects;
   wait_req->num_satisfied = 0;
@@ -1152,25 +1178,31 @@ void process_wait_request(ClientConnection *client_conn,
   ObjectID *object_ids_to_request =
       (ObjectID *) malloc(num_object_requests * sizeof(ObjectID));
 
-  for (int i = 0; i < num_object_requests; ++i) {
-    ObjectID obj_id = object_requests[i].object_id;
+  for (auto &objreq_pair : *(wait_req->object_requests)) {
+    auto &object_request = objreq_pair.second;
+//  for (int i = 0; i < num_object_requests; ++i) {
+//    ObjectID obj_id = object_requests[i].object_id;
+    ObjectID obj_id = object_request.object_id;
 
     /* Check if this object is already present locally. If so, mark the object
      * as present. */
     if (is_object_local(manager_state, obj_id)) {
-      wait_req->object_requests[i].status = ObjectStatus_Local;
+//      wait_req->object_requests[i].status = ObjectStatus_Local;
+      object_request.status = ObjectStatus_Local;
       wait_req->num_satisfied += 1;
       continue;
     }
 
     /* Add the wait request to the relevant data structures. */
-    add_wait_request_for_object(manager_state, obj_id,
-                                wait_req->object_requests[i].type, wait_req);
+    add_wait_request_for_object(manager_state, obj_id, object_request.type, wait_req);
+//  add_wait_request_for_object(manager_state, obj_id, wait_req->object_requests[i].type, wait_req);
 
-    if (wait_req->object_requests[i].type == PLASMA_QUERY_LOCAL) {
+//    if (wait_req->object_requests[i].type == PLASMA_QUERY_LOCAL) {
+    if (object_request.type == PLASMA_QUERY_LOCAL) {
       /* TODO(rkn): If desired, we could issue a fetch command here to retrieve
        * the object. */
-    } else if (wait_req->object_requests[i].type == PLASMA_QUERY_ANYWHERE) {
+//    } else if (wait_req->object_requests[i].type == PLASMA_QUERY_ANYWHERE) {
+    } else if (object_request.type == PLASMA_QUERY_ANYWHERE) {
       /* Add this object ID to the list of object IDs to request notifications
        * for from the object table. */
       object_ids_to_request[num_object_ids_to_request] = obj_id;
@@ -1516,6 +1548,9 @@ void process_message(event_loop *loop,
   case MessageType_PlasmaWaitRequest: {
     LOG_DEBUG("Processing wait");
     int num_object_ids = plasma_read_WaitRequest_num_object_ids(data);
+    /* TODO(atumanov): allocate and populate the unordered_map and pass it to
+     * process_wait_request.
+     */
     ObjectRequest *object_requests =
         (ObjectRequest *) malloc(num_object_ids * sizeof(ObjectRequest));
     int64_t timeout_ms;

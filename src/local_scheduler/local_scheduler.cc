@@ -471,7 +471,7 @@ void assign_task_to_worker(LocalSchedulerState *state,
   worker->task_in_progress = Task_copy(task);
   /* Update the global task table. */
   if (state->db != NULL) {
-    task_table_update(state->db, task, NULL, NULL, NULL);
+    //task_table_update(state->db, task, NULL, NULL, NULL);
   } else {
     Task_free(task);
   }

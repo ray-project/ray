@@ -539,7 +539,7 @@ class Worker(object):
     final_results = ray.numbuf.retrieve_list(
         [object_id.id() for object_id in object_ids],
         self.plasma_client.conn,
-        0)
+        -1)
     # Construct a dictionary mapping object IDs that we haven't gotten yet to
     # their original index in the object_ids argument.
     unready_ids = dict((object_id, i) for (i, (object_id, val)) in
