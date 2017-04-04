@@ -706,7 +706,7 @@ class ActorsWithGPUs(unittest.TestCase):
     num_gpus_per_scheduler = 10
     ray.worker._init(
         start_ray_local=True, num_workers=0,
-        num_local_schedulers=num_local_schedulers,
+        num_local_schedulers=num_local_schedulers, redirect_output=True,
         num_gpus=(num_local_schedulers * [num_gpus_per_scheduler]))
 
     @ray.remote
