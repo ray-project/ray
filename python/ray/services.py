@@ -10,6 +10,7 @@ import random
 import redis
 import signal
 import socket
+import string
 import subprocess
 import sys
 import time
