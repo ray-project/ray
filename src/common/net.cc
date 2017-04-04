@@ -35,12 +35,6 @@ bool parse_ip_addrs_ports(std::string ip_addrs_ports,
     ports.push_back(port);
     stream >> ch;
   } while (ch == ',');
-  
-  std::cout << "[XXX] parsed IP addresses" << std::endl;
-  for (int i = 0; i < ip_addrs.size(); ++i) {
-    std::cout << "addr is " << ip_addrs[i] << std::endl;
-    std::cout << "port is " << ports[i] << std::endl;
-  }
 
   return true;
 }

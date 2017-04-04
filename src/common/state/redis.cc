@@ -78,7 +78,6 @@ extern int usleep(useconds_t usec);
 
 redisAsyncContext *get_redis_context(DBHandle *db, UniqueID id) {
   int64_t index = *reinterpret_cast<int64_t *>(id.id + sizeof(id) - sizeof(size_t));
-  printf("selecting index %" PRId64 " of %" PRId64 "\n", index % db->contexts.size(), db->contexts.size());
   return db->contexts[index % db->contexts.size()];
 }
 
