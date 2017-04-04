@@ -7,7 +7,7 @@ import subprocess
 import time
 
 
-def start_global_scheduler(redis_address, use_valgrind=False,
+def start_global_scheduler(redis_address, redis_shards, use_valgrind=False,
                            use_profiler=False, stdout_file=None,
                            stderr_file=None):
   """Start a global scheduler process.
@@ -31,7 +31,7 @@ def start_global_scheduler(redis_address, use_valgrind=False,
   global_scheduler_executable = os.path.join(
       os.path.abspath(os.path.dirname(__file__)),
       "../core/src/global_scheduler/global_scheduler")
-  command = [global_scheduler_executable, "-r", redis_address]
+  command = [global_scheduler_executable, "-r", redis_shards]
   if use_valgrind:
     pid = subprocess.Popen(["valgrind",
                             "--track-origins=yes",

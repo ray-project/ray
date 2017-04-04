@@ -45,8 +45,8 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
                                             const char *manager_socket_name,
                                             const char *manager_addr,
                                             int manager_port,
-                                            const char *db_addr,
-                                            int db_port);
+                                            const std::vector<std::string>& db_addresses,
+                                            const std::vector<int>& db_ports);
 
 /**
  * Destroys the plasma manager state and its connections.

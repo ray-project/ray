@@ -61,14 +61,14 @@ void assign_task_to_local_scheduler(GlobalSchedulerState *state,
 }
 
 GlobalSchedulerState *GlobalSchedulerState_init(event_loop *loop,
-                                                const char *redis_addr,
-                                                int redis_port) {
+                                                const std::vector<std::string>& redis_addrs,
+                                                const std::vector<int> &redis_ports) {
   GlobalSchedulerState *state =
       (GlobalSchedulerState *) malloc(sizeof(GlobalSchedulerState));
   /* Must initialize state to 0. Sets hashmap head(s) to NULL. */
   memset(state, 0, sizeof(GlobalSchedulerState));
   state->db =
-      db_connect(redis_addr, redis_port, "global_scheduler", ":", 0, NULL);
+      db_connect(redis_addrs, redis_ports, "global_scheduler", ":", 0, NULL);
   db_attach(state->db, loop, false);
   utarray_new(state->local_schedulers, &local_scheduler_icd);
   state->policy_state = GlobalSchedulerPolicyState_init();
@@ -187,7 +187,7 @@ void add_local_scheduler(GlobalSchedulerState *state,
            sizeof(plasma_local_scheduler_entry->local_scheduler_db_client_id),
            plasma_local_scheduler_entry);
 
-#if (RAY_COMMON_LOG_LEVEL <= RAY_COMMON_DEBUG)
+#if 0
   {
     /* Print the local scheduler to plasma association map so far. */
     AuxAddressEntry *entry, *tmp;
@@ -416,9 +416,9 @@ int heartbeat_timeout_handler(event_loop *loop, timer_id id, void *context) {
   return HEARTBEAT_TIMEOUT_MILLISECONDS;
 }
 
-void start_server(const char *redis_addr, int redis_port) {
+void start_server(const std::vector<std::string>& redis_addrs, const std::vector<int> &redis_ports) {
   event_loop *loop = event_loop_create();
-  g_state = GlobalSchedulerState_init(loop, redis_addr, redis_port);
+  g_state = GlobalSchedulerState_init(loop, redis_addrs, redis_ports);
   /* TODO(rkn): subscribe to notifications from the object table. */
   /* Subscribe to notifications about new local schedulers. TODO(rkn): this
    * needs to also get all of the clients that registered with the database
@@ -467,13 +467,13 @@ int main(int argc, char *argv[]) {
       exit(-1);
     }
   }
-  char redis_addr[16];
-  int redis_port;
+  std::vector<std::string> redis_ip_addrs;
+  std::vector<int> redis_ports;
   if (!redis_addr_port ||
-      parse_ip_addr_port(redis_addr_port, redis_addr, &redis_port) == -1) {
+      !parse_ip_addrs_ports(std::string(redis_addr_port), redis_ip_addrs, redis_ports)) {
     LOG_ERROR(
         "need to specify redis address like 127.0.0.1:6379 with -r switch");
     exit(-1);
   }
-  start_server(redis_addr, redis_port);
+  start_server(redis_ip_addrs, redis_ports);
 }

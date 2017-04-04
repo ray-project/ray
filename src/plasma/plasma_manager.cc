@@ -482,8 +482,8 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
                                             const char *manager_socket_name,
                                             const char *manager_addr,
                                             int manager_port,
-                                            const char *db_addr,
-                                            int db_port) {
+                                            const std::vector<std::string>& db_addresses,
+                                            const std::vector<int>& db_ports) {
   PlasmaManagerState *state =
       (PlasmaManagerState *) malloc(sizeof(PlasmaManagerState));
   state->loop = event_loop_create();
@@ -493,7 +493,7 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
   state->fetch_requests = NULL;
   state->object_wait_requests_local = NULL;
   state->object_wait_requests_remote = NULL;
-  if (db_addr) {
+  if (db_addresses.size() > 0) {
     /* Get the manager port as a string. */
     UT_string *manager_address_str;
     utstring_new(manager_address_str);
@@ -508,7 +508,7 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
     db_connect_args[3] = manager_socket_name;
     db_connect_args[4] = "address";
     db_connect_args[5] = utstring_body(manager_address_str);
-    state->db = db_connect(db_addr, db_port, "plasma_manager", manager_addr,
+    state->db = db_connect(db_addresses, db_ports, "plasma_manager", manager_addr,
                            num_args, db_connect_args);
     utstring_free(manager_address_str);
     free(db_connect_args);
@@ -1557,8 +1557,8 @@ void start_server(const char *store_socket_name,
                   const char *manager_socket_name,
                   const char *master_addr,
                   int port,
-                  const char *db_addr,
-                  int db_port) {
+                  const std::vector<std::string>& db_ip_addrs,
+                  const std::vector<int>& db_ports) {
   /* Ignore SIGPIPE signals. If we don't do this, then when we attempt to write
    * to a client that has already died, the manager could die. */
   signal(SIGPIPE, SIG_IGN);
@@ -1575,7 +1575,7 @@ void start_server(const char *store_socket_name,
 
   g_manager_state =
       PlasmaManagerState_init(store_socket_name, manager_socket_name,
-                              master_addr, port, db_addr, db_port);
+                              master_addr, port, db_ip_addrs, db_ports);
   CHECK(g_manager_state);
 
   CHECK(listen(remote_sock, 5) != -1);
@@ -1626,8 +1626,9 @@ int main(int argc, char *argv[]) {
   char *master_addr = NULL;
   /* Port number the manager should use. */
   int port = -1;
-  /* IP address and port of state database. */
-  char *db_host = NULL;
+  /* IP addresses and ports of state databases in the format
+   * [address1:port1,address2:port2]. */
+  char *db_hosts = NULL;
   int c;
   while ((c = getopt(argc, argv, "s:m:h:p:r:")) != -1) {
     switch (c) {
@@ -1644,7 +1645,7 @@ int main(int argc, char *argv[]) {
       port = atoi(optarg);
       break;
     case 'r':
-      db_host = optarg;
+      db_hosts = optarg;
       break;
     default:
       LOG_FATAL("unknown option %c", c);
@@ -1670,15 +1671,12 @@ int main(int argc, char *argv[]) {
         "please specify port the plasma manager shall listen to in the"
         "format 12345 with -p switch");
   }
-  char db_addr[16];
-  int db_port;
-  if (db_host) {
-    parse_ip_addr_port(db_host, db_addr, &db_port);
-    start_server(store_socket_name, manager_socket_name, master_addr, port,
-                 db_addr, db_port);
-  } else {
-    start_server(store_socket_name, manager_socket_name, master_addr, port,
-                 NULL, 0);
+  std::vector<std::string> ip_addrs;
+  std::vector<int> ports;
+  if (db_hosts) {
+    parse_ip_addrs_ports(std::string(db_hosts), ip_addrs, ports);
   }
+  start_server(store_socket_name, manager_socket_name, master_addr, port,
+               ip_addrs, ports);
 }
 #endif
