@@ -32,11 +32,12 @@ UniqueID globally_unique_id(void) {
 
 /* ObjectID hashing function. */
 size_t hashObjectID(const ObjectID &key) {
-    uint32_t acc = 0;
+    uint32_t hash = 0;
+    CHECK(UNIQUE_ID_SIZE % sizeof(uint32_t) == 0);
     for (int i = 0; i < UNIQUE_ID_SIZE / sizeof(uint32_t); i++) {
-      acc ^=  *reinterpret_cast<const uint32_t *>(&key.id[i * sizeof(uint32_t)]);
+      hash ^=  *reinterpret_cast<const uint32_t *>(&key.id[i * sizeof(uint32_t)]);
     }
-    return std::hash<uint32_t>()(acc);
+    return std::hash<uint32_t>()(hash);
 }
 /* ObjectID equality function. */
 bool operator==(const ObjectID& x, const ObjectID& y) {

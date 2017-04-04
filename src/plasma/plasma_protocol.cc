@@ -517,20 +517,18 @@ void plasma_read_WaitRequest(uint8_t *data,
   }
 }
 
-int plasma_send_WaitReply(int sock,
-                          protocol_builder *B,
-                          const std::unordered_map<ObjectID, ObjectRequest, decltype(&hashObjectID)> &object_requests,
-//                          const std::unordered_set<ObjectRequest> &object_requests,
-//                          ObjectRequest object_requests[],
-                          int num_ready_objects) {
+int plasma_send_WaitReply(
+    int sock,
+    protocol_builder *B,
+    const std::unordered_map<ObjectID, ObjectRequest, decltype(&hashObjectID)>
+        &object_requests,
+    int num_ready_objects) {
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
 
   std::vector<flatbuffers::Offset<ObjectReply>> object_replies;
   for (const auto &objreq_pair : object_requests) {
     const auto &object_request = objreq_pair.second;
-//  for (int i = 0; i < num_ready_objects; i++) {
     object_replies.push_back(
-//        CreateObjectReply(fbb, to_flatbuf(fbb, object_requests[i].object_id), object_requests[i].status));
     CreateObjectReply(fbb,
         to_flatbuf(fbb, object_request.object_id), object_request.status));
 

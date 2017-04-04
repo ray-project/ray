@@ -217,11 +217,12 @@ void plasma_read_WaitRequest(uint8_t *data,
                              int64_t *timeout_ms,
                              int *num_ready_objects);
 
-int plasma_send_WaitReply(int sock,
-                          protocol_builder *B,
-                          const std::unordered_map<ObjectID, ObjectRequest, decltype(&hashObjectID)> &object_requests,
-//                          ObjectRequest object_requests[],
-                          int num_ready_objects);
+int plasma_send_WaitReply(
+    int sock,
+    protocol_builder *B,
+    const std::unordered_map<ObjectID, ObjectRequest, decltype(&hashObjectID)>
+        &object_requests,
+    int num_ready_objects);
 
 void plasma_read_WaitReply(uint8_t *data,
                            ObjectRequest object_requests[],
