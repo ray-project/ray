@@ -346,31 +346,33 @@ TEST plasma_wait_request_test(void) {
 
 TEST plasma_wait_reply_test(void) {
   int fd = create_temp_file();
-  const int num_ready_objects1 = 2;
-  std::unordered_map<ObjectID, ObjectRequest, decltype(&hashObjectID)> objreqmap(
-      num_ready_objects1, &hashObjectID);
-  ObjectRequest objreq1 = ObjectRequest({globally_unique_id(), 0, ObjectStatus_Local});
-  ObjectRequest objreq2 = ObjectRequest({globally_unique_id(), 0, ObjectStatus_Nonexistent});
-  objreqmap[objreq1.object_id] = objreq1;
-  objreqmap[objreq2.object_id] = objreq2;
-  ObjectRequest object_replies1[2] = {objreq1, objreq2};
-//  object_replies1[0].object_id = globally_unique_id();
-//  object_replies1[0].status = ObjectStatus_Local;
-//  object_replies1[1].object_id = globally_unique_id();
-//  object_replies1[1].status = ObjectStatus_Nonexistent;
+  const int num_objects_in = 2;
+  /* Create a map with two ObjectRequests in it. */
+  std::unordered_map<ObjectID, ObjectRequest, decltype(&hashObjectID)>
+      objects_in(num_objects_in, &hashObjectID);
+  ObjectRequest objreq1 = ObjectRequest(
+      {globally_unique_id(), 0, ObjectStatus_Local});
+  ObjectRequest objreq2 = ObjectRequest(
+      {globally_unique_id(), 0, ObjectStatus_Nonexistent});
+  objects_in[objreq1.object_id] = objreq1;
+  objects_in[objreq2.object_id] = objreq2;
 
-  plasma_send_WaitReply(fd, g_B, objreqmap, num_ready_objects1);
+  plasma_send_WaitReply(fd, g_B, objects_in, num_objects_in);
   /* Read message back. */
   uint8_t *data = read_message_from_file(fd, MessageType_PlasmaWaitReply);
-  ObjectRequest object_replies2[2];
-  int num_ready_objects_read2;
-  plasma_read_WaitReply(data, &object_replies2[0], &num_ready_objects_read2);
-  ASSERT(ObjectID_equal(object_replies1[0].object_id,
-                        object_replies2[0].object_id));
-  ASSERT(ObjectID_equal(object_replies1[1].object_id,
-                        object_replies2[1].object_id));
-  ASSERT(object_replies1[0].status == object_replies2[0].status);
-  ASSERT(object_replies1[1].status == object_replies2[1].status);
+  ObjectRequest objects_out[2];
+  int num_objects_out;
+  plasma_read_WaitReply(data, &objects_out[0], &num_objects_out);
+  ASSERT(num_objects_in == num_objects_out);
+  for (int i = 0; i < num_objects_out; i++) {
+    int cnt = objects_in.count(objects_out[i].object_id);
+    /* Each object request must appear exactly once. */
+    ASSERT(cnt == 1);
+    const auto &objreqmap_iterator = objects_in.find(objects_out[i].object_id);
+    const auto &objreq = objreqmap_iterator->second;
+    ASSERT(ObjectID_equal(objreq.object_id, objects_out[i].object_id));
+    ASSERT(objreq.status == objects_out[i].status);
+  }
   free(data);
   close(fd);
   PASS();
