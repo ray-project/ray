@@ -365,9 +365,8 @@ TEST plasma_wait_reply_test(void) {
   plasma_read_WaitReply(data, &objects_out[0], &num_objects_out);
   ASSERT(num_objects_in == num_objects_out);
   for (int i = 0; i < num_objects_out; i++) {
-    int cnt = objects_in.count(objects_out[i].object_id);
     /* Each object request must appear exactly once. */
-    ASSERT(cnt == 1);
+    ASSERT(1 == objects_in.count(objects_out[i].object_id));
     const auto &objreqmap_iterator = objects_in.find(objects_out[i].object_id);
     const auto &objreq = objreqmap_iterator->second;
     ASSERT(ObjectID_equal(objreq.object_id, objects_out[i].object_id));

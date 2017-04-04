@@ -1,9 +1,6 @@
 #ifndef PLASMA_PROTOCOL_H
 #define PLASMA_PROTOCOL_H
 
-/* C++ include files. */
-#include <unordered_set>
-
 #include "format/plasma_generated.h"
 
 #include "common.h"
