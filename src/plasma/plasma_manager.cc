@@ -531,6 +531,14 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
 }
 
 void PlasmaManagerState_free(PlasmaManagerState *state) {
+  /* Reset the SIGTERM handler to default behavior, so we try to clean up the
+   * plasma manager at most once. */
+  signal(SIGTERM, SIG_DFL);
+  if (state->db != NULL) {
+    db_disconnect(state->db);
+    state->db = NULL;
+  }
+
   ClientConnection *manager_conn, *tmp_manager_conn;
   HASH_ITER(manager_hh, state->manager_connections, manager_conn,
             tmp_manager_conn) {
@@ -1605,9 +1613,10 @@ void start_server(const char *store_socket_name,
 
 /* Report "success" to valgrind. */
 void signal_handler(int signal) {
+  LOG_DEBUG("Signal was %d", signal);
   if (signal == SIGTERM) {
     if (g_manager_state) {
-      db_disconnect(g_manager_state->db);
+      PlasmaManagerState_free(g_manager_state);
     }
     exit(0);
   }

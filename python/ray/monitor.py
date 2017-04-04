@@ -199,6 +199,9 @@ class Monitor(object):
     elif client_type == PLASMA_MANAGER_CLIENT_TYPE:
       if db_client_id not in self.dead_plasma_managers:
         self.dead_plasma_managers.add(db_client_id)
+      # Stop tracking this plasma manager's heartbeats, since it's
+      # already dead.
+      del self.live_plasma_managers[db_client_id]
 
   def plasma_manager_heartbeat_handler(self, channel, data):
     """Handle a plasma manager heartbeat from Redis.
