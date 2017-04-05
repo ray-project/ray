@@ -16,6 +16,7 @@ if __name__ == "__main__":
   assert_almost_equal(ray.get(a), A)
   del A
   del a
+  print("Successfully put A.")
 
   B = {"hello": np.zeros(2 ** 30 + 1),
        "world": np.ones(2 ** 30 + 1)}
@@ -24,6 +25,7 @@ if __name__ == "__main__":
   assert_almost_equal(ray.get(b)["world"], B["world"])
   del B
   del b
+  print("Successfully put B.")
 
   C = [np.ones(2 ** 30 + 1), 42.0 * np.ones(2 ** 30 + 1)]
   c = ray.put(C)
@@ -31,15 +33,18 @@ if __name__ == "__main__":
   assert_almost_equal(ray.get(c)[1], C[1])
   del C
   del c
+  print("Successfully put C.")
 
-  D = (2 ** 30 + 1) * ["h"]
-  d = ray.put(D)
-  assert ray.get(d) == D
-  del D
-  del d
+  # D = (2 ** 30 + 1) * ["h"]
+  # d = ray.put(D)
+  # assert ray.get(d) == D
+  # del D
+  # del d
+  # print("Successfully put D.")
 
-  E = (2 ** 30 + 1) * ("i",)
-  e = ray.put(E)
-  assert ray.get(e) == E
-  del E
-  del e
+  # E = (2 ** 30 + 1) * ("i",)
+  # e = ray.put(E)
+  # assert ray.get(e) == E
+  # del E
+  # del e
+  # print("Successfully put E.")
