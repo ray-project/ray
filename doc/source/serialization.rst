@@ -87,7 +87,7 @@ This can be addressed by calling ``ray.register_class(Foo)``.
 
   import ray
 
-  ray.init(num_workers=10)
+  ray.init()
 
   # Define a custom class.
   class Foo(object):

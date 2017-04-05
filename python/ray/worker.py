@@ -723,7 +723,7 @@ def check_connected(worker=global_worker):
   if not worker.connected:
     raise RayConnectionError("This command cannot be called before Ray has "
                              "been started. You can start Ray with "
-                             "'ray.init(num_workers=10)'.")
+                             "'ray.init()'.")
 
 
 def print_failed_task(task_status):
@@ -949,8 +949,6 @@ def _init(address_info=None,
     # Use the address 127.0.0.1 in local mode.
     node_ip_address = ("127.0.0.1" if node_ip_address is None
                        else node_ip_address)
-    # Use 1 worker if num_workers is not provided.
-    num_workers = 10 if num_workers is None else num_workers
     # Use 1 local scheduler if num_local_schedulers is not provided. If
     # existing local schedulers are provided, use that count as
     # num_local_schedulers.

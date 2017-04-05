@@ -8,17 +8,17 @@ import redis
 import ray.services as services
 
 parser = argparse.ArgumentParser(
-    description="Parse addresses for the worker to connect to.")
+    description="Start the Ray processes on a node.")
 parser.add_argument("--node-ip-address", required=False, type=str,
-                    help="the IP address of the worker's node")
+                    help="the IP address of this node")
 parser.add_argument("--redis-address", required=False, type=str,
                     help="the address to use for connecting to Redis")
 parser.add_argument("--redis-port", required=False, type=str,
                     help="the port to use for starting Redis")
 parser.add_argument("--object-manager-port", required=False, type=int,
                     help="the port to use for starting the object manager")
-parser.add_argument("--num-workers", default=10, required=False, type=int,
-                    help="the number of workers to start on this node")
+parser.add_argument("--num-workers", required=False, type=int,
+                    help="the initial number of workers to start on this node")
 parser.add_argument("--num-cpus", required=False, type=int,
                     help="the number of CPUs on this node")
 parser.add_argument("--num-gpus", required=False, type=int,
@@ -93,10 +93,8 @@ if __name__ == "__main__":
                                            num_cpus=args.num_cpus,
                                            num_gpus=args.num_gpus)
     print(address_info)
-    print("\nStarted Ray with {} workers on this node. A different number of "
-          "workers can be set with the --num-workers flag (but you have to "
-          "first terminate the existing cluster). You can add additional "
-          "nodes to the cluster by calling\n\n"
+    print("\nStarted Ray on this node. You can add additional nodes to the "
+          "cluster by calling\n\n"
           "    ./scripts/start_ray.sh --redis-address {}\n\n"
           "from the node you wish to add. You can connect a driver to the "
           "cluster from Python by running\n\n"
@@ -105,8 +103,7 @@ if __name__ == "__main__":
           "If you have trouble connecting from a different machine, check "
           "that your firewall is configured properly. If you wish to "
           "terminate the processes that have been started, run\n\n"
-          "    ./scripts/stop_ray.sh".format(args.num_workers,
-                                             address_info["redis_address"],
+          "    ./scripts/stop_ray.sh".format(address_info["redis_address"],
                                              address_info["redis_address"]))
   else:
     # Start Ray on a non-head node.
@@ -140,8 +137,6 @@ if __name__ == "__main__":
         num_cpus=args.num_cpus,
         num_gpus=args.num_gpus)
     print(address_info)
-    print("\nStarted {} workers on this node. A different number of workers "
-          "can be set with the --num-workers flag (but you have to first "
-          "terminate the existing cluster). If you wish to terminate the "
-          "processes that have been started, run\n\n"
-          "    ./scripts/stop_ray.sh".format(args.num_workers))
+    print("\nStarted Ray on this node. If you wish to terminate the processes "
+          "that have been started, run\n\n"
+          "    ./scripts/stop_ray.sh")
