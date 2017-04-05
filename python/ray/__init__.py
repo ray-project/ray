@@ -18,7 +18,7 @@ __all__ = ["register_class", "error_info", "init", "connect", "disconnect",
            "get", "put", "wait", "remote", "log_event", "log_span",
            "flush_log", "actor", "get_gpu_ids", "EnvironmentVariable", "env",
            "SCRIPT_MODE", "WORKER_MODE", "PYTHON_MODE", "SILENT_MODE",
-           "__version__"]
+           "global_state", "__version__"]
 
 import ctypes
 # Windows only

@@ -1381,10 +1381,6 @@ class GlobalStateAPI(unittest.TestCase):
     self.assertEqual(len(client_table[":"]), 1)
     manager_client = [c for c in client_table[node_ip_address]
                       if c["ClientType"] == "plasma_manager"][0]
-    local_scheduler_client = [c for c in client_table[node_ip_address]
-                              if c["ClientType"] == "local_scheduler"][0]
-    global_scheduler_client = [c for c in client_table[":"]
-                               if c["ClientType"] == "global_scheduler"][0]
 
     @ray.remote
     def f(*xs):

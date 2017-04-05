@@ -18,7 +18,12 @@ import shlex
 
 # These lines added to enable Sphinx to work without installing Ray.
 import mock
-MOCK_MODULES = ["ray.numbuf", "ray.local_scheduler", "ray.plasma"]
+MOCK_MODULES = ["ray.numbuf",
+                "ray.local_scheduler",
+                "ray.plasma",
+                "ray.core.generated.TaskInfo",
+                "ray.core.generated.TaskReply",
+                "ray.core.generated.ResultTableReply"]
 for mod_name in MOCK_MODULES:
   sys.modules[mod_name] = mock.Mock()
 

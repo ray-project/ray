@@ -23,13 +23,13 @@ OBJECT_CHANNEL_PREFIX = "OC:"
 # This mapping from integer to task state string must be kept up-to-date with
 # the scheduling_state enum in task.h.
 task_state_mapping = {
-  1: "WAITING",
-  2: "SCHEDULED",
-  4: "QUEUED",
-  8: "RUNNING",
-  16: "DONE",
-  32: "LOST",
-  64: "RECONSTRUCTING"
+    1: "WAITING",
+    2: "SCHEDULED",
+    4: "QUEUED",
+    8: "RUNNING",
+    16: "DONE",
+    32: "LOST",
+    64: "RECONSTRUCTING"
 }
 
 
@@ -191,7 +191,6 @@ class GlobalState(object):
             "LocalSchedulerID": binary_to_hex(
                 task_table_message.LocalSchedulerId()),
             "TaskSpec": task_spec_info}
-
 
   def task_table(self, task_id=None):
     """Fetch and parse the task table information for one or more task IDs.
