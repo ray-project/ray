@@ -20,6 +20,7 @@ import time
 import traceback
 
 # Ray modules
+import ray.experimental.state as state
 import ray.pickling as pickling
 import ray.serialization as serialization
 import ray.services as services
@@ -685,6 +686,8 @@ global_worker = Worker()
 We use a global Worker object to ensure that there is a single worker object
 per worker process.
 """
+
+global_state = state.GlobalState()
 
 env = RayEnvironmentVariables()
 """RayEnvironmentVariables: The environment variables that are shared by tasks.
@@ -1355,6 +1358,9 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
   worker.redis_client = redis.StrictRedis(host=redis_ip_address,
                                           port=int(redis_port))
   worker.lock = threading.Lock()
+
+  # Create an object for interfacing with the global state.
+  global_state._initialize_global_state(redis_ip_address, int(redis_port))
 
   # Register the worker with Redis.
   if mode in [SCRIPT_MODE, SILENT_MODE]:

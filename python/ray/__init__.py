@@ -9,6 +9,7 @@ from ray.actor import actor
 from ray.actor import get_gpu_ids
 from ray.worker import EnvironmentVariable, env
 from ray.worker import SCRIPT_MODE, WORKER_MODE, PYTHON_MODE, SILENT_MODE
+from ray.worker import global_state
 
 # Ray version string
 __version__ = "0.01"

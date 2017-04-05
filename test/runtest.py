@@ -1316,5 +1316,120 @@ class SchedulingAlgorithm(unittest.TestCase):
     ray.worker.cleanup()
 
 
+def wait_for_num_tasks(num_tasks, timeout=10):
+  start_time = time.time()
+  while time.time() - start_time < timeout:
+    if len(ray.global_state.task_table()) >= num_tasks:
+      return
+    time.sleep(0.1)
+  raise Exception("Timed out while waiting for global state.")
+
+
+def wait_for_num_objects(num_objects, timeout=10):
+  start_time = time.time()
+  while time.time() - start_time < timeout:
+    if len(ray.global_state.object_table()) >= num_objects:
+      return
+    time.sleep(0.1)
+  raise Exception("Timed out while waiting for global state.")
+
+
+class GlobalStateAPI(unittest.TestCase):
+
+  def testGlobalStateAPI(self):
+    with self.assertRaises(Exception):
+      ray.global_state.object_table()
+
+    with self.assertRaises(Exception):
+      ray.global_state.task_table()
+
+    with self.assertRaises(Exception):
+      ray.global_state.client_table()
+
+    ray.init()
+
+    self.assertEqual(ray.global_state.object_table(), dict())
+
+    ID_SIZE = 20
+
+    driver_id = ray.experimental.state.binary_to_hex(
+        ray.worker.global_worker.worker_id)
+    driver_task_id = ray.experimental.state.binary_to_hex(
+        ray.worker.global_worker.current_task_id.id())
+
+    # One task is put in the task table which corresponds to this driver.
+    wait_for_num_tasks(1)
+    task_table = ray.global_state.task_table()
+    self.assertEqual(len(task_table), 1)
+    self.assertEqual(driver_task_id, list(task_table.keys())[0])
+    self.assertEqual(task_table[driver_task_id]["State"], "RUNNING")
+    self.assertEqual(task_table[driver_task_id]["TaskSpec"]["TaskID"],
+                     driver_task_id)
+    self.assertEqual(task_table[driver_task_id]["TaskSpec"]["ActorID"],
+                     ID_SIZE * "ff")
+    self.assertEqual(task_table[driver_task_id]["TaskSpec"]["Args"], [])
+    self.assertEqual(task_table[driver_task_id]["TaskSpec"]["DriverID"],
+                     driver_id)
+    self.assertEqual(task_table[driver_task_id]["TaskSpec"]["FunctionID"],
+                     ID_SIZE * "ff")
+    self.assertEqual(task_table[driver_task_id]["TaskSpec"]["ReturnObjectIDs"],
+                     [])
+
+    client_table = ray.global_state.client_table()
+    node_ip_address = ray.worker.global_worker.node_ip_address
+    self.assertEqual(len(client_table[node_ip_address]), 2)
+    self.assertEqual(len(client_table[":"]), 1)
+    manager_client = [c for c in client_table[node_ip_address]
+                      if c["ClientType"] == "plasma_manager"][0]
+    local_scheduler_client = [c for c in client_table[node_ip_address]
+                              if c["ClientType"] == "local_scheduler"][0]
+    global_scheduler_client = [c for c in client_table[":"]
+                               if c["ClientType"] == "global_scheduler"][0]
+
+    @ray.remote
+    def f(*xs):
+      return 1
+
+    x_id = ray.put(1)
+    result_id = f.remote(1, "hi", x_id)
+
+    # Wait for one additional task for the driver.
+    wait_for_num_tasks(1 + 1)
+    task_table = ray.global_state.task_table()
+    self.assertEqual(len(task_table), 1 + 1)
+    task_id_set = set(task_table.keys())
+    task_id_set.remove(driver_task_id)
+    task_id = list(task_id_set)[0]
+    self.assertEqual(task_table[task_id]["TaskSpec"]["ActorID"],
+                     ID_SIZE * "ff")
+    self.assertEqual(task_table[task_id]["TaskSpec"]["Args"], [1, "hi", x_id])
+    self.assertEqual(task_table[task_id]["TaskSpec"]["DriverID"], driver_id)
+    self.assertEqual(task_table[task_id]["TaskSpec"]["ReturnObjectIDs"],
+                     [result_id])
+
+    self.assertEqual(task_table[task_id], ray.global_state.task_table(task_id))
+
+    # Wait for two objects, one for the x_id and one for result_id.
+    wait_for_num_objects(2)
+    object_table = ray.global_state.object_table()
+    self.assertEqual(len(object_table), 2)
+
+    self.assertEqual(object_table[x_id]["IsPut"], True)
+    self.assertEqual(object_table[x_id]["TaskID"], driver_task_id)
+    self.assertEqual(object_table[x_id]["ManagerIDs"],
+                     [manager_client["DBClientID"]])
+
+    self.assertEqual(object_table[result_id]["IsPut"], False)
+    self.assertEqual(object_table[result_id]["TaskID"], task_id)
+    self.assertEqual(object_table[result_id]["ManagerIDs"],
+                     [manager_client["DBClientID"]])
+
+    self.assertEqual(object_table[x_id], ray.global_state.object_table(x_id))
+    self.assertEqual(object_table[result_id],
+                     ray.global_state.object_table(result_id))
+
+    ray.worker.cleanup()
+
+
 if __name__ == "__main__":
   unittest.main(verbosity=2)
