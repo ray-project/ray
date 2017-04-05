@@ -223,25 +223,25 @@ int create_object(Client *client_context,
   /* Try to evict objects until there is enough space. */
   uint8_t *pointer;
   do {
-    /* Allocate space for the new object. We use dlmemalign instead of dlmalloc in
-     * order to align the allocated region to a 64-byte boundary. This is not
+    /* Allocate space for the new object. We use dlmemalign instead of dlmalloc
+     * in order to align the allocated region to a 64-byte boundary. This is not
      * strictly necessary, but it is an optimization that could speed up the
      * computation of a hash of the data (see compute_object_hash_parallel in
      * plasma_client.cc). Note that even though this pointer is 64-byte aligned,
      * it is not guaranteed that the corresponding pointer in the client will be
      * 64-byte aligned, but in practice it often will be. */
-    pointer =
-        (uint8_t *) dlmemalign(BLOCK_SIZE, data_size + metadata_size);
+    pointer = (uint8_t *) dlmemalign(BLOCK_SIZE, data_size + metadata_size);
     if (pointer == NULL) {
-      /* Tell the eviction policy how much space we need to create this object. */
+      /* Tell the eviction policy how much space we need to create this object.
+       */
       int64_t num_objects_to_evict;
       ObjectID *objects_to_evict;
       bool success = EvictionState_require_space(
-        plasma_state->eviction_state, plasma_state->plasma_store_info,
-        data_size + metadata_size, &num_objects_to_evict, &objects_to_evict);
+          plasma_state->eviction_state, plasma_state->plasma_store_info,
+          data_size + metadata_size, &num_objects_to_evict, &objects_to_evict);
       remove_objects(plasma_state, num_objects_to_evict, objects_to_evict);
-      /* Return an error to the client if not enough space could be freed to create
-       * the object. */
+      /* Return an error to the client if not enough space could be freed to
+       * create the object. */
       if (!success) {
         return PlasmaError_OutOfMemory;
       }
