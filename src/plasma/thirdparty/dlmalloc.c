@@ -5350,6 +5350,7 @@ size_t dlmalloc_footprint_limit(void) {
 }
 
 size_t dlmalloc_set_footprint_limit(size_t bytes) {
+  ensure_initialization();
   size_t result;  /* invert sense of 0 */
   if (bytes == 0)
     result = granularity_align(1); /* Use minimal size */

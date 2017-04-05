@@ -40,7 +40,8 @@ class TestLocalSchedulerClient(unittest.TestCase):
   def setUp(self):
     # Start Plasma store.
     plasma_store_name, self.p1 = plasma.start_plasma_store()
-    self.plasma_client = plasma.PlasmaClient(plasma_store_name)
+    self.plasma_client = plasma.PlasmaClient(plasma_store_name,
+                                             release_delay=0)
     # Start a local scheduler.
     scheduler_name, self.p2 = local_scheduler.start_local_scheduler(
         plasma_store_name, use_valgrind=USE_VALGRIND)
@@ -169,19 +170,15 @@ class TestLocalSchedulerClient(unittest.TestCase):
     t.start()
 
     # Make one of the dependencies available.
-    self.plasma_client.create(object_id1.id(), 1)
+    buf = self.plasma_client.create(object_id1.id(), 1)
     self.plasma_client.seal(object_id1.id())
+    # Release the object.
+    del buf
     # Check that the thread is still waiting for a task.
     time.sleep(0.1)
     self.assertTrue(t.is_alive())
-
     # Force eviction of the first dependency.
-    num_objects = 4
-    object_size = plasma.DEFAULT_PLASMA_STORE_MEMORY // num_objects
-    for i in range(num_objects + 1):
-      object_id = random_object_id()
-      self.plasma_client.create(object_id.id(), object_size)
-      self.plasma_client.seal(object_id.id())
+    self.plasma_client.evict(plasma.DEFAULT_PLASMA_STORE_MEMORY)
     # Check that the thread is still waiting for a task.
     time.sleep(0.1)
     self.assertTrue(t.is_alive())
