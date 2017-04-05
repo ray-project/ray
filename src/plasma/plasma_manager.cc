@@ -558,6 +558,18 @@ void PlasmaManagerState_free(PlasmaManagerState *state) {
     free(entry);
   }
 
+  ObjectWaitRequests *wait_reqs, *tmp_wait_reqs;
+  HASH_ITER(hh, state->object_wait_requests_local, wait_reqs, tmp_wait_reqs) {
+    HASH_DELETE(hh, state->object_wait_requests_local, wait_reqs);
+    utarray_free(wait_reqs->wait_requests);
+    free(wait_reqs);
+  }
+  HASH_ITER(hh, state->object_wait_requests_remote, wait_reqs, tmp_wait_reqs) {
+    HASH_DELETE(hh, state->object_wait_requests_remote, wait_reqs);
+    utarray_free(wait_reqs->wait_requests);
+    free(wait_reqs);
+  }
+
   plasma_disconnect(state->plasma_conn);
   event_loop_destroy(state->loop);
   free_protocol_builder(state->builder);

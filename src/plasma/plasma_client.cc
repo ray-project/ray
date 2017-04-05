@@ -390,10 +390,12 @@ void plasma_perform_release(PlasmaConnection *conn, ObjectID object_id) {
   HASH_FIND(hh, conn->objects_in_use, &object_id, sizeof(object_id),
             object_entry);
   CHECK(object_entry != NULL);
-  object_entry->count -= 1;
-  CHECK(object_entry->count >= 0);
-  /* Check if the client is no longer using this object. */
-  if (object_entry->count == 0) {
+  CHECK(object_entry->count >= 1);
+  /* Check if the client will no longer be using this object. We need to do
+   * this check before decrementing the count in case a SIGTERM is caught
+   * during the decrement. In this case, the signal handler may call
+   * `plasma_disconnect`, and we do not want to release the object twice. */
+  if (object_entry->count == 1) {
     /* Decrement the count of the number of objects in this memory-mapped file
      * that the client is using. The corresponding increment should have
      * happened in plasma_get. */
@@ -420,7 +422,9 @@ void plasma_perform_release(PlasmaConnection *conn, ObjectID object_id) {
     /* Remove the entry from the hash table of objects currently in use. */
     HASH_DELETE(hh, conn->objects_in_use, object_entry);
     free(object_entry);
+    return;
   }
+  object_entry->count -= 1;
 }
 
 void plasma_release(PlasmaConnection *conn, ObjectID obj_id) {
