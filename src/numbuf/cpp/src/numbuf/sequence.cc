@@ -8,7 +8,6 @@ SequenceBuilder::SequenceBuilder(MemoryPool* pool)
     : pool_(pool),
       types_(pool, std::make_shared<Int8Type>()),
       offsets_(pool, std::make_shared<Int32Type>()),
-      total_num_bytes_(0),
       nones_(pool, std::make_shared<NullType>()),
       bools_(pool, std::make_shared<BooleanType>()),
       ints_(pool, std::make_shared<Int64Type>()),
@@ -30,16 +29,7 @@ SequenceBuilder::SequenceBuilder(MemoryPool* pool)
       tuple_offsets_({0}),
       dict_offsets_({0}) {}
 
-/* We need to ensure that the number of bytes allocated by arrow
- * does not exceed 2**31 - 1. To make sure that is the case, allocation needs
- * to be capped at 2**29 - 1, because arrow calculates the next power of two
- * for allocations (see arrow::ArrayBuilder::Reserve). TODO(rkn): The (1 << 28)
- * below should really be (1 << 29), but there seems to be a bug.
- */
 #define UPDATE(OFFSET, TAG)                                               \
-  if (total_num_bytes_ >= (1 << 28) - 1) {                                \
-    return Status::NotImplemented("Sequence contains too many elements"); \
-  }                                                                       \
   if (TAG == -1) {                                                        \
     TAG = num_tags;                                                       \
     num_tags += 1;                                                        \
@@ -49,50 +39,42 @@ SequenceBuilder::SequenceBuilder(MemoryPool* pool)
   RETURN_NOT_OK(nones_.AppendToBitmap(true));
 
 Status SequenceBuilder::AppendNone() {
-  total_num_bytes_ += sizeof(int32_t);
   RETURN_NOT_OK(offsets_.Append(0));
   RETURN_NOT_OK(types_.Append(0));
   return nones_.AppendToBitmap(false);
 }
 
 Status SequenceBuilder::AppendBool(bool data) {
-  total_num_bytes_ += sizeof(bool);
   UPDATE(bools_.length(), bool_tag);
   return bools_.Append(data);
 }
 
 Status SequenceBuilder::AppendInt64(int64_t data) {
-  total_num_bytes_ += sizeof(int64_t);
   UPDATE(ints_.length(), int_tag);
   return ints_.Append(data);
 }
 
 Status SequenceBuilder::AppendUInt64(uint64_t data) {
-  total_num_bytes_ += sizeof(uint64_t);
   UPDATE(ints_.length(), int_tag);
   return ints_.Append(data);
 }
 
 Status SequenceBuilder::AppendBytes(const uint8_t* data, int32_t length) {
-  total_num_bytes_ += length * sizeof(uint8_t);
   UPDATE(bytes_.length(), bytes_tag);
   return bytes_.Append(data, length);
 }
 
 Status SequenceBuilder::AppendString(const char* data, int32_t length) {
-  total_num_bytes_ += length * sizeof(char);
   UPDATE(strings_.length(), string_tag);
   return strings_.Append(data, length);
 }
 
 Status SequenceBuilder::AppendFloat(float data) {
-  total_num_bytes_ += sizeof(float);
   UPDATE(floats_.length(), float_tag);
   return floats_.Append(data);
 }
 
 Status SequenceBuilder::AppendDouble(double data) {
-  total_num_bytes_ += sizeof(double);
   UPDATE(doubles_.length(), double_tag);
   return doubles_.Append(data);
 }
@@ -104,7 +86,6 @@ Status SequenceBuilder::AppendDouble(double data) {
     for (auto dim : dims) {                                                            \
       size *= dim;                                                                     \
     }                                                                                  \
-    total_num_bytes_ += size * sizeof(TYPE);                                           \
     UPDATE(NAME.length(), TAG);                                                        \
     return NAME.Append(dims, data);                                                    \
   }
@@ -121,27 +102,18 @@ DEF_TENSOR_APPEND(float_tensors_, float, float_tensor_tag);
 DEF_TENSOR_APPEND(double_tensors_, double, double_tensor_tag);
 
 Status SequenceBuilder::AppendList(int32_t size) {
-  // Increase number of bytes to account for offsets
-  // (types and bitmaps are smaller).
-  total_num_bytes_ += size * sizeof(int32_t);
   UPDATE(list_offsets_.size() - 1, list_tag);
   list_offsets_.push_back(list_offsets_.back() + size);
   return Status::OK();
 }
 
 Status SequenceBuilder::AppendTuple(int32_t size) {
-  // Increase number of bytes to account for offsets
-  // (types and bitmaps are smaller).
-  total_num_bytes_ += size * sizeof(int32_t);
   UPDATE(tuple_offsets_.size() - 1, tuple_tag);
   tuple_offsets_.push_back(tuple_offsets_.back() + size);
   return Status::OK();
 }
 
 Status SequenceBuilder::AppendDict(int32_t size) {
-  // Increase number of bytes to account for offsets
-  // (types and bitmaps are smaller).
-  total_num_bytes_ += size * sizeof(int32_t);
   UPDATE(dict_offsets_.size() - 1, dict_tag);
   dict_offsets_.push_back(dict_offsets_.back() + size);
   return Status::OK();

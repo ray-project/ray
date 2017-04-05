@@ -45,6 +45,7 @@ extern "C" {
 void *dlmalloc(size_t);
 void *dlmemalign(size_t alignment, size_t bytes);
 void dlfree(void *);
+size_t dlmalloc_set_footprint_limit(size_t bytes);
 }
 
 namespace std {
@@ -233,27 +234,33 @@ int create_object(Client *client_context,
      * ignore this requst. */
     return PlasmaError_ObjectExists;
   }
-  /* Tell the eviction policy how much space we need to create this object. */
-  int64_t num_objects_to_evict;
-  ObjectID *objects_to_evict;
-  bool success = EvictionState_require_space(
-      plasma_state->eviction_state, plasma_state->plasma_store_info,
-      data_size + metadata_size, &num_objects_to_evict, &objects_to_evict);
-  remove_objects(plasma_state, num_objects_to_evict, objects_to_evict);
-  /* Return an error to the client if not enough space could be freed to create
-   * the object. */
-  if (!success) {
-    return PlasmaError_OutOfMemory;
-  }
-  /* Allocate space for the new object. We use dlmemalign instead of dlmalloc in
-   * order to align the allocated region to a 64-byte boundary. This is not
-   * strictly necessary, but it is an optimization that could speed up the
-   * computation of a hash of the data (see compute_object_hash_parallel in
-   * plasma_client.cc). Note that even though this pointer is 64-byte aligned,
-   * it is not guaranteed that the corresponding pointer in the client will be
-   * 64-byte aligned, but in practice it often will be. */
-  uint8_t *pointer =
-      (uint8_t *) dlmemalign(BLOCK_SIZE, data_size + metadata_size);
+  /* Try to evict objects until there is enough space. */
+  uint8_t *pointer;
+  do {
+    /* Allocate space for the new object. We use dlmemalign instead of dlmalloc
+     * in order to align the allocated region to a 64-byte boundary. This is not
+     * strictly necessary, but it is an optimization that could speed up the
+     * computation of a hash of the data (see compute_object_hash_parallel in
+     * plasma_client.cc). Note that even though this pointer is 64-byte aligned,
+     * it is not guaranteed that the corresponding pointer in the client will be
+     * 64-byte aligned, but in practice it often will be. */
+    pointer = (uint8_t *) dlmemalign(BLOCK_SIZE, data_size + metadata_size);
+    if (pointer == NULL) {
+      /* Tell the eviction policy how much space we need to create this object.
+       */
+      int64_t num_objects_to_evict;
+      ObjectID *objects_to_evict;
+      bool success = EvictionState_require_space(
+          plasma_state->eviction_state, plasma_state->plasma_store_info,
+          data_size + metadata_size, &num_objects_to_evict, &objects_to_evict);
+      remove_objects(plasma_state, num_objects_to_evict, objects_to_evict);
+      /* Return an error to the client if not enough space could be freed to
+       * create the object. */
+      if (!success) {
+        return PlasmaError_OutOfMemory;
+      }
+    }
+  } while (pointer == NULL);
   int fd;
   int64_t map_size;
   ptrdiff_t offset;
@@ -895,6 +902,9 @@ int main(int argc, char *argv[]) {
         system_memory, shm_mem_avail);
   }
 #endif
+  /* Make it so dlmalloc fails if we try to request more memory than is
+   * available. */
+  dlmalloc_set_footprint_limit((size_t) system_memory);
   LOG_DEBUG("starting server listening on %s", socket_name);
   start_server(socket_name, system_memory);
 }

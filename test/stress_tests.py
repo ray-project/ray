@@ -190,7 +190,7 @@ class ReconstructionTests(unittest.TestCase):
     # all objects' sizes is at least twice the plasma stores' combined allotted
     # memory.
     num_objects = 1000
-    size = self.plasma_store_memory * 2 // (num_objects * 8)
+    size = int(self.plasma_store_memory * 1.5 / (num_objects * 8))
 
     # Define a remote task with no dependencies, which returns a numpy array of
     # the given size.
@@ -226,7 +226,7 @@ class ReconstructionTests(unittest.TestCase):
     # all objects' sizes is at least twice the plasma stores' combined allotted
     # memory.
     num_objects = 1000
-    size = self.plasma_store_memory * 2 // (num_objects * 8)
+    size = int(self.plasma_store_memory * 1.5 / (num_objects * 8))
 
     # Define a root task with no dependencies, which returns a numpy array of
     # the given size.
