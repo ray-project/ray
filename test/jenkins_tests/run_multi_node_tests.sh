@@ -13,8 +13,8 @@ python $ROOT_DIR/multi_node_docker_test.py \
     --num-nodes=5 \
     --test-script=/ray/test/jenkins_tests/multi_node_tests/test_0.py
 
-# TODO(pcm): Comment this in after we get Jenkins working on a high-memory instance
-# python $ROOT_DIR/multi_node_docker_test.py \
-#     --docker-image=$DOCKER_SHA \
-#     --num-nodes=1 \
-#     --test-script=/ray/test/jenkins_tests/multi_node_tests/large_memory_test.py
+python $ROOT_DIR/multi_node_docker_test.py \
+    --docker-image=$DOCKER_SHA \
+    --num-nodes=1 \
+    --shm-size=40G \
+    --test-script=/ray/test/jenkins_tests/multi_node_tests/large_memory_test.py
