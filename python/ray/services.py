@@ -160,7 +160,7 @@ def all_processes_alive(exclude=[]):
     # an exit code of None indicates that the process is still alive.
     processes_alive = [p.poll() is None for p in processes]
     if (not all(processes_alive) and process_type not in exclude):
-      print("A process of type {} has dead.".format(process_type))
+      print("A process of type {} has died.".format(process_type))
       return False
   return True
 
