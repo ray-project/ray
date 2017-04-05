@@ -18,22 +18,22 @@ if __name__ == "__main__":
   del a
   print("Successfully put A.")
 
-  B = {"hello": np.zeros(2 ** 30 + 1),
-       "world": np.ones(2 ** 30 + 1)}
-  b = ray.put(B)
-  assert_almost_equal(ray.get(b)["hello"], B["hello"])
-  assert_almost_equal(ray.get(b)["world"], B["world"])
-  del B
-  del b
-  print("Successfully put B.")
+  # B = {"hello": np.zeros(2 ** 30 + 1),
+  #      "world": np.ones(2 ** 30 + 1)}
+  # b = ray.put(B)
+  # assert_almost_equal(ray.get(b)["hello"], B["hello"])
+  # assert_almost_equal(ray.get(b)["world"], B["world"])
+  # del B
+  # del b
+  # print("Successfully put B.")
 
-  C = [np.ones(2 ** 30 + 1), 42.0 * np.ones(2 ** 30 + 1)]
-  c = ray.put(C)
-  assert_almost_equal(ray.get(c)[0], C[0])
-  assert_almost_equal(ray.get(c)[1], C[1])
-  del C
-  del c
-  print("Successfully put C.")
+  # C = [np.ones(2 ** 30 + 1), 42.0 * np.ones(2 ** 30 + 1)]
+  # c = ray.put(C)
+  # assert_almost_equal(ray.get(c)[0], C[0])
+  # assert_almost_equal(ray.get(c)[1], C[1])
+  # del C
+  # del c
+  # print("Successfully put C.")
 
   # D = (2 ** 30 + 1) * ["h"]
   # d = ray.put(D)
