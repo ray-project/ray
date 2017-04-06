@@ -1407,7 +1407,15 @@ class GlobalStateAPI(unittest.TestCase):
 
     # Wait for two objects, one for the x_id and one for result_id.
     wait_for_num_objects(2)
-    object_table = ray.global_state.object_table()
+    # Wait for the object table to be updated.
+    for _ in range(10):
+      object_table = ray.global_state.object_table()
+      tables_ready = (object_table[x_id]["ManagerIDs"] is not None and
+                      object_table[result_id]["ManagerIDs"] is not None)
+      if tables_ready:
+        break
+      time.sleep(0.1)
+
     self.assertEqual(len(object_table), 2)
 
     self.assertEqual(object_table[x_id]["IsPut"], True)
