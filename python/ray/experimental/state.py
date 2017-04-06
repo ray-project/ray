@@ -5,6 +5,7 @@ from __future__ import print_function
 import binascii
 import pickle
 import redis
+import sys
 
 import ray.local_scheduler
 
@@ -13,6 +14,8 @@ from ray.core.generated.TaskInfo import TaskInfo
 from ray.core.generated.TaskReply import TaskReply
 from ray.core.generated.ResultTableReply import ResultTableReply
 
+# These prefixes must be kept up-to-date with the definitions in
+# ray_redis_module.cc.
 DB_CLIENT_PREFIX = "CL:"
 OBJECT_INFO_PREFIX = "OI:"
 OBJECT_LOCATION_PREFIX = "OL:"
@@ -33,12 +36,23 @@ task_state_mapping = {
 }
 
 
+def decode(byte_str):
+  """Make this unicode in Python 3, otherwise leave it as bytes."""
+  if sys.version_info >= (3, 0):
+    return byte_str.decode("ascii")
+  else:
+    return byte_str
+
+
 def binary_to_object_id(binary_object_id):
   return ray.local_scheduler.ObjectID(binary_object_id)
 
 
 def binary_to_hex(identifier):
-  return binascii.hexlify(identifier).decode()
+  hex_identifier = binascii.hexlify(identifier)
+  if sys.version_info >= (3, 0):
+    hex_identifier = hex_identifier.decode()
+  return hex_identifier
 
 
 def hex_to_binary(hex_identifier):
@@ -226,26 +240,23 @@ class GlobalState(object):
     node_info = dict()
     for key in db_client_keys:
       client_info = self.redis_client.hgetall(key)
-      node_ip_address = client_info[b"node_ip_address"].decode("ascii")
+      node_ip_address = decode(client_info[b"node_ip_address"])
       if node_ip_address not in node_info:
         node_info[node_ip_address] = []
       client_info_parsed = {
-          "ClientType": client_info[b"client_type"].decode("ascii"),
-          "Deleted": client_info[b"deleted"].decode("ascii"),
+          "ClientType": decode(client_info[b"client_type"]),
+          "Deleted": bool(int(decode(client_info[b"deleted"]))),
           "DBClientID": binary_to_hex(client_info[b"ray_client_id"])
       }
       if b"aux_address" in client_info:
-        client_info_parsed["AuxAddress"] = (client_info[b"aux_address"]
-                                            .decode("ascii"))
+        client_info_parsed["AuxAddress"] = decode(client_info[b"aux_address"])
       if b"num_cpus" in client_info:
-        client_info_parsed["NumCPUs"] = float(client_info[b"num_cpus"]
-                                              .decode("ascii"))
+        client_info_parsed["NumCPUs"] = float(decode(client_info[b"num_cpus"]))
       if b"num_gpus" in client_info:
-        client_info_parsed["NumGPUs"] = float(client_info[b"num_gpus"]
-                                              .decode("ascii"))
+        client_info_parsed["NumGPUs"] = float(decode(client_info[b"num_gpus"]))
       if b"local_scheduler_socket_name" in client_info:
-        client_info_parsed["LocalSchedulerSocketName"] = (
-            client_info[b"local_scheduler_socket_name"].decode("ascii"))
+        client_info_parsed["LocalSchedulerSocketName"] = decode(
+            client_info[b"local_scheduler_socket_name"])
       node_info[node_ip_address].append(client_info_parsed)
 
     return node_info
