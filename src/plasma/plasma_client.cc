@@ -650,27 +650,27 @@ PlasmaConnection *plasma_connect(const char *store_socket_name,
 }
 
 void plasma_disconnect(PlasmaConnection *conn) {
-  /* Perform the pending release calls to flush out the queue so that the counts
-   * in the objects_in_use table are accurate. */
+  /* Clean up state for objects and memory pages in use. NOTE: We purposefully
+   * do not finish sending release calls for objects in use, so that we don't
+   * duplicate plasma_release calls (when handling a SIGTERM, for example). */
   pending_release *element, *temp;
   DL_FOREACH_SAFE(conn->release_history, element, temp) {
-    plasma_perform_release(conn, element->object_id);
     DL_DELETE(conn->release_history, element);
     free(element);
   }
-  /* Loop over the objects in use table and release all remaining objects. */
   object_in_use_entry *current_entry, *temp_entry;
   HASH_ITER(hh, conn->objects_in_use, current_entry, temp_entry) {
-    ObjectID object_id_to_release = current_entry->object_id;
-    int count = current_entry->count;
-    for (int i = 0; i < count; ++i) {
-      plasma_perform_release(conn, object_id_to_release);
-    }
+    HASH_DELETE(hh, conn->objects_in_use, current_entry);
+    free(current_entry);
   }
-  /* Check that we've successfully released everything. */
-  CHECKM(conn->in_use_object_bytes == 0, "conn->in_use_object_bytes = %" PRId64,
-         conn->in_use_object_bytes);
+  client_mmap_table_entry *mmap_entry, *temp_mmap_entry;
+  HASH_ITER(hh, conn->mmap_table, mmap_entry, temp_mmap_entry) {
+    HASH_DELETE(hh, conn->mmap_table, mmap_entry);
+    free(mmap_entry);
+  }
   free_protocol_builder(conn->builder);
+  /* Close the connections to Plasma. The Plasma store will release the objects
+   * that were in use by us when handling the SIGPIPE. */
   close(conn->store_conn);
   if (conn->manager_conn >= 0) {
     close(conn->manager_conn);
