@@ -697,6 +697,10 @@ their state made by one task do not affect other tasks.
 """
 
 
+def get_gpu_ids():
+  return global_worker.local_scheduler_client.gpu_ids()
+
+
 class RayConnectionError(Exception):
   pass
 
@@ -1294,33 +1298,38 @@ def import_thread(worker):
         raise Exception("This code should be unreachable.")
       num_imported += 1
 
-  for msg in worker.import_pubsub_client.listen():
-    with worker.lock:
-      if msg["type"] == "psubscribe":
-        continue
-      assert msg["data"] == b"rpush"
-      num_imports = worker.redis_client.llen("Exports")
-      assert num_imports >= num_imported
-      for i in range(num_imported, num_imports):
-        key = worker.redis_client.lindex("Exports", i)
-        if key.startswith(b"RemoteFunction"):
-          with log_span("ray:import_remote_function", worker=worker):
-            fetch_and_register_remote_function(key, worker=worker)
-        elif key.startswith(b"EnvironmentVariables"):
-          with log_span("ray:import_environment_variable", worker=worker):
-            fetch_and_register_environment_variable(key, worker=worker)
-        elif key.startswith(b"FunctionsToRun"):
-          with log_span("ray:import_function_to_run", worker=worker):
-            fetch_and_execute_function_to_run(key, worker=worker)
-        elif key.startswith(b"Actor"):
-          # Only get the actor if the actor ID matches the actor ID of this
-          # worker.
-          actor_id, = worker.redis_client.hmget(key, "actor_id")
-          if worker.actor_id == actor_id:
-            worker.fetch_and_register["Actor"](key, worker)
-        else:
-          raise Exception("This code should be unreachable.")
-        num_imported += 1
+  try:
+    for msg in worker.import_pubsub_client.listen():
+      with worker.lock:
+        if msg["type"] == "psubscribe":
+          continue
+        assert msg["data"] == b"rpush"
+        num_imports = worker.redis_client.llen("Exports")
+        assert num_imports >= num_imported
+        for i in range(num_imported, num_imports):
+          key = worker.redis_client.lindex("Exports", i)
+          if key.startswith(b"RemoteFunction"):
+            with log_span("ray:import_remote_function", worker=worker):
+              fetch_and_register_remote_function(key, worker=worker)
+          elif key.startswith(b"EnvironmentVariables"):
+            with log_span("ray:import_environment_variable", worker=worker):
+              fetch_and_register_environment_variable(key, worker=worker)
+          elif key.startswith(b"FunctionsToRun"):
+            with log_span("ray:import_function_to_run", worker=worker):
+              fetch_and_execute_function_to_run(key, worker=worker)
+          elif key.startswith(b"Actor"):
+            # Only get the actor if the actor ID matches the actor ID of this
+            # worker.
+            actor_id, = worker.redis_client.hmget(key, "actor_id")
+            if worker.actor_id == actor_id:
+              worker.fetch_and_register["Actor"](key, worker)
+          else:
+            raise Exception("This code should be unreachable.")
+          num_imported += 1
+  except redis.ConnectionError:
+    # When Redis terminates the listen call will throw a ConnectionError, which
+    # we catch here.
+    pass
 
 
 def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
@@ -1330,8 +1339,12 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
   Args:
     info (dict): A dictionary with address of the Redis server and the sockets
       of the plasma store, plasma manager, and local scheduler.
+    object_id_seed: A seed to use to make the generation of object IDs
+      deterministic.
     mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, PYTHON_MODE,
       and SILENT_MODE.
+    actor_id: The ID of the actor running on this worker. If this worker is not
+      an actor, then this is NIL_ACTOR_ID.
   """
   check_main_thread()
   # Do some basic checking to make sure we didn't call ray.init twice.
@@ -1395,8 +1408,14 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
   worker.plasma_client = ray.plasma.PlasmaClient(info["store_socket_name"],
                                                  info["manager_socket_name"])
   # Create the local scheduler client.
+  if worker.actor_id != NIL_ACTOR_ID:
+    num_gpus = int(worker.redis_client.hget("Actor:{}".format(actor_id),
+                                            "num_gpus"))
+  else:
+    num_gpus = 0
   worker.local_scheduler_client = ray.local_scheduler.LocalSchedulerClient(
-      info["local_scheduler_socket_name"], worker.actor_id, is_worker)
+      info["local_scheduler_socket_name"], worker.actor_id, is_worker,
+      num_gpus)
 
   # If this is a driver, set the current task ID, the task driver ID, and set
   # the task index to 0.

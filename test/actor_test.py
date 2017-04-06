@@ -2,7 +2,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import numpy as np
+import time
 import unittest
 
 import ray
@@ -611,6 +613,7 @@ class ActorsWithGPUs(unittest.TestCase):
         self.gpu_ids = ray.get_gpu_ids()
 
       def get_location_and_ids(self):
+        assert ray.get_gpu_ids() == self.gpu_ids
         return (ray.worker.global_worker.plasma_client.store_socket_name,
                 tuple(self.gpu_ids))
 
@@ -621,11 +624,13 @@ class ActorsWithGPUs(unittest.TestCase):
                                  for actor in actors])
     node_names = set([location for location, gpu_id in locations_and_ids])
     self.assertEqual(len(node_names), num_local_schedulers)
-    location_actor_combinations = []
+
+    # Keep track of which GPU IDs are being used for each location.
+    gpus_in_use = {node_name: [] for node_name in node_names}
+    for location, gpu_ids in locations_and_ids:
+      gpus_in_use[location].extend(gpu_ids)
     for node_name in node_names:
-      location_actor_combinations.append((node_name, (0, 1)))
-      location_actor_combinations.append((node_name, (2, 3)))
-    self.assertEqual(set(locations_and_ids), set(location_actor_combinations))
+      self.assertEqual(len(set(gpus_in_use[node_name])), 4)
 
     # Creating a new actor should fail because all of the GPUs are being used.
     with self.assertRaises(Exception):
@@ -646,12 +651,14 @@ class ActorsWithGPUs(unittest.TestCase):
     # Make sure that no two actors are assigned to the same GPU.
     locations_and_ids = ray.get([actor.get_location_and_ids()
                                  for actor in actors])
-    node_names = set([location for location, gpu_id in locations_and_ids])
-    self.assertEqual(len(node_names), num_local_schedulers)
-    location_actor_combinations = []
+    self.assertEqual(node_names,
+                     set([location for location, gpu_id in locations_and_ids]))
+
+    for location, gpu_ids in locations_and_ids:
+      gpus_in_use[location].extend(gpu_ids)
     for node_name in node_names:
-      location_actor_combinations.append((node_name, (4,)))
-    self.assertEqual(set(locations_and_ids), set(location_actor_combinations))
+      self.assertEqual(len(gpus_in_use[node_name]), 5)
+      self.assertEqual(set(gpus_in_use[node_name]), set(range(5)))
 
     # Creating a new actor should fail because all of the GPUs are being used.
     with self.assertRaises(Exception):
@@ -699,7 +706,7 @@ class ActorsWithGPUs(unittest.TestCase):
     num_gpus_per_scheduler = 10
     ray.worker._init(
         start_ray_local=True, num_workers=0,
-        num_local_schedulers=num_local_schedulers,
+        num_local_schedulers=num_local_schedulers, redirect_output=True,
         num_gpus=(num_local_schedulers * [num_gpus_per_scheduler]))
 
     @ray.remote
@@ -733,6 +740,172 @@ class ActorsWithGPUs(unittest.TestCase):
       Actor()
 
     ray.worker.cleanup()
+
+  def testActorsAndTasksWithGPUs(self):
+    num_local_schedulers = 3
+    num_gpus_per_scheduler = 6
+    ray.worker._init(
+        start_ray_local=True, num_workers=0,
+        num_local_schedulers=num_local_schedulers,
+        num_cpus=num_gpus_per_scheduler,
+        num_gpus=(num_local_schedulers * [num_gpus_per_scheduler]))
+
+    def check_intervals_non_overlapping(list_of_intervals):
+      for i in range(len(list_of_intervals)):
+        for j in range(i):
+          first_interval = list_of_intervals[i]
+          second_interval = list_of_intervals[j]
+          # Check that list_of_intervals[i] and list_of_intervals[j] don't
+          # overlap.
+          assert first_interval[0] < first_interval[1]
+          assert second_interval[0] < second_interval[1]
+          assert (first_interval[1] < second_interval[0] or
+                  second_interval[1] < first_interval[0])
+
+    @ray.remote(num_gpus=1)
+    def f1():
+      t1 = time.time()
+      time.sleep(0.1)
+      t2 = time.time()
+      gpu_ids = ray.get_gpu_ids()
+      assert len(gpu_ids) == 1
+      assert gpu_ids[0] in range(num_gpus_per_scheduler)
+      return (ray.worker.global_worker.plasma_client.store_socket_name,
+              tuple(gpu_ids), [t1, t2])
+
+    @ray.remote(num_gpus=2)
+    def f2():
+      t1 = time.time()
+      time.sleep(0.1)
+      t2 = time.time()
+      gpu_ids = ray.get_gpu_ids()
+      assert len(gpu_ids) == 2
+      assert gpu_ids[0] in range(num_gpus_per_scheduler)
+      assert gpu_ids[1] in range(num_gpus_per_scheduler)
+      return (ray.worker.global_worker.plasma_client.store_socket_name,
+              tuple(gpu_ids), [t1, t2])
+
+    @ray.actor(num_gpus=1)
+    class Actor1(object):
+      def __init__(self):
+        self.gpu_ids = ray.get_gpu_ids()
+        assert len(self.gpu_ids) == 1
+        assert self.gpu_ids[0] in range(num_gpus_per_scheduler)
+
+      def get_location_and_ids(self):
+        assert ray.get_gpu_ids() == self.gpu_ids
+        return (ray.worker.global_worker.plasma_client.store_socket_name,
+                tuple(self.gpu_ids))
+
+    def locations_to_intervals_for_many_tasks():
+      # Launch a bunch of GPU tasks.
+      locations_ids_and_intervals = ray.get(
+          [f1.remote() for _
+           in range(5 * num_local_schedulers * num_gpus_per_scheduler)] +
+          [f2.remote() for _
+           in range(5 * num_local_schedulers * num_gpus_per_scheduler)] +
+          [f1.remote() for _
+           in range(5 * num_local_schedulers * num_gpus_per_scheduler)])
+
+      locations_to_intervals = collections.defaultdict(lambda: [])
+      for location, gpu_ids, interval in locations_ids_and_intervals:
+        for gpu_id in gpu_ids:
+          locations_to_intervals[(location, gpu_id)].append(interval)
+      return locations_to_intervals
+
+    # Run a bunch of GPU tasks.
+    locations_to_intervals = locations_to_intervals_for_many_tasks()
+    # Make sure that all GPUs were used.
+    self.assertEqual(len(locations_to_intervals),
+                     num_local_schedulers * num_gpus_per_scheduler)
+    # For each GPU, verify that the set of tasks that used this specific GPU
+    # did not overlap in time.
+    for locations in locations_to_intervals:
+      check_intervals_non_overlapping(locations_to_intervals[locations])
+
+    # Create an actor that uses a GPU.
+    a = Actor1()
+    actor_location = ray.get(a.get_location_and_ids())
+    actor_location = (actor_location[0], actor_location[1][0])
+    # This check makes sure that actor_location is formatted the same way that
+    # the keys of locations_to_intervals are formatted.
+    self.assertIn(actor_location, locations_to_intervals)
+
+    # Run a bunch of GPU tasks.
+    locations_to_intervals = locations_to_intervals_for_many_tasks()
+    # Make sure that all but one of the GPUs were used.
+    self.assertEqual(len(locations_to_intervals),
+                     num_local_schedulers * num_gpus_per_scheduler - 1)
+    # For each GPU, verify that the set of tasks that used this specific GPU
+    # did not overlap in time.
+    for locations in locations_to_intervals:
+      check_intervals_non_overlapping(locations_to_intervals[locations])
+    # Make sure that the actor's GPU was not used.
+    self.assertNotIn(actor_location, locations_to_intervals)
+
+    # Create several more actors that use GPUs.
+    actors = [Actor1() for _ in range(3)]
+    actor_locations = ray.get([actor.get_location_and_ids()
+                               for actor in actors])
+
+    # Run a bunch of GPU tasks.
+    locations_to_intervals = locations_to_intervals_for_many_tasks()
+    # Make sure that all but 11 of the GPUs were used.
+    self.assertEqual(len(locations_to_intervals),
+                     num_local_schedulers * num_gpus_per_scheduler - 1 - 3)
+    # For each GPU, verify that the set of tasks that used this specific GPU
+    # did not overlap in time.
+    for locations in locations_to_intervals:
+      check_intervals_non_overlapping(locations_to_intervals[locations])
+    # Make sure that the GPUs were not used.
+    self.assertNotIn(actor_location, locations_to_intervals)
+    for location in actor_locations:
+      self.assertNotIn(location, locations_to_intervals)
+
+    # Create more actors to fill up all the GPUs.
+    more_actors = [Actor1() for _ in
+                   range(num_local_schedulers *
+                         num_gpus_per_scheduler - 1 - 3)]
+    # Wait for the actors to finish being created.
+    ray.get([actor.get_location_and_ids() for actor in more_actors])
+
+    # Now if we run some GPU tasks, they should not be scheduled.
+    results = [f1.remote() for _ in range(30)]
+    ready_ids, remaining_ids = ray.wait(results, timeout=1000)
+    self.assertEqual(len(ready_ids), 0)
+
+    ray.worker.cleanup()
+
+  def testActorsAndTasksWithGPUsVersionTwo(self):
+    # Create tasks and actors that both use GPUs and make sure that they are
+    # given different GPUs
+    ray.init(num_cpus=10, num_gpus=10)
+
+    @ray.remote(num_gpus=1)
+    def f():
+      time.sleep(4)
+      gpu_ids = ray.get_gpu_ids()
+      assert len(gpu_ids) == 1
+      return gpu_ids[0]
+
+    @ray.actor(num_gpus=1)
+    class Actor(object):
+      def __init__(self):
+        self.gpu_ids = ray.get_gpu_ids()
+        assert len(self.gpu_ids) == 1
+
+      def get_gpu_id(self):
+        assert ray.get_gpu_ids() == self.gpu_ids
+        return self.gpu_ids[0]
+
+    results = []
+    for _ in range(5):
+      results.append(f.remote())
+      a = Actor()
+      results.append(a.get_gpu_id())
+
+    gpu_ids = ray.get(results)
+    self.assertEqual(set(gpu_ids), set(range(10)))
 
 
 if __name__ == "__main__":

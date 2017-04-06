@@ -59,11 +59,79 @@ void print_resource_info(const LocalSchedulerState *state,
 #endif
 }
 
+bool check_dynamic_resources(LocalSchedulerState *state,
+                             double num_cpus,
+                             double num_gpus) {
+  if (num_cpus > 0 && state->dynamic_resources[ResourceIndex_CPU] < num_cpus) {
+    /* We only use this check when num_cpus is positive so that we can still
+     * create actors even when the CPUs are oversubscribed. */
+    return false;
+  }
+  if (state->dynamic_resources[ResourceIndex_GPU] < num_gpus) {
+    return false;
+  }
+  return true;
+}
+
+void acquire_resources(LocalSchedulerState *state,
+                       LocalSchedulerClient *worker,
+                       double num_cpus,
+                       double num_gpus) {
+  /* Acquire the CPU resources. */
+  bool oversubscribed = (state->dynamic_resources[ResourceIndex_CPU] < 0);
+  state->dynamic_resources[ResourceIndex_CPU] -= num_cpus;
+  CHECK(worker->cpus_in_use == 0);
+  worker->cpus_in_use += num_cpus;
+  /* Log a warning if we are using more resources than we have been allocated,
+   * and we weren't already oversubscribed. */
+  if (!oversubscribed && state->dynamic_resources[ResourceIndex_CPU] < 0) {
+    LOG_WARN("local_scheduler dynamic resources dropped to %8.4f\t%8.4f\n",
+             state->dynamic_resources[0], state->dynamic_resources[1]);
+  }
+
+  /* Acquire the GPU resources. */
+  if (num_gpus != 0) {
+    /* Make sure that the worker isn't using any GPUs already. */
+    CHECK(worker->gpus_in_use.size() == 0);
+    /* Update the total quantity of GPU resources available. */
+    CHECK(state->dynamic_resources[ResourceIndex_GPU] >= num_gpus);
+    state->dynamic_resources[ResourceIndex_GPU] -= num_gpus;
+    /* Make sure the number of GPUs available is sufficiently large. */
+    CHECK(state->available_gpus.size() >= num_gpus);
+    /* Reserve GPUs for the worker. */
+    for (int i = 0; i < num_gpus; ++i) {
+      worker->gpus_in_use.push_back(state->available_gpus.back());
+      state->available_gpus.pop_back();
+    }
+  }
+}
+
+void release_resources(LocalSchedulerState *state,
+                       LocalSchedulerClient *worker,
+                       double num_cpus,
+                       double num_gpus) {
+  /* Release the CPU resources. */
+  CHECK(num_cpus == worker->cpus_in_use);
+  state->dynamic_resources[ResourceIndex_CPU] += num_cpus;
+  worker->cpus_in_use = 0;
+
+  /* Release the GPU resources. */
+  if (num_gpus != 0) {
+    CHECK(num_gpus == worker->gpus_in_use.size());
+    state->dynamic_resources[ResourceIndex_GPU] += num_gpus;
+    /* Move the GPU IDs the worker was using back to the local scheduler. */
+    for (auto const &gpu_id : worker->gpus_in_use) {
+      state->available_gpus.push_back(gpu_id);
+    }
+    worker->gpus_in_use.clear();
+  }
+}
+
 int force_kill_worker(event_loop *loop, timer_id id, void *context) {
   LocalSchedulerClient *worker = (LocalSchedulerClient *) context;
   kill(worker->pid, SIGKILL);
   close(worker->sock);
-  free(worker);
+  delete worker;
   return EVENT_LOOP_TIMER_DONE;
 }
 
@@ -123,14 +191,12 @@ void kill_worker(LocalSchedulerClient *worker, bool cleanup) {
     LOG_INFO("Killed worker with pid %d", worker->pid);
   }
 
+  /* Return the resources that the worker was using, if any. */
+  release_resources(state, worker, (double) worker->cpus_in_use,
+                    (double) worker->gpus_in_use.size());
+
   /* Clean up the task in progress. */
   if (worker->task_in_progress) {
-    if (!worker->is_blocked) {
-      /* Return the resources that the worker was using, if any. Blocked
-       * workers do not use resources. */
-      TaskSpec *spec = Task_task_spec(worker->task_in_progress);
-      update_dynamic_resources(state, spec, true);
-    }
     /* Update the task table to reflect that the task failed to complete. */
     if (state->db != NULL) {
       Task_set_state(worker->task_in_progress, TASK_STATUS_LOST);
@@ -145,7 +211,7 @@ void kill_worker(LocalSchedulerClient *worker, bool cleanup) {
     /* Clean up the client socket after killing the worker so that the worker
      * can't receive the SIGPIPE before exiting. */
     close(worker->sock);
-    free(worker);
+    delete worker;
   }
 }
 
@@ -223,7 +289,7 @@ void LocalSchedulerState_free(LocalSchedulerState *state) {
   event_loop_destroy(state->loop);
   state->loop = NULL;
   /* Free the scheduler state. */
-  free(state);
+  delete state;
 }
 
 /**
@@ -323,8 +389,7 @@ LocalSchedulerState *LocalSchedulerState_init(
     const double static_resource_conf[],
     const char *start_worker_command,
     int num_workers) {
-  LocalSchedulerState *state =
-      (LocalSchedulerState *) malloc(sizeof(LocalSchedulerState));
+  LocalSchedulerState *state = new LocalSchedulerState();
   /* Set the configuration struct for the local scheduler. */
   if (start_worker_command != NULL) {
     state->config.start_worker_command = parse_command(start_worker_command);
@@ -405,6 +470,10 @@ LocalSchedulerState *LocalSchedulerState_init(
     state->static_resources[i] = state->dynamic_resources[i] =
         static_resource_conf[i];
   }
+  /* Initialize available GPUs. */
+  for (int i = 0; i < state->static_resources[ResourceIndex_GPU]; ++i) {
+    state->available_gpus.push_back(i);
+  }
   /* Print some debug information about resource configuration. */
   print_resource_info(state, NULL);
 
@@ -417,55 +486,12 @@ LocalSchedulerState *LocalSchedulerState_init(
   return state;
 }
 
-void update_dynamic_resources(LocalSchedulerState *state,
-                              TaskSpec *spec,
-                              bool return_resources) {
-  for (int i = 0; i < ResourceIndex_MAX; ++i) {
-    double resource = TaskSpec_get_required_resource(spec, i);
-    if (!return_resources) {
-      /* If we are not returning resources, we are leasing them, so we want to
-       * subtract the resource quantities from our accounting. */
-      resource *= -1;
-    }
-
-    bool oversubscribed =
-        (!return_resources && state->dynamic_resources[i] < 0);
-    /* Add or subtract the task's resources from our count. */
-    state->dynamic_resources[i] += resource;
-
-    if ((!return_resources && state->dynamic_resources[i] < 0) &&
-        !oversubscribed) {
-      /* Log a warning if we are using more resources than we have been
-       * allocated, and we weren't already oversubscribed. */
-      LOG_WARN("local_scheduler dynamic resources dropped to %8.4f\t%8.4f\n",
-               state->dynamic_resources[0], state->dynamic_resources[1]);
-    }
-    CHECK(state->dynamic_resources[i] <= state->static_resources[i]);
-  }
-  print_resource_info(state, spec);
-}
-
 void assign_task_to_worker(LocalSchedulerState *state,
                            TaskSpec *spec,
                            int64_t task_spec_size,
                            LocalSchedulerClient *worker) {
-  if (write_message(worker->sock, MessageType_ExecuteTask, task_spec_size,
-                    (uint8_t *) spec) < 0) {
-    if (errno == EPIPE || errno == EBADF) {
-      /* TODO(rkn): If this happens, the task should be added back to the task
-       * queue. */
-      LOG_WARN(
-          "Failed to give task to worker on fd %d. The client may have hung "
-          "up.",
-          worker->sock);
-    } else {
-      LOG_FATAL("Failed to give task to client on fd %d.", worker->sock);
-    }
-  }
-
-  /* Resource accounting:
-   * Update dynamic resource vector in the local scheduler state. */
-  update_dynamic_resources(state, spec, false);
+  CHECK(worker != NULL);
+  CHECK(ActorID_equal(worker->actor_id, TaskSpec_actor_id(spec)));
   Task *task = Task_alloc(spec, task_spec_size, TASK_STATUS_RUNNING,
                           state->db ? get_db_client_id(state->db) : NIL_ID);
   /* Record which task this worker is executing. This will be freed in
@@ -477,6 +503,68 @@ void assign_task_to_worker(LocalSchedulerState *state,
     task_table_update(state->db, task, NULL, NULL, NULL);
   } else {
     Task_free(task);
+  }
+
+  /* Acquire the resources necessary to run the task. */
+  if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
+    acquire_resources(state, worker,
+                      TaskSpec_get_required_resource(spec, ResourceIndex_CPU),
+                      TaskSpec_get_required_resource(spec, ResourceIndex_GPU));
+  }
+
+  /* Construct the flatbuffer message to send to the worker. */
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message =
+      CreateGetTaskReply(fbb, fbb.CreateString((char *) spec, task_spec_size),
+                         fbb.CreateVector(worker->gpus_in_use));
+  fbb.Finish(message);
+
+  /* Send the message to the local scheduler. */
+  if (write_message(worker->sock, MessageType_ExecuteTask, fbb.GetSize(),
+                    fbb.GetBufferPointer()) < 0) {
+    if (errno == EPIPE || errno == EBADF || errno == ECONNRESET) {
+      /* Something went wrong, so kill the worker. */
+      kill_worker(worker, false);
+      LOG_WARN(
+          "Failed to give task to worker on fd %d. The client may have hung "
+          "up.",
+          worker->sock);
+    } else {
+      LOG_FATAL("Failed to give task to client on fd %d.", worker->sock);
+    }
+  }
+}
+
+/**
+ * Reply to a worker that just registered with the local scheduler. Sending this
+ * message confirms the worker's registration with the local scheduler.
+ *
+ * @param state The state of the local scheduler.
+ * @param worker The worker to send message to.
+ * @return Void.
+ */
+void send_register_worker_reply(LocalSchedulerState *state,
+                                LocalSchedulerClient *worker) {
+  /* Construct the flatbuffer object to send to the worker. */
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message =
+      CreateRegisterWorkerReply(fbb, fbb.CreateVector(worker->gpus_in_use));
+  fbb.Finish(message);
+
+  /* Send the message to the worker. */
+  if (write_message(worker->sock, MessageType_RegisterWorkerReply,
+                    fbb.GetSize(), fbb.GetBufferPointer()) < 0) {
+    if (errno == EPIPE || errno == EBADF || errno == ECONNRESET) {
+      /* Something went wrong, so kill the worker. */
+      kill_worker(worker, false);
+      LOG_WARN(
+          "Failed to give send register worker reply to worker on fd %d. The "
+          "client may have hung up.",
+          worker->sock);
+    } else {
+      LOG_FATAL("Failed to send register worker reply to client on fd %d.",
+                worker->sock);
+    }
   }
 }
 
@@ -705,7 +793,25 @@ void process_message(event_loop *loop,
        * worker. */
       handle_actor_worker_connect(state, state->algorithm_state, actor_id,
                                   worker);
+
+      /* If there are enough GPUs available, allocate them and reply to the
+       * actor. */
+      double num_gpus_required = (double) message->num_gpus();
+      if (check_dynamic_resources(state, 0, num_gpus_required)) {
+        acquire_resources(state, worker, 0, num_gpus_required);
+      } else {
+        /* TODO(rkn): This means that an actor wants to register but that there
+         * aren't enough GPUs for it. We should queue this request, and reply to
+         * the actor when GPUs become available. */
+        LOG_WARN(
+            "Attempting to create an actor but there aren't enough available "
+            "GPUs. We'll start the worker anyway without any GPUs, but this is "
+            "incorrect behavior.");
+      }
     }
+
+    /* Send a message confirming the actor's registration. */
+    send_register_worker_reply(state, worker);
 
     /* Register worker process id with the scheduler. */
     worker->pid = worker_pid;
@@ -731,9 +837,15 @@ void process_message(event_loop *loop,
   case MessageType_GetTask: {
     /* If this worker reports a completed task: account for resources. */
     if (worker->task_in_progress != NULL) {
-      TaskSpec *spec = Task_task_spec(worker->task_in_progress);
-      /* Return dynamic resources back for the task in progress. */
-      update_dynamic_resources(state, spec, true);
+      /* Return dynamic resources back for the task in progress. If the worker
+       * is an actor, then we do not return GPU resources. */
+      if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
+        release_resources(state, worker, (double) worker->cpus_in_use,
+                          (double) worker->gpus_in_use.size());
+      } else {
+        /* release_resources(state, worker, (double) worker->cpus_in_use, 0); */
+      }
+
       /* If we're connected to Redis, update tables. */
       if (state->db != NULL) {
         /* Update control state tables. */
@@ -762,8 +874,17 @@ void process_message(event_loop *loop,
       /* TODO(swang): For now, we don't handle blocked actors. */
       if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
         /* If the worker was executing a task (i.e. non-driver) and it wasn't
-         * already blocked on an object that's not locally available, update its
-         * state to blocked. */
+         * already blocked on an object that's not locally available, release
+         * it's resources and update its state to blocked. Note, we do not
+         * return GPU resources because the worker will still be using memory on
+         * the GPUs. */
+        TaskSpec *spec = Task_task_spec(worker->task_in_progress);
+        CHECK((double) worker->cpus_in_use ==
+              TaskSpec_get_required_resource(spec, ResourceIndex_CPU));
+        release_resources(
+            state, worker,
+            TaskSpec_get_required_resource(spec, ResourceIndex_CPU), 0);
+
         handle_worker_blocked(state, state->algorithm_state, worker);
         print_worker_info("Reconstructing", state->algorithm_state);
       }
@@ -786,6 +907,19 @@ void process_message(event_loop *loop,
         /* If the worker was executing a task (i.e. non-driver), update its
          * state to not blocked. */
         CHECK(worker->is_blocked);
+
+        /* Lease back the resources that the blocked worker will need. However,
+         * do not return GPU resources because the blocked worker will still be
+         * using memory on the GPUs. */
+        /* TODO(swang): Leasing back the resources to blocked workers can cause
+         * us to transiently exceed the maximum number of resources. This can be
+         * fixed by having blocked workers explicitly yield and wait to be given
+         * back resources before continuing execution. */
+        TaskSpec *spec = Task_task_spec(worker->task_in_progress);
+        acquire_resources(
+            state, worker,
+            TaskSpec_get_required_resource(spec, ResourceIndex_CPU), 0);
+
         handle_worker_unblocked(state, state->algorithm_state, worker);
       }
     }
@@ -811,10 +945,10 @@ void new_client_connection(event_loop *loop,
   int new_socket = accept_client(listener_sock);
   /* Create a struct for this worker. This will be freed when we free the local
    * scheduler state. */
-  LocalSchedulerClient *worker =
-      (LocalSchedulerClient *) malloc(sizeof(LocalSchedulerClient));
+  LocalSchedulerClient *worker = new LocalSchedulerClient();
   worker->sock = new_socket;
   worker->task_in_progress = NULL;
+  worker->cpus_in_use = 0;
   worker->is_blocked = false;
   worker->pid = 0;
   worker->is_child = false;

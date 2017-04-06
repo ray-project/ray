@@ -288,6 +288,73 @@ void remove_actor(SchedulingAlgorithmState *algorithm_state, ActorID actor_id) {
   free(entry);
 }
 
+/**
+ * Dispatch a task to an actor if possible.
+ *
+ * @param state The state of the local scheduler.
+ * @param algorithm_state The state of the scheduling algorithm.
+ * @param actor_id The ID of the actor corresponding to the worker.
+ * @return Void.
+ */
+void dispatch_actor_task(LocalSchedulerState *state,
+                         SchedulingAlgorithmState *algorithm_state,
+                         ActorID actor_id) {
+  /* Make sure this worker actually is an actor. */
+  CHECK(!ActorID_equal(actor_id, NIL_ACTOR_ID));
+  /* Make sure this actor belongs to this local scheduler. */
+  actor_map_entry *actor_entry;
+  HASH_FIND(hh, state->actor_mapping, &actor_id, sizeof(actor_id), actor_entry);
+  CHECK(actor_entry != NULL);
+  CHECK(DBClientID_equal(actor_entry->local_scheduler_id,
+                         get_db_client_id(state->db)));
+
+  /* Get the local actor entry for this actor. */
+  LocalActorInfo *entry;
+  HASH_FIND(hh, algorithm_state->local_actor_infos, &actor_id, sizeof(actor_id),
+            entry);
+  CHECK(entry != NULL);
+
+  if (entry->task_queue->empty()) {
+    /* There are no queued tasks for this actor, so we cannot dispatch a task to
+     * the actor. */
+    return;
+  }
+  TaskQueueEntry first_task = entry->task_queue->front();
+  int64_t next_task_counter = TaskSpec_actor_counter(first_task.spec);
+  if (next_task_counter != entry->task_counter) {
+    /* We cannot execute the next task on this actor without violating the
+     * in-order execution guarantee for actor tasks. */
+    CHECKM(next_task_counter > entry->task_counter,
+           "next_task_counter is %d and entry->task_counter is %d",
+           (int) next_task_counter, (int) entry->task_counter);
+    return;
+  }
+  /* If the worker is not available, we cannot assign a task to it. */
+  if (!entry->worker_available) {
+    return;
+  }
+
+  /* Check that there are enough resources to run the task. */
+  if (!check_dynamic_resources(
+          state,
+          TaskSpec_get_required_resource(first_task.spec, ResourceIndex_CPU),
+          TaskSpec_get_required_resource(first_task.spec, ResourceIndex_GPU))) {
+    /* TODO(rkn): When we change actor methods to respect dynamic resource
+     * constraints, we should return early here. */
+  }
+
+  /* Assign the first task in the task queue to the worker and mark the worker
+   * as unavailable. */
+  entry->task_counter += 1;
+  assign_task_to_worker(state, first_task.spec, first_task.task_spec_size,
+                        entry->worker);
+  entry->worker_available = false;
+  /* Free the task queue entry. */
+  TaskQueueEntry_free(&first_task);
+  /* Remove the task from the actor's task queue. */
+  entry->task_queue->pop_front();
+}
+
 void handle_actor_worker_connect(LocalSchedulerState *state,
                                  SchedulingAlgorithmState *algorithm_state,
                                  ActorID actor_id,
@@ -303,6 +370,8 @@ void handle_actor_worker_connect(LocalSchedulerState *state,
      * filled out, so fill out the correct worker field now. */
     entry->worker = worker;
   }
+  /* TODO(rkn): Is this necessary? */
+  dispatch_actor_task(state, algorithm_state, actor_id);
 }
 
 void handle_actor_worker_disconnect(LocalSchedulerState *state,
@@ -390,62 +459,6 @@ void add_task_to_actor_queue(LocalSchedulerState *state,
       task_table_add_task(state->db, task, NULL, NULL, NULL);
     }
   }
-}
-
-/**
- * Dispatch a task to an actor if possible.
- *
- * @param state The state of the local scheduler.
- * @param algorithm_state The state of the scheduling algorithm.
- * @param actor_id The ID of the actor corresponding to the worker.
- * @return True if a task was dispatched to the actor and false otherwise.
- */
-bool dispatch_actor_task(LocalSchedulerState *state,
-                         SchedulingAlgorithmState *algorithm_state,
-                         ActorID actor_id) {
-  /* Make sure this worker actually is an actor. */
-  CHECK(!ActorID_equal(actor_id, NIL_ACTOR_ID));
-  /* Make sure this actor belongs to this local scheduler. */
-  actor_map_entry *actor_entry;
-  HASH_FIND(hh, state->actor_mapping, &actor_id, sizeof(actor_id), actor_entry);
-  CHECK(actor_entry != NULL);
-  CHECK(DBClientID_equal(actor_entry->local_scheduler_id,
-                         get_db_client_id(state->db)));
-
-  /* Get the local actor entry for this actor. */
-  LocalActorInfo *entry;
-  HASH_FIND(hh, algorithm_state->local_actor_infos, &actor_id, sizeof(actor_id),
-            entry);
-  CHECK(entry != NULL);
-
-  if (entry->task_queue->empty()) {
-    /* There are no queued tasks for this actor, so we cannot dispatch a task to
-     * the actor. */
-    return false;
-  }
-  TaskQueueEntry first_task = entry->task_queue->front();
-  int64_t next_task_counter = TaskSpec_actor_counter(first_task.spec);
-  if (next_task_counter != entry->task_counter) {
-    /* We cannot execute the next task on this actor without violating the
-     * in-order execution guarantee for actor tasks. */
-    CHECK(next_task_counter > entry->task_counter);
-    return false;
-  }
-  /* If the worker is not available, we cannot assign a task to it. */
-  if (!entry->worker_available) {
-    return false;
-  }
-  /* Assign the first task in the task queue to the worker and mark the worker
-   * as unavailable. */
-  entry->task_counter += 1;
-  assign_task_to_worker(state, first_task.spec, first_task.task_spec_size,
-                        entry->worker);
-  entry->worker_available = false;
-  /* Free the task queue entry. */
-  TaskQueueEntry_free(&first_task);
-  /* Remove the task from the actor's task queue. */
-  entry->task_queue->pop_front();
-  return true;
 }
 
 /**
@@ -614,16 +627,10 @@ void dispatch_tasks(LocalSchedulerState *state,
       return;
     }
     /* Skip to the next task if this task cannot currently be satisfied. */
-    bool task_satisfied = true;
-    for (int i = 0; i < ResourceIndex_MAX; i++) {
-      if (TaskSpec_get_required_resource(task.spec, i) >
-          state->dynamic_resources[i]) {
-        /* Insufficient capacity for this task, proceed to the next task. */
-        task_satisfied = false;
-        break;
-      }
-    }
-    if (!task_satisfied) {
+
+    if (!check_dynamic_resources(
+            state, TaskSpec_get_required_resource(task.spec, ResourceIndex_CPU),
+            TaskSpec_get_required_resource(task.spec, ResourceIndex_GPU))) {
       /* This task could not be satisfied -- proceed to the next task. */
       ++it;
       continue;
@@ -1069,11 +1076,16 @@ void handle_actor_worker_available(LocalSchedulerState *state,
   entry->worker_available = true;
   /* Assign a task to this actor if possible. */
   dispatch_actor_task(state, algorithm_state, actor_id);
+  /* TODO(rkn): In the setting where actor methods respect dynamic resource
+   * constraints, the availability of an actor (or any worker) must trigger the
+   * dispatch of arbitrary tasks and actor methods, not just methods for the
+   * actor that just became available. */
 }
 
 void handle_worker_blocked(LocalSchedulerState *state,
                            SchedulingAlgorithmState *algorithm_state,
                            LocalSchedulerClient *worker) {
+  CHECK(worker->task_in_progress != NULL);
   /* Find the worker in the list of executing workers. */
   for (int i = 0; i < utarray_len(algorithm_state->executing_workers); ++i) {
     LocalSchedulerClient **p = (LocalSchedulerClient **) utarray_eltptr(
@@ -1093,10 +1105,6 @@ void handle_worker_blocked(LocalSchedulerState *state,
       /* Add the worker to the list of blocked workers. */
       worker->is_blocked = true;
       utarray_push_back(algorithm_state->blocked_workers, &worker);
-      /* Return the resources that the blocked worker was using. */
-      CHECK(worker->task_in_progress != NULL);
-      TaskSpec *spec = Task_task_spec(worker->task_in_progress);
-      update_dynamic_resources(state, spec, true);
 
       /* Try to dispatch tasks, since we may have freed up some resources. */
       dispatch_tasks(state, algorithm_state);
@@ -1114,6 +1122,7 @@ void handle_worker_blocked(LocalSchedulerState *state,
 void handle_worker_unblocked(LocalSchedulerState *state,
                              SchedulingAlgorithmState *algorithm_state,
                              LocalSchedulerClient *worker) {
+  CHECK(worker->task_in_progress != NULL);
   /* Find the worker in the list of blocked workers. */
   for (int i = 0; i < utarray_len(algorithm_state->blocked_workers); ++i) {
     LocalSchedulerClient **p = (LocalSchedulerClient **) utarray_eltptr(
@@ -1130,14 +1139,6 @@ void handle_worker_unblocked(LocalSchedulerState *state,
         DCHECK(*q != worker);
       }
 
-      /* Lease back the resources that the blocked worker will need. */
-      /* TODO(swang): Leasing back the resources to blocked workers can cause
-       * us to transiently exceed the maximum number of resources. This can be
-       * fixed by having blocked workers explicitly yield and wait to be given
-       * back resources before continuing execution. */
-      CHECK(worker->task_in_progress != NULL);
-      TaskSpec *spec = Task_task_spec(worker->task_in_progress);
-      update_dynamic_resources(state, spec, false);
       /* Add the worker to the list of executing workers. */
       worker->is_blocked = false;
       utarray_push_back(algorithm_state->executing_workers, &worker);
