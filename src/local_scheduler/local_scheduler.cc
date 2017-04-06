@@ -123,6 +123,15 @@ void kill_worker(LocalSchedulerClient *worker, bool cleanup) {
     LOG_INFO("Killed worker with pid %d", worker->pid);
   }
 
+  /* If this worker is still running a task and we aren't cleaning up, push an
+   * error message to the driver responsible for the task. */
+  if (worker->task_in_progress != NULL && !cleanup) {
+    TaskSpec *spec = Task_task_spec(worker->task_in_progress);
+    TaskID task_id = TaskSpec_task_id(spec);
+    push_error(state->db, TaskSpec_driver_id(spec), WORKER_DIED_ERROR_INDEX,
+               sizeof(task_id), task_id.id);
+  }
+
   /* Clean up the task in progress. */
   if (worker->task_in_progress) {
     if (!worker->is_blocked) {
