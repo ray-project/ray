@@ -20,17 +20,20 @@ typedef enum {
   OBJECT_HASH_MISMATCH_ERROR_INDEX = 0,
   /** An object that was created through a ray.put is lost. */
   PUT_RECONSTRUCTION_ERROR_INDEX,
+  /** A worker died or was killed while executing a task. */
+  WORKER_DIED_ERROR_INDEX,
   /** The total number of error types. */
   MAX_ERROR_INDEX
 } error_index;
 
 /** Information about the error to be displayed to the user. */
 static const char *error_types[] = {"object_hash_mismatch",
-                                    "put_reconstruction"};
+                                    "put_reconstruction", "worker_died"};
 static const char *error_messages[] = {
     "A nondeterministic task was reexecuted.",
     "An object created by ray.put was evicted and could not be reconstructed. "
-    "The driver may need to be restarted."};
+    "The driver may need to be restarted.",
+    "A worker died or was killed while executing a task."};
 
 /**
  * Push an error to the given Python driver.
