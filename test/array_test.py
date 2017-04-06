@@ -21,7 +21,7 @@ class RemoteArrayTest(unittest.TestCase):
     for module in [ra.core, ra.random, ra.linalg, da.core, da.random,
                    da.linalg]:
       reload(module)
-    ray.init(num_workers=1)
+    ray.init()
 
     # test eye
     object_id = ra.eye.remote(3)
@@ -57,7 +57,7 @@ class DistributedArrayTest(unittest.TestCase):
     for module in [ra.core, ra.random, ra.linalg, da.core, da.random,
                    da.linalg]:
       reload(module)
-    ray.init(num_workers=1)
+    ray.init()
 
     a = ra.ones.remote([da.BLOCK_SIZE, da.BLOCK_SIZE])
     b = ra.zeros.remote([da.BLOCK_SIZE, da.BLOCK_SIZE])
@@ -72,8 +72,8 @@ class DistributedArrayTest(unittest.TestCase):
     for module in [ra.core, ra.random, ra.linalg, da.core, da.random,
                    da.linalg]:
       reload(module)
-    ray.worker._init(start_ray_local=True, num_workers=10,
-                     num_local_schedulers=2, num_cpus=[10, 10])
+    ray.worker._init(start_ray_local=True, num_local_schedulers=2,
+                     num_cpus=[10, 10])
 
     x = da.zeros.remote([9, 25, 51], "float")
     assert_equal(ray.get(da.assemble.remote(x)), np.zeros([9, 25, 51]))

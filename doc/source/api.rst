@@ -35,6 +35,12 @@ If there are GPUs available on the machine, you should specify this with the
 By default, Ray will use ``psutil.cpu_count()`` to determine the number of CPUs,
 and by default the number of GPUs will be zero.
 
+Instead of thinking about the number of "worker" processes on each node, we
+prefer to think in terms of the quantities of CPU and GPU resources on each
+node and to provide the illusion of an infinite pool of workers. Tasks will be
+assigned to workers based on the availability of resources so as to avoid
+contention and not based on the number of available worker processes.
+
 Connecting to an existing cluster
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
