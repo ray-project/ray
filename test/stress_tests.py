@@ -154,7 +154,7 @@ class ReconstructionTests(unittest.TestCase):
 
     # Start the rest of the services in the Ray cluster.
     ray.worker._init(address_info=address_info, start_ray_local=True,
-                     num_workers=self.num_local_schedulers,
+                     num_workers=1,
                      num_local_schedulers=self.num_local_schedulers,
                      num_cpus=[1] * self.num_local_schedulers,
                      driver_mode=ray.SILENT_MODE)

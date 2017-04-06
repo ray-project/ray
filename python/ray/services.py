@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import namedtuple, OrderedDict
-import multiprocessing
 import os
 import psutil
 import random
@@ -161,7 +160,7 @@ def all_processes_alive(exclude=[]):
     # an exit code of None indicates that the process is still alive.
     processes_alive = [p.poll() is None for p in processes]
     if (not all(processes_alive) and process_type not in exclude):
-      print("A process of type {} has dead.".format(process_type))
+      print("A process of type {} has died.".format(process_type))
       return False
   return True
 
@@ -511,10 +510,12 @@ def start_local_scheduler(redis_address,
   if num_cpus is None:
     # By default, use the number of hardware execution threads for the number
     # of cores.
-    num_cpus = multiprocessing.cpu_count()
+    num_cpus = psutil.cpu_count()
   if num_gpus is None:
     # By default, assume this node has no GPUs.
     num_gpus = 0
+  print("Starting local scheduler with {} CPUs and {} GPUs.".format(num_cpus,
+                                                                    num_gpus))
   local_scheduler_name, p = ray.local_scheduler.start_local_scheduler(
       plasma_store_name,
       plasma_manager_name,
@@ -693,7 +694,7 @@ def start_monitor(redis_address, node_ip_address, stdout_file=None,
 
 def start_ray_processes(address_info=None,
                         node_ip_address="127.0.0.1",
-                        num_workers=0,
+                        num_workers=None,
                         num_local_schedulers=1,
                         worker_path=None,
                         cleanup=True,
@@ -752,6 +753,11 @@ def start_ray_processes(address_info=None,
     num_gpus = num_local_schedulers * [num_gpus]
   assert len(num_cpus) == num_local_schedulers
   assert len(num_gpus) == num_local_schedulers
+
+  if num_workers is not None:
+    workers_per_local_scheduler = num_local_schedulers * [num_workers]
+  else:
+    workers_per_local_scheduler = num_local_schedulers * [psutil.cpu_count()]
 
   if address_info is None:
     address_info = {}
@@ -853,11 +859,6 @@ def start_ray_processes(address_info=None,
         cleanup=cleanup)
     object_store_addresses.append(object_store_address)
     time.sleep(0.1)
-
-  # Determine how many workers to start for each local scheduler.
-  workers_per_local_scheduler = [0] * num_local_schedulers
-  for i in range(num_workers):
-    workers_per_local_scheduler[i % num_local_schedulers] += 1
 
   # Start any local schedulers that do not yet exist.
   for i in range(len(local_scheduler_socket_names), num_local_schedulers):
