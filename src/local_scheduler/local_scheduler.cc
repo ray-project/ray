@@ -155,6 +155,37 @@ void LocalSchedulerState_free(LocalSchedulerState *state) {
    * the possibility of orphan worker processes. */
   signal(SIGTERM, SIG_DFL);
 
+  /* Kill any child processes that didn't register as a worker yet. */
+  pid_t *worker_pid;
+  for (worker_pid = (pid_t *) utarray_front(state->child_pids);
+       worker_pid != NULL;
+       worker_pid = (pid_t *) utarray_next(state->child_pids, worker_pid)) {
+    kill(*worker_pid, SIGKILL);
+    waitpid(*worker_pid, NULL, 0);
+    LOG_DEBUG("Killed pid %d", *worker_pid);
+  }
+  utarray_free(state->child_pids);
+
+  /* Kill any registered workers. */
+  /* TODO(swang): It's possible that the local scheduler will exit before all
+   * of its task table updates make it to redis. */
+  for (LocalSchedulerClient **worker =
+           (LocalSchedulerClient **) utarray_front(state->workers);
+       worker != NULL;
+       worker = (LocalSchedulerClient **) utarray_front(state->workers)) {
+    kill_worker(*worker, true);
+  }
+
+  /* Disconnect from plasma. */
+  plasma_disconnect(state->plasma_conn);
+  state->plasma_conn = NULL;
+
+  /* Disconnect from the database. */
+  if (state->db != NULL) {
+    db_disconnect(state->db);
+    state->db = NULL;
+  }
+
   /* Free the command for starting new workers. */
   if (state->config.start_worker_command != NULL) {
     int i = 0;
@@ -168,38 +199,10 @@ void LocalSchedulerState_free(LocalSchedulerState *state) {
     state->config.start_worker_command = NULL;
   }
 
-  /* Kill any child processes that didn't register as a worker yet. */
-  pid_t *worker_pid;
-  for (worker_pid = (pid_t *) utarray_front(state->child_pids);
-       worker_pid != NULL;
-       worker_pid = (pid_t *) utarray_next(state->child_pids, worker_pid)) {
-    kill(*worker_pid, SIGKILL);
-    waitpid(*worker_pid, NULL, 0);
-    LOG_DEBUG("Killed pid %d", *worker_pid);
-  }
-  utarray_free(state->child_pids);
-
   /* Free the list of workers and any tasks that are still in progress on those
    * workers. */
-  /* TODO(swang): It's possible that the local scheduler will exit before all
-   * of its task table updates make it to redis. */
-  for (LocalSchedulerClient **worker =
-           (LocalSchedulerClient **) utarray_front(state->workers);
-       worker != NULL;
-       worker = (LocalSchedulerClient **) utarray_front(state->workers)) {
-    kill_worker(*worker, true);
-  }
   utarray_free(state->workers);
   state->workers = NULL;
-
-  /* Disconnect from the database. */
-  if (state->db != NULL) {
-    db_disconnect(state->db);
-    state->db = NULL;
-  }
-  /* Disconnect from plasma. */
-  plasma_disconnect(state->plasma_conn);
-  state->plasma_conn = NULL;
 
   /* Free the mapping from the actor ID to the ID of the local scheduler
    * responsible for that actor. */
@@ -825,7 +828,7 @@ void new_client_connection(event_loop *loop,
 
 /* We need this code so we can clean up when we get a SIGTERM signal. */
 
-LocalSchedulerState *g_state;
+LocalSchedulerState *g_state = NULL;
 
 void signal_handler(int signal) {
   LOG_DEBUG("Signal was %d", signal);
@@ -834,7 +837,9 @@ void signal_handler(int signal) {
      * free the local scheduler state at most once. If another SIGTERM is
      * caught during this call, there is the possibility of orphan worker
      * processes. */
-    LocalSchedulerState_free(g_state);
+    if (g_state) {
+      LocalSchedulerState_free(g_state);
+    }
     exit(0);
   }
 }
