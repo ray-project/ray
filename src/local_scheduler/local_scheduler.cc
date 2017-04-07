@@ -460,7 +460,6 @@ void assign_task_to_worker(LocalSchedulerState *state,
                            LocalSchedulerClient *worker) {
   /* Construct a flatbuffer object to send to the worker. */
   flatbuffers::FlatBufferBuilder fbb;
-  //Does CreateString take ownership of the string?
   auto message =
       CreateGetTaskReply(fbb, fbb.CreateString((char *) spec, task_spec_size));
   fbb.Finish(message);
@@ -676,10 +675,9 @@ void send_client_register_reply(LocalSchedulerState *state,
   }
 }
 
-void handle_client_register(
-    LocalSchedulerState *state,
-    LocalSchedulerClient *worker,
-    const RegisterClientRequest *message) {
+void handle_client_register(LocalSchedulerState *state,
+                            LocalSchedulerClient *worker,
+                            const RegisterClientRequest *message) {
   /* Register the worker or driver. */
   if (message->is_worker()) {
     /* Update the actor mapping with the actor ID of the worker (if an actor is
