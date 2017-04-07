@@ -91,4 +91,7 @@ script:
   - python test/microbenchmarks.py
   - python test/stress_tests.py
   - python test/component_failures_test.py
+  # Kill any processes that may have been left alive by
+  # component_failures_test.py, and ignore the return code of stop_ray.sh.
+  - ./scripts/stop_ray.sh || true
   - python test/multi_node_test.py
