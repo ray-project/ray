@@ -391,8 +391,7 @@ void remove_wait_request(PlasmaManagerState *manager_state,
     CHECK(event_loop_remove_timer(manager_state->loop, wait_req->timer) ==
           AE_OK);
   }
-//  delete wait_req->object_requests;
-  free(wait_req);
+  delete wait_req;
 }
 
 void return_from_wait(PlasmaManagerState *manager_state,

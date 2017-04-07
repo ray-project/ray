@@ -356,10 +356,8 @@ TEST plasma_wait_reply_test(void) {
   /* Create a map with two ObjectRequests in it. */
   std::unordered_map<ObjectID, ObjectRequest, UniqueIDHasher> objects_in(
       num_objects_in);
-  ObjectRequest objreq1 = ObjectRequest(
-      {globally_unique_id(), 0, ObjectStatus_Local});
-  ObjectRequest objreq2 = ObjectRequest(
-      {globally_unique_id(), 0, ObjectStatus_Nonexistent});
+  ObjectRequest objreq1({globally_unique_id(), 0, ObjectStatus_Local});
+  ObjectRequest objreq2({globally_unique_id(), 0, ObjectStatus_Nonexistent});
   objects_in[objreq1.object_id] = objreq1;
   objects_in[objreq2.object_id] = objreq2;
 
