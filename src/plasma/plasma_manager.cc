@@ -150,7 +150,11 @@ typedef struct {
  *     does some processing for each WaitRequest involved in that
  *     ObjectWaitRequests struct.
  */
-typedef struct {
+typedef struct WaitRequest {
+  explicit WaitRequest(int64_t num_object_requests) :
+    client_conn(NULL), timer(0), num_object_requests(num_object_requests),
+    object_requests(num_object_requests), num_objects_to_wait_for(0),
+    num_satisfied(0) {};
   /** The client connection that called wait. */
   ClientConnection *client_conn;
   /** The ID of the timer that will time out and cause this wait to return to
@@ -161,7 +165,7 @@ typedef struct {
   /** The object requests for this wait request. Each object request has a
    *  status field which is either PLASMA_QUERY_LOCAL or PLASMA_QUERY_ANYWHERE.
    */
-  std::unordered_map<ObjectID, ObjectRequest, UniqueIDHasher> *object_requests;
+  std::unordered_map<ObjectID, ObjectRequest, UniqueIDHasher> object_requests;
   /** The minimum number of objects to wait for in this request. */
   int64_t num_objects_to_wait_for;
   /** The number of object requests in this wait request that are already
@@ -381,7 +385,7 @@ void remove_wait_request(PlasmaManagerState *manager_state,
     CHECK(event_loop_remove_timer(manager_state->loop, wait_req->timer) ==
           AE_OK);
   }
-  delete wait_req->object_requests;
+//  delete wait_req->object_requests;
   free(wait_req);
 }
 
@@ -390,12 +394,12 @@ void return_from_wait(PlasmaManagerState *manager_state,
   /* Send the reply to the client. */
   warn_if_sigpipe(plasma_send_WaitReply(
                   wait_req->client_conn->fd, manager_state->builder,
-                  *(wait_req->object_requests), wait_req->num_object_requests),
+                  wait_req->object_requests, wait_req->num_object_requests),
                   wait_req->client_conn->fd);
   /* Iterate over all object IDs requested as part of this wait request.
    * Remove the wait request from each of the relevant object_wait_requests hash
    * tables if it is present there. */
-  for (const auto &objreq_pair : *(wait_req->object_requests)) {
+  for (const auto &objreq_pair : wait_req->object_requests) {
     const auto &object_request = objreq_pair.second;
     remove_wait_request_for_object(manager_state,
                                    object_request.object_id,
@@ -430,9 +434,9 @@ void update_object_wait_requests(PlasmaManagerState *manager_state,
       WaitRequest *wait_req = *wait_req_ptr;
       wait_req->num_satisfied += 1;
        /* Mark the object as present in the wait request. */
-      auto objreq_found_iter = wait_req->object_requests->find(obj_id);
+      auto objreq_found_iter = wait_req->object_requests.find(obj_id);
       /* Check that we found the object. */
-      CHECK(objreq_found_iter != wait_req->object_requests->end());
+      CHECK(objreq_found_iter != wait_req->object_requests.end());
       /* Check that the object found was not previously known to us. */
       CHECK(objreq_found_iter->second.status == ObjectStatus_Nonexistent);
       /* Update the found object's status to a known status. */
@@ -1152,16 +1156,18 @@ void process_wait_request(ClientConnection *client_conn,
   PlasmaManagerState *manager_state = client_conn->manager_state;
 
   /* Create a wait request for this object. */
-  WaitRequest *wait_req = (WaitRequest *) malloc(sizeof(WaitRequest));
-  memset(wait_req, 0, sizeof(WaitRequest));
+  WaitRequest *wait_req = new WaitRequest(num_object_requests);
+//  WaitRequest *wait_req = (WaitRequest *) malloc(sizeof(WaitRequest));
+//  memset(wait_req, 0, sizeof(WaitRequest));
   wait_req->client_conn = client_conn;
   wait_req->timer = -1;
   wait_req->num_object_requests = num_object_requests;
-  wait_req->object_requests =
-      new std::unordered_map<ObjectID, ObjectRequest, UniqueIDHasher>(
-          num_object_requests);
+//  wait_req->object_requests =
+//      new std::unordered_map<ObjectID, ObjectRequest, UniqueIDHasher>(
+//          num_object_requests);
   for (int i = 0; i < num_object_requests; ++i) {
-    (*wait_req->object_requests)[object_requests[i].object_id] = object_requests[i];
+    wait_req->object_requests[object_requests[i].object_id] =
+        object_requests[i];
   }
   wait_req->num_objects_to_wait_for = num_ready_objects;
   wait_req->num_satisfied = 0;
@@ -1172,7 +1178,7 @@ void process_wait_request(ClientConnection *client_conn,
   ObjectID *object_ids_to_request =
       (ObjectID *) malloc(num_object_requests * sizeof(ObjectID));
 
-  for (auto &objreq_pair : *(wait_req->object_requests)) {
+  for (auto &objreq_pair : wait_req->object_requests) {
     auto &object_request = objreq_pair.second;
     ObjectID obj_id = object_request.object_id;
 
@@ -1536,6 +1542,7 @@ void process_message(event_loop *loop,
   case MessageType_PlasmaWaitRequest: {
     LOG_DEBUG("Processing wait");
     int num_object_ids = plasma_read_WaitRequest_num_object_ids(data);
+    {
     /* TODO(atumanov): allocate and populate the unordered_map and pass it to
      * process_wait_request.
      */
@@ -1550,6 +1557,7 @@ void process_message(event_loop *loop,
     process_wait_request(conn, num_object_ids, &object_requests[0], timeout_ms,
                          num_ready_objects);
     free(object_requests);
+    }
   } break;
   case MessageType_PlasmaStatusRequest: {
     LOG_DEBUG("Processing status");
