@@ -48,20 +48,6 @@ void dlfree(void *);
 size_t dlmalloc_set_footprint_limit(size_t bytes);
 }
 
-namespace std {
-template <>
-struct hash<UniqueID> {
-  size_t operator()(const UniqueID &unique_id) const {
-    return *reinterpret_cast<const size_t *>(unique_id.id + UNIQUE_ID_SIZE -
-                                             sizeof(size_t));
-  }
-};
-}  // namespace std
-
-bool operator==(UniqueID a, UniqueID b) {
-  return UNIQUE_ID_EQ(a, b);
-}
-
 /** Contains all information that is associated with a Plasma store client. */
 struct Client {
   Client(int sock, PlasmaStoreState *plasma_state);
@@ -117,7 +103,8 @@ struct PlasmaStoreState {
   event_loop *loop;
   /** A hash table mapping object IDs to a vector of the get requests that are
    *  waiting for the object to arrive. */
-  std::unordered_map<ObjectID, std::vector<GetRequest *>> object_get_requests;
+  std::unordered_map<ObjectID, std::vector<GetRequest *>, UniqueIDHasher>
+      object_get_requests;
 
   /** The pending notifications that have not been sent to subscribers because
    *  the socket send buffers were full. This is a hash table from client file

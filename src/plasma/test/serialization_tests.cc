@@ -315,30 +315,35 @@ TEST plasma_fetch_request_test(void) {
 
 TEST plasma_wait_request_test(void) {
   int fd = create_temp_file();
-  ObjectRequest object_requests[2];
-  object_requests[0].object_id = globally_unique_id();
-  object_requests[0].type = PLASMA_QUERY_ANYWHERE;
-  object_requests[1].object_id = globally_unique_id();
-  object_requests[1].type = PLASMA_QUERY_LOCAL;
-  int num_ready_objects = 1;
+  const int num_objects_in = 2;
+  ObjectRequest object_requests_in[num_objects_in] = {
+      ObjectRequest({globally_unique_id(), PLASMA_QUERY_ANYWHERE, 0}),
+      ObjectRequest({globally_unique_id(), PLASMA_QUERY_LOCAL, 0})};
+  const int num_ready_objects_in = 1;
   int64_t timeout_ms = 1000;
-  plasma_send_WaitRequest(fd, g_B, object_requests, 2, num_ready_objects,
-                          timeout_ms);
+
+  plasma_send_WaitRequest(fd, g_B, &object_requests_in[0], num_objects_in,
+                          num_ready_objects_in, timeout_ms);
   /* Read message back. */
   uint8_t *data = read_message_from_file(fd, MessageType_PlasmaWaitRequest);
-  ObjectRequest object_requests_read[2];
-  int num_object_ids_read = plasma_read_WaitRequest_num_object_ids(data);
-  ASSERT_EQ(num_object_ids_read, 2);
-  int num_ready_objects_read;
+  int num_object_ids_out = plasma_read_WaitRequest_num_object_ids(data);
+  ASSERT_EQ(num_object_ids_out, num_objects_in);
+  int num_ready_objects_out;
   int64_t timeout_ms_read;
-  plasma_read_WaitRequest(data, &object_requests_read[0], num_object_ids_read,
-                          &timeout_ms_read, &num_ready_objects_read);
-  ASSERT(ObjectID_equal(object_requests[0].object_id,
-                        object_requests_read[0].object_id));
-  ASSERT(ObjectID_equal(object_requests[1].object_id,
-                        object_requests_read[1].object_id));
-  ASSERT(object_requests[0].type == object_requests_read[0].type);
-  ASSERT(object_requests[1].type == object_requests_read[1].type);
+  ObjectRequestMap object_requests_out;
+  plasma_read_WaitRequest(data, object_requests_out, num_object_ids_out,
+                          &timeout_ms_read, &num_ready_objects_out);
+  ASSERT_EQ(num_objects_in, object_requests_out.size());
+  ASSERT_EQ(num_ready_objects_out, num_ready_objects_in);
+  for (int i = 0; i < num_objects_in; i++) {
+    const ObjectID &object_id = object_requests_in[i].object_id;
+    ASSERT_EQ(1, object_requests_out.count(object_id));
+    const auto &entry = object_requests_out.find(object_id);
+    ASSERT(entry != object_requests_out.end());
+    ASSERT(ObjectID_equal(entry->second.object_id,
+                          object_requests_in[i].object_id));
+    ASSERT_EQ(entry->second.type, object_requests_in[i].type);
+  }
   free(data);
   close(fd);
   PASS();
@@ -346,24 +351,29 @@ TEST plasma_wait_request_test(void) {
 
 TEST plasma_wait_reply_test(void) {
   int fd = create_temp_file();
-  ObjectRequest object_replies1[2];
-  object_replies1[0].object_id = globally_unique_id();
-  object_replies1[0].status = ObjectStatus_Local;
-  object_replies1[1].object_id = globally_unique_id();
-  object_replies1[1].status = ObjectStatus_Nonexistent;
-  int num_ready_objects1 = 2;
-  plasma_send_WaitReply(fd, g_B, object_replies1, num_ready_objects1);
+  const int num_objects_in = 2;
+  /* Create a map with two ObjectRequests in it. */
+  ObjectRequestMap objects_in(num_objects_in);
+  ObjectID id1 = globally_unique_id();
+  objects_in[id1] = ObjectRequest({id1, 0, ObjectStatus_Local});
+  ObjectID id2 = globally_unique_id();
+  objects_in[id2] = ObjectRequest({id2, 0, ObjectStatus_Nonexistent});
+
+  plasma_send_WaitReply(fd, g_B, objects_in, num_objects_in);
   /* Read message back. */
   uint8_t *data = read_message_from_file(fd, MessageType_PlasmaWaitReply);
-  ObjectRequest object_replies2[2];
-  int num_ready_objects_read2;
-  plasma_read_WaitReply(data, &object_replies2[0], &num_ready_objects_read2);
-  ASSERT(ObjectID_equal(object_replies1[0].object_id,
-                        object_replies2[0].object_id));
-  ASSERT(ObjectID_equal(object_replies1[1].object_id,
-                        object_replies2[1].object_id));
-  ASSERT(object_replies1[0].status == object_replies2[0].status);
-  ASSERT(object_replies1[1].status == object_replies2[1].status);
+  ObjectRequest objects_out[2];
+  int num_objects_out;
+  plasma_read_WaitReply(data, &objects_out[0], &num_objects_out);
+  ASSERT(num_objects_in == num_objects_out);
+  for (int i = 0; i < num_objects_out; i++) {
+    /* Each object request must appear exactly once. */
+    ASSERT(1 == objects_in.count(objects_out[i].object_id));
+    const auto &entry = objects_in.find(objects_out[i].object_id);
+    ASSERT(entry != objects_in.end());
+    ASSERT(ObjectID_equal(entry->second.object_id, objects_out[i].object_id));
+    ASSERT(entry->second.status == objects_out[i].status);
+  }
   free(data);
   close(fd);
   PASS();

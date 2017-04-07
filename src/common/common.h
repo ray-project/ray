@@ -13,6 +13,7 @@
 
 #include "utarray.h"
 #ifdef __cplusplus
+#include <functional>
 extern "C" {
 #endif
 #include "sha256.h"
@@ -151,6 +152,20 @@ UniqueID globally_unique_id(void);
 #define NIL_OBJECT_ID NIL_ID
 
 typedef UniqueID ObjectID;
+
+#ifdef __cplusplus
+
+struct UniqueIDHasher {
+  /* ObjectID hashing function. */
+  size_t operator()(const UniqueID &id) const {
+    size_t result;
+    memcpy(&result, id.id + UNIQUE_ID_SIZE - sizeof(size_t), sizeof(size_t));
+    return result;
+  }
+};
+
+bool operator==(const ObjectID &x, const ObjectID &y);
+#endif
 
 #define ID_STRING_SIZE (2 * UNIQUE_ID_SIZE + 1)
 
