@@ -7,6 +7,7 @@
 #include <fcntl.h>
 
 #include "io.h"
+#include <functional>
 
 /* This is used to define the array of object IDs. */
 const UT_icd object_id_icd = {sizeof(ObjectID), NULL, NULL, NULL};
@@ -27,6 +28,11 @@ UniqueID globally_unique_id(void) {
   CHECK(read_bytes(fd, &result.id[0], UNIQUE_ID_SIZE) >= 0);
   close(fd);
   return result;
+}
+
+/* ObjectID equality function. */
+bool operator==(const ObjectID &x, const ObjectID &y) {
+  return UNIQUE_ID_EQ(x, y);
 }
 
 bool ObjectID_equal(ObjectID first_id, ObjectID second_id) {

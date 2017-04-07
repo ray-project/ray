@@ -498,7 +498,7 @@ int plasma_read_WaitRequest_num_object_ids(uint8_t *data) {
 }
 
 void plasma_read_WaitRequest(uint8_t *data,
-                             ObjectRequest object_requests[],
+                             ObjectRequestMap &object_requests,
                              int num_object_ids,
                              int64_t *timeout_ms,
                              int *num_ready_objects) {
@@ -509,23 +509,26 @@ void plasma_read_WaitRequest(uint8_t *data,
 
   CHECK(num_object_ids == message->object_requests()->size());
   for (int i = 0; i < num_object_ids; i++) {
-    object_requests[i].object_id =
+    ObjectID object_id =
         from_flatbuf(message->object_requests()->Get(i)->object_id());
-    object_requests[i].type = message->object_requests()->Get(i)->type();
+    ObjectRequest object_request({object_id,
+                                  message->object_requests()->Get(i)->type(),
+                                  ObjectStatus_Nonexistent});
+    object_requests[object_id] = object_request;
   }
 }
 
 int plasma_send_WaitReply(int sock,
                           protocol_builder *B,
-                          ObjectRequest object_requests[],
+                          const ObjectRequestMap &object_requests,
                           int num_ready_objects) {
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
 
   std::vector<flatbuffers::Offset<ObjectReply>> object_replies;
-  for (int i = 0; i < num_ready_objects; i++) {
-    object_replies.push_back(
-        CreateObjectReply(fbb, to_flatbuf(fbb, object_requests[i].object_id),
-                          object_requests[i].status));
+  for (const auto &entry : object_requests) {
+    const auto &object_request = entry.second;
+    object_replies.push_back(CreateObjectReply(
+        fbb, to_flatbuf(fbb, object_request.object_id), object_request.status));
   }
 
   auto message = CreatePlasmaWaitReply(
