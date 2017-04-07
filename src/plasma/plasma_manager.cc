@@ -151,13 +151,12 @@ typedef struct {
  *     ObjectWaitRequests struct.
  */
 struct WaitRequest {
-  WaitRequest(
-      ClientConnection *client_conn,
-      int64_t timer,
-      int64_t num_object_requests,
-      ObjectRequestMap &&object_requests,
-      int64_t num_objects_to_wait_for,
-      int64_t num_satisfied)
+  WaitRequest(ClientConnection *client_conn,
+              int64_t timer,
+              int64_t num_object_requests,
+              ObjectRequestMap &&object_requests,
+              int64_t num_objects_to_wait_for,
+              int64_t num_satisfied)
       : client_conn(client_conn),
         timer(timer),
         num_object_requests(num_object_requests),
@@ -408,10 +407,9 @@ void return_from_wait(PlasmaManagerState *manager_state,
   /* Iterate over all object IDs requested as part of this wait request.
    * Remove the wait request from each of the relevant object_wait_requests hash
    * tables if it is present there. */
-  for (const auto &map_entry_pair : wait_req->object_requests) {
-    const auto &object_request = map_entry_pair.second;
-    remove_wait_request_for_object(manager_state, object_request.object_id,
-                                   object_request.type, wait_req);
+  for (const auto &entry : wait_req->object_requests) {
+    remove_wait_request_for_object(manager_state, entry.second.object_id,
+                                   entry.second.type, wait_req);
   }
   /* Remove the wait request. */
   remove_wait_request(manager_state, wait_req);
@@ -1174,8 +1172,8 @@ void process_wait_request(ClientConnection *client_conn,
   ObjectID *object_ids_to_request =
       (ObjectID *) malloc(num_object_requests * sizeof(ObjectID));
 
-  for (auto &object_request_pair : wait_req->object_requests) {
-    auto &object_request = object_request_pair.second;
+  for (auto &entry : wait_req->object_requests) {
+    auto &object_request = entry.second;
     ObjectID obj_id = object_request.object_id;
 
     /* Check if this object is already present locally. If so, mark the object

@@ -317,8 +317,8 @@ TEST plasma_wait_request_test(void) {
   int fd = create_temp_file();
   const int num_objects_in = 2;
   ObjectRequest object_requests_in[num_objects_in] = {
-    ObjectRequest({globally_unique_id(), PLASMA_QUERY_ANYWHERE, 0}),
-    ObjectRequest({globally_unique_id(), PLASMA_QUERY_LOCAL, 0})};
+      ObjectRequest({globally_unique_id(), PLASMA_QUERY_ANYWHERE, 0}),
+      ObjectRequest({globally_unique_id(), PLASMA_QUERY_LOCAL, 0})};
   const int num_ready_objects_in = 1;
   int64_t timeout_ms = 1000;
 

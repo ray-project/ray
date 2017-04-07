@@ -525,8 +525,8 @@ int plasma_send_WaitReply(int sock,
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
 
   std::vector<flatbuffers::Offset<ObjectReply>> object_replies;
-  for (const auto &map_entry_pair : object_requests) {
-    const auto &object_request = map_entry_pair.second;
+  for (const auto &entry : object_requests) {
+    const auto &object_request = entry.second;
     object_replies.push_back(CreateObjectReply(
         fbb, to_flatbuf(fbb, object_request.object_id), object_request.status));
   }

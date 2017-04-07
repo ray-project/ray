@@ -157,9 +157,10 @@ typedef UniqueID ObjectID;
 
 struct UniqueIDHasher {
   /* ObjectID hashing function. */
-  size_t operator()(const UniqueID &unique_id) const {
-    return *reinterpret_cast<const size_t *>(unique_id.id + UNIQUE_ID_SIZE -
-                                             sizeof(size_t));
+  size_t operator()(const UniqueID &id) const {
+    size_t result;
+    memcpy(&result, id.id + UNIQUE_ID_SIZE - sizeof(size_t), sizeof(size_t));
+    return result;
   }
 };
 

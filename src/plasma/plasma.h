@@ -45,7 +45,8 @@ typedef struct {
 } ObjectRequest;
 
 /** Mapping from object IDs to type and status of the request. */
-typedef std::unordered_map<ObjectID, ObjectRequest, UniqueIDHasher> ObjectRequestMap;
+typedef std::unordered_map<ObjectID, ObjectRequest, UniqueIDHasher>
+    ObjectRequestMap;
 
 /* Handle to access memory mapped file and map it into client address space. */
 typedef struct {
