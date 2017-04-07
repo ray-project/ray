@@ -21,7 +21,7 @@ namespace numbuf {
 #endif
 
 Status get_value(std::shared_ptr<Array> arr, int32_t index, int32_t type, PyObject* base,
-    PyObject** result) {
+    const std::vector<std::shared_ptr<Tensor>>& tensors, PyObject** result) {
   switch (arr->type()->type) {
     case Type::BOOL:
       *result =
@@ -57,16 +57,20 @@ Status get_value(std::shared_ptr<Array> arr, int32_t index, int32_t type, PyObje
       auto l = std::static_pointer_cast<ListArray>(s->field(0));
       if (s->type()->child(0)->name == "list") {
         return DeserializeList(l->values(), l->value_offset(index),
-            l->value_offset(index + 1), base, result);
+            l->value_offset(index + 1), base, tensors, result);
       } else if (s->type()->child(0)->name == "tuple") {
         return DeserializeTuple(l->values(), l->value_offset(index),
-            l->value_offset(index + 1), base, result);
+            l->value_offset(index + 1), base, tensors, result);
       } else if (s->type()->child(0)->name == "dict") {
         return DeserializeDict(l->values(), l->value_offset(index),
-            l->value_offset(index + 1), base, result);
+            l->value_offset(index + 1), base, tensors, result);
       } else {
-        return DeserializeArray(arr, index, base, result);
+        DCHECK(false) << "error";
       }
+    }
+    case Type::INT32: {
+      int32_t val = std::static_pointer_cast<Int32Array>(arr)->Value(index);
+      return DeserializeArray(arr, index, base, tensors, result);
     }
     default:
       DCHECK(false) << "union tag not recognized " << type;
@@ -75,7 +79,8 @@ Status get_value(std::shared_ptr<Array> arr, int32_t index, int32_t type, PyObje
 }
 
 Status append(PyObject* elem, SequenceBuilder& builder, std::vector<PyObject*>& sublists,
-    std::vector<PyObject*>& subtuples, std::vector<PyObject*>& subdicts) {
+    std::vector<PyObject*>& subtuples, std::vector<PyObject*>& subdicts,
+    std::vector<std::shared_ptr<Tensor>>& tensors_out) {
   // The bool case must precede the int case (PyInt_Check passes for bools)
   if (PyBool_Check(elem)) {
     RETURN_NOT_OK(builder.AppendBool(elem == Py_True));
@@ -119,7 +124,7 @@ Status append(PyObject* elem, SequenceBuilder& builder, std::vector<PyObject*>& 
   } else if (PyArray_IsScalar(elem, Generic)) {
     RETURN_NOT_OK(AppendScalar(elem, builder));
   } else if (PyArray_Check(elem)) {
-    RETURN_NOT_OK(SerializeArray((PyArrayObject*)elem, builder, subdicts));
+    RETURN_NOT_OK(SerializeArray((PyArrayObject*)elem, builder, subdicts, tensors_out));
   } else if (elem == Py_None) {
     RETURN_NOT_OK(builder.AppendNone());
   } else {
@@ -143,7 +148,7 @@ Status append(PyObject* elem, SequenceBuilder& builder, std::vector<PyObject*>& 
 }
 
 Status SerializeSequences(std::vector<PyObject*> sequences, int32_t recursion_depth,
-    std::shared_ptr<Array>* out) {
+    std::shared_ptr<Array>* out, std::vector<std::shared_ptr<Tensor>>& tensors_out) {
   DCHECK(out);
   if (recursion_depth >= MAX_RECURSION_DEPTH) {
     return Status::NotImplemented(
@@ -156,7 +161,7 @@ Status SerializeSequences(std::vector<PyObject*> sequences, int32_t recursion_de
     PyObject* item;
     PyObject* iterator = PyObject_GetIter(sequence);
     while ((item = PyIter_Next(iterator))) {
-      Status s = append(item, builder, sublists, subtuples, subdicts);
+      Status s = append(item, builder, sublists, subtuples, subdicts, tensors_out);
       Py_DECREF(item);
       // if an error occurs, we need to decrement the reference counts before returning
       if (!s.ok()) {
@@ -168,15 +173,15 @@ Status SerializeSequences(std::vector<PyObject*> sequences, int32_t recursion_de
   }
   std::shared_ptr<Array> list;
   if (sublists.size() > 0) {
-    RETURN_NOT_OK(SerializeSequences(sublists, recursion_depth + 1, &list));
+    RETURN_NOT_OK(SerializeSequences(sublists, recursion_depth + 1, &list, tensors_out));
   }
   std::shared_ptr<Array> tuple;
   if (subtuples.size() > 0) {
-    RETURN_NOT_OK(SerializeSequences(subtuples, recursion_depth + 1, &tuple));
+    RETURN_NOT_OK(SerializeSequences(subtuples, recursion_depth + 1, &tuple, tensors_out));
   }
   std::shared_ptr<Array> dict;
   if (subdicts.size() > 0) {
-    RETURN_NOT_OK(SerializeDict(subdicts, recursion_depth + 1, &dict));
+    RETURN_NOT_OK(SerializeDict(subdicts, recursion_depth + 1, &dict, tensors_out));
   }
   return builder.Finish(list, tuple, dict, out);
 }
@@ -196,7 +201,7 @@ Status SerializeSequences(std::vector<PyObject*> sequences, int32_t recursion_de
       int8_t type = types->Value(i);                                        \
       std::shared_ptr<Array> arr = data->child(type);                       \
       PyObject* value;                                                      \
-      RETURN_NOT_OK(get_value(arr, offset, type, base, &value));            \
+      RETURN_NOT_OK(get_value(arr, offset, type, base, tensors, &value));   \
       SET_ITEM(result, i - start_idx, value);                               \
     }                                                                       \
   }                                                                         \
@@ -204,17 +209,18 @@ Status SerializeSequences(std::vector<PyObject*> sequences, int32_t recursion_de
   return Status::OK();
 
 Status DeserializeList(std::shared_ptr<Array> array, int32_t start_idx, int32_t stop_idx,
-    PyObject* base, PyObject** out) {
+    PyObject* base, const std::vector<std::shared_ptr<Tensor>>& tensors, PyObject** out) {
   DESERIALIZE_SEQUENCE(PyList_New, PyList_SetItem)
 }
 
 Status DeserializeTuple(std::shared_ptr<Array> array, int32_t start_idx, int32_t stop_idx,
-    PyObject* base, PyObject** out) {
+    PyObject* base, const std::vector<std::shared_ptr<Tensor>>& tensors, PyObject** out) {
   DESERIALIZE_SEQUENCE(PyTuple_New, PyTuple_SetItem)
 }
 
 Status SerializeDict(
-    std::vector<PyObject*> dicts, int32_t recursion_depth, std::shared_ptr<Array>* out) {
+    std::vector<PyObject*> dicts, int32_t recursion_depth, std::shared_ptr<Array>* out,
+    std::vector<std::shared_ptr<arrow::Tensor>>& tensors_out) {
   DictBuilder result;
   if (recursion_depth >= MAX_RECURSION_DEPTH) {
     return Status::NotImplemented(
@@ -226,26 +232,26 @@ Status SerializeDict(
     PyObject *key, *value;
     Py_ssize_t pos = 0;
     while (PyDict_Next(dict, &pos, &key, &value)) {
-      RETURN_NOT_OK(append(key, result.keys(), dummy, key_tuples, dummy));
+      RETURN_NOT_OK(append(key, result.keys(), dummy, key_tuples, dummy, tensors_out));
       DCHECK(dummy.size() == 0);
-      RETURN_NOT_OK(append(value, result.vals(), val_lists, val_tuples, val_dicts));
+      RETURN_NOT_OK(append(value, result.vals(), val_lists, val_tuples, val_dicts, tensors_out));
     }
   }
   std::shared_ptr<Array> key_tuples_arr;
   if (key_tuples.size() > 0) {
-    RETURN_NOT_OK(SerializeSequences(key_tuples, recursion_depth + 1, &key_tuples_arr));
+    RETURN_NOT_OK(SerializeSequences(key_tuples, recursion_depth + 1, &key_tuples_arr, tensors_out));
   }
   std::shared_ptr<Array> val_list_arr;
   if (val_lists.size() > 0) {
-    RETURN_NOT_OK(SerializeSequences(val_lists, recursion_depth + 1, &val_list_arr));
+    RETURN_NOT_OK(SerializeSequences(val_lists, recursion_depth + 1, &val_list_arr, tensors_out));
   }
   std::shared_ptr<Array> val_tuples_arr;
   if (val_tuples.size() > 0) {
-    RETURN_NOT_OK(SerializeSequences(val_tuples, recursion_depth + 1, &val_tuples_arr));
+    RETURN_NOT_OK(SerializeSequences(val_tuples, recursion_depth + 1, &val_tuples_arr, tensors_out));
   }
   std::shared_ptr<Array> val_dict_arr;
   if (val_dicts.size() > 0) {
-    RETURN_NOT_OK(SerializeDict(val_dicts, recursion_depth + 1, &val_dict_arr));
+    RETURN_NOT_OK(SerializeDict(val_dicts, recursion_depth + 1, &val_dict_arr, tensors_out));
   }
   result.Finish(key_tuples_arr, val_list_arr, val_tuples_arr, val_dict_arr, out);
 
@@ -266,13 +272,13 @@ Status SerializeDict(
 }
 
 Status DeserializeDict(std::shared_ptr<Array> array, int32_t start_idx, int32_t stop_idx,
-    PyObject* base, PyObject** out) {
+    PyObject* base, const std::vector<std::shared_ptr<Tensor>>& tensors, PyObject** out) {
   auto data = std::dynamic_pointer_cast<StructArray>(array);
   // TODO(pcm): error handling, get rid of the temporary copy of the list
   PyObject *keys, *vals;
   PyObject* result = PyDict_New();
-  ARROW_RETURN_NOT_OK(DeserializeList(data->field(0), start_idx, stop_idx, base, &keys));
-  ARROW_RETURN_NOT_OK(DeserializeList(data->field(1), start_idx, stop_idx, base, &vals));
+  ARROW_RETURN_NOT_OK(DeserializeList(data->field(0), start_idx, stop_idx, base, tensors, &keys));
+  ARROW_RETURN_NOT_OK(DeserializeList(data->field(1), start_idx, stop_idx, base, tensors, &vals));
   for (size_t i = start_idx; i < stop_idx; ++i) {
     PyDict_SetItem(
         result, PyList_GetItem(keys, i - start_idx), PyList_GetItem(vals, i - start_idx));

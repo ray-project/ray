@@ -1,6 +1,6 @@
 #include <Python.h>
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
-#define PY_ARRAY_UNIQUE_SYMBOL NUMBUF_ARRAY_API
+#define PY_ARRAY_UNIQUE_SYMBOL arrow_ARRAY_API
 #include <numpy/arrayobject.h>
 
 #include "bytesobject.h"
@@ -9,6 +9,7 @@
 
 #include <arrow/api.h>
 #include <arrow/ipc/api.h>
+#include <arrow/ipc/writer.h>
 
 #include "adapters/python.h"
 #include "memory.h"
@@ -27,14 +28,19 @@ PyObject* NumbufPlasmaObjectExistsError;
 
 #endif
 
+using namespace arrow;
+using namespace numbuf;
+
+struct RayObject {
+  std::shared_ptr<RecordBatch> batch;
+  std::vector<std::shared_ptr<arrow::Tensor>> tensors;
+};
+
 // Each arrow object is stored in the format
 // | length of the object in bytes | object data |.
 // LENGTH_PREFIX_SIZE is the number of bytes occupied by the
 // object length field.
 constexpr int64_t LENGTH_PREFIX_SIZE = sizeof(int64_t);
-
-using namespace arrow;
-using namespace numbuf;
 
 std::shared_ptr<RecordBatch> make_batch(std::shared_ptr<Array> data) {
   auto field = std::make_shared<Field>("list", data->type());
@@ -43,7 +49,7 @@ std::shared_ptr<RecordBatch> make_batch(std::shared_ptr<Array> data) {
 }
 
 Status get_batch_size(std::shared_ptr<RecordBatch> batch, int64_t* size) {
-  // Determine the size of the file by writing to a mock file.
+  // Determine the size of the serialized batch by writing to a mock file.
   auto mock = std::make_shared<MockBufferStream>();
   std::shared_ptr<arrow::ipc::FileWriter> writer;
   RETURN_NOT_OK(ipc::FileWriter::Open(mock.get(), batch->schema(), &writer));
@@ -53,13 +59,34 @@ Status get_batch_size(std::shared_ptr<RecordBatch> batch, int64_t* size) {
   return Status::OK();
 }
 
-Status read_batch(uint8_t* data, int64_t size, std::shared_ptr<RecordBatch>* batch_out) {
+Status get_tensor_size(std::shared_ptr<Tensor> tensor, int64_t *size) {
+  // Determine the size of the serialized tensor by writing to a mock file.
+  auto mock = std::make_shared<MockBufferStream>();
+  std::shared_ptr<arrow::ipc::FileWriter> writer;
+  int32_t metadata_length;
+  int64_t body_length;
+  RETURN_NOT_OK(ipc::WriteTensor(*tensor, mock.get(), &metadata_length, &body_length));
+  RETURN_NOT_OK(mock->Tell(size));
+  return Status::OK();
+}
+
+Status read_batch_and_tensors(uint8_t* data, int64_t size, std::shared_ptr<RecordBatch>* batch_out, std::vector<std::shared_ptr<Tensor>>& tensors_out) {
   std::shared_ptr<arrow::ipc::FileReader> reader;
+  int64_t data_size = *((int64_t*)data);
   auto source = std::make_shared<FixedBufferStream>(
       LENGTH_PREFIX_SIZE + data, size - LENGTH_PREFIX_SIZE);
-  int64_t data_size = *((int64_t*)data);
   RETURN_NOT_OK(arrow::ipc::FileReader::Open(source, data_size, &reader));
   RETURN_NOT_OK(reader->GetRecordBatch(0, batch_out));
+  int64_t offset = data_size;
+  while (true) {
+    std::shared_ptr<Tensor> tensor;
+    Status s = ipc::ReadTensor(offset, source.get(), &tensor);
+    if (!s.ok()) {
+      break;
+    }
+    tensors_out.push_back(tensor);
+    RETURN_NOT_OK(source->Tell(&offset));
+  }
   return Status::OK();
 }
 
@@ -81,10 +108,9 @@ static PyObject* NumbufError;
 PyObject* numbuf_serialize_callback = NULL;
 PyObject* numbuf_deserialize_callback = NULL;
 
-int PyObjectToArrow(PyObject* object, std::shared_ptr<RecordBatch>** result) {
+int PyObjectToArrow(PyObject* object, RayObject** result) {
   if (PyCapsule_IsValid(object, "arrow")) {
-    *result = reinterpret_cast<std::shared_ptr<RecordBatch>*>(
-        PyCapsule_GetPointer(object, "arrow"));
+    *result = reinterpret_cast<RayObject*>(PyCapsule_GetPointer(object, "arrow"));
     return 1;
   } else {
     PyErr_SetString(PyExc_TypeError, "must be an 'arrow' capsule");
@@ -93,7 +119,7 @@ int PyObjectToArrow(PyObject* object, std::shared_ptr<RecordBatch>** result) {
 }
 
 static void ArrowCapsule_Destructor(PyObject* capsule) {
-  delete reinterpret_cast<std::shared_ptr<RecordBatch>*>(
+  delete reinterpret_cast<RayObject*>(
       PyCapsule_GetPointer(capsule, "arrow"));
 }
 
@@ -103,21 +129,26 @@ static PyObject* serialize_list(PyObject* self, PyObject* args) {
   if (!PyArg_ParseTuple(args, "O", &value)) { return NULL; }
   std::shared_ptr<Array> array;
   if (PyList_Check(value)) {
+    RayObject *object = new RayObject();
     int32_t recursion_depth = 0;
     Status s =
-        SerializeSequences(std::vector<PyObject*>({value}), recursion_depth, &array);
+        SerializeSequences(std::vector<PyObject*>({value}), recursion_depth, &array, object->tensors);
     CHECK_SERIALIZATION_ERROR(s);
 
-    auto batch = new std::shared_ptr<RecordBatch>();
-    *batch = make_batch(array);
+    object->batch = make_batch(array);
 
     int64_t size;
-    ARROW_CHECK_OK(get_batch_size(*batch, &size));
+    ARROW_CHECK_OK(get_batch_size(object->batch, &size));
+    for (auto tensor : object->tensors) {
+      int64_t tensor_size;
+      ARROW_CHECK_OK(get_tensor_size(tensor, &tensor_size));
+      size += tensor_size;
+    }
 
     PyObject* r = PyTuple_New(2);
     PyTuple_SetItem(r, 0, PyLong_FromLong(LENGTH_PREFIX_SIZE + size));
     PyTuple_SetItem(r, 1,
-        PyCapsule_New(reinterpret_cast<void*>(batch), "arrow", &ArrowCapsule_Destructor));
+        PyCapsule_New(reinterpret_cast<void*>(object), "arrow", &ArrowCapsule_Destructor));
     return r;
   }
   return NULL;
@@ -125,9 +156,9 @@ static PyObject* serialize_list(PyObject* self, PyObject* args) {
 
 /* Documented in doc/numbuf.rst in ray-core */
 static PyObject* write_to_buffer(PyObject* self, PyObject* args) {
-  std::shared_ptr<RecordBatch>* batch;
+  RayObject* object;
   PyObject* memoryview;
-  if (!PyArg_ParseTuple(args, "O&O", &PyObjectToArrow, &batch, &memoryview)) {
+  if (!PyArg_ParseTuple(args, "O&O", &PyObjectToArrow, &object, &memoryview)) {
     return NULL;
   }
   if (!PyMemoryView_Check(memoryview)) { return NULL; }
@@ -136,9 +167,14 @@ static PyObject* write_to_buffer(PyObject* self, PyObject* args) {
       LENGTH_PREFIX_SIZE + reinterpret_cast<uint8_t*>(buffer->buf),
       buffer->len - LENGTH_PREFIX_SIZE);
   std::shared_ptr<arrow::ipc::FileWriter> writer;
-  ARROW_CHECK_OK(ipc::FileWriter::Open(target.get(), (*batch)->schema(), &writer));
-  ARROW_CHECK_OK(writer->WriteRecordBatch(*(*batch), true));
+  ARROW_CHECK_OK(ipc::FileWriter::Open(target.get(), object->batch->schema(), &writer));
+  ARROW_CHECK_OK(writer->WriteRecordBatch(*object->batch, true));
   ARROW_CHECK_OK(writer->Close());
+  for (auto tensor : object->tensors) {
+    int32_t metadata_length;
+    int64_t body_length;
+    ARROW_CHECK_OK(ipc::WriteTensor(*tensor, target.get(), &metadata_length, &body_length));
+  }
   *((int64_t*)buffer->buf) = buffer->len - LENGTH_PREFIX_SIZE;
   Py_RETURN_NONE;
 }
@@ -150,20 +186,20 @@ static PyObject* read_from_buffer(PyObject* self, PyObject* args) {
 
   Py_buffer* data_buffer = PyMemoryView_GET_BUFFER(data_memoryview);
 
-  auto batch = new std::shared_ptr<arrow::RecordBatch>();
+  RayObject* object = new RayObject();
   ARROW_CHECK_OK(
-      read_batch(reinterpret_cast<uint8_t*>(data_buffer->buf), data_buffer->len, batch));
+      read_batch_and_tensors(reinterpret_cast<uint8_t*>(data_buffer->buf), data_buffer->len, &object->batch, object->tensors));
 
-  return PyCapsule_New(reinterpret_cast<void*>(batch), "arrow", &ArrowCapsule_Destructor);
+  return PyCapsule_New(reinterpret_cast<void*>(object), "arrow", &ArrowCapsule_Destructor);
 }
 
 /* Documented in doc/numbuf.rst in ray-core */
 static PyObject* deserialize_list(PyObject* self, PyObject* args) {
-  std::shared_ptr<RecordBatch>* data;
+  RayObject* object;
   PyObject* base = Py_None;
-  if (!PyArg_ParseTuple(args, "O&|O", &PyObjectToArrow, &data, &base)) { return NULL; }
+  if (!PyArg_ParseTuple(args, "O&|O", &PyObjectToArrow, &object, &base)) { return NULL; }
   PyObject* result;
-  Status s = DeserializeList((*data)->column(0), 0, (*data)->num_rows(), base, &result);
+  Status s = DeserializeList(object->batch->column(0), 0, object->batch->num_rows(), base, object->tensors, &result);
   CHECK_SERIALIZATION_ERROR(s);
   return result;
 }
@@ -247,12 +283,21 @@ static PyObject* store_list(PyObject* self, PyObject* args) {
 
   std::shared_ptr<Array> array;
   int32_t recursion_depth = 0;
-  Status s = SerializeSequences(std::vector<PyObject*>({value}), recursion_depth, &array);
+  std::vector<std::shared_ptr<arrow::Tensor>> tensors;
+  Status s = SerializeSequences(std::vector<PyObject*>({value}), recursion_depth, &array, tensors);
   CHECK_SERIALIZATION_ERROR(s);
 
   std::shared_ptr<RecordBatch> batch = make_batch(array);
+
   int64_t size;
   ARROW_CHECK_OK(get_batch_size(batch, &size));
+  int64_t data_size = size;
+
+  for (auto tensor : tensors) {
+    int64_t tensor_size;
+    ARROW_CHECK_OK(get_tensor_size(tensor, &tensor_size));
+    size += tensor_size;
+  }
 
   uint8_t* data;
   /* The arrow schema is stored as the metadata of the plasma object and
@@ -280,7 +325,14 @@ static PyObject* store_list(PyObject* self, PyObject* args) {
   ipc::FileWriter::Open(target.get(), batch->schema(), &writer);
   writer->WriteRecordBatch(*batch, true);
   writer->Close();
-  *((int64_t*)data) = size;
+  for (auto tensor : tensors) {
+    int64_t s;
+    target->Tell(&s);
+    int32_t metadata_length;
+    int64_t body_length;
+    ARROW_CHECK_OK(ipc::WriteTensor(*tensor, target.get(), &metadata_length, &body_length));
+  }
+  *((int64_t*)data) = data_size;
 
   /* Do the plasma_release corresponding to the call to plasma_create. */
   plasma_release(conn, obj_id);
@@ -347,11 +399,12 @@ static PyObject* retrieve_list(PyObject* self, PyObject* args) {
       Py_XINCREF(plasma_conn);
 
       auto batch = std::shared_ptr<RecordBatch>();
+      std::vector<std::shared_ptr<Tensor>> tensors;
       ARROW_CHECK_OK(
-          read_batch(object_buffers[i].data, object_buffers[i].data_size, &batch));
+          read_batch_and_tensors(object_buffers[i].data, object_buffers[i].data_size, &batch, tensors));
 
       PyObject* result;
-      Status s = DeserializeList(batch->column(0), 0, batch->num_rows(), base, &result);
+      Status s = DeserializeList(batch->column(0), 0, batch->num_rows(), base, tensors, &result);
       CHECK_SERIALIZATION_ERROR(s);
       Py_XDECREF(base);
 
