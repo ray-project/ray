@@ -497,11 +497,11 @@ int plasma_read_WaitRequest_num_object_ids(uint8_t *data) {
   return message->object_requests()->size();
 }
 
-void plasma_read_WaitRequest(uint8_t *data,
-                             ObjectRequest object_requests[],
-                             int num_object_ids,
-                             int64_t *timeout_ms,
-                             int *num_ready_objects) {
+void plasma_read_WaitRequest(
+    uint8_t *data,
+    std::unordered_map<ObjectID, ObjectRequest, UniqueIDHasher>
+        &object_requests,
+    int num_object_ids, int64_t *timeout_ms, int *num_ready_objects) {
   DCHECK(data);
   auto message = flatbuffers::GetRoot<PlasmaWaitRequest>(data);
   *num_ready_objects = message->num_ready_objects();
@@ -509,11 +509,12 @@ void plasma_read_WaitRequest(uint8_t *data,
 
   CHECK(num_object_ids == message->object_requests()->size());
   for (int i = 0; i < num_object_ids; i++) {
-    object_requests[i].object_id =
+    ObjectID object_id =
         from_flatbuf(message->object_requests()->Get(i)->object_id());
-    object_requests[i].type = message->object_requests()->Get(i)->type();
-    /* Initialize the object request status to nonexistent. */
-    object_requests[i].status = ObjectStatus_Nonexistent;
+    ObjectRequest object_request({object_id,
+                                  message->object_requests()->Get(i)->type(),
+                                  ObjectStatus_Nonexistent});
+    object_requests[object_id] = object_request;
   }
 }
 
@@ -526,12 +527,11 @@ int plasma_send_WaitReply(
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
 
   std::vector<flatbuffers::Offset<ObjectReply>> object_replies;
-  for (const auto &objreq_pair : object_requests) {
-    const auto &object_request = objreq_pair.second;
+  for (const auto &map_entry_pair : object_requests) {
+    const auto &object_request = map_entry_pair.second;
     object_replies.push_back(
     CreateObjectReply(fbb,
         to_flatbuf(fbb, object_request.object_id), object_request.status));
-
   }
 
   auto message = CreatePlasmaWaitReply(
