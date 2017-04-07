@@ -497,13 +497,11 @@ int plasma_read_WaitRequest_num_object_ids(uint8_t *data) {
   return message->object_requests()->size();
 }
 
-void plasma_read_WaitRequest(
-    uint8_t *data,
-    std::unordered_map<ObjectID, ObjectRequest, UniqueIDHasher>
-        &object_requests,
-    int num_object_ids,
-    int64_t *timeout_ms,
-    int *num_ready_objects) {
+void plasma_read_WaitRequest(uint8_t *data,
+                             ObjectRequestMap &object_requests,
+                             int num_object_ids,
+                             int64_t *timeout_ms,
+                             int *num_ready_objects) {
   DCHECK(data);
   auto message = flatbuffers::GetRoot<PlasmaWaitRequest>(data);
   *num_ready_objects = message->num_ready_objects();
@@ -520,12 +518,10 @@ void plasma_read_WaitRequest(
   }
 }
 
-int plasma_send_WaitReply(
-    int sock,
-    protocol_builder *B,
-    const std::unordered_map<ObjectID, ObjectRequest, UniqueIDHasher>
-        &object_requests,
-    int num_ready_objects) {
+int plasma_send_WaitReply(int sock,
+                          protocol_builder *B,
+                          const ObjectRequestMap &object_requests,
+                          int num_ready_objects) {
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
 
   std::vector<flatbuffers::Offset<ObjectReply>> object_replies;

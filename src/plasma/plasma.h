@@ -10,6 +10,8 @@
 #include <string.h>
 #include <unistd.h> /* pid_t */
 
+#include <unordered_map>
+
 #include "common.h"
 #include "format/common_generated.h"
 
@@ -41,6 +43,9 @@ typedef struct {
    *    for being transferred or it is transferring. */
   int status;
 } ObjectRequest;
+
+/** Mapping from object IDs to type and status of the request. */
+typedef std::unordered_map<ObjectID, ObjectRequest, UniqueIDHasher> ObjectRequestMap;
 
 /* Handle to access memory mapped file and map it into client address space. */
 typedef struct {

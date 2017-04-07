@@ -6,8 +6,6 @@
 #include "common.h"
 #include "plasma.h"
 
-#include <unordered_map>
-
 typedef void protocol_builder;
 
 /* An argument to a function that a return value gets written to. */
@@ -208,20 +206,16 @@ int plasma_send_WaitRequest(int sock,
 
 int plasma_read_WaitRequest_num_object_ids(uint8_t *data);
 
-void plasma_read_WaitRequest(
-    uint8_t *data,
-    std::unordered_map<ObjectID, ObjectRequest, UniqueIDHasher>
-        &object_requests,
-    int num_object_ids,
-    int64_t *timeout_ms,
-    int *num_ready_objects);
+void plasma_read_WaitRequest(uint8_t *data,
+                             ObjectRequestMap &object_requests,
+                             int num_object_ids,
+                             int64_t *timeout_ms,
+                             int *num_ready_objects);
 
-int plasma_send_WaitReply(
-    int sock,
-    protocol_builder *B,
-    const std::unordered_map<ObjectID, ObjectRequest, UniqueIDHasher>
-        &object_requests,
-    int num_ready_objects);
+int plasma_send_WaitReply(int sock,
+                          protocol_builder *B,
+                          const ObjectRequestMap &object_requests,
+                          int num_ready_objects);
 
 void plasma_read_WaitReply(uint8_t *data,
                            ObjectRequest object_requests[],

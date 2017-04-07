@@ -32,9 +32,6 @@ UniqueID globally_unique_id(void) {
 
 /* ObjectID equality function. */
 bool operator==(const ObjectID &x, const ObjectID &y) {
-  if ((*reinterpret_cast<const uint32_t *>(&x.id[0])) !=
-      (*reinterpret_cast<const uint32_t *>(&y.id[0])))
-    return false;
   return UNIQUE_ID_EQ(x, y);
 }
 
