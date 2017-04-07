@@ -9,25 +9,40 @@
 
 LocalSchedulerConnection *LocalSchedulerConnection_init(
     const char *local_scheduler_socket,
+    UniqueID client_id,
     ActorID actor_id,
     bool is_worker) {
   LocalSchedulerConnection *result =
       (LocalSchedulerConnection *) malloc(sizeof(LocalSchedulerConnection));
   result->conn = connect_ipc_sock_retry(local_scheduler_socket, -1, -1);
 
-  if (is_worker) {
-    /* If we are a worker, register with the local scheduler.
-     * NOTE(swang): If the local scheduler exits and we are registered as a
-     * worker, we will get killed. */
-    flatbuffers::FlatBufferBuilder fbb;
-    auto message =
-        CreateRegisterWorkerInfo(fbb, to_flatbuf(fbb, actor_id), getpid());
-    fbb.Finish(message);
-    /* Register the process ID with the local scheduler. */
-    int success = write_message(result->conn, MessageType_RegisterWorkerInfo,
-                                fbb.GetSize(), fbb.GetBufferPointer());
-    CHECKM(success == 0, "Unable to register worker with local scheduler");
+  /* Register with the local scheduler.
+   * NOTE(swang): If the local scheduler exits and we are registered as a
+   * worker, we will get killed. */
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message =
+      CreateRegisterClientRequest(fbb, is_worker, to_flatbuf(fbb, client_id),
+                                  to_flatbuf(fbb, actor_id), getpid());
+  fbb.Finish(message);
+  /* Register the process ID with the local scheduler. */
+  int success = write_message(result->conn, MessageType_RegisterClientRequest,
+                              fbb.GetSize(), fbb.GetBufferPointer());
+  CHECKM(success == 0, "Unable to register worker with local scheduler");
+
+  /* Wait for a confirmation from the local scheduler. */
+  int64_t type;
+  int64_t reply_size;
+  uint8_t *reply;
+  read_message(result->conn, &type, &reply_size, &reply);
+  if (type == DISCONNECT_CLIENT) {
+    LOG_WARN("Exiting because local scheduler closed connection.");
+    exit(1);
   }
+  CHECK(type == MessageType_RegisterClientReply);
+
+  /* Parse the reply object. We currently don't do anything with it. */
+  auto reply_message = flatbuffers::GetRoot<RegisterClientReply>(reply);
+  free(reply);
 
   return result;
 }
@@ -62,13 +77,27 @@ TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
                                    int64_t *task_size) {
   write_message(conn->conn, MessageType_GetTask, 0, NULL);
   int64_t type;
+  int64_t message_size;
   uint8_t *message;
   /* Receive a task from the local scheduler. This will block until the local
    * scheduler gives this client a task. */
-  read_message(conn->conn, &type, task_size, &message);
+  read_message(conn->conn, &type, &message_size, &message);
+  if (type == DISCONNECT_CLIENT) {
+    LOG_WARN("Exiting because local scheduler closed connection.");
+    exit(1);
+  }
   CHECK(type == MessageType_ExecuteTask);
-  TaskSpec *task = (TaskSpec *) message;
-  return task;
+
+  /* Parse the flatbuffer object. */
+  auto reply_message = flatbuffers::GetRoot<GetTaskReply>(message);
+  /* Create a copy of the task spec so we can free the reply. */
+  *task_size = reply_message->task_spec()->size();
+  TaskSpec *spec = (TaskSpec *) malloc(*task_size);
+  memcpy(spec, reply_message->task_spec()->data(), *task_size);
+  /* Free the original message from the local scheduler. */
+  free(message);
+  /* Return the copy of the task spec and pass ownership to the caller. */
+  return spec;
 }
 
 void local_scheduler_task_done(LocalSchedulerConnection *conn) {

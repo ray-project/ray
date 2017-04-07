@@ -458,8 +458,15 @@ void assign_task_to_worker(LocalSchedulerState *state,
                            TaskSpec *spec,
                            int64_t task_spec_size,
                            LocalSchedulerClient *worker) {
-  if (write_message(worker->sock, MessageType_ExecuteTask, task_spec_size,
-                    (uint8_t *) spec) < 0) {
+  /* Construct a flatbuffer object to send to the worker. */
+  flatbuffers::FlatBufferBuilder fbb;
+  //Does CreateString take ownership of the string?
+  auto message =
+      CreateGetTaskReply(fbb, fbb.CreateString((char *) spec, task_spec_size));
+  fbb.Finish(message);
+
+  if (write_message(worker->sock, MessageType_ExecuteTask, fbb.GetSize(),
+                    (uint8_t *) fbb.GetBufferPointer()) < 0) {
     if (errno == EPIPE || errno == EBADF) {
       /* TODO(rkn): If this happens, the task should be added back to the task
        * queue. */
@@ -646,6 +653,81 @@ void reconstruct_object(LocalSchedulerState *state,
                       reconstruct_object_lookup_callback, (void *) state);
 }
 
+void send_client_register_reply(LocalSchedulerState *state,
+                                LocalSchedulerClient *worker) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = CreateRegisterClientReply(fbb);
+  fbb.Finish(message);
+
+  /* Send the message to the client. */
+  if (write_message(worker->sock, MessageType_RegisterClientReply,
+                    fbb.GetSize(), fbb.GetBufferPointer()) < 0) {
+    if (errno == EPIPE || errno == EBADF || errno == ECONNRESET) {
+      /* Something went wrong, so kill the worker. */
+      kill_worker(worker, false);
+      LOG_WARN(
+          "Failed to give send register client reply to worker on fd %d. The "
+          "client may have hung up.",
+          worker->sock);
+    } else {
+      LOG_FATAL("Failed to send register client reply to client on fd %d.",
+                worker->sock);
+    }
+  }
+}
+
+void handle_client_register(
+    LocalSchedulerState *state,
+    LocalSchedulerClient *worker,
+    const RegisterClientRequest *message) {
+  /* Register the worker or driver. */
+  if (message->is_worker()) {
+    /* Update the actor mapping with the actor ID of the worker (if an actor is
+     * running on the worker). */
+    int64_t worker_pid = message->worker_pid();
+    ActorID actor_id = from_flatbuf(message->actor_id());
+    if (!ActorID_equal(actor_id, NIL_ACTOR_ID)) {
+      /* Make sure that the local scheduler is aware that it is responsible for
+       * this actor. */
+      actor_map_entry *entry;
+      HASH_FIND(hh, state->actor_mapping, &actor_id, sizeof(actor_id), entry);
+      CHECK(entry != NULL);
+      CHECK(DBClientID_equal(entry->local_scheduler_id,
+                             get_db_client_id(state->db)));
+      /* Update the worker struct with this actor ID. */
+      CHECK(ActorID_equal(worker->actor_id, NIL_ACTOR_ID));
+      worker->actor_id = actor_id;
+      /* Let the scheduling algorithm process the presence of this new
+       * worker. */
+      handle_actor_worker_connect(state, state->algorithm_state, actor_id,
+                                  worker);
+    }
+
+    /* Register worker process id with the scheduler. */
+    worker->pid = worker_pid;
+    /* Determine if this worker is one of our child processes. */
+    LOG_DEBUG("PID is %d", worker_pid);
+    pid_t *child_pid;
+    int index = 0;
+    for (child_pid = (pid_t *) utarray_front(state->child_pids);
+         child_pid != NULL;
+         child_pid = (pid_t *) utarray_next(state->child_pids, child_pid)) {
+      if (*child_pid == worker_pid) {
+        /* If this worker is one of our child processes, mark it as a child so
+         * that we know that we can wait for the process to exit during
+         * cleanup. */
+        worker->is_child = true;
+        utarray_erase(state->child_pids, index, 1);
+        LOG_DEBUG("Found matching child pid %d", worker_pid);
+        break;
+      }
+      ++index;
+    }
+  } else {
+    /* Register the driver. Currently we don't do anything here. */
+  }
+}
+
 void process_message(event_loop *loop,
                      int client_sock,
                      void *context,
@@ -692,50 +774,11 @@ void process_message(event_loop *loop,
           (uint8_t *) message->value()->data(), message->value()->size());
     }
   } break;
-  case MessageType_RegisterWorkerInfo: {
-    /* Update the actor mapping with the actor ID of the worker (if an actor is
-     * running on the worker). */
-    auto message = flatbuffers::GetRoot<RegisterWorkerInfo>(
+  case MessageType_RegisterClientRequest: {
+    auto message = flatbuffers::GetRoot<RegisterClientRequest>(
         utarray_front(state->input_buffer));
-    int64_t worker_pid = message->worker_pid();
-    ActorID actor_id = from_flatbuf(message->actor_id());
-    if (!ActorID_equal(actor_id, NIL_ACTOR_ID)) {
-      /* Make sure that the local scheduler is aware that it is responsible for
-       * this actor. */
-      actor_map_entry *entry;
-      HASH_FIND(hh, state->actor_mapping, &actor_id, sizeof(actor_id), entry);
-      CHECK(entry != NULL);
-      CHECK(DBClientID_equal(entry->local_scheduler_id,
-                             get_db_client_id(state->db)));
-      /* Update the worker struct with this actor ID. */
-      CHECK(ActorID_equal(worker->actor_id, NIL_ACTOR_ID));
-      worker->actor_id = actor_id;
-      /* Let the scheduling algorithm process the presence of this new
-       * worker. */
-      handle_actor_worker_connect(state, state->algorithm_state, actor_id,
-                                  worker);
-    }
-
-    /* Register worker process id with the scheduler. */
-    worker->pid = worker_pid;
-    /* Determine if this worker is one of our child processes. */
-    LOG_DEBUG("PID is %d", worker_pid);
-    pid_t *child_pid;
-    int index = 0;
-    for (child_pid = (pid_t *) utarray_front(state->child_pids);
-         child_pid != NULL;
-         child_pid = (pid_t *) utarray_next(state->child_pids, child_pid)) {
-      if (*child_pid == worker_pid) {
-        /* If this worker is one of our child processes, mark it as a child so
-         * that we know that we can wait for the process to exit during
-         * cleanup. */
-        worker->is_child = true;
-        utarray_erase(state->child_pids, index, 1);
-        LOG_DEBUG("Found matching child pid %d", worker_pid);
-        break;
-      }
-      ++index;
-    }
+    handle_client_register(state, worker, message);
+    send_client_register_reply(state, worker);
   } break;
   case MessageType_GetTask: {
     /* If this worker reports a completed task: account for resources. */

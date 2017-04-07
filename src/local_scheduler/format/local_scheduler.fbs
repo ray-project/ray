@@ -10,10 +10,12 @@ enum MessageType:int {
   // Log a message to the event table. This is sent from a worker to a local
   // scheduler.
   EventLogMessage,
-  // Send an initial connection message to the local scheduler. This is ent from
-  // a worker to a local scheduler.
-  // This contains the worker's process ID and actor ID.
-  RegisterWorkerInfo,
+  // Send an initial connection message to the local scheduler. This is sent
+  // from a worker or driver to a local scheduler.
+  RegisterClientRequest,
+  // Send a reply confirming the successful registration of a worker or driver.
+  // This is sent from the local scheduler to a worker or driver.
+  RegisterClientReply,
   // Get a new task from the local scheduler. This is sent from a worker to a
   // local scheduler.
   GetTask,
@@ -31,6 +33,12 @@ enum MessageType:int {
   PutObject
 }
 
+// This message is sent from the local scheduler to a worker.
+table GetTaskReply {
+  // A string of bytes representing the task specification.
+  task_spec: string;
+}
+
 table EventLogMessage {
   key: string;
   value: string;
@@ -38,12 +46,18 @@ table EventLogMessage {
 
 // This struct is used to register a new worker with the local scheduler.
 // It is shipped as part of local_scheduler_connect.
-table RegisterWorkerInfo {
-  // The ID of the actor.
-  // This is NIL_ACTOR_ID if the worker is not an actor.
+table RegisterClientRequest {
+  // True if the client is a worker and false if the client is a driver.
+  is_worker: bool;
+  // The ID of the worker or driver.
+  client_id: string;
+  // The ID of the actor. This is NIL_ACTOR_ID if the worker is not an actor.
   actor_id: string;
   // The process ID of this worker.
   worker_pid: long;
+}
+
+table RegisterClientReply {
 }
 
 table ReconstructObject {

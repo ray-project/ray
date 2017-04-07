@@ -16,6 +16,7 @@ struct TaskBuilder;
 #define NIL_TASK_ID NIL_ID
 #define NIL_ACTOR_ID NIL_ID
 #define NIL_FUNCTION_ID NIL_ID
+#define NIL_WORKER_ID NIL_ID
 
 typedef UniqueID FunctionID;
 
