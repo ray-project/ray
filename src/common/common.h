@@ -158,16 +158,17 @@ typedef UniqueID ObjectID;
 struct UniqueIDHasher {
   /* ObjectID hashing function. */
   std::size_t operator()(const ObjectID &key) const {
-      uint32_t hash = 0;
-      CHECK(UNIQUE_ID_SIZE % sizeof(uint32_t) == 0);
-      for (int i = 0; i < UNIQUE_ID_SIZE / sizeof(uint32_t); i++) {
-        hash ^=  *reinterpret_cast<const uint32_t *>(&key.id[i * sizeof(uint32_t)]);
-      }
-      return std::hash<uint32_t>()(hash);
+    uint32_t hash = 0;
+    CHECK(UNIQUE_ID_SIZE % sizeof(uint32_t) == 0);
+    for (int i = 0; i < UNIQUE_ID_SIZE / sizeof(uint32_t); i++) {
+      hash ^=
+          *reinterpret_cast<const uint32_t *>(&key.id[i * sizeof(uint32_t)]);
+    }
+    return std::hash<uint32_t>()(hash);
   }
 };
 
-bool operator==(const ObjectID& x, const ObjectID& y);
+bool operator==(const ObjectID &x, const ObjectID &y);
 #endif
 
 #define ID_STRING_SIZE (2 * UNIQUE_ID_SIZE + 1)

@@ -212,7 +212,9 @@ void plasma_read_WaitRequest(
     uint8_t *data,
     std::unordered_map<ObjectID, ObjectRequest, UniqueIDHasher>
         &object_requests,
-    int num_object_ids, int64_t *timeout_ms, int *num_ready_objects);
+    int num_object_ids,
+    int64_t *timeout_ms,
+    int *num_ready_objects);
 
 int plasma_send_WaitReply(
     int sock,

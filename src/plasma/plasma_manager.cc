@@ -152,14 +152,18 @@ typedef struct {
  */
 typedef struct WaitRequest {
   explicit WaitRequest(
-      ClientConnection *client_conn_, int64_t timer_,
+      ClientConnection *client_conn_,
+      int64_t timer_,
       int64_t num_object_requests_,
       std::unordered_map<ObjectID, ObjectRequest, UniqueIDHasher> &&init_map_,
-      int64_t num_objects_to_wait_for_, int64_t num_satisfied_) :
-      client_conn(client_conn_), timer(timer_),
-      num_object_requests(num_object_requests_), object_requests(init_map_),
-      num_objects_to_wait_for(num_objects_to_wait_for_),
-      num_satisfied(num_satisfied_) {}
+      int64_t num_objects_to_wait_for_,
+      int64_t num_satisfied_)
+      : client_conn(client_conn_),
+        timer(timer_),
+        num_object_requests(num_object_requests_),
+        object_requests(init_map_),
+        num_objects_to_wait_for(num_objects_to_wait_for_),
+        num_satisfied(num_satisfied_) {}
 
   /** The client connection that called wait. */
   ClientConnection *client_conn;
@@ -398,16 +402,15 @@ void return_from_wait(PlasmaManagerState *manager_state,
                       WaitRequest *wait_req) {
   /* Send the reply to the client. */
   warn_if_sigpipe(plasma_send_WaitReply(
-                  wait_req->client_conn->fd, manager_state->builder,
-                  wait_req->object_requests, wait_req->num_object_requests),
+                      wait_req->client_conn->fd, manager_state->builder,
+                      wait_req->object_requests, wait_req->num_object_requests),
                   wait_req->client_conn->fd);
   /* Iterate over all object IDs requested as part of this wait request.
    * Remove the wait request from each of the relevant object_wait_requests hash
    * tables if it is present there. */
   for (const auto &map_entry_pair : wait_req->object_requests) {
     const auto &object_request = map_entry_pair.second;
-    remove_wait_request_for_object(manager_state,
-                                   object_request.object_id,
+    remove_wait_request_for_object(manager_state, object_request.object_id,
                                    object_request.type, wait_req);
   }
   /* Remove the wait request. */
@@ -438,7 +441,7 @@ void update_object_wait_requests(PlasmaManagerState *manager_state,
           object_wait_reqs->wait_requests, index);
       WaitRequest *wait_req = *wait_req_ptr;
       wait_req->num_satisfied += 1;
-       /* Mark the object as present in the wait request. */
+      /* Mark the object as present in the wait request. */
       auto objreq_found_iter = wait_req->object_requests.find(obj_id);
       /* Check that we found the object. */
       CHECK(objreq_found_iter != wait_req->object_requests.end());
@@ -1153,15 +1156,18 @@ int wait_timeout_handler(event_loop *loop, timer_id id, void *context) {
 }
 
 void process_wait_request(
-    ClientConnection *client_conn, int num_object_requests,
+    ClientConnection *client_conn,
+    int num_object_requests,
     std::unordered_map<ObjectID, ObjectRequest, UniqueIDHasher> &&init_map,
-    uint64_t timeout_ms, int num_ready_objects) {
+    uint64_t timeout_ms,
+    int num_ready_objects) {
   CHECK(client_conn != NULL);
   PlasmaManagerState *manager_state = client_conn->manager_state;
 
   /* Create a wait request for this object. */
-  WaitRequest *wait_req = new WaitRequest(client_conn, -1, num_object_requests,
-      std::move(init_map), num_ready_objects, 0);
+  WaitRequest *wait_req =
+      new WaitRequest(client_conn, -1, num_object_requests, std::move(init_map),
+                      num_ready_objects, 0);
 
   int num_object_ids_to_request = 0;
   /* This is allocating more space than necessary, but we do not know the exact
@@ -1183,7 +1189,7 @@ void process_wait_request(
 
     /* Add the wait request to the relevant data structures. */
     add_wait_request_for_object(manager_state, obj_id, object_request.type,
-        wait_req);
+                                wait_req);
 
     if (object_request.type == PLASMA_QUERY_LOCAL) {
       /* TODO(rkn): If desired, we could issue a fetch command here to retrieve
@@ -1537,10 +1543,10 @@ void process_message(event_loop *loop,
     std::unordered_map<ObjectID, ObjectRequest, UniqueIDHasher> object_requests;
     int64_t timeout_ms;
     int num_ready_objects;
-    plasma_read_WaitRequest(data, object_requests, num_object_ids,
-                            &timeout_ms, &num_ready_objects);
-    process_wait_request(conn, num_object_ids, std::move(object_requests), timeout_ms,
-                         num_ready_objects);
+    plasma_read_WaitRequest(data, object_requests, num_object_ids, &timeout_ms,
+                            &num_ready_objects);
+    process_wait_request(conn, num_object_ids, std::move(object_requests),
+                         timeout_ms, num_ready_objects);
   } break;
   case MessageType_PlasmaStatusRequest: {
     LOG_DEBUG("Processing status");

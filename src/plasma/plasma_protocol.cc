@@ -501,7 +501,9 @@ void plasma_read_WaitRequest(
     uint8_t *data,
     std::unordered_map<ObjectID, ObjectRequest, UniqueIDHasher>
         &object_requests,
-    int num_object_ids, int64_t *timeout_ms, int *num_ready_objects) {
+    int num_object_ids,
+    int64_t *timeout_ms,
+    int *num_ready_objects) {
   DCHECK(data);
   auto message = flatbuffers::GetRoot<PlasmaWaitRequest>(data);
   *num_ready_objects = message->num_ready_objects();
@@ -529,9 +531,8 @@ int plasma_send_WaitReply(
   std::vector<flatbuffers::Offset<ObjectReply>> object_replies;
   for (const auto &map_entry_pair : object_requests) {
     const auto &object_request = map_entry_pair.second;
-    object_replies.push_back(
-    CreateObjectReply(fbb,
-        to_flatbuf(fbb, object_request.object_id), object_request.status));
+    object_replies.push_back(CreateObjectReply(
+        fbb, to_flatbuf(fbb, object_request.object_id), object_request.status));
   }
 
   auto message = CreatePlasmaWaitReply(
