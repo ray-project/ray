@@ -211,7 +211,7 @@ def actor(*args, **kwargs):
                             **kwargs):
         ray.worker.check_connected()
         ray.worker.check_main_thread()
-        args = ray.signature.extend_args(function_signature, args, kwargs)
+        args = signature.extend_args(function_signature, args, kwargs)
 
         function_id = get_actor_method_function_id(attr)
         # TODO(pcm): Extend args with keyword args.
@@ -239,8 +239,8 @@ def actor(*args, **kwargs):
             # We don't raise an exception because if the actor inherits from a
             # class that has a method whose signature we don't support, we
             # there may not be much the user can do about it.
-            ray.signature.check_signature_supported(v, warn=True)
-            self._ray_method_signatures[k] = ray.signature.extract_signature(
+            signature.check_signature_supported(v, warn=True)
+            self._ray_method_signatures[k] = signature.extract_signature(
                 v, ignore_first=True)
 
           export_actor(self._ray_actor_id, Class,

@@ -1437,13 +1437,18 @@ class GlobalStateAPI(unittest.TestCase):
     x_id = ray.put(1)
     result_id = f.remote(1, "hi", x_id)
 
-    # Wait for one additional task for the driver.
-    wait_for_num_tasks(1 + 1)
-    task_table = ray.global_state.task_table()
-    self.assertEqual(len(task_table), 1 + 1)
-    task_id_set = set(task_table.keys())
-    task_id_set.remove(driver_task_id)
-    task_id = list(task_id_set)[0]
+    # Wait for one additional task to complete.
+    start_time = time.time()
+    while time.time() - start_time < 10:
+      wait_for_num_tasks(1 + 1)
+      task_table = ray.global_state.task_table()
+      self.assertEqual(len(task_table), 1 + 1)
+      task_id_set = set(task_table.keys())
+      task_id_set.remove(driver_task_id)
+      task_id = list(task_id_set)[0]
+      if task_table[task_id]["State"] == "DONE":
+        break
+      time.sleep(0.1)
     self.assertEqual(task_table[task_id]["TaskSpec"]["ActorID"],
                      ID_SIZE * "ff")
     self.assertEqual(task_table[task_id]["TaskSpec"]["Args"], [1, "hi", x_id])

@@ -2067,7 +2067,7 @@ def remote(*args, **kwargs):
         """This gets run immediately when a worker calls a remote function."""
         check_connected()
         check_main_thread()
-        args = ray.signature.extend_args(function_signature, args, kwargs)
+        args = signature.extend_args(function_signature, args, kwargs)
 
         if _mode() == PYTHON_MODE:
           # In PYTHON_MODE, remote calls simply execute the function. We copy
@@ -2106,8 +2106,8 @@ def remote(*args, **kwargs):
       else:
         func_invoker.func_doc = func.func_doc
 
-      ray.signature.check_signature_supported(func)
-      function_signature = ray.signature.extract_signature(func)
+      signature.check_signature_supported(func)
+      function_signature = signature.extract_signature(func)
 
       # Everything ready - export the function
       if worker.mode in [SCRIPT_MODE, SILENT_MODE]:

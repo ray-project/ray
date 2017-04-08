@@ -165,7 +165,7 @@ def extend_args(function_signature, args, kwargs):
 
   too_many_arguments = (len(args) > len(arg_names) and
                         (len(arg_is_positionals) == 0 or
-                        arg_is_positionals[-1] != True))
+                         not arg_is_positionals[-1]))
   if too_many_arguments:
     raise Exception("Too many arguments were passed to the function '{}'"
                     .format(function_name))
