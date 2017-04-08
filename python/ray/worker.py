@@ -1400,7 +1400,8 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
                                                  info["manager_socket_name"])
   # Create the local scheduler client.
   worker.local_scheduler_client = ray.local_scheduler.LocalSchedulerClient(
-      info["local_scheduler_socket_name"], worker.actor_id, is_worker)
+      info["local_scheduler_socket_name"], worker.worker_id, worker.actor_id,
+      is_worker)
 
   # If this is a driver, set the current task ID, the task driver ID, and set
   # the task index to 0.

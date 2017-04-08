@@ -23,6 +23,7 @@ PLASMA_STORE_MEMORY = 1000000000
 ID_SIZE = 20
 NUM_CLUSTER_NODES = 2
 
+NIL_WORKER_ID = 20 * b"\xff"
 NIL_ACTOR_ID = 20 * b"\xff"
 
 # These constants must match the scheduling state enum in task.h.
@@ -101,7 +102,7 @@ class TestGlobalScheduler(unittest.TestCase):
           static_resource_list=[10, 0])
       # Connect to the scheduler.
       local_scheduler_client = local_scheduler.LocalSchedulerClient(
-          local_scheduler_name, NIL_ACTOR_ID, False)
+          local_scheduler_name, NIL_WORKER_ID, NIL_ACTOR_ID, False)
       self.local_scheduler_clients.append(local_scheduler_client)
       self.local_scheduler_pids.append(p4)
 

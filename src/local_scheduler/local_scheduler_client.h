@@ -23,6 +23,7 @@ typedef struct {
  */
 LocalSchedulerConnection *LocalSchedulerConnection_init(
     const char *local_scheduler_socket,
+    UniqueID worker_id,
     ActorID actor_id,
     bool is_worker);
 
