@@ -17,21 +17,25 @@ static int PyLocalSchedulerClient_init(PyLocalSchedulerClient *self,
                                        PyObject *args,
                                        PyObject *kwds) {
   char *socket_name;
+  UniqueID client_id;
   ActorID actor_id;
   PyObject *is_worker;
-  if (!PyArg_ParseTuple(args, "sO&O", &socket_name, PyStringToUniqueID,
-                        &actor_id, &is_worker)) {
+  self->local_scheduler_connection = NULL;
+  if (!PyArg_ParseTuple(args, "sO&O&O", &socket_name, PyStringToUniqueID,
+                        &client_id, PyStringToUniqueID, &actor_id,
+                        &is_worker)) {
     return -1;
   }
   /* Connect to the local scheduler. */
   self->local_scheduler_connection = LocalSchedulerConnection_init(
-      socket_name, actor_id, (bool) PyObject_IsTrue(is_worker));
+      socket_name, client_id, actor_id, (bool) PyObject_IsTrue(is_worker));
   return 0;
 }
 
 static void PyLocalSchedulerClient_dealloc(PyLocalSchedulerClient *self) {
-  LocalSchedulerConnection_free(
-      ((PyLocalSchedulerClient *) self)->local_scheduler_connection);
+  if (self->local_scheduler_connection != NULL) {
+    LocalSchedulerConnection_free(self->local_scheduler_connection);
+  }
   Py_TYPE(self)->tp_free((PyObject *) self);
 }
 
