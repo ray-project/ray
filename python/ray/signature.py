@@ -5,12 +5,28 @@ from __future__ import print_function
 from collections import namedtuple
 import funcsigs
 
-FunctionSignature = namedtuple("FunctionSignature", ["sig_params",
+FunctionSignature = namedtuple("FunctionSignature", ["arg_names",
+                                                     "arg_defaults",
+                                                     "arg_is_positionals",
                                                      "keyword_names",
                                                      "function_name"])
+"""This class is used to represent a function signature.
+
+Attributes:
+  keyword_names: The names of the functions keyword arguments. This is used to
+    test if an incorrect keyword argument has been passed to the function.
+  arg_defaults: A dictionary mapping from argument name to argument default
+    value. If the argument is not a keyword argument, the default value will be
+    funcsigs._empty.
+  arg_is_positionals: A dictionary mapping from argument name to a bool. The
+    bool will be true if the argument is a *args argument. Otherwise it will be
+    false.
+  function_name: The name of the function whose signature is being inspected.
+    This is used for printing better error messages.
+"""
 
 
-def check_signature_supported(func):
+def check_signature_supported(func, warn=False):
   """Check if we support the signature of this function.
 
   We currently do not allow remote functions to have **kwargs. We also do not
@@ -18,6 +34,9 @@ def check_signature_supported(func):
 
   Args:
     func: The function whose signature should be checked.
+    warn: If this is true, a warning will be printed if the signature is not
+      supported. If it is false, an exception will be raised if the signature
+      is not supported.
 
   Raises:
     Exception: An exception is raised if the signature is not supported.
@@ -29,7 +48,7 @@ def check_signature_supported(func):
   has_vararg_param = False
   has_kwargs_param = False
   has_keyword_arg = False
-  for keyword_name, parameter in funcsigs.signature(func).parameters.items():
+  for keyword_name, parameter in sig_params:
     if parameter.kind == parameter.VAR_KEYWORD:
       has_kwargs_param = True
     if parameter.kind == parameter.VAR_POSITIONAL:
@@ -38,14 +57,22 @@ def check_signature_supported(func):
       has_keyword_arg = True
 
   if has_kwargs_param:
-    raise Exception("The function {} has a **kwargs argument, which is "
-                    "currently not supported.".format(function_name))
+    message = ("The function {} has a **kwargs argument, which is "
+               "currently not supported.".format(function_name))
+    if warn:
+      print(message)
+    else:
+      raise Exception(message)
   # Check if the user specified a variable number of arguments and any keyword
   # arguments.
   if has_vararg_param and has_keyword_arg:
-    raise Exception("Function {} has a *args argument as well as a keyword "
-                    "argument, which is currently not supported."
-                    .format(function_name))
+    message = ("Function {} has a *args argument as well as a keyword "
+               "argument, which is currently not supported."
+               .format(function_name))
+    if warn:
+      print(message)
+    else:
+      raise Exception(message)
 
 
 def extract_signature(func, ignore_first=False):
@@ -71,11 +98,21 @@ def extract_signature(func, ignore_first=False):
 
   # Extract the names of the keyword arguments.
   keyword_names = set()
-  for keyword_name, parameter in funcsigs.signature(func).parameters.items():
+  for keyword_name, parameter in sig_params:
     if parameter.default != funcsigs._empty:
       keyword_names.add(keyword_name)
 
-  return FunctionSignature(sig_params, keyword_names, func.__name__)
+  # Construct the argument default values and other argument information.
+  arg_names = []
+  arg_defaults = []
+  arg_is_positionals = []
+  for keyword_name, parameter in sig_params:
+    arg_names.append(keyword_name)
+    arg_defaults.append(parameter.default)
+    arg_is_positionals.append(parameter.kind == parameter.VAR_POSITIONAL)
+
+  return FunctionSignature(arg_names, arg_defaults, arg_is_positionals,
+                           keyword_names, func.__name__)
 
 
 def extend_args(function_signature, args, kwargs):
@@ -96,7 +133,9 @@ def extend_args(function_signature, args, kwargs):
     Exception: An exception may be raised if the function cannot be called with
       these arguments.
   """
-  sig_params = function_signature.sig_params
+  arg_names = function_signature.arg_names
+  arg_defaults = function_signature.arg_defaults
+  arg_is_positionals = function_signature.arg_is_positionals
   keyword_names = function_signature.keyword_names
   function_name = function_signature.function_name
 
@@ -108,18 +147,26 @@ def extend_args(function_signature, args, kwargs):
                       "function '{}'.".format(keyword_name, function_name))
 
   # Fill in the remaining arguments.
-  for keyword_name, param in sig_params[len(args):]:
+  zipped_info = list(zip(arg_names, arg_defaults,
+                         arg_is_positionals))[len(args):]
+  for keyword_name, default_value, is_positional in zipped_info:
     if keyword_name in kwargs:
       args.append(kwargs[keyword_name])
     else:
-      default_value = param.default
       if default_value != funcsigs._empty:
         args.append(default_value)
       else:
         # This means that there is a missing argument. Unless this is the last
         # argument and it is a *args argument in which case it can be omitted.
-        if param.kind != param.VAR_POSITIONAL:
+        if not is_positional:
           raise Exception("No value was provided for the argument '{}' for "
                           "the function '{}'.".format(keyword_name,
                                                       function_name))
+
+  too_many_arguments = (len(args) > len(arg_names) and
+                        (len(arg_is_positionals) == 0 or
+                        arg_is_positionals[-1] != True))
+  if too_many_arguments:
+    raise Exception("Too many arguments were passed to the function '{}'"
+                    .format(function_name))
   return args

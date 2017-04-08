@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import funcsigs
 import hashlib
 import inspect
 import json
@@ -231,9 +230,18 @@ def actor(*args, **kwargs):
               k: v for (k, v) in inspect.getmembers(
                   Class, predicate=(lambda x: (inspect.isfunction(x) or
                                                inspect.ismethod(x))))}
-          self._ray_method_signatures = {
-              k: ray.signature.extract_signature(v, ignore_first=True)
-              for k, v in self._ray_actor_methods.items()}
+          # Extract the signatures of each of the methods. This will be used to
+          # catch some errors if the methods are called with inappropriate
+          # arguments.
+          self._ray_method_signatures = dict()
+          for k, v in self._ray_actor_methods.items():
+            # Print a warning message if the method signature is not supported.
+            # We don't raise an exception because if the actor inherits from a
+            # class that has a method whose signature we don't support, we
+            # there may not be much the user can do about it.
+            ray.signature.check_signature_supported(v, warn=True)
+            self._ray_method_signatures[k] = ray.signature.extract_signature(
+                v, ignore_first=True)
 
           export_actor(self._ray_actor_id, Class,
                        self._ray_actor_methods.keys(), num_cpus, num_gpus,

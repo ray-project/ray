@@ -6,7 +6,6 @@ import atexit
 import collections
 import colorama
 import copy
-import funcsigs
 import hashlib
 import inspect
 import json

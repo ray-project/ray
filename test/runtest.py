@@ -321,6 +321,7 @@ class APITest(unittest.TestCase):
     def f2(x, y=0, z=0):
       return
 
+    # Make sure we get an exception if too many arguments are passed in.
     with self.assertRaises(Exception):
       f1.remote(3)
 
@@ -329,6 +330,10 @@ class APITest(unittest.TestCase):
 
     with self.assertRaises(Exception):
       f2.remote(0, w=0)
+
+    # Make sure we get an exception if too many arguments are passed in.
+    with self.assertRaises(Exception):
+      f2.remote(1, 2, 3, 4)
 
     @ray.remote
     def f3(x):
@@ -349,6 +354,25 @@ class APITest(unittest.TestCase):
 
     self.assertTrue(test_functions.kwargs_exception_thrown)
     self.assertTrue(test_functions.varargs_and_kwargs_exception_thrown)
+
+    @ray.remote
+    def f1(*args):
+      return args
+
+    @ray.remote
+    def f2(x, y, *args):
+      return x, y, args
+
+    self.assertEqual(ray.get(f1.remote()), ())
+    self.assertEqual(ray.get(f1.remote(1)), (1,))
+    self.assertEqual(ray.get(f1.remote(1, 2, 3)), (1, 2, 3))
+    with self.assertRaises(Exception):
+      f2.remote()
+    with self.assertRaises(Exception):
+      f2.remote(1)
+    self.assertEqual(ray.get(f2.remote(1, 2)), (1, 2, ()))
+    self.assertEqual(ray.get(f2.remote(1, 2, 3)), (1, 2, (3,)))
+    self.assertEqual(ray.get(f2.remote(1, 2, 3, 4)), (1, 2, (3, 4)))
 
     ray.worker.cleanup()
 

@@ -83,6 +83,21 @@ class ActorAPI(unittest.TestCase):
     self.assertEqual(ray.get(actor.get_values(2, 3, 1, 2, 3, 4)),
                      (3, 5, ("a", "b", "c", "d"), (1, 2, 3, 4)))
 
+    @ray.actor
+    class Actor(object):
+      def __init__(self, *args):
+        self.args = args
+
+      def get_values(self, *args):
+        return self.args, args
+
+    a = Actor()
+    self.assertEqual(ray.get(a.get_values()), ((), ()))
+    a = Actor(1)
+    self.assertEqual(ray.get(a.get_values(2)), ((1,), (2,)))
+    a = Actor(1, 2)
+    self.assertEqual(ray.get(a.get_values(3, 4)), ((1, 2), (3, 4)))
+
     ray.worker.cleanup()
 
   def testNoArgs(self):
