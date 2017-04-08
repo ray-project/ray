@@ -309,6 +309,16 @@ def start_redis(node_ip_address="127.0.0.1", port=None, num_retries=20,
   # Configure Redis to not run in protected mode so that processes on other
   # hosts can connect to it. TODO(rkn): Do this in a more secure way.
   redis_client.config_set("protected-mode", "no")
+  # Increase the hard and soft limits for the redis client pubsub buffer to
+  # 128MB. This is a hack to make it less likely for pubsub messages to be
+  # dropped and for pubsub connections to therefore be killed.
+  cur_config = (redis_client.config_get("client-output-buffer-limit")
+                ["client-output-buffer-limit"])
+  cur_config_list = cur_config.split()
+  assert len(cur_config_list) == 12
+  cur_config_list[8:] = ["pubsub", "134217728", "134217728", "60"]
+  redis_client.config_set("client-output-buffer-limit",
+                          " ".join(cur_config_list))
   # Put a time stamp in Redis to indicate when it was started.
   redis_client.set("redis_start_time", time.time())
   # Record the log files in Redis.
