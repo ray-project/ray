@@ -312,6 +312,30 @@ class APITest(unittest.TestCase):
     x = test_functions.keyword_fct3.remote(0, 1)
     self.assertEqual(ray.get(x), "0 1 hello world")
 
+    # Check that we cannot pass invalid keyword arguments to functions.
+    @ray.remote
+    def f1():
+      return
+
+    @ray.remote
+    def f2(x, y=0, z=0):
+      return
+
+    with self.assertRaises(Exception):
+      f1.remote(3)
+
+    with self.assertRaises(Exception):
+      f1.remote(x=3)
+
+    with self.assertRaises(Exception):
+      f2.remote(0, w=0)
+
+    @ray.remote
+    def f3(x):
+      return x
+
+    self.assertEqual(ray.get(f3.remote(4)), 4)
+
     ray.worker.cleanup()
 
   def testVariableNumberOfArgs(self):

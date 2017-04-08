@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import funcsigs
 import hashlib
 import inspect
 import json
@@ -11,6 +12,7 @@ import traceback
 
 import ray.local_scheduler
 import ray.pickling as pickling
+import ray.signature as signature
 import ray.worker
 import ray.experimental.state as state
 
@@ -206,12 +208,12 @@ def actor(*args, **kwargs):
     def make_actor(Class):
       # The function actor_method_call gets called if somebody tries to call a
       # method on their local actor stub object.
-      def actor_method_call(actor_id, attr, *args, **kwargs):
+      def actor_method_call(actor_id, attr, function_signature, *args,
+                            **kwargs):
         ray.worker.check_connected()
         ray.worker.check_main_thread()
-        args = list(args)
-        if len(kwargs) > 0:
-          raise Exception("Actors currently do not support **kwargs.")
+        args = ray.signature.extend_args(function_signature, args, kwargs)
+
         function_id = get_actor_method_function_id(attr)
         # TODO(pcm): Extend args with keyword args.
         object_ids = ray.worker.global_worker.submit_task(function_id, "",
@@ -229,12 +231,18 @@ def actor(*args, **kwargs):
               k: v for (k, v) in inspect.getmembers(
                   Class, predicate=(lambda x: (inspect.isfunction(x) or
                                                inspect.ismethod(x))))}
+          self._ray_method_signatures = {
+              k: ray.signature.extract_signature(v, ignore_first=True)
+              for k, v in self._ray_actor_methods.items()}
+
           export_actor(self._ray_actor_id, Class,
                        self._ray_actor_methods.keys(), num_cpus, num_gpus,
                        ray.worker.global_worker)
           # Call __init__ as a remote function.
           if "__init__" in self._ray_actor_methods.keys():
-            actor_method_call(self._ray_actor_id, "__init__", *args, **kwargs)
+            actor_method_call(self._ray_actor_id, "__init__",
+                              self._ray_method_signatures["__init__"],
+                              *args, **kwargs)
           else:
             print("WARNING: this object has no __init__ method.")
 
@@ -244,11 +252,13 @@ def actor(*args, **kwargs):
 
         def __getattribute__(self, attr):
           # The following is needed so we can still access self.actor_methods.
-          if attr in ["_ray_actor_id", "_ray_actor_methods"]:
+          if attr in ["_ray_actor_id", "_ray_actor_methods",
+                      "_ray_method_signatures"]:
             return super(NewClass, self).__getattribute__(attr)
           if attr in self._ray_actor_methods.keys():
             return lambda *args, **kwargs: actor_method_call(
-                self._ray_actor_id, attr, *args, **kwargs)
+                self._ray_actor_id, attr, self._ray_method_signatures[attr],
+                *args, **kwargs)
           # There is no method with this name, so raise an exception.
           raise AttributeError("'{}' Actor object has no attribute '{}'"
                                .format(Class, attr))
