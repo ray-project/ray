@@ -24,7 +24,8 @@ class ComponentFailureTest(unittest.TestCase):
     ray.worker._init(num_workers=1,
                      driver_mode=ray.SILENT_MODE,
                      start_workers_from_local_scheduler=False,
-                     start_ray_local=True)
+                     start_ray_local=True,
+                     redirect_output=True)
 
     # Have the worker wait in a get call.
     f.remote()
@@ -56,7 +57,8 @@ class ComponentFailureTest(unittest.TestCase):
     ray.worker._init(num_workers=1,
                      driver_mode=ray.SILENT_MODE,
                      start_workers_from_local_scheduler=False,
-                     start_ray_local=True)
+                     start_ray_local=True,
+                     redirect_output=True)
 
     # Have the worker wait in a get call.
     f.remote()
@@ -87,7 +89,8 @@ class ComponentFailureTest(unittest.TestCase):
                      num_local_schedulers=num_local_schedulers,
                      start_workers_from_local_scheduler=False,
                      start_ray_local=True,
-                     num_cpus=[num_initial_workers] * num_local_schedulers)
+                     num_cpus=[num_initial_workers] * num_local_schedulers,
+                     redirect_output=True)
     # Submit more tasks than there are workers so that all workers and cores
     # are utilized.
     object_ids = [f.remote(i) for i
@@ -123,7 +126,8 @@ class ComponentFailureTest(unittest.TestCase):
         num_workers=num_local_schedulers * num_workers_per_scheduler,
         num_local_schedulers=num_local_schedulers,
         start_ray_local=True,
-        num_cpus=[num_workers_per_scheduler] * num_local_schedulers)
+        num_cpus=[num_workers_per_scheduler] * num_local_schedulers,
+        redirect_output=True)
 
     # Submit more tasks than there are workers so that all workers and cores
     # are utilized.
@@ -196,7 +200,7 @@ class ComponentFailureTest(unittest.TestCase):
                                 False)
 
   def testDriverLivesSequential(self):
-    ray.worker.init()
+    ray.worker.init(redirect_output=True)
     all_processes = ray.services.all_processes
     processes = [
         all_processes[ray.services.PROCESS_TYPE_PLASMA_STORE][0],
@@ -214,7 +218,7 @@ class ComponentFailureTest(unittest.TestCase):
     # If the driver can reach the tearDown method, then it is still alive.
 
   def testDriverLivesParallel(self):
-    ray.worker.init()
+    ray.worker.init(redirect_output=True)
     all_processes = ray.services.all_processes
     processes = [
         all_processes[ray.services.PROCESS_TYPE_PLASMA_STORE][0],
