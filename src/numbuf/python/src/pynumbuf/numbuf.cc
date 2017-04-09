@@ -35,7 +35,8 @@ using namespace numbuf;
 
 struct RayObject {
   std::shared_ptr<RecordBatch> batch;
-  std::vector<PyObject*> tensors;
+  std::vector<PyObject*> arrays;
+  std::vector<std::shared_ptr<Tensor>> tensors;
 };
 
 // Each arrow object is stored in the format
@@ -50,12 +51,12 @@ std::shared_ptr<RecordBatch> make_batch(std::shared_ptr<Array> data) {
   return std::shared_ptr<RecordBatch>(new RecordBatch(schema, data->length(), {data}));
 }
 
-Status write_batch_and_tensors(io::OutputStream* stream, std::shared_ptr<RecordBatch> batch, const std::vector<PyObject*>& tensors, int64_t *data_size, int64_t* total_size) {
+Status write_batch_and_tensors(io::OutputStream* stream, std::shared_ptr<RecordBatch> batch, const std::vector<PyObject*>& tensors, int64_t *batch_size, int64_t* total_size) {
   std::shared_ptr<arrow::ipc::FileWriter> writer;
   RETURN_NOT_OK(ipc::FileWriter::Open(stream, batch->schema(), &writer));
   RETURN_NOT_OK(writer->WriteRecordBatch(*batch, true));
   RETURN_NOT_OK(writer->Close());
-  RETURN_NOT_OK(stream->Tell(data_size));
+  RETURN_NOT_OK(stream->Tell(batch_size));
   for (auto array : tensors) {
     int32_t metadata_length;
     int64_t body_length;
@@ -69,36 +70,14 @@ Status write_batch_and_tensors(io::OutputStream* stream, std::shared_ptr<RecordB
   return Status::OK();
 }
 
-Status get_batch_size(std::shared_ptr<RecordBatch> batch, int64_t* size) {
-  // Determine the size of the serialized batch by writing to a mock file.
-  auto mock = std::make_shared<MockBufferStream>();
-  std::shared_ptr<arrow::ipc::FileWriter> writer;
-  RETURN_NOT_OK(ipc::FileWriter::Open(mock.get(), batch->schema(), &writer));
-  RETURN_NOT_OK(writer->WriteRecordBatch(*batch, true));
-  RETURN_NOT_OK(writer->Close());
-  RETURN_NOT_OK(mock->Tell(size));
-  return Status::OK();
-}
-
-Status get_tensor_size(std::shared_ptr<Tensor> tensor, int64_t *size) {
-  // Determine the size of the serialized tensor by writing to a mock file.
-  auto mock = std::make_shared<MockBufferStream>();
-  std::shared_ptr<arrow::ipc::FileWriter> writer;
-  int32_t metadata_length;
-  int64_t body_length;
-  RETURN_NOT_OK(ipc::WriteTensor(*tensor, mock.get(), &metadata_length, &body_length));
-  RETURN_NOT_OK(mock->Tell(size));
-  return Status::OK();
-}
-
 Status read_batch_and_tensors(uint8_t* data, int64_t size, std::shared_ptr<RecordBatch>* batch_out, std::vector<std::shared_ptr<Tensor>>& tensors_out) {
   std::shared_ptr<arrow::ipc::FileReader> reader;
-  int64_t data_size = *((int64_t*)data);
+  int64_t batch_size = *((int64_t*)data);
   auto source = std::make_shared<FixedBufferStream>(
       LENGTH_PREFIX_SIZE + data, size - LENGTH_PREFIX_SIZE);
-  RETURN_NOT_OK(arrow::ipc::FileReader::Open(source, data_size, &reader));
+  RETURN_NOT_OK(arrow::ipc::FileReader::Open(source, batch_size, &reader));
   RETURN_NOT_OK(reader->GetRecordBatch(0, batch_out));
-  int64_t offset = data_size;
+  int64_t offset = batch_size;
   while (true) {
     std::shared_ptr<Tensor> tensor;
     Status s = ipc::ReadTensor(offset, source.get(), &tensor);
@@ -146,7 +125,6 @@ static void ArrowCapsule_Destructor(PyObject* capsule) {
 
 /* Documented in doc/numbuf.rst in ray-core */
 static PyObject* serialize_list(PyObject* self, PyObject* args) {
-  /*
   PyObject* value;
   if (!PyArg_ParseTuple(args, "O", &value)) { return NULL; }
   std::shared_ptr<Array> array;
@@ -154,32 +132,26 @@ static PyObject* serialize_list(PyObject* self, PyObject* args) {
     RayObject *object = new RayObject();
     int32_t recursion_depth = 0;
     Status s =
-        SerializeSequences(std::vector<PyObject*>({value}), recursion_depth, &array, object->tensors);
+        SerializeSequences(std::vector<PyObject*>({value}), recursion_depth, &array, object->arrays);
     CHECK_SERIALIZATION_ERROR(s);
 
     object->batch = make_batch(array);
 
-    int64_t size;
-    ARROW_CHECK_OK(get_batch_size(object->batch, &size));
-    for (auto tensor : object->tensors) {
-      int64_t tensor_size;
-      ARROW_CHECK_OK(get_tensor_size(tensor, &tensor_size));
-      size += tensor_size;
-    }
+    int64_t data_size, total_size;
+    auto mock = std::make_shared<MockBufferStream>();
+    write_batch_and_tensors(mock.get(), object->batch, object->arrays, &data_size, &total_size);
 
     PyObject* r = PyTuple_New(2);
-    PyTuple_SetItem(r, 0, PyLong_FromLong(LENGTH_PREFIX_SIZE + size));
+    PyTuple_SetItem(r, 0, PyLong_FromLong(LENGTH_PREFIX_SIZE + total_size));
     PyTuple_SetItem(r, 1,
         PyCapsule_New(reinterpret_cast<void*>(object), "arrow", &ArrowCapsule_Destructor));
     return r;
   }
-  */
   return NULL;
 }
 
 /* Documented in doc/numbuf.rst in ray-core */
 static PyObject* write_to_buffer(PyObject* self, PyObject* args) {
-  /*
   RayObject* object;
   PyObject* memoryview;
   if (!PyArg_ParseTuple(args, "O&O", &PyObjectToArrow, &object, &memoryview)) {
@@ -190,23 +162,14 @@ static PyObject* write_to_buffer(PyObject* self, PyObject* args) {
   auto target = std::make_shared<FixedBufferStream>(
       LENGTH_PREFIX_SIZE + reinterpret_cast<uint8_t*>(buffer->buf),
       buffer->len - LENGTH_PREFIX_SIZE);
-  std::shared_ptr<arrow::ipc::FileWriter> writer;
-  ARROW_CHECK_OK(ipc::FileWriter::Open(target.get(), object->batch->schema(), &writer));
-  ARROW_CHECK_OK(writer->WriteRecordBatch(*object->batch, true));
-  ARROW_CHECK_OK(writer->Close());
-  for (auto tensor : object->tensors) {
-    int32_t metadata_length;
-    int64_t body_length;
-    ARROW_CHECK_OK(ipc::WriteTensor(*tensor, target.get(), &metadata_length, &body_length));
-  }
+  int64_t batch_size, total_size;
+  ARROW_CHECK_OK(write_batch_and_tensors(target.get(), object->batch, object->arrays, &batch_size, &total_size));
   *((int64_t*)buffer->buf) = buffer->len - LENGTH_PREFIX_SIZE;
-  */
   Py_RETURN_NONE;
 }
 
 /* Documented in doc/numbuf.rst in ray-core */
 static PyObject* read_from_buffer(PyObject* self, PyObject* args) {
-  /*
   PyObject* data_memoryview;
   if (!PyArg_ParseTuple(args, "O", &data_memoryview)) { return NULL; }
 
@@ -217,13 +180,10 @@ static PyObject* read_from_buffer(PyObject* self, PyObject* args) {
       read_batch_and_tensors(reinterpret_cast<uint8_t*>(data_buffer->buf), data_buffer->len, &object->batch, object->tensors));
 
   return PyCapsule_New(reinterpret_cast<void*>(object), "arrow", &ArrowCapsule_Destructor);
-  */
-  return NULL;
 }
 
 /* Documented in doc/numbuf.rst in ray-core */
 static PyObject* deserialize_list(PyObject* self, PyObject* args) {
-  /*
   RayObject* object;
   PyObject* base = Py_None;
   if (!PyArg_ParseTuple(args, "O&|O", &PyObjectToArrow, &object, &base)) { return NULL; }
@@ -231,8 +191,6 @@ static PyObject* deserialize_list(PyObject* self, PyObject* args) {
   Status s = DeserializeList(object->batch->column(0), 0, object->batch->num_rows(), base, object->tensors, &result);
   CHECK_SERIALIZATION_ERROR(s);
   return result;
-  */
-  return NULL;
 }
 
 static PyObject* register_callbacks(PyObject* self, PyObject* args) {
