@@ -312,6 +312,35 @@ class APITest(unittest.TestCase):
     x = test_functions.keyword_fct3.remote(0, 1)
     self.assertEqual(ray.get(x), "0 1 hello world")
 
+    # Check that we cannot pass invalid keyword arguments to functions.
+    @ray.remote
+    def f1():
+      return
+
+    @ray.remote
+    def f2(x, y=0, z=0):
+      return
+
+    # Make sure we get an exception if too many arguments are passed in.
+    with self.assertRaises(Exception):
+      f1.remote(3)
+
+    with self.assertRaises(Exception):
+      f1.remote(x=3)
+
+    with self.assertRaises(Exception):
+      f2.remote(0, w=0)
+
+    # Make sure we get an exception if too many arguments are passed in.
+    with self.assertRaises(Exception):
+      f2.remote(1, 2, 3, 4)
+
+    @ray.remote
+    def f3(x):
+      return x
+
+    self.assertEqual(ray.get(f3.remote(4)), 4)
+
     ray.worker.cleanup()
 
   def testVariableNumberOfArgs(self):
@@ -325,6 +354,25 @@ class APITest(unittest.TestCase):
 
     self.assertTrue(test_functions.kwargs_exception_thrown)
     self.assertTrue(test_functions.varargs_and_kwargs_exception_thrown)
+
+    @ray.remote
+    def f1(*args):
+      return args
+
+    @ray.remote
+    def f2(x, y, *args):
+      return x, y, args
+
+    self.assertEqual(ray.get(f1.remote()), ())
+    self.assertEqual(ray.get(f1.remote(1)), (1,))
+    self.assertEqual(ray.get(f1.remote(1, 2, 3)), (1, 2, 3))
+    with self.assertRaises(Exception):
+      f2.remote()
+    with self.assertRaises(Exception):
+      f2.remote(1)
+    self.assertEqual(ray.get(f2.remote(1, 2)), (1, 2, ()))
+    self.assertEqual(ray.get(f2.remote(1, 2, 3)), (1, 2, (3,)))
+    self.assertEqual(ray.get(f2.remote(1, 2, 3, 4)), (1, 2, (3, 4)))
 
     ray.worker.cleanup()
 
@@ -1389,13 +1437,18 @@ class GlobalStateAPI(unittest.TestCase):
     x_id = ray.put(1)
     result_id = f.remote(1, "hi", x_id)
 
-    # Wait for one additional task for the driver.
-    wait_for_num_tasks(1 + 1)
-    task_table = ray.global_state.task_table()
-    self.assertEqual(len(task_table), 1 + 1)
-    task_id_set = set(task_table.keys())
-    task_id_set.remove(driver_task_id)
-    task_id = list(task_id_set)[0]
+    # Wait for one additional task to complete.
+    start_time = time.time()
+    while time.time() - start_time < 10:
+      wait_for_num_tasks(1 + 1)
+      task_table = ray.global_state.task_table()
+      self.assertEqual(len(task_table), 1 + 1)
+      task_id_set = set(task_table.keys())
+      task_id_set.remove(driver_task_id)
+      task_id = list(task_id_set)[0]
+      if task_table[task_id]["State"] == "DONE":
+        break
+      time.sleep(0.1)
     self.assertEqual(task_table[task_id]["TaskSpec"]["ActorID"],
                      ID_SIZE * "ff")
     self.assertEqual(task_table[task_id]["TaskSpec"]["Args"], [1, "hi", x_id])

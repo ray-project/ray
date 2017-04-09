@@ -297,55 +297,25 @@ class ActorTest(unittest.TestCase):
         pass
 
     # Make sure that we get errors if we call the constructor incorrectly.
-    # TODO(rkn): These errors should instead be thrown when the method is
-    # called.
 
     # Create an actor with too few arguments.
-    a = Actor()
-    wait_for_errors(b"task", 1)
-    self.assertEqual(len(ray.error_info()), 1)
-    if sys.version_info >= (3, 0):
-      self.assertIn("missing 1 required",
-                    ray.error_info()[0][b"message"].decode("ascii"))
-    else:
-      self.assertIn("takes exactly 2 arguments",
-                    ray.error_info()[0][b"message"].decode("ascii"))
+    with self.assertRaises(Exception):
+      a = Actor()
 
     # Create an actor with too many arguments.
-    a = Actor(1, 2)
-    wait_for_errors(b"task", 2)
-    self.assertEqual(len(ray.error_info()), 2)
-    if sys.version_info >= (3, 0):
-      self.assertIn("but 3 were given",
-                    ray.error_info()[1][b"message"].decode("ascii"))
-    else:
-      self.assertIn("takes exactly 2 arguments",
-                    ray.error_info()[1][b"message"].decode("ascii"))
+    with self.assertRaises(Exception):
+      a = Actor(1, 2)
 
     # Create an actor the correct number of arguments.
     a = Actor(1)
 
     # Call a method with too few arguments.
-    a.get_val()
-    wait_for_errors(b"task", 3)
-    self.assertEqual(len(ray.error_info()), 3)
-    if sys.version_info >= (3, 0):
-      self.assertIn("missing 1 required",
-                    ray.error_info()[2][b"message"].decode("ascii"))
-    else:
-      self.assertIn("takes exactly 2 arguments",
-                    ray.error_info()[2][b"message"].decode("ascii"))
+    with self.assertRaises(Exception):
+      a.get_val()
 
     # Call a method with too many arguments.
-    a.get_val(1, 2)
-    wait_for_errors(b"task", 4)
-    self.assertEqual(len(ray.error_info()), 4)
-    if sys.version_info >= (3, 0):
-      self.assertIn("but 3 were given",
-                    ray.error_info()[3][b"message"].decode("ascii"))
-    else:
-      self.assertIn("takes exactly 2 arguments",
-                    ray.error_info()[3][b"message"].decode("ascii"))
+    with self.assertRaises(Exception):
+      a.get_val(1, 2)
     # Call a method that doesn't exist.
     with self.assertRaises(AttributeError):
       a.nonexistent_method()

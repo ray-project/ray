@@ -6,7 +6,6 @@ import atexit
 import collections
 import colorama
 import copy
-import funcsigs
 import hashlib
 import inspect
 import json
@@ -24,6 +23,7 @@ import ray.experimental.state as state
 import ray.pickling as pickling
 import ray.serialization as serialization
 import ray.services as services
+import ray.signature as signature
 import ray.numbuf
 import ray.local_scheduler
 import ray.plasma
@@ -2067,13 +2067,8 @@ def remote(*args, **kwargs):
         """This gets run immediately when a worker calls a remote function."""
         check_connected()
         check_main_thread()
-        args = list(args)
-        # Fill in the remaining arguments.
-        args.extend([kwargs[keyword] if keyword in kwargs else default
-                     for keyword, default in keyword_defaults[len(args):]])
-        if any([arg is funcsigs._empty for arg in args]):
-          raise Exception("Not enough arguments were provided to {}."
-                          .format(func_name))
+        args = signature.extend_args(function_signature, args, kwargs)
+
         if _mode() == PYTHON_MODE:
           # In PYTHON_MODE, remote calls simply execute the function. We copy
           # the arguments to prevent the function call from mutating them and
@@ -2111,15 +2106,8 @@ def remote(*args, **kwargs):
       else:
         func_invoker.func_doc = func.func_doc
 
-      sig_params = [(k, v) for k, v
-                    in funcsigs.signature(func).parameters.items()]
-      keyword_defaults = [(k, v.default) for k, v in sig_params]
-      has_vararg_param = any([v.kind == v.VAR_POSITIONAL
-                              for k, v in sig_params])
-      func_invoker.has_vararg_param = has_vararg_param
-      has_kwargs_param = any([v.kind == v.VAR_KEYWORD for k, v in sig_params])
-      check_signature_supported(has_kwargs_param, has_vararg_param,
-                                keyword_defaults, func_name)
+      signature.check_signature_supported(func)
+      function_signature = signature.extract_signature(func)
 
       # Everything ready - export the function
       if worker.mode in [SCRIPT_MODE, SILENT_MODE]:
@@ -2160,37 +2148,6 @@ def remote(*args, **kwargs):
                                "num_gpus" in kwargs), error_string
     assert "function_id" not in kwargs
     return make_remote_decorator(num_return_vals, num_cpus, num_gpus)
-
-
-def check_signature_supported(has_kwargs_param, has_vararg_param,
-                              keyword_defaults, name):
-  """Check if we support the signature of this function.
-
-  We currently do not allow remote functions to have **kwargs. We also do not
-  support keyword arguments in conjunction with a *args argument.
-
-  Args:
-    has_kwards_param (bool): True if the function being checked has a **kwargs
-      argument.
-    has_vararg_param (bool): True if the function being checked has a *args
-      argument.
-    keyword_defaults (List): A list of the default values for the arguments to
-      the function being checked.
-    name (str): The name of the function to check.
-
-  Raises:
-    Exception: An exception is raised if the signature is not supported.
-  """
-  # Check if the user specified kwargs.
-  if has_kwargs_param:
-    raise ("Function {} has a **kwargs argument, which is currently not "
-           "supported.".format(name))
-  # Check if the user specified a variable number of arguments and any keyword
-  # arguments.
-  if has_vararg_param and any([d != funcsigs._empty
-                               for _, d in keyword_defaults]):
-    raise ("Function {} has a *args argument as well as a keyword argument, "
-           "which is currently not supported.".format(name))
 
 
 def get_arguments_for_execution(function_name, serialized_args,

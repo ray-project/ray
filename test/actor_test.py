@@ -32,17 +32,27 @@ class ActorAPI(unittest.TestCase):
     actor = Actor(1, 2, "c")
     self.assertEqual(ray.get(actor.get_values(2, 3, "d")), (3, 5, "cd"))
 
+    actor = Actor(1, arg2="c")
+    self.assertEqual(ray.get(actor.get_values(0, arg2="d")), (1, 3, "cd"))
+    self.assertEqual(ray.get(actor.get_values(0, arg2="d", arg1=0)),
+                     (1, 1, "cd"))
+
+    actor = Actor(1, arg2="c", arg1=2)
+    self.assertEqual(ray.get(actor.get_values(0, arg2="d")), (1, 4, "cd"))
+    self.assertEqual(ray.get(actor.get_values(0, arg2="d", arg1=0)),
+                     (1, 2, "cd"))
+
     # Make sure we get an exception if the constructor is called incorrectly.
-    actor = Actor()
     with self.assertRaises(Exception):
-      ray.get(ray.get(actor.get_values(1)))
+      actor = Actor()
+
     with self.assertRaises(Exception):
-      ray.get(ray.get(actor.get_values()))
+      actor = Actor(0, 1, 2, arg3=3)
 
     # Make sure we get an exception if the method is called incorrectly.
     actor = Actor(1)
     with self.assertRaises(Exception):
-      ray.get(ray.get(actor.get_values()))
+      ray.get(actor.get_values())
 
     ray.worker.cleanup()
 
@@ -72,6 +82,21 @@ class ActorAPI(unittest.TestCase):
     actor = Actor(1, 2, "a", "b", "c", "d")
     self.assertEqual(ray.get(actor.get_values(2, 3, 1, 2, 3, 4)),
                      (3, 5, ("a", "b", "c", "d"), (1, 2, 3, 4)))
+
+    @ray.actor
+    class Actor(object):
+      def __init__(self, *args):
+        self.args = args
+
+      def get_values(self, *args):
+        return self.args, args
+
+    a = Actor()
+    self.assertEqual(ray.get(a.get_values()), ((), ()))
+    a = Actor(1)
+    self.assertEqual(ray.get(a.get_values(2)), ((1,), (2,)))
+    a = Actor(1, 2)
+    self.assertEqual(ray.get(a.get_values(3, 4)), ((1, 2), (3, 4)))
 
     ray.worker.cleanup()
 
