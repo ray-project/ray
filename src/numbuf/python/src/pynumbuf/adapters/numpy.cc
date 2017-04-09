@@ -19,6 +19,12 @@ Status DeserializeArray(
   DCHECK(array);
   int32_t index = std::static_pointer_cast<Int32Array>(array)->Value(offset);
   RETURN_NOT_OK(py::TensorToNdarray(*tensors[index], base, out));
+  /* Mark the array as immutable. */
+  PyObject* flags = PyObject_GetAttrString(*out, "flags");
+  DCHECK(flags != NULL) << "Could not mark Numpy array immutable";
+  int flag_set = PyObject_SetAttrString(flags, "writeable", Py_False);
+  DCHECK(flag_set == 0) << "Could not mark Numpy array immutable";
+  Py_XDECREF(flags);
   return Status::OK();
 }
 
