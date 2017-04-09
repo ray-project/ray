@@ -15,7 +15,7 @@ namespace numbuf {
 
 arrow::Status SerializeArray(
     PyArrayObject* array, SequenceBuilder& builder, std::vector<PyObject*>& subdicts,
-    std::vector<std::shared_ptr<arrow::Tensor>>& tensors_out);
+    std::vector<PyObject*>& tensors_out);
 arrow::Status DeserializeArray(
     std::shared_ptr<arrow::Array> array, int32_t offset, PyObject* base, const std::vector<std::shared_ptr<arrow::Tensor>>& tensors, PyObject** out);
 }

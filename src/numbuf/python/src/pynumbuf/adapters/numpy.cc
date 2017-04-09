@@ -30,7 +30,7 @@ Status DeserializeArray(
 
 Status SerializeArray(
     PyArrayObject* array, SequenceBuilder& builder, std::vector<PyObject*>& subdicts,
-    std::vector<std::shared_ptr<Tensor>>& tensors_out) {
+    std::vector<PyObject*>& tensors_out) {
   int dtype = PyArray_TYPE(array);
   switch (dtype) {
     case NPY_UINT8:
@@ -44,9 +44,7 @@ Status SerializeArray(
     case NPY_FLOAT:
     case NPY_DOUBLE: {
       RETURN_NOT_OK(builder.AppendTensor(tensors_out.size()));
-      std::shared_ptr<Tensor> tensor;
-      RETURN_NOT_OK(py::NdarrayToTensor(NULL, reinterpret_cast<PyObject*>(array), &tensor));
-      tensors_out.push_back(tensor);
+      tensors_out.push_back(reinterpret_cast<PyObject*>(array));
     }
     break;
     default:

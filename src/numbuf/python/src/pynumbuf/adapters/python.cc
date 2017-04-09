@@ -80,7 +80,7 @@ Status get_value(std::shared_ptr<Array> arr, int32_t index, int32_t type, PyObje
 
 Status append(PyObject* elem, SequenceBuilder& builder, std::vector<PyObject*>& sublists,
     std::vector<PyObject*>& subtuples, std::vector<PyObject*>& subdicts,
-    std::vector<std::shared_ptr<Tensor>>& tensors_out) {
+    std::vector<PyObject*>& tensors_out) {
   // The bool case must precede the int case (PyInt_Check passes for bools)
   if (PyBool_Check(elem)) {
     RETURN_NOT_OK(builder.AppendBool(elem == Py_True));
@@ -148,7 +148,7 @@ Status append(PyObject* elem, SequenceBuilder& builder, std::vector<PyObject*>& 
 }
 
 Status SerializeSequences(std::vector<PyObject*> sequences, int32_t recursion_depth,
-    std::shared_ptr<Array>* out, std::vector<std::shared_ptr<Tensor>>& tensors_out) {
+    std::shared_ptr<Array>* out, std::vector<PyObject*>& tensors_out) {
   DCHECK(out);
   if (recursion_depth >= MAX_RECURSION_DEPTH) {
     return Status::NotImplemented(
@@ -220,7 +220,7 @@ Status DeserializeTuple(std::shared_ptr<Array> array, int32_t start_idx, int32_t
 
 Status SerializeDict(
     std::vector<PyObject*> dicts, int32_t recursion_depth, std::shared_ptr<Array>* out,
-    std::vector<std::shared_ptr<arrow::Tensor>>& tensors_out) {
+    std::vector<PyObject*>& tensors_out) {
   DictBuilder result;
   if (recursion_depth >= MAX_RECURSION_DEPTH) {
     return Status::NotImplemented(
