@@ -51,7 +51,9 @@ std::shared_ptr<RecordBatch> make_batch(std::shared_ptr<Array> data) {
   return std::shared_ptr<RecordBatch>(new RecordBatch(schema, data->length(), {data}));
 }
 
-Status write_batch_and_tensors(io::OutputStream* stream, std::shared_ptr<RecordBatch> batch, const std::vector<PyObject*>& tensors, int64_t *batch_size, int64_t* total_size) {
+Status write_batch_and_tensors(io::OutputStream* stream,
+    std::shared_ptr<RecordBatch> batch, const std::vector<PyObject*>& tensors,
+    int64_t* batch_size, int64_t* total_size) {
   std::shared_ptr<arrow::ipc::FileWriter> writer;
   RETURN_NOT_OK(ipc::FileWriter::Open(stream, batch->schema(), &writer));
   RETURN_NOT_OK(writer->WriteRecordBatch(*batch, true));
@@ -61,7 +63,7 @@ Status write_batch_and_tensors(io::OutputStream* stream, std::shared_ptr<RecordB
     int32_t metadata_length;
     int64_t body_length;
     std::shared_ptr<Tensor> tensor;
-    auto contiguous = (PyObject*) PyArray_GETCONTIGUOUS((PyArrayObject*) array);
+    auto contiguous = (PyObject*)PyArray_GETCONTIGUOUS((PyArrayObject*)array);
     RETURN_NOT_OK(py::NdarrayToTensor(NULL, contiguous, &tensor));
     RETURN_NOT_OK(ipc::WriteTensor(*tensor, stream, &metadata_length, &body_length));
     Py_XDECREF(contiguous);
@@ -70,7 +72,9 @@ Status write_batch_and_tensors(io::OutputStream* stream, std::shared_ptr<RecordB
   return Status::OK();
 }
 
-Status read_batch_and_tensors(uint8_t* data, int64_t size, std::shared_ptr<RecordBatch>* batch_out, std::vector<std::shared_ptr<Tensor>>& tensors_out) {
+Status read_batch_and_tensors(uint8_t* data, int64_t size,
+    std::shared_ptr<RecordBatch>* batch_out,
+    std::vector<std::shared_ptr<Tensor>>& tensors_out) {
   std::shared_ptr<arrow::ipc::FileReader> reader;
   int64_t batch_size = *((int64_t*)data);
   auto source = std::make_shared<FixedBufferStream>(
@@ -81,9 +85,7 @@ Status read_batch_and_tensors(uint8_t* data, int64_t size, std::shared_ptr<Recor
   while (true) {
     std::shared_ptr<Tensor> tensor;
     Status s = ipc::ReadTensor(offset, source.get(), &tensor);
-    if (!s.ok()) {
-      break;
-    }
+    if (!s.ok()) { break; }
     tensors_out.push_back(tensor);
     RETURN_NOT_OK(source->Tell(&offset));
   }
@@ -119,8 +121,7 @@ int PyObjectToArrow(PyObject* object, RayObject** result) {
 }
 
 static void ArrowCapsule_Destructor(PyObject* capsule) {
-  delete reinterpret_cast<RayObject*>(
-      PyCapsule_GetPointer(capsule, "arrow"));
+  delete reinterpret_cast<RayObject*>(PyCapsule_GetPointer(capsule, "arrow"));
 }
 
 /* Documented in doc/numbuf.rst in ray-core */
@@ -129,10 +130,10 @@ static PyObject* serialize_list(PyObject* self, PyObject* args) {
   if (!PyArg_ParseTuple(args, "O", &value)) { return NULL; }
   std::shared_ptr<Array> array;
   if (PyList_Check(value)) {
-    RayObject *object = new RayObject();
+    RayObject* object = new RayObject();
     int32_t recursion_depth = 0;
-    Status s =
-        SerializeSequences(std::vector<PyObject*>({value}), recursion_depth, &array, object->arrays);
+    Status s = SerializeSequences(
+        std::vector<PyObject*>({value}), recursion_depth, &array, object->arrays);
     CHECK_SERIALIZATION_ERROR(s);
 
     for (auto array : object->arrays) {
@@ -147,12 +148,13 @@ static PyObject* serialize_list(PyObject* self, PyObject* args) {
 
     int64_t data_size, total_size;
     auto mock = std::make_shared<MockBufferStream>();
-    write_batch_and_tensors(mock.get(), object->batch, object->arrays, &data_size, &total_size);
+    write_batch_and_tensors(
+        mock.get(), object->batch, object->arrays, &data_size, &total_size);
 
     PyObject* r = PyTuple_New(2);
     PyTuple_SetItem(r, 0, PyLong_FromLong(LENGTH_PREFIX_SIZE + total_size));
-    PyTuple_SetItem(r, 1,
-        PyCapsule_New(reinterpret_cast<void*>(object), "arrow", &ArrowCapsule_Destructor));
+    PyTuple_SetItem(r, 1, PyCapsule_New(reinterpret_cast<void*>(object), "arrow",
+                              &ArrowCapsule_Destructor));
     return r;
   }
   return NULL;
@@ -171,7 +173,8 @@ static PyObject* write_to_buffer(PyObject* self, PyObject* args) {
       LENGTH_PREFIX_SIZE + reinterpret_cast<uint8_t*>(buffer->buf),
       buffer->len - LENGTH_PREFIX_SIZE);
   int64_t batch_size, total_size;
-  ARROW_CHECK_OK(write_batch_and_tensors(target.get(), object->batch, object->arrays, &batch_size, &total_size));
+  ARROW_CHECK_OK(write_batch_and_tensors(
+      target.get(), object->batch, object->arrays, &batch_size, &total_size));
   *((int64_t*)buffer->buf) = buffer->len - LENGTH_PREFIX_SIZE;
   Py_RETURN_NONE;
 }
@@ -184,10 +187,11 @@ static PyObject* read_from_buffer(PyObject* self, PyObject* args) {
   Py_buffer* data_buffer = PyMemoryView_GET_BUFFER(data_memoryview);
 
   RayObject* object = new RayObject();
-  ARROW_CHECK_OK(
-      read_batch_and_tensors(reinterpret_cast<uint8_t*>(data_buffer->buf), data_buffer->len, &object->batch, object->tensors));
+  ARROW_CHECK_OK(read_batch_and_tensors(reinterpret_cast<uint8_t*>(data_buffer->buf),
+      data_buffer->len, &object->batch, object->tensors));
 
-  return PyCapsule_New(reinterpret_cast<void*>(object), "arrow", &ArrowCapsule_Destructor);
+  return PyCapsule_New(
+      reinterpret_cast<void*>(object), "arrow", &ArrowCapsule_Destructor);
 }
 
 /* Documented in doc/numbuf.rst in ray-core */
@@ -196,7 +200,8 @@ static PyObject* deserialize_list(PyObject* self, PyObject* args) {
   PyObject* base = Py_None;
   if (!PyArg_ParseTuple(args, "O&|O", &PyObjectToArrow, &object, &base)) { return NULL; }
   PyObject* result;
-  Status s = DeserializeList(object->batch->column(0), 0, object->batch->num_rows(), base, object->tensors, &result);
+  Status s = DeserializeList(object->batch->column(0), 0, object->batch->num_rows(), base,
+      object->tensors, &result);
   CHECK_SERIALIZATION_ERROR(s);
   return result;
 }
@@ -281,7 +286,8 @@ static PyObject* store_list(PyObject* self, PyObject* args) {
   std::shared_ptr<Array> array;
   int32_t recursion_depth = 0;
   std::vector<PyObject*> tensors;
-  Status s = SerializeSequences(std::vector<PyObject*>({value}), recursion_depth, &array, tensors);
+  Status s = SerializeSequences(
+      std::vector<PyObject*>({value}), recursion_depth, &array, tensors);
   CHECK_SERIALIZATION_ERROR(s);
 
   std::shared_ptr<RecordBatch> batch = make_batch(array);
@@ -296,7 +302,8 @@ static PyObject* store_list(PyObject* self, PyObject* args) {
    * stored in the plasma data buffer. The header end offset is stored in
    * the first LENGTH_PREFIX_SIZE bytes of the data buffer. The RecordBatch
    * data is stored after that. */
-  int error_code = plasma_create(conn, obj_id, LENGTH_PREFIX_SIZE + total_size, NULL, 0, &data);
+  int error_code =
+      plasma_create(conn, obj_id, LENGTH_PREFIX_SIZE + total_size, NULL, 0, &data);
   if (error_code == PlasmaError_ObjectExists) {
     PyErr_SetString(NumbufPlasmaObjectExistsError,
         "An object with this ID already exists in the plasma "
@@ -311,7 +318,8 @@ static PyObject* store_list(PyObject* self, PyObject* args) {
   }
   CHECK(error_code == PlasmaError_OK);
 
-  auto target = std::make_shared<FixedBufferStream>(LENGTH_PREFIX_SIZE + data, total_size);
+  auto target =
+      std::make_shared<FixedBufferStream>(LENGTH_PREFIX_SIZE + data, total_size);
   write_batch_and_tensors(target.get(), batch, tensors, &data_size, &total_size);
   *((int64_t*)data) = data_size;
 
@@ -381,11 +389,12 @@ static PyObject* retrieve_list(PyObject* self, PyObject* args) {
 
       auto batch = std::shared_ptr<RecordBatch>();
       std::vector<std::shared_ptr<Tensor>> tensors;
-      ARROW_CHECK_OK(
-          read_batch_and_tensors(object_buffers[i].data, object_buffers[i].data_size, &batch, tensors));
+      ARROW_CHECK_OK(read_batch_and_tensors(
+          object_buffers[i].data, object_buffers[i].data_size, &batch, tensors));
 
       PyObject* result;
-      Status s = DeserializeList(batch->column(0), 0, batch->num_rows(), base, tensors, &result);
+      Status s =
+          DeserializeList(batch->column(0), 0, batch->num_rows(), base, tensors, &result);
       CHECK_SERIALIZATION_ERROR(s);
       Py_XDECREF(base);
 

@@ -20,13 +20,13 @@ SequenceBuilder::SequenceBuilder(MemoryPool* pool)
       tuple_offsets_({0}),
       dict_offsets_({0}) {}
 
-#define UPDATE(OFFSET, TAG)                                               \
-  if (TAG == -1) {                                                        \
-    TAG = num_tags;                                                       \
-    num_tags += 1;                                                        \
-  }                                                                       \
-  RETURN_NOT_OK(offsets_.Append(OFFSET));                                 \
-  RETURN_NOT_OK(types_.Append(TAG));                                      \
+#define UPDATE(OFFSET, TAG)               \
+  if (TAG == -1) {                        \
+    TAG = num_tags;                       \
+    num_tags += 1;                        \
+  }                                       \
+  RETURN_NOT_OK(offsets_.Append(OFFSET)); \
+  RETURN_NOT_OK(types_.Append(TAG));      \
   RETURN_NOT_OK(nones_.AppendToBitmap(true));
 
 Status SequenceBuilder::AppendNone() {

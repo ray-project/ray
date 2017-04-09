@@ -113,9 +113,7 @@ class FixedBufferStream : public arrow::io::OutputStream,
 
   arrow::Status Read(int64_t nbytes, std::shared_ptr<arrow::Buffer>* out) override {
     DCHECK(out);
-    if (position_ + nbytes > size_) {
-      return arrow::Status::IOError("EOF");
-    }
+    if (position_ + nbytes > size_) { return arrow::Status::IOError("EOF"); }
     *out = std::make_shared<arrow::Buffer>(data_ + position_, nbytes);
     position_ += nbytes;
     return arrow::Status::OK();

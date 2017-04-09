@@ -14,8 +14,8 @@ extern PyObject* numbuf_deserialize_callback;
 
 namespace numbuf {
 
-Status DeserializeArray(
-    std::shared_ptr<Array> array, int32_t offset, PyObject* base, const std::vector<std::shared_ptr<arrow::Tensor>>& tensors, PyObject** out) {
+Status DeserializeArray(std::shared_ptr<Array> array, int32_t offset, PyObject* base,
+    const std::vector<std::shared_ptr<arrow::Tensor>>& tensors, PyObject** out) {
   DCHECK(array);
   int32_t index = std::static_pointer_cast<Int32Array>(array)->Value(offset);
   RETURN_NOT_OK(py::TensorToNdarray(*tensors[index], base, out));
@@ -28,9 +28,8 @@ Status DeserializeArray(
   return Status::OK();
 }
 
-Status SerializeArray(
-    PyArrayObject* array, SequenceBuilder& builder, std::vector<PyObject*>& subdicts,
-    std::vector<PyObject*>& tensors_out) {
+Status SerializeArray(PyArrayObject* array, SequenceBuilder& builder,
+    std::vector<PyObject*>& subdicts, std::vector<PyObject*>& tensors_out) {
   int dtype = PyArray_TYPE(array);
   switch (dtype) {
     case NPY_UINT8:
@@ -45,8 +44,7 @@ Status SerializeArray(
     case NPY_DOUBLE: {
       RETURN_NOT_OK(builder.AppendTensor(tensors_out.size()));
       tensors_out.push_back(reinterpret_cast<PyObject*>(array));
-    }
-    break;
+    } break;
     default:
       if (!numbuf_serialize_callback) {
         std::stringstream stream;

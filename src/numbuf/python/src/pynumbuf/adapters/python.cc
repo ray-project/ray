@@ -177,7 +177,8 @@ Status SerializeSequences(std::vector<PyObject*> sequences, int32_t recursion_de
   }
   std::shared_ptr<Array> tuple;
   if (subtuples.size() > 0) {
-    RETURN_NOT_OK(SerializeSequences(subtuples, recursion_depth + 1, &tuple, tensors_out));
+    RETURN_NOT_OK(
+        SerializeSequences(subtuples, recursion_depth + 1, &tuple, tensors_out));
   }
   std::shared_ptr<Array> dict;
   if (subdicts.size() > 0) {
@@ -218,9 +219,8 @@ Status DeserializeTuple(std::shared_ptr<Array> array, int32_t start_idx, int32_t
   DESERIALIZE_SEQUENCE(PyTuple_New, PyTuple_SetItem)
 }
 
-Status SerializeDict(
-    std::vector<PyObject*> dicts, int32_t recursion_depth, std::shared_ptr<Array>* out,
-    std::vector<PyObject*>& tensors_out) {
+Status SerializeDict(std::vector<PyObject*> dicts, int32_t recursion_depth,
+    std::shared_ptr<Array>* out, std::vector<PyObject*>& tensors_out) {
   DictBuilder result;
   if (recursion_depth >= MAX_RECURSION_DEPTH) {
     return Status::NotImplemented(
@@ -234,24 +234,29 @@ Status SerializeDict(
     while (PyDict_Next(dict, &pos, &key, &value)) {
       RETURN_NOT_OK(append(key, result.keys(), dummy, key_tuples, dummy, tensors_out));
       DCHECK(dummy.size() == 0);
-      RETURN_NOT_OK(append(value, result.vals(), val_lists, val_tuples, val_dicts, tensors_out));
+      RETURN_NOT_OK(
+          append(value, result.vals(), val_lists, val_tuples, val_dicts, tensors_out));
     }
   }
   std::shared_ptr<Array> key_tuples_arr;
   if (key_tuples.size() > 0) {
-    RETURN_NOT_OK(SerializeSequences(key_tuples, recursion_depth + 1, &key_tuples_arr, tensors_out));
+    RETURN_NOT_OK(SerializeSequences(
+        key_tuples, recursion_depth + 1, &key_tuples_arr, tensors_out));
   }
   std::shared_ptr<Array> val_list_arr;
   if (val_lists.size() > 0) {
-    RETURN_NOT_OK(SerializeSequences(val_lists, recursion_depth + 1, &val_list_arr, tensors_out));
+    RETURN_NOT_OK(
+        SerializeSequences(val_lists, recursion_depth + 1, &val_list_arr, tensors_out));
   }
   std::shared_ptr<Array> val_tuples_arr;
   if (val_tuples.size() > 0) {
-    RETURN_NOT_OK(SerializeSequences(val_tuples, recursion_depth + 1, &val_tuples_arr, tensors_out));
+    RETURN_NOT_OK(SerializeSequences(
+        val_tuples, recursion_depth + 1, &val_tuples_arr, tensors_out));
   }
   std::shared_ptr<Array> val_dict_arr;
   if (val_dicts.size() > 0) {
-    RETURN_NOT_OK(SerializeDict(val_dicts, recursion_depth + 1, &val_dict_arr, tensors_out));
+    RETURN_NOT_OK(
+        SerializeDict(val_dicts, recursion_depth + 1, &val_dict_arr, tensors_out));
   }
   result.Finish(key_tuples_arr, val_list_arr, val_tuples_arr, val_dict_arr, out);
 
@@ -277,8 +282,10 @@ Status DeserializeDict(std::shared_ptr<Array> array, int32_t start_idx, int32_t 
   // TODO(pcm): error handling, get rid of the temporary copy of the list
   PyObject *keys, *vals;
   PyObject* result = PyDict_New();
-  ARROW_RETURN_NOT_OK(DeserializeList(data->field(0), start_idx, stop_idx, base, tensors, &keys));
-  ARROW_RETURN_NOT_OK(DeserializeList(data->field(1), start_idx, stop_idx, base, tensors, &vals));
+  ARROW_RETURN_NOT_OK(
+      DeserializeList(data->field(0), start_idx, stop_idx, base, tensors, &keys));
+  ARROW_RETURN_NOT_OK(
+      DeserializeList(data->field(1), start_idx, stop_idx, base, tensors, &vals));
   for (size_t i = start_idx; i < stop_idx; ++i) {
     PyDict_SetItem(
         result, PyList_GetItem(keys, i - start_idx), PyList_GetItem(vals, i - start_idx));

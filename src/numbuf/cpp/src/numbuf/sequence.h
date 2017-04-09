@@ -77,6 +77,7 @@ class SequenceBuilder {
   arrow::Status Finish(std::shared_ptr<arrow::Array> list_data,
       std::shared_ptr<arrow::Array> tuple_data, std::shared_ptr<arrow::Array> dict_data,
       std::shared_ptr<arrow::Array>* out);
+
  private:
   arrow::MemoryPool* pool_;
 
