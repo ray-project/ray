@@ -48,6 +48,21 @@ std::shared_ptr<RecordBatch> make_batch(std::shared_ptr<Array> data) {
   return std::shared_ptr<RecordBatch>(new RecordBatch(schema, data->length(), {data}));
 }
 
+Status write_batch_and_tensors(io::OutputStream* stream, std::shared_ptr<RecordBatch> batch, const std::vector<std::shared_ptr<Tensor>>& tensors, int64_t *data_size, int64_t* total_size) {
+  std::shared_ptr<arrow::ipc::FileWriter> writer;
+  RETURN_NOT_OK(ipc::FileWriter::Open(stream, batch->schema(), &writer));
+  RETURN_NOT_OK(writer->WriteRecordBatch(*batch, true));
+  RETURN_NOT_OK(writer->Close());
+  RETURN_NOT_OK(stream->Tell(data_size));
+  for (auto tensor : tensors) {
+    int32_t metadata_length;
+    int64_t body_length;
+    RETURN_NOT_OK(ipc::WriteTensor(*tensor, stream, &metadata_length, &body_length));
+  }
+  RETURN_NOT_OK(stream->Tell(total_size));
+  return Status::OK();
+}
+
 Status get_batch_size(std::shared_ptr<RecordBatch> batch, int64_t* size) {
   // Determine the size of the serialized batch by writing to a mock file.
   auto mock = std::make_shared<MockBufferStream>();
@@ -289,15 +304,9 @@ static PyObject* store_list(PyObject* self, PyObject* args) {
 
   std::shared_ptr<RecordBatch> batch = make_batch(array);
 
-  int64_t size;
-  ARROW_CHECK_OK(get_batch_size(batch, &size));
-  int64_t data_size = size;
-
-  for (auto tensor : tensors) {
-    int64_t tensor_size;
-    ARROW_CHECK_OK(get_tensor_size(tensor, &tensor_size));
-    size += tensor_size;
-  }
+  int64_t data_size, total_size;
+  auto mock = std::make_shared<MockBufferStream>();
+  write_batch_and_tensors(mock.get(), batch, tensors, &data_size, &total_size);
 
   uint8_t* data;
   /* The arrow schema is stored as the metadata of the plasma object and
@@ -305,7 +314,7 @@ static PyObject* store_list(PyObject* self, PyObject* args) {
    * stored in the plasma data buffer. The header end offset is stored in
    * the first LENGTH_PREFIX_SIZE bytes of the data buffer. The RecordBatch
    * data is stored after that. */
-  int error_code = plasma_create(conn, obj_id, LENGTH_PREFIX_SIZE + size, NULL, 0, &data);
+  int error_code = plasma_create(conn, obj_id, LENGTH_PREFIX_SIZE + total_size, NULL, 0, &data);
   if (error_code == PlasmaError_ObjectExists) {
     PyErr_SetString(NumbufPlasmaObjectExistsError,
         "An object with this ID already exists in the plasma "
@@ -320,18 +329,8 @@ static PyObject* store_list(PyObject* self, PyObject* args) {
   }
   CHECK(error_code == PlasmaError_OK);
 
-  auto target = std::make_shared<FixedBufferStream>(LENGTH_PREFIX_SIZE + data, size);
-  std::shared_ptr<arrow::ipc::FileWriter> writer;
-  ipc::FileWriter::Open(target.get(), batch->schema(), &writer);
-  writer->WriteRecordBatch(*batch, true);
-  writer->Close();
-  for (auto tensor : tensors) {
-    int64_t s;
-    target->Tell(&s);
-    int32_t metadata_length;
-    int64_t body_length;
-    ARROW_CHECK_OK(ipc::WriteTensor(*tensor, target.get(), &metadata_length, &body_length));
-  }
+  auto target = std::make_shared<FixedBufferStream>(LENGTH_PREFIX_SIZE + data, total_size);
+  write_batch_and_tensors(target.get(), batch, tensors, &data_size, &total_size);
   *((int64_t*)data) = data_size;
 
   /* Do the plasma_release corresponding to the call to plasma_create. */
