@@ -135,6 +135,14 @@ static PyObject* serialize_list(PyObject* self, PyObject* args) {
         SerializeSequences(std::vector<PyObject*>({value}), recursion_depth, &array, object->arrays);
     CHECK_SERIALIZATION_ERROR(s);
 
+    for (auto array : object->arrays) {
+      int32_t metadata_length;
+      int64_t body_length;
+      std::shared_ptr<Tensor> tensor;
+      ARROW_CHECK_OK(py::NdarrayToTensor(NULL, array, &tensor));
+      object->tensors.push_back(tensor);
+    }
+
     object->batch = make_batch(array);
 
     int64_t data_size, total_size;
