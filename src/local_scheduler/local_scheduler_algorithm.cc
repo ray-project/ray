@@ -672,7 +672,7 @@ std::list<TaskQueueEntry>::iterator queue_task(
   task_queue->push_back(*task_entry);
   /* Since we just queued the task, we can get a reference to it by going to
    * the last element in the queue. */
-  auto it = state->algorithm_state->waiting_task_queue->end();
+  auto it = task_queue->end();
   --it;
 
   /* The task has been added to a local scheduler queue. Write the entry in the
