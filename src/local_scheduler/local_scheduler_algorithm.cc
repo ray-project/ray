@@ -36,7 +36,7 @@ struct ObjectEntry {
    *  the tasks in the waiting queue. Each element actually stores a reference
    *  to the corresponding task's queue entry in waiting queue, for fast
    *  deletion when all of the task's dependencies become available. */
-  std::vector<std::list<TaskQueueEntry>::iterator> *dependent_tasks;
+  std::vector<std::list<TaskQueueEntry>::iterator> dependent_tasks;
 };
 
 /** This is used to define the queue of actor task specs for which the
@@ -179,14 +179,12 @@ void SchedulingAlgorithmState_free(SchedulingAlgorithmState *algorithm_state) {
   utarray_free(algorithm_state->blocked_workers);
   /* Free the cached information about which objects are present locally. */
   for (auto const &entry : algorithm_state->local_objects) {
-    delete entry.second->dependent_tasks;
-    free(entry.second);
+    delete entry.second;
   }
   /* Free the cached information about which objects are currently being
    * fetched. */
   for (auto const &entry : algorithm_state->remote_objects) {
-    delete entry.second->dependent_tasks;
-    free(entry.second);
+    delete entry.second;
   }
   /* Free the algorithm state. */
   delete algorithm_state;
@@ -462,14 +460,12 @@ void fetch_missing_dependency(LocalSchedulerState *state,
      * hash table of locally available objects in handle_object_available when
      * the object becomes available locally. It will get freed if the object is
      * subsequently removed locally. */
-    ObjectEntry *entry = (ObjectEntry *) malloc(sizeof(ObjectEntry));
+    ObjectEntry *entry = new ObjectEntry();
     entry->object_id = obj_id;
-    entry->dependent_tasks =
-        new std::vector<std::list<TaskQueueEntry>::iterator>();
     algorithm_state->remote_objects[obj_id] = entry;
   }
   ObjectEntry *entry = algorithm_state->remote_objects[obj_id];
-  entry->dependent_tasks->push_back(task_entry_it);
+  entry->dependent_tasks.push_back(task_entry_it);
 }
 
 /**
@@ -1146,20 +1142,18 @@ void handle_object_available(LocalSchedulerState *state,
   } else {
     /* Allocate a new object entry. Object entries will get freed if the object
      * is removed. */
-    entry = (ObjectEntry *) malloc(sizeof(ObjectEntry));
+    entry = new ObjectEntry();
     entry->object_id = object_id;
-    entry->dependent_tasks =
-        new std::vector<std::list<TaskQueueEntry>::iterator>();
   }
 
   /* Add the entry to the set of locally available objects. */
   CHECK(algorithm_state->local_objects.count(object_id) == 0);
   algorithm_state->local_objects[object_id] = entry;
 
-  if (!entry->dependent_tasks->empty()) {
+  if (!entry->dependent_tasks.empty()) {
     /* Out of the tasks that were dependent on this object, if they are now
      * ready to run, move them to the dispatch queue. */
-    for (auto &it : *entry->dependent_tasks) {
+    for (auto &it : entry->dependent_tasks) {
       if (can_run(algorithm_state, it->spec)) {
         LOG_DEBUG("Moved task to dispatch queue");
         algorithm_state->dispatch_task_queue->push_back(*it);
@@ -1172,7 +1166,7 @@ void handle_object_available(LocalSchedulerState *state,
      * queue. */
     dispatch_tasks(state, algorithm_state);
     /* Clean up the records for dependent tasks. */
-    entry->dependent_tasks->clear();
+    entry->dependent_tasks.clear();
   }
 }
 
@@ -1183,8 +1177,7 @@ void handle_object_removed(LocalSchedulerState *state,
 
   CHECK(algorithm_state->local_objects.count(removed_object_id) == 1);
   ObjectEntry *entry = algorithm_state->local_objects[removed_object_id];
-  delete entry->dependent_tasks;
-  free(entry);
+  delete entry;
   algorithm_state->local_objects.erase(removed_object_id);
 
   /* Track queued tasks that were dependent on this object.
