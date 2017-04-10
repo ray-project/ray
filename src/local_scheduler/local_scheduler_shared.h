@@ -8,10 +8,10 @@
 #include "utarray.h"
 #include "uthash.h"
 
+#include <vector>
+
 /* These are needed to define the UT_arrays. */
 extern UT_icd task_ptr_icd;
-extern UT_icd workers_icd;
-extern UT_icd pid_t_icd;
 
 /** This struct is used to maintain a mapping from actor IDs to the ID of the
  *  local scheduler that is responsible for the actor. */
@@ -27,6 +27,8 @@ typedef struct {
 /** Internal state of the scheduling algorithm. */
 typedef struct SchedulingAlgorithmState SchedulingAlgorithmState;
 
+struct LocalSchedulerClient;
+
 /** A struct storing the configuration state of the local scheduler. This should
  *  consist of values that don't change over the lifetime of the local
  *  scheduler. */
@@ -38,7 +40,7 @@ typedef struct {
 } local_scheduler_config;
 
 /** The state of the local scheduler. */
-typedef struct {
+struct LocalSchedulerState {
   /** The configuration for the local scheduler. */
   local_scheduler_config config;
   /** The local scheduler event loop. */
@@ -46,10 +48,10 @@ typedef struct {
   /** List of workers available to this node. This is used to free the worker
    *  structs when we free the scheduler state and also to access the worker
    *  structs in the tests. */
-  UT_array *workers;
+  std::vector<LocalSchedulerClient *> workers;
   /** List of the process IDs for child processes (workers) started by the
    *  local scheduler that have not sent a REGISTER_PID message yet. */
-  UT_array *child_pids;
+  std::vector<pid_t> child_pids;
   /** A hash table mapping actor IDs to the db_client_id of the local scheduler
    *  that is responsible for the actor. */
   actor_map_entry *actor_mapping;
@@ -68,10 +70,10 @@ typedef struct {
   /** Vector of dynamic attributes associated with the node owned by this local
    *  scheduler. */
   double dynamic_resources[ResourceIndex_MAX];
-} LocalSchedulerState;
+};
 
 /** Contains all information associated with a local scheduler client. */
-typedef struct {
+struct LocalSchedulerClient {
   /** The socket used to communicate with the client. */
   int sock;
   /** A pointer to the task object that is currently running on this client. If
@@ -91,6 +93,6 @@ typedef struct {
   ActorID actor_id;
   /** A pointer to the local scheduler state. */
   LocalSchedulerState *local_scheduler_state;
-} LocalSchedulerClient;
+};
 
 #endif /* LOCAL_SCHEDULER_SHARED_H */

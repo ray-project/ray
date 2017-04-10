@@ -65,11 +65,9 @@ static void register_clients(int num_mock_workers, LocalSchedulerMock *mock) {
     new_client_connection(mock->loop, mock->local_scheduler_fd,
                           (void *) mock->local_scheduler_state, 0);
 
-    LocalSchedulerClient **worker = (LocalSchedulerClient **) utarray_eltptr(
-        mock->local_scheduler_state->workers, i);
+    LocalSchedulerClient *worker = mock->local_scheduler_state->workers[i];
 
-    process_message(mock->local_scheduler_state->loop, (*worker)->sock, *worker,
-                    0);
+    process_message(mock->local_scheduler_state->loop, worker->sock, worker, 0);
   }
 }
 
@@ -147,12 +145,9 @@ void LocalSchedulerMock_free(LocalSchedulerMock *mock) {
 
   /* Kill all the workers and run the event loop again so that the task table
    * updates propagate and the tasks in progress are freed. */
-  LocalSchedulerClient **worker = (LocalSchedulerClient **) utarray_eltptr(
-      mock->local_scheduler_state->workers, 0);
-  while (worker != NULL) {
-    kill_worker(*worker, true);
-    worker = (LocalSchedulerClient **) utarray_eltptr(
-        mock->local_scheduler_state->workers, 0);
+  while (mock->local_scheduler_state->workers.size() > 0) {
+    LocalSchedulerClient *worker = mock->local_scheduler_state->workers.front();
+    kill_worker(mock->local_scheduler_state, worker, true);
   }
   event_loop_add_timer(mock->loop, 500,
                        (event_loop_timer_handler) timeout_handler, NULL);
@@ -446,8 +441,7 @@ TEST task_dependency_test(void) {
   LocalSchedulerState *state = local_scheduler->local_scheduler_state;
   SchedulingAlgorithmState *algorithm_state = state->algorithm_state;
   /* Get the first worker. */
-  LocalSchedulerClient *worker =
-      *((LocalSchedulerClient **) utarray_eltptr(state->workers, 0));
+  LocalSchedulerClient *worker = state->workers.front();
   int64_t task_size;
   TaskSpec *spec = example_task_spec(1, 1, &task_size);
   ObjectID oid = TaskSpec_arg_id(spec, 0);
@@ -522,8 +516,7 @@ TEST task_multi_dependency_test(void) {
   LocalSchedulerState *state = local_scheduler->local_scheduler_state;
   SchedulingAlgorithmState *algorithm_state = state->algorithm_state;
   /* Get the first worker. */
-  LocalSchedulerClient *worker =
-      *((LocalSchedulerClient **) utarray_eltptr(state->workers, 0));
+  LocalSchedulerClient *worker = state->workers.front();
   int64_t task_size;
   TaskSpec *spec = example_task_spec(2, 1, &task_size);
   ObjectID oid1 = TaskSpec_arg_id(spec, 0);
@@ -598,9 +591,9 @@ TEST start_kill_workers_test(void) {
   LocalSchedulerMock *local_scheduler = LocalSchedulerMock_init(num_workers, 0);
   /* We start off with num_workers children processes, but no workers
    * registered yet. */
-  ASSERT_EQ(utarray_len(local_scheduler->local_scheduler_state->child_pids),
+  ASSERT_EQ(local_scheduler->local_scheduler_state->child_pids.size(),
             num_workers);
-  ASSERT_EQ(utarray_len(local_scheduler->local_scheduler_state->workers), 0);
+  ASSERT_EQ(local_scheduler->local_scheduler_state->workers.size(), 0);
 
   /* Make sure that each worker connects to the local_scheduler scheduler. This
    * for loop will hang if one of the workers does not connect. */
@@ -613,29 +606,26 @@ TEST start_kill_workers_test(void) {
   /* After handling each worker's initial connection, we should now have all
    * workers accounted for, but we haven't yet matched up process IDs with our
    * children processes. */
-  ASSERT_EQ(utarray_len(local_scheduler->local_scheduler_state->child_pids),
+  ASSERT_EQ(local_scheduler->local_scheduler_state->child_pids.size(),
             num_workers);
-  ASSERT_EQ(utarray_len(local_scheduler->local_scheduler_state->workers),
+  ASSERT_EQ(local_scheduler->local_scheduler_state->workers.size(),
             num_workers);
 
   /* Each worker should register its process ID. */
-  for (int i = 0;
-       i < utarray_len(local_scheduler->local_scheduler_state->workers); ++i) {
-    LocalSchedulerClient *worker = *(LocalSchedulerClient **) utarray_eltptr(
-        local_scheduler->local_scheduler_state->workers, i);
+  for (auto const &worker : local_scheduler->local_scheduler_state->workers) {
     process_message(local_scheduler->local_scheduler_state->loop, worker->sock,
                     worker, 0);
   }
-  ASSERT_EQ(utarray_len(local_scheduler->local_scheduler_state->child_pids), 0);
-  ASSERT_EQ(utarray_len(local_scheduler->local_scheduler_state->workers),
+  ASSERT_EQ(local_scheduler->local_scheduler_state->child_pids.size(), 0);
+  ASSERT_EQ(local_scheduler->local_scheduler_state->workers.size(),
             num_workers);
 
   /* After killing a worker, its state is cleaned up. */
-  LocalSchedulerClient *worker = *(LocalSchedulerClient **) utarray_eltptr(
-      local_scheduler->local_scheduler_state->workers, 0);
-  kill_worker(worker, false);
-  ASSERT_EQ(utarray_len(local_scheduler->local_scheduler_state->child_pids), 0);
-  ASSERT_EQ(utarray_len(local_scheduler->local_scheduler_state->workers),
+  LocalSchedulerClient *worker =
+      local_scheduler->local_scheduler_state->workers.front();
+  kill_worker(local_scheduler->local_scheduler_state, worker, false);
+  ASSERT_EQ(local_scheduler->local_scheduler_state->child_pids.size(), 0);
+  ASSERT_EQ(local_scheduler->local_scheduler_state->workers.size(),
             num_workers - 1);
 
   /* Start a worker after the local scheduler has been initialized. */
@@ -643,23 +633,22 @@ TEST start_kill_workers_test(void) {
   /* Accept the workers as clients to the plasma manager. */
   int new_worker_fd = accept_client(local_scheduler->plasma_manager_fd);
   /* The new worker should register its process ID. */
-  ASSERT_EQ(utarray_len(local_scheduler->local_scheduler_state->child_pids), 1);
-  ASSERT_EQ(utarray_len(local_scheduler->local_scheduler_state->workers),
+  ASSERT_EQ(local_scheduler->local_scheduler_state->child_pids.size(), 1);
+  ASSERT_EQ(local_scheduler->local_scheduler_state->workers.size(),
             num_workers - 1);
   /* Make sure the new worker connects to the local_scheduler scheduler. */
   new_client_connection(local_scheduler->loop,
                         local_scheduler->local_scheduler_fd,
                         (void *) local_scheduler->local_scheduler_state, 0);
-  ASSERT_EQ(utarray_len(local_scheduler->local_scheduler_state->child_pids), 1);
-  ASSERT_EQ(utarray_len(local_scheduler->local_scheduler_state->workers),
+  ASSERT_EQ(local_scheduler->local_scheduler_state->child_pids.size(), 1);
+  ASSERT_EQ(local_scheduler->local_scheduler_state->workers.size(),
             num_workers);
   /* Make sure that the new worker registers its process ID. */
-  worker = *(LocalSchedulerClient **) utarray_eltptr(
-      local_scheduler->local_scheduler_state->workers, num_workers - 1);
+  worker = local_scheduler->local_scheduler_state->workers[num_workers - 1];
   process_message(local_scheduler->local_scheduler_state->loop, worker->sock,
                   worker, 0);
-  ASSERT_EQ(utarray_len(local_scheduler->local_scheduler_state->child_pids), 0);
-  ASSERT_EQ(utarray_len(local_scheduler->local_scheduler_state->workers),
+  ASSERT_EQ(local_scheduler->local_scheduler_state->child_pids.size(), 0);
+  ASSERT_EQ(local_scheduler->local_scheduler_state->workers.size(),
             num_workers);
 
   /* Clean up. */
