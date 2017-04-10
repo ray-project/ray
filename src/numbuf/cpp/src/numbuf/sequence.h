@@ -1,8 +1,8 @@
 #ifndef NUMBUF_LIST_H
 #define NUMBUF_LIST_H
 
-#include "tensor.h"
 #include <arrow/api.h>
+#include <arrow/util/logging.h>
 
 namespace numbuf {
 
@@ -49,23 +49,9 @@ class SequenceBuilder {
 
   /*! Appending a tensor to the sequence
 
-      \param dims
-        A vector of dimensions
-
-      \param data
-        A pointer to the start of the data block. The length of the data block
-        will be the product of the dimensions
+      \param tensor_index Index of the tensor in the object.
   */
-  arrow::Status AppendTensor(const std::vector<int64_t>& dims, uint8_t* data);
-  arrow::Status AppendTensor(const std::vector<int64_t>& dims, int8_t* data);
-  arrow::Status AppendTensor(const std::vector<int64_t>& dims, uint16_t* data);
-  arrow::Status AppendTensor(const std::vector<int64_t>& dims, int16_t* data);
-  arrow::Status AppendTensor(const std::vector<int64_t>& dims, uint32_t* data);
-  arrow::Status AppendTensor(const std::vector<int64_t>& dims, int32_t* data);
-  arrow::Status AppendTensor(const std::vector<int64_t>& dims, uint64_t* data);
-  arrow::Status AppendTensor(const std::vector<int64_t>& dims, int64_t* data);
-  arrow::Status AppendTensor(const std::vector<int64_t>& dims, float* data);
-  arrow::Status AppendTensor(const std::vector<int64_t>& dims, double* data);
+  arrow::Status AppendTensor(int32_t tensor_index);
 
   /*! Add a sublist to the sequence. The data contained in the sublist will be
      specified in the "Finish" method.
@@ -109,16 +95,11 @@ class SequenceBuilder {
   arrow::FloatBuilder floats_;
   arrow::DoubleBuilder doubles_;
 
-  UInt8TensorBuilder uint8_tensors_;
-  Int8TensorBuilder int8_tensors_;
-  UInt16TensorBuilder uint16_tensors_;
-  Int16TensorBuilder int16_tensors_;
-  UInt32TensorBuilder uint32_tensors_;
-  Int32TensorBuilder int32_tensors_;
-  UInt64TensorBuilder uint64_tensors_;
-  Int64TensorBuilder int64_tensors_;
-  FloatTensorBuilder float_tensors_;
-  DoubleTensorBuilder double_tensors_;
+  // We use an Int32Builder here to distinguish the tensor indices from
+  // the ints_ above (see the case Type::INT32 in get_value in python.cc).
+  // TODO(pcm): Replace this by using the union tags to distinguish between
+  // these two cases.
+  arrow::Int32Builder tensor_indices_;
 
   std::vector<int32_t> list_offsets_;
   std::vector<int32_t> tuple_offsets_;
@@ -131,17 +112,7 @@ class SequenceBuilder {
   int8_t float_tag = -1;
   int8_t double_tag = -1;
 
-  int8_t uint8_tensor_tag = -1;
-  int8_t int8_tensor_tag = -1;
-  int8_t uint16_tensor_tag = -1;
-  int8_t int16_tensor_tag = -1;
-  int8_t uint32_tensor_tag = -1;
-  int8_t int32_tensor_tag = -1;
-  int8_t uint64_tensor_tag = -1;
-  int8_t int64_tensor_tag = -1;
-  int8_t float_tensor_tag = -1;
-  int8_t double_tensor_tag = -1;
-
+  int8_t tensor_tag = -1;
   int8_t list_tag = -1;
   int8_t tuple_tag = -1;
   int8_t dict_tag = -1;

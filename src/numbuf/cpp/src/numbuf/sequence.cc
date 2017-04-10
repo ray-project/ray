@@ -15,27 +15,18 @@ SequenceBuilder::SequenceBuilder(MemoryPool* pool)
       strings_(pool),
       floats_(pool, std::make_shared<FloatType>()),
       doubles_(pool, std::make_shared<DoubleType>()),
-      uint8_tensors_(std::make_shared<UInt8Type>(), pool),
-      int8_tensors_(std::make_shared<Int8Type>(), pool),
-      uint16_tensors_(std::make_shared<UInt16Type>(), pool),
-      int16_tensors_(std::make_shared<Int16Type>(), pool),
-      uint32_tensors_(std::make_shared<UInt32Type>(), pool),
-      int32_tensors_(std::make_shared<Int32Type>(), pool),
-      uint64_tensors_(std::make_shared<UInt64Type>(), pool),
-      int64_tensors_(std::make_shared<Int64Type>(), pool),
-      float_tensors_(std::make_shared<FloatType>(), pool),
-      double_tensors_(std::make_shared<DoubleType>(), pool),
+      tensor_indices_(pool, std::make_shared<Int32Type>()),
       list_offsets_({0}),
       tuple_offsets_({0}),
       dict_offsets_({0}) {}
 
-#define UPDATE(OFFSET, TAG)                                               \
-  if (TAG == -1) {                                                        \
-    TAG = num_tags;                                                       \
-    num_tags += 1;                                                        \
-  }                                                                       \
-  RETURN_NOT_OK(offsets_.Append(OFFSET));                                 \
-  RETURN_NOT_OK(types_.Append(TAG));                                      \
+#define UPDATE(OFFSET, TAG)               \
+  if (TAG == -1) {                        \
+    TAG = num_tags;                       \
+    num_tags += 1;                        \
+  }                                       \
+  RETURN_NOT_OK(offsets_.Append(OFFSET)); \
+  RETURN_NOT_OK(types_.Append(TAG));      \
   RETURN_NOT_OK(nones_.AppendToBitmap(true));
 
 Status SequenceBuilder::AppendNone() {
@@ -79,27 +70,10 @@ Status SequenceBuilder::AppendDouble(double data) {
   return doubles_.Append(data);
 }
 
-#define DEF_TENSOR_APPEND(NAME, TYPE, TAG)                                             \
-  Status SequenceBuilder::AppendTensor(const std::vector<int64_t>& dims, TYPE* data) { \
-    if (TAG == -1) { NAME.Start(); }                                                   \
-    int64_t size = 1;                                                                  \
-    for (auto dim : dims) {                                                            \
-      size *= dim;                                                                     \
-    }                                                                                  \
-    UPDATE(NAME.length(), TAG);                                                        \
-    return NAME.Append(dims, data);                                                    \
-  }
-
-DEF_TENSOR_APPEND(uint8_tensors_, uint8_t, uint8_tensor_tag);
-DEF_TENSOR_APPEND(int8_tensors_, int8_t, int8_tensor_tag);
-DEF_TENSOR_APPEND(uint16_tensors_, uint16_t, uint16_tensor_tag);
-DEF_TENSOR_APPEND(int16_tensors_, int16_t, int16_tensor_tag);
-DEF_TENSOR_APPEND(uint32_tensors_, uint32_t, uint32_tensor_tag);
-DEF_TENSOR_APPEND(int32_tensors_, int32_t, int32_tensor_tag);
-DEF_TENSOR_APPEND(uint64_tensors_, uint64_t, uint64_tensor_tag);
-DEF_TENSOR_APPEND(int64_tensors_, int64_t, int64_tensor_tag);
-DEF_TENSOR_APPEND(float_tensors_, float, float_tensor_tag);
-DEF_TENSOR_APPEND(double_tensors_, double, double_tensor_tag);
+Status SequenceBuilder::AppendTensor(int32_t tensor_index) {
+  UPDATE(tensor_indices_.length(), tensor_tag);
+  return tensor_indices_.Append(tensor_index);
+}
 
 Status SequenceBuilder::AppendList(int32_t size) {
   UPDATE(list_offsets_.size() - 1, list_tag);
@@ -158,19 +132,7 @@ Status SequenceBuilder::Finish(std::shared_ptr<Array> list_data,
   ADD_ELEMENT(floats_, float_tag);
   ADD_ELEMENT(doubles_, double_tag);
 
-  ADD_ELEMENT(uint8_tensors_, uint8_tensor_tag);
-
-  ADD_ELEMENT(int8_tensors_, int8_tensor_tag);
-  ADD_ELEMENT(uint16_tensors_, uint16_tensor_tag);
-  ADD_ELEMENT(int16_tensors_, int16_tensor_tag);
-  ADD_ELEMENT(uint32_tensors_, uint32_tensor_tag);
-
-  ADD_ELEMENT(int32_tensors_, int32_tensor_tag);
-  ADD_ELEMENT(uint64_tensors_, uint64_tensor_tag);
-  ADD_ELEMENT(int64_tensors_, int64_tensor_tag);
-
-  ADD_ELEMENT(float_tensors_, float_tensor_tag);
-  ADD_ELEMENT(double_tensors_, double_tensor_tag);
+  ADD_ELEMENT(tensor_indices_, tensor_tag);
 
   ADD_SUBSEQUENCE(list_data, list_offsets_, list_builder, list_tag, "list");
   ADD_SUBSEQUENCE(tuple_data, tuple_offsets_, tuple_builder, tuple_tag, "tuple");
