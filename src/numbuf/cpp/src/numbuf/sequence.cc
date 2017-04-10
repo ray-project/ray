@@ -70,7 +70,7 @@ Status SequenceBuilder::AppendDouble(double data) {
   return doubles_.Append(data);
 }
 
-Status SequenceBuilder::AppendTensor(int64_t tensor_index) {
+Status SequenceBuilder::AppendTensor(int32_t tensor_index) {
   UPDATE(tensor_indices_.length(), tensor_tag);
   return tensor_indices_.Append(tensor_index);
 }

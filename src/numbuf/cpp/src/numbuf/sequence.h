@@ -51,7 +51,7 @@ class SequenceBuilder {
 
       \param tensor_index Index of the tensor in the object.
   */
-  arrow::Status AppendTensor(int64_t tensor_index);
+  arrow::Status AppendTensor(int32_t tensor_index);
 
   /*! Add a sublist to the sequence. The data contained in the sublist will be
      specified in the "Finish" method.
@@ -95,6 +95,10 @@ class SequenceBuilder {
   arrow::FloatBuilder floats_;
   arrow::DoubleBuilder doubles_;
 
+  // We use an Int32Builder here to distinguish the tensor indices from
+  // the ints_ above (see the case Type::INT32 in get_value in python.cc).
+  // TODO(pcm): Replace this by using the union tags to distinguish between
+  // these two cases.
   arrow::Int32Builder tensor_indices_;
 
   std::vector<int32_t> list_offsets_;
