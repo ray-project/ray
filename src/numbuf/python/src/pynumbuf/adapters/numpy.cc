@@ -3,7 +3,7 @@
 
 #include <sstream>
 
-#include <numbuf/tensor.h>
+#include <arrow/python/numpy_convert.h>
 
 using namespace arrow;
 
@@ -14,48 +14,11 @@ extern PyObject* numbuf_deserialize_callback;
 
 namespace numbuf {
 
-#define ARROW_TYPE_TO_NUMPY_CASE(TYPE) \
-  case Type::TYPE:                     \
-    return NPY_##TYPE;
-
-#define DESERIALIZE_ARRAY_CASE(TYPE, ArrayType, type)                                   \
-  case Type::TYPE: {                                                                    \
-    auto values = std::dynamic_pointer_cast<ArrayType>(content->values());              \
-    DCHECK(values);                                                                     \
-    type* data = const_cast<type*>(values->raw_data()) + content->value_offset(offset); \
-    *out = PyArray_SimpleNewFromData(                                                   \
-        num_dims, dim.data(), NPY_##TYPE, reinterpret_cast<void*>(data));               \
-    if (base != Py_None) { PyArray_SetBaseObject((PyArrayObject*)*out, base); }         \
-    Py_XINCREF(base);                                                                   \
-  } break;
-
-Status DeserializeArray(
-    std::shared_ptr<Array> array, int32_t offset, PyObject* base, PyObject** out) {
+Status DeserializeArray(std::shared_ptr<Array> array, int32_t offset, PyObject* base,
+    const std::vector<std::shared_ptr<arrow::Tensor>>& tensors, PyObject** out) {
   DCHECK(array);
-  auto tensor = std::dynamic_pointer_cast<StructArray>(array);
-  DCHECK(tensor);
-  auto dims = std::dynamic_pointer_cast<ListArray>(tensor->field(0));
-  auto content = std::dynamic_pointer_cast<ListArray>(tensor->field(1));
-  npy_intp num_dims = dims->value_length(offset);
-  std::vector<npy_intp> dim(num_dims);
-  for (int i = dims->value_offset(offset); i < dims->value_offset(offset + 1); ++i) {
-    dim[i - dims->value_offset(offset)] =
-        std::dynamic_pointer_cast<Int64Array>(dims->values())->Value(i);
-  }
-  switch (content->value_type()->type) {
-    DESERIALIZE_ARRAY_CASE(INT8, Int8Array, int8_t)
-    DESERIALIZE_ARRAY_CASE(INT16, Int16Array, int16_t)
-    DESERIALIZE_ARRAY_CASE(INT32, Int32Array, int32_t)
-    DESERIALIZE_ARRAY_CASE(INT64, Int64Array, int64_t)
-    DESERIALIZE_ARRAY_CASE(UINT8, UInt8Array, uint8_t)
-    DESERIALIZE_ARRAY_CASE(UINT16, UInt16Array, uint16_t)
-    DESERIALIZE_ARRAY_CASE(UINT32, UInt32Array, uint32_t)
-    DESERIALIZE_ARRAY_CASE(UINT64, UInt64Array, uint64_t)
-    DESERIALIZE_ARRAY_CASE(FLOAT, FloatArray, float)
-    DESERIALIZE_ARRAY_CASE(DOUBLE, DoubleArray, double)
-    default:
-      DCHECK(false) << "arrow type not recognized: " << content->value_type()->type;
-  }
+  int32_t index = std::static_pointer_cast<Int32Array>(array)->Value(offset);
+  RETURN_NOT_OK(py::TensorToNdarray(*tensors[index], base, out));
   /* Mark the array as immutable. */
   PyObject* flags = PyObject_GetAttrString(*out, "flags");
   DCHECK(flags != NULL) << "Could not mark Numpy array immutable";
@@ -65,51 +28,23 @@ Status DeserializeArray(
   return Status::OK();
 }
 
-Status SerializeArray(
-    PyArrayObject* array, SequenceBuilder& builder, std::vector<PyObject*>& subdicts) {
-  size_t ndim = PyArray_NDIM(array);
+Status SerializeArray(PyArrayObject* array, SequenceBuilder& builder,
+    std::vector<PyObject*>& subdicts, std::vector<PyObject*>& tensors_out) {
   int dtype = PyArray_TYPE(array);
-  std::vector<int64_t> dims(ndim);
-  for (int i = 0; i < ndim; ++i) {
-    dims[i] = PyArray_DIM(array, i);
-  }
-  // TODO(pcm): Once we don't use builders any more below and directly share
-  // the memory buffer, we need to be more careful about this and not
-  // decrease the reference count of "contiguous" before the serialization
-  // is finished
-  auto contiguous = PyArray_GETCONTIGUOUS(array);
-  auto data = PyArray_DATA(contiguous);
   switch (dtype) {
     case NPY_UINT8:
-      RETURN_NOT_OK(builder.AppendTensor(dims, reinterpret_cast<uint8_t*>(data)));
-      break;
     case NPY_INT8:
-      RETURN_NOT_OK(builder.AppendTensor(dims, reinterpret_cast<int8_t*>(data)));
-      break;
     case NPY_UINT16:
-      RETURN_NOT_OK(builder.AppendTensor(dims, reinterpret_cast<uint16_t*>(data)));
-      break;
     case NPY_INT16:
-      RETURN_NOT_OK(builder.AppendTensor(dims, reinterpret_cast<int16_t*>(data)));
-      break;
     case NPY_UINT32:
-      RETURN_NOT_OK(builder.AppendTensor(dims, reinterpret_cast<uint32_t*>(data)));
-      break;
     case NPY_INT32:
-      RETURN_NOT_OK(builder.AppendTensor(dims, reinterpret_cast<int32_t*>(data)));
-      break;
     case NPY_UINT64:
-      RETURN_NOT_OK(builder.AppendTensor(dims, reinterpret_cast<uint64_t*>(data)));
-      break;
     case NPY_INT64:
-      RETURN_NOT_OK(builder.AppendTensor(dims, reinterpret_cast<int64_t*>(data)));
-      break;
     case NPY_FLOAT:
-      RETURN_NOT_OK(builder.AppendTensor(dims, reinterpret_cast<float*>(data)));
-      break;
-    case NPY_DOUBLE:
-      RETURN_NOT_OK(builder.AppendTensor(dims, reinterpret_cast<double*>(data)));
-      break;
+    case NPY_DOUBLE: {
+      RETURN_NOT_OK(builder.AppendTensor(tensors_out.size()));
+      tensors_out.push_back(reinterpret_cast<PyObject*>(array));
+    } break;
     default:
       if (!numbuf_serialize_callback) {
         std::stringstream stream;
@@ -126,7 +61,6 @@ Status SerializeArray(
         subdicts.push_back(result);
       }
   }
-  Py_XDECREF(contiguous);
   return Status::OK();
 }
 }
