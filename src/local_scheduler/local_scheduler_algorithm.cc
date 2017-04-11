@@ -1,10 +1,11 @@
 #include "local_scheduler_algorithm.h"
 
 #include <stdbool.h>
+#include "utarray.h"
+
 #include <list>
 #include <vector>
-#include "utarray.h"
-#include "utlist.h"
+#include <unordered_map>
 
 #include "state/task_table.h"
 #include "state/local_scheduler_table.h"
@@ -23,29 +24,25 @@ struct TaskQueueEntry {
 };
 
 /** A data structure used to track which objects are available locally and
- *  which objects are being actively fetched. */
-typedef struct {
+ *  which objects are being actively fetched. Objects of this type are used for
+ *  both the scheduling algorithm state's local_objects and remot_objects
+ *  tables. An ObjectEntry should be in at most one of the tables and not both
+ *  simultaneously. */
+struct ObjectEntry {
   /** Object id of this object. */
   ObjectID object_id;
   /** A vector of tasks dependent on this object. These tasks are a subset of
    *  the tasks in the waiting queue. Each element actually stores a reference
    *  to the corresponding task's queue entry in waiting queue, for fast
    *  deletion when all of the task's dependencies become available. */
-  std::vector<std::list<TaskQueueEntry>::iterator> *dependent_tasks;
-  /** Handle for the uthash table. NOTE: This handle is used for both the
-   *  scheduling algorithm state's local_objects and remote_objects tables.
-   *  We must enforce the uthash invariant that the entry be in at most one of
-   *  the tables. */
-  UT_hash_handle hh;
-} object_entry;
+  std::vector<std::list<TaskQueueEntry>::iterator> dependent_tasks;
+};
 
 /** This is used to define the queue of actor task specs for which the
  *  corresponding local scheduler is unknown. */
 UT_icd task_spec_icd = {sizeof(TaskSpec *), NULL, NULL, NULL};
 /** This is used to keep track of task spec sizes in the above queue. */
 UT_icd task_spec_size_icd = {sizeof(int64_t), NULL, NULL, NULL};
-/** This is used to define the queue of available workers. */
-UT_icd worker_icd = {sizeof(LocalSchedulerClient *), NULL, NULL, NULL};
 
 /** This struct contains information about a specific actor. This struct will be
  *  used inside of a hash table. */
@@ -92,25 +89,25 @@ struct SchedulingAlgorithmState {
   /** An array of pointers to workers in the worker pool. These are workers
    *  that have registered a PID with us and that are now waiting to be
    *  assigned a task to execute. */
-  UT_array *available_workers;
+  std::vector<LocalSchedulerClient *> available_workers;
   /** An array of pointers to workers that are currently executing a task,
    *  unblocked. These are the workers that are leasing some number of
    *  resources. */
-  UT_array *executing_workers;
+  std::vector<LocalSchedulerClient *> executing_workers;
   /** An array of pointers to workers that are currently executing a task,
    *  blocked on some object(s) that isn't available locally yet. These are the
    *  workers that are executing a task, but that have temporarily returned the
    *  task's required resources. */
-  UT_array *blocked_workers;
+  std::vector<LocalSchedulerClient *> blocked_workers;
   /** A hash map of the objects that are available in the local Plasma store.
    *  The key is the object ID. This information could be a little stale. */
-  object_entry *local_objects;
+  std::unordered_map<ObjectID, ObjectEntry, UniqueIDHasher> local_objects;
   /** A hash map of the objects that are not available locally. These are
    *  currently being fetched by this local scheduler. The key is the object
    *  ID. Every LOCAL_SCHEDULER_FETCH_TIMEOUT_MILLISECONDS, a Plasma fetch
    *  request will be sent the object IDs in this table. Each entry also holds
    *  an array of queued tasks that are dependent on it. */
-  object_entry *remote_objects;
+  std::unordered_map<ObjectID, ObjectEntry, UniqueIDHasher> remote_objects;
 };
 
 TaskQueueEntry TaskQueueEntry_init(TaskSpec *spec, int64_t task_spec_size) {
@@ -126,12 +123,7 @@ void TaskQueueEntry_free(TaskQueueEntry *entry) {
 }
 
 SchedulingAlgorithmState *SchedulingAlgorithmState_init(void) {
-  SchedulingAlgorithmState *algorithm_state =
-      (SchedulingAlgorithmState *) malloc(sizeof(SchedulingAlgorithmState));
-  /* Initialize an empty hash map for the cache of local available objects. */
-  algorithm_state->local_objects = NULL;
-  /* Initialize the hash table of objects being fetched. */
-  algorithm_state->remote_objects = NULL;
+  SchedulingAlgorithmState *algorithm_state = new SchedulingAlgorithmState();
   /* Initialize the local data structures used for queuing tasks and workers. */
   algorithm_state->waiting_task_queue = new std::list<TaskQueueEntry>();
   algorithm_state->dispatch_task_queue = new std::list<TaskQueueEntry>();
@@ -142,9 +134,6 @@ SchedulingAlgorithmState *SchedulingAlgorithmState_init(void) {
 
   algorithm_state->local_actor_infos = NULL;
 
-  utarray_new(algorithm_state->available_workers, &worker_icd);
-  utarray_new(algorithm_state->executing_workers, &worker_icd);
-  utarray_new(algorithm_state->blocked_workers, &worker_icd);
   return algorithm_state;
 }
 
@@ -178,36 +167,50 @@ void SchedulingAlgorithmState_free(SchedulingAlgorithmState *algorithm_state) {
   }
   utarray_free(algorithm_state->cached_submitted_actor_tasks);
   utarray_free(algorithm_state->cached_submitted_actor_task_sizes);
-  /* Free the list of available workers. */
-  utarray_free(algorithm_state->available_workers);
-  utarray_free(algorithm_state->executing_workers);
-  utarray_free(algorithm_state->blocked_workers);
-  /* Free the cached information about which objects are present locally. */
-  object_entry *obj_entry, *tmp_obj_entry;
-  HASH_ITER(hh, algorithm_state->local_objects, obj_entry, tmp_obj_entry) {
-    HASH_DELETE(hh, algorithm_state->local_objects, obj_entry);
-    /* The check below is commented out because it could fail if
-     * SchedulingAlgorithmState_free is called in response to a SIGINT which
-     * arrives in the middle of handle_object_available. */
-    /* CHECK(obj_entry->dependent_tasks->empty()); */
-    delete obj_entry->dependent_tasks;
-    free(obj_entry);
-  }
-  /* Free the cached information about which objects are currently being
-   * fetched. */
-  HASH_ITER(hh, algorithm_state->remote_objects, obj_entry, tmp_obj_entry) {
-    HASH_DELETE(hh, algorithm_state->remote_objects, obj_entry);
-    delete obj_entry->dependent_tasks;
-    free(obj_entry);
-  }
   /* Free the algorithm state. */
-  free(algorithm_state);
+  delete algorithm_state;
+}
+
+/**
+ * This is a helper method to check if a worker is in a vector of workers.
+ *
+ * @param worker_vector A vector of workers.
+ * @param The worker to look for in the vector.
+ * @return True if the worker is in the vector and false otherwise.
+ */
+bool worker_in_vector(std::vector<LocalSchedulerClient *> &worker_vector,
+                      LocalSchedulerClient *worker) {
+  auto it = std::find(worker_vector.begin(), worker_vector.end(), worker);
+  return it != worker_vector.end();
+}
+
+/**
+ * This is a helper method to remove a worker from a vector of workers if it is
+ * present in the vector.
+ *
+ * @param worker_vector A vector of workers.
+ * @param The worker to remove.
+ * @return True if the worker was removed and false otherwise.
+ */
+bool remove_worker_from_vector(
+    std::vector<LocalSchedulerClient *> &worker_vector,
+    LocalSchedulerClient *worker) {
+  /* Find the worker in the list of executing workers. */
+  auto it = std::find(worker_vector.begin(), worker_vector.end(), worker);
+  bool remove_worker = (it != worker_vector.end());
+  if (remove_worker) {
+    /* Remove the worker from the list of workers. */
+    using std::swap;
+    swap(*it, worker_vector.back());
+    worker_vector.pop_back();
+  }
+  return remove_worker;
 }
 
 void provide_scheduler_info(LocalSchedulerState *state,
                             SchedulingAlgorithmState *algorithm_state,
                             LocalSchedulerInfo *info) {
-  info->total_num_workers = utarray_len(state->workers);
+  info->total_num_workers = state->workers.size();
   /* TODO(swang): Provide separate counts for tasks that are waiting for
    * dependencies vs tasks that are waiting to be assigned. */
   int64_t waiting_task_queue_length =
@@ -216,7 +219,7 @@ void provide_scheduler_info(LocalSchedulerState *state,
       algorithm_state->dispatch_task_queue->size();
   info->task_queue_length =
       waiting_task_queue_length + dispatch_task_queue_length;
-  info->available_workers = utarray_len(algorithm_state->available_workers);
+  info->available_workers = algorithm_state->available_workers.size();
   /* Copy static and dynamic resource information. */
   for (int i = 0; i < ResourceIndex_MAX; i++) {
     info->dynamic_resources[i] = state->dynamic_resources[i];
@@ -463,10 +466,7 @@ void fetch_missing_dependency(LocalSchedulerState *state,
                               SchedulingAlgorithmState *algorithm_state,
                               std::list<TaskQueueEntry>::iterator task_entry_it,
                               ObjectID obj_id) {
-  object_entry *entry;
-  HASH_FIND(hh, algorithm_state->remote_objects, &obj_id, sizeof(obj_id),
-            entry);
-  if (entry == NULL) {
+  if (algorithm_state->remote_objects.count(obj_id) == 0) {
     /* We weren't actively fetching this object. Try the fetch once
      * immediately. */
     if (plasma_manager_is_connected(state->plasma_conn)) {
@@ -477,14 +477,12 @@ void fetch_missing_dependency(LocalSchedulerState *state,
      * hash table of locally available objects in handle_object_available when
      * the object becomes available locally. It will get freed if the object is
      * subsequently removed locally. */
-    entry = (object_entry *) malloc(sizeof(object_entry));
-    entry->object_id = obj_id;
-    entry->dependent_tasks =
-        new std::vector<std::list<TaskQueueEntry>::iterator>();
-    HASH_ADD(hh, algorithm_state->remote_objects, object_id,
-             sizeof(entry->object_id), entry);
+    ObjectEntry entry;
+    entry.object_id = obj_id;
+    algorithm_state->remote_objects[obj_id] = entry;
   }
-  entry->dependent_tasks->push_back(task_entry_it);
+  algorithm_state->remote_objects[obj_id].dependent_tasks.push_back(
+      task_entry_it);
 }
 
 /**
@@ -507,10 +505,7 @@ void fetch_missing_dependencies(
   for (int i = 0; i < num_args; ++i) {
     if (TaskSpec_arg_by_ref(task, i)) {
       ObjectID obj_id = TaskSpec_arg_id(task, i);
-      object_entry *entry;
-      HASH_FIND(hh, algorithm_state->local_objects, &obj_id, sizeof(obj_id),
-                entry);
-      if (entry == NULL) {
+      if (algorithm_state->local_objects.count(obj_id) == 0) {
         /* If the entry is not yet available locally, record the dependency. */
         fetch_missing_dependency(state, algorithm_state, task_entry_it, obj_id);
         ++num_missing_dependencies;
@@ -535,10 +530,7 @@ bool can_run(SchedulingAlgorithmState *algorithm_state, TaskSpec *task) {
   for (int i = 0; i < num_args; ++i) {
     if (TaskSpec_arg_by_ref(task, i)) {
       ObjectID obj_id = TaskSpec_arg_id(task, i);
-      object_entry *entry;
-      HASH_FIND(hh, algorithm_state->local_objects, &obj_id, sizeof(obj_id),
-                entry);
-      if (entry == NULL) {
+      if (algorithm_state->local_objects.count(obj_id) == 0) {
         /* The object is not present locally, so this task cannot be scheduled
          * right now. */
         return false;
@@ -558,15 +550,14 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
   }
 
   /* Allocate a buffer to hold all the object IDs for active fetch requests. */
-  int num_object_ids = HASH_COUNT(state->algorithm_state->remote_objects);
+  int num_object_ids = state->algorithm_state->remote_objects.size();
   ObjectID *object_ids = (ObjectID *) malloc(num_object_ids * sizeof(ObjectID));
 
   /* Fill out the request with the object IDs for active fetches. */
-  object_entry *fetch_request, *tmp;
   int i = 0;
-  HASH_ITER(hh, state->algorithm_state->remote_objects, fetch_request, tmp) {
-    object_ids[i] = fetch_request->object_id;
-    ++i;
+  for (auto const &entry : state->algorithm_state->remote_objects) {
+    object_ids[i] = entry.second.object_id;
+    i++;
   }
   plasma_fetch(state->plasma_conn, num_object_ids, object_ids);
   for (int i = 0; i < num_object_ids; ++i) {
@@ -592,8 +583,8 @@ void dispatch_tasks(LocalSchedulerState *state,
     /* If there is a task to assign, but there are no more available workers in
      * the worker pool, then exit. Ensure that there will be an available
      * worker during a future invocation of dispatch_tasks. */
-    if (utarray_len(algorithm_state->available_workers) == 0) {
-      if (utarray_len(state->child_pids) == 0) {
+    if (algorithm_state->available_workers.size() == 0) {
+      if (state->child_pids.size() == 0) {
         /* If there are no workers, including those pending PID registration,
          * then we must start a new one to replenish the worker pool. */
         start_worker(state, NIL_ACTOR_ID);
@@ -632,14 +623,13 @@ void dispatch_tasks(LocalSchedulerState *state,
     /* Dispatch this task to an available worker and dequeue the task. */
     LOG_DEBUG("Dispatching task");
     /* Get the last available worker in the available worker queue. */
-    LocalSchedulerClient **worker = (LocalSchedulerClient **) utarray_back(
-        algorithm_state->available_workers);
+    LocalSchedulerClient *worker = algorithm_state->available_workers.back();
     /* Tell the available worker to execute the task. */
-    assign_task_to_worker(state, task.spec, task.task_spec_size, *worker);
+    assign_task_to_worker(state, task.spec, task.task_spec_size, worker);
     /* Remove the worker from the available queue, and add it to the executing
      * workers. */
-    utarray_pop_back(algorithm_state->available_workers);
-    utarray_push_back(algorithm_state->executing_workers, worker);
+    algorithm_state->available_workers.pop_back();
+    algorithm_state->executing_workers.push_back(worker);
     print_resource_info(state, task.spec);
     /* Free the task queue entry. */
     TaskQueueEntry_free(&task);
@@ -845,7 +835,7 @@ void handle_task_submitted(LocalSchedulerState *state,
    * dispatch queue and trigger task dispatch. Otherwise, pass the task along to
    * the global scheduler if there is one. */
   if (resource_constraints_satisfied(state, spec) &&
-      (utarray_len(algorithm_state->available_workers) > 0) &&
+      (algorithm_state->available_workers.size() > 0) &&
       can_run(algorithm_state, spec)) {
     queue_dispatch_task(state, algorithm_state, spec, task_spec_size, false);
   } else {
@@ -972,38 +962,20 @@ void handle_worker_available(LocalSchedulerState *state,
                              LocalSchedulerClient *worker) {
   CHECK(worker->task_in_progress == NULL);
   /* Check that the worker isn't in the pool of available workers. */
-  for (LocalSchedulerClient **p = (LocalSchedulerClient **) utarray_front(
-           algorithm_state->available_workers);
-       p != NULL; p = (LocalSchedulerClient **) utarray_next(
-                      algorithm_state->available_workers, p)) {
-    DCHECK(*p != worker);
-  }
+  DCHECK(!worker_in_vector(algorithm_state->available_workers, worker));
+
   /* Check that the worker isn't in the list of blocked workers. */
-  for (LocalSchedulerClient **p = (LocalSchedulerClient **) utarray_front(
-           algorithm_state->blocked_workers);
-       p != NULL; p = (LocalSchedulerClient **) utarray_next(
-                      algorithm_state->blocked_workers, p)) {
-    DCHECK(*p != worker);
-  }
+  DCHECK(!worker_in_vector(algorithm_state->blocked_workers, worker));
+
   /* If the worker was executing a task, it must have finished, so remove it
-   * from the list of executing workers. */
-  for (int i = 0; i < utarray_len(algorithm_state->executing_workers); ++i) {
-    LocalSchedulerClient **p = (LocalSchedulerClient **) utarray_eltptr(
-        algorithm_state->executing_workers, i);
-    if (*p == worker) {
-      utarray_erase(algorithm_state->executing_workers, i, 1);
-      break;
-    }
-  }
-  /* Check that we actually erased the worker. */
-  for (int i = 0; i < utarray_len(algorithm_state->executing_workers); ++i) {
-    LocalSchedulerClient **p = (LocalSchedulerClient **) utarray_eltptr(
-        algorithm_state->executing_workers, i);
-    DCHECK(*p != worker);
-  }
+   * from the list of executing workers. If the worker is connecting for the
+   * first time, it will not be in the list of executing workers. */
+  remove_worker_from_vector(algorithm_state->executing_workers, worker);
+  /* Double check that we successfully removed the worker. */
+  DCHECK(!worker_in_vector(algorithm_state->executing_workers, worker));
 
   /* Add worker to the list of available workers. */
-  utarray_push_back(algorithm_state->available_workers, &worker);
+  algorithm_state->available_workers.push_back(worker);
 
   /* Try to dispatch tasks, since we now have available workers to assign them
    * to. */
@@ -1014,44 +986,31 @@ void handle_worker_removed(LocalSchedulerState *state,
                            SchedulingAlgorithmState *algorithm_state,
                            LocalSchedulerClient *worker) {
   /* Make sure that we remove the worker at most once. */
-  bool removed = false;
-  int64_t num_workers;
+  int num_times_removed = 0;
 
   /* Remove the worker from available workers, if it's there. */
-  num_workers = utarray_len(algorithm_state->available_workers);
-  for (int64_t i = num_workers - 1; i >= 0; --i) {
-    LocalSchedulerClient **p = (LocalSchedulerClient **) utarray_eltptr(
-        algorithm_state->available_workers, i);
-    DCHECK(!((*p == worker) && removed));
-    if (*p == worker) {
-      utarray_erase(algorithm_state->available_workers, i, 1);
-      removed = true;
-    }
-  }
+  bool removed_from_available =
+      remove_worker_from_vector(algorithm_state->available_workers, worker);
+  num_times_removed += removed_from_available;
+  /* Double check that we actually removed the worker. */
+  DCHECK(!worker_in_vector(algorithm_state->available_workers, worker));
 
   /* Remove the worker from executing workers, if it's there. */
-  num_workers = utarray_len(algorithm_state->executing_workers);
-  for (int64_t i = num_workers - 1; i >= 0; --i) {
-    LocalSchedulerClient **p = (LocalSchedulerClient **) utarray_eltptr(
-        algorithm_state->executing_workers, i);
-    DCHECK(!((*p == worker) && removed));
-    if (*p == worker) {
-      utarray_erase(algorithm_state->executing_workers, i, 1);
-      removed = true;
-    }
-  }
+  bool removed_from_executing =
+      remove_worker_from_vector(algorithm_state->executing_workers, worker);
+  num_times_removed += removed_from_executing;
+  /* Double check that we actually removed the worker. */
+  DCHECK(!worker_in_vector(algorithm_state->executing_workers, worker));
 
   /* Remove the worker from blocked workers, if it's there. */
-  num_workers = utarray_len(algorithm_state->blocked_workers);
-  for (int64_t i = num_workers - 1; i >= 0; --i) {
-    LocalSchedulerClient **p = (LocalSchedulerClient **) utarray_eltptr(
-        algorithm_state->blocked_workers, i);
-    DCHECK(!((*p == worker) && removed));
-    if (*p == worker) {
-      utarray_erase(algorithm_state->blocked_workers, i, 1);
-      removed = true;
-    }
-  }
+  bool removed_from_blocked =
+      remove_worker_from_vector(algorithm_state->blocked_workers, worker);
+  num_times_removed += removed_from_blocked;
+  /* Double check that we actually removed the worker. */
+  DCHECK(!worker_in_vector(algorithm_state->blocked_workers, worker));
+
+  /* Make sure we removed the worker at most once. */
+  CHECK(num_times_removed <= 1);
 }
 
 void handle_actor_worker_available(LocalSchedulerState *state,
@@ -1075,112 +1034,70 @@ void handle_worker_blocked(LocalSchedulerState *state,
                            SchedulingAlgorithmState *algorithm_state,
                            LocalSchedulerClient *worker) {
   /* Find the worker in the list of executing workers. */
-  for (int i = 0; i < utarray_len(algorithm_state->executing_workers); ++i) {
-    LocalSchedulerClient **p = (LocalSchedulerClient **) utarray_eltptr(
-        algorithm_state->executing_workers, i);
-    if (*p == worker) {
-      /* Remove the worker from the list of executing workers. */
-      utarray_erase(algorithm_state->executing_workers, i, 1);
+  CHECK(remove_worker_from_vector(algorithm_state->executing_workers, worker));
 
-      /* Check that the worker isn't in the list of blocked workers. */
-      for (LocalSchedulerClient **q = (LocalSchedulerClient **) utarray_front(
-               algorithm_state->blocked_workers);
-           q != NULL; q = (LocalSchedulerClient **) utarray_next(
-                          algorithm_state->blocked_workers, q)) {
-        DCHECK(*q != worker);
-      }
+  /* Check that the worker isn't in the list of blocked workers. */
+  DCHECK(!worker_in_vector(algorithm_state->blocked_workers, worker));
 
-      /* Add the worker to the list of blocked workers. */
-      worker->is_blocked = true;
-      utarray_push_back(algorithm_state->blocked_workers, &worker);
-      /* Return the resources that the blocked worker was using. */
-      CHECK(worker->task_in_progress != NULL);
-      TaskSpec *spec = Task_task_spec(worker->task_in_progress);
-      update_dynamic_resources(state, spec, true);
+  /* Add the worker to the list of blocked workers. */
+  worker->is_blocked = true;
+  algorithm_state->blocked_workers.push_back(worker);
+  /* Return the resources that the blocked worker was using. */
+  CHECK(worker->task_in_progress != NULL);
+  TaskSpec *spec = Task_task_spec(worker->task_in_progress);
+  update_dynamic_resources(state, spec, true);
 
-      /* Try to dispatch tasks, since we may have freed up some resources. */
-      dispatch_tasks(state, algorithm_state);
-      return;
-    }
-  }
-
-  /* The worker should have been in the list of executing workers, so this line
-   * should be unreachable. */
-  LOG_FATAL(
-      "Worker registered as blocked, but it was not in the list of executing "
-      "workers.");
+  /* Try to dispatch tasks, since we may have freed up some resources. */
+  dispatch_tasks(state, algorithm_state);
 }
 
 void handle_worker_unblocked(LocalSchedulerState *state,
                              SchedulingAlgorithmState *algorithm_state,
                              LocalSchedulerClient *worker) {
   /* Find the worker in the list of blocked workers. */
-  for (int i = 0; i < utarray_len(algorithm_state->blocked_workers); ++i) {
-    LocalSchedulerClient **p = (LocalSchedulerClient **) utarray_eltptr(
-        algorithm_state->blocked_workers, i);
-    if (*p == worker) {
-      /* Remove the worker from the list of blocked workers. */
-      utarray_erase(algorithm_state->blocked_workers, i, 1);
+  CHECK(remove_worker_from_vector(algorithm_state->blocked_workers, worker));
 
-      /* Check that the worker isn't in the list of executing workers. */
-      for (LocalSchedulerClient **q = (LocalSchedulerClient **) utarray_front(
-               algorithm_state->executing_workers);
-           q != NULL; q = (LocalSchedulerClient **) utarray_next(
-                          algorithm_state->executing_workers, q)) {
-        DCHECK(*q != worker);
-      }
+  /* Check that the worker isn't in the list of executing workers. */
+  DCHECK(!worker_in_vector(algorithm_state->executing_workers, worker));
 
-      /* Lease back the resources that the blocked worker will need. */
-      /* TODO(swang): Leasing back the resources to blocked workers can cause
-       * us to transiently exceed the maximum number of resources. This can be
-       * fixed by having blocked workers explicitly yield and wait to be given
-       * back resources before continuing execution. */
-      CHECK(worker->task_in_progress != NULL);
-      TaskSpec *spec = Task_task_spec(worker->task_in_progress);
-      update_dynamic_resources(state, spec, false);
-      /* Add the worker to the list of executing workers. */
-      worker->is_blocked = false;
-      utarray_push_back(algorithm_state->executing_workers, &worker);
-
-      return;
-    }
-  }
-
-  /* The worker should have been in the list of blocked workers, so this line
-   * should be unreachable. */
-  LOG_FATAL(
-      "Worker registered as unblocked, but it was not in the list of blocked "
-      "workers.");
+  /* Lease back the resources that the blocked worker will need. */
+  /* TODO(swang): Leasing back the resources to blocked workers can cause
+   * us to transiently exceed the maximum number of resources. This can be
+   * fixed by having blocked workers explicitly yield and wait to be given
+   * back resources before continuing execution. */
+  CHECK(worker->task_in_progress != NULL);
+  TaskSpec *spec = Task_task_spec(worker->task_in_progress);
+  update_dynamic_resources(state, spec, false);
+  /* Add the worker to the list of executing workers. */
+  worker->is_blocked = false;
+  algorithm_state->executing_workers.push_back(worker);
 }
 
 void handle_object_available(LocalSchedulerState *state,
                              SchedulingAlgorithmState *algorithm_state,
                              ObjectID object_id) {
+  auto object_entry_it = algorithm_state->remote_objects.find(object_id);
+
+  ObjectEntry entry;
   /* Get the entry for this object from the active fetch request, or allocate
    * one if needed. */
-  object_entry *entry;
-  HASH_FIND(hh, algorithm_state->remote_objects, &object_id, sizeof(object_id),
-            entry);
-  if (entry != NULL) {
+  if (object_entry_it != algorithm_state->remote_objects.end()) {
     /* Remove the object from the active fetch requests. */
-    HASH_DELETE(hh, algorithm_state->remote_objects, entry);
+    entry = object_entry_it->second;
+    algorithm_state->remote_objects.erase(object_id);
   } else {
-    /* Allocate a new object entry. Object entries will get freed if the object
-     * is removed. */
-    entry = (object_entry *) malloc(sizeof(object_entry));
-    entry->object_id = object_id;
-    entry->dependent_tasks =
-        new std::vector<std::list<TaskQueueEntry>::iterator>();
+    /* Create a new object entry. */
+    entry.object_id = object_id;
   }
 
   /* Add the entry to the set of locally available objects. */
-  HASH_ADD(hh, algorithm_state->local_objects, object_id, sizeof(object_id),
-           entry);
+  CHECK(algorithm_state->local_objects.count(object_id) == 0);
+  algorithm_state->local_objects[object_id] = entry;
 
-  if (!entry->dependent_tasks->empty()) {
+  if (!entry.dependent_tasks.empty()) {
     /* Out of the tasks that were dependent on this object, if they are now
      * ready to run, move them to the dispatch queue. */
-    for (auto &it : *entry->dependent_tasks) {
+    for (auto &it : entry.dependent_tasks) {
       if (can_run(algorithm_state, it->spec)) {
         LOG_DEBUG("Moved task to dispatch queue");
         algorithm_state->dispatch_task_queue->push_back(*it);
@@ -1193,7 +1110,7 @@ void handle_object_available(LocalSchedulerState *state,
      * queue. */
     dispatch_tasks(state, algorithm_state);
     /* Clean up the records for dependent tasks. */
-    entry->dependent_tasks->clear();
+    entry.dependent_tasks.clear();
   }
 }
 
@@ -1201,13 +1118,9 @@ void handle_object_removed(LocalSchedulerState *state,
                            ObjectID removed_object_id) {
   /* Remove the object from the set of locally available objects. */
   SchedulingAlgorithmState *algorithm_state = state->algorithm_state;
-  object_entry *entry;
-  HASH_FIND(hh, algorithm_state->local_objects, &removed_object_id,
-            sizeof(removed_object_id), entry);
-  CHECK(entry != NULL);
-  HASH_DELETE(hh, algorithm_state->local_objects, entry);
-  delete entry->dependent_tasks;
-  free(entry);
+
+  CHECK(algorithm_state->local_objects.count(removed_object_id) == 1);
+  algorithm_state->local_objects.erase(removed_object_id);
 
   /* Track queued tasks that were dependent on this object.
    * NOTE: Since objects often get removed in batches (e.g., during eviction),
@@ -1260,7 +1173,7 @@ int num_dispatch_tasks(SchedulingAlgorithmState *algorithm_state) {
 void print_worker_info(const char *message,
                        SchedulingAlgorithmState *algorithm_state) {
   LOG_DEBUG("%s: %d available, %d executing, %d blocked", message,
-            utarray_len(algorithm_state->available_workers),
-            utarray_len(algorithm_state->executing_workers),
-            utarray_len(algorithm_state->blocked_workers));
+            algorithm_state->available_workers.size(),
+            algorithm_state->executing_workers.size(),
+            algorithm_state->blocked_workers.size());
 }

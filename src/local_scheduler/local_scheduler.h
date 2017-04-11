@@ -72,12 +72,15 @@ void print_resource_info(const LocalSchedulerState *s, const TaskSpec *spec);
 /**
  * Kill a worker.
  *
+ * @param state The local scheduler state.
  * @param worker The local scheduler client to kill.
  * @param wait A boolean representing whether to wait for the killed worker to
  *        exit.
  * @param Void.
  */
-void kill_worker(LocalSchedulerClient *worker, bool wait);
+void kill_worker(LocalSchedulerState *state,
+                 LocalSchedulerClient *worker,
+                 bool wait);
 
 /**
  * Start a worker. This forks a new worker process that can be added to the

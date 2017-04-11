@@ -22,10 +22,8 @@
 #include "state/object_table.h"
 #include "state/error_table.h"
 #include "utarray.h"
-#include "uthash.h"
 
 UT_icd task_ptr_icd = {sizeof(Task *), NULL, NULL, NULL};
-UT_icd workers_icd = {sizeof(LocalSchedulerClient *), NULL, NULL, NULL};
 
 UT_icd pid_t_icd = {sizeof(pid_t), NULL, NULL, NULL};
 
@@ -63,7 +61,7 @@ int force_kill_worker(event_loop *loop, timer_id id, void *context) {
   LocalSchedulerClient *worker = (LocalSchedulerClient *) context;
   kill(worker->pid, SIGKILL);
   close(worker->sock);
-  free(worker);
+  delete worker;
   return EVENT_LOOP_TIMER_DONE;
 }
 
@@ -78,28 +76,24 @@ int force_kill_worker(event_loop *loop, timer_id id, void *context) {
  *        to clean up its own state.
  * @return Void.
  */
-void kill_worker(LocalSchedulerClient *worker, bool cleanup) {
+void kill_worker(LocalSchedulerState *state,
+                 LocalSchedulerClient *worker,
+                 bool cleanup) {
   /* Erase the local scheduler's reference to the worker. */
-  LocalSchedulerState *state = worker->local_scheduler_state;
-  int num_workers = utarray_len(state->workers);
-  for (int i = 0; i < utarray_len(state->workers); ++i) {
-    LocalSchedulerClient *active_worker =
-        *(LocalSchedulerClient **) utarray_eltptr(state->workers, i);
-    if (active_worker == worker) {
-      utarray_erase(state->workers, i, 1);
-    }
-  }
-  /* Make sure that we erased exactly 1 worker. */
-  CHECKM(!(utarray_len(state->workers) < num_workers - 1),
-         "Found duplicate workers");
-  CHECKM(utarray_len(state->workers) != num_workers,
-         "Tried to kill worker that doesn't exist");
+  auto it = std::find(state->workers.begin(), state->workers.end(), worker);
+  CHECK(it != state->workers.end());
+  state->workers.erase(it);
+
+  /* Make sure that we removed the worker. */
+  it = std::find(state->workers.begin(), state->workers.end(), worker);
+  CHECK(it == state->workers.end());
+
   /* Erase the algorithm state's reference to the worker. */
   handle_worker_removed(state, state->algorithm_state, worker);
 
   /* Remove the client socket from the event loop so that we don't process the
    * SIGPIPE when the worker is killed. */
-  event_loop_remove_file(worker->local_scheduler_state->loop, worker->sock);
+  event_loop_remove_file(state->loop, worker->sock);
 
   /* If the worker has registered a process ID with us and it's a child
    * process, use it to send a kill signal. */
@@ -154,7 +148,7 @@ void kill_worker(LocalSchedulerClient *worker, bool cleanup) {
     /* Clean up the client socket after killing the worker so that the worker
      * can't receive the SIGPIPE before exiting. */
     close(worker->sock);
-    free(worker);
+    delete worker;
   }
 }
 
@@ -165,24 +159,20 @@ void LocalSchedulerState_free(LocalSchedulerState *state) {
   signal(SIGTERM, SIG_DFL);
 
   /* Kill any child processes that didn't register as a worker yet. */
-  pid_t *worker_pid;
-  for (worker_pid = (pid_t *) utarray_front(state->child_pids);
-       worker_pid != NULL;
-       worker_pid = (pid_t *) utarray_next(state->child_pids, worker_pid)) {
-    kill(*worker_pid, SIGKILL);
-    waitpid(*worker_pid, NULL, 0);
-    LOG_DEBUG("Killed pid %d", *worker_pid);
+  for (auto const &worker_pid : state->child_pids) {
+    kill(worker_pid, SIGKILL);
+    waitpid(worker_pid, NULL, 0);
+    LOG_INFO("Killed worker pid %d which hadn't started yet.", worker_pid);
   }
-  utarray_free(state->child_pids);
 
   /* Kill any registered workers. */
   /* TODO(swang): It's possible that the local scheduler will exit before all
    * of its task table updates make it to redis. */
-  for (LocalSchedulerClient **worker =
-           (LocalSchedulerClient **) utarray_front(state->workers);
-       worker != NULL;
-       worker = (LocalSchedulerClient **) utarray_front(state->workers)) {
-    kill_worker(*worker, true);
+  while (state->workers.size() > 0) {
+    /* Note that kill_worker modifies the container state->workers, so it is
+     * important to do this loop in a way that does not use invalidated
+     * iterators. */
+    kill_worker(state, state->workers.back(), true);
   }
 
   /* Disconnect from plasma. */
@@ -208,11 +198,6 @@ void LocalSchedulerState_free(LocalSchedulerState *state) {
     state->config.start_worker_command = NULL;
   }
 
-  /* Free the list of workers and any tasks that are still in progress on those
-   * workers. */
-  utarray_free(state->workers);
-  state->workers = NULL;
-
   /* Free the mapping from the actor ID to the ID of the local scheduler
    * responsible for that actor. */
   actor_map_entry *current_actor_map_entry, *temp_actor_map_entry;
@@ -231,8 +216,9 @@ void LocalSchedulerState_free(LocalSchedulerState *state) {
   /* Destroy the event loop. */
   event_loop_destroy(state->loop);
   state->loop = NULL;
+
   /* Free the scheduler state. */
-  free(state);
+  delete state;
 }
 
 /**
@@ -250,7 +236,7 @@ void start_worker(LocalSchedulerState *state, ActorID actor_id) {
   /* Launch the process to create the worker. */
   pid_t pid = fork();
   if (pid != 0) {
-    utarray_push_back(state->child_pids, &pid);
+    state->child_pids.push_back(pid);
     LOG_INFO("Started worker with pid %d", pid);
     return;
   }
@@ -332,8 +318,7 @@ LocalSchedulerState *LocalSchedulerState_init(
     const double static_resource_conf[],
     const char *start_worker_command,
     int num_workers) {
-  LocalSchedulerState *state =
-      (LocalSchedulerState *) malloc(sizeof(LocalSchedulerState));
+  LocalSchedulerState *state = new LocalSchedulerState();
   /* Set the configuration struct for the local scheduler. */
   if (start_worker_command != NULL) {
     state->config.start_worker_command = parse_command(start_worker_command);
@@ -348,8 +333,7 @@ LocalSchedulerState *LocalSchedulerState_init(
   state->config.global_scheduler_exists = global_scheduler_exists;
 
   state->loop = loop;
-  /* Initialize the list of workers. */
-  utarray_new(state->workers, &workers_icd);
+
   /* Initialize the hash table mapping actor ID to the ID of the local scheduler
    * that is responsible for that actor. */
   state->actor_mapping = NULL;
@@ -418,7 +402,6 @@ LocalSchedulerState *LocalSchedulerState_init(
   print_resource_info(state, NULL);
 
   /* Start the initial set of workers. */
-  utarray_new(state->child_pids, &pid_t_icd);
   for (int i = 0; i < num_workers; ++i) {
     start_worker(state, NIL_ACTOR_ID);
   }
@@ -663,7 +646,7 @@ void send_client_register_reply(LocalSchedulerState *state,
                     fbb.GetSize(), fbb.GetBufferPointer()) < 0) {
     if (errno == EPIPE || errno == EBADF || errno == ECONNRESET) {
       /* Something went wrong, so kill the worker. */
-      kill_worker(worker, false);
+      kill_worker(state, worker, false);
       LOG_WARN(
           "Failed to give send register client reply to worker on fd %d. The "
           "client may have hung up.",
@@ -682,7 +665,7 @@ void handle_client_register(LocalSchedulerState *state,
   if (message->is_worker()) {
     /* Update the actor mapping with the actor ID of the worker (if an actor is
      * running on the worker). */
-    int64_t worker_pid = message->worker_pid();
+    worker->pid = message->worker_pid();
     ActorID actor_id = from_flatbuf(message->actor_id());
     if (!ActorID_equal(actor_id, NIL_ACTOR_ID)) {
       /* Make sure that the local scheduler is aware that it is responsible for
@@ -702,29 +685,24 @@ void handle_client_register(LocalSchedulerState *state,
     }
 
     /* Register worker process id with the scheduler. */
-    worker->pid = worker_pid;
     /* Determine if this worker is one of our child processes. */
-    LOG_DEBUG("PID is %d", worker_pid);
-    pid_t *child_pid;
-    int index = 0;
-    for (child_pid = (pid_t *) utarray_front(state->child_pids);
-         child_pid != NULL;
-         child_pid = (pid_t *) utarray_next(state->child_pids, child_pid)) {
-      if (*child_pid == worker_pid) {
-        /* If this worker is one of our child processes, mark it as a child so
-         * that we know that we can wait for the process to exit during
-         * cleanup. */
-        worker->is_child = true;
-        utarray_erase(state->child_pids, index, 1);
-        LOG_DEBUG("Found matching child pid %d", worker_pid);
-        break;
-      }
-      ++index;
+    LOG_DEBUG("PID is %d", worker->pid);
+    auto it = std::find(state->child_pids.begin(), state->child_pids.end(),
+                        worker->pid);
+    if (it != state->child_pids.end()) {
+      /* If this worker is one of our child processes, mark it as a child so
+       * that we know that we can wait for the process to exit during
+       * cleanup. */
+      worker->is_child = true;
+      state->child_pids.erase(it);
+      LOG_DEBUG("Found matching child pid %d", worker->pid);
     }
   } else {
     /* Register the driver. Currently we don't do anything here. */
   }
 }
+
+/* End of the cleanup code. */
 
 void process_message(event_loop *loop,
                      int client_sock,
@@ -822,7 +800,7 @@ void process_message(event_loop *loop,
   } break;
   case DISCONNECT_CLIENT: {
     LOG_INFO("Disconnecting client on fd %d", client_sock);
-    kill_worker(worker, false);
+    kill_worker(state, worker, false);
     if (!ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
       /* Let the scheduling algorithm process the absence of this worker. */
       handle_actor_worker_disconnect(state, state->algorithm_state,
@@ -861,8 +839,7 @@ void new_client_connection(event_loop *loop,
   int new_socket = accept_client(listener_sock);
   /* Create a struct for this worker. This will be freed when we free the local
    * scheduler state. */
-  LocalSchedulerClient *worker =
-      (LocalSchedulerClient *) malloc(sizeof(LocalSchedulerClient));
+  LocalSchedulerClient *worker = new LocalSchedulerClient();
   worker->sock = new_socket;
   worker->task_in_progress = NULL;
   worker->is_blocked = false;
@@ -870,7 +847,7 @@ void new_client_connection(event_loop *loop,
   worker->is_child = false;
   worker->actor_id = NIL_ACTOR_ID;
   worker->local_scheduler_state = state;
-  utarray_push_back(state->workers, &worker);
+  state->workers.push_back(worker);
   event_loop_add_file(loop, new_socket, EVENT_LOOP_READ, process_message,
                       worker);
   LOG_DEBUG("new connection with fd %d", new_socket);
@@ -894,18 +871,18 @@ void signal_handler(int signal) {
   }
 }
 
-/* End of the cleanup code. */
-
-void handle_task_scheduled_callback(Task *original_task, void *user_context) {
+void handle_task_scheduled_callback(Task *original_task,
+                                    void *subscribe_context) {
+  LocalSchedulerState *state = (LocalSchedulerState *) subscribe_context;
   TaskSpec *spec = Task_task_spec(original_task);
   if (ActorID_equal(TaskSpec_actor_id(spec), NIL_ACTOR_ID)) {
     /* This task does not involve an actor. Handle it normally. */
-    handle_task_scheduled(g_state, g_state->algorithm_state, spec,
+    handle_task_scheduled(state, state->algorithm_state, spec,
                           Task_task_spec_size(original_task));
   } else {
     /* This task involves an actor. Call the scheduling algorithm's actor
      * handler. */
-    handle_actor_task_scheduled(g_state, g_state->algorithm_state, spec,
+    handle_actor_task_scheduled(state, state->algorithm_state, spec,
                                 Task_task_spec_size(original_task));
   }
 }
@@ -992,7 +969,7 @@ void start_server(const char *node_ip_address,
   if (g_state->db != NULL) {
     task_table_subscribe(g_state->db, get_db_client_id(g_state->db),
                          TASK_STATUS_SCHEDULED, handle_task_scheduled_callback,
-                         NULL, NULL, NULL, NULL);
+                         g_state, NULL, NULL, NULL);
   }
   /* Subscribe to notifications about newly created actors. */
   if (g_state->db != NULL) {
