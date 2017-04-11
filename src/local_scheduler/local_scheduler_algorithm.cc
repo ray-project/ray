@@ -2,7 +2,6 @@
 
 #include <stdbool.h>
 #include "utarray.h"
-#include "utlist.h"
 
 #include <list>
 #include <vector>
@@ -188,10 +187,33 @@ void SchedulingAlgorithmState_free(SchedulingAlgorithmState *algorithm_state) {
  * @param The worker to look for in the vector.
  * @return True if the worker is in the vector and false otherwise.
  */
-bool worker_in_vector(std::vector<LocalSchedulerClient *> worker_vector,
+bool worker_in_vector(std::vector<LocalSchedulerClient *> &worker_vector,
                       LocalSchedulerClient *worker) {
   auto it = std::find(worker_vector.begin(), worker_vector.end(), worker);
   return it != worker_vector.end();
+}
+
+/**
+ * This is a helper method to remove a worker from a vector of workers if it is
+ * present in the vector.
+ *
+ * @param worker_vector A vector of workers.
+ * @param The worker to remove.
+ * @return True if the worker was removed and false otherwise.
+ */
+bool remove_worker_from_vector(
+    std::vector<LocalSchedulerClient *> &worker_vector,
+    LocalSchedulerClient *worker) {
+  /* Find the worker in the list of executing workers. */
+  auto it = std::find(worker_vector.begin(), worker_vector.end(), worker);
+  bool remove_worker = (it != worker_vector.end());
+  if (remove_worker) {
+    /* Remove the worker from the list of workers. */
+    using std::swap;
+    swap(*it, worker_vector.back());
+    worker_vector.pop_back();
+  }
+  return remove_worker;
 }
 
 void provide_scheduler_info(LocalSchedulerState *state,
@@ -957,15 +979,7 @@ void handle_worker_available(LocalSchedulerState *state,
   /* If the worker was executing a task, it must have finished, so remove it
    * from the list of executing workers. If the worker is connecting for the
    * first time, it will not be in the list of executing workers. */
-  auto it = std::find(algorithm_state->executing_workers.begin(),
-                      algorithm_state->executing_workers.end(), worker);
-  if (it != algorithm_state->executing_workers.end()) {
-    std::swap(*it, algorithm_state->executing_workers.back());
-    algorithm_state->executing_workers.pop_back();
-  }
-  /* Check that the worker is not in the list of blocked workers now. */
-  CHECK(!worker_in_vector(algorithm_state->blocked_workers, worker));
-
+  remove_worker_from_vector(algorithm_state->executing_workers, worker);
   /* Double check that we successfully removed the worker. */
   CHECK(!worker_in_vector(algorithm_state->executing_workers, worker));
 
@@ -981,43 +995,31 @@ void handle_worker_removed(LocalSchedulerState *state,
                            SchedulingAlgorithmState *algorithm_state,
                            LocalSchedulerClient *worker) {
   /* Make sure that we remove the worker at most once. */
-  bool removed = false;
+  int num_times_removed = 0;
 
   /* Remove the worker from available workers, if it's there. */
-  auto it = std::find(algorithm_state->available_workers.begin(),
-                      algorithm_state->available_workers.end(), worker);
-  if (it != algorithm_state->available_workers.end()) {
-    std::swap(*it, algorithm_state->available_workers.back());
-    algorithm_state->available_workers.pop_back();
-    CHECK(!removed);
-    removed = true;
-  }
+  bool removed_from_available =
+      remove_worker_from_vector(algorithm_state->available_workers, worker);
+  num_times_removed += removed_from_available;
   /* Double check that we actually removed the worker. */
   CHECK(!worker_in_vector(algorithm_state->available_workers, worker));
 
   /* Remove the worker from executing workers, if it's there. */
-  it = std::find(algorithm_state->executing_workers.begin(),
-                 algorithm_state->executing_workers.end(), worker);
-  if (it != algorithm_state->executing_workers.end()) {
-    std::swap(*it, algorithm_state->executing_workers.back());
-    algorithm_state->executing_workers.pop_back();
-    CHECK(!removed);
-    removed = true;
-  }
+  bool removed_from_executing =
+      remove_worker_from_vector(algorithm_state->executing_workers, worker);
+  num_times_removed += removed_from_executing;
   /* Double check that we actually removed the worker. */
   CHECK(!worker_in_vector(algorithm_state->executing_workers, worker));
 
   /* Remove the worker from blocked workers, if it's there. */
-  it = std::find(algorithm_state->blocked_workers.begin(),
-                 algorithm_state->blocked_workers.end(), worker);
-  if (it != algorithm_state->blocked_workers.end()) {
-    std::swap(*it, algorithm_state->blocked_workers.back());
-    algorithm_state->blocked_workers.pop_back();
-    CHECK(!removed);
-    removed = true;
-  }
+  bool removed_from_blocked =
+      remove_worker_from_vector(algorithm_state->blocked_workers, worker);
+  num_times_removed += removed_from_blocked;
   /* Double check that we actually removed the worker. */
   CHECK(!worker_in_vector(algorithm_state->blocked_workers, worker));
+
+  /* Make sure we removed the worker at most once. */
+  CHECK(num_times_removed <= 1);
 }
 
 void handle_actor_worker_available(LocalSchedulerState *state,
@@ -1041,13 +1043,7 @@ void handle_worker_blocked(LocalSchedulerState *state,
                            SchedulingAlgorithmState *algorithm_state,
                            LocalSchedulerClient *worker) {
   /* Find the worker in the list of executing workers. */
-  auto it = std::find(algorithm_state->executing_workers.begin(),
-                      algorithm_state->executing_workers.end(), worker);
-  CHECK(it != algorithm_state->executing_workers.end());
-
-  /* Remove the worker from the list of executing workers. */
-  std::swap(*it, algorithm_state->executing_workers.back());
-  algorithm_state->executing_workers.pop_back();
+  CHECK(remove_worker_from_vector(algorithm_state->executing_workers, worker));
 
   /* Check that the worker isn't in the list of blocked workers. */
   CHECK(!worker_in_vector(algorithm_state->blocked_workers, worker));
@@ -1068,13 +1064,7 @@ void handle_worker_unblocked(LocalSchedulerState *state,
                              SchedulingAlgorithmState *algorithm_state,
                              LocalSchedulerClient *worker) {
   /* Find the worker in the list of blocked workers. */
-  auto it = std::find(algorithm_state->blocked_workers.begin(),
-                      algorithm_state->blocked_workers.end(), worker);
-  CHECK(it != algorithm_state->blocked_workers.end());
-
-  /* Remove the worker from the list of blocked workers. */
-  std::swap(*it, algorithm_state->blocked_workers.back());
-  algorithm_state->blocked_workers.pop_back();
+  CHECK(remove_worker_from_vector(algorithm_state->blocked_workers, worker));
 
   /* Check that the worker isn't in the list of executing workers. */
   CHECK(!worker_in_vector(algorithm_state->executing_workers, worker));

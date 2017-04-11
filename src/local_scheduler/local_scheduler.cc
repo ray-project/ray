@@ -22,7 +22,6 @@
 #include "state/object_table.h"
 #include "state/error_table.h"
 #include "utarray.h"
-#include "uthash.h"
 
 UT_icd task_ptr_icd = {sizeof(Task *), NULL, NULL, NULL};
 
@@ -83,8 +82,7 @@ void kill_worker(LocalSchedulerState *state,
   /* Erase the local scheduler's reference to the worker. */
   auto it = std::find(state->workers.begin(), state->workers.end(), worker);
   CHECK(it != state->workers.end());
-  std::swap(*it, state->workers.back());
-  state->workers.pop_back();
+  state->workers.erase(it);
 
   /* Make sure that we removed the worker. */
   it = std::find(state->workers.begin(), state->workers.end(), worker);
