@@ -10,11 +10,13 @@ import ray
 
 ray.init()
 
+
 @ray.remote
 def factorial(n):
   if n == 0:
     return 1
   return n * ray.get(factorial.remote(n - 1))
+
 
 assert ray.get(factorial.remote(0)) == 1
 assert ray.get(factorial.remote(1)) == 1
