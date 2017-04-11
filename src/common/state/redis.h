@@ -253,6 +253,24 @@ void redis_local_scheduler_table_subscribe(TableCallbackData *callback_data);
  */
 void redis_local_scheduler_table_send_info(TableCallbackData *callback_data);
 
+/**
+ * Subscribe to updates from the driver table.
+ *
+ * @param callback_data Data structure containing redis connection and timeout
+ *        information.
+ * @return Void.
+ */
+void redis_driver_table_subscribe(TableCallbackData *callback_data);
+
+/**
+ * Publish an update to the driver table.
+ *
+ * @param callback_data Data structure containing redis connection and timeout
+ *        information.
+ * @return Void.
+ */
+void redis_driver_table_send_driver_death(TableCallbackData *callback_data);
+
 void redis_plasma_manager_send_heartbeat(TableCallbackData *callback_data);
 
 /**

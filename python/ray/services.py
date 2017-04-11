@@ -767,7 +767,10 @@ def start_ray_processes(address_info=None,
   if num_workers is not None:
     workers_per_local_scheduler = num_local_schedulers * [num_workers]
   else:
-    workers_per_local_scheduler = num_local_schedulers * [psutil.cpu_count()]
+    workers_per_local_scheduler = []
+    for cpus in num_cpus:
+      workers_per_local_scheduler.append(cpus if cpus is not None
+                                         else psutil.cpu_count())
 
   if address_info is None:
     address_info = {}

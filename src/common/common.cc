@@ -47,6 +47,10 @@ bool DBClientID_equal(DBClientID first_id, DBClientID second_id) {
   return UNIQUE_ID_EQ(first_id, second_id);
 }
 
+bool WorkerID_equal(WorkerID first_id, WorkerID second_id) {
+  return UNIQUE_ID_EQ(first_id, second_id);
+}
+
 char *ObjectID_to_string(ObjectID obj_id, char *id_string, int id_length) {
   CHECK(id_length >= ID_STRING_SIZE);
   static const char hex[] = "0123456789abcdef";

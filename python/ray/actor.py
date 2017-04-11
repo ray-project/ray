@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import flatbuffers
 import hashlib
 import inspect
 import json
@@ -14,6 +15,10 @@ import ray.pickling as pickling
 import ray.signature as signature
 import ray.worker
 import ray.experimental.state as state
+
+import ray.core.generated.ActorCreationNotification \
+    as ActorCreationNotification
+
 
 # This is a variable used by each actor to indicate the IDs of the GPUs that
 # the worker is currently allowed to use.
@@ -188,8 +193,20 @@ def export_actor(actor_id, Class, actor_method_names, num_cpus, num_gpus,
   local_scheduler_id, gpu_ids = select_local_scheduler(local_schedulers,
                                                        num_gpus, worker)
 
+  # # Create a flatbuffer actor creation notification object to publish.
+  # builder = flatbuffers.Builder(0)
+  # ActorCreationNotification.ActorCreationNotificationStart(builder)
+  # ActorCreationNotification.ActorCreationNotificationAddActorId(
+  #     builder, builder.CreateString(actor_id.id()))
+  # ActorCreationNotification.ActorCreationNotificationAddDriverID(
+  #     builder, builder.CreateString(driver_id))
+  # ActorCreationNotification.ActorCreationNotificationAddLocalSchedulerID(
+  #     builder, builder.CreateString(local_scheduler_id))
+  # ActorCreationNotification.ActorCreationNotificationEnd(builder)
+  # final_flatbuffer = builder.Output()
+
   worker.redis_client.publish("actor_notifications",
-                              actor_id.id() + local_scheduler_id)
+                              actor_id.id() + driver_id + local_scheduler_id)
 
   d = {"driver_id": driver_id,
        "actor_id": actor_id.id(),

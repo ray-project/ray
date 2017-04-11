@@ -153,7 +153,9 @@ extern const UniqueID NIL_ID;
 UniqueID globally_unique_id(void);
 
 #define NIL_OBJECT_ID NIL_ID
+#define NIL_WORKER_ID NIL_ID
 
+/** The object ID is the type used to identify objects. */
 typedef UniqueID ObjectID;
 
 #ifdef __cplusplus
@@ -201,6 +203,18 @@ bool ObjectID_equal(ObjectID first_id, ObjectID second_id);
  * @return True if the object ID is equal to nil.
  */
 bool ObjectID_is_nil(ObjectID id);
+
+/** The worker ID is the ID of a worker or driver. */
+typedef UniqueID WorkerID;
+
+/**
+ * Compare two worker IDs.
+ *
+ * @param first_id The first worker ID to compare.
+ * @param second_id The first worker ID to compare.
+ * @return True if the worker IDs are the same and false otherwise.
+ */
+bool WorkerID_equal(WorkerID first_id, WorkerID second_id);
 
 typedef UniqueID DBClientID;
 

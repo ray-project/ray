@@ -9,6 +9,7 @@
 #include "uthash.h"
 
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 /* These are needed to define the UT_arrays. */
@@ -19,6 +20,8 @@ extern UT_icd task_ptr_icd;
 struct ActorMapEntry {
   /** The ID of the actor. This is used as a key in the hash table. */
   ActorID actor_id;
+  /** The ID of the driver that created the actor. */
+  WorkerID driver_id;
   /** The ID of the local scheduler that is responsible for the actor. */
   DBClientID local_scheduler_id;
 };
@@ -48,6 +51,9 @@ struct LocalSchedulerState {
    *  structs when we free the scheduler state and also to access the worker
    *  structs in the tests. */
   std::vector<LocalSchedulerClient *> workers;
+  /** A set of driver IDs corresponding to drivers that have been removed. This
+   *  is used to make sure we don't execute any tasks belong to dead drivers. */
+  std::unordered_set<WorkerID, UniqueIDHasher> removed_drivers;
   /** List of the process IDs for child processes (workers) started by the
    *  local scheduler that have not sent a REGISTER_PID message yet. */
   std::vector<pid_t> child_pids;
@@ -75,6 +81,13 @@ struct LocalSchedulerState {
 struct LocalSchedulerClient {
   /** The socket used to communicate with the client. */
   int sock;
+  /** True if the client has registered and false otherwise. */
+  bool registered;
+  /** True if the client is a worker and false if it is a driver. */
+  bool is_worker;
+  /** The worker ID if the client is a worker and the driver ID if the client is
+   *  a driver. */
+  WorkerID client_id;
   /** A pointer to the task object that is currently running on this client. If
    *  no task is running on the worker, this will be NULL. This is used to
    *  update the task table. */
