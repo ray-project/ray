@@ -1330,8 +1330,10 @@ class SchedulingAlgorithm(unittest.TestCase):
     # in a roughly equal manner.
     num_workers = 21
     num_local_schedulers = 3
+    num_cpus = 10
     ray.worker._init(start_ray_local=True, num_workers=num_workers,
-                     num_local_schedulers=num_local_schedulers)
+                     num_local_schedulers=num_local_schedulers,
+                     num_cpus=num_cpus)
 
     @ray.remote
     def f():
