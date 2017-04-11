@@ -101,13 +101,13 @@ struct SchedulingAlgorithmState {
   std::vector<LocalSchedulerClient *> blocked_workers;
   /** A hash map of the objects that are available in the local Plasma store.
    *  The key is the object ID. This information could be a little stale. */
-  std::unordered_map<ObjectID, ObjectEntry *, UniqueIDHasher> local_objects;
+  std::unordered_map<ObjectID, ObjectEntry, UniqueIDHasher> local_objects;
   /** A hash map of the objects that are not available locally. These are
    *  currently being fetched by this local scheduler. The key is the object
    *  ID. Every LOCAL_SCHEDULER_FETCH_TIMEOUT_MILLISECONDS, a Plasma fetch
    *  request will be sent the object IDs in this table. Each entry also holds
    *  an array of queued tasks that are dependent on it. */
-  std::unordered_map<ObjectID, ObjectEntry *, UniqueIDHasher> remote_objects;
+  std::unordered_map<ObjectID, ObjectEntry, UniqueIDHasher> remote_objects;
 };
 
 TaskQueueEntry TaskQueueEntry_init(TaskSpec *spec, int64_t task_spec_size) {
@@ -167,15 +167,6 @@ void SchedulingAlgorithmState_free(SchedulingAlgorithmState *algorithm_state) {
   }
   utarray_free(algorithm_state->cached_submitted_actor_tasks);
   utarray_free(algorithm_state->cached_submitted_actor_task_sizes);
-  /* Free the cached information about which objects are present locally. */
-  for (auto const &entry : algorithm_state->local_objects) {
-    delete entry.second;
-  }
-  /* Free the cached information about which objects are currently being
-   * fetched. */
-  for (auto const &entry : algorithm_state->remote_objects) {
-    delete entry.second;
-  }
   /* Free the algorithm state. */
   delete algorithm_state;
 }
@@ -486,12 +477,12 @@ void fetch_missing_dependency(LocalSchedulerState *state,
      * hash table of locally available objects in handle_object_available when
      * the object becomes available locally. It will get freed if the object is
      * subsequently removed locally. */
-    ObjectEntry *entry = new ObjectEntry();
-    entry->object_id = obj_id;
+    ObjectEntry entry;
+    entry.object_id = obj_id;
     algorithm_state->remote_objects[obj_id] = entry;
   }
-  ObjectEntry *entry = algorithm_state->remote_objects[obj_id];
-  entry->dependent_tasks.push_back(task_entry_it);
+  algorithm_state->remote_objects[obj_id].dependent_tasks.push_back(
+      task_entry_it);
 }
 
 /**
@@ -565,7 +556,7 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
   /* Fill out the request with the object IDs for active fetches. */
   int i = 0;
   for (auto const &entry : state->algorithm_state->remote_objects) {
-    object_ids[i] = entry.second->object_id;
+    object_ids[i] = entry.second.object_id;
     i++;
   }
   plasma_fetch(state->plasma_conn, num_object_ids, object_ids);
@@ -1087,7 +1078,7 @@ void handle_object_available(LocalSchedulerState *state,
                              ObjectID object_id) {
   auto object_entry_it = algorithm_state->remote_objects.find(object_id);
 
-  ObjectEntry *entry;
+  ObjectEntry entry;
   /* Get the entry for this object from the active fetch request, or allocate
    * one if needed. */
   if (object_entry_it != algorithm_state->remote_objects.end()) {
@@ -1095,20 +1086,18 @@ void handle_object_available(LocalSchedulerState *state,
     entry = object_entry_it->second;
     algorithm_state->remote_objects.erase(object_id);
   } else {
-    /* Allocate a new object entry. Object entries will get freed if the object
-     * is removed. */
-    entry = new ObjectEntry();
-    entry->object_id = object_id;
+    /* Create a new object entry. */
+    entry.object_id = object_id;
   }
 
   /* Add the entry to the set of locally available objects. */
   CHECK(algorithm_state->local_objects.count(object_id) == 0);
   algorithm_state->local_objects[object_id] = entry;
 
-  if (!entry->dependent_tasks.empty()) {
+  if (!entry.dependent_tasks.empty()) {
     /* Out of the tasks that were dependent on this object, if they are now
      * ready to run, move them to the dispatch queue. */
-    for (auto &it : entry->dependent_tasks) {
+    for (auto &it : entry.dependent_tasks) {
       if (can_run(algorithm_state, it->spec)) {
         LOG_DEBUG("Moved task to dispatch queue");
         algorithm_state->dispatch_task_queue->push_back(*it);
@@ -1121,7 +1110,7 @@ void handle_object_available(LocalSchedulerState *state,
      * queue. */
     dispatch_tasks(state, algorithm_state);
     /* Clean up the records for dependent tasks. */
-    entry->dependent_tasks.clear();
+    entry.dependent_tasks.clear();
   }
 }
 
@@ -1131,8 +1120,6 @@ void handle_object_removed(LocalSchedulerState *state,
   SchedulingAlgorithmState *algorithm_state = state->algorithm_state;
 
   CHECK(algorithm_state->local_objects.count(removed_object_id) == 1);
-  ObjectEntry *entry = algorithm_state->local_objects[removed_object_id];
-  delete entry;
   algorithm_state->local_objects.erase(removed_object_id);
 
   /* Track queued tasks that were dependent on this object.
