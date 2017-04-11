@@ -962,17 +962,17 @@ void handle_worker_available(LocalSchedulerState *state,
                              LocalSchedulerClient *worker) {
   CHECK(worker->task_in_progress == NULL);
   /* Check that the worker isn't in the pool of available workers. */
-  CHECK(!worker_in_vector(algorithm_state->available_workers, worker));
+  DCHECK(!worker_in_vector(algorithm_state->available_workers, worker));
 
   /* Check that the worker isn't in the list of blocked workers. */
-  CHECK(!worker_in_vector(algorithm_state->blocked_workers, worker));
+  DCHECK(!worker_in_vector(algorithm_state->blocked_workers, worker));
 
   /* If the worker was executing a task, it must have finished, so remove it
    * from the list of executing workers. If the worker is connecting for the
    * first time, it will not be in the list of executing workers. */
   remove_worker_from_vector(algorithm_state->executing_workers, worker);
   /* Double check that we successfully removed the worker. */
-  CHECK(!worker_in_vector(algorithm_state->executing_workers, worker));
+  DCHECK(!worker_in_vector(algorithm_state->executing_workers, worker));
 
   /* Add worker to the list of available workers. */
   algorithm_state->available_workers.push_back(worker);
@@ -993,21 +993,21 @@ void handle_worker_removed(LocalSchedulerState *state,
       remove_worker_from_vector(algorithm_state->available_workers, worker);
   num_times_removed += removed_from_available;
   /* Double check that we actually removed the worker. */
-  CHECK(!worker_in_vector(algorithm_state->available_workers, worker));
+  DCHECK(!worker_in_vector(algorithm_state->available_workers, worker));
 
   /* Remove the worker from executing workers, if it's there. */
   bool removed_from_executing =
       remove_worker_from_vector(algorithm_state->executing_workers, worker);
   num_times_removed += removed_from_executing;
   /* Double check that we actually removed the worker. */
-  CHECK(!worker_in_vector(algorithm_state->executing_workers, worker));
+  DCHECK(!worker_in_vector(algorithm_state->executing_workers, worker));
 
   /* Remove the worker from blocked workers, if it's there. */
   bool removed_from_blocked =
       remove_worker_from_vector(algorithm_state->blocked_workers, worker);
   num_times_removed += removed_from_blocked;
   /* Double check that we actually removed the worker. */
-  CHECK(!worker_in_vector(algorithm_state->blocked_workers, worker));
+  DCHECK(!worker_in_vector(algorithm_state->blocked_workers, worker));
 
   /* Make sure we removed the worker at most once. */
   CHECK(num_times_removed <= 1);
@@ -1037,7 +1037,7 @@ void handle_worker_blocked(LocalSchedulerState *state,
   CHECK(remove_worker_from_vector(algorithm_state->executing_workers, worker));
 
   /* Check that the worker isn't in the list of blocked workers. */
-  CHECK(!worker_in_vector(algorithm_state->blocked_workers, worker));
+  DCHECK(!worker_in_vector(algorithm_state->blocked_workers, worker));
 
   /* Add the worker to the list of blocked workers. */
   worker->is_blocked = true;
@@ -1058,7 +1058,7 @@ void handle_worker_unblocked(LocalSchedulerState *state,
   CHECK(remove_worker_from_vector(algorithm_state->blocked_workers, worker));
 
   /* Check that the worker isn't in the list of executing workers. */
-  CHECK(!worker_in_vector(algorithm_state->executing_workers, worker));
+  DCHECK(!worker_in_vector(algorithm_state->executing_workers, worker));
 
   /* Lease back the resources that the blocked worker will need. */
   /* TODO(swang): Leasing back the resources to blocked workers can cause
