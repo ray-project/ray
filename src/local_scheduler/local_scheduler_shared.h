@@ -8,6 +8,7 @@
 #include "utarray.h"
 #include "uthash.h"
 
+#include <unordered_map>
 #include <vector>
 
 /* These are needed to define the UT_arrays. */
@@ -15,14 +16,12 @@ extern UT_icd task_ptr_icd;
 
 /** This struct is used to maintain a mapping from actor IDs to the ID of the
  *  local scheduler that is responsible for the actor. */
-typedef struct {
+struct ActorMapEntry {
   /** The ID of the actor. This is used as a key in the hash table. */
   ActorID actor_id;
   /** The ID of the local scheduler that is responsible for the actor. */
   DBClientID local_scheduler_id;
-  /** Handle fo the hash table. */
-  UT_hash_handle hh;
-} actor_map_entry;
+};
 
 /** Internal state of the scheduling algorithm. */
 typedef struct SchedulingAlgorithmState SchedulingAlgorithmState;
@@ -54,7 +53,7 @@ struct LocalSchedulerState {
   std::vector<pid_t> child_pids;
   /** A hash table mapping actor IDs to the db_client_id of the local scheduler
    *  that is responsible for the actor. */
-  actor_map_entry *actor_mapping;
+  std::unordered_map<ActorID, ActorMapEntry, UniqueIDHasher> actor_mapping;
   /** The handle to the database. */
   DBHandle *db;
   /** The Plasma client. */

@@ -198,15 +198,6 @@ void LocalSchedulerState_free(LocalSchedulerState *state) {
     state->config.start_worker_command = NULL;
   }
 
-  /* Free the mapping from the actor ID to the ID of the local scheduler
-   * responsible for that actor. */
-  actor_map_entry *current_actor_map_entry, *temp_actor_map_entry;
-  HASH_ITER(hh, state->actor_mapping, current_actor_map_entry,
-            temp_actor_map_entry) {
-    HASH_DEL(state->actor_mapping, current_actor_map_entry);
-    free(current_actor_map_entry);
-  }
-
   /* Free the algorithm state. */
   SchedulingAlgorithmState_free(state->algorithm_state);
   state->algorithm_state = NULL;
@@ -334,9 +325,6 @@ LocalSchedulerState *LocalSchedulerState_init(
 
   state->loop = loop;
 
-  /* Initialize the hash table mapping actor ID to the ID of the local scheduler
-   * that is responsible for that actor. */
-  state->actor_mapping = NULL;
   /* Connect to Redis if a Redis address is provided. */
   if (redis_addr != NULL) {
     int num_args;
@@ -670,10 +658,8 @@ void handle_client_register(LocalSchedulerState *state,
     if (!ActorID_equal(actor_id, NIL_ACTOR_ID)) {
       /* Make sure that the local scheduler is aware that it is responsible for
        * this actor. */
-      actor_map_entry *entry;
-      HASH_FIND(hh, state->actor_mapping, &actor_id, sizeof(actor_id), entry);
-      CHECK(entry != NULL);
-      CHECK(DBClientID_equal(entry->local_scheduler_id,
+      CHECK(state->actor_mapping.count(actor_id) == 1);
+      CHECK(DBClientID_equal(state->actor_mapping[actor_id].local_scheduler_id,
                              get_db_client_id(state->db)));
       /* Update the worker struct with this actor ID. */
       CHECK(ActorID_equal(worker->actor_id, NIL_ACTOR_ID));
@@ -906,16 +892,14 @@ void handle_actor_creation_callback(ActorInfo info, void *context) {
    * TODO(rkn): We will need to remove this check to handle the case where the
    * corresponding publish is retried and the case in which a task that creates
    * an actor is resubmitted due to fault tolerance. */
-  actor_map_entry *entry;
-  HASH_FIND(hh, state->actor_mapping, &actor_id, sizeof(actor_id), entry);
-  CHECK(entry == NULL);
+  CHECK(state->actor_mapping.count(actor_id) == 0);
   /* Create a new entry and add it to the actor mapping table. TODO(rkn):
    * Currently this is never removed (except when the local scheduler state is
    * deleted). */
-  entry = (actor_map_entry *) malloc(sizeof(actor_map_entry));
-  entry->actor_id = actor_id;
-  entry->local_scheduler_id = local_scheduler_id;
-  HASH_ADD(hh, state->actor_mapping, actor_id, sizeof(entry->actor_id), entry);
+  ActorMapEntry entry;
+  entry.actor_id = actor_id;
+  entry.local_scheduler_id = local_scheduler_id;
+  state->actor_mapping[actor_id] = entry;
   /* If this local scheduler is responsible for the actor, then start a new
    * worker for the actor. */
   if (DBClientID_equal(local_scheduler_id, get_db_client_id(state->db))) {
