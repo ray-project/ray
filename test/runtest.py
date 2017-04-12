@@ -1328,10 +1328,11 @@ class SchedulingAlgorithm(unittest.TestCase):
   def testLoadBalancing(self):
     # This test ensures that tasks are being assigned to all local schedulers
     # in a roughly equal manner.
-    num_workers = 21
     num_local_schedulers = 3
-    ray.worker._init(start_ray_local=True, num_workers=num_workers,
-                     num_local_schedulers=num_local_schedulers)
+    num_cpus = 7
+    ray.worker._init(start_ray_local=True,
+                     num_local_schedulers=num_local_schedulers,
+                     num_cpus=num_cpus)
 
     @ray.remote
     def f():
