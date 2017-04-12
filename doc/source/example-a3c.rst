@@ -17,11 +17,9 @@ To run the application, first install **ray** and then some dependencies:
 
   pip install tensorflow
   pip install six
-  pip install gym[atari]==0.7.4
+  pip install gym[atari]
   pip install opencv-python
   pip install scipy
-
-Note that this code **currently does not work** with ``gym==0.8.0``.
 
 You can run the code with
 
@@ -144,3 +142,11 @@ global model parameters. The main training script looks like the following.
       parameters = policy.get_weights()
       gradient_list.extend([agents[info["id"]].compute_gradient(parameters)])
     return policy
+
+
+Benchmarks and Visualization
+----------------------------
+
+For the :code:`PongDeterministic-v3` and an Amazon EC2 m4.16xlarge instance, we are able to train the agent with 16 workers in around 15 minutes. With 8 workers, we can train the agent in around 25 minutes.
+
+You can visualize performance by running :code:`tensorboard --logdir [directory]` in a separate screen, where :code:`[directory]` is defaulted to :code:`./results/`. If you are running multiple experiments, be sure to vary the directory to which Tensorflow saves its progress (found in :code:`driver.py`).
