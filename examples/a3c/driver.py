@@ -12,7 +12,7 @@ import gym
 import sys
 import os
 from datetime import datetime, timedelta
-from misc import *
+from misc import timestamp, time_string
 from envs import create_env
 
 @ray.actor
