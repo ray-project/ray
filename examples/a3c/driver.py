@@ -10,16 +10,17 @@ import tensorflow as tf
 import six.moves.queue as queue
 import gym
 import sys
+import os
 from datetime import datetime, timedelta
-from misc import timestamp, Profiler
+from misc import timestamp, time_string
 from envs import create_env
 
 @ray.actor
 class Runner(object):
     """Actor object to start running simulation on workers.
         Gradient computation is also executed from this object."""
-    def __init__(self, env_name, actor_id, logdir="tmp/", start=True):
-        env = create_env(env_name, None, None)
+    def __init__(self, env_name, actor_id, logdir="results/", start=True):
+        env = create_env(env_name)
         self.id = actor_id
         num_actions = env.action_space.n
         self.policy = LSTMPolicy(env.observation_space.shape, num_actions, actor_id)
@@ -40,7 +41,7 @@ class Runner(object):
         return rollout
 
     def start(self):
-        summary_writer = tf.summary.FileWriter(self.logdir + "test_1")
+        summary_writer = tf.summary.FileWriter(os.path.join(self.logdir, "agent_%d" % self.id))
         self.summary_writer = summary_writer
         self.runner.start_runner(self.policy.sess, summary_writer)
 
@@ -55,7 +56,7 @@ class Runner(object):
 
 
 def train(num_workers, env_name="PongDeterministic-v3"):
-    env = create_env(env_name, None, None)
+    env = create_env(env_name)
     policy = LSTMPolicy(env.observation_space.shape, env.action_space.n, 0)
     agents = [Runner(env_name, i) for i in range(num_workers)]
     parameters = policy.get_weights()
@@ -73,9 +74,6 @@ def train(num_workers, env_name="PongDeterministic-v3"):
     return policy
 
 if __name__ == '__main__':
-    if gym.__version__[:3] == '0.8':
-      raise Exception("This example currently does not work with gym==0.8.0. "
-                      "Please downgrade to gym==0.7.4.");
     num_workers = int(sys.argv[1])
     ray.init(num_cpus=num_workers)
     train(num_workers)

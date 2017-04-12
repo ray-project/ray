@@ -9,6 +9,9 @@ import cProfile, pstats, io
 def timestamp():
     return datetime.now().timestamp()
 
+def time_string():
+    return datetime.now().strftime("%Y%m%d_%H_%M_%f")
+
 class Profiler(object):
     def __init__(self):
         self.pr = cProfile.Profile()
