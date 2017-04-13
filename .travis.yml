@@ -92,3 +92,4 @@ script:
   - python test/stress_tests.py
   - python test/component_failures_test.py
   - python test/multi_node_test.py
+  - python test/recursion_test.py
