@@ -59,10 +59,10 @@ def hex_to_binary(hex_identifier):
   return binascii.unhexlify(hex_identifier)
 
 
-def get_local_schedulers(worker):
+def get_local_schedulers(redis_client):
   local_schedulers = []
-  for client in worker.redis_client.keys("CL:*"):
-    client_info = worker.redis_client.hgetall(client)
+  for client in redis_client.keys("CL:*"):
+    client_info = redis_client.hgetall(client)
     if b"client_type" not in client_info:
       continue
     if client_info[b"client_type"] == b"local_scheduler":

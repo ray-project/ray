@@ -5,9 +5,11 @@ from __future__ import print_function
 import argparse
 from collections import Counter
 import logging
+import json
 import redis
 import time
 
+import ray.experimental.state as state
 from ray.services import get_ip_address
 from ray.services import get_port
 
@@ -15,6 +17,7 @@ from ray.services import get_port
 from ray.core.generated.SubscribeToDBClientTableReply \
     import SubscribeToDBClientTableReply
 from ray.core.generated.TaskReply import TaskReply
+from ray.core.generated.DriverTableMessage import DriverTableMessage
 
 # These variables must be kept in sync with the C codebase.
 # common/common.h
@@ -26,6 +29,7 @@ NIL_ID = b"\xff" * DB_CLIENT_ID_SIZE
 TASK_STATUS_LOST = 32
 # common/state/redis.cc
 PLASMA_MANAGER_HEARTBEAT_CHANNEL = b"plasma_managers"
+DRIVER_DEATH_CHANNEL = b"driver_deaths"
 # common/redis_module/ray_redis_module.cc
 TASK_PREFIX = "TT:"
 OBJECT_PREFIX = "OL:"
@@ -215,6 +219,40 @@ class Monitor(object):
     # manager.
     self.live_plasma_managers[db_client_id] = 0
 
+  def driver_removed_handler(self, channel, data):
+    """Handle a notification that a driver has been removed.
+
+    This releases any GPU resources that were reserved for that driver in
+    Redis.
+    """
+    message = DriverTableMessage.GetRootAsDriverTableMessage(data, 0)
+    driver_id = message.DriverId()
+    log.info("Driver {} has been removed.".format(driver_id))
+
+    # Release any GPU resources that have been reserved for this driver in
+    # Redis.
+    local_schedulers = state.get_local_schedulers(self.redis)
+    for local_scheduler in local_schedulers:
+      if int(float(local_scheduler[b"num_gpus"].decode("ascii"))) > 0:
+        local_scheduler_id = local_scheduler[b"ray_client_id"]
+        try:
+          result = self.redis.hget(local_scheduler_id, "gpus_in_use")
+          if result is None:
+            gpus_in_use = dict()
+          else:
+            gpus_in_use = json.loads(result)
+        except redis.ResponseError:
+          # This failed because it's the first time that it got called. This is expected.
+          print("Failed first time as expected.")
+          gpus_in_use = dict()
+
+        driver_id_hex = state.binary_to_hex(driver_id)
+        if driver_id_hex in gpus_in_use:
+          ####MAKE THIS A TRANSACTION!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+          stuff = gpus_in_use.pop(driver_id_hex)
+          print("Returning IDs", stuff)
+          self.redis.hset(local_scheduler_id, "gpus_in_use", json.dumps(gpus_in_use))
+
   def process_messages(self):
     """Process all messages ready in the subscription channels.
 
@@ -244,6 +282,12 @@ class Monitor(object):
         assert(self.subscribed[channel])
         # The message was a notification from the db_client table.
         message_handler = self.db_client_notification_handler
+      elif channel == DRIVER_DEATH_CHANNEL:
+        assert(self.subscribed[channel])
+        # The message was a notification that a driver was removed.
+        message_handler = self.driver_removed_handler
+      else:
+        raise Exception("This code should be unreachable.")
 
       # Call the handler.
       assert(message_handler is not None)
@@ -258,6 +302,7 @@ class Monitor(object):
     # Initialize the subscription channel.
     self.subscribe(DB_CLIENT_TABLE_NAME)
     self.subscribe(PLASMA_MANAGER_HEARTBEAT_CHANNEL)
+    self.subscribe(DRIVER_DEATH_CHANNEL)
 
     # Scan the database table for dead database clients. NOTE: This must be
     # called before reading any messages from the subscription channel. This
