@@ -989,7 +989,6 @@ void handle_actor_creation_callback(ActorID actor_id,
    * Currently this is never removed (except when the local scheduler state is
    * deleted). */
   ActorMapEntry entry;
-  entry.actor_id = actor_id;
   entry.local_scheduler_id = local_scheduler_id;
   entry.driver_id = driver_id;
   state->actor_mapping[actor_id] = entry;

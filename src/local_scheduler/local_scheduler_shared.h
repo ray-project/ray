@@ -18,8 +18,6 @@ extern UT_icd task_ptr_icd;
 /** This struct is used to maintain a mapping from actor IDs to the ID of the
  *  local scheduler that is responsible for the actor. */
 struct ActorMapEntry {
-  /** The ID of the actor. This is used as a key in the hash table. */
-  ActorID actor_id;
   /** The ID of the driver that created the actor. */
   WorkerID driver_id;
   /** The ID of the local scheduler that is responsible for the actor. */
