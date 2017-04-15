@@ -80,6 +80,9 @@ scripts/nodes.txt
 *.dSYM/
 *.su
 
+# CMake
+cmake-build-debug/
+
 # Python setup files
 *.egg-info
 
