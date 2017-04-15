@@ -1,0 +1,209 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CodeBlocks_project_file>
+	<FileVersion major="1" minor="6"/>
+	<Project>
+		<Option title="numbuf"/>
+		<Option makefile_is_custom="1"/>
+		<Option compiler="clang"/>
+		<Option virtualFolders="CMake Files\;CMake Files\src\;CMake Files\src\common\;CMake Files\src\common\cmake\;CMake Files\src\common\redis_module\;CMake Files\src\global_scheduler\;CMake Files\src\local_scheduler\;CMake Files\src\numbuf\;CMake Files\src\numbuf\cmake\;CMake Files\src\numbuf\cmake\Modules\;CMake Files\src\plasma\;CMake Files\cmake-build-debug\;CMake Files\cmake-build-debug\src\;CMake Files\cmake-build-debug\src\common\;CMake Files\cmake-build-debug\src\common\flatbuffers_ep-prefix\;CMake Files\cmake-build-debug\src\common\flatbuffers_ep-prefix\tmp\;"/>
+		<Build>
+			<Target title="all">
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/numbuf"/>
+				<Option type="4"/>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/numbuf/Makefile&quot;  VERBOSE=1 all"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/numbuf/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/numbuf/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/numbuf/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="numbuf">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/numbuf/libnumbuf.so" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/numbuf"/>
+				<Option object_output="./"/>
+				<Option type="3"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add option="-DHAS_PLASMA"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/software/anaconda_2_7/anaconda/include/python2.7"/>
+					<Add directory="/Users/gmedasani/software/anaconda_2_7/anaconda/lib/python2.7/site-packages/numpy/core/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/thirdparty/arrow/cpp/src"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/cpp/src"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/python/src"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/../plasma"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/../common"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/../common/thirdparty"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/numbuf/Makefile&quot;  VERBOSE=1 numbuf"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/numbuf/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/numbuf/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/numbuf/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="numbuf/fast">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/numbuf/libnumbuf.so" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/numbuf"/>
+				<Option object_output="./"/>
+				<Option type="3"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add option="-DHAS_PLASMA"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/software/anaconda_2_7/anaconda/include/python2.7"/>
+					<Add directory="/Users/gmedasani/software/anaconda_2_7/anaconda/lib/python2.7/site-packages/numpy/core/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/thirdparty/arrow/cpp/src"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/cpp/src"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/python/src"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/../plasma"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/../common"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/../common/thirdparty"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/numbuf/Makefile&quot;  VERBOSE=1 numbuf/fast"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/numbuf/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/numbuf/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/numbuf/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+		</Build>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/lib/python/common_extension.cc">
+			<Option target="numbuf"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/lib/python/common_extension.h">
+			<Option target="numbuf"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/cpp/src/numbuf/dict.cc">
+			<Option target="numbuf"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/cpp/src/numbuf/dict.h">
+			<Option target="numbuf"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/cpp/src/numbuf/sequence.cc">
+			<Option target="numbuf"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/cpp/src/numbuf/sequence.h">
+			<Option target="numbuf"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/python/src/pynumbuf/adapters/numpy.cc">
+			<Option target="numbuf"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/python/src/pynumbuf/adapters/numpy.h">
+			<Option target="numbuf"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/python/src/pynumbuf/adapters/python.cc">
+			<Option target="numbuf"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/python/src/pynumbuf/adapters/python.h">
+			<Option target="numbuf"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/python/src/pynumbuf/numbuf.cc">
+			<Option target="numbuf"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\src\common\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\src\common\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/Common.cmake">
+			<Option virtualFolder="CMake Files\src\common\cmake\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/Common.cmake">
+			<Option virtualFolder="CMake Files\src\common\cmake\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/Common.cmake">
+			<Option virtualFolder="CMake Files\src\common\cmake\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/Common.cmake">
+			<Option virtualFolder="CMake Files\src\common\cmake\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/Common.cmake">
+			<Option virtualFolder="CMake Files\src\common\cmake\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/Common.cmake">
+			<Option virtualFolder="CMake Files\src\common\cmake\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/Common.cmake">
+			<Option virtualFolder="CMake Files\src\common\cmake\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/Common.cmake">
+			<Option virtualFolder="CMake Files\src\common\cmake\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/Common.cmake">
+			<Option virtualFolder="CMake Files\src\common\cmake\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/Common.cmake">
+			<Option virtualFolder="CMake Files\src\common\cmake\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/redis_module/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\src\common\redis_module\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/redis_module/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\src\common\redis_module\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/redis_module/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\src\common\redis_module\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/global_scheduler/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\src\global_scheduler\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/global_scheduler/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\src\global_scheduler\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\src\local_scheduler\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\src\local_scheduler\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\src\numbuf\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\src\numbuf\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/cmake/Modules/FindNumPy.cmake">
+			<Option virtualFolder="CMake Files\src\numbuf\cmake\Modules\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/cmake/Modules/FindNumPy.cmake">
+			<Option virtualFolder="CMake Files\src\numbuf\cmake\Modules\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\src\plasma\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\src\plasma\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/flatbuffers_ep-prefix/tmp/flatbuffers_ep-cfgcmd.txt.in">
+			<Option virtualFolder="CMake Files\cmake-build-debug\src\common\flatbuffers_ep-prefix\tmp\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/flatbuffers_ep-prefix/tmp/flatbuffers_ep-cfgcmd.txt.in">
+			<Option virtualFolder="CMake Files\cmake-build-debug\src\common\flatbuffers_ep-prefix\tmp\"/>
+		</Unit>
+	</Project>
+</CodeBlocks_project_file>

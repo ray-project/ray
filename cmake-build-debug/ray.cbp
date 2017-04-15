@@ -1,0 +1,1862 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CodeBlocks_project_file>
+	<FileVersion major="1" minor="6"/>
+	<Project>
+		<Option title="ray"/>
+		<Option makefile_is_custom="1"/>
+		<Option compiler="clang"/>
+		<Option virtualFolders="CMake Files\;CMake Files\src\;CMake Files\src\common\;CMake Files\src\common\cmake\;CMake Files\src\common\redis_module\;CMake Files\src\global_scheduler\;CMake Files\src\local_scheduler\;CMake Files\src\numbuf\;CMake Files\src\numbuf\cmake\;CMake Files\src\numbuf\cmake\Modules\;CMake Files\src\plasma\;CMake Files\cmake-build-debug\;CMake Files\cmake-build-debug\src\;CMake Files\cmake-build-debug\src\common\;CMake Files\cmake-build-debug\src\common\flatbuffers_ep-prefix\;CMake Files\cmake-build-debug\src\common\flatbuffers_ep-prefix\tmp\;"/>
+		<Build>
+			<Target title="all">
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug"/>
+				<Option type="4"/>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/Makefile&quot;  VERBOSE=1 all"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="install/local">
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug"/>
+				<Option type="4"/>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/Makefile&quot;  VERBOSE=1 install/local"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="install/strip">
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug"/>
+				<Option type="4"/>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/Makefile&quot;  VERBOSE=1 install/strip"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="install">
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug"/>
+				<Option type="4"/>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/Makefile&quot;  VERBOSE=1 install"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="list_install_components">
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug"/>
+				<Option type="4"/>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/Makefile&quot;  VERBOSE=1 list_install_components"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="rebuild_cache">
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug"/>
+				<Option type="4"/>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/Makefile&quot;  VERBOSE=1 rebuild_cache"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="edit_cache">
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug"/>
+				<Option type="4"/>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/Makefile&quot;  VERBOSE=1 edit_cache"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="redis">
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common"/>
+				<Option type="4"/>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 redis"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="io_tests">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/io_tests" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/thirdparty/ae"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 io_tests"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="io_tests/fast">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/io_tests" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/thirdparty/ae"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 io_tests/fast"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="task_table_tests">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/task_table_tests" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/thirdparty/ae"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 task_table_tests"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="task_table_tests/fast">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/task_table_tests" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/thirdparty/ae"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 task_table_tests/fast"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="copy_redis">
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common"/>
+				<Option type="4"/>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 copy_redis"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="db_tests">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/db_tests" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/thirdparty/ae"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 db_tests"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="db_tests/fast">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/db_tests" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/thirdparty/ae"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 db_tests/fast"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="common_tests">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/common_tests" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/thirdparty/ae"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 common_tests"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="common_tests/fast">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/common_tests" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/thirdparty/ae"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 common_tests/fast"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="hiredis">
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common"/>
+				<Option type="4"/>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 hiredis"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="redis_tests">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/redis_tests" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/thirdparty/ae"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 redis_tests"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="redis_tests/fast">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/redis_tests" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/thirdparty/ae"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 redis_tests/fast"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="task_tests">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/task_tests" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/thirdparty/ae"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 task_tests"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="task_tests/fast">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/task_tests" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/thirdparty/ae"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 task_tests/fast"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="common">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/libcommon.a" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common"/>
+				<Option object_output="./"/>
+				<Option type="2"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/thirdparty/ae"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 common"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="common/fast">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/libcommon.a" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common"/>
+				<Option object_output="./"/>
+				<Option type="2"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/thirdparty/ae"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 common/fast"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="object_table_tests">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/object_table_tests" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/thirdparty/ae"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 object_table_tests"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="object_table_tests/fast">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/object_table_tests" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/thirdparty/ae"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 object_table_tests/fast"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="gen_common_fbs">
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common"/>
+				<Option type="4"/>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 gen_common_fbs"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="flatbuffers_ep">
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common"/>
+				<Option type="4"/>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 flatbuffers_ep"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="ray_redis_module">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/redis_module/libray_redis_module.so" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/redis_module"/>
+				<Option object_output="./"/>
+				<Option type="3"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/redis_module/Makefile&quot;  VERBOSE=1 ray_redis_module"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/redis_module/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/redis_module/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/redis_module/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="ray_redis_module/fast">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/redis_module/libray_redis_module.so" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/redis_module"/>
+				<Option object_output="./"/>
+				<Option type="3"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/redis_module/Makefile&quot;  VERBOSE=1 ray_redis_module/fast"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/redis_module/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/redis_module/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/redis_module/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="plasma_store">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/plasma_store" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/software/anaconda_2_7/anaconda/include/python2.7"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/.."/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 plasma_store"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="plasma_store/fast">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/plasma_store" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/software/anaconda_2_7/anaconda/include/python2.7"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/.."/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 plasma_store/fast"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="plasma">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/libplasma.so" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma"/>
+				<Option object_output="./"/>
+				<Option type="3"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/software/anaconda_2_7/anaconda/include/python2.7"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/.."/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 plasma"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="plasma/fast">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/libplasma.so" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma"/>
+				<Option object_output="./"/>
+				<Option type="3"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/software/anaconda_2_7/anaconda/include/python2.7"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/.."/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 plasma/fast"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="plasma_manager">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/plasma_manager" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/software/anaconda_2_7/anaconda/include/python2.7"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/.."/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 plasma_manager"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="plasma_manager/fast">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/plasma_manager" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/software/anaconda_2_7/anaconda/include/python2.7"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/.."/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 plasma_manager/fast"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="serialization_tests">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/serialization_tests" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/software/anaconda_2_7/anaconda/include/python2.7"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/.."/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 serialization_tests"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="serialization_tests/fast">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/serialization_tests" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/software/anaconda_2_7/anaconda/include/python2.7"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/.."/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 serialization_tests/fast"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="manager_tests">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/manager_tests" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/software/anaconda_2_7/anaconda/include/python2.7"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/.."/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 manager_tests"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="manager_tests/fast">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/manager_tests" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/software/anaconda_2_7/anaconda/include/python2.7"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/.."/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 manager_tests/fast"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="plasma_lib">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/libplasma_lib.a" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma"/>
+				<Option object_output="./"/>
+				<Option type="2"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/software/anaconda_2_7/anaconda/include/python2.7"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/.."/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 plasma_lib"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="plasma_lib/fast">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/libplasma_lib.a" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma"/>
+				<Option object_output="./"/>
+				<Option type="2"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/software/anaconda_2_7/anaconda/include/python2.7"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/.."/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 plasma_lib/fast"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="client_tests">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/client_tests" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/software/anaconda_2_7/anaconda/include/python2.7"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/.."/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 client_tests"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="client_tests/fast">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/client_tests" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/software/anaconda_2_7/anaconda/include/python2.7"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/.."/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 client_tests/fast"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="plasma_client">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/libplasma_client.so" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma"/>
+				<Option object_output="./"/>
+				<Option type="3"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/software/anaconda_2_7/anaconda/include/python2.7"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/.."/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 plasma_client"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="plasma_client/fast">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/libplasma_client.so" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma"/>
+				<Option object_output="./"/>
+				<Option type="3"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/software/anaconda_2_7/anaconda/include/python2.7"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/.."/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 plasma_client/fast"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="gen_plasma_fbs">
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma"/>
+				<Option type="4"/>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 gen_plasma_fbs"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/plasma/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="local_scheduler">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/local_scheduler" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/software/anaconda_2_7/anaconda/include/python2.7"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/../plasma"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/../common/format"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 local_scheduler"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="local_scheduler/fast">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/local_scheduler" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/software/anaconda_2_7/anaconda/include/python2.7"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/../plasma"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/../common/format"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 local_scheduler/fast"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="local_scheduler_tests">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/local_scheduler_tests" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/software/anaconda_2_7/anaconda/include/python2.7"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/../plasma"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/../common/format"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 local_scheduler_tests"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="local_scheduler_tests/fast">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/local_scheduler_tests" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/software/anaconda_2_7/anaconda/include/python2.7"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/../plasma"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/../common/format"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 local_scheduler_tests/fast"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="local_scheduler_library">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/liblocal_scheduler_library.so" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler"/>
+				<Option object_output="./"/>
+				<Option type="3"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/software/anaconda_2_7/anaconda/include/python2.7"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/../plasma"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/../common/format"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 local_scheduler_library"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="local_scheduler_library/fast">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/liblocal_scheduler_library.so" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler"/>
+				<Option object_output="./"/>
+				<Option type="3"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/software/anaconda_2_7/anaconda/include/python2.7"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/../plasma"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/../common/format"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 local_scheduler_library/fast"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="local_scheduler_client">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/liblocal_scheduler_client.a" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler"/>
+				<Option object_output="./"/>
+				<Option type="2"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/software/anaconda_2_7/anaconda/include/python2.7"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/../plasma"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/../common/format"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 local_scheduler_client"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="local_scheduler_client/fast">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/liblocal_scheduler_client.a" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler"/>
+				<Option object_output="./"/>
+				<Option type="2"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/software/anaconda_2_7/anaconda/include/python2.7"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/../plasma"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/../common/format"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 local_scheduler_client/fast"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="gen_local_scheduler_fbs">
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler"/>
+				<Option type="4"/>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 gen_local_scheduler_fbs"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/local_scheduler/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="global_scheduler">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/global_scheduler/global_scheduler" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/global_scheduler"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/global_scheduler/Makefile&quot;  VERBOSE=1 global_scheduler"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/global_scheduler/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/global_scheduler/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/global_scheduler/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="global_scheduler/fast">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/global_scheduler/global_scheduler" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/global_scheduler"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/global_scheduler/Makefile&quot;  VERBOSE=1 global_scheduler/fast"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/global_scheduler/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/global_scheduler/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/global_scheduler/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="numbuf">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/numbuf/libnumbuf.so" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/numbuf"/>
+				<Option object_output="./"/>
+				<Option type="3"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add option="-DHAS_PLASMA"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/software/anaconda_2_7/anaconda/include/python2.7"/>
+					<Add directory="/Users/gmedasani/software/anaconda_2_7/anaconda/lib/python2.7/site-packages/numpy/core/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/thirdparty/arrow/cpp/src"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/cpp/src"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/python/src"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/../plasma"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/../common"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/../common/thirdparty"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/numbuf/Makefile&quot;  VERBOSE=1 numbuf"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/numbuf/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/numbuf/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/numbuf/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="numbuf/fast">
+				<Option output="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/numbuf/libnumbuf.so" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/numbuf"/>
+				<Option object_output="./"/>
+				<Option type="3"/>
+				<Option compiler="clang"/>
+				<Compiler>
+					<Add option="-DHAS_PLASMA"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/flatbuffers_ep-prefix/src/flatbuffers_ep-install/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/.."/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../thirdparty"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/../lib/python"/>
+					<Add directory="/Users/gmedasani/software/anaconda_2_7/anaconda/include/python2.7"/>
+					<Add directory="/Users/gmedasani/software/anaconda_2_7/anaconda/lib/python2.7/site-packages/numpy/core/include"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/thirdparty/arrow/cpp/src"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/cpp/src"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/python/src"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/../plasma"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/../common"/>
+					<Add directory="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/../common/thirdparty"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../lib/clang/8.1.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/numbuf/Makefile&quot;  VERBOSE=1 numbuf/fast"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/numbuf/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/numbuf/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/numbuf/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+		</Build>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/common.cc">
+			<Option target="common"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/common.h">
+			<Option target="common"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/common_protocol.cc">
+			<Option target="common"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/common_protocol.h">
+			<Option target="common"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/event_loop.cc">
+			<Option target="common"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/event_loop.h">
+			<Option target="common"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/io.cc">
+			<Option target="common"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/io.h">
+			<Option target="common"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/lib/python/common_extension.cc">
+			<Option target="plasma"/>
+			<Option target="local_scheduler_library"/>
+			<Option target="numbuf"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/lib/python/common_extension.h">
+			<Option target="plasma"/>
+			<Option target="local_scheduler_library"/>
+			<Option target="numbuf"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/logging.cc">
+			<Option target="common"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/logging.h">
+			<Option target="common"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/net.cc">
+			<Option target="common"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/net.h">
+			<Option target="common"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/redis_module/ray_redis_module.cc">
+			<Option target="ray_redis_module"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/state/actor_notification_table.cc">
+			<Option target="common"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/state/actor_notification_table.h">
+			<Option target="common"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/state/db_client_table.cc">
+			<Option target="common"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/state/db_client_table.h">
+			<Option target="common"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/state/error_table.cc">
+			<Option target="common"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/state/error_table.h">
+			<Option target="common"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/state/local_scheduler_table.cc">
+			<Option target="common"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/state/local_scheduler_table.h">
+			<Option target="common"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/state/object_table.cc">
+			<Option target="common"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/state/object_table.h">
+			<Option target="common"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/state/redis.cc">
+			<Option target="common"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/state/redis.h">
+			<Option target="common"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/state/table.cc">
+			<Option target="common"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/state/table.h">
+			<Option target="common"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/state/task_table.cc">
+			<Option target="common"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/state/task_table.h">
+			<Option target="common"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/task.cc">
+			<Option target="common"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/task.h">
+			<Option target="common"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/test/common_tests.cc">
+			<Option target="common_tests"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/test/db_tests.cc">
+			<Option target="db_tests"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/test/io_tests.cc">
+			<Option target="io_tests"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/test/object_table_tests.cc">
+			<Option target="object_table_tests"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/test/redis_tests.cc">
+			<Option target="redis_tests"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/test/task_table_tests.cc">
+			<Option target="task_table_tests"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/test/task_tests.cc">
+			<Option target="task_tests"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/thirdparty/ae/ae.c">
+			<Option target="common"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/thirdparty/ae/ae.h">
+			<Option target="common"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/thirdparty/sha256.c">
+			<Option target="common"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/thirdparty/sha256.h">
+			<Option target="common"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/global_scheduler/global_scheduler.cc">
+			<Option target="global_scheduler"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/global_scheduler/global_scheduler.h">
+			<Option target="global_scheduler"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/global_scheduler/global_scheduler_algorithm.cc">
+			<Option target="global_scheduler"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/global_scheduler/global_scheduler_algorithm.h">
+			<Option target="global_scheduler"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/local_scheduler.cc">
+			<Option target="local_scheduler"/>
+			<Option target="local_scheduler_tests"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/local_scheduler.h">
+			<Option target="local_scheduler"/>
+			<Option target="local_scheduler_tests"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/local_scheduler_algorithm.cc">
+			<Option target="local_scheduler"/>
+			<Option target="local_scheduler_tests"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/local_scheduler_algorithm.h">
+			<Option target="local_scheduler"/>
+			<Option target="local_scheduler_tests"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/local_scheduler_client.cc">
+			<Option target="local_scheduler_client"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/local_scheduler_client.h">
+			<Option target="local_scheduler_client"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/local_scheduler_extension.cc">
+			<Option target="local_scheduler_library"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/test/local_scheduler_tests.cc">
+			<Option target="local_scheduler_tests"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/cpp/src/numbuf/dict.cc">
+			<Option target="numbuf"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/cpp/src/numbuf/dict.h">
+			<Option target="numbuf"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/cpp/src/numbuf/sequence.cc">
+			<Option target="numbuf"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/cpp/src/numbuf/sequence.h">
+			<Option target="numbuf"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/python/src/pynumbuf/adapters/numpy.cc">
+			<Option target="numbuf"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/python/src/pynumbuf/adapters/numpy.h">
+			<Option target="numbuf"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/python/src/pynumbuf/adapters/python.cc">
+			<Option target="numbuf"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/python/src/pynumbuf/adapters/python.h">
+			<Option target="numbuf"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/python/src/pynumbuf/numbuf.cc">
+			<Option target="numbuf"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/eviction_policy.cc">
+			<Option target="plasma_store"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/eviction_policy.h">
+			<Option target="plasma_store"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/fling.c">
+			<Option target="plasma_store"/>
+			<Option target="plasma"/>
+			<Option target="plasma_lib"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/fling.h">
+			<Option target="plasma_store"/>
+			<Option target="plasma"/>
+			<Option target="plasma_lib"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/malloc.c">
+			<Option target="plasma_store"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/malloc.h">
+			<Option target="plasma_store"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/plasma.cc">
+			<Option target="plasma_store"/>
+			<Option target="plasma"/>
+			<Option target="plasma_lib"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/plasma.h">
+			<Option target="plasma_store"/>
+			<Option target="plasma"/>
+			<Option target="plasma_lib"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/plasma_client.cc">
+			<Option target="plasma"/>
+			<Option target="plasma_lib"/>
+			<Option target="plasma_client"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/plasma_client.h">
+			<Option target="plasma"/>
+			<Option target="plasma_lib"/>
+			<Option target="plasma_client"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/plasma_extension.cc">
+			<Option target="plasma"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/plasma_extension.h">
+			<Option target="plasma"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/plasma_manager.cc">
+			<Option target="plasma_manager"/>
+			<Option target="manager_tests"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/plasma_manager.h">
+			<Option target="plasma_manager"/>
+			<Option target="manager_tests"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/plasma_protocol.cc">
+			<Option target="plasma_store"/>
+			<Option target="plasma"/>
+			<Option target="plasma_lib"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/plasma_protocol.h">
+			<Option target="plasma_store"/>
+			<Option target="plasma"/>
+			<Option target="plasma_lib"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/plasma_store.cc">
+			<Option target="plasma_store"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/plasma_store.h">
+			<Option target="plasma_store"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/test/client_tests.cc">
+			<Option target="client_tests"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/test/manager_tests.cc">
+			<Option target="manager_tests"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/test/serialization_tests.cc">
+			<Option target="serialization_tests"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/thirdparty/xxhash.c">
+			<Option target="plasma"/>
+			<Option target="plasma_lib"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/thirdparty/xxhash.h">
+			<Option target="plasma"/>
+			<Option target="plasma_lib"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\src\common\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\src\common\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/Common.cmake">
+			<Option virtualFolder="CMake Files\src\common\cmake\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/Common.cmake">
+			<Option virtualFolder="CMake Files\src\common\cmake\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/Common.cmake">
+			<Option virtualFolder="CMake Files\src\common\cmake\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/Common.cmake">
+			<Option virtualFolder="CMake Files\src\common\cmake\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/Common.cmake">
+			<Option virtualFolder="CMake Files\src\common\cmake\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/Common.cmake">
+			<Option virtualFolder="CMake Files\src\common\cmake\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/Common.cmake">
+			<Option virtualFolder="CMake Files\src\common\cmake\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/Common.cmake">
+			<Option virtualFolder="CMake Files\src\common\cmake\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/Common.cmake">
+			<Option virtualFolder="CMake Files\src\common\cmake\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/cmake/Common.cmake">
+			<Option virtualFolder="CMake Files\src\common\cmake\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/redis_module/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\src\common\redis_module\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/redis_module/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\src\common\redis_module\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/common/redis_module/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\src\common\redis_module\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/global_scheduler/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\src\global_scheduler\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/global_scheduler/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\src\global_scheduler\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\src\local_scheduler\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/local_scheduler/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\src\local_scheduler\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\src\numbuf\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\src\numbuf\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/cmake/Modules/FindNumPy.cmake">
+			<Option virtualFolder="CMake Files\src\numbuf\cmake\Modules\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/numbuf/cmake/Modules/FindNumPy.cmake">
+			<Option virtualFolder="CMake Files\src\numbuf\cmake\Modules\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\src\plasma\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/src/plasma/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\src\plasma\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/flatbuffers_ep-prefix/tmp/flatbuffers_ep-cfgcmd.txt.in">
+			<Option virtualFolder="CMake Files\cmake-build-debug\src\common\flatbuffers_ep-prefix\tmp\"/>
+		</Unit>
+		<Unit filename="/Users/gmedasani/Documents/bigdata/project-ray/ray/cmake-build-debug/src/common/flatbuffers_ep-prefix/tmp/flatbuffers_ep-cfgcmd.txt.in">
+			<Option virtualFolder="CMake Files\cmake-build-debug\src\common\flatbuffers_ep-prefix\tmp\"/>
+		</Unit>
+	</Project>
+</CodeBlocks_project_file>
