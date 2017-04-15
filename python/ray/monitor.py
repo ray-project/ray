@@ -249,8 +249,9 @@ class Monitor(object):
         driver_id_hex = state.binary_to_hex(driver_id)
         if driver_id_hex in gpus_in_use:
           ####MAKE THIS A TRANSACTION!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-          stuff = gpus_in_use.pop(driver_id_hex)
-          print("Returning IDs", stuff)
+          returned_gpu_ids = gpus_in_use.pop(driver_id_hex)
+          log.info("Driver {} is returning GPU IDs {} to local scheduler {}."
+                   .format(driver_id, returned_gpu_ids, local_scheduer_id))
           self.redis.hset(local_scheduler_id, "gpus_in_use", json.dumps(gpus_in_use))
 
   def process_messages(self):
