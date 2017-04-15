@@ -2,12 +2,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import flatbuffers
 import hashlib
 import inspect
 import json
 import numpy as np
 import random
+import redis
 import traceback
 
 import ray.local_scheduler
@@ -15,10 +15,6 @@ import ray.pickling as pickling
 import ray.signature as signature
 import ray.worker
 import ray.experimental.state as state
-
-import ray.core.generated.ActorCreationNotification \
-    as ActorCreationNotification
-
 
 # This is a variable used by each actor to indicate the IDs of the GPUs that
 # the worker is currently allowed to use.
@@ -111,63 +107,66 @@ def fetch_and_register_actor(key, worker):
 
 
 def attempt_to_reserve_gpus(num_gpus, driver_id, local_scheduler, worker):
-  import redis
-
-
   # See if there are enough available GPUs on this local scheduler.
   local_scheduler_id = local_scheduler[b"ray_client_id"]
   local_scheduler_total_gpus = int(float(
       local_scheduler[b"num_gpus"].decode("ascii")))
 
-  ##DO ALL OF THIS AS A TRANSACTION!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  gpus_to_acquire = []
 
-  # See which GPUs are in use on this local scheduler. The object gpus_in_use
-  # is a dictionary mapping driver IDs (in hex) to a list of the GPU IDs on
-  # this local scheduler currently used by that driver.
-  try:
-    result = worker.redis_client.hget(local_scheduler_id, "gpus_in_use")
-    if result is None:
-      gpus_in_use = dict()
-    else:
-      gpus_in_use = json.loads(result)
-  except redis.ResponseError:
-    # This failed because it's the first time that it got called. This is expected.
-    print("Failed first time as expected.")
-    gpus_in_use = dict()
+  # Attempt to acquire GPU IDs atomically.
+  with worker.redis_client.pipeline() as pipe:
+    while True:
+      try:
+        # If this key is changed before the transaction below (the multi/exec
+        # block), then the transaction will not take place.
+        pipe.watch(local_scheduler_id)
 
-  print("gpus_in_use before:", gpus_in_use)
+        result = worker.redis_client.hget(local_scheduler_id, "gpus_in_use")
+        gpus_in_use = dict() if result is None else json.loads(result)
+        print("gpus_in_use before:", gpus_in_use)
+        all_gpu_ids_in_use = []
+        for key in gpus_in_use:
+          all_gpu_ids_in_use += gpus_in_use[key]
+        print("all_gpu_ids_in_use", all_gpu_ids_in_use)
 
-  all_gpu_ids_in_use = []
-  for key in gpus_in_use:
-    all_gpu_ids_in_use += gpus_in_use[key]
+        assert len(all_gpu_ids_in_use) <= local_scheduler_total_gpus
+        assert len(set(all_gpu_ids_in_use)) == len(all_gpu_ids_in_use)
 
-  print("all_gpu_ids_in_use", all_gpu_ids_in_use)
+        pipe.multi()
 
-  assert len(all_gpu_ids_in_use) <= local_scheduler_total_gpus
-  assert len(set(all_gpu_ids_in_use)) == len(all_gpu_ids_in_use)
+        if local_scheduler_total_gpus - len(all_gpu_ids_in_use) >= num_gpus:
+          # There are enough available GPUs, so try to reserve some.
+          all_gpu_ids = set(range(local_scheduler_total_gpus))
+          for gpu_id in all_gpu_ids_in_use:
+            all_gpu_ids.remove(gpu_id)
+          gpus_to_acquire = list(all_gpu_ids)[:num_gpus]
 
-  if local_scheduler_total_gpus - len(gpus_in_use) >= num_gpus:
-    # There are enough available GPUs, so try to reserve some.
+          print("gpus_to_acquire", gpus_to_acquire)
 
-    print("")
+          driver_id_hex = ray.experimental.state.binary_to_hex(driver_id)
+          if driver_id_hex not in gpus_in_use:
+            gpus_in_use[driver_id_hex] = []
+          gpus_in_use[driver_id_hex] += gpus_to_acquire
 
-    all_gpu_ids = set(range(local_scheduler_total_gpus))
-    for gpu_id in all_gpu_ids_in_use:
-      all_gpu_ids.remove(gpu_id)
-    gpus_to_acquire = list(all_gpu_ids)[:num_gpus]
+          print("gpus_in_use after:", gpus_in_use)
+          # Stick the updated GPU IDs back in Redis
+          pipe.hset(local_scheduler_id, "gpus_in_use", json.dumps(gpus_in_use))
 
-    print("gpus_to_acquire", gpus_to_acquire)
-
-    driver_id_hex = ray.experimental.state.binary_to_hex(driver_id)
-    if driver_id_hex not in gpus_in_use:
-      gpus_in_use[driver_id_hex] = []
-    gpus_in_use[driver_id_hex] += gpus_to_acquire
-
-  print("gpus_in_use after:", gpus_in_use)
-  # Stick the updated GPU IDs back in Redis
-  worker.redis_client.hset(local_scheduler_id, "gpus_in_use", json.dumps(gpus_in_use))
+        pipe.execute()
+        # If a WatchError is not raise, then the operations should have gone
+        # through atomically.
+        break
+      except redis.WatchError:
+        # Another client must have changed the watched key between the time we
+        # started WATCHing it and the pipeline's execution. We should just
+        # retry.
+        print("TRANSACTION FAILED")
+        gpus_to_acquire = []
+        continue
 
   return gpus_to_acquire
+
 
 def select_local_scheduler(local_schedulers, num_gpus, worker):
   """Select a local scheduler to assign this actor to.
@@ -243,18 +242,6 @@ def export_actor(actor_id, Class, actor_method_names, num_cpus, num_gpus,
   local_schedulers = state.get_local_schedulers(worker.redis_client)
   local_scheduler_id, gpu_ids = select_local_scheduler(local_schedulers,
                                                        num_gpus, worker)
-
-  # # Create a flatbuffer actor creation notification object to publish.
-  # builder = flatbuffers.Builder(0)
-  # ActorCreationNotification.ActorCreationNotificationStart(builder)
-  # ActorCreationNotification.ActorCreationNotificationAddActorId(
-  #     builder, builder.CreateString(actor_id.id()))
-  # ActorCreationNotification.ActorCreationNotificationAddDriverID(
-  #     builder, builder.CreateString(driver_id))
-  # ActorCreationNotification.ActorCreationNotificationAddLocalSchedulerID(
-  #     builder, builder.CreateString(local_scheduler_id))
-  # ActorCreationNotification.ActorCreationNotificationEnd(builder)
-  # final_flatbuffer = builder.Output()
 
   worker.redis_client.publish("actor_notifications",
                               actor_id.id() + driver_id + local_scheduler_id)

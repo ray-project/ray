@@ -235,24 +235,38 @@ class Monitor(object):
     for local_scheduler in local_schedulers:
       if int(float(local_scheduler[b"num_gpus"].decode("ascii"))) > 0:
         local_scheduler_id = local_scheduler[b"ray_client_id"]
-        try:
-          result = self.redis.hget(local_scheduler_id, "gpus_in_use")
-          if result is None:
-            gpus_in_use = dict()
-          else:
-            gpus_in_use = json.loads(result)
-        except redis.ResponseError:
-          # This failed because it's the first time that it got called. This is expected.
-          print("Failed first time as expected.")
-          gpus_in_use = dict()
 
-        driver_id_hex = state.binary_to_hex(driver_id)
-        if driver_id_hex in gpus_in_use:
-          ####MAKE THIS A TRANSACTION!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-          returned_gpu_ids = gpus_in_use.pop(driver_id_hex)
-          log.info("Driver {} is returning GPU IDs {} to local scheduler {}."
-                   .format(driver_id, returned_gpu_ids, local_scheduer_id))
-          self.redis.hset(local_scheduler_id, "gpus_in_use", json.dumps(gpus_in_use))
+        # Perform a transaction to return the GPUs.
+        with self.redis.pipeline() as pipe:
+          while True:
+            try:
+              # If this key is changed before the transaction below (the
+              # multi/exec block), then the transaction will not take place.
+              pipe.watch(local_scheduler_id)
+
+              result = pipe.hget(local_scheduler_id, "gpus_in_use")
+              gpus_in_use = dict() if result is None else json.loads(result)
+
+              driver_id_hex = state.binary_to_hex(driver_id)
+              if driver_id_hex in gpus_in_use:
+                returned_gpu_ids = gpus_in_use.pop(driver_id_hex)
+
+              pipe.multi()
+
+              pipe.hset(local_scheduler_id, "gpus_in_use", json.dumps(gpus_in_use))
+
+              pipe.execute()
+              # If a WatchError is not raise, then the operations should have
+              # gone through atomically.
+              break
+            except redis.WatchError:
+              # Another client must have changed the watched key between the
+              # time we started WATCHing it and the pipeline's execution. We
+              # should just retry.
+              continue
+
+        log.info("Driver {} is returning GPU IDs {} to local scheduler {}."
+                 .format(driver_id, returned_gpu_ids, local_scheduer_id))
 
   def process_messages(self):
     """Process all messages ready in the subscription channels.
