@@ -1,2 +1,0 @@
-/Library/Developer/CommandLineTools/usr/bin/ar qc libplasma_lib.a  CMakeFiles/plasma_lib.dir/plasma_client.cc.o CMakeFiles/plasma_lib.dir/plasma.cc.o CMakeFiles/plasma_lib.dir/plasma_protocol.cc.o CMakeFiles/plasma_lib.dir/fling.c.o CMakeFiles/plasma_lib.dir/thirdparty/xxhash.c.o
-/Library/Developer/CommandLineTools/usr/bin/ranlib libplasma_lib.a

@@ -1,2 +1,0 @@
-/Library/Developer/CommandLineTools/usr/bin/ar qc liblocal_scheduler_client.a  CMakeFiles/local_scheduler_client.dir/local_scheduler_client.cc.o
-/Library/Developer/CommandLineTools/usr/bin/ranlib liblocal_scheduler_client.a

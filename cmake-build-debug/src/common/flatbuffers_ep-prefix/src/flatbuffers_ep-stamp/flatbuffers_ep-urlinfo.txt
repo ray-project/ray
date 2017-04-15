@@ -1,3 +1,0 @@
-repository='external project URL'
-module='https://github.com/google/flatbuffers/archive/v1.6.0.tar.gz'
-tag=''

@@ -1,1 +1,0 @@
-/Library/Developer/CommandLineTools/usr/bin/c++    -std=c++11 -fPIC -g -Wl,-search_paths_first -Wl,-headerpad_max_install_names  CMakeFiles/common_tests.dir/test/common_tests.cc.o  -o common_tests  libcommon.a ../../flatbuffers_ep-prefix/src/flatbuffers_ep-install/lib/libflatbuffers.a ../../../src/common/thirdparty/hiredis/libhiredis.a 
