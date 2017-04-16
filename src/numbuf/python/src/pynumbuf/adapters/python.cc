@@ -22,7 +22,7 @@ namespace numbuf {
 
 Status get_value(std::shared_ptr<Array> arr, int32_t index, int32_t type, PyObject* base,
     const std::vector<std::shared_ptr<Tensor>>& tensors, PyObject** result) {
-  switch (arr->type()->type) {
+  switch (arr->type()->id()) {
     case Type::BOOL:
       *result =
           PyBool_FromLong(std::static_pointer_cast<BooleanArray>(arr)->Value(index));
@@ -55,13 +55,13 @@ Status get_value(std::shared_ptr<Array> arr, int32_t index, int32_t type, PyObje
     case Type::STRUCT: {
       auto s = std::static_pointer_cast<StructArray>(arr);
       auto l = std::static_pointer_cast<ListArray>(s->field(0));
-      if (s->type()->child(0)->name == "list") {
+      if (s->type()->child(0)->name() == "list") {
         return DeserializeList(l->values(), l->value_offset(index),
             l->value_offset(index + 1), base, tensors, result);
-      } else if (s->type()->child(0)->name == "tuple") {
+      } else if (s->type()->child(0)->name() == "tuple") {
         return DeserializeTuple(l->values(), l->value_offset(index),
             l->value_offset(index + 1), base, tensors, result);
-      } else if (s->type()->child(0)->name == "dict") {
+      } else if (s->type()->child(0)->name() == "dict") {
         return DeserializeDict(l->values(), l->value_offset(index),
             l->value_offset(index + 1), base, tensors, result);
       } else {
