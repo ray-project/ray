@@ -58,23 +58,9 @@ struct Client {
   PlasmaStoreState *plasma_state;
 };
 
-/* This is used to define the array of clients used to define the
- * object_table_entry type. */
-UT_icd client_icd = {sizeof(Client *), NULL, NULL, NULL};
-
-/* This is used to define the queue of object notifications for plasma
- * subscribers. */
-UT_icd object_info_icd = {sizeof(uint8_t *), NULL, NULL, NULL};
-
-typedef struct {
-  /** Client file descriptor. This is used as a key for the hash table. */
-  int subscriber_fd;
-  /** The object notifications for clients. We notify the client about the
-   *  objects in the order that the objects were sealed or deleted. */
-  UT_array *object_notifications;
-  /** Handle for the uthash table. */
-  UT_hash_handle hh;
-} NotificationQueue;
+/** The object notifications for clients. We notify the client about the
+ *  objects in the order that the objects were sealed or deleted. */
+typedef std::vector<uint8_t *> ObjectNotifications;
 
 struct GetRequest {
   GetRequest(Client *client, int num_object_ids, ObjectID object_ids[]);
@@ -109,7 +95,7 @@ struct PlasmaStoreState {
   /** The pending notifications that have not been sent to subscribers because
    *  the socket send buffers were full. This is a hash table from client file
    *  descriptor to an array of object_ids to send to that client. */
-  NotificationQueue *pending_notifications;
+  std::unordered_map<int, ObjectNotifications> pending_notifications;
   /** The plasma store information, including the object tables, that is exposed
    *  to the eviction policy. */
   PlasmaStoreInfo *plasma_store_info;
@@ -141,11 +127,9 @@ GetRequest::GetRequest(Client *client,
 
 PlasmaStoreState::PlasmaStoreState(event_loop *loop, int64_t system_memory)
     : loop(loop),
-      pending_notifications(NULL),
-      plasma_store_info((PlasmaStoreInfo *) malloc(sizeof(PlasmaStoreInfo))),
+      plasma_store_info(new PlasmaStoreInfo()),
       eviction_state(EvictionState_init()),
       builder(make_protocol_builder()) {
-  this->plasma_store_info->objects = NULL;
   this->plasma_store_info->memory_capacity = system_memory;
 
   utarray_new(this->input_buffer, &byte_icd);
@@ -155,21 +139,13 @@ void PlasmaStoreState_free(PlasmaStoreState *state) {
   /* Here we only clean up objects that need to be cleaned
    * up to make the valgrind warnings go away. Objects that
    * are still reachable are not cleaned up. */
-  object_table_entry *entry, *tmp;
-  HASH_ITER(handle, state->plasma_store_info->objects, entry, tmp) {
-    HASH_DELETE(handle, state->plasma_store_info->objects, entry);
-    utarray_free(entry->clients);
-    delete entry;
+  for (auto it : state->plasma_store_info->objects) {
+    delete it.second;
   }
-  NotificationQueue *queue, *temp_queue;
-  HASH_ITER(hh, state->pending_notifications, queue, temp_queue) {
-    for (int i = 0; i < utarray_len(queue->object_notifications); ++i) {
-      uint8_t **notification =
-          (uint8_t **) utarray_eltptr(queue->object_notifications, i);
-      uint8_t *data = *notification;
-      free(data);
+  for (auto it : state->pending_notifications) {
+    for (int i = 0; i < it.second.size(); ++i) {
+      free(it.second[i]);
     }
-    utarray_free(queue->object_notifications);
   }
 }
 
@@ -181,15 +157,14 @@ void push_notification(PlasmaStoreState *state,
 void add_client_to_object_clients(object_table_entry *entry,
                                   Client *client_info) {
   /* Check if this client is already using the object. */
-  for (int i = 0; i < utarray_len(entry->clients); ++i) {
-    Client **c = (Client **) utarray_eltptr(entry->clients, i);
-    if (*c == client_info) {
+  for (int i = 0; i < entry->clients.size(); ++i) {
+    if (entry->clients[i] == client_info) {
       return;
     }
   }
   /* If there are no other clients using this object, notify the eviction policy
    * that the object is being used. */
-  if (utarray_len(entry->clients) == 0) {
+  if (entry->clients.size() == 0) {
     /* Tell the eviction policy that this object is being used. */
     int64_t num_objects_to_evict;
     ObjectID *objects_to_evict;
@@ -201,7 +176,7 @@ void add_client_to_object_clients(object_table_entry *entry,
                    objects_to_evict);
   }
   /* Add the client pointer to the list of clients using this object. */
-  utarray_push_back(entry->clients, &client_info);
+  entry->clients.push_back(client_info);
 }
 
 /* Create a new object buffer in the hash table. */
@@ -212,11 +187,7 @@ int create_object(Client *client_context,
                   PlasmaObject *result) {
   LOG_DEBUG("creating object"); /* TODO(pcm): add ObjectID here */
   PlasmaStoreState *plasma_state = client_context->plasma_state;
-  object_table_entry *entry;
-  /* TODO(swang): Return these error to the client instead of exiting. */
-  HASH_FIND(handle, plasma_state->plasma_store_info->objects, &obj_id,
-            sizeof(obj_id), entry);
-  if (entry != NULL) {
+  if (plasma_state->plasma_store_info->objects.count(obj_id) == 0) {
     /* There is already an object with the same ID in the Plasma Store, so
      * ignore this requst. */
     return PlasmaError_ObjectExists;
@@ -265,9 +236,7 @@ int create_object(Client *client_context,
   entry->map_size = map_size;
   entry->offset = offset;
   entry->state = PLASMA_CREATED;
-  utarray_new(entry->clients, &client_icd);
-  HASH_ADD(handle, plasma_state->plasma_store_info->objects, object_id,
-           sizeof(ObjectID), entry);
+  plasma_state->plasma_store_info->objects[obj_id] = entry;
   result->handle.store_fd = fd;
   result->handle.mmap_size = map_size;
   result->data_offset = offset;
@@ -376,9 +345,7 @@ void update_object_get_requests(PlasmaStoreState *store_state,
     GetRequest *get_req = get_requests[index];
     int num_updated = 0;
     for (int j = 0; j < get_req->num_objects_to_wait_for; ++j) {
-      object_table_entry *entry;
-      HASH_FIND(handle, store_state->plasma_store_info->objects, &obj_id,
-                sizeof(obj_id), entry);
+      object_table_entry *entry = plasma_store_info->objects[obj_id];
       CHECK(entry != NULL);
 
       if (ObjectID_equal(get_req->object_ids[j], obj_id)) {
@@ -433,9 +400,7 @@ void process_get_request(Client *client_context,
 
     /* Check if this object is already present locally. If so, record that the
      * object is being used and mark it as accounted for. */
-    object_table_entry *entry;
-    HASH_FIND(handle, plasma_state->plasma_store_info->objects, &obj_id,
-              sizeof(obj_id), entry);
+    object_table_entry *entry = plasma_state->plasma_store_info->objects[obj_id];
     if (entry && entry->state == PLASMA_SEALED) {
       /* Update the get request to take into account the present object. */
       PlasmaObject_init(&get_req->objects[i], entry);
@@ -471,14 +436,13 @@ void process_get_request(Client *client_context,
 int remove_client_from_object_clients(object_table_entry *entry,
                                       Client *client_info) {
   /* Find the location of the client in the array. */
-  for (int i = 0; i < utarray_len(entry->clients); ++i) {
-    Client **c = (Client **) utarray_eltptr(entry->clients, i);
-    if (*c == client_info) {
+  for (int i = 0; i < entry->clients.size(); ++i) {
+    if (entry->clients[i] == client_info) {
       /* Remove the client from the array. */
-      utarray_erase(entry->clients, i, 1);
+      entry->clients.erase(entry->clients.begin() + i);
       /* If no more clients are using this object, notify the eviction policy
        * that the object is no longer being used. */
-      if (utarray_len(entry->clients) == 0) {
+      if (entry->clients.size() == 0) {
         /* Tell the eviction policy that this object is no longer being used. */
         int64_t num_objects_to_evict;
         ObjectID *objects_to_evict;
@@ -499,9 +463,7 @@ int remove_client_from_object_clients(object_table_entry *entry,
 
 void release_object(Client *client_context, ObjectID object_id) {
   PlasmaStoreState *plasma_state = client_context->plasma_state;
-  object_table_entry *entry;
-  HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
-            sizeof(object_id), entry);
+  object_table_entry *entry = plasma_state->plasma_store_info->objects[object_id];
   CHECK(entry != NULL);
   /* Remove the client from the object's array of clients. */
   CHECK(remove_client_from_object_clients(entry, client_context) == 1);
@@ -510,9 +472,7 @@ void release_object(Client *client_context, ObjectID object_id) {
 /* Check if an object is present. */
 int contains_object(Client *client_context, ObjectID object_id) {
   PlasmaStoreState *plasma_state = client_context->plasma_state;
-  object_table_entry *entry;
-  HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
-            sizeof(object_id), entry);
+  object_table_entry *entry = plasma_state->plasma_store_info->objects[object_id];
   return entry && (entry->state == PLASMA_SEALED) ? OBJECT_FOUND
                                                   : OBJECT_NOT_FOUND;
 }
@@ -523,9 +483,7 @@ void seal_object(Client *client_context,
                  unsigned char digest[]) {
   LOG_DEBUG("sealing object");  // TODO(pcm): add ObjectID here
   PlasmaStoreState *plasma_state = client_context->plasma_state;
-  object_table_entry *entry;
-  HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
-            sizeof(object_id), entry);
+  object_table_entry *entry = plasma_state->plasma_store_info->objects[object_id];
   CHECK(entry != NULL);
   CHECK(entry->state == PLASMA_CREATED);
   /* Set the state of object to SEALED. */
@@ -543,7 +501,7 @@ void seal_object(Client *client_context,
  * be called on objects that are returned by the eviction policy to evict. */
 void delete_object(PlasmaStoreState *plasma_state, ObjectID object_id) {
   LOG_DEBUG("deleting object");
-  object_table_entry *entry;
+  object_table_entry *entry = plasma_state->plasma_store_info->objects[object_id];
   HASH_FIND(handle, plasma_state->plasma_store_info->objects, &object_id,
             sizeof(object_id), entry);
   /* TODO(rkn): This should probably not fail, but should instead throw an
@@ -552,12 +510,11 @@ void delete_object(PlasmaStoreState *plasma_state, ObjectID object_id) {
   CHECKM(entry != NULL, "To delete an object it must be in the object table.");
   CHECKM(entry->state == PLASMA_SEALED,
          "To delete an object it must have been sealed.");
-  CHECKM(utarray_len(entry->clients) == 0,
+  CHECKM(entry->clients.size() == 0,
          "To delete an object, there must be no clients currently using it.");
   uint8_t *pointer = entry->pointer;
   HASH_DELETE(handle, plasma_state->plasma_store_info->objects, entry);
   dlfree(pointer);
-  utarray_free(entry->clients);
   delete entry;
   /* Inform all subscribers that the object has been deleted. */
   ObjectInfoT notification;
@@ -582,12 +539,10 @@ void remove_objects(PlasmaStoreState *plasma_state,
 
 void push_notification(PlasmaStoreState *plasma_state,
                        ObjectInfoT *object_info) {
-  NotificationQueue *queue, *temp_queue;
-  HASH_ITER(hh, plasma_state->pending_notifications, queue, temp_queue) {
+  for (auto it : plasma_state->pending_notifications) {
     uint8_t *notification = create_object_info_buffer(object_info);
-    utarray_push_back(queue->object_notifications, &notification);
-    send_notifications(plasma_state->loop, queue->subscriber_fd, plasma_state,
-                       0);
+    it.second.push_back(notification);
+    send_notifications(plasma_state->loop, it.first, plasma_state, 0);
     /* The notification gets freed in send_notifications when the notification
      * is sent over the socket. */
   }
@@ -599,18 +554,14 @@ void send_notifications(event_loop *loop,
                         void *context,
                         int events) {
   PlasmaStoreState *plasma_state = (PlasmaStoreState *) context;
-  NotificationQueue *queue;
-  HASH_FIND_INT(plasma_state->pending_notifications, &client_sock, queue);
-  CHECK(queue != NULL);
+  ObjectNotifications& notifications = plasma_state->pending_notifications[client_sock];
 
   int num_processed = 0;
   bool closed = false;
   /* Loop over the array of pending notifications and send as many of them as
    * possible. */
-  for (int i = 0; i < utarray_len(queue->object_notifications); ++i) {
-    uint8_t **notification =
-        (uint8_t **) utarray_eltptr(queue->object_notifications, i);
-    uint8_t *data = *notification;
+  for (int i = 0; i < notifications.size(); ++i) {
+    uint8_t *data = notifications[i];
     /* Decode the length, which is the first bytes of the message. */
     int64_t size = *((int64_t *) data);
 
@@ -643,18 +594,17 @@ void send_notifications(event_loop *loop,
     free(data);
   }
   /* Remove the sent notifications from the array. */
-  utarray_erase(queue->object_notifications, 0, num_processed);
+  notifications.erase(notifications.begin(),
+                      notifications.begin() + num_processed);
 
   /* Stop sending notifications if the pipe was broken. */
   if (closed) {
     close(client_sock);
-    utarray_free(queue->object_notifications);
-    HASH_DEL(plasma_state->pending_notifications, queue);
-    free(queue);
+    plasma_state->pending_notifications.erase(client_sock);
   }
 
   /* If we have sent all notifications, remove the fd from the event loop. */
-  if (utarray_len(queue->object_notifications) == 0) {
+  if (notifications.size() == 0) {
     event_loop_remove_file(loop, client_sock);
   }
 }
@@ -672,22 +622,13 @@ void subscribe_to_updates(Client *client_context, int conn) {
     return;
   }
 
-  /* Create a new array to buffer notifications that can't be sent to the
-   * subscriber yet because the socket send buffer is full. TODO(rkn): the queue
-   * never gets freed. */
-  NotificationQueue *queue =
-      (NotificationQueue *) malloc(sizeof(NotificationQueue));
-  queue->subscriber_fd = fd;
-  utarray_new(queue->object_notifications, &object_info_icd);
-  HASH_ADD_INT(plasma_state->pending_notifications, subscriber_fd, queue);
-
   /* Push notifications to the new subscriber about existing objects. */
   object_table_entry *entry, *temp_entry;
   HASH_ITER(handle, plasma_state->plasma_store_info->objects, entry,
             temp_entry) {
     push_notification(plasma_state, &entry->info);
   }
-  send_notifications(plasma_state->loop, queue->subscriber_fd, plasma_state, 0);
+  send_notifications(plasma_state->loop, fd, plasma_state, 0);
 }
 
 void process_message(event_loop *loop,

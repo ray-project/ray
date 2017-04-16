@@ -21,6 +21,8 @@
 /** Allocation granularity used in plasma for object allocation. */
 #define BLOCK_SIZE 64
 
+struct Client;
+
 /**
  * Object request data structure. Used in the plasma_wait_for_objects()
  * argument.
@@ -110,7 +112,7 @@ typedef struct {
   /** Pointer to the object data. Needed to free the object. */
   uint8_t *pointer;
   /** An array of the clients that are currently using this object. */
-  UT_array *clients;
+  std::vector<Client *> clients;
   /** The state of the object, e.g., whether it is open or sealed. */
   object_state state;
   /** The digest of the object. Used to see if two objects are the same. */
@@ -120,7 +122,7 @@ typedef struct {
 /** The plasma store information that is exposed to the eviction policy. */
 typedef struct {
   /** Objects that are in the Plasma store. */
-  object_table_entry *objects;
+  std::unordered_map<ObjectID, object_table_entry*> objects;
   /** The amount of memory (in bytes) that we allow to be allocated in the
    *  store. */
   int64_t memory_capacity;
