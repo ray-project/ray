@@ -80,6 +80,9 @@ scripts/nodes.txt
 *.dSYM/
 *.su
 
+# CMake
+cmake-build-debug/
+
 # Python setup files
 *.egg-info
 
@@ -92,3 +95,21 @@ scripts/nodes.txt
 
 # Generated documentation files
 /doc/_build
+
+# User-specific stuff:
+.idea/**/workspace.xml
+.idea/**/tasks.xml
+.idea/dictionaries
+
+# Sensitive or high-churn files:
+.idea/**/dataSources/
+.idea/**/dataSources.ids
+.idea/**/dataSources.xml
+.idea/**/dataSources.local.xml
+.idea/**/sqlDataSources.xml
+.idea/**/dynamic.xml
+.idea/**/uiDesigner.xml
+
+# Gradle:
+.idea/**/gradle.xml
+.idea/**/libraries
