@@ -60,7 +60,7 @@ void event_loop_destroy(event_loop *loop);
  * argument to the handler. Currently there can only be one handler per file.
  * The events parameter specifies which events we listen to: EVENT_LOOP_READ
  * or EVENT_LOOP_WRITE. */
-void event_loop_add_file(event_loop *loop,
+bool event_loop_add_file(event_loop *loop,
                          int fd,
                          int events,
                          event_loop_file_handler handler,
