@@ -138,9 +138,10 @@ GetRequest::GetRequest(Client *client,
       object_ids(object_ids, object_ids + num_object_ids),
       objects(num_object_ids),
       num_satisfied(0) {
-        std::unordered_set<ObjectID, UniqueIDHasher> unique_ids(object_ids, object_ids + num_object_ids);
-        num_objects_to_wait_for = unique_ids.size();
-      }
+  std::unordered_set<ObjectID, UniqueIDHasher> unique_ids(
+      object_ids, object_ids + num_object_ids);
+  num_objects_to_wait_for = unique_ids.size();
+}
 
 PlasmaStoreState::PlasmaStoreState(event_loop *loop, int64_t system_memory)
     : loop(loop),
