@@ -397,16 +397,16 @@ void plasma_read_GetRequest(uint8_t *data,
 int plasma_send_GetReply(int sock,
                          protocol_builder *B,
                          ObjectID object_ids[],
-                         PlasmaObject plasma_objects[],
+                         std::unordered_map<ObjectID, PlasmaObject, UniqueIDHasher>& plasma_objects,
                          int64_t num_objects) {
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
   std::vector<PlasmaObjectSpec> objects;
 
   for (int i = 0; i < num_objects; ++i) {
-    PlasmaObject *object = &plasma_objects[i];
+    const PlasmaObject &object = plasma_objects[object_ids[i]];
     objects.push_back(PlasmaObjectSpec(
-        object->handle.store_fd, object->handle.mmap_size, object->data_offset,
-        object->data_size, object->metadata_offset, object->metadata_size));
+        object.handle.store_fd, object.handle.mmap_size, object.data_offset,
+        object.data_size, object.metadata_offset, object.metadata_size));
   }
   auto message = CreatePlasmaGetReply(
       fbb, to_flatbuf(fbb, object_ids, num_objects),
