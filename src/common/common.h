@@ -159,7 +159,7 @@ struct UniqueIDHasher {
   /* ObjectID hashing function. */
   size_t operator()(const UniqueID &id) const {
     size_t result;
-    memcpy(&result, id.id + UNIQUE_ID_SIZE - sizeof(size_t), sizeof(size_t));
+    memcpy(&result, id.id, sizeof(size_t));
     return result;
   }
 };
