@@ -448,6 +448,13 @@ class APITest(unittest.TestCase):
     ray.init(num_workers=0)
     object_ids = [ray.put(i) for i in range(10)]
     self.assertEqual(ray.get(object_ids), list(range(10)))
+
+    # Get a random choice of object IDs with duplicates.
+    indices = list(np.random.choice(range(10), 5))
+    indices += indices
+    results = ray.get([object_ids[i] for i in indices])
+    self.assertEqual(results, indices)
+
     ray.worker.cleanup()
 
   def testWait(self):

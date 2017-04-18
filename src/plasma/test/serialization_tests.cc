@@ -152,9 +152,9 @@ TEST plasma_get_reply_test(void) {
   ObjectID object_ids[2];
   object_ids[0] = globally_unique_id();
   object_ids[1] = globally_unique_id();
-  PlasmaObject plasma_objects[2];
-  plasma_objects[0] = random_plasma_object();
-  plasma_objects[1] = random_plasma_object();
+  std::unordered_map<ObjectID, PlasmaObject, UniqueIDHasher> plasma_objects;
+  plasma_objects[object_ids[0]] = random_plasma_object();
+  plasma_objects[object_ids[1]] = random_plasma_object();
   plasma_send_GetReply(fd, g_B, object_ids, plasma_objects, 2);
   uint8_t *data = read_message_from_file(fd, MessageType_PlasmaGetReply);
   int64_t num_objects = plasma_read_GetRequest_num_objects(data);
@@ -165,9 +165,9 @@ TEST plasma_get_reply_test(void) {
                        num_objects);
   ASSERT(ObjectID_equal(object_ids[0], object_ids_return[0]));
   ASSERT(ObjectID_equal(object_ids[1], object_ids_return[1]));
-  ASSERT(memcmp(&plasma_objects[0], &plasma_objects_return[0],
+  ASSERT(memcmp(&plasma_objects[object_ids[0]], &plasma_objects_return[0],
                 sizeof(PlasmaObject)) == 0);
-  ASSERT(memcmp(&plasma_objects[1], &plasma_objects_return[1],
+  ASSERT(memcmp(&plasma_objects[object_ids[1]], &plasma_objects_return[1],
                 sizeof(PlasmaObject)) == 0);
   free(data);
   close(fd);
