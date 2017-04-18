@@ -120,7 +120,7 @@ typedef struct {
 /** The plasma store information that is exposed to the eviction policy. */
 typedef struct {
   /** Objects that are in the Plasma store. */
-  object_table_entry *objects;
+  std::unordered_map<ObjectID, object_table_entry*, UniqueIDHasher> objects;
   /** The amount of memory (in bytes) that we allow to be allocated in the
    *  store. */
   int64_t memory_capacity;
