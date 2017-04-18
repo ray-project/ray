@@ -71,6 +71,9 @@ typedef struct {
   int64_t metadata_size;
 } PlasmaObject;
 
+/** Mapping from object IDs to Object information. */
+// typedef std::unordered_map<ObjectID, PlasmaObject, UniqueIDHasher>
+
 typedef enum {
   /** Object was created but not sealed in the local Plasma Store. */
   PLASMA_CREATED = 1,
@@ -125,6 +128,8 @@ typedef struct {
    *  store. */
   int64_t memory_capacity;
 } PlasmaStoreInfo;
+
+object_table_entry* get_object_table_entry(PlasmaStoreInfo* store_info, ObjectID object_id);
 
 /**
  * Print a warning if the status is less than zero. This should be used to check

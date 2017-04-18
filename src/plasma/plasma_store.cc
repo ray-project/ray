@@ -97,6 +97,8 @@ struct GetRequest {
   int64_t num_satisfied;
 };
 
+
+
 struct PlasmaStoreState {
   PlasmaStoreState(event_loop *loop, int64_t system_memory);
 
@@ -160,6 +162,7 @@ void PlasmaStoreState_free(PlasmaStoreState *state) {
    * are still reachable are not cleaned up. */
   for (const auto &it : state->plasma_store_info->objects) {
     utarray_free(it.second->clients);
+    delete it.second;
   }
   NotificationQueue *queue, *temp_queue;
   HASH_ITER(hh, state->pending_notifications, queue, temp_queue) {
@@ -371,7 +374,7 @@ void update_object_get_requests(PlasmaStoreState *store_state,
   int num_requests = get_requests.size();
   for (int i = 0; i < num_requests; ++i) {
     GetRequest *get_req = get_requests[index];
-    object_table_entry *entry = store_state->plasma_store_info->objects[obj_id];
+    object_table_entry *entry = get_object_table_entry(store_state->plasma_store_info, obj_id);
     CHECK(entry != NULL);
 
     PlasmaObject_init(&get_req->objects[obj_id], entry);
@@ -417,7 +420,7 @@ void process_get_request(Client *client_context,
 
     /* Check if this object is already present locally. If so, record that the
      * object is being used and mark it as accounted for. */
-    object_table_entry *entry = plasma_state->plasma_store_info->objects[obj_id];
+    object_table_entry *entry = get_object_table_entry(plasma_state->plasma_store_info, obj_id);
     if (entry && entry->state == PLASMA_SEALED) {
       /* Update the get request to take into account the present object. */
       PlasmaObject_init(&get_req->objects[obj_id], entry);
@@ -479,7 +482,7 @@ int remove_client_from_object_clients(object_table_entry *entry,
 
 void release_object(Client *client_context, ObjectID object_id) {
   PlasmaStoreState *plasma_state = client_context->plasma_state;
-  object_table_entry *entry = plasma_state->plasma_store_info->objects[object_id];
+  object_table_entry *entry = get_object_table_entry(plasma_state->plasma_store_info, object_id);
   CHECK(entry != NULL);
   /* Remove the client from the object's array of clients. */
   CHECK(remove_client_from_object_clients(entry, client_context) == 1);
@@ -488,7 +491,7 @@ void release_object(Client *client_context, ObjectID object_id) {
 /* Check if an object is present. */
 int contains_object(Client *client_context, ObjectID object_id) {
   PlasmaStoreState *plasma_state = client_context->plasma_state;
-  object_table_entry *entry = plasma_state->plasma_store_info->objects[object_id];
+  object_table_entry *entry = get_object_table_entry(plasma_state->plasma_store_info, object_id);
   return entry && (entry->state == PLASMA_SEALED) ? OBJECT_FOUND
                                                   : OBJECT_NOT_FOUND;
 }
@@ -499,7 +502,7 @@ void seal_object(Client *client_context,
                  unsigned char digest[]) {
   LOG_DEBUG("sealing object");  // TODO(pcm): add ObjectID here
   PlasmaStoreState *plasma_state = client_context->plasma_state;
-  object_table_entry *entry = plasma_state->plasma_store_info->objects[object_id];
+  object_table_entry *entry = get_object_table_entry(plasma_state->plasma_store_info, object_id);
   CHECK(entry != NULL);
   CHECK(entry->state == PLASMA_CREATED);
   /* Set the state of object to SEALED. */
@@ -517,7 +520,7 @@ void seal_object(Client *client_context,
  * be called on objects that are returned by the eviction policy to evict. */
 void delete_object(PlasmaStoreState *plasma_state, ObjectID object_id) {
   LOG_DEBUG("deleting object");
-  object_table_entry *entry = plasma_state->plasma_store_info->objects[object_id];
+  object_table_entry *entry = get_object_table_entry(plasma_state->plasma_store_info, object_id);
   /* TODO(rkn): This should probably not fail, but should instead throw an
    * error. Maybe we should also support deleting objects that have been created
    * but not sealed. */
