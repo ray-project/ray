@@ -324,15 +324,15 @@ void PlasmaObject_init(PlasmaObject *object, object_table_entry *entry) {
 
 void return_from_get(PlasmaStoreState *store_state, GetRequest *get_req) {
   /* Send the get reply to the client. */
-  int status = plasma_send_GetReply(
-      get_req->client->sock, store_state->builder, &get_req->object_ids[0],
-      get_req->objects, get_req->object_ids.size());
+  int status = plasma_send_GetReply(get_req->client->sock, store_state->builder,
+                                    &get_req->object_ids[0], get_req->objects,
+                                    get_req->object_ids.size());
   warn_if_sigpipe(status, get_req->client->sock);
   /* If we successfully sent the get reply message to the client, then also send
    * the file descriptors. */
   if (status >= 0) {
     /* Send all of the file descriptors for the present objects. */
-    for (const auto& object_id : get_req->object_ids) {
+    for (const auto &object_id : get_req->object_ids) {
       PlasmaObject &object = get_req->objects[object_id];
       /* We use the data size to indicate whether the object is present or not.
        */

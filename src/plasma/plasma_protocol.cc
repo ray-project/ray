@@ -394,11 +394,12 @@ void plasma_read_GetRequest(uint8_t *data,
   *timeout_ms = message->timeout_ms();
 }
 
-int plasma_send_GetReply(int sock,
-                         protocol_builder *B,
-                         ObjectID object_ids[],
-                         std::unordered_map<ObjectID, PlasmaObject, UniqueIDHasher>& plasma_objects,
-                         int64_t num_objects) {
+int plasma_send_GetReply(
+    int sock,
+    protocol_builder *B,
+    ObjectID object_ids[],
+    std::unordered_map<ObjectID, PlasmaObject, UniqueIDHasher> &plasma_objects,
+    int64_t num_objects) {
   flatbuffers::FlatBufferBuilder fbb(FLATBUFFER_BUILDER_DEFAULT_SIZE);
   std::vector<PlasmaObjectSpec> objects;
 

@@ -76,11 +76,12 @@ void plasma_read_GetRequest(uint8_t *data,
                             int64_t *timeout_ms,
                             int64_t num_objects);
 
-int plasma_send_GetReply(int sock,
-                         protocol_builder *B,
-                         ObjectID object_ids[],
-                         std::unordered_map<ObjectID, PlasmaObject, UniqueIDHasher>& plasma_objects,
-                         int64_t num_objects);
+int plasma_send_GetReply(
+    int sock,
+    protocol_builder *B,
+    ObjectID object_ids[],
+    std::unordered_map<ObjectID, PlasmaObject, UniqueIDHasher> &plasma_objects,
+    int64_t num_objects);
 
 void plasma_read_GetReply(uint8_t *data,
                           ObjectID object_ids[],
