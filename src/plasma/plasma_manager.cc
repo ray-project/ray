@@ -598,7 +598,7 @@ void process_message(event_loop *loop,
                      void *context,
                      int events);
 
-void write_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
+bool write_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
   LOG_DEBUG("Writing data to fd %d", conn->fd);
   ssize_t r, s;
   /* Try to write one BUFSIZE at a time. */
@@ -608,12 +608,11 @@ void write_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
   r = write(conn->fd, buf->data + conn->cursor, s);
 
   if (r != s) {
+    LOG_ERROR("write failed, errno was %d", errno);
     if (r > 0) {
       LOG_ERROR("partial write on fd %d", conn->fd);
     } else {
-      /* TODO(swang): This should not be a fatal error, since connections can
-       * close at any time. */
-      LOG_FATAL("write error");
+      return true;
     }
   } else {
     conn->cursor += r;
@@ -626,6 +625,8 @@ void write_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
      * plasma_get occurred in process_transfer_request. */
     plasma_release(conn->manager_state->plasma_conn, buf->object_id);
   }
+
+  return false;
 }
 
 void send_queued_request(event_loop *loop,
@@ -662,7 +663,7 @@ void send_queued_request(event_loop *loop,
                                 buf->data_size, buf->metadata_size),
           conn->fd);
     }
-    write_object_chunk(conn, buf);
+    sigpipe = write_object_chunk(conn, buf);
     break;
   default:
     LOG_FATAL("Buffered request has unknown type.");

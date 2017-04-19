@@ -257,7 +257,7 @@ int read_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf);
  * @param buf The buffer to read data from.
  * @return Void.
  */
-void write_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf);
+bool write_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf);
 
 /**
  * Get the event loop of the given plasma manager state.
