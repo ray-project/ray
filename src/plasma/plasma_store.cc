@@ -28,6 +28,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <deque>
 
 #include "common.h"
 #include "format/common_generated.h"
@@ -68,7 +69,7 @@ typedef struct {
   int subscriber_fd;
   /** The object notifications for clients. We notify the client about the
    *  objects in the order that the objects were sealed or deleted. */
-  UT_array *object_notifications;
+  std::deque<uint8_t *> *object_notifications;
   /** Handle for the uthash table. */
   UT_hash_handle hh;
 } NotificationQueue;
@@ -159,13 +160,13 @@ void PlasmaStoreState_free(PlasmaStoreState *state) {
   }
   NotificationQueue *queue, *temp_queue;
   HASH_ITER(hh, state->pending_notifications, queue, temp_queue) {
-    for (int i = 0; i < utarray_len(queue->object_notifications); ++i) {
-      uint8_t **notification =
-          (uint8_t **) utarray_eltptr(queue->object_notifications, i);
-      uint8_t *data = *notification;
+    for (int i = 0; i < queue->object_notifications->size(); ++i) {
+      uint8_t *notification =
+          (uint8_t *) queue->object_notifications->at(i);
+      uint8_t *data = notification;
       free(data);
     }
-    utarray_free(queue->object_notifications);
+    delete queue->object_notifications;
   }
 }
 
@@ -554,7 +555,7 @@ void push_notification(PlasmaStoreState *plasma_state,
   NotificationQueue *queue, *temp_queue;
   HASH_ITER(hh, plasma_state->pending_notifications, queue, temp_queue) {
     uint8_t *notification = create_object_info_buffer(object_info);
-    utarray_push_back(queue->object_notifications, &notification);
+    queue->object_notifications->push_back(notification);
     send_notifications(plasma_state->loop, queue->subscriber_fd, plasma_state,
                        0);
     /* The notification gets freed in send_notifications when the notification
@@ -576,10 +577,10 @@ void send_notifications(event_loop *loop,
   bool closed = false;
   /* Loop over the array of pending notifications and send as many of them as
    * possible. */
-  for (int i = 0; i < utarray_len(queue->object_notifications); ++i) {
-    uint8_t **notification =
-        (uint8_t **) utarray_eltptr(queue->object_notifications, i);
-    uint8_t *data = *notification;
+  for (int i = 0; i < queue->object_notifications->size(); ++i) {
+    uint8_t *notification =
+        (uint8_t *) queue->object_notifications->at(i);
+    uint8_t *data = notification;
     /* Decode the length, which is the first bytes of the message. */
     int64_t size = *((int64_t *) data);
 
@@ -612,18 +613,19 @@ void send_notifications(event_loop *loop,
     free(data);
   }
   /* Remove the sent notifications from the array. */
-  utarray_erase(queue->object_notifications, 0, num_processed);
+  queue->object_notifications->erase(queue->object_notifications->begin(),
+      queue->object_notifications->begin() + num_processed);
 
   /* Stop sending notifications if the pipe was broken. */
   if (closed) {
     close(client_sock);
-    utarray_free(queue->object_notifications);
+    delete queue->object_notifications;
     HASH_DEL(plasma_state->pending_notifications, queue);
     free(queue);
   }
 
   /* If we have sent all notifications, remove the fd from the event loop. */
-  if (utarray_len(queue->object_notifications) == 0) {
+  if (queue->object_notifications->empty()) {
     event_loop_remove_file(loop, client_sock);
   }
 }
@@ -647,7 +649,7 @@ void subscribe_to_updates(Client *client_context, int conn) {
   NotificationQueue *queue =
       (NotificationQueue *) malloc(sizeof(NotificationQueue));
   queue->subscriber_fd = fd;
-  utarray_new(queue->object_notifications, &object_info_icd);
+  queue->object_notifications = new std::deque<uint8_t *>();
   HASH_ADD_INT(plasma_state->pending_notifications, subscriber_fd, queue);
 
   /* Push notifications to the new subscriber about existing objects. */
