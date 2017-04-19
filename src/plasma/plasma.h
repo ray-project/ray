@@ -1,7 +1,6 @@
 #ifndef PLASMA_H
 #define PLASMA_H
 
-#include <inttypes.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
@@ -14,6 +13,8 @@
 
 #include "common.h"
 #include "format/common_generated.h"
+
+#include <inttypes.h>
 
 #include "utarray.h"
 #include "uthash.h"
