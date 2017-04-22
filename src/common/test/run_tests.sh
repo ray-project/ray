@@ -13,5 +13,8 @@ sleep 1s
 ./src/common/task_tests
 ./src/common/redis_tests
 ./src/common/task_table_tests
-./src/common/object_table_tests
+if [[ "$(uname)" != "Darwin" ]]; then
+  # Only run the object table test on Linux.
+  ./src/common/object_table_tests
+fi
 ./src/common/thirdparty/redis/src/redis-cli shutdown
