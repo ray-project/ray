@@ -1871,7 +1871,11 @@ def main_loop(worker=global_worker):
         traceback_str = format_error_message(traceback.format_exc())
       else:
         # The error occurred before the task execution.
-        traceback_str = None
+        if isinstance(e, RayGetError) or isinstance(e, RayGetArgumentError):
+          # In this case, getting the task arguments failed.
+          traceback_str = None
+        else:
+          traceback_str = traceback.format_exc()
       failure_object = RayTaskError(function_name, e, traceback_str)
       failure_objects = [failure_object for _ in range(len(return_object_ids))]
       store_outputs_in_objstore(return_object_ids, failure_objects, worker)
