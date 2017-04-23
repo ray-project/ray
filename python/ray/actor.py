@@ -107,7 +107,17 @@ def fetch_and_register_actor(key, worker):
 
 
 def attempt_to_reserve_gpus(num_gpus, driver_id, local_scheduler, worker):
-  # See if there are enough available GPUs on this local scheduler.
+  """Attempt to acquire GPUs on a particular local scheduler for an actor.
+
+  Args:
+    num_gpus: The number of GPUs to acquire.
+    driver_id: The ID of the driver responsible for creating the actor.
+    local_scheduler: Information about the local scheduler.
+
+  Returns:
+    A list of the GPU IDs that were successfully acquired. This should have
+      length either equal to num_gpus or equal to 0.
+  """
   local_scheduler_id = local_scheduler[b"ray_client_id"]
   local_scheduler_total_gpus = int(float(
       local_scheduler[b"num_gpus"].decode("ascii")))
@@ -184,34 +194,32 @@ def select_local_scheduler(local_schedulers, num_gpus, worker):
     Exception: An exception is raised if no local scheduler can be found with
       sufficient resources.
   """
-  #asdf
   driver_id = worker.task_driver_id.id()
 
-
-  # TODO(rkn): We should change this method to have a list of GPU IDs that we
-  # pop from and push to. The current implementation is not compatible with
-  # actors releasing GPU resources.
   if num_gpus == 0:
     local_scheduler_id = random.choice(local_schedulers)[b"ray_client_id"]
-    gpus_to_acquire = []
+    gpus_aquired = []
   else:
     # All of this logic is for finding a local scheduler that has enough
     # available GPUs.
     local_scheduler_id = None
     # Loop through all of the local schedulers.
     for local_scheduler in local_schedulers:
-
       # Try to reserve enough GPUs on this local scheduler.
-      gpus_to_acquire = attempt_to_reserve_gpus(num_gpus, driver_id, local_scheduler, worker)
-      if len(gpus_to_acquire) == num_gpus:
+      gpus_aquired = attempt_to_reserve_gpus(num_gpus, driver_id,
+                                             local_scheduler, worker)
+      if len(gpus_aquired) == num_gpus:
         local_scheduler_id = local_scheduler[b"ray_client_id"]
         break
+      else:
+        # We should have either acquired as many GPUs as we need or none.
+        assert len(gpus_aquired) == 0
 
     if local_scheduler_id is None:
       raise Exception("Could not find a node with enough GPUs to create this "
                       "actor. The local scheduler information is {}."
                       .format(local_schedulers))
-  return local_scheduler_id, gpus_to_acquire
+  return local_scheduler_id, gpus_aquired
 
 
 def export_actor(actor_id, Class, actor_method_names, num_cpus, num_gpus,
