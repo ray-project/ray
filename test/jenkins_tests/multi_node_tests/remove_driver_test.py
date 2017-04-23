@@ -10,8 +10,33 @@ import ray
 
 # This test should be run with 5 nodes, which have 0, 1, 2, 3, and 4 GPUs for a
 # total of 10 GPUs. It shoudl be run with 3 drivers.
+total_num_nodes = 5
 
 EVENT_KEY = "RAY_DOCKER_TEST_KEY"
+
+
+def _wait_for_nodes_to_join(num_nodes, timeout=20):
+  """Wait until the nodes have joined the cluster.
+
+  Args:
+    num_nodes: The number of nodes to wait for.
+    timeout: The amount of time in seconds to wait before failing.
+  """
+  start_time = time.time()
+  while time.time() - start_time < timeout:
+    num_ready_nodes = len(ray.global_state.client_table())
+    if num_ready_nodes == num_nodes:
+      return
+    if num_ready_nodes > num_nodes:
+      # Too many nodes have joined. Something must be wrong.
+      raise Exception("{} nodes have joined the cluster, but we were "
+                      "expecting {} nodes.".format(num_ready_nodes, num_nodes))
+    time.sleep(0.1)
+
+  # If we get here then we timed out.
+  raise Exception("Timed out while waiting for {} nodes to join. Only {} "
+                  "nodes have joined so far.".format(num_ready_nodes,
+                                                     num_nodes))
 
 
 def _broadcast_event(event_name, redis_address):
@@ -82,6 +107,9 @@ def driver_0(redis_address):
   """
   ray.init(redis_address=redis_address)
 
+  # Wait for all the nodes to join the cluster.
+  _wait_for_nodes_to_join(total_num_nodes)
+
   # Create some actors that require one GPU.
   actors_one_gpu = [Actor1() for _ in range(5)]
   # Create some actors that don't require any GPUs.
@@ -102,6 +130,9 @@ def driver_1(redis_address):
   actors that don't use any GPUs. After a while, it should exit.
   """
   ray.init(redis_address=redis_address)
+
+  # Wait for all the nodes to join the cluster.
+  _wait_for_nodes_to_join(total_num_nodes)
 
   # Create an actor that requires two GPUs.
   actors_two_gpus = [Actor2() for _ in range(1)]
