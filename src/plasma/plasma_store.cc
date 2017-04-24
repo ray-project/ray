@@ -161,8 +161,7 @@ void PlasmaStoreState_free(PlasmaStoreState *state) {
   NotificationQueue *queue, *temp_queue;
   HASH_ITER(hh, state->pending_notifications, queue, temp_queue) {
     for (int i = 0; i < queue->object_notifications->size(); ++i) {
-      uint8_t *notification =
-          (uint8_t *) queue->object_notifications->at(i);
+      uint8_t *notification = (uint8_t *) queue->object_notifications->at(i);
       uint8_t *data = notification;
       free(data);
     }
@@ -578,8 +577,7 @@ void send_notifications(event_loop *loop,
   /* Loop over the array of pending notifications and send as many of them as
    * possible. */
   for (int i = 0; i < queue->object_notifications->size(); ++i) {
-    uint8_t *notification =
-        (uint8_t *) queue->object_notifications->at(i);
+    uint8_t *notification = (uint8_t *) queue->object_notifications->at(i);
     /* Decode the length, which is the first bytes of the message. */
     int64_t size = *((int64_t *) notification);
 
@@ -612,7 +610,8 @@ void send_notifications(event_loop *loop,
     free(notification);
   }
   /* Remove the sent notifications from the array. */
-  queue->object_notifications->erase(queue->object_notifications->begin(),
+  queue->object_notifications->erase(
+      queue->object_notifications->begin(),
       queue->object_notifications->begin() + num_processed);
 
   /* Stop sending notifications if the pipe was broken. */
