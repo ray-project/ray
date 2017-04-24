@@ -58,7 +58,7 @@ struct Client {
   PlasmaStoreState *plasma_state;
 };
 
-struct NotificationItem{
+struct NotificationItem {
   /** The object notifications for clients. We notify the client about the
    *  objects in the order that the objects were sealed or deleted. */
   std::deque<uint8_t *> object_notifications;
