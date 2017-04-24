@@ -216,7 +216,7 @@ int create_object(Client *client_context,
   LOG_DEBUG("creating object"); /* TODO(pcm): add ObjectID here */
   PlasmaStoreState *plasma_state = client_context->plasma_state;
   /* TODO(swang): Return these error to the client instead of exiting. */
-  if (plasma_state->plasma_store_info->objects.count(obj_id) == 0) {
+  if (plasma_state->plasma_store_info->objects.count(obj_id) != 0) {
     /* There is already an object with the same ID in the Plasma Store, so
      * ignore this requst. */
     return PlasmaError_ObjectExists;
