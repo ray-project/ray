@@ -7,69 +7,13 @@ import redis
 import time
 
 import ray
+from ray.test.multi_node_tests import (_wait_for_nodes_to_join,
+                                       _broadcast_event,
+                                       _wait_for_event)
 
 # This test should be run with 5 nodes, which have 0, 1, 2, 3, and 4 GPUs for a
 # total of 10 GPUs. It shoudl be run with 3 drivers.
 total_num_nodes = 5
-
-EVENT_KEY = "RAY_DOCKER_TEST_KEY"
-
-
-def _wait_for_nodes_to_join(num_nodes, timeout=20):
-  """Wait until the nodes have joined the cluster.
-
-  Args:
-    num_nodes: The number of nodes to wait for.
-    timeout: The amount of time in seconds to wait before failing.
-  """
-  start_time = time.time()
-  while time.time() - start_time < timeout:
-    num_ready_nodes = len(ray.global_state.client_table())
-    if num_ready_nodes == num_nodes:
-      return
-    if num_ready_nodes > num_nodes:
-      # Too many nodes have joined. Something must be wrong.
-      raise Exception("{} nodes have joined the cluster, but we were "
-                      "expecting {} nodes.".format(num_ready_nodes, num_nodes))
-    time.sleep(0.1)
-
-  # If we get here then we timed out.
-  raise Exception("Timed out while waiting for {} nodes to join. Only {} "
-                  "nodes have joined so far.".format(num_ready_nodes,
-                                                     num_nodes))
-
-
-def _broadcast_event(event_name, redis_address):
-  """Broadcast an event.
-
-  Args:
-    event_name: The name of the event to wait for.
-    redis_address: The address of the Redis server to use for synchronization.
-
-  This is used to synchronize drivers for the multi-node tests.
-  """
-  redis_host, redis_port = redis_address.split(":")
-  redis_client = redis.StrictRedis(host=redis_host, port=int(redis_port))
-  redis_client.rpush(EVENT_KEY, event_name)
-
-
-def _wait_for_event(event_name, redis_address, extra_buffer=1):
-  """Block until an event has been broadcast.
-
-  Args:
-    event_name: The name of the event to wait for.
-    redis_address: The address of the Redis server to use for synchronization.
-    extra_buffer: An amount of time in seconds to wait after the event.
-
-  This is used to synchronize drivers for the multi-node tests.
-  """
-  redis_host, redis_port = redis_address.split(":")
-  redis_client = redis.StrictRedis(host=redis_host, port=int(redis_port))
-  while True:
-    event_names = redis_client.lrange(EVENT_KEY, 0, -1)
-    if event_name.encode("ascii") in event_names:
-      break
-  time.sleep(extra_buffer)
 
 
 @ray.actor
