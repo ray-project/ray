@@ -580,12 +580,11 @@ void send_notifications(event_loop *loop,
   for (int i = 0; i < queue->object_notifications->size(); ++i) {
     uint8_t *notification =
         (uint8_t *) queue->object_notifications->at(i);
-    uint8_t *data = notification;
     /* Decode the length, which is the first bytes of the message. */
-    int64_t size = *((int64_t *) data);
+    int64_t size = *((int64_t *) notification);
 
     /* Attempt to send a notification about this object ID. */
-    int nbytes = send(client_sock, data, sizeof(int64_t) + size, 0);
+    int nbytes = send(client_sock, notification, sizeof(int64_t) + size, 0);
     if (nbytes >= 0) {
       CHECK(nbytes == sizeof(int64_t) + size);
     } else if (nbytes == -1 &&
@@ -610,7 +609,7 @@ void send_notifications(event_loop *loop,
     num_processed += 1;
     /* The corresponding malloc happened in create_object_info_buffer
      * within push_notification. */
-    free(data);
+    free(notification);
   }
   /* Remove the sent notifications from the array. */
   queue->object_notifications->erase(queue->object_notifications->begin(),
