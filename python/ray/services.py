@@ -372,7 +372,7 @@ def start_global_scheduler(redis_address, node_ip_address, stdout_file=None,
       this process will be killed by services.cleanup() when the Python process
       that imported services exits.
   """
-  p = global_scheduler.start_global_scheduler(redis_address,
+  p = global_scheduler.start_global_scheduler(redis_address, node_ip_address,
                                               stdout_file=stdout_file,
                                               stderr_file=stderr_file)
   if cleanup:
