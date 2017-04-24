@@ -412,7 +412,7 @@ void plasma_perform_release(PlasmaConnection *conn, ObjectID object_id) {
       munmap(entry->pointer, entry->length);
       /* Remove the corresponding entry from the hash table. */
       conn->mmap_table.erase(fd);
-      free(entry);
+      delete entry;
     }
     /* Tell the store that the client no longer needs the object. */
     CHECK(plasma_send_ReleaseRequest(conn->store_conn, conn->builder,
@@ -665,6 +665,9 @@ void plasma_disconnect(PlasmaConnection *conn) {
   HASH_ITER(hh, conn->objects_in_use, current_entry, temp_entry) {
     HASH_DELETE(hh, conn->objects_in_use, current_entry);
     free(current_entry);
+  }
+  for (auto &it : conn->mmap_table) {
+    delete it.second;
   }
   conn->mmap_table.clear();
   free_protocol_builder(conn->builder);
