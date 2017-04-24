@@ -22,6 +22,13 @@ python $ROOT_DIR/multi_node_docker_test.py \
 
 python $ROOT_DIR/multi_node_docker_test.py \
     --docker-image=$DOCKER_SHA \
+    --num-nodes=5 \
+    --num-gpus=0,0,5,6,50 \
+    --num-drivers=100 \
+    --test-script=/ray/test/jenkins_tests/multi_node_tests/many_drivers_test.py
+
+python $ROOT_DIR/multi_node_docker_test.py \
+    --docker-image=$DOCKER_SHA \
     --num-nodes=1 \
     --mem-size=60G \
     --shm-size=60G \

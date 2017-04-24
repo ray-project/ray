@@ -113,11 +113,15 @@ class DockerRunner(object):
     self.head_container_ip = self._get_container_ip(container_id)
 
   def _start_worker_node(self, docker_image, mem_size, shm_size, num_cpus,
-                         num_gpus):
+                         num_gpus, development_mode):
     """Start a Ray worker node inside a docker container."""
     mem_arg = ["--memory=" + mem_size] if mem_size else []
     shm_arg = ["--shm-size=" + shm_size] if shm_size else []
-    command = (["docker", "run", "-d"] + mem_arg + shm_arg +
+    volume_arg = (["-v",
+                   "{}:{}".format(os.path.dirname(os.path.realpath(__file__)),
+                                  "/ray/test/jenkins_tests")]
+                  if development_mode else [])
+    command = (["docker", "run", "-d"] + mem_arg + shm_arg + volume_arg +
                ["--shm-size=" + shm_size, docker_image,
                 "/ray/scripts/start_ray.sh",
                 "--redis-address={:s}:6379".format(self.head_container_ip),
@@ -164,7 +168,8 @@ class DockerRunner(object):
     # Start the worker nodes.
     for i in range(num_nodes - 1):
       self._start_worker_node(docker_image, mem_size, shm_size,
-                              num_cpus[1 + i], num_gpus[1 + i])
+                              num_cpus[1 + i], num_gpus[1 + i],
+                              development_mode)
 
   def _stop_node(self, container_id):
     """Stop a node in the Ray cluster."""
