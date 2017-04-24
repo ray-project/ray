@@ -97,8 +97,6 @@ struct GetRequest {
   int64_t num_satisfied;
 };
 
-
-
 struct PlasmaStoreState {
   PlasmaStoreState(event_loop *loop, int64_t system_memory);
 

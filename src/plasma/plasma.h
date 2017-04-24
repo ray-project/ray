@@ -71,9 +71,6 @@ typedef struct {
   int64_t metadata_size;
 } PlasmaObject;
 
-/** Mapping from object IDs to Object information. */
-// typedef std::unordered_map<ObjectID, PlasmaObject, UniqueIDHasher>
-
 typedef enum {
   /** Object was created but not sealed in the local Plasma Store. */
   PLASMA_CREATED = 1,
@@ -129,6 +126,15 @@ typedef struct {
   int64_t memory_capacity;
 } PlasmaStoreInfo;
 
+/**
+ * Get an entry from the object table and return NULL if the object_id
+ * is not present.
+ *
+ * @param store_info The PlasmaStoreInfo that contains the object table.
+ * @param object_id The object_id of the entry we are looking for.
+ * @return The entry associated to the object_id or NULL if the object_id
+ *         is not present.
+ */
 object_table_entry* get_object_table_entry(PlasmaStoreInfo* store_info, ObjectID object_id);
 
 /**
