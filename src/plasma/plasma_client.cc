@@ -672,7 +672,7 @@ void plasma_disconnect(PlasmaConnection *conn) {
   if (conn->manager_conn >= 0) {
     close(conn->manager_conn);
   }
-  free(conn);
+  delete conn;
 }
 
 bool plasma_manager_is_connected(PlasmaConnection *conn) {
