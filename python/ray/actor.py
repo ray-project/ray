@@ -15,6 +15,7 @@ import ray.pickling as pickling
 import ray.signature as signature
 import ray.worker
 import ray.experimental.state as state
+from ray.utils import binary_to_hex, hex_to_binary
 
 # This is a variable used by each actor to indicate the IDs of the GPUs that
 # the worker is currently allowed to use.
@@ -118,9 +119,8 @@ def attempt_to_reserve_gpus(num_gpus, driver_id, local_scheduler, worker):
     A list of the GPU IDs that were successfully acquired. This should have
       length either equal to num_gpus or equal to 0.
   """
-  local_scheduler_id = local_scheduler[b"ray_client_id"]
-  local_scheduler_total_gpus = int(float(
-      local_scheduler[b"num_gpus"].decode("ascii")))
+  local_scheduler_id = local_scheduler["DBClientID"]
+  local_scheduler_total_gpus = int(local_scheduler["NumGPUs"])
 
   gpus_to_acquire = []
 
@@ -132,14 +132,12 @@ def attempt_to_reserve_gpus(num_gpus, driver_id, local_scheduler, worker):
         # block), then the transaction will not take place.
         pipe.watch(local_scheduler_id)
 
+        # Figure out which GPUs are currently in use.
         result = worker.redis_client.hget(local_scheduler_id, "gpus_in_use")
         gpus_in_use = dict() if result is None else json.loads(result)
-        print("gpus_in_use before:", gpus_in_use)
         all_gpu_ids_in_use = []
         for key in gpus_in_use:
           all_gpu_ids_in_use += gpus_in_use[key]
-        print("all_gpu_ids_in_use", all_gpu_ids_in_use)
-
         assert len(all_gpu_ids_in_use) <= local_scheduler_total_gpus
         assert len(set(all_gpu_ids_in_use)) == len(all_gpu_ids_in_use)
 
@@ -152,26 +150,23 @@ def attempt_to_reserve_gpus(num_gpus, driver_id, local_scheduler, worker):
             all_gpu_ids.remove(gpu_id)
           gpus_to_acquire = list(all_gpu_ids)[:num_gpus]
 
-          print("gpus_to_acquire", gpus_to_acquire)
-
-          driver_id_hex = ray.experimental.state.binary_to_hex(driver_id)
+          # Use the hex driver ID so that the dictionary is JSON serializable.
+          driver_id_hex = binary_to_hex(driver_id)
           if driver_id_hex not in gpus_in_use:
             gpus_in_use[driver_id_hex] = []
           gpus_in_use[driver_id_hex] += gpus_to_acquire
 
-          print("gpus_in_use after:", gpus_in_use)
           # Stick the updated GPU IDs back in Redis
           pipe.hset(local_scheduler_id, "gpus_in_use", json.dumps(gpus_in_use))
 
         pipe.execute()
-        # If a WatchError is not raise, then the operations should have gone
+        # If a WatchError is not raised, then the operations should have gone
         # through atomically.
         break
       except redis.WatchError:
         # Another client must have changed the watched key between the time we
         # started WATCHing it and the pipeline's execution. We should just
         # retry.
-        print("TRANSACTION FAILED")
         gpus_to_acquire = []
         continue
 
@@ -197,7 +192,8 @@ def select_local_scheduler(local_schedulers, num_gpus, worker):
   driver_id = worker.task_driver_id.id()
 
   if num_gpus == 0:
-    local_scheduler_id = random.choice(local_schedulers)[b"ray_client_id"]
+    local_scheduler_id = hex_to_binary(
+        random.choice(local_schedulers)["DBClientID"])
     gpus_aquired = []
   else:
     # All of this logic is for finding a local scheduler that has enough
@@ -209,7 +205,7 @@ def select_local_scheduler(local_schedulers, num_gpus, worker):
       gpus_aquired = attempt_to_reserve_gpus(num_gpus, driver_id,
                                              local_scheduler, worker)
       if len(gpus_aquired) == num_gpus:
-        local_scheduler_id = local_scheduler[b"ray_client_id"]
+        local_scheduler_id = hex_to_binary(local_scheduler["DBClientID"])
         break
       else:
         # We should have either acquired as many GPUs as we need or none.
@@ -246,8 +242,14 @@ def export_actor(actor_id, Class, actor_method_names, num_cpus, num_gpus,
     worker.function_properties[driver_id][function_id] = (1, num_cpus,
                                                           num_gpus)
 
+  # Get a list of the local schedulers from the client table.
+  client_table = ray.global_state.client_table()
+  local_schedulers = []
+  for ip_address, clients in client_table.items():
+    for client in clients:
+      if client["ClientType"] == "local_scheduler":
+        local_schedulers.append(client)
   # Select a local scheduler for the actor.
-  local_schedulers = state.get_local_schedulers(worker.redis_client)
   local_scheduler_id, gpu_ids = select_local_scheduler(local_schedulers,
                                                        num_gpus, worker)
 

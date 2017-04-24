@@ -4,8 +4,8 @@ from __future__ import print_function
 
 import argparse
 from collections import Counter
-import logging
 import json
+import logging
 import redis
 import time
 
@@ -229,12 +229,19 @@ class Monitor(object):
     driver_id = message.DriverId()
     log.info("Driver {} has been removed.".format(driver_id))
 
+    # Get a list of the local schedulers.
+    client_table = ray.global_state.client_table()
+    local_schedulers = []
+    for ip_address, clients in client_table.items():
+      for client in clients:
+        if client["ClientType"] == "local_scheduler":
+          local_schedulers.append(client)
+
     # Release any GPU resources that have been reserved for this driver in
     # Redis.
-    local_schedulers = state.get_local_schedulers(self.redis)
     for local_scheduler in local_schedulers:
-      if int(float(local_scheduler[b"num_gpus"].decode("ascii"))) > 0:
-        local_scheduler_id = local_scheduler[b"ray_client_id"]
+      if int(local_scheduler["NumGPUs"]) > 0:
+        local_scheduler_id = local_scheduler["DBClientID"]
 
         # Perform a transaction to return the GPUs.
         with self.redis.pipeline() as pipe:
@@ -247,7 +254,7 @@ class Monitor(object):
               result = pipe.hget(local_scheduler_id, "gpus_in_use")
               gpus_in_use = dict() if result is None else json.loads(result)
 
-              driver_id_hex = state.binary_to_hex(driver_id)
+              driver_id_hex = ray.utils.binary_to_hex(driver_id)
               if driver_id_hex in gpus_in_use:
                 returned_gpu_ids = gpus_in_use.pop(driver_id_hex)
 
