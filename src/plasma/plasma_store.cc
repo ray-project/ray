@@ -35,8 +35,6 @@
 #include "event_loop.h"
 #include "eviction_policy.h"
 #include "io.h"
-#include "uthash.h"
-#include "utarray.h"
 #include "plasma_protocol.h"
 #include "plasma_store.h"
 #include "plasma.h"
@@ -60,18 +58,10 @@ struct Client {
   PlasmaStoreState *plasma_state;
 };
 
-/* This is used to define the queue of object notifications for plasma
- * subscribers. */
-UT_icd object_info_icd = {sizeof(uint8_t *), NULL, NULL, NULL};
-
 struct NotificationItem{
-  /** Client file descriptor. This is used as a key for the hash table. */
-  int subscriber_fd;
   /** The object notifications for clients. We notify the client about the
    *  objects in the order that the objects were sealed or deleted. */
-  std::deque<uint8_t *> *object_notifications;
-  /** Handle for the uthash table. */
-  UT_hash_handle hh;
+  std::deque<uint8_t *> object_notifications;
 };
 
 struct GetRequest {
@@ -161,12 +151,11 @@ void PlasmaStoreState_free(PlasmaStoreState *state) {
   }
   for (const auto &it : state->pending_notifications) {
     auto object_notifications = it.second.object_notifications;
-    for (int i = 0; i < object_notifications->size(); ++i) {
-      uint8_t *notification = (uint8_t *) object_notifications->at(i);
+    for (int i = 0; i < object_notifications.size(); ++i) {
+      uint8_t *notification = (uint8_t *) object_notifications.at(i);
       uint8_t *data = notification;
       free(data);
     }
-    delete object_notifications;
   }
 }
 
@@ -552,9 +541,9 @@ void remove_objects(PlasmaStoreState *plasma_state,
 
 void push_notification(PlasmaStoreState *plasma_state,
                        ObjectInfoT *object_info) {
-  for (const auto &it : plasma_state->pending_notifications) {
+  for (auto &it : plasma_state->pending_notifications) {
     uint8_t *notification = create_object_info_buffer(object_info);
-    it.second.object_notifications->push_back(notification);
+    it.second.object_notifications.push_back(notification);
     send_notifications(plasma_state->loop, it.first, plasma_state, 0);
     /* The notification gets freed in send_notifications when the notification
      * is sent over the socket. */
@@ -573,8 +562,8 @@ void send_notifications(event_loop *loop,
   bool closed = false;
   /* Loop over the array of pending notifications and send as many of them as
    * possible. */
-  for (int i = 0; i < item->object_notifications->size(); ++i) {
-    uint8_t *notification = (uint8_t *) item->object_notifications->at(i);
+  for (int i = 0; i < item->object_notifications.size(); ++i) {
+    uint8_t *notification = (uint8_t *) item->object_notifications.at(i);
     /* Decode the length, which is the first bytes of the message. */
     int64_t size = *((int64_t *) notification);
 
@@ -607,19 +596,18 @@ void send_notifications(event_loop *loop,
     free(notification);
   }
   /* Remove the sent notifications from the array. */
-  item->object_notifications->erase(
-      item->object_notifications->begin(),
-      item->object_notifications->begin() + num_processed);
+  item->object_notifications.erase(
+      item->object_notifications.begin(),
+      item->object_notifications.begin() + num_processed);
 
   /* Stop sending notifications if the pipe was broken. */
   if (closed) {
     close(client_sock);
-    delete item->object_notifications;
     plasma_state->pending_notifications.erase(client_sock);
   }
 
   /* If we have sent all notifications, remove the fd from the event loop. */
-  if (item->object_notifications->empty()) {
+  if (item->object_notifications.empty()) {
     event_loop_remove_file(loop, client_sock);
   }
 }
@@ -641,8 +629,6 @@ void subscribe_to_updates(Client *client_context, int conn) {
    * subscriber yet because the socket send buffer is full. TODO(rkn): the queue
    * never gets freed. */
   NotificationItem &item = plasma_state->pending_notifications[fd];
-  item.subscriber_fd = fd;
-  item.object_notifications = new std::deque<uint8_t *>();
 
   /* Push notifications to the new subscriber about existing objects. */
   for (const auto &entry : plasma_state->plasma_store_info->objects) {
