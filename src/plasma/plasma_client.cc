@@ -627,8 +627,7 @@ PlasmaConnection *plasma_connect(const char *store_socket_name,
                                  const char *manager_socket_name,
                                  int release_delay) {
   /* Initialize the store connection struct */
-  PlasmaConnection *result =
-      (PlasmaConnection *) malloc(sizeof(PlasmaConnection));
+  PlasmaConnection *result = new PlasmaConnection();
   result->store_conn = connect_ipc_sock_retry(store_socket_name, -1, -1);
   if (manager_socket_name != NULL) {
     result->manager_conn = connect_ipc_sock_retry(manager_socket_name, -1, -1);
