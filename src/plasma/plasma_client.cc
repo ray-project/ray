@@ -46,7 +46,7 @@ extern "C" {
 #define BYTES_IN_MB (1 << 20)
 static std::vector<std::thread> threadpool_(THREADPOOL_SIZE);
 
-typedef struct {
+struct ClientMmapTableEntry {
   /** Key that uniquely identifies the  memory mapped file. In practice, we
    *  take the numerical value of the file descriptor in the object store. */
   int key;
@@ -59,9 +59,9 @@ typedef struct {
   int count;
   /** Handle for the uthash table. */
   UT_hash_handle hh;
-} ClientMmapTableEntry;
+};
 
-typedef struct {
+struct ObjectInUseEntry {
   /** The ID of the object. This is used as the key in the hash table. */
   ObjectID object_id;
   /** A count of the number of times this client has called plasma_create or
@@ -75,7 +75,7 @@ typedef struct {
   bool is_sealed;
   /** Handle for the uthash table. */
   UT_hash_handle hh;
-} object_in_use_entry;
+};
 
 /** Configuration options for the plasma client. */
 typedef struct {
@@ -115,7 +115,7 @@ struct PlasmaConnection {
   std::unordered_map<int, ClientMmapTableEntry *> mmap_table;
   /** A hash table of the object IDs that are currently being used by this
    * client. */
-  object_in_use_entry *objects_in_use;
+  std::unordered_map<ObjectID, ObjectInUseEntry *, UniqueIDHasher> objects_in_use;
   /** Object IDs of the last few release calls. This is a doubly-linked list and
    *  is used to delay releasing objects to see if they can be reused by
    *  subsequent tasks so we do not unneccessarily invalidate cpu caches.
@@ -141,6 +141,14 @@ struct PlasmaConnection {
 ClientMmapTableEntry *get_mmap_table_entry(PlasmaConnection *conn, int fd) {
   auto it = conn->mmap_table.find(fd);
   if (it == conn->mmap_table.end()) {
+    return NULL;
+  }
+  return it->second;
+}
+
+ObjectInUseEntry *get_object_in_use_entry(PlasmaConnection *conn, ObjectID object_id) {
+  auto it = conn->objects_in_use.find(object_id);
+  if (it == conn->objects_in_use.end()) {
     return NULL;
   }
   return it->second;
@@ -188,19 +196,16 @@ void increment_object_count(PlasmaConnection *conn,
                             bool is_sealed) {
   /* Increment the count of the object to track the fact that it is being used.
    * The corresponding decrement should happen in plasma_release. */
-  object_in_use_entry *object_entry;
-  HASH_FIND(hh, conn->objects_in_use, &object_id, sizeof(object_id),
-            object_entry);
+  ObjectInUseEntry *object_entry = get_object_in_use_entry(conn, object_id);
   if (object_entry == NULL) {
     /* Add this object ID to the hash table of object IDs in use. The
      * corresponding call to free happens in plasma_release. */
-    object_entry = (object_in_use_entry *) malloc(sizeof(object_in_use_entry));
+    object_entry = new ObjectInUseEntry();
     object_entry->object_id = object_id;
     object_entry->object = *object;
     object_entry->count = 0;
     object_entry->is_sealed = is_sealed;
-    HASH_ADD(hh, conn->objects_in_use, object_id, sizeof(object_id),
-             object_entry);
+    conn->objects_in_use[object_id] = object_entry;
     /* Increment the count of the number of objects in the memory-mapped file
      * that are being used. The corresponding decrement should happen in
      * plasma_release. */
@@ -282,9 +287,7 @@ void plasma_get(PlasmaConnection *conn,
   /* Fill out the info for the objects that are already in use locally. */
   bool all_present = true;
   for (int i = 0; i < num_objects; ++i) {
-    object_in_use_entry *object_entry;
-    HASH_FIND(hh, conn->objects_in_use, &object_ids[i], sizeof(object_ids[i]),
-              object_entry);
+    ObjectInUseEntry *object_entry = get_object_in_use_entry(conn, object_ids[i]);
     if (object_entry == NULL) {
       /* This object is not currently in use by this client, so we need to send
        * a request to the store. */
@@ -391,9 +394,7 @@ void plasma_perform_release(PlasmaConnection *conn, ObjectID object_id) {
   /* Decrement the count of the number of instances of this object that are
    * being used by this client. The corresponding increment should have happened
    * in plasma_get. */
-  object_in_use_entry *object_entry;
-  HASH_FIND(hh, conn->objects_in_use, &object_id, sizeof(object_id),
-            object_entry);
+  ObjectInUseEntry *object_entry = get_object_in_use_entry(conn, object_id);
   CHECK(object_entry != NULL);
   object_entry->count -= 1;
   CHECK(object_entry->count >= 0);
@@ -422,8 +423,8 @@ void plasma_perform_release(PlasmaConnection *conn, ObjectID object_id) {
         (object_entry->object.data_size + object_entry->object.metadata_size);
     DCHECK(conn->in_use_object_bytes >= 0);
     /* Remove the entry from the hash table of objects currently in use. */
-    HASH_DELETE(hh, conn->objects_in_use, object_entry);
-    free(object_entry);
+    conn->objects_in_use.erase(object_id);
+    delete object_entry;
   }
 }
 
@@ -461,8 +462,7 @@ void plasma_release(PlasmaConnection *conn, ObjectID obj_id) {
 /* This method is used to query whether the plasma store contains an object. */
 void plasma_contains(PlasmaConnection *conn, ObjectID obj_id, int *has_object) {
   /* Check if we already have a reference to the object. */
-  object_in_use_entry *object_entry;
-  HASH_FIND(hh, conn->objects_in_use, &obj_id, sizeof(obj_id), object_entry);
+  ObjectInUseEntry *object_entry = get_object_in_use_entry(conn, obj_id);
   if (object_entry) {
     *has_object = 1;
   } else {
@@ -562,9 +562,7 @@ bool plasma_compute_object_hash(PlasmaConnection *conn,
 void plasma_seal(PlasmaConnection *conn, ObjectID object_id) {
   /* Make sure this client has a reference to the object before sending the
    * request to Plasma. */
-  object_in_use_entry *object_entry;
-  HASH_FIND(hh, conn->objects_in_use, &object_id, sizeof(object_id),
-            object_entry);
+  ObjectInUseEntry *object_entry = get_object_in_use_entry(conn, object_id);
   CHECKM(object_entry != NULL,
          "Plasma client called seal an object without a reference to it");
   CHECKM(!object_entry->is_sealed,
@@ -635,7 +633,6 @@ PlasmaConnection *plasma_connect(const char *store_socket_name,
     result->manager_conn = -1;
   }
   result->builder = make_protocol_builder();
-  result->objects_in_use = NULL;
   result->config.release_delay = release_delay;
   /* Initialize the release history doubly-linked list to NULL and also
    * initialize other implementation details of the release history. */
@@ -660,11 +657,10 @@ void plasma_disconnect(PlasmaConnection *conn) {
     DL_DELETE(conn->release_history, element);
     free(element);
   }
-  object_in_use_entry *current_entry, *temp_entry;
-  HASH_ITER(hh, conn->objects_in_use, current_entry, temp_entry) {
-    HASH_DELETE(hh, conn->objects_in_use, current_entry);
-    free(current_entry);
+  for (auto &it : conn->objects_in_use) {
+    delete it.second;
   }
+  conn->objects_in_use.clear();
   for (auto &it : conn->mmap_table) {
     delete it.second;
   }
